@@ -21,7 +21,6 @@ def _tree(tmp_path, files: dict[str, str]) -> str:
     return str(tmp_path)
 
 
-# ── cpu quota ───────────────────────────────────────────────────────────────────────
 def test_cgroup_v2_quota_is_read_as_fractional_cores(tmp_path):
     # 150000/100000 = 1.5 cores. Fractional on purpose: rounding up to 2 re-creates the
     # oversubscription this exists to prevent.
@@ -62,7 +61,6 @@ def test_absent_cgroup_is_not_an_error(tmp_path):
     assert hardware.cgroup_cpu_quota(str(tmp_path)) is None
 
 
-# ── memory ──────────────────────────────────────────────────────────────────────────
 def test_cgroup_v1_unlimited_sentinel_is_not_mistaken_for_a_real_limit(tmp_path):
     # v1 reports a page-aligned INT64_MAX rather than the string "max", so an exact == check misses it
     # and the worker would believe it had 8 exabytes.
@@ -99,7 +97,6 @@ def test_unknowable_memory_is_None_not_zero(tmp_path):
     assert hardware.available_memory_bytes(str(tmp_path)) is None
 
 
-# ── effective cpus ──────────────────────────────────────────────────────────────────
 def test_effective_cpus_honours_a_container_quota(tmp_path):
     # THE bug this module exists for: os.cpu_count() reports the host's cores inside a throttled
     # container, so a 2-core container would start 4 model-holding jobs and every song gets slower.
@@ -122,35 +119,31 @@ def test_effective_cpus_never_returns_zero(tmp_path):
 
 def test_effective_cpus_falls_back_to_the_host_when_uncontained(tmp_path, monkeypatch):
     # On a plain host all the cgroup files are absent and the answer must be the machine's own count.
-    # Pin an INDEPENDENT expected value instead of re-deriving min(cpu_count, affinity): fix both
-    # sources to a known 8 (host and affinity agree, no cgroup files) and assert the answer is 8. The
-    # old form recomputed the code's own expression, so it agreed with any composition of the two.
+    # Pin an INDEPENDENT expected value (host and affinity both fixed to 8) rather than re-deriving
+    # min(cpu_count, affinity), which would agree with any composition of the two.
     monkeypatch.setattr(os, "cpu_count", lambda: 8)
     monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: set(range(8)))
     assert hardware.effective_cpus(str(tmp_path)) == 8
 
 
 def test_effective_cpus_honours_a_cpuset_pin_below_the_host_count(tmp_path, monkeypatch):
-    # The cpuset case the module docstring exists to catch: a many-core host pinned to a 2-CPU set via
-    # `docker run --cpuset-cpus=0,1`, systemd AllowedCPUs=, or a k8s static CPU pin. Cpuset leaves no
-    # CFS quota, so cgroup_cpu_quota() is None and affinity is the ONLY signal that the worker is
-    # confined. Independent values (host says 8, affinity says 2, no cgroup files) — the answer must
-    # be 2, not 8. Drops if the affinity candidate stops being appended.
+    # A cpuset pin (`docker run --cpuset-cpus=0,1`, systemd AllowedCPUs=, a k8s static CPU pin) leaves
+    # no CFS quota, so affinity is the ONLY signal that the worker is confined. Independent values
+    # (host says 8, affinity says 2, no cgroup files) — the answer must be 2, not 8.
     monkeypatch.setattr(os, "cpu_count", lambda: 8)
     monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: {0, 1})
     assert hardware.effective_cpus(str(tmp_path)) == 2
 
 
 def test_effective_cpus_takes_the_tighter_of_a_cpuset_pin_and_a_quota(tmp_path, monkeypatch):
-    # Both a cpuset pin (affinity=2) and a CFS quota (8 cores) present: the tighter — the cpuset — must
-    # win. Pins that affinity is composed with the quota rather than either shadowing the other.
+    # Both a cpuset pin (affinity=2) and a CFS quota (8 cores) present: the tighter must win — pins
+    # that affinity is composed with the quota rather than either shadowing the other.
     root = _tree(tmp_path, {"sys/fs/cgroup/cpu.max": "800000 100000\n"})  # 8 cores
     monkeypatch.setattr(os, "cpu_count", lambda: 16)
     monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: {0, 1})
     assert hardware.effective_cpus(root) == 2
 
 
-# ── accelerator + report ────────────────────────────────────────────────────────────
 def test_accelerator_detection_survives_torch_being_absent():
     # torch is genuinely not installed in this test environment, and the worker must still start: the
     # stub processor needs no ML at all, and a CPU process is a valid outcome, not a crash.
@@ -159,17 +152,13 @@ def test_accelerator_detection_survives_torch_being_absent():
 
 
 def test_host_facts_reports_the_EFFECTIVE_core_count_not_the_hosts():
-    # The wire shape lives in protocol.host_facts(), which delegates here rather than re-deriving the
-    # fields. That delegation is the point: the auto-sizers already need the effective count, and a
-    # dashboard reporting os.cpu_count() beside a worker that sized itself for 2 of those 32 cores
-    # shows two disagreeing numbers with neither labelled.
     from src import protocol
 
     facts = protocol.host_facts()
     assert facts["cpuCount"] == hardware.effective_cpus()
     assert facts["accelerator"] in ("cuda", "rocm", "xpu", "mps", "cpu")
-    # `cuda` is kept for readers that already branch on it, and must agree with `accelerator` — a plain
-    # boolean previously reported an AMD/ROCm card as NVIDIA, since ROCm reports through torch's cuda API.
+    # `cuda` must agree with `accelerator`: ROCm reports through torch's cuda API, so a plain boolean
+    # could otherwise report an AMD card as NVIDIA.
     assert facts["cuda"] is (facts["accelerator"] == "cuda")
     assert "contained" in facts
     for k in ("platform", "machine", "python"):
@@ -193,11 +182,9 @@ def test_describe_is_readable_and_mentions_the_accelerator():
     assert "accel=" in line and "cpus=" in line
 
 
-# ── worker identity ─────────────────────────────────────────────────────────────────
 def test_default_worker_id_is_unique_per_process_not_a_shared_constant():
-    # The old fallback was the literal "worker-1", so two workers with the id unset both announced it —
-    # and since the core keys its registry by workerId, the second hello REPLACED the first instead of
-    # joining the fleet. Half the fleet vanishing is not detectable from either side.
+    # Two workers sharing an id both announcing it would have the second hello REPLACE the first in
+    # the core's registry instead of joining the fleet — undetectable from either side.
     wid = hardware.default_worker_id()
     assert wid != "worker-1"
     assert str(os.getpid()) in wid

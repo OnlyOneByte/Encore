@@ -15,10 +15,8 @@ const m = (over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-// A stems-complete song needs the status and the instrumental ref (both produced by the one stems job).
-// The profile defaults to EMPTY here — the all-nulls "analysis ran, found nothing" value — so the
-// fixture matches what a real process on this code produces. Tests that probe the pre-profile-era
-// boundary pass `songProfile: undefined` explicitly.
+// The profile defaults to EMPTY — the all-nulls "analysis ran, found nothing" value — so the fixture
+// matches what a real process produces. Pre-profile-era tests pass `songProfile: undefined` explicitly.
 const processed = (over: Partial<Media> = {}): Media =>
 	m({
 		stemStatus: 'ready',
@@ -34,21 +32,15 @@ test('a song is ready to sing only when EVERY required gate is done', () => {
 });
 
 test('separation needs the artifact, not just the status', () => {
-	// The status and the ref are written by separate steps; a status alone would hand the player an
-	// empty source.
+	// Status and ref are written by separate steps; a status alone hands the player an empty source.
 	expect(readyToSing(m({ stemStatus: 'ready', lyricsStatus: 'ready' }))).toBe(false);
 });
 
 test('a song processed BEFORE song profiles existed is not retroactively unsingable', () => {
-	// This is the stems twin of the lyrics test below, and it was the bug: the gate used to require the
-	// profile RECORD, which no pre-profile row has. Such a song went readyToSing=false (out of the
-	// rotation, out of listReady) while isPlayable/isProcessed stayed TRUE, so requestProcess answered
-	// "already processed" and refused to re-process it. Unsingable forever, with no way out, for every song
-	// processed on a previous night.
-	//
-	// It is safe to treat these as done because worker-hub writes the profile unconditionally beside
-	// markMediaReady, so a 'ready' status with an instrumental is itself proof the analysis ran for
-	// anything this code processed.
+	// Caught: requiring the profile RECORD deadlocked every pre-profile row — readyToSing went false
+	// while isPlayable/isProcessed stayed TRUE, so requestProcess answered "already processed" and
+	// refused to re-process it. Safe to treat as done because worker-hub writes the profile beside
+	// markMediaReady, so a 'ready' status with an instrumental is itself proof the analysis ran.
 	const noProfile = processed({ songProfile: undefined, lyricsStatus: 'ready' });
 	expect(noProfile.songProfile).toBeUndefined();
 	expect(isPlayable(noProfile)).toBe(true); // the half that always worked — hence the deadlock
@@ -57,39 +49,37 @@ test('a song processed BEFORE song profiles existed is not retroactively unsinga
 });
 
 test('a stems step still needs its status and ref, profile or not', () => {
-	// Dropping the profile requirement must not make a half-processed song look finished: the status and
-	// the instrumental ref are still both mandatory.
+	// Dropping the profile requirement must not make a half-processed song look finished.
 	expect(readyToSing(processed({ stemStatus: 'queued', lyricsStatus: 'ready' }))).toBe(false);
 	expect(readyToSing(processed({ instrumentalRef: undefined, lyricsStatus: 'ready' }))).toBe(false);
 });
 
 test('an ALL-NULLS profile still finishes the stems gate — the silent-vocal trap', () => {
-	// A silent vocal stem yields a profile with every field null. The gate keys on the profile's
-	// PRESENCE, not its data, so this song is FINISHED — the alternative (requiring key/range data)
-	// would leave it unsingable forever AND never re-process it, because the re-process check reads
-	// hasInstrumental, not the gate.
+	// A silent vocal stem yields an all-null profile. The gate keys on PRESENCE, not data: requiring
+	// key/range data would leave the song unsingable forever AND never re-process it, because the
+	// re-process check reads hasInstrumental rather than the gate.
 	const emptyProfile = processed({ songProfile: { ...EMPTY_SONG_PROFILE }, lyricsStatus: 'ready' });
 	expect(emptyProfile.songProfile).toEqual(EMPTY_SONG_PROFILE);
 	expect(readyToSing(emptyProfile)).toBe(true);
 });
 
 test('alignment is done when it RAN — an instrumental with no words is still finished', () => {
-	// The trap this prevents: if the lyrics gate required a lyricsRef, a genuine instrumental could
-	// never become singable, because align correctly finds no text and there is nothing to time.
+	// Requiring a lyricsRef would make a genuine instrumental never singable: align correctly finds no
+	// text, so there is nothing to time.
 	const instrumental = processed({ lyricsStatus: 'ready' }); // no lyricsRef at all
 	expect(instrumental.lyricsRef).toBeUndefined();
 	expect(readyToSing(instrumental)).toBe(true);
 });
 
 test('a song processed BEFORE the lyrics gate existed is not retroactively unsingable', () => {
-	// Upgrade safety: media predating lyricsStatus carry no such field. Treating absent as "not done"
-	// would empty an existing library the moment this shipped.
+	// Upgrade safety: media predating lyricsStatus carry no such field, and treating absent as "not
+	// done" would empty an existing library on deploy.
 	expect(readyToSing(processed({ lyricsRef: 'derived/lyrics/m1-asr-word.json' }))).toBe(true);
 });
 
 test('readyToSing and isPlayable are DIFFERENT questions', () => {
-	// Kept apart deliberately: `processState` uses the file-level check to decide whether the work is
-	// already done, so folding lyrics into it would re-process every song that lacks them from scratch.
+	// `processState` uses the file-level check to decide whether the work is already done, so folding
+	// lyrics into it would re-process every song that lacks them from scratch.
 	const separatedNoLyrics = processed();
 	expect(isPlayable(separatedNoLyrics)).toBe(true); // the file exists and loads
 	expect(readyToSing(separatedNoLyrics)).toBe(false); // but the song is not finished
@@ -108,78 +98,50 @@ test('pendingGates being empty is exactly readyToSing', () => {
 });
 
 test('every gate has a distinct id', () => {
-	// The id names the job type that satisfies the gate; two gates sharing one would make a job
-	// ambiguous about which step it completes.
+	// The id names the job type that satisfies the gate; a shared id makes a job ambiguous about which
+	// step it completes.
 	expect(new Set(GATES.map((g) => g.id)).size).toBe(GATES.length);
 });
 
 test('isProcessing is gate-driven — it catches a song sitting between two gates', () => {
-	// Not started: nothing acquired, no step queued → not processing (it is unacquired).
-	expect(isProcessing(m())).toBe(false);
-	// Stems actively queued → processing.
+	expect(isProcessing(m())).toBe(false); // nothing acquired, nothing queued
 	expect(isProcessing(m({ stemStatus: 'queued' }))).toBe(true);
-	// THE BUG: stems done, lyrics queued — a later gate is pending, but an earlier gate is done, so
-	// the gate-driven check keeps it processing instead of a hardcoded stemStatus==='queued' missing it.
+	// Caught: stems done + lyrics queued. A hardcoded `stemStatus === 'queued'` check reports this song
+	// as not processing; the gate-driven form keeps it processing because a later gate is pending.
 	expect(isProcessing(processed({ lyricsStatus: 'queued' }))).toBe(true);
-	// Even with lyrics simply not started, a separated song is still mid-process, not unacquired.
-	expect(isProcessing(processed())).toBe(true);
-	// Finished → not processing.
+	expect(isProcessing(processed())).toBe(true); // separated is mid-process, not unacquired
 	expect(isProcessing(processed({ lyricsStatus: 'ready' }))).toBe(false);
 });
 
-// guard: gates.ts holds ONE process vocabulary, and it is not this one — the dead guest-facing labels
-// removed do not come back.
-//
-// THE DEFECT. gates.ts carried a SECOND guest-facing process vocabulary: a `pendingLabel` field
-// on ProcessGate ('Separating vocals' / 'Timing lyrics') read only by `currentGateLabel`, which itself
-// had zero non-test callers. The phone's real process sub-line is src/lib/phrasing/process-phrasing.ts
-// (wired to SongRow, ProcessingCard, TvLobby and tv/+page.svelte) — its header asserts it is "the ONE
-// place the process is described to a guest … there is no third vocabulary to drift into", and names
-// 'Separating vocals', the exact string that was stranded in gates.ts, as copy "written for the
-// developer, not the guest at a party". So this was dead, drift-prone duplicate copy.
-//
-// THE TRIGGER is not runtime — it is the next developer adding a process step, which gates.ts:1-14
-// explicitly invites ("adding a step means adding one entry to GATES; nothing else moves"). That
-// author would fill in pendingLabel per its docstring, see it asserted by the old value-blind test,
-// and ship guest-facing copy that renders nowhere.
-//
-// WHY A SOURCE SCAN: deleting dead code has no runtime-observable regression — re-adding a field
-// nothing reads leaves the suite green, so a per-hunk mutation proof reports UNVERIFIED and cannot
-// pin it. The absence of the second vocabulary is a decidable property of the source, so this guard
-// encodes it. Matches the repo's source-scan-guard precedent (session-cookie-attributes.test.ts /
-// telemetry-frame-lean.test.ts, both + stripComments).
+// gates.ts must not hold a SECOND guest-facing process vocabulary. Caught: a `pendingLabel` field on
+// ProcessGate read only by `currentGateLabel`, which had zero non-test callers, duplicating the one real
+// vocabulary in src/lib/phrasing/process-phrasing.ts. The trigger is the next author adding a step —
+// gates.ts invites exactly that — filling in pendingLabel and shipping copy that renders nowhere.
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
-// Blank comments before scanning so a mention in a comment (this file explains the removed symbols)
-// cannot make a "must be gone" check pass or fail spuriously. Blank rather than delete so offsets line
-// up. Matches the repo's stripComments convention.
+/** Blank comments in place, so this file's own mention of the removed symbols cannot skew a scan. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
 const GATES_SRC = stripComments(readFileSync(at('src/lib/contract/queue/gates.ts'), 'utf8'));
 
 test('gates.ts source was read (guard is not vacuous)', () => {
-	// A sentinel that must be present regardless of this fix, so an empty/misread file cannot make the
-	// absence checks below pass vacuously.
+	// An empty or misread file would make every absence check below pass vacuously.
 	expect(GATES_SRC).toMatch(/export const GATES/);
 	expect(GATES_SRC).toMatch(/export function readyToSing/);
 });
 
 test('gates.ts no longer carries the dead second process vocabulary', () => {
-	// The phone's process copy lives ONLY in src/lib/phrasing/process-phrasing.ts. gates.ts must not
-	// re-declare a guest-facing label field or the caller-less function that read it.
 	expect(GATES_SRC).not.toMatch(/pendingLabel/);
 	expect(GATES_SRC).not.toMatch(/currentGateLabel/);
 });
 
 test('the live half of the gate table survives — this is a scoped deletion, not a gutting', () => {
-	// ProcessGate.stage is read at src/lib/server/jobs/media-status.ts; done/required drive
-	// readyToSing/pendingGates/isProcessing. Those must stay, so the guard cannot be satisfied by
-	// deleting the whole table.
+	// Sentinel: `stage` is read by src/lib/server/jobs/media-status.ts and done/required drive the three
+	// predicates, so the absence checks above cannot be satisfied by deleting the whole table.
 	expect(GATES_SRC).toMatch(/readonly stage: MediaStage/);
 	expect(GATES_SRC).toMatch(/readonly done:/);
 	expect(GATES_SRC).toMatch(/readonly required: boolean/);

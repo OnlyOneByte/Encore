@@ -1,16 +1,11 @@
-"""Version selection: choosing WHICH RECORDING of a song a source found.
+"""Version selection: choosing WHICH RECORDING of a song a source found — e.g. "Telephone" with vs
+without Beyoncé's verse, both matching artist+track.
 
-The bug these pin, in one sentence: a song with two popular versions ("Telephone" with and without
-Beyoncé's verse) has a lyrics record for each, both matching artist+track, and the old single-record
-lookup took whichever one the provider returned — then, on noticing the mismatch, threw the lookup away
-and sang the ASR guess instead.
-
-Two mechanisms, deliberately separate, and the distinction is the point of most of these tests:
-
-  * SELECTION is comparative (`select_by_baselines`). No threshold. It works precisely because two versions
-    of one song both score far ABOVE the wrong-song threshold, so only their ORDER matters.
-  * DEMOTION is absolute (SUSPECT_COVERAGE on baseline coverage). It judges whether the winner
-    is trustworthy at all.
+Two mechanisms, deliberately separate:
+  * SELECTION is comparative (`select_by_baselines`), no threshold — works because two versions of one
+    song both score far ABOVE the wrong-song threshold, so only their ORDER matters.
+  * DEMOTION is absolute (SUSPECT_COVERAGE on baseline coverage) — judges whether the winner is
+    trustworthy at all.
 """
 
 from __future__ import annotations
@@ -44,10 +39,8 @@ from src.lyrics.lrclib import (
 )
 from src.lyrics.registry import build_sources
 
-# ── fixtures: two real versions of one song ───────────────────────────────────────────
-#
-# Written as the token sets that actually decide this, not as prose: agreement is Jaccard over word
-# SETS, so what matters is which words each version contains and nothing about their order.
+# Fixtures: two real versions of one song, as word SETS — agreement is Jaccard over sets, so word
+# order does not matter.
 
 SHARED = "hello hello baby you called i cant hear a thing i have got no service in the club you say"
 GUEST_VERSE = "boy the way you blowing up my phone wont make me leave no faster put my coat on faster"
@@ -82,9 +75,6 @@ def base(body: str, rank: int = 0, variant: str = "whisper/vocals", source: str 
     return t
 
 
-# ── the headline behaviour ────────────────────────────────────────────────────────────
-
-
 def test_THE_BUG_the_version_matching_the_audio_is_chosen_over_the_one_that_does_not():
     """The whole feature. Both records are 'Lady Gaga / Telephone'; the sung audio has the guest verse."""
     lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "solo")
@@ -99,15 +89,9 @@ def test_THE_BUG_the_version_matching_the_audio_is_chosen_over_the_one_that_does
 
 
 def test_the_wrong_version_scores_ABOVE_the_wrong_song_threshold_so_a_threshold_cannot_fix_this():
-    """Why selection had to be comparative rather than a tuned cutoff.
-
-    If the losing version's baseline COVERAGE were below SUSPECT_COVERAGE, the absolute wrong-song check
-    would already have handled this case and none of this code would be needed. It does not: two versions
-    of one song share most of their words, so the shorter one still covers what is audible. This test
-    fails the moment someone 'simplifies' selection into a threshold. (the judgement axis is
-    coverage now, not the ranking score — but the point stands on either, and coverage is the honest one
-    to make it on, because coverage is what the threshold actually reads.)
-    """
+    """Why selection must be comparative, not a tuned cutoff: two versions of one song share most of
+    their words, so the shorter (wrong) one still covers what's audible and its coverage sits ABOVE
+    SUSPECT_COVERAGE — a threshold alone cannot separate them."""
     from src.lyrics.grading import SUSPECT_COVERAGE, agreement
 
     wrong = agreement(SOLO_TEXT, ASR_OF_FEAT)
@@ -118,12 +102,8 @@ def test_the_wrong_version_scores_ABOVE_the_wrong_song_threshold_so_a_threshold_
 
 
 def test_THE_MEAN_of_several_baselines_decides_not_any_single_one():
-    """The two-tier core. A single baseline is one opinion with its own blind spots; the composite is the
-    mean across independent ones, so a baseline that mis-hears a passage cannot swing the choice alone.
-
-    Constructed so the FIRST baseline alone would pick wrong and the mean picks right — otherwise the
-    test would pass without the averaging ever mattering.
-    """
+    """The composite is the mean across baselines, not any single one, so one that mis-hears a passage
+    cannot swing the choice alone. Constructed so the first baseline alone would pick wrong."""
     lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "solo")
     lrclib.alternates = [text(SOURCE_LRCLIB, FEAT_TEXT, "feat")]
     # baseline 1 heard only the shared part (so it favours 'solo' — a subset match scores higher)
@@ -150,9 +130,6 @@ def test_only_what_is_published_gets_aligned():
     assert sel.publish[0].alternates == []  # the choice is resolved, not deferred
 
 
-# ── the two roles, kept apart ──────────────────────────────────────────────────────────
-
-
 def test_baselines_are_ordered_by_how_clean_their_evidence_is():
     """Only consulted to pick a fallback to SHOW — never to weight the grading, where every baseline that
     speaks gets one equal vote."""
@@ -176,9 +153,8 @@ def test_a_baseline_is_never_a_candidate():
     assert baselines_of([lrclib, auto]) == [auto]
     # even though the auto track's text matches the audio PERFECTLY (it is the audio), the lookup wins
     sel = select_by_baselines([lrclib, auto])
-    # The published winner is the lrclib candidate. It is a COPY, not the same object: the
-    # selector now clears `alternates` via dataclasses.replace instead of mutating the caller's object
-    # in place, so compare by identifying content rather than by `is`.
+    # A COPY, not the same object: alternates are cleared via dataclasses.replace, so compare on
+    # content rather than identity.
     assert sel.publish[0].text_source == lrclib.text_source
     assert sel.publish[0].variant == lrclib.variant
     assert sel.publish[0].role == lrclib.role == ROLE_CANDIDATE
@@ -203,9 +179,6 @@ def test_no_text_at_all_publishes_nothing():
     assert sel.publish == [] and sel.baseline_fallback
 
 
-# ── the absolute judgement, distinct from the comparative one ───────────────────────────
-
-
 def test_a_winner_that_disagrees_with_every_baseline_is_flagged_AND_gets_a_real_alternative():
     """Selection is comparative and always returns a best; that says nothing about whether the best is any
     good. When it is not, the room needs words that ARE about this audio — not just a warning label on
@@ -226,9 +199,6 @@ def test_a_trustworthy_winner_publishes_alone():
     sel = select_by_baselines([text(SOURCE_LRCLIB, FEAT_TEXT, "right"), base(ASR_OF_FEAT)])
     assert not sel.winner_suspect
     assert len(sel.publish) == 1
-
-
-# ── abstention: what makes a weak baseline safe to include ─────────────────────────────
 
 
 def test_a_thin_baseline_ABSTAINS_and_is_reported_as_abstaining():
@@ -287,12 +257,10 @@ def test_the_best_candidate_ACROSS_sources_wins_not_merely_within_one():
 
 
 def test_an_UNJUDGED_candidate_never_displaces_a_graded_one_ACROSS_sources():
-    """The single line the whole two-tier design funnels into: baselines grade candidates, and this
-    comparison turns those grades into published text. A candidate the baselines COULD NOT judge at all
-    (its own text below MIN_TOKENS_TO_COMPARE, so `composite_score` returns None) must never outrank a
-    candidate measured at real agreement — regardless of which source was acquired first. If it did, the
-    room gets unverified words while correct ones were in hand, and the `winner_suspect` safety net can
-    never fire because a None score reads as neither trustworthy nor suspect."""
+    """A candidate the baselines COULD NOT judge (below MIN_TOKENS_TO_COMPARE, so `composite_score`
+    returns None) must never outrank one measured at real agreement, regardless of acquisition order —
+    otherwise the room gets unverified words while correct ones were in hand, and `winner_suspect` can
+    never fire since a None score reads as neither trustworthy nor suspect."""
     graded = text(SOURCE_LRCLIB, FEAT_TEXT, "lrclib-full")  # 31 distinct tokens -> judged ~0.94
     stub = text(SOURCE_CAPTIONS, "la la la", "captions-stub")  # 1 distinct token  -> UNJUDGEABLE
 
@@ -305,9 +273,8 @@ def test_an_UNJUDGED_candidate_never_displaces_a_graded_one_ACROSS_sources():
 
 def test_between_two_UNJUDGEABLE_candidates_the_first_acquired_stands():
     """When neither candidate can be graded, 'cannot tell' is not 'they differ' — the earlier (better
-    metadata match) must stand rather than the later one displacing it arbitrarily. This pins the strict
-    `>` in the cross-source comparison: a `>=` would silently let registry acquisition ORDER hand the win
-    to whichever ungradeable candidate came last."""
+    metadata match) must stand. Pins the strict `>` in the cross-source comparison: a `>=` would let
+    acquisition order hand the win to whichever ungradeable candidate came last."""
     first = text(SOURCE_LRCLIB, "mmm ooh yeah", "first-acquired")  # both under MIN_TOKENS_TO_COMPARE,
     second = text(SOURCE_CAPTIONS, "na na hey", "second-acquired")  # so neither can be judged
 
@@ -332,9 +299,6 @@ def test_the_report_names_the_loser_and_its_score_for_the_log():
     assert "1 baseline" in report.summary()
 
 
-# ── artifact keys: two baselines from one source must not overwrite each other ──────────
-
-
 def test_the_tag_keeps_same_source_texts_from_clobbering_each_other():
     """Two baselines are both `asr` and two caption tiers are both `captions`. Without the tag the second
     write of a pair silently destroys the first — and destroys exactly the independence that makes
@@ -347,9 +311,6 @@ def test_the_tag_keeps_same_source_texts_from_clobbering_each_other():
     assert manual != auto
     # a source with no tag keeps its historical key shape
     assert candidate_key("m1", SOURCE_LRCLIB, TIMING_LINE) == "derived/lyrics/m1-lrclib-line.json"
-
-
-# ── the search pool: what /api/search is asked, and how its records are ordered ────────
 
 
 def test_the_search_url_carries_NO_duration_filter():
@@ -435,9 +396,6 @@ def test_a_record_label_names_the_version_for_the_log():
     )
     label = r.label
     assert "Lady Gaga" in label and "Telephone" in label and "243s" in label and "#77" in label
-
-
-# ── LrclibSource: how the pool reaches the chain, and the no-regression fallback ───────
 
 
 class FakeLrclib:
@@ -543,9 +501,6 @@ def test_a_synced_record_reports_line_timing_and_a_plain_one_reports_none():
     assert LrclibSource(plain, _segments).fetch(_req()).timing == TIMING_NONE
 
 
-# ── the captions tier ─────────────────────────────────────────────────────────────────
-
-
 def test_captions_decline_when_the_upload_has_no_manual_track():
     """The COMMON case and not an error — most uploads have no human captions."""
     assert CaptionsSource().fetch(LyricsRequest(media_id="m", caption_segments=[])) is None
@@ -554,10 +509,8 @@ def test_captions_decline_when_the_upload_has_no_manual_track():
 
 def test_authored_captions_are_a_CANDIDATE_and_authoritative():
     """`high` confidence is defensible only because an automatic track cannot reach this tier — the two
-    arrive from separate fetches into separate directories. See test_captions.py.
-
-    The ROLE is asserted through the registry (below), not here: the source no longer decides its own tier.
-    """
+    arrive from separate fetches into separate directories. See test_captions.py. The ROLE itself is
+    asserted through the registry (below), not here — the source does not decide its own tier."""
     got = CaptionsSource().fetch(
         LyricsRequest(media_id="m", caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}])
     )
@@ -584,14 +537,9 @@ def test_automatic_captions_are_never_authoritative():
 
 
 def test_the_REGISTRY_decides_which_tier_each_source_speaks_in():
-    """The two-tier split, asserted where it is now declared — and the assertion the old pair could not
-    make.
-
-    Those tests read `role` off a directly-constructed source, so they were checking that `grading.py` agreed
-    with itself. The authored-captions one was worse than redundant: CANDIDATE is `LyricsText`'s default, so
-    it would have passed even with the assignment deleted. This drives the real path — registry builds the
-    source, source fetches, registry stamps the tier — so a source and its spec cannot disagree.
-    """
+    """Drives the real path — registry builds the source, source fetches, registry stamps the tier —
+    so a source and its spec cannot disagree, unlike a test that reads `role` off a directly-
+    constructed source and only checks `grading.py` agrees with itself."""
     req = LyricsRequest(
         media_id="m",
         caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}],
@@ -634,12 +582,9 @@ def test_captions_cannot_be_about_a_different_version_of_the_song():
     assert got.alternates == []
 
 
-# ── overshoot demotion: a candidate timed past audio-end loses to one that fits ─────────────
-#
-# Owner ruling B: a candidate whose own timings run well past the end of the audio is a wrong-version
-# pick (its lyrics belong to a longer master), and it must be DEMOTED during selection so a rival that
-# fits wins. Comparative, not a threshold — the demotion steers the same argmax selection already runs.
-# The two real cases overshoot by +39% and +27% of duration; the tolerance band is OVERSHOOT_FRACTION_MAX.
+# Overshoot demotion: a candidate whose own timings run well past audio-end is a wrong-version pick
+# (its lyrics belong to a longer master) and must be DEMOTED so a rival that fits wins — comparative,
+# via the same argmax, not a threshold. Tolerance band: OVERSHOOT_FRACTION_MAX.
 
 from src.lyrics.grading import OVERSHOOT_FRACTION_MAX  # noqa: E402
 
@@ -664,15 +609,9 @@ def timed(source, body, variant, per_word_end, *, role=ROLE_CANDIDATE):
 
 
 def test_a_candidate_timed_past_audio_end_is_DEMOTED_below_one_that_fits():
-    """The headline fix. Two candidates, DIFFERENT sources; the over-covered one agrees with the audio
-    MORE, so on raw score alone it would win — exactly the '0.94 wrong-version beats 0.55 clean rival'
-    trap the issue describes. Overshoot must flip the pick to the candidate that fits the audio length.
-
-    MECHANISM: on base, overshoot is invisible to selection, so the higher-agreement over-covered
-    candidate wins the argmax and this test reds (asserts the wrong variant). On head the penalty
-    demotes it below the fitting rival. Duration 100s; the over-covered candidate ends at 180s (+80%,
-    far past OVERSHOOT_FRACTION_MAX), the fitting one ends at 90s.
-    """
+    """Two candidates, DIFFERENT sources; the over-covered one agrees with the audio MORE, so on raw
+    score alone it would win. Overshoot must flip the pick to the candidate that fits: duration 100s,
+    over-covered ends at 180s (+80%, past OVERSHOOT_FRACTION_MAX), fitting one ends at 90s."""
     baseline_body = SHARED  # what the audio actually contains
     over = timed(SOURCE_LRCLIB, f"{SHARED} {GUEST_VERSE}", "wrong-longer-master", per_word_end=180.0)
     fits = timed(SOURCE_CAPTIONS, SHARED, "fits-the-audio", per_word_end=90.0)
@@ -722,12 +661,9 @@ def test_winner_score_reports_raw_agreement_not_the_penalty():
 
 def test_within_one_source_the_overcovered_ALTERNATE_is_demoted_below_the_fitting_one():
     """Same source, two versions (a candidate + its alternate). The over-covered version agrees MORE
-    with the audio, so on raw score the WITHIN-POOL argmax picks it — this pins the pool-ranking key
-    specifically (the across-source path uses different sources and cannot reach it). On base the
-    over-covered alternate wins the pool; on head the fitting one does.
-
-    MECHANISM: reverting the pool argmax key from the penalised `ranked` back to raw `scored` reds here,
-    because within one source the penalty is the only thing that can reorder the two versions."""
+    with the audio, so on raw score the WITHIN-POOL argmax would pick it — pins the pool-ranking key
+    specifically, since within one source the overshoot penalty is the only thing that can reorder
+    the two versions (the across-source path uses different sources and cannot reach this)."""
     lrclib = timed(SOURCE_LRCLIB, f"{SHARED} {GUEST_VERSE}", "wrong-longer-master", per_word_end=180.0)
     lrclib.alternates = [timed(SOURCE_LRCLIB, SHARED, "fits-the-audio", per_word_end=90.0)]
 

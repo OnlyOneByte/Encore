@@ -1,23 +1,14 @@
-// guard: every song change opens the new turn with the lyrics reel parked on the old
-// song's last lines and the progress bar two-thirds full, for ~260ms, and for one frame the reel
-// renders the PREVIOUS song's lyrics under the new song's title.
+// Caught: every song change opened the new turn with the lyrics reel parked on the old song's last lines
+// and the progress bar two-thirds full for ~260ms, and for one frame the reel rendered the PREVIOUS song's
+// lyrics under the new song's title.
 //
-// Root cause: the TV page's drawn-position anchor (`positionSec`) and its `durationSec` are never
-// reset when the current entry changes. Both have exactly two writers — the active slot's
-// `onposition` — and neither runs until the NEW <audio> fires its first `timeupdate` (~250ms in
-// Chromium). Until then `drawPosition` extrapolates FORWARD from the previous song's anchor. The fix
-// resets both to 0 in `applyNowPlaying` (the `nowplaying:changed` handler, the exact entry-change
-// event), and clears the overlay's cached doc on a ref CHANGE so a stale doc is not shown.
-//
-// Source scans over the TV route + LyricsOverlay, in the same shape as tv-ratified-states.test.ts /
-// stage-scale.test.ts: a green unit suite cannot see a client-only timing window a CDP round trip is
-// too slow to resolve, so these pin the structural preconditions and mutation-red on each hunk.
+// The drawn-position anchor (`positionSec`) and its `durationSec` were never reset on an entry change. Both have
+// exactly two writers — the active slot's `onposition` — and neither runs until the NEW <audio> fires its first
+// `timeupdate` (~250ms in Chromium), so until then `drawPosition` extrapolates FORWARD from the previous song's
+// anchor. The fix resets both in `applyNowPlaying` and clears the overlay's cached doc on a ref CHANGE.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Both were counted off `at('src')` from src/routes/tv, which meant
-// src. Named from the repo root now; `read` throws on a missing subject so neither can scan
-// nothing and report green.
 const ROUTE = read('src/routes/tv/+page.svelte');
 const OVERLAY = read('src/lib/tv/LyricsOverlay.svelte');
 
@@ -43,21 +34,19 @@ function functionBody(src: string, name: string): string {
 test('F1/F2: applyNowPlaying resets the drawn-position anchor on the entry change', () => {
 	const clean = stripComments(ROUTE);
 
-	// Sentinel 1 (not vacuous): applyNowPlaying is the nowplaying:changed handler. If this dispatch
-	// moves, the reset would be in the wrong place and this whole guard would be meaningless.
+	// Not vacuous: applyNowPlaying must still BE the nowplaying:changed handler, or the reset is in the wrong
+	// place and this whole guard is meaningless.
 	expect(clean).toContain("if (e.type === 'nowplaying:changed') applyNowPlaying");
 
-	// Sentinel 2 (not vacuous): `positionSec` is the reactive anchor, handed to the overlay, and has
-	// EXACTLY two authoritative writers (the active slot's onposition). If a third writer appears the
-	// reset story changes and this test should be revisited.
+	// Not vacuous: `positionSec` is the reactive anchor handed to the overlay, with EXACTLY two authoritative
+	// telemetry writers — a third changes the reset story and this test should be revisited.
 	expect(/let\s+positionSec\s*=\s*\$state\(0\)/.test(clean)).toBe(true);
 	expect(clean).toContain('positionSec={positionSec}');
 	const anchorWrites = clean.match(/\bpositionSec\s*=\s*s\b/g) ?? [];
 	expect(anchorWrites.length, 'positionSec must have exactly two telemetry writers').toBe(2);
 
-	// The invariant: applyNowPlaying's own body resets BOTH the position anchor and the duration to 0,
-	// so the reel and progress bar open the new turn at the song's start rather than extrapolating
-	// forward from the previous song's playhead. Reverting either assignment reds one arm.
+	// Both the anchor and the duration reset to 0, so the reel and progress bar open the new turn at the
+	// song's start rather than extrapolating forward. Reverting either assignment reds one arm.
 	const body = functionBody(clean, 'applyNowPlaying');
 	expect(body, 'applyNowPlaying body must be found').not.toBe('');
 	expect(/\bpositionSec\s*=\s*0\b/.test(body)).toBe(true);
@@ -65,28 +54,22 @@ test('F1/F2: applyNowPlaying resets the drawn-position anchor on the entry chang
 });
 
 test('F1/F2: the reset fires ONLY on a real entry change, never on every playback command', () => {
-	// THE OTHER HALF, and it was missing — which is why this guard stayed green through a real defect.
-	// The server calls `emitNowPlaying` at the tail of EVERY player command (server/realtime/player.ts),
-	// not only on an advance, so an unguarded reset ran on every pause, resume, restart, key press and
-	// guide nudge. `positionSec = 0` flows into the overlay's anchor and `activeLineIndex(lines, 0)`
-	// returns 0, so the reel snapped back to the FIRST line and the progress bar emptied until the next
-	// `timeupdate` ~250ms later. Under the guide slider's ~8 commands/second it is re-pinned to 0 faster
-	// than telemetry can recover it, so for the whole drag the reel parks on the opening line and stops
-	// tracking the singer.
-	//
-	// Asserting the reset EXISTS (the test above) is compatible with the bug. Asserting it is CONDITIONAL
-	// is what closes it.
+	// The other half, and it was missing — which is why this guard stayed green through a real defect. The server
+	// calls `emitNowPlaying` at the tail of EVERY player command, not only on an advance, so an unguarded reset ran
+	// on every pause, resume, restart, key press and guide nudge: `positionSec = 0` flows into the overlay and
+	// `activeLineIndex(lines, 0)` returns 0, snapping the reel to the FIRST line and emptying the bar, and under the
+	// guide slider's ~8 commands/second it is re-pinned faster than telemetry recovers. Asserting the reset EXISTS is
+	// compatible with the bug; asserting it is CONDITIONAL is what closes it.
 	const clean = stripComments(ROUTE);
 	const body = functionBody(clean, 'applyNowPlaying');
 	expect(body, 'applyNowPlaying body must be found').not.toBe('');
 
-	// The turn identity is compared BEFORE `current` is overwritten, on the ENTRY id — a song queued
-	// twice is two entries over one media record, so the media id would miss a real advance.
+	// Compared on the ENTRY id, because a song queued twice is two entries over one media record and the
+	// media id would miss a real advance — and taken BEFORE the assignment that makes the comparison vacuous.
 	const decl = /const\s+entryChanged\s*=\s*([^\n;]+);/.exec(body);
 	expect(decl, 'applyNowPlaying must derive an entryChanged flag').not.toBeNull();
 	expect(decl?.[1]).toContain('cur?.id');
 	expect(decl?.[1]).toContain('current?.id');
-	// Taken before the assignment that would make the comparison vacuous (`current = cur`).
 	expect(body.indexOf('entryChanged')).toBeLessThan(body.indexOf('current = cur'));
 
 	// Both resets sit inside that condition, not at the function's top level.
@@ -99,14 +82,13 @@ test('F1/F2: the reset fires ONLY on a real entry change, never on every playbac
 test('F3: LyricsOverlay clears the cached doc on a ref change, not only when the ref goes falsy', () => {
 	const clean = stripComments(OVERLAY);
 
-	// Sentinel (not vacuous): the fetch effect keys on a ref change via `loadedRef`, and the derived
-	// doc falls back to the fetched doc — so a stale `fetched` is what would render the wrong lyrics.
+	// Not vacuous: the fetch effect keys on a ref change via `loadedRef` and the derived doc falls back to
+	// the fetched one, so a stale `fetched` is what would render the wrong lyrics.
 	expect(/if\s*\(ref\s*===\s*loadedRef\)\s*return;/.test(clean)).toBe(true);
 	expect(/const\s+doc\s*=\s*\$derived\(docProp\s*\?\?\s*fetched\)/.test(clean)).toBe(true);
 
-	// The invariant: on the change path (after `loadedRef = ref`, before the async fetch is issued)
-	// the previous song's doc is cleared, so the overlay renders nothing rather than the old song's
-	// lyrics for the frame before the fetch resolves. Reverting this hunk removes the clear and reds.
+	// On the change path — after `loadedRef = ref`, before the async fetch is issued — the previous song's doc is
+	// cleared, so the overlay renders nothing rather than the old lyrics for the frame before the fetch resolves.
 	const change = /loadedRef\s*=\s*ref;([\s\S]*?)fetch\(/.exec(clean)?.[1] ?? '';
 	expect(change, 'the ref-change path between loadedRef assignment and fetch must be found').not.toBe('');
 	expect(/\bfetched\s*=\s*null\b/.test(change)).toBe(true);

@@ -1,8 +1,7 @@
-// Done-when: an explicit remove of a mid-processing song cancels its live process — marking the job
-// canceled (freeing the dedup slot so a re-add mints a NEW job), and telling the OWNING worker to
-// kill its subprocess. Plus the four correctness edges: a shared process (another entry still needs the
-// media) is NOT cancelled; an already-terminal (ready) job is not touched; and the whole thing runs
-// through the real queue-command remove path (handleQueueCommand) exactly as server.ts composes it.
+// An explicit remove of a mid-processing song cancels its live process: the job is marked canceled (freeing the dedup
+// slot so a re-add mints a NEW job) and the OWNING worker is told to kill its subprocess. Plus the correctness edges — a
+// shared process (another entry still needs the media) is NOT cancelled, an already-terminal (ready) job is untouched —
+// all through the real queue-command remove path (handleQueueCommand) exactly as server.ts composes it.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
 import { cancelJobsForMedia } from '$lib/server/jobs/cancel';
@@ -161,10 +160,9 @@ test('no live process for the media: a plain (never-processed) remove is a harml
 	expect(res).toEqual({ canceled: [], notifiedWorkers: [] });
 });
 
-// ── FIX 1: a cancel must un-strand the MEDIA, not just clear the job ledger ───────────────────────
-// requestProcess flips stemStatus to 'queued' BEFORE the process. Cancelling the job left that flag
-// mid-flight, so the song read as processing forever on every surface and processState refused a re-process —
-// the identical stranding settleStemsGate already fixes on the FAILURE path.
+// A cancel must un-strand the MEDIA, not just clear the job ledger. requestProcess flips stemStatus to 'queued' BEFORE
+// the process, so a cancel that leaves that flag mid-flight makes the song read as processing forever on every surface
+// while processState refuses a re-process — the identical stranding settleStemsGate fixes on the FAILURE path.
 
 test('cancelling a live process settles the media back to un-processed and broadcasts it', () => {
 	const jobs = makeRepo();
@@ -315,14 +313,11 @@ test('EDGE (b) reverse: a job:complete landing AFTER a cancel is dropped as stal
 	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // never flipped to ready
 });
 
-// ── FIX: a cancel on the LYRICS step must settle THAT gate, not only stems ───────────────────
-// A song finishes separation (stemStatus 'ready', a real instrumentalRef), followUps enqueues `align`
-// and markLyricsQueued sets lyricsStatus 'queued' — the phone shows "Timing lyrics". A remove cancels
-// the align job. Before the fix, cancel.ts only called settleStemsGate, which refuses a finished process
-// (a no-op), so the lyrics gate stayed OPEN forever: readyToSing was false, every future queue entry
-// for the song was held and skipped, yet the live instrumental made processState refuse a re-process — and
-// the broadcast, gated on that no-op settle, never fired. A song with no words is a finished song, so
-// cancelling align must settle the lyrics gate exactly as the terminal-failure path does.
+// A cancel on the LYRICS step must settle THAT gate, not only stems. After separation (stemStatus 'ready', a real
+// instrumentalRef) followUps enqueues `align` and lyricsStatus is 'queued'; a remove cancels it. settleStemsGate alone
+// refuses a finished process, so the lyrics gate would stay OPEN forever: readyToSing false, every future queue entry
+// held and skipped, yet the live instrumental makes processState refuse a re-process — and the broadcast, gated on that
+// no-op settle, never fires. A song with no words is a finished song.
 
 const separatedTimingLyrics = (id: string): Media => ({
 	id,

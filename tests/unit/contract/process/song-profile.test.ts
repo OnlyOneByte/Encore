@@ -73,8 +73,8 @@ describe('key spelling', () => {
 		expect(keyLabel(1, 'minor', 'flat')).toBe('Db minor');
 	});
 
-	// The guard in apps/core/src/lib/ui/icons.test.ts bans 0x2600-0x27BF from client surfaces, which
-	// contains U+266F and U+266D. A label carrying one would render as tofu on a stripped TV font.
+	// The icon guard bans 0x2600-0x27BF from client surfaces, which contains U+266F and U+266D: a label
+	// carrying one renders as tofu on a stripped TV font.
 	test('never emits a typographic sharp or flat sign', () => {
 		for (let tonic = 0; tonic < 12; tonic++) {
 			for (const acc of ['sharp', 'flat'] as const) {
@@ -112,7 +112,7 @@ describe('sounding key', () => {
 	});
 
 	test('an octave either way returns to the original name', () => {
-		// Not reachable through the UI (clamped to +/-7) but the maths must not drift.
+		// Not reachable through the UI (clamped to ±7), but the maths must not drift.
 		expect(soundingKeyLabel(profile(), 12)).toBe('G major');
 		expect(soundingKeyLabel(profile(), -12)).toBe('G major');
 	});
@@ -147,17 +147,10 @@ describe('range labels', () => {
 		expect(rangeLabel(profile(), -2)).toBe('C3 - G4');
 	});
 
-	/*
-	 * THE OCTAVE SPAN DESCRIBES THE INTERVAL THE LABEL PRINTS, and this test is the defect it replaces.
-	 *
-	 * It used to assert the span came from lowMidi..highMidi — the true extremes — while `rangeLabel`
-	 * above has always used p05..p95. Both were correct in isolation and both are rendered ADJACENT, as
-	 * one value, by the only two callers (`{rangeText}{octaves} oct` in `routes/song/[mediaId]` and
-	 * `NowPlayingDrawer`). On the first real processed song that read "A3 - A#4  3.7 oct".
-	 *
-	 * So the third arm is the load-bearing one: moving the EXTREMES must not move this number. Under the
-	 * old basis it returned 4.
-	 */
+	// THE OCTAVE SPAN DESCRIBES THE INTERVAL THE LABEL PRINTS, so it must come from the same p05..p95
+	// basis as `rangeLabel`: both are rendered ADJACENT as one value (`{rangeText}{octaves} oct`), so a
+	// span taken from the true extremes reads as "A3 - A#4  3.7 oct". The third arm is load-bearing —
+	// moving the EXTREMES must not move this number.
 	test('the octave span describes the interval the label prints', () => {
 		expect(rangeOctaves(profile())).toBe(1.6); // D3..A4, the labelled pair — not C3..C5's 2
 		const p = profile({ p05Midi: 48, p95Midi: 66 });
@@ -166,8 +159,8 @@ describe('range labels', () => {
 		expect(rangeOctaves(profile({ lowMidi: 36, highMidi: 84 }))).toBe(1.6);
 	});
 
-	/* An interval is shift-invariant, which is why `rangeOctaves` takes no `semitones` where
-	   `rangeLabel` does: transposing moves both ends by the same amount. */
+	// An interval is shift-invariant, which is why `rangeOctaves` takes no `semitones` where `rangeLabel`
+	// does: transposing moves both ends by the same amount.
 	test('the octave span is invariant under transposition', () => {
 		expect(rangeOctaves(profile({ p05Midi: 52, p95Midi: 71 }))).toBe(rangeOctaves(profile()));
 	});
@@ -181,10 +174,8 @@ describe('range labels', () => {
 
 describe('voice bands', () => {
 	test('the registry is ordered low to high and every id guards', () => {
-		// Folded over ADJACENT PAIRS rather than indexed, because `noUncheckedIndexedAccess` makes
-		// `VOICE_BANDS[i]` possibly-undefined and the intent here is a pairwise walk, not an index
-		// lookup. `reduce` with no seed hands the callback two definite `VoiceBand`s — and throws
-		// outright on an empty registry, so this cannot start passing vacuously.
+		// Folded over ADJACENT PAIRS rather than indexed: `reduce` with no seed hands the callback two
+		// definite `VoiceBand`s and THROWS on an empty registry, so this cannot start passing vacuously.
 		VOICE_BANDS.reduce((prev, band) => {
 			expect(band.lowMidi).toBeGreaterThan(prev.lowMidi);
 			expect(band.highMidi).toBeGreaterThan(prev.highMidi);
@@ -196,7 +187,7 @@ describe('voice bands', () => {
 	});
 
 	test('the true ranges DO overlap — which is why the display zones exist', () => {
-		// Asserted so nobody "fixes" the registry into non-overlapping ranges and calls it a cleanup.
+		// Asserted so the overlap cannot be "fixed" away as a cleanup.
 		const tenor = VOICE_BANDS.find((b) => b.id === 'tenor')!;
 		const alto = VOICE_BANDS.find((b) => b.id === 'alto')!;
 		expect(alto.lowMidi).toBeLessThan(tenor.highMidi);
@@ -204,14 +195,11 @@ describe('voice bands', () => {
 
 	test('display zones tile the axis exactly once, with no gap and no overlap', () => {
 		const zones = voiceBandZones();
-		// One zone per band. Asserted because the fold below seeds `reduce`, and a seeded `reduce` over
-		// an empty list returns the seed instead of throwing — without this the tiling check could pass
-		// on no zones at all.
+		// One zone per band. The fold below SEEDS `reduce`, so it returns the seed instead of throwing on
+		// an empty list — without this the tiling check could pass on no zones at all.
 		expect(zones.length).toBe(VOICE_BANDS.length);
-		// Walked as a CHAIN rather than by index, which is what `noUncheckedIndexedAccess` was objecting
-		// to. Every claim the indexed version made survives: the AXIS_LOW_MIDI seed pins the first zone's
-		// start, each step is the same no-gap/no-overlap check the pairwise loop made, the width check
-		// runs on every zone, and the value the fold returns is the last zone's end.
+		// Walked as a CHAIN: the AXIS_LOW_MIDI seed pins the first zone's start, each step is the
+		// no-gap/no-overlap check, the width check runs on every zone, and the fold returns the last end.
 		const end = zones.reduce((expectedLow, z) => {
 			expect(z.lowMidi).toBe(expectedLow);
 			expect(z.highMidi).toBeGreaterThan(z.lowMidi);
@@ -221,11 +209,8 @@ describe('voice bands', () => {
 	});
 
 	test('classifies a song by where it lives', () => {
-		// Living D3-A4 centres on ~B3 (59.5), closest to tenor's centre (C3-C5 -> 60).
 		expect(voiceBandFor(profile())!.id).toBe('tenor');
-		// A high song: living C5-C6.
 		expect(voiceBandFor(profile({ p05Midi: 72, p95Midi: 84 }))!.id).toBe('soprano');
-		// A low song: living E2-E3.
 		expect(voiceBandFor(profile({ p05Midi: 40, p95Midi: 52 }))!.id).toBe('bass');
 	});
 
@@ -291,8 +276,7 @@ describe('wire normalization', () => {
 	});
 
 	test('a bad key does NOT discard a good range, and vice versa', () => {
-		// The two halves have independent producers (instrumental vs vocal stem), so one being wrong
-		// must never throw away the other.
+		// Independent producers (instrumental vs vocal stem), so one being wrong must not discard the other.
 		const keyBad = normalizeSongProfile(profile({ keyTonic: 99 }));
 		expect(keyBad.keyTonic).toBeNull();
 		expect(keyBad.keyMode).toBeNull();
@@ -305,15 +289,14 @@ describe('wire normalization', () => {
 	});
 
 	test('the key tonic is a pitch class: 0..11 accepted, either side rejected at the boundary', () => {
-		// The tonic is semitones above C, so 0 (C) and 11 (B) are the two ENDS of the valid set and 12 is
-		// the first invalid value — it would be C an octave up, which is pitch class 0, not a 13th class.
-		// Every existing key test probes 99 (absurd) or values well inside the range, so loosening the
-		// bound to `<= 12` survives them all. These four pin the edges so it cannot.
+		// The tonic is semitones above C, so 0 and 11 are the ENDS of the valid set and 12 is the first
+		// invalid value — C an octave up, which is pitch class 0. Only these four edge arms catch a bound
+		// loosened to `<= 12`; a probe at 99 or well inside the range survives it.
 		expect(normalizeSongProfile(profile({ keyTonic: 11 })).keyTonic).toBe(11); // B, the top class — valid
 		expect(normalizeSongProfile(profile({ keyTonic: 0 })).keyTonic).toBe(0); // C, the bottom class — valid
 		expect(normalizeSongProfile(profile({ keyTonic: 12 })).keyTonic).toBeNull(); // one past B — rejected
 		expect(normalizeSongProfile(profile({ keyTonic: -1 })).keyTonic).toBeNull(); // one below C — rejected
-		// A rejected tonic clears the whole key (mode too) rather than half-storing it.
+		// A rejected tonic clears the whole key, mode included, rather than half-storing it.
 		expect(normalizeSongProfile(profile({ keyTonic: 12 })).keyMode).toBeNull();
 		expect(normalizeSongProfile(profile({ keyTonic: -1 })).keyMode).toBeNull();
 	});
@@ -336,32 +319,29 @@ describe('wire normalization', () => {
 	});
 
 	test('the empty profile is a valid record — "ran, found nothing" survives the wire', () => {
-		// This is the case the process gate depends on: it must normalize to a present record, not to junk.
+		// The process gate depends on this: it must normalize to a PRESENT record, not to junk.
 		expect(normalizeSongProfile(EMPTY_SONG_PROFILE)).toEqual(EMPTY_SONG_PROFILE);
 	});
 
-	// ── the measured level ──────────────────────────────────────────────────
-	// A LEVEL is trusted only inside the window a real BS.1770 measurement can occupy. Every bound
-	// below is hard-coded from the standard rather than computed from the exported constants, so
-	// widening the window in the validator cannot silently widen the test with it.
+	// A LEVEL is trusted only inside the window a real BS.1770 measurement can occupy. Every bound is
+	// hard-coded from the standard rather than read off the exported constants, so widening the window in
+	// the validator cannot silently widen the test with it.
 
 	test('a real measured level round-trips unrounded', () => {
-		// Not clamped, not rounded: -13.37 is a legitimate integrated measurement and the gain the
-		// room derives is only as good as the number it derives it from.
+		// Not clamped, not rounded: the gain the room derives is only as good as this number.
 		expect(normalizeSongProfile(profile({ loudnessLufs: -13.37 })).loudnessLufs).toBe(-13.37);
 	});
 
 	test('null stays null — an unmeasurable stem never acquires a default level', () => {
-		// The whole tri-state: substituting 0 here would read as a deafening master and attenuate the
-		// song into inaudibility, which is worse than the uneven library the feature exists to fix.
+		// Substituting 0 reads as a deafening master and attenuates the song into inaudibility, which is
+		// worse than the uneven library the feature exists to fix.
 		expect(normalizeSongProfile(profile({ loudnessLufs: null })).loudnessLufs).toBeNull();
 		expect(normalizeSongProfile({}).loudnessLufs).toBeNull();
 	});
 
 	test('the measurable window is closed at both ends: -70 and 4 in, one step past either out', () => {
-		// -70 LUFS is BS.1770's own absolute gate — below it every gating block is discarded, so there
-		// is no programme left to level. +4 is what K-weighting's stage-1 high shelf can add to
-		// full-scale content, so nothing real integrates above it. Both ends are INCLUSIVE.
+		// -70 LUFS is BS.1770's absolute gate (below it every gating block is discarded) and +4 is what
+		// K-weighting's stage-1 high shelf can add to full-scale content. Both ends INCLUSIVE.
 		expect(normalizeSongProfile(profile({ loudnessLufs: -70 })).loudnessLufs).toBe(-70);
 		expect(normalizeSongProfile(profile({ loudnessLufs: 4 })).loudnessLufs).toBe(4);
 		expect(normalizeSongProfile(profile({ loudnessLufs: -70.1 })).loudnessLufs).toBeNull();
@@ -369,9 +349,8 @@ describe('wire normalization', () => {
 	});
 
 	test('an out-of-window level is DISCARDED, not clamped into the window', () => {
-		// Clamping would be the wrong failure direction. A bogus -200 clamped to -70 is a number the
-		// room would then attenuate a real song against; null means "not normalizable — leave it
-		// alone", which is the only safe reading of a bad measurement.
+		// Clamping is the wrong failure direction: a bogus -200 clamped to -70 is a number the room then
+		// attenuates a real song against. null means "not normalizable, leave it alone".
 		expect(normalizeSongProfile(profile({ loudnessLufs: -200 })).loudnessLufs).toBeNull();
 		expect(normalizeSongProfile(profile({ loudnessLufs: 120 })).loudnessLufs).toBeNull();
 	});
@@ -383,9 +362,8 @@ describe('wire normalization', () => {
 	});
 
 	test('the level is its OWN half: a bad key or range does not discard it, nor it them', () => {
-		// Three independent producers now, not two — the key from the instrumental's chromagram, the
-		// range from the vocal stem, the level from the instrumental's samples. One bad reading must
-		// never throw away the other two.
+		// Three independent producers — key from the instrumental's chromagram, range from the vocal stem,
+		// level from the instrumental's samples — so one bad reading must not discard the other two.
 		const keyBad = normalizeSongProfile(profile({ keyTonic: 99 }));
 		expect(keyBad.keyTonic).toBeNull();
 		expect(keyBad.loudnessLufs).toBe(-12);

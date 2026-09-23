@@ -6,11 +6,8 @@
 
 import { type Media } from '../../contract';
 
-// `readinessOf` and the readiness union now live in the contract, because the client needs the same
-// classification and a hand-maintained second copy is what this used to be. Imported (not merely
-// re-exported: `partitionSearch` below calls it) and re-exported so the server-side callers that reach
-// for `media/readiness` keep one import. The union itself is imported straight from the contract by the
-// callers that need it — a local alias here had no reader.
+// `readinessOf` lives in the contract so client and server share one classification; re-exported
+// here so callers reaching for `media/readiness` keep one import.
 import { readinessOf } from '../../contract/process/readiness';
 
 export { readinessOf };
@@ -29,13 +26,10 @@ export interface SearchPartition {
 }
 
 /**
- * Merge the durable catalog with fresh resolver results into one deduped, readiness-partitioned set.
- *
- * Catalog entries come FIRST so a song we already processed is never missed because the resolver ranked
- * it low, titled it differently, or is unreachable (yt-dlp down). Resolver results fill in the rest.
- * Dedupe is by media id, which is exact: the route materializes a result onto the EXISTING catalog
- * media when it recognises the song by origin identity (`source` + `sourceRef`), so one song can't
- * appear in two groups. Raw results keep the resolver's relevance order, catalog-only raw songs after.
+ * Merge the durable catalog with fresh resolver results into one deduped, readiness-partitioned
+ * set. Catalog entries come FIRST so an already-processed song is never missed because the resolver
+ * ranked it low or is unreachable. Dedupe is by media id (exact, via origin identity), so one song
+ * can't appear in two groups; raw results keep the resolver's relevance order, catalog-only after.
  */
 export function partitionSearch(query: string, catalog: Media[], results: Media[]): SearchPartition {
 	const byId = new Map<string, Media>();

@@ -90,16 +90,10 @@ def _detect_f0(frame: np.ndarray, sample_rate: int) -> tuple[float, float]:
     if energy <= 0:
         return 0.0, 0.0
 
-    # Autocorrelation via rfft — which is what this line always CLAIMED to do while doing the opposite.
-    # `np.correlate(..., mode="full")` is numpy's DIRECT O(n^2) convolution; there is no FFT in it. At
-    # frame 2048 / hop 512 that was ~8.4M multiply-adds per frame and ~15,000 frames for a 3-minute
-    # song: 18.5s of single-threaded Python-side CPU, roughly a THIRD of htdemucs separation time,
-    # hiding inside what reads like a cheap metadata step. Measured 17x faster this way (1.08s -> 0.06s
-    # per 10s of audio) for bit-identical output.
-    #
-    # Zero-pad to a power of two >= 2n-1 so the CIRCULAR correlation an FFT computes equals the LINEAR
-    # one — without the padding, lag k would wrap and pick up energy from the frame's opposite end. Then
-    # keep lags 0..n-1 and normalize by the zero-lag energy, as before.
+    # Autocorrelation via rfft, NOT np.correlate(mode="full") (numpy's direct O(n^2) convolution,
+    # 17x slower for bit-identical output). Zero-pad to a power of two >= 2n-1 so the CIRCULAR
+    # correlation an FFT computes equals the LINEAR one — without padding, lag k wraps and picks up
+    # energy from the frame's opposite end.
     size = 1 << (2 * n - 1).bit_length()
     spec = np.fft.rfft(frame, size)
     corr = np.fft.irfft(spec * np.conj(spec), size)[:n] / energy

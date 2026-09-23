@@ -1,13 +1,8 @@
 <!--
-  ── ENCORE DEVIATIONS (S3) ───────────────────────────────────────────────────────────────────
-  1. `size-4` (16px) → `size-[18px]`. Encore's checkbox glyph is 18px and the tap-floor ruling settled that the glyph
-     is NOT the tap target — the wrapping <label class="check"> carries `min-height: var(--tap)` and is
-     examined as its own control by touch-targets.test.ts, which explicitly exempts the glyph. So this
-     is a cosmetic match to the incumbent, not a target-size change.
-  2. The filled state is `bg-primary` with `text-primary-foreground`, which resolve through the
-     semantic layer to `var(--accent)` and `var(--on-accent)`: white on #7254e6 measures 5.09:1, so
-     the checkmark passes AA on the fill. That pairing is why the ink ban is by NAME in app source and
-     not a refusal to mint — a vendored component using both halves together is correct.
+  The 18px glyph is NOT the tap target: the wrapping label carries min-height var(--tap) and is what
+  `touch-targets.test.ts` examines, which explicitly exempts the glyph. The filled state uses `bg-primary`
+  WITH `text-primary-foreground` — both halves of the certified pair together, which is exactly the usage
+  the ink ban permits in a vendored component.
 -->
 <script lang="ts">
 	import { Checkbox as CheckboxPrimitive } from 'bits-ui';

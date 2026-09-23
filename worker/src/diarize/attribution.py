@@ -1,22 +1,17 @@
-"""Turn diarization speaker segments into a `part` label on each lyric line — PURE, and the whole of
-the "many layers of checks" the owner asked for (ruling 2026-09-07 20:51Z).
+"""Turn diarization speaker segments into a `part` label on each lyric line — PURE.
 
-WHAT A `part` IS. A stable, ABSTRACT label — `"A"`, `"B"`, … — for which voice sings a line. Abstract
-on purpose: the architecture note keeps the plays table `singer_id`-free, and the render
-half only needs "same part → same colour", never a name. It rides a line exactly as
-`romanization` does (`lyrics.ts:LyricLine.part?`): display-only, absent when the song is not a
-confident duet, and it drives no ball.
+A `part` is a stable, ABSTRACT label ("A", "B", …) for which voice sings a line — abstract because the
+plays table stays `singer_id`-free and the render half only needs "same part → same colour". Rides a
+line like `romanization` does (`lyrics.ts:LyricLine.part?`): display-only, absent when not a confident
+duet.
 
-THE FALLBACK IS THE DESIGN, NOT AN ERROR PATH. The owner ruled that when diarization is not confident
-the song "falls back to a single colour for the whole song — visually identical to today, never a
-half-coloured reel". So this module's default answer is NO ATTRIBUTION: it returns the doc's lines
-untouched (no `part` key on any line) unless every check below passes. A song with one singer, a song
-diarization could not split cleanly, and a song where the parts do not line up with the words all take
-the same exit as an undiarized song — one colour, by the absence of the field.
+THE FALLBACK IS THE DESIGN: when diarization is not confident, the song falls back to a single colour
+for the whole song, visually identical to today — never a half-coloured reel. So the default answer is
+NO ATTRIBUTION: lines come back untouched (no `part` key) unless every check below passes.
 
-INPUT is UNTRUSTED, like every model output in this worker. A diarizer returns
-`[{start, end, speaker}]` floats and a string label; this coerces, drops malformed rows, and never
-raises. The lyrics doc is `normalize_lyrics`' shape: `{lines: [{start, end, text, words: [...]}]}`.
+INPUT is UNTRUSTED like every model output here: a diarizer returns `[{start, end, speaker}]` floats
+and a string label; this coerces, drops malformed rows, and never raises. The lyrics doc is
+`normalize_lyrics`' shape: `{lines: [{start, end, text, words: [...]}]}`.
 """
 
 from __future__ import annotations
@@ -24,23 +19,15 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-#: A song is only a "duet" worth colouring when at least this share of its sung time is covered by
-#: diarization AND the minority part carries at least this share of the attributed lines. Both guard
-#: the same failure from opposite ends: a mostly-solo song with one stray mislabelled segment must NOT
-#: light up as a duet (that is the "never a half-coloured reel" ruling), and a song diarization split
-#: into two speakers that are really one voice must not either. Deliberately conservative — a missed
-#: duet is one colour (today's behaviour), a false duet is a visibly wrong reel.
+#: Minimum share of sung time diarization must cover to trust it as a duet. Deliberately conservative:
+#: a missed duet is one colour (today's behaviour), a false duet is a visibly wrong reel.
 MIN_LINE_COVERAGE = 0.6
-#: The minority part must own at least this fraction of the attributed lines. 0.15 ≈ "more than a
-#: stray line or two", well below an even split, so a genuine lead/backing duet passes while a solo
-#: with a handful of misattributed lines does not.
+#: Minimum fraction of attributed lines the minority part must own — well below an even split, so a
+#: genuine lead/backing duet passes but a solo with a few misattributed lines does not.
 MIN_MINORITY_SHARE = 0.15
-#: How many parts a confident duet has: EXACTLY two. Not a ceiling — the check below is `!= EXACT_PARTS`,
-#: so this is the required count, and naming it `EXACT_PARTS` invited a reader to "raise the limit" to allow
-#: trios. Doing that rejects every two-voice duet instead, which is the opposite of the intent and is
-#: silent: the song simply falls back to one colour. Diarization on overlapping sung vocals routinely
-#: over-segments into 3-5 phantom speakers, and anything other than two is treated as "not confident" and
-#: takes the single-colour fallback rather than painting a rainbow.
+#: Required part count for a confident duet — an EXACT count, not a ceiling (checked via `!=`).
+#: Diarization on overlapping sung vocals routinely over-segments into 3-5 phantom speakers; anything
+#: other than two takes the single-colour fallback rather than painting a rainbow.
 EXACT_PARTS = 2
 
 
@@ -105,20 +92,10 @@ def _dominant_speaker(segments: list[tuple[float, float, str]], lo: float, hi: f
 
 
 def attribute_parts(doc: dict[str, Any], diarization: Any) -> dict[str, Any]:
-    """Return `doc` with a `part` label added to each line IFF the song is a confident duet.
-
-    Does not mutate the input. On any check failing — too few speakers, too little coverage, a lopsided
-    split, no usable lines — returns the doc unchanged (no `part` on any line), which the render layer
-    reads as one colour: the owner's fallback, reached by absence.
-
-    THE LAYERS OF CHECKS (owner: "multiple layers of checks to see if it is [a duet]"):
-      1. Diarization produced ≥ 2 distinct, usable speakers over the vocals — else one voice, no parts.
-      2. Attribution covers ≥ MIN_LINE_COVERAGE of the lines — a sparse diarization that only labels a
-         few lines is not trustworthy enough to colour the reel.
-      3. Exactly 2 parts survive after mapping (EXACT_PARTS) — over-segmentation on overlapping sung
-         vocals collapses to the fallback rather than a rainbow.
-      4. The minority part owns ≥ MIN_MINORITY_SHARE of attributed lines — one stray mislabelled line
-         on a solo does not make a duet.
+    """Return `doc` with a `part` label added to each line IFF the song is a confident duet. Does not
+    mutate the input. Four layers of checks (speaker count, coverage, exact-2 parts, minority share —
+    see the inline `# layer N` comments below); any failing returns the doc unchanged, which the render
+    layer reads as one colour, the fallback reached by absence.
     """
     lines = doc.get("lines")
     if not isinstance(lines, list) or not lines:

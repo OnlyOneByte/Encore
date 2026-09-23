@@ -1,15 +1,7 @@
 <!--
-  ── ENCORE DEVIATIONS (P0 · alert-dialog adoption) ───────────────────────────────────────────
-  1. MOTION UTILITIES REMOVED (`animate-in` / `animate-out` / `fade-*` / `duration-100`), for the
-     reason in `alert-dialog-content.svelte` §1. The fade is re-declared below as `opacity` only,
-     inside a `prefers-reduced-motion: no-preference` block.
-  2. `bg-black/10` → `--scrim-strong`. A 10% black wash does not read as a modal boundary on a dark
-     UI — `--bg` is already `#0b0b12`, so the scrim was very nearly invisible and the dialog looked
-     like a floating card rather than something that had taken the screen. `--scrim-strong` is the
-     token the app already uses when a surface must stop being interactive.
-  3. `supports-backdrop-filter:backdrop-blur-xs` REMOVED. Encore's visual language is explicit that
-     depth comes from one elevation token and a radial stage wash — no blur, no bloom. A backdrop
-     filter here would be the only one in the app.
+  The scrim is --scrim-strong, not the registry's 10% black: the page is already near-black, so a light
+  wash reads as a floating card rather than a taken screen. No backdrop filter — depth in this app comes
+  from one elevation token and the radial stage wash, and a blur here would be the only one in the tree.
 -->
 <script lang="ts">
 	import { AlertDialog as AlertDialogPrimitive } from 'bits-ui';

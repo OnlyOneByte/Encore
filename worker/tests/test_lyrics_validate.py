@@ -36,7 +36,6 @@ def multiline(starts):
     }
 
 
-# ── validation ───────────────────────────────────────────────────────────────────────────────────
 
 
 def test_clean_timing_is_usable():
@@ -48,11 +47,8 @@ def test_clean_timing_is_usable():
 
 
 def test_a_smeared_word_is_reported_but_not_disqualifying():
-    # Measured worst case when aligning against the mix: one word held 5.7s. validate_timing still
-    # DETECTS and REPORTS the smear and still does not disqualify on it (order is the only disqualifier).
-    # The repair decision reversed what happens NEXT: the smear is no longer LEFT as-is — repair_word_spans
-    # clamps it downstream (see test_repair_clamps_a_smeared_word). Detection lives here; the repair is
-    # a separate function so this diagnostic assertion is unchanged.
+    # validate_timing DETECTS and REPORTS a smear but does not disqualify on it (order is the only
+    # disqualifier); repair_word_spans is the separate function that acts on it.
     d = doc([("ugly", 10.0, 15.71), ("How", 15.8, 16.0), ("can", 16.0, 16.2)])
     rep = validate_timing(d, duration_sec=17.0)
     assert rep.smeared and rep.smeared[0][0] == "ugly"
@@ -86,13 +82,11 @@ def test_out_of_order_words_are_DISQUALIFYING():
     assert not rep.usable
 
 
-# ── repair (act on smears/flashes, do not merely report them) ────────────────────────────────────
 
 
 def test_repair_clamps_a_smeared_word():
-    # "ugly" is held 10.0->15.71 (5.71s). MAX_WORD_SEC is 3.0, so its end must be clamped to
-    # 10.0 + 3.0 = 13.0 exactly. Expected value is a hard literal (10.0 + 3.0), NOT re-derived from
-    # MAX_WORD_SEC arithmetic on the smear's own numbers.
+    # "ugly" held 10.0->15.71 (5.71s) must clamp to a hard literal 13.0 (10.0 + MAX_WORD_SEC), not a
+    # value re-derived from the smear's own numbers.
     d = doc([("ugly", 10.0, 15.71), ("How", 15.8, 16.0), ("can", 16.0, 16.2)])
     report = repair_word_spans(d)
     assert report.changed
@@ -147,9 +141,8 @@ def test_repair_never_creates_an_out_of_order_word():
 
 
 def test_thin_coverage_is_REPORTED_but_still_published():
-    # Refusing on coverage was tried and was wrong: it dropped the ASR candidate entirely and published
-    # NOTHING, which is worse than what it prevented. The timed portion is still correctly timed, and
-    # line sync over the same partial text freezes in the same place. It is a TRANSCRIPTION gap.
+    # Refusing on thin coverage would publish NOTHING, worse than what it prevents: the timed portion
+    # is still correctly timed, and it is a TRANSCRIPTION gap, not an alignment fault.
     d = doc([("only", 1.0, 1.5), ("start", 1.5, 2.0)])
     rep = validate_timing(d, duration_sec=200.0)
     assert rep.coverage < MIN_COVERAGE
@@ -177,7 +170,6 @@ def test_an_empty_document_is_not_usable():
     assert not validate_timing({"lines": []}, duration_sec=100.0).usable
 
 
-# ── the LRC as a guide, not an anchor ────────────────────────────────────────────────────────────
 
 
 def test_same_recording_fits_with_a_small_residual():
@@ -207,10 +199,8 @@ def test_a_tempo_difference_is_absorbed_by_scale():
 
 
 def test_a_DIFFERENT_VERSION_is_detected_and_its_timing_discarded():
-    # The case that makes hard anchoring unsafe, in its realistic form: the LRC is timed against the
-    # studio cut, the audio is a live version with a longer intro AND an inserted solo halfway. That is
-    # a STEP in the mapping, and no single offset+scale can absorb a step — which is exactly why the
-    # residual, not the fit quality, is what decides trust.
+    # A live version with a longer intro AND an inserted solo halfway is a STEP in the mapping, and no
+    # single offset+scale can absorb a step, which is why the residual decides trust, not fit quality.
     lrc = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
     aligned = [x + 8.0 for x in lrc[:5]] + [x + 28.0 for x in lrc[5:]]  # +20s solo after line 5
     fit = fit_lrc_to_aligned(lrc, aligned)
@@ -252,14 +242,8 @@ def test_degenerate_lrc_all_same_timestamp_is_inconclusive():
 
 
 def test_a_doc_reads_its_lines_from_either_shape():
-    """What `line_starts` used to pin, now a property of `LyricsDoc` itself.
-
-    `line_starts` is gone: it was exported and unit-tested but had NO production caller, and its own
-    replacement's docstring (`_pair_openings_to_aligned`) explains why indexing it positionally was
-    wrong — `normalize_lyrics` drops a segment with neither timed words nor bounds, so `doc["lines"][k]`
-    is not the aligned result of `windows[k]`. Encapsulating a dead reader would have been worse than
-    deleting it; the dual-shape read it demonstrated is what actually needed keeping.
-    """
+    """A doc's lines can arrive under either `lines` or the older `segments` key; `LyricsDoc` reads
+    both via `lines_or_segments`, while the strict `.lines` sees only the artifact's own key."""
     from src.lyrics.model import LyricsDoc
 
     assert [ln["start"] for ln in LyricsDoc(multiline([1.0, 2.0])).lines_or_segments] == [1.0, 2.0]
@@ -269,21 +253,13 @@ def test_a_doc_reads_its_lines_from_either_shape():
     assert seg.lines == []
 
 
-# ── overshoot: lyrics timed PAST the end of the audio ──────────────────────────────────────
-#
-# The clamp at validate.py:161 makes `coverage` one-sided: under-coverage shows, over-coverage reads as
-# a flawless 1.0. These pin the OTHER side as its own number, `overshoot_sec`, leaving coverage's clamp
-# and its thin/MIN_COVERAGE meaning untouched. MECHANISM: coverage stays clamped to 1.0 while
-# overshoot_sec carries the seconds past audio-end — proven on the real +105.8s Total Eclipse shape.
+# coverage's `min(1.0, ...)` clamp is one-sided: over-coverage reads as a flawless 1.0. `overshoot_sec`
+# carries that discarded signal as its own number, leaving coverage's thin/MIN_COVERAGE meaning untouched.
 
 
 def test_lyrics_timed_past_audio_end_report_overshoot_while_coverage_stays_clamped():
-    """The real Bonnie Tyler case in miniature: last word ends well past duration.
-
-    On base this test does not exist because TimingReport has no `overshoot_sec` field — the signal is
-    computed one character before it could be used (min(1.0, …)) and thrown away. Coverage MUST stay
-    clamped at 1.0 (the two are different questions); overshoot MUST be the positive seconds past the end.
-    """
+    """Coverage MUST stay clamped at 1.0 (a different question); overshoot MUST be the positive
+    seconds past the end."""
     d = doc([("last", 260.0, 373.8)])  # duration 268s, last_end 373.8s -> +105.8s, coverage clamps to 1.0
     rep = validate_timing(d, duration_sec=268.0)
     assert rep.coverage == 1.0, "coverage MUST remain clamped — merging overshoot into it breaks its meaning"
@@ -311,7 +287,6 @@ def test_overshoot_is_named_in_the_summary():
     assert "+106s" in rep.summary()
 
 
-# ── placing the LRC on THIS audio's timeline BEFORE aligning ───────────────────────────────────────
 
 
 def _lrc(*pairs):

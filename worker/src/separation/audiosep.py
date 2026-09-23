@@ -6,41 +6,28 @@ Selected when a stems job carries `params.engine == 'audiosep'`, resolved by `en
 MDXC/RoFormer) and owns checkpoint download + the CLI.
 
 WHY THIS ENGINE, ALONGSIDE `roformer`: audio-separator reaches the fast MEL-BAND RoFormer checkpoints
-that `bs-roformer-infer` cannot. `bs_roformer`'s `get_model_from_config` implements only
-`model_type == 'bs_roformer'` and ships no mel_band module, so every mel-band checkpoint is unreachable
-through that package (see roformer.py's `#: KNOWN MISMATCH` note). audio-separator runs them as a
-first-class MDXC path. The measured win is large: `mel instrumental_becruily` benchmarks at rt 1.28 on
-the reference box (32-core Graviton 3, CPU) versus `bs_roformer-1297` at rt 13.29 — a 10.4x
-RoFormer-family instrumental process, no GPU (measured). Adopted ALONGSIDE
-`bs-roformer-infer`, not replacing it — both engines, issue an earlier change owner ruling Q1(b).
+that `bs-roformer-infer` cannot (`bs_roformer`'s `get_model_from_config` ships no mel_band module, so
+every mel-band checkpoint is unreachable through that package). Measured win: `mel
+instrumental_becruily` benchmarks at rt 1.28 on the reference box (32-core Graviton 3, CPU) versus
+`bs_roformer-1297` at rt 13.29 — a 10.4x RoFormer-family instrumental process, no GPU. Adopted
+ALONGSIDE `bs-roformer-infer`, not replacing it.
 
 INTEGRATION: audio-separator exposes a CLI (`audio-separator <input> --model_filename <ckpt>
---model_file_dir <dir> --output_dir <dir> --output_format FLAC`), confirmed against the repo's own
-benchmark scripts (docs/benchmarks/scripts/{family_bench.sh,checkpoint_cost.py}). So this engine shells
-the CLI as a subprocess — matching the demucs and roformer pattern, keeping torch/audio_separator OFF the
-dial-home process. `--model_filename` auto-resolves and downloads the checkpoint on first use, so there is
-no separate download step.
+--model_file_dir <dir> --output_dir <dir> --output_format FLAC`). This engine shells the CLI as a
+subprocess, matching the demucs/roformer pattern and keeping torch/audio_separator OFF the dial-home
+process. `--model_filename` auto-resolves and downloads the checkpoint on first use.
 
-PURE, all of it: the model-token→checkpoint-filename map, the argv builder, and the output-stem
-discovery. No torch, no subprocess, no orchestration — `steps/separate.py` runs the job. The two places
-this engine differs from demucs (its input is a single named FILE, and its outputs must be DISCOVERED by
-globbing the output dir rather than derived from the model name) are the same shape roformer already
-carries, stated in `engines.py`.
+PURE, all of it: the model-token->checkpoint-filename map, the argv builder, and the output-stem
+discovery. No torch, no subprocess, no orchestration — `steps/separate.py` runs the job.
 
-⚠️ A REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT — the identical caveat roformer.py carries.
-audio-separator
-is not installed on the dev/CI box (aarch64), and a real process plus the first-run checkpoint download need a
-network-enabled worker. The package's CLI contract and the checkpoint filename are confirmed against the
-repo's committed benchmark scripts; the end-to-end process does not run here. Until a network-enabled worker
-confirms the exact output-stem filenames, an audiosep process only runs where an operator has set the
-`stems:audiosep` capability (which is advertised only when the dep is present — capabilities.py).
+A REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT — the identical caveat roformer.py carries:
+audio-separator is not installed on the dev/CI box (aarch64), so a process only runs where an
+operator has set the `stems:audiosep` capability (advertised only when the dep is present).
 
-⚠️ The `instrumental_becruily` checkpoint ships as a LIVE-SELECTABLE model with TWO caveats the owner
-accepted knowingly (owner ruling Option A): it has no prior ear-approval (only
-`bs-roformer-1297` has a published SDR and an owner listening test — SUMMARY.md §4), and its model weights
-may carry non-commercial / research licence terms on their Hugging Face card (DECISIONS.md's MIT clearance
-covers the PACKAGES surveyed, not the individual checkpoint weights). Both were flagged and the owner took
-the call.
+The `instrumental_becruily` checkpoint ships LIVE-SELECTABLE with TWO known caveats: no prior
+ear-approval (only `bs-roformer-1297` has a published SDR and a listening test), and its model
+weights may carry non-commercial/research licence terms on their Hugging Face card (the MIT
+clearance covers the packages surveyed, not individual checkpoint weights).
 """
 
 from __future__ import annotations
@@ -49,8 +36,6 @@ import os
 
 from ..retry_policy import BoundaryError
 from ..vocabulary import StemFormat
-
-# ── pure helpers (no torch, no subprocess) ───────────────────────────────────────
 
 #: Our stable whitelist tokens (src/lib/contract/lyrics/separators.ts) → audio-separator
 #: `--model_filename` checkpoint filenames. Kept here, not in the shared TS, because the checkpoint
@@ -73,9 +58,8 @@ def resolve_audiosep_checkpoint(params: dict, default: str = DEFAULT_AUDIOSEP_MO
     checkpoint = AUDIOSEP_MODELS.get(token)
     if checkpoint is None:
         # BoundaryError subclasses ValueError (drop-in for pytest.raises(ValueError)) but carries the
-        # shared structured retryable = False, so an unknown token fails fast via retry_policy instead of
-        # burning three process attempts on a token that can never resolve — same as an earlier change gave
-        # demucs.
+        # shared structured retryable=False, so an unknown token fails fast instead of burning three
+        # process attempts on a token that can never resolve.
         raise BoundaryError(f"unknown audiosep model {token!r}; expected one of {sorted(AUDIOSEP_MODELS)}")
     return checkpoint
 

@@ -1,11 +1,10 @@
 <!--
-  Plays per day, as columns. SVG because it needs no library and the shape is trivial.
+  Plays per day, as columns.
 
-  THE GAP RULE. The play log omits days with no plays, because it cannot distinguish "nobody sang"
-  from "the server was off" (see PlayLog.perDay). This chart preserves that distinction rather than
-  papering over it: absent days render as a faint MISSING slot, not a zero-height column, so a quiet
-  Tuesday and a week of downtime do not draw identically. That is why the component takes the window
-  and expands the calendar itself instead of just plotting the rows it was handed.
+  THE GAP RULE. The play log omits days with no plays, because it cannot distinguish "nobody sang" from "the
+  server was off". This chart PRESERVES that distinction: an absent day is a faint MISSING slot, never a
+  zero-height column, so a quiet day and a week of downtime do not draw identically. That is why the
+  component takes the window and expands the calendar itself rather than plotting the rows it was handed.
 -->
 <script lang="ts">
 	import * as Empty from '$lib/components/ui/empty';
@@ -51,8 +50,8 @@
 		</Empty.Header>
 	</Empty.Root>
 {:else}
-	<!-- role=group (not img): img would make the per-day buttons presentational to AT, hiding the
-	     counts. The group carries the summary via aria-label; each column button exposes its own day. -->
+	<!-- role=group, NEVER img: img makes the per-day buttons presentational and hides every count. The group
+	     carries the summary; each column exposes its own day. -->
 	<Chart.Container config={{ sings: { label: 'Sings', color: 'var(--accent)' } }}>
 		<div class="chart" role="group" aria-label="{total} sings over {calendar.length} days">
 			{#each calendar as slot (slot.day)}
@@ -64,8 +63,8 @@
 					aria-label={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays} sings`}
 				>
 					<div class="bar" style:height="{slot.plays === null ? 0 : Math.max(6, (slot.plays / max) * 100)}%"></div>
-					<!-- title alone is desktop-only (no :hover on touch), so the count also lives in aria-label
-				     for AT and in this readout, revealed on tap/focus, so a phone can surface the value. -->
+					<!-- `title` is desktop-only, because touch never fires :hover — so the count also lives in the
+				     aria-label and in this readout, revealed on tap or focus. -->
 					<span class="readout">{slot.plays === null ? '·' : slot.plays}</span>
 				</button>
 			{/each}
@@ -83,24 +82,19 @@
 		align-items: flex-end;
 		gap: var(--space-3xs);
 		height: 96px;
-		/*
-		 * 31 days at a phone's width squeezed each column to ~9px — a real button too narrow to tap,
-		 * with five days under one fingertip. Each column now claims a full 44px tap target
-		 * (see .col), so the row overflows a narrow viewport on purpose; scroll it horizontally
-		 * rather than shrink the days below a tappable size. -webkit-overflow-scrolling keeps the
-		 * momentum flick a phone expects.
-		 */
+		/* Each column claims a full tap target, so a long window OVERFLOWS a narrow viewport on purpose:
+		   scrolling horizontally beats shrinking the days below a tappable size. */
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 	}
 	.col {
-		/* grow to fill when the days are few, but never shrink below a 44px tap target (--tap). */
+		/* Grows to fill when the days are few, but NEVER shrinks below the tap target. */
 		flex: 1 0 var(--tap);
 		height: 100%;
 		display: flex;
 		align-items: flex-end;
 		min-width: var(--tap);
-		/* Was a div; now a real button so the day is tap-/keyboard-reachable. Strip the chrome. */
+		/* A real button, so the day is tap- and keyboard-reachable; the rest strips the UA chrome. */
 		position: relative;
 		padding: 0;
 		border: 0;
@@ -110,11 +104,8 @@
 		cursor: pointer;
 	}
 	.readout {
-		/*
-		 * The per-day count, hidden until the column is hovered, tapped, or focused. title= is
-		 * desktop-only (touch never fires :hover), so this is the path that makes the number reachable
-		 * on a phone. opacity only — layout props in transitions are forbidden, and this needs none.
-		 */
+		/* The per-day count, revealed on hover, tap or focus — the path that makes the number reachable on a
+		   phone at all. Opacity only, which is the one thing here that may be transitioned. */
 		position: absolute;
 		left: 50%;
 		bottom: 100%;
@@ -130,9 +121,8 @@
 		transition: opacity var(--motion-fast) ease;
 		white-space: nowrap;
 	}
-	/* :focus as well as :focus-visible, because :focus-visible is keyboard-driven and does NOT match a
-	   touch tap — without the plain :focus a phone tap focused the column and still revealed nothing,
-	   which was the whole point of moving the count out of title=. */
+	/* `:focus` AS WELL AS `:focus-visible`: the latter is keyboard-driven and does not match a touch tap, so
+	   without the plain form a phone tap focuses the column and reveals nothing. */
 	.col:hover .readout,
 	.col:focus .readout,
 	.col:focus-visible .readout {
@@ -145,24 +135,14 @@
 	.bar {
 		width: 100%;
 		border-radius: 3px 3px 0 0;
-		/*
-		 * The fallback is deliberate, not defensive noise: `--color-<series>` is emitted at RUNTIME by
-		 * ChartStyle from the `config` above, so no static scan can see it — and if a series ever leaves
-		 * that config, the mark still paints its own token instead of nothing.
-		 */
+		/* The fallback is deliberate: `--color-<series>` is emitted at RUNTIME from the config above, so no
+		   static scan can see it, and a series leaving that config must still paint its own token. */
 		background: var(--color-sings, var(--accent));
 	}
-	/*
-	 * A day with no plays is a faint 2px tick on the baseline, not a full-height ghost.
-	 * The earlier version drew missing days at full height to make them distinguishable from a
-	 * zero — but this data set has no zero rows at all (PlayLog.perDay omits empty days), so there
-	 * was no zero to distinguish FROM. All the ghost achieved was letting three weeks of quiet
-	 * dominate the chart and read as activity. The tick keeps every day addressable for the tooltip
-	 * while letting the actual plays carry the shape.
-	 */
+	/* A day with no plays is a faint TICK on the baseline, never a full-height ghost: there are no zero rows
+	   in this data to distinguish it from, and a ghost lets a long quiet stretch read as activity. */
 	.missing .bar {
-		/* !important is load-bearing: the bar carries an inline style:height (0 for a missing day),
-		   and only !important lets this stylesheet rule beat that inline value to draw the 2px tick. */
+		/* `!important` is load-bearing: the bar carries an inline height, and only this beats an inline value. */
 		height: 2px !important;
 		background: var(--line);
 		opacity: 0.6;
@@ -175,5 +155,4 @@
 		margin: 0.4rem 0 0;
 		font-variant-numeric: tabular-nums;
 	}
-	/* S7: `.empty` is ui/empty's now. */
 </style>

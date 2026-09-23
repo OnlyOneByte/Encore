@@ -1,52 +1,18 @@
 <!--
-  ── ENCORE DEVIATIONS (switch adoption) ──────────────────────────────────────────────────────
-  1. `transition-all` (root) and `transition-transform` (thumb) ARE REMOVED. motion.test.ts bans
-     `transition-*` as a utility name tree-wide, because a utility cannot honour Reduce Motion. The
-     thumb's slide is re-declared below as CSS on `transform` only — a composited property — inside a
-     `prefers-reduced-motion: no-preference` block, so motion is OPT-IN. Same idiom as `skeleton`,
-     `spinner` and `alert-dialog`. `transition-all` is not replaced at all: it animated colour and
-     shadow alongside the transform, and the thumb's travel is the whole affordance.
-  2. NO TAP BOX HERE, on purpose. The control is 32x18.4px, well under `--tap`, and that is correct:
-     these switches sit inside `<label class="check">`, whose `min-height: var(--tap)` is the row's tap
-     target — the same arrangement the Checkbox they replace relied on. Giving the switch its own 44px
-     box would make the row 88px and put two competing targets in it. touch-targets.test.ts measures
-     the label, which is where the target lives.
-  3. Sizes are arbitrary values (`h-[18.4px]`, `w-[32px]`) as shipped, which is what
-     vendored-dimension-keys.test.ts requires — a named scale key here would resolve through the
-     spacing namespace and collapse the control, the way `max-w-sm` collapsed Empty's column to 8px.
-  4. EVERY STATE VARIANT IS `data-[state=checked]`, NEVER `data-checked` — and that is a defect fix, not
-     a spelling preference.
+  Four rules an innocent edit would break.
 
-     This shipped with shadcn's `data-checked:` / `data-unchecked:` shorthand throughout. That shorthand
-     means "an attribute literally named `data-checked`", and `bits-ui` does not emit one: its Switch
-     writes `data-state="checked"` / `data-state="unchecked"` on both the root and the thumb (measured on
-     the render — the root carries `data-slot data-size data-state aria-checked aria-required
-     data-switch-root` and nothing else). So every one of those variants matched nothing, and Tailwind
-     emitted NO rule for them at all: a DOM scan of the shipped stylesheet found zero selectors
-     containing `[data-checked]`.
+  EVERY STATE VARIANT IS `data-[state=checked]`, never `data-checked`: bits-ui emits `data-state`, so the
+  shorthand matches nothing, Tailwind emits no rule at all, and the switch is silently inert in both
+  states with no compile or test signal.
 
-     WHAT THAT LOOKED LIKE, which is how it was found: the switch was completely inert. The thumb read
-     `transform: none` in BOTH states, so it never travelled and sat at a 7px offset in a 32px track —
-     reported as "the circle is stuck in the middle rather than working like a toggle". The track was
-     `rgb(107,107,107)` checked AND unchecked, so colour said nothing either. The only visible difference
-     between on and off was none.
+  `p-0` is load-bearing, not tidiness. The root is a button and Preflight is off, so the UA's own
+  `padding: 1px 6px` eats the track's content box and leaves a 16px thumb 2px of travel.
 
-     The tell was in this file the whole time: the last line of the thumb's class list already used
-     `rtl:data-[state=checked]:` — the correct form — for the RTL case alone.
+  No tap box here on purpose: these sit inside a label whose min-height is var(--tap), which is where the
+  row's target lives. Giving the switch its own would put two competing targets in one row.
 
-     `justify-start` and `p-0` go with it, and `p-0` is the other half of the reported symptom.
-
-     THE ROOT IS A `<button>`, and Preflight is OFF in this app (see the README in this directory). So the
-     UA's own `padding: 1px 6px` applied: measured on the render, a 32px track with `box-sizing: border-box`
-     had a content box of 32 − 2 (border) − 12 (padding) = **18px**, and a 16px thumb inside it has 2px of
-     travel. That is the "stuck in the middle" the report describes — the thumb was centred in a slot barely
-     bigger than itself, and it is the exact hazard this directory's README names: "a shadcn component is
-     written expecting box-sizing, zeroed margins and list-style: none… supply what the component needs in
-     its own classes". shadcn's switch assumes Preflight zeroed that padding.
-
-     With `p-0` the content box is the full 30px, the thumb rests at the left edge, and the 14px translate
-     (`calc(100% - 2px)` of a 16px thumb) lands it flush right with a 1px inset either side — symmetric, and
-     the full width of the track is used. Before this it overhung the track's right edge by 5px.
+  Sizes stay arbitrary values, which vendored-dimension-keys.test.ts requires — a named scale key resolves
+  through the spacing namespace and collapses the control.
 -->
 <script lang="ts">
 	import { Switch as SwitchPrimitive } from 'bits-ui';
@@ -85,12 +51,10 @@
 
 <style>
 	/*
-	 * The thumb is rendered by a CHILD component, so it carries no scoping hash for this file and a
-	 * plain rule would ship and match nothing. `:global([data-slot=…])` is the correct reach, and
-	 * shadcn's own data-slot is more stable across a re-vendor than a class of ours.
-	 *
-	 * Motion is OPT-IN inside a no-preference block rather than declared-then-reset: there is no reset
-	 * to lose the cascade to, and an instant snap is a fine resting state for a toggle.
+	 * The thumb is a CHILD component, so it carries no scoping hash for this file and a plain rule would
+	 * ship and match nothing; data-slot is also more stable across a re-vendor than a class of ours.
+	 * Motion is opt-in inside a no-preference block rather than declared-then-reset, and the transition is
+	 * on `transform` alone — the utility form (`transition-transform`) cannot honour Reduce Motion.
 	 */
 	@media (prefers-reduced-motion: no-preference) {
 		:global([data-slot='switch-thumb']) {

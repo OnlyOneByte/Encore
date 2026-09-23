@@ -1,20 +1,16 @@
 // Local media file serving — resolves a media ref to an absolute path inside the storage class that
-// ref belongs to, with a hard path-traversal guard. The guard is the single source of truth, imported
-// by both the /media route and its regression test so "what's safe to serve" cannot drift between them.
-//
-// A ref's FIRST SEGMENT selects its storage root ("audio/…", "derived/…", "meta/…"), so classes can
-// live on separate volumes while refs stay portable relative strings. The containment check is
-// per-root: checking against the media root once is NOT enough, since a class dir may be pointed
-// outside it.
+// ref belongs to, with a hard path-traversal guard (the single source of truth, shared by the
+// /media route and its regression test, so "what's safe to serve" cannot drift between them). A
+// ref's FIRST SEGMENT selects its storage root, so classes can live on separate volumes — the
+// containment check is PER-ROOT, since a class dir may be pointed outside the media root.
 
 import { resolve, join, sep } from 'node:path';
 import { mediaRoot, resolveBase, metaDir, derivedDir } from './paths';
 
 /**
- * Resolve a request path segment (e.g. "derived/stems/x.wav", "library/song.mp4") to an absolute
- * path that is PROVABLY inside that ref's storage class root, or null if it escapes. Defeats `../`,
- * absolute paths, URL-encoded traversal, NUL, and sibling-prefix escapes (`/media-evil`).
- * Returns null (caller → 404) rather than throwing.
+ * Resolve a ref to an absolute path PROVABLY inside that ref's storage class root, or null if it
+ * escapes — defeats `../`, absolute paths, URL-encoded traversal, NUL, and sibling-prefix escapes
+ * (`/media-evil`). Returns null (caller → 404) rather than throwing.
  */
 export function safeMediaPath(ref: string): string | null {
 	if (!ref) return null;

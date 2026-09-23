@@ -1,72 +1,25 @@
 /*
- * The e2e browser driver, backed by Playwright.
- *
- * WHY THIS REPLACED A HAND-ROLLED CDP DRIVER. The previous driver spoke Chrome DevTools Protocol over a
- * WebSocket directly, and its own header explained why: an earlier e2e imported `playwright-core` that was
- * never a DECLARED dependency, so it worked on whichever machine happened to have one lying around and failed
- * everywhere else. That objection was about the dependency being a coincidence, not about Playwright.
- *
- * It is now declared — `@playwright/test` is pinned in package.json — which answers the original complaint
- * directly. The browser itself was never really avoided either: `lib/chromium.mjs` already resolves Chrome
- * out of `~/.cache/ms-playwright`, so this repo has depended on Playwright's browser download all along. The
- * dependency existed in fact; it now exists on the record.
- *
- * WHAT THIS BUYS over speaking CDP by hand:
- *   • Browser contexts are a first-class primitive, not `Target.createBrowserContext` plumbing. Each "phone"
- *     in the party flow needs its own cookie jar to be genuinely a different guest, and that is what a
- *     context IS.
- *   • Auto-waiting inside `click`/`fill`. The old driver polled an in-page expression every 100ms before
- *     acting; Playwright's actionability checks replace 77 hand-rolled `waitFor` calls' worth of that.
- *   • Traces. A failing multi-guest room flow used to yield a timeout string; a trace carries the DOM,
- *     network and console at every step.
- *
- * THE SURFACE IS DELIBERATELY UNCHANGED. All 27 consumer files import `{ connect, sleep }` and drive a page
- * through the same 14 methods, so this is a driver swap rather than a suite rewrite: the flows keep working
- * and can adopt `@playwright/test` fixtures and web-first assertions one at a time. Converting them is the
- * genuinely valuable half — 208 of the suite's calls are `evaluate`, so it still reaches into the page rather
- * than using locators — and that is a separate change, not this one.
+ * The e2e browser driver, backed by Playwright. Every flow imports `{ connect, sleep }` from here and drives
+ * a page through the surface below. See docs/E2E.md#the-driver.
  */
 
 import { chromium } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-// The single-sourced Chromium locator. `e2e/lib/chromium.test.ts` bans a redefinition of it, and this driver
-// uses it rather than resolving a binary itself — see the note on `connect` for why the path is explicit.
+// The single-sourced Chromium locator; `tests/guards/hygiene/chromium.test.ts` bans a second copy.
 import { findChromium } from './lib/chromium.mjs';
 
 const DEFAULT_TIMEOUT = 10_000;
 
 /**
- * Attach to a Chromium already listening on a debugging port.
- *
- * `connectOverCDP` rather than `chromium.launch()`, so `lib/chromium.mjs` keeps ownership of HOW the browser
- * starts — its flag set, its cache resolution and its `/usr/bin` fallback are load-bearing on this box and
- * are not this file's business. The port contract is what every entry point already passes.
- *
- * @param {number} port
- */
-/**
  * Start a browser and return the driver.
  *
- * IT LAUNCHES; IT DOES NOT ATTACH, and the reason is the whole reason the driver it replaced existed.
- * Playwright's `connectOverCDP` does not work under Bun: it retrieves the target's websocket URL and then
- * hangs connecting to it, because its ws client and Bun's runtime disagree. That is almost certainly why the
- * previous driver spoke CDP by hand "over a WebSocket Bun implements itself" — the constraint was Bun, not
- * Playwright. `chromium.launch()` avoids that path entirely and works under Bun, verified against a live
- * server before this was written.
+ * IT LAUNCHES; IT DOES NOT ATTACH. `connectOverCDP` hangs under Bun — it fetches the target's websocket URL
+ * and then stalls connecting to it, because its ws client and Bun's runtime disagree.
  *
- * `executablePath` comes from `findChromium()`, so Playwright drives the Chromium this repo ALREADY uses
- * rather than one it downloads. That matters: `@playwright/test@1.56.1` wants browser revision 1194 while the
- * cache holds 1228/1232 from a different Playwright, so `launch()` with no path fails on a missing
- * `headless_shell` and demands a ~150MB `playwright install`. Pointing at the existing binary keeps this
- * repo's "no install step" property, which was the second half of the original objection.
- *
- * The `port` argument is GONE. It was accepted and ignored for the whole migration, because every entry
- * point passed one from when it spawned its own Chromium on that port — keeping the signature let their
- * spawn blocks come out one file at a time instead of in a single 25-file change. That migration is
- * finished: no caller passes a port, no probe declares a CDP port constant, and nothing in this tree
- * speaks the DevTools protocol by hand. Taking the parameter out is what stops the next reader thinking
- * a port still means something here.
+ * `executablePath` comes from `findChromium()` so Playwright drives the Chromium this repo already has: with
+ * no path, `launch()` fails on a missing `headless_shell` and demands a ~150MB `playwright install`, because
+ * the pinned Playwright wants a browser revision this box's cache does not hold.
  *
  * @param {{ args?: string[] }} [opts] extra Chromium flags, for a flow whose FLAGS ARE THE EXPERIMENT
  */
@@ -75,12 +28,8 @@ export async function connect(opts = {}) {
 	if (!executablePath) {
 		throw new Error('No Chromium found. Set PW_CHROMIUM, or run `npx playwright install chromium`.');
 	}
-	// NO `--autoplay-policy` BY DEFAULT, deliberately. An earlier draft of this driver hardcoded
-	// `--autoplay-policy=no-user-gesture-required` for every flow, which would have silently broken
-	// `fuzz.mjs`: it passes that flag CONDITIONALLY and its own comment says why — "without the flag this
-	// is a television; with it, it is not." A driver that always grants autoplay makes the negative half of
-	// that experiment unrunnable while still reporting a pass. Flags a flow depends on are the flow's to
-	// pass, so they come through `opts.args`.
+	// NO `--autoplay-policy` BY DEFAULT: granting it here would make the gestureless half of every
+	// television experiment unrunnable while still reporting a pass. See docs/E2E.md#autoplay.
 	const browser = await chromium.launch({
 		headless: true,
 		executablePath,
@@ -94,13 +43,9 @@ function browserApi(browser) {
 	return {
 		/**
 		 * A fresh, isolated context — its own cookies, so two of these are genuinely two different guests
-		 * rather than one guest in two tabs. That distinction is the whole point of the party flow, and here
-		 * it is one call instead of three CDP round-trips.
-		 *
-		 * `initScript` runs on EVERY navigation of this context BEFORE the app's own scripts, which is how
-		 * an instrument gets in early enough to wrap a WebSocket the app opens during hydration.
-		 * `context.addInitScript` is Playwright's own; `p8-presence-resilience` used to reach
-		 * `Page.addScriptToEvaluateOnNewDocument` through a private CDP socket for exactly this.
+		 * rather than one guest in two tabs. `initScript` runs on EVERY navigation of this context BEFORE
+		 * the app's own scripts, which is the only way in early enough to wrap a WebSocket the app opens
+		 * during hydration.
 		 * @param {{ initScript?: string | null }} [opts]
 		 */
 		async newPage({ initScript = null } = {}) {
@@ -114,7 +59,7 @@ function browserApi(browser) {
 }
 
 /**
- * Present a Playwright `Page` through the surface the suite already drives.
+ * Present a Playwright `Page` through the surface the suite drives.
  * @param {import('@playwright/test').Page} page
  * @param {import('@playwright/test').BrowserContext} context
  */
@@ -123,15 +68,15 @@ function wrap(page, context) {
 	const evaluate = (expression) => page.evaluate(`(() => (${expression}))()`);
 
 	return {
-		/** Raw in-page evaluation. 208 call sites use this; it is the suite's main instrument. */
+		/** Raw in-page evaluation — the suite's main instrument. */
 		evaluate: (/** @type {string} */ expression) => page.evaluate(expression),
 
 		/** @param {string} url */
 		async goto(url) {
 			await page.goto(url, { waitUntil: 'domcontentloaded', timeout: DEFAULT_TIMEOUT });
-			// Still poll for readiness rather than trusting a lifecycle event: this app hydrates and THEN
-			// opens a WebSocket, so `load` fires well before the page can actually be driven. That was true
-			// of the CDP driver and is just as true here — `waitUntil` describes the document, not the app.
+			// Poll for readiness rather than trusting a lifecycle event: the app hydrates and THEN opens a
+			// WebSocket, so `load` fires well before the page can be driven — `waitUntil` describes the
+			// document, not the app.
 			await this.waitFor('document.readyState === "complete"');
 		},
 
@@ -148,8 +93,8 @@ function wrap(page, context) {
 				});
 				return await handle.jsonValue();
 			} catch {
-				// Report the same shape the old driver did: the expression plus its last value. A bare
-				// Playwright timeout names the function source but not what it evaluated to.
+				// Report the expression AND its last value: a bare Playwright timeout names the function
+				// source but not what it evaluated to.
 				let last;
 				try {
 					last = await evaluate(expression);
@@ -166,14 +111,8 @@ function wrap(page, context) {
 		},
 
 		/**
-		 * Wait for an element to EXIST, via a real locator rather than a polled `querySelector(x) !== null`.
-		 *
-		 * This is the verb the flows were missing, and why 24 of them spelled an element-wait as
-		 * `waitFor(\`document.querySelector(x) !== null\`)`: the CDP driver had no locator, so existence was
-		 * the only shape it could express. `page.locator(x).waitFor()` re-queries on Playwright's own
-		 * schedule and reports the selector on timeout, so the flow says what it is waiting FOR instead of
-		 * describing a DOM predicate. `state: 'attached'` matches the old semantics exactly — present in the
-		 * DOM, not necessarily visible — so a conversion changes the spelling and not the behaviour.
+		 * Wait for an element to EXIST. `state: 'attached'` — present in the DOM, NOT necessarily
+		 * visible, so this is no gate for anything measured or tapped.
 		 * @param {string} selector
 		 * @param {{ timeout?: number }} [opts]
 		 */
@@ -183,9 +122,8 @@ function wrap(page, context) {
 		},
 
 		/**
-		 * Click by accessible role + name — the way a screen reader, and therefore a user, finds a control.
-		 * Preferred over CSS deliberately: the labels ARE the contract, and a flow that clicks by class
-		 * silently keeps working when a control loses its accessible name.
+		 * Click by accessible role + name — preferred over CSS, because the labels ARE the contract and a
+		 * flow that clicks by class keeps working after a control loses its accessible name.
 		 * @param {string} role
 		 * @param {string} name
 		 */
@@ -201,15 +139,17 @@ function wrap(page, context) {
 			await page.getByLabel(name).first().click({ timeout: DEFAULT_TIMEOUT });
 		},
 
-		/** @param {string} text */
+		/** Resolves the inner TEXT NODE, so it misses a button whose content is `Label <Icon/>`: the click
+		 *  lands on nothing, nothing errors, and every downstream wait then times out on a selector that
+		 *  is perfectly current. Prefer `clickByRole`. @param {string} text */
 		async clickByText(text) {
 			await page.getByText(text).first().click({ timeout: DEFAULT_TIMEOUT });
 		},
 
 		/**
-		 * Fill an input and fire the events a Svelte binding listens for. `locator.fill` dispatches `input`
-		 * natively, which is what `bind:value` needs; `change` is dispatched too because a `<select>` and a
-		 * range input listen for that one instead.
+		 * Fill an input and fire the events a Svelte binding listens for: `locator.fill` dispatches `input`
+		 * natively for `bind:value`, and `change` too, because a `<select>` and a range input listen for
+		 * that one instead.
 		 * @param {string} selector
 		 * @param {string} value
 		 */
@@ -220,8 +160,7 @@ function wrap(page, context) {
 		},
 
 		/**
-		 * A range input. `fill` works on `<input type=range>` in Playwright, so this is the same call —
-		 * kept as its own name because the flows read better for it and the coercion is explicit.
+		 * A range input — the same call as `fill`, named separately so the coercion is explicit.
 		 * @param {string} selector
 		 * @param {number|string} value
 		 */
@@ -230,8 +169,8 @@ function wrap(page, context) {
 		},
 
 		/**
-		 * Two viewports matter here and they are nothing alike — a phone in a hand and a TV on a wall — and
-		 * the TV scale is vh-relative, so a screenshot at the wrong size measures the wrong layout.
+		 * The TV's type scale is vh-relative, so a frame taken at the wrong size measures a different
+		 * design: shoot the wall at 1920x1080, the phone at a phone size.
 		 * @param {number} width
 		 * @param {number} height
 		 * @param {number} [deviceScaleFactor]
@@ -242,8 +181,10 @@ function wrap(page, context) {
 		},
 
 		/**
-		 * Safe-area insets, for the phone's bottom bar against a home indicator. Playwright has no API for
-		 * this, so it stays on CDP — which `connectOverCDP` still gives us through a session.
+		 * Safe-area insets, for the phone's bottom bar against a home indicator. Headless resolves every
+		 * `env(safe-area-inset-*)` to 0, so without this an arm comparing a `calc()` carrying the inset
+		 * term against a bare px value measures the two identically and proves nothing. No Playwright API,
+		 * so it stays on CDP.
 		 * @param {{ top?: number, left?: number, bottom?: number, right?: number }} insets
 		 */
 		async safeAreaInsets(insets) {
@@ -252,27 +193,21 @@ function wrap(page, context) {
 			await cdp.detach();
 		},
 
-		/**
-		 * @param {string} path
-		 * @param {{ fullPage?: boolean }} [opts]
-		 */
+		/** @param {string} path @param {{ fullPage?: boolean }} [opts] */
 		async screenshot(path, { fullPage = false } = {}) {
 			mkdirSync(dirname(path), { recursive: true });
 			await page.screenshot({ path, fullPage });
 			return path;
 		},
 
-		/**
-		 * @param {string} selector
-		 * @param {string} key
-		 */
+		/** @param {string} selector @param {string} key */
 		async pressKey(selector, key) {
 			await page.locator(selector).first().press(key, { timeout: DEFAULT_TIMEOUT });
 		},
 
 		/**
 		 * A real mouse click at a point, for hit-testing what is actually on top — a scrim, an overlay, a
-		 * row that should be transparent to the pointer while dragged.
+		 * row that should be transparent to the pointer while dragged. See docs/E2E.md#gestures.
 		 * @param {number} x
 		 * @param {number} y
 		 */
@@ -281,7 +216,8 @@ function wrap(page, context) {
 		},
 
 		/**
-		 * A pointer drag in steps, so a drag handler sees intermediate moves rather than a teleport.
+		 * A pointer drag in STEPS, so a drag handler sees intermediate moves rather than a teleport. A
+		 * synthetic click, or a single move, is not a gesture. See docs/E2E.md#gestures.
 		 * @param {number} x1
 		 * @param {number} y1
 		 * @param {number} x2
@@ -299,12 +235,8 @@ function wrap(page, context) {
 		},
 
 		/**
-		 * Take this guest's context offline, and bring it back.
-		 *
-		 * `context.setOffline` is Playwright's own, and it is why `p8-presence-resilience` no longer needs a
-		 * private CDP client: it was reaching for `Network.emulateNetworkConditions` through a hand-rolled
-		 * socket to do exactly this. Scoped to the CONTEXT, so one guest can drop while the others stay up —
-		 * which is the whole subject of a presence probe.
+		 * Take this guest's context offline, and bring it back. Scoped to the CONTEXT, so one guest can
+		 * drop while the others stay up — which is the whole subject of a presence probe.
 		 * @param {boolean} offline
 		 */
 		async setOffline(offline) {
@@ -312,15 +244,11 @@ function wrap(page, context) {
 		},
 
 		/**
-		 * Stop the browser serving a URL pattern from its HTTP cache.
-		 *
-		 * The `/media` route replies `Cache-Control: public, max-age=86400`, so a probe that overwrites an
-		 * artifact and re-tests reads yesterday's copy and reports a pass on a file that is no longer there.
-		 * `p6-lyrics` used to defeat that with `Network.setCacheDisabled` over its own CDP connection.
-		 *
-		 * Done with route interception instead: `route.fetch()` performs a fresh network request, and
-		 * re-fulfilling with `no-store` keeps the response out of the cache for next time. Both halves
-		 * matter — intercepting alone would still let a cached entry answer.
+		 * Stop the browser serving a URL pattern from its HTTP cache. `/media` replies
+		 * `Cache-Control: public, max-age=86400`, so a probe that overwrites an artifact and re-tests reads
+		 * yesterday's copy and passes on a file that is no longer there. BOTH halves matter:
+		 * `route.fetch()` makes a fresh request, and re-fulfilling with `no-store` keeps it out of the
+		 * cache next time.
 		 * @param {string} pattern a Playwright URL glob, e.g. '**\/media\/**'
 		 */
 		async bypassCacheFor(pattern) {
@@ -332,8 +260,8 @@ function wrap(page, context) {
 						headers: { ...response.headers(), 'cache-control': 'no-store' }
 					});
 				} catch {
-					// A route that cannot be re-fetched (aborted navigation, closed page) must not wedge the
-					// page: fall through to the browser's own handling rather than leaving the request hanging.
+					// A route that cannot be re-fetched (aborted navigation, closed page) must not wedge the page:
+					// fall through rather than leaving the request hanging.
 					await route.fallback();
 				}
 			});
@@ -342,12 +270,9 @@ function wrap(page, context) {
 		/** Close this guest's context, cookies and all. */
 		close: () => context.close(),
 
-		// ── query helpers ────────────────────────────────────────────────────────────────────────────
-		// These four read the rendered page. Three now go through LOCATORS rather than an in-page
-		// `querySelectorAll`, which is the one place this swap changes behaviour for the better: a locator
-		// re-queries on each call, so a count taken while the list is still rendering waits for it instead
-		// of catching an intermediate state. `css` stays an `evaluate`, because a COMPUTED style is a
-		// browser calculation with no locator equivalent.
+		// Query helpers. Three go through LOCATORS, which re-query per call, so a count taken while a list
+		// is still rendering waits for it instead of catching an intermediate state. `css` stays an
+		// `evaluate`: a COMPUTED style is a browser calculation with no locator equivalent.
 
 		/** How many elements match. @param {string} selector */
 		count: (selector) => page.locator(selector).count(),
@@ -356,8 +281,8 @@ function wrap(page, context) {
 		texts: async (selector) => (await page.locator(selector).allTextContents()).map((t) => t.trim()),
 
 		/**
-		 * The first match's trimmed text, or '' when absent — absent reads as empty rather than throwing,
-		 * because a flow asserting "the badge is gone" wants '' and not an exception.
+		 * The first match's trimmed text, or '' when absent — a flow asserting "the badge is gone" wants ''
+		 * and not an exception.
 		 * @param {string} selector
 		 */
 		text: async (selector) => {
@@ -366,7 +291,7 @@ function wrap(page, context) {
 		},
 
 		/**
-		 * The computed value of a CSS property — how a rendered-size assertion is actually made.
+		 * The computed value of a CSS property — how a rendered-size assertion is made.
 		 * @param {string} selector
 		 * @param {string} prop
 		 */

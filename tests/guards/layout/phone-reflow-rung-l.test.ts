@@ -1,24 +1,18 @@
-// guard: the reflow row has a RENDERED guard, and it cannot be quietly defanged.
+// guard: the SC 1.4.10 Reflow row has a RENDERED guard, and it cannot be quietly defanged. See
+// docs/GUARDS.md#phone-inventories-and-reflow.
 //
-// THE BUG THIS EXISTS FOR. `/stats` overflowed a 320px viewport by 8px at 200% text scale — an SC
-// 1.4.10 Reflow failure — while `phone-inventory.test.ts`'s arm was green. That arm was not
-// broken: it flags a single DECLARATION wider than 320px, and this overflow was a SUM (two grid tracks
-// plus two cards' padding, against a word that cannot wrap once type doubles). The addends are resolved
-// lengths that exist only after layout, so no scan over declarations can add them up. `02-phone.md`
-// says as much in the own Check row: "Rendered-DOM or driven-browser measurement. **Not a source
-// scan** — both halves are geometry."
+// `/stats` overflowed a 320px viewport by 8px at 200% text while phone-inventory.test.ts's declaration
+// arm was green. That arm was not broken: it flags a single DECLARATION wider than 320px, and this
+// overflow was a SUM (two grid tracks plus two cards' padding against a word that cannot wrap once type
+// doubles) of resolved lengths that exist only after layout.
 //
-// SO WHY IS *THIS* FILE A SOURCE SCAN. Because it does not guard the overflow — it guards the GUARD.
-// The overflow is measured by `tests/e2e/probes/p15-phone-reflow.mjs`, a real rung-L driver: private
-// Chromium, real server, `documentElement.scrollWidth` vs `clientWidth`, exit 1 on a failure. That
-// probe cannot run inside `bun test` — every e2e driver in this repo is a live-server `.mjs` invoked by
-// nothing in the suite, and making the root gate depend on a built UI and a user-level Chromium cache
-// is a wider change than this row needs. What a scan CAN decide is whether the measuring guard still
-// exists, still measures on the layout rung, still measures at the criterion's numbers, and still
-// fails. Delete the probe, drop its viewport to 390px, stop doubling the root font-size, or turn its
-// `process.exit(1)` into a print, and this file reds by name. Precedent for the split:
-// `src/lib/server/realtime/e2e-real-gesture-verb.test.ts` and `src/lib/tv/autoplay-recovery.test.ts`, both
-// of which pin a rendered driver from inside the suite.
+// THIS FILE DOES NOT GUARD THE OVERFLOW — IT GUARDS THE GUARD. The overflow is measured by
+// tests/e2e/probes/p15-phone-reflow.mjs, a real layout-rung driver, which cannot run inside `bun test`:
+// every e2e driver here is a live-server `.mjs`, and making the root gate depend on a built UI and a
+// user-level Chromium cache is a wider change than this row needs. What a scan CAN decide is whether the
+// measuring guard still exists, still measures on the layout rung, still measures at the criterion's
+// numbers, and still FAILS. Delete the probe, drop its viewport to 390px, stop doubling the root
+// font-size, or turn its `process.exit(1)` into a print, and this file reds by name.
 //
 // Comments are blanked before matching, so prose describing a number can neither satisfy nor trip an
 // assertion — the /stats grid fix's own comment names "320px" and "200%" repeatedly.
@@ -32,14 +26,12 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-//., anchored at the repo root rather than counted up from this file's own location.
 const CORE = repoRoot;
 const PROBE_PATH = at('tests', 'e2e', 'probes', 'p15-phone-reflow.mjs');
 const STATS_PATH = join(CORE, 'src', 'routes', 'stats', '+page.svelte');
 
 test('the rung-L reflow probe exists and this guard is not vacuous', () => {
-	// A renamed or deleted probe must red HERE, with the path in the message, rather than leaving every
-	// assertion below to fail-open on an empty string.
+	// A renamed or deleted probe reds HERE rather than leaving every assertion below to fail-open on an empty string.
 	expect(existsSync(PROBE_PATH)).toBe(true);
 	expect(readFileSync(PROBE_PATH, 'utf8').length).toBeGreaterThan(3000);
 });
@@ -47,8 +39,7 @@ test('the rung-L reflow probe exists and this guard is not vacuous', () => {
 const PROBE = stripComments(readFileSync(PROBE_PATH, 'utf8'));
 
 test('the reflow probe measures on the LAYOUT rung, not the mount rung', () => {
-	// the standard's Check: a measurement-classified entry must import the layout-rung driver. happy-dom
-	// returns an all-zero DOMRect, so the same assertions on rung M are a permanent silent green.
+	// happy-dom returns an all-zero DOMRect, so the same assertions on the mount rung are a permanent silent green.
 	expect(PROBE).toMatch(/from\s*'\.\.\/driver\.mjs'/);
 	expect(PROBE).toMatch(/\bconnect\b/);
 	// And it must drive its own browser rather than assume one is listening.
@@ -57,11 +48,10 @@ test('the reflow probe measures on the LAYOUT rung, not the mount rung', () => {
 });
 
 test('the reflow probe measures at the criterion\u2019s own numbers: 320 CSS px and 200% text', () => {
-	// 320 is SC 1.4.10's width. A probe quietly retargeted to 390px would pass while the criterion
-	// failed, which is the whole defect class this row exists for.
+	// 320 is SC 1.4.10's width: a probe retargeted to 390px passes while the criterion fails.
 	expect(PROBE).toMatch(/VIEWPORT_W\s*=\s*320\b/);
-	// 200% of the 16px default. The root font-size is what a guest's text-size setting scales; page
-	// zoom scales the viewport with it and cannot expose this class at all.
+	// 200% of the 16px default. The ROOT FONT-SIZE is what a guest's text-size setting scales; page zoom
+	// scales the viewport with it and cannot expose this class at all.
 	expect(PROBE).toMatch(/SCALED_ROOT_FONT_SIZE\s*=\s*'32px'/);
 	expect(PROBE).toMatch(/documentElement\.style\.fontSize/);
 	// The scale must be applied to the LIVE document, and both sides of the criterion must be read.
@@ -71,67 +61,51 @@ test('the reflow probe measures at the criterion\u2019s own numbers: 320 CSS px 
 });
 
 test('the reflow probe covers every surface, and /stats by name', () => {
-	// the standard's Acceptance named `/`, `/join`, `/settings`, `/stats` and the browse screen. `/join` was
-	// retired (Q2-A) into the unjoined branch of `/`, so `measure('/', '/')` now IS the join
-	// surface — the four named surfaces are `/`, `/settings`, `/stats` and browse. A probe that silently
-	// stopped visiting one would report a green row over an unmeasured surface.
+	// The four surfaces are `/` (which is also the join surface, as the unjoined branch of home), `/settings`, `/stats`
+	// and browse. A probe that stopped visiting one reports a green row over an unmeasured surface.
 	for (const surface of ['/settings', '/stats']) {
 		expect(PROBE).toContain(`measure('${surface}', '${surface}')`);
 	}
 	expect(PROBE).toMatch(/measure\('\/',\s*'\/'\)/);
-	// The browse/results screen needs a session, so the probe joins from inside the page and then
-	// measures it like the other four (the browse reflow is fixed; it was quarantined here until the fix landed). Since
-	// the search box is docked on `/` and results render in place, so the surface IS `/` — SEARCHED
-	// first so the real offender renders (see the non-vacuity test below), then measured in place
-	// (`skipNav`). The old `?browse=1` mode is gone.
+	// Browse needs a session, so the probe joins from inside the page; the search box is on `/` and results render in
+	// place, so the surface IS `/` — searched first so the real offender renders, then measured in place (`skipNav`).
 	expect(PROBE).toMatch(/measure\('browse \(joined \/, searched\)',\s*'\/',\s*\{\s*skipNav:\s*true\s*\}\)/);
 	expect(PROBE).toMatch(/'\/api\/join'/);
 });
 
 test('the reflow probe FAILS on an overflow instead of merely reporting one', () => {
-	// The distinction that matters: a driver that prints FAIL and exits 0 is a report, not a guard.
+	// A driver that prints FAIL and exits 0 is a report, not a guard.
 	expect(PROBE).toMatch(/process\.exit\(1\)/);
-	// Exit 2 is reserved for "the environment could not host this", and must never be reached by a
-	// measurement. HARNESS.md: never conflate 2 with 0.
+	// Exit 2 is reserved for "the environment could not host this" and must never be reached by a
+	// measurement — never conflate 2 with 0.
 	expect(PROBE).toMatch(/process\.exit\(2\)/);
-	// An unbuilt tree serves pages with no app in them, which measure as a trivially clean 320 — the
-	// probe must bail on that rather than report a pass.
+	// An unbuilt tree serves pages with no app in them, which measure as a trivially clean 320.
 	expect(PROBE).toMatch(/build['"],\s*['"]client/);
 });
 
 test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender', () => {
-	// The browse-screen reflow is fixed, so the surface is now asserted like the other four rather
-	// than recorded as a known overflow. The quarantine that used to live here reddened the day the fix
-	// landed (its arm asserted the surface STILL overflowed) and was deleted — a
-	// resolved quarantine is removed, never left to sit green over a fixed defect. Its machinery must be
-	// gone: no residual constant, and no "still overflows" arm that would re-quarantine the surface.
+	// The browse reflow is fixed, so the surface is asserted like the other four rather than quarantined —
+	// a resolved quarantine is removed, never left sitting green over a fixed defect. Its machinery must be
+	// gone, and the measurement must FAIL on an overflow like the others (the shared `measure()` call
+	// asserted above, not a `measureRaw` that reads without asserting).
 	expect(PROBE).not.toMatch(/BROWSE_QUARANTINE_ISSUE/);
 	expect(PROBE).not.toMatch(/browseOver/);
-	// The browse measurement must FAIL on an overflow like the others — proven by the shared `measure()`
-	// call asserted above, not a `measureRaw` that reads without asserting.
 	expect(PROBE).not.toMatch(/measureRaw\('browse/);
-	// NON-VACUITY + DISCRIMINATION. An EMPTY joined room renders no rows, so a bare browse
-	// measurement is a clean 320 over an unexercised layout — a green guard insensitive to the fix, which
-	// is exactly why the first version of this arm was rejected. So the arm SEARCHES the browse screen
-	// first — via the shared `openBrowseFromHome` step and a `fill` of the contract's `SEL.search`
-	// hook — which surfaces the canned result set whose long-duration entries render the odd-duration
-	// chip, the widest browse-reflow offender. It then waits for the rows to land (`SEL.songRow`) and bails rather
-	// than measures if none did, so an empty read can never masquerade as a pass. With the fix reverted
-	// this arm reds ("over by 11px"); with it, green.
+	// NON-VACUITY + DISCRIMINATION. An EMPTY joined room renders no rows, so a bare browse measurement is
+	// a clean 320 over an unexercised layout — green, and insensitive to the fix. So the arm SEARCHES
+	// first, which surfaces the canned result set whose long-duration entries render the odd-duration chip,
+	// the widest browse-reflow offender; it then waits for rows and BAILS rather than measures if none
+	// landed. With the fix reverted this arm reds ("over by 11px").
 	expect(PROBE).toMatch(/openBrowseFromHome\(page\)/);
 	expect(PROBE).toMatch(/\.fill\(SEL\.search,\s*'caroline'\)/);
 	expect(PROBE).toMatch(/SEL\.songRow/);
 	expect(PROBE).toMatch(/the browse search returned no rows/);
-	// It must NOT depend on processing a song: the earlier processing-seed approach measured a chip that
-	// wraps on its own, so it never overflowed and never discriminated.
+	// Not via processing a song: that measures a chip which wraps on its own, so it never discriminated.
 	expect(PROBE).not.toMatch(/\/api\/process\b|requestProcess/);
 });
 
-// ---------------------------------------------------------------------------------------------------
-// The /stats grid fix itself — pinned so a regression to a type-blind floor cannot pass unnoticed between
-// probe runs. This is the cheap always-on floor beneath the probe, and is NOT a substitute for it: it
-// cannot decide whether the page overflows, only whether the mechanism that stopped it is still there.
-// ---------------------------------------------------------------------------------------------------
+// The fix mechanisms, pinned as source scans: the cheap always-on floor beneath the probe. None decides
+// whether a page overflows, only whether the mechanism that stopped it is still declared.
 
 const STATS = stripComments(readFileSync(STATS_PATH, 'utf8'));
 
@@ -141,35 +115,23 @@ test('the /stats tile grid floors its tracks in a TYPE-RELATIVE unit, never px',
 	// are checking an empty list.
 	expect(rules.length).toBeGreaterThanOrEqual(2);
 	for (const rule of rules) {
-		// A px floor is fixed while the word it has to hold grows with the guest's text-size setting,
-		// so at 200% it stops bounding anything and the row overflows instead of reflowing.
+		// A px floor is fixed while the word it holds grows with the text-size setting, so at 200% it stops
+		// bounding anything; and a fixed track count (`1fr 1fr`, the shape that shipped) cannot give way.
 		expect(rule).not.toMatch(/minmax\(\s*[\d.]+px/);
-		// A fixed track count cannot give way at all — `1fr 1fr` is the exact shape that shipped the overflow.
 		expect(rule).toMatch(/repeat\(\s*auto-fit/);
 		expect(rule).toMatch(/[\d.]em\b/);
-		// And the floor must be bounded by the row, or a floor wider than the viewport becomes the
-		// overflow itself — the same defect one level up.
+		// The floor must be bounded by the row, or a floor wider than the viewport IS the overflow.
 		expect(rule).toMatch(/min\(\s*100%/);
 	}
 });
 
-// ---------------------------------------------------------------------------------------------------
-// The browse-reflow fix mechanisms, pinned as source scans. The browse arm above DRIVES and MEASURES the
-// odd-duration chip offender live and reds without its fix, so that one is not honour-system — the
-// scan here is its cheap always-on companion. The KEY control, by contrast, only manifests with a
-// now-playing song (it renders in the now-playing controls under live, WS-driven playback), which the
-// self-hosting probe cannot start; per the reviewer's accepted
-// alternative, this is the clear statement that the harness cannot reach that offender plus the
-// source-scan assertion that stands in for the live measurement. None of these decides whether the
-// page overflows — each decides whether the mechanism that stopped it is still declared.
-// ---------------------------------------------------------------------------------------------------
-
+// The KEY control renders only under live, WS-driven playback, which the self-hosting probe cannot start
+// — so it is pinned here INSTEAD of measured, which is a statement about the harness's reach.
 const APP_CSS_PATH = join(CORE, 'src', 'app.css');
 const PAGE_PATH = join(CORE, 'src', 'routes', '+page.svelte');
 const SONG_ROW_PATH = join(CORE, 'src', 'lib', 'components', 'SongRow.svelte');
-// The now-playing surface. `NowPlayingHero` is deleted; the transport, key row and range visualizer are
-// in a bottom drawer the band's pull handle opens, so the key row's two load-bearing rules are declared
-// here rather than on the queue route.
+// The now-playing surface: the transport, key row and range visualizer live in a bottom drawer the band's
+// pull handle opens, so the key row's load-bearing rules are declared there rather than on the route.
 const DRAWER_PATH = join(CORE, 'src', 'lib', 'components', 'NowPlayingDrawer.svelte');
 const APP_CSS = stripComments(readFileSync(APP_CSS_PATH, 'utf8'));
 const PAGE = stripComments(readFileSync(PAGE_PATH, 'utf8'));
@@ -177,10 +139,9 @@ const SONG_ROW = stripComments(readFileSync(SONG_ROW_PATH, 'utf8'));
 const DRAWER_CSS = stripComments(readFileSync(DRAWER_PATH, 'utf8'));
 
 test('the odd-duration chip wraps its phrase instead of forcing the row wider', () => {
-	// The offender the browse arm above measures. Every other SongRow chip is a short token, so `.chip`'s
-	// blanket `white-space: nowrap` is fine for them — but this one carries a whole phrase ("Longer than a
-	// song"), and nowrap made its min-content width its FULL width (~230px at 200%), so it could not shrink
-	// and pushed the browse page past 320px. It must be allowed to wrap, like `.chip.state` already is.
+	// Every other SongRow chip is a short token, so the blanket `white-space: nowrap` is fine for them —
+	// but this one carries a whole phrase ("Longer than a song"), and nowrap made its min-content width its
+	// FULL width (~230px at 200%), so it could not shrink and pushed the browse page past 320px.
 	const badge = readFileSync(join(CORE, 'src', 'lib', 'components', 'ui', 'badge', 'badge.svelte'), 'utf8');
 	const wrapRule = badge.match(/\.encore-chip-wrap\s*\{([^}]*)\}/)?.[1] ?? '';
 	expect(wrapRule, 'ui/badge must offer a wrapping tone').toMatch(/white-space:\s*normal/);
@@ -188,43 +149,30 @@ test('the odd-duration chip wraps its phrase instead of forcing the row wider', 
 });
 
 test('the key row wraps and its ±semitone buttons can shrink at 200% text', () => {
-	// The now-playing key control, named in the issue's offender list. It renders only under live
-	// playback, which the probe cannot start — so it is pinned here rather than measured. `.key` is a
-	// flex row of two `flex: 1` buttons whose label is the single unbreakable word "semitone"; at 200%
-	// each is ~172px, so two-up plus the label forced the row — and the column around it — past 320px.
-	/*
-	 * RE-POINTED to `NowPlayingDrawer.svelte`. The claim is UNCHANGED; the control moved. `NowPlayingHero`
-	 * is deleted and the transport, key row and range visualizer are in a bottom drawer opened by the
-	 * band's pull handle, so both rules are declared there — reading `+page.svelte` (queue-only now) or
-	 * app.css would be matching against rules that no longer exist, a guard that could only fail, never
-	 * bite. Nothing about the reflow ruling is relaxed by the move: the drawer is still a `left:0; right:0`
-	 * box on the same 320px viewport, and the same two declarations are still what let the row give way.
-	 *
-	 * The three rules are extracted with NAMED non-vacuity floors rather than `?? ''`, so a future
-	 * re-point that lands on the wrong file reds saying WHICH rule it could not find, instead of failing
-	 * a pattern match against an empty string and reading as a production regression.
-	 */
+	// `.key` is a flex row of two `flex: 1` buttons whose label is the single unbreakable word "semitone";
+	// at 200% each is ~172px, so two-up plus the label forced the row — and the column around it — past
+	// 320px. Each rule is extracted with a NAMED non-vacuity floor rather than `?? ''`, so a re-point that
+	// lands on the wrong file says WHICH rule it could not find instead of failing a pattern match against
+	// an empty string and reading as a production regression.
+	//
 	// The row must be allowed to WRAP…
 	const keyRule = DRAWER_CSS.match(/\.key\s*\{([^}]*)\}/)?.[1] ?? '';
 	expect(keyRule, 'the `.key` rule was not found where the key row now lives').not.toBe('');
 	expect(keyRule).toMatch(/flex-wrap:\s*wrap/);
-	// …and each button must free its flex minimum so the shrink is allowed at all. A bare `flex: 1`
-	// (basis 0 but min-width:auto) cannot go below the word's min-content width — the exact shape that
+	// …and each button must free its flex minimum, or the shrink is not allowed at all: a bare `flex: 1`
+	// (basis 0 but min-width:auto) cannot go below the word's min-content width, which is the shape that
 	// overflowed. `min-width: 0` is the load-bearing declaration.
 	//
-	// RE-ANCHORED when the pair became `<Button variant="keycap">`. The claim is unchanged; both
-	// declarations moved, because the flex ITEM is now an element Button renders and a class passed to a
-	// component is stripped in the caller. So the flex behaviour lives on the `.key-cell` wrapper the
-	// drawer renders, and the word-breaking lives in the variant. Reading the old `.key button` / `.key-btn`
-	// rules here would now be asserting against rules that no longer exist — a guard that could only
-	// fail, never bite.
+	// The flex ITEM is an element `<Button variant="keycap">` renders, and a class passed to a component is
+	// stripped in the caller — so the flex behaviour lives on the `.key-cell` wrapper the drawer renders
+	// and the word-breaking lives in the variant.
 	const keyCellRule = DRAWER_CSS.match(/\.key-cell\s*\{([^}]*)\}/)?.[1] ?? '';
 	expect(keyCellRule, 'the `.key-cell` rule was not found where the key row now lives').not.toBe('');
 	expect(keyCellRule).toMatch(/min-width:\s*0/);
 	expect(keyCellRule).toMatch(/flex:\s*1\s+1\s+40%/);
-	// A single full-width button can still be narrower than "semitone", so the word itself must be able
-	// to break — otherwise a one-per-row wrap still overflows by the width of the word minus the button.
-	// The base sets `whitespace-nowrap`, so the variant has to undo that as well as allow the break.
+	// A single full-width button can still be narrower than "semitone", so the word itself must be able to
+	// break, or a one-per-row wrap still overflows. The base sets `whitespace-nowrap`, so the variant has
+	// to undo that as well as allow the break.
 	const BUTTON = stripComments(
 		readFileSync(join(CORE, 'src', 'lib', 'components', 'ui', 'button', 'button.svelte'), 'utf8')
 	);
@@ -232,8 +180,7 @@ test('the key row wraps and its ±semitone buttons can shrink at 200% text', () 
 	expect(keycap, 'the `keycap` Button variant was not found').not.toBe('');
 	expect(keycap).toMatch(/\[overflow-wrap:anywhere\]/);
 	expect(keycap).toMatch(/whitespace-normal/);
-	// …and the row is not left declared in two places: a stale copy on the retired surface would drift
-	// from the live one without either failing.
+	// …and the row is not declared in two places, where a stale copy would drift from the live one.
 	expect(PAGE).not.toMatch(/\.key-cell\s*\{/);
 	expect(APP_CSS).not.toMatch(/\.key-cell\s*\{/);
 });

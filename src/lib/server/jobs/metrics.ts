@@ -1,11 +1,7 @@
-// Metrics rollup — PURE functions over JobAttempt rows. No DB, no dates, no I/O, so every number the
-// internal dashboard shows is pinned by a unit test rather than eyeballed on a live box.
-//
-// The reporting unit is the REALTIME FACTOR (seconds of compute per second of audio), not raw
-// seconds. Raw seconds cannot be averaged across a library: a 30-second clip and a 7-minute track are
-// different workloads, so a mean over both describes neither. The rate is also directly comparable to
-// the `SeparatorCost.rtFactor` values baked into the whitelist, which is what lets this dashboard
-// check a benchmarked constant against what the box actually does.
+// PURE functions over JobAttempt rows — no DB, no dates, no I/O, so every number the dashboard shows
+// is pinned by a unit test. Reports in REALTIME FACTOR (compute-seconds per audio-second), not raw
+// seconds, since raw seconds can't be averaged across a library of different-length tracks and the
+// rate is directly comparable to the `SeparatorCost.rtFactor` values baked into the whitelist.
 
 import {
 	attemptStages,
@@ -33,11 +29,8 @@ export function queueWaitMs(a: JobAttempt): number | null {
 	return Math.max(0, a.assignedAt - a.enqueuedAt);
 }
 
-/**
- * Nearest-rank percentile on a sorted copy. Nearest-rank rather than interpolated because these
- * samples are tiny — a self-hosted box may have eight processes total — and an interpolated p95 over
- * eight points invents a value that lies between two real measurements and equals neither.
- */
+/** Nearest-rank percentile, not interpolated: samples are tiny (a self-hosted box may have eight
+ *  processes total) and an interpolated p95 over eight points would invent a value nothing measured. */
 export function percentile(values: number[], p: number): number | null {
 	if (values.length === 0) return null;
 	const sorted = [...values].sort((a, b) => a - b);
@@ -109,19 +102,13 @@ export interface ProcessStats {
 	workMs: number;
 	steps: number;
 	complete: boolean;
-	/**
-	 * TRUE when this process straddles the older edge of the read window, so some earlier steps may
-	 * have finished before the window opened and were never fetched. Its span is then UNDER-counted
-	 * (measured from the earliest surviving step) and its completeness cannot be trusted, so it is
-	 * never reported as complete and the aggregate refuses to count it.
-	 */
+	/** TRUE when this process straddles the read window's older edge, so earlier steps may be missing
+	 *  and its span is UNDER-counted; such a process is never reported `complete`. */
 	clipped: boolean;
 }
 
-/**
- * One row per process. Only processes whose every attempt is sealed are reported: a process still in flight has
- * no end, and treating "now" as its end would report a falling duration as it runs.
- */
+/** One row per process. Only processes whose every attempt is sealed are reported — a process still
+ *  in flight has no end, and "now" as its end would report a shrinking duration as it runs. */
 export function perProcess(attempts: JobAttempt[], windowStartMs: number | null = null): ProcessStats[] {
 	const byProcess = new Map<string, JobAttempt[]>();
 	for (const a of attempts) {
@@ -136,8 +123,6 @@ export function perProcess(attempts: JobAttempt[], windowStartMs: number | null 
 		if (sealed.length === 0) continue;
 		const start = Math.min(...sealed.map((a) => a.enqueuedAt));
 		const end = Math.max(...sealed.map((a) => a.finishedAt!));
-		// A process enqueued before the window opened may be missing its earliest steps: its span is then
-		// measured from the wrong start and its completeness cannot be trusted. Flag it, never complete.
 		const clipped = windowStartMs !== null && start < windowStartMs;
 		const complete = !clipped && sealed.length === list.length && sealed.every((a) => a.outcome === 'ready');
 		out.push({
@@ -158,22 +143,14 @@ export function e2e(
 	attempts: JobAttempt[],
 	windowStartMs: number | null = null
 ): { n: number; meanMs: number | null; p50Ms: number | null; p95Ms: number | null } {
-	// A clipped boundary process is not complete, so it never enters this aggregate.
 	const totals = perProcess(attempts, windowStartMs)
 		.filter((c) => c.complete)
 		.map((c) => c.totalMs);
 	return { n: totals.length, meanMs: mean(totals), p50Ms: percentile(totals, 50), p95Ms: percentile(totals, 95) };
 }
 
-/**
- * Measured cost of one engine+model, next to what the whitelist CLAIMS it costs.
- *
- * This comparison is the reason the dashboard is worth building. `SeparatorCost.rtFactor` was
- * benchmarked once on a 32-core Graviton 3 and has never been checked against a real deployment, and
- * several entries are marked `provenance: 'estimated'` outright. `AsrModel` goes further and refuses
- * to carry an rtFactor at all, with a comment saying not to add one until someone times these on the
- * target hardware. This is that measurement.
- */
+/** Measured cost of one engine+model, next to what the whitelist CLAIMS it costs — checking a
+ *  benchmarked constant (some entries `provenance: 'estimated'`) against what this box actually does. */
 export interface ModelStats {
 	engine: string | null;
 	model: string | null;
@@ -183,11 +160,8 @@ export interface ModelStats {
 	meanMs: number | null;
 	/** The whitelist's claim, when this pair is in it. */
 	declared: SeparatorCost | undefined;
-	/**
-	 * measured ÷ declared. 1.0 = the benchmark holds on this box. Null when either side is unknown.
-	 * Deliberately a ratio and not a pass/fail: a box slower than a 32-core Graviton is expected, and
-	 * the useful signal is HOW MUCH slower, which is what sizing a party needs.
-	 */
+	/** measured ÷ declared; 1.0 = benchmark holds, null if either side is unknown. A ratio, not a
+	 *  pass/fail, because a slower box is expected — HOW MUCH slower is the signal sizing a party needs. */
 	ratioToDeclared: number | null;
 }
 
@@ -264,13 +238,8 @@ export function perStage(attempts: JobAttempt[]): { stage: string; n: number; me
 		.sort((a, b) => (b.meanMs ?? 0) - (a.meanMs ?? 0));
 }
 
-/**
- * Whether a set of measurements is worth quoting as an average.
- *
- * Stated as data rather than left to the reader because the failure mode is specific and likely: this
- * runs on a box with a handful of processed songs, where a "mean" over two samples reads with exactly the
- * same authority as one over two hundred. The UI uses this to label a number as provisional.
- */
+/** Whether a set of measurements is worth quoting as an average — a mean over two self-hosted samples
+ *  otherwise reads with the same authority as one over two hundred. The UI labels below this as provisional. */
 export const CONFIDENT_SAMPLE = 10;
 
 export function isAnecdote(n: number): boolean {

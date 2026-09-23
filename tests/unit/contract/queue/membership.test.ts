@@ -1,6 +1,5 @@
 // The membership policy as a truth table. The rule worth protecting: a pending song holds you in the
-// room at EVERY grace setting, because that is what makes the clock meaningful rather than a second
-// disconnect timer.
+// room at EVERY grace setting, because that is what makes the clock meaningful rather than a second disconnect timer.
 import { test, expect } from 'bun:test';
 import {
 	memberState,

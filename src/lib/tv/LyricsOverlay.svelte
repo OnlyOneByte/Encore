@@ -1,8 +1,7 @@
 <script lang="ts">
-	// aligned lyrics overlay for the TV. Fetches the word-timed artifact referenced
-	// by the current media and highlights each word in time as a classic karaoke sweep with a
-	// bouncing ball over the word being sung. The authoritative position arrives from the player
-	// (~4Hz via ontimeupdate); we interpolate it with requestAnimationFrame for a smooth 60fps sweep.
+	// Word-timed lyrics overlay for the TV: a karaoke sweep with a ball over the word being sung. The
+	// authoritative position arrives from the player at ~4Hz and is interpolated to 60fps.
+	// See docs/FRONTEND.md#the-lyrics-reel.
 	import {
 		parseLyricsDoc,
 		activeLineIndex,
@@ -40,27 +39,22 @@
 		playing?: boolean; // interpolate forward only while actually playing
 		visible?: boolean; // hide during attract/interstitial
 		/**
-		 * Where this text came from — `chosenCandidate(media)` on the TV route. Drives the
-		 * auto-transcribed caption. Absent/null means provenance is UNKNOWN (a pre-candidate artifact),
-		 * which is rendered exactly like verified text: we will not assert either way.
+		 * Where this text came from. Absent/null means provenance is UNKNOWN, which renders exactly like
+		 * verified text — a source that cannot be traced is not asserted either way.
 		 */
 		provenance?: LyricsProvenance | null;
 		/** Seconds to run the highlight AHEAD of the audio — see LYRICS_LEAD_SEC for why. */
 		leadSec?: number;
 		/**
-		 * How the sung word is marked, and how the current lyric is lit. Both come from the room's
-		 * settings via `resolveLyricsPresentation`, which has ALREADY clamped them against what the
-		 * deployment's sync mode produces — so this component renders what it is handed and does not
-		 * re-derive the rule. Defaults reproduce the treatment that was hardcoded here.
+		 * `resolveLyricsPresentation` has ALREADY clamped both against what the deployment's sync mode produces,
+		 * so this component renders what it is handed and must not re-derive the rule.
 		 */
 		ball?: LyricsBallStyleId;
 		highlight?: LyricsHighlightId;
 		/**
-		 * The reel's TYPE. Read straight off the room — unlike `ball`/`highlight` these need no clamp,
-		 * because none of them depends on whether word timings exist.
-		 *
-		 * `scalePct` is a percent of the computed distance-based scale, NOT a size. See
-		 * DEFAULT_LYRICS_SCALE_PCT for why storing an absolute size would break on a resolution change.
+		 * Read straight off the room — unlike `ball`/`highlight` these need no clamp, since none depends on
+		 * whether word timings exist. `scalePct` is a PERCENT of the computed distance-based scale, not a size:
+		 * an absolute size breaks on a resolution change.
 		 */
 		scalePct?: number;
 		font?: LyricsFontId;
@@ -68,13 +62,9 @@
 		linesBefore?: number;
 		linesAfter?: number;
 		/**
-		 * The CURRENT SINGER's identity colour (`singers.color`), so the highlight that tracks the words
-		 * is painted in the colour of whoever is singing rather than the room-wide accent. Absent
-		 * or null — nobody is up, the roster has not arrived, the gallery — keeps the accent.
-		 *
-		 * Passed as the stored value, NOT pre-validated by the caller: `lyricHighlightColor` is the
-		 * sanitising boundary and it lives in $lib/contract, so every consumer of this component gets
-		 * the same rule instead of each call site deciding what an illegible colour means.
+		 * The CURRENT SINGER's identity colour, passed as the STORED value rather than pre-validated:
+		 * `lyricHighlightColor` is the sanitising boundary, so every consumer gets the same rule instead of each
+		 * call site deciding what an illegible colour means.
 		 */
 		singerColor?: string | null;
 	}
@@ -99,24 +89,16 @@
 	let fetched = $state<LyricsDoc | null>(null);
 	let loadedRef: string | undefined;
 	/*
-	 * Which ref's fetch has SETTLED — resolved or failed. Reactive, unlike `loadedRef`, because the
-	 * no-lyrics notice below is derived from it.
-	 *
-	 * This exists to keep one honest distinction that `doc === null` cannot make on its own: "this song
-	 * has no words and never will" versus "the artifact is still in flight". Both render nothing, but
-	 * only the first may say so on screen — a notice that flashed during every song's load would be
-	 * worse than the silence it replaces. `undefined` means nothing has settled for the current ref.
+	 * Which ref's fetch has SETTLED. Reactive, unlike `loadedRef`, because the no-lyrics notice derives from
+	 * it. It keeps the one distinction `doc === null` cannot make: "this song has no words" versus "the
+	 * artifact is still in flight". Both render nothing, but only the first may SAY so.
 	 */
 	let settledRef = $state<string | undefined>(undefined);
 	// pre-parsed doc wins (gallery/tests); otherwise use whatever the fetch produced
 	const doc = $derived(docProp ?? fetched);
 
-	// Wall-clock ANCHOR: the moment `positionSec` last ticked in. `now` is a reactive clock the rAF
-	// loop below advances for a smooth sweep. Crucially neither is the drawn position — the position is
-	// DERIVED from them by `drawPosition`, which ignores the clock entirely while paused. So a
-	// backgrounded tab (throttled/stopped rAF) has no accumulated position to lose: see lyrics-position.ts
-	//. `anchoredAt` is a plain local re-set on each authoritative tick; `now` is $state so
-	// the derived position tracks it while playing.
+	// Neither IS the drawn position — `drawPosition` derives it and ignores the clock while paused, so a
+	// backgrounded tab with a stopped rAF has no accumulated position to lose.
 	let anchoredAt = 0;
 	let now = $state(0);
 	$effect(() => {
@@ -125,32 +107,26 @@
 		anchoredAt = performance.now();
 		now = anchoredAt;
 	});
-	// The position the reel and highlight are drawn at — a PURE function of `positionSec` (plus the
-	// clock only while playing). Paused → exactly `positionSec`; no rAF state backs it.
+	// Paused -> exactly `positionSec`. No rAF state backs it.
 	const displayPos = $derived(drawPosition({ positionSec, playing, anchoredAtMs: anchoredAt, nowMs: now }));
 
-	// Fetch + parse the lyrics artifact when the ref changes (once per song). Skipped if a doc prop
-	// was supplied directly (dev gallery / tests).
+	// Fetch + parse the lyrics artifact on a ref change (once per song).
 	$effect(() => {
 		const ref = lyricsRef;
 		if (docProp) return;
 		if (!ref) {
 			fetched = null;
 			loadedRef = undefined;
-			// No artifact at all: nothing is in flight, so this song is settled-with-no-words the moment
-			// we see it. This is the dominant no-lyrics case — an align job that never ran (no
-			// WhisperX-capable worker) settles the media's lyrics gate as done with no `lyricsRef`.
+			// No artifact at all: nothing is in flight, so the song is settled-with-no-words immediately.
+			// This is the dominant no-lyrics case — an align job that never ran.
 			settledRef = undefined;
 			return;
 		}
 		if (ref === loadedRef) return;
 		loadedRef = ref;
 		settledRef = undefined;
-		// Clear the previous song's doc on the ref CHANGE, not only when the ref goes falsy. Without
-		// this the derived `doc` keeps the old artifact until the async fetch resolves, so for one
-		// frame after an entry change the reel renders the PREVIOUS song's lyrics under the NEW song's
-		// title. `show` (below) already no-ops on a null doc, so rendering nothing for that frame is
-		// correct. See the reel-anchor note (F3).
+		// Clear on the ref CHANGE, or the derived `doc` keeps the old artifact until the fetch resolves and one
+		// frame renders the PREVIOUS song's lyrics under the new song's title.
 		fetched = null;
 		let cancelled = false;
 		fetch(`/media/${ref}`)
@@ -172,11 +148,8 @@
 		};
 	});
 
-	// Smoothly advance the shown position between authoritative ticks by ticking the reactive CLOCK,
-	// not the position. `displayPos` is derived from `now` (above), and `drawPosition` reads the clock
-	// only while playing — so if this loop is throttled or stopped (a backgrounded tab), the paused
-	// reel is unaffected because its position does not depend on `now` at all. There is no accumulator
-	// here to drift back to 0. Runs only while playing; paused needs no frames.
+	// Advance the CLOCK, never the position: a throttled or stopped loop leaves the paused reel untouched
+	// because its position does not depend on `now`. No accumulator here to drift back to 0.
 	$effect(() => {
 		if (!playing) return;
 		let raf = 0;
@@ -188,32 +161,20 @@
 		return () => cancelAnimationFrame(raf);
 	});
 
-	// The position the HIGHLIGHT uses: the real playback position plus the lead. displayPos itself stays
-	// honest so anything else reading it is unaffected.
+	// The HIGHLIGHT's position: playback position plus the lead. `displayPos` itself stays honest.
 	const cuePos = $derived(displayPos + leadSec);
 	const lineIdx = $derived(doc ? activeLineIndex(doc.lines, cuePos) : -1);
 	const curLine = $derived(doc && lineIdx >= 0 ? doc.lines[lineIdx] : null);
 	const ballWord = $derived(curLine ? activeWordIndex(curLine, cuePos) : -1);
 	const show = $derived(visible && !!curLine);
 	/*
-	 * SAY that a song has no words, instead of implying it with an empty stage.
-	 *
-	 * The silence this replaces was the loudest half of a real report: three defects were live on the
-	 * TV at once and the stage explained none of them, so "the karaoke text isn't showing" was
-	 * indistinguishable from a broken renderer, a broken pipeline and a CSS regression. A song whose
-	 * align step never ran plays perfectly and shows nothing, and `{#if show && doc && curLine}` below
-	 * had no `{:else}` — absence had no on-screen representation anywhere.
-	 *
-	 * Deliberately narrow, so it cannot fire on the normal blank frames:
-	 *   • `visible` — never on the attract/lobby screen, which has no song at all.
-	 *   • `!doc` — a song WITH words that is merely between lines (curLine null) stays blank, which is
-	 *     correct and is most of a song's running time.
-	 *   • settled — `!lyricsRef` means no artifact exists to wait for; otherwise the fetch for THIS ref
-	 *     must have finished, so the notice cannot flash during a load.
+	 * SAY that a song has no words, instead of implying it with an empty stage. Deliberately narrow so it
+	 * cannot fire on normal blank frames: `!doc` lets a song WITH words that is merely between lines stay
+	 * blank, and the settled check means the notice can never flash during a load.
 	 */
 	const noLyrics = $derived(visible && !doc && (!lyricsRef || settledRef === lyricsRef));
-	// Reel scrolling: measure where the current row sits and place it. Measured (not row*height) so a
-	// wrapped line cannot drift the whole column out of alignment.
+	// Reel scrolling: MEASURE where the current row sits, rather than row*height — a wrapped line would
+	// otherwise drift the whole column out of alignment.
 	let viewportEl = $state<HTMLElement | null>(null);
 	let reelEl = $state<HTMLElement | null>(null);
 	let reelOffset = $state(0);
@@ -221,33 +182,14 @@
 		const row = reelEl?.querySelector<HTMLElement>('.row.current');
 		if (!row || !viewportEl) return;
 		/*
-		 * CENTRED is only correct when the row counts match.
+		 * CENTRED is only correct when the row counts MATCH: with the row centred you cannot show 1 before and 3
+		 * after at any viewport height, so asymmetry moves the ANCHOR. The sign is easy to get backwards — wanting
+		 * MORE lines AFTER means the current line sits HIGHER, so a positive bias pushes it DOWN.
 		 *
-		 * Centring the current row makes "equal rows above and below" a geometric consequence rather
-		 * than a choice — with it centred you CANNOT show 1 before and 3 after at any viewport height.
-		 * So asymmetry has to move the anchor, not the height.
-		 *
-		 * The sign matters and is easy to get backwards (it was, first time): wanting MORE lines AFTER
-		 * means the current line must sit HIGHER, to leave room below it. So the bias is
-		 * before-minus-after, and a positive result pushes the current line down.
-		 *
-		 * `rowHeight` is read from the DOM rather than computed from the em, because the scale is a
-		 * clamp() the browser resolves and a wrapped row is taller than one line — the same reason the
-		 * offset itself is measured.
+		 * `band` must be the CLIPPED `clientHeight`, and each edge with context rows FADES one row, so the readable
+		 * region is the band MINUS those ramps — pass the rendered depths or the sung row parks in a ramp. The cap
+		 * mirrors the stylesheet exactly. See docs/FRONTEND.md#the-lyrics-reel.
 		 */
-		// The reel is clipped to a max-height cap (see the stylesheet), so the height the current row is
-		// actually seen through is `viewportEl.clientHeight`, not the derived row-count height the bias was
-		// sized against. `reelOffset()` applies the asymmetric bias AND clamps the result to keep the sung
-		// row inside that visible band — the whole of the visible-band rule lives in that clamp, so it is a pure,
-		// unit-tested function rather than inline maths here.
-		// The reel FADES one row (--lyrics-row-h, 1.9em) to transparent at each edge that has context
-		// rows, so the region a singer can actually read is the band minus those two ramps. Pass the
-		// rendered ramp depths in px so the clamp targets that unmasked window, not the raw band — else the
-		// sung row parks congruent with a ramp and renders fainter than the line after it.
-		//
-		// oneRow is 1.9em resolved on a real row (line-height is `var(--lyrics-row-h)`), and the depth is
-		// capped by the SAME `min(row-h, (band - row-h) / 2)` the stylesheet applies (see --lyrics-fade-*),
-		// so JS and CSS agree on the window. On/off keys on the same >0 flags that drive the mask vars.
 		const oneRow = parseFloat(getComputedStyle(row).lineHeight) || row.offsetHeight;
 		const fadeCap = Math.max(0, Math.min(oneRow, (viewportEl.clientHeight - oneRow) / 2));
 		reelOffset = reelOffsetFor({
@@ -262,17 +204,14 @@
 	}
 	$effect(() => {
 		void lineIdx; // re-measure on every line change
-		// Re-measure when the row counts move too: the bias and the viewport height both change, and a
-		// settings write can land mid-song.
+		// The row counts move the bias AND the viewport height, and a settings write can land mid-song.
 		void linesBefore;
 		void linesAfter;
 		measureReel();
 	});
-	// Re-measure on any SIZE change too, not just a line change. A row's height is not constant: the
-	// current row renders inline-block word spans while the others render plain text, so the column's
-	// geometry shifts the moment a line becomes current — which silently drifted the reel out of centre
-	// (caught by measuring: ~11px per change, accumulating over a song). Also covers window resize and
-	// late font loading.
+	// A row's height is NOT constant: the current row renders inline-block word spans while the others
+	// render plain text, so the column's geometry shifts the moment a line becomes current (~11px per
+	// change, accumulating over a song). Also covers window resize and late font loading.
 	$effect(() => {
 		if (!reelEl) return;
 		const ro = new ResizeObserver(() => measureReel());
@@ -280,51 +219,28 @@
 		return () => ro.disconnect();
 	});
 	const unverified = $derived(isAutoTranscribed(provenance));
-	/**
-	 * Whether to render the current line as individual word spans at all.
-	 *
-	 * Only the `word` treatment needs them. Under `line`/`off` the plain-text branch is both cheaper
-	 * and the reason no second renderer exists — and it keeps the row a single text node, so the
-	 * ResizeObserver has less to re-measure per line change.
-	 */
+	/** Only the `word` treatment needs spans; plain text keeps the row one text node for the ResizeObserver. */
 	const wordLevel = $derived(highlight === 'word');
 	/*
-	 * The type, as custom properties on the root, so the stylesheet keeps owning the geometry and this
-	 * component only supplies numbers.
-	 *
-	 * `--lyrics-rows` is the load-bearing one: the viewport height was a hardcoded 9.5em because it was
-	 * 5 rows of 1.9em leading, and that constant is exactly what a row-count setting invalidates.
+	 * The type as custom properties on the root, so the stylesheet keeps owning the geometry.
+	 * `--lyrics-rows` is the load-bearing one: the viewport height is DERIVED from the row count.
 	 */
 	const rowCount = $derived(linesBefore + 1 + linesAfter);
 	const fontStack = $derived(getLyricsFont(font)?.stack ?? 'inherit');
 	const caseTransform = $derived(getLyricsCase(textCase)?.transform ?? 'none');
 	/*
-	 * WHOSE colour the highlight paints. `null` means "no singer colour applies" — nobody is up,
-	 * the roster has not arrived, or the stored value is not a legible identity colour — and the reel
-	 * keeps `--accent2`, which is what `--reel-singer`'s declaration in the stylesheet already is.
-	 *
-	 * That is why the custom property is APPENDED CONDITIONALLY below rather than always written: the
-	 * CSS default is the real fallback, so there is exactly one place the accent is named and no
-	 * `var(--x, var(--accent2))` chain to drift out of step with it.
+	 * `null` means no singer colour applies, and the reel keeps `--accent2`. APPENDED CONDITIONALLY below
+	 * rather than always written, so the CSS default is the real fallback and the accent is named once.
 	 */
 	const singerHighlight = $derived(lyricHighlightColor(singerColor));
 	/*
-	 * WHICH PART colour the current line paints. The worker's diarization writes an
-	 * abstract `part` letter ("A", "B") on each line of a CONFIDENT duet, and NOTHING on a solo or a
-	 * song it could not split. `duetPartColors` maps those letters onto distinct, legible
-	 * `SINGER_COLORS` — the same identity-dot palette the singer colour draws from, gated by the
-	 * same `isLegibleSingerColor` floor — so two singers see which lines are theirs in the app's
-	 * established vocabulary.
+	 * WHICH PART colour the current line paints. The worker's diarization writes an abstract `part` letter on
+	 * each line of a CONFIDENT duet and nothing on a solo, and `duetPartColors` maps those onto distinct
+	 * legible `SINGER_COLORS` through the same `isLegibleSingerColor` floor the singer colour uses.
 	 *
-	 * The map is derived per DOC (parts and their colour assignment are a property of the song, not
-	 * the frame); `partColor` picks out the CURRENT line's colour. It is `null`/undefined for an
-	 * undiarized song — no line carries a part, the map is empty — so `--reel-part` is not written and
-	 * the reel keeps its single-colour path, rendering EXACTLY as today. That is the owner's fallback,
-	 * reached by absence, mirroring the worker.
-	 *
-	 * Part colour LAYERS OVER singer colour: on a duet the line's part is the honest cue (whose line
-	 * it is), so `--reel-part` overrides `--reel-singer`; off a duet it is absent and `--reel-singer`
-	 * (else `--accent2`) shows through. One property, appended conditionally, same discipline as the part-colour layering.
+	 * Derived per DOC, because parts belong to the song rather than the frame. `null` on an undiarized song,
+	 * so `--reel-part` is never written and the reel keeps its single-colour path. Part colour LAYERS OVER
+	 * singer colour: on a duet the line's part is the honest cue.
 	 */
 	const partColors = $derived(duetPartColors(doc?.lines));
 	const partColor = $derived(
@@ -344,12 +260,9 @@
 {#if show && doc && curLine}
 	<div class="lyrics hl-{highlight}" class:unverified={unverified} role="presentation" style={typeStyle}>
 		<!--
-			A SCROLLING REEL, not a two-slot swap. Previously the current line was replaced in place and
-			the "next" line jumped up into it, which read as a hard cut on every line change. Here every
-			line is a persistent keyed node in one column and only the column's transform changes, so the
-			browser animates the scroll for free and the singer keeps the line they just sang in view.
-			The offset is MEASURED from the DOM rather than computed as rows x height, because a long
-			lyric can still wrap to two rows and fixed-height maths would drift out of alignment.
+			A SCROLLING REEL, not a two-slot swap. Every line is a persistent keyed node in one column and only
+			the column transform changes, so the browser animates the scroll for free and the singer keeps the
+			line they just sang in view.
 		-->
 		<div class="viewport" bind:this={viewportEl}>
 			<div class="reel" bind:this={reelEl} style="transform: translateY({reelOffset}px)">
@@ -365,18 +278,15 @@
 							{/each}
 						{:else}
 							<!--
-								The plain-text branch. It already existed as the fallback for a line-timed doc, and
-								a room choosing `line`/`off` reuses it rather than adding a second renderer — the
-								whole reason this feature is small. `.row.current` carries the line-level treatment.
+								The plain-text branch, shared by a line-timed doc and the `line`/`off` settings, so there is no
+								second renderer. `.row.current` carries the line-level treatment.
 							-->
 							{l.text}
 						{/if}
 						{#if l.romanization}
 							<!--
-								SECOND SCRIPT: a Chinese record ships the pinyin alongside the
-								characters, so someone who cannot read Hanzi can still sing along. Shown ONLY when
-								the source provided it; a single-script line renders exactly as before. Display-only
-								and dimmer than the original — the characters are the words, this is the aid.
+								SECOND SCRIPT: shown ONLY when the source provided it. Display-only and dimmer than the original —
+								the characters are the words, this is the aid.
 							-->
 							<div class="romanization">{l.romanization}</div>
 						{/if}
@@ -387,14 +297,12 @@
 	</div>
 {:else if noLyrics}
 	<!--
-		NO WORDS FOR THIS SONG. A plain say, not a button — there is nothing a tap can fix here, which
-		is exactly what distinguishes it from the autoplay hint on the route. It reuses `.lyrics`'s own
-		box so it inherits the reserved chrome band (`bottom: var(--tv-chrome-h)`) and therefore cannot
-		collide with the lower-third or the join corner, and it is centred where the words would be —
-		the singer looks in one place and finds either lyrics or the reason there are none.
+		NO WORDS FOR THIS SONG. A say, not a button — nothing a tap can fix, which is what distinguishes it
+		from the autoplay hint. It reuses `.lyrics`'s box so it inherits the reserved chrome band and cannot
+		collide with the lower-third or the join corner.
 
-		`role="status"` + `aria-live` so a screen reader announces it once; `presentation` would hide
-		the one piece of information on the stage.
+		`role="status"` + `aria-live` so a screen reader announces it once; `presentation` would hide the
+		only information on the stage.
 	-->
 	<div class="lyrics no-lyrics" role="status" aria-live="polite" style={typeStyle}>
 		<span class="nl-head">No lyrics for this one</span>
@@ -404,17 +312,12 @@
 
 <style>
 	.lyrics {
-		/* CENTRED, not bottom-anchored. A processed song plays an instrumental with no picture to avoid
-		   covering, so lyrics belong in the middle of the screen where they read from across a room;
-		   `bottom: 14%` left them crowding the lower-third and the join card. `inset` + flex centering
-		   keeps a wrapped 2-line lyric visually centred instead of growing downward off-balance. */
+		/* CENTRED, not bottom-anchored: a processed song has no picture to avoid, so lyrics belong where they
+		   read from across a room. `inset` + flex centring keeps a wrapped 2-line lyric visually centred. */
 		position: absolute;
-		/* NOT `inset: 0`. The bottom is pulled up by the reserved chrome band the join/QR corner and the
-		   now-playing lower-third occupy, so the reel's box ends where the cards begin and the two can
-		   never overlap. Because the box stays `justify-content: center`, reserving that band shrinks it
-		   and RAISES the centreline into the freed upper space — the "compress the lyrics, move the
-		   centreline up" the user asked for, achieved structurally with no new setting. Top/left/right
-		   are unchanged. */
+		/* NOT `inset: 0`. The bottom is pulled up by the reserved chrome band the join corner and the lower-third
+		   occupy, so the reel's box ends where the cards begin. Because the box stays centred, reserving that band
+		   also RAISES the centreline into the freed space. */
 		top: 0;
 		left: 0;
 		right: 0;
@@ -425,96 +328,57 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.7em;
-		/* Safe-area token, not a hardcoded 6%: an edge inset the whole TV surface shares one source of
-		   truth, so a future overscan change propagates here instead of leaving the lyrics wider than
-		   every other edge-anchored element. */
+		/* Safe-area token, not a percentage: every edge-anchored element on the TV shares one inset. */
 		padding: 0 var(--tv-safe-x);
 		text-align: center;
 		pointer-events: none;
-		/* The black wash that lifts the words off the video. Tokenised to --scrim-strong (the 0.85 alpha
-		   this used is exactly that token's value): the tree had grown five different black-wash alphas
-		   for this one effect, and this was one of them. Not a legibility risk — it darkens BEHIND the
-		   glyphs, it does not touch the pure-white ink itself. */
+		/* The black wash that lifts the words off the video. It darkens BEHIND the glyphs, so it is not a
+		   contrast risk for the pure-white ink. */
 		text-shadow: 0 2px 18px var(--scrim-strong);
-		/* The outline that keeps the words legible on ANY background. The soft glow above is a blurred
-		   shadow — it lifts the ink off a dark video, but it dissolves against a mid-tone stage colour of
-		   similar brightness, which is exactly the field a hue-only background paints. A hard stroke does
-		   not: it is a crisp edge regardless of what is behind it.
+		/* The outline that keeps the words legible on ANY background. The glow above is a blurred shadow and
+		   dissolves against a mid-tone stage colour of similar brightness — exactly the field a hue-only
+		   background paints — so a hard stroke is what lets the stage carry any colour with no brightness bound.
 
-		   `paint-order: stroke fill` is load-bearing. The default paints the fill first and the stroke
-		   ON TOP, so a stroke this wide would eat into the thin parts of the glyph and thicken the type.
-		   Reversing the order paints the stroke BEHIND the fill, so the outline only ever sits outside the
-		   letterform and the white ink stays its full width.
-
-		   Width is in `em`, not px, for the same reason --tv-lyric is: the reel adapts to the screen, so a
-		   pixel stroke would read heavy at 720p and hairline at 4K. --scrim-strong reuses the same black
-		   wash the glow already uses — one dark-outline source of truth, not a new colour. */
+		   `paint-order: stroke fill` is LOAD-BEARING: the default paints the stroke on top of the fill and eats
+		   the thin parts of each glyph. Width in `em`, or it reads heavy at 720p and hairline at 4K. */
 		-webkit-text-stroke: 0.06em var(--scrim-strong);
 		paint-order: stroke fill;
 		/*
-		 * THE FOUR COLOURS THE REEL CAN PAINT, as variables — because provenance and highlight are two independent
-		 * axes, and competing selectors combine two axes badly. Written as rules of equal specificity they broke in
-		 * opposite directions: the amber provenance tint out-specified the word ladder, so a sung and an unsung word
-		 * on an ASR line measured the SAME colour and word highlighting had stopped existing there, while the same
-		 * tint LOST to the line treatments on nothing but source order, so those showed no provenance at all.
+		 * THE FOUR COLOURS THE REEL CAN PAINT, as variables, because provenance and highlight are INDEPENDENT axes
+		 * and competing selectors combine them badly: as rules of equal specificity the amber tint out-specified the
+		 * word ladder while LOSING to the line treatments on source order, so both broke at once. As variables,
+		 * provenance sets WHICH colours and the rules below say WHERE.
 		 *
-		 * As variables there is nothing to out-specify: provenance sets WHICH colours, the rules below say WHERE
-		 * they go. Adding a provenance state is one override block; adding a treatment is one rule that reads these.
-		 *
-		 * Pure white and the 0.66 alpha stay LITERAL: white is the maximum-contrast state over video and has no
-		 * token (--ink is deliberately not pure white, so swapping would REDUCE contrast at three metres), and the
-		 * alpha IS the "not yet" cue.
+		 * Pure white and the 0.66 alpha stay LITERAL: `--ink` is deliberately not pure white, so tokenising would
+		 * REDUCE contrast at three metres, and the alpha IS the "not yet" cue.
 		 */
 		--reel-current: #fff;
 		--reel-ahead: rgba(255, 255, 255, 0.66);
 		--reel-done: #fff;
 		/*
-		 * WHOSE colour the highlight is. The DEFAULT is the room accent, and this declaration is
-		 * the single place that fallback is named: the component appends `--reel-singer` to its inline
-		 * style ONLY when the current singer has a legible identity colour, so an absent roster, an
-		 * empty stage, the dev gallery and an illegible stored value all land here and render exactly
-		 * what they rendered before this feature existed.
-		 *
-		 * The two highlight colours read it rather than naming `--accent2` themselves, which is what
-		 * keeps the `word` and `line` treatments agreeing about whose colour is showing — the reason
-		 * this is one variable and not two overrides.
-		 *
-		 * Legibility is NOT re-derived here and that is the owner's ruling, not an omission:
-		 * the hue is kept and the reel's own `-webkit-text-stroke` above carries the words over any
-		 * field, stage colour or video frame alike. The floor a colour must clear to be an identity
-		 * colour at all is enforced upstream by `lyricHighlightColor`.
+		 * The DEFAULT is the room accent, and this declaration is the single place that fallback is named. Both
+		 * highlight colours read the CHAIN rather than naming `--accent2` themselves, which is what keeps `word`
+		 * and `line` agreeing about whose colour is showing. Legibility is NOT re-derived here: the hue is kept
+		 * and the stroke above carries the words over any field.
 		 */
 		--reel-singer: var(--accent2);
 		/*
-		 * WHICH PART's colour the current line paints. Layered ON TOP of `--reel-singer`: the
-		 * component appends `--reel-part` to its inline style ONLY when the current line carries a
-		 * `part` on a confident duet, so an undiarized song, a solo, and the dev gallery all fall
-		 * through to `--reel-singer` (itself `--accent2` unless a singer colour is up) and render
-		 * exactly what they rendered before this feature existed. This is the single place the duet
-		 * fallback is named, the same discipline `--reel-singer` uses for its fallback one line up.
-		 *
-		 * `--reel-line` and `--reel-now` read THIS rather than `--reel-singer` so the `word` and
-		 * `line` treatments agree about which colour is showing, and adding the part axis is one
-		 * default plus a redirected reference — no competing selector, nothing to out-specify.
+		 * Layered ON TOP of `--reel-singer`, appended only when the current line carries a `part` on a confident
+		 * duet, so an undiarized song falls through unchanged. `--reel-line` and `--reel-now` read THIS rather
+		 * than `--reel-singer`, so the two treatments cannot disagree about which colour is showing.
 		 */
 		--reel-part: var(--reel-singer);
 		--reel-line: var(--reel-part);
 		--reel-now: var(--reel-part);
 	}
 	/*
-	 * Unverified text is tinted WARM AMBER rather than set in italic: the singer reads the line and simultaneously
-	 * sees it does not look like the confident white of every other song, so the meaning arrives without a warning
-	 * line to ignore.
+	 * Unverified text is tinted WARM AMBER rather than set in italic, so the meaning arrives without a warning
+	 * line to ignore, and deliberately NOT dimmed — these are still the words to sing from.
 	 *
-	 * Deliberately NOT dimmed — these are still the words to sing from, so making them harder to read would punish
-	 * the singer for a provenance problem. Amber is legible on the dark stage (#ffe6b8 on #0b0b12 is well past
-	 * 4.5:1) and is the palette's caution family.
-	 *
-	 * `--reel-now` is deliberately NOT overridden: the active word answers WHERE the singer is, which is a
-	 * different question from whether the text is trustworthy — and the marker above it is `--accent2` regardless,
-	 * so recolouring the word left a pink dot over a white word. It is also what keeps a singer's own colour on the
-	 * words they are singing on an ASR song. `--reel-line` IS overridden, for the mirror reason: it colours the
-	 * whole current lyric, so leaving it alone meant the `line` treatment showed no provenance.
+	 * `--reel-now` is deliberately NOT overridden: the active word answers WHERE the singer is, a different
+	 * question from whether the text is trustworthy, and the marker above it is `--accent2` regardless, so
+	 * recolouring the word leaves a pink dot over a white word. `--reel-line` IS overridden for the mirror
+	 * reason: it colours the whole current lyric, so leaving it alone shows no provenance.
 	 */
 	.lyrics.unverified {
 		--reel-current: #ffe6b8;
@@ -523,21 +387,9 @@
 		--reel-line: #ffe6b8;
 	}
 	/*
-	 * Uniform row size, differentiated by COLOUR not scale. Growing the current line would reflow the
-	 * column mid-animation and fight the transform; keeping every row the same height makes the scroll
-	 * exact, and pink/white against grey is already a stronger cue than size.
-	 */
-	/*
-	 * THE NO-WORDS SAY. Shares `.lyrics`'s box (so it inherits the reserved chrome band and the safe-x
-	 * inset, and cannot collide with the lower-third or the join corner) and its stroke/shadow pair, so
-	 * it stays legible over any video frame or stage colour exactly as the words do.
-	 *
-	 * Deliberately much smaller than a lyric line: this is a status, not something to sing. It must read
-	 * at three metres and then be ignored, so it is sized off the same `--tv-lyric` tier the reel uses —
-	 * never a px value, which would read heavy at 720p and hairline at 4K — and held well under it. The
-	 * literal whites match the reel's own convention (see `--reel-current` / `--reel-ahead`: `--ink` is
-	 * deliberately not pure white and would REDUCE contrast at that distance), and the alpha is the
-	 * "this is an aside" cue.
+	 * THE NO-WORDS SAY. Shares `.lyrics`'s box and its stroke/shadow pair, so it stays legible over any frame.
+	 * Deliberately much smaller than a lyric line — a status, not something to sing — and sized off the same
+	 * `--tv-lyric` tier rather than a px value, which would read heavy at 720p and hairline at 4K.
 	 */
 	.no-lyrics {
 		gap: 0.35em;
@@ -556,16 +408,8 @@
 
 	.viewport {
 		/*
-		 * The reel's own tier, times the room's preference.
-		 *
-		 * A MULTIPLIER, not a replacement: the token is what makes the reel adapt to the screen, so a
-		 * stored pixel size would render wrong the moment the TV's resolution changed. `--lyrics-scale`
-		 * is bounded well away from 0 in $lib/contract for the same reason.
-		 *
-		 * --tv-lyric replaced an inline clamp(3.1rem, 6.4vh, 6rem) here. The reel and the corner chrome
-		 * now sit on separate ladders (see app.css): at 6.4vh the sung line wrapped to three rows on a
-		 * long lyric, which pushed the marked word off the optical centre — the thing the marker exists
-		 * to locate.
+		 * A MULTIPLIER, not a replacement: the token is what makes the reel adapt to the screen, so a stored pixel
+		 * size renders wrong the moment the resolution changes.
 		 */
 		font-size: calc(var(--tv-lyric) * var(--lyrics-scale, 1));
 		font-weight: 800;
@@ -573,51 +417,37 @@
 		text-transform: var(--lyrics-case, none);
 		width: 100%;
 		/*
-		 * Height is DERIVED from the row count, not a constant — it was 9.5em because that is five rows of 1.9em
-		 * leading, and the moment the counts became a setting that was a bug waiting to be seen.
-		 *
-		 * The mask FADES the outer rows rather than clipping them, which is what makes the reel read as a continuous
-		 * scroll. The stops are in `em` (one row deep at each edge), not the percentages they used to be: those were
-		 * tuned for exactly five rows, so at three a 13% stop reached into the current line and dimmed the words
-		 * being sung.
-		 *
-		 * An edge with NO context rows is not faded at all — with `linesBefore: 0` the current line IS the top row,
-		 * so fading the top edge dims the words being sung. That is why the two edges are separate variables.
+		 * Height is DERIVED from the row count. The mask FADES the outer rows rather than clipping them, which is what
+		 * makes the reel read as a continuous scroll; the stops are in `em` (one row per edge), not percentages,
+		 * which were tuned for five rows and at three reached into the current line. An edge with NO context rows is
+		 * NOT faded at all, which is why the two edges are separate variables.
 		 */
 		--lyrics-row-h: 1.9em;
 		/*
-		 * Each ramp is one row deep, BUT capped so the two ramps can never eat the whole box: at an extreme
-		 * Text size on a short panel `fadeTop + fadeBot` could exceed the height, leaving no fully-opaque
-		 * plateau for the sung row anywhere (F2). `min(row-h, (100% - row-h) / 2)` guarantees the
-		 * unmasked window `[fadeTop, height - fadeBot]` always holds at least one row. `100%` is this box`s
-		 * own (post-cap) height, so measureReel mirrors this exact cap in px against clientHeight.
+		 * Capped so the two ramps can never eat the whole box and leave no opaque plateau for the sung row.
+		 * `100%` is this box's own POST-CAP height, so measureReel mirrors this exact cap in px.
 		 */
 		--lyrics-fade-cap: min(var(--lyrics-row-h), calc((100% - var(--lyrics-row-h)) / 2));
 		--lyrics-fade-top: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-top-on, 1));
 		--lyrics-fade-bot: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-bot-on, 1));
 		height: calc(var(--lyrics-rows, 5) * var(--lyrics-row-h));
 		/*
-		 * A ceiling so an EXTREME setting cannot outgrow the freed space above the chrome band: at max scale with max
-		 * rows the derived height can exceed what remains, and capping lets the edge mask absorb the surplus rather
-		 * than the reel spilling back toward the cards.
+		 * A ceiling so an EXTREME setting cannot outgrow the freed space above the chrome band; the edge mask absorbs
+		 * the surplus rather than the reel spilling toward the cards.
 		 *
-		 * The cap is EXACTLY the parent band `100vh - --tv-chrome-h`. It must NOT subtract a further `--tv-safe-y`:
-		 * that box is `justify-content: center`, so charging one against its height buys only half of it as top
-		 * inset while removing a full one of reel — and the mirror it was paying for is already inside the band.
-		 * Measured at the default five rows, that extra subtraction hard-masked the second lookahead row mid-glyph
-		 * with unused height below it.
+		 * The cap is EXACTLY the parent band and must NOT subtract a further `--tv-safe-y`: the box is centred, so
+		 * charging one against its height buys only half of it as top inset while removing a full one of reel — and
+		 * `--tv-chrome-h` already contains one.
 		 *
-		 * It DOES bite at the defaults on short panels (five rows want ~79.8vh against ~76vh of band at 720p), and
+		 * It DOES bite at the defaults on short panels (five rows want ~79.8vh against ~76vh of band at 720p);
 		 * seating all five there needs the type budget itself to change.
 		 */
 		max-height: calc(100vh - var(--tv-chrome-h));
 		overflow: hidden;
 		/*
-		 * DELIBERATE LITERALS, not scrims. A mask reads only the LUMINANCE/alpha of each stop, never the
-		 * hue — `#000`/`rgba(0,0,0,·)` here mean "fully visible" / "partly visible", they are an opacity
-		 * ramp for the edge fade, not the black wash that lifts text off video. Tokenising them to
-		 * --scrim-strong would silently change the fade (that token is 0.85, this ramp is a full-black
-		 * core with a 0.35 knee) and couple two unrelated effects. So these stay literal on purpose.
+		 * DELIBERATE LITERALS, not scrims. A mask reads only the LUMINANCE/alpha of each stop, so these are an
+		 * opacity ramp for the edge fade, NOT the black wash that lifts text off video — tokenising them would
+		 * change the fade and couple two unrelated effects.
 		 */
 		mask-image: linear-gradient(
 			to bottom,
@@ -639,19 +469,15 @@
 		);
 	}
 	.reel {
-		/* the whole animation: one transform, GPU-composited, never touching layout */
+		/* The whole animation: one transform, GPU-composited, never touching layout. */
 		transition: transform 0.42s cubic-bezier(0.22, 0.9, 0.24, 1);
 		will-change: transform;
 	}
 	.row {
 		/*
-		 * Loose leading is LOAD-BEARING: the ball is absolutely positioned above its word, so at tight
-		 * leading it landed on the previous wrapped line ("this" in "Is this the"). That is also why
-		 * leading is NOT a room setting — it would let a room silently break the marker.
-		 *
-		 * Reads the same variable the viewport's height is computed from, so the row leading and the row
-		 * count can never disagree. As an em it resolves against the row's own (inherited) font size, so
-		 * it means exactly what the bare `1.9` did.
+		 * Loose leading is LOAD-BEARING: the ball is absolutely positioned above its word, so at tight leading it
+		 * lands on the previous wrapped line. That is also why leading is NOT a room setting. Reads the same
+		 * variable the viewport height is computed from, so leading and row count cannot disagree.
 		 */
 		line-height: var(--lyrics-row-h, 1.9em);
 		max-width: 100%;
@@ -661,12 +487,8 @@
 	.row.past {
 		color: rgba(255, 255, 255, 0.2); /* already sung — present for continuity, not for reading */
 	}
-	/*
-	 * The romanization sub-row: the pinyin under a Chinese line. Smaller and dimmer than
-	 * the original script above it — the characters are the words being sung, this is a reading aid for
-	 * anyone who cannot read them. It inherits the row's color transition so it fades in step with its
-	 * line (upcoming / current / past) rather than sitting at one fixed brightness.
-	 */
+	/* Smaller and dimmer than the script above it, and it inherits the row's colour transition so it fades in
+	   step with its line rather than sitting at one fixed brightness. */
 	.romanization {
 		font-size: 0.62em;
 		line-height: var(--lh-snug);
@@ -675,27 +497,17 @@
 		letter-spacing: 0.01em;
 	}
 	/*
-	 * The current line, when it is rendered as ONE text node rather than word spans.
-	 *
-	 * That happens under `line`/`off`, and it also happens under `word` when the current line carries
-	 * no timed words (`normalize_lyrics` drops words the aligner left un-timed, so a poorly-aligned
-	 * line can reach the reel with an empty `words[]`). Without this rule that case inherited `.row`'s
-	 * 0.62 dim and the line being sung was indistinguishable from the ones coming up.
+	 * The current line when it is ONE text node — under `line`/`off`, and also under `word` when the line
+	 * carries no timed words (`normalize_lyrics` drops un-timed words, so a poorly aligned line reaches the
+	 * reel with an empty `words[]`). Without this rule that case inherits `.row`'s dim.
 	 */
 	.row.current {
 		color: var(--reel-current);
 	}
 	/*
-	 * LINE-LEVEL treatment. The `line` room setting lights the whole current lyric in the accent and
-	 * says nothing about position within it — which is the honest reading when word timings are patchy
-	 * (measured coverage runs 87-93% with real holes, and a stale word held for five seconds reads as
-	 * broken where a stale line does not).
-	 *
-	 * `off` deliberately gets NO accent: the reel's own contrast ladder — 0.62 upcoming, current at
-	 * full strength, 0.2 past — is what shows position, and an early change raised those dim states specifically
-	 * so they can be read rather than merely sensed. That is what makes a no-highlight read-along
-	 * viable at all, and it is why `off` needs no rule of its own now that `.row.current` carries the
-	 * current line's colour.
+	 * LINE-LEVEL treatment: `line` says nothing about position within the lyric, which is the honest reading when
+	 * word timings are patchy (measured coverage 87-93% with real holes). `off` deliberately gets NO accent: the
+	 * reel's contrast ladder is what shows position, and those dim states are set so they can be READ.
 	 */
 	.lyrics.hl-line .row.current {
 		color: var(--reel-line);
@@ -710,33 +522,22 @@
 		color: var(--reel-done); /* sung */
 	}
 	/*
-	 * WHOLE-WORD highlight, not a left-to-right fill.
-	 *
-	 * The fill was a lie dressed as precision: it interpolated a sweep across each word as though we
-	 * knew where inside the word the singer was, when all we have is a start and an end from the
-	 * aligner — and on ASR text those bounds are themselves approximate. A partial wipe therefore
-	 * animated made-up sub-word detail, and read as busy while telling the singer nothing.
-	 *
-	 * Three flat states say exactly what is known and no more: dim = not yet, PINK = sing this now,
-	 * white = done.
+	 * WHOLE-WORD highlight, not a left-to-right fill. A fill interpolates a sweep across each word as though
+	 * we knew where inside it the singer was, when all the aligner gives is a start and an end — approximate
+	 * ones on ASR text. Three flat states say exactly what is known.
 	 */
 	.word.active {
 		color: var(--reel-now);
 	}
-	/*
-	 * THE MARKER. One absolutely-positioned element per variant, so switching style never changes the
-	 * word's own box and cannot reflow the reel mid-song (the transform-only animation is the whole
-	 * reason the scroll is smooth).
-	 */
+	/* One absolutely-positioned element per variant, so switching style never changes the word's own box and
+	   cannot reflow the reel mid-song. */
 	.ball {
 		position: absolute;
 		left: 50%;
-		/* --accent2 is unconditionally defined in app.css, so the old `#7cf` fallback was dead code and
-		   a stray literal — the pink marker is theme-bound, it must ride the token. */
+		/* Theme-bound: the marker must ride the token, never a literal. */
 		color: var(--accent2);
 	}
-	/* Dot variants sit ABOVE the word. The loose 1.9 line-height above is load-bearing for this: at
-	   tight leading the dot lands on the previous wrapped row. */
+	/* Dot variants sit ABOVE the word, which is what makes the loose line-height above load-bearing. */
 	.ball.bounce,
 	.ball.steady {
 		top: -0.85em;
@@ -746,35 +547,24 @@
 	.ball.bounce {
 		animation: bounce 0.5s ease-in-out infinite alternate;
 	}
-	/*
-	 * `steady` is the same dot with no animation — for a wall-sized screen where a bouncing mark is
-	 * motion in the corner of the eye all song. Not a separate glyph: the point is that only the
-	 * movement differs.
-	 */
-	/*
-	 * `underline` is a BAR, not a glyph — hence the empty text node in the markup. A rule under the
-	 * word reads as position without adding anything above the line, which is what makes it the calm
-	 * option on a busy screen.
-	 */
+	/* `steady` is the same dot with no animation, for a wall-sized screen where a bouncing mark is motion in
+	   the corner of the eye all song. Not a separate glyph: only the movement differs. */
 	.ball.underline {
 		bottom: 0.42em;
 		width: 100%;
 		height: 0.07em;
 		border-radius: 0.04em;
 		transform: translateX(-50%);
-		/* Theme-bound like the dot marker above; --accent2 is always defined, the `#7cf` fallback was
-		   dead. */
+		/* Theme-bound like the dot marker above. */
 		background: var(--accent2);
 	}
 	@media (prefers-reduced-motion: reduce) {
-		/* Degrade to `steady` rather than removing the mark: the singer still needs to know which word
-		   it is. */
+		/* Degrade to `steady` rather than removing the mark: the singer still needs the word. */
 		.ball.bounce {
 			animation: none;
 		}
-		/* The reel's line-to-line transform slides the WHOLE full-width lyric column on every line
-		   change — the largest, most vestibular-triggering motion on the TV. Snap it instead: the row
-		   still moves to the right place, it just does not glide there. */
+		/* The line-to-line transform slides the WHOLE full-width lyric column — the largest, most
+		   vestibular-triggering motion on the TV. Snap it: the row still moves, it just does not glide. */
 		.reel {
 			transition: none;
 		}

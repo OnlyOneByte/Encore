@@ -1,13 +1,4 @@
-// Settings persistence across two scopes.
-//
-// GLOBAL is a singleton: separator and process policy belong to the deployment and its worker fleet.
-// ROOM is keyed by room id: pacing and a downward-only quality ceiling belong to one party, so
-// multi-room needs a row per room rather than a schema change.
-//
-// Both are read whole / written whole, and every write passes through the shared normalizers so an
-// untrusted payload degrades to valid values per-field instead of persisting garbage. Reads
-// re-normalize too: a checkpoint can be de-whitelisted between releases, and a stale stored pairing
-// must degrade rather than be served.
+// Settings persistence across two scopes: GLOBAL is a singleton (separator/process policy belongs to the deployment and its worker fleet); ROOM is keyed by room id (pacing and a downward-only quality ceiling belong to one party). Both are read/written whole through shared normalizers, so an untrusted payload degrades to valid values per-field instead of persisting garbage; reads re-normalize too, since a stale stored pairing must degrade rather than be served.
 
 import { eq } from 'drizzle-orm';
 import type { DB } from '../db/index';
@@ -27,7 +18,6 @@ const SINGLETON = 'singleton';
 export class SettingsRepository {
 	constructor(private readonly db: DB) {}
 
-	// ── global ────────────────────────────────────────────────────────────────
 	getGlobal(): GlobalSettings {
 		const row = this.db.select().from(globalSettings).where(eq(globalSettings.id, SINGLETON)).all()[0];
 		if (!row) return { ...DEFAULT_GLOBAL_SETTINGS };
@@ -47,8 +37,7 @@ export class SettingsRepository {
 
 	setGlobal(input: Partial<GlobalSettings> | null | undefined): GlobalSettings {
 		const current = this.getGlobal();
-		// Fall back to CURRENT values, not hardcoded defaults: rejecting one invalid field must not
-		// discard an unrelated choice the user already made.
+		// Fall back to CURRENT values, not hardcoded defaults: rejecting one invalid field must not discard an unrelated choice the user already made.
 		const next = normalizeGlobalSettings({ ...current, ...(input ?? {}) }, current);
 		this.db
 			.insert(globalSettings)
@@ -58,7 +47,6 @@ export class SettingsRepository {
 		return next;
 	}
 
-	// ── room ──────────────────────────────────────────────────────────────────
 	getRoom(roomId: string): RoomSettings {
 		const row = this.db.select().from(roomSettings).where(eq(roomSettings.roomId, roomId)).all()[0];
 		if (!row) return { ...DEFAULT_ROOM_SETTINGS };

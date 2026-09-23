@@ -1,27 +1,14 @@
-// Regression + wiring guard for PR3 -- the MASTER instrumental's loudness-normalization pulldown
-// must be applied at BOTH the native (`master.volume`) and routed (`masterGraph.setGain`) sites, and
-// must SURVIVE a transpose that builds the master graph.
+// Guard: the MASTER instrumental's loudness-normalization pulldown must be applied at BOTH the native
+// (`master.volume`) and routed (`masterGraph.setGain`) sites, and must SURVIVE a transpose.
 //
-// The shape is identical to the guide's guard (guide-gain-after-transpose.test.ts), and for the
-// identical reason: once a shift routes the master through WebAudio, `HTMLMediaElement.volume` is
-// bypassed and only the GainNode governs level; a freshly built PitchShiftGraph defaults desiredGain
-// to 1, so unless the level is re-applied when the graph is built, an attenuated song jumps to FULL
-// volume the moment anyone transposes. The master had NO level control at all before this PR, so this
-// is the site that carries the whole feature.
-//
-// Two halves:
-//   A. BEHAVIOURAL -- the real PitchShiftGraph primitive: a level set via setGain() BEFORE the graph
-//      is built lands in the GainNode once a shift builds it (the guide's carry, re-proven for the
-//      master because the feature leans on it).
-//   B. SOURCE-SCAN -- the level lives inside .svelte effects bun cannot execute, so a text scan proves
-//      the fix is WIRED at all three sites: the dedicated level effect (native + routed), the pitch
-//      effect's master branch (re-apply after build), and the per-song reset. Mutation traps: deleting
-//      any setGain(effectiveMasterLevel) call reds the matching test.
+// Same shape and same reason as the guide's guard: once a shift routes the master through WebAudio,
+// `HTMLMediaElement.volume` is bypassed and only the GainNode governs level, and a freshly built
+// PitchShiftGraph defaults its gain to 1 — so unless the level is re-applied when the graph is built, an
+// attenuated song jumps to FULL volume the moment anyone transposes. Three sites carry it: the dedicated
+// level effect (native + routed), the pitch effect's master branch, and the per-song reset.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';
-
-// -- A. Behavioural: a pre-set master level lands in the GainNode the moment the graph is built ----
 
 class StubNode {
 	connections: unknown[] = [];
@@ -100,8 +87,6 @@ function fakeEl(): HTMLMediaElement {
 }
 
 test('a master level set BEFORE the graph is built lands in the GainNode when a shift builds it', async () => {
-	// An attenuated song (gain 0.5) then a transpose: the pulldown must survive into the GainNode, not
-	// reset to full volume.
 	const graph = new PitchShiftGraph(fakeEl());
 	graph.setGain(0.5);
 	await graph.setShift(2);
@@ -112,29 +97,21 @@ test('a master level set BEFORE the graph is built lands in the GainNode when a 
 });
 
 test('control: WITHOUT the pre-set level, a freshly built master graph defaults to full volume', async () => {
-	// The state the bug leaves if the re-apply is missing: the graph builds at desiredGain 1, so an
-	// attenuated song plays at full volume once transposed. This makes the assertion above meaningful.
+	// The state a missing re-apply leaves, and the control that makes the assertion above meaningful.
 	const graph = new PitchShiftGraph(fakeEl());
 	await graph.setShift(2);
 	expect(graph.isRouted).toBe(true);
 	expect(lastCtx!.gains[0].gain.value).toBeCloseTo(1, 6);
 });
 
-// -- B. Source-scan: the master level is applied at all three sites --------------------------------
-
 function stripComments(s: string): string {
 	return s.replace(/[/][*][\s\S]*?[*][/]/g, '').replace(/(^|[^:])[/][/][^\n]*/g, '$1');
 }
 
-// SIBLING READ, now named explicitly. This guard used to live in src/lib/tv/, where
-// `at('src/lib/tv/TvPlayer.svelte')` meant "the player component next to me". Confirmed
-// present at this path before re-anchoring.
 const TV = read('src/lib/tv/TvPlayer.svelte');
 
 test('the level effect applies the master level at BOTH the native and routed sites', () => {
-	// The dedicated master-level $effect: `master.volume = effectiveMasterLevel` (native path) AND
-	// `masterGraph?.setGain(effectiveMasterLevel)` (routed path). Both, because WebAudio capture
-	// bypasses .volume once a shift exists. Deleting either line reds this.
+	// Both, because a WebAudio capture bypasses `.volume` once a shift exists. Deleting either line reds this.
 	const stripped = stripComments(TV);
 	const anchor = 'master.volume = effectiveMasterLevel';
 	const at = stripped.indexOf(anchor);
@@ -143,15 +120,13 @@ test('the level effect applies the master level at BOTH the native and routed si
 	expect(region).toMatch(/masterGraph[?][.]setGain[(]\s*effectiveMasterLevel\s*[)]/);
 });
 
-// The master branch of the pitch $effect: after `masterGraph = new PitchShiftGraph(v)` and
-// `masterGraph?.setShift(shift)`, it must re-apply the normalization level.
+// The pitch effect's master branch, from the build to the effect's closing `});`. That end anchor matters:
+// slicing to the guide branch `if (g) {` — which no longer exists — left the region ~80 chars long and blind
+// to the very re-applies it exists to check.
 function pitchEffectMasterRegion(s: string): string {
 	const anchor = 'if (needsShift(shift) && !masterGraph)';
 	const at = s.indexOf(anchor);
 	expect(at, 'expected the master graph build in the pitch effect').toBeGreaterThanOrEqual(0);
-	// From the build to the end of the effect. This used to stop at the guide branch `if (g) {`, which no
-	// longer exists (the second element is gone) — leaving the slice ~80 chars long and blind to the very
-	// re-applies it exists to check. Anchor on the effect's closing `});` instead.
 	const endAt = s.indexOf('\n\t});', at);
 	return s.slice(at, endAt >= 0 ? endAt : at + 900);
 }
@@ -160,14 +135,13 @@ test('guard: the pitch effect re-applies the master level after (re)building the
 	const region = stripComments(pitchEffectMasterRegion(TV));
 	expect(region).toMatch(/masterGraph\s*=\s*new PitchShiftGraph/);
 	expect(region).toMatch(/masterGraph[?][.]setShift[(]\s*shift\s*[)]/);
-	// The load-bearing line: without it, a transpose builds the master graph at desiredGain 1 and the
-	// pulldown evaporates (the exact shape the guide's guard pins, master-side).
+	// Without the re-apply a transpose builds the graph at gain 1 and the pulldown evaporates.
 	expect(region).toMatch(/masterGraph[?][.]setGain[(]\s*effectiveMasterLevel\s*[)]/);
 });
 
 test('guard: the per-song reset re-applies the master level in place (graph is reset, not detached)', () => {
-	// A song change resets the master graph in place with setShift(0); a graph defaults its gain to 1,
-	// so the level must be re-asserted here too, exactly as the guide is (setGain(effectiveGuide)).
+	// A song change resets the graph in place with setShift(0), and a reset graph is back at gain 1, so the
+	// level must be re-asserted here too — exactly as the guide is.
 	const stripped = stripComments(TV);
 	const anchor = 'void masterGraph?.setShift(0)';
 	const at = stripped.indexOf(anchor);
@@ -177,7 +151,7 @@ test('guard: the per-song reset re-applies the master level in place (graph is r
 });
 
 test('effectiveMasterLevel is derived clamped to [0,1] (attenuate-only, never a boost)', () => {
-	// The prop is clamped in the component too, so a route bug cannot push the master above unity.
+	// Clamped in the component too, so a route bug cannot push the master above unity.
 	const stripped = stripComments(TV);
 	expect(stripped).toMatch(
 		/effectiveMasterLevel\s*=\s*\$derived[(]\s*Math[.]max[(]0,\s*Math[.]min[(]1,\s*masterLevel[)][)]\s*[)]/
@@ -185,13 +159,12 @@ test('effectiveMasterLevel is derived clamped to [0,1] (attenuate-only, never a 
 });
 
 test('the TV route resolves masterLevel from the loudness gain and passes it to both slots', () => {
-	// The decision lives in the route (it owns the library catalog + the room toggle); the player is a
-	// pure applier. Prove the route wires the pure gain function to a per-slot masterLevel prop.
+	// The decision lives in the route, which owns the library catalog and the room toggle; the player is a
+	// pure applier.
 	const route = read('src/routes/tv/+page.svelte');
 	const src = stripComments(route);
 	expect(src).toMatch(/loudnessNormalizationGain[(]/);
 	expect(src).toMatch(/enabled:\s*settings[.]room[.]loudnessNormalization/);
-	// Per-slot resolution + both slot bindings.
 	expect(src).toMatch(/masterLevelA\s*=\s*\$derived/);
 	expect(src).toMatch(/masterLevelB\s*=\s*\$derived/);
 	expect(src).toMatch(/masterLevel=[{]masterLevelA[}]/);

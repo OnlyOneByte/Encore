@@ -2,29 +2,12 @@ import { expect, it } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PLAYHEAD_ALIGN_SEC, SEEK_JUMP_SEC, resumeSeekTarget, seekPlan } from '$lib/tv/playhead-sync';
 
-/*
- * WHAT THIS FILE REPLACED, because the deletion is the subject.
- *
- * This was `guide-sync.test.ts`, and most of it defended a drift governor that held a SECOND media
- * element (the isolated vocals) against the instrumental: a deadband that must not seek, a tempo trim
- * that must converge, a reseek escalation, a pre-roll lock-on taken on the guide's `canplay`, and a
- * measured per-song offset folded in at three call sites. Every one of those tests passed. The feature
- * was still audibly wrong in the room, and it could not be fixed by tuning any of them.
- *
- * The reason is worth keeping in the repo: the governor compared the two elements' reported
- * `currentTime`, which is the spec's official playback position and EXCLUDES each element's output
- * latency. Two independent decoders differ in exactly that quantity, so the governor read "aligned"
- * (drift inside the deadband → hold) while the ear heard an offset, and then correctly stopped
- * correcting. A green suite over a blind measurement is what let it ship.
- *
- * The guide now rides inside the master as channels 2/3 of one 4-channel file, so what remains to test
- * is the part that was never about the guide: whether a reported position is a real JUMP the master
- * should follow, or telemetry it should ignore. The last block guards the DELETION itself.
- */
+// guard: a reported position is either a real JUMP the master must follow or telemetry it must ignore. The
+// guide rides inside the master as channels 2/3 of one file, so there is exactly ONE element and no drift
+// governor — reported `currentTime` EXCLUDES each decoder's output latency, so comparing two elements reads
+// "aligned" while the ear hears an offset. The last block guards that deletion. See docs/GUARDS.md#tv.
 
 const TV_PLAYER = 'src/lib/tv/TvPlayer.svelte';
-
-// ── the jump decision ─────────────────────────────────────────────────────────────────────────────
 
 it('seekPlan moves the master on a real jump', () => {
 	for (const [from, to] of [
@@ -50,10 +33,10 @@ it('seekPlan uses the jump threshold as its boundary', () => {
 });
 
 it('seekPlan restarts a song playing under the jump threshold — the target-0 rewind is not telemetry', () => {
-	// A `restart` sets the reported position to 0 while the song plays on. From a currentTime UNDER
-	// SEEK_JUMP_SEC the move |masterSec - 0| is below the telemetry threshold, so the plain distance test
-	// never rewinds and the restart does nothing. Positions keyed to the constants so lowering
-	// SEEK_JUMP_SEC cannot silently route these through the DISTANCE clause and leave this rule untested.
+	// A `restart` sets the reported position to 0 while the song plays on, so from a currentTime UNDER
+	// SEEK_JUMP_SEC the move |masterSec - 0| is below the telemetry threshold and the plain distance test never
+	// rewinds. Positions keyed to the constants, so lowering SEEK_JUMP_SEC cannot route these through the
+	// DISTANCE clause and leave the rule untested.
 	for (const masterSec of [
 		PLAYHEAD_ALIGN_SEC + 0.01, // just past the tolerance, the smallest real rewind
 		SEEK_JUMP_SEC / 3,
@@ -69,8 +52,8 @@ it('seekPlan does not read ordinary telemetry as a restart just because 0 is nea
 	expect(seekPlan(0, 0)).toBe(false);
 	expect(seekPlan(PLAYHEAD_ALIGN_SEC / 2, 0)).toBe(false);
 	expect(seekPlan(PLAYHEAD_ALIGN_SEC, 0)).toBe(false); // the > boundary
-	// A NON-ZERO sub-threshold target distinguishes the rule (`target === 0`) from the banned
-	// relaxation (`target < SEEK_JUMP_SEC`): the latter would fire here, the rule must not.
+	// A NON-ZERO sub-threshold target separates the rule (`target === 0`) from the banned relaxation
+	// (`target < SEEK_JUMP_SEC`), which would fire here.
 	expect(seekPlan(0.9, 0.5)).toBe(false);
 	expect(seekPlan(1.0, 0.4)).toBe(false);
 });
@@ -82,11 +65,9 @@ it('seekPlan holds on a non-finite playhead or target rather than seeking on a g
 	expect(seekPlan(10, Infinity)).toBe(false);
 });
 
-// ── the cold-mount resume ─────────────────────────────────────────────────────────────────────────
-
 it('resumeSeekTarget resumes a fresh master to the room position, at any distance', () => {
-	// NOT subject to the jump threshold: a fresh element has no playhead to protect, so a reload 1s into
-	// a song must still resume rather than reading as sub-threshold telemetry.
+	// NOT subject to the jump threshold: a fresh element has no playhead to protect, so a reload 1s in must
+	// still resume rather than read as sub-threshold telemetry.
 	expect(resumeSeekTarget(0, 6)).toEqual({ seek: true, target: 6 });
 	expect(resumeSeekTarget(0, 1)).toEqual({ seek: true, target: 1 });
 	expect(resumeSeekTarget(0, 0.5)).toEqual({ seek: true, target: 0.5 });
@@ -101,8 +82,6 @@ it('resumeSeekTarget holds on a non-finite playhead or target', () => {
 	expect(resumeSeekTarget(NaN, 6).seek).toBe(false);
 	expect(resumeSeekTarget(0, NaN).seek).toBe(false);
 });
-
-// ── source guards: the wiring, and the deletion ───────────────────────────────────────────────────
 
 const src = read(TV_PLAYER);
 const seekEffect = src.split('function applySeek(seekTarget: number): void {')[1]?.split('\n\t}')[0] ?? '';
@@ -122,17 +101,15 @@ it('TvPlayer takes the seek decision from seekPlan, not an inline threshold', ()
 });
 
 it('TvPlayer reads every applySeek input through untrack, so an input never becomes a trigger', () => {
-	// `media` read as a tracked dep here is what once yanked a playing song's playhead back to a stale
-	// position whenever an unrelated process churned the catalog.
+	// `media` as a tracked dep here once yanked a playing song's playhead back whenever a process churned the catalog.
 	expect(seekEffect).toContain('untrack(() => master)');
 	expect(seekEffect).toContain('untrack(() => media)');
 	expect(seekEffect).toContain('untrack(() => active)');
 });
 
 it('TvPlayer re-runs the seek effect on every playback:state via a tracked seekRev', () => {
-	// A restart under the jump threshold writes 0 over 0, which a `$state` (strict `===`) never notifies,
-	// so `seekSec` alone would leave the effect asleep. Assert on CODE, not comments: a `seekRev`
-	// mentioned only in a comment registers no reactive dependency and would be mutation-blind.
+	// A restart under the jump threshold writes 0 over 0, which a `$state` (strict `===`) never notifies, so
+	// `seekSec` alone leaves the effect asleep. Asserted on CODE: a `seekRev` named only in a comment is no dependency.
 	expect(seekTrigger).not.toBe('');
 	const effectCode = seekTrigger.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 	expect(effectCode).toContain('seekRev');
@@ -142,16 +119,11 @@ it('TvPlayer re-runs the seek effect on every playback:state via a tracked seekR
 	expect(page).toContain('seekRev={seekRev}');
 });
 
-/*
- * THE DELETION GUARD. These are the assertions that keep the two-decoder guide from creeping back in as
- * an `if` somewhere in the player — which is how it arrived the first time. Each one names the artefact
- * whose reappearance would mean the drift class is back.
- */
+// The deletion guard: these keep the two-decoder guide from creeping back as an `if` somewhere in the player,
+// which is how it arrived the first time. Each names an artefact whose return would mean the drift class is back.
 it('TvPlayer mounts exactly ONE media element — a second <audio> is the two-decoder path returning', () => {
-	// Count ELEMENT BINDINGS in CODE. Two things defeat a naive scan: the header prose discusses the
-	// deleted second element by name (so a `<audio` substring count reads 22), and two comments quote
-	// `<audio bind:this={master}>` while explaining the master's lifetime (so an un-stripped binding scan
-	// reads three masters). Strip comments, then match.
+	// Count ELEMENT BINDINGS in CODE: the component's prose names the deleted second element, and two of its
+	// comments quote `<audio bind:this={master}>` while explaining the master's lifetime.
 	const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 	const bindings = [...code.matchAll(/bind:this=\{(\w+)\}/g)].map((m) => m[1]);
 	expect(bindings).toEqual(['master']);
@@ -167,8 +139,7 @@ it('TvPlayer has no drift governor, no pre-roll lock-on and no second graph', ()
 		'guideSettled', // the second buffer's readiness latch
 		'guideMountable'
 	]) {
-		// Comments may DISCUSS the deleted design (they should — that is the record of why). Assert on
-		// executable code only, so the history can stay written down without weakening the guard.
+		// Comments may DISCUSS the deleted design, so assert on executable code only.
 		const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 		expect(code).not.toContain(banned);
 	}

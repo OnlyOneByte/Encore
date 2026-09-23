@@ -1,48 +1,25 @@
 // @ts-check
 /*
- * P10 — SCALING & LEGIBILITY PROBE.
+ * P10 — SCALING & LEGIBILITY. Measured pixels, never declarations:
+ *   1. TV type at 720p/1080p/1440p/2160p — does it scale UP as well as down, or pin at a clamp max?
+ *   2. Every transient/error overlay's scrollWidth vs viewport width (right-edge clipping).
+ *   3. Each TV type token's resolved px against the ten-foot floor documented in app.css.
+ *   4. Remote at 320px — horizontal scroll, and every control whose box is under 44px.
+ *   5. .app-shell width vs viewport at 1024/1280/1440/2400 (a capped grid leaving a void).
+ *   6. Contrast from COMPUTED colours against WCAG AA (4.5:1; 3:1 for large text).
+ *   7. Overscan — anything important inside the 5% region a real television crops.
  *
- * The rendered pixels, at every size that matters. Answers seven questions the source alone cannot:
- *
- *   1. Does the TV scale UP as well as down? Some clamps could be pinning type at their max, so a
- *      4K screen renders the same font-pixels as 1080p. Reports measured px for the QR, lyrics
- *      current-word, and the lower-third who-is-singing line at 720p / 1080p / 1440p / 2160p.
- *   2. Does the JoinBadge "Join QR unavailable" panel overflow the right edge at 1920x1080 with
- *      127.0.0.1 as the origin? User reported this — probe measures every transient/error state
- *      overlay for scrollWidth vs viewport width and clientWidth vs its own bounding box.
- *   3. Is every TV surface legible at ten feet? Reports each TV type token's rendered px at 1080p
- *      against the ten-foot floor documented in app.css.
- *   4. Does the remote work at 320px without horizontal scroll or clipped controls? Probes
- *      documentElement.scrollWidth > clientWidth, and reports every button/link whose bounding
- *      rect is under 44px in either dimension.
- *   5. At laptop widths, does the layout use the space or does the grid cap and leave a void?
- *      Reports .app-shell width and viewport width at 1024 / 1280 / 1440 / 2400.
- *   6. Contrast — measured against COMPUTED colours from the DOM, not eyeballed. Reads
- *      backgroundColor / color pairs on every visible text node with length > 0 and reports any
- *      failing WCAG AA (4.5:1 normal, 3:1 for text >= 18px or >= 14px bold).
- *   7. Overscan / safe area on the TV — is anything important within the ~5% region a real
- *      television crops? Reports the bounding rect of the lower-third, JoinBadge corner card,
- *      and any interstitial state against the 5% safe box.
- *
- * WRITES SCREENSHOTS TO $SCRATCH/shots/p10/. Changes NO other file in the tree.
+ * Captures only: writes screenshots + findings.json under $SCRATCH/shots/p10/ and exits 0 whatever
+ * it saw, so its output is the verdict. See docs/E2E.md#probes.
  */
 
 import { connect, sleep } from '../driver.mjs';
-import { openNowPlaying } from '../lib/phone.mjs';
+import { openNowPlaying, openBrowseFromHome } from '../lib/phone.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SEL } from '../contract.ts';
-// The one shared post-join sequence for reaching the search box (tests/e2e/lib/phone.mjs). Imported
-// because the remote pass measures the search targets too, and a second private way to reach them
-// field is exactly the drift the helper was extracted to prevent.
-import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
- * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
- * the fuzz.mjs pattern). Browser/Page derive from driver.mjs's own return types; every
- * page.evaluate() result is protocol-shaped and stays loose (driver.mjs types evaluate as Promise<any>),
- * cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ r: number, g: number, b: number, a?: number }} Rgb
@@ -51,6 +28,8 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 const PORT = Number(process.env.PORT || 5230);
 const SCRATCH = process.env.SCRATCH || `${process.env.KIROCREW_SCRATCH || '/tmp'}/e2e-${PORT}`;
 const OUT = join(SCRATCH, 'shots', 'p10');
+/** Time for the TV to react to a nowplaying:changed frame before it is measured. */
+const NOWPLAYING_SETTLE_MS = 500;
 mkdirSync(OUT, { recursive: true });
 
 /** @type {any[]} */ // each record() call carries a differently-shaped measurement object
@@ -61,8 +40,7 @@ const record = (obj) => {
 	console.log(JSON.stringify(obj));
 };
 
-// WCAG relative luminance / contrast — feed it the CSS rgb strings.
-/** @param {string | null | undefined} s @returns {Rgb | null} */
+/** Parses a CSS rgb()/rgba() string. @param {string | null | undefined} s @returns {Rgb | null} */
 function parseRgb(s) {
 	if (!s) return null;
 	const m = String(s).match(/rgba?\(([^)]+)\)/i);
@@ -87,13 +65,11 @@ function contrastRatio(fg, bg) {
 	return (hi + 0.05) / (lo + 0.05);
 }
 
-// Boot the browser once; a fresh guest per page opens its own cookie jar and its own idle state.
 const browser = await connect();
 
-// A process has already run before this probe — a probe must not require another. To reach the TV's
-// "playing" screen we drive a real phone through join → queue → play in a hidden browser tab, because
-// enqueue/play do not exist as REST endpoints — the room's transport lives on the websocket. This
-// gives us the CORNER placement of JoinBadge (the during-playback treatment), not just the HERO one.
+// Reaching the TV's "playing" screen needs a real phone driven through join → queue → play: enqueue
+// and play exist only on the websocket, not as REST endpoints. It also gives the CORNER placement of
+// JoinBadge (the during-playback treatment) rather than only the HERO one.
 async function driveRoomToPlaying() {
 	const phone = await browser.newPage();
 	await phone.viewport(430, 900, 1);
@@ -105,7 +81,6 @@ async function driveRoomToPlaying() {
 		`[...document.querySelectorAll('button')].find(b=>/start singing/i.test(b.textContent||''))?.click()`
 	);
 	await phone.waitFor(`location.pathname === '/'`, { timeout: 5000 });
-	// Add the ready song to the queue (whichever action is offered — .add on ready songs).
 	await phone.waitForSelector(SEL.songRow, { timeout: 6000 });
 	const clicked = await phone.evaluate(`(() => {
 		const row = document.querySelector(${JSON.stringify(SEL.songRow)});
@@ -116,12 +91,9 @@ async function driveRoomToPlaying() {
 		return add ? 'add' : (sing ? 'sing' : 'nothing');
 	})()`);
 	console.log('phone queue action:', clicked);
-	// Wait for the queue to actually contain a row.
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`, { timeout: 6000 });
-	// Hit play/pause — the band's disc, which is the app's only one and is on screen at BOTH sheet heights.
-	// The sheet is still pulled up first: this probe goes on to measure the drawer's own controls (the ±
-	// keycaps, the guiding track, restart/skip beside the disc) at 200% text, and they are below the fold
-	// while it is collapsed.
+	// Pull the sheet up before tapping: the drawer's own controls (± keycaps, guiding track,
+	// restart/skip) are below the fold while it is collapsed, and a tap must land on a visible element.
 	await openNowPlaying(phone);
 	await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.bandTransport)})?.click()`);
 	await sleep(1200);
@@ -133,10 +105,7 @@ try {
 } catch (err) {
 	record({ phase: 'setup', warning: `could not reach playing state via phone: ${err}` });
 }
-// Give the TV a beat to react to nowplaying:changed.
-await sleep(500);
-
-// ── TV: measurements at 4 sizes ─────────────────────────────────────────────────────────────────
+await sleep(NOWPLAYING_SETTLE_MS);
 
 const TV_SIZES = [
 	{ label: '720p', w: 1280, h: 720 },
@@ -148,11 +117,9 @@ const TV_SIZES = [
 /** @param {string} label @param {number} w @param {number} h */
 async function measureTv(label, w, h) {
 	const page = await browser.newPage();
-	// deviceScaleFactor=1 keeps the pixel measurement clean and the screenshot within Kiro's 2000px
-	// per-side read limit (we downscale via viewport itself, not DSR).
+	// deviceScaleFactor=1: the downscale is the viewport itself, so a measured px is a real px.
 	await page.viewport(w, h, 1);
 	await page.goto(`http://127.0.0.1:${PORT}/tv`);
-	// Wait for either the badqr operator notice, a QR image, or the playing overlay.
 	await page.waitFor(
 		`(document.querySelector(${JSON.stringify(SEL.badQr)}) || document.querySelector('img[alt="QR code to join Encore"]') || document.querySelector(${JSON.stringify(SEL.lowerThird)})) != null`,
 		{ timeout: 8000 }
@@ -196,21 +163,18 @@ async function measureTv(label, w, h) {
 				'--tv-safe-x': cssvar('--tv-safe-x'),
 				'--tv-safe-y': cssvar('--tv-safe-y')
 			},
-			// QR image (either heroed or corner-placed)
 			qrImage: (() => {
 				const el = document.querySelector('img[alt="QR code to join Encore"]');
 				if (!el) return null;
 				const cs = getComputedStyle(el);
 				return { ...rect(el), computedWidth: cs.width, computedHeight: cs.height };
 			})(),
-			// Lyrics current-word (only present when playing)
 			lyricsWord: (() => {
 				const el = document.querySelector(${JSON.stringify(SEL.activeWord)}) || document.querySelector(${JSON.stringify(SEL.lyrics)});
 				if (!el) return null;
 				const cs = getComputedStyle(el);
 				return { ...rect(el), fontSizePx: parseFloat(cs.fontSize) };
 			})(),
-			// Lower third
 			lowerThird: rect(document.querySelector(${JSON.stringify(SEL.lowerThird)})),
 			lowerThirdName: (() => {
 				const el = document.querySelector(${JSON.stringify(SEL.nowNameScoped)});
@@ -222,7 +186,6 @@ async function measureTv(label, w, h) {
 				if (!el) return null;
 				return { ...rect(el), fontSizePx: parseFloat(getComputedStyle(el).fontSize) };
 			})(),
-			// The badqr operator notice (attract & lobby screens on 127.0.0.1 origin)
 			badqr: (() => {
 				const el = document.querySelector(${JSON.stringify(SEL.badQr)});
 				if (!el) return null;
@@ -240,10 +203,8 @@ async function measureTv(label, w, h) {
 					overflowsSelf: el.scrollWidth > el.clientWidth
 				};
 			})(),
-			// Every direct text descendant of .badqr, so we can see if a child word ran off the box.
-			// The .badqr universal-child read below stays a LITERAL (quarantined in contract.test.ts,
-			// Group E): a bare universal token has no source anchor the SEL-resolution guard can
-			// model, so it cannot live in SEL. The container itself is SEL.badQr, used two lines down.
+			// The universal-child read stays a LITERAL: a bare universal token has no source anchor the
+			// SEL-resolution guard can model, so it cannot live in SEL (quarantined, Group E).
 			badqrChildren: [...document.querySelectorAll('.badqr *')].map((el) => {
 				const r = el.getBoundingClientRect();
 				const parent = el.closest(${JSON.stringify(SEL.badQr)});
@@ -258,7 +219,6 @@ async function measureTv(label, w, h) {
 					escapesParent: pr ? r.right > pr.right + 0.5 : null
 				};
 			}),
-			// Transient states
 			stateNext: rect(document.querySelector(${JSON.stringify(SEL.stateNext)})),
 			stateError: rect(document.querySelector(${JSON.stringify(SEL.stateError)})),
 			stateWaiting: rect(document.querySelector(${JSON.stringify(SEL.stateWaiting)})),
@@ -273,23 +233,12 @@ async function measureTv(label, w, h) {
 		return measurements;
 	})()`);
 
-	// Also measure contrast on interesting text nodes at THIS size.
 	const contrastPairs = await page.evaluate(`(() => {
-		// Contrast target pairs [foreground, background]. In-scope selectors for Group E are
-		// interpolated from SEL so the guard reads them from the contract; out-of-scope descendant
-		// selectors (".lower-third .ls-artist/.ls-key", ".attract .brand/.jt-url",
-		// ".corner .t/.u") keep their literals — they carry a space so the guard's shape rule never
-		// flagged them, and they belong to selectors tracked separately, not this group. The attract
-		// instruction line reads SEL.stageHeadline (".phrase-line", the rotating phrase) — repointed
-		// from the earlier ".idle-head", and the typed address from ".idle-url" to the split panel's
-		// ".jt-url".
+			// [foreground, background]. In-scope hooks interpolate from SEL so the guard reads them off the
+			// contract; descendant literals carry a space, which is why the shape rule never flagged them.
+			// NO BACKTICK anywhere in this template literal — one would close it and break parsing.
 		const targets = [
 			[${JSON.stringify(SEL.badQrTitle)}, ${JSON.stringify(SEL.badQrTitle)}],
-			// RE-POINTED (2026-09-21): the unreachable state is a ONE-LINE notice beside a QR that still
-			// renders, so there is no body paragraph and no address inside it. What is left to contrast-check
-			// is the notice's own two spans -- the state and the remedy -- which badQrTitle and badQrFix
-			// already name, so the retired badQrBody pair collapses into those rather than needing a third.
-			// (No backticks in here: this comment lives inside a template literal, so one would close it.)
 			[${JSON.stringify(SEL.badQrFix)}, ${JSON.stringify(SEL.badQrFix)}],
 			[${JSON.stringify(SEL.nowNameScoped)}, ${JSON.stringify(SEL.nowNameScoped)}],
 			[${JSON.stringify(SEL.nowSongScoped)}, ${JSON.stringify(SEL.nowSongScoped)}],
@@ -309,7 +258,6 @@ async function measureTv(label, w, h) {
 			const bg = document.querySelector(selBg);
 			if (!fg) continue;
 			const csFg = getComputedStyle(fg);
-			// Walk up parents to find a non-transparent background.
 			let bgEl = bg || fg;
 			let bgColor = 'rgba(0,0,0,0)';
 			while (bgEl && bgEl !== document.documentElement) {
@@ -317,7 +265,6 @@ async function measureTv(label, w, h) {
 				if (c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent') { bgColor = c; break; }
 				bgEl = bgEl.parentElement;
 			}
-			// If we exit the loop with nothing, use body's computed bg or fall back to bg2.
 			if (bgColor === 'rgba(0,0,0,0)') bgColor = getComputedStyle(document.body).backgroundColor;
 			out[selFg] = {
 				fg: csFg.color,
@@ -330,7 +277,6 @@ async function measureTv(label, w, h) {
 		return out;
 	})()`);
 
-	// Compute contrast externally so we don't spam the page eval with math.
 	/** @type {Record<string, any>} */
 	const contrastReport = {};
 	for (const [sel, info] of Object.entries(contrastPairs)) {
@@ -362,9 +308,7 @@ async function measureTv(label, w, h) {
 	});
 }
 
-// The song is now queued and (we asked the room to) playing. The FIRST TV visit will land on 'playing'
-// once the browser reaches it; some frames may still be in interstitial. That is real state, not a
-// probe defect — the frame is what the frame is.
+// Some frames legitimately land on the interstitial rather than 'playing'. That is real state.
 for (const s of TV_SIZES) {
 	try {
 		await measureTv(s.label, s.w, s.h);
@@ -373,14 +317,8 @@ for (const s of TV_SIZES) {
 	}
 }
 
-// Also drive an EXPLICIT attract screen — no queue, no singers — to see the join screen at each size.
-// Do this by opening /tv with a fresh page BEFORE any join. But we already have a live queue in this
-// probe run. Instead, capture the "join badge only" view by hitting /tv when the current entry is
-// consumed. Simpler: skip the currently-playing turn and see if a fresh state renders.
-// PRACTICAL: capture the LOBBY page at each size on a route the probe already has painted.
-// (For a purely-attract capture, run this probe on a fresh instance.)
-
-// ── REMOTE: measurements at 8 widths ────────────────────────────────────────────────────────────
+// The attract screen is not reachable once this run has a live queue; for purely-attract frames, run
+// this probe against a fresh instance.
 
 const REMOTE_SIZES = [
 	{ label: '320w', w: 320, h: 568 }, // smallest phone
@@ -396,12 +334,10 @@ const REMOTE_SIZES = [
 async function measureRemote(label, w, h) {
 	const page = await browser.newPage();
 	await page.viewport(w, h, 1);
-	// Join first so the page lands on the room UI rather than the join landing.
 	await page.goto(`http://127.0.0.1:${PORT}/join`);
 	await page.waitForSelector('input[placeholder^="e.g."]', { timeout: 5000 });
 	const uniq = `P10-${label}-${Date.now().toString(36).slice(-4)}`;
 	await page.fill('input[placeholder^="e.g."]', uniq);
-	// Wait for submit, then click.
 	await page.waitFor(`[...document.querySelectorAll('button')].some(b=>/start singing/i.test(b.textContent||''))`);
 	await page.evaluate(
 		`[...document.querySelectorAll('button')].find(b=>/start singing/i.test(b.textContent||''))?.click()`
@@ -419,7 +355,6 @@ async function measureRemote(label, w, h) {
 		const overflow = { horizontal: document.documentElement.scrollWidth > document.documentElement.clientWidth,
 		                   scrollWidth: document.documentElement.scrollWidth,
 		                   clientWidth: document.documentElement.clientWidth };
-		// Every interactive control's bounding box for tap-size check
 		const controls = [...document.querySelectorAll('button, a[href], input, select, textarea, [role="button"], [role="radio"], [role="tab"], summary')].filter(el => el.offsetParent !== null);
 		const undersized = controls.map(el => {
 			const r = el.getBoundingClientRect();
@@ -433,21 +368,10 @@ async function measureRemote(label, w, h) {
 		return { viewport: { w: innerWidth, h: innerHeight }, shell: shellRect, overflow, undersized, clippedRight };
 	})()`);
 
-	// Contrast pairs on remote — cover the primary controls and body text.
 	const contrastPairs = await page.evaluate(`(() => {
-		// Remote contrast targets, and this array is now the QUEUE surface only. Group E interpolates the
-		// in-scope class hooks from SEL; bare tags (h1/h2/p/a) and descendant selectors (.qrow .t) are
-		// not selector hooks the guard tracks here. A later repoint moved the dead '.row .a' to
-		// '.row .byline' and dropped the dead '.filter-chip' and '.b' targets (no component declares
-		// either class).
-		//
-		// WHAT LEFT THIS ARRAY, AND WHY IT MOVED RATHER THAN BEING DROPPED. These targets only resolve with
-		// a QUERY up: the search field (was '.searchbox input' / '.searchbox button'), the row title/byline,
-		// both row actions and the row chip. On the resting queue view every one of them would be a read
-		// that silently skips, which is exactly the dead-target class G1 exists to red on. They are in the
-		// search-view array below, measured in the state that renders them, so the coverage is unchanged
-		// rather than quietly lost. (For one release that state was a separate route, '/find'; the array
-		// split survives the merge because it was never about the route — it was about the query.)
+		// The QUEUE surface only. In-scope hooks interpolate from SEL; bare tags and descendant selectors
+		// are not hooks the guard tracks. Targets that need a typed QUERY to render live in the search array
+		// below, because a querySelector miss here would skip silently and the probe would still exit 0.
 		const targets = ['h1','h2','.qrow .t',${JSON.stringify(SEL.dashCard)},'p','a'];
 		const out = {};
 		for (const sel of targets) {
@@ -469,27 +393,11 @@ async function measureRemote(label, w, h) {
 		return out;
 	})()`);
 	/*
-	 * THE SEARCH TARGETS, IN THE SAME PASS AND AT THE SAME SIZE.
-	 *
-	 * These are the targets this probe most needs at 200% text: a text FIELD (the only one on the remote),
-	 * the control that clears it, and the song row's title / byline / actions / chip. They lived on `/`,
-	 * then on the `/find` route, and are back on `/` since that route was merged into home (2026-09-22) —
-	 * so the read follows the SURFACE rather than a file, which is what stops it reporting nothing at all
-	 * (a `querySelector` miss makes the loop `continue` and the probe still exits 0).
-	 *
-	 * NO NAVIGATION ANY MORE, and a query is still typed first — for the same reason as before: with an
-	 * empty box home lists the queue and the library (ready rows only), so the raw-row action and the clear
-	 * control never render and two targets would skip. `SEL.search` / `SEL.songRow` come from the contract,
-	 * so this inherits the same anchor guarantees as everything else here.
-	 *
-	 * Its own try/catch: a search hiccup must not cost the queue-view measurements already in hand, which
-	 * are the whole record for this viewport size.
+	 * A typed query first, and its own try/catch. With an empty box home lists only the queue and the
+	 * ready library, so the raw-row action and the clear control never render and those targets would
+	 * skip silently; and a search hiccup must not cost the queue-view measurements already in hand.
 	 */
 	try {
-		// The shared path to the field, called defensively. The field is already on screen here, which is
-		// the helper's own documented no-op case (it probes for the box first and returns), so this costs one
-		// short probe — and it keeps this probe on the ONE helper every other driver reaches search through,
-		// rather than growing a second private sequence here.
 		await openBrowseFromHome(page);
 		await page.fill(SEL.search, 'caroline');
 		await page
@@ -497,10 +405,7 @@ async function measureRemote(label, w, h) {
 			.catch(() => {});
 		await sleep(300);
 		const findPairs = await page.evaluate(`(() => {
-			// The find surface's own contrast targets. Same shape as the queue array above: SEL hooks are
-			// interpolated, and the literals that stay literals are descendant selectors ('.findbox input',
-			// the field inside its sticky box; '.row .t' / '.row .byline') — none of which the driver ban's
-			// shape rule flags, and all of which G1 resolves against real source.
+			// Same shape as the queue array above; the literals that stay literals are descendant selectors.
 			const targets = ['h1','.findbox input',${JSON.stringify(SEL.clearSearch)},'.row .t','.row .byline',${JSON.stringify(SEL.addTurn)},${JSON.stringify(SEL.sing)},${JSON.stringify(SEL.chip)},'p'];
 			const out = {};
 			for (const sel of targets) {
@@ -521,8 +426,7 @@ async function measureRemote(label, w, h) {
 			}
 			return out;
 		})()`);
-		// Namespaced rather than merged flat: `h1` and `p` exist on both surfaces, and one key overwriting
-		// the other would report one measurement as if it covered both.
+		// Namespaced, not merged flat: h1 and p exist on both surfaces and one key would overwrite the other.
 		for (const [k, v] of Object.entries(findPairs)) contrastPairs['/ search ' + k] = v;
 	} catch (err) {
 		contrastPairs['/ search (unreachable)'] = { fg: '', bg: '', fontSizePx: 0, fontWeight: '', text: String(err) };
@@ -554,7 +458,6 @@ for (const s of REMOTE_SIZES) {
 	}
 }
 
-// Write consolidated JSON so the report can be built without re-running the browser.
 writeFileSync(join(OUT, 'findings.json'), JSON.stringify(findings, null, 2));
 console.log(`\nWROTE ${findings.length} findings to ${OUT}/findings.json`);
 

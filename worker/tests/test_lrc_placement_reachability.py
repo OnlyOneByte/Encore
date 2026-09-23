@@ -128,7 +128,6 @@ def test_the_baseline_series_is_only_populated_on_the_suspect_path():
     assert baselines_of(sel.publish), "the suspect path is supposed to publish the baseline too"
 
 
-# ── THE FIX: baselines are carried forward for their own sake ──────────────────────────────────
 #
 # `LyricsCtx.baselines` is written by GradeAndSelect from the PRE-selection pool and read by TimeTexts, so
 # the placement input no longer depends on a baseline happening to survive into `publish`. These are the

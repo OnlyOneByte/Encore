@@ -1,45 +1,18 @@
-// The two knobs on the LYRICS half of a process: which model reads the words, and how those words get
-// timestamps. The third and fourth axes alongside separator engine/model and fetcher.
-//
-// WHY THIS EXISTS. Both were hardcoded on the worker with no way to change them from the deployment.
-// `DEFAULT_MODEL = "base"` in whisperx.py was the ASR model for every box forever, and dial_home.py
-// never passed a model at all, so even an env var would not have reached it. Timing had no knob:
-// forced alignment was the only path, with line sync reachable ONLY as a failure fallback inside an
-// `except`. So an operator who could see the words were wrong on the TV had nothing to turn.
-//
-// These are GLOBAL, not room-scoped, for the same reason the separator and fetcher are: they are
-// properties of the box and its worker fleet — model weights that have to be downloaded and RAM that
-// has to hold them. Two parties on one core cannot want different Whisper models any more than they
-// can want different downloaders.
-//
-// Mirrors separators.ts and fetchers.ts deliberately: a registry rather than a bare union, so a
-// stored setting can be validated against it, the settings page renders a picker from one source,
-// and a new model cannot be added without a label and a stated tradeoff.
+// The two PRODUCTION knobs on the lyrics half of a process, plus the PRESENTATION knobs further down.
+// Scopes: docs/SERVER.md#settings-scopes. Registry rules: docs/SERVER.md#registries-and-the-quality-ladder.
 
 import { makeRegistry } from '../core/registry';
 
-/**
- * A faster-whisper model token, passed straight to `whisperx.load_model()`.
- *
- * The canonical five sizes only. Deliberately NOT included: the `.en` English-only variants (a
- * karaoke box gets handed songs in any language, and the ASR tier detects rather than assumes) and
- * the `distil-*` checkpoints (worth measuring, but an unverified token here becomes a process that fails
- * at model load, which is exactly the failure mode the separator whitelist exists to prevent).
- */
+/** A faster-whisper model token, passed straight to the loader. The canonical sizes only — the English-only
+ *  variants are absent because songs arrive in any language, and unverified checkpoints because an unverified
+ *  token is a process that fails at model load. */
 export type AsrModelId = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 
 export interface AsrModel {
 	id: AsrModelId;
 	label: string;
-	/**
-	 * Parameter count as published by OpenAI. A FACT about the checkpoint, and the honest thing to
-	 * expose: it is the only cost signal available without measuring, and it is what the download and
-	 * the resident memory scale with.
-	 *
-	 * It is NOT a measured process cost on any box — contrast `SeparatorCost` in separators.ts, which
-	 * carries a real rtFactor plus the box and date it was measured on. Do not add an rtFactor here
-	 * until someone has actually timed these on the target hardware.
-	 */
+	/** Published parameter count — a FACT about the checkpoint, never a measured cost. Do not add an rtFactor
+	 *  here until someone has timed these on the target hardware. */
 	params: string;
 	/** Coarse relative cost, for a picker that has to say something before anything is measured. */
 	speed: 'fastest' | 'fast' | 'moderate' | 'slow' | 'slowest';
@@ -84,7 +57,7 @@ export const ASR_MODELS: readonly AsrModel[] = [
 	}
 ];
 
-/** Matches whisperx.py's DEFAULT_MODEL, so exposing this setting changes no existing behaviour. */
+/** Must match the worker's own default, so a frame that omits the field resolves the same either side. */
 export const DEFAULT_ASR_MODEL: AsrModelId = 'base';
 
 const asrRegistry = makeRegistry(ASR_MODELS);
@@ -97,12 +70,7 @@ export function isValidAsrModel(id: string): id is AsrModelId {
 	return asrRegistry.isValid(id);
 }
 
-/**
- * How a song's words get their timestamps.
- *
- * Both modes are code paths that already existed — this setting only makes the second one REACHABLE
- * on purpose instead of solely as the landing spot of an `except` in whisperx.py's `_time_one`.
- */
+/** How a song's words get their timestamps. */
 export type SyncModeId = 'forced' | 'lines';
 
 export interface SyncMode {
@@ -144,25 +112,12 @@ export function isValidSyncMode(id: string): id is SyncModeId {
 	return syncModeRegistry.isValid(id);
 }
 
-// ── presentation ────────────────────────────────────────────────────────────
-// The two knobs above are PRODUCTION: they decide what timing data a process produces, and they are
-// global because they cost model weights and RAM. The two below are PRESENTATION: they decide how
-// data that already exists gets drawn on one room's TV, and they are room-scoped for the same reason
-// `tvProgressStyle` is — a staging choice for one party's screen.
-//
-// They live here rather than beside `tvProgressStyle` in settings.ts because they are COUPLED to
-// `SYNC_MODES` above: a room can only render at or below the granularity the global mode produced.
-// Keeping the registry and the constraint it is checked against in one file is what stops the two
-// drifting. The resolver that applies the clamp is `resolveLyricsPresentation` in settings.ts,
-// which is where `EffectiveSettings` lives.
+// PRESENTATION, from here down. These registries live beside `SYNC_MODES` because they are COUPLED to it: a
+// room may only render at or below the granularity the global mode produced, and keeping the registry beside
+// its constraint is what stops the two drifting. The clamp is applied by `resolveLyricsPresentation`.
 
-/**
- * The mark that tracks the word being sung.
- *
- * `needsWords` is the load-bearing field, not documentation: every marker except `off` has to sit on
- * a specific word, so under `syncMode: 'lines'` there is no word to sit on and the mark is not merely
- * ugly but unrenderable. The resolver reads this rather than re-deriving the rule per style.
- */
+/** The mark that tracks the word being sung. `needsWords` is a load-bearing FIELD the resolver reads, not
+ *  documentation. See docs/SERVER.md#registries-and-the-quality-ladder. */
 export type LyricsBallStyleId = 'bounce' | 'steady' | 'underline' | 'off';
 
 export interface LyricsBallStyle {
@@ -212,17 +167,9 @@ export function isValidLyricsBall(id: unknown): id is LyricsBallStyleId {
 	return lyricsBallRegistry.isValid(id);
 }
 
-/**
- * How the current lyric is lit.
- *
- * `granularity` mirrors `SyncMode.granularity` deliberately — that is the axis the clamp compares
- * along. A `'word'` treatment under a `'line'` sync mode is asking for data that was never computed.
- *
- * Deliberately NOT included: a left-to-right sweep across each word. All an aligner gives us is a
- * start and an end per word, so a partial wipe animates sub-word detail nobody measured — and on ASR
- * text those bounds are themselves approximate. `SYNC_MODES` above states what forced alignment buys
- * as "per-word highlighting", which is word-level marks, not sub-word ones.
- */
+/** How the current lyric is lit. `granularity` MIRRORS `SyncMode.granularity`, which is the axis the clamp
+ *  compares along. A left-to-right sweep is deliberately absent: an aligner gives only a start and an end per
+ *  word, so a partial wipe animates sub-word detail nobody measured. */
 export type LyricsHighlightId = 'word' | 'line' | 'off';
 
 export interface LyricsHighlight {
@@ -266,47 +213,17 @@ export function isValidLyricsHighlight(id: unknown): id is LyricsHighlightId {
 	return lyricsHighlightRegistry.isValid(id);
 }
 
-/**
- * Display lead, in ms: how far AHEAD of the audio the highlight runs.
- *
- * Replaces the hardcoded `LYRICS_LEAD_SEC = 0.3` in the TV's lyrics.ts, whose own comment already
- * argued for this scope ("a presentation preference that can be retuned per room without recomputing
- * anything"). A singer has to SEE a word before singing it, so lighting it exactly at its onset is
- * already late, and CTC onsets on sustained sung vowels tend to land late themselves.
- *
- * Applied at display time, so it COMPOSES WITH rather than replaces any per-song measured offset: a
- * fitted offset corrects for the recording, this corrects for the screen and the crowd in front of it.
- *
- * DEFAULT IS 0: a single global lead is a band-aid that cannot be right across tempos and
- * masks per-song mismatch. The per-room `lyricsLeadMs` setting remains the opt-in for a room that
- * wants a lead; only the shipped default changed.
- */
+/** Display lead, in ms, applied at DISPLAY time so it COMPOSES WITH any per-song measured offset. The default
+ *  is 0 on purpose: a single global lead cannot be right across tempos and masks per-song mismatch. */
 export const DEFAULT_LYRICS_LEAD_MS = 0;
 export const MAX_LYRICS_LEAD_MS = 1500;
 
-// ── text ────────────────────────────────────────────────────────────────────
-// The reel's TYPE, as opposed to the marks drawn on it. Room-scoped for the same reason the ball and
-// the highlight are, and gathered here beside them so one file answers "what can a room change about
-// the lyrics".
-//
-// An early change gave the reel a distance-based scale (`clamp(3.1rem, 6.4vh, 6rem)`) and the PR that added the
-// ball/highlight settings deliberately kept size and row count OUT, on the grounds that re-exposing
-// them would let a party undo that legibility work. That reasoning holds for RAW values, so what is
-// exposed here is a BOUNDED ADJUSTMENT on top of the computed scale rather than a replacement for it.
-// Every range below has a floor for that reason; they are not arbitrary.
+// The reel's TYPE, as opposed to the marks on it. Everything here is a BOUNDED ADJUSTMENT on the computed
+// scale, never a replacement, which is why every range carries a floor.
+// See docs/SERVER.md#registries-and-the-quality-ladder.
 
-/**
- * Font for the lyric reel.
- *
- * Every stack is LOCALLY AVAILABLE — no webfont, no CDN, nothing fetched. That is the same constraint
- * that made the icon system vendor path geometry instead of taking a font dependency: the box is a LAN
- * deployment that may have no route out, and a missing glyph on this deployment has already rendered
- * as a tofu box. So each option ends in a generic family and degrades rather than failing.
- *
- * `stack: 'inherit'` is not a cop-out — it is the honest way to say "whatever the app already uses",
- * which keeps the default identical to today without duplicating app.css's stack here where it would
- * drift.
- */
+/** Font for the lyric reel. Every stack is LOCALLY AVAILABLE — no webfont, no CDN — because the box may have
+ *  no route out, and each ends in a generic family so it degrades rather than failing. */
 export type LyricsFontId = 'system' | 'grotesk' | 'serif' | 'mono';
 
 export interface LyricsFont {
@@ -356,14 +273,8 @@ export function isValidLyricsFont(id: unknown): id is LyricsFontId {
 	return lyricsFontRegistry.isValid(id);
 }
 
-/**
- * Letter case, applied as `text-transform`.
- *
- * Presentation-only: it does not change the DOM text, so the per-word spans, the marker and the
- * highlight are all untouched. Both non-default options cost something real, and the notes say so
- * rather than presenting three equivalent styles — a room should be able to choose them, and should
- * not be surprised afterwards.
- */
+/** Letter case, applied as `text-transform`, so it is PRESENTATION-ONLY: the DOM text, the per-word spans and
+ *  the marker are untouched. */
 export type LyricsCaseId = 'natural' | 'upper' | 'lower';
 
 export interface LyricsCase {
@@ -407,55 +318,19 @@ export function isValidLyricsCase(id: unknown): id is LyricsCaseId {
 	return lyricsCaseRegistry.isValid(id);
 }
 
-/**
- * Text size as a PERCENT of the computed distance-based scale — never an absolute size.
- *
- * A stored pixel size would discard the `vh` term in `clamp(3.1rem, 6.4vh, 6rem)`, so the same room
- * would render wrong the moment the TV's resolution changed. That is precisely the bug the earlier scale
- * fixed, and a settings field is not worth reintroducing it. A multiplier keeps the adaptive scale and
- * layers the room's preference on top.
- *
- * An integer percent rather than a float factor because every other numeric in `RoomSettings` is an
- * integer and a REAL column for one field is not worth the schema asymmetry.
- *
- * The floor is the legibility guard, deliberately not lower: below it the reel stops being readable
- * from a couch, which is the whole thing the scale exists to guarantee.
- *
- * REBASED: the neutral point was folded down by `LYRICS_SCALE_BASE`, so a stored `100` now
- * renders what `80` rendered before this change — the "80% is the new 100%" fold. The number the room
- * sees keeps reading `100` at the neutral point; only what it renders moved. The stored column keeps
- * its meaning as a raw integer (default `100`, no migration), so every existing room's lyrics render
- * 20% smaller than before — the deliberate intent of the rebase, not a size the room asked for and
- * lost. Because `100` renders the old legibility floor, the MIN is `100`: there is no honest room
- * below it, the floor IS the neutral point now. The ceiling is raised a long way (a `300` renders
- * `2.4×`, well past the old `1.6×`) — the reel's own `max-height` cap and edge-fade mask (see
- * LyricsOverlay.svelte) absorb an extreme setting on a short panel, so a big MAX degrades honestly
- * rather than spilling the reel back down over the cards.
- */
+/** Text size as a PERCENT of the computed scale, never an absolute. MIN equals the neutral point, because the
+ *  neutral render IS the legibility floor after the `LYRICS_SCALE_BASE` fold. See
+ *  docs/SERVER.md#registries-and-the-quality-ladder. */
 export const DEFAULT_LYRICS_SCALE_PCT = 100;
 export const MIN_LYRICS_SCALE_PCT = 100;
 export const MAX_LYRICS_SCALE_PCT = 300;
 
-/**
- * The neutral-point fold for `lyricsScalePct`. The rendered multiplier is
- * `(scalePct / 100) * LYRICS_SCALE_BASE`, so the neutral `100` renders `0.8×` — exactly what the old
- * `80` rendered — while the number shown to the room stays `100`. Kept as a named constant, not a
- * literal at the call site, so the render arithmetic and this rationale live together and a test can
- * assert the neutral render against a hard number rather than re-deriving it with the same operation.
- */
+/** The neutral-point fold: the rendered multiplier is `(scalePct / 100) * LYRICS_SCALE_BASE`. Named rather than
+ *  inlined, so a test can assert the neutral render against a hard number. */
 export const LYRICS_SCALE_BASE = 0.8;
 
-/**
- * How many lines show before and after the current one.
- *
- * Independent rather than one "context" number, because the two are not equally useful: lines already
- * sung are continuity, lines still coming are preparation, and a room that wants to see what is next
- * without a history is a reasonable ask.
- *
- * Capped because the reel occupies a fixed fraction of the screen. Past these counts the type has to
- * shrink to fit, which would undo the distance-legibility work through the back door — the same reason
- * `lyricsScalePct` has a floor.
- */
+/** How many lines show before and after the current one, INDEPENDENT because sung lines are continuity and
+ *  coming lines are preparation. Capped: past these the type must shrink to fit. */
 export const DEFAULT_LYRICS_LINES_BEFORE = 2;
 export const DEFAULT_LYRICS_LINES_AFTER = 2;
 export const MAX_LYRICS_LINES_BEFORE = 3;

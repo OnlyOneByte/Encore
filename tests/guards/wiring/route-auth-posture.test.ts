@@ -1,22 +1,12 @@
-// guard: every HTTP route's auth posture is pinned, per METHOD.
+// Every HTTP route's auth posture is pinned per METHOD. Caught: deleting the gate on
+// `POST /api/delete-media`, the hard-delete endpoint, reddened nothing. `capability-wiring.test.ts` reads
+// like the guard for this and is not — it scans `hub.ts`, the websocket seam, which holds no route path.
+// See docs/GUARDS.md#wiring-routes
 //
-// WHY THIS EXISTS. There are 15 route modules under `routes/api`, carrying eight session checks and two
-// capability gates, and before this file NO test in the repository asserted any of them. Deleting the gate
-// on `POST /api/delete-media` — the hard-delete endpoint — reddened nothing.
-//
-// `capability-wiring.test.ts` looks like the guard that covers this and does not: it scans `hub.ts`, the
-// websocket seam, which contains no route path at all. So the HTTP capability gates were unguarded while a
-// file named after capability wiring passed.
-//
-// WHY PER-METHOD, NOT PER-FILE. `settings/+server.ts` is the case that forces it. `PUT` gates on
-// `bySessionToken` plus `can('settings:write-global')`; `GET` in the same file is `async () =>` — it takes
-// no arguments, so it cannot read a cookie and cannot gate. A per-file scan sees `bySessionToken` in the
-// source and reports the whole module protected, which is exactly backwards for the method that answers
-// deployment configuration to anyone who asks.
-//
-// THE REGISTRY IS CLOSED. A new route with no entry FAILS. That is the point: the risk is not an existing
-// gate being removed, it is a new endpoint arriving ungated and nobody noticing, which is how seven of the
-// eight current `none` postures came to be.
+// PER-METHOD, not per-file: `settings/+server.ts` gates `PUT` but its `GET` is `async () =>`, taking no
+// arguments and therefore unable to read a cookie, so a per-file scan sees `bySessionToken` and reports
+// the whole module protected. The registry is CLOSED — a route method with no entry FAILS — because the
+// risk is a new endpoint arriving ungated, not an existing gate being removed.
 
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -25,12 +15,9 @@ import { filesUnder, relative } from '@encore/test-support';
 type Posture = 'session' | 'capability' | 'none';
 
 /**
- * The gate each route METHOD is expected to apply.
- *
- * `none` is a legitimate value and always carries WHY. Where the route states its own reasoning, the
- * reason is quoted from it rather than reinvented here, so the two cannot drift apart silently. Where the
- * posture is an OPEN QUESTION rather than a decision, the entry says so — an undecided posture recorded as
- * decided is the failure this registry is meant to prevent.
+ * The gate each route METHOD is expected to apply. `none` is legitimate and always carries WHY, quoted
+ * from the route where the route states its own reasoning so the two cannot drift. An entry whose posture
+ * is an OPEN QUESTION says so: an undecided posture recorded as decided is the failure this prevents.
  */
 const POSTURE: Record<string, { gate: Posture; why: string }> = {
 	'audit/[mediaId] GET': {
@@ -84,12 +71,9 @@ const POSTURE: Record<string, { gate: Posture; why: string }> = {
 };
 
 /**
- * Split a route module into its exported method handlers.
- *
- * These modules are flat — one `export const METHOD` per handler at top level — so a handler's body runs
- * until the next `export const` or end of file. That assumption is asserted by a mutation arm below rather
- * than trusted, because a nested `export` would silently merge two handlers and could make an ungated one
- * inherit its neighbour's gate.
+ * Split a route module into its exported method handlers. These modules are flat, so a body runs until the
+ * next `export const` or end of file — an assumption the mutation arm below asserts rather than trusts,
+ * because merged handlers would let an ungated method inherit its neighbour's gate.
  */
 function methodBodies(src: string): Record<string, string> {
 	const out: Record<string, string> = {};
@@ -111,8 +95,7 @@ function postureOf(body: string): Posture {
 
 test('every API route method applies the auth gate this registry records', () => {
 	const routes = filesUnder('src/routes/api', ['+server.ts']);
-	// Non-vacuity: the walk found the route tree. An empty walk yields no offenders, which reads exactly
-	// like a surface whose every gate is correct.
+	// An empty walk yields no offenders, which reads exactly like a fully gated surface.
 	expect(routes.length).toBeGreaterThan(10); // @nvf-floor routes.length
 
 	const offenders: string[] = [];
@@ -145,11 +128,11 @@ test('every API route method applies the auth gate this registry records', () =>
 		}
 	}
 
-	// Non-vacuity: methods were actually parsed. A splitter that returned nothing would make the loop clean.
+	// A splitter that returned nothing would make the loop above clean.
 	expect(methodsChecked).toBeGreaterThan(15); // @nvf-floor methodsChecked
 
-	// And the registry does not outlive its subject: an entry for a route that is gone is dead weight that
-	// would silently excuse a future endpoint reusing the name.
+	// The registry must not outlive its subject: a stale entry would silently excuse a future endpoint
+	// that reuses the name.
 	for (const key of Object.keys(POSTURE)) {
 		if (!seen.has(key)) {
 			offenders.push(`${key} is recorded here but no such route method exists — delete the entry.`);
@@ -160,11 +143,8 @@ test('every API route method applies the auth gate this registry records', () =>
 });
 
 test('the method splitter separates handlers, and does not let one inherit its neighbour gate', () => {
-	/*
-	 * The load-bearing case: a gated handler followed by an ungated one. If the splitter merged them, the
-	 * ungated GET would read as `session` and this guard would pass while the endpoint was open — the exact
-	 * error a per-file scan makes on settings/+server.ts.
-	 */
+	// A gated handler followed by an ungated one: merged, the ungated GET reads as `session` and the guard
+	// passes over an open endpoint.
 	const src = [
 		'export const PUT: RequestHandler = async ({ cookies }) => {',
 		'\tconst s = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));',
@@ -178,14 +158,14 @@ test('the method splitter separates handlers, and does not let one inherit its n
 	expect(Object.keys(bodies).sort()).toEqual(['GET', 'PUT']);
 	expect(postureOf(bodies.PUT!)).toBe('capability');
 	expect(postureOf(bodies.GET!)).toBe('none');
-	// order independence: the ungated handler first must not pick up the later gate either
+	// Order independence: the ungated handler first must not pick up the later gate either.
 	const flipped = methodBodies([src.split('};')[1]! + '};', src.split('};')[0]! + '};'].join('\n'));
 	expect(postureOf(flipped.GET ?? '')).toBe('none');
 });
 
 test('postureOf ranks a capability gate above a bare session check', () => {
-	// A capability gate implies a session lookup, so a handler with both must report the stronger of the
-	// two. Reporting `session` there would let a capability gate be deleted while this guard stayed green.
+	// A capability gate implies a session lookup, so a handler with both must report the STRONGER posture;
+	// reporting `session` would let the capability gate be deleted with this guard green.
 	expect(postureOf("const s = bySessionToken(c); if (!can({}, 'x')) return;")).toBe('capability');
 	expect(postureOf('const s = bySessionToken(c);')).toBe('session');
 	expect(postureOf('return json(app.settings.getEffective());')).toBe('none');

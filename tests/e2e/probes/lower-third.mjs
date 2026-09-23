@@ -1,16 +1,10 @@
-/*
- * Does the wall name the RIGHT singer once the second song is actually playing?
- *
- * The p1 probe reported the lower third as stuck, but its anchor is invalidated by the very fix it
- * was measuring: it decides "during song 2" from song 2's FIRST DECODED BYTE, and now that the
- * hidden slot pre-warms, that byte arrives at ~2ms — while song 1 is still playing and the wall
- * should still read song 1's singer. So the probe compares two moments that are both inside song 1.
- *
- * This samples the truth instead: it follows which src the AUDIBLE (unpaused, advancing) element
- * carries, and asserts the name changes when that src changes. No anchoring on decode counters.
- *
- *   EPORT=<port> bun tests/e2e/probes/lower-third.mjs
- */
+// Does the wall name the RIGHT singer once the second song is actually playing? Anchored on the AUDIBLE
+// element's src — unpaused and advancing — and NOT on a first decoded byte: the hidden slot pre-warms, so
+// song 2's first byte arrives within milliseconds while song 1 is still playing and the wall should
+// still read song 1's singer, which makes a decode-counter anchor compare two moments inside song 1.
+//
+//   EPORT=<port> bun tests/e2e/probes/lower-third.mjs
+
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -19,8 +13,7 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 import { SEL } from '../contract.ts';
 
 /**
- * Types for this out-of-program driver (same pattern as the other e2e drivers). Browser/Page derive from
- * driver.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * Browser/Page derive from driver.mjs so they cannot drift; page.evaluate() is Promise<any>, cast at use.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ n: string, ok: boolean }} Check
@@ -38,7 +31,6 @@ if (!chrome) {
 	process.exit(2);
 }
 
-// Two singers, each with a processed song, so rotation has a real handover to perform.
 /** @param {string} name @returns {Promise<{ name: string, cookie: string }>} */
 async function joinSinger(name) {
 	const r = await fetch(`${base}/api/join`, {
@@ -71,7 +63,6 @@ const check = (/** @type {string} */ n, /** @type {boolean} */ ok, d = '') => {
 
 try {
 	browser = await connect();
-	// Queue one song per singer, through each singer's own session.
 	for (const [i, s] of [a, b].entries()) {
 		const p = await browser.newPage();
 		await p.goto(`${base}/health`);
@@ -88,8 +79,7 @@ try {
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 
-	// Sample the AUDIBLE element's src together with the rendered name. "Audible" means an element
-	// that is not paused and whose currentTime is moving — the pre-warmed sibling is neither.
+	// "Audible" means not paused AND currentTime moving — the pre-warmed sibling is neither.
 	const sample = `(() => {
 		const els = [...document.querySelectorAll('audio,video')];
 		const live = els.find((e) => !e.paused && e.currentTime > 0.05) ?? null;

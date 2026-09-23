@@ -36,8 +36,8 @@ describe('play log — the time axis', () => {
 	});
 
 	it('omits days with no plays instead of zero-filling them', () => {
-		// The log cannot tell "nobody sang" from "the server was off", so a fabricated zero would draw
-		// a quiet night and an outage identically. The gap is the honest answer.
+		// The log cannot tell "nobody sang" from "the server was off", so a fabricated zero draws a quiet
+		// night and an outage identically. The gap is the honest answer.
 		const l = log();
 		l.record('m1', 'e1', T0);
 		l.record('m2', 'e2', T0 + 3 * DAY);
@@ -47,7 +47,6 @@ describe('play log — the time axis', () => {
 
 	it('ranks top songs, and can rank them within a window', () => {
 		const l = log();
-		// m1 was huge last month; m2 is tonight's favourite.
 		l.record('m1', 'a1', T0 - 30 * DAY);
 		l.record('m1', 'a2', T0 - 29 * DAY);
 		l.record('m1', 'a3', T0 - 28 * DAY);
@@ -69,9 +68,9 @@ describe('play log — the time axis', () => {
 
 describe('play log — dedup survives a restart', () => {
 	it('refuses a second row for the same queue entry', () => {
-		// PlayTracker dedupes re-emits in memory, but its state resets on restart while the DB's does
-		// not. Replaying the entry that was on screen when the server went down would otherwise be
-		// counted twice. The unique index makes it impossible.
+		// PlayTracker dedupes re-emits in memory but resets on restart, where the DB's state does not, so
+		// replaying the entry that was on screen when the server died would be counted twice. The unique
+		// index makes that impossible.
 		const l = log();
 		l.record('m1', 'e1', T0);
 		l.record('m1', 'e1', T0 + 5_000); // same entry, e.g. after a reboot re-emit

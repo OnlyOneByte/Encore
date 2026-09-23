@@ -4,27 +4,15 @@ import { join } from 'node:path';
 import { at } from '@encore/test-support';
 
 /*
- * Route-inventory guard for the cross-page consistency ruling — the standard the owner chose (option A):
- *
- *   Every route page EXCEPT /tv and /components renders exactly one <h1> landmark naming the page,
- *   plus a back affordance whenever it is not a root/entry surface.
- *
- * This is the line that was missing when /stats and /metrics shipped as dead ends with no heading
- * consistency and no way back — nothing asserted the invariant, so the next new page could repeat it.
- * The h1 + back now come from the shared PageHeader component; the ROOT surface (`/`) carries its
- * wordmark as its own <h1 class="brand"> and is an entry point, so it needs no back. (`/join` was such
- * a root too until the landing-page rebuild retired it — its join UI is now the unjoined branch of `/`.)
- *
- * The exemption list is the explicit decision, written down here so removing a page from it is a
- * conscious act a reviewer sees:
- *   - /tv       — a television display surface, deliberately chrome-free (root layout wraps it too).
- *   - /components — a dev-only gallery of primitives, not a product page; uses <h2> section heads only.
+ * Route-inventory guard: every route page EXCEPT /tv and /components renders exactly one <h1> landmark
+ * naming the page, plus a back affordance unless it is a root/entry surface. This is the line that was
+ * missing when /stats and /metrics shipped as dead ends with no heading and no way back. The root `/`
+ * carries the wordmark as its own <h1 class="brand"> and is an entry point, so it needs no back. The two
+ * exemptions are decisions, not oversights: /tv is a chrome-free television surface, /components a
+ * dev-only gallery of primitives using <h2> section heads.
  */
 
-// Anchored on the repo root, not on this file's own location: the old form was
-// `at('src/routes')`, which meant src/routes only while this guard
-// sat in src/lib/ui. A wrong walk root is the SILENT failure this whole tree exists to close —
-// the floor in `routePages()` below is the backstop, but the anchor is the fix.
+// Anchored on the repo root: a wrong walk root is the SILENT failure this whole tree exists to close.
 const SRC = at('src/routes');
 
 // Routes that are their own thing. Each entry states WHY, so an addition is a decision, not a drive-by.
@@ -33,25 +21,12 @@ const EXEMPT: Record<string, string> = {
 	components: 'dev-only component gallery, not a product page'
 };
 
-// Root / entry surfaces: they carry the Encore wordmark as their h1 and are the top of navigation,
-// so the invariant requires their h1 but NOT a back affordance.
+// Root / entry surfaces: their h1 is the wordmark and they are the top of navigation, so no back is required.
 const ROOTS = new Set(['/']);
 
-/**
- * Every routed page under src/routes, as { route, file, src }.
- *
- * Non-vacuity floor. This walk had NO floor, and both consumers assert
- * `offenders` EMPTY (`:70` the single-h1 rule, `:80` the back affordance) — so a moved `routes/`, a
- * renamed `+page.svelte`, or a walk root typo made both pass with ZERO pages examined. That is the
- * exact shape that let /stats and /metrics ship as dead ends in the first place, reappearing one level
- * up: nothing asserted the guard was still looking at anything.
- *
- * The floor lives IN the walk, not in each test, so a third consumer inherits it.
- *
- * A firing floor is a FINDING, never a number to adjust — and
- * `non-vacuity-floors.test.ts` (cited by bare filename: a `../` pointer was arithmetic about where
- * this test lived, and it stopped resolving the moment the file moved).
- */
+// Every routed page under src/routes. The non-vacuity floor lives IN the walk so a third consumer inherits
+// it: both consumers assert `offenders` EMPTY, so a moved `routes/` or a renamed `+page.svelte` made both
+// pass with ZERO pages examined — the shape that let /stats and /metrics ship as dead ends in the first place.
 function routePages(): { route: string; file: string; src: string }[] {
 	const out: { route: string; file: string; src: string }[] = [];
 	const walk = (dir: string, urlParts: string[]) => {
@@ -68,9 +43,8 @@ function routePages(): { route: string; file: string; src: string }[] {
 		}
 	};
 	walk(SRC, []);
-	// 9 routed pages today; pin below. Plus the which-pages sentinel: the root page is the one route
-	// that cannot legitimately disappear, and both EXEMPT entries must still be reachable by the walk,
-	// or the exemption test at :90 is pinning a decision about pages this scan can no longer see.
+	// 9 routed pages today; pin below. Plus the which-pages sentinel: the root cannot legitimately vanish, and
+	// both EXEMPT entries must stay reachable, or the exemption test pins a decision about pages it cannot see.
 	expect(out.length).toBeGreaterThanOrEqual(7); // @nvf-floor out.length
 	const routes = out.map((p) => p.route);
 	expect(routes).toContain('/');
@@ -81,8 +55,7 @@ function routePages(): { route: string; file: string; src: string }[] {
 // The leaf directory name, e.g. /metrics/[mediaId] -> "[mediaId]", used only to test the exempt list.
 const leaf = (route: string) => route.split('/').filter(Boolean).pop() ?? '';
 
-// Does the page paint exactly one h1 landmark? Either a literal <h1 ...> in the page, or exactly one
-// PageHeader (which renders the single h1). We count both and require the total to be exactly one.
+// Exactly one h1 landmark: either a literal <h1> in the page, or exactly one PageHeader (which renders it).
 function h1Count(src: string): number {
 	const literal = (src.match(/<h1[\s>]/g) ?? []).length;
 	const viaHeader = (src.match(/<PageHeader[\s\n]/g) ?? []).length;
@@ -115,7 +88,6 @@ test('every non-exempt, non-root route offers a back affordance', () => {
 });
 
 test('the exemption list is exactly the two pages we decided (/tv, /components)', () => {
-	// Pin the decision itself: if someone adds a third exemption they must edit this assertion, which
-	// is where the "why" is recorded. Silently exempting a new page is how /stats slipped through once.
+	// Pin the decision itself: a third exemption must be argued here, which is where the "why" is recorded.
 	expect(Object.keys(EXEMPT).sort()).toEqual(['components', 'tv']);
 });

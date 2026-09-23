@@ -1,23 +1,11 @@
-// guard: a worker-reported instrumental that MEASURES as digital silence is refused, not published.
+// A worker-reported instrumental that MEASURES as digital silence is refused, not published. Every
+// readiness check verifies a ref EXISTS; none verifies the file behind it carries sound, so a worker
+// writing silence produces a READY song and the singer finds out by singing four minutes of nothing.
 //
-// THE DEFECT THIS EXISTS FOR. `media/loudness.ts` has been able to spot a digitally-silent stem since
-// two songs in the live library turned out to be exactly that — instrumental AND vocals at the 16-bit
-// floor, 44-124KB against 14-28MB for a healthy process. They sat in the Ready list ready to play four
-// minutes of nothing, because every readiness check verified that a ref EXISTED and none verified that
-// the file behind it carried sound.
-//
-// That measurement was wired into the boot guiding-track backfill and NOWHERE ELSE. The path that
-// publishes a fresh separation — `WorkerHub#onComplete` → `markMediaReady` — trusted whatever the
-// worker reported, so a worker writing silence still produced a READY song and the singer found out by
-// singing it. `p5-process-lifecycle` reports that as a HIGH finding under FAKE_SILENT_INSTRUMENTAL.
-//
-// WHY THESE ARE UNIT TESTS AND NOT AN E2E RUN. The real probe shells out to `ffmpeg -af volumedetect`.
-// This repo's own e2e note records that a host with decode-only ffmpeg returns null — unmeasurable —
-// so the guard cannot be made to FIRE on such a box at all, and the machine this was written on has no
-// ffmpeg whatsoever. The verdict is therefore INJECTED here, which is the only way to exercise all
-// three branches deterministically: the hub takes `verifyInstrumental` as an optional dep for exactly
-// this reason, and what these tests pin is the hub's decision, not ffmpeg's parsing (that is
-// `loudness.test.ts`, pure and separate).
+// The verdict is INJECTED here rather than measured: the real probe shells out to
+// `ffmpeg -af volumedetect`, a decode-only host returns null (unmeasurable), and a box with no ffmpeg
+// cannot make the guard fire at all. The hub takes `verifyInstrumental` as an optional dep for exactly this
+// reason, so what is pinned is the HUB's decision — ffmpeg's parsing is `loudness.test.ts`.
 
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
@@ -86,9 +74,9 @@ async function runToCompletion(h: ReturnType<typeof harness>, ref: string | unde
 		jobId: job.id,
 		artifacts: ref ? { stems: { instrumental: ref } } : {}
 	});
-	// The gate is async: the probe is awaited before the completion body runs. One microtask drain is
-	// enough because the injected verdict resolves immediately — the REAL probe decodes a whole file,
-	// which is exactly why the gate cannot be synchronous.
+	// The gate is async: the probe is awaited before the completion body runs. One drain suffices because
+	// the injected verdict resolves immediately; the REAL probe decodes a whole file, which is why the gate
+	// cannot be synchronous.
 	await Promise.resolve();
 	await Promise.resolve();
 	return jobs.byId(job.id)!;
@@ -102,8 +90,7 @@ test('a measurably silent instrumental is refused: the job fails and the song do
 	expect(job.status).toBe('failed');
 	expect(job.error ?? '').toContain('digital silence');
 
-	// The song must NOT be singable. Both halves matter: `stemStatus` is what the gates read, and
-	// `instrumentalRef` is the file rotation would try to play.
+	// Both halves matter: `stemStatus` is what the gates read, `instrumentalRef` is what rotation plays.
 	const m = h.mediaById.get('m1')!;
 	expect(m.stemStatus).not.toBe('ready');
 	expect(m.instrumentalRef).toBeUndefined();
@@ -111,17 +98,14 @@ test('a measurably silent instrumental is refused: the job fails and the song do
 });
 
 test('a silent refusal is TERMINAL, not a requeue that burns the remaining attempts', async () => {
-	/*
-	 * Re-running the same separator over the same source produces the same silence, so a retry can only
-	 * arrive back here having spent an attempt. Pinned because the retryable path is the default shape for
-	 * a worker-reported problem, and this one deliberately is not it.
-	 */
+	// Re-running the same separator over the same source produces the same silence, so a retry only spends
+	// an attempt. Pinned because retryable is the DEFAULT shape for a worker-reported problem.
 	const h = harness('silent');
 	const job = await runToCompletion(h, SILENT_REF);
 	expect(job.status).toBe('failed');
 	expect(job.status).not.toBe('queued');
 
-	// …and the room is told, rather than the song silently sitting un-processed.
+	// The room is told, rather than the song silently sitting un-processed.
 	const kinds = h.broadcasts.map((e) => e.type);
 	expect(kinds).toContain('media:status');
 });
@@ -137,12 +121,8 @@ test('an AUDIBLE measurement publishes exactly as before', async () => {
 });
 
 test('UNMEASURABLE publishes — an unknown reading is not silence', async () => {
-	/*
-	 * THE SAFETY PROPERTY, and the reason this is a separate test from the audible case. A box with no
-	 * ffmpeg measures nothing. If "cannot measure" refused the publish, that box would fail every process
-	 * it ran — a self-inflicted outage strictly worse than the defect being guarded. `isDigitalSilence`
-	 * documents the same rule for the same reason; this pins that the HUB honours it.
-	 */
+	// THE SAFETY PROPERTY: a box with no ffmpeg measures nothing, so if "cannot measure" refused the publish
+	// that box would fail every process it ran — an outage strictly worse than the defect being guarded.
 	const h = harness('unknown');
 	const job = await runToCompletion(h, 'derived/stems/m1-instrumental.flac');
 
@@ -152,8 +132,8 @@ test('UNMEASURABLE publishes — an unknown reading is not silence', async () =>
 });
 
 test('a probe that THROWS publishes too, rather than wedging the completion', async () => {
-	// A rejected probe is unmeasurable by another route. The completion must still land: a crash in a
-	// verification step must not be able to strand a job that the worker finished successfully.
+	// A rejected probe is unmeasurable by another route, and the completion must still land: a crash in a
+	// verification step must not strand a job the worker finished successfully.
 	const h = harness('throw');
 	const job = await runToCompletion(h, 'derived/stems/m1-instrumental.flac');
 	expect(job.status).toBe('ready');
@@ -161,8 +141,7 @@ test('a probe that THROWS publishes too, rather than wedging the completion', as
 });
 
 test('with no probe wired the hub behaves exactly as it did before', async () => {
-	// The dep is optional so the hub unit-tests bare and an unwired core is unchanged. Without this the
-	// gate would be a silent behaviour change for every caller that does not know about it.
+	// The dep is optional, so the hub unit-tests bare and an unwired core is unchanged.
 	const h = harness(undefined);
 	const job = await runToCompletion(h, 'derived/stems/m1-instrumental.flac');
 	expect(h.measured).toEqual([]);
@@ -171,8 +150,8 @@ test('with no probe wired the hub behaves exactly as it did before', async () =>
 });
 
 test('a completion that reports NO instrumental never consults the probe', async () => {
-	// Only a job that publishes an instrumental has something to measure. A fetch produces nothing
-	// singable, and measuring a ref the frame did not send would resolve a path from nothing.
+	// Only a job that publishes an instrumental has something to measure: a fetch produces nothing
+	// singable, and measuring a ref the frame did not send resolves a path from nothing.
 	const h = harness('silent'); // would refuse if it were consulted
 	const job = await runToCompletion(h, undefined);
 	expect(h.measured).toEqual([]);

@@ -1,8 +1,7 @@
-// defect 1: the boot maintenance chain must ISOLATE each pass. One pass failing/hanging must not
-// disable the passes after it, and a failure must be visible + NAMED (not one terminal catch that
-// cannot say which of six passes died). Two halves: the runner's behaviour (here, in a pure harness)
-// and the app.ts wiring that this runner is what the boot chain uses (source scan — getApp() has no
-// unit harness).
+// guard: the boot maintenance chain must ISOLATE each pass. One pass failing or hanging must not disable the
+// passes after it, and a failure must be visible and NAMED — not one terminal catch that cannot say which of
+// six passes died. Two halves: the runner's behaviour here in a pure harness, and the app.ts wiring that
+// makes this runner the one the boot chain uses (a source scan — getApp() has no unit harness).
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { runBootMaintenance, type BootTask } from '$lib/server/boot-maintenance';
@@ -40,8 +39,7 @@ test('a pass that throws does NOT skip the passes after it (the whole point of t
 
 	const { failed } = await runBootMaintenance(tasks, (m) => warnings.push(m));
 
-	// Before the fix, the throw in `exploder` would abort the chain: 'third' and 'fourth' never run.
-	// After: every pass runs regardless of an earlier failure.
+	// Before the fix the throw in `exploder` aborted the chain: 'third' and 'fourth' never ran.
 	expect(ran).toEqual(['first', 'exploder', 'third', 'fourth']);
 	expect(failed).toEqual(['exploder']);
 });
@@ -109,19 +107,16 @@ test('a disabled pass is skipped silently (not counted as a failure)', async () 
 	expect(warnings).toHaveLength(0);
 });
 
-// ── wiring: the boot chain in app.ts must USE this runner, not a bare try-less chain ──────────────
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
-// Was `at('src/lib/server/app.ts')` — the wiring subject was this guard's own SIBLING in
-// src/lib/server, which is also where `boot-maintenance` above was imported with a bare `./`.
 const APP = stripComments(read('src/lib/server/app.ts'));
 
 test('app.ts imports runBootMaintenance and drives the boot passes through it (the wiring)', () => {
 	expect(APP).toMatch(/import\s*\{[^}]*\brunBootMaintenance\b[^}]*\}\s*from\s*'\.\/boot-maintenance'/);
-	// The passes are a table, and that table is handed to the isolated runner. A revert to the old
-	// single `.then(...).catch(...)` chain would break both matches.
+	// The passes are a table handed to the isolated runner; a revert to the old single `.then(…).catch(…)`
+	// chain breaks both matches.
 	expect(APP).toMatch(/const\s+bootTasks\s*:\s*BootTask\[\]\s*=/);
 	expect(APP).toMatch(/runBootMaintenance\(\s*bootTasks\b/);
 });

@@ -1,8 +1,4 @@
-"""Handing the finished candidates to the core.
-
-Extracted from `steps/lyrics.py`, which held all six lyrics steps in 1029 lines — 55% of every step
-in the worker, where no other step file holds more than four.
-"""
+"""Handing the finished candidates to the core."""
 
 from __future__ import annotations
 

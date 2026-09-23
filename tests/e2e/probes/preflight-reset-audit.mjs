@@ -1,25 +1,11 @@
-/*
- * Preflight audit — measure the properties Tailwind's Preflight RESETS, on every
- * element of every reachable surface, so the before/after answer is a diff rather than an opinion.
- *
- * WHY THIS EXISTS AND NOT JUST SCREENSHOTS. Preflight is a global reset and this app carries ~4,950
- * lines of hand-written CSS. The issue's danger case is a *silent* restyle: a change small enough to
- * survive a side-by-side glance (a heading a few px lighter, a 1px border appearing, a list marker
- * gone) but wrong on every screen. A screenshot pair cannot separate "identical" from "close", and it
- * cannot say WHICH property moved. Preflight's effects, in contrast, are a closed enumerable list, so
- * the honest instrument is to read exactly those computed properties and diff them.
- *
- * Element identity across the two runs is BY INDEX in document order, which is sound here for one
- * reason: this issue adds no markup to any existing surface, so the DOM of every screen below is
- * byte-identical between runs and only the CSS cascade changes. `tag` is recorded beside every row
- * and the differ refuses to compare two runs whose tag sequence disagrees — if a future caller does
- * change markup, that check fails loudly rather than silently pairing the wrong elements.
- *
- *   EPORT=5911 CDP_PORT=9911 bun run tests/e2e/probes/preflight-reset-audit.mjs <outFile.json>
- *
- * Exit codes follow the harness contract (HARNESS.md): 0 measured, 1 a real failure, 2 the
- * environment could not host the probe.
- */
+// Measure the properties Tailwind's Preflight RESETS, on every element of every reachable surface, so a
+// before/after answer is a diff rather than an opinion: a screenshot pair cannot separate "identical" from
+// "close", nor say WHICH property moved. Element identity across two runs is BY INDEX in document order,
+// which holds only while the DOM is unchanged — `tag` is recorded beside every row so `preflight-diff.mjs`
+// can refuse to compare runs whose tag sequence disagrees.
+//
+//   EPORT=5911 bun run tests/e2e/probes/preflight-reset-audit.mjs <outFile.json>
+
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
@@ -47,17 +33,8 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 	process.exit(2);
 }
 
-/*
- * The properties Preflight writes, and nothing else.
- *
- * Every entry traces to a rule in Tailwind v4's preflight.css: the universal box/margin/padding/border
- * reset; the `h1..h6 { font-size: inherit; font-weight: inherit }` rule; `ol, ul, menu { list-style:
- * none }`; the replaced-element `display: block` rule; the form-control `font: inherit` /
- * `background-color: transparent` / `border-radius: 0` / `appearance: button` block; `a { color:
- * inherit; text-decoration: inherit }`; and `textarea { resize: vertical }`. A property NOT in this
- * list is one Preflight does not touch, so a difference there would be caused by something else and
- * is out of this probe's claim.
- */
+// The properties Preflight writes, and nothing else — one per rule in Tailwind v4's preflight.css. A
+// property NOT here is one Preflight does not touch, so a difference there is outside this probe's claim.
 const PROPS = [
 	'box-sizing',
 	'margin-top',
@@ -97,19 +74,9 @@ const PROPS = [
 	'opacity'
 ];
 
-/*
- * Read every element's Preflight-relevant computed values, plus its box geometry.
- *
- * Geometry is included deliberately: `box-sizing` and the margin reset are the two Preflight rules
- * whose damage is a MOVED BOX rather than a changed declaration, and a computed-value diff alone would
- * report `box-sizing: content-box -> border-box` without saying whether anything actually shifted. The
- * rects answer that, and they are what makes "no visible change" a measurement.
- *
- * Enumerated with a TreeWalker rather than `querySelectorAll('*')`, and not to satisfy a lint: this
- * probe wants EVERY element, which is not a selector question, and `contract.test.ts`'s ban on drivers
- * spelling selectors out for themselves was right to flag the literal. A TreeWalker states the
- * intention directly and names no anchor that could rot, so there is nothing for the contract to own.
- */
+// Computed values PLUS box geometry: `box-sizing` and the margin reset do their damage as a MOVED BOX, not
+// a changed declaration, so the rects are what make "no visible change" a measurement. A TreeWalker, not
+// a universal query — this wants EVERY element, and a universal token has no anchor the contract can own.
 const READ = `((props) => {
   const out = [];
   const els = [document.documentElement];
@@ -138,18 +105,11 @@ const PHONE = [430, 860];
 const TV = [1920, 1080];
 
 /**
- * Surfaces to measure. Each is reachable by URL alone — no driving, no state machine — because this
- * probe must produce the SAME population on both runs, and a driven flow is where run-to-run
- * divergence enters. The interactive states (sheet pulled up, hue wheel open) are covered by the
- * frame capture beside this probe; what a reset can only be caught by is the static cascade, and that
- * is what a URL reaches.
- *
- * `join: true` marks a surface behind a session — `/settings` and `/` 303 to `/join` without one. It
- * is worth the one driven step rather than dropping them, because `/settings` is the densest FORM
- * surface in the app and the form-control block (`font: inherit`, `background-color: transparent`,
- * `border-radius: 0`, `appearance: button`) is the half of Preflight most likely to do visible damage.
- * The join itself uses a per-surface unique name — singer names are unique per room (HARNESS.md), and
- * a 409 leaves the flow sitting on /join, which would silently measure the wrong page.
+ * Reachable by URL alone — no driving, no state machine — because both runs must produce the SAME
+ * population, and a driven flow is where run-to-run divergence enters. `join: true` earns its one driven
+ * step because `/settings` is the densest FORM surface and Preflight's form-control block is the half most
+ * likely to do visible damage; its name is unique per surface AND per run, because a duplicate gets a 409
+ * and leaves the flow on the join screen, measuring the wrong page.
  */
 const SURFACES = [
 	{ name: 'phone-home', url: '/', vp: PHONE, join: true },
@@ -165,7 +125,6 @@ const SURFACES = [
 /** @type {Record<string, unknown>} */
 const result = { port: PORT, surfaces: {} };
 let failed = 0;
-// Hoisted out of the try so the `finally` below can close it even when the body throws.
 let browser;
 
 try {
@@ -176,10 +135,6 @@ try {
 			const page = await browser.newPage();
 			await page.viewport(s.vp[0], s.vp[1], 1);
 			if (s.join) {
-				/*
-				 * The one driven step in this probe. Named per surface and per run so a re-run of the
-				 * AFTER pass cannot collide with the BEFORE pass's singer (409 → still on /join).
-				 */
 				await openJoin(page, base);
 				await page.fill(SEL.nameInput, `Pf${s.name.replace(/[^a-z]/gi, '')}${RUN_TAG}`);
 				await sleep(250);
@@ -187,7 +142,7 @@ try {
 				await page.waitFor(`location.pathname === '/'`);
 			}
 			await page.goto(base + s.url);
-			// a session-gated surface must not be measured as the join landing it fallt
+			// A session-gated surface must never be measured as the join landing it fell back to.
 			const landed = await page.evaluate('location.pathname');
 			if (s.join && landed !== s.url) throw new Error(`redirected to ${landed} — join did not take`);
 			// settle: fonts, the socket's first frame, and any mount-time style write (--dock-h etc.)
@@ -202,9 +157,8 @@ try {
 		}
 	}
 } finally {
-	// In the finally, not the try body: a throw above would otherwise leak the browser process, and
-	// the audit's own `writeFileSync` below still has to run. `browser` is undefined when `connect()`
-	// itself threw, hence the optional chain on the object as well as the method.
+	// In the `finally`, not the body: a throw above would leak the browser and the `writeFileSync` below
+	// still has to run. `browser` is undefined when `connect()` threw, hence the chain on the object too.
 	await browser?.close?.();
 }
 

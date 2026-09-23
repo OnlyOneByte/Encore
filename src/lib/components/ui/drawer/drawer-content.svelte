@@ -18,37 +18,19 @@
 
 <DrawerPortal {...portalProps}>
 	<!--
-		NO `<DrawerOverlay />`, AND IT IS NOT A SIMPLIFICATION — IT COULD NEVER RENDER.
+		NO OVERLAY IS RENDERED HERE, and it is not a simplification — it could never render. vaul-svelte
+		gates the overlay on modality, and the app's only drawer is non-modal by necessity: a
+		permanently-mounted sheet whose collapsed height IS the band on every phone surface cannot put a
+		scrim and a focus trap over the page the guest is using. Re-add the render only together with
+		modality; `drawer-overlay-modality.test.ts` pins the pair.
 
-		The registry renders the overlay here, and this file did too. `vaul-svelte` gates it on modality:
-		`use-drawer-overlay.svelte.js` computes `shouldRender = ctx.modal.current`, so with `modal={false}`
-		on the Root the component mounts nothing at all. Encore's only drawer is `NowPlayingDrawer`, which is
-		`modal={false}` NECESSARILY rather than by preference — it is a permanently-mounted sheet whose
-		collapsed height IS the band on every phone surface, so a modal scrim and focus trap would cover the
-		page the guest is using. Measured on the running app: no `[data-slot='drawer-overlay']` in the DOM at
-		either snap point.
+		`border-border` IS A DEFECT FIX, not decoration. `border-t` and its siblings set only border-WIDTH,
+		and nothing in the registry's class list sets a COLOUR, so it falls through to currentColor — which
+		on this element is --ink, drawing a white hairline across every sheet's top edge. With no scrim, that
+		border and the surface are the only things separating an open sheet from the page.
 
-		WHAT THAT COST WHILE IT WAS HERE, which is why the deletion is worth the words: the Root also carried
-		`fadeFromIndex={1}` and its comment claimed the overlay "starts at the SECOND snap point, so there is
-		no scrim while the band is just sitting there" — describing behaviour that cannot happen at either
-		height. And `drawer-overlay.svelte` carried ~50 lines of hand-written fade CSS with a
-		prefers-reduced-motion wrapper and two `-global-` keyframes, all of it unreachable, all of it reading
-		as live code that someone would maintain.
-
-		IF A MODAL DRAWER IS EVER ADDED, re-add this line with it — the component is still vendored, and
-		`drawer-overlay-modality.test.ts` pins the pair so the two cannot drift apart again.
-	-->
-	<!--
-		`border-border` IS A DEFECT FIX, the third this file has needed from the copy-in. `border-t` and
-		its left/right/top siblings below set only `border-*-WIDTH`. Nothing in shadcn's class list sets a
-		border COLOUR, so it resolved to `currentColor` — and this element carries
-		`text-popover-foreground`, which is `--ink`. Every bottom sheet therefore drew a 1px WHITE
-		hairline across its top edge, measured on the render at `rgb(243, 243, 251)`. `border-border` is
-		the token that was always meant (`--border` is `#2a2a3e`, the same value as Encore's `--line`); it
-		was simply never referenced.
-
-		Same family as `sm:max-w-sm` collapsing to 8px earlier in this file: a shadcn utility that assumes
-		Preflight's base styles, which this app switches off.
+		Any width here must stay an arbitrary value: a named t-shirt key resolves through the spacing
+		namespace this app bridges and collapses the sheet to a few pixels.
 	-->
 	<DrawerPrimitive.Content
 		bind:ref={ref}
@@ -60,27 +42,12 @@
 		{...restProps}
 	>
 		<!--
-			NO HANDLE IS RENDERED HERE, and the reason it once was still stands — it just belongs at the
-			composition site instead.
-
-			THE COPY-IN'S DEFECT, RECORDED SO IT CANNOT COME BACK. shadcn renders a DECORATIVE div at this
-			position — the right size, the right place, and dragging nothing at all. `vaul-svelte` exports a
-			real `Drawer.Handle` (the element that carries `data-vaul-handle`), and without one somewhere in
-			the tree `handleOnly` on the Root has no handle to restrict dragging TO, so the drawer silently
-			becomes undraggable. Encore needs `handleOnly` because the now-playing drawer's body is sliders —
-			see drawer-handle.svelte. So a real Handle is still REQUIRED; what was wrong was rendering it
-			from HERE.
-
-			WHY IT MOVED. This position is the top of the content BOX, which is not where the grab bar
-			belongs in a snap-pointed sheet: `NowPlayingDrawer` puts its own `<Drawer.Handle />` inside
-			`.band-slot`, the band row that IS snap point 0, so the bar sits in the row a thumb actually
-			pulls. With both rendered the phone drew TWO stacked pull-up lines — reported as exactly that —
-			and the vendored one was the copy that could not be placed, since a consumer cannot move a
-			child this component renders for it.
-
-			The composition site is also the only place that knows whether a handle is wanted at all, which
-			retires the visibility condition this carried (`hidden` unless the drawer's direction is
-			`bottom`): a caller that renders no handle needs no rule hiding one.
+			NO HANDLE IS RENDERED HERE, deliberately. A real handle is still REQUIRED somewhere in the tree —
+			the registry's decorative div drags nothing, and with no element carrying vaul's handle attribute
+			`handleOnly` on the Root has nothing to restrict dragging to, so the sheet silently becomes
+			undraggable with no warning. It belongs at the COMPOSITION site instead: this position is the top
+			of the content box, not the row a thumb pulls in a snap-pointed sheet, and a consumer cannot move
+			a child this component renders for it. Rendering both draws two stacked pull-up lines.
 		-->
 		{@render children?.()}
 	</DrawerPrimitive.Content>

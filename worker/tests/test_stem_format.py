@@ -1,17 +1,8 @@
-"""The declared raw-stem format: every engine answers it, and the answer reaches argv, paths and config.
-
-WHY THIS FILE EXISTS. The container a separator writes its scratch stems in used to be decided privately
-inside each engine's argv — demucs and demucs-mlx wrote PCM WAV, audio-separator was handed a hardcoded
-`--output_format FLAC`, and bs-roformer-infer's real format was asserted nowhere. Nothing carried the
-answer, so every CONSUMER of a raw stem had to assume one, and `analysis/wav.py` assumed WAV via stdlib
-`wave`, which cannot open a FLAC. The consequence was a silent capability loss on exactly one engine: an
-audiosep job's guide offset came back `unmeasured` and its guide mix was refused as "stems do not match",
-because the reader could not open either file. A missing container is not a length mismatch, but nothing
-in the system could tell the two apart.
-
-The fix is a DECLARATION on the seam (`SeparatorEngine.stem_format`), so the tests below pin the three
-properties that make it more than a comment: every engine answers the question, the answer drives the argv
-and the derived paths together, and an engine whose CLI cannot honour a request does not pretend it can.
+"""The declared raw-stem format (`SeparatorEngine.stem_format`, see src/vocabulary.py:StemFormat):
+every engine answers it, and the answer must drive argv, derived paths, and config together — a reader
+that assumes the wrong container cannot open the other and reads as "stems do not match" with no
+missing-container reported. These tests pin: every engine answers the question, the answer drives argv
+and paths in lockstep, and an engine whose CLI cannot honour a request does not pretend it can.
 """
 
 from __future__ import annotations
@@ -86,11 +77,8 @@ def test_the_declaration_drives_demucs_argv_and_paths_together(fmt):
 
 @pytest.mark.parametrize("fmt", [StemFormat.FLAC, StemFormat.WAV])
 def test_the_declaration_drives_audiosep_output_format(fmt):
-    """audio-separator's `--output_format` comes from the declaration, not a literal.
-
-    This is the exact line that caused the original defect: it read `FLAC` unconditionally while the
-    readers assumed WAV.
-    """
+    """audio-separator's `--output_format` comes from the declaration, not a hardcoded literal — a
+    literal here is what let this engine claim FLAC while readers assumed WAV."""
     argv = engine_for("audiosep", stem_format=fmt).separate_argv("/w/input.wav", "/w/sep", "ckpt")
     assert argv[argv.index("--output_format") + 1] == fmt.value.upper()
 
@@ -98,11 +86,8 @@ def test_the_declaration_drives_audiosep_output_format(fmt):
 @pytest.mark.parametrize(("name", "kw"), _FORMAT_FIXED)
 def test_an_engine_whose_cli_cannot_honour_a_format_does_not_pretend_to(name, kw):
     """demucs-mlx and bs-roformer-infer take no format flag, so asking must not change the declaration.
-
-    Accepting the kwarg and dropping it would be the worst outcome — the caller believes it selected a
-    container, the readers are told that container, and the CLI writes a different one. That is the
-    original bug with an extra layer of confidence on top.
-    """
+    Accepting the kwarg and silently dropping it would be worse than not offering it: the caller
+    believes it selected a container while the CLI writes a different one."""
     eng = engine_for(name, stem_format=StemFormat.FLAC, **kw)
     assert eng.stem_format is StemFormat.WAV, f"{name}{kw} claimed a format its CLI cannot produce"
 

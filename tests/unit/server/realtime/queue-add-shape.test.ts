@@ -16,8 +16,7 @@
 //   1. an off-shape add passes no earlier guard (id / singerId / mediaId all valid),
 //   2. would be applied to authoritative state and BROADCAST to the whole room, then
 //   3. either crashes the flush (missing addedAt / null status) or slips past it silently
-// (Infinity addedAt / off-enum-or-forged status), re-opening's forged-'playing' hole
-//      (a) through the `add` op.
+// (Infinity addedAt / off-enum-or-forged status), re-opening's forged-'playing' hole (a) through the `add` op.
 // The fix rejects all of these at the add arm's seam so nothing bad is ever applied or persisted.
 import { test, expect } from 'bun:test';
 import { validateCommand, handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';

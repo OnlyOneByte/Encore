@@ -1,5 +1,4 @@
-// the guest's position is stated in WORDS, and the wait degrades HONESTLY when it cannot
-// be known.
+// the guest's position is stated in WORDS, and the wait degrades HONESTLY when it cannot be known.
 //
 // The requirement's acceptance is two-armed and the second arm is the one that ships bugs: "Given any
 // entry ahead lacks a duration, Then no minutes clause renders and the string never contains

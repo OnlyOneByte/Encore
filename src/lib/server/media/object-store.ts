@@ -1,12 +1,10 @@
 // ObjectMediaStore — S3/MinIO-backed MediaStore for scale-out (workers on other boxes). Built on
-// Bun's native S3 (Bun.S3Client) — no aws-sdk/minio dep; speaks to MinIO via a custom `endpoint`.
-// See ARCHITECTURE §2. The S3 client is injected behind a tiny interface so the whole store
-// unit-tests against an in-memory fake (no network, no creds).
+// Bun's native S3 (Bun.S3Client), speaking to MinIO via a custom `endpoint`; the client is injected
+// behind a tiny interface so the whole store unit-tests with no network or creds.
 //
-// BYTES TRANSIT THE CORE, BY DESIGN. This store answers `size`/`getRange` with ranged GETs, and the
-// same-origin `/media/<ref>` route serves them — there is no presigned direct-to-S3 URL. The `url()`
-// member and its `presignExpiresIn` / `proxyUrls` options were removed for having no production
-// caller; see the on-record note at src/routes/media/[...path]/+server.ts before reinstating them.
+// BYTES TRANSIT THE CORE, BY DESIGN: `size`/`getRange` answer with ranged GETs through the
+// same-origin `/media/<ref>` route — there is no presigned direct-to-S3 URL, and that member should
+// not be re-added (see store.ts).
 
 import { objectKey, type MediaStore, type ObjectStoreConfig } from './store';
 
@@ -19,11 +17,8 @@ export interface S3Like {
 		stream(): ReadableStream;
 		/** HEAD the object for metadata (Bun.S3File.stat) — `.size` is the byte length, no body. */
 		stat(): Promise<{ size: number }>;
-		/**
-		 * A `Blob` over a byte window, WITHOUT downloading the whole object — a ranged GET on S3
-		 * (`Bun.S3File.slice(start, end)`, whose end is EXCLUSIVE like `Blob.slice`, and which issues
-		 * the `Range` request lazily). A Blob body is what lets the response carry a `Content-Length`.
-		 */
+		/** A `Blob` over a byte window, WITHOUT downloading the whole object — a ranged GET on S3
+		 *  (EXCLUSIVE end like `Blob.slice`, issued lazily). Lets the response carry `Content-Length`. */
 		slice(start: number, end: number): Blob;
 	};
 }
@@ -52,9 +47,8 @@ export class ObjectMediaStore implements MediaStore {
 	}
 
 	/**
-	 * Byte size via a HEAD on the object (no body transferred), or null when it is absent. This is
-	 * half of the range capability the /media route needs; without it the route degrades to a
-	 * range-less full 200 and WebKit never plays — see media/http-range.ts.
+	 * Byte size via a HEAD (no body transferred), or null if absent — half the range capability
+	 * `/media` needs; without it the route degrades to a range-less `200` and WebKit never plays.
 	 */
 	async size(ref: string): Promise<number | null> {
 		const f = this.#client.file(this.#key(ref));
@@ -62,10 +56,9 @@ export class ObjectMediaStore implements MediaStore {
 	}
 
 	/**
-	 * Read an INCLUSIVE byte range as a Blob backed by a ranged GET (no full download). HTTP ranges
-	 * are inclusive but `slice`'s end is EXCLUSIVE — hence `end + 1`; getting that wrong drops the
-	 * final byte of every chunk, which a decoder reports as a corrupt stream. Returns a Blob (not a
-	 * stream) so the response carries a `Content-Length`. Null for an absent object.
+	 * INCLUSIVE byte range as a Blob via a ranged GET (no full download). `slice`'s end is EXCLUSIVE,
+	 * hence `end + 1` — wrong here drops the final byte, read as a corrupt stream. Blob (not stream)
+	 * so the response carries `Content-Length`.
 	 */
 	async getRange(ref: string, start: number, end: number): Promise<Blob | null> {
 		const f = this.#client.file(this.#key(ref));
@@ -78,11 +71,8 @@ export class ObjectMediaStore implements MediaStore {
 	}
 }
 
-/**
- * Build the real Bun.S3Client for an ObjectStoreConfig (creds from the standard AWS_* env, which
- * Bun.S3Client reads automatically). Imported lazily by app.ts only when MEDIA_STORE=object, so the
- * local default never touches the S3 client. Returns an S3Like.
- */
+/** Build the real Bun.S3Client (creds from standard AWS_* env, read automatically). Imported lazily
+ *  by app.ts only when MEDIA_STORE=object, so the local default never touches the S3 client. */
 export function bunS3Client(config: ObjectStoreConfig): S3Like {
 	// Bun.S3Client is global in the Bun runtime; typed loosely to avoid a hard bun-types coupling.
 	const S3 = (globalThis as { Bun?: { S3Client?: new (o: unknown) => S3Like } }).Bun?.S3Client;

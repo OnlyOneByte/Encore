@@ -1,21 +1,8 @@
 /*
- * ── ENCORE DEVIATIONS (S8, trimmed in Phase 2) ───────────────────────────────────────────────
- * What Encore uses `ui/chart` for is the CONFIG CONTRACT — `config` → one `--color-<series>` custom
- * property per series, emitted by ChartStyle onto `[data-chart=<id>]`. It does NOT use layerchart's
- * marks: /stats' Trend is 31 real <button> columns with per-day aria-labels and Bars is a labelled
- * proportional list, both deliberately accessible in a way plotted <rect>/<path> marks are not (see
- * chart-container.svelte's header for the full argument).
- *
- * PHASE 2 REMOVED THE TOOLTIP CHAIN AND THE layerchart DEPENDENCY WITH IT.
- * `chart-tooltip.svelte` had ZERO call sites — nothing in the app rendered Chart.Tooltip — and it was
- * the only consumer of `getPayloadConfigFromPayload` and `TooltipPayload`, which in turn were the only
- * reason this file imported `type { Tooltip } from 'layerchart'`. So the whole chain was carrying a
- * multi-megabyte dependency (layerchart plus its d3 tree) for code no surface reached. Both are gone;
- * what remains is the context plumbing and the ChartConfig type that the two real charts use.
- *
- * If a tooltip is ever wanted, it belongs on Encore's own accessible marks rather than on layerchart's
- * — re-adding the registry's tooltip would reintroduce the dependency for a rendering path this app
- * does not take.
+ * The context plumbing and the ChartConfig type, which is all Encore uses `ui/chart` for — see
+ * chart-container.svelte. The registry's tooltip chain is deliberately absent: it had no call sites and
+ * was the only thing pulling layerchart and its d3 tree into the bundle. A tooltip belongs on Encore's own
+ * accessible marks, so re-adding the registry's would reintroduce that dependency for nothing.
  */
 import { getContext, setContext, type Component, type Snippet } from 'svelte';
 

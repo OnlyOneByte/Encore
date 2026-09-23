@@ -27,11 +27,6 @@ from src.vocabulary import Capability, serves_family  # noqa: E402
 def _cfg(caps: tuple[str, ...]) -> WorkerConfig:
     base = WorkerConfig.from_env({"ENCORE_CORE_WS": "ws://x", "MEDIA_DIR": "/m"})
     return type(base)(**{**base.__dict__, "capabilities": caps})
-
-
-# ── the regression ───────────────────────────────────────────────────────────────────────────────
-
-
 def test_an_audiosep_only_box_binds_a_stems_runner() -> None:
     """THE BUG. A box proving only `stems:audiosep` used to bind nothing while advertising stems."""
     proc = _build_processor(_cfg((Capability.STEMS_AUDIOSEP,)))
@@ -64,11 +59,6 @@ def test_what_the_worker_advertises_and_what_it_binds_cannot_disagree() -> None:
                     f"advertising {cap!r} makes the core route {action!r} here, but no {action!r} "
                     f"runner is bound — only {sorted(bound)}"
                 )
-
-
-# ── the vocabulary ───────────────────────────────────────────────────────────────────────────────
-
-
 def test_the_family_is_the_part_before_the_colon() -> None:
     assert Capability.STEMS_ROFORMER.family == "stems"
     assert Capability.STEMS.family == "stems"

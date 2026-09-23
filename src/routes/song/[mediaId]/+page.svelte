@@ -1,24 +1,8 @@
 <script lang="ts">
 	/*
-	 * THE SONG PAGE — one song, everything a singer needs to decide about it before their turn.
-	 *
-	 * WHY A ROUTE AND NOT A SHEET. The drawer's "···" used to be planned as a second sheet stacked on the
-	 * first, and that was rejected on a forward-looking argument rather than a stylistic one: lyrics
-	 * timing and editing are going to become a comprehensive system, and a sheet that grows into a
-	 * workspace is the wrong container to start it in. A chooser is not an editor. So the door opens onto
-	 * a page, the browser's back gesture is the way out, and `/song/[mediaId]/lyrics` has somewhere to be.
-	 *
-	 * WHY IT SHARES AN ENDPOINT WITH /metrics/[mediaId]. `GET /api/audit/[mediaId]` already returns the
-	 * full media row plus its attempt history — it is the one place that knows everything about how a song
-	 * came to be. Two routes reading one endpoint is the deliberate shape (the ruling was: share the
-	 * endpoint and the components, keep the routes separate), because the two surfaces answer different
-	 * questions of the same data. /metrics asks "how was this made, and what did it cost"; this asks "can
-	 * I sing it, and are the words right". A second endpoint would have been two answers to one question.
-	 *
-	 * NOT FROM THE ROOM LINK. The catalog only holds songs the room has touched, and this page is
-	 * reachable for any song id — including one that is not queued, not playing, and processed on an
-	 * earlier night. So it fetches. The link is still read for the LIVE facts the room owns and the audit
-	 * row cannot know: the current key shift, so the range readout matches what the TV is sounding.
+	 * Reachable for ANY song id, so the row is fetched from `/api/audit/[mediaId]` rather than read from
+	 * the room catalog, which only holds songs this room has touched. The link is still subscribed for the
+	 * live key shift the audit row cannot know. See docs/FRONTEND.md#the-song-page.
 	 */
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -95,25 +79,15 @@
 	const bandSentence = $derived(voiceBandSentence(profile, keyShift));
 	const candidates = $derived(media?.lyricsCandidates ?? []);
 
-	/*
-	 * The heading is the SONG, not the page's function. "Find a song" names what /find is for because a
-	 * search box is a tool; this page is about one thing, and naming it "Song details" over the top of the
-	 * title would put a label where the subject belongs.
-	 */
 	const heading = $derived(loading ? 'Song' : display.title || media?.title || 'Unknown song');
 </script>
 
-<!--
-	The wrapper exists to carry `--page-measure`, which PageHeader reads. The header is a SIBLING of
-	`main`, not a descendant, so declaring the measure on `main` would never reach it — the same shape
-	`/settings` uses with `.settings-page`.
--->
+<!-- PageHeader is a SIBLING of `main`, so `--page-measure` has to live on this wrapper to reach it. -->
 <div class="song-page">
 	<PageHeader title={heading} back={{ href: '/', label: 'Back to the queue' }} />
 
 	<main>
-		<!-- Room state is a live claim, and a stale one on this page would let the range readout describe a
-	     transpose the TV has since moved off. Says so rather than looking authoritative. -->
+		<!-- Offline, the range readout may describe a transpose the TV has moved off, so say so. -->
 		{#if !connected}
 			<p class="offline-note" role="status" aria-live="polite">
 				<Icon name="warning" /> Reconnecting…
@@ -152,11 +126,6 @@
 					</div>
 				{/if}
 
-				<!--
-				THE RANGE IS THE POINT OF THIS BLOCK. It is the one fact that answers "can I sing this", and it
-				is shown in full here — label, octave span, the band sentence and the visualizer — because a
-				page has the room the drawer does not. Same components, same helpers, more space.
-			-->
 				{#if rangeText}
 					<div class="fact">
 						<span class="lab">Range</span>
@@ -167,22 +136,16 @@
 					{#if bandSentence}<p class="band-sentence">{bandSentence}</p>{/if}
 					<RangeBar profile={profile} keyShift={keyShift} />
 				{:else}
-					<!-- A song can be perfectly singable and have no measured range: the analysis needs a vocals
-				     stem. Stating that beats an empty strip that reads as "range = zero". -->
+					<!-- A singable song can have no measured range: the analysis needs a vocals stem. Say so, rather than -->
+					<!-- drawing an empty strip that reads as "range = zero". -->
 					<p class="band-sentence">No vocal range yet — that needs karaoke.</p>
 				{/if}
 			</section>
 
-			<!--
-			LYRICS QUICK-SELECT, and quick-select is the whole scope here. Picking among the versions the
-			ranker already found is a CHOICE and belongs on the overview; pasting or authoring a version is a
-			different act with a different surface, and it lives at /song/[mediaId]/lyrics. That route does
-			not exist yet, so there is no link to it — the same rule the band's handle and the drawer's own
-			affordances follow: no destination, no door.
-		-->
+			<!-- Quick-select only: picking among the ranker's versions. Authoring one is a separate surface. -->
 			{#if candidates.length}
-				<!-- Bound out of the narrowed branch: an arrow function escapes Svelte's `{:else}` narrowing, so
-			     `media.id` inside a callback is `possibly null` to the checker even though it cannot be. -->
+				<!-- Bound out of the narrowed branch: a callback escapes Svelte's narrowing, so `media.id` inside one -->
+				<!-- reads as possibly-null to the checker. -->
 				{@const songId = media.id}
 				<section class="lyrics" aria-label="Lyrics">
 					<h2 class="grouphead">Lyrics</h2>
@@ -204,13 +167,8 @@
 
 <style>
 	.song-page {
-		/*
-		 * A READING WIDTH, which this route shipped without. PageHeader caps its row on this token and
-		 * falls back to the shell's cap when a route sets none — so on a desktop viewport the header
-		 * aligned to one width while the column ran the full shell, the two visibly disagreed, and the
-		 * range visualizer stretched to ~1300px. 560px matches /settings, the other route whose content is
-		 * a labelled fact list rather than a grid of rows.
-		 */
+		/* Set the measure, or PageHeader falls back to the shell's cap and stops agreeing with the column
+		   under it. Prose width, as on /settings: this is a labelled fact list, not a grid of rows. */
 		--page-measure: var(--measure-prose);
 	}
 	main {

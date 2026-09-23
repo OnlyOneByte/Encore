@@ -1,11 +1,4 @@
-<!--
-  /metrics/[mediaId] — the per-song audit log. The thing the feature was actually asked for: click into
-  a song and read how it came to be.
-
-  Organised by PROCESS, not as a flat attempt list, because "the first time we made this, then the
-  upgrade" is how a reader thinks about it — and because a flat list on one media id blends distinct
-  runs together, which is exactly the confusion processingId exists to remove.
--->
+<!-- Per-song audit log, grouped by processingId — one id, several runs. docs/FRONTEND.md#metrics -->
 <script lang="ts">
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
@@ -34,7 +27,7 @@
 		rtFactor: number | null;
 		models: Record<string, string | null>;
 		stages: { stage: string; ms: number }[];
-		// WHY the published lyric won, when the align attempt recorded it. Null otherwise.
+		/** Why the published lyric won. Recorded by align attempts only; null elsewhere. */
 		selection: SelectionRecord | null;
 	}
 	interface Process {
@@ -52,11 +45,9 @@
 			titleCanonical?: string | null;
 			artistCanonical?: string | null;
 			durationSec: number;
-			// The guiding-track fields: whether this song has a vocals stem to align, and the
-			// measured guide/instrumental offset in signed ms (undefined = never measured).
+			/** A vocals stem exists to align against. */
 			vocalsRef?: string;
-			// Present ⇔ this song plays through the ONE-file guide path, which changes what the offset above
-			// means (frozen at merge, not applied live).
+			/** The 4-channel mix was built, which is the only path a guiding track plays through. */
 			guideMixRef?: string;
 		} | null;
 		processes: Process[];
@@ -82,21 +73,13 @@
 		}
 	});
 
-	// dur() moved to $lib/metrics-format — it had drifted from /metrics's copy, so a new job type
-	// taught to one page silently showed its raw DB name on the other.
-	// localStamp renders each instant in the VIEWER'S local zone: the old toISOString() form
-	// printed UTC with the Z sliced off, dating an evening US run to the next day.
+	/** Local zone, not UTC: a sliced-off `Z` dates an evening US run to the next day. */
 	const stamp = (ms: number) => localStamp(ms);
-	/**
-	 * Only the model fields this step actually carries — a null is "not applicable", not "unknown" —
-	 * already paired with its label, because <FactList> renders whatever wording it is handed.
-	 */
+	/** Drops nulls: a null model field is "not applicable", and FactList prints whatever it is handed. */
 	const modelFacts = (m: Record<string, string | null>): [string, string][] =>
 		Object.entries(m)
 			.filter((e): e is [string, string] => Boolean(e[1]))
 			.map(([k, v]): [string, string] => [factLabel(k), v]);
-
-	// STEP_LABELS/stepLabel moved to $lib/metrics-format (shared with /metrics).
 
 	const OUTCOME_LABELS: Record<string, string> = {
 		ready: 'done',
@@ -118,11 +101,8 @@
 	};
 	const factLabel = (k: string) => FACT_LABELS[k] ?? k;
 
-	// STAGE_LABELS/stageLabel moved to $lib/metrics-format (shared with /metrics).
-
-	// WHY THE LYRIC WAS PICKED, in words. 'agreement' means a baseline actually voted, so a
-	// wrong pick there is a metric problem; 'metadata' means none could and cheap ordering stood, which
-	// is the arm a new similarity metric does NOT fix — that distinction is the whole point of persisting it.
+	// The distinction worth keeping: 'agreement' means a baseline voted, so a wrong pick there is a metric
+	// problem; 'metadata' means none could and cheap ordering stood, which a better metric does not fix.
 	const DECIDED_LABELS: Record<string, string> = {
 		agreement: 'a baseline judged it',
 		metadata: 'no baseline could judge — chosen on metadata'
@@ -139,23 +119,11 @@
 <section class="audit">
 	<PageHeader title={pageTitle} back={{ href: '/metrics', label: 'Back to metrics' }} />
 
-	<!--
-		The shadcn migration: the content is a <main> landmark, the shape /admin and /settings already use. The cap,
-		--page-measure and the auto inline margin stay on .audit so the PageHeader inside it still shares
-		the content's 760px measure; <main> only carries the grid the cards lay out in.
-	-->
 	<main aria-label={pageTitle}>
 		{#if error}
 			<Alert.Root variant="destructive"><Alert.Title>{error}</Alert.Title></Alert.Root>
 		{:else}
-			<!--
-				ONE live region that EXISTS BEFORE ITS CONTENT CHANGES (the shadcn migration). This was
-				`{:else if !audit}<p role="status">Loading…</p>`, a region CREATED by the load rather than
-				updated by it, so nothing was announced either while waiting or on arrival. Persisting the
-				element and swapping only its text makes the transition the change. The loaded copy is the
-				duration/plays line this paragraph already carried, so the announcement is the page's own first
-				fact rather than a sentence added to be announced.
-			-->
+			<!-- This live region must OUTLIVE the load: one created by it arrives already holding its message. -->
 			<p class="note" role="status">
 				{#if !audit}
 					Loading…
@@ -169,12 +137,7 @@
 				{#if audit.media?.artistCanonical}<p class="sub">{audit.media.artistCanonical}</p>{/if}
 
 				{#if audit.media?.vocalsRef}
-					<!--
-						WHETHER THIS SONG HAS A GUIDING TRACK AT ALL, which an operator cannot otherwise tell. The
-						guide rides inside the master as channels 2/3 of the 4-channel mix, and that is now the ONLY
-						path: the two-element player was deleted, so a song with no mix offers no guide. This row is
-						therefore the answer to "why can this singer not fade the original vocals in".
-					-->
+					<!-- The guide rides in channels 2/3 of the 4-channel mix, so no mix means no guiding track. -->
 					<p class="note">
 						Guiding track:
 						{#if audit.media.guideMixRef}
@@ -216,21 +179,8 @@
 									)}{:else}{' · still going'}{/if}
 							</p>
 
-							<!--
-						The shadcn migration: each attempt is <Item.Root> for the shared row GRAMMAR, with the <li> kept through Item's
-						own `child` snippet — the QueueRow shape, and load-bearing twice over here. The panel carries two
-						conditional state classes (`failed`, `abandoned`), and a `class:` directive is not valid on a
-						component while a class handed to one would be scoped to this file and reach nothing; and the
-						attempts are an ordered sequence, so the <ol>/<li> pair is meaning rather than markup.
-
-						Everything goes inside ONE <Item.Content>. Item's base is a flex ROW and this is a vertical
-						panel, so a second direct child of the <li> would lay out beside the first instead of under it;
-						`[data-slot='item-content']` is the `flex-1 min-width:0` column that keeps the stack.
-
-						Card.Root was the other candidate and does not fit: it renders its own <div> with no `child`
-						snippet, so it cannot BE the <li>, and its surface is painted inside the component — the
-						failed/abandoned tinting below could not reach it from here.
-					-->
+							<!-- The <li> stays via Item's `child`: `class:` is invalid on a component and .failed must land here. -->
+							<!-- One Item.Content only: Item's base is a flex row, so a second child sits beside the first. -->
 							<ol class="steps">
 								{#each process.attempts as a (a.id)}
 									<Item.Root variant="bare" size="bare">
@@ -317,40 +267,23 @@
 </section>
 
 <style>
-	/*
-	 * Capped narrower than the 1080px shell on purpose. This is a TIMELINE of short rows, and at full
-	 * desktop width each row became a very long line whose start and end were hard to associate.
-	 */
+	/* Capped below the shell: this is a timeline of short rows, and at full desktop width a row's two ends
+	   stop reading as a pair. */
 	.audit {
 		display: grid;
 		gap: 1rem;
-		/* 3rem (48px) is off-scale — the scale stops at --space-4xl (20px) — so it stays a literal. */
 		padding: 1rem 0 3rem;
 		max-width: var(--measure-grid);
-		/* Match the PageHeader's --page-measure cap to this block's width (header and content share one
-		   measure; header does not cap below 760 when --max-w steps down in the 768–1200 band). */
+		/* PageHeader caps on --page-measure, so match it here or the header and its content disagree. */
 		--page-measure: var(--measure-grid);
-		/* The cap takes width off the right only on a flex child (.app-shell is a
-		   centered flex column); width:100% keeps the stretch so margin-inline:auto
-		   re-centres the full capped block instead of collapsing it to content width. */
+		/* .app-shell is a centred flex column: a cap alone shrinks from the right, so keep the stretch. */
 		width: 100%;
 		margin-inline: auto;
 	}
-	/*
-	 * The <main> landmark (the shadcn migration). It carries the CARD grid and nothing else: the cap, --page-measure and
-	 * the auto inline margin stay on .audit so the PageHeader sitting inside that block keeps sharing the
-	 * content's measure.
-	 */
 	main {
 		display: grid;
 		gap: 1rem;
 	}
-	/* .card in app.css has no padding — see routes/stats/+page.svelte. */
-	/* The process owns the attempts beneath it, so its header takes full ink and a dividing rule. At
-	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */
-	/* The bare `header {}` element selector is GONE with the element: the run's outcome badges are
-	   `<Card.Action>`, Card's own trailing-content slot. An element selector on a generic tag is
-	   fragile — it would silently restyle any future <header> added to this route. */
 	.sub {
 		margin: 0;
 		color: var(--ink-dim);
@@ -368,22 +301,15 @@
 		display: grid;
 		gap: 0.6rem;
 	}
-	/*
-	 * Each attempt is a NESTED PANEL on the process's card, not a floating stripe. A 2px left border was
-	 * the only thing marking one level of nesting, so process and attempt read as the same depth — which
-	 * is precisely the parent/child relationship processingId exists to express.
-	 *
-	 * These rules STAY here, and that is the reason Card.Root was rejected for this panel: they paint a
-	 * surface and tint it by outcome, and a page cannot reach inside a component to do either.
-	 */
+	/* An attempt is a nested panel on its run's card, so it needs its own surface as well as the rule —
+	   a border alone reads as the same depth as the run above it. */
 	.steps li {
 		background: var(--bg2);
 		border-left: 2px solid var(--line-strong);
 		border-radius: var(--radius-sm);
 		padding: 0.6rem 0.75rem;
 	}
-	/* A whole tinted block, so the eye FINDS the bad attempt instead of reading for it. The border
-	   alone left a failure looking like its neighbours. */
+	/* Tint the whole block, so the eye finds the bad attempt instead of reading for it. */
 	.steps li.failed {
 		border-left-color: var(--danger);
 		background: var(--danger-bg);
@@ -415,24 +341,11 @@
 		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 	}
-	/*
-	 * `.suspect` STAYS, deliberately, while `.retry` became a Badge. The difference is shape, not tone:
-	 * "try 2" is a token and reads correctly as a pill, but this is a full SENTENCE — "winner disagreed
-	 * with every baseline — probably the wrong song" — and a pill wrapping a sentence reads as a broken
-	 * token. It also composes with `.secondary`, so the warn ink is an override on inline metric text
-	 * rather than a surface of its own.
-	 */
+	/* Ink on top of .secondary rather than a Badge: this is a sentence, and a pill wrapping a sentence
+	   reads as a broken token. */
 	.suspect {
 		color: var(--warn);
 	}
-	/*
-	 * The shadcn migration: `.facts` and its three descendant rules are GONE from this file. They were duplicated
-	 * VERBATIM in routes/metrics/+page.svelte — four rules and seven lines of markup in each, already
-	 * diverging by one `overflow-wrap` — and are now lib/components/FactList.svelte, which both pages
-	 * import. A scoped rule here could not reach that component's <dl> anyway.
-	 */
-	/* WHY the lyric was picked (an earlier change): one small block per source, each line dim so it reads as
-	   provenance beside the timings rather than competing with them. */
 	.selection {
 		display: flex;
 		flex-direction: column;
@@ -450,7 +363,6 @@
 		font-size: var(--ph-text-sm);
 		color: var(--ink);
 	}
-	/* `abandoned` reads as a failure, so it maps to the `bad` tone at the call sites above (S6). */
 	.err {
 		font-size: var(--ph-text-xs);
 		color: var(--danger-ink);

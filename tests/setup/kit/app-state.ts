@@ -1,12 +1,9 @@
-// Test stub for SvelteKit's `$app/state` virtual module (rung M).
+// Test stub for SvelteKit's `$app/state` virtual module (mount rung).
 //
-// Two first-party consumers read `page` today: routes/join/+page.svelte (`page.url.searchParams`)
-// and routes/metrics/[mediaId]/+page.svelte (`page.params.mediaId`). The stub therefore carries a
-// real `URL` and a real params record, so a component reading either gets a value of the right
-// shape rather than `undefined`.
-//
-// Mutated in place (never reassigned) so a component that captured the object at import time and a
-// test that calls `setPage()` afterwards are looking at the same object.
+// Carries a real `URL` and a real params record, because consumers read `page.url.searchParams` and
+// `page.params.<id>` and would otherwise get `undefined`. Mutated in place, NEVER reassigned, so a
+// component that captured the object at import time and a test calling `setPage()` afterwards are
+// looking at the same object.
 
 /** The subset of SvelteKit's `page` the app reads, plus the fields a mount touches incidentally. */
 export type StubPage = {

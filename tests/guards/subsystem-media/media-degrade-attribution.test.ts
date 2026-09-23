@@ -1,18 +1,6 @@
-// — a media degrade boundary must be ATTRIBUTABLE: the graceful-degrade return value stays
-// exactly as documented ([] for an absent/failed source, 502 for a dead thumbnail upstream), but the
-// FAILURE REASON must not be thrown away, or six different causes collapse to one indistinguishable
-// observation. This directory has fixed exactly this class three times already — retention.ts:284,
-// sidecar.ts:343, and ytdlp.ts — and each fix stopped at its own file. spotify.ts and
-// thumbs.ts are the siblings the ytdlp.ts fix explicitly deferred ("a different file cluster and a future pass's
-// business"); this guard pins them so a fourth silent copy cannot re-appear.
-//
-// Why a SOURCE SCAN and not only behaviour: the fix is behaviour-preserving — every return value is
-// unchanged — so no behavioural test can red on it, which is exactly why nothing forced the three
-// previous fixes to spread. This scan pins the attribution deterministically.
-//
-// The regions are sliced by brace balance (appToken, spotifySearch, serveThumb) so a neighbour cannot
-// satisfy an arm, and comments are blanked (each block/line comment replaced by spaces, line count
-// preserved) so a commented-out `catch {` or `!res.ok return` neither satisfies nor violates an arm.
+// A media degrade boundary must attribute its failure REASON, not just its value. See docs/GUARDS.md#media
+// Attribution is behaviour-preserving, so only a source scan can pin it; regions are sliced by brace balance
+// and comments blanked, so a commented-out `catch {` or `!res.ok return` neither satisfies nor violates an arm.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -22,17 +10,13 @@ function stripComments(src: string): string {
 		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-// Both subjects named explicitly. The old form read `at('src/lib/server/media')` as the media directory, which was
-// only true while this guard sat in src/lib/server/media. `read` throws on a wrong path.
 const SPOTIFY = stripComments(read('src/lib/server/media/spotify.ts'));
 const THUMBS = stripComments(read('src/lib/server/media/thumbs.ts'));
 
 /**
- * Slice one function body out by brace balance, so a match cannot come from a neighbour. Skips the
- * PARAMETER LIST by paren balance first — spotifySearch's signature spans four lines and declares an
- * inline `opts: { ... }` type, so taking the first `{` after the name would close brace balance on
- * the signature and return a stub containing none of the code under guard. (Found by running this
- * guard, exactly as the ytdlp.ts sibling documents for ytDlpSearch.)
+ * Slice one function body out by brace balance, so a match cannot come from a neighbour. Skips the PARAMETER
+ * LIST by paren balance first: spotifySearch declares an inline `opts: { ... }` type, so taking the first `{`
+ * after the name closes brace balance on the signature and returns a stub holding none of the guarded code.
  */
 function sliceFunction(src: string, name: string): string {
 	const at = src.indexOf(`function ${name}(`);
@@ -75,8 +59,6 @@ const REGIONS: [string, string, string][] = [
 	['thumbs.ts', 'serveThumb', SERVE_THUMB]
 ];
 
-// ── ARM 1: every catch inside a media degrade boundary binds its error ────────────────────────────
-
 test('ARM 1: no bare `catch {` inside appToken / spotifySearch / serveThumb', () => {
 	const offenders: string[] = [];
 	for (const [file, name, region] of REGIONS) {
@@ -85,18 +67,14 @@ test('ARM 1: no bare `catch {` inside appToken / spotifySearch / serveThumb', ()
 			offenders.push(`${file} ${name} (line ${ln}): } catch {`);
 		}
 	}
-	// On base: spotify.ts appToken :101, spotify.ts spotifySearch :137, thumbs.ts serveThumb :79.
 	expect(offenders).toEqual([]);
 });
-
-// ── ARM 2: every `!res.ok` refusal in those regions names res.status in its own statement ──────────
 
 test('ARM 2: every `!res.ok` refusal in a guarded region names res.status', () => {
 	const offenders: string[] = [];
 	for (const [file, name, region] of REGIONS) {
 		const src = file === 'spotify.ts' ? SPOTIFY : THUMBS;
-		// Split the region into `if (!res.ok) { ... }` statements and require res.status inside the
-		// block that the refusal opens — not merely somewhere in the region.
+		// res.status must sit inside the block the refusal opens, not merely somewhere in the region.
 		const re = /if\s*\(\s*!res\.ok\s*\)\s*\{([\s\S]*?)\n\t*\}/g;
 		let m: RegExpExecArray | null;
 		let found = false;
@@ -107,18 +85,15 @@ test('ARM 2: every `!res.ok` refusal in a guarded region names res.status', () =
 				offenders.push(`${file} ${name} (line ${ln}): !res.ok refusal drops res.status`);
 			}
 		}
-		// A one-line `if (!res.ok) return ...;` (base shape) has no block to match — catch it too.
+		// A one-line `if (!res.ok) return ...;` has no block to match — catch it too.
 		if (!found) {
 			for (const ln of offenderLines(src, region, /if\s*\(\s*!res\.ok\s*\)\s*return/)) {
 				offenders.push(`${file} ${name} (line ${ln}): one-line !res.ok refusal drops res.status`);
 			}
 		}
 	}
-	// On base: spotify.ts appToken :96, spotify.ts spotifySearch :135, thumbs.ts serveThumb :69.
 	expect(offenders).toEqual([]);
 });
-
-// ── ARM 3: a specific failure cause is OBSERVABLE — the discriminating behavioural check ──────────
 
 test('ARM 3: distinct Spotify token failures (401, 200-no-token) are observable, clean empty is not', async () => {
 	const { spotifySearch, _resetSpotifyToken } = await import('$lib/server/media/spotify');
@@ -130,7 +105,7 @@ test('ARM 3: distinct Spotify token failures (401, 200-no-token) are observable,
 		warned.push(args.map((a) => (a instanceof Error ? a.message : String(a))).join(' '));
 	};
 	try {
-		// Cause A — bad credentials: the token endpoint 401s. Degrade value is still [], but it must warn.
+		// Cause A — bad credentials: the token endpoint 401s. Still [], but it must warn.
 		_resetSpotifyToken();
 		const badCreds = (async () =>
 			new Response(JSON.stringify({ error: 'invalid_client' }), { status: 401 })) as unknown as typeof fetch;
@@ -141,11 +116,8 @@ test('ARM 3: distinct Spotify token failures (401, 200-no-token) are observable,
 		expect(linesA.length).toBeGreaterThan(0); // but the reason is now observable
 		expect(linesA.some((l) => l.includes('401'))).toBe(true);
 
-		// Cause B — a 200 token response with NO access_token field: a malformed/unexpected token
-		// response, not a credential refusal and not a miss. This exit (the report named it: "give :98 its
-		// warn too") falls between all three arms on a source scan — it is not a bare `catch {` (ARM 1)
-		// and not a `!res.ok` (ARM 2) — so this drive is the one thing that keeps hunk 2's warn from
-		// being reverted invisibly. Degrade value is still [].
+		// Cause B — a 200 token response with NO access_token: neither a bare `catch {` (ARM 1) nor a
+		// `!res.ok` (ARM 2), so only this behavioural drive keeps that warn from being reverted invisibly.
 		_resetSpotifyToken();
 		const noToken = (async () => new Response(JSON.stringify({}), { status: 200 })) as unknown as typeof fetch;
 		const beforeB = warned.length;
@@ -155,8 +127,8 @@ test('ARM 3: distinct Spotify token failures (401, 200-no-token) are observable,
 		expect(linesB.length).toBeGreaterThan(0); // the reason is observable
 		expect(linesB.some((l) => l.includes('no access_token'))).toBe(true);
 
-		// Control — a healthy account with no match: 200 token, 200 search with an empty items list.
-		// SAME [] observation, and it must stay SILENT so silence still carries "genuine empty".
+		// Control — healthy account, no match: the SAME [] observation, and it must stay SILENT so that
+		// silence still carries "genuine empty".
 		_resetSpotifyToken();
 		const healthyEmpty = (async (input: string | URL | Request) => {
 			const u = typeof input === 'string' ? input : ((input as Request).url ?? String(input));
@@ -175,7 +147,7 @@ test('ARM 3: distinct Spotify token failures (401, 200-no-token) are observable,
 	}
 });
 
-// ── Sentinels: all PASS on base, so no arm above can go green vacuously ───────────────────────────
+// Sentinels, so no arm above can go green vacuously.
 
 test('sentinel 1: all three regions were sliced and each holds real code (>150 chars)', () => {
 	// A rename or deletion reds here rather than silently emptying ARM 1/ARM 2's haystack.
@@ -185,8 +157,8 @@ test('sentinel 1: all three regions were sliced and each holds real code (>150 c
 });
 
 test('sentinel 2: isAllowedThumbUrl sits OUTSIDE the guarded regions and keeps its bare catch', () => {
-	// ARM 1 must neither be satisfiable by rewriting isAllowedThumbUrl nor demand that its legitimate
-	// `try { new URL(u) } catch { return false }` predicate change — it is not a degrade boundary.
+	// isAllowedThumbUrl is a pure predicate, not a degrade boundary, so its `try { new URL(u) } catch
+	// { return false }` is correct and ARM 1 must neither demand nor be satisfied by changing it.
 	const guard = sliceFunction(THUMBS, 'isAllowedThumbUrl');
 	expect(guard.length).toBeGreaterThan(50);
 	expect(/catch\s*\{/.test(guard)).toBe(true); // the pure-predicate bare catch is correct and stays
@@ -194,7 +166,6 @@ test('sentinel 2: isAllowedThumbUrl sits OUTSIDE the guarded regions and keeps i
 });
 
 test('sentinel 3: the anchors still exist and each region still holds the degrade it attributes', () => {
-	// Deleting the feature must red rather than pass.
 	expect(SPOTIFY).toMatch(/export\s+async\s+function\s+spotifySearch\(/);
 	expect(SPOTIFY).toMatch(/export\s+function\s+spotifyEnv\(/);
 	expect(THUMBS).toMatch(/export\s+async\s+function\s+serveThumb\(/);
@@ -216,8 +187,7 @@ test('sentinel 4: the comment stripper removes a planted bare catch and !res.ok,
 });
 
 test('sentinel 5: the creds-unset default exit is deliberately silent (not swept into an arm)', () => {
-	// :122 (spotifyEnv → null) is the documented default deployment; a structural guard cannot decide
-	// "this early return names a reason", and a warn per keystroke would be noise. Pin that it stays
-	// a plain `return []` with no res.status/console.warn attached to the creds-unset branch.
+	// Creds unset (spotifyEnv → null) is the documented default deployment, and a warn per keystroke would
+	// be noise, so that branch stays a plain `return []` with nothing attached.
 	expect(SPOTIFY_SEARCH).toMatch(/if\s*\(\s*!env\s*\)\s*return \[\]/);
 });

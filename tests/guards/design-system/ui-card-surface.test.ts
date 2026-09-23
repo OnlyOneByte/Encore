@@ -1,37 +1,21 @@
 /*
- * THE SHARED `.card` SURFACE AND ITS CALLERS STAY TOGETHER.
+ * guard: the shared `.card` surface in app.css and its callers move together, in both directions. See
+ * docs/GUARDS.md#vendored-component-seams.
  *
- * ── THE DEFECT THIS EXISTS FOR ──────────────────────────────────────────────────────────────────
+ * THE DEFECT. `.card` was deleted from app.css on the premise that nothing referenced it after 28 content
+ * cards moved to <Card.Root>. Nine elements still did — `class="row card list-row"`,
+ * `class="qrow card list-row …"` and friends — and every one lost its background, border and radius,
+ * because the audit grepped `class="card[ "]`, which only matches a class list STARTING with `card`.
  *
- * S4 migrated 28 content cards onto shadcn's <Card.Root> and then deleted `.card` from app.css,
- * on the premise that nothing referenced it any more. Nine elements still did, and every one of them
- * lost its background, border and radius:
+ * Nothing in the suite could catch it: a global class has no unused-selector warning when the RULE
+ * disappears (that warning fires the other way round), and no guard asserted these elements have a
+ * surface at all. Search results rendered as a flat list on the page background with no border for the
+ * ready row's green ring to colour. It was found by comparing screenshots.
  *
- *     class="row card list-row"      the search / library row
- *     class="qrow card list-row …"   the queue row
- *     class="hero card"              the now-playing hero
- *     class="track card"            the TV progress track
- *
- * The audit that cleared the deletion grepped `class="card[ "]`, which only matches a class list that
- * STARTS with `card`. Every survivor spells it in the middle.
- *
- * Nothing in the suite could catch it. A global class has no unused-selector warning when the RULE
- * disappears — that warning fires the other way round, for a rule with no markup. And no guard asserted
- * that these elements have a surface at all, because until S4 nothing could take it away. Search
- * results rendered as a flat list on the page background, with no separation between rows and no border
- * for the ready row's green ring to colour. It was found by comparing before/after screenshots.
- *
- * ── WHAT IT ASSERTS ────────────────────────────────────────────────────────────────────────────
- *
- * The rule and its callers move together, in both directions:
- *
- *   1. While any markup lists `card` as a class, app.css must define `.card` with a background — a rule
- *      that exists but paints nothing is the same defect wearing a rule.
- *   2. Every caller is named here. A new one is fine; it just has to be added, which is the moment a
- *      reader asks whether it wants this surface or a <Card.Root>.
- *
- * The second half is what makes the first half honest: a floor on a set nobody enumerates can be
- * satisfied by an empty set.
+ * So: (1) while any markup lists `card`, app.css must define `.card` WITH a background — a rule that
+ * exists but paints nothing is the same defect wearing a rule; (2) every caller is enumerated here, which
+ * is the moment a reader asks whether it wants this surface or a <Card.Root>. The second half is what
+ * makes the first honest, since a floor on a set nobody enumerates can be satisfied by an empty set.
  */
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -40,10 +24,8 @@ import { srcDir } from '@encore/test-support';
 
 const SRC = srcDir;
 
-/**
- * The elements that take the shared surface rather than a <Card.Root>, each with why it is not one.
- * A <Card.Root> is a container with Header/Title/Content; none of these want that structure.
- */
+/** The elements that take the shared surface rather than a <Card.Root>, each with why it is not one:
+ *  a <Card.Root> is a container with Header/Title/Content, and none of these want that structure. */
 const CALLERS: { file: string; why: string }[] = [
 	{ file: 'lib/components/SongRow.svelte', why: 'a library/search row — its structure is Item, not Card' },
 	{ file: 'lib/components/QueueRow.svelte', why: 'a queue row — Item, plus its own drag and state classes' },
@@ -69,7 +51,6 @@ function svelteFiles(dir: string): string[] {
 	return out;
 }
 
-/** Files whose markup lists `card` as a whole class token. */
 /** Markup with style blocks, script blocks and HTML comments removed. */
 function markupOf(src: string): string {
 	return src
@@ -81,15 +62,9 @@ function markupOf(src: string): string {
 function callersInTree(): string[] {
 	const out = new Set<string>();
 	for (const f of svelteFiles(SRC)) {
-		/*
-		 * MARKUP ONLY. A class list written inside a comment, a style block or a script string applies to
-		 * nothing, and counting it makes this guard fire on its own documentation: a comment explaining that
-		 * S8 replaced `<div class="card tile primary">` registered the stats page as a live `card` caller and
-		 * redded the suite. Several guards on this branch were defeated by prose about themselves, this file
-		 * twice — once on the CSS side and once here on the markup side. The stripper is applied rather than
-		 * the sentence reworded, because a rule you cannot describe next to the code it governs is a rule
-		 * that goes undocumented.
-		 */
+		// MARKUP ONLY: a class list inside a comment, a style block or a script string applies to nothing, and
+		// counting it makes this guard fire on its own documentation — a comment naming
+		// `<div class="card tile primary">` registered the stats page as a live caller and redded the suite.
 		const src = markupOf(readFileSync(f, 'utf8'));
 		for (const m of src.matchAll(/class="([^"]*)"/g)) {
 			if (m[1]!.split(/\s+/).includes('card')) out.add(f.slice(SRC.length + 1));
@@ -100,30 +75,15 @@ function callersInTree(): string[] {
 
 test('while anything uses `card`, app.css defines it WITH a background', () => {
 	const callers = callersInTree();
-	// Non-vacuity: the population is real. An empty set would make the rule below unfalsifiable.
-	// 6, WAS 7 (2026-09-22), WAS 8 (2026-09-21). `routes/+page.svelte` left first, when the reorder bar was
-	// deleted with the mode it dressed (the drag is a live sort — nothing to confirm or abandon) and its other
-	// `card` surface, the search dock, had already moved to /find. `MyPositionCard.svelte` leaves now, by
-	// DELETION: the card restated the queue row beneath it and its one unique line moved onto that row.
-	// Both steps lower this floor by a caller that is GONE, which is the one legitimate reason to move it —
-	// it must never be lowered to accommodate a caller that quietly stopped being scanned.
+	// Non-vacuity: an empty set would make the rule below unfalsifiable. This floor may only ever be
+	// lowered by a caller that is GONE, never to accommodate one that quietly stopped being scanned.
 	expect(callers.length).toBeGreaterThanOrEqual(6); // @nvf-floor callers.length
 
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
 
-	/*
-	 * EVERY `.card` rule, not the first one.
-	 *
-	 * This read `.exec()` and looked at one rule in a thousand-line stylesheet, which made the claim below
-	 * — "a rule that paints nothing is the same defect wearing a rule" — one the check did not actually
-	 * deliver. Appending six characters of override stripped the surface from all nine enumerated callers
-	 * with the suite fully green:
-	 *
-	 *     .card { background: none; border: 0; }
-	 *
-	 * In the cascade the LAST matching declaration wins, so that is the one to assert on. Collecting every
-	 * rule also means a refactor that splits `.card` across two blocks cannot hide the paint.
-	 */
+	// EVERY `.card` rule, not the first: in the cascade the LAST matching declaration wins, so appending
+	// `.card { background: none; border: 0; }` stripped the surface from every caller with the suite fully
+	// green. Collecting every rule also means a split across two blocks cannot hide the paint.
 	const rules = [...css.matchAll(/(?:^|\n)\s*\.card\s*\{([^}]*)\}/g)].map((m) => m[1]!);
 	const rule: [unknown, string] | null = rules.length ? [true, rules.join('\n')] : null;
 	expect(
@@ -135,8 +95,7 @@ test('while anything uses `card`, app.css defines it WITH a background', () => {
 	// Non-vacuity: at least one rule was collected, so the assertions below read something.
 	expect(rules.length).toBeGreaterThanOrEqual(1); // @nvf-floor rules.length
 
-	// Assert on what SURVIVES the cascade: `lastOf` takes the final declaration of a property across every
-	// `.card` rule, which is what the browser will actually use.
+	// `lastOf` takes the final declaration of a property across every `.card` rule — what the browser uses.
 	const lastOf = (prop: string): string | null => {
 		const hits = [...rules.join('\n').matchAll(new RegExp(`(?:^|;|\\{)\\s*${prop}\\s*:\\s*([^;}]+)`, 'g'))];
 		return hits.length ? hits[hits.length - 1]![1]!.trim() : null;
@@ -145,19 +104,13 @@ test('while anything uses `card`, app.css defines it WITH a background', () => {
 	expect(lastOf('border'), '`.card` must carry its border').toMatch(/1px solid var\(--line\)/);
 
 	/*
-	 * …and no OTHER rule un-paints it.
+	 * …and no OTHER rule un-paints it. "The last declaration wins" holds only at equal specificity and equal
+	 * importance, so two shapes still strip the surface from every caller with everything above green:
+	 * `body .card { background: none }` (higher specificity, unmatched by the bare-rule regex) and
+	 * `.card { background: none !important }` (wins from anywhere, including earlier in the file).
 	 *
-	 * "The last declaration wins" holds only at equal specificity and equal importance, so collecting the
-	 * bare `.card` rules closed one case and left two open. Both of these strip the surface from all nine
-	 * callers with everything above still green:
-	 *
-	 *     body .card { background: none }        higher specificity, and not matched by the bare-rule regex
-	 *     .card { background: none !important }  wins from anywhere, including earlier in the file
-	 *
-	 * Neither shape exists in the tree today, which is why this is a guard rather than a fix. The check is
-	 * deliberately narrow: any rule whose selector mentions `.card` and which sets background or border to
-	 * something that is not the token. A legitimate future variant (`.card.compact { padding: … }`) is
-	 * untouched because it sets neither.
+	 * Deliberately narrow: any rule whose selector mentions `.card` and which sets background or border to
+	 * something that is not the token. A variant like `.card.compact { padding: … }` sets neither.
 	 */
 	const suspicious: string[] = [];
 	for (const m of css.matchAll(/(?:^|\n)([^{}\n]*\.card[^{}\n]*)\{([^}]*)\}/g)) {
@@ -192,8 +145,7 @@ test('every `card` caller is enumerated, so a new one is a decision', () => {
 			'make it one. This list exists so that choice is made deliberately rather than by copying a class.'
 	).toEqual([]);
 
-	// …and the other direction: a caller that migrated should leave the list, or the list rots into a
-	// record of what USED to be true, which is what makes a floor stop meaning anything.
+	// …and the other direction, or the list rots into a record of what USED to be true.
 	const gone = [...known].filter((f) => !inTree.has(f));
 	expect(gone, 'these no longer list `card`; remove them from CALLERS in the change that migrated them').toEqual([]);
 
@@ -202,11 +154,8 @@ test('every `card` caller is enumerated, so a new one is a decision', () => {
 });
 
 test('a later rule that un-paints `card` is caught, not just a deleted one', () => {
-	/*
-	 * Mutation proof for the override direction, which the `.exec()` version could not see. Deleting the
-	 * rule already redded; NEUTRALISING it with a second rule did not, and that is the more likely
-	 * accident — a reset block, a theme override, a well-meant `background: none`.
-	 */
+	// Mutation proof for the override direction. Deleting the rule already redded; NEUTRALISING it with a
+	// second rule did not, and that is the likelier accident — a reset block, a theme override.
 	const lastOf = (css: string, prop: string): string | null => {
 		const rules = [...css.matchAll(/(?:^|\n)\s*\.card\s*\{([^}]*)\}/g)].map((m) => m[1]!);
 		const hits = [...rules.join('\n').matchAll(new RegExp(`(?:^|;|\\{)\\s*${prop}\\s*:\\s*([^;}]+)`, 'g'))];
@@ -226,10 +175,7 @@ test('a later rule that un-paints `card` is caught, not just a deleted one', () 
 });
 
 test('a class list inside a comment is not a caller', () => {
-	/*
-	 * Both directions, so the stripper cannot become a hole: prose mentioning the class must not register a
-	 * caller, and real markup must still register one.
-	 */
+	// Both directions, so the stripper cannot become a hole.
 	const prose = `<!-- S8 replaced <div class="card tile primary"> with a wrapper -->\n<div class="tiles"></div>`;
 	expect(markupOf(prose)).not.toContain('card');
 
@@ -245,10 +191,7 @@ test('a class list inside a comment is not a caller', () => {
 });
 
 test('a higher-specificity or !important override is caught too', () => {
-	/*
-	 * The two shapes the "last wins" model missed. Both are realistic accidents — a reset block, a theme
-	 * layer, a print stylesheet — and both un-paint all nine callers.
-	 */
+	// The two shapes the "last wins" model missed, both realistic accidents and both un-painting every caller.
 	const suspects = (css: string) => {
 		const out: string[] = [];
 		for (const m of css.matchAll(/(?:^|\n)([^{}\n]*\.card[^{}\n]*)\{([^}]*)\}/g)) {
@@ -264,8 +207,8 @@ test('a higher-specificity or !important override is caught too', () => {
 
 	expect(suspects(`body .card { background: none; }`)).toHaveLength(1);
 	expect(suspects(`.theme-x .card { background: red; }`)).toHaveLength(1);
-	// A variant that sets neither background nor border is legitimate and must not be flagged.
+	// A variant that sets neither background nor border is legitimate.
 	expect(suspects(`.card.compact { padding: 4px; }`)).toEqual([]);
-	// …and one that re-states the real token is fine.
+	// …and one restating the real token is fine.
 	expect(suspects(`@media print { .card { background: var(--card); } }`)).toEqual([]);
 });

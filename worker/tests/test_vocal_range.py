@@ -21,7 +21,6 @@ def _frame(t, midi, voiced=True):
     return PitchFrame(time_sec=t, f0_hz=f0, midi=float(midi), voiced=voiced, clarity=0.9 if voiced else 0.0)
 
 
-# ── the empty case (the contract that keeps a silent-vocals song from being stranded) ──
 def test_no_voiced_frames_is_all_none():
     out = vocal_range.summarize_range([_frame(0.0, 60, voiced=False), _frame(0.1, 62, voiced=False)])
     assert out == {"lowMidi": None, "highMidi": None, "p05Midi": None, "p95Midi": None, "histogram": None}
@@ -32,7 +31,6 @@ def test_empty_frame_list_is_all_none():
     assert out["lowMidi"] is None and out["histogram"] is None
 
 
-# ── extremes vs lived-in range ──────────────────────────────────────────────────────
 def test_absolute_extremes_use_all_voiced_frames():
     # A run mostly in the middle with ONE low outlier and ONE high outlier. low/high are the absolute
     # extremes; the outliers are exactly what the percentiles should discount.
@@ -58,7 +56,6 @@ def test_percentiles_track_the_distribution():
     assert out["p05Midi"] < out["p95Midi"]
 
 
-# ── histogram ───────────────────────────────────────────────────────────────────────
 def test_histogram_is_seconds_per_semitone_indexed_from_low():
     # 3 frames at C4(60), 2 at D4(62), each frame 0.5s. Bins run 60,61,62 → index 0 = lowMidi(60).
     frames = [_frame(0.0, 60), _frame(0.5, 60), _frame(1.0, 60), _frame(1.5, 62), _frame(2.0, 62)]
@@ -87,14 +84,12 @@ def test_single_voiced_frame_degenerate_case():
     assert out["histogram"] == [0.1]
 
 
-# ── hz_to_midi ────────────────────────────────────────────────────────────────────
 def test_hz_to_midi_reference_pitches():
     assert abs(vocal_range.hz_to_midi(440.0) - 69.0) < 1e-9  # A4
     assert abs(vocal_range.hz_to_midi(261.6255653) - 60.0) < 1e-4  # middle C
     assert abs(vocal_range.hz_to_midi(880.0) - 81.0) < 1e-9  # A5, one octave up
 
 
-# ── the pure-numpy tracker on a synthesized tone (the pitch_track.py stand-in) ──
 def test_extract_pitch_track_finds_a_steady_tone():
     sr = 22050
     freq = 220.0  # A3, MIDI 57
@@ -124,14 +119,11 @@ def test_tracker_on_silence_has_no_voiced_frames():
 
 
 def test_tracker_on_noise_rejects_every_frame_via_the_clarity_term():
-    # Low-level noise is the reachable trigger the clarity gate exists for: breath, sibilants and
-    # separation bleed between sung lines are present in every real vocals stem. Unlike digital
-    # silence (which never reaches the clarity term — the energy<=0 guard returns f0=0.0, and 0.0
-    # fails the BAND half of the predicate), noise DOES reach it and is rejected ONLY by the clarity
-    # term. The band half rejects nothing here: the argmax lag of noise is arbitrary inside
-    # [min_lag, max_lag], and that interval IS the band, so every frame's f0 lands in [65, 1100] Hz.
-    # Deleting `clarity >= _CLARITY_THRESHOLD` from vocal_range.py's `voiced =` line makes all 40
-    # frames voiced and publishes a ~3.4-octave range built from breath — with the whole suite green.
+    # Low-level noise (breath, sibilants, separation bleed) is the reachable trigger the clarity gate
+    # exists for. Unlike digital silence (which never reaches the clarity term at all — the energy<=0
+    # guard returns f0=0.0, which fails the BAND check), noise DOES reach the clarity term and must be
+    # rejected there: its argmax lag is arbitrary inside [min_lag, max_lag], the band itself, so every
+    # frame's f0 lands in-band and only clarity can reject it.
     sr = 22050
     rng = np.random.default_rng(0)
     noise = rng.standard_normal(sr) * 0.05  # ~1.0s, 40 frames at frame 2048 / hop 512
@@ -155,20 +147,14 @@ def test_tracker_on_noise_rejects_every_frame_via_the_clarity_term():
     # in the singing band, so if the clarity term were deleted the band half would let all 40 through.
     inband = [f for f in frames if vocal_range._FMIN_HZ <= f.f0_hz <= vocal_range._FMAX_HZ]
     assert len(inband) == len(frames), "the band half rejects nothing here; the clarity term is the only gate"
-    # And clarity sits far below the threshold, so this is a decisive rejection, not a marginal one.
     assert max(f.clarity for f in frames) < vocal_range._CLARITY_THRESHOLD
 
 
-# ── the autocorrelation is the FFT one, and still means the naive thing ──────────
-#
-# `_detect_f0` used `np.correlate(..., mode="full")` under a comment claiming it was an FFT. It is
-# numpy's DIRECT O(n^2) convolution, and at frame 2048 / hop 512 it cost 18.5s of single-threaded CPU
-# for a 3-minute song — about a third of htdemucs separation time, inside what reads like a cheap
-# metadata step. Neither existing suite caught it because both test correctness, and the answers were
-# right; only the cost was wrong.
-#
-# These two guard the fix from both directions: the fast path must keep meaning the naive definition,
-# and the naive definition must not come back as the implementation.
+# `_detect_f0` must go through np.fft.rfft, never `np.correlate(..., mode="full")` (numpy's DIRECT
+# O(n^2) convolution): the latter costs 18.5s of single-threaded CPU for a 3-minute song, about a
+# third of htdemucs separation time, while producing IDENTICAL answers — invisible to any correctness
+# test. These two guard both directions: the fast path means the same thing as the naive definition,
+# and the naive definition cannot silently come back as the implementation.
 
 
 def _naive_autocorr_f0(frame: np.ndarray, sample_rate: int) -> tuple[float, float]:
@@ -207,10 +193,9 @@ def _naive_autocorr_f0(frame: np.ndarray, sample_rate: int) -> tuple[float, floa
 def test_the_rfft_autocorrelation_agrees_with_the_naive_definition():
     """Same algorithm, same answers — across the cases that actually occur in a vocals stem.
 
-    The zero-padding is the part that could silently be wrong: an FFT computes a CIRCULAR correlation,
-    so without padding to >= 2n-1 the value at lag k wraps and picks up energy from the frame's opposite
-    end. That failure would look like plausible-but-wrong pitches rather than an error, which is exactly
-    what a reference comparison catches and a smoke test does not.
+    The zero-padding is what could silently be wrong: an FFT computes a CIRCULAR correlation, so
+    without padding to >= 2n-1 the value at lag k wraps and picks up energy from the frame's opposite
+    end — a plausible-but-wrong pitch, not an error, which only a reference comparison catches.
     """
     sr, frame_n, hop = 44100, 2048, 512
     rng = np.random.default_rng(0)
@@ -237,16 +222,10 @@ def test_the_rfft_autocorrelation_agrees_with_the_naive_definition():
 
 
 def test_the_hot_loop_does_not_regress_to_the_O_n2_form():
-    """A structural guard, because the regression is invisible to every correctness test.
-
-    `np.correlate` gives the right answers 17x too slowly. Nothing about the output distinguishes the two
-    implementations, so the only thing that can stop a well-meaning "simplification" from putting the
-    O(n^2) form back is a test that inspects the code. If a future change genuinely needs `np.correlate`
-    here, delete this test deliberately and say why in the commit.
-
-    Reads the AST rather than the text: a substring scan also matches the comment that EXPLAINS why
-    np.correlate was removed, so it would fail on the very prose that keeps the fix understood. Only real
-    call expressions count.
+    """A structural guard, since the regression (np.correlate gives the right answers 17x too slowly)
+    is invisible to every correctness test — nothing about the output distinguishes the two
+    implementations. Reads the AST rather than the text, so a substring scan does not also match this
+    very comment.
     """
     tree = ast.parse(Path(vocal_range.__file__).read_text(encoding="utf-8"))
     called = {ast.unparse(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
@@ -257,14 +236,11 @@ def test_the_hot_loop_does_not_regress_to_the_O_n2_form():
     assert "np.fft.rfft" in called, "the autocorrelation should go through rfft"
 
 
-# ── summarize_wav: the ONLY production path (song_profile.py:76), and it had zero coverage ──
-#
-# summarize_wav is what actually runs in a process: read the vocals WAV, track pitch, summarize. Every
-# existing summary test injects hop_sec EXPLICITLY (summarize_range(..., hop_sec=...)), which is the
-# one thing production does NOT do — summarize_wav must derive hop_sec itself and keep it in step with
-# the hop extract_pitch_track actually advanced by. So a change to extract_pitch_track's default hop
-# (the ordinary shape of tuning time resolution) could halve or double every published histogram
-# second while all other tests stayed green. These pin the whole path end-to-end.
+# summarize_wav is what actually runs in a process (read the vocals WAV, track pitch, summarize), and
+# unlike every summary test above it must DERIVE hop_sec itself rather than take it as an explicit
+# argument, keeping it in step with the hop extract_pitch_track actually advanced by. These pin the
+# whole path end-to-end, so a change to extract_pitch_track's default hop cannot silently halve or
+# double every published histogram second while summarize_range(hop_sec=...) tests stay green.
 
 
 def _write_pcm16_wav(path, samples, sr):
@@ -280,15 +256,10 @@ def _write_pcm16_wav(path, samples, sr):
 
 
 def test_summarize_wav_histogram_seconds_track_real_duration(tmp_path):
-    """The load-bearing pin: total histogram SECONDS must equal the real sung DURATION.
-
-    The expectation is derived from PHYSICS, not from the code's hop. A steady, clearly-voiced tone
-    makes every analysis frame voiced, so the histogram accumulates one hop_sec per frame across the
-    whole signal — and the sum of those must equal the wall-clock span the frames cover, which for a
-    tone filling the signal is ~= the signal's own duration (last frame start + one hop). If summarize_wav
-    ever uses a hop_sec that disagrees with the hop extract_pitch_track actually stepped by, this sum is
-    scaled by exactly that ratio (halved when the real hop doubles) and this assertion reds — while
-    lowMidi/highMidi/percentiles stay correct, which is exactly the invisible failure mode.
+    """Total histogram SECONDS must equal the real sung DURATION, derived from PHYSICS not the
+    code's hop: a hop_sec that disagrees with the hop extract_pitch_track actually stepped by scales
+    this sum by exactly that ratio while lowMidi/highMidi/percentiles stay correct — an invisible
+    failure mode any other assertion would miss.
     """
     sr = 22050
     duration_sec = 2.0  # a KNOWN duration chosen here, never read back from the code
@@ -301,10 +272,8 @@ def test_summarize_wav_histogram_seconds_track_real_duration(tmp_path):
     assert out["histogram"] is not None, "a clean sustained tone must produce voiced frames"
     total_seconds = sum(out["histogram"])
 
-    # The frames span from t=0 to the last frame's start; the sum of per-frame hops covers that span.
-    # A steady tone fills the whole signal, so total voiced seconds must be within ONE frame (2048/sr ≈
-    # 0.093s) of the real 2.0s duration. The halving mutation lands at ~0.96s — an order of magnitude
-    # outside this tolerance, so the test is decisive, not fuzzy.
+    # A steady tone fills the whole signal, so total voiced seconds must be within ONE frame
+    # (2048/sr ~= 0.093s) of the real 2.0s duration.
     frame_sec = 2048 / sr
     assert abs(total_seconds - duration_sec) < frame_sec + 0.02, (
         f"summarize_wav histogram totals {total_seconds:.4f}s for a {duration_sec}s tone; "
@@ -313,14 +282,10 @@ def test_summarize_wav_histogram_seconds_track_real_duration(tmp_path):
 
 
 def test_summarize_wav_derives_hop_from_the_same_constant_extract_pitch_track_defaults_to(tmp_path):
-    """Structural pin on the coupling itself: summarize_wav's hop_sec and extract_pitch_track's default
-    hop must be the SAME value, so tuning one cannot silently leave the other stale.
-
-    Independent of the code: probe extract_pitch_track's ACTUAL default hop by reading the frame spacing
-    it produces (two consecutive frame start times), then confirm summarize_wav's own histogram second
-    count equals (voiced frame count) x (that measured hop / sample_rate). The measured hop is taken from
-    the frame timeline, never from summarize_wav's arithmetic, so a desync between the two hop sites reds
-    this even though every summarize_range(hop_sec=...) test would stay green.
+    """summarize_wav's hop_sec and extract_pitch_track's default hop must be the SAME value, so
+    tuning one cannot silently leave the other stale. Measures extract_pitch_track's ACTUAL hop from
+    its frame timeline (never from summarize_wav's own arithmetic), so a desync between the two hop
+    sites reds this even though summarize_range(hop_sec=...) tests would stay green.
     """
     sr = 22050
     n = int(sr * 2.0)

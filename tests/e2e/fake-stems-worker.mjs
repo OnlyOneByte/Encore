@@ -1,41 +1,22 @@
 /*
- * A worker that dials home, claims real jobs, and publishes REAL AUDIO.
+ * A worker that dials home, claims real jobs, and publishes REAL AUDIO — the whole core-side process path
+ * for real (dispatch → accept → progress → publish → markMediaReady → queue:sync → TV loads → sound comes
+ * out), skipping only what this box cannot do: no torch/demucs/whisperx, and no ffmpeg that can encode. So
+ * it writes hand-emitted PCM (./wav.mjs) instead of separated stems.
  *
- * The point is not to fake the pipeline — it is to run the whole core-side process path for real
- * (dispatch → accept → progress → publish → markMediaReady → queue:sync → TV loads → sound comes out)
- * while skipping only the part this box cannot do: torch, demucs and whisperx are not installed, and
- * neither ffmpeg here can encode. So this worker does exactly what the Python one does over the wire,
- * and writes hand-emitted PCM (see ./wav.mjs) instead of separated stems.
- *
- * That distinction matters for what a pass MEANS. A green run here proves the core's contract, the
- * storage layout, the readiness gates and the browser's decode path. It does NOT prove separation
- * quality, alignment accuracy, or that yt-dlp can still reach YouTube.
+ * A green run therefore proves the core's contract, the storage layout, the readiness gates and the
+ * browser's decode path. It does NOT prove separation quality, alignment accuracy, or that yt-dlp can
+ * still reach YouTube.
  *
  *   EPORT=5200 MEDIA_DIR=/path/to/media bun tests/e2e/fake-stems-worker.mjs
  *
- * Fault injection, because the interesting defects are all in the unhappy paths:
- *   FAKE_SILENT_INSTRUMENTAL=1  publish a floor-level instrumental (the guard must refuse it)
- *   FAKE_SILENT_VOCALS=1        publish a floor-level vocals stem (must NOT fail the process)
- *   FAKE_NO_VOCALS=1            publish NO vocals stem at all — a real state, not a fault: worker-hub
- *                               optional-chains `artifacts?.stems?.vocals` and its own comment says a
- *                               worker that could not encode vocals "reports none". The song is still
- *                               playable; it simply has no guiding track, because
- *                               NOTE, and it is not what this line used to say: `hasGuidingTrack()` is
- *                               `isPlayable(m) && !!m.guideMixRef` — a 4-channel MIX, not the vocals
- *                               stem. It was `!!m.vocalsRef` until the two-element guide path was
- *                               deleted (two decoders cannot be sample-locked from script, see
- *                               `guide-level.ts`), and this file kept the old sentence. So withholding
- *                               vocals is no longer what makes a song un-guidable — withholding the mix
- *                               is, and by default this worker publishes none. Use FAKE_GUIDE_MIX=1
- *                               below for the ENABLED arm. This is the
- *                               ONLY way to reach the degraded arm on the layout rung.
- *   FAKE_SKIP_WRITE=1           report a ref for a file never written (the unservable path)
- *   FAKE_NO_PROFILE=1           complete with no songProfile (the gate must not deadlock)
- *   FAKE_GUIDE_MIX=1            publish the 4-channel guide mix ref too, which is the ONLY thing that
- *                               makes a song guidable — without it the phone's guiding-track slider is
- *                               correctly disabled. Off by default so existing probes keep their arm
- *   FAKE_FAIL=stems             fail that job type instead of completing it
- *   FAKE_SLOW_MS=1500           dwell between progress frames, to watch the processing UI
+ * Fault-injection env vars: see docs/E2E.md#fault-injection. Two of them are subtler than the rest:
+ *   FAKE_NO_VOCALS=1   a real state, not a fault — a worker that could not encode vocals reports none,
+ *                      and the song is still playable. It is NOT what disables the guiding track.
+ *   FAKE_GUIDE_MIX=1   `hasGuidingTrack()` is `isPlayable(m) && !!m.guideMixRef` — the 4-channel MIX, not
+ *                      the vocals stem — and this worker publishes no mix by default, so the phone's
+ *                      guiding-track slider is correctly disabled. This flag is the ONLY way to reach the
+ *                      enabled arm; it is opt-in so existing probes keep exercising the degraded one.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -48,8 +29,8 @@ const slowMs = Number(process.env.FAKE_SLOW_MS ?? 120);
 const failType = process.env.FAKE_FAIL ?? '';
 const log = (/** @type {unknown[]} */ ...a) => console.log('[fake-worker]', ...a);
 
-// Storage classes may each be pointed at their own volume; mirror paths.ts rather than assuming
-// everything sits under MEDIA_DIR, or the worker writes where core will not look.
+// Storage classes may each be pointed at their own volume, so mirror paths.ts rather than assuming
+// everything sits under MEDIA_DIR — otherwise the worker writes where core will not look.
 /** @param {string} cls @returns {string} */
 const classDir = (cls) => {
 	/** @type {Record<string, string>} */
@@ -128,8 +109,8 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 
 		if (jobType === 'stems' || jobType === 'stems-upgrade') {
 			await progress('separating', 25);
-			// .wav rather than the flac/m4a the real policy names: the key helpers take an explicit ext
-			// and the media route maps wav → audio/wav, so this is a legal ref that a browser can play.
+			// .wav rather than the flac/m4a the real policy names: the key helpers take an explicit ext and
+			// the media route maps wav → audio/wav, so this is a legal ref a browser can play.
 			const insRef = `derived/stems/${mediaId}-instrumental.wav`;
 			const vocRef = `derived/stems/${mediaId}-vocals.wav`;
 			const mixRef = `derived/stems/${mediaId}-guide.wav`;
@@ -142,11 +123,9 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 				if (!process.env.FAKE_NO_VOCALS) {
 					writeRef(vocRef, process.env.FAKE_SILENT_VOCALS ? silence() : tone({ seconds: 8, hz: [440], amp: 0.2 }));
 				}
-				// The guide mix is a real file so the media route can serve it; the CHANNEL COUNT is a lie
-				// (this writes the same 1-channel tone as the stems, not 4 channels). That is deliberate and
-				// sufficient: every gate that reads it — `guidePath`, `hasGuidingTrack`, the phone's slider —
-				// tests only for the ref's PRESENCE. A probe that needs real 4-channel audio needs the real
-				// worker, and no probe does.
+				// A real file so the media route can serve it, but the CHANNEL COUNT is a lie — this writes the
+				// same 1-channel tone as the stems. Sufficient because every gate that reads it tests only the
+				// ref's PRESENCE; a probe needing real 4-channel audio needs the real worker.
 				if (process.env.FAKE_GUIDE_MIX) {
 					writeRef(mixRef, tone({ seconds: 8, hz: [220, 440], amp: 0.3 }));
 				}
@@ -156,21 +135,16 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 			const artifacts = process.env.FAKE_NO_VOCALS
 				? { stems: { instrumental: insRef } }
 				: { stems: { instrumental: insRef, vocals: vocRef } };
-			// OPT-IN, and the default is off on purpose. A guide mix is what makes a song GUIDABLE
-			// (`hasGuidingTrack` is `!!guideMixRef`, NOT `!!vocalsRef` — see below), so switching it on by
-			// default would silently change which arm every existing probe exercises. A probe that wants
-			// the guide slider LIVE asks for it.
+			// OPT-IN: a guide mix is what makes a song GUIDABLE, so switching it on by default would silently
+			// change which arm every existing probe exercises.
 			if (process.env.FAKE_GUIDE_MIX && !process.env.FAKE_NO_VOCALS) {
 				artifacts.stems.guideMix = mixRef;
 			}
-			// songProfile is a SIBLING of stems, never a member — the shape drift that once stalled
-			// every process at "Separating vocals" forever. Publishing it correctly here is the point.
-			//
-			// The FIELD NAMES matter as much as the placement. An earlier version of this file invented
-			// `{key, lowHz, highHz, medianHz}`, which `normalizeSongProfile` silently discarded down to
-			// keyTonic:null — so `keySounding` was null, the TV's key line never rendered, and a probe
-			// reasonably read that as a defect in the key-shift feature. Match the real shape:
-			// keyTonic is a PitchClass (0=C … 9=A) and the range is in MIDI note numbers, not hertz.
+			// songProfile is a SIBLING of stems, never a member, or every process stalls at "Separating
+			// vocals" forever. FIELD NAMES matter as much as placement: `normalizeSongProfile` silently
+			// discards anything else down to keyTonic:null, which leaves the TV's key line unrendered and
+			// reads as a key-shift defect. keyTonic is a PitchClass (0=C … 9=A); the range is MIDI note
+			// numbers, not hertz.
 			if (!process.env.FAKE_NO_PROFILE) {
 				artifacts.songProfile = {
 					keyTonic: 9, // A
@@ -197,14 +171,10 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 		if (jobType === 'align') {
 			await progress('aligning', 50);
 			const ref = `derived/lyrics/${mediaId}.json`;
-			// Word-level timings inside the fixture's 8 seconds, so the overlay has something real to
-			// bounce a ball along and a reviewer can see whether the highlight tracks the clock.
-			//
-			// FIELD NAMES ARE LOAD-BEARING. The TV's parser (src/lib/tv/lyrics.ts) reads `start`, `end`
-			// and — inside `words` — `word`. An earlier version of this file wrote `startSec`, `endSec`
-			// and `text`, which parsed to an empty reel: no active word ever appeared, and a probe read
-			// that as the overlay being broken when the app was fine and the FIXTURE was wrong. Keep
-			// these names identical to what worker publishes.
+			// Word-level timings inside the fixture's 8 seconds, so the overlay has something to bounce a
+			// ball along. FIELD NAMES ARE LOAD-BEARING: the TV's parser reads `start`, `end` and — inside
+			// `words` — `word`. Anything else parses to an empty reel with no active word, which reads as a
+			// broken overlay when the FIXTURE is what is wrong.
 			const words = ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
 			const lines = words.map((w, i) => ({
 				start: i * 0.8,
@@ -220,19 +190,16 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 				workerId,
 				jobId,
 				mediaUri: ref,
-				// `candidates` is what makes provenance work. The core picks `chosen` from this set, and
-				// the TV decides which provenance label to show (here "Auto-transcribed") and the amber unverified
-				// tint from the chosen candidate — so publishing only `uri` leaves chosenCandidate()
-				// null and the honesty labelling untestable. asr + low confidence is what an
-				// auto-transcription actually is, and it is exactly the case the label exists for.
+				// `candidates` is what makes provenance work: the core picks `chosen` from this set and the TV
+				// takes its provenance label and amber unverified tint from it, so publishing only `uri`
+				// leaves chosenCandidate() null and the honesty labelling untestable.
 				artifacts: {
 					lyrics: {
 						uri: ref,
 						candidates: [
 							{
-								// `ref`, not `uri` — LyricsCandidate names the MediaStore key `ref`, and a
-								// candidate carrying the wrong key name is dropped, which leaves
-								// chosenCandidate() null and the provenance label silently absent.
+								// `ref`, not `uri`: a candidate carrying the wrong key name is DROPPED, which
+								// leaves chosenCandidate() null and the provenance label silently absent.
 								ref,
 								textSource: 'asr',
 								textConfidence: 'low',

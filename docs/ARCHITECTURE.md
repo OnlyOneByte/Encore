@@ -2,10 +2,10 @@
 
 > **Status:** living · canonical description of the system as built.
 >
-> This is the one architecture document. Detailed original specs are preserved under
-> [`archive/reference/`](archive/reference/) for design archaeology, not as current instructions.
-> Open work is tracked in GitHub issues; ratified decisions and the scope fence are in
-> [`DECISIONS.md`](DECISIONS.md); operational traps belong in [`HANDOFF.md`](HANDOFF.md).
+> This is the one architecture document: how the system works. The rules a change has to respect live
+> beside it, in [`SERVER.md`](SERVER.md), [`FRONTEND.md`](FRONTEND.md), [`GUARDS.md`](GUARDS.md) and
+> [`E2E.md`](E2E.md); subsystem contracts as checkable requirements are in [`arch/`](arch/README.md).
+> Open work is tracked in GitHub issues.
 
 ## 1. Product and core loop
 

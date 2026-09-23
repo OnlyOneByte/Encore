@@ -1,21 +1,13 @@
--- SINGLE PRE-RELEASE BASELINE. Regenerated from src/lib/server/db/schema.ts; this is the whole schema
--- from an empty database in one migration, not incremental history.
+-- SINGLE PRE-RELEASE BASELINE: the whole schema from an empty database in one migration, not
+-- incremental history. Regenerated from src/lib/server/db/schema.ts.
 --
--- COLLAPSED A SECOND TIME. The chain had grown back to thirteen files (0000 plus 0001..0012) as the
--- schema moved; owner ruling on this pass: there is still no production deployment and the dev box's
--- database is being recreated anyway, so the whole chain folds into this file again rather than being
--- maintained. The change that prompted it was dropping `media.guide_offset_ms` — a column whose
--- feature was deleted (both stems come out of one separation pass, so there was no offset to measure)
--- and which SQLite can only remove via the create-copy-drop-rename table rebuild. Folding it out of
--- the baseline is cheaper and leaves less to explain than a rebuild migration for a dead column.
+-- Anyone holding an OLDER dev database must delete it and let the library rebuild -- its
+-- __drizzle_migrations records hashes that no longer exist in this folder, so it cannot migrate
+-- forward; the meta/ sidecars are authoritative and will repopulate it.
 --
--- Anyone still holding an OLDER dev database must delete it and let the library rebuild -- the meta/
--- sidecars are authoritative, and an old DB's __drizzle_migrations records hashes that no longer
--- exist in this folder, so it cannot be migrated forward from.
---
--- Once this ships to a real box, STOP editing this file: every schema change after that is a new
--- numbered migration that only ALTERs. The guard in tests/guards/hygiene/settings-repository.test.ts
--- enforces that, and it is the reason this header must survive any regeneration.
+-- Once this ships to a real box, STOP editing this file: every later schema change is a new numbered
+-- migration that only ALTERs. tests/guards/hygiene/settings-repository.test.ts enforces that, and is
+-- why this header must survive any regeneration.
 
 CREATE TABLE `global_settings` (
 	`id` text PRIMARY KEY DEFAULT 'singleton' NOT NULL,

@@ -1,9 +1,6 @@
-// Fake align worker: connects, advertises `align`, prints the first job:assign params, exits.
-//
-// Proves the LYRICS ENGINES reach the wire — that the model and sync mode chosen on the settings page
-// are actually in the payload a worker receives. No ML and no model download, so it runs anywhere.
-// Params are computed at ASSIGN time, so this also shows a settings change taking effect on work that
-// was already queued.
+// Fake align worker: connects, advertises `align`, prints the first job:assign params, exits. Proves the
+// model and sync mode chosen on the settings page reach the wire. Params are computed at ASSIGN time, so
+// this also shows a settings change taking effect on work that was already queued.
 //
 //   EPORT=5199 bun tests/e2e/fake-align-worker.mjs
 const port = process.env.EPORT ?? '3000';

@@ -1,42 +1,15 @@
-/*
- * THE FIFTH GATE — the four measurement claims, measured on real headless Chromium.
- *
- *   bun run gate:measured        # from the repo root, after `bun run build`
- *
- * Exit 0 every check passed · exit 1 anything else. THERE IS NO SKIP PATH, and that is the whole
- * point of it. Owner ruling Q1 was **A**: a fifth gate every lane runs beside `bun test`,
- * and "a missing browser is a red gate, not a green one". Option B — skipping when no server or
- * Chromium is present — was rejected by name, because `e2e/contract.test.ts:23` had already ruled
- * that "a permanently-skipped test is indistinguishable from the silent rot it was supposed to
- * prevent". So a missing Chromium, a build that was never run, and a server that will not boot are
- * all FAILURES here, reported with the remedy, never a green run over nothing.
- *
- * ── WHAT IS MEASURED, AND WHY IT CANNOT BE SCANNED ─────────────────────────────────────────────
- *
- * | Claim | Requirement | Read from the render |
- * |---|---|---|
- * | 1 button heights | | every control's vertical HIT EXTENT vs `--tap`, at three viewports |
- * | 2 input font size | | `getComputedStyle(field).fontSize` on real fields |
- * | 3 docked band | | `--dock-h` vs the band's real rendered height, and the safe-area term under a simulated 34px inset |
- * | 4 focus-ring form | | computed `outline-style/-width/-color` on a genuinely `:focus-visible` element |
- *
- * None of the four is decidable on the mount rung: happy-dom has no layout engine, and
- * `tests/setup/svelte-dom-preload.ts:101` now replaces `getBoundingClientRect` with a throw naming
- * the rung, so they cannot be parked there either. The source scans that used to stand in for them
- * read a DECLARATION; three of the four defects this gate found on its first run are invisible to a
- * declaration, because the control declares no height at all.
- *
- * ── METHODOLOGY, FROM THREE RECORDED WRONG ANSWERS ─────────────────────────────────
- *
- *  - Hit-test only after `scrollIntoView({ block: 'center' })`: `elementFromPoint` returns null
- *    outside the viewport, so an un-scrolled control measures 0 and reads as catastrophic.
- *  - Accept a hit as the control's own only when `hit === el || el.contains(hit)`. NEVER the reverse:
- *    `hit.contains(el)` counts `<body>` as a hit and inflated a 32px target to 93px.
- *  - Probe at three x positions (thumb, mid, far edge) and take the WORST. A single centre reading
- *    misses a control whose edge is overlapped.
- *  - A control behind an open modal legitimately measures 0. The drive therefore measures the home
- *    route with the sheet COLLAPSED, and measures the sheet's own geometry separately.
- */
+// THE FIFTH GATE — the design claims a source scan cannot decide, measured on real headless Chromium.
+//
+//   bun run gate:measured        # from the repo root, AFTER `bun run build`
+//
+// THERE IS NO SKIP PATH: a missing Chromium, an unbuilt app and a server that will not boot are all
+// exit 1 with the remedy printed, never a green run over nothing. Full rules, and the measurement
+// methodology this gate paid for, in docs/E2E.md#gates.
+//
+// None of the claims is decidable on the mount rung — happy-dom has no layout engine, and
+// tests/setup/svelte-dom-preload.ts replaces `getBoundingClientRect` with a throw naming the rung — and
+// the source scans that used to stand in for them read a DECLARATION, which is invisible to a control
+// that declares no height at all.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -126,25 +99,17 @@ function sweepExpr(scope) {
 			el.scrollIntoView({ block: 'center' });
 			const r = el.getBoundingClientRect();
 			if (r.width === 0 || r.height === 0) continue;
-			// A checkbox/radio has no accessible box of its own worth tapping — its tap target is
-			// DELEGATED to the wrapping <label> (the pattern touch-targets.test.ts documents: the .check
-			// label in settings carries min-height: var(--tap)). So the box we measure for a glyph input
-			// is that label, and a hit anywhere on the label counts as reaching the control.
-			// Without this, the sweep saw only the 18px glyph and read a 44px label as an 18px false floor.
+			// A checkbox/radio has no accessible box worth tapping: its target is DELEGATED to the wrapping
+			// <label>, which carries min-height: var(--tap). Without this the sweep saw only the 18px glyph
+			// and read a 44px label as an 18px false floor.
 			const type = (el.getAttribute('type') || '').toLowerCase();
 			const glyph = el.tagName === 'INPUT' && (type === 'checkbox' || type === 'radio');
-			// A SWITCH IS THE SAME DELEGATION WEARING NEW MARKUP. The shadcn migration replaced the
-			// checkbox input with a button carrying role=switch, inside the same label.check — and that
-			// label still carries min-height: var(--tap). The Switch component's own comment says why:
-			// giving the switch a 44px box would make the row 88px and put two competing targets in it.
-			// The reader above was written for an input, stopped recognising the control, and so
-			// re-reported an already-closed false positive as an 18.4px box with a 34px hit extent. The
-			// delegation follows the CONTROL, not the tag it used to have.
+			// A SWITCH IS THE SAME DELEGATION IN NEW MARKUP — a button with role=switch inside the same
+			// label.check. The delegation follows the CONTROL, not the tag it used to have.
 			const switchBtn = el.getAttribute('role') === 'switch';
-			// A SLIDER THUMB'S TARGET IS ITS TRACK. Bits UI moves the thumb to wherever the track is
-			// pressed, so the thumb's own 22/28px box is not what a finger has to hit — the same
-			// substitution, one level of nesting further out. If the slider ROOT is also short this still
-			// fails, which is the point: it credits a real target, it does not excuse a small one.
+			// A SLIDER THUMB'S TARGET IS ITS TRACK: Bits UI moves the thumb to wherever the track is pressed.
+			// If the slider ROOT is also short this still fails, which credits a real target without excusing
+			// a small one.
 			const thumb = el.matches('[data-slot="slider-thumb"]');
 			const target =
 				glyph || switchBtn
@@ -156,23 +121,14 @@ function sweepExpr(scope) {
 			const tr = target.getBoundingClientRect();
 			const cx = Math.min(Math.max(Math.round(tr.left + tr.width / 2), 0), innerWidth - 1);
 			const cy = Math.round(tr.top + tr.height / 2);
-			// Vertical hit extent at the CENTRE x. That is the reading the 44px floor is about: WCAG
-			// 2.5.8 and Encore's own --tap are both statements about the target's box.
+			// Vertical hit extent at the CENTRE x — the reading the 44px floor is about.
 			/*
-			 * OFF-VIEWPORT IS NOT ZERO-HEIGHT, and conflating them fabricated failures. document
-			 * .elementFromPoint returns null for any point outside the viewport, so a control below the
-			 * fold read hitH = 0 and occluded = 3/3 — reported as an unhittable, fully covered target.
-			 * /settings' own "Start singing" button is 53px tall and sits at y=861 in an 844px viewport;
-			 * it is neither short nor covered, it is simply further down the page.
-			 *
-			 * A hit extent is a VIEWPORT-RELATIVE reading and cannot be taken for a control whose probe
-			 * point is not in the viewport. The test is on the CENTRE POINT rather than on the box, because
-			 * the centre point is what is probed: a control straddling the fold intersects the viewport and
-			 * still has no hittable centre, which is how the first version of this fix left the same
-			 * failure standing at a taller viewport. Its declared box is still credited, so the 44px floor
-			 * stays live for every control the sweep sees, and the occlusion probe — meaningless off-screen,
-			 * since nothing can cover what is not being painted — is skipped.
-			 * Counted in the reading's offscreen flag so the skip cannot quietly absorb a whole surface.
+			 * OFF-VIEWPORT IS NOT ZERO-HEIGHT. elementFromPoint returns null for any point outside the
+			 * viewport, so a control below the fold reads hitH 0 and occluded 3/3 — an unhittable, fully
+			 * covered target that is simply further down the page. The test is on the CENTRE POINT, not the
+			 * box: a control straddling the fold intersects the viewport and still has no hittable centre. Its
+			 * declared box is still credited, the occlusion probe is skipped (nothing can cover what is not
+			 * painted), and the skip is counted in offscreen so it cannot absorb a whole surface.
 			 */
 			const onScreen = cy >= 0 && cy < innerHeight;
 			let hitH = onScreen ? 0 : Math.round(tr.height * 10) / 10;
@@ -182,17 +138,13 @@ function sweepExpr(scope) {
 				while (bottom + 1 < innerHeight && inTarget(document.elementFromPoint(cx, bottom + 1))) bottom++;
 				hitH = bottom - top + 1;
 			}
-			// Occlusion, as a SEPARATE reading along the widest row. Sweeping the vertical extent at a
-			// far-edge x instead measures the chord through the control's own border-radius — Chromium
-			// hit-tests the rounded shape — so every pill read 34-42px of a 44px box and the floor was
-			// unmeetable by construction. Kept as an occlusion probe, which is what a far-edge reading
-			// is actually good for: an overlay covering part of a control.
+			// Occlusion, as a SEPARATE reading along the widest row. Sweeping the vertical extent at a far-edge
+			// x measures the chord through the control's own border-radius — Chromium hit-tests the rounded
+			// shape — so every pill read 34-42px of a 44px box and the floor was unmeetable by construction.
 			let occluded = 0;
-			// WHAT blocked it, not just that something did. "something else is topmost" told a reader
-			// there was a problem and nothing about where to look — three separate investigations of this
-			// gate's own output ended in a hand-written probe to answer the same question. Naming the
-			// topmost element makes the failure message the diagnosis. null means the point had no element
-			// at all, which after the offscreen guard above can only mean a gap in the target's own paint.
+			// WHAT blocked it, not just that something did: naming the topmost element makes the failure message
+			// the diagnosis. null means the point had no element at all, which after the offscreen guard above
+			// can only mean a gap in the target's own paint.
 			let blockedBy = null;
 			if (onScreen) {
 				for (const f of [0.25, 0.5, 0.75]) {
@@ -247,12 +199,10 @@ function matches(r, q) {
 }
 
 /**
- * Does a quarantine entry's `where` cover this surface? A prefix, so one entry covers `/settings`
- * and its tabs (`/settings#party`, `/settings#server`) — the selects are the same controls on the
- * same page, and listing each tab separately would invite a partial quarantine that lets a real new
- * offender in on whichever tab was forgotten.
- * @param {string} where
- * @param {string} label
+ * Does a quarantine entry's `where` cover this surface? A PREFIX, so one entry covers `/settings` and its
+ * tabs — the same controls on the same page, where listing each tab separately would invite a partial
+ * quarantine that lets a real new offender in on whichever tab was forgotten.
+ * @param {string} where @param {string} label
  */
 function covers(where, label) {
 	return label === where || label.startsWith(`${where}#`);
@@ -298,9 +248,8 @@ const server = spawn('bun', ['run', './server.ts'], {
 		ENCORE_EPHEMERAL: '1',
 		PORT: String(port),
 		HOST: '127.0.0.1',
-		// A routable (non-loopback) public origin so the TV attract renders its REACHABLE join panel
-		// (.jt-url), not the loopback .badqr notice — and a realistic long LAN address is exactly the
-		// worst case the URL-break probe (CLAIM 6) needs to measure.
+		// A routable (non-loopback) public origin, so the TV attract renders its REACHABLE join panel rather
+		// than the loopback notice — and a long LAN address is the worst case CLAIM 6's URL-break probe needs.
 		ENCORE_PUBLIC_ORIGIN: `http://192.168.1.20:${port}`,
 		MEDIA_DIR: mediaDir,
 		ENCORE_LYRICS_BACKFILL: '0',
@@ -329,11 +278,6 @@ if (!healthy) {
 	);
 }
 
-// No CDP port to re-read any more. This used to spawn its own Chromium and recover the port from the
-// child's own argv, because the port was chosen with `await freePort()` and only the child knew it. The
-// driver launches its own browser and takes no port, so `connect()` needs no argument and there is nothing
-// to derive.
-
 let controlsMeasured = 0;
 let fieldsMeasured = 0;
 /** @type {Set<string>} */
@@ -358,16 +302,13 @@ try {
 	const page = await browser.newPage();
 	await page.viewport(VIEWPORTS[0].w, VIEWPORTS[0].h);
 
-	// ── join once; every phone surface below is behind a session ───────────────────────────────
-	// `/join` was retired (Q2-A): the join form is the unjoined state of `/`. An unjoined visitor
-	// to `/` gets the name field + code entry; joining navigates back to `/` (now the joined queue).
+	// Join once; every phone surface below is behind a session. The join form is the unjoined state of `/`.
 	await openJoin(page, base);
 	const joinSweep = /** @type {Reading[]} */ (await page.evaluate(sweepExpr()));
 	await page.fill(SEL.nameInput, `Gate${Date.now() % 1000000}`);
 	await page.clickByRole('button', 'Start singing');
-	// Joining lands on the QUEUE — the search box is a screen further in. `homeReady` is the
-	// joined-home signal, and the shared step leaves the page on the browse screen the sweep below types
-	// into. Both selectors and the step come from the contract, so this does not re-spell the sequence.
+	// `homeReady` is the joined-home signal, and the shared step leaves the page where the sweep below types.
+	// Both the selectors and the step come from the contract, so this does not re-spell the sequence.
 	await page.waitFor(`location.pathname === '/'`, { timeout: 20000 });
 	await openBrowseFromHome(page, { timeout: 20000 });
 	check('the drive reaches a joined session — every phone surface below is behind one', joinSweep.length > 0);
@@ -429,12 +370,8 @@ try {
 	for (const vp of VIEWPORTS) {
 		await page.viewport(vp.w, vp.h);
 		/*
-		 * TWO phone surfaces, not one. `/` is the queue — the hero's transport, the position
-		 * card and the docked primary button, none of which existed when this gate was written and all of
-		 * which are controls these claims are about. The library rows it used to measure here are a screen
-		 * further in, so they get their own surface rather than being lost: measuring only `/` would have
-		 * quietly stopped measuring every row action, and measuring only the browse screen would never
-		 * measure the docked band.
+		 * TWO phone surfaces, not one: `/` carries the queue's own controls and the docked band, and the
+		 * library rows are a screen further in. Measuring only one silently stops measuring the other.
 		 */
 		await surface('/', async () => {
 			await page.goto(base + '/');
@@ -480,55 +417,24 @@ try {
 		smallFields.join('\n        ')
 	);
 
-	/*
-	 * ── CLAIM 3: the docked band's published height and its safe-area term ──────────
-	 *
-	 * WHERE THIS IS MEASURED KEEPS CHANGING, and the claim has not. It began as `--peek-h`/`.peek` on the
-	 * QueueSheet; Direction A made the queue the home screen and the 2026-09-09 owner correction moved it
-	 * to `--dock-h`/`.search-dock`, a SEARCH band docked at the bottom of `/`; the phone-remote rebuild
-	 * moved it again, and this time to something that is no longer route-shaped at all.
-	 *
-	 * IT IS NOW ONE ELEMENT FOR THE WHOLE APP, AND IT IS THE ROW RATHER THAN THE STRIP. The bottom-most
-	 * chrome on EVERY phone surface is `NowPlayingDrawer`'s `.band-slot` (`SEL.dockRow`) — vaul's pull
-	 * handle, then `NowPlayingBand`'s strip (`SEL.homeReady`, `.band`) — and the LAYOUT publishes `--dock-h`
-	 * from that ROW's `clientHeight`, bound through the drawer's `bandH` prop. So no route publishes the
-	 * token any more, and the band carries the only `env(safe-area-inset-bottom)` term in the stack — which
-	 * is what makes "published height equals the real rendered height, and the inset arrives THROUGH that
-	 * token" a single contract rather than one per screen.
-	 *
-	 * THE SUBJECT MOVED WHEN THE BAND BECAME SNAP POINT 0, and this section read `.band` for one release
-	 * after it did: the token resolved to the row's 80px against a 56px strip, and the gate reported a
-	 * broken contract where there was none. A column must clear the WHOLE row — a thumb reaching for the
-	 * grab bar otherwise lands on page content — so 80px is the correct reservation and `.band-slot` is the
-	 * correct thing to compare it with. `homeReady` stays the strip, because what a readiness poll wants to
-	 * know is whether a singer is joined.
-	 *
-	 * A later change deleted the drawer surface entirely, so the second half of this section — the sheet's
-	 * own cap and peek geometry, measured on `/components` where the component used to render — was
-	 * removed with it, and `SHEET_CAP_FRACTION` retired from the register (its reason is recorded
-	 * there). Nothing docked caps itself in a viewport fraction now; the band is sized by its content.
-	 *
-	 * What follows is the contract measured on the resting `/`; the block after it measures the SAME band
-	 * with a query up — the search view, which is a state of this same column — and compares the two.
-	 */
+	// CLAIM 3: the docked band's published height and its safe-area term.
+	//
+	// ONE ELEMENT FOR THE WHOLE APP, AND IT IS THE ROW RATHER THAN THE STRIP: `SEL.dockRow` (`.band-slot`:
+	// vaul's pull handle, then the band strip) is the bottom-most chrome on every phone surface, the LAYOUT
+	// publishes `--dock-h` from that ROW's clientHeight, and the band carries the only
+	// `env(safe-area-inset-bottom)` term in the stack. A column must clear the WHOLE row or a thumb reaching
+	// for the grab bar lands on page content, so comparing the token against `.band` (24px shorter) reports a
+	// broken contract where there is none. The block after this one measures the SAME band with a query up.
 	await page.viewport(390, 844);
 	await page.goto(base + '/');
 	await page.waitForSelector(SEL.homeReady, { timeout: 15000 });
 	await sleep(600); // let the measured --dock-h write land
 
-	/*
-	 * TWO ELEMENTS, TWO CLAIMS, and they were one element until the band became snap point 0.
-	 *
-	 *   the RESERVATION contract — `--dock-h` vs what a column must clear — is about the ROW
-	 *     (`SEL.dockRow`, i.e. `.band-slot`: vaul's pull handle plus the strip), because that is the element
-	 *     the layout measures and the whole of what sits over the page.
-	 *   the SAFE-AREA contract — that the home-indicator inset is really composed in — is about the STRIP
-	 *     (`SEL.homeReady`, i.e. `.band`), because `NowPlayingBand` is what declares
-	 *     `env(safe-area-inset-bottom)` and it is the bottom-most PAINTED surface.
-	 *
-	 * Reading the row for both is what this did, and it measured a padding-bottom of 0 at every inset —
-	 * reporting a composed term as missing when it was simply declared one element further in.
-	 */
+	// TWO ELEMENTS, TWO CLAIMS. The RESERVATION contract (`--dock-h` vs what a column must clear) is about
+	// the ROW `SEL.dockRow`, which the layout measures and which is the whole of what sits over the page; the
+	// SAFE-AREA contract is about the STRIP `SEL.homeReady`, because the band declares the inset term and is
+	// the bottom-most PAINTED surface. Reading the row for both measures padding-bottom 0 at every inset,
+	// reporting a composed term as missing when it is declared one element further in.
 	const dockProbe = `(() => {
 		const dock = document.querySelector(${JSON.stringify(SEL.dockRow)});
 		if (!dock) return null;
@@ -559,20 +465,14 @@ try {
 			`no ${SEL.dockRow} found on / — the layout mounts the docked row for a joined singer, so its absence is either an unjoined drive or the row itself`
 		);
 	} else {
-		/*
-		 * WHICH HEIGHT, and it matters by exactly the 1px that would have made this arm red on a correct
-		 * app. `--dock-h` is `bind:clientHeight` on the `.dock` WRAPPER (src/routes/+layout.svelte), and
-		 * that wrapper has no padding or border of its own, so the token is the band's OUTER box. Read off
-		 * `.band` itself, `clientHeight` EXCLUDES its `border-top: 1px solid var(--line)` and so reports one
-		 * pixel less than the thing that was published — a comparison that fails while nothing is wrong.
-		 * `getBoundingClientRect().height` is the outer box, which is what the publisher measured.
-		 *
-		 * The 1px tolerance is for the INTEGER rounding `clientHeight` does to a fractional used height, not
-		 * slack in the claim: the defect this arm exists to catch — a stale token, a hardcoded guess, a
-		 * height published from a different element — is wrong by tens of pixels, never by one. The
-		 * computed-vs-inline pair is asserted separately and exactly, because that is the half that says the
-		 * value was WRITTEN by the layout's measurement rather than inherited from a stylesheet default.
-		 */
+		// WHICH HEIGHT, and it matters by exactly the 1px that would make this arm red on a correct app.
+		// `--dock-h` is `bind:clientHeight` on a wrapper with no padding or border, so it is the band's OUTER
+		// box; read off `.band`, `clientHeight` EXCLUDES its 1px border-top. Use `getBoundingClientRect()`.
+		//
+		// The 1px tolerance is for `clientHeight`'s INTEGER rounding, not slack: the defects this catches — a
+		// stale token, a hardcoded guess, a height published off a different element — are wrong by tens of
+		// pixels. The computed-vs-inline pair is asserted EXACTLY, because that is the half saying the value
+		// was written by the layout's measurement rather than inherited from a stylesheet.
 		check(
 			"CLAIM 3 --dock-h equals the docked band's REAL rendered height — the contract every docked control offsets from",
 			dock.dockVar !== '' &&
@@ -602,49 +502,17 @@ try {
 		await page.safeAreaInsets({ top: 0, right: 0, bottom: 0, left: 0 });
 	}
 
-	/*
-	 * ── CLAIM 3 IN THE SEARCH VIEW: THE SAME ONE BAND, MEASURED IN THE SECOND STATE ──────────────
-	 *
-	 * WHAT MOVED, TWICE, AND WHY THE CLAIM KEPT WIDENING. This section used to measure `.search-dock`: a
-	 * SEARCH band docked at the bottom of `/`, publishing `--dock-h` itself, with its results stacking
-	 * UPWARD out of it. Both halves of that are gone. The box (`SEL.findBox`) sits at the TOP of the column
-	 * in NORMAL FLOW — not docked, not sticky — while `NowPlayingBand` (`SEL.homeReady`, `.band`) is the
-	 * bottom-most chrome on every phone surface and `src/routes/+layout.svelte` publishes `--dock-h` from
-	 * the band's measured `clientHeight`.
-	 *
-	 * For one release the box was its own ROUTE (`/find`) and this was "the same band on the second
-	 * SURFACE". The route was merged into home (2026-09-22), so it is now the same band in the second
-	 * STATE: the column with a query up, whose rows are search results rather than queue rows. The
-	 * measurement is unchanged and so is what it can catch — the band is reached the same way, rendered by
-	 * the same element, and this reading is still compared against the resting one, which is the arm that
-	 * exists only because there are two readings of one element and they have to AGREE.
-	 *
-	 * WHAT THE MERGE DOES NOT WEAKEN: `main`'s reservation. The layout WRITES `--dock-h` and the route's
-	 * own `main` CONSUMES it (`calc(var(--dock-h, 0px) + 28px)`), and that consumption is what keeps the
-	 * last row reachable. With one column it is one rule instead of two — but the failure it guards
-	 * against is per-STATE as much as per-surface: a results list is longer than a queue, so "scrolled to
-	 * the very end" is a different row here, and it is the only case the reservation can fail in.
-	 *
-	 * What still cannot be settled by reading source:
-	 *   - whether `--dock-h` equals the band's real rendered height on this surface too, and equals the
-	 *     height the same band rendered at on `/`;
-	 *   - whether reaching search still costs no regrip. The docked box was the thumb-zone control; the
-	 *     band's magnifier is the entry point now, so THAT is the control the reach claim belongs to —
-	 *     see the retirement note at the arm for why the find box itself must not be asserted there;
-	 *   - whether any result row is occluded by the band — at rest AND with the list scrolled to its very
-	 *     end, which is the case `main`'s reservation exists for and the only one where it can fail.
-	 *
-	 * The reflow half of the results screen (320px at 200% text) is deliberately NOT re-asserted here:
-	 * `src/lib/phone-inventory.test.ts` owns, and two independent geometry checks of
-	 * one criterion is the duplicated-vocabulary shape the spec warns about.
-	 */
+	// CLAIM 3 IN THE SEARCH VIEW: the same one band in the second STATE — the column with a query up, whose
+	// rows are results rather than queue rows. The box sits at the TOP of the column in normal flow while the
+	// band is still the bottom-most chrome, so this reading exists to be COMPARED against the resting one.
+	// The failure is per-STATE as much as per-surface: a results list is longer than a queue, so "scrolled to
+	// the very end" is a different row here.
+	//
+	// The reflow half (320px at 200% text) is deliberately NOT re-asserted: tests/guards/layout/
+	// phone-inventory.test.ts owns it, and two geometry checks of one criterion is duplicated vocabulary.
 	await page.viewport(390, 844);
-	/*
-	 * REACH THE FIELD THROUGH THE ONE HELPER, then type. `openBrowseFromHome` is the single place that knows
-	 * how search is reached — it waited for a docked box, then tapped the band's magnifier and waited for a
-	 * route, and now finds the field already on home — so this drive survived both moves untouched. The
-	 * helper is deliberately not renamed for the same reason: ~20 call sites, one of them this gate.
-	 */
+	// Reach the field through the ONE helper, then type: `openBrowseFromHome` is the single place that knows
+	// how search is reached, so this drive survived every move of the box untouched.
 	await openBrowseFromHome(page, { timeout: 15000 });
 	await page.fill(SEL.search, 'a');
 	await page
@@ -653,8 +521,7 @@ try {
 	await sleep(800); // the search debounce is 150ms; let the result set land and the rows paint
 
 	// The band's two flanking transport controls — restart and skip — addressed by STRUCTURE: the group holds
-	// the disc plus these two, so `.btn` inside it is exactly the pair. (It was addressed by the magnifier's
-	// accessible name until that control was deleted; see the thumb-zone arm below.)
+	// the disc plus these two, so `.btn` inside it is exactly the pair.
 	const bandSideControls = `${SEL.homeReady} .tp .btn`;
 
 	const browseProbe = `(() => {
@@ -705,13 +572,10 @@ try {
 				Math.abs(parseFloat(browse.dockVar) - browse.dockOuterHeight) <= 1,
 			`--dock-h resolved "${browse.dockVar}" (inline "${browse.dockInline}") against a band whose outer box is ${browse.dockOuterHeight.toFixed(1)}px (see the height note on the / arm above)`
 		);
-		/*
-		 * THE ARM THE NEW ARRANGEMENT ADDED, and it can only exist because there is one band on two
-		 * surfaces. `--dock-h` is written once by the layout, so a per-surface disagreement means the band
-		 * itself rendered to a different height here than on `/` (a route header, a font, a route-scoped
-		 * rule reaching it) while each `main` went on reserving whatever the token last said. Neither
-		 * single-surface reading above can see that; only the comparison can.
-		 */
+		// THE ARM ONE BAND ON TWO SURFACES MAKES POSSIBLE. `--dock-h` is written once by the layout, so a
+		// per-surface disagreement means the band rendered to a different height here than on `/` (a header, a
+		// font, a route-scoped rule reaching it) while each `main` reserved whatever the token last said.
+		// Neither single-surface reading above can see that; only the comparison can.
 		check(
 			'CLAIM 3 the ONE band renders to the SAME height at rest and with results up — one element, one token, no per-state drift',
 			dock !== null && Math.abs(browse.dockOuterHeight - dock.dockOuterHeight) <= 1,
@@ -729,20 +593,11 @@ try {
 			browse.mainPadBottom >= browse.dockClientHeight,
 			`main padding-bottom ${browse.mainPadBottom}px against a ${browse.dockClientHeight}px band`
 		);
-		/*
-		 * RE-POINTED TWICE, AND THE CRITERION IS THE SAME EACH TIME: the controls a guest reaches mid-song must
-		 * not cost a regrip, so they belong in the bottom third.
-		 *
-		 * It first read the search INPUT's centre, because a box docked in the thumb zone was the point of that
-		 * design. When the box moved to the top of the column it re-pointed at the band's MAGNIFIER — same
-		 * criterion, and re-pointing it at the field would have asserted the OPPOSITE of what this surface
-		 * deliberately does. The magnifier is now deleted too (2026-09-22): search is the first element in the
-		 * column, so reaching it is scrolling to the top of the page rather than a control in the chrome.
-		 *
-		 * So the subject is the TRANSPORT, and the claim is STRICTLY WIDER than either predecessor: all three
-		 * controls a guest uses while a song plays — restart, play/pause, skip — are in the band row and all
-		 * three must be in the thumb zone. One reading covers every phone surface, since the band is chrome.
-		 */
+		// THE CRITERION: the controls a guest reaches mid-song must not cost a regrip, so they belong in the
+		// bottom third. The subject is the TRANSPORT — restart, play/pause and skip are all in the band row —
+		// and one reading covers every phone surface, because the band is chrome. Search is the first element
+		// in the column now, so reaching it is a scroll to the top rather than a control in the chrome, and
+		// pointing this arm at the field would assert the OPPOSITE of what the surface deliberately does.
 		const thumbLine = (browse.innerHeight * 2) / 3;
 		const transportCentres = [...browse.sideCentresY, browse.discCentreY];
 		check(
@@ -763,24 +618,11 @@ try {
 		);
 	}
 
-	/*
-	 * ── CLAIM 3, THE RESERVATION UNDER SCROLL: the successor to the retired upward-stack arm ────
-	 *
-	 * RETIRED: "the stack ENDS at the dock — the top-ranked row is the one beside the thumb". It required
-	 * the last row's bottom to land 0..72px above the band, and it was an assertion about TWO mechanisms
-	 * this column does not have: a bottom-anchored column (`justify-content: flex-end`) and a scroll-to-bottom
-	 * on every result set. Results flow downward from a box at the top now, in ordinary document order, so
-	 * a short result set legitimately ends hundreds of pixels above the band and that arm could only red
-	 * on a correct app. It is not re-pointed under its old name because the name states the dead
-	 * mechanism.
-	 *
-	 * ITS SURVIVING HALF IS THE ONE THAT MATTERED, and it needs the scroll it used to get for free: with
-	 * the list driven to its very END, the last row must still CLEAR the band. That is the only position
-	 * where `main`'s `calc(var(--dock-h, 0px) + 28px)` reservation can be observed doing its job — at rest
-	 * the last row of a long list is off-screen entirely, so the at-rest occlusion arm above passes over a
-	 * row nobody can see. Scrolled to the end, a reservation that is missing, stale, or measured off the
-	 * wrong element puts the final row under fixed chrome, which is exactly the defect.
-	 */
+	// CLAIM 3, THE RESERVATION UNDER SCROLL. With the list driven to its very END, the last row must still
+	// CLEAR the band. That is the only position where `main`'s `calc(var(--dock-h, 0px) + 28px)` can be
+	// observed doing its job: at rest the last row of a long list is off-screen entirely, so the at-rest
+	// occlusion arm above passes over a row nobody can see. Scrolled to the end, a reservation that is
+	// missing, stale or measured off the wrong element puts the final row under fixed chrome.
 	await page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)');
 	await sleep(400); // no smooth scrolling in this app; this is paint settle, not animation
 	const endProbe = `(() => {
@@ -829,22 +671,11 @@ try {
 		);
 	}
 
-	/*
-	 * ── CLAIM 3, THE SHORT CASE: the band contract when the column cannot scroll ────────────────
-	 *
-	 * RETIRED: "one line of content is anchored beside the thumb, not stranded at the top". It measured
-	 * `justify-content: flex-end` on the search column — one empty-state line pushed down beside the
-	 * docked box — and the note above it said so outright. This column anchors nothing: `main` is ordinary
-	 * flow with the box at the top, so the empty line sits NEAR the top and is meant to. Asserting the old
-	 * position would be asserting a design that was reversed.
-	 *
-	 * THE PROBE IS KEPT AND RE-AIMED, because a non-matching query is still the cheapest way to reach a
-	 * genuinely different GEOMETRY — a column with nothing in it, shorter than the viewport, unable to
-	 * scroll. has to hold there too: a band whose measured height only survives while content
-	 * pushes against it is a band whose height is a coincidence. And the empty line, wherever it sits,
-	 * must not be under the band. `.empty` is `SEL.empty` (`.encore-empty`) — the find surface renders it
-	 * for a query that matched nothing.
-	 */
+	// CLAIM 3, THE SHORT CASE: the band contract when the column cannot scroll. A non-matching query is the
+	// cheapest way to reach a genuinely different GEOMETRY — a column with nothing in it, shorter than the
+	// viewport, unable to scroll — and the contract has to hold there too: a band whose measured height only
+	// survives while content pushes against it is a band whose height is a coincidence. The empty line
+	// (`SEL.empty`) sits near the TOP by design; wherever it sits, it must not be under the band.
 	await page.fill(SEL.search, 'zzzzznotasongzzzzz');
 	await page.waitForSelector(SEL.empty, { timeout: 15000 }).catch(() => {});
 	await sleep(900);
@@ -916,22 +747,17 @@ try {
 			const visible = el.matches(${JSON.stringify(FOCUS_VISIBLE)});
 			const cs = getComputedStyle(el);
 			/*
-			 * THE INDICATOR MAY BE ON THE FIELD RATHER THAN ON THE CONTROL, and this is what reads it there.
-			 *
-			 * A composite field — a bordered, filled box holding a mark, an input, a spinner and a clear
-			 * control — IS the field as far as anyone looking at it is concerned, so the ring belongs around
-			 * the whole box. Drawing it on the bare input instead nests a violet rounded rect inside a grey
-			 * one and strands the mark outside the ring it should be part of (measured: 75->341 inside a
-			 * wrapper running 34->356). The search box therefore carries a
-			 * .findbox:has(input:focus-visible) outline rule and suppresses the global one on the input.
-			 * (No backticks in this comment: it lives inside a template literal, where one would end the
-			 * string — the same trap a probe hit once already.)
+			 * THE INDICATOR MAY BE ON THE FIELD RATHER THAN ON THE CONTROL, and this is what reads it there. A
+			 * composite field — a bordered box holding a mark, an input, a spinner and a clear control — IS the
+			 * field to anyone looking at it, so the ring belongs around the whole box; drawing it on the bare
+			 * input nests one rounded rect inside another and strands the mark outside the ring it belongs to.
 			 *
 			 * So the walk goes UP while the control is focused, at most three levels, and reports the first
-			 * ancestor that satisfies the floor. This is a widening of WHERE, never of WHAT: the same >=2px in
-			 * the resolved --focus is required, and a control with no qualifying ring on itself or on any near
-			 * ancestor still fails. Three levels because a field wrapper is one; the allowance stops well
-			 * short of "somewhere on the page".
+			 * ancestor that satisfies the floor. A widening of WHERE, never of WHAT: the same >=2px in the
+			 * resolved --focus is required, and a control with no qualifying ring on itself or a near ancestor
+			 * still fails. Three levels, because a field wrapper is one.
+			 *
+			 * NO BACKTICKS in this comment: it lives inside a template literal, where one would end the string.
 			 */
 			let ring = null;
 			for (let node = el.parentElement, hops = 0; node && hops < 3; node = node.parentElement, hops++) {
@@ -960,9 +786,9 @@ try {
 
 	const focusReadings =
 		/** @type {{ what: string, tag: string, focusVisible: boolean, style: string, width: number, color: string, ring: { style: string, width: number, color: string, on: string } | null, shadowChanged: boolean, wanted: string }[]} */ ([]);
-	// Two surfaces, because the phone route carries the queue's controls plus the search FIELD (the only
-	// text entry on the remote, and the one control whose ring is on its wrapper) and /settings carries
-	// twenty-two — including every <select> and the range inputs, whose rings come from different rules.
+	// Two surfaces, because the phone route carries the queue's controls plus the search FIELD — the only
+	// text entry on the remote, and the one control whose ring is on its wrapper — while /settings carries
+	// twenty-two, including every <select> and the range inputs, whose rings come from different rules.
 	for (const where of ['/', '/settings']) {
 		await page.goto(base + where);
 		await sleep(600);
@@ -977,7 +803,8 @@ try {
 			continue;
 		}
 		// The control's own ring, or the field wrapper's — see the probe for why a composite field carries it.
-		const drawn = f.style === 'none' || f.width < 2 ? f.ring : { style: f.style, width: f.width, color: f.color, on: 'itself' };
+		const drawn =
+			f.style === 'none' || f.width < 2 ? f.ring : { style: f.style, width: f.width, color: f.color, on: 'itself' };
 		if (!drawn) {
 			badFocus.push(
 				`${who}: outline is ${f.style} ${f.width}px and no ancestor within three levels draws one${f.shadowChanged ? ' — the ring is drawn by box-shadow alone' : ''}`
@@ -994,21 +821,13 @@ try {
 		badFocus.join('\n        ')
 	);
 
-	/*
-	 * ── CLAIM 5: the TV type floor is ONE declaration and the ladder is rem ─
-	 *
-	 * This is the measured half — the source-scan half (no px literal, tokens are rem, no
-	 * per-token viewport term) lives in stage-scale.test.ts and CANNOT make a computed claim. What only a
-	 * render can settle: that `.tv { font-size: calc(max(2.7vh, 20px) * clamp(0.8, --ui-scale, 1.6)) }`
-	 * actually RESOLVES to 29.16px at a 1920×1080 CSS viewport, that every rem tier multiplies THAT root
-	 * (so the smallest rendered tier clears the 27px floor and none clears below 24px), and that pushing
-	 * --ui-scale to its 0.8 bound keeps every tier >= 20px — the acceptance criteria verbatim. --ui-scale
-	 * is read off the live `.tv` element and overridden in place, so this measures the real cascade, not a
-	 * recomputation of the token file.
-	 *
-	 * Not gated on a room/session: `/tv` always mounts `.tv`, and the tier tokens live on it regardless of
-	 * playback state, so the attract screen is enough to read the resolved sizes.
-	 */
+	// CLAIM 5: the TV type floor is ONE declaration and the ladder is rem. The source-scan half lives in
+	// tests/guards/layout/stage-scale.test.ts and cannot make a computed claim. What only a render settles:
+	// that the `.tv` root font-size calc RESOLVES as intended at a 1920x1080 CSS viewport, that every rem
+	// tier multiplies THAT root, and that pushing --ui-scale to its 0.8 bound keeps every tier at or above
+	// 20px. --ui-scale is read off the live element and overridden IN PLACE, so this measures the real
+	// cascade rather than a recomputation of the token file. `/tv` always mounts `.tv` whatever the playback
+	// state, so the attract screen is enough.
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
 	await page.waitForSelector(SEL.tvRoot, { timeout: 15000 });
@@ -1114,25 +933,16 @@ try {
 		await page.viewport(1920, 1080);
 	}
 
-	/*
-	 * ── CLAIM 5b: .fs-btn overlaps NO z-tier-7 chrome box, on the RENDER ─────────────────
-	 *
-	 * the fullscreen button and the corner chrome (join QR, lower-third, Up-next) all sit at
-	 * z-tier 7. Whichever is later in the DOM paints on top at equal z, so a shared anchor is a silent
-	 * occlusion a source scan cannot see. The first fix moved the button off the join QR and onto
-	 * `.upnext` — a string-inequality guard on ONE anchor pair stayed green while the button still
-	 * overlapped ~3000px². This measures the invariant the fix actually claims: `.fs-btn` intersects
-	 * NO other z-tier-7 box, at 1080p AND 4K.
-	 *
-	 * WHY SYNTHETIC BOXES. `.fs-btn` and `.upnext`/`.corner`/`.lower-third` render only in the PLAYING
-	 * branch, which needs live WS playback the self-hosting drive has no processed media for (same reason
-	 * CLAIM 6 covers only attract/lobby). So the probe MOUNTS one element per class under the real
-	 * `.tv` — the tokens (`--tv-safe-x/y`, `--tv-upnext-h`, `--z-tv-card`) resolve on `.tv` and the
-	 * loaded /tv stylesheet positions each element exactly as production does. `.upnext` is given a
-	 * realistic wrapped height so `--tv-upnext-h` is exercised at a non-zero value. The DOM order
-	 * mirrors production (chrome first, `.fs-btn` last) so paint order is honest. Boxes are removed
-	 * after measuring so nothing leaks into a later claim.
-	 */
+	// CLAIM 5b: `.fs-btn` overlaps NO z-tier-7 chrome box, on the render. The fullscreen button and the
+	// corner chrome (join QR, lower-third, Up-next) all sit at z-tier 7, so whichever is later in the DOM
+	// paints on top and a shared anchor is a silent occlusion no source scan can see — a string-inequality
+	// guard on ONE anchor pair stayed green while the button overlapped ~3000px². Measured at 1080p AND 4K.
+	//
+	// WHY SYNTHETIC BOXES: those classes render only in the PLAYING branch, which needs live WS playback this
+	// self-hosting drive has no processed media for. So one element per class is MOUNTED under the real
+	// `.tv`, where the tokens resolve and the loaded stylesheet positions it as production does; `.upnext`
+	// gets a realistic wrapped height so `--tv-upnext-h` is exercised non-zero, DOM order mirrors production
+	// so paint order is honest, and the boxes are removed after measuring.
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
 	await page.waitForSelector(SEL.tvRoot, { timeout: 15000 });
@@ -1141,11 +951,10 @@ try {
 	const overlapProbe = `(() => {
 		const tv = document.querySelector(${JSON.stringify(SEL.tvRoot)});
 		if (!tv) return null;
-		// The route's CSS is Svelte-SCOPED: rules are '.fs-btn.svelte-HASH', so a bare class="fs-btn"
-		// gets NONE of the production positioning. Worse, .corner belongs to a DIFFERENT component
-		// (JoinBadge) with its OWN hash. So resolve each class's own scope hash by scanning the live
-		// stylesheets for the rule that positions it, and stamp THAT hash on the synthetic element.
-		// Fail loudly if any class's hash cannot be found — an unscoped box measures unstyled geometry.
+		// The route's CSS is Svelte-SCOPED ('.fs-btn.svelte-HASH'), so a bare class gets NONE of the production
+		// positioning — and .corner belongs to a DIFFERENT component with its own hash. Resolve each class's
+		// own scope hash from the live stylesheets and stamp THAT on the synthetic element; fail loudly if one
+		// cannot be found, because an unscoped box measures unstyled geometry.
 		function scopeFor(cls) {
 			const re = new RegExp('\\\\.' + cls + '\\\\.(svelte-[a-z0-9]+)');
 			for (const sheet of document.styleSheets) {
@@ -1166,10 +975,9 @@ try {
 		}
 		const holder = document.createElement('div');
 		holder.setAttribute('data-889-probe', '1');
-		// One element per z-tier-7 chrome class, in production DOM order (chrome first, fs-btn LAST so it
-		// paints on top at equal z — the exact condition the guard must catch). .upnext gets its real
-		// child classes so it renders at a production-realistic (multi-line, wrapping) height. Each box
-		// carries ITS OWN component's scope hash so the scoped rules actually apply.
+		// One element per z-tier-7 chrome class, in production DOM order (chrome first, fs-btn LAST so it paints
+		// on top at equal z — the exact condition the guard must catch). .upnext gets its real child classes so
+		// it renders at a production-realistic wrapping height, and each box carries its own scope hash.
 		const uh = scopes['upnext'], lh = scopes['lower-third'], ch = scopes['corner'];
 		const specs = [
 			{ cls: 'lower-third', html: '<div class="ls-name ' + lh + '">Now singing</div><div class="ls-song ' + lh + '">A Song Title</div>' },
@@ -1228,22 +1036,13 @@ try {
 	}
 	await page.viewport(1920, 1080);
 
-	/*
-	 * ── CLAIM 6: the ratified TV states measured on the render ──────
-	 *
-	 * The source-scan half (room-code-is-largest, the CSS-gated crossfade, the family borders) lives in
-	 * routes/tv/tv-ratified-states.test.ts and CANNOT make a measured claim. What only a render settles,
-	 * and what shipped green past a source scan on the first pass:
-	 *   • — the join URL is one unbreakable token: `.jt-url` must not break mid-octet
-	 *     (scrollWidth <= clientWidth), at the realistic long LAN address the repo documents.
-	 *   • — every roster member is shown with no chip OCCLUDED by a corner control. A name
-	 *     painted under .fs-btn is worse than the "+N more" it replaced, and is invisible to a source
-	 *     scan. Swept with LONG-name fixtures at 6/10/12/13 guests (name length is load-bearing here).
-	 *
-	 * The takeover frames (next-up / processing / skipping) need live WS playback to mount and are NOT
-	 * driven here — the self-hosting drive has no processed media — so their invariants stay on the
-	 * source-scan guard; this gate covers attract and lobby, the two the drive can reach honestly.
-	 */
+	// CLAIM 6: the ratified TV states, measured on the render. The source-scan half lives in
+	// tests/guards/subsystem-tv/tv-ratified-states.test.ts and cannot make a measured claim. What only a
+	// render settles, and what shipped green past a source scan: the join URL is ONE unbreakable token
+	// (`.jt-url` must not break mid-octet, scrollWidth <= clientWidth) at the realistic long LAN address the
+	// repo documents; and every roster member is shown with no chip OCCLUDED by a corner control, swept with
+	// LONG-name fixtures at 6/10/12/13 guests, because name length is load-bearing here. The takeover frames
+	// need live WS playback to mount, so their invariants stay on the source-scan guard.
 	{
 		// Long-name fixtures (name length is load-bearing for). Colours are irrelevant to the
 		// occlusion measurement and are passed as a CSS named colour, NOT a `#hex` literal — a `#`-led
@@ -1285,12 +1084,9 @@ try {
 			heldSockets.push(ws);
 		}
 
-		// The lobby is where the two measured invariants are both reachable in this drive: the phone-flow
-		// claims above already joined a singer, so the TV is in the LOBBY (not attract). The lobby carries
-		// the same join panel (.url) and the roster, so the URL-no-break and the
-		// roster-not-occluded invariants are measured here. The attract `.jt-url` and the three
-		// takeover frames stay on the source-scan guard (the takeovers need live WS playback the
-		// self-hosting drive has no processed media for).
+		// The lobby is where both measured invariants are reachable in this drive: the phone-flow claims above
+		// already joined a singer, and the lobby carries the same join panel and the roster. The attract
+		// `.jt-url` and the takeover frames stay on the source-scan guard.
 		const lobbyProbe = `(() => {
 			const chips = [...document.querySelectorAll(${JSON.stringify(SEL.lobbyStripPerson)})];
 			const url = document.querySelector(${JSON.stringify(SEL.lobbyUrl)});

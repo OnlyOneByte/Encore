@@ -1,20 +1,15 @@
 <!--
-	CodeEntry — the typed join path. Six single-character boxes, not a free text field: the
-	segment count teaches the format without an instruction line, and the boxes reflect the SERVER's
-	restricted alphabet (`$lib/contract/room-code`, the one copy) so a character the server would reject
-	is refused at the keystroke rather than accepted and failed at the join.
+	CodeEntry — the typed join path. One box per character rather than a free text field: the segment count
+	teaches the format without an instruction line, and the boxes enforce the SERVER's restricted alphabet from
+	the one shared copy, so a character the server would reject is refused at the keystroke.
 
-	ACCESSIBILITY IS THE POINT, not a nicety. A typed code alone is a cognitive-function test under WCAG
-	SC 3.3.8, which is why the scan path sits ALONGSIDE this (the parent renders both). Here the duties
-	are SC 3.3.1 (a rejected character states WHY, in words) and SC 3.3.2 (Continue's disabled state has
-	a text reason, never disabled-alone). The group is ONE accessible name and the six boxes are ONE tab
-	stop with arrow/backspace movement between them, so a keyboard or switch user tabs into the code once,
-	not six times.
+	The duties here are SC 3.3.1 (a rejected character states WHY, in words) and SC 3.3.2 (the disabled CTA has
+	a text reason). The group is ONE accessible name and the boxes are ONE tab stop with arrow and backspace
+	movement between them, so a keyboard or switch user tabs into the code once rather than once per box.
 
-	KNOWN HAZARD (encoded in the driven-browser check, restated here for the reader): Svelte 5 `bind:value`
-	on a rune does not pick up synthetic CDP input, so a probe must dispatch REAL key/paste events or the
-	field reads as empty and Continue as correctly-disabled. Nothing to fix in this file — a note so a
-	future probe author does not chase a phantom.
+	KNOWN HAZARD for a probe author, not a defect here: Svelte 5's `bind:value` on a rune does not pick up
+	synthetic CDP input, so a probe must dispatch REAL key and paste events or the field reads as empty and the
+	CTA as correctly disabled.
 -->
 <script lang="ts">
 	import { CODE_LENGTH, isRoomCodeChar, normalizeRoomCodeInput, CODE_EXCLUDED_NOTE } from '$lib/contract';
@@ -25,34 +20,25 @@
 		/** Accessible name for the whole six-box group. */
 		label?: string;
 		/**
-		 * Fired when all six are present (e.g. to submit on the last keystroke).
-		 *
-		 * IT CARRIES THE CODE, and that argument is a defect fix rather than a convenience. `value` reaches
-		 * the parent through an `$effect` below, which runs on the NEXT tick — while every call to this
-		 * fires SYNCHRONOUSLY from inside a `beforeinput` / `paste` / `keydown` handler. So a parent that
-		 * read its own binding here saw the code one character short: JoinLanding's `continueToIdentity()`
-		 * checked `typedCode.length === CODE_LENGTH`, found 5, and returned silently. Typing the sixth
-		 * character did nothing and pasting a whole code did nothing — measured in a browser, both paths.
-		 *
-		 * Handing the string to the callback removes the race instead of narrowing it: there is no tick
-		 * between assembling the code and reporting it.
+		 * Fired when every box is filled, and IT MUST CARRY THE CODE: `value` reaches the parent through the
+		 * `$effect` below, on the NEXT tick, while every call to this fires synchronously from inside an input
+		 * handler. A parent reading its own binding here sees the code one character short and returns
+		 * silently, so the last keystroke and a whole-code paste both do nothing.
 		 */
 		oncomplete?: (code: string) => void;
 	}
 	let { value = $bindable(''), label = 'Room code', oncomplete }: Props = $props();
 
-	// The boxes are the source of truth; `value` is derived from them so a parent binding always equals
-	// what is on screen. Seeded from the incoming `value` so a parent that starts with a known code
-	// (e.g. a prefill) shows it in the boxes; a per-box array rather than slicing `value` keeps the
-	// caret and the DOM element list stable across re-renders.
+	// THE BOXES ARE THE SOURCE OF TRUTH and `value` is derived from them, so a parent binding always equals
+	// what is on screen. A per-box array rather than slicing `value` keeps the caret and the DOM element list
+	// stable across re-renders.
 	const seed = normalizeRoomCodeInput(value);
 	let chars = $state<string[]>(Array.from({ length: CODE_LENGTH }, (_, i) => seed[i] ?? ''));
 	let inputs: HTMLInputElement[] = $state([]);
 	/** Set when a keystroke was refused, cleared on the next accepted one. Announced politely. */
 	let rejection = $state('');
 
-	// Keep `value` in lock-step with the boxes. Assigning the array element reassigns `chars` (rune), so
-	// this recomputes; the parent sees the same string the user sees.
+	// Keeps `value` in lock-step with the boxes, so the parent sees the string the guest sees.
 	$effect(() => {
 		value = chars.join('');
 	});
@@ -61,13 +47,9 @@
 	const complete = $derived(filled === CODE_LENGTH);
 
 	/**
-	 * What the code WILL be once box `i` holds `ch` — computed, not read back.
-	 *
-	 * The insert path needs to know whether this keystroke completes the code, in the same synchronous
-	 * turn that handles it. Reading `complete` there is a race with nothing to win: `chars` is written
-	 * one line up, and a `$derived` read after a write in the same turn is only correct if nothing else
-	 * has to settle first — which is exactly the assumption that made the sixth keystroke inert. This
-	 * projects the new value instead of asking for it.
+	 * What the code WILL be once box `i` holds `ch` — PROJECTED, never read back: the insert path has to know
+	 * whether this keystroke completes the code in the same synchronous turn that handles it, and reading a
+	 * `$derived` after a write in that turn is the assumption that made the last keystroke inert.
 	 */
 	function withChar(i: number, ch: string): string {
 		const next = [...chars];
@@ -81,10 +63,10 @@
 		el?.select();
 	}
 
-	// beforeinput is where a bad character is stopped: preventDefault here means the box never shows it,
-	// so `value` never carries a character the server would reject (SC 3.3.1 — with a stated reason).
+	// `beforeinput` is where a bad character is stopped, because preventDefault here means the box never shows
+	// it and `value` never carries a character the server would reject (SC 3.3.1, with a stated reason).
 	function onBeforeInput(e: InputEvent, i: number) {
-		// Deletions and non-insert intents fall through to the native handler / onkeydown.
+		// Deletions and non-insert intents fall through to the native handler and onkeydown.
 		if (!e.data) return;
 		if (e.inputType === 'insertFromPaste') return; // handled by onPaste for the multi-box fill
 		const up = e.data.toUpperCase();
@@ -97,8 +79,7 @@
 			else if (assembled.length === CODE_LENGTH) oncomplete?.(assembled);
 			return;
 		}
-		// Anything else — an excluded letter, a digit we bar, a symbol, or a multi-char composition — is
-		// refused, and we SAY which characters are allowed rather than silently swallowing it.
+		// Anything else is refused WITH the allowed set stated, never silently swallowed (SC 3.3.1).
 		e.preventDefault();
 		rejection = CODE_EXCLUDED_NOTE;
 	}
@@ -135,17 +116,16 @@
 		}
 	}
 
-	// A 6-char paste into ANY box fills all six: the code is copied off a TV as one string,
-	// so making the guest place each character defeats the paste. Normalised through the same shared
-	// filter, so `ABCD-23` or lower case still lands as `ABCD23`.
+	// A whole-code paste into ANY box fills every box: the code is copied off the TV as one string, so making
+	// the guest place each character defeats the paste. Normalised through the same shared filter.
 	function onPaste(e: ClipboardEvent, i: number) {
 		const raw = e.clipboardData?.getData('text') ?? '';
 		const cleaned = normalizeRoomCodeInput(raw);
 		if (!cleaned) return; // nothing usable — let the native paste no-op
 		e.preventDefault();
 		const next = [...chars];
-		// A single character pastes into the focused box; a multi-character paste fills from the start,
-		// which is what a whole-code paste means regardless of which box was focused.
+		// A single character lands in the focused box; a longer paste fills from the START, which is what a
+		// whole-code paste means regardless of which box was focused.
 		if (cleaned.length === 1) {
 			next[i] = cleaned;
 			chars = next;
@@ -160,15 +140,13 @@
 	}
 </script>
 
-<!-- role=group + aria-labelledby gives the six boxes ONE accessible name, so a screen reader announces
-     "Room code" once, not six unlabelled text fields. -->
+<!-- role=group with aria-labelledby gives the boxes ONE accessible name, so a screen reader announces the
+     field once rather than once per unlabelled box. -->
 <div class="code-entry" role="group" aria-labelledby="code-entry-label">
 	<span id="code-entry-label" class="code-label">{label}</span>
 	<div class="segments">
-		<!-- `name` on each box is what stops Chrome's issues panel reporting "a form field element should
-		     have an id or name attribute" six times on the first screen of the app. `autocomplete="off"`
-		     already declines autofill (a one-character box has nothing to fill), so the name is purely the
-		     identity the platform asks for. -->
+		<!-- `name` is purely the identity the platform asks for — without it the browser reports a missing
+		     id-or-name once per box on the first screen of the app. Autofill is already declined. -->
 		{#each chars as ch, i (i)}
 			<input
 				bind:this={inputs[i]}
@@ -189,18 +167,12 @@
 	</div>
 
 	<!--
-		THE REJECTION REASON ONLY (SC 3.3.1). One polite live region so a rejected keystroke is announced
-		without interrupting typing.
+		THE REJECTION REASON ONLY (SC 3.3.1), on one polite live region so a refused keystroke is announced
+		without interrupting typing. No progress count: the boxes ARE the progress indicator, and the SC 3.3.2
+		duty is discharged by the CTA's own reason.
 
-		The progress line that used to live here — "Enter all 6 characters to continue. N of 6 so far." —
-		is GONE. It restated what six visibly empty boxes already say, and the screen was saying the same
-		thing three times: this line, the "or type the six-character code" divider above the field, and the
-		disabled-CTA reason below it. Six boxes ARE the progress indicator; a count of them is narration.
-		The SC 3.3.2 duty it shared is still discharged, by the CTA's own reason (see JoinLanding's
-		`.cta-reason`), so nothing that was required left with it.
-
-		The region stays mounted rather than becoming conditional markup, so a rejection announces on a
-		live region the AT is already watching instead of one that appears at the moment it speaks.
+		The region STAYS MOUNTED rather than being conditional markup, so a rejection announces on a live region
+		assistive tech is already watching instead of one that appears at the moment it speaks.
 	-->
 	<p class="code-note" role="status" aria-live="polite">
 		{#if rejection}
@@ -215,18 +187,18 @@
 		flex-direction: column;
 		gap: var(--space-sm);
 	}
-	/* Eyebrow label, matching the /settings + ColourPicker field idiom (0.78rem / 0.12em / uppercase). */
+	/* The shared eyebrow idiom, for a group that carries its own accessible name. */
 	.code-label {
 		font-size: var(--ph-text-sm);
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
 	}
+	/* The boxes size to the row rather than to a fixed width, so they fit a narrow phone and grow on a wider
+	   one without ever wrapping mid-code. */
 	.segments {
 		display: flex;
 		gap: var(--space-sm);
-		/* The boxes size to the row rather than to a fixed width, so six of them fit a narrow phone and
-		   grow on a wider one without wrapping mid-code. */
 	}
 	.segment {
 		flex: 1 1 0;

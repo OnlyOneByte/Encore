@@ -1,38 +1,22 @@
-// The TV background style — a domain type that straddles the base and config layers.
+// THIS MUST STAY ITS OWN LEAF MODULE, importing nothing but the registry helper.
 //
-// WHY ITS OWN MODULE. `TvBackgroundStyle` is referenced from BOTH sides of a boundary: the base
-// playback state (`PlaybackState.background` in types.ts) carries a per-song override of it, and the
-// room config (`RoomSettings.tvBackgroundStyle` in settings.ts) carries the room default. When the
-// registry lived in settings.ts, types.ts had to `import type { TvBackgroundStyle } from '../core/settings'`
-// — a base module reaching UP into the config layer. That closed a dependency cycle
-// types -> settings -> queue-order -> types: settings imports the queue-order VALUES it validates
-// against, and queue-order imports the `QueueEntry` type from types. Two edges were type-only and so
-// erased at runtime, but it was a real graph cycle and one value-import away from a runtime one.
+// `TvBackgroundStyle` is referenced from both sides of a layer boundary: `PlaybackState` in types.ts
+// carries a per-song override and `RoomSettings` in settings.ts carries the room default. Holding the
+// registry in settings.ts makes types.ts import UP into the config layer and closes a real cycle
+// (types → settings → queue-order → types). A leaf both can depend DOWNWARD on has no cycle.
 //
-// Extracting the style here — a leaf that imports only the registry helper — lets types.ts and
-// settings.ts BOTH depend downward on it, and the cycle is gone. Its two sibling TV registries
-// (`TV_PROGRESS_STYLES`, `TV_VISUALIZERS`) stay in settings.ts on purpose: nothing in the base layer
-// references them, so only the one type that actually crosses the boundary is moved.
-//
-// The public surface of $lib/contract is unchanged: index.ts re-exports this module, and settings.ts
-// re-exports these same names, so a consumer importing `TvBackgroundStyle` / `TV_BACKGROUND_STYLES`
-// from either `$lib/contract` or `./settings` sees exactly what it always did.
+// Its sibling TV registries (`TV_PROGRESS_STYLES`, `TV_VISUALIZERS`) stay in settings.ts on purpose:
+// nothing in the base layer references them, so only the type that crosses the boundary moved.
 
 import { makeRegistry } from '../core/registry';
 
 /**
- * What the TV paints BEHIND the video.
+ * What the TV paints BEHIND the video — and for a processed song that is the ENTIRE visual field, because a
+ * separated instrumental has no video track, so this sits directly behind the word-timed lyric reel rather
+ * than decorating letterbox bars.
  *
- * Worth knowing why this matters more than it sounds: a process song plays a separated
- * instrumental, which has no video track, so the `<video>` renders nothing and this background is
- * the ENTIRE visual field for the song — sitting directly behind the word-timed lyric reel. It is
- * not decoration around letterbox bars.
- *
- * A registry rather than a bare union, for the same reason as TV_PROGRESS_STYLES: the phone renders
- * the picker from one source and a new style cannot be added without a label.
- *
- * ONE axis, not two. These do not compose — "one colour" and "the singer's colour" are two answers
- * to the same question, so a second axis would only manufacture invalid combinations.
+ * ONE axis, not two: these do not compose, since "one colour" and "the singer's colour" are two answers to
+ * the same question and a second axis would only manufacture invalid combinations.
  */
 export const TV_BACKGROUND_STYLES = [
 	{ id: 'off', label: 'Black', note: 'Plain black behind the song. What the TV has always done.' },

@@ -17,27 +17,16 @@ from typing import Protocol
 from . import protocol
 from .host.ffmpeg import ffmpeg_argv
 
-# Stored stem formats — BOTH stems are lossless FLAC:
-#   instrumental -> FLAC (lossless). It comes out of the speakers at volume, and it is the one place
-#     a second lossy generation is audible: AAC smears high-frequency transients (a crash cymbal).
-#   vocals -> FLAC (lossless). It IS played aloud — on a song with no guide mix the TV mounts it as a
-#     second <audio> and follows the instrumental with it (TvPlayer.svelte's ELEMENT path). Encoding it
-#     lossless like the instrumental means both stems share ONE codec and ONE container, so they decode to
-#     a sample-exact common START.
-#     An AAC-in-m4a encoder inserts priming samples (~1024, i.e. ~21 ms at 48 kHz) that shift the
-#     vocals start relative to the FLAC instrumental. That start offset used to sit ABOVE guide-sync's
-#     15 ms deadband, so guideCorrection converged it out with a startup rate-trim (~15 s) rather than
-#     leaving it — the guide was compensated, not broken. Matching codecs removes the NEED for that
-#     startup correction: the guide now starts inside the deadband. FLAC in <audio> is the same decode
-#     path the instrumental already uses (WebKit documents it — see TvPlayer.svelte).
+# Both stems are lossless FLAC: the instrumental plays at volume (a second lossy generation would
+# smear high-frequency transients), and the vocals guide track shares the SAME codec/container so
+# both decode to a sample-exact common start (an AAC-in-m4a encoder's priming samples would otherwise
+# shift the vocals start relative to the instrumental).
 # MUST match the core's paths.ts INSTRUMENTAL_EXT / VOCALS_EXT.
 INSTRUMENTAL_EXT = "flac"
 VOCALS_EXT = "flac"
-# The GUIDE MIX: both stems in ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals). FLAC again, and
-# for a sharper reason than the stems' — this is the file the TV plays, and one file played by one
-# element has ONE playhead, so the guide cannot drift from the instrumental at all. See
-# `encode_guide_mix_argv` for why two elements cannot be held in sync from script, and the browser
-# evidence that four channels survive to WebAudio. MUST match the core's paths.ts GUIDE_MIX_EXT.
+# The GUIDE MIX: both stems in ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals), played by one
+# element with ONE playhead so the guide cannot drift from the instrumental at all.
+# MUST match the core's paths.ts GUIDE_MIX_EXT.
 GUIDE_MIX_EXT = "flac"
 
 
@@ -53,14 +42,12 @@ class CompleteResult:
     media_uri: str
     artifacts: dict
     # What this processor ACTUALLY resolved and ran — engine/model/backend/device. Distinct from
-    # `job.params`, which is what the core ASKED for: a processor may resolve a model alias to a
-    # different checkpoint, or fall back to CPU when the requested backend will not load. Defaults
-    # empty so a processor that reports nothing simply leaves the core's dispatched values standing.
+    # `job.params` (what the core ASKED for): a processor may resolve a model alias to a different
+    # checkpoint. Defaults empty so a processor reporting nothing leaves the core's dispatched values
+    # standing.
     facts: dict = field(default_factory=dict)
-    # WHY the published lyric won over the rejected candidates: per-candidate label + composite score
-    # + decided_by + baseline vote count. Distinct from `artifacts` (the winner's sidecar
-    # entry, library identity) — this is run history and lands in the job_attempts audit trail. None
-    # on any job that made no lyrics selection.
+    # WHY the published lyric won: per-candidate label + composite score + decided_by + baseline vote
+    # count. Lands in the job_attempts audit trail. None on a job that made no lyrics selection.
     selection: dict | None = None
 
 
@@ -73,10 +60,9 @@ class JobSpec:
     params: dict
     # where the worker writes outputs (the shared /media volume in single-box mode)
     media_dir: str
-    # The process this job belongs to: the trace id the core mints (repository.ts) and threads through a
-    # chained run, so the worker can correlate its own logs to the process the operator sees on
-    # /metrics/<mediaId>. Empty for a core that predates carrying it on the assign frame; a
-    # trailing default so it does not disturb the positional constructors in the test suite.
+    # The trace id the core mints and threads through a chained run, so the worker can correlate its
+    # logs to the process the operator sees on /metrics/<mediaId>. Empty for a core that predates
+    # carrying it on the assign frame.
     processing_id: str = ""
 
 
@@ -124,10 +110,7 @@ def source_audio_path(media_dir: str, media_id: str, ext: str = "wav") -> str:
     """Deterministic key for a media's RAW ORIGINAL audio in the `audio/` storage class.
 
     This is the only class that cannot be regenerated: re-acquiring it needs network, and it is gone
-    permanently once the upload disappears. It used to be written to `stems/_work/<id>/source.wav` --
-    a scratch path -- which meant it was simultaneously our most expensive asset and the one treated
-    as garbage (432MB of it accumulated on the live box because nothing cleaned scratch either).
-    Mirrors the core's paths.ts audioKey().
+    permanently once the upload disappears. Mirrors the core's paths.ts audioKey().
     """
     return os.path.join(media_dir, "audio", f"{media_id}.{ext.lstrip('.')}")
 
@@ -156,18 +139,13 @@ def guide_mix_path(media_dir: str, media_id: str) -> str:
 def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt") -> str:
     """Deterministic key for a media's RAW caption track, retained for post-process diagnosis.
 
-    Under the `derived/` storage class so it is "safe to delete, regenerable, first to evict" -- a
-    `.vtt` is tens of kilobytes of text, unlike the hundreds of megabytes of decoded audio that made
-    `work/` need cleaning. Eviction here is REF-DRIVEN, not directory-driven, so a `derived/`
-    file is only bounded by the `ENCORE_MEDIA_MAX_GB` cap once its key is enumerated in the core's
-    `derivedRefsOf`; an earlier change added that enumeration (this path is keyed per media id, so
-    `derivedRefsOf`
-    reconstructs it from CAPTION_KINDS x KNOWN_CAPTION_EXTS via `rawCaptionKey` in paths.ts). Before
-    an earlier change it inherited none of that and was orphaned on eviction. It is NOT a lyrics candidate and
-    is
-    never recorded in the sidecar; it is debugging evidence of what the parser was handed, which is
-    otherwise destroyed with the job scratch and cannot be re-fetched reliably (the upload may be gone
-    or the box rate-limited).
+    Under the `derived/` storage class so it is "safe to delete, regenerable, first to evict". Eviction
+    here is REF-DRIVEN, not directory-driven, so a `derived/` file is only bounded by the
+    `ENCORE_MEDIA_MAX_GB` cap once its key is enumerated in the core's `derivedRefsOf` (which
+    reconstructs it from CAPTION_KINDS x KNOWN_CAPTION_EXTS via `rawCaptionKey` in paths.ts). It is
+    NOT a lyrics candidate and is never recorded in the sidecar; it is debugging evidence of what the
+    parser was handed, otherwise destroyed with the job scratch and unrecoverable (the upload may be
+    gone or the box rate-limited).
 
     `kind` ("captions" authored / "auto-captions" machine) is a directory segment, NOT a filename
     part, so the authored/machine distinction stays STRUCTURAL exactly as `captions.py` insists: yt-dlp
@@ -177,17 +155,11 @@ def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt")
     return os.path.join(media_dir, "derived", "captions", kind, f"{media_id}.captions.{ext.lstrip('.')}")
 
 
-# ── silence detection ───────────────────────────────────────────────────────────
-# Separation can SUCCEED and still write digital silence. It has happened twice in the owner's
-# library: both stems came back pinned at the 16-bit floor, ~50KB against 20MB, and every readiness
-# check downstream only ever verified that the file EXISTED. The song then sat in the Ready list and
-# would have played four minutes of nothing.
-#
-# For the guiding track that failure is worse than a missing stem, because a silent guide looks like
-# a working one — the singer drags the control up and nothing happens. The worker is the right place
-# to catch it: it owns the encoder, it has ffmpeg, and it knows the answer immediately. A stem it
-# measures as silent is simply not reported, so an absent artifact stays a real answer rather than a
-# missing one.
+# Separation can SUCCEED and still write digital silence (measured: both stems pinned at the 16-bit
+# floor, ~50KB against 20MB), and readiness checks downstream only ever verify the file EXISTED. For
+# the guiding track this is worse than a missing stem — a silent guide looks like a working one, so
+# the singer drags the control up and nothing happens. A stem measured as silent is simply not
+# reported, so an absent artifact stays a real answer rather than a missing one.
 
 #: Peak at or below this (dBFS) is digital silence. 16-bit silence measures ~-91 dB; no real vocal
 #: stem peaks near it. -90 leaves headroom for a dithered "silent" file without catching real audio.
@@ -196,8 +168,8 @@ SILENCE_FLOOR_DB = -90.0
 
 def volumedetect_argv(path: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
     """ffmpeg argv that measures a file's mean/max volume and writes nothing."""
-    # quiet=False keeps the -nostats preamble WITHOUT -loglevel error: volumedetect writes its
-    # max_volume summary to stderr at ffmpeg's INFO level, which -loglevel error would suppress.
+    # quiet=False, not -loglevel error: volumedetect writes its max_volume summary to stderr at
+    # ffmpeg's INFO level, which -loglevel error would suppress.
     return ffmpeg_argv(
         ffmpeg_bin, path, ["-af", "volumedetect"], ["-f", "null", "-"], quiet=False, overwrite=False
     )

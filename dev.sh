@@ -18,30 +18,21 @@
 # server.ts owns both in one process, and vite only runs the SvelteKit half. A song will never cook
 # and the queue will never move under --ui. Use it for pure styling work, nothing else.
 set -eo pipefail
-# Job control ON in a non-interactive script, deliberately: it makes every `&` job a process-group
-# LEADER, which is what lets cleanup below signal a whole tree instead of just the parent. Without it
-# the worker's demucs/yt-dlp children and core's nested `bun run ./server.ts` outlive ctrl-c.
+# Job control makes every `&` job a process-group LEADER, so cleanup can signal a whole tree. Without
+# it the worker's demucs/yt-dlp children and core's nested `bun run ./server.ts` outlive ctrl-c.
 set -m
 cd "$(dirname "$0")"
 ROOT="$PWD"
 
-# ── .env ─────────────────────────────────────────────────────────────────────────────
-# FOR THE WORKER'S BENEFIT, not core's. Core is `bun run ./server.ts` and Bun reads .env by itself, so
-# it has always seen this file. The worker is `python -m src.dial_home` with NO dotenv dependency
-# (deliberately — the container gets its env from compose), and dev.sh launches it via a bare `env`,
-# which passes on only what this script exported. So every worker-side setting in .env.example was
-# silently inert under dev.sh: ENCORE_STEM_FORMAT, ENCORE_DEMUCS_MODEL, ENCORE_WORKER_CONCURRENCY,
-# ENCORE_PROCESSOR, ENCORE_WHISPERX_DEVICE, ENCORE_WORKER_CAPABILITIES (all read by config.py's
-# from_env) landed on core, which does not read them, and never reached the process that does.
+# .env is loaded FOR THE WORKER'S BENEFIT: Bun reads it for core by itself, but the worker has no dotenv
+# dependency and is launched through a bare `env`, so it sees only what this script exports. Every
+# ENCORE_* worker setting is inert under dev.sh without this — and ENCORE_WORKER_TOKEN is the sharp one,
+# because core starts returning 401 to role=worker upgrades the moment it sees a token the worker lacks,
+# which stops all processing with nothing in the queue to explain why.
 #
-# ENCORE_WORKER_TOKEN is the sharp one. Core gates role=worker upgrades the moment it sees a token and
-# returns 401 otherwise (config.py:197) — so a token set here reached core, the worker connected without
-# one, and ALL processing stopped with nothing in the queue to explain why. Exporting the file fixes
-# that class of split-brain outright: both processes now read one source.
-#
-# PRECEDENCE MATCHES BUN: a variable already in the environment WINS over the file, so `FOO=x bash
-# dev.sh` overrides for both halves and core/worker cannot end up disagreeing about the same key.
-# Parsed, not sourced: `set -a; . .env` would execute a value containing $(...) or a backtick.
+# Precedence matches Bun: a variable already in the environment WINS over the file, so both halves can
+# never disagree about a key. PARSED, NOT SOURCED — `set -a; . .env` would execute a value containing
+# $(...) or a backtick.
 ENV_FILE="${ENCORE_ENV_FILE:-$ROOT/.env}"
 ENV_REPORT="no .env — using defaults"
 if [ -f "$ENV_FILE" ]; then
@@ -72,17 +63,11 @@ if [ -f "$ENV_FILE" ]; then
 	[ "${#env_shadowed[@]}" -gt 0 ] && ENV_REPORT="$ENV_REPORT; shadowed by shell: ${env_shadowed[*]}"
 fi
 
-# ── paths pinned ABSOLUTE, deliberately ──────────────────────────────────────────────
-# The app resolves MEDIA_DIR ?? './media' and DATA_DIR ?? './data' relative to CWD (paths.ts:27,
-# db/index.ts:29). Two processes started from different directories therefore get DIFFERENT stores,
-# which is how a stray ./media appears beside the real one and the worker writes stems
-# the core cannot find. Pinning both here means core and worker cannot disagree.
-#
-# THESE THREE OUTRANK .env, which is why the loader runs above rather than below. .env.example ships
-# MEDIA_DIR=./media, DATA_DIR=./data and ENCORE_CORE_WS=ws://core:3000 — all correct INSIDE the
-# container (relative to /app, and `core` is compose DNS), all wrong for a native run, where a relative
-# path is resolved per-process and `core` resolves to nothing. Announced rather than silently dropped,
-# since a setting that appears to be read but is not is the whole bug class this section exists for.
+# MEDIA_DIR and DATA_DIR are pinned ABSOLUTE because the app resolves their defaults relative to CWD:
+# two processes started from different directories get different stores, and the worker then writes stems
+# core cannot find. These three also OUTRANK .env — which is why the loader runs above, not below — since
+# the container-correct values it ships (relative paths, `core` as compose DNS) are all wrong natively.
+# The override is announced rather than silently dropped.
 for v in MEDIA_DIR DATA_DIR ENCORE_CORE_WS; do
 	case " ${env_set[*]:-} " in
 		*" $v "*) echo "note: $v from ${ENV_FILE##*/} overridden — a native run needs absolute paths and localhost" ;;
@@ -103,8 +88,7 @@ for arg in "$@"; do
 		--no-start) DO_START=0 ;;
 		--yes|-y) ASSUME_YES=1 ;;
 		--nuke-models) NUKE_MODELS=1 ;;
-		# Print the header block and stop at the first non-comment line, so the help text cannot
-		# drift out of sync with a hardcoded line range.
+		# --help IS the header block, printed up to the first non-comment line, so it cannot drift.
 		-h|--help) awk 'NR>1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
 		*) echo "unknown flag: $arg (try --help)" >&2; exit 2 ;;
 	esac
@@ -120,8 +104,8 @@ need() {
 say "preflight"
 need bun "install from https://bun.sh" || exit 1
 need ffmpeg "brew install ffmpeg — the worker transcodes every stem" || exit 1
-# deno/node/bun is what yt-dlp's JS challenge solver needs; without one, YouTube resolves NO
-# audio-only format and every cook dies at download. Warn rather than fail: --core-only is still fine.
+# yt-dlp's JS challenge solver needs deno or node; without one YouTube resolves no audio-only format and
+# every cook dies at download. Warn rather than fail, because --core-only is still fine.
 if ! command -v deno >/dev/null && ! command -v node >/dev/null; then
 	echo "WARNING: no deno or node on PATH — yt-dlp cannot solve YouTube's JS challenge, so downloads will fail."
 fi
@@ -131,18 +115,13 @@ echo "media   $MEDIA_DIR"
 echo "data    $DATA_DIR"
 echo "env     $ENV_REPORT"
 
-# Refuse to start alongside a previous run. A leftover worker is not harmless: it reconnects every 3s,
-# the core hands it jobs, and two workers cooking the same media race each other on the same paths.
-# Refusing (rather than killing something we did not start) keeps this script from being a surprise.
-#
-# NOTE both checks run only when we are actually going to START something — see below. Cleaning or
-# pulling does not need the port, and refusing to --reset because something holds :3000 just blocks
-# the one command that would have got you unstuck.
+# Refuse to start alongside a previous run rather than killing something we did not start: a leftover
+# worker reconnects every 3s and two workers cooking the same media race on the same paths. Both checks
+# run only when we are about to START — refusing a --reset because something holds :3000 would block the
+# one command that gets you unstuck.
 
-# Who is LISTENING on the core port. `-sTCP:LISTEN` is essential: a bare `lsof -ti:3000` also matches
-# CLIENTS connected to it, so a browser tab left open on the TV view reports as "port in use" and
-# refuses a perfectly fine start. (It reported Firefox, holding an ESTABLISHED connection from an
-# earlier run — never a listener.)
+# `-sTCP:LISTEN` is essential: a bare `lsof -ti:3000` also matches CLIENTS, so a browser tab left open on
+# the TV view reports as "port in use" and refuses a perfectly fine start.
 port_owner() { lsof -ti:3000 -sTCP:LISTEN 2>/dev/null || true; }
 
 preflight_free() {
@@ -181,9 +160,8 @@ fi
 # ── reset ────────────────────────────────────────────────────────────────────────────
 if [ "$DO_RESET" = 1 ]; then
 	say "reset — DESTRUCTIVE"
-	# Everything listed is UNTRACKED local state. Nothing here is in git, so this can never destroy
-	# source. It CAN destroy hours of downloading and cooking: audio/ holds raw originals that are not
-	# regenerable without the network, and derived/ holds stems that cost real GPU/CPU time.
+		# Untracked local state only, so this cannot destroy source — but audio/ holds originals that need
+		# the network to refetch and derived/ holds stems that cost real GPU time.
 	TARGETS=(
 		"$ROOT/media"      # audio + derived + meta + job scratch — the whole library
 		"$ROOT/data"       # sqlite + WAL + shm
@@ -192,8 +170,8 @@ if [ "$DO_RESET" = 1 ]; then
 		"$ROOT/worker/.pytest_cache"
 	)
 	if [ "$NUKE_MODELS" = 1 ]; then
-		# Demucs checkpoints (torch hub) + whisper/wav2vec2 weights (HF). Multi-GB and slow to refetch,
-		# which is why they are opt-in: they are never the cause of a stale-state bug.
+			# Demucs checkpoints plus whisper/wav2vec2 weights. Multi-GB, slow to refetch, and never the
+			# cause of a stale-state bug — hence opt-in.
 		TARGETS+=("$HOME/.cache/torch" "$HOME/.cache/huggingface")
 	fi
 
@@ -222,24 +200,17 @@ fi
 
 VENV="$ROOT/worker/.venv"
 REQS="$ROOT/worker/requirements.txt"
-# Not in requirements.txt on purpose — the image installs it --no-deps because its own dependency
-# list is 30 packages of .doc/.rtf readers we never call. Same treatment here.
+# Not in requirements.txt on purpose: installed --no-deps because its own dependency list is 30
+# packages of .doc/.rtf readers we never call.
 KLP_PIN="karaoke-lyrics-processor==0.6.0"
 # The venv is "ready" only when this file says so, and it is written LAST — see install_worker_deps.
 STAMP="$VENV/.encore-deps"
 
-# The interpreter MUST be >= 3.11, and it is deliberately NOT bare `python3`.
-#
-# scipy 1.16.2 sets that floor — it declares Requires-Python >=3.11, so on a 3.10 interpreter pip
-# resolves NO distribution for it and aborts the ENTIRE install, including websockets, which sits on
-# line 11 of requirements.txt and had already resolved. That is not theoretical: a shell exporting
-# PYENV_VERSION=3.10.13 makes `python3` a 3.10 shim, and the abort then surfaced three steps downstream
-# as the worker dying on "ModuleNotFoundError: No module named 'websockets'" — which reads like a missing
-# pin rather than a venv that was never populated.
-# 3.12 is tried FIRST because that is what the image ships (worker/Dockerfile: python:3.12-slim-bookworm),
-# so a dev venv resolves the same wheels prod does. 3.14 is deliberately NOT a candidate: torch 2.8
-# publishes no cp314 wheel and audio-separator excludes 3.14.1 outright, so preferring it would trade
-# this clear failure for an opaque one. Override with ENCORE_WORKER_PYTHON=/path/to/python.
+# The interpreter must be >= 3.11 and is deliberately not bare `python3`: scipy publishes nothing below
+# 3.11, and pip then aborts the ENTIRE install including websockets — which surfaces three steps later
+# as the worker dying on ModuleNotFoundError. 3.12 is tried first because that is what worker/Dockerfile
+# ships, so a dev venv resolves the same wheels prod does; 3.14 is not a candidate because torch
+# publishes no cp314 wheel. Override with ENCORE_WORKER_PYTHON=/path/to/python.
 pick_python() {
 	local cand
 	for cand in "${ENCORE_WORKER_PYTHON:-}" python3.12 python3.13 python3.11 python3; do
@@ -253,10 +224,9 @@ pick_python() {
 	return 1
 }
 
-# Two granularities, on purpose. py_tag is for HUMANS (log lines); py_abi is what the stamp compares.
-# The stamp must NOT carry the patch level: every wheel in requirements.txt is tagged by minor (cp312),
-# so 3.12.12 → 3.12.14 changes nothing about what is installable — but a full x.y.z in the stamp turns
-# an incidental `brew upgrade python@3.12` into a spurious multi-GB reinstall of the whole torch set.
+# py_tag is for humans; py_abi is what the stamp compares. The stamp must NOT carry the patch level —
+# wheels are tagged by minor (cp312), so a `brew upgrade python@3.12` would otherwise force a
+# spurious multi-GB reinstall of the whole torch set.
 py_tag() { "$1" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || echo unknown; }
 py_abi() { "$1" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo unknown; }
 
@@ -266,8 +236,7 @@ sha_of() {
 }
 
 install_worker_deps() {
-	# Drop any previous stamp FIRST: if this install dies halfway, the next run must see an unready
-	# venv and retry, not trust a stamp describing a state that no longer exists.
+	# Drop the stamp FIRST, so an install that dies halfway leaves an unready venv the next run retries.
 	rm -f "$STAMP"
 	"$VENV/bin/pip" install --quiet --upgrade pip
 	"$VENV/bin/pip" install -r "$REQS"
@@ -286,9 +255,8 @@ if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 		exit 1
 	}
 
-	# A venv on the wrong interpreter can never hold this dependency set, so it is rebuilt rather than
-	# reported. Safe to do unasked: a venv is a regenerable cache, and pip's wheel cache means the
-	# refetch is mostly local. Announced loudly because it is minutes, not seconds.
+	# A venv on the wrong interpreter can never hold this dependency set, so rebuild rather than report.
+	# Safe unasked (a venv is a regenerable cache) but announced loudly, because it costs minutes.
 	if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
 		say "worker venv is Python $(py_tag "$VENV/bin/python") — too old for the pinned deps, rebuilding on $PY"
 		rm -rf "$VENV"
@@ -299,12 +267,9 @@ if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 		"$PY" -m venv "$VENV"
 		install_worker_deps
 	else
-		# READINESS IS THE STAMP, NOT THE DIRECTORY. The old test here was `[ -x $VENV/bin/python ]`,
-		# which `python3 -m venv` satisfies BEFORE a single package is installed — so one failed install
-		# left a venv holding nothing but pip and setuptools, and every later run skipped straight past
-		# it to launch a worker that could not import websockets. Comparing a stamp of the interpreter +
-		# a hash of requirements.txt also makes --pull's refresh automatic: a pull that changes the
-		# pins changes the hash.
+			# READINESS IS THE STAMP, NOT THE DIRECTORY: `python3 -m venv` produces an executable python
+			# before a single package is installed, so a half-finished install would look ready forever. The
+			# stamp hashes requirements.txt too, which is what makes --pull's refresh automatic.
 		want="python=$(py_abi "$VENV/bin/python")
 requirements=$(sha_of "$REQS")
 klp=$KLP_PIN"
@@ -312,9 +277,8 @@ klp=$KLP_PIN"
 			say "worker deps out of date (or never finished installing) — installing"
 			install_worker_deps
 		elif ! "$VENV/bin/python" -c 'import websockets' 2>/dev/null; then
-			# Cheap backstop for a venv edited by hand behind the stamp's back. websockets is the right
-			# canary: dial_home imports it lazily at connect time, so its absence is otherwise invisible
-			# until after core is already up and the log has scrolled.
+			# Backstop for a venv edited behind the stamp's back. websockets is the canary because dial_home
+			# imports it lazily at connect time, so its absence is otherwise invisible until core is up.
 			say "worker venv is stamped but incomplete (websockets missing) — reinstalling"
 			install_worker_deps
 		fi
@@ -330,23 +294,17 @@ fi
 
 [ "$DO_START" = 1 ] || { say "done (--no-start)"; exit 0; }
 
-# Checked HERE, not in preflight: maintenance (--pull / --reset) does not touch the port or care about
-# a stale worker, and blocking those on a port conflict blocks the very command that unsticks you.
+# Checked here rather than in preflight: --pull / --reset need no port, and blocking them on a port
+# conflict blocks the command that unsticks you.
 preflight_free || exit 1
 
 # ── run ──────────────────────────────────────────────────────────────────────────────
 CORE_PID="" WORKER_PID=""
 
-# Stop one job and EVERYTHING it spawned, then verify it is actually gone.
-#
-# `kill -- -PID` signals the process GROUP. Both halves of that matter and both were bugs here:
-#   * the group, because a cook shells out to demucs/yt-dlp and core runs a nested bun — signalling
-#     only the leader reparents those to init and they keep going (a stranded demucs keeps a GPU busy);
-#   * and a real PID, because `( ... ) & $!` yields the SUBSHELL's pid, not the command's. That is why
-#     the first version of this script left `python -m src.dial_home` running after ctrl-c, reconnecting
-#     every 3s forever. The launch below uses `exec` so the subshell IS the process.
-# TERM first because the worker installs no signal handlers and exits cleanly on it; KILL only if it
-# refuses, and say so rather than escalating silently.
+# Stop one job and everything it spawned, then verify it is gone. `kill -- -PID` signals the process
+# GROUP, which matters because a cook shells out to demucs/yt-dlp and core runs a nested bun —
+# signalling only the leader reparents those to init and a stranded demucs keeps a GPU busy. TERM
+# first (the worker installs no handlers and exits cleanly on it), KILL only if it refuses.
 stop_tree() {
 	local pid="$1" name="$2" i
 	[ -n "$pid" ] || return 0
@@ -368,13 +326,9 @@ cleanup() {
 	stop_tree "$CORE_PID" core
 	wait 2>/dev/null || true
 
-	# Prove it, because a silent "stopped." that actually left a worker reconnecting every 3s is worse
-	# than no message at all — the next run then fights an invisible second worker for the same jobs.
-	#
-	# Checked by PID and PORT, deliberately NOT by `pgrep -f <pattern>`: a pattern broad enough to catch
-	# the worker also matches this script's own forks (command substitutions inherit its argv), so the
-	# first version of this check reported a phantom straggler on every clean shutdown. Our own pids and
-	# the listening socket are the two things that cannot lie.
+	# Prove it: a silent "stopped." that left a worker reconnecting every 3s means the next run fights an
+	# invisible second worker. Checked by PID and PORT, never `pgrep -f`, because a pattern broad enough
+	# to catch the worker also matches this script's own forks and reports a phantom straggler.
 	local left="" i
 	for i in $(seq 1 12); do
 		left=""
@@ -401,8 +355,7 @@ fi
 say "starting core"
 bun run start & CORE_PID=$!
 
-# Wait for health before starting the worker: it retries every 3s anyway (RECONNECT_BACKOFF_SEC),
-# but a clean first connect keeps the log readable.
+# Wait for health first: the worker retries every 3s anyway, but a clean first connect reads better.
 for _ in $(seq 1 45); do
 	curl -fsS -m 2 "$CORE_URL/health" >/dev/null 2>&1 && break
 	kill -0 "$CORE_PID" 2>/dev/null || { echo "core exited during startup" >&2; exit 1; }
@@ -413,11 +366,10 @@ echo
 
 if [ "$CORE_ONLY" != 1 ]; then
 	say "starting worker"
-	# PATH must carry the venv bin: the worker shells out to demucs / yt-dlp BY NAME, and
-	# capabilities.py proves a capability with shutil.which() — so a capability whose tool is only
-	# importable, not on PATH, gets reported differently. See its "venv-vs-system-python" note.
-	# `exec` is load-bearing: it REPLACES the subshell with python, so $! is python's own pid. Without
-	# it $! is the subshell and cleanup kills a shell that has already forked, leaving the worker alive.
+		# PATH must carry the venv bin: the worker shells out to demucs / yt-dlp BY NAME and capabilities.py
+		# proves a capability with shutil.which(), so an importable-but-not-on-PATH tool reports differently.
+		# `exec` is load-bearing — it replaces the subshell with python, so $! is python's own pid; without
+		# it cleanup kills a shell that has already forked and the worker survives.
 	(
 		cd "$ROOT/worker"
 		exec env \
@@ -429,8 +381,7 @@ if [ "$CORE_ONLY" != 1 ]; then
 fi
 
 say "up"
-# Phones cannot use localhost, so resolve the actual LAN address. en0 is Wi-Fi on a Mac; fall back to
-# en1 (ethernet/dongle) and then to hostname -I on Linux before giving up.
+# Phones cannot use localhost. en0 is Wi-Fi on a Mac; fall back to en1, then hostname -I on Linux.
 LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')"
 echo "  core     $CORE_URL"
 echo "  tv       $CORE_URL/tv        (open on the television)"

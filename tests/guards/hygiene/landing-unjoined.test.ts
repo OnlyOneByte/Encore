@@ -1,14 +1,9 @@
-// Q2-A: `/` is the landing page. An unjoined visitor used to be bounced client-side to `/join`
-// (`goto('/join')` in onMount); now `/join` is retired and the home route renders the JoinLanding state
-// in place. This source-scan pins both halves — the bounce is GONE, and the unjoined branch renders
-// JoinLanding — because mounting the full home route needs its whole WS/store machinery, which is a
-// rung-L concern; the branch wiring itself is decidable from the source. A revert of either hunk reds.
+// guard: `/` is the landing page. An unjoined visitor used to be bounced client-side to `/join` (`goto` in
+// onMount); `/join` is retired and the home route renders the JoinLanding state in place. Mounting the full
+// home route needs its whole WS/store machinery, so this pins both halves from the source instead.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Was `at('src/routes/+page.svelte')` — from this guard's old home in
-// src/routes that resolved back into the same directory, i.e. the home route itself. Now
-// named in full and anchored on the repo root.
 const src = read('src/routes/+page.svelte');
 
 // Strip comments so a `/join` mentioned in a comment (there is one, explaining the retirement) does not
@@ -25,11 +20,8 @@ test('the home route no longer bounces an unjoined visitor to /join', () => {
 });
 
 test('the home route renders JoinLanding for the unjoined state', () => {
-	// Imported…
 	expect(code).toMatch(/import\s+JoinLanding\s+from\s+['"]\$lib\/components\/JoinLanding\.svelte['"]/);
-	// …and rendered in the unjoined branch.
 	expect(code).toMatch(/<JoinLanding\b/);
-	// The joined/unjoined split is a real branch on `me`: the JoinLanding render sits in the `{:else}`
-	// of an `{#if me}`, so a guest (me === null) gets the landing and a singer gets the queue.
+	// The joined/unjoined split is a real branch on `me`: a guest (me === null) gets the landing, a singer the queue.
 	expect(code).toMatch(/\{#if me\}/);
 });

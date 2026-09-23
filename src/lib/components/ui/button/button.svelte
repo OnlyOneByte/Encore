@@ -1,39 +1,12 @@
 <script lang="ts" module>
 	/*
-	 * ── DEVIATIONS FROM REGISTRY OUTPUT ───────────────────────────────────────────────────────
-	 *
-	 * Copied with `shadcn-svelte add button` (v1.6.1, style `vega`), then edited. shadcn is copy-in
-	 * precisely so the component is yours to own, so editing is the intended workflow — but an edit
-	 * nobody wrote down is an edit an upgrade silently reverts. This block is the diff to re-apply after
-	 * any `add --overwrite`, and EVERY item is enforced by a named test, so a reverted edit reds rather
-	 * than shipping.
-	 *
-	 * 1. `transition-all` REMOVED from the base class. Encore does not want it: it animates layout
-	 * properties, `components/motion.test.ts` bans the name across the whole tree, and the incumbent
-	 * `.btn-accent` had no transition at all — so removing it is also what makes the migration
-	 * invisible. That guard's net arm is what caught it here, and is what will catch its return.
-	 * 2. `size: icon` is `size-tap`, not `size-9`. The registry's 36px is under this app's 44px `--tap`
-	 * standard; `size-tap` reads the token rather than restating the number. Guarded by
-	 * `touch-targets.test.ts`. `grid place-items-center` comes with it because Icon renders as a block
-	 * and without a centring context the mark sits off-centre (the reported off-centre X).
-	 * 3. A `press` axis and its scoped styles at the bottom of this file — three incumbent behaviours
-	 * over one shape. `touch-action: none` on the grab case is load-bearing for the drag:
-	 * without it the browser claims the vertical gesture for scrolling and `onpointerdown` never
-	 * fires. `cursor: grab` must stay pinned to this control and never reach a row (* guarded by `reorder-mode-source.test.ts`).
-	 * 4. An `iconPrimary` variant for NowPlayingDrawer's transport (NowPlayingHero's, before the drawer
-	 * replaced it): accent fill while actionable, falling
-	 * back to the icon surface when disabled, which is what says the transport is dead not idle.
-	 * 6. `bg-transparent` on the `ghost` variant. The registry paints ghost only on hover, which assumes
-	 * Preflight zeroed the UA's `buttonface`; Preflight is OFF here, so a ghost BUTTON showed a mid-grey
-	 * slab (measured rgb(107,107,107) on the queue grip). Every earlier ghost call site was an `<a>`.
-	 * 5. Three more role-named variants for the phone home's controls — `identity`, `keycap`, `eyebrow`.
-	 * Each is documented at its own entry below, and each exists because a REQUIREMENT of its call site
-	 * contradicts the base: `shrink-0` defeats an ellipsis, and `whitespace-nowrap` defeats the 320px
-	 * reflow floor for a button whose label is one unbreakable word.
-	 *
-	 * NOT a deviation: colour. `app.css`'s semantic layer aliases `--primary`, `--muted`, `--ring` and
-	 * friends onto Encore's tokens, so every stock class here resolves untouched. That layer is why this
-	 * diff is four items instead of a rewrite.
+	 * Vendored from the shadcn-svelte registry, then edited. The edits are the diff to re-apply after any
+	 * `add --overwrite`, and each is pinned by a guard so a reverted edit reds rather than shipping:
+	 * `transition-all` is absent from the base (it animates layout and cannot honour Reduce Motion —
+	 * `motion.test.ts`); `size: icon` is `size-tap` because every registry size is under this app's 44px
+	 * floor (`touch-targets.test.ts`); the `press` axis and its scoped styles at the bottom of this file;
+	 * and the role-named variants below, each of which exists because its call site contradicts the base.
+	 * See docs/FRONTEND.md#shared-components.
 	 */
 	import { type VariantProps, tv } from 'tailwind-variants';
 	import { cn, type WithElementRef } from '$lib/utils.js';
@@ -41,18 +14,10 @@
 
 	export const buttonVariants = tv({
 		/*
-		 * `no-underline text-inherit` ARE HERE BECAUSE A BUTTON MAY RENDER AS AN ANCHOR, and six of them
-		 * do — the identity control, the page-header back arrow, the drawer's "···" door, the settings
-		 * links. Tailwind's Preflight is OFF in this app (app.css is `source(none)`), so the UA's own
-		 * `a:link` style is never reset: every one of those was painted underlined, in the browser's link
-		 * colour, instead of taking the surface it was given. The phone header's own name button was the
-		 * visible case — a violet, underlined username sitting in a row of `--ink` text.
-		 *
-		 * On the BASE rather than on the identity variant, because it is a property of being a control
-		 * that happens to navigate, not of one call site. `tailwind-merge` resolves the colour against a
-		 * variant that sets its own (`iconPrimary`'s `text-[var(--on-accent)]`, `keycap`'s ink pair) by
-		 * keeping the variant's, so this changes nothing for a variant that already had an opinion — it
-		 * only stops an anchor falling back to the UA's.
+		 * `no-underline text-inherit` are on the BASE because a Button may render as an anchor, and
+		 * Preflight is off, so the UA's `a:link` style is never reset — without them every anchor-shaped
+		 * button paints underlined in the browser's link colour. `tailwind-merge` keeps a variant's own
+		 * colour over these, so a variant with an opinion is unaffected.
 		 */
 		base: "rounded-md border border-transparent bg-clip-padding text-sm font-medium focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap outline-none select-none no-underline text-inherit disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
@@ -60,74 +25,37 @@
 				iconPrimary:
 					'bg-[var(--accent)] text-[var(--on-accent)] disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-35',
 				/*
-				 * The phone home's identity control (name + colour dot -> /settings?tab=you). Role-named
-				 * like `iconPrimary` above, because what it encodes is a call site's requirement rather
-				 * than a general appearance.
-				 *
-				 * It exists for ONE reason the stock variants cannot give: the base sets `shrink-0`, and
-				 * this control wraps a name that must ELLIPSIS. A non-shrinking button inside the header's
-				 * flex row cannot narrow, so `text-overflow` never engages and a long name pushes the gear
-				 * off the row instead. `min-w-0 shrink` restores the flex minimum the ellipsis depends on.
-				 * `justify-start` because the label leads; `font-normal` and `text-[length:inherit]`
-				 * because the name's size is the header's, not the button's (the old rule said
-				 * `font: inherit`).
-				 *
-				 * `min-h-tap` because it declares no height of its own and so inherited the default
-				 * `h-9` — 36px, measured on the render by `gate:measured`, which is the four pixels
-				 * is about. It is the phone's only route to the profile editor, so it is not a
-				 * control a thumb can afford to miss. The header's row height is set by the brand line
-				 * beside it, so raising this one to the floor changes no layout.
+				 * The phone home's identity control (name + colour dot to /settings?tab=you). `min-w-0
+				 * shrink` cancels the base's `shrink-0`, which is what the name's ellipsis depends on — a
+				 * non-shrinking button cannot narrow, so a long name pushes the gear off the row instead.
+				 * `min-h-tap` because it declares no height and would otherwise inherit the 36px default.
 				 */
 				identity:
 					'min-w-0 shrink justify-start gap-[var(--space-sm)] px-[var(--space-xs)] font-normal text-[length:inherit] hover:bg-muted min-h-tap',
 				/*
-				 * The +/- semitone pair. Two requirements the stock variants actively fight:
-				 *
-				 * 1. The base sets `whitespace-nowrap`, but "semitone" is one unbreakable token and at
-				 *    200% text a full-width button is still narrower than it — so nowrap forced the row,
-				 *    and the sheet around it, past 320px. `whitespace-normal` plus
-				 *    `[overflow-wrap:anywhere]` lets the word break instead of the layout.
-				 * 2. DASHED means inert. The incumbent drew a dashed border while the shift was clamped
-				 *    at +/-7 and switched to solid when actionable, which reads as "no further" without
-				 *    relying on colour. Expressed here as the RESTING state upgraded by `enabled:`,
-				 *    rather than as a `disabled:` override, so it does not depend on utility ordering to
-				 *    beat the base's own disabled rule.
+				 * The +/- semitone pair. `whitespace-normal` cancels the base's nowrap: "semitone" is one
+				 * unbreakable token, and at 200% text nowrap forces the row past the 320px reflow floor.
+				 * DASHED means inert (the shift is clamped), written as the RESTING state upgraded by
+				 * `enabled:` rather than a `disabled:` override, so it does not depend on utility order.
 				 */
 				keycap:
 					'border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-dim)] whitespace-normal [overflow-wrap:anywhere] enabled:border-solid enabled:border-[var(--line)] enabled:text-[var(--ink)]',
-				/*
-				 * A disclosure trigger styled as a section eyebrow — the "Vocal range" toggle. Uppercase,
-				 * letter-spaced and 2xs, which is a LABEL treatment rather than a button treatment, so no
-				 * stock variant is close. `whitespace-normal` for the same 200%-text reason as `keycap`.
-				 */
+				/* A disclosure trigger styled as a section eyebrow — a LABEL treatment, so no stock variant
+				   is close. `whitespace-normal` for the same 200%-text reason as `keycap`. */
 				eyebrow:
 					'justify-start gap-[7px] px-[var(--space-3xs)] text-[length:var(--ph-text-2xs)] font-bold tracking-[0.14em] uppercase whitespace-normal text-[var(--ink-dim)] hover:text-[var(--ink)] hover:bg-transparent',
 				/*
-				 * SongRow's "add a turn" action. The pair it belongs to is the app's most load-bearing
-				 * hierarchy: `iconPrimary` (accent fill, sparkle) is the expensive minute-long process,
-				 * this is the free instant queue-add. They must not converge — an earlier version had the
-				 * weight INVERTED, putting the primary fill on the dead-end action, and the comment in
-				 * SongRow records why that was worse than a styling nit.
-				 *
-				 * Green ink on the icon surface rather than a fill: it reads as available without
-				 * competing with the accent. `--ok` is the readiness colour the row's "Karaoke ready"
-				 * badge already uses, so the button agrees with the chip beside it.
+				 * SongRow's "add a turn". It must NOT converge with `iconPrimary`: that accent fill is the
+				 * expensive minute-long process, this is the free instant queue-add, and inverting the
+				 * weight puts the primary fill on the dead-end action. `--ok` is the readiness colour the
+				 * row's "Karaoke ready" badge already uses, so the button agrees with the chip beside it.
 				 */
 				iconReady: 'bg-[var(--card2)] border-[var(--ok)] text-[var(--ok)]',
 				/*
-				 * DISABLED IS A SURFACE SWAP, NOT A SUBTREE OPACITY — and that is Encore's rule, not a
-				 * preference. The base keeps shadcn's `disabled:opacity-50`, which composites BOTH the fill
-				 * and its ink against the page: measured on the join CTA (the first control a guest sees, and
-				 * it starts disabled) the painted pair was #3F307C under #9F97BE — a label at 4.0:1, under
-				 * AA, on the app's primary action. `NowPlayingBand`'s `.disc:disabled` states the rule this
-				 * breaks: "Unavailable is a SURFACE change, never a subtree opacity: and
-				 * layout/phone-inventory.test.ts both reject dimming a subtree, because compositing ink
-				 * against the page at 45% is what quietly drops it under 4.5:1."
-				 *
-				 * `iconPrimary` above already did this correctly, which is what made the gap invisible: the
-				 * variant Encore wrote was right and the variant it inherited was not. So this swaps to the
-				 * same inert pair — `--card2` under `--ink-dim`, 4.9:1 — and cancels the inherited opacity
-				 * with `disabled:opacity-100` so the two rules cannot both apply.
+				 * DISABLED IS A SURFACE SWAP, NEVER A SUBTREE OPACITY: compositing a fill and its ink
+				 * together against the page is what quietly drops a label under 4.5:1 while every contrast
+				 * guard keeps passing (SC 1.4.3). So this swaps to the inert pair --card2 under --ink-dim
+				 * and cancels the base's inherited `disabled:opacity-50` with `disabled:opacity-100`.
 				 */
 				default:
 					'bg-primary text-primary-foreground hover:bg-primary/80 disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-100',
@@ -136,17 +64,10 @@
 				secondary:
 					'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
 				/*
-				 * `bg-transparent` IS DEVIATION 6, and it is a defect fix rather than a preference.
-				 *
-				 * The registry's `ghost` sets a background only on hover, which is correct in a tree where
-				 * Preflight has zeroed `button { background }`. Preflight is OFF here (see app.css), so a
-				 * `<button variant="ghost">` painted the UA's `buttonface` — MEASURED as rgb(107,107,107), a
-				 * mid-grey slab, on the queue row's drag grip. Every earlier ghost call site escaped it by
-				 * being an `<a>` (the drawer's `···`, the settings links), which has no UA background, so the
-				 * first BUTTON to use the variant was the first to see it.
-				 *
-				 * Fixed on the variant rather than at that call site: a class handed to a component is scoped
-				 * to the caller and stripped there, and the next ghost button would hit the same slab.
+				 * `bg-transparent` is a defect fix, not a preference: the registry's ghost paints only on
+				 * hover, which assumes Preflight zeroed `button { background }`. Preflight is off here, so a
+				 * ghost BUTTON otherwise shows the UA's mid-grey `buttonface` slab. It belongs on the
+				 * variant, not a call site — a class handed to a component is scoped away at the caller.
 				 */
 				ghost:
 					'bg-transparent hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50',
@@ -156,40 +77,20 @@
 			},
 			size: {
 				/*
-				 * Fills its column — a form's one commit control. This is a VARIANT rather than a
-				 * `class="w-full"` at the call site, and that is not style preference: app.css sets
-				 * `source(none)` with a single `@source` over this directory, so a utility written in a
-				 * page is scanned by nothing and emitted nowhere. S1 of the shadcn migration briefly shipped that bug — the
-				 * settings Save and join Start-singing buttons kept their width only by accident,
-				 * because a vendored component elsewhere happened to use the same class.
+				 * Fills its column — a form's one commit control. A VARIANT rather than a `class="w-full"`
+				 * at the call site because app.css scans only this directory for utilities, so a utility
+				 * written in a page is emitted nowhere.
 				 */
 				block: 'w-full min-h-tap',
 				/*
-				 * A content-hugging size that CLEARS THE TAP FLOOR, and it exists because none of the
-				 * registry's sizes do: `xs` is h-6 (24px), `sm` h-8 (32px), `default` h-9 (36px), `lg` h-10
-				 * (40px) — all under Encore's `--tap: 44px`. Only `icon` (`size-tap`) and `block`
-				 * (`min-h-tap`) comply, and both force a shape: a square, or the full column width.
-				 *
-				 * So every inline control that is neither — the reorder Done/Cancel, the search-escape
-				 * "Show all N", the back-to-queue link — had no compliant size to migrate onto, and reaching
-				 * for `sm` would have silently dropped a 44px hand-rolled control to 32px. That is the
-				 * regression touch-targets.test.ts caught during the phone-home migration.
-				 *
-				 * `min-h-tap`, not `h-tap`: the label must be allowed to grow the box at 200% text rather
-				 * than overflow a fixed height.
+				 * A content-hugging size that clears the 44px tap floor, which no registry size does (they
+				 * run 24–40px). Every inline control that is neither square nor full-width needs this;
+				 * reaching for `sm` silently drops a compliant control to 32px. `min-h-tap` rather than
+				 * `h-tap` so the label can grow the box at 200% text instead of overflowing it.
 				 */
 				tap: 'min-h-tap gap-[var(--space-xs)] px-[var(--space-xl)]',
-				/*
-				 * The same shape one step up, for a page whose primary action IS the page's purpose — the
-				 * landing screen's join button. Padding and type keep it well over the tap floor, and the
-				 * radius is `--radius` (18px), the card/sheet radius rather than the button's own 10px,
-				 * because at full width it reads as a surface.
-				 *
-				 * rebase note: this arrived on main as `size="blockLg" shape="lg"` — a separate
-				 * `shape` axis that existed only to carry a radius. Folded into one size here rather than
-				 * reintroducing that axis: the registry's sizes already own their radius, and a second
-				 * axis for it would be two ways to say one thing.
-				 */
+				/* The same shape one step up, for a page whose primary action IS the page's purpose. The
+				   radius is --radius, the card/sheet one, because at full width it reads as a surface. */
 				blockLg: 'w-full p-[var(--space-2xl)] text-[length:var(--ph-text-lg)] rounded-[var(--radius)]',
 				default:
 					'h-9 gap-1.5 px-2.5 in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2',
@@ -266,10 +167,10 @@
 
 <style>
 	/*
-	 * PRESS FEEDBACK AS DECLARATIONS (deviation 3), not `active:` utilities: motion.test.ts judges a
-	 * motion utility with no composited transition beside it, the incumbents had no transition at all,
-	 * and CSS in `src/` is what this repo's source scans can read — the reason copy-in beat a headless
-	 * dependency.
+	 * Press feedback as declarations rather than `active:` utilities, because CSS in `src/` is what this
+	 * repo's source scans can read. `touch-action: none` on the grab case is load-bearing for the reorder
+	 * drag: without it the browser claims the vertical gesture for scrolling and `onpointerdown` never
+	 * fires. `cursor: grab` must stay pinned here and never reach a row (`reorder-mode-source.test.ts`).
 	 */
 	[data-press='none']:active:not(:disabled) {
 		transform: scale(0.96);

@@ -1,16 +1,13 @@
 """The diarize step: attribute a `part` to each lyric line from the vocals stem.
 
-Where it sits and why. This runs in the ALIGN plan, AFTER TimeTexts has written the word-timed
-candidate docs to disk, and BEFORE PublishLyrics points the result at one. That order is forced by
-what it needs: attribution is a mapping from speaker turns onto TIMED lyric lines, so the timed lines
-have to exist first, and it must be applied before the artifact is pointed at. It reads the same
+Runs in the ALIGN plan AFTER TimeTexts has written the word-timed candidate docs to disk, and BEFORE
+PublishLyrics points the result at one: attribution maps speaker turns onto TIMED lyric lines, so the
+timed lines must exist first and be attributed before the artifact is pointed at. Reads the same
 isolated vocals stem the aligner used (`ctx.audio.vocals_path`).
 
-It is the SOURCE half of the duet feature the owner ruled for ("diarize in the worker"); the
-render half reads the `part` this writes. On its own it changes nothing a singer sees — that is what
-the `internal` label records — so every failure mode here is a silent fall-back to one colour, never a job
-failure: a box that cannot diarize, a stem that will not diarize, or a song that is not a confident
-duet all publish exactly today's single-colour artifact.
+Every failure mode here is a silent fall-back to one colour, never a job failure: a box that cannot
+diarize, a stem that will not diarize, or a song that is not a confident duet all publish exactly
+today's single-colour artifact.
 """
 
 from __future__ import annotations
@@ -62,11 +59,9 @@ class Diarize(Step):
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         yield ProgressEvent(stage=self.stage, pct=0)
 
-        # Only word-timed candidates can carry per-part colour; skip if none. `candidate['ref']` is the
-        # media-dir-relative path TimeTexts wrote the doc to. Read the artifact via `.get()` and a local
-        # rather than subscripting `ctx.out.artifacts["lyrics"]` — this step is a CONSUMER of the lyrics
-        # artifact TimeTexts wrote, not a second writer of it, and the one-writer-per-kind guard
-        # (test_worker_layers) reads any `out.artifacts["lyrics"]` subscript as a write.
+        # Read via `.get()` into a local, not by subscripting `ctx.out.artifacts["lyrics"]`: this step
+        # is a CONSUMER of the lyrics artifact TimeTexts wrote, not a second writer, and the
+        # one-writer-per-kind guard (test_worker_layers) reads any such subscript as a write.
         lyrics = ctx.out.artifacts.get("lyrics") or {}
         candidates = lyrics.get("candidates") or []
         word_timed = [c for c in candidates if c.get("timing") == Timing.WORD.value]

@@ -1,35 +1,22 @@
 """Source-audio ACQUISITION, separated from what is done with the audio afterwards.
 
-WHY ITS OWN MODULE. Acquisition used to be a stage buried inside separation, and *which* acquisition to
-perform was inferred from the URI's shape in two places on opposite sides of the wire: the core emitted
-either a watch URL or a bare file key, and both DemucsProcessor and WhisperXProcessor recovered the
-intent by testing for an `http(s)` prefix. Any other scheme was silently classified as a local path and
-died several stages later inside ffmpeg with "No such file", which reports the symptom and hides the
-cause.
+The core DECLARES the fetcher in job params and this module parses it at the boundary, rather than
+inferring it from the URI's shape, so an unrecognised fetcher fails before a byte moves instead of
+dying several stages later inside ffmpeg with an opaque "No such file".
 
-The core now DECLARES the fetcher in job params and this module parses it at the boundary, so an
-unrecognised fetcher fails before a byte moves.
+The step `AcquireAudio` is the ONLY place that resolves "where are this job's bytes, and do I have to
+go and get them" for all four actions; `tests/test_worker_layers.py` E6 (docs/ARCHITECTURE.md §7.1)
+fails if a second one appears.
 
-ONE ANSWER, finally. `resolve_source_audio` used to claim in this very docstring that it was the single
-place answering "where are this job's bytes, and do I have to go and get them" — while only
-`FetchProcessor` called it and three other processors re-derived the branch inline. That was the more
-expensive kind of wrong: a reader had no reason to check. S3 resolved it by DELETING the function rather
-than fixing its callers, because the surviving copy was also the wrong one (it assumed a `.wav` extension
-yt-dlp never wrote). The step `AcquireAudio` is now the only answer, for all four actions, and
-`tests/test_worker_layers.py` E6 fails if a second one appears —
-the enforcement tests in `docs/ARCHITECTURE.md` §7.1.
+Acquisition is a JOB, not a stage: a fetch routes on `fetch:<fetcher>` while a process routes on
+`stems`, so a box that can download and a box that can separate can be different machines — neither
+capability implies the other.
 
-Acquisition is a JOB rather than a stage. That is what lets a box which can download and a box which can
-separate be different machines: a fetch routes on `fetch:<fetcher>` while a process routes on `stems`, so
-neither capability implies the other.
+PURE/IO SPLIT as elsewhere in this worker: the argv builders below are pure; only the runner
+`AcquireAudio` injects touches the network, and tests replace it with a fake.
 
-PURE/IO SPLIT as elsewhere in this worker: the argv builder and the fetcher parsing are pure and unit
-tested: the argv builders below are pure, and the only thing that touches the network is the runner
-`AcquireAudio` injects, which the tests replace with a fake.
-
-`download_argv` and `parse_ytdlp_progress` live HERE, not in `separation/demucs.py` where they were born.
-They were part of the pre-S0 monolith, and left where they were, the acquisition step had to reach into
-the separation domain to download a file — the one thing E6 says acquisition owns.
+`download_argv` and `parse_ytdlp_progress` live HERE, not in `separation/demucs.py`, so the
+acquisition step never has to reach into the separation domain to download a file.
 """
 
 from __future__ import annotations

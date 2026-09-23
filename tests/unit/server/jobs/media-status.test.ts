@@ -1,20 +1,9 @@
-// THE MONOTONICITY INVARIANT, and the unit behaviour under it.
-//
-// A process is three jobs — fetch → stems → align — and the phone renders their combined progress as ONE
-// five-stop line (ProcessingCard's chip strip). Each job reports its own private stages, so forwarding
-// them verbatim walked that line backwards: a song on "Making karaoke" jumped back to "Fetched" when
-// stems began decoding, and again when align pulled its captions. Measured on the real hub before the
-// fix, one process broadcast six backward jumps:
-//
-//   separating@0 → downloading@0 → downloading@100 → ready@100      (fetch)
-//   separating@0 → downloading@10 → separating@68 → ready@100       (stems)
-//   separating@0 → downloading@5 → aligning@50 → ready@100          (align)
-//
-// The first test here is the guard: it drives a REAL WorkerHub through a whole process and asserts the
-// broadcast sequence never decreases. That is deliberately an end-to-end assertion over the hub rather
-// than a unit test of the mapping, because every one of the three causes lived in a different place
-// (the status map, the stage passthrough, the completion handler) and a unit test of any one of them
-// would have passed while the sequence a guest sees still regressed.
+// THE MONOTONICITY INVARIANT. A process is three jobs — fetch → stems → align — and the phone renders their combined
+// progress as ONE five-stop line. Each job reports its own private stages, so forwarding them verbatim walks that line
+// BACKWARDS: stems and align each open with a download of their own, which reads as a song on "Making karaoke" jumping
+// back to "Fetched". The first test drives a REAL WorkerHub through a whole process and asserts the sequence never
+// decreases — end-to-end deliberately, because the three causes live in three places (the status map, the stage
+// passthrough, the completion handler) and a unit test of any one passes while the guest's line regresses.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
 import { WorkerHub } from '$lib/server/jobs/worker-hub';
@@ -108,15 +97,14 @@ test('THE INVARIANT: a process never reports a stage it has already passed', () 
 		version: '1'
 	});
 
-	// The stage plans are the worker's real ones (worker/src/vocabulary.py STAGE_PLANS): stems and
-	// align BOTH open with a download of their own, which is precisely what used to leak through.
+	// The worker's REAL stage plans (worker/src/vocabulary.py STAGE_PLANS): stems and align both open with
+	// a download of their own, which is what leaks through.
 	runStep(h, 'fetch', ['downloading'], { annotation: undefined });
 	runStep(h, 'stems', ['downloading', 'separating'], { stems: { instrumental: 'derived/stems/m1-instrumental.flac' } });
 	runStep(h, 'align', ['downloading', 'aligning'], { lyrics: { uri: 'derived/lyrics/m1.json' } });
 
 	const seq = h.statuses().map((e) => e.status);
-	// Documented in full because the sequence IS the contract — a reader should be able to see the whole
-	// guest-visible progression without running anything.
+	// Spelled out in full because the sequence IS the contract.
 	expect(seq).toEqual([
 		'downloading', // fetch accepted
 		'downloading', // fetch progress
@@ -131,21 +119,19 @@ test('THE INVARIANT: a process never reports a stage it has already passed', () 
 		'ready' // align complete → every gate satisfied, and only NOW
 	]);
 
-	// Stated as the invariant too, so a future step added to the chain is checked by intent rather than
-	// by this one hardcoded list.
+	// Stated as the invariant too, so a step added to the chain is checked by intent, not by the list.
 	const positions = seq.map(mediaStagePosition);
 	expect(positions.every((p) => p >= 0)).toBe(true); // nothing off the line during a healthy process
 	for (let i = 1; i < positions.length; i++) {
 		expect(positions[i]).toBeGreaterThanOrEqual(positions[i - 1]);
 	}
-	// And the one that broke a guest's trust: 'ready' is the LAST thing said, never an intermediate.
+	// 'ready' is the LAST thing said, never an intermediate.
 	expect(seq.indexOf('ready')).toBe(seq.length - 1);
 });
 
 test('a completed fetch reports the step it is WAITING on, not the step it finished', () => {
-	// The pre-fix behaviour: mediaStatusFor(job with status 'ready') → 'ready' for every job type, so a
-	// finished download told every phone the song was singable. readiness.ts lets a live 'ready' win
-	// over the catalog, so entryPlayable said yes for a song with no instrumental on disk.
+	// Mapping a completed job of ANY type to 'ready' tells every phone a finished DOWNLOAD is singable:
+	// readiness.ts lets a live 'ready' win over the catalog, so entryPlayable says yes with no instrumental on disk.
 	const m = media({ stemStatus: 'queued' });
 	expect(completedStatusFor(job({ jobType: 'fetch', status: 'ready' }), m)).toBe('separating');
 	expect(completedStatusFor(job({ jobType: 'stems', status: 'ready' }), m)).toBe('separating');
@@ -173,60 +159,50 @@ test("only the media's own gates can say 'ready'", () => {
 });
 
 test('a completed align whose EARLIER gate is still outstanding is clamped, not walked back below its floor', () => {
-	// The monotonic clamp at the end of completedStatusFor — the `: floor` branch — is the only thing
-	// that pins this, and no other test in this file constructs its input. Every other completed-path
-	// case has `pendingGates(media)[0].stage` at or ABOVE the completed step's floor, so the `nextStatus`
-	// branch is taken and deleting the clamp (`return nextStatus`) leaves them byte-identical.
-	//
-	// Here the FIRST outstanding gate is `stems`/'separating' (position 2) while the job that just
-	// completed is `align`, whose floor is 'aligning' (position 3): nextStatus is strictly BELOW the
-	// floor. Reachable — an align completes while separation's artifact is missing (retention evicting
-	// instrumentalRef mid-align is the suspected production route; the trigger itself is proven here at
-	// the function boundary the clamp lives on). Without the clamp the guest's strip would jump from
-	// "Adding lyrics" back to "Making karaoke" — the exact backwards walk the invariant forbids.
+	// The ONLY test that reaches completedStatusFor's `: floor` clamp: every other completed-path case has
+	// `pendingGates(media)[0].stage` at or above the completed step's floor, so the `nextStatus` branch is taken and
+	// deleting the clamp leaves them byte-identical. Here the first outstanding gate is `stems`/'separating' (position 2)
+	// while the completed job is `align`, floor 'aligning' (position 3), so nextStatus is strictly BELOW the floor —
+	// reachable when an align completes with separation's artifact missing. Without the clamp the strip jumps from
+	// "Adding lyrics" back to "Making karaoke".
 	const alignAheadOfStems = media({ stemStatus: 'none', lyricsStatus: 'ready', lyricsRef: 'derived/lyrics/m1.json' });
-	// Guard the premise so this test cannot silently drift into the vacuous shape: the first pending
-	// gate must be strictly below the align floor, or the `: floor` branch is never exercised.
+	// Guard the premise, or this test drifts vacuous: the first pending gate must be strictly below the
+	// align floor, or the `: floor` branch is never exercised.
 	expect(pendingGates(alignAheadOfStems)[0]!.stage).toBe('separating');
 	expect(mediaStagePosition('separating')).toBeLessThan(mediaStagePosition(jobStageFloor('align')));
-	// Clamp intact → the completed align holds at its own floor.
 	expect(completedStatusFor(job({ jobType: 'align', status: 'ready' }), alignAheadOfStems)).toBe('aligning');
 });
 
 test("a job's own download stage is clamped to the step it IS", () => {
-	// Cause 2, in one line per job type. The worker is not lying — a stems job really does decode and an
-	// align job really does fetch captions — but neither is true of the SONG, which has finished
-	// fetching by the time either runs.
+	// The worker is not lying — a stems job really does decode, an align job really does fetch captions —
+	// but neither is true of the SONG, which finished fetching before either ran.
 	expect(mediaStatusFor(job({ jobType: 'stems' }), 'downloading')).toBe('separating');
 	expect(mediaStatusFor(job({ jobType: 'align' }), 'downloading')).toBe('aligning');
-	// A fetch's download IS the song's download, so it passes through.
 	expect(mediaStatusFor(job({ jobType: 'fetch' }), 'downloading')).toBe('downloading');
-	// A stage LATER than the floor is honoured — the clamp is a floor, not an override.
+	// A stage LATER than the floor is honoured: the clamp is a floor, not an override.
 	expect(mediaStatusFor(job({ jobType: 'stems' }), 'aligning')).toBe('aligning');
 });
 
 test('a job with no reported stage yet reports its OWN step, not a generic "separating"', () => {
-	// Cause 1: `running` mapped to 'separating' for every job type, so each of the three jobs opened on
-	// "Making karaoke" and then fell back one message later to whatever it was really doing.
+	// Mapping `running` to 'separating' for every job type opens all three jobs on "Making karaoke" and
+	// then falls back one message later to whatever each was really doing.
 	expect(mediaStatusFor(job({ jobType: 'fetch' }))).toBe('downloading');
 	expect(mediaStatusFor(job({ jobType: 'align' }))).toBe('aligning');
 });
 
 test('a queued step reports the step the song is waiting on — except a queued fetch', () => {
-	// A later step is only ever queued BECAUSE its predecessor completed, so its floor is earned. A
-	// queued fetch has earned nothing yet: claiming 'downloading' would tick the Queued chip for a song
-	// no worker has picked up.
+	// A later step is queued only BECAUSE its predecessor completed, so its floor is earned. A queued
+	// fetch has earned nothing: claiming 'downloading' ticks a chip for a song no worker has picked up.
 	expect(mediaStatusFor(job({ jobType: 'fetch', status: 'queued' }))).toBe('queued');
 	expect(mediaStatusFor(job({ jobType: 'stems', status: 'queued' }))).toBe('separating');
 	expect(mediaStatusFor(job({ jobType: 'align', status: 'assigned' }))).toBe('aligning');
 });
 
 test('a background stems-upgrade stays silent on an already-singable song', () => {
-	// The fourth door onto the same bug: an upgrade's accept would flip every ready row back to "Making
-	// karaoke" for the length of a re-separation, on a song that plays fine throughout.
+	// An upgrade's accept must not flip every ready row back to "Making karaoke" for the length of a
+	// re-separation, on a song that plays fine throughout.
 	const finished = media({ stemStatus: 'ready', instrumentalRef: 'x', lyricsStatus: 'ready' });
 	expect(shouldBroadcastProcess(job({ jobType: 'stems-upgrade' }), finished)).toBe(false);
-	// Every other job type reaches the room, and so does an upgrade on a song that is NOT yet singable.
 	expect(shouldBroadcastProcess(job({ jobType: 'stems' }), finished)).toBe(true);
 	expect(shouldBroadcastProcess(job({ jobType: 'stems-upgrade' }), media({ stemStatus: 'queued' }))).toBe(true);
 });
@@ -259,47 +235,38 @@ test('a failure is a terminal exit from the line, not a stop on it', () => {
 });
 
 test('a second Sing tap on a song already separating does not snap the room back to "Queued"', () => {
-	// The FOURTH producer of a media:status, and the one the first pass left on a hardcoded literal.
-	// /api/process published `job.status === 'ready' ? 'ready' : 'queued'`. That reads as safe only
-	// if the job is always new — but `enqueue` is idempotent and hands back the EXISTING live job (§6
-	// dedup), and `processState` answers 'processing' for an in-flight song WITHOUT the route short-circuiting
-	// on it. So a guest tapping Sing on a song someone else already started (a stale row, a late-joining
-	// phone) broadcast 'queued' to the WHOLE ROOM and reset every phone's strip to the first chip.
-	//
-	// Asserted at the mapping the route now calls, since the route itself needs a live app + socket.
+	// /api/process is the FOURTH producer of a media:status, and a hardcoded `job.status === 'ready' ? 'ready' : 'queued'`
+	// is only safe if the job is always new. `enqueue` is idempotent and hands back the EXISTING live job, so a guest
+	// tapping Sing on a song someone else started broadcasts 'queued' to the WHOLE ROOM and resets every phone's strip to
+	// the first chip. Asserted at the mapping the route calls, since the route needs a live app and socket.
 	const running = job({ jobType: 'stems', status: 'running' });
 	expect(mediaStatusFor(running, 'separating')).toBe('separating'); // not 'queued'
-	// The re-tap arrives before the worker's first progress frame: still not 'queued'.
 	expect(mediaStatusFor(running)).toBe('separating');
-	// And a re-tap on a song mid-DOWNLOAD stays where it is rather than jumping back a chip.
+	// A re-tap mid-DOWNLOAD stays where it is rather than jumping back a chip.
 	expect(mediaStatusFor(job({ jobType: 'fetch', status: 'running' }), 'downloading')).toBe('downloading');
-	// The one case that genuinely is 'queued': a brand-new process nothing has picked up.
 	expect(mediaStatusFor(job({ jobType: 'fetch', status: 'queued' }))).toBe('queued');
-	// A handed-back COMPLETED job goes through the gates like any completion, so the route cannot
-	// announce a singable song its own gates disagree with.
+	// A handed-back COMPLETED job goes through the gates like any completion, so the route cannot announce
+	// a song its own gates disagree with.
 	const stemsOnly = media({ stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac' });
 	expect(completedStatusFor(job({ jobType: 'stems', status: 'ready' }), stemsOnly)).toBe('aligning');
 });
 
 test('every job type has a floor, and every floor is on the shared line', () => {
-	// A new job type must decide where it sits before it can broadcast anything — this is what stops the
-	// next step added to the process from defaulting to a generic stage the way `running` used to.
+	// A new job type must decide where it sits before it can broadcast anything, rather than defaulting
+	// to a generic stage.
 	for (const jobType of ['fetch', 'stems', 'stems-upgrade', 'align'] as const) {
 		expect(MEDIA_STAGES).toContain(jobStageFloor(jobType));
 	}
 });
 
 test('every process gate declares the stop a song waits at, and it is on the shared line', () => {
-	// The gate table is the ONE place a pipeline step is registered (gates.ts says so in its opening
-	// comment). completedStatusFor reads `stage` straight off the gate for that reason — a lookup table
-	// keyed by gate id lived here first and quietly made "adding a step is one entry in GATES" false.
-	// This asserts the field exists and is usable, so a future gate added WITHOUT one fails here rather
-	// than reporting the wrong chip to a room full of phones.
+	// The gate table is the ONE place a pipeline step is registered, so completedStatusFor reads `stage` straight off the
+	// gate: a parallel lookup keyed by gate id makes "adding a step is one entry in GATES" false. A gate added without a
+	// stage must red here, not report the wrong chip to a room.
 	expect(GATES.length).toBeGreaterThan(0);
 	for (const gate of GATES) {
 		expect(MEDIA_STAGES).toContain(gate.stage);
 	}
-	// And the order matches the pipeline: an earlier gate's stop is earlier on the line.
 	const stops = GATES.filter((g) => g.required).map((g) => mediaStagePosition(g.stage));
 	for (let i = 1; i < stops.length; i++) {
 		expect(stops[i]).toBeGreaterThan(stops[i - 1]!);

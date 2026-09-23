@@ -1,9 +1,7 @@
 """The LRC format: parsing a timestamped lyric file and shaping it into segments.
 
-Split out of `lrclib.py`, which held two jobs — this, and the HTTP client that fetches LRC text from
-LRCLIB. The format is not LRCLIB's: a `.lrc` file is a format an upload can carry, a caption track can
-resemble, and a future provider will also serve. Keeping the parser beside one provider's client made the
-file 583 lines and implied the two were one concern.
+Separate from `lrclib.py`'s HTTP client: a `.lrc` file is a format an upload can carry, a caption
+track can resemble, and a future provider will also serve — not LRCLIB's alone.
 
 Nothing here does I/O. `parse_lrc` takes a string, and everything else takes what it returns.
 """
@@ -22,7 +20,6 @@ _LRC_STAMP_RE = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")
 _LRC_OFFSET_RE = re.compile(r"\[offset:\s*([+-]?\d+)\s*\]", re.IGNORECASE)
 
 
-# ── pure: LRC timestamp + parse ────────────────────────────────────────────────────
 def _stamp_to_sec(mm: str, ss: str, frac: str | None) -> float:
     """[mm:ss.frac] → seconds. `frac` is read as a decimal fraction of a second, so '5'→0.5,
     '50'→0.50, '500'→0.500 all resolve correctly (no centi-vs-milli ambiguity)."""
@@ -76,21 +73,16 @@ def parse_lrc(lrc_text: str) -> list[LrcEntry]:
     return entries
 
 
-# ── pure: fold an interleaved second script into the line it romanizes ──
-#
-# A Chinese record on LRCLIB (e.g. "Yi Jian Mei") does not carry a romanization FIELD — LRCLIB's API
-# has no such field — it ships the pinyin INTERLEAVED in the same syncedLyrics, as a second line under
-# the SAME [mm:ss] stamp as the characters it romanizes:
+# LRCLIB's API has no romanization field: a Chinese record ships the pinyin INTERLEAVED in the same
+# syncedLyrics, as a second line under the SAME [mm:ss] stamp as the characters it romanizes:
 #
 #     [00:27.00]真情像草原广阔
 #     [00:27.00]zhēn qíng xiàng cǎo yuán guǎng kuò
 #
-# `parse_lrc` yields these as two entries with an equal `start` (its sort is stable, so the file's own
-# order — original first — is preserved). Left alone they become a real line plus a zero-span twin that
-# reads as a duplicate. This folds each such same-stamp pair into ONE entry: the CJK/non-Latin member
-# stays `text`, its Latin-script twin becomes `romanization`. Deliberately NOT a per-language parser
-# (owner ruling): the ONLY discriminator is script (does the line carry non-Latin letters),
-# which needs no language table and covers any romanized script, not just Mandarin.
+# `parse_lrc` yields these as two entries with an equal `start`. This folds each same-stamp pair into
+# ONE entry: the CJK/non-Latin member stays `text`, its Latin-script twin becomes `romanization`.
+# Deliberately NOT a per-language parser: the ONLY discriminator is script, which needs no language
+# table and covers any romanized script, not just Mandarin.
 def _is_romanization_of(original: str, other: str) -> bool:
     """`other` reads as a romanization of `original`: `original` carries a non-Latin letter (the script
     being romanized) and `other` is written in the Latin script (letters, but none of them non-Latin).
@@ -162,7 +154,6 @@ def fold_romanization_entries(entries: list[LrcEntry]) -> list[LrcEntry]:
     return out
 
 
-# ── pure: entries → alignment segments + line-synced artifact ────────────────────────
 def entries_to_segments(
     entries: list[LrcEntry], total_duration: float | None = None, min_line_sec: float = 0.5
 ) -> list[dict[str, Any]]:

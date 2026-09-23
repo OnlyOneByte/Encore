@@ -1,9 +1,9 @@
 <!--
-  A ranked horizontal bar list. Hand-rolled because Encore has no charting library and one bar row is
-  a div with a width — pulling in a chart dependency to draw a rectangle would be the larger cost.
+  A ranked horizontal bar list, hand-rolled because one bar row is a div with a width and a charting
+  dependency to draw a rectangle would be the larger cost.
 
-  Bars are scaled to the LARGEST value in the set, not to a round number above it, so the longest bar
-  always fills the row: with a handful of plays a 0-to-10 axis would render every bar as a stub.
+  Bars scale to the LARGEST value in the set, never to a round number above it, so the longest bar always
+  fills its row — against a fixed axis a handful of plays renders every bar as a stub.
 -->
 <script lang="ts">
 	import * as Empty from '$lib/components/ui/empty';
@@ -33,10 +33,8 @@
 	</Empty.Root>
 {:else}
 	<!--
-		<Chart.Container> supplies the series config, so the fill paints from `--color-plays`
-		rather than naming a token directly. The marks stay a labelled <ol> — this is a proportional LIST,
-		where each row's label and value are real text, not a plotted series whose values live in an SVG
-		path a screen reader cannot read.
+		The marks stay a labelled list, because this is a proportional LIST: each row's label and value are real
+		text, not a plotted series whose values live in a path a screen reader cannot read.
 	-->
 	<Chart.Container config={{ plays: { label: 'Plays', color: 'var(--grad)' } }}>
 		<ol class="bars">
@@ -46,8 +44,8 @@
 						<span class="label" title={row.label}>{row.label}</span>
 						<span class="value">{row.value}{unit ? ` ${unit}` : ''}</span>
 					</div>
-					<!-- The track is the full width; the fill is the proportion. A gradient is fine here
-				     because nothing is written on top of it — no contrast obligation. -->
+					<!-- A gradient fill is legitimate here precisely because nothing is written on top of it: no text
+				     means no contrast obligation. -->
 					<div class="track" role="presentation">
 						<div class="fill" style:width="{(row.value / max) * 100}%"></div>
 					</div>
@@ -75,19 +73,13 @@
 	}
 	.label {
 		font-size: var(--ph-text-md);
-		/*
-		 * Wrap to a second line rather than clip with an ellipsis. The full label was ONLY in the
-		 * title attribute, which never fires on touch (no :hover), so a long artist or model name was
-		 * unrecoverable on a phone. Two lines keep it readable everywhere; title stays as a mouse bonus.
-		 */
+		/* WRAPS rather than clipping: a `title` attribute never fires on touch, so an ellipsised label leaves a
+		   long name unrecoverable on a phone. */
 		overflow-wrap: anywhere;
 	}
 	.value {
-		/*
-		 * The count IS the data, so it reads at the label's weight rather than as a footnote. At
-		 * 0.82rem/--ink-dim it was the smallest, dimmest thing in a row whose entire purpose is that
-		 * number. min-width keeps the right edge stable so a column of values aligns.
-		 */
+		/* The count IS the data, so it reads at the label's weight rather than as a footnote. `min-width` keeps
+		   the right edge stable, so a column of values aligns. */
 		font-size: var(--ph-text-md);
 		font-variant-numeric: tabular-nums;
 		color: var(--ink);
@@ -104,11 +96,8 @@
 	.fill {
 		height: 100%;
 		border-radius: var(--radius-pill);
-		/*
-		 * The fallback is deliberate, not defensive noise: `--color-<series>` is emitted at RUNTIME by
-		 * ChartStyle from the `config` above, so no static scan can see it — and if a series ever leaves
-		 * that config, the mark still paints its own token instead of nothing.
-		 */
+		/* The fallback is deliberate: `--color-<series>` is emitted at RUNTIME from the config above, so no
+		   static scan can see it, and a series leaving that config must still paint its own token. */
 		background: var(--color-plays, var(--grad));
 		min-width: 2px;
 	}
@@ -118,5 +107,4 @@
 		color: var(--ink-dim);
 		margin-top: 0.25rem;
 	}
-	/* `.empty` is ui/empty's now. */
 </style>

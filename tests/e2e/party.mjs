@@ -1,34 +1,17 @@
-/*
- * Full-flow e2e: two phones and a TV, against a live server.
- *
- *   bun run tests/e2e/party.mjs            # discovers a Chromium and starts one
- *   EPORT=3000 bun run tests/e2e/party.mjs # against an already-running server
- *
- * The server it runs against must have an EMPTY room and a ROUTABLE advertised join address — the
- * attract screen the first three checks measure exists only under both. A loopback origin makes the TV
- * show its "Join QR unavailable" alert instead, which is correct but renders none of the type this
- * flow reads, so start the server with one:
- *
- *   ENCORE_EPHEMERAL=1 HOST=127.0.0.1 PORT=5181 MEDIA_DIR=<seeded> \
- *     ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:5181 bun run server.ts
- *
- * WHAT CHANGED AND WHY. The previous version of this file rotted silently. It clicked a `Library` tab
- * that was deleted when search was unified around readiness, picked a colour by an aria-label of
- * `color #ff5cae` after the real label became `violet swatch`, and read rows from `.result` after the
- * component started rendering `.row`. Three selector families had moved while `bun test` stayed green,
- * because nothing in the suite ever looked at this script. It also imported `playwright-core`, which
- * was never a declared dependency.
- *
- * Both causes are addressed structurally, not by fixing the strings:
- *   - Every selector comes from ./contract.ts, which contract.test.ts verifies against the source on
- *     every `bun test` run. The script and the guard cannot drift apart, and rot fails in CI without
- *     needing a browser at all.
- *   - The driver is ./driver.mjs, which speaks the protocol Chromium already understands. No install.
- *
- * Controls are driven by ACCESSIBLE NAME wherever one exists, not by class. If a control loses its
- * accessible name, this flow should break — that is a real regression, and a class-based flow would
- * have hidden it.
- */
+// Full-flow e2e: two phones and a TV, against a live server.
+//
+//   bun run tests/e2e/party.mjs            # discovers a Chromium and starts one
+//   EPORT=3000 bun run tests/e2e/party.mjs # against an already-running server
+//
+// The server must have an EMPTY room and a ROUTABLE advertised join address — the attract screen the
+// first three checks measure exists only under both, and a loopback origin correctly shows the
+// unreachable-QR alert instead, which renders none of the type this flow reads:
+//
+//   ENCORE_EPHEMERAL=1 HOST=127.0.0.1 PORT=5181 MEDIA_DIR=<seeded> \
+//     ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:5181 bun run server.ts
+//
+// Controls are driven by ACCESSIBLE NAME wherever one exists, not by class: a control that loses its
+// accessible name SHOULD break this flow. See docs/E2E.md#the-driver.
 import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
@@ -36,8 +19,8 @@ import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from './lib/
 import { openJoin } from './lib/join.mjs';
 
 /**
- * Types for this out-of-program driver (earlier changes–an earlier change pattern). Browser/Page derive from
- * driver.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * Browser/Page derive from driver.mjs's return types so they cannot drift; page.evaluate() is
+ * Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check
@@ -45,11 +28,9 @@ import { openJoin } from './lib/join.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
-/*
- * How long to let the TV's `hello`→`queue:sync` round trip land after the socket opens, before trusting
- * what the screen says about the room. See the precondition block below for why the first render is not
- * an answer to "is the room empty".
- */
+// How long to let the TV's `hello`→`queue:sync` round trip land after the socket opens, before trusting
+// what the screen says about the room. The first render is NOT an answer to "is the room empty" — see the
+// precondition block below.
 const SYNC_SETTLE_MS = Number(process.env.SYNC_SETTLE_MS ?? 800);
 
 /** @type {Check[]} */
@@ -64,7 +45,7 @@ function check(name, ok, detail = '') {
 
 const chromium = findChromium();
 if (!chromium) {
-	// Loud, not skipped. A silently-skipped e2e is the failure mode this rewrite exists to prevent.
+	// Loud, not skipped: see docs/E2E.md#exit-codes-and-what-ran-means.
 	console.error('No Chromium found. Set PW_CHROMIUM, or install one, then re-run.');
 	process.exit(2);
 }
@@ -81,54 +62,34 @@ try {
 	const browser0 = await connect();
 	browser = browser0;
 
-	// ── the TV, BEFORE anyone joins ───────────────────────────────────────────
-	// Order matters. The attract layout only exists while the room is EMPTY, so asserting on it after two
-	// guests join reads the lobby instead, finds nothing, and reports 0px — which is exactly what the
-	// first run of this rewrite did. The stage scale and safe area are stage 3's whole point, so they are
-	// asserted on the RENDERED result: a token can be declared correctly and still not reach the element
-	// it was meant for.
+	// The TV, BEFORE anyone joins. ORDER MATTERS: the attract layout exists only while the room is EMPTY,
+	// so asserting on it after two guests join reads the lobby, finds nothing and reports 0px.
 	const tv = await browser0.newPage();
 	await tv.goto(`${base}/tv`);
 
-	/*
-	 * TWO preconditions, reported SEPARATELY, because conflating them is what broke this flow.
-	 *
-	 * (1) The room must be EMPTY. The attract screen only renders before anyone joins, and the server is
-	 *     ephemeral but not per-run, so a previous run's guests are still in it.
-	 *
-	 * (2) The advertised join address must be ROUTABLE. When it is loopback or a bare hostname the TV
-	 *     deliberately replaces the QR block — and `.idle-url`/`.idle-head` with it — with a `.badqr`
-	 *     alert, because a QR pointing at an unreachable address is a working-looking dead end. That is
-	 *     correct behaviour, and it is also the default when you start the server on 127.0.0.1, so the
-	 *     flow has to make it an explicit environment requirement instead of measuring 0px and calling
-	 *     the type illegible. It cannot fix this itself: `PUT /api/settings` requires a joined singer,
-	 *     and joining is precisely what destroys precondition (1).
-	 *
-	 * The previous version gated on `.url` for (1) and had no notion of (2) at all. `.url` is the
-	 * LOBBY's typed address (TvLobby.svelte) — it appears only once somebody HAS joined — so the gate
-	 * was inverted: it could never pass on the fresh empty room it demanded, and its message told the
-	 * operator to restart the server, which produces the state it was already in. Distinguishing the two
-	 * is the difference between an actionable message and a false regression report.
-	 *
-	 * AND THE FIRST RENDER CANNOT BE TRUSTED FOR (1). `online`/`away` start empty on the client and are
-	 * filled only by the socket's `queue:sync`, so the server renders the ATTRACT screen for every room
-	 * — verified by fetching /tv on a server holding a leftover guest: the document contains `attract`,
-	 * `idle-url` and "Nobody here yet", and no `.lobby` at all. Only the sync corrects it. Reading
-	 * `.attract` straight after load therefore answers "has the socket synced yet", not "is the room
-	 * empty", and on a leftover-guest server it can pass and then have `.idle-url` unmount mid-flight —
-	 * reporting `computed 0px`, which is the ORIGINAL false-failure symptom wearing a different hat. So
-	 * wait for the socket, let the sync land, and re-check the screen at the moment of measurement.
-	 */
+	// TWO preconditions, reported SEPARATELY, because conflating them turns an environment gap into a
+	// false regression report:
+	//
+	// (1) The room must be EMPTY — the attract screen renders only before anyone joins, and the server is
+	//     ephemeral but not per-run, so a previous run's guests are still in it.
+	// (2) The advertised join address must be ROUTABLE, or the TV correctly swaps the QR block for the
+	//     `.badqr` alert and the type this flow measures does not exist. The flow cannot fix it itself:
+	//     `PUT /api/settings` needs a joined singer, and joining destroys (1).
+	//
+	// AND THE FIRST RENDER CANNOT ANSWER (1). `online`/`away` start empty on the client and are filled by
+	// the socket's `queue:sync`, so the server renders ATTRACT for every room, leftover guests included.
+	// Reading `.attract` straight after load answers "has the socket synced yet" — and on a stale server it
+	// passes, then unmounts the element mid-flight and reports 0px. So wait for the socket, let the sync
+	// land, and re-check the screen at the moment of measurement.
 	const socketUp = await tv.waitForSelector(SEL.tvConnected, { timeout: 8000 }).catch(() => false);
 	if (!socketUp) {
 		console.error(`\nThe TV never opened its WebSocket to ${base}. Is the server still running?`);
 		browser0.close();
 		process.exit(2);
 	}
-	// `connected` flips on `onopen`, and the roster arrives one `hello`→`queue:sync` round trip later, so
-	// the socket being up is necessary and not sufficient. This settle covers that round trip; it is
-	// deliberately generous against a loopback RTT of single-digit ms because the alternative is a
-	// flake that reads as a product defect.
+	// `connected` flips on `onopen` and the roster arrives one `hello`→`queue:sync` round trip later, so
+	// the socket being up is necessary and not sufficient. Deliberately generous against a single-digit-ms
+	// loopback RTT, because the alternative is a flake that reads as a product defect.
 	await sleep(SYNC_SETTLE_MS);
 
 	const onAttract = await tv.waitForSelector(SEL.attract, { timeout: 4000 }).catch(() => false);
@@ -154,15 +115,11 @@ try {
 		process.exit(2);
 	}
 
-	/*
-	 * All three measurements are taken FIRST, then the screen is re-checked ONCE, and only then are the
-	 * assertions run. The order is the point: a late `queue:sync` that swaps attract for the lobby must be
-	 * reported as the environment problem it is, for every value, rather than as illegible type. Reading
-	 * and asserting one value at a time delivered that guarantee for the join address and silently not for
-	 * the other two — and each fails differently on the lobby, which is what makes it a trap: `.idle-head`
-	 * unmounts (so `null` → 0px), while `.brand` still EXISTS on the lobby but in-flow, so its `left`
-	 * computes to `auto` → `NaN`, and `NaN >= 48` reads exactly like a real layout regression.
-	 */
+	// MEASURE ALL THREE, re-check the screen ONCE, and only then assert. The order is the point: a late
+	// `queue:sync` that swaps attract for the lobby must be reported as the environment problem it is, for
+	// every value. Each value fails differently on the lobby, which is the trap — an unmounted element
+	// reads 0px, while `.brand` still exists but in-flow, so `left` computes to `auto` → NaN, and
+	// `NaN >= 48` reads exactly like a real layout regression.
 	const urlSize = parseFloat((await tv.css(SEL.joinAddress, 'font-size')) ?? '0');
 	const headlineSize = parseFloat((await tv.css(SEL.stageHeadline, 'font-size')) ?? '0');
 	const brandLeft = parseFloat((await tv.css(SEL.stageBrand, 'left')) ?? '0');
@@ -180,10 +137,7 @@ try {
 		urlSize >= 26,
 		`computed ${urlSize}px — the ten-foot floor is 26px, and this was 22.4px before`
 	);
-	// The attract screen's instruction ("Scan to join the party"). This used to read `.hint`, a class the
-	// TV does not render anywhere — it lives on the phone's queue sheet, the settings page and the charts
-	// — so the assertion measured nothing, defaulted to 0px, and would have failed the moment the flow
-	// got far enough to run it.
+	// The attract screen's instruction ("Scan to join the party").
 	check('stage headline clears the ten-foot floor', headlineSize >= 26, `computed ${headlineSize}px`);
 	check(
 		'stage chrome sits inside the overscan-safe margin',
@@ -191,15 +145,9 @@ try {
 		`computed left ${brandLeft}px — a bare 48px would sit inside the overscan region on many sets`
 	);
 
-	// ── two guests join, each on its own end of the colour ring ──────────────
-	/*
-	 * COLOUR IS PICKED ON THE RING NOW, by keyboard. The join screen's eight preset swatches and its hue
-	 * rail were replaced by ONE `role="slider"` over the 48-stop palette (ColourRing.svelte), so there is
-	 * no per-colour element to click and no range input to set — `SEL.swatch` and `SEL.hueSlider` still
-	 * resolve, but against the SETTINGS picker, which is not this surface (see their re-pointed records in
-	 * contract.ts). `stop` is therefore a key, and `Home`/`End` are what land two guests on colours far
-	 * apart deterministically — which is all this flow ever needed the colours for.
-	 */
+	// Two guests join, each on its own end of the colour ring. COLOUR IS A KEYPRESS: the ring is one
+	// `role="slider"` over 48 stops, so there is no per-colour element to click, and `Home`/`End` are what
+	// land two guests on colours far apart deterministically.
 	/** @param {string} name @param {{ stop?: string }} [opts] @returns {Promise<Page>} */
 	async function joinAs(name, { stop } = {}) {
 		const page = await browser0.newPage();
@@ -208,15 +156,13 @@ try {
 		if (stop) await page.pressKey(SEL.colourRing, stop);
 		await page.clickByRole('button', 'Start singing');
 		await page.waitFor(`location.pathname === '/'`);
-		// Home is the QUEUE since an earlier change; searching is a push. openBrowseFromHome waits for the joined home,
-		// clicks the primary button and waits for the search box, so the caller lands where it used to.
+		// openBrowseFromHome waits for the joined home and then for the search box.
 		await openBrowseFromHome(page);
 		return page;
 	}
 
 	const maya = await joinAs('Maya', { stop: 'Home' }); // the ring's first stop
-	// Ada takes the other end of the ring — a colour the default never lands on, and the path that used
-	// to silently coerce every non-preset colour to violet.
+	// Ada takes the other end of the ring — a colour the default never lands on.
 	const ada = await joinAs('Ada', { stop: 'End' });
 	check('two guests joined in isolated sessions', true);
 
@@ -227,23 +173,18 @@ try {
 		`server returned ${adaColour || '(nothing)'} — #7c5cff would mean the old allowlist is back`
 	);
 
-	// ── search and queue, through the one unified box ────────────────────────
-	// A real multi-character term: the remote does not search on a single character, so 'a' returns
-	// nothing and looks exactly like a broken UI. It is not.
+	// Search and queue. A real multi-character term: the remote does not search on a single character, so
+	// 'a' returns nothing and looks exactly like a broken UI.
 	await openBrowseFromHome(maya); // search lives behind the browse push
 	await maya.fill(SEL.search, 'caroline');
-	/*
-	 * Poll for rows instead of sleeping. Search is debounced and then hits yt-dlp, so its latency is not
-	 * a number this file can know — a fixed sleep passed on one run and failed the next against the same
-	 * build, which is how an e2e earns a reputation for being flaky and stops being run.
-	 */
+	// Poll for rows instead of sleeping: search is debounced and then hits yt-dlp, so its latency is not a
+	// number this file can know.
 	const rows = await maya
 		.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, { timeout: 15_000 })
 		.catch(() => 0);
 	if (rows === 0) {
-		// Loud and actionable, never a silent skip — an e2e that quietly stops asserting is the exact
-		// failure this rewrite exists to prevent. An empty library is an ENVIRONMENT gap, not a UI bug,
-		// and the message has to say so, or someone will go looking for a defect in the app.
+		// An empty library is an ENVIRONMENT gap, not a UI bug, and the message has to say so or someone
+		// goes looking for a defect in the app.
 		check(
 			'the unified search box returns rows',
 			false,
@@ -254,13 +195,10 @@ try {
 	} else {
 		check('the unified search box returns rows', true, `${rows} rows`);
 
-		/*
-		 * A fresh install has NO ready songs — nothing has been processed yet — so results are raw and carry
-		 * `.sing` rather than `.add`. Both are queueing actions and the flow takes whichever is offered,
-		 * because insisting on `.add` would make this assertion pass only on a machine that had already
-		 * been used. The raw path is also the more interesting one: `.sing` queues AND starts a process, and
-		 * rotation is supposed to HOLD the slot while it processes.
-		 */
+		// A fresh install has NO ready songs, so results are raw and carry `.sing` rather than `.add`. Take
+		// whichever is offered: insisting on `.add` would make this pass only on a machine already used.
+		// The raw path is the more interesting one anyway — `.sing` queues AND starts a process, and the
+		// rotation must HOLD the slot while it processes.
 		const readyCount = await maya.count(SEL.addTurn);
 		const rawCount = await maya.count(SEL.sing);
 		const queueAction = readyCount > 0 ? SEL.addTurn : SEL.sing;
@@ -271,13 +209,12 @@ try {
 		);
 
 		await maya.click(queueAction);
-		// Back to the QUEUE, which is home since an earlier change — the rotation rows, the position line and the
-		// transport all live there, and this flow reads all three below. Ada is still on the browse
-		// screen she joined through, so she comes home too before her rotation is compared.
+		// Back to the QUEUE: the rotation rows, the position line and the transport all live on home, and
+		// this flow reads all three. Ada comes home too, before her rotation is compared.
 		await returnHomeFromBrowse(maya);
 		await returnHomeFromBrowse(ada);
-		// Poll for the optimistic row rather than sleeping: the store renders it immediately, but the
-		// server confirmation and the socket echo land on their own schedule.
+		// Poll for the optimistic row rather than sleeping: the store renders it immediately, but the server
+		// confirmation and the socket echo land on their own schedule.
 		await maya
 			.waitFor(
 				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length + document.querySelectorAll(${JSON.stringify(SEL.processing)}).length`,
@@ -286,14 +223,10 @@ try {
 			.catch(() => 0);
 		const queued = await maya.count(SEL.queueRow);
 		const processing = await maya.count(SEL.processing);
-		/*
-		 * The song can be in the rotation in THREE shapes, and the first song of the night is the one
-		 * that is not a row: an idle room auto-starts the add, the entry's status becomes 'playing', and
-		 * `queued` filters a playing entry out — so it renders on the HERO instead. It reads as a
-		 * `.qrow` when someone else is already singing, and as `.proc` while it processes. The invariant is
-		 * "the singer is in the rotation", so all three count; asserting only `.qrow` would report an
-		 * empty rotation for a room whose first song is playing perfectly.
-		 */
+		// THREE shapes count, because the invariant is "the singer is in the rotation": an idle room
+		// auto-starts the add and `queued` filters a playing entry out, so the first song of the night is
+		// NOT a row — it is on the band. It reads as `.qrow` when someone else is singing and as `.proc`
+		// while it processes. Asserting only `.qrow` reports an empty rotation for a room playing perfectly.
 		const heroSong = (await maya.texts(SEL.bandTitle)).filter(
 			(/** @type {string} */ t) => t && t !== 'Nothing playing'
 		);
@@ -303,13 +236,10 @@ try {
 			`${queued} ${SEL.queueRow} (of which ${processing} processing — ProcessingCard carries both classes), hero=${JSON.stringify(heroSong)} — a processing song HOLDS its slot and a PLAYING one is the hero, which is why all three count`
 		);
 
-		// ── cross-client sync ───────────────────────────────────────────────
-		// Wait for the OTHER phone to catch up over the socket, rather than assuming a latency.
-		// Capture the wait result: an empty rotation must FAIL as a missing precondition,
-		// not slip past the agreement check (where '[]' === '[]' reads as spurious agreement).
-		// The rotation AS EACH PHONE SEES IT: the playing song (hero) followed by the waiting rows. Both
-		// halves, for the same reason as above — comparing rows alone compares two empty lists and reads
-		// as agreement when neither phone has rendered anything.
+		// Cross-client sync: wait for the OTHER phone to catch up over the socket rather than assuming a
+		// latency, and CAPTURE the wait result — an empty rotation must fail as a missing precondition
+		// rather than slip past the agreement check, where '[]' === '[]' reads as agreement. Compare the
+		// playing song AND the waiting rows, for the same reason.
 		const rotationOf = async (/** @type {typeof maya} */ page) => [
 			...(await page.texts(SEL.bandTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing'),
 			...(await page.texts(SEL.queueTitle))
@@ -334,7 +264,7 @@ try {
 			`maya=${JSON.stringify(mayaQ)} ada=${JSON.stringify(adaQ)}`
 		);
 
-		// ── the TV reacts ────────────────────────────────────────────────────
+		// The TV reacts.
 		await openNowPlaying(maya);
 		await maya.click(SEL.bandTransport);
 		await sleep(1800);
@@ -347,26 +277,20 @@ try {
 			await sleep(1800);
 			const shownSecond = await tv.text(SEL.nowSong);
 			// One song queued means a skip empties the rotation, so a different song OR an empty stage is
-			// correct. The SAME song still showing means skip did nothing.
+			// correct; the SAME song still showing means skip did nothing.
 			check(
 				'skip advances the rotation',
 				shownFirst !== shownSecond || (await tv.count(SEL.lowerThird)) === 0,
 				`before="${shownFirst}" after="${shownSecond}"`
 			);
 		} else {
-			/*
-			 * Nothing playable, which is CORRECT here: the queued song is still processing and this
-			 * environment has no worker to finish it. So assert the OBSERVABLE requirement rather than an
-			 * internal state — the TV must not sit on a blank stage or a stale lower-third; it has to say
-			 * something about why nothing is playing.
-			 *
-			 * Deliberately NOT asserting `.state-waiting` here. screen.ts documents `waiting` as "something
-			 * is queued but its stems are still processing", but reaching it requires the PLAYER to be
-			 * actively holding, so a queued-but-never-started process falls through to the lobby copy
-			 * ("Waiting for someone to pick a song…") even though someone has picked one. That is
-			 * pre-existing behaviour, not something this branch changed, and pinning a test to the current
-			 * outcome would freeze a wording bug in place. Flagged instead of encoded.
-			 */
+			// Nothing playable is CORRECT here — the queued song is still processing and this environment
+			// has no worker to finish it — so assert the OBSERVABLE requirement: the TV must not sit on a
+			// blank stage or a stale lower-third.
+			//
+			// Deliberately NOT `.state-waiting`: reaching that state needs the PLAYER to be actively
+			// holding, so a queued-but-never-started process falls through to the lobby copy even though
+			// someone has picked a song. Pinning a test to that would freeze a wording bug in place.
 			const stale = await tv.count(SEL.lowerThird);
 			const explains = (await tv.text(SEL.pageBody)).length > 20;
 			check(

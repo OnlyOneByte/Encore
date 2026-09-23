@@ -11,7 +11,7 @@ stored in (BOTH stems lossless FLAC — the instrumental plays aloud and a secon
 generation smears a crash cymbal, and the vocals stem is the GUIDING TRACK, a second audio element the TV
 mixes UNDER the instrumental at up to full gain and pitch-shifts with the key, so it too plays aloud. The
 retired rationale for the vocals being lossy AAC was that a guide mixed under a master tolerates
-compression; an earlier change made both stems FLAC instead, so the two share one codec, one container, and a
+compression; both stems are FLAC now, so the two share one codec, one container, and a
 sample-exact common start with no AAC priming-sample offset to trim). The
 silence probe that refuses to publish a stem measured at the floor is a related audio-policy concern but
 does not live here: `volumedetect_argv`/`parse_max_volume_db`/`is_silent`/`SILENCE_FLOOR_DB` are in

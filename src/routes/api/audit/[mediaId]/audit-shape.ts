@@ -1,6 +1,4 @@
-// The shape of the audit response, extracted from +server.ts so it can be exported and unit-tested:
-// a SvelteKit +server.ts may only export HTTP method handlers, so the mapper and its interface live
-// here (imported by the route). No behaviour lives in the route beyond fetching and shaping.
+// The shape of the audit response, extracted from +server.ts so it can be exported and unit-tested — a SvelteKit +server.ts may only export HTTP method handlers.
 import { attemptStages, attemptSelection, realtimeFactor, type JobAttempt, type SelectionRecord } from '$lib/contract';
 import { processingMs, queueWaitMs } from '$lib/server/jobs/metrics';
 

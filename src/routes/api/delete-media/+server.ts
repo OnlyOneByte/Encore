@@ -1,13 +1,5 @@
-// POST /api/delete-media — { mediaId } -> hard-delete a song from the library ENTIRELY.
-// The destructive admin action: cancels any in-flight process, removes every queue entry for the song
-// (skipping to the next singer if it was playing), unlinks the sidecar FIRST then audio + derived,
-// drops the index row + tags, and broadcasts. The order is enforced in deleteMediaEntirely; this route
-// is the thin HTTP seam beside /api/process that the admin dashboard page calls.
-//
-// AUTH: gated to a joined singer, which is every guest today (owner ruling an earlier change: admin/host only, but
-// everyone is host now). Structured so a real host gate slots in at the marked line without touching
-// the delete itself — swap the joined-singer check for a can(actor, "admin:delete") once a host role
-// exists (capabilities.ts).
+// POST /api/delete-media — { mediaId } -> hard-delete a song from the library ENTIRELY: cancels any in-flight process, removes every queue entry (skipping to the next singer if it was playing), unlinks the sidecar FIRST then audio + derived, drops the index row + tags, and broadcasts. Order is enforced in deleteMediaEntirely; this route is the thin HTTP seam beside /api/process that the admin dashboard calls.
+// AUTH: gated to a joined singer — every guest today, since there is no host role (see docs/ARCHITECTURE.md §10). Structured so a real host gate slots in at the marked line below without touching the delete itself.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp, buildHubDeps } from '$lib/server/app';
@@ -17,8 +9,7 @@ import { deleteMediaEntirely } from '$lib/server/media/delete';
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
 
-	// AUTH GATE (see header). A socket/curl with no joined session cannot delete. Replace this single
-	// line with a host-role capability check when one exists — nothing below depends on WHO the actor is.
+	// AUTH GATE (see header) — replace this line with a host-role capability check when one exists; nothing below depends on WHO the actor is.
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
 	if (!singer) return json({ error: 'not joined' }, { status: 401 });
 
@@ -26,9 +17,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
 	if (!mediaId) return json({ error: 'mediaId required' }, { status: 400 });
 
-	// Build a route-side HubDeps from the shared app. The delete drives applyQueueOp + reconcileOnReady
-	// directly (not handleQueueCommand), so the idempotency ledger is unused here — a no-op ledger is
-	// correct. broadcast is the room publish sink; online/away feed only ordering/roster reads.
+	// Route-side HubDeps from the shared app: the delete drives applyQueueOp + reconcileOnReady directly (not handleQueueCommand), so the idempotency ledger is unused — a no-op ledger is correct.
 	const hub = buildHubDeps(app, {
 		broadcast: (e) => app.publish(e),
 		actorSingerId: singer.id,

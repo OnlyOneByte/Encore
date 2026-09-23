@@ -1,17 +1,8 @@
 <!--
-  ── ENCORE DEVIATIONS ─────────────────────────────────────────────────────────────────────────────
-  What this component is used for here is its GRAMMAR, not its appearance. Three list rows — QueueRow,
-  SongRow and ProcessingCard — each invented their own class names for the same four parts (a leading
-  indicator, a title, a subtitle, a trailing action cluster). Item names them once.
-
-  1. The base is reduced to what the PARTS need: `group/item` plus the flex row and focus ring. The
-     registry's `rounded-md border text-sm` and `flex-wrap` moved onto the tone variants, because
-     Encore's rows are already surfaces — `.card` paints them, `.list-row` lays them out — and a
-     second border and radius on top of that is a double, not a style.
-  2. A `bare` tone and a `bare` size contribute nothing but that group context, which is what the
-     Encore rows pass.
-  3. `[a]:transition-colors` and `[a]:hover:bg-muted` removed. The first is a banned motion utility
-     name (motion.test.ts); the second is a link-row hover Encore's rows do not have.
+  Used for its GRAMMAR, not its appearance: three list rows each invented their own names for the same
+  four parts (leading indicator, title, subtitle, trailing action cluster) and Item names them once.
+  Encore's rows pass the `bare` tone and size, which contribute nothing but the group context — the app's
+  rows are already surfaces, so the registry's border and radius would double their own.
 -->
 <script lang="ts" module>
 	import { tv, type VariantProps } from 'tailwind-variants';
@@ -23,11 +14,6 @@
 				default: 'rounded-md border border-transparent text-sm',
 				outline: 'rounded-md border border-border text-sm',
 				muted: 'rounded-md border border-transparent bg-muted/50 text-sm',
-				/*
-				 * Encore's rows already ARE surfaces: `.card` paints them and `.list-row` lays them out, so
-				 * this tone contributes nothing but the `group/item` context four of the parts need. Without
-				 * it the registry's border and radius would double every row's own.
-				 */
 				bare: ''
 			},
 			size: {
@@ -85,28 +71,16 @@
 
 <style>
 	/*
-	 * ── ENCORE'S ROW GRAMMAR: LAYOUT ONLY, DELIBERATELY ───────────────────────────────────────────
-	 *
-	 * These rules carry POSITION and nothing else — no colour, no background, no alpha. That boundary
-	 * is not tidiness, it is what keeps the app's contrast analysis working.
-	 *
-	 * contrast.test.ts reasons about a row by reading its rules IN THE ROW'S OWN FILE: which surface a
-	 * subtree paints on, which ink it draws in, and whether anything between the glyph and the page
-	 * changes its alpha. Its exclusion list names `.seq` by name — "a rule that sets BOTH a colour and
-	 * a background carries its own surface (the .seq bubble)" — and a sibling arm reads the singer
-	 * identity dot's own rule for its flex basis and its contrast against the card.
-	 *
-	 * Moving those rules in here silently changed that model and the guard fired, correctly: a
-	 * descendant rule cannot follow its ancestor into a component that exposes no `child` snippet, so
-	 * the ROWS keep every rule that declares a colour, and this file keeps only the box.
+	 * LAYOUT ONLY — no colour, no background, no alpha, and that boundary is what keeps the app's
+	 * contrast analysis working: `contrast.test.ts` reasons about a row by reading the rules in THE ROW'S
+	 * OWN FILE. A rule that declares a colour cannot move here, because a descendant rule cannot follow
+	 * its ancestor into a component that exposes no `child` snippet.
 	 */
 	:global([data-slot='item-media']) {
 		flex: 0 0 auto;
 	}
-	/*
-	 * `min-width: 0` is load-bearing rather than tidy: a flex item defaults to min-content, so without
-	 * it the title's own text sets the row's minimum width and its ellipsis never engages.
-	 */
+	/* `min-width: 0` is load-bearing: a flex item defaults to min-content, so without it the title's own
+	   text sets the row's minimum width and its ellipsis never engages. */
 	:global([data-slot='item-content']) {
 		min-width: 0;
 		flex: 1;

@@ -21,16 +21,14 @@ test('prefers the canonical fields when a confident parse populated them', () =>
 });
 
 test('with no canonical artist, shows the title only — NEVER the uploader', () => {
-	// The whole reason this helper exists: "7clouds" is a lyric channel, not the artist. A missing
-	// canonical artist is an honest blank, not a fallback to provenance.
+	// "7clouds" is a lyric channel, not the artist: a missing canonical artist is an honest blank.
 	const d = songDisplay(m({ titleCanonical: 'Baby One More Time' }));
 	expect(d.title).toBe('Baby One More Time');
 	expect(d.artist).toBeNull();
 });
 
 test('with no canonical title either, the raw title is the last resort for a NAME', () => {
-	// The raw title still names the song (just noisily), so it is a safe title fallback — unlike the
-	// uploader for the artist, which is simply wrong.
+	// The raw title still names the song, just noisily — unlike the uploader, which is simply wrong.
 	const d = songDisplay(m());
 	expect(d.title).toBe('Britney Spears - Baby One More Time (Lyrics)');
 	expect(d.artist).toBeNull();
@@ -47,12 +45,9 @@ test('null / undefined media degrade to an empty title and no artist, never thro
 	expect(songDisplay(undefined)).toEqual({ title: '', artist: null });
 });
 
-// guard: the display-title rule (`titleCanonical ?? …title`) lives ONLY in songDisplay — the two API
-// routes that used to open-code it must go through the helper, so the next change to "what title a
-// guest sees" is a single edit. songDisplay opens by calling itself "the single migration point";
-// this makes that claim machine-checkable. A behavioural test cannot red for this — all
-// copies agree today, so the suite does not move when they are consolidated — hence a comment-
-// stripped source scan.
+// The display-title rule (`titleCanonical ?? …title`) lives ONLY in songDisplay, so the next change to "what
+// title a guest sees" is one edit. Every copy agrees today, so no behavioural test moves when they are
+// consolidated — hence a comment-stripped source scan.
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
@@ -60,14 +55,11 @@ const SELF = at('src/lib/contract/presentation/song-display.ts');
 const STATS = at('src/routes/api/stats/+server.ts');
 const METRICS = at('src/routes/api/metrics/+server.ts');
 
-// The loose pattern matters: song-display.ts states the rule in prose without an object prefix, so a
-// stricter `\w+\.title` would count raw == stripped there and not prove stripping works. This one
-// counts raw 2 / stripped 1 in song-display.ts, so comment-stripping is provably load-bearing.
+// LOOSE on purpose: song-display.ts states the rule in prose with no object prefix, so a stricter
+// `\w+\.title` would count raw == stripped there and never prove that comment-stripping is load-bearing.
 const DISPLAY_TITLE = /titleCanonical\s*\?\?\s*[A-Za-z_$.?]*title/g;
 
 function stripComments(src: string): string {
-	// block comments first, then line comments — good enough for TS source with no regex/string
-	// literals containing `//` in these files (verified).
 	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 function count(path: string): number {
@@ -75,16 +67,15 @@ function count(path: string): number {
 }
 
 test('the display-title rule appears exactly once in the codebase — inside songDisplay itself', () => {
-	// Sentinel: count===1 PLUS the anchor, so a rename/move of songDisplay fails loudly here rather
-	// than passing on a vanished symbol.
+	// Sentinel: count===1 PLUS the anchor, so a rename fails loudly rather than passing on a vanished symbol.
 	const self = readFileSync(SELF, 'utf8');
 	expect(self).toContain('export function songDisplay');
 	expect(count(SELF)).toBe(1);
 });
 
 test('the /api/stats route does not re-implement the display-title rule — it calls songDisplay()', () => {
-	// `songDisplay(` not the bare identifier: a mutation reverting to raw m.title while leaving an
-	// unused import behind passes on the bare id but reds on the call form (measured).
+	// `songDisplay(` not the bare identifier: a revert to raw m.title that leaves the import behind would
+	// still pass on the bare id.
 	expect(count(STATS)).toBe(0);
 	expect(readFileSync(STATS, 'utf8')).toContain('songDisplay(');
 });

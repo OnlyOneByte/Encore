@@ -148,8 +148,6 @@ def available_memory_bytes(root: str = "") -> int | None:
     return min(known) if known else None
 
 
-# ── accelerator ───────────────────────────────────────────────────────────────────
-
 
 @dataclass(frozen=True)
 class Accelerator:
@@ -165,12 +163,11 @@ class Accelerator:
 def detect_accelerator() -> Accelerator:
     """The accelerator torch can reach here, or a cpu Accelerator.
 
-    MEMOIZED for the process's lifetime: this is the expensive half of a probe (it imports torch and
-    queries device properties), `probe()` runs on every `hello` rather than once at startup as its
-    docstring used to claim, and a box does not swap its accelerator while the worker runs. `vram_bytes`
-    is PHYSICAL capacity, not free memory, so it is a static fact too — the FREE-memory figure a demucs
-    segment has to fit inside is measured separately and is not cached. Tests that need a fresh answer can
-    call `detect_accelerator.cache_clear()`.
+    MEMOIZED for the process's lifetime: this is the expensive half of a probe (imports torch, queries
+    device properties), `probe()` runs on every `hello`, and a box does not swap its accelerator while
+    the worker runs. `vram_bytes` is PHYSICAL capacity, a static fact too — the FREE-memory figure a
+    demucs segment must fit inside is measured separately and is not cached. Tests needing a fresh
+    answer can call `detect_accelerator.cache_clear()`.
 
     Deliberately tolerant: torch may be absent entirely (the stub processor needs no ML), the wheel
     may be built for a different backend than the box has, and a driver mismatch raises rather than
@@ -236,8 +233,6 @@ def free_vram_bytes() -> int | None:
     return None
 
 
-# ── the report ────────────────────────────────────────────────────────────────────
-
 
 @dataclass(frozen=True)
 class HardwareReport:
@@ -297,12 +292,9 @@ def _torch_version() -> str | None:
 
 
 def probe(root: str = "") -> HardwareReport:
-    """One full hardware probe.
-
-    NOT once at startup, which this docstring used to claim. `protocol.host_facts()` delegates here, and
-    `host_facts` is built for every `hello` — so a worker redialling a flapping core re-probed on each
-    attempt, re-importing torch and re-querying the accelerator every few seconds. The immutable half is
-    now memoized (`detect_accelerator`, `_torch_version`): a box does not change its GPU mid-process.
+    """One full hardware probe, run on every `worker:hello` (a worker redialling a flapping core would
+    otherwise re-import torch and re-query the accelerator every few seconds). The immutable half is
+    memoized (`detect_accelerator`, `_torch_version`): a box does not change its GPU mid-process.
 
     The DYNAMIC half is deliberately re-read on every call. `available_memory_bytes` is MemAvailable —
     free memory right now, not capacity — and the core uses it for placement, so caching it would send a

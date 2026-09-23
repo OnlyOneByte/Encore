@@ -56,11 +56,6 @@ def _diarize_with(output: Any) -> list[dict[str, Any]]:
     d = PyannoteDiarizer(device="cpu")
     d._pipeline = lambda _path: output  # bypass _load; the loader is covered elsewhere
     return d.diarize("/vocals.flac")
-
-
-# ── the two shapes ───────────────────────────────────────────────────────────────────────────────
-
-
 def test_a_bare_annotation_still_works() -> None:
     """The pre-4.0 shape. A version bump must not be the thing that breaks the old one."""
     assert _diarize_with(FakeAnnotation(TURNS)) == [
@@ -80,11 +75,6 @@ def test_the_4x_wrapper_is_unwrapped() -> None:
 def test_both_shapes_produce_byte_identical_output() -> None:
     """The unwrapping must be invisible downstream — `attribution.py` cannot tell which arrived."""
     assert _diarize_with(FakeAnnotation(TURNS)) == _diarize_with(FakeWrapper(FakeAnnotation(TURNS)))
-
-
-# ── which attribute wins ─────────────────────────────────────────────────────────────────────────
-
-
 def test_the_regular_diarization_is_preferred_over_the_exclusive_one() -> None:
     """`exclusive_speaker_diarization` is a different answer, not a fallback, so it is never read."""
     exclusive = FakeAnnotation([(0.0, 9.9, "SPEAKER_EXCLUSIVE")])
@@ -101,11 +91,6 @@ def test_a_wrapper_that_also_proxies_itertracks_uses_the_named_attribute() -> No
 
     got = _diarize_with(Hybrid(FakeAnnotation(TURNS)))
     assert [r["speaker"] for r in got] == ["SPEAKER_00", "SPEAKER_01"], "the shim was read, not the field"
-
-
-# ── the third shape ──────────────────────────────────────────────────────────────────────────────
-
-
 def test_an_unknown_shape_raises_an_error_naming_the_type() -> None:
     """The step logs `type(exc).__name__: exc`, so the next break must say what it returned.
 
@@ -136,11 +121,6 @@ def test_the_failure_still_degrades_rather_than_crashing_the_job() -> None:
     with pytest.raises(RuntimeError) as err:
         _speaker_annotation(object())
     assert isinstance(err.value, Exception)
-
-
-# ── the helper in isolation ──────────────────────────────────────────────────────────────────────
-
-
 def test_the_helper_returns_the_annotation_unchanged_when_given_one() -> None:
     ann = FakeAnnotation(TURNS)
     assert _speaker_annotation(ann) is ann

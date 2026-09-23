@@ -1,24 +1,11 @@
-// `queue:remove-any` / `queue:reorder-any` were asked for EVERY remove/move, including a
-// singer's OWN entry. can() ignores the capability TODAY (Boolean(actor?.singerId)), so nothing breaks
-// now — but capabilities.ts:9-11 exists precisely so can() can later be narrowed to a host role, and
-// the moment it is, gating every remove through the -any capability would refuse a singer their OWN
-// song (the capability is declared "remove/reorder SOMEONE ELSE'S entry"). The fix reaches can() ONLY
-// when the target entry belongs to a DIFFERENT singer.
+// `queue:remove-any` / `queue:reorder-any` are declared "remove/reorder SOMEONE ELSE'S entry". can() ignores
+// the capability today (it is `Boolean(actor?.singerId)`), so nothing breaks now — but the moment can() is
+// narrowed to a host role, asking for the -any capability on a singer's OWN entry refuses them their own song.
+// So the ownership check must SHORT-CIRCUIT BEFORE can(), which is a structural property the current policy
+// cannot observe: hence a behavioural half against the REAL can() plus a source scan over hub.ts.
 //
-// This file proves the fix two ways, both WITHOUT mocking the capabilities module (a top-level
-// mock.module replaces the process-global module registry for the whole `bun test` run and deadlocks
-// the runner when a later file imports the real module — so it is deliberately avoided here):
-//
-//   (1) BEHAVIOURAL, against the REAL can(): with today's capability-ignoring can() every joined singer
-//       may act on any entry, so own AND other remove/reorder both succeed and an unknown entry still
-//       rejects — proving the fix is behaviour-preserving on the current policy and did not close the
-//       door on removing someone else's entry.
-//
-//   (2) SOURCE-SCAN over hub.ts (the load-bearing narrowing proof): the whole point is that the
-//       ownership check must SHORT-CIRCUIT BEFORE can(), so a future narrowed host-only can() cannot
-//       refuse a singer their own song. Assert that in BOTH the remove and move arms an ownership
-//       comparison (`<target>.singerId !== deps.actorSingerId`) guards the `can(...)` gate — i.e. can()
-//       is unreachable for an owner. Reverting hub.ts to base (gate not wrapped) reds these.
+// The capabilities module is deliberately NOT mocked: a top-level mock.module replaces the process-global
+// registry for the whole `bun test` run and deadlocks the runner once a later file imports the real module.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { validateCommand, type HubDeps } from '$lib/server/realtime/hub';
@@ -60,9 +47,8 @@ function harness(actorSingerId = 's-self') {
 
 const cmd = (op: ClientCommand['op']): ClientCommand => ({ clientOpId: 'c1', op });
 
-// (1) Behavioural, against the real can(): today every joined singer holds every capability, so both
-// own and other remove/reorder are allowed. This pins that the fix preserves current behaviour and did
-// NOT accidentally hide the removal of someone else's entry.
+// (1) Behavioural: today every joined singer holds every capability, so own AND other both succeed. This pins
+// that the short-circuit did not accidentally hide the removal of someone else's entry.
 test('with the current policy a singer may remove their OWN entry', () => {
 	expect(validateCommand(cmd({ op: 'remove', id: 'own1' }), harness())).toBeNull();
 });
@@ -79,8 +65,7 @@ test('with the current policy a singer may reorder SOMEONE ELSE\u2019S entry (st
 	expect(validateCommand(cmd({ op: 'move', id: 'other1', toSeq: 0 }), harness())).toBeNull();
 });
 
-// step 4: move-to-index is the CROSS-SINGER reorder. Same ownership scope as `move` — own entry
-// needs no capability, another singer's is gated on queue:reorder-any (reachable under today's can()).
+// move-to-index is the CROSS-SINGER reorder, with the same ownership scope as `move`.
 test('with the current policy a singer may move-to-index their OWN entry', () => {
 	expect(validateCommand(cmd({ op: 'move-to-index', id: 'own1', toIdx: 0 }), harness())).toBeNull();
 });
@@ -104,12 +89,10 @@ test('an unknown entry rejects before any ownership/capability check', () => {
 	expect(validateCommand(cmd({ op: 'remove', id: 'ghost' }), harness())).toBe('unknown entry: ghost');
 });
 
-// (2) Source-scan: the ownership short-circuit must precede the can() gate in BOTH arms, so a future
-// narrowed can() can never refuse an owner their own song. This is the load-bearing narrowing proof.
+// (2) Source-scan: the load-bearing narrowing proof. Comments are blanked because hub.ts's own prose mentions
+// can() and the capability strings.
 const hubSrc = read('src/lib/server/realtime/hub.ts');
 
-// Strip comments so the explanatory prose (which mentions can() and the capability strings) can neither
-// satisfy nor trip the checks.
 function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
@@ -126,27 +109,18 @@ function switchArm(src: string, op: string): string {
 	return after.slice(0, next);
 }
 
-// The ownership short-circuit that must GATE can(): can() is reachable ONLY for a NON-owner entry.
-// Two behaviour-identical spellings both satisfy this and both must pass:
-//   (i)  ENCLOSING form  — `if (<var>.singerId !== deps.actorSingerId) { ... can(...) ... }` — can()
-//        lives INSIDE the "not my entry" block, so an owner never reaches it.
-//   (ii) EARLY-RETURN form — `if (<var>.singerId === deps.actorSingerId) return null;` before the gate
-//        — an owner short-circuits out, so can() is likewise unreachable for an owner.
-// the previous assertion only required an ownership *substring* to appear EARLIER in the arm
-// text than the can() substring. Text order is not enclosure: hoisting the comparison into a `const`
-// used for an audit log (owner still falls through to can()) keeps "before" true while breaking the
-// property, and rewriting the guard to the (ii) early-return form (which STRENGTHENS the property)
-// reds the ordering check. Assert ENCLOSURE instead, so the (a) un-nesting reds and (b) the refactor
-// passes.
+// ENCLOSURE, not text order, is the property: a mere "ownership mention appears before can()" check passes when
+// the comparison is hoisted into a const for an audit log while the owner still falls through to can(), and it
+// reds on the early-return refactor, which actually strengthens the property. Two spellings must both pass:
+//   (i)  ENCLOSING    — `if (<var>.singerId !== deps.actorSingerId) { … can(…) … }`
+//   (ii) EARLY-RETURN — `if (<var>.singerId === deps.actorSingerId) return null;` before the gate
 
-// Find the char index at which the block opened by the ownership `if (...) {` on `openRe` closes,
-// by brace-matching from the `{` that follows the match. Returns [openIdx, closeIdx) or null.
+// Brace-match from the `{` after the ownership `if`. Returns [openIdx, closeIdx) or null.
 function enclosingOwnershipBlock(arm: string, actorVar: string): [number, number] | null {
-	// `if (<var>.singerId !== deps.actorSingerId) {`  (ENCLOSING form only — the `{` is required)
+	// ENCLOSING form only — the `{` is required.
 	const openRe = new RegExp(`if\\s*\\(\\s*${actorVar}\\.singerId\\s*!==\\s*deps\\.actorSingerId\\s*\\)\\s*\\{`);
 	const m = openRe.exec(arm);
 	if (!m) return null;
-	// The matched text ends with the opening brace; brace-match from there.
 	let depth = 0;
 	for (let i = m.index + m[0].length - 1; i < arm.length; i++) {
 		if (arm[i] === '{') depth++;
@@ -158,20 +132,15 @@ function enclosingOwnershipBlock(arm: string, actorVar: string): [number, number
 	return null; // unbalanced — treated as no enclosure
 }
 
-// The (ii) owner early-return: `if (<var>.singerId === deps.actorSingerId) return null;`
 const ownerEarlyReturn = (v: string) =>
 	new RegExp(`if\\s*\\(\\s*${v}\\.singerId\\s*===\\s*deps\\.actorSingerId\\s*\\)\\s*return\\s+null`);
 
-// can() is unreachable for an owner iff EITHER the can() call is enclosed by the "not my entry" block,
-// OR an owner early-return precedes the can() call. `\w+` matches whatever local the arm binds the
-// target entry to (removeTarget / moveTarget).
+// `\w+` matches whatever local the arm binds the target entry to (removeTarget / moveTarget).
 function canGatedByOwnership(arm: string, canCall: string): boolean {
 	const canIdx = arm.indexOf(canCall);
 	if (canIdx < 0) return false;
-	// (i) enclosing block that contains the can() call
 	const block = enclosingOwnershipBlock(arm, '\\w+');
 	if (block && canIdx > block[0] && canIdx < block[1]) return true;
-	// (ii) owner early-return before the can() call
 	const er = ownerEarlyReturn('\\w+').exec(arm);
 	if (er && er.index < canIdx) return true;
 	return false;
@@ -180,10 +149,7 @@ function canGatedByOwnership(arm: string, canCall: string): boolean {
 test("the 'remove' arm reaches can('queue:remove-any') only for a NON-owner entry", () => {
 	const arm = switchArm(hubSrc, 'remove');
 	const canCall = "can({ singerId: deps.actorSingerId }, 'queue:remove-any')";
-	// non-vacuous: the gate must be present at all
-	expect(arm.indexOf(canCall)).toBeGreaterThan(-1);
-	// load-bearing: an owner must never reach can() — the gate is enclosed by (or preceded by an
-	// early-return from) the ownership short-circuit, not merely textually after an ownership mention.
+	expect(arm.indexOf(canCall)).toBeGreaterThan(-1); // non-vacuous: the gate must be present at all
 	expect(canGatedByOwnership(arm, canCall)).toBe(true);
 });
 

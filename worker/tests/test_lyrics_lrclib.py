@@ -12,7 +12,6 @@ from src.lyrics import lrc as lf  # the FORMAT half
 from src.lyrics import lrclib as ls  # the CLIENT half  # noqa: E402
 from src.lyrics import model as lm  # the artifact-shape predicates
 
-# ── LRC parsing ──────────────────────────────────────────────────────────────────
 LRC = """[ar:a-ha]
 [ti:Take On Me]
 [length:03:45]
@@ -58,7 +57,6 @@ def test_parse_lrc_offset_tag_shifts_earlier_and_clamps():
     assert [x.start for x in e] == sorted(x.start for x in e)
 
 
-# ── segment building ───────────────────────────────────────────────────────────────
 def test_entries_to_segments_end_is_next_start():
     entries = [lf.LrcEntry(1.0, "one"), lf.LrcEntry(3.0, "two"), lf.LrcEntry(6.0, "three")]
     segs = lf.entries_to_segments(entries, total_duration=10.0)
@@ -92,7 +90,6 @@ def test_plain_lyrics_to_segments_evenly_distributes():
     assert lf.plain_lyrics_to_segments("", 30.0) == []
 
 
-# ── line-synced artifact shape ───────────────────────────────────────────────────────
 def test_line_synced_lyrics_shape_and_validity():
     segs = lf.entries_to_segments([lf.LrcEntry(1.0, "a"), lf.LrcEntry(2.0, "b")], total_duration=3.0)
     doc = lf.line_synced_lyrics(segs, language="en")
@@ -105,7 +102,6 @@ def test_line_synced_lyrics_shape_and_validity():
     assert lm.is_line_synced({"lines": [{"text": "x"}]}) is False  # no numeric start
 
 
-# ── LRCLIB URL + response parse ──────────────────────────────────────────────────────
 def test_lrclib_get_url_encodes_and_rounds_duration():
     url = ls.lrclib_get_url("https://lrclib.net", "a-ha", "Take On Me", duration=225.4)
     assert url.startswith("https://lrclib.net/api/get?")
@@ -123,7 +119,6 @@ def test_parse_lrclib_response():
     assert inst.instrumental and not inst.has_synced and not inst.has_plain
 
 
-# ── LrclibClient with an injected fetcher (no network) ────────────────────────────────
 def fetcher_returning(status, body):
     calls = []
 
@@ -148,8 +143,6 @@ def test_client_get_success():
 def test_client_get_404_returns_none():
     assert ls.LrclibClient(fetcher=fetcher_returning(404, "")).get("x", "y") is None
 
-
-# ── search: a POOL of records, because one song has several recordings ────────────────
 
 SEARCH_BODY = (
     "["
@@ -213,7 +206,6 @@ def test_client_get_unparseable_body_raises():
         ls.LrclibClient(fetcher=fetcher_returning(200, "<html>not json</html>")).get("x", "y")
 
 
-# ── the DNS-sinkhole gap: a URLError must NOT vanish as an ordinary miss ────────
 def test_urllib_fetch_converts_urlerror_to_lyricsfetcherror(monkeypatch):
     """A DNS sinkhole (or refused connection / TLS failure / timeout) raises urllib.error.URLError,
     which carries NO HTTP status. Previously `_urllib_fetch` caught only HTTPError, so a URLError
@@ -244,11 +236,8 @@ def test_urllib_fetch_still_maps_httperror_to_its_status(monkeypatch):
     assert status == 503 and body == ""
 
 
-# ── retry + rate gate (LRCLIB lacked the retry/rate gate its MusicBrainz twin has) ──────────────────
-#
-# All hermetic: an injected fetcher scripts the transport, an injected clock/sleep drives the gate so
-# nothing touches the wall clock or the network. Mirrors the injectable-clock pattern used to test
-# metadata/annotate.py's RateLimiter.
+# All hermetic: an injected fetcher scripts the transport, an injected clock/sleep drives the gate,
+# so nothing touches the wall clock or the network.
 
 
 def _scripted_fetcher(statuses):
@@ -288,10 +277,8 @@ def _limiter(clock, **kw):
 
 
 def test_retry_gives_up_after_cap_then_raises():
-    # A persistently-transient LRCLIB (503 every attempt) retries to MAX_ATTEMPTS then the client's
-    # status ladder turns the exhausted 503 into a LyricsFetchError — not an infinite loop, not a
-    # swallowed miss. RED on base: base LrclibClient calls _fetch once and 503 raises immediately with
-    # ONE call and no backoff sleeps.
+    # A persistently-transient LRCLIB (503 every attempt) retries to MAX_ATTEMPTS then turns the
+    # exhausted 503 into a LyricsFetchError — not an infinite loop, not a swallowed miss.
     clock = _FakeClock()
     lim = _limiter(clock)
     fetch = _scripted_fetcher([(503, "")] * 5)
@@ -306,8 +293,8 @@ def test_retry_gives_up_after_cap_then_raises():
 
 
 def test_retry_recovers_on_a_later_attempt():
-    # A transient 503 that clears on the 2nd attempt yields the eventual 200 body — the retry RECOVERS
-    # the lyrics instead of losing them. RED on base: base retries nothing, so the first 503 raises.
+    # A transient 503 that clears on the 2nd attempt yields the eventual 200 body: the retry RECOVERS
+    # the lyrics instead of losing them.
     clock = _FakeClock()
     lim = _limiter(clock)
     body = '{"id":1,"syncedLyrics":"[00:01.00]hi","instrumental":false}'
@@ -320,8 +307,7 @@ def test_retry_recovers_on_a_later_attempt():
 
 
 def test_429_is_a_retryable_status():
-    # 429 (Too Many Requests) is LRCLIB's documented rate-limit signal and must retry like 503. On
-    # base a 429 is a non-200 non-404 and raises on the first call with no retry.
+    # 429 (Too Many Requests) is LRCLIB's documented rate-limit signal and must retry like 503.
     clock = _FakeClock()
     lim = _limiter(clock)
     fetch = _scripted_fetcher([(429, ""), (429, ""), (200, "[]")])
@@ -332,8 +318,7 @@ def test_429_is_a_retryable_status():
 
 
 def test_rate_gate_paces_successive_calls():
-    # The gate paces two back-to-back successful calls at least MIN_INTERVAL_SEC apart (injected clock,
-    # no real wait). On base there is no gate at all, so nothing sleeps between calls.
+    # The gate paces two back-to-back successful calls at least MIN_INTERVAL_SEC apart.
     clock = _FakeClock()
     lim = _limiter(clock)
     fetch = _scripted_fetcher([(404, "")])  # 404 = miss, no retry, so each call is exactly one fetch
@@ -365,7 +350,6 @@ def test_default_client_shares_the_process_global_gate():
     assert ls.limiter() is ls._LIMITER
 
 
-# ── interleaved second script (Chinese characters + pinyin) ─────────────────────────
 # A bilingual LRCLIB record ships the romanization INLINE under the same [mm:ss] stamp as the
 # characters (LRCLIB has no romanization field). fold_romanization_entries pairs them so BOTH
 # scripts reach the doc; a single-script record is untouched.

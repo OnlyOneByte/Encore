@@ -1,13 +1,11 @@
 """The lyrics engines an align job carries: which model reads the words, how they get timestamps.
 
-Two properties are pinned here rather than left to inspection, because both were real hazards while
-these values were hardcoded:
-
-  * an unknown token must fail AT THE BOUNDARY. Passed through, it reaches whisperx.load_model(),
-    fails to resolve as a HuggingFace repo, and AsrSource swallows the exception — the tier declines
-    and the song finishes with no words and nothing naming why.
-  * changing the model must drop the CACHED transcriber AND the cached source list that holds it.
-    Otherwise the log says one model and AsrSource keeps using the previous weights.
+Two properties are pinned here:
+  * an unknown token must fail AT THE BOUNDARY, or it reaches whisperx.load_model(), fails to
+    resolve as a HuggingFace repo, and AsrSource swallows the exception — the song finishes with no
+    words and nothing naming why.
+  * changing the model must drop the CACHED transcriber AND the cached source list that holds it, or
+    AsrSource keeps using the previous weights while the log says otherwise.
 """
 
 from __future__ import annotations
@@ -34,7 +32,6 @@ class _FakeTranscriber:
         return {"segments": []}
 
 
-# ── boundary parsing ────────────────────────────────────────────────────────────
 def test_absent_asr_model_keeps_the_pre_setting_default():
     # An align job from a core that predates the setting must transcribe exactly as it always did.
     assert parse_asr_model(None) is AsrModel.BASE
@@ -71,14 +68,10 @@ def test_explicit_default_is_honoured_for_an_absent_value():
     assert parse_sync_mode(None, SyncMode.LINES) is SyncMode.LINES
 
 
-# ── resolving a job's engines ────────────────────────────────────────────────────
-#
-# This replaced `WhisperXProcessor._adopt_job_engines`, which MUTATED the shared processor instance --
-# `self._model`, `self._sync_mode`, and it nulled `self._transcriber` and `self._sources` to force a
-# reload. One instance served every align job, so with ENCORE_WORKER_CONCURRENCY > 1 two jobs carrying
-# different `asrModel` raced: one could null the other's cached sources mid-acquire, or transcribe with
-# the other's weights. Resolution is now a pure function into per-job state, so the race is not fixed so
-# much as made impossible to express.
+# Engine resolution is a PURE function into per-job state, not a mutation of shared processor
+# instance fields — with ENCORE_WORKER_CONCURRENCY > 1, two jobs carrying different `asrModel` would
+# otherwise race (one nulling the other's cached sources mid-acquire, or transcribing with the
+# other's weights).
 
 
 def test_job_params_override_the_worker_defaults():
@@ -120,17 +113,12 @@ def test_an_unknown_model_on_the_wire_fails_before_any_work():
         plans.resolve_engines({"asrModel": "not-a-model"}, ResolvedEngines())
 
 
-# ── the model cache ──────────────────────────────────────────────────────────────
-#
-# The old design cached one loaded model on the shared processor and NULLED it whenever a job asked for a
-# different checkpoint. Removing that instance state fixed the race, but naively it would have replaced
-# it with a worse bug: a fresh transcriber per job means re-reading multi-GB weights on every align job.
-# These pin the replacement -- a module-level cache keyed by configuration.
+# The model cache is a module-level cache keyed by configuration, not shared processor instance
+# state: a fresh transcriber per job would re-read multi-GB weights on every align job.
 
 
 def test_two_jobs_on_the_same_checkpoint_SHARE_one_loaded_model():
-    """Otherwise every align job re-reads multi-GB weights. This is the performance the old instance
-    cache was buying, kept without the shared mutable state that made it a race."""
+    """A shared cache avoids re-reading multi-GB weights on every align job."""
     from src.lyrics import transcriber_for
 
     a = transcriber_for("cpu", "base")
@@ -139,8 +127,8 @@ def test_two_jobs_on_the_same_checkpoint_SHARE_one_loaded_model():
 
 
 def test_two_jobs_on_DIFFERENT_checkpoints_cannot_evict_each_other():
-    """The actual race, pinned. Under the old design a job asking for `small` nulled the cached `base`
-    model out from under a job already using it."""
+    """A job asking for `small` must not evict the cached `base` model out from under a job already
+    using it."""
     from src.lyrics import transcriber_for
 
     base = transcriber_for("cpu", "base")
@@ -156,29 +144,18 @@ def test_the_aligner_is_cached_per_device_on_the_same_reasoning():
     assert aligner_for("cpu") is not aligner_for("cuda")
 
 
-# The tests above pin that the cache HOLDS (a second sequential call gets the first instance). They do
-# NOT pin the `with ML_LOCK:` that guards the check-then-set INSIDE the factory: after the first call
-# populates the module dict, every later call short-circuits on the `.get()` regardless of the lock, so
-# neutering `aligner_for`'s guard to `if True:` leaves this whole file green. The race the lock exists
-# for only appears when two callers hit an EMPTY cache at once — `aligner_for` runs on a real worker
-# thread (steps/lyrics.py: `_time_one` inside `run_blocking` -> `asyncio.to_thread`), so with
-# ENCORE_WORKER_CONCURRENCY>1 two align jobs enter the check-then-set concurrently. Without the lock both
-# read `None`, both construct a WhisperxForcedAligner, and last-write-wins hands the two jobs DIFFERENT
-# instances — each with its own `self._cache`, so each loads the multi-GB wav2vec2 model (double VRAM /
-# double resident copy; the process still succeeds, so the only symptom is memory). See asr.py's cache
-# comment, which records this exact failure ("load the same model twice and double the memory").
-#
-# This drives the concurrency THROUGH the production factory rather than re-implementing the lock in the
-# test, so it reds when the guard is removed and stays green while it is present. Parametrised over both
-# factories: `transcriber_for` (asr.py) has the identical check-then-set shape and is only accidentally
-# safe today because its default resolves on the event loop, outside the threaded window — pinning it
-# now closes it before that ordering ever changes.
+# The tests above pin that the cache HOLDS, not the `with ML_LOCK:` that guards the check-then-set
+# INSIDE the factory: after the first call populates the module dict, every later call short-circuits
+# on `.get()` regardless of the lock. The race only appears when two callers hit an EMPTY cache at
+# once (aligner_for runs on a real worker thread, so ENCORE_WORKER_CONCURRENCY>1 can enter the
+# check-then-set concurrently): without the lock, both construct their own instance with its own
+# `self._cache`, silently doubling VRAM/resident memory since the process still succeeds either way.
+# Drives the concurrency THROUGH the production factory rather than re-implementing the lock in the
+# test. Parametrised over both factories, since `transcriber_for` has the identical shape.
 @pytest.mark.parametrize("factory", ["aligner", "transcriber"])
 def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, factory):
-    """The check-then-set race, pinned as identity. N threads hit an empty cache at once off a Barrier;
-    the module lock must make exactly one construction win and every thread receive that same object.
-    Without `with ML_LOCK:` in the factory, several threads slip between the `.get()` and the store and
-    walk away with distinct instances that each load the model — so this reds `> 1 distinct instance`."""
+    """N threads hit an empty cache at once off a Barrier; the module lock must make exactly one
+    construction win and every thread receive that same object."""
     import sys
     import threading
     import time
@@ -202,10 +179,8 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
     real_init = cls.__init__
 
     def slow_init(self, *args, **kwargs):
-        # Record every construction and dwell INSIDE the check-then-set window, so that without the
-        # factory's lock the other threads (which have already passed the `.get() is None` check) also
-        # construct before this one stores. Cheap by design — the real __init__ only sets fields and an
-        # empty dict, no weights load here — so the sleep is what makes the race reachable, not the load.
+        # Dwell INSIDE the check-then-set window so other threads that already passed the `.get() is
+        # None` check also construct before this one stores, without the factory's lock.
         with con_lock:
             constructions.append(id(self))
         time.sleep(0.02)
@@ -262,7 +237,6 @@ def test_worker_config_rejects_an_unknown_model():
         plans.align_runner(runner=_noop, sync_mode="vibes")
 
 
-# ── what each mode actually does to the timing ──────────────────────────────────
 class _SpyAligner:
     """Records whether it was asked to align at all — the cost `lines` mode exists to avoid."""
 
@@ -342,14 +316,9 @@ def test_lines_mode_skips_the_aligner_entirely():
 def test_lines_mode_declines_a_source_with_no_timings_at_all():
     # `lines` will not go and FIND timings, so a plain-lyrics record has nothing honest to publish —
     # the floor stays line-level sync rather than a wall of synthetic even spacing sold as line timing.
-    #
-    # The segments here are what `plain_lyrics_to_segments` REALLY emits (numeric, evenly spaced): that
-    # is the only shape a TIMING_NONE source ever reaches `_time_one` in (grading.py stamps TIMING_NONE
-    # exactly for a plainLyrics LRCLIB record, whose bounds go through that producer). A hand-built
-    # `start=None` segment is unreachable — and it would let the guard removal pass vacuously, because
-    # `is_line_synced` also rejects a non-numeric start, so `_time_one` would return None either way.
-    # Numeric bounds make the guard the ONLY thing standing between this input and a published
-    # (TIMING_LINE, "high") artifact, so deleting `if text.timing != TIMING_LINE: return None` reds this.
+    # Segments here use numeric (evenly-spaced) bounds, the real shape `plain_lyrics_to_segments`
+    # emits, so the TIMING_LINE guard — not `is_line_synced`'s non-numeric-start rejection — is what
+    # is actually under test.
     spy = _SpyAligner()
     segs = plain_lyrics_to_segments("no timings here\nsecond line", 120.0)
     assert all(isinstance(seg["start"], (int, float)) for seg in segs)  # production shape, not start=None

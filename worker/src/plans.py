@@ -1,12 +1,11 @@
 """What each action does, declared as data.
 
-The ONE module allowed to import both the runtime and the steps. That is what makes the dependency rule
-in `docs/ARCHITECTURE.md` §7.1 hold mechanically: the runtime never imports a step, a domain
-never imports the runtime, and this file is the seam where they meet.
+The ONE module allowed to import both the runtime and the steps — the seam that makes the dependency
+rule in `docs/ARCHITECTURE.md` §7.1 hold mechanically: the runtime never imports a step, a domain
+never imports the runtime.
 
-Read a plan top to bottom and you have read what the action does. That readability is most of why this is
-a list rather than a transition table — see the spec's §5.2 for the branching analysis, and for the
-revisit trigger if that ever stops being true.
+A plan is a flat list read top to bottom, not a transition table — see the spec's §5.2 for the
+branching analysis and the revisit trigger if that ever stops being true.
 """
 
 from __future__ import annotations
@@ -52,12 +51,11 @@ def align_plan(
     ytdlp_bin: str = "yt-dlp",
     keep_raw: bool = False,
 ) -> LinearPlan:
-    """The align action: nine steps that were one 257-line method.
+    """The align action: acquire, fetch captions, acquire+grade+time texts, diarize, publish.
 
-    Seams stay injectable for the same reason they always were — the real WhisperX, the real LRCLIB and
-    the real yt-dlp only ever run on a worker box, so the whole flow has to be exercisable without any of
-    them. `diarizer` is the newest seam: the real pyannote pipeline only runs on a worker box, so
-    Diarize takes an injected diarizer exactly as TimeTexts takes an aligner.
+    Every real dependency (WhisperX, LRCLIB, yt-dlp, pyannote) only ever runs on a worker box, so each
+    is an injectable seam — `diarizer` for `Diarize` exactly as `aligner` is for `TimeTexts` — and the
+    whole flow is exercisable without any of them.
     """
     return LinearPlan(
         "align",
@@ -85,13 +83,11 @@ def stems_plan(
 ) -> LinearPlan:
     """The stems action: acquire, decode, separate, probe, analyse, publish.
 
-    `ProbeSilence` is a step rather than a line inside publishing, and that is a fix as well as a tidy-up:
-    only demucs used to probe, so a roformer process could publish a silent guiding track. As a step both
-    engines get it and it is testable with no ffmpeg.
-
-    `KeyAndRange` likewise: it was called inline from both engines through two separate injectable
-    `profiler` parameters. As a step the runner times it into `ctx.out.timings_sec`, so its cost is now
-    measured — though that measurement is not yet surfaced anywhere (the core drops it at its fact allowlist).
+    `ProbeSilence` and `KeyAndRange` are steps, not lines inside publishing/engine code, so BOTH engines
+    get them uniformly (a roformer process cannot skip the silence probe a demucs one runs) and each is
+    testable with no ffmpeg. As a step, `KeyAndRange`'s cost is also timed by the runner into
+    `ctx.out.timings_sec` — measured, though not yet surfaced anywhere (the core drops it at its fact
+    allowlist).
     """
     return LinearPlan(
         "stems",
@@ -107,16 +103,11 @@ def stems_plan(
 
 
 def stems_upgrade_plan(**kwargs: Any) -> LinearPlan:
-    """The stems-upgrade action.
-
-    Its own plan, and TODAY its steps are identical to `stems`. That is not an oversight and the
-    duplication is deliberate: the worker does exactly the same work for an upgrade, and the refusal to
-    publish something that does not outrank what is already there happens CORE-side, in `markMediaReady`.
-    `dial_home` used to hand both actions the same processor, which stated the same thing less visibly.
-
-    Separate anyway because they are separate declarations that happen to coincide, so the day one of them
-    needs to differ, it differs in a plan rather than in a conditional inside a shared step. `validate_plan`
-    checks both and the generated doc shows both, so the copy cannot silently rot.
+    """The stems-upgrade action. Its steps are identical to `stems` — deliberately: the worker does
+    exactly the same work for an upgrade, and the refusal to publish something that doesn't outrank
+    what's already there happens CORE-side, in `markMediaReady`. Kept as a separate declaration (not a
+    conditional inside a shared step) so the day the two need to differ, they differ in a plan;
+    `validate_plan` checks both and the generated doc shows both, so the copy cannot silently rot.
     """
     plan = stems_plan(**kwargs)
     return LinearPlan("stems-upgrade", plan.steps())
@@ -138,20 +129,16 @@ def register_default_plans() -> None:
 
 
 def resolve_engines(params: dict[str, Any], defaults: ResolvedEngines | None = None) -> ResolvedEngines:
-    """Fold a job's params over this worker's configured defaults — ONCE, per job.
+    """Fold a job's params over this worker's configured defaults — ONCE, per job, into a fresh
+    `ResolvedEngines`. Not a tidy-up: state resolved onto a SHARED processor instance instead would let
+    two concurrent align jobs (ENCORE_WORKER_CONCURRENCY > 1) carrying different `asrModel` race —
+    one nulling the other's cached sources mid-acquire, or transcribing with the other's weights.
 
-    This is the fix for a latent concurrency bug, not a tidy-up. Engine resolution used to mutate the
-    shared processor instance (`self._model`, `self._sync_mode`, and it nulled `self._transcriber` and
-    `self._sources` to force a reload). With ENCORE_WORKER_CONCURRENCY > 1 two align jobs carrying
-    different `asrModel` raced: one could null the other's cached sources mid-acquire, or transcribe with
-    the other's weights. Nothing about the wire changed; the state simply had nowhere per-job to live.
-
-    `defaults` is the worker's own env fallback (ENCORE_ASR_MODEL / ENCORE_SYNC_MODE), which is only
-    consulted for a job that carries neither — the core normally sends its global settings on every align
-    job so an operator changing the model takes effect on the next process with no restart. Every field is
-    parsed at this boundary (asrModel, syncMode, engine): an unknown or de-whitelisted value RAISES a
-    BoundaryError here rather than reaching a step and failing opaquely deeper in — the same fail-at-the-
-    edge contract every parse_* enforces. A field the job omits keeps the worker's own configured default.
+    `defaults` is the worker's own env fallback (ENCORE_ASR_MODEL / ENCORE_SYNC_MODE), consulted only
+    for a job that carries neither — the core normally sends its global settings on every align job, so
+    an operator's change takes effect on the next process with no restart. Every field (asrModel,
+    syncMode, engine) is parsed at this boundary: an unknown or de-whitelisted value RAISES a
+    BoundaryError here rather than failing opaquely deeper in a step.
     """
     base = defaults or ResolvedEngines()
     return ResolvedEngines(
@@ -180,10 +167,6 @@ def align_runner(
     keep_raw: bool = False,
 ) -> Any:
     """A PlanRunner wired to run the align plan with these seams and these worker defaults.
-
-    The replacement for `WhisperXProcessor(...)`. Not a compatibility shim: "how do I build a runner for
-    this action with these fakes" is a real question, and plans.py is where the answer belongs — it is
-    already the module that knows both the runtime and the steps.
 
     `model` / `sync_mode` / `device` are this WORKER's fallbacks (its env config), not the job's. A job
     carrying `asrModel` overrides them, which is how a settings change reaches the next process.
@@ -226,14 +209,14 @@ def stems_runner(
 ) -> Any:
     """A PlanRunner for both separation actions, with this worker's separator configuration.
 
-    The engine is chosen per JOB from `params.engine` (plan selection, §5.2c), so one runner serves both
-    demucs and roformer processes — `EngineRouter`'s dispatch collapsed into `engine_for` inside the Separate
-    step. Passing `engine` overrides that entirely, which is how a test drives a fake separator.
+    The engine is chosen per JOB from `params.engine` (plan selection, §5.2c) via `engine_for` inside
+    the Separate step, so one runner serves both demucs and roformer processes. Passing `engine`
+    overrides that entirely, which is how a test drives a fake separator.
 
     `backend` is the hardware backend `backends.resolve_backend` resolved for this worker (torch/mlx),
-    resolved once in `dial_home`. It is threaded into `engine_for` so it drives the engine that actually
-    runs and is recorded into `facts.backend` — before threading, the resolved backend reached only a startup
-    print, so a Mac announcing `mlx` still ran torch demucs and recorded `torch`.
+    resolved once in `dial_home` and threaded into `engine_for` so it drives the engine that actually
+    runs and is recorded into `facts.backend` — a Mac announcing `mlx` must not run torch demucs while
+    reporting `torch`.
     """
     from .runtime.runner import PlanRunner
     from .separation.engines import engine_for
@@ -244,17 +227,15 @@ def stems_runner(
         return resolve_engines(params, ResolvedEngines(device=tune.device))
 
     def pick(job: Any, engines: ResolvedEngines) -> LinearPlan:
-        # `engine_kwargs` carries the job's resolved device, not the worker's. `resolve_engines` folds
-        # `params['device']` over this box's own, and alignment (steps/lyrics.py) and diarization
-        # (steps/diarize.py) both read the folded value — separation once read the closure instead, so one
-        # job could transcribe on the device it asked for and separate on a different one, with
-        # `facts.device` reporting whichever the engine was built with.
-        # `ffmpeg_bin` is passed alongside the tuning, not folded into it. Only ONE engine wants it —
-        # demucs-mlx, whose instrumental is DERIVED by an ffmpeg mix-minus pass because the CLI has no
-        # `--two-stems` — while `ffmpeg_bin` itself is shared with plans that never separate anything.
-        # Before this it reached the three steps below and not the engine, so an Apple-Silicon box with
-        # ENCORE_FFMPEG_BIN set derived its instrumental with bare `ffmpeg`: the one call that has to
-        # succeed for an mlx separation to produce no_vocals.wav at all.
+        # `engine_kwargs` carries the job's RESOLVED device (from `resolve_engines`, folding
+        # `params['device']` over the worker's own), same value alignment and diarization read — so a
+        # job cannot separate on one device and align on another, and `facts.device` always matches
+        # what the engine was actually built with.
+        # `ffmpeg_bin` is passed alongside the tuning, not folded into it: only demucs-mlx needs it
+        # (its instrumental is DERIVED by an ffmpeg mix-minus pass, since the CLI has no
+        # `--two-stems`), and it must reach the ENGINE itself, not just the steps below — an
+        # Apple-Silicon box with ENCORE_FFMPEG_BIN set must not fall back to a bare `ffmpeg` for the
+        # one call an mlx separation needs to produce no_vocals.wav at all.
         eng = engine or engine_for(
             engines.separator, ffmpeg_bin=ffmpeg_bin, **tune.engine_kwargs(device=engines.device)
         )

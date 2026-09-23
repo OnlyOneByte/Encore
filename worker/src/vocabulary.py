@@ -1,19 +1,9 @@
 """Enumerated worker vocabulary: what a job asks for, how it progresses, and what runs it.
 
-These were bare strings compared at call sites, so a typo or a value the core invented was only
-discoverable at runtime — usually as a job that failed mid-process or, worse, silently took a default.
-Naming them once here gives three properties the strings did not have:
-
-  * `parse_*` turns an untrusted wire value into a member or raises at the BOUNDARY, so an unknown
-    action fails before any work starts rather than deep inside a pipeline.
-  * `str` mixin keeps every member usable wherever a plain string is expected (dict keys, JSON,
-    argv), so this is additive rather than a migration.
-
-NOT here: the separation quality ladder. A `QUALITY_RANK` table used to live in this module, mirroring
-`src/lib/contract/lyrics/separators.ts` — but the refusal to publish an artifact that does not outrank the
-current one is decided CORE-side in `markMediaReady`, so the worker copy had no caller and the two
-tables could drift with nothing comparing them. It is deleted rather than guarded by a parity test,
-because a test would only have kept a dead table faithfully in sync with a live one.
+Named once here rather than compared as bare strings at call sites, which gives two properties plain
+strings do not have: `parse_*` turns an untrusted wire value into a member or raises at the BOUNDARY,
+so an unknown action fails before any work starts rather than deep inside a pipeline; and the `str`
+mixin keeps every member usable wherever a plain string is expected (dict keys, JSON, argv).
 """
 
 from __future__ import annotations
@@ -55,15 +45,10 @@ class Stage(_StrEnum):
 
 
 class Fetcher(_StrEnum):
-    """WHERE a job's source audio comes from, as DECLARED by the core.
-
-    This exists to replace inference. Acquisition used to be guessed from the URI's shape -- an
-    `http(s)` prefix meant download, anything else meant a local path -- which silently misclassified
-    any other scheme and failed several stages later at ffmpeg with "No such file". A declared value
-    parsed at the boundary fails immediately and names the cause.
-
-    LOCAL is not a downloader: it means the bytes are already under MEDIA_DIR and `source_uri` is a
-    path to read. Mirrors FetcherId in src/lib/contract/process/fetchers.ts.
+    """WHERE a job's source audio comes from, as DECLARED by the core — never inferred from the URI's
+    shape, since an unrecognized scheme would otherwise reach ffmpeg several stages later as an opaque
+    failure. LOCAL means the bytes are already under MEDIA_DIR; `source_uri` is a path to read, not a
+    downloader. Mirrors FetcherId in src/lib/contract/process/fetchers.ts.
     """
 
     YTDLP = "ytdlp"
@@ -80,17 +65,13 @@ class Engine(_StrEnum):
 
 
 class AsrModel(_StrEnum):
-    """Which faster-whisper checkpoint the ASR tier transcribes sung vocals with.
+    """Which faster-whisper checkpoint the ASR tier transcribes sung vocals with. Mirrors AsrModelId in
+    src/lib/contract/lyrics/lyrics-engines.ts — the source of truth for the whitelist; add a checkpoint
+    there first.
 
-    A deployment choice carried in an align job's params, mirroring AsrModelId in
-    src/lib/contract/lyrics/lyrics-engines.ts — which is the source of truth for the whitelist and the
-    only place a new checkpoint should be added first.
-
-    Enumerated rather than passed through as a free string for a specific reason: an unrecognised token
-    reaches `whisperx.load_model()`, which tries to resolve it as a HuggingFace repo, fails, and is
-    swallowed by AsrSource's `except` — so the tier quietly DECLINES and the song finishes processing with
-    no words and nothing in the log naming why. Parsing at the boundary turns that into an immediate,
-    named failure.
+    Enumerated rather than a free string: an unrecognised token would reach `whisperx.load_model()`,
+    fail to resolve as a HF repo, and be swallowed by AsrSource's `except` — the tier silently DECLINES
+    with no words and nothing in the log naming why. Parsing at the boundary fails immediately instead.
     """
 
     TINY = "tiny"
@@ -101,14 +82,9 @@ class AsrModel(_StrEnum):
 
 
 class SyncMode(_StrEnum):
-    """HOW a song's words get their timestamps.
-
-    FORCED runs wav2vec2 forced alignment against the isolated vocals stem and yields per-word
-    timings — the bouncing ball. LINES skips alignment entirely and keeps each source's own line
-    timings, which costs one fewer ML pass per process but cannot highlight individual words.
-
-    Both were always code paths; LINES was only ever reachable as the landing spot of an `except` in
-    whisperx.py's `_time_one`. Naming it makes it a choice instead of a consolation prize.
+    """HOW a song's words get their timestamps. FORCED runs wav2vec2 forced alignment against the
+    isolated vocals stem for per-word timings (the bouncing ball); LINES skips alignment and keeps
+    each source's own line timings — one fewer ML pass, but no per-word highlight.
     """
 
     FORCED = "forced"
@@ -117,13 +93,8 @@ class SyncMode(_StrEnum):
 
 class TextSource(_StrEnum):
     """Where a lyrics candidate's TEXT came from. Mirrors LyricsTextSource in
-    src/lib/contract/lyrics/lyrics.ts — that union is the authority; keep the two in step.
-
-    These were plain module string constants in lyrics/grading.py (SOURCE_LRCLIB and friends) guarded only
-    by a `# must match LyricsTextSource` comment, while the five sibling enums here got a real bilateral
-    parity check. Promoted so the same guard covers them: a value added or renamed on either side now
-    reds vocabulary-parity.test.ts instead of drifting silently. grading.py re-exports these under the old
-    SOURCE_* names, so its importers are unchanged.
+    src/lib/contract/lyrics/lyrics.ts — vocabulary-parity.test.ts fails if the two drift, so keep them in
+    step. grading.py re-exports these under its old SOURCE_* names; importers there are unaffected.
     """
 
     LRCLIB = "lrclib"
@@ -134,9 +105,7 @@ class TextSource(_StrEnum):
 
 class Timing(_StrEnum):
     """Timing fidelity a lyrics source supplies UNAIDED. Mirrors LyricsTiming in the same TS module.
-
-    `line` is the floor (stanza scroll); `word` is the karaoke ideal; `none` needs the aligner. Promoted
-    from grading.py's TIMING_* constants for the same reason as TextSource — a comment cannot fail a build.
+    `line` is the floor (stanza scroll); `word` is the karaoke ideal; `none` needs the aligner.
     """
 
     WORD = "word"
@@ -144,27 +113,14 @@ class Timing(_StrEnum):
     NONE = "none"
 
 
-# ── ROLES: the two-tier grading split ─────────────────────────────────────────────
+# ROLES: the axis that decides HOW a lyrics text is judged, orthogonal to WHERE it came from
+# (TextSource). BASELINE is evidence of what is heard — never scored. CANDIDATE is authored text
+# scored against every baseline; the winner is PUBLISHED. See lyrics/grading.py for the rationale.
+# Plain strings, not a _StrEnum: role is worker-internal and has no core-side mirror to parity-check.
 #
-# The axis that decides HOW a lyrics text is judged, orthogonal to WHERE it came from (TextSource).
-# A BASELINE is evidence of what is heard in this audio — the ruler, never scored. A CANDIDATE is
-# authored text claiming to be the song's words — scored against every baseline; the winner is what
-# gets PUBLISHED. See lyrics/grading.py for the full rationale.
-#
-# Promoted here beside TextSource/Timing (from bare module strings in grading.py) so all the lyrics
-# vocabulary lives in one place; grading.py re-exports them under the same names, so its importers are
-# unchanged. Left as plain string constants rather than a _StrEnum: unlike TextSource/Timing these have
-# NO packages/shared mirror to bilaterally parity-check against — role is a worker-internal grading
-# axis the core never sees.
-#
-# UNSPECIFIED is a fail-CLOSED default (see LyricsText.role). It belongs to NEITHER candidates_of nor
-# baselines_of, so a text built without an explicit role is neither published as the song's words nor
-# used as grading evidence — it simply does not participate until a role is stamped. This closes the
-# fail-OPEN hole where the old default (ROLE_CANDIDATE, the publishable tier) let an unspecified hand-
-# built or rehydrated text silently publish. Every real path stamps a role via the registry's
-# SourceSpec — the fetched text AND its alternates, since an alternate is graded alongside its
-# parent by select_by_baselines and may itself be published; the default only reaches hand-built texts
-# (tests, disk rehydration).
+# UNSPECIFIED is a fail-CLOSED default: it belongs to neither candidates_of nor baselines_of, so an
+# unstamped text neither publishes nor grades — it just doesn't participate. Every real path stamps a
+# role via the registry's SourceSpec; only hand-built/rehydrated texts (tests, disk) reach the default.
 ROLE_BASELINE = "baseline"
 ROLE_CANDIDATE = "candidate"
 ROLE_UNSPECIFIED = "unspecified"
@@ -189,20 +145,10 @@ class Backend(_StrEnum):
 class Capability(_StrEnum):
     """What a worker can PROVE it can do, and therefore what the core will route to it.
 
-    The last routing vocabulary that was still bare strings, and the omission cost something real. The
-    tokens were hand-typed at three sites that had to agree: the seven probes in `capabilities.py` that
-    author them, and two literal lists in `dial_home._build_processor` that decide which runners to
-    build. `stems:audiosep` was added to the probes and to ONE of the two lists, so a box with
-    `audio-separator` installed and demucs absent proved `stems:audiosep`, advertised it, matched the
-    core's `stems` routing on the `stems:` prefix — and bound no stems runner at all. It accepted
-    separation work and could not run a single job of it: the advertise→accept→fail failure that
-    `capabilities.py` exists to eliminate, reintroduced through the one part of it that was stringly
-    typed.
-
-    THE FAMILY IS DERIVED, which is the property that matters. A capability is `family` or
-    `family:variant`, and `in_family` computes membership from the members themselves rather than from a
-    second hardcoded list. Add a `stems:whatever` member and every stems-family check picks it up with
-    no other edit — which is exactly what did not happen for `stems:audiosep`.
+    THE FAMILY IS DERIVED, not hardcoded: a capability is `family` or `family:variant`, and `in_family`
+    computes membership from the members themselves. A `stems:whatever` token is picked up by every
+    stems-family check automatically — a second hardcoded list is what let `stems:audiosep` advertise
+    a token whose runner was never bound, so a box accepted separation work it could not run.
     """
 
     FETCH_YTDLP = "fetch:ytdlp"
@@ -251,25 +197,15 @@ def serves_family(tokens: Iterable[str], family: str) -> bool:
 
 
 class StemFormat(_StrEnum):
-    """The container a separator writes its RAW scratch stems in, declared rather than inferred.
+    """The container a separator writes its RAW scratch stems in, declared on the engine
+    (`SeparatorEngine.stem_format`) rather than inferred — a reader that assumes WAV cannot open a FLAC,
+    which silently drops one engine's guide-offset measurement and gets its guide mix refused as
+    "stems do not match" with no missing-container reported. `find_outputs` returns paths in the format
+    the engine states; readers must honour that instead of guessing.
 
-    Every engine used to decide this privately in its own argv: demucs and demucs-mlx emitted PCM WAV
-    (`no_vocals.wav`), audio-separator was handed a hardcoded `--output_format FLAC`, and roformer's real
-    output format was never asserted anywhere. Nothing carried the answer, so every CONSUMER of a raw
-    stem had to assume one — and `analysis/wav.py` assumed WAV via stdlib `wave`, which cannot open a
-    FLAC. The result was a silent capability loss on exactly one engine: an audiosep job's guide offset
-    came back unmeasured and its guide mix was refused as "stems do not match", because the reader could
-    not open either file. A missing container is not a mismatch, but nothing could tell them apart.
-
-    Declaring it on the engine (`SeparatorEngine.stem_format`) makes the format part of the seam's
-    contract: `find_outputs` returns paths in the format the engine states, and the readers honour that
-    statement instead of guessing. A fifth engine cannot ship without answering the question.
-
-    FLAC is the default and what the pipeline publishes — one lossless codec end to end, which is what
-    lets a freshly separated pair be aligned by construction (see `separation/__init__.py`). WAV remains
-    selectable because it is a legitimate WORKING format: it skips an encode on a box that is CPU-bound
-    during separation, and it is the format demucs natively emits, so it is the cheaper path when the
-    published artifact is being rebuilt anyway.
+    FLAC is the default and what the pipeline publishes — one lossless codec end to end. WAV stays
+    selectable as a legitimate WORKING format: it skips an encode on a CPU-bound box and is what demucs
+    natively emits.
     """
 
     WAV = "wav"
@@ -315,15 +251,10 @@ _MISSING = _Missing()
 def _parse(cls: type[_E], value: str | None, default: _E | _Missing, noun: str) -> _E:
     """Coerce a wire value to a member of `cls`, raising a BoundaryError on anything unknown.
 
-    The single body the six `parse_*` wrappers share. Two behaviours, unchanged from the hand-written
-    copies:
-
-      * When `default` is provided (every parser except `parse_action`), an absent value — None or the
-        empty string — returns that default. `parse_action` passes the `_MISSING` sentinel instead, so it
-        has no default branch and an empty/absent action still hits the `cls(value)` path exactly as
-        before (raising, because "" is not a member).
-      * An unknown value RAISES at the boundary — the whole point of these parsers — with the same message
-        shape the copies produced: `unknown {noun} {value!r}; expected one of {[member values]}`.
+    The single body all `parse_*` wrappers share. When `default` is given, an absent value (None or
+    "") returns it; `parse_action` passes the `_MISSING` sentinel instead, so an empty/absent action
+    still raises via `cls(value)`. An unknown value always RAISES at the boundary — the point of these
+    parsers — with message `unknown {noun} {value!r}; expected one of {[member values]}`.
     """
     if not isinstance(default, _Missing) and (value is None or value == ""):
         return default
@@ -383,11 +314,8 @@ def parse_stem_format(value: str | None, default: StemFormat = StemFormat.FLAC) 
 
 
 def stages_for(action: Action | str) -> list[Stage]:
-    """The ordered stages an action emits, straight off STAGE_PLANS.
-
-    Kept here beside the table it reads. The PRODUCTION progress path goes through
-    `protocol.stages_for` (which the StubProcessor and the dial-home loop call); this one has only
-    test callers today, so treat the two as the same contract rather than assuming this is the live
-    one."""
+    """The ordered stages an action emits, off STAGE_PLANS. NOT the production path — that's
+    `protocol.stages_for` (called by StubProcessor and the dial-home loop); this one has only test
+    callers today, so treat the two as the same contract, not this as the live one."""
     key = action if isinstance(action, Action) else parse_action(action)
     return STAGE_PLANS.get(key, [Stage.DOWNLOADING, Stage.SEPARATING])

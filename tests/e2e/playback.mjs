@@ -1,24 +1,10 @@
 /*
- * Does a sound actually come out? — the assertion this suite never made.
- *
- * Every other e2e here stops at the DOM: it proves a song is queued, a lower third names a singer, a
- * state class flipped. None of that touches the one thing a karaoke machine is for. The gap was
- * structural, not an oversight — the seeder writes 16-byte placeholders and says in its own header
- * that they are "NOT enough to decode", so there was no audio in the fixture to assert about. ./wav.mjs
- * and ./fake-stems-worker.mjs close that, and this file spends it.
- *
- * WHAT COUNTS AS PROOF. `paused === false` is not proof; a media element reports that while it sits at
- * currentTime 0 forever behind a failed decode. `readyState === 4` is not proof either; it says bytes
- * arrived. The proof is `webkitAudioDecodedByteCount` CLIMBING — the decoder consumed samples and
- * handed them to the audio pipeline — corroborated by currentTime advancing against the wall clock.
- * That distinction is exactly the FLAC-in-a-<video> defect: valid file, element "playing", zero
- * decoded bytes, silent room.
+ * Does a sound actually come out? Every other flow here stops at the DOM; this one is the worked example
+ * of the decoded-byte proof rule — see docs/E2E.md#proving-audio.
  *
  *   EPORT=5210 bun tests/e2e/playback.mjs
  *
- * Exit 0 all passed · 1 a real failure · 2 the environment could not host the test (no server,
- * no Chromium, empty library) — never conflated with a failure, because a skipped audio test that
- * reports green is how this hole stayed open.
+ * Exit 0 / 1 / 2 per docs/E2E.md#exit-codes-and-what-ran-means.
  */
 import { join } from 'node:path';
 import { connect, sleep } from './driver.mjs';
@@ -28,8 +14,8 @@ import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from './lib/
 import { openJoin } from './lib/join.mjs';
 
 /**
- * Types for this out-of-program driver (pattern). Browser/Page derive from
- * driver.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * Browser/Page derive from driver.mjs's return types so they cannot drift; page.evaluate() is
+ * Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check
@@ -81,7 +67,7 @@ let browser;
 try {
 	browser = await connect();
 
-	// ── a singer joins and queues the processed song, through the real UI ──────────
+	// A singer joins and queues the processed song, through the real UI.
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
 	await openJoin(phone, base);
@@ -102,13 +88,13 @@ try {
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 	check('the song lands in the queue', true);
 
-	// ── the TV ─────────────────────────────────────────────────────────────────
+	// The TV.
 	const tv = await browser.newPage();
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 
-	// Read whatever media elements the stage mounted, without assuming which tag or how many: the
-	// master has been a <video> and is now a hidden <audio>, and the guiding track adds a second.
+	// Read whatever the stage mounted, without assuming which tag or how many: the master is a hidden
+	// <audio> and the guiding track adds a second.
 	const probe = `(() => {
 		const els = [...document.querySelectorAll('video,audio')];
 		return els.map((el, i) => ({
@@ -156,7 +142,7 @@ try {
 		check('the master reports no media error', master.error === null, JSON.stringify(master.error));
 	}
 
-	// ── the assertion that matters: decoded bytes climbing ─────────────────────
+	// The assertion that matters: decoded bytes climbing.
 	const t0 = /** @type {El[]} */ (await tv.evaluate(probe));
 	await sleep(3000);
 	const t1 = /** @type {El[]} */ (await tv.evaluate(probe));
@@ -189,7 +175,7 @@ try {
 		);
 	}
 
-	// ── transport: pause must hold position, not reload to zero ────────────────
+	// Transport: pause must hold position, not reload to zero.
 	const before = pick(/** @type {El[]} */ (await tv.evaluate(probe)));
 	await openNowPlaying(phone);
 	await phone.click(SEL.bandTransport);

@@ -15,9 +15,8 @@ const entry = (singerId: string, addedAt: number): QueueEntry => ({
 	addedAt
 });
 
-// Playback is keyed by room: the write-behind sink and boot-hydrate both name a room. These
-// tests exercise one room, so a single fixed id is enough — the FK is not enforced on this bun:sqlite
-// DB, so no `rooms` row is required for the playback write to land.
+// Playback is keyed by room, and these tests exercise one, so a fixed id is enough — the FK is not
+// enforced on this bun:sqlite DB, so no `rooms` row is needed for the write to land.
 const TEST_ROOM = 'test-room';
 
 test('mutations bump rev monotonically', () => {
@@ -39,7 +38,7 @@ test('server re-assigns fair rotationSeq on every mutation (round-robin)', () =>
 	s.applyQueueOp({ op: 'add', entry: a1 });
 	s.applyQueueOp({ op: 'add', entry: a2 });
 	s.applyQueueOp({ op: 'add', entry: b1 });
-	// fair order a1,b1,a2 -> seqs 0,1,2 (NOT insertion order a1,a2,b1)
+	// Fair order a1,b1,a2 gives seqs 0,1,2 — NOT insertion order a1,a2,b1.
 	const ids = s.entries.map((e) => e.id);
 	expect(ids).toEqual([a1.id, b1.id, a2.id]);
 	expect(s.entries.map((e) => e.rotationSeq)).toEqual([0, 1, 2]);
@@ -62,7 +61,6 @@ test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
 	s.setPlayback({ currentEntryId: s.entries[0]!.id, isPlaying: true });
 	s.flushNow();
 
-	// hydrate a fresh state from the db and compare
 	const reloaded = new AuthoritativeState();
 	const { entries, playback } = hydrate(db, TEST_ROOM);
 	reloaded.hydrate(entries, playback);
@@ -74,23 +72,22 @@ test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
 });
 
 test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND flush', () => {
-	// `playback_state.room_id` is the same for every flush in a room, so the FIRST flush
-	// inserts and EVERY later flush takes the onConflictDoUpdate `set` arm. That arm is a hand-duplicated copy of the `.values()`
-	// field list; a field added to one and forgotten in the other would persist once and then freeze
-	// at its boot value, with every other test (all single-flush) still green. This drives the arm.
+	// `playback_state.room_id` is the same for every flush in a room, so the FIRST flush inserts and every
+	// later one takes the onConflictDoUpdate `set` arm — a hand-duplicated copy of the `.values()` field
+	// list. A field added to one and forgotten in the other persists once and then freezes at its boot
+	// value, with every single-flush test still green. This is the only arm that drives it.
 	const db = migratedDb();
 	const s = new AuthoritativeState(sqlitePersistence(db, TEST_ROOM), 10_000);
 
 	s.applyQueueOp({ op: 'add', entry: entry('a', 1) });
 	s.applyQueueOp({ op: 'add', entry: entry('b', 2) });
 
-	// First flush -> INSERT arm. Seed the row with default-ish playback so the second flush is
-	// genuinely a CHANGE the update arm has to carry (not a no-op that could pass either way).
+	// First flush is the INSERT arm, seeded with default-ish playback so the second flush is genuinely a
+	// CHANGE the update arm has to carry rather than a no-op that passes either way.
 	s.setPlayback({ currentEntryId: s.entries[0]!.id });
 	s.flushNow();
 
-	// Now set EVERY one of PlaybackState's six fields to a non-default value and flush AGAIN. This
-	// second flush is the one that exercises the conflict/update arm.
+	// EVERY one of PlaybackState's six fields non-default, then flush again: this is the update arm.
 	const target: PlaybackState = {
 		currentEntryId: s.entries[1]!.id,
 		positionSec: 42,
@@ -103,20 +100,17 @@ test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND f
 	s.flushNow();
 
 	const reloaded = new AuthoritativeState();
-	// Hydrate with the persisted entries alongside playback, exactly as boot does. currentEntryId
-	// names entries[1], so passing the real entries keeps it resolvable — an EMPTY entries array here
-	// would trip hydrate's dangling-id self-heal and null the very field we round-trip.
+	// Hydrate with the persisted entries alongside playback, as boot does: currentEntryId names entries[1],
+	// so an EMPTY entries array trips hydrate's dangling-id self-heal and nulls the field under test.
 	const { entries: reloadedEntries, playback } = hydrate(db, TEST_ROOM);
 	reloaded.hydrate(reloadedEntries as unknown as QueueEntry[], playback);
 
-	// Assert EVERY field of `target` round-tripped. The key list is derived from `target` (a typed
-	// PlaybackState), not hand-written, so a newly-added field the update arm forgets to carry lands
-	// in `target` yet reads back as its boot default here and fails loudly. (We compare per-key rather
-	// than whole-object because hydrate passes the raw db row through, which also carries the `room_id`
-	// column — that leak is pre-existing and out of scope for this test.)
+	// The key list is DERIVED from `target` (a typed PlaybackState), never hand-written, so a newly-added
+	// field the update arm forgets to carry reads back as its boot default and fails loudly. Per-key rather
+	// than whole-object, because hydrate passes the raw db row through and it also carries `room_id`.
 	const keys = Object.keys(target) as (keyof PlaybackState)[];
 	for (const k of keys) expect(reloaded.playback[k]).toEqual(target[k]);
-	// spell out the three fields the old single-flush test never round-tripped, so a regression names itself
+	// The three fields a single-flush test never round-trips, spelled out so a regression names itself.
 	expect(reloaded.playback.keyShift).toBe(3);
 	expect(reloaded.playback.background).toBe('solid');
 	expect(reloaded.playback.guideLevel).toBe(0.4);
@@ -146,17 +140,16 @@ test('setPosition keeps sub-second precision in-memory + clamps negative', () =>
 	const s = new AuthoritativeState();
 	s.setPosition(-5);
 	expect(s.playback.positionSec).toBe(0); // a negative playhead is nonsense, clamp it
-	// The in-memory / broadcast value must NOT be floored: flooring here made the first ~1.25s of
-	// every song broadcast an exact 0, which guide-sync's `restartToZero` reads as a rewind.
+	// The in-memory and broadcast value must NOT be floored: flooring makes the first ~1.25s of every song
+	// broadcast an exact 0, which guide-sync's `restartToZero` reads as a rewind.
 	s.setPosition(7.99);
 	expect(s.playback.positionSec).toBe(7.99);
 });
 
 test('a sub-second telemetry frame is never broadcast as exact 0, yet persists as an integer', () => {
-	// The producer bug: store.setPosition(0.6) floored to 0, and guide-sync.ts's `restartToZero`
-	// clause treats an exact 0 (with the master past the pre-roll tolerance) as an unambiguous
-	// rewind. So for the first ~1.25s of every song, any command that bumped rev (key/guide/pause)
-	// re-seeked the master AND the guiding track back to 0. The broadcast value must stay < 1s here
+	// `restartToZero` treats an exact 0, with the master past the pre-roll tolerance, as an unambiguous
+	// rewind — so a floored sub-second position makes any rev-bumping command (key/guide/pause) re-seek
+	// both elements to 0 for the first ~1.25s of every song. The broadcast value must stay sub-second here
 	// so it is distinguishable from a restart's literal 0.
 	const db = migratedDb();
 	const s = new AuthoritativeState(sqlitePersistence(db, TEST_ROOM));
@@ -167,17 +160,15 @@ test('a sub-second telemetry frame is never broadcast as exact 0, yet persists a
 	expect(s.playback.positionSec).not.toBe(0);
 	expect(s.playback.positionSec).toBe(0.9);
 
-	// ...and the floor still lands at the persistence boundary, so the `integer` position_sec
-	// column (db/schema.ts) never receives a float — the fix cannot be 'just delete the floor'.
-	// This FIRST flush upserts a brand-new row (the INSERT arm of onConflictDoUpdate).
+	// The floor still lands at the PERSISTENCE boundary, so the `integer` position_sec column never
+	// receives a float — deleting the floor outright is not the fix. This first flush is the INSERT arm.
 	s.flushNow();
 	const afterInsert = hydrate(db, TEST_ROOM).playback;
 	expect(afterInsert).not.toBeNull();
 	expect(Number.isInteger(afterInsert!.positionSec)).toBe(true);
 
-	// A SECOND sub-second frame + flush now hits the UPDATE arm (a row already exists for this
-	// room), which floors independently — revert it and this reads back a float in an integer
-	// column. 2.7 keeps a fractional part so the update-arm floor is load-bearing on its own.
+	// A second sub-second frame hits the UPDATE arm, which floors INDEPENDENTLY: without it this reads back
+	// a float in an integer column. 2.7 keeps a fractional part so that floor is load-bearing on its own.
 	s.setPosition(2.7);
 	expect(s.playback.positionSec).toBe(2.7); // in-memory still sub-second
 	s.flushNow();
@@ -211,8 +202,8 @@ test('nextAddedAt is strictly increasing even when called faster than the clock 
 
 test('hydrate seeds nextAddedAt ABOVE the max persisted stamp (survives restart)', () => {
 	const s = new AuthoritativeState();
-	// Persisted state from before the reboot carries a stamp far in the future of Date.now(): the
-	// next server stamp must sit ABOVE it, or a restart-then-add re-opens the very jump this fixes.
+	// Persisted state can carry a stamp far in the future of Date.now(), and the next server stamp must sit
+	// ABOVE it, or a restart-then-add re-opens the jump.
 	const future = Date.now() + 5_000_000_000; // ~58 days ahead — well past any same-ms Date.now()
 	s.hydrate([entry('a', future)], null);
 	const next = s.nextAddedAt();
@@ -230,8 +221,8 @@ test('hydrate seed also counts terminal (done/skipped) rows a later add must cle
 		rotationSeq: -1,
 		addedAt: future
 	};
-	// hydrate filters terminal rows OUT of the live queue, but the counter must still be seeded above
-	// them — a new add must not collide with a done entry's stamp.
+	// hydrate filters terminal rows OUT of the live queue, but the counter is still seeded above them: a new
+	// add must not collide with a done entry's stamp.
 	s.hydrate([done], null);
 	expect(s.entries).toHaveLength(0); // terminal filtered from the queue
 	expect(s.nextAddedAt()).toBeGreaterThan(future); // ...but the stamp still clears it

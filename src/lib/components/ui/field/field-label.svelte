@@ -1,15 +1,8 @@
 <!--
-  ── ENCORE DEVIATIONS (S4) ───────────────────────────────────────────────────────────────────
-  shadcn's TYPOGRAPHY is kept — S4 accepted the visual change. What is restored is LAYOUT, because
-  losing it is a broken page rather than a different-looking one:
-
-  the settings page stacks 27 of these, and `.field`'s `margin: var(--space-lg) 0 var(--space-2xs)`
-  was the entire vertical rhythm separating one control from the next. The registry's label is
-  `flex w-fit` with no margins, so a bare swap collapsed every field against its neighbour.
-
-  `:global([data-slot='…'])` because this file renders a COMPONENT (Label → Bits UI Label), and
-  Svelte's scoped CSS cannot reach an element another component renders. `data-slot` is shadcn's own
-  contract for it, so it survives a re-vendor where an Encore class would not.
+  The margin in the style block is the settings page's entire vertical rhythm — it stacks 27 of these, and
+  the registry's label is `flex w-fit` with no margins, so dropping it collapses every field against its
+  neighbour. Reached by a global data-slot rule because this file renders a component, which scoped CSS
+  cannot style, and the attribute survives a re-vendor where a class of ours would not.
 -->
 <script lang="ts">
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -33,11 +26,9 @@
 </Label>
 
 <style>
-	/*
-	 * A label that lays out INLINE with content it contains — settings' stage-colour row puts a live
-	 * swatch beside its text. Expressed as a data attribute rather than a passed class because a class
-	 * handed to a component is scoped to the CALLER and stripped as unused there.
-	 */
+	/* A label laying out INLINE with content it contains (settings' stage-colour swatch). A data attribute
+	   rather than a passed class, because a class handed to a component is stripped as unused at the
+	   caller. */
 	:global([data-slot='field-label'][data-inline]) {
 		display: flex;
 		flex-wrap: wrap;

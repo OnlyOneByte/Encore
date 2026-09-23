@@ -1,28 +1,13 @@
-/*
- * P15 — DOES A MID-SONG TV RELOAD RESUME AT THE ROOM POSITION?
- *
- * The reported defect: reloading the TV page mid-song restarted the song from 0 instead of resuming
- * where the room is, and the reloaded TV's own telemetry then dragged the server's position backwards,
- * so every phone's progress bar jumped back with it.
- *
- * METHOD. Process song A, get it genuinely playing and past the seek threshold, record the room position
- * from the phone socket's `playback:state`. Then RELOAD the TV page — a cold mount, the exact repro —
- * and watch the fresh master's playhead. On a cold mount the room's position rides `playback:state`,
- * which the server sends before the `nowplaying:changed` that mounts the <audio>, so the fix has to
- * HOLD that position and apply it on the master's `canplay`. A fresh master stuck near 0 while the
- * room is at ~6s is the defect. As the corroborating half, the server position must NOT fall after the
- * reload (the backwards-telemetry drag).
- *
- *   PORT=5251 bun tests/e2e/probes/p15-reload-resume.mjs
- *
- * Exit: 0 the reload resumed at the room position and the server position held, 1 it restarted from 0
- * or dragged the server backwards, 2 the environment could not host the test.
- *
- * NOT-A-TV: this probe GRANTS autoplay. It has to — a reload has to resume a MOVING playhead, and a
- * real TV's gestureless policy leaves it at 0.00 where nothing can be observed (see p13/p14). This run
- * says nothing about whether a real television starts on its own; it says only what a reload does to a
- * song already playing.
- */
+// P15 — does a mid-song TV RELOAD resume at the room position, and leave the server's position alone? On a
+// cold mount the room position rides `playback:state`, which the server sends BEFORE the
+// `nowplaying:changed` that mounts the <audio>, so a correct app holds it and applies it on `canplay`. A
+// fresh master near 0 while the room is at ~6s is the defect; the corroborating half is that the server
+// position must not FALL after the reload (the backwards-telemetry drag).
+//
+//   PORT=5251 bun tests/e2e/probes/p15-reload-resume.mjs
+//
+// NOT-A-TV: grants autoplay, because a reload has to resume a MOVING playhead (docs/E2E.md#autoplay).
+
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -45,11 +30,7 @@ const MEDIA_DIR = join(SCRATCH, 'media');
 
 /** @type {Child[]} */
 const children = [];
-/**
- * @param {string} cmd
- * @param {string[]} args
- * @param {import('node:child_process').SpawnOptions} [opts]
- */
+/** @param {string} cmd @param {string[]} args @param {import('node:child_process').SpawnOptions} [opts] */
 function launch(cmd, args, opts = {}) {
 	const p = spawn(cmd, args, { stdio: 'ignore', ...opts });
 	children.push(p);
@@ -74,15 +55,10 @@ const bail = (m) => {
 
 /** @param {string} path @returns {Promise<any>} */
 const jget = async (path) => (await fetch(BASE + path)).json();
-/**
- * The room's authoritative position. The server exposes playback state only over the WebSocket
- * (`playback:state` frames), not over HTTP, so the phone socket records the latest reported
- * positionSec (see `ensureProbeWs`) and this reads it back out of the phone page.
- * @returns {Promise<number>}
- */
+/** The room's authoritative position. Playback state is exposed ONLY over the WebSocket, so
+ *  `ensureProbeWs` records it and this reads it back out of the page. @returns {Promise<number>} */
 const roomPos = async () => Number(await phone.evaluate(`window.__roomPos ?? NaN`));
 
-// ── boot a private instance ────────────────────────────────────────────────
 rmSync(SCRATCH, { recursive: true, force: true });
 mkdirSync(MEDIA_DIR, { recursive: true });
 
@@ -118,7 +94,6 @@ launch('bun', ['tests/e2e/fake-stems-worker.mjs'], {
 });
 await sleep(1500);
 
-// ── join, process one song ────────────────────────────────────────────────────
 const QUERIES = ['caroline', 'believin', 'rhapsody', 'prayer'];
 /** @type {Map<string, Media>} */
 const found = new Map();
@@ -134,18 +109,13 @@ const songA = uniq[0];
 /** @param {Media} song @returns {string} */
 const qOf = (song) => QUERIES.find((q) => song.title.toLowerCase().includes(q)) ?? QUERIES[0];
 const qA = qOf(songA);
-/**
- * @param {string} id
- * @param {string} q
- * @returns {Promise<boolean>}
- */
+/** @param {string} id @param {string} q @returns {Promise<boolean>} */
 async function isReady(id, q) {
 	const d = await jget(`/api/search?q=${q}`);
 	return (d.ready ?? []).some(/** @param {Media} m */ (m) => m.id === id);
 }
 console.log(`fixture A (plays): ${songA.title} [${songA.id}]\n`);
 
-// ── drive the TV ──────────────────────────────────────────────────────────
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 
@@ -180,8 +150,6 @@ async function ensureProbeWs() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(proto + '://' + location.host + '/ws?role=phone');
     await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('ws open failed')); });
-    // Record the room's authoritative position from every playback:state frame — the server does not
-    // expose it over HTTP, so this socket is the only read.
     window.__roomPos = NaN;
     ws.addEventListener('message', (ev) => {
       try {
@@ -191,7 +159,7 @@ async function ensureProbeWs() {
         }
       } catch {}
     });
-    // Ask for a fresh authoritative snapshot so __roomPos is populated even between telemetry frames.
+    // A fresh snapshot, so __roomPos is populated even between telemetry frames.
     ws.send(JSON.stringify({ type: 'hello' }));
     window.probeWs = ws;
   })()`);
@@ -262,11 +230,9 @@ if (before.bytes <= 32768) bail(`A is not really decoding (${before.bytes}B) —
 if (!Number.isFinite(roomBefore) || roomBefore <= 3)
 	bail(`server position is not past 3s (${roomBefore}) — no resume to test`);
 
-// ── the actual test: RELOAD the TV mid-song ───────────────────────────────
 console.log(`\nreloading /tv mid-song (room at ${roomBefore.toFixed(2)}s) — the repro\n`);
 await page.goto(`${BASE}/tv`);
 
-// Wait for the fresh master to mount and reach a real decode, then read where it landed.
 let after = null;
 for (let i = 0; i < 80; i++) {
 	await sleep(200);
@@ -282,13 +248,11 @@ console.log(
 	`after reload: TV t=${after.t.toFixed(2)}s decoded=${after.bytes}B | server positionSec=${roomAfter.toFixed(2)}s`
 );
 
-// (1) The fresh master must have RESUMED near the room position, not restarted from 0. The room keeps
-// advancing while the reload completes, so compare to the CURRENT room position with a generous
-// tolerance for reload+decode latency; the defect (restart from 0) is the whole song away.
+// The room keeps ADVANCING during the reload, so compare against the CURRENT room position, generously:
+// reload+decode latency is a second or two, where the defect is the whole song away.
 const RESUME_TOL = 2.5;
 const gap = Math.abs(after.t - roomAfter);
-// (2) The server position must not have been dragged BACKWARDS by the reloaded TV's telemetry. It only
-// ever advances; a fall below where it was before the reload is the backwards-drag half of the cold-mount defect.
+// The room position only ever advances, so a fall below the pre-reload value is the backwards drag.
 const SERVER_DRAG_TOL = 0.5;
 const serverDrop = roomBefore - roomAfter;
 

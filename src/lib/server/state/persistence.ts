@@ -1,6 +1,4 @@
-// Write-behind persistence: snapshots the authoritative queue + playback into SQLite.
-// Replace-the-world per flush is fine — the queue is small (a party), and this never sits on
-// the read/broadcast hot path. See ARCHITECTURE §9.
+// Write-behind persistence: snapshots the authoritative queue + playback into SQLite. Replace-the-world per flush is fine — the queue is small (a party), and this never sits on the read/broadcast hot path. See ARCHITECTURE §9.
 
 import { eq } from 'drizzle-orm';
 import type { DB } from '../db/index';
@@ -8,19 +6,12 @@ import { queueEntries, playbackState } from '../db/schema';
 import type { StatePersistence } from './store';
 import type { QueueEntry, PlaybackState } from '../../contract';
 
-// `roomId` binds this sink to ONE room (playback and queue alike). Playback state and the queue
-// used to be deployment-wide — a single 'singleton' playback row and a queue table with no room —
-// so two rooms could never each be playing or hold their own queue. Both are keyed by room_id now,
-// so the writer names the room it snapshots: the queue replace and the playback upsert both scope to
-// this room, never touching another room's rows. The single authoritative store persists to the
-// active room today; threading a room per party through the realtime layer above this seam is separate, unshipped work.
+// `roomId` binds this sink to ONE room: both tables are keyed by room_id, so the queue replace and the playback upsert scope to this room and never touch another room's rows.
 export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 	return {
 		persist({ entries, playback }: { entries: QueueEntry[]; playback: PlaybackState }) {
 			db.transaction((tx) => {
-				// Replace-the-world, but only for THIS room: a global `delete` here would wipe
-				// every other room's queue on every flush. Scope the clear to room_id so a room's
-				// write-behind snapshot is self-contained.
+				// Replace-the-world, but only for THIS room — an unscoped delete would wipe every other room's queue on every flush.
 				tx.delete(queueEntries).where(eq(queueEntries.roomId, roomId)).run();
 				if (entries.length) {
 					tx.insert(queueEntries)
@@ -32,9 +23,7 @@ export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 								status: e.status,
 								rotationSeq: e.rotationSeq,
 								addedAt: e.addedAt,
-								// The room this snapshot belongs to. The in-memory entries carry no room —
-								// the store holds one room's queue — so it is stamped from the sink's bound room here.
-								roomId
+								roomId // stamped from the sink's bound room — in-memory entries carry no room field
 							}))
 						)
 						.run();
@@ -43,9 +32,7 @@ export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 					.values({
 						roomId,
 						currentEntryId: playback.currentEntryId,
-						// The `position_sec` column is an INTEGER (db/schema.ts). Sub-second precision is kept
-						// in-memory / on the wire and floored HERE, at the persistence boundary, so an
-						// ordinary telemetry frame is never broadcast as an exact `0` that reads as a restart.
+						// `position_sec` is an INTEGER column; sub-second precision lives in-memory/on the wire and is floored HERE, at the persistence boundary, so a telemetry frame is never broadcast as an exact `0` that guide-sync.ts reads as a restart.
 						positionSec: Math.floor(playback.positionSec),
 						isPlaying: playback.isPlaying,
 						keyShift: playback.keyShift,

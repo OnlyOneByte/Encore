@@ -1,14 +1,3 @@
-<!--
-	TvLobby — "people are here, nobody has picked a song yet".
-
-	Layout option B (chosen 2026-09-02): the QR keeps the stage, the waiting line sits under it, and
-	the roster runs along the bottom as a strip. Reads as "the night hasn't started yet" while still
-	naming everyone who is in, so the screen answers both questions a glancing guest has: *can I
-	join?* and *who's here?*
-
-	The roster is PRESENCE-derived, never the full singer table — that table is append-only
-	and file-backed, so it would accumulate everyone who ever joined across nights.
--->
 <script lang="ts">
 	import JoinBadge from './JoinBadge.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -24,25 +13,16 @@
 		/** How many present singers did not fit in `roster`. */
 		overflow?: number;
 		/**
-		 * Queued entries that cannot play yet — processing, or waiting on a worker.
-		 *
-		 * The lobby covers TWO situations, not one, and the headline used to describe only the first:
-		 * "Waiting for someone to pick a song…" was shown even when somebody HAD picked one and it was
-		 * separating, because tvScreen() routes a queued-but-unplayable entry here (its `waiting` value
-		 * requires the player to be actively holding). So the screen contradicted the phone, which was
-		 * simultaneously saying "You're next once it's ready".
+		 * Queued entries that cannot play yet — processing, or waiting on a worker. The lobby covers TWO
+		 * situations: `tvScreen()` routes a queued-but-unplayable entry here, so a headline that only describes
+		 * "nobody has picked" contradicts the phone, which is saying "You're next once it's ready".
 		 */
 		pendingCount?: number;
 		/** The advertised join address is unroutable — render the operator notice, not a dead QR. */
 		unreachable?: boolean;
 		/**
-		 * The room code — the typed way in, which this screen did not carry at all.
-		 *
-		 * REPORTED: "when people are in the room, the room code is not shown at all. Only the QR." The
-		 * attract screen prints it as the largest element on the stage, and then the moment one person
-		 * joins, the TV switches to THIS screen and the code vanishes — so the state a latecomer actually
-		 * walks in on was the one state with no code. The address in text (`.url`) was added here for the
-		 * same reason and is the same omission one step earlier.
+		 * The room code — the typed way in. The attract screen prints it as the largest element on the stage, so
+		 * without it here the state a latecomer walks in on is the one state with no code.
 		 */
 		roomCode?: string | null;
 	}
@@ -60,48 +40,27 @@
 	const count = $derived(roster.length + overflow);
 
 	/*
-	 * FULL ROSTER, NO TRUNCATION.
+	 * FULL ROSTER, NO TRUNCATION: the reason to show it at all is that it must not degrade as the party grows.
 	 *
-	 * The lobby shows EVERY guest — the reason to show the roster at all is that it must not degrade as
-	 * the party grows, so a "+N more" fold (the previous behaviour) is exactly the degradation to avoid.
-	 * The route now passes the whole roster (lobbyRoster with no cap), so `overflow` is 0 and this
-	 * renders one chip per present singer.
-	 *
-	 * THE STEP-DOWN IS A RULE, not a discovery at a party. Measured: 10 guests still fit two rows at the
-	 * 56px chip; headroom is ~12 before the chips must shrink. Above CHIP_STEPDOWN the roster switches to
-	 * a smaller chip tier (the `.roster.dense` modifier) so 13+ guests still fit without clipping or
-	 * overflowing the title-safe area, rather than letting a bigger party push chips off-screen.
-	 *
-	 * A COUNT IS NOT THE CONSTRAINT — TOTAL WIDTH IS, and keying only on the count clipped the roster.
-	 * The "~12" headroom was measured with names of a typical length, but `displayName` is user-typed and
-	 * `repository.ts` admits up to 32 characters. At that ceiling a chip is roughly three times as wide,
-	 * so NINE guests already overflow the two rows `max-height: 26vh` allows, while the count rule sits
-	 * quiet until 13 — and `overflow: hidden` then cut the tail off silently. `e2e/lobby-overlap` caught
-	 * it at every viewport below 1080p: nine 32-character names clipped 9 chips at 720p, 7 at 768p.
-	 *
-	 * So the rule now keys on the thing that actually wraps: total characters across the roster.
-	 * CHAR_BUDGET is CHIP_STEPDOWN × a typical name, which keeps the measured behaviour for ordinary
-	 * parties — 12 guests at ~10 characters is still not dense — and steps down early exactly when the
-	 * names are what consume the row. Still a rule, still no geometry read: `.dense` is derived from the
-	 * data, never from measuring the rendered strip.
+	 * A COUNT IS NOT THE CONSTRAINT — TOTAL WIDTH IS. `displayName` admits up to 32 characters, where a chip
+	 * is roughly three times as wide, so NINE guests already overflow the two rows `max-height: 26vh` allows
+	 * while a count rule sits quiet until 13 and `overflow: hidden` cuts the tail off silently. So the rule
+	 * keys on total CHARACTERS: CHAR_BUDGET is CHIP_STEPDOWN times a typical name, which keeps ordinary
+	 * parties un-dense. Derived from the DATA, never from measuring the rendered strip.
 	 */
 	const CHIP_STEPDOWN = 12;
 	const CHAR_BUDGET = 120;
 	const rosterChars = $derived(roster.reduce((n, m) => n + m.displayName.length, 0));
 	const dense = $derived(roster.length > CHIP_STEPDOWN || rosterChars > CHAR_BUDGET);
-	/* Scheme-less AND query-less, matching attract: nobody types "http://" or the redundant ?room=CODE
-	   off a wall (the QR carries the full URL). Stripping the query is also what keeps the address to one
-	   line so it cannot collide with a full roster below it. Through the shared helper, which also drops
-	   the bare trailing slash this regex left behind. */
+	/* Scheme-less AND query-less, matching attract. Stripping the query is also what keeps the address to ONE
+	   line, so it cannot collide with a full roster below it. */
 	const joinShort = $derived(joinAddressLabel(joinUrl));
 	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
 	const processing = $derived(pendingCount > 0);
 
-	// The process line comes from process-phrasing — the ONE guest-facing process vocabulary, shared with the
-	// phone — so the lobby and the phone say the same thing. The TV knows only a coarse "something is
-	// processing" state, so it passes the least-committal in-flight value 'queued' (which resolves to
-	// "Making karaoke…") rather than naming a worker step it cannot know. The "· N in line" count is a
-	// lobby-only addition the phone has no equivalent for, so it stays here.
+	// From process-phrasing — the ONE guest-facing vocabulary, shared with the phone. The TV knows only a
+	// coarse "something is processing" state, so it passes the least-committal in-flight value rather than
+	// naming a worker step it cannot know.
 	const headline = $derived(
 		processing
 			? pendingCount === 1
@@ -110,20 +69,16 @@
 			: 'Waiting for someone to pick a song…'
 	);
 
-	// With a rehydrated queue but nobody reconnected, the roster is empty — say something true
-	// rather than "0 in the room".
+	// With a rehydrated queue but nobody reconnected the roster is empty, so say something true rather than
+	// "0 in the room".
 	//
-	// THE PROMPT SAYS "pick a song", NOT "tap Turn", and the rename is a defect fix. There is no control
-	// called Turn any more: SongRow's two actions are ICON-ONLY (a sparkle on an accent fill, a plus
-	// outlined in green) and the words survive only as their `aria-label`s — "Sing this — strips the
-	// vocals first…" and "Add a turn". So the wall was instructing a whole room to look for a label no
-	// phone displays. This wording borrows the verb from `headline` one block up, which is the vocabulary
-	// the same guest has just read on the same screen.
+	// THE PROMPT SAYS "pick a song", NOT "tap Turn": there is no control called Turn — SongRow's actions are
+	// ICON-ONLY and the words survive only as `aria-label`s — so naming one instructs a whole room to look for
+	// a label no phone displays. The verb is borrowed from `headline` one block up.
 	const sub = $derived(
 		processing
 			? // Do NOT tell them to pick a song here: they already did, and the honest answer is that the
-				// wait is the karaoke being made, not them. "karaoke", not "the vocals"/"separation" — the
-				// guest word, matching process-phrasing and the phone.
+				// wait is the karaoke being made. "karaoke", not "the vocals"/"separation" — the guest word.
 				count > 0
 				? `${count} in the room · making the karaoke, this takes a minute`
 				: 'Making the karaoke — this takes a minute'
@@ -133,21 +88,22 @@
 	);
 </script>
 
+TvLobby — "people are here, nobody has picked a song yet". The QR keeps the stage, the waiting line sits under it, and
+the roster runs along the bottom as a strip, so the screen answers both questions a glancing guest has: can I join, and
+who is here? The roster is PRESENCE-derived, never the full singer table — that table is append-only and file-backed, so
+it would accumulate everyone who ever joined across nights.
+
 <div class="lobby">
 	<div class="stack-region">
 		<div class="stack">
 			<!--
-				NO BRANCH ON REACHABILITY (2026-09-21). An unroutable address used to replace this whole stack with
-				a `--danger` card, taking the headline, the roster context, the address and the code with it. The QR
-				renders in every state now and `JoinBadge` appends a one-line notice under it — see the rationale
-				there, including the trade that accepts a scannable-but-dead code on a loopback address.
+				The QR renders in EVERY state, reachable or not; `JoinBadge` appends a one-line notice under it.
+				Replacing the whole stack took the headline, the roster context, the address and the code with it.
 			-->
 			<!--
-			ORDER: instruction, then the QR, then the typed address beneath it.
-			The QR used to come first with the copy underneath, which read as "here is a code, and
-			some text about it". Leading with the instruction and captioning the code with its own
-			address makes the pair one object — and it is the same object, at a smaller scale, that
-			sits in the corner during a song, so a guest recognises it across states.
+				ORDER: instruction, then the QR, then the typed address. Leading with the instruction and captioning the
+				code with its own address makes the pair ONE object — the same object, at a smaller scale, that sits in
+				the corner during a song, so a guest recognises it across states.
 			-->
 			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
 			<div class="copy">
@@ -162,18 +118,13 @@
 				unreachable={unreachable}
 			/>
 			<!--
-			The address in text as well as in the QR. The attract screen prints it and this screen did
-			not, which left the lobby — the state a latecomer actually walks in on — with no way to join
-			when a camera will not scan the code. Same treatment as attract so the two screens do not
-			disagree about what the address looks like.
+				The address in TEXT as well as in the QR, so the lobby — the state a latecomer walks in on — can
+				still be joined when a camera will not scan. Same treatment as attract, so the two screens agree.
 			-->
 			<p class="url">{joinShort}</p>
 			<!--
-				AND THE CODE, which this screen was missing entirely — the QR and the address were here and
-				the thing a guest types into the phone was not. Same ladder as the attract screen ("enter
-				room code" then the code itself), so the two states do not disagree about how to join; the
-				VALUE is one tier down from attract's `--tv-code` because this screen also carries a
-				headline, a roster strip and the QR, and the display tier would outweigh all three.
+				AND THE CODE. Same ladder as attract so the two states agree, but the VALUE is one tier down,
+				because this screen also carries a headline, a roster strip and the QR.
 			-->
 			{#if roomCode}
 				<p class="code"><span class="code-l">or enter room code</span><b class="code-v">{roomCode}</b></p>
@@ -186,10 +137,9 @@
 			<span class="label">In the room</span>
 			{#each roster as member (member.id)}
 				<!--
-				  An away singer is GREYED, not removed. Before this the roster was pure socket count, so a
-				  locked phone erased its owner from the screen — the one place a guest confirms the room
-				  saw them join. "away" is spelled out rather than implied by opacity alone: dimming is not
-				  a legible signal across a room, and it is invisible to anyone reading the name aloud.
+					An away singer is GREYED, not removed: a locked phone must not erase its owner from the one place
+					a guest confirms the room saw them join. "away" is spelled OUT rather than implied by opacity
+					alone — dimming is not legible across a room, and invisible to anyone reading the name aloud.
 				-->
 				<span class="person" class:away={member.state === 'away'}>
 					<span class="swatch" style="--singer: {member.color}"></span><span class="name">{member.displayName}</span>
@@ -207,22 +157,17 @@
 		z-index: var(--z-tv-screen);
 		display: flex;
 		/*
-		 * COLUMN, not a single centred box. The stack takes a flex region that ENDS where the roster
-		 * strip begins; the strip flows beneath it in normal order. Centring the stack across the full
-		 * `inset: 0` box while the strip was pinned `bottom: 0` and grew upward as names wrapped meant the
-		 * two intersected on short panels (≤768px), and DOM order painted the strip's backdrop and chips
-		 * over the typed join address — the only way in when a camera won't read the QR. With the
-		 * strip in flow its real height always reserves its band, so no roster size at any panel height
-		 * can reach the address. The 1920/3840 panels never overlapped, so a reserve keyed to a fixed
-		 * height would have been wrong at the tall end; letting the strip's own height do the reserving is
-		 * correct at every resolution.
+		 * COLUMN, not a single centred box. The stack takes a flex region that ENDS where the strip begins, and the
+		 * strip flows beneath it. Centred across the full `inset: 0` box while the strip was pinned `bottom: 0` and
+		 * grew upward as names wrapped, the two intersected on short panels and DOM order painted the strip's chips
+		 * over the typed join address — the only way in when a camera will not read the QR. In flow, the strip's
+		 * real height always reserves its band, which is correct at every resolution a fixed reserve is not.
 		 */
 		flex-direction: column;
 		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
-	/* The stack owns all the space the strip does not, and centres itself inside it — so on a tall panel
-	   it reads exactly as before (centred with the strip a thin band at the very bottom), and on a short
-	   one it slides up out of the strip's way rather than into it. */
+	/* The stack owns all the space the strip does not, so on a tall panel it reads as before and on a short one
+	   it slides UP out of the strip's way rather than into it. */
 	.stack-region {
 		flex: 1;
 		min-height: 0;
@@ -235,16 +180,12 @@
 		flex-direction: column;
 		align-items: center;
 		/*
-		 * No flex `gap`. The rhythm is deliberately uneven — instruction, a beat, the QR, a smaller beat,
-		 * its address — and one gap would force all three intervals equal. Per-child margins in vh, so
-		 * the proportions hold at 720p and 4K rather than being right at one size. Mirrors the attract
-		 * screen's stack, because the two idles are meant to be the same screen with a different
-		 * instruction and a different bottom strip.
+		 * No flex `gap`: the rhythm is deliberately UNEVEN — instruction, a beat, the QR, a smaller beat, its
+		 * address — and one gap would force all three intervals equal. Per-child margins in vh, so the proportions
+		 * hold at 720p and 4K. Mirrors the attract stack: the two idles are the same screen.
 		 */
 	}
-	/* In flow at the head of the stack, exactly as on attract — the two idles are meant to be the same
-	   screen. It used to be pinned top-left by the route while attract centred it, which is the kind of
-	   mismatch only a side-by-side frame reveals. */
+	/* In flow at the head of the stack, exactly as on attract — the two idles are the same screen. */
 	.brand {
 		font-weight: 800;
 		font-size: var(--tv-name);
@@ -263,11 +204,8 @@
 		text-align: center;
 	}
 	h1 {
-		/*
-		 * --tv-name (not --tv-hero): the lobby now shows the WHOLE roster below, so the headline
-		 * yields height to the roster rather than owning the reel-adjacent hero tier. Still well above the
-		 * ten-foot floor; it is read once, not sung along to.
-		 */
+		/* --tv-name, not --tv-hero: the whole roster shows below, so the headline yields height to it rather than
+		   owning the reel-adjacent hero tier. Still well above the ten-foot floor; it is read once. */
 		font-size: var(--tv-name);
 		font-weight: 900;
 		line-height: 1.04;
@@ -282,9 +220,8 @@
 	.stack :global(.hero) {
 		margin-top: 2.8vh;
 	}
-	/* The typed join address. Same 44px budget and no-break rule as the attract's .jt-url:
-	   an address is one unbreakable token, so it is sized to fit one line rather than wrapped mid-octet.
-	   The query is already stripped in the script, so this is host:port/join — short enough at --tv-name. */
+	/* Same budget and no-break rule as attract's `.jt-url`: an address is ONE unbreakable token, sized to fit
+	   one line rather than wrapped mid-octet. */
 	.url {
 		font-size: var(--tv-name);
 		font-weight: 800;
@@ -292,32 +229,27 @@
 		margin: 1.6vh 0 0;
 	}
 	/*
-	 * THE CODE LINE. One block, label above value, so the pair cannot separate as the stack reflows — and
-	 * `1.2vh` rather than the address's `1.6vh` because the two belong together: they are one typed path,
-	 * and equal gaps above both would read as three unrelated lines under the QR.
+	 * THE CODE LINE. One block, label above value, so the pair cannot separate as the stack reflows, with a
+	 * tighter gap than the address's because the two belong together as one typed path.
 	 *
-	 * THE VALUE IS `--tv-name`, MATCHING `.url`, NOT attract's `--tv-code` (3.29rem). This screen carries a
-	 * headline, a sub, the QR and the roster strip; the display tier is right on attract because the code is
-	 * the ONLY thing competing there, and here it would outweigh everything including the roster the screen
-	 * exists to show. The letter-spacing is what makes it transcribable at this size — a six-character code
-	 * read across a room needs its characters separated more than it needs to be bigger.
+	 * THE VALUE IS `--tv-name`, NOT attract's `--tv-code`: this screen also carries a headline, a sub, the QR
+	 * and the roster strip, so the display tier would outweigh the roster the screen exists to show. The
+	 * LETTER-SPACING is what makes it transcribable at this size.
 	 */
 	/*
 	 * `text-align: center` IS LOAD-BEARING, not a default restated. `.stack` is a flex COLUMN with
-	 * `align-items: center`, so this <p> is a shrink-to-fit item sized by its WIDER child — the label — and
-	 * its two block children then inherited the stage's left alignment. The code sat flush left under a
-	 * label half again as wide, which reads as "the room code is off-centre" because it is.
+	 * `align-items: center`, so this <p> is a shrink-to-fit item sized by its WIDER child — the label — and its
+	 * two block children then inherit the stage's left alignment.
 	 */
 	.code {
 		margin: 1.2vh 0 0;
 		text-align: center;
 	}
 	/*
-	 * THE `padding-left` COMPENSATES THE TRAILING LETTER-SPACE, and it is the second half of the same
-	 * off-centre report. `letter-spacing` adds its space AFTER the last glyph as well as between, and a
-	 * centred line box includes it — so the glyphs sit left of true centre by half the tracking. At 0.18em
-	 * of `--tv-name` that is a visible few pixels on a wall. One letter-space of left padding moves the
-	 * line back by half of itself, which is exactly the error. Each value matches its own tracking.
+	 * THE `padding-left` COMPENSATES THE TRAILING LETTER-SPACE: `letter-spacing` adds its space AFTER the last
+	 * glyph as well as between, and a centred line box includes it, so the glyphs sit left of true centre by
+	 * half the tracking. One letter-space of left padding is exactly that error, so each value must match its
+	 * own tracking.
 	 */
 	.code-l {
 		display: block;
@@ -339,54 +271,35 @@
 
 	.strip {
 		/*
-		 * In normal flow at the foot of the .lobby column, not `position: absolute; bottom: 0`. Its height
-		 * is part of layout, which reserves the band above it. It now shows the WHOLE roster
-		 *, so it WRAPS to multiple rows rather than clipping — a party is not truncated.
+		 * In normal flow at the foot of the column, NOT `position: absolute`, so its height is part of layout and
+		 * reserves the band above it. It WRAPS rather than clipping: a party is not truncated.
 		 */
 		flex: none;
 		/*
-		 * The BACKDROP is deliberately full-bleed (it is the column's full width and its fade runs to the
-		 * bottom edge) so it reaches the edge of the panel, but the CONTENT inside it must not be. Padding
-		 * carries the safe-area inset, because a set that overscans would otherwise crop the roster — the
-		 * one place a guest confirms the room actually saw them join. A guard that only inspects edge
-		 * OFFSETS cannot catch this shape, which is why it survived the first pass of the stage scale.
+		 * The BACKDROP is deliberately full-bleed, but the CONTENT inside it must not be: the padding carries the
+		 * safe-area inset, or a set that overscans crops the roster — the one place a guest confirms the room saw
+		 * them join. A guard that only inspects edge OFFSETS cannot catch this shape.
 		 *
-		 * RESERVE THE CORNER CONTROLS. The fullscreen button (.fs-btn) and the
-		 * join corner badge are `position: absolute` in the bottom-right at `right: var(--tv-safe-x)`,
-		 * ABOVE this strip in the paint order (--z-tv-card > --z-tv-reel). A wrapped roster's rightmost
-		 * chip used to land UNDER the button (elementFromPoint returned .fs-btn at 10–12 guests), which is
-		 * worse than the "+N more" it replaced — a name hidden under a control. So the horizontal padding
-		 * clears the control's whole footprint (its 88px cap + the safe inset + a gap), applied to BOTH
-		 * sides so the centred roster stays centred and reaches neither bottom corner.
+		 * IT ALSO RESERVES THE CORNER CONTROLS, which are absolute in the bottom-right and ABOVE this strip in
+		 * paint order, so a wrapped roster's rightmost chip landed UNDER the fullscreen button — a name hidden
+		 * under a control. Applied to BOTH sides, so the centred roster stays centred.
 		 */
 		padding: 22px var(--tv-strip-corner-clear) calc(var(--tv-safe-y) * 0.6);
-		/* rgba(11,11,18,0.9) was --bg at 90%; color-mix keeps the fade on the theme's background. */
 		background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 90%, transparent) 40%);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: var(--space-2xl);
-		/*
-		 * WRAP the full roster. No cap, no clip: every guest is shown. The step-down (`.dense`
-		 * below) is what keeps a large party inside the title-safe band — the chips shrink rather than
-		 * the roster being truncated or clipped off-screen.
-		 */
+		/* WRAP the full roster: no cap, no clip. The `.dense` step-down is what keeps a large party inside the
+		   title-safe band — the chips shrink rather than the roster being truncated. */
 		flex-wrap: wrap;
-		/*
-		 * A vh max-height so the wrapped strip cannot grow UPWARD past its band into the corner controls
-		 * either (the horizontal clear handles the same-row case; this handles the extra-rows case). NO
-		 * `overflow: hidden` — with the step-down keeping 13+ inside two rows this is a safety net, not a
-		 * clip, and a hard clip is what silently ate roster members in the previous design.
-		 */
+		/* A vh max-height so the wrapped strip cannot grow UPWARD into the corner controls (the horizontal clear
+		   handles the same-row case). Deliberately NO `overflow: hidden` — a hard clip is what silently ate roster
+		   members before. */
 		max-height: 26vh;
 	}
-	/*
-	 * THE CHIP STEP-DOWN RULE. Above CHIP_STEPDOWN (12) guests the chip type and dot
-	 * step down a tier, so 13+ still fit two rows inside the title-safe area instead of pushing chips
-	 * off-screen. A RULE, applied by the `dense` class the script derives, rather than a size a party
-	 * discovers by overflowing. Written as `.dense .name` / `.dense .swatch` (not `.dense .person`) so
-	 * the smaller tier tracks the type and the identity dot together.
-	 */
+	/* Above the budget the chip type and dot step down a tier, so a large party still fits two rows inside the
+	   title-safe area. Written as `.dense .name` / `.dense .swatch` so type and dot track together. */
 	.strip.dense {
 		gap: var(--space-xl);
 	}
@@ -404,27 +317,16 @@
 		color: var(--ink-dim);
 		font-weight: 700;
 	}
-	/*
-	 * A NAME AND A DOT, not a pill.
-	 *
-	 * Each roster entry used to be a bordered, filled chip. Five of them made the bottom of the screen
-	 * read as a row of buttons on a surface that has no input at all — and the pill's surface was doing
-	 * no work the dot and the name were not already doing. Dropping it removes furniture from the one
-	 * screen whose job is to feel like an invitation, and the singer's own hue still separates one
-	 * person from the next.
-	 */
+	/* A NAME AND A DOT, not a pill: bordered filled chips made the bottom of the screen read as a row of
+	   buttons on a surface that has no input at all. The singer's own hue still separates one from the next. */
 	.person {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.42em;
 		font-size: var(--tv-body);
 		font-weight: 700;
-		/*
-		 * Bound the chip WIDTH so one very long name (the join path admits up to 32 chars) cannot blow a
-		 * row out. A name past this is clipped with an ellipsis on the NAME only — the dot (the singer's
-		 * identity) is flex:none and always shows. A 32-char name is not readable across a room anyway, so
-		 * truncating the tail loses nothing a guest could use, and the roster wraps rather than overflowing.
-		 */
+		/* Bound the chip WIDTH so one very long name cannot blow a row out. The NAME ellipsises; the dot is the
+		   singer's identity, so it is flex:none and always shows. */
 		max-width: 16ch;
 		min-width: 0;
 	}
@@ -434,11 +336,8 @@
 		white-space: nowrap;
 		min-width: 0;
 	}
-	/*
-	 * Away: recessed, never hidden. The dot keeps its hue (that is the singer's identity, and fading it
-	 * would read as a different person) while the name recedes, so a glance separates "here now" from
-	 * "still in the room" without having to read every entry.
-	 */
+	/* Away: recessed, never hidden. The DOT keeps its hue — that is the singer's identity, and fading it would
+	   read as a different person — while the name recedes. */
 	.person.away {
 		color: var(--ink-dim);
 		font-weight: 500;
@@ -460,13 +359,9 @@
 		flex: none;
 		background: var(--singer);
 		/*
-		 * A hairline ring so a dot never dissolves into the background. Guests choose their own hue now,
-		 * and although the picker's pinned lightness guarantees at least 3:1 against the surfaces, this
-		 * dot is the ONLY thing distinguishing one singer from another on a screen read from across a
-		 * room — so it gets a defined edge rather than relying on fill contrast alone.
-		 *
-		 * Sized in `em` now that it rides beside the name rather than inside a fixed-height pill, so it
-		 * tracks the name at every resolution instead of being a 22px dot next to 4K type.
+		 * A hairline ring so a dot never dissolves: the picker's pinned lightness guarantees 3:1 against the
+		 * surfaces, but this dot is the ONLY thing distinguishing one singer from another on a screen read across a
+		 * room. Sized in `em`, so it tracks the name rather than being a 22px dot next to 4K type.
 		 */
 		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 25%, transparent);
 	}

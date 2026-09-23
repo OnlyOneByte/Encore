@@ -1,17 +1,7 @@
 <!--
-  ── ENCORE DEVIATIONS (S6) ───────────────────────────────────────────────────────────────────
-  The registry's appearance and tone set are REPLACED by Encore's chip, because the chips this
-  migrates are a semantic STATE system rather than decoration: eleven rules in SongRow mapping a
-  song's readiness and kind onto `--ok` / `--warn` / `--danger` / `--accent-ink`, each a certified
-  surface+border+ink triple. shadcn offers four generic tones, none of which carry those meanings.
-
-  1. `transition-all` and `transition-colors` removed. motion.test.ts bans motion utility names
-     tree-wide — the same deletion already applied to every other vendored component here.
-  2. `h-5 … text-xs` replaced by Encore's own metrics, so no chip changes size.
-  3. Appearance is scoped CSS, not utilities: `app.css` sets `source(none)` with a single `@source`
-     over this directory, and scoped CSS needs no minting at all.
-  4. A `wrap` axis exists because ONE chip carries a phrase instead of a token; the reason is on the
-     variant, taken.
+  Encore's chip, not the registry's four generic tones: these chips are a semantic STATE system mapping a
+  song's readiness and kind onto --ok / --warn / --danger / --accent-ink, each a certified
+  surface+border+ink triple. Appearance is scoped CSS rather than utilities.
 -->
 <script lang="ts" module>
 	import { type VariantProps, tv } from 'tailwind-variants';
@@ -20,11 +10,6 @@
 		base: 'encore-chip',
 		variants: {
 			variant: {
-				/*
-				 * Encore's tones, not the registry's default/secondary/destructive/outline. Each is a
-				 * CERTIFIED triple — surface, border and ink set together, never separately — lifted
-				 * verbatim from SongRow's chip rules so the migration changes no colour.
-				 */
 				neutral: '',
 				ok: 'encore-chip-ok',
 				warn: 'encore-chip-warn',
@@ -32,12 +17,9 @@
 				accent: 'encore-chip-accent',
 				tag: 'encore-chip-accent encore-chip-tag'
 			},
-			/*
-			 * A chip that carries a PHRASE rather than a token must wrap. Every other chip here is
-			 * short enough to fit one line at 200% text; "Longer than a song" is ~230px doubled, wider
-			 * than the row holds, and a blanket `white-space: nowrap` made its min-content width its FULL
-			 * width — so it could not shrink and pushed the browse page past a 320px viewport.
-			 */
+			/* A chip carrying a PHRASE rather than a token must opt into wrapping: under the base's
+			   `white-space: nowrap` its min-content width is its full width, so it cannot shrink and pushes
+			   the page past the 320px reflow floor at 200% text. */
 			wrap: {
 				true: 'encore-chip-wrap',
 				false: ''
@@ -95,15 +77,9 @@
 		color: var(--ink-dim);
 		white-space: nowrap;
 	}
-	/*
-	 * Claw back list height on the narrowest phone. A guest reviewing the 320px frame could see only
-	 * about four songs before the player bar and called it irritating to scroll — and comparing uploads
-	 * is the entire point, so how many fit at once IS the feature. Smaller chips buy roughly a fifth of
-	 * a row back without shrinking the title or the 44px target.
-	 *
-	 * This lived in SongRow until S6 of the shadcn migration. It is the CHIP's own metrics at a viewport, so it moved with
-	 * the chip; a scoped rule in that row can no longer reach the element this component renders.
-	 */
+	/* Claws back about a fifth of a row on the narrowest phone, where how many songs fit at once is the
+	   feature — without shrinking the title or the 44px target. It belongs here rather than in the row: a
+	   scoped rule there cannot reach the element this component renders. */
 	@media (max-width: 380px) {
 		.encore-chip {
 			font-size: 0.62rem;
@@ -128,12 +104,8 @@
 		border-color: var(--danger-line);
 		color: var(--danger-ink);
 	}
-	/*
-	 * A quiet accent wash — enough to read as a set apart from the neutral fact chips beside it, but
-	 * never a status colour: a tag is a describing word, not a warning. Reuses accent tokens rather
-	 * than a new hex.
-	 */
-	/* A tag is a describing word, so it reads as a word: capitalised, never a status colour. */
+	/* A tag is a describing word, so it reads as a word: capitalised, and washed in accent rather than any
+	   status colour — a tag is not a warning. */
 	.encore-chip-tag {
 		text-transform: capitalize;
 	}

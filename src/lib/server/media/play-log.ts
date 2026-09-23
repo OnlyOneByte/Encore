@@ -1,12 +1,8 @@
-// Durable play log — one row per performance, and the only thing that can answer WHEN.
-//
-// This does NOT replace the sidecar's `library.playCount`: that stays the authoritative lifetime
-// total, and retention's LRU still reads `lastPlayedAt`. What a counter cannot do is carry a time
-// axis, so "songs sung tonight", "plays this week" and any trend line are unanswerable from it.
-// `queue_entries` cannot answer either — it is deleted whole on every persistence flush and terminal
-// rows are dropped again on boot, so a finished performance leaves no trace anywhere.
-//
-// Deliberately no singer column. See the `plays` table comment in schema.ts.
+// Durable play log — one row per performance, the only thing that can answer WHEN. Does NOT replace
+// the sidecar's `library.playCount` (still authoritative for the lifetime total; retention's LRU
+// reads `lastPlayedAt`) — a counter has no time axis. `queue_entries` can't answer either: it's
+// deleted whole on every persistence flush, leaving no trace of a finished performance. No singer
+// column by design — see the `plays` table comment in schema.ts.
 
 import { desc, eq, gte, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
@@ -32,10 +28,9 @@ export class PlayLog {
 	}
 
 	/**
-	 * Record one play. Idempotent on `entryId`: the in-memory PlayTracker dedupes re-emits, but its
-	 * state resets on restart while the DB's does not — so replaying the entry that was on screen when
-	 * the server went down would otherwise double-count it. The unique index makes that impossible and
-	 * this swallows the conflict rather than throwing into the playback path.
+	 * Record one play. Idempotent on `entryId`: PlayTracker's in-memory dedupe resets on restart
+	 * while the DB's unique index does not, so replaying the entry on screen when the server died
+	 * would otherwise double-count it — this swallows that conflict rather than throwing into playback.
 	 */
 	record(mediaId: string, entryId: string, now: number): void {
 		this.#db
@@ -69,9 +64,9 @@ export class PlayLog {
 	}
 
 	/**
-	 * Plays per UTC day, oldest first. Days with NO plays are absent rather than zero-filled: the log
-	 * cannot distinguish "nobody sang" from "the server was off", so inventing a zero would draw a
-	 * quiet night and an outage identically. The caller decides how to render a gap.
+	 * Plays per UTC day, oldest first. Days with NO plays are absent, not zero-filled — the log can't
+	 * tell "nobody sang" from "the server was off", so a synthetic zero would draw both identically;
+	 * the caller decides how to render a gap.
 	 */
 	perDay(since: number): PlaysPerDay[] {
 		const rows = this.#db

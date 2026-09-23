@@ -1,14 +1,8 @@
-// PUT /api/settings/room must ADDRESS the room named by `?roomId=`, not always the default room.
-//
-// The repository (SettingsRepository.setRoom/getRoom/getEffective) has always been keyed by an
-// explicit roomId; the bug was that this endpoint called setRoom(body)/getEffective() with
-// NO id, so every write — whatever room it meant — landed on the literal room id 'main'. These tests
-// drive the REAL PUT handler against a REAL SettingsRepository on an in-memory migrated DB, so the
-// pinned mechanism is end-to-end: the query param reaches the repository call.
-//
-// MUTATION / BASE-RED: on base, `?roomId=partyB` writes 'main' instead, so getRoom('partyB') reads
-// back the DEFAULT (2500) and getRoom('main') becomes 5000 — both assertions below invert. Reverting
-// EITHER threaded argument (setRoom's roomId or getEffective's) reds this file.
+// PUT /api/settings/room must ADDRESS the room named by `?roomId=`, never always the default. The
+// repository is keyed by an explicit roomId, so calling setRoom/getEffective with NO id lands every write
+// on the literal room 'main' whatever it meant. Driven through the REAL PUT handler against a REAL
+// SettingsRepository, so the pinned mechanism is end-to-end: the query param reaches the repository call,
+// and reverting EITHER threaded argument reds this file.
 import { test, expect, afterEach } from 'bun:test';
 import { PUT } from '$routes/api/settings/room/+server';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
@@ -23,10 +17,10 @@ function installApp(settings: SettingsRepository, activeRoomId = 'active-room') 
 		// A joined singer: can(actor,'settings:write-room') passes iff singerId is truthy.
 		singers: { bySessionToken: () => ({ id: 'singer-1' }) },
 		settings,
-		// An omitted ?roomId= now falls back to the LIVE room, not the literal 'main'.
+		// An omitted ?roomId= falls back to the LIVE room, not the literal 'main'.
 		activeRoomId,
 		publish: () => {},
-		// reorder() returning null skips the queue:patch branch — irrelevant to room addressability.
+		// reorder() returning null skips the queue:patch branch, which is irrelevant here.
 		state: { reorder: () => null },
 		mediaById: new Map()
 	};
@@ -44,7 +38,6 @@ function putRoom(roomId: string | null, body: unknown) {
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify(body)
 	});
-	// cookies.get is read only to resolve the singer, which the fake bySessionToken ignores.
 	return PUT({ request, cookies: { get: () => 'ignored' }, url } as never);
 }
 
@@ -56,9 +49,8 @@ test('a non-default roomId writes THAT room, leaving the default room untouched'
 	const res = await putRoom('partyB', { songIntroMs: 5000 });
 	expect(res.status).toBe(200);
 
-	// The named room received the write…
 	expect(settings.getRoom('partyB').songIntroMs).toBe(5000);
-	// …and the default room did NOT (on base, the default room absorbs every write instead).
+	// …and the default room did NOT absorb it.
 	expect(settings.getRoom('main').songIntroMs).toBe(2500);
 });
 
@@ -66,24 +58,21 @@ test('the response body reflects the ADDRESSED room, not the default room', asyn
 	const settings = new SettingsRepository(migratedDb());
 	installApp(settings);
 	const res = await putRoom('partyB', { songIntroMs: 5000 });
-	// getEffective(roomId) must read back partyB; on base it reads 'main' and returns 2500.
+	// getEffective(roomId) must read back the named room, not the default's 2500.
 	const payload = (await res.json()) as { room: { songIntroMs: number } };
 	expect(payload.room.songIntroMs).toBe(5000);
 });
 
 test('an absent roomId writes the ACTIVE room, not the literal "main"', async () => {
-	// the phone settings page fetches /api/settings/room with NO ?roomId=. Before this fix that
-	// bare write landed on 'main' while every reader read the active room — the write was silently
-	// discarded (host toggles a control, gets 200, nothing changes). The fallback is now
-	// app.activeRoomId, so the bare write lands where the readers look.
+	// The phone settings page fetches /api/settings/room with NO ?roomId=, so a bare write that lands on
+	// 'main' while every reader reads the ACTIVE room is silently discarded — the host toggles a control,
+	// gets 200, and nothing changes. The fallback is app.activeRoomId, where the readers look.
 	const active = 'active-room';
 	const settings = new SettingsRepository(migratedDb());
 	installApp(settings, active);
 	const res = await putRoom(null, { songIntroMs: 5000 });
 	expect(res.status).toBe(200);
-	// the write reaches the ACTIVE room …
 	expect(settings.getRoom(active).songIntroMs).toBe(5000);
-	// … and did NOT land on 'main' (the base behaviour that discarded it). Reverting the writer
-	// fallback to 'main' reds this.
+	// …and did NOT land on 'main', which is what discards it.
 	expect(settings.getRoom('main').songIntroMs).toBe(2500);
 });

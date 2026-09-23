@@ -18,8 +18,8 @@ describe('tvScreen', () => {
 	});
 
 	it('everyone away with an empty queue is still a lobby, not an empty room', () => {
-		// inRoomCount counts away singers too. A party where every phone has locked itself is not an
-		// empty room, and dropping to the attract screen mid-evening was the original defect.
+		// `inRoomCount` counts away singers too: a party where every phone has locked itself is not an empty
+		// room, and dropping to attract mid-evening was the original defect.
 		expect(tvScreen({ playerState: 'attract', current: null, entries: [], inRoomCount: 3 })).toBe('lobby');
 	});
 
@@ -36,7 +36,6 @@ describe('tvScreen', () => {
 		expect(tvScreen({ playerState: 'waiting', current: entry('e1'), entries: [entry('e1')], inRoomCount: 3 })).toBe(
 			'waiting'
 		);
-		// and it still wins with nobody in the room
 		expect(tvScreen({ playerState: 'waiting', current: entry('e1'), entries: [entry('e1')], inRoomCount: 0 })).toBe(
 			'waiting'
 		);
@@ -49,8 +48,8 @@ describe('tvScreen', () => {
 	});
 
 	it('a rehydrated queue with nobody reconnected yet shows the lobby, not attract', () => {
-		// After a restart the queue is back before any phone re-opens its socket. Falling back to
-		// "scan to join" there would imply the queue was lost.
+		// After a restart the queue is back before any phone re-opens its socket, and falling back to "scan to
+		// join" there would imply the queue was lost.
 		expect(tvScreen({ playerState: 'attract', current: null, entries: [entry('e1')], inRoomCount: 0 })).toBe('lobby');
 	});
 });
@@ -61,8 +60,8 @@ describe('lyricsAdvancing', () => {
 	});
 
 	it('does NOT advance while paused, even though the screen is still playing (Bug B)', () => {
-		// The bug: a paused song is still `current`, so the old screen-only gate kept the reel and ball
-		// scrolling with no audio. The room's play/pause INTENT must freeze them.
+		// A paused song is still `current`, so the old screen-only gate kept the reel and ball scrolling with
+		// no audio. The room's play/pause INTENT must freeze them.
 		expect(lyricsAdvancing('playing', 'playing', false, false)).toBe(false);
 	});
 
@@ -76,19 +75,17 @@ describe('lyricsAdvancing', () => {
 		expect(lyricsAdvancing('waiting', 'waiting', true, true)).toBe(false);
 	});
 
-	// THE MISSING QUADRANT. The room INTENDS to play (`isPlaying === true`) while the master
-	// element is NOT advancing. `isPlaying` is the server's word, not the element's; without the fourth
-	// input the reel swept forward on wall-clock over a silent stage. This is the case no prior test
-	// covered, which is why "scrolling words, silent room" shipped with the suite green. Each of the two
-	// reachable triggers reduces to the SAME shape here: `elementAdvancing === false`.
+	// The fourth input exists because `isPlaying` is the SERVER's word, not the element's: the room can
+	// intend to play while the master is not advancing, and without it the reel swept forward on wall-clock
+	// over a silent stage. Both reachable triggers reduce to the same shape, `elementAdvancing === false`.
 	it('does NOT advance when the room intends to play but the element is not running', () => {
 		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
 	});
 
 	it('freezes when autoplay was refused — silent behind the "tap to start" hint (trigger 1)', () => {
-		// A TV wall registers no gesture, master.play() rejects with NotAllowedError, the room stays silent,
+		// A TV wall registers no gesture, master.play() rejects with NotAllowedError and the room stays silent,
 		// but the server frame still reports isPlaying: true. The element never fired `play`, so it never
-		// reported advancing, and the reel must not sweep.
+		// reported advancing.
 		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
 	});
 
@@ -115,7 +112,7 @@ describe('lobbyRoster', () => {
 	});
 
 	it('lists away singers too, tagged so the TV can grey them', () => {
-		// The whole point: a locked phone must not erase its owner from the roster.
+		// A locked phone must not erase its owner from the roster.
 		const { shown } = lobbyRoster(['a'], ['m'], dir);
 		expect(shown.map((s) => [s.displayName, s.state])).toEqual([
 			['Angelo', 'here'],
@@ -151,15 +148,8 @@ describe('lobbyRoster', () => {
 	});
 });
 
-/*
- * the wiring — the honest element-advancing signal reaches the gate.
- *
- * `lyricsAdvancing`'s fourth input is unit-pinned above, but the pure function is only half the fix:
- * the value fed to it must be the MASTER element's real play/pause state, not the room's intent a
- * second time. That plumbing lives in two .svelte files with no unit harness, so it is pinned by a
- * source scan here — the same shape as the an earlier change autoplay guard and the catalog-boundary guard.
- * Blank comments first so prose describing the wiring cannot satisfy a scan.
- */
+// The value fed to `lyricsAdvancing`'s fourth input must be the MASTER element's real play/pause state, not
+// the room's intent a second time. Blank comments first so prose describing the wiring cannot satisfy a scan.
 function stripComments(src: string): string {
 	return src
 		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
@@ -173,10 +163,10 @@ describe('the element-advancing signal is wired from the master element to the g
 	const player = stripComments(readFileSync(join(here, 'TvPlayer.svelte'), 'utf8'));
 
 	it('feeds lyricsAdvancing a real element signal, not the room intent twice', () => {
-		// The fourth argument must be `masterAdvancing` — passing `isPlaying` again would compile and stay
-		// green on the pure tests while reintroducing the exact defect (intent gating itself).
+		// Passing `isPlaying` again would compile and stay green on the pure tests above while reintroducing
+		// the exact defect: intent gating itself.
 		expect(route).toMatch(/lyricsAdvancing\(\s*screen\s*,\s*tvState\s*,\s*isPlaying\s*,\s*masterAdvancing\s*\)/);
-		// It is a reactive `$state`, so a callback write actually re-runs the derived.
+		// A reactive `$state`, so a callback write actually re-runs the derived.
 		expect(route).toMatch(/let\s+masterAdvancing\s*=\s*\$state\(false\)/);
 	});
 
@@ -187,21 +177,21 @@ describe('the element-advancing signal is wired from the master element to the g
 	});
 
 	it("TvPlayer reports the MASTER element's own play/pause, gated on active+visible", () => {
-		// The honest source is the <audio>'s native events, not a re-derivation of the intent prop. Gating on
-		// active+visible mirrors onautoplayblocked so the hidden pre-warm slot (deliberately paused) cannot
+		// The honest source is the <audio>'s native events, never a re-derivation of the intent prop. Gating on
+		// active+visible mirrors onautoplayblocked, so the hidden pre-warm slot — deliberately paused — cannot
 		// report the room as stopped.
 		expect(player).toMatch(/onplayingchange\?:\s*\(playing:\s*boolean\)\s*=>\s*void/);
 		expect(player).toMatch(/onplay=\{\(\)\s*=>\s*active\s*&&\s*visible\s*&&\s*onplayingchange\?\.\(true\)\}/);
 		expect(player).toMatch(/onpause=\{\(\)\s*=>\s*active\s*&&\s*visible\s*&&\s*onplayingchange\?\.\(false\)\}/);
-		// onended reports a stop too (the element pauses at track end without firing `pause` in every engine).
+		// onended reports a stop too: the element pauses at track end without firing `pause` in every engine.
 		expect(player).toMatch(/if\s*\(active\s*&&\s*visible\)\s*onplayingchange\?\.\(false\)/);
 	});
 });
 
 describe('processStep', () => {
-	// The still-processing takeover shows THREE steps while the media model has FIVE stages, so the
-	// collapse is a real mapping. It must be TOTAL over MediaStatus so the takeover never renders with
-	// no step marked, and the labels are guest words shared in shape with the phone.
+	// The still-processing takeover shows THREE steps while the media model has FIVE stages, so the collapse
+	// is a real mapping. It must be TOTAL over MediaStatus or the takeover renders with no step marked, and
+	// the labels are guest words shared in shape with the phone.
 	it('has exactly three guest-facing step labels', () => {
 		expect([...PROCESS_STEPS]).toEqual(['Downloaded', 'Removing vocals', 'Timing the lyrics']);
 	});
@@ -212,13 +202,12 @@ describe('processStep', () => {
 			const step = processStep(s);
 			expect(step.index, `${s} maps to a valid step index`).toBeGreaterThanOrEqual(0);
 			expect(step.index, `${s} maps to a valid step index`).toBeLessThan(PROCESS_STEPS.length);
-			// the fraction is a CSS percentage the bar can consume
-			expect(step.fraction).toMatch(/^\d+%$/);
+			expect(step.fraction).toMatch(/^\d+%$/); // a CSS percentage the bar can consume
 		}
 	});
 
 	it('advances the step as the process progresses down MEDIA_STAGES', () => {
-		// getting-audio -> removing-vocals -> timing-lyrics: monotonic non-decreasing across the line.
+		// Monotonic non-decreasing across the line.
 		expect(processStep('queued').index).toBe(0);
 		expect(processStep('downloading').index).toBe(0);
 		expect(processStep('separating').index).toBe(1);

@@ -1,15 +1,6 @@
-<!--
-	Settings, as a page, in three SCOPES rather than one flat list: You is one person, Party is this room, Server is
-	every room on this machine and its worker fleet. A flat page hid that distinction and put the stem splitter —
-	set once, then left alone — above the rotation you change mid-song.
-
-	`party` is the default, so the gear opens the room; `?tab=you` is what the header's name button links to, which
-	is why identity lives here at all — this page replaced the profile sheet, so there is one place a name and
-	colour can be edited rather than two that could disagree.
-
-	No socket, so a change from a second phone shows only after a reload. Cosmetic: every write is a per-field
-	patch the server re-normalizes over CURRENT values, so a stale page can only change the field it sends.
--->
+<!-- Three scopes: You is one person, Party is this room, Server is the machine. docs/FRONTEND.md#settings -->
+<!-- No socket here. Every write is a per-field patch the server re-normalizes over CURRENT values, so a stale -->
+<!-- page can only change the field it sends. -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -34,10 +25,8 @@
 		TV_BACKGROUND_STYLES,
 		TV_VISUALIZERS,
 		ASR_MODELS,
-		// The registry's own by-id lookups. This page is their sole caller: every id->record lookup
-		// here goes through the accessor rather than hand-rolling `X.find((s) => s.id === …)`, so the
-		// registry owns the shape and there is no parallel find to drift. (liveModels stays a plain
-		// .find — it is a runtime worker list, not a registry.)
+		// Every id-to-record lookup goes through these accessors, never a hand-rolled `.find`, so the
+		// registry owns the shape.
 		getAsrModel,
 		getEngine,
 		getLyricsHighlight,
@@ -94,7 +83,6 @@
 	}
 	let { data }: Props = $props();
 
-	// ── scope tabs ───────────────────────────────────────────────────────────
 	const TABS = [
 		{ id: 'you', label: 'You' },
 		{ id: 'party', label: 'Party' },
@@ -104,35 +92,28 @@
 
 	let tab = $state<TabId>(untrack(() => data.tab));
 
-	/*
-	 * `replaceState`, not `goto`: switching scope is not a navigation step, so it must not stack history
-	 * entries that make the browser's back button walk tabs instead of leaving the page. It still writes
-	 * the URL, which is the point — the tab is shareable and survives a reload — and being shallow it
-	 * does not re-run the server load just to render a panel that is already in memory.
-	 */
+	// `replaceState`, not `goto`: a scope switch must not stack history entries that make Back walk tabs
+	// instead of leaving the page. Shallow, so the server load does not re-run for a panel already in memory.
 	function showTab(id: TabId) {
 		tab = id;
 		replaceState(`?tab=${id}`, {});
 	}
 
-	// Local state, not a plain derived, because a write is applied optimistically before the server
-	// answers. The effect re-adopts `data` so a load re-run (client-side nav back here, or
-	// invalidation) shows fresh server values, not the mount-time snapshot.
+	// Local state, not a derived, because a write lands optimistically. The effect below re-adopts `data` so a
+	// load re-run shows fresh server values rather than the mount-time snapshot.
 	let settings = $state<EffectiveSettings>(untrack(() => data.settings));
 
-	// The last value the SERVER confirmed. `settings` moves optimistically on a drag frame
-	// (`liveRoom`) so the readout tracks the thumb; this snapshot does not, so a rejected commit
-	// rolls back to what the server actually holds rather than to the dragged value it refused.
+	// The last value the SERVER confirmed. `settings` moves on every drag frame; this does not, so a rejected
+	// commit rolls back to what the server holds rather than to the dragged value it refused.
 	let committed = untrack(() => data.settings);
 
-	// Minutes read badly past an hour ("120 minutes"), and 0 needs saying in words rather than as a
-	// number that looks like a missing value.
-	// 0 is the sentinel for "no cap", and a bare 0 beside a label reads as a broken value — say it in words.
+	// PROCESSES_UNCAPPED is 0, and a bare 0 beside this label reads as a missing value — say it in words.
 	const processCapLabel = $derived(
 		settings.global.maxProcessesPerSinger === PROCESSES_UNCAPPED
 			? 'no limit'
 			: String(settings.global.maxProcessesPerSinger)
 	);
+	// Minutes read badly past an hour ("120 minutes"), and 0 is a sentinel here too.
 	const graceLabel = $derived.by(() => {
 		const m = settings.room.presenceGraceMinutes;
 		if (m === 0) return 'no grace';
@@ -146,37 +127,25 @@
 		committed = data.settings;
 	});
 
-	// The chosen algorithm's own note, so the consequence is stated by the registry rather than
-	// duplicated here — the same reason the TV-progress and lyrics pickers read theirs.
-
 	let advancedOpen = $state(false);
 	let failed = $state(false);
 
-	// Only engines a live process may use appear in the primary picker; `ensemble` runs several models and
-	// is upgrade-only, so offering it here would let a singer pick something the server rejects.
+	// Upgrade-only engines are excluded: offering one here lets a singer pick what the server rejects.
 	const liveEngines = SEPARATOR_ENGINES.filter((e) => e.liveSelectable);
 
 	const engineOf = (id: string) => getEngine(id);
 
-	// Models are scoped to the chosen engine — the whole reason engine and model are separate axes.
 	let liveModels = $derived(engineOf(settings.global.defaultEngine)?.models ?? []);
 	let upgradeModels = $derived(engineOf(settings.global.upgradeEngine)?.models ?? []);
 
-	// A slow engine on the LIVE path is the footgun worth naming in the UI: RoFormer measured ~44min
-	// per song on CPU versus ~50s for htdemucs. Someone should learn that here, not at a party.
+	// A slow engine on the LIVE path is the footgun worth naming in the UI: ~44min per song on CPU against
+	// ~50s. Someone should learn that here, not at a party.
 	let liveSlow = $derived(engineOf(settings.global.defaultEngine)?.speed === 'slow');
 
-	// ── room quality ceiling ───────────────────────────────────────────────────
 	/*
-	 * The room-scoped process-quality cap, offered as REAL pairings rather than a raw `qualityRank`
-	 * integer. Each option is one live-selectable engine+model, valued by its rank, and the empty
-	 * option means "no cap" (`null`). Built from the same registry + `qualityRank` that
-	 * `resolveProcessSeparator` reads, so the choices the operator sees are exactly the ceilings the
-	 * resolver can honour — never an invented number. Sorted low→high because the control caps quality
-	 * DOWNWARD, so the cheaper/faster ceilings read first.
-	 *
-	 * `rank === 0` pairings are excluded: an unranked model can never win `resolveProcessSeparator`, so
-	 * offering it as a ceiling would name a floor nothing sits at.
+	 * Built from the same registry and `qualityRank` that `resolveProcessSeparator` reads, so every offered
+	 * ceiling is one the resolver can honour. Sorted low→high because the cap is downward-only, and rank 0 is
+	 * excluded: an unranked model never wins, so offering it names a floor nothing sits at.
 	 */
 	const qualityCeilings = liveEngines
 		.flatMap((engine) =>
@@ -188,58 +157,36 @@
 		.filter((c) => c.rank > 0)
 		.sort((a, b) => a.rank - b.rank);
 
-	// The global default's own rank, so the ceiling control can say when a chosen cap sits AT OR ABOVE
-	// it — the cap is downward-only, so such a cap changes nothing and the copy must say so rather than
-	// implying it raised quality.
+	// A cap at or above the default changes nothing, and the copy must say so rather than imply it raised
+	// quality.
 	let defaultRank = $derived(qualityRank(settings.global.defaultEngine, settings.global.defaultModel));
 	let capAboveDefault = $derived(settings.room.maxQualityRank !== null && settings.room.maxQualityRank >= defaultRank);
 
-	// ── audio acquisition ───────────────────────────────────────────────────────
-	// The downloader every new process's source audio comes through. `local` is excluded: it names one
-	// media's already-present bytes, not a default a room could pick (see fetchers.ts / the schema
-	// comment). Sourced note, same as the splitter and reader pickers.
+	// `local` names one media's already-present bytes, not a default a room could pick.
 	const defaultFetchers = FETCHERS.filter((f) => f.id !== 'local');
 
-	// ── lyrics ───────────────────────────────────────────────────────────────
-	// The two knobs on the words rather than the audio. Same shape as the splitter pair above: the
-	// note comes from the registry so a model cannot appear here without its tradeoff stated.
-
-	// The same footgun as a slow splitter, and worth naming in the same place: a bigger reader is the
-	// one lever on wrong words, and it is also the one that turns a two-minute process into a long wait on
-	// a CPU box. Nobody should discover that at a party.
+	// Same footgun as a slow splitter: the one lever on wrong words is also the one that turns a two-minute
+	// process into a long wait on a CPU box.
 	let asrSlow = $derived(['slow', 'slowest'].includes(getAsrModel(settings.global.asrModel)?.speed ?? ''));
 
-	// The swatch and the input both show the room's stored colour directly. there is no
-	// generator between the choice and the render — the phone cannot promise a colour the TV then
-	// renders differently, because they are the same string.
+	// Swatch and input both render the STORED string, with no generator between the choice and the TV, so the
+	// phone cannot promise a colour the TV renders differently.
 	let tvBackgroundPreview = $derived(settings.room.tvBackgroundColor);
-	/*
-	 * The stage picker no longer needs a painted track. It was a hue slider whose gradient had to be
-	 * generated from stageHueToHex — "what you drag through is what you can get" — precisely because a
-	 * hue angle was not the colour you got: the stage tier darkened hues near the active-word pink, so
-	 * hardcoded stops would have lied where the guard bit. An earlier change removed the generator, so the control is
-	 * a plain colour input whose own swatch IS the stored value and cannot disagree with the TV.
-	 */
 
-	// An "upgrade" that is not actually better never runs, so say so rather than letting the toggle
-	// look active while nothing happens.
+	// An "upgrade" that is not better never runs, so say so rather than let the toggle look active.
 	let upgradeIsBetter = $derived(
 		qualityRank(settings.global.upgradeEngine, settings.global.upgradeModel) >
 			qualityRank(settings.global.defaultEngine, settings.global.defaultModel)
 	);
 
-	// Ask the SAME resolver the TV uses, rather than re-testing syncMode here. If the two ever
-	// disagreed, this page would be confidently wrong about what is on screen.
+	// Ask the SAME resolver the TV asks, never re-test syncMode here: a second opinion would make this page
+	// confidently wrong about what is on screen.
 	let resolved = $derived(resolveLyricsPresentation(settings));
 	let lyricsClamped = $derived(resolved.clamped);
 	let resolvedHighlight = $derived(getLyricsHighlight(resolved.highlight)?.label.toLowerCase() ?? resolved.highlight);
 	let resolvedBall = $derived(resolved.ball !== 'off');
 
-	/**
-	 * Apply a patch optimistically, then reconcile on the authoritative response — the same shape the
-	 * queue uses, so a tap renders instantly and a rejected write rolls back rather than leaving a
-	 * value on screen that the server refused.
-	 */
+	/** Optimistic, then reconciled on the authoritative response; a refused write rolls back. */
 	async function patch(scope: 'global' | 'room', body: Record<string, unknown>) {
 		const before = committed;
 		settings =
@@ -265,13 +212,12 @@
 	const onglobal = (body: Partial<GlobalSettings>) => patch('global', body);
 	const onroom = (body: Partial<RoomSettings>) => patch('room', body);
 
-	// Move ONE room field on screen without a write, so the readout label (the only display of the
-	// value) tracks the thumb during a drag. `onchange` still commits via `onroom`; the rollback
-	// baseline is `committed`, so an intermediate drag value never becomes the value we revert to.
+	// Moves one field on screen WITHOUT a write, so the readout — the only display of the value — tracks the
+	// thumb. The commit is separate, and `committed` is the rollback baseline, so a drag frame is never it.
 	function liveRoom<K extends keyof RoomSettings>(field: K, value: RoomSettings[K]) {
 		settings = { ...settings, room: { ...settings.room, [field]: value } };
 	}
-	/** The same, for a GLOBAL field — the process cap's readout is the only display of its value. */
+	/** The same, for a GLOBAL field. */
 	function liveGlobal<K extends keyof GlobalSettings>(field: K, value: GlobalSettings[K]) {
 		settings = { ...settings, global: { ...settings.global, [field]: value } };
 	}
@@ -279,8 +225,8 @@
 	function pickEngine(id: string) {
 		const engine = engineOf(id);
 		if (!engine) return;
-		// Switching engine must also move the model, or the pair would be invalid and the server would
-		// normalize it back — which reads to the user as "my choice didn't stick".
+		// Switching engine MUST also move the model, or the server normalizes the invalid pair back and the
+		// choice reads as not having stuck.
 		onglobal({ defaultEngine: id as SeparatorEngineId, defaultModel: engine.models[0]!.id });
 	}
 
@@ -290,15 +236,12 @@
 		onglobal({ upgradeEngine: id as SeparatorEngineId, upgradeModel: engine.models[0]!.id });
 	}
 
-	// ── joining ──────────────────────────────────────────────────────────────
-	// The one free-text setting on the server scope, so it needs a draft rather than patching per
-	// keystroke: `http` is not yet a valid origin, and a normalizer running on every character would
-	// fight the typist.
+	// The one free-text setting, so it needs a draft: `http` is not yet a valid origin, and a normalizer
+	// running per keystroke fights the typist.
 	let joinDraft = $state(untrack(() => data.settings.global.joinOrigin));
 	let joinError = $state('');
-	// Re-adopt only when the PERSISTED value moves (a load re-run, or a write from another phone).
-	// A plain `$effect` mirroring `settings` would also fire when an unrelated field is patched and
-	// would discard whatever the user had half-typed here.
+	// Re-adopt ONLY when the persisted value moves. A plain effect mirroring `settings` also fires when an
+	// unrelated field is patched, and would discard whatever is half-typed here.
 	let syncedJoin = untrack(() => data.settings.global.joinOrigin);
 	$effect(() => {
 		const stored = settings.global.joinOrigin;
@@ -308,16 +251,14 @@
 		}
 	});
 
-	// An https join address on a plain-http party is the mistake worth naming: the QR would be
-	// unopenable from the LAN. The reverse (http address behind an https tunnel) still opens, so it is
-	// not warned about.
+	// An https address on a plain-http party makes the QR unopenable from the LAN. The reverse still opens, so
+	// it is not warned about.
 	let joinSchemeMismatch = $derived(settings.global.joinOrigin.startsWith('https://') && !data.requestIsHttps);
 
 	function commitJoinOrigin() {
 		const normalized = normalizeJoinOrigin(joinDraft);
 		if (normalized === null) {
-			// Refused locally rather than sent: the server would normalize an unusable value back to the
-			// current one, which reads to the user as "my typing vanished" with no reason given.
+			// Refused locally rather than sent: the server would normalize it back with no reason given.
 			joinError = 'Not an address a phone can open. Include http:// or https://, e.g. http://192.168.1.20:3000.';
 			return;
 		}
@@ -329,15 +270,10 @@
 		onglobal({ joinOrigin: normalized });
 	}
 
-	// ── you ──────────────────────────────────────────────────────────────────
 	/*
-	 * Your name and colour, moved here from the profile sheet so identity has ONE editor. An editable
-	 * DRAFT seeded from `data.me`, not a view of it — `untrack` because a `singer:updated` echo of your
-	 * own save must not rewrite the field under the cursor mid-typing.
-	 *
-	 * `savedName`/`savedColour` track what the server last confirmed, so `dirty` still means something
-	 * after a save: the load does not re-run (the tab switch is shallow), so `data.me` stays at its
-	 * mount-time value and comparing against it would leave Save enabled forever.
+	 * A DRAFT seeded from `data.me`, not a view of it: `untrack` keeps an echo of your own save from rewriting
+	 * the field under the cursor. `savedName`/`savedColour` are what the server last confirmed, and `dirty` has
+	 * to compare against those — the load never re-runs, so `data.me` would leave Save enabled forever.
 	 */
 	let name = $state(untrack(() => data.me.displayName));
 	let colour = $state(untrack(() => data.me.color));
@@ -371,7 +307,6 @@
 			}
 			savedName = patchBody.displayName;
 			savedColour = patchBody.color;
-			// Same destination the sheet's Save had: back to the remote, where the change is visible.
 			await goto('/');
 		} catch {
 			profileError = 'Could not save that';
@@ -380,11 +315,7 @@
 		}
 	}
 
-	/*
-	 * The cost is fetched when the confirm OPENS rather than on mount, so the number is current at the
-	 * moment it is read out. Best-effort: the confirm still opens if this fails, falling back to the
-	 * no-songs wording rather than blocking a leave on a count.
-	 */
+	/** Fetched on OPEN so the number is current when read out, and best-effort so a failure cannot block. */
 	async function askLeave() {
 		confirmingLeave = true;
 		try {
@@ -398,16 +329,12 @@
 	async function leaveRoom() {
 		leaving = true;
 		await fetch('/api/leave', { method: 'POST' });
-		// The cookie is gone, so `/` — the landing/join page (Q2-A) — is the only honest destination,
-		// and a reload here would 401 into the same place with a flash of an empty page on the way.
+		// The cookie is gone, so `/` (the landing page) is the only honest destination; a reload would 401
+		// into the same place after a flash of an empty page.
 		await goto('/');
 	}
 
-	/**
-	 * What the confirm says out loud. Counts, not adjectives — the remove-undo everywhere else in the
-	 * app is a five-second toast, but after a leave the cookie is cleared and the singer forgotten, so
-	 * there is nothing left to undo with.
-	 */
+	/** Counts, not adjectives: a leave clears the cookie and forgets the singer, so there is no undo. */
 	const leaveWarning = $derived.by(() => {
 		const n = leaveCost?.queuedCount ?? 0;
 		const songs =
@@ -433,33 +360,18 @@
 			</Alert.Root>
 		{/if}
 
-		<!--
-		Three scopes, one at a time. A real tablist rather than three headings on one page: the whole
-		complaint about the old layout was that the server's settings sat above the room's, and the only
-		fix that survives adding a fourth room control is to stop rendering them together.
-	-->
 		<Tabs.Root value={tab} onValueChange={(v) => showTab(v as TabId)}>
 			<Tabs.List aria-label="Settings scope">
 				{#each TABS as t (t.id)}
-					<!--
-						The explicit id is load-bearing: Bits UI would generate its own, and both
-						`SEL.settingsTab(id)` (`#tab-<id>`) and capture.mjs, which clicks it and then reads
-						`aria-selected`, resolve THIS spelling.
-					-->
+					<!-- The explicit id is load-bearing: Bits UI would generate its own, and both SEL.settingsTab -->
+					<!-- and capture.mjs resolve `#tab-<id>` by this spelling. -->
 					<Tabs.Trigger id="tab-{t.id}" value={t.id}>{t.label}</Tabs.Trigger>
 				{/each}
 			</Tabs.List>
 
 			<Tabs.Content value="you">
-				<!-- ── YOU ────────────────────────────────────────────────────────── -->
-				<!--
-					`.panel` is a LAYOUT wrapper only (flex column + gap). It deliberately carries no
-					`role="tabpanel"`, `aria-labelledby` or `tabindex`: `Tabs.Content` already renders the
-					tabpanel role, labels it from its trigger and owns focus. Declaring them again here
-					nested a second tabpanel inside the first, so every tab exposed TWO panels to a screen
-					reader. The ids were referenced by nothing — `SEL.settingsTab` resolves `#tab-<id>`, not
-					`#panel-<id>`.
-				-->
+				<!-- `.panel` is LAYOUT only and must carry no tabpanel role, aria-labelledby or tabindex: -->
+				<!-- Tabs.Content already renders the tabpanel, and a second one nests two inside each other. -->
 				<div class="panel">
 					<Card.Root>
 						<Card.Header>
@@ -477,14 +389,8 @@
 								bind:value={name}
 							/>
 
-							<!--
-								THE SAME RING THE JOIN SCREEN USES. It replaced eight preset swatches plus a hue rail — two
-								controls for one choice, which could disagree about what was selected.
-
-								`taken` IS DELIBERATELY EMPTY. The pips mean "somebody in the room holds this colour", and this
-								page's load has no occupancy in it; an invented list would draw pips at colours nobody holds,
-								which is worse than drawing none. An empty ring is a state the component already handles.
-							-->
+							<!-- `taken` is DELIBERATELY empty: the pips mean "somebody in the room holds this", and this -->
+							<!-- page's load carries no occupancy, so an invented list would draw pips at nobody. -->
 							<ColourRing
 								bind:value={colour}
 								label="Your color"
@@ -494,10 +400,7 @@
 
 							{#if profileError}<p class="warn" role="alert">{profileError}</p>{/if}
 
-							<!--
-						The one control on this page that needs an explicit commit. Every party and server
-						setting writes the moment it changes; a name is typed, so it saves on purpose.
-					-->
+							<!-- The only control here with an explicit commit: a name is typed, so it saves on purpose. -->
 							<div class="save-slot">
 								<Button size="block" disabled={!canSaveProfile} onclick={saveProfile}>
 									{#if saving}Saving…{:else}Save{/if}
@@ -506,25 +409,14 @@
 						</Card.Content>
 					</Card.Root>
 
-					<!--
-				Its own card, below the reversible one: leaving cannot be undone, so the boundary is drawn
-				rather than implied by being last in a list.
-			-->
+					<!-- Its own card: leaving cannot be undone, so the boundary is drawn rather than implied. -->
 					<Card.Root>
 						<Card.Header>
 							<Card.Title>Leaving</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<!--
-								A REAL modal, not an in-card swap — this is the only irreversible action on the phone surface, and
-								the previous Stay/Yes-leave swap had no `role="dialog"`, no focus containment and no Escape.
-
-								`AlertDialog` rather than `Dialog`: it renders `role="alertdialog"`, which asks a screen reader to
-								announce the description immediately, and it has no click-outside dismissal — a destructive
-								confirm should not be dismissible by a stray tap. Bits UI owns the trap, Escape and focus return.
-
-								`open` is bound so `askLeave` runs on OPEN and the cost is fetched when it is read out.
-							-->
+							<!-- AlertDialog, not Dialog: `role="alertdialog"` announces the description on open, and it has -->
+							<!-- no click-outside dismissal, which a destructive confirm must not have. -->
 							<AlertDialog.Root bind:open={confirmingLeave}>
 								<AlertDialog.Trigger>
 									{#snippet child({ props })}
@@ -534,12 +426,8 @@
 								<AlertDialog.Content>
 									<AlertDialog.Header>
 										<AlertDialog.Title>Leave the room?</AlertDialog.Title>
-										<!--
-											The warning is the dialog's DESCRIPTION rather than a separate
-											`role="alert"` paragraph. `role="alertdialog"` already announces the
-											description on open, so keeping the old live region would have said it
-											twice.
-										-->
+										<!-- The DESCRIPTION, never a second role="alert" paragraph: alertdialog already -->
+										<!-- announces this on open, so a live region would say it twice. -->
 										<AlertDialog.Description>{leaveWarning}</AlertDialog.Description>
 									</AlertDialog.Header>
 									<AlertDialog.Footer>
@@ -553,16 +441,12 @@
 						</Card.Content>
 					</Card.Root>
 
-					<!--
-				The same footer exit the other two tabs have. Save is disabled until something is dirty, so
-				without this the You tab was a dead end for anyone who opened it and changed nothing — the
-				header's back arrow was the only way out, which no other tab relies on.
-			-->
+					<!-- Every tab needs this exit: Save is disabled until dirty, so without it the You tab is a -->
+					<!-- dead end for anyone who changed nothing. -->
 					<Button size="block" onclick={() => goto('/')}>Done</Button>
 				</div>
 			</Tabs.Content>
 			<Tabs.Content value="party">
-				<!-- ── PARTY ──────────────────────────────────────────────────────── -->
 				<div class="panel">
 					<!-- layout only — see the YOU panel for why no tabpanel role here -->
 					<Card.Root>
@@ -603,12 +487,7 @@
 						</Card.Header>
 						<Card.Content>
 							<Field.Label for="quality-ceiling">Quality ceiling</Field.Label>
-							<!--
-						A ceiling, offered as real engine+model pairings valued by their rank, not a raw
-						integer. The value is the `qualityRank`; the empty option is `null` = no cap. The
-						resolver picks the best live pairing AT OR UNDER this, so these are exactly the
-						ceilings it can honour.
-					-->
+							<!-- The option VALUE is a `qualityRank`, and the empty option is null = no cap. -->
 							<NativeSelect
 								id="quality-ceiling"
 								value={settings.room.maxQualityRank ?? ''}
@@ -622,10 +501,6 @@
 									<option value={c.rank}>Up to {c.label}</option>
 								{/each}
 							</NativeSelect>
-							<!--
-						Downward-only, and this is where a party learns it: the server's default is already
-						bounded by what the worker fleet can run, so a room can only ask for the same or less.
-					-->
 
 							{#if capAboveDefault}
 								<p class="warn">At or above the server default, so it changes nothing.</p>
@@ -665,10 +540,7 @@
 								</div>
 							</div>
 
-							<!--
-						Gated, not disabled: a visualizer picker means nothing for a black stage, and a control
-						that does nothing for the current selection implies it does something.
-					-->
+							<!-- Gated, not disabled: a control that does nothing for the current selection implies it does. -->
 							{#if settings.room.tvBackgroundStyle === 'visualizer'}
 								<Field.Label for="tv-visualizer">Which visualizer</Field.Label>
 								<NativeSelect
@@ -688,13 +560,8 @@
 									Background colour
 									<span class="swatch" style="background: {tvBackgroundPreview}" aria-hidden="true"></span>
 								</Field.Label>
-								<!--
-							A real colour input, not the hue slider this was until an earlier change: the room names a colour
-							outright now rather than an angle rendered at a pinned lightness. oninput/onchange are
-							split for the same reason every slider here splits them — the native picker fires
-							`input` continuously while you drag inside it, so the swatch has to track live, while only
-							the committed `change` writes and broadcasts room-wide.
-						-->
+								<!-- oninput/onchange split as every slider here does: the native picker fires `input` -->
+								<!-- continuously, so the swatch tracks live while only `change` writes and broadcasts. -->
 								<input
 									id="tv-background-color"
 									class="colour"
@@ -707,13 +574,8 @@
 								<Field.Label for="tv-background-dim">
 									Darken the stage · {Math.round(settings.room.tvBackgroundDim * 100)}%
 								</Field.Label>
-								<!--
-							Dims the stage colour toward black (an earlier change, owner ruling Q2 = A) — a lightness control, not
-							a layer over the video. Split oninput/onchange like every other slider here (an earlier change): the
-							readout above is the only display of the value, so it must track the thumb live, while
-							only the committed `change` writes and broadcasts. Stored 0..1, shown as a percent; the
-							range spans the full 0..100 the server clamp accepts.
-						-->
+								<!-- A lightness control on the stage colour, not a layer over the video. Stored 0..1 and shown -->
+								<!-- as a percent, spanning the full range the server clamp accepts. -->
 								<Slider
 									id="tv-background-dim"
 									type="single"
@@ -738,10 +600,7 @@
 							<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
 								Song intro duration · {(settings.room.songIntroMs / 1000).toFixed(1)}s
 							</Field.Label>
-							<!--
-					  The range MUST match the server clamp exactly (MIN/MAX_SONG_INTRO_MS). A slider narrower
-					  than the clamp has shipped here before: the UI silently refuses values the server takes.
-					-->
+							<!-- The range MUST match the server clamp exactly, or the UI silently refuses values it takes. -->
 							<Slider
 								id="song-intro-ms"
 								type="single"
@@ -788,11 +647,8 @@
 								</div>
 							</div>
 
-							<!--
-						Say when a choice is not being honoured. The server's sync mode decides whether per-word
-						timings exist at all, so under "Line sync only" a word-level treatment has nothing to
-						light. A picker that silently does nothing is worse than one that explains itself.
-					-->
+							<!-- Say when a choice is not honoured: under line-only timing a word treatment has nothing to -->
+							<!-- light, and a picker that silently does nothing is worse than one that explains itself. -->
 							{#if lyricsClamped}
 								<p class="warn">
 									No word timings on this server, so it shows <strong>{resolvedHighlight}</strong>{resolvedBall
@@ -841,10 +697,6 @@
 								onValueChange={(v) => liveRoom('lyricsScalePct', v)}
 								onValueCommit={(v) => onroom({ lyricsScalePct: v })}
 							/>
-							<!--
-						Says PERCENT OF, not a size, because that is what it is: the TV already picks a size from
-						its own height and this scales it. "48px" would mean nothing on a different screen.
-					-->
 
 							<Field.Label for="lyrics-lead">
 								Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
@@ -921,10 +773,7 @@
 						</Card.Content>
 					</Card.Root>
 
-					<!--
-				/stats is the GUEST page, so it is the one dashboard safe to reach from a surface any phone
-				can open. Its sibling on the Server tab is not, which is why they are not side by side.
-			-->
+					<!-- /stats is the GUEST dashboard, so it is the one safe to reach from any phone's surface. -->
 					<Button variant="outline" size="block" href="/stats">
 						<Icon name="sparkle" />
 						Party stats <Badge variant="neutral">safe to share</Badge>
@@ -934,7 +783,6 @@
 				</div>
 			</Tabs.Content>
 			<Tabs.Content value="server">
-				<!-- ── SERVER ─────────────────────────────────────────────────────── -->
 				<div class="panel">
 					<!-- layout only — see the YOU panel for why no tabpanel role here -->
 
@@ -943,7 +791,8 @@
 							<Card.Title>Making karaoke</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<!-- Stacked for the same measured reason as the lyrics engine below: "BS-RoFormer 1297". -->
+							<!-- Stacked, not paired: these registries carry the app's longest labels, which truncate in half -->
+							<!-- a 390px row. -->
 							<Field.Label for="engine">Stem splitter</Field.Label>
 							<NativeSelect
 								id="engine"
@@ -981,22 +830,8 @@
 								{/each}
 							</NativeSelect>
 
-							<!--
-						Explicit blast radius, matched to the splitter warning above it: this is the acquirer
-						EVERY new process downloads its source through, and a worker that cannot run it fails the
-						fetch before any separation starts.
-					-->
-
-							<!--
-						THE PER-SINGER PROCESS CAP, which was a hardcoded 3 in `server/jobs/process.ts` until
-						2026-09-22. It belongs on the SERVER tab because the right number is a function of this
-						box's worker fleet, not of one party — the same test every other field in this card passes.
-
-						A SLIDER RATHER THAN A NUMBER FIELD: the range is short and bounded at both ends, so
-						dragging is the whole interaction, and a text field would invite the 3000 that
-						`normalizeMaxProcesses` exists to refuse. The readout is the only display of the value, so
-						it moves with the thumb (`liveGlobal`) and commits on release.
-					-->
+							<!-- A slider, not a number field: the range is short and bounded at both ends, and a text field -->
+							<!-- would invite the 3000 that `normalizeMaxProcesses` exists to refuse. -->
 							<Field.Label for="max-processes">Songs one singer can make at once · {processCapLabel}</Field.Label>
 							<Slider
 								id="max-processes"
@@ -1021,13 +856,8 @@
 							<Card.Title>Lyrics engine</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<!--
-						NOT paired two-up like the room controls, and measured rather than assumed: at 390px a
-						half-width select leaves ~120px for its text, and these registries carry the app's
-						longest option labels ("Forced alignment", "BS-RoFormer 1297"), which truncate there.
-						The room's pairs were checked at the same width and fit. A truncated option is worse
-						than a longer page, and this is the tab you visit once.
-					-->
+							<!-- Stacked for the same measured reason as the splitter above: a half-width select at 390px -->
+							<!-- leaves ~120px, and these labels are the app's longest. -->
 							<Field.Label for="asr-model">Lyrics reader</Field.Label>
 							<NativeSelect
 								id="asr-model"
@@ -1087,11 +917,8 @@
 
 					<Card.Root>
 						<Card.Content>
-							<!--
-						S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> STAYS
-						here via Bits UI's `child` snippet — `.disclose` is scoped CSS in this file, and a class handed
-						to a component is scoped to the CALLER and stripped there as unused.
-					-->
+							<!-- Collapsible owns aria-expanded, aria-controls and the toggle; the <button> stays here through -->
+							<!-- the `child` snippet so this file's scoped CSS can reach it. -->
 							<Collapsible.Root bind:open={advancedOpen}>
 								<Collapsible.Trigger>
 									{#snippet child({ props })}
@@ -1150,11 +977,8 @@
 						</Card.Content>
 					</Card.Root>
 
-					<!--
-				/metrics is ungated (there is no operator identity — any phone can POST /api/join), so it
-				is reachable only from here. Linking it from the remote or the TV would advertise worker
-				ids, model names, host details and error strings to every device in the room.
-			-->
+					<!-- /metrics is ungated, so this is its ONLY link: from the remote or the TV it would advertise -->
+					<!-- worker ids, model names, host details and error strings to every device in the room. -->
 					<Button variant="outline" size="block" href="/metrics">
 						<Icon name="clock" />
 						Processing metrics <Badge variant="neutral">internal</Badge>
@@ -1168,141 +992,55 @@
 </div>
 
 <style>
-	/*
-	 * TWO MEASURES, NOT ONE — the page takes the shell's width, the ROWS keep a readable one.
-	 *
-	 * The page used to cap ITSELF at `--measure-prose` (560) and release the shell, which made it the one narrow
-	 * page in the app: measured at 1440, `main` was 560 while /stats and /metrics were 1048 and the sheet's own
-	 * column 1080 — so the band docked beneath it was WIDER than the page it was docked to. The reasoning behind
-	 * the narrow cap is not discarded, only moved down a level: the paired controls do need room, and a `<select>`
-	 * must never span a monitor.
-	 *
-	 * IT IS THE COLUMN, NOT THE CONTENTS. Capping `card-content` at 560 kept the controls readable but left every
-	 * card a full-width panel with its form pinned to the LEFT 560px — at the 1080 step the You card ran 0→1044
-	 * while its name field stopped at 560, reading as a half-drawn box. Centring it would only move the void to
-	 * both sides.
-	 *
-	 * `.panel` spends the width by pairing CARDS instead of stretching controls, and `auto-fit` + `minmax` makes
-	 * that a property of the available width rather than of a breakpoint. At the 1080 step two cards sit at ~530
-	 * each, under `--measure-prose`, so the old requirement is met by the geometry rather than by a cap.
-	 */
+	/* Three nested measures, and the width is spent on a second column of CARDS rather than on wider controls.
+	   See docs/FRONTEND.md#settings for what each token means and where each level applies. */
 	.settings-page {
-		/* Level 1 — THE PAGE. The grid role: fill whatever the shell gives us. */
 		--page-measure: var(--measure-grid);
-		/*
-		 * Level 2 — THE COLUMN A CARD SITS IN. Not `--measure-prose` (560): this is the width below
-		 * which a SECOND column stops being readable, and two 560s plus the gap need 1132 — more than
-		 * the widest shell (1080), so the prose measure as a threshold would never pair anything. At
-		 * 420 the panel pairs from 852 up, which is the 1080 step and nothing narrower.
-		 */
+		/* Not --measure-prose (560): two of those plus the gap need 1132, more than the widest shell, so a
+		   prose threshold would never pair anything. At 420 the panel pairs from 852 up. */
 		--settings-col: 420px;
 	}
 
 	main {
-		/* Level 1, again — kept in sync with --page-measure above so the header aligns with this
-		   column, exactly as it did when both were the prose measure. */
+		/* Kept in sync with --page-measure above, so the header aligns with this column. */
 		max-width: var(--measure-grid);
 		margin: 0 auto;
-		/*
-		 * RESERVES THE BAND, and drops the env() term it used to carry itself.
-		 *
-		 * Both halves are consequences of the band becoming app chrome: the layout mounts it on every
-		 * phone surface, so this column now has fixed chrome at its bottom edge where it previously had
-		 * none, and `gate:measured` caught the result — a 44px control here read a 0px hit extent,
-		 * "blocked by button.handle", because the page's own last controls were scrolled underneath it
-		 * with nothing reserving the space.
-		 *
-		 * The env() goes because the BAND carries the only home-indicator inset now, and that inset
-		 * reaches everything above it through --dock-h. Keeping one here as well is the doubled gap the
-		 * band contract exists to prevent — one env(), on the one element that sits at the bottom edge.
-		 */
+		/* Reserves the band. No env() term: the band carries the only home-indicator inset, and it reaches
+		   this column through --dock-h, so a second one here is the doubled gap. */
 		padding: var(--space-md) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 
 	/*
-	 * Level 3 — THE ROWS. The `max-width: var(--measure-prose)` that used to open this rule is GONE:
-	 * the column above is the measure now, and a cap here on top of it is what left the void inside
-	 * each card. What stays is the rhythm, which was always the other half of this rule. Reached with
-	 * `:global()` because scoped CSS cannot address an element ui/card renders, and scoped under
-	 * `main` so it claims only this page's cards.
+	 * A label binds to its own control, fixed in the CASCADE rather than by restructuring every row into
+	 * Field.Root wrappers: the card's single gap shrinks to the intra-group distance, and a label that FOLLOWS
+	 * a control takes the inter-group distance back as a margin. The sibling selector is what makes that safe —
+	 * only a label with a control before it starts a group, so a card's first label is untouched. Keyed on
+	 * `data-slot`, which survives a re-vendor, and `:global()` because scoped CSS cannot reach ui/card's box.
 	 */
 	main :global([data-slot='card-content']) {
-		/*
-		 * THE RHYTHM: A LABEL BINDS TO ITS OWN CONTROL. Every row here is FLAT — `<Field.Label>` and its control are
-		 * siblings of one flex column — so the card's single gap separated a label from its control by exactly as
-		 * much as it separated one group from the next (measured: 28px within, 36px between, where grouping needs
-		 * nearer 1:3). The card read as five evenly spaced items rather than two labelled controls.
-		 *
-		 * Fixed in the CASCADE rather than by restructuring 1,400 lines into `Field.Root` wrappers: the gap shrinks
-		 * to the intra-group distance and a label that FOLLOWS a control gets the inter-group distance back as a
-		 * margin. Keyed on `data-slot`, which survives a re-vendor where a class name would not. The sibling
-		 * selector is what makes it safe — only a label with a control before it starts a new group, so the first
-		 * label in a card is untouched.
-		 */
 		gap: var(--space-sm);
 	}
 	main :global([data-slot='card-content'] > * + [data-slot='field-label']) {
 		margin-top: var(--space-4xl);
 	}
 
-	/* ── the scope tabs ─────────────────────────────────────────────────── */
-
-	/* ── cards ──────────────────────────────────────────────────────────── */
-	/*
-	 * The same `.card` shape the remote uses for every row, so this page stops reading as a different
-	 * application. The uppercase head matches the remote's `.grouphead` treatment.
-	 */
-	/* A failed write is about the page, not one card, so it sits above them all. */
-	/* `.banner` is GONE: the save-failure line is `Alert variant="destructive"`, which owns its own
-	   block spacing. Deleted rather than kept, because an unused selector is a typecheck failure here. */
-
-	/*
-	 * Two controls per row where they are genuinely a pair (highlight + marker, font + case, splitter +
-	 * model). This is most of what shortened the page. It collapses at 380px, because two selects in
-	 * ~150px each is where the option text starts truncating.
-	 */
-	/*
-	 * The tab panel holding a scope's cards. shadcn's Card carries no outer margin — its spacing is all
-	 * internal — so the eleven sibling Card.Root boxes stacked with 0px between them and two adjacent
-	 * rings touched, reading as one 2px divider. `.panel` had NO rule at all before this (its rule was
-	 * dropped before the shadcn migration and never replaced, which is why it sat in
-	 * app-class-resolution.test.ts's PRE_EXISTING allowlist; that entry is deleted with this rule).
-	 *
-	 * This is the panel-level fix. The deeper one is Field.Group / Field.Field, which is where the
-	 * registry keeps this rhythm and which also fixes it for any future card body — Phase 2.
-	 */
 	.panel {
-		/*
-		 * A GRID, not a flex column, and that is the whole "settings fills the width" fix — see the
-		 * two-measures block at the top of this style for why the width is spent on a second column of
-		 * cards rather than on wider controls. `auto-fit` collapses the empty tracks, so at one column
-		 * this is byte-for-byte the old stacked layout with the same gap.
-		 *
-		 * `align-items: start` matters: the default `stretch` would make both cards in a row as tall as
-		 * the taller one, so the You card's ring would sit in a box padded out to match Leaving.
-		 */
+		/* A grid, not a flex column: `auto-fit` collapses the empty tracks, so at one column this is the plain
+		   stack. `align-items: start` matters — `stretch` would pad the shorter card out to its neighbour. */
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--settings-col)), 1fr));
 		align-items: start;
 		gap: var(--space-lg);
 	}
-	/*
-	 * Everything in a panel that is NOT a card spans the row: the footer Done on all three tabs and
-	 * the /stats and /metrics links. Each is about the PANEL rather than about one card, and a
-	 * half-width one would land beside a card and read as part of it. `:not([data-slot='card'])` keys
-	 * on shadcn's own attribute, so a new footer control gets this without being listed here. (The
-	 * save-failure Alert is a child of `main`, above the tabs, so it is not one of these.)
-	 */
+	/* Anything in a panel that is not a card is about the PANEL, so it spans: a half-width footer button would
+	   land beside a card and read as part of it. Keyed on shadcn's attribute, so a new control gets this free. */
 	.panel > :global(:not([data-slot='card'])) {
 		grid-column: 1 / -1;
 	}
 
 	.pair {
-		/* Grid, not flex, so the gap SURVIVES the narrow-viewport collapse below. As `display:flex` with
-		   a `gap`, switching to `display:block` at ≤380px dropped the gap entirely (gap does not apply to
-		   a block container), so the two stacked cells touched — worst on the Leaving card, where Stay and
-		   the destructive "Yes, leave" met edge-to-edge. A grid keeps its row-gap when it collapses to one
-		   column. */
+		/* Grid, not flex, so the gap SURVIVES the collapse below: a flex row switched to `display:block`
+		   loses its gap entirely, which met a Cancel and a destructive action edge-to-edge. */
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: var(--space-md);
@@ -1317,23 +1055,8 @@
 		}
 	}
 
-	/* A trailing 1em swatch after flowing text can wrap onto its own line at 320px, reading as an orphan
-	   dot. A flex row keeps text and swatch together and lets them wrap as a unit if ever needed. */
-	/*
-	 * S2/S3: `select`, `.text`, `.name-input` and the range sliders all left this file — their
-	 * appearance moved into ui/input, ui/native-select and ui/slider, because Svelte's scoped CSS
-	 * cannot reach an element inside a child component and a call-site utility is minted by nothing
-	 * under `source(none)`. (The previous two comments here disagreed on whether the range was still
-	 * native; it is a <Slider> now, and the 28px-thumb / 6px --track-bg / var(--tap) geometry plus the
-	 * two parallel ::-webkit-slider-* and ::-moz-range-* rule sets a native range needed all live in
-	 * ui/slider, where Bits UI builds the control from real elements so one rule set replaces both.)
-	 */
-	/*
-	 * A live swatch beside the label, so the choice is visible without walking to the TV. It carries no
-	 * text, so it needs no contrast bar of its own — and there is no bar on the stage colour
-	 * either: the bar that matters is the lyrics ON the stage, and the reel enforces it itself with a
-	 * stroked outline rather than the stage being restricted to spare it.
-	 */
+	/* Carries no text, so it needs no contrast floor of its own — and neither does the stage colour: the
+	   contrast that matters is the lyrics ON the stage, which the reel enforces with its own stroke. */
 	.swatch {
 		display: inline-block;
 		width: 1em;
@@ -1343,12 +1066,8 @@
 		border: 1px solid var(--line);
 		vertical-align: -0.15em;
 	}
-	/*
-	 * The stage colour input. A native `type="color"` — the whole point is that any colour is
-	 * now reachable, so a bespoke control would only narrow what the platform already offers (including
-	 * eyedroppers and OS palettes). Sized to the project's --tap (44px) minimum for the same reason the
-	 * ranges are: the browser's default colour swatch is well under a thumb's worth of target.
-	 */
+	/* Native `type="color"`, so eyedroppers and OS palettes come free, sized up to --tap because the
+	   browser's default swatch is well under a thumb's worth of target. */
 	input[type='color'].colour {
 		width: 100%;
 		height: var(--tap);
@@ -1358,24 +1077,12 @@
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 	}
-	/*
-	 * Every range had no thumb sizing, so the browser drew its native ~12px thumb — ungrabbable with a
-	 * thumb on a phone. A 28px visible thumb, and a --tap (44px) tall control so the whole hit area
-	 * clears the touch-target minimum. Both vendor pseudo-elements, because a rule that fails to parse
-	 * in one engine drops the whole selector in that engine. A painted track is required once appearance
-	 * is none, or WebKit would leave the track invisible.
-	 *
-	 * These were scoped `:not(.hue)` until that change, to spare the stage's hue slider its own full-height
-	 * gradient track. That slider is gone — the stage is a colour input now — so the exclusion went with
-	 * it rather than being left behind as a selector matching nothing.
-	 */
 	.warn {
 		margin: var(--space-xs) 0 0;
 		font-size: var(--ph-text-xs);
 		color: var(--warn);
 	}
 
-	/* ── the one disclosure left ────────────────────────────────────────── */
 	/* States what is behind the door, so it does not have to be opened to be read. */
 	.disclose-now {
 		margin-left: auto;
@@ -1391,37 +1098,9 @@
 		font-size: var(--ph-text-md);
 	}
 
-	/* ── the dashboard links ────────────────────────────────────────────── */
-	/*
-	 * A button rather than a sentence with a link in it: these are destinations, and the old prose
-	 * paragraph buried two of them in twenty words. --ink on --card2, not an accent colour: both accent
-	 * tokens fail AA as text (3.95:1 and 3.52:1), which contrast.test.ts scans for.
-	 */
-
-	/* ── the two footer buttons ─────────────────────────────────────────── */
-	/*
-	 * Done is NOT accent: every control on the Party and Server tabs has already saved by the time it is
-	 * reached, so making it the loudest thing on screen would imply it commits something.
-	 */
-	/* Save IS accent, because it is the one thing on this page that does not happen without a tap. */
-	/*
-	 * PAGE LAYOUT ONLY (S1). Width, min-height, padding, type and the disabled opacity moved
-	 * into <Button size="block">. What is left is where the button sits in this column, which is this
-	 * page's business and not the component's. It lives on a wrapper because Tailwind is scoped to
-	 * `@source ui/**` — a utility written here would be minted by nothing — and Svelte's scoped CSS
-	 * cannot reach an element inside a child component either.
-	 */
+	/* Position only, on a wrapper: Tailwind mints nothing for app source, and scoped CSS cannot reach inside
+	   a component. Save is the page's one accent control, because it is the one thing a tap is needed for. */
 	.save-slot {
 		margin-top: var(--space-xl);
 	}
-
-	/*
-	 * ── leaving ─────────────────────────────────────────────────────────
-	 * The six `.leave*` / `.stay` rules went with the AlertDialog adoption, and with them two off-scale radii, a
-	 * hand-rolled disabled opacity and a `padding: 13px` that was the only thing holding these controls over the
-	 * 44px tap floor. Deleted rather than left behind, because a Svelte rule matching nothing is an unused
-	 * selector, which this repo treats as a typecheck failure.
-	 *
-	 * `.pair` STAYS: four other cards use it, and it is a grid so its gap survives the ≤380px collapse.
-	 */
 </style>

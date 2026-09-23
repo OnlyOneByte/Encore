@@ -34,8 +34,7 @@ test('move updates rotationSeq and re-sorts', () => {
 });
 
 test('move-to-index in applyOp is a raw-seq fallback (real path is applyAndReseq → moveToIndex)', () => {
-	// applyOp is not the cross-singer reducer — that is rotation.ts moveToIndex, exercised in
-	// rotation.test.ts. This only pins that the arm exists so applyOp stays exhaustive over the union.
+	// The cross-singer reducer is rotation.ts moveToIndex; this only pins that applyOp stays exhaustive.
 	const out = applyOp([e('a', 0), e('b', 1)], { op: 'move-to-index', id: 'a', toIdx: 2 });
 	expect(out.map((x) => x.id)).toEqual(['b', 'a']);
 });
@@ -53,20 +52,17 @@ test('applyOp does not mutate its input (pure)', () => {
 	expect(JSON.stringify(input)).toBe(snapshot);
 });
 
-// ── applyAndReseq is pure: it never mutates its input array or its entries ──────────
-// This immutability is what makes snapshot-based rollback total: #onReject restores a
-// reference to the pre-op array, so the forward op must not have mutated the objects that array
-// held. `move` is the case that mattered — it routes through reorderWithinSinger, which rewrites
-// addedAt; if it did so in place, a captured snapshot would already carry the permuted stamps.
+// applyAndReseq's purity is what makes snapshot rollback total: #onReject restores a reference to the pre-op
+// array, so the forward op must not have mutated the objects that array held. `move` is the case that
+// matters — it routes through reorderWithinSinger, which rewrites addedAt.
 test('applyAndReseq(move) does not mutate the input entries (snapshot stays intact)', () => {
-	// Two picks by the SAME singer so reorderWithinSinger actually permutes addedAt in the forward step.
+	// Two picks by the SAME singer, so reorderWithinSinger really permutes addedAt in the forward step.
 	const before = [e('a', 0), e('b', 1)];
 	const frozenView = JSON.stringify(before);
 	const after = applyAndReseq(before, { op: 'move', id: 'b', toSeq: 0 });
-	// Forward move really did reorder (the op is non-trivial).
-	expect(after.map((x) => x.id)).toEqual(['b', 'a']);
-	// ...yet the input array — order, rotationSeq AND addedAt of every entry — is byte-for-byte unchanged,
-	// so a snapshot captured before the call is a faithful rollback target.
+	expect(after.map((x) => x.id)).toEqual(['b', 'a']); // the op is non-trivial …
+	// … yet order, rotationSeq AND addedAt of every input entry are unchanged, so a snapshot captured before
+	// the call is a faithful rollback target.
 	expect(JSON.stringify(before)).toBe(frozenView);
 	expect(after).not.toBe(before); // a fresh array, not the same reference
 });
@@ -83,14 +79,9 @@ test('applyAndReseq(add) and (remove) also leave the input untouched', () => {
 	expect(JSON.stringify(rem0)).toBe(remFrozen);
 });
 
-// step 4 — the `move-to-index` union member is a TYPE + comment hunk: reverting it alone leaves
-// the suite green (nothing runtime-observable), which is the R2 pure-addition exception, not a defect.
-// The behavioural reducer path is pinned by rotation.test.ts + the applyOp fallback above; this is the
-// source-scan guard for the vocabulary itself, so the op cannot silently vanish from the wire contract.
+// `move-to-index` is a TYPE-only member, so nothing runtime-observable reds if it vanishes from the wire
+// contract — hence a source-scan guard for the vocabulary itself.
 import { read } from '@encore/test-support';
-// SIBLING READ, now named explicitly. This guard used to live in src/lib/contract/core/, so
-// `at('src/lib/contract/core/ops.ts')` meant "the ops module next to me". Confirmed present at this
-// path before re-anchoring.
 const opsSrc = read('src/lib/contract/core/ops.ts')
 	.replace(/\/\*[\s\S]*?\*\//g, '')
 	.replace(/(^|[^:])\/\/[^\n]*/g, '$1');

@@ -1,11 +1,9 @@
-// F2 — /api/me projects a StoredSinger onto the wire, so it must drop `room_id`, not only the
-// session token.
+// F2 — /api/me projects a StoredSinger onto the wire, so it must drop `room_id`, not only the session token.
 //
 // `singers` rows carry `room_id`. Both handlers here destructured only `sessionToken` off the
 // row, so `roomId` rode along in the GET body, in the PATCH body, and — the sharp one — inside the
 // `singer:updated` frame, whose declared type is `PublicSinger` and has no room field. TypeScript
-// could not catch that: `safe` is a variable, and an excess-property check only fires on an inline
-// object literal.
+// could not catch that: `safe` is a variable, and an excess-property check only fires on an inline object literal.
 //
 // These drive the REAL handlers against a real SingerRepository on an in-memory migrated DB and
 // compare the emitted key set against `PublicSinger`'s own keys, taken from a value typed as

@@ -27,7 +27,6 @@ def _with_path(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("PATH", str(tmp_path))
 
 
-# ── the core property ───────────────────────────────────────────────────────────────
 def test_a_capability_is_only_advertised_when_it_can_be_proven(monkeypatch, tmp_path):
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "yt-dlp")  # only the fetcher exists on this fake box
@@ -78,15 +77,10 @@ def test_dropping_a_requested_capability_is_never_silent(monkeypatch, tmp_path):
     assert any("align" in w for w in warnings)
 
 
-# ── specific tokens ─────────────────────────────────────────────────────────────────
 def test_ensemble_is_never_advertised_because_no_engine_implements_it(monkeypatch, tmp_path):
-    # issue an earlier change: the worker used to advertise `stems:ensemble` whenever both engines were
-    # present, but
-    # NO ensemble engine exists — `engine_for("ensemble")` raises. So the core would route an ensemble
-    # upgrade to this box and the job would die at plan selection with "no separator engine: ensemble",
-    # which is the exact "claim the box cannot honour" failure this module exists to remove, and it
-    # also defeats the core's unservable-capability diagnostic. The token must never be advertised
-    # until an engine backs it (mirroring the OPENVINO backend, which is registered-but-never-available).
+    # No ensemble engine exists (`engine_for("ensemble")` raises), so this token must never be
+    # advertised even with both real engines present — mirroring OPENVINO, registered but never
+    # available.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "demucs")
 
@@ -108,9 +102,7 @@ def test_ensemble_is_never_advertised_because_no_engine_implements_it(monkeypatc
 
 
 def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch, tmp_path):
-    """Parity guard closing issue an earlier change's CLASS, not just its instance.
-
-    A `stems*` capability token routes a separation job to an engine: the core resolves the required
+    """A `stems*` capability token routes a separation job to an engine: the core resolves the required
     capability to an `engine` name (bare `stems` -> `demucs`, `stems:<name>` -> `<name>`) which the
     worker feeds to `engine_for` at plan selection. If a token is advertised but `engine_for` cannot
     build an engine for it, the job dispatches and dies. This asserts the ROUTED set (what the worker
@@ -129,15 +121,13 @@ def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch
     assert stems_caps, "the fully-equipped box must advertise at least the bare `stems` token"
     for token in stems_caps:
         engine_name = "demucs" if token == "stems" else token.split(":", 1)[1]
-        # Must not raise: an advertised stems* token that engine_for cannot honour is issue an earlier change.
-        eng = engine_for(engine_name)
+        eng = engine_for(engine_name)  # must not raise
         assert eng is not None
 
 
 def test_audiosep_is_advertised_only_when_its_dep_is_present(monkeypatch, tmp_path):
-    # the mel-band RoFormer engine (python-audio-separator). Advertised only when the dep is
-    # present — the same honesty contract as every other token. A box with demucs but no audio-separator
-    # must NOT claim stems:audiosep, or the core would route a mel-band process that dies at plan selection.
+    # Same honesty contract as every other token: a box with demucs but no audio-separator must NOT
+    # claim stems:audiosep, or the core would route a mel-band process that dies at plan selection.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "demucs")  # separator present, but NOT audio-separator
     monkeypatch.setattr(capabilities, "_module_available", lambda _name: False)
@@ -167,12 +157,10 @@ def test_a_cli_on_PATH_counts_even_when_the_module_is_invisible(monkeypatch, tmp
     assert "on PATH" in next(p.reason for p in probes if p.token == "stems")
 
 
-# ── the JS runtime trap ─────────────────────────────────────────────────────────────
 def test_missing_js_runtime_warns_but_does_not_remove_the_fetch_capability(monkeypatch, tmp_path):
-    # YouTube's player challenge cannot be solved without a JS runtime, and the degradation is silent
-    # and total — every process dies at download with "Requested format is not available", which reads as
-    # a broken worker. But vetoing fetch would strip the capability from a deployment that is currently
-    # limping along, so the honest signal is a loud warning.
+    # YouTube's player challenge cannot be solved without a JS runtime, and the degradation is
+    # silent and total. But vetoing fetch would strip the capability from a deployment that is
+    # currently limping along, so the honest signal is a loud warning instead.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "yt-dlp")
 
@@ -194,7 +182,6 @@ def test_no_js_warning_when_ytdlp_itself_is_absent(monkeypatch, tmp_path):
     assert capabilities.missing_js_runtime() is None
 
 
-# ── the useless-worker case ─────────────────────────────────────────────────────────
 def test_a_worker_that_can_prove_nothing_says_so_and_still_starts(monkeypatch, tmp_path):
     # Not fatal on purpose: it must still connect so its startup log and hardware report reach the
     # operator. Refusing to start would hide the very diagnosis they need.
@@ -219,19 +206,10 @@ def test_advertised_order_is_stable_across_restarts(monkeypatch, tmp_path):
     assert first == second == tuple(sorted(first))
 
 
-# ── issue an earlier change / an earlier change: advertise `stems` only when the RESOLVED backend has a
-# demucs engine ──────
 def test_stems_survives_on_an_mlx_box(monkeypatch):
-    """Issue an earlier change established that `stems` is dropped when the resolved backend has no demucs
-    engine.
-    an earlier change IMPLEMENTED the MLX engine, so an Apple-Silicon box that auto-resolves its backend to
-    `mlx`
-    now HAS a demucs engine and must KEEP advertising `stems` — the box can genuinely run the process
-    (demucs-mlx CLI + mix-minus derivation), so dropping it would refuse work it can do.
-
-    This is the inverse of the pre-an earlier change pin: before, an mlx box dropped `stems` (advertise ->
-    process ->
-    die at the unimplemented engine); now it keeps it and no drop warning fires.
+    """`stems` is dropped when the resolved backend has no demucs engine, but an Apple-Silicon box
+    that auto-resolves to `mlx` HAS one (demucs-mlx CLI + mix-minus derivation), so it must KEEP
+    advertising `stems` — dropping it would refuse work it can do.
 
     Simulates the box exactly as test_backends.py does: patch platform to Darwin/arm64 and make the
     module probe report `demucs_mlx` importable, so the backend genuinely auto-resolves to mlx.
@@ -249,7 +227,7 @@ def test_stems_survives_on_an_mlx_box(monkeypatch):
         capabilities, "_module_available", lambda name: name in ("demucs", "demucs_mlx", "whisperx")
     )
 
-    # AUTO backend selection (no ENCORE_SEPARATOR_BACKEND) — the reachable trigger with no operator action.
+    # AUTO backend selection (no ENCORE_SEPARATOR_BACKEND) — reachable with no operator action.
     cfg = WorkerConfig(demucs_bin="__no_such_bin__", ytdlp_bin="__no_such_bin__")
     resolved, warnings, _probes = config.resolve(cfg, device=None)
 
@@ -288,28 +266,23 @@ def test_stems_survives_on_a_torch_box(monkeypatch):
 
 
 def test_narrow_for_backend_keys_on_a_real_engine_impl():
-    """Unit pin on the narrowing primitive and its source of truth. `demucs_engine_backed_by` decides
-    which backends have an engine, and it cannot drift from `engine_for`: it returns True for exactly
-    the backends `engine_for("demucs", backend=b)` builds an engine for."""
+    """`demucs_engine_backed_by` decides which backends have an engine, and it cannot drift from
+    `engine_for`: it returns True for exactly the backends `engine_for("demucs", backend=b)` builds
+    an engine for."""
     from src.separation.engines import MlxDemucsEngine, demucs_engine_backed_by, engine_for
 
-    # torch, None (portable default) AND mlx all build a real demucs engine.
     assert demucs_engine_backed_by("torch") is True
     assert demucs_engine_backed_by(None) is True
     assert demucs_engine_backed_by("mlx") is True
-    # A backend name no engine implements is NOT backed (openvino is registered in the enum but has no
-    # runtime; it can never be a RESOLVED backend — resolve_backend raises before narrowing — but the
-    # predicate is conservative rather than trusting that).
+    # openvino is registered in the enum but has no runtime and can never be a RESOLVED backend
+    # (resolve_backend raises before narrowing), but the predicate is conservative rather than trusting that.
     assert demucs_engine_backed_by("openvino") is False
     assert demucs_engine_backed_by("nonsense") is False
 
-    # `engine_for` builds an engine for every backed backend and the built engine reports that backend,
-    # so the predicate the capability site reads cannot drift from the engine the process actually builds.
     assert engine_for("demucs", backend="torch").backend == "torch"
     assert isinstance(engine_for("demucs", backend="mlx"), MlxDemucsEngine)
     assert engine_for("demucs", backend="mlx").backend == "mlx"
 
-    # narrow_for_backend keeps `stems` for a backed backend (torch, mlx) and leaves other tokens alone.
     caps = ("align", "fetch:ytdlp", "stems", "stems:roformer")
     kept, warns = capabilities.narrow_for_backend(caps, "torch")
     assert kept == caps and warns == []

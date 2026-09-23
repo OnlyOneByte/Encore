@@ -1,41 +1,24 @@
-"""The real lyrics corpus: what real song structure pins that an inline string cannot.
+"""The real lyrics corpus: what real song structure pins that an inline string cannot (position and
+repetition — where a chorus recurs, how many times, how long a tail runs — are properties of real
+songs, so a threshold tuned against invented text is tuned against whoever typed it).
 
-`worker/tests/` had no lyrics fixtures at all; every input across the six lyrics test files was an
-inline Python string. That is enough to pin an invariant and not enough to calibrate a threshold,
-because position and repetition are properties of real song structure — where a chorus recurs, how many
-times, how long a tail runs — so a number tuned against invented text is tuned against whoever typed it.
+`fixtures/lyrics/` holds eight artifacts taken verbatim off a real media store, with provenance in
+`manifest.json` and the source snapshot in `README.md`; every specimen is consumed here through the
+real production functions in `src/lyrics/grading.py` and `src/lyrics/artifact.py`, so deleting any one
+reds this module. Four things are guarded:
 
-`fixtures/lyrics/` now holds eight artifacts taken verbatim off a real party's media store, with
-provenance in `manifest.json` and the source snapshot in `README.md`. This file is what makes them
-load-bearing rather than eight files nobody reads: every specimen is consumed here, through the real
-production functions in `src/lyrics/grading.py` and `src/lyrics/artifact.py`, and deleting any one of them
-reds this module.
+1. Provenance cannot rot silently — every manifest specimen exists, hashes to its recorded sha256,
+   parses as a published lyrics artifact, and is named (with snapshot branch+commit) in the README.
+2. `OVERSHOOT_FRACTION_MAX` is separated by real data: two wrong-version picks (labelled *by
+   construction* — their own timings run past their own audio's end) against five same-recording
+   negatives.
+3. The overshoot demotion flips a real pair where the wrong-version pick scores higher raw.
+4. The coverage threshold is honestly NOT calibrated here — the archive holds exactly one same-audio
+   pair (cross-language, coverage 0.0, one extreme point, not a band); pinned at one so an interior
+   pair landing reds this and forces the README's calibration section to be rewritten with a real band.
 
-Four things are guarded.
-
-1. **Provenance cannot rot silently.** Every manifest specimen exists, hashes to its recorded sha256,
-   parses as a published lyrics artifact, and is named in the README — and the README carries the
-   snapshot branch and commit. The owner's ruling made that table the whole mechanism: a stale commit
-   makes the other 22 artifacts unreachable in practice and turns every file here into a blob.
-
-2. **`OVERSHOOT_FRACTION_MAX` is separated by real data, not by two quoted numbers.** The two
-   wrong-version picks are labelled *by construction* — their own timings run past the end of their own
-   audio, which needs no human judgement — and five same-recording specimens supply the negatives the
-   constant's comment never had.
-
-3. **The overshoot demotion flips a real pair.** A wrong-version pick scoring higher than a clean rival
-   is the outcome the overshoot penalty exists to prevent, and the two real specimens make that argmax
-   measurable.
-
-4. **The coverage threshold is honestly NOT calibrated here.** `grading.py` says to re-derive
-   `SUSPECT_COVERAGE` once this corpus lands. It cannot be: the archive holds exactly one same-audio
-   pair, cross-language, measuring 0.0 — one point at the extreme, not a band. The pair count is pinned
-   at one, so the day an interior pair arrives this reds and the README's calibration section has to be
-   rewritten with a real number instead of a claim.
-
-Expected values are literals read off the committed bytes or computed by hand, never re-derived with the
-operation under test: the overshoot assertions carry the raw `last_end` seconds and hand-computed
-fractions rather than dividing the way `overshoot_penalized` does.
+Expected values are literals read off the committed bytes or hand-computed, never re-derived with the
+operation under test.
 """
 
 from __future__ import annotations
@@ -108,9 +91,6 @@ def _as_text(name: str, role: str) -> LyricsText:
     )
 
 
-# ── 1. provenance ────────────────────────────────────────────────────────────────────────
-
-
 def test_every_manifest_specimen_is_present_byte_pinned_and_a_real_artifact() -> None:
     """The corpus is what the manifest says it is, or the suite says so.
 
@@ -163,8 +143,6 @@ def test_the_readme_names_the_snapshot_and_every_specimen_in_it() -> None:
         assert spec["pins"].strip(), f"{name} must record WHAT it pins, or it is an unexplained blob"
         assert spec["mediaId"] and spec["sourceRef"], f"{name} must keep its trace back to the snapshot"
 
-
-# ── 2. the overshoot band, from real wrong-version picks ──────────────────────────────────
 
 #: Every timed specimen with the raw seconds its own timings reach, and the audio it was fetched for.
 #: Literals read off the committed bytes — not computed here with the arithmetic under test.
@@ -264,9 +242,6 @@ def test_the_overshoot_demotion_flips_a_real_wrong_version_pick_against_a_real_c
     )
 
 
-# ── 3. the coverage threshold this corpus does NOT calibrate ──────────────────────────────
-
-
 def test_the_only_real_same_audio_pair_votes_at_coverage_zero_and_cannot_calibrate_the_threshold() -> None:
     """`SUSPECT_COVERAGE` still needs the `baselines/` half, and this is the proof.
 
@@ -308,9 +283,6 @@ def test_the_only_real_same_audio_pair_votes_at_coverage_zero_and_cannot_calibra
         f"the only real pair measures at the extreme, not in a calibratable band: {got.coverage}"
     )
     assert got.coverage < SUSPECT_COVERAGE, "so it lands on the suspect side by the widest possible margin"
-
-
-# ── 4. real shapes an inline string never produces ────────────────────────────────────────
 
 
 def test_a_real_line_whose_whole_text_is_a_music_glyph_tokenises_to_nothing() -> None:

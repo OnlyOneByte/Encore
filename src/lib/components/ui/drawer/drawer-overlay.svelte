@@ -1,24 +1,13 @@
 <!--
-  ── ENCORE DEVIATIONS ───────────────────────────────────────────────────────────────────
-  NOT RENDERED BY ANYTHING TODAY, and that is recorded here rather than being left to look like an
-  oversight. `drawer-content.svelte` no longer includes it: `vaul-svelte` gates the overlay on modality
-  (`use-drawer-overlay.svelte.js`: `shouldRender = ctx.modal.current`), and Encore's only drawer is
-  `modal={false}` by necessity — a permanently-mounted sheet whose collapsed height is the docked band on
-  every phone surface cannot put a scrim and a focus trap over the page the guest is using.
+  ENCORE DEVIATIONS. NOTHING RENDERS THIS TODAY, and the absence is deliberate: vaul-svelte gates the
+  overlay on modality, and the app's only drawer is non-modal by necessity — a permanently-mounted sheet
+  whose collapsed height is the docked band cannot put a scrim and a focus trap over the page in use.
+  Kept vendored so a future modal drawer is one import away; `drawer-overlay-modality.test.ts` ties
+  "not rendered" to "not modal" so re-adding one without the other reds.
 
-  KEPT rather than deleted, unlike `Separator`: a part is the registry's unit, this one has no broken
-  dependency, and a future modal drawer needs it back with one import. `drawer-overlay-modality.test.ts`
-  is what keeps "not rendered" and "not modal" tied together, so re-adding modality without re-adding
-  this reds rather than silently shipping an unscrimmed modal.
-
-  1. The registry's `data-open:animate-in data-open:fade-in-0` utilities were stripped. `motion.test.ts`
-     rejects `animate-*` tree-wide, because a keyframes utility cannot honour Reduce Motion.
-
-  2. It carried a hand-written replacement for them — a `:global([data-slot='drawer-overlay'])` fade with
-     two `-global-` keyframes and a prefers-reduced-motion wrapper. That has been DELETED as dead code:
-     no element has carried this slot since the overlay stopped being rendered, so the rule matched
-     nothing and the keyframes were emitted for nobody. Re-add the fade WITH the render, not before it,
-     and keep it as a declaration rather than a utility for the reason in (1).
+  It carries NO fade, neither the registry's motion utilities nor a hand-written replacement: a rule for a
+  slot no element carries is dead code that reads as live. Re-add a fade with the render, never before it,
+  and as a declaration inside a reduced-motion block rather than a utility.
 -->
 <script lang="ts">
 	import { Drawer as DrawerPrimitive } from 'vaul-svelte';

@@ -1,37 +1,20 @@
-// unit: the one place a test says WHERE a file is, so no test has to say where it ITSELF is.
+// The one place a test says WHERE a file is, so no test has to say where it ITSELF is.
 //
-// THE PROBLEM THIS EXISTS TO DELETE. 130 test files reach their subject by counting `../` from their own
-// location — `at('src/routes/tv/+page.svelte')` and 207 siblings like it,
-// at depths from 0 to 5. Every one of those is a statement about where the TEST lives, embedded in a
-// statement about where the SOURCE lives. Move the test and the arithmetic is wrong.
+// Anchors are found by walking UP to the repo root marker, never by counting `../` down from a caller: a path that
+// encodes the TEST's location inside a claim about the SOURCE's location is wrong the moment either moves. A wrong path
+// does not always error — anything gating on `existsSync` reads nothing, finds no violations, and PASSES, which is
+// indistinguishable from a healthy guard.
 //
-// WHY THAT IS DANGEROUS AND NOT MERELY TEDIOUS. Roughly half the suite reads source as text to assert a
-// convention. When such a guard's path is wrong it does not always error — if anything gates on
-// `existsSync` it reads nothing, finds no violations, and PASSES. This repo has no CI, so a local run is
-// the only gate, and a vacuously passing guard is indistinguishable from a healthy one. That failure has
-// already happened here: `non-vacuity-floors.test.ts`'s RETIRED arm skipped silently on a missing file
-// until phase 0 of the test reorganisation closed it.
-//
-// THE CONTRACT. Anchors are discovered by walking UP to the repo root marker, never by counting down from
-// a caller. So a test importing this resolves the same paths from `src/lib/`, from `tests/unit/`,
-// or from anywhere else — which is what makes the move mechanical instead of 207 individual
-// recalculations, and what stops the NEXT move from being a project.
-//
-// WHY THERE IS NO `readIfExists`. A missing path is always an error here, never a skip. A permissive
-// variant would reproduce the RETIRED hole at 130x scale: every guard that lost its subject would quietly
-// examine nothing. If a caller genuinely needs to tolerate absence it must say so at its own call site,
-// where a reviewer can see the decision, and it must carry a non-vacuity floor.
+// Hence no `readIfExists`: a missing path is always an error, never a skip. A caller that must tolerate absence says so
+// at its own call site, where a reviewer can see it, and carries a non-vacuity floor.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
 /**
- * The repo root, found by walking up for `bunfig.toml`.
- *
- * `bunfig.toml` is the marker rather than `package.json` (which every workspace member has) or `.git`
- * (absent in a worktree export, and this repo is worked on in worktrees). It is also the file whose
- * location bun itself uses to resolve the test preload, so anchoring on it means this module and the test
- * runner agree on where the root is by construction.
+ * The repo root, found by walking up for `bunfig.toml` — the marker rather than `package.json` (every workspace member
+ * has one) or `.git` (absent in a worktree export, and this repo is worked on in worktrees). It is also what bun uses to
+ * resolve the test preload, so this module and the runner agree on the root by construction.
  */
 function findRepoRoot(): string {
 	let dir = import.meta.dir;
@@ -52,13 +35,8 @@ function findRepoRoot(): string {
 
 export const repoRoot: string = findRepoRoot();
 
-/*
- * SELF-CHECK, on load, once.
- *
- * A wrong anchor must be loud exactly once rather than silently wrong at 207 call sites. Each assertion
- * below names a landmark that cannot plausibly be absent from a correct root, so this fires on a
- * misresolution rather than on an ordinary refactor.
- */
+// Self-check, on load, once: a wrong anchor must be loud exactly once rather than silently wrong at every call site.
+// No landmark below can plausibly be absent from a correct root, so this fires on a misresolution, not on a refactor.
 for (const landmark of ['bunfig.toml', 'package.json', '.', 'src/lib/contract']) {
 	if (!existsSync(join(repoRoot, landmark))) {
 		throw new Error(
@@ -69,33 +47,15 @@ for (const landmark of ['bunfig.toml', 'package.json', '.', 'src/lib/contract'])
 	}
 }
 
-/** `.` — the SvelteKit app package. */
 /** `src` — where routes, lib and server live. */
 export const srcDir: string = join(repoRoot, 'src');
-/** `tests/e2e` — drivers, probes, gates and the selector contract. */
-/**
- * `tests/e2e` — the browser-driving drivers, probes and gates.
- *
- * NOT under `.` any more, despite the name. These lived at `e2e` until the test
- * reorganisation moved every test out of the source tree; the export keeps its name because 13 guards
- * import it and the thing it names has not changed, only its address. When it moved, all 13 failed with
- * `ENOENT: scandir e2e` — loudly, and from one place, which is the whole argument for a named
- * anchor over 13 copies of a path.
- */
+/** `tests/e2e` — the browser-driving drivers, probes, gates and the selector contract. */
 export const e2eDir: string = join(repoRoot, 'tests', 'e2e');
-/**
- * The ISOMORPHIC contract — code imported by both `src/lib` (client) and `src/lib/server` (authoritative).
- *
- * Was `packages/shared/src` as its own workspace package; folded into the app as `src/lib/contract`.
- * The export keeps its name because the thing it names has not changed, only its address — and because a
- * named anchor is why this move needed ONE edit here instead of one per consumer.
- */
+/** The ISOMORPHIC contract — code imported by both `src/lib` (client) and `src/lib/server`. */
 export const sharedSrc: string = join(srcDir, 'lib', 'contract');
 /**
- * `worker` — the Python side. Layer 1B. Was `apps/worker` until the apps/ layer was flattened away.
- *
- * @knipignore Deliberately has no consumer yet. It completes the path-anchor set, and `sharedSrc`
- * above states the case: a named anchor is why a move costs ONE edit here instead of one per consumer.
+ * `worker` — the Python side.
+ * @knipignore Deliberately has no consumer yet; it completes the path-anchor set, which is why a move costs ONE edit.
  */
 export const worker: string = join(repoRoot, 'worker');
 
@@ -105,12 +65,8 @@ export function at(...parts: string[]): string {
 }
 
 /**
- * Read a repo-relative file. **Throws** when it is missing — deliberately, always.
- *
- * The error names the caller so a broken path is diagnosed as a broken path rather than as a failure of
- * whatever invariant the caller was asserting. That distinction is what `task-number-hygiene.test.ts`
- * lacks today: when its self-reference breaks it reds with a task-number message, which invites a fix that
- * silently widens the exemption.
+ * Read a repo-relative file. **Throws** when it is missing — deliberately, always, naming the caller, so a broken path
+ * is diagnosed as one rather than as a failure of the invariant the caller was asserting.
  */
 export function read(...parts: string[]): string {
 	const abs = at(...parts);
@@ -125,32 +81,18 @@ export function read(...parts: string[]): string {
 }
 
 /**
- * Directories no source walk may descend into.
- *
- * `build/`, `.svelte-kit/` and `dist/` hold BUILT COPIES of source: a walk that reaches them reads
- * stale duplicates and reports on code the app no longer runs — a guard passing on the wrong tree,
- * which is the failure mode this whole harness is arranged against. `node_modules/` and `.git/` are
- * simply not this repo's source.
- *
- * This set used to live beside the `.svelte` walk in `scan.ts` while `filesUnder` here had NO skip
- * list at all — two recursive walks with different scope rules, either of which a guard might be
- * using. It is now defined once, next to the single walk that honours it.
- *
- * There is deliberately no allowlist of directories to INCLUDE. Every walk is unconditionally
- * recursive, so a new source directory is in scope by construction rather than by someone remembering
- * to add it.
+ * Directories no source walk may descend into: `build/`, `.svelte-kit/` and `dist/` hold BUILT COPIES, so a walk that
+ * reaches them reports on code the app no longer runs. There is deliberately no INCLUDE allowlist — every walk is
+ * unconditionally recursive, so a new source directory is in scope by construction.
  */
 export const SKIP_DIRS: ReadonlySet<string> = new Set(['node_modules', 'build', '.svelte-kit', 'dist', '.git']);
 
 /**
- * THE recursive walk. Every file-listing helper in this package is a filter over this one function,
- * so scope has exactly one definition and one edit moves every guard's scope with it.
+ * THE recursive walk. Every file-listing helper here is a filter over this one function, so scope has one definition.
  *
- * Uses `withFileTypes` rather than a `statSync` per entry: fewer syscalls, and it does not follow
- * symlinks, so a symlinked directory cannot make the walk leave the tree it was pointed at.
- *
- * Sorted, always. `readdirSync` order is filesystem-dependent, so an unsorted walk makes any
- * order-sensitive assertion pass or fail based on the machine it ran on.
+ * `withFileTypes` rather than a `statSync` per entry: fewer syscalls, and it does not follow symlinks, so a symlinked
+ * directory cannot make the walk leave the tree it was pointed at. Sorted, ALWAYS — `readdirSync` order is
+ * filesystem-dependent, so an unsorted walk makes an order-sensitive assertion pass or fail per machine.
  */
 function walkDir(dir: string, keep: (name: string) => boolean): string[] {
 	const out: string[] = [];
@@ -178,11 +120,8 @@ export function filesUnder(rel: string, exts: readonly string[]): string[] {
 }
 
 /**
- * Every file under an ABSOLUTE directory, recursively, with the given extensions. Sorted.
- *
- * The absolute-path variant exists because the `.svelte` scanning helpers are handed a directory that
- * a guard has already resolved (`join(SRC, 'lib')`), not a repo-relative string. Same walk, same skip
- * set, same ordering — the difference is only how the root is named.
+ * Every file under an ABSOLUTE directory, recursively, with the given extensions. Sorted. Same walk, skip set and
+ * ordering as `filesUnder`; it exists because the `.svelte` helpers are handed an already-resolved directory.
  */
 export function filesIn(dir: string, exts: readonly string[]): string[] {
 	if (!existsSync(dir)) {

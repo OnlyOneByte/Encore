@@ -1,21 +1,13 @@
 // GET /api/room-preview?code=CODE — resolve a scanned/typed join code to a WORDS confirmation for an
 // unjoined guest: how many people are here now, a couple of their names, and the identity colours they
-// hold (Q1-B).
+// hold. Unauthenticated on purpose and no new exposure: /tv already renders present singers by name on
+// the big screen unauthenticated, and /metrics is ungated too — see docs/ARCHITECTURE.md §10. Rooms
+// have no name column ({id, code, createdAt}), so the confirmation is built from presence, not a name.
 //
-// Unauthenticated on purpose, and it is no new exposure: /tv reads no session and already renders the
-// present singers BY NAME on the big screen (`lib/tv/screen.ts`), and /metrics is ungated too — there is
-// no operator identity in this app, so who is in the room is already readable by any phone on the LAN.
-//
-// Rooms have no name column (schema.ts is {id, code, createdAt}) and no naming surface, so the
-// confirmation is built from presence, not a room name — that is exactly what Q1-B decided over the
-// rejected "Room ABCD23 · 6 people here", which re-presents the code says has no function left
-// once the guest has arrived.
-//
-// The count comes from `roomMembership`, which is also what the name-uniqueness rule refuses from — see
-// the note at the count below for the contradiction that sharing removes. Both halves still need
-// scoping, and that reader does it: `presence` is one global tracker (not per-room), so it knows about
-// other rooms' phones, while `singers.listPublic(roomId)` is not presence-filtered and would count
-// singers who have long gone.
+// Counts come from `roomMembership` (lib/server/singers/join.ts) — the SAME reader `assertNameFree`
+// refuses from, so this sentence and the name-uniqueness rule can never disagree about who is in the
+// room. `presence` is a global tracker (not per-room) and `singers.listPublic(roomId)` is not
+// presence-filtered on its own, so roomMembership is what scopes both correctly to this room.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
@@ -38,26 +30,11 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ error: `No room is using the code ${code}.` }, { status: 404 });
 	}
 
-	// ── WHO COUNTS AS IN THE ROOM ────────────────────────────────────────────────────────────────────
-	//
-	// `roomMembership` (lib/server/singers/join.ts), which is the SAME reader `assertNameFree` refuses
-	// from. That sharing is the fix, not a tidy-up: this endpoint used to count `presence.online()` — a
-	// live socket — while the name rule refuses anyone not yet `gone`, so the join screen could say
-	//
-	//     "This room is empty right now — you'll be the first here."
-	//
-	// and then reject the submit with `the name "Maya" is taken`, while /tv rendered "Maya AWAY" on its
-	// roster the whole time. Two populations, one room. There is now one.
-	//
-	// AWAY MEMBERS ARE IN THE ROOM, which is the grace window's whole premise — a dropped socket is a
-	// locked phone or a walk to the kitchen, not a departure. So they are counted, their colours are
-	// pipped, and `awayCount` lets the sentence say so rather than claiming they are standing here.
-	//
-	// COLOURS RIDE ALONG WITH THE NAMES, for the join screen's colour ring: it draws a hollow pip on every
-	// stop somebody in the room is already holding, so a guest can avoid arriving as a near-twin of the
-	// singer next to them on the TV roster. Same order as `names`, from the same list, so the two cannot
-	// describe different sets of people. No new exposure — `/tv` already renders the names and colour dots
-	// of everyone in the room, away ones included, unauthenticated, for the whole room to read.
+	// AWAY MEMBERS ARE IN THE ROOM — the grace window's whole premise is that a dropped socket is a
+	// locked phone or a walk to the kitchen, not a departure. So they're counted and pipped, and
+	// `awayCount` lets the sentence say so rather than claiming they're standing here. Colours ride
+	// along in the SAME ORDER as `names` so the join screen's colour ring can draw a hollow pip on
+	// every stop someone in the room already holds, without describing two different sets of people.
 	const { here, away } = roomMembership(app, room.id);
 	// `here` first: a caller that names only a few people should name reachable ones first.
 	const members = [...here, ...away];

@@ -1,19 +1,12 @@
-// A route rather than an overlay, because what it changes outlives the moment. Loading server-side is
-// the point: first paint shows persisted values, and a default flashed for a frame here reads as "my
-// choice was lost" rather than "still loading".
+// Loaded server-side so the first paint already holds persisted values: a default flashed for a frame
+// here reads as "my choice was lost". See docs/FRONTEND.md#settings.
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { fallbackJoinOrigin, publicOriginIsHttps } from '$lib/server/public-origin';
 
-/**
- * The three scopes, resolved server-side so the FIRST paint is already on the right tab — a deep link
- * from the header's name button (`?tab=you`) must not render Party for a frame and then swap.
- *
- * `party` is the default for a bare `/settings`, which is what the gear opens. The room is what you
- * change mid-song; the server's splitter and the lyrics reader are set once and then left alone.
- */
+/** Resolved here so a deep link (`?tab=you`) paints on its own tab instead of swapping after a frame. */
 const TAB_IDS = ['you', 'party', 'server'] as const;
 type TabId = (typeof TAB_IDS)[number];
 const DEFAULT_TAB: TabId = 'party';
@@ -25,14 +18,12 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
 	if (!singer) {
 		// Carry the tab through the join gate, or a guest sent here to fix their name lands on Party.
-		// `/` is the landing/join page now (Q2-A retired /join); `safeNextPath` is read there and
-		// keeps this `?next=` from becoming an open redirect, exactly as the old /join route did.
+		// `safeNextPath` on `/` is what keeps this `?next=` from becoming an open redirect.
 		const next = encodeURIComponent(`/settings${url.search}`);
 		redirect(303, `/?next=${next}`);
 	}
 
-	// Never hand the session token to the page. It is the singer's identity, and the page data is
-	// serialised into the HTML — the same projection every /api route makes for the same reason.
+	// Page data is serialised into the HTML, so the session token — the singer's identity — never goes in.
 	const { sessionToken: _t, ...me } = singer;
 
 	const requested = url.searchParams.get('tab');
@@ -42,13 +33,10 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 		me,
 		tab,
 		settings: app.settings.getEffective(app.activeRoomId),
-		// What an empty join address resolves to, so the field can show its fallback rather than an empty
-		// box the user has to guess at.
+		// What an empty join address resolves to, so the field can show its fallback.
 		joinOriginFallback: fallbackJoinOrigin(request, url),
-		// How THIS phone reached the server. An https join address on a plain-http party is the one
-		// mistake in that field worth warning about, and only the server knows the real scheme —
-		// `location.protocol` in the browser cannot be trusted here for the same reason `url.protocol`
-		// cannot on the server (see $lib/server/public-origin).
+		// Only the server knows the real scheme this phone arrived on; `location.protocol` cannot be
+		// trusted for it. Drives the "https join address on a plain-http party" warning.
 		requestIsHttps: publicOriginIsHttps(request, url)
 	};
 };

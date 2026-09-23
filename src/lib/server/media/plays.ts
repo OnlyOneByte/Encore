@@ -1,16 +1,12 @@
-// Play tracking (retention follow-up) — record WHEN a song was last actually sung.
+// Play tracking (retention follow-up) — records WHEN a song was last actually sung, since
+// `library.lastPlayedAt` existed but nothing incremented it, so eviction fell back to oldest-added
+// (backwards: a song added months ago and sung weekly would evict before one never played).
 //
-// Why: retention's eviction plan needs a recency signal. `library.lastPlayedAt` existed in the sidecar
-// but nothing incremented it, so eviction fell back to `addedAt` (oldest-added-first) — a song added
-// months ago and sung weekly would be evicted before one added yesterday and never played, backwards.
-//
-// Design — DEDUPE on ENTRY id, not media id:
-//   - `emitNowPlaying` is the single choke point every playback transition funnels through (the right
-//     hook), but it is also re-emitted without a change (a finished process re-broadcasts nowplaying so
-//     the TV preloads the now-ready song). Counting every emit would inflate play count whenever an
-//     unrelated song finished processing.
-//   - Entry id, not media id: the same song queued twice in one night is two entries and genuinely two
-//     plays, while one entry re-emitted five times is one.
+// DEDUPES on ENTRY id, not media id: `emitNowPlaying` is the right hook (every playback transition
+// funnels through it) but also re-emits with no change (a finished process re-broadcasts so the TV
+// preloads the next-ready song) — counting every emit would inflate plays on an unrelated finish.
+// The same song queued twice in one night is two entries and genuinely two plays; one entry
+// re-emitted five times is one.
 //
 // Pure tracker, injectable sink — testable without a filesystem.
 
@@ -25,14 +21,11 @@ export class PlayTracker {
 		this.#sink = sink;
 	}
 
-	/**
-	 * Call on every nowplaying emit. Fires the sink only when the current entry actually CHANGED to a
-	 * real entry — a repeat emit, or a transition to nothing-playing, records no play.
-	 */
+	/** Call on every nowplaying emit — fires the sink only when the current entry actually CHANGED to
+	 *  a real entry; a repeat emit or a transition to nothing-playing records no play. */
 	onNowPlaying(entry: { id: string; mediaId: string } | null): void {
 		if (!entry) {
-			// Nothing playing. Clear, so that re-starting the SAME entry later (restart, or a rewind
-			// through an empty queue) counts as a fresh play rather than being swallowed as a dupe.
+			// Clear rather than leave stale: restarting the SAME entry later must count as a fresh play.
 			this.#lastEntryId = null;
 			return;
 		}

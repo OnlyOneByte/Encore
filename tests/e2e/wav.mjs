@@ -1,22 +1,11 @@
 /*
- * Real, decodable audio — synthesized, with no encoder on the box.
+ * Real, decodable audio — EMITTED, not encoded, because both ffmpeg builds on this box are decode-only and
+ * there is no flac/sox/lame. A RIFF/PCM header is 44 documented bytes and s16le samples are integers, so a
+ * WAV needs no dependencies at all, `wav: 'audio/wav'` is already in the media route's content-type map,
+ * and Chromium decodes it natively. See docs/E2E.md#proving-audio.
  *
- * WHY THIS EXISTS. `seed-media.mjs` writes 16-byte ISO-BMFF stubs and says so in its own header:
- * "NOT enough to decode, so do not use this to test playback". That was the single reason the e2e
- * could drive join → search → queue → rotation and still never once prove a sound came out. Every
- * audio defect the party hit — a master element that was never told to play, a <video> that cannot
- * decode FLAC, a silent instrumental published as ready, a range-less route WebKit abandons — lived
- * in exactly the gap the placeholder left open.
- *
- * Encoding is not available here to close it: BOTH ffmpeg builds on this host are decode-only (no
- * muxers, no encoders, no lavfi, not even the `volumedetect` filter the loudness probe shells out to),
- * and there is no flac/sox/lame. So we do not encode — we EMIT. A RIFF/PCM header is 44 bytes of
- * documented layout and s16le samples are just integers, so a WAV can be written by hand with zero
- * dependencies, and `wav: 'audio/wav'` is already in the media route's content-type map. Chromium
- * decodes it natively.
- *
- * The audio is deliberately LOUD and HARMONIC rather than noise, so that a human opening the artifact
- * hears a chord and not a hiss, and so `webkitAudioDecodedByteCount` climbing is unambiguous.
+ * The audio is deliberately LOUD and HARMONIC rather than noise, so a human opening the artifact hears a
+ * chord and not a hiss, and so `webkitAudioDecodedByteCount` climbing is unambiguous.
  */
 
 /** One 16-bit PCM WAV, mono, 44.1 kHz, from a set of summed sine partials. */

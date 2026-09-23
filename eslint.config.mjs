@@ -1,16 +1,5 @@
-// Flat ESLint config for the Encore monorepo (. + src/lib/contract).
-//
-// Before this file the repo had NO lint gate — only svelte-check, which is a TYPE gate, not a lint
-// gate. ESLint catches what tsc/svelte-check structurally cannot: floating promises, unused vars
-// and imports, no-undef in the .mjs scripts and e2e probes that no type gate covers, and
-// eslint-plugin-svelte's reactivity/a11y rules.
-//
-// CALIBRATION: introducing a linter to a mature, previously-unlinted 300-file tree
-// surfaces a large tail of pre-existing findings. High-value STRUCTURAL rules are errors and their
-// violations are fixed in this change. Rules that are pervasive and stylistic (empty catch blocks
-// that are intentional here, a batch of opinionated svelte/* suggestions) are set to `warn` so the
-// gate is green and the config diff stays reviewable; those cleanups are follow-up work, not a
-// config PR. `bun run lint` fails only on errors.
+// Flat ESLint config. Structural rules are errors; pervasive stylistic ones are `warn`, and
+// `bun run lint` fails only on errors.
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import svelte from 'eslint-plugin-svelte';
@@ -31,16 +20,12 @@ export default tseslint.config(
 	js.configs.recommended,
 	...tseslint.configs.recommended,
 
-	// Typed TypeScript: everything in a tsconfig's program. Type-aware rules (no-floating-promises)
-	// need this. e2e/** and *.config.ts are NOT in the app tsconfig (tracked separately),
-	// so they are linted without the type service in the block below.
+	// Typed TypeScript: everything in the app tsconfig's program, where type-aware rules work.
 	{
 		files: ['src/**/*.ts'],
-		// The service worker is excluded here, not just handled in the block below. ESLint's flat config
-		// applies EVERY matching block, so this block's `no-floating-promises` — which needs type
-		// information — would still be applied to a file the tsconfig deliberately excludes, and eslint
-		// crashes rather than skipping it. SvelteKit excludes the service worker from the program on
-		// purpose: it runs in a worker scope, not the DOM.
+		// The service worker must be excluded HERE, not merely covered by a later block: flat config
+		// applies every matching block, so `no-floating-promises` would still reach a file SvelteKit keeps
+		// out of the program, and eslint crashes rather than skipping it.
 		ignores: ['src/service-worker.ts'],
 		languageOptions: {
 			parser: tseslint.parser,
@@ -53,17 +38,11 @@ export default tseslint.config(
 		}
 	},
 
-	// Out-of-tsconfig TypeScript (e2e/**, *.config.ts). Syntactic + unused rules only;
-	// no type-aware rules because there is no program for these files (follow-up work).
+	// Files in no tsconfig program: syntactic and unused-variable rules only. `server.ts` belongs to
+	// `tsconfig.server.json` and the service worker is excluded by SvelteKit, so both are type-checked
+	// elsewhere. The `.mjs` extension is load-bearing — the e2e tree is ~40 drivers run by `bun run`, and
+	// a glob of only `{ts,svelte}` drops every one of them out of lint coverage silently.
 	{
-		// The `.mjs` extension is here deliberately: `tests/e2e/**` is 40 browser-driving drivers run by
-		// `bun run`, and they are not in any tsconfig program. When the e2e tree moved under `tests/`, the
-		// lint glob covered only `{ts,svelte}` there, so all 40 silently dropped out of coverage — visible
-		// only because the warning count fell from 82 to 41. Second time that shape has bitten in this
-		// reorganisation, hence the extension list rather than a bare `*.ts`.
-		// `server.ts` (the Bun entry) and the service worker are both OUTSIDE the app's tsconfig program —
-		// the entry belongs to `tsconfig.server.json` and the worker is excluded by SvelteKit. Both are
-		// type-checked, just not by this program, so they are linted syntactically here.
 		files: [
 			'tests/e2e/**/*.{ts,mjs}',
 			'*.config.ts',
@@ -80,18 +59,16 @@ export default tseslint.config(
 		}
 	},
 
-	// The .mjs scripts and e2e probes — no type gate covers these at all, so no-undef earns its keep
-	// (it just caught a missing SEL import in p10-scaling.mjs). Bun and the browser DOM are both in
-	// scope: probes run Node-side but embed page.evaluate() strings that reference DOM.
+	// No type gate covers `.mjs` at all, so `no-undef` earns its keep here. Probes run Node-side but embed
+	// page.evaluate() strings, so the browser globals are in scope too.
 	{
 		files: ['**/*.mjs'],
 		languageOptions: {
 			globals: { ...globals.node, ...globals.browser, Bun: 'readonly' }
 		},
 		rules: {
-			// e2e probes embed browser regex inside page.evaluate() template strings, where a `\\s`
-			// is a correct escape for the string that reaches the browser but reads as a useless
-			// escape to the .mjs parser. Off here; real useless escapes in .ts still error.
+			// A `\\s` inside a page.evaluate() template is a correct escape for the string that reaches the
+			// browser, but reads as useless to the .mjs parser. Real useless escapes in `.ts` still error.
 			'no-useless-escape': 'off'
 		}
 	},
@@ -111,15 +88,9 @@ export default tseslint.config(
 		}
 	},
 
-	// The TEST TREE. It has its own tsconfig (tests/tsconfig.json), so the type service resolves here and
-	// type-aware rules apply exactly as they do to source — an unawaited promise in a test is as real a
-	// defect as one in production.
-	//
-	// This block exists because the reorganisation moved the tests OUT of `src/**`, and every
-	// rule customisation was scoped to that path. The tests silently fell back to the recommended
-	// defaults, which do not carry this repo's `^_` convention for a deliberately-unused binding — so 24
-	// `_m` / `_url` / `_id` parameters read as errors while being exactly what the convention prescribes.
-	// The lint script did not glob `tests/` either, so none of it was visible.
+	// The test tree has its own tsconfig, so type-aware rules apply exactly as they do to source — an
+	// unawaited promise in a test is as real a defect as one in production. It needs its own block to
+	// carry the repo's `^_` convention for a deliberately-unused binding.
 	{
 		files: ['tests/**/*.ts'],
 		languageOptions: {
@@ -133,11 +104,8 @@ export default tseslint.config(
 		}
 	},
 
-	// Test HARNESS components. These are Svelte fixtures a mount test imports; they are not in any
-	// tsconfig's program, so the project service cannot resolve them and the type-aware Svelte block
-	// above fails to parse them outright. Same treatment as e2e/**: syntactic and
-	// unused-variable rules only, no type-aware rules, and no program to build — which is also why this
-	// block is cheap.
+	// Svelte fixtures a mount test imports. They are in no tsconfig program, so the type-aware Svelte
+	// block above fails to parse them outright; syntactic rules only.
 	{
 		files: ['tests/**/*.harness.svelte'],
 		languageOptions: {
@@ -151,8 +119,7 @@ export default tseslint.config(
 		}
 	},
 
-	// Repo-wide severity calibration (see header). These are pre-existing, pervasive, and not
-	// structural defects; kept visible as warnings rather than swept in a config change.
+	// Pervasive and non-structural: kept visible as warnings rather than swept.
 	{
 		rules: {
 			'no-empty': 'warn',

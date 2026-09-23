@@ -26,11 +26,9 @@ LRCLIB_BASE = "https://lrclib.net"
 USER_AGENT = "Encore/0.2 (+https://github.com/OnlyOneByte/Encore)"
 
 
-#: LRCLIB is a small free service; a burst reads as abuse. Pace requests process-globally (the limit is
-#: a property of the source IP, not of a client object) at one per second — the same interval its
-#: MusicBrainz twin uses (metadata/annotate.py). This corp box DNS-sinkholes lrclib.net so the gate
-#: only ever bites on the deploy box, but the asymmetry the issue names — the twin has a gate and this
-#: did not — is what let a single transient 5xx silently cost a process its authoritative lyrics.
+#: LRCLIB is a small free service; a burst reads as abuse. Pace requests process-globally (the limit
+#: is a property of the source IP, not of a client object) at one per second — same interval as its
+#: MusicBrainz twin (metadata/annotate.py).
 MIN_INTERVAL_SEC = 1.0
 
 
@@ -53,7 +51,6 @@ class LyricsFetchError(RuntimeError):
     """A non-404 HTTP failure talking to LRCLIB (transient → caller may retry / fall back)."""
 
 
-# ── I/O: LRCLIB client (injectable fetcher; real network deferred to the deploy box) ──
 @dataclass
 class LrclibResult:
     id: int | None
@@ -204,20 +201,17 @@ def rank_lrclib_candidates(
     return keep[: max(0, limit)]
 
 
-# ── the rate gate: process-global, serialised (mirrors metadata/annotate.py's RateLimiter) ─────────
 class RateLimiter:
     """One gate every LRCLIB call passes through, one at a time.
 
-    Serialised and process-global for the same reason its MusicBrainz twin is: the limit is per SOURCE
-    IP, so two client instances pacing themselves independently still fire two requests in one second,
-    and with ``ENCORE_WORKER_CONCURRENCY`` > 1 two fetch jobs can reach here at once. An unlocked
-    "has enough time passed?" check lets both read the same timestamp, both decide yes, and both fire.
-    The lock is held across the REQUEST as well as the wait — two requests in flight at once is exactly
-    what is being prevented — and retries happen INSIDE the lock so a throttled box does not pile every
-    queued caller onto the request already being refused.
+    Serialised and process-global: the limit is per SOURCE IP, so two client instances pacing
+    themselves independently would still fire two requests in one second under
+    ``ENCORE_WORKER_CONCURRENCY`` > 1. The lock is held across the REQUEST as well as the wait (two
+    requests in flight at once is exactly what is being prevented), and retries happen INSIDE the
+    lock so a throttled box does not pile every queued caller onto the request already being refused.
 
-    ``now``/``sleep`` are injectable purely so tests are hermetic (no wall-clock wait, no network);
-    production shares one gate with the real monotonic clock.
+    ``now``/``sleep`` are injectable purely so tests are hermetic; production shares one gate with
+    the real monotonic clock.
     """
 
     def __init__(
@@ -370,12 +364,10 @@ def _urllib_fetch(url: str, headers: dict[str, str]) -> tuple[int, str]:
             return resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         # An HTTP status is a legible answer — hand it back so the client's status ladder decides
-        # (404 → miss, other non-200 → LyricsFetchError). A body is unavailable on an error response.
+        # (404 -> miss, other non-200 -> LyricsFetchError).
         return e.code, ""
     except urllib.error.URLError as e:
-        # No HTTP status at all: DNS failure (the corp-box sinkhole this module was built to expose),
-        # connection refused, TLS failure, timeout. Left uncaught this escapes to LyricsSource's bare
-        # `except Exception` and becomes an ordinary miss — which is precisely how a month of 100%
-        # LRCLIB failure masqueraded as "these songs just have no lyrics". Convert it to the one
-        # explicit transport class the chain already understands, so it can surface as a note instead.
+        # No HTTP status at all (DNS failure, connection refused, TLS failure, timeout). Convert to
+        # the explicit transport class the chain understands, so a provider outage surfaces as a
+        # loud note rather than being swallowed as an ordinary "no lyrics" miss.
         raise LyricsFetchError(f"lrclib unreachable: {e.reason}") from e

@@ -1,20 +1,12 @@
-// Singer membership — who is in the room RIGHT NOW, and who has actually gone.
+// Singer membership — who is in the room RIGHT NOW, and who has actually gone. The singer table is
+// append-only, so "everyone who ever joined" grows unbounded; the roster must show who's here now.
 //
-// Why this exists: the singer table is append-only and file-backed (H-5), so "everyone who ever
-// joined" grows without bound across nights. The TV lobby roster and the join card's count must show
-// who is in the room, not who once was, or the screen lies.
-//
-// This started as a pure socket ref-count, and that was the bug: a singer was "present" iff their live
-// socket count was > 0, so locking a phone removed its owner from the party in ~30 seconds (Bun's
-// `idleTimeout` is the only liveness signal in the WS path). Sockets are still the input, but they are
-// no longer the answer — see src/lib/contract/queue/membership.ts for the three-state policy and why the
-// grace clock starts on an empty song queue rather than on the socket drop.
-//
-// Ref-counted because a singer legitimately holds several sockets at once (two tabs, a phone that
-// reconnected before the old socket's close fired) — going away on the FIRST close would flicker them
-// out of the roster while they are still there.
-//
-// Socket-free so it unit-tests without a server; server.ts owns the wiring and drives the sweep.
+// Ref-counted because a singer legitimately holds several sockets at once (two tabs, a reconnect
+// before the old socket's close fires); dropping on the FIRST close would flicker them out while
+// still present. A dropped socket alone is ambiguous (locked phone vs. walked away), so departure
+// goes through a grace clock rather than firing on socket-close — see
+// src/lib/contract/queue/membership.ts for the three-state policy and why the clock starts on an
+// empty queue, not on the drop. Socket-free so it unit-tests without a server; server.ts drives the sweep.
 
 import { memberState, shouldStartClock, shouldClearClock, type MemberFacts, type MemberState } from '../../contract';
 
@@ -46,33 +38,27 @@ export class PresenceTracker {
 		return r;
 	}
 
-	/**
-	 * Register a live socket for a singer.
-	 * @returns true if this made the singer newly here (worth broadcasting).
-	 */
+	/** Register a live socket for a singer. @returns true if this made them newly here (worth broadcasting). */
 	connect(singerId: string): boolean {
 		const r = this.#get(singerId);
 		const was = r.sockets;
 		r.sockets = was + 1;
-		// Coming back cancels the clock outright rather than pausing it: someone who returns has not
-		// half-left, and carrying a stale start time would expire them early on their next drop.
+		// Cancels the clock outright rather than pausing it: someone who returns hasn't half-left, and
+		// a stale start time would expire them early on their next drop.
 		r.awaySince = undefined;
 		r.clockStartedAt = undefined;
 		return was === 0;
 	}
 
-	/**
-	 * Drop one live socket for a singer.
-	 * @returns true if this took them from here to away (worth broadcasting).
-	 */
+	/** Drop one live socket for a singer. @returns true if this took them from here to away. */
 	disconnect(singerId: string, now: number): boolean {
 		const r = this.#rec.get(singerId);
 		if (!r || r.sockets === 0) return false; // unknown singer, or already away — no-op, not a zero entry
 		r.sockets -= 1;
 		if (r.sockets > 0) return false;
 		r.awaySince = now;
-		// The clock is NOT started here. It starts on the first sweep that finds them holding no pending
-		// songs, which is the whole point: a queued song means they are still in the room.
+		// NOT started here — starts on the first sweep finding them with no pending songs, since a
+		// queued song means they're still in the room.
 		return true;
 	}
 
@@ -93,26 +79,17 @@ export class PresenceTracker {
 		return memberState({ ...r, hasPendingSongs }, now, graceMs);
 	}
 
-	/**
-	 * Drop a singer outright, without waiting for any clock.
-	 *
-	 * This is what an EXPLICIT leave uses. The grace window exists because a dropped socket is ambiguous
-	 * — a locked phone looks exactly like a walk to the car — and that ambiguity is gone the moment
-	 * someone tells us they are leaving. Their name returns to the pool immediately.
-	 */
+	/** Drop a singer outright, without waiting for any clock — what an EXPLICIT leave uses, since
+	 *  telling us removes the ambiguity the grace window exists for. Name returns to the pool immediately. */
 	forget(singerId: string): boolean {
 		return this.#rec.delete(singerId);
 	}
 
 	/**
-	 * Advance membership and report it.
-	 *
-	 * This is the only thing that starts or clears a grace clock, and the only thing that can move a
-	 * singer to `gone` — which no socket event can do, since expiry is a property of elapsed time. The
-	 * caller runs it on a timer AND after anything that changes the queue.
-	 *
-	 * A gone singer is FORGOTTEN, not remembered as gone: the map stays bounded across a long night,
-	 * and `memberState` already answers `gone` for anyone it has never seen.
+	 * Advance membership and report it — the only thing that starts/clears a grace clock or moves a
+	 * singer to `gone` (a property of elapsed time, not a socket event). Run on a timer AND after
+	 * anything that changes the queue. A gone singer is FORGOTTEN, not kept as a tombstone, so the
+	 * map stays bounded across a long night.
 	 */
 	evaluate(opts: { now: number; graceMs: number; hasPendingSongs: (singerId: string) => boolean }): MembershipSnapshot {
 		const { now, graceMs, hasPendingSongs } = opts;

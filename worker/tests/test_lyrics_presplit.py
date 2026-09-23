@@ -27,22 +27,14 @@ from src.lyrics.grading import (  # noqa: E402
 )
 
 
-# ── the TypeScript authority ─────────────────────────────────────────────────────────
-# The four values below are declared TWICE — once in TypeScript (the authority) and once in
-# Python (a hand-kept mirror; see the docstrings at grading.py:80 and grading.py:431). Nothing but
-# these tests keeps the copies in step. So they must read the TS SOURCE and cross-check the Python
-# constant against what the authority ACTUALLY declares today — asserting a Python literal only
-# proves Python equals itself, and every TS-side drift (the normal way any of these changes) stays
-# green on both suites. These read the .ts files as text (no node/tsc): a source-scan guard whose
-# production truth is the file it parses, so it cannot be defeated by reverting a hunk.
+# The constants below are declared TWICE — once in TypeScript (the authority) and once in Python (a
+# hand-kept mirror; see grading.py). These tests read the TS SOURCE as text (no node/tsc) and
+# cross-check the Python constant against what the authority actually declares today, so a TS-side
+# drift reds here instead of both sides staying green independently.
 def _repo_root() -> Path:
-    """The repo root, by walking up for `bunfig.toml`.
-
-    Not a hop count. `parents[3]` encoded this file's distance from the root, and flattening the `apps/`
-    layer changed that distance — the computed root landed one level ABOVE the repo, so both TypeScript
-    reads below resolved outside it and raised FileNotFoundError. The marker is the same file the
-    TypeScript harness locates its own root by, so both sides agree by construction rather than by
-    two hop counts being kept in step. Mirrors `_repo_root()` in test_lyrics_agreement.py.
+    """The repo root, by walking up for `bunfig.toml` — the same marker file the TypeScript harness
+    locates its own root by, so both sides agree by construction rather than by hop counts kept in
+    step. Mirrors `_repo_root()` in test_lyrics_agreement.py.
     """
     here = Path(__file__).resolve()
     for candidate in [here.parent, *here.parents]:
@@ -98,19 +90,14 @@ def passthrough(lines, max_chars):
     return lines
 
 
-# ── the gate: only auto-transcribed text is touched ──────────────────────────────────
 def test_is_authoritative_text_mirrors_the_ts_predicate():
-    # Cross-check the Python mirror against the TS AUTHORITY's actual body, not against literals.
-    # Every combination the two axes can take (source in {lrclib, captions, asr} × confidence in
-    # {high, medium, low}) must give the SAME answer on both sides, so tightening OR loosening the
-    # TS predicate reds this test.
     for source in (SOURCE_LRCLIB, SOURCE_CAPTIONS, SOURCE_ASR):
         for confidence in ("high", "medium", "low"):
             assert is_authoritative_text(source, confidence) == _ts_is_authoritative(source, confidence), (
                 f"Python is_authoritative_text disagrees with the TS authority for "
                 f"source={source!r}, confidence={confidence!r} — the two have drifted"
             )
-    # And the known-truth rows still hold, so a bug that broke BOTH sides identically is still caught.
+    # Known-truth rows, so a bug breaking BOTH sides identically is still caught.
     assert is_authoritative_text(SOURCE_LRCLIB, "high")
     assert is_authoritative_text(SOURCE_CAPTIONS, "medium")  # a real human caption track
     assert not is_authoritative_text(SOURCE_ASR, "high")  # ASR is never authoritative, however sure
@@ -118,13 +105,7 @@ def test_is_authoritative_text_mirrors_the_ts_predicate():
 
 
 def test_agreement_thresholds_mirror_the_ts_authority():
-    # MIN_TOKENS_TO_COMPARE / SUSPECT_COVERAGE are declared authoritative in src/lib/contract/
-    # lyrics.ts (grading.py calls itself their mirror) but nothing cross-checked them. Read the TS
-    # values and assert the Python copies equal them, so a threshold change on the authority side reds.
-    # SUSPECT_COVERAGE replaced SUSPECT_AGREEMENT in an earlier change — a different metric on a different
-    # axis, so
-    # the constant was renamed rather than re-valued. tests/test_lyrics_agreement.py carries the
-    # behavioural half of that parity guard (a shared corpus both suites assert against).
+    # test_lyrics_agreement.py carries the behavioural half of this parity guard (a shared corpus).
     assert MIN_TOKENS_TO_COMPARE == _ts_number(_SHARED_LYRICS_TS, "MIN_TOKENS_TO_COMPARE")
     assert SUSPECT_COVERAGE == _ts_number(_SHARED_LYRICS_TS, "SUSPECT_COVERAGE")
 
@@ -155,14 +136,10 @@ LONG_AUTHORITATIVE = "and I will wait right here for you until the very last lig
 
 
 def test_presplit_length_bounds_authoritative_text_INTO_ALIGNER_WINDOWS_not_segments():
-    # THE an earlier change fix started length-bounding LRCLIB synced/plain text (before it, only the
-    # display-time
-    # LINE_MAX_CHARS fallback caught an over-long human line). an earlier change: that bounding must NOT
-    # rewrite the
-    # source's own line timings. An over-long authoritative line yields tight per-row ALIGNER WINDOWS
-    # (`align_windows`) while `segments` stay the human lines verbatim — because the line-sync fallback
-    # publishes `segments` as `high`, and a character-count-derived boundary shipped there is a
-    # fabricated timestamp masquerading as the source's own.
+    # Length-bounding LRCLIB synced/plain text must NOT rewrite the source's own line timings: an
+    # over-long authoritative line yields tight per-row ALIGNER WINDOWS (`align_windows`) while
+    # `segments` stay the human lines verbatim, since the line-sync fallback publishes `segments` as
+    # `high` and a character-count-derived boundary shipped there would be a fabricated timestamp.
     seg = [{"start": 0.0, "end": 8.0, "text": LONG_AUTHORITATIVE, "words": []}]
     lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=seg, timing=TIMING_LINE, text_confidence="high")
     out = lp.presplit_texts([lrclib], bounder=bound_only)
@@ -177,13 +154,10 @@ def test_presplit_length_bounds_authoritative_text_INTO_ALIGNER_WINDOWS_not_segm
 
 
 def test_line_sync_publishes_the_authoritative_source_OWN_timings_not_a_char_count_guess():
-    # THE an earlier change regression. The line-sync fallback publishes `line_synced_lyrics(text.segments)`
-    # as
-    # timingConfidence "high" ("the source's own timings, unmodified"). If presplit subdivides an
-    # over-long authoritative line, the interior boundary it invents is `start + (chars/total)*span`
-    # — a character count, not a timestamp — and it ships as the human source's own. This pins that
-    # the boundaries published for a bounded authoritative text are EXACTLY the source's own line
-    # starts, no invented interior boundary between them.
+    # The line-sync fallback publishes `line_synced_lyrics(text.segments)` at timingConfidence "high"
+    # ("the source's own timings, unmodified"). If presplit subdivided an over-long authoritative
+    # line, the interior boundary it invents (`start + (chars/total)*span`) is a character count, not
+    # a timestamp, and must never ship as the human source's own.
     from src.lyrics.lrc import line_synced_lyrics
 
     over_long = "I walked the empty harbour road until the very morning came around again"  # > MAX_LINE_CHARS
@@ -206,11 +180,8 @@ def test_line_sync_publishes_the_authoritative_source_OWN_timings_not_a_char_cou
 
 
 def test_presplit_does_NOT_run_the_semantic_splitter_on_authoritative_text():
-    # The guard the issue asks for: length bounding runs on every tier, but the semantic re-lineator
-    # (comma/opener/sentence rules) must NOT touch human-authored lines. With a bounder that bounds
-    # nothing, an authoritative line FULL of boundary_split triggers (commas, ", and", a capital
-    # opener) still comes back as ONE segment — proof boundary_split never ran. The same text on the
-    # ASR tier is shredded into its clauses (asserted below), so the fence is doing real work.
+    # Length bounding runs on every tier, but the semantic re-lineator (comma/opener/sentence rules)
+    # must NOT touch human-authored lines.
     rich = "I walked the harbour road, and every light faded. So tell me where it goes"
     assert len(lp.boundary_split(rich)) > 1  # boundary_split WOULD split this
     seg = [{"start": 0.0, "end": 8.0, "text": rich, "words": []}]
@@ -227,8 +198,6 @@ def test_presplit_does_NOT_run_the_semantic_splitter_on_authoritative_text():
 
 
 def test_presplit_leaves_an_already_short_authoritative_line_as_the_same_object():
-    # A human line that already fits a row is not touched — bound_blob_text returns the SAME segment
-    # object when the line maps to one piece, so provenance and identity are preserved.
     seg = {"start": 0.0, "end": 4.0, "text": "and I will wait for you", "words": []}
     lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=[seg], timing=TIMING_LINE, text_confidence="high")
     out = lp.presplit_texts([lrclib], bounder=bound_only)
@@ -252,8 +221,7 @@ def test_bound_blob_text_preserves_provenance_and_does_not_mutate_input():
 
 def test_bound_blob_text_passes_a_WORD_TIMED_authoritative_segment_through_whole():
     # A synced LRC line that already carries word timings must not be re-partitioned: splitting the
-    # text would orphan the timings from the words. Same guard split_blob_text has, shared via
-    # _relineate_segments.
+    # text would orphan the timings from the words.
     seg = {
         "start": 0.0,
         "end": 8.0,
@@ -275,7 +243,6 @@ def test_presplit_splits_asr_and_low_confidence_captions():
     assert len(out[1].segments) > 1
 
 
-# ── boundary_split: the half upstream measurably gets wrong ──────────────────────────
 def test_splits_on_a_sentence_boundary():
     # upstream never does this at all — it produced "never made a sound. So tell me"
     assert lp.boundary_split("faded out. So tell me where it goes.") == [
@@ -301,10 +268,9 @@ def test_the_conjunction_set_is_case_insensitive(conj):
 
 
 def test_a_BARE_comma_is_SPENT_ONLY_on_a_line_that_does_not_fit():
-    # A comma is weaker evidence than a sentence end or an opener, so it buys a break only where there
-    # is a problem to solve. MEASURED on 171 real over-long ASR lines: using it took the share fully
-    # resolved with no bisection from 3% to 47%. Whisper puts commas at breath boundaries in sung
-    # vocals, so on real transcripts it usually IS the lyric line break.
+    # A comma is weaker evidence than a sentence end or opener, so it buys a break only where there
+    # is a problem to solve. MEASURED on 171 real over-long ASR lines: this took the share fully
+    # resolved with no bisection from 3% to 47%.
     fits = "I walked the harbour road, alone"
     assert lp.boundary_split(fits) == [fits]  # 32 chars — one row, leave it whole
     assert lp.boundary_split("I walked the empty harbour road, until the morning came around again") == [
@@ -313,7 +279,6 @@ def test_a_BARE_comma_is_SPENT_ONLY_on_a_line_that_does_not_fit():
     ]
 
 
-# ── capitalisation as a boundary (whisper marks phrase starts with case) ─────────────
 def test_a_capitalised_OPENER_breaks_a_line_that_has_no_punctuation_at_all():
     # Real corpus shape: whisper omitted every comma but still capitalised each phrase start.
     assert lp.boundary_split("Don't you know I still believe That you will be here") == [
@@ -334,7 +299,6 @@ def test_a_capitalised_PROPER_NOUN_is_not_a_boundary():
     ]
 
 
-# ── coalescing fragments too short to hold a row ─────────────────────────────────────
 def test_a_STRANDED_fragment_is_folded_into_the_phrase_it_opens():
     # Two individually-reasonable rules firing in sequence (", but" then a capital "I") stranded
     # "but still" on a 9-char row of its own, with "I lose my mind" beneath it.
@@ -389,7 +353,6 @@ def test_the_full_blob_lands_on_its_real_lyric_lines():
     assert all(len(ln) <= lp.MAX_LINE_CHARS for ln in out)
 
 
-# ── timing subdivision ───────────────────────────────────────────────────────────────
 def test_subdivided_bounds_are_ordered_and_span_exactly_the_original_window():
     asr = LyricsText(
         text_source=SOURCE_ASR,
@@ -447,7 +410,6 @@ def test_split_does_not_mutate_its_input_and_preserves_provenance():
     )
 
 
-# ── the upstream seam ────────────────────────────────────────────────────────────────
 def test_the_bounder_receives_the_boundary_split_pieces_and_the_char_budget():
     seen = {}
 
@@ -495,14 +457,11 @@ def test_a_raising_upstream_degrades_to_the_unbounded_lines(monkeypatch):
 
 
 def test_max_line_chars_mirrors_the_tv_row_width():
-    # LINE_MAX_CHARS in src/lib/tv/lyrics.ts is the authority (the TV row width the worker
-    # bounds process-time lines to). Read it from the TS source and assert the worker constant equals it,
-    # so narrowing the TV row on the authority side reds here instead of silently re-splitting at
-    # display time. Explicitly NOT upstream's default of 36.
+    # LINE_MAX_CHARS in src/lib/tv/lyrics.ts is the authority; narrowing the TV row on that side must
+    # red here instead of silently re-splitting at display time. Explicitly NOT upstream's default of 36.
     assert lp.MAX_LINE_CHARS == _ts_number(_TV_LYRICS_TS, "LINE_MAX_CHARS")
 
 
-# ── the real package, when installed ─────────────────────────────────────────────────
 def test_real_upstream_bounds_an_over_long_line_and_isolates_parentheses():
     if lp._load_klp() is None:
         pytest.skip("karaoke-lyrics-processor is not installed (installed --no-deps in the image)")
@@ -522,12 +481,10 @@ LONG_ALTERNATE = "so hold my hand and don't you ever let it go no matter what th
 
 
 def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
-    # THE an earlier change fix. presplit runs BEFORE select_by_baselines, which grades `[cand,
-    # *cand.alternates]`
-    # and may publish an alternate (a normal two-tier outcome — the version that best matches what was
-    # heard wins). presplit_texts used to map over the top-level list only, so an alternate winner
-    # reached the aligner with align_windows=None — the whole song then re-split by display-time
-    # char count, the exact fallback earlier changes exist to avoid. The fence must run on alternates too.
+    # presplit runs BEFORE select_by_baselines, which grades `[cand, *cand.alternates]` and may
+    # publish an alternate (the version that best matches what was heard wins). If presplit only
+    # bounded the top-level list, an alternate winner would reach the aligner with
+    # align_windows=None and get re-split by display-time char count instead.
     assert len(LONG_ALTERNATE) > lp.MAX_LINE_CHARS  # the fixture actually overflows a row
     cand = LyricsText(
         text_source=SOURCE_LRCLIB,
@@ -547,15 +504,14 @@ def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
 
     # Top-level still bounded (proves the run did the ordinary work).
     assert out[0].align_windows is not None and len(out[0].align_windows) > 1
-    # THE BITE: the alternate is bounded too. On base this is None (the alternate is never visited),
-    # so these three assertions all fail there.
+    # The alternate is bounded too.
     assert len(out[0].alternates) == 1
     alt_out = out[0].alternates[0]
     assert alt_out.align_windows is not None
     assert len(alt_out.align_windows) > 1
     assert all(len(w["text"]) <= lp.MAX_LINE_CHARS for w in alt_out.align_windows)
     # The alternate's own segments stay the source's verbatim line (bounding produces windows, not a
-    # segment rewrite — same an earlier change invariant as the top-level).
+    # segment rewrite — same invariant as the top-level).
     assert len(alt_out.segments) == 1
     assert alt_out.segments[0]["text"] == LONG_ALTERNATE
     # And the fence is a fresh object, not the untouched input alternate.
@@ -588,16 +544,10 @@ def test_presplit_leaves_a_SHORT_alternate_unwindowed_246():
     assert out[0].alternates[0].align_windows is None
 
 
-# ── an earlier change: absent / broken / no-op must be THREE distinguishable observations, not one
-# ────────────
-#
-# The defect: `_load_klp` cached `_KLP = None` on ANY failure with no report, so "package absent",
-# "stub broke on import" and "no line was over-long" (a legitimate no-op of a WORKING package) all
-# looked identical to an operator — the same "a dead provider looks like a song with no lyrics"
-# conflation an earlier change killed for LRCLIB. klp is installed --no-deps on the deploy box and absent on
-# the
-# dev box, so a regression on deploy would look exactly like the always-absent dev box. The fix keeps
-# the three facts distinct in `klp_status()` and reports one at startup via `klp_probe_line()`.
+# "Package absent", "stub broke on import", and "no line was over-long" (a legitimate no-op of a
+# WORKING package) must be THREE distinguishable observations, not one collapsed `_KLP = None` — klp
+# is installed --no-deps on the deploy box and absent on the dev box, so a broken-import regression
+# on deploy would otherwise look identical to the always-absent dev box.
 
 
 def _reset_klp_cache(monkeypatch):
@@ -660,9 +610,7 @@ def test_klp_status_AVAILABLE_when_it_imports(monkeypatch):
 
 
 def test_the_three_klp_outcomes_are_ALL_DISTINGUISHABLE(monkeypatch):
-    # THE an earlier change BITE in one place: absent, broken and available must yield three DIFFERENT status
-    # strings. On base there is no klp_status at all (the three collapse to one silent `None`), so
-    # this fails at import; with the fix the set has exactly three members.
+    # absent, broken and available must yield three DIFFERENT status strings, not one silent `None`.
     def _status_for(*, spec, module):
         _reset_klp_cache(monkeypatch)
         monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _n: spec)

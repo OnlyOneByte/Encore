@@ -1,34 +1,23 @@
-// guard: a graceful shutdown whose state flush FAILED must exit NON-ZERO.
-//
-// THE DEFECT. server.ts's gracefulShutdown() caught an error from state.flushNow()/reaper.stop()/
-// server.stop(), logged it, and then ran process.exit(0) REGARDLESS. A failed flush -- the case where
-// pending queue/playback state was lost -- exited clean, so Docker, systemd and any supervisor read the
-// stop as healthy. That falsifies an out-of-band signal: the one place a supervisor could learn the
-// flush failed is the exit code, and it was hard-wired to success.
-//
-// THE FIX. Record whether the catch fired and exit non-zero when it did: process.exit(ok ? 0 : 1). The
-// success path stays byte-for-byte a zero exit.
-//
-// WHY A SOURCE SCAN. server.ts is the process entrypoint -- it wires signal handlers and calls
-// process.exit, so it cannot be imported into bun:test without terminating the runner, and this repo
-// has no process harness. The exit-code contract is a property of the source text and is decidable by
-// reading the function body.
+// guard: a graceful shutdown whose state flush FAILED must exit NON-ZERO. server.ts's gracefulShutdown()
+// caught an error from flushNow()/reaper.stop()/server.stop(), logged it, then ran process.exit(0)
+// REGARDLESS — so a stop that lost pending queue/playback state read as healthy to Docker, systemd and any
+// supervisor, falsifying the one out-of-band signal that could have reported it. A SOURCE SCAN because
+// server.ts wires signal handlers and calls process.exit, so importing it into bun:test kills the runner.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
 // The Bun.serve entry, named from the repo root.
 const SERVER = 'server.ts';
 
-// Blank block and line comments, preserving newlines, so a commented-out exit line cannot satisfy or
-// trip a guard.
+// Blank block and line comments, preserving newlines, so a commented-out exit line cannot satisfy a guard.
 function stripComments(src: string): string {
 	return src
 		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
 		.replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1) => p1 + '');
 }
 
-// Isolate the gracefulShutdown body via a brace-depth walk, so the assertions cannot be satisfied by
-// unrelated code elsewhere in the file.
+// Isolate the gracefulShutdown body via a brace-depth walk, so nothing elsewhere in the file can satisfy
+// these assertions.
 function shutdownBody(src: string): string {
 	const start = src.indexOf('function gracefulShutdown');
 	expect(start, 'gracefulShutdown not found in server.ts').toBeGreaterThan(-1);

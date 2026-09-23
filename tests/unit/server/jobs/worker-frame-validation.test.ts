@@ -36,8 +36,7 @@ function harness() {
 
 // EXACT mirror of server.ts:message()'s role=worker path — parse, validate, only then read fields
 // and execute. Proves the production gate contains the throw rather than a private reimplementation:
-// the SAME validateWorkerMessage production imports is the sole thing standing between the parse and
-// the reads.
+// the SAME validateWorkerMessage production imports is the sole thing standing between the parse and the reads.
 function gate(raw: string, hub: WorkerHub): 'dropped' | 'handled' {
 	let parsed: unknown;
 	try {

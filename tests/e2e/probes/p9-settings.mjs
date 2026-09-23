@@ -1,20 +1,9 @@
 /*
- * P9 — Settings, three scopes, live. Do they PERSIST, BROADCAST, and reach the WIRE, with no restart?
+ * P9 — SETTINGS, THREE SCOPES, LIVE. A control is only a setting if changing it (i) sticks in SQLite,
+ * (ii) fans out to every connected client as `settings:changed`, and (iii) reaches the WORKERS at
+ * assign time. Fail any one and it is a slider that does nothing, or an env var wearing a UI.
  *
- * The claim being audited: /settings, PUT /api/settings and PUT /api/settings/room are the operator
- * surface for behaviour that would otherwise be env vars — which Whisper checkpoint the fleet loads,
- * whether words are timestamped per-word or per-line, the party's stage look and house rule, and the
- * address the join QR encodes. If a control is really a setting, changing it (i) sticks in SQLite,
- * (ii) fans out to every connected client via `settings:changed`, and (iii) reaches the WORKERS at
- * assign time. If it fails at any of those, it is either a slider that does nothing or an env var
- * pretending to be a UI.
- *
- * Every finding here is anchored by path:line evidence. Exit codes stay the harness rule (0 all
- * passed · 1 real failure · 2 environment could not host the test) so a skipped run does not report
- * green.
- *
- * Run it against a booted server on YOUR port (5229 here). See tests/e2e/HARNESS.md.
- *
+ * Findings carry path:line evidence. Exit codes: docs/E2E.md#exit-codes-and-what-ran-means
  *   EPORT=5229 bun tests/e2e/probes/p9-settings.mjs
  */
 import { spawn } from 'node:child_process';
@@ -29,16 +18,8 @@ import { SEL } from '../contract.ts';
  * @typedef {import('$lib/contract').GlobalSettings} GlobalSettings
  * @typedef {import('$lib/contract').RoomSettings} RoomSettings
  * @typedef {import('$lib/contract').EffectiveSettings} EffectiveSettings
- *
- * Options accepted by {@link api}. Kept structural (not the full RequestInit) because these are the
- * only knobs the probe drives; body is any JSON-serialisable value the endpoint accepts.
  * @typedef {{ cookie?: string | null, body?: unknown, expectJson?: boolean }} ApiOpts
- *
- * The subset of the fetch Response the probe reads back, plus the parsed JSON body. `body` is
- * `unknown` on purpose — each call site narrows it with a cast to the shape it expects.
  * @typedef {{ status: number, headers: Headers, text: string, body: any, setCookie: string | null }} ApiResult
- *
- * A phone WebSocket harness capturing every server event.
  * @typedef {{ ws: WebSocket, events: any[], opened: Promise<unknown> }} PhoneWs
  */
 
@@ -47,15 +28,9 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const WS_BASE = `ws://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? tmpdir();
 
-// ── result plumbing ─────────────────────────────────────────────────────────
 /** @type {Finding[]} */
 const findings = [];
-/**
- * @param {Severity} sev
- * @param {string} area
- * @param {string} msg
- * @param {string} [evidence]
- */
+/** @param {Severity} sev @param {string} area @param {string} msg @param {string} [evidence] */
 function add(sev, area, msg, evidence = '') {
 	findings.push({ sev, area, msg, evidence });
 	const tag = sev === 'PASS' ? '     ' : `${sev.padEnd(8)}`;
@@ -67,13 +42,7 @@ function bail(msg) {
 	process.exit(2);
 }
 
-// ── helpers ─────────────────────────────────────────────────────────────────
-/**
- * @param {string} method
- * @param {string} path
- * @param {ApiOpts} [opts]
- * @returns {Promise<ApiResult>}
- */
+/** @param {string} method @param {string} path @param {ApiOpts} [opts] @returns {Promise<ApiResult>} */
 async function api(method, path, { cookie, body, expectJson = true } = {}) {
 	/** @type {Record<string, string>} */
 	const headers = { 'content-type': 'application/json' };
@@ -97,14 +66,10 @@ async function api(method, path, { cookie, body, expectJson = true } = {}) {
 /** @param {string | null} setCookieHeader @returns {string | null} */
 function cookieFromSetCookie(setCookieHeader) {
 	if (!setCookieHeader) return null;
-	// First segment before ; — "encore_singer=abc123"
 	const first = setCookieHeader.split(';')[0].trim();
 	return first;
 }
-/**
- * @param {string} name
- * @returns {Promise<{ cookie: string, singerId: string }>}
- */
+/** @param {string} name @returns {Promise<{ cookie: string, singerId: string }>} */
 async function joinAs(name) {
 	const r = await api('POST', '/api/join', { body: { displayName: name, color: '#7c5cff' } });
 	if (r.status !== 200) throw new Error(`join failed for ${name}: HTTP ${r.status} ${r.text}`);
@@ -121,8 +86,7 @@ async function getSettings() {
 }
 const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 
-// A phone WS that captures every server event. Cookie carries the session so it counts as a joined
-// singer and receives broadcasts.
+// The cookie makes this socket a JOINED singer, which is what makes it receive broadcasts at all.
 /** @param {string} cookie @returns {PhoneWs} */
 function openPhoneWs(cookie) {
 	/** @type {any[]} */
@@ -142,19 +106,15 @@ function openPhoneWs(cookie) {
 	return { ws, events, opened };
 }
 
-// ── environment sanity ──────────────────────────────────────────────────────
 if (!(await fetch(`${BASE}/health`).catch(() => null))?.ok) {
 	bail(`no Encore server on ${BASE}. Follow tests/e2e/HARNESS.md.`);
 }
 const serverHasEnvOrigin = (process.env.EXPECTED_ENV_ORIGIN ?? '').trim();
-// serverHasEnvOrigin: what the test EXPECTS the server was booted with as ENCORE_PUBLIC_ORIGIN. When
-// left empty the env-fallback test is soft-skipped (env is not observable from outside the process).
+// Empty EXPECTED_ENV_ORIGIN soft-skips the env-fallback arm: env is not observable from outside the process.
 
 console.log(`[p9] driving ${BASE}\n`);
 
-// ═══ 1. Auth boundary — anonymous PUTs must be refused. ═════════════════════
-//   Evidence: src/routes/api/settings/+server.ts:23 (401 for no singer)
-//   Evidence: src/routes/api/settings/room/+server.ts:15
+// 1. Auth boundary — anonymous PUTs must be refused.
 {
 	const g = await api('PUT', '/api/settings', { body: { syncMode: 'lines' } });
 	add(
@@ -172,13 +132,10 @@ console.log(`[p9] driving ${BASE}\n`);
 	);
 }
 
-// ═══ 2. Persistence — every SEL.SETTING_IDS control roundtrips. ═════════════
-// The claim contract.ts:104-115 makes: these ten anchors are the ones the settings surface exposes
-// as real writable knobs, and each must persist through the write path.
+// 2. Persistence — every SEL.SETTING_IDS control roundtrips.
 const { cookie: aliceCookie } = await joinAs('AliceProbe');
 {
-	// Coverage assertion: every id the contract names must be exercised by this probe. Anything left
-	// uncovered is a hole this suite MUST NOT report as green.
+	// Every id the contract names must be exercised here; an uncovered one is a hole reported as green.
 	const COVERED_IDS = new Set([
 		'join-origin',
 		'sync-mode', // global
@@ -200,7 +157,6 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 	);
 
 	const start = await getSettings();
-	// join-origin (global) — non-empty must persist, then be clearable.
 	const patch1 = await api('PUT', '/api/settings', {
 		cookie: aliceCookie,
 		body: { joinOrigin: 'http://phones.example:8080' }
@@ -213,7 +169,6 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		`stored=${JSON.stringify(gotJoin)}  — src/lib/contract/core/settings.ts:normalizeJoinOrigin`
 	);
 
-	// sync-mode (global) — a real GlobalSettings field with two live modes.
 	const patch2 = await api('PUT', '/api/settings', { cookie: aliceCookie, body: { syncMode: 'lines' } });
 	add(
 		patch2.body?.global?.syncMode === 'lines' ? 'PASS' : 'HIGH',
@@ -222,8 +177,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		`stored=${JSON.stringify(patch2.body?.global?.syncMode)}  — src/lib/contract/lyrics/lyrics-engines.ts:118`
 	);
 
-	// All room-scope SEL.SETTING_IDS in one write to prove the persistence contract; per-field errors
-	// come out of the normalizer as reject-to-current, so a full round-trip check is decisive.
+	// The normalizer rejects per-field to CURRENT, so only a full round-trip says which field took.
 	/** @type {Partial<RoomSettings>} */
 	const roomWrite = {
 		queueOrder: 'fcfs',
@@ -270,8 +224,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		);
 	}
 
-	// Cross-process roundtrip via a follow-up GET — proves the write reached SQLite, not just the
-	// in-memory reply of the write endpoint.
+	// A follow-up GET, because the write endpoint's own reply could be in-memory only.
 	const roundtrip = await getSettings();
 	const persisted =
 		roundtrip.room.queueOrder === 'fcfs' &&
@@ -284,18 +237,15 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		`GET /api/settings queueOrder=${roundtrip.room.queueOrder} syncMode=${roundtrip.global.syncMode} joinOrigin=${roundtrip.global.joinOrigin}`
 	);
 
-	// Restore something close to a clean-ish state so downstream steps are not fighting a wonky room.
+	// Restore before the downstream steps, which would otherwise be fighting this section's leftovers.
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { syncMode: 'forced', joinOrigin: '' } });
 	await api('PUT', '/api/settings/room', { cookie: aliceCookie, body: { queueOrder: 'fair' } });
-	// (Note: start snapshot kept for reference; explicit restore above is cheaper than replaying every
-	// field. Any leftover state is a p9-scoped ephemeral DB.)
 	void start;
 }
 
-// ═══ 3. Validation — garbage must not persist. ═══════════════════════════════
+// 3. Validation — garbage must not persist.
 {
-	// Each garbage payload targets one field. Normalizer contract is "reject-to-current per-field",
-	// asserted in src/lib/contract/core/settings.ts (normalizeGlobalSettings/normalizeRoomSettings).
+	// One field per payload: reject-to-current is PER FIELD, so a sibling must survive its neighbour's junk.
 	const baseline = await getSettings();
 	/** @type {{ scope: 'global' | 'room', body: Record<string, unknown>, field: string, expect: unknown }[]} */
 	const garbage = [
@@ -322,8 +272,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 			expect: baseline.room.tvProgressStyle
 		},
 		{
-			// a colour now, not an angle. `NaN` is no longer the interesting junk — an unparseable
-			// colour string is, because the field is text and a bad one would reach a style attribute.
+			// A colour, not an angle: the interesting junk is an unparseable colour reaching a style attribute.
 			scope: 'room',
 			body: { tvBackgroundColor: 'rebeccapurple' },
 			field: 'tvBackgroundColor',
@@ -348,8 +297,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		);
 	}
 
-	// Malformed body — the endpoints declare a JSON contract, so a non-JSON body must 400 (see
-	// routes/api/settings/+server.ts:27) rather than crash the server or persist junk.
+	// A non-JSON body must 400 rather than crash the server or persist junk.
 	const bad = await fetch(`${BASE}/api/settings`, {
 		method: 'PUT',
 		headers: { 'content-type': 'application/json', Cookie: aliceCookie },
@@ -361,8 +309,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		'malformed JSON body returns 400 rather than a 500',
 		`HTTP ${bad.status} — routes/api/settings/+server.ts:27`
 	);
-	// Whole-body types the type declares Partial<GlobalSettings> for — but the reader is
-	// `request.json()`, so `null`, an array, or a top-level string all parse. Watch for a crash.
+	// The handler reads request.json(), so null, an array and a top-level string all parse. Watch for a crash.
 	const nullBody = await api('PUT', '/api/settings', { cookie: aliceCookie, body: null });
 	add(
 		nullBody.status < 500 ? 'PASS' : 'HIGH',
@@ -379,11 +326,9 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 	);
 }
 
-// ═══ 4. join-origin runtime override — no restart. ═══════════════════════════
+// 4. join-origin runtime override — no restart.
 {
-	// The load-bearing property: setting joinOrigin at runtime moves the QR without a process
-	// restart. When the server was booted with ENCORE_PUBLIC_ORIGIN (harness caller passes
-	// EXPECTED_ENV_ORIGIN), the CLEARING case additionally proves setting > env.
+	// joinOrigin must move the QR with NO process restart; booted on ENCORE_PUBLIC_ORIGIN, clearing proves setting > env.
 	const setNew = 'http://runtime-fix.example:1234';
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { joinOrigin: setNew } });
 	const tvHtmlA = await (await fetch(`${BASE}/tv`)).text();
@@ -395,9 +340,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		`joinUrl=${joinUrlA} setting=${setNew}  — server/public-origin.ts:joinOrigin`
 	);
 
-	// Clear it: the fallback rule (setting → env → request) must serve the env if one was booted,
-	// otherwise the request-derived origin. `EXPECTED_ENV_ORIGIN` is the caller's declaration of what
-	// the process was booted with.
+	// The fallback rule is setting → env → request, so clearing must serve the booted env if there is one.
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { joinOrigin: '' } });
 	const tvHtmlB = await (await fetch(`${BASE}/tv`)).text();
 	const joinUrlB = tvHtmlB.match(/"joinUrl":"([^"]+)"/)?.[1] ?? extractJoinFromHtml(tvHtmlB);
@@ -419,19 +362,18 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 }
 /** @param {string} html @returns {string | null} */
 function extractJoinFromHtml(html) {
-	// SvelteKit serialises page data through devalue, so the joinUrl might not appear as a literal
-	// key-value pair. Fall back to scraping any http(s) URL that ends with /join.
+	// SvelteKit serialises page data through devalue, so joinUrl may not appear as a literal key-value pair.
 	const m = html.match(/https?:\/\/[^"\\<>\s]+\/join/);
 	return m?.[0] ?? null;
 }
 
-// ═══ 5. Broadcast — `settings:changed` reaches every connected client. ═══════
+// 5. Broadcast — `settings:changed` reaches every connected client.
 {
 	const { cookie: bobCookie } = await joinAs('BobProbe');
 	const alice = openPhoneWs(aliceCookie);
 	const bob = openPhoneWs(bobCookie);
 	await Promise.all([alice.opened, bob.opened]);
-	// Drain any welcome broadcasts (singer:presence, etc) that came before the settings write.
+	// Drain the welcome broadcasts first, or one of them satisfies the wait for settings:changed.
 	await sleep(150);
 	alice.events.length = 0;
 	bob.events.length = 0;
@@ -456,7 +398,6 @@ function extractJoinFromHtml(html) {
 		`alice.tvProgress=${aliceGotIt?.settings?.room?.tvProgressStyle} bob.tvProgress=${bobGotIt?.settings?.room?.tvProgressStyle}`
 	);
 
-	// Global write is broadcast too — proves the two endpoints publish the same event shape.
 	alice.events.length = 0;
 	bob.events.length = 0;
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'small' } });
@@ -472,16 +413,13 @@ function extractJoinFromHtml(html) {
 		`alice.asrModel=${aliceGlobal?.settings?.global?.asrModel} bob.asrModel=${bobGlobal?.settings?.global?.asrModel}`
 	);
 
-	// Room-scope house-rule changes have EXTRA broadcast obligations: `queueOrder` is stored on each
-	// queue entry as `rotationSeq`, so a write must also re-derive the queue and broadcast a
-	// `queue:patch`. Without that the TV and every phone stay on the old order until someone happens
-	// to add or remove a song. (routes/api/settings/room/+server.ts:32-49)
+	// queueOrder is stored per queue entry as rotationSeq, so the write must ALSO re-derive the queue and
+	// broadcast queue:patch — without it every client stays on the old order until a song is added or removed.
 	alice.events.length = 0;
 	await api('PUT', '/api/settings/room', { cookie: aliceCookie, body: { queueOrder: 'shuffle' } });
 	await sleep(200);
 	const alsoQueuePatch = alice.events.some((e) => e.type === 'queue:patch');
-	// With an empty queue, `reorder()` returns null (no change) and no queue:patch fires — that is
-	// correct, not a defect. State the observed shape rather than pretending it fired.
+	// An empty queue makes reorder() return null and no queue:patch fires: correct, not a defect.
 	add(
 		alice.events.some((e) => e.type === 'settings:changed') ? 'PASS' : 'HIGH',
 		'broadcast',
@@ -493,15 +431,12 @@ function extractJoinFromHtml(html) {
 	bob.ws.close();
 }
 
-// ═══ 6. Lyrics-engine settings reach the WIRE at assign time. ════════════════
-// The claim: `assignParams(jobType, media, settings)` (server/jobs/dispatch.ts:52) reads settings
-// LIVE from `getSettings()` and puts asrModel + syncMode into the align params. Proof needs a real
-// worker that receives an align assign and prints what it was handed. fake-align-worker.mjs is
-// exactly that; fake-stems-worker.mjs handles the fetch→stems chain that produces the align job.
+// 6. Lyrics-engine settings reach the WIRE at assign time.
+// assignParams reads settings LIVE from getSettings() at assign time, so proving it needs a real worker
+// that prints what it was handed: fake-align-worker.mjs, behind fake-stems-worker.mjs's fetch→stems chain.
 async function runWireProbe() {
-	// Pick TWO distinct unprocessed local songs from the seeded library, one per run. `process` on
-	// an already-ready song short-circuits (no chain, no align, no wire signal), so a search alone is
-	// not enough — check `stemStatus`/`instrumentalRef` and skip processed entries.
+	// TWO distinct UNPROCESSED songs, one per run: process on an already-ready song short-circuits with no
+	// chain, no align and no wire signal, so stemStatus/instrumentalRef must be checked, not just the search.
 	const seen = new Map();
 	for (const q of ['caroline', 'believin', 'bohemian', 'livin', 'journey', 'queen']) {
 		const s = await (await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`)).json().catch(() => ({}));
@@ -522,10 +457,9 @@ async function runWireProbe() {
 	const rawCand = raw[0];
 	const otherRaw = raw[1] ?? null;
 
-	// Set the two align-time settings to distinctive values before the process. Both are GLOBAL.
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'medium', syncMode: 'lines' } });
 
-	// Start a stems worker (fetch,stems only — leave align to the align-worker below).
+	// fetch,stems only — align is left to the one-shot worker below, which is what reads the assign.
 	const stems = spawn('bun', [pathJoin(process.cwd(), 'tests/e2e/fake-stems-worker.mjs')], {
 		env: { ...process.env, EPORT: PORT, MEDIA_DIR: process.env.MEDIA_DIR ?? './media', FAKE_CAPS: 'fetch,stems' },
 		stdio: ['ignore', 'pipe', 'pipe']
@@ -534,10 +468,9 @@ async function runWireProbe() {
 	const stemsOut = [];
 	stems.stdout.on('data', (d) => stemsOut.push(String(d)));
 	stems.stderr.on('data', (d) => stemsOut.push(String(d)));
-	// Give the stems worker a moment to send worker:hello before dispatch tries to route to it.
+	// worker:hello must land before dispatch tries to route, or the job finds no capable worker.
 	await sleep(500);
 
-	// Start a one-shot align worker that prints the FIRST assign and exits.
 	const alignA = spawn('bun', [pathJoin(process.cwd(), 'tests/e2e/fake-align-worker.mjs')], {
 		env: { ...process.env, EPORT: PORT },
 		stdio: ['ignore', 'pipe', 'pipe']
@@ -548,7 +481,6 @@ async function runWireProbe() {
 	alignA.stderr.on('data', (d) => alignOutA.push(String(d)));
 	await sleep(300);
 
-	// Fire the process.
 	const mk = await api('POST', '/api/process', { cookie: aliceCookie, body: { mediaId: rawCand.id } });
 	if (mk.status !== 200) {
 		add('LOW', 'wire', `process rejected: HTTP ${mk.status}`, mk.text);
@@ -557,7 +489,7 @@ async function runWireProbe() {
 		return;
 	}
 
-	// Wait for the align worker to receive and exit. It has its own 15s watchdog; give it a bit more.
+	// Longer than the align worker's own 15s watchdog, so its exit is what ends this wait.
 	const alignExit = await new Promise((resolve) => {
 		const t = setTimeout(() => resolve('timeout'), 20000);
 		alignA.on('exit', (code) => {
@@ -582,10 +514,7 @@ async function runWireProbe() {
 		`fake-align exit=${alignExit} asrModel=${alignParams?.asrModel} syncMode=${alignParams?.syncMode}  — server/jobs/dispatch.ts:82`
 	);
 
-	// Second process to prove LIVE reading. Change settings, process another song, expect the NEW values in
-	// the align assign. Params are computed at assign time (dispatch.ts:52), so a change made between
-	// enqueue and dispatch must reach the worker; a change made mid-song must not perturb the running
-	// one.
+	// A SECOND process with changed settings proves the read is LIVE, and must not perturb the running song.
 	if (!otherRaw) {
 		add(
 			'LOW',
@@ -595,7 +524,6 @@ async function runWireProbe() {
 		);
 	} else {
 		await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'tiny', syncMode: 'forced' } });
-		// Fresh one-shot align worker.
 		const alignB = spawn('bun', [pathJoin(process.cwd(), 'tests/e2e/fake-align-worker.mjs')], {
 			env: { ...process.env, EPORT: PORT },
 			stdio: ['ignore', 'pipe', 'pipe']
@@ -637,7 +565,6 @@ async function runWireProbe() {
 	}
 
 	stems.kill();
-	// A little grace so anything about to be flushed is written.
 	await sleep(100);
 	writeFileSync(pathJoin(SCRATCH, `p9-wire-stems.log`), stemsOut.join(''));
 	writeFileSync(pathJoin(SCRATCH, `p9-wire-alignA.log`), alignOutA.join(''));
@@ -649,13 +576,10 @@ try {
 	add('LOW', 'wire', 'wire probe threw — environment issue', `${detail}. Bun + fake workers required.`);
 }
 
-// ═══ 7. Security — the room's blast radius. ══════════════════════════════════
-//   Every joined singer is a host (server/capabilities.ts:can()), so any phone on the LAN — a
-//   guest, or anyone who scanned the QR — holds the same authority as the operator. Report every
-//   consequence with plain evidence rather than editorialising.
+// 7. Security — the room's blast radius.
+// Every joined singer is a host (server/capabilities.ts:can()), so any phone on the LAN holds operator authority.
 {
 	const { cookie: guestCookie } = await joinAs('CarolProbe');
-	// (a) A totally unrelated singer can PUT global settings.
 	const r = await api('PUT', '/api/settings', { cookie: guestCookie, body: { asrModel: 'large-v3' } });
 	add(
 		r.status === 200 && r.body?.global?.asrModel === 'large-v3' ? 'HIGH' : 'PASS',
@@ -663,7 +587,6 @@ try {
 		"ANY joined singer can PUT global settings — sets the fleet's Whisper checkpoint (1550M weights)",
 		`HTTP ${r.status} stored=${r.body?.global?.asrModel}  — server/capabilities.ts:can() returns true for any singerId`
 	);
-	// (b) A guest can flip the JOIN QR to point at an attacker origin.
 	const rQ = await api('PUT', '/api/settings', { cookie: guestCookie, body: { joinOrigin: 'http://evil.example:80' } });
 	add(
 		rQ.body?.global?.joinOrigin === 'http://evil.example' ? 'HIGH' : 'PASS',
@@ -671,11 +594,9 @@ try {
 		'ANY joined singer can retarget the join QR to an attacker origin — party phishing vector for later joiners',
 		`stored=${rQ.body?.global?.joinOrigin}  — TV re-renders on next request, no restart`
 	);
-	// Restore before moving on.
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { joinOrigin: '', asrModel: 'base' } });
 
-	// (c) /api/metrics ungated — deliberate per routes/api/metrics/+server.ts:8-11 but a finding worth
-	// stating. It reveals worker ids, engine/model names, error strings.
+	// (c) /api/metrics is ungated by design, and still a finding: it reveals worker ids, engine names, errors.
 	const met = await api('GET', '/api/metrics');
 	const bodyKb = ((met.text?.length ?? 0) / 1024).toFixed(1);
 	add(
@@ -685,7 +606,7 @@ try {
 		`HTTP ${met.status} body=${bodyKb} KB  — routes/api/metrics/+server.ts:8-11 (documented as intentional)`
 	);
 
-	// (d) /api/audit/[mediaId] ungated — same reasoning. Pick any indexed media.
+	// (d) /api/audit/[mediaId], same reasoning; any indexed media will do.
 	const idxSearch = await (await fetch(`${BASE}/api/search?q=caroline`)).json().catch(() => ({}));
 	const someone = [...(idxSearch.ready ?? []), ...(idxSearch.results ?? [])][0];
 	if (someone) {
@@ -698,10 +619,7 @@ try {
 		);
 	}
 
-	// (e) Worker WS: connecting with role=worker with no token succeeds unless ENCORE_WORKER_TOKEN is
-	// set. That is by design in a self-hosted LAN box, but the finding to state is that the socket
-	// carries dispatch authority — anyone on the LAN can bring up a "worker" that claims jobs. Test:
-	// try connecting; if it opens without a token the exposure exists.
+	// (e) A role=worker socket opens with NO token unless ENCORE_WORKER_TOKEN is set — and it carries dispatch authority.
 	const wws = new WebSocket(`${WS_BASE}/ws?role=worker`);
 	const workerOpened = await new Promise((resolve) => {
 		wws.onopen = () => resolve(true);
@@ -709,8 +627,7 @@ try {
 		setTimeout(() => resolve(false), 1000);
 	});
 	if (workerOpened) wws.close();
-	// This is only a finding if the operator has NOT set ENCORE_WORKER_TOKEN. When one is set the
-	// upgrade returns 401 (server.ts:161-163). Report the state observed rather than an opinion.
+	// With a token set the upgrade returns 401, so report the state observed rather than an opinion.
 	add(
 		workerOpened ? 'MEDIUM' : 'PASS',
 		'security',
@@ -721,7 +638,6 @@ try {
 	);
 }
 
-// ═══ 8. Summary ══════════════════════════════════════════════════════════════
 console.log('\n─── summary ──────────────────────────────────────────────────');
 const bySev = new Map();
 for (const f of findings) bySev.set(f.sev, (bySev.get(f.sev) ?? 0) + 1);

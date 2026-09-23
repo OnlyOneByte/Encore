@@ -1,13 +1,11 @@
-"""AcquireAudio must find a pre-an earlier change legacy vocals stem.
+"""AcquireAudio must find a legacy vocals stem written under an older VOCALS_EXT.
 
-an earlier change switched VOCALS_EXT from `m4a` to `flac` for NEW processes, but the worker never receives
-the stored
-vocals ref — it re-derives the path from the CURRENT VOCALS_EXT on every align job. Every song processed in
-the interim era has its vocals stem on disk as `<id>-vocals.m4a`, so a lookup that only tries the current
-extension loses it and align silently degrades to aligning against the mix.
+The worker never receives a stored vocals ref — it re-derives the path from the CURRENT VOCALS_EXT on
+every align job. A song whose vocals stem was written under a PRIOR extension needs its old path
+tried too, or align silently degrades to aligning against the mix.
 
-These drive the AcquireAudio STEP (not the private helper) and assert on ctx.audio.vocals_path, which is
-the seam the ASR baseline actually reads.
+These drive the AcquireAudio STEP (not the private helper) and assert on ctx.audio.vocals_path, which
+is the seam the ASR baseline actually reads.
 """
 
 import asyncio
@@ -56,17 +54,14 @@ def _drive_acquire(tmp_path) -> Ctx:
 
 
 def _legacy_m4a_path(tmp_path) -> str:
-    # The pre-an earlier change name for the same key: <media_dir>/derived/stems/<id>-vocals.m4a
+    # The legacy name for the same key: <media_dir>/derived/stems/<id>-vocals.m4a
     canonical = vocals_path(str(tmp_path), "m1")
     return canonical[: -(len(VOCALS_EXT) + 1)] + ".m4a"
 
 
 def test_acquire_finds_legacy_m4a_vocals_stem(tmp_path):
-    """A song with ONLY a legacy -vocals.m4a on disk still resolves its stem.
-
-    Red on base: _existing_vocals only builds the current-VOCALS_EXT path (.flac), which does not exist,
-    so ctx.audio.vocals_path is None and align degrades to the mix.
-    """
+    """A song with ONLY a legacy -vocals.m4a on disk still resolves its stem, not just the
+    current-VOCALS_EXT (.flac) path."""
     legacy = _write(_legacy_m4a_path(tmp_path))
     ctx = _drive_acquire(tmp_path)
     assert ctx.audio.vocals_path == legacy

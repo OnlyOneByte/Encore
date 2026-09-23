@@ -1,8 +1,6 @@
-"""Pure dial-home protocol layer — message builders, parsing, and the per-job-type stage plan.
+"""Pure dial-home protocol layer: message builders, parsing, the per-job-type stage plan.
 
-No sockets, no torch, no asyncio: this is the unit-tested core (mirrors the TS pure-vs-I/O split,
-e.g. dispatch.ts vs worker-hub.ts). The I/O shell is dial_home.py. See
-docs/ARCHITECTURE.md for the wire contract.
+No sockets, no torch, no asyncio — the I/O shell is dial_home.py. See docs/ARCHITECTURE.md §9.
 """
 
 from __future__ import annotations
@@ -13,7 +11,7 @@ from typing import Any
 from .vocabulary import STAGE_PLANS as _STAGE_PLANS
 from .vocabulary import Action, Stage, serves_family
 
-# ── message type strings (must match src/lib/contract/core/events.ts) ──────────────
+# Message type strings (must match src/lib/contract/core/events.ts).
 # worker -> core
 HELLO = "worker:hello"
 HEARTBEAT = "worker:heartbeat"
@@ -28,21 +26,18 @@ ASSIGN = "job:assign"
 CANCEL = "job:cancel"
 PING = "ping"
 
-# media:status stage vocabulary the core rebroadcasts to phones (events.ts MediaStatus).
-# Aliased to the Stage enum in vocabulary.py so there is one definition; these names stay for the
-# existing call sites and remain plain-string comparable.
+# media:status stage vocabulary the core rebroadcasts to phones; aliased to Stage so there is one
+# definition and these names stay plain-string comparable.
 STAGE_DOWNLOADING = Stage.DOWNLOADING.value
 STAGE_SEPARATING = Stage.SEPARATING.value
 
-# The stage sequence a job of each type passes through (drives the live phone progress bar).
-# `stems` = download the source then separate vocals; `align` = download then word-align lyrics.
-# Derived from the enum plan so adding an action cannot leave this table stale.
+# Per-job-type stage sequence (drives the phone progress bar), derived from the enum plan so adding
+# an action cannot leave this table stale.
 STAGE_PLANS: dict[str, list[str]] = {
     action.value: [s.value for s in stages] for action, stages in _STAGE_PLANS.items()
 }
 
 
-# ── worker -> core message builders ──────────────────────────────────────────────
 def hello(
     worker_id: str,
     capabilities: list[str],
@@ -57,9 +52,7 @@ def hello(
         "concurrency": concurrency,
         "version": version,
     }
-    # What this box actually is. The worker already resolves all of it at startup and PRINTS it, so a
-    # log line was the only record — an operator reading "stems took 43 minutes" on the dashboard had
-    # no way to know whether that was a GPU or 4 shared cores. Optional so an older core ignores it.
+    # For the dashboard; optional so an older core ignores it.
     if host:
         msg["host"] = host
     return msg
@@ -107,21 +100,13 @@ def complete(
     msg: dict[str, Any] = {"type": COMPLETE, "workerId": worker_id, "jobId": job_id, "mediaUri": media_uri}
     if artifacts is not None:
         msg["artifacts"] = artifacts
-    # WHAT ACTUALLY RAN. The core only ever knew what it ASKED for: it resolves engine/model from
-    # global settings at dispatch and the worker can legitimately resolve something else (a model
-    # alias, a backend this host cannot load, a device fallback to CPU). Without this the per-model
-    # dashboard would be reporting requests as if they were facts.
+    # ResolvedFacts: what actually ran, not what was asked. See docs/SERVER.md#what-the-worker-is-told.
     if facts:
         msg["facts"] = facts
-    # PER-STAGE wall clock. The core can already derive TOTAL processing time from its own
-    # accept→complete timestamps; what it cannot see is the split — whether 40 of those 43 minutes
-    # were the download or the separation. Measured here because only the worker knows when a stage
-    # actually changed.
+    # StageTiming: only the worker sees this split. See docs/SERVER.md#what-the-worker-is-told.
     if stages:
         msg["stages"] = stages
-    # WHY THIS LYRIC WON. `summary()` renders these facts to the process log, which rotates and is
-    # per-container; this is the same facts as durable data so a mis-pick is answerable from the
-    # audit trail weeks later, not from a log line that is already gone.
+    # Durable so a mis-pick is answerable weeks after the per-container process log rotates.
     if selection:
         msg["selection"] = selection
     return msg
@@ -131,7 +116,6 @@ def failed(worker_id: str, job_id: str, error: str, retryable: bool) -> dict[str
     return {"type": FAILED, "workerId": worker_id, "jobId": job_id, "error": error, "retryable": retryable}
 
 
-# ── worker-side state (capacity + capability gating — the accept/reject decision) ──
 @dataclass
 class WorkerState:
     """Local mirror of this worker's capacity. The CORE registry is authoritative for dispatch;
@@ -147,38 +131,14 @@ class WorkerState:
         return max(0, self.concurrency - len(self.running))
 
     def supports(self, job_type: str) -> bool:
-        """Does this worker advertise a capability that can serve this ACTION?
-
-        A capability is not always the bare job type. Both axes namespace theirs — a separator engine
-        advertises `stems:roformer`, a downloader advertises `fetch:ytdlp` — so matching the job type
-        as a literal string rejects a job this worker can genuinely run. That is what made every
-        `fetch` job fail with "unsupported job type: fetch" against a worker advertising `fetch:ytdlp`,
-        and it would equally reject a plain `stems` job on a roformer-only worker.
-
-        A prefix match on the job type covers `fetch`/`stems`/`align`, whose serving capability is
-        namespaced UNDER their own name (`fetch:ytdlp`, `stems:roformer`). It does NOT cover
-        `stems-upgrade`, whose capability is a `stems`/`stems:*` token — a separator engine, chosen
-        core-side by `upgradeEngine`, exactly like a plain `stems` job (`dial_home.py` binds one
-        runner to both). The core's `requiredCapability` already maps the upgrade action onto a
-        stems-family capability; deriving the token textually from `stems-upgrade` here disagreed
-        with that for the one action of the four whose capability lives under a different name.
-
-        So resolve the ACTION to the capability family that serves it — any separation action is
-        served by a `stems`/`stems:*` token — then match. Unknown/unnamespaced actions keep the
-        plain prefix behaviour, so an action the worker cannot run is still refused.
-        """
-        # Same rule as every worker-local family check — stated once in the vocabulary.
+        """Namespaced capability-prefix match, not a literal job-type match. See
+        docs/SERVER.md#what-the-worker-is-told."""
         return serves_family(self.capabilities, self._serving_action(job_type))
 
     @staticmethod
     def _serving_action(job_type: str) -> str:
-        """The action name whose capability family serves this job type.
-
-        `stems-upgrade` is a separation action served by the same `stems`/`stems:*` engine tokens as
-        a plain `stems` job, so it resolves to `stems`. Every other action serves itself. Keyed off
-        the `Action` vocabulary's own `is_separation` rather than a second hand-maintained table, so
-        a new separation action is covered here without a further edit.
-        """
+        """The action whose capability family serves this job type; keyed off `Action.is_separation`
+        so a new separation action needs no further table."""
         try:
             action = Action(job_type)
         except ValueError:
@@ -206,16 +166,9 @@ def stages_for(job_type: str) -> list[str]:
 
 
 class StageTimer:
-    """Measure how long each stage of one job took, from the progress stream it already emits.
-
-    WHY HERE AND NOT IN EACH PROCESSOR. Every processor already yields a ProgressEvent whenever it
-    moves to a new stage, so the transitions are all observable from outside — which means timing them
-    needs no change to demucs.py, roformer.py or whisperx.py at all, and cannot drift when one of them
-    is edited. A stage ENDS when a different stage begins, or when the job finishes.
-
-    Injected clock (`monotonic`) so this is a pure unit under test: no sleeping, no asyncio. Monotonic
-    rather than wall time because a duration must not go negative if the host's clock steps.
-    """
+    """Times each stage from the progress stream, so no processor contains timing code. See
+    docs/SERVER.md#what-the-worker-is-told. Clock is injected for a pure unit under test and so a
+    stepped wall clock cannot produce a negative duration."""
 
     def __init__(self, monotonic) -> None:
         self._now = monotonic
@@ -224,7 +177,7 @@ class StageTimer:
         self._done: list[dict[str, Any]] = []
 
     def observe(self, stage: str) -> None:
-        """A progress event arrived. Closes the previous stage when the name actually changed."""
+        """Closes the previous stage when the name actually changed."""
         if stage == self._current:
             return  # same stage ticking pct — not a transition
         self._close()
@@ -245,18 +198,8 @@ class StageTimer:
 
 
 def host_facts() -> dict[str, Any]:
-    """Describe the box this worker runs on, for the metrics dashboard.
-
-    Delegates to hardware.probe() rather than re-deriving the fields, because a second copy of
-    "what is this machine" drifts from the first: the auto-sizers already have to know the EFFECTIVE
-    core count (the tightest of cpu_count, scheduler affinity and the cgroup quota), and a dashboard
-    reporting `os.cpu_count()` beside a worker that sized itself for 2 of those 32 cores is worse than
-    reporting nothing — the two numbers disagree and neither is labelled.
-
-    Best-effort by construction: torch may be absent entirely (the stub processor needs no ML), and a
-    probe that raised here would take down a worker over a diagnostic. Every field is therefore
-    optional and a failed probe is omitted rather than guessed.
-    """
+    """Best-effort box description for the metrics dashboard; delegates to hardware.probe() so this
+    cannot drift from the auto-sizers' own count, and a failed probe is omitted, never guessed."""
     import platform
 
     from .host.hardware import probe
@@ -264,8 +207,7 @@ def host_facts() -> dict[str, Any]:
     try:
         report = probe()
     except Exception:
-        # Never fail a handshake over a diagnostic.
-        return {
+        return {  # never fail a handshake over a diagnostic
             "platform": platform.platform(),
             "machine": platform.machine(),
             "python": platform.python_version(),
@@ -275,12 +217,9 @@ def host_facts() -> dict[str, Any]:
         "platform": platform.platform(),
         "machine": report.machine,
         "python": platform.python_version(),
-        # EFFECTIVE, not the host's total — see WorkerHost.cpuCount in events.ts.
-        "cpuCount": report.cpus,
+        "cpuCount": report.cpus,  # EFFECTIVE count. See docs/SERVER.md#what-the-worker-is-told.
         "accelerator": report.accelerator,
-        # Kept so readers already branching on `cuda` keep working. Derived from the same probe as
-        # `accelerator` so the two cannot disagree, and false for ROCm — which reports through torch's
-        # cuda API but is not CUDA, and was previously indistinguishable from it.
+        # Derived from accelerator so it cannot disagree; false for ROCm, which masquerades as cuda.
         "cuda": report.accelerator == "cuda",
         "contained": report.contained,
     }

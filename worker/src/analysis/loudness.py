@@ -1,19 +1,11 @@
 """Integrated loudness measurement — the `songProfile` level half, per EBU R128 / ITU-R BS.1770-4.
 
-WHY it lives here and not in the core. The core already parses a loudness reading
-(`server/media/loudness.ts` shells `ffmpeg -af volumedetect` and pulls `mean_volume`/`max_volume`),
-but that primitive is (a) a crude peak/mean dBFS number, not perceptual LUFS, and (b) wired only into
-a boot-time backfill over the VOCALS stem — while the thing that plays in the room is the
-INSTRUMENTAL. The instrument level is what a room-wide normalization has to equalize, and the
-guide-vocal knob is a fraction of it, so the guide only means the same thing all night once the
-instrumental is levelled. Measuring here, in the analysis domain, puts the number next to the WAV
-that step already decodes.
-
-WHY BS.1770 and not the mean dBFS the core already has. The issue offered "mean level (crude)" vs
-"true LUFS (correct)"; the owner ruled to use a real package rather than hand-roll K-weighting, so
-this measures integrated LUFS with `pyloudnorm` (a small, standard MIT implementation of the R128
-K-weighting + gating). It runs over the mono float64 array `read_wav_mono` already produces — numpy
-in, a number out, NO ffmpeg subprocess — which is exactly the `analysis/__init__.py` contract.
+The core's own loudness reading (`server/media/loudness.ts`, `ffmpeg -af volumedetect`) is a crude
+peak/mean dBFS number over the VOCALS stem, not perceptual LUFS over the INSTRUMENTAL — the thing that
+actually plays in the room and that a room-wide normalization must equalize. This measures real
+integrated LUFS with `pyloudnorm` (a small, standard MIT implementation of R128 K-weighting +
+gating), over the mono float64 array `read_wav_mono` already produces — numpy in, a number out, NO
+ffmpeg subprocess.
 
 TRI-STATE, like every analysis half: a level that cannot be trusted is `None`, never a fabricated
 default. A stem too short for BS.1770's 400 ms gating block, or digital silence (which happens on

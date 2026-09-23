@@ -1,13 +1,4 @@
-// Room repository — the FIRST production writer/reader of the `rooms` table.
-//
-// A room is one party: it owns an `id` (the internal handle the rest of the rooms chain scopes
-// playback/queue/singers to) and a `code` (the short, human-typeable join code a phone enters or a
-// QR encodes). This layer is deliberately minimal and foundational — it creates a room and looks
-// one up by its code. It decides NOTHING about how a phone joins one, nor about
-// per-room playback/queue/singer scoping: those build ON this table being real.
-//
-// Kept in . (not $lib/contract) on purpose: the wire contract carries no Room today, and
-// The room work is explicitly scoped not to cross the shared package.
+// Room repository: a party is named by an `id` (the internal handle the rest of the rooms chain scopes playback/queue/singers to) and a `code` (short, human-typeable join code, phone/QR). Deliberately minimal and foundational — creates a room and looks one up by code; per-room playback/queue/singer scoping builds ON this table being real. Kept out of $lib/contract on purpose: the wire contract carries no Room today, and room work is scoped not to cross the shared package boundary.
 
 import { randomBytes } from 'node:crypto';
 import { asc, eq } from 'drizzle-orm';
@@ -15,8 +6,7 @@ import type { DB } from '../db/index';
 import { rooms } from '../db/schema';
 import { ulid, CODE_ALPHABET, CODE_LENGTH } from '../../contract';
 
-// The join-code vocabulary now lives in $lib/contract/room-code so the phone's six-segment entry
-// rejects exactly the characters this server rejects, with no second copy to drift.
+// The join-code vocabulary lives in $lib/contract/room-code, so the phone's six-segment entry rejects exactly the characters this server rejects, with no second copy to drift.
 
 /** A persisted room. Shape mirrors the `rooms` table row. */
 export interface Room {
@@ -41,15 +31,7 @@ export class RoomRepository {
 		this.#db = db;
 	}
 
-	/**
-	 * Create a room, minting an `id` and a unique join `code`. Retries on the (vanishingly unlikely)
-	 * code collision the `rooms_code_idx` unique constraint would otherwise reject, so the caller
-	 * always gets back a room whose code is genuinely free. Throws only after exhausting the retries
-	 * — a persistent failure there is a bug (or an impossibly full code space), not a normal path.
-	 *
-	 * `mintCode` is injectable so the retry branch is deterministically testable; production always
-	 * uses the crypto-backed {@link mintRoomCode}.
-	 */
+	/** Create a room, minting an `id` and a unique join `code`. Retries on a code collision (the `rooms_code_idx` unique constraint) so the caller always gets a room whose code is genuinely free; throws only after exhausting retries, since a persistent failure there is a bug, not a normal path. `mintCode` is injectable so the retry branch is deterministically testable. */
 	create(now: number, opts: { attempts?: number; mintCode?: () => string } = {}): Room {
 		const attempts = opts.attempts ?? 5;
 		const mint = opts.mintCode ?? mintRoomCode;
@@ -60,8 +42,7 @@ export class RoomRepository {
 				this.#db.insert(rooms).values(room).run();
 				return room;
 			} catch (err) {
-				// A UNIQUE violation on the code means we drew a code already in use: draw again.
-				// Anything else is a real error and should surface immediately.
+				// A UNIQUE violation on the code means we drew a code already in use: draw again. Anything else is a real error and should surface immediately.
 				if (!isUniqueViolation(err)) throw err;
 				lastErr = err;
 			}
@@ -69,15 +50,7 @@ export class RoomRepository {
 		throw new Error(`could not mint a free room code after ${attempts} attempts`, { cause: lastErr });
 	}
 
-	/**
-	 * The single active party for this core. Boot mints exactly one room — the identity the phones
-	 * join and the QR advertises — so this returns the sole existing room, minting one on first boot.
-	 * When the chain reaches concurrent parties, a caller that wants a SPECIFIC room resolves
-	 * it by code instead; this stays the "which room does an unqualified join land in" answer.
-	 *
-	 * Oldest-first so a box that somehow accumulated rows still resolves deterministically to the room
-	 * it has been advertising, rather than flipping to a newer one on restart.
-	 */
+	/** The single active party for this core: boot mints exactly one room (the identity phones join and the QR advertises), so this returns it, minting one on first boot. A caller wanting a SPECIFIC room resolves by code instead. Oldest-first so a box with multiple rows still resolves to the room it has been advertising, not a newer one after restart. */
 	ensureActive(now: number): Room {
 		const existing = this.#db.select().from(rooms).orderBy(asc(rooms.createdAt)).all()[0];
 		if (existing) return existing;

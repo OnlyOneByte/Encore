@@ -18,7 +18,6 @@ from src.retry_policy import BoundaryError  # noqa: E402
 from src.separation import mlx  # noqa: E402
 
 
-# ── model resolution ────────────────────────────────────────────────────────────────
 def test_resolve_mlx_model_default_and_whitelist():
     assert mlx.resolve_mlx_model({}) == "htdemucs"
     assert mlx.resolve_mlx_model({"model": ""}) == "htdemucs"
@@ -33,9 +32,6 @@ def test_resolve_mlx_model_unknown_is_non_retryable():
         mlx.resolve_mlx_model({"model": "bs-roformer-1297"})
     assert isinstance(excinfo.value, BoundaryError)
     assert excinfo.value.retryable is False
-
-
-# ── argv shape (measured contract: NO --two-stems, NO --filename) ─────────────────────
 def test_mlx_argv_has_no_two_stems_or_filename_flags():
     argv = mlx.mlx_argv("/w/input.wav", "/w/sep", model="htdemucs", mlx_bin="demucs-mlx")
     assert argv[:3] == ["demucs-mlx", "-n", "htdemucs"]
@@ -58,9 +54,6 @@ def test_mlx_argv_optional_perf_flags_omitted_when_unset_and_present_when_set():
     assert "--shifts" in tuned and tuned[tuned.index("--shifts") + 1] == "2"
     assert "--segment" in tuned and tuned[tuned.index("--segment") + 1] == "7"
     assert "-b" in tuned and tuned[tuned.index("-b") + 1] == "4"
-
-
-# ── output layout: <out>/<input-stem>/<source>.wav (named from the INPUT, not the model) ──
 def test_mlx_output_layout_is_keyed_on_the_input_filename_not_the_model():
     # demucs-mlx writes <out>/<input-stem>/<source>.wav — the folder is the input filename, not the model
     assert mlx.mlx_track_dir("/w/sep", "/w/input.wav") == "/w/sep/input"
@@ -69,18 +62,12 @@ def test_mlx_output_layout_is_keyed_on_the_input_filename_not_the_model():
     assert mlx.mlx_stem_path("/w/sep", "/w/input.wav", "drums") == "/w/sep/input/drums.wav"
     # a differently-named input proves the folder tracks the input stem, not a constant
     assert mlx.mlx_track_dir("/w/sep", "/tmp/song.wav") == "/w/sep/song"
-
-
-# ── the non-vocal stem set summed into the instrumental, per model ────────────────────
 def test_instrumental_sources_are_every_non_vocal_stem_including_6s_extras():
     assert mlx.mlx_instrumental_sources("htdemucs") == ("drums", "bass", "other")
     assert mlx.mlx_instrumental_sources("htdemucs_ft") == ("drums", "bass", "other")
     # 6-source model adds piano + guitar — dropping them would leave those out of the backing track
     assert mlx.mlx_instrumental_sources("htdemucs_6s") == ("drums", "bass", "other", "piano", "guitar")
     assert "vocals" not in mlx.mlx_instrumental_sources("htdemucs_6s")
-
-
-# ── the mix-minus derivation: a TRUE sum, not the level-halving default ───────────────
 def test_mix_minus_argv_sums_non_vocal_stems_with_normalize_off():
     argv = mlx.mix_minus_instrumental_argv("/w/sep", "/w/input.wav", model="htdemucs", ffmpeg_bin="ffmpeg")
     # three non-vocal stem inputs, and NOT the vocals stem

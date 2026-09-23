@@ -1,8 +1,7 @@
-"""The runtime: plan validation, the STOP short-circuit, and the write guard.
+"""The runtime: plan validation, the STOP short-circuit, and the write guard (docs/ARCHITECTURE.md §7).
 
-These are the spec's §7 enforcement tests for the runtime layer (E1 and E2). They test the machinery, not
-any action — a plan of toy steps is the right subject, because the point is that the RUNTIME is correct
-regardless of what the steps do.
+Tests the machinery, not any action — a plan of toy steps is the right subject, since the point is
+that the RUNTIME is correct regardless of what the steps do.
 """
 
 from __future__ import annotations
@@ -67,9 +66,6 @@ class Writes(Step):
             if leaf:
                 setattr(getattr(ctx, root), leaf, "written")
         yield ProgressEvent(stage=self.stage, pct=100)
-
-
-# ── E1: a plan is well-formed, or it fails at validation ─────────────────────────
 
 
 def test_a_step_reading_what_no_earlier_step_writes_is_REFUSED():
@@ -171,9 +167,6 @@ class _Aligning(Writes):
 
     def __init__(self, name: str) -> None:
         super().__init__(name, writes=set())
-
-
-# ── the STOP short-circuit ───────────────────────────────────────────────────────
 
 
 class Stops(Step):
@@ -285,9 +278,6 @@ async def test_a_raising_step_still_FLUSHES_the_notes_before_it_propagates(tmp_p
     )
 
 
-# ── per-step timing ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.asyncio
 async def test_every_step_that_ran_is_TIMED(tmp_path):
     """What the internal metrics page could not see before. StageTimer ends a stage when a different one
@@ -297,9 +287,6 @@ async def test_every_step_that_ran_is_TIMED(tmp_path):
     events = await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
     done = [e for e in events if isinstance(e, CompleteResult)][0]
     assert set(done.facts["stepTimingsSec"]) == {"one", "two"}
-
-
-# ── E2: the write guard (test mode) ──────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -487,23 +474,18 @@ def test_a_valid_action_with_no_registered_plan_raises_plan_error(tmp_path, monk
     assert "align" in str(exc.value)
 
 
-# ── run_blocking: cancellation must not abandon the in-flight thread ──────────────
-
-
 @pytest.mark.asyncio
 async def test_run_blocking_awaits_its_thread_before_the_generator_finishes(tmp_path, monkeypatch):
     """A cancelled ML process must not free its concurrency slot while the thread is still running.
 
-    run_blocking offloads a synchronous ML call to a thread and yields keepalives. When the job is
-    cancelled, dial_home cancels the consuming task, which throws GeneratorExit into this generator's
-    suspended `yield`. The slot is freed the instant run_blocking returns (_run_job's finally). If the
-    generator returned while the thread was still executing, the worker would advertise capacity it did
-    not have and a cancelled process would keep burning CPU/VRAM off the books.
+    When the job is cancelled, dial_home cancels the consuming task, throwing GeneratorExit into
+    run_blocking's suspended `yield`. The slot is freed the instant run_blocking returns (_run_job's
+    finally), so if the generator returned while the thread was still executing, the worker would
+    advertise capacity it did not have and a cancelled process would keep burning CPU/VRAM off the books.
 
     The thread here cannot be killed — it sleeps a fixed span and sets `finished` only when it truly
-    ends. We consume one keepalive, then `aclose()` the generator (the GeneratorExit path). With the
-    fix, aclose() must not return until `finished` is set. On the pre-fix code (the `to_thread` future
-    dropped on unwind) aclose() returns with `finished` still False.
+    ends. We consume one keepalive, then `aclose()` the generator; `aclose()` must not return until
+    `finished` is set.
     """
     import threading
     import time as _time
@@ -535,20 +517,16 @@ async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(m
     """A SECOND cancel arriving while run_blocking is shielding its still-running thread must not free
     the slot early.
 
-    The sibling test above cancels ONCE: the finally awaits the shield and the inner wait is driven to
-    completion, so the single-cancel path holds even under the bug. The reachable defect is a SECOND
-    cancel (dial_home._on_cancel then drain(cancel=True) on any socket drop, both hitting the same task)
-    landing on the shield await mid-ML-pass. asyncio.shield raises CancelledError to its awaiter
+    A single cancel is handled by the sibling test above. The reachable defect is a SECOND cancel
+    (dial_home._on_cancel then drain(cancel=True) on any socket drop, both hitting the same task)
+    landing on the shield await mid-ML-pass: asyncio.shield raises CancelledError to its awaiter
     immediately while the inner wait keeps running, so a finally that checks the thread only ONCE
-    (`if not task.done()`) swallows that error and returns with the native thread still live. _run_job's
-    finally then frees the concurrency slot for capacity that does not exist and rmtrees inputs the
-    abandoned thread is still reading.
+    would swallow that error and return with the native thread still live, freeing the concurrency
+    slot for capacity that does not exist.
 
-    We open the generator, consume one keepalive (proving the thread is running), then run `aclose()`
-    inside a task: aclose throws GeneratorExit, which unwinds into the finally and suspends on the
-    shielded `await`. Cancelling THAT task delivers the second cancel straight onto the shield await.
-    With the fix (`while`) aclose does not settle until the thread genuinely finishes; with the bug
-    (`if`) aclose returns immediately with the thread still running.
+    We open the generator, consume one keepalive, then run `aclose()` inside a task (unwinding into
+    the finally, suspending on the shielded `await`), and deliver a second cancel straight onto that
+    shield await. `aclose()` must not settle until the thread genuinely finishes.
     """
     import threading
     import time as _time
@@ -570,9 +548,7 @@ async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(m
     # aclose() -> GeneratorExit -> finally -> suspends on `await asyncio.shield(asyncio.wait({task}))`.
     close_task = asyncio.ensure_future(gen.aclose())
     await asyncio.sleep(0.05)  # let the unwind reach the shielded await
-    assert not finished.is_set(), (
-        "thread finished too soon — the shield window closed before cancel an earlier change"
-    )
+    assert not finished.is_set(), "thread finished too soon — the shield window closed before cancel"
     assert not close_task.done(), "aclose settled before the second cancel — cannot exercise the path"
 
     # Second cancel lands on the shielded await inside the finally.
@@ -585,14 +561,9 @@ async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(m
     except (asyncio.CancelledError, asyncio.TimeoutError):
         pass
 
-    # The generator itself must have SETTLED, not merely the thread. `finished` is set by the worker
-    # thread (slow_ml), so it goes True after 0.4s whether or not run_blocking ever returned — a
-    # cleanup that hangs forever (e.g. the 2nd-cancel handler failing to fall back into the loop) leaves
-    # the thread to finish on its own while the generator never unwinds. Assert the generator actually
-    # returned so a never-returning cleanup reds this test instead of passing on the thread's coattails:
-    # if aclose never settles, _run_job's finally never frees the slot and drain(cancel=True) hangs the
-    # reconnect. The bounded wait_for above already gave it 2.0s (>> the 0.4s thread), so on the fix
-    # close_task is done here; under a non-settling regression it is still pending.
+    # The generator itself must have SETTLED, not merely the thread: `finished` goes True after 0.4s
+    # regardless of whether run_blocking ever returned, so a cleanup that hangs forever would still
+    # pass on the thread's coattails unless we also assert the generator returned.
     assert close_task.done(), (
         "run_blocking never returned at all on a SECOND cancel — the cleanup did not settle, so "
         "_run_job's finally never frees the slot and drain(cancel=True) hangs the reconnect loop"
@@ -603,22 +574,12 @@ async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(m
     )
 
 
-# ── scratch_for: the cleanup must delete EXACTLY what the runner created ──────────
-
-
 def test_scratch_for_produces_the_documented_media_volume_layout(tmp_path):
     """`scratch_for` is the SOLE producer of a job's scratch directory (runner.py builds `ctx.work`
-    from it) and is the only thing that reclaims it — dial_home's finally rmtrees the same path, and
-    in a two-container deploy a core-side rmtree gets EACCES, so the worker's own delete is the ONLY
-    reclaim path. It had zero test callers, so a producer edit that changed the path shape — grouping
-    scratch under the media id, a per-attempt subdir, moving off the media volume — sailed past the
-    whole suite (579 green) while every processed song leaked its decoded source + both WAV stems until
-    the volume filled, silently (`ignore_errors=True`).
-
-    Pin the producer's contract HERE, independent of any hand-rebuilt copy: the expectation is written
-    against `job.media_dir`/`work`/`job.job_id` directly, so drifting `scratch_for` reds this test the
-    moment the shape changes rather than leaking in production. This is the one side of the two-copy
-    duplication that nothing pinned.
+    from it) and the only thing that reclaims it: dial_home's finally rmtrees the same path, since in
+    a two-container deploy a core-side rmtree gets EACCES. Pinned against `job.media_dir`/`work`/
+    `job.job_id` directly, so a shape change (e.g. grouping under media id) reds here rather than
+    silently leaking scratch (`ignore_errors=True`) until the volume fills.
     """
     j = job(tmp_path)
     assert scratch_for(j) == os.path.join(str(tmp_path), "work", j.job_id)
@@ -630,15 +591,8 @@ def test_scratch_for_produces_the_documented_media_volume_layout(tmp_path):
 
 def test_the_cleanup_derives_its_delete_target_FROM_scratch_for_not_a_hand_rebuild(tmp_path):
     """The consumer (dial_home's finally-block rmtree) must call `scratch_for(job)`, not rebuild the
-    `media_dir/work/job_id` layout by hand.
-
-    A hand-rebuilt copy is a SECOND spelling of the producer's layout that drifts silently: change
-    `scratch_for` and the cleanup keeps deleting the old path, orphaning the new one. The two
-    `test_dial_home.py` cleanup tests hardcode the literal a THIRD time, so they pin the consumer and
-    are blind to producer drift — the asymmetry is the whole finding. The durable fix is to
-    delete the duplication: have the consumer consume the producer. This guard reads dial_home's source
-    and fails if the finally-block rmtree reverts to a hand-built `os.path.join(..., "work",...)`
-    instead of `scratch_for(job)`.
+    `media_dir/work/job_id` layout by hand: a hand-rebuilt copy is a SECOND spelling of the producer's
+    layout that drifts silently if `scratch_for` ever changes shape.
     """
     src = Path(__file__).resolve().parents[1] / "src" / "dial_home.py"
     text = src.read_text()
@@ -655,29 +609,22 @@ def test_the_cleanup_derives_its_delete_target_FROM_scratch_for_not_a_hand_rebui
     assert "def _run_job" in text and "scratch_for" in text
 
 
-# ── run_stage: a slow-but-alive subprocess must keep its lease ─────────────
-
-
 @pytest.mark.asyncio
 async def test_run_stage_emits_a_time_based_keepalive_while_the_child_is_quiet(monkeypatch):
     """A subprocess stage whose child makes no NEW percentage for longer than the progress lease must
-    still renew the lease with a TIME-BASED keepalive, or the core's 30 s progressLeaseMs expires and a
-    HEALTHY process is reaped and retried as a fresh pass.
+    still renew the lease with a TIME-BASED keepalive, or the core's 30s progressLeaseMs expires and a
+    HEALTHY process is reaped and retried as a fresh pass. This is the roformer shape exactly:
+    `parse_progress` returns None unconditionally, so the child can stay quiet for a 45-minute
+    separation with not one line parsing to a percentage.
 
-    This is the roformer shape exactly: `parse` returns None unconditionally (roformer's
-    parse_progress does), so NOT ONE line parses to a percentage, and the child stays quiet for a long
-    stretch (a 45-minute separation). Pre-fix, `run_stage` awaited the next line with no timeout, so it
-    emitted ONLY its opening 0 and closing 100 — nothing in between — and the reaper killed it at 30 s.
-
-    We shrink LEASE_KEEPALIVE_SEC to 0.02 and make the fake child sleep ~0.25 s (~12 intervals) between
-    its one line and finishing, so the fix must emit several keepalives during that quiet window. On the
-    pre-fix code the quiet window emits zero events and this reds with `got 0 keepalives`.
+    We shrink LEASE_KEEPALIVE_SEC to 0.02 and make the fake child sleep ~0.25s (~12 intervals) between
+    its one line and finishing, so several keepalives must fire during that quiet window.
     """
     monkeypatch.setattr(runner_mod, "LEASE_KEEPALIVE_SEC", 0.02)
 
     async def quiet_child(_argv):
-        # One line up front (which parses to None, so emits nothing), then a long silent stretch that
-        # spans many keepalive intervals before the child exits — a slow-but-alive roformer pass.
+        # One line up front (parses to None, emits nothing), then a long silent stretch spanning many
+        # keepalive intervals — a slow-but-alive roformer pass.
         yield "loading model weights"
         await asyncio.sleep(0.25)  # ~12 intervals of 0.02s: alive, but making no parseable progress
 
@@ -694,15 +641,14 @@ async def test_run_stage_emits_a_time_based_keepalive_while_the_child_is_quiet(m
     assert pcts[0] == 0, f"first event must be the opening 0, got {pcts}"
     assert pcts[-1] == 100, f"last event must be the closing 100, got {pcts}"
 
-    # THE LOAD-BEARING ASSERTION: keepalives fired DURING the quiet stretch. A run of ~12 intervals must
-    # produce several; pre-fix there are zero between the 0 and the 100. Require >= 3 so a single stray
-    # tick cannot pass it, mirroring the run_blocking keepalive test's margin.
+    # THE LOAD-BEARING ASSERTION: keepalives fired DURING the quiet stretch. Require >= 3 so a single
+    # stray tick cannot pass it.
     keepalives = [p for p in pcts if p == 0][1:]  # every 0 AFTER the opening 0 is a held-at-last keepalive
     assert len(keepalives) >= 3, (
         f"run_stage emitted no time-based keepalive while the child ran quietly for ~12 lease intervals "
         f"— a slow roformer pass would breach the 30s lease and be reaped. pcts={pcts}"
     )
 
-    # Anti-vacuity: the keepalive holds the bar at the last-known pct (0 here, since nothing parsed) and
-    # NEVER leaks an intermediate value — the bar must not move off 0 until the closing 100.
+    # Anti-vacuity: the keepalive holds the bar at the last-known pct and never leaks an intermediate
+    # value — the bar must not move off 0 until the closing 100.
     assert not any(0 < p < 100 for p in pcts), f"keepalive must hold the bar, never move it, got {pcts}"

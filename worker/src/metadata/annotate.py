@@ -1,30 +1,22 @@
 """MusicBrainz ANNOTATION: identify what a downloaded song actually is.
 
-WHAT THIS IS FOR. A YouTube title is not metadata. "a-ha - Take On Me (Official Video) [4K Remaster]"
-has to become artist "a-ha" and track "Take On Me" before an LRCLIB lookup can match on
-`artist_name` + `track_name`, and before library browse can group by anything a human recognises.
+A YouTube title is not metadata: "a-ha - Take On Me (Official Video) [4K Remaster]" has to become
+artist "a-ha" and track "Take On Me" before an LRCLIB lookup can match on `artist_name`+`track_name`.
 The core's normalizer already guesses this from the title; MusicBrainz is how a guess becomes a
 citation, with an MBID and a confidence attached.
 
-NOT a catalog. Search stays yt-dlp: this runs AFTER a download, when the real title and exact duration
-are known, and it only ever ANNOTATES a media that already exists. Nothing here decides what a singer
-can find or queue.
+NOT a catalog: this runs AFTER a download, when the real title and exact duration are known, and only
+ever ANNOTATES a media that already exists.
 
 WHY IT REFUSES. A wrong artist is worse than a missing one: it silently poisons the lyrics query that
-consumes it, and afterwards it is indistinguishable from a correct one. So a weak match writes nothing
-and says so, leaving the normalizer's values in place -- the same rule the separator backends and
-`artistCanonical` already follow.
+consumes it and afterwards is indistinguishable from a correct one. A weak match writes nothing and
+says so, leaving the normalizer's values in place.
 
-MEASURED against the real service (2026-09-03), which shaped three decisions:
-
-  * A query for a-ha / "Take On Me" returns 97 recordings, the top THREE all scoring 100, with lengths
-    229186ms, 217906ms and 119773ms. MusicBrainz's own `score` is lexical and cannot separate a single
-    from an album cut from a 2-minute edit, so DURATION is the discriminator, not score.
-  * The artist came back as "a\u2010ha" -- a UNICODE HYPHEN (U+2010), not ASCII "-". Comparing raw
-    strings would have missed the correct match on the most famous song in the test set. Hence
-    `normalize_for_match`.
-  * `length` is MILLISECONDS; a media's durationSec is seconds. Getting that wrong makes every match
-    fail the tolerance and look like "MusicBrainz never matches anything".
+Three measured facts against the real service shape the logic below: MusicBrainz's own `score` is
+lexical and cannot separate a single from an album cut from a 2-minute edit (top matches routinely tie
+at 100 with lengths differing by minutes), so DURATION is the discriminator, not score; artist names
+can come back with a UNICODE HYPHEN (U+2010) rather than ASCII "-" (hence `normalize_for_match`); and
+`length` is MILLISECONDS while a media's durationSec is seconds.
 
 PURE/IO SPLIT as elsewhere in this worker: query building, normalisation, scoring and picking are pure
 and unit-tested against captured responses; only the client touches the network, through an injected
@@ -42,33 +34,26 @@ from typing import Any
 
 MB_BASE = "https://musicbrainz.org/ws/2"
 
-#: MusicBrainz asks every client to identify itself in the documented form
-#: `Application name/<version> ( contact-url )`, and classifies a missing or generic header as
-#: "anonymous". That matters more than politeness: `Python-urllib` -- the header stdlib urllib sends by
-#: DEFAULT -- is named on their anonymous list and throttled far harder than an identified client. Every
-#: request must therefore set this explicitly.
+#: MusicBrainz classifies a missing or generic User-Agent as "anonymous" and throttles it harder —
+#: `Python-urllib` (stdlib's default header) is on that anonymous list — so every request sets this
+#: explicitly in the documented `Application name/<version> ( contact-url )` form.
 USER_AGENT = "Encore/0.2 ( https://github.com/OnlyOneByte/Encore )"
 
-#: Their documented limit is one request per second PER SOURCE IP, averaged.
-#:
-#: Overshooting is not a partial penalty. Quoting the docs: "if your requests are coming in at 4
-#: requests per second, we don't honour 25% of them and decline the other 75% - we decline 100% of
-#: them, until the rate drops to 1 per second or lower." So a burst does not cost one lookup, it costs
-#: every lookup until the box goes quiet -- which is why pacing is global and serialised rather than
+#: Their documented limit is one request per second PER SOURCE IP, averaged. Overshooting is NOT a
+#: partial penalty: per their docs, exceeding it means they decline 100% of requests, not just the
+#: excess, until the rate drops to 1/sec or lower — so pacing must be global and serialised, never
 #: best-effort per client.
 MIN_INTERVAL_SEC = 1.0
 
 #: A 503 is how MusicBrainz says "you are over the limit" (also "we are busy"). Retrying with backoff
-#: recovers the annotation instead of silently losing it for that song; bounded so a genuinely blocked
-#: box degrades to declining rather than hammering the service it is already annoying.
+#: recovers the annotation instead of losing it silently; bounded so a genuinely blocked box degrades
+#: to declining rather than hammering the service it is already annoying.
 MAX_ATTEMPTS = 3
 BACKOFF_BASE_SEC = 1.0
 
-#: D9. A recording whose length is within this many seconds is a `high` match; within the wider bound
-#: it is `medium`; beyond it, nothing is written.
-#:
-#: 2s is not arbitrary: it is the tolerance LRCLIB itself matches on, so a `high` annotation is by
-#: construction good enough for the lookup that consumes it.
+#: A recording whose length is within this many seconds is a `high` match; within the wider bound it
+#: is `medium`; beyond it, nothing is written. 2s is the tolerance LRCLIB itself matches on, so a
+#: `high` annotation is by construction good enough for the lookup that consumes it.
 HIGH_TOLERANCE_SEC = 2.0
 MEDIUM_TOLERANCE_SEC = 5.0
 
@@ -80,7 +65,6 @@ class AnnotationFetchError(RuntimeError):
     """A non-404 HTTP failure talking to MusicBrainz (transient -> the caller declines, never fails)."""
 
 
-# ── pure: normalisation ───────────────────────────────────────────────────────────
 #: Unicode dashes MusicBrainz uses in artist names, all of which a human types as "-".
 _DASHES = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"), "-")
 _STRIP_PUNCT = re.compile(r"[^\w\s-]", re.UNICODE)
@@ -89,10 +73,8 @@ _COLLAPSE = re.compile(r"\s+")
 
 def normalize_for_match(value: str | None) -> str:
     """Fold a name to a comparable form: unicode-normalised, dashes unified, punctuation dropped.
-
-    Exists because of a real miss: MusicBrainz returned "a\u2010ha" (U+2010) where the YouTube title
-    said "a-ha", so a raw comparison rejected the correct recording. Compares CONTENT, not typography.
-    """
+    Compares CONTENT, not typography (a raw comparison would reject a correct match differing only
+    in a unicode hyphen)."""
     if not value:
         return ""
     folded = unicodedata.normalize("NFKC", value).translate(_DASHES).casefold()
@@ -163,12 +145,9 @@ def _primary_credit(rec: dict[str, Any]) -> str:
 
 
 def _best_release(rec: dict[str, Any]) -> tuple[str | None, int | None]:
-    """Pick the EARLIEST dated release, not the first one listed.
-
-    MusicBrainz does not order `releases` meaningfully, and taking [0] produced visibly silly albums for
-    real songs: "Take On Me" came back on a 1989 live-tour compilation and "Bohemian Rhapsody" on
-    "Artist Karaoke Series: Queen". The earliest date is a decent proxy for the original release, which
-    is what a singer recognises and what library browse should group under.
+    """Pick the EARLIEST dated release, not the first one listed: MusicBrainz does not order
+    `releases` meaningfully, and taking [0] can produce a live-tour or karaoke-series compilation
+    instead of the original. The earliest date is a decent proxy for what a singer recognises.
 
     Undated releases sort last rather than being discarded: an undated original still beats no album.
     """
@@ -205,8 +184,7 @@ def parse_recordings(body: str | dict[str, Any]) -> list[Recording]:
                 mbid=str(rec["id"]),
                 title=str(rec.get("title") or ""),
                 artist=_artist_credit(rec),
-                # `length` is MILLISECONDS. Treating it as seconds makes every match fail the
-                # tolerance, which looks like "MusicBrainz never matches" rather than a unit bug.
+                # `length` is MILLISECONDS: treating it as seconds fails every match's tolerance.
                 duration_sec=(float(length) / 1000.0) if isinstance(length, (int, float)) else None,
                 score=int(rec.get("score") or 0),
                 album=album,
@@ -218,11 +196,8 @@ def parse_recordings(body: str | dict[str, Any]) -> list[Recording]:
 
 
 def confidence_for(expected_sec: float | None, candidate_sec: float | None) -> str | None:
-    """Confidence from the duration agreement alone, or None when the gap is too wide.
-
-    Duration carries this because MusicBrainz's own `score` is lexical: measured on a real query, the
-    top three recordings all scored 100 while their lengths differed by 110 seconds. Score cannot tell
-    a single from an album cut; length can.
+    """Confidence from the duration agreement alone, or None when the gap is too wide: MusicBrainz's
+    own `score` is lexical and cannot tell a single from an album cut, but length can.
 
     An unknown duration on either side yields `medium`, never `high`: the identification may well be
     right, but nothing has corroborated it, and `high` is the tier that gets treated as fact.
@@ -249,16 +224,11 @@ class Annotation:
     def as_artifact(self) -> dict[str, Any]:
         """The shape the worker reports on completion, mirroring artifacts.separator's provenance.
 
-        ALBUM AND YEAR ARE DELIBERATELY EXCLUDED. They are parsed and used for recording selection, but
-        not published, because measured against the real service they are wrong often enough to be
-        harmful: "Take On Me" resolved to a 1991 hits compilation and "Bohemian Rhapsody" to an undated
-        Newcastle bootleg. The cause is structural rather than a tuning problem — `releases` on a search
-        hit is a partial list, and the recording is chosen by duration, so a live cut or a compilation
-        that happens to match the file's length brings its own release along with it.
-
-        Getting a trustworthy album needs a second lookup against release-groups filtered to primary
-        albums. Until that exists, D4 applies: a wrong album is worse than a missing one, and library
-        browse groups by artist anyway. artist/title/mbid are the payoff and those ARE reliable.
+        ALBUM AND YEAR ARE DELIBERATELY EXCLUDED: they are parsed and used for recording selection but
+        not published, since `releases` on a search hit is a partial list and the recording is chosen
+        by duration, so a compilation that happens to match the file's length brings its wrong release
+        along with it. A wrong album is worse than a missing one; artist/title/mbid are the payoff and
+        those ARE reliable.
         """
         return {
             "source": "musicbrainz",
@@ -277,23 +247,19 @@ def pick_best(
     Name agreement is required rather than scored: MusicBrainz will happily return a different song by
     the same artist with a high lexical score, and writing that as fact is the failure this refuses.
 
-    ARTIST AGREEMENT MEANS THE PRIMARY, NOT THE WHOLE BILLING. MusicBrainz publishes a collaboration as
-    one joined credit ("League of Legends feat. Against the Current") while the caller's key is a single
-    primary artist, so comparing the joined string rejected EVERY song with a guest on it — measured
-    live, "Legends Never Die" came back score 100 with the duration matching to the millisecond and was
-    still discarded. A full-credit agreement is stronger evidence, so it still WINS the sort; it is just
-    no longer the price of admission.
+    ARTIST AGREEMENT MEANS THE PRIMARY, NOT THE WHOLE BILLING: MusicBrainz publishes a collaboration
+    as one joined credit ("League of Legends feat. Against the Current") while the caller's key is a
+    single primary artist, so comparing only the joined string would reject every song with a guest on
+    it. A full-credit agreement is stronger evidence, so it still WINS the sort; it is just no longer
+    the price of admission.
 
-    Among genuine agreements the sort is: exact-credit before primary-only, then closest duration, then
-    EARLIEST release, then MusicBrainz's own score. The year tie-break is not cosmetic — measured on real
-    queries, duration alone left several recordings tied and picked a 1989 live-tour cut for "Take On
-    Me" and an "Artist Karaoke Series" compilation for "Bohemian Rhapsody". Both are legitimate
-    recordings of the right song, but the earliest release is the one a singer recognises and the one
-    library browse should group under.
+    Among genuine agreements the sort is: exact-credit before primary-only, then closest duration,
+    then EARLIEST release, then MusicBrainz's own score — the year tie-break exists because duration
+    alone can leave several recordings tied and pick a live-tour or karaoke-compilation cut over the
+    original.
 
-    What gets PUBLISHED is always the full credit, whichever way the match was made: "League of Legends
-    feat. Against the Current" is what a singer wants to read, and it is the strictly more informative
-    of the two.
+    What gets PUBLISHED is always the full credit, whichever way the match was made: it is what a
+    singer wants to read, and it is the strictly more informative of the two.
     """
     want_artist, want_track = normalize_for_match(artist), normalize_for_match(track)
     if not want_artist or not want_track:
@@ -302,8 +268,8 @@ def pick_best(
     scored: list[tuple[int, float, int, int, Recording, str]] = []
     for rec in candidates:
         exact_credit = normalize_for_match(rec.artist) == want_artist
-        # Fall back to the primary only. `artist_primary` is empty for a recording with no credit list,
-        # and normalize_for_match("") is "", so this cannot accidentally agree with a real name.
+        # `artist_primary` is empty for a recording with no credit list, and normalize_for_match("")
+        # is "", so this cannot accidentally agree with a real name.
         primary_credit = bool(rec.artist_primary) and normalize_for_match(rec.artist_primary) == want_artist
         if not exact_credit and not primary_credit:
             continue
@@ -317,8 +283,7 @@ def pick_best(
             if duration_sec is not None and rec.duration_sec is not None
             else float("inf")
         )
-        # Round the gap so near-identical lengths genuinely tie and the year can decide, rather than a
-        # 40ms difference silently outranking "this is the original release".
+        # Round so near-identical lengths genuinely tie and the year can decide the ranking.
         scored.append((0 if exact_credit else 1, round(gap, 1), rec.year or 9999, -rec.score, rec, conf))
 
     if not scored:
@@ -335,26 +300,20 @@ def pick_best(
     )
 
 
-# ── the rate gate: process-global, serialised ─────────────────────────────────────
 class RateLimiter:
     """One gate every MusicBrainz call passes through, one at a time.
 
-    WHY GLOBAL AND SERIALISED, rather than a per-client interval check:
+    GLOBAL AND SERIALISED, not a per-client interval check: the limit is per SOURCE IP (a property of
+    the process, not a client object), and `ENCORE_WORKER_CONCURRENCY` > 1 means two fetch jobs can
+    reach this concurrently — an unlocked "has enough time passed?" check lets both read the same
+    timestamp, both decide yes, and both fire, which is exactly the burst that gets an IP blocked
+    outright. The penalty for overshooting is total, so the safe default is to queue rather than risk it.
 
-      * The limit is per SOURCE IP, so it is a property of the process, not of a client object. Two
-        client instances pacing themselves independently still send two requests in the same second.
-      * `ENCORE_WORKER_CONCURRENCY` > 1 means two fetch jobs can reach this concurrently. An unlocked
-        "has enough time passed?" check lets both read the same timestamp, both decide yes, and both
-        fire -- which is precisely the burst that gets an IP blocked outright.
-      * The penalty for overshooting is total (see MIN_INTERVAL_SEC), so the safe default is to queue
-        rather than to risk it. At one request per second and one call per download, the cost of
-        serialising is invisible.
+    The lock is held across the REQUEST as well as the wait: releasing before the call would let two
+    requests be in flight simultaneously, the exact thing being prevented.
 
-    The lock is held across the REQUEST as well as the wait. That is deliberate: two requests in flight
-    simultaneously is the thing being prevented, so releasing before the call would defeat the point.
-
-    Counters exist because a paced call is indistinguishable from a slow one from the outside, and the
-    operator needs to be able to tell "MusicBrainz is throttling us" from "the network is slow".
+    Counters exist so an operator can tell "MusicBrainz is throttling us" from "the network is slow",
+    since a paced call is indistinguishable from a slow one from the outside.
     """
 
     def __init__(
@@ -371,9 +330,8 @@ class RateLimiter:
         self._lock = threading.Lock()
         self._now = now or _time.monotonic
         self._sleep = sleep or _time.sleep
-        # None, not 0.0: "never called" must be distinguishable from "called at t=0", and 0.0 is falsy.
-        # With a real monotonic clock t=0 is merely unlikely rather than impossible, so a truthiness
-        # check here would work by luck and skip the very first pacing interval.
+        # None, not 0.0: "never called" must be distinguishable from "called at t=0" (0.0 is falsy,
+        # so a truthiness check would skip the very first pacing interval).
         self._last_call: float | None = None
         self.calls = 0
         self.retries = 0
@@ -402,8 +360,7 @@ class RateLimiter:
                 status, body = call()
                 if status != 503:
                     return status, body
-                # 503 = over the limit, or the service is busy. Same remedy either way: wait longer.
-                self.throttled += 1
+                self.throttled += 1  # over the limit, or busy — same remedy either way: wait longer
                 if attempt == MAX_ATTEMPTS:
                     return status, body
                 self.retries += 1
@@ -421,8 +378,8 @@ class RateLimiter:
         }
 
 
-#: The process-wide gate. Every client shares it by default, which is the whole point -- a per-instance
-#: limiter would let two clients in one process burst past a per-IP limit.
+#: The process-wide gate. Every client shares it by default: a per-instance limiter would let two
+#: clients in one process burst past a per-IP limit.
 _LIMITER = RateLimiter()
 
 
@@ -431,7 +388,6 @@ def limiter() -> RateLimiter:
     return _LIMITER
 
 
-# ── I/O: the client (injectable fetcher; the real network only runs on a worker) ───
 Fetcher = Callable[[str, dict[str, str]], "tuple[int, str]"]
 
 
@@ -461,8 +417,8 @@ class MusicBrainzClient:
         if status == 404:
             return []
         if status == 503:
-            # Exhausted the retries: the IP is being refused. Declining (via annotate) is right --
-            # hammering an endpoint that is already saying no makes the block last longer.
+            # Retries exhausted: the IP is being refused. Hammering an endpoint that already says no
+            # would only make the block last longer, so this declines instead.
             raise AnnotationFetchError(f"musicbrainz throttled us (503) after {MAX_ATTEMPTS} attempts")
         if status != 200:
             raise AnnotationFetchError(f"musicbrainz returned {status} for {artist} - {track}")
@@ -476,9 +432,7 @@ def _limiter_of(client: Any) -> RateLimiter:
     """The gate a client paces through, so a decline can read how much it was throttled.
 
     A MusicBrainzClient carries its own limiter (`_limiter`); a hand-rolled test double may not, in
-    which case the process-global gate is the only one it could have used. Either way this is the
-    reader `limiter()`/`RateLimiter.stats()` were written for: the counters at :371-403 record whether a
-    silent decline was a throttle or a genuine miss, and nothing read them until here.
+    which case the process-global gate is the only one it could have used.
     """
     lim = getattr(client, "_limiter", None)
     return lim if isinstance(lim, RateLimiter) else limiter()
@@ -491,27 +445,17 @@ def annotate_or_reason(
 
     Returns `(annotation, None)` on a match and `(None, reason)` on every decline. The reason is the
     point of this function over `annotate()`: an IP-level MusicBrainz block and "nothing agreed on the
-    names" are the same observable event -- `annotate()` returns `None` for both -- so the caller cannot
-    tell a throttled box (self-sustaining, every lookup declines until the box goes quiet) from a
-    healthy per-song miss. This separates them by CATCHING `AnnotationFetchError` distinctly and reading
-    the throttle counters the gate already keeps.
-
-    Reasons:
-      * no confident artist/title to search with -> "no artist/title to look up"
-      * the service is unreachable / throttled / a 5xx (an `AnnotationFetchError`) -> the error text,
-        annotated with the gate's `stats()` so "throttled us (503)" carries the observed counters
-      * nothing agrees on the names or the closest match is too far off in length -> "no confident match"
-
-    Declining is still never a job failure -- the caller keeps the normalizer's values -- but now the
-    decline is legible instead of silent.
+    names" are the same observable event under `annotate()` (both return None), so the caller cannot
+    tell a throttled box from a healthy per-song miss. This separates them by catching
+    `AnnotationFetchError` distinctly and reading the throttle counters the gate already keeps.
     """
     if not artist or not track:
         return None, "no artist/title to look up"
     try:
         candidates = client.search(artist, track)
     except AnnotationFetchError as exc:
-        # A transport fault, not a miss: unreachable, a 5xx, or -- the case this issue is about -- an
-        # IP-level throttle. Read the gate so an operator can tell throttling from a slow network.
+        # A transport fault, not a miss (unreachable, a 5xx, or an IP-level throttle): read the gate
+        # so an operator can tell throttling from a slow network.
         stats = _limiter_of(client).stats()
         return None, f"lookup failed: {exc} [rate gate: {stats}]"
     except Exception as exc:  # noqa: BLE001 - any other client fault is still a decline, never a failure
@@ -525,15 +469,9 @@ def annotate_or_reason(
 def annotate(
     client: Any, artist: str | None, track: str | None, duration_sec: float | None
 ) -> Annotation | None:
-    """Identify a song, or decline. NEVER raises for an ordinary failure.
-
-    Declines when: the caller has no confident artist/title to search with, the service is unreachable,
-    nothing agrees on the names, or the closest agreement is too far off in length. Every one of those
-    means "keep the normalizer's values", not "fail the job" -- annotation is an enrichment, and a process
-    that failed because a metadata lookup was down would be absurd.
-
-    Kept as the value-only shape for callers that do not need the reason; `annotate_or_reason` is the
-    one that also explains a decline.
+    """Identify a song, or decline. NEVER raises for an ordinary failure: annotation is an enrichment,
+    and a process failing because a metadata lookup was down would be absurd. Kept as the value-only
+    shape for callers that do not need the reason; `annotate_or_reason` also explains a decline.
     """
     got, _reason = annotate_or_reason(client, artist, track, duration_sec)
     return got

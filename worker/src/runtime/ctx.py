@@ -1,20 +1,11 @@
 """The per-job context: what every step reads and writes.
 
-WHY THIS EXISTS. The align action used to be a 257-line async generator, and the state it threaded
-between its six inline stages was sixteen local variables — `work`, `audio`, `is_local`,
-`caption_segments`, `auto_caption_segments`, `texts`, `sel`, `align_audio`, `candidates` and the rest.
-That context was not missing; it was implicit and untyped, which is why adding one baseline meant
-editing the method in four separate places.
+NAMESPACED, not flat: grouping by domain keeps the `reads`/`writes` declarations on each step legible
+— `'audio.path'` names which domain a step touches, not just which variable.
 
-NAMESPACED, not flat. A flat twenty-field bag stops being readable around field twelve, and grouping by
-domain also makes the `reads`/`writes` declarations on each step legible: `'audio.path'` says which
-domain a step touches, not just which variable.
-
-PER JOB, not per worker. `engines` is the field that matters here. Engine resolution used to mutate the
-shared processor instance (`self._model`, `self._sources`), so with ENCORE_WORKER_CONCURRENCY > 1 two
-align jobs carrying different `asrModel` raced: one could null the other's cached sources mid-acquire,
-or transcribe with the other's weights. Per-job state cannot live on a per-worker object if the
-per-worker object has nowhere to put it.
+PER JOB, not per worker: `engines` must be resolved into per-job state rather than mutating a shared
+processor instance, or with ENCORE_WORKER_CONCURRENCY > 1 two align jobs carrying different
+`asrModel` would race (one nulling the other's cached sources, or transcribing with its weights).
 """
 
 from __future__ import annotations
@@ -30,10 +21,10 @@ from ..vocabulary import AsrModel, Engine, SyncMode
 class ResolvedEngines:
     """What this job will actually run, resolved ONCE before the first step.
 
-    Distinct from `job.params`, which is what the core ASKED for: a worker may resolve a model alias to
-    a different checkpoint, or fall back to CPU when a requested backend will not load. `plan_for` also
-    reads this, because which engine won can select a different plan (see the spec §5.2c) — so it has to
-    be known before any step executes.
+    Distinct from `job.params` (what the core ASKED for): a worker may resolve a model alias to a
+    different checkpoint, or fall back to CPU when a requested backend will not load. `plan_for` also
+    reads this, since which engine won can select a different plan, so it must be known before any
+    step executes.
     """
 
     asr_model: str = AsrModel.BASE.value
@@ -41,13 +32,10 @@ class ResolvedEngines:
     separator: str = Engine.DEMUCS.value
     device: str | None = None
 
-    # NO `separator_model` HERE, deliberately. It used to sit beside `separator`, was filled in by
-    # `resolve_engines` from `params['model']`, was declared plan-visible in `runtime/plan.py`… and was
-    # read by nothing. `Separate` resolves the checkpoint itself with `engine.resolve_model(ctx.params)`,
-    # which is the better mechanism precisely because it is PER ENGINE: each one checks the request
-    # against its own allowlist and raises a BoundaryError on a token it cannot run, where one shared
-    # field could only ever hold a string nobody validated. Two owners for one decision is how they
-    # drift; the field went rather than the resolver.
+    # NO `separator_model` HERE, deliberately: `Separate` resolves the checkpoint itself with
+    # `engine.resolve_model(ctx.params)`, PER ENGINE, checking the request against its own allowlist
+    # and raising on a token it cannot run. A shared field here would be a second, unvalidated owner
+    # of the same decision.
 
 
 @dataclass
@@ -85,18 +73,11 @@ class LyricsCtx:
     machine_cues: list[dict[str, Any]] = field(default_factory=list)
     #: Everything every source yielded, before grading.
     texts: list[Any] = field(default_factory=list)
-    #: The BASELINE texts — what was actually audible, as measured on this recording — kept for their own
-    #: sake rather than read back out of `texts`.
-    #:
-    #: They need their own slot because `texts` is NARROWED by GradeAndSelect to what publishes
-    #: (`sel.publish`, normally the single winning candidate), while a baseline only survives that
-    #: narrowing on the two unusual paths that deliberately publish one: a SUSPECT winner, or a
-    #: baseline-only fallback. TimeTexts derives its LRC-placement line series from baselines, so reading
-    #: them out of `texts` meant the series was empty on every ordinary job and `estimate_lrc_shift` /
-    #: `shift_segments` — and the whole "the provider's master starts earlier than this upload" correction
-    #: — could not run at all. The mechanism was never broken; it was simply never handed its input.
-    #: Carrying them separately keeps `publish` meaning exactly "what the room gets" while the evidence
-    #: that graded it stays available to later steps.
+    #: The BASELINE texts — what was actually audible, as measured on this recording — kept in their
+    #: own slot rather than read back out of `texts`. `texts` is NARROWED by GradeAndSelect to what
+    #: publishes (normally the single winning candidate), so a baseline survives there only on the two
+    #: unusual publish-a-baseline paths. TimeTexts derives its LRC-placement series from baselines, so
+    #: without this separate slot that series would be empty on every ordinary job.
     baselines: list[Any] = field(default_factory=list)
     #: What grading chose, and why. None until GradeAndSelect runs.
     selection: Any | None = None

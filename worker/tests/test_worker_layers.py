@@ -29,15 +29,9 @@ from src.vocabulary import STAGE_PLANS, Action  # noqa: E402
 
 
 def _strip_src(name: str) -> str:
-    """Normalise a `src.`-prefixed absolute name to the package-relative form the matchers expect.
-
-    `src/` imports relatively today, but every file in `tests/` writes the absolute `src.runtime.plan`
-    form, so that is the form a developer copies — and it resolves at runtime, so the violation would
-    ship working while the three layering matchers (which key off a bare `runtime`/`steps`/`plans`
-    segment) stayed blind. Stripping the leading `src.` (and a bare `src`) in the ONE place that records
-    import names makes every consumer see the same names for both forms, so `src.runtime.plan` and
-    `..runtime.plan` become indistinguishable to the guard — as they must be, since they are the same
-    edge."""
+    """Normalise a `src.`-prefixed absolute name to the package-relative form the matchers expect,
+    so `src.runtime.plan` and `..runtime.plan` (the same cross-layer edge written two ways) become
+    indistinguishable to the layering guards below."""
     if name == "src":
         return ""
     if name.startswith("src."):
@@ -70,24 +64,17 @@ def _py_files(*rel: str) -> list[Path]:
     for r in rel:
         root = SRC / r
         files.extend(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
-    # Non-vacuity floor: every intended call names a real, populated subtree, so an
-    # empty result means SRC is wrong or the tree moved -- which would make the layering scans that
-    # iterate this pass while guarding nothing. Fail loudly instead.
+    # Non-vacuity floor: an empty result means SRC is wrong or the tree moved, which would make every
+    # layering scan that iterates this pass while guarding nothing.
     assert files, f"_py_files({rel!r}) found no .py files under {SRC} -- the guard has stopped guarding"
     return files
 
 
-# ── E4: STAGE_PLANS is not a second description ──────────────────────────────────
-
-
 @pytest.mark.parametrize("action", list(Action))
 def test_STAGE_PLANS_agrees_with_what_the_plan_actually_emits(action: Action):
-    """The drift this catches was REAL: the table said align was two stages while the action emitted
-    DOWNLOADING three times and covered acquisition, grading and wav2vec2 under one ALIGNING span.
-
-    The table stays hand-written rather than computed because `vocabulary.py` is the wire contract and sits
-    below everything — importing the plans there would be a cycle. So it is enforced instead, the same way
-    the TS/Python vocabulary parity is enforced from the other side of the wire.
+    """E4. `STAGE_PLANS` stays hand-written rather than computed because `vocabulary.py` is the wire
+    contract and sits below everything — importing the plans there would be a cycle — so agreement is
+    enforced here instead, the same way TS/Python vocabulary parity is enforced from the other side.
     """
     plan = plans_mod.PLANS.get(action)
     if plan is None:
@@ -113,19 +100,12 @@ def test_every_registered_plan_is_WELL_FORMED(action: Action):
     validate_plan(plan)
 
 
-# ── E3: one runner ───────────────────────────────────────────────────────────────
-
-
 def test_there_is_exactly_ONE_thing_that_executes_a_plan():
-    """The test that would have caught all four cases in the spec's §1.2.
-
-    A new class with its own `process()` is how the worker grew four processors that each reimplemented
-    acquisition, the subprocess wrapper and the keepalive — and how three of them came to bypass the
-    function documented as canonical. `EngineRouter` is gone: choosing a separator is
-    plan SELECTION now, resolved by `engine_for` before the Separate step runs.
+    """E3. `Processor` is the Protocol that DEFINES the seam; `RoutingProcessor` dispatches by action
+    and owns no work; `StubProcessor` is the deliberate no-ML stand-in walking the declared stage plan.
+    A new class with its own `process()` is how the worker previously grew processors that each
+    reimplemented acquisition, the subprocess wrapper and the keepalive.
     """
-    # `Processor` is the Protocol that DEFINES the seam. `RoutingProcessor` dispatches by action and owns
-    # no work. `StubProcessor` is the deliberate no-ML stand-in that walks the declared stage plan.
     allowed = {"PlanRunner", "Processor", "StubProcessor", "RoutingProcessor"}
     found: dict[str, str] = {}
     for path in _py_files(""):
@@ -136,9 +116,8 @@ def test_there_is_exactly_ONE_thing_that_executes_a_plan():
             methods = {n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
             if "process" in methods:
                 found[node.name] = str(path.relative_to(SRC))
-    # Non-vacuity floor: a broken AST walk finding zero process() classes leaves
-    # `unexpected` empty and passes without proving the one-runner rule. There is always at least
-    # the PlanRunner; assert we found the canonical implementations.
+    # Non-vacuity floor: a broken AST walk finding zero process() classes would leave `unexpected`
+    # empty and pass without proving the one-runner rule.
     assert found, "no class with a process() method found -- the one-runner guard has stopped guarding"
     unexpected = {k: v for k, v in found.items() if k not in allowed}
     assert not unexpected, (
@@ -147,22 +126,12 @@ def test_there_is_exactly_ONE_thing_that_executes_a_plan():
     )
 
 
-# ── E6: acquisition has one caller path ──────────────────────────────────────────
-
-
 def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
-    """Directly closes §1.2's first case: `resolve_source_audio` was documented as "the one place" and
-    three of its four callers re-derived the answer instead — and got it WRONG, downloading to a literal
-    `.wav` when yt-dlp needed a `%(ext)s` template.
-
-    The regression this must catch is a NEW module that reaches into `acquisition` (the package) or
-    `acquisition.fetch` (its byte-location primitives) to re-derive where a job's audio lives. The guard
-    used to AND the import test with `"job_fetcher" in <file text>`, which made it vacuous: that literal
-    appears only in the three allowed files, so `offenders` was always empty and the assert could never
-    fail — and the very regression it names would import `acquisition` WITHOUT the symbol and sail
-    through. The import edge is the whole signal; there is no honest reason to also require a specific
-    symbol name. Importing `acquisition.stream_quality` (the format-selector constant, used by
-    separation) is NOT re-deriving byte location, so it is deliberately not matched.
+    """E6. The regression this must catch is a NEW module reaching into `acquisition` (the package) or
+    `acquisition.fetch` (its byte-location primitives) to re-derive where a job's audio lives — the
+    import edge is the whole signal, so no specific symbol name is also required. Importing
+    `acquisition.stream_quality` (the format-selector constant) is NOT re-deriving byte location, so
+    it is deliberately not matched.
     """
     # fetch.py holds the primitives; acquire.py is the one step that uses them; __init__ is the package
     # surface that re-exports them.
@@ -180,17 +149,16 @@ def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
             for n in names
             if n.endswith("acquisition.fetch") or n == "acquisition" or n.endswith(".acquisition")
         ]
-        # `_imports` records a dotted module and so misses `from . import acquisition` / `from .. import
-        # acquisition`, where the package is an imported NAME not part of the module path — the exact
-        # shape a regression module would reach for. Scan the imported names directly to close that gap.
+        # `_imports` records a dotted module and so misses `from . import acquisition`, where the
+        # package is an imported NAME not part of the module path. Scan names directly to close that gap.
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.level > 0 and not node.module:
                 bad.extend(f"from . import {a.name}" for a in node.names if a.name == "acquisition")
         if bad:
             offenders[rel] = bad
-    # Non-vacuity floor: an empty scan leaves `offenders` empty and passes without
-    # inspecting a single import edge.
+    # Non-vacuity floor: an empty scan would leave `offenders` empty and pass without inspecting a
+    # single import edge.
     assert scanned > 10, (
         f"only {scanned} modules scanned -- the acquisition-caller guard has stopped guarding"
     )
@@ -200,15 +168,11 @@ def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
     )
 
 
-# ── _imports() normalisation: the two forms of the same edge must be indistinguishable ──────────
-
-
 def test_imports_normalises_the_src_prefixed_form_to_the_relative_one(tmp_path: Path):
-    """`src.runtime.plan` and `..runtime.plan` are the SAME cross-layer edge written two ways. Before this
-    lock the three matchers below keyed off a bare `runtime`/`steps`/`plans` segment, so a name recorded
-    as `src.runtime.plan` slipped past all of them while `runtime.plan` was caught — the exact blindness
-    that let a domain take a runtime dependency with the whole suite green. `_imports()` must collapse
-    both to the same package-relative name so the matchers cannot tell them apart.
+    """`src.runtime.plan` and `..runtime.plan` are the SAME cross-layer edge written two ways. The
+    matchers below key off a bare `runtime`/`steps`/`plans` segment, so `_imports()` must collapse
+    both forms to the same package-relative name or one spelling could slip a domain a runtime
+    dependency past every matcher.
     """
     pkg = tmp_path / "src" / "lyrics"
     pkg.mkdir(parents=True)
@@ -239,13 +203,9 @@ def test_imports_normalises_the_src_prefixed_form_to_the_relative_one(tmp_path: 
     assert got_abs == got_rel, "the two forms of the same edge must be indistinguishable to the guard"
 
 
-# ── E7: the layering rule ────────────────────────────────────────────────────────
-
-#: The domain packages, DERIVED from disk rather than listed. The hardcoded list omitted `diarize` — the
-#: newest domain — so the layering assertions below never ran against it, and nothing said so. That is the
-#: same failure this whole pass is about: a list that must track reality, and did not. Deriving it means
-#: domain number seven is guarded the day it appears. `test_worker_packages.py` separately asserts the set
-#: on disk equals the set it declares, so a package cannot appear here without a decision either.
+#: The domain packages, DERIVED from disk rather than listed, so a new domain is guarded the day it
+#: appears rather than silently skipped by a stale hardcoded list. `test_worker_packages.py`
+#: separately asserts the set on disk equals the set it declares.
 DOMAINS = sorted(
     p.name
     for p in SRC.iterdir()
@@ -258,10 +218,9 @@ DOMAINS = sorted(
 
 @pytest.mark.parametrize("domain", DOMAINS)
 def test_a_domain_never_imports_the_runtime_or_a_step(domain: str):
-    """The spec's §3 has exactly one rule — dependencies point DOWN only — and this is it.
-
-    It is what makes a domain unit-testable with no event loop, no fake subprocess and no CompleteResult
-    drain. The moment `lyrics/` imports a Step, testing a grading decision needs a plan.
+    """E7: dependencies point DOWN only. It is what makes a domain unit-testable with no event loop,
+    no fake subprocess and no CompleteResult drain — the moment `lyrics/` imports a Step, testing a
+    grading decision needs a plan.
     """
     for path in _py_files(domain):
         bad = sorted(n for n in _imports(path) if n.startswith(("runtime", "steps", "plans", "dial_home")))
@@ -269,17 +228,9 @@ def test_a_domain_never_imports_the_runtime_or_a_step(domain: str):
 
 
 def test_no_domain_imports_another_domain():
-    """The six domains are siblings, not a hierarchy, and nothing shared may live inside one of them.
-
-    Until `ML_LOCK` moved out of `lyrics/aligner.py` there was exactly one violation: `diarize/diarizer.py`
-    imported `..lyrics.timing` (now `lyrics/aligner.py`) for a process-wide lock that whisperx
-    alignment, whisper ASR and pyannote
-    diarization all take. A lock two domains need is a property of the process, not a lyrics concern the
-    diarizer borrows — it lives in `src/mlrt.py` now.
-
-    No guard forbade that import, which is why it survived: the existing rules police domain-vs-runtime and
-    domain-vs-steps, and say nothing about sideways. One domain reaching into another is how a shared
-    concern ends up owned by whichever feature needed it first.
+    """The domains are siblings, not a hierarchy, and nothing shared may live inside one of them: a
+    process-wide lock two domains both need (e.g. one whisperx/whisper/pyannote all take) is a property
+    of the process, living in `src/mlrt.py`, not a concern one domain lends to another.
     """
     offenders: list[str] = []
     for domain in DOMAINS:
@@ -307,10 +258,9 @@ def test_plans_py_is_the_ONLY_module_importing_both_sides():
     for path in _py_files(""):
         rel = str(path.relative_to(SRC))
         names = _imports(path)
-        # A module's imports of its OWN package are not a crossing. `steps/lyrics/` is a package of five
-        # modules that import each other (`align` needs `pinned`), and counting those as "imports steps"
-        # made every one of them look like a second seam. The rule is about runtime meeting the STEP LAYER
-        # in one place, not about a step file naming its sibling.
+        # A module's imports of its OWN package are not a crossing: `steps/lyrics/` modules import
+        # each other (`align` needs `pinned`), and the rule is about runtime meeting the STEP LAYER in
+        # one place, not a step file naming its sibling.
         own = ".".join(path.relative_to(SRC).parts[:-1])
         names = {n for n in names if not (own and (n == own or n.startswith(own + ".")))}
         touches_runtime = any(n.split(".")[0] == "runtime" for n in names)
@@ -320,14 +270,10 @@ def test_plans_py_is_the_ONLY_module_importing_both_sides():
     assert both == ["plans.py"], f"expected only plans.py to import both runtime and steps, got {both}"
 
 
-# ── E8: one publish shape per artifact kind ──────────────────────────────────────
-
-
 def test_only_ONE_step_writes_each_artifact_kind():
-    """The case in §1.2 that already cost a bug. `demucs.py` and `roformer.py` each hand-assembled
-    `artifacts={"stems":..., "songProfile":...}`, and one of them put songProfile in the wrong place —
-    a shape mismatch that would have stalled every process at "Separating vocals" forever, caught only by a
-    parity guard added afterwards. One writer per kind means the two engines cannot disagree."""
+    """E8. One writer per artifact kind means two engines publishing the same kind cannot disagree on
+    its shape — a shape mismatch (e.g. songProfile nested wrong) would stall every process at
+    "Separating vocals" forever."""
     writers: dict[str, set[str]] = {}
 
     def _record(kind: object, rel: str) -> None:
@@ -352,7 +298,7 @@ def test_only_ONE_step_writes_each_artifact_kind():
             ):
                 _record(node.slice.value, rel)
                 continue
-            # Shapes 2 & 3 — the dict was mutated as a whole, which is exactly what the §1.2 bug did:
+            # Shapes 2 & 3 — the dict mutated as a whole:
             #   ctx.out.artifacts.update({"<kind>":...,...})   (a dict literal argument)
             #   ctx.out.artifacts.setdefault("<kind>",...)
             if (
@@ -371,16 +317,10 @@ def test_only_ONE_step_writes_each_artifact_kind():
     assert writers, "no artifact writers found — this guard has stopped guarding"
 
 
-# ── E5: the generated doc cannot drift ───────────────────────────────────────────
-
-
 def test_the_pipeline_doc_matches_what_the_plans_actually_declare():
-    """The committed region in docs/ARCHITECTURE.md is generated output, and this is what makes that mean
-    something. Regenerate with `cd apps/worker && python3 -m src.docgen --write`.
-
-    Enforced rather than trusted because this repo's architecture prose has twice described a worker it did
-    not have: `fetch.py` named a function as "the one place" three of its four callers bypassed, and
-    STAGE_PLANS declared two stages for an action with eight steps.
+    """E5. The committed region in docs/ARCHITECTURE.md is generated output; this is what makes that
+    mean something rather than prose that silently drifts from the real plans. Regenerate with
+    `cd apps/worker && python3 -m src.docgen --write`.
     """
     from src.docgen import ARCHITECTURE, BEGIN, END, render
 
@@ -393,27 +333,14 @@ def test_the_pipeline_doc_matches_what_the_plans_actually_declare():
     )
 
 
-# ── E9: the registry is the ONLY place a source's tier is decided ─────────────────
-
-
 def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
-    """The tier a source speaks in belongs to its SourceSpec, and to nothing else.
+    """E9. The tier a source speaks in belongs to its SourceSpec (`registry.py`), and to nothing else
+    — a source quietly returning CANDIDATE would otherwise become eligible to be published as the
+    song's words while every test stayed green.
 
-    Before this, the lyrics sources each set `role=` (and AsrSource re-derived `baseline_rank=` from its
-    audio argument) on the text they returned, while `registry.py` declared the same two facts in SPECS
-    — read by nothing but the registry's own self-consistency tests. Two copies, no reader, no way to
-    notice a disagreement: a source quietly returning CANDIDATE would become eligible to be published as
-    the song's words while every test stayed green.
-
-    AST, not a substring scan, because the words appear in this repo's prose constantly — the docstring
-    above says `role=` twice. The np.correlate guard learned this the same way: a text search over source
-    passes on a comment that says the right thing while the code does the wrong one.
-
-    Scans the WHOLE `src/lyrics` package, not one hardcoded file: `b026147` moved the source
-    classes out of `grading.py` into `sources.py`, so a guard pinned to `grading.py` scanned a file with zero
-    `LyricsText(...)` constructions and could never fire. The non-vacuity floor below fails loudly if the
-    package ever stops constructing LyricsText where this guard can see it, so the scan cannot silently
-    empty out again.
+    AST, not a substring scan: the words `role=`/`baseline_rank=` appear in this repo's prose
+    constantly, including in this docstring. Scans the WHOLE `src/lyrics` package, not one hardcoded
+    file, backed by a non-vacuity floor so the scan cannot silently empty out if the sources move again.
     """
     lyrics_dir = Path(__file__).resolve().parents[1] / "src" / "lyrics"
 
@@ -435,7 +362,7 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
 
     assert constructions, (
         "no LyricsText(...) construction found under src/lyrics — the tier guard has stopped guarding "
-        "(the sources moved and this scan no longer reaches them, exactly the an earlier change regression)"
+        "(the sources moved and this scan no longer reaches them)"
     )
     assert not offenders, (
         "a lyrics source is deciding its own tier again — that belongs to its SourceSpec in "
@@ -443,29 +370,15 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
     )
 
 
-# ── E9b: a step never mutates a domain dataclass attribute in place ─────────
-
-
 def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
-    """the step layer must not reach into a domain LyricsText and rewrite a field on the caller's
-    object — it publishes copies via dataclasses.replace instead.
+    """E9b. The step layer must not reach into a domain LyricsText and rewrite a field on the
+    caller's object — it publishes copies via dataclasses.replace instead.
 
-    The specific offender this pins: `sel.publish[0].text_confidence = "low"` in GradeAndSelect, which
-    assigned an attribute on an object subscripted out of the selection — a cross-layer, in-place mutation
-    of a caller-owned domain dataclass.
-
-    Recognises the reaching-in write by its TARGET, in any of the spellings that share the blind spot
-    (— the original guard saw only `<subscript>.attr`, so `x = sel.publish[0]; x.text_confidence =...` walked
-    straight past it): any assignment whose target is `<expr>.<field>` where `<field>` is a
-    real LyricsText field name and `<expr>` is NOT a bare `self`. `self.<x> = ...` is a step owning its
-    OWN attribute in a constructor and is allowed; every other object bearing a LyricsText field in a step
-    module is a domain dataclass the step does not own. The forbidden field names are read from the
+    Recognises the reaching-in write by its TARGET: any assignment whose target is `<expr>.<field>`
+    where `<field>` is a real LyricsText field name and `<expr>` is NOT a bare `self` (`self.<x> = ...`
+    is a step owning its own constructor attribute and is allowed). Field names are read from the
     LyricsText dataclass itself so this cannot drift as fields are added. AST, not a substring scan,
-    because these names appear all over the module in reads and in `replace(..., text_confidence=...)`.
-
-    Scans ALL of `src/steps` via `_py_files` (which carries its own an earlier change non-vacuity floor), not
-    one
-    hardcoded file, so a step added elsewhere in the layer is covered too.
+    since these names appear all over the module in reads and in `replace(..., text_confidence=...)`.
     """
     from src.lyrics.grading import LyricsText
 
@@ -499,14 +412,9 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
     )
 
 
-# ── E10: a step reaches blocking work ONLY through run_blocking / run_stage ────────
-
 #: The blocking primitives a Step must never touch directly. Reaching any of these on the event loop
 #: freezes it: the worker stops answering the websocket keepalive AND stops emitting job:progress, so
-#: the core's 30 s progressLease (src/lib/server/jobs/leases.ts) expires and the reaper requeues a
-#: HEALTHY process — runner.py documents both failures as observed on a live process. The ML stack names come
-#: from worker/pyproject.toml's mypy `ignore_missing_imports` overrides (the untyped C-extension
-#: dependencies), plus the blocking HTTP/subprocess std-lib surfaces.
+#: the core's 30s progressLease expires and the reaper requeues a HEALTHY process.
 _BLOCKING_IMPORT_ROOTS = frozenset(
     {
         "torch",
@@ -526,21 +434,17 @@ _BLOCKING_IMPORT_ROOTS = frozenset(
 def _blocking_offenders_in(path: Path) -> list[str]:
     """Every place a step module reaches blocking work directly instead of through a wrapper.
 
-    Two shapes, both AST — a substring scan passes on the docstrings and comments these very step files
-    carry ("in-process numpy", "asyncio.to_thread here emitted NOTHING", "subprocess-with-progress"):
-
+    Two shapes, both AST (a substring scan would false-positive on this file's own prose):
       1. an IMPORT of a blocking ML / network module (torch, whisperx, numpy, requests, urllib,...).
-         Steps delegate that work to a domain function passed to `run_blocking`, so the import belongs in
-         `analysis/`, `lyrics/`, `metadata/` — never in `steps/`.
+         Steps delegate that work to a domain function passed to `run_blocking`, so the import belongs
+         in `analysis/`, `lyrics/`, `metadata/` — never in `steps/`.
       2. a CALL to a blocking primitive the runtime owns: `asyncio.to_thread(...)` (run_blocking is the
-         one legitimate caller, and it lives in runtime/, not here), `subprocess.*` /
-         `asyncio.create_subprocess_exec|_shell` (steps shell out through `ctx.runner` / `run_stage`),
-         or `os.system(...)`.
+         one legitimate caller), `subprocess.*`/`asyncio.create_subprocess_exec|_shell` (steps shell
+         out through `ctx.runner`/`run_stage`), or `os.system(...)`.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     out: list[str] = []
     for node in ast.walk(tree):
-        # ── shape 1: importing a blocking module ──
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name.split(".")[0] in _BLOCKING_IMPORT_ROOTS:
@@ -548,7 +452,6 @@ def _blocking_offenders_in(path: Path) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             if node.level == 0 and node.module and node.module.split(".")[0] in _BLOCKING_IMPORT_ROOTS:
                 out.append(f"line {node.lineno}: from {node.module} import ...")
-        # ── shape 2: calling a blocking primitive directly ──
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             attr = node.func.attr
             base = ast.unparse(node.func.value)
@@ -564,35 +467,25 @@ def _blocking_offenders_in(path: Path) -> list[str]:
 
 
 def test_no_step_reaches_blocking_work_outside_run_blocking_or_run_stage():
-    """The lease keepalive only fires if a step ROUTES through `run_blocking` / `run_stage`; nothing
-    stopped a new step from calling torch, whisperx or a blocking HTTP client directly, freezing the loop
-    and getting its healthy job reaped at the 30 s progress lease. This is the repo's
-    characteristic failure mode — a mechanism that exists, is tested, and can be silently bypassed — so
-    it is ENFORCED, not trusted.
-
-    The two wrappers are the only sanctioned routes and both live in `runtime/runner.py`, not here:
-    `run_blocking` runs the in-process ML call in a thread (it owns the single `asyncio.to_thread`) and
-    keepalives it; `run_stage` / `ctx.runner` run a subprocess and keepalive it. So a step that reaches a
-    blocking primitive directly is exactly the bypass.
-
-    Prove it bites by adding `import torch` (or an `asyncio.to_thread(...)` call) to any step and watching
-    this red, then remove it — same recipe the issue prescribes.
+    """E10. The lease keepalive only fires if a step ROUTES through `run_blocking`/`run_stage` (both
+    live in `runtime/runner.py`): `run_blocking` runs the in-process ML call in a thread and keepalives
+    it; `run_stage`/`ctx.runner` run a subprocess and keepalive it. A step reaching a blocking
+    primitive directly bypasses both keepalives and gets its healthy job reaped at the 30s progress lease.
     """
     steps = _py_files("steps")
     offenders = {str(p.relative_to(SRC)): bad for p in steps if (bad := _blocking_offenders_in(p))}
     assert not offenders, (
         "a step reaches blocking work directly instead of through run_blocking / run_stage, so its "
         "keepalive never fires and a healthy process is reaped at the 30 s progress lease "
-        "(docs/ARCHITECTURE.md §7.1; issue an earlier change): "
+        "(docs/ARCHITECTURE.md §7.1): "
         + "; ".join(f"{rel} -> {found}" for rel, found in sorted(offenders.items()))
     )
 
 
 def test_the_blocking_bypass_guard_actually_detects_a_direct_call(tmp_path: Path):
-    """Non-vacuity floor (the E8 `assert writers` idiom): a matcher that finds nothing because its AST
-    shapes are wrong would leave `offenders` empty and pass while guarding nothing. Feed it a synthetic
-    step that both imports torch and calls asyncio.to_thread directly, and confirm every intended shape
-    is reported — so the guard above fails on a real bypass, not merely on today's clean tree.
+    """Non-vacuity floor: a matcher whose AST shapes are wrong would leave `offenders` empty and pass
+    while guarding nothing. Feed it a synthetic step that imports torch and calls asyncio.to_thread
+    directly, and confirm every intended shape is reported.
     """
     fake = tmp_path / "bypass_step.py"
     fake.write_text(
@@ -616,18 +509,15 @@ def test_the_blocking_bypass_guard_actually_detects_a_direct_call(tmp_path: Path
     assert any("create_subprocess_exec" in f for f in found), f"missed create_subprocess_exec: {joined}"
 
 
-# ── E11: `run_stage` is defined exactly once in runner.py ──────────────────────────
-
 RUNNER_PY = SRC / "runtime" / "runner.py"
 
 
 def _run_stage_class_methods(source: str) -> list[str]:
     """Every class in `source` that defines a method named `run_stage`, as `ClassName (line N)`.
 
-    AST, not a source scan: `ast.parse` drops comments and docstrings by construction, so the prose lines
-    that name `run_stage` (the module header's `:10` inventory, the free function's own docstring) can
-    neither satisfy nor trip the check. Only a real `ClassDef` body with a `FunctionDef`/`AsyncFunctionDef`
-    named `run_stage` counts — which is exactly the callerless `PlanRunner.run_stage` shim this guard bans.
+    AST, not a source scan: `ast.parse` drops comments and docstrings by construction, so prose lines
+    naming `run_stage` can neither satisfy nor trip the check. Only a real `ClassDef` body with a
+    `FunctionDef`/`AsyncFunctionDef` named `run_stage` counts.
     """
     tree = ast.parse(source)
     out: list[str] = []
@@ -640,17 +530,10 @@ def _run_stage_class_methods(source: str) -> list[str]:
 
 
 def test_run_stage_is_defined_once_and_only_as_a_free_function():
-    """`runtime/runner.py`'s header (`:3-10`) promises `run_stage` "lives here and nowhere else" — one
-    implementation for the four actions that used to hand-roll their own copies (demucs/whisperx/roformer,
-    the S0-S6 refactor). Issue an earlier change: it shipped TWO — the real module-level free function AND a
-    callerless
-    `PlanRunner.run_stage` shim, re-opening the "which run_stage do I call?" ambiguity the file exists to
-    kill (the drift that once double-fired a stage's completion event).
-
-    A deletion of dead code moves no behavioural test, so the invariant is guarded structurally: no class
-    in `runner.py` may define a method named `run_stage`. Reds on base (PlanRunner.run_stage present),
-    passes once the shim is gone. The three real call sites all import the free function
-    (steps/acquire.py, steps/lyrics.py, steps/separate.py); `git grep '.run_stage('` finds no method call.
+    """E11. `runtime/runner.py` promises `run_stage` lives there and nowhere else — one implementation
+    for every step that shells out. A second, callerless `PlanRunner.run_stage` method would re-open
+    the "which run_stage do I call?" ambiguity the file exists to kill (the drift that once
+    double-fired a stage's completion event), so no class in `runner.py` may define that method name.
     """
     twins = _run_stage_class_methods(RUNNER_PY.read_text(encoding="utf-8"))
     assert not twins, (
@@ -661,10 +544,9 @@ def test_run_stage_is_defined_once_and_only_as_a_free_function():
 
 
 def test_run_stage_class_method_guard_is_not_vacuous():
-    """Non-vacuity floor (the E8/E10 idiom): a matcher whose AST shapes were wrong would return [] and pass
-    while guarding nothing. Feed it a synthetic module that DOES define a `run_stage` method on a class and
-    confirm the guard reports it — so E11 fails on the real shim, not merely on today's clean tree. Also
-    confirm a module-level `async def run_stage` and a docstring/comment naming `run_stage` are NOT flagged.
+    """Non-vacuity floor: feed it a synthetic module that DOES define a `run_stage` method on a class
+    and confirm the guard reports it. Also confirm a module-level `async def run_stage` and a
+    docstring/comment naming `run_stage` are NOT flagged.
     """
     twin = (
         "class Fake:\n"

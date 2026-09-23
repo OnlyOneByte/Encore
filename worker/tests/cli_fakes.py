@@ -1,19 +1,13 @@
 """One canonical fake CLI runner for the worker suite.
 
-Three copies of this scaffolding used to live in test_demucs.py, test_song_profile.py and
-test_roformer.py. The copies drifted, and one branch in particular carries correctness:
-the ``ffmpeg ... volumedetect`` case is a MEASURING call (it ends in ``-f null -``, writes no file) and is
-the only thing that makes ``ProbeSilence`` real. An earlier revision treated it like an encode, wrote to
-``dirname("-") == ""``, raised, and ``ProbeSilence``'s ``try/except`` (``steps/separate.py``) swallowed it --
-so the probe was never exercised. With the branch copied three times, re-breaking it in one copy leaves
-the suite green, because the other copies still exercise the probe.
+The ``ffmpeg ... volumedetect`` branch is a MEASURING call (ends in ``-f null -``, writes no file) and
+is the only thing that makes ``ProbeSilence`` real: treating it like an encode would write to
+``dirname("-") == ""``, raise, and get silently swallowed by ``ProbeSilence``'s try/except, so the
+probe is never actually exercised. Kept as a single source of truth so every consumer sees the same
+branch, rather than each test file carrying its own drifting copy.
 
-Consolidating the branch to a single source removes that failure mode: a change to the ``volumedetect``
-handling below is seen by every consumer at once, so a mutation that re-introduces the swallow reds a
-silence-probe test instead of hiding in a missed copy.
-
-The separation binary itself (``demucs`` vs ``bs-roformer-infer``) differs per engine, so each site passes
-its own ``handlers`` while sharing the acquisition / volumedetect / encode branches that do not.
+The separation binary itself (``demucs`` vs ``bs-roformer-infer``) differs per engine, so each site
+passes its own ``handlers`` while sharing the acquisition/volumedetect/encode branches that do not.
 """
 
 import os
@@ -66,10 +60,8 @@ def fake_cli_runner(
             os.makedirs(os.path.dirname(out), exist_ok=True)
             Path(out).write_bytes(b"FAKE_NATIVE_AUDIO")
         elif binary == "ffmpeg" and "volumedetect" in argv:
-            # A measuring call, not a writing one: it ends in `-f null -`, so there is NO output file.
-            # Treating it like an encode wrote to dirname("-") == "" and raised, which ProbeSilence's
-            # try/except then swallowed -- so a test consuming this never exercised the silence probe.
-            # Report NOT-silent (a healthy -1.2 dB reading).
+            # A measuring call, not a writing one: ends in `-f null -`, so there is NO output file.
+            # Reports NOT-silent (a healthy -1.2 dB reading).
             yield "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB"
             return
         elif binary == "ffmpeg":

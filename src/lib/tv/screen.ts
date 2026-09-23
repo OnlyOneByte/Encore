@@ -1,26 +1,13 @@
-// Which of the TV's idle screens to show.
-//
-// Before this, `/tv` collapsed every non-playing situation into ONE attract screen: an empty room
-// and a room with four people waiting for a first pick looked identical, so the TV could not tell
-// anyone what it was waiting for. The distinction is entirely derivable from state the TV already
-// holds — no new server round-trip.
-//
-// Pure (no Svelte, no DOM) so the precedence rules are unit-testable; `+page.svelte` renders it.
+// Which of the TV's idle screens to show. Pure (no Svelte, no DOM) so the precedence rules are
+// unit-testable; `+page.svelte` renders the result.
 
 import type { QueueEntry } from '$lib/contract';
 import type { TvState } from './gapless';
 
 /**
- * What the TV should be showing.
- * - `attract`  — nobody is here. The QR is the only thing to do, so it owns the screen.
- * - `lobby`    — people are here, or something is queued, but nothing can play yet. Note this covers
- *                TWO situations the caller must word differently: nothing picked at all, and something
- *                picked that is still processing. It previously claimed "nothing is queued", which was
- *                wrong — a queued-but-unplayable entry lands here too, and the lobby told guests to
- *                pick a song when one was already separating.
- * - `waiting`  — the PLAYER is actively holding for media that is still processing (mid-set), which is a
- *                narrower thing than "something queued is not ready".
- * - `playing`  — a song is up; the video owns the screen and the QR retreats to a corner.
+ * What the TV should be showing. `lobby` covers TWO situations the caller must word differently: nothing
+ * picked at all, and something picked that is still processing — `tvScreen` routes both here, because
+ * `waiting` means the PLAYER is actively holding, which is narrower.
  */
 export type TvScreen = 'attract' | 'lobby' | 'waiting' | 'playing';
 
@@ -32,23 +19,16 @@ export interface TvScreenInput {
 	/** Every queue entry the TV knows about (used to tell "empty" from "queued but not playable"). */
 	entries: QueueEntry[];
 	/**
-	 * How many singers are IN THE ROOM — holding a socket *or* away with one still counted. Not the
-	 * socket count: a room where everyone has pocketed their phone is still a room with people in it,
-	 * and treating it as empty is what used to send the TV back to the attract screen mid-party.
+	 * `here` plus `away`, NOT the socket count. A room where everyone has pocketed their phone is still a
+	 * room with people in it; counting sockets sends the TV back to the attract screen mid-party.
 	 */
 	inRoomCount: number;
 }
 
 /**
- * Decide the screen. Precedence, highest first:
- *  1. `playing` — if a song is actually current, nothing else matters.
- *  2. `waiting` — the player says it is holding for media that is still processing.
- *  3. `lobby`   — somebody is present (or something is queued) but nothing can play yet.
- *  4. `attract` — an empty, idle room.
- *
- * Note on 3: a non-empty queue with nobody online still shows the lobby rather than the attract
- * screen. That happens after a restart rehydrates a queue before any phone reconnects, and wiping
- * the screen back to "scan to join" would imply the queue was lost.
+ * Precedence, highest first: playing, waiting, lobby, attract. A non-empty queue with nobody online still
+ * shows the LOBBY, because that is what a restart rehydrating a queue before any phone reconnects looks
+ * like — "scan to join" would imply the queue was lost.
  */
 export function tvScreen(input: TvScreenInput): TvScreen {
 	const { playerState, current, entries, inRoomCount } = input;
@@ -59,25 +39,12 @@ export function tvScreen(input: TvScreenInput): TvScreen {
 }
 
 /**
- * Should the lyrics reel and ball ADVANCE right now?
+ * Should the lyrics reel and ball ADVANCE right now? ALL THREE dimensions must agree or the words sweep
+ * over a silent room: a paused song is still `current`, so the screen alone is not enough; `isPlaying` is
+ * the server's INTENT, which stays true while autoplay is refused or the transport is `idle`; and
+ * `elementAdvancing` is the honest signal from the master element's own play/pause.
  *
- * `LyricsOverlay` extrapolates position from wall-clock while its `playing` prop is true. The screen
- * being `playing` is necessary but NOT sufficient, and NEITHER is the room's play/pause intent:
- *
- *   • `isPlaying` is what the SERVER says the room is doing (`playback:state.isPlaying`). It closes
- *     the pause-from-the-phone case (Bug B): a paused song is still `current`, so the screen stays
- *     `playing`, and without this the reel scrolled with the audio frozen.
- *   • `elementAdvancing` is whether the MASTER ELEMENT is actually running — the honest signal the
- *     page reports up from the <audio>'s own play/pause. The room can INTEND to play while the
- *     element is not: a TV wall's autoplay is refused (`NotAllowedError`, the room silent behind the
- *     "tap to start" hint), or the current entry's media is not playable / its src has not landed
- *     (`transportFor` returns `idle`), and the server still says `isPlaying: true`. In every one of
- *     those the reel used to sweep to 90s into a song whose element never started — silent room,
- *     scrolling words. Both dimensions must agree before the words move.
- *
- * Advancing is distinct from VISIBLE — the overlay stays on screen while paused or silent (frozen
- * mid-line), so the caller keeps passing `visible` on the same `screen`/`tvState` condition and only
- * feeds the ADVANCING signal through here.
+ * Distinct from VISIBLE: the overlay stays on screen while paused, frozen mid-line.
  */
 export function lyricsAdvancing(
 	screen: TvScreen,
@@ -98,11 +65,9 @@ export interface RosterMember {
 }
 
 /**
- * Build the lobby roster: everyone in the room, capped so a big party cannot push chips over the rest
- * of the screen. The overflow count is returned rather than rendered so the caller decides the wording.
- *
- * `here` singers are listed before `away` ones, so the cap sheds the unreachable first: if only eight
- * chips fit, the eight worth showing are the people who can actually take a turn right now.
+ * Build the lobby roster. `here` singers are listed before `away` ones, so a cap sheds the unreachable
+ * first: the chips worth showing are the people who can take a turn right now. The overflow count is
+ * returned rather than rendered, so the caller decides the wording.
  */
 export function lobbyRoster(
 	here: string[],
@@ -110,8 +75,8 @@ export function lobbyRoster(
 	singers: Map<string, { id: string; displayName: string; color: string }>,
 	max = 8
 ): { shown: RosterMember[]; overflow: number } {
-	// A membership id with no directory entry yet (presence arrived before queue:sync) is skipped
-	// rather than rendered as "Someone" — a nameless chip is worse than one fewer chip.
+	// A membership id with no directory entry yet (presence beat queue:sync) is skipped rather than
+	// rendered as "Someone": a nameless chip is worse than one fewer chip.
 	const resolve = (ids: string[], state: 'here' | 'away'): RosterMember[] =>
 		ids
 			.map((id) => singers.get(id))
@@ -122,23 +87,13 @@ export function lobbyRoster(
 }
 
 /**
- * Is this join origin one that no phone in the room could actually reach?
+ * Is this join origin one that no phone in the room could actually reach? The address comes from the
+ * request host, so opening `/tv` ON the serving machine puts a loopback or bare hostname on the wall and
+ * every scan fails silently; the TV shows an operator notice instead of a working-looking QR.
  *
- * The join address is derived from the request host, so opening `/tv` ON the serving machine puts
- * `http://127.0.0.1:PORT/join` (or `localhost`, a bare hostname, or an IPv6 loopback) on the wall.
- * Every scan then fails silently — the phone cannot route to the TV's own loopback — with nothing in
- * the room explaining why. The TV renders an operator notice instead of a working-looking QR when this
- * returns true.
- *
- * Pure and string-only (no DOM, no `URL` global assumptions beyond the constructor) so the rule is
- * unit-testable. Anything it cannot parse is treated as REACHABLE: a false "unreachable" would hide a
- * QR that actually works, which is worse than showing one that might not.
- *
- * Unreachable hosts:
- *  - the IPv4 loopback block 127.0.0.0/8 (127.0.0.1 … 127.255.255.255)
- *  - `localhost` (any case)
- *  - the IPv6 loopback `::1`
- *  - a single-label host with no dot (e.g. `wsl`, a machine name) — not resolvable off-box by a phone
+ * Unreachable: 127.0.0.0/8, `localhost`, `::1`, and any single-label host (a machine name a phone on the
+ * LAN cannot resolve). Anything UNPARSEABLE is treated as REACHABLE — a false "unreachable" hides a QR
+ * that works, which is the worse error.
  */
 export function isUnreachableJoinOrigin(origin: string | null | undefined): boolean {
 	if (!origin) return false; // no address yet → nothing to warn about
@@ -161,25 +116,14 @@ export function isUnreachableJoinOrigin(origin: string | null | undefined): bool
 }
 
 /**
- * The three guest-facing steps of the still-processing takeover.
- *
- * The media model has FIVE stages (`MEDIA_STAGES`) but the takeover shows THREE, so the collapse is a
- * real mapping — and if the TV hand-wrote it, the wall and the phone could describe the same song
- * differently. The labels here are guest words (what the guest is waiting for), not worker stages.
+ * The media model has FIVE stages (`MEDIA_STAGES`) and the takeover shows THREE, so the collapse is a real
+ * mapping held in one place or the wall and the phone describe the same song differently. Guest words.
  */
 export const PROCESS_STEPS = ['Downloaded', 'Removing vocals', 'Timing the lyrics'] as const;
 
 /**
- * Map a `MediaStatus` onto the three displayed process steps. TOTAL over every status: exactly
- * one step is current for any value, so the takeover never renders with no step marked. Returns the
- * current step `index` (0-based into `PROCESS_STEPS`) and a `fraction` for the bounded progress bar.
- *
- *   queued / downloading → step 0 (getting the audio)
- *   separating           → step 1 (removing the vocals)
- *   aligning             → step 2 (timing the lyrics)
- *   ready                → step 2, complete (the takeover is normally gone by now, but total is total)
- *   failed / canceled    → step 0 (off the happy line; the takeover shows only while processing, so this
- *                          is a defensive floor rather than a state the guest sees)
+ * Map a `MediaStatus` onto the three displayed steps. TOTAL over every status — exactly one step is current
+ * for any value, so the takeover can never render with no step marked.
  */
 export function processStep(status: import('$lib/contract').MediaStatus | undefined): {
 	index: number;

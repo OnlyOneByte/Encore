@@ -1,12 +1,10 @@
 """MusicBrainz annotation: identify a downloaded song, or refuse.
 
-Fixtures are TRIMMED CAPTURES of the real service (2026-09-03, a-ha / "Take On Me"), not invented
-shapes -- including the two things that would have broken a from-the-docs implementation:
-
-  * the artist comes back as "a\u2010ha" with a UNICODE HYPHEN (U+2010), so a raw string comparison
-    rejects the correct recording for one of the most recognisable songs in the set;
-  * the top THREE recordings all score 100 while their lengths differ by 110 seconds, so MusicBrainz's
-    own score cannot separate a single from an album cut and duration has to do the work.
+Fixtures are TRIMMED CAPTURES of the real service (a-ha / "Take On Me"), not invented shapes \u2014
+including two things that would break a from-the-docs implementation: the artist comes back with a
+UNICODE HYPHEN (U+2010), so a raw string comparison rejects the correct recording; and the top three
+recordings all score 100 while their lengths differ by 110 seconds, so MusicBrainz's own score cannot
+separate a single from an album cut and duration has to do the work.
 """
 
 from __future__ import annotations
@@ -66,7 +64,6 @@ def client(body=REAL_BODY, status=200, calls=None):
     )
 
 
-# ── normalisation ────────────────────────────────────────────────────────────────
 def test_a_unicode_hyphen_compares_equal_to_an_ascii_one():
     # THE measured trap: without this, the correct a-ha recording is rejected.
     assert ann.normalize_for_match("a\u2010ha") == ann.normalize_for_match("a-ha")
@@ -82,7 +79,6 @@ def test_lucene_specials_are_escaped_so_a_punctuated_title_is_not_a_syntax_error
     assert q.startswith('artist:"')
 
 
-# ── parsing ──────────────────────────────────────────────────────────────────────
 def test_length_is_milliseconds_and_becomes_seconds():
     # Treating ms as seconds makes every match fail the tolerance, which reads as "never matches".
     recs = ann.parse_recordings(REAL_BODY)
@@ -140,7 +136,6 @@ def test_an_undated_release_is_kept_rather_than_discarded():
     assert rec.album == "Undated Single" and rec.year is None
 
 
-# ── the discriminator ────────────────────────────────────────────────────────────
 def test_duration_picks_the_right_recording_when_every_score_ties_at_100():
     # 3:38 (218s) is the single. Score cannot tell it from the 229s cut or the 120s edit.
     got = ann.pick_best(ann.parse_recordings(REAL_BODY), "a-ha", "Take On Me", 218.0)
@@ -151,7 +146,6 @@ def test_duration_picks_the_right_recording_when_every_score_ties_at_100():
 
 
 def test_a_different_expected_duration_selects_a_different_recording():
-    # Same query, same scores — only the length we are matching against changed.
     got = ann.pick_best(ann.parse_recordings(REAL_BODY), "a-ha", "Take On Me", 229.0)
     assert got is not None and got.mbid.startswith("e1e0c4f8")
 
@@ -165,20 +159,11 @@ def test_confidence_tiers_follow_the_ratified_tolerances():
     assert ann.confidence_for(218.0, None) == ann.CONFIDENCE_MEDIUM
 
 
-# ── refusal (D4) ─────────────────────────────────────────────────────────────────
 def test_a_wrong_song_by_the_right_artist_is_REFUSED_not_written():
     # MusicBrainz happily returns another track by the same artist with a high lexical score. Writing
-    # that as fact is the failure this whole module refuses: it poisons the LRCLIB query downstream and
-    # is indistinguishable from a correct answer afterwards.
-    #
-    # The length is held EQUAL to duration_sec (218000ms == 218.0s) on purpose: this isolates the
-    # title-agreement gate as the ONLY thing that can refuse this candidate. pick_best checks artist,
-    # then title, then confidence_for(duration) in that order, so on the old 300s fixture the title
-    # gate refused first -- but duration was a SECOND, INDEPENDENT gate that would still refuse the
-    # candidate once the title gate was removed, so deleting the title gate left this test green
-    # (vacuous). Holding the length in agreement opens the duration gate for this
-    # candidate, leaving the title gate the only refusal, so deleting it now reds this test. Duration
-    # refusal is covered separately by test_every_candidate_too_far_off_in_length_is_refused.
+    # that as fact would poison the LRCLIB query downstream and be indistinguishable from a correct
+    # answer afterwards. The length is held EQUAL to duration_sec so only the title-agreement gate,
+    # not the separate duration gate, can refuse this candidate.
     body = {
         "recordings": [
             {
@@ -201,17 +186,14 @@ def test_every_candidate_too_far_off_in_length_is_refused():
 def test_no_confident_artist_or_title_means_no_lookup_at_all():
     assert ann.pick_best(ann.parse_recordings(REAL_BODY), "", "Take On Me", 218.0) is None
 
-    # OBSERVE the attempt, not just the None: "no lookup at all" is the point of the test, so a
-    # call-recording client must show search() was NEVER reached. Asserting only `is None` is blind --
-    # deleting the artist/title guard makes annotate() call search(None, ...)/search(..., ""), whose
-    # query builder raises and is swallowed by the blanket except into the same None.
+    # OBSERVE the attempt, not just the None: a call-recording client must show search() was NEVER
+    # reached, since a missing guard would still read as None (query builder raises, swallowed).
     calls: list = []
     assert ann.annotate(client(calls=calls), None, "Take On Me", 218.0) is None
     assert ann.annotate(client(calls=calls), "a-ha", "", 218.0) is None
     assert calls == [], f"declined for lack of keys but still looked up: {calls}"
 
 
-# ── client behaviour ─────────────────────────────────────────────────────────────
 def test_the_client_identifies_itself_as_musicbrainz_requires():
     calls: list = []
     client(calls=calls).search("a-ha", "Take On Me")
@@ -231,8 +213,8 @@ def test_requests_are_paced_to_one_per_second():
 
 
 def test_TWO_CLIENTS_in_one_process_share_the_gate():
-    # The limit is per source IP, so it is a property of the PROCESS. Two clients pacing themselves
-    # independently would still send two requests in the same second and get the IP refused outright.
+    # The limit is per source IP, a property of the PROCESS: two clients pacing independently would
+    # still send two requests in the same second and get the IP refused outright.
     slept: list[float] = []
     lim = ann.RateLimiter(now=lambda: 0.0, sleep=lambda s: slept.append(s))
     a = ann.MusicBrainzClient(fetcher=lambda u, h: (200, "{}"), rate_limiter=lim)
@@ -272,8 +254,8 @@ def test_calls_are_serialised_so_two_threads_cannot_burst():
 
 
 def test_a_503_is_retried_with_backoff_then_gives_up():
-    # 503 means "over the limit". Retrying recovers the annotation instead of losing it for that song;
-    # bounded so a genuinely blocked box stops hammering a service already refusing it.
+    # 503 means "over the limit"; retrying recovers the annotation, bounded so a genuinely blocked
+    # box stops hammering a service already refusing it.
     slept: list[float] = []
     attempts = {"n": 0}
 
@@ -281,8 +263,8 @@ def test_a_503_is_retried_with_backoff_then_gives_up():
         attempts["n"] += 1
         return 503, ""
 
-    # min_interval=0 isolates BACKOFF from pacing: otherwise the 1s inter-request waits are
-    # indistinguishable from the 1s first backoff and the assertion says nothing.
+    # min_interval=0 isolates BACKOFF from pacing, or the 1s inter-request wait is indistinguishable
+    # from the 1s first backoff.
     lim = ann.RateLimiter(min_interval=0.0, now=lambda: 0.0, sleep=lambda s: slept.append(s))
     c = ann.MusicBrainzClient(fetcher=always_throttled, rate_limiter=lim)
     with pytest.raises(ann.AnnotationFetchError, match="throttled"):
@@ -342,18 +324,15 @@ def test_the_artifact_shape_carries_provenance_and_confidence():
     assert art["source"] == "musicbrainz"
     assert art["confidence"] == ann.CONFIDENCE_HIGH
     assert art["mbid"].startswith("8c0c2908")
-    # album/year are parsed and used for SELECTION but not published: measured against the real service
-    # they resolved "Take On Me" to a 1991 compilation and "Bohemian Rhapsody" to an undated bootleg,
-    # because a search hit's release list is partial and the recording is chosen by duration. D4 — a
-    # wrong album is worse than a missing one.
+    # album/year are parsed and used for SELECTION but not published: a search hit's release list is
+    # partial and the recording is chosen by duration, so a wrong album is worse than a missing one.
     assert set(art) == {"source", "mbid", "artist", "title", "confidence"}
     assert "album" not in art and "year" not in art
 
 
 def test_when_durations_tie_the_EARLIEST_release_wins():
-    # Measured: duration alone left several recordings tied and picked a 1989 live-tour cut for
-    # "Take On Me" and an "Artist Karaoke Series" compilation for "Bohemian Rhapsody". Both are real
-    # recordings of the right song; the original is the one a singer recognises.
+    # Duration alone can leave several recordings tied; both are real recordings of the right song,
+    # but the original release is the one a singer recognises.
     body = {
         "recordings": [
             {
@@ -406,10 +385,8 @@ def test_a_genuinely_closer_duration_still_beats_an_older_release():
     assert got is not None and got.mbid == "right"
 
 
-# ── collaborations: the primary agrees, the full billing does not ─────────────────
-#: Captured live 2026-09-05 from `artist:"League of Legends" AND recording:"Legends Never Die"`.
-#: MusicBrainz publishes the collaboration as ONE joined credit, which is why comparing the joined
-#: string against a caller's single primary artist rejected the exact match sitting at score 100.
+#: MusicBrainz publishes a collaboration as ONE joined credit, which is why comparing the joined
+#: string against a caller's single primary artist would reject an exact match sitting at score 100.
 COLLAB_BODY = {
     "recordings": [
         {
@@ -443,9 +420,8 @@ def test_the_primary_credit_is_parsed_beside_the_joined_one():
 
 
 def test_a_collaboration_matches_on_the_PRIMARY_artist():
-    # THE REGRESSION. The caller's normalizer can only ever produce a primary artist, so requiring the
-    # joined billing to agree meant no song with a guest on it could EVER be annotated -- this exact
-    # recording came back at score 100 with the duration matching to the millisecond and was discarded.
+    # The caller's normalizer can only ever produce a primary artist, so requiring the joined billing
+    # to agree would make no song with a guest on it annotatable.
     got = ann.pick_best(ann.parse_recordings(COLLAB_BODY), "League of Legends", "Legends Never Die", 179.0)
     assert got is not None, "a guest credit must not make an exact match unreachable"
     assert got.mbid == "8a5ceed8-dec8-4e48-b2b0-205768bf7751"
@@ -485,17 +461,14 @@ def test_a_different_primary_artist_is_still_refused():
 
 
 def test_a_recording_with_no_credit_list_cannot_agree_with_anything():
-    # normalize_for_match("") is "", so an empty primary must not collide with an empty want -- the
-    # caller-side guard already refuses an empty key, and this is the other half of that pair.
+    # normalize_for_match("") is "", so an empty primary must not collide with an empty want.
     body = {"recordings": [{"id": "x", "score": 100, "title": "T", "length": 200000}]}
     assert ann.pick_best(ann.parse_recordings(body), "A", "T", 200.0) is None
 
 
-# ── the decline REASON: throttle vs miss must be distinguishable ─────────────
 def test_a_throttle_decline_carries_the_gate_counters_so_it_is_not_a_silent_none():
-    # An IP-level block and "nothing agreed on the names" are the same observable event from annotate():
-    # both return None. annotate_or_reason separates them by CATCHING AnnotationFetchError and reading
-    # the rate gate the code kept counters in for exactly this — counters that had no reader until now.
+    # An IP-level block and "nothing agreed on the names" are the same observable event from
+    # annotate() — both return None. annotate_or_reason separates them by reading the rate gate.
     lim = ann.RateLimiter(min_interval=0.0, now=lambda: 0.0, sleep=lambda _s: None)
     c = ann.MusicBrainzClient(fetcher=lambda u, h: (503, ""), rate_limiter=lim)
     got, reason = ann.annotate_or_reason(c, "a-ha", "Take On Me", 218.0)

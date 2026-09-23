@@ -1,9 +1,8 @@
-// Metrics-page capture, for reviewing the copy pass before/after.
+// Metrics-page capture.
 //
-// /metrics fetches /api/metrics on mount and renders empty states without it, so an ephemeral server
-// would show none of the copy under review. An initScript overrides fetch for that ONE path with a
-// fixture, so the frames are populated and deterministic. The numbers are fixture data — this script
-// exists to look at wording and column headers, not to report real throughput.
+// /metrics fetches /api/metrics on mount and renders empty states without it, so an ephemeral server would
+// show none of the copy under review: an initScript overrides fetch for that ONE path with a fixture. The
+// numbers are therefore fixture data — read these frames for wording and column headers, never throughput.
 //
 // Usage: EPORT=3411 OUT=/abs/dir TAG=before bun run tests/e2e/shot-metrics.mjs
 import { mkdirSync } from 'node:fs';

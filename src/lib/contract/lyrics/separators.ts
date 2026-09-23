@@ -1,72 +1,30 @@
-// $lib/contract — the pluggable stem-separator registry. SINGLE SOURCE OF TRUTH for both the
-// SERVER (validates an engine+model pairing before enqueueing a process) and the PHONE UI (renders the
-// engine → model dropdowns). The worker has its own registry that actually RUNS each engine; this
-// module is only the contract — ids, whitelist, rules — so the three sides cannot drift.
-//
-// TWO AXES, kept deliberately separate (this is the whole design):
-//   • ENGINE  — a distinct inference implementation. Adding one is real code AND a worker
-//               `capability` the job is routed by (capabilities.includes(jobType)). Rare.
-//   • MODEL   — a checkpoint WITHIN an engine, addressed by a stable token here and resolved to a
-//               concrete checkpoint by the worker engine. Adding one is a whitelist edit, no code.
-//
-// Whitelisted on purpose (Angelo, 2026-09-03): the phone can only pick from this fixed set, so a tap
-// can never trigger an arbitrary multi-hundred-MB checkpoint download onto the shared box. Widening
-// to arbitrary Hugging Face ids is a deliberate future toggle, not the default.
+// The stem-separator registry: the SINGLE SOURCE OF TRUTH for the server's validation and the phone's pickers.
+// The worker keeps its own registry that RUNS each engine; this is only ids, whitelist and rules.
+// Rules: docs/SERVER.md#registries-and-the-quality-ladder. Axes: docs/ARCHITECTURE.md §7.
 
 export type SeparatorEngineId = 'demucs' | 'roformer' | 'audiosep' | 'ensemble';
 
-/**
- * What a checkpoint COSTS to run, measured rather than guessed.
- *
- * Every field here was benchmarked on the reference box (32-core Graviton 3, CPU, aarch64) on
- * 2026-09-03. Three results drove the shape of this type:
- *
- *   • Wall-clock is LINEAR in `overlap`. Dropping a model from 4 to 2 took a 24s clip from 253s to
- *     138s (1.83×) with the per-window cost unchanged, because overlap is purely how many times each
- *     second of audio is recomputed and blended.
- *   • `cpuPrecision` REVERSES per checkpoint. bf16 was 1.6× faster than fp32 on bs-roformer-1297
- *     (26.59s → 16.55s per window) but 1.4–1.8× SLOWER on the 8s-window mel-band models. So there is
- *     no global "use bf16" switch to set; it is a per-checkpoint measurement or it is wrong.
- *   • Parameter count does not predict cost. A 228M-param mel-band model ran 5.2× faster per window
- *     than the 160M-param bs-roformer-1297, because `depth` and `dim` dominate. Nothing here may be
- *     inferred from checkpoint size.
- */
+/** What a checkpoint COSTS to run, measured rather than guessed. Two traps shape this type: `cpuPrecision`
+ *  REVERSES per checkpoint, and parameter count does NOT predict cost. See
+ *  docs/SERVER.md#registries-and-the-quality-ladder. */
 export interface SeparatorCost {
-	/**
-	 * MEASURED seconds of wall-clock per second of song, on the reference box, at this model's
-	 * `overlap` and `cpuPrecision`. htdemucs is 0.29 (a 2:51 song in 50s); bs-roformer-1297 is 8.28.
-	 *
-	 * A RATIO for UI estimation ("this will take about four minutes"), never a gate. Scale it for
-	 * other hardware before treating it as absolute — it is a measurement on one box, not a constant.
-	 */
+	/** MEASURED wall-clock seconds per second of song. A RATIO for UI estimation and NEVER a gate — it is one
+	 *  box's measurement. */
 	rtFactor: number;
-	/**
-	 * Number of overlapping prediction windows, as an INTEGER COUNT (MDXC/RoFormer semantics).
-	 *
-	 * Absent on demucs models on purpose: demucs's overlap is a 0–1 FRACTION (0.25). Unifying two
-	 * different meanings under one field name is how a `4` eventually gets passed where `0.25`
-	 * belongs, so the field is simply not present where that meaning does not hold.
-	 *
-	 * Hardware-independent — it is a redundancy multiplier, not an execution detail — which is why it
-	 * lives with the model here rather than with the worker's hardware backend.
-	 */
+	/** Overlapping prediction windows as an INTEGER COUNT, deliberately ABSENT where an engine's overlap is a
+	 *  fraction instead — one field name for two meanings is how a `4` gets passed where `0.25` belongs. */
 	overlap?: number;
-	/**
-	 * Precision the worker should run this checkpoint at ON A CPU BOX. Named for the CPU deliberately:
-	 * it is a (checkpoint × hardware) fact, not a property of the checkpoint alone. A GPU backend
-	 * overrides it — fp16 is the lever on Arc XMX and Apple MPS, while on CPU fp16 measured 6.5×
-	 * SLOWER than fp32 (179s vs 27.7s per window) because there are no fp16 CPU kernels.
-	 */
+	/** Precision for this checkpoint ON A CPU BOX — a (checkpoint × hardware) fact, not a property of the
+	 *  checkpoint. A GPU backend overrides it. */
 	cpuPrecision: 'fp32' | 'bf16';
-	/** Whether the numbers above were benchmarked on the reference box or reasoned about. An
-	 *  `estimated` cost is honest guidance for the UI but must never be cited as evidence. */
+	/** Whether the numbers were benchmarked or reasoned about. An `estimated` cost is honest guidance for
+	 *  the UI but must NEVER be cited as evidence. */
 	provenance: 'measured' | 'estimated';
 }
 
 export interface SeparatorModel {
-	/** Stable token stored in JobParams.model and room settings. NEVER a raw checkpoint filename — the
-	 *  worker maps this token to a concrete checkpoint, so upstream can re-host or rename it without
-	 *  touching stored jobs or settings. */
+	/** Stable TOKEN stored in `JobParams.model` and room settings, NEVER a checkpoint filename, so upstream can
+	 *  re-host or rename without touching stored jobs. */
 	id: string;
 	/** Human label for the phone dropdown. */
 	label: string;
@@ -74,36 +32,25 @@ export interface SeparatorModel {
 	note: string;
 	/** Measured cost of running this checkpoint. See `SeparatorCost`. */
 	cost: SeparatorCost;
-	/**
-	 * Relative separation quality, low to high — this model's rung on the upgrade ladder. Lives on the
-	 * model beside `cost` so the registry is the single source of truth: a new whitelisted model cannot
-	 * typecheck without one, which is what makes the "silently ranks 0 and drops off the process ladder"
-	 * failure structurally impossible rather than a thing a separate table has to remember. Compared
-	 * ACROSS engines (an htdemucs_ft process beats plain htdemucs; a roformer process beats both), so the
-	 * numbers are globally ordered, not per-engine. Positive by construction here; `qualityRank`
-	 * returns 0 only for a pairing that is not in the registry at all (unknown or de-whitelisted),
-	 * which is what keeps such a pairing from ever displacing a known-good artifact.
-	 */
+	/** This model's rung on the upgrade ladder, GLOBALLY ordered across engines. REQUIRED and on the model
+	 *  rather than in a parallel table. See docs/SERVER.md#registries-and-the-quality-ladder. */
 	rank: number;
 }
 
 export interface SeparatorEngine {
 	id: SeparatorEngineId;
 	label: string;
-	/** The worker CAPABILITY a worker must advertise to run this engine; dispatch routes a stems job
-	 *  via capabilities.includes(capability). A `demucs`-only worker never receives a `roformer` process,
-	 *  so engines can live on different boxes or images. */
+	/** The capability a worker must ADVERTISE to run this engine; dispatch routes by it, so engines can live on
+	 *  different boxes. */
 	capability: string;
-	/** Whitelisted, ordered best-effort by quality. First entry is the engine's default model. */
+	/** Whitelisted, ordered best-effort by quality. FIRST entry is the engine's default model. */
 	models: SeparatorModel[];
-	/** Upgrade-tier engines are heavy/slow and MUST NOT be selectable as the live default — valid only
-	 *  as the target of a `stems-upgrade`. `ensemble` runs N models, so it is upgrade-only. */
+	/** False means UPGRADE-ONLY: never selectable as the live default. */
 	liveSelectable: boolean;
 	/** Rough guidance for the UI, not a hard gate. */
 	speed: 'fast' | 'medium' | 'slow';
 }
 
-// ── the registry ────────────────────────────────────────────────────────────────
 export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 	{
 		id: 'demucs',
@@ -117,7 +64,6 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				label: 'HT-Demucs',
 				note: 'Fastest. The default — singable in seconds.',
 				rank: 10,
-				// 50s for a 171.5s song, measured end to end.
 				cost: { rtFactor: 0.29, cpuPrecision: 'fp32', provenance: 'measured' }
 			},
 			{
@@ -125,7 +71,6 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				label: 'HT-Demucs FT',
 				note: 'Fine-tuned 4-model bag. ~2× slower, cleaner.',
 				rank: 20,
-				// 95s for the same 171.5s song, measured end to end.
 				cost: { rtFactor: 0.55, cpuPrecision: 'fp32', provenance: 'measured' }
 			},
 			{
@@ -133,7 +78,6 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				label: 'HT-Demucs 6-stem',
 				note: 'Adds piano/guitar stems.',
 				rank: 15,
-				// NOT benchmarked: one pass like htdemucs but resolving six sources instead of four.
 				cost: { rtFactor: 0.4, cpuPrecision: 'fp32', provenance: 'estimated' }
 			}
 		]
@@ -141,24 +85,16 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 	{
 		id: 'roformer',
 		label: 'BS-RoFormer',
-		capability: 'stems:roformer', // a distinct capability — only a roformer-equipped worker takes it
-		liveSelectable: true, // allowed live, but very slow on CPU — the UI warns
+		capability: 'stems:roformer',
+		liveSelectable: true, // slow on CPU, so the UI warns
 		speed: 'slow',
 		models: [
 			{
 				id: 'bs-roformer-1297',
 				label: 'BS-RoFormer',
 				note: 'Highest separation quality. Minutes, not seconds — best as an upgrade.',
-				/**
-				 * 16.55s per 8s window at bf16 (fp32 was 26.59s), × overlap 4 ⇒ 8.28. bf16 rather than
-				 * fp32 because it measured 1.6× faster here and truncates only the mantissa — bf16 keeps
-				 * fp32's exponent range, so it is a near-lossless win rather than a quality tradeoff.
-				 *
-				 * `overlap` stays at this checkpoint's own default of 4. Halving it to 2 is a further
-				 * measured 1.83× (rtFactor would fall to 4.14) but overlap-add is what suppresses audible
-				 * seams at window boundaries, so that one is a quality decision awaiting a listening test,
-				 * not a free win like the dtype.
-				 */
+				// bf16 is near-lossless here and measured faster. Lowering `overlap` is a further measured
+				// speed-up but a QUALITY decision: overlap-add is what suppresses audible seams.
 				rank: 35,
 				cost: { rtFactor: 8.28, overlap: 4, cpuPrecision: 'bf16', provenance: 'measured' }
 			}
@@ -167,26 +103,17 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 	{
 		id: 'audiosep',
 		label: 'Mel-Band RoFormer',
-		capability: 'stems:audiosep', // a distinct capability — only an audio-separator-equipped worker takes it
-		liveSelectable: true, // owner ruling an earlier change Option A: live-selectable, medium speed on CPU
+		capability: 'stems:audiosep',
+		liveSelectable: true,
 		speed: 'medium',
 		models: [
 			{
 				id: 'instrumental_becruily',
 				label: 'Mel-Band Instrumental (becruily)',
 				note: 'RoFormer-quality instrumental, ~10× faster than BS-RoFormer on CPU.',
-				/**
-				 * 5.14s per 8s window at fp32, × overlap 2 ⇒ rt 1.28.
-				 * fp32 rather than bf16 because bf16 measured a LOSS on this 8s-window mel-band model
-				 * (7.09s/window vs 5.14) — the sign of the bf16 win reverses per checkpoint, which is why
-				 * cpuPrecision is a per-model measurement, not a global switch. `overlap` is this model's
-				 * own default of 2, an integer window count (MDXC/RoFormer semantics).
-				 *
-				 * Two caveats the owner accepted knowingly (Option A): NO prior ear-approval (only
-				 * bs-roformer-1297 has a published SDR and an owner listening test), and the model weights
-				 * may carry non-commercial / research licence terms on their Hugging Face card (the MIT
-				 * clearance in DECISIONS.md covers the surveyed PACKAGES, not the checkpoint weights).
-				 */
+				// fp32 and NOT bf16: bf16 measured a LOSS on this architecture — the sign reversal that makes
+				// `cpuPrecision` per-model. LICENCE CAVEAT: these weights may carry non-commercial terms; the
+				// project's clearance covers packages, never checkpoint weights.
 				rank: 30,
 				cost: { rtFactor: 1.28, overlap: 2, cpuPrecision: 'fp32', provenance: 'measured' }
 			}
@@ -204,8 +131,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				label: 'Instrumental (clean)',
 				note: 'Two-model ensemble, minimal vocal bleed.',
 				rank: 45,
-				// NOT benchmarked, and no ensemble worker exists yet: two roformer-class passes plus a
-				// blend, so at least twice a single roformer process.
+				// Estimated: two roformer-class passes plus a blend, and no ensemble worker exists yet.
 				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' }
 			},
 			{
@@ -227,8 +153,8 @@ export function getEngine(id: string): SeparatorEngine | undefined {
 	return SEPARATOR_ENGINES.find((e) => e.id === id);
 }
 
-/** Is this a real, whitelisted engine+model pairing? The server calls this before enqueueing so a
- *  malformed or spoofed setting is rejected rather than reaching a worker that would fail mid-process. */
+/** Is this a real, whitelisted engine+model pairing? Called before enqueueing, so a spoofed setting never
+ *  reaches a worker that would fail mid-process. */
 export function isValidSeparator(engineId: string, modelId: string): boolean {
 	const engine = getEngine(engineId);
 	return !!engine && engine.models.some((m) => m.id === modelId);
@@ -240,24 +166,9 @@ export function isLiveSelectable(engineId: string, modelId: string): boolean {
 	return !!engine && engine.liveSelectable && engine.models.some((m) => m.id === modelId);
 }
 
-/**
- * Relative separation quality, low to high — the declared upgrade ladder, read straight off the
- * registry (`SeparatorModel.rank`). The checkpoint matters as much as the engine (an htdemucs_ft process
- * beats plain htdemucs on the same engine), and ranks are globally ordered across engines.
- *
- * Returns 0 for a pairing that is not in the registry — an unknown or de-whitelisted model — and a
- * rank-0 pairing can never win a comparison, which keeps such a model from displacing a known-good
- * artifact. Crucially it can no longer return 0 for a *whitelisted* model: `rank` is a required field
- * on `SeparatorModel`, so a new whitelist entry cannot compile without one. The former hand-maintained
- * `QUALITY_RANK` parallel table is gone precisely because it let a whitelisted model silently rank 0
- * and drop off the process ladder.
- *
- * The former `roformer:mel-roformer-inst-v2` rung (rank 30) is likewise gone: its worker-side token
- * resolved to a registry slug that does not exist, and the engine backing `roformer` today implements
- * only the BS-RoFormer architecture, so no mel-band checkpoint could ever have run. A de-whitelisted
- * model stored in settings falls back per-field through `normalizeGlobalSettings`, so removing it
- * degrades an affected room to the default rather than breaking it.
- */
+/** The declared upgrade ladder, read straight off `SeparatorModel.rank`. Returns 0 ONLY for a pairing absent
+ *  from the registry, which is what makes de-whitelisting safe. See
+ *  docs/SERVER.md#registries-and-the-quality-ladder. */
 export function qualityRank(engineId: string, modelId: string): number {
 	return getEngine(engineId)?.models.find((m) => m.id === modelId)?.rank ?? 0;
 }
@@ -267,13 +178,8 @@ export function separatorCost(engineId: string, modelId: string): SeparatorCost 
 	return getEngine(engineId)?.models.find((m) => m.id === modelId)?.cost;
 }
 
-/**
- * Whether `candidate` is strictly better than `current` — the guard the upgrade path uses before it
- * swaps a published instrumental.
- *
- * A missing `current` counts as an upgrade (nothing to regress). Equal or lower rank does NOT, so a
- * re-process at the same quality is a no-op and a worse engine can never replace a better artifact.
- */
+/** Is `candidate` STRICTLY better than `current`? The guard the upgrade path runs before swapping a published
+ *  instrumental. See docs/SERVER.md#registries-and-the-quality-ladder. */
 export function isQualityUpgrade(
 	current: { engine: string; model: string } | null | undefined,
 	candidate: { engine: string; model: string }

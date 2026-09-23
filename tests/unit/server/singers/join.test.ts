@@ -26,7 +26,6 @@ import { PlayLog } from '$lib/server/media/play-log';
 function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRepository; activeRoomId: string } {
 	const db = migratedDb();
 	const rooms = new RoomRepository(db);
-	// doJoin resolves the room a join lands in, so the harness mints the single active room.
 	const activeRoomId = rooms.ensureActive(1_700_000_000_000).id;
 	const published: ServerEvent[] = [];
 	const attempts = new AttemptLedger(db);
@@ -35,8 +34,8 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRe
 	const mediaById = new Map();
 	const app: EncoreApp = {
 		db,
-		// A real state, not null: doJoin now consults the queue, because a name stays claimed while its
-		// owner still holds a turn.
+		// A real state, not null: doJoin consults the queue, because a name stays claimed while its owner
+		// still holds a turn.
 		state: new AuthoritativeState(),
 		singers: new SingerRepository(db),
 		rooms,
@@ -86,24 +85,21 @@ test('valid join creates a singer and broadcasts singer:joined', () => {
 });
 
 test('the singer:joined broadcast carries NO session token', () => {
-	// The frame reaches every socket in the room, including a cookie-less spectator that never joined.
-	// The session token IS the whole auth axis (bySessionToken resolves who you are), so a token on
-	// this wire hands any listener the credential to impersonate the new singer. Serialise it exactly
-	// as server.ts does before broadcasting — a raw JSON.stringify with no further redaction — and
-	// assert the token appears nowhere in the bytes. Reverting either half of the fix (the runtime
-	// strip in join.ts or the PublicSinger retype in events.ts) reds this.
+	// The frame reaches every socket in the room, including a cookie-less spectator. The session token IS
+	// the whole auth axis, so a token on this wire hands any listener the credential to impersonate the new
+	// singer. Serialised exactly as server.ts does — a raw JSON.stringify, no further redaction — so both
+	// halves of the strip (the runtime one and the PublicSinger type) are load-bearing here.
 	const { app, published } = appHarness();
 	const { singer } = doJoin(app, { displayName: 'Dana', color: '#ff5cae' });
 
-	// Non-vacuous sentinel: a token was in fact minted, so the assertion below is testing a real
-	// exclusion and not passing trivially because minting stopped producing one.
+	// Non-vacuity: a token really was minted, so the exclusion below is not passing because minting stopped.
 	expect(singer.sessionToken.length).toBeGreaterThan(20);
 
 	const ev = published[0] as Extract<ServerEvent, { type: 'singer:joined' }>;
 	const wire = JSON.stringify(ev);
 	expect(wire).not.toContain(singer.sessionToken);
 	expect(wire).not.toContain('sessionToken');
-	// The public fields still ride the wire — the strip removes only the credential.
+	// The public fields still ride the wire: the strip removes only the credential.
 	expect(ev.singer.id).toBe(singer.id);
 	expect(ev.singer.displayName).toBe('Dana');
 	expect((ev.singer as Record<string, unknown>).sessionToken).toBeUndefined();
@@ -116,8 +112,8 @@ test('invalid color falls back to the first palette color', () => {
 });
 
 test('a wheel hue is KEPT, not rewritten to a preset', () => {
-	// The behaviour change. This used to be an allowlist of the eight presets, so a guest who picked
-	// any other hue joined as violet with nothing said — which made a colour wheel impossible.
+	// Not an allowlist of the eight presets: under one, a guest who picked any other hue joined as violet
+	// with nothing said, which makes a colour wheel impossible.
 	const { app } = appHarness();
 	const picked = hueToHex(SINGER_HUES[7]!);
 	const { singer } = doJoin(app, { displayName: 'Ada', color: picked });
@@ -132,7 +128,7 @@ test('a colour whose dot would vanish on the dark surfaces is refused', () => {
 });
 
 test('shorthand hex is canonicalised on the way in', () => {
-	// Everything downstream interpolates this straight into CSS, so one shape is worth enforcing here.
+	// Everything downstream interpolates this straight into CSS, so the shape is enforced here.
 	const { app } = appHarness();
 	const { singer } = doJoin(app, { displayName: 'Ren', color: '#0AF' });
 	expect(singer.color).toBe('#00aaff');
@@ -143,10 +139,9 @@ test('blank display name is rejected', () => {
 	expect(() => doJoin(app, { displayName: '   ', color: SINGER_COLORS[0] })).toThrow('display name required');
 });
 
-// ── display-name uniqueness ────────────────────────────────────────────────────
-// First come, first served — but only against people still IN THE ROOM. The singers table is
-// append-only, so an unqualified unique check would claim a name forever and next month's Dana would be
-// rejected by a ghost row from tonight.
+// Display-name uniqueness: first come, first served, but only against people still IN THE ROOM. The
+// singers table is append-only, so an unqualified unique check claims a name forever and next month's
+// guest is rejected by a ghost row from tonight.
 
 test('a name held by someone here is refused', () => {
 	const { app } = appHarness();
@@ -178,37 +173,36 @@ test('a name returns to the pool once its owner has GONE', () => {
 	app.presence.disconnect(dana.id, app.now());
 	app.presence.evaluate({ now: app.now(), graceMs: 0, hasPendingSongs: () => false });
 
-	// This is the case unqualified uniqueness would have broken forever: a different Dana, another night.
+	// The case unqualified uniqueness breaks forever: the same name, another night.
 	const second = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[1] });
 	expect(second.singer.displayName).toBe('Dana');
 	expect(second.singer.id).not.toBe(dana.id);
 });
 
 test('a rehydrated singer that never reconnected does not block a join', () => {
-	// A singer row with no presence record this process (e.g. rehydrated after a restart) is `gone` by
-	// definition, so their name must not be held hostage by the append-only table. Simulated by writing
-	// the row through the repository directly, bypassing the join-time presence seed doJoin adds.
+	// A singer row with no presence record this process (rehydrated after a restart) is `gone` by
+	// definition, so the append-only table must not hold their name hostage. Written through the repository
+	// directly, bypassing the join-time presence seed.
 	const { app } = appHarness();
 	const ghost = app.singers.create('Ghost', SINGER_COLORS[0], app.now(), app.activeRoomId);
 	expect(app.presence.stateOf(ghost.id, app.now(), 999_999, false)).toBe('gone');
 	expect(() => doJoin(app, { displayName: 'Ghost', color: SINGER_COLORS[1] })).not.toThrow();
 });
 
-// ── the /api/join → WebSocket-open gap (an early regression) ─────────────────────
-// doJoin writes the singer row, but only the WS `open` handler used to register them with presence. In
-// the window before that socket lands, presence.stateOf returned `gone` — so a second phone could claim
-// the identical name. doJoin now seeds the singer into presence as away at join time to close that gap.
+// The /api/join → WebSocket-open gap: doJoin writes the singer row, but if only the WS `open` handler
+// registers presence then `stateOf` reads `gone` until that socket lands, and a second phone can claim the
+// identical name. doJoin seeds the singer into presence as AWAY at join time to close it.
 
 test('two joins with the SAME name inside the join window collide', () => {
 	const { app } = appHarness();
 	doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] });
-	// No presence.connect — the first phone's socket has not opened yet, but the join seed holds the name.
+	// No presence.connect: the socket has not opened, but the join seed holds the name.
 	expect(() => doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[1] })).toThrow(NameTakenError);
 });
 
 test('the join seed is AWAY, so the name frees up once the grace sweep expires it', () => {
-	// A phone that joined and immediately died must not hold a name for the whole night: the away seed
-	// expires through the ordinary sweep, same as any dropped socket.
+	// A phone that joined and immediately died must not hold a name all night: the away seed expires
+	// through the ordinary sweep, like any dropped socket.
 	const { app } = appHarness();
 	app.settings.setRoom({ presenceGraceMinutes: 0 }, 'main'); // expire on the first sweep after the drain
 	doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] });
@@ -222,12 +216,10 @@ test('distinct names are unaffected', () => {
 	expect(() => doJoin(app, { displayName: 'Maya', color: SINGER_COLORS[1] })).not.toThrow();
 });
 
-// ── room identity: minting + join-by-code ───────────────────────────────
-// Before this issue nothing wrote the rooms table and doJoin ignored any code: every join landed in
-// one implicit singleton party. The identity layer mints a room and lets a phone join a SPECIFIC one
-// by its code (the QR encodes it), returning WHICH room the join landed in. Playback/queue/singers
-// are NOT yet scoped to the room — that is the room-scoping step — so the identity is what the join returns and
-// the session then carries, not (yet) a column on the singer.
+// Room identity: minting, and join-by-code. A room is minted and a phone joins a SPECIFIC one by its code
+// (the QR encodes it), and the join returns WHICH room it landed in. Playback, queue and singers are NOT
+// yet room-scoped, so the identity is what the join returns and the session carries, not a column on the
+// singer.
 
 test("a bare join lands in the core's single active room", () => {
 	const { app, activeRoomId } = appHarness();
@@ -235,12 +227,11 @@ test("a bare join lands in the core's single active room", () => {
 	expect(roomId).toBe(activeRoomId);
 });
 
-// THE PIN: a phone joining WITH a room code joins THAT room's identity, not the default. Reds on base,
-// where doJoin takes no code and returns no roomId. Mechanism: doJoin resolves the code via
-// rooms.byCode and returns that room's id; the /api/join route sets it as the room cookie.
+// A phone joining WITH a room code joins THAT room's identity, not the default: doJoin resolves the code
+// via rooms.byCode and returns that room's id, and the route sets it as the room cookie.
 test('joining with a room code lands in THAT room, not the default active one', () => {
 	const { app, rooms, activeRoomId } = appHarness();
-	// A second, distinct party on the same core. Its code is the identity a phone scanning its QR uses.
+	// A second, distinct party on the same core.
 	const other = rooms.create(1_700_000_000_001);
 	expect(other.id).not.toBe(activeRoomId);
 
@@ -250,7 +241,7 @@ test('joining with a room code lands in THAT room, not the default active one', 
 });
 
 test('the room code is matched case- and whitespace-insensitively', () => {
-	// A guest types a code off a TV; codes are minted uppercase, so a lowercased/padded copy still joins.
+	// Codes are minted uppercase, so a lowercased and padded copy typed off a TV still joins.
 	const { app, rooms } = appHarness();
 	const other = rooms.create(1_700_000_000_001);
 	const { roomId } = doJoin(app, {
@@ -269,7 +260,7 @@ test('an unknown room code is refused, never silently routed to the default room
 test('a bad code fails BEFORE a singer is created, leaving no orphaned row or claimed name', () => {
 	const { app } = appHarness();
 	expect(() => doJoin(app, { displayName: 'Kai', color: SINGER_COLORS[0], code: 'NOSUCH' })).toThrow(RoomNotFoundError);
-	// The name is free and no singer exists — a retry with a good (bare) join succeeds as the same name.
+	// The name is free and no singer exists, so a retry with a bare join succeeds as the same name.
 	const { singer } = doJoin(app, { displayName: 'Kai', color: SINGER_COLORS[0] });
 	expect(singer.displayName).toBe('Kai');
 	expect(app.singers.listPublic(app.activeRoomId)).toHaveLength(1);

@@ -1,10 +1,8 @@
-// Worker hub — the I/O brain of the dial-home protocol (§5). Bridges the in-memory WorkerRegistry,
-// the pure dispatcher (dispatch.ts), the durable JobRepository, and lease policy.
-// Decoupled from Bun.serve like realtime/hub.ts: it takes a `toWorker` sink (send a WorkerCommand
-// to one worker) + a `broadcast` sink (media:status to phones/TV), so it unit-tests with no socket.
-//
-// Flow: worker:hello → welcome + dispatch; job:accept/progress/complete/failed drive the ledger;
-// each lifecycle change rebroadcasts media:status so phones show the live "Separating… 68%" bar.
+// The I/O brain of the dial-home protocol. Bridges the in-memory WorkerRegistry, the pure dispatcher
+// (dispatch.ts), the durable JobRepository, and lease policy. Decoupled from Bun.serve like
+// realtime/hub.ts: takes a `toWorker` sink and a `broadcast` sink, so it unit-tests with no socket.
+// Flow: worker:hello → welcome + dispatch; job:accept/progress/complete/failed drive the ledger and
+// rebroadcast media:status.
 
 import type {
 	WorkerMessage,
@@ -50,13 +48,10 @@ import { completedStatusFor, mediaStatusFor, shouldBroadcastProcess } from './me
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
 export type Broadcast = (event: ServerEvent) => void;
 
-/**
- * How long a job may sit continuously unservable (no connected worker advertises its capability)
- * before it is moved to a terminal `failed` state. Without a ceiling such a job parks `queued`
- * forever: it never reaches a terminal state, so the TV and phone wait indefinitely on a song that
- * can never process. Two minutes is long enough to ride out a worker restart or a fleet that is still
- * coming up, short enough that a genuinely unservable job surfaces as failed rather than hanging.
- */
+/** How long a job may sit continuously unservable before it's moved to terminal `failed` — without a
+ *  ceiling it parks `queued` forever, waiting on a song that can never process. Two minutes is long
+ *  enough to ride out a worker restart or a fleet still coming up, short enough that a genuinely
+ *  unservable job surfaces as failed rather than hanging. */
 const UNSERVABLE_TTL_MS = 120_000;
 
 export interface WorkerHubDeps {
@@ -66,29 +61,15 @@ export interface WorkerHubDeps {
 	registry: WorkerRegistry;
 	/** Resolve a media's source URI (youtube id / file key) so the worker can pull it. */
 	mediaById: Map<string, Media>;
-	/**
-	 * Delete a media's guide-mix FILE. Called when a completion frame carries no mix, which means the mix
-	 * on disk was built from stems this frame has just replaced. Optional so the hub still unit-tests bare;
-	 * `app.ts` wires it. Without it a stale-but-structurally-valid mix survives on disk and the next boot's
-	 * backfill re-adopts it, pinning the room to the superseded separation.
-	 */
+	/** Deletes a media's guide-mix FILE, called when a completion frame carries no mix (the mix on disk
+	 *  was built from stems this frame just replaced). Without it a stale-but-valid mix survives and the
+	 *  next boot's backfill re-adopts it, pinning the room to the superseded separation. Optional; app.ts wires it. */
 	discardGuideMix?: (mediaId: string) => void | Promise<void>;
-	/**
-	 * Measure a reported instrumental before publishing it. `'silent'` REFUSES the completion.
-	 *
-	 * DEFENCE IN DEPTH, and the reason it belongs here rather than only in the worker: separation can
-	 * succeed and still write digital silence, and the core used to verify only that a ref EXISTED. Two
-	 * songs in the live library were exactly that — both stems at the 16-bit floor — and they sat in the
-	 * Ready list ready to play four minutes of nothing. `media/loudness.ts` has measured that condition
-	 * since; it was wired into the boot backfill and never into the live publish, so a worker reporting a
-	 * silent stem still got a READY song.
-	 *
-	 * `'unknown'` publishes, deliberately. An unmeasurable file is NOT silence — see `isDigitalSilence`.
-	 * A host with no ffmpeg would otherwise refuse every process it ran, which is a self-inflicted
-	 * outage; we only ever act on a POSITIVE measurement of silence.
-	 *
-	 * Optional so the hub still unit-tests bare, and so an unwired core behaves exactly as before.
-	 */
+	/** Measures a reported instrumental before publishing; `'silent'` REFUSES the completion. Defence in
+	 *  depth against separation that succeeds but writes digital silence. `'unknown'` still PUBLISHES,
+	 *  deliberately: an unmeasurable file (no ffmpeg on the host) is not silence, and refusing on it
+	 *  would be a self-inflicted outage — only a POSITIVE silence measurement refuses. Optional; an
+	 *  unwired core behaves exactly as before. */
 	verifyInstrumental?: (ref: string) => Promise<'audible' | 'silent' | 'unknown'>;
 	toWorker: ToWorker; // send a WorkerCommand to ONE worker session
 	broadcast: Broadcast; // media:status to the whole room
@@ -98,43 +79,29 @@ export interface WorkerHubDeps {
 	/** Persist a media after its artifacts change (durable catalog). Optional so the hub still
 	 *  unit-tests with no DB; app.ts wires it to MediaRepository.upsert. */
 	persistMedia?: (mediaId: string) => void;
-	/** Room+global separator settings, read live at assign time. EFFECTIVE, not just global: the room
-	 *  can lower the process quality below the global default (a downward-only ceiling), and that ceiling
-	 *  has to reach the engine a stems job is dispatched with AND the capability it is routed by.
-	 *  Optional so the hub still unit-tests without settings (dispatch falls back to shared defaults). */
+	/** Room+global separator settings, read live at assign time. EFFECTIVE, not just global: the room's
+	 *  downward-only quality ceiling must reach both the engine a stems job is dispatched with AND the
+	 *  capability it is routed by. Optional; dispatch falls back to shared defaults without it. */
 	getSettings?: () => EffectiveSettings;
 	now: () => number;
 	config?: LeaseConfig;
 	mediaStore?: MediaStoreConfig;
 }
 
-/**
- * Validate an inbound worker frame BEFORE anything reads a field off it. Returns an error string
- * (frame rejected, drop it) or null (frame is shape-safe to `handle`). Mirrors validateCommand in
- * realtime/hub.ts for the CLIENT-event family: server.ts:message() JSON.parsed a role=worker frame
- * inside a try/catch and then read fields with NO validation, so a hostile/broken frame — reachable
- * UNAUTHENTICATED when ENCORE_WORKER_TOKEN is unset — threw out of the socket handler on the first
- * unguarded read. Three throw sites this closes:
- *   - `JSON.parse('null')` succeeds, then `'workerId' in msg` (server.ts) throws on `null`;
- *   - a `worker:hello` with `capabilities: 1` reaches `[...capabilities]` in registry.hello and throws;
- *   - a `worker:hello` with `capabilities: 'stems'` spreads the STRING then `.join(',')` mislogs/mishandles.
- * The frame family carrying DISPATCH AUTHORITY is validated exactly like the client family it sits beside.
- * We check only the envelope + the fields each handler dereferences; the stale-frame guards
- * (`!job || status/workerId mismatch`) still defend the job lifecycle once jobId/workerId are strings.
- */
+/** Validates an inbound worker frame BEFORE anything reads a field off it, mirroring validateCommand's
+ *  treatment of the CLIENT-event family in realtime/hub.ts. This frame family carries DISPATCH
+ *  AUTHORITY and is reachable UNAUTHENTICATED whenever `ENCORE_WORKER_TOKEN` is unset, so a
+ *  hostile/malformed frame must never throw out of the socket handler on an unguarded read. Checks
+ *  only the envelope plus the fields each handler dereferences; the stale-frame guards
+ *  (`!job || status/workerId mismatch`) still defend the job lifecycle once jobId/workerId are strings.
+ *  Returns an error string (drop the frame) or null (shape-safe to `handle`). */
 export function validateWorkerMessage(msg: unknown): string | null {
-	// The ENVELOPE first — a non-null object with a known discriminant. `JSON.parse('null')` is the
-	// literal null that made `'workerId' in msg` throw; a bare array or primitive is just as unusable.
 	if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return 'malformed worker frame';
 	const m = msg as Record<string, unknown>;
 	if (typeof m.type !== 'string') return 'missing worker frame type';
-	// Every worker frame identifies its sender, and every handler dereferences it (the socket also
-	// keys itself by it for deregistration). A non-string workerId is rejected before any read.
 	if (typeof m.workerId !== 'string' || m.workerId.length === 0) return 'missing workerId';
 	switch (m.type) {
 		case 'worker:hello':
-			// capabilities is spread (`[...capabilities]`) and joined (`.join(',')`); a number throws on
-			// the spread, a string spreads into characters and mis-registers. Require a string[].
 			if (!Array.isArray(m.capabilities) || !m.capabilities.every((c) => typeof c === 'string'))
 				return 'malformed capabilities';
 			if (typeof m.concurrency !== 'number' || !Number.isFinite(m.concurrency)) return 'malformed concurrency';
@@ -167,8 +134,6 @@ export function validateWorkerMessage(msg: unknown): string | null {
 			if (typeof m.retryable !== 'boolean') return 'malformed retryable';
 			return null;
 		default:
-			// An unknown type never reaches a handler (handle()'s switch has no default), but rejecting it
-			// here keeps the boundary honest: only frames we can safely dispatch pass.
 			return 'unknown worker frame type';
 	}
 }
@@ -176,39 +141,27 @@ export function validateWorkerMessage(msg: unknown): string | null {
 export class WorkerHub {
 	#d: WorkerHubDeps;
 	#config: LeaseConfig;
-	/** Job ids already reported as unservable, mapped to the time they FIRST became unservable, so a
-	 *  dispatch loop that runs on every event does not reprint the same warning forever AND can fail a
-	 *  job that has been unservable past UNSERVABLE_TTL_MS. Pruned on every terminal path (find-a-worker,
-	 *  complete, fail, TTL-fail) so ids for jobs that die while still queued cannot leak. */
+	/** Ids reported unservable, mapped to when they FIRST became so, so the dispatch loop doesn't
+	 *  reprint the same warning every pass and can still fail a job once it passes UNSERVABLE_TTL_MS.
+	 *  Pruned on every terminal path so an id for a job that died while still queued cannot leak. */
 	#unservableSince = new Map<string, number>();
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
-		// Slot accounting rides the job machine (an earlier change step 3). The hub owns the registry, so it wires
-		// the repository's slot-release action here: a job leaving a worker's hands via a worker-reported
-		// event (REJECT/COMPLETE/FAIL) frees that worker's concurrency slot from ONE place inside
-		// `transition`, retiring the three hand-paired registry.releaseSlot() calls the handlers used to
-		// carry. Reaper/boot (LEASE_EXPIRED/RECOVER) and CANCEL are deliberately not releasing events.
+		// The hub owns the registry, so it wires the repository's slot-release action here: a
+		// worker-reported REJECT/COMPLETE frees that worker's slot from inside `transition` itself.
+		// LEASE_EXPIRED/RECOVER and CANCEL are deliberately not releasing events (see repository.ts);
+		// FAIL releases explicitly at its own call site below (#onFailed), not through this hook.
 		this.#d.jobs.setSlotReleaseHook((workerId) => this.#d.registry.releaseSlot(workerId));
 	}
 
-	/**
-	 * The GlobalSettings the pure dispatch layer should see, with the ROOM'S downward-only quality
-	 * ceiling folded into the default stems pairing.
-	 *
-	 * `dispatch.ts` reasons in terms of `GlobalSettings.defaultEngine/defaultModel` for a stems process —
-	 * its assignParams, separatorFor, and (crucially) requiredCapability all read those two fields. The
-	 * room's cap does not live there, so before this the ceiling `resolveProcessSeparator` computes was
-	 * built, tested, and never called: a room set to a lower quality was ignored, and the box always
-	 * processed at the global default. We resolve the effective pairing HERE and hand dispatch a global
-	 * whose defaults ARE that pairing, so the lowered engine flows through the params the worker gets
-	 * AND the capability it is routed by (a demucs-capped process must not be sent to a roformer worker).
-	 *
-	 * ONLY the default (stems) pairing is rewritten. The upgrade axis, fetcher, and lyrics engines are
-	 * left as the global set them — the room ceiling is a floor-lowering on the base process, nothing else.
-	 * Returns undefined when no settings are wired (unit tests), so dispatch keeps its shared-default
-	 * behaviour unchanged.
-	 */
+	/** The GlobalSettings the pure dispatch layer should see, with the ROOM'S downward-only quality
+	 *  ceiling folded into the default stems pairing. `dispatch.ts`'s assignParams/separatorFor/
+	 *  requiredCapability all read `GlobalSettings.defaultEngine/defaultModel` directly, so the room's
+	 *  cap must be resolved into THOSE fields here to reach both the params the worker gets and the
+	 *  capability it's routed by (a demucs-capped process must not be sent to a roformer worker). ONLY
+	 *  the default (stems) pairing is rewritten — upgrade/fetcher/lyrics engines are left as the global
+	 *  set them. Returns undefined when no settings are wired, so dispatch keeps shared defaults. */
 	#processSettings(): GlobalSettings | undefined {
 		const effective = this.#d.getSettings?.();
 		if (!effective) return undefined;
@@ -239,9 +192,7 @@ export class WorkerHub {
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
 	#onHello(msg: Extract<WorkerMessage, { type: 'worker:hello' }>): void {
 		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now(), msg.host);
-		// Log what joined, hardware included. On a heterogeneous fleet this is how "why was that process
-		// slow" gets answered from the core's log without shelling into the worker. `cpuCount` is the
-		// worker's EFFECTIVE count, so `(contained)` marks a box that was given a slice of a bigger one.
+		// `cpuCount` is the worker's EFFECTIVE count, so `(contained)` marks a box given a slice of a bigger one.
 		const hw = msg.host
 			? `${msg.host.accelerator ?? (msg.host.cuda ? 'cuda' : 'cpu')}/${msg.host.cpuCount ?? '?'}cpu${msg.host.contained ? ' (contained)' : ''}`
 			: 'hardware unreported';
@@ -250,11 +201,9 @@ export class WorkerHub {
 		);
 		this.#d.toWorker(msg.workerId, {
 			type: 'worker:welcome',
-			// Advertise HALF the progress lease, not the full lease. The worker's next `job:progress`
-			// refreshes this lease (leases.ts progressLeaseMs), so a worker honouring the advertised
-			// interval must have room for a dropped/late tick: at the full lease one missed tick breaches
-			// the deadline and the reaper requeues a healthy process as `progress-lease-expired`. This is the
-			// same margin PR an earlier change pins on the worker side (LEASE_KEEPALIVE_SEC < progressLeaseMs / 2).
+			// HALF the progress lease, not the full one: a worker honouring this interval needs room for a
+			// dropped/late tick, or one missed heartbeat breaches the lease and the reaper requeues a
+			// healthy process as `progress-lease-expired`.
 			heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000 / 2),
 			ackTimeoutSec: Math.floor(this.#config.ackTimeoutMs / 1000),
 			mediaStore: this.#d.mediaStore ?? { kind: 'local' }
@@ -278,9 +227,8 @@ export class WorkerHub {
 	#onReject(msg: Extract<WorkerMessage, { type: 'job:reject' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'assigned' || job.workerId !== msg.workerId) return;
-		// requeue via REJECT frees the worker's slot through the machine's slot-release hook;
-		// it reads the owner off the pre-write row, so the release still fires though the patch clears workerId.
-		this.#d.jobs.requeue(msg.jobId, job.attempts, this.#d.now(), 'REJECT'); // worker declined; no attempt burned (never ran)
+		// REJECT frees the slot via the machine's slot-release hook (reads the owner pre-write).
+		this.#d.jobs.requeue(msg.jobId, job.attempts, this.#d.now(), 'REJECT');
 		this.dispatch();
 	}
 
@@ -307,17 +255,9 @@ export class WorkerHub {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
 
-		/*
-		 * VERIFY BEFORE PUBLISHING, when a verifier is wired and this job actually reports an instrumental.
-		 *
-		 * The measurement spawns ffmpeg and decodes the whole file, so it cannot happen inline in a
-		 * synchronous frame handler. It runs as a gate IN FRONT of the completion instead: the body below
-		 * is untouched and still synchronous, and it re-checks staleness on entry because the job can be
-		 * failed by the reaper while the probe is decoding.
-		 *
-		 * Only a POSITIVE silence measurement refuses. A probe that throws, times out, or finds no ffmpeg
-		 * is unmeasurable, and unmeasurable publishes — see `verifyInstrumental` on the deps.
-		 */
+		// Verifying spawns ffmpeg and decodes the whole file, so it can't run inline in this synchronous
+		// handler — it gates completion asynchronously instead, and re-checks staleness on entry below
+		// since the reaper could fail this job while the probe is still decoding.
 		const reported = msg.artifacts?.stems?.instrumental;
 		if (this.#d.verifyInstrumental && publishesInstrumental(job.jobType) && reported) {
 			void this.#d.verifyInstrumental(reported).then(
@@ -332,15 +272,9 @@ export class WorkerHub {
 		this.#completeVerified(msg);
 	}
 
-	/**
-	 * A worker reported an instrumental that MEASURES as digital silence. Refuse it.
-	 *
-	 * Terminal and non-retryable on purpose: re-running the same separator over the same source produces
-	 * the same silence, so a requeue would burn every remaining attempt to arrive back here. The song
-	 * settles back to un-processed, which is the honest state — it is not singable and nothing on disk
-	 * makes it so — and `reportTerminalFailure` is what tells the room, settles the gate and reclaims the
-	 * scratch, exactly as a worker-reported failure would.
-	 */
+	/** Refuses a completion whose reported instrumental MEASURES as digital silence. Terminal and
+	 *  non-retryable: re-running the same separator over the same source reproduces the same silence, so
+	 *  a requeue would just burn every remaining attempt to arrive back here. */
 	#refuseSilentInstrumental(msg: Extract<WorkerMessage, { type: 'job:complete' }>, ref: string): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
@@ -377,86 +311,54 @@ export class WorkerHub {
 		});
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#processSettings();
-		// Flip the media to ready (instrumentalRef→what the worker wrote, stemStatus→
-		// ready) so rotation's isEntryReady returns true and the held entry becomes playable.
-		// Separation jobs report WHICH engine+model produced the artifact, so an upgrade can be refused
-		// when it would not actually improve on what is published.
+		// The engine+model the separation actually used, so an upgrade can be refused when it wouldn't
+		// improve on what's published (markMediaReady). Only separation publishes an instrumental — a
+		// `fetch` completion has nothing singable, and calling markMediaReady for one would derive a key
+		// for a file that doesn't exist (see dispatch.ts publishesInstrumental).
 		const separator = separatorFor(job.jobType, settings);
-		// ONLY separation publishes an instrumental. A `fetch` has produced nothing singable, and
-		// markMediaReady derives the key when the worker reports none — so calling it here marked the
-		// media ready with a key for a file that does not exist.
 		if (publishesInstrumental(job.jobType)) {
-			// markMediaReady REFUSES (returns false) when this is a stems-upgrade whose separator does
-			// not outrank the published one. On a refusal NOTHING about the song should change — but the
-			// two setters below were called unconditionally, and setMediaSongProfile normalizes an absent
-			// profile to EMPTY_SONG_PROFILE, so a refused upgrade WIPED the detected key + vocal range off
-			// a song that already had them (and could replace a good vocals ref with a worse one). Guard
-			// both on the accept: a refused upgrade is a no-op, exactly as its name promises.
+			// markMediaReady REFUSES (false) a stems-upgrade whose separator doesn't outrank the published
+			// one, and a refusal must change NOTHING about the song — so the setters below are guarded on
+			// `accepted` rather than called unconditionally (setMediaSongProfile in particular normalizes
+			// an absent profile to EMPTY_SONG_PROFILE, which would wipe a song's existing key/vocal range).
 			const accepted = markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental, separator);
 			if (accepted) {
-				// The same separation also isolated the vocals — the guiding track. This artifact was
-				// arriving on the wire and being dropped, which is why a processed song had no guide even
-				// though the file was sitting on disk next to the instrumental. Additive and independent:
-				// a worker that could not encode vocals, or measured them as silence, reports none and the
-				// song simply offers no guide.
+				// The same separation isolates vocals (the guiding track) — additive and independent: a
+				// worker that can't encode vocals, or measures them as silence, reports none.
 				setMediaVocals(job.mediaId, msg.artifacts?.stems?.vocals, this.#d.mediaById);
-				// The SAME separation also folded both stems into one 4-channel file — the guide mix, a
-				// THIRD member of `stems` because it is a file (unlike songProfile below).
-				// When present the TV plays that one file and splits the channels, so the guiding track
-				// shares the instrumental's playhead and cannot drift; absent leaves the room on the
-				// two-element path. Read through the DECLARED wire field, the lesson the songProfile line
-				// below records.
-				//
-				// An absent key CLEARS the ref rather than preserving it, because the mix is a DERIVATIVE of
-				// the two stems this frame just replaced — see `setMediaGuideMix`. When it clears, the file
-				// on disk is now built from superseded stems, so delete it: leaving it would let the next
-				// boot's backfill ADOPT it (adoption probes for four channels, which a stale-but-valid mix
-				// still has) and re-record a ref to the worse separation.
+				// The guide mix folds both stems into one 4-channel file, read through its DECLARED wire
+				// field rather than assumed structurally (as is `songProfile` below). Absent CLEARS the ref
+				// rather than preserving it, since the mix is a DERIVATIVE of the stems this frame just
+				// replaced; clearing also deletes the file, or the next boot's backfill would re-adopt the
+				// stale-but-structurally-valid mix and pin the room to the superseded separation.
 				if (!setMediaGuideMix(job.mediaId, msg.artifacts?.stems?.guideMix, this.#d.mediaById)) {
 					void this.#d.discardGuideMix?.(job.mediaId);
 				}
-				// The SAME separation also analysed the two stems for key + range and reported it as a third
-				// artifact, a SIBLING of `stems` rather than a member of it (a profile is not a file). Persisted
-				// here, at the boundary, because its PRESENCE completes the stems process gate (gates.ts) — so
-				// unlike the vocals ref this is written even when the worker found nothing, and
-				// setMediaSongProfile normalizes the untrusted frame to a valid profile.
-				//
-				// Read through the DECLARED wire field, not structurally. This line previously reached into
-				// `artifacts.stems.songProfile` while the worker published `artifacts.songProfile`, so the
-				// value was always undefined — and with the gate requiring it, every separated song stalled at
-				// "Separating vocals" permanently. Unit tests on both sides passed throughout, because each
-				// mocked its own shape.
+				// songProfile is a SIBLING of `stems`, not a member (not a file), and — unlike the vocals ref
+				// — is written even when the worker found nothing, because its PRESENCE alone completes the
+				// stems process gate (gates.ts); setMediaSongProfile normalizes the untrusted frame.
 				setMediaSongProfile(job.mediaId, msg.artifacts?.songProfile, this.#d.mediaById);
 			}
 		}
-		// A fetch may have identified the song. Applied under a never-regress rule so a later `medium`
-		// cannot downgrade an existing `high` citation. Declined annotation leaves the normalizer's
-		// values untouched, which is the honest outcome rather than a guess written as fact.
+		// Never-regress: a later `medium` annotation cannot downgrade an existing `high` citation: a
+		// decline leaves the normalizer's values untouched rather than overwriting them with a guess.
 		applyAnnotation(job.mediaId, this.#d.mediaById, msg.artifacts?.annotation);
-		// Attach word-timed lyrics if the job carried an align artifact (the TV overlay). Additive:
-		// a stems-only complete leaves lyrics absent; an align complete populates lyricsRef.
 		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById, msg.artifacts?.lyrics?.candidates);
-		// The lyrics GATE is satisfied by align having RUN, not by it having found words: a genuine
-		// instrumental completes with no artifact and is still a finished song. Set after setMediaLyrics
-		// so the artifact (when there is one) is already attached.
+		// The lyrics GATE is satisfied by align having RUN, not by it having found words — a genuine
+		// instrumental with no lyrics artifact is still a finished song. Set after setMediaLyrics so the
+		// artifact, when there is one, is already attached.
 		if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
-		// Persist the processed media NOW (stems key + lyrics) so a restart finds the separated
-		// song in the library instead of re-processing it.
 		this.#d.persistMedia?.(job.mediaId);
-		// The worker's slot is freed by the machine's slot-release hook off the COMPLETE event.
-		// Job scratch is transient by contract — the intermediate WAVs in work/<jobId> are large
-		// (a decoded source plus both separated stems) and nothing reads them after this point. Leaving
-		// them is how 432MB accumulated under the old layout.
+		// Scratch is transient by contract: work/<jobId>'s intermediate WAVs are large and nothing reads
+		// them after this point.
 		cleanJobWork(msg.jobId);
-		// Enqueue whatever this job unblocks (stems → align + score, and optionally a quality upgrade),
-		// AFTER cleanJobWork so the follow-up gets its own scratch dir. Dedup on (mediaId, jobType) means
-		// a re-processed song cannot stack duplicate align jobs; it inherits the completed job's priority so
-		// it stays as urgent as the song that needed it.
+		// AFTER cleanJobWork so the follow-up gets its own scratch dir; dedup on (mediaId, jobType) means a
+		// re-processed song can't stack duplicate align jobs, and it inherits the completed job's priority.
 		for (const next of followUps(job.jobType, settings)) {
-			// A chained step continues THIS process so the song's end-to-end duration spans the whole run;
-			// `stems-upgrade` deliberately starts its own (see inheritsProcess).
-			// Inherit the requester too: a follow-up of the SAME process keeps its attribution; a new-process
-			// step (stems-upgrade) is background work and stays unattributed, imposing no per-singer cap.
+			// `inheritsProcess` decides both the process id AND the singer attribution together: a chained
+			// step (same process) keeps both (the cap itself only ever counts the root fetch/stems job,
+			// see JobRepository.liveProcessMediaForSinger); a new-process step (`stems-upgrade`) gets
+			// neither, staying unattributed background work.
 			this.#d.jobs.enqueue(
 				job.mediaId,
 				next,
@@ -465,13 +367,11 @@ export class WorkerHub {
 				inheritsProcess(next) ? job.processingId : undefined,
 				inheritsProcess(next) ? (job.singerId ?? undefined) : undefined
 			);
-			// Name the step the song is now waiting on, so the phone's processing line can say "Timing
-			// lyrics" instead of leaving a finished separation looking idle.
 			if (next === 'align') markLyricsQueued(job.mediaId, this.#d.mediaById);
 		}
 		this.#emitStatus(updated);
-		this.#d.onMediaReady?.(job.mediaId); // core reconciles playback (start if idle / preload)
-		this.dispatch(); // picks up the follow-up too
+		this.#d.onMediaReady?.(job.mediaId);
+		this.dispatch();
 	}
 
 	/** running → requeue (retryable, attempts left) or failed (terminal). Frees the slot either way. */
@@ -481,32 +381,20 @@ export class WorkerHub {
 		this.#unservableSince.delete(msg.jobId); // terminal or requeue — prune stale unservable tracking
 		const attempts = job.attempts + 1;
 		if (msg.retryable && !attemptsExhausted(attempts, job.maxAttempts)) {
-			// Both branches release the slot EXPLICITLY here, at the one call site that is provably a
-			// worker report: the `job.workerId === msg.workerId` guard above means the worker that owns
-			// the slot just sent this frame and is demonstrably alive, so its slot IS free now and the
-			// immediate redispatch needs it back. The machine's slot-release hook deliberately does NOT
-			// fire for FAIL (or for this requeue's LEASE_EXPIRED): the reaper's dead-worker fail/requeue
-			// share those events and must not double-free a slot the registry reclaims on the next
-			// heartbeat. This RETRYABLE requeue rides `LEASE_EXPIRED`; the release stays at
-			// the call site.
+			// Released EXPLICITLY here, not via the machine's slot-release hook (which never fires for
+			// FAIL or this requeue's LEASE_EXPIRED — the reaper's dead-worker paths share those events and
+			// must not double-free a slot the registry reclaims on its own). The `workerId === msg.workerId`
+			// guard above proves the worker reporting this IS the live owner, so its slot is free now.
 			this.#d.registry.releaseSlot(msg.workerId);
 			this.#d.jobs.requeue(msg.jobId, attempts, this.#d.now());
 			this.dispatch();
 		} else {
-			// Terminal worker-reported failure: free the slot explicitly, for the same reason as the
-			// retryable branch — FAIL is not exclusively worker-reported (the reaper and unservable-TTL
-			// paths also call fail()), so the machine no longer releases off the FAIL event. The
-			// `workerId === msg.workerId` guard proves this failure IS the live owner's own report.
-			this.#d.registry.releaseSlot(msg.workerId);
+			this.#d.registry.releaseSlot(msg.workerId); // same explicit release, same reason as above
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
-			// A permanently failed process must not hold the song hostage. Now that singing waits for the
-			// stems/lyrics gates, leaving one unsettled means a single broken step — a worker OOM, a
-			// model that will not load — makes the song unsingable forever, with no way out but a manual
-			// DB edit. The terminal-failure epilogue (settle the right gate, tell the room, log one line,
-			// reclaim scratch) is the SAME on all three fail paths (this one, the unservable-TTL branch,
-			// and the reaper hook in app.ts), so it lives in ONE place — reportTerminalFailure (issue
-			// an earlier change). settleGatesForFailedJob is step 1 of it; a fourth fail path cannot reopen the
-			// hole because there is no longer a fourth copy to drift.
+			// Since singing waits on the stems/lyrics gates, a permanently failed process that leaves its
+			// gate unsettled makes the song unsingable forever (no way out but a manual DB edit). This same
+			// epilogue runs on all three fail paths (this one, the unservable-TTL branch below, and the
+			// reaper hook in app.ts) from ONE place, so a fourth fail path can't reopen that hole.
 			reportTerminalFailure(updated, 'worker', {
 				broadcast: (e) => this.#d.broadcast(e),
 				mediaById: this.#d.mediaById,
@@ -526,22 +414,16 @@ export class WorkerHub {
 		const workers = this.#d.registry.list();
 		const now = this.#d.now();
 
-		// A job's required capability is engine-derived (a roformer process needs stems:roformer),
-		// so route by the SETTINGS-resolved capability, not the bare job type. Uses the room-capped
-		// settings so a lowered process quality routes to the matching (lower) engine's workers.
+		// Route by the SETTINGS-resolved capability (engine-derived, e.g. stems:roformer), not the bare
+		// job type, using the room-capped settings so a lowered process quality routes to a matching worker.
 		const settings = this.#processSettings();
 		const capabilityFor = (j: { jobType: JobType }) => requiredCapability(j.jobType, settings);
 
-		// Separate "waiting for a free slot" from "no connected worker can EVER run this". Both leave
-		// the job queued, and conflating them is how a song sits at 0% forever looking like a hung
-		// worker: the real cause is that nothing in the fleet advertises the capability, which no
-		// amount of waiting fixes. Reported once per job so the log names the missing capability
-		// instead of the operator having to infer it.
+		// Separates "waiting for a free slot" from "no connected worker can EVER run this" — conflating
+		// them is how a song sits at 0% forever looking like a hung worker instead of a missing
+		// capability. Reported once per job, then again only once the TTL actually fires.
 		for (const job of queued) {
 			if (hasCapableWorker(job, workers, capabilityFor)) continue;
-			// First time we've seen this job unservable: stamp when, warn once. On a later pass, if it has
-			// been continuously unservable past the TTL, move it to terminal `failed` so #emitStatus
-			// broadcasts `failed` and the TV/phone can stop waiting on a song that can never process.
 			const since = this.#unservableSince.get(job.id);
 			if (since !== undefined) {
 				if (now - since >= UNSERVABLE_TTL_MS) {
@@ -551,18 +433,17 @@ export class WorkerHub {
 						`no connected worker advertised capability '${cap}' within ${Math.round(UNSERVABLE_TTL_MS / 1000)}s`,
 						now
 					);
-					this.#unservableSince.delete(job.id); // terminal now — prune so the id cannot leak
-					// Same terminal-failure epilogue as #onFailed and the reaper hook: settle the gate (else an
-					// unservable align/fetch/stems leaves its gate mid-flight forever so readyToSing never
-					// flips), tell the room, log one uniform line (the capability rides in the job's
-					// `reason`), and reclaim scratch — which this branch used to OMIT.
+					this.#unservableSince.delete(job.id);
+					// Same terminal-failure epilogue as #onFailed and the reaper hook: settles the gate (else
+					// this job's gate stays mid-flight forever and readyToSing never flips), tells the room,
+					// and reclaims scratch.
 					reportTerminalFailure(updated, 'unservable', {
 						broadcast: (e) => this.#d.broadcast(e),
 						mediaById: this.#d.mediaById,
 						persist: (mediaId) => this.#d.persistMedia?.(mediaId)
 					});
 				}
-				continue; // already warned this stall; nothing else to do until the TTL fires
+				continue;
 			}
 			this.#unservableSince.set(job.id, now);
 			const cap = capabilityFor(job);
@@ -571,10 +452,9 @@ export class WorkerHub {
 					`advertises it — it will stay queued until one does or ${Math.round(UNSERVABLE_TTL_MS / 1000)}s elapse. ` +
 					`Connected: ${workers.length === 0 ? 'none' : workers.map((w) => `${w.workerId}[${w.capabilities.join(',')}]`).join(' ')}`
 			);
-			// Only tell the ROOM when the stalled job is one that blocks singing. An `align` follow-up
-			// on an already-published song is genuinely unservable, but the song is playable and
-			// broadcasting a 'queued' status for it would regress a ready song to processing on every
-			// phone — a worse bug than the one being reported. Missing lyrics is not missing audio.
+			// Only tell the ROOM when the stall blocks singing: an `align` follow-up on an already-playable
+			// song is unservable too, but broadcasting 'queued' for it would regress a ready song back to
+			// processing on every phone — missing lyrics is not missing audio.
 			const media = this.#d.mediaById.get(job.mediaId);
 			if (media?.instrumentalRef) continue;
 			this.#d.broadcast({
@@ -592,9 +472,8 @@ export class WorkerHub {
 			if (!pending) continue; // vanished between planning and dispatch
 			const media = this.#d.mediaById.get(pending.mediaId);
 			const params = assignParams(pending.jobType, media, settings);
-			// Record WHAT WAS DISPATCHED onto the attempt, alongside the song's length so the cost can be
-			// reported as a rate rather than raw seconds. These are the request, not yet the truth: a
-			// worker that reports its own resolved model overwrites them (AttemptLedger.reportFacts).
+			// Records what was DISPATCHED (the request), not yet the truth — a worker reporting its own
+			// resolved model overwrites these via AttemptLedger.reportFacts.
 			const job = this.#d.jobs.assign(jobId, workerId, ackDeadline(now, this.#config), now, {
 				engine: params.engine ?? null,
 				model: params.model ?? null,
@@ -605,11 +484,8 @@ export class WorkerHub {
 			this.#d.registry.claimSlot(workerId);
 			this.#d.toWorker(workerId, {
 				type: 'job:assign',
-				jobId: job.id,
-				// The process this job belongs to, so the worker can tag its own logs and notes with the
-				// same trace id the operator sees on /metrics/<mediaId>. jobId is the span id;
-				// processingId is the trace id across a chained fetch->stems->align run.
-				processingId: job.processingId,
+				jobId: job.id, // the span id
+				processingId: job.processingId, // the trace id across a chained fetch→stems→align run
 				mediaId: job.mediaId,
 				jobType: job.jobType,
 				sourceUri: media ? sourceUriFor(media, this.#d.getSettings?.()?.global.defaultFetcher) : '',
@@ -618,20 +494,11 @@ export class WorkerHub {
 		}
 	}
 
-	/**
-	 * Broadcast where the SONG is, for a job that just changed state.
-	 *
-	 * `status` is deliberately not the job's own status: a process is three jobs walking one five-stop
-	 * line the phone renders, and forwarding each job's private view of itself is what made the strip
-	 * jump backwards twice per process. media-status.ts owns that translation and carries the full account.
-	 *
-	 * A terminal completion passes through `completedStatusFor`, which asks the MEDIA's process gates
-	 * whether the song is finished — the only thing entitled to say 'ready'.
-	 */
+	/** Broadcasts where the SONG is for a job that just changed state — never the job's own status; see
+	 *  media-status.ts, which owns that translation. A terminal completion passes through
+	 *  `completedStatusFor`, which asks the MEDIA's own gates whether the song is finished. */
 	#emitStatus(job: Job, stage?: MediaStatus): void {
 		const media = this.#d.mediaById.get(job.mediaId);
-		// A background upgrade on an already-singable song says nothing to the room; broadcasting would
-		// flip every ready row back to "Making karaoke" for the length of the re-separation.
 		if (!shouldBroadcastProcess(job, media)) return;
 		this.#d.broadcast({
 			type: 'media:status',
@@ -642,5 +509,3 @@ export class WorkerHub {
 		});
 	}
 }
-
-/** The URI a worker uses to pull the source (youtube → watch URL; local → file key). */

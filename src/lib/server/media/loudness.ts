@@ -1,17 +1,7 @@
-// Loudness probing — "does this audio file actually contain audio?"
-//
-// WHY THIS EXISTS: separation can succeed and still write digital silence. Two of the songs in the
-// live library are exactly that — instrumental AND vocals at the 16-bit floor, 44-124KB against
-// 14-28MB for a healthy process. Every readiness check in the system verified that a ref EXISTED, never
-// that the file behind it carried sound, so those songs sat in the Ready list and would have played
-// four minutes of nothing.
-//
-// A guiding track makes that failure worse, not better: a silent vocals stem is indistinguishable
-// from a working one until the singer turns the control up and nothing happens. So the ref is only
-// set for a stem that measurably has content.
-//
-// Split pure/IO like the rest of media/: the parser and the verdict are pure and unit-tested, and
-// only the spawn wrapper touches ffmpeg.
+// Loudness probing: "does this audio file actually contain audio?" Separation can succeed and still
+// write digital silence, and readiness otherwise only checks that a ref EXISTS, not that it carries
+// sound — a silent stem is indistinguishable from a working one until the singer turns the control up
+// and nothing happens. A ref is therefore only set for a stem that measurably has content.
 
 import { runCapturing } from './spawn-capture';
 
@@ -21,18 +11,12 @@ export interface LoudnessReading {
 	maxDb: number;
 }
 
-/**
- * Peak at or below this is digital silence. 16-bit silence measures ≈ -91 dBFS, and no real vocal
- * stem peaks anywhere near it — a quiet one still hits -30 or so. -90 leaves headroom for a
- * dithered "silent" file without ever catching genuine audio.
- */
+// Peak at or below this is digital silence: 16-bit silence measures ≈ -91 dBFS while even a quiet
+// vocal stem hits -30 or so, so -90 leaves headroom without ever catching genuine audio.
 export const SILENCE_FLOOR_DB = -90;
 
-/**
- * PURE: pull mean/max volume out of ffmpeg's volumedetect output. Returns null when the lines are
- * absent (wrong filter, ffmpeg error, truncated output) — null means "could not measure", which is
- * deliberately NOT the same as "measured silence".
- */
+/** PURE: pull mean/max volume out of ffmpeg's volumedetect output. Null means "could not measure" —
+ *  deliberately NOT the same as "measured silence". */
 export function parseVolumeDetect(stderr: string): LoudnessReading | null {
 	const mean = /mean_volume:\s*(-?\d+(?:\.\d+)?) dB/.exec(stderr);
 	const max = /max_volume:\s*(-?\d+(?:\.\d+)?) dB/.exec(stderr);
@@ -44,12 +28,9 @@ export function parseVolumeDetect(stderr: string): LoudnessReading | null {
 }
 
 /**
- * PURE: is this reading digital silence?
- *
- * An UNMEASURABLE file (null) is NOT silence. That distinction is the whole safety property here: if
- * ffmpeg is missing or refuses the file, refusing every guiding track in the library would be a
- * self-inflicted outage, so an unknown reading is treated as audible and we trust whatever produced
- * the stem. We only ever act on a positive measurement of silence.
+ * PURE: is this reading digital silence? An UNMEASURABLE file (null) is NOT silence — treating
+ * "unknown" as silent would refuse every guiding track the moment ffmpeg is missing or errors, a
+ * self-inflicted outage. Only a positive measurement of silence acts.
  */
 export function isDigitalSilence(reading: LoudnessReading | null): boolean {
 	if (!reading) return false;
@@ -58,23 +39,17 @@ export function isDigitalSilence(reading: LoudnessReading | null): boolean {
 
 export type LoudnessProbe = (absPath: string) => Promise<LoudnessReading | null>;
 
-// A loudness probe decodes the whole file, so it is not instant — but a healthy probe finishes in
-// a few seconds even on a long track. 60s is generous headroom that still bounds a hung ffmpeg.
-const PROBE_TIMEOUT_MS = 60_000;
+const PROBE_TIMEOUT_MS = 60_000; // decodes the whole file; generous headroom that still bounds a hang
 
 /**
- * ffmpeg-backed probe. Decodes to null output purely to collect volumedetect's summary, so it reads
- * the whole file but writes nothing.
- *
- * Returns null rather than throwing when ffmpeg is absent or errors — see `isDigitalSilence` for why
- * "could not measure" must stay distinguishable from "silent".
+ * ffmpeg-backed probe: decodes to null output purely to collect volumedetect's summary. Returns null
+ * rather than throwing when ffmpeg is absent or errors — see `isDigitalSilence` for why that must
+ * stay distinguishable from "silent".
  */
 export function ffmpegLoudnessProbe(ffmpegBin = process.env.FFMPEG_BIN ?? 'ffmpeg'): LoudnessProbe {
 	return async (absPath) => {
 		try {
-			// volumedetect prints its summary to stderr at the END of the decode, so the text is only
-			// complete once the process has exited. Killed after PROBE_TIMEOUT_MS: a hung ffmpeg on the
-			// detached boot vocals-backfill pass would otherwise stall every later maintenance pass forever.
+			// volumedetect's summary is only complete once the process exits.
 			const r = await runCapturing(
 				[ffmpegBin, '-hide_banner', '-nostats', '-i', absPath, '-af', 'volumedetect', '-f', 'null', '-'],
 				PROBE_TIMEOUT_MS

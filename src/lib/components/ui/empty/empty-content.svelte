@@ -1,18 +1,8 @@
 <!--
-  ── ENCORE DEVIATIONS ────────────────────────────────────────────────────────────────────────
-  1. `max-w-sm` → `max-w-[24rem]`, and this was a LIVE RENDERING BUG rather than a tidy-up.
-     Tailwind resolves `max-w-<key>` against the `--container-*` namespace, which this app does not
-     bridge, so `--container-sm` does not exist in the build. It fell through to the SPACING namespace,
-     which this app DOES bridge with t-shirt keys, and emitted `max-width: var(--space-sm)` — EIGHT
-     PIXELS. Every empty state in the app had its content column capped at 8px.
-
-     It passed eslint, svelte-check and the whole suite, because nothing in a source scan can see which
-     namespace a named key resolved through. `vendored-dimension-keys.test.ts` was written after the
-     same defect was found in `alert-dialog` (`max-w-xs` → 6px) and it caught this one on its first run.
-
-     `24rem` is the value Tailwind's own `--container-sm` would have supplied, so this restores the
-     registry's intent rather than inventing a width. An arbitrary value resolves nothing through a
-     namespace and so cannot land in the wrong one.
+  The width MUST stay an arbitrary value. Tailwind resolves a named `max-w-<key>` against the container
+  namespace, which this app does not bridge, so it falls through to the SPACING namespace it does bridge
+  with t-shirt keys — `max-w-sm` emits `max-width: var(--space-sm)`, eight pixels, and nothing but a
+  screenshot sees it. `vendored-dimension-keys.test.ts` is what catches the named form.
 -->
 <script lang="ts">
 	import { cn, type WithElementRef } from '$lib/utils.js';

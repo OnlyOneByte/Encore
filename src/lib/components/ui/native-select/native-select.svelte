@@ -1,21 +1,8 @@
 <!--
-  ── ENCORE DEVIATIONS ─────────────────────────────────────────────────────────────────────────────
-  The registry's appearance is REPLACED by Encore's field look, not layered over it. Every reason is a
-  measured constraint this app already settled, and each names the test that holds it:
-
-  1. `h-9` (36px) is under this app's 44px `--tap` floor. That floor was established for every
-     settings field after a native select measured 41px and a text box 35px; `gate:measured` verifies
-     it on a real render because a select's box is browser-owned. `min-height: var(--tap)` reads the
-     token rather than restating 44px, which `touch-targets.test.ts` requires.
-  2. `text-base md:text-sm` drops to 14.4px on a phone. iOS Safari auto-zooms on focusing any control
-     under 16px and never zooms back out, leaving the operator stuck at 1.3x for the session. So the
-     size is `var(--ph-text-base)`, pinned at 16px.
-  3. The colours are Encore's surfaces — `var(--card2)` on `var(--line)` with `var(--ink)` — not
-     `bg-transparent border-input`. A field must read against the card it sits on, and the semantic
-     bridge deliberately does NOT alias the app's surface tokens onto shadcn's.
-  4. Appearance lives in scoped CSS rather than utilities because `app.css` sets `source(none)` with a
-     single `@source` over this directory: a utility is minted only from here, and scoped CSS needs no
-     minting at all. Same mechanism as the Button's press states.
+  The registry's appearance is REPLACED by Encore's `.encore-field` look, in scoped CSS rather than
+  utilities. The two hard floors are shared with input.svelte: min-height var(--tap), and a 16px
+  font-size, because iOS Safari auto-zooms on focusing any control under 16px and never zooms back.
+  See docs/FRONTEND.md#shared-components.
 -->
 <script lang="ts">
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
@@ -63,26 +50,11 @@
 		width: 100%;
 		box-sizing: border-box;
 		appearance: none;
-		/*
-		 * THE RIGHT PADDING CLEARS THE CHEVRON, which `--space-xl` (14px) did not.
-		 *
-		 * The mark above is positioned `right-2.5` (10px) at `size-4` (16px), so it occupies the band from
-		 * 10px to 26px in from the right edge — while the padding reserved 14px. Text therefore ran UNDER the
-		 * glyph for its last 12px, which on the two-up settings rows is not theoretical: measured at 390px,
-		 * "Along bottom edge" needs 139px of a 106px text box and was drawn straight through the chevron,
-		 * and "Word by word" cleared it by 5px. It read as a rendering fault rather than as a long label.
-		 *
-		 * Composed from the chevron's own geometry rather than set to a literal, so moving the mark moves the
-		 * padding with it: its inset, its size, and one `--space-xs` of breathing room.
-		 */
+		/* The right padding is composed from the chevron's own inset, size and a gap, so moving the mark
+		   moves the padding with it. A literal smaller than that band draws the label THROUGH the glyph. */
 		padding: 9px calc(var(--space-md) + 1rem + var(--space-xs)) 9px var(--space-md);
-		/*
-		 * And when the label is STILL too long for its column, truncate it with a mark instead of cutting a
-		 * glyph in half. A two-up row at 390px gives 106px of text box, which the longest option in two of
-		 * these lists exceeds outright — no padding can fix that, so the honest fallback is an ellipsis.
-		 * Chrome and Safari honour this on a `<select>`; Firefox clips, which is the behaviour it had
-		 * everywhere before.
-		 */
+		/* A two-up settings row at 390px gives ~106px of text box, which the longest option in two of these
+		   lists exceeds outright, so the ellipsis is the fallback no padding can replace. */
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		overflow: hidden;

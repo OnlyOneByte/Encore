@@ -60,9 +60,6 @@ class WhisperxForcedAligner:
             out = whisperx.align(segments, model, meta, audio, self._device, return_char_alignments=False)
         out.setdefault("language", language)
         return cast(dict[str, Any], out)
-
-
-# ── the aligner cache ──────────────────────────────────────────────────────────────
 #
 # Same reasoning as the transcriber cache in asr.py: keyed by device at module level so concurrent jobs
 # share one loaded wav2vec2 model instead of one evicting the other's, and so no job pays to re-read it.

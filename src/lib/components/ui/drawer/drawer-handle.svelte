@@ -1,18 +1,10 @@
 <script lang="ts">
 	/*
-	 * THE HANDLE SHADCN'S DRAWER LEAVES OUT — and leaving it out is a trap, not a simplification.
-	 *
-	 * `vaul-svelte` exports a real `Drawer.Handle`, which renders the element carrying
-	 * `data-vaul-handle` plus its own hit-area span. shadcn's copied `drawer-content.svelte` does not
-	 * use it: it renders a DECORATIVE div that looks like a grab handle and drags nothing. That is
-	 * harmless while a drawer is draggable from anywhere in its content, and it becomes a silent
-	 * failure the moment you set `handleOnly` on the Root — vaul then restricts dragging to the
-	 * handle, there is no element carrying the attribute, and the drawer cannot be dragged AT ALL.
-	 * Nothing warns; the gesture just stops working.
-	 *
-	 * Encore needs `handleOnly`, because the drawer's body is sliders (the guiding track) and a
-	 * drag-to-dismiss surface underneath a slider fights the thumb — which is the whole substance of
-	 * the ban on a control sharing a drag surface. So this file exists and Content uses it.
+	 * The real vaul handle, which is the element carrying `data-vaul-handle` plus its own hit-area span.
+	 * The registry's decorative div is not a substitute: with `handleOnly` on the Root and no element
+	 * carrying that attribute, vaul has nothing to restrict dragging to and the sheet cannot be dragged at
+	 * all, silently. The app needs `handleOnly` because the sheet's body holds sliders, and a
+	 * drag-to-dismiss surface under a slider fights the thumb.
 	 */
 	import { Drawer as DrawerPrimitive } from 'vaul-svelte';
 	import { cn } from '$lib/utils.js';
@@ -29,19 +21,11 @@
 
 <style>
 	/*
-	 * THE GRAB AREA IS BIGGER THAN THE BAR IT DRAWS. The visible handle is 6px tall, and a 6px drag
-	 * target is unusable with a thumb — vaul renders its own `data-vaul-handle-hitarea` span for
-	 * exactly this, but ships no dimensions for it, so without this rule the hit area is the bar.
-	 *
-	 * Sized from `--tap`, never a literal, and pulled back with negative margins so the
-	 * enlarged target does not add height to the drawer's header. `:global` because the span is
-	 * rendered by a child component, which Svelte's scope hash cannot reach.
-	 */
-	/*
-	 * THE BAR'S HEIGHT IS A TOKEN, not shadcn's `h-1.5`. It has to be, because the hit-area rule below
-	 * subtracts it from --tap, and a literal on one side of that arithmetic with a Tailwind class on the
-	 * other is two sources of truth for one number — change the class and the centring silently drifts.
-	 * `--space-xs` is 6px, which is what `h-1.5` resolved to, so the drawn handle is unchanged.
+	 * THE GRAB AREA IS BIGGER THAN THE BAR IT DRAWS: vaul renders a hit-area span for exactly this but
+	 * ships no dimensions, so without these rules the drag target is the 6px bar. The bar's height must
+	 * stay a TOKEN rather than a Tailwind class, because the hit-area rule subtracts it from --tap and a
+	 * literal on one side of that arithmetic silently drifts the centring. Global because the span is
+	 * rendered by a child component, which a scope hash cannot reach.
 	 */
 	:global([data-slot='drawer-handle']) {
 		height: var(--space-xs);
@@ -49,13 +33,9 @@
 	:global([data-slot='drawer-handle'] [data-vaul-handle-hitarea]) {
 		display: block;
 		height: var(--tap);
-		/*
-		 * Centre the tap box on the bar and take its overhang back out of the flow, so a full-tap grab
-		 * area costs the drawer's header no height. Both terms are tokens, so this stays
-		 * correct if either moves.
-		 */
+		/* The overhang comes back out of the flow, so a full-tap grab area costs the header no height. */
 		margin-block: calc((var(--tap) - var(--space-xs)) / -2);
-		/* Wider than the 100px bar, so the grab area is findable without drawing a wider handle. */
+		/* Wider than the drawn bar, so the grab area is findable without drawing a wider handle. */
 		width: 240px;
 		margin-inline: auto;
 	}

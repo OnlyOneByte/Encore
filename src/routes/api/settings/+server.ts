@@ -1,11 +1,4 @@
-// GET  /api/settings        — both scopes, as the clients render them.
-// PUT  /api/settings        — update GLOBAL (deployment separator + process policy).
-// PUT  /api/settings/room   — update THIS ROOM (pacing, downward-only quality ceiling).
-//
-// A write broadcasts `settings:changed` with the combined payload, so a client never merges two
-// events to know the effective state. A joined singer may write either scope (same bar as queueing);
-// the shared normalizers are the gate, degrading a partial or spoofed body to valid per-field values
-// rather than persisting garbage or naming an engine no worker can run.
+// GET /api/settings — both scopes, as the clients render them. PUT /api/settings updates GLOBAL (deployment separator + process policy); PUT /api/settings/room updates THIS ROOM (pacing, downward-only quality ceiling). A write broadcasts `settings:changed` with the combined payload, so a client never merges two events to know the effective state. A joined singer may write either scope (same bar as queueing); the shared normalizers are the real gate, degrading a partial or spoofed body to valid per-field values rather than persisting garbage.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
@@ -30,8 +23,7 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
 		return json({ error: 'invalid json' }, { status: 400 });
 	}
 
-	// setGlobal re-normalizes over current values, so a partial body is a valid patch and an invalid
-	// engine/model pairing falls back rather than persisting.
+	// setGlobal re-normalizes over current values, so a partial body is a valid patch and an invalid engine/model pairing falls back rather than persisting.
 	app.settings.setGlobal(body);
 	const settings = app.settings.getEffective(app.activeRoomId);
 	app.publish({ type: 'settings:changed', settings });

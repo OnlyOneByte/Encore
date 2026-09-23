@@ -14,14 +14,8 @@ export interface MinimalSocket {
 	onopen: (() => void) | null;
 	onclose: (() => void) | null;
 	onmessage: ((ev: { data: string }) => void) | null;
-	/**
-	 * OPTIONAL. A real `WebSocket` always has it (the default factory casts one straight in), and
-	 * `trySend`'s guard (`send.ts` `canSend`) reads it to skip a send on a non-OPEN socket. Kept
-	 * optional so a test double or wrapper that omits it is still valid — `canSend` treats an absent
-	 * readyState as sendable on purpose (`send.ts:30-37`), so this only lets a double EXPRESS the
-	 * state, never forces it to. Without this field the guard's readyState branch is unreachable in
-	 * every `WsClient` test.
-	 */
+	/** OPTIONAL: a real socket always has it, and `canSend` treats an absent readyState as sendable, so this
+	 * lets a test double EXPRESS a non-open state without forcing every double to. */
 	readyState?: number;
 }
 
@@ -72,12 +66,10 @@ export class WsClient {
 			livenessTimeoutMs: 10_000,
 			bindLifecycle: true,
 			backoff: [250, 500, 1000, 2000, 5000],
-			// Wrapped, NOT `setTimeout` bare: stored on an object and called as
-			// `this.#opt.setTimeoutFn(...)`, a bare reference gets `this === #opt`, and the browser's
-			// setTimeout throws "Illegal invocation" for any `this` that is not the window. That threw
-			// inside onopen, so in a real browser the heartbeat never armed AND capped-backoff
-			// auto-reconnect never scheduled — both silently dead, while tests passed because
-			// they inject their own fake timer functions.
+			// WRAPPED, never a bare `setTimeout`: stored on an object and called as a method, a bare reference
+			// gets the wrong `this` and the browser throws "Illegal invocation". That throw lands inside onopen,
+			// so the heartbeat never arms and auto-reconnect never schedules — and tests pass either way,
+			// because they inject their own timer functions.
 			setTimeoutFn: ((fn: () => void, ms?: number) => setTimeout(fn, ms)) as typeof setTimeout,
 			clearTimeoutFn: ((id: ReturnType<typeof setTimeout>) => clearTimeout(id)) as typeof clearTimeout,
 			onResyncNeeded: undefined,
@@ -102,23 +94,17 @@ export class WsClient {
 	}
 
 	/**
-	 * Send a client event. Returns whether it actually went out.
+	 * Send a client event. Returns whether it actually went out — every send goes through `trySend`, because
+	 * optional chaining guards an ABSENT socket and not a connecting, closing or closed one, and sending on
+	 * those throws.
 	 *
-	 * `#sock?.send(...)` was not a guard: optional chaining covers an ABSENT socket, not a CONNECTING,
-	 * CLOSING or CLOSED one, and `WebSocket.send()` throws `InvalidStateError` on all three. Every phone
-	 * command — pause, skip, ±key, guide level, and every queue op — went through this line, so a tap
-	 * during a reconnect threw instead of being dropped cleanly.
+	 * DELIBERATELY NOT A RETRY QUEUE: replaying a queued `pause` after a reconnect could act on a different
+	 * song than the one the guest was looking at, so the honest failure is to drop it and say so. The
+	 * reconnect path resyncs authoritative state, which is what corrects the phone.
 	 *
-	 * A dropped COMMAND is warned about rather than swallowed. It is user-initiated and low-rate, so the
-	 * log costs nothing, and the alternative is a tap that silently does nothing with no trace. This is
-	 * deliberately not a retry queue: replaying a queued `pause` after a reconnect could act on a
-	 * different song than the one the user was looking at, so the honest failure is to drop it and say
-	 * so. The reconnect path already resyncs authoritative state, which is what corrects the phone.
-	 *
-	 * `quiet` suppresses that warning for a caller whose drop is expected and high-rate: the TV's
-	 * ~4 Hz `tv:telemetry` stream drops SILENTLY (the next frame is 250 ms away), so warning per drop
-	 * would flood the console through any reconnect. The frame is still dropped when the socket is not
-	 * open — `quiet` changes only whether the drop is logged, never whether it is sent.
+	 * `quiet` is for a caller whose drop is expected and high-rate — the TV's telemetry stream, where the next
+	 * frame is milliseconds away and a warning per drop would flood the console through any reconnect. It
+	 * changes only whether the drop is LOGGED, never whether it is sent.
 	 */
 	send(e: ClientEvent, opts?: { quiet?: boolean }): boolean {
 		const sent = trySend(this.#sock, JSON.stringify(e));
@@ -127,12 +113,10 @@ export class WsClient {
 	}
 
 	/**
-	 * Re-verify the connection after the page was frozen or the network came back.
-	 *
-	 * A socket frozen with its page is indistinguishable from a live one — `connected` stays true and
-	 * no `close` fires until the OS gets round to it, which on mobile can be never. So a wake does not
-	 * trust `connected`: it beats immediately and lets the liveness watchdog settle the question. Bound
-	 * to visibilitychange/online/pageshow/resume, and callable directly (which is how it is tested).
+	 * Re-verify the connection after the page was frozen or the network came back. A socket frozen with its
+	 * page is INDISTINGUISHABLE from a live one — `connected` stays true and no close fires until the OS gets
+	 * round to it, which on mobile can be never — so a wake does not trust `connected`: it beats immediately
+	 * and lets the liveness watchdog settle the question.
 	 */
 	wake(): void {
 		if (this.#closedByUs) return;
@@ -146,13 +130,10 @@ export class WsClient {
 	}
 
 	#dial(): void {
-		// Detach and close any socket we are replacing BEFORE we overwrite `#sock`. A redial can be
-		// triggered while a previous socket is still live or CONNECTING (`wake()` dials on `!connected`,
-		// which is false for the whole connecting window), so without this the old socket is orphaned
-		// with its handlers still attached: it delivers frames to a `#sock` that no longer points at it,
-		// and its eventual `onclose` runs `#clearTimers()`/`#setConnected(false)`/`#scheduleReconnect()`
-		// against the CURRENT socket — killing the live socket's heartbeat and multiplying connections.
-		// Same detach-before-close defense as #presumeDead, applied to the wake/reconnect path.
+		// DISCARD BEFORE OVERWRITING `#sock`. A redial can happen while a previous socket is still live or
+		// connecting, and without this the old one is orphaned with its handlers attached: it delivers frames to
+		// a field that no longer points at it, and its eventual `onclose` runs the teardown against the CURRENT
+		// socket — killing the live heartbeat and multiplying connections.
 		this.#discard(this.#sock);
 		const sock = this.#opt.connect(this.#opt.url);
 		this.#sock = sock;
@@ -211,10 +192,7 @@ export class WsClient {
 		}, this.#opt.livenessTimeoutMs);
 	}
 
-	/**
-	 * Tear down a socket that stopped answering but never closed. Handlers are detached BEFORE the
-	 * close so the socket's own `onclose` cannot schedule a second reconnect on top of ours.
-	 */
+	/** Tear down a socket that stopped answering but never closed. */
 	#presumeDead(): void {
 		this.#discard(this.#sock);
 		this.#sock = null;
@@ -224,9 +202,9 @@ export class WsClient {
 	}
 
 	/**
-	 * Detach a socket's handlers, then close it. Handlers come off FIRST so the socket's own `onclose`
-	 * cannot fire our reconnect/timer logic on top of whatever the caller is doing next. A no-op on a
-	 * null socket. The caller owns `#sock`: this only makes the passed socket inert.
+	 * Detach a socket's handlers, THEN close it. The order is the contract: handlers off first, so the socket's
+	 * own `onclose` cannot fire this client's reconnect and timer logic on top of whatever the caller does
+	 * next. The caller owns `#sock`; this only makes the passed socket dead.
 	 */
 	#discard(sock: MinimalSocket | null): void {
 		if (!sock) return;

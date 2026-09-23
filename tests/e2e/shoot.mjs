@@ -1,15 +1,11 @@
 /*
- * SHOOT THE SURFACES THE SHADCN MIGRATION CHANGES, on a real render.
- *
- * Not a probe and not a gate: this exists to produce the before/after evidence a reviewer needs for a
- * visual change that was accepted deliberately. It boots the BUILT app with a processed song, joins in a
- * phone viewport, and shoots the four surfaces whose components this PR replaced.
+ * Shoot the four surfaces a component migration changes, on a real render — evidence for a reviewer, not a
+ * check. It boots the BUILT app with a processed song and joins in a phone viewport.
  *
  * Run it once per tree and diff the pairs:
  *   EPORT=5217 OUT=/tmp/after  bun tests/e2e/shoot.mjs
  *
- * Deliberately NOT added to any gate list. A screenshot cannot fail a build, and a capture script that
- * pretends to be a check is how a suite grows something nobody reads.
+ * Deliberately in no gate list: a screenshot cannot fail a build.
  */
 import { existsSync, mkdirSync, openSync, readdirSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
@@ -154,7 +150,7 @@ async function main() {
 		console.log(`  shot ${name}`);
 	}
 
-	// ── join, in the browser, so the queue op's actor is this session ──
+	// Join in the browser, so the queue op's actor is this session.
 	await openJoin(page, BASE);
 	await waitFor(async () => await page.evaluate(`!!document.querySelector(${JSON.stringify(SEL.nameInput)})`), {
 		timeout: 15_000,
@@ -177,7 +173,7 @@ async function main() {
 		name: 'joined home'
 	});
 
-	// ── home: search results (SongRow → Item/Badge/Progress), then the queue ──
+	// Home: search results, then the queue.
 	await page.evaluate(`(() => {
 		const i = document.querySelector(${JSON.stringify(SEL.search)});
 		if (!i) return;
@@ -199,14 +195,13 @@ async function main() {
 	await sleep(900);
 	await shot('03-home-queue');
 
-	// ── settings: the densest surface — Card, Field, NativeSelect, Slider, Checkbox, Tabs ──
+	// Settings: the densest surface — Card, Field, NativeSelect, Slider, Checkbox, Tabs.
 	for (const [tab, name] of [
 		['party', '04-settings-party'],
 		['server', '05-settings-server']
 	]) {
 		await page.goto(`${BASE}/settings?tab=${tab}`);
-		// Either tablist: `.seg` is the hand-rolled one this PR replaces, `[data-slot='tabs-list']` the
-		// Bits UI one that replaces it. The script has to run on BOTH trees to produce a pair.
+		// EITHER tablist, because this script has to run on both trees to produce a pair.
 		await waitFor(async () => await page.evaluate(`!!document.querySelector("[data-slot='tabs-list'], .seg")`), {
 			timeout: 15_000,
 			name: `settings ${tab}`
@@ -214,12 +209,12 @@ async function main() {
 		await shot(name);
 	}
 
-	// ── stats: Card + the Trend chart's day buttons ──
+	// Stats: Card + the Trend chart's day buttons.
 	await page.goto(`${BASE}/stats`);
 	await sleep(1200);
 	await shot('06-stats');
 
-	// ── metrics: Card + Table + Badge ──
+	// Metrics: Card + Table + Badge.
 	await page.goto(`${BASE}/metrics`);
 	await sleep(1200);
 	await shot('07-metrics');

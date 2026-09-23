@@ -5,10 +5,8 @@
 // through handleQueueCommand. So the wire arm had no honest caller, yet it admitted the op after only
 // checking the entry exists. One joined phone could then:
 //   (a) forge a second 'playing' entry that is never playable, never terminal, not removable on leave,
-//       and durable across restarts,
-//   (b) write an off-enum status string into the NOT NULL enum column, and
-//   (c) retire a song with a terminal status while its process keeps running (only `remove` fires
-//       onEntryRemoved).
+//       and durable across restarts, (b) write an off-enum status string into the NOT NULL enum column, and
+//   (c) retire a song with a terminal status while its process keeps running (only `remove` fires onEntryRemoved).
 // The load-bearing assertion is the seam property: the bad op is NOT applied, NOT broadcast, and yields
 // op:reject — so none of (a)/(b)/(c) is reachable from the wire.
 import { test, expect } from 'bun:test';

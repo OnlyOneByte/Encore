@@ -3,14 +3,14 @@ import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 import { reelOffset } from '$lib/tv/reel-offset';
 
-// The invariant this pins: the LINE BEING SUNG must stay visible on the reel across every
-// legal combination of Text size, Lines-sung and Lines-ahead — never scrolled off the top the way the
-// unclamped bias did once the reel's max-height cap started binding.
+// The LINE BEING SUNG must stay visible across every legal combination of Text size, Lines-sung and
+// Lines-ahead — never scrolled off the top, as the unclamped bias did once the reel's max-height cap
+// started binding.
 //
-// The measured predicate is deliberately computed a DIFFERENT way from reelOffset()'s own arithmetic:
-// reelOffset() reasons in translateY; the test converts that translateY into the current row's rect
-// WITHIN the visible band and measures how much of that rect intersects [0, band]. So a test pass means
-// "the sung row is actually on screen", not "the formula returned what the formula returns".
+// The predicate is deliberately computed a DIFFERENT way from reelOffset()'s own arithmetic: reelOffset()
+// reasons in translateY, and this converts that into the current row's rect within the visible band and
+// measures the intersection. So a pass means "the sung row is on screen", not "the formula returned what
+// the formula returns".
 
 /** Fraction of the current row that lies inside the visible band [0, band], given the reel offset. */
 function visibleFraction(rowTop: number, rowHeight: number, band: number, offset: number): number {
@@ -20,25 +20,22 @@ function visibleFraction(rowTop: number, rowHeight: number, band: number, offset
 	return visible / rowHeight;
 }
 
-// The OLD, buggy placement — biased offset with NO clamp — reproduced verbatim so the before-row is a
-// measurement of the shipped behaviour, not a paraphrase of it.
+// The pre-clamp placement, reproduced verbatim so the before-row measures the shipped behaviour.
 function oldOffsetUnclamped(rowTop: number, rowHeight: number, band: number, before: number, after: number): number {
 	const bias = ((before - after) / 2) * rowHeight;
 	return -(rowTop + rowHeight / 2 - band / 2 - bias);
 }
 
-// A reel geometry sized like /tv's: N rows stacked, current row at index `before`, each `rowHeight`
-// tall, then the whole thing clipped to `band` (the max-height cap). Matches how measureReel reads the
-// live DOM: rowTop = before * rowHeight (rows above the current one), band = the clipped clientHeight.
+// A reel geometry sized like /tv's, matching how measureReel reads the live DOM: rowTop = before * rowHeight,
+// band = the clipped clientHeight.
 function geom(before: number, after: number, rowHeight: number, band: number) {
 	const rowTop = before * rowHeight;
 	return { rowTop, rowHeight, band, linesBefore: before, linesAfter: after };
 }
 
-// Text sizes as MULTIPLES of the base 1.9em row: the numbers from the issue's own measurement table
-// (100/150/200/250/300% of a ~91px base row at 1280x800). rowHeight grows with scale; band is fixed by
-// the panel, so the cap binds harder as scale rises — exactly the axis that breaks.
-const BAND = 508; // ~508.2px band from the issue (1280x800, innerHeight 713)
+// Text sizes as MULTIPLES of the base 1.9em row (100–300% of a ~91px base row at 1280x800). rowHeight grows with scale
+// while band is fixed by the panel, so the cap binds harder as scale rises — the axis that breaks.
+const BAND = 508; // the measured band at 1280x800, innerHeight 713
 const ROW_AT_SCALE: Record<number, number> = { 100: 91, 150: 137, 200: 182, 250: 228, 300: 273 };
 
 it('reelOffset keeps the current row fully visible at the default 2/2 split at every Text size (control) — the sung row stays on the reel', () => {
@@ -51,8 +48,8 @@ it('reelOffset keeps the current row fully visible at the default 2/2 split at e
 });
 
 it('reelOffset keeps the current row ON SCREEN for the failing 1-sung/4-ahead split at every Text size — the sung row stays on the reel', () => {
-	// The issue reports the sung row reaching 0 (fully gone) at 300% with the OLD formula. The clamp
-	// must keep a positive visible fraction at every size — the sung line is never off the reel.
+	// The unclamped formula takes the sung row to 0 (fully gone) at 300%. The clamp must keep a positive
+	// visible fraction at every size.
 	for (const scale of Object.keys(ROW_AT_SCALE).map(Number)) {
 		const rh = ROW_AT_SCALE[scale];
 		const g = geom(1, 4, rh, BAND);
@@ -79,8 +76,8 @@ it('reelOffset holds across the whole legal rows x Text-size grid (0..3 before, 
 });
 
 it('reelOffset centres the current row when the band is shorter than one row (extreme scale, short panel) — the sung row stays on the reel', () => {
-	// Band cannot hold even one row: honouring the bias would hide the sung words at one edge, so we
-	// centre — the visible fraction is maximised at band/rowHeight and the row straddles the centre.
+	// The band cannot hold one row, so honouring the bias would hide the sung words at an edge: centring
+	// maximises the visible fraction at band/rowHeight and the row straddles the centre.
 	const rh = 273; // 300%
 	const shortBand = 200; // shorter than one row
 	const g = geom(1, 4, rh, shortBand);
@@ -92,7 +89,7 @@ it('reelOffset centres the current row when the band is shorter than one row (ex
 });
 
 it('reelOffset — the sung row stays on the reel — BEFORE-ROW: the unclamped shipped formula scrolls the 1/4 sung row off the top at 300%', () => {
-	// This is the measured failure the fix closes — proving the invariant test above actually bites.
+	// The measured failure the clamp closes, which is what proves the invariant arm above bites.
 	const rh = ROW_AT_SCALE[300];
 	const g = geom(1, 4, rh, BAND);
 	const oldOff = oldOffsetUnclamped(g.rowTop, g.rowHeight, BAND, g.linesBefore, g.linesAfter);
@@ -103,10 +100,9 @@ it('reelOffset — the sung row stays on the reel — BEFORE-ROW: the unclamped 
 });
 
 it('reelOffset honours the asymmetric bias where the band has room (A1 — bias is not silently discarded) — the sung row stays on the reel', () => {
-	// A "just centre it" implementation (bias forced to 0) would still keep the row visible and pass
-	// the visibility tests. Pin the ACTUAL placement where the clamp does NOT fire (1/4 at 100%, the
-	// band easily holds the row): the current row must sit HIGHER than centre, because more lines are
-	// wanted AFTER it. Its top within the band is `band/2 - rowHeight/2 + bias` with bias negative.
+	// A "just centre it" implementation (bias forced to 0) still keeps the row visible and passes every
+	// visibility arm, so the ACTUAL placement is pinned where the clamp does NOT fire: the current row sits
+	// HIGHER than centre, because more lines are wanted AFTER it.
 	const rh = ROW_AT_SCALE[100];
 	const g = geom(1, 4, rh, BAND); // rowTop = 91, rowHeight = 91, band 508 — clamp does not fire
 	const off = reelOffset(g);
@@ -119,9 +115,9 @@ it('reelOffset honours the asymmetric bias where the band has room (A1 — bias 
 });
 
 it('reelOffset gives the BOTTOM clamp its own guard: a before>after split at large scale (A3) — the sung row stays on the reel', () => {
-	// The full grid is the only thing exercising the bottom clamp; pin it explicitly so narrowing the
-	// grid for speed cannot silently un-guard the bottom end. before>after biases the row DOWN, and at
-	// a large scale the band clips, so without the bottom clamp the row would fall off the BOTTOM.
+	// The full grid is the only thing exercising the bottom clamp, so it is pinned explicitly: narrowing the
+	// grid for speed would otherwise un-guard the bottom end. before>after biases the row DOWN and the band
+	// clips at a large scale, so without the clamp the row falls off the BOTTOM.
 	const rh = ROW_AT_SCALE[250];
 	const g = geom(3, 0, rh, BAND); // 3 before / 0 after, 250% — bias pushes down, band clips
 	const off = reelOffset(g);
@@ -131,13 +127,10 @@ it('reelOffset gives the BOTTOM clamp its own guard: a before>after split at lar
 	expect(visibleFraction(g.rowTop, rh, BAND, off)).toBe(1);
 });
 
-// ---------------------------------------------------------------------------------------------------
-// the sung row must land in the UNMASKED window, not merely inside the band. The band includes
-// the two edge-fade ramps (LyricsOverlay masks 1.9em == one row to transparent at each edge that HAS
-// context rows). The earlier fix clamped to [0, band] and so parked the sung row congruent with a ramp, so the
-// line being sung rendered fainter than the line after it. This guard measures the row against the
-// readable region [fadeTop, band - fadeBot], computed a DIFFERENT way from reelOffset own arithmetic,
-// so a pass means the sung words are on fully-opaque pixels, not the formula returned what it returns.
+// The sung row must land in the UNMASKED window, not merely inside the band: the band includes the two
+// edge-fade ramps (one row masked to transparent at each edge that HAS context rows). A clamp to
+// [0, band] parked the sung row congruent with a ramp, so the line being sung rendered FAINTER than the
+// line after it. Measured against [fadeTop, band - fadeBot], again computed differently from reelOffset.
 
 // Fraction of the current row inside the UNMASKED window [fadeTop, band - fadeBot], given the offset.
 function unmaskedFraction(
@@ -156,11 +149,9 @@ function unmaskedFraction(
 	return visible / rowHeight;
 }
 
-// The rendered ramp depth per edge. The fade is 1.9em == ONE single-line row, so its px depth is one
-// rowHeight, ON iff that edge has context rows. Two models:
-//   base (CSS as shipped): the ramp is an uncapped 1.9em, so two ramps can invert the window.
-//   fix (CSS after this PR): the ramp is min(row-h, (band - row-h) / 2), so the window always holds one
-//     row, the same cap measureReel mirrors in px. The FIX also passes these depths to reelOffset.
+// The rendered ramp depth per edge: one rowHeight, ON iff that edge has context rows. Two models —
+// UNCAPPED, where two ramps can invert the window, and CAPPED at min(row-h, (band - row-h) / 2), where the
+// window always holds one row, which is the cap measureReel mirrors in px.
 function fadeUncapped(rowHeight: number, on: boolean): number {
 	return on ? rowHeight : 0;
 }
@@ -168,8 +159,7 @@ function fadeCapped(rowHeight: number, band: number, on: boolean): number {
 	return on ? Math.max(0, Math.min(rowHeight, (band - rowHeight) / 2)) : 0;
 }
 
-// Base reality: the clamp reasons about [0, band] with NO fade awareness (reelOffset called with no
-// fadeTop/fadeBot). Reproduced here so the before-row measures shipped behaviour, not the fixed fn.
+// The fade-unaware clamp over [0, band], reproduced so the before-row measures that behaviour.
 function baseOffsetBandClamp(rowTop: number, rowHeight: number, band: number, before: number, after: number): number {
 	const bias = ((before - after) / 2) * rowHeight;
 	let offset = -(rowTop + rowHeight / 2 - band / 2 - bias);
@@ -305,12 +295,9 @@ it('reelOffset - the sung row lands in the UNMASKED window, not inside a fade ra
 	}
 });
 
-// The clamp lives in a pure module, but the fix only takes effect if LyricsOverlay.svelte's measureReel
-// actually CONSUMES it with the measured band. Reverting that call site restores the pre-fix inline
-// arithmetic with every gate green (the pure function keeps passing its own tests while nothing on the
-// render path calls it) — this repo's built-and-unit-tested-but-unwired shape. This source-scan guard,
-// modelled on the drawPosition wiring guard in lyrics-position.test.ts (same directory, same extraction
-// shape), reds the moment measureReel stops consuming reelOffset with viewportEl.clientHeight.
+// The clamp is a pure module, so it only takes effect if measureReel CONSUMES it with the measured band.
+// Reverting that call site restores the inline arithmetic with every gate green — the pure function keeps
+// passing its own tests while nothing on the render path calls it.
 const OVERLAY = readFileSync(at('src/lib/tv/LyricsOverlay.svelte'), 'utf8');
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -326,25 +313,21 @@ it('LyricsOverlay is wired to the clamp (the fix must stay on the render path): 
 });
 
 it('LyricsOverlay is wired to the clamp (the fix must stay on the render path): measureReel assigns reelOffset from the pure function called with the measured band', () => {
-	// The call site: `reelOffset = reelOffsetFor({ ... band: viewportEl.clientHeight ... })`.
-	// Assert the assignment consumes the imported helper AND passes the CLIPPED clientHeight as band —
-	// clientHeight is the whole point of the clamp (the bias must be measured against the clipped height).
+	// The assignment must consume the imported helper AND pass the CLIPPED clientHeight as band, which is
+	// the whole point of the clamp: the bias has to be measured against the clipped height.
 	expect(/reelOffset\s*=\s*reelOffsetFor\s*\(/.test(CODE)).toBe(true);
 	expect(/band\s*:\s*viewportEl\.clientHeight/.test(CODE)).toBe(true);
 });
 
 it('LyricsOverlay is wired to the clamp (the fix must stay on the render path): does NOT reintroduce the unclamped inline offset arithmetic (negative arm)', () => {
-	// The pre-clamp code was `reelOffset = -(row.offsetTop + ... - viewportEl.clientHeight / 2 - bias);`.
-	// A later edit could re-add that inline maths ALONGSIDE the call and pass a positive-only guard, so
-	// this negative arm bans the inline expression: reelOffset assigned from an inline `- bias)` form.
+	// The inline maths could be re-added ALONGSIDE the call and pass a positive-only guard, so the
+	// expression itself is banned: `reelOffset` assigned from an inline `- bias)` form.
 	expect(/reelOffset\s*=\s*-\(/.test(CODE)).toBe(false);
 	expect(/-\s*viewportEl\.clientHeight\s*\/\s*2\s*-\s*bias\s*\)/.test(CODE)).toBe(false);
 });
 
-// render-path wiring: reelOffset now takes the rendered ramp depths, and the pure clamp only
-// insets the sung row out of a ramp if measureReel actually PASSES them. Reverting measureReel to the
-// pre-fade call (no fadeTop/fadeBot) leaves the grid test green (the args default to 0 => [0, band]),
-// this repo's built-but-unwired shape — so pin the two args at the call site by source scan.
+// The clamp only insets the sung row out of a ramp if measureReel PASSES the rendered depths. Dropping
+// them leaves the grid arm green, because the args default to 0 => [0, band].
 it('LyricsOverlay is wired to the clamp (the fix must stay on the render path): measureReel passes fadeTop AND fadeBot to reelOffset (the ramp depths reach the clamp)', () => {
 	expect(/fadeTop\s*:/.test(CODE)).toBe(true);
 	expect(/fadeBot\s*:/.test(CODE)).toBe(true);
@@ -353,8 +336,7 @@ it('LyricsOverlay is wired to the clamp (the fix must stay on the render path): 
 	expect(/fadeBot\s*:\s*linesAfter\s*>\s*0\s*\?/.test(CODE)).toBe(true);
 });
 
-// F2: the two ramps must be CAPPED so they cannot consume the whole band and leave no opaque
-// plateau. Pin the capped fade var; reverting to the uncapped `--lyrics-row-h * on` form reds this.
+// The two ramps must be CAPPED, or they consume the whole band and leave no opaque plateau.
 it('LyricsOverlay is wired to the clamp (the fix must stay on the render path): caps each edge-fade ramp so the unmasked window can always hold one row (F2)', () => {
 	expect(/--lyrics-fade-cap\s*:\s*min\(/.test(CODE)).toBe(true);
 	expect(/--lyrics-fade-top\s*:\s*calc\(var\(--lyrics-fade-cap\)/.test(CODE)).toBe(true);

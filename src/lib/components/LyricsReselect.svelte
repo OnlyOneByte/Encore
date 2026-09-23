@@ -1,14 +1,9 @@
 <script lang="ts">
 	// The LYRICS RE-SELECT control — the fallback for when the auto-chosen lyrics are wrong.
 	//
-	// Presentational, exactly like GuidingTrack: it owns the disclosure, the candidate list with
-	// provenance, the paste box and the "a better version exists" hint, and reports raw choices up
-	// (`onpick(ref)` / `onpaste(text)`). The POST to /api/lyrics-reselect, the optimistic status and the
-	// error toast live with the caller, because those are room/network concerns this control does not own.
-	//
-	// It renders `nowMedia.lyricsCandidates` directly — the phone already receives the full candidate set
-	// with provenance over the wire, so no new read path. `chosenCandidate` marks the current pick and
-	// `hasNewerCandidateThanOverride` decides the hint; both are pure shared helpers.
+	// PRESENTATIONAL, like GuidingTrack: it owns the disclosure, the candidate list, the paste box and the
+	// hint, and reports raw choices up. The request, the optimistic status and the error toast belong to the
+	// caller, because those are room and network concerns this control does not own.
 	import type { LyricsCandidate } from '$lib/contract';
 	import { lyricsSourceLabel } from '$lib/contract';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -37,24 +32,20 @@
 	let pasting = $state(false);
 	let draft = $state('');
 
-	/*
-	 * The shadcn migration: the toggle carried `aria-expanded` and named NOTHING — the body had no id, so a screen
-	 * reader was told a state without being told what holds it. Per-instance (`$props.id()`), because
-	 * two of these can share a screen and a hardcoded id would make the second one point at the first.
-	 */
+	/* PER-INSTANCE, because two of these can share a screen and a hardcoded id would make the second one's
+	   `aria-controls` point at the first. Without it the toggle announces a state and not what holds it. */
 	const uid = $props.id();
 	const bodyId = `reselect-body-${uid}`;
 
-	// The provenance label lives in `$lib/contract` now: the now-playing sheet shows the chosen candidate's
-	// label as a pill, and two copies of a provenance string is how one surface comes to call something
-	// "Captions" that another calls "Auto captions".
+	// The provenance label is shared through `$lib/contract`: two copies of a provenance string is how one
+	// surface comes to call something "Captions" that another calls "Auto captions".
 	const sourceLabel = lyricsSourceLabel;
 	function timingLabel(c: LyricsCandidate): string {
 		return c.timing === 'word' ? 'word-by-word' : c.timing === 'line' ? 'line-by-line' : 'no timing';
 	}
 
-	// Only worth showing when there is a real choice: more than one candidate, or a paste path. A song
-	// with a single candidate still offers paste (the auto text may simply be wrong).
+	// A single candidate still counts as a choice, because the paste path is always available: the auto text
+	// may simply be wrong.
 	const hasChoice = $derived(candidates.length > 0);
 	const peek = $derived(newerExists ? 'A better match is available' : overrideRef ? 'Your pick' : 'Auto-selected');
 
@@ -78,17 +69,12 @@
 		{#if open}
 			<div class="reselect-body" id={bodyId}>
 				<!--
-					The shadcn migration: the list is Item.Group / Item.Root / Item.Content / Item.Description / Badge — the same
-					row grammar the admin library list uses, so `.reselect-list`, `.reselect-opt`'s box, `.opt-timing`
-					and `.opt-badge` are gone as local rules.
-
-					THE ROW IS STILL A BUTTON, through Item's own `child` snippet: the whole row is the pick action,
-					and Item.Root renders a div. The static `reselect-opt` token is FIRST and `{props.class}` second
-					so both survive — a bare `class="reselect-opt"` after the spread would drop Item's classes, and
-					before it would be dropped BY them. It stays a real `class="…"` attribute rather than a
-					`class:reselect-opt={true}` directive because `markupControls` (test-helpers, used by
-					touch-targets.test.ts) reads only `class="…"`, so the directive form would quietly remove this
-					control — the primary one in the component — from the tap-floor guard's population.
+					THE ROW IS A BUTTON, through Item's `child` snippet, because the whole row is the pick action and
+					Item.Root renders a div. The static token must come FIRST and `{props.class}` second so both
+					survive: after the spread it would drop Item's classes, and inside the spread it would be dropped
+					by them. It must also stay a real `class="…"` attribute rather than a `class:` directive, because
+					the tap-floor guard's control scan reads only the attribute form — the directive would quietly
+					remove this component's primary control from its population.
 				-->
 				<Item.Group>
 					{#each candidates as c (c.ref)}
@@ -103,13 +89,10 @@
 								>
 									<Item.Content>
 										<!--
-											A PLAIN span, not Item.Title, and that is the truncation fix rather than a preference.
-											Item.Title is `w-fit` + `flex`: `width: fit-content` resolves against its own min-content,
-											so a `white-space: nowrap` child makes the TITLE grow past the row instead of ellipsising
-											inside it. (Its `line-clamp-1` cannot save that — `.flex{display:flex}` is emitted after
-											`.line-clamp-1{display:-webkit-box}` in the built bundle, so the clamp never applies.) As a
-											direct child of Item.Content — a flex COLUMN — this span stretches to the column's width
-											instead, which is what makes the ellipsis engage.
+											A PLAIN span, never Item.Title: that primitive is `w-fit`, so `fit-content` resolves against
+											its own min-content and a nowrap child grows the title past the row instead of ellipsising
+											inside it (and its clamp cannot save that — see item-title.svelte). As a direct child of the
+											content COLUMN this span stretches to the column's width, which is what engages the ellipsis.
 										-->
 										<span class="opt-src">{sourceLabel(c)}</span>
 										<Item.Description>{timingLabel(c)}</Item.Description>
@@ -142,39 +125,22 @@
 {/if}
 
 <style>
-	/* Mirrors the Vocal-range disclosure idiom next to it: a toggle with a peek, a body that opens
-	   below. Colours are the app's own design tokens so the control reads correctly on every theme. */
 	.reselect {
 		margin: var(--space-md) 0 var(--space-3xs);
 	}
 	/*
-	 * THE DISCLOSURE IS STILL HAND-ROLLED, AND THAT IS MEASURED RATHER THAN PREFERRED (the shadcn migration).
-	 *
-	 * `ui/collapsible` is vendored and NowPlayingHero used it, so one idiom on this screen was the
-	 * intent. (NowPlayingDrawer replaced the hero and dropped the disclosure entirely — a drawer IS the
-	 * reveal — so `routes/settings` is the vendored Collapsible's remaining consumer. The argument below
-	 * is unaffected either way.) It cannot be had here: Bits UI's CollapsibleContent reads `getBoundingClientRect()` in a
-	 * watcher that fires the moment its element gets a ref, and the mount rung replaces that accessor
-	 * with a throw because happy-dom fabricates a zero (test-setup/svelte-dom-preload.ts).
-	 * Measured on a scratch component: the disclosure WORKS — the trigger gets `aria-expanded`, the
-	 * content gets an id and the trigger gets a matching `aria-controls` for free — and then the deferred
-	 * read throws and fails the test that mounted it. That is what took NowPlayingHero's four disclosure
-	 * claims off this rung and into `e2e/probes/p16-hero-live-controls.mjs` — the hero has since been
-	 * replaced by NowPlayingDrawer, so those claims now describe the drawer's controls.
-	 *
-	 * lyrics-reselect.test.ts MOUNTS this component for all four of its claims — the candidate list,
-	 * the marked pick, `onpick`, `onpaste` and the peek. Adopting Collapsible would trade those four for
-	 * an e2e probe, so the toggle stays a real <button> and supplies by hand the one thing Collapsible
-	 * would have given it: `aria-controls={bodyId}` against the body's `id`.
+	 * THE DISCLOSURE IS HAND-ROLLED DELIBERATELY, and adopting the vendored Collapsible would cost this
+	 * component its unit tests: the primitive's content reads geometry in a watcher that fires the moment its
+	 * element gets a ref, and the mount rung replaces that accessor with a throw. The disclosure itself works;
+	 * the deferred read then fails whatever mounted it. So the toggle is a real button and supplies by hand
+	 * the one thing the primitive would have given it — `aria-controls` against the body's id.
 	 */
 	.reselect-toggle {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2xs);
 		width: 100%;
-		/* Was `padding: var(--space-2xs) 0` and no floor — ~25px on one text line, well under the
-		   standard. NowPlayingHero's equivalent toggle already named the token; that surface is now
-		   NowPlayingDrawer, whose reveal is the drawer itself rather than a toggle. This one names it too. */
+		/* Named, because padding alone puts a one-line toggle at about 25px, well under the standard. */
 		min-height: var(--tap);
 		background: none;
 		border: none;
@@ -189,8 +155,8 @@
 	}
 	.reselect-peek {
 		margin-left: auto;
-		/* A flex item's floor is its min-content width, so without this the peek's own text sets the
-		   row's minimum and the ellipsis never engages. Same pairing as the hero's `.tools-peek`. */
+		/* A flex item's floor is its min-content width, so without this the peek's own text sets the row's
+		   minimum and the ellipsis never engages. */
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -202,15 +168,12 @@
 		color: var(--accent-ink);
 	}
 	/*
-	 * Item.Root supplies this row's BOX — the flex line, the radius, the 1px border, the padding and the
-	 * gap — so what is left here is what a native <button> still needs with Preflight off (an earlier change): the
-	 * surface, the ink, a solid border-style in place of the UA's `outset`, and the tap floor. Same
-	 * division as item.svelte's own note: the primitive keeps the box, the row keeps every colour.
+	 * Item.Root supplies this row's BOX, so what is left is what a native button still needs with Preflight
+	 * off: the surface, the ink, a solid border-style in place of the UA's `outset`, and the tap floor.
 	 */
 	.reselect-opt {
-		/* The PRIMARY control of this component, and it was ~31px: one text line inside
-		   `padding: var(--space-xs) var(--space-sm)`. Item's `py-3.5` alone would clear 44px today, but
-		   only by arithmetic on a size variant a re-vendor can change, so the floor is named. */
+		/* Named rather than inherited from the primitive's padding: that would clear 44px only by arithmetic
+		   on a size variant a re-vendor can change, and this is the component's primary control. */
 		min-height: var(--tap);
 		background: var(--card2);
 		border-style: solid;
@@ -233,7 +196,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2xs);
-		/* Was ~25px, the same padding-with-no-floor shape as the toggle above. */
+		/* Named, for the same reason as the toggle above. */
 		min-height: var(--tap);
 		background: none;
 		border: none;
@@ -242,11 +205,8 @@
 		padding: var(--space-2xs) 0;
 		cursor: pointer;
 	}
-	/*
-	 * `.reselect-textarea` moved into ui/textarea. Its one call-site declaration was the top margin,
-	 * which is this file's spacing rather than the field's, so it stays here on the wrapper the page
-	 * renders — scoped CSS cannot reach the element the component renders.
-	 */
+	/* The field's own appearance is ui/textarea's; only this call site's spacing is here, on the wrapper —
+	   scoped CSS cannot reach the element the component renders. */
 	.reselect-paste > :global([data-slot='textarea']) {
 		margin-top: var(--space-xs);
 	}
@@ -255,16 +215,7 @@
 		gap: var(--space-xs);
 		margin-top: var(--space-xs);
 	}
-	/*
-	 * an earlier change/The shadcn migration: these two actions used to be native buttons carrying `chip` / `chip ghost` with NO
-	 * `.chip` base rule anywhere — the migration moved SongRow's `.chip` into ui/badge, and Badge renders
-	 * a span, never a button, so the markup pointed at a class that no longer existed. With Preflight off
-	 * and no global control reset they rendered as ~21px native OS buttons in the wrong font on a dark
-	 * sheet. They are the shared Button primitive now, so the surface, the 44px --tap floor, the focus
-	 * ring and the disabled treatment all come from one place and no local rule is needed.
-	 *
-	 * They are addressed by `data-act` rather than by a styling class: a class that exists only so a test
-	 * can find it is what left the orphaned `.chip` here in the first place, and a scoped rule cannot
-	 * reach a class handed to a child component anyway (ui-scoped-style-reach enforces that).
-	 */
+	/* The paste actions carry NO local rule: everything comes from the Button primitive. They are addressed by
+	   `data-act` rather than a styling class, because a class that exists only so a test can find it is how a
+	   rule-less class survives here, and a scoped rule cannot reach a class handed to a child anyway. */
 </style>

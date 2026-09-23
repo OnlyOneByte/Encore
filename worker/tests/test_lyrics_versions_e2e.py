@@ -131,8 +131,7 @@ def spec(tmp_path, **params):
     The vocals stem is written deliberately: version selection runs on the ASR TRANSCRIPT, the ASR tier
     reads the isolated vocals stem and declines without one, and the core therefore chains `align` after
     `stems` so it exists by the time this job runs (followUps in dispatch.ts). A fixture with no stem
-    silently tests the degraded path — selection falling back to duration alone — which is what an
-    earlier draft of this file did.
+    would silently test the degraded path — selection falling back to duration alone.
     """
     stem = vocals_path(str(tmp_path), "m1")
     os.makedirs(os.path.dirname(stem), exist_ok=True)

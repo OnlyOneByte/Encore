@@ -45,7 +45,6 @@ def _write_wav(path, samples, sr=22050):
         wf.writeframes(pcm.tobytes())
 
 
-# ── the builder ─────────────────────────────────────────────────────────────────────
 def test_empty_profile_has_the_exact_wire_shape():
     prof = song_profile.empty_profile()
     assert set(prof) == WIRE_KEYS
@@ -105,11 +104,9 @@ def test_silent_vocals_yield_null_range_not_a_failure(tmp_path):
     assert set(prof) == WIRE_KEYS
 
 
-# ── engine wiring: demucs always publishes songProfile ────────────────────────────────
 def _demucs_fake_runner(tmp_path):
-    """A demucs process fake that writes both stems and emits nothing useful. The acquisition / volumedetect
-    / encode branches live in the shared `fake_cli_runner` — including the volumedetect
-    branch that makes the silence probe real; only the demucs stem writes are here."""
+    """A demucs process fake that writes both stems and emits nothing useful. Acquisition / volumedetect
+    / encode branches live in the shared `fake_cli_runner`; only the demucs stem writes are here."""
 
     async def demucs_handler(argv):
         out_dir = argv[argv.index("-o") + 1]
@@ -148,9 +145,8 @@ async def test_demucs_publishes_songprofile_even_when_analysis_fails(tmp_path):
 
 @pytest.mark.asyncio
 async def test_demucs_passes_the_raw_wavs_to_the_profiler(tmp_path):
-    # Assert the wiring feeds the RAW separated stems (no_vocals / vocals in the engine's DECLARED
-    # stem format, FLAC by default) — not the encoded
-    # FLAC/m4a — so analysis costs no extra decode.
+    # Feeds the RAW separated stems (engine's DECLARED format, FLAC by default), not the encoded
+    # publish artifact, so analysis costs no extra decode.
     seen = {}
 
     def spy_profiler(inst, voc, media_id):

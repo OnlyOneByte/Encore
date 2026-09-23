@@ -1,12 +1,7 @@
-// guard: a library song's descriptive tags render as chips on the row — and ONLY on a READY
-// row. Same discipline as the sparkle-sibling guard: Encore has no jsdom, so every SongRow UI
-// invariant is a decidable property of the component source. This reads SongRow.svelte and pins:
-//   1. the `tags` prop exists (interface + destructure),
-//   2. a `showTags` gate that is TRUE only when readiness === 'ready' AND there are tags,
-//   3. the chip markup is guarded by showTags and lives inside the .chips wrapper condition,
-//   4. the chip is a NEUTRAL family (a `.chip.tag`), not a semantic status tint.
-// Deleting any of these ships a row that never shows tags (or shows them on a raw search result,
-// where a tag is noise) with the suite otherwise green.
+// guard: a library song's descriptive tags render as chips on the row — and ONLY on a READY row. No jsdom,
+// so every SongRow UI invariant is a decidable property of the component source. Deleting any of the four
+// pins below ships a row that never shows tags, or shows them on a raw search result where a tag is noise,
+// with the suite otherwise green.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
@@ -26,9 +21,8 @@ test('SongRow accepts a tags prop and destructures it', () => {
 });
 
 test('showTags is gated on a READY row AND a non-empty tag list', () => {
-	// Both halves are load-bearing: readiness==='ready' keeps tags off raw/processing rows (a candidate
-	// upload has no library tags worth showing), and the length check keeps an empty list from
-	// rendering an empty .chips row. Mutating either half reds this.
+	// Both halves are load-bearing: readiness==='ready' keeps tags off raw/processing rows (a candidate upload
+	// has no library tags worth showing), and the length check keeps an empty list from rendering an empty row.
 	const m = src.match(/const\s+showTags\s*=\s*\$derived\(([^;]*)\);/);
 	expect(m).not.toBeNull(); // non-vacuous
 	const expr = m![1];
@@ -41,17 +35,13 @@ test('the tag chips render, keyed, guarded by showTags, inside the .chips wrappe
 	expect(src).toMatch(
 		/\{#if\s+showTags\}\{#each\s+tags!?\s+as\s+tag\s*\(tag\)\}<Badge variant="tag">\{tag\}<\/Badge>\{\/each\}\{\/if\}/
 	);
-	// the .chips wrapper condition must include showTags, or the whole block never renders when tags
-	// are the only thing to show (a ready row with tags but no key/views/kind).
+	// the .chips wrapper condition must include showTags, or a ready row whose only chip is a tag never renders.
 	expect(src).toMatch(/\{#if[^}]*\bshowTags\b[^}]*\}\s*\n?\s*<div class="chips">/);
 });
 
 test('the tag chip is a NEUTRAL family, not a status tint', () => {
-	/*
-	 * the tone lives in ui/badge now, as the `tag` variant's own rules. The claim is unchanged
-	 * and still the point — a tag is a describing word, not a warning — so it is asserted against the
-	 * rules that actually paint it rather than against a class SongRow no longer writes.
-	 */
+	// The tone lives in ui/badge now, as the `tag` variant's own rules, so the claim is asserted against the
+	// rules that actually paint it: a tag is a describing word, not a warning.
 	const badge = readFileSync(at('src/lib/components/ui/badge/badge.svelte'), 'utf8');
 	expect(badge, 'ui/badge must define a tag tone').toMatch(/\.encore-chip-tag\s*\{/);
 	const accent = badge.match(/\.encore-chip-accent\s*\{([^}]*)\}/);

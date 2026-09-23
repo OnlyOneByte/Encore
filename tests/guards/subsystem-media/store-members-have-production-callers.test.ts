@@ -1,27 +1,4 @@
-// (docs/arch/01-media.md) — "A `MediaStore` member with no production caller is not a
-// capability." Every method on the `MediaStore` interface has at least one PRODUCTION call site, or it
-// is named in the ledger below with the reason it has none.
-//
-// THE DEFECT THIS PINS. `MediaStore.url()` presigned a 1-hour direct S3 URL and was documented as "how
-// the TV resolves a playable source for a Media". It had ZERO production callers: `TvPlayer.svelte` and
-// `LyricsOverlay.svelte` string-build `/media/${ref}`, and the route serves every store kind by range.
-// Its ONLY callers were in `tests/unit/server/media/store.test.ts` — so the method was covered,
-// exercised, and green, while being unreachable from the running product. A coverage number cannot tell
-// those two states apart, which is exactly why this guard reads CALL SITES instead.
-//
-// It was DELETED rather than wired up (see the on-record note in src/routes/media/[...path]/+server.ts
-// for the three regressions wiring it would have caused). This file pins that outcome from both sides:
-//   1. the deleted symbols stay deleted, and
-//   2. the general rule that produced the decision is enforced for every OTHER member, driven off the
-//      interface declaration — so a member added later is covered automatically rather than needing
-//      this file edited to notice it.
-//
-// WHY A LEDGER RATHER THAN A FLAT ASSERTION. Reading the tree honestly, `url()` was not the only member
-// without a consumer: `exists` and `put` have none either. Failing on those would either force an
-// out-of-scope deletion or invite the assertion to be watered down. Instead each is listed with its
-// reason, and the ledger is checked in BOTH directions — a listed member that gains a caller reds
-// (stale entry), and a listed name that is not a member reds (renamed away). `url` may never be added
-// to it; that is a separate test with no exemption path.
+// A MediaStore member with no production caller is not a capability. See docs/GUARDS.md#media
 import { test, expect } from 'bun:test';
 import { read, filesUnder, relative, at } from '@encore/test-support';
 
@@ -29,11 +6,8 @@ const STORE = 'src/lib/server/media/store.ts';
 const OBJECT_STORE = 'src/lib/server/media/object-store.ts';
 const ROUTE = 'src/routes/media/[...path]/+server.ts';
 
-// Repo stripComments convention (icon-centring.test.ts et al.), extended to // line comments. BLANKS
-// rather than deletes so any reported offset still lines up. Load-bearing here: the route's on-record
-// note NAMES every deleted symbol (`MediaStore.url()`, `mediaProxyUrl`, `presign`,...) precisely so a
-// reader does not re-add them as an oversight. Without blanking, that note would trip the very
-// assertions it exists to explain.
+// Blanks rather than deletes so reported offsets still line up. Load-bearing: the route's on-record note
+// NAMES every deleted symbol, so without stripping it would trip the assertions it exists to explain.
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
@@ -57,10 +31,7 @@ function mediaStoreInterfaceBody(): string {
 	throw new Error('MediaStore interface body is unbalanced — the slice cannot be trusted');
 }
 
-/**
- * Method members of the interface: `name(`, `name?(` — the optional marker included on purpose, since
- * `size`/`getRange` are optional-by-design and are the two members that ARE called.
- */
+/** Method members `name(` / `name?(` — optional included, since `size`/`getRange` are optional yet called. */
 function methodMembers(body: string): string[] {
 	return [...body.matchAll(/(?:^|\n)\s*(\w+)\??\s*\(/g)].map((m) => m[1]);
 }
@@ -70,18 +41,16 @@ function propertyMembers(body: string): string[] {
 	return [...body.matchAll(/(?:^|\n)\s*(?:readonly\s+)?(\w+)\??\s*:/g)].map((m) => m[1]);
 }
 
-// Production source: the app tree plus the Bun.serve entry, MINUS the two files that declare and
-// implement the interface. An implementation calling its own sibling would satisfy nothing — the
-// requirement is that a CONSUMER exists.
+// The app tree plus the Bun.serve entry, MINUS the files that declare and implement the interface: an
+// implementation calling its own sibling satisfies nothing, the requirement is that a CONSUMER exists.
 const PRODUCTION = [...filesUnder('src', ['.ts', '.svelte']), at('server.ts')]
 	.map((abs) => relative(abs))
 	.filter((rel) => rel !== STORE && rel !== OBJECT_STORE);
 
 /**
- * Names a file binds a `MediaStore` instance to. A bare `.member(` scan would be worthless here —
- * `.get(` alone matches every `Map.get` in the tree — so a call only counts when its RECEIVER is
- * demonstrably a media store: a binding assigned from a `.mediaStore` expression (the route's
- * `const store = getApp().mediaStore`), or the property accessed inline (`app.mediaStore.get(...)`).
+ * Names a file binds a `MediaStore` instance to. A bare `.member(` scan is worthless (`.get(` matches every
+ * `Map.get` in the tree), so a call counts only when its RECEIVER is demonstrably a media store: a binding
+ * assigned from a `.mediaStore` expression, or the property accessed inline (`app.mediaStore.get(...)`).
  */
 function storeBindings(src: string): string[] {
 	const names = new Set<string>();
@@ -105,9 +74,7 @@ function productionCallSites(member: string): string[] {
 	return hits;
 }
 
-// ── the ledger: members with no consumer, and why each is nonetheless kept ─────────────────────────
-// Keep this SHORT and specific. An entry is a statement that the member is deliberately unconsumed
-// today, not a parking space for the next unreachable capability.
+// Members with no consumer, and why each is kept — not a parking space for the next unreachable capability.
 const NO_CONSUMER_BY_DESIGN: Record<string, string> = {
 	exists:
 		'The readiness path reads the catalog + sidecar, not the store, so nothing probes existence ' +
@@ -120,16 +87,13 @@ const NO_CONSUMER_BY_DESIGN: Record<string, string> = {
 		'account of what a MediaStore is for.'
 };
 
-// Names that may NEVER be reinstated on this interface, ledger or not. A store answers BYTES; the
-// same-origin /media route is the sole URL builder. Re-adding one of these is a product decision about
-// cross-origin playback (the deferred FFT work depends on same-origin), so it must break
-// a test and be argued, not land as a plausible-looking convenience method.
+// Never reinstatable, ledger or not: a store answers BYTES and the same-origin /media route is the sole URL
+// builder, so re-adding one is a product decision about cross-origin playback that must be argued.
 const FORBIDDEN_MEMBERS = ['url', 'presignedUrl', 'signedUrl', 'directUrl', 'publicUrl'];
 
 test('every MediaStore METHOD has a production call site, or a ledger entry saying why not', () => {
 	const members = methodMembers(mediaStoreInterfaceBody());
-	// non-vacuity: a regex that stopped matching would otherwise assert nothing at all
-	expect(members).toContain('get');
+	expect(members).toContain('get'); // non-vacuity: a regex that stopped matching asserts nothing
 	expect(members).toContain('size');
 	expect(members).toContain('getRange');
 	expect(members.length).toBeGreaterThanOrEqual(5);
@@ -138,8 +102,7 @@ test('every MediaStore METHOD has a production call site, or a ledger entry sayi
 	for (const member of members) {
 		if (productionCallSites(member).length === 0) unconsumed.push(member);
 	}
-	// The set with no consumer must be EXACTLY the ledger — no more (an unreachable new member) and no
-	// fewer (a stale entry). Compared as sorted sets so the failure names the member either way.
+	// EXACTLY the ledger: no more (an unreachable new member), no fewer (a stale entry).
 	expect(unconsumed.sort()).toEqual(Object.keys(NO_CONSUMER_BY_DESIGN).sort());
 });
 
@@ -152,8 +115,7 @@ test('the ledger names only real members, and every entry carries a reason', () 
 });
 
 test('the interface declares no property member other than the `kind` discriminant', () => {
-	// The caller rule above covers METHODS. A property cannot be "called", so one added here would sit
-	// outside it — fail instead, so the next property is examined rather than silently exempt.
+	// A property cannot be "called", so one added here sits outside the caller rule: fail, so it is examined.
 	expect(propertyMembers(mediaStoreInterfaceBody())).toEqual(['kind']);
 });
 
@@ -168,8 +130,7 @@ test('no URL-returning member is reinstated on MediaStore, and none is smuggled 
 test('the deleted presign path stays deleted in both store modules', () => {
 	const store = stripComments(read(STORE));
 	const objectStore = stripComments(read(OBJECT_STORE));
-	// `mediaProxyUrl` was reachable only from url() and existed only to build the string the route
-	// already builds; `presign` on S3Like existed only to serve url().
+	// `mediaProxyUrl` built the string the route already builds; `presign` existed only to serve url().
 	for (const src of [store, objectStore]) {
 		expect(src).not.toMatch(/\bmediaProxyUrl\b/);
 		expect(src).not.toMatch(/\bpresign\b/);
@@ -177,34 +138,32 @@ test('the deleted presign path stays deleted in both store modules', () => {
 		expect(src).not.toMatch(/\bproxyUrls\b/);
 		expect(src).not.toMatch(/\bObjectMediaStoreOpts\b/);
 	}
-	// and nothing in production resurrected the helper under its old name
 	for (const rel of PRODUCTION) {
 		expect(stripComments(read(rel))).not.toMatch(/\bmediaProxyUrl\b/);
 	}
 });
 
-test('the route carries the on-record note explaining the removal', () => {
-	// Deleting a capability is an on-the-record decision in this repo: the next reader arrives at the
-	// route, not at this guard, so the reason lives there. Asserted on the RAW source — the note is a
-	// comment, and its presence is the point.
+test('the route is the sole URL builder, and says so where the next reader arrives', () => {
+	// The structural half first, so this arm cannot pass on prose alone: no production caller reaches a
+	// URL-returning store member, which is what makes the same-origin route the only path to a ref.
+	expect(productionCallSites('url'), 'a production caller for a URL-returning store member reappeared').toEqual([]);
+	// Then the signpost, from RAW source since the note is a comment. A two-term alternation rather than a
+	// pinned sentence, so rewording the note cannot red this for a reason unrelated to the claim.
 	const route = read(ROUTE);
-	expect(route).toMatch(/ON THE RECORD/);
-	expect(route).toMatch(/MediaStore\.url\(\)/);
-	expect(route).toMatch(/no production caller|ZERO production callers/);
+	expect(route, 'the route must still say every ref is served same-origin through it').toMatch(/same-origin/i);
+	expect(route, 'and must still name what serving cross-origin instead would cost').toMatch(/cross-origin|CORS/i);
 });
 
-// ── non-vacuity floors: prove the scanner can answer BOTH ways ─────────────────────────
+// These floors prove the scanner can answer BOTH ways; empty results make every verdict above meaningless.
 
 test('NON-VACUITY: the scanner finds the real call sites it is supposed to find', () => {
-	// If these came back empty, every "has no consumer" verdict above would be meaningless.
 	expect(productionCallSites('getRange')).toContain(ROUTE);
 	expect(productionCallSites('size')).toContain(ROUTE);
 	expect(productionCallSites('get')).toContain(ROUTE);
 });
 
 test('NON-VACUITY: the scanner reports ABSENCE for a member that does not exist', () => {
-	// The sentinel is the deleted method itself plus a fabricated one. A scanner that matched anything
-	// would find these too — and would have found `url` a caller back when it was still declared.
+	// The deleted method plus a fabricated one: a scanner that matched anything would find both.
 	expect(productionCallSites('url')).toEqual([]);
 	expect(productionCallSites('presignedDirectUrlForTheTv')).toEqual([]);
 });
@@ -214,6 +173,6 @@ test('NON-VACUITY: the production scan covers a real tree and resolves a store b
 	expect(PRODUCTION).toContain(ROUTE);
 	expect(PRODUCTION).not.toContain(STORE); // an implementation may not satisfy its own declaration
 	expect(PRODUCTION).not.toContain(OBJECT_STORE);
-	// the route's binding is discovered rather than hardcoded — `const store = getApp().mediaStore`
+	// discovered, not hardcoded — the route writes `const store = getApp().mediaStore`
 	expect(storeBindings(stripComments(read(ROUTE)))).toContain('store');
 });
