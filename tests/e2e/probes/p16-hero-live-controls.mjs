@@ -262,7 +262,7 @@ const PRELUDE = `
 		keyCap: ${JSON.stringify(SEL.keyBtn)},
 		keyLab: ${JSON.stringify(SEL.keyLabel)},
 		bandTitle: ${JSON.stringify(SEL.bandTitle)},
-		bandExpand: ${JSON.stringify(SEL.bandExpand)},
+		bandOpen: ${JSON.stringify(SEL.bandOpen)},
 		songDoor: ${JSON.stringify(SEL.songDoor)}
 	};
 	const q = (s) => document.querySelector(s);
@@ -275,7 +275,7 @@ const PRELUDE = `
 const CLOSED_EXPR = `(() => {
 	${PRELUDE}
 	return {
-		bandHandlePresent: !!q(S.bandExpand),
+		bandOpenPresent: !!q(S.bandOpen),
 		bandTitleText: q(S.bandTitle)?.textContent?.trim() ?? null,
 		drawerPresent: !!q(S.drawer),
 		sliderCount: qq(S.slider).length,
@@ -386,16 +386,16 @@ async function waitForBandTitle(phone, title) {
 }
 
 /**
- * Open the drawer from the band's pull handle and wait for the song it should be about.
+ * Open the drawer from the band's expand button and wait for the song it should be about.
  *
  * IDEMPOTENT and gated on the drawer being shut: while it is open vaul's overlay covers the band, so a
- * second tap lands on a scrim instead of the handle.
+ * second tap lands on a scrim instead of the button.
  * @param {Page} phone @param {string} title
  */
 async function openDrawerFor(phone, title) {
 	await waitForBandTitle(phone, title);
 	const open = await phone.evaluate(`!!document.querySelector(${JSON.stringify(SEL.npDrawer)})`);
-	if (!open) await phone.click(SEL.bandExpand);
+	if (!open) await phone.click(SEL.bandOpen);
 	await waitFor(async () => await phone.evaluate(`!!document.querySelector(${JSON.stringify(SEL.npDrawer)})`), {
 		timeout: 10_000,
 		name: 'the now-playing drawer to open'
@@ -570,8 +570,8 @@ async function main() {
 	// SHUT first: the controls must not occupy the screen until asked for, while the band still says what is playing.
 	const closed = /** @type {any} */ (await phone.evaluate(CLOSED_EXPR));
 	check(
-		'the controls start away: the band offers a pull handle and no drawer is rendered',
-		closed.bandHandlePresent && !closed.drawerPresent && closed.bodyCount === 0,
+		'the controls start away: the band offers its expand button and no drawer is rendered',
+		closed.bandOpenPresent && !closed.drawerPresent && closed.bodyCount === 0,
 		JSON.stringify(closed)
 	);
 	check(

@@ -411,23 +411,22 @@ test('this guard really read every route it claims to, and really stripped their
 	// Every arm above is an absence, and an absence is what an empty string is full of. Six sources are read, so
 	// each carries its OWN floor rather than one floor standing in for all of them.
 	//
-	// Two floors per file, and the SECOND is the one that does the work: `stripComments` blanks with spaces to
-	// preserve line numbers, so the stripped string is always the same LENGTH as the raw one and a length check on
-	// it could never catch a stripper that blanked everything. The non-whitespace count can.
+	// ONE floor per file, measured on the STRIPPED source with whitespace removed. `stripComments` blanks with
+	// spaces to preserve line numbers, so the stripped string is always the same LENGTH as the raw one — only a
+	// non-whitespace count can catch a stripper that blanked everything.
 	//
-	// THE RAW FLOORS TRACK THE FILES, NOT THE OTHER WAY ROUND. They only have to be high enough to catch a
-	// truncated or wrong read, so they are kept a wide margin under the real sizes and a prose edit in any of the
-	// six does not red this arm. The CODE floors are what a stripped read has to clear, and comment edits cannot
-	// move them — so a lowered raw floor is never a weakening of what is enforced.
-	for (const [name, raw, stripped, rawFloor, codeFloor] of [
-		['layout', LAYOUT_RAW, LAYOUT, 5000, 1800],
-		['band', BAND_RAW, BAND, 8000, 2800],
-		['room', ROOM_RAW, ROOM, 6000, 5000],
-		['home', HOME_RAW, HOME, 22000, 17000],
-		['drawer', DRAWER_RAW, DRAWER, 10000, 6000],
-		['content', DRAWER_CONTENT_RAW, DRAWER_CONTENT, 2000, 1200]
+	// It is deliberately the only floor. A raw-length floor proves nothing this does not (code past the floor IS
+	// the file having been read) while being the one number in this guard a comment edit can move, which is how
+	// four of them came to be lowered in a single cleanup. A number nobody can be tempted to lower is worth more
+	// than a second reading of the same fact.
+	for (const [name, raw, stripped, codeFloor] of [
+		['layout', LAYOUT_RAW, LAYOUT, 1800],
+		['band', BAND_RAW, BAND, 2800],
+		['room', ROOM_RAW, ROOM, 5000],
+		['home', HOME_RAW, HOME, 17000],
+		['drawer', DRAWER_RAW, DRAWER, 6000],
+		['content', DRAWER_CONTENT_RAW, DRAWER_CONTENT, 1200]
 	] as const) {
-		expect(raw.length, `${name}: file read`).toBeGreaterThan(rawFloor);
 		expect(stripped.replace(/\s+/g, '').length, `${name}: survived the stripper`).toBeGreaterThan(codeFloor);
 		// The stripper must remove comments and NOTHING else — same line count, so every line number a
 		// reviewer reads off a failure still points at the real file.
