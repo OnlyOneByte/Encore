@@ -126,13 +126,6 @@ test('every component importing a $app/$env virtual module loads under the mount
 			`${file} imports a $app/$env module but exports nothing — it cannot be what resolved the alias`
 		).toBeGreaterThan(0);
 	}
-	/*
-	 * S3: 20s, up from bun's 5s default. This test imports EVERY component that touches a
-	 * SvelteKit virtual module, and the settings route now pulls in Bits UI — whose `.svelte` sources
-	 * are compiled on demand by the preload's loader. Warm, the whole set loads in ~2.5s; a cold
-	 * compile of that graph crossed 5s and timed out. The budget is for compile variance in a
-	 * dependency, not for the app getting slower, so it is stated once here rather than raised globally.
-	 */
 }, 20_000);
 
 // ── 2. Each stub module's own contract ────────────────────────────────────────────────────────

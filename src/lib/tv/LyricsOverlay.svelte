@@ -452,25 +452,18 @@
 		-webkit-text-stroke: 0.06em var(--scrim-strong);
 		paint-order: stroke fill;
 		/*
-		 * THE FOUR COLOURS THE REEL CAN PAINT, as variables — because provenance and highlight are two
-		 * independent axes, and competing selectors are a bad way to combine two axes.
+		 * THE FOUR COLOURS THE REEL CAN PAINT, as variables — because provenance and highlight are two independent
+		 * axes, and competing selectors combine two axes badly. Written as rules of equal specificity they broke in
+		 * opposite directions: the amber provenance tint out-specified the word ladder, so a sung and an unsung word
+		 * on an ASR line measured the SAME colour and word highlighting had stopped existing there, while the same
+		 * tint LOST to the line treatments on nothing but source order, so those showed no provenance at all.
 		 *
-		 * Both were written as rules of equal specificity, and both broke, in opposite directions. The
-		 * amber provenance tint listed `.word` / `.word.done` / `.word.active` specifically to
-		 * out-specify the word ladder, and it did: measured in a browser, a sung and an unsung word on
-		 * an auto-transcribed line were BOTH rgb(255,230,184), so word-by-word highlighting had stopped
-		 * existing on every ASR song — while `.word.active` went white under a marker that stayed pink,
-		 * so the two cues for "sing this now" disagreed. Meanwhile that same tint LOST to
-		 * `.hl-line`/`.hl-off .row.current` on nothing but source order, so those two treatments showed
-		 * no provenance tint at all.
+		 * As variables there is nothing to out-specify: provenance sets WHICH colours, the rules below say WHERE
+		 * they go. Adding a provenance state is one override block; adding a treatment is one rule that reads these.
 		 *
-		 * As variables there is nothing to out-specify: provenance sets WHICH colours, the rules below
-		 * say WHERE they go, and neither can silently erase the other. Adding a provenance state is one
-		 * override block; adding a treatment is one rule that reads these.
-		 *
-		 * Pure white and the 0.66 alpha stay LITERAL on purpose: white is the maximum-contrast state
-		 * over video and has no token (--ink is #f3f3fb, deliberately not pure white, so swapping to it
-		 * would REDUCE contrast at three metres), and the alpha IS the "not yet" cue.
+		 * Pure white and the 0.66 alpha stay LITERAL: white is the maximum-contrast state over video and has no
+		 * token (--ink is deliberately not pure white, so swapping would REDUCE contrast at three metres), and the
+		 * alpha IS the "not yet" cue.
 		 */
 		--reel-current: #fff;
 		--reel-ahead: rgba(255, 255, 255, 0.66);
@@ -509,35 +502,19 @@
 		--reel-now: var(--reel-part);
 	}
 	/*
-	 * Unverified text is tinted WARM AMBER rather than set in italic.
+	 * Unverified text is tinted WARM AMBER rather than set in italic: the singer reads the line and simultaneously
+	 * sees it does not look like the confident white of every other song, so the meaning arrives without a warning
+	 * line to ignore.
 	 *
-	 * The tint is what actually tells the singer these words are a machine's guess: they read the line
-	 * and simultaneously see it does not look like the confident white of every other song, so the
-	 * meaning arrives without a warning line to ignore. The old standalone `.notice` strip — one ~880px
-	 * letter-spaced sentence pinned centre-bottom — is gone; it landed in the gutter between the two
-	 * bottom cards and read as debris, and the route now carries a short provenance label naming the source
-	 * in the song block, which is what that string is ABOUT.
+	 * Deliberately NOT dimmed — these are still the words to sing from, so making them harder to read would punish
+	 * the singer for a provenance problem. Amber is legible on the dark stage (#ffe6b8 on #0b0b12 is well past
+	 * 4.5:1) and is the palette's caution family.
 	 *
-	 * Deliberately NOT dimmed: these are still the words to sing from, so making them harder to read
-	 * would punish the singer for a provenance problem. Amber is legible on the dark stage (#ffe6b8 on
-	 * #0b0b12 measures well past 4.5:1) and is the palette's existing caution family; the dim state
-	 * mirrors the white ladder's own 0.66 alpha, which lands ~7:1 on the stage, so "not yet" is still
-	 * comfortably readable rather than merely sensed.
-	 *
-	 * `--reel-now` is deliberately NOT overridden, and the part-colour layering did not change that. The active word answers
-	 * WHERE the singer is (and,, WHO is singing), which is a different question from whether
-	 * the text is trustworthy — and the marker sitting directly above the word is `--accent2` regardless
-	 * of provenance, so recolouring the word white here left a pink dot over a white word and made the
-	 * two cues disagree. Amber carries the doubt; the active word carries the position. Leaving
-	 * `--reel-now` alone is also what keeps a singer's own colour on the words they are singing on an
-	 * auto-transcribed song, which is the whole point and would otherwise be the one case that
-	 * silently lost it.
-	 *
-	 * `--reel-line` IS overridden, for the mirror-image reason: it colours the WHOLE current lyric, so
-	 * leaving it on `--reel-singer` would mean the `line` treatment shows no provenance at all — which
-	 * is what the cascade was silently doing before. Under amber the current line is still unmistakably
-	 * the current
-	 * line (the rows around it are dim white), so nothing is lost by tinting it.
+	 * `--reel-now` is deliberately NOT overridden: the active word answers WHERE the singer is, which is a
+	 * different question from whether the text is trustworthy — and the marker above it is `--accent2` regardless,
+	 * so recolouring the word left a pink dot over a white word. It is also what keeps a singer's own colour on the
+	 * words they are singing on an ASR song. `--reel-line` IS overridden, for the mirror reason: it colours the
+	 * whole current lyric, so leaving it alone meant the `line` treatment showed no provenance.
 	 */
 	.lyrics.unverified {
 		--reel-current: #ffe6b8;
@@ -596,21 +573,16 @@
 		text-transform: var(--lyrics-case, none);
 		width: 100%;
 		/*
-		 * Height is DERIVED from the row count, not a constant. It was 9.5em because that is 5 rows of
-		 * 1.9em leading — two sung above, the current one, two coming below. The moment the counts became
-		 * a setting that constant was a bug waiting to be seen, so the arithmetic is written out instead.
+		 * Height is DERIVED from the row count, not a constant — it was 9.5em because that is five rows of 1.9em
+		 * leading, and the moment the counts became a setting that was a bug waiting to be seen.
 		 *
-		 * The mask fades the OUTER rows rather than clipping them, which is what makes the reel read as a
-		 * continuous scroll: a line dims away as it leaves instead of vanishing at a hard edge.
+		 * The mask FADES the outer rows rather than clipping them, which is what makes the reel read as a continuous
+		 * scroll. The stops are in `em` (one row deep at each edge), not the percentages they used to be: those were
+		 * tuned for exactly five rows, so at three a 13% stop reached into the current line and dimmed the words
+		 * being sung.
 		 *
-		 * The fade stops are in `em` (one row deep at each edge), NOT the percentages they used to be.
-		 * Percentages were tuned for exactly five rows: at three rows a 13% stop reaches into the current
-		 * line and dims the words being sung, and at seven rows it barely fades at all. In em the fade is
-		 * one row regardless of how many there are.
-		 *
-		 * An edge with NO context rows is not faded at all. With `linesBefore: 0` the current line IS the
-		 * top row, so fading the top edge dims the words being sung — caught eyes-on, and the reason the
-		 * two edges are separate variables rather than one. There is nothing there to fade away to.
+		 * An edge with NO context rows is not faded at all — with `linesBefore: 0` the current line IS the top row,
+		 * so fading the top edge dims the words being sung. That is why the two edges are separate variables.
 		 */
 		--lyrics-row-h: 1.9em;
 		/*
@@ -625,24 +597,18 @@
 		--lyrics-fade-bot: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-bot-on, 1));
 		height: calc(var(--lyrics-rows, 5) * var(--lyrics-row-h));
 		/*
-		 * A ceiling so an EXTREME setting cannot outgrow the freed space above the chrome band. At the
-		 * max scalePct with max linesBefore+linesAfter the derived height can exceed what remains once
-		 * the band is reserved; capping it lets the existing edge mask fade absorb the surplus rows
-		 * rather than the reel spilling back down toward the cards.
+		 * A ceiling so an EXTREME setting cannot outgrow the freed space above the chrome band: at max scale with max
+		 * rows the derived height can exceed what remains, and capping lets the edge mask absorb the surplus rather
+		 * than the reel spilling back toward the cards.
 		 *
-		 * The cap is EXACTLY the parent band `100vh - --tv-chrome-h` — the same height `.lyrics` already
-		 * gives this box via `top: 0; bottom: --tv-chrome-h`. It must NOT subtract a further
-		 * `--tv-safe-y`: that box is `justify-content: center`, so a `--tv-safe-y` charged against its
-		 * height only buys `--tv-safe-y / 2` of top inset while removing a full `--tv-safe-y` of reel,
-		 * and the top mirror it was paying for is already inside the band (--tv-chrome-h is itself
-		 * `calc(--tv-safe-y + …)`, app.css). Measured in a real browser at the DEFAULT five rows, that
-		 * extra subtraction cut the second lookahead row — 66.6% visible at 1080p, hard-masked mid-glyph
-		 * with unused height below it — and dropping it restores that row to 100% at 1080p and 4K.
+		 * The cap is EXACTLY the parent band `100vh - --tv-chrome-h`. It must NOT subtract a further `--tv-safe-y`:
+		 * that box is `justify-content: center`, so charging one against its height buys only half of it as top
+		 * inset while removing a full one of reel — and the mirror it was paying for is already inside the band.
+		 * Measured at the default five rows, that extra subtraction hard-masked the second lookahead row mid-glyph
+		 * with unused height below it.
 		 *
-		 * IS active at the defaults on short panels: at 1280×720 five rows of --tv-lyric want ~79.8vh
-		 * against ~76vh of band, so the cap still bites there and the surplus fades at the edge. Seating
-		 * all five at 720p needs the type budget itself to change — the ladder-vs-clamp choice the roadmap
-		 * reserves for the owner — and is out of scope here.
+		 * It DOES bite at the defaults on short panels (five rows want ~79.8vh against ~76vh of band at 720p), and
+		 * seating all five there needs the type budget itself to change.
 		 */
 		max-height: calc(100vh - var(--tv-chrome-h));
 		overflow: hidden;

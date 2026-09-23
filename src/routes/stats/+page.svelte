@@ -248,10 +248,6 @@
 	 * navigation and the fine print at the same visual level.
 	 */
 	/*
-	 * S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
-	 * title where this was hand-styled, which is part of the visual change accepted for S4.
-	 */
-	/*
 	 * 1fr is safe now that .stats itself is capped — the reason for a fixed max was an uncapped shell
 	 * stretching each tile to ~350px, and capping the container solved that at the root. A fixed 260px
 	 * max here instead wrapped the third tile onto its own row inside the narrower container.

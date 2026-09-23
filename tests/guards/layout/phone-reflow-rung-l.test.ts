@@ -181,36 +181,11 @@ test('the odd-duration chip wraps its phrase instead of forcing the row wider', 
 	// blanket `white-space: nowrap` is fine for them — but this one carries a whole phrase ("Longer than a
 	// song"), and nowrap made its min-content width its FULL width (~230px at 200%), so it could not shrink
 	// and pushed the browse page past 320px. It must be allowed to wrap, like `.chip.state` already is.
-	/*
-	 * S6: the chip is <Badge> now, so the claim reads in two places instead of one rule. The
-	 * component must OFFER a wrapping tone, and this row must ASK for it on the phrase-carrying chip —
-	 * a component that can wrap is useless if the call site does not opt in, and an opt-in is useless if
-	 * the component ignores it. Checking both is what the single `.chip.odd-dur` rule used to do.
-	 */
 	const badge = readFileSync(join(CORE, 'src', 'lib', 'components', 'ui', 'badge', 'badge.svelte'), 'utf8');
 	const wrapRule = badge.match(/\.encore-chip-wrap\s*\{([^}]*)\}/)?.[1] ?? '';
 	expect(wrapRule, 'ui/badge must offer a wrapping tone').toMatch(/white-space:\s*normal/);
 	expect(SONG_ROW, 'the odd-duration chip must ask for it').toMatch(/durationNote\}<Badge variant="bad" wrap>/);
 });
-
-/*
- * RETIRED WITH THE DRAWER SURFACE — `the queue sheet floors its own reflow: its children can shrink below their
- * content`. It asserted `.sheet-surface > * { min-width: 0 }` in app.css, and that rule was
- * deleted with the drawer surface it dressed.
- *
- * record. (a) The invariant: a `left:0; right:0` fixed box only honours min(max-width,
- * viewport) while its flex children CAN shrink to it — a flex child's automatic minimum is its
- * min-content width, so an unbreakable control label at 200% text sized the sheet by content it could
- * not shrink below (436px inside a 320px viewport, SC 1.4.10). (b) What left scope: `.sheet-surface`
- * and its children, the only box the rule ever applied to. (c) What covers the survivors: NOTHING
- * asserts this on the docked band, DELIBERATELY. `.cta-dock` / `.search-dock` are a flex row holding
- * ONE 44px control, not a column of unbreakable control labels, and neither declares `min-width: 0` —
- * so re-pointing this scan at them would assert a declaration that does not exist and demand
- * production CSS for a defect nobody has measured. The band's reflow is instead covered where it is
- * real: the rung-L probe arms above measure the live pages at 320 CSS px and 200% text and FAIL on an
- * overflow, which is the check that would catch it. If a future band grows a multi-control column,
- * re-add a floor for that band rather than reviving this one.
- */
 
 test('the key row wraps and its ±semitone buttons can shrink at 200% text', () => {
 	// The now-playing key control, named in the issue's offender list. It renders only under live

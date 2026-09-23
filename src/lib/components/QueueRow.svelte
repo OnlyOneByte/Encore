@@ -21,11 +21,6 @@
 		subtitle?: string; // e.g. "now playing", "after Liam"
 		pending?: 'add' | 'move' | null; // optimistic, not yet confirmed — see pendingLabel
 		removable?: boolean; // show the remove affordance (mine, not currently playing)
-		/*
-		 * `reorderable` RETIRED (2026-09-21) with the arrow buttons that were its only reader. Whether this row
-		 * can be moved is `grip` — the caller's `gripVisible()` predicate — and whether it may be moved RIGHT
-		 * NOW is `pending`. Two props for one question was how a row could show a grip and dead arrows.
-		 */
 		/**
 		 * How far this row must slide, in ROWS, to make room for one being dragged past it: -1, 0 or +1.
 		 *
@@ -285,14 +280,6 @@
 </Item.Root>
 
 <style>
-	/*
-	 * S8: `.meta` and `.actions` moved to ui/item as Encore's shared ROW GRAMMAR — `.actions` was
-	 * a verbatim duplicate of ProcessingCard's. `.seq`, `.t` and `.who` STAY here, because their
-	 * surfaces or descendants do: `.seq` paints its own colour+background (see its own note below —
-	 * moving it fired contrast.test.ts), and the subtitle line holds a singer identity dot whose rule
-	 * two contrast guards read directly, and a descendant rule cannot follow its ancestor into a
-	 * component with no `child` snippet.
-	 */
 	/* Geometry comes from .list-row in app.css, shared with the search row and the processing card.
 	   The entry animation is app.css's .pop-in helper (added to the root class list above), which
 	   is wrapped in @media (prefers-reduced-motion: no-preference) so it honours Reduce Motion.

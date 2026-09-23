@@ -1,141 +1,52 @@
-// THE BROWSE SCREEN, DIRECTION B — the deletion is the invariant.
+// THE BROWSE SCREEN — the deletion is the invariant.
 //
-// WHY A SOURCE SCAN, AND WHERE IT STOPS. What direction B changes on this screen is which markup and
-// which state EXIST: three readiness chips, an artist rail, a genre rail and two colour-coded group
-// headings are gone. That is a set of syntax claims, and syntax claims are what a scan can settle. The
-// geometry those claims imply — the box really reachable through a long scroll, the band really sitting
-// at the bottom edge, nothing occluded with the keyboard up — is a MEASUREMENT and is not asserted here
-//; `bun run gate:measured` drives the real render for that.
+// WHY A SOURCE SCAN, AND WHERE IT STOPS. What this pins is which markup and which STATE exist: three readiness
+// chips, an artist rail, a genre rail and two colour-coded group headings are gone. Those are syntax claims, and a
+// scan can settle them; the geometry they imply — the box reachable through a long scroll, the band at the bottom
+// edge, nothing occluded with the keyboard up — is a MEASUREMENT, and `bun run gate:measured` drives the real
+// render for it.
 //
-// The shape matters: a deletion is invisible to a behavioural suite. Nothing imports these routes, so
-// every mechanism below could be restored with the whole suite green. These are the assertions that
-// RED when one comes back, one test per mechanism so a failure names which one.
+// A deletion is invisible to a behavioural suite: nothing imports these routes, so every mechanism below could be
+// restored with the whole suite green. These are the assertions that RED when one comes back, one test per
+// mechanism so a failure names which one.
 //
-// WHERE THE SUBJECT LIVES NOW. The browse screen was a MODE of the queue route; the phone-remote rebuild
-// made it a route of its own (`src/routes/find/+page.svelte`) and hoisted the state it read out of the page;
-// the merge (2026-09-22) brought the surface back to the queue route, as a section of it rather than a mode.
-// Net of both moves:
+// WHERE THE SUBJECT LIVES. The browse screen was a MODE of the queue route, then a route of its own, and since
+// 2026-09-22 a section of the queue route again — so the surface is back at `routes/+page.svelte`, the saved
+// library is the room store's (`refreshLibrary`), and the bottom edge belongs to the band inside the drawer. This
+// guard therefore reads several sources, each stripped and floored separately, because a re-point that silently
+// reads the wrong file asserts nothing.
 //
-//   * the surface itself:      `src/routes/+page.svelte`  ->  (via /find) -> `src/routes/+page.svelte`
-//   * the saved library:       page-local `loadLibrary`   ->  `src/lib/stores/room.ts` (`refreshLibrary`)
-//   * the bottom-edge band:    page-local `.search-dock`  ->  `src/routes/+layout.svelte` -> the drawer
+// ── WHAT THE LAYOUT RULINGS REVERSED, so an arm that reads oddly reads deliberately ───────────────
 //
-// So this guard reads FOUR sources rather than one. Each is stripped and floored separately (see the
-// non-vacuity arm), because a re-point that silently reads the wrong file asserts nothing.
-//
-// RETIREMENT RECORDED HERE. `routes/library-tag-filter-wiring.test.ts` is DELETED by this
-// change, not weakened. It pinned five render seams of the tag filter — `facets.tags` state, a
-// `browseFilter` that could hold a tag, `setBrowse('tag', …)`, the `?tag=` query and the tag rail
-// itself — every one of which is a mechanism direction B removes. Its premise was "the tag filter is
-// wired through the phone page"; the ruling is that the phone page has no tag filter. The SERVER half
-// of is untouched and still guarded (`server/media/library-tag-filter.test.ts`,
-// `routes/api/library/library-tag-filter-wiring.test.ts`), which is why only one of the three
-// similarly-named files retires. The absence is pinned below so it cannot creep back in unnoticed.
-//
-// ── REVERSALS RECORDED HERE (a retired requirement is recorded, never vanished) ────
-//
-// Five arms of this guard pinned a LAYOUT ruling that the phone-remote rebuild reversed on purpose.
-// None of the five is deleted; each is rewritten to assert the decision that replaced it, and the
-// old claim is written down here so a reader can see what was traded away and why.
-//
-//  R1. "search is a docked band in the thumb zone, publishing the measured --dock-h".
-//      WAS: a `.search-dock` fixed to the bottom of `/`, gated on `{#if me}`, whose `bind:clientHeight`
-//      published --dock-h — the sole band on the route, so one measurement reserved the only band there
-//      was. NOW: `NowPlayingBand` owns that edge as app chrome on EVERY phone surface, mounted in
-//      `+layout.svelte` inside a `.dock` wrapper that publishes --dock-h. Two things cannot fight for
-//      one edge, and the band is the one that must always be there — so the box moved to the TOP of
-//      /find and docks nothing at all. The measurement claim survives verbatim; only its
-//      OWNER moved, and it is now pinned in the layout, one publisher for the whole app. Restated as:
-//      "the band owns the bottom edge and publishes the measured --dock-h; the find box docks
-//      the top and reserves the band in flow".
-//
-//  R2. "the results stack UPWARD: every result list is emitted with its best match last".
-//      WAS: three `[...list].reverse()` stacks and a section order of raw -> processing -> ready, so the
-//      top-ranked row sat beside the thumb, above a box docked at the bottom. That ordering was a
-//      consequence of R1's docked box and nothing else. NOW the surface reads DOWNWARD from a page
-//      header, so the best match comes FIRST: no `.reverse()` anywhere, and the section order is ready
-//      before needs-karaoke. The `column-reverse` ban is KEPT unchanged and now does more work than it
-//      did: DOM order must still equal visual order, and a reversing container is the one
-//      way to break that without touching the markup order this arm reads.
-//
-//  R3. "the bottom-anchored column reserves the top for the back control".
-//      WAS: `main:has(> .backrow)` as a flex column with `margin-bottom: auto` on the back control, so
-//      one line of content sat beside the thumb rather than at the top of an empty screen, plus an
-//      `align-content: end` grid arm for the wide layout. NOW /find is TOP-anchored: the back control
-//      is `PageHeader`'s (`back={{ href: '/', … }}`), which is a real `<a href>` rather than a route-local
-//      row, and the wide layout is `align-content: start`. The `.backrow` mechanism is banned outright
-//      below, so the anchoring cannot revert by halves.
-//
-//  R4. "a stack that grows upward is scrolled to, instantly and only when the set changes".
-//      WAS: a `resultShape` derived plus `window.scrollTo({ top: scrollHeight })`, needed only because
-//      bottom-anchored content longer than the viewport starts at the far end of the ranking. With the
-//      ranking reading downward from the top there is nothing to scroll TO, so the whole mechanism is
-//      banned rather than re-pointed — the replacement is a box in normal flow, reachable by a flick
-//      through a long scroll without moving the viewport under the reader. The `behavior: 'smooth'` ban
-//      is KEPT: a scroll animation is still motion no reduced-motion guest asked for, and it is still
-//      the one way to introduce it that motion.test.ts's matcher cannot see.
-//
-//  R5. "the docked box survives the on-screen keyboard, by the one mechanism that can say so".
-//      The `interactive-widget=resizes-content` claim is UNCHANGED and still pinned — but its SUBJECT
-//      moved with R1. It no longer lifts the search box (which sits at the top of the flow, above the
-//      keyboard by construction); it lifts the BAND, which is the `position: fixed; bottom: 0` element
-//      now. Still unverifiable by the measured gate — headless Chromium has no soft keyboard — so this
-//      scan remains the only thing that checks it. NOTE for a source owner: `src/app.html`'s own comment
-//      still explains the attribute in terms of "the search box a guest is typing into", which is stale
-//      prose describing R1's world. This guard does not edit source; flagged, not fixed.
-//
-//  R6. mechanism 4, PARTIALLY reversed. WAS: the readiness group headings are gone, because they
-//      restated in prose the chip directly above them and SongRow already paints a readiness chip per
-//      row. The duplication that ruling was about was heading-vs-CHIP-ROW, and the chip row is still
-//      gone. /find renders up to three groups at once with no chips anywhere, so each group needs a
-//      name to be tellable from its neighbours — and the headings are back for that reason. What stays
-//      retired is the colour-coded, state-gated FORM of them: `showGroupHeads`, `.grouphead ok` /
-//      `.grouphead warn`, the `.grouphead-mark` rule, and the "Processing · queue it anyway" wording.
-//      One neutral `.grouphead` treatment, four headings, no per-readiness variants. Restated as:
-//      "the group headings name WHICH LIST, in one neutral treatment — never the readiness of their
-//      members". A reader who thinks "Ready to sing" over ready-chipped rows is still the banned
-//      duplication should reopen the ruling, not weaken this arm: it pins what the source does today.
-//
-//  R7. THE FIFTH SOURCE, and why `/`'s own floor came DOWN. Nothing about a browse mechanism changed
-//      here — what changed is that `/` is now QUEUE-ONLY. `NowPlayingHero` is deleted and the song
-//      identity, transport and live singing controls moved into `NowPlayingDrawer`, mounted in
-//      `+layout.svelte` and opened by the band's pull handle. `/` went from ~1520 lines to ~1070, so its
-//      non-vacuity floor fired.
-//
-//      That floor is a FINDING, not a number to adjust (`tests/guards/meta/non-vacuity-floors.test.ts`
-//      states the doctrine), and the accepted resolution here is (b) RE-ANCHOR: follow the surface. So
-//      the drawer is read as a FIFTH source, carries its own two floors, and is added to the ban loops
-//      the queue route already appears in — it is app chrome on EVERY phone surface now, which makes it
-//      the newest place a readiness chip row or a facet rail could come back WITHOUT touching `/` or
-//      /find. `/`'s floors are then set to what a queue-only route genuinely supports. The code this
-//      guard examines therefore goes UP, not down; the floor's job — proving `read()` really landed on
-//      the file and the stripper did not blank it — is unchanged at every one of the five addresses.
-//
-//  R8. THE BAND AND THE DRAWER ARE ONE SURFACE NOW, which reverses the two-element arrangement R1 and R7
-//      are both written about. `NowPlayingBand` is COMPOSED inside `NowPlayingDrawer` as the first child
-//      of its content (`.band-slot`), and that element is snap point 0 of a permanently-mounted vaul
-//      sheet. So `+layout.svelte` mounts ONE component inside `{#if showBand}`, there is no `.dock`
-//      wrapper, no `drawerOpen`, and no `onexpand` callback between the two. What forced it is a gesture:
-//      an outside element can START a pointer gesture but cannot hand the in-flight pointer to vaul, so
-//      the old band's handle advertised a drag it could only answer with a jump.
-//
-//      R1's MEASUREMENT CLAIM SURVIVES VERBATIM, in two named steps rather than one binding: `.band-slot`
-//      measures itself with `bind:clientHeight={bandH}` (that height IS snap 0), the layout takes it back
-//      with `bind:bandH={dockH}`, and the layout alone writes `--dock-h` and removes it on teardown. One
-//      measurement, one publisher, both counted below.
-//
-//      R5's SUBJECT MOVES ONE ADDRESS FURTHER. The `position: fixed; bottom: 0` element the soft-keyboard
-//      attribute lifts is no longer a rule this repo writes at all — vaul's own content element carries
-//      it, through the vendored `ui/drawer/drawer-content.svelte` class list (`fixed` plus
-//      `data-[vaul-drawer-direction=bottom]:bottom-0`). That file is therefore read as a SIXTH source,
-//      with its own floor, because a claim asserted against a file this guard does not read is not
-//      asserted at all.
-//
-//      THE `class:covered={drawerOpen}` FADE IS RETIRED, and it is the one mechanism here that loses
-//      assertions outright rather than moving. It existed only because two surfaces of the same colour
-//      with matching top edges had to step out from under each other for the length of the open; one
-//      surface at two heights has nothing to hide. Its `opacity`-never-`visibility` rider is DELETED as
-//      vacuous — see the deletion note at the arm that carried it.
+//  R1. Search was a DOCKED band in the thumb zone publishing `--dock-h`. The band owns that edge now, as app
+//      chrome on every phone surface — two things cannot fight for one edge — so the box sits at the TOP of the
+//      column and docks nothing. The measurement claim survives verbatim; only its owner moved.
+//  R2. The results stacked UPWARD, best match last, which was a consequence of R1's docked box and nothing else.
+//      They read DOWNWARD now: no `.reverse()` anywhere, ready before needs-karaoke. The `column-reverse` ban is
+//      KEPT and does more work than before — DOM order must equal visual order, and a reversing container is the
+//      one way to break that without touching the markup order this arm reads.
+//  R3. The column was BOTTOM-anchored with a route-local back row. It is top-anchored, the back control is
+//      PageHeader's real `<a href>`, and `.backrow` is banned outright so the anchoring cannot revert by halves.
+//  R4. A stack growing upward had to be scrolled to. Reading downward there is nothing to scroll TO, so the whole
+//      mechanism is banned rather than re-pointed. The `behavior: 'smooth'` ban is KEPT: a scroll animation is
+//      still motion no reduced-motion guest asked for, and still the one way to introduce it that motion.test.ts
+//      cannot see.
+//  R5. `interactive-widget=resizes-content` is UNCHANGED but its SUBJECT moved: it no longer lifts the search box
+//      (which is above the keyboard by construction) but the BAND — and, since the band became snap 0 of the
+//      sheet, vaul's own content element, which is why the vendored `ui/drawer/drawer-content.svelte` is read
+//      here too. Still unverifiable by the measured gate (headless Chromium has no soft keyboard), so this scan
+//      is the only thing that checks it.
+//  R6. The readiness group headings came BACK, partially reversing their removal: that ruling was about
+//      heading-vs-CHIP-ROW duplication, and the chip row is still gone. Up to three groups render at once with no
+//      chips, so each needs a name. What stays retired is the colour-coded, state-gated FORM — one neutral
+//      `.grouphead` treatment, never the readiness of a group's members.
+//  R7/R8. THE BAND AND THE DRAWER ARE ONE SURFACE: the band is composed inside the drawer as snap point 0 of a
+//      permanently-mounted sheet, so the layout mounts ONE component and there is no `.dock` wrapper, no
+//      `drawerOpen` and no `onexpand`. What forced it is a gesture — an outside element can START a pointer
+//      gesture but cannot hand the in-flight pointer to vaul, so the old handle advertised a drag it could only
+//      answer with a jump. R1's measurement claim survives in two named steps (the slot measures itself, the
+//      layout publishes), and the `class:covered` fade is retired outright: one surface at two heights has
+//      nothing to step out from under.
 
 import { test, expect } from 'bun:test';
 import { existsSync } from 'node:fs';
@@ -353,31 +264,6 @@ test('the band owns the bottom edge and publishes the measured --dock-h; the fin
 	// the layout. Matched through a bounded window rather than `[^>]*`, because the tag's own props contain
 	// `>` (`() => goto(…)`) and a negated-class run would stop at the first arrow instead of the tag's end.
 	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<NowPlayingDrawer\b[\s\S]{0,200}?bind:bandH=\{dockH\}/);
-	/*
-	 * RETIRED (R8) — two positive arms, recorded here because the mechanism is GONE rather than moved:
-	 *
-	 *     expect(LAYOUT).toMatch(/class:covered=\{drawerOpen\}/);
-	 *     expect(LAYOUT).toMatch(/\.dock\.covered \{\s*opacity: 0;/);
-	 *
-	 * They pinned the fade that took the band out from under the opening drawer. The defect was real —
-	 * both surfaces were `--card` with a 1px top border and a matching top radius, so a sheet rising over
-	 * the band showed two identical top edges and read as a second copy of the panel arriving rather than
-	 * as the panel growing. With one surface at two heights there is no second edge, nothing to step out
-	 * from under, and no open/closed state to drive a fade from.
-	 *
-	 * DELETED AS VACUOUS, not left green — the rider that travelled with them:
-	 *
-	 *     expect(LAYOUT).not.toMatch(/\.dock\.covered \{[^}]*visibility/s);
-	 *
-	 * WHAT IT PROTECTED: the fade had to be `opacity`, never `visibility` and never a height change. The
-	 * band stayed in the layout while the drawer was open, so --dock-h must not move or every scrolling
-	 * column reflows behind it; `visibility: hidden` would also have cut the cross-fade to a pop.
-	 * WHY IT IS DELETED RATHER THAN RE-POINTED: there is no `.dock.covered` rule left for a negative to
-	 * examine, so it passes while looking at nothing — enforcement in appearance only, which is exactly
-	 * what this file's own header calls out about absences. And the rule has no successor to re-point at:
-	 * no fade means no property to insist on, so nothing can regress into `visibility`. The bans below
-	 * carry what remains of the claim, which is that the two-surface arrangement must not come back.
-	 */
 	expect(LAYOUT, 'the retired fade: no class, no rule, no state named `covered`').not.toContain('covered');
 	expect(LAYOUT, 'the retired positioning wrapper — vaul fixes the drawer content itself').not.toContain(
 		'class="dock"'
@@ -662,18 +548,17 @@ test('this guard really read every route it claims to, and really stripped their
 	// is a small file, so its floors are proportionally smaller — the point of a floor is that it is
 	// sensitive to THIS file being mis-read, not that every file scores the same number.
 	//
-	// THE MERGE COLLAPSES TWO ENTRIES INTO ONE and RAISES the survivor. `find` and `home` were separate
-	// files with separate floors; they are one file, and it is bigger than either was (the search block, the
-	// library groups and the result groups all landed in the page that already held the queue). So the pair
-	// moves UP (34000/11000 -> 60000/17000) rather than the two being averaged: a floor's job is to be
-	// sensitive to THIS file being mis-read, and a floor set for the smaller of two merged files would sit
-	// far enough below the real size to pass against a truncated read.
+	// THE RAW FLOORS TRACK THE FILES, NOT THE OTHER WAY ROUND. `find` and `home` merged into one file, which
+	// raised the survivor's pair; a later comment-cleanup pass cut ~200 lines of prose out of it, which lowers
+	// the RAW half again. Neither move is a weakening: the code floor is what a stripped read has to clear and
+	// it is untouched, while the raw floor only has to be high enough to catch a truncated or wrong read. Keep
+	// the raw numbers a clear margin under the real sizes so prose edits do not red this arm.
 	for (const [name, raw, stripped, rawFloor, codeFloor] of [
 		['layout', LAYOUT_RAW, LAYOUT, 5000, 1800],
 		['band', BAND_RAW, BAND, 9000, 2800],
 		['room', ROOM_RAW, ROOM, 12000, 5000],
-		['home', HOME_RAW, HOME, 60000, 17000],
-		['drawer', DRAWER_RAW, DRAWER, 12000, 6000],
+		['home', HOME_RAW, HOME, 40000, 17000],
+		['drawer', DRAWER_RAW, DRAWER, 10000, 6000],
 		['content', DRAWER_CONTENT_RAW, DRAWER_CONTENT, 2500, 1200]
 	] as const) {
 		expect(raw.length, `${name}: file read`).toBeGreaterThan(rawFloor);
@@ -682,24 +567,24 @@ test('this guard really read every route it claims to, and really stripped their
 		// reviewer reads off a failure still points at the real file.
 		expect(stripped.split('\n').length, `${name}: line numbers preserved`).toBe(raw.split('\n').length);
 	}
-	// And it must really strip. Each source explains its part of this change where it happened, so their
-	// comments name the very mechanisms the arms above ban — a no-op stripper would red every one of them.
-	// One proof per reversal that has prose to prove it against:
-	//   home   names the deleted chip state       (mechanism 1)
-	//          …and the retired upward stacking   (R2) — both proofs read the one page now
-	//   layout names the retired `.search-dock`   (R1)
-	//   drawer names the retired nested disclosure the range sat behind (R7)
-	//   content names the decorative-handle defect the copy-in shipped (R8)
-	expect(HOME_RAW).toContain('`showReady`/`showProcessing`/`showRaw`');
-	expect(HOME).not.toContain('`showReady`/`showProcessing`/`showRaw`');
-	// Short enough to survive a comment re-wrap: a proof phrase long enough to span a line break is a
-	// proof that reds on `bun run format` rather than on a broken stripper.
-	expect(HOME_RAW).toContain('stacked them upward');
-	expect(HOME).not.toContain('stacked them upward');
-	expect(LAYOUT_RAW).toContain('`.search-dock` in the route');
-	expect(LAYOUT).not.toContain('`.search-dock` in the route');
-	expect(DRAWER_RAW).toContain('behind a nested "Vocal range" Collapsible');
-	expect(DRAWER).not.toContain('behind a nested "Vocal range" Collapsible');
-	expect(DRAWER_CONTENT_RAW).toContain('shadcn renders a DECORATIVE div');
-	expect(DRAWER_CONTENT).not.toContain('shadcn renders a DECORATIVE div');
+	/*
+	 * AND IT MUST REALLY STRIP. This used to name one PHRASE per file and assert it was present raw and absent
+	 * stripped — which tied the guard to five particular sentences, so editing a comment reds it for a reason
+	 * that has nothing to do with what it guards (a comment cleanup did exactly that). The claim is the same and
+	 * the form is now independent of any wording: each file HAS comment syntax before stripping and none after,
+	 * and the stripper removed a material amount of content rather than a token or two.
+	 */
+	for (const [name, raw, stripped] of [
+		['layout', LAYOUT_RAW, LAYOUT],
+		['band', BAND_RAW, BAND],
+		['room', ROOM_RAW, ROOM],
+		['home', HOME_RAW, HOME],
+		['drawer', DRAWER_RAW, DRAWER],
+		['content', DRAWER_CONTENT_RAW, DRAWER_CONTENT]
+	] as const) {
+		const dense = (t: string) => t.replace(/\s+/g, '').length;
+		expect(raw, `${name}: has comments to strip`).toMatch(/\/\*|<!--/);
+		expect(stripped, `${name}: no comment syntax survived`).not.toMatch(/\/\*|<!--/);
+		expect(dense(stripped), `${name}: the stripper removed a material amount`).toBeLessThan(dense(raw) * 0.95);
+	}
 });

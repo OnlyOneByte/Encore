@@ -1,37 +1,26 @@
 <!--
-	JoinLanding — the UNJOINED state of `/`. `/` is the landing page now; there is
-	no separate `/join` route (Q2-A retired it), and this component is what an unjoined visitor sees
-	instead of the queue.
+	JoinLanding — the UNJOINED state of `/`. There is no separate `/join` route; this is what an unjoined visitor
+	sees instead of the queue.
 
-	TWO PANES, NOT ONE SCREEN. This surface used to do four jobs at once — resolve the room, prove you
-	are in it, pick a name, pick a colour — stacked into a single scroll. The two halves have different
-	audiences: the ROOM half is only ever needed by a guest who could not scan, and the IDENTITY half is
-	needed by everyone. Merging them charged the 90% case (scan the TV's QR) for the 10% case's controls:
-	a scanned guest was shown a six-box code entry they had no code to type into, above the two fields
-	they actually came for.
+	TWO PANES, NOT ONE SCREEN. This surface used to resolve the room, prove you are in it, pick a name and pick a
+	colour in a single scroll — which charged the 90% case (scan the TV's QR) for the 10% case's controls: a scanned
+	guest was shown a six-box code entry they had no code to type into, above the two fields they came for.
 
-	  • STEP 1 — the CODE pane. The FALLBACK, not the default: scan affordance, "or type the six-character
-	    code", the six boxes, and a Continue that resolves the code. No name field and no colour picker —
-	    identity is step 2's job, and asking for it here is what made the merged screen long.
-	  • STEP 2 — the IDENTITY pane. The room confirmed IN WORDS ("Maya and Dana are here"), the name
-	    field, the colour ring, "Start singing". The ONLY pane a guest who scanned the QR ever sees.
+	  • STEP 1 — the CODE pane, a FALLBACK rather than the default: scan affordance, the six boxes, and a Continue
+	    that resolves the code. No identity fields; asking for them here is what made the merged screen long.
+	  • STEP 2 — the IDENTITY pane: the room confirmed IN WORDS, the name field, the colour ring, "Start singing".
+	    The only pane a guest who scanned the QR ever sees.
 
-	TWO PATHS TO ONE ROOM, side by side (never one instead of the other): a SCAN affordance and a TYPED
-	six-segment code. A typed code alone is a cognitive-function test under WCAG SC 3.3.8, so the scan
-	path is what makes this conformant — an accessibility requirement, not a convenience. Splitting the
-	panes PRESERVES that property rather than weakening it: the scan affordance now leads step 1 with
-	nothing competing for the space, and the typed path stays offered rather than required, because the
-	guest who scanned reaches step 2 without passing through step 1 at all.
+	BOTH PATHS ARE ALWAYS OFFERED, never one instead of the other: a typed code alone is a cognitive-function test
+	under SC 3.3.8, so the scan path is what makes this conformant. Splitting the panes preserves that — the scan
+	affordance leads step 1 with nothing competing for the space, and a guest who scanned never passes through it.
 
-	THREE SHAPES, unchanged in substance and now expressed as which pane opens:
-	  • no code yet          → STEP 1, then STEP 2 once the typed code resolves. Both paths offered.
-	  • arrived WITH a code  → resolve it and open STEP 2 directly, the room confirmed IN WORDS, never the
-	                           code re-presented as an input the guest cannot act on. The QR hardcodes the
-	                           room, so a scanned guest types nothing and skips step 1 entirely.
-	  • code did not resolve → STEP 1 WITH a stated reason, not a blank form.
+	Three shapes, expressed as which pane opens: no code yet → step 1 then step 2; arrived WITH a code → step 2
+	directly, the room confirmed in words rather than re-presented as an input the guest cannot act on; code did not
+	resolve → step 1 with a stated reason, not a blank form.
 
-	The room has no NAME (schema is {id, code, createdAt}), so "confirmed in words" is who is here, from
-	GET /api/room-preview (Q1-B). `roomPresenceSentence` is the pure builder, unit-tested without a DOM.
+	The room has no NAME in the schema, so "confirmed in words" is who is here, from GET /api/room-preview.
+	`roomPresenceSentence` is the pure builder.
 -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
@@ -239,28 +228,19 @@
 </script>
 
 <!--
-	THE HEADER IS TWO SHAPES OF ONE THING — and it is ONE <h1> that changes shape, not two that swap.
-	On step 1 the wordmark is the screen's title: large, centred, sitting under the band the missing
-	topbar would occupy. On step 2 it IS the screen's header: small, top-left, out of the way of the
-	room sentence and the name field. Step 1 shows it large because it is the only "Encore" on screen
-	now that the home route drops its topbar for an unjoined visitor; step 2 needs it small because
-	that pane's content starts immediately below it. The SAME mark travelling between those two
-	positions is what tells the guest the two panes are one flow rather than two pages.
+	THE HEADER IS TWO SHAPES OF ONE THING — ONE <h1> that changes shape, not two that swap. On step 1 the wordmark is
+	the screen's title (large, centred, in the band the missing topbar would occupy); on step 2 it IS the header
+	(small, top-left, out of the way of the room sentence). The SAME mark travelling between them is what tells the
+	guest the two panes are one flow.
 
-	ONE PERSISTENT ELEMENT, and that is the whole mechanism. Written as an `{#if}` — a centred h1 in
-	one branch, a header-bar h1 in the other — the element UNMOUNTS and a different one mounts on every
-	flip, so nothing is left for the browser to interpolate and a JS runtime (`crossfade`, keyed to pair
-	the two boxes) had to measure both and animate the difference by hand. That runtime is what this
-	markup exists to avoid: a Svelte `transition:`/`in:`/`out:` directive generates its keyframes at run
-	time and never consults `prefers-reduced-motion` (`tests/guards/motion/motion.test.ts` rejects all
-	four directives for exactly that reason, and `routes/tv/+page.svelte` states the rule), and
-	`crossfade` additionally calls `getBoundingClientRect()` unconditionally, which the mount-rung
-	harness replaces with a throw by design.
+	ONE PERSISTENT ELEMENT is the whole mechanism. As an `{#if}` the element would UNMOUNT on every flip, leaving
+	nothing for the browser to interpolate — so a JS runtime (`crossfade`) had to measure both boxes and animate the
+	difference. That runtime is what this markup avoids: a Svelte `transition:` directive generates keyframes at run
+	time and never consults `prefers-reduced-motion` (`motion.test.ts` rejects all four), and `crossfade` also calls
+	`getBoundingClientRect()` unconditionally, which the mount rung replaces with a throw.
 
-	So the h1 is hoisted OUT of the branch and only its CLASS changes. A mounted element whose
-	`transform` changes is interpolated by the browser natively, from a rule a media query can actually
-	reach — see `.brand` in the style block for the flight itself and its Reduce Motion gate. Exactly
-	one <h1> exists at all times, on either pane.
+	So the h1 is hoisted OUT of the branch and only its CLASS changes: a mounted element whose `transform` changes is
+	interpolated natively, from a rule a media query can reach. See `.brand` for the flight itself.
 -->
 <header class="join-head" class:head-bar={!onCodeStep}>
 	<h1 class="brand" class:brand-bar={!onCodeStep}>
@@ -439,29 +419,21 @@
 
 <style>
 	/*
-	 * A GRID WITH TWO NAMED ROWS, and the reason is the FLIGHT rather than the layout: the brand row is
-	 * a RESERVED band whose height does not depend on which pane is open. The wordmark keeps its
-	 * font-size on both panes (it shrinks by `transform`, not by type — see `.brand`), so its box is
-	 * the same size in the same row either way, and the lede and everything under it sit at the same y
-	 * on both panes. Nothing below the header moves when the mark flies, and nothing moves when the
-	 * pane flips either.
+	 * A GRID WITH TWO NAMED ROWS, for the FLIGHT rather than the layout: the brand row is a RESERVED band whose
+	 * height does not depend on which pane is open. The wordmark keeps its font-size on both panes (it shrinks by
+	 * `transform`, not by type), so its box is the same size in the same row either way and nothing below the
+	 * header moves when the mark flies or the pane flips.
 	 *
-	 * THE TOP BAND IS UNCONDITIONAL, which is the other half of that. The home route hides its topbar
-	 * for an unjoined visitor, which left step 1 starting hard against the physical top edge — a page
-	 * whose chrome had failed to load rather than a screen. So the band the topbar occupied is
-	 * RESERVED: `--tap` is that bar's height (it is exactly one tap target tall, which is what sizes it
-	 * in the first place) and `--space-2xl` is the padding the real topbar carries above its own brand.
-	 * Composed from those two rather than measured off a screenshot into a literal, so if either token
-	 * moves this follows.
+	 * THE TOP BAND IS UNCONDITIONAL. The home route hides its topbar for an unjoined visitor, which left step 1
+	 * starting hard against the physical top edge — a page whose chrome had failed to load rather than a screen. So
+	 * the band it occupied is reserved, composed from `--tap` (the bar is exactly one tap target tall) plus the
+	 * padding the real topbar carries, rather than measured off a screenshot into a literal.
 	 *
-	 * It stays reserved on step 2 as well, where it is not empty: that is the band the wordmark flies
-	 * INTO to become the header. Making it a per-pane padding instead would move the mark vertically by
-	 * changing layout — instant, unanimatable, and it would drag the whole pane up by `--tap` on the
-	 * flip. A reserved band plus a `translate` is the same picture with neither cost.
+	 * It stays reserved on step 2, where it is the band the wordmark flies INTO. A per-pane padding instead would
+	 * move the mark by changing layout — unanimatable, and it would drag the whole pane up by `--tap` on the flip.
 	 *
-	 * `container-type: inline-size` exists for the centring in `.brand`, which needs the CONTAINER's
-	 * width (`cqw`) — a percentage inside a `transform` resolves against the transformed element
-	 * itself, so the free space either side of the mark cannot be expressed without it.
+	 * `container-type: inline-size` exists for the centring in `.brand`, which needs the CONTAINER's width: a
+	 * percentage inside a `transform` resolves against the transformed element itself.
 	 */
 	.join-head {
 		display: grid;
@@ -472,28 +444,21 @@
 		text-align: center;
 	}
 	/*
-	 * THE WORDMARK'S FLIGHT, in `transform` alone.
+	 * THE WORDMARK'S FLIGHT, in `transform` alone. Its LAYOUT is pane-independent by construction — `justify-self:
+	 * start` pins the box at the same gutter on both panes and the font-size is the same — so `transform` is the
+	 * only declaration that differs, which is what makes this interpolable and keeps the flight off the layout.
 	 *
-	 * Its LAYOUT is pane-independent by construction: `justify-self: start` pins the box at the pane's
-	 * `--space-4xl` gutter on both panes (the `justify-items: center` above governs the lede, not this),
-	 * and the font-size is `--ph-text-2xl` on both. So the only declaration that differs between the
-	 * two states is `transform`, which is what makes this interpolable at all — and which keeps the
-	 * flight off the layout, since a mid-flight reflow is exactly the seam the JS attempt produced.
+	 * BOTH the move and the shrink are that one transform: the repo animates `transform` and `opacity` and nothing
+	 * else, so the shrink cannot be a `font-size` and the move cannot be a `top` or a `margin`. Written as the same
+	 * two functions in the same order in both states, so the browser interpolates per-function rather than falling
+	 * back to matrices.
 	 *
-	 * BOTH the move and the shrink are that one `transform`. The repo animates `transform` and
-	 * `opacity` and nothing else (`tests/guards/motion/motion.test.ts` enumerates the allowed set), so
-	 * the shrink cannot be a `font-size` and the move cannot be a `padding`, a `top` or a `margin` —
-	 * every one of those is a layout property. Written as the same two functions in the same order in
-	 * both states, so the browser interpolates them per-function rather than falling back to matrices.
+	 *   • `translate(calc(50cqw - 50%), 0)` centres it: half the header's content box minus half the mark's own
+	 *     width is the free space to its left.
+	 *   • `scale(1)` is the anchor the shrunk state interpolates from.
 	 *
-	 *   • `translate(calc(50cqw - 50%), 0)` — centres it horizontally: `50cqw` is half the header's
-	 *     content box, `50%` is half the mark's own width, so the difference is the free space to its
-	 *     left. Vertically it stays where the reserved band puts it.
-	 *   • `scale(1)` — full size, and the anchor the shrunk state interpolates from.
-	 *
-	 * `transform-origin: left top` pulls the shrink toward the corner the mark is heading FOR. The
-	 * default centre origin would scale it about its middle and the top-left corner would drift, so the
-	 * header state would not sit flush on the gutter without a second correction.
+	 * `transform-origin: left top` pulls the shrink toward the corner the mark is heading for; the default centre
+	 * origin would drift the top-left corner and the header state would not sit flush on the gutter.
 	 */
 	.brand {
 		grid-area: brand;
@@ -684,22 +649,13 @@
 	 */
 	.code-pane {
 		/*
-		 * UNDER THE HEADER, at content height — which is the third arrangement this pane has had, so the two
-		 * it is not are worth naming.
+		 * UNDER THE HEADER, at content height. `flex: 1` + `justify-content: center` centred the group in ALL the free
+		 * space (~190px above the boxes and ~190px below, measured), and auto margins competing with `.submit-slot`'s
+		 * own put it a third of the way down. At content height the whole remaining void lands in ONE place: above the
+		 * docked CTA, where a form with a bottom-docked button is supposed to have it. One gap at the bottom reads as
+		 * spacing; two gaps read as a layout that failed.
 		 *
-		 * `flex: 1` + `justify-content: center` centred the group in ALL the free space: ~190px above the
-		 * boxes and ~190px below, content floating in the middle of nothing. Measured. Auto margins competing
-		 * with `.submit-slot`'s own put it a third of the way down, which was the same problem with a worse
-		 * distribution — the gap BELOW grew to two thirds.
-		 *
-		 * So it sits at content height directly under the step dots, `--space-4xl` away (the column's own
-		 * gap), and the whole remaining void lands in ONE place: above the docked CTA, where a form with a
-		 * bottom-docked button is supposed to have it. That is the arrangement iOS and Android both use, and
-		 * one gap at the bottom reads as spacing where two gaps read as a layout that failed.
-		 *
-		 * The pane is genuinely sparse — two dots, a label, six boxes — and none of this pretends otherwise.
-		 * The real answer is more on the screen, and the scan affordance that used to provide it was removed
-		 * by a recorded ruling, so that stays the owner's call rather than something a layout tweak reverses.
+		 * The pane is genuinely sparse, and none of this pretends otherwise — the real answer is more on the screen.
 		 */
 		flex: 0 0 auto;
 		display: flex;

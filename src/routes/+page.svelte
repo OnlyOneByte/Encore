@@ -68,17 +68,13 @@
 	// from /api/library on load, so a reload mid-process doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 	/*
-	 * THE ROOM'S QUEUE IS THE HOME SCREEN, and so is the search box and the library — one surface, read top
-	 * to bottom: the field, what is queued, what is being made, what is ready to sing. There is no browse
-	 * MODE, no `+ Add a turn` push and no `?browse=1`; `searchActive` (query non-empty) is the sole switch
-	 * between the queue view and the results view, and it is derived from `query` in the search section
-	 * below. See that section's own note for the full history of where this box has lived and why it is
-	 * here rather than docked to the bottom edge (the band owns that) or on a route of its own.
+	 * THE ROOM'S QUEUE IS THE HOME SCREEN, and so are the search box and the library — one surface read top to
+	 * bottom: the field, what is queued, what is being made, what is ready to sing. `searchActive` (a non-empty
+	 * query) is the sole switch between the queue view and the results view; there is no browse MODE and no
+	 * `?browse=1`. See the search section's own note for why the box is here rather than docked or on a route.
 	 *
-	 * BACK MEANS LEAVE THE ROOM, at every point on this screen, because there is never anything to back
-	 * out of: results render in place and clearing the box restores the queue instantly. That is what the
-	 * clear control is for, and it is why no history entry is pushed for a search — nothing can strand a
-	 * reload on a URL that does not exist.
+	 * BACK MEANS LEAVE THE ROOM at every point on this screen, because there is never anything to back out of:
+	 * results render in place and clearing the box restores the queue. No history entry is pushed for a search.
 	 */
 
 	/*
@@ -89,16 +85,9 @@
 	 */
 
 	/*
-	 * NO LOCAL COPY OF THE ROOM'S SETTINGS ANY MORE, and the deletion is the tail of the heading change
-	 * below. This route mirrored `room.settings` from the queue:sync/settings:changed pair, and the
-	 * mirror's one remaining reader was `orderLabel` — the order word in the list heading. With the
-	 * heading down to "Queued" nothing here reads it, and a mirrored field nobody reads is a second copy
-	 * of room state that can only ever be stale.
-	 *
-	 * IT IS NOT NEEDED FOR THE REDUCER. The note here used to claim the phone needs `room.queueOrder`
-	 * "as an input to the optimistic reducer, so an add can only land in its real position if this is
-	 * current" — true of the STORE, which reads the order itself; this was never that copy. `room.queue`
-	 * is handed over whole below and keeps doing exactly what it did.
+	 * NO LOCAL COPY OF THE ROOM'S SETTINGS: this route mirrored `room.settings` for one reader, the order word in
+	 * the list heading, and the heading is one word now. A mirrored field nobody reads can only go stale. The
+	 * STORE reads the order itself for the optimistic reducer, which is a different copy.
 	 */
 	// A reorder is ALWAYS meaningful now: the queue is a stored ordered list and a move rewrites
 	// it, so there is no policy that can discard the move. This used to be false under `shuffle`, whose
@@ -107,17 +96,9 @@
 	const canReorder = true;
 	// HOST reorder: a host can drag ANY song to any global slot, not just reorder their
 	/*
-	 * THE LIST HEADING NAMES NO ORDER ANY MORE — it is the one word "Queued" (ratified 2026-09-21).
-	 *
-	 * It was `Up next · {orderLabel}`, and `orderLabel` existed because the heading had once named the
-	 * order "rotation" unconditionally, which stopped being true the moment the room picked anything else
-	 * (eyes-on: it still said ROTATION with the room on first-come-first-served). That fix was correct for
-	 * the heading it had. The heading is now a label rather than a sentence, so there is nothing left to
-	 * disagree with the room — which retires the derived value rather than un-fixing it.
-	 *
-	 * `queueOrderLabel` KEEPS ITS EXPORT AND ITS TESTS (`contract/queue/queue-order.ts`, asserted by
-	 * barrel-surface.test.ts); this was simply its last call site in the app. The room's order policy is
-	 * still stated where it is CHOSEN, on /settings.
+	 * THE LIST HEADING NAMES NO ORDER — it is the one word "Queued". It was `Up next · {orderLabel}`, which said
+	 * ROTATION while the room was on first-come-first-served; a label cannot disagree with the room. The order
+	 * policy is stated where it is CHOSEN, on /settings.
 	 */
 
 	// MIRRORED from the room link, not owned here — see the onMount block. Optional because a guest
@@ -135,22 +116,15 @@
 	 *  a song that came from search or the library — and is not (yet) in anyone's queue — has no
 	 *  resolvable title: a processing card would render a raw ULID. */
 	/*
-	 * THE ROOM LINK, MIRRORED. The socket, the QueueStore and every field the room broadcasts into used
-	 * to be CONSTRUCTED here, which made this route the owner of app-wide truth — and that is precisely
-	 * why the now-playing band could not become app chrome: a component in +layout.svelte cannot read a
-	 * sibling route's locals. `$lib/stores/room.ts` owns them now; this block adopts them.
+	 * THE ROOM LINK, MIRRORED. The socket, the QueueStore and every broadcast field used to be CONSTRUCTED here,
+	 * which made this route the owner of app-wide truth — and is why the band could not become app chrome: a
+	 * component in +layout.svelte cannot read a sibling route's locals. `$lib/stores/room.ts` owns them now.
 	 *
-	 * THE LOCALS BELOW KEEP THEIR NAMES ON PURPOSE. Every read site in this 2000-line template is
-	 * unchanged, so the diff is a change of OWNER, not a rename sweep — and a rename sweep across this
-	 * file is exactly the kind of change that hides a real defect in 300 lines of noise.
+	 * `sync()` RUNS ONCE BEFORE SUBSCRIBING, which is not belt-and-braces: the link is a singleton that outlives
+	 * this component, so on a later navigation back to `/` it is already live and the next emit may be seconds
+	 * away. Subscribing alone would render an empty queue until the room happened to say something.
 	 *
-	 * `sync()` RUNS ONCE BEFORE SUBSCRIBING, which is not belt-and-braces: the link is a singleton that
-	 * outlives this component, so on any later navigation back to `/` it is ALREADY live and the next
-	 * emit may be seconds away. Subscribing alone would render an empty queue until the room happened
-	 * to say something.
-	 *
-	 * NOTHING HERE CLOSES THE SOCKET. It is deliberately not this route's to close — the connection has
-	 * to survive navigation to the find surface and a song page, so the layout owns its lifetime.
+	 * NOTHING HERE CLOSES THE SOCKET — the connection has to survive navigation, so the layout owns its lifetime.
 	 */
 	onMount(() => {
 		const sync = () => {
@@ -189,36 +163,24 @@
 	}
 
 	/*
-	 * ── SEARCH AND THE LIBRARY, BACK ON HOME ──────────────────────────────────────────────────────────
+	 * SEARCH AND THE LIBRARY, ON HOME. Third placement of one surface, and the previous two were each right about
+	 * something: a box docked to the bottom of this page (typing expanded results upward in place), then its own
+	 * route `/find` reached from the band's magnifier ("once it is somewhere you go, a route is what makes the
+	 * phone's own back gesture work"). Both readings survive here — the surface is on home, so there is no
+	 * navigation and no mode, and it is at the TOP rather than docked, so it never fights the band for the bottom
+	 * edge.
 	 *
-	 * WHERE THIS CAME FROM, because it is the third placement of one surface and the previous two were
-	 * each right about something. It was a box docked to the bottom of this page (typing expanded results
-	 * upward in place); then the band took that edge and it became its own route, `/find`, reached by
-	 * tapping the band's magnifier — "once it is somewhere you go, a route is what makes the phone's own
-	 * back gesture work". Both readings are preserved by this one: the surface is on home again, so there
-	 * is no navigation and no mode, and it is at the TOP rather than docked, so it never fights the band
-	 * for the bottom edge.
+	 * WHAT THE MERGE IS FOR: two screens were answering one question, and the songs already on disk — the whole
+	 * point of persisting the catalog — were invisible from the screen a guest sits on.
 	 *
-	 * WHAT THE MERGE IS FOR. Two screens were answering one question. The queue was "what is happening",
-	 * the find route was "what can I sing", and the second was reachable only through a magnifier in the
-	 * chrome — so the songs already on disk, the whole point of persisting the catalog, were invisible
-	 * from the screen a guest actually sits on. Home now reads top to bottom as a music app does: the
-	 * field, what is queued, what is being made, and what is ready to sing.
+	 * THE ZERO-QUERY STATE IS THE LIBRARY, which is the idea the find route contributed: an empty box shows what
+	 * can be sung right now, so typing FILTERS the world instead of revealing it.
 	 *
-	 * THE ZERO-QUERY STATE IS THE LIBRARY, which is the idea the find route contributed and which is kept
-	 * verbatim: an empty box shows the songs that can be sung right now rather than a dead end, so typing
-	 * FILTERS the world instead of revealing it.
+	 * A QUERY REPLACES THE QUEUE. It has to replace rather than stack, because the keyboard leaves ~350px: a
+	 * field, a heading and two queue rows above the results would push the first match off a phone screen.
 	 *
-	 * A QUERY REPLACES THE QUEUE, and that is the original ruling restored rather than a new one: with
-	 * results rendered in place there is nothing to back out of, so `searchActive` is the sole switch
-	 * between the two views and clearing the box brings the queue back instantly. It has to replace
-	 * rather than stack, because the keyboard leaves ~350px: a field, a heading and two queue rows above
-	 * the results would push the first match off a phone screen.
-	 *
-	 * THE RESULTS READ DOWNWARD, best match FIRST. The docked-box version stacked them upward, best match
-	 * last, because the box was at the bottom of the screen and the nearest row to it was the one that
-	 * mattered; with the field at the top, first in the DOM is first on screen and DOM order equals visual
-	 * order again. Nothing reverses a list anywhere, which is also what keeps the focus sequence honest.
+	 * THE RESULTS READ DOWNWARD, best match FIRST. The docked version stacked them upward, best match last,
+	 * because the box was at the bottom; with the field at the top, DOM order is visual order again.
 	 */
 	let library = $state<Media[]>([]);
 	let libraryTags = $state<Record<string, string[]>>({});
@@ -232,14 +194,6 @@
 	let inflight: AbortController | undefined;
 	/** The sole switch between the queue view and the results view. */
 	const searchActive = $derived(query.trim().length > 0);
-
-	/*
-	 * `focusSearch` AND THE `searchFocus` STORE ARE RETIRED (2026-09-22) with the band's magnifier, which was
-	 * the only thing that ever asked for them. The field is the FIRST element in this column, so reaching it
-	 * is scrolling to the top of the page you are already on — and the band spends the row it used to
-	 * occupy on the full transport instead. `queryEl` survives, because `clearSearch` puts focus back in the
-	 * field after emptying it, which is a different act: the keyboard stays up so a guest can retype.
-	 */
 
 	function onQueryInput() {
 		clearTimeout(debounceTimer);
@@ -386,65 +340,34 @@
 		}
 	}
 
-	/**
+	/*
 	 * The library rows: everything ready to sing, minus whatever the processing group above is showing.
 	 *
-	 * ── A BUG CARRIED IN FROM THE FIND ROUTE, FIXED HERE ──────────────────────────────────────────────
+	 * NOT `unaccounted(library)`, which is self-cancelling: with no query `accountedFor` is seeded with every id
+	 * in `library` so the secondary lists can subtract the primary one, and `unaccounted` then removes exactly
+	 * those ids from the primary list itself. The result was always empty, so "Your library" NEVER RENDERED —
+	 * the zero-query state showed "No karaoke tracks yet." over a library of three songs. Two guards assert this
+	 * group and both are text scans, so both stayed green; it was found by looking at the screen.
 	 *
-	 * This was `unaccounted(library)`, and that expression is self-cancelling: with no query,
-	 * `accountedFor` is seeded with EVERY id in `library` (so the secondary lists can subtract the primary
-	 * one), and `unaccounted` then removes exactly those ids from the primary list itself. The result is
-	 * always the empty array, so the "Your library" heading and its rows NEVER RENDERED — the zero-query
-	 * state, which is the whole design idea of this section, showed the "No karaoke tracks yet." empty
-	 * state instead, over a library of three songs.
-	 *
-	 * IT SHIPPED BEHIND SOURCE-ONLY GUARDS, which is the part worth recording. Two guards assert this
-	 * group: one requires `<h2 class="grouphead">Your library</h2>` in the file and one requires the
-	 * `{#each libraryRows …}` block — both are text scans, and both were green the entire time. Nothing
-	 * rendered the state, so nothing could see that the each-block iterates nothing. Found by looking at
-	 * the screen after the merge (`library.length` was 3 and the "Show all 3" control said so, while the
-	 * list above it claimed there were none).
-	 *
-	 * `unaccounted` is still right for the SECONDARY list — `rawResults` minus the ready results and the
-	 * processing group — and that is its only remaining call site. The primary list subtracts only the one
-	 * group that can genuinely double it: a song mid-process would otherwise appear once with a progress
-	 * bar and once as ready.
-	 *
-	 * The QUEUE is deliberately NOT subtracted. A queued song is still in the library, and its row says so
-	 * (`inQueue` disables the add and reads "Already in the queue") — hiding it would make the library
-	 * look like it lost a song the moment someone queued it.
+	 * The QUEUE is deliberately not subtracted. A queued song is still in the library and its row says so
+	 * (`inQueue` disables the add) — hiding it would make the library look like it lost a song.
 	 */
 	const processingIds = $derived(new Set(processingRows.map((c) => c.id)));
 	const libraryRows = $derived(library.filter((m) => !processingIds.has(m.id)));
 
 	// ── readiness ────────────────────────────────────────────────────────────
-	// One axis, three states: ready (stems on disk, sing now), processing (stems in flight, still
-	// queueable because rotation holds its slot), raw (plays with the original vocals).
-	//
-	// It is no longer a FILTER. Direction B deleted the four concurrent ways to narrow
-	// one list — the three readiness chips, the artist rail, the genre rail, and the group headings
-	// that re-announced this axis in prose — leaving typing in the docked search box as the only one.
-	// So there is no `filter` state and no `showReady`/`showProcessing`/`showRaw` gate: every group
-	// renders, every time, and the reader narrows the list by saying what they want.
+	// One axis, three states: ready (stems on disk, sing now), processing (stems in flight, still queueable
+	// because rotation holds its slot), raw (plays with the original vocals). It is not a FILTER: every group
+	// renders every time, and the reader narrows the list by typing.
 
 	/*
-	 * TOASTS ARE SONNER'S NOW.
+	 * TOASTS ARE SONNER'S. What that replaced: two hand-rolled fixed surfaces, two timers, a `bind:clientHeight`
+	 * on the undo toast and an `$effect` publishing `--undo-h` — because the error toast's offset had to track
+	 * that measured height, and the two had already collided once at the same bottom and z-index. Sonner stacks
+	 * its own, so every part of that chain is deleted rather than ported.
 	 *
-	 * What this replaced: two hand-rolled fixed-position surfaces, two `setTimeout` timers, a
-	 * `bind:clientHeight` measurement of the undo toast, and an `$effect` publishing `--undo-h` to
-	 * `documentElement` with a teardown against the an earlier change §14 leak class. The error toast's offset had to
-	 * track that MEASURED height because a real “title — artist” wraps to an unpredictable number of
-	 * lines, and the two surfaces had already collided once — "both sat at the same bottom and z-index,
-	 * so one drew over the other and a guest saw only whichever rendered last".
-	 *
-	 * Sonner stacks its own toasts, so every part of that chain is deleted rather than ported: no
-	 * measurement, no published custom property, no leak to tear down, and the overlap it existed to fix
-	 * cannot recur. The 5s undo window and the 4s error window are `duration`, and Undo is a real toast
-	 * ACTION rather than a button this page positions and sizes itself.
-	 *
-	 * The Toaster docks above the measured band with `offset="var(--dock-h, 0px)"`, which works because
-	 * `--dock-h` is published on `documentElement` (see the note at its writer above) and so is readable
-	 * from sonner's portal.
+	 * The Toaster docks above the measured band with `offset="var(--dock-h, 0px)"`, which works because the token
+	 * is published on documentElement and so is readable from sonner's portal.
 	 */
 	function showError(msg: string) {
 		toast.error(msg, { duration: 4000 });
@@ -520,29 +443,21 @@
 	 * server gates a NON-owner entry on `queue:reorder-any`. The reorder-mode drag now commits through
 	 * the same op (via exitReorder → store.moveToIndex), so both affordances share one wire path.
 	 */
-	/*
-	 * `moveGlobal` RETIRED (2026-09-21) with the arrow buttons it was wired to. Its one-place step is `nudge`
-	 * below — same op, same wire path — but routed through `keyboardMoveTarget` so a press at either end of
-	 * the list declines instead of emitting a move to the position the row already occupies.
-	 */
 
 	/* ── REORDERING: A LIVE SORT ───────────────────────────────────────────────
 	 *
 	 * The row follows the finger, the rows it passes shift out of its way, and the release commits where it
-	 * visibly is. There is no mode: no Done, no Cancel, no drawn drop targets, nothing to dismiss.
+	 * visibly is. No mode: no Done, no Cancel, no drawn drop targets.
 	 *
-	 * WHAT THIS REPLACED, because the deletion is large and the reasoning it drops was not wrong. A press
-	 * opened a MODE; the page rendered a labelled `.dropslot` button above every queued row; a release over
-	 * one committed and a release anywhere else committed nothing; a `.reorder-bar` offered Done and Cancel
-	 * and a hint. That was the right shape for `move`, whose index space was the guest's OWN picks — not
-	 * adjacent in a flat list, so proximity genuinely could not imply a target. Under `move-to-index` every
-	 * position is legal, so "draw the legal positions" became "draw one per row", which is what the list
-	 * already shows. Reported as popup hell with places to drop it, and it was.
+	 * What that replaced was right for `move`, whose index space was the guest's OWN picks — not adjacent in a
+	 * flat list, so proximity could not imply a target and the mode had to draw them. Under `move-to-index` every
+	 * position is legal, so "draw the legal positions" became one target per row, which is what the list already
+	 * shows.
 	 *
-	 * IS SATISFIED MORE STRONGLY, not waived: `liveSortTarget` is the same expression that places
-	 * the rows on screen and the one that commits, so a release cannot land somewhere the guest did not see.
-	 * (SC 2.5.7 / 2.1.1, a conformance row) moved onto the grip: Arrow Up/Down while it has focus
-	 * steps the row one place. See the header of `$lib/reorder-mode` for both in full.
+	 * The requirement is satisfied more strongly, not waived: `liveSortTarget` is the same expression that places
+	 * the rows and the one that commits, so a release cannot land somewhere the guest did not see. The
+	 * single-pointer alternative (SC 2.5.7 / 2.1.1) moved onto the grip — Arrow Up/Down steps one place. See
+	 * `$lib/reorder-mode`.
 	 */
 	/** The row being dragged, and the live offset of the finger from where the press began. */
 	let movingId = $state<string | null>(null);
@@ -606,12 +521,9 @@
 	}
 
 	/**
-	 * the non-drag reorder, one place per press, straight from the grip.
-	 *
-	 * It commits IMMEDIATELY rather than opening anything: `keyboardMoveTarget` declines at the ends of the
-	 * list, so a press that cannot move says nothing instead of emitting a move to where the row already is.
-	 * Announced, because the row moves under the guest's focus and a screen reader is otherwise told only
-	 * that the list changed.
+	 * The non-drag reorder, one place per press, straight from the grip. It commits IMMEDIATELY rather than
+	 * opening anything, and `keyboardMoveTarget` declines at the ends so a press that cannot move says nothing.
+	 * Announced, because the row moves under the guest's focus.
 	 */
 	function nudge(id: string, delta: number) {
 		const from = queuedIdx(id);
@@ -641,11 +553,10 @@
 		reorderNote = note;
 		if (note) liveMsg = note;
 		/*
-		 * focus goes back to the control the guest was working from, on every exit. After `tick()`
-		 * and by ATTRIBUTE rather than by the element reference: the row's DOM is recreated at its new
-		 * position, so the grip that was pressed is a detached node and focusing the captured reference put
-		 * focus nowhere — measured, not assumed. `openerEl` is the fallback for when the row itself has gone
-		 * (the song started, or was removed), where there is no grip left to return to.
+		 * Focus goes back to the control the guest was working from, after `tick()` and by ATTRIBUTE rather than by
+		 * the element reference: the row's DOM is recreated at its new position, so the pressed grip is a detached
+		 * node and focusing the captured reference put focus nowhere. `openerEl` is the fallback for when the row
+		 * itself has gone.
 		 */
 		void tick().then(() => {
 			const sel = id ? `[data-grip="${CSS.escape(id)}"]` : '';
@@ -656,10 +567,9 @@
 	}
 
 	/**
-	 * The pointer drag. The idiom: publish the offset as a CSS custom property and let a transform do the
-	 * moving, so no position is ever interpolated in JS. That is unchanged from the mode this
-	 * replaced; what is gone is the hit-testing — there is nothing to hit-test now, because the target is
-	 * arithmetic over one row height rather than a search for a drawn slot under the finger.
+	 * The pointer drag. The idiom: publish the offset as a CSS custom property and let a transform do the moving,
+	 * so no position is interpolated in JS. There is no hit-testing — the target is arithmetic, not a search for a
+	 * drawn slot under the finger.
 	 */
 	function onGripPointerDown(entry: QueueEntry, e: PointerEvent) {
 		const grip = e.currentTarget as HTMLElement | null;
@@ -675,18 +585,16 @@
 		 */
 		grip.focus?.();
 		/*
-		 * TWO READS, BOTH AT PRESS TIME AND BOTH ONCE. Nothing is measured again for the life of the gesture —
-		 * that was the recorded hazard (rows change height mid-drag: a byline gains an `away` badge, another
-		 * guest queues a card) and it is why these are taken here rather than in the effect that moves the row.
+		 * TWO READS, BOTH AT PRESS TIME AND BOTH ONCE. Nothing is measured again for the life of the gesture — that
+		 * was the recorded hazard (rows change height mid-drag: a byline gains an `away` badge, another guest queues
+		 * a card).
 		 *
-		 *   `rowH`      the DRAGGED row's own height, which is how far its neighbours must slide to open a gap
-		 *               the right size for it. `closest` rather than an index, because the two row kinds are
-		 *               different heights and the gap belongs to the one being carried.
+		 *   `rowH`       the DRAGGED row's own height — how far its neighbours must slide to open a gap the right
+		 *                size for it. `closest`, not an index, because the gap belongs to the row being carried.
 		 *   `rowBounds`  every row's box, which is what `liveSortTarget` compares the dragged row's leading edge
-		 *               against. A single height cannot answer that in a list of mixed heights — see its note.
+		 *                against. A single height cannot answer that in a list of mixed heights — see its note.
 		 *
-		 * `.qrow` matches BOTH kinds (a queued row and a processing card share the class) and the query returns
-		 * them in DOM order, which is the queued order the indices mean.
+		 * `.qrow` matches BOTH row kinds and the query returns them in DOM order, which is the queued order.
 		 */
 		rowH = grip.closest('.qrow')?.getBoundingClientRect().height ?? 0;
 		rowBounds = [...document.querySelectorAll('.qrow')].map((el) => {
@@ -695,11 +603,10 @@
 		});
 		const startY = e.clientY;
 		/*
-		 * THE LISTENERS GO ON `window`, NOT ON THE GRIP — and not behind `setPointerCapture`. The row's DOM is
-		 * recreated as the list reorders under the finger, so the pressed grip becomes a DETACHED node;
-		 * listeners bound to it, and a pointer captured by it, then deliver nothing — the drag produced no
-		 * `pointermove` and the release never arrived. Both symptoms had one cause, and only a driven pointer
-		 * could show it. `window` is stable for the life of the gesture, which is the lifetime this needs.
+		 * THE LISTENERS GO ON `window`, not on the grip and not behind `setPointerCapture`. The row's DOM is
+		 * recreated as the list reorders under the finger, so the pressed grip becomes a DETACHED node: listeners
+		 * bound to it deliver nothing, the drag produces no `pointermove` and the release never arrives. Only a
+		 * driven pointer could show it.
 		 */
 		const move = (ev: PointerEvent) => {
 			dragY = ev.clientY - startY;
@@ -717,12 +624,10 @@
 	}
 
 	/*
-	 * the queue moves underneath a drag in flight, and that is NORMAL. `assignSeqs` re-derives
-	 * every rotationSeq on every mutation, so another guest's add re-orders the flat list under the finger.
-	 * That case needs no handling and deliberately gets none: the live sort is relative to where the dragged
-	 * row IS, so a stranger's entry simply moves the row the guest is holding along with the list. What DOES
-	 * invalidate the gesture is the dragged song leaving, starting to play, or the queue falling below two —
-	 * each of which makes the drag meaningless. Then it ends itself, says why, and returns focus.
+	 * The queue moving underneath a drag in flight is NORMAL and deliberately gets no handling: the live sort is
+	 * relative to where the dragged row IS, so another guest's add simply moves the held row along with the list.
+	 * What DOES invalidate the gesture is the dragged song leaving, starting to play, or the queue falling below
+	 * two — then it ends itself, says why, and returns focus.
 	 */
 	$effect(() => {
 		const reason = modeInvalidation(queued, movingId, entries.find((e) => e.id === movingId)?.status);
@@ -762,21 +667,14 @@
 	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
 
 	/*
-	 * ── HOW LONG UNTIL MY TURN, ON MY OWN ROW ─────────────────────────────────────────────────────────
+	 * HOW LONG UNTIL MY TURN, ON MY OWN ROW. `MyPositionCard` used to say "1st · You're up next. · Roughly 3
+	 * minutes." above a row already reading "1 · You · up next" — the ordinal twice, the claim twice, and one
+	 * piece of information of its own. The wait moved onto the row it was describing.
 	 *
-	 * THE CARD THIS REPLACED. `MyPositionCard` sat above the queue and said "1st · You're up next. ·
-	 * Roughly 3 minutes." over a queue row that already read "1 · You · up next" a few pixels below it —
-	 * the ordinal twice, the claim twice, and one piece of information that was genuinely its own: the
-	 * wait. Reported as useless, and it was: two of its three lines were a restatement of the row beneath
-	 * it, and it rendered nothing at all when the guest had nothing queued, so the slot was dead exactly
-	 * when a guest most needs to be told what to do. The slot is the search field's now, and the WAIT
-	 * moved onto the row it was always describing.
-	 *
-	 * The honest-degradation rule is unchanged and still lives in one place (`waitShort`, which shares its
-	 * arithmetic with the sentence form): an entry ahead whose media is not in the catalog has no
-	 * resolvable length, one unknown term makes the whole estimate unknown, and an unknown estimate is
-	 * OMITTED rather than zeroed or guessed. `Media.durationSec` is required, so ABSENCE from the catalog
-	 * — not a missing field — is the reachable unknown.
+	 * The honest-degradation rule lives in one place (`waitShort`, sharing its arithmetic with the sentence form):
+	 * one entry ahead with no resolvable length makes the whole estimate unknown, and an unknown estimate is
+	 * OMITTED rather than zeroed. `Media.durationSec` is required, so ABSENCE from the catalog is the reachable
+	 * unknown.
 	 */
 	/** My soonest queued pick: the row the wait is about. */
 	const myNextEntry = $derived(
@@ -795,11 +693,8 @@
 		return Math.max(0, nowDurationSec - displayPos);
 	});
 	/**
-	 * The byline clause after the singer's name: "up next", "~3 min", "up next · ~3 min", or nothing.
-	 *
-	 * Built by joining the parts that are TRUE rather than by branching on which case we are in, so a row
-	 * can never render a stray separator — which is what an `a ? x : y` over two independent facts does the
-	 * first time both are false.
+	 * The byline clause after the singer's name: "up next", "~3 min", both, or nothing. Built by joining the parts
+	 * that are TRUE rather than branching, so a row can never render a stray separator.
 	 */
 	function queueSubtitle(e: QueueEntry): string {
 		return [e.id === nextPlayableId ? 'up next' : '', e.id === myNextEntry?.id ? myWait : null]
@@ -819,12 +714,8 @@
 	});
 </script>
 
-<!--
-	THE TOPBAR IS FOR A JOINED SINGER ONLY. Unjoined, `/` IS the join screen, and JoinLanding paints its
-	own brand as that screen's heading — so rendering this one too put "Encore" on screen twice, once
-	small at the top-left and once large and centred a few pixels below it. The wordmark is the join
-	screen's title, not chrome sitting above it, so the chrome is what goes.
--->
+<!-- THE TOPBAR IS FOR A JOINED SINGER ONLY: unjoined, `/` IS the join screen, and JoinLanding paints its own
+	brand as that screen's heading — rendering this one too put "Encore" on screen twice. -->
 {#if me}
 	<header class="topbar">
 		<h1 class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></h1>
@@ -840,36 +731,20 @@
 		{/if}
 		{#if me}
 			<div class="me-cluster">
-				<!--
-			  The name + dot were inert text. They are the one place a guest already looks to check who the
-			  room thinks they are, so they are also where fixing it belongs — and a 44px target, since the
-			  gear next to it was fixed for exactly that reason.
-
-			  A LINK to the settings page, not a button opening a sheet. Identity used to be editable in
-			  two places (this sheet and, after the redesign, the settings page), which is two save paths
-			  that can disagree about what your name is. One editor, reached from both entry points: the
-			  gear opens the room scope, this opens `?tab=you`.
-			-->
-				<!--
-			  `.me-slot` / `.gear-slot` are page-rendered wrappers, and that is forced rather than stylistic:
-			  Tailwind scans only the `components/ui` directory, so a utility written here is emitted
-			  nowhere, and a
-			  class handed to a component is scoped to THIS file where Svelte strips it as unused. So
-			  layout and inherited ink stay on a wrapper, appearance moves into the variant.
-			-->
+				<!-- A LINK to /settings?tab=you, not a button opening a sheet: identity was editable in two places, which
+				  is two save paths that can disagree about your name. The name and dot were inert text, and they are the
+				  one place a guest looks to check who the room thinks they are — so they are a 44px target too. -->
+				<!-- `.me-slot` / `.gear-slot` are page-rendered wrappers, and that is forced: Tailwind scans only the
+				  `components/ui` directory so a utility written here is emitted nowhere, and a class handed to a component
+				  is scoped to THIS file where Svelte strips it as unused. Layout and inherited ink stay on the wrapper. -->
 				<div class="me-slot">
 					<Button variant="identity" href="/settings?tab=you" aria-label="Your profile">
 						<span class="me-name">{me.displayName}</span>
 						<span class="me-dot" style="--singer:{me.color};"></span>
 					</Button>
 				</div>
-				<!--
-			  Was a bare ⚙️ at font-size 1.05rem in ~18px of padding: a forced-colour-emoji glyph (the
-			  trailing U+FE0F requests emoji presentation outright) in a target under even the 24px WCAG
-			  2.5.8 floor, in an app that had already adopted 44px everywhere else. Now a real mark in a
-			  real target — `size="icon"` IS that target: it compiles to `size-tap grid place-items-center`
-			  over `--tap: 44px`.
-			-->
+				<!-- `size="icon"` IS the 44px target (`size-tap grid place-items-center`). This was a bare ⚙️ at 1.05rem
+				  in ~18px of padding: a forced-colour-emoji glyph in a target under even the 24px WCAG 2.5.8 floor. -->
 				<div class="gear-slot">
 					<Button variant="ghost" size="icon" href="/settings" aria-label="Settings" title="Settings">
 						<Icon name="gear" />
@@ -882,18 +757,13 @@
 
 <!--
 	`--row-h` IS THE ONE MEASURED ROW HEIGHT, published here so the shifting rows can multiply it by the
-	`--row-shift` COUNT the page gives each of them. It is 0 except during a drag, which is also when it is
-	measured (see `onGripPointerDown`) — so no row can be displaced while nothing is being dragged, whatever
-	a stale shift count said.
+	`--row-shift` COUNT each is given. It is 0 except during a drag, which is also when it is measured, so no row
+	can be displaced while nothing is being dragged whatever a stale shift count said.
 -->
 <main style="--row-h:{rowH}px">
 	{#if me}
-		<!--
-			THE FIELD IS THE FIRST THING ON THE SCREEN, and it is a field rather than a link because search is
-			no longer a place you go — see the long note in the script. Not sticky, deliberately: the reasoning
-			is recorded on `focusSearch`, and the band's magnifier is what makes a non-sticky field free to
-			reach from anywhere.
-		-->
+		<!-- THE FIELD IS THE FIRST THING ON THE SCREEN, and a field rather than a link because search is no longer a
+			place you go. Not sticky — see the `.findbox` rule for why. -->
 		<div class="findbox">
 			<span class="find-mark"><Icon name="search" /></span>
 			<input
@@ -926,56 +796,36 @@
 		{/if}
 
 		<!--
-			ONE SCROLL, TWO VIEWS. Everything from here to the library is gated on `searchActive`, which is the
-			sole switch: no query and the page is the room (what is queued, what is being made, what is ready),
-			a query and it is the search (see the script's note for why the results REPLACE the queue rather
-			than stacking under it).
+			ONE SCROLL, TWO VIEWS. Everything from here to the library is gated on `searchActive`: no query and the page
+			is the room (what is queued, what is being made, what is ready), a query and it is the search.
 		-->
 		{#if !searchActive}
 			<h2 class="grouphead">Queued</h2>
 			<!--
-			NO MODE CHROME. A `.reorder-bar` used to appear here — a hint plus Done and Cancel — because the
-			mode it belonged to had to be committed or abandoned explicitly. The drag is a live sort now: it
-			begins on a press, it is visible the whole way, and it commits on release. There is nothing to
-			confirm and nothing to abandon, so the bar, its two buttons and the Escape binding that fed Cancel
-			are all gone (2026-09-21). Reported as popup hell, along with the drop targets.
+				NO MODE CHROME. A `.reorder-bar` with a hint and Done/Cancel used to appear here, because the mode it
+				belonged to had to be committed or abandoned. A live sort begins on a press, is visible the whole way and
+				commits on release, so there is nothing to confirm.
 
-			The NOTE stays, and it is not mode chrome: a drag can still be invalidated mid-flight by the queue
-			moving (the song starts playing, or leaves), and a gesture that dissolves under a
-			guest's finger has to say why. Visible as well as announced, because a reason only a screen reader
-			gets is not a reason.
-		-->
+				The NOTE stays, and it is not mode chrome: a drag can still be invalidated mid-flight by the queue moving
+				under it, and a gesture that dissolves under a finger has to say why — visibly as well as announced.
+			-->
 			{#if reorderNote}
 				<p class="reorder-note">{reorderNote}</p>
 			{/if}
 			{#if queued.length === 0}
 				<!--
-				THE STATE, LARGE AND CENTRED, AND NOTHING ELSE (ratified 2026-09-21).
+				THE STATE, LARGE AND CENTRED, AND NOTHING ELSE. It carried a second line telling a guest where songs
+				come from; the STATE is promoted instead, and at display scale in an empty column it is the only thing
+				on screen.
 
-				This carried a second line — "Tap the magnifier below to pick the first song." — added when the
-				state was one dim `Nothing queued.` at the top left of an otherwise blank screen, on the
-				reasoning that a guest who has just joined has no idea the band is where songs come from. The
-				instruction is dropped and the STATE is promoted instead: at display scale in the middle of the
-				empty column it is the only thing on the screen, and the magnifier is the only control under it,
-				so the sentence was describing a discovery the layout now makes for itself.
-				`Empty.Description` goes with it rather than being emptied — the slot carried the copy.
-
-				`Empty.Root` STAYS, and not decoratively: the inventory detector recognises a route's
-				designed empty state by `<Empty.Root>` (phone-inventory.test.ts), so replacing the primitive
-				with a bare `<p>` would report this route as having no empty state at all.
-
-				SIZED AND PLACED FROM A PAGE-OWNED WRAPPER. `Empty.Title` is a vendored element carrying
-				`text-lg`, which an inherited font-size cannot beat, and a utility written in this file is
-				emitted nowhere (Tailwind scans only `components/ui`) — so the one rule reaches the vendored
-				`data-slot` through `.queue-empty`, the same shape as `.band-slot:global(.band)` in the drawer.
+				`Empty.Root` stays for a reason: the inventory detector recognises a designed empty state by that
+				primitive (`phone-inventory.test.ts`), so a bare `<p>` would report this route as having none. It is
+				sized from a page-owned wrapper because `Empty.Title` carries Tailwind's `text-lg`, which an inherited
+				font-size cannot beat, and a utility written in this file is emitted nowhere.
 			-->
-				<!--
-				`tight` DROPS THE 40vh, and only when there is something under it. The ratified state was "large
-				and centred, the only thing on the screen", which it WAS when the queue was the whole page: 40vh
-				of empty column with three words in the middle of it. The library renders below this now, so on a
-				phone that 40vh is the dead space between the two things a guest came for. The state stays LARGE
-				(the display step is untouched); it stops reserving a void it no longer sits in.
-			-->
+				<!-- `tight` DROPS THE 40vh, and only when something follows. "Large and centred, the only thing on the
+				screen" was right when the queue WAS the whole page; the library renders below it now, so that 40vh is dead
+				space between the two things a guest came for. The state stays large. -->
 				<Empty.Root>
 					<div class="queue-empty" class:tight={libraryRows.length > 0 || processingGroup.length > 0}>
 						<Empty.Header>
@@ -987,13 +837,9 @@
 				{#each queued as e, i (e.id)}
 					{@const s = singerOf(e.singerId)}
 					{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
-					<!--
-					NO DROP TARGETS. A `.dropslot` button used to render above every queued row while the mode was
-					open, labelled with the ordinal it committed, and the drag hit-tested for the one under the
-					finger. Deleted (2026-09-21): under `move-to-index` every position is legal, so one target per
-					row is exactly what the list already shows — and a release now commits `dragTo`, the same
-					expression that places the rows on screen, which is the substance without the chrome.
-				-->
+					<!-- NO DROP TARGETS. A labelled `.dropslot` used to render above every queued row and the drag hit-tested
+					for the one under the finger. Under `move-to-index` every position is legal, so one target per row is
+					what the list already shows — and a release commits `dragTo`, the expression that places the rows. -->
 					{#if card === 'processing' || card === 'failed'}
 						{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
 						<ProcessingCard
@@ -1071,13 +917,11 @@
 
 		{#if !searchActive}
 			<!--
-				ZERO QUERY = THE LIBRARY, under the queue. The songs that can be sung right now, as default
-				content — so the catalog we persist is visible from the screen a guest sits on rather than behind
-				a magnifier. Typing FILTERS this world instead of revealing it.
+				ZERO QUERY = THE LIBRARY, under the queue: the songs that can be sung right now as default content, so the
+				catalog we persist is visible from the screen a guest sits on. Typing FILTERS this world.
 
-				THE HEADING IS GATED ON HAVING ROWS: a group heading is a claim about what follows it, so it must
-				not outlive its rows (the find route learned this with an empty library and one song processing,
-				which rendered a heading over nothing).
+				THE HEADING IS GATED ON HAVING ROWS — a group heading is a claim about what follows it, so it must not
+				outlive its rows.
 			-->
 			{#if libraryRows.length}
 				<h2 class="grouphead">Your library</h2>
@@ -1163,43 +1007,30 @@
 -->
 <Toaster position="bottom-center" offset="var(--dock-h, 0px)" style="--width: min(92vw, 420px);" />
 
-<!--
-	Polite live region for ambient queue activity a screen reader would otherwise miss (a guest's add,
-	a rotation reorder). Visually hidden — it carries no visual design, so it changes no screenshot —
-	but present in the DOM from first render so the assistive tech is already observing it when the
-	first announcement lands. See the `liveMsg` effect for what is (and is not) announced.
--->
-<!-- — ESCAPE CANCELS A DRAG IN FLIGHT and commits NOTHING. Bound on the window rather than on a
-	row because mid-gesture the pointer is captured and focus sits on the grip, while a keyboard cancel has
-	to work wherever focus happens to be.
-
-	Guarded on `dragging` so it never swallows an Escape the rest of the page wants. It is the only
-	mode-like binding left: there is no Cancel button, because there is no mode to abandon — a release
-	commits where the row visibly is, and this is how a guest backs out of a gesture already under way.
--->
+<!-- Polite live region for ambient queue activity a screen reader would otherwise miss (another guest's add, a
+	rotation reorder). Visually hidden, but present from first render so assistive tech is already observing it
+	when the first announcement lands. -->
+<!-- ESCAPE CANCELS A DRAG IN FLIGHT and commits nothing. On the window rather than a row because mid-gesture the
+	pointer is captured and focus sits on the grip, while a keyboard cancel has to work wherever focus is. Guarded
+	on `dragging` so it never swallows an Escape the rest of the page wants. -->
 <svelte:window onkeydown={(e) => dragging && e.key === 'Escape' && endDrag(false)} />
 
 <div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
 
 <style>
 	/*
-	 * The search dock is docked at the bottom, so the column must be able to scroll clear of it
-	 *: the padding reserves the band's MEASURED height (--dock-h), which is what keeps the
-	 * last queue row (empty box) or the top-ranked result (searching) reachable at every scroll position
-	 * instead of parked under the band. The fallback covers the first frame before the effect publishes
-	 * a measurement. Since an earlier change there is exactly ONE band on this route — the search dock, present in
-	 * both views — so this one rule reserves the only band there is.
+	 * The band is docked at the bottom, so this column must scroll clear of it: the padding reserves the band's
+	 * MEASURED height (--dock-h), which keeps the last row reachable at every scroll position instead of parked
+	 * under the band. The fallback covers the first frame before the measurement lands.
 	 */
 	main {
 		flex: 1;
 		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	/*
-	 * WRAPPERS FOR THE MIGRATED CONTROLS. Each holds only what a component must not: layout that belongs
-	 * to a flex ITEM, and ink that the control inherits. Neither can be a class passed to <Button> —
-	 * Tailwind scans only `components/ui/**` so a utility written here is emitted nowhere, and a class
-	 * handed to a component is scoped to this file where Svelte strips it as unused. The appearance of
-	 * all nine controls now lives in a Button variant.
+	 * WRAPPERS FOR THE MIGRATED CONTROLS, each holding only what a component must not: layout that belongs to a
+	 * flex ITEM, and ink the control inherits. Neither can be a class passed to <Button> — Tailwind scans only
+	 * `components/ui/**`, and a class handed to a component is scoped to this file where Svelte strips it.
 	 */
 	.me-slot {
 		/* Frees the flex minimum the name's ellipsis depends on. The `identity` variant restores `shrink`
@@ -1231,15 +1062,10 @@
 	}
 
 	/*
-	 * `.reorder-bar`, `.reorder-hint`, `.reorder-acts`, `.dropslot` and `.dropslot.hot` WERE DELETED HERE
-	 * (2026-09-21) with the mode they dressed: a bar with a hint and Done/Cancel, and one labelled drop
-	 * target above every queued row. The drag is a live sort now — the row follows the finger, its
-	 * neighbours slide, the release commits — so there is nothing to confirm, abandon or aim at.
-	 *
-	 * What those rules had learned, so it is not re-learned: the slot was a `--tap`-tall dashed outline that
-	 * grew a solid accent edge when hot, because a drop target drawn only by colour is invisible to the
-	 * guest who needs it most; and the bar sat above the list rather than docked, so it could not cover the
-	 * rows the guest was aiming at. Neither hazard exists without the chrome.
+	 * `.reorder-bar`, `.reorder-hint`, `.reorder-acts`, `.dropslot` and `.dropslot.hot` WERE DELETED HERE with the
+	 * mode they dressed. What those rules had learned, so it is not re-learned: a drop target drawn only in colour
+	 * is invisible to the guest who needs it most, and a mode bar must sit above the list rather than docked, or
+	 * it covers the rows the guest is aiming at.
 	 */
 	.reorder-note {
 		margin: 0 0 var(--space-sm);
@@ -1269,12 +1095,10 @@
 	}
 
 	/*
-	 * The singer's own identity dot. The colour arrives as a --singer custom property rather than being
-	 * interpolated straight into `background:`, which is what lets the halo be derived with color-mix.
-	 * The previous form concatenated hex alpha digits onto the value — `box-shadow: 0 0 0 3px {color}30`
-	 * — and that only ever worked because all eight presets happened to be 6-digit hex. A 3-digit hex,
-	 * an rgb() or an oklch() produced invalid CSS and the halo silently vanished. color-mix takes any
-	 * colour syntax, so the free hue picker cannot break it.
+	 * The singer's own identity dot. The colour arrives as a `--singer` custom property rather than interpolated
+	 * into `background:`, which is what lets the halo be derived with color-mix. The previous form concatenated
+	 * hex alpha digits onto the value and only worked because every preset was 6-digit hex; a 3-digit hex, an
+	 * rgb() or an oklch() produced invalid CSS and the halo silently vanished.
 	 */
 	.me-dot {
 		width: 22px;
@@ -1284,13 +1108,10 @@
 		background: var(--singer);
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--singer) 19%, transparent);
 	}
-	/* The one child of the header whose width is user-supplied. A single unbroken token has a
-	   min-content width equal to its full rendered width, so with automatic minimum sizing flex-shrink
-	   cannot take it below that and the row grows the document — carrying the settings gear off the
-	   viewport. Truncate it instead: text-overflow only fires on a block box, so this is a
-	   styled span (block), and min-width:0 must exist up the whole chain (.me-cluster,.me-btn) for it
-	   to actually shrink. The dot (flex:0 0 auto) and the gear (min-width:44px) stay unshrinkable so
-	   the 44px target survives. */
+	/* The one child of the header whose width is user-supplied. A single unbroken token's min-content width is its
+	   full rendered width, so flex-shrink cannot take it below that and the row grows the document — carrying the
+	   gear off the viewport. Truncate instead: text-overflow needs a block box, and min-width:0 must exist up the
+	   whole chain for it to shrink. The dot and the gear stay unshrinkable so the 44px target survives. */
 	.me-name {
 		display: block;
 		min-width: 0;
@@ -1301,11 +1122,10 @@
 	/* var(--tap), matching every other control in the app. The emoji gear this replaced was ~18px. */
 
 	/*
-	 * Wide viewports spend the extra room on MORE SONGS, not longer rows. Only song rows flow into
-	 * columns — the group headings and the empty states each label everything below them, so a heading
-	 * confined to one column would read as applying to half the list. The rule is inverted
-	 * deliberately: everything spans by default and rows opt in, so a new block added here spans
-	 * (always safe) rather than silently landing in a column beside a song.
+	 * Wide viewports spend the extra room on MORE SONGS, not longer rows. Only song rows flow into columns: a
+	 * heading or an empty state labels everything below it, so confining one to a column would read as applying
+	 * to half the list. Inverted deliberately — everything spans by default and rows opt in, so a new block added
+	 * here spans (always safe) rather than silently landing beside a song.
 	 */
 	@media (min-width: 768px) {
 		main {
@@ -1337,24 +1157,18 @@
 	}
 
 	/*
-	 * ── THE SEARCH FIELD ──────────────────────────────────────────────────────────────────────────────
+	 * ── THE SEARCH FIELD ──────────────────────────────────────────────────────
 	 *
-	 * Moved here verbatim from the retired /find route, including the two decisions worth keeping:
+	 * NOT STICKY. This page's `.topbar` is already sticky, so a second sticky element would need that header's
+	 * RENDERED height as its offset — not a token. Inventing a spacing step past `--space-4xl` puts an undefined
+	 * custom property inside a calc(), which invalidates the whole declaration silently, and measuring the header
+	 * to publish a second property is a band contract's worth of machinery for a search box.
 	 *
-	 * NOT STICKY. `PageHeader` was already sticky there and this page's `.topbar` is the same shape, so a
-	 * second sticky element would have to be offset by that header's RENDERED height — which is not a token.
-	 * Inventing a spacing step past `--space-4xl` puts an undefined custom property inside a calc(), which
-	 * invalidates the whole declaration silently; measuring the header and publishing a second custom
-	 * property is a band contract's worth of machinery for a search box. So the field scrolls with the
-	 * content and the band's magnifier brings it back (see `focusSearch`).
-	 *
-	 * THE FOCUS RING BELONGS TO THE WHOLE FIELD, not the bare input inside it. `.findbox` is a bordered,
-	 * filled box holding a magnifier, an input, a spinner and a clear control — so it IS the field as far as
-	 * anyone looking at it is concerned. app.css's global `input:focus-visible` drew the ring on the input
-	 * alone: a violet rounded rect nested inside a grey one, with the magnifier stranded outside the ring it
-	 * should have been part of. `:focus-within` on the wrapper because a wrapper is never itself focused,
-	 * and the inner rule suppresses the global so only one ring is ever drawn — same token, same width, so
-	 * the measured floor (a ≥2px outline in the resolved `--focus`) still holds.
+	 * THE FOCUS RING BELONGS TO THE WHOLE FIELD, not the bare input: `.findbox` is a bordered, filled box holding
+	 * a magnifier, an input, a spinner and a clear control, so it IS the field to anyone looking at it. app.css's
+	 * global `input:focus-visible` drew a violet rect nested inside a grey one with the magnifier stranded
+	 * outside it. `:focus-within` on the wrapper (a wrapper is never itself focused) and the inner rule
+	 * suppresses the global, so only one ring is drawn — same token, same width, so the measured ≥2px floor holds.
 	 */
 	.findbox {
 		background: var(--card);
@@ -1422,24 +1236,16 @@
 		}
 	}
 	/*
-	 * THE EMPTY QUEUE — the state at display scale, centred in the space it leaves, and the only thing on
-	 * the screen (ratified 2026-09-21).
+	 * THE EMPTY QUEUE — the state at display scale, centred in the space it leaves.
 	 *
-	 * `min-height` rather than a full-height centring trick: this is a block in a scrolling column that
-	 * also carries the position card, the heading and the band's reservation, so anything absolute here
-	 * would have to re-derive a height three other rules already own. 40vh puts the line in the middle of
-	 * what is actually empty on a phone and reads as centred on a laptop, and it costs nothing when the
-	 * queue is non-empty because the whole block is gone.
+	 * `min-height` rather than a full-height centring trick: this is a block in a scrolling column that also
+	 * carries the heading and the band's reservation, so anything absolute would re-derive a height three other
+	 * rules own. It costs nothing when the queue is non-empty, because the whole block is gone.
 	 *
-	 * `overflow-wrap: anywhere` IS THE 320px CLAUSE, not a tidiness one. At `--ph-text-3xl` and 200% text a
-	 * single unbreakable word is wider than a 320px viewport, which is exactly the reflow failure
-	 * measures — the same reason the `keycap` button variant carries this pair. The word breaks instead of
-	 * the layout.
-	 *
-	 * THE FONT-SIZE REACHES A VENDORED SLOT. `Empty.Title` carries Tailwind's `text-lg` on its own element,
-	 * so an inherited size cannot win, and a utility written in this file is never emitted (app.css is
-	 * `source(none)` over `components/ui`). One `:global()` at a `data-slot`, which is the shape
-	 * `ui-scoped-style-reach` asks for: the attribute is emitted by markup in this tree.
+	 * `overflow-wrap: anywhere` is the 320px clause, not tidiness: at `--ph-text-3xl` and 200% text a single
+	 * unbreakable word is wider than a 320px viewport, which is the reflow failure. The word breaks instead of
+	 * the layout. The font-size reaches a vendored slot through one `:global()` at a `data-slot`, because
+	 * `Empty.Title` carries `text-lg` on its own element and an inherited size cannot win.
 	 */
 	.queue-empty {
 		display: grid;
@@ -1476,30 +1282,14 @@
 	 */
 	/* The collapsed-row peek of the range, pushed to the right. Not uppercase — it is data, not a label. */
 	/*
-	 * Docked-toast stacking, measured UP from the docked primary button. --dock-h is bound to that band's
-	 * clientHeight, and the BAND's own padding already includes env(safe-area-inset-bottom), so the
-	 * inset arrives THROUGH --dock-h — do NOT add another env() term here or the gap doubles.
+	 * Docked-toast stacking, measured UP from the band. --dock-h is bound to the band's clientHeight and the band's
+	 * own padding already includes env(safe-area-inset-bottom), so the inset arrives THROUGH --dock-h — do NOT add
+	 * another env() term here or the gap doubles.
 	 *
-	 * The offsets were hand-tuned constants (14 / 70) stacking one element above the other above a
-	 * measured value, so they overlapped the instant either toast changed height. Naming them as scoped
-	 * tokens made the stacking order explicit: undo sat just above the band, and the error toast docked
-	 * above the undo toast's rendered height plus a fixed gap.
-	 *
-	 * BOTH TOKENS ARE NOW DECLARED-BUT-UNREAD, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT.
-	 * The shadcn migration moved the toasts onto Sonner, which stacks its own surfaces — so there is no
-	 * second independently-positioned toast to offset, and the `$effect` that published the undo toast's
-	 * measured height was deleted with it. Consequences worth stating, because the previous version of
-	 * this comment asserted the opposite and a comment that contradicts its code is a defect class here:
-	 *
-	 *   - there is NO writer for --undo-h anywhere in the tree, so it always resolves to its 0px
-	 *     fallback and --error-dock is simply --undo-dock + 14px;
-	 *   - no rule reads either token, so neither currently positions anything.
-	 *
-	 * They are retained rather than removed because two guards still resolve against this text: the
-	 * phone-home shell guard asserts the --undo-dock declaration by regex AND uses the literal string
-	 * `--error-dock:` as the end boundary of the slice it reads this rationale out of. Deleting either
-	 * line breaks that guard on a stale enumeration rather than on a real defect, so retiring them is a
-	 * test-owning change and not a CSS one.
+	 * BOTH TOKENS ARE DECLARED-BUT-UNREAD, deliberately: the toasts moved onto Sonner, which stacks its own
+	 * surfaces, so there is no second independently-positioned toast to offset and nothing writes --undo-h. They
+	 * are retained because two guards resolve against this text — one asserts the --undo-dock declaration and uses
+	 * the literal `--error-dock:` as a slice boundary — so retiring them is a test-owning change, not a CSS one.
 	 */
 	:root {
 		--undo-dock: calc(var(--dock-h, 0px) + 14px);
@@ -1545,13 +1335,9 @@
 		color: var(--ink-dim);
 	}
 
-	/*
-	 * this file's reduce arm is GONE, because the two animations it covered left with their
-	 * elements — the search spinner to ui/spinner and the skeleton shimmer to ui/skeleton. Both are
-	 * now declared inside a `prefers-reduced-motion: no-preference` block in those components, which
-	 * makes motion OPT-IN rather than declared-then-reset: there is no reset left to lose the cascade
-	 * to a later rule. Nothing in this file animates any more.
-	 */
+	/* No reduce arm in this file: the two animations it covered left with their elements (the spinner and the
+	   skeleton shimmer), and both are now declared inside a `prefers-reduced-motion: no-preference` block in those
+	   components — motion OPT-IN rather than declared-then-reset. Nothing here animates. */
 
 	/*
 	 * Landscape / short viewports (e.g. a phone held sideways at 844×390). The docked band plus header

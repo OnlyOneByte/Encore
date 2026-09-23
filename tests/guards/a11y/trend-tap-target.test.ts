@@ -71,11 +71,6 @@ test('the /stats card lets the chart scroll instead of overflowing the page', ()
 	// card to its full 1424px scroll width and overflows the document horizontally — turning the
 	// tap-target fix into a layout regression. Pin the containment that makes overflow-x actually
 	// scroll (measured: docOver 21px -> 0, chart scrollable true, in the PR body).
-	/*
-	 * S4: read from ui/card, not the page. The chart's card is <Card.Root> now, and a scoped rule
-	 * in /stats cannot reach an element a child component renders — so the containment moved into the
-	 * component, which is also where it belongs: ANY card can be a grid item. The claim is unchanged.
-	 */
 	const card = ruleBody(read(CARD_COMPONENT), 'encore-card');
 	expect(/min-width:\s*0\b/.test(card)).toBe(true);
 });

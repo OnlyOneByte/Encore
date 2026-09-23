@@ -1,43 +1,29 @@
 // Browser-side pitch shifter for the TV stage — changes PITCH without changing TEMPO.
 //
-// WHY THIS EXISTS AT ALL. The phone's ±semitone buttons store `PlaybackState.keyShift`, and the TV
-// used to honour it by loading a pre-rendered per-key FILE (`keyedMediaRef`). Nothing ever produced
-// those files, so honouring the shift 404'd mid-song and the TV was forced to ignore it. Rendering
-// per-key variants server-side was rejected (N files per song, a worker stage nobody built); shifting
-// in the browser needs zero files and works on every already-processed song. `keyedMediaRef` is gone
-// from $lib/contract; this module is its replacement.
+// WHY IT EXISTS. The phone's ±semitone buttons store `PlaybackState.keyShift`, and the TV used to honour it by
+// loading a pre-rendered per-key FILE. Nothing ever produced those files, so honouring the shift 404'd mid-song and
+// the TV was forced to ignore it. Rendering per-key variants server-side was rejected (N files per song, a worker
+// stage nobody built); shifting in the browser needs zero files and works on every already-processed song.
 //
-// WHY A HAND-WRITTEN SHIFTER. soundtouchjs is LGPL and rubberband is GPL/commercial — both are
-// unacceptable dependencies here — so the algorithm is written out below: a time-domain
-// overlap-add (OLA) pitch shifter. It resamples the signal by the pitch ratio (which alone would
-// change tempo) and simultaneously time-stretches by the inverse ratio via overlapping Hann-windowed
-// grains, so the net tempo is unchanged while the pitch moves. This is the SOLA/PSOLA family without
-// pitch-synchronous grain placement — cheap, real-time-safe in an AudioWorklet, and good enough for a
-// backing track under a live vocal. It is NOT studio-grade; transients smear slightly. That is the
-// accepted trade for a zero-dependency, file-free shift.
+// WHY HAND-WRITTEN. soundtouchjs is LGPL and rubberband GPL/commercial, both unacceptable here — so the algorithm
+// is written out: a time-domain overlap-add shifter that resamples by the pitch ratio (which alone would change
+// tempo) and time-stretches by the inverse through overlapping Hann-windowed grains. SOLA/PSOLA family without
+// pitch-synchronous grain placement: cheap, real-time-safe in an AudioWorklet, good enough for a backing track
+// under a live vocal. Not studio-grade — transients smear slightly, which is the accepted trade.
 //
-// ───────────────────────────────────────────────────────────────────────────────────────────────
-// THE BIG TRAP (documented for whoever touches this next): TvPlayer has NO AudioContext today. Plain
-// <video>/<audio> elements play through the platform mixer with no WebAudio involved. An AudioContext
-// created in a page that never received a user gesture starts `suspended`, and the TV wall display may
-// NEVER be clicked. If we route audio through a suspended context we get SILENCE — and worse, a
-// MediaElementAudioSourceNode, once created for an element, CANNOT be detached: from that point the
-// element's audio ONLY reaches the speakers through the graph. So a naive "always wrap the element"
-// design risks killing ALL room audio, not just the shift.
+// THE BIG TRAP. TvPlayer has no AudioContext: plain elements play through the platform mixer. A context created in
+// a page that never received a gesture starts `suspended`, and a TV wall may NEVER be clicked — and a
+// MediaElementAudioSourceNode, once created for an element, CANNOT be detached, so from that point the element's
+// audio reaches the speakers ONLY through the graph. A naive "always wrap the element" design therefore risks
+// killing ALL room audio, not just the shift.
 //
-// The contract that keeps this safe (enforced by PitchShiftGraph below and its callers in
-// TvPlayer.svelte):
-//   • keyShift === 0  -> do NOTHING. No AudioContext, no MediaElementSource. The audio path is
-//     byte-for-byte what it is today. This is the overwhelmingly common case and it must never regress.
-//   • first non-zero shift -> build the graph LAZILY, and only after resume() actually succeeds.
-//   • cannot resume (no gesture yet) -> FALL BACK to unshifted AUDIBLE playback via the element's own
-//     output. Never silence. The pitch is simply not applied until a context can run.
-//   • return to 0 -> we cannot un-source the element, so instead we set the shifter's ratio to 1.0
-//     (a pass-through that copies input to output) and leave the graph in place. The element stays
-//     routed through WebAudio, but at ratio 1 that is audibly identical to the bypass path.
-//
-// See PitchShiftGraph.setShift (reset to ratio 1) / detach (context release) for the concrete
-// teardown strategy.
+// The contract that keeps it safe (enforced by PitchShiftGraph and its callers):
+//   • keyShift === 0  → do NOTHING. No context, no source node; the audio path is byte-for-byte the plain element.
+//     This is the overwhelmingly common case and must never regress.
+//   • first non-zero shift → build the graph LAZILY, and only after resume() actually succeeds.
+//   • cannot resume → FALL BACK to unshifted AUDIBLE playback through the element's own output. Never silence.
+//   • return to 0 → the element cannot be un-sourced, so set the ratio to 1.0 (a pass-through) and leave the graph
+//     in place; at ratio 1 that is audibly identical to the bypass path.
 
 // ── pure ratio + framing maths (unit-tested; no DOM, no AudioContext) ─────────────────────────────
 

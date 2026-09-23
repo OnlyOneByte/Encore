@@ -89,18 +89,6 @@ test('every external package the test tree imports is declared somewhere it can 
 	).toEqual([]);
 });
 
-/*
- * RETIRED: 'a package declared for the tests matches the version the app under test runs'.
- *
- * It compared `tests/package.json` against the app's manifest, because a test asserting behaviour against a
- * DIFFERENT library version than the app runs is worse than no test — it is green about the wrong thing.
- *
- * That risk no longer exists. There is one manifest, so there are no two numbers to disagree. The arm is
- * removed rather than rewritten to compare a thing with itself, which is what "no assertion" looks like
- * when it is dressed as a passing test. Its floor was retired from the registry in the same
- * commit, for the same reason.
- */
-
 test('the scan reads import STATEMENTS and not import-shaped fixtures', () => {
 	/*
 	 * The corpus this scans deliberately contains import-shaped text as data, so both directions matter.

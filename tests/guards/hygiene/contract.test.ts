@@ -1068,10 +1068,6 @@ test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS in
 	expect(SEL.chip).toBe('.encore-chip');
 	expect(SEL.badQrTitle).toBe('.badqr-t');
 	expect(SEL.badQrFix).toBe('.badqr-fix');
-	// `badQrBody` LEFT THIS LIST with the card it named. The unreachable state is a one-line notice beside a
-	// QR that still renders (2026-09-21), so there is no body paragraph and no advertised address inside it —
-	// the real address is printed below the notice by attract and the lobby. Asserted as absent, because a
-	// retired SEL id silently returning is how a probe ends up measuring markup nothing renders.
 	expect(SEL, 'badQrBody is retired with the card it named').not.toHaveProperty('badQrBody');
 	expect(SEL.nowNameScoped).toBe('.lower-third .ls-name');
 	expect(SEL.nowSongScoped).toBe('.lower-third .ls-song');
@@ -1168,10 +1164,6 @@ test('G1 — every literal p10-scaling contrast target resolves to a real anchor
 	// Sentinel B: known-live anchors the arrays name must resolve, so a resolver that rejects
 	// everything (or a broken guardSources) fails here rather than passing the main arm vacuously.
 	for (const live of [
-		// `.badqr-b b` WAS HERE — the advertised address inside the unreachable card's body paragraph. Both
-		// went when that card became a one-line notice beside a QR that still renders (2026-09-21); its
-		// successor as this sentinel is `.badqr-t`, the notice's own state line, which the probe still
-		// contrast-checks. A sentinel must name something LIVE, so it follows the markup rather than the name.
 		'.badqr-t',
 		'.lower-third .ls-artist',
 		'.attract .brand',
@@ -1219,15 +1211,21 @@ test('G1 — every literal p10-scaling contrast target resolves to a real anchor
  */
 test('G2 — classPresent rejects a hyphen-fragment or interpolated-identifier token', () => {
 	const joinBadge = readFileSync(join(CORE, 'src/lib/tv/JoinBadge.svelte'), 'utf8');
-	const auditPage = readFileSync(join(CORE, 'src/routes/metrics/[mediaId]/+page.svelte'), 'utf8');
 
-	// `b` only ever appears as the `-b` tail of `badqr-b` — not a class any element carries.
-	expect(classPresent(joinBadge, 'b')).toBe(false);
-	// but the real class `badqr-b` still resolves (non-vacuity: the arm did not just start rejecting all).
-	expect(classPresent(joinBadge, 'badqr-b')).toBe(true);
+	// THE HYPHEN-FRAGMENT CASE, against real markup: `fix` only ever appears as the `-fix` tail of `badqr-fix`, and
+	// is not a class any element carries…
+	expect(classPresent(joinBadge, 'fix')).toBe(false);
+	// …while the real class does resolve, which is this arm's non-vacuity half.
+	expect(classPresent(joinBadge, 'badqr-fix')).toBe(true);
 
-	// `a` only appears as the JS identifier inside `class="pill {a.outcome ?? 'running'}"`.
-	expect(classPresent(auditPage, 'a')).toBe(false);
-	// but the real static class `pill` on that same element still resolves.
-	expect(classPresent(auditPage, 'pill')).toBe(true);
+	/*
+	 * THE INTERPOLATED-IDENTIFIER CASE, against a FIXTURE rather than a file — deliberately. It used to read
+	 * `class="pill {a.outcome ?? 'running'}"` out of the audit page, and that element is a `<Badge variant={…}>`
+	 * now, so no interpolated class attribute survives anywhere for the arm to point at. The matcher is a pure
+	 * function, so the honest subject is the shape itself: tying it to whichever page happens to contain an
+	 * interpolation today is how this arm came to pass off a class that only existed in a comment.
+	 */
+	const interpolated = `<span class="pill {a.outcome ?? 'running'}">x</span>`;
+	expect(classPresent(interpolated, 'a')).toBe(false);
+	expect(classPresent(interpolated, 'pill')).toBe(true);
 });

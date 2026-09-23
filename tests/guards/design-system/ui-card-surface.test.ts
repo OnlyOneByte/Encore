@@ -55,34 +55,8 @@ const CALLERS: { file: string; why: string }[] = [
 			"visualizer), not a Card with a Header and a Title. Its heading is the route's own h1 in " +
 			'PageHeader, so a <Card.Title> inside it would be a second heading for the same subject'
 	},
-	/*
-	 * REMOVED, not repointed: `lib/components/NowPlayingHero.svelte` (`class="hero card"`, one of the nine
-	 * S4 survivors named at the top of this file). The hero was deleted and its job moved into
-	 * `lib/components/NowPlayingDrawer.svelte`, a bottom drawer mounted from `routes/+layout.svelte`.
-	 *
-	 * The successor does NOT belong on this list, and that is a property of what it became rather than an
-	 * omission: the drawer has no shell of its own to paint. Its outermost element is the vendored
-	 * `Drawer.Content`, whose surface comes from the registry's `bg-popover` + `border-t` + `rounded-t-xl`
-	 * (see `lib/components/ui/drawer/drawer-content.svelte`). The drawer adds only `.np-drawer`, which
-	 * sets `padding-bottom` and nothing else. So there is no element in it that wants `.card`, and adding
-	 * one would paint a second surface on top of the sheet's own.
-	 *
-	 * This is the direction the second test below is for: the caller left, so the entry leaves with it.
-	 */
 	{ file: 'lib/components/CodeEntry.svelte', why: 'one character box of a room-code entry' },
 	{ file: 'lib/tv/TvProgress.svelte', why: 'the TV progress track — a ten-foot surface, no card structure' }
-	/*
-	 * `routes/+page.svelte` LEFT THIS LIST (2026-09-21) and has NOT rejoined it. Its two `card` surfaces were
-	 * the reorder bar and the search dock: the bar went with the reorder MODE when the drag became a live
-	 * sort (no Done, no Cancel, nothing to dress), and the dock moved to /find when search became a route.
-	 * Search is back on home (2026-09-22) and still does not belong here — `.findbox` and `.skel-row` paint
-	 * themselves from the `--card` TOKEN rather than wearing the shared `.card` class, which is the
-	 * distinction this list is about. Its rows are QueueRow and ProcessingCard, listed above.
-	 *
-	 * `lib/components/MyPositionCard.svelte` LEFT THIS LIST the same day, by deletion: the card sat above the
-	 * home queue restating the row beneath it, and its one unique line (the wait) is now a clause on that
-	 * row's byline. This is the direction the second test below is for — the caller left, so the entry does.
-	 */
 ];
 
 function svelteFiles(dir: string): string[] {

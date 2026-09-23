@@ -1,104 +1,41 @@
-// Wiring guards for the direction-A phone home shell.
+// Wiring guards for the phone home shell.
 //
-// WHY A SOURCE SCAN. What these pin are SYNTAX claims about `routes/+page.svelte` — which component
-// renders where, what is gated on what, which value is fed to which prop. The route imports
-// `$app/navigation` and `$app/state`, and the test harness aliases neither virtual module, so it
-// cannot be mounted at all (`lib/tv/wake-lock.test.ts:18-27` states the blocker). Every claim that is
-// a MEASUREMENT rather than a wiring fact — what renders, what the transport's disabled state is,
-// whether the wait clause appears — is asserted against the real DOM in
-// `lib/components/phone-home.test.ts` instead.
+// WHY A SOURCE SCAN. These pin SYNTAX claims about `routes/+page.svelte` — which component renders where, what is
+// gated on what, which value is fed to which prop. The route imports `$app/navigation` and `$app/state`, neither of
+// which the harness aliases, so it cannot be mounted at all. Every claim that is a MEASUREMENT rather than a wiring
+// fact is asserted against the real DOM in `phone-home.test.ts` instead.
 //
-// The shape here matters: these are the assertions that RED when the corresponding relocation hunk is
-// reverted. A markup move is invisible to a behavioural suite (nothing imports the route), so without
-// them the queue could slide back into a sheet, or the live controls could be dropped on the floor,
-// with every other test still green.
+// These are the assertions that RED when a relocation hunk is reverted. A markup move is invisible to a behavioural
+// suite (nothing imports the route), so without them the queue could slide back into a sheet, or the live controls
+// could be dropped on the floor, with every other test green.
 //
-// ══ THE BAND / FIND PHASE, AND WHAT IT REVERSED ═════════════════════════════════════════════════
+// ══ WHAT THIS FILE HAS WATCHED CHANGE, so an arm that reads oddly reads deliberately ═══════════════
 //
-// Three of this file's claims were written about a phone whose BOTTOM EDGE belonged to a docked search
-// box on `/`. That is no longer true and the change was deliberate, so the reversals are recorded here
-// once and again at each arm rather than being quietly dropped:
-//
-//   1. THE DOCKED BAND IS `NowPlayingBand`, mounted in `routes/+layout.svelte` inside a `.dock`
-//      positioning wrapper, as the bottom-most app chrome on EVERY phone surface. `--dock-h` is
-//      therefore the BAND's measured height, published by the LAYOUT. It used to be `.search-dock` in
-//      this route, publishing its own height — an address that stopped being true the moment something
-//      docked below it.
-//   2. SEARCH IS A SECTION OF HOME, not a route — reverted 2026-09-22, and the reversal is the third
-//      placement of one surface. It was a box docked to the bottom of `/`; then `routes/find/+page.svelte`,
-//      reached by tapping the band's magnifier, on the reasoning that "once search is somewhere you GO, a
-//      route is what makes the phone's own back gesture work"; and it is now a field at the TOP of `/`
-//      with the library under the queue. What that earlier reasoning got right is kept by making search
-//      not somewhere you go at all: the magnifier focuses the field instead of navigating
-//      (`$lib/stores/search-focus`), so there is no back gesture to serve and no second surface to keep in
-//      step. The original ruling's prohibition — no browse MODE, no `?browse=1` — SURVIVES all three
+//   1. THE BOTTOM EDGE. It was a docked search box on `/` publishing its own height as `--dock-h`; it is
+//      `NowPlayingBand` now, composed inside `NowPlayingDrawer` as snap point 0 of a permanently-mounted sheet,
+//      with the LAYOUT as the token's single writer. There is no `.dock` wrapper, no `drawerOpen` and no
+//      `onexpand`: a sheet that never closes has no open state, and a band that IS the sheet needs nothing to
+//      raise it. What forced that is a gesture — an outside element can START a pointer gesture but cannot hand
+//      the in-flight pointer to vaul, so the old handle advertised a drag it could only answer with a jump.
+//   2. SEARCH. Docked on `/`, then its own `/find` route, and a field at the TOP of `/` since 2026-09-22, with the
+//      library under the queue. The original prohibition — no browse MODE, no `?browse=1` — survives all three
 //      placements and is checked here.
-//   3. THE ZERO-QUERY STATE SHOWS THE QUEUE AND THE LIBRARY, in one column: what is happening, what is
-//      being made, what is ready to sing. A query replaces the queue with the results; `searchActive` is
-//      still the only switch.
+//   3. THE ZERO-QUERY STATE is the queue AND the library in one column; a query replaces the queue with the
+//      results, and `searchActive` is the only switch.
+//   4. HOME HAS NO NOW-PLAYING CARD. `NowPlayingHero` is DELETED and its job moved into the drawer. The band
+//      already states the song, the singer and the progress from every phone surface, so a card restating it cost
+//      the rotation the top of the screen for nothing. The hero's DISCLOSURE is gone rather than relocated: the
+//      drawer IS the act of revealing, so a disclosure inside it would be a second tap to see what the first was
+//      for.
 //
-// What did NOT change: (the band is reserved in normal flow off its MEASURED height, never a
-// constant), the one-env() rule (exactly one `env(safe-area-inset-bottom)` in the docked stack, on the
-// element that actually sits at the bottom edge), the query-driven split, and the retirement of the
-// `+ Add a turn` interstitial. Each is asserted at its new address at the same or greater strength.
+// WHAT DID NOT CHANGE, and is asserted at each new address: the band is reserved in normal flow off its MEASURED
+// height and never a constant; exactly one `env(safe-area-inset-bottom)` in the docked stack, on the element that
+// actually sits at the bottom edge; the query-driven split; and the retirement of the `+ Add a turn` interstitial.
 //
-// ══ THE DRAWER PHASE, AND WHAT IT REVERSED (§4) ═════════════════════════════════════════════════
-//
-// Two further arms pinned a DESIGN DECISION that has now flipped outright. It is recorded here rather
-// than dropped, because the arms it produced were correct about the phone they were written for:
-//
-//   4. HOME HAS NO NOW-PLAYING SURFACE. `NowPlayingHero` is DELETED, and its job — the song identity,
-//      the seek row, the transport, and the live singing controls — moved into `NowPlayingDrawer`, a
-//      bottom drawer mounted in `routes/+layout.svelte` and opened by the band's pull handle. Home is
-//      QUEUE-ONLY. The hero was direction A's answer to "where is the song I am singing", and the band
-//      phase made it a duplicate: the band already states the song, the singer and the progress at a
-//      glance from EVERY phone surface, so a card restating all of it cost the rotation the top of the
-//      screen for nothing. Two arms move with it — "home renders the HERO" and "the controls came WITH
-//      the hero, into its DISCLOSURE BODY" — and both are replaced at greater strength rather than
-//      re-pointed, because the new arrangement supports claims the old one could not make.
-//
-//      the standard's SUBSTANCE SURVIVES UNCHANGED and is still pinned: a control must not share a drag
-//      surface. The hero satisfied it by having no drag surface at all. The drawer HAS one — vaul drags
-//      to dismiss from anywhere in its content by default — and its body is sliders, so the guiding
-//      track's thumb and the dismiss gesture would be the same gesture, with the drawer winning because
-//      it is the ancestor. `handleOnly` on the Root is the answer: dragging is restricted to the handle,
-//      a whitelist that cannot be forgotten when the next control is added. So `handleOnly` is asserted
-//      HERE, and so is the real vaul Handle it restricts dragging TO — shadcn's copy-in shipped a
-//      decorative div, and `handleOnly` with no `data-vaul-handle` in the tree makes the drawer silently
-//      undraggable, which is a worse failure than the one it prevents.
-//
-//      THE DISCLOSURE IS GONE, not relocated. The hero needed one because it lived permanently on home;
-//      the drawer IS the act of revealing, so a disclosure inside it would be a second tap to see what
-//      the first tap was for. The nested "Vocal range" disclosure went with it: the range visualizer now
-//      sits DIRECTLY BELOW the key row, which is what it answers about.
-//
-// ══ THE MERGE PHASE, AND WHAT IT REVERSED (§5) ══════════════════════════════════════════════════
-//
-// §1 and §4 above are both written about a phone with TWO bottom surfaces — a docked band, and a drawer
-// it raised through a callback. There is ONE now, at two heights, and the arms that described the pair
-// are re-pointed or retired below rather than dropped:
-//
-//   5. THERE IS NO `.dock` WRAPPER, NO `drawerOpen`, AND NO `onexpand`. `NowPlayingBand` is COMPOSED
-//      inside `NowPlayingDrawer` as the first child of its content (`.band-slot`), which is snap point
-//      0 of a permanently-mounted vaul sheet, and vaul supplies the `position: fixed; bottom: 0` the
-//      wrapper used to. So the layout mounts one component, and the two-surface handshake —
-//      `let drawerOpen = $state(false)`, `bind:open={drawerOpen}`, `onexpand={() => (drawerOpen =
-//      true)}` — is BANNED rather than re-pointed: a sheet that never closes has no open state, and a
-//      band that IS the sheet needs nothing to raise it. What forced the change is a gesture: an
-//      outside element can START a pointer gesture but cannot hand the in-flight pointer to vaul, so
-//      the old band's handle advertised a drag it could only answer with a jump.
-//
-//      THE `class:covered={drawerOpen}` FADE IS RETIRED, and it is the one mechanism here that loses
-//      its assertions outright. It existed only because two surfaces of the same colour with matching
-//      top edges had to step out from under each other for the length of the open; one surface at two
-//      heights has nothing to hide. Its `opacity`-never-`visibility` rider goes with it — the docked-
-//      band arm below records that deletion where the assertion used to be.
-//
-//      `--dock-h` KEEPS ITS MEANING AND ITS SINGLE WRITER, published in two named steps instead of one
-//      binding: `.band-slot` measures itself with `bind:clientHeight={bandH}` inside the drawer (that
-//      height IS snap 0), the layout takes it back with `bind:bandH={dockH}`, and the layout alone
-//      calls `setProperty('--dock-h', …)` and removes it on teardown. `showBand` keeps its name and its
-//      definition, so the "joined singer on a phone surface" gate is unchanged.
+// The no-shared-drag-surface rule also survives, at greater strength: the hero satisfied it by having no drag
+// surface, and the drawer HAS one, so `data-vaul-no-drag` on `.np-fit` is asserted here along with the real vaul
+// Handle — shadcn's copy-in ships a decorative div, and a restriction with no real handle in the tree makes the
+// drawer silently undraggable, a worse failure than the one it prevents.
 import { test, expect } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { at, read } from '@encore/test-support';
@@ -128,21 +65,15 @@ const DRAWER_HANDLE = stripComments(read('src/lib/components/ui/drawer/drawer-ha
 // ── the queue IS home, and nothing else is ───────────────────────────────────────────────────────
 test('home renders NO now-playing surface — the layout owns the drawer, and the queue sheet stays gone', () => {
 	/*
-	 * REVERSED (header note §4). This arm required `<NowPlayingHero` ON THIS ROUTE, because direction A's
-	 * answer to "where is the song I am singing" was a card at the top of the queue. The band made that
-	 * card a duplicate and the hero is DELETED; the drawer in `routes/+layout.svelte` owns the job.
+	 * This arm required `<NowPlayingHero` on this route; the hero is DELETED and the drawer in the layout owns the
+	 * job. Three claims replace it, each falsifiable on its own, and together they say what the old one could not —
+	 * that there is EXACTLY ONE now-playing surface in the app and it is reachable:
 	 *
-	 * REPLACED AT GREATER STRENGTH, not re-pointed. The old arm could make one claim ("the hero is
-	 * here"). Three replace it, each falsifiable on its own, and together they say something the old one
-	 * could not: that there is EXACTLY ONE now-playing surface in the app and it is reachable.
-	 *
-	 *   (a) the hero COMPONENT IS GONE from the tree, so it cannot be re-mounted by an import that
-	 *       still resolves — a deletion is invisible to a suite where nothing imports the route.
-	 *   (b) home mounts NO now-playing surface OF ANY KIND — not the hero, not the band, not the
-	 *       drawer — so the route cannot grow a second one beside the layout's and disagree with it.
-	 *   (c) the drawer is mounted EXACTLY ONCE, in the layout, permanently, with the band composed
-	 *       INSIDE it as snap point 0. A drawer with no band in it is the same defect as no band, and it
-	 *       is the defect the count alone would miss.
+	 *   (a) the hero COMPONENT is gone from the tree, so it cannot be re-mounted by an import that still resolves;
+	 *   (b) home mounts NO now-playing surface of any kind, so the route cannot grow a second one beside the
+	 *       layout's and disagree with it;
+	 *   (c) the drawer is mounted EXACTLY ONCE, permanently, with the band composed INSIDE it as snap point 0 — a
+	 *       drawer with no band in it is the same defect as no band, and the one the count alone would miss.
 	 */
 	// (a) gone from the tree, not merely unmounted.
 	expect(existsSync(at('src/lib/components/NowPlayingHero.svelte'))).toBe(false);
@@ -172,17 +103,6 @@ test('home renders NO now-playing surface — the layout owns the drawer, and th
 	// The drag affordance inside that slot is vaul's own Handle — the element `handleOnly` restricts
 	// dragging TO. This is what the band's click-only button could not be: a click cannot track a thumb.
 	expect(DRAWER).toMatch(/<div class="band-slot"[\s\S]{0,200}?<Drawer\.Handle \/>/);
-	/*
-	 * RETIRED, WITH THE SOURCE FLAGGED. This arm required `{#if onexpand}` in `NowPlayingBand` — "the
-	 * handle exists only when there is somewhere to pull to, and an affordance whose destination is
-	 * absent is worse than no affordance". Nothing passes `onexpand` any more, so the band's gate is not
-	 * WRONG, it is DEAD: the prop, its `{#if}` and its `.handle` button are unreachable from the app,
-	 * and only /components still renders a band standalone. Asserting the gate's presence would pin dead
-	 * code in place; asserting its absence would demand a source edit this guard is not the place to
-	 * make. So it is recorded here and neither is asserted. NOTE for a source owner: `NowPlayingBand`'s
-	 * `onexpand` prop and handle button, and `routes/+layout.svelte`'s now-unreferenced
-	 * `import NowPlayingBand`, are all reachable only from /components. Flagged, not fixed.
-	 */
 
 	// The whole sheet rationale ("at a party you are either browsing or checking the queue, so the two
 	// should not fight over one scroll") is what direction A INVERTS, so the sheet must not still be here
@@ -233,27 +153,20 @@ test('the rotation rows render inside <main>, not inside a pull-up sheet', () =>
 
 test('the live singing controls live in the DRAWER, which IS the revealing, and home carries none', () => {
 	/*
-	 * REVERSED (header note §4), and the reversal is the DISCLOSURE rather than the controls. This arm
-	 * required guide / key / range to sit in a `controls()` snippet passed into the hero's Collapsible
-	 * body, because the hero lived permanently on home and a permanent card cannot carry knobs. The
-	 * drawer IS the act of revealing, so a disclosure inside it is a second tap to see what the first tap
-	 * was for — and the nested "Vocal range" disclosure was a third.
+	 * This arm required guide / key / range to sit in a `controls()` snippet passed into the hero's Collapsible
+	 * body, because a permanent card cannot carry knobs. The drawer IS the act of revealing, so a disclosure inside
+	 * it is a second tap to see what the first tap was for. Four claims replace it:
 	 *
-	 * REPLACED AT GREATER STRENGTH. The old arm asserted the controls were SOMEWHERE inside one snippet,
-	 * with a nesting-aware slice to keep that honest. Four claims replace it:
+	 *   (1) all four controls are inside the drawer's `.tools-body`, sliced with a nesting counter so a nested
+	 *       block cannot make the arm report a false absence;
+	 *   (2) that body is gated on a song playing NOW, so an idle room is not offered knobs with nothing behind
+	 *       them — which the hero's Collapsible could not claim, since it rendered regardless;
+	 *   (3) the substance the disclosure stood in for: the guiding-track slider must not share a drag surface with
+	 *       the dismiss gesture, and the real vaul Handle is pinned with the restriction — shadcn's copy-in ships a
+	 *       decorative div, and a restriction with no real handle makes the drawer silently undraggable;
+	 *   (4) the range sits DIRECTLY BELOW the key row it answers about.
 	 *
-	 *   (1) all four controls are inside the drawer's `.tools-body`, sliced with the same nesting counter
-	 *       so a nested block cannot make the arm report a false absence;
-	 *   (2) that body is gated on a song playing NOW, so an idle room is not offered knobs with nothing
-	 *       behind them — the hero's Collapsible could not claim this, since it rendered regardless;
-	 *   (3) the substance, which is what the disclosure was standing in for: the guiding-track
-	 *       slider must not share a drag surface with the drawer's dismiss gesture. `handleOnly` on the
-	 *       Root is the mechanism, AND the real vaul Handle it restricts dragging TO is pinned with it —
-	 *       shadcn's copy-in shipped a decorative div, and `handleOnly` with no `data-vaul-handle` in the
-	 *       tree makes the drawer silently undraggable, which fails worse than the defect it prevents;
-	 *   (4) the range sits DIRECTLY BELOW the key row it answers about, with no disclosure of its own.
-	 *
-	 * …and (5) home carries NONE of it, so the controls cannot exist in two places at once and drift.
+	 * …and (5) home carries none of it, so the controls cannot exist in two places and drift.
 	 */
 	// (1) THE SLICE COUNTS NESTING, for the reason the hero's snippet slice did: a slice that stops at
 	// the first `</div>` is correct only while `.tools-body` has no nested block, which is a property of
@@ -279,16 +192,6 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	expect(toolsBody).toContain('<GuidingTrack');
 	expect(toolsBody).toContain('<RangeBar');
 	expect(toolsBody).toContain('class="key"');
-	/*
-	 * `<LyricsReselect>` LEFT THIS LIST (2026-09-21) and its absence is now asserted instead. Re-picking
-	 * lyrics is a decision made once about a song, sitting still; this sheet is what a singer reaches for
-	 * mid-performance, and the disclosure was a second level of revealing inside the one level the sheet is.
-	 * A deletion rather than a move: `/song/[mediaId]` already renders the same component under its own
-	 * "Lyrics" heading, and the `···` on the seek row is the door to it.
-	 *
-	 * The FACT survives as a pill — which source the words came from — so both halves are pinned: the control
-	 * is gone and the provenance is still stated. A sheet that lost both would otherwise pass.
-	 */
 	expect(toolsBody, 'the sheet must not carry the re-selection control').not.toContain('<LyricsReselect');
 	expect(toolsBody, 'the lyrics source must still be named').toContain('class="lyricsrc"');
 	expect(DRAWER, 'the pill must read the shared contract label, not a local copy of the strings').toContain(
@@ -523,31 +426,6 @@ test('the now-playing band is docked for a joined singer, and the + Add a turn C
 	// bounded window rather than `[^>]*` because the tag's own props contain `>` (`() => goto(…)`), so a
 	// negated-class run would stop at the first arrow rather than at the end of the tag.
 	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<NowPlayingDrawer\b[\s\S]{0,200}?bind:bandH=\{dockH\}/);
-	/*
-	 * RETIRED (§5) — two positive arms, recorded here because the mechanism is GONE rather than moved:
-	 *
-	 *     expect(LAYOUT).toMatch(/class:covered=\{drawerOpen\}/);
-	 *     expect(LAYOUT).toMatch(/\.dock\.covered \{\s*opacity: 0;/);
-	 *
-	 * They pinned the fade that took the band out from under the opening drawer. It was real: both
-	 * surfaces were `--card` with a 1px top border and a 12px top radius, so a sheet rising over the band
-	 * showed two matching top edges at once and read as a second copy of the same panel arriving rather
-	 * than as the panel growing. With one surface at two heights there is no second edge, nothing to
-	 * step out from under, and no state to drive a fade from.
-	 *
-	 * DELETED AS VACUOUS, not left green — the rider that travelled with them:
-	 *
-	 *     expect(LAYOUT).not.toMatch(/\.dock\.covered \{[^}]*visibility/s);
-	 *
-	 * WHAT IT PROTECTED: the fade had to be `opacity` and never `visibility` or a height change. The band
-	 * stayed in the layout while the drawer was open, so --dock-h must not move or every scrolling column
-	 * reflows behind it; and `visibility: hidden` would have cut the cross-fade to a pop.
-	 * WHY IT IS DELETED RATHER THAN RE-POINTED: there is no `.dock.covered` rule left for the negative to
-	 * examine, so it passes while looking at nothing — enforcement in appearance only. And the rule has no
-	 * successor to re-point it at: no fade means no property to insist on, so nothing can regress into
-	 * `visibility`. The bans below carry what is left of the claim, which is that the two-surface
-	 * arrangement itself must not come back.
-	 */
 	expect(LAYOUT, 'the retired fade: no class, no rule, no state named `covered`').not.toContain('covered');
 	expect(LAYOUT, 'the retired positioning wrapper — vaul fixes the drawer content itself').not.toContain(
 		'class="dock"'
@@ -690,21 +568,14 @@ test('the results view is driven by the query on the find route, with no browse 
 
 test('every result surface is gated on the query — an empty box shows the LIBRARY, never a stale list', () => {
 	/*
-	 * REVERSED IN WHAT THE ZERO-QUERY STATE SHOWS (header note §3), KEPT in the invariant that made it
-	 * matter.
+	 * BOTH READINGS OF THE ZERO-QUERY STATE ARE TRUE AT ONCE NOW. It was "an empty box shows the QUEUE", so every
+	 * result block had to be gated; then search became its own surface and the empty box showed THE LIBRARY. One
+	 * column with one query switch means an empty box is the queue AND the library, and a query gives the queue's
+	 * rows to the results — so the arm that required the find surface NOT to render queue rows is inverted here.
 	 *
-	 * THE OLD CLAIM: an empty box shows the QUEUE, so every result block had to be gated or home rendered
-	 * a library list under an empty box. Then search became its own surface, home had no result blocks at
-	 * all, and the empty box showed THE LIBRARY — the songs that can actually be sung right now.
-	 *
-	 * BOTH ARE TRUE AT ONCE NOW (2026-09-22). One column, one query switch: with an empty box it is the
-	 * queue AND the library, and with a query the queue's rows give way to the results. So the zero-query
-	 * view asserted here is the queue's rows and the library's, and the arm that used to require the find
-	 * surface NOT to render queue rows is inverted — it must render them, or the merge lost the queue.
-	 *
-	 * WHAT SURVIVES is the bleed rule, at equal strength: the library group renders ONLY with an empty box,
-	 * the query-scoped groups ONLY with a query, and neither view may show the other's list. Weakening this
-	 * to "some gate exists" would be the wrong answer, so both sides of the split are checked.
+	 * WHAT SURVIVES is the bleed rule at equal strength: the library group renders ONLY with an empty box, the
+	 * query-scoped groups ONLY with a query, and neither view may show the other's list. Both sides are checked,
+	 * because weakening it to "some gate exists" would be the wrong answer.
 	 */
 	const main = PAGE.slice(PAGE.indexOf('<main'), PAGE.indexOf('</main>'));
 

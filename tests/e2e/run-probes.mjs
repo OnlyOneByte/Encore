@@ -94,6 +94,14 @@ const PROBES = [
 		subject: 'the settings surface and its join-origin fallback'
 	},
 	{ path: 'tests/e2e/probes/p10-scaling.mjs', mode: 'serves', kind: 'captures', subject: 'TV stage scaling' },
+	// Named here for the first time (2026-09-23): it was "reachable" only because a comment in contract.ts
+	// happened to mention its filename, and a comment cleanup removed that mention. The probe is real and needs
+	// this runner's seeded server, so it is listed rather than recorded as unrun.
+	{
+		path: 'tests/e2e/probes/p12-search.mjs',
+		mode: 'serves',
+		subject: 'search, readiness ordering and the library'
+	},
 	{
 		path: 'tests/e2e/probes/admin-delete.mjs',
 		mode: 'serves',

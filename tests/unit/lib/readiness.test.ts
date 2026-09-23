@@ -46,17 +46,6 @@ const cases: Media[] = [
 	})
 ];
 
-// RETIRED: 'client and server classify readiness identically for every media shape'.
-//
-// It asserted `readinessOf(c) === serverReadinessOf(c)` across the shapes above, and it was the right
-// test for as long as there were two hand-maintained copies to compare. There is now one function, in
-// $lib/contract/process/readiness, which both sides import — so the assertion could only ever compare a
-// value with itself. Deleted rather than kept as a tautology, because a test that cannot fail is worse
-// than no test: it reads like coverage.
-//
-// What replaced it is structural, not behavioural: the barrel-surface ledger records `readinessOf` as
-// part of the contract's public surface, so removing or renaming it is a visible edit there.
-
 test('THE BUG: a separated song mid-align reads as processing, not unacquired', () => {
 	// stems ready + lyrics queued is past the stems gate but not finished. Before the gate-driven fix
 	// this matched neither 'ready' nor stemStatus==='queued', fell through to 'unacquired', and showed

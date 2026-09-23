@@ -1,18 +1,14 @@
 <!--
-	Settings, as a page, in three SCOPES rather than one flat list.
+	Settings, as a page, in three SCOPES rather than one flat list: You is one person, Party is this room, Server is
+	every room on this machine and its worker fleet. A flat page hid that distinction and put the stem splitter —
+	set once, then left alone — above the rotation you change mid-song.
 
-	The scopes are the organising idea because they are the difference between a safe tweak and a
-	surprise: You is one person, Party is this room, Server is every room on this machine and its worker
-	fleet (an engine exists here only if a worker advertises it). A flat page hid that distinction, and
-	put the server's stem splitter — set once, then left alone — above the rotation you change mid-song.
+	`party` is the default, so the gear opens the room; `?tab=you` is what the header's name button links to, which
+	is why identity lives here at all — this page replaced the profile sheet, so there is one place a name and
+	colour can be edited rather than two that could disagree.
 
-	`party` is the default, so the gear opens the room. `?tab=you` is what the header's name button
-	links to, which is why identity lives here at all now: this page replaced the profile sheet, so
-	there is exactly one place a name and colour can be edited instead of two that could disagree.
-
-	No socket on this page, so a change from a second phone shows only after a reload. Cosmetic, not
-	dangerous: every write is a per-field patch the server re-normalizes over CURRENT values, so a
-	stale page can only change the field it sends, never clobber a newer choice it never touched.
+	No socket, so a change from a second phone shows only after a reload. Cosmetic: every write is a per-field
+	patch the server re-normalizes over CURRENT values, so a stale page can only change the field it sends.
 -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
@@ -118,12 +114,6 @@
 		tab = id;
 		replaceState(`?tab=${id}`, {});
 	}
-
-	/*
-	 * S4: `onTabKey` was deleted here. It implemented ArrowLeft/Right with wraparound, Home, End,
-	 * and moved focus to follow the selection — all of which Bits UI's tablist does, verified by a real
-	 * mount rather than assumed. `showTab` below is what remains Encore's: the URL sync.
-	 */
 
 	// Local state, not a plain derived, because a write is applied optimistically before the server
 	// answers. The effect re-adopts `data` so a load re-run (client-side nav back here, or
@@ -448,16 +438,6 @@
 		complaint about the old layout was that the server's settings sat above the room's, and the only
 		fix that survives adding a fourth room control is to stop rendering them together.
 	-->
-		<!--
-		S4: a Bits UI tablist. The roving tabindex, ArrowLeft/Right, Home and End that used to live
-		in `onTabKey` are the primitive's now — verified by mounting it rather than trusted: ArrowRight,
-		End and Home each move BOTH `aria-selected` and the tabindex, which is the pairing the old
-		handler had to remember to do by hand ("move focus with the selection, or the ring is left behind
-		on the tab you just left").
-
-		`showTab` stays, because the URL sync is Encore's and no primitive can know about it: it is what
-		makes a scope survive a reload and a shared link.
-	-->
 		<Tabs.Root value={tab} onValueChange={(v) => showTab(v as TabId)}>
 			<Tabs.List aria-label="Settings scope">
 				{#each TABS as t (t.id)}
@@ -498,22 +478,12 @@
 							/>
 
 							<!--
-								THE SAME RING THE JOIN SCREEN USES (ColourRing.svelte). It replaced the eight preset
-								swatches plus the hue rail that stood here — the last surface still carrying that
-								pairing, which is why the two controls could disagree about what was selected in one
-								place and not the other. One control for one choice, the whole 48-stop palette rather
-								than eight names and a continuous rail, and the same keyboard contract a guest already
-								met on the way in.
+								THE SAME RING THE JOIN SCREEN USES. It replaced eight preset swatches plus a hue rail — two
+								controls for one choice, which could disagree about what was selected.
 
-								`taken` IS DELIBERATELY EMPTY, not a sample. The pips mean "somebody in the room holds
-								this colour", and this page's load has no occupancy in it: `+page.server.ts` returns
-								`me` (you, alone), the effective settings and two join-address facts. Real occupancy is
-								one field away — the same present-in-this-room intersection /api/room-preview builds,
-								`app.singers.listPublic(app.activeRoomId)` filtered by `app.presence.online()` — but
-								that is a load change, and an invented list here would draw pips at colours nobody
-								holds, which is worse than drawing none. An empty ring is a legitimate state the
-								component already handles (an empty room), so it degrades to "no pips" rather than to
-								a wrong claim.
+								`taken` IS DELIBERATELY EMPTY. The pips mean "somebody in the room holds this colour", and this
+								page's load has no occupancy in it; an invented list would draw pips at colours nobody holds,
+								which is worse than drawing none. An empty ring is a state the component already handles.
 							-->
 							<ColourRing
 								bind:value={colour}
@@ -546,21 +516,14 @@
 						</Card.Header>
 						<Card.Content>
 							<!--
-								A REAL modal, not an in-card swap. This is the only irreversible action on the phone
-								surface, and the previous form — swapping the trigger for a Stay/Yes-leave pair —
-								had no `role="dialog"`, no focus containment and no Escape: focus could tab out of
-								the confirm to the tab strip behind it, a screen reader was told nothing had changed
-								context, and the only way to back out was to find and hit Stay.
+								A REAL modal, not an in-card swap — this is the only irreversible action on the phone surface, and
+								the previous Stay/Yes-leave swap had no `role="dialog"`, no focus containment and no Escape.
 
-								`AlertDialog` (not `Dialog`) is the right primitive: it renders `role="alertdialog"`,
-								which asks a screen reader to announce the description immediately rather than only
-								on focus, and it deliberately has no click-outside dismissal — a destructive confirm
-								should not be dismissible by a stray tap. Bits UI owns the focus trap, the Escape
-								handler and focus restoration to the trigger.
+								`AlertDialog` rather than `Dialog`: it renders `role="alertdialog"`, which asks a screen reader to
+								announce the description immediately, and it has no click-outside dismissal — a destructive
+								confirm should not be dismissible by a stray tap. Bits UI owns the trap, Escape and focus return.
 
-								`open` is bound to `confirmingLeave` so `askLeave` still runs on OPEN and the cost is
-								fetched at the moment it is read out. Cancel and Escape both leave `leaveCost` in
-								place, which is harmless: it is re-fetched on the next open.
+								`open` is bound so `askLeave` runs on OPEN and the cost is fetched when it is read out.
 							-->
 							<AlertDialog.Root bind:open={confirmingLeave}>
 								<AlertDialog.Trigger>
@@ -1208,40 +1171,20 @@
 	/*
 	 * TWO MEASURES, NOT ONE — the page takes the shell's width, the ROWS keep a readable one.
 	 *
-	 * WHAT THE OLD SHAPE WAS, AND WHAT IT GOT RIGHT. This page used to cap itself at
-	 * `--measure-prose` (560) and release the shell entirely (`.app-shell:has(.settings-page)`
-	 * → `max-width: none`), with `--page-measure` pulling the PageHeader onto that same 560 so the
-	 * h1 sat over the text it introduces rather than hundreds of px to its left. The reasoning
-	 * behind the narrow cap is still correct and is not being discarded: the paired controls here
-	 * need room, and a `<select>` must never span a monitor.
+	 * The page used to cap ITSELF at `--measure-prose` (560) and release the shell, which made it the one narrow
+	 * page in the app: measured at 1440, `main` was 560 while /stats and /metrics were 1048 and the sheet's own
+	 * column 1080 — so the band docked beneath it was WIDER than the page it was docked to. The reasoning behind
+	 * the narrow cap is not discarded, only moved down a level: the paired controls do need room, and a `<select>`
+	 * must never span a monitor.
 	 *
-	 * WHAT IT GOT WRONG was applying that reasoning to the PAGE. Measured at 1440: `main` came out
-	 * 560 wide while /stats and /metrics — which take `--measure-grid` — came out 1048, and the
-	 * now-playing sheet's own content column is 1080. So settings was visibly the one narrow page
-	 * in the app, and the band docked beneath it was WIDER than the page it was docked to: the
-	 * band's title sat at x=196 and its controls at x≈1145 while the settings column ran 440→1000.
-	 * The two halves of one screen disagreed about where the column was.
+	 * IT IS THE COLUMN, NOT THE CONTENTS. Capping `card-content` at 560 kept the controls readable but left every
+	 * card a full-width panel with its form pinned to the LEFT 560px — at the 1080 step the You card ran 0→1044
+	 * while its name field stopped at 560, reading as a half-drawn box. Centring it would only move the void to
+	 * both sides.
 	 *
-	 * So the cap moves DOWN a level. The page fills the shell like every other surface
-	 * (`--measure-grid`, which is `--max-w`, so the shell needs no opt-out and settings widens in
-	 * the same two steps as everything else), and the readable measure moves onto the COLUMN a card
-	 * sits in rather than onto the card's contents.
-	 *
-	 * WHY IT IS THE COLUMN AND NOT THE CONTENTS — the correction this block carries. Capping
-	 * `card-content` at `--measure-prose` did keep the controls readable, but it left every card a
-	 * full-width panel with its form pinned to the LEFT 560px and the rest of the panel empty: at
-	 * the 1080 step the You card ran 0→1044 while its name field stopped at 560, so the card read as
-	 * a half-drawn box. Centring the 560 would only have moved the void to both sides; the width was
-	 * there and nothing was spending it.
-	 *
-	 * `.panel` spends it, by pairing CARDS instead of stretching controls. `auto-fit` + `minmax`
-	 * makes that a property of the available width rather than of a breakpoint: below two readable
-	 * columns' worth the panel is one column and each card's form fills it, and at the 1080 step two
-	 * cards sit side by side at ~530 each — which is under `--measure-prose` on its own, so a
-	 * `<select>` still cannot span a monitor and the old comment's requirement is met by the
-	 * geometry rather than by a cap. Cards are the only thing that pairs: the footer buttons and the
-	 * dashboard links span the full row (see below), because a half-width "Done" beside a card would
-	 * read as belonging to it.
+	 * `.panel` spends the width by pairing CARDS instead of stretching controls, and `auto-fit` + `minmax` makes
+	 * that a property of the available width rather than of a breakpoint. At the 1080 step two cards sit at ~530
+	 * each, under `--measure-prose`, so the old requirement is met by the geometry rather than by a cap.
 	 */
 	.settings-page {
 		/* Level 1 — THE PAGE. The grid role: fill whatever the shell gives us. */
@@ -1285,23 +1228,16 @@
 	 */
 	main :global([data-slot='card-content']) {
 		/*
-		 * ── THE RHYTHM: A LABEL BINDS TO ITS OWN CONTROL ──────────────────────────────────────────────
+		 * THE RHYTHM: A LABEL BINDS TO ITS OWN CONTROL. Every row here is FLAT — `<Field.Label>` and its control are
+		 * siblings of one flex column — so the card's single gap separated a label from its control by exactly as
+		 * much as it separated one group from the next (measured: 28px within, 36px between, where grouping needs
+		 * nearer 1:3). The card read as five evenly spaced items rather than two labelled controls.
 		 *
-		 * Every row in these cards is FLAT — `<Field.Label>` and its control are siblings of one flex
-		 * column, with no element grouping them — so the card's single `--card-spacing` gap separated a
-		 * label from its control by exactly as much as it separated one group from the next. Measured on
-		 * the Party tab: 28px from "Who sings next" to its select, 36px from that select to "Kick out
-		 * after". A ratio of 0.78, where grouping needs something closer to 1:3, so the card read as five
-		 * evenly spaced items rather than two labelled controls — the proximity is doing no work.
-		 *
-		 * Fixed in the CASCADE rather than by restructuring 1,400 lines of markup into `Field.Root`
-		 * wrappers: the gap shrinks to the intra-group distance, and a label that FOLLOWS a control gets
-		 * the inter-group distance back as a margin. Keyed on `data-slot`, which is shadcn's own attribute
-		 * and survives a re-vendor where one of our class names would not (see ui/README §2).
-		 *
-		 * The sibling selector is what makes it safe: only a label with a control before it is a new group,
-		 * so the FIRST label in a card (which sits under the card's title and needs no extra space) is
-		 * untouched, and anything that is not a label keeps the tightened gap.
+		 * Fixed in the CASCADE rather than by restructuring 1,400 lines into `Field.Root` wrappers: the gap shrinks
+		 * to the intra-group distance and a label that FOLLOWS a control gets the inter-group distance back as a
+		 * margin. Keyed on `data-slot`, which survives a re-vendor where a class name would not. The sibling
+		 * selector is what makes it safe — only a label with a control before it starts a new group, so the first
+		 * label in a card is untouched.
 		 */
 		gap: var(--space-sm);
 	}
@@ -1310,23 +1246,11 @@
 	}
 
 	/* ── the scope tabs ─────────────────────────────────────────────────── */
-	/*
-	 * S4: `.seg`, `.tab` and `.tab.on` left this file. Their appearance is ui/tabs's now, keyed on
-	 * shadcn's `data-slot` — scoped CSS cannot reach an element a child component renders. Both guarded
-	 * facts moved with it verbatim: `min-height: var(--tap)` and the certified
-	 * --accent/--on-accent pair at 5.09:1.
-	 */
 
 	/* ── cards ──────────────────────────────────────────────────────────── */
 	/*
 	 * The same `.card` shape the remote uses for every row, so this page stops reading as a different
 	 * application. The uppercase head matches the remote's `.grouphead` treatment.
-	 */
-	/*
-	 * S4: `.card`, `.cardhead` and `.cardbody` left this file for ui/card. The visual change is
-	 * accepted deliberately — shadcn's card is a ring rather than a border, with its own spacing scale
-	 * and a normal-weight title where Encore's was small uppercase tracking. What it buys is the
-	 * Header/Title/Content structure this page was already hand-rolling eleven times.
 	 */
 	/* A failed write is about the page, not one card, so it sits above them all. */
 	/* `.banner` is GONE: the save-failure line is `Alert variant="destructive"`, which owns its own
@@ -1393,15 +1317,6 @@
 		}
 	}
 
-	/*
-	 * S4: `.field`, `.field-swatch`, `.hint` and the `.dim` label state left this file for
-	 * ui/field. NOTE (corrected): the vertical rhythm they carried did NOT move with them. The
-	 * registry's `Field.Label` and `Field.Description` are marginless by design — the spacing lives in
-	 * the WRAPPER parts (`Field.Field`'s gap, `Field.Group`'s gap), and this page adopted the leaves
-	 * without the wrappers, so stacked fields collapse against each other. The `.panel`/`.pair` gaps
-	 * below are the interim fix at the panel level; adopting `Field.Field`/`Field.Group` is the real
-	 * one. The earlier version of this comment asserted the rhythm "moved with them", which was false.
-	 */
 	/* A trailing 1em swatch after flowing text can wrap onto its own line at 320px, reading as an orphan
 	   dot. A flex row keeps text and swatch together and lets them wrap as a unit if ever needed. */
 	/*
@@ -1475,12 +1390,6 @@
 		min-height: var(--tap);
 		font-size: var(--ph-text-md);
 	}
-	/*
-	 * S3: was `.check input { width: 18px; height: 18px }`. The control is now <Switch> (<Checkbox> in between), which
-	 * carries its own `size-[18px]` — scoped CSS cannot reach inside a child component, so the size had
-	 * to move with it. The TAP TARGET is unchanged and still this label's `min-height: var(--tap)`,
-	 * which is what the tap-floor ruling settled and what touch-targets.test.ts examines.
-	 */
 
 	/* ── the dashboard links ────────────────────────────────────────────── */
 	/*
@@ -1508,17 +1417,11 @@
 
 	/*
 	 * ── leaving ─────────────────────────────────────────────────────────
-	 * `.leave`, `.leave.confirm`, `.leave:disabled`, `.leave-warn`, `.stay` and `.pair .leave` are
-	 * GONE with the AlertDialog adoption. Six rules, and with them two off-scale `14px` radii, a raw
-	 * `0.88rem`, a hand-rolled `opacity: 0.5` disabled state and a `padding: 13px` that was the only
-	 * thing holding these controls over the 44px tap floor. `Button variant="destructive"` (the same
-	 * variant /admin uses) and `AlertDialog.Cancel variant="ghost"` own all of it now, and
-	 * `AlertDialog.Description` owns the warning's colour and rhythm.
+	 * The six `.leave*` / `.stay` rules went with the AlertDialog adoption, and with them two off-scale radii, a
+	 * hand-rolled disabled opacity and a `padding: 13px` that was the only thing holding these controls over the
+	 * 44px tap floor. Deleted rather than left behind, because a Svelte rule matching nothing is an unused
+	 * selector, which this repo treats as a typecheck failure.
 	 *
-	 * They are deleted rather than left in place because a Svelte rule matching nothing is an unused
-	 * selector, which this repo treats as a typecheck failure — `bun run check` must stay 0/0.
-	 *
-	 * `.pair` STAYS: four other cards still use it, and it is a grid rather than a flex so its gap
-	 * survives the ≤380px collapse.
+	 * `.pair` STAYS: four other cards use it, and it is a grid so its gap survives the ≤380px collapse.
 	 */
 </style>

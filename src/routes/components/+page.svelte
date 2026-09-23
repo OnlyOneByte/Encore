@@ -589,13 +589,6 @@
 		canStart
 		mediaId={drawerHasSong ? '01M2H2FVB5P1W0G7BCHC29BYFJ' : null}
 	/>
-	<!--
-		`MyPositionCard` WAS HERE, in three states (a known wait, an unknown one, and "up next"). The
-		component is deleted: it sat above the home queue restating the row beneath it — the same ordinal, the
-		same "you're up next" — and its one piece of unique information, the wait, is now a clause on that
-		row's own byline (`QueueRow subtitle`, built by `waitShort`). The three states it demonstrated are
-		still visible in this gallery, as the `subtitle` on the QueueRows below.
-	-->
 
 	<h2 class="section">QueueRow</h2>
 	<!-- singerColor values here are FIXTURE data — each is a singer's chosen accent standing in for a

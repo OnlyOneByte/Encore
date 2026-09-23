@@ -346,18 +346,8 @@
 		gap: 1rem;
 	}
 	/* .card in app.css has no padding — see routes/stats/+page.svelte. */
-	/*
-	 * S4: `.card`'s local padding left this file — shadcn's Card owns its spacing through
-	 * `--card-spacing`. The visual change is accepted deliberately (a ring rather than a border, its
-	 * own scale). Layout classes that must apply to the GRID ITEM stay on a wrapper element, because a
-	 * scoped rule cannot reach an element a child component renders.
-	 */
 	/* The process owns the attempts beneath it, so its header takes full ink and a dividing rule. At
 	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */
-	/*
-	 * S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
-	 * title where this was hand-styled, which is part of the visual change accepted for S4.
-	 */
 	/* The bare `header {}` element selector is GONE with the element: the run's outcome badges are
 	   `<Card.Action>`, Card's own trailing-content slot. An element selector on a generic tag is
 	   fragile — it would silently restyle any future <header> added to this route. */
@@ -460,10 +450,6 @@
 		font-size: var(--ph-text-sm);
 		color: var(--ink);
 	}
-	/*
-	 * S6: `.pill` and its three outcome tones are ui/badge's now. The outcome→tone mapping moved to
-	 * the call site because the tone IS the meaning, and the certified triples live with the component.
-	 */
 	/* `abandoned` reads as a failure, so it maps to the `bad` tone at the call sites above (S6). */
 	.err {
 		font-size: var(--ph-text-xs);

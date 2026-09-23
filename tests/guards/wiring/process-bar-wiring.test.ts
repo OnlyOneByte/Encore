@@ -50,12 +50,6 @@ test('SongRow derives its process bar from overallProcessPct', () => {
 	expect(src).toContain('overallProcessPct');
 	// … and actually feed the helper's output into the bar's scaleX, not the raw pct.
 	expect(src).toMatch(/const\s+barPct\s*=\s*\$derived\(.*overallProcessPct/);
-	/*
-	 * S6: the bar is <Progress value={barPct}>, so the helper's output is handed over as a value
-	 * rather than baked into a scaleX at the call site. The claim is the same and still the point: the
-	 * BAR takes the unrounded float — Progress translates by it, so a smooth fill needs the precision —
-	 * and only the guest-facing readout rounds, or it prints "31.200000000000003%".
-	 */
 	expect(src).toMatch(/<Progress\s+value=\{barPct\}/);
 	// … and ROUND barPct where it feeds the guest-facing readout. overallProcessPct returns a
 	// band-interpolated float, so an unrounded readout prints "31.200000000000003%". The bar

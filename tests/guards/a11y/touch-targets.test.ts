@@ -250,18 +250,6 @@ test('the controls that previously fell short declare the tap standard as the to
 	// always reach are the ones least allowed to fall short.
 	const band = readFileSync(join(SRC, 'lib/components/NowPlayingBand.svelte'), 'utf8');
 	expect(band).toMatch(/\.btn,\s*\.disc\s*\{[^}]*min-height:\s*var\(--tap\)/s);
-	// RETIRED: the `.browse-toggle` pin. Direction B deleted the browse disclosure along with the
-	// artist and genre rails it hid, so the rule it named is gone from the phone stylesheet — the
-	// assertion could only fail, never bite. The token-only conversion had just re-pointed this pin at `var(--tap)`; that
-	// conversion is moot here rather than reverted, because the control it converted no longer exists.
-	// Nothing replaces it: the search field that took its place is covered by the rendered gate (see the
-	// measured-design quarantine entry for it) rather than by a declaration.
-	// RETIRED: the hand-written back-link pin. The back link (formerly ~26px in settings and 32px
-	// on the audit page) is the single shared PageHeader control adopted by /settings /stats
-	// /metrics /metrics/[mediaId], and `lib/ui/` is in FILES now — so both arms above examine it
-	// like any other control, and a pin that duplicates the walk only hides whether the walk reaches it.
-	// the /metrics slowest-songs links and the audit-page back link were both 32px, and
-	// neither page was in FILES, so the structural test above never saw them. Pinned by name here.
 	expect(declares(metrics, 'processes a', 'min-height')).toBe(true);
 
 	// The stage-colour control was a 22px-tall hue slider with a 28px thumb — a 28px hit area. The

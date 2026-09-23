@@ -75,15 +75,14 @@
 	// playback and clears this the moment the room recovers. Only the active+visible slot reports here.
 	let autoplayBlocked = $state(false);
 	/*
-	 * A TRANSPOSE IS WAITING FOR ONE TAP. Raised by either player slot when a ± semitone shift was asked
-	 * for and its WebAudio graph could not route, which on a TV means the page has never had user
-	 * activation so the AudioContext cannot leave `suspended`.
+	 * A TRANSPOSE IS WAITING FOR ONE TAP. Raised by either player slot when a ± shift was asked for and its
+	 * WebAudio graph could not route — on a TV that means the page has never had user activation, so the
+	 * AudioContext cannot leave `suspended`.
 	 *
-	 * Distinct from `autoplayBlocked`: there the MUSIC is not playing, which is obvious in the room and
-	 * already has a full-stage affordance. Here the music plays perfectly and only the key is stuck, so
-	 * the say is a small corner pill rather than a takeover — and it is the only way anyone learns the
-	 * buttons need a tap, because the graph degrades silently by design (capturing the element into a
-	 * suspended context would cost the room ALL audio, permanently).
+	 * Distinct from `autoplayBlocked`: there the MUSIC is not playing, which is obvious in the room and already
+	 * has a full-stage affordance. Here the music plays perfectly and only the key is stuck, so the say is a
+	 * corner pill — and it is the only way anyone learns the buttons need a tap, because the graph degrades
+	 * silently by design (capturing the element into a suspended context would cost the room ALL audio).
 	 */
 	let pitchBlocked = $state(false);
 	// The instrumental refused to start with an error NO gesture can lift (decode failure, AbortError) —
@@ -231,24 +230,16 @@
 		const entryChanged = cur?.id !== current?.id;
 		current = cur;
 		upNext = next;
-		// Reset the drawn-position anchor on the entry change itself. Both `positionSec` and
-		// `durationSec` have exactly two writers — the active slot's `onposition` at the two sites
-		// below — and neither runs until the NEW <audio> fires its first `timeupdate` (~250ms in
-		// Chromium). Until then `drawPosition` extrapolates FORWARD from the previous song's anchor,
-		// so the reel opens the turn parked on (and sweeping past) the old song's last lines and the
-		// progress bar opens two-thirds full. `nowplaying:changed` is the exact event that marks the
-		// new song's zero, so re-anchor here rather than relaxing `drawPosition`'s floor (— that
-		// purity is load-bearing) or guarding inside `LyricsOverlay`. See issue an earlier change.
+		// Re-anchor the drawn-position anchor on the ENTRY CHANGE ONLY. `positionSec`/`durationSec` are written by
+		// the active slot's `onposition`, which does not run until the new <audio> fires its first `timeupdate`
+		// (~250ms), so until then `drawPosition` extrapolates forward from the previous song's anchor — the reel
+		// opens parked on the old song's last lines and the bar opens two-thirds full.
 		//
-		// THE GUARD IS THE FIX, and the comment above already claimed it. The server calls
-		// `emitNowPlaying` at the tail of EVERY player command (player.ts), not only on an advance, so
-		// this ran on every pause, resume, restart, key press and guide nudge. `positionSec = 0` flows
-		// into the overlay's anchor, `activeLineIndex(lines, 0)` returns 0, and the reel snaps back to
-		// the FIRST line while the progress bar empties — until the next `timeupdate` ~250ms later
-		// restores it. Under the guide slider's ~8 commands/second it is re-pinned to 0 faster than
-		// `timeupdate` can recover, so for the whole drag the reel parks on the opening line and stops
-		// tracking the singer, lurching because the reel's own 0.42s transform outlasts the interval.
-		// Re-anchoring is correct for a NEW turn and wrong for every other command.
+		// THE ENTRY GUARD IS THE FIX. The server calls `emitNowPlaying` at the tail of EVERY player command, not
+		// only on an advance, so this ran on every pause, resume, restart, key press and guide nudge: `0` flows
+		// into the anchor, the reel snaps back to the first line and the bar empties until the next `timeupdate`.
+		// Under the guide slider's ~8 commands/second it is re-pinned faster than that can recover, so the reel
+		// parks on the opening line for the whole drag.
 		if (entryChanged) {
 			positionSec = 0;
 			durationSec = 0;
@@ -267,15 +258,12 @@
 	}
 
 	/**
-	 * Position/status telemetry to the server. DROPPED SILENTLY when the socket is not open.
-	 *
-	 * Silent is right here and wrong for a command: this is a ~4Hz ephemeral stream and the next frame
-	 * is 250ms away, so warning per drop would flood the console during any reconnect. What is NOT
-	 * acceptable is throwing, which is what `ws?.send(...)` did — optional chaining guards an absent
-	 * socket, not a CONNECTING/CLOSING/CLOSED one. Because this is called from the media element's
-	 * `ontimeupdate` AFTER the local `positionSec` assignment, that throw left the TV advancing its own
-	 * lyrics and progress while the server never learned the playhead — which the phone then rendered as
-	 * a progress bar that jumps to the beginning on pause. See lib/ws/send.ts.
+	 * Position/status telemetry to the server, DROPPED SILENTLY when the socket is not open. Silent is right for a
+	 * ~4Hz ephemeral stream whose next frame is 250ms away; warning per drop would flood the console during any
+	 * reconnect. What is not acceptable is THROWING, which is what `ws?.send(...)` did — optional chaining guards
+	 * an absent socket, not a CONNECTING/CLOSING/CLOSED one. Called from `ontimeupdate` after the local
+	 * `positionSec` assignment, that throw left the TV advancing its own lyrics while the server never learned the
+	 * playhead, which the phone rendered as a bar that jumps to the beginning on pause. See lib/ws/send.ts.
 	 */
 	function sendTelemetry(status: string, positionSec = 0) {
 		// The frame — including the entry stamp the server's earlier changes guard needs on EVERY frame — is
@@ -388,25 +376,12 @@
 			keyShift = e.state.keyShift;
 		}
 		/*
-		 * PROCESS LIFECYCLE — and note what is NOT here any more.
-		 *
-		 * This handler used to write the catalog: `new Map(mediaCatalog).set(id, {...m, stemStatus})`,
-		 * on EVERY progress tick, minting a fresh Media identity and inventing a `stemStatus` the
-		 * server never sent (anything not `ready`/`failed` was written as `queued`, which made the
-		 * PLAYING song locally unplayable for a moment). That write is the coupling this issue is
-		 * about: it is how a process for one song reached the playhead of another.
-		 *
-		 * It is gone, and nothing replaced it, because nothing needed it:
-		 *
-		 *   • the READY flip is server-driven. `onMediaReady` publishes a full `queue:sync` (real
-		 *     server truth, through `mergeCatalog`) AND `nowplaying:changed`, so the TV leaves
-		 *     `waiting` on an explicit playback event. The old comment here claimed these local
-		 *     catalog writes were what made the TV "leave WAITING promptly" — that was never true;
-		 *     the only exit this handler ever owned is the terminal-failure one below.
-		 *   • process PROGRESS has no consumer on the TV. The TV renders "Making the karaoke", not a
-		 *     percentage, so a tick had nothing to update and churned the render tree for free.
-		 *
-		 * What remains is a pure lifecycle decision, and no state of its own.
+		 * PROCESS LIFECYCLE — a pure lifecycle decision, with no state of its own. This handler used to write the
+		 * catalog on EVERY progress tick, minting a fresh Media identity and inventing a `stemStatus` the server
+		 * never sent (anything not ready/failed became `queued`, which made the PLAYING song briefly unplayable).
+		 * That write is how a process for one song reached the playhead of another, and nothing replaced it: the
+		 * READY flip is server-driven (`onMediaReady` publishes a full `queue:sync` plus `nowplaying:changed`),
+		 * and process PROGRESS has no consumer here — the TV renders "Making the karaoke", not a percentage.
 		 */
 		if (e.type === 'media:status') {
 			// A process that FAILED, or a job NO connected worker can ever run (`unservable`), will never
@@ -460,19 +435,14 @@
 	});
 
 	/*
-	 * FIX: MEASURE the reserved bottom chrome band instead of predicting it.
+	 * MEASURE the reserved bottom chrome band instead of predicting it. app.css derives a static
+	 * `--tv-chrome-h` by summing the card's type tokens, which assumes a fixed row set and under-counts the
+	 * card's real height — so the sung line could still be covered, and any row added to the card re-breaks it. A
+	 * ResizeObserver on the rendered card reserves exactly what it occupies.
 	 *
-	 * The band the lyrics reel must not enter has to clear the lower-third card. app.css derives a
-	 * static `--tv-chrome-h` by summing the card's type tokens with a 1.2 line-box fudge and a magic
-	 * 54px — a prediction that under-counts the card's REAL height (it silently assumed a fixed row
-	 * set), so the sung line could still be covered by the "Now singing" card, and any new row added to
-	 * the card (a vocal-range line, a second progress style) re-breaks it. A ResizeObserver on the
-	 * actual rendered card reserves exactly what it occupies, whatever it renders today or tomorrow.
-	 *
-	 * The card is `position: absolute; bottom: var(--tv-safe-y)`, so the band from the screen edge is
-	 * its offset plus its measured height. We write that as `--tv-chrome-h` on `.tv`, overriding the
-	 * app.css fallback (which still applies before the first measurement and whenever the card is
-	 * absent — attract/lobby, where the reel is hidden anyway).
+	 * The card is `position: absolute; bottom: var(--tv-safe-y)`, so the band is that offset plus the measured
+	 * height, written as `--tv-chrome-h` on `.tv`. The app.css value still applies before the first measurement
+	 * and whenever the card is absent (attract/lobby, where the reel is hidden anyway).
 	 */
 	let lowerThirdEl = $state<HTMLElement | undefined>();
 	let measuredCardPx = $state<number | null>(null);
@@ -534,14 +504,12 @@
 	);
 
 	/*
-	 * Queued entries that cannot be sung yet. Drives the lobby's wording: with one of these, "Waiting
-	 * for someone to pick a song…" is simply false — somebody picked, and the wait is the vocal
-	 * separation. The phone was already saying "You're next once it's ready" while the TV contradicted
-	 * it.
+	 * Queued entries that cannot be sung yet, which drives the lobby's wording: with one of these, "Waiting for
+	 * someone to pick a song…" is false — somebody picked, and the wait is the vocal separation. The phone was
+	 * already saying "You're next once it's ready" while the TV contradicted it.
 	 *
-	 * isPlayable (not readyToSing) on purpose: this asks "could the TV load a file for it", which is the
-	 * same question the player asks, so the lobby cannot claim something is processing that the player
-	 * would happily start.
+	 * `isPlayable`, not `readyToSing`: this asks "could the TV load a file for it", the same question the player
+	 * asks, so the lobby cannot claim something is processing that the player would happily start.
 	 */
 	const pendingCount = $derived(
 		entries.filter((e) => {
@@ -556,27 +524,17 @@
 	const roster = $derived(lobbyRoster(online, away, singers, Infinity));
 
 	/*
-	 * KEEP THE TV AWAKE while a song is on stage.
+	 * KEEP THE TV AWAKE while a song is on stage — without this the OS screensaver blanked the room mid-song, and
+	 * a long instrumental break with no input was enough.
 	 *
-	 * Nothing here held the screen on, so the OS screensaver blanked the room mid-song — a long
-	 * instrumental break with no input was enough to lose the lyrics. This takes a Screen Wake Lock for
-	 * as long as the TV is showing a song, and releases it the moment the room goes idle.
+	 * Gated on `!isAttract`, the same flag the player slots and stage background use, rather than on
+	 * `screen === 'playing'`: a song that is processing or between tracks is still on stage and must keep the
+	 * screen lit, which is the instrumental-break case itself.
 	 *
-	 * Gated on `!isAttract` — the SAME flag the player slots and the stage background use — not on a
-	 * literal `screen === 'playing'`: a song that is processing (`waiting`) or between tracks
-	 * (`interstitial`) is still on stage and must keep the screen lit, exactly the instrumental-break
-	 * case the issue names. `attract`/`lobby` (nobody singing, or nothing queued) release it.
-	 *
-	 * Two platform facts shape it, mirroring the ResizeObserver effect above (acquire a platform
-	 * resource, free it in the returned cleanup):
-	 *   - `navigator.wakeLock` is SECURE-CONTEXT ONLY. Behind the https tunnel or at `localhost` on the
-	 *     box it exists; on the documented plain-HTTP LAN room (`http://192.168.x.x:3000`) it is simply
-	 *     `undefined`. The feature-detect guard makes this effect INERT there — no error, no-op — the
-	 *     same shape as the `typeof ResizeObserver === 'undefined'` guard above. Blanking on a plain-HTTP
-	 *     LAN TV stays a deployment concern (disable the OS screensaver), by owner ruling.
-	 *   - The platform DROPS the lock whenever the document hides (tab switch, TV input change) and does
-	 *     NOT restore it on its own. So we re-acquire on `visibilitychange` when we become visible again
-	 *     and the room is still playing; without that it would work once and then quietly stop.
+	 * Two platform facts shape it. `navigator.wakeLock` is SECURE-CONTEXT ONLY, so on a plain-HTTP LAN room it is
+	 * simply `undefined` and the feature-detect makes this effect inert (blanking there stays a deployment
+	 * concern). And the platform DROPS the lock whenever the document hides and does not restore it, so it is
+	 * re-acquired on `visibilitychange` — without that it would work once and quietly stop.
 	 */
 	$effect(() => {
 		// Read reactively: this effect re-runs (releasing, then re-taking) whenever the room enters or
@@ -631,14 +589,11 @@
 	});
 
 	/*
-	 * FULL SCREEN on the TV page (owner ruling C).
-	 *
-	 * `/tv` is already `position: fixed; inset: 0`, so it owns the whole VIEWPORT — what it cannot claim
-	 * on its own is the browser's own chrome (URL bar, tab strip) eating the top of an HDMI-plugged
-	 * laptop or a TV browser. The Fullscreen API closes that, but `requestFullscreen()` needs TRANSIENT
-	 * USER ACTIVATION in the TV's own document: there is no autofullscreen on load and no phone-triggered
-	 * fullscreen (a realtime message carries no activation). So every path here is anchored to a real
-	 * gesture ON the TV — the `f` key, the corner button, or the autoplay-recovery tap as a free rider.
+	 * FULL SCREEN on the TV page. `/tv` is already `position: fixed; inset: 0`, so it owns the viewport; what it
+	 * cannot claim is the browser's own chrome eating the top of an HDMI-plugged laptop. `requestFullscreen()`
+	 * needs TRANSIENT USER ACTIVATION in the TV's own document — there is no autofullscreen on load and a
+	 * realtime message from a phone carries no activation — so every path here is anchored to a real gesture ON
+	 * the TV: the `f` key, the corner button, or the autoplay-recovery tap as a free rider.
 	 */
 	function toggleFullscreen() {
 		if (typeof document === 'undefined' || !document.documentElement?.requestFullscreen) return;
@@ -700,28 +655,21 @@
 	});
 
 	/*
-	 * The stage background, and the band it is shown in.
-	 *
-	 * Gated on `!isAttract` — the SAME flag that gates the player slots — rather than on
-	 * `screen === 'playing'`. That is deliberate: a literal playing check would drop the background
-	 * during the interstitial, putting a black flash between every song, and it would also drop it on
-	 * `waiting` (a song IS on the stage, it is still processing). Reusing the flag also means the two
-	 * conditions cannot drift apart later.
-	 *
-	 * The attract and lobby screens keep painting their own glow at z-index 5 and are untouched by this
-	 * feature, so they sit above this layer regardless.
+	 * The stage background, and the band it is shown in. Gated on `!isAttract` — the same flag that gates the
+	 * player slots — rather than on `screen === 'playing'`: a literal playing check would drop the background
+	 * during the interstitial, putting a black flash between every song, and also on `waiting`, where a song IS on
+	 * stage. Reusing the flag also keeps the two conditions from drifting apart. The attract and lobby screens
+	 * paint their own glow at tier 5 and sit above this layer regardless.
 	 */
 	const currentSingerColor = $derived(current ? (singers.get(current.singerId)?.color ?? null) : null);
 	/*
-	 * The key line for the lower-third: what the room is HEARING, plus the shift if any.
+	 * The key line for the lower-third: what the room is HEARING, plus the shift if any. `soundingKeyLabel`
+	 * already moves the detected key by `keyShift` and returns null when there is no trustworthy key, so a song
+	 * with no detected key shows nothing rather than a guess. The "· +2" suffix says how far the singer has moved
+	 * from the original; at 0 there is none.
 	 *
-	 * `soundingKeyLabel` already moves the detected key by `keyShift` and returns null when there is no
-	 * trustworthy key — so a song with no detected key shows nothing rather than a guess. The shifted
-	 * key is the honest label (a +2 song in G is heard in A), and the "· +2" suffix tells the singer HOW
-	 * FAR they have moved from the original. At 0 there is no suffix. The sign is written with ASCII
-	 * `+`/`-` and the separator is a Latin-1 middot — a typographic sharp/flat/arrow would trip the
-	 * icons.test.ts codepoint guard (musical sharp U+266F / flat U+266D are in its banned range); the
-	 * shared helper already spells accidentals as ASCII 'G#'/'Ab'.
+	 * ASCII `+`/`-` and a Latin-1 middot: a typographic sharp/flat/arrow trips `icons.test.ts`'s codepoint guard,
+	 * and the shared helper already spells accidentals as ASCII.
 	 */
 	const keyLine = $derived.by(() => {
 		const label = soundingKeyLabel(mediaOf(current)?.songProfile, keyShift);
@@ -776,32 +724,25 @@
 	 */
 	const lyricsSourceLabel = $derived(mediaOf(current)?.lyricsRef ? provenanceLabel(lyricsProvenance) : null);
 	/*
-	 * What the reel actually draws, clamped against BOTH bounds — see `resolveLyricsPresentation`.
+	 * What the reel actually draws, clamped against BOTH bounds — see `resolveLyricsPresentation`. It lives here,
+	 * below `lyricsProvenance`, because it depends on it: reading `settings` alone answered the granularity of
+	 * ONE song from a fleet-wide setting, so a line-only song under the default word-level `syncMode` got the word
+	 * treatment and the current line painted plain white with no marker.
 	 *
-	 * This lives HERE, below `lyricsProvenance`, because it now depends on it. It used to sit beside
-	 * `songIntroMs` at the top and read `settings` alone, which is the whole defect: the granularity of
-	 * ONE song was being answered from a fleet-wide setting, so a line-only song under the default
-	 * word-level `syncMode` got the word treatment and the current line painted plain white with no
-	 * accent and no marker.
-	 *
-	 * `?.timing` — not the candidate object — because that field IS the per-song granularity the worker
-	 * records, and passing the whole candidate would invite the resolver to start reading text
-	 * provenance too. Undefined when there is no candidate, which the resolver reads as UNKNOWN and
-	 * deliberately does not clamp on: a pre-candidate artifact usually does have word timings.
+	 * `?.timing` rather than the candidate object, because that field IS the per-song granularity the worker
+	 * records and passing the whole candidate would invite the resolver to start reading text provenance too.
+	 * Undefined reads as UNKNOWN and is deliberately not clamped on: a pre-candidate artifact usually does have
+	 * word timings.
 	 */
 	const lyricsStyle = $derived(resolveLyricsPresentation(settings, lyricsProvenance?.timing));
 	/*
-	 * The join address as a person reads it off a wall: no scheme, no query, no bare trailing slash.
-	 * Someone retyping this needs the shortest legible string, and the QR beside it still encodes the
-	 * full room-scoped URL, so nothing is lost — only shown differently. The attract panel additionally
-	 * prints the room CODE as its own largest element (.jt-code), which is why repeating it as
-	 * `?room=CODE` here was both redundant and the reason the address once wrapped to five lines in a
-	 * 600px panel.
+	 * The join address as a person reads it off a wall: no scheme, no query, no bare trailing slash. Someone
+	 * retyping it needs the shortest legible string, and the QR beside it still encodes the full room-scoped URL.
+	 * The attract panel prints the room CODE as its own largest element, which is why repeating it as `?room=CODE`
+	 * here was both redundant and why the address once wrapped to five lines in a 600px panel.
 	 *
-	 * ONE HELPER, THREE CALLERS (`lib/tv/join-address.ts`). This was a local two-step regex chain, and
-	 * `TvLobby` and `JoinBadge` had their own — which had already drifted: the badge stripped the scheme
-	 * only, so the corner card printed the `?room=CODE` its own comment calls too long to read, while the
-	 * two here left a slash with nothing behind it on the most-transcribed string in the product.
+	 * ONE HELPER, THREE CALLERS (`lib/tv/join-address.ts`). The three had already drifted: the badge stripped the
+	 * scheme only, so the corner card printed the `?room=CODE` its own comment calls too long to read.
 	 */
 	const attractJoinUrl = $derived(joinAddressLabel(data.joinUrl));
 	/*
@@ -815,21 +756,16 @@
 	const joinUnreachable = $derived(isUnreachableJoinOrigin(data.joinOrigin));
 
 	/*
-	 * Which ONE transient treatment is on screen. Previously the skip notice, the "Next up" intro and
-	 * the waiting state were three independent {#if} blocks at the same z-index, all inset:0, with
-	 * non-exclusive conditions — the media:status "stuck" path sets `skipNotice` AND leaves `tvState`
-	 * mid-transition, so two full-screen panels could paint over each other. Deriving a single value and
-	 * gating every block on it makes exactly one mountable, and the precedence states which wins:
-	 *   error   — a skip notice is the most urgent thing to say, so it outranks everything.
-	 *   waiting — the player is actively holding for a proc; a real, named in-progress state.
-	 *   next    — the song-intro card (opener or gapless-swap transition).
-	 *   loading — the FALLBACK for the missed-preload path (P1 black stage). When the gapless swap
-	 *             misses its window, `onEnded` sets `loading` with `current` still set, so `screen`
-	 *             derives `playing` and a not-yet-loaded <video> would render black under only the
-	 *             lower-third — the swap path shows a card, this path showed nothing. Keep a loading
-	 *             treatment up until the visible player reports ready (onVisibleReady flips `loading`
-	 *             to `playing`). Also covers the first-song load before onFirstSongReady, where black
-	 *             was equally wrong.
+	 * Which ONE transient treatment is on screen. These were three independent `{#if}` blocks at the same
+	 * z-index, all `inset: 0`, with non-exclusive conditions — the "stuck" path sets `skipNotice` AND leaves
+	 * `tvState` mid-transition, so two full-screen panels could paint over each other. One derived value makes
+	 * exactly one mountable, and the precedence states which wins:
+	 *   error   — a skip notice is the most urgent thing to say.
+	 *   waiting — the player is actively holding for a process.
+	 *   next    — the song-intro card (opener or gapless swap).
+	 *   loading — the FALLBACK for a missed preload: `onEnded` sets `loading` with `current` still set, so
+	 *             `screen` derives `playing` and a not-yet-loaded <video> would render black under only the
+	 *             lower-third. Held until the visible player reports ready.
 	 */
 	const transient = $derived.by(() => {
 		if (skipNotice) return 'error';
@@ -842,21 +778,15 @@
 	const loadingDisplay = $derived(songDisplay(mediaOf(current)));
 
 	/*
-	 * THE ATTRACT PHRASE. A fixed `Karaoke` label with one of seven phrases
-	 * rotating beneath it in a fixed two-line box. The order is a shuffled bag reseeded per room
-	 * (phrases.ts), advanced every 8s, with no repeat until the whole set has shown.
+	 * THE ATTRACT PHRASE — a fixed `Karaoke` label with one of seven phrases rotating beneath it in a fixed
+	 * two-line box: a shuffled bag reseeded per room (phrases.ts), advanced every 8s, no repeat until the set has
+	 * shown. Seeded from the room code so a room's rotation is deterministic and testable; a code-less TV falls
+	 * back to a fixed seed.
 	 *
-	 * Seeded from the room code so a room's rotation is stable and deterministic — the same requirement
-	 * the phrase bag is built to satisfy, and testable because both are pure. A code-less TV (no active
-	 * room resolved) falls back to a fixed seed, which is fine: the sequence just is not room-specific.
-	 *
-	 * REDUCED MOTION. Under `prefers-reduced-motion: reduce` the cycle does not start at
-	 * all: one phrase is chosen per room and HELD for the session — Minecraft's own splash behaviour.
-	 * The crossfade itself is a CSS animation gated on `(prefers-reduced-motion: no-preference)` (see the
-	 * `.phrase-line` rule), never a Svelte `transition:` directive (motion.test.ts rejects those because
-	 * the transition runtime never consults the media query). So motion is stopped in TWO independent
-	 * ways under reduce — the clock never ticks AND the fade animation is media-gated off — and either
-	 * alone is sufficient.
+	 * REDUCED MOTION stops it TWO independent ways, either sufficient: the clock never starts (one phrase is
+	 * chosen and held for the session) and the crossfade is a CSS animation gated on `no-preference`. Never a
+	 * Svelte `transition:` directive — the transition runtime does not consult the media query, which is why
+	 * `motion.test.ts` rejects them.
 	 */
 	const phraseSeed = $derived(seedFromString(data.roomCode || 'encore-attract'));
 	// SSR-safe: matchMedia does not exist during load. Defaults to full motion; corrected on mount.
@@ -1083,18 +1013,13 @@
 		/>
 	{:else}
 		<!--
-			WHO IS SINGING — bottom-left, and no longer a card.
+			WHO IS SINGING — bottom-left, and no longer a card. It was a near-opaque violet→pink slab, which is what
+			made the stage read as furniture: a filled panel over the room's chosen background amputates the feature
+			they picked. Three independent designers working from the requirements all set this as plain text on the
+			backdrop instead. Contrast comes from a painted scrim plus a text-shadow, which also sidesteps
+			`backdrop-filter` being unreliable on TV browsers.
 
-			It was a near-opaque violet→pink slab, which is what made the stage read as furniture rather
-			than a stage: a filled panel over the room's chosen background (a gradient, the singer's own
-			colour, or an animated visualiser) amputates the feature they picked. Three independent
-			designers, working from the requirements with no sight of this file, all set this information
-			as plain text directly on the backdrop instead. Contrast comes from a painted scrim plus a
-			text-shadow, which also sidesteps `backdrop-filter` being unreliable on TV browsers — the
-			blur that was supposed to rescue the translucent version may never run at all.
-
-			The class name and the ResizeObserver binding stay: `--tv-chrome-h` is measured from this
-			element, and losing the card does not change that the reel must clear whatever it occupies.
+			The class name and the ResizeObserver binding stay: `--tv-chrome-h` is measured from this element.
 		-->
 		<div class="lower-third" bind:this={lowerThirdEl}>
 			<span class="ls-name"
@@ -1267,27 +1192,17 @@
 	{/if}
 
 	<!--
-		AUTOPLAY BLOCKED — the room is silent until a gesture. Shown ONLY when the active player's
-		instrumental.play() was refused with NotAllowedError (TvPlayer -> onautoplayblocked), so a TV that
-		autoplays fine never sees it. It is a full-screen affordance at the very top of the stack (z 10, above
-		even the status dot) so a tap ANYWHERE lands on it — but the recovery does not depend on hitting this
-		element: TvPlayer arms a document-wide gesture listener, so any tap/keypress on the page starts the
-		music and clears this via onautoplayrecovered. The overlay is purely the on-screen SAY of what a tap
-		will do; it is also click-dismissable so a viewer who preferred silence can put it away.
+		AUTOPLAY BLOCKED — the room is silent until a gesture. Shown only when the active player's
+		`instrumental.play()` was refused with NotAllowedError, so a TV that autoplays never sees it. Full-screen
+		at the top of the stack so a tap anywhere lands on it, though recovery does not depend on hitting it:
+		TvPlayer arms a document-wide gesture listener. The overlay is the on-screen SAY of what a tap will do,
+		and is click-dismissable for a viewer who prefers silence.
 
-		ALSO GATED ON `!isAttract` — the SAME flag the player slots, the stage background and the wake lock
-		use. The latch has only two writers, both per-slot props, so when the room DRAINS (a skip at
-		the last entry: player.ts advance() finds no nextPlayable and sets currentEntryId null / isPlaying
-		false) both players unmount and NEITHER onautoplayblocked NOR onautoplayrecovered can fire again.
-		Without this term the 82%-opaque full-viewport scrim sat over the lobby of an empty room for good,
-		above the join QR and the join address a new singer walks up to read, promising to "start the music"
-		with nothing queued.
-
-		Gating the RENDER rather than clearing the latch is deliberate: the block is a real property of this
-		TV — it has still never been tapped — so it must be announced again the moment something is on stage,
-		and it is, because the latch survives the idle window. On an idle screen there is nothing a tap could
-		start anyway: both slots are `visible={… && !isAttract}` and TvPlayer only raises the block when
-		active AND visible, so no slot can even report one while this term hides the overlay.
+		ALSO GATED ON `!isAttract`. The latch has only two writers, both per-slot props, so when the room DRAINS
+		both players unmount and neither can fire again — without this term the 82%-opaque scrim sat over an empty
+		room's lobby for good, above the join QR, promising to start music with nothing queued. Gating the RENDER
+		rather than clearing the latch is deliberate: the block is still a real property of this TV, so it must be
+		announced again the moment something is on stage.
 	-->
 	{#if autoplayBlocked && !isAttract}
 		<button
@@ -1311,18 +1226,15 @@
 	{/if}
 
 	<!--
-		A TRANSPOSE IS WAITING FOR ONE TAP. Someone pressed ± on their phone and the key did not move,
-		because a browser will not run an AudioContext until the page has user activation and a TV that
-		autoplays correctly never receives any. The graph degrades to audible-but-unshifted on purpose —
-		the alternative costs the room all its audio permanently — so without this the ± buttons are
-		simply dead and the room has no way to know why.
+		A TRANSPOSE IS WAITING FOR ONE TAP. A browser will not run an AudioContext until the page has user
+		activation, and a TV that autoplays correctly never receives any — so ± does nothing and the graph degrades
+		to audible-but-unshifted (the alternative costs the room all its audio permanently). Without this the
+		buttons are simply dead and the room cannot know why.
 
-		A BUTTON, because the tap is the whole remedy: pressing it authorises WebAudio for the document,
-		and TvPlayer's own always-armed gesture listener re-drives the pending shift on the same gesture.
-		Deliberately NOT the full-stage treatment the autoplay block gets — the music is playing fine
-		here, so this is a corner pill that says what is stuck without covering the song. It sits at the
-		transient-overlay tier so a genuine autoplay block (which silences the whole room) still wins if
-		both are somehow up. Suppressed on the attract screen, where there is no song to transpose.
+		A BUTTON, because the tap IS the remedy: it authorises WebAudio for the document, and TvPlayer's
+		always-armed gesture listener re-drives the pending shift on the same gesture. Deliberately not the
+		full-stage treatment the autoplay block gets — the music is playing fine, so this says what is stuck
+		without covering the song, at a tier where a genuine autoplay block still wins.
 	-->
 	{#if pitchBlocked && !autoplayBlocked && !isAttract}
 		<button
@@ -1359,17 +1271,14 @@
 	{/if}
 
 	<!--
-		FULLSCREEN corner button. Self-hides after a few seconds of no input (`controlsVisible`), so
-		it is not permanent chrome on a wall. z-tier 7 (see the z-scheme below), the persistent-chrome tier:
-		ABOVE the lyrics reel (6) and the player slots so it stays tappable during a song, and BELOW the
-		transient full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares
-		tier 7 with the lower-third (bottom-left), the join QR (bottom-right) and the Up-next block
-		(top-right), so it is pinned TOP-right BELOW the whole Up-next block to overlap none;
-		inset with the safe-area tokens so a television's overscan cannot crop it.
+		FULLSCREEN corner button, self-hiding after a few seconds of no input so it is not permanent chrome on a
+		wall. Tier 7 (see the z-scheme below): above the reel and the player slots so it stays tappable during a
+		song, below the transient overlays and the autoplay hint so those cover it. It shares the tier with the
+		lower-third, the join QR and the Up-next block, so it is pinned TOP-right BELOW Up-next to overlap none,
+		inset with the safe-area tokens so overscan cannot crop it.
 
-		The mark is an INLINE SVG, not a Unicode codepoint: icons.test.ts bans a functional control whose
-		drawing the platform picks (a bare glyph renders as colour emoji on one device and tofu on a
-		stripped-down TV browser), and there is no fullscreen mark in icons.ts to reuse.
+		The mark is an INLINE SVG, not a codepoint: `icons.test.ts` bans a functional control whose drawing the
+		platform picks, and there is no fullscreen mark in icons.ts to reuse.
 	-->
 	<button
 		type="button"
@@ -1398,28 +1307,19 @@
 
 <style>
 	/*
-	 * THE TV TYPE FLOOR — THE ONE DECLARATION. Every --tv-* type tier in app.css
-	 * is a `rem` multiple of THIS root, so the floor is defined in exactly one place. It MUST live on
-	 * `:root` (the document root), NOT on `.tv`: `rem` resolves against the document root font-size
-	 * unconditionally, so a `font-size` on `.tv` would not re-root `rem` for its descendants.
+	 * THE TV TYPE FLOOR — THE ONE DECLARATION. Every --tv-* tier in app.css is a `rem` multiple of THIS root. It
+	 * MUST live on `:root`, not on `.tv`: `rem` resolves against the document root unconditionally, so a
+	 * font-size on `.tv` would not re-root its descendants.
 	 *
-	 * `:global(:root)` inside THIS component's <style> — not global in app.css — is the resolution of
-	 * the standard's "one declaration vs the phone is unaffected", stated rather than defaulted: a Svelte
-	 * component's stylesheet is injected only WHILE the component is mounted and removed when the last
-	 * instance is destroyed, so this root floor applies to the /tv document alone. A global :root in
-	 * app.css would re-root the phone's --ph-* rem ladder to ~19px on a phone viewport and regress
-	 * SC 1.4.4. Kept in the component's single <style> block (rather than a second <style> or
-	 * <svelte:head>) so the file's first-and-only style block stays the component's, which the TV
-	 * source-scan guards read.
+	 * `:global(:root)` inside THIS component's style rather than in app.css, because a Svelte stylesheet is
+	 * injected only while the component is mounted — so the floor applies to the /tv document alone. A global
+	 * `:root` in app.css would re-root the phone's --ph-* ladder to ~19px and regress SC 1.4.4. Kept in the
+	 * file's single style block, which the TV source-scan guards read.
 	 *
-	 * max(2.7vh, 20px): the vh term scales with the panel (a TV browser presents a fixed 1920×1080 CSS
-	 * viewport, so 2.7vh = 29.16px on a full 1080-tall stage); the 20px term is the legibility floor for
-	 * the windowed/dev case where every physical assumption collapses (2.2vh = 20px on a 900px laptop).
-	 *
-	 * --ui-scale is a persisted preference, range 0.8–1.6, default 1. PERSISTENCE IS DEFERRED to a
-	 * follow-up (the room-setting plumbing lives in packages/shared, out of an earlier change's TV-only scope);
-	 * until then it defaults to 1 here. The clamp() is defensive: whatever a future setting writes into
-	 * --ui-scale, the multiplier can never leave 0.8–1.6, so the floor holds.
+	 * `max(2.7vh, 20px)`: the vh term scales with the panel (a TV browser presents a fixed 1920×1080 viewport,
+	 * so 2.7vh = 29.16px on a 1080-tall stage); the 20px term is the legibility floor for the windowed case. The
+	 * `clamp()` on --ui-scale is defensive — whatever a future setting writes, the multiplier cannot leave
+	 * 0.8–1.6, so the floor holds.
 	 */
 	/*
 	 * --ui-scale registered as a typed custom property (the declared default + the reviewer's non-numeric
@@ -1439,37 +1339,22 @@
 		font-size: calc(max(2.7vh, 20px) * clamp(0.8, var(--ui-scale), 1.6));
 	}
 	/*
-	 * STAGE Z-INDEX SCHEME. Two unrelated layers previously shared a z-index (the lower-third and the
-	 * lyrics reel both at 6; the interstitial, the progress bar and the join corner all at 7), so paint
-	 * order fell to DOM order and a future reorder could silently push a transient behind the chrome.
-	 * One monotonic scale now, higher = closer to the viewer. The lyrics reel (6) is owned by the
-	 * sibling LyricsOverlay and is the fixed anchor this scheme is built around.
+	 * STAGE Z-INDEX SCHEME. Two unrelated layers used to share a z-index (the lower-third and the reel both at 6;
+	 * the interstitial, progress bar and join corner all at 7), so paint order fell to DOM order and a reorder
+	 * could silently push a transient behind the chrome. One monotonic scale now, higher = closer to the viewer,
+	 * anchored on the reel (6), which the sibling LyricsOverlay owns.
 	 *
-	 *   0  stage background + visualizer (this file:.stage-bg)
-	 *   1  hidden player slot / 2  visible player slot (TvPlayer .slot, inline z-index)
-	 *   5  idle full-screen screens: attract, lobby (.attract, TvLobby .lobby)
-	 *   6  lyrics reel (LyricsOverlay .lyrics — SIBLING-owned, not editable here)
-	 *   7  persistent chrome that must sit ABOVE the reel and the video: lower-third (bottom-left),
-	 *      brand-float, progress bar (TvProgress), join corner/badqr (JoinBadge, bottom-right),
-	 *      fullscreen button (.fs-btn, an earlier change — shares this tier but pinned TOP-right BELOW the whole
-	 *      "Up next" block since an earlier change, so it overlaps none of them; a transient overlay at 8 and the
-	 *      autoplay hint at 10 correctly cover it)
-	 *   8  transient full-screen overlays: interstitial / error / waiting / loading (.interstitial) —
-	 *      must cover ALL chrome, which the old shared 7 did only by DOM luck
-	 *   9  connection status dot (.status) — tiny, always visible, never occluded
-	 *  10  autoplay-blocked "tap to start" affordance (.autoplay-hint) — MUST be tappable above all else
+	 *   0  stage background + visualizer        6  lyrics reel (SIBLING-owned, not editable here)
+	 *   1  hidden player slot                   7  persistent chrome above the reel and the video: lower-third,
+	 *   2  visible player slot                     brand-float, progress bar, join corner, fullscreen button
+	 *   5  idle full-screen: attract, lobby     8  transient full-screen overlays (must cover ALL chrome)
+	 *                                           9  connection status dot
+	 *                                          10  autoplay-blocked affordance (must be tappable above all)
 	 *
-	 * TV TYPE SCALE AND SAFE AREA — tokens live in app.css so the same components size correctly in the
-	 * /components gallery, which renders them outside this route.
-	 *
-	 * This surface was inheriting the phone's tokens verbatim, which is how "Now singing", the song
-	 * title, the score sub-line and the join URL all ended up at 12–19px — sized for a device held at
-	 * 40cm and displayed on a wall at three metres.
-	 *
-	 * Safe area: every edge element previously used a fixed 40–48px offset, which sits INSIDE the
-	 * overscan region many television sets still apply (~5%, or ~54px vertically at 1080p). The
-	 * lower-third naming who is singing and the join QR could both be clipped off the screen. One pair
-	 * of tokens now owns every edge, so there is a single place to reason about corners.
+	 * The TV type and safe-area tokens live in app.css so the same components size correctly in the /components
+	 * gallery, which renders them outside this route. Safe area matters because every edge element used to use a
+	 * fixed 40–48px offset, inside the overscan region many sets still apply (~54px vertically at 1080p) — the
+	 * lower-third and the join QR could both be clipped off the screen.
 	 */
 	.tv {
 		position: fixed;
@@ -1671,21 +1556,14 @@
 		max-width: 46vw;
 		gap: var(--space-3xs);
 		/*
-		 * NO CARD. No background, no padding, no border-radius, no backdrop-filter — see the markup
-		 * comment for why. Legibility comes from BOTH a blurred text-shadow AND a text-stroke, the same
-		 * pair the lyrics reel uses (LyricsOverlay.svelte:346), and both work on every TV browser.
+		 * NO CARD — see the markup note. Legibility comes from BOTH a blurred text-shadow AND a text-stroke, the
+		 * same pair the lyrics reel uses, and both work on every TV browser.
 		 *
-		 * the stroke is load-bearing, not decoration. Before an earlier change the stage was pinned dark, so a
-		 * shadow tuned against black was enough. an earlier change lets a room pick ANY stage colour — including
-		 * white — and a blurred dark shadow disappears against a bright field of similar luminance, so
-		 * the singer name measured 1.10:1 on white (the retired stage pin used to prevent exactly this).
-		 * `-webkit-text-stroke` with `paint-order: stroke fill` draws a hard dark outline BEHIND the
-		 * glyph, so the text stays readable on any background — the owner's ratified an earlier change condition,
-		 * "always visible regardless of the background". Width in `em` (not px) so it reads the same at
-		 * 720p and 4K, and --scrim-strong reuses the reel's one dark-outline source of truth.
-		 *
-		 * Dropping the fill also drops the reason the block was capped in height: it no longer reads as
-		 * an object that can collide with the QR, only as text that must not run into it.
+		 * The stroke is load-bearing. With the stage pinned dark a shadow tuned against black was enough; a room
+		 * can now pick ANY stage colour, and a blurred dark shadow disappears against a bright field of similar
+		 * luminance — the singer name measured 1.10:1 on white. `-webkit-text-stroke` with
+		 * `paint-order: stroke fill` draws a hard dark outline BEHIND the glyph, so the text stays readable on any
+		 * background. Width in `em` so it reads the same at 720p and 4K.
 		 */
 		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
 		-webkit-text-stroke: 0.04em var(--scrim-strong);
@@ -1832,14 +1710,11 @@
 		justify-content: center;
 		gap: var(--space-lg);
 		/*
-		 * A SCRIM, not a wash. This was --bg at 94%, which blanked the room's chosen backdrop — a
-		 * gradient, the singer's colour, or an animated visualiser — for every song change and every
-		 * process hold. That is the black-flash class of problem the background layer is deliberately gated
-		 * on `!isAttract` to avoid, undone one layer up. Dark in the middle where the words go, clear at
-		 * the edges so the corner chrome and the backdrop stay visible underneath: the state reads as
-		 * something happening ON the stage rather than as a different screen.
-		 *
-		 * The error state overrides this back to near-opaque — see below.
+		 * A SCRIM, not a wash. This was --bg at 94%, which blanked the room's chosen backdrop for every song change
+		 * and every process hold — the black-flash problem the background layer is gated on `!isAttract` to avoid,
+		 * undone one layer up. Dark in the middle where the words go, clear at the edges so the corner chrome and
+		 * the backdrop stay visible: the state reads as something happening ON the stage rather than as a different
+		 * screen. The error state overrides it back to near-opaque.
 		 */
 		background: radial-gradient(
 			70% 55% at 50% 50%,
@@ -2015,35 +1890,26 @@
 	}
 
 	/*
-	 * The fullscreen corner button. Fades between states on opacity so the self-hide is a soft
-	 * dissolve rather than a pop. Sits at z 7 — the documented persistent-chrome tier: ABOVE the lyrics
-	 * reel (6) and the player slots (1/2) so it stays tappable during a song, and BELOW the transient
-	 * full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares the tier
-	 * with the lower-third (bottom-LEFT) and the join QR (bottom-RIGHT); it is pinned TOP-right below
-	 * the status dot so it overlaps NEITHER — before an earlier change it sat bottom-right too, sharing the join
-	 * QR's exact anchor, and at equal z-index the later-in-DOM button painted over the QR's text.
-	 * Safe-area-inset on both axes so overscan cannot clip it, and `pointer-events`
-	 * drops with the fade so a hidden button can never eat a tap meant for the stage.
+	 * The fullscreen corner button, fading on opacity so the self-hide is a dissolve rather than a pop. Tier 7,
+	 * the persistent-chrome tier: above the reel and the player slots so it stays tappable during a song, below
+	 * the transient overlays and the autoplay hint so those always cover it. Pinned TOP-right below the status
+	 * dot so it overlaps neither the lower-third nor the join QR — it sat bottom-right once, sharing the QR's
+	 * anchor, and at equal z-index the later-in-DOM button painted over the QR's text. `pointer-events` drops
+	 * with the fade so a hidden button cannot eat a tap meant for the stage.
 	 *
-	 * The clamp's floor is var(--tap) — app.css's own tap-target minimum, named rather than restated
-	 * (issue an earlier change). A TV remote's pointer needs that floor as much as a thumb does, and this
-	 * comment used to CLAIM the binding while the code held a bare `44px`: the one control whose stated
-	 * reason for its size was a token it did not read.
+	 * The clamp's floor is `var(--tap)`, named rather than restated: a TV remote's pointer needs that floor as
+	 * much as a thumb does.
 	 */
 	.fs-btn {
 		position: absolute;
 		right: var(--tv-safe-x);
-		/* TOP-right, tucked BELOW the whole "Up next" block. The bottom-right corner is owned by
-		   the join QR (JoinBadge `.corner`) and the bottom-LEFT by the lower-third — both z-tier 7. The
-		   top-right holds the status dot (16px, tier 9) AND `.upnext` (tier 7, right:var(--tv-safe-x),
-		   top:calc(var(--tv-safe-y) + 2.6vh)). `.upnext` is the same right edge and same z-tier, and
-		   `.fs-btn` is later in the DOM, so anchoring level with it would paint over the Up-next readout
-		   just as the first an earlier change attempt (safe-y + 28px) did. So the button sits below `.upnext`'s own
-		   top PLUS its MEASURED height (`--tv-upnext-h`, a ResizeObserver on the block — its title
-		   wraps, so a fixed offset would fail when it grows) PLUS a gap. `--tv-upnext-h` is 0px when no
-		   next song is queued, so the button just sits at the top-right inset with nothing to clear.
-		   Raising the QR's `bottom` to stack them would eat its overscan clearance, and bumping the
-		   button's z-index would cover chrome OPAQUELY — both worse; the button moves instead. */
+		/* TOP-right, tucked BELOW the whole "Up next" block. The bottom corners are owned by the join QR and the
+		   lower-third; the top-right holds the status dot and `.upnext`, which shares this right edge and this
+		   z-tier — and `.fs-btn` is later in the DOM, so anchoring level with it painted over the Up-next readout.
+		   So the button sits below `.upnext`'s top plus its MEASURED height (`--tv-upnext-h`, a ResizeObserver,
+		   because its title wraps and a fixed offset fails when it grows) plus a gap; that token is 0px when no
+		   next song is queued. Raising the QR's `bottom` would eat its overscan clearance and bumping z-index
+		   would cover chrome opaquely — the button moves instead. */
 		top: calc(var(--tv-safe-y) + 2.6vh + var(--tv-upnext-h) + var(--space-lg));
 		z-index: var(--z-tv-card);
 		display: grid;
@@ -2096,22 +1962,17 @@
 	}
 
 	/*
-	 * THE KEY-IS-STUCK PILL. Not `inset: 0` like the affordance above, and that is the whole design
-	 * difference: that one exists because the room is SILENT, so covering the stage costs nothing and
-	 * being unmissable is worth everything. Here the song is playing and only the transpose is stuck, so
-	 * a takeover would be a lie about the severity — this states the problem and stays out of the way.
+	 * THE KEY-IS-STUCK PILL. Not `inset: 0` like the affordance above, and that is the design difference: that one
+	 * exists because the room is SILENT, so covering the stage costs nothing. Here the song is playing and only
+	 * the transpose is stuck, so a takeover would be a lie about the severity.
 	 *
-	 * TOP-CENTRE is the one free strip on this surface. The lower-third owns bottom-left, the join/QR
-	 * corner bottom-right, the score badge and fullscreen button top-right, and the `corner` progress
-	 * style top-left — so a centred top pill collides with none of them at any of those placements.
-	 * Tier 8 (transient overlays) puts it above the reel and the persistent chrome while leaving the
-	 * autoplay affordance at 10 strictly on top, which is the correct precedence: a silent room is a
-	 * bigger problem than a stuck key, and the markup's `!autoplayBlocked` term means they never race.
+	 * TOP-CENTRE is the one free strip on this surface — the lower-third owns bottom-left, the join corner
+	 * bottom-right, the score badge and fullscreen button top-right, the `corner` progress style top-left. Tier 8
+	 * puts it above the reel and the chrome while the autoplay affordance stays strictly on top, which is the
+	 * correct precedence; the markup's `!autoplayBlocked` term means they never race.
 	 *
-	 * Sized off the TV type ladder (`--tv-body` / `--tv-small`) rather than a viewport term, because the
-	 * `.tv` root is already vh-scaled and a per-token viewport unit multiplies the panel twice
-	 *. Kept comfortably past the 44px touch floor because it is a real target on a
-	 * touchscreen TV.
+	 * Sized off the TV type ladder rather than a viewport term, because the `.tv` root is already vh-scaled and a
+	 * per-token viewport unit multiplies the panel twice.
 	 */
 	.pitch-hint {
 		position: absolute;

@@ -149,9 +149,10 @@ test('the provenance comment no longer claims the highlight is pink (comment/cod
 	// still states `--reel-now` is deliberately left alone, which is the fact a future editor would
 	// otherwise "fix" by overriding it.
 	expect(raw).toMatch(/`--reel-now` is deliberately NOT overridden/);
-	// Retired with hunk 8: the `line` treatment's override is against `--reel-singer` now, not pink.
+	// The `line` treatment's override is against `--reel-singer` now, not pink. Anchored on the fact rather than on
+	// a sentence: what matters is that the source still states `--reel-line` IS overridden and why.
 	expect(raw).not.toMatch(/leaving it pink would mean the `line` treatment/);
-	expect(raw).toMatch(/leaving it on `--reel-singer` would mean the `line` treatment/);
+	expect(raw).toMatch(/`--reel-line` IS overridden/);
 });
 
 test('the TV route hands the overlay the current singer — the non-test caller', () => {
