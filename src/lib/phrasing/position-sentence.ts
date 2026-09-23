@@ -1,16 +1,12 @@
 /**
  * The guest's own place in the rotation, stated in words.
  *
- * Direction A's core promise is "3rd — you're up after Sam, roughly 11 minutes" rather than a bare
- * ordinal, and the hard half is the minutes clause: an ETA is a CLAIM, and a wrong one in a shared
- * room is witnessed by everybody in it. So the wait is a sum over the entries ahead, and a sum with
- * an unknown term is unknown — this builder omits the clause entirely rather than zeroing or
- * guessing it. That mirrors `progressFraction`'s existing decision to return `null` for an unknown
- * duration instead of 0, taken for the same reason: a bar pinned at zero reads as a stalled song.
+ * AN ETA IS A CLAIM, and a wrong one in a shared room is witnessed by everybody in it. The wait is a sum over
+ * the entries ahead, and A SUM WITH AN UNKNOWN TERM IS UNKNOWN — every builder here omits the clause rather
+ * than zeroing or guessing it.
  *
- * A pure function, deliberately: the sentence is the requirement, so it is unit-testable with no DOM
- * and no room. It also FORMATS here — at the boundary, before any value reaches a template — so no
- * unrounded float can reach a phone as "roughly 11.033333333333333 minutes".
+ * Pure, and it FORMATS at this boundary, before any value reaches a template, so no unrounded float can reach
+ * a phone as "roughly 11.033333333333333 minutes".
  */
 
 /** Below this many seconds the wait is stated as a phrase, never as a rounded-to-zero number. */
@@ -24,21 +20,14 @@ export interface PositionInput {
 	 * guest is next) or the roster does not resolve them.
 	 */
 	beforeName?: string | null;
-	/**
-	 * Seconds still to run on the song playing NOW: `0` when nothing is playing, `null` when
-	 * something is playing whose length is unknown. `null` makes the whole wait unknown.
-	 */
+	/** Seconds still to run on the song playing NOW: 0 when nothing is playing, `null` when something is
+	 * playing whose length is unknown. `null` makes the whole wait unknown. */
 	nowRemainingSec?: number | null;
-	/**
-	 * Lengths of the queued entries AHEAD of the guest, in rotation order. `null` for an entry whose
-	 * media is not in the catalog — `Media.durationSec` is required, so absence is the real
-	 * unknown-duration path, not a missing field.
-	 */
+	/** Lengths of the entries AHEAD, in rotation order. `null` for an entry whose media is not in the catalog,
+	 * which is the real unknown-duration path. */
 	aheadDurationsSec?: Array<number | null>;
-	/**
-	 * Can the guest's own pick actually play when its turn arrives? A still-processing song is skipped
-	 * by the TV, so claiming "you're up next" for one contradicts the queue list's own badge.
-	 */
+	/** Can the guest's own pick play when its turn arrives? A still-processing song is skipped by the TV, so
+	 * claiming "you're up next" for one contradicts the queue's own badge. */
 	playable?: boolean;
 }
 
@@ -52,10 +41,9 @@ export interface PositionWords {
 }
 
 /**
- * English ordinal for a positive integer: 1 → "1st", 11 → "11th", 22 → "22nd", 113 → "113th".
- *
- * The teens are the whole reason this is a function: 11/12/13 take "th" even though 1/2/3 do not,
- * and every naive `n % 10` version ships "11st" the first time a party gets big enough.
+ * English ordinal for a positive integer. THE TEENS are the whole reason this is a function: 11, 12 and 13
+ * take "th" even though 1, 2 and 3 do not, and a naive modulo-ten version ships "11st" the first time a party
+ * gets big enough.
  */
 export function ordinalWord(n: number): string {
 	const i = Math.trunc(n);
@@ -64,13 +52,7 @@ export function ordinalWord(n: number): string {
 	return `${i}${suffix}`;
 }
 
-/**
- * The wait clause, or `null` when it cannot be known honestly.
- *
- * Unknown is returned when the playing song's remaining time is unknown, or when ANY entry ahead has
- * no resolvable length — one unknown term makes the sum unknown, and a partial sum understates the
- * wait, which is the failure mode that matters (a guest who wanders off is worse than one who waits).
- */
+/** The wait clause, or `null` when it cannot be known honestly — see `waitSeconds`. */
 export function waitWords(nowRemainingSec: number | null, aheadDurationsSec: Array<number | null>): string | null {
 	const total = waitSeconds(nowRemainingSec, aheadDurationsSec);
 	if (total === null) return null;
@@ -80,19 +62,11 @@ export function waitWords(nowRemainingSec: number | null, aheadDurationsSec: Arr
 }
 
 /**
- * The same wait, as a BYLINE FRAGMENT rather than a sentence: "~3 min", "<1 min", or `null`.
+ * The same wait as a BYLINE FRAGMENT rather than a sentence, because it sits mid-line after a separator and a
+ * capitalised sentence there reads as two sentences welded together.
  *
- * WHY A SECOND FORMATTER AND NOT A SECOND SUM. The wait used to be read in exactly one place — a card
- * above the queue, which stated it as a sentence. That card is gone (the queue row beside it already
- * said "You · up next", so the card restated the row and owned the wait as its only unique content), and
- * the wait moved ONTO that row's byline, where it sits mid-line after a middot: `You · up next · ~3 min`.
- * A sentence cannot go there — "You · up next · Roughly 3 minutes." reads as two sentences welded
- * together and its capital lands mid-line.
- *
- * So the FORM differs and the ARITHMETIC does not: both call `waitSeconds`, so the two spellings of the
- * wait cannot disagree about how long it is. The honest-degradation rule is that shared function's, which
- * is what keeps it true of both: one unknown term ahead and both formatters return null, and the caller
- * renders no clause rather than a guess.
+ * A SECOND FORMATTER, NEVER A SECOND SUM: both spellings call `waitSeconds`, so they cannot disagree about how
+ * long the wait is, and the honest-degradation rule is that shared function's.
  */
 export function waitShort(nowRemainingSec: number | null, aheadDurationsSec: Array<number | null>): string | null {
 	const total = waitSeconds(nowRemainingSec, aheadDurationsSec);
@@ -102,12 +76,9 @@ export function waitShort(nowRemainingSec: number | null, aheadDurationsSec: Arr
 }
 
 /**
- * The wait in seconds, or `null` when it cannot be known honestly — the one place the sum and its
- * unknown rule live, so every formatter above agrees on both.
- *
- * Unknown is returned when the playing song's remaining time is unknown, or when ANY entry ahead has
- * no resolvable length — one unknown term makes the sum unknown, and a partial sum understates the
- * wait, which is the failure mode that matters (a guest who wanders off is worse than one who waits).
+ * The wait in seconds, or `null` — the one place the sum and its unknown rule live, so every formatter above
+ * agrees on both. Unknown when the playing song's remaining time is unknown, or when ANY entry ahead has no
+ * resolvable length: a partial sum UNDERSTATES the wait, and a guest who wanders off is worse than one who waits.
  */
 function waitSeconds(nowRemainingSec: number | null, aheadDurationsSec: Array<number | null>): number | null {
 	if (nowRemainingSec === null || !Number.isFinite(nowRemainingSec)) return null;
@@ -130,8 +101,7 @@ export function positionWords(input: PositionInput): PositionWords | null {
 	const wait = waitWords(nowRemainingSec, aheadDurationsSec);
 	let lead: string;
 	if (place === 1) {
-		// Only claim "up next" when the song can actually play next. Ranking on position alone said
-		// "You're up next!" for a still-processing song the TV skips straight past.
+		// "Up next" is a claim about PLAYABILITY, not position: a still-processing song is skipped.
 		lead = playable ? "You're up next." : "You're next once it's ready.";
 	} else if (beforeName) {
 		lead = `You're up after ${beforeName}.`;

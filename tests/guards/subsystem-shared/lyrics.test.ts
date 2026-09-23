@@ -1,8 +1,6 @@
-// The candidate model + presentation ranking. The whole point of storing MANY lyrics sets
-// per song is that text quality and timing fidelity are independent, so these pin the ranking that
-// resolves them — especially the two non-obvious calls the owner made:
-//   • authoritative+line OUTRANKS asr+word (correct words beat a bouncing ball over invented ones)
-//   • a low-confidence CAPTION is demoted to ASR standing despite arriving as "captions"
+// Text quality and timing fidelity are independent, which is why a song stores MANY lyrics sets. Two
+// non-obvious calls in the ranking that resolves them: authoritative+line OUTRANKS asr+word (correct words
+// beat a bouncing ball over invented ones), and a low-confidence CAPTION is demoted to ASR standing.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import {
@@ -22,10 +20,7 @@ import {
 	SUSPECT_COVERAGE,
 	SEQUENCE_WEIGHT
 } from '$lib/contract';
-// Was `'./lyrics-agreement-corpus'`, a sibling of this test in src/lib/contract/lyrics. Unlike the
-// symbols above it is NOT re-exported from `src/lib/contract/index.ts`, so `$lib/contract` cannot
-// reach it and a repo-relative import is the only route — same shape as
-// tests/guards/design-system/colour-tokens.test.ts reaching its own registry JSON.
+// Not re-exported from the contract barrel, so a repo-relative import is the only route to it.
 import { AGREEMENT_PARITY_CORPUS } from '$lib/contract/lyrics/lyrics-agreement-corpus';
 
 let _t = 0;
@@ -42,7 +37,6 @@ const cand = (
 	...over
 });
 
-// ── isAuthoritativeText ─────────────────────────────────────────────────────
 test('ASR is never authoritative, no matter its confidence', () => {
 	expect(isAuthoritativeText(cand('asr', 'word', { textConfidence: 'high' }))).toBe(false);
 });
@@ -57,7 +51,6 @@ test('LRCLIB and manual text are authoritative', () => {
 	expect(isAuthoritativeText(cand('manual', 'none'))).toBe(true);
 });
 
-// ── rank ────────────────────────────────────────────────────────────────────
 test('rank orders the tiers, and none-timing is 0 (unshowable)', () => {
 	expect(lyricsRank(cand('lrclib', 'word'))).toBe(5);
 	expect(lyricsRank(cand('lrclib', 'line'))).toBe(4);
@@ -71,14 +64,9 @@ test('THE OWNER CALL: authoritative+line outranks a baseline+word', () => {
 });
 
 test('a text identified as ANOTHER SONG ranks below every honest guess', () => {
-	// Measured against transcripts of this actual audio and found to be a different song. Demoting
-	// textConfidence alone left it TIED with the baseline that convicted it, and breaksTie then
-	// preferred it — it has a numeric agreement, a baseline has none. So the room kept seeing words
-	// already proven wrong while the words actually heard sat unshown beside them.
-	//
-	// The convicting axis is `coverage`, not `agreement`. A genuinely different song is low on
-	// BOTH (measured: coverage 0.2745, rank score 0.1521), so both are set here — but only coverage is
-	// thresholded, which the guard below proves by moving them apart.
+	// Demoting textConfidence alone leaves it TIED with the baseline that convicted it, and breaksTie then
+	// prefers it (it has a numeric agreement, a baseline has none). The convicting axis is `coverage`, NOT
+	// `agreement`: a different song is low on both, but only coverage is thresholded.
 	const suspect = {
 		...cand('lrclib', 'word'),
 		textConfidence: 'low' as const,
@@ -92,31 +80,23 @@ test('a text identified as ANOTHER SONG ranks below every honest guess', () => {
 });
 
 test('a LOW RANK SCORE with high coverage is NOT another song — it is a partial baseline', () => {
-	// THE REGRESSION. YouTube's ASR suppresses sung vocals, so a baseline that heard only part of the
-	// song is the normal case here, and a correct authored lookup graded against one scores low on the
-	// RANKING axis by construction. Measured through the real align plan: agreement 0.1857 while the
-	// coverage that actually decided it was 0.6970 — so the worker correctly declined to demote
-	// (winner_suspect false, textConfidence still high) while lyricsRank convicted the same text.
-	//
-	// Consequence, measured: rank 1 instead of 5, so pickBestLyrics handed the room the ASR transcript
-	// over the correct words, and process's candidate merge meant a later correct align could
-	// never displace it.
+	// YouTube's ASR suppresses sung vocals, so a partial baseline is NORMAL and a correct authored lookup
+	// graded against one scores low on the RANKING axis by construction (agreement 0.1857, coverage 0.6970).
+	// Convicting on rank score showed the ASR transcript, and the merge let no later align displace it.
 	const correct = { ...cand('lrclib', 'word'), agreement: 0.1857, coverage: 0.697 };
 	const asrBaseline = { ...cand('asr', 'word'), textConfidence: 'low' as const };
 	expect(lyricsRank(correct)).toBe(5);
 	expect(lyricsRank(correct)).toBeGreaterThan(lyricsRank(asrBaseline));
 	expect(pickBestLyrics([correct, asrBaseline])).toBe(correct);
 
-	// SENTINEL — so the guard above cannot be satisfied by deleting the tier. A genuinely different
-	// song has LOW coverage and is still convicted, even though its rank score is the same order of
-	// magnitude as the correct candidate's above (0.1521 vs 0.1857 — 0.03 apart, which is why no
-	// threshold on the ranking score can separate them).
+	// SENTINEL, so the guard above cannot be satisfied by deleting the tier: a different song has LOW coverage
+	// and is still convicted, though its rank score is 0.03 from the correct candidate's above.
 	const differentSong = { ...cand('lrclib', 'word'), agreement: 0.1521, coverage: 0.2745 };
 	expect(lyricsRank(differentSong)).toBe(1);
 });
 
 test('a suspect text is still shown when it is the only thing there', () => {
-	// Rank 1, not 0. Wrong words beat a blank screen when there is no alternative, and the TV labels it.
+	// Rank 1, not 0: wrong words beat a blank screen when there is no alternative, and the TV labels it.
 	const suspect = {
 		...cand('lrclib', 'word'),
 		textConfidence: 'low' as const,
@@ -132,15 +112,13 @@ test('a high coverage does not trip the suspect tier', () => {
 });
 
 test('an UNJUDGED candidate is not treated as suspect', () => {
-	// No baseline could compare it (an instrumental, or text too short). "Cannot tell" must not demote.
+	// No baseline could compare it (an instrumental, or text too short), and "cannot tell" must not demote.
 	expect(lyricsRank(cand('lrclib', 'word'))).toBe(5);
 	expect(lyricsRank({ ...cand('lrclib', 'word'), coverage: undefined })).toBe(5);
-	// A candidate carrying only the ranking axis (an older worker, or a baseline) is also UNJUDGED for
-	// this purpose: `agreement` alone must never reach the wrong-song threshold.
+	// A candidate carrying only the ranking axis is also UNJUDGED: `agreement` alone never convicts.
 	expect(lyricsRank({ ...cand('lrclib', 'word'), agreement: 0.08 })).toBe(5);
 });
 
-// ── pickBestLyrics ────────────────────────────────────────────────────────────
 test('picks the ideal when present', () => {
 	const set = [cand('asr', 'word'), cand('lrclib', 'word'), cand('lrclib', 'line')];
 	expect(pickBestLyrics(set)!.textSource).toBe('lrclib');
@@ -172,7 +150,6 @@ test('at equal rank, higher timing confidence wins; else newer', () => {
 	expect(pickBestLyrics([oldC, newC])).toBe(newC); // recency breaks a true tie
 });
 
-// ── mergeLyricsCandidate: the never-regress guarantee ─────────────────────────
 test('merging a NEW candidate never worsens the pick (upgrade path)', () => {
 	let set: LyricsCandidate[] = [cand('asr', 'word')];
 	const bestBefore = lyricsRank(pickBestLyrics(set)!);
@@ -195,7 +172,6 @@ test('re-running a job overwrites its OWN artifact rather than stacking duplicat
 	expect(set[0]!.createdAt).toBe(2);
 });
 
-// ── agreement: catching a confidently wrong lookup ────────────────────────────
 test('tokenizer strips LRC stamps, markers, and punctuation', () => {
 	expect(lyricsTokens('[00:12.50]Hello, world! [Chorus]')).toEqual(['hello', 'world']);
 });
@@ -206,7 +182,6 @@ test('tokenizer NFKC-folds so Unicode form-variants tokenise alike (mirrors the 
 	// full-width Latin folds to ASCII, and a ligature (U+FB01 fi) expands
 	expect(lyricsTokens('\uFF28\uFF45\uFF4C\uFF4C\uFF4F')).toEqual(['hello']);
 	expect(lyricsTokens('\uFB01nd')).toEqual(['find']);
-	// ASCII path unchanged
 	expect(lyricsTokens("Hello, World! don't stop")).toEqual(['hello', 'world', "don't", 'stop']);
 });
 
@@ -222,9 +197,8 @@ test('the same lyrics score high; a different song scores low', () => {
 });
 
 test('agreement is count- and position-aware (repeats and reorders cost the score)', () => {
-	// The two cases symmetric set Jaccard scored a perfect 1.0. The words are all present either way,
-	// so coverage stays 1 — it IS the same song and the wrong-song judgement must not fire — while the
-	// ranking score drops on both.
+	// Symmetric set Jaccard scored both a perfect 1.0. Coverage stays 1 (it IS the same song, so the wrong-song
+	// judgement must not fire) while the ranking score drops on both.
 	const twelve = 'alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima';
 
 	const twice = agreement(`${twelve} ${twelve}`, twelve)!;
@@ -241,13 +215,12 @@ test('agreement is count- and position-aware (repeats and reorders cost the scor
 });
 
 test('agreement matches the shared cross-language corpus (parity with the Python mirror)', () => {
-	// The Python suite (worker/tests/test_lyrics_agreement.py) asserts this SAME table, so a
-	// drift on either implementation reds one of the two suites. Expectations are integer [num, den]
-	// pairs worked out by hand — not by running this code — so a bug cannot agree with itself.
+	// worker/tests/test_lyrics_agreement.py asserts this SAME table, so drift on either side reds one of the two
+	// suites; the expectations are integer [num, den] pairs worked out BY HAND, not by running this code.
 	for (const c of AGREEMENT_PARITY_CORPUS) {
 		const got = agreement(c.candidate, c.baseline);
 		if (c.coverage === null || c.fidelity === null || c.sequence === null) {
-			// A not-comparable case is all-null by construction; assert that, then that agreement abstains.
+			// A not-comparable case is all-null by construction; then agreement must abstain.
 			expect(c.coverage).toBeNull();
 			expect(c.fidelity).toBeNull();
 			expect(c.sequence).toBeNull();
@@ -262,15 +235,9 @@ test('agreement matches the shared cross-language corpus (parity with the Python
 });
 
 test('the parity corpus keeps a case only MULTIPLICITY can score', () => {
-	// WHY THIS GUARD EXISTS. The row above pins what `agreement` COMPUTES; this pins that the table still
-	// contains a row capable of telling a multiset intersection from a set one. Without it, deleting that
-	// row leaves every remaining case scoring identically under either overlap, so replacing
-	// `multisetOverlap` — the metric that replaced set Jaccard — with a set-based overlap keeps the whole TS suite
-	// green. Measured on base: that mutation was invisible at 26 pass / 0 fail.
-	//
-	// The discriminator is computed here as the DISTINCT shared count — deliberately NOT with the
-	// production overlap, so this cannot agree with a broken implementation. A case discriminates when the
-	// corpus's own hand-computed multiset numerator EXCEEDS what counting distinct tokens can reach.
+	// The table must keep a row that tells a multiset intersection from a set one: without one, every case
+	// scores identically under either and swapping `multisetOverlap` for a set overlap keeps the suite green.
+	// The discriminator is the DISTINCT shared count, NOT the production overlap, so it cannot agree with it.
 	const distinctShared = (candidate: string, baseline: string): number => {
 		const inBaseline = new Set(lyricsTokens(baseline));
 		return [...new Set(lyricsTokens(candidate))].filter((t) => inBaseline.has(t)).length;
@@ -280,8 +247,7 @@ test('the parity corpus keeps a case only MULTIPLICITY can score', () => {
 	);
 	expect(discriminating.map((c) => c.name)).not.toEqual([]);
 	for (const c of discriminating) {
-		// A repeated token on BOTH sides is the only shape that produces this, so assert the row really is
-		// that shape rather than a miscounted expectation: more tokens than distinct tokens, on each side.
+		// A repeated token on BOTH sides is the only shape producing this, so prove the row really is it.
 		expect(lyricsTokens(c.candidate).length).toBeGreaterThan(new Set(lyricsTokens(c.candidate)).size);
 		expect(lyricsTokens(c.baseline).length).toBeGreaterThan(new Set(lyricsTokens(c.baseline)).size);
 	}
@@ -299,28 +265,16 @@ test('isLikelyWrongSong reads coverage and fires only below the suspect threshol
 	expect(isLikelyWrongSong(0.9)).toBe(false);
 });
 
-// ── hasUsableTiming ───────────────────────────────────────────────────────────
 test('hasUsableTiming is true for word/line, false for none', () => {
 	expect(hasUsableTiming(cand('lrclib', 'word'))).toBe(true);
 	expect(hasUsableTiming(cand('lrclib', 'line'))).toBe(true);
 	expect(hasUsableTiming(cand('lrclib', 'none'))).toBe(false);
 });
 
-// ── the retired threshold stays retired ───────────────────────────────────────
-// SUSPECT_AGREEMENT = 0.25 was replaced with SUSPECT_COVERAGE = 0.40 on a DIFFERENT axis, so the old
-// name was deleted rather than re-valued. Deleting a symbol nothing imports is invisible to a
-// behavioural test by construction — re-adding the constant reds nothing — so this is a source-scan
-// guard: it reads the real production module as TEXT and asserts the declaration is gone.
-//
-// The Python mirror asserts the same thing (tests/test_lyrics_agreement.py), but that suite is not
-// the one a change to lyrics.ts runs, so the guard has to exist on BOTH sides to actually bite here.
-//
-// Matched as a DECLARATION, not as a substring: the surviving constant's own doc comment names
-// SUSPECT_AGREEMENT on purpose, to tell a reader still carrying 0.25 in their head that the axis moved.
-// A bare substring scan would fire on that prose and make the guard unfalsifiable.
+// SUSPECT_AGREEMENT = 0.25 was replaced by SUSPECT_COVERAGE = 0.40 on a DIFFERENT axis, so it was deleted
+// rather than re-valued, and re-adding a constant nothing imports reds no behavioural test. Matched as a
+// DECLARATION: the surviving constant's own doc names SUSPECT_AGREEMENT, so a substring scan fires on prose.
 test('lyrics.ts no longer declares the retired SUSPECT_AGREEMENT', () => {
-	// Was `at('src/lib/contract/lyrics/lyrics.ts')` — the module under test was this guard's own SIBLING in
-	// src/lib/contract/lyrics, so it is now named from the repo root.
 	const source = read('src/lib/contract/lyrics/lyrics.ts');
 	expect(source).toMatch(/export const SUSPECT_COVERAGE\s*=/);
 	expect(source).not.toMatch(/export const SUSPECT_AGREEMENT\s*=/);

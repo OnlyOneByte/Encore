@@ -1,30 +1,12 @@
-// Pure job state-machine — no DB, no clock, no IO (unit-testable in isolation; the I/O wrapper is
-// repository.ts, mirroring the store.ts ↔ applyAndReseq split). This is the single authority on
-// which job status changes are legal, and now on WHAT CAUSES them. See docs/ARCHITECTURE.md.
-//
-//        queued ──DISPATCH──► assigned ──ACCEPT──► running ──COMPLETE──► ready   (terminal ✅)
-//          ▲ ▲                   │                  │ │ ▲                 │
-//   REJECT │ │ FAIL(max)         │ REJECT           │ │ └─PROGRESS (self) │
-//          │ │ LEASE_EXPIRED     │ LEASE_EXPIRED    │ │                   │
-//          └─┴── LEASE_EXPIRED / RECOVER (running) ─┘ └──FAIL──► failed   (terminal ❌)
-//   any non-terminal ──CANCEL──► canceled (terminal)
-//   queued|assigned|running ──REPRIORITIZE──► same status (scheduling-only self-loop; no lifecycle change)
-//
-// WHY EVENT-KEYED, NOT STATUS-PAIR. A status pair is event-lossy: `assigned → queued` is BOTH a
-// worker REJECT and an ack-timeout LEASE_EXPIRED, and `running → queued` is BOTH a progress-lease
-// expiry and boot RECOVER. Keying on the event (the §5 wire vocabulary) makes those distinguishable,
-// lets the ledger hook the machine itself rather than seven hand-written wrappers, and turns
-// `REPRIORITIZE` into a legal internal edge instead of a raw write that had to escape the machine
-// (repository.ts).
+// Pure job state-machine — no DB, no clock, no IO; the I/O wrapper is repository.ts. Single authority
+// on which status changes are legal and what causes them. State diagram: docs/ARCHITECTURE.md §7.
+// Keyed on the EVENT, not the (from,to) status pair, because a pair is lossy — e.g. `assigned → queued`
+// is both a worker REJECT and an ack-timeout LEASE_EXPIRED — and the event is what lets the attempt
+// ledger hook the machine itself instead of a hand-written wrapper per call site.
 
 import { isTerminalJob, type JobStatus, type JobEvent } from '../../contract';
 
-/**
- * Legal edges keyed by (from-status, event) → to-status. Terminal states (`ready`/`failed`/
- * `canceled`) have no outgoing events. `PROGRESS` (running→running) and `REPRIORITIZE`
- * (a scheduling-only self-loop on any non-terminal status) are the named self-loops; every other edge is drawn directly
- * from the §2 diagram above.
- */
+/** Legal edges keyed by (from-status, event) → to-status. Terminal states have no outgoing events. */
 export const JOB_TRANSITIONS: Record<JobStatus, Partial<Record<JobEvent, JobStatus>>> = {
 	queued: {
 		DISPATCH: 'assigned',
@@ -74,10 +56,8 @@ export function assertEvent(from: JobStatus, event: JobEvent): JobStatus {
 	return to;
 }
 
-// — status-pair view (derived) —
-// Kept so callers/tests that ask "is any edge from A to B legal?" still work. This is the LOSSY
-// projection the event table replaces: it cannot say WHICH event produced the edge, which is exactly
-// why the machine is now keyed on the event. `assertTransition`'s message matches the pre-change wire.
+// Derived status-pair view, kept for callers that only ask "is some edge from A to B legal" — it
+// cannot say WHICH event produced the edge, which is why the table above is keyed on the event instead.
 
 /** True iff SOME event carries `from` to `to`. */
 export function canTransition(from: JobStatus, to: JobStatus): boolean {

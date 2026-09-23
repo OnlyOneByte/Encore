@@ -1,22 +1,12 @@
-/*
- * Diff two preflight-reset-audit runs.
- *
- *   bun run tests/e2e/probes/preflight-diff.mjs <before.json> <after.json>
- *
- * WHAT THIS REFUSES TO DO. Elements are paired BY INDEX in document order, which is only sound while
- * the two runs rendered the same DOM. Some surfaces in this app are DATA-DEPENDENT — /stats and
- * /metrics grow rows as songs get played, and the home screen's roster reflects who is in the room —
- * so two runs against two rooms legitimately disagree on element COUNT. Pairing by index across that
- * disagreement would compare unrelated elements and invent differences.
- *
- * So a surface is compared only when its full TAG SEQUENCE is identical between runs, and one whose
- * sequence differs is reported as NOT-COMPARABLE with its counts, never quietly skipped and never
- * quietly compared. That distinction is the whole reason to write a differ rather than eyeball two
- * JSON blobs: the failure mode of this measurement is a false difference, not a missed one.
- *
- * Exit codes: 0 = no style or geometry difference on any comparable surface, 1 = differences found
- * (printed), 2 = the inputs could not be compared at all.
- */
+// Diff two preflight-reset-audit runs.
+//
+//   bun run tests/e2e/probes/preflight-diff.mjs <before.json> <after.json>
+//
+// Elements pair BY INDEX in document order, which is sound only while both runs rendered the same DOM, and
+// several surfaces here are DATA-DEPENDENT. So a surface is compared only when its full TAG SEQUENCE
+// matches, and one whose sequence differs is reported NOT-COMPARABLE with its counts — never quietly
+// skipped, never quietly compared, because the failure mode here is a FALSE difference, not a missed one.
+
 import { readFileSync } from 'node:fs';
 
 const [beforePath, afterPath] = process.argv.slice(2);
@@ -27,16 +17,11 @@ if (!beforePath || !afterPath) {
 const before = JSON.parse(readFileSync(beforePath, 'utf8'));
 const after = JSON.parse(readFileSync(afterPath, 'utf8'));
 
-/** Geometry differences below this many px are reported separately — see the note at the summary. */
 const PX_EPSILON = 0.01;
 
-/*
- * Tags that render nothing. Preflight's universal and `html`-level rules apply to these too, so an
- * unfiltered tally counts `tab-size` and `font-family` on every `<meta>` in `<head>` and reads as a
- * far larger change than the screen actually sustains. They are counted SEPARATELY rather than
- * dropped, because "the reset reached them and it did not matter" is a different statement from "the
- * reset did not reach them", and only the first is true.
- */
+// Tags that render nothing. Preflight's universal rules reach them too, so an unfiltered tally counts
+// `tab-size` on every `<meta>` and reads as a far larger change than the screen sustains. Counted
+// SEPARATELY rather than dropped: "it reached them and did not matter" is not "it did not reach them".
 const INERT_TAGS = new Set(['html', 'head', 'meta', 'link', 'title', 'script', 'style', 'base']);
 
 let comparable = 0;

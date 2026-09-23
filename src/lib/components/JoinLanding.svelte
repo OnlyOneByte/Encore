@@ -1,26 +1,15 @@
 <!--
-	JoinLanding — the UNJOINED state of `/`. There is no separate `/join` route; this is what an unjoined visitor
-	sees instead of the queue.
+	JoinLanding — the UNJOINED state of `/`. There is no separate join route; this is what an unjoined visitor sees
+	instead of the queue.
 
-	TWO PANES, NOT ONE SCREEN. This surface used to resolve the room, prove you are in it, pick a name and pick a
-	colour in a single scroll — which charged the 90% case (scan the TV's QR) for the 10% case's controls: a scanned
-	guest was shown a six-box code entry they had no code to type into, above the two fields they came for.
+	TWO PANES: step 1 is the CODE pane, a FALLBACK reached only by a guest with no code in the URL or whose scanned
+	code did not resolve; step 2 is the IDENTITY pane — the room confirmed IN WORDS, the name field, the colour
+	ring, the CTA — and the only pane a guest who scanned the QR ever sees.
 
-	  • STEP 1 — the CODE pane, a FALLBACK rather than the default: scan affordance, the six boxes, and a Continue
-	    that resolves the code. No identity fields; asking for them here is what made the merged screen long.
-	  • STEP 2 — the IDENTITY pane: the room confirmed IN WORDS, the name field, the colour ring, "Start singing".
-	    The only pane a guest who scanned the QR ever sees.
+	BOTH PATHS MUST STAY OFFERED, never one instead of the other: a typed code alone is a cognitive-function test
+	under SC 3.3.8, and the scan path is what makes this conformant.
 
-	BOTH PATHS ARE ALWAYS OFFERED, never one instead of the other: a typed code alone is a cognitive-function test
-	under SC 3.3.8, so the scan path is what makes this conformant. Splitting the panes preserves that — the scan
-	affordance leads step 1 with nothing competing for the space, and a guest who scanned never passes through it.
-
-	Three shapes, expressed as which pane opens: no code yet → step 1 then step 2; arrived WITH a code → step 2
-	directly, the room confirmed in words rather than re-presented as an input the guest cannot act on; code did not
-	resolve → step 1 with a stated reason, not a blank form.
-
-	The room has no NAME in the schema, so "confirmed in words" is who is here, from GET /api/room-preview.
-	`roomPresenceSentence` is the pure builder.
+	The room has no NAME in the schema, so "confirmed in words" is who is here, from the room-preview endpoint.
 -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
@@ -38,86 +27,57 @@
 
 	let name = $state('');
 	/*
-	 * The colour a guest arrives holding, as a RING STOP rather than as a preset.
-	 *
-	 * The picker on this pane is the 48-stop ring, and the ring can only return one of its own fills — so
-	 * seeding this with `SINGER_COLORS[0]` (violet, at OKLCH L≈0.56, deliberately outside the ring's
-	 * L≈0.72 band) would put the knob and the hub on the nearest stop while the value said something the
-	 * ring cannot produce, and a guest who never touched the picker would join on a colour the control
-	 * never offered. Snapping the default through `nearestPaletteStop` keeps the continuity — it is still
-	 * the violet the join screen has always opened on, to within a stop — while making the first paint
-	 * honest about what is selected.
+	 * The default colour is SNAPPED to a ring stop, because the ring can only return one of its own fills:
+	 * seeded with a raw preset the knob would sit on the nearest stop while the value said something the
+	 * control never offered, and a guest who never touched the picker would join on it.
 	 */
 	let color = $state<string>(nearestPaletteStop(SINGER_COLORS[0]).fill);
-	// The code the guest is typing into the six boxes (empty until they start). Distinct from the
-	// scanned code below: this is the TYPED path.
+	/** The TYPED path's code, distinct from `scannedCode` below. */
 	let typedCode = $state('');
 	let submitting = $state(false);
 	let error = $state('');
 
-	// A code carried in on the URL — `/?room=CODE`, what the TV QR now encodes (Q2-A moved it off
-	// `/join?room=`). Normalised through the shared filter so a QR's raw value and a hand-typed `?room`
-	// both resolve. Read ONCE: the landing URL is fixed for the life of the page (a scan is a fresh
-	// navigation, not an in-page param change), so this is a plain read, not a reactive derivation.
+	// A code carried in on the URL, which is what the TV's QR encodes. Read ONCE and not derived: the
+	// landing URL is fixed for the life of the page, because a scan is a fresh navigation.
 	const scannedCode = normalizeRoomCodeInput(page.url.searchParams.get('room') ?? '');
 	const arrivedWithCode = scannedCode.length === CODE_LENGTH;
 
-	// The scanned-room confirmation, or the reason it did not resolve. Fetched on mount / when the
-	// scanned code changes.
 	let preview = $state<RoomPreview | null>(null);
 	let previewError = $state('');
 	let previewLoading = $state(false);
-	// The code the current `preview` resolved FROM. Both paths reach step 2 through the same fetch — the
-	// scanned code on the QR path, the typed code on the fallback path — so the room the guest was shown
-	// is whichever code produced the sentence they read, and that is the one the join must carry. Reading
-	// `scannedCode` here instead would send the WRONG room in the one case both codes exist: a scan that
-	// failed, dropped to step 1, and was corrected by hand.
+	// The code the current `preview` resolved FROM, which is the one the join must carry: reading
+	// `scannedCode` instead sends the WRONG room in the one case both codes exist — a scan that failed,
+	// dropped to step 1, and was corrected by hand.
 	let previewCode = $state('');
 
 	/*
-	 * WHICH PANE IS ON SCREEN. A resolved room is exactly what step 2 needs and exactly what step 1
-	 * exists to obtain, so the pane follows `preview` rather than a hand-advanced counter — there is no
-	 * state in which the two could disagree and show an identity pane for a room we never confirmed.
-	 *
-	 *   identity  — a room resolved (scanned, or typed and accepted).
-	 *   resolving — arrived with a code, no answer yet. NOT step 1: flashing six empty boxes at a guest
-	 *               who scanned, for the length of one fetch, is the merged screen's failure in
-	 *               miniature.
-	 *   code      — everything else: no code at all, or a code that came back unresolved.
+	 * WHICH PANE IS ON SCREEN, derived from `preview` rather than a hand-advanced counter, so no state can
+	 * show an identity pane for a room that was never confirmed. `resolving` exists so a guest who scanned
+	 * is not shown six empty boxes for the length of one fetch.
 	 */
 	const pane = $derived<'resolving' | 'code' | 'identity'>(
 		preview ? 'identity' : arrivedWithCode && !previewError ? 'resolving' : 'code'
 	);
 
 	/*
-	 * THE STEP DOTS ARE GATED ON HAVING SEEN STEP 1, and this is the reason the flag exists rather than
-	 * the dots simply reading `pane`. A guest who scans the QR lands on step 2 without step 1 ever
-	 * rendering; showing them "step 2 of 2" would report a step they never skipped as skipped, which
-	 * reads as a broken or half-completed form on the first screen of the app. So the dots are not
-	 * "where am I in a two-step form" — they are "you are on the second of the two panes you have seen".
-	 *
-	 * Set from the pane rather than from the code path, so the failed-scan case is covered by
-	 * construction: that guest IS shown step 1, corrects the code by hand, and must keep the dots.
+	 * The step dots are gated on having SEEN step 1: a guest who scans lands on step 2 without step 1 ever
+	 * rendering, and "step 2 of 2" then reports a step they never skipped as skipped. Set from the pane
+	 * rather than from the code path, so the failed-scan guest who corrects by hand keeps the dots.
 	 */
 	let sawCodeStep = $state(false);
 	$effect(() => {
 		if (pane === 'code') sawCodeStep = true;
 	});
 
-	// The code that actually gets sent to /api/join: the one the confirmed room resolved from.
 	const joinCode = $derived(preview ? previewCode : typedCode);
-	// STEP 1's CTA: the six boxes are full and no lookup is in flight. Its disabled REASON is stated in
-	// text below (SC 3.3.2), never by state alone.
 	const canContinue = $derived(typedCode.length === CODE_LENGTH && !previewLoading);
-	// STEP 2's CTA: a room is confirmed (guaranteed by the pane) and a name is entered.
 	const canJoin = $derived(pane === 'identity' && name.trim().length > 0 && !submitting);
 	const onCodeStep = $derived(pane === 'code');
 	const ctaEnabled = $derived(onCodeStep ? canContinue : canJoin);
 	/*
-	 * ONE reason string for BOTH panes, and one live region for it in the markup below. Two regions —
-	 * one per pane — would put a second `aria-live` in this file, and `phone-inventory.test.ts` holds an
-	 * enumeration of every phone live region with its purpose: an extra one fails there, correctly, since
-	 * "the reason the CTA is disabled" is a single duty however many panes state it.
+	 * ONE reason string for BOTH panes, because there is one live region for it below and
+	 * `phone-inventory.test.ts` enumerates every phone live region with its purpose — a second one fails
+	 * there, correctly, since the disabled reason is a single duty however many panes state it (SC 3.3.2).
 	 */
 	const ctaReason = $derived.by(() => {
 		if (onCodeStep) {
@@ -151,10 +111,8 @@
 		}
 	}
 
-	// Load the scanned-room confirmation when we arrived with a valid code. A `$effect` rather than
-	// `onMount` so the fetch is driven by the same reactive graph the rest of the component uses (and so
-	// it runs under the mount-rung harness, which drives effects). `arrivedWithCode` is a const, so this
-	// fires at most once; `requested` guards against a re-run firing a second fetch.
+	// An `$effect` rather than `onMount` so the fetch runs under the mount-rung harness, which drives
+	// effects. `requested` guards against a re-run firing a second fetch.
 	let requested = false;
 	$effect(() => {
 		if (arrivedWithCode && !requested) {
@@ -164,26 +122,16 @@
 	});
 
 	/*
-	 * STEP 1 → STEP 2. The typed path resolves the code through the SAME /api/room-preview the scanned
-	 * path uses, which is what lets step 2 confirm the room in words for a guest who typed rather than
-	 * scanned — that sentence is the whole content of the pane, so a typed code that was merely
-	 * well-formed (six legal characters) is not enough to advance on. A code that does not resolve leaves
-	 * the guest on step 1 with `previewError` stating why, the same treatment a failed scan gets.
-	 *
-	 * The pane flips on `preview` landing; nothing here advances it by hand.
+	 * STEP 1 to STEP 2. The typed path resolves through the SAME endpoint the scanned path uses, because the
+	 * confirmation sentence is the whole content of step 2 — a merely well-formed code is not enough to
+	 * advance on. A code that does not resolve leaves the guest on step 1 with the reason stated.
 	 */
 	async function continueToIdentity(code?: string) {
 		/*
-		 * `code` IS THE ONE CodeEntry JUST ASSEMBLED, and taking it is what makes the auto-advance work.
-		 *
-		 * CodeEntry fires `oncomplete` synchronously from inside its `beforeinput` / `paste` / `keydown`
-		 * handler, while the `value` binding reaches this component through an `$effect` — next tick. So
-		 * this used to check `typedCode`, see five characters, fail `canContinue` and return without a
-		 * word: typing the sixth character did nothing, and pasting a whole code did nothing. Both were
-		 * measured in a browser. The button worked, which is why it went unnoticed.
-		 *
-		 * The argument is absent when the CTA is what called this, and then `typedCode` is authoritative
-		 * (the binding has long since settled), so the fallback is not a guess.
+		 * THE ARGUMENT WINS OVER `typedCode`: CodeEntry fires `oncomplete` synchronously from inside its own
+		 * input handler, while its `value` binding reaches this component an `$effect` later. Reading
+		 * `typedCode` here sees one character too few, fails the length check and returns silently, so the
+		 * last character of a typed code and a whole pasted code both do nothing.
 		 */
 		const candidate = code ?? typedCode;
 		if (candidate.length !== CODE_LENGTH || previewLoading) return;
@@ -205,16 +153,12 @@
 				submitting = false;
 				return;
 			}
-			// Head where the join was for — the room (`/`) unless something sent us here to reach a
-			// specific screen (Settings behind the join gate carries `?next=`). safeNextPath keeps that
-			// from becoming an open redirect, the same guard the old /join route held.
+			// `safeNextPath` is what keeps `?next=` from becoming an open redirect.
 			const dest = safeNextPath(page.url.searchParams.get('next'));
 			await goto(dest);
-			// The join happens ON `/` now, and the common destination is also `/`. A client-side
-			// `goto('/')` from `/` is a no-op — same route, so the home component never remounts and never
-			// re-fetches /api/me, leaving the guest on the join form they just completed. When the
-			// destination IS the current path, reload so the route re-runs with the new session cookie and
-			// renders the queue. A different `next` (e.g. /settings) already navigated above.
+			// A client-side goto to the CURRENT path is a no-op, so the route never remounts and the guest
+			// stays on the join form they just completed. A reload is what re-runs it with the new session
+			// cookie; a different `next` already navigated above.
 			if (new URL(dest, location.origin).pathname === location.pathname) {
 				location.reload();
 			}
@@ -228,31 +172,19 @@
 </script>
 
 <!--
-	THE HEADER IS TWO SHAPES OF ONE THING — ONE <h1> that changes shape, not two that swap. On step 1 the wordmark is
-	the screen's title (large, centred, in the band the missing topbar would occupy); on step 2 it IS the header
-	(small, top-left, out of the way of the room sentence). The SAME mark travelling between them is what tells the
-	guest the two panes are one flow.
-
-	ONE PERSISTENT ELEMENT is the whole mechanism. As an `{#if}` the element would UNMOUNT on every flip, leaving
-	nothing for the browser to interpolate — so a JS runtime (`crossfade`) had to measure both boxes and animate the
-	difference. That runtime is what this markup avoids: a Svelte `transition:` directive generates keyframes at run
-	time and never consults `prefers-reduced-motion` (`motion.test.ts` rejects all four), and `crossfade` also calls
-	`getBoundingClientRect()` unconditionally, which the mount rung replaces with a throw.
-
-	So the h1 is hoisted OUT of the branch and only its CLASS changes: a mounted element whose `transform` changes is
-	interpolated natively, from a rule a media query can reach. See `.brand` for the flight itself.
+	ONE h1 THAT CHANGES SHAPE, never two that swap — the same mark travelling between the panes is what tells the
+	guest they are one flow. It MUST stay hoisted out of the branch: inside an `{#if}` it unmounts on every flip,
+	leaving nothing for the browser to interpolate, which forces a JS crossfade — and that both generates keyframes
+	no media query can reach and reads geometry, which the mount rung replaces with a throw. Hoisted, only its CLASS
+	changes and the transform interpolates natively. See `.brand`.
 -->
 <header class="join-head" class:head-bar={!onCodeStep}>
 	<h1 class="brand" class:brand-bar={!onCodeStep}>
 		<Icon name="mic" /> <span class="wordmark">Encore</span>
 	</h1>
 	<!--
-		THE LEDE BELONGS TO THE CODE PANE ONLY. It used to switch to "You're joining this room." on the
-		identity pane, directly above `roomPresenceSentence` — which says the same thing with the facts
-		in it ("Maya and Dana are here."). Two sentences, one message, and the vaguer one first.
-
-		The identity pane needs no lede at all: the room sentence IS its opening line, and the wordmark
-		has become a header bar rather than a title needing a subtitle under it.
+		THE LEDE BELONGS TO THE CODE PANE ONLY: on the identity pane the room sentence is the opening line, and a
+		lede above it would say the same thing with none of the facts in it.
 	-->
 	{#if onCodeStep}
 		<p class="lede">Join the room on the TV to start singing.</p>
@@ -260,23 +192,17 @@
 </header>
 
 <!--
-	A `<div>`, NOT a second `<main>`. This element was `<main class="join-main">` and it renders INSIDE
-	`routes/+layout.svelte`'s own `<main>`, so the join screen shipped nested main elements — invalid HTML,
-	and two "main" landmarks for a screen reader to choose between on the first screen of the app. Chrome's
-	own a11y tree showed both. The landmark belongs to the layout, which mounts it on every route; this is
-	the pane inside it, and `.join-main` stays the class every rule here (and the `:has()` selectors below)
-	already keys on.
+	A div, NEVER a second `<main>`: this renders inside the layout's own main, so a main here is invalid HTML and
+	two landmarks for a screen reader to choose between on the first screen of the app. The `.join-main` class is
+	what every rule below — and the `:has()` selectors — key on.
 -->
 <div class="join-main">
 	{#if sawCodeStep}
-		<!-- Two dots, the second wider when active — the small-indicator shape the band already uses
-		     (`.dot`, sized off the spacing scale with a pill radius). Rendered ONLY once step 1 has been
-		     seen; see `sawCodeStep` for why a scanned guest must not get "step 2 of 2". No transition
-		     between the two states: the active dot changes WIDTH, and width is a layout property this
-		     codebase does not animate, so the step change is instant rather than gated. -->
+		<!-- No transition between the two dot states: the active dot changes WIDTH, which is a layout property
+		     this codebase does not animate, so the step change is instant rather than reduced-motion gated. -->
 		<p class="steps">
-			<!-- The dots are the visual; this is the same fact for a guest who cannot see them. Not a live
-			     region — the pane change is a navigation the CTA press caused, not an ambient event. -->
+			<!-- The same fact for a guest who cannot see the dots. NOT a live region: the pane change is a
+			     navigation the CTA press caused, not an ambient event. -->
 			<span class="step-count">Step {pane === 'identity' ? 2 : 1} of 2</span>
 			<span class="dot" class:on={onCodeStep} aria-hidden="true"></span>
 			<span class="dot" class:on={pane === 'identity'} aria-hidden="true"></span>
@@ -285,29 +211,19 @@
 
 	{#if pane === 'resolving'}
 		<!--
-			The shadcn migration: <Spinner>, whose ring honours Reduce Motion in its own file. It is `aria-hidden`
-			DECORATION, not the announcement: the sentence stays, because this `role="status"` region
-			is what a screen-reader guest hears while the room resolves.
-
-			NOT <Skeleton>, which is what it looks like it is for. A skeleton stands in for content of
-			known shape and says nothing; swapping the sentence for a silent grey bar would leave the
-			status region empty and announce nothing at all. So ui/skeleton still has no consumer —
-			reported rather than forced.
+			The spinner is aria-hidden DECORATION; the SENTENCE is the announcement, because this status region is
+			what a screen-reader guest hears while the room resolves. A skeleton cannot replace it — it says
+			nothing, so the region would announce nothing at all.
 		-->
 		<p class="confirm" role="status"><Spinner aria-hidden="true" /> Finding the room…</p>
 	{:else if pane === 'identity'}
-		<!-- STEP 2 — IDENTITY. The room is confirmed in words and no code input is shown: on the scanned
-		     path the QR typed it, and on the typed path step 1 already took it, so re-presenting it here
+		<!-- STEP 2 — IDENTITY. No code input here: both paths have already taken the code, so re-presenting it
 		     would be the code shown back as an input the guest has no reason to touch. -->
 		<p class="confirm" role="status">{confirmSentence}</p>
 
 		<label class="name-field">
 			<span class="name-label">Your name</span>
-			<!--
-				The `join` variant reproduces this field's box exactly — the sheet's largest comfortable
-				padding and type, on `--card`. `maxlength` is a NUMBER here: the DOM coerced the string, but a
-				component prop is typed and would not.
-			-->
+			<!-- `maxlength` must be a NUMBER: the DOM coerces a string, but a typed component prop does not. -->
 			<Input
 				variant="join"
 				bind:value={name}
@@ -320,15 +236,8 @@
 		</label>
 
 		<!--
-			THE COLOUR PICKER IS THE RING (see ColourRing.svelte). It replaced the eight preset swatches plus
-			the hue slider that used to stand here: one control instead of two for one choice, the full
-			48-stop palette instead of eight named colours and a continuous rail, and the hue circle closed
-			rather than cut open at an arbitrary stop.
-
-			`taken` is REAL OCCUPANCY, from the same /api/room-preview the sentence above is built from —
-			the endpoint now returns the present singers' colours alongside their names, so the pips mark
-			colours actually in the room rather than a plausible-looking sample. An empty room is an empty
-			list, which is a legitimate state and needs no special case.
+			`taken` is REAL OCCUPANCY, from the same room-preview response the sentence above is built from, so the
+			pips mark colours actually in the room. An empty room is an empty list, which needs no special case.
 		-->
 		<ColourRing
 			bind:value={color}
@@ -342,45 +251,20 @@
 		{/if}
 	{:else}
 		<!--
-		     STEP 1 — CODE. The FALLBACK pane: reached by a guest who has no code in the URL, or whose
-		     scanned code did not resolve.
+		     STEP 1 — CODE, the fallback pane.
 
-		     NO SCAN CARD, and the reason is that this pane is UNREACHABLE for anyone who scanned. It used
-		     to lead with a "Scan the TV's code" row explaining how to point a camera at the QR, which was
-		     wrong twice over. It was information wearing a card's surface — tappable-looking, doing
-		     nothing — and a web page served from a plain `http://<LAN-IP>` origin has no camera it could
-		     open even if it tried: `navigator.mediaDevices` is secure-context gated, the same trap
-		     docs/deploy/README.md:53 records for the TV's AudioWorklet. More basically, a scanned QR
-		     carries `?room=CODE`, resolves, and opens the IDENTITY pane directly — so this row explained
-		     the one path that guarantees you never see it. Instructions for the road not taken.
+		     NO SCAN AFFORDANCE HERE, deliberately: this pane is unreachable for anyone who scanned, since a scanned
+		     QR resolves and opens the identity pane directly. A camera row would also be inoperable — the app is
+		     served from a plain-http LAN origin and `navigator.mediaDevices` is secure-context gated.
 
-		     WHAT THAT COSTS, stated plainly: the SC 3.3.8 argument this file used to make rested on the
-		     scan affordance LEADING and the typed boxes being its alternative. The alternative still
-		     exists — scanning is the primary path and the TV shows the QR — but it is no longer narrated
-		     on this screen, so a guest who arrives here is not told about it. That is a deliberate
-		     ruling, not an oversight; revisit it here if the conformance claim needs to be re-made.
-		-->
-		<!--
-			CENTRED IN THE FREE SPACE, not stacked under the header.
-
-			This pane is the shortest in the app — two step dots, a label and six boxes, about 120px — and
-			the CTA is docked to the bottom of the column by `.submit-slot`'s auto margin. Top-aligning the
-			boxes therefore put every remaining pixel in ONE gap: measured at 390x844, roughly 430px of empty
-			background between the last box and the Continue button, which is most of the screen. It read as
-			a page whose content had failed to load, and it is the FIRST screen of the app for anyone who
-			could not scan.
-
-			CODE PANE ONLY, deliberately. The identity pane is taller and is the one a soft keyboard opens
-			over — `app.html` sets `interactive-widget=resizes-content`, so the layout viewport SHRINKS — and
-			centring content that can exceed its box clips it at BOTH ends, which would put the name field's
-			label out of reach rather than merely low. This pane's content cannot overflow any real viewport,
-			so it gets the centring and that one does not.
+		     WHAT THAT COSTS: the SC 3.3.8 argument rests on the scan path existing, which it does (the TV shows the
+		     QR), but it is no longer narrated on this screen. A deliberate ruling; revisit it here if the
+		     conformance claim needs re-making.
 		-->
 		<div class="code-pane">
 			{#if previewError}
-				<!-- The code did not resolve. Do NOT leave a blank form: state the reason, in place, directly
-				     above the boxes the guest can now correct. Covers both arrivals here — a scanned code that
-				     failed, and a typed one. -->
+				<!-- A code that did not resolve must NOT leave a blank form: the reason goes directly above the
+				     boxes the guest can correct, for both a failed scan and a failed typed code. -->
 				<div class="err" role="alert">{previewError}</div>
 			{/if}
 			<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
@@ -388,23 +272,18 @@
 	{/if}
 
 	<!--
-		ONE CTA slot for both panes, docked to the BOTTOM of the pane by `.submit-slot`'s `margin-top:
-		auto`. It can sit there because `app.html` sets `interactive-widget=resizes-content`: the LAYOUT
-		viewport shrinks when the on-screen keyboard opens, so bottom-anchored content rides above the
-		keyboard instead of under it. That meta is load-bearing for this placement — read its comment
-		before changing either. Not verifiable by the measured gate: headless Chromium has no soft
-		keyboard to raise.
+		ONE CTA slot for both panes, docked to the BOTTOM by `.submit-slot`'s auto margin. It can sit there because
+		`app.html` sets the interactive-widget mode that shrinks the LAYOUT viewport when the on-screen keyboard
+		opens, so bottom-anchored content rides above the keyboard instead of under it — that meta is load-bearing
+		for this placement, and headless Chromium has no soft keyboard, so no measured gate can verify it.
 
-		Shared rather than one per pane so this file keeps exactly ONE live region for the disabled
-		reason (see `ctaReason`).
+		Shared rather than one per pane, so this file keeps exactly ONE live region for the disabled reason.
 	-->
 	<div class="submit-slot">
 		<!--
-			Disabled REASON in text, not state alone (SC 3.3.2) — but ANNOUNCED, not printed. Visibly this
-			was a third sentence telling the guest to enter the code they can see six empty boxes for,
-			directly above a button that is visibly disabled. The duty is that the reason exist in text for
-			assistive tech; it is not that the reason be shown to someone who can already see the form. So
-			the element and its live region stay exactly as they were and only the painting stops.
+			The disabled reason exists in text for assistive tech (SC 3.3.2) but is ANNOUNCED, not printed: shown, it
+			is a third sentence telling a guest who can see six empty boxes to fill them in, above a button that is
+			visibly disabled. The element and its live region stay; only the painting stops.
 		-->
 		{#if ctaReason && !submitting}
 			<p class="cta-reason" role="status" aria-live="polite">{ctaReason}</p>
@@ -420,17 +299,9 @@
 <style>
 	/*
 	 * A GRID WITH TWO NAMED ROWS, for the FLIGHT rather than the layout: the brand row is a RESERVED band whose
-	 * height does not depend on which pane is open. The wordmark keeps its font-size on both panes (it shrinks by
-	 * `transform`, not by type), so its box is the same size in the same row either way and nothing below the
-	 * header moves when the mark flies or the pane flips.
-	 *
-	 * THE TOP BAND IS UNCONDITIONAL. The home route hides its topbar for an unjoined visitor, which left step 1
-	 * starting hard against the physical top edge — a page whose chrome had failed to load rather than a screen. So
-	 * the band it occupied is reserved, composed from `--tap` (the bar is exactly one tap target tall) plus the
-	 * padding the real topbar carries, rather than measured off a screenshot into a literal.
-	 *
-	 * It stays reserved on step 2, where it is the band the wordmark flies INTO. A per-pane padding instead would
-	 * move the mark by changing layout — unanimatable, and it would drag the whole pane up by `--tap` on the flip.
+	 * height does not depend on which pane is open, so nothing below the header moves when the mark flies. The
+	 * top band is unconditional — the home route hides its topbar for an unjoined visitor, and it is also the
+	 * band the wordmark flies into; a per-pane padding would move the mark by changing LAYOUT instead.
 	 *
 	 * `container-type: inline-size` exists for the centring in `.brand`, which needs the CONTAINER's width: a
 	 * percentage inside a `transform` resolves against the transformed element itself.
@@ -444,21 +315,11 @@
 		text-align: center;
 	}
 	/*
-	 * THE WORDMARK'S FLIGHT, in `transform` alone. Its LAYOUT is pane-independent by construction — `justify-self:
-	 * start` pins the box at the same gutter on both panes and the font-size is the same — so `transform` is the
-	 * only declaration that differs, which is what makes this interpolable and keeps the flight off the layout.
-	 *
-	 * BOTH the move and the shrink are that one transform: the repo animates `transform` and `opacity` and nothing
-	 * else, so the shrink cannot be a `font-size` and the move cannot be a `top` or a `margin`. Written as the same
-	 * two functions in the same order in both states, so the browser interpolates per-function rather than falling
-	 * back to matrices.
-	 *
-	 *   • `translate(calc(50cqw - 50%), 0)` centres it: half the header's content box minus half the mark's own
-	 *     width is the free space to its left.
-	 *   • `scale(1)` is the anchor the shrunk state interpolates from.
-	 *
-	 * `transform-origin: left top` pulls the shrink toward the corner the mark is heading for; the default centre
-	 * origin would drift the top-left corner and the header state would not sit flush on the gutter.
+	 * THE WORDMARK'S FLIGHT, in `transform` ALONE. Both the move and the shrink must be that one transform — the
+	 * repo animates transform and opacity and nothing else — so the shrink cannot be a font-size and the move
+	 * cannot be a margin. Written as the same two functions in the same order in both states, or the browser
+	 * interpolates matrices instead of per-function. `transform-origin: left top` pulls the shrink toward the
+	 * corner the mark is heading for; a centre origin drifts the top-left corner off the gutter.
 	 */
 	.brand {
 		grid-area: brand;
@@ -477,24 +338,15 @@
 		transition: transform var(--motion-base);
 	}
 	/*
-	 * STEP 2's HEADER: flush on the gutter (the translate goes to 0, and `left top` origin keeps the
-	 * corner there through the scale) and up into the reserved band by exactly `--tap`, the band's own
-	 * height. `0.667` is `--ph-text-base` over `--ph-text-2xl` — 16px of effective text out of the 24px
-	 * the element still declares — expressed as a ratio because CSS cannot divide one length by
-	 * another. A ratio large enough that the shrink reads as motion rather than as a reflow.
-	 *
-	 * The <Icon> is `1em`, so it tracks the declared font-size with no second declaration and scales
-	 * with the text rather than against it.
+	 * STEP 2's HEADER: flush on the gutter, up into the reserved band by exactly `--tap`, its own height. The
+	 * scale factor is --ph-text-base over --ph-text-2xl written as a RATIO, because CSS cannot divide one length
+	 * by another — the effective type is still a ladder step.
 	 */
 	.brand-bar {
 		transform: translate(0, calc(-1 * var(--tap))) scale(0.667);
 	}
-	/*
-	 * REDUCE MOTION, and this is the point of expressing the flight in CSS. The mark is simply already
-	 * in its header position on the flip — same end state, no travel. A media query genuinely governs
-	 * this rule, which is what it could not do for a Svelte transition directive: that runtime writes
-	 * its own inline keyframes and there is no authored declaration for the query to override.
-	 */
+	/* Reduce Motion: the mark is already in its end position on the flip. This is the point of expressing the
+	   flight as an authored declaration — a media query has something to override. */
 	@media (prefers-reduced-motion: reduce) {
 		.brand {
 			transition: none;
@@ -519,22 +371,11 @@
 		font-size: var(--ph-text-md);
 	}
 	/*
-	 * `.confirm`, `.err` and `.cta-reason` deliberately stay ordinary elements rather than becoming
-	 * <Field.Description> / <Field.Error>. Each has a specific reason, none of them preference:
-	 *
-	 *   `.err`   — `e2e/contract.ts` addresses it as `.err[role=alert]`, so the class has to sit on the
-	 *              alerting element itself. <Field.Error> emits the role, but a class handed to it could
-	 *              not carry a scoped rule (ui-scoped-style-reach.test.ts), and contract.ts is not
-	 *              editable from here.
-	 *   `.confirm` — this is the scanned path's HEADLINE ("Maya and Dana are here"), the one sentence
-	 *              that surface exists to state: --ink, --ph-text-lg, 600. <Field.Description> is
-	 *              `text-sm text-muted-foreground`, which would dim and shrink exactly that.
-	 *   `.cta-reason` — <Field.Description> carries `margin: var(--space-xs) 0 0` in the primitive, and
-	 *              this sits ABOVE the Continue button needing the gap BELOW it (`0 0 var(--space-sm)`)
-	 *              plus `text-align: center` against the primitive's `text-left`. Overriding all three
-	 *              needs either a class on the component (unreachable) or an app-side
-	 *              `:global([data-slot='field-description'])`, which would land on settings' own
-	 *              descriptions too.
+	 * `.confirm`, `.err` and `.cta-reason` must stay ordinary elements rather than Field primitives.
+	 * `.err` because `tests/e2e/contract.ts` addresses it as a class on the alerting element, and a class handed
+	 * to a component carries no scoped rule; `.confirm` because it is the scanned path's headline and the
+	 * primitive would dim and shrink it; `.cta-reason` because it needs its gap BELOW and centred text, and the
+	 * only way to override the primitive reaches settings' own descriptions too.
 	 */
 	.confirm {
 		margin: 0;
@@ -546,13 +387,8 @@
 		color: var(--danger-ink);
 		font-size: var(--ph-text-md);
 	}
-	/*
-	 * THE STEP DOTS. Geometry off the spacing scale and a pill radius, the same small-indicator shape
-	 * NowPlayingBand's `.dot` uses, so a second idiom for "a small round marker" is not invented here.
-	 * The active state is a WIDER pill in `--accent` rather than a brighter dot: at 10px a colour-only
-	 * difference is close to the 3:1 non-text floor to begin with, and length reads at a glance where a
-	 * shade does not. No transition — see the markup note.
-	 */
+	/* The active dot is a WIDER pill, not just a brighter one: at 10px a colour-only difference sits close to the
+	   3:1 non-text floor, and length reads at a glance where a shade does not. */
 	.steps {
 		display: flex;
 		align-items: center;
@@ -571,8 +407,7 @@
 		width: var(--space-4xl);
 		background: var(--accent);
 	}
-	/* Visually hidden, announced: the clip-rect idiom (as `routes/+page.svelte`'s `.sr-live`), not
-	   `display: none`, which most screen readers skip entirely. Screenshot-neutral. */
+	/* Visually hidden but announced: the clip idiom, never `display: none`, which most screen readers skip. */
 	.step-count {
 		position: absolute;
 		width: 1px;
@@ -596,23 +431,12 @@
 		color: var(--ink-dim);
 	}
 	/*
-	 * `.name-input` moved into ui/input as its `join` variant. The declarations are unchanged;
-	 * scoped CSS here cannot reach the element the component renders.
-	 */
-	/*
-	 * THE COLUMN THIS PANE DOCKS AGAINST. `.submit-slot`'s `margin-top: auto` can only push the CTA to
-	 * the bottom if this element actually HAS a bottom to reach — and it did not: `routes/+page.svelte`
-	 * gives its `main` `flex: 1` but never `display: flex`, so `.join-main` was a block child of a block
-	 * container, shrank to its content, and the auto margin had no free space to consume. Measured: the
-	 * CTA sat mid-screen with ~470px of dead viewport under it.
-	 *
-	 * Reached with `:has()` from here rather than by making that `main` a column for every route,
-	 * because the JOINED queue view is the other thing inside it and does not want to be a flex column.
-	 * The same idiom is already used a few rules down for `.app-shell:has(.join-main)`.
-	 *
-	 * This matters beyond tidiness: bottom-anchoring is what makes the CTA ride ABOVE the on-screen
-	 * keyboard, since `app.html` sets `interactive-widget=resizes-content` and the layout viewport
-	 * shrinks. Un-docked, the keyboard pushes the button around instead of lifting it.
+	 * THE COLUMN THE CTA DOCKS AGAINST. `.submit-slot`'s auto margin can only push the CTA to the bottom if this
+	 * element HAS a bottom to reach: the layout's `main` is `flex: 1` without `display: flex`, so without this
+	 * `.join-main` is a block child that shrinks to its content and the auto margin has no free space to consume.
+	 * Reached with `:has()` rather than by making that main a column for every route, because the joined queue
+	 * view is the other thing inside it. Load-bearing beyond tidiness: bottom-anchoring is what lifts the CTA
+	 * above the on-screen keyboard.
 	 */
 	:global(main:has(.join-main)) {
 		display: flex;
@@ -625,8 +449,8 @@
 		flex-direction: column;
 		gap: var(--space-4xl);
 	}
-	/* Announced, never painted — see the markup comment. The clip-rect idiom rather than
-	   `display: none`, which would take it out of the accessibility tree and lose SC 3.3.2 with it. */
+	/* Announced, never painted: the clip idiom rather than `display: none`, which would take it out of the
+	   accessibility tree and lose SC 3.3.2 with it. */
 	.cta-reason {
 		position: absolute;
 		width: 1px;
@@ -640,23 +464,12 @@
 		text-align: center;
 	}
 	/*
-	 * The code pane's own column, which exists to ABSORB the free space rather than leave it in one gap
-	 * below the boxes — see the markup note. `flex: 1` takes what the header and the CTA do not, and
-	 * `justify-content: center` puts the boxes in the middle of it.
-	 *
-	 * `gap` rather than a margin on the error, so a rejected code pushes the boxes down by a known amount
-	 * and the group stays centred on the pair.
+	 * UNDER THE HEADER, AT CONTENT HEIGHT. `flex: 1` with centring splits the free space into two gaps — above and
+	 * below the boxes — which reads as a layout that failed; at content height the whole void lands in ONE place,
+	 * above the docked CTA, where a form with a bottom-docked button is supposed to have it. The `gap` rather than
+	 * a margin on the error keeps the group's spacing known when a rejected code pushes the boxes down.
 	 */
 	.code-pane {
-		/*
-		 * UNDER THE HEADER, at content height. `flex: 1` + `justify-content: center` centred the group in ALL the free
-		 * space (~190px above the boxes and ~190px below, measured), and auto margins competing with `.submit-slot`'s
-		 * own put it a third of the way down. At content height the whole remaining void lands in ONE place: above the
-		 * docked CTA, where a form with a bottom-docked button is supposed to have it. One gap at the bottom reads as
-		 * spacing; two gaps read as a layout that failed.
-		 *
-		 * The pane is genuinely sparse, and none of this pretends otherwise — the real answer is more on the screen.
-		 */
 		flex: 0 0 auto;
 		display: flex;
 		flex-direction: column;
@@ -677,9 +490,6 @@
 			flex: 0 0 auto;
 			padding-bottom: 0;
 		}
-		/* Content height already, on every width — nothing to override here now that the phone case does
-		   not stretch or float it either. Kept as a marker of where the desktop branch would go if the two
-		   ever need to differ again. */
 		.submit-slot {
 			margin-top: var(--space-sm);
 		}

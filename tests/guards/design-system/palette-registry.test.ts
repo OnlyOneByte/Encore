@@ -5,41 +5,29 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { at, repoRoot } from '@encore/test-support';
 import { contrastRatio } from '$lib/contract';
-// The registry itself stays a TYPED default import, and it is the one path here that cannot go
-// through an alias: `$lib/contract`'s exports map carries only `"."`, so a subpath import of this
-// JSON does not resolve — the same reason `colour-tokens.test.ts` reaches it relatively. A wrong
-// depth here fails loudly with `Cannot find module`, never silently.
+// A subpath import: `$lib/contract`'s exports map carries only `"."`. A wrong path fails loudly with
+// `Cannot find module`, never silently.
 import registry from '$lib/contract/presentation/player-palette-48.json';
 
-/**
- * The 48-stop player palette registry, and the guards that keep its published figures
- * describing the surfaces the app actually paints.
+/*
+ * guard: the 48-stop player palette registry's published figures describe the surfaces the app actually
+ * paints. See docs/GUARDS.md#colour-tokens-and-the-48-stop-palette.
  *
- * WHY THIS FILE EXISTS. The registry's figures were generated against the MOCKUP's surfaces
- * — `#060a18 / #131a2e / #1a2238` — not the app's `--bg / --card / --card2`. Nothing measured the
- * difference, so six stops shipped their `accent_ink` below AA on the real `--card`: Cobalt 4.473,
- * Denim 4.477, Rose 4.477, Orchid 4.481, Magenta 4.483, Fuchsia 4.490. The generator now READS the
- * three tokens out of `app.css`, and these tests are what make that unfalsifiable: change `--card`
- * without regenerating and the first test below reds naming both values.
+ * The figures were once generated against the MOCKUP's surfaces (`#060a18 / #131a2e / #1a2238`) rather than the app's
+ * `--bg / --card / --card2`, and nothing measured the difference, so six stops shipped their `accent_ink` below AA on
+ * the real `--card`: Cobalt 4.473, Denim 4.477, Rose 4.477, Orchid 4.481, Magenta 4.483, Fuchsia 4.490. The generator
+ * READS the three tokens out of `app.css` now, and these tests make that unfalsifiable.
  *
- * The ratios are recomputed here with production's own `contrastRatio` rather than read out of the
- * registry's `r_*` fields. A test that trusts the numbers the generator printed cannot catch a
- * generator that measured against the wrong surface — which is the whole of the mockup-surface defect.
+ * Every ratio is recomputed with production's own `contrastRatio` rather than read out of the registry's
+ * `r_*` fields: a test that trusts the numbers the generator printed cannot catch a generator that
+ * measured against the wrong surface, which is the whole of that defect.
  */
 
-// The repo root, discovered by walking up for the `bunfig.toml` marker, rather than counted
-// out of this file's own location as `at('.')`.
-// Precedent for reading the token layer from a test outside .: `colors.test.ts`,
-// `song-display.test.ts`.
 const REPO = repoRoot;
 const appCss = readFileSync(at('src/app.css'), 'utf8');
 
-/**
- * Pull a `--name: #hex;` declaration out of `app.css`. Same shape as `colors.test.ts`'s reader, and
- * a local copy for the same stated reason: this package cannot import `.`'s helper across
- * the package boundary. Throws rather than defaulting, so a renamed token reds instead of leaving
- * the suite measuring a value nothing declares.
- */
+/** Pull a `--name: #hex;` declaration out of `app.css`. Throws rather than defaulting, so a renamed token
+ *  reds instead of leaving the suite measuring a value nothing declares. */
 function token(name: string): string {
 	const m = appCss.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));
 	if (!m) throw new Error(`token --${name} not found in src/app.css (renamed? then update this guard)`);
@@ -54,9 +42,8 @@ const CHROMATIC = registry.variants.chromatic;
 const STOPS = CHROMATIC.stops;
 
 test('the 48-stop registry is measured against the surfaces app.css paints: the registry surfaces ARE the app.css tokens — not the mockup values', () => {
-	// The assertion this file exists for. The generator reads these three tokens; this proves the
-	// committed artifact was generated from the values the app still declares. Change `--card` in
-	// `app.css` without regenerating and this reds, naming the declared and the recorded value.
+	// The generator reads these three tokens, so this proves the committed artifact was generated from the
+	// values the app still declares: change `--card` without regenerating and this reds, naming both.
 	expect(registry.surfaces).toEqual({
 		bg: token('bg'),
 		card: token('card'),
@@ -83,8 +70,8 @@ test('every stop clears every role floor with margin > 0: fill is visible as an 
 });
 
 test('every stop clears every role floor with margin > 0: on_fill clears AA against its own fill (4.5:1)', () => {
-	// Surface-independent, so the surface remeasurement did not move it. Pinned here because it is one of the four
-	// roles the registry claims to have measured, and nothing else measures it.
+	// Surface-independent, so the remeasurement did not move it — pinned because it is one of the four roles
+	// the registry claims to have measured and nothing else measures it.
 	const weak = STOPS.filter((s) => contrastRatio(s.on_fill, s.fill) <= AA).map((s) => s.name);
 	expect(weak).toEqual([]);
 });
@@ -95,10 +82,9 @@ test('every stop clears every role floor with margin > 0: accent_ink clears AA a
 });
 
 test('every stop clears every role floor with margin > 0: the six stops named above now clear the real --card, and by more than a rounding error', () => {
-	// The regression fixture. Each of these measured 4.47–4.49 against `--card` while the registry
-	// recorded ~4.50 against the mockup card. `> AA` alone would have passed at 4.5000001, which is
-	// exactly the margin that let a surface change go unnoticed, so the floor asserted here is the
-	// generator's own `AA + INK_MARGIN`.
+	// Each of these measured 4.47–4.49 against `--card` while the registry recorded ~4.50 against the mockup
+	// card, and `> AA` alone passes at 4.5000001 — exactly the margin that let a surface change go
+	// unnoticed. The floor asserted here is the generator's own `AA + INK_MARGIN`.
 	const NAMED = ['Cobalt', 'Denim', 'Rose', 'Orchid', 'Magenta', 'Fuchsia'] as const;
 	const measured = NAMED.map((name) => {
 		const stop = STOPS.find((s) => s.name === name);
@@ -109,8 +95,8 @@ test('every stop clears every role floor with margin > 0: the six stops named ab
 });
 
 test('every stop clears every role floor with margin > 0: the published r_* figures agree with a fresh measurement', () => {
-	// Catches a hand-edited hex whose recorded ratio was not updated with it — the cheap half of
-	// the reproducibility claim, which runs without a Python interpreter.
+	// Catches a hand-edited hex whose recorded ratio was not updated with it: the cheap half of the
+	// reproducibility claim, which runs without a Python interpreter.
 	const drift = STOPS.filter(
 		(s) =>
 			Math.abs(contrastRatio(s.fill, bg) - s.r_dot_bg) > 0.005 ||
@@ -128,23 +114,22 @@ test('every stop clears every role floor with margin > 0: the generator recorded
 });
 
 test('the registry regenerates byte-identically from its committed inputs', () => {
-	// "Generated, never hand-edited" is only true if a hand edit is detectable. This is the only
-	// assertion that detects one, so it pays ~10s of interpreter time to run the real generator.
+	// "Generated, never hand-edited" is only true if a hand edit is detectable, and this is the only
+	// assertion that detects one — so it pays ~10s of interpreter time to run the real generator.
 	const out = join(mkdtempSync(join(tmpdir(), 'palette-')), 'regenerated.json');
 	const run = spawnSync('python3', [join(REPO, 'src/lib/contract/scripts/_player_palette.py')], {
 		env: { ...process.env, PLAYER_PALETTE_OUT: out },
 		encoding: 'utf8'
 	});
-	// A missing interpreter fails loudly rather than skipping: a silent skip is how this guard
-	// would stop guarding without anyone noticing. `python3` is already a build prerequisite —
-	// `worker` is a pytest suite.
+	// A missing interpreter fails loudly rather than skipping, because a silent skip is how this guard
+	// stops guarding without anyone noticing. `python3` is already a build prerequisite.
 	expect(run.error ?? null).toBeNull();
 	expect(run.status).toBe(0);
 
 	const committed = readFileSync(join(REPO, 'src/lib/contract/presentation/player-palette-48.json'), 'utf8');
 	const regenerated = readFileSync(out, 'utf8');
 	if (regenerated !== committed) {
-		// Name the stop that differs acceptance, instead of dumping 42 KB of JSON.
+		// Name the differing stop rather than dumping 42 KB of JSON.
 		const a = JSON.parse(committed) as typeof registry;
 		const b = JSON.parse(regenerated) as typeof registry;
 		const differing = a.variants.chromatic.stops

@@ -57,9 +57,6 @@ def build(req, **kw):
     )
 
 
-# ── the reporting gap this closes ────────────────────────────────────────────────
-
-
 def test_a_source_that_CANNOT_run_says_which_input_was_missing():
     """The LRCLIB sinkhole, generalised. A bare `return None` inside a source is indistinguishable from an
     instrumental; a declared unmet requirement names the cause."""
@@ -90,9 +87,6 @@ def test_absent_caption_tracks_are_reported_for_BOTH_kinds_independently():
     joined = " | ".join(notes)
     assert "captions:authored" in joined and NEEDS_AUTHORED_CUES in joined
     assert "captions:machine" in joined and NEEDS_MACHINE_CUES in joined
-
-
-# ── the shape of the registry itself ─────────────────────────────────────────────
 
 
 def test_unmet_names_every_missing_requirement_not_just_the_first():

@@ -9,10 +9,8 @@ words). Four things must hold, one arm each:
   3. a ref that escapes the media directory is REFUSED, not silently downgraded to a normal process;
   4. NEGATIVE CONTROL: with no pinned params the comparative selection path is untouched.
 
-MECHANISM. On base `pinnedRef`/`pinnedText` are params nothing reads, so arms 1-3 red: AcquireTexts
-runs the (empty) source list and STOPs with "no text from any source", leaving `ctx.out.artifacts`
-with no `lyrics` key at all. Arm 4 must pass on base AND head — it is what proves the guards did not
-capture the ordinary path, and that the ref override cannot leak onto a graded candidate.
+Arm 4 must pass whether or not the pin guards exist — it proves they stay inert on an ordinary process
+and that the ref override cannot leak onto a graded candidate.
 """
 
 from __future__ import annotations

@@ -1,28 +1,15 @@
 // @ts-check
 /*
- * P11 — STATS, METRICS AND AUDIT, WITH REAL DATA BEHIND THEM.
+ * P11 — the three read-only dashboards against real data: /stats + /api/stats (public, aggregate-only),
+ * /metrics + /api/metrics (internal, ungated), /metrics/<id> + /api/audit/<id>.
  *
- * Feature under test: three read-only dashboards + their JSON endpoints.
- *   • /stats           (public, aggregate-only)      + /api/stats
- *   • /metrics         (internal, ungated)           + /api/metrics
- *   • /metrics/<id>    (internal per-song audit log) + /api/audit/<id>
+ * A dashboard that quietly shows zeros, NaN or a stale count is the class of defect a green unit suite
+ * cannot catch, so this drives a shape a real server sees — several successful processes, one FAILED
+ * (FAKE_FAIL=stems), one RETRIED and some PLAYS — then counts each thing itself and compares.
  *
- * The point of this probe is that a dashboard that quietly shows zeros, NaN, "Infinity", or a stale
- * count is exactly the class of defect a green unit-test suite cannot catch — so we drive a real
- * server through a shape it will actually see: several successful processes, at least one FAILED process
- * (FAKE_FAIL=stems), and at least one RETRIED process (kill worker mid-stems, wait for the progress
- * lease to expire, second worker completes). We PLAY some songs so the play log has non-zero content.
- * Then we count each thing ourselves and compare to what the dashboards say.
+ *   PORT=5231 bun tests/e2e/probes/p11-dashboards.mjs      # port 5231 exclusively, never a collision
  *
- *   PORT=5231 bun tests/e2e/probes/p11-dashboards.mjs
- *
- * Exit codes:
- *   0 — every finding is at LOW severity ("environmental note" or "as documented")
- *   1 — at least one CRITICAL or HIGH finding surfaced
- *   2 — the environment could not host this probe (no Chromium, port taken, seed dir empty, …)
- *
- * See ../HARNESS.md for the boot recipe; this file uses port 5231 exclusively so it never collides
- * with the eleven sibling probes.
+ * Boot recipe: tests/e2e/HARNESS.md. Exit codes: docs/E2E.md#exit-codes-and-what-ran-means
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -32,41 +19,26 @@ import { findChromium } from '../lib/chromium.mjs';
 import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
- * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
- * the an earlier change fuzz.mjs pattern). The Browser/Page shapes are derived from driver.mjs's own return types
- * so they cannot drift from the driver; every JSON endpoint and page.evaluate() result is
- * protocol-/API-shaped and stays loose (driver.mjs types evaluate as Promise<any>), cast at the call site.
+ * Browser/Page derive from driver.mjs's own return types so they cannot drift. Every JSON endpoint and
+ * page.evaluate() result is protocol-shaped and stays loose (evaluate is Promise<any>), cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof import('../driver.mjs').connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
- *
- * One finding row as pushed by record(). detail/evidence are optional at the call boundary.
  * @typedef {{ severity: Severity, title: string, detail?: string, evidence?: string[] }} Finding
- *
- * A spawned child process handle (node:child_process). We only touch pid/killed and kill it.
  * @typedef {import('node:child_process').ChildProcess} Child
- *
- * A queue entry as driven in step 4 — entryId is filled in after the row is sent.
  * @typedef {{ mediaId: string, label: string, entryId?: string }} DriveEntry
  */
 
-// ── configuration ──────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT ?? 5231);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join(process.env.KIROCREW_SCRATCH ?? '/tmp', `e2e-${PORT}`);
 const MEDIA_DIR = join(SCRATCH, 'media');
 const SHOTS_DIR = join(SCRATCH, 'shots');
 
-// ── finding recorder ───────────────────────────────────────────────────────
 /** @type {Finding[]} */
 const findings = [];
-/**
- * @param {Severity} severity
- * @param {string} title
- * @param {string} [detail]
- * @param {string[]} [evidence]
- */
+/** @param {Severity} severity @param {string} title @param {string} [detail] @param {string[]} [evidence] */
 function record(severity, title, detail, evidence = []) {
 	findings.push({ severity, title, detail, evidence });
 	console.log(`\n[${severity}] ${title}`);
@@ -79,14 +51,9 @@ function bail(msg) {
 	process.exit(2);
 }
 
-// ── process management ─────────────────────────────────────────────────────
 /** @type {Child[]} */
 const spawned = [];
-/**
- * @param {string} cmd
- * @param {string[]} args
- * @param {import('node:child_process').SpawnOptions} [opts]
- */
+/** @param {string} cmd @param {string[]} args @param {import('node:child_process').SpawnOptions} [opts] */
 function launch(cmd, args, opts = {}) {
 	const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 	spawned.push(p);
@@ -113,7 +80,6 @@ process.on('SIGINT', () => {
 /** @param {number} ms */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ── environment sniff ──────────────────────────────────────────────────────
 
 async function waitForHealth(timeoutMs = 15000) {
 	const deadline = Date.now() + timeoutMs;
@@ -129,12 +95,7 @@ async function waitForHealth(timeoutMs = 15000) {
 	return false;
 }
 
-// ── HTTP helpers (cookie-jar-lite) ─────────────────────────────────────────
-/**
- * @param {string} name
- * @param {string} [color]
- * @returns {Promise<{ cookie: string, singerId: string }>}
- */
+/** @param {string} name @param {string} [color] @returns {Promise<{ cookie: string, singerId: string }>} */
 async function joinRoom(name, color = 'violet') {
 	const r = await fetch(`${BASE}/api/join`, {
 		method: 'POST',
@@ -149,10 +110,7 @@ async function joinRoom(name, color = 'violet') {
 	return { cookie: `encore_singer=${m[1]}`, singerId: body.singer.id };
 }
 
-/**
- * @param {string} q
- * @returns {Promise<any>} an API-shaped media hit (source, id, durationSec, …)
- */
+/** @param {string} q @returns {Promise<any>} an API-shaped media hit (source, id, durationSec, …) */
 async function searchLocal(q) {
 	const r = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
 	const d = await r.json();
@@ -161,10 +119,7 @@ async function searchLocal(q) {
 	return hit;
 }
 
-/**
- * @param {string} cookie
- * @param {string} mediaId
- */
+/** @param {string} cookie @param {string} mediaId */
 async function requestProcess(cookie, mediaId) {
 	return fetch(`${BASE}/api/process`, {
 		method: 'POST',
@@ -173,10 +128,9 @@ async function requestProcess(cookie, mediaId) {
 	});
 }
 
-// ── phone WS (authed) ──────────────────────────────────────────────────────
-// Bun's global WebSocket accepts a `headers` option, which is what carries the session cookie
-// through the WS upgrade so queue commands validate as this singer. Falls back to unauthed if the
-// constructor rejects headers on some builds — read-only assertions still work in that case.
+// Bun's WebSocket takes a `headers` option the DOM lib does not model, which is how the session cookie
+// rides the WS upgrade so queue commands validate as this singer. A build that rejects it falls back to
+// unauthed, where the read-only assertions still hold.
 /**
  * @param {string} cookie
  */
@@ -185,7 +139,6 @@ async function openPhone(cookie) {
 	const events = [];
 	let ws;
 	try {
-		// Bun's WebSocket takes a `headers` option the DOM lib does not model — carry the cookie through.
 		ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`, /** @type {any} */ ({ headers: { cookie } }));
 	} catch {
 		ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`);
@@ -242,7 +195,6 @@ async function waitForStatus(phone, mediaId, predicate, timeoutMs, label) {
 	throw new Error(`waitForStatus timeout (${label ?? ''}): media=${mediaId} seen=[${seen}]`);
 }
 
-// ── boot: server + workers ─────────────────────────────────────────────────
 /** @type {string} */
 let serverLogPath;
 
@@ -276,10 +228,7 @@ async function bootServer() {
 	if (!(await waitForHealth())) bail(`server did not come up on :${PORT}; see ${serverLogPath}`);
 }
 
-/**
- * @param {Record<string, string>} env
- * @param {string} tag
- */
+/** @param {Record<string, string>} env @param {string} tag */
 function bootWorker(env, tag) {
 	const workerLog = join(SCRATCH, `${tag}.log`);
 	const w = Bun.file(workerLog).writer();
@@ -292,11 +241,7 @@ function bootWorker(env, tag) {
 	return { proc: p, log: workerLog };
 }
 
-/**
- * @param {(workers: any[]) => boolean} capsPredicate
- * @param {number} [timeoutMs]
- * @param {string} [label]
- */
+/** @param {(workers: any[]) => boolean} capsPredicate @param {number} [timeoutMs] @param {string} [label] */
 async function waitForWorkerCapabilities(capsPredicate, timeoutMs = 5000, label = 'worker caps') {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
@@ -309,9 +254,7 @@ async function waitForWorkerCapabilities(capsPredicate, timeoutMs = 5000, label 
 	throw new Error(`no worker matching predicate came online within ${timeoutMs}ms (${label})`);
 }
 
-// ── main ────────────────────────────────────────────────────────────────────
 async function main() {
-	// Preflight — port must be exclusively ours.
 	try {
 		const h = await fetch(`${BASE}/health`);
 		if (h.ok) bail(`port ${PORT} is already in use — probe requires an exclusive port`);
@@ -325,22 +268,17 @@ async function main() {
 	console.log(`P11 booting on :${PORT}, scratch=${SCRATCH}`);
 	await bootServer();
 
-	// Two rooms: one for the CI singer, and a phone WS to observe the flow.
 	const { cookie, singerId } = await joinRoom(`Probe-P11-${Date.now() % 100000}`);
 	const phone = await openPhone(cookie);
 
-	// Resolve the four local media ids we plan to drive. This also materialises them into
-	// mediaById so the queue path can find them.
+	// Resolving the four ids also MATERIALISES them into mediaById, which the queue path needs.
 	const caroline = await searchLocal('caroline');
 	const dontstop = await searchLocal('believin');
 	const bohemian = await searchLocal('bohemian');
 	const prayer = await searchLocal('prayer');
 	console.log(`  media: caroline=${caroline.id} dontstop=${dontstop.id} bohemian=${bohemian.id} prayer=${prayer.id}`);
 
-	// ─────────────────────────────────────────────────────────────────────
-	// STEP 1. Two normal processes — used for the play log and as the happy-path
-	// reference the audit page must show as three-attempts-all-ready.
-	// ─────────────────────────────────────────────────────────────────────
+	// STEP 1. Two normal processes: the play log's content, and the happy-path audit reference.
 	console.log('\n[step 1] two normal processes');
 	let normal = bootWorker({ FAKE_SLOW_MS: '100' }, 'normal-1');
 	await waitForWorkerCapabilities(
@@ -357,16 +295,11 @@ async function main() {
 	if (!c2.ok) throw new Error(`dontstop process failed: ${c2.status} ${await c2.text()}`);
 	await waitForStatus(phone, dontstop.id, (/** @type {any} */ e) => e.status === 'ready', 10000, 'dontstop ready');
 
-	// Stop the normal worker before starting the failing one so dispatch does not race the FAKE_FAIL
-	// worker into taking a normal-process job we did not ask it to fail.
+	// Stopped first, or dispatch races the FAKE_FAIL worker into a job it was not asked to fail.
 	killProc(normal.proc);
 	await sleep(600);
 
-	// ─────────────────────────────────────────────────────────────────────
-	// STEP 2. One FAILED process — FAKE_FAIL=stems, retryable:false → terminal
-	// after the fetch step succeeds. Two attempts total (fetch ready + stems
-	// failed). Process outcome must be 'failed'.
-	// ─────────────────────────────────────────────────────────────────────
+	// STEP 2. One FAILED process: FAKE_FAIL=stems is retryable:false, so it is terminal. Outcome 'failed'.
 	console.log('\n[step 2] one FAILED process via FAKE_FAIL=stems');
 	const failer = bootWorker({ FAKE_FAIL: 'stems', FAKE_SLOW_MS: '100' }, 'fail-stems-2');
 	await waitForWorkerCapabilities(
@@ -388,22 +321,7 @@ async function main() {
 	killProc(failer.proc);
 	await sleep(600);
 
-	// ─────────────────────────────────────────────────────────────────────
-	// STEP 3. One RETRIED process — kill the worker mid-stems, wait for the
-	// progress lease to expire (30s), then a fresh worker picks up the
-	// requeued job. Attempts: fetch ready, stems abandoned, stems ready, align
-	// ready. Process outcome: ready.
-	//
-	// Sequence:
-	//   • start a slow-progress worker so the stems dwell is long enough that
-	//     the first progress frame lands before we can SIGKILL it — kills
-	//     without a running attempt yield ack-timeout, which is a REQUEUE with
-	//     attempts unchanged (no 'abandoned' row), so we would not see a retry.
-	//   • kick off prayer's proc; wait for a 'separating' progress frame.
-	//   • SIGKILL the worker. The progress lease expires 30s later, the reaper
-	//     bumps attempts and requeues, closing the open attempt as 'abandoned'.
-	//   • bring up a normal-speed worker, wait until prayer reaches 'ready'.
-	// ─────────────────────────────────────────────────────────────────────
+	// STEP 3. One RETRIED process, ending stems abandoned / stems ready / align ready, outcome 'ready'.
 	console.log('\n[step 3] one RETRIED process via kill-mid-process + progress-lease expiry (~30s)');
 	const doomed = bootWorker({ FAKE_SLOW_MS: '45000' }, 'doomed-3');
 	await waitForWorkerCapabilities(
@@ -414,10 +332,9 @@ async function main() {
 
 	const c4 = await requestProcess(cookie, prayer.id);
 	if (!c4.ok) throw new Error(`prayer process failed: ${c4.status} ${await c4.text()}`);
-	// Wait for the FIRST 'separating' progress frame — that is when the job is truly RUNNING under
-	// the doomed worker. Without this, killing during 'downloading' produces an ack-timeout for the
-	// STEMS handoff (queued → assigned to a worker that never gets there because it's gone), and the
-	// reaper's ack-timeout path does NOT bump attempts and does NOT close an attempt as abandoned.
+	// Wait for the FIRST 'separating' frame: only then is the job truly RUNNING under the doomed worker. A
+	// kill during 'downloading' yields an ack-timeout, which neither bumps attempts nor writes an 'abandoned'
+	// row — so there would be no retry to observe at all.
 	await waitForStatus(
 		phone,
 		prayer.id,
@@ -428,9 +345,8 @@ async function main() {
 	console.log('  SIGKILLing doomed worker while stems is running');
 	killProc(doomed.proc);
 
-	// The progress lease is 30s (leases.ts DEFAULT_LEASE_CONFIG) and the reaper ticks every 3s.
-	// Bring up the replacement worker RIGHT AWAY so it is ready to accept the requeue the instant
-	// the lease expires; otherwise the recovered job sits queued while we do nothing.
+	// Progress lease 30s (leases.ts DEFAULT_LEASE_CONFIG), reaper tick 3s. The replacement comes up NOW so it
+	// can take the requeue the instant the lease expires.
 	bootWorker({ FAKE_SLOW_MS: '100' }, 'rescue-3');
 	await waitForWorkerCapabilities(
 		(ws) => ws.some((/** @type {any} */ w) => w.workerId === 'rescue-3'),
@@ -446,24 +362,16 @@ async function main() {
 		'prayer terminal'
 	);
 
-	// ─────────────────────────────────────────────────────────────────────
-	// STEP 4. Queue four entries so the play log has real content:
-	//   caroline, dontstop, caroline, prayer  → 4 plays, 3 distinct songs.
-	// One song plays twice (through two distinct entries) which distinguishes
-	// play count (4) from distinctSongs (3) — a good stress on the two /stats
-	// tiles that could easily blur together.
-	// ─────────────────────────────────────────────────────────────────────
+	// STEP 4. caroline, dontstop, caroline, prayer — 4 plays over 3 distinct songs, which forces apart the
+	// two /stats tiles that could otherwise blur together.
 	console.log('\n[step 4] queue four entries and drive plays');
 
 	let addedAt = Date.now();
 	/** @param {string} mediaId @returns {string} */
 	function queueEntry(mediaId) {
-		// A full QueueEntry (src/lib/contract/core/types.ts:185): id + mediaId + singerId + status +
-		// rotationSeq + addedAt. Missing addedAt trips the queue_entries.added_at NOT NULL
-		// constraint on flush, taking the whole process down — the state store applies queue ops
-		// synchronously, so the persistence exception unwinds through the WS handler and crashes
-		// server.ts. Match the client's shape (src/lib/stores/queue.ts:83-91): rotationSeq is
-		// MAX_SAFE_INTEGER (applyAndReseq assigns the real seq), addedAt is a monotonic wall clock.
+		// A FULL QueueEntry. A missing addedAt trips the queue_entries.added_at NOT NULL constraint on flush,
+		// and because the state store applies queue ops synchronously that exception unwinds through the WS
+		// handler and takes server.ts down. rotationSeq is MAX_SAFE_INTEGER; applyAndReseq assigns the real one.
 		const entryId =
 			`01M${Math.random().toString(36).slice(2, 10).toUpperCase()}${Date.now().toString(36).toUpperCase().slice(-10)}`.slice(
 				0,
@@ -503,8 +411,8 @@ async function main() {
 		await sleep(120);
 	}
 
-	// Drive playback. `play` from idle picks up the first playable entry (see reconcileOnReady) and
-	// emits a nowplaying:changed, which the PlayTracker converts into one durable play row.
+	// `play` from idle picks up the first playable entry and emits a nowplaying:changed, which the
+	// PlayTracker converts into one durable play row.
 	console.log('  starting playback');
 	phone.send({ type: 'player:command', command: { cmd: 'play' } });
 	await sleep(400);
@@ -512,14 +420,10 @@ async function main() {
 		phone.send({ type: 'player:command', command: { cmd: 'skip' } });
 		await sleep(400);
 	}
-	// Give the last advance a beat to fire emitNowPlaying → PlayTracker → PlayLog.record.
+	// The last advance still has to fire emitNowPlaying → PlayTracker → PlayLog.record.
 	await sleep(500);
 
-	// ─────────────────────────────────────────────────────────────────────
-	// STEP 5. Read the endpoints and count what actually happened, so the
-	// comparison is against numbers WE computed rather than the dashboard's
-	// own claim.
-	// ─────────────────────────────────────────────────────────────────────
+	// STEP 5. Count what happened here, so the comparison is against the probe's numbers, not the dashboard's.
 	console.log('\n[step 5] read endpoints');
 	const stats = await fetch(`${BASE}/api/stats`).then((r) => r.json());
 	const metrics = await fetch(`${BASE}/api/metrics`).then((r) => r.json());
@@ -535,10 +439,8 @@ async function main() {
 	writeFileSync(join(SCRATCH, 'audit-prayer.json'), JSON.stringify(auditPrayer, null, 2));
 	writeFileSync(join(SCRATCH, 'audit-dontstop.json'), JSON.stringify(auditDontstop, null, 2));
 
-	// ── (1) numbers match ─────────────────────────────────────────────────
 	console.log('\n[step 6] cross-check numbers');
-	// Expected library.ready = 3 (caroline, dontstop, prayer). NOT 4 — bohemian failed.
-	// Expected sings.total = 4, distinctSongs = 3.
+	// (1) the numbers match: library.ready = 3 (bohemian FAILED, so not 4), sings.total = 4, distinctSongs = 3.
 	{
 		const libReady = stats.library?.ready;
 		const total = stats.sings?.total;
@@ -565,7 +467,7 @@ async function main() {
 				]
 			);
 		}
-		// Numeric-hygiene check — NaN/Infinity anywhere in the payload is by itself a defect.
+		// NaN or Infinity anywhere in the payload is a defect on its own.
 		const dump = JSON.stringify(stats);
 		const hasBadNum =
 			/"perDay":\[.*"(NaN|Infinity|-Infinity)"/.test(dump) ||
@@ -580,8 +482,8 @@ async function main() {
 		}
 	}
 
-	// topSongs shape: caroline=2, then dontstop=1 and prayer=1 (tied). Order among ties is
-	// implementation-defined; assert the SET rather than the order.
+	// caroline=2 then dontstop=1 and prayer=1 TIED, and tie order is implementation-defined — so the SET is
+	// asserted, never the order.
 	{
 		const bySong = new Map(stats.topSongs.map((/** @type {any} */ s) => [s.mediaId, s.plays]));
 		const car = bySong.get(caroline.id) ?? 0;
@@ -630,14 +532,12 @@ async function main() {
 
 	{
 		const steps = metrics.steps;
-		// Every step row must carry both meanMs (work) and meanQueueWaitMs (wait) — separately.
+		// Every step row carries meanMs (work) and meanQueueWaitMs (wait), separately.
 		const bothPopulated =
 			steps.length > 0 &&
 			steps.every((/** @type {any} */ s) => typeof s.meanMs === 'number' && typeof s.meanQueueWaitMs === 'number');
-		// And they must not be equal by accident — queue wait, on a single-worker box with cheap work,
-		// is usually SMALLER than processing time, but occasionally can be similar. What matters is
-		// that the FIELDS exist as distinct columns in the payload, and the audit endpoint splits them
-		// per-attempt (queueWaitMs vs processingMs). Assert both.
+		// The claim is that the two are distinct COLUMNS in the payload, not that one is larger: on a
+		// single-worker box with cheap work they can legitimately be close.
 		const oneAttempt = auditCaroline.processes[0]?.attempts?.[0];
 		const perAttemptSplit =
 			oneAttempt &&
@@ -660,10 +560,8 @@ async function main() {
 		}
 	}
 
-	// ── (3) audit shows every attempt including failed & retried ─────────
-	// Expected shapes (LOCAL media — see src/server/jobs/proc.ts:154:
-	// `needsFetch(media.source)` is false for source:'local', so a local process DOES NOT enqueue a
-	// fetch step. Every count below excludes it):
+	// (3) the audit shows every attempt, including the failed and the retried one. `needsFetch` is false for
+	// source:'local' (proc.ts:154), so a local process enqueues NO fetch step and every count below excludes it:
 	//   caroline: 1 proc, 2 attempts (stems ready, align ready)
 	//   dontstop: 1 proc, 2 attempts (stems ready, align ready)
 	//   bohemian: 1 proc, 1 attempt  (stems failed) — process outcome=failed, no align chain
@@ -685,9 +583,7 @@ async function main() {
 	const boA = summarizeAudit(auditBohemian);
 	const prA = summarizeAudit(auditPrayer);
 
-	// Record the LOCAL-MEDIA optimisation as its own finding — the shape of every audit assertion
-	// below depends on it, and a reader looking at 2-attempt processes in the screenshots should know
-	// why they are 2 rather than 3.
+	// Its own finding, because every audit count below depends on it.
 	{
 		const noFetchAnywhere = ![carA, dsA, boA, prA].some((a) => Object.keys(a.byType).includes('fetch'));
 		if (noFetchAnywhere) {
@@ -737,9 +633,7 @@ async function main() {
 			boA.processOutcome === 'failed' &&
 			boA.attempts === 1 &&
 			JSON.stringify(boA.byType) === JSON.stringify({ stems: ['failed'] });
-		// The error message on the failed stems attempt must survive the round trip — the audit
-		// page shows it in the `.err` block. An empty string here would silently drop the reason
-		// the operator opens the page for.
+		// An empty error message silently drops the reason the operator opened the audit page for.
 		const stemsFailed = auditBohemian.processes[0]?.attempts?.find((/** @type {any} */ a) => a.jobType === 'stems');
 		const hasReason = typeof stemsFailed?.error === 'string' && stemsFailed.error.length > 0;
 		if (boOk && hasReason) {
@@ -757,11 +651,10 @@ async function main() {
 		}
 	}
 	{
-		// The retried process: 2 stems attempts (abandoned then ready), then align ready.
 		const stemsAttempts =
 			auditPrayer.processes[0]?.attempts?.filter((/** @type {any} */ a) => a.jobType === 'stems') ?? [];
 		const outcomes = stemsAttempts.map((/** @type {any} */ a) => a.outcome);
-		// Also: the retried stems attempt must have attempt=2 (1-based, from AttemptLedger.open).
+		// The retried stems attempt must be attempt=2 — AttemptLedger.open is 1-based.
 		const attemptNumbers = stemsAttempts.map((/** @type {any} */ a) => a.attempt);
 		const retryOk =
 			prA.processOutcome === 'ready' &&
@@ -784,9 +677,7 @@ async function main() {
 		}
 	}
 
-	// ── (4) audit endpoint agrees with metrics ────────────────────────────
-	// Cross-check: metrics.slowestProcesses lists the same processingIds as audit knows about, and each
-	// per-attempt processingMs the audit reports adds up to a positive number.
+	// (4) the audit endpoint agrees with metrics on which processes completed.
 	{
 		const processesInMetrics = new Set(metrics.slowestProcesses.map((/** @type {any} */ c) => c.processingId));
 		const auditPrayerProcessingId = auditPrayer.processes[0]?.processingId;
@@ -795,15 +686,8 @@ async function main() {
 		const carolineInMetrics = processesInMetrics.has(auditCarolineProcessingId);
 		const dontstopInMetrics = processesInMetrics.has(auditDontstopProcessingId);
 		const prayerInMetrics = processesInMetrics.has(auditPrayerProcessingId);
-		// Semantic mismatch between the two endpoints:
-		//   audit.processOutcome (src/routes/api/audit/[mediaId]/+server.ts:70-75) IGNORES 'abandoned'
-		//     and returns 'ready' whenever every attempt sealed to a non-null, non-failed, non-canceled
-		//     outcome. So a retried-then-completed process reads as READY on its own audit page.
-		//   metrics.perProcess (src/server/jobs/metrics.ts:127-146) sets complete = every
-		//     attempt.outcome === 'ready'. An 'abandoned' step makes complete=false, and slowestProcesses
-		//     + e2e both filter to complete processes.
-		// The two disagree on what a retried process IS. Metrics excludes it from the totals a reader
-		// uses to judge sizing, so a fleet that succeeds by retrying looks slower + smaller than it is.
+		// The two disagree on what a retried process IS: audit.processOutcome ignores 'abandoned' and reads
+		// 'ready', while metrics.perProcess needs EVERY attempt 'ready'. The finding below spells out the cost.
 		if (carolineInMetrics && dontstopInMetrics && !prayerInMetrics) {
 			record(
 				'HIGH',
@@ -834,14 +718,8 @@ async function main() {
 		}
 	}
 
-	// ── (5) cost-per-model sanity, unknown-model degradation, chart precision ─
-	// Sub-second stages surface as "0 s avg" in the "Where the time goes" bar chart because that
-	// chart divides meanMs by 1000 and rounds to an integer (routes/metrics/+page.svelte:
-	// `Math.round((s.meanMs ?? 0) / 1000)`). At meanMs=100 the rounded value is 0, which reads
-	// as "took no time". Every table on this page reports its durations with dur() (metrics-format.ts),
-	// which honours sub-second values and formats them as "100ms" / "3.5s". Only the bar chart
-	// carries the rounding — worth flagging because a fast-worker or a small-fake-process fleet WILL
-	// hit this floor and misread the entire "where the time goes" section as broken.
+	// (5) cost per model, unknown-model degradation, and chart precision. The "Where the time goes" chart
+	// rounds meanMs/1000 to an integer, so a sub-second stage reads "0 s avg" where the tables say "100ms".
 	{
 		const anyStageSubSecond = metrics.stages.some(
 			(/** @type {any} */ s) => (s.meanMs ?? 0) > 0 && (s.meanMs ?? 0) < 500
@@ -860,9 +738,8 @@ async function main() {
 		}
 	}
 
-	// fake-separator/e2e-tone is not in the whitelist (src/lib/contract/lyrics/separators.ts), so
-	// separatorCost() must return undefined → declared=undefined, ratioToDeclared=null. The API must
-	// still ship the row so the operator sees a measurement was taken.
+	// fake-separator/e2e-tone is not in the allowlist, so separatorCost() returns undefined and both declared
+	// and ratioToDeclared are null — the row must SHIP anyway, so a measurement is visibly taken.
 	{
 		const models = metrics.models;
 		const fake = models.find((/** @type {any} */ m) => m.engine === 'fake-separator' && m.model === 'e2e-tone');
@@ -907,27 +784,18 @@ async function main() {
 		}
 	}
 
-	// ── (6) SSR + screenshots at 390 & 1440 ──────────────────────────────
 	console.log('\n[step 7] screenshot the three dashboards at 390 and 1440');
-	// The driver launches its own browser, so there is no child to start and no CDP port to poll for.
-	// This used to spawn Chromium here and then wait up to 8s for `/json/version` to answer before
-	// attaching; `connect()` does its own waiting internally.
+	// (6) SSR plus screenshots at 390 and 1440.
 	const { connect } = await import('../driver.mjs');
 	const browser = await connect();
 	try {
-		/**
-		 * @param {string} path
-		 * @param {string} url
-		 * @param {number} w
-		 * @param {number} h
-		 */
+		/** @param {string} path @param {string} url @param {number} w @param {number} h */
 		async function shoot(path, url, w, h) {
 			const page = await browser.newPage();
 			await page.viewport(w, h, 1);
 			await page.goto(url);
-			// Wait for the h1 heading to exist so a shot of a still-loading spinner is impossible.
+			// The h1 must exist, or the shot catches a still-loading spinner.
 			await page.waitForSelector('h1', { timeout: 8000 }).catch(() => null);
-			// Give client-side fetch()es an extra beat to resolve.
 			await sleep(600);
 			await page.screenshot(path, { fullPage: true });
 			return path;
@@ -961,26 +829,18 @@ async function main() {
 			}
 		}
 
-		// Structural (rather than pixel) legibility checks driven off the DOM: alignment of numeric
-		// columns and vocabulary-leak. These are readable directly from a headless page rather than
-		// from an image, and they are what a person reading the screenshot would judge.
+		// Alignment and vocabulary leaks are what a person judges from the screenshot, and both are decidable
+		// off the DOM without an image.
 		const dompage = await browser.newPage();
 		await dompage.viewport(1440, 900, 1);
 		await dompage.goto(`${BASE}/metrics`);
 		await dompage.waitForSelector('h1', { timeout: 8000 });
 		await sleep(400);
-		// Column headers on the "each step" table.
 		const headerRow = await dompage.texts('table th');
 		const bodyText = await dompage.text('body');
 		{
-			// The task's copy tests split cleanly by SURFACE:
-			//   • the step + stage TABLES must render user-facing labels ("download", "remove vocals",
-			//     "time lyrics"), and their column headers must be "typical" / "worst" rather than
-			//     percentile names.
-			//   • the WORKERS panel, which shows a fleet's capability strings, is a raw-name surface
-			//     BY DESIGN — a capability is an identifier the operator wires up, not a step name
-			//     translated for a reader — so leaks there are expected and NOT this check's target.
-			// Isolate the two by pulling text out of the tables only.
+			// The step and stage TABLES must render user-facing labels with "typical"/"worst" headers, while the
+			// WORKERS panel shows raw capability strings BY DESIGN — so only the tables' text is scanned.
 			const inTables =
 				await dompage.evaluate(`(() => [...document.querySelectorAll(${JSON.stringify(SEL.dashCardTable)})]
 				.map((t) => t.textContent).join('\\n'))()`);
@@ -994,11 +854,8 @@ async function main() {
 
 			const leaksInternalPercentiles = /\bp50\b|\bp95\b/.test(bodyText);
 			const leaksStepInTables = /\bfetch\b|\balign\b|\bseparating\b|\baligning\b/.test(inTables);
-			// The "Where the time goes" chart pulls its labels from stageLabel(). The fake worker
-			// emits stages "separate" and "align" (see fake-stems-worker.mjs), but STAGE_LABELS
-			// only maps "separating" / "aligning" / "downloading" — so these fall through to their
-			// raw names on the chart. That IS a UI defect (not a probe artefact): a real process has
-			// no such stage names either, so this leak simply had never surfaced.
+			// STAGE_LABELS maps only "separating"/"aligning"/"downloading", so any other stage token falls
+			// through to its raw name on the chart.
 			const leaksStageInBar = /\bseparate\b|\balign\b/.test(stagesLabelsText);
 			const speaksHuman = /remove vocals|time lyrics|typical|worst/i.test(bodyText);
 			if (!leaksInternalPercentiles && !leaksStepInTables && !leaksStageInBar && speaksHuman) {
@@ -1008,12 +865,6 @@ async function main() {
 					`headers=[${headerRow.join(', ')}]; body contains "typical" / "worst" / "remove vocals"`
 				);
 			} else if (!leaksInternalPercentiles && !leaksStepInTables && leaksStageInBar) {
-				// The fake worker emits stages "separate"/"align" (short) while the real Python worker's
-				// vocabulary is Stage.SEPARATING/ALIGNING (long, per worker/src/vocabulary.py:48).
-				// STAGE_LABELS is designed against the long names, so this leak is a HARNESS artefact
-				// rather than a real UI defect — a genuine process feeds the map correctly. Flagged at LOW
-				// as an environment note so the operator eyeballing the screenshot knows why the bars
-				// read "separate" and "align" instead of "removing vocals" and "timing lyrics".
 				record(
 					'LOW',
 					'"Where the time goes" bar labels read "separate"/"align" — harness artefact, not a UI defect',
@@ -1034,15 +885,14 @@ async function main() {
 				);
 			}
 		}
-		// Alignment: every numeric TH in the "each step" table must be text-align:right.
 		const nHeaders = await dompage.count('table th');
 		const rightAlignedCount = await dompage.evaluate(`(() => {
 			const ths = [...document.querySelectorAll('table th')];
 			return ths.filter((th) => getComputedStyle(th).textAlign === 'right').length;
 		})()`);
 		{
-			// Column 0 (step name) is left-aligned; the remaining columns are right-aligned. So on
-			// each of the three tables (steps + models + asr), all-but-the-first should be right.
+			// Column 0 is the step name and is left-aligned; on each of the three tables every other column
+			// should be right.
 			const shouldBeRight = Math.max(0, nHeaders - 3); // 3 tables × 1 leading name column each
 			if (rightAlignedCount >= shouldBeRight) {
 				record(
@@ -1059,8 +909,7 @@ async function main() {
 			}
 		}
 
-		// Now READ the images — mode:Image on the read tool renders a thumbnail into chat for a person,
-		// but this probe uses their existence + size as evidence and defers to the human running it.
+		// Existence and size are the evidence; judging the pixels is the reader's job.
 		for (const s of shots) {
 			const size = existsSync(s.path) ? await Bun.file(s.path).size : 0;
 			if (size < 2000) {
@@ -1077,11 +926,10 @@ async function main() {
 		browser.close();
 	}
 
-	// ── (7) documented security posture ──────────────────────────────────
 	console.log('\n[step 8] check the documented security posture');
-	// (a) /stats is aggregate-only: no singer identities anywhere in the payload. The play log has
-	// no singer column by construction (schema.ts), but the endpoint could still leak if it grew a
-	// join without noticing. Look for singer-ish keys.
+	// (7) the documented security posture.
+	// (a) /stats is aggregate-only. The play log has no singer column by construction, but the endpoint could
+	// still leak by growing a join, so singer-ish keys are hunted for.
 	{
 		const dump = JSON.stringify(stats);
 		const suspiciousKeys = /"(singer|singerId|displayName|color|sessionToken)"/i.test(dump);
@@ -1103,17 +951,15 @@ async function main() {
 			);
 		}
 	}
-	// (b) /api/metrics and /api/audit/* are UNGATED (deliberately, per the endpoint header docs).
-	// Verify by hitting them with NO cookie and confirming a 200. What they expose is the honest
-	// finding to record for the reader.
+	// (b) /api/metrics and /api/audit/* are UNGATED deliberately, so a no-cookie 200 is correct — what they
+	// expose is the finding worth recording.
 	{
 		/** @type {Record<string, string>} */
 		const noCookieHeaders = {}; // no cookie
 		const mRes = await fetch(`${BASE}/api/metrics`, { headers: noCookieHeaders });
 		const aRes = await fetch(`${BASE}/api/audit/${caroline.id}`, { headers: noCookieHeaders });
 		if (mRes.status === 200 && aRes.status === 200) {
-			// What is exposed — worker ids, model + backend names, host details, terminal error strings.
-			// One song, so we can name the exact shape.
+			// What is exposed: worker ids, model and backend names, host details, terminal error strings.
 			const m = await mRes.json();
 			const a = await aRes.json();
 			const workerIds = m.workers.map((/** @type {any} */ w) => w.workerId);
@@ -1147,12 +993,8 @@ async function main() {
 		}
 	}
 
-	// ── (8) UI parity — the numbers in the page match the API ────────────
-	// Re-open a phone-sized viewport and pull the rendered text; compare it against the API.
+	// (8) UI parity: the numbers rendered in a phone-sized viewport must match the API's.
 	{
-		// A second browser for the parity pass. No spawn and no readiness poll: the driver launches its
-		// own, so `cdpReady2` had nothing to wait for and the `if (cdpReady2)` guard would have skipped
-		// this whole check silently if the poll ever failed.
 		const browser2 = await connect();
 		{
 			try {
@@ -1198,7 +1040,6 @@ try {
 	record('CRITICAL', 'probe threw during execution', String(/** @type {any} */ (err)?.stack ?? err));
 }
 
-// ── summary ─────────────────────────────────────────────────────────────────
 console.log('\n\n=== P11 SUMMARY ===');
 /** @type {Record<Severity, Finding[]>} */
 const bySev = { CRITICAL: [], HIGH: [], MEDIUM: [], LOW: [] };

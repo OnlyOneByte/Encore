@@ -20,18 +20,14 @@ import {
 interface PendingOp {
 	op: QueueOp;
 	/**
-	 * The FULL entries array as it stands immediately BEFORE this op is applied — with every EARLIER
-	 * still-pending op baked in, ON THE CURRENT SERVER TRUTH. Kept in sync by ONE writer,
-	 * #rebasePending, which every truth-moving path (#onPatch/#onSync/#onReject) rebases through, so
-	 * it is never stale (a stale-snapshot regression — a snapshot frozen at op-issue time drops any server
-	 * patch that lands before the reject; the invariant used to be copied into three
-	 * loops that could drift). Rollback restores this snapshot
-	 * rather than deriving an undo from the op: a per-op inverse must agree with the
-	 * forward reducer, and for `move` it did not — the forward step routes through
-	 * `applyAndReseq`/`reorderWithinSinger` (permutes `addedAt`) while the inverse ran `applyOp`
-	 * (rewrites `rotationSeq`), so the inverse undid a mutation that never happened and left the
-	 * real one in place. A snapshot is total for every op kind and cannot drift as future ops gain
-	 * their own reducer branches.
+	 * The FULL entries array immediately BEFORE this op is applied, with every earlier still-pending op baked
+	 * in, ON CURRENT SERVER TRUTH. Maintained by ONE writer, `#rebasePending`: a snapshot frozen at
+	 * op-issue time drops any server patch that lands before the reject.
+	 *
+	 * Rollback RESTORES this snapshot rather than deriving an undo from the op, because a per-op inverse has
+	 * to agree with the forward reducer and cannot be trusted to: for a move the two rewrote different
+	 * fields, so the inverse undid a mutation that never happened and left the real one in place. A snapshot
+	 * is total for every op kind and cannot drift as future ops gain reducer branches.
 	 */
 	snapshot: QueueEntry[];
 	/** Monotonic issue order — reject rebuilds from this op's snapshot by re-applying only LATER ops. */
@@ -47,15 +43,10 @@ export interface QueueStoreDeps {
 	/** Optional: surface a rejected op to the UI (e.g. a toast). */
 	onReject?: (reason: string) => void;
 	/**
-	 * The room's ordering — which algorithm, plus the sing history it may read.
-	 *
-	 * A GETTER because both halves move at runtime: the room can change algorithm mid-party and the
-	 * history changes every time a song starts. It exists at all because the optimistic prediction
-	 * has to be made with the SAME ordering the server will commit — predicting with fair rotation in
-	 * a first-come-first-served room puts every add in the wrong place for a frame and then snaps,
-	 * which is the exact flicker `applyAndReseq` is shared to prevent.
-	 *
-	 * Absent = fair rotation, the pre-setting behaviour.
+	 * The room's ordering — which algorithm, plus the sing history it may read. A GETTER because both halves
+	 * move at runtime: the room can change algorithm mid-party and the history changes every time a song
+	 * starts. The optimistic prediction MUST be made with the same ordering the server will commit, or every
+	 * add lands in the wrong place for a frame and then snaps. Absent means fair rotation.
 	 */
 	ordering?: () => Ordering;
 }
@@ -84,27 +75,16 @@ export class QueueStore {
 	}
 
 	/**
-	 * What each visible row is still waiting on — the truth behind every unconfirmed marker on the
-	 * phone.
+	 * What each visible row is still waiting on — the truth behind every unconfirmed marker on the phone.
+	 * NOT derivable from the entry itself: `#optimistic` reseqs every entry to a contiguous index before it
+	 * emits, so no subscriber ever observes a placeholder seq.
 	 *
-	 * `'add'` is the original case: a row is unconfirmed between addSong() and the server
-	 * ack/reject of that add. The earlier call site tested the placeholder
-	 * `rotationSeq === MAX_SAFE_INTEGER`, but #optimistic runs applyAndReseq (which reseqs every entry
-	 * to a contiguous 0-based index) BEFORE it emits, so no subscriber ever observed the placeholder
-	 * and the state was structurally dead.
+	 * `move` and `move-to-index` are ONE kind here, because they are one thing to a guest: this row has been
+	 * moved and the room has not agreed yet. `remove` is deliberately absent — the optimistic remove takes
+	 * the row out of the list, so there is nothing left to mark and the undo toast is its disclosure.
 	 *
-	 * `'move'` is what this getter adds, and it replaces a stated gap: the old `unconfirmedAddIds`
-	 * documented "a pending move/remove does not make an entry newly unconfirmed", so a reorder
-	 * committed on a flaky socket looked IDENTICAL to one that landed — the row slid into its new slot
-	 * and nothing said the slide was still a guess. `move` (own picks) and `move-to-index` (a
-	 * cross-singer reorder) are one kind here because they are one thing to a guest: this row has been
-	 * moved and the room has not agreed yet.
-	 *
-	 * `remove` is deliberately absent: the optimistic remove takes the row OUT of the list, so there is
-	 * no row left to mark, and its disclosure is the undo toast.
-	 *
-	 * A MAP rather than two sets because the marker's COPY differs — a pending reorder must not claim
-	 * it is "adding" — and two parallel sets would be two sources of truth for one row's state.
+	 * A MAP rather than two sets, because the marker's COPY differs per kind and two parallel sets would be
+	 * two sources of truth for one row's state.
 	 */
 	get pendingKindById(): Map<string, 'add' | 'move'> {
 		const kinds = new Map<string, 'add' | 'move'>();
@@ -148,21 +128,18 @@ export class QueueStore {
 		this.#optimistic({ op: 'move', id, toSeq });
 	}
 	/**
-	 * Cross-singer reorder (step 4): move an entry to a GLOBAL queued index, which can jump other
-	 * singers — unlike moveEntry, whose toSeq is an index into the caller's OWN picks. Runs through the
-	 * same optimistic applyAndReseq path (→ moveToIndex, rotation.ts), so the row lands at its real slot
-	 * this frame and the server commits the identical order. `queue:reorder-any` gates it server-side for
-	 * an entry the actor does not own.
+	 * Cross-singer reorder: a GLOBAL queued index, which can jump other singers — unlike `moveEntry`, whose
+	 * `toSeq` indexes the caller's OWN picks. It runs through the same optimistic reducer, so the row lands at
+	 * its real slot this frame and the server commits the identical order.
 	 */
 	moveToIndex(id: string, toIdx: number): void {
 		this.#optimistic({ op: 'move-to-index', id, toIdx });
 	}
 
 	/**
-	 * Monotonic add timestamp. addedAt is the round-robin tiebreaker (rotate sorts each singer's
-	 * picks by it), so two adds in the same millisecond MUST get distinct, increasing values or the
-	 * order is nondeterministic and reorder-by-addedAt-permute breaks. The server trusts the
-	 * client's addedAt verbatim, so making it monotonic here keeps client/server prediction aligned.
+	 * `addedAt` is the round-robin tiebreaker, so two adds in the same millisecond MUST get distinct,
+	 * increasing values or the order is nondeterministic and a reorder that permutes addedAt breaks. The
+	 * server trusts this value verbatim, which is why monotonicity has to be established here.
 	 */
 	#nextAddedAt(): number {
 		this.#lastAddedAt = Math.max(Date.now(), this.#lastAddedAt + 1);
@@ -188,12 +165,9 @@ export class QueueStore {
 	}
 
 	/**
-	 * Resend every still-pending command (call on WS reconnect). Safe because the server dedupes by
-	 * clientOpId: an already-applied op is re-acked, not double-applied — and,, that re-ack
-	 * fires even for an op the server has already applied whose shape no longer validates against
-	 * current state (a resent `remove` whose entry is now pruned, or an `add` whose entry has started),
-	 * because the idempotency ledger is consulted before a validation failure becomes an `op:reject`.
-	 * So resending a genuinely-succeeded op never surfaces a false error banner to the singer.
+	 * Resend every still-pending command on reconnect. Safe because the server dedupes by `clientOpId` and
+	 * consults its idempotency ledger BEFORE a validation failure becomes a reject — so a resent op whose
+	 * shape no longer validates against current state is re-acked rather than surfacing a false error.
 	 */
 	resendPending(): void {
 		for (const [clientOpId, p] of this.#pending) {
@@ -221,38 +195,27 @@ export class QueueStore {
 	}
 
 	/**
-	 * Follow the shared server `#rev` when it is bumped by a non-queue event — today only
-	 * `playback:state` (pause/seek/key/guide/skip all advance the ONE server counter). The state
-	 * itself belongs to another store; this store tracks rev ONLY because the WS gap detector reads
-	 * it (getLastRev) to decide whether the NEXT `queue:patch` skipped a rev. Without this, every
-	 * playback change left our rev behind the server's, so the next queue op looked gapped and forced
-	 * a full snapshot to every phone — the resync storm (worst-case: one per playback change × N phones).
+	 * Follow the shared server rev when a non-queue event bumps it. This store tracks rev only because the
+	 * socket's gap detector reads it to decide whether the next patch skipped one — without this, every
+	 * playback change leaves the local rev behind and the next queue op looks gapped, forcing a full snapshot
+	 * to every phone.
 	 *
-	 * Advance-only (never rewind): a `playback:state` can arrive out of order behind a `queue:patch`
-	 * that already carried a higher rev, and rewinding would manufacture the very gap this closes.
-	 * Touches no entries and emits nothing — rev is the only thing that moved.
+	 * ADVANCE-ONLY, never a rewind: events can arrive out of order behind a patch that already carried a
+	 * higher rev, and rewinding manufactures the very gap this closes. Emits nothing — only rev moved.
 	 */
 	#noteRev(rev: number): void {
 		if (rev > this.#rev) this.#rev = rev;
 	}
 
 	/**
-	 * THE one place that maintains the pending-snapshot invariant.
+	 * THE one place that maintains the pending-snapshot invariant: every pending op's `snapshot` must be its
+	 * pre-op state ON CURRENT SERVER TRUTH, so a later reject rolls back to the world as it is now. Walking
+	 * from the new truth, each op's snapshot is refreshed and then the op re-applied through the shared
+	 * reducer, so the next one sits on top of it.
 	 *
-	 * Starting from `base` (the new authoritative truth), walk the given pending ops in issue order
-	 * and, for each, (1) refresh its `snapshot` rollback target to the current rebased pre-op state,
-	 * then (2) re-apply the op through the shared reducer so the next op — and the returned view —
-	 * sits on top of it. The refresh is the invariant: every pending op's `snapshot` must be the
-	 * pre-op state ON CURRENT SERVER TRUTH, so a later `op:reject` rolls back to the world as it is
-	 * now, not to a stale one frozen at op-issue time (the regression PR an earlier change fixed).
-	 *
-	 * All three writers that move truth — `#onPatch`, `#onSync`, `#onReject` — rebase through here so
-	 * the invariant is stated ONCE rather than copied into three loops that can drift (the two hotter
-	 * reconnect-path copies were unpinned). `#onReject` passes only the ops issued AFTER
-	 * the rejected one, because the earlier ops are already baked into the rejected op's snapshot;
-	 * the loop body is otherwise identical, which is exactly why it is shared.
-	 *
-	 * Returns the rebased entries; the caller assigns `#entries`.
+	 * ALL THREE writers that move truth rebase through here, so the invariant is stated once rather than
+	 * copied into three loops that can drift. A reject passes only the ops issued AFTER the rejected one,
+	 * because the earlier ones are already baked into its snapshot.
 	 */
 	#rebasePending(base: QueueEntry[], pendingOps: Iterable<PendingOp>): QueueEntry[] {
 		let acc = base;
@@ -264,24 +227,19 @@ export class QueueStore {
 	}
 
 	#onPatch(e: Extract<ServerEvent, { type: 'queue:patch' }>): void {
-		// Advance-only, through the SAME rule #noteRev enforces: the server never intentionally emits
-		// a lower rev (hub/player/leave all publish state.rev at publish time), and a lower rev here
-		// would rewind the counter #noteRev deliberately refuses to rewind — reintroducing the resync
-		// storm through the other writer. One enforcement point, not one enforced + one
-		// honour-system copy. The re-ack/entries branches below still run on every patch.
+		// Through `#noteRev` rather than assigning, so there is ONE enforcement point for advance-only: a
+		// lower rev here would rewind the counter that refuses to rewind, reintroducing the resync storm
+		// through the other writer.
 		this.#noteRev(e.patch.rev);
-		// originator: the echoed op is now server-confirmed, so drop it from pending
+		// The echoed op is now server-confirmed, so it leaves pending.
 		if (e.patch.causedBy) this.#pending.delete(e.patch.causedBy);
 		if (e.patch.entries) {
-			// Authoritative snapshot present (normal mutation): adopt it as truth, then re-apply any
-			// STILL-pending local ops on top so in-flight changes survive. This is what makes the
-			// originator's optimistic row snap to the server's canonical rotationSeq with zero flicker
-			// (Finding #2/#3) and drops terminal entries the server pruned. #rebasePending refreshes
-			// each pending op's rollback target to the rebased pre-op state (the invariant).
+			// An authoritative snapshot is adopted as truth and the still-pending local ops re-applied on top,
+			// which is what makes the originator's optimistic row snap to the canonical order with no flicker.
 			const base = e.patch.entries.map((x) => ({ ...x }));
 			this.#entries = this.#rebasePending(base, this.#pending.values());
 		} else {
-			// Pure re-ack (dedup path) carries no entries and no ops — nothing to apply.
+			// A pure re-ack carries no entries, so there is nothing authoritative to rebase onto.
 			for (const op of e.patch.ops) this.#entries = applyAndReseq(this.#entries, op, this.#ordering());
 		}
 		this.#emit();
@@ -289,11 +247,8 @@ export class QueueStore {
 
 	#onSync(e: Extract<ServerEvent, { type: 'queue:sync' }>): void {
 		this.#rev = e.rev;
-		// REBASE: authoritative truth, then re-apply still-pending local ops on top (via the shared
-		// reducer so seqs match the server) so the user's in-flight changes don't vanish on resync.
-		// #rebasePending refreshes each op's rollback target to the rebased pre-op state — the same stale-snapshot
-		// invariant as #onPatch: a resync replaces truth, and a stale snapshot would lose it on a
-		// later reject.
+		// Rebase, so the guest's in-flight changes do not vanish on a resync — and through the shared writer,
+		// because a resync replaces truth and a stale snapshot would lose it on a later reject.
 		const base = e.entries.map((x) => ({ ...x }));
 		this.#entries = this.#rebasePending(base, this.#pending.values());
 		this.#emit();
@@ -303,13 +258,9 @@ export class QueueStore {
 		const pending = this.#pending.get(e.clientOpId);
 		if (!pending) return;
 		this.#pending.delete(e.clientOpId);
-		// ROLLBACK by restoring the pre-op snapshot: a per-op inverse cannot be trusted
-		// to undo what the forward reducer actually did (it failed for `move`). The snapshot already
-		// carries every EARLIER pending op, so re-apply only the ops issued AFTER the rejected one —
-		// that keeps a concurrent in-flight op alive without double-applying the earlier ones already
-		// baked into the snapshot. Rebasing through #rebasePending refreshes each survivor's rollback
-		// target too, so a later reject of IT rolls back to the correct rebased pre-op world (the same
-		// invariant #onPatch/#onSync hold).
+		// Rollback RESTORES the pre-op snapshot, which already carries every EARLIER pending op — so only the
+		// ops issued after the rejected one are re-applied, keeping a concurrent in-flight op alive without
+		// double-applying the earlier ones.
 		const survivors: PendingOp[] = [];
 		for (const p of this.#pending.values()) {
 			if (p.seq <= pending.seq) continue; // earlier ops are already baked into the snapshot

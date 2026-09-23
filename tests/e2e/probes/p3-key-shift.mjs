@@ -1,41 +1,17 @@
 /*
  * P3 — DOES THE PITCH SHIFTER ACTUALLY MAKE A SOUND, AT THE RIGHT PITCH?
  *
- * A prior numerical review left an unproven suspicion that the browser-side OLA pitch shifter
- * (src/lib/tv/pitch-shift.ts) SILENCES or DESTROYS the audio at every non-zero shift. The
- * unit tests (pitch-worklet.test.ts) run the REAL worklet source through a stub `AudioWorkletProcessor`
- * and pass, so the numerical maths cannot be the whole story — but a unit test cannot see:
+ * A unit test can run the worklet maths and still not see whether the worklet is WIRED into the
+ * browser's graph, whether the AudioContext resumes, or whether the phone → server → TV round-trip
+ * lands the right ratio. This measures the rendered graph and the OUTPUT samples off a parallel tap.
  *
- *   • whether AudioWorklet is actually WIRED into the audio graph in the browser (a missing
- *     `source.connect(node).connect(gain).connect(destination)` step silences the room and no unit test
- *     catches it),
- *   • whether the AudioContext resumes on a TV that never got a user gesture (the app documents
- *     a fallback to audible-but-unshifted, but a fallback is a claim until measured),
- *   • whether the ratio-message round-trip from the phone → server → TV → PitchShiftGraph.setShift
- *     ends up with the right ratio in the worklet,
- *   • whether the shift survives pause/resume and resets on song change.
- *
- * WHAT THIS PROBE MEASURES.
- *   1. Baseline: at keyShift 0 the master <audio> decodes normally (webkitAudioDecodedByteCount
- *      climbing, currentTime advancing) and no AudioContext exists.
- *   2. Graph wiring: at the first non-zero shift, an AudioContext + AudioWorkletNode + GainNode are
- *      constructed, the gain connects to destination, and audio is flowing through it.
- *   3. Sample capture: an AnalyserNode is tapped in PARALLEL onto the gain node (so the audible path
- *      is untouched), and the OUTPUT samples are measured for RMS and dominant partial frequency.
- *   4. Ratio correctness: the dominant partial moves by exactly 2^(N/12) between shift 0 (via
- *      ratio-1 passthrough on the same graph) and shift N, at N ∈ {+1, +2, -1, -3, +5}.
- *   5. Sounding-key label: the phone's `Key ·` label agrees with the server-broadcast keyShift.
- *   6. Pause/resume + song change: the shift is preserved across pause/resume; the graph is torn down
- *      on song change and rebuilds fresh (or resets to shift 0, whichever the server dictates).
- *
- * THE FIXTURE. The fake worker publishes an 8-second WAV chord at 220 / 277.18 / 329.63 Hz (see
- * e2e/wav.mjs). The three partials are equal-amplitude sines, so the FFT peak lands cleanly on one of
- * them and moves by the ratio when transposed. That property is what makes this test decisive rather
- * than approximate — a chord smeared by MP3 or a real recording could not carry it.
+ * THE FIXTURE IS WHAT MAKES IT DECISIVE: an 8s WAV chord of three equal-amplitude sines
+ * (tests/e2e/wav.mjs), so an FFT peak lands cleanly on one partial and moves by exactly the pitch
+ * ratio. A real recording could not carry that property.
  *
  *   PORT=5223 bun tests/e2e/probes/p3-key-shift.mjs
  *
- * Exit codes: 0 all findings clean · 1 a real defect · 2 environment could not host the test.
+ * See docs/E2E.md#proving-audio and #exit-codes-and-what-ran-means.
  */
 
 import { join } from 'node:path';
@@ -45,33 +21,22 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * same pattern as the other e2e drivers). Browser/Page are derived from driver.mjs's own return types so
- * they cannot drift from the driver. page.evaluate() is typed Promise<any> by driver.mjs, so DOM/API-shaped
- * results are cast at the call site.
+ * `page.evaluate()` is Promise<any>, so DOM/API-shaped results are cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
- *
- * One finding row: a pass/fail/env check with its severity and evidence.
  * @typedef {{ severity: Severity, name: string, ok: boolean, detail: string, env: boolean }} Finding
- *
- * One <video>/<audio> element read out of the TV page per MEDIA_PROBE sample.
  * @typedef {{
  *   i: number, tag: string, src: string, readyState: number, paused: boolean, muted: boolean,
  *   volume: number, currentTime: number, duration: number, decoded: number | null,
  *   error: { code: number, message: string } | null
  * }} MediaEl
- *
- * The serialisable HOOK_STATE snapshot (node references stripped for logging).
  * @typedef {{
  *   contexts: number, contextStates: string[], gains: number, worklets: string[],
  *   sources: { tag: string, src: string }[], reachedDestination: boolean,
  *   resumeCalls: number, taps: number
  * }} HookState
- *
- * One analyser read: RMS + the dominant-partial spectrum returned by READ_TAP_SRC.
  * @typedef {{
  *   ok: boolean, why?: string, rms: number, peakHz: number, peakDb: number, binHz: number,
  *   sampleRate: number, partials: { hz: number, db: number }[]
@@ -82,14 +47,8 @@ const PORT = process.env.EPORT ?? process.env.PORT ?? '5223';
 const base = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? '/tmp';
 
-// Findings collected as { severity, name, ok, detail }. Severity per the prompt:
-// CRITICAL (silence/decoder wedge at ±1..±7), HIGH (wrong pitch by more than
-// 3%, or label/state disagreement), MEDIUM (transient state, one-shift class
-// of bugs), LOW (cosmetic). ok=false is what the prompt calls a "real defect";
-// findings with ok=true but a note document what we CHECKED not what we found
-// wrong. Environment limits (env=true) are neither pass nor fail — they say
-// "the probe couldn't reach this shore" and print separately so a reader
-// never confuses them with a defect.
+// CRITICAL = silence or a wedged decoder; HIGH = wrong pitch (>3%) or label/state disagreement.
+// `env` findings are neither pass nor fail and print separately, so they cannot read as a defect.
 /** @type {Finding[]} */
 const findings = [];
 /**
@@ -117,7 +76,6 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 	bail(`no Encore server on ${base}. Start one and re-run.`);
 }
 
-// A processed, playable song is a hard precondition for anything below.
 const ready = await fetch(`${base}/api/search?q=caroline`)
 	.then((r) => r.json())
 	.then((d) => d.ready ?? []);
@@ -129,19 +87,15 @@ if (!ready.length) {
 }
 console.log(`fixture: "${ready[0].title}" → ${ready[0].instrumentalRef}\n`);
 
-// A second processed song, so the song-change sub-check has somewhere to advance TO. Processed before the
-// browser is even launched: the fake worker takes ~1s per song and this keeps the probe's own tests
-// out of that critical path. If a second raw title is not present the sub-check is downgraded to an
-// environment limit, not a defect.
+// A second processed song, so the song-change check has somewhere to advance TO — processed before
+// the browser launches, to keep the worker's ~1s per song off the probe's critical path.
 async function ensureSecondReady() {
-	// Cast a wide net: "caroline" only matches the fixture process. "a" matches any track with an 'a' in
-	// its metadata — which every seeded song does.
+	// A wide net: 'a' matches every seeded track, where 'caroline' only matches the fixture.
 	const list = await fetch(`${base}/api/search?q=a`)
 		.then((r) => r.json())
 		.catch(() => null);
 	if (!list) return null;
 	const already = list.ready ?? [];
-	// Pick a NON-processed LOCAL track other than the first fixture as the second process target.
 	const raw = /** @type {any[]} */ (list.results ?? []).find(
 		(/** @type {any} */ r) =>
 			r.source === 'local' && !(/** @type {any[]} */ (already).some((/** @type {any} */ a) => a.id === r.id))
@@ -159,7 +113,6 @@ async function ensureSecondReady() {
 		headers: { 'content-type': 'application/json', cookie },
 		body: JSON.stringify({ mediaId: raw.id })
 	});
-	// Poll (using a search that matches THIS raw title, so we don't miss it) until it's ready.
 	for (let i = 0; i < 40; i++) {
 		const l = await fetch(`${base}/api/search?q=a`)
 			.then((r) => r.json())
@@ -176,13 +129,7 @@ if (secondReady) {
 	console.log(`no second processable song available — song-change advance check will be an env limit\n`);
 }
 
-// The probe harness itself lives in a template literal so both the CDP driver
-// and the in-page tap read from a single source. Wraps `window.AudioContext`
-// so any pitch-shift graph built later hands us back the context and the
-// gain node it constructed (see pitch-shift.ts: exactly one AudioContext and
-// one createGain per element, both in PitchShiftGraph.build()). Also wraps
-// AudioWorkletNode so we can prove the worklet actually got constructed —
-// silence with no worklet is a very different defect from silence with one.
+// Hands back the nodes a graph constructs later: silence with no worklet is a different defect.
 const INSTALL_HOOK_SRC = `
 	(() => {
 		if (window.__ENCORE_HOOK__) return 'already-installed';
@@ -200,8 +147,7 @@ const INSTALL_HOOK_SRC = `
 		};
 		window.__ENCORE_HOOK__ = state;
 
-		// Wrap the CONSTRUCTOR by shadowing the class. Extends the original so instanceof stays true
-		// and the prototype chain (with the wrapped methods below) is inherited.
+		// Extends the original, so instanceof holds and the wrapped prototype methods are inherited.
 		class WrappedAC extends OAC {
 			constructor(...args) {
 				super(...args);
@@ -211,8 +157,7 @@ const INSTALL_HOOK_SRC = `
 		window.AudioContext = WrappedAC;
 		window.webkitAudioContext = WrappedAC;
 
-		// Wrap prototype methods once, so both native and wrapped instances hit them. Reading them off
-		// OAC.prototype is required because the shifter reads them off the instance it constructs.
+		// On the PROTOTYPE: the shifter reads these off the instance it constructs.
 		const origCG = OAC.prototype.createGain;
 		OAC.prototype.createGain = function() {
 			const g = origCG.call(this);
@@ -225,16 +170,14 @@ const INSTALL_HOOK_SRC = `
 			state.sources.push({ node: s, ctx: this, elTag: el.tagName, elSrc: el.currentSrc || el.src || '' });
 			return s;
 		};
-		// audioWorklet is a per-instance getter on the prototype — reading it off the prototype
-		// throws 'Illegal invocation'. We do not need to wrap addModule; the AudioWorkletNode wrapper
-		// below is enough proof the module resolved and the processor was actually constructed.
+		// addModule is NOT wrapped: audioWorklet is a per-instance getter, so reading it off the prototype
+		// throws 'Illegal invocation', and the wrapper below already proves the module resolved.
 		const origResume = OAC.prototype.resume;
 		OAC.prototype.resume = function() {
 			state.resumeCalls++;
 			return origResume.call(this);
 		};
 
-		// Wrap AudioWorkletNode: the honest proof the shifter's Worklet was ever constructed.
 		if (window.AudioWorkletNode) {
 			const OWN = window.AudioWorkletNode;
 			class WrappedAWN extends OWN {
@@ -243,13 +186,11 @@ const INSTALL_HOOK_SRC = `
 					state.worklets.push({ node: this, name, ctx });
 				}
 			}
-			// Copy statics if any
 			Object.setPrototypeOf(WrappedAWN, OWN);
 			window.AudioWorkletNode = WrappedAWN;
 		}
 
-		// Also count \`connect\` calls so we can prove the graph reaches destination. Node.connect can
-		// be called against nodes or against AudioParams; we only care about node-to-node here.
+		// Counting edges proves the graph reaches destination; only node-to-node matters.
 		const origConnect = AudioNode.prototype.connect;
 		AudioNode.prototype.connect = function(dst, ...rest) {
 			try {
@@ -266,19 +207,13 @@ const INSTALL_HOOK_SRC = `
 	})()
 `;
 
-// Attaches an AnalyserNode in PARALLEL on the latest captured gain node and
-// primes it. Returns whether it succeeded so the caller can distinguish a
-// missing graph (no shift engaged yet) from a broken tap. Called from
-// outside the shifter's own module so it never interferes with the audible
-// path — gain.connect(destination) was already done at build time, and this
-// only adds a second edge out of gain.
+// A second edge out of the latest gain node, so the audible path is untouched.
 const ATTACH_TAP_SRC = `
 	(() => {
 		const s = window.__ENCORE_HOOK__;
 		if (!s) return { ok: false, why: 'no-hook' };
 		const latest = s.gains[s.gains.length - 1];
 		if (!latest) return { ok: false, why: 'no-gain' };
-		// If a tap is already on this gain, reuse it.
 		const existing = s.taps.find((t) => t.gain === latest.node);
 		if (existing) return { ok: true, why: 'reused' };
 		const analyser = latest.ctx.createAnalyser();
@@ -290,12 +225,7 @@ const ATTACH_TAP_SRC = `
 	})()
 `;
 
-// Reads the currently-active tap and returns RMS and the peak-bin frequency
-// of the LOUDEST partial. The chord is 220/277.18/329.63 Hz — three
-// equal-amplitude sines — so the FFT peak lands on one of them and moves by
-// exactly the pitch ratio when transposed. Peak-bin resolution at fftSize
-// 8192 / 48kHz is ~5.86 Hz, which is well within the 3% ratio tolerance we
-// judge against (a semitone is ~5.9% of frequency).
+// Peak-bin resolution at fftSize 8192 / 48kHz is ~5.86 Hz, inside the 3% tolerance (a semitone is ~5.9%).
 const READ_TAP_SRC = `
 	(() => {
 		const s = window.__ENCORE_HOOK__;
@@ -310,9 +240,7 @@ const READ_TAP_SRC = `
 		const rms = Math.sqrt(sumSq / N);
 		const freq = new Float32Array(tap.analyser.frequencyBinCount);
 		tap.analyser.getFloatFrequencyData(freq); // dB
-		// Only search below 1200 Hz — the fixture's partials all live under 350 Hz and the shifted
-		// ones under ~700 Hz, so anything above is either aliasing or a spurious harmonic and would
-		// dominate the argmax on some browsers.
+		// Below 1200 Hz only: higher bins are aliasing or harmonics that would win the argmax outright.
 		const sr = tap.ctx.sampleRate;
 		const binHz = sr / N;
 		const searchTo = Math.min(freq.length, Math.ceil(1200 / binHz));
@@ -321,8 +249,7 @@ const READ_TAP_SRC = `
 		for (let i = 1; i < searchTo; i++) {
 			if (freq[i] > peakDb) { peakDb = freq[i]; peakBin = i; }
 		}
-		// Find ALL local-maximum bins above (peakDb - 12dB) so we can spot chord partials moving in
-		// concert with the shift.
+		// Every local maximum within 12dB of the peak, to see the partials move together.
 		const partials = [];
 		for (let i = 2; i < searchTo - 1; i++) {
 			if (freq[i] > freq[i - 1] && freq[i] > freq[i + 1] && freq[i] > peakDb - 12) {
@@ -342,7 +269,7 @@ const READ_TAP_SRC = `
 	})()
 `;
 
-// Media state on the TV, without assuming which tag or how many elements are mounted.
+// Media state on the TV, whatever tag or count is mounted.
 const MEDIA_PROBE = `(() => {
 	const els = [...document.querySelectorAll('video,audio')];
 	return els.map((el, i) => ({
@@ -354,7 +281,7 @@ const MEDIA_PROBE = `(() => {
 	}));
 })()`;
 
-// The hook state, minus the non-serialisable node references, for logging.
+// The hook state, minus the non-serialisable node references.
 const HOOK_STATE = `(() => {
 	const s = window.__ENCORE_HOOK__;
 	if (!s) return null;
@@ -379,7 +306,6 @@ let tv;
 try {
 	browser = await connect();
 
-	// ── phone: join and queue ───────────────────────────────────────────────
 	phone = await browser.newPage();
 	await phone.viewport(390, 844);
 	await phone.goto(`${base}/`);
@@ -393,22 +319,18 @@ try {
 	if (hasAdd === 0)
 		bail(`processed song offered no ${SEL.addTurn} action — the seeder+worker sequence probably did not finish`);
 	await phone.click(SEL.addTurn);
-	// Back to the queue before counting rows: the rotation is NOT rendered in the results view, so a
-	// `.qrow` count taken here reads an empty list and times out. `returnHomeFromBrowse` clears the
-	// search, which is what brings the queue back — its own docstring names this exact mistake.
+	// Back to the queue BEFORE counting rows: the rotation is not rendered in the results view.
 	await returnHomeFromBrowse(phone);
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
-	// ── TV: install the hook FIRST, then navigate ──────────────────────────
 	tv = await browser.newPage();
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
-	// AudioContext is only constructed once we ask for a shift — but be safe and install BEFORE any
-	// shift is possible (we clicked no key buttons on the phone yet, and shift 0 does not build a graph).
+	// Install before any shift is possible: shift 0 builds no graph, so nothing is missed.
 	const installed = await tv.evaluate(INSTALL_HOOK_SRC);
 	record('LOW', 'the probe hook installs on the TV page', installed === 'installed', `got: ${installed}`);
 
-	// ── (1) baseline: at keyShift 0, audio decodes normally, no graph ──────
+	// (1) baseline: at keyShift 0 audio decodes natively and no graph exists.
 	try {
 		await tv.waitFor(
 			`(() => { const e=[...document.querySelectorAll('video,audio')].filter(x=>x.currentSrc||x.src); return e.length ? ${MEDIA_PROBE} : null; })()`,
@@ -439,10 +361,7 @@ try {
 		`hook state: ${JSON.stringify(noGraphAt0)}`
 	);
 
-	// ── (2) engage a shift and prove the graph gets wired ─────────────────
-	// Send +1 through the real UI (via the sendPlayer WS message the button emits).
-	// The plus button is the second .key-btn under .key; we click it programmatically to avoid
-	// hit-testing the tiny inline SVG.
+	// (2) engage a shift. The keycaps are clicked programmatically: the target is a tiny inline SVG.
 	/** @param {'plus' | 'minus'} sign */
 	async function clickKey(sign) {
 		const idx = sign === 'plus' ? 1 : 0;
@@ -455,15 +374,14 @@ try {
 	}
 	/** @param {number} target @returns {Promise<boolean>} */
 	async function targetShift(target) {
-		// Read current from the phone's rendered label — the source of truth is the server-broadcast
-		// playback.keyShift, and that is exactly what "Key · +N" prints.
+		// The rendered label IS the server-broadcast keyShift, which is what makes this a round trip.
 		async function readCurrent() {
 			return await /** @type {Page} */ (phone).evaluate(`(() => {
 				const lab = document.querySelector(${JSON.stringify(SEL.keyLabel)});
 				if (!lab) return null;
 				const txt = lab.textContent.trim();
 				if (txt === 'Key') return 0;
-				// The label is "Key · ±N" with a middle dot; the minus is U+2212, not ASCII.
+				// The minus in the label is U+2212, not ASCII.
 				const m = txt.match(/([+\\-\\u2212])(\\d+)/);
 				if (!m) return null;
 				const n = parseInt(m[2], 10);
@@ -475,7 +393,7 @@ try {
 		let safety = 20;
 		while (cur !== target && safety-- > 0) {
 			await clickKey(cur < target ? 'plus' : 'minus');
-			// Wait for the label to reflect the new state — it updates on the playback:state broadcast.
+			// The label only moves on the playback:state broadcast.
 			const deadline = Date.now() + 2000;
 			let next = cur;
 			while (Date.now() < deadline) {
@@ -496,7 +414,7 @@ try {
 		'the phone label is the same string the server broadcasts back'
 	);
 
-	// Give the TV time to receive the state, run the shift-wiring effect, build the graph, and resume.
+	// Enough for the TV to take the state, run the wiring effect, build the graph and resume.
 	await sleep(1500);
 	const stateAfter1 = /** @type {HookState | null} */ (await tv.evaluate(HOOK_STATE));
 	record(
@@ -524,7 +442,6 @@ try {
 		`ctx states: ${JSON.stringify(stateAfter1?.contextStates ?? [])}`
 	);
 
-	// ── (3) decoding continues while shift is engaged ─────────────────────
 	const tS1a = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 	await sleep(2500);
 	const tS1b = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
@@ -536,12 +453,9 @@ try {
 		`decoded ${tS1a?.decoded} → ${tS1b?.decoded} over 2.5s. Zero means the shifter silenced it.`
 	);
 
-	// ── (4) attach the analyser tap and measure RMS + dominant partial ────
 	const tap1 = await tv.evaluate(ATTACH_TAP_SRC);
 	record('LOW', 'analyser tap attaches to the gain node', tap1?.ok, `${JSON.stringify(tap1)}`);
-	// Prime — need a couple of AnalyserNode fill windows before getFloatTimeDomainData is meaningful.
-	// Also loop the fixture (it is 8s, positionSec could be near end).
-	// Restart the song for a clean read window.
+	// Restart before each read: the fixture is 8s, so positionSec may be near the end.
 	async function restart() {
 		await /** @type {Page} */ (phone).evaluate(`
 			(() => {
@@ -553,8 +467,7 @@ try {
 	await restart();
 	await sleep(700);
 	const meas1 = /** @type {TapRead} */ (await tv.evaluate(READ_TAP_SRC));
-	// Now switch to 0 (ratio-1 passthrough on the same graph) so the "baseline" is measured through
-	// the same tap as +N. This is what gives the ratio check its cleanness.
+	// Baseline at 0 through the SAME built graph, so both readings come off one tap.
 	const shiftedTo0 = await targetShift(0);
 	record('HIGH', 'phone → server: returning to 0 lands playback.keyShift at 0', shiftedTo0);
 	await sleep(800);
@@ -562,7 +475,6 @@ try {
 	await sleep(700);
 	const meas0 = /** @type {TapRead} */ (await tv.evaluate(READ_TAP_SRC));
 
-	// Now +2, +3, -1, -3 in turn.
 	/** @param {number} target @returns {Promise<TapRead>} */
 	async function measureAtShift(target) {
 		await targetShift(target);
@@ -578,13 +490,8 @@ try {
 		measurements[s] = await measureAtShift(s);
 	}
 
-	// ── judge the measurements ─────────────────────────────────────────────
-	// The fixture is a chord of three equal-amplitude sines at 220 / 277.18 / 329.63 Hz. At any given
-	// FFT the peak-bin winner between the three is not stable across runs (they land at nearly the
-	// same magnitude), so we do NOT compare peakHz at 0 vs peakHz at N — that would compare two
-	// different partials. Instead: for each shift, look at the TOP TWO or THREE partials returned
-	// (they are sorted by dB) and expect them to be close to the fixture partials multiplied by
-	// semitonesToRatio(N).
+	// The three partials are near-equal in magnitude, so which wins the peak bin is unstable across runs:
+	// judge the TOP THREE against the fixture frequencies times 2^(N/12), never peakHz at 0 vs at N.
 	/** @param {number} n @returns {number} */
 	function ratio(n) {
 		return Math.pow(2, n / 12);
@@ -596,7 +503,7 @@ try {
 	}
 	/** @param {{ hz: number, db: number }[]} measured @param {number[]} expectedHz @param {number} [tolPct] */
 	function matches(measured, expectedHz, tolPct = 3) {
-		// Return true iff at least TWO of the expected partials are within tolPct% of some measured partial.
+		// True iff at least TWO expected partials are within tolPct% of some measured partial.
 		let hits = 0;
 		for (const e of expectedHz) {
 			if (measured.some((m) => Math.abs(m.hz - e) / e < tolPct / 100)) hits++;
@@ -622,7 +529,6 @@ try {
 	}
 	console.log('');
 
-	// Silence test at each shift: RMS above a floor.
 	const RMS_FLOOR = 0.02; // a chord at amp 0.28/3 through Hann OLA is ~0.11–0.20 RMS; 0.02 is a very cautious floor
 	for (const n of [1, 2, 3, -1, -3, 5]) {
 		const m = measurements[n];
@@ -633,7 +539,7 @@ try {
 			`rms=${m?.rms?.toFixed(4) ?? 'n/a'} — a shifter that silences is worse than one that shifts wrong`
 		);
 	}
-	// Ratio-1 passthrough (measured at 0 through the built graph) should also be audible.
+	// Ratio-1 passthrough at 0 must be audible too.
 	{
 		const m = measurements[0];
 		record(
@@ -644,8 +550,6 @@ try {
 		);
 	}
 
-	// Pitch-correctness test at each shift: two of the three chord partials land near their expected
-	// transposed frequencies.
 	for (const n of [1, 2, 3, -1, -3, 5]) {
 		const m = measurements[n];
 		const partials = m?.partials ?? [];
@@ -663,14 +567,12 @@ try {
 		);
 	}
 
-	// The specifically-called-out +2 vs 0 comparison: dominant partial ratio ~= 1.1225 (±3%).
+	// +2 vs 0: the per-partial ratio should be 2^(2/12) ≈ 1.1225 (±3%).
 	{
 		const a = measurements[0];
 		const b = measurements[2];
 		if (a?.ok && b?.ok) {
-			// Compare the LOUDEST partial at each — but only if their absolute frequencies are within
-			// the same fixture cluster (i.e. one of the three partials). Otherwise the FFT chose two
-			// different partials and the ratio has no meaning; fall back to a per-partial nearest-match.
+			// A bare peak-to-peak ratio is meaningless when the FFT picked two different partials.
 			const measuredRatio = b.peakHz / a.peakHz;
 			// Nearest-match ratio: for each fixture partial, find the measured (at 0) and (at +2) partial
 			// closest to it and its ratio, then average.
@@ -703,12 +605,8 @@ try {
 		}
 	}
 
-	// ── (5) UI sounding-key label agrees with the actual shift ────────────
-	// The `Key ·` label is the value the server broadcasts back after the round-trip, so this is
-	// really "does the phone label agree with server state" — the "sounding key" line above it also
-	// prints keySounding, but that helper returns null unless a real songProfile is populated, which
-	// the fake worker does not produce (see search response: songProfile.keyTonic === null). We can
-	// therefore only assert on the Key label; the keySounding case is an environment limit.
+	// (5) the Key label agrees with the server-broadcast shift. The 'sounding key' line beside it needs a
+	// real songProfile, which the fake worker does not publish, so that half is an env limit.
 	{
 		await targetShift(2);
 		await sleep(200);
@@ -737,14 +635,12 @@ try {
 		);
 	}
 
-	// ── (6) shift survives pause/resume; resets on song change ────────────
 	{
 		await targetShift(2);
 		await sleep(600);
 		await restart(); // ensures we are inside the 8s fixture
 		await sleep(700);
 		const meas2a = /** @type {TapRead} */ (await tv.evaluate(READ_TAP_SRC));
-		// pause
 		await openNowPlaying(phone);
 		await phone.click(SEL.bandTransport);
 		await sleep(700);
@@ -755,7 +651,6 @@ try {
 			pausedEls?.paused === true,
 			`paused=${pausedEls?.paused}, currentTime=${pausedEls?.currentTime?.toFixed(2)}`
 		);
-		// resume
 		await openNowPlaying(phone);
 		await phone.click(SEL.bandTransport);
 		await sleep(1200);
@@ -781,16 +676,11 @@ try {
 		);
 	}
 
-	// ── song change: reset ────────────────────────────────────────────────
-	// Advance the queue. If a second processed song is available, add it and skip; the media.id changes,
-	// TvPlayer's reset effect detaches the graphs, and the server resets keyShift to 0 on advance. If
-	// no second song is available, we can still verify the graph teardown (context.state === 'closed')
-	// and the keyShift reset, but not "the fresh song keeps decoding" — that becomes an env limit.
+	// Song change: media.id changes, the TV's reset effect detaches the graphs and the server resets
+	// keyShift to 0. Without a second song the advance-target half degrades to an env limit.
 	{
 		if (secondReady) {
-			// The second song is already ready-processed (see ensureSecondReady above). The phone's search
-			// field still has 'caroline' from earlier, so first change it to a term that finds the second
-			// song. Then click .add on its row.
+			// The field still holds 'caroline', so retype for a term that finds the second song.
 			await openBrowseFromHome(phone); // search lives behind the browse push
 			await phone.fill(SEL.search, secondReady.title.split(' ')[0].toLowerCase());
 			await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
@@ -804,11 +694,9 @@ try {
 				})()
 			`);
 			await sleep(1200);
-			// Skip to advance to the second song.
 			await openNowPlaying(phone);
 			await phone.clickByLabel('skip');
 			await sleep(2500);
-			// The server resets keyShift on advance, so the phone label should return to 'Key'.
 			const labelAfter = await phone.text(SEL.keyLabel);
 			record(
 				'HIGH',
@@ -816,8 +704,7 @@ try {
 				labelAfter === 'Key',
 				`.key .lab after advance: ${JSON.stringify(labelAfter)}`
 			);
-			// The reset effect on the TV detaches the graphs; at shift 0, no new graph is built. Audio
-			// must still decode through the native path on the fresh song.
+			// Graphs detached and none rebuilt at 0, so the fresh song must decode natively.
 			const advA = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 			await sleep(1800);
 			const advB = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
@@ -831,8 +718,6 @@ try {
 					: `no <audio> mounted after advance (advA=${!!advA}, advB=${!!advB}) — the queue likely emptied`
 			);
 			const stateAfterChange = /** @type {HookState | null} */ (await tv.evaluate(HOOK_STATE));
-			// The previous song's context should be closed by detach(); if the new song stayed at shift 0
-			// no new context is built. Log for the record.
 			record(
 				'MEDIUM',
 				"song change: the previous song's AudioContext was closed by detach()",
@@ -841,8 +726,7 @@ try {
 			);
 			console.log(`  post-advance hook state: ${JSON.stringify(stateAfterChange)}`);
 		} else {
-			// Only one song processable — do a "reset without an advance target": skip past the song and
-			// verify (a) label resets, (b) the shift graph tore down (context.state === 'closed').
+			// No advance target: skip past the song and check the label reset plus the teardown.
 			await openNowPlaying(phone);
 			await phone.clickByLabel('skip');
 			await sleep(2000);
@@ -871,7 +755,6 @@ try {
 		}
 	}
 
-	// A final screenshot for a human to sanity-check.
 	const shot = join(SCRATCH, `p3-key-shift-${PORT}.png`);
 	await tv.screenshot(shot);
 	console.log(`\nTV frame: ${shot}`);
@@ -885,7 +768,6 @@ try {
 	browser?.close();
 }
 
-// ── summary ───────────────────────────────────────────────────────────────
 const defects = findings.filter((f) => !f.env && !f.ok);
 const passes = findings.filter((f) => !f.env && f.ok);
 const envs = findings.filter((f) => f.env);

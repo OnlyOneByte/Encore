@@ -1,41 +1,11 @@
-// Regression: "Next up" named a song that would NOT be played next.
+// `nowplaying:changed` feeds the TV's Up next strip, the Next up card and the gapless preload slot; every
+// BROADCAST producer of it is a PLAYBACK transition in player.ts, and a QUEUE mutation publishes
+// `queue:patch` alone (hub.ts). Caught: an add/remove/move mid-song changed WHO PLAYS NEXT with nothing
+// re-broadcasting it, so the TV kept naming a departed song and `syncSlots` pre-warmed the gapless slot from
+// it. A queue:command must therefore re-emit nowplaying even when no playback recovery is due.
 //
-// `nowplaying:changed` is what the TV's Up next strip, the full-screen Next up card and the gapless
-// preload slot all read (routes/tv/+page.svelte: `applyNowPlaying` is its only writer). It had exactly
-// two BROADCAST producers, both playback transitions in player.ts — `reconcileOnReady` and
-// `handlePlayerCommand`. A QUEUE mutation produced none: `handleQueueCommand` publishes `queue:patch`
-// alone (hub.ts), and server.ts's `queue:command` arm only called `reconcileOnReady` when the
-// current entry no longer RESOLVED — i.e. only when the room was idle or the playing entry had been
-// pruned.
-//
-// So while a song plays, an add / remove / move changes WHO PLAYS NEXT and nothing re-broadcasts it.
-// The TV keeps rendering the previous `upNext` until the song ends: it can name a song that has been
-// removed from the queue, or one that reordering pushed behind another singer, and `syncSlots`
-// pre-warms the hidden gapless slot from that same stale entry.
-//
-// This is taxonomy shape 3, "transitions handled where steady state was": the
-// invariant "the advertised next equals the true next" was maintained across every PLAYBACK transition
-// and across none of the QUEUE transitions.
-//
-// The fix is the `else emitNowPlaying(deps)` on that gate in server.ts — the branch the `if`
-// deliberately excludes, which is exactly the reported window (a song IS playing, so no recovery is
-// due). Two halves are needed to pin it, and both are here:
-//
-//  1. BEHAVIOURAL (below): drive the real `handleQueueCommand` + `AuthoritativeState` + `emitNowPlaying`
-//     and require the broadcast `upNext` to track the truth across three queue transitions. This pins
-//     what `emitNowPlaying` at this seam must produce — including that a still-PROCESSING entry at the
-//     head of the rotation is never advertised — but NOT that server.ts calls it, because server.ts is
-//     the Bun.serve entry and has no unit harness (telemetry-frame-lean.test.ts:15). Taken alone this
-//     half is vacuous with respect to the production line, which is why half 2 exists.
-//  2. SOURCE SCAN (bottom): pin the `else emitNowPlaying(deps)` and its import on the live writer,
-//     server.ts. server.ts contains no `emitNowPlaying` on base, so this half is RED on base
-//     and it is what makes the production hunks mutation-proven. Same technique as
-// dangling-current-entry.test.ts (the gate on this very line) and
-// session-cookie-attributes.test.ts.
-//
-// EXPECTED VALUES ARE HARD-CODED entry ids ('q3', null, 'q4', never 'q2'), never re-derived by calling
-// `upNextAfter` — a test that recomputed the projection with the same function the code uses could not
-// detect a wrong projection at all.
+// Expected values are HARD-CODED entry ids, never re-derived via `upNextAfter`: a test that recomputed the
+// projection with the code's own function could not detect a wrong projection at all.
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { reconcileOnReady, emitNowPlaying } from '$lib/server/realtime/player';
@@ -57,9 +27,8 @@ const readyMedia = (id: string): Media => ({
 });
 
 /**
- * A song still PROCESSING: no instrumental yet, so the stems gate is open and `readyToSing` is false.
- * An entry on this media is SKIP-DESTINED — `upNextAfter` holds its slot and walks past it — which is
- * the queue head this issue is about: it must never be advertised as the song that plays next.
+ * A song still PROCESSING: `readyToSing` is false, so an entry on it is SKIP-DESTINED — `upNextAfter`
+ * holds its rotation slot but walks past it, and it must never be advertised as the song that plays next.
  */
 const processingMedia = (id: string): Media => ({
 	id,
@@ -67,9 +36,7 @@ const processingMedia = (id: string): Media => ({
 	sourceRef: 'x',
 	title: id,
 	durationSec: 100,
-	// 'queued' = the stems job is filed but has not produced an instrumental, so the stems gate is
-	// open (gates.ts: `stemStatus === 'ready' && !!instrumentalRef`). instrumentalRef is OPTIONAL on
-	// Media, so a processing song simply has none — omitted rather than null.
+	// Gate is `stemStatus === 'ready' && !!instrumentalRef` (gates.ts); instrumentalRef is OPTIONAL, so omitted.
 	stemStatus: 'queued',
 	lyricsStatus: 'queued',
 	songProfile: EMPTY_SONG_PROFILE
@@ -111,11 +78,8 @@ function advertisedUpNextId(published: ServerEvent[]): string | null | undefined
 }
 
 /**
- * server.ts's `queue:command` arm as it stands AFTER: an UNCONDITIONAL reconcileOnReady. The
- * re-emit still happens on the "current resolves" path — reconcileOnReady skips its recovery
- * block and falls through to the single emitNowPlaying at its tail (player.ts) — which is why the
- * hand-written `else emitNowPlaying(deps)` this arm used to carry was redundant, and why the
- * unconditional call cannot double-broadcast. The recovery predicate is no longer copied here.
+ * server.ts's `queue:command` arm: an UNCONDITIONAL reconcileOnReady. On the "current resolves" path it skips its
+ * recovery block and falls through to the single tail emitNowPlaying, so it re-emits without double-broadcasting.
  */
 function queueCommandArm(cmd: ClientCommand, deps: HubDeps) {
 	handleQueueCommand(cmd, deps);
@@ -123,10 +87,8 @@ function queueCommandArm(cmd: ClientCommand, deps: HubDeps) {
 }
 
 /**
- * The arm as it stood BEFORE the fix — the recovery gate with no re-emit on the resolves path.
- * A deliberate HISTORICAL characterisation of the defect, not a mirror of production: it keeps the
- * old gate spelling on purpose, which is why's single-source census (nowplaying-single-source.test.ts)
- * scans production files only. `nowplaying-after-queue-command.test.ts` discloses itself here.
+ * The defect shape, kept deliberately: the recovery gate with no re-emit on the resolves path. NOT a mirror of
+ * production — which is why the single-source census (nowplaying-single-source.test.ts) scans production only.
  */
 function queueCommandArmPreFix(cmd: ClientCommand, deps: HubDeps) {
 	handleQueueCommand(cmd, deps);
@@ -136,14 +98,12 @@ function queueCommandArmPreFix(cmd: ClientCommand, deps: HubDeps) {
 test('a queue mutation mid-song re-broadcasts the TRUE next, and never the processing entry holding the head slot', () => {
 	const { state, deps, published } = harness();
 
-	// s2's song is queued FIRST but is still processing, so it holds the head of the rotation and every
-	// "what plays next" answer must walk past it.
+	// Queued FIRST but still processing, so it holds the rotation head and every "what plays next" walks past it.
 	deps.actorSingerId = 's2';
 	queueCommandArm(addCmd('q2', 'm-processing', 's2'), deps);
-	// Nothing is playable yet, so the room is idle and there is no next.
 	expect(state.playback.currentEntryId).toBeNull();
 
-	// s1's finished song arrives and auto-starts (the room was idle → the recovery branch).
+	// s1's finished song arrives and auto-starts (room was idle → the recovery branch).
 	deps.actorSingerId = 's1';
 	queueCommandArm(addCmd('q1', 'm-ready-1', 's1'), deps);
 	expect(state.playback.currentEntryId).toBe('q1');
@@ -151,28 +111,23 @@ test('a queue mutation mid-song re-broadcasts the TRUE next, and never the proce
 	// q2 keeps its slot but is not singable, so there is still no next.
 	expect(advertisedUpNextId(published)).toBeNull();
 
-	// ── Transition 1: an ADD while a song plays. The current entry RESOLVES, so reconcileOnReady's
-	// recovery block is NOT entered — only its tail emit runs. This is the reported window.
+	// Transition 1, the reported window: an ADD mid-song. The current entry RESOLVES, so only the tail emit runs.
 	deps.actorSingerId = 's3';
 	const beforeAdd = published.length;
 	queueCommandArm(addCmd('q3', 'm-ready-3', 's3'), deps);
-	// The playing entry was untouched, which is what proves no recovery ran: reconcileOnReady only
-	// mutates playback when the current id does not resolve. EXACTLY ONE nowplaying:changed — the
-	// property that made's unconditional call safe, since reconcileOnReady's single emit sits
-	// outside its recovery block rather than inside each branch.
+	// An untouched playing entry proves no recovery ran; EXACTLY ONE emit is what makes the unconditional call safe.
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(published.slice(beforeAdd).filter((e) => e.type === 'nowplaying:changed').length).toBe(1);
 	// HARD-CODED: q3 is the true next. q2 sits ahead of it in the rotation and is skipped for now.
 	expect(advertisedUpNextId(published)).toBe('q3');
 	expect(advertisedUpNextId(published)).not.toBe('q2');
 
-	// ── Transition 2: the advertised song is REMOVED while the same song still plays. Truth becomes
-	// "no next" — q2 is still processing — so the advertised value must not stay q3.
+	// Transition 2: the advertised song is REMOVED mid-song. q2 is still processing, so truth is "no next".
 	queueCommandArm(removeCmd('q3'), deps);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(advertisedUpNextId(published)).toBeNull();
 
-	// ── Transition 3: a new finished song arrives and becomes the true next.
+	// Transition 3: a new finished song arrives and becomes the true next.
 	queueCommandArm(addCmd('q4', 'm-ready-4', 's3'), deps);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(advertisedUpNextId(published)).toBe('q4');
@@ -181,9 +136,7 @@ test('a queue mutation mid-song re-broadcasts the TRUE next, and never the proce
 });
 
 test('without the else, a mid-song queue mutation leaves the advertised next naming a song that has left the queue', () => {
-	// The defect itself, with the pre-fix arm. This is why the fix belongs at THIS seam: the only
-	// producer of a `nowplaying:changed` broadcast is a playback transition, so a queue transition
-	// silently strands the value the TV renders and pre-warms.
+	// With playback transitions as the only producer, a queue transition strands the value the TV pre-warms from.
 	const { state, deps, published } = harness();
 
 	deps.actorSingerId = 's1';
@@ -199,8 +152,7 @@ test('without the else, a mid-song queue mutation leaves the advertised next nam
 	const beforeRemove = published.length;
 	queueCommandArmPreFix(removeCmd('q3'), deps);
 	expect(state.entries.some((e) => e.id === 'q3')).toBe(false);
-	// THE DEFECT: not one nowplaying:changed, so the last broadcast still names q3 — a song that is no
-	// longer in the queue, and the entry `syncSlots` pre-warms the gapless slot from.
+	// THE DEFECT: no emit, so the last broadcast still names q3 — gone from the queue, yet still pre-warmed.
 	expect(published.slice(beforeRemove).filter((e) => e.type === 'nowplaying:changed').length).toBe(0);
 	expect(advertisedUpNextId(published)).toBe('q3');
 
@@ -209,20 +161,10 @@ test('without the else, a mid-song queue mutation leaves the advertised next nam
 	expect(advertisedUpNextId(published)).toBeNull();
 });
 
-// ── SOURCE-SCAN GUARD for the production line (server.ts) ───────────────────────────────
-// server.ts is the Bun.serve entry: no unit harness, so the behavioural half above drives a
-// MIRROR of its composition and cannot tell whether production actually re-emits. Comments are
-// blanked first so a commented-out call cannot satisfy it (the explanatory comment beside the fix
-// names the call, so this is load-bearing here, not boilerplate).
-//
-// RETARGETED this guard. The re-emit used to be an `else emitNowPlaying(deps)` hanging off a
-// second hand-written copy of the recovery predicate; the copy was the defect, so the `else`
-// went with it. The PROPERTY is unchanged and is what is pinned below — after a queue:command
-// that needed no recovery, exactly one nowplaying:changed is still published — but it is now carried
-// by the unconditional `reconcileOnReady(deps)`, whose single tail emit (player.ts, OUTSIDE the
-// `if (!currentResolves)` block) runs on all three paths. That is why the unconditional call is not
-// the double-emit bug rejected: the rejected shape was an unconditional `emitNowPlaying`, which
-// would emit a SECOND time on the recovery path.
+// server.ts is the Bun.serve entry with no unit harness, so the half above only mirrors its composition. The
+// property pinned below: after a queue:command needing no recovery, exactly one nowplaying:changed is
+// published, carried by the unconditional `reconcileOnReady(deps)` whose single tail emit sits OUTSIDE the
+// `if (!currentResolves)` block. Comments blanked, since the prose beside the fix names the call.
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
@@ -231,13 +173,11 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
 const SERVER = stripComments(readFileSync(at('server.ts'), 'utf8'));
 const PLAYER = stripComments(readFileSync(at('src/lib/server/realtime/player.ts'), 'utf8'));
 
 test('server.ts re-emits nowplaying after a queue:command that did NOT need recovery', () => {
-	// Non-vacuous: the seam this property hangs on must still be here. If the queue:command arm is
-	// renamed or moved, this reds rather than passing over nothing.
+	// Non-vacuous: renaming or moving the queue:command arm reds here rather than passing over nothing.
 	expect(SERVER).toMatch(/handleQueueCommand\(evt\.command/);
 
 	const caseIdx = SERVER.indexOf("case 'queue:command':");
@@ -246,20 +186,15 @@ test('server.ts re-emits nowplaying after a queue:command that did NOT need reco
 	expect(breakIdx).toBeGreaterThan(caseIdx);
 	const arm = SERVER.slice(caseIdx, breakIdx);
 
-	// (a) The arm reconciles on EVERY queue mutation, not only when recovery is due. A conditional
-	// reconcile is the pre- shape: the resolves path would publish queue:patch alone, leaving
-	//     the TV holding the last broadcast upNext — a song since removed, or one reordering pushed
-	//     behind another singer, with syncSlots pre-warming the gapless slot from that stale entry.
+	// (a) Reconcile on EVERY queue mutation: a conditional reconcile leaves the resolves path emitting nothing.
 	expect(arm).toMatch(/reconcileOnReady\(deps\)/);
 	expect(arm).not.toMatch(/\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.]*playback\.currentEntryId/);
 	expect(arm).not.toMatch(/\b(?:if|else)\b[^\n]*reconcileOnReady\(deps\)/);
 
-	// (b) It must NOT be an unconditional `emitNowPlaying` — that is the double-emit shape
-	//     weighed and rejected, since it would fire a second time on the recovery path.
+	// (b) NOT an unconditional `emitNowPlaying`, which would fire a SECOND time on the recovery path.
 	expect(arm).not.toMatch(/\bemitNowPlaying\b/);
 
-	// (c) Prove (a)+(b) DISCRIMINATE rather than passing on anything: re-introducing either rejected
-	//     shape into this same text must red. Both mutants are applied to the real arm.
+	// (c) Prove (a)+(b) DISCRIMINATE: re-introducing either rejected shape into this same text must red.
 	const withGate = arm.replace(
 		/reconcileOnReady\(deps\)/,
 		'if (!state.entries.some((e) => e.id === state.playback.currentEntryId)) reconcileOnReady(deps)'
@@ -268,10 +203,8 @@ test('server.ts re-emits nowplaying after a queue:command that did NOT need reco
 	const withUnconditionalEmit = arm.replace(/reconcileOnReady\(deps\)/, 'emitNowPlaying(deps)');
 	expect(withUnconditionalEmit).toMatch(/\bemitNowPlaying\b/);
 
-	// (d) The single-emit property lives in the callee, so pin it there: reconcileOnReady's ONE
-	//     emitNowPlaying call must sit OUTSIDE its `if (!currentResolves)` block. Moving it inside
-	//     (or adding a second) is exactly what would make the unconditional call double-broadcast on
-	//     the recovery path, and no behavioural test of the mirror above would notice.
+	// (d) The single-emit property lives in the callee: reconcileOnReady's ONE emitNowPlaying must sit OUTSIDE
+	//     its `if (!currentResolves)` block, or the unconditional call double-broadcasts on the recovery path.
 	const fnIdx = PLAYER.indexOf('export function reconcileOnReady(');
 	expect(fnIdx).toBeGreaterThanOrEqual(0);
 	const body = PLAYER.slice(fnIdx, PLAYER.indexOf('\n}', fnIdx));
@@ -280,8 +213,7 @@ test('server.ts re-emits nowplaying after a queue:command that did NOT need reco
 	const emits = [...body.matchAll(/\bemitNowPlaying\(deps\)/g)];
 	expect(emits.length).toBe(1);
 	expect(emits[0]!.index).toBeGreaterThan(gateIdx); // after the block, not inside a branch of it
-	// The block must be CLOSED before the emit — count braces from the gate to the emit and require
-	// the depth to be back to zero, so an emit textually "after" the `if` but still nested reds.
+	// Brace depth back to zero, so an emit textually "after" the `if` but still nested inside it reds.
 	const between = body.slice(gateIdx, emits[0]!.index);
 	const opens = (between.match(/\{/g) ?? []).length;
 	const closes = (between.match(/\}/g) ?? []).length;

@@ -1,20 +1,14 @@
 /*
  * P5 — PROCESS LIFECYCLE, THE UNHAPPY PATHS.
  *
- * Drives the fake worker's fault-injection env vars (see HARNESS.md) end to end and reports what
- * actually reaches a phone/TV/library surface. Each scenario is a self-contained subroutine that:
- *   1. Wipes $SCRATCH, seeds, boots a fresh server on $PORT, spawns a phone WS observer, spawns the
- *      fake worker with that scenario's env vars.
- *   2. Joins, resolves a local media id, drives the requested action (process, remove, kill,
- *      cap).
- *   3. Observes WS media:status frames, /api/library, /api/search, /media/<ref> and the job DB via
- *      the frames the server broadcasts.
- *   4. Reports findings by SEVERITY (CRITICAL/HIGH/MEDIUM/LOW) with the source path:line evidence,
- *      separate from any ENVIRONMENT LIMITS that make a proof impossible on this box.
+ * Each scenario below wipes $SCRATCH, boots a FRESH seeded server on $PORT with its own phone WS
+ * observer and its own fake worker, drives one action, and reports what actually reached a phone / TV /
+ * library surface. Fault-injection env vars: docs/E2E.md#fault-injection
+ *
+ * Findings carry a severity and path:line evidence, kept separate from ENVIRONMENT LIMITS that make a
+ * proof impossible on this box. Exit codes: docs/E2E.md#exit-codes-and-what-ran-means
  *
  *   PORT=5225 bun tests/e2e/probes/p5-process-lifecycle.mjs
- *
- * Exit: 0 all defensible findings hold, 1 a real defect surfaced, 2 the environment could not host.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
@@ -22,41 +16,18 @@ import { join } from 'node:path';
 import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * pattern the other out-of-program drivers use). This probe drives raw sockets + HTTP rather than a cdp Page, so its own shapes
- * are declared here. Every WS frame and JSON endpoint result is protocol-/API-shaped and stays loose
- * (cast at the call site) — the strong typing is on the probe's own control flow.
+ * Protocol- and API-shaped values stay loose and are cast at the call site; the strong typing is on
+ * this probe's own control flow.
  *
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
  * @typedef {{ severity: Severity, title: string, detail?: string, evidence?: string[] }} Finding
  * @typedef {import('node:child_process').ChildProcess} Child
- *
- * A media row as returned by /api/search and /api/library (the fields this probe reads).
  * @typedef {{ id: string, source?: string, songProfile?: unknown, vocalsRef?: string | null }} Media
- *
- * One decoded WS frame. Frames are heterogeneous; every field the probe reads is optional.
- * @typedef {{
- *   type?: string,
- *   status?: string,
- *   mediaId?: string,
- *   pct?: number,
- *   clientOpId?: string,
- *   reason?: string,
- *   unservable?: boolean,
- *   patch?: { entries?: Array<{ id?: string }> }
- * }} WsEvent
- *
- * The authenticated phone socket handle returned by openAuthedPhoneSocket().
- * @typedef {{
- *   ws: WebSocket,
- *   events: WsEvent[],
- *   send: (obj: unknown) => void,
- *   close: () => void,
- *   statusOf: (mediaId: string) => WsEvent[],
- *   lastStatus: (mediaId: string) => WsEvent | undefined
- * }} Phone
- *
- * A spawned process handle with its log path, as bootServer/bootWorker return.
+ * One decoded WS frame; frames are heterogeneous, so every field read is optional.
+ * @typedef {{ type?: string, status?: string, mediaId?: string, pct?: number, clientOpId?: string,
+ *   reason?: string, unservable?: boolean, patch?: { entries?: Array<{ id?: string }> } }} WsEvent
+ * @typedef {{ ws: WebSocket, events: WsEvent[], send: (obj: unknown) => void, close: () => void,
+ *   statusOf: (mediaId: string) => WsEvent[], lastStatus: (mediaId: string) => WsEvent | undefined }} Phone
  * @typedef {{ proc: Child, log: string }} Handle
  */
 
@@ -67,12 +38,7 @@ const MEDIA_DIR = join(SCRATCH, 'media');
 
 /** @type {Finding[]} */
 const findings = [];
-/**
- * @param {Severity} severity
- * @param {string} title
- * @param {string} [detail]
- * @param {string[]} [evidence]
- */
+/** @param {Severity} severity @param {string} title @param {string} [detail] @param {string[]} [evidence] */
 function record(severity, title, detail, evidence = []) {
 	findings.push({ severity, title, detail, evidence });
 	console.log(`\n[${severity}] ${title}`);
@@ -85,14 +51,9 @@ function bail(msg) {
 	process.exit(2);
 }
 
-// ── process management ─────────────────────────────────────────────────────
 /** @type {Child[]} */
 const spawned = [];
-/**
- * @param {string} cmd
- * @param {string[]} args
- * @param {import('node:child_process').SpawnOptions} [opts]
- */
+/** @param {string} cmd @param {string[]} args @param {import('node:child_process').SpawnOptions} [opts] */
 function launch(cmd, args, opts = {}) {
 	const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 	spawned.push(p);
@@ -131,7 +92,6 @@ async function waitForHealth(timeoutMs = 15000) {
 	return false;
 }
 
-// ── one-scenario harness ────────────────────────────────────────────────────
 async function bootServer() {
 	if (existsSync(SCRATCH)) rmSync(SCRATCH, { recursive: true, force: true });
 	mkdirSync(join(MEDIA_DIR), { recursive: true });
@@ -161,11 +121,7 @@ async function bootServer() {
 	return { proc: p, log: serverLog };
 }
 
-/**
- * @param {Record<string, string>} env
- * @param {string} [tag]
- * @returns {Promise<Handle>}
- */
+/** @param {Record<string, string>} env @param {string} [tag] @returns {Promise<Handle>} */
 async function bootWorker(env, tag = 'worker') {
 	const workerLog = join(SCRATCH, `${tag}.log`);
 	const wOut = Bun.file(workerLog).writer();
@@ -175,16 +131,12 @@ async function bootWorker(env, tag = 'worker') {
 	});
 	p.stdout?.on('data', (d) => wOut.write(d));
 	p.stderr?.on('data', (d) => wOut.write(d));
-	// Wait a beat for the worker's WS handshake to reach the hub.
+	// The worker's WS handshake must reach the hub before anything tries to dispatch to it.
 	await sleep(500);
 	return { proc: p, log: workerLog };
 }
 
-/**
- * @param {string} name
- * @param {string} [color]
- * @returns {Promise<{ cookie: string, singerId: string }>}
- */
+/** @param {string} name @param {string} [color] @returns {Promise<{ cookie: string, singerId: string }>} */
 async function joinRoom(name, color = 'violet') {
 	const r = await fetchNoKeepalive(`${BASE}/api/join`, {
 		method: 'POST',
@@ -192,7 +144,6 @@ async function joinRoom(name, color = 'violet') {
 		body: JSON.stringify({ displayName: name, color })
 	});
 	if (!r.ok) throw new Error(`join failed: ${r.status} ${await r.text()}`);
-	// Read the Set-Cookie header so subsequent authed requests can present it.
 	const raw = r.headers.get('set-cookie') ?? '';
 	const m = /encore_singer=([^;]+)/.exec(raw);
 	if (!m) throw new Error(`join returned no session cookie: ${raw}`);
@@ -203,8 +154,8 @@ async function joinRoom(name, color = 'violet') {
 
 /** @param {string} q @returns {Promise<Media>} */
 async function searchLocal(q) {
-	// Retry once — between scenarios a stray keep-alive can surface as "Unable to connect" against
-	// a server that is already answering /health. The retry stabilises fetch across the boundary.
+	// Retry once: a stray keep-alive across a scenario boundary surfaces as "Unable to connect" against
+	// a server that is already answering /health.
 	/** @type {unknown} */
 	let lastErr;
 	for (let i = 0; i < 5; i++) {
@@ -227,16 +178,9 @@ async function searchLocal(q) {
 	throw lastErr;
 }
 
-/** Queue a song for the authenticated phone WS. Returns the entryId used. The socket has resolved
- *  its singerId at upgrade from the cookie header, so the add op's entry must carry all six fields
- *  validateCommand's add arm requires — id, mediaId, singerId, status:'queued', rotationSeq and a
- *  finite addedAt — or the op is rejected (a missing addedAt reds first, then a missing status). */
-/**
- * @param {Phone} phone
- * @param {string} singerId
- * @param {string} mediaId
- * @returns {Promise<string>}
- */
+/** The add op's entry must carry ALL SIX fields validateCommand requires — id, mediaId, singerId,
+ *  status:'queued', rotationSeq and a finite addedAt — or the op is silently rejected.
+ *  @param {Phone} phone @param {string} singerId @param {string} mediaId @returns {Promise<string>} */
 async function queueViaWs(phone, singerId, mediaId) {
 	const entryId = `entry_${Math.random().toString(36).slice(2, 10)}`;
 	const clientOpId = `op_${Math.random().toString(36).slice(2, 10)}`;
@@ -271,12 +215,7 @@ async function queueViaWs(phone, singerId, mediaId) {
 	throw new Error(`queue add timed out; last events: ${JSON.stringify(phone.events.slice(-3))}`);
 }
 
-/** Remove an entry via authenticated WS. Waits for the queue:patch or an op:reject. */
-/**
- * @param {Phone} phone
- * @param {string} entryId
- * @returns {Promise<void>}
- */
+/** Waits for the queue:patch, or an op:reject. @param {Phone} phone @param {string} entryId @returns {Promise<void>} */
 async function queueRemoveViaWs(phone, entryId) {
 	const clientOpId = `op_${Math.random().toString(36).slice(2, 10)}`;
 	const marker = phone.events.length;
@@ -297,10 +236,7 @@ async function queueRemoveViaWs(phone, entryId) {
 	throw new Error(`queue remove timed out; last events: ${JSON.stringify(phone.events.slice(marker, marker + 5))}`);
 }
 
-/**
- * @param {string} cookie
- * @param {string} mediaId
- */
+/** @param {string} cookie @param {string} mediaId */
 async function requestProcess(cookie, mediaId) {
 	return fetchNoKeepalive(`${BASE}/api/process`, {
 		method: 'POST',
@@ -309,19 +245,12 @@ async function requestProcess(cookie, mediaId) {
 	});
 }
 
-// Open a WS handshake with a cookie header — needed for queue commands, which are only accepted
-// after the singerId is resolved at upgrade. Node/Bun's global WebSocket does not accept headers,
-// so we speak raw HTTP upgrade with Bun.connect().
-/**
- * @param {string} cookie
- * @returns {Promise<Phone>}
- */
+// The cookie must ride the HANDSHAKE: queue commands are only accepted once singerId is resolved at upgrade.
+/** @param {string} cookie @returns {Promise<Phone>} */
 async function openAuthedPhoneSocket(cookie) {
 	/** @type {WsEvent[]} */
 	const events = [];
-	// Bun's fetch supports WebSocket upgrade — pass headers and it returns a Response you can .webSocket
-	// no, actually the right API is `new WebSocket(url, { headers })` — Bun supports the second arg.
-	// If that fails we fall through to unauthed.
+	// Bun accepts headers as WebSocket's second arg; if that fails, fall through to an unauthed socket.
 	let ws;
 	try {
 		ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`, /** @type {any} */ ({ headers: { cookie } }));
@@ -357,15 +286,8 @@ async function openAuthedPhoneSocket(cookie) {
 	};
 }
 
-// Wait until a media:status matching a predicate arrives on the phone.
-/**
- * @param {Phone} phone
- * @param {string} mediaId
- * @param {(e: WsEvent) => boolean} predicate
- * @param {number} [timeoutMs]
- * @param {string} [label]
- * @returns {Promise<WsEvent>}
- */
+/** @param {Phone} phone @param {string} mediaId @param {(e: WsEvent) => boolean} predicate
+ *  @param {number} [timeoutMs] @param {string} [label] @returns {Promise<WsEvent>} */
 async function waitForStatus(phone, mediaId, predicate, timeoutMs = 15000, label = '') {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
@@ -380,10 +302,7 @@ async function waitForStatus(phone, mediaId, predicate, timeoutMs = 15000, label
 	throw new Error(`waitForStatus timeout${label ? ' (' + label + ')' : ''}: mediaId=${mediaId} seen: [${seen}]`);
 }
 
-/**
- * @param {Handle | undefined} server
- * @param {Handle | undefined} worker
- */
+/** @param {Handle | undefined} server @param {Handle | undefined} worker */
 async function cleanupScenario(server, worker) {
 	try {
 		worker?.proc.kill('SIGKILL');
@@ -395,24 +314,19 @@ async function cleanupScenario(server, worker) {
 	} catch {
 		/* the process may already have exited */
 	}
-	// Longer than a keep-alive: Bun's HTTP client pools sockets for 1-2s and a POST to a killed
-	// server surfaces as "Unable to connect" against the fresh boot on the next scenario.
+	// Longer than Bun's 1-2s socket pooling, or a POST to the killed server surfaces as "Unable to
+	// connect" against the next scenario's fresh boot.
 	await sleep(1500);
 }
 
-/** Fetch with Connection: close so Bun does not pool a socket across a scenario boundary. */
-/**
- * @param {string} url
- * @param {RequestInit} [init]
- */
+/** Connection: close, so Bun does not pool a socket across a scenario boundary.
+ *  @param {string} url @param {RequestInit} [init] */
 async function fetchNoKeepalive(url, init = {}) {
 	const headers = { .../** @type {Record<string, string>} */ (init.headers ?? {}), connection: 'close' };
 	return fetch(url, { ...init, headers, keepalive: false });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Scenarios
-// ─────────────────────────────────────────────────────────────────────────────
 
 async function scenario1_silentInstrumental() {
 	console.log('\n=== 1. FAKE_SILENT_INSTRUMENTAL — a floor-level instrumental must be refused ===');
@@ -431,17 +345,15 @@ async function scenario1_silentInstrumental() {
 			10000,
 			'silent-ins terminal'
 		);
-		// Independent server-side proof: /api/library will list a "processed" song as ready.
 		const lib = await (await fetchNoKeepalive(`${BASE}/api/library`)).json();
 		const inReady = /** @type {Media[]} */ (lib.library).some((m) => m.id === media.id);
-		// The file on disk MUST be silent (all zeros beyond the 44-byte header) — check that too.
+		// The artifact on disk must genuinely be silent: all zeros beyond the 44-byte WAV header.
 		const stemPath = join(MEDIA_DIR, 'derived', 'stems', `${media.id}-instrumental.wav`);
 		const stemBytes = existsSync(stemPath) ? statSync(stemPath).size : 0;
 		let allZeroAudio = false;
 		if (stemBytes > 44) {
 			const buf = await Bun.file(stemPath).arrayBuffer();
 			const view = new Uint8Array(buf, 44);
-			// Every sample is 0 (silence emits amp=0 which quantizes to 0).
 			allZeroAudio = view.every((b) => b === 0);
 		}
 		if (last.status === 'ready' && inReady && allZeroAudio) {
@@ -496,9 +408,8 @@ async function scenario2_silentVocals() {
 		const lib = await (await fetchNoKeepalive(`${BASE}/api/library`)).json();
 		const inReady = /** @type {Media[]} */ (lib.library).some((m) => m.id === media.id);
 		if (last.status === 'ready' && inReady) {
-			// The vocals ref should be set (the fake worker still reports it) even though the file is
-			// silent — the design says an absent ref means "no guide" and the worker trusts its own
-			// content check, so an all-nulls stem still linked here matches the docstring intent.
+			// vocalsRef stays SET even for a silent file: an absent ref means "no guide", so a silent
+			// stem must still be linked.
 			const catalog = /** @type {Media[]} */ (lib.library).find((m) => m.id === media.id);
 			const vocRef = catalog?.vocalsRef ?? null;
 			record(
@@ -541,7 +452,7 @@ async function scenario3_skipWrite() {
 		const r = await requestProcess(cookie, media.id);
 		if (!r.ok) throw new Error(`process failed: ${r.status} ${await r.text()}`);
 		const last = await waitForStatus(phone, media.id, (e) => e.status === 'ready' || e.status === 'failed', 10000);
-		// Check the /media route for the reported ref. It SHOULD 404 — nothing on disk.
+		// The reported ref SHOULD 404: nothing was written to disk.
 		const stemPath = join(MEDIA_DIR, 'derived', 'stems', `${media.id}-instrumental.wav`);
 		const onDisk = existsSync(stemPath);
 		const mediaResp = await fetchNoKeepalive(`${BASE}/media/derived/stems/${media.id}-instrumental.wav`, {
@@ -643,14 +554,11 @@ async function scenario5_failStems() {
 			15000,
 			'fail-stems terminal'
 		);
-		// After settleStemsGate, /api/search must return the song as re-processable (unacquired, or at
-		// least NOT ready/processing) so the singer can retry.
+		// After settleStemsGate the song must be re-processable — not ready, not processing — or no retry exists.
 		const search = await (await fetchNoKeepalive(`${BASE}/api/search?q=caroline`)).json();
 		const inReady = /** @type {Media[]} */ (search.ready).some((m) => m.id === media.id);
 		const inProcessing = /** @type {Media[]} */ (search.processing).some((m) => m.id === media.id);
 		const inRaw = /** @type {Media[]} */ (search.results).some((m) => m.id === media.id);
-		// Retry: process a SECOND time. If the settle worked, processState returns 'processable' and
-		// the API returns a fresh job.
 		const retry = await requestProcess(cookie, media.id);
 		const retryOk = retry.ok;
 		const retryBody = await retry.json().catch(() => ({}));
@@ -695,20 +603,17 @@ async function scenario5_failStems() {
 async function scenario6_removeMidProcess() {
 	console.log('\n=== 6. REMOVE MID-PROCESS — status settles CANCELED, not FAILED ===');
 	const server = await bootServer();
-	// Progress frames every 5s keep the stems job alive long enough to remove it mid-flight.
 	const worker = await bootWorker({ FAKE_SLOW_MS: '5000' }, 'slow-remove');
 	try {
 		const { cookie, singerId } = await joinRoom(`P5s6-${Date.now() % 100000}`);
 		const phone = await openAuthedPhoneSocket(cookie);
 		const media = await searchLocal('caroline');
-		// Queue the song first — cancelJobsForMedia short-circuits when NO one still needs the media
-		// (that is the correct behaviour when a shared process is in flight). Our singleton entry means a
-		// remove triggers the cancel + settle + broadcast we want to observe.
+		// Queue FIRST: cancelJobsForMedia short-circuits when nobody still needs the media, so only a
+		// singleton entry makes the remove produce the cancel + settle + broadcast this observes.
 		const entryId = await queueViaWs(phone, singerId, media.id);
 		const rc = await requestProcess(cookie, media.id);
 		if (!rc.ok) throw new Error(`process failed: ${rc.status} ${await rc.text()}`);
-		// Wait until the worker has actually reported progress (an in-flight stems job). Otherwise the
-		// cancel arrives before findLive can find anything, and cancelJobsForMedia is a no-op.
+		// Without a reported progress frame there is no live job for findLive, and the cancel is a no-op.
 		await waitForStatus(
 			phone,
 			media.id,
@@ -716,10 +621,8 @@ async function scenario6_removeMidProcess() {
 			10000,
 			'first worker progress frame'
 		);
-		// Now REMOVE — onEntryRemoved → cancelJobsForMedia → job:cancel + settleStemsGate + broadcast.
 		await queueRemoveViaWs(phone, entryId);
-		// Watch for the canceled broadcast. FAKE_SLOW_MS=5000 so the next progress frame is up to 5s
-		// out; give the settle broadcast up to 8s.
+		// FAKE_SLOW_MS=5000 puts the next progress frame up to 5s out, so the settle gets 8s.
 		let last;
 		try {
 			last = await waitForStatus(
@@ -772,9 +675,8 @@ async function scenario6_removeMidProcess() {
 
 async function scenario7_killWorker() {
 	console.log('\n=== 7. KILL WORKER MID-PROCESS — reaper requeues the job ===');
-	// The progress lease is 30s by default (leases.ts DEFAULT_LEASE_CONFIG), so this scenario needs
-	// ≥30s wall time even in the happiest case. Also Bun.serve's idleTimeout=30 governs when the
-	// dead worker's WS is detected as closed. Total budget: 30 (lease) + 3 (tick) + a few more.
+	// The progress lease is 30s and Bun.serve's idleTimeout is 30, so this scenario CANNOT finish in
+	// under ~33s however healthy the box: 30 (lease) + 3 (reaper tick) + margin.
 	const server = await bootServer();
 	const worker = await bootWorker({ FAKE_SLOW_MS: '4000' }, 'kill-target');
 	try {
@@ -783,16 +685,13 @@ async function scenario7_killWorker() {
 		const media = await searchLocal('caroline');
 		const r = await requestProcess(cookie, media.id);
 		if (!r.ok) throw new Error(`process failed: ${r.status} ${await r.text()}`);
-		// Wait for the FIRST progress frame — that stamps a fresh progressDeadline the reaper will
-		// then time out. Without waiting we might kill the worker before the assign lands and the
-		// only lease is an ack lease, which reaps far faster (10s) with different semantics.
+		// The FIRST progress frame stamps the progressDeadline this scenario is about. Kill the worker
+		// before the assign lands and the only lease is an ACK lease, which reaps in 10s with different semantics.
 		await waitForStatus(phone, media.id, (e) => (e.pct ?? 0) > 0, 12000, 'first progress frame');
 		const killedAt = Date.now();
 		if (worker.proc.pid) process.kill(worker.proc.pid, 'SIGKILL');
-		// Watch for any of the three signals the reaper produces on recovery:
-		//   - a 'queued' broadcast (reaper requeued the job)
-		//   - unservable:true on the media:status (dispatch found no capable worker after requeue)
-		//   - a terminal 'failed' (attempts exhausted, though we only used 1 so this is unlikely)
+		// Any of the reaper's three recovery signals counts: a 'queued' requeue, unservable:true (no
+		// capable worker after the requeue), or a terminal 'failed'.
 		let terminal = null;
 		let requeuedSignal = null;
 		const deadline = killedAt + 90_000;
@@ -824,7 +723,7 @@ async function scenario7_killWorker() {
 				]
 			);
 		} else {
-			// Look at the server log for the reaper trace so a reader can see whether the tick ran.
+			// Surface the reaper trace from the server log, so a reader can tell whether the tick ran at all.
 			const log = existsSync(server.log) ? readdirSync(SCRATCH).filter(Boolean) : [];
 			record(
 				'HIGH',
@@ -846,7 +745,6 @@ async function scenario7_killWorker() {
 async function scenario8_perSingerCap() {
 	console.log('\n=== 8. MAX_CONCURRENT_PROCESSES_PER_SINGER — 429 with a human reason ===');
 	const server = await bootServer();
-	// Keep processes in flight long enough that the cap actually pinches.
 	const worker = await bootWorker({ FAKE_SLOW_MS: '5000', FAKE_CONCURRENCY: '3' }, 'cap-worker');
 	try {
 		const { cookie, singerId } = await joinRoom(`P5s8-${Date.now() % 100000}`);
@@ -870,9 +768,8 @@ async function scenario8_perSingerCap() {
 			phone.close();
 			return;
 		}
-		// Attribution to a singer happens through their QUEUE ENTRIES (countInFlightProcesses reads
-		// state.entries filtered by singerId). Reproduce the client's process-and-queue flow: queue
-		// then process per song, so the cap can actually see this singer's in-flight processes.
+		// countInFlightProcesses attributes through QUEUE ENTRIES, so each song must be queued AND
+		// processed or the cap cannot see this singer at all.
 		const rs = [];
 		for (let i = 0; i < 3; i++) {
 			await queueViaWs(phone, singerId, medias[i].id);
@@ -888,8 +785,7 @@ async function scenario8_perSingerCap() {
 			phone.close();
 			return;
 		}
-		// The 4th tap: queue then process. The cap must fire regardless of whether the queue add lands
-		// first — countInFlightProcesses counts distinct medias in this singer's processing entries.
+		// The 4th tap must be refused whichever of the queue add and the process lands first.
 		await queueViaWs(phone, singerId, medias[3].id);
 		const fourth = await requestProcess(cookie, medias[3].id);
 		const body = await fourth.json().catch(() => ({}));
@@ -917,8 +813,7 @@ async function scenario8_perSingerCap() {
 				`status=429 but body=${JSON.stringify(body)}. The phone reads reason:"over-limit" + error string; without the reason, generic 429 handling would fire.`
 			);
 		} else {
-			// Cap did not fire — worth breaking down WHY. countInFlightProcesses iterates queue entries; if
-			// the queue adds were rejected the cap can never see this singer.
+			// If the queue adds were rejected the cap could never see this singer — say which it was.
 			const patches = phone.events.filter((e) => e.type === 'queue:patch');
 			const totalEntries = patches[patches.length - 1]?.patch?.entries?.length ?? 0;
 			record(
@@ -937,12 +832,9 @@ async function scenario8_perSingerCap() {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Main
-// ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-	// Preflight: is anything already on :PORT?
 	try {
 		const h = await fetch(`${BASE}/health`);
 		if (h.ok) {
@@ -971,7 +863,6 @@ async function main() {
 		}
 	}
 
-	// ── Summary ───────────────────────────────────────────────────────────────
 	console.log('\n\n=== P5 SUMMARY ===');
 	/** @type {Record<Severity, Finding[]>} */
 	const bySev = { CRITICAL: [], HIGH: [], MEDIUM: [], LOW: [] };

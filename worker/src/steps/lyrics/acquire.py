@@ -1,8 +1,4 @@
-"""Getting WORDS: the upload's own caption track, then every source the registry offers.
-
-Extracted from `steps/lyrics.py`, which held all six lyrics steps in 1029 lines — 55% of every step
-in the worker, where no other step file holds more than four.
-"""
+"""Getting WORDS: the upload's own caption track, then every source the registry offers."""
 
 from __future__ import annotations
 
@@ -51,12 +47,10 @@ class FetchCaptions(Step):
     def __init__(self, kind: str, *, ytdlp_bin: str = "yt-dlp", keep_raw: bool = False) -> None:
         self.kind = kind
         self.auto = kind == MACHINE
-        # The worker's configured yt-dlp binary (ENCORE_YTDLP_BIN), threaded from the align plan. Without
-        # it every caption fetch shelled out to a bare "yt-dlp" from PATH and silently missed.
+        # Threaded from the align plan (ENCORE_YTDLP_BIN); unset, every fetch shells out to a bare
+        # "yt-dlp" off PATH and silently misses.
         self.ytdlp_bin = ytdlp_bin
-        # Whether to retain the raw caption track. A RESOLVED bool threaded from config via the
-        # align plan -- the step no longer reads the environment, so ENCORE_KEEP_RAW_CAPTIONS=0 is off
-        # like every other worker boolean rather than a truthy non-empty string.
+        # Resolved bool threaded from config (ENCORE_KEEP_RAW_CAPTIONS), not read from env here.
         self.keep_raw = keep_raw
         self.name = f"fetch-captions:{'machine' if self.auto else 'authored'}"
         self.writes = frozenset({"lyrics.machine_cues" if self.auto else "lyrics.authored_cues"})
@@ -74,9 +68,8 @@ class FetchCaptions(Step):
             auto=self.auto,
         )
         try:
-            # yt-dlp caption fetch emits no parseable progress, so the parser is constant-None: the
-            # shared run_stage then brackets the drain with pct=0 and a single pct=100 — exactly the
-            # bracket this step emitted by hand before it shared one implementation with the others.
+            # yt-dlp caption fetch emits no parseable progress, so the parser is constant-None and
+            # run_stage brackets the drain with pct=0 then a single pct=100.
             async for ev in run_stage(ctx.runner, self.stage, argv, lambda _line: None):
                 yield ev
         except Exception as exc:  # noqa: BLE001 — no track / no yt-dlp / no network: all the same miss
@@ -123,15 +116,12 @@ class FetchCaptions(Step):
 
 
 class AcquireTexts(Step):
-    """Run every source and collect what it yielded.
+    """Run every source and collect what it yielded, independently rather than first-hit: a candidate
+    and the baselines that grade it are complements, and a dead LRCLIB must degrade the RESULT rather
+    than fail the job.
 
-    Independently, not first-hit: a candidate and the baselines that grade it are complements, and a dead
-    LRCLIB must degrade the RESULT rather than fail the job.
-
-    This is the one step that can STOP the plan. "This song has no words" is a RESULT — a genuine
-    instrumental has none by nature — and it used to be an early `return` inside the god-method. Raising
-    would be worse than wrong: readiness waits on align, so a raise would leave an instrumental stuck
-    processing forever on a step that is working correctly.
+    The one step that can STOP the plan: "this song has no words" is a RESULT, not an error — raising
+    would leave an instrumental stuck processing forever, since readiness waits on align.
     """
 
     name = "acquire-texts"
@@ -158,15 +148,13 @@ class AcquireTexts(Step):
     def _build_sources(self, ctx: Ctx, req: LyricsRequest) -> list[Any]:
         """The sources that can run for this request, from the declared registry.
 
-        Two candidates and three baselines, the latter with independent failure modes — the stem gives the
-        cleanest words, the mix is the only one that still speaks when separation produced silence (2 of 9
-        stems on this library did), and YouTube's machine track is a weak third opinion that abstains when
-        too thin to judge with.
+        Two candidates and three baselines with independent failure modes — the stem gives the cleanest
+        words, the mix still speaks when separation produced silence (2 of 9 stems on this library
+        did), and YouTube's machine track abstains when too thin to judge with.
 
         Goes through `lyrics/registry.py` rather than a hardcoded list so a source that CANNOT run says
-        which input was missing. That is the gap behind the LRCLIB sinkhole: the provider had been failing
-        100% for a month and it looked exactly like songs without lyrics, because a bare `return None` and
-        "this song is an instrumental" are the same observation.
+        which input was missing — a bare `return None` and "this song is an instrumental" look
+        identical otherwise, which is how a provider failing 100% for a month went undetected.
         """
         if self._sources is not None:
             return self._sources
@@ -182,16 +170,13 @@ class AcquireTexts(Step):
         return sources
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
-        # an operator RE-PICK short-circuits acquisition entirely. The core names the candidate to
-        # re-time (`pinnedRef`), optionally with pasted words (`pinnedText`). Re-running the providers
-        # could only produce a different answer than the one the human just chose — and grading it would
-        # discard the pin outright (see GradeAndSelect.applies).
+        # An operator RE-PICK (core's `pinnedRef`, optionally `pinnedText`) short-circuits acquisition
+        # entirely — re-running providers could only override the human's choice, and grading would
+        # discard the pin (see GradeAndSelect.applies).
         #
-        # THE BRANCH LIVES IN GUARDS, not in a step of its own. (1) not acquiring and (2) not grading are
-        # REFUSALS, and `applies()`/an early return are where this worker puts refusals; only (3) timing
-        # under a caller-chosen ref is new work, and TimeTexts stays the single place that times and emits
-        # (E8: one writer per artifact kind). A front-of-plan step would be a second producer of
-        # `lyrics.texts` and would still not spare TimeTexts the ref override.
+        # The branch lives in GUARDS, not a step of its own: not-acquiring and not-grading are REFUSALS,
+        # which belong in `applies()`/early-return; TimeTexts stays the one place that times and emits
+        # (E8: one writer per artifact kind).
         asked = str(ctx.params.get("pinnedRef") or "").strip()
         pinned_ref = _pinned_ref(ctx)
         if asked and pinned_ref is None:

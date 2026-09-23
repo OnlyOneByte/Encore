@@ -1,12 +1,7 @@
-// (drag rewired to the whole queue in) — the reorder mode against the REAL
-// server, not a fixture.
-//
-// The requirement names this mechanism explicitly: "a harness test drives real ops through
-// `handleQueueCommand` to produce the invalidating states (the `AuthoritativeState` + `HubDeps` idiom
-// used by `autostart.test.ts` is the working template)". The reason it is not a fixture test is that
-// the invalidating states are produced by `assignSeqs` re-deriving every `rotationSeq` on every
-// mutation — the behaviour under test IS the interaction between the ops and the ordering layer, so
-// hand-writing the "after" state would pin my belief about it rather than the thing itself.
+// The reorder mode against the REAL server, not a fixture. The invalidating states are produced by
+// `assignSeqs` re-deriving every `rotationSeq` on every mutation, so the behaviour under test IS the
+// interaction between the ops and the ordering layer — hand-writing an "after" state would pin a belief
+// about it rather than the thing itself. Real ops go through `handleQueueCommand`.
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { reconcileOnReady } from '$lib/server/realtime/player';
@@ -17,9 +12,9 @@ import { modeInvalidation, liveSortTarget, gripVisible } from '$lib/reorder-mode
 
 /**
  * `n` uniform 60px rows stacked from y=0, as a real render would report them. The live sort takes the rows'
- * BOXES since 2026-09-22 (one height cannot place a list that mixes queued rows with taller processing
- * cards), and what these arms are about is the INDEX SPACE following the list's length — so the geometry is
- * deliberately the simplest thing that can express "a drag long enough to reach the end".
+ * BOXES, because one height cannot place a list mixing queued rows with taller processing cards — but these
+ * arms are about the INDEX SPACE following the list's length, so the geometry is the simplest thing that
+ * can express "a drag long enough to reach the end".
  */
 const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ top: i * 60, height: 60 }));
 
@@ -78,29 +73,24 @@ test('another guest queueing mid-drag re-orders the list, and the mode tracks th
 	const before = queuedList(state).map((e) => e.id);
 	expect(before).toHaveLength(2);
 	expect(modeInvalidation(queuedList(state), 'a', 'queued')).toBeNull();
-	/*
-	 * RE-POINTED FROM `queueSlots` (2026-09-21): there are no drawn targets to count any more. What the arm
-	 * actually claims is that the drag's index space follows the list's LENGTH as it changes underneath — so
-	 * it asks the live-sort arithmetic where a long drag lands, which is the last position that exists.
-	 */
+	// The claim is that the drag's index space follows the list's LENGTH as it changes underneath, so this
+	// asks the live-sort arithmetic where a long drag lands: the last position that exists.
 	expect(liveSortTarget({ fromIndex: 0, offsetPx: 10_000, rowBoundsPx: rows(2), count: 2 })).toBe(1);
 
-	// A DIFFERENT guest queues a song while my drag is open. This is the real op through the real hub,
-	// so the re-derivation is the server's own.
+	// A DIFFERENT guest queues a song mid-drag, through the real hub, so the re-derivation is the server's.
 	handleQueueCommand(addCmd('x', 'm3', 's2'), { ...deps, actorSingerId: 's2' });
 
-	// The flat list genuinely changed underneath: a third entry is in it, and fair rotation interleaves
-	// s2 between my two picks — so this is not a no-op dressed as a test.
+	// Non-vacuity: the flat list really changed, and fair rotation interleaves s2 between my two picks.
 	const flat = queuedList(state).map((e) => e.id);
 	expect(flat).toHaveLength(3);
 	expect(flat).toContain('x');
 	expect(flat.indexOf('x')).toBeLessThan(flat.indexOf('b'));
 
-	// …and the mode stays open, now spanning the WHOLE queue: the moving song 'a' is still queued and
-	// three songs remain, so there is a third legal slot to drop into.
+	// The mode stays open, spanning the WHOLE queue: 'a' is still queued and three songs remain, so a third
+	// legal slot exists.
 	expect(modeInvalidation(queuedList(state), 'a', 'queued')).toBeNull();
-	// …and the third position is now reachable, which is the half that proves the index space widened with
-	// the list rather than being captured when the gesture began.
+	// The third position is reachable, which is what proves the index space widened with the list rather
+	// than being captured when the gesture began.
 	expect(liveSortTarget({ fromIndex: 0, offsetPx: 10_000, rowBoundsPx: rows(3), count: 3 })).toBe(2);
 });
 
@@ -118,7 +108,7 @@ test('the queue dropping below two songs closes the mode with a reason', () => {
 	expect(modeInvalidation(queued, 'a', movingStatus)).toBe(
 		'Only one song is queued now — there is nothing to reorder.'
 	);
-	// And the grip is gone for the next render, so the mode cannot be re-entered into the same lie.
+	// The grip is gone for the next render, so the mode cannot be re-entered into the same lie.
 	expect(gripVisible({ queuedCount: queued.length, reorderMeaningful: true })).toBe(false);
 });
 
@@ -138,11 +128,9 @@ test('the moving song starting playback closes the mode with its own reason', ()
 	handleQueueCommand(addCmd('a', 'm1', 's1'), deps);
 	handleQueueCommand(addCmd('b', 'm2', 's1'), deps);
 
-	// Driven through the SERVER's own path, not a forged op. A `status` op is server-owned and
-	// `validateCommand` rejects it off the wire (hub.ts:278), so a client-shaped status command would
-	// have tested the reject rather than the state — exactly the sort of fixture the harness rule in
-	// the rule exists to avoid. `reconcileOnReady` is what actually starts a song, and is the same
-	// composition `autostart.test.ts` drives.
+	// Through the SERVER's own path, not a forged op: a `status` op is server-owned and `validateCommand`
+	// rejects it off the wire, so a client-shaped status command would test the reject rather than the
+	// state. `reconcileOnReady` is what actually starts a song.
 	reconcileOnReady(deps);
 
 	const moving = state.entries.find((e) => e.id === 'a');
@@ -153,20 +141,19 @@ test('the moving song starting playback closes the mode with its own reason', ()
 	);
 });
 
-// ── · a whole-queue drop actually crosses singers through the real hub ───────────────────────
+// A whole-queue drop really crosses singers, through the real hub.
 
 test('· committing a drag as move-to-index moves a song to a GLOBAL slot, jumping another singer', () => {
-	// The drag commits `store.moveToIndex(id, dragTo)` — the same index the rows were rendered at — which
-	// is the drive-through-the-real-hub proof that a drop at a global index reorders across singers —
-	// what the old own-picks `move` could never do. The actor owns the moving entry here, so no
-	// capability gate is in the way.
+	// The drag commits `store.moveToIndex(id, dragTo)` at the index the rows were RENDERED at, which is what
+	// a global drop must do and what an own-picks `move` cannot express. The actor owns the moving entry, so
+	// no capability gate is in the way.
 	const { state, deps } = harness('s1');
 	handleQueueCommand(addCmd('a', 'm1', 's1'), deps); // s1
 	handleQueueCommand(addCmd('x', 'm2', 's2'), { ...deps, actorSingerId: 's2' }); // s2
 	handleQueueCommand(addCmd('b', 'm3', 's1'), deps); // s1
 
-	// Fair rotation interleaves the two singers; the exact order is the server's, so read it rather than
-	// assume it. The drag drops 'b' (an s1 song) at the FRONT of the whole queue — index 0.
+	// Fair rotation interleaves the two singers and the exact order is the SERVER's, so read it rather than
+	// assume it. The drag drops an s1 song at the FRONT of the whole queue, index 0.
 	const before = queuedList(state).map((e) => e.id);
 	expect(before).toHaveLength(3);
 	expect(before[0]).not.toBe('b'); // sentinel: the move is a real change, not a no-op at its own slot

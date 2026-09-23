@@ -18,9 +18,8 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-// A fully processed song now carries a song profile too (the stems gate keys on its presence). EMPTY is
-// the "ran, found nothing" value and is enough to satisfy the gate; tests probing persistence pass a
-// populated profile explicitly.
+// A fully processed song now carries a song profile too (the stems gate keys on its presence). EMPTY is the "ran, found
+// nothing" value and is enough to satisfy the gate; tests probing persistence pass a populated profile explicitly.
 const processed = (id: string, over: Partial<Media> = {}): Media =>
 	media(id, {
 		stemStatus: 'ready',
@@ -176,9 +175,8 @@ test('BOOT ROUND TRIP: a song processed last night is in the catalog + library a
 });
 
 test('a MusicBrainz citation survives the DATABASE round trip', () => {
-	// The DB is the index the runtime catalog hydrates from at boot (synchronously, before the async
-	// sidecar pass), so a missing column here means the annotation is absent for the whole process
-	// lifetime even though the sidecar has it.
+	// The DB is the index the runtime catalog hydrates from at boot (synchronously, before the async sidecar pass), so a
+	// missing column here means the annotation is absent for the whole process lifetime even though the sidecar has it.
 	const r = repo();
 	r.upsert(
 		media('m1', {
@@ -211,10 +209,9 @@ test('setTags is atomic: a throw between delete and insert leaves the ORIGINAL t
 	r.setTags('m1', 'genre', ['rock', 'pop']);
 	expect(r.tagsOf('m1', 'genre').sort()).toEqual(['pop', 'rock']);
 
-	// Force a throw AFTER the delete has run but BEFORE the insert commits, from inside the transaction.
-	// setTags calls tx.delete/tx.insert on the transaction handle (not db directly), so we wrap
-	// db.transaction to poison the tx's insert — the delete still runs, the insert throws, and the
-	// transaction must roll the delete back.
+	// Force a throw AFTER the delete has run but BEFORE the insert commits, from inside the transaction. setTags calls
+	// tx.delete/tx.insert on the transaction handle (not db directly), so we wrap db.transaction to poison the tx's
+	// insert — the delete still runs, the insert throws, and the transaction must roll the delete back.
 	const realTransaction = db.transaction.bind(db);
 	// biome-ignore lint/suspicious/noExplicitAny: test-only monkeypatch to inject a mid-transaction throw
 	(db as any).transaction = (fn: (tx: any) => unknown) =>

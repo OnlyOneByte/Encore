@@ -1,36 +1,24 @@
+// guard: phone inventories and property floors. See docs/GUARDS.md#phone-inventories-and-reflow.
 //
-// PHONE INVENTORIES AND PROPERTY FLOORS.
+// Every other guard here answers "is THIS surface right?", so each is only as complete as the list of
+// surfaces somebody remembered to put in it: the failure that ships is a state nobody designed, on a route
+// nobody added to a list, rendering as an accidental blank column. Two rules below are therefore INVENTORY
+// rules, checkable by ENUMERATION over the filesystem so a route or live region introduced tomorrow is in
+// scope the moment it exists.
 //
-// THE BUG THIS EXISTS FOR. Every guard in this directory answers "is THIS surface right?", so each one
-// is only as complete as the list of surfaces somebody remembered to put in it. The failure that ships
-// is therefore never a broken state — it is a state nobody designed, on a route nobody added to a list,
-// which renders as an accidental blank column. Two of the four rows below are INVENTORY rules for
-// exactly that reason: they are checkable by ENUMERATION over the filesystem, so a route or a live
-// region introduced tomorrow is in scope the moment it exists, with no list to remember to extend.
+// Every exemption is named, counted, shrink-only, and rot-proofed by an arm asserting each listed absence is
+// still genuinely absent. That third property is the one that matters: without it a baseline entry survives
+// the day its gap is closed and silently un-enforces the pair forever.
 //
-// WHY EVERY EXEMPTION HERE IS NAMED AND COUNTED. An inventory rule with an unbounded escape hatch
-// enforces nothing — "unless it's fine" is not a rule. So each list below is (a) enumerated in this
-// file with a reason per entry, (b) shrink-only via a pinned ceiling, and (c) rot-proofed by an arm
-// asserting every listed absence is still genuinely absent. That third arm is the one that matters:
-// without it, a baseline entry survives the day its gap is closed and silently un-enforces the pair
-// forever. Closing a gap is therefore expected to RED this file until the entry is deleted; that
-// failure message says so.
-//
-// SCOPE. Phone surfaces only. The TV has its own scale and geometry guards (tv/stage-scale.test.ts) and
-// is a named exemption of in the spec; the operator surfaces (/admin, /metrics) are covered by
-// the Ops section. the standard's CSS-RULE half already lives in contrast.test.ts ("no card root dims its
-// own subtree with opacity"); this file adds only the INLINE-STYLE dimension, which a CSS-rule scan
-// structurally cannot see, and which is the mechanism the spec's own rationale flags.
+// SCOPE. Phone surfaces only. The CSS-RULE half of the no-subtree-opacity rule lives in
+// a11y/contrast.test.ts; this file adds only the INLINE-STYLE dimension, which a rule scan cannot see.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { srcDir } from '@encore/test-support';
 
-// Was `at('src')`, which resolved to src from this guard's old home in
-// src/lib. Every walk below (routes/, app.css, lib/components, lib/ui) is rooted here, so the
-// anchor is now stated once and derived from the repo root. `relative` here is node:path's two-argument
-// form, used to name a route and to shorten a failure message — not the test-support helper.
-const SRC = srcDir; // src
+// `relative` is node:path's two-argument form here, not the test-support helper.
+const SRC = srcDir;
 const ROUTES = join(SRC, 'routes');
 
 function stripComments(src: string): string {
@@ -59,50 +47,27 @@ function routePath(file: string): string {
 // INVENTORY: every phone route has a designed empty, loading, error and offline state
 // ---------------------------------------------------------------------------------------------------
 
-/*
- * The spec's exemption list, verbatim and closed: "/components (a gallery — its states *are* its
- * content), /admin and /metrics (operator surfaces, covered by the Ops section), and /tv (not a phone
- * surface). No other route is exempt." Matched on the route itself or any descendant of it, so
- * /metrics/[mediaId] is covered by /metrics as the spec intends.
- */
+// The closed exemption set: a gallery whose states ARE its content, two operator surfaces with their own
+// guards, and the TV. Matched on the route or any descendant, so /metrics/[mediaId] is covered by /metrics.
 const EXEMPT_ROUTES = ['/components', '/admin', '/metrics', '/tv'] as const;
 
 const CONDITIONS = ['empty', 'loading', 'error', 'offline'] as const;
 type Condition = (typeof CONDITIONS)[number];
 
 /*
- * How each condition is DETECTED. Named idioms rather than one regex, so a failure says which shape
- * was looked for and a reviewer can judge the detector rather than reverse-engineering it. These are
- * the idioms this codebase actually uses, read off the four in-scope routes; a route that signals a
- * state some other way is a detector gap to widen here, not a reason to add a baseline entry.
+ * How each condition is DETECTED. Named idioms rather than one regex, so a failure says which shape was
+ * looked for; a route that signals a state some other way is a detector gap to widen here, not a reason to
+ * add a baseline entry. Widening only tightens the file: the detectors are OR'd, so nothing that matched
+ * stops matching, and the rot arm fails an entry whose route now matches one.
+ *
+ * Three entries exist because a vendored primitive sets the attribute on the element IT renders, so a scan
+ * of the CALL SITE saw nothing. The destructive VARIANT is required, so a neutral `<Alert.Root>` info panel
+ * does not satisfy `error`.
  */
 const IDIOMS: Record<Condition, { name: string; find: (src: string) => boolean }[]> = {
 	empty: [
 		{ name: '`empty=` prop on a list primitive', find: (s) => /\bempty\s*=\s*["{]/.test(s) },
 		{ name: 'an emptyState()/readyEmptyState() builder', find: (s) => /\b(?:ready)?[Ee]mptyState\s*\(/.test(s) },
-		/*
-		 * A STRENGTHENING, not an accommodation — the same case as the sonner and `Alert.Root` idioms
-		 * under `error` below, and worth stating precisely because "add a detector" is the shape a
-		 * weakening takes when nobody checks.
-		 *
-		 * The two idioms above PREDATE this repo vendoring shadcn's `Empty` primitive
-		 * (`lib/components/ui/empty/`), which is now the codebase's actual designed empty state:
-		 * `<Empty.Root><Empty.Header><Empty.Description>` renders the heading-plus-next-action shape
-		 * the standard asks for. A route that ships one and calls no builder was therefore reported as
-		 * having NO empty state at all — a false negative, and a live one: `routes/+page.svelte`
-		 * renders `Empty.Root` with "Nothing queued." and this guard
-		 * could not see it. Measured across the whole tree, the blind spot covered six files —
-		 * `routes/+page.svelte`, `routes/find/+page.svelte` (3 states, only one of them backed by a
-		 * builder call — that route has since been merged into home, which now carries all of them),
-		 * `routes/metrics/+page.svelte` (4), `routes/admin/+page.svelte` (2), and
-		 * `lib/charts/{Trend,Bars}.svelte` — of which only `find` matched an existing idiom at all.
-		 *
-		 * Adding it can only ever move a pair from "reported missing" to "detected", never the
-		 * reverse: the detectors are OR'd, so nothing that matched before stops matching, and a route
-		 * with none of the three still reds. The KNOWN_ABSENT rot arm is the counterweight — an
-		 * `n/a`/`gap` entry whose route grew an `Empty.Root` now fails until the entry is deleted,
-		 * which is why this widening tightens the file rather than loosening it.
-		 */
 		{ name: 'a vendored `<Empty.Root>` state', find: (s) => /<Empty\.Root\b/.test(s) }
 	],
 	loading: [
@@ -122,17 +87,6 @@ const IDIOMS: Record<Condition, { name: string; find: (src: string) => boolean }
 	error: [
 		{ name: 'a `role="alert"` region', find: (s) => /role\s*=\s*["']alert["']/.test(s) },
 		{ name: 'a sonner `toast.error(...)` call', find: (s) => /\btoast\.error\s*\(/.test(s) },
-		/*
-		 * The same case as the sonner idiom directly above, for the same reason. `ui/alert` sets
-		 * `role="alert"` on the element IT renders, so a source scan of the CALL SITE sees only
-		 * `<Alert.Root variant="destructive">` and would report a route with a working designed error
-		 * state as having none. `/stats`, `/metrics`, `/metrics/[mediaId]`, `/admin` and `/settings`
-		 * all moved their load-failure copy onto it.
-		 *
-		 * Still not a loosening: the variant is required, so a neutral `<Alert.Root>` used as a plain
-		 * info panel does NOT satisfy the error condition, and a route with none of the three idioms
-		 * still reds.
-		 */
 		{
 			name: 'an `<Alert.Root variant="destructive">` region',
 			find: (s) => /<Alert\.Root[^>]*variant\s*=\s*["']destructive["']/.test(s)
@@ -152,16 +106,11 @@ function detect(src: string, c: Condition): string | null {
 }
 
 /*
- * The BASELINE: route x condition pairs that do not render a designed state today. Bounded, reasoned,
- * shrink-only, and rot-proofed by `every listed absence is still absent` below.
- *
- * `kind` separates the two honest reasons a pair can be absent, because they have different futures:
- *   'n/a' — the route structurally cannot reach this condition (no collection to be empty of). Stable.
- *   'gap' — it can and should, and does not yet. Closing one is the point; delete the entry when you do.
- *
- * Recording these rather than fixing them here is deliberate: each 'gap' needs designed copy and a
- * named next action (the spec's acceptance bar), which is product design across three more routes and
- * a second concern. What this file changes is that they are now enumerated and cannot grow.
+ * The BASELINE: route × condition pairs with no designed state today. `kind` separates the two honest
+ * reasons, because they have different futures — 'n/a' means the route structurally cannot reach the
+ * condition (no collection to be empty of) and is stable; 'gap' means it can and should and does not yet, so
+ * delete the entry when you close one. Recording rather than fixing here is deliberate: each gap needs
+ * designed copy and a named next action. What changes is that they cannot grow.
  */
 const KNOWN_ABSENT: { route: string; condition: Condition; kind: 'n/a' | 'gap'; reason: string }[] = [
 	{
@@ -184,9 +133,7 @@ const KNOWN_ABSENT: { route: string; condition: Condition; kind: 'n/a' | 'gap'; 
 	}
 ];
 
-/** Pinned ceiling: this list may shrink, never grow. A new absence is a regression, not a baseline.
- *  Measured, not guessed — an earlier draft also listed `/settings x loading`, and the rot arm below
- *  falsified it: `settings/+page.svelte:507` renders `{#if saving}Saving…` on the profile save. */
+/** Pinned ceiling: the list may shrink, never grow. A new absence is a regression, not a baseline. */
 const KNOWN_ABSENT_CEILING = 5;
 
 function isExempt(route: string): boolean {
@@ -198,26 +145,12 @@ const ALL_ROUTES = pageFiles(ROUTES)
 	.sort((a, b) => a.route.localeCompare(b.route));
 const PHONE_ROUTES = ALL_ROUTES.filter((r) => !isExempt(r.route));
 
-/*
- * The arm that catches the surface nobody thought about. The route set is derived from the filesystem,
- * so a route added tomorrow is enumerated the moment its `+page.svelte` exists — it cannot be omitted
- * by forgetting a list. The only way out is the spec's closed exemption set, and this arm pins that set
- * too: every name in it must still resolve to a real route, so renaming an exempt route surfaces the
- * new name here instead of leaving a dead exemption behind and the new surface unchecked.
- */
-test('the phone route set is derived from the filesystem, and every exemption is the spec\u2019s', () => {
-	// Re-anchored 3 -> 4 when `/find` arrived (the phone-remote rebuild split search out of `/`), 4 -> 5 when
-	// `/song/[mediaId]` did, and 5 -> 4 on 2026-09-22 when `/find` was MERGED BACK INTO `/` — the field, the
-	// library and the result groups are sections of home again, so there is no separate surface to walk. The
-	// phone-route set is `/`, `/settings`, `/song/[mediaId]`, `/stats`.
-	//
-	// THIS IS THE ONE DIRECTION A FLOOR MAY MOVE DOWN IN: the route it counted no longer exists, and the
-	// surface it covered is inside a route still on the list. A floor lowered because a walk stopped finding
-	// something would be the defect this arm exists for. Still non-vacuous — an over-broad exemption or a
-	// moved routes/ dir enumerates fewer than four and fails here. The value 4 is recorded to match in
-	// non-vacuity-floors.test.ts's FLOORS.
+test('the phone route set is derived from the filesystem, and every exemption is the spec’s', () => {
+	// An over-broad exemption or a moved routes/ dir enumerates fewer than four and fails here.
 	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(4); // @nvf-floor PHONE_ROUTES.length
 
+	// Every exempt name must still resolve to a real route, so a rename surfaces the new name here instead of
+	// leaving a dead exemption and the new surface unchecked.
 	const known = new Set(ALL_ROUTES.map((r) => r.route));
 	for (const e of EXEMPT_ROUTES) {
 		expect(
@@ -226,15 +159,14 @@ test('the phone route set is derived from the filesystem, and every exemption is
 		).toBe(true);
 	}
 
-	// Every route is either enumerated as a phone surface or named in the closed exemption list. There
-	// is no third bucket, which is what makes this an inventory rather than a spot check.
+	// No third bucket, which is what makes this an inventory rather than a spot check.
 	for (const r of ALL_ROUTES) {
 		expect(PHONE_ROUTES.some((p) => p.route === r.route) || isExempt(r.route)).toBe(true);
 	}
 });
 
 test('every phone route renders a designed empty, loading, error and offline state', () => {
-	const baseline = new Set(KNOWN_ABSENT.map((k) => `${k.route} \u00d7 ${k.condition}`));
+	const baseline = new Set(KNOWN_ABSENT.map((k) => `${k.route} × ${k.condition}`));
 	const missing: string[] = [];
 	let pairsChecked = 0;
 
@@ -242,7 +174,7 @@ test('every phone route renders a designed empty, loading, error and offline sta
 		const src = stripComments(readFileSync(file, 'utf8'));
 		for (const c of CONDITIONS) {
 			pairsChecked++;
-			const key = `${route} \u00d7 ${c}`;
+			const key = `${route} × ${c}`;
 			if (baseline.has(key)) continue;
 			if (!detect(src, c)) {
 				missing.push(
@@ -253,8 +185,7 @@ test('every phone route renders a designed empty, loading, error and offline sta
 		}
 	}
 
-	// Non-vacuity floor: the walk really visited every route x condition pair. Without this, a broken
-	// route walk reports zero offenders and reads exactly like a clean tree.
+	// Without this, a broken route walk reports zero offenders and reads exactly like a clean tree.
 	expect(pairsChecked).toBe(PHONE_ROUTES.length * CONDITIONS.length);
 	expect(missing).toEqual([]);
 });
@@ -267,10 +198,10 @@ test('the known-absent baseline is bounded, well-formed, and has not rotted', ()
 	const rotted: string[] = [];
 
 	for (const k of KNOWN_ABSENT) {
-		const key = `${k.route} \u00d7 ${k.condition}`;
+		const key = `${k.route} × ${k.condition}`;
 		expect(seen.has(key), `duplicate baseline entry ${key}`).toBe(false);
 		seen.add(key);
-		// A baseline entry for a route that is exempt or gone is an entry that enforces nothing.
+		// A baseline entry for a route that is exempt or gone enforces nothing.
 		expect(phone.has(k.route), `baseline entry ${key} names a route that is not a phone surface`).toBe(true);
 		// Every entry states why, so the list cannot become a bag of unexplained escapes.
 		expect(k.reason.length, `baseline entry ${key} needs a reason`).toBeGreaterThan(30);
@@ -280,8 +211,7 @@ test('the known-absent baseline is bounded, well-formed, and has not rotted', ()
 		if (found) rotted.push(`${key} is now designed (matched: ${found}) — delete its KNOWN_ABSENT entry`);
 	}
 
-	// THE ROT ARM. A stale entry silently un-enforces its pair forever, so closing a gap is meant to
-	// fail here until the entry goes. That is the failure message above, not a mystery.
+	// THE ROT ARM: a stale entry silently un-enforces its pair forever, so closing a gap fails here.
 	expect(rotted).toEqual([]);
 });
 
@@ -289,10 +219,7 @@ test('the known-absent baseline is bounded, well-formed, and has not rotted', ()
 // INVENTORY: announcements — what is announced, and when
 // ---------------------------------------------------------------------------------------------------
 
-/*
- * Files that can announce to a phone guest. Enumerated from the phone surfaces rather than hand-listed
- * per region, so a live region added to any of them is in scope immediately.
- */
+/** Files that can announce to a phone guest, enumerated from the phone surfaces. */
 const PHONE_ANNOUNCING_FILES = [
 	join(ROUTES, '+page.svelte'),
 	join(ROUTES, 'settings', '+page.svelte'),
@@ -306,10 +233,9 @@ const PHONE_ANNOUNCING_FILES = [
 ];
 
 /*
- * THE REGION INVENTORY: every `aria-live` region a phone guest can hear, and what it is for. An
- * unlisted region fails — that is the whole rule. Two regions announcing the same event, or a region
- * nobody can explain, is precisely the "app that narrates" going wrong, and it is invisible without
- * an enumeration because each one looks reasonable in its own file.
+ * THE REGION INVENTORY: every `aria-live` region a phone guest can hear, and what it is for. An unlisted
+ * region fails — that is the whole rule. Two regions announcing the same event, or one nobody can explain,
+ * is invisible without an enumeration, because each looks reasonable in its own file.
  */
 const LIVE_REGIONS: { file: string; purpose: string }[] = [
 	{ file: 'routes/+page.svelte', purpose: 'the announcement region (`sr-live`) — queue changes under the guest' },
@@ -338,15 +264,13 @@ test('every phone live region is inventoried, and all are polite', () => {
 		}
 	}
 
-	// An eighth region is as much a defect as a missing one: the inventory IS the requirement.
 	const inventory = LIVE_REGIONS.map((r) => r.file).sort();
 	expect(
 		found.map((f) => f.file).sort(),
 		'a phone live region is not in LIVE_REGIONS (or an inventoried one was removed) — inventory it with its purpose, or delete its entry'
 	).toEqual(inventory);
 
-	// Politeness is DERIVED in the spec: none of these interrupt a task, and an assertive queue
-	// announcement would talk over a guest mid-typing in search.
+	// An assertive queue announcement would talk over a guest mid-typing in search.
 	for (const f of found) {
 		expect(f.politeness, `${f.file} announces ${f.politeness} — phone announcements are polite`).toBe('polite');
 	}
@@ -355,37 +279,22 @@ test('every phone live region is inventoried, and all are polite', () => {
 });
 
 /*
- * THE EVENT INVENTORY: the seven events says the polite region announces. Every write to
- * `liveMsg` must map to one of them, so an eighth announcement fails — the spec's own falsification
- * condition. `implemented: false` records the three the redesign still owes (the reorder mode and the
- * guest's own position); they are listed so the set is the spec's set and not merely today's code.
+ * THE EVENT INVENTORY: every write to `liveMsg` must map to an inventoried event, so an eighth announcement fails.
+ * `implemented: false` records one the redesign still owes, so the set is the SPECIFIED set rather than today's code.
+ *
+ * Two events are deliberately absent. Connection loss/restore is announced by the `offline-pill` region
+ * rather than through `liveMsg`. A drag that dissolves mid-flight IS announced, but its strings reach the
+ * region as a VARIABLE from `$lib/reorder-mode`, so the literal-site regex below cannot see them either to
+ * list or to floor; reorder-mode.test.ts pins them where they are declared.
  */
 const ANNOUNCED_EVENTS: { event: string; implemented: boolean; match?: RegExp }[] = [
 	{ event: "another guest's add", implemented: true, match: /\bqueued\b/ },
 	{ event: "several guests' adds, batched on resync", implemented: true, match: /songs added to the queue/ },
 	{ event: 'a rotation reorder that moved rows under the guest', implemented: true, match: /Queue reordered/ },
 	{ event: "a change to the guest's own position", implemented: false },
-	/*
-	 * THE KEYBOARD REORDER STEP, now implemented (2026-09-21). It replaced two inventoried-but-unimplemented
-	 * MODE events — "entering and leaving the reorder mode" and "each committed slot change during the reorder
-	 * mode" — which cannot be implemented because there is no mode: the drag is a live sort and the keyboard
-	 * path commits one place per press with nothing to enter or leave.
-	 *
-	 * It has to be announced rather than left silent, and that is the one clause the mode events were right
-	 * about: the row moves under the guest's own focus, so a screen reader is otherwise told only that the
-	 * list changed, not that THEIR row is where they put it.
-	 */
+	// The keyboard step must be announced: the row moves under the guest's own focus, so a reader is
+	// otherwise told only that the list changed, not that THEIR row is where they put it.
 	{ event: 'a keyboard reorder step from the grip', implemented: true, match: /Moved to \$\{ordinal/ }
-	/*
-	 * A DRAG THAT DISSOLVED MID-FLIGHT IS ANNOUNCED TOO — the song started playing, left the queue,
-	 * or the queue fell below two — but it is deliberately NOT an entry here, and the reason is about this
-	 * scan rather than about the event. Its strings live in `$lib/reorder-mode`'s `modeInvalidation` and reach
-	 * the region as a VARIABLE (`if (note) liveMsg = note`), so the literal-site regex below cannot see it
-	 * either to list or to floor. `reorder-mode.test.ts` pins those strings where they are declared, which is
-	 * the only place a scan can judge them.
-	 */
-	// connection loss/restore is the seventh, announced by the `offline-pill` region above rather than
-	// through `liveMsg`, so it has no assignment site here.
 ];
 
 test('every phone announcement is one of the inventoried events, and the first sync is silent', () => {
@@ -410,9 +319,8 @@ test('every phone announcement is one of the inventoried events, and the first s
 	}
 	expect(sites.length).toBeGreaterThanOrEqual(implemented.length);
 
-	// "It announces nothing on first sync" — the suppression latch is part of the requirement, not an
-	// implementation detail, so its removal must fail here rather than being discovered by a guest
-	// having the whole queue read aloud on join.
+	// The first-sync suppression latch is part of the requirement, so its removal must fail here rather than
+	// be discovered by a guest having the whole queue read aloud on join.
 	expect(src).toMatch(/announceReady/);
 	expect(src, 'the initial-sync suppression latch must still gate the announcement effect').toMatch(
 		/if\s*\(\s*!\s*announceReady\s*\)/
@@ -423,11 +331,7 @@ test('every phone announcement is one of the inventoried events, and the first s
 // property floor: text and controls survive 200% text scaling and a 320px viewport
 // ---------------------------------------------------------------------------------------------------
 
-/*
- * Phone surfaces for the property floors. The TV is excluded on purpose: its type scale is deliberately
- * viewport-derived (`--tv-*`, clamp() with vh terms) and is enforced by tv/stage-scale.test.ts against a
- * ten-foot floor, which is a different criterion from a phone at arm's length.
- */
+/** Phone surfaces for the property floors. The TV's type scale is viewport-derived and guarded there. */
 const PHONE_STYLE_FILES = [
 	join(SRC, 'app.css'),
 	join(ROUTES, '+page.svelte'),
@@ -442,18 +346,14 @@ const PHONE_STYLE_FILES = [
 ];
 
 /*
- * SC 1.4.4 concerns the guest's own text-size setting, which scales `rem`/`em`/`%` and not an absolute
- * `px`. Measured rather than assumed (Chromium, root font-size doubled, 320x480): every phone text rule
- * here already sizes in `rem` and `rem` resolves against `html`, which declares no font-size — so the
- * setting already reached all app text, and `body { font-size: 16px }` pinned nothing a guest can see.
- * This arm therefore guards a LATENT hole, not a live defect: font-size inherits, so the first phone
- * text written without its own font-size would become unscalable silently. That is worth a floor, and
- * it is worth being honest that it is a floor.
+ * SC 1.4.4 concerns the guest's own text-size setting, which scales `rem`/`em`/`%` and not an absolute `px`.
+ * Measured (Chromium, root font-size doubled, 320x480): every phone text rule already sizes in `rem` against
+ * an `html` that declares no font-size, so this arm guards a LATENT hole — font-size inherits, so the first
+ * phone text written without its own would become unscalable silently.
  *
- * NAMED EXEMPTIONS — icon GLYPH sizing, which is not text. `Icon` renders a 1em glyph inside a
- * fixed var(--tap) box, so its font-size is that box's geometry: scaling it with the guest's text
- * preference would overflow a control whose hit box is a pointing-precision constant (SC 2.5.5),
- * not a reading measurement. Both entries carry that reasoning in their own source comment.
+ * NAMED EXEMPTIONS — icon GLYPH sizing, which is not text: `Icon` renders a 1em glyph inside a fixed
+ * var(--tap) box, so scaling it with a reading preference would overflow a control whose hit box is a
+ * pointing-precision constant (SC 2.5.5).
  */
 const PX_FONT_SIZE_EXEMPTIONS: { file: string; declaration: string; reason: string }[] = [
 	{
@@ -468,7 +368,7 @@ const PX_FONT_SIZE_EXEMPTIONS: { file: string; declaration: string; reason: stri
 	}
 ];
 
-test('no phone text is sized in absolute units, so the user\u2019s text setting reaches it', () => {
+test('no phone text is sized in absolute units, so the user’s text setting reaches it', () => {
 	const exempt = new Set(PX_FONT_SIZE_EXEMPTIONS.map((e) => `${e.file} ${e.declaration}`));
 	const offenders: string[] = [];
 	let filesScanned = 0;
@@ -487,29 +387,23 @@ test('no phone text is sized in absolute units, so the user\u2019s text setting 
 		}
 	}
 
-	// Non-vacuity floor: the file list really resolved. An empty walk finds no offenders and looks clean.
+	// An empty walk finds no offenders and looks clean.
 	expect(filesScanned).toBeGreaterThanOrEqual(10); // @nvf-floor filesScanned
 	expect(offenders).toEqual([]);
 	for (const e of PX_FONT_SIZE_EXEMPTIONS) expect(e.reason.length).toBeGreaterThan(30);
 });
 
 /*
- * SC 1.4.10 Reflow: at a 320 CSS px viewport, content must not require horizontal scrolling. A rule
- * that fixes a horizontal dimension wider than that forces the scrollbar no matter what the layout
- * around it does. `max-width` is excluded because it reflows by construction, and `@media (min-width:)`
- * is a condition rather than a dimension.
+ * SC 1.4.10 Reflow: at a 320 CSS px viewport, content must not require horizontal scrolling, and a rule
+ * fixing a horizontal dimension wider than that forces the scrollbar whatever the layout does. `max-width`
+ * is excluded because it reflows by construction, and `@media (min-width:)` is a condition.
  *
- * THIS ARM IS NECESSARY, NOT SUFFICIENT, AND THAT IS MEASURED. A driven pass for this change
- * (Chromium, 320x480, root font-size doubled) found `/stats` at scrollWidth 328 against clientWidth
- * 320 — a real overflow, from `span.n`/`span.k` in the stat tiles — while this arm was GREEN, because
- * no single declaration is wider than 320px: the overflow is the SUM of a grid's tracks and padding
- * once the type grows. The overflow reproduces identically before and after this change, so it is
- * pre-existing and reported rather than fixed here (one concern). The spec says as much — the standard's
- * check is "Rendered-DOM or driven-browser measurement. Not a source scan" and depends on the rendered
- * rung. Read this arm as the cheap always-on floor beneath that, not as the row's proof.
+ * NECESSARY, NOT SUFFICIENT, and measured: a driven pass found `/stats` at scrollWidth 328 against
+ * clientWidth 320 while this arm was GREEN, because no single declaration is wider than 320px — the overflow
+ * is the SUM of a grid's tracks and padding once the type grows. The rendered guard is
+ * layout/phone-reflow-rung-l.test.ts; read this as the cheap always-on floor beneath it.
  *
- * NAMED EXEMPTIONS: deliberately empty. Nothing in the phone tree fixes a width above 320px today, so
- * this floor holds the line rather than quarantining a debt — an entry added here needs a reason.
+ * NAMED EXEMPTIONS: deliberately empty. Nothing in the phone tree fixes a width above 320px today.
  */
 const REFLOW_WIDTH_EXEMPTIONS: { file: string; declaration: string; reason: string }[] = [];
 const REFLOW_MIN_VIEWPORT = 320;
@@ -523,11 +417,10 @@ test('no phone rule fixes a horizontal dimension wider than a 320px viewport', (
 		const rel = relative(SRC, f).split(sep).join('/');
 		const src = stripComments(readFileSync(f, 'utf8'));
 		// `(?<!-)` keeps `max-width`/`min-width` out of the `width` arm; the min-width arm is matched
-		// separately below so a media-query condition is never read as a dimension.
+		// separately, so a media-query condition is never read as a dimension.
 		for (const m of src.matchAll(/(?<![-\w])(min-width|width):\s*([0-9.]+)px/g)) {
 			const prop = m[1]!;
 			const px = Number(m[2]);
-			// A media-query condition states when a rule applies, not how wide anything is.
 			const before = src.slice(Math.max(0, m.index - 40), m.index);
 			if (/@media[^{]*\(\s*$/.test(before) || /@media[^{]*and\s*\(\s*$/.test(before)) continue;
 			declarationsSeen++;
@@ -541,7 +434,7 @@ test('no phone rule fixes a horizontal dimension wider than a 320px viewport', (
 		}
 	}
 
-	// Non-vacuity floor: the scan really read width declarations rather than matching nothing.
+	// A regex that stopped matching would make this trivially clean.
 	expect(declarationsSeen).toBeGreaterThanOrEqual(10); // @nvf-floor declarationsSeen
 	expect(offenders).toEqual([]);
 });
@@ -551,15 +444,12 @@ test('no phone rule fixes a horizontal dimension wider than a 320px viewport', (
 // ---------------------------------------------------------------------------------------------------
 
 /*
- * contrast.test.ts already bans a card ROOT rule from dimming its own subtree, and proves it by
- * measuring what `opacity: 0.55` did to `.pending` (explanatory text to 3.77:1, byline 2.68:1, singer
- * dot 2.57:1). That guard reads CSS RULES, so an `opacity` written as an inline `style=` attribute in
- * markup is structurally outside it — and an inline `opacity:.45` is exactly the idiom the spec's
- * rationale names for the reorder mode's dimmed rows. This arm closes that dimension only; it does not
- * duplicate the rule scan.
+ * a11y/contrast.test.ts bans a card ROOT rule from dimming its own subtree and measures what `opacity: 0.55`
+ * did (explanatory text to 3.77:1, byline 2.68:1, singer dot 2.57:1). It reads CSS RULES, so an `opacity` in
+ * an inline `style=` attribute is structurally outside it — and an inline `opacity:.45` is exactly the idiom
+ * reached for when dimming rows.
  *
- * NAMED EXEMPTION: one, a histogram bar that contains no text or identity dot, so flattening its
- * subtree flattens a coloured rectangle and nothing a guest has to read.
+ * NAMED EXEMPTION: a histogram bar with no text or identity dot in its subtree.
  */
 const INLINE_OPACITY_EXEMPTIONS: { file: string; reason: string }[] = [
 	{

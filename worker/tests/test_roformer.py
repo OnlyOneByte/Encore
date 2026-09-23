@@ -15,9 +15,8 @@ from tests.conftest import drain as _drain  # noqa: E402
 
 
 def test_every_whitelist_token_resolves_to_a_real_registry_slug():
-    """The assertion this replaces checked only that a slug STARTED WITH "roformer-model-", which a
-    nonexistent slug satisfies — and one duly shipped (`mel-roformer-inst-v2` mapped to a slug absent
-    from the registry). Check membership in the registry's actual slug set instead."""
+    """Checks membership in the registry's actual slug set — a `starts with "roformer-model-"`
+    string-shape assertion would pass for a nonexistent slug."""
     for token in roformer.ROFORMER_MODELS:
         slug = roformer.resolve_roformer_slug({"model": token})
         assert slug in roformer.ROFORMER_REGISTRY_SLUGS, f"{token} → {slug} is not a real slug"
@@ -68,14 +67,10 @@ def test_find_roformer_instrumental_none_when_absent(tmp_path):
 
 @pytest.mark.parametrize("slug", sorted(roformer.ROFORMER_REGISTRY_SLUGS))
 def test_stem_discovery_is_not_fooled_by_a_slug_that_contains_the_other_role(tmp_path, slug):
-    """bs-roformer-infer names its outputs `<name>_(Instrumental)_<slug>.<ext>` and
-    `<name>_(Vocals)_<slug>.<ext>` — the resolved model slug is INSIDE the filename the discovery
-    searches. Six of the ten registry slugs contain `vocals`/`instrumental`
-    (roformer-model-bs-roformer-{vocals-by-gabox,vocals-resurrection-by-unwa,vocals-revive-by-unwa,
-    vocals-revive-v2-by-unwa,vocals-revive-v3e-by-unwa,instrumental-resurrection-by-unwa}), so a bare
-    substring match lets the instrumental file satisfy find_roformer_vocals (and, for the
-    instrumental-named slug, the vocals file satisfy find_roformer_instrumental). Assert both stems
-    resolve to their OWN role for every slug. RED on base for the six colliding slugs."""
+    """The resolved model slug is INSIDE the filename discovery searches, and several registry slugs
+    contain `vocals`/`instrumental` themselves, so a bare substring match could let the instrumental
+    file satisfy find_roformer_vocals (or vice-versa). Assert both stems resolve to their OWN role
+    for every slug."""
     inst = tmp_path / f"input_(Instrumental)_{slug}.wav"
     vox = tmp_path / f"input_(Vocals)_{slug}.wav"
     inst.write_bytes(b"INST")
@@ -100,11 +95,8 @@ def test_roformer_argv_omits_device_when_unset():
     assert "--device" not in argv  # let the CLI's own 'auto' default apply
 
 
-# ── engine selection ──────────────────────────────────────────────────────────────
-#
-# Was EngineRouter, a second dispatch layer that picked a whole processor per engine. Choosing a separator
-# is plan SELECTION now (docs/ARCHITECTURE.md §7.1): `engine_for` resolves it before the
-# first step runs, and one Separate step asks whichever engine won the same four questions.
+# Choosing a separator is plan SELECTION (docs/ARCHITECTURE.md §7.1): `engine_for` resolves it before
+# the first step runs, and one Separate step asks whichever engine won the same four questions.
 
 
 def test_engine_selection_reads_the_job_param_and_defaults_to_demucs():
@@ -119,8 +111,8 @@ def test_engine_selection_reads_the_job_param_and_defaults_to_demucs():
 
 
 def test_engine_selection_raises_for_an_engine_that_does_not_exist():
-    """The CORE only routes a roformer process to a worker advertising `stems:roformer`, so an unknown engine
-    here is a routing bug rather than a user choice — it should be loud."""
+    """The core only routes a roformer process to a worker advertising `stems:roformer`, so an
+    unknown engine here is a routing bug, not a user choice — it should be loud."""
     from src.separation.engines import engine_for
 
     with pytest.raises(RuntimeError, match="no separator engine"):
@@ -139,30 +131,16 @@ def test_a_None_config_value_does_not_override_an_engine_default():
 
 
 def test_the_demucs_default_cannot_reach_the_roformer_engine():
-    """Issue an earlier change regression. `plans.stems_runner` forwards this worker's `demucs_model` (default
-    "htdemucs") into `engine_for` on EVERY process, roformer included (plans.py: the lone production caller).
-    While the model slot was ONE engine-agnostic `default_model`, that demucs checkpoint reached
-    `RoformerEngine` and replaced `DEFAULT_ROFORMER_MODEL` — a roformer process carrying no `model` then
-    raised `unknown roformer model 'htdemucs'` (a demucs name on a roformer engine) and the engine's
-    declared default was unreachable.
-
-    Model defaults are now per engine: `demucs_model` maps ONLY to demucs and `roformer_model` ONLY to
-    roformer. This test drives the pre-fix production seam — a demucs checkpoint offered to the roformer
-    engine — and asserts it does NOT become that engine's default.
-
-    Fails on base: base's roformer branch admits a shared `default_model` AND accepts the demucs
-    `demucs_model` is a no-op there, but the SHARED name that production actually forwarded
-    (`default_model="htdemucs"`) is what stranded the default. So the load-bearing assertion is that the
-    roformer engine, offered a demucs checkpoint through the model slot, still resolves its OWN default."""
+    """`plans.stems_runner` forwards this worker's `demucs_model` into `engine_for` on EVERY process,
+    roformer included. Model defaults are per engine: `demucs_model` maps ONLY to demucs and
+    `roformer_model` ONLY to roformer, so a demucs checkpoint offered to the roformer engine must NOT
+    become that engine's default (else a roformer process with no `model` would raise on a demucs
+    checkpoint name and its own declared default would be unreachable)."""
     from src.separation.engines import engine_for
     from src.separation.roformer import DEFAULT_ROFORMER_MODEL, resolve_roformer_slug
 
     roformer_default_slug = resolve_roformer_slug({}, DEFAULT_ROFORMER_MODEL)
 
-    # The pre-fix production seam: the demucs default was forwarded to EVERY engine via `default_model`.
-    # After the fix that shared name no longer exists; a demucs checkpoint can only be offered as
-    # `demucs_model`, which the roformer branch ignores. Either way the roformer engine must keep its own
-    # default — never the demucs value.
     eng = engine_for(
         "roformer", default_model="htdemucs", demucs_model="htdemucs", roformer_bin="bs-roformer-infer"
     )
@@ -176,16 +154,10 @@ def test_the_demucs_default_cannot_reach_the_roformer_engine():
     assert eng2.resolve_model({}) == roformer_default_slug
 
 
-# ── end-to-end roformer process (fake bs-roformer-infer runner) ──────────────────────
-#
-# Issue an earlier change: every test above is a pure-helper test — none constructs a stems job with
-# `engine == "roformer"` and drives it through `plans.stems_runner`. So the four documented
-# demucs/roformer differences (engines.py:1-20) and the resolved-slug `facts["model"]` were
-# UNASSERTED, and a regression in the RoformerEngine seam (input handed the file not its dir,
-# store_dir == input_folder, an output derived-not-discovered, facts recording the token) would
-# ship on green. This drives the real engine (no `engine=` override on stems_runner → `pick`
-# calls `engine_for("roformer",...)` → a genuine RoformerEngine, NOT a demucs stand-in) with a
-# fake `bs-roformer-infer` subprocess, and pins each difference.
+# Drives the REAL engine end to end (no `engine=` override on stems_runner, so `pick` resolves a
+# genuine RoformerEngine, not a demucs stand-in) with a fake `bs-roformer-infer` subprocess, pinning
+# each demucs/roformer difference: input handed the file vs its dir, store_dir == input_folder, an
+# output derived vs discovered, and facts recording the resolved-slug model.
 import os as _os  # noqa: E402
 
 from src import plans  # noqa: E402
@@ -197,32 +169,26 @@ from tests.cli_fakes import fake_cli_runner  # noqa: E402
 def _roformer_fake_runner(
     store_writes: bool = True, write_vocals: bool = True, model_in_name: str = "sw-by-jarredou"
 ):
-    """A fake runner scripting the real roformer process shape: yt-dlp → ffmpeg decode → bs-roformer-infer
-    → ffmpeg volumedetect probe → ffmpeg encode. It records every argv so the test can assert the seam
-    (input WAV alone in its own dir, --store_dir a DIFFERENT dir from --input_folder), and writes the
-    stems bs-roformer-infer would into --store_dir under names the engine could NOT have derived from the
-    model token — so a passing discovery proves globbing, not a name template. `write_vocals=False`
-    simulates a roformer run that produced the instrumental but not the vocals stem (best-effort path).
-
-    The acquisition / volumedetect / encode branches (including the volumedetect branch that makes the
-    silence probe real) live in the shared `fake_cli_runner`; only the bs-roformer-infer
-    writes + tqdm progress are here."""
+    """A fake runner scripting the real roformer process shape: yt-dlp -> ffmpeg decode ->
+    bs-roformer-infer -> ffmpeg volumedetect probe -> ffmpeg encode. Records every argv so the test
+    can assert the seam (input WAV alone in its own dir, --store_dir a DIFFERENT dir from
+    --input_folder), and writes stems under names the engine could NOT have derived from the model
+    token, so a passing discovery proves globbing, not a name template. `write_vocals=False`
+    simulates a run that produced the instrumental but not the vocals stem (best-effort path).
+    """
     calls: list[list[str]] = []
 
     async def roformer_handler(argv):
         store = argv[argv.index("--store_dir") + 1]
         _os.makedirs(store, exist_ok=True)
         if store_writes:
-            # names that the engine's find_outputs must DISCOVER by globbing — the model slug in the
-            # filename is NOT something find_roformer_* derives, so a match proves discovery.
             Path(_os.path.join(store, f"input_(Instrumental)_{model_in_name}.wav")).write_bytes(b"FAKE_INST")
             if write_vocals:
                 Path(_os.path.join(store, f"input_(Vocals)_{model_in_name}.wav")).write_bytes(b"FAKE_VOX")
         # coarse tqdm progress — parse_progress returns None by design, so the step emits [0, 100]
         yield "  0%|          | 0/1 [00:00<?, ?it/s]"
-        # an INTERMEDIATE tqdm pct — if RoformerEngine.parse_progress ever parsed tqdm (it must not,
-        # tqdm is not a stable source), 47 would leak into the separating stream and red the coarse
-        # assertion below. parse_progress returns None by design, so the step emits only 0 then 100.
+        # an INTERMEDIATE tqdm pct: must NOT leak into the separating stream (parse_progress returns
+        # None by design; the step only ever emits 0 then 100).
         yield " 47%|████▋     | 1/2 [22:00<22:00]"
         yield "100%|██████████| 1/1 [45:00<00:00]"
 
@@ -245,70 +211,62 @@ def _rspec(tmp_path, **params):
 @pytest.mark.asyncio
 async def test_a_roformer_process_runs_the_real_roformer_engine_end_to_end(tmp_path):
     """Drives a stems job with engine=roformer through plans.stems_runner and asserts the four
-    documented demucs/roformer differences plus the resolved-slug fact — the coverage an earlier change is
-    about.
+    documented demucs/roformer differences plus the resolved-slug fact.
 
     No `engine=` override, so stems_runner resolves the REAL RoformerEngine from params.engine; the
     fake runner only stands in for the bs-roformer-infer SUBPROCESS, not the engine."""
     runner, calls = _roformer_fake_runner()
-    proc = plans.stems_runner(runner=runner)  # no engine= override → real RoformerEngine from params
+    proc = plans.stems_runner(runner=runner)  # no engine= override -> real RoformerEngine from params
     events = await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
 
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1, "the roformer process must publish"
     facts = completes[0].facts
 
-    # (fact) the engine that ran is roformer, its backend is the CLI, not torch
+    # the engine that ran is roformer, its backend is the CLI, not torch
     assert facts["engine"] == "roformer"
     assert facts["backend"] == "bs-roformer-infer"
 
-    # (difference 4 / the reason facts.model exists) model is the RESOLVED SLUG, never the token
+    # model is the RESOLVED SLUG, never the token
     assert facts["model"] == "roformer-model-bs-roformer-sw-by-jarredou"
     assert facts["model"] != "bs-roformer-1297", "facts must record the resolved slug, not the token"
 
-    # locate the bs-roformer-infer invocation and its two directory flags
     rof = [c for c in calls if c[0] == "bs-roformer-infer"]
     assert len(rof) == 1, "the roformer CLI ran exactly once"
     argv = rof[0]
     input_folder = argv[argv.index("--input_folder") + 1]
     store_dir = argv[argv.index("--store_dir") + 1]
 
-    # (difference 1) the decoded input WAV lands ALONE in its own dedicated directory (roformer_in),
-    #                because bs-roformer-infer separates EVERY wav in --input_folder
+    # the decoded input WAV lands ALONE in its own dedicated directory (roformer_in), because
+    # bs-roformer-infer separates EVERY wav in --input_folder
     assert _os.path.basename(input_folder) == "roformer_in"
     assert _os.listdir(input_folder) == ["input.wav"], "input must be alone in its own dir"
 
-    # (difference 2) separate takes the input DIRECTORY, and --store_dir is a DIFFERENT dir — putting
-    #                output where input lives would re-separate the output on a second pass
+    # separate takes the input DIRECTORY, and --store_dir is a DIFFERENT dir — putting output where
+    # input lives would re-separate the output on a second pass. Siblings under the same work dir
+    # (work/separated vs work/roformer_in), not one nested in the other.
     assert store_dir != input_folder, "store_dir must not be the input folder"
-    # store_dir and input_folder are SIBLINGS under the same work dir (work/separated vs work/roformer_in),
-    # not one nested in the other — so store's parent is that shared work dir, never the input folder itself.
     assert _os.path.dirname(store_dir.rstrip("/")).rstrip("/") != input_folder.rstrip("/")
     assert _os.path.dirname(store_dir.rstrip("/")).rstrip("/") == _os.path.dirname(
         input_folder.rstrip("/")
     ).rstrip("/")
     assert _os.path.basename(store_dir) == "separated"
 
-    # (difference 4) outputs are DISCOVERED by globbing, not derived from the model name: the published
-    #                instrumental resolves to the discovered file (its name carries a slug the helper
-    #                could not have derived), proving find_outputs globbed the store
+    # outputs are DISCOVERED by globbing, not derived from the model name: the published instrumental
+    # resolves to the discovered file (its name carries a slug the helper could not have derived).
     inst = completes[0].artifacts["stems"]["instrumental"]
     assert inst.endswith("mr-instrumental.flac")
     assert Path(inst).exists()
-    # the isolated vocals stem — the guiding track the TV mixes under the instrumental — is ALSO
-    # published (mirrors the demucs process test); without this the engine can map find_roformer_vocals
-    # onto None and every roformer process silently drops its guiding track with the suite still green.
+    # the isolated vocals stem (the guiding track the TV mixes under the instrumental) is ALSO
+    # published, mirroring the demucs process test.
     vox = completes[0].artifacts["stems"]["vocals"]
     assert vox.endswith("mr-vocals.flac")  # vocals stem is lossless FLAC
     assert Path(vox).exists()
 
-    # (difference 3) roformer's parse_progress returns None, so the child's tqdm percentages must NEVER
-    # leak into progress — the only NON-terminal pct run_stage may emit for this stage is a time-based
-    # keepalive, and roformer's is held at 0 (its last-known pct) so the bar never moves off 0 until the
-    # closing 100. The invariant is therefore: no INTERMEDIATE (0 < pct < 100) value ever appears. This
-    # does NOT pin the event COUNT — pinning [0, 100] would forbid the keepalive that an earlier change added
-    # to keep
-    # a 45-minute pass from being reaped at the 30 s lease.
+    # roformer's parse_progress returns None, so the child's tqdm percentages must NEVER leak into
+    # progress: no INTERMEDIATE (0 < pct < 100) value may appear. Does NOT pin the event COUNT —
+    # pinning [0, 100] would forbid the time-based keepalive that stops a 45-minute pass from being
+    # reaped at the 30s lease.
     seps = [e.pct for e in events if isinstance(e, ProgressEvent) and e.stage == "separating"]
     assert 0 in seps and 100 in seps
     assert not any(0 < p < 100 for p in seps), f"roformer must never leak an intermediate pct, got {seps}"
@@ -327,11 +285,10 @@ async def test_a_roformer_process_that_produces_no_instrumental_fails_loudly(tmp
 
 @pytest.mark.asyncio
 async def test_a_roformer_no_instrumental_failure_is_classified_non_retryable(tmp_path):
-    """reaching Separate's "produced no instrumental" raise means the CLI exited 0 and its
-    output-filename contract is wrong — deterministic for that engine build, so every retry re-runs the
-    same 2h11m pass and fails identically. The raise must be non-retryable so the core stops after one
-    pass. Asserts the classification (PermanentError IS-A RuntimeError); reds on base where the bare
-    RuntimeError classifies retryable=True."""
+    """Reaching Separate's "produced no instrumental" raise means the CLI exited 0 with a wrong
+    output-filename contract — deterministic for that engine build, so every retry would re-run the
+    same multi-hour pass and fail identically. The raise must be non-retryable so the core stops
+    after one pass."""
     runner, _ = _roformer_fake_runner(store_writes=False)
     proc = plans.stems_runner(runner=runner)
     with pytest.raises(RuntimeError) as exc:  # PermanentError IS-A RuntimeError
@@ -341,18 +298,13 @@ async def test_a_roformer_no_instrumental_failure_is_classified_non_retryable(tm
 
 @pytest.mark.asyncio
 async def test_a_roformer_process_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
-    """The vocals-LESS half of the discovery contract — the roformer analogue of demucs's
-    test_missing_vocals_is_best_effort_still_publishes_instrumental (test_demucs.py). When
-    bs-roformer-infer writes the instrumental but no vocals output, find_roformer_vocals returns None
-    (roformer.py:131,136 — a real production state, exactly as find_roformer_instrumental does), so
-    RoformerEngine.find_outputs maps the `vocals` key onto None and the publish step drops null stems.
-    The process must still complete best-effort and publish the load-bearing instrumental, with the vocals
-    key simply ABSENT — not a None value. Without this, a roformer process could silently drop its guiding
-    track on the best-effort path and every worker test stayed green (the half of an earlier change that
-    an earlier change left open). Mirrors the demucs sibling's `"vocals" not in stems` shape, NOT
-    `stems["vocals"] is None`."""
+    """The roformer analogue of demucs's test_missing_vocals_is_best_effort_still_publishes_instrumental.
+    When bs-roformer-infer writes the instrumental but no vocals output, find_roformer_vocals returns
+    None, so RoformerEngine.find_outputs maps `vocals` onto None and the publish step drops null
+    stems. The process must still complete best-effort with the vocals key simply ABSENT, not a None
+    value — mirrors the demucs sibling's `"vocals" not in stems` shape."""
     runner, _ = _roformer_fake_runner(write_vocals=False)  # instrumental written, vocals output absent
-    proc = plans.stems_runner(runner=runner)  # no engine= override → real RoformerEngine from params
+    proc = plans.stems_runner(runner=runner)  # no engine= override -> real RoformerEngine from params
     events = await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
 
     completes = [e for e in events if isinstance(e, CompleteResult)]

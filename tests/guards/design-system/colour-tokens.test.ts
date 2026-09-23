@@ -1,44 +1,29 @@
 /*
- * ── THE COLOUR TOKEN LAYER UNDER THE 48-STOP PALETTE ──────────────────────────────────
+ * guard: the colour token layer against the 48-stop palette registry. See
+ * docs/GUARDS.md#colour-tokens-and-the-48-stop-palette. Four claims, each of which fails silently:
  *
- * Three of Encore's encoded colour prohibitions change
- * MEANING under the 48-stop palette and one disappears, and every one of them fails silently:
+ *  - `--accent-strong` is retired. Its failure mode is a token lingering in one forgotten rule and
+ *    quietly re-introducing a second accent with no rule for which wins.
+ *  - `--accent-ink` stays a REQUIRED, DISTINCT token: it differs from `fill` for 13 of 48 stops, so
+ *    collapsing the two downgrades those 13 to sub-AA text.
+ *  - `--on-accent` is per-stop (36 dark / 12 white), so a fill and its ink must be EMITTED AS ONE PAIR.
+ *  - all four per-stop roles reach CSS as CUSTOM PROPERTIES, or a component needing `on_fill` reaches
+ *    for a literal.
  *
- *  `--accent-strong` is RETIRED. It was "a 3% darken of --accent" existing solely so white
- *              reached 4.88:1. With per-stop `on_fill` the fill IS the strong value, so keeping it would
- *              be two tokens claiming one job with no rule for which wins. Its failure mode is a token
- *              that lingers in one forgotten rule and quietly re-introduces the second accent.
- *  `--accent-ink` stays a REQUIRED, DISTINCT token. `accent_ink` differs from `fill` for 13
- *              of 48 stops, so collapsing the two downgrades those 13 to sub-AA text.
- *  `--on-accent` stops being the constant `#ffffff` and becomes per-stop — 36 dark / 12
- *              white. The pairing that used to be free (there was one ink) now has 48 chances to go
- *              wrong, so a fill and its ink must be EMITTED AS ONE PAIR and never separately.
- *  All four per-stop values reach CSS as CUSTOM PROPERTIES, not just the fill — otherwise a
- *              component needing `on_fill` reaches for a literal.
- *
- * WHY THIS FILE AND NOT `contrast.test.ts`. That file is deliberately a pure token-VALUE guard: it reads
- * `app.css` as text and computes ratios, and it does not know the registry exists. The claims here are
- * about the relationship between the token layer and the registry, so they need the registry — imported
- * the same way `src/lib/contract/presentation/palette-registry.test.ts:7` imports it, from the one committed
- * artifact is the only place a stop's values exist.
- *
- * The ratios below are recomputed from the hex values rather than read out of the registry's `r_*`
- * fields, for the palette registry's reason: a test that trusts the numbers the generator printed cannot catch a
- * generator that measured the wrong thing.
+ * Not in `contrast.test.ts` because that file is deliberately a pure token-VALUE guard that does not know
+ * the registry exists; these claims are about the relationship between the two. Ratios are recomputed
+ * from the hex values rather than read out of the registry's `r_*` fields, because a test that trusts the
+ * numbers the generator printed cannot catch a generator that measured the wrong thing.
  */
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { read, srcDir } from '@encore/test-support';
-// The registry is reached by RELATIVE path, not as `$lib/contract/...`: that package's `exports` map
-// carries only `"."`, so a subpath import does not resolve. An import specifier cannot be routed
-// through `at()` (that returns a runtime string, not a module), so this stays relative — but it is a
-// relative IMPORT, which fails loudly with `Cannot find module` rather than silently reading nothing.
+// A subpath import, not `$lib/contract`: that package's `exports` map carries only `"."`. It fails loudly
+// with `Cannot find module` rather than silently reading nothing.
 import registry from '$lib/contract/presentation/player-palette-48.json';
 import { svelteFiles } from '@encore/test-support/scan';
 
-// Anchored on `srcDir` (src) instead of `at('src')`, which meant the same
-// directory only while this file sat in src/lib.
 const SRC = srcDir;
 const APP_CSS = read('src/app.css');
 
@@ -46,13 +31,12 @@ const APP_CSS = read('src/app.css');
 const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 
 /**
- * `variants.chromatic` is the ratified palette (*Palette — Chromatic, 48 stops*).
- * The `uniform` variant is the rejected one and is still in the artifact as the comparison it was
- * rejected against — reading the wrong key here would measure a palette the app never ships.
+ * `variants.chromatic` is the ratified palette. The artifact also carries `uniform`, the comparison it
+ * was rejected against, so reading the wrong key measures a palette the app never ships.
  */
 const STOPS = registry.variants.chromatic.stops;
 
-/** WCAG AA for normal-size text. The floor both contrast rules use. */
+/** WCAG AA for normal-size text. */
 const AA = 4.5;
 
 function channels(hex: string): [number, number, number] {
@@ -78,7 +62,7 @@ function ratio(a: string, b: string): number {
 	return (hi + 0.05) / (lo + 0.05);
 }
 
-/** Pull a `--name: #hex;` token out of `app.css`. Throws rather than defaulting, as its siblings do. */
+/** Pull a `--name: #hex;` token out of `app.css`. Throws rather than defaulting. */
 function token(name: string): string {
 	const m = APP_CSS.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));
 	if (!m) throw new Error(`token --${name} not found in app.css (renamed? then update this guard)`);
@@ -96,16 +80,11 @@ function stripSvelteComments(src: string): string {
 	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
 }
 
-// ── the retirement is real ─────────────────────────────────────────────────────────────
-
 /**
- * Acceptance 1, both halves. A declaration left behind is a second accent nothing rules between; a
- * `var()` read left behind resolves to NOTHING and paints the element's inherited background, which
- * on a dark surface is an invisible button rather than a visible error.
- *
- * Comments are stripped first, deliberately: `app.css` and this file both NAME the retired token in
- * order to explain why it is gone, and prose must not be able to fail the guard. That strip is what
- * lets the reason be recorded next to the absence instead of somewhere it will rot.
+ * Both halves of the retirement. A declaration left behind is a second accent nothing rules between; a
+ * `var()` read left behind resolves to NOTHING and paints the element's inherited background, which on a
+ * dark surface is an invisible button rather than a visible error. Comments are stripped first, because
+ * app.css and this file both NAME the retired token in order to explain why it is gone.
  */
 test('--accent-strong is retired, not carried forward: nothing declares or reads it, anywhere in the token layer or the components', () => {
 	const offenders: string[] = [];
@@ -125,32 +104,23 @@ test('--accent-strong is retired, not carried forward: nothing declares or reads
 	expect(offenders).toEqual([]);
 });
 
-/**
- * Non-vacuity. The scan above reports offenders from a file walk, so a walk that found
- * nothing would pass while proving nothing. 25 files today; floor well below.
- */
+/** Non-vacuity: the scan above reports offenders from a file walk, so an empty walk proves nothing. */
 test('--accent-strong is retired, not carried forward: the retirement scan actually reads the component surface', () => {
 	expect(FILES.length).toBeGreaterThan(15);
 });
 
 /**
- * The other half of the retirement: the job did not vanish, it MOVED. `--accent` has to be able to
- * carry a label on its own now, which is the whole claim that made the darkened sibling redundant.
- * If this ever reds, retiring the token was premature rather than the guard being wrong.
+ * The job did not vanish, it MOVED: `--accent` must carry a label on its own, which is the claim that
+ * made the darkened sibling redundant. If this reds, the retirement was premature.
  */
 test('--accent-strong is retired, not carried forward: the fill it was darkened from now carries its ink at AA on its own', () => {
 	expect(ratio(token('on-accent'), token('accent'))).toBeGreaterThanOrEqual(AA);
 });
 
-// ── acceptance 2 — all four roles reach CSS ────────────────────────────────────────────
-
 /**
- * Acceptance 2. Not just the fill: a component that needs `on_fill` and cannot reach it as a custom
- * property will reach for a literal, and a literal is exactly what stops tracking the stop.
- *
- * `--grad`'s second stop is asserted through `--accent2` rather than by parsing the gradient, because
- * the gradient is DEFINED as `var(--accent), var(--accent2)` — the custom property IS the second stop,
- * and pinning that composition is what makes the claim true rather than incidental.
+ * `--grad`'s second stop is asserted through `--accent2` rather than by parsing the gradient: the
+ * gradient is DEFINED as `var(--accent), var(--accent2)`, so the custom property IS the second stop and
+ * pinning that composition is what makes the claim true rather than incidental.
  */
 test('every per-stop role reaches CSS as a custom property: the fill, its ink, the accent ink and the gradient second stop are all declared', () => {
 	const css = stripCssComments(APP_CSS);
@@ -163,18 +133,12 @@ test('every per-stop role reaches CSS as a custom property: the fill, its ink, t
 	expect(css).toMatch(/--grad:\s*linear-gradient\([^;]*var\(--accent\)[^;]*var\(--accent2\)[^;]*\);/);
 });
 
-// ── acceptance 3 — one pair, never separately ──────────────────────────────────────────
-
 /**
- * The `:root` seed is a REGISTRY PAIR, not two independently chosen hexes.
+ * The `:root` seed is a REGISTRY PAIR, not two independently chosen hexes — the assertion that makes
+ * "read from the single source" enforceable in a stylesheet, which cannot import JSON.
  *
- * This is the assertion that makes "read from the single source" enforceable in a stylesheet, which
- * cannot import JSON. Same price, and for the same stated reason, as `SURFACES` in
- * `src/lib/contract/presentation/colors.ts` and the surfaces block in `palette-registry.test.ts`: the
- * literal lives in one place and a named test reds the moment it stops matching the artifact.
- *
- * It deliberately does NOT pin WHICH stop. Re-seeding the brand default is a design decision; taking
- * fill from one stop and ink from another is a defect, and only the second is what this refuses.
+ * It deliberately does NOT pin WHICH stop: re-seeding the brand default is a design decision, while
+ * taking fill from one stop and ink from another is a defect, and only the second is refused.
  */
 test('a fill and its ink are emitted as one pair: the seeded --accent / --on-accent pair is one stop from the registry', () => {
 	const fill = token('accent').toLowerCase();
@@ -195,17 +159,10 @@ test('a fill and its ink are emitted as one pair: the seeded --accent / --on-acc
 });
 
 /**
- * Acceptance 3, the source scan: "when a fill is set without its paired ink in the same place, a
- * guard fails".
- *
- * SETTING the property is the site this is about, not READING it. A rule painting
- * `background: var(--accent)` inherits whatever ink is in force and is fine; a site that ASSIGNS
- * `--accent: <a stop's fill>` and does not assign `--on-accent` in the same place has created a
- * combination the registry never certified. `:root` is the seed and is covered by the test above.
- *
- * Both forms of assignment are scanned, because the per-stop wiring can arrive as either: a CSS
- * declaration inside a rule block, and a Svelte inline `style="--accent:…"` / `style:--accent`
- * binding. `NowPlayingHero.svelte`'s `style="--singer:{…}"` is the in-repo precedent for the second.
+ * SETTING the property is the site this is about, not READING it: a rule painting `background: var(--accent)` inherits
+ * whatever ink is in force and is fine, while a site that ASSIGNS `--accent: <a stop's fill>` without assigning
+ * `--on-accent` in the same place has created a combination the registry never certified. Both assignment forms are
+ * scanned — a CSS declaration in a rule block, and a Svelte inline `style="--accent:…"` / `style:--accent` binding.
  */
 test('a fill and its ink are emitted as one pair: no site sets the fill property without setting its ink property too', () => {
 	const offenders: string[] = [];
@@ -246,10 +203,8 @@ test('a fill and its ink are emitted as one pair: no site sets the fill property
 	expect(offenders).toEqual([]);
 });
 
-/**
- * The registry-level premise the pairing rule exists FOR. If `on_fill` were one rule rather than 48
- * facts, adjacency would still be enough and this whole discipline would be over-engineering.
- */
+/** The premise the pairing rule exists FOR: if `on_fill` were one rule rather than 48 facts, adjacency
+ *  would be enough and the whole discipline would be over-engineering. */
 test('a fill and its ink are emitted as one pair: on_fill is a per-stop fact, not a rule — 36 dark and 12 white', () => {
 	const white = STOPS.filter((s) => s.on_fill.toLowerCase() === '#ffffff');
 	expect(white.length).toBe(12);
@@ -264,16 +219,13 @@ test('a fill and its ink are emitted as one pair: every stop carries its own ink
 	expect(weak).toEqual([]);
 });
 
-// ── accent ink stays distinct, and the surface gap that blocks wiring it ───────────────
-
-/** It is still declared, and it is still NOT the fill. Collapsing the two is the failure. */
+/** Still declared, and still NOT the fill. Collapsing the two is the failure. */
 test('--accent-ink remains a required, distinct token: it is declared, and it is not a copy of the fill', () => {
 	expect(token('accent-ink').toLowerCase()).not.toBe(token('accent').toLowerCase());
 });
 
 /**
- * The 13 named divergent stops, from the issue body and confirmed against the artifact. This is the
- * measurement that makes the token REQUIRED rather than tidy: for these 13 the deep fill cannot be
+ * The measurement that makes the token REQUIRED rather than tidy: for these 13 the deep fill cannot be
  * its own card ink, so a build resolving both to one value ships 13 sub-AA text colours.
  */
 test('--accent-ink remains a required, distinct token: ink differs from fill for exactly the 13 stops that cannot be their own card ink', () => {
@@ -304,23 +256,17 @@ test('--accent-ink remains a required, distinct token: every stop clears AA as i
 });
 
 /**
- * ── THE MEASURED GAP THAT KEEPS THE PER-STOP `accent_ink` WIRING OUT OF THIS CHANGE ─────────────
+ * THIS TEST ASSERTS A DEFECT STILL EXISTS, so read why before "fixing" it.
  *
- * This test asserts a DEFECT still exists, which is unusual, so read why before "fixing" it.
+ * The registry certifies `accent_ink` against `--card` and all 48 pass there — but the app does not draw
+ * accent ink on `--card`. Both `var(--accent-ink)` read sites sit on `--card-tint2`, a surface the
+ * registry's `surfaces` block has never contained, where 16 of 48 stops FAIL AA. That is the registry's
+ * own defect class one surface further out: figures generated against surfaces the app does not paint.
  *
- * The registry certifies `accent_ink` against `--card`, and the test above shows all 48 pass there.
- * But the app does not draw accent ink on `--card`. Both `var(--accent-ink)` read sites in the tree
- * — `SongRow.svelte`'s `.chip.kind.lyric` and `.chip.tag` — sit on `--card-tint2`, a surface the
- * registry's own `surfaces` block has never contained. On it, 16 of 48 stops FAIL AA.
- *
- * That is the palette registry's defect class one surface further out: figures generated against
- * surfaces the app does not paint. So this change deliberately leaves `--accent-ink` at its incumbent value (7.35:1 there)
- * instead of adopting the seeded stop's `accent_ink` (3.99:1 there), and this test is what stops the
- * wiring landing quietly later: whoever wires it must first close the gap, and closing it turns this
- * expectation red, at which point DELETE THIS TEST — its premise will genuinely be gone.
- *
- * Two ways to close it, both wider than the token layer and neither this issue's to choose: regenerate
- * the palette with the tint surfaces in scope, or move those two chips onto `--card`.
+ * So `--accent-ink` stays at its incumbent value (7.35:1 there) rather than adopting the seeded stop's
+ * `accent_ink` (3.99:1 there). Whoever wires it per stop must first close the gap — by regenerating the
+ * palette with the tint surfaces in scope, or by moving those two chips onto `--card` — and closing it
+ * turns this expectation red, at which point DELETE THIS TEST: its premise will genuinely be gone.
  */
 test('--accent-ink remains a required, distinct token: the tint surfaces the app paints ink on are still outside the registry\u2019s measured set', () => {
 	expect(Object.keys(registry.surfaces).sort()).toEqual(['bg', 'card', 'card2']);

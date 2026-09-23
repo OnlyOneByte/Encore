@@ -1,21 +1,9 @@
 <!--
-  ── ENCORE DEVIATIONS (S2) ───────────────────────────────────────────────────────────────────
-  The registry's appearance is REPLACED by Encore's field look, not layered over it. Every reason is a
-  measured constraint this app already settled, and each names the test that holds it:
-
-  1. `h-9` (36px) is under this app's 44px `--tap` floor. An earlier change established that floor for every
-     settings field after a native select measured 41px and a text box 35px; `gate:measured` verifies
-     it on a real render because a select's box is browser-owned. `min-height: var(--tap)` reads the
-     token rather than restating 44px, which `touch-targets.test.ts` requires.
-  2. `text-base md:text-sm` drops to 14.4px on a phone. iOS Safari auto-zooms on focusing any control
-     under 16px and never zooms back out, leaving the operator stuck at 1.3x for the session. So the
-     size is `var(--ph-text-base)`, pinned at 16px.
-  3. The colours are Encore's surfaces — `var(--card2)` on `var(--line)` with `var(--ink)` — not
-     `bg-transparent border-input`. A field must read against the card it sits on, and the semantic
-     bridge deliberately does NOT alias the app's surface tokens onto shadcn's.
-  4. Appearance lives in scoped CSS rather than utilities because `app.css` sets `source(none)` with a
-     single `@source` over this directory: a utility is minted only from here, and scoped CSS needs no
-     minting at all. Same mechanism as the Button's press states.
+  The registry's appearance is REPLACED by Encore's `.encore-field` look, in scoped CSS rather than
+  utilities. Two hard floors, shared with native-select.svelte: `min-height: var(--tap)`, which reads the
+  token rather than restating 44 because `touch-targets.test.ts` requires that; and a 16px font-size on
+  every variant, because iOS Safari auto-zooms on focusing any control under 16px and never zooms back,
+  leaving the guest stuck at 1.3x for the session. See docs/FRONTEND.md#shared-components.
 -->
 <script lang="ts">
 	import { cn, type WithElementRef } from '$lib/utils.js';
@@ -80,14 +68,14 @@
 		font-size: 1.05rem;
 		border-radius: 14px;
 	}
-	/* A LAN address is read character by character to check it, so keep the digits monospaced and stop
-	   iOS from title-casing what the user types. The name field deliberately does NOT inherit this. */
 	/* The join screen's one field, on a phone held at arm's length: the sheet's largest comfortable box. */
 	.encore-field[data-variant='join'] {
 		padding: var(--space-xl);
 		font-size: var(--ph-text-lg);
 		background: var(--card);
 	}
+	/* A LAN address is read character by character to check it, so the digits stay monospaced. The name
+	   field deliberately does NOT inherit this. */
 	.encore-field[data-variant='mono'] {
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 		padding: 7px var(--space-md);

@@ -1,26 +1,21 @@
-// guard: the TV route drives its realtime channel through the shared, tested WsClient -- the client
-// with the heartbeat, liveness watchdog (#presumeDead), capped-backoff reconnect and page-lifecycle
-// rebinding -- and holds NO hand-rolled socket lifecycle of its own.
+// guard: the TV route drives its realtime channel through the shared, tested WsClient — the client with the
+// heartbeat, liveness watchdog (#presumeDead), capped-backoff reconnect and page-lifecycle rebinding — and
+// holds NO hand-rolled socket lifecycle of its own.
 //
-// THE DEFECT. The TV route hand-rolled its own connect()/onclose/backoff socket: it had reconnect but
-// none of the heartbeat, liveness watchdog, or page-lifecycle rebinding the tested WsClient gives the
-// phone -- so it was missing exactly the failure #presumeDead was written for, a socket that stops
-// answering but never fires close. The TV runs unattended for hours on a set-top browser, so it is the
-// one that most needs the tested client, and it was the one not using it. WsClient was used only by the
-// phone route.
+// Caught: the TV hand-rolled its own connect()/onclose/backoff socket. It had reconnect but none of the
+// heartbeat, liveness watchdog or page-lifecycle rebinding the tested client gives the phone, so it was
+// missing exactly the failure #presumeDead was written for: a socket that stops answering but never fires
+// close. The TV runs unattended for hours on a set-top browser, so it is the one that most needs the tested
+// client, and it was the only route not using it.
 //
-// WHY A SOURCE SCAN. Encore has no jsdom/happy-dom; a .svelte route's socket wiring is a property of the
-// component source, decidable without rendering. The behaviour WsClient itself provides
-// (reconnect/heartbeat/watchdog/wake) is exercised by client.test.ts and liveness.test.ts against a mock
-// socket -- those tests now cover the TV path too, because the TV shares that one implementation. This
-// guard's job is the integration fact those tests cannot see: that the TV actually routes through
-// WsClient and keeps no bespoke duplicate. It reds on base, where the TV had its own copy.
+// WsClient's own behaviour is covered by client.test.ts and liveness.test.ts against a mock socket; this
+// guard's job is the integration fact those cannot see.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
-// Blank out block, line, and HTML comments, PRESERVING newlines, so commented-out wiring can never
-// satisfy a positive guard and a commented-out bespoke socket can never fail a negative one.
+// Blank comments, PRESERVING newlines, so commented-out wiring can never satisfy a positive guard AND a
+// commented-out bespoke socket can never fail a negative one.
 function stripComments(src: string): string {
 	return src
 		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))

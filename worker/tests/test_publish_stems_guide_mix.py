@@ -1,17 +1,13 @@
 """PublishStems' guide-mix emission, driven through the real step with a fake runner.
 
-WHY THIS FILE EXISTS. A mutation audit deleted the ENTIRE 11-line emission block from `PublishStems` and
-921 tests still passed; renaming the artifact key to `guidemix` also passed. Nothing in the worker suite
-asserted the string `guideMix` outside the argv tests, which never touch the step.
+Exists because a prior mutation audit deleted the entire emission block, and renamed the artifact key,
+with the suite staying green — nothing asserted the `guideMix` string against the real step. That's
+dangerous specifically because the core reads `msg.artifacts?.stems?.guideMix` with optional chaining,
+so a missing/typo'd key silently arrives as `undefined` and every room falls back to the two-element
+guide forever, with nothing in any log.
 
-That is worse than an ordinary coverage gap because the failure is silent on BOTH sides of the wire: the
-core reads `msg.artifacts?.stems?.guideMix` with optional chaining, so a typo'd or missing key arrives as
-`undefined`, no ref is recorded, and every room quietly falls back to the two-element guide forever — with
-a green suite and nothing in any log.
-
-The property each test defends is that ENCODING and PUBLISHING are one atom. A ref published for a file
-that was never written points the TV at a 404, so the song plays nothing; a file written whose ref is never
-published wastes the work and leaves the drift in place.
+The property each test defends: ENCODING and PUBLISHING are one atom. A ref published for a file never
+written points the TV at a 404; a file written whose ref is never published wastes the work.
 """
 
 from __future__ import annotations
@@ -177,15 +173,10 @@ async def test_a_length_mismatch_skips_the_mix_rather_than_truncating_the_song(t
 
 
 async def test_a_guide_mix_is_built_without_any_alignment_gate(tmp_path) -> None:
-    """A guide mix is built whenever both stems are publishable — no alignment gate.
-
-    This test replaces a pair that pinned the OPPOSITE behaviour. A measured non-zero guide/instrumental
-    offset used to refuse the mix, so the song would take the two-element guide where a playback-time
-    governor could still trim the offset out. Both halves of that reasoning are gone: the stems are
-    sample-aligned by construction (one separation pass, one decoded input, one rate), and the two-element
-    path was deleted — the TV carries the guide inside the master as channels 2/3, so a song with no mix
-    offers NO guide at all. The refusal had stopped protecting a correctable path and started withholding
-    the only guide mechanism there is, on a measurement of a difference that cannot arise.
+    """A guide mix is built whenever both stems are publishable — no alignment gate. The stems are
+    sample-aligned by construction (one separation pass, one decoded input, one rate), and the TV
+    carries the guide inside the master as channels 2/3, so a song with no mix offers NO guide at all —
+    refusing on a measured offset would withhold the only guide mechanism there is.
     """
     runner = FakeRunner()
     ctx = _ctx(tmp_path, runner, vocals=True)

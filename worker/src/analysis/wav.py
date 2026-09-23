@@ -1,26 +1,12 @@
-"""Raw-stem audio reading for the analysis domain — WAV *or* FLAC, whichever the separator declared.
+"""Raw-stem audio reading for the analysis domain — WAV *or* FLAC, whichever the separator declared
+(`vocabulary.StemFormat`, `SeparatorEngine.stem_format`); a reader that assumes the wrong container
+cannot open the other, which reads as "stems do not match" with no missing-container reported. Both
+`vocal_range` (range summary) and `song_profile` (key path) read raw stems from here.
 
-`read_wav_mono` lived in `vocal_range.py` and `song_profile.py` reached into that module for it, coupling
-the key/range builder to the range module for a helper that is neither. Its own module makes the
-dependency honest — both `vocal_range` (the range summary) and `song_profile` (the key path) read raw
-stems from here.
-
-WHY THIS IS NO LONGER `wave`-ONLY. This module used to be numpy + stdlib, on the stated grounds that
-"the stems are plain PCM WAV in scratch at this point in the process". That was true of demucs and
-demucs-mlx and false of audio-separator, which writes FLAC — and stdlib `wave` cannot open a FLAC. So on
-an audiosep job both readers below failed, and the guide mix was refused with "stems do not match" when
-the real cause was a container the reader could not parse. A missing container is not a length mismatch,
-but nothing could tell the two apart. The format is now DECLARED by the engine
-(`vocabulary.StemFormat`, `SeparatorEngine.stem_format`) rather than assumed here, and these readers
-accept either container so that declaration is all a caller needs.
-
-WAV STAYS ON STDLIB, DELIBERATELY. The `wave` path below is unchanged — same float64 signal, same
-downmix, same supported widths, same raise on an unsupported one — because it is proven, it is what every
-existing measurement was calibrated against, and it needs no dependency at all. `soundfile` is imported
-LAZILY and only for a container `wave` cannot open. That ordering is what keeps this module importable on
-a box carrying nothing but numpy: the worker's own unit suite runs on exactly such a box (no torch, no
-ffmpeg, no soundfile — every heavy seam is faked), so a module-level `import soundfile` would break the
-suite everywhere to serve a path most jobs never take.
+WAV stays on stdlib `wave` — proven, what every existing measurement was calibrated against, and no
+dependency. `soundfile` is imported LAZILY, only for a container `wave` cannot open, so this module
+stays importable on a box carrying nothing but numpy — which is exactly what the worker's own unit
+suite runs on (no torch, no ffmpeg, no soundfile).
 """
 
 from __future__ import annotations

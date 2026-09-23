@@ -1,27 +1,13 @@
-/*
- * P14 — DOES A PROCESS MOVE THE PLAYING SONG'S PLAYHEAD?
- *
- * The invariant under test, stated as the owner did: "the currently playing song should absolutely
- * NOT be affected by anything happening for processing."
- *
- * METHOD. Process song A, get it genuinely playing and past the seek threshold, then process song B — a
- * DIFFERENT media — and watch A's playhead across B's whole process. B's process produces the real event
- * traffic: `media:status` progress frames, then `onMediaReady`'s `queue:sync` + `nowplaying:changed`.
- * A backwards step in A's `currentTime` is the reported defect.
- *
- * WHY currentTime AND decoded bytes. `paused === false` is not proof of playback (see HARNESS.md), so
- * the run first establishes A is really decoding, and only then treats a backwards step as meaningful.
- * A monotonic playhead across a process with zero decode is not evidence of anything.
- *
- *   PORT=5241 bun tests/e2e/probes/p14-playhead-vs-process.mjs
- *
- * Exit: 0 the playhead held, 1 it moved backwards, 2 the environment could not host the test.
- *
- * NOT-A-TV: this probe GRANTS autoplay. It has to — the invariant is about a MOVING playhead being
- * perturbed, so the playhead must be moving, and a real TV's gestureless policy leaves it at 0.00
- * where nothing can be observed. This run therefore says nothing about whether a real television
- * starts on its own (that is p13's job); it says only what a process does to a song already playing.
- */
+// P14 — the playing song's playhead must not be affected by anything happening for PROCESSING. Get song
+// A playing past the seek threshold, then process a DIFFERENT song B and watch A's playhead across B's
+// whole process, which produces the real traffic: `media:status` frames, then `onMediaReady`'s
+// `queue:sync` + `nowplaying:changed`. A backwards step in A's `currentTime` is the defect; A is proved
+// to be really DECODING first, or a monotonic playhead proves nothing (docs/E2E.md#proving-audio).
+//
+//   PORT=5241 bun tests/e2e/probes/p14-playhead-vs-process.mjs
+//
+// NOT-A-TV: grants autoplay, because the invariant needs a MOVING playhead (docs/E2E.md#autoplay).
+
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,20 +16,11 @@ import { findChromium } from '../lib/chromium.mjs';
 import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * /pattern). Browser/Page are derived from driver.mjs's own return types so they cannot
- * drift from the driver. page.evaluate() is typed Promise<any> by driver.mjs, so DOM/API-shaped results
- * are cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {import('node:child_process').ChildProcess} Child
- *
- * A media row as returned by /api/search (the fields this probe reads).
- * @typedef {{ id: string, title: string, source: string }} Media
- *
- * The audio-element readout evaluated in the TV page by READ.
- * @typedef {{ t: number, src: string, bytes: number, paused: boolean }} Readout
+ * @typedef {{ id: string, title: string, source: string }} Media a /api/search row, fields read here
+ * @typedef {{ t: number, src: string, bytes: number, paused: boolean }} Readout what READ evaluates
  */
 
 const PORT = Number(process.env.PORT ?? 5241);
@@ -53,11 +30,7 @@ const MEDIA_DIR = join(SCRATCH, 'media');
 
 /** @type {Child[]} */
 const children = [];
-/**
- * @param {string} cmd
- * @param {string[]} args
- * @param {import('node:child_process').SpawnOptions} [opts]
- */
+/** @param {string} cmd @param {string[]} args @param {import('node:child_process').SpawnOptions} [opts] */
 function launch(cmd, args, opts = {}) {
 	const p = spawn(cmd, args, { stdio: 'ignore', ...opts });
 	children.push(p);
@@ -83,7 +56,6 @@ const bail = (m) => {
 /** @param {string} path @returns {Promise<any>} */
 const jget = async (path) => (await fetch(BASE + path)).json();
 
-// ── boot a private instance ────────────────────────────────────────────────
 rmSync(SCRATCH, { recursive: true, force: true });
 mkdirSync(MEDIA_DIR, { recursive: true });
 
@@ -119,9 +91,7 @@ launch('bun', ['tests/e2e/fake-stems-worker.mjs'], {
 });
 await sleep(1500);
 
-// ── join, then process two DIFFERENT songs ───────────────────────────────────
-// Search matches on title, so one query does not surface the whole seeded library. Union across the
-// four demo titles (seed-media.mjs) and de-duplicate by id.
+// Search matches on TITLE, so one query cannot surface the whole library: union the four demo titles.
 const QUERIES = ['caroline', 'believin', 'rhapsody', 'prayer'];
 /** @type {Map<string, Media>} */
 const found = new Map();
@@ -138,12 +108,7 @@ const [songA, songB] = uniq;
 const qOf = (song) => QUERIES.find((q) => song.title.toLowerCase().includes(q)) ?? QUERIES[0];
 const qA = qOf(songA);
 const qB = qOf(songB);
-/** Has this media id become playable? Asked per-title, for the same reason the fixtures were. */
-/**
- * @param {string} id
- * @param {string} q
- * @returns {Promise<boolean>}
- */
+/** Playable yet? Asked per-title, for the same reason the fixtures were. @param {string} id @param {string} q @returns {Promise<boolean>} */
 async function isReady(id, q) {
 	const d = await jget(`/api/search?q=${q}`);
 	return (d.ready ?? []).some(/** @param {Media} m */ (m) => m.id === id);
@@ -151,7 +116,6 @@ async function isReady(id, q) {
 console.log(`fixture A (plays): ${songA.title} [${songA.id}]`);
 console.log(`fixture B (processes): ${songB.title} [${songB.id}]\n`);
 
-// ── drive the TV ──────────────────────────────────────────────────────────
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 
@@ -166,8 +130,7 @@ try {
 }
 if (!browserMaybe) bail('could not attach to Chromium');
 const browser = browserMaybe;
-// A PHONE first: the singer session and the queue socket both have to be a real client, because the
-// queue validator requires entry.singerId to equal the acting session's singer.
+// A PHONE first: the queue validator requires entry.singerId to equal the acting session's singer.
 const phone = await browser.newPage();
 await phone.goto(`${BASE}/`);
 const singerId = await phone.evaluate(`(async () => {
@@ -220,7 +183,6 @@ const processMedia = (mediaId) =>
     body: JSON.stringify({ mediaId: ${JSON.stringify(mediaId)} })
   }).then(r => r.status)`);
 
-// Process A and queue it, so the room has a real song to sing.
 await processMedia(songA.id);
 let readyA = false;
 for (let i = 0; i < 120; i++) {
@@ -253,13 +215,11 @@ const before = /** @type {Readout} */ (await page.evaluate(READ));
 console.log(`A playing: t=${before.t.toFixed(2)}s decoded=${before.bytes}B paused=${before.paused}`);
 if (before.bytes <= 32768) bail(`A is not really decoding (${before.bytes}B) — a held playhead would prove nothing`);
 
-// ── the actual test: process B while A plays ────────────────────────────────
 console.log(`\nprocessing B (${songB.title}) while A plays — sampling A's playhead\n`);
 await processMedia(songB.id);
 
-// The window is song A ONLY. A song CHANGE legitimately resets the playhead, so the moment the
-// element stops holding A's src the window closes — otherwise the natural advance to the next song
-// would read as the very defect under test.
+// The window is song A ONLY: a song CHANGE legitimately resets the playhead, so it closes the moment the
+// element stops holding A's src, or the natural advance to the next song would read as the defect.
 const srcA = before.src;
 let prev = before.t;
 let worstDrop = 0;
@@ -302,8 +262,8 @@ console.log(
 	`B reached ready inside the window: ${readyB}${readyAtT !== null ? ` (at A t=${readyAtT.toFixed(2)}s)` : ''}`
 );
 
-// A 0.25s tolerance covers ordinary decoder jitter on a sampled element; the defect is a jump back to
-// a stale COMMAND anchor, which is seconds, and is gated by seekPlan's own 1.5s threshold anyway.
+// Covers decoder jitter on a sampled element; the defect is a jump back to a stale COMMAND anchor, which
+// is seconds, and seekPlan's own 1.5s threshold gates it anyway.
 const TOL = 0.25;
 if (worstDrop > TOL) {
 	console.error(`\nFAIL — A's playhead moved BACKWARDS ${worstDrop.toFixed(2)}s during B's process`);

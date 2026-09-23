@@ -1,20 +1,9 @@
-// SPLIT MODE: the master element carries the 4-channel guide mix, and the graph pulls the two pairs
-// apart so each gets its own level. This is what replaces the two-element guide, and with it the drift
-// governor — one decoder means one playhead, so there is nothing left to hold in sync.
-//
-// Two halves, the repo's usual split for this component:
-//
-//   A. BEHAVIOURAL — drive the REAL PitchShiftGraph under stubbed WebAudio and prove the graph SHAPE.
-//      The channel indices are the whole contract (the browser splits by index, not by layout label),
-//      and a stub is the only place they can be asserted without a sound card.
-//
-//   B. SOURCE-SCAN — the wiring lives in .svelte effects that bun cannot execute without a Svelte
-//      compile and a DOM, so a text scan proves it is CONNECTED. Each has a named mutation trap.
+// SPLIT MODE: the master element carries the 4-channel guide mix and the graph pulls the two pairs apart so
+// each gets its own level, so one decoder means one playhead and no drift governor. The channel INDICES are
+// the whole contract — the browser splits by index, not by layout label.
 import { test, expect, describe, beforeEach, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';
-
-// ── stubs ─────────────────────────────────────────────────────────────────────────────────────────
 
 interface Conn {
 	to: StubNode;
@@ -66,7 +55,6 @@ class StubCtx {
 	splitters: StubSplitter[] = [];
 	mergers: StubMerger[] = [];
 	source: StubNode | null = null;
-	/** The worklet node, so a test can assert what actually feeds the splitter. */
 	worklet: StubNode | null = null;
 	async resume() {
 		this.state = 'running';
@@ -101,12 +89,9 @@ let saved: Record<string, unknown> = {};
 let ctx: StubCtx | null = null;
 
 /**
- * An `AudioContext` constructor whose instance is published to `ctx`, so a test can inspect the graph the
- * code under test built internally.
- *
- * A factory rather than a subclass that publishes itself from inside its own constructor: doing that is
- * banned by lint, and the ban is right — that shape is what makes it easy to publish a HALF-CONSTRUCTED
- * instance. Building it fully and then publishing cannot.
+ * An `AudioContext` constructor whose instance is published to `ctx`, so a test can inspect the graph built
+ * internally. A factory rather than a subclass publishing itself from its own constructor: that shape is
+ * lint-banned because it can publish a HALF-CONSTRUCTED instance; building fully then publishing cannot.
  */
 function capturingCtx(shape: (c: StubCtx) => void = () => {}): new () => StubCtx {
 	return function CapturedCtx(): StubCtx {
@@ -149,12 +134,9 @@ const inbound = (target: StubNode, from: StubNode[]) =>
 /** The single node `from` feeds, or null. Used to walk a pair's chain end to end. */
 const soleTarget = (from: StubNode): StubNode | null => (from.conns.length === 1 ? from.conns[0].to : null);
 
-// ── A. the graph shape ────────────────────────────────────────────────────────────────────────────
-
 describe('split mode wires each channel pair to its own gain', () => {
 	test('a 4-way splitter and two stereo mergers exist — pairs are re-merged, never summed', async () => {
-		// The trap: connecting splitter outputs 0 and 1 into ONE GainNode sums them, collapsing the
-		// instrumental to mono. A ChannelMerger is what keeps left as left.
+		// Outputs 0 and 1 into ONE GainNode would SUM them to mono; a ChannelMerger keeps left as left.
 		const g = new PitchShiftGraph(el(), { split: true });
 		await g.ensureRouted();
 		expect(g.isRouted).toBe(true);
@@ -164,24 +146,20 @@ describe('split mode wires each channel pair to its own gain', () => {
 	});
 
 	test('the SPLITTER is fed by the worklet, not straight from the source', async () => {
-		// Bypassing the worklet leaves the shifter dangling: the graph still plays and the guide still has
-		// its own level, but ±key silently does nothing on exactly the songs that got this feature. No other
-		// assertion in this file moves when that happens.
+		// Bypassing the worklet leaves the shifter dangling: ±key silently does nothing, and nothing else here moves.
 		const g = new PitchShiftGraph(el(), { split: true });
 		await g.ensureRouted();
 		const [splitter] = ctx!.splitters;
 		const feeders = inbound(splitter, [ctx!.source!, ctx!.worklet!]);
 		expect(feeders.map(([kind]) => kind)).toEqual(['worklet']);
-		// And the source feeds the worklet, so the chain is source -> worklet -> splitter.
 		expect(inbound(ctx!.worklet!, [ctx!.source!]).map(([k]) => k)).toEqual(['node']);
 	});
 
 	test('the WHOLE chain per pair: channels 0/1 -> instrumental gain, 2/3 -> guide gain', async () => {
-		// THE contract, and BOTH halves of it. The splitter indices alone are only half: exchanging which
-		// merger feeds which gain puts the instrumental on the gain that defaults to 0 and the isolated
-		// vocals on the gain that defaults to 1 — the room hears full-volume vocals with no backing track.
-		// Asserting the indices and, separately, that "two gains reach the destination" cannot see that, so
-		// this walks each pair from splitter to destination as one path.
+		// Both halves of the contract: exchanging which merger feeds which gain puts the instrumental on the gain
+		// defaulting to 0 and the isolated vocals on the gain defaulting to 1 — full-volume vocals with no backing
+		// track. Indices alone cannot see that, so each pair is walked splitter to destination as one path, with each
+		// gain identified by the LEVEL it was told to carry.
 		const g = new PitchShiftGraph(el(), { split: true });
 		g.setGain(0.9);
 		g.setGuideGain(0.25);
@@ -198,8 +176,6 @@ describe('split mode wires each channel pair to its own gain', () => {
 			['splitter', 3, 1]
 		]);
 
-		// Follow each merger to its gain, and identify the gain by the LEVEL it was told to carry — the one
-		// thing that cannot be satisfied by exchanging the two nodes.
 		const instGain = soleTarget(instMerger) as StubGain | null;
 		const guideGain = soleTarget(guideMerger) as StubGain | null;
 		expect(instGain?.kind).toBe('gain');
@@ -208,14 +184,13 @@ describe('split mode wires each channel pair to its own gain', () => {
 		expect(guideGain!.gain.value).toBeCloseTo(0.25, 6);
 		expect(instGain).not.toBe(guideGain);
 
-		// …and each gain reaches the destination, so both pairs sum back to one output.
+		// Each gain reaches the destination, so both pairs sum back to one output.
 		expect(soleTarget(instGain!)).toBe(ctx!.destination);
 		expect(soleTarget(guideGain!)).toBe(ctx!.destination);
 	});
 
 	test('setGuideGain moves ONLY the guide pair, and setGain only the instrumental pair', async () => {
-		// The runtime half of the same property: if the two were exchanged, moving the room's guide level
-		// would attenuate the backing track instead.
+		// Exchanged, moving the room's guide level would attenuate the backing track instead.
 		const g = new PitchShiftGraph(el(), { split: true });
 		await g.ensureRouted();
 		const [instMerger, guideMerger] = ctx!.mergers;
@@ -238,16 +213,10 @@ describe('split mode wires each channel pair to its own gain', () => {
 	});
 });
 
-// ── A2. NO WORKLET: an insecure origin must still get the guiding track ───────────────────────────
-//
-// `AudioWorklet` is a secure-context-only API, so on Encore's documented TV deployment
-// (`http://<LAN-IP>:3000/tv`) `ctx.audioWorklet` is undefined. The build used to dereference it
-// unconditionally, so the throw took the whole graph down — the splitter included — and the room lost
-// the guiding track as well as ±key, silently, on every song. Nothing in this file could see that,
-// because every test above hands the code a working worklet.
-//
-// The splitter needs no worklet at all. These pin that the guide survives without one.
-
+// `AudioWorklet` is secure-context-only, so on the documented plain-HTTP LAN TV deployment `ctx.audioWorklet` is
+// undefined — and dereferencing it unconditionally threw, taking the whole graph down (splitter included) so the
+// room silently lost the guiding track as well as ±key. The splitter needs no worklet, and every test above hands
+// the code a working one.
 describe('with no AudioWorklet (insecure origin) the guide still works', () => {
 	/** A context shaped like a non-secure origin: no `audioWorklet` member at all, as the spec requires. */
 	const insecure = () =>
@@ -265,13 +234,11 @@ describe('with no AudioWorklet (insecure origin) the guide still works', () => {
 		expect(ctx!.worklet).toBeNull(); // no shifter was constructed
 		expect(ctx!.splitters).toHaveLength(1);
 		expect(ctx!.splitters[0].outputs).toBe(4);
-		// source -> splitter, with nothing in between.
 		expect(inbound(ctx!.splitters[0], [ctx!.source!]).map(([k]) => k)).toEqual(['node']);
 	});
 
 	test('both pairs keep their own gain, exactly as with a worklet', async () => {
-		// The guide's whole value is the SEPARATE level. If the no-worklet path merged the pairs or lost a
-		// gain stage, the slider would move something that is not the vocals.
+		// The guide's whole value is the SEPARATE level: merge the pairs and the slider moves something else.
 		G.window = { AudioContext: insecure() };
 		const g = new PitchShiftGraph(el(), { split: true });
 		g.setGain(0.8);
@@ -295,8 +262,7 @@ describe('with no AudioWorklet (insecure origin) the guide still works', () => {
 	});
 
 	test('it reports that it CANNOT shift, so the UI need not lie about ±key', async () => {
-		// The guide works and the transpose does not. Conflating the two is what made this silent: a
-		// caller reading only `isDegraded` sees a healthy graph and offers a control that does nothing.
+		// Conflating the two made this silent: `isDegraded` alone shows a healthy graph offering a dead control.
 		G.window = { AudioContext: insecure() };
 		const g = new PitchShiftGraph(el(), { split: true });
 		await g.ensureRouted();
@@ -314,9 +280,8 @@ describe('with no AudioWorklet (insecure origin) the guide still works', () => {
 	});
 
 	test('a NON-split song captures nothing — no graph is worth an irreversible capture', async () => {
-		// Without a shifter a plain song gains nothing from a graph, and `createMediaElementSource` is
-		// permanent AND bypasses the element's own `volume`. Capturing here would take over the audio path
-		// to deliver exactly nothing.
+		// `createMediaElementSource` is permanent AND bypasses the element's own `volume`, and without a shifter a
+		// plain song gains nothing from a graph — so capturing here takes over the audio path to deliver nothing.
 		G.window = { AudioContext: insecure() };
 		const g = new PitchShiftGraph(el(), { split: false });
 		await g.setShift(3);
@@ -326,8 +291,7 @@ describe('with no AudioWorklet (insecure origin) the guide still works', () => {
 	});
 
 	test('a worklet that REFUSES its module degrades the same way, not into a broken graph', async () => {
-		// Distinct from an absent worklet: the member exists and `addModule` rejects (a CSP that blocks the
-		// blob URL is the realistic case). Same outcome required — guide yes, shift no.
+		// Distinct from an absent worklet: the member exists and `addModule` rejects (a CSP blocking the blob URL).
 		G.window = {
 			AudioContext: capturingCtx((c) => {
 				c.audioWorklet = {
@@ -348,10 +312,8 @@ describe('with no AudioWorklet (insecure origin) the guide still works', () => {
 
 describe('the guide pair defaults to SILENCE, not to full volume', () => {
 	test('an un-set guide gain builds at 0 — fail quiet, never loud', async () => {
-		// The precedent: a fresh graph defaulted its gain to 1, the level effect did not re-run on
-		// construction, and the isolated vocals played at FULL VOLUME for the rest of the song. In split
-		// mode the vocals are INSIDE the file the room is playing, so the worst case of a missed
-		// setGuideGain must be a guide nobody hears — never one that drowns the singer.
+		// In split mode the vocals are INSIDE the file the room plays, so a missed setGuideGain must yield a guide
+		// nobody hears — never one that drowns the singer.
 		const g = new PitchShiftGraph(el(), { split: true });
 		await g.ensureRouted();
 		const guideGain = ctx!.gains[1];
@@ -365,8 +327,7 @@ describe('the guide pair defaults to SILENCE, not to full volume', () => {
 	});
 
 	test('a level set BEFORE the build lands in the GainNode once it is built', async () => {
-		// The room's guide level is set by an effect that does NOT re-run when a graph is constructed, so
-		// the graph has to read the remembered value itself.
+		// The level effect does NOT re-run on graph construction, so the graph must read the remembered value.
 		const g = new PitchShiftGraph(el(), { split: true });
 		g.setGuideGain(0.35);
 		await g.ensureRouted();
@@ -387,8 +348,7 @@ describe('the guide pair defaults to SILENCE, not to full volume', () => {
 
 describe('the plain path is untouched', () => {
 	test('a non-split graph builds NO splitter and no second gain', async () => {
-		// Load-bearing: at keyShift 0 a plain song must touch no WebAudio, and when it does route for a
-		// transpose it must route exactly as before.
+		// At keyShift 0 a plain song must touch no WebAudio, and a transpose must route it exactly as before.
 		const g = new PitchShiftGraph(el());
 		await g.setShift(2);
 		expect(g.isRouted).toBe(true);
@@ -416,8 +376,8 @@ describe('the plain path is untouched', () => {
 
 describe('a context that will not run leaves the element alone', () => {
 	test('ensureRouted on a suspended context does NOT capture the element', async () => {
-		// The reason `masterSrcPlan` withholds the mix src until `isRouted`: here the element is still on
-		// its native output, where a 4-channel file would be DOWNMIXED — isolated vocals at full volume.
+		// Why `masterSrcPlan` withholds the mix src until `isRouted`: here the element is still on its native
+		// output, where a 4-channel file would be DOWNMIXED — isolated vocals at full volume.
 		G.window = {
 			AudioContext: capturingCtx((c) => {
 				c.state = 'suspended';
@@ -433,10 +393,9 @@ describe('a context that will not run leaves the element alone', () => {
 	});
 
 	test('a worklet the engine REFUSES degrades to non-split, so no mix src is ever promoted', async () => {
-		// `outputChannelCount: [4]` is a documented NotSupportedError candidate. Before the fix a throw
-		// here happened AFTER the irreversible capture and the catch then CLOSED the context — silencing
-		// that element for the life of the page. Now it falls back and clears `split`, so `mixGateFor`
-		// answers `denied` and the room plays the plain instrumental with no guide.
+		// `outputChannelCount: [4]` is a documented NotSupportedError candidate, and a throw here used to happen AFTER
+		// the irreversible capture, with the catch then CLOSING the context — silencing that element for the page's
+		// life. It now falls back and clears `split`, so `mixGateFor` answers `denied`.
 		G.AudioWorkletNode = class extends StubWorklet {
 			constructor(c: unknown, n: string, o?: Record<string, unknown>) {
 				super(c, n, o);
@@ -453,9 +412,8 @@ describe('a context that will not run leaves the element alone', () => {
 	});
 
 	test('the element is captured LAST, after every node that could throw', async () => {
-		// Ordering as a PROPERTY rather than a comment: make a later node construction throw and assert
-		// the element was never committed. A capture followed by a thrown build is what silenced an
-		// element permanently, because the catch closed the context under it.
+		// Ordering as a PROPERTY: make a later node construction throw and assert the element was never
+		// committed, because a capture followed by a thrown build silenced an element permanently.
 		G.window = {
 			AudioContext: capturingCtx((c) => {
 				c.createChannelSplitter = () => {
@@ -473,8 +431,7 @@ describe('a context that will not run leaves the element alone', () => {
 
 describe('a build interrupted by teardown does not route an orphan', () => {
 	test('detach during the build closes the context instead of leaving it running', async () => {
-		// The released-context leak class, reopened by the EAGER build: a mix song mounts, the build starts,
-		// drains and the slot detaches — and the orphan build used to reach `routed = true` on a graph
+		// The released-context leak reopened by the EAGER build: an orphan build reached `routed = true` on a graph
 		// nothing holds, with its AudioContext never closed.
 		let release: (() => void) | undefined;
 		G.window = {
@@ -511,14 +468,9 @@ describe('teardown releases the split stage', () => {
 	});
 });
 
-// ── B. the wiring, by source scan ─────────────────────────────────────────────────────────────────
+// The wiring, by source scan — the effects above live in .svelte and bun cannot execute them.
 
-/**
- * The repo's convention for a source scan, and NOT optional here. Two of this file's earlier scans were
- * defeated by simply COMMENTING THE CALL OUT: a raw-text `toContain` is satisfied by the commented copy,
- * so the mutation passed while the behaviour was gone. Blanking comments (rather than deleting them)
- * preserves offsets, so a failure still points at the right line.
- */
+// Two earlier scans here were defeated by COMMENTING THE CALL OUT; blanking rather than deleting keeps offsets.
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
@@ -528,21 +480,16 @@ describe('TvPlayer wiring', () => {
 	const src = stripComments(read('src/lib/tv/TvPlayer.svelte'));
 
 	test('there is no second element to mount, on any path', () => {
-		// This used to assert the second element was GATED to the element path, so a mix song never mounted
-		// one — mounting both would sound the vocals twice (once inside the mix, once on top): a doubled,
-		// flanged vocal. The gate is now structural: the element, its ref derivation and the whole
-		// `guidePath` → `element` branch are deleted, so "both at once" is unrepresentable rather than
-		// merely guarded. Assert the artefacts stay gone.
+		// Mounting both elements would sound the vocals twice — inside the mix and on top: a doubled, flanged vocal.
+		// The gate is structural now (the element and its whole branch are deleted), so assert the artefacts stay gone.
 		expect(src).not.toMatch(/guideRef/);
 		expect(src).not.toMatch(/bind:this=\{vocals\}/);
-		// And no code path may reach for the raw stem ref to resurrect one.
 		expect(src).not.toMatch(/vocalsRef/);
 	});
 
 	test('the master src goes through masterSrcPlan with the FULL gate, never a bare isRouted', () => {
-		// `mixGateFor` is what folds in `isSplit`. Passing `isRouted` alone is the leftover-non-split-graph
-		// downmix; passing a literal is the pending-src rewrite. Assert the call SHAPE, tolerant of
-		// formatting, and reject both failure modes by name.
+		// `mixGateFor` folds in `isSplit`: passing `isRouted` alone is the leftover-non-split-graph downmix, and
+		// passing a literal is the pending-src rewrite, so both failure modes are rejected by name.
 		expect(src).toMatch(/masterSrcPlan\(\s*guidePlan\s*,\s*playbackRef\(m\)\s*,\s*mixGateFor\(/);
 		expect(src).not.toMatch(/masterSrcPlan\([^)]*isRouted/);
 		expect(src).not.toMatch(/masterSrcPlan\([^)]*(true|false)\s*\)/);
@@ -553,16 +500,13 @@ describe('TvPlayer wiring', () => {
 	});
 
 	test('the src effect reads the settled signal, so a mix that becomes safe is actually played', () => {
-		// The graph's getters cannot wake an effect. Without a reactive read the mix is built, becomes
-		// safe, and is never played — a silent no-op nobody would notice.
-		// A bare `void` read, which is this repo's idiom for registering a dependency whose VALUE is not
-		// needed (see `void seekRev` in the seek effect).
+		// The graph's getters cannot wake an effect, so without a reactive read the mix is built, becomes safe,
+		// and is never played. A bare `void` read is this repo's idiom for a dependency whose VALUE is not needed.
 		expect(src).toMatch(/void mixSettled;/);
 	});
 
 	test('the routing attempt settles on FAILURE too, or a denied room never gets a src', () => {
-		// A mix song commits nothing while pending, so an attempt that only settles on success would leave
-		// the element holding '' for the whole song — silence, not a fallback.
+		// A mix song commits nothing while pending, so settling only on success leaves the element on '' all song.
 		expect(src).toMatch(/\.finally\(/);
 		expect(src).toMatch(/mixSettled = true;/);
 	});
@@ -577,8 +521,8 @@ describe('TvPlayer wiring', () => {
 	});
 
 	test('the room guide level is pushed into the split graph, not only into the second element', () => {
-		// Without this the level knob does nothing on a mix song: there is no second element whose
-		// `.volume` it could set, and the graph's gain would sit at its 0 default forever.
+		// Without this the knob does nothing on a mix song: no second element's `.volume` to set, and the graph's
+		// gain sits at its 0 default forever.
 		expect(src).toMatch(/masterGraph\?\.setGuideGain\(effectiveGuide\)/);
 	});
 });

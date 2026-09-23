@@ -1,20 +1,9 @@
-//
-// Guards for the settings page's three SCOPES (You / Party / Server) and, more importantly, for the
-// decision that came with them: identity has exactly ONE editor.
-//
-// THE BUG THESE BOUND. Before the split, your name and colour were editable in a profile sheet mounted
-// on the phone route. The redesign moved them onto the You tab. Had the sheet been left in place
-// "temporarily", the app would have had two editors with two save paths, two optimistic updates, and
-// two drafts that re-seed at different moments -- so a rename typed in one could be silently reverted
-// by a stale echo from the other. Nothing in the type system objects to that; a source scan does.
-//
-// The tab/panel assertions are the cheap half, and they now guard the OPPOSITE spelling from the one
-// they were written for. Originally the page hand-rolled `id="panel-<id>"` + `aria-labelledby="tab-<id>"`
-// and the risk was an `aria-controls` pointing at an id that does not exist. `Tabs.Content` owns the
-// panel role and its labelling now, so the risk inverted: re-declaring either on an inner wrapper nests
-// a second tabpanel inside the first and every tab exposes two panels. Both failure modes are invisible
-// to svelte-check and to every unit test, and both degrade exactly one class of user -- a screen-reader
-// user, who is also the least likely to be sitting next to the developer.
+// Guards the settings page's three SCOPES (You / Party / Server) and the decision that came with them:
+// identity has exactly ONE editor. Two editors means two save paths and two drafts re-seeding at different
+// moments, so a rename typed in one could be silently reverted by a stale echo from the other — invisible to
+// the type system, decidable by a source scan. `Tabs.Content` owns the panel role and its labelling, so
+// re-declaring either on an inner wrapper nests a SECOND tabpanel and every tab exposes two panels to a
+// screen reader — invisible to svelte-check and to every unit test.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,19 +25,16 @@ test('the name field exists in exactly one place', () => {
 });
 
 test('the leave-the-room action exists in exactly one place', () => {
-	// Same reasoning as the name field, and the stakes are higher: a leave clears the cookie and forgets
-	// the singer, so there is nothing to undo with. Two paths to it is two places to get the confirm
-	// wrong, and the confirm is the only thing standing between a tap and a lost queue.
+	// Same reasoning as the name field, and the stakes are higher: a leave clears the cookie and forgets the
+	// singer, so the confirm is the only thing between a tap and a lost queue. Two paths is two confirms.
 	const owners = svelteFiles(SRC).filter((f) => stripComments(readFileSync(f, 'utf8')).includes('Leave the room'));
 
 	expect(owners.map((f) => f.replace(SRC, 'src'))).toEqual(['src/routes/settings/+page.svelte']);
 });
 
 test('nothing imports the retired profile sheet or its modal helper', () => {
-	// A dangling import fails the build, so this is not about catching a typo -- it is about catching a
-	// REVIVAL. `modal.ts` was focus-trap infrastructure whose only consumer was that sheet; bringing
-	// either back without a consumer is how this codebase accumulates mechanisms that are built, tested
-	// and never wired to anything.
+	// A dangling import fails the build, so this catches a REVIVAL. `modal.ts` was focus-trap infrastructure
+	// whose only consumer was that sheet; reviving either without a consumer is the repo's standing defect.
 	const offenders: string[] = [];
 	for (const f of svelteFiles(SRC)) {
 		const src = stripComments(readFileSync(f, 'utf8'));
@@ -61,26 +47,20 @@ test('nothing imports the retired profile sheet or its modal helper', () => {
 test('every scope tab controls a panel that exists, and vice versa', () => {
 	const src = readFileSync(SETTINGS, 'utf8');
 
-	// The ids are template-interpolated (`id="tab-{t.id}"`), so the ids that actually reach the DOM come
-	// from the TABS registry. Read it rather than a hand-kept list here, or this guard drifts.
+	// The ids are template-interpolated (`id="tab-{t.id}"`), so read the TABS registry, not a hand-kept list.
 	const registry = /const TABS = \[([\s\S]*?)\] as const;/.exec(src)?.[1];
 	expect(registry).toBeDefined();
 	const ids = [...registry!.matchAll(/id: '([a-z]+)'/g)].map((m) => m[1]!);
 	expect(ids.length).toBeGreaterThan(1);
 
 	for (const id of ids) {
-		// One panel per tab. `Tabs.Content` OWNS the panel: it renders `role="tabpanel"` and labels it
-		// from its own trigger, so the page no longer spells either. This assertion moved from
-		// `id="panel-<id>"` + `aria-labelledby="tab-<id>"` when those were deleted -- the page had been
-		// re-declaring both on an inner `<div>`, which nested a SECOND tabpanel inside the primitive's
-		// and made every tab expose two panels to a screen reader. Asserting the old hand-rolled ids
-		// here would now be asserting the defect.
+		// One panel per tab. `Tabs.Content` OWNS the panel: it renders `role="tabpanel"` and labels it from its
+		// own trigger, so asserting the old hand-rolled `id="panel-<id>"` here would now be asserting the defect.
 		expect(src, `no Tabs.Content renders the ${id} scope`).toContain(`<Tabs.Content value="${id}">`);
 	}
 
-	// The defect above, stated as an invariant rather than left to the reviewer's memory: this page must
-	// not re-declare the tabpanel contract that `Tabs.Content` already provides. Comments are stripped
-	// first so the note explaining WHY does not trip the rule it explains.
+	// The defect stated as an invariant: this page must not re-declare the tabpanel contract Tabs.Content
+	// already provides. Comments are stripped first so the note explaining WHY does not trip the rule.
 	const markup = stripComments(src);
 	expect(markup, 'the page re-declares role="tabpanel" that Tabs.Content already renders').not.toContain(
 		'role="tabpanel"'
@@ -113,17 +93,15 @@ test('the scope tabs are reachable and named for assistive tech', () => {
 });
 
 test('the room scope is what a bare /settings opens', () => {
-	// The complaint that started the redesign: server-wide settings (the stem splitter, the lyrics
-	// reader -- set once, then left alone) were the first thing on the page, above the rotation you
-	// change mid-song. The gear links to a bare /settings, so the default decides which scope that is.
+	// The complaint that started the redesign: server-wide settings (set once, then left alone) were the first
+	// thing on the page, above the rotation you change mid-song. The gear links to a bare /settings.
 	const server = readFileSync(join(SRC, 'routes/settings/+page.server.ts'), 'utf8');
 
 	expect(server).toMatch(/const DEFAULT_TAB: TabId = 'party';/);
 });
 
 test('the header name button links to the identity tab', () => {
-	// The one entry point that must NOT land on the default: tapping your own name goes to your own
-	// settings. It is a link rather than a button now, so this also pins that it navigates at all.
+	// The one entry point that must NOT land on the default: tapping your own name goes to your own settings.
 	const phone = readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8');
 
 	expect(phone).toContain('href="/settings?tab=you"');

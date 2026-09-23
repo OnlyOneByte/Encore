@@ -1,38 +1,15 @@
-// guard: nothing under `tests/` speaks the Chrome DevTools Protocol by hand.
-//
-// THE DEFECT THIS EXISTS FOR. The e2e tree used to drive Chromium through a driver written here: a
-// WebSocket to `/json/version`'s `webSocketDebuggerUrl`, a message-id counter, a pending-promise map,
-// and `Target.*` / `Runtime.evaluate` / `Page.navigate` plumbing. That driver was replaced with
-// Playwright — and then TWO probes grew their own private copies anyway, because the shared driver did
-// not expose the one or two commands each of them wanted:
-//
-//   p6-lyrics             a second connection, for `Network.setCacheDisabled`
-//   p8-presence-resilience  a full `Cdp` + `CdpPage` pair reimplementing evaluate, goto, click,
-//                         waitFor, screenshot, viewport and network emulation
-//
-// Both were reasonable local decisions and both were wrong globally: the second one silently rotted.
-// When the Chromium spawn blocks came out, `p8` kept its CDP client and lost the browser it dialled,
-// so it failed with "Unable to connect" — and nothing said so, because no command ran it. The fix in
-// each case was a native Playwright verb on the shared driver (`newPage({ initScript })` for script
-// injection, `setOffline` for severing a socket, `bypassCacheFor` for the cache), which is what this
-// guard now protects: reach for the driver, or add a verb to it, but do not grow a third client.
-//
-// WHAT IS STILL ALLOWED, and why it is not the same thing. `driver.mjs` uses Playwright's OWN
-// `context.newCDPSession(page)` for `Emulation.setSafeAreaInsetsOverride`, which has no Playwright
-// API at all. That is the library's supported escape hatch: no socket, no id counter, no target
-// discovery, no reconnection semantics to get wrong. The ban is on hand-rolling the transport, not on
-// the protocol existing.
+// guard: nothing under `tests/` speaks the Chrome DevTools Protocol by hand. Two probes grew private CDP
+// clients (socket on `webSocketDebuggerUrl`, id counter, `Target.*` plumbing) because the shared Playwright
+// driver lacked the verb each wanted, and one rotted silently — dialling a debugging port that no longer
+// existed while no command ran it. Add a verb to tests/e2e/driver.mjs instead; Playwright's own
+// `context.newCDPSession` stays allowed, since the ban is on hand-rolling the transport.
 
 import { test, expect } from 'bun:test';
 import { filesUnder, read, relative } from '@encore/test-support';
 
 /**
- * The marks of a hand-rolled transport, as opposed to a protocol name appearing in prose.
- *
- * Each one is a thing you only write if you are building the connection yourself. A comment that
- * mentions `Runtime.evaluate` while explaining why it is gone must NOT red — which is why the patterns
- * match code shapes (a fetch of the version endpoint, a socket opened on the debugger URL, a quoted
- * domain name being SENT) rather than the bare words.
+ * The marks of a hand-rolled transport. Each matches a code SHAPE — a version-endpoint fetch, a socket on
+ * the debugger URL, a quoted domain being SENT — not the bare protocol words, so prose must not red.
  */
 const HAND_ROLLED = [
 	{
@@ -57,11 +34,8 @@ const HAND_ROLLED = [
 	}
 ];
 
-/**
- * `driver.mjs` is exempt for ONE construct: Playwright's own `newCDPSession`. Named by path and
- * narrowed to that construct rather than exempting the file, so the rest of the driver stays guarded —
- * if it ever grows a `/json/version` fetch, this guard still reds on it.
- */
+// Exempt for ONE construct, Playwright's own `newCDPSession` (no Playwright API exists for safe-area
+// insets), narrowed to the construct so a `/json/version` fetch in `driver.mjs` itself still reds.
 const DRIVER = 'tests/e2e/driver.mjs';
 const SELF = 'tests/guards/meta/no-hand-rolled-cdp.test.ts';
 
@@ -75,7 +49,6 @@ test('no file under tests/ hand-rolls a CDP connection', () => {
 	// Non-vacuity: the walk reached the tree. An empty list would make this guard a decoration.
 	expect(files.length).toBeGreaterThan(300); // @nvf-floor files.length
 
-	/** @type {string[]} */
 	const offenders: string[] = [];
 	for (const rel of files) {
 		if (rel === SELF) continue; // carries the patterns as fixtures, below
@@ -96,10 +69,8 @@ test('no file under tests/ hand-rolls a CDP connection', () => {
 });
 
 test('the scan reads code, not the prose that explains the removal', () => {
-	/*
-	 * Both directions. The driver's own header discusses `Runtime.evaluate` and `/json/version` at
-	 * length precisely to say they are gone; that must not red. Real transport code must still be caught.
-	 */
+	// Both directions: the driver's own header discusses these names at length to say they are gone, so prose
+	// must not red while real transport code must.
 	const prose = '// we used to fetch /json/version and open the webSocketDebuggerUrl by hand';
 	for (const { re } of HAND_ROLLED) expect(re.test(codeOnly(prose))).toBe(false);
 
@@ -115,12 +86,8 @@ test('the scan reads code, not the prose that explains the removal', () => {
 });
 
 test("Playwright's own CDP session is what the driver uses, and only for what has no API", () => {
-	/*
-	 * The exemption is a claim about the driver, so it is asserted rather than assumed. If a future edit
-	 * replaces `newCDPSession` with a hand-rolled socket, the first test above reds; if it removes the
-	 * construct entirely because Playwright grew an API for safe-area insets, THIS reds and the comment
-	 * above it stops being true. Either way the two stay in step.
-	 */
+	// The exemption is a claim about the driver, so it is asserted rather than assumed: a hand-rolled
+	// replacement reds the first test, and dropping the construct reds here, so comment and code stay in step.
 	const driver = read(DRIVER);
 	expect(driver).toContain('newCDPSession');
 	expect(driver).toContain('setSafeAreaInsetsOverride');

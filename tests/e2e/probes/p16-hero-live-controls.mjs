@@ -1,108 +1,20 @@
-/*
- * P16 — THE NOW-PLAYING DRAWER'S LIVE CONTROLS, AND THEIR HONEST DEGRADATION.
- *
- * ── WHAT MOVED, AND WHY THIS FILE CHANGED SHAPE ────────────────────────────────────────────────
- *
- * `NowPlayingHero` is DELETED. Everything it held — song identity, the seek row, the transport and
- * the live controls — is `NowPlayingDrawer.svelte` now: a bottom drawer (shadcn `ui/drawer` over
- * `vaul-svelte`) mounted in `src/routes/+layout.svelte` beside the persistent band and opened by the
- * band's pull handle. Home is the queue and nothing else.
- *
- * THE SHAPE CHANGED, NOT JUST THE ADDRESS, and three of this probe's original claims were about the
- * shape:
- *
- *   • THERE IS NO DISCLOSURE. The hero had a `.tools-toggle` carrying `aria-expanded` and a
- *     `.tools-peek` summary line beside it. The DRAWER is the act of revealing: vaul portals its
- *     content on open and DESTROYS it on close, so there is no attribute to read and no collapsed
- *     summary to keep a sentence out of. `SEL.toolsToggle` and `SEL.toolsPeek` are retired.
- *   • NOTHING HERE CAN BE READ COLD. The drawer is closed by default, so every controls claim now
- *     takes a tap on `SEL.bandExpand` first. A timeout on `.np-drawer` means the drawer is shut, not
- *     that the app is broken.
- *   • THE RANGE SITS DIRECTLY BELOW THE KEY ROW (ratified 2026-09-14), where it used to be behind a
- *     nested "Vocal range" Collapsible inside the hero's controls Collapsible — two disclosures deep
- *     to see a picture that answers "can I sing this?" at a glance.
- *
- * Each replaced claim is marked REPLACES at its `check()` and names what it stood in for, so a
- * guarantee whose MECHANISM died is not silently dropped along with it.
- *
- * ── WHY THE FILENAME STILL SAYS `hero` ─────────────────────────────────────────────────────────
- *
- * Deliberate, and the churn is the reason. This issue's coverage is a PAIR of rungs: this probe and
- * `tests/guards/hygiene/hero-live-controls.test.ts`, whose header rules that renaming ONE half
- * "would leave the two halves of one issue under two different names" and that the rename is worth
- * doing as a single sweep. That sweep is: both files, the registration in `tests/e2e/run-probes.mjs`,
- * the `KNOWN_OFFENDERS` key in `tests/guards/hygiene/contract.test.ts`, the row in
- * `tests/e2e/HARNESS.md`, and the prose pointers in `tests/e2e/contract.ts`,
- * `tests/guards/hygiene/phone-home.test.ts`,
- * `src/lib/components/ui/slider/slider.svelte` and `src/lib/components/LyricsReselect.svelte`.
- * This change is scoped to the PROBE, so renaming here would produce exactly the split that header
- * argues against while leaving its pointer aimed at a file that still says "hero". `-835` / `p16` are
- * the anchors that keep the pair findable until that sweep happens; `p16-drawer-live-controls.mjs` is
- * the name it should take when it does.
- *
- * ── WHAT IT ASSERTS, AND WHY EACH ONE IS A REAL DEFECT ─────────────────────────────────────────
- *
- * The subject is a song with NO isolated vocals stem. The guiding track cannot work for it, and the
- * honest response is not to hide the control:
- *
- *   - the control STAYS on screen and is disabled, so the singer is not left wondering where it went;
- *   - its readout says "Off" rather than a live-looking number it is not delivering;
- *   - a sentence explains why, and it names what still works, because a reason alone leaves a singer
- *     thinking the whole control group is dead;
- *   - the sentence renders BEFORE the control it explains, and is not dimmed by ANY ancestor
- *     `opacity` — an explanation at 50% alpha is the one element that must stay legible.
- *
- * And the inverse arm: a song WITH a stem gets a live control and NO explanation, because an
- * explanation for a working control is noise.
- *
- * ── THE GESTURE PAIR, WHICH IS THE MOST VALUABLE THING HERE ────────────────────────────────────
- *
- * `NowPlayingDrawer` sets `handleOnly` on its Root, restricting drag-to-dismiss to the handle. That
- * prop exists because the drawer's body is SLIDERS: a drag surface underneath a slider thumb makes
- * the two gestures one gesture, and the drawer wins because it is the ancestor. That is the substance
- * of, and no source scan can prove a gesture BEHAVES — `handleOnly` also silently does
- * nothing if the vendored drawer stops rendering vaul's real Handle (shadcn ships a decorative div,
- * which is why `drawer-handle.svelte` exists). So this probe drives both halves with a real pointer:
- *
- *   - a drag ON THE SLIDER moves the guiding track and does NOT dismiss the drawer;
- *   - a drag ON THE HANDLE does dismiss it.
- *
- * The slider drag carries a downward component on purpose: a real thumb drag is never perfectly
- * horizontal, and a vertical component is exactly what a drag-anywhere drawer would steal.
- *
- * ── HOW THE DEGRADED STATE IS REACHED ──────────────────────────────────────────────────────────
- *
- * `hasGuidingTrack()` is `isPlayable(m) && !!m.guideMixRef` — a 4-CHANNEL MIX, not the vocals stem.
- * (It was `!!m.vocalsRef` until the two-element guide path was deleted; this header said so for longer
- * than it was true, and that stale sentence is why the enabled arm was pointed at a fixture that could
- * not satisfy it.) So the ENABLED arm needs `FAKE_GUIDE_MIX=1`, and the degraded arm needs a song that
- * processed successfully and reported no vocals ref. `FAKE_NO_VOCALS=1` on the fake stems worker does
- * exactly that, and it is not a fault injection: `worker-hub.ts` optional-chains
- * `artifacts?.stems?.vocals` and its own comment says a worker that could not encode vocals "reports
- * none". So the probe processes TWO songs against one server, restarting the worker between them.
- *
- * ── NON-VACUITY, MEASURED RATHER THAN ASSERTED ─────────────────────────────────────────────────
- *
- * A probe that cannot fail is worse than no probe. The load-bearing arms are broken like this:
- *
- *   - `disabled={false}` on the <Slider> → "the control STAYS on screen, disabled" FAILS, and
- *     `data-disabled` disappears entirely (Bits UI omits the attribute when enabled and emits it as
- *     `data-disabled=""` when disabled, so PRESENCE is the correct test, not the value).
- *   - `class:disabled={false}` on `.gt` → the containment arm FAILS, because nothing is
- *     dimmed for the reason to sit outside of.
- *   - dropping `handleOnly` from `Drawer.Root` → "the slider drag does NOT dismiss the drawer" FAILS:
- *     vaul takes the pointer from the slider and the content unmounts mid-drag.
- *   - replacing `ui/drawer`'s Handle with a plain div (shadcn's own shipped shape) → "a drag on the
- *     HANDLE dismisses the drawer" FAILS while every source scan stays green.
- *
- *   EPORT=5216 bun tests/e2e/probes/p16-hero-live-controls.mjs
- *
- * AS OF THIS MIGRATION the drawer arms have NOT been executed against a live server — the authoring
- * environment has no built app to serve. The command above is what exercises them, and it needs
- * `bun run build` plus a Chromium (see the environment bails below).
- *
- * Exit 0 all passed / 1 a real failure / 2 the environment could not host the test.
- */
+// P16 — the now-playing drawer's live controls, and their honest degradation.
+//
+// Two arms, two songs, one server:
+//   - WITH a guide mix → a live control and NO explanation beside it.
+//   - NO guide mix → the control STAYS on screen disabled, its readout says 'Off', and a sentence
+//     naming what still works renders BEFORE the control, dimmed by no ancestor's opacity.
+// Plus the gesture pair, which is the part no source scan can reach: a real pointer drag on the
+// SLIDER moves the guiding track and does NOT dismiss the sheet (`handleOnly` on Drawer.Root), while
+// a drag on the HANDLE does. See docs/E2E.md#gestures
+//
+// The filename keeps `hero` so this stays paired with tests/guards/hygiene/hero-live-controls.test.ts;
+// renaming means both files, the entry in tests/e2e/run-probes.mjs and the guards' keys in one sweep.
+//
+//   EPORT=5216 bun tests/e2e/probes/p16-hero-live-controls.mjs
+//
+// Needs `bun run build`: server.ts serves the BUILT app, so a stale build measures yesterday's markup.
+// Exit codes: see docs/E2E.md#exit-codes-and-what-ran-means
 import { existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -129,6 +41,10 @@ const MEDIA_DIR = join(RUN_DIR, 'media');
 
 /** The exact sentence the drawer derives for a song with no isolated vocals. */
 const NOTE_FRAGMENT = 'no isolated vocals';
+/** vaul animates the sheet in; measuring or dragging mid-transition reads a frame that is still moving. */
+const VAUL_OPEN_SETTLE_MS = 400;
+/** A dim ancestor is only believed once it survives this — vaul's own fade reports below full alpha. */
+const OPACITY_RECHECK_MS = 800;
 
 /** @type {{ name: string, ok: boolean }[]} */
 const checks = [];
@@ -159,7 +75,6 @@ const serverAlive = async () =>
 		.then((r) => r.ok)
 		.catch(() => false);
 
-// ── boot ───────────────────────────────────────────────────────────────────
 async function bootServer() {
 	if (await serverAlive()) bail(`something is already listening on ${BASE}; this probe owns the port and the workers`);
 	mkdirSync(MEDIA_DIR, { recursive: true });
@@ -205,9 +120,8 @@ async function spawnWorker(kind) {
 		FAKE_SLOW_MS: '50'
 	};
 	if (kind === 'noVocals') env.FAKE_NO_VOCALS = '1';
-	// THE ENABLED ARM NEEDS A GUIDE MIX, not a vocals stem. `hasGuidingTrack` is `!!guideMixRef`, so a
-	// song with vocals and no mix is correctly un-guidable and the slider is correctly disabled — which
-	// is exactly how this probe's with-stem arm failed the first time it was run against the drawer.
+	// `hasGuidingTrack` is `isPlayable(m) && !!m.guideMixRef` — the 4-channel MIX, not the vocals stem,
+	// so a song with vocals and no mix is correctly un-guidable and the enabled arm needs FAKE_GUIDE_MIX.
 	if (kind === 'withVocals') env.FAKE_GUIDE_MIX = '1';
 	const logFd = join(RUN_DIR, `worker-${kind}.log`);
 	const p = spawnChild('bun', ['tests/e2e/fake-stems-worker.mjs'], {
@@ -227,7 +141,6 @@ async function spawnWorker(kind) {
 	throw new Error(`worker ${kind} never welcomed (see ${logFd})`);
 }
 
-// ── HTTP, with the probe's session cookie ──────────────────────────────────
 let COOKIE = '';
 /** @param {string} path @param {RequestInit} [init] */
 async function api(path, init = {}) {
@@ -277,13 +190,9 @@ async function processOne(q) {
 	);
 }
 
-// ── the range label, computed INDEPENDENTLY of the app ─────────────────────
-/*
- * Three lines rather than an import of `rangeLabel`, deliberately. The claim is "the drawer STATES
- * this song's range", and an oracle that calls the same helper the UI calls would mirror a bug in it
- * instead of catching one. The spelling — scientific pitch names, ASCII ` - ` between them — is
- * pinned in `src/lib/contract/process/song-profile.ts`, and a change to it should red here.
- */
+// Computed here rather than importing `rangeLabel`: an oracle that calls the helper the UI calls
+// would mirror a bug instead of catching one. The spelling is pinned in
+// src/lib/contract/process/song-profile.ts, and a change to it should red here.
 const SHARP_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 /** @param {number} midi */
 function noteName(midi) {
@@ -296,7 +205,6 @@ function expectedRangeLabel(p) {
 	return `${noteName(p.p05Midi)} - ${noteName(p.p95Midi)}`;
 }
 
-// ── page driving ───────────────────────────────────────────────────────────
 /** @param {Page} phone */
 async function ensureProbeWs(phone) {
 	await phone.evaluate(`
@@ -339,15 +247,8 @@ async function queueAdd(phone, mediaId, singerId) {
 	await sleep(250);
 }
 
-/*
- * Every selector this probe reads, handed to the page ONCE as a lookup table.
- *
- * The table exists so no in-page expression spells a selector as a literal: `contract.test.ts` bans
- * that outright, and a `q(S.foo)` indirection keeps every hook coming from `SEL` where the anchor
- * guard can see it move. `S.bandExpand` is the BAND's pull handle (the way IN) and `S.drawerHandle`
- * is vaul's own drag handle on the open drawer (the way OUT) — two controls, two files, and
- * conflating them is how a gesture test ends up dragging the wrong element.
- */
+// Every selector handed to the page ONCE, so no in-page expression spells one as a literal — the
+// contract guard bans that. See docs/E2E.md#why-selectors-are-centralised
 const PRELUDE = `
 	const S = {
 		drawer: ${JSON.stringify(SEL.npDrawer)},
@@ -369,14 +270,8 @@ const PRELUDE = `
 	const painted = (el) => !!el && !!el.getClientRects().length;
 `;
 
-/**
- * The CLOSED state, read before anything is tapped.
- *
- * `sliderCount` is a count and not a visibility test on purpose: the hero's control was rendered and
- * merely hidden while its Collapsible was shut, so "not visible" was the strongest available claim.
- * vaul portals the drawer's content on open and destroys it on close, so the honest claim is now
- * ABSENCE — a stronger guarantee than the one it replaces.
- */
+// The CLOSED state. `sliderCount` is a count, not a visibility test: vaul destroys the drawer's
+// content on close, so ABSENCE is the honest claim.
 const CLOSED_EXPR = `(() => {
 	${PRELUDE}
 	return {
@@ -390,20 +285,13 @@ const CLOSED_EXPR = `(() => {
 })()`;
 
 /**
- * Read the OPEN drawer's live-controls state out of a real render. ONE evaluate, so every field
- * describes the same paint: a per-field round trip can straddle a re-render and report a mix of two
- * states.
+ * The OPEN drawer's live-controls state, in ONE evaluate so every field describes the same paint —
+ * per-field round trips can straddle a re-render and report a mix of two states.
  *
- * `rangeEl` is found by TEXT rather than by a class, because the range block has no `SEL` hook and
- * inventing one here would put a selector outside the contract. The walk is post-order so the
- * DEEPEST element whose own text is exactly the range label wins — that is the label span itself,
- * not the section wrapping it.
- *
- * `noteDimmedByAncestor` is measured rather than inferred. The containment field beside it
- * (`noteInsideDimmedSubtree`) is the ORIGINAL form of that claim and is kept because `class:disabled`
- * on `.gt` is still the anchor the contract pins; but GuidingTrack's `opacity: 0.5` moved onto the
- * control leaf, so containment alone no longer proves nothing dims the sentence. This walks every
- * ancestor and reports the first one that paints below full alpha.
+ * `rangeEl` is found by TEXT because the range block has no SEL hook and inventing one here would put
+ * a selector outside the contract; the walk is post-order so the DEEPEST exact match wins (the label
+ * span, not the section around it). `noteDimmedByAncestor` is measured rather than inferred from
+ * containment, because GuidingTrack's `opacity: 0.5` sits on the control leaf.
  *
  * @param {string | null} expectedRange
  */
@@ -498,10 +386,10 @@ async function waitForBandTitle(phone, title) {
 }
 
 /**
- * Open the drawer from the band's pull handle, and wait for the song it is supposed to be about.
+ * Open the drawer from the band's pull handle and wait for the song it should be about.
  *
- * IDEMPOTENT and gated on the drawer being shut: while it is open, vaul's overlay covers the band, so
- * a second tap would be a click on a scrim rather than on the handle.
+ * IDEMPOTENT and gated on the drawer being shut: while it is open vaul's overlay covers the band, so a
+ * second tap lands on a scrim instead of the handle.
  * @param {Page} phone @param {string} title
  */
 async function openDrawerFor(phone, title) {
@@ -512,10 +400,7 @@ async function openDrawerFor(phone, title) {
 		timeout: 10_000,
 		name: 'the now-playing drawer to open'
 	});
-	// RE-POINTED at the BAND's title (2026-09-21): the drawer head no longer names the song. Every line of
-	// it was a second copy of the band row's — reported as the now playing/now singing being duplicated —
-	// and the band is composed INSIDE this sheet, so this still reads the song identity out of the open
-	// drawer rather than off some other surface.
+	// The band is composed INSIDE this sheet, so its title is the song identity of the OPEN drawer.
 	await waitFor(
 		async () =>
 			(await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.bandTitle)})?.textContent ?? ''`))?.includes?.(
@@ -523,8 +408,7 @@ async function openDrawerFor(phone, title) {
 			),
 		{ timeout: 15_000, name: `the drawer showing "${title}"` }
 	);
-	// One frame for vaul's open transition to settle before anything is measured or dragged.
-	await sleep(400);
+	await sleep(VAUL_OPEN_SETTLE_MS);
 }
 
 /** The rendered rect of one element, in viewport coordinates — what a real pointer drag needs.
@@ -561,7 +445,6 @@ async function settles(phone, expression, timeout) {
 	}
 }
 
-// ── the probe ──────────────────────────────────────────────────────────────
 /** @type {import('node:child_process').ChildProcess | undefined} */ let server;
 /** @type {import('node:child_process').ChildProcess | undefined} */ let worker;
 /** @type {Browser | undefined} */ let browser;
@@ -571,13 +454,7 @@ async function main() {
 	const chromium = findChromium();
 	if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 
-	/*
-	 * `server.ts` serves the BUILT app, so a stale build silently measures yesterday's markup. That is
-	 * how this probe first "failed": the build predated GuidingTrack's move onto <Slider>, so
-	 * `[data-slot='slider']` was absent and the with-stem arm read as a real defect. An environment
-	 * problem must not be reportable as one, hence the check and exit 2. `measured-design.mjs` orders
-	 * itself after the build for the same reason.
-	 */
+	// An environment fault must not be reportable as a defect, so a missing or stale build exits 2.
 	if (!existsSync(join(CORE_DIR, 'build'))) {
 		bail('build is missing. Run `bun run build` first — this probe drives the BUILT app.');
 	}
@@ -588,12 +465,8 @@ async function main() {
 			return true;
 		}
 	};
-	/*
-	 * The five files this probe's claims are made of. The drawer, its mount and the band joined the
-	 * list with the hero's deletion: the controls are only reachable because the LAYOUT mounts the
-	 * drawer and hands the band an `onexpand`, so a build predating either one fails the gesture arms
-	 * for an environment reason that must not be reported as a defect.
-	 */
+	// The controls are only reachable because the layout mounts the drawer and hands the band an
+	// `onexpand`, so a build predating any of these five fails the gesture arms for an environment reason.
 	for (const f of [
 		'src/lib/components/GuidingTrack.svelte',
 		'src/lib/components/ui/slider/slider.svelte',
@@ -607,7 +480,6 @@ async function main() {
 	server = await bootServer();
 	await apiJoin('ProbeApi');
 
-	// ── two songs, two stem states, one library ──
 	worker = await spawnWorker('withVocals');
 	const withStem = await processOne('caroline');
 	await killChild(worker);
@@ -630,24 +502,14 @@ async function main() {
 	if (!wv?.vocalsRef) bail(`"${withStem.title}" processed with NO vocals ref; the with-stem arm has no subject`);
 	if (nv?.vocalsRef)
 		bail(`FAKE_NO_VOCALS did not withhold the vocals ref (got ${nv.vocalsRef}); the degraded arm has no subject`);
-	/*
-	 * AND THE MIX, which is the ref the guide gate actually reads. Bailed on separately from vocalsRef
-	 * rather than folded into it, because the two came apart: the guide used to be played from the vocals
-	 * stem in a second media element, that path was deleted (two decoders cannot be sample-locked from
-	 * script — `guide-level.ts`), and `hasGuidingTrack` became `!!guideMixRef`. A probe that keeps
-	 * checking only the vocals ref would report a healthy fixture while the enabled arm has no subject,
-	 * which is precisely what happened here.
-	 */
+	// The MIX is bailed on separately from vocalsRef because the two came apart: `hasGuidingTrack` reads
+	// `!!guideMixRef`, so a fixture with vocals and no mix looks healthy while the enabled arm has no subject.
 	if (!wv?.guideMixRef)
 		bail(`"${withStem.title}" processed with NO guide mix ref; the ENABLED arm has no subject (FAKE_GUIDE_MIX=1?)`);
 	if (nv?.guideMixRef) bail(`the degraded fixture got a guide mix (${nv.guideMixRef}); its arm has no subject`);
 
-	/*
-	 * The range claim needs a fixture that HAS a range, and the fake worker publishes one
-	 * (p05Midi/p95Midi) unless FAKE_NO_PROFILE is set — so a missing range here is an environment
-	 * fault, not a defect in the drawer. Bailing keeps it out of the verdict, the same way the two
-	 * stem-state bails above do.
-	 */
+	// The fake worker publishes p05Midi/p95Midi unless FAKE_NO_PROFILE is set, so a missing range is an
+	// environment fault and bails rather than entering the verdict.
 	const expectedRange = expectedRangeLabel(wv?.songProfile);
 	if (!expectedRange) {
 		bail(
@@ -656,30 +518,15 @@ async function main() {
 	}
 	console.log(`fixture: expected range label ${JSON.stringify(expectedRange)}\n`);
 
-	// `waitFor` reports `unknown`, so the cast is where the browser handle gets its type. Held in a
-	// local as well as the module-level `browser` (which teardown needs) so the pages below are reached
-	// through a value TypeScript knows is defined.
 	const b = /** @type {Browser} */ (await waitFor(() => connect().catch(() => null), { timeout: 20_000, name: 'CDP' }));
 	browser = b;
 	const phone = await b.newPage();
-	// A phone in a hand, and the driver's own method rather than a `setViewport?.()` that silently
-	// resolved to undefined — the drawer and the band are thumb-zone chrome, so the width is not
-	// incidental to what is being measured.
+	// The drawer and the band are thumb-zone chrome, so the width is not incidental to the measurement.
 	await phone.viewport(390, 844);
 
-	/*
-	 * Join IN THE BROWSER, so the queue op's actor is this session's singer.
-	 *
-	 * The name is written through the native value setter and then an `input` event, not by assigning
-	 * `.value`: Svelte's `bind:value` listens for the event, and a bare assignment leaves the binding
-	 * holding its old value — the submit control stayed disabled and the probe timed out on a page that
-	 * looked filled in. The control itself is found by accessible text rather than position, because the
-	 * colour swatches are buttons too and they come first in document order.
-	 *
-	 * An earlier change replaced the standalone /join route with the landing surface at `/`, which
-	 * renders the join form while unjoined. Going to the old path would 404 and the probe would time
-	 * out on a page that never had a name field.
-	 */
+	// Join IN THE BROWSER so the queue op's actor is this session's singer. The name goes through the
+	// native value setter plus an `input` event, because Svelte's `bind:value` listens for the event and a
+	// bare `.value =` leaves the binding holding its old value with the submit control still disabled.
 	await openJoin(phone, BASE);
 	await waitFor(async () => await phone.evaluate(`!!document.querySelector(${JSON.stringify(SEL.nameInput)})`), {
 		timeout: 15_000,
@@ -703,12 +550,8 @@ async function main() {
 	if (!clicked?.found || clicked?.disabled) {
 		bail(`the join control was ${clicked?.found ? 'disabled' : 'not found'} — the name field never took its value`);
 	}
-	/*
-	 * The joined signal is the BAND, not the hero. `SEL.homeReady` is `.band`, which the layout mounts
-	 * on exactly the condition this wait is really asking about (`isPhoneSurface && me !== null`), so it
-	 * answers "this singer is joined" with no gesture — where the hero used to answer it by being the
-	 * top of home.
-	 */
+	// `SEL.homeReady` is `.band`, which the layout mounts on exactly this condition, so it answers
+	// "this singer is joined" with no gesture.
 	await waitFor(async () => await phone.evaluate(`!!document.querySelector(${JSON.stringify(SEL.homeReady)})`), {
 		timeout: 20_000,
 		name: 'the joined phone (the now-playing band)'
@@ -719,17 +562,12 @@ async function main() {
 	);
 	if (!actor) bail('could not read the joined singer id from the browser session, so a queue op would be rejected');
 
-	// ── ARM 1: a song WITH an isolated stem ──
+	// ARM 1: a song WITH a guide mix.
 	await queueAdd(phone, withStem.id, actor);
 	await sendPlayer(phone, { cmd: 'play' });
 	await waitForBandTitle(phone, withStem.title);
 
-	// SHUT first. REPLACES 'the disclosure starts CLOSED, with a summary standing in for the controls'
-	// and 'the control is not visible while the disclosure is closed': there is no toggle to read an
-	// `aria-expanded` off and no `.tools-peek` summary. What carries the same user-visible promise —
-	// the controls are not occupying the screen until asked for, and something still says what is
-	// playing — is the band: it offers the pull handle, states the song permanently, and the drawer is
-	// not rendered at all.
+	// SHUT first: the controls must not occupy the screen until asked for, while the band still says what is playing.
 	const closed = /** @type {any} */ (await phone.evaluate(CLOSED_EXPR));
 	check(
 		'the controls start away: the band offers a pull handle and no drawer is rendered',
@@ -737,7 +575,7 @@ async function main() {
 		JSON.stringify(closed)
 	);
 	check(
-		'the band states what is playing while the controls are away (REPLACES the collapsed peek summary)',
+		'the band states what is playing while the controls are away',
 		typeof closed.bandTitleText === 'string' && closed.bandTitleText.includes(withStem.title),
 		JSON.stringify(closed.bandTitleText)
 	);
@@ -750,16 +588,13 @@ async function main() {
 	await openDrawerFor(phone, withStem.title);
 	const live = /** @type {any} */ (await phone.evaluate(stateExpr(expectedRange)));
 
-	// REPLACES 'the hero renders with its tools disclosure open': the drawer's PRESENCE is the open
-	// state — vaul portals the content on open and destroys it on close, so there is no attribute.
+	// The drawer's PRESENCE is the open state: vaul portals its content on open and destroys it on close.
 	check(
 		"the band's pull handle opens the drawer, and the live-controls body is in it",
 		live.drawerPresent && live.bodyPresent && live.dragHandlePresent,
 		JSON.stringify(live)
 	);
-	// REPLACES 'the control lives in the disclosure BODY, never inside its toggle'. Same
-	// substance, new drag surface: the control must be in the body and NOT inside vaul's handle, which
-	// `handleOnly` makes the drawer's only draggable element.
+	// `handleOnly` makes vaul's handle the only draggable element, so the control must not be inside it.
 	check(
 		'the control is in the drawer BODY, never on the drag handle',
 		live.sliderPresent && live.sliderInBody && !live.sliderOnDragHandle,
@@ -775,20 +610,15 @@ async function main() {
 		!live.notePresent && !live.pageTextHasFragment,
 		JSON.stringify(live)
 	);
-	// The range, in the SAME reveal as the key row. REPLACES nothing that existed — it is the claim the
-	// retired nested "Vocal range" Collapsible used to defeat: one level of revealing (the drawer), not
-	// two. Read at keyShift 0, before the key row below is driven, because the label transposes with it.
+	// Read at keyShift 0, BEFORE the key row below is driven: the range label transposes with the key.
 	check(
 		'the vocal range is shown in the same reveal as the key row, with nothing further to open',
 		live.rangeShown && live.rangeBelowKeyRow,
 		`expected ${JSON.stringify(expectedRange)} — shown=${live.rangeShown} belowKeyRow=${live.rangeBelowKeyRow}`
 	);
 
-	/*
-	 * THE DOOR TO THE SONG PAGE. It is the drawer's only header affordance, and it is the one control here
-	 * whose correctness is a URL rather than a rendering — so it is asserted against the id of the song
-	 * actually playing, not merely for presence. A "···" pointing at the wrong song is worse than none.
-	 */
+	// Asserted against the id of the song actually playing, not merely for presence: a door pointing at
+	// the wrong song is worse than no door.
 	check(
 		'the drawer offers the "···" door, as a real anchor to THIS song',
 		live.moreIsAnchor === true && live.moreHref === `/song/${withStem.id}`,
@@ -800,12 +630,8 @@ async function main() {
 		JSON.stringify({ caps: live.keyCapCount, live: live.keyCapsLive, label: live.keyLabelText })
 	);
 
-	/*
-	 * …and it WORKS: a keycap moves the room's key and the label follows the server's broadcast.
-	 * Clicked in-page rather than through a real pointer for the reason p3-key-shift gives — the
-	 * keycap's glyph is a small inline SVG and hit-testing it adds nothing here. p3 owns the pitch
-	 * semantics end to end; this arm only claims the row is wired where it now lives.
-	 */
+	// Clicked in-page rather than with a real pointer: the keycap's glyph is a small inline SVG and
+	// hit-testing it adds nothing. p3-key-shift owns the pitch semantics; this arm claims only the wiring.
 	const keyBefore = live.keyLabelText;
 	await phone.evaluate(`(() => {
 		const caps = document.querySelectorAll(${JSON.stringify(SEL.keyBtn)});
@@ -825,13 +651,10 @@ async function main() {
 		`label was ${JSON.stringify(keyBefore)}, now ${JSON.stringify(await phone.text(SEL.keyLabel))}`
 	);
 
-	// ── THE GESTURE PAIR: handleOnly, driven ──
-	/*
-	 * A real pointer drag across the slider, with a downward component. Two claims come out of one
-	 * gesture: the slider ANSWERS it (so the drawer is not swallowing the pointer), and the drawer
-	 * SURVIVES it (so `handleOnly` is in force). Dragging away from wherever the level currently sits,
-	 * so the assertion cannot pass on a level that never moved.
-	 */
+	// One gesture, two claims: the slider ANSWERS the drag (the drawer is not swallowing the pointer) and
+	// the drawer SURVIVES it (`handleOnly` is in force). It drags AWAY from the current level so the
+	// assertion cannot pass on a level that never moved, and carries a downward component because a real
+	// thumb drag is never perfectly horizontal — the vertical part is what a drag-anywhere sheet steals.
 	const sliderBox = await boxOf(phone, SEL.slider);
 	if (!sliderBox || sliderBox.w < 40) {
 		bail(`the guiding-track slider measured ${JSON.stringify(sliderBox)}; there is no track to drag along`);
@@ -861,12 +684,8 @@ async function main() {
 		JSON.stringify(afterSliderDrag)
 	);
 
-	/*
-	 * The other half, and the reason the first half is not just a slider test: dragging the HANDLE must
-	 * still dismiss. A `handleOnly` drawer whose vendored Handle lost vaul's `data-slot` is undraggable
-	 * ENTIRELY and nothing warns — shadcn's own copy-in ships a decorative div, which is what
-	 * `drawer-handle.svelte` exists to correct.
-	 */
+	// The other half: a `handleOnly` drawer whose vendored Handle lost vaul's `data-slot` is undraggable
+	// ENTIRELY and nothing warns, which is what the vendored drawer-handle.svelte exists to correct.
 	const handleBox = await boxOf(phone, SEL.drawerHandle);
 	if (!handleBox) bail("the drawer renders no vaul handle, so 'a drag on the handle dismisses it' has no subject");
 	const hx = handleBox.x + handleBox.w / 2;
@@ -879,7 +698,7 @@ async function main() {
 		dismissed ? '' : 'the drawer was still rendered 6s after a 420px downward drag on its handle'
 	);
 
-	// ── ARM 2: a song with NO isolated stem ──
+	// ARM 2: a song with NO isolated stem.
 	// The drawer was just dragged shut, so this arm also proves it re-opens after a dismissal.
 	await queueAdd(phone, noStem.id, actor);
 	await sendPlayer(phone, { cmd: 'skip' });
@@ -901,31 +720,22 @@ async function main() {
 		degraded.notePresent && /still work/i.test(degraded.noteText ?? ''),
 		JSON.stringify(degraded.noteText)
 	);
-	// REPLACES 'the sentence is in the disclosure BODY, never the collapsed summary'. There is no
-	// summary to keep it out of; what survives whole is the reason being read BEFORE the dead row
-	// rather than after it, and living with the controls rather than in the drawer's header.
+	// The reason must be read BEFORE the dead row, and must live with the controls, not in the header.
 	check(
 		'the reason renders BEFORE the control it explains, inside the controls body',
 		degraded.noteInBody && degraded.noteBeforeControl,
 		JSON.stringify({ inBody: degraded.noteInBody, beforeControl: degraded.noteBeforeControl })
 	);
-	//, both forms: the original containment claim (the anchor the contract pins is
-	// `class:disabled` on `.gt`), plus the measured one — no ancestor of the sentence paints below full
-	// alpha. The second is what still holds now that the dimming moved onto the control leaf.
+	// `class:disabled` on `.gt` is the anchor the contract pins; the measured arm below is what still
+	// holds now that the dimming sits on the control leaf.
 	check(
 		'the reason sits OUTSIDE the subtree the disabled control marks',
 		degraded.gtDimmed && !degraded.noteInsideDimmedSubtree,
 		`gtDimmed=${degraded.gtDimmed} inside=${degraded.noteInsideDimmedSubtree}`
 	);
-	/*
-	 * The measured half of, with one re-read. vaul animates its content in, and an ancestor
-	 * caught mid-transition can report below full alpha for a frame or two — a probe that calls THAT a
-	 * dimmed explanation is crying wolf about an animation. So a dim ancestor is only believed once it
-	 * survives a settle; a real `opacity` rule does, a transition does not.
-	 */
 	let dimmedBy = degraded.noteDimmedByAncestor;
 	if (dimmedBy !== null) {
-		await sleep(800);
+		await sleep(OPACITY_RECHECK_MS);
 		dimmedBy = /** @type {any} */ (await phone.evaluate(stateExpr(expectedRange))).noteDimmedByAncestor;
 	}
 	check(
@@ -950,8 +760,7 @@ try {
 	try {
 		await browser?.close?.();
 	} catch {
-		// A browser that already died closes with a throw. The child processes below are killed either
-		// way, and failing teardown must not mask the verdict this probe already reported.
+		// Failing teardown must not mask the verdict already reported; the children are killed either way.
 	}
 	await killChild(worker);
 	await killChild(server);

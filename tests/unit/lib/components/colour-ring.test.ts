@@ -1,17 +1,13 @@
-// ColourRing behaviour at the MOUNT rung: the KEYBOARD contract, the pips, and what the join actually
-// submits.
+// ColourRing behaviour at the MOUNT rung: the KEYBOARD contract, the pips, and what the join actually submits.
 //
-// WHY THIS FILE EXISTS AT ALL. The join screen's colour picker used to be a preset radiogroup plus a
-// native `<input type="range">`, and the range input brought its keyboard operation with it for free —
-// arrows, Home/End, the announced value — because the platform implements a slider. The ring implements
-// none of that: it is a `div[role="slider"]`, so every one of those behaviours is hand-written and can be
-// deleted without anything else in the tree noticing. A source scan can see that a `keydown` handler
-// exists; only a driven mount can see that ArrowRight moves ONE stop, that the ends WRAP, and that what a
-// screen reader would say is the stop's NAME rather than its number.
+// The ring is a `div[role="slider"]`, so every keyboard behaviour a native `<input type="range">` brought for free —
+// arrows, Home/End, the announced value — is hand-written here and can be deleted without anything else in the tree
+// noticing. A source scan sees that a `keydown` handler exists; only a driven mount sees that ArrowRight moves ONE stop,
+// that the ends WRAP, and that a screen reader gets the stop's NAME rather than its number.
 //
-// GEOMETRY IS NOT HERE, by enforcement: happy-dom's getBoundingClientRect throws, so the ring
-// box, the knob's tap extent and the hub's fit are driven-browser readings. What is decidable without a
-// layout engine is the state machine and the announced value, and that is what this pins.
+// GEOMETRY IS NOT HERE, by enforcement: happy-dom's getBoundingClientRect throws, so the ring box, the knob's tap extent
+// and the hub's fit are driven-browser readings. What is decidable without a layout engine is the state machine and the
+// announced value.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { mount, unmount, flushSync } from '$setup/svelte-client';
 import ColourRing from '$lib/components/ColourRing.svelte';

@@ -1,12 +1,7 @@
 <!--
-  ── ENCORE DEVIATIONS (S7) ───────────────────────────────────────────────────────────────────
-  1. `animate-pulse` is REPLACED, not kept. motion.test.ts bans motion utility names tree-wide because
-     a keyframes utility cannot honour Reduce Motion, and Encore's skeleton was never a pulse: it is a
-     travelling SHIMMER, a gradient swept across the box. That gradient and its keyframes move here
-     verbatim, with the `prefers-reduced-motion` arm that already guarded them.
-  2. A `variant` axis, because the shimmer is used as two shapes — a 44px thumb and a text line, with a
-     short line for the second row. Those were three classes in the page; a class handed to a component
-     is scoped to the caller and stripped there, so they become variants.
+  A travelling shimmer, not the registry's `animate-pulse` — a motion utility cannot honour Reduce Motion.
+  The shapes are variants rather than caller classes, because a class handed to a component is scoped to
+  the caller and stripped there.
 -->
 <script lang="ts">
 	import { cn, type WithElementRef, type WithoutChildren } from '$lib/utils.js';
@@ -31,19 +26,13 @@
 ></div>
 
 <style>
-	/*
-	 * A travelling shimmer rather than a pulse: the gradient is four times the box and its position is
-	 * animated, so nothing about the element's layout changes while it plays.
-	 */
+	/* The gradient is four times the box so only its POSITION animates — no layout property moves. */
 	.encore-skel {
 		background: linear-gradient(90deg, var(--card2) 25%, var(--line) 37%, var(--card2) 63%);
 		background-size: 400% 100%;
 	}
-	/*
-	 * Motion is OPT-IN, declared inside a no-preference block rather than declared-then-reset. Both
-	 * forms satisfy the reduced-motion rule, and this one cannot drift: there is no reset to lose the cascade to a later
-	 * rule, and a static block is a fine resting state for a placeholder.
-	 */
+	/* Motion is OPT-IN rather than declared-then-reset: there is no reset here to lose the cascade to a
+	   later rule, and a static block is a fine resting state for a placeholder. */
 	@media (prefers-reduced-motion: no-preference) {
 		.encore-skel {
 			animation: shimmer 1.3s infinite;
@@ -71,8 +60,4 @@
 			background-position: 0 0;
 		}
 	}
-	/*
-	 * Respect a reduced-motion preference: this animation otherwise runs unguarded and indefinitely.
-	 * A static block is a fine resting state for a placeholder.
-	 */
 </style>

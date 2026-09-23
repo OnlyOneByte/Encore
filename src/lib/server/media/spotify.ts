@@ -1,22 +1,7 @@
-// Spotify backend — catalog SEARCH / metadata via Spotify's Web API (Search endpoint), used as an
-// ANNOTATOR only. Spotify has clean canonical artist/title/duration where a YouTube upload title has
-// to be reverse-engineered by parseTrackTitle; a Spotify hit sharpens the query, but its bytes are
-// NEVER pulled from Spotify — the audio is still acquired from YouTube (the
-// annotator pattern). So there is no fetch:spotify capability and no librespot acquisition here.
-//
-// CREDENTIALS live in ENV VARS, matching LRCLIB and every existing deployment knob (there is no
-// secret storage in this app, and this must not become the first): SPOTIFY_CLIENT_ID and
-// SPOTIFY_CLIENT_SECRET, a Client Credentials app registered at developer.spotify.com. The
-// Client-Credentials flow needs no user login and is the sanctioned path for catalog search.
-//
-// GRACEFUL DEGRADATION mirrors ytDlpSearch: with the env vars unset (the default deployment), this
-// returns [] rather than throwing, so the search fan-out simply has one fewer source — safeSearch in
-// the route already tolerates a dead source by design. Each FAILURE exit also names its reason (
-// mirroring ytDlpSearch), so a token refusal, throttle, or timeout is distinguishable from
-// a healthy account with no match; only the creds-unset default (spotifyEnv → null) stays silent.
-//
-// The pure parser (parseSpotifySearchJson) is separated so it unit-tests without the network or a
-// token, exactly like parseSearchJson for yt-dlp.
+// Spotify Search is an ANNOTATOR ONLY — audio is never fetched from Spotify, only from YouTube.
+// Credentials (SPOTIFY_CLIENT_ID/SECRET, Client-Credentials flow) live in env vars only; this app
+// has no secret storage and must not become the first to add one. Creds unset degrades to []
+// instead of throwing; each failure path below names its reason so only that case stays silent.
 
 import type { SearchResult } from './resolver';
 
@@ -39,15 +24,10 @@ export function spotifyEnv(env: Record<string, string | undefined> = process.env
 }
 
 /**
- * Pure: turn a Spotify /v1/search `tracks.items[]` payload into SearchResults.
- *
- * `source: 'spotify'` MARKS the provenance so the merge/UI can tell where the clean metadata came
- * from; `sourceRef` is the Spotify track id, which is NEVER fetched — `isProcessableSource` (fetchers.ts)
- * is the one authority that refuses it, and every layer that decides whether a process is possible asks
- * that. (`fetcherFor` does NOT refuse a spotify source; it returns the default downloader as a floor.)
- * `duration_ms` is milliseconds (Spotify), so it is rounded to whole seconds like the rest
- * of the codebase stores. The primary artist is `artists[0].name`; the full billing is joined so a
- * collab reads as the upload wrote it.
+ * Turns a Spotify /v1/search payload into SearchResults. `source: 'spotify'` marks provenance;
+ * `sourceRef` (the Spotify track id) is NEVER fetched — `isProcessableSource` is the sole authority
+ * that refuses processing it (`fetcherFor` does NOT refuse a spotify source; it returns the default
+ * downloader as a floor). `duration_ms` is rounded to whole seconds; artist billing is joined in full.
  */
 export function parseSpotifySearchJson(json: unknown): SearchResult[] {
 	const out: SearchResult[] = [];
@@ -63,8 +43,7 @@ export function parseSpotifySearchJson(json: unknown): SearchResult[] {
 		};
 		if (!t.id || !t.name) continue;
 		const names = Array.isArray(t.artists) ? t.artists.map((a) => a?.name).filter((n): n is string => !!n) : [];
-		// Smallest album image that still exists — a search row thumbnail is tiny, and Spotify lists
-		// images largest-first, so the last is the cheapest bytes for the phone's wifi.
+		// Spotify lists images largest-first; the last is the smallest — cheapest thumbnail bytes.
 		const images = t.album?.images ?? [];
 		const thumb = images.length ? images[images.length - 1]?.url : undefined;
 		out.push({
@@ -79,8 +58,7 @@ export function parseSpotifySearchJson(json: unknown): SearchResult[] {
 	return out;
 }
 
-// One cached app token, refreshed on expiry. Module-scoped because the token is a property of the
-// process's credentials, not of any one request (same reasoning as the yt-dlp availability probe).
+// Module-scoped: one cached app token per process (a credential property, not a per-request one).
 let _token: { value: string; expiresAt: number } | null = null;
 
 async function appToken(env: SpotifyEnv, now: () => number, fetchImpl: typeof fetch): Promise<string | null> {
@@ -96,9 +74,7 @@ async function appToken(env: SpotifyEnv, now: () => number, fetchImpl: typeof fe
 			body: 'grant_type=client_credentials'
 		});
 		if (!res.ok) {
-			// name the status — a 401 (bad creds), 429 (throttle) and 5xx are the difference
-			// between "operator typed the wrong secret" and "Spotify is down", and the []-return above
-			// erases it. Degrade behaviour (return null → []) is UNCHANGED; only the silence is fixed.
+			// Log the status so a bad-creds 401 is distinguishable from a throttle or outage; the []-degrade is unchanged.
 			console.warn(`[spotify] token endpoint refused with ${res.status}; search will degrade to empty`);
 			return null;
 		}
@@ -111,8 +87,7 @@ async function appToken(env: SpotifyEnv, now: () => number, fetchImpl: typeof fe
 		_token = { value: j.access_token, expiresAt: now() + (j.expires_in ?? 3600) * 1000 };
 		return _token.value;
 	} catch (err) {
-		// a token fetch that THREW (DNS, offline, TLS) is invisible without this — same class the
-		// sibling ytDlpSearch reports, and the parity claim in this file's header depends on it.
+		// Log network/DNS/TLS failures too, or a thrown fetch is invisible next to the []-degrade.
 		console.warn('[spotify] token fetch failed (network/DNS/TLS); search will degrade to empty:', err);
 		return null;
 	}
@@ -124,9 +99,8 @@ export function _resetSpotifyToken(): void {
 }
 
 /**
- * The SpotifySearchBackend wired into SpotifyResolver in prod. Injectable `fetch`/`now`/`env` so it
- * unit-tests without the network. Returns [] (never throws) on any failure — missing creds, a token
- * refusal, an upstream error, or a timeout — so the search fan-out degrades gracefully.
+ * Wired into SpotifyResolver in prod; `fetch`/`now`/`env` are injectable for tests. Never throws —
+ * returns [] on any failure (missing creds, token refusal, upstream error, timeout).
  */
 export async function spotifySearch(
 	query: string,
@@ -148,15 +122,13 @@ export async function spotifySearch(
 			signal: controller.signal
 		});
 		if (!res.ok) {
-			// 429 (rate limit), 403 and 5xx all become the same empty page without this — and a
-			// clean 200-with-no-match is byte-identical to a throttle. Naming res.status is the fix.
+			// Log res.status, or a throttle (429) reads identically to a clean no-match.
 			console.warn(`[spotify] search refused with ${res.status}; degrading to empty`);
 			return [];
 		}
 		return parseSpotifySearchJson(await res.json());
 	} catch (err) {
-		// an abort (the SEARCH_TIMEOUT_MS killer) and a genuine network fault are indistinguishable
-		// once collapsed to []. Bind and name it; the degrade (return []) is unchanged.
+		// Log timeout-abort vs network fault too, or both collapse indistinguishably into [].
 		console.warn('[spotify] search failed (timeout/network); degrading to empty:', err);
 		return [];
 	} finally {

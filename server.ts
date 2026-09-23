@@ -1,11 +1,8 @@
-// Encore core — the one Bun process. HTTP (SvelteKit) + native WebSocket pub/sub hub.
-// Locked in docs/ARCHITECTURE.md: Bun.serve owns BOTH the SvelteKit request handler AND the
-// realtime hub, so there is no network hop between layers and the authoritative in-memory state
-// lives in this one process. Prod entry (replaces the adapter's build/index.js): bun run server.ts
+// Encore core: one Bun process serves both SvelteKit and the realtime WS hub — no network hop,
+// one in-process authoritative state. See docs/SERVER.md#authority-and-the-hub. Prod entry: bun run server.ts
 
-// Every import below is RELATIVE, deliberately. `$lib` resolves only through the generated,
-// gitignored .svelte-kit/tsconfig.json, and the runtime image copies server.ts, src, build and
-// drizzle but never .svelte-kit — so an alias here type-checks locally and fails in the container.
+// Imports below MUST stay relative: `$lib` resolves only via the gitignored .svelte-kit/tsconfig.json,
+// which the runtime image never copies — an alias here type-checks locally but fails in the container.
 import {
 	graceMsOf,
 	type ClientEvent,
@@ -29,24 +26,18 @@ import { existsSync } from 'node:fs';
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
-// Optional shared secret gating role=worker WS upgrades. CONTRACT (a worker-side sibling implements
-// the other half): when ENCORE_WORKER_TOKEN is SET, a role=worker upgrade MUST present a matching
-// `token` query parameter or be refused with 401 — an unauthenticated LAN device must not be able to
-// register as a worker, soak up dispatch, and report fabricated completions. When UNSET, worker
-// upgrades are allowed as before, but we print ONE loud startup warning so an open box is never
-// silent. Other roles (phone/TV) are unaffected — they carry no dispatch authority.
+// Shared secret gating role=worker WS upgrades: when set, a role=worker upgrade must present a
+// matching `token` query param or get 401 — otherwise any LAN device could register as a worker and
+// fabricate job completions. Unset means unauthenticated upgrades (boot warning below); phone/TV are unaffected.
 const WORKER_TOKEN = process.env.ENCORE_WORKER_TOKEN?.trim() || null;
 
-// shared singleton — the SAME authoritative state instance the SvelteKit /api routes use.
+// Shared singleton — the SAME authoritative state instance the SvelteKit /api routes use.
 const app = getApp();
 const state = app.state;
 
-// Live worker WS sockets keyed by workerId — the dial-home registry's transport half (the registry
-// itself holds liveness/slots). In-memory, process-lifetime, never persisted (§10).
-// `singerId` is resolved at upgrade from the session cookie; absent for the TV and a not-yet-joined phone.
-// `roomId` is the party this socket is SCOPED to, resolved from the session token at upgrade —
-// the isolation key. `singerId` is the same singer's id (presence/auth). A worker, a TV before it is
-// bound, and a not-yet-joined phone carry neither and are foreign to every room's mutable state.
+// Live worker sockets keyed by workerId (in-memory, process-lifetime — workers dial home, see
+// docs/ARCHITECTURE.md §10). SocketData.roomId/singerId resolve at WS upgrade from the session
+// cookie, never a client claim; a worker, an unbound TV, and a not-yet-joined phone carry neither.
 type SocketData = { role: string; workerId?: string; singerId?: string; roomId?: string };
 type WorkerSocket = import('bun').ServerWebSocket<SocketData>;
 const workerSockets = new Map<string, WorkerSocket>();
@@ -55,21 +46,17 @@ app.toWorker = (workerId: string, cmd: WorkerCommand) => {
 	workerSockets.get(workerId)?.send(JSON.stringify(cmd));
 };
 
-// Start the job reaper's periodic tick (~3s): enforces ack/progress leases, requeueing or failing
-// jobs whose owning worker went silent. On any requeue/fail it redispatches (onReaped,
-// wired in app.ts). Boot recovery already ran in getApp().
+// Starts the job reaper's ~3s lease-expiry tick; requeues/fails jobs whose worker went silent and
+// redispatches (onReaped, wired in app.ts). Runs after getApp()'s boot recovery already reconciled.
 app.reaper.start();
 
-// bounded idempotency ledger of applied clientOpIds: dedupes resent commands across
-// reconnects so a retry never double-applies. In-memory (process-lifetime), insertion-ordered.
+// Dedupes resent client ops across reconnects (bounded, insertion-ordered, in-memory) so a retry
+// never double-applies.
 const seenOps = new Set<string>();
 
-// MVP/harness media catalog. Real media is resolved via /api/search + persisted on demand.
-// Seed a few youtube demos so the dev harness can add songs that validate even without yt-dlp.
-// IMPORTANT: seed only what is MISSING. getApp() has already hydrated the durable catalog, so
-// an unconditional set would overwrite a demo song that was processed on a previous night with this
-// pristine iframe stub — the DB would still say "stems ready" while the runtime said "plain iframe",
-// which re-processes the song and plays the vocal YouTube embed instead of the instrumental.
+// Demo/harness catalog; real media is resolved via /api/search and persisted on demand. Seed only
+// IDs not already present — getApp() already hydrated the durable catalog, so an unconditional set
+// would stomp a previously-processed song's real stem status with this stub, forcing a reprocess.
 const mediaById = app.mediaById;
 for (const m of [
 	{
@@ -103,14 +90,9 @@ for (const m of [
 	if (!mediaById.has(m.id)) mediaById.set(m.id, m);
 }
 
-// Seed the local library FTS index so the "Library" tab returns results in dev (and as a demo
-// of local search). A real deployment would scan MEDIA_DIR here. The demo tracks are also added
-// to mediaById so they're queue-able by id.
-// Only index what is REALLY THERE (checked against the same path resolution the /media route uses).
-// These four are aspirational placeholders — drop an actual file at MEDIA_DIR/library/<name>.mp4 and
-// it appears in the Library tab. Without the filter they were searchable, queueable songs that could
-// never play: processing one burned three attempts on `ffmpeg exited 254: No such file or directory` and
-// then left the song stuck in the phone's "processing" list for the rest of the night.
+// Seeds the local FTS library index in dev (a real deployment scans MEDIA_DIR instead), indexing
+// only files that actually resolve on disk — unfiltered, these four were queueable but unplayable,
+// burning job attempts on ffmpeg's ENOENT.
 const seededLibrary: LocalTrack[] = [
 	{ sourceRef: 'library/dont-stop-believin.mp4', title: "Don't Stop Believin'", artist: 'Journey', durationSec: 250 },
 	{ sourceRef: 'library/sweet-caroline.mp4', title: 'Sweet Caroline', artist: 'Neil Diamond', durationSec: 201 },
@@ -133,10 +115,8 @@ if (presentLibrary.length < seededLibrary.length) {
 type SvelteHandler = (req: Request, server: import('bun').Server<SocketData>) => Response | Promise<Response>;
 let svelteKitFetch: SvelteHandler | null = null;
 try {
-	// build/handler.js is svelte-adapter-bun's GENERATED output (build/ is gitignored, so
-	// it ships no declarations). The cast fixes its shape; @ts-expect-error covers the resolver's
-	// implicit-any on the untyped generated module — expect-error (not ignore) so it self-clears the
-	// day the adapter emits types.
+	// build/handler.js is svelte-adapter-bun's generated (gitignored) output — untyped, hence the cast
+	// and the @ts-expect-error (not @ts-ignore, so it self-clears once the adapter ships types).
 	// @ts-expect-error — generated, untyped adapter output; shape asserted by the cast below
 	const { getHandler } = (await import('./build/handler.js')) as { getHandler: () => { fetch: SvelteHandler } };
 	svelteKitFetch = getHandler().fetch;
@@ -154,11 +134,9 @@ function hasPendingSongs(singerId: string): boolean {
 }
 
 /**
- * Advance membership and broadcast it if it moved.
- *
- * Driven both by socket edges and by a timer, because `gone` is a property of elapsed time: no socket
- * event can announce it. Compared against the last broadcast rather than published unconditionally, so
- * a 20-second sweep over a quiet room is silent instead of a heartbeat every client must parse.
+ * Advance membership and broadcast only if it changed. Driven by socket edges AND a timer — "gone"
+ * is a function of elapsed time, so no socket event announces it; comparing against the last
+ * broadcast keeps a quiet room's periodic sweep silent instead of a heartbeat every client parses.
  */
 function refreshMembership(): void {
 	const next = app.presence.evaluate({
@@ -169,8 +147,8 @@ function refreshMembership(): void {
 	const same = next.here.join() === membership.here.join() && next.away.join() === membership.away.join();
 	membership = { here: next.here, away: next.away };
 	if (!same) {
-		// the presence roster is a per-room broadcast like any other — publish it to the served
-		// room's topic so another party never sees this room's roster.
+		// A per-room broadcast like any other — published only to the served room's topic, so
+		// another party never sees this room's roster.
 		server.publish(
 			broadcastTopicFor(app.activeRoomId),
 			JSON.stringify({ type: 'singer:presence', online: next.here, away: next.away } satisfies ServerEvent)
@@ -178,9 +156,8 @@ function refreshMembership(): void {
 	}
 }
 
-// A singer's grace clock starts when their last pending song leaves the queue, so the queue changing
-// can move membership as surely as a socket closing. 20s is far finer than any sane grace window while
-// staying cheap: one pass over the entries per tick.
+// A singer's grace clock starts when their last pending song leaves the queue, so queue changes can
+// move membership as surely as a socket closing. 20s balances timeliness against a per-tick scan.
 const MEMBERSHIP_SWEEP_MS = 20_000;
 
 const server = Bun.serve<SocketData>({
@@ -193,27 +170,16 @@ const server = Bun.serve<SocketData>({
 
 		if (url.pathname === '/ws') {
 			const role = url.searchParams.get('role') ?? 'phone';
-			// A role=worker socket carries dispatch authority (it registers via worker-hub #onHello,
-			// receives job assignments, and reports completions). When a shared secret is configured,
-			// require it here and refuse an unauthenticated worker with 401 rather than upgrading it.
+			// A role=worker socket carries dispatch authority. Require the shared token when configured
+			// and refuse an unauthenticated worker with 401 rather than upgrading it (see WORKER_TOKEN above).
 			if (role === 'worker' && WORKER_TOKEN && url.searchParams.get('token') !== WORKER_TOKEN) {
 				return new Response('unauthorized worker', { status: 401 });
 			}
-			// Resolve WHICH singer this socket belongs to, at upgrade, from the session cookie
-			// the browser sends on the WS handshake (same-origin, so it is there). Without this the
-			// socket is anonymous and presence is impossible. A TV or a not-yet-joined phone simply
-			// has no singerId and is tracked as a spectator.
-			// resolve the WHOLE singer, not just the id — its `roomId` (NOT NULL since an earlier change) is the
-			// scope this socket is bound to. The session token is the scope token: it maps to exactly one
-			// room, so a socket cannot present a token for room A and then act on room B.
+			// Resolve which singer (and room) this socket belongs to, at upgrade, from the session
+			// cookie — never a client claim. No singerId means an anonymous spectator. A TV instead binds
+			// via its join code (?room=<code>, same as the QR) through tvRoomId; mutations stay gated by
+			// the per-command checks below regardless of how a socket resolved its room. See docs/SERVER.md#sessions-and-cookies.
 			const me = app.singers.bySessionToken(readSessionToken(req.headers.get('cookie')));
-			// an earlier change one-TV-per-room: a TV carries no cookie/singer, so it cannot get a room from the
-			// session token like a phone does. It carries the join CODE instead (?room=<code>, the same
-			// handle the QR encodes) — tvRoomId turns that into the room id the TV binds to, falling back
-			// to the served room for a bare or unknown code. A bound TV is then IN-ROOM via
-			// subscribeTopicFor instead of an unscoped spectator, so a TV resolves WHICH room it
-			// shows. A phone's scope still comes from its token (a TV cannot spoof a room it never joined,
-			// because a code only ever RESOLVES a room to VIEW — mutations stay gated by join/player).
 			const roomId =
 				role === 'tv'
 					? tvRoomId(url.searchParams.get('room'), (code) => app.rooms.byCode(code), app.activeRoomId)
@@ -244,16 +210,10 @@ const server = Bun.serve<SocketData>({
 		open(ws) {
 			// Workers are NOT room subscribers — they speak the dial-home protocol, not queue events.
 			if (ws.data.role === 'worker') return;
-			// subscribe to the socket's OWN room topic, not one shared topic. A socket only ever
-			// receives events for the party it is scoped to, so a broadcast in room A never reaches room B.
-			// A foreign socket lands on its OWN room's topic, never the served room's. An unscoped
-			// spectator (a TV, a not-yet-joined phone) defaults to the served room, so it still sees the
-			// one room this box is serving — isolation is between rooms, not against a viewer of this one.
+			// Subscribe to the socket's own room topic only — isolation is between rooms, not against a
+			// viewer of the one room this box serves; an unscoped spectator defaults to the served room.
 			ws.subscribe(subscribeTopicFor(ws.data.roomId, app.activeRoomId));
-			// The app's broadcast sink is routed through Bun's native pub/sub ONCE at boot (see the
-			// setPublish(broadcast) call below Bun.serve) — not per open. Every socket subscribes to its
-			// own room's topic, so one publish to that topic reaches exactly that room's clients;
-			// reassigning the sink on every connect wrote the identical closure N times for no effect.
+			// Broadcast sink wired once at boot via setPublish (below), not per-connection.
 			// Announce only on the 0→1 transition so a second tab doesn't spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();
 		},
@@ -266,15 +226,12 @@ const server = Bun.serve<SocketData>({
 				} catch {
 					return;
 				}
-				// A role=worker socket carries DISPATCH AUTHORITY and — when ENCORE_WORKER_TOKEN is unset
-				// (see :36 / the boot warning) — is reachable UNAUTHENTICATED. Everything below reads fields
-				// straight off the frame: `'workerId' in msg` throws on a `null` body, and the worker hub
-				// spreads/joins `capabilities`, so a wrong-typed field used to throw out of this handler.
-				// Validate the frame's SHAPE before any of those reads, exactly as validateCommand guards
-				// the client family. A malformed frame is dropped, not executed.
+				// role=worker carries dispatch authority and, when ENCORE_WORKER_TOKEN is unset, is
+				// reachable unauthenticated. validateWorkerMessage must run before any field access below
+				// — a malformed frame would otherwise throw out of this handler instead of being dropped.
 				if (validateWorkerMessage(parsed) !== null) return;
 				const msg = parsed as WorkerMessage;
-				// remember this socket's workerId so disconnect can deregister + free its slots
+				// Remember this socket's workerId so disconnect can deregister + free its slots.
 				if ('workerId' in msg && msg.workerId) {
 					ws.data.workerId = msg.workerId;
 					workerSockets.set(msg.workerId, ws);
@@ -289,11 +246,8 @@ const server = Bun.serve<SocketData>({
 			} catch {
 				return;
 			}
-			// The hub bag is assembled by app.ts's buildHubDeps factory: every app-derived hook
-			// (listSingers, getSettings, onNowPlaying, onSang, recordAdd, onEntryRemoved -> cancelJobsForMedia,
-			// onEntryAdded -> reprioritizeProcessForMedia) is wired there in ONE place. Only what genuinely
-			// varies per socket/frame is passed here — the broadcast sink, the authenticated singer on this
-			// socket, the live membership snapshot, and the idempotency ledger (§3).
+			// buildHubDeps (app.ts) wires every app-derived hook in one place; only what varies per
+			// socket/frame is supplied here.
 			const deps: HubDeps = buildHubDeps(app, {
 				broadcast,
 				actorSingerId: ws.data.singerId,
@@ -305,79 +259,41 @@ const server = Bun.serve<SocketData>({
 					if (seenOps.size > 4096) seenOps.delete(seenOps.values().next().value!);
 					return false;
 				},
-				// non-recording peek at the same ledger, for the validation-failure re-ack path.
-				// Never inserts — a rejected op must not enter the ledger, or its resend would falsely re-ack.
+				// Non-recording peek at the same ledger, for the validation-failure re-ack path. Never
+				// inserts — a rejected op must not enter the ledger, or its resend would falsely re-ack.
 				hasOp: (id) => seenOps.has(id)
 			});
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 
-			// an earlier change ROOM ISOLATION. Every frame below reads or mutates the room this core is serving
-			// (app.activeRoomId): `hello` replies with this room's whole state, and queue/player/telemetry
-			// mutate it. Isolation is BETWEEN rooms: a socket bound to a DIFFERENT party (its session token
-			// scoped it to another room) is refused the whole family, so a room-B phone can neither resync
-			// room A's queue nor pause room A's song. A spectator with NO room — a TV watching the one room
-			// this box serves, a phone that has not joined — is NOT foreign and passes this gate; its
-			// MUTATIONS are still refused by the per-command `join the room first` / `player:control` checks
-			// below, exactly as before an earlier change, while its `hello` read of the served room stays allowed.
-			// an earlier change binds a TV to a specific room later.
+			// Room isolation: every frame mutates app.activeRoomId. A socket scoped to a different room
+			// is dropped outright; an unscoped spectator passes this gate but mutations stay refused below.
 			if (isForeignRoom(ws.data.roomId, app.activeRoomId)) return; // drop the frame, reply nothing
 
 			switch (evt.type) {
 				case 'hello': {
-					// resync: reply with authoritative full state to this client only (queue + playback +
-					// nowplaying), so a reconnecting TV/phone resumes exactly where the room is.
+					// Resync: reply with full authoritative state (queue + playback + nowplaying) to this
+					// client only, so a reconnecting TV/phone resumes exactly where the room is.
 					ws.send(JSON.stringify(syncEvent(state, deps)));
 					ws.send(JSON.stringify({ type: 'playback:state', state: state.playback, rev: state.rev }));
-					// the frame comes from player.ts's builder, the same single source of truth the
-					// broadcast path uses, so a change to what nowplaying:changed carries (or to how
-					// upNext is projected) reaches the reconnecting client and the live room together.
-					// Hand-deriving it here was invisible to tsc — `ws.send(JSON.stringify(...))` accepts
-					// anything, so only the publish-typed site was named. `syncEvent` one line above is
-					// the same pattern.
+					// nowPlayingEvent is the same builder the broadcast path uses, so a change to what
+					// nowplaying:changed carries reaches the reconnecting client and the live room together.
 					ws.send(JSON.stringify(nowPlayingEvent(deps)));
 					break;
 				}
 				case 'queue:command':
 					handleQueueCommand(evt.command, deps, sendToOrigin);
-					// Reconcile after EVERY queue mutation. reconcileOnReady owns the whole decision and
-					// there is nothing left to decide here — an earlier change deleted the gate this line used to
-					// carry, because it was a second hand-written copy of the recovery predicate that
-					// reconcileOnReady already evaluates at player.ts.
-					//
-					// What it does, per case:
-					//  • Room IDLE and a song was just queued → auto-start it. Without this a plain
-					//    (non-process) add never triggers play: the TV sits on the attract screen
-					//    forever and the phone shows no play control (no "current" entry to hang one on).
-					//  • currentEntryId DANGLING → recover. A client `remove`/`status` on the PLAYING
-					//    entry prunes it here and leaves the id pointing at nothing, which
-					//    reads as busy to every `!currentEntryId` gate while nothing plays.
-					//    reconcileOnReady advances to the next singer, or settles the room to genuinely
-					//    idle if none is ready.
-					//  • Current entry RESOLVES → a song is playing and no recovery is due, but the queue
-					//    just changed and "who plays next" is derived from the queue. handleQueueCommand
-					//    publishes `queue:patch` alone (hub.ts), and nowplaying:changed's only other
-					//    producers are playback transitions — so an add/remove/move mid-song used to leave
-					//    the TV holding the LAST broadcast upNext: a song since removed, or one that
-					//    reordering pushed behind another singer, with `syncSlots` pre-warming the gapless
-					//    slot from that same stale entry (routes/tv/+page.svelte). reconcileOnReady's
-					//    recovery block is skipped and its tail emitNowPlaying re-derives both values
-					//    (`upNextAfter` applies the held-slot rule, so a still-processing entry is never
-					//    advertised).
-					//
-					// EXACTLY ONE nowplaying:changed per command, on all three paths: the single
-					// emitNowPlaying sits OUTSIDE reconcileOnReady's `if (!currentResolves)` block
-					// (player.ts), which is why an unconditional call cannot double-broadcast. An
-					// unconditional `emitNowPlaying` here WOULD, which is the shape an earlier change correctly
-					// rejected — a different call, not this one.
+					// Reconcile after every queue mutation — reconcileOnReady (player.ts) owns the decision:
+					// auto-start on idle+queued, self-heal a DANGLING currentEntryId, or just re-derive
+					// upNext. Its tail emitNowPlaying fires exactly once per command outside that branch,
+					// so this call site must never also emit one.
 					reconcileOnReady(deps);
 					// A grace clock starts when someone's last pending song leaves the queue and clears when
 					// they queue another, so a queue change can move membership exactly as a socket can.
 					refreshMembership();
 					break;
 				case 'player:command':
-					// Pausing or skipping is an act on the whole room's music, so it needs an actor. Every
-					// joined singer is a host today; the gate here is only that you are IN the room, which a
-					// socket that never joined is not. See src/server/capabilities.ts.
+					// player:control requires only being IN the room — every joined singer is a host today.
+					// See docs/ARCHITECTURE.md §10 and src/lib/server/capabilities.ts.
 					if (!can({ singerId: ws.data.singerId }, 'player:control')) break;
 					handlePlayerCommand(evt.command, deps);
 					break;
@@ -387,42 +303,32 @@ const server = Bun.serve<SocketData>({
 			}
 		},
 		close(ws) {
-			// Worker disconnect: drop it from the registry + socket map. Its in-flight jobs keep their
-			// lease and are reclaimed by the reaper on expiry (§9) — same path as a worker that died.
+			// Worker disconnect: deregister + drop the socket; in-flight jobs keep their lease and are
+			// reclaimed by the reaper at expiry, same as any worker that silently died.
 			if (ws.data.role === 'worker' && ws.data.workerId) {
 				app.workers.remove(ws.data.workerId);
 				workerSockets.delete(ws.data.workerId);
 				return;
 			}
-			// Their last socket closing takes them out of the roster (1→0 only).
-			// Their last socket closing makes them AWAY, not gone — they keep their chip, their place and
-			// their songs. Expiry to `gone` is the sweep's job, once their queue is empty and the room's
-			// grace window has run out.
+			// Last socket closing marks AWAY, not gone — chip, place, and songs are kept. Expiry to
+			// `gone` is the sweep's job, once the queue is empty and the room's grace window has run out.
 			if (ws.data.singerId && app.presence.disconnect(ws.data.singerId, app.now())) refreshMembership();
 		}
 	}
 });
 
-// The room broadcast sink: publish one ServerEvent to every subscribed socket over Bun's native
-// pub/sub. Defined ONCE here (server is in scope) and wired into the shared app a single time at
-// boot, rather than reassigned inside websocket.open on every connect. handleQueueCommand and the
-// process-cancel path reuse this same reference through `deps`.
-// publish a served-room event ONLY to that room's topic, which only that room's sockets
-// subscribed to (see websocket.open) — the delivery half of isolation. The single AuthoritativeState
-// this core holds is bound to app.activeRoomId (earlier changes), so that is the room every broadcast names.
+// The room broadcast sink, wired into the shared app via setPublish so /api/join's singer:joined
+// (and other app-driven publishes) route through the same instance handleQueueCommand uses via `deps`.
 const broadcast = (e: ServerEvent) => server.publish(broadcastTopicFor(app.activeRoomId), JSON.stringify(e));
-// Route the shared app's broadcasts (e.g. singer:joined from the /api/join route) through pub/sub.
 setPublish(broadcast);
 
-// Expiry to `gone` is elapsed time, so nothing else in the process can announce it.
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 
 console.log(
 	`🎤 Encore core on http://${HOST}:${PORT}  (ws:/ws · health:/health · harness:/harness · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
 );
 
-// FIX 3: shout once at boot when worker upgrades are unauthenticated, so an open box is loud, not
-// silent. When ENCORE_WORKER_TOKEN is set the gate is on and no warning is needed.
+// Loud boot warning when worker upgrades are unauthenticated, so an open box isn't silently exposed.
 if (!WORKER_TOKEN) {
 	console.warn(
 		'[core] ENCORE_WORKER_TOKEN is not set — role=worker WS upgrades are UNAUTHENTICATED. Any device ' +
@@ -431,18 +337,15 @@ if (!WORKER_TOKEN) {
 	);
 }
 
-// FIX 4: graceful shutdown. The authoritative state write-behinds on a 250ms debounce, so a
-// `docker stop` landing inside that window drops the pending queue/playback write unless we flush.
-// flushNow() exists precisely for this and nothing called it. Flush state, stop the reaper's timer,
-// then exit cleanly. Guarded so a second signal during shutdown can't re-enter.
+// Graceful shutdown: state write-behinds on a 250ms debounce, so a `docker stop` landing inside that
+// window would drop the pending write unless flushed here. Guarded against re-entry from a second signal.
 let shuttingDown = false;
 function gracefulShutdown(signal: string): void {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	console.log(`[core] ${signal} received — flushing state and shutting down.`);
-	// A failed flush is exactly the case a supervisor needs to hear about: pending queue/playback state
-	// was lost. exit(0) here would tell Docker/systemd the stop was clean and falsify that signal, so the
-	// catch records failure and we exit non-zero — the log line alone is invisible to an out-of-band probe.
+	// Exit non-zero on a failed flush — exit(0) would tell the supervisor the stop was clean when
+	// queue/playback state was actually lost; the log line alone isn't visible to an out-of-band probe.
 	let ok = true;
 	try {
 		state.flushNow();
@@ -457,7 +360,7 @@ function gracefulShutdown(signal: string): void {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// ── dev harness markup (inline; not part of the SvelteKit app) ─────────────────
+// Dev harness markup — inline, not part of the SvelteKit app.
 function harnessHtml(): string {
 	return `<!doctype html><meta charset=utf-8><title>Encore — sync harness</title>
 <style>body{margin:0;font-family:system-ui;background:#0b0b12;color:#f3f3fb}

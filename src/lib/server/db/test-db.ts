@@ -1,11 +1,6 @@
-// Canonical in-memory test database. Every server test spun up its own db + migration by hand,
-// in three drifting spellings: `openDb(':memory:') + runMigrations` (most), and two raw
-// `drizzle(new Database(':memory:'))` variants that pinned `migrationsFolder` to a hardcoded
-// `../../../drizzle` URL — bypassing findMigrationsDir()'s journal-walk and ENCORE_MIGRATIONS_DIR
-// override, and skipping openDb()'s pragmas (WAL, foreign_keys=ON, busy_timeout). A migration or
-// pragma added on one path silently skipped the others. This is the single source: it opens the
-// same way production does and runs the same migration entry point, so there is one path to keep
-// correct.
+// Canonical in-memory test database: the SINGLE source, opening the same way production does
+// (openDb's pragmas) and running the same migration entry point (runMigrations/findMigrationsDir), so
+// a migration or pragma change can't silently skip a test path that re-implemented its own DB setup.
 import { openDb } from './index';
 import { runMigrations } from './migrate';
 import type { DB } from './index';

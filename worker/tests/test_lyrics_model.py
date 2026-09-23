@@ -32,9 +32,6 @@ def _doc(key: str = "lines", **over: object) -> dict:
     return {"language": "en", key: [line]}
 
 
-# ── the split that had to be preserved ───────────────────────────────────────────────────────────
-
-
 def test_lines_is_STRICT_and_ignores_the_older_segments_key() -> None:
     """`normalize_lyrics` always writes `lines`; a doc without it is raw output, not an artifact."""
     assert LyricsDoc(_doc("lines")).lines != []
@@ -59,9 +56,6 @@ def test_the_timing_reader_keeps_its_TOLERANT_read() -> None:
     """`_words_of` is the one reader that always accepted either shape, and still does."""
     assert len(_words_of(_doc("segments"))) == 2
     assert len(_words_of(_doc("lines"))) == 2
-
-
-# ── the shape questions themselves ───────────────────────────────────────────────────────────────
 
 
 def test_timed_words_needs_BOTH_bounds() -> None:

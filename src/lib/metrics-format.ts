@@ -1,31 +1,25 @@
-// Shared display helpers for the two operator metrics surfaces (routes/metrics/+page.svelte and
-// routes/metrics/[mediaId]/+page.svelte). Extracted because both pages had grown their OWN copy of
-// each of these, and the copies had begun to drift — the defect this closes is a new job type or
-// worker stage being taught to one page's label map and silently showing the raw DB name on the
-// other. One source, imported twice, cannot disagree with itself.
+// Shared display helpers for the two operator metrics surfaces. One source, imported twice, so a new job
+// type or worker stage cannot be taught to one page's label map and silently show the raw database name on
+// the other.
 //
-// This vocabulary is deliberately SEPARATE from the guest-facing labels in $shared: the
-// operator page says "removing vocals", the phone says "Separating vocals". They serve different
-// readers (an operator debugging throughput vs a singer waiting on their song), so they are kept
-// apart on purpose rather than forced into one table.
+// This vocabulary is deliberately SEPARATE from the guest-facing labels in the contract: the operator page
+// says "removing vocals", the phone says "Separating vocals". Different readers, kept apart on purpose.
 
 import { SEPARATOR_ENGINES } from '$lib/contract';
 
 /**
- * ms to a human duration. Null renders as an em dash, never as 0 — a missing timing is "not
- * recorded", not "took no time".
+ * ms to a human duration. Null renders as an em dash, NEVER as 0 — a missing timing is "not recorded", not
+ * "took no time".
  *
- * Each branch rounds to the precision it DISPLAYS before deciding which branch applies, because
- * doing it the other way round printed values that had already carried into the next unit: at
- * 119_600ms the minute branch rendered "1m 60s" (`Math.round(59.6)` is 60), and at 59_960ms the
- * seconds branch rendered "60.0s" (`(59.96).toFixed(1)` is "60.0") instead of "1m 0s". Both were
- * one defect wearing two faces, so the rounding happens once, up front, and the split is exact.
+ * EACH BRANCH ROUNDS TO THE PRECISION IT DISPLAYS BEFORE the branch is chosen. The other order prints values
+ * that have already carried into the next unit, giving "1m 60s" and "60.0s", so the rounding happens once,
+ * up front, and the split is exact.
  */
 export function dur(ms: number | null): string {
 	if (ms === null) return '—';
 	if (ms < 1000) return `${Math.round(ms)}ms`;
-	// Tenths of a second: the unit the sub-minute branch prints. 600 tenths IS a minute, so a value
-	// that rounds up to it belongs to the minute branch rather than being shown as "60.0s".
+	// Tenths of a second, the unit the sub-minute branch prints: 600 tenths IS a minute, so a value that
+	// rounds up to it belongs to the minute branch.
 	const tenths = Math.round(ms / 100);
 	if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`;
 	const totalSec = Math.round(ms / 1000);
@@ -33,48 +27,33 @@ export function dur(ms: number | null): string {
 }
 
 /**
- * How much computer time a step cost, as a PERCENTAGE OF THE SONG'S OWN LENGTH — `0.15` reads as
- * `15%`. Null renders as an em dash, never as `0%` — a rate that was never measured is "no data",
- * not "instant".
+ * How much computer time a step cost, as a PERCENTAGE of the song's own length. Null renders as an em dash,
+ * never as 0% — a rate that was never measured is "no data", not "instant".
  *
- * Percent rather than the `0.15×` glyph this used to print. A multiplier needs the reader to know
- * what it multiplies, which is why every surface showing one had to caption it ("computer time per
- * second of song, so 0.5× means twice as fast as the music"). `15%` alongside a header that names
- * the whole — "% of song length" — needs no caption. Extracted here alongside `dur` so the metrics
- * list and the per-song audit cannot drift apart on how a rate reads: both pages had open-coded the
- * old glyph and precision, at four sites across the two files.
+ * A percentage rather than a multiplier, because a multiplier needs the reader to know what it multiplies and
+ * every surface showing one had to caption it; a percentage beside a header naming the whole needs none.
  */
 export function pct(v: number | null): string {
 	return v === null ? '—' : `${Math.round(v * 100)}%`;
 }
 
 /**
- * A count with its noun agreeing: `1` + `run` is `1 run`, `0`/`2` give `0 runs` / `2 runs`.
+ * A count with its noun agreeing. Every guest-facing surface already picks the singular at one; an operator
+ * is a person too, and a page rendering "1 runs" reads as a page nobody looked at.
  *
- * Exists because these two pages were the only surfaces in the app that did NOT agree — everywhere a
- * guest can read prints a number, the noun is chosen (`readiness.ts`, `JoinBadge.svelte`,
- * `phrasing/room-presence-sentence.ts`, `phrasing/position-sentence.ts` all pick singular at 1). The
- * operator pages interpolated bare nouns, so /metrics rendered "1 runs across 1 songs" and /stats
- * "the last 1 days" — reachable, since the `days` window clamps to [1, max]. An operator is a person
- * too, and a page that cannot count to one reads as a page nobody looked at.
- *
- * `plural` is optional and defaults to `+ 's'`, which covers every noun these pages use (run, song,
- * day, attempt). Pass it for an irregular one rather than teaching this function English.
+ * `plural` defaults to adding an s, which covers every noun these pages use. Pass it for an irregular one
+ * rather than teaching this function English.
  */
 export function count(n: number, singular: string, plural = `${singular}s`): string {
 	return `${n} ${n === 1 ? singular : plural}`;
 }
 
 /**
- * A measured rate against the one its model claims, as a signed difference in the reader's terms:
- * `1.74` is `74% slower`, `0.49` is `51% faster`.
+ * A measured rate against the one its model claims, NAMED rather than left as a ratio: a bare multiplier
+ * needs a legend to say which direction is bad, and the direction was otherwise carried by cell colour
+ * alone, so a reader who cannot separate the two hues had nothing.
  *
- * The raw ratio was rendered as `1.74×`, which required a legend to say which direction was bad —
- * and the direction was otherwise carried only by cell COLOUR, so a reader who cannot separate
- * orange from green had nothing. Naming it makes the number self-describing and leaves colour as
- * reinforcement rather than the sole signal.
- *
- * Within half a percent of parity it reads "matches": `0% slower` is a true statement that sounds
+ * Within half a percent of parity it reads "matches", because "0% slower" is a true statement that sounds
  * like a complaint.
  */
 export function vsClaimed(ratio: number | null): string {
@@ -84,9 +63,8 @@ export function vsClaimed(ratio: number | null): string {
 }
 
 /**
- * Plain names for the internal job types. `fetch`/`stems`/`align` are what the code calls them and
- * what the database stores; they describe the implementation, not what the step DOES, and these
- * pages are read by a person. An unmapped type falls through to its raw name rather than vanishing.
+ * Plain names for the internal job types, which describe the implementation rather than what the step DOES.
+ * An unmapped type falls through to its raw name rather than vanishing.
  */
 export const STEP_LABELS: Record<string, string> = {
 	fetch: 'download',
@@ -97,11 +75,8 @@ export const STEP_LABELS: Record<string, string> = {
 };
 export const stepLabel = (jobType: string): string => STEP_LABELS[jobType] ?? jobType;
 
-/**
- * The worker's own sub-step names. `separating`/`aligning` describe the code, not the work. Operator
- * wording ("removing vocals"); the guest-facing equivalent lives in $lib/contract and reads
- * differently on purpose (see the module note above).
- */
+/** The worker's own sub-step names, in operator wording; the guest-facing equivalent reads differently on
+ * purpose — see the module note. */
 export const STAGE_LABELS: Record<string, string> = {
 	downloading: 'downloading',
 	separating: 'removing vocals',
@@ -110,17 +85,13 @@ export const STAGE_LABELS: Record<string, string> = {
 export const stageLabel = (stage: string): string => STAGE_LABELS[stage] ?? stage;
 
 /**
- * A separator pairing as a person reads it: `demucs` + `bs-roformer-1297` is `BS-RoFormer 1297`, not
- * `audio-separator / bs-roformer-1297`.
+ * A separator pairing as a person reads it. The raw form leaks the database's engine and model ids — the same
+ * class of leak the step labels exist to stop — and it is the widest cell on the page, which is the
+ * difference between a table that fits a phone and one that scrolls.
  *
- * Two reasons, and the second is why this is not merely cosmetic. The raw form printed the DATABASE's
- * engine and model ids, which are implementation names — the same class of leak `STEP_LABELS` exists
- * to stop one column to the left. And it was the widest cell on the page: the registry label is half
- * the characters, which is the difference between a table that fits a phone and one that scrolls.
- *
- * The registry's own `label` is the source, so a model cannot be added without one. An id the
- * registry does not know falls through to the raw pair rather than vanishing — an operator reading a
- * row written by an older build must still be able to tell what ran.
+ * The REGISTRY's own label is the source, so a model cannot be added without one. An id the registry does not
+ * know falls through to the raw pair rather than vanishing: an operator reading a row written by an older
+ * build must still be able to tell what ran.
  */
 export function separatorLabel(engineId: string | null, modelId: string | null): string {
 	const model = SEPARATOR_ENGINES.flatMap((e) => e.models).find((m) => m.id === modelId);
@@ -129,22 +100,16 @@ export function separatorLabel(engineId: string | null, modelId: string | null):
 }
 
 /**
- * A wall-clock timestamp in the viewer's LOCAL zone, as `YYYY-MM-DD HH:MM:SS`.
+ * A wall-clock timestamp in the viewer's LOCAL zone. The audit log is a timeline read to reconstruct how a
+ * song came to be, so the times must match the operator's own clock — a sliced-off ISO string is UTC, which
+ * west of Greenwich rolls the printed DATE for any evening party.
  *
- * The audit log is a timeline read to reconstruct how a song came to be, so the times must match
- * the operator's own clock. The previous `new Date(ms).toISOString()...` printed UTC with the `Z`
- * sliced off, so west of Greenwich the time was wrong and — for a US evening party (this project's
- * own zone is CDT, UTC−5) — anything after 19:00 rolled the printed DATE to the next day.
- *
- * Built from `Intl.DateTimeFormat` parts rather than `toLocaleString` so the layout is fixed
- * (sortable `YYYY-MM-DD HH:MM:SS`, 24h, zero-padded) regardless of the host locale, while the
- * `timeZone` still resolves to the viewer's own zone by default. The optional `timeZone` argument
- * exists so this is deterministically testable against a pinned instant in a known zone.
+ * Built from Intl PARTS rather than `toLocaleString`, so the layout is fixed and sortable regardless of the
+ * host locale while the zone still resolves to the viewer's by default. The optional `timeZone` argument is
+ * what makes this deterministically testable against a pinned instant.
  */
-// Constructing an Intl.DateTimeFormat is comparatively expensive, and the audit trail renders one
-// stamp per attempt row, so cache the formatter per resolved zone rather than rebuilding it on every
-// call. Keyed by the timeZone string ('' = the viewer's default zone); the config is otherwise fixed,
-// so a cached formatter produces byte-identical output to a freshly-built one.
+// Constructing a formatter is comparatively expensive and the audit trail renders one stamp per row, so it is
+// cached per resolved zone. The config is otherwise fixed, so a cached formatter is byte-identical.
 const stampFormatters = new Map<string, Intl.DateTimeFormat>();
 function stampFormatter(timeZone?: string): Intl.DateTimeFormat {
 	const key = timeZone ?? '';

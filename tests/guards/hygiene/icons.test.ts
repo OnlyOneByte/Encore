@@ -1,23 +1,7 @@
-// guard: a functional control must never again be a Unicode codepoint.
-//
-// THE BUG THIS EXISTS FOR. The transport controls were written as `⏮ ▶ ⏸ ⏭` and on iOS they rendered
-// as full-colour Apple emoji. U+23EE, U+23F8 and U+23ED carry `Emoji_Presentation=Yes`, so colour
-// emoji IS their Unicode default; the app.css font stack owns none of those glyphs, so the platform's
-// last-resort matcher picked the colour emoji font and won. `▶` (U+25B6) is text-default but
-// emoji-capable, which is why it rendered inconsistently right next to `⏸`.
-//
-// WHAT THIS DOES AND DOES NOT BAN. Not all emoji — the pictographs in labels (`🔥 Popular tonight`,
-// `🕑 Recently queued`, `✨`, the 🎤 wordmark) are deliberate colour and stay. Two narrower rules:
-//
-//   1. Codepoints that were replaced by real marks must not come back. A control whose only label is
-//      a glyph has its appearance decided by the platform, which is the whole defect.
-//   2. Nothing may carry U+FE0F, the emoji-presentation selector. FE0F does not merely permit colour
-//      emoji, it explicitly requests it, so it can never be part of an art-directed mark.
-//
-// WHY A SOURCE SCAN. The defect is a property of the source text, so it is decidable without a
-// browser. Comments are stripped first: several of the files below discuss these very codepoints in
-// prose explaining why they were removed, and a scan that flagged its own documentation would be
-// deleted within a week.
+// guard: no functional control is a Unicode codepoint, and no UI-visible string carries an emoji.
+// Caught the transport controls written as U+23EE/U+23F8/U+23ED/U+25B6: those carry
+// Emoji_Presentation=Yes, app.css owns none of them, so iOS's last-resort matcher drew full-colour
+// Apple emoji. Comments are stripped before scanning — several scanned files name these codepoints in prose.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
@@ -50,28 +34,15 @@ const REPLACED: Record<string, string> = {
 
 const FE0F = '\uFE0F';
 
-/**
- * Emoji-presentation ranges. Now that every UI mark is an SVG, this can ban emoji OUTRIGHT rather
- * than tracking a list of individually-replaced codepoints — the earlier, weaker rule, which had to
- * tolerate the decorative pictographs.
- *
- * The reason is consistency across devices, not taste. 🎤 is a different drawing on Apple, Google,
- * Samsung and Windows, and on a browser with no emoji font it is a tofu box — which is precisely what
- * the TV wordmark rendered as when screenshotted here, and a smart-TV browser is the same kind of
- * stripped-down environment. An emoji is the one mark whose appearance is never the app's to choose.
- */
+// Emoji are banned outright: one codepoint is a different drawing on Apple/Google/Samsung/Windows and a
+// tofu box where no emoji font exists — which is what the TV wordmark rendered as in a screenshot here.
+// An emoji is the one mark whose appearance is never the app's to choose.
 const EMOJI_RANGES = [
 	[0x1f000, 0x1faff], // pictographs, symbols, transport & map, supplemental
-	[0x2190, 0x21ff], // ARROWS. Not emoji, but the exact glyphs the SVG marks replaced (arrow-left/right/
-	// up/down, and ↩ U+21A9 as a "return" control). A bare arrow in copy is the same regression as a
-	// bare ▶ was: a functional direction cue whose drawing the platform picks. No live source uses one
-	// — every → and ↩ under src/ sits in a comment, which this scan strips before reading.
+	[0x2190, 0x21ff], // ARROWS — the glyphs the arrow-* marks replaced; a bare arrow is a platform-drawn cue
 	[0x2600, 0x27bf], // misc symbols + dingbats (☀ ✨ ✅ ➡)
 	[0x2b00, 0x2bff], // misc symbols and arrows
-	// The two single-angle quotation marks, ‹ (U+2039) and › (U+203A). General Punctuation is otherwise
-	// legitimate typography here (— … “ ” live in copy), so this is a two-codepoint window, not the
-	// block: these two are the ones that get pressed into service as nav chevrons, a job chevron-left/
-	// chevron-right own as marks. Neither appears in live source today.
+	// ‹ › only, not the whole block: these two get pressed into service as nav chevrons that chevron-left/right own.
 	[0x2039, 0x203a],
 	[0xfe0f, 0xfe0f] // the emoji-presentation selector itself
 ] as const;
@@ -100,10 +71,7 @@ function tsFiles(dir: string): string[] {
 	return out;
 }
 
-/**
- * Blank out comments, preserving newlines so reported line numbers stay true. Replacing with spaces
- * rather than deleting is what keeps the offset arithmetic honest.
- */
+/** Blank out comments, preserving newlines so reported line numbers stay true. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src
@@ -119,11 +87,7 @@ function lineOf(src: string, index: number): number {
 /** Every .svelte under lib/ and routes/ — the entire surface a guest can see. */
 const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 
-/**
- * Non-vacuity floor. Five ban scans below iterate FILES and assert `offenders`
- * empty; a broken walk returning [] would pass every one of them silently. Pin the file count and
- * the client-lib .ts count the copy scan uses. ~25 svelte + ~26 client .ts today.
- */
+// Non-vacuity floor: the five ban scans below assert `offenders` empty, so a broken walk returning [] passes silently.
 test('the icon ban scans actually read a non-empty surface', () => {
 	expect(FILES.length).toBeGreaterThan(15); // @nvf-floor FILES.length
 	expect(tsFiles(join(SRC, 'lib')).length).toBeGreaterThan(10); // @nvf-floor tsFiles(join(SRC, 'lib')).length
@@ -158,11 +122,6 @@ test('nothing forces emoji presentation with U+FE0F', () => {
 	expect(offenders).toEqual([]);
 });
 
-/**
- * The strong rule: no emoji anywhere a guest can see, on any surface. Every mark is an SVG now, so
- * there is nothing left that needs an exception — which is the point, because the previous rule had to
- * enumerate replaced codepoints and quietly tolerated the decorative ones.
- */
 test('no emoji in any UI-visible string', () => {
 	const offenders: string[] = [];
 	for (const f of FILES) {
@@ -174,22 +133,12 @@ test('no emoji in any UI-visible string', () => {
 	expect(offenders).toEqual([]);
 });
 
-/**
- * Copy shown to guests also lives in .ts (empty states, toasts). Those are plain strings that cannot
- * hold a component, so the rule there is that the emoji goes and the sentence stands on its own.
- * Scoped to the client lib: server-side files legitimately hold emoji as DATA — track-title.ts strips
- * 🎵 out of scraped titles, and its fixtures must keep them.
- */
+// Copy in .ts (empty states, toasts) cannot hold a component, so the emoji goes and the sentence stands
+// alone. `lib/server` is excluded: server files hold emoji as DATA — track-title.ts strips them out of
+// scraped titles and its fixtures must keep them.
 test('no emoji in user-facing copy in $lib', () => {
 	const offenders: string[] = [];
 	for (const f of tsFiles(join(SRC, 'lib'))) {
-		// `lib/server` is excluded, and the paragraph above is why: server-side files legitimately hold
-		// emoji as DATA — `track-title.ts` strips 🎵 out of scraped titles and its fixtures must keep them.
-		//
-		// That scoping used to be free, because the server tree sat at `src/server`, outside this walk.
-		// Moving it under `src/lib/server` (so SvelteKit enforces the client boundary at build time) put it
-		// inside, and the scan started reporting the `→` in two operator log lines as user-facing copy.
-		// The rule has not changed; only the address of the thing it was never about.
 		if (f.includes(`${sep}lib${sep}server${sep}`)) continue;
 		const src = stripComments(readFileSync(f, 'utf8'));
 		for (const m of src.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
@@ -201,10 +150,7 @@ test('no emoji in user-facing copy in $lib', () => {
 	expect(offenders).toEqual([]);
 });
 
-/**
- * A glyph in CSS `content:` is the case a markup-only scan cannot see — SongRow's play badge lived
- * there as `content: '▶'` and would have survived a scan that only read attributes and text nodes.
- */
+// A glyph in CSS `content:` is invisible to a markup-only scan — SongRow's play badge lived there.
 test('no CSS content: declaration draws a glyph', () => {
 	const offenders: string[] = [];
 	for (const f of FILES) {

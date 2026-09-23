@@ -6,9 +6,8 @@ timings on text we already trust, while ASR INVENTS the text. Its output is neve
 however confident the model sounds — which is why a transcript is a BASELINE (evidence of what is
 audible) and never a candidate for the song's words. See `grading.py`.
 
-MEASURED (2026-09-02, real stem, `base` on CPU): `transcribe()` returns segment bounds and NO word
-timings. Word timings come only from the separate `align()` pass, so the aligner is the single source
-of word timing for every tier, looked-up or transcribed.
+MEASURED (real stem, `base` on CPU): `transcribe()` returns segment bounds and NO word timings — the
+aligner is the single source of word timing for every tier, looked-up or transcribed.
 
 torch is imported LAZILY inside the loader, so a worker that never runs an align job never pays the
 multi-GB import.
@@ -75,19 +74,11 @@ class WhisperxTranscriber:
         return cast(dict[str, Any], out)
 
 
-# ── the model cache ────────────────────────────────────────────────────────────────
-#
-# Keyed by (device, model) at MODULE level, not held on a processor instance.
-#
-# The old design cached one loaded model on the single WhisperXProcessor and nulled it whenever a job
-# asked for a different checkpoint. That is what made engine adoption mutate shared state, and with
-# ENCORE_WORKER_CONCURRENCY > 1 two jobs could invalidate each other's cache mid-run. Dropping the cache
-# entirely would be worse than the race: every align job would re-read multi-GB weights.
-#
-# Keying by configuration gets both. Two concurrent jobs on the same checkpoint SHARE the loaded model,
-# two on different checkpoints each keep theirs, and no job can evict another's. Loading is under ML_LOCK
-# because the lazy loader had a check-then-set race that could load the same model twice and double the
-# memory.
+# Model cache keyed by (device, model) at MODULE level, not on a processor instance: two concurrent
+# jobs on the same checkpoint SHARE the loaded model, two on different checkpoints each keep theirs,
+# and no job can evict another's — with ENCORE_WORKER_CONCURRENCY > 1 a per-instance cache would let
+# jobs invalidate each other mid-run. Loading is under ML_LOCK to close a check-then-set race that
+# could load the same model twice and double the memory.
 _TRANSCRIBERS: dict[tuple[str, str], WhisperxTranscriber] = {}
 
 

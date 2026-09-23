@@ -5,217 +5,84 @@ import { pickBestLyrics, type LyricsCandidate } from '../lyrics/lyrics';
 import type { SongProfile } from '../process/song-profile';
 import type { TvBackgroundStyle } from '../presentation/tv-background';
 
-/**
- * Where a song ORIGIN metadata came from.
- *
- * `youtube` and `local` are also ACQUIRABLE - a fetcher knows how to pull their bytes (see
- * fetchers.ts). `spotify` is a SEARCH / metadata source ONLY: Spotify gives clean canonical
- * artist/title/duration where a YouTube upload title has to be reverse-engineered, but its bytes
- * are never fetched from Spotify. The audio is still acquired from YouTube (the annotator pattern,), so a spotify-sourced media is not processable - `isProcessableSource` in fetchers.ts
- * is the one authority that says so, and every layer that decides whether a process is possible asks it.
- * (`fetcherFor` does NOT refuse a spotify source; it returns the default downloader as a floor.)
- * This needs no DB migration (the column is plain text, no CHECK) and no fetch:spotify capability.
- */
+/** Where a song's ORIGIN metadata came from. `youtube` and `local` are ACQUIRABLE; `spotify` is search and
+ *  metadata ONLY, and `isProcessableSource` is the one authority that refuses it. See
+ *  docs/SERVER.md#contract-boundary. */
 export type MediaSource = 'youtube' | 'local' | 'spotify';
 export type StemStatus = 'none' | 'queued' | 'ready';
 
-/**
- * Where one processing step of the process has got to. Same shape as `StemStatus`, named for the general
- * case because the process now has more than one gated step (see gates.ts).
- */
+/** Where one gated step of a process has got to. */
 export type StepStatus = 'none' | 'queued' | 'ready';
 
 export interface Media {
 	id: string;
 	source: MediaSource;
-	/**
-	 * The song's ORIGIN identity: youtube video id, or local file key. IMMUTABLE for the life of the
-	 * media — it is what search dedupes on (`source` + `sourceRef`), so overwriting it forks one song
-	 * into two rows: the processed one in the library and a fresh unprocessed one on the next search.
-	 * The separated instrumental lives in `instrumentalRef`, never here.
-	 */
+	/** The song's ORIGIN identity: youtube video id, or local file key. IMMUTABLE — see
+	 *  docs/SERVER.md#media-storage-and-paths. */
 	sourceRef: string;
 	title: string;
 	/** The UPLOADER as the source reported it (a YouTube channel, often not the artist at all). */
 	artist?: string;
-	/**
-	 * The canonical artist, normalized from the title and only set when the parse was
-	 * CONFIDENT — a low-confidence guess stays undefined rather than being displayed as fact. Prefer
-	 * this over `artist` for display and grouping; `artist` remains the raw provenance.
-	 */
+	/** The canonical artist, set only when the parse was CONFIDENT — a weak guess stays undefined rather than
+	 *  displaying as fact. Prefer this over `artist` for display and grouping. */
 	artistCanonical?: string;
-	/**
-	 * The FULL artist billing as the upload wrote it ("Lady Gaga feat. Beyoncé"), where
-	 * `artistCanonical` is only the primary. Set only when it differs from the primary — i.e. when the
-	 * upload actually credited more than one artist.
-	 *
-	 * Not for display, and not a lookup key. It rides on an `align` job so the worker can tell two
-	 * RECORDINGS of a song apart: a lyrics provider holds a record per version and every one of them
-	 * matches the primary artist, so a song with a guest verse otherwise gets whichever record the
-	 * provider happens to return. See `rank_lrclib_candidates` in the worker.
-	 */
+	/** The FULL billing where `artistCanonical` holds only the primary; set only when they differ. Neither
+	 *  display nor a lookup key — it RANKS provider records, which all match the primary artist. */
 	artistCredit?: string;
-	/**
-	 * The canonical TITLE, from the same normalizer and confidence rule as `artistCanonical`. `title`
-	 * stays the RAW title because that is what search matches and what a singer recognises in a result
-	 * list — but a lyrics lookup needs the song's actual name, so "Britney Spears - Baby One More Time
-	 * (Lyrics)" must resolve to "Baby One More Time" or LRCLIB misses on track_name. Undefined when the
-	 * parse wasn't confident.
-	 */
+	/** The canonical TITLE, same rule as `artistCanonical`. `title` stays RAW because search matches on it. */
 	titleCanonical?: string;
-	/**
-	 * MusicBrainz recording id, when a `fetch` job's annotation agreed on artist AND title and the
-	 * duration corroborated it. Absent when annotation was declined — which is the normal outcome for a
-	 * song the normalizer could not name, a weak duration match, or an unreachable service.
-	 */
+	/** MusicBrainz recording id, set only when annotation agreed on artist AND title. Absent is normal. */
 	mbid?: string;
-	/**
-	 * How `artistCanonical`/`titleCanonical` came to be trusted. `musicbrainz` means a citation with an
-	 * MBID; `youtube` means YouTube's OWN extracted `track`/`artist` metadata, captured at download time
-	 * (a citation, `high`, no MBID — the uploader declared the credit rather than us guessing it);
-	 * `normalizer` means a title parse and nothing more. Kept because the three are not equal evidence
-	 * and the difference decides whether a later annotation may overwrite them (see applyAnnotation's
-	 * never-regress rule). `youtube` and `musicbrainz` are both citations and neither may be downgraded
-	 * to a `normalizer` guess.
-	 */
+	/** How the canonical fields came to be trusted. `musicbrainz` and `youtube` are CITATIONS, `normalizer` is
+	 *  a parse, and the difference decides overwrite rights. See docs/SERVER.md#media-storage-and-paths. */
 	annotation?: { source: 'musicbrainz' | 'youtube' | 'normalizer'; confidence: 'high' | 'medium' };
 	durationSec: number;
 	thumbnail?: string;
-	/**
-	 * Views the SOURCE reported, at the moment we last saw this song in a search.
-	 *
-	 * Display only, and a TIEBREAKER rather than a fact about the song: between two lyric uploads of one
-	 * track, 2.1B vs 266K is what tells a singer which is the canonical one. Deliberately not used by
-	 * ranking, dedupe or any gate — a popularity number must never decide what plays.
-	 *
-	 * Undefined means "never learned one" (a local library file, or a resolver that reports none), which
-	 * is why it is optional rather than 0: the row omits the chip instead of claiming zero views.
-	 */
+	/** Views the SOURCE last reported. Display and tie-breaking ONLY — never ranking, dedupe or any gate,
+	 *  because a popularity number must not decide what plays. Optional, not 0, so a row omits the chip. */
 	viewCount?: number;
 	stemStatus: StemStatus;
-	/** MediaStore key of the separated instrumental (set when a stems job completes). This is what
-	 *  the TV file player loads; `sourceRef` stays the origin so the worker can still fetch the
-	 *  source and search can still recognise the song. */
+	/** MediaStore key of the separated instrumental, set when a stems job completes. What the TV loads. */
 	instrumentalRef?: string;
-	/**
-	 * Which separator produced the CURRENT `instrumentalRef`. The upgrade path compares a candidate's
-	 * quality rank against this before swapping, so an upgrade can never replace a better instrumental
-	 * with a worse one. Absent on media processed before separator selection existed, which
-	 * `isQualityUpgrade` treats as "anything ranked is an improvement".
-	 */
+	/** Which separator produced the CURRENT `instrumentalRef`, so an upgrade can compare ranks and never
+	 *  install a worse one. See docs/SERVER.md#registries-and-the-quality-ladder. */
 	separator?: { engine: string; model: string };
-	/**
-	 * MediaStore key of the ISOLATED VOCALS stem — the guiding track. Separation always produces it
-	 * alongside the instrumental, so this is a keep-not-compute field.
-	 *
-	 * Present means the file existed AND carried audio when the job completed. Both halves matter: a
-	 * separation can succeed and still write digital silence, and a ref set on trust alone advertises
-	 * a guiding track that plays nothing (see `src/lib/server/media/loudness.ts`). Absent → the
-	 * phone control is unavailable and the TV renders no second element, which is the honest
-	 * degradation rather than a broken mix.
-	 */
+	/** MediaStore key of the ISOLATED VOCALS stem. Present means the file existed AND carried audio — a
+	 *  separation can succeed and write digital silence, and a ref set on trust advertises a guide that plays
+	 *  nothing. */
 	vocalsRef?: string;
-	/**
-	 * The GUIDE MIX: both stems in ONE 4-channel file — channels 0/1 the instrumental, 2/3 the vocals.
-	 * When present the TV plays THIS instead of two separate elements, and the guiding track cannot drift.
-	 *
-	 * WHY A SECOND REF RATHER THAN A REPLACEMENT. Two stems mean two media elements, which is two decoders
-	 * and two clocks, and two clocks cannot be sample-locked from script: `guide-sync.ts` compares each
-	 * element's reported `currentTime`, which is the spec's official playback position and excludes each
-	 * element's output latency — so its governor converges to "aligned" on a signal that does not describe
-	 * what the ear hears, then holds. One file has ONE playhead, so drift stops being a governed quantity.
-	 * The single-stem files stay: `vocalsRef` still feeds pitch and range analysis, `instrumentalRef` still
-	 * backs the no-mix path, and a browser that cannot deliver four channels still gets its instrumental.
-	 *
-	 * ABSENT IS TODAY'S BEHAVIOUR. Every song processed before this existed has no mix and plays through
-	 * the two-element path exactly as before; `guidePath` maps absent to that path with no branch at the
-	 * call site. Absent also covers a best-effort encode that failed and a song with no vocals stem at all.
-	 */
+	/** The GUIDE MIX: both stems in ONE 4-channel file, so the guide shares one playhead and cannot drift. A
+	 *  SECOND ref and not a replacement; absent routes to the no-mix path. See docs/ARCHITECTURE.md §6. */
 	guideMixRef?: string;
-	lyricsRef?: string; // MediaStore key of the word-timed lyrics JSON artifact — drives the
-	// TV karaoke overlay. Absent until an align job completes; the overlay no-ops without it.
-	// This is the CHOSEN candidate (see lyricsCandidates + pickBestLyrics).
-	/**
-	 * Every lyrics artifact this song has, one per text source. `lyricsRef` points at whichever
-	 * `pickBestLyrics` selected; the rest are kept so a better source arriving later can be re-aligned
-	 * from retained audio — and so a coarser late arrival can never displace existing word timings.
-	 *
-	 * The candidate matching `lyricsRef` is where the TV reads PROVENANCE from. Derive it with
-	 * `chosenCandidate(media)` rather than duplicating the fields here.
-	 */
+	/** MediaStore key of the word-timed lyrics artifact driving the TV overlay — the CHOSEN candidate.
+	 *  Absent until an align job completes; the overlay no-ops without it. */
+	lyricsRef?: string;
+	/** Every lyrics artifact this song has, one per text source; the losers are KEPT. Read provenance via
+	 *  `chosenCandidate(media)`. See docs/SERVER.md#lyrics-candidates-and-grading. */
 	lyricsCandidates?: LyricsCandidate[];
-	/**
-	 * A HUMAN'S explicit lyrics pick, by candidate `ref` — the fallback for when the ranker chose
-	 * wrong. When set and still present in `lyricsCandidates`, it OUTRANKS `pickBestLyrics`
-	 * everywhere the chosen candidate is resolved (`chosenLyricsRef` on restore, `setMediaLyrics` on a
-	 * later align completion). `undefined` means no override — the ranking decides, as before.
-	 *
-	 * This is the one thing that can make the shown candidate WORSE by rank, so it is a SEPARATE field
-	 * the resolver consults, never a change to `pickBestLyrics`: the never-regress guarantee
-	 * (`mergeLyricsCandidate`) stays intact, and a later re-process that produces a better candidate is
-	 * still KEPT beside the pick — which is what lets the phone say "a better version exists" (
-	 * owner ruling Q2=C: sticky, plus surface the newer candidate) instead of silently losing it.
-	 */
+	/** A HUMAN's explicit lyrics pick, by candidate `ref`. A SEPARATE field the resolver consults, never a
+	 *  change to the ranking. See docs/SERVER.md#lyrics-candidates-and-grading. */
 	lyricsOverrideRef?: string;
-	/**
-	 * The WORDS a human pasted for a `manual` re-pick — the text `lyricsOverrideRef` names but that no
-	 * provider has ever produced, so nothing on disk holds it yet.
-	 *
-	 * It lives HERE, beside the ref, because `assignParams` derives every job parameter from the MEDIA:
-	 * a job row carries no params, so a paste kept anywhere narrower (an in-memory map, a field on the
-	 * live Job) is lost by a restart between enqueue and dispatch — the reaper requeues the align,
-	 * dispatch re-derives its params from this record, and the worker gets `pinnedRef` with nothing
-	 * behind it. Persisted in the sidecar and mirrored in the index for exactly that reason.
-	 *
-	 * PAIRED WITH `lyricsOverrideRef`, always: this is the text stored under that ref, so picking a
-	 * different candidate CLEARS it. Left behind it would outrank the ref in the worker's pinned path and
-	 * re-time abandoned words over the candidate the human actually chose. Absent means "the pin names a
-	 * candidate already on disk" (or there is no pin), and the worker re-times that stored doc.
-	 */
+	/** The WORDS a human pasted for a `manual` re-pick. It lives on the MEDIA because a job row carries no
+	 *  params, so a paste held anywhere narrower is lost by a restart between enqueue and dispatch. ALWAYS
+	 *  paired with `lyricsOverrideRef`. See docs/SERVER.md#lyrics-candidates-and-grading. */
 	lyricsOverrideText?: string;
-	/**
-	 * How far the `align` step has got — the lyrics half of the process gate (see gates.ts).
-	 *
-	 * `ready` means alignment RAN, not that it found words: a genuine instrumental completes with no
-	 * `lyricsRef`, and it is still a finished song. Absent on media processed before this field existed,
-	 * which the gate treats as done when a lyrics artifact is already present.
-	 */
+	/** How far the `align` step has got. `ready` means alignment RAN, not that it found words. See
+	 *  docs/SERVER.md#song-profile-and-readiness. */
 	lyricsStatus?: StepStatus;
-	/**
-	 * What the process LEARNED about the music: detected key, and the range the original singer sang.
-	 *
-	 * Produced by the same `stems` job as the two audio stems, so it is the third artifact of one step
-	 * rather than a separate pipeline stage — and it is the reason the `stems` gate checks for it (see
-	 * gates.ts). Present means analysis RAN; the fields inside are individually nullable because a song
-	 * can legitimately have no detectable key, no voiced vocal, or neither.
-	 *
-	 * Absent means not analysed yet, which for a song processed before this field existed is also true —
-	 * and is why the gate's predicate tolerates it via `stemStatus`, rather than making an existing
-	 * library unsingable on upgrade.
-	 */
+	/** What the process LEARNED about the music: key, range, loudness. Third artifact of the `stems` job, so
+	 *  present means analysis RAN. See docs/SERVER.md#song-profile-and-readiness. */
 	songProfile?: SongProfile;
 }
 
-/**
- * The MediaStore key the player should load, or `''` when this song has nothing playable yet.
- *
- * Nothing plays unprocessed: the only thing the TV ever loads is a separated instrumental. There is
- * no embed path and no raw-source path, so a song that has not been processed is simply not playable —
- * which is what `isPlayable` reports and what rotation gates on.
- *
- * Keeping this in one pure helper is what lets `sourceRef` stay immutable: the player asks "what do I
- * load" instead of assuming the origin field was rewritten under it.
- */
+/** The MediaStore key the player should load, or `''` when nothing is playable. Nothing plays unprocessed, and
+ *  one pure helper is what lets `sourceRef` stay immutable. */
 export function playbackRef(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): string {
 	return m.stemStatus === 'ready' && m.instrumentalRef ? m.instrumentalRef : '';
 }
 
-/**
- * Can this song be played at all? True only for a processed song with an instrumental on disk.
- *
- * `stemStatus === 'ready'` alone is not enough: the status and the artifact key are written by
- * separate steps, and a status without a ref would hand the player an empty source.
- */
+/** Can this song be played at all? `stemStatus === 'ready'` alone is NOT enough — see
+ *  docs/SERVER.md#song-profile-and-readiness. */
 export function isPlayable(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): boolean {
 	return playbackRef(m) !== '';
 }
@@ -226,18 +93,8 @@ export interface Singer {
 	color: string; // hex; the per-singer accent used across both surfaces
 	sessionToken: string;
 	joinedAt: number;
-	/**
-	 * When this singer last STARTED a song. Absent/null = has not sung.
-	 *
-	 * The signal the `least-recently-sung` ordering runs on, and the reason it lives on the singer
-	 * rather than in the play log: `plays` deliberately carries no singer id, because over a small
-	 * library "who sang what" is identifying. This records THAT someone sang and when — not what they
-	 * sang — which is the least the rotation can know and still be fair, and it is why the stamp is
-	 * safe to broadcast on the public roster the phones already receive.
-	 *
-	 * Stamped at song START, not end: the point is that their remaining picks drop behind everyone
-	 * else's the moment their turn begins.
-	 */
+	/** When this singer last STARTED a song; absent/null = has not sung. See
+	 *  docs/SERVER.md#queue-ordering-and-rotation. */
 	lastSungAt?: number | null;
 }
 
@@ -257,35 +114,15 @@ export interface PlaybackState {
 	positionSec: number;
 	isPlaying: boolean;
 	keyShift: number; // semitones the current song is transposed (+sharp / -flat), 0 = original
-	/**
-	 * Per-song override of the room's TV background. `null` = defer to the room default, which is the
-	 * normal state — the TV resolves `playback.background ?? room.tvBackgroundStyle`.
-	 *
-	 * An OVERRIDE rather than a show/hide toggle, because that subsumes the toggle ('off' is the hide
-	 * case) and additionally buys "make it purple, just for this song" with no extra mechanism.
-	 *
-	 * Ephemeral like keyShift: reset to null on every song change. Note that this reset is EXPLICIT at
-	 * each site in realtime/player.ts — nothing rebuilds this object per song — so a field omitted
-	 * there silently leaks into the next singer's turn.
-	 */
+	/** Per-song override of the room's TV background; `null` = defer to the room. EPHEMERAL, and the per-song
+	 *  reset is a trap — see docs/SERVER.md#authority-and-the-hub. */
 	background: TvBackgroundStyle | null;
-	/**
-	 * The GUIDING TRACK level for the current song: how loud the isolated original vocals sit under
-	 * the instrumental, 0 = pure karaoke … 1 = full sing-along.
-	 *
-	 * `null` is not zero — it means "no per-song override, use the room default"
-	 * (`RoomSettings.guideLevelDefault`). That distinction is the whole point of the field: `keyShift`
-	 * resets to 0 on every song, and copying that here would make a singer who wants a faint guide
-	 * re-drag the slider for every single song. So this resets to `null` (inherit) on song change,
-	 * and only a deliberate touch of the control pins a number to this one song.
-	 *
-	 * Resolve it with `effectiveGuideLevel` rather than reading it raw — a raw read cannot tell
-	 * "inherit" from "explicitly off".
-	 */
+	/** The GUIDING TRACK level for the current song, 0..1. `null` is NOT zero — it means inherit the room, and
+	 *  is what this resets to per song. Resolve with `effectiveGuideLevel`, never raw. */
 	guideLevel: number | null;
 }
 
-// How far the singer can transpose, in semitones (a perfect fifth either way — covers most voices).
+// A perfect fifth either way, which covers most voices.
 export const MAX_KEY_SHIFT = 7;
 
 /** Clamp a requested key shift to the supported ±MAX_KEY_SHIFT range (integer semitones). */
@@ -294,28 +131,14 @@ export function clampKeyShift(semitones: number): number {
 	return Math.max(-MAX_KEY_SHIFT, Math.min(MAX_KEY_SHIFT, Math.trunc(semitones)));
 }
 
-/**
- * There is deliberately NO `keyedMediaRef` here any more.
- *
- * It used to resolve a pre-rendered pitch-shifted variant (`stems/<id>-instrumental.+2.flac`) that
- * nothing ever produced — `worker/src/pitch.py` existed as tested pure logic that `processor.py`
- * never called — so the TV had to ignore `keyShift` entirely or hand the gapless controller a 404
- * mid-song. Transposition now happens in the browser (see `src/lib/tv/pitch-shift.ts`),
- * which needs no files, works on every already-processed song, and can shift the guiding-track stem by
- * the same amount instead of muting it. Both the ref helper and the worker renderer are gone.
- */
+// Transposition happens in the browser (`src/lib/tv/pitch-shift.ts`), so there is deliberately no
+// pre-rendered pitch-shifted artifact and no ref helper that would resolve one.
 export type JobType = 'fetch' | 'stems' | 'align' | 'stems-upgrade';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
 /**
- * The wire vocabulary that CAUSES a job status change — the event, not the destination status.
- *
- * A status pair is event-lossy: `assigned → queued` is both a worker REJECT and an ack-timeout
- * LEASE_EXPIRED, and `running → queued` is both a progress-lease expiry and boot RECOVER — the
- * machine could not tell them apart, so the ledger had to hook seven hand-written wrappers instead
- * of the machine itself (see attempts.ts). Keying transitions on the event restores the distinction
- * and lets `REPRIORITIZE` (a status-free scheduling write) be a legal internal edge rather than an
- * escape hatch outside the machine (repository.ts). Drawn from the §5 wire protocol.
+ * The wire vocabulary that CAUSES a job status change — the event, never the destination status, because a
+ * status pair is event-lossy. See docs/SERVER.md#the-attempt-ledger.
  */
 export const JOB_EVENTS = [
 	'DISPATCH', // queued → assigned: offered to a worker
@@ -331,8 +154,8 @@ export const JOB_EVENTS = [
 ] as const;
 export type JobEvent = (typeof JOB_EVENTS)[number];
 
-// Terminal states never leave; the dedup index ignores them so a song can be re-processed after
-// a failure/cancel. See docs/ARCHITECTURE.md.
+// Terminal states never leave. The `(mediaId, jobType)` dedup index ignores them, which is what lets a
+// song be re-processed after a failure or a cancel.
 export const TERMINAL_JOB_STATUSES = ['ready', 'failed', 'canceled'] as const;
 
 export function isTerminalJob(status: JobStatus): boolean {
@@ -343,25 +166,12 @@ export interface Job {
 	id: string;
 	mediaId: string;
 	jobType: JobType;
-	/**
-	 * The PROCESS this job belongs to — one id shared by every step of one run (fetch → stems → align).
-	 *
-	 * `mediaId` cannot do this job. A song can be processed more than once: a failure frees the dedup slot
-	 * so it can be re-processed, and `stems-upgrade` re-separates a finished song. Grouping attempt
-	 * records by `mediaId` alone therefore blends distinct runs together, which makes an end-to-end
-	 * duration meaningless (it would span from the first process's enqueue to the last upgrade's finish).
-	 * A `stems-upgrade` deliberately starts a NEW process rather than inheriting: it is background work on
-	 * an already-finished song, and its cost belongs to itself.
-	 */
+	/** The PROCESS this job belongs to — one id shared by every step of one run. `mediaId` cannot group runs,
+	 *  and a `stems-upgrade` starts a NEW one. See docs/SERVER.md#the-attempt-ledger. */
 	processingId: string;
-	/**
-	 * The singer who REQUESTED this process, or `null` for internal callers that impose no per-singer
-	 * cap (lyrics backfill, chained follow-up steps that inherit their parent's attribution). This is
-	 * the authoritative attribution for the per-singer concurrent-process cap: the cap counts a singer's
-	 * live process JOBS, not their queue entries, because the entry (WebSocket) and the process (HTTP) ride
-	 * different transports and only the entry is droppable — a phone that taps Sing while its socket is
-	 * reconnecting files the process with no entry to count, and an entry-derived cap admits every tap.
-	 */
+	/** The singer who REQUESTED this process, or `null` for an internal caller that imposes no per-singer
+	 *  cap. The cap counts live process JOBS and never queue entries — see
+	 *  docs/SERVER.md#idempotency-and-the-process-cap. */
 	singerId: string | null;
 	status: JobStatus;
 	priority: number; // mirror of soonest rotationSeq; lower = sooner
@@ -371,7 +181,7 @@ export interface Job {
 	stage: string | null;
 	progressPct: number;
 	etaSec: number | null;
-	error: string | null; // last failure message; shown on the phone with the fallback offer (§8)
+	error: string | null; // last failure message; shown on the phone with the fallback offer
 	leaseExpiresAt: number | null; // epoch ms; ack-lease or progress-lease deadline
 	createdAt: number;
 	updatedAt: number;
@@ -381,21 +191,8 @@ export interface Job {
 export const ATTEMPT_OUTCOMES = ['ready', 'failed', 'canceled', 'abandoned'] as const;
 export type AttemptOutcome = (typeof ATTEMPT_OUTCOMES)[number];
 
-/**
- * ONE ATTEMPT at one job — the audit spine, and the only place processing time is recorded.
- *
- * WHY THIS TABLE EXISTS. The `jobs` row is mutated in place: it carries `createdAt` and `updatedAt`
- * and nothing else, and `updatedAt` is overwritten by every progress frame. So a finished job says
- * only "this changed most recently at T" — you cannot tell how long it WAITED from how long it RAN,
- * you cannot see a previous attempt at all (`attempts` is a counter and `error` keeps only the last
- * message), and you cannot tell which model produced the result. None of that is recoverable later:
- * an unrecorded duration is gone permanently. This table records each attempt as its own row.
- *
- * WHAT "APPEND-ONLY" MEANS HERE, PRECISELY. A row is opened when the job enters the queue and is
- * filled in as that ONE attempt progresses (assigned → started → finished). Once it reaches an
- * outcome it is never written again, and a retry opens a NEW row rather than overwriting the old one.
- * So history is immutable; only the attempt currently in flight is still being written.
- */
+/** ONE ATTEMPT at one job — the audit spine, APPEND-ONLY, and the only place processing time is recorded.
+ *  See docs/SERVER.md#the-attempt-ledger. */
 export interface JobAttempt {
 	id: string;
 	jobId: string;
@@ -407,14 +204,11 @@ export interface JobAttempt {
 	workerId: string | null;
 
 	/**
-	 * FOUR clocks, because one cannot answer the question. Every duration the dashboards report is a
-	 * subtraction between two of these, and each is null until that moment actually happens — a job
-	 * that never got picked up has no `startedAt`, and saying 0 there would invent work that never ran.
+	 * FOUR clocks; every reported duration is a subtraction between two of them, and each stays null until its
+	 * moment happens. See docs/SERVER.md#the-attempt-ledger.
 	 *
-	 *   assignedAt − enqueuedAt  → queue wait (was the fleet busy?)
-	 *   startedAt  − assignedAt  → ack latency (did the worker pick it up promptly?)
-	 *   finishedAt − startedAt   → PROCESSING TIME — the number the internal dashboard is for
-	 *   finishedAt − enqueuedAt, grouped by processingId → end-to-end for the whole song
+	 *   assignedAt − enqueuedAt → queue wait      startedAt − assignedAt → ack latency
+	 *   finishedAt − startedAt  → processing time  finishedAt − enqueuedAt, by processingId → end-to-end
 	 */
 	enqueuedAt: number;
 	assignedAt: number | null;
@@ -424,13 +218,7 @@ export interface JobAttempt {
 	outcome: AttemptOutcome | null; // null = still in flight
 	error: string | null;
 
-	/**
-	 * WHAT ACTUALLY RAN. Recorded per attempt because these are resolved from GLOBAL SETTINGS at
-	 * dispatch time and settings are operator-editable: re-deriving a past process's model from today's
-	 * settings gives a confidently wrong answer. Written at assign time from the dispatched params
-	 * (what was asked for); a worker that reports its own resolution overwrites them with the truth,
-	 * since a worker can legitimately resolve something different from what it was asked.
-	 */
+	/** WHAT ACTUALLY RAN, and NOT re-derivable later. See docs/SERVER.md#the-attempt-ledger. */
 	engine: string | null;
 	model: string | null;
 	backend: string | null;
@@ -438,34 +226,20 @@ export interface JobAttempt {
 	asrModel: string | null;
 	syncMode: string | null;
 
-	/**
-	 * The song's length, snapshotted. Raw seconds do not compare across songs — a 30s clip and a 7min
-	 * track are not the same workload — so every reported cost is a RATE (seconds of compute per
-	 * second of audio). Copied onto the attempt rather than joined from `media` because a media row's
-	 * duration can be re-annotated later, which would silently rewrite historical rates.
-	 */
+	/** The song's length, SNAPSHOTTED so a later re-annotation cannot rewrite historical rates. */
 	audioSec: number | null;
 
-	/**
-	 * Per-stage wall clock as a JSON string: `[{"stage":"separating","ms":51000}]`. Stored whole rather
-	 * than as rows because it is only ever read whole — to render one attempt's breakdown — so a table
-	 * would add a join and a migration without enabling a query. Use `attemptStages()` to read it.
-	 */
+	/** Per-stage wall clock as a JSON string. Stored whole because it is only ever READ whole; read it with
+	 *  `attemptStages()`. */
 	stages: string | null;
 
-	/**
-	 * WHY the published lyric was chosen, as a JSON string. Present only on `align` attempts
-	 * that made a pick among versions; null everywhere else. Stored whole for the same reason as
-	 * `stages` and `media.lyricsCandidates`: it is read whole to explain one attempt, never queried
-	 * inside, so a table would buy a join and a migration for no query. Parse with `attemptSelection()`.
-	 * The audit trail, not the sidecar, is its home: a rejected candidate is run history, not the
-	 * library identity the sidecar projects into the media row.
-	 */
+	/** WHY the published lyric was chosen, as a JSON string; parse with `attemptSelection()`. Its home is the
+	 *  audit trail and NOT the sidecar: a rejected candidate is run history, not library identity. */
 	selection: string | null;
 }
 
-/** Parse an attempt's stage breakdown. Returns [] for absent or malformed JSON — a corrupt
- *  diagnostic must degrade to "no breakdown", never throw inside a dashboard render. */
+/** Parse an attempt's stage breakdown. Returns [] for absent or malformed JSON — a corrupt diagnostic
+ *  must degrade to "no breakdown", never throw inside a dashboard render. */
 export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; ms: number }[] {
 	if (!a.stages) return [];
 	try {
@@ -477,17 +251,8 @@ export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; m
 	}
 }
 
-/**
- * WHY one lyric candidate won over the others, as durable data.
- *
- * The worker's `VariantChoice.summary()` already renders exactly these facts, but only to the process
- * log, which rotates and is per-container and is long gone by the time someone notices wrong lyrics on
- * the TV weeks later. This is that same explanation crossed to the `/metrics/<mediaId>` audit trail so
- * a mis-pick is answerable from persisted state. Deliberately NOT the rejected lyric BODIES: label +
- * composite score is enough to say which arm fired (a metadata fallback no baseline could judge versus
- * a real disagreement the metric ranked), and four full rejected texts per song would multiply the
- * lyrics footprint for triage-only data.
- */
+/** WHY one lyric candidate won, as durable data, because a log is gone by the time someone notices wrong
+ *  lyrics. Deliberately NOT the rejected lyric BODIES — label plus score says which arm fired. */
 export interface SelectionRecord {
 	/** True when no candidate existed and a baseline is being shown as the answer. */
 	baselineFallback: boolean;
@@ -501,9 +266,9 @@ export interface SelectionRecord {
 	 * Baseline COVERAGE of the published winner — the number `winnerSuspect` was actually thresholded
 	 * against. Null when nothing could judge it.
 	 *
-	 * OPTIONAL because an attempt row written before the coverage axis landed has no such key, and `attemptSelection`
-	 * parses defensively rather than rejecting an older record: a missing coverage must read as "this
-	 * worker did not record it", never as a decision made on nothing.
+	 * OPTIONAL because an attempt row written before the coverage axis landed carries no such key, and
+	 * `attemptSelection` parses defensively rather than rejecting an older record: a missing coverage must
+	 * read as "not recorded", never as a decision made on nothing.
 	 */
 	winnerCoverage?: number | null;
 	/** One entry per source that offered a choice among versions, in the order considered. */
@@ -525,16 +290,15 @@ export interface VariantChoiceRecord {
 }
 
 /** Parse an attempt's selection provenance. Returns null for absent or malformed JSON, so a corrupt
- *  diagnostic degrades to "no record" and never throws inside a dashboard render (mirrors attemptStages). */
+ *  diagnostic degrades to "no record" and never throws inside a dashboard render. */
 export function attemptSelection(a: Pick<JobAttempt, 'selection'>): SelectionRecord | null {
 	if (!a.selection) return null;
 	try {
 		const p = JSON.parse(a.selection);
 		if (!p || typeof p !== 'object' || !Array.isArray(p.choices)) return null;
-		// Every choice must carry a string textSource: the metrics page keys its {#each} on it, so an
-		// element from an older/partial worker missing the field would key on undefined and THROW at
-		// render — the exact outcome this guard exists to prevent. Reject the whole record rather than
-		// render a half one.
+		// Every choice must carry a string `textSource`: the metrics page keys its `{#each}` on it, so an
+		// element from a partial worker would key on undefined and THROW at render. Reject the whole record
+		// rather than render half of one.
 		if (
 			!p.choices.every(
 				(c: unknown) =>
@@ -556,32 +320,16 @@ export function realtimeFactor(a: Pick<JobAttempt, 'startedAt' | 'finishedAt' | 
 	return (a.finishedAt - a.startedAt) / 1000 / a.audioSec;
 }
 
-/**
- * The lyrics candidate a media is currently showing — the one `lyricsRef` points at, and where the
- * TV reads provenance from. Returns null when the artifact predates candidate tracking: the honest
- * answer is "provenance unknown", not a fabricated one.
- *
- * Kept beside Media (like `playbackRef`) rather than in lyrics.ts so that module stays dependency-free.
- */
+/** The candidate a media is currently showing — where the TV reads provenance. Null when the artifact
+ *  predates candidate tracking, because "unknown" is the honest answer. */
 export function chosenCandidate(m: Pick<Media, 'lyricsRef' | 'lyricsCandidates'>): LyricsCandidate | null {
 	if (!m.lyricsRef || !m.lyricsCandidates?.length) return null;
 	return m.lyricsCandidates.find((c) => c.ref === m.lyricsRef) ?? null;
 }
 
-/**
- * The single place that resolves WHICH candidate wins: a human override if one is set and still on
- * disk, otherwise `pickBestLyrics`. Returns the winning `ref`, or `undefined` when nothing is
- * showable.
- *
- * Both rank-derivation sites route through here so override-then-rank has ONE definition:
- * `chosenLyricsRef` (sidecar restore, which re-ranks on every boot) and `setMediaLyrics` (which
- * re-ranks on every align completion). An override that names a `ref` no longer in the set is IGNORED,
- * not honoured blindly — a stale pointer must fall back to the ranking rather than blank the overlay.
- *
- * It does NOT touch `pickBestLyrics`: the override is layered ABOVE the ranking, so never-regress
- * (`mergeLyricsCandidate`) is untouched and a later better candidate is still kept for the
- * "newer version exists" affordance (`hasNewerCandidateThanOverride`).
- */
+/** The single place that resolves WHICH candidate wins: a human override if one is set and still on disk,
+ *  otherwise the ranking. BOTH rank-derivation sites must route through here. See
+ *  docs/SERVER.md#lyrics-candidates-and-grading. */
 export function resolveLyricsRef(
 	candidates: readonly LyricsCandidate[] | undefined,
 	overrideRef: string | null | undefined
@@ -591,12 +339,8 @@ export function resolveLyricsRef(
 	return pickBestLyrics(set)?.ref;
 }
 
-/**
- * Under a sticky human override (Q2=C), would the RANKER now prefer a different candidate — i.e. has a
- * later re-process produced something the ranking rates above the pinned pick? Drives the phone's "a
- * better version exists" hint. `false` when there is no override, when the ranker agrees with the pick,
- * or when the pinned ref is no longer present (a stale override is not "beaten", it is gone).
- */
+/** Under a sticky override, would the RANKER now prefer a different candidate? Drives the phone's "a better
+ *  version exists" hint. `false` with no override, on agreement, or when the pinned ref is gone. */
 export function hasNewerCandidateThanOverride(
 	candidates: readonly LyricsCandidate[] | undefined,
 	overrideRef: string | null | undefined

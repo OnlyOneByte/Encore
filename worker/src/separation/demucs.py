@@ -30,10 +30,9 @@ from ..vocabulary import StemFormat
 
 DEFAULT_MODEL = "htdemucs"
 
-# The demucs-family checkpoints this engine will run. Mirrors the `demucs` engine's model
-# allowlist in src/lib/contract/lyrics/separators.ts — defence in depth: the core already validates the
-# engine+model pairing before enqueueing, but a worker must never shell `demucs -n <arbitrary>` from
-# a job param, so an unknown model is rejected here too rather than silently falling back.
+# The demucs-family checkpoints this engine will run, mirroring the `demucs` engine's model
+# allowlist in src/lib/contract/lyrics/separators.ts. Defence in depth: a worker must never shell
+# `demucs -n <arbitrary>` from a job param even though the core already validates the pairing.
 DEMUCS_MODELS = ("htdemucs", "htdemucs_ft", "htdemucs_6s")
 
 
@@ -46,14 +45,10 @@ def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
     if requested is None or requested == "":
         return default
     if requested not in DEMUCS_MODELS:
-        # BoundaryError subclasses ValueError (drop-in for existing pytest.raises(ValueError)) but
-        # carries the shared structured `retryable = False`, so an unknown model fails fast via
-        # retry_policy instead of spending three attempts rediscovering the same bad token.
+        # BoundaryError subclasses ValueError but carries structured `retryable = False`, so an
+        # unknown model fails fast via retry_policy instead of spending three attempts on a bad token.
         raise BoundaryError(f"unknown demucs model {requested!r}; expected one of {DEMUCS_MODELS}")
     return cast(str, requested)
-
-
-# ── pure helpers (no IO) ─────────────────────────────────────────────────────────
 
 
 def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
@@ -62,37 +57,22 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
 
     WAV is a WORKING format, never a stored one: this lands in `work/<jobId>/` and dies with the
     scratch dir. Forcing stereo normalizes the channel layout so separation behaves identically
-    whether the source arrived as Opus-in-webm or AAC-in-m4a; the sample rate is deliberately left
-    alone -- see the `-ar` note in the argv below before adding one back.
+    whether the source arrived as Opus-in-webm or AAC-in-m4a.
     """
-    # NO -ar: keep the SOURCE sample rate. YouTube serves 48 kHz Opus, so forcing 44100 here was a
-    # resampling stage that cost quality and bought nothing — every output format we use (FLAC, AAC,
-    # Opus) handles 48 kHz natively.
+    # NO -ar: keep the SOURCE sample rate. YouTube serves 48 kHz Opus, and every output format we use
+    # (FLAC, AAC, Opus) handles 48 kHz natively, so forcing 44100 would only cost quality.
     return ffmpeg_argv(ffmpeg_bin, input_path, ["-ac", "2", "-c:a", "pcm_s16le"], [out_wav])
-
-
-# History: the vocals stem used to be stored as stereo AAC-in-m4a at 192k, on the argument that a
-# guiding track mixed UNDER the instrumental master tolerates lossy compression. An earlier change replaced
-# that with
-# lossless FLAC for both stems (see encode_flac_argv below and PublishStems in steps/separate.py): the
-# offset argument won -- an AAC-in-m4a encoder adds priming samples (~21 ms) that shift the vocals start
-# relative to the FLAC instrumental, so sharing one codec removes the need for a startup rate-trim. The
-# AAC encoder and its bitrate knob are gone.
 
 
 def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", level: int = 8) -> list[str]:
     """ffmpeg argv: encode a separated stem to LOSSLESS FLAC, 16-bit stereo at the source rate.
 
-    Used for BOTH stems. The instrumental plays at volume as the master, so it stays lossless;
-    the vocals guiding track uses the SAME encoder so the two stems share one codec and one container
-    and decode to a sample-exact common start (removing the ~21 ms AAC-in-m4a priming-sample START
-    offset the guide used to carry and the player used to trim out at startup). FLAC in a browser is a
-    narrower surface than AAC-in-m4a, but both stems play through an <audio> element (not <video>),
-    where WebKit documents FLAC support -- the core settled
-    that decision at src/lib/tv/TvPlayer.svelte:5-13. 16-bit is transparent here: the signal
-    originated as a lossy 48 kHz stream, so extra bit depth would only store quantisation noise.
-    compression_level 8 is the size/CPU sweet spot and is decode-cheap, which matters for a browser
-    starting playback.
+    Used for BOTH stems: the instrumental plays at volume as the master, and the vocals guiding
+    track uses the SAME encoder so the two stems share one codec/container and decode to a
+    sample-exact common start (an AAC-in-m4a encoder would add priming samples that shift the start).
+    Both stems play through an <audio> element, where WebKit documents FLAC support. 16-bit is
+    transparent here since the signal originated as a lossy 48 kHz stream. compression_level 8 is the
+    size/CPU sweet spot and is decode-cheap, which matters for a browser starting playback.
     """
     return ffmpeg_argv(
         ffmpeg_bin,
@@ -111,33 +91,24 @@ def encode_guide_mix_argv(
 ) -> list[str]:
     """ffmpeg argv: fold BOTH stems into ONE 4-channel FLAC — channels 0/1 instrumental, 2/3 vocals.
 
-    WHY THIS FILE EXISTS. Two separate stems are two separate media elements in the browser, which is
-    two DECODERS and two clocks, and two clocks cannot be sample-locked from script: `guide-sync.ts`
-    can only compare each element's reported `currentTime`, which is the spec's "official playback
-    position" and NOT the audible playhead. Its governor therefore converges to "aligned" on a signal
-    that does not include either element's output latency, and then stops looking — so a residual the
-    ear hears survives every correction the policy is willing to make. ONE file played by ONE element
-    has ONE playhead, so the guide cannot drift: the desync stops being a governed quantity and becomes
-    unrepresentable.
+    Two separate stems would be two media elements with two decoders and two clocks, which cannot be
+    sample-locked from script (a `currentTime`-based governor converges on a signal that excludes
+    each element's output latency, leaving an audible residual). ONE file played by ONE element has
+    ONE playhead, so the guide cannot drift.
 
-    The two stems come out of separation as sample-exact siblings of one mix, so this reads the RAW
-    scratch stems rather than re-decoding the published FLACs. Nothing is resampled and nothing is mixed
-    down: each stem keeps its own two channels.
+    Reads the RAW scratch stems (sample-exact siblings of one mix), not the published FLACs. Nothing
+    is resampled or mixed down.
 
-    CHANNEL ORDER IS THE CONTRACT, not the layout label. The browser's `ChannelSplitter` splits by
-    channel INDEX in the decoded stream, and FLAC stores channels in the order written, so
-    instrumental-then-vocals is what the TV relies on; `quad` is merely the honest name for two stereo
-    pairs. The mapping is spelled out rather than left to `join`'s default — MEASURED, that default
-    produces the identical layout, so this is defence-in-depth against a future ffmpeg or layout change
-    rather than a correction of a wrong default. It is worth keeping because the failure it guards is
-    inaudible in review and unmistakable in a room: the vocals would land in the instrumental's gain.
+    CHANNEL ORDER IS THE CONTRACT: the browser's `ChannelSplitter` splits by channel INDEX, and FLAC
+    stores channels in the order written, so instrumental-then-vocals is what the TV relies on. The
+    mapping is spelled out explicitly (defence-in-depth against a future ffmpeg default change)
+    because the failure it guards is inaudible in review and unmistakable in a room: vocals landing
+    in the instrumental's gain.
 
-    MEASURED, not assumed (2026-09-11): a 4-channel FLAC built by this argv yields four DISTINCT
-    channels through one `<audio>` -> `MediaElementAudioSourceNode` -> `ChannelSplitter(4)` in both
-    Chromium 1232 and Firefox 140 ESR, with per-pair gain exact to the decibel. Firefox resampled 48 kHz
-    to a 44.1 kHz context and the isolation survived. One trap that verification turned up and that no
-    caller may rely on: `MediaElementAudioSourceNode.channelCount` reports **2** in BOTH engines while
-    four channels are demonstrably flowing, so it is not a capability probe — energy on channel 2 is.
+    MEASURED: a 4-channel FLAC built by this argv yields four DISTINCT channels through
+    `<audio>` -> `MediaElementAudioSourceNode` -> `ChannelSplitter(4)` in both Chromium and Firefox
+    ESR, with per-pair gain exact to the decibel — even though
+    `MediaElementAudioSourceNode.channelCount` reports 2 in both engines, so it is NOT a capability probe.
     """
     return ffmpeg_argv(
         ffmpeg_bin,
@@ -154,15 +125,10 @@ def encode_guide_mix_argv(
             str(level),
             "-sample_fmt",
             "s16",
-            # THE MUXER IS DECLARED, NEVER INFERRED — and this flag is the whole reason the feature
-            # works at all. ffmpeg picks its output container from the output FILENAME's extension
-            # when no `-f` is given. The caller (PublishStems) deliberately encodes to a temp sibling
-            # and renames it, so the name it passes ends in `.tmp` (`<id>-guidemix.flac.<pid>.tmp`) —
-            # an extension that maps to no container. Without `-f` ffmpeg aborts before encoding a
-            # frame with "Unable to find a suitable output format", the mix fails for EVERY song, and
-            # the caller's `except` turns that into one non-fatal note while every room silently falls
-            # back to the two-element guide. The sibling encodes (`encode_flac_argv`, `decode_argv`)
-            # never hit this because they write their real `.flac`/`.wav` paths directly.
+            # THE MUXER IS DECLARED, NEVER INFERRED: ffmpeg picks its container from the output
+            # filename's extension when no `-f` is given, but the caller encodes to a temp sibling
+            # ending in `.tmp` (no container maps to that), so without `-f` ffmpeg would abort before
+            # encoding a frame and every room would silently fall back to the two-element guide.
             "-f",
             "flac",
         ],
@@ -186,15 +152,13 @@ def demucs_argv(
     """demucs argv: two-stem (vocals / no_vocals) separation. `--filename {stem}.{ext}` flattens the
     output to <out_dir>/<model>/<stem>.<ext> so the result path is deterministic regardless of input.
 
-    `stem_format` selects the container, and demucs fills `{ext}` to match — so the template keeps the
-    path deterministic under either format and `demucs_no_vocals_path` derives the same extension from the
-    same value. FLAC is the default because it is what the pipeline publishes and roughly halves the
-    scratch bytes of a full-rate stem pair; WAV stays selectable as the cheaper working format on a box
-    that would rather not spend the encode.
+    `stem_format` selects the container, and demucs fills `{ext}` to match, so
+    `demucs_no_vocals_path` derives the same extension from the same value. FLAC is the default
+    because it is what the pipeline publishes and roughly halves the scratch bytes; WAV stays
+    selectable as the cheaper working format on a box that would rather not spend the encode.
 
-    Every performance flag is OPTIONAL and omitted when unset, so demucs' own defaults keep applying --
-    including its cuda-if-available device pick, which is why forcing a device is opt-in rather than
-    the default. These are the knobs that decide how long a process takes:
+    Every performance flag is OPTIONAL and omitted when unset, so demucs' own defaults keep applying
+    (including its cuda-if-available device pick). These are the knobs that decide how long a process takes:
 
       - `jobs`    parallel chunk jobs; each holds its own model copy, trading memory for wall time.
       - `overlap` demucs defaults to 0.25; lower is faster with a small quality cost at chunk seams.
@@ -214,8 +178,8 @@ def demucs_argv(
         "{stem}.{ext}",
     ]
     if stem_format is StemFormat.FLAC:
-        # demucs writes WAV unless told otherwise; `--flac` is its documented lossless option and is what
-        # makes `{ext}` resolve to `flac`, keeping the argv and `demucs_no_vocals_path` in agreement.
+        # demucs writes WAV unless told otherwise; `--flac` makes `{ext}` resolve to `flac`, keeping
+        # the argv and `demucs_no_vocals_path` in agreement.
         argv.append("--flac")
     if device:
         argv += ["-d", device]
@@ -236,9 +200,9 @@ def demucs_no_vocals_path(
 ) -> str:
     """Where demucs writes the instrumental given the flattened `--filename {stem}.{ext}` template.
 
-    The extension comes from the SAME `stem_format` value that put the format flag in `demucs_argv`, so
-    the two cannot disagree — the failure mode this replaces was a hardcoded `.wav` here while the argv
-    was free to emit something else, which reads downstream as "the separator produced nothing".
+    The extension comes from the SAME `stem_format` value that put the format flag in `demucs_argv`,
+    so the two cannot disagree — a hardcoded extension here while the argv is free to emit another
+    reads downstream as "the separator produced nothing".
     """
     return os.path.join(out_dir, model, f"no_vocals{stem_format.ext}")
 
@@ -264,11 +228,9 @@ def classify_retryable(stderr_text: str) -> bool:
     """True if the failure is worth retrying (transient); False for permanent source/format errors.
 
     The permanent-marker table is NOT owned here: it is `retry_policy.PERMANENT_MARKERS`, the one
-    canonical union (Part 2/3). demucs raises `ProcessError` for EVERY CLI it runs —
-    yt-dlp, ffmpeg, and bs-roformer-infer — so a deterministic separator/encoder failure whose stderr
-    hits a canonical marker (`"unsupported"`, `"corrupt"`) is now classified non-retryable here too,
-    exactly as `dial_home` classifies it, instead of being retried to maxAttempts off a
-    download-only list that had drifted from `dial_home`'s copy.
+    canonical union. `ProcessError` is raised for EVERY CLI (yt-dlp, ffmpeg, bs-roformer-infer), so a
+    deterministic failure whose stderr hits a canonical marker is classified non-retryable here too,
+    the same way `dial_home` classifies it.
     """
     return not permanent_by_message(stderr_text)
 
@@ -284,11 +246,10 @@ class ProcessError(RuntimeError):
         super().__init__(f"{argv[0]} exited {returncode}: {output_tail.strip()[-500:]}")
 
 
-# An IDLE-OUTPUT timeout, NOT a wall-clock cap: a legitimate CPU separation can run 45+ minutes while
-# still printing a tqdm progress line, and a wall-clock bound short enough to catch a wedged child
-# would also kill a slow-but-healthy process. So the clock is reset on EVERY line the child emits, and
-# only fires when the child has gone completely silent for this long — the signature of a wedged
-# process, not a slow one. yt-dlp and demucs both emit progress far more often than this.
+# An IDLE-OUTPUT timeout, NOT a wall-clock cap: a legitimate CPU separation can run 45+ minutes
+# while still printing a tqdm line, and a wall-clock bound short enough to catch a wedged child would
+# also kill a slow-but-healthy process. The clock resets on EVERY line the child emits and only fires
+# on total silence — the signature of a wedged process, not a slow one.
 SUBPROCESS_IDLE_TIMEOUT_SEC = 600.0
 
 
@@ -325,19 +286,16 @@ async def _iter_lines(stream: asyncio.StreamReader) -> AsyncIterator[str]:
 
 async def _terminate(proc: asyncio.subprocess.Process) -> None:
     """Kill the child AND ITS CHILDREN if still running, then AWAIT it so it is reaped (no zombie, no
-    leaked handle). SIGKILL rather than SIGTERM because these CLIs ignore polite signals mid-work, and by
-    the time we terminate we have already decided the process must not survive this generator.
+    leaked handle). SIGKILL rather than SIGTERM: these CLIs ignore polite signals mid-work.
 
-    The kill goes to the whole PROCESS GROUP, which is why the spawn sets start_new_session. `proc.kill()`
-    alone signals only the CLI we launched — and demucs with `-j N` forks N worker processes holding a
-    model each (~2 GiB). Killing just the parent left every one of them alive and unreachable, so a
-    cancelled process kept its memory forever and a box running ENCORE_WORKER_CONCURRENCY>1 OOMed after a
-    few cancels.
+    The kill goes to the whole PROCESS GROUP (spawn sets start_new_session): `proc.kill()` alone
+    signals only the launched CLI, and demucs with `-j N` forks N worker processes holding a model
+    each (~2 GiB) that would otherwise stay alive and unreachable after a cancel, OOMing a box
+    running concurrency>1 after a few cancels.
 
-    The pgid comparison is load-bearing, not defensive noise: if the child ever shares OUR group (the
-    spawn flag removed, or a platform without process groups) then `killpg` would SIGKILL this worker
-    process too. So we only ever signal a group we know we created, and otherwise fall back to killing
-    the direct child — a leaked grandchild is bad, killing the worker mid-process is worse.
+    The pgid comparison is load-bearing: if the child ever shares OUR group (spawn flag removed, or
+    no process groups on this platform), `killpg` would SIGKILL this worker process too — so it only
+    ever signals a group it knows it created, falling back to the direct child otherwise.
     """
     if proc.returncode is None:
         killed = False
@@ -362,12 +320,10 @@ async def _terminate(proc: asyncio.subprocess.Process) -> None:
 async def subprocess_runner(argv: list[str]) -> AsyncIterator[str]:
     """Real runner: spawn the CLI, stream merged output, raise ProcessError on non-zero exit.
 
-    The child is killed and reaped on EVERY exit path — a normal finish, an exception, or a
-    GeneratorExit thrown in when the consuming task is cancelled (the cancel path from dial_home).
-    Without that guarantee a cancelled or unwinding job orphaned demucs/roformer/yt-dlp, still holding
-    CPU or VRAM, while the core's lease expired and the reaper requeued — so retries STACKED real
-    separations of one song on a box that can barely run one. An idle-output timeout also kills a
-    child that has gone silent, so a wedged process cannot hold its slot forever.
+    The child is killed and reaped on EVERY exit path — normal finish, exception, or a GeneratorExit
+    from a cancelled consuming task — or an orphaned demucs/roformer/yt-dlp keeps holding CPU/VRAM
+    while the core's lease expires and the reaper requeues, stacking real separations of one song on
+    a box that can barely run one. An idle-output timeout also kills a child gone silent.
     """
     proc = await asyncio.create_subprocess_exec(
         *argv,

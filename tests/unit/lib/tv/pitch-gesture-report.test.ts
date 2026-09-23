@@ -1,22 +1,17 @@
-// — a transpose that cannot route must SAY so, and a later user gesture must make it work.
+// A transpose that cannot route must SAY so, and a later user gesture must make it work. The whole control
+// chain can be intact — phone ± → ws `key` → player.ts → `playback:state` → the slot's `keyShift` prop →
+// `setShift` → the worklet — while the feature is dead in the room, for two reasons at the bottom of it:
 //
-// This is the regression test for "the semitone buttons dont work right now". The whole control chain
-// was already intact — phone ± -> ws `key` -> player.ts -> `playback:state` -> the slot's `keyShift`
-// prop -> `setShift` -> the worklet — and 46 pitch tests passed while the feature was dead in the
-// room. Two things were wrong at the very bottom, and both are covered here:
+//   1. NOBODY READS THE FAILURE. A browser only lets an AudioContext reach `running` once the page has user
+//      activation, and without it `PitchShiftGraph` deliberately degrades: it closes the context and leaves
+//      the element audible but UNSHIFTED, because capturing it into a suspended graph would cost the room
+//      ALL audio permanently. `isDegraded`/`isRouted` with no production caller means silence about that.
+//   2. THE GESTURE LISTENER MUST NOT BE ARMED ONLY WHEN AUTOPLAY WAS REFUSED. On a TV that autoplays
+//      correctly there is then no listener at all, so the context never becomes resumable and every ± press
+//      is permanently inert.
 //
-//   1. NOBODY READ THE FAILURE. A browser only lets an AudioContext reach `running` once the page has
-//      user activation. Without it `PitchShiftGraph` deliberately degrades — it closes the context and
-//      leaves the element on its native output, audible but UNSHIFTED, because capturing the element
-//      into a suspended graph would cost the room ALL audio permanently. `isDegraded`/`isRouted`
-//      existed and had zero production callers, so the room got silence about it.
-//   2. THE GESTURE LISTENER WAS ARMED ONLY WHEN AUTOPLAY HAD BEEN REFUSED. On a TV that autoplays
-//      correctly — the normal case — there was no listener at all, so the AudioContext could never
-//      become resumable and every press of ± was permanently inert.
-//
-// The existing pitch tests stub `AudioContext` by REPLACING `globalThis.window`, which a mounted
-// component cannot survive (it needs happy-dom's real window for the DOM). Here the stub is INSTALLED
-// ONTO that window instead, so the component and the graph both see what they need.
+// The stub is INSTALLED ONTO happy-dom's window rather than replacing `globalThis.window`, which a mounted
+// component cannot survive.
 import { test, expect, afterEach, beforeEach } from 'bun:test';
 import { mount, unmount, flushSync } from '$setup/svelte-client';
 import TvPlayer from '$lib/tv/TvPlayer.svelte';
@@ -65,7 +60,7 @@ beforeEach(() => {
 		Blob: g.Blob,
 		URL: g.URL
 	};
-	// Installed ON happy-dom's window — pitch-shift.ts reads `window.AudioContext`.
+	// Installed ON happy-dom's window, because pitch-shift.ts reads `window.AudioContext`.
 	(win as unknown as Record<string, unknown>).AudioContext = StubAudioContext;
 	g.AudioWorkletNode = StubNode;
 	g.Blob = class {
@@ -100,19 +95,11 @@ const SNAP = {
 } as unknown as Record<string, unknown>;
 
 /**
- * Let the graph's async build settle — `setShift` and the gesture retry are both promise-based.
- *
- * MACROTASK TURNS, NOT A COUNT OF MICROTASKS, and that is a fix rather than a style choice. This drained
- * a fixed `8 × await Promise.resolve()`, which is a bet on the exact LENGTH of an await chain inside
- * production code — and the two paths here are not the same length. The routed path awaits
- * `ctx.resume()`; the DEGRADED path awaits `resume()`, then `ctx.close()`, then the build's `finally`,
- * then the caller's `.catch().then()`. Eight turns covered the first and fell short of the second, so
- * both blocked-path tests failed while the routed one passed — a red that reported a defect in the
- * product when the shortfall was in this helper. Neither the graph nor the reporting was wrong.
- *
- * A `setTimeout(0)` runs only after the microtask queue is fully drained, so three macrotask turns cover
- * any chain length rather than one particular one. A future await added inside the build cannot silently
- * break this the way one more `.then()` used to.
+ * Let the graph's async build settle. MACROTASK turns, never a count of microtasks: draining N
+ * `await Promise.resolve()` bets on the exact LENGTH of an await chain in production code, and the routed
+ * and DEGRADED paths are different lengths — so a shortfall reds the blocked-path tests and reports a
+ * product defect that is really a defect in this helper. A `setTimeout(0)` runs only once the microtask
+ * queue is fully drained, so this covers any chain length.
  */
 async function settle(): Promise<void> {
 	for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -139,7 +126,6 @@ function mountSlot(keyShift: number, seen: { blocked: number; routed: number }):
 }
 
 test('a transpose that cannot route REPORTS it, instead of failing silently', async () => {
-	// No gesture has happened, so the context stays suspended and the graph degrades.
 	const seen = { blocked: 0, routed: 0 };
 	mountSlot(2, seen);
 	await settle();
@@ -147,7 +133,7 @@ test('a transpose that cannot route REPORTS it, instead of failing silently', as
 });
 
 test('a transpose that DOES route reports routed, not blocked', async () => {
-	// The wall was already touched before the press: the context resumes and the graph routes.
+	// The wall was touched before the press, so the context resumes and the graph routes.
 	canResume = true;
 	const seen = { blocked: 0, routed: 0 };
 	mountSlot(2, seen);
@@ -157,28 +143,25 @@ test('a transpose that DOES route reports routed, not blocked', async () => {
 });
 
 test('a gesture after a blocked transpose re-drives it, and it routes', async () => {
-	// THE FIX, end to end. The press happens first and degrades; the wall is tapped afterwards. Before
-	// this change no listener existed on a TV whose autoplay had succeeded, and none of the pitch
-	// effect's tracked deps change on a tap — so the song stayed in the wrong key for ever.
+	// End to end: the press degrades, then the wall is tapped. None of the pitch effect's tracked deps
+	// change on a tap, so without a listener on an autoplaying TV the song stays in the wrong key forever.
 	const seen = { blocked: 0, routed: 0 };
 	mountSlot(2, seen);
 	await settle();
 	expect(seen.blocked).toBeGreaterThan(0);
 	const blockedBefore = seen.blocked;
 
-	// Somebody touches the TV. This is now a resumable context.
 	canResume = true;
 	win.dispatchEvent(new win.Event('pointerdown'));
 	await settle();
 
 	expect(seen.routed, 'the gesture must re-drive the pending transpose').toBeGreaterThan(0);
-	// And it is not merely re-reporting the block.
 	expect(seen.blocked).toBe(blockedBefore);
 });
 
 test('at keyShift 0 nothing is built and nothing is blocked — the invariant holds', async () => {
-	// The load-bearing default: a song at concert pitch must touch no WebAudio at all, so a broken
-	// graph can never cost the room its audio. A gesture must not build one either.
+	// A song at concert pitch must touch no WebAudio at all, so a broken graph can never cost the room its
+	// audio — and a gesture must not build one either.
 	const seen = { blocked: 0, routed: 0 };
 	mountSlot(0, seen);
 	await settle();

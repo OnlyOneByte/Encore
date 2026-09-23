@@ -21,7 +21,7 @@ sentence was describing a tree two changes old while sounding like a rule. The r
 worth keeping, and it is the reason those two were deleted the first time: **"vendored but unwired" reads as
 migrated when it is not**, so vendor a component in the change that USES it, never ahead of one.
 
-Unused *parts* of components we DO use are kept on purpose: a part is the registry's unit, and deleting
+Unused _parts_ of components we DO use are kept on purpose: a part is the registry's unit, and deleting
 one makes the next `--overwrite` look like a regression. `Card.Action`, `Table.Caption`, `Field.Set` and
 about twenty others are unrendered and staying. **The one exception is a part whose own dependency goes**:
 `Field.Separator` and `Item.Separator` were deleted with `Separator` itself, because a part that imports a
@@ -132,7 +132,7 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
    the `@theme` bridge mints a utility but emits **no** custom property, so reading it as
    `var(--color-popover)` paints nothing. `design-system.test.ts` catches that.
 3. Give it Encore's appearance where the registry's differs, and record **why** in an `ENCORE
-   DEVIATIONS` HTML comment at the top of the file, naming the test that enforces each item. They are what
+DEVIATIONS` HTML comment at the top of the file, naming the test that enforces each item. They are what
    makes an `--overwrite` reviewable. Every component here carries one in that exact form bar one; `button/` is
    the odd one out, using `DEVIATIONS FROM REGISTRY OUTPUT` inside a `<script module>` block because it
    predates the convention. Its content is the most thorough here — only the marker differs, so a grep for

@@ -100,12 +100,3 @@ def test_the_field_is_named_for_its_engine() -> None:
     assert not hasattr(SeparationTuning(), "batch_size"), (
         "a bare `batch_size` field reads as a knob every engine takes; only demucs-mlx does"
     )
-
-
-# THE BENCHMARK ARM IS RETIRED (2026-09-22): it asserted that `docs/benchmarks/scripts/mlx_batch_bench.sh`
-# existed and refused a non-Apple-Silicon box, on the reasoning that the script is what would justify a
-# default batch size — so it was part of the change rather than a TODO. The docs cleanup deleted the whole
-# benchmarks tree, script included.
-#
-# THE RULE IT SERVED STILL HOLDS, and by the arm above rather than by the script's existence:
-# `test_there_is_no_default_batch_size` is what keeps a value from being invented without evidence.

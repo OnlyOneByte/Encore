@@ -1,17 +1,7 @@
 <!--
-  ── ENCORE DEVIATIONS ─────────────────────────────────────────────────────────────────────────────
-  The registry's Empty is a PANEL: `p-12`, a dashed border, `flex-1`, centred, and `text-balance` inside
-  a `max-w-sm` header. Encore's empty state is a quiet dim LINE — `.empty` was
-  `color: var(--ink-dim); padding: 0 var(--space-2xs); font-size: var(--ph-text-md)`.
-
-  The panel is not a different look here, it is a broken one, and a screenshot is what showed it: on a
-  390px phone the queue's nine-word empty sentence rendered as a full-width dashed box roughly 500px
-  tall with ONE WORD PER LINE, because `max-w-sm` plus `text-balance` in a centred column had almost no
-  room left. It also outweighed the hero above it — an empty queue is the least important thing on that
-  screen, and it was drawing the most attention.
-
-  So the structure is kept (Root / Header / Description, which is what makes the copy addressable) and
-  the appearance is Encore's.
+  Encore's empty state is a quiet dim LINE, not the registry's centred dashed panel: an empty queue is the
+  least important thing on the screen and a panel out-weighs the hero above it. The registry's STRUCTURE
+  is kept (Root / Header / Description), which is what makes the copy addressable.
 -->
 <script lang="ts">
 	import { cn, type WithElementRef } from '$lib/utils.js';

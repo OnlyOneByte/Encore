@@ -1,23 +1,11 @@
 <script lang="ts">
-	// A search row. ONE row shape for all three readiness states, because they are one kind of thing
-	// (a song) at three points on one axis — not three kinds of thing. The state decides the badge
-	// line and which actions appear; the layout never changes, so a row that finishes processing morphs
-	// in place instead of jumping between lists.
+	// A search row. ONE row shape for all readiness states, because they are one kind of thing at points on
+	// one axis: the state decides the badge line and which actions appear, and the layout never changes, so
+	// a row that finishes processing morphs in place instead of jumping between lists.
 	//
-	// WHAT THIS ROW IS FOR. A YouTube search for one song returns the official video, three lyric
-	// videos, a live cut, a movie trailer and a 22-minute concert rip. The row's job is to let a singer
-	// tell them apart at a glance, which needs four things this row used to withhold:
-	//
-	//   1. THE THUMBNAIL. `Media.thumbnail` has always been fetched, persisted and sent to the phone,
-	//      and the row drew a grey gradient with a play mark instead. The proxy that serves it
-	//      (/api/thumb, SSRF-allowlisted + disk-cached) already existed but had no caller until now.
-	//   2. THE DURATION. Also always present, also never displayed. It is the ONLY signal here that
-	//      cannot be fooled by a title, which is what makes 21:56 and 2:31 so useful.
-	//   3. THE FULL VERSION MARKER. "(Official Music Video)" / "(Lyrics)" / "(Live Aid 1985)" is the
-	//      last token of a YouTube title and was the first casualty of a one-line ellipsis — the row
-	//      truncated away precisely the information the choice turns on. It is a chip now, so it
-	//      cannot be cut off, and the title gets two lines besides.
-	//   4. THE VIEW COUNT. The tiebreaker between two lyric uploads of one song (2.1B vs 266K).
+	// The row's job is telling near-identical uploads of one song apart at a glance, which is what the
+	// thumbnail, the duration, the version chip and the view count are each for — the duration and the view
+	// count because they are the two signals a title cannot fake.
 	import type { Readiness } from '$lib/readiness';
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { type MediaStatus } from '$lib/contract';
@@ -38,21 +26,10 @@
 
 	interface Props {
 		/**
-		 * The RAW source title, shown verbatim.
-		 *
-		 * Deliberately NOT `Media.titleCanonical`, and this is the one place that decision matters most.
-		 * The normalizer exists to feed LOOKUPS (MusicBrainz, LRCLIB), where a wrong guess costs a missed
-		 * match; here a wrong guess is shown to a human as fact. Measured against the live results for
-		 * "bohemian rhapsody", it returns `confidence: 'medium'` — so not filterable — for:
-		 *
-		 *   "Bohemian Rhapsody | Official Trailer [HD] | 20th Century FOX" → title "Official Trailer"
-		 *   "Bohemian Rhapsody | Muppet Music Video | The Muppets"        → title "Muppet Music Video"
-		 *   "Bohemian Rhapsody scene - Freddie Mercury meets the band"    → artist "Bohemian Rhapsody scene"
-		 *
-		 * Its `Artist - Title` split assumes the left side is an artist, and for these uploads it is the
-		 * SONG. Five of eleven real rows came out mis-titled, and the first one loses the searched-for
-		 * words altogether — a row that no longer contains the query the singer typed. Truncating a long
-		 * title is a much smaller harm than renaming a song, so the raw string wins.
+		 * The RAW source title, shown verbatim, and deliberately NOT the canonical one. The normalizer feeds
+		 * LOOKUPS, where a wrong guess costs a missed match; here a wrong guess is shown to a human as fact,
+		 * and its `Artist - Title` split mis-titles any upload whose left side is the song. Truncating a long
+		 * title is a far smaller harm than renaming a song, or than dropping the words the singer searched for.
 		 */
 		title: string;
 		/** The UPLOADER as the source reported it — a YouTube channel, often not the artist. */
@@ -67,46 +44,28 @@
 		/** Views as the source reported them. Absent → no chip; see Media.viewCount. */
 		viewCount?: number;
 		/**
-		 * The song's ORIGINAL key as a spelled ASCII label ('G major'), or absent. A FLAT prop, not the
-		 * whole SongProfile: the row only ever shows the original key text, so passing the profile would
-		 * hand it data it must not render and re-derive the label the parent already has. Gated at the
-		 * chip (readiness ready AND present), matching the omit-when-null convention of every sibling
-		 * chip — a missing key is honest, and a detected key is only meaningful once the song is processed.
-		 * MUST stay ASCII (helper returns 'G#'/'Ab'); a typographic sharp/flat trips icons.test.ts.
+		 * The song's ORIGINAL key as a spelled label, or absent. A FLAT prop rather than the whole profile,
+		 * because the row shows only this string and the parent already derives it.
+		 * MUST stay ASCII ('G#'/'Ab'): a typographic sharp or flat trips icons.test.ts.
 		 */
 		keyName?: string;
-		/**
-		 * The song's descriptive tags ("acoustic", "80s", "duet"), from the 'tag'-kind rows the sidecar
-		 * write path populates (see /api/library). Shown as neutral chips on a READY row only, matching
-		 * the key chip: tags describe a song IN YOUR LIBRARY, and a raw search result has none worth
-		 * showing. Absent/empty → no chips, so a song with no tags looks exactly as it did before.
-		 */
+		/** Descriptive library tags, shown on a READY row only — a raw search result has none worth showing. */
 		tags?: string[];
 		pct?: number; // processing progress, 0..100
 		/**
-		 * The live process STATUS (queued/downloading/separating/aligning/ready). Present, the row
-		 * shows how far through the whole process it is via `overallProcessPct(status, pct)` instead of
-		 * the raw per-step `pct` — a per-step number filled the bar to 100% at the end of each
-		 * step and even jumped backward when the next step reset it (see an earlier change). Absent (a raw
-		 * search row that is not processing), the raw `pct` is used unchanged.
+		 * The live process status. Present, the bar shows `overallProcessPct(status, pct)` rather than the raw
+		 * per-step pct, which fills to 100% at the end of EVERY step and jumps backward when the next resets
+		 * it. Absent (a raw search row), the raw pct is used unchanged.
 		 */
 		status?: MediaStatus;
 		/** Already in the rotation — the add action becomes a confirmation instead of a repeat. */
 		inQueue?: boolean;
 		/**
-		 * Can this song be processed AT ALL — i.e. can its audio be acquired (`isProcessableSource`)?
-		 *
-		 * Defaults true, so every row that CAN be sung is unaffected. False is the metadata-only case: a
-		 * Spotify search hit, which exists to sharpen the query but whose bytes are never pulled, so no
-		 * process can ever run for it. Both actions have to go, not just Sing: the two branches below
-		 * are an either/or, so dropping `onmake` alone fell straight through to a live `＋ Turn` — and a
-		 * turn on a song that can never be processed is exactly the dead end this row's one-primary-action
-		 * design exists to remove. It is held in the rotation and skipped on every pass, silently, for
-		 * the rest of the night.
-		 *
-		 * The row still RENDERS: the hit is genuinely useful for finding the right YouTube upload. It
-		 * just stops offering an action it cannot honour, and says why in the chip line rather than only
-		 * in a `title` a phone can never hover.
+		 * Whether the song's audio can be acquired at all. False is the metadata-only case (a name-match hit
+		 * that sharpens a query but whose bytes are never pulled), and BOTH actions must go with it: the two
+		 * branches below are an either/or, so dropping only `onmake` falls through to a live add — and a turn
+		 * on a song that can never be processed is held in the rotation and silently skipped every pass. The
+		 * row still renders, and says why in the chip line rather than only in a `title` a phone cannot hover.
 		 */
 		processable?: boolean;
 		onadd?: () => void;
@@ -132,125 +91,75 @@
 	}: Props = $props();
 
 	/*
-	 * The byline answers a DIFFERENT question in each half of the list, and readiness is exactly the
-	 * axis that separates them:
-	 *
-	 *  • A raw or processing row is a CANDIDATE UPLOAD, and what distinguishes two uploads of one song is
-	 *    the channel — "Queen Official" vs "Vibe Tracks" vs "Richie Lyrics". So the channel wins there.
-	 *    It is also raw source data, so unlike the canonical it cannot be wrong.
-	 *  • A ready row is a song in YOUR LIBRARY, where the channel is meaningless ("7clouds") and the
-	 *    artist is the useful fact. That is the case `artistCanonical` was introduced for.
-	 *
-	 * This preserves the behaviour each group already had before the row was rebuilt; it just states the
-	 * rule once here instead of leaving five call sites to remember it (and one of them to forget).
+	 * The byline answers a different question on each side of `ready`. A raw or processing row is a CANDIDATE
+	 * UPLOAD, where the channel is what distinguishes two uploads of one song (and is raw data, so unlike the
+	 * canonical it cannot be wrong); a ready row is a song in YOUR LIBRARY, where the channel is meaningless
+	 * and the artist is the useful fact.
 	 */
 	const byline = $derived(
 		readiness === 'ready' ? (artistCanonical ?? artist ?? '') : (artist ?? artistCanonical ?? '')
 	);
 
 	/*
-	 * The thumbnail always goes through our own proxy, never straight to i.ytimg.com. Two reasons: the
-	 * phone may be on a LAN with no route to the internet (this is self-hosted karaoke), and a direct
-	 * <img> would leak every guest's IP and User-Agent to Google on every keystroke of a search.
+	 * ALWAYS through the app's own proxy, never straight to the upstream host: the phone may be on a LAN with
+	 * no route to the internet, and a direct img would leak every guest's IP and User-Agent upstream on every
+	 * keystroke of a search.
 	 */
 	const thumbSrc = $derived(thumbnail ? `/api/thumb?u=${encodeURIComponent(thumbnail)}` : null);
 
 	const duration = $derived(formatDuration(durationSec));
-	// A threshold, not a parse — see isUnusualSongDuration. Draws the badge as a warning so a 21:56
-	// concert rip and a 0:30 clip invite a second look without being hidden. The colour alone was read
-	// by a first-time guest as "a red badge you don't understand", so the words go in a chip too.
+	// The odd-duration signal is carried by BOTH the badge colour and a worded chip: colour alone reads as
+	// "a red badge you don't understand".
 	const oddDuration = $derived(isUnusualSongDuration(durationSec));
 	const durationNote = $derived(durationHint(durationSec));
 
-	// Kind is guessed from the RAW title, so it is only offered when there is something to say:
-	// `unknown` yields no label and therefore no chip, rather than an empty pill or a false "Official".
+	// Guessed from the RAW title, so `unknown` yields no label and therefore no chip — better than an empty
+	// pill or a confident, false "Official".
 	const kind = $derived(classifyVideoKind(title));
 	const kindLabel = $derived(VIDEO_KIND_LABEL[kind]);
 
 	const views = $derived(formatViewCount(viewCount));
 
-	/*
-	 * The key chip is shown ONLY on a READY row with a detected key. Processing/raw rows have no analysed
-	 * key yet (it comes out of the stems job), so a key here would be a phantom; and the omit-when-null
-	 * convention means a falsy guard makes both the chip and — if it is the last one — the whole .chips
-	 * wrapper disappear. `keyName` is already the confidence-gated ASCII label from the parent.
-	 */
+	/* The key and the tags are READY-row facts only: a raw or processing row has no analysed key yet, so one
+	   here would be a phantom, and a tag on a candidate upload is noise. A falsy guard removes the chip and,
+	   when it is the last one, the whole wrapper — the omit-when-null convention every chip here follows. */
 	const showKey = $derived(readiness === 'ready' && !!keyName);
-
-	/*
-	 * Tags are shown ONLY on a READY (library) row, and only when there are any. Same reasoning as the
-	 * key chip: a raw/processing row is a candidate upload, where a tag would be noise; a ready row is a
-	 * song in the library, where "acoustic · 80s" is exactly the kind of thing you scan the list for.
-	 * The array is normalised at its source (tagsOf de-dupes + lower-cases), so the row renders it as-is.
-	 */
 	const showTags = $derived(readiness === 'ready' && !!tags && tags.length > 0);
 
-	/*
-	 * The state chip replaces the old prose sub-line. That line read
-	 * "<artist> · sings with the original vocals" on every raw row — repeating the same eight words
-	 * down the whole list, and consuming the width the channel name needed. It is safe to drop because
-	 * the group header above these rows says "Needs karaoke", and the header is guaranteed
-	 * to be on screen whenever raw rows are: both are gated on `filter === 'all'` (+page.svelte
-	 * `showRaw` / `showGroupHeads`), so there is no filter state that shows one without the other.
-	 *
-	 * PARTY ENGLISH, not engineer English. A first-time guest called the earlier wording — "Separating
-	 * vocals…" and "instrumental ready" — "written for the developer, not the guest at a party":
-	 * separating vocals is what the WORKER does, and "instrumental" is a musician's word. What a guest
-	 * is waiting for is a karaoke track. The percentage and the ETA stay exactly as they were; the same
-	 * review called those the honest part.
-	 */
-	// The percentage the bar and its readout show. When the live `status` is known, this is how far
-	// through the WHOLE process the song is (`overallProcessPct` maps the worker's per-step pct into weighted
-	// per-stage bands over the shared MEDIA_STAGES vocabulary), so it reaches 100% only at `ready` and
-	// never jumps backward when a step resets its own pct — the two defects an earlier change names. Without a status
-	// (a non-processing raw row) it falls back to the raw pct so nothing changes for those rows.
+	// Guest-facing copy in this file is PARTY ENGLISH: what a guest waits for is a karaoke track, not
+	// "separating vocals" or an "instrumental".
 	const barPct = $derived(status ? overallProcessPct(status, pct) : pct);
 
 	const stateChip = $derived.by(() => {
 		if (readiness === 'ready') return processStageLabel('ready');
-		// A dead process says so. This branch is why `readiness` grew a fourth value: the row had three
-		// states and none of them could mean "failed", so a died process kept rendering the in-flight line
-		// below — "Making karaoke… 0%", forever, on a job that had stopped. processStageLabel already owned
-		// the wording; nothing reached it.
+		// A dead process must say so, or it keeps rendering the in-flight line forever on a stopped job.
 		if (readiness === 'failed') return processStageLabel('failed');
-		// The row still has no worker sub-status, so processStageLabel is coarse for exactly that reason —
-		// every in-flight status collapses to one "Making karaoke…" line. This passes 'queued' as the
-		// least-committal in-flight value rather than naming a specific step (e.g. 'separating') the row
-		// has no way to know. Naming a step here would print a guess as fact: an aligning song would
-		// read as if it were still separating.
-		// Round only the READOUT, matching ProcessingCard's convention (its :62 comment): the bar keeps
-		// the unrounded barPct so its transition stays smooth, but the guest-facing "Making karaoke… N%"
-		// line must be an integer — overallProcessPct returns a band-interpolated float (e.g. 67.6), and an
-		// unrounded readout prints "67.6%" or "31.200000000000003%".
+		// 'queued' is passed as the LEAST-COMMITTAL in-flight value, because the row has no worker sub-status
+		// and naming a step would print a guess as fact. Only the READOUT is rounded: the bar keeps the
+		// unrounded value so its transition stays smooth, but overallProcessPct returns a band-interpolated
+		// float, so an unrounded readout prints "31.200000000000003%".
 		if (readiness === 'processing') return processStageLabel('queued', { pct: Math.round(barPct) });
-		// Metadata-only: the actions are gone, so the row MUST say why. A disabled button with a
-		// `title` is not enough — this is a phone, there is no hover — and an unexplained dead control
-		// reads as the app being broken. Last, after the three readiness branches, so it can never mask
-		// a real process state (a song that can't be processed never reaches ready/processing anyway).
-		// PARTY ENGLISH, per the note above: no "metadata", no "source", no "fetcher".
+		// Metadata-only, LAST so it can never mask a real process state. The row MUST say why its actions are
+		// gone: this is a phone, so a `title` on a disabled button is unreachable, and an unexplained dead
+		// control reads as the app being broken.
 		if (!processable) return 'Name match only — search to sing it';
 		return null;
 	});
 
-	// Spelled out for a screen reader even though the button is a bare mark. The process label names its
-	// COST ("about a minute") because that is the difference between the two actions, and it is the one
-	// thing an icon cannot say.
+	// The buttons are bare marks, so these labels are the whole announcement. The process label names its
+	// COST, which is the difference between the two actions and the one thing an icon cannot say.
 	//
-	// The RETRY case is a third label, not a variant of the first. `onmake` with `inQueue` means
-	// the singer already holds a queued turn for this song and its process died — the only state that
-	// reaches it, because a process in flight renders `.add` instead. Announcing "Sing this" there
-	// promised a turn the action deliberately no longer takes (it re-processes the turn already held), so
-	// the words have to say re-process. NOT disabled: the retry is the whole point of showing the failed
-	// state at all (readiness.ts `canProcess('failed')`).
+	// `onmake` WITH `inQueue` is the retry state — the singer already holds a turn and its process died — so
+	// it needs its own words: "Sing this" would promise a turn the action does not take. Not disabled, since
+	// the retry is the whole point of showing a failed row.
 	const retryProcess = $derived(!!onmake && inQueue);
 	const actionLabel = $derived(
 		retryProcess
 			? 'Try making the karaoke again — you already have a turn for this song'
 			: onmake
 				? 'Sing this — strips the vocals first, takes about a minute'
-				: // Metadata-only. Announced BEFORE the inQueue branch because it is the stronger fact:
-					// this song can never be sung here, so "Already in the queue" would be both wrong and
-					// beside the point. A screen reader gets the reason, not just a disabled control.
+				: // Announced BEFORE the inQueue branch because it is the stronger fact: this song can never be
+					// sung here, so "Already in the queue" would be both wrong and beside the point.
 					!processable
 					? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
 					: inQueue
@@ -260,15 +169,12 @@
 </script>
 
 <!--
-	The row is a container, NOT a button. It used to be a role="button" div wrapping two real buttons,
-	which announced one control to a screen reader while offering three, and let a keyboard user add the
-	same song twice (Enter on the row, then Tab-Enter on the button). The two buttons carry the actions.
--->
-<!--
-	an earlier change: <Item.Root> supplies the row grammar via Item's own `child` snippet, so this file keeps the
-	row element and its readiness state classes — a `class:` directive is not valid on a component. The
-	class attribute stays STATIC, because contrast.test.ts splits it on whitespace to derive the row's
-	classes. `bare`: `.card` paints the row, `.list-row` lays it out.
+	THE ROW IS A CONTAINER, NEVER A BUTTON: as a role="button" wrapper it announces one control while offering
+	three, and lets a keyboard user add the same song twice. The two buttons carry the actions.
+
+	Item.Root supplies the row grammar through its `child` snippet, so this file keeps the row element and its
+	readiness state classes — a `class:` directive is not valid on a component. The `class` ATTRIBUTE must stay
+	static, because contrast.test.ts splits it on whitespace to derive the row's classes.
 -->
 <Item.Root variant="bare" size="bare">
 	{#snippet child({ props })}
@@ -281,11 +187,8 @@
 			<Item.Media data-media="thumb"
 				><div class="thumb">
 					{#if thumbSrc}
-						<!--
-				alt="" on purpose: the title sits immediately beside it, so a described thumbnail would make
-				a screen reader announce the same song twice. `loading="lazy"` because a search renders up
-				to 12 of these and only the first few are ever on screen.
-			-->
+						<!-- alt="" on purpose: the title sits immediately beside it, so a described thumbnail makes a
+						     screen reader announce the same song twice. -->
 						<img src={thumbSrc} alt="" loading="lazy" decoding="async" width="84" height="47" />
 					{:else}
 						<!-- No thumbnail (a local library file, or a resolver that reports none) — keep the mark. -->
@@ -299,10 +202,8 @@
 
 			<Item.Content>
 				<!--
-			The title and the processing mark share a flex line so the mark is a SIBLING of .t, not a child of it.
-			.t clamps to two lines with overflow:hidden; a mark rendered INSIDE that box is laid out on the
-			discarded third line and never paints on a phone (an earlier fix). As a flex:0 0 auto sibling it always
-			paints and no longer competes with the title for the last line's characters.
+			THE MARK MUST STAY A SIBLING of `.t`, never a child: `.t` is a two-line clamp with overflow hidden, so a
+			mark inside it is laid out on the discarded third line and never paints on a phone.
 		-->
 				<div class="title-line">
 					<span class="t">{title}</span>
@@ -312,11 +213,8 @@
 				{#if kindLabel || stateChip || views || durationNote || showKey || showTags}
 					<div class="chips">
 						{#if stateChip}
-							<!--
-						The readiness tone is chosen HERE and passed as a variant, because the tone IS the meaning:
-						each one is a certified surface+border+ink triple in ui/badge, set together and never
-						separately. `wrap` because this chip carries a phrase rather than a token.
-					-->
+							<!-- The tone IS the meaning, so it is passed as a variant: each is a certified
+							     surface+border+ink triple. `wrap` because this chip carries a phrase, not a token. -->
 							<Badge
 								variant={readiness === 'ready'
 									? 'ok'
@@ -340,15 +238,13 @@
 												? 'bad'
 												: 'neutral'}>{kindLabel}</Badge
 							>{/if}
-						<!-- The detected key. A bare chip (no colour family) — it is a neutral musical fact, not a
-				     status or a warning, so it must not borrow the semantic tints. ASCII label only. -->
+						<!-- The key and the tags stay NEUTRAL chips: each is a fact about the song, not a status, so
+						     neither may borrow the semantic tints. -->
 						{#if showKey}<Badge>{keyName}</Badge>{/if}
-						<!-- The red badge, said out loud. Ordered after the kind so "Live · Longer than a song"
-				     reads as one thought about the same recording. -->
+						<!-- The duration warning, in words as well as colour, ordered after the kind so "Live · Longer
+						     than a song" reads as one thought about the same recording. -->
 						{#if durationNote}<Badge variant="bad" wrap>{durationNote}</Badge>{/if}
 						{#if views}<Badge>{views} views</Badge>{/if}
-						<!-- Descriptive tags for a library song. A neutral chip family (no semantic tint) — a tag is a
-				     fact about the song, not a status or a warning. Keyed by value so Svelte can re-use nodes. -->
 						{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
 					</div>
 				{/if}
@@ -360,19 +256,14 @@
 
 			{#if onmake}
 				<!--
-			ONE action, not two. A raw row used to offer `Karaoke` and `Turn` side by side at equal
-			weight, and either one alone was a dead end: queueing without processing held a rotation slot
-			that could never become ready (silently skipped every pass, forever), and processing without
-			queueing filled the library but gave the singer no turn. The primary action is the whole
-			intent — take a turn AND start the process — and the held-slot rule keeps the singer's fair
-			position while it separates. See $lib/process-and-queue.ts.
+			ONE action, never two: queueing without processing holds a rotation slot that can never become ready,
+			and processing without queueing gives the singer no turn. This action is the whole intent — take a
+			turn AND start the process — with the held-slot rule keeping the singer's place. See
+			src/lib/process-and-queue.ts.
 
-			ICON-ONLY, and the mark is load-bearing. Dropping the words gave ~30px back to the title, but
-			it is only safe because the two actions still differ on THREE axes: `sparkle` on an accent
-			fill here versus `plus` outlined in green below, plus the group header. Making both a bare
-			`plus` would re-create the inverted hierarchy this comment exists to record — an expensive,
-			minute-long action wearing the same clothes as a free instant one. The words survive as the
-			`aria-label`, so nothing is lost to a screen reader.
+			Icon-only, and the MARK is load-bearing: the two actions differ on three axes (this sparkle on an
+			accent fill against the plus outlined in green below, plus the group header). Making both a bare plus
+			puts an expensive minute-long action in the same clothes as a free instant one.
 		-->
 				<Button
 					variant="iconPrimary"
@@ -411,16 +302,13 @@
 
 <style>
 	/*
-	 * `.meta` moved to ui/item as Encore's shared row grammar (`min-width: 0; flex: 1`), which
-	 * all three rows carried identically. `.thumb` STAYS: it declares a background, and contrast.test.ts
-	 * reasons about this row's surfaces from the rules in this file.
+	 * Geometry comes from `.list-row` in app.css, shared with the two queue rows. Every rule that declares a
+	 * COLOUR has to stay in this file: contrast.test.ts reasons about a row's surfaces from its own rules.
 	 */
-	/* Geometry comes from .list-row in app.css, shared with the two queue rows -- this row had drifted
-	   to gap 11 / padding 10 against their 12 / 11px 12px. */
 	.row {
 		transition: background var(--motion-fast) ease;
 	}
-	/* readiness is legible at a glance from the border alone, before any text is read */
+	/* Readiness is legible from the border alone, before any text is read. */
 	.row.ready {
 		border-color: var(--ok);
 	}
@@ -429,11 +317,7 @@
 		border-color: var(--line-tint);
 	}
 
-	/*
-	 * 84×47 is 16:9, matching the derived `mqdefault` source (320×180) so nothing is letterboxed or
-	 * cropped. The old 56×40 slot was 7:5 — close enough to look deliberate and wrong enough to squash
-	 * every frame slightly.
-	 */
+	/* 84×47 is 16:9, matching the source frame, so nothing is letterboxed or cropped. */
 	.thumb {
 		position: relative;
 		width: 84px;
@@ -451,36 +335,26 @@
 		height: 100%;
 		object-fit: cover;
 	}
-	/*
-	 * The play badge was `content: '▶'` on a pseudo-element — a codepoint in CSS, which is the one place
-	 * a naive attribute-level scan for stray glyphs would never have found it. It is a real mark now.
-	 */
+	/* The placeholder mark is a real element, never a `content:` codepoint — a glyph in CSS is the one place
+	   an attribute-level scan for stray marks cannot find it. Its translucent white is a PHOTO-OVERLAY
+	   exception, like the duration badge's ink below, not a theme colour. */
 	.ph {
 		color: rgba(255, 255, 255, 0.55);
 		font-size: var(--ph-text-md);
 		display: grid;
 		place-items: center;
 	}
-	/* Translucent white kept as a literal on purpose: it is a wash over the thumbnail slot (a photo
-	   when one loads), the same photo-overlay exception as the duration badge's ink — not a theme colour. */
 
-	/*
-	 * Duration burned into the frame's corner — YouTube's own convention, so it needs no label and
-	 * costs the row no vertical space. `--danger-bg`-adjacent warn treatment (not the bare token) keeps
-	 * it legible on top of an arbitrary photograph.
-	 */
+	/* Duration burned into the frame's corner, so it needs no label and costs the row no height. */
 	.dur {
 		position: absolute;
 		right: 3px;
 		bottom: 3px;
-		/* The near-black wash is the shared --scrim-strong (0.85 ≈ the old 0.84, reads identically).
-		   The ink stays a literal #fff on purpose: this sits on an arbitrary video frame, not a theme
-		   surface, so white is a deliberate photo-overlay exception rather than a themeable colour. */
+		/* Both the literal `#fff` and the sub-ladder font-size are deliberate PHOTO-OVERLAY exceptions: this
+		   sits on an arbitrary video frame rather than a theme surface, and a ladder step would push the badge
+		   past the 84×47 frame it labels. */
 		background: var(--scrim-strong);
 		color: #fff;
-		/* 0.62rem, below --ph-text-2xs: the duration badge sits INSIDE the thumbnail, over an arbitrary
-		   video frame, and the box is 84x47. A ladder step would push it past the frame it labels. Paired
-		   with the deliberate `#fff` above — both are photo-overlay exceptions, not theme type. */
 		font-size: 0.62rem;
 		font-weight: 700;
 		padding: 1px var(--space-2xs);
@@ -488,23 +362,17 @@
 		font-variant-numeric: tabular-nums;
 		letter-spacing: 0.01em;
 	}
-	/* Dark ink on the danger fill, not white. White on #ff6b6b is 2.78:1 — below AA for this
-	   0.62rem/700 badge (normal-size, needs 4.5:1). --danger-bg (#2a1b22) is the danger family's
-	   dark surface and measures 5.92:1 here, AA with margin. It reuses a token rather than
-	   inventing a hex, and pairs the badge with the same ink the sibling.chip.odd-dur uses. */
+	/* DARK ink on the danger fill, never white: white on --danger is 2.78:1, under AA at this size, while
+	   --danger-bg measures 5.92:1. The pair is the danger family's own fill and surface. */
 	.dur.odd {
 		background: var(--danger);
 		color: var(--danger-bg);
 	}
 
 	/*
-	 * TWO lines, not one. A single ellipsised line is what hid "(Official Music Video)". The title text
-	 * shares.title-line with the processing mark; min-width:0 + the two-line clamp bound ONLY the title
-	 * text, so the mark beside it is never pushed onto the discarded third line.
-	 * flex-grow MUST stay 0 (flex: 0 1 auto, the initial value): with flex-grow:1 the clamp box grew to
-	 * fill the whole line and pushed the flex:0 0 auto mark to the column's right edge, up to 116px from
-	 * a short title it marks. flex-grow:0 lets the box shrink to its text so the mark hugs
-	 * the title, while flex-shrink:1 still keeps a long title clamped to two lines.
+	 * TWO lines, not one: a single ellipsised line is what hides the version marker at the end of a title.
+	 * `flex-grow` MUST STAY 0 — with grow:1 the clamp box fills the whole line and pushes the mark to the
+	 * column's right edge, far from the short title it marks — while `flex-shrink: 1` still clamps a long one.
 	 */
 	.title-line {
 		display: flex;
@@ -522,13 +390,8 @@
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 	}
-	/*
-	 * The processing marker, a flex:0 0 auto SIBLING of.t on.title-line — so it always paints and never
-	 * competes with the title for the last line's characters. The margin is still
-	 * load-bearing: it separates the mark from the clamped title box, and a space in the markup would be
-	 * collapsed away by the flex layout, so the gap has to be a margin. margin-top nudges the mark down to
-	 * sit on the first title line rather than at the flex row's top edge.
-	 */
+	/* The margin is load-bearing: a space in the markup is collapsed away by the flex layout, so the gap to
+	   the clamped title box has to be a margin. `margin-top` drops the mark onto the first title line. */
 	.sparkle {
 		flex: 0 0 auto;
 		color: var(--warn);
@@ -553,57 +416,23 @@
 		gap: 5px;
 		margin-top: var(--space-xs);
 	}
-	/*
-	 * `.chip` and its ten tone rules moved to ui/badge. The tones went with them verbatim —
-	 * each is a certified surface+border+ink triple — so no chip changes colour; only the element does.
-	 * `.chips` stays here because it is this row's LAYOUT, which a scoped rule can still reach.
-	 */
-	/*
-	 * The one chip allowed to wrap. Its text is the longest here ("Making karaoke… 68%"), so on a
-	 * narrow row nowrap would clip the trailing percent — the one moving part a singer standing there
-	 * waiting is watching. Letting it wrap keeps the whole line, and the percent, visible.
-	 */
-	/* A dead process, not a slow one. `warn` already means "in flight" on this chip, so reusing it would
-	   have made a failure look like progress — the whole defect this state exists to end. */
-	/*
-	 * One colour per kind, and they are semantic rather than decorative: green = the studio recording
-	 * you probably want, purple = a lyric video, amber = a different recording (live), red = probably
-	 * not a song at all. The label carries the meaning on its own, so colour is reinforcement — never
-	 * the only cue.
-	 */
-	/* Same treatment as the badge it explains, so the two read as one signal rather than two. */
-
-	/*
-	 * `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
-	 * so this consolidated a duplicate. The swap also buys what neither hand-rolled bar had:
-	 * `role="progressbar"` with aria-valuenow, so a process's progress is finally visible to assistive
-	 * tech. Spacing from the element above stays HERE, because that is this component's layout rather
-	 * than the bar's own metric.
-	 */
+	/* Spacing above the bar stays here, because that is this row's layout rather than the bar's own metric. */
 	.bar-slot {
 		margin-top: 7px;
 	}
 
 	/*
-	 * THE TWO ROW ACTIONS ARE <Button> NOW, so their boxes, radii, fills and inks live on the size and
-	 * variant axes: `size="icon"` is the 44x44 tap box (`size-tap`), `iconPrimary` is the accent fill for
-	 * the expensive process action, and `iconReady` is the green-on-icon-surface for the free queue-add.
-	 * Twelve rules went with them.
+	 * THREE ROW STATES the Button's own axes cannot carry — a retry ring, "already queued", "not
+	 * processable". None can be a class PASSED to the component: Tailwind scans only the vendored directory,
+	 * and a class handed to a component is scoped to this file, where Svelte strips it as unused. So each
+	 * arrives as a data attribute the component forwards, reached with `:global()`.
 	 *
-	 * WHAT COULD NOT MOVE, and why it is spelled like this. Three STATES remain this row's business —
-	 * a retry ring, "already queued", and "not processable" — and none can be a class passed to the
-	 * component: Tailwind scans only the components/ui directory, and a class handed to a component is
-	 * scoped to THIS file where Svelte strips it as unused. So the state arrives as a data attribute the
-	 * component forwards, and the rule reaches it with `:global()` — the sanctioned form when the element
-	 * is rendered by a child (see ui/README section 2, and the dead `min-height` that shipped on
-	 * slider.svelte for what the wrong form costs).
-	 *
-	 * The `:global()` is ANCHORED under `.row`, which is scoped to this file. Unanchored it would match
-	 * every button in the app carrying these attributes.
+	 * Every one is ANCHORED under `.row`, which is scoped to this file. Unanchored they would match every
+	 * button in the app carrying these attributes.
 	 */
 	.row :global([data-slot='button'][data-retry]) {
-		/* A retry is still the primary action — same fill — but it has failed once, and the ring says so
-		   without spending the danger family's fill on something the guest is being invited to press. */
+		/* A retry keeps the primary fill — it is still the action to press — and the ring is what says it has
+		   failed once, without spending the danger family's fill on an invitation. */
 		box-shadow: inset 0 0 0 2px var(--danger-line);
 	}
 	.row :global([data-slot='button'][data-row-state='queued']) {
@@ -611,10 +440,9 @@
 		opacity: 0.7;
 	}
 	/*
-	 * NOT-PROCESSABLE MUST NOT WEAR "GO" CLOTHES. A Spotify-style name-only match cannot be sung,
-	 * and the disabled attribute alone is not enough of a signal — the base's `disabled:opacity-50` would
-	 * leave a dimmed GREEN button, which reads as "queued" rather than "impossible". Neutralising the
-	 * border and ink is what separates the two disabled states from each other.
+	 * NOT-PROCESSABLE MUST NOT WEAR "GO" CLOTHES: the disabled attribute alone leaves a dimmed GREEN button,
+	 * which reads as "queued" rather than "impossible". Neutralising the border and ink is what separates this
+	 * disabled state from the one above it.
 	 */
 	.row :global([data-slot='button'][data-row-state='unavailable']) {
 		border-color: var(--line);
@@ -622,12 +450,8 @@
 		opacity: 0.65;
 	}
 
-	/*
-	 * Below ~380px the 84px thumbnail starves the title: at 320px "Bohemian Rhapsody (Remastered)"
-	 * truncated back to "Bohemian Rhapsody…", losing the exact token this row exists to show. Give the
-	 * frame back 20px and the title a third line rather than shipping a design that quietly fails on a
-	 * small phone.
-	 */
+	/* Below the narrow breakpoint the full-size thumbnail starves the title and truncates away the version
+	   marker this row exists to show, so the frame gives 20px back and the title gains a third line. */
 	@media (max-width: 380px) {
 		.thumb {
 			width: 64px;
@@ -640,12 +464,8 @@
 		.row {
 			gap: 9px;
 		}
-		/*
-		 * Claw back height. A guest reviewing the 320px frame could see only about four songs before
-		 * the player bar and called it irritating to scroll — and comparing uploads is the entire point,
-		 * so how many fit at once IS the feature. Smaller chips and tighter gaps buy roughly a fifth of
-		 * a row back without shrinking the title or the 44px target.
-		 */
+		/* Tighter gaps claw back about a fifth of a row on the narrowest phone, where how many songs fit at
+		   once is the feature — without shrinking the title or the 44px target. */
 		.chips {
 			gap: var(--space-2xs);
 			margin-top: 5px;

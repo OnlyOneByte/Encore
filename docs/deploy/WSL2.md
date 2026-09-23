@@ -224,7 +224,7 @@ No edits to `docker-compose.yml` are needed. The GPU deployment is a compose **o
 [`docs/deploy/docker-compose.cuda.yml`](deploy/docker-compose.cuda.yml). It supplies the CUDA wheel
 index as a build arg, the NVIDIA device reservation, and the device env — layered onto the base file
 rather than forking it, so later changes to core, the hardening anchor or the volume wiring still
-reach this deployment. See [`docs/deploy/README.md`](deploy/README.md) for the pattern.
+reach this deployment. See [`docs/deploy/README.md`](README.md) for the pattern.
 
 Every command below uses one prefix; export it once per shell:
 

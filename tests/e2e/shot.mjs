@@ -1,18 +1,4 @@
-// Eyes-on screenshot helper. Drives the Chromium already cached for the e2e probes through the
-// repo's own e2e driver.
-//
-// WHY IT GOES THROUGH THE SHARED DRIVER. This file used to `import { chromium } from
-// 'playwright-core'`, which was never a declared dependency — it worked on whichever machine
-// happened to have one lying around and failed everywhere else. It now uses ./driver.mjs, the same
-// connection every probe uses, so there is one place that decides how a browser is launched and
-// which Chromium it points at.
-//
-// It also used to spawn its OWN Chromium with `--remote-debugging-port` and then call
-// `connect(cdpPort)`. The driver launches its own browser and ignored that port, so the spawned
-// process was never connected to by anything — a whole wasted Chromium per invocation. The
-// Chromium-spawn sweep missed it because this file lived under `scripts/` at the time, outside the
-// tree that sweep walked. Both the spawn and the port are gone; browser discovery is the driver's
-// job, via `findChromium`.
+// Eyes-on screenshot helper, through the shared driver so browser discovery stays in one place.
 //
 // Usage: PW_CHROMIUM=/path/to/chrome bun run tests/e2e/shot.mjs <url> <outPath> [widthxheight]
 import { connect } from './driver.mjs';

@@ -1,18 +1,9 @@
-// guard: a path a document cites resolves to a file that exists.
+// guard: a path a document cites resolves to a tracked file, so a `Check` field a reader follows to decide
+// whether a rule is defended is never unverifiable. A document cannot fail on its own, so this fails for it.
+// It does NOT check that the cited test asserts what the row claims — no static check can.
 //
-// WHY THIS EXISTS. The requirement register's `Check` field names the test that enforces each row. That
-// makes a path in a document load-bearing: a reader follows it to decide whether a rule is actually
-// defended. When the test tree was reorganised, 38 such references across 11 documents went stale in one
-// commit — including 19 in `04-verification.md`, the one document whose subject IS the test inventory.
-//
-// Nothing noticed, because a document cannot fail. The register kept describing a tree that no longer
-// existed, and every `Check` field in it silently became unverifiable.
-//
-// WHAT THIS DOES NOT DO. It does not check that the cited test asserts what the row claims — no static
-// check can. It closes the narrower and more common failure: the path does not resolve at all.
-//
-// EXEMPTIONS ARE KEYED ON CONTENT, NOT ON `path:line`. An earlier registry in this suite was keyed on
-// line numbers and broke within the hour when a sibling edit shifted two entries by one line.
+// Exemptions are keyed on CONTENT, never on `path:line`: a line-keyed registry breaks the moment a sibling
+// edit shifts an entry by one line.
 
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -26,39 +17,22 @@ const TRACKED = new Set(
 		.filter(Boolean)
 );
 
-/** Source-file references in prose: repo-relative, pointing into a real source or test tree. */
-// The tree prefixes a citation can start with. `src` and `worker` replaced `apps` when the apps/ layer
-// was flattened away, and `packages` is gone entirely — but this list is the guard's whole reach, so
-// getting it wrong makes the guard pass by seeing NOTHING. That is exactly what happened on the flatten:
-// every source citation became `src/…`, matched no prefix here, and three arms went quietly green.
+// Source-file references in prose. This prefix list is the guard's WHOLE REACH, so getting it wrong makes
+// the guard pass by seeing nothing — the last tree rename put every citation outside it and three arms went
+// quietly green.
 const CITED = /\b((?:src|worker|tests)\/[A-Za-z0-9_./-]+\.(?:test\.ts|harness\.svelte|svelte|ts|py|css|json))\b/g;
 
-/*
- * Documents whose references are DELIBERATELY historical, with the reason each one is exempt.
- *
- * A research spike records a measurement that was taken at a moment in time. Repointing its command line
- * at a file that never produced those numbers would make the record FALSE rather than current, which is
- * strictly worse than leaving it stale — so the document is annotated in place and exempted here.
- */
-/*
- * EMPTY, AND THAT IS CURRENT (2026-09-22). It held one entry: a spike record under `docs/research/`
- * whose cited file had been deleted, kept because the document recorded a measurement that really
- * happened. The docs cleanup removed `docs/research/` entirely, so the exemption has no subject — and the
- * arm below asserts exactly that, which is why deleting the entry is the fix rather than an oversight.
- *
- * The list stays declared: an exemption is the kind of thing that will be wanted again, and the arm that
- * keeps each one honest is worth more than the two lines it costs.
+/**
+ * Documents whose references are DELIBERATELY historical — a spike that records a measurement taken at a
+ * moment in time, where repointing the citation would make the record FALSE rather than current. Empty
+ * today; the declaration and the arm that keeps each entry honest stay, since the shape will be wanted again.
  */
 const HISTORICAL: { doc: string; why: string }[] = [];
 
 test('every source path cited in a document resolves to a tracked file', () => {
 	const docs = filesUnder('docs', ['.md']);
-	// Non-vacuity: the walk found the documents. An empty walk yields an empty offender list, which reads
-	// exactly like a tree with no stale references — the failure mode this whole suite keeps re-learning.
-	// 6, WAS 20 (2026-09-22): the docs tree was cleaned up — `docs/ux`, `docs/loop`, `docs/research`,
-	// `DECISIONS.md` and others were deleted — so the population this walks is the architecture and deploy
-	// trees plus two root documents. The floor tracks the population; it must never be lowered to
-	// accommodate a walk that quietly stopped finding files.
+	// An empty walk yields an empty offender list, which reads exactly like a tree with no stale references.
+	// The floor tracks the population and must never be lowered to accommodate a walk that stopped finding files.
 	expect(docs.length).toBeGreaterThan(6); // @nvf-floor docs.length
 
 	const exempt = new Set(HISTORICAL.map((h) => h.doc));
@@ -84,8 +58,7 @@ test('every source path cited in a document resolves to a tracked file', () => {
 		}
 	}
 
-	// Non-vacuity: citations were actually examined. A regex that stopped matching would make the loop
-	// above trivially clean while every path in the register rotted.
+	// A regex that stopped matching would make the loop above trivially clean while every path rotted.
 	expect(citationsChecked).toBeGreaterThan(100); // @nvf-floor citationsChecked
 
 	expect(offenders).toEqual([]);
@@ -93,9 +66,8 @@ test('every source path cited in a document resolves to a tracked file', () => {
 
 test('every exempt document still exists and still carries its stale reference', () => {
 	/*
-	 * An exemption outlives its subject silently. If the spike record were deleted, or edited to drop the
-	 * reference, this entry would sit here forever describing nothing — and the next stale path added to
-	 * that file would inherit a free pass nobody granted it.
+	 * An exemption outlives its subject silently, and the next stale path added to that file inherits a free
+	 * pass nobody granted it.
 	 */
 	for (const { doc, why } of HISTORICAL) {
 		expect(TRACKED.has(doc), `exempt document \`${doc}\` is gone — delete its entry. Reason on record: ${why}`).toBe(

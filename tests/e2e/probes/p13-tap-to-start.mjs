@@ -1,17 +1,10 @@
-/*
- * P13 - TAP TO START: the one route out of a silent television, gestureless.
- *
- * Encore ships a recovery for a TV that autoplay blocked: TvPlayer.svelte arms a document-wide
- * pointerdown/keydown listener and routes/tv/+page.svelte renders a full-screen .autoplay-hint
- * card telling the viewer to tap. That listener is the ONLY path from a fresh TV to audible sound.
- * HARNESS.md and fuzz.mjs are both correct that granting --autoplay-policy=no-user-gesture-required
- * measures an environment no television is in. Every click verb in driver.mjs is a synthetic el.click()
- * via Runtime.evaluate, an UNTRUSTED event granting NO user activation, so it cannot unblock autoplay.
- *
- *   EPORT=5213 bun tests/e2e/probes/p13-tap-to-start.mjs
- *
- * Exit 0 all passed / 1 a real failure / 2 the environment could not host the test.
- */
+// P13 — TAP TO START, the one route out of a silent television, driven GESTURELESSLY: a document-wide
+// pointerdown/keydown listener plus the full-screen card are the only path from a fresh TV to audible
+// sound. Granting autoplay would measure an environment no television is in (docs/E2E.md#autoplay), and
+// a synthetic click grants no user activation, so only `realClick` can unblock it (docs/E2E.md#gestures).
+//
+//   EPORT=5213 bun tests/e2e/probes/p13-tap-to-start.mjs
+
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
@@ -19,8 +12,7 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 import { openJoin } from '../lib/join.mjs';
 
 /**
- * Types for this out-of-program driver. Browser/Page derive from
- * driver.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * Browser/Page derive from driver.mjs so they cannot drift; page.evaluate() is Promise<any>, cast at use.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check
@@ -49,7 +41,6 @@ if (!(await fetch(base + '/health').catch(() => null))?.ok) {
 	bail('no Encore server on ' + base + '. Start one (ephemeral + fake-stems-worker + a processed song) and re-run.');
 }
 
-// A song that can actually be sung has to exist before this test means anything.
 const ready = await fetch(base + '/api/search?q=caroline')
 	.then((r) => r.json())
 	.then((d) => d.ready ?? []);
@@ -65,7 +56,6 @@ let browser;
 try {
 	browser = await connect();
 
-	// -- a singer joins and queues the processed song, through the real UI --
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
 	await openJoin(phone, base);
@@ -81,7 +71,6 @@ try {
 	await phone.waitFor('document.querySelectorAll(' + JSON.stringify(SEL.queueRow) + ').length > 0');
 	check('a singer can join and queue the processed song', true);
 
-	// -- the TV, gestureless --
 	const tv = await browser.newPage();
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(base + '/tv');
@@ -100,7 +89,7 @@ try {
 		};
 	})()`;
 
-	// Wait until the master element has a source, so a null reading means "no media" not "not yet".
+	// So a null reading below means "no media" rather than "not yet".
 	try {
 		await tv.waitFor(
 			`(() => { const e=[...document.querySelectorAll('video,audio')].filter(x=>x.currentSrc||x.src); return e.length > 0; })()`,
@@ -111,7 +100,7 @@ try {
 	}
 	await sleep(2000);
 
-	// -- STEP 1: the blocked state a real TV sits in --
+	// The blocked state a real TV sits in.
 	const blocked = await tv.evaluate(probe);
 	check(
 		'the tap-to-start hint is rendered before any gesture',
@@ -127,9 +116,7 @@ try {
 		`master=${JSON.stringify(blocked.master)} - gestureless it must NOT be playing`
 	);
 
-	// -- STEP 2: one REAL tap, then decoded must strictly climb --
-	// A synthetic click() here would grant no user activation and leave decoded flat; realClick
-	// delivers a trusted CDP Input gesture - the only thing the browser honors to unblock autoplay.
+	// One REAL tap: a synthetic click() grants no user activation and leaves decoded bytes flat.
 	await tv.realClick(960, 540);
 
 	const a = (await tv.evaluate(probe)).master;

@@ -2,21 +2,16 @@
 	/*
 	 * One mark, drawn as inline SVG.
 	 *
-	 * SIZING. `1em` by default, so an icon takes its size from the font-size of whatever contains it.
-	 * That is what lets the SAME path serve a 44px phone button and a 10-foot TV: the TV sets a larger
-	 * font-size on the container and the mark scales with it, resolution-independent, with no second
-	 * asset and no bitmap to go soft.
+	 * `1em` BY DEFAULT, so a mark takes its size from whatever contains it — that is what lets one path serve a
+	 * phone button and a ten-foot TV with no second asset. `currentColor` for the same reason on the other
+	 * axis: a mark inherits its button's colour and tracks hover, disabled and theme states. Never hard-code a
+	 * stroke colour here.
 	 *
-	 * COLOUR. `currentColor`, so a mark inherits `color` from its button and automatically tracks
-	 * hover/disabled/theme states. Never hard-code a stroke colour here.
+	 * DEFAULT IS `aria-hidden`, which is correct for both common cases — an icon beside real text, or an
+	 * icon-only button whose label is on the BUTTON. A name on both makes a screen reader announce it twice.
 	 *
-	 * ACCESSIBLE NAME. Default is `aria-hidden`, which is correct for the common cases: an icon beside
-	 * real text (the text is the name), or an icon-only button whose `aria-label` is on the BUTTON. A
-	 * name on both would make screen readers announce it twice. Pass `label` only when this svg is
-	 * genuinely the sole carrier of meaning and nothing around it names the control.
-	 *
-	 * The 44px touch target belongs on the button, never here — shrinking the hit area to the glyph is
-	 * how a control ends up technically present and practically unhittable.
+	 * The tap target belongs on the button, never here: shrinking the hit area to the glyph is how a control
+	 * ends up technically present and practically unhittable.
 	 */
 	import { ICON_PATHS, SOLID_ICONS, type IconName } from './icons';
 
@@ -58,11 +53,7 @@
 >
 
 <style>
-	/*
-	 * `block` kills the inline-descender gap that otherwise pushes a mark off-centre inside a grid- or
-	 * flex-centred button. Fill is opt-in via .solid — the transport marks read as solid shapes at small
-	 * sizes, but filling every rect would turn the mic capsule into a blob.
-	 */
+	/* `block` kills the inline-descender gap that otherwise pushes a mark off-centre inside a centred button. */
 	.icon {
 		display: block;
 		flex: 0 0 auto;

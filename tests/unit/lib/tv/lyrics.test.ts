@@ -3,7 +3,7 @@
 import { test, expect } from 'bun:test';
 import { parseLyricsDoc, lineBounds, activeLineIndex, activeWordIndex, type LyricsDoc } from '$lib/tv/lyrics';
 
-// mirrors the worker's normalize_lyrics output
+// Mirrors the worker's normalize_lyrics output.
 const raw = {
 	language: 'en',
 	lines: [
@@ -41,7 +41,7 @@ test('parseLyricsDoc: untrusted junk is dropped, empty → null', () => {
 	expect(parseLyricsDoc(null)).toBeNull();
 	expect(parseLyricsDoc({ lines: [] })).toBeNull();
 	expect(parseLyricsDoc('nope')).toBeNull();
-	// a word with NaN/missing bounds is dropped; a line with no text and no words vanishes
+	// A word with NaN or missing bounds is dropped; a line with no text and no words vanishes.
 	const doc = parseLyricsDoc({
 		lines: [
 			{ text: '', words: [{ word: 'x', start: NaN, end: 1 }] },
@@ -101,9 +101,8 @@ test('activeWordIndex: the "ball" sits on the word being sung, -1 between words'
 	expect(activeWordIndex(line, 5)).toBe(-1); // past the line
 });
 
-// ── honesty about auto-transcribed words ──────────────────────────────
-// Force-aligned ASR renders a PERFECT bouncing ball over words that may be wrong — the most
-// misleading state the overlay can be in. The notice exists because the result looks finished.
+// Force-aligned ASR renders a PERFECT bouncing ball over words that may be wrong, which is the most
+// misleading state the overlay can be in: the notice exists because the result LOOKS finished.
 import { isAutoTranscribed, provenanceLabel, type LyricsProvenance } from '$lib/tv/lyrics';
 
 const prov = (over: Partial<LyricsProvenance> = {}): LyricsProvenance => ({
@@ -139,12 +138,9 @@ test('coarse LINE timing alone is not flagged unverified when text is authoritat
 	expect(isAutoTranscribed(prov({ timing: 'line' }))).toBe(false);
 });
 
-// ── provenance TAG: name the source for EVERY kind, not just ASR ────────────────
-//
-// Owner ruling (a): provenance ONLY -- a source label, never a confidence/quality score. Today the
-// card names a source in exactly ONE case (ASR); these pin that it names the source in ALL of them,
-// and stays silent when provenance is unknown. Each asserts a DISTINCT string, so a map that folds
-// two sources onto one label reds.
+// The provenance tag is a SOURCE label, never a confidence or quality score. It must name the source for
+// every kind and stay silent when provenance is unknown. Each arm asserts a DISTINCT string, so a map
+// that folds two sources onto one label reds.
 test('LRCLIB / authored record is named', () => {
 	expect(provenanceLabel(prov({ textSource: 'lrclib' }))).toBe('LRCLIB');
 });
@@ -173,7 +169,7 @@ test('every source kind gets a DISTINCT, non-empty label -- none collide', () =>
 	expect(new Set(labels).size).toBe(kinds.length);
 });
 
-// ── pause-based line splitting (whisper segments are not lyric lines) ──────────
+// Pause-based line splitting: whisper segments are not lyric lines.
 import {
 	resegmentLine,
 	parseLyricsDoc as parseDoc,
@@ -183,18 +179,13 @@ import {
 } from '$lib/tv/lyrics';
 
 /**
- * `resegmentLine` with the length guard turned OFF (`splitAboveChars: 0`).
- *
- * Production only resegments a line that already exceeds a row (blobs are now re-lineated in
- * the worker, so this is a safety net for over-long lines, not a pass over every line). These tests are
- * about WHERE it breaks once it has decided to break, which is orthogonal to that decision, so they use
- * short synthetic lines and opt out of the guard rather than padding every fixture past 42 chars.
- * `test('the length guard…')` below covers the decision itself.
+ * `resegmentLine` with the length guard OFF (`splitAboveChars: 0`): these are about WHERE it breaks once it has decided
+ * to break, so they use short synthetic lines rather than padding every fixture past 42 chars. The decision itself is
+ * covered by the length-guard test.
  */
 const resegmentAnyLength = (line: LyricLine, gapSec: number = LINE_GAP_SEC) =>
 	resegmentLine(line, gapSec, LINE_MAX_CHARS, 0);
 
-/** words with an explicit gap before each one (seconds) */
 function wordsWithGaps(spec: Array<[string, number]>) {
 	let t = 0;
 	return spec.map(([word, gapBefore]) => {
@@ -206,7 +197,7 @@ function wordsWithGaps(spec: Array<[string, number]>) {
 }
 
 test('THE BUG: one whisper segment of four lyric lines splits at its pauses', () => {
-	// the real Creep segment, abbreviated: pauses between lyric lines, none inside them
+	// A real segment, abbreviated: pauses between lyric lines, none inside them.
 	const words = wordsWithGaps([
 		['So', 0],
 		['fucking', 0.05],
@@ -260,7 +251,7 @@ test('a normal short line is left alone', () => {
 });
 
 test('REFUSES to split when timed words do not cover the text (would delete lyrics)', () => {
-	// the aligner timed only 2 of ~10 words; rebuilding from words[] would drop the rest
+	// The aligner timed only 2 of ~10 words, so rebuilding from words[] would drop the rest.
 	const words = wordsWithGaps([
 		['So', 0],
 		['special', 1.0]
@@ -275,8 +266,8 @@ test('a line with no words (line-sync floor) is untouched', () => {
 });
 
 test('parseLyricsDoc applies resegmentation, so existing artifacts benefit with no re-process', () => {
-	// Over-long ON PURPOSE (64 chars): production only resegments a line that exceeds a row, so a
-	// fixture short enough to fit would no longer exercise the wiring this test exists to check.
+	// Over-long ON PURPOSE (64 chars): production only resegments a line that exceeds a row, so a shorter
+	// fixture would stop exercising the wiring.
 	const words = wordsWithGaps([
 		['walking', 0],
 		['down', 0.02],
@@ -299,10 +290,9 @@ test('parseLyricsDoc applies resegmentation, so existing artifacts benefit with 
 });
 
 test('the length guard: a line that already FITS a row is never resegmented', () => {
-	// A pause inside a short line is a breath or a held note, not a line break. Whisper blobs are
-	// re-lineated in the WORKER now (lyrics_presplit.py), where the provenance to know the text came
-	// from ASR actually lives — so this function is a safety net for over-long lines, not a pass over
-	// every line. Splitting here was what produced rows that flash past mid-phrase.
+	// A pause inside a SHORT line is a breath or a held note, not a line break — splitting on it produces
+	// rows that flash past mid-phrase. Blobs are re-lineated in the worker, where the provenance to know
+	// the text came from ASR lives, so this function is a safety net for over-long lines only.
 	const words = wordsWithGaps([
 		['hold', 0],
 		['on', 0.02],
@@ -316,8 +306,7 @@ test('the length guard: a line that already FITS a row is never resegmented', ()
 });
 
 test('the gap threshold is a tunable that behaves monotonically', () => {
-	// PAIRS, not single words: a lone word would be folded away by the orphan rule, masking the gap
-	// behaviour this is checking.
+	// PAIRS, not single words: a lone word is folded away by the orphan rule, masking the gap behaviour.
 	const words = wordsWithGaps([
 		['aa', 0],
 		['bb', 0.02],
@@ -332,9 +321,8 @@ test('the gap threshold is a tunable that behaves monotonically', () => {
 	expect(LINE_GAP_SEC).toBeGreaterThan(0);
 });
 
-// ── orphan single-word lines ───────────────────────────────────────────────────
-// Splitting on pauses alone produced rows holding one word for under a second ("here", "I" in the
-// live Creep overlay) — too fast to read and a wasted row of the reel.
+// Orphan single-word lines. Splitting on pauses alone leaves rows holding one word for under a second:
+// too fast to read, and a wasted row of the reel.
 import { ORPHAN_MAX_SEC } from '$lib/tv/lyrics';
 
 /** Build a line from [word, startSec, endSec] triples. */
@@ -344,7 +332,6 @@ function lineOf(spec: Array<[string, number, number]>) {
 }
 
 test('a trailing orphan merges BACK into the phrase it belongs to ("...belong | here")', () => {
-	// "don't belong" then a tiny gap, "here", then a LONG pause before the next phrase
 	const line = lineOf([
 		["don't", 0, 0.4],
 		['belong', 0.45, 0.8],
@@ -358,7 +345,6 @@ test('a trailing orphan merges BACK into the phrase it belongs to ("...belong | 
 });
 
 test('a leading orphan merges FORWARD ("I | want a perfect body")', () => {
-	// a real phrase, a long pause, then "I" immediately followed by its own phrase
 	const line = lineOf([
 		['have', 0, 0.4],
 		['control', 0.45, 0.9],
@@ -369,12 +355,12 @@ test('a leading orphan merges FORWARD ("I | want a perfect body")', () => {
 	]);
 	const out = resegmentAnyLength(line);
 	expect(out.map((l) => l.text)).toEqual(['have control', 'I want a body']);
-	// NOT "have control I", which is what always-merge-backwards would have produced
+	// NOT "have control I", which always-merge-backwards produces.
 	expect(out[0]!.text).not.toContain('I');
 });
 
 test('a one-word line that holds the screen long enough KEEPS its own line', () => {
-	// a held note: "Yeah" alone for 2s is a real lyric line
+	// A held note: "Yeah" alone for 2s is a real lyric line.
 	const line = lineOf([
 		['Yeah', 0, 1.9],
 		['So', 2.6, 2.9],
@@ -396,13 +382,11 @@ test('a multi-word short line is never treated as an orphan', () => {
 	expect(out.map((l) => l.text)).toEqual(['oh no', 'So special']);
 });
 
-// ── the lead offset ────────────────────────────────────────────────────────────
 import { LYRICS_LEAD_SEC } from '$lib/tv/lyrics';
 
 test('the default lead is 0 — the global lead is opt-in per room', () => {
-	// owner ruling: a single global lead is a band-aid, so it ships OFF by default. The per-room
-	// lyricsLeadMs setting is the opt-in. Hard literal, not `.toBe(SOME_CONST)`, so this pins the value
-	// rather than tautologically re-reading whatever the constant happens to be.
+	// A single global lead is a band-aid, so it ships OFF and the per-room `lyricsLeadMs` is the opt-in. A
+	// hard literal, not `.toBe(SOME_CONST)`, so this pins the value rather than re-reading the constant.
 	expect(LYRICS_LEAD_SEC).toBe(0);
 });
 
@@ -412,18 +396,15 @@ test('a lead selects the NEXT word sooner (what the knob is for)', () => {
 		['two', 0.5, 1.0],
 		['three', 1.0, 1.5]
 	]);
-	// The mechanism is unchanged by the default flip: at 0.45s the audio is still on "one", and applying
-	// an explicit 0.3s lead moves the cue to "two". Uses a literal lead, NOT LYRICS_LEAD_SEC, so it keeps
-	// proving the knob works after the default became 0.
+	// At 0.45s the audio is still on "one" and an explicit 0.3s lead moves the cue to "two". A literal
+	// lead, not LYRICS_LEAD_SEC, so this keeps proving the knob works whatever the default becomes.
 	const lead = 0.3;
 	expect(activeWordIndex(line, 0.45)).toBe(0);
 	expect(activeWordIndex(line, 0.45 + lead)).toBe(1);
 });
 
-// ── dual-script (romanization) pass-through ──────────────────────────
-// A Chinese line-synced doc carries a per-line `romanization` (the pinyin the LRCLIB record
-// interleaved). parseLyricsDoc must surface it onto the line; a line without one leaves it
-// undefined (single-script, unchanged behaviour). Display-only — it carries no timings.
+// Dual-script pass-through: a line-synced doc can carry a per-line `romanization`, which parseLyricsDoc
+// surfaces onto the line and leaves undefined otherwise. Display-only — it carries no timings.
 test('parseLyricsDoc surfaces per-line romanization when the doc carries it', () => {
 	const doc = parseLyricsDoc({
 		language: 'zh',
@@ -452,10 +433,8 @@ test('parseLyricsDoc ignores a blank/non-string romanization (if-available, neve
 	expect(doc!.lines[1]!.romanization).toBeUndefined();
 });
 
-// ── duet part attribution ──────────────────────────────────────────────
-// The worker's diarization writes a `part` letter on each line of a CONFIDENT duet; a solo /
-// undiarized song carries none, which reads as one colour. The TV side just has to carry it through
-// parse and resegmentation faithfully — it never invents one.
+// Duet part attribution: the worker's diarization writes a `part` letter on each line of a CONFIDENT duet, and a solo
+// or undiarized song carries none. The TV carries it through parse and resegmentation faithfully and NEVER invents one.
 
 test('parseLyricsDoc carries a per-line duet part through, and omits it when absent', () => {
 	const doc = parseLyricsDoc({
@@ -486,8 +465,7 @@ test('parseLyricsDoc ignores a blank/non-string part (if-available, never fabric
 });
 
 test('resegmenting a long duet line keeps the part on every row it splits into', () => {
-	// A long single line owned by part "B", split at its pauses — every resulting row must stay "B",
-	// or a duet's colour would drop on all but the first row after resegmentation.
+	// Every row of a split line must keep its part, or a duet's colour drops on all but the first.
 	const words = wordsWithGaps([
 		['this', 0],
 		['is', 0.05],

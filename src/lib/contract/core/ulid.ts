@@ -1,10 +1,9 @@
-// Client-minted ULID — lexicographically sortable, time-prefixed, collision-resistant.
-// Generating ids on the CLIENT is what makes optimistic add reconcile with zero flicker:
-// the optimistic row already carries its final id, so the server's echo matches by id.
-// See docs/ARCHITECTURE.md.
+// Client-minted ULID: lexicographically sortable, time-prefixed. Minting ids on the CLIENT is what makes an
+// optimistic add reconcile with zero flicker — the optimistic row already carries its final id, so the
+// server's echo matches by id. See docs/ARCHITECTURE.md §3.
 //
-// NOTE: uses Math.random for the entropy section. Fine for queue-entry ids (not security
-// tokens). Session tokens are minted server-side with crypto — do not use this for those.
+// NOT A SECURITY TOKEN: the entropy is `Math.random`. Session tokens are minted server-side with `crypto`;
+// never use this for one.
 
 const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32
 const TIME_LEN = 10;

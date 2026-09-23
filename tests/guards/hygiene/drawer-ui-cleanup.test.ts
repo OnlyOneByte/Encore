@@ -1,24 +1,9 @@
-// Guard: the processing-status UI had redundant elements the owner asked to remove. Each
-// was a pure-markup deletion, so nothing BEHAVIOURAL reds if it comes
-// back - this source-scan guard is the load-bearing regression trap. It reads each component source,
-// strips comments (so the explanatory prose that NAMES the removed elements can neither satisfy nor
-// trip a check), and asserts:
-//   1. GuidingTrack.svelte - the out-of-place "No isolated vocals ..." line is gone; the control
-//      (disabled state, slider) remains.
-//   2. ProcessingCard.svelte - the per-stage status pills (.chips strip) are gone; the bar and the
-//      "Making karaoke" stage line remain.
-// Each removal is paired with a not-vacuous sentinel that reds if the whole component vanished.
-//
-// RETIRED IN: a third arm pinned QueueSheet.svelte's chevron removal, and a loop pinned the
-// pinned-pane/scrolling-list split on QueueSheet.svelte + QueueSheetDrawer.svelte. Both components were
-// deleted with the drawer surface, so those arms had no subject left and no successor to re-point at —
-// nothing else in the tree renders a pull-up sheet. The two arms that remain here are untouched, and
-// they are why this file survives rather than going with them.
-//
-// the original assertions decided "is the deleted thing back?" by matching the EXACT deleted
-// class name or English sentence, so they red on a byte-identical revert (control C1) but pass on any
-// FUNCTIONALLY-EQUIVALENT reintroduction (a rewording, a rename, or a second spelling). So each
-// removal now ALSO carries a STRUCTURAL, name-independent assertion; the literal matchers are kept.
+// Guard: the processing-status UI had redundant elements removed. Each was a pure-markup deletion, so
+// nothing BEHAVIOURAL reds if one comes back — this source scan is the load-bearing regression trap. It
+// strips comments (so prose NAMING the removed elements neither satisfies nor trips a check) and pins two
+// removals: GuidingTrack's out-of-place "No isolated vocals …" line, and ProcessingCard's per-stage status
+// pills. Each is paired with a sentinel that reds if the whole component vanished, and with a STRUCTURAL,
+// name-independent assertion — a literal matcher alone passes on any reworded or renamed reintroduction.
 
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -36,8 +21,7 @@ function read(rel: string): string {
 
 test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the control', () => {
 	const code = read('src/lib/components/GuidingTrack.svelte');
-	// was `class="gt-slider"`. The control is <Slider variant="guiding"> now, whose geometry
-	// lives in ui/slider. This arm cares that the CONTROL is still present, not how it is spelled.
+	// The control is <Slider variant="guiding"> now; this arm cares that the CONTROL is present, not how it is spelled.
 	expect(code).toContain('<Slider');
 	expect(code).toContain('variant="guiding"');
 	expect(code).toContain('disabled={!available}');
@@ -49,8 +33,7 @@ test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the c
 test('ProcessingCard drops the per-stage status pills, keeps bar + stage line', () => {
 	const code = read('src/lib/components/ProcessingCard.svelte');
 	expect(code).toContain('class="progress"');
-	// the bar is <Progress> now — same idiom, consolidated out of two components, and it
-	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged.
+	// the bar is <Progress> now — same idiom, and it carries role="progressbar" with aria-valuenow.
 	expect(code).toContain('<Progress');
 	expect(code).toContain('class="stage"');
 	expect(code).not.toContain('class="chips"');

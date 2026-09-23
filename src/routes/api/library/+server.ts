@@ -1,10 +1,4 @@
-// GET /api/library — the durable catalog's two interesting states for a just-loaded client that
-// has received no broadcasts yet:
-//   library — stems already on disk. Re-queueing skips the worker (no 1–2 min process), the whole
-//             point of persisting the catalog.
-//   processing — songs separating RIGHT NOW, with live progress. Without this, reloading the phone
-//             mid-process lost the progress bar until the next broadcast fired.
-// Read-only and unauthenticated, like /api/search — queueing still requires a joined singer.
+// GET /api/library — the durable catalog's two interesting states for a just-loaded client that has received no broadcasts yet: `library` (stems already on disk — re-queueing skips the worker, the whole point of persisting the catalog) and `processing` (songs separating RIGHT NOW with live progress, so reloading mid-process doesn't lose the progress bar until the next broadcast). Read-only and unauthenticated, like /api/search — queueing still requires a joined singer.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
@@ -16,31 +10,15 @@ import type { MediaStatus } from '$lib/contract';
 export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();
 
-	// Browse: an optional facet filter. Only READY songs are browsable — the catalog holds
-	// every search result ever materialised (271 rows for 7 processed songs on the live box), so browsing
-	// the whole table would bury the library in things you cannot sing yet.
-	// One active browse facet at a time (the phone UI enforces this too): an artist filter, a tag
-	// filter, or neither. `?tag=` reuses the media_tags byKindValue index via byTag — NOT a client-side
-	// filter over the whole payload, which the an earlier change design rejected because it wastes an on-disk index
-	// and stops scaling past a few hundred songs. artist wins if both are somehow present, matching the
-	// mutual-exclusion the chip row already imposes.
+	// Browse: an optional facet filter, one at a time (artist or tag, never both — matching the mutual-exclusion the chip row already imposes; artist wins if both are somehow present). Only READY songs are browsable — the catalog holds every search result ever materialised, far more than what's singable. `?tag=` reuses the media_tags byKindValue index via byTag rather than filtering the whole payload client-side, which doesn't scale past a few hundred songs.
 	const artist = url.searchParams.get('artist')?.trim();
 	const tag = url.searchParams.get('tag')?.trim();
 	const library = artist ? app.media.byArtist(artist) : tag ? app.media.byTag(tag) : app.media.listReady();
 
-	// The hub validates adds against the runtime catalog, so anything we offer for one-tap re-queue
-	// must be resolvable there. Boot hydration already covers this; re-seeding keeps the endpoint
-	// honest if a row was written by another path.
+	// The hub validates adds against the runtime catalog, so anything offered for one-tap re-queue must be resolvable there; re-seeding keeps this endpoint honest if a row was written by another path.
 	hydrateMediaCatalog(library, app.mediaById);
 
-	// A song's descriptive tags, so the library row can show what a song IS ("acoustic", "80s")
-	// without a second round-trip. Kept as a mediaId → string[] map ALONGSIDE `library` rather than
-	// folded into each Media: `Media` is the song's origin identity (search dedupes on it), and tags
-	// live in their own table written by a separate path (`setTags(id, 'tag', …)` in app.ts). A map is
-	// also the shape an earlier change's tag filter reads — it needs "which songs carry tag X" cheaply, which a
-	// per-row array does not give. `tagsOf` defaults to the 'genre' kind, so 'tag' is passed
-	// explicitly: that is the kind the sidecar write path populates. Only entries WITH tags are
-	// included; a song with none is simply absent from the map (the row omits the chips).
+	// A song's descriptive tags, so the library row can show what a song IS ("acoustic", "80s") without a second round-trip. Kept as a mediaId → string[] map alongside `library` rather than folded into each Media: tags live in their own table, written by a separate path (`setTags(id, 'tag', …)` in app.ts), and a map is also what the tag filter needs — "which songs carry tag X" cheaply, which a per-row array doesn't give. `tagsOf` defaults to the 'genre' kind, so 'tag' is passed explicitly — that's the kind the sidecar write path populates. A song with no tags is simply absent from the map.
 	const tags: Record<string, string[]> = {};
 	for (const m of library) {
 		const t = app.media.tagsOf(m.id, 'tag');
@@ -51,10 +29,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const processing = [...app.mediaById.values()]
 		.filter((m) => readinessOf(m) === 'processing')
 		.map((media) => {
-			// The OUTSTANDING step, whatever its type. This asked for a live `stems` job and nothing else,
-			// so a song mid-fetch or mid-align matched none and fell through to the hardcoded 'queued'
-			// below — a phone reloading during either step watched the progress strip jump backwards, the
-			// same defect the broadcasts had (see jobs/media-status.ts).
+			// findOutstandingForMedia only asks for a live `stems` job, so a song mid-fetch or mid-align matches none and falls through to 'queued' below — a phone reloading during either step sees the progress strip jump backwards (see jobs/media-status.ts for the broadcast-side twin).
 			const job = app.jobs.findOutstandingForMedia(media.id);
 			return {
 				media,
@@ -67,12 +42,8 @@ export const GET: RequestHandler = async ({ url }) => {
 	return json({
 		library,
 		processing,
-		// mediaId → its 'tag'-kind values, for the library row's tag chips. Additive: a client
-		// that does not read it is unaffected, and an earlier change's tag filter reads this same map.
-		tags,
-		// Browse facets always describe the WHOLE ready library, never the current filter — otherwise
-		// picking an artist would collapse the facet list to that one artist and strand you there. The
-		// tag facet rides the same rule and the same byKindValue index the tag filter reads.
+		tags, // mediaId → its 'tag'-kind values, for the library row's chips; additive, a client that ignores it is unaffected
+		// Facets always describe the WHOLE ready library, never the current filter — otherwise picking an artist would collapse the facet list to that one artist and strand you there.
 		facets: { artists: app.media.artistFacets(), tags: app.media.tagFacets() },
 		filter: artist ? { artist } : tag ? { tag } : null
 	});

@@ -1,8 +1,4 @@
-"""Choosing WHICH words: presplit over-long lines, then grade each candidate against what is audible.
-
-Extracted from `steps/lyrics.py`, which held all six lyrics steps in 1029 lines — 55% of every step
-in the worker, where no other step file holds more than four.
-"""
+"""Choosing WHICH words: presplit over-long lines, then grade each candidate against what is audible."""
 
 from __future__ import annotations
 
@@ -60,8 +56,8 @@ class GradeAndSelect(Step):
     name = "grade-and-select"
     stage = Stage.ALIGNING
     # audio.duration_sec is read so the overshoot demotion can measure how far a candidate's own
-    # timings run past the end of the audio. `runtime/plan.py` fails plan validation for a key nothing
-    # produces, so this must be declared, not read implicitly.
+    # timings run past the end of the audio; `runtime/plan.py` fails plan validation for an
+    # undeclared read.
     reads = frozenset({"lyrics.texts", "audio.duration_sec"})
     writes = frozenset({"lyrics.selection", "lyrics.texts", "lyrics.baselines"})
 
@@ -79,26 +75,16 @@ class GradeAndSelect(Step):
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         duration_sec = ctx.audio.duration_sec
         sel = select_by_baselines(ctx.lyrics.texts, duration_sec)
-        # Report overshoot in the same operator log that already carries timing defects (piece 2),
-        # so a candidate timed past audio-end is visible in the process log rather than only on the TV.
-        #
-        # report from the candidates as they were BEFORE selection, not from `sel.publish`. A
-        # candidate DEMOTED for overshoot (grading.py overshoot_penalized) is not among the survivors, so
-        # iterating `sel.publish` fired the note exactly when the demotion changed nothing and stayed
-        # SILENT exactly when it changed the outcome — the one case an earlier change piece 2 exists for. Walk
-        # every
-        # pre-selection candidate (each source's own text plus its alternates); `select_by_baselines`
-        # does not mutate its input (it rebinds via `replace`), so `ctx.lyrics.texts` still carries them.
-        # Published-vs-demoted is decided by identity against `sel.publish` on (text_source, variant),
-        # which survive the winner's `replace(..., alternates=[])`.
+        # Report overshoot from the candidates as they were BEFORE selection, not from `sel.publish`:
+        # a candidate DEMOTED for overshoot is not among the survivors, so iterating `sel.publish`
+        # would stay silent exactly when the demotion changed the outcome.
+        # `select_by_baselines` does not mutate its input (it rebinds via `replace`), so
+        # `ctx.lyrics.texts` still carries every pre-selection candidate plus its alternates.
         if duration_sec and duration_sec > 0:
             published_keys = {(p.text_source, p.variant) for p in sel.publish}
             winner_label = (sel.publish[0].variant or sel.publish[0].text_source) if sel.publish else "none"
-            # walk the pool ONCE into a deduped list before wording any verdict, because two of
-            # the three verdicts below are facts about the POOL, not about the candidate being reported.
-            # `is_published` is the only pool fact the old ladder had, and two of its arms wrote claims
-            # that fact does not carry. Acquisition order, so the labels read in the order the sources
-            # were fetched.
+            # Deduped pool walked once, since the verdict below needs POOL facts (e.g. whether any
+            # candidate fits the audio), not just whether THIS text is published.
             pool: list[tuple[tuple[str, str | None], str, float | None]] = []
             seen_keys: set[tuple[str, str | None]] = set()
             for candidate in candidates_of(ctx.lyrics.texts):
@@ -109,10 +95,9 @@ class GradeAndSelect(Step):
                     seen_keys.add(key)
                     pool.append((key, text.variant or text.text_source, candidate_last_end(text)))
             # A candidate FITS the audio when its own timings stay inside it, or when it carries no
-            # timings at all: `candidate_last_end` returns None for a text-only source, which cannot be
-            # said to run past audio-end and is force-aligned to THIS recording after selection. Same
-            # boundary `overshoot_penalized` demotes on, so "fits" here means exactly "the demotion has
-            # no quarrel with it".
+            # timings at all (`candidate_last_end` returns None for a text-only source, which is
+            # force-aligned to THIS recording after selection). Same boundary `overshoot_penalized`
+            # demotes on.
             fits_audio = [
                 label
                 for _k, label, end in pool
@@ -126,32 +111,20 @@ class GradeAndSelect(Step):
                     continue
                 is_published = key in published_keys
                 if over / duration_sec <= OVERSHOOT_FRACTION_MAX:
-                    # A small, tolerated overshoot the demotion did not act on — still worth seeing,
-                    # but an earlier change F2: say WHOSE. This is the only arm that can fire for a candidate
-                    # the
-                    # operator has no other way to place — `sel.choices` names a winner only when one
-                    # source offered several versions — so worded bare it read as an overshoot on the
-                    # SHIPPED lyrics when it was on a rejected rival, a false alarm about a process whose
-                    # published text does not run past the audio at all. `is_published` is already in
-                    # scope and both sibling arms state it; state it here too.
+                    # Small, tolerated overshoot: state whether it was published or not, since
+                    # `sel.choices` only names a winner when one source offered several versions, and
+                    # a bare note would otherwise read as an overshoot on the SHIPPED lyrics even when
+                    # it was on a rejected rival.
                     verdict = (
                         "within tolerance"
                         if is_published
                         else f"within tolerance — NOT published, {winner_label} was"
                     )
                 elif is_published:
-                    # Over the limit and it WON: an earlier change's own stated cost (owner ruling B fixes
-                    # some
-                    # cases, not all). an earlier change F1: whether a fitting candidate existed is decided
-                    # from the
-                    # POOL, never from `is_published`, which says only that THIS text is in
-                    # `sel.publish`. `overshoot_penalized` (lyrics/grading.py) subtracts the overshoot
-                    # FRACTION from the composite score — a COMPARATIVE penalty — so an overshooter
-                    # leading a fitting rival by more than that fraction publishes with the fitting
-                    # rival in the pool the whole time. Claiming "no candidate that fits the audio"
-                    # from `is_published` was false on every such process, and false in the direction that
-                    # ends the investigation: told nothing fit, the operator hunts a new lyrics source
-                    # instead of inspecting the text that was fetched, graded, and narrowly lost.
+                    # Over the limit and it WON anyway: `overshoot_penalized` is a COMPARATIVE penalty
+                    # (subtracts the overshoot fraction from the composite score), so an overshooter
+                    # leading a fitting rival by more than that fraction still publishes. Whether a
+                    # fitting candidate existed is a POOL fact, not decidable from `is_published` alone.
                     verdict = "past the OVERSHOOT limit — PUBLISHED anyway"
                     verdict += (
                         f", over {', '.join(fits_audio)} which fits the audio"
@@ -159,18 +132,10 @@ class GradeAndSelect(Step):
                         else ", no candidate that fits the audio"
                     )
                 else:
-                    # Over the limit and NOT published — the case an earlier change piece 2 was written to
-                    # surface.
-                    # an earlier change F2: this is the third arm of the ladder an earlier change corrected
-                    # the other two of, and
-                    # it repeated their exact defect. `is_published` False means only that THIS text is
-                    # not in `sel.publish`; it does NOT mean the overshoot penalty is why. The wrong-song
-                    # case loses on AGREEMENT by a margin the comparative `overshoot_penalized` never came
-                    # near — the winner is identical with the penalty switched off — so "DEMOTED" here
-                    # asserted a causation the step cannot see, and did so on the one line an operator
-                    # reads to decide whether an earlier change's demotion did anything. Word it from the fact
-                    # the step
-                    # actually has, mirroring the `PUBLISHED anyway` / `within tolerance` sibling arms.
+                    # Over the limit and NOT published: `is_published` False only means this text is
+                    # not in `sel.publish`, not that the overshoot penalty is why — a wrong-song
+                    # candidate can lose purely on agreement, with the penalty making no difference.
+                    # Worded from the fact the step actually has, not an unproven "DEMOTED" causation.
                     verdict = f"past the OVERSHOOT limit — NOT published, {winner_label} was"
                 ctx.note(
                     f"lyrics overshoot — {label} runs "
@@ -185,29 +150,24 @@ class GradeAndSelect(Step):
             best = sel.publish[0].variant if sel.publish else "none"
             ctx.note(f"NO authored lyrics candidate — falling back to the best baseline ({best})")
         if sel.winner_suspect:
-            # Report the number the JUDGEMENT actually used — baseline coverage — and carry the ranking
-            # score beside it. Naming only the composite would print a number that did not decide this
-            #: the two axes disagree by design on a partial baseline, which is exactly the case a
-            # reader of this line is trying to tell apart from a real wrong-song pick.
+            # Report baseline coverage (the number the JUDGEMENT actually used) with the ranking
+            # composite beside it: the two axes disagree by design on a partial baseline, which is
+            # exactly the case a reader of this line is trying to tell apart from a real wrong-song pick.
             ctx.note(
                 f"best lyrics are missing most of what was heard (baseline coverage "
                 f"{sel.winner_coverage:.2f} < {SUSPECT_COVERAGE}, ranking composite "
                 f"{sel.winner_score:.2f}) — probably the WRONG SONG; demoting it and publishing what "
                 "was actually heard alongside"
             )
-            # Demote via replace rather than `sel.publish[0].text_confidence = "low"`: that reached from
-            # the step layer straight into a domain LyricsText, mutating a caller-owned object in place
-            # (the same cross-object write an earlier change fixes in grading.py). Rebinding the list
-            # slot to a copy keeps the demotion local to the published list — see presplit.py's
-            # replace() note.
+            # Demote via replace rather than `sel.publish[0].text_confidence = "low"`, which would
+            # mutate a caller-owned LyricsText in place. Rebinding the list slot to a copy keeps the
+            # demotion local to the published list.
             sel.publish[0] = replace(sel.publish[0], text_confidence="low")
         ctx.lyrics.selection = sel
-        # Preserve the BASELINES before narrowing `texts` to what publishes. `sel.publish` is normally the
-        # single winning candidate, so a baseline survives this assignment only on the suspect/fallback
-        # paths — which meant TimeTexts, whose LRC-placement series comes from baselines, had no input on
-        # any ordinary job and silently skipped the placement. Read from `ctx.lyrics.texts` while it is
-        # still the PRE-selection pool: `select_by_baselines` does not mutate its input (it rebinds via
-        # `replace`), and the narrowing happens on the very next line.
+        # Preserve the BASELINES before narrowing `texts` to what publishes: `sel.publish` is normally
+        # the single winning candidate, so without this, TimeTexts' LRC-placement series (which reads
+        # baselines) would have no input on any ordinary job. Read while `ctx.lyrics.texts` is still
+        # the PRE-selection pool — `select_by_baselines` does not mutate its input.
         ctx.lyrics.baselines = baselines_of(ctx.lyrics.texts)
         ctx.lyrics.texts = sel.publish
         return

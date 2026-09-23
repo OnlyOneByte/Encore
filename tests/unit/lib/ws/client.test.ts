@@ -12,9 +12,8 @@ class FakeSocket implements MinimalSocket {
 	onmessage: ((ev: { data: string }) => void) | null = null;
 	sent: ClientEvent[] = [];
 	closed = false;
-	// A real WebSocket exposes readyState and throws InvalidStateError from send() when it is not
-	// OPEN. Model both: default OPEN so every existing test is unchanged, but let a test drive it to
-	// CONNECTING/CLOSING/CLOSED and have send() throw exactly like the browser does.
+	// A real WebSocket exposes readyState and throws InvalidStateError from send() when not OPEN, so this
+	// models both: OPEN by default, drivable to CONNECTING/CLOSING/CLOSED with send() throwing.
 	readyState: number = WS_OPEN;
 	send(data: string) {
 		if (this.readyState !== WS_OPEN) {
@@ -26,7 +25,6 @@ class FakeSocket implements MinimalSocket {
 		this.closed = true;
 		this.onclose?.();
 	}
-	// test helpers
 	fireOpen() {
 		this.onopen?.();
 	}
@@ -56,7 +54,7 @@ function makeClient(opts?: { backoff?: number[] }) {
 		getLastRev: () => rev,
 		onResyncNeeded: () => resyncCalls++,
 		backoff: opts?.backoff ?? [10],
-		// run "timers" manually so the test is deterministic
+		// Timers run manually, so the test is deterministic.
 		setTimeoutFn: ((fn: () => void) => {
 			timers.push(fn);
 			return timers.length as unknown as ReturnType<typeof setTimeout>;
@@ -96,10 +94,10 @@ test('gap detection: a rev-skipping patch triggers resync instead of applying', 
 	h.client.open();
 	h.sockets[0]!.fireOpen();
 	h.sockets[0]!.deliver({ type: 'queue:sync', rev: 3, entries: [] }); // now at rev 3
-	// a patch claiming rev 6 (we expected 4) = gap
+	// A patch claiming rev 6 while we expected 4 is a gap.
 	h.sockets[0]!.deliver({ type: 'queue:patch', patch: { rev: 6, ops: [] } });
 	expect(h.getResyncCalls()).toBe(1);
-	// did NOT apply the gapped patch (rev stays 3) and re-sent hello
+	// The gapped patch is not applied (rev stays 3) and hello is re-sent.
 	expect(h.getRev()).toBe(3);
 	expect(h.sockets[0]!.sent.filter((m) => m.type === 'hello')).toHaveLength(2);
 });
@@ -121,19 +119,16 @@ test('KILL + RESTORE: reconnects and resyncs to authoritative rev', () => {
 	h.sockets[0]!.deliver({ type: 'queue:sync', rev: 5, entries: [] }); // client at rev 5
 	expect(h.client.connected).toBe(true);
 
-	// network drop
 	h.sockets[0]!.close();
 	expect(h.client.connected).toBe(false);
 
-	// backoff timer fires -> dials a new socket
 	h.runTimers();
 	expect(h.sockets).toHaveLength(2);
 	h.sockets[1]!.fireOpen();
 
-	// on reconnect, client tells server its last rev (5) for resync
+	// On reconnect the client names its last rev for the resync.
 	expect(h.sockets[1]!.sent[0]).toEqual({ type: 'hello', lastRev: 5 });
 
-	// server caught it up (rev advanced to 9 while disconnected)
 	h.sockets[1]!.deliver({ type: 'queue:sync', rev: 9, entries: [] });
 	expect(h.getRev()).toBe(9);
 	expect(h.client.connected).toBe(true);
@@ -148,12 +143,9 @@ test('explicit close() does not reconnect', () => {
 	expect(h.sockets).toHaveLength(1); // no new dial
 });
 
-// FIX 1 (the resync storm): the server has ONE rev counter, bumped by queue ops AND by every
-// playback change (pause/seek/key/guide/skip). If the client only follows rev on queue:patch/sync,
-// a playback:state silently advances the server past the client, and the NEXT queue:patch then looks
-// like it skipped a rev — tripping the gap detector into a full snapshot to every phone. This wires
-// the REAL QueueStore as the rev source (getLastRev: () => store.rev) to prove the store now follows
-// playback:state's rev, so the following contiguous patch is applied, not resynced.
+// THE RESYNC STORM. The server has ONE rev counter, bumped by queue ops AND by every playback change, so a client that
+// follows rev only on queue:patch/sync falls behind on a playback:state — and the NEXT contiguous queue:patch then looks
+// gapped, tripping a full snapshot to every phone. Wired over the REAL QueueStore as the rev source.
 test('a playback:state between two queue events does NOT force a resync (Fix 1)', () => {
 	const store = new QueueStore({ sendCommand: () => {}, singerId: 'me' });
 	const sockets: FakeSocket[] = [];
@@ -178,11 +170,10 @@ test('a playback:state between two queue events does NOT force a resync (Fix 1)'
 	client.open();
 	sockets[0]!.fireOpen();
 
-	// authoritative catch-up to rev 4
 	sockets[0]!.deliver({ type: 'queue:sync', rev: 4, entries: [] });
 	expect(store.rev).toBe(4);
 
-	// a pause bumps the SHARED counter to 5 with no queue change
+	// A pause bumps the SHARED counter with no queue change.
 	sockets[0]!.deliver({
 		type: 'playback:state',
 		rev: 5,
@@ -190,15 +181,13 @@ test('a playback:state between two queue events does NOT force a resync (Fix 1)'
 	});
 	expect(store.rev).toBe(5); // client followed the playback rev — pre-fix this stayed at 4
 
-	// the next real queue op is rev 6: contiguous with 5, so it must apply, NOT resync.
-	// Pre-fix (rev stuck at 4) this patch claimed rev 6 while we expected 5 → a false gap.
+	// rev 6 is contiguous with 5, so it must APPLY: with rev stuck at 4 it reads as a false gap.
 	sockets[0]!.deliver({ type: 'queue:patch', patch: { rev: 6, ops: [] } });
 	expect(resyncCalls).toBe(0);
 	expect(store.rev).toBe(6);
 });
 
-// A stale/out-of-order playback:state must never rewind rev — that would manufacture the very gap
-// Fix 1 closes on the next patch.
+// A stale or out-of-order playback:state must never REWIND rev: that manufactures a gap on the next patch.
 test('an out-of-order playback:state does not rewind rev (Fix 1)', () => {
 	const store = new QueueStore({ sendCommand: () => {}, singerId: 'me' });
 	store.onServerEvent({ type: 'queue:patch', patch: { rev: 9, ops: [] } });
@@ -210,19 +199,14 @@ test('an out-of-order playback:state does not rewind rev (Fix 1)', () => {
 	expect(store.rev).toBe(9);
 });
 
-// The readyState guard is the whole reason send.ts exists. It funnels every phone command and
-// every TV telemetry frame, and a real WebSocket throws InvalidStateError from send() while it is
-// CONNECTING/CLOSING/CLOSED — which happens on first connect, every reconnect, and after a mobile
-// freeze. This drives #sock into a non-OPEN state and proves WsClient.send GUARDS it (skips the send,
-// returns false, does not throw, records nothing) rather than letting the throw escape.
-//
-// Discriminating: revert client.ts:115 to the pre-fix `this.#sock?.send(JSON.stringify(e))` and this
-// reds — that raw form calls send() directly, so FakeSocket throws InvalidStateError, and the throw
-// escapes client.send() instead of being turned into a clean `false`.
+// The readyState guard is the whole reason send.ts exists: it funnels every phone command and every TV telemetry frame,
+// and a real WebSocket throws InvalidStateError from send() while CONNECTING/CLOSING/CLOSED — on first connect, every
+// reconnect, and after a mobile freeze. `send` must skip, return false, throw nothing, record nothing; a raw
+// `this.#sock?.send(…)` lets the throw escape.
 test('send on a non-OPEN socket is guarded, not thrown', () => {
 	const h = makeClient();
 	h.client.open();
-	// The socket exists but has not fired onopen — a real WebSocket is CONNECTING here and send() throws.
+	// The socket exists but has not fired onopen: a real WebSocket is CONNECTING and send() throws.
 	const sock = h.sockets[0]!;
 	sock.readyState = 0; // WebSocket.CONNECTING
 
@@ -234,23 +218,9 @@ test('send on a non-OPEN socket is guarded, not thrown', () => {
 	expect(sock.sent).toHaveLength(0); // nothing went out
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * Merged in from `liveness.test.ts`.
- *
- * It was a satellite: a separate file named for ONE behaviour of the module this file already
- * covers. Several files about one module tell a reader nothing about which holds what, so finding
- * where a behaviour is pinned meant opening all of them. The tests are unchanged.
- *
- * Its `FakeSocket, makeClient` fixture(s) were renamed with the `_Liveness` suffix: this file already had a
- * declaration of that name meaning something slightly different, so both are kept and each block
- * keeps the fixture its assertions were written against. Collapsing them is a separate, readable step.
- * ───────────────────────────────────────────────────────────────────────────── */
-// A page frozen by the OS (phone locked, laptop lid shut, tab backgrounded) leaves a socket that is
-// dead but never fires `close` — so the old client sat there believing it was connected, beating a
-// heartbeat into a void, and recovered only if the OS eventually got round to firing close. There was
-// also no listener for visibilitychange/pageshow/online, so nothing reacted to the page waking up.
-//
-// Two mechanisms cover it: wake() (bound to those events) and a liveness watchdog on the heartbeat.
+// A page frozen by the OS (phone locked, lid shut, tab backgrounded) leaves a socket that is dead but never fires
+// `close`, so a client without a watchdog believes it is connected and beats a heartbeat into a void. Two mechanisms
+// cover it: `wake()` bound to visibilitychange/pageshow/online, and a liveness watchdog on the heartbeat.
 
 class FakeSocket_Liveness implements MinimalSocket {
 	onopen: (() => void) | null = null;
@@ -329,7 +299,7 @@ test('a socket that stops answering is torn down and redialled, even with no clo
 	h.sockets[0]!.deliver({ type: 'queue:sync', rev: 4, entries: [] });
 	expect(h.client.connected).toBe(true);
 
-	// heartbeat goes out; the server never answers (frozen page / dead wifi, socket still "open")
+	// The heartbeat goes out and the server never answers: frozen page or dead wifi, socket still "open".
 	h.fire(1000);
 	expect(h.sockets[0]!.sent.filter((m) => m.type === 'hello')).toHaveLength(2);
 	expect(h.client.connected).toBe(true); // nothing has told us otherwise yet
@@ -358,8 +328,8 @@ test('an answered heartbeat does NOT trip the watchdog', () => {
 });
 
 test('presumed-dead teardown does not double-dial via the socket own close handler', () => {
-	// close() on a real socket fires onclose, which would schedule a SECOND reconnect on top of the
-	// one #presumeDead already scheduled — two sockets per drop, forever.
+	// close() on a real socket fires onclose, which schedules a SECOND reconnect on top of the one
+	// #presumeDead already scheduled: two sockets per drop, forever.
 	const h = makeClient_Liveness();
 	h.client.open();
 	h.sockets[0]!.fireOpen();
@@ -421,14 +391,10 @@ test('connection edges are reported once each, so the UI can show an offline cue
 	expect(h.edges).toEqual([true, false, true]);
 });
 
-// The reconnect-path socket leak: #dial() overwrote #sock without disposing the socket it replaced, so the wake/reconnect
-// path reintroduced exactly what #presumeDead defends against on the death path. A single lifecycle
-// event during a reconnect (a phone unlocking mid-connect -> one visibilitychange -> wake) dialled a
-// second socket while the first was still CONNECTING (wake() checks !connected, which is false for the
-// whole connecting window). When the first socket then completed, BOTH were live subscribers, and the
-// orphan kept its onclose -- so its eventual close ran #clearTimers()/#setConnected(false) against the
-// CURRENT socket, killing the live socket's heartbeat and watchdog. See the "two sockets per drop,
-// forever" liveness invariant above; this is that invariant for the reconnect path.
+// The same "two sockets per drop" invariant, on the RECONNECT path. `#dial()` must dispose the socket it replaces: one
+// lifecycle event mid-connect (a phone unlocking, so one visibilitychange, so wake(), whose !connected check is false for
+// the whole connecting window) dials a second socket while the first is still CONNECTING. Both become live subscribers,
+// and the orphan keeps its onclose — so its eventual close runs #clearTimers()/#setConnected(false) on the CURRENT one.
 
 /** Sockets that opened and have not since been closed -- i.e. real live subscribers. */
 const liveSockets = (sockets: FakeSocket_Liveness[]) => sockets.filter((s) => !s.closed);
@@ -439,21 +405,20 @@ test('a wake during a reconnect does not leave a second live socket', () => {
 	h.sockets[0]!.fireOpen();
 	h.sockets[0]!.deliver({ type: 'queue:sync', rev: 4, entries: [] });
 
-	// socket 0 drops; backoff fires and #dial() runs -> socket 1 is CONNECTING, connected === false
+	// socket 0 drops, backoff fires, #dial() runs: socket 1 is CONNECTING and connected is false.
 	h.sockets[0]!.close();
 	h.fire(10);
 	expect(h.sockets).toHaveLength(2);
 	expect(h.client.connected).toBe(false);
 
-	// phone unlocks mid-connect: ONE visibilitychange -> wake() -> !connected -> #dial() again
+	// The phone unlocks mid-connect: one visibilitychange, so wake(), so #dial() again.
 	h.client.wake();
 
-	// socket 1 (the one we just replaced) must have been discarded before socket 2 was opened, so when the
-	// server accepts it, it is NOT a second live subscriber.
+	// socket 1 must have been discarded before socket 2 opened, so it is not a second live subscriber.
 	h.sockets[1]!.fireOpen();
 	h.sockets[2]!.fireOpen();
 
-	// exactly one live socket, and it is the one #sock points at (the last dialled).
+	// Exactly one live socket, and it is the one #sock points at.
 	expect(liveSockets(h.sockets)).toHaveLength(1);
 	expect(h.sockets[2]!.closed).toBe(false);
 	expect(h.sockets[1]!.closed).toBe(true);
@@ -472,8 +437,8 @@ test('the surviving socket keeps its heartbeat after a wake-orphaned socket clos
 	h.sockets[2]!.fireOpen(); // the live socket opens and beats
 	if (h.client.connected) expect(h.client.connected).toBe(true);
 
-	// The discarded socket 1 has its handlers detached, so even if the real server later closes it,
-	// that close must NOT tear down the live socket's timers or flip us offline.
+	// The discarded socket's handlers are detached, so a later close from the server must NOT tear down the
+	// live socket's timers or flip us offline.
 	const beatsBefore = h.sockets[2]!.sent.filter((m) => m.type === 'hello').length;
 	h.sockets[1]!.onclose?.(); // simulate the orphan's late close arriving (no-op if detached)
 

@@ -1,21 +1,17 @@
-// The drawer's scrim and its modality are ONE decision, pinned as one.
+// guard: the drawer's scrim and its modality are ONE decision. See
+// docs/GUARDS.md#vendored-component-seams.
 //
-// THE DEFECT. `NowPlayingDrawer` sets `modal={false}` — it must, being a permanently-mounted sheet whose
-// collapsed height is the docked band on every phone surface, so a scrim and a focus trap would cover the
-// page the guest is using. `vaul-svelte` gates the overlay on exactly that flag
-// (`use-drawer-overlay.svelte.js`: `shouldRender = ctx.modal.current`), so the `<DrawerOverlay />` the
-// vendored `drawer-content.svelte` rendered could never mount. Measured on the running app: no
-// `[data-slot='drawer-overlay']` in the DOM at either snap point.
+// `NowPlayingDrawer` must be `modal={false}`, being a permanently-mounted sheet whose collapsed height is
+// the docked band on every phone surface — a scrim and a focus trap would cover the page in use. But
+// `vaul-svelte` gates its overlay on exactly that flag (`shouldRender = ctx.modal.current`), so the
+// `<DrawerOverlay />` the vendored content rendered could never mount: measured on the running app, no
+// `[data-slot='drawer-overlay']` in the DOM at either snap point. So the render, the Root's
+// `fadeFromIndex`, and ~50 lines of fade CSS with two `-global-` keyframes were all describing a scrim
+// that does not exist, and all three are gone.
 //
-// Three things were therefore describing a scrim that does not exist — the render, the Root's
-// `fadeFromIndex={1}` ("so there is no scrim while the band is just sitting there", implying one appears
-// when it is not), and ~50 lines of hand-written fade CSS with two `-global-` keyframes in the overlay
-// component. All three are gone.
-//
-// WHY A GUARD AND NOT JUST A COMMENT. The coupling is invisible in both directions: setting `modal={true}`
-// later would silently ship a modal dialog with NO scrim (the overlay is no longer rendered), and a
-// `shadcn-svelte add drawer --overwrite` would silently restore the render, putting the dead fade back in
-// a file whose header says it was deleted. Either way `bun test` should say so, which is what this does.
+// The coupling is invisible in both directions: setting `modal={true}` later silently ships a modal dialog
+// with NO scrim, and `shadcn-svelte add drawer --overwrite` silently restores the render, putting the dead
+// fade back in a file whose header says it was deleted.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -30,9 +26,9 @@ function stripComments(src: string): string {
 }
 
 test('the app drawer is non-modal — the premise everything below rests on', () => {
-	// Whole-line, not a substring: `modal={false}` inside a longer expression would not be the prop vaul
-	// reads. This is also the non-vacuity floor for the rest of the file — if this ever flips, every
-	// assertion below is about the wrong world and must be re-decided rather than adjusted.
+	// Whole-line, not a substring: `modal={false}` inside a longer expression is not the prop vaul reads.
+	// Also the floor for the rest of the file — if this flips, every assertion below is about the wrong
+	// world and must be re-decided rather than adjusted.
 	expect(stripComments(DRAWER), 'NowPlayingDrawer must set modal={false} as its own prop').toMatch(
 		/^\s*modal=\{false\}\s*$/m
 	);
@@ -53,24 +49,20 @@ test('the inert fadeFromIndex is gone, and does not come back without an overlay
 });
 
 test('the overlay component carries no fade rule while nothing renders it', () => {
-	/*
-	 * The rule was `:global([data-slot='drawer-overlay'])` plus two `-global-` keyframes. No element has
-	 * carried that slot since the render went, so the selector matched nothing and the keyframes were
-	 * emitted for nobody — dead code that reads as live, in the one directory a re-vendor overwrites.
-	 */
+	// No element has carried that slot since the render went, so the selector matched nothing and the keyframes were
+	// emitted for nobody — dead code that reads as live, in the one directory a re-vendor overwrites.
 	expect(OVERLAY, 'the overlay must declare no fade while it is unrendered').not.toMatch(/@keyframes/);
 	expect(OVERLAY, 'and no animation to go with it').not.toMatch(/animation:/);
-	// Still VENDORED though, so a future modal drawer is one import away rather than a re-download. Its
-	// deviation header is what tells the next reader why it has no consumer.
+	// Still VENDORED, so a future modal drawer is one import away rather than a re-download; its deviation
+	// header is what tells the next reader why it has no consumer.
 	expect(OVERLAY, 'the component itself stays, with its reason recorded').toMatch(/ENCORE DEVIATIONS/);
 	expect(OVERLAY).toMatch(/DrawerPrimitive\.Overlay/);
 });
 
 test('the sheet still has an EDGE, since it has no scrim to separate it from the page', () => {
 	// With no dimming, the only thing distinguishing an open sheet from the page behind it is its own top
-	// border and surface. `border-border` is itself a defect fix recorded in that file (the class list sets
-	// only border-WIDTH, so the colour fell through to `currentColor` and every sheet drew a white
-	// hairline), and losing it now would leave the boundary to the popover background alone.
+	// border and surface. `border-border` is itself a fix — the class list sets only border-WIDTH, so the
+	// colour fell through to `currentColor` and every sheet drew a white hairline.
 	const live = stripComments(CONTENT);
 	expect(live).toMatch(/border-border/);
 	expect(live).toMatch(/data-\[vaul-drawer-direction=bottom\]:border-t/);

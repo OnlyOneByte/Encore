@@ -52,7 +52,7 @@ test('ended telemetry marks current done and advances to next by seq', () => {
 
 	handleTelemetry({ positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
-	// q1 is marked done -> pruned from the queue (terminal entries don't linger, Finding #3a)
+	// q1 is marked done -> pruned from the queue; terminal entries do not linger
 	expect(state.entries.find((e) => e.id === 'q1')).toBeUndefined();
 	expect(state.entries.find((e) => e.id === 'q2')!.status).toBe('playing');
 });
@@ -145,8 +145,8 @@ test('reconcileOnReady: something already playing → only re-emits nowplaying (
 });
 
 test('two ended frames do not double-advance: the stale ended for a no-longer-current entry is ignored', () => {
-	// Queue Alice, Bob, Cara. Alice plays, ends. A SECOND `ended` (a duplicate send, a second TV,
-	// or a reconnecting TV replaying its last frame) must not consume Bob's turn too.
+	// A SECOND `ended` (a duplicate send, a second TV, or a reconnecting TV replaying its last frame) must not
+	// consume Bob's turn too.
 	const { state, deps } = harness();
 	deps.mediaById.set('m3', media('m3'));
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') }); // Alice
@@ -185,10 +185,9 @@ test('an ended with no entry id keeps legacy behaviour (backward compatible with
 });
 
 test('a stale position frame naming the outgoing entry after an advance does NOT move the playhead', () => {
-	// q1 plays at ~87s, then a skip/ended advances to q2 (fresh position 0). The outgoing <audio>
-	// for q1 fires one more ontimeupdate across the round-trip + slot swap: a POSITION frame naming
-	// q1, which is no longer current. Before the stale-frame fix it was written unconditionally (q2.positionSec=87)
-	// and fed back to the TV as a seek target, starting q2 87s in. It must now be dropped.
+	// The outgoing <audio> for q1 fires one more ontimeupdate across the round-trip and slot swap: a POSITION
+	// frame naming an entry that is no longer current. Written unconditionally it lands on q2 (positionSec=87)
+	// and is fed back to the TV as a seek target, starting the next singer 87s in.
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
@@ -224,16 +223,10 @@ test('an id-less position frame keeps legacy behaviour (older TV unaffected)', (
 });
 
 test('the TV wires sendTelemetry through the pure telemetryFrame(status, current, …) so the stamp is reachable', () => {
-	// The server drop (player.ts) can only fire on a frame that CARRIES an entryId. Before the
-	// stale-frame fix the TV stamped one only on `ended`, so position frames arrived id-less and the
-	// guard's first conjunct was false. The stamp was then lifted out of this .svelte into the pure telemetryFrame()
-	// (src/lib/tv/telemetry.ts), whose OUTPUT is asserted behaviourally in telemetry.test.ts beside
-	// it — so the stamp is now run, not grepped for. This source-scan only pins the WIRING that
-	// reverting the client hunk would break: sendTelemetry must delegate to telemetryFrame passing
-	// the live `current` (not a hardcoded/undefined id) and must not resurrect the ended-only form.
-	// The route named explicitly: the old form was
-	// `at('src/routes/tv/+page.svelte')`, which only meant this file
-	// while the test sat in src/lib/server/realtime. `read` throws on a wrong path.
+	// The server-side stale-frame drops can only fire on a frame that CARRIES an entryId, so the TV stamping one
+	// only on `ended` makes every position frame id-less and both drops inert. The stamp itself lives in the pure
+	// telemetryFrame() and is asserted behaviourally there; this only pins the WIRING — sendTelemetry must
+	// delegate to telemetryFrame passing the live `current`, never a hardcoded id or the ended-only form.
 	const src = read('src/routes/tv/+page.svelte');
 	const body = src.split('function sendTelemetry(')[1]?.split('\n\t}')[0] ?? '';
 	expect(body).toContain('telemetryFrame(status, current'); // delegates, passing the live current

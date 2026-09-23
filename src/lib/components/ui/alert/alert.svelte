@@ -1,36 +1,11 @@
 <!--
-  ── ENCORE DEVIATIONS (P0 · alert adoption) ──────────────────────────────────────────────────
-  1. TONE VARIANTS REPLACE THE REGISTRY'S TWO. Upstream ships `default` (`bg-card`) and
-     `destructive` (`text-destructive bg-card`) — both of which paint the CARD surface and carry the
-     tone in the ink only. Encore already had a tinted-panel vocabulary for exactly this job
-     (`--danger-bg`/`--danger-line`/`--danger-ink`, and the same triple for warn and ok), and
-     `/metrics`'s no-worker banner was already drawn that way. Keeping the registry's flat card would
-     have made the adopted banner LESS legible than the hand-rolled one it replaced, so the variants
-     are `default | destructive | warn | accent`, each a fill + line + ink triple.
+  Each variant is a fill + line + ink TRIPLE, so a tinted banner is legible on its own; the registry's
+  two variants carry the tone in the ink over a flat card. Every one names its own border colour, because
+  the registry's bare `border` sets width only and falls back to currentColor — an ink-bright hairline.
+  `ok` is deliberately undefined: no call site needs it, and vendored-but-unwired reads as migrated.
 
-     `ok` is deliberately NOT defined: no call site needs it, and "vendored but unwired reads as
-     migrated when it is not" (`ui/README.md`).
-
-     Named `destructive` rather than Badge's `bad` so a future `shadcn-svelte add alert --overwrite`
-     still diffs cleanly against the registry. That is a knowing inconsistency with Badge's tone
-     names, recorded here rather than silently introduced.
-
-  2. `border` GAINS AN EXPLICIT COLOUR. The registry writes bare `border`, which sets width only, so
-     the colour falls back to `currentColor` — a `--ink`-bright hairline on the default variant and a
-     full-strength danger line on destructive. Every variant now names its own border token.
-
-  3. `rounded-lg` → `rounded-[var(--radius-sm)]`. Encore defines no `--radius-lg`, so `rounded-lg`
-     resolved against Tailwind's default 0.5rem instead of the app's scale — the same silent-drift
-     class as the `max-w-xs` → 6px trap found while adopting `alert-dialog`. `--radius-sm` (12px) is
-     what `/metrics`'s banner already used.
-
-  4. `px-4 py-3` → `--space-lg` / `--space-md`. Numeric spacing resolves against Tailwind's
-     `--spacing` multiplier rather than Encore's 10-step scale.
-
-  5. `text-sm` REMOVED. Phone surfaces size type off `--ph-text-*` in rem so the guest's browser text
-     setting reaches it (`phone-inventory.test.ts` bans absolute font sizes here); `--ph-text-base`
-     also matches the deliberate raise `/metrics` made when its banner became the page's most
-     important line.
+  Radius, spacing and type are arbitrary values off Encore's tokens rather than t-shirt or numeric
+  utilities, which resolve against Tailwind's own scales instead. See docs/FRONTEND.md#shared-components.
 -->
 <script lang="ts" module>
 	import { type VariantProps, tv } from 'tailwind-variants';
@@ -68,14 +43,8 @@
 		...restProps
 	}: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
 		variant?: AlertVariant;
-		/*
-		 * The registry hardcodes `role="alert"`. Encore needs `role="status"` on two of its call sites —
-		 * `/metrics`'s no-worker banner and `/admin`'s post-delete notice are POLITE: they report a
-		 * standing condition and the outcome of an action the operator just took, neither of which
-		 * should interrupt what a screen reader is saying. `phone-inventory.test.ts` inventories every
-		 * live region and requires all of them to be polite, so a hardcoded assertive role here would
-		 * have been a guard failure rather than a preference.
-		 */
+		/* Overridable, unlike the registry's hardcoded `alert`: `phone-inventory.test.ts` inventories every
+		   live region and requires all of them to be POLITE, so the two banner call sites pass `status`. */
 		role?: 'alert' | 'status' | null;
 	} = $props();
 </script>

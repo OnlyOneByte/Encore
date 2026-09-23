@@ -87,11 +87,6 @@ def test_resolved_engines_no_longer_carries_a_separator_model() -> None:
     nobody checked, and it was read by nothing.
     """
     assert not hasattr(ResolvedEngines(), "separator_model")
-
-
-# ── SeparationTuning: one value for the nine knobs ────────────────────────────────────────────────
-
-
 def test_tuning_is_frozen_so_a_plan_closure_cannot_retune_the_box() -> None:
     """It is threaded through several layers; a mutable one would let one job change every later job."""
     import dataclasses

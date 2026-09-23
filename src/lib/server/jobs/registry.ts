@@ -1,7 +1,5 @@
-// Worker registry — IN-MEMORY ONLY, rebuilt from dial-home reconnects, never persisted (§10).
-// A worker exists here only while it has a live WS session; on disconnect it's dropped and its
-// in-flight jobs are reclaimed by the reaper via lease expiry. Tracks free slots so the
-// dispatcher can pick the least-loaded eligible worker (§4).
+// In-memory only, rebuilt from worker reconnects, never persisted. A dropped worker's in-flight
+// jobs are reclaimed by the reaper via lease expiry, not by anything in this file.
 
 import type { WorkerHost } from '../../contract';
 
@@ -12,23 +10,14 @@ export interface WorkerSession {
 	version: string;
 	slotsFree: number; // concurrency minus jobs currently assigned/running to it
 	lastSeen: number; // epoch ms of the last hello/heartbeat (liveness)
-	/**
-	 * What box this worker runs on, as it reported at handshake. Optional: a worker built before this
-	 * existed sends nothing, and the probes are best-effort even on one that does. Kept so a reader of
-	 * "stems took 43 minutes" can tell whether that was a GPU or four shared cores — previously the
-	 * worker resolved all of this at startup and only ever printed it to its own stdout.
-	 */
+	/** Host info reported at handshake; optional since older workers send none. Lets a reader tell a slow GPU stems run from a shared-core one. */
 	host?: WorkerHost;
 }
 
 export class WorkerRegistry {
 	#workers = new Map<string, WorkerSession>();
 
-	/**
-	 * Register or re-register a worker (`worker:hello`). A reconnect with the same workerId REPLACES
-	 * the prior session (capabilities/concurrency may have changed); slotsFree resets to concurrency
-	 * and the dispatcher will re-assign from the ledger. Returns the session.
-	 */
+	/** Re-registering an existing workerId REPLACES the session: slotsFree resets to concurrency and the dispatcher re-assigns from the ledger, so a reconnect never keeps a stale slot count. */
 	hello(
 		workerId: string,
 		capabilities: string[],
@@ -50,8 +39,7 @@ export class WorkerRegistry {
 		return session;
 	}
 
-	/** Liveness + slot reconciliation from a `worker:heartbeat` (the worker is the source of truth
-	 *  for what it's actually running). No-op if the worker isn't registered (stale heartbeat). */
+	/** The worker is the source of truth for slotsFree; no-op if it isn't registered (stale heartbeat). */
 	heartbeat(workerId: string, slotsFree: number, now: number): void {
 		const w = this.#workers.get(workerId);
 		if (!w) return;
@@ -68,13 +56,11 @@ export class WorkerRegistry {
 		this.#workers.delete(workerId);
 	}
 
-	/** Decrement a worker's free slots on dispatch (clamped at 0). */
 	claimSlot(workerId: string): void {
 		const w = this.#workers.get(workerId);
 		if (w) w.slotsFree = Math.max(0, w.slotsFree - 1);
 	}
 
-	/** Return a freed slot when a job leaves the worker (complete/fail/cancel/requeue). */
 	releaseSlot(workerId: string): void {
 		const w = this.#workers.get(workerId);
 		if (w) w.slotsFree = Math.min(w.concurrency, w.slotsFree + 1);

@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { resolveMediaStoreConfig, normalizePrefix, objectKey, LocalMediaStore } from '$lib/server/media/store';
 import { ObjectMediaStore, type S3Like } from '$lib/server/media/object-store';
 
-// ── pure config resolver ─────────────────────────────────────────────────────────
 test('resolveMediaStoreConfig defaults to local', () => {
 	expect(resolveMediaStoreConfig({})).toEqual({ kind: 'local' });
 	expect(resolveMediaStoreConfig({ MEDIA_STORE: 'local' })).toEqual({ kind: 'local' });
@@ -49,15 +48,14 @@ test('objectKey joins prefix + ref', () => {
 });
 
 test('mediaProxyUrl and MediaStore.url are GONE — the route is the only URL builder', () => {
-	// Deleted for having no production caller (docs/arch/01-media.md). Asserted here as
-	// well as in the source-scan guard because this file is where the deleted behaviour was pinned,
-	// and an import of a removed export must fail as a missing member rather than as `undefined`.
+	// Deleted for having no production caller. Asserted here as well as in the source scan, so an import of
+	// a removed export fails as a missing member rather than as `undefined`.
 	const store: Record<string, unknown> = new LocalMediaStore() as unknown as Record<string, unknown>;
 	expect(store.url).toBeUndefined();
 	expect('url' in store).toBe(false);
 });
 
-// ── LocalMediaStore (real disk round-trip in a temp dir) ───────────────────────────
+// LocalMediaStore — a real disk round-trip in a temp dir.
 let dir: string;
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), 'encore-store-'));
@@ -82,11 +80,9 @@ test('LocalMediaStore refuses an unsafe ref on put and returns null on get/exist
 	expect(await store.exists('../escape.wav')).toBe(false);
 });
 
-// ── the range capability the /media route serves byte ranges from ──────────────────
-// `size` + `getRange` are what let the route answer `206 Partial Content`. Without them the route
-// hands a media element the whole file for a `Range: bytes=0-1` probe, and WebKit refuses to play at
-// all — see media/http-range.ts. Tested against real bytes on disk because the bug these guard is an
-// off-by-one at the slice boundary, which no amount of mocking would surface.
+// `size` + `getRange` are what let the route answer `206 Partial Content`. Without them it hands a media
+// element the whole file for a `Range: bytes=0-1` probe and WebKit refuses to play at all. Tested against
+// real bytes on disk, because the bug is an off-by-one at the slice boundary that mocking hides.
 
 test('LocalMediaStore.size reports the byte length, and null for absent/unsafe refs', async () => {
 	const store = new LocalMediaStore();
@@ -105,9 +101,8 @@ test('LocalMediaStore.getRange treats end as INCLUSIVE, matching HTTP', async ()
 
 	expect(await text(0, 1)).toBe('01'); // the WebKit probe: two bytes, not one
 	expect(await text(3, 5)).toBe('345'); // a mid-file slice keeps both endpoints
-	// The final byte is reachable — an exclusive end would drop it and read as a corrupt stream.
+	// The final byte is reachable: an exclusive end drops it and reads as a corrupt stream.
 	expect(await text(9, 9)).toBe('9');
-	// The whole file, which is how the route serves a full 200 with a Content-Length.
 	expect(await text(0, 9)).toBe('0123456789');
 
 	await rm(dir, { recursive: true, force: true });
@@ -120,12 +115,10 @@ test('LocalMediaStore.getRange returns null for an absent or unsafe ref', async 
 });
 
 test('LocalMediaStore.getRange hands back a Blob of exactly the range length', async () => {
-	// Blob-ness is not incidental. Bun sends a ReadableStream body chunked and DROPS an explicit
-	// content-length, so returning a stream here would silently cost the response the header a media
-	// element reads the resource size from; a Blob lets the runtime set it from `size`. The header
-	// itself is a wire-level concern the in-process `Response` does not expose, so it is verified
-	// against a live server (`curl -D -`) rather than asserted here — what is asserted is the property
-	// the runtime derives it from.
+	// Blob-ness is load-bearing: Bun sends a ReadableStream body chunked and DROPS an explicit
+	// content-length, so a stream costs the response the header a media element reads the resource size
+	// from, where a Blob lets the runtime set it from `size`. The header itself is wire-level and not
+	// visible on an in-process `Response`, so what is asserted is the property it is derived from.
 	const store = new LocalMediaStore();
 	await store.put('stems/x-instrumental.flac', new TextEncoder().encode('0123456789'));
 	const body = await store.getRange('stems/x-instrumental.flac', 2, 4);
@@ -134,7 +127,7 @@ test('LocalMediaStore.getRange hands back a Blob of exactly the range length', a
 	await rm(dir, { recursive: true, force: true });
 });
 
-// ── ObjectMediaStore with an in-memory fake S3 ─────────────────────────────────────
+// ObjectMediaStore over an in-memory fake S3.
 function fakeS3(): S3Like & { store: Map<string, Blob> } {
 	const store = new Map<string, Blob>();
 	return {
@@ -154,7 +147,7 @@ function fakeS3(): S3Like & { store: Map<string, Blob> } {
 					return { size: (store.get(key) ?? new Blob()).size };
 				},
 				slice(start: number, end: number) {
-					// mirrors Bun.S3File.slice: EXCLUSIVE end, like Blob.slice
+					// Mirrors Bun.S3File.slice: EXCLUSIVE end, like Blob.slice.
 					return (store.get(key) ?? new Blob()).slice(start, end);
 				}
 			};
@@ -177,18 +170,14 @@ test('ObjectMediaStore exposes NO url() — bytes reach a client only through th
 	const store: Record<string, unknown> = new ObjectMediaStore(fakeS3(), {
 		prefix: 'encore/'
 	}) as unknown as Record<string, unknown>;
-	// The presign path (url + presignExpiresIn + proxyUrls + S3Like.presign) was deleted for having
-	// no production caller. Its absence is the behaviour now: a store answers bytes, not URLs.
+	// The presign path was deleted for having no production caller: a store answers bytes, not URLs.
 	expect(store.url).toBeUndefined();
 	expect('url' in store).toBe(false);
 });
 
-// ── ObjectMediaStore range capability (the fix for the WebKit-silent-TV bug) ───────
-// Same contract the /media route relies on: size() reports the length, getRange() returns a Blob
-// (for Content-Length) over an INCLUSIVE range. If these are absent the route degrades to a
-// range-less 200 and Safari/iOS never play — this is exactly what regressed when only the LOCAL
-// store implemented them. Asserted through the in-memory fake because the concern is the inclusive/
-// exclusive slice boundary, not the wire.
+// The same contract on the object store: size() reports the length, getRange() returns a Blob over an
+// INCLUSIVE range. Absent, the route degrades to a range-less 200 and Safari/iOS never play — which is what
+// happens when only the LOCAL store implements them.
 
 test('ObjectMediaStore.size reports the byte length, and null for an absent ref', async () => {
 	const store = new ObjectMediaStore(fakeS3(), { prefix: 'encore/' });
@@ -205,9 +194,8 @@ test('ObjectMediaStore.getRange treats end as INCLUSIVE, matching HTTP, as a Blo
 
 	expect(await text(0, 1)).toBe('01'); // the WebKit probe: two bytes, not one
 	expect(await text(3, 5)).toBe('345'); // a mid-file slice keeps both endpoints
-	// The final byte is reachable — an exclusive end would drop it and read as a corrupt stream.
+	// The final byte is reachable: an exclusive end drops it and reads as a corrupt stream.
 	expect(await text(9, 9)).toBe('9');
-	// A Blob body is what lets the response carry a Content-Length.
 	const whole = await store.getRange('stems/m1.wav', 0, 9);
 	expect(whole).toBeInstanceOf(Blob);
 	expect((whole as Blob).size).toBe(10);
@@ -218,11 +206,9 @@ test('ObjectMediaStore.getRange returns null for an absent ref', async () => {
 	expect(await store.getRange('stems/missing.wav', 0, 1)).toBeNull();
 });
 
-// PARITY: the /media route serves byte ranges only if BOTH size() and getRange() are functions, and
-// a store that omits either silently makes the TV unplayable on WebKit. So the invariant is not "the
-// object store has methods" but "every MediaStore answers them identically". Assert both shipped
-// stores are callable and agree on the same bytes for the same inclusive range, so a THIRD store
-// cannot reopen the bug — the failing state is a store that returns undefined for these members.
+// PARITY: the route serves byte ranges only if BOTH size() and getRange() are functions, so the invariant
+// is not "the object store has methods" but "every MediaStore answers them identically" — otherwise a THIRD
+// store reopens the bug by returning undefined for these members.
 test('PARITY: both shipped stores implement size()/getRange() and agree on an inclusive range', async () => {
 	const bytes = new TextEncoder().encode('0123456789');
 
@@ -236,7 +222,7 @@ test('PARITY: both shipped stores implement size()/getRange() and agree on an in
 		expect(typeof store.size).toBe('function'); // the route's degrade guard keys off this
 		expect(typeof store.getRange).toBe('function');
 		expect(await store.size!('stems/p.flac')).toBe(10);
-		// the WebKit 0-1 probe is the exact case that dies on the range-less path
+		// The WebKit 0-1 probe is the case that dies on the range-less path.
 		expect(await new Response(await store.getRange!('stems/p.flac', 0, 1)).text()).toBe('01');
 		expect(await new Response(await store.getRange!('stems/p.flac', 3, 5)).text()).toBe('345');
 		const whole = await store.getRange!('stems/p.flac', 0, 9);
@@ -248,29 +234,28 @@ test('PARITY: both shipped stores implement size()/getRange() and agree on an in
 
 test('INTEGRATION: a remote worker publishes stems to the bucket; the core reads them back via the SAME key', async () => {
 	process.env.MEDIA_DIR = '/srv/encore/media';
-	// one shared bucket both sides talk to (the "second box" topology — worker and core only share S3)
+	// One shared bucket: the "second box" topology, where worker and core share only S3.
 	const s3 = fakeS3();
 	const config = resolveMediaStoreConfig({ MEDIA_STORE: 'object', S3_BUCKET: 'encore-media', S3_PREFIX: 'encore/' });
 	expect(config.kind).toBe('object');
 
-	// CORE side: the store it hands the /media route + the worker:welcome config it would send.
+	// CORE side: the store it hands the /media route, plus the worker:welcome config it sends.
 	const coreStore = new ObjectMediaStore(s3, config as Extract<typeof config, { kind: 'object' }>);
 
-	// WORKER side (second box): it received welcome.mediaStore=config and, after Demucs, uploads its
-	// local instrumental to the agreed ref. Mirror the worker's objectKey(prefix, ref) layout.
+	// WORKER side: it received the welcome config and uploads its local instrumental to the agreed ref,
+	// mirroring the worker's objectKey(prefix, ref) layout.
 	const ref = 'stems/m1-instrumental.wav';
 	const workerStore = new ObjectMediaStore(s3, config as Extract<typeof config, { kind: 'object' }>);
 	await workerStore.put(ref, new TextEncoder().encode('REMOTE-INSTRUMENTAL'));
 
-	// it landed under the shared, prefixed key — the SAME key the core resolves
+	// It landed under the shared prefixed key — the SAME one the core resolves.
 	expect([...s3.store.keys()]).toEqual(['encore/stems/m1-instrumental.wav']);
 
-	// CORE reads the worker's output back (this is what the /media proxy / readiness check does)
+	// CORE reads the worker's output back, as the /media proxy and the readiness check do.
 	expect(await coreStore.exists(ref)).toBe(true);
 	expect(await new Response(await coreStore.get(ref)).text()).toBe('REMOTE-INSTRUMENTAL');
-	// and the TV reaches it through the SAME-ORIGIN /media route, not a presigned direct URL: the core
-	// serves the bytes by range off this store. Bytes DO transit the core, deliberately — see the
-	// on-record note in src/routes/media/[...path]/+server.ts for why the presign path was removed.
+	// The TV reaches it through the SAME-ORIGIN /media route, not a presigned URL: the core serves the bytes
+	// by range off this store. Bytes DO transit the core, deliberately.
 	expect(await coreStore.size(ref)).toBe('REMOTE-INSTRUMENTAL'.length);
 	expect(await new Response(await coreStore.getRange(ref, 0, 5)).text()).toBe('REMOTE');
 });

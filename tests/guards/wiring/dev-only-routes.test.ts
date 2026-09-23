@@ -1,22 +1,9 @@
-// guard: a route that calls itself dev-only must actually be gated, and the gallery must stay
-// readable as a fixture.
-//
-// THE DEFECT THIS EXISTS FOR. `src/routes/components/+page.svelte` opened with "Component preview
-// (dev-only gallery). Not a product surface." and had no gate of any kind — no `dev` check, no
-// NODE_ENV branch, nothing. It was a plain SvelteKit route, so it built and served in production, and
-// a guest who typed /components got a page of fixture songs with invented singer names. The comment
-// was the only thing standing between that page and a visitor, and a comment enforces nothing.
-//
-// WHY THE FILE IS NOT SIMPLY DELETED. It is load-bearing test infrastructure. Five guards read it AS
-// SOURCE and assert on its text, because it is the one place several components are instantiated with
-// the awkward fixtures a real library would rarely produce: a 60-character song title, a queue row
-// mid-pending-add, every singer colour at once, a lyrics card at the scale floor. Deleting the gallery
-// deletes those fixtures. So the rule is: gated at runtime, present on disk.
-//
-// The two halves are asserted together on purpose. A future edit that removes the gate reds here, and
-// so does one that removes the gallery the fixtures live in — and the second arm names the five
-// consumers explicitly rather than walking for them, so a consumer dropping its read is a visible
-// edit here instead of a quietly shorter list.
+// A route that calls itself dev-only must be GATED at runtime and PRESENT on disk. Caught: the component
+// gallery opened with "dev-only gallery. Not a product surface." and had no gate at all, so it built and
+// served in production and a guest who typed /components got fixture songs with invented singer names.
+// It is not simply deleted because five guards read it as SOURCE for fixtures a real library rarely
+// produces — a 60-character title, a row mid-pending-add, every singer colour at once, a lyrics card at
+// the scale floor. Both halves are asserted here, so removing either reds.
 
 import { test, expect } from 'bun:test';
 import { at, read } from '@encore/test-support';
@@ -27,9 +14,8 @@ const GALLERY = 'src/routes/components/+page.svelte';
 const GATE = 'src/routes/components/+page.server.ts';
 
 /**
- * Every guard that reads the gallery as a fixture. Explicit rather than a walk: the point is that a
- * fixture consumer cannot quietly stop consuming it, and a walk that stopped finding one would take
- * the check with it.
+ * Every guard that reads the gallery as a fixture, listed EXPLICITLY rather than walked: a walk that
+ * stopped finding one would take the check away with it.
  */
 const FIXTURE_CONSUMERS = [
 	'tests/guards/hygiene/queue-pending-add.test.ts',
@@ -44,12 +30,11 @@ test('the gallery route is gated to dev, not merely described as dev-only', () =
 
 	const gate = read(GATE);
 
-	// The gate must read the framework's own dev flag. A hand-rolled NODE_ENV check is not equivalent:
-	// `$app/environment`'s `dev` is what SvelteKit itself resolves for the build, so it cannot disagree
-	// with the bundle the user is actually served.
+	// The framework's own `dev`, not a hand-rolled NODE_ENV check: `$app/environment` is what SvelteKit
+	// resolves for the build, so it cannot disagree with the bundle the user is served.
 	expect(gate).toMatch(/import\s*\{\s*dev\s*\}\s*from\s*'\$app\/environment'/);
 
-	// …and it must refuse, not merely branch. `error(404, …)` from @sveltejs/kit, guarded on !dev.
+	// It must REFUSE, not merely branch.
 	expect(gate).toMatch(/from\s*'@sveltejs\/kit'/);
 	expect(gate).toMatch(/!dev/);
 	expect(gate).toMatch(/error\(\s*404/);
@@ -61,9 +46,8 @@ test('the gallery route is gated to dev, not merely described as dev-only', () =
 test('the gallery survives as a fixture surface, and every consumer still reads it', () => {
 	expect(existsSync(at(GALLERY)), `${GALLERY} is gone — five guards read it as a fixture`).toBe(true);
 
-	// Non-vacuity: the list is the check, so an empty or shrunken list asserts nothing. A FLOOR rather
-	// than an equality on purpose — a sixth guard adopting the gallery as a fixture is welcome and
-	// should not red; the list quietly losing entries is the failure this catches.
+	// A FLOOR, not an equality: a sixth guard adopting the gallery is welcome and must not red, while the
+	// list quietly losing entries is the failure this catches.
 	expect(FIXTURE_CONSUMERS.length).toBeGreaterThanOrEqual(5); // @nvf-floor FIXTURE_CONSUMERS.length
 
 	const missing: string[] = [];

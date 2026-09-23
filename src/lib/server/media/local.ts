@@ -13,13 +13,9 @@ export interface LocalTrack {
 
 /**
  * Keep only the tracks whose file is actually on disk. `exists` is injected so this is pure and
- * testable without a filesystem.
- *
- * Indexing a track whose file is missing is worse than indexing nothing: it is a searchable,
- * queueable, processable song that CANNOT work. The dev seed listed four such demos, and processing one
- * failed with `ffmpeg exited 254: No such file or directory` three times over (once per attempt)
- * and then left the media pinned in the phone's "processing" list forever, because a terminal job
- * never clears that state. A song you cannot see is a much smaller problem than one that lies.
+ * testable without a filesystem. Indexing a missing file is worse than indexing nothing: it is a
+ * searchable, queueable, processable song that CANNOT work, and a failed terminal job never clears
+ * the phone's "processing" state — a song you cannot see is a smaller problem than one that lies.
  */
 export function presentTracks(tracks: LocalTrack[], exists: (sourceRef: string) => boolean): LocalTrack[] {
 	return tracks.filter((t) => exists(t.sourceRef));

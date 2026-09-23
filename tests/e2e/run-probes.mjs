@@ -1,35 +1,12 @@
 // The e2e probe runner — one command that can reach every driver in this tree.
 //
-// WHAT THIS SOLVES. Nineteen drivers under `tests/e2e/` were reachable from no command at all. They
-// were kept deliberately (each is a written investigation of a real defect) and each was "runnable by
-// hand", but nothing named them, so `e2e-reachability` carried them on an UNRUN list and the decision
-// was left open. That list is what let real breakage sit unnoticed for as long as it did: six probes
-// resolved their repo root one hop short, two called a `spawnChild` that existed in no scope, and a
-// seventh checked for a build directory under a path that could never exist. Nothing ran them, so
-// nothing said so.
-//
-// WHAT IT DELIBERATELY DOES NOT DO. It is not wired into `bun run gates`. Wiring ~12,000 lines of
-// browser-driving into a five-leg gate that finishes in about a minute would be the wrong trade, and
-// that was the actual objection recorded against fixing this. Reachability and gate membership are
-// different things: these are now reachable from a command, runnable in one step, and still opt-in.
-//
-// WHAT "RUNNABLE" MEANS PER PROBE. Three modes, because the drivers genuinely differ:
-//
-//   boots   — the probe spawns its own server (and worker) and cleans up after itself.
-//   serves  — the probe expects `EPORT` to name an ALREADY-RUNNING server. This runner boots one
-//             shared, seeded, ephemeral server for the whole group rather than making the caller do
-//             it, which is the step that used to be documented-but-manual.
-//   tool    — takes arguments and answers a question rather than asserting an invariant. Named here
-//             so it is reachable and discoverable, excluded from `all` because there is no default
-//             argument that would mean anything.
-//
-// Usage:
 //   bun run tests/e2e/run-probes.mjs                 # list every driver, its mode and its subject
 //   bun run tests/e2e/run-probes.mjs <name>          # run one (by stem, e.g. p6-lyrics)
 //   bun run tests/e2e/run-probes.mjs all             # every `boots` and `serves` probe, sequentially
 //   bun run tests/e2e/run-probes.mjs boots|serves    # just that group
 //
-// Exit code is non-zero if any probe run failed, so this is usable from CI as-is.
+// Modes (`boots` / `serves` / `tool`), what makes a probe reachable, and why this is NOT in
+// `bun run gates`: see docs/E2E.md#reachability. Exit code is non-zero if any probe run failed.
 
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -39,13 +16,13 @@ import { spawnChild, killChild } from './lib/child.mjs';
 /**
  * Every driver, its mode, and what it is FOR.
  *
- * The paths are spelled in full deliberately: `e2e-reachability` resolves reachability by looking for
+ * The paths are spelled in FULL deliberately: `e2e-reachability` resolves reachability by looking for
  * a file's name in the text reachable from a package.json script, so this manifest is what makes each
  * of these files reachable. A discovery-by-globbing runner would run them and still leave every one of
  * them looking dead to that guard.
  */
 const PROBES = [
-	// ── self-booting ────────────────────────────────────────────────────────────────────────────────
+	// self-booting
 	{
 		path: 'tests/e2e/probes/p2-guiding-track.mjs',
 		mode: 'boots',
@@ -77,15 +54,21 @@ const PROBES = [
 		subject: 'the now-playing drawer: live controls, and the slider that must not dismiss it'
 	},
 	{
+		path: 'tests/e2e/probes/p11-dashboards.mjs',
+		mode: 'boots',
+		subject: '/stats, /metrics and the per-song audit against counts the probe makes itself'
+	},
+	{
 		path: 'tests/e2e/shoot.mjs',
 		mode: 'boots',
 		kind: 'captures',
 		subject: 'shadcn-migration screenshots (evidence, not assertions)'
 	},
 
-	// ── need a server this runner provides ──────────────────────────────────────────────────────────
+	// need a server this runner provides
 	{ path: 'tests/e2e/probes/p1-gapless.mjs', mode: 'serves', subject: 'the gapless seam between queued songs' },
 	{ path: 'tests/e2e/probes/p3-key-shift.mjs', mode: 'serves', subject: 'key-shift pitch handling' },
+	{ path: 'tests/e2e/probes/p4-transport.mjs', mode: 'serves', subject: 'transport, seek and position telemetry' },
 	{ path: 'tests/e2e/probes/p6-lyrics.mjs', mode: 'serves', subject: 'lyrics rendering and the presplit contract' },
 	{ path: 'tests/e2e/probes/p8-presence-resilience.mjs', mode: 'serves', subject: 'presence across disconnects' },
 	{
@@ -94,13 +77,20 @@ const PROBES = [
 		subject: 'the settings surface and its join-origin fallback'
 	},
 	{ path: 'tests/e2e/probes/p10-scaling.mjs', mode: 'serves', kind: 'captures', subject: 'TV stage scaling' },
-	// Named here for the first time (2026-09-23): it was "reachable" only because a comment in contract.ts
-	// happened to mention its filename, and a comment cleanup removed that mention. The probe is real and needs
-	// this runner's seeded server, so it is listed rather than recorded as unrun.
 	{
 		path: 'tests/e2e/probes/p12-search.mjs',
 		mode: 'serves',
 		subject: 'search, readiness ordering and the library'
+	},
+	{
+		path: 'tests/e2e/probes/p13-tap-to-start.mjs',
+		mode: 'serves',
+		subject: 'the gestureless route out of a silent television'
+	},
+	{
+		path: 'tests/e2e/probes/lower-third.mjs',
+		mode: 'serves',
+		subject: 'the wall names the singer of whichever src is AUDIBLE'
 	},
 	{
 		path: 'tests/e2e/probes/admin-delete.mjs',
@@ -115,7 +105,7 @@ const PROBES = [
 		subject: 'the TV scrim over an empty lobby'
 	},
 
-	// ── tools ───────────────────────────────────────────────────────────────────────────────────────
+	// tools — argument-taking, so excluded from `all`
 	{
 		path: 'tests/e2e/probes/preflight-reset-audit.mjs',
 		mode: 'tool',
@@ -128,23 +118,17 @@ const PROBES = [
 	}
 ];
 
-/**
- * `fake-align-worker.mjs` is NOT listed above and does not need to be: `p9-settings.mjs` spawns it by
- * path, and reachability follows a spawned basename as well as a static import — the guard has a
- * dedicated arm proving exactly that. Listing it as a runnable probe would be a lie about what it is.
- */
+// `fake-align-worker.mjs` is deliberately absent: `p9-settings.mjs` spawns it by path, and reachability
+// follows a spawned basename, so listing it as a runnable probe would be a lie about what it is.
 
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? process.env.TMPDIR ?? '/tmp';
 const RUN_DIR = join(SCRATCH, `e2e-probes-${process.pid}`);
 
 /**
- * A routable-looking, non-loopback public origin.
- *
- * Not this host's real address, and it does not need to be: the server binds loopback and this value
- * only decides what the TV renders as its join URL. A LOOPBACK origin makes the attract screen render
- * its "unreachable" notice instead of the join panel, which several probes then measure as a failure
- * of the thing they were actually testing. Same reasoning, and the same synthetic address, as the
- * measured-design gate.
+ * A routable-LOOKING, non-loopback origin — not this host's real address, and it need not be: the server
+ * binds loopback and this only decides what the TV renders as its join URL. A loopback origin makes the
+ * attract screen render its "unreachable" notice instead of the join panel, which several probes then
+ * measure as a failure of the thing they were actually testing.
  */
 const PUBLIC_ORIGIN_HOST = process.env.ENCORE_PROBE_ORIGIN_HOST ?? '192.168.1.20';
 
@@ -173,15 +157,9 @@ function list() {
 }
 
 /**
- * Drive one library song to READY, so the `serves` probes have the fixture they ask for.
- *
- * Several of them bail with "no READY song in the library — seed + process one first". That is a real
- * precondition, not a defect: `seed-media.mjs` writes PLACEHOLDER files, enough to index, search and
- * queue but not to process. A READY song needs a worker to claim a job and report stems, which is what
- * `fake-stems-worker.mjs` exists for.
- *
- * Doing this here is the whole difference between "runnable by hand if you already know the four
- * steps" and "runnable". Returns the fake worker so the caller can reap it.
+ * Drive one library song to READY, so the `serves` probes have the fixture they ask for: `seed-media.mjs`
+ * writes placeholders, enough to index, search and queue but not to process, so a READY song needs
+ * `fake-stems-worker.mjs` to claim a job and report stems. Returns the worker so the caller can reap it.
  */
 /** @param {string} base @returns {Promise<import('node:child_process').ChildProcess>} */
 async function prepareReadySong(base) {
@@ -234,13 +212,12 @@ async function prepareReadySong(base) {
 
 /**
  * Seed a media library and boot one PRISTINE ephemeral server, with a fake stems worker and one song
- * driven to READY. Called once per `serves` probe rather than once per run — see the loop in main() for
- * why an empty room is load-bearing.
+ * driven to READY. Called once per `serves` probe rather than once per run — see the loop in main().
  * @param {number} port
  */
 async function bootProbeServer(port) {
-	// Per-port, and deliberately NOT wiping RUN_DIR: each probe gets its own library, and clearing the
-	// whole scratch tree here would delete a sibling's while it was still in use.
+	// Per-port, and deliberately NOT wiping RUN_DIR: clearing the whole scratch tree here would delete a
+	// sibling probe's library while it was still in use.
 	const mediaDir = join(RUN_DIR, `media-${port}`);
 	mkdirSync(mediaDir, { recursive: true });
 
@@ -348,20 +325,10 @@ async function main() {
 	}
 
 	const results = [];
-	/*
-	 * A FRESH server per `serves` probe, not one shared across the group.
-	 *
-	 * Sharing was the obvious optimisation and it is wrong here. Several of these probes assert on a
-	 * PRISTINE room: `p8-presence-resilience` bails outright with "server was not empty at start of run",
-	 * and `tv-scrim-empty-lobby` checks "one entry, nothing behind it". Run them after a probe that
-	 * joined singers and queued songs and they report an environment failure that says nothing about the
-	 * behaviour they exist to measure — and the ones that report a finding rather than bailing would report
-	 * a FALSE one.
-	 *
-	 * The cost is one boot, seed and process cycle per probe, roughly ten seconds each. That is the right
-	 * trade for a suite that is opt-in and already measured in minutes: cross-probe interference is the
-	 * kind of failure that wastes an afternoon before anyone suspects the harness.
-	 */
+	// A FRESH server per `serves` probe, never one shared across the group. Several of these assert on a
+	// PRISTINE room — `p8-presence-resilience` bails with "server was not empty at start of run" and
+	// `tv-scrim-empty-lobby` checks "one entry, nothing behind it" — so running them after a probe that
+	// joined singers reports an environment failure, or worse a FALSE finding. Costs ~10s per probe.
 	const servesGroup = selected.filter((p) => p.mode === 'serves');
 	const basePort = Number(process.env.EPORT ?? 5390);
 	for (const [i, probe] of servesGroup.entries()) {
@@ -376,12 +343,9 @@ async function main() {
 			continue;
 		}
 		try {
-			/*
-			 * BOTH port variables, because the probes do not agree on one. Most read
-			 * `EPORT ?? <default>`, `p1-gapless` and `p3-key-shift` read `EPORT ?? PORT ?? <default>`,
-			 * and `p10-scaling` reads `PORT` ALONE. Passing only EPORT left p10 dialling its own
-			 * hardcoded 5230 — where it got ERR_CONNECTION_REFUSED and still exited 0.
-			 */
+			// BOTH port variables, because the probes do not agree on one: `p10-scaling` reads `PORT`
+			// alone, so passing only EPORT left it dialling its own hardcoded default, getting
+			// ERR_CONNECTION_REFUSED, and still exiting 0.
 			results.push(await runOne(probe, { EPORT: String(port), PORT: String(port), MEDIA_DIR: env.mediaDir }));
 		} finally {
 			await killChild(env.worker);
@@ -401,13 +365,8 @@ async function main() {
 	const failed = results.filter((r) => r.code !== 0);
 	process.stdout.write('\n──── summary ────────────────────────────────────────────────\n');
 	for (const r of results) {
-		/*
-		 * `ran` is NOT `passed`, and the distinction matters more than it looks. Three of these drivers
-		 * gather EVIDENCE rather than assert an invariant: they write screenshots or a findings.json and
-		 * exit 0 whatever they saw. `p10-scaling` recorded twelve phases of which seven were timeouts and
-		 * still exited 0. Reporting that as "ok" would make this runner a false-pass machine, which is the
-		 * one thing the suite it belongs to exists to prevent.
-		 */
+		// `ran` is NOT `passed`: a `captures` driver writes screenshots or a findings.json and exits 0
+		// whatever it saw. See docs/E2E.md#exit-codes-and-what-ran-means.
 		const verdict = r.code !== 0 ? 'FAIL' : r.kind === 'captures' ? 'ran ' : 'ok  ';
 		process.stdout.write(`  ${verdict}  ${r.label.padEnd(28)} ${r.secs}s\n`);
 	}

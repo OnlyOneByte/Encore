@@ -19,13 +19,12 @@ from ..vocabulary import Stage
 class Annotate(Step):
     """Identify the song against MusicBrainz, best-effort.
 
-    Swallows everything: a declined match, an unreachable service or `ENCORE_ANNOTATE=0` all leave the
-    title-parser's values standing. A process must never fail over metadata.
+    Swallows everything: a declined match, an unreachable service or `ENCORE_ANNOTATE=0` all leave
+    the title-parser's values standing. A process must never fail over metadata.
 
-    Runs OFF the event loop. The MusicBrainz gate serialises calls and SLEEPS to hold one request per
-    second, and a blocking sleep here would stall the whole worker — with concurrency > 1 that means the
-    OTHER job's progress events stop arriving and the core's progress lease starts expiring. Waiting on
-    metadata must not look like a hung separation.
+    Runs OFF the event loop: the MusicBrainz gate serialises calls and SLEEPS to hold one request per
+    second, and a blocking sleep here would stall the whole worker — with concurrency > 1 that means
+    another job's progress events stop arriving and the core's progress lease starts expiring.
     """
 
     name = "annotate"
@@ -37,8 +36,7 @@ class Annotate(Step):
         self._annotator = annotator
 
     def applies(self, ctx: Ctx) -> bool:
-        # Runs whenever there is a YouTube credit to publish, OR an annotator to query. A local job with
-        # no annotator and no credit has nothing to do.
+        # A local job with no annotator and no YouTube credit has nothing to do.
         return self._annotator is not None or ctx.audio.youtube_credit is not None
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
@@ -47,12 +45,9 @@ class Annotate(Step):
         params = ctx.params
         credit = ctx.audio.youtube_credit
 
-        # YouTube's OWN declared credit is a citation, so it is PREFERRED over the title parser and
-        # published up front. MusicBrainz can still upgrade it — a match adds an MBID and
-        # duration corroboration — so it is not the end of the story, just the floor. When present it
-        # also becomes the MusicBrainz QUERY KEY: the bad-title-parse that used to defeat the lookup
-        # ("No Vocal", "American Idol 2024") is exactly what the citation replaces, so querying with the
-        # citation is what lets MusicBrainz find the song at all.
+        # YouTube's OWN declared credit is preferred over the title parser and published up front as
+        # the floor; MusicBrainz can still upgrade it (adds an MBID). It also becomes the query key,
+        # since a bad title-parse would otherwise defeat the lookup.
         if credit:
             ctx.out.artifacts["annotation"] = dict(credit)
             ctx.note(f"identified from YouTube metadata ({credit['artist']} — {credit['title']})")
@@ -66,16 +61,10 @@ class Annotate(Step):
         def _call():
             return annotate_or_reason(self._annotator, query_artist, query_track, params.get("durationSec"))
 
-        # Run the lookup through run_blocking, exactly as the sibling blocking steps do (lyrics AcquireTexts,
-        # analysis SongProfile). A raw asyncio.to_thread here emitted NOTHING for the whole MusicBrainz wait,
-        # and that wait can be long: the gate serialises calls and SLEEPS to hold one request per second, so a
-        # throttled/slow service holds this thread well past the core's 30 s progress lease — the ONLY emitter
-        # of job:progress during the wait is gone, the reaper requeues a healthy process
-        # (progress-lease-expired),
-        # and each retry is a full re-acquire. run_blocking yields a keepalive ProgressEvent every
-        # LEASE_KEEPALIVE_SEC so the lease is renewed. pct=100 matches analysis: acquisition has
-        # already reached
-        # 100 by the time Annotate runs, so the keepalive holds the bar rather than moving it backward.
+        # run_blocking (not a raw asyncio.to_thread) fires a keepalive ProgressEvent every
+        # LEASE_KEEPALIVE_SEC: the MusicBrainz gate's one-request-per-second sleep can hold this
+        # thread well past the core's 30s progress lease, and without a keepalive the reaper requeues
+        # a healthy process. pct=100 holds the bar in place (acquisition already reached 100).
         got = reason = None
         try:
             async for kind, val in run_blocking(_call, self.stage, 100):
@@ -86,17 +75,11 @@ class Annotate(Step):
         except Exception as exc:  # noqa: BLE001 — annotation is an enrichment; never a job failure
             got, reason = None, f"lookup crashed: {exc}"
         if got is not None:
-            # A MusicBrainz match is strictly more informative (it carries an MBID) so it overwrites the
-            # YouTube floor. The core's applyAnnotation never-regress rule protects a prior high citation
-            # regardless of which source wrote it.
+            # Strictly more informative (carries an MBID), so it overwrites the YouTube floor.
             ctx.out.artifacts["annotation"] = got.as_artifact()
             ctx.note("identified against MusicBrainz")
         elif credit is None:
-            # The decline used to be SILENT on every path — a throttled box declines every annotation
-            # indefinitely (ENCORE_ANNOTATE is on by default, so this runs on every fetch) and an
-            # operator had no way to tell that from a healthy "nothing agreed on the names" miss. The
-            # reason distinguishes them, carrying the rate gate's counters when it was a throttle. When a
-            # YouTube credit already stands, the MusicBrainz decline is expected enrichment, not a gap.
+            # `reason` distinguishes a throttled decline from a healthy "names disagreed" miss.
             ctx.note(f"annotation declined: {reason or 'no reason'}")
 
 

@@ -1,45 +1,26 @@
 /*
- * THE FIELD RHYTHM MUST COME FROM SOMEWHERE, AND IT MUST BE VISIBLE (the shadcn migration Phase 3).
+ * guard: the shadcn Field rhythm must come from somewhere, and that somewhere must be visible. See
+ * docs/GUARDS.md#vendored-component-seams.
  *
- * ── THE DEFECT THIS EXISTS FOR, WHICH SHIPPED ─────────────────────────────────────────────────────
+ * shadcn splits a field into a WRAPPER that owns the rhythm (`Field` is `gap-3`, `Field.Group` `gap-7`)
+ * and LEAVES with no vertical margin of their own. The settings page adopted the leaves and skipped the
+ * wrappers — `Field.Label` 27 times and `Field.Description` 23 times with ZERO `Field`, `Field.Group` or
+ * `Field.Set` — which on the registry's own CSS stacks 27 labels, 23 descriptions, 14 selects and 9
+ * sliders flush. It renders correctly only because Encore hand-added `:global` margins INSIDE the two leaf
+ * components, two files away from the page they rescue. Deleting either block is an obvious tidy-up, since
+ * the registry has no such rule and a re-pull drops it, and it collapses 50 controls with every gate green.
  *
- * shadcn splits a field into a WRAPPER that owns the rhythm and LEAVES that carry no vertical margin of
- * their own: `Field` (the root) is `gap-3`, `Field.Group` is `gap-7`, while the registry's `Field.Label`
- * is `flex w-fit` and its `Field.Description` has only relational nudges (`last:mt-0`,
- * `nth-last-2:-mt-1`) tuned for sitting INSIDE that wrapper.
- *
- * the shadcn migration adopted the leaves and skipped the wrappers: `routes/settings/+page.svelte` uses `Field.Label`
- * 27 times and `Field.Description` 23 times with ZERO `Field`, `Field.Group` or `Field.Set`. On the
- * registry's own CSS that stacks 27 labels, 23 descriptions, 14 selects and 9 sliders flush. It did not
- * render that way only because Encore hand-added `:global` margins inside the two leaf components —
- * `field-label.svelte`'s `margin: var(--space-lg) 0 var(--space-2xs)` and `field-description.svelte`'s
- * `margin: var(--space-xs) 0 0`, each replacing a deleted `.field` / `.hint` rule.
- *
- * So the page is spaced by a substitution that lives two files away from the page it rescues, and
- * nothing recorded the dependency. Delete either `:global` block — an obvious tidy-up, since the
- * registry has no such rule and a re-pull would drop it — and 50 controls collapse with every gate
- * green. That is the failure this guard exists to make loud.
- *
- * ── WHAT THIS ASSERTS ─────────────────────────────────────────────────────────────────────────────
- *
- * 1. The rhythm exists at all: while any file renders a Field leaf WITHOUT a Field wrapper, the leaf
- *    components must keep supplying it themselves. Pinned as the actual declarations, so removing one
- *    reds here rather than in a screenshot.
- * 2. The wrapper parts really are the things that carry a gap — if a re-vendor moves the gap onto the
- *    leaves, premise (1) stops being true and this file should be revisited rather than trusted.
- * 3. Every file rendering a leaf either mounts a wrapper, spaces the leaves itself, or is recorded.
- *
- * Adopting `Field` / `Field.Group` on the settings page is the real fix and would let both `:global`
- * blocks go — at which point arm (1) is retired on the record, not deleted quietly.
+ * So: (1) while any file renders a leaf WITHOUT a wrapper, the leaves must keep supplying the rhythm,
+ * pinned as the actual declarations; (2) the wrapper parts really are what carry a gap, since a re-vendor
+ * that moves the gap onto the leaves ends premise (1); (3) every file rendering a leaf mounts a wrapper or
+ * spaces the leaves itself. Adopting `Field`/`Field.Group` on the settings page is the real fix and would
+ * let both `:global` blocks go — at which point arm (1) is retired on the record.
  */
 import { describe, expect, test } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
 
-// The tree anchor comes from @encore/test-support rather than a relative walk: this guard moved
-// from src/lib/ into tests/ during the test-architecture refactor, and a relative path would have
-// to change again on the next move. `srcDir` is the repo's single source for 'where is src'.
 const SRC = srcDir;
 const UI_FIELD = join(SRC, 'lib', 'components', 'ui', 'field');
 
@@ -65,13 +46,10 @@ function markupOf(src: string): string {
 
 const LEAVES = ['Field.Label', 'Field.Description', 'Field.Title', 'Field.Error'] as const;
 /*
- * The wrapper parts, matched with a REGEX rather than a substring.
- *
- * `markup.includes('<Field')` was the first attempt and it silently matched `<Field.Label` too, so every
- * leaf user looked like it already had a wrapper, `wrapperless` came back empty, and arm 1 returned early
- * without checking anything — a guard that passed by never running. Caught by mutation: deleting
- * field-label's margin left it green. The boundary is what makes the root distinguishable from its own
- * leaves: `<Field` followed by something that is NOT a dot.
+ * Matched with a REGEX, not a substring: `markup.includes('<Field')` silently matched `<Field.Label` too,
+ * so every leaf user looked like it had a wrapper, `wrapperless` came back empty, and arm 1 returned early
+ * without checking anything — a guard that passed by never running, caught by mutation. The boundary is
+ * what distinguishes the root from its own leaves.
  */
 const WRAPPER_RE = /<Field(?![.\w])|<Field\.(Group|Set|Content)\b/;
 const WRAPPER_NAMES = '<Field (root), Field.Group, Field.Set, Field.Content';
@@ -94,7 +72,7 @@ describe('the Field rhythm is supplied and visible', () => {
 
 	test('while any page uses a Field leaf without a wrapper, the leaves supply the rhythm themselves', () => {
 		const users = leafUsers();
-		// Non-vacuity: the leaves are really in use, or there is nothing to space and this arm is moot.
+		// If no file uses a leaf there is nothing to space and this arm is moot.
 		expect(users.length).toBeGreaterThanOrEqual(2); // @nvf-floor users.length
 
 		const wrapperless = users.filter(({ file }) => {
@@ -103,8 +81,8 @@ describe('the Field rhythm is supplied and visible', () => {
 		});
 		if (wrapperless.length === 0) return; // wrappers adopted everywhere: this arm is retired by the code
 
-		// The two substitutions that are actually holding those pages up. Pinned as VALUES, not presence:
-		// a re-pull that restores the registry's marginless label would drop the declaration entirely.
+		// Pinned as VALUES, not presence: a re-pull restoring the registry's marginless label drops the
+		// declaration entirely.
 		const label = styleOf(readFileSync(join(UI_FIELD, 'field-label.svelte'), 'utf8'));
 		const desc = styleOf(readFileSync(join(UI_FIELD, 'field-description.svelte'), 'utf8'));
 		const who = wrapperless.map((w) => w.rel).join(', ');
@@ -116,15 +94,14 @@ describe('the Field rhythm is supplied and visible', () => {
 			desc,
 			`${who} render Field.Description with no Field wrapper, so field-description.svelte's own margin is the ONLY thing holding it off its control.`
 		).toMatch(/margin:\s*var\(--space-[\w-]+\)\s+0\s+0/);
-		// And they must be reachable: a SCOPED rule inside a component cannot style the element the
-		// component itself renders through a slot chain, which is why these are :global to begin with.
+		// And reachable: a SCOPED rule cannot style an element the component renders through a slot chain,
+		// which is why these are `:global` to begin with.
 		expect(label).toMatch(/:global\(\[data-slot='field-label'\]\)/);
 		expect(desc).toMatch(/:global\(\[data-slot='field-description'\]\)/);
 	});
 
 	test('the wrapper parts are what carry a gap — the premise arm 1 rests on', () => {
-		// If a re-vendor moves the rhythm onto the leaves, arm 1's reasoning no longer applies and this
-		// file must be revisited rather than believed.
+		// If a re-vendor moves the rhythm onto the leaves, arm 1's reasoning no longer applies.
 		expect(readFileSync(join(UI_FIELD, 'field.svelte'), 'utf8')).toMatch(/gap-\d/);
 		expect(readFileSync(join(UI_FIELD, 'field-group.svelte'), 'utf8')).toMatch(/gap-\d/);
 	});
@@ -138,13 +115,13 @@ describe('the Field rhythm is supplied and visible', () => {
 			const markup = markupOf(src);
 			if (WRAPPER_RE.test(markup)) continue;
 			const style = styleOf(src);
-			// A local rhythm: a gap, a vertical margin, or a :global rule reaching a field slot.
+			// A local rhythm: a gap, a vertical margin, or a `:global` rule reaching a field slot.
 			const spacesLocally =
 				/(^|[;{\s])(gap|row-gap)\s*:/.test(style) ||
 				/(^|[;{\s])margin(-block|-top|-bottom)?\s*:/.test(style) ||
 				/:global\(\[data-slot='field-(label|description)'\]\)/.test(style);
-			// Or it relies on the leaf components' own margins, which arm 1 pins. That is legal but must be
-			// TRUE of the leaves — arm 1 fails first if it stops being.
+			// Otherwise it relies on the leaf margins arm 1 pins, which is legal — arm 1 fails first if that
+			// stops being true.
 			if (spacesLocally) continue;
 			offenders.push(
 				`${rel}: renders ${leaves.join(', ')} with no Field wrapper (${WRAPPER_NAMES}) and no ` +

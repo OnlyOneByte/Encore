@@ -1,12 +1,7 @@
-// CodeEntry behaviour at the MOUNT rung: the six-segment typed path's LOGIC —
-// keystroke rejection of the excluded alphabet, auto-advance, backspace, a whole-code paste, and the
-// completion callback. Driven with REAL InputEvent/KeyboardEvent/ClipboardEvent, because that logic is
-// pure DOM-event handling and does not measure geometry.
-//
-// The SEGMENT GEOMETRY (six boxes, one tab stop, 320px reflow) is a rung-L driven-browser check by
-// enforcement: happy-dom's getBoundingClientRect throws here, and the row says so.
-// This file pins the parts that ARE decidable without a layout engine; each test reds on a revert of
-// the hunk it targets.
+// CodeEntry's LOGIC at the MOUNT rung — keystroke rejection of the excluded alphabet, auto-advance,
+// backspace, a whole-code paste, the completion callback — driven with REAL
+// InputEvent/KeyboardEvent/ClipboardEvent, since that is pure DOM-event handling. The segment GEOMETRY
+// (six boxes, one tab stop, 320px reflow) belongs to the layout rung: getBoundingClientRect throws here.
 import { test, expect } from 'bun:test';
 import { mount, unmount, flushSync } from '$setup/svelte-client';
 import CodeEntry from '$lib/components/CodeEntry.svelte';
@@ -15,8 +10,8 @@ import JoinLanding from '$lib/components/JoinLanding.svelte';
 type StateStub = typeof import('$setup/kit/app-state');
 const stateStub = async (): Promise<StateStub> => (await import('$app/state')) as unknown as StateStub;
 
-// happy-dom's Event/InputEvent/KeyboardEvent — bun defines its own globals, and happy-dom's
-// dispatchEvent rejects an event that is not an instance of ITS classes (the mount-rung note).
+// happy-dom's own Event classes: bun defines its own globals, and happy-dom's dispatchEvent rejects an
+// event that is not an instance of ITS classes.
 const win = (globalThis as unknown as { window: Window & typeof globalThis }).window;
 
 function mountEntry() {
@@ -36,7 +31,7 @@ function mountEntry() {
 }
 
 function typeChar(box: HTMLInputElement, ch: string) {
-	// beforeinput with insertText is where the component accepts/rejects — dispatch the real thing.
+	// beforeinput/insertText is where the component accepts or rejects, so dispatch the real thing.
 	box.focus();
 	const ev = new win.InputEvent('beforeinput', { data: ch, inputType: 'insertText', bubbles: true, cancelable: true });
 	box.dispatchEvent(ev);
@@ -52,7 +47,6 @@ test('an admitted character is accepted, upper-cased, and advances to the next b
 	try {
 		typeChar(boxes()[0], 'a'); // lower-case, admitted -> 'A'
 		expect(boxes()[0].value).toBe('A');
-		// Focus advanced to box 2.
 		expect(document.activeElement).toBe(boxes()[1]);
 	} finally {
 		void unmount(instance);
@@ -79,7 +73,7 @@ test('backspace on an empty box steps back and clears the previous one', () => {
 	try {
 		typeChar(boxes()[0], 'A');
 		typeChar(boxes()[1], 'B');
-		// caret now in box 3 (empty). Backspace should clear box 2 and move focus there.
+		// Caret in box 3 (empty), so Backspace clears box 2 and moves focus there.
 		boxes()[2].focus();
 		boxes()[2].dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }));
 		flushSync();
@@ -119,19 +113,16 @@ test('a paste with punctuation is cleaned to the admitted characters', () => {
 	}
 });
 
-// ── AC2: "5 of 6 segments filled -> Continue disabled" ───────────────────────────────
-// The criterion is delivered at JoinLanding.svelte's `disabled={!canJoin}`, but nothing pinned it:
-// `canJoin` is referenced nowhere else, so `disabled={false}` left the whole suite green. This mounts
-// the REAL JoinLanding (unjoined, no `?room`), fills the name so the ONLY thing gating Continue is the
-// code length, then drives the six-box entry through `typeChar` and reads the button's `disabled`.
-// Reds on the `disabled={false}` mutation the reviewer named.
+// Five of six segments filled must leave Continue DISABLED. The criterion is delivered by
+// `disabled={!canJoin}` in JoinLanding.svelte and `canJoin` is referenced nowhere else, so a
+// `disabled={false}` mutation leaves the whole suite green. Mounts the REAL JoinLanding, unjoined and
+// with no `?room`, and drives the six-box entry.
 async function mountLandingForAc2() {
 	const target = document.createElement('div');
 	document.body.appendChild(target);
 	const instance = mount(JoinLanding, { target });
 	flushSync();
 	const segs = () => [...target.querySelectorAll('input.segment')] as HTMLInputElement[];
-	// the field is <Input> now, so its appearance (and `.name-input`) lives in the component.
 	// `data-slot` is shadcn's own contract for the rendered element and survives a re-vendor.
 	const continueBtn = () => target.querySelector('.submit-slot button') as HTMLButtonElement;
 	return { target, instance, segs, continueBtn };
@@ -141,36 +132,17 @@ test('AC2 — Continue is disabled at 5 of 6 code characters, enabled at 6', asy
 	(await stateStub()).resetPage(); // bare `/`, no ?room — the typed path
 	const { instance, segs, continueBtn } = await mountLandingForAc2();
 	try {
-		/*
-		 * NO NAME TO FILL ANY MORE, and that makes this assertion stronger rather than weaker.
-		 *
-		 * This used to type a name first, and said why: "a missing name would disable it for a different
-		 * reason and make the assertion prove nothing". The two-pane split removed that confound at the
-		 * source — the code pane carries no name field, so code length is the ONLY gate on Continue by
-		 * construction. The setup that compensated for the coupling goes with the coupling.
-		 */
+		// No name to fill: the code pane carries no name field, so code LENGTH is the only gate on Continue
+		// by construction, and nothing else can disable it for a different reason.
 
-		// Type FIVE of six characters.
 		const five = 'ABCD2';
 		for (let i = 0; i < five.length; i++) typeChar(segs()[i], five[i]!);
 		expect(continueBtn().disabled, 'Continue must stay disabled at 5 of 6 characters').toBe(true);
 
-		/*
-		 * THE SIXTH CHARACTER NOW RESOLVES THE CODE ITSELF, so the boundary this criterion is about shows up
-		 * as "no longer blocked by length" rather than as a literally enabled button.
-		 *
-		 * AC2 is about the LENGTH gate: at five characters Continue must refuse, at six it must not. What
-		 * changed underneath it is that the sixth keystroke also fires `oncomplete`, which starts the
-		 * room lookup — and `canContinue` is `length === 6 && !previewLoading`, so for as long as that fetch
-		 * is in flight the button is legitimately disabled again, with its label reading "Checking the code…".
-		 * (It used to fire and do nothing: `oncomplete` ran before the bound value reached the parent, so the
-		 * auto-advance silently no-opped. Typing the sixth character and pasting a whole code both left the
-		 * guest on step 1.)
-		 *
-		 * So the assertion is on the DISJUNCTION, and each half is checked for the right reason: either the
-		 * button is enabled (the lookup has not started or has already failed) or the pane is mid-resolve.
-		 * Asserting only `disabled === false` would now be asserting that the auto-advance does NOT happen.
-		 */
+		// The claim is about the LENGTH gate, and the sixth keystroke also fires `oncomplete`, which starts
+		// the room lookup — and `canContinue` is `length === 6 && !previewLoading`, so while that fetch is in
+		// flight the button is legitimately disabled again. Hence a DISJUNCTION: either enabled, or
+		// mid-resolve. Asserting `disabled === false` alone would assert the auto-advance does NOT happen.
 		typeChar(segs()[5], '3');
 		const btn = continueBtn();
 		const resolving = /Checking the code/.test(btn.textContent ?? '');
@@ -178,7 +150,7 @@ test('AC2 — Continue is disabled at 5 of 6 code characters, enabled at 6', asy
 			!btn.disabled || resolving,
 			'at six characters Continue must no longer be blocked by LENGTH — it is either enabled, or already resolving the code'
 		).toBe(true);
-		// And the length gate really is gone: the disabled reason, if any, is the lookup and not the count.
+		// The length gate is gone: any remaining disabled reason is the lookup, not the count.
 		expect(
 			(document.querySelector('.cta-reason')?.textContent ?? '').includes('characters'),
 			'no length complaint may remain at six characters'

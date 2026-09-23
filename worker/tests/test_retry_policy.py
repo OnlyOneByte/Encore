@@ -1,18 +1,5 @@
-"""The retry decision is ONE table, and permanent boundary failures fail fast.
-
-Two guarantees, both red on base (`origin/main`) before the fix:
-
-  * The four boundary failures the issue names — an unknown fetcher / ASR model, no separator engine,
-    and an unroutable action (`PlanError`) — are classified NON-retryable through the SAME entry point
-    the dial-home loop uses (`dial_home._is_retryable`). On base each missed all four substrings of
-    `_is_retryable`'s private heuristic and was retried up to `maxAttempts` (three 45-minute roformer
-    passes on a source that can never succeed).
-  * `dial_home` no longer keeps a private classification table: it delegates to `retry_policy`, so the
-    single source of truth drives the one real caller and the two tables cannot drift again.
-
-The transient-blip default (an UNSTRUCTURED failure is retried) is deliberately preserved — the fix
-gives the boundary errors a structured `retryable = False`, it does not flip the heuristic's default.
-"""
+"""Boundary failures classify NON-retryable through dial_home._is_retryable; the unstructured
+transient-blip default stays retryable. See docs/SERVER.md#worker-runtime."""
 
 import ast
 import sys
@@ -52,8 +39,6 @@ def _plan_error():
     raise PlanError("no plan for action: karaoke")
 
 
-# ── the four boundary failures the issue tabulates: each must be NON-retryable ──────────────────────
-# On base these are RETRYABLE (retryable=True); this parametrized case reds on base for every row.
 @pytest.mark.parametrize(
     "make_exc",
     [
@@ -64,15 +49,11 @@ def _plan_error():
     ],
 )
 def test_permanent_boundary_failures_are_not_retryable(make_exc):
-    # Drive it through _is_retryable — the exact function dial_home._run_job calls before it reports
-    # the failure to the core — so this pins the decision the retry loop actually sees.
     exc = _raised(make_exc)
     assert _is_retryable(exc) is False, f"{type(exc).__name__} ({exc}) must be non-retryable"
 
 
-# Each parse_* coercion is its OWN boundary and its OWN hunk (ValueError → BoundaryError). Pin every
-# one so a single reverted parse_* reds exactly its row: on base each raised a bare ValueError whose
-# .retryable is None, so _is_retryable fell through to the heuristic and returned True.
+# A bare ValueError (.retryable is None) would fall through to the heuristic and could return True.
 @pytest.mark.parametrize(
     "coerce",
     [
@@ -94,8 +75,6 @@ def test_every_boundary_coercion_is_non_retryable(coerce):
 
 
 def test_boundary_errors_carry_the_structured_flag():
-    """Each boundary error carries retryable=False as an attribute — same mechanism ProcessError uses,
-    so the decision holds regardless of message wording (a future rename cannot re-strand them)."""
     assert _raised(lambda: parse_fetcher("spotify:x")).retryable is False
     assert _raised(lambda: parse_asr_model("nope")).retryable is False
     assert _raised(lambda: engine_for("ensemble")).retryable is False
@@ -103,15 +82,12 @@ def test_boundary_errors_carry_the_structured_flag():
 
 
 def test_boundary_errors_stay_backward_compatible_exception_types():
-    """The coercions historically raised ValueError / RuntimeError and callers + older tests match on
-    those. BoundaryError IS-A ValueError and PermanentError IS-A RuntimeError, so nothing that caught
-    the old type stops catching it."""
+    """BoundaryError IS-A ValueError, PermanentError IS-A RuntimeError, so an old catch still matches."""
     assert isinstance(_raised(lambda: parse_fetcher("spotify:x")), ValueError)
     assert isinstance(_raised(lambda: engine_for("ensemble")), RuntimeError)
 
 
 def test_transient_and_structured_classification_is_preserved():
-    """The one-table fix must not change the two behaviours the old table got right."""
     # unstructured transient → retryable (default preserved)
     assert _is_retryable(RuntimeError("temporary network blip")) is True
     # unstructured permanent marker → non-retryable
@@ -123,9 +99,6 @@ def test_transient_and_structured_classification_is_preserved():
 
 
 def test_canonical_table_is_a_superset_of_both_former_tables():
-    """The one table never UNDER-classifies relative to either copy it replaces: every marker the old
-    dial_home heuristic and the demucs list checked is still present, so no previously-permanent
-    failure silently becomes retryable."""
     old_dial_home = ("not found", "404", "unsupported", "corrupt")
     old_demucs = (
         "video unavailable",
@@ -144,31 +117,19 @@ def test_canonical_table_is_a_superset_of_both_former_tables():
 
 
 def test_dial_home_keeps_no_private_classification_table():
-    """SINGLE SOURCE OF TRUTH guard: dial_home._is_retryable must DELEGATE to retry_policy, not carry
-    its own substring list. A source-level check so re-introducing a private table (the exact drift
-    an earlier change removed) reds here even if it happens to agree with retry_policy today.
-
-    Reverting dial_home to its base body (the inline `permanent = (...)` tuple + `any(...)`) reds this.
-    """
+    """Source-level check: a reintroduced private table would still pass value comparisons, so this
+    must inspect dial_home's actual text, not just today's behaviour."""
     src = Path(dh.__file__).read_text()
     tree = ast.parse(src)
     fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_is_retryable")
-    # It must call retry_policy.is_retryable (imported as is_retryable) …
     calls = [c.func.id for c in ast.walk(fn) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)]
     assert "is_retryable" in calls, "dial_home._is_retryable must delegate to retry_policy.is_retryable"
-    # … and must NOT rebuild a private marker table (no string-tuple / substring loop of its own).
     assert "not found" not in src.split("def _is_retryable")[1].split("def ", 1)[0], (
         "dial_home._is_retryable must not carry its own permanent-marker substrings"
     )
 
 
-# ── the two SEPARATOR MODEL RESOLVERS are boundary failures too ───────────────────────────────
-# An explicit-but-unknown model token is a permanent config error (retrying re-resolves the same bad
-# token forever, burning process attempts). Both resolvers must fail NON-retryable through is_retryable.
-# On base, roformer.resolve_roformer_slug raised a bare ValueError (.retryable=None → is_retryable
-# defaulted it retryable), so the roformer row REDS on base; the demucs row already routed through
-# BoundaryError and PASSES on base — it is the not-vacuous sentinel that keeps this test honest
-# if the anchor for the demucs side ever moves.
+# See docs/SERVER.md#worker-runtime: an explicit-but-unknown model token is permanent.
 @pytest.mark.parametrize(
     "resolve",
     [
@@ -187,17 +148,11 @@ def test_unknown_separator_model_is_non_retryable(resolve):
 
 
 def test_every_separation_raise_carries_a_structured_retryable():
-    """CLOSE THE CLASS: every `raise` in worker/src/separation/*.py must raise an
-    exception type that carries a structured `retryable` flag — never a bare Exception/ValueError/
-    RuntimeError whose retryability falls to the message heuristic. On base this AST census finds
-    exactly one offender, roformer.py's bare `ValueError`, so it REDS on base; after the fix it finds
-    none. Using ast.parse means comments and docstrings are dropped by construction, so the prose in
-    these files can neither satisfy nor trip the scan (the same reasoning the layer scan records).
-    """
+    """Every `raise` in src/separation/*.py must use a structured-retryable type. Uses ast.parse so a
+    comment or docstring cannot satisfy or trip the scan."""
     sep_dir = Path(retry_policy.__file__).resolve().parent / "separation"
 
-    # Exception TYPES that carry a structured `.retryable` (self-classifying) — the allowlist of
-    # constructors a `raise` in this domain may use. Anything else falls through to the heuristic.
+    # Allowlisted constructors; anything else falls through to the message heuristic.
     STRUCTURED = {"BoundaryError", "PermanentError", "ProcessError", "ProcessTimeout"}
 
     def raised_name(node: ast.Raise) -> str | None:
@@ -225,11 +180,6 @@ def test_every_separation_raise_carries_a_structured_retryable():
                 if name not in STRUCTURED:
                     offenders.append(f"{path.name}:{node.lineno} raise {name}")
 
-    # Not-vacuous sentinel: the census must actually have SEEN the domain's raise sites, so an empty
-    # scan (wrong glob, moved dir) fails loudly instead of passing on nothing. The domain currently has
-    # 6 structured raise sites (demucs.py x3, engines.py x1, mlx.py x1, roformer.py x1); an earlier change
-    # replaced
-    # MlxDemucsEngine's construction-refusal stub (which raised) with the working demucs-mlx engine, so
-    # the count dropped from its earlier value — the floor tracks the true count rather than a stale one.
+    # Not-vacuous sentinel: a wrong glob or moved dir must fail loudly, not pass on an empty scan.
     assert raise_sites >= 5, f"census saw only {raise_sites} raise sites — scan is not reaching the domain"
     assert offenders == [], f"unstructured raise(s) in src/separation that skip retry_policy: {offenders}"

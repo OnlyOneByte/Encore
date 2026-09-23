@@ -1,0 +1,303 @@
+# End-to-end harness
+
+How the browser-driven checks are built and what they promise. `bun run e2e:probes` runs the probe
+suite, `bun run gate:measured` the measured-design gate. `tests/e2e/HARNESS.md` carries the boot
+recipes and this box's tool inventory; this document carries the contracts.
+
+## The harness and the selector contract
+
+Two rungs, and only one of them needs a browser.
+
+- **The guard.** `tests/guards/hygiene/contract.test.ts` runs inside `bun run test` on every change
+  and reds the moment a selector's source anchor disappears. It is the load-bearing half: it proves
+  the drivers are still aimed at the app.
+- **The drivers.** Everything under `tests/e2e/` needs a built app, a seeded media dir and a
+  Chromium, so it is opt-in. It proves the app works.
+
+Drivers type-check under `tests/tsconfig.e2e.json` (`bun run typecheck:e2e`) and are linted by
+`bun run lint`, but `bun run test` does not execute them.
+
+### Why selectors are centralised
+
+`tests/e2e/contract.ts` is the one declaration of every hook a driver drives, imported by the flows
+and by the guard so the two cannot disagree. No driver may spell a selector for itself: the guard
+strips comments from every driver and fails a selector-shaped string literal at a selector-taking
+call site. A hand-written selector rots in silence — three selector families moved at once (a
+deleted `Library` tab, a colour picked by a stale `aria-label`, `.result` after the component began
+rendering `.row`) while `bun test` stayed green, because nothing in the suite looked at the script.
+
+### What a `SEL` / `HOOKS` entry means
+
+`SEL` is how a driver ADDRESSES a hook at runtime — a CSS string (`'.band'`), a `{ role, name }`
+pair for `clickByRole`, a comma union when one branch resolving is enough
+(`SEL.addOrSing`, `SEL.anyTransientState`), or a function of an id (`SEL.setting`,
+`SEL.settingsTab`, `SEL.swatch`).
+
+`HOOKS` is the proof the hook still exists: `{ id, file, anchor, why }`. `file` is repo-relative,
+`anchor` is a substring that must appear in that file, and `why` is what breaks without it — printed
+in the guard's failure so the message names the consequence rather than the diff.
+
+### Anchor discipline
+
+- **File + anchor, never anchor alone.** `.brand` is rendered by two TV files, so "does any source
+  carry this class" stays green when the attract screen loses it and the lobby keeps it. That is the
+  exact shape of the rot the pair exists to catch.
+- **Comments are stripped from the target**, so prose can never satisfy an anchor.
+- **Anchor the contract the app owes a user**, not its styling: `aria-label` text, `data-testid`,
+  image `alt`, or a vendored primitive's own `data-slot` (which survives a re-vendor). A
+  presentational class is the weakest handle and is what rotted; an `aria-label` cannot be deleted
+  without a real accessibility regression.
+- **Address by class only when no literal exists to resolve.** A name built from an expression —
+  `aria-label={isPlaying ? 'Pause' : 'Play'}`, `aria-label={label}`, a song title interpolated into
+  the label — has no literal source text, so a `{ role, name }` entry could not match. SEL then
+  takes the class and the HOOK anchors the expression, so the labels cannot be renamed unnoticed.
+- **Open-ended anchors where the neighbourhood churns.** `class="row ` without its closing quote
+  survives a new class in the list. A `<`-prefixed anchor (`<NowPlayingBand`) cannot be satisfied by
+  a leftover import, so it keys on the component being RENDERED.
+- **A control spanning two files gets two hooks.** A component rendering a class is not the app
+  rendering the component: `homeReady` (`.band`) holds only because `bandMounted` composes the band
+  into the sheet, which holds only because `drawerMounted` puts the sheet in the layout. Each link
+  reds at the file that broke it; neither can catch the other's break.
+- **Prefer an exact class token over an attribute prefix** where a family shares the prefix:
+  `data-slot="empty` also matches `empty-title`/`empty-header`, so it would keep resolving after the
+  Root element was deleted.
+- **Re-point, do not retire, when the SUBJECT survives** and only the file moved. Mint a new id when
+  the NAME carries a dead claim or the MECHANISM changed, so a reader who greps the old name lands on
+  the record rather than on a selector quietly resolving against the wrong surface.
+
+### Presence is not visibility
+
+The now-playing sheet is mounted at all times, so every selector inside `.np-drawer` resolves cold
+and a presence wait can never time out. Collapsed versus pulled-up is `activeSnapPoint`, whose values
+are vaul snap VALUES (`'80px'` and `0.82`) — not an index, not a boolean. Anything measured below the
+fold (geometry, contrast, a tap) is measured off a hidden element, so drag the sheet up first.
+`bandTransport`, `restart` and `skip` live in the band row and need no gesture.
+
+### The driver
+
+`tests/e2e/driver.mjs` presents one Playwright-backed page surface that every flow imports as
+`{ connect, sleep }`.
+
+- **It launches; it does not attach.** `connectOverCDP` hangs under Bun (its ws client and Bun's
+  runtime disagree), so `chromium.launch()` is the only path that works here.
+- **`executablePath` comes from `findChromium()`** in `tests/e2e/lib/chromium.mjs`, which is the
+  single source of browser discovery — `tests/guards/hygiene/chromium.test.ts` bans a second copy.
+  Launching with no path demands a ~150MB `playwright install`, because the pinned Playwright wants a
+  browser revision this box's cache does not hold.
+- **No `--autoplay-policy` by default.** Flags a flow depends on are the flow's to pass through
+  `opts.args`; see [Autoplay](#autoplay).
+- **One browser context per phone.** Two contexts are two guests with two cookie jars, which is what
+  a multi-phone flow needs; one context in two tabs is one guest.
+- `goto()` polls `document.readyState === 'complete'` after the navigation: the app hydrates and THEN
+  opens its WebSocket, so `load` fires well before the page can be driven.
+- `newPage({ initScript })` runs a script before the app's own on every navigation — early enough to
+  wrap a WebSocket opened during hydration. `setOffline` is per CONTEXT, so one guest can drop while
+  the others stay up. `bypassCacheFor(pattern)` re-fetches and re-fulfils with `no-store`, because
+  `/media` replies `max-age=86400` and a probe that overwrites an artifact would otherwise read
+  yesterday's copy and pass.
+- **Clicks go by accessible role + name** wherever a literal label exists. A flow that clicks by
+  class keeps working after a control loses its accessible name, which is a regression the flow is
+  supposed to surface. `clickByText` resolves the inner text node, so it misses a button whose
+  content is `Label <Icon/>` — it clicks nothing, reports nothing, and every downstream wait then
+  times out on a perfectly current selector.
+
+### Gestures
+
+A synthetic `el.click()` is an UNTRUSTED event and grants no user activation, so it can neither
+unblock autoplay nor resume an `AudioContext`. Use `realClick(x, y)` for hit-testing what is actually
+on top, and `drag()` — a stepped pointer sequence, `down`, N `move`s, `up` — wherever a handler reads
+intermediate moves. A teleporting pointer, or a synthetic click, proves nothing about either.
+
+### Shared helpers
+
+Each of these exists because the knowledge it holds moved and cost N driver edits the last time it
+was inlined.
+
+| Module                        | Holds                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/e2e/lib/join.mjs`      | how joining works. `/` is a two-pane screen: with `?room=CODE` a guest lands on the identity pane, without one on the six-box code pane — and the name field is only on the second. Drivers take the scanned path, reading the code off the TV's attract panel (`SEL.attractCode`), because no endpoint publishes it and the QR hides it in a data URL. Cached per base URL; pass `fresh: true` after restarting a server. |
+| `tests/e2e/lib/phone.mjs`     | the phone's post-join step. Search has been docked on `/`, then its own `/find` route, and is a field at the top of `/` again; ~20 call sites go through `openBrowseFromHome` so each move costs one file.                                                                                                                                                                                                                 |
+| `tests/e2e/lib/chromium.mjs`  | `findChromium()`. PW_CHROMIUM is VALIDATED, not trusted: a set-but-wrong path returns null so the caller bails loudly instead of surfacing as a launch failure.                                                                                                                                                                                                                                                            |
+| `tests/e2e/lib/child.mjs`     | `spawnChild` (piped stdio) and `killChild` (SIGTERM escalating to SIGKILL, polled, no-op on an exited child so a `finally` can call it unconditionally).                                                                                                                                                                                                                                                                   |
+| `tests/e2e/lib/repo-root.mjs` | the repo root, found by walking up for `bunfig.toml` rather than counting `..` hops. Hop-counting encodes a file's distance from the root and broke for six probes when the tree moved under `tests/`. A plain relative import, because drivers run under bare `bun run` where the `@encore/test-support` alias does not resolve.                                                                                          |
+
+### Reachability
+
+`tests/guards/meta/e2e-reachability.test.ts` requires every `.mjs`/`.ts` under `tests/e2e/` to be
+reachable from a `package.json` script, or to be on a closed `UNRUN` list with its reason. The list
+is empty and should stay that way.
+
+Reachability is **by name**, not only by import: the walk starts from files a script mentions and
+follows any other file's basename appearing anywhere in the text. That is deliberate — drivers spawn
+each other by path string (`fake-stems-worker.mjs` is launched, never imported), so a static import
+graph would report live files dead. The cost is that a passing English word or a comment can make a
+file "reachable" by accident. **A probe is reachable when `tests/e2e/run-probes.mjs` lists its full
+path in `PROBES`**, which is also what makes it discoverable and runnable in one step; anything else
+is luck.
+
+Each `PROBES` entry carries a `mode`:
+
+- **boots** — spawns its own server, worker and Chromium and cleans up after itself.
+- **serves** — expects `EPORT` to name a running server. The runner boots a FRESH seeded ephemeral
+  one per probe, not one shared across the group: several of these assert on a pristine room and
+  report a false or environmental finding when run after a probe that joined singers.
+- **tool** — takes arguments and answers a question. Listed so it is discoverable, excluded from
+  `all` because no default argument would mean anything.
+
+The runner passes both `EPORT` and `PORT`, because the probes disagree on which one names the port
+and passing only `EPORT` left one dialling a hardcoded default, getting `ERR_CONNECTION_REFUSED`, and
+exiting 0.
+
+Not part of `bun run gates`: these drive a real browser and take minutes. Reachability and gate
+membership are different things.
+
+### Exit codes, and what `ran` means
+
+`0` every finding passed · `1` a real failure · `2` the environment could not host the test.
+**Never conflate 2 with 0** — a skipped audio test reporting green is how the no-sound hole stayed
+open for as long as it did. A probe that cannot reach the app must FAIL rather than report success.
+
+In the runner's summary, `ran` is not `passed`: capture drivers gather evidence and exit 0 whatever
+they saw, so their output is the verdict and their exit code is not.
+
+### Proving audio
+
+`paused === false` proves nothing — an element reports it while stuck at `currentTime` 0 behind a
+failed decode, because `paused` reports INTENT. `readyState === 4` only says bytes arrived. The proof
+is **`webkitAudioDecodedByteCount` climbing**, corroborated by `currentTime` advancing against the
+wall clock. That distinction IS the FLAC-in-a-`<video>` defect: valid file, element "playing", zero
+decoded bytes, silent room.
+
+The fixture is hand-emitted, not encoded: `tests/e2e/wav.mjs` writes 16-bit PCM WAV by hand
+(`tone()` for audible audio, `silence()` for the digital-silence floor a guard must refuse), because
+both ffmpeg builds on this box are decode-only and there is no flac/sox/lame. `tests/e2e/seed-media.mjs`
+writes 16-byte ISO-BMFF placeholders — enough to index, search and queue, never enough to decode or
+process — so a READY song needs `tests/e2e/fake-stems-worker.mjs` to claim a job and publish real
+audio.
+
+### Autoplay
+
+Granting `--autoplay-policy=no-user-gesture-required` proves playback in an environment no television
+is ever in. Measured on one real processed song: gestureless leaves `paused true`, `currentTime 0.00`
+and 24576 decoded bytes (the preload burst, and nothing more); with the flag, `paused false`,
+`currentTime 5.41`, 507904 bytes.
+
+So **assert playback gestureless**. A probe that must grant the flag — because its subject is a
+playhead that has to already be moving — labels its output `NOT-A-TV`, and says nothing about whether
+a real television starts on its own.
+
+## The probes and the gates
+
+### Gates
+
+`bun run gate:measured` (`tests/e2e/gates/measured-design.mjs`) is the exception to everything above:
+it is the seventh leg of `bun run gates`, run by every lane, and it measures the four design claims a
+source scan cannot decide — control hit extents against `--tap` at three viewports, computed field
+font sizes, `--dock-h` against the docked row's real height plus the safe-area term, and the painted
+`:focus-visible` ring.
+
+Its rules:
+
+- **It boots its own world** — own free port, own seeded media dir, own Chromium, all torn down on
+  exit. A probe may expect a server; a gate cannot.
+- **There is no exit 2.** A missing Chromium, an unbuilt app and a server that will not answer
+  `/health` are all exit **1**, with the remedy printed. A permanently-skipped check is
+  indistinguishable from the rot it was meant to catch.
+- **It measures a resolved layout**, so `bun run build` must have run first. None of the four claims
+  is decidable on the mount rung: happy-dom has no layout engine, and `tests/setup/svelte-dom-preload.ts`
+  replaces `getBoundingClientRect` with a throw naming the rung so they cannot be parked there.
+- **Take a hit extent at the CENTRE x.** Chromium hit-tests `border-radius`, so sweeping at a
+  far-edge x measures the chord through the control's own rounded corner and read every 44px pill as
+  34–42px. Use far-edge probes for occlusion only, along the widest row.
+- **Accept a hit as the control's own only when `hit === el || el.contains(hit)`** — never the
+  reverse, which counts `<body>` as a hit and inflated a 32px target to 93px.
+- **`scrollIntoView({ block: 'center' })` before hit-testing**: `elementFromPoint` returns null
+  outside the viewport, so an un-scrolled control measures 0 and reads as catastrophic. A control
+  behind an open modal legitimately measures 0, so the home route is measured with the sheet
+  collapsed and the sheet's own geometry separately.
+- **Headless has no notch.** Every `env(safe-area-inset-*)` resolves to 0, so
+  `calc(10px + env(safe-area-inset-bottom, 0px))` and a bare `10px` measure identically and an arm
+  comparing them proves nothing. `page.safeAreaInsets({ bottom: 34 })` is what makes that arm real.
+
+`tests/e2e/gates/measured-design-register.mjs` is the data half — the control register, the tap floor
+read live out of `--tap`, and a QUARANTINE of control classes that already measured under the floor
+when the gate was first run. The register is loaded by `tests/guards/wiring/measured-design-gate.test.ts`,
+which runs in `bun run test` on every box and asserts the register is non-vacuous, that every
+quarantine entry carries a substantive reason, and that the gate is still in the gate list — a
+register only the gate can read is a register nobody checks when the gate does not run. The gate fails
+when a quarantined control **improves** to the floor as well as when it regresses: a quarantine entry
+whose defect no longer reproduces is a guard that can no longer fail, and on a real browser it may
+only mean this box ships a different UA default. Either way the entry gets re-decided, never nudged.
+
+### Probes
+
+Mode is from `PROBES` in `tests/e2e/run-probes.mjs`. `captures` drivers gather evidence and exit 0
+whatever they saw.
+
+| Probe                                          | Mode              | The one thing it proves                                                                                                                                                                                    |
+| ---------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/e2e/probes/p1-gapless.mjs`              | serves            | song 2 starts with no human touch, the seam between the TV's two `<audio>` slots is bounded, and the two never decode at once                                                                              |
+| `tests/e2e/probes/p2-guiding-track.mjs`        | boots             | the original vocals mix back under the instrumental at the room default / per-song override / explicit off, held in time by the governor                                                                   |
+| `tests/e2e/probes/p3-key-shift.mjs`            | serves            | the browser pitch shifter is WIRED into the graph and moves the dominant partial by exactly 2^(N/12) — not silenced, not unshifted                                                                         |
+| `tests/e2e/probes/p4-transport.mjs`            | serves            | play/pause/skip/restart and `seek` move the master element, and the server's `positionSec` tracks the TV instead of pinning at 0                                                                           |
+| `tests/e2e/probes/p5-process-lifecycle.mjs`    | boots             | the unhappy process paths (silent stem, unwritten ref, no profile, failure, retry) reach a phone/TV/library surface honestly                                                                               |
+| `tests/e2e/probes/p6-lyrics.mjs`               | serves            | the word-timed reel appears with no reload, tracks the audio clock, and obeys live presentation settings — including against a fixture the probe rewrites itself                                           |
+| `tests/e2e/probes/p8-presence-resilience.mjs`  | serves            | ten phones stay in sync across disconnects, a duplicate-name rejection recovers, and a leave does not abandon queued songs                                                                                 |
+| `tests/e2e/probes/p9-settings.mjs`             | serves            | a settings change sticks in SQLite, fans out over `settings:changed`, and reaches the workers at assign time — otherwise it is a slider that does nothing                                                  |
+| `tests/e2e/probes/p10-scaling.mjs`             | serves (captures) | the TV scales UP as well as down, the remote survives 320px, and measured contrast clears WCAG AA on real computed colours                                                                                 |
+| `tests/e2e/probes/p11-dashboards.mjs`          | boots             | `/stats`, `/metrics` and the per-song audit agree with counts the probe made itself, rather than showing zeros, NaN or a stale total. Owns its port exclusively and bails if anything is already listening |
+| `tests/e2e/probes/p12-search.mjs`              | serves            | one search box partitions every source on the readiness axis, transitions live over the WebSocket, and survives adversarial queries                                                                        |
+| `tests/e2e/probes/p13-tap-to-start.mjs`        | serves            | the only route out of a silent television works — the document-wide listener plus the full-screen hint, driven gesturelessly                                                                               |
+| `tests/e2e/probes/p14-playhead-vs-process.mjs` | boots             | processing a DIFFERENT song never steps the playing song's playhead backwards (`NOT-A-TV`: grants autoplay)                                                                                                |
+| `tests/e2e/probes/p15-reload-resume.mjs`       | boots             | a mid-song TV reload resumes at the room position and does not drag the server's position backwards (`NOT-A-TV`)                                                                                           |
+| `tests/e2e/probes/p15-phone-reflow.mjs`        | boots             | every phone surface reflows at 320px with the root font-size doubled — `scrollWidth <= clientWidth`, naming the offending element. Needs a built UI                                                        |
+| `tests/e2e/probes/p16-hero-live-controls.mjs`  | boots             | the now-playing drawer's live controls work, degrade honestly when a track is dead, and its sliders do not dismiss the sheet                                                                               |
+| `tests/e2e/probes/lower-third.mjs`             | serves            | the wall names the singer of whichever src the AUDIBLE element carries, sampled from the audio rather than from a decode counter                                                                           |
+| `tests/e2e/probes/tv-audiocontext-resume.mjs`  | serves            | the TV's AudioContext state under both autoplay policies side by side — the A/B that tells a suspended context from a broken shifter                                                                       |
+| `tests/e2e/probes/tv-scrim-empty-lobby.mjs`    | serves            | the tap-to-start scrim does not outlive the room: nothing is painted over the join card of a drained lobby                                                                                                 |
+| `tests/e2e/probes/admin-delete.mjs`            | serves (captures) | `/admin`'s two-step delete posture, shot at the list and at the armed confirm                                                                                                                              |
+| `tests/e2e/probes/preflight-reset-audit.mjs`   | tool              | every property Tailwind's Preflight resets, on every element of every reachable surface, into a JSON audit                                                                                                 |
+| `tests/e2e/probes/preflight-diff.mjs`          | tool              | two audits differ or do not — and refuses to compare surfaces whose tag sequence disagrees, because the failure mode of this measurement is a FALSE difference                                             |
+
+### The flows outside `probes/`
+
+| Driver                                                                            | Proves / produces                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tests/e2e/party.mjs` (`bun run e2e`)                                             | the full room: two phones and a TV, join through search, queue, rotation and skip, driven by accessible name. Needs an EMPTY room and a ROUTABLE advertised origin — a loopback origin renders the unreachable-QR notice instead of the type the first checks read |
+| `tests/e2e/playback.mjs`                                                          | a sound actually comes out, by the decoded-byte rule above                                                                                                                                                                                                         |
+| `tests/e2e/fuzz.mjs` (`bun run e2e:fuzz`)                                         | the six invariants below, re-evaluated after EVERY input from a seeded PRNG, because the live defects were in the ADJACENCY of inputs that no curated sequence covers. `FUZZ_SEED` replays a run input for input                                                   |
+| `tests/e2e/lobby-overlap.mjs` (`bun run e2e:lobby`)                               | on a short TV panel the lobby's typed join address is never intersected or painted over by the roster strip, measured by rect AND `elementFromPoint`                                                                                                               |
+| `tests/e2e/capture.mjs`                                                           | every UI surface driven INTO each state rather than photographed as it loads. The TV is shot at 1920x1080 because its type scale is vh-relative                                                                                                                    |
+| `tests/e2e/shoot.mjs`                                                             | before/after evidence for a deliberate visual change. Deliberately in no gate list: a screenshot cannot fail a build                                                                                                                                               |
+| `tests/e2e/shot.mjs`, `tests/e2e/shot-settings.mjs`, `tests/e2e/shot-metrics.mjs` | one-off frames. `shot-metrics` stubs `/api/metrics` through an `initScript`, so its numbers are fixture data and the frames are for wording only                                                                                                                   |
+
+### The fuzz invariants
+
+Each is re-evaluated after every single input, never once at the end. I2/I3/I5 are cross-surface and
+therefore asynchronous by design, so they are retried against fresh snapshots until they hold or the
+budget runs out; I1/I4/I6 are single-surface and read once.
+
+|     | Holds that                                                                                                                                                                                   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I1  | `currentTime` is monotonic within a song; it may fall only across a seek, restart or entry change                                                                                            |
+| I2  | exactly one queue entry is `playing` — not zero while the TV renders a song, not two                                                                                                         |
+| I3  | the TV's RENDERED now-playing equals the SERVER's `currentEntryId`, read off the server's own socket rather than from another client's guess                                                 |
+| I4  | the lyrics active index is consistent with `currentTime` — the active line's window contains it                                                                                              |
+| I5  | no entry is both `playing` and waiting, and the phones' rendered rotation agrees with the server's waiting set                                                                               |
+| I6  | `webkitAudioDecodedByteCount` CLIMBS whenever the UI claims to be playing, sampled twice 1.5s apart. The one that cannot be dropped: a run that never evaluated it exits 2 rather than green |
+
+### Fault injection
+
+Env vars on `tests/e2e/fake-stems-worker.mjs`, which is how every unhappy path is reached.
+
+| Env                          | Injects                                                                     |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `FAKE_SILENT_INSTRUMENTAL=1` | floor-level instrumental — the guard must refuse to publish it              |
+| `FAKE_SILENT_VOCALS=1`       | floor-level vocals — must NOT fail the process; the guide track is optional |
+| `FAKE_SKIP_WRITE=1`          | a ref reported for a file never written — the unservable path               |
+| `FAKE_NO_PROFILE=1`          | completion with no `songProfile` — the gate must not deadlock               |
+| `FAKE_FAIL=stems`            | fail that job type instead of completing it                                 |
+| `FAKE_SLOW_MS=1500`          | dwell between progress frames, to watch the processing UI                   |
+
+Singer names are unique per room: reusing one gets a 409 and the join page simply stays put, which
+looks exactly like a broken flow. Use a fresh name per probe.

@@ -1,6 +1,5 @@
 // JoinLanding branching at the mount rung. `/` is the landing page now; this
-// component is its unjoined state. Three shapes are pinned here, each reds on a revert of the branch it
-// targets:
+// component is its unjoined state. Three shapes are pinned here, each reds on a revert of the branch it targets:
 //   • no code       → BOTH a scan affordance and the six-segment inputs are present.
 //   • valid ?room=  → the room is confirmed in words, and NO code inputs are shown (scanned path).
 //   • invalid ?room=→ the typed path renders WITH a stated reason, not a blank form.

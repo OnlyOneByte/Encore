@@ -1,9 +1,6 @@
-// The attempt ledger is the historical record the `jobs` table cannot be. These tests assert the
-// four things that were IMPOSSIBLE before it existed, because each was destroyed by in-place mutation:
-//   1. processing time separable from queue wait
-//   2. a previous attempt still readable after a retry
-//   3. which model actually ran a given process
-//   4. one process's steps grouped without blending in a re-process or an upgrade
+// The attempt ledger is the historical record the `jobs` table cannot be: in-place mutation destroyed
+// processing time separable from queue wait, a prior attempt after a retry, which model ran, and per-process
+// grouping that does not blend in a re-process or an upgrade.
 
 import { describe, expect, it } from 'bun:test';
 import { realtimeFactor, attemptSelection } from '$lib/contract';
@@ -39,8 +36,7 @@ describe('attempt ledger — the four clocks', () => {
 		const [a] = ledger.byMedia('m1');
 		expect(a.assignedAt! - a.enqueuedAt).toBe(5_000);
 		expect(a.startedAt! - a.assignedAt!).toBe(1_000);
-		// THE number: real processing time, not polluted by the 6s it spent waiting.
-		expect(a.finishedAt! - a.startedAt!).toBe(90_000);
+		expect(a.finishedAt! - a.startedAt!).toBe(90_000); // real processing time, not the 6s of waiting
 		expect(a.outcome).toBe('ready');
 	});
 
@@ -56,11 +52,9 @@ describe('attempt ledger — the four clocks', () => {
 	});
 
 	it('rates an attempt that was assigned then abandoned before accept as null, not the epoch over the song', () => {
-		// Regression: realtimeFactor's FIRST guard (startedAt === null) is the sole one that catches an
-		// attempt with a known audioSec but no start clock. audioSec is stamped at assign (worker-hub
-		// dispatch), startedAt only at accept — so an assign→seal-without-accept lands in exactly that
-		// state. Without this case the length guard (audioSec falsy) masks it, and a deleted clock guard
-		// divides the whole epoch by the song length: ~9.4M× on the audit page for an abandoned row.
+		// audioSec is stamped at assign and startedAt only at accept, so assign→seal-without-accept has a known
+		// length and no start clock: only realtimeFactor's startedAt === null guard stops it dividing the epoch
+		// by the song length, which read ~9.4M× on the audit page.
 		const { jobs, ledger } = wired();
 		const job = jobs.enqueue('m1', 'stems', 0, T0);
 		jobs.assign(job.id, 'w1', null, T0 + 1_000, { audioSec: 180 }); // dispatch stamps audioSec
@@ -70,12 +64,11 @@ describe('attempt ledger — the four clocks', () => {
 		expect(a.startedAt).toBeNull(); // never accepted
 		expect(a.audioSec).toBe(180); // but the song length is known
 		expect(a.outcome).toBe('abandoned');
-		// The length guard cannot fire (audioSec is set), so this can ONLY pass via the clock guard.
-		expect(realtimeFactor(a)).toBeNull();
+		expect(realtimeFactor(a)).toBeNull(); // audioSec is set, so only the clock guard can pass this
 	});
 
 	it('rates an attempt canceled while assigned as null, not the epoch over the song', () => {
-		// Same never-ran clock guard, reached via the cancel-while-assigned path instead of lease expiry.
+		// The same never-ran clock guard, via cancel-while-assigned instead of lease expiry.
 		const { jobs, ledger } = wired();
 		const job = jobs.enqueue('m1', 'stems', 0, T0);
 		jobs.assign(job.id, 'w1', null, T0 + 1_000, { audioSec: 240 }); // dispatch stamps audioSec
@@ -112,8 +105,7 @@ describe('attempt ledger — history survives a retry', () => {
 
 		const all = ledger.byMedia('m1');
 		expect(all.length).toBe(2);
-		// attempt 1 is still readable — the whole point. Before this table it was gone.
-		expect(all[0].attempt).toBe(1);
+		expect(all[0].attempt).toBe(1); // attempt 1 is still readable — the whole point
 		expect(all[0].outcome).toBe('abandoned');
 		expect(all[0].workerId).toBe('w1');
 		expect(all[1].attempt).toBe(2);
@@ -129,8 +121,7 @@ describe('attempt ledger — history survives a retry', () => {
 		jobs.assign(job.id, 'w2', null, T0 + 61_000);
 
 		const [, second] = ledger.byMedia('m1');
-		// 1s, not 61s: attempt 2 must not be charged for attempt 1's time.
-		expect(second.assignedAt! - second.enqueuedAt).toBe(1_000);
+		expect(second.assignedAt! - second.enqueuedAt).toBe(1_000); // 1s, not 61s: attempt 2 is not charged for 1
 	});
 
 	it('records every failure message, not just the last one', () => {
@@ -180,7 +171,7 @@ describe('attempt ledger — model attribution', () => {
 		const job = jobs.enqueue('m1', 'stems', 0, T0);
 		jobs.assign(job.id, 'w1', null, T0, { engine: 'roformer', model: 'bs-roformer-1297' });
 		jobs.accept(job.id, null, T0);
-		// The worker resolved a different checkpoint and fell back to CPU — the truth, not the request.
+		// The worker resolved another checkpoint and fell back to CPU: the truth, not the request.
 		ledger.reportFacts(job.id, { model: 'mel-band-roformer', backend: 'torch', device: 'cpu' });
 		jobs.complete(job.id, T0 + 1_000);
 
@@ -197,7 +188,7 @@ describe('attempt ledger — model attribution', () => {
 
 		const [a] = ledger.byMedia('m1');
 		expect(a.asrModel).toBe('base');
-		// An align has no separator. A fabricated 'htdemucs' would corrupt the per-model rollup.
+		// An align has no separator; a fabricated 'htdemucs' would corrupt the per-model rollup.
 		expect(a.engine).toBeNull();
 		expect(a.model).toBeNull();
 	});
@@ -223,7 +214,7 @@ describe('process grouping', () => {
 	});
 
 	it('excludes stems-upgrade from the process that triggered it', () => {
-		// The rule that keeps a 43-minute background upgrade out of a 90-second process's end-to-end.
+		// Keeps a 43-minute background upgrade out of a 90-second process's end-to-end.
 		expect(inheritsProcess('stems')).toBe(true);
 		expect(inheritsProcess('align')).toBe(true);
 		expect(inheritsProcess('stems-upgrade')).toBe(false);
@@ -231,8 +222,7 @@ describe('process grouping', () => {
 
 	it('computes end-to-end for one process without blending in a re-process of the same song', () => {
 		const { jobs, ledger } = wired();
-		// process 1: fetch → stems, both complete
-		const f1 = jobs.enqueue('m1', 'fetch', 0, T0);
+		const f1 = jobs.enqueue('m1', 'fetch', 0, T0); // process 1 — fetch → stems, both complete
 		jobs.assign(f1.id, 'w1', null, T0);
 		jobs.accept(f1.id, null, T0);
 		jobs.complete(f1.id, T0 + 10_000);
@@ -241,8 +231,7 @@ describe('process grouping', () => {
 		jobs.accept(s1.id, null, T0 + 10_000);
 		jobs.complete(s1.id, T0 + 100_000);
 
-		// A LATER, separate upgrade on the same song — same mediaId, different proc.
-		const up = jobs.enqueue('m1', 'stems-upgrade', 0, T0 + 500_000);
+		const up = jobs.enqueue('m1', 'stems-upgrade', 0, T0 + 500_000); // same mediaId, different proc
 		jobs.assign(up.id, 'w1', null, T0 + 500_000);
 		jobs.accept(up.id, null, T0 + 500_000);
 		jobs.complete(up.id, T0 + 3_000_000);
@@ -251,8 +240,7 @@ describe('process grouping', () => {
 		const e2e = Math.max(...proc.map((a) => a.finishedAt!)) - Math.min(...proc.map((a) => a.enqueuedAt));
 		expect(e2e).toBe(100_000); // 100s — the honest answer
 
-		// Grouping by mediaId instead would have reported ~50 minutes for a song that was singable in
-		// 100 seconds. This is exactly the distortion processingId exists to prevent.
+		// Grouping by mediaId reports ~50 minutes for a song singable in 100s — what processingId prevents.
 		const byMedia = ledger.byMedia('m1');
 		const wrong = Math.max(...byMedia.map((a) => a.finishedAt!)) - Math.min(...byMedia.map((a) => a.enqueuedAt));
 		expect(wrong).toBe(3_000_000);
@@ -270,7 +258,7 @@ describe('the ledger is observability, never a failure mode', () => {
 	});
 
 	it('a lifecycle event for a job with no open attempt does not throw', () => {
-		// The upgrade case: a job already in flight when this code is deployed has no attempt row.
+		// The upgrade case: a job already in flight when this deploys has no attempt row.
 		const { jobs, ledger } = wired();
 		const job = jobs.enqueue('m1', 'stems', 0, T0);
 		jobs.assign(job.id, 'w1', null, T0);
@@ -281,14 +269,9 @@ describe('the ledger is observability, never a failure mode', () => {
 	});
 });
 
-// `AttemptLedger.allFinished` was removed in: it had zero callers since replaced its
-// bare-row-count window with the time window `finishedSince` + `countFinished`, and the semantics it
-// still offered are the ones measured as wrong (a straddling process reports complete with an
-// understated span). A public method on an exported class is invisible to the unused-EXPORT sweep
-//, so nothing else in the repo would catch its reintroduction. This source scan does: it reds
-// on base, where `allFinished(` still exists at attempts.ts:142. Comments are blanked so the two
-// surviving textual references (the `finishedSince` docstring and the metrics-route comment, both
-// explaining why the time window replaced it) cannot satisfy the match.
+// `AttemptLedger.allFinished` is gone: `finishedSince` + `countFinished` replaced it, and its bare-row-count
+// semantics are measurably wrong (a straddling process reports complete with an understated span). A public
+// method on an exported class is invisible to the unused-EXPORT sweep, so only this scan catches its return.
 describe('the removed row-count window stays removed', () => {
 	const stripComments = (src: string): string => {
 		const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -306,10 +289,8 @@ describe('the removed row-count window stays removed', () => {
 	});
 });
 
-// the variant-pick provenance must reach DURABLE state, not just the process log. This bites the
-// whole worker→core persist mapping at the ledger seam: AttemptFacts.selection, pickFacts carrying it,
-// the open() null default, and the new job_attempts.selection column (regenerated baseline). RED on
-// base: no such field on AttemptFacts, no column — reportFacts drops it and the read comes back null.
+// Variant-pick provenance must reach DURABLE state, not just the process log, which bites the whole
+// worker→core persist mapping at the ledger seam (AttemptFacts.selection, open()'s null default, the column).
 describe('attempt ledger — variant-pick provenance', () => {
 	const RECORD = JSON.stringify({
 		baselineFallback: false,
@@ -335,6 +316,7 @@ describe('attempt ledger — variant-pick provenance', () => {
 		const { jobs, ledger } = wired();
 		const job = jobs.enqueue('m1', 'align', 0, T0);
 		// Freshly opened: null, never undefined — the column exists and starts empty.
+
 		expect(ledger.openFor(job.id)!.selection).toBeNull();
 
 		jobs.assign(job.id, 'w1', null, T0 + 1_000);

@@ -7,12 +7,7 @@ import type { LyricsCandidate } from '../lyrics/lyrics';
 import type { SongProfile } from '../process/song-profile';
 import type { EffectiveSettings, TvBackgroundStyle } from './settings';
 
-// The Bun.serve pub/sub TOPIC a room's realtime events ride. Room isolation: every event for
-// a room is published to — and every one of that room's sockets subscribes to — THIS topic and no
-// other, so a broadcast in room A can never reach room B's clients. The topic is derived from the
-// room's internal id (`rooms.id`), which an earlier change mints and earlier changes already scope playback/queue/roster
-// by, so two rooms deterministically get two distinct topics. Namespaced under `room:` so a future
-// non-room topic on the same server cannot collide with a room whose id happened to match.
+// THE TENANCY BOUNDARY for broadcasts. See docs/SERVER.md#authority-and-the-hub.
 export function roomTopic(roomId: string): string {
 	return `room:${roomId}`;
 }
@@ -24,25 +19,12 @@ export type MediaStatus =
 	| 'aligning'
 	| 'ready'
 	| 'failed'
-	// A process that STOPPED because someone removed the song, not because anything went wrong. It exists
-	// because 'failed' is the only other status a client settles as terminal, and reusing it made the
-	// phone tell a guest who deliberately removed a song "Couldn't make karaoke" — a lie about their own
-	// action. Every other value reads as mid-flight and would re-strand the row we just freed.
+	// A process that STOPPED because someone removed the song. A distinct TERMINAL status: reusing `failed`
+	// tells a guest their own deliberate act was a failure, and any non-terminal value re-strands the row.
 	| 'canceled';
 
-/**
- * The five stops of a process, IN ORDER — the axis the phone renders (the chip strip in
- * ProcessingCard) and the one every producer of a `media:status` positions itself on.
- *
- * Declared here, beside `MediaStatus`, because it is part of the wire vocabulary rather than either
- * side's private view: the server needs it to guarantee a process never reports a stop it has already
- * passed (see the core's jobs/media-status.ts), and the phone needs it to decide which chips are
- * done. The chip strip kept two hand-written copies of this list; the server had none, and gained the
- * ordering it never had by reading this one.
- *
- * `failed` and `canceled` are deliberately absent: they are terminal exits from the line, not stops
- * along it, so they have no position to compare.
- */
+/** The five stops of a process, IN ORDER — the one axis both sides position themselves on, so a second copy is
+ *  how they drift. `failed` and `canceled` are absent: they are exits from the line, not stops on it. */
 export const MEDIA_STAGES = ['queued', 'downloading', 'separating', 'aligning', 'ready'] as const;
 
 export type MediaStage = (typeof MEDIA_STAGES)[number];
@@ -55,12 +37,10 @@ export function mediaStagePosition(status: MediaStatus): number {
 // A singer safe to broadcast (no sessionToken).
 export type PublicSinger = Omit<Singer, 'sessionToken'>;
 
-// ── core -> all clients (broadcasts) ───────────────────────────────────────
+// core -> all clients (broadcasts)
 export type ServerEvent =
 	| { type: 'queue:patch'; patch: ServerPatch }
-	// singers/media are optional directories so clients can render names/titles per entry.
-	// `online` is the presence snapshot (singer ids with a live socket) — a client that connects
-	// mid-party needs the roster immediately, not on the next presence change.
+	// Optional directories and snapshots, so a client joining mid-party has the full picture immediately.
 	| {
 			type: 'queue:sync';
 			rev: number;
@@ -73,38 +53,29 @@ export type ServerEvent =
 	  }
 	| { type: 'playback:state'; state: PlaybackState; rev: number }
 	| { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }
-	// `unservable` marks a job that is queued but that NO connected worker advertises the capability
-	// for — it will never start, as distinct from waiting its turn. Optional and currently
-	// informational: the phone does not render it yet, but the distinction has to exist on the wire
-	// before any surface can show it, and it is what separates "processing soon" from "stuck forever".
+	// `unservable` = queued but no connected worker advertises its capability, which separates "processing
+	// soon" from "stuck forever". See docs/SERVER.md#idempotency-and-the-process-cap.
 	| { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }
 	| { type: 'singer:joined'; singer: PublicSinger }
 	| { type: 'singer:updated'; singer: PublicSinger }
 	| { type: 'singer:left'; singerId: string }
-	// Who is in the room RIGHT NOW — the full set of singer ids holding a live socket,
-	// broadcast whenever it changes. Full-set (not a delta) on purpose: it is a handful of ids, and
-	// an idempotent snapshot cannot drift the way an add/remove stream can after a dropped frame.
+	// FULL SNAPSHOTS, never deltas: an idempotent snapshot cannot drift after a dropped frame.
 	| { type: 'singer:presence'; online: string[]; away: string[] }
-	// Room-level separator settings changed. Full snapshot, not a delta (same reasoning as presence).
 	| { type: 'settings:changed'; settings: EffectiveSettings }
 	| { type: 'op:reject'; clientOpId: string; reason: string };
 
-// ── phone/TV -> core ────────────────────────────────────────────────────────
+// phone/TV -> core. Every value is an ABSOLUTE target, clamped or whitelisted SERVER-side, and `null` clears
+// the per-song override rather than meaning zero. See docs/SERVER.md#authority-and-the-hub.
 export type PlayerCommand =
 	| { cmd: 'play' }
 	| { cmd: 'pause' }
 	| { cmd: 'skip' }
 	| { cmd: 'restart' }
 	| { cmd: 'seek'; positionSec: number }
-	// ± key on a process (file) song. `semitones` is the ABSOLUTE target (not a delta), clamped
-	// server-side to ±MAX_KEY_SHIFT; the server picks the matching pre-rendered instrumental.
+	// Clamped to ±MAX_KEY_SHIFT, and only accepted once the song's stems are ready.
 	| { cmd: 'key'; semitones: number }
-	// Per-song override of the room's TV background. `style: null` hands the song back to the room
-	// default. Whitelisted server-side against TV_BACKGROUND_STYLES — never trusted as a string.
 	| { cmd: 'background'; style: TvBackgroundStyle | null }
-	// The GUIDING TRACK: how loud the isolated original vocals sit under the instrumental. `level` is
-	// the ABSOLUTE target 0..1 (not a delta), clamped server-side; `null` CLEARS the per-song override
-	// so the room default applies again. Only accepted for a song that actually has a vocals stem.
+	// 0..1, and only accepted for a song that actually has a vocals stem.
 	| { cmd: 'guide'; level: number | null };
 
 export type ClientEvent =
@@ -113,9 +84,9 @@ export type ClientEvent =
 	| { type: 'tv:telemetry'; positionSec: number; status: string; entryId?: string }
 	| { type: 'hello'; lastRev: number };
 
-// ── dial-home worker protocol ─────────────────────────────────────────────────
-// Workers connect TO the core over WS (NAT-friendly, scale-out). All messages are JSON
-// { type,...payload }. See docs/ARCHITECTURE.md.
+// The dial-home worker protocol: workers connect TO the core, all frames JSON `{ type, ...payload }`. The
+// frame NAMES are mirrored in the worker's `protocol.py` and a parity guard holds the two unions equal.
+// See docs/ARCHITECTURE.md §7.
 
 // worker -> core
 export type WorkerMessage =
@@ -148,15 +119,8 @@ export type WorkerMessage =
 	  }
 	| { type: 'job:failed'; workerId: string; jobId: string; error: string; retryable: boolean };
 
-/**
- * What the worker actually ran, as opposed to what the core asked for.
- *
- * These differ more often than it looks: a processor applies its own default when the core sends no
- * model, resolves a token to a checkpoint (a token was once found to resolve to a DIFFERENT model
- * than the one benchmarked under that name), and falls back to CPU when a requested backend will not
- * load. The core cannot know any of it, so per-model metrics built from dispatched values would be
- * reporting requests as facts. Every field optional: a step reports only the axes that apply to it.
- */
+/** What the worker ACTUALLY ran, which differs routinely from what it was asked. Every field optional, so a
+ *  step reports only the axes that apply. See docs/SERVER.md#what-the-worker-is-told. */
 export interface ResolvedFacts {
 	engine?: string;
 	model?: string;
@@ -166,109 +130,64 @@ export interface ResolvedFacts {
 	syncMode?: string;
 }
 
-/**
- * How long one stage of a job took. The core can already derive TOTAL processing time from its own
- * accept→complete stamps; this is the SPLIT it cannot see — whether the 43 minutes were the download
- * or the separation. Measured on the worker because only it observes a stage transition.
- */
+/** How long one stage took — the SPLIT the core cannot see, since only the worker observes a transition. */
 export interface StageTiming {
 	stage: string;
 	ms: number;
 }
-/** The box a worker runs on. Best-effort and every field optional — a diagnostic must never fail a
- *  handshake, and torch is genuinely absent under ENCORE_PROCESSOR=stub.
- *
- *  Every field is a MEASUREMENT, never a setting. Two are easy to misread:
- *  `cpuCount` is the EFFECTIVE count the worker may actually use — the tightest of the host's cores,
- *  scheduler affinity and the cgroup quota — not the machine's total, because a container throttled to
- *  two cores on a 32-core host is the case worth knowing about and `os.cpu_count()` hides it.
- *  `vramBytes` is physical capacity, so it says a card is big enough to consider, never that a
- *  checkpoint will fit alongside whatever is already resident. */
+/** The box a worker runs on. Best-effort with EVERY field optional, because a diagnostic must never fail a
+ *  handshake, and every field is a MEASUREMENT rather than a setting. See
+ *  docs/SERVER.md#what-the-worker-is-told. */
 export interface WorkerHost {
 	platform?: string;
 	machine?: string;
 	python?: string;
-	cpuCount?: number; // effective, post-cgroup — NOT the host's total
+	cpuCount?: number; // EFFECTIVE, post-cgroup — never the host's total
 	torch?: string;
-	/** Kept for the readers that already branch on it; `accelerator` supersedes it and is derived from
-	 *  the same probe, so the two cannot disagree. */
+	/** Superseded by `accelerator`, but derived from the same probe so the two cannot disagree. */
 	cuda?: boolean;
-	/** WHICH accelerator, not merely whether CUDA is present. ROCm masquerades as `cuda` in torch's API
-	 *  (there is no `torch.rocm`), so a plain boolean reported an AMD card as NVIDIA. */
+	/** WHICH accelerator, not merely whether CUDA is present: ROCm masquerades as `cuda`, so a boolean
+	 *  reports an AMD card as NVIDIA. */
 	accelerator?: 'cuda' | 'rocm' | 'xpu' | 'mps' | 'cpu';
 	deviceName?: string;
 	deviceCount?: number;
 	memoryBytes?: number | null;
 	vramBytes?: number | null; // physical capacity, not free memory
-	/** A cgroup limit is in force, so `cpuCount` is below what the machine actually has. Worth
-	 *  surfacing: it is the difference between "this box is small" and "this box was given a slice". */
+	/** A cgroup limit is in force — the difference between a small box and a sliced one. */
 	contained?: boolean;
 }
 
-// Where workers pull source / push stems. local = a shared volume (single-box); object = S3/MinIO
-// for workers on other boxes (ARCHITECTURE §2). Sent verbatim in worker:welcome.
+// Where workers pull source and push stems. Sent verbatim in `worker:welcome`; see docs/ARCHITECTURE.md §2.
 export type MediaStoreConfig =
 	{ kind: 'local' } | { kind: 'object'; bucket: string; endpoint?: string; region?: string; prefix?: string };
 
 /**
- * Per-job inputs the core derives and the worker consumes. One flat optional bag rather than a union
- * per JobType, because a worker reads only the keys its processor needs and an unknown key must never
- * break an older worker.
- *
- * `artist`/`track` are the CONFIDENCE-GATED canonicals, not the raw uploader and title: an align job
- * that looked up "7clouds — Britney Spears - Baby One More Time (Lyrics)" misses on metadata alone.
- * Before this existed the contract was `{ model?, targetKey? }` and worker-hub sent only `{ model }`,
- * so `WhisperXProcessor` hard-raised on every align job.
- *
- * `language` is deliberately ABSENT: nothing populates it, and sending a guessed 'en' is worse than
- * letting the worker default and the ASR pass detect it.
+ * Per-job inputs the core derives and the worker consumes. ONE flat optional bag, so an unknown key never
+ * breaks an older worker. `artist`/`track` are the CONFIDENCE-GATED canonicals and never the raw uploader and
+ * title; `language` is deliberately ABSENT, because a guessed one is worse than letting ASR detect it.
  */
 export interface JobParams {
-	/**
-	 * How the worker should obtain `sourceUri` — DECLARED, never inferred from the URI's shape.
-	 * `ytdlp` means download it; `local` means it is already a path under the media volume. Set on every
-	 * job that touches source audio, so a worker never has to guess (see src/lib/contract/process/fetchers.ts).
-	 */
+	/** How the worker obtains `sourceUri` — DECLARED, never inferred from the URI's shape. See
+	 *  docs/SERVER.md#what-the-worker-is-told. */
 	fetcher?: string;
 	model?: string; // separation model/checkpoint token (stems) — resolved by the worker engine
 	engine?: string; // separation engine id (stems): 'demucs' | 'roformer' | 'ensemble'
 	targetKey?: string; // requested key shift, if a job ever pre-renders one
 	artist?: string; // canonical artist for a lyrics lookup; absent when the parse wasn't confident
 	track?: string; // canonical title for a lyrics lookup; absent when the parse wasn't confident
-	/**
-	 * The full artist billing ("Lady Gaga feat. Beyoncé") when the upload credited more than the primary.
-	 * NOT a lookup key — querying it would miss every record filed under the primary alone. It RANKS the
-	 * records a search returns, which is how the version with a guest verse is told apart from the one
-	 * without. Absent when it would only repeat `artist`.
-	 */
+	/** The full billing when the upload credited more than the primary. NOT a lookup key — it RANKS the records
+	 *  a search returns, which is how a version with a guest verse is told from one without. */
 	artistCredit?: string;
 	album?: string;
 	durationSec?: number; // narrows an LRCLIB match and bounds line-sync fallback timings
-	/**
-	 * The lyrics engines for an `align` job, chosen by the deployment (see lyrics-engines.ts).
-	 * `asrModel` is a faster-whisper token; `syncMode` is 'forced' (wav2vec2 word timings) or 'lines'
-	 * (use each source's own line timings and skip the align model entirely).
-	 *
-	 * Optional on the wire so a core that predates the setting still produces valid params — the worker
-	 * falls back to its own defaults, which are these same values.
-	 */
+	/** The lyrics engines for an `align` job. Optional on the wire, so an older core still produces valid
+	 *  params; the worker's own defaults are these same values. */
 	asrModel?: string;
 	syncMode?: string;
-	/**
-	 * A HUMAN re-pick: the MediaStore key of the candidate this `align` job must re-time, instead of
-	 * running its own comparative selection. Set only by the re-select flow (`/api/lyrics-reselect`).
-	 *
-	 * When present the worker SHORT-CIRCUITS `GradeAndSelect` to this candidate's stored text and times
-	 * that — re-timing the words a human chose from the RETAINED vocals stem, no re-download, no re-pick.
-	 * Absent on every normal process, where the worker selects comparatively as before.
-	 */
+	/** A HUMAN re-pick: the candidate this `align` job must re-time instead of selecting. The worker
+	 *  SHORT-CIRCUITS grading and re-times from the retained vocals stem. */
 	pinnedRef?: string;
-	/**
-	 * PASTED lyrics text for a `manual`-source re-pick: the user supplied words no provider had.
-	 * When present the worker times THIS text (source `manual`) rather than any stored candidate, and
-	 * `pinnedRef` is the ref it will be written under. Absent on every normal process and on a re-pick of an
-	 * already-stored candidate.
-	 */
+	/** PASTED lyrics no provider had; `pinnedRef` is the key it is written under, so the two travel together. */
 	pinnedText?: string;
 }
 
@@ -288,47 +207,14 @@ export type WorkerCommand =
 	| { type: 'ping' };
 
 export interface JobArtifacts {
-	/**
-	 * MediaStore keys for the files separation published.
-	 *
-	 * `guideMix` is both stems in ONE 4-channel FLAC — channels 0/1 the instrumental, 2/3 the vocals.
-	 * It is a MEMBER of `stems` (unlike `songProfile` beside it) because it is a file,
-	 * and it is a THIRD entry rather than a replacement for the two: the single-stem files still back
-	 * the two-element playback path, and `vocals` still feeds pitch and range analysis.
-	 *
-	 * Why it exists at all: two stems mean two media elements, which is two decoders and two clocks, and
-	 * two clocks cannot be sample-locked from script — `guide-sync.ts` can only compare each element's
-	 * reported `currentTime`, which excludes output latency, so its governor converges on a signal that
-	 * does not describe what the ear hears. One file has one playhead, so drift becomes impossible
-	 * rather than corrected. Absent whenever there was no publishable vocals stem, or the extra encode
-	 * failed — both leave the room on the two-element path, which is why it is optional.
-	 */
+	/** MediaStore keys for the FILES separation published. `guideMix` belongs here BECAUSE it is a file, and is
+	 *  a third entry rather than a replacement. Optional: there may be no vocals stem, or the encode failed. */
 	stems?: { instrumental?: string; vocals?: string; guideMix?: string };
-	/**
-	 * What the separation LEARNED about the music — detected key and sung range. A SIBLING of `stems`,
-	 * not a member of it, because `stems` holds MediaStore keys for files and this is an analysis result
-	 * with no file behind it.
-	 *
-	 * That placement is declared here deliberately. It was previously undeclared and the core read it
-	 * structurally as `artifacts.stems.songProfile` while the worker published it as
-	 * `artifacts.songProfile` — so it silently arrived `undefined` on every process. Both sides' unit tests
-	 * passed, because each mocked its own shape; and because the `stems` process gate requires the profile
-	 * to be PRESENT, the effect was that every separated song sat at "Separating vocals" forever with no
-	 * way out. Declaring the field is what makes that class of drift a type error instead of a
-	 * production stall.
-	 *
-	 * Every inner field is nullable and the record is published even when analysis found nothing — see
-	 * `SongProfile`, whose doc comment explains why "ran but found nothing" must be representable.
-	 * Still normalized with `normalizeSongProfile` at the boundary: a declared type is not a validated
-	 * one, and this frame is untrusted.
-	 */
+	/** What separation LEARNED about the music. A SIBLING of `stems`, never a member, and the NESTING is why it
+	 *  is declared rather than read structurally. See docs/SERVER.md#what-the-worker-is-told. */
 	songProfile?: SongProfile;
-	/**
-	 * What a `fetch` job identified this song AS, when MusicBrainz agreed. Absent when annotation was
-	 * declined — which is the normal outcome for anything the normalizer could not name confidently, a
-	 * weak duration match, or an unreachable service. The core applies it under a never-regress rule so
-	 * a later `medium` cannot overwrite an earlier `high`.
-	 */
+	/** What a `fetch` job identified this song AS; absent is the normal outcome. Applied under a never-regress
+	 *  rule — see docs/SERVER.md#media-storage-and-paths. */
 	annotation?: {
 		source: string;
 		mbid: string;
@@ -336,23 +222,12 @@ export interface JobArtifacts {
 		title: string;
 		confidence: string;
 	};
-	/**
-	 * `uri` is the single best artifact (the original single-artifact shape, still what
-	 * `setMediaLyrics` reads).
-	 * `candidates` is the full set an align job produced — one entry per TEXT SOURCE, each its own file.
-	 * The core ranks them with `pickBestLyrics`; the worker's `uri` is only a convenience
-	 * pointer so a completed job is useful before the core stores the candidate set.
-	 */
+	/** `uri` is the single best artifact; `candidates` is the full set, one per TEXT SOURCE, which the core
+	 *  ranks. */
 	lyrics?: { uri: string; candidates?: LyricsCandidate[] };
-	pitch?: { uri: string }; // reference pitch-track JSON — drives server-side mic scoring
-	/**
-	 * What a `fetch` job retained as the ORIGINAL audio — the one storage class that cannot be
-	 * regenerated (see steps/metadata.py PublishOriginal). The core consumes the fetch result through
-	 * `media_uri`, not this key, so nothing reads it today; it is declared here so it is not the last
-	 * UNDECLARED key riding this frame. An undeclared key is exactly what stalled every process while
-	 * `songProfile` shipped one level too deep — declaring `source` makes any future reader a typed one
-	 * and the parity guard below asserts every worker-written key is a member of this interface.
-	 */
+	pitch?: { uri: string }; // reference pitch-track JSON
+	/** What a `fetch` job retained as the ORIGINAL audio. Nothing reads it today, but EVERY key the worker
+	 *  writes must be declared here. See docs/SERVER.md#what-the-worker-is-told. */
 	source?: { audio: string };
 }
 

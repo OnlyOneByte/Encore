@@ -10,9 +10,8 @@ One doc per (media, text source, timing tier):
 present so a consumer never has to flatten or group, and both are millisecond-rounded so two runs of
 the same aligner produce byte-identical files.
 
-Extracted from whisperx.py, where it sat beside the align ORCHESTRATION and the wav2vec2 model
-wrapper. Shaping an artifact is neither of those: the core, the TV and every text source depend on
-this format, while only one of them depends on how the timings were obtained.
+Separate from align ORCHESTRATION and the wav2vec2 model wrapper: the core, the TV and every text
+source depend on this format, while only one of them depends on how the timings were obtained.
 
 PURE: dict in, dict out. No numpy, no torch, no I/O.
 """
@@ -31,24 +30,17 @@ def candidate_key(
 ) -> str:
     """Artifact key per (text source, TAG, TIMING TIER), so texts coexist instead of overwriting.
 
-    The single `derived/lyrics/<id>.json` key could hold exactly one answer, which is what forced the
-    old "pick one winner" design. One file per source is what makes the upgrade path possible: a
-    baseline lands first, LRCLIB is re-tried later, neither clobbers the other.
+    One file per source is what makes the upgrade path possible: a baseline lands first, LRCLIB is
+    re-tried later, neither clobbers the other.
 
-    The TIMING tier is in the key too, because source alone still allowed a regression WITHIN a source:
-    a re-run whose aligner failed would write line-level output over the same key and replace perfectly
-    good word timings — the never-regress guarantee held across sources but not within one. Separate
-    keys mean the word-level artifact survives on disk and in the candidate set, and `pickBestLyrics`
-    keeps choosing it.
+    The TIMING tier is in the key too, or a re-run whose aligner failed would write line-level output
+    over the same key and replace perfectly good word timings — the never-regress guarantee would
+    hold across sources but not within one.
 
-    The TAG exists because a source is no longer one text. Two baselines are both `asr` (one reads the
-    vocals stem, one the mix) and two caption tiers are both `captions` (one authored, one automatic), so
-    without it the second write of a pair would silently destroy the first — and destroy exactly the
-    independence that makes averaging baselines worth doing.
-
-    Moved here from lyrics/grading.py: the artifact key belongs beside the artifact shape this
-    module owns, not in the acquisition/grading module. It was the second artifact-key builder — the
-    first, a dead single-file `lyrics_key`, was removed in the same change.
+    The TAG exists because a source is no longer one text: two baselines are both `asr` (vocals stem
+    vs mix) and two caption tiers are both `captions` (authored vs automatic), so without it the
+    second write of a pair would silently destroy the first — destroying the independence that makes
+    averaging baselines worth doing.
     """
     parts = [media_id, text_source] + ([tag] if tag else []) + [timing]
     return f"derived/lyrics/{'-'.join(parts)}.json"
@@ -106,26 +98,11 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         if not words and (l_start is None or l_end is None):
             continue
         line: dict[str, Any] = {"start": l_start, "end": l_end, "text": line_text, "words": words}
-        # A romanization is a per-line SECOND SCRIPT the source shipped. This pass-through
-        # copies it onto a line ONLY when the input segment already carries it, and it is defensive
-        # depth today, NOT a live carrier: the one site that writes ``romanization`` INTO A SEGMENT is
-        # ``entries_to_segments`` (``lrclib.py``: ``seg["romanization"] = e.romanization``), fed the
-        # folded ``LrcEntry`` rows by ``fold_romanization_entries`` on the LRCLIB synced (``TIMING_LINE``)
-        # path — ``fold_romanization_entries`` itself only sets ``romanization`` on an ``LrcEntry``, never
-        # on a segment dict. No producer hands those segments to ``normalize_lyrics``. The two paths that
-        # DO surface the second script
-        # each carry it OUTSIDE this function:
-        #   - the aligned path (the default ``forced`` sync mode) — the aligner rebuilds every segment
-        #     and drops the field, so ``_time_one`` re-attaches it by source-line position via
-        #     ``_attach_romanizations`` in ``steps/lyrics.py`` AFTER ``normalize_lyrics`` has run;
-        #   - the line-sync path (``lines`` mode / aligner-failure fallback) — ``line_synced_lyrics`` in
-        #     ``lrclib.py`` has its own copy and never calls this normalizer.
-        # The ASR (``TIMING_WORD``) path cannot carry it: whisper emits no romanization and the ASR
-        # source rebuilds segments with only ``start``/``end``/``text``/``words`` (pinned by
-        # ``test_asr_source_segment_keys_are_exactly_start_end_text_words`` — a fifth ``romanization`` key
-        # would make this branch live) and this pass-through's copy is itself pinned by
-        # ``test_normalize_lyrics_copies_a_segment_romanization_through``. Never fabricated:
-        # absent key → single-script line, unchanged behaviour.
+        # A romanization is a per-line SECOND SCRIPT the source shipped. This pass-through copies it
+        # onto a line ONLY when the input segment already carries it: defensive depth today, not a
+        # live carrier, since the aligned and line-sync paths both attach romanization OUTSIDE this
+        # function (see `_attach_romanizations` in steps/lyrics.py and `line_synced_lyrics`). Never
+        # fabricated: absent key -> single-script line, unchanged behaviour.
         romanization = seg.get("romanization")
         if isinstance(romanization, str) and romanization.strip():
             line["romanization"] = romanization.strip()

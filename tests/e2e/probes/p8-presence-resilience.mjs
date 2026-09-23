@@ -1,27 +1,9 @@
 /*
- * P8 — Presence, join, and realtime resilience.
+ * P8 — Presence, join, and realtime resilience: ten phones stay in sync across disconnects.
  *
- * The claim under test: "twenty phones stay in sync over flaky wifi, and reconnects self-heal."
- * We do not have twenty singers-worth of context to spare, but we have eight to ten, and every
- * defect this branch cares about — a locked phone erasing its owner from the roster, a stranded
- * duplicate-name form, a silent WS drop that never resyncs, a queue op eaten by a severed socket,
- * a leave that abandons queued songs — is visible with that count.
- *
- * WHAT THIS FILE OWNS. Only the WebSocket instrument below, and the assertions. It used to carry a
- * full private CDP client — a `Cdp` class over a hand-rolled WebSocket and a `CdpPage` reimplementing
- * evaluate, goto, click, waitFor, screenshot, viewport and network emulation — because `driver.mjs`
- * exposed neither per-page script injection nor a way to sever a socket without closing it politely.
- * Both now exist there as native Playwright (`newPage({ initScript })` and `setOffline`), so the
- * parallel driver is gone and this probe drives the same pages every other flow does.
- *
- * WHAT THIS PROBE DOES NOT TRY TO ASSERT. Playback (no working ML pipeline, no volumedetect on this
- * box), lyrics timing, and 20-phone scale. It stops short of 20 both because context isolation costs
- * a fresh browser context per phone (memory and file descriptors add up fast under a shared
- * Chromium) and because the failure classes we care about show up at 8-10 already.
- *
- * Environment gaps (deno missing, ffmpeg decode-only, no torch/whisperx) are pre-recorded in
- * tests/e2e/HARNESS.md. Real defects go under CRITICAL/HIGH/MEDIUM/LOW; environment misses go
- * under `ENV` and never inflate a real number.
+ * Ten and not twenty: a browser context per phone costs memory and file descriptors, and every
+ * failure class here shows up at 8-10. ENV findings never inflate a real number — see
+ * docs/E2E.md#exit-codes-and-what-ran-means.
  */
 
 import { mkdirSync } from 'node:fs';
@@ -33,42 +15,39 @@ import { openBrowseFromHome, joinedExpression } from '../lib/phone.mjs';
 import { openJoin } from '../lib/join.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * /pattern). Pages come from driver.mjs, so `Page` is its wrapper; page.evaluate() returns
- * Promise<any>, so DOM-shaped reads are cast at the call site via the domain typedefs below.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
- *
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ENV' | 'PASS'} Level
- *
- * One queue row the phone reads out of its own DOM.
  * @typedef {{ title: string, away: boolean, pending: boolean }} QueueRow
- *
- * The phone's authoritative room snapshot returned by getState().
  * @typedef {{ rows: QueueRow[], count: number }} RoomState
- *
- * One TV roster chip read off the presence strip.
  * @typedef {{ name: string, away: boolean, more: boolean, text: string }} RosterChip
- *
- * The TV roster snapshot returned by tvRoster().
  * @typedef {{ chips: RosterChip[], screen: ("transient" | "playing" | "lobby" | "attract") }} TvRoster
  */
 
-// ── config ────────────────────────────────────────────────────────────────
 const PORT = process.env.EPORT ?? '5228';
 const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.KIROCREW_SCRATCH || process.env.TMPDIR || '/tmp';
 const OUT_DIR = join(SCRATCH, `p8-${Date.now()}`);
 mkdirSync(OUT_DIR, { recursive: true });
 
-const NUM_PHONES = 10; // "join eight to ten singers"
-const NUM_BURST = 6; // simultaneous-add burst count
+const NUM_PHONES = 10;
+const NUM_BURST = 6;
+/** One beat for the first queue:sync to land after a socket opens. */
+const QUEUE_SYNC_SETTLE_MS = 400;
+/** Time for a presence/queue broadcast to reach every other surface. */
+const ROSTER_BROADCAST_MS = 600;
+/** A broadcast plus a reconnect resync handshake. */
+const RESYNC_SETTLE_MS = 1500;
+/** Long enough for the client's re-dial attempts to be failing rather than pending. */
+const OFFLINE_SETTLE_MS = 800;
+/** A reconnect, a queue:sync and the pending-op resend it triggers. */
+const RECONCILE_SETTLE_MS = 3000;
+/** NUM_BURST concurrent adds, applied and broadcast to every phone. */
+const BURST_SETTLE_MS = 3500;
 
-// Distinct singer names — each probe reuses none, so this suite never trips the 409 accidentally.
+// One distinct name per phone: a reused name is a 409 and the join page simply stays put.
 const PHONE_NAMES = ['Ada', 'Bea', 'Cai', 'Deb', 'Eve', 'Fin', 'Gio', 'Han', 'Ira', 'Jos'];
 
-// ── findings ──────────────────────────────────────────────────────────────
 /** @type {{level:'CRITICAL'|'HIGH'|'MEDIUM'|'LOW'|'ENV'|'PASS', title:string, detail:string, evidence?:string}[]} */
 const findings = [];
 /**
@@ -82,15 +61,10 @@ function report(level, title, detail, evidence) {
 	console.log(`[${level}]  ${title}${detail ? '\n        ' + detail : ''}${evidence ? '\n        ' + evidence : ''}`);
 }
 
-// ── WebSocket instrumentation ─────────────────────────────────────────────
 /*
- * Runs BEFORE app code on every page load in this target. We wrap `WebSocket` so every socket the
- * client-side code opens is recorded on `window.__p8`; the probe then reaches those sockets to
- * close them abruptly (a hard drop) or to observe reconnection state.
- *
- * NOT a full ES2015 subclass. We wrap the constructor because Svelte's WsClient uses `new WebSocket`,
- * and only that path needs interception. `send`/`close` pass through to the real methods, so we do
- * not add any observable behavior beyond the record.
+ * Runs before app code on every load (docs/E2E.md#the-driver), recording every socket the client
+ * opens so the probe can hard-drop one or watch it reconnect. send/close pass straight through, so
+ * the instrument adds no observable behaviour.
  */
 const INSTRUMENT = `
 (() => {
@@ -100,10 +74,8 @@ const INSTRUMENT = `
     sockets: list,
     lastOpen: null,
     connectCount: 0,
-    // Hard-drop the most recently opened socket, mimicking a peer going away without a FIN.
-    // Using close() first is deliberate: a browser WebSocket has no "abort" — close(3000, ...) is
-    // the closest thing to a signal drop from the JS side. The client's onclose fires, and the
-    // reconnect path takes over.
+    // A browser WebSocket has no "abort", so close(3000) is the closest thing to a signal drop from
+    // the JS side: the client's onclose fires and the reconnect path takes over.
     dropLast() {
       const s = this.lastOpen;
       if (!s || s.readyState > 1) return false;
@@ -127,7 +99,6 @@ const INSTRUMENT = `
 })();
 `;
 
-// ── join helpers ──────────────────────────────────────────────────────────
 /**
  * @param {Browser} browser
  * @param {string} name
@@ -135,25 +106,14 @@ const INSTRUMENT = `
  */
 async function joinPhone(browser, name, colourName = PRESET_COLOUR_NAMES[0]) {
 	const page = await browser.newPage({ initScript: INSTRUMENT });
-	await page.viewport(390, 844, 1); // an iPhone-ish portrait, without the 2000px screenshot ceiling risk
+	await page.viewport(390, 844, 1);
 	await openJoin(page, BASE);
 
-	/*
-	 * Driven through the driver's verbs rather than three `evaluate`s that dispatched their own events.
-	 * The old shape did `el.focus(); el.value = …; dispatchEvent(new Event('input'))` and found the two
-	 * buttons with `querySelector().click()`, which had two problems beyond the duplication: it threw
-	 * `Cannot read properties of null` whenever the form had not rendered yet, because a bare
-	 * `querySelector` does not wait; and a synthesised click grants NO user activation, which is exactly
-	 * the distinction a presence probe should not blur. `fill` and the click verbs wait for actionability
-	 * and deliver real input.
-	 */
+	// Driver verbs, not hand-dispatched events: they wait for actionability. docs/E2E.md#gestures.
 	await page.fill(SEL.nameInput, name);
 	await page.clickByLabel(colourName);
 	await page.clickByRole('button', 'Start singing');
-	// A well-formed join lands on / with the joined home rendered — the DOCKED BAND, not the search box:
-	// search lives on the browse screen, so testing for it here would mean "browsing", not
-	// "joined". A duplicate-name join sits on /join with a `.err[role=alert]` — differentiate here so the
-	// caller can react.
+	// "joined" keys on the docked band, not the search box, which would answer "browsing" instead.
 	const outcome = await page.waitFor(
 		`(() => {
 			if (location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.homeReady)})) return 'joined';
@@ -164,15 +124,9 @@ async function joinPhone(browser, name, colourName = PRESET_COLOUR_NAMES[0]) {
 		{ timeout: 8_000 }
 	);
 	if (outcome === 'joined') {
-		// Wait for the socket to actually connect before returning — every downstream assertion (roster,
-		// resync, add) depends on a live WS. A joined phone with no socket yet passes readyState but
-		// fails everything after. Then wait one more short beat for the queue:sync to arrive: the
-		// store is initialized BEFORE ws.open(), but a queue:command that flies before the first
-		// queue:sync is answered has no `baseRev` context on the client side — nothing breaks, but a
-		// tight loop of "join → search → click" measured on this same phone can miss its own
-		// optimistic row if the store subscribe callback hasn't observed the sync-time rebase yet.
+		// A phone that taps before its store has observed the sync-time rebase misses its own row.
 		await page.waitFor(`window.__p8 && window.__p8.connectCount > 0`, { timeout: 8_000 }).catch(() => null);
-		await delay(400);
+		await delay(QUEUE_SYNC_SETTLE_MS);
 	}
 	return { page, name, outcome };
 }
@@ -181,7 +135,6 @@ async function joinPhone(browser, name, colourName = PRESET_COLOUR_NAMES[0]) {
 async function getState(page) {
 	return page.evaluate(
 		`(() => {
-			// The phone's authoritative view of the room, read straight off the DOM the singer sees.
 			const rows = [...document.querySelectorAll(${JSON.stringify(SEL.queueRow)})].map(r => ({
 				title: (r.querySelector(${JSON.stringify(SEL.rowTitle)})?.textContent || '').trim(),
 				away: r.querySelector(${JSON.stringify(SEL.away)}) != null,
@@ -192,16 +145,11 @@ async function getState(page) {
 	);
 }
 
-// ── search + queue ────────────────────────────────────────────────────────
-// Deliberate choice of search term: a LOCAL library song ("bohemian" → Bohemian Rhapsody), so the
-// search hits the local index (fast, deterministic) rather than yt-dlp (slow, network-dependent). A
-// yt-dlp cold miss on the first phone made an earlier revision of this probe read as if the queue
-// was losing rows — the queue was fine, the search just hadn't returned yet.
+// A LOCAL song: a cold yt-dlp miss takes long enough to read as the queue losing rows.
 const SEARCH_TERM = process.env.P8_SEARCH ?? 'bohemian';
 
 /** @param {Page} page @param {string} [term] */
 async function searchAndQueue(page, term = SEARCH_TERM) {
-	// The search box is on the browse screen, so get there first. A no-op when already there.
 	await openBrowseFromHome(page);
 	await page.evaluate(
 		`(() => {
@@ -211,9 +159,7 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 			el.dispatchEvent(new Event('change', { bubbles: true }));
 		})()`
 	);
-	// The search is debounced 150ms and then hits /api/search (which itself may call yt-dlp on
-	// unfamiliar terms). Wait long, and require an ACTIONABLE row (`.add` or `.sing`) — a naked
-	// `.row` with no button is a browse header or a still-hydrating row, not something we can queue.
+	// An ACTIONABLE row, not a bare `.row`: one with no button is a header or is still hydrating.
 	const rowsBefore = await page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`);
 	const attemptClick = async () => {
 		return page.evaluate(
@@ -238,13 +184,8 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 		)
 		.catch(() => null);
 	if (!clicked) return { queued: false, reason: 'no actionable row after 20s' };
-	// Two-shot click with verification. A single `.click()` on a Svelte-managed button can fall on the
-	// wrong side of a re-render when search results shuffle in the same tick as the tap — the element
-	// existed when we found it and was replaced by an identical-looking one by the time the event
-	// dispatched, and the replacement is what carries the live handler. Click, wait for the queue row
-	// to appear on THIS phone, retry once if it doesn't. If the second attempt also fails to produce a
-	// row, report the raw class + WS state so the caller can distinguish a rendering race from a lost
-	// message.
+	// Two-shot: results shuffling in the same tick replace the button with an identical-looking one
+	// that carries the live handler, so a single click can land on a dead node.
 	let btnClass = await attemptClick();
 	const landed = await page
 		.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > ${rowsBefore}`, { timeout: 3_000 })
@@ -270,7 +211,6 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 	return { queued: true, reason: btnClass || 'clicked' };
 }
 
-// ── TV helpers ────────────────────────────────────────────────────────────
 /** @param {Page} tv @returns {Promise<TvRoster>} */
 async function tvRoster(tv) {
 	return tv.evaluate(
@@ -286,11 +226,8 @@ async function tvRoster(tv) {
 	);
 }
 
-// ── the flow ──────────────────────────────────────────────────────────────
 async function main() {
-	// Pre-flight: the server has to be up. This probe boots nothing itself — HARNESS.md documents
-	// the recipe, and gating here means a probe run against a dead port fails loudly with the
-	// runbook instead of a mystery timeout on step one.
+	// This probe boots nothing, so a dead port must fail here with the runbook, not time out later.
 	const health = await fetch(`${BASE}/health`).catch(() => null);
 	if (!health?.ok) {
 		console.error(`No Encore server on ${BASE}. Boot per e2e/HARNESS.md and re-run.`);
@@ -304,16 +241,12 @@ async function main() {
 	try {
 		browser = await connect();
 
-		// ── 1. TV, then N phones, then the TV roster + screenshot ──────────
-		tv = await browser.newPage(); // TV needs no instrumentation
+		// 1. TV, then N phones, then the TV roster + screenshot.
+		tv = await browser.newPage(); // the TV needs no socket instrumentation
 		await tv.viewport(1600, 900, 1);
 		await tv.goto(`${BASE}/tv`);
-		// Freshness gate. Attract-only markup (`.is-label` inside `.idle-strip`, i.e. "Nobody here
-		// yet") is what the wall says while nobody has joined. `.idle-head` was the obvious pick and
-		// wrong: it only renders when the join origin is REACHABLE, and on loopback (127.0.0.1) the
-		// route swaps in a `JoinBadge` "unreachable" card instead — so the guard was matching a
-		// condition that doesn't exist in this harness. `.is-label` renders on both branches of the
-		// attract state and on neither of the other two, so it does the actual job.
+		// Freshness gate on markup present on BOTH attract branches: the reachable-origin half is
+		// absent on loopback, so anchoring there gates on a state this harness never reaches.
 		const attract = await tv
 			.waitFor(`document.querySelector(${JSON.stringify(SEL.isLabel)}) !== null`, { timeout: 8_000 })
 			.catch(() => false);
@@ -333,22 +266,17 @@ async function main() {
 				report('HIGH', `phone ${PHONE_NAMES[i]} could not join`, `outcome=${p.outcome}`);
 			}
 		}
-		// Give the last connect an event loop turn to reach the TV.
-		await delay(600);
+		await delay(ROSTER_BROADCAST_MS); // the last connect has to reach the TV before the roster is read
 
 		const roster = await tvRoster(tv);
 		const shot1 = await tv.screenshot(join(OUT_DIR, '01-tv-lobby-10.png'));
 		const chipCount = roster.chips.filter((c) => !c.more).length;
 		const moreChip = roster.chips.find((c) => c.more);
-		// Screen ought to be `lobby` (people here, nothing queued). If it's still `attract`, the roster
-		// broadcast dropped a joined singer — a real defect.
+		// Still `attract` with singers present means the roster broadcast dropped one.
 		if (roster.screen !== 'lobby') {
 			report('HIGH', `TV did not enter lobby after ${NUM_PHONES} joins`, `screen=${roster.screen}`, `see: ${shot1}`);
 		} else {
-			// TvLobby caps `roster.shown` at 8 and reports the rest as `+N more`. A cap that RENDERS
-			// silently — no more chip — means guests 9+ vanished from the wall. lobbyRoster()
-			// (src/lib/tv/screen.ts:93) explicitly returns `overflow`, so this asserts the wiring, not
-			// just the cap.
+			// The cap is 8 chips + "+N more"; a cap with no overflow chip vanished guests 9+.
 			if (NUM_PHONES > 8) {
 				if (!moreChip || chipCount !== 8) {
 					report(
@@ -358,7 +286,6 @@ async function main() {
 						`src/lib/tv/screen.ts:93 lobbyRoster capping; src/lib/tv/TvLobby.svelte:120 overflow render; ${shot1}`
 					);
 				} else {
-					// Check the overflow number is right: with 10 phones there are 2 more.
 					const m = /\+(\d+) more/.exec(moreChip.text);
 					const overflowN = m ? Number(m[1]) : NaN;
 					if (overflowN !== NUM_PHONES - 8) {
@@ -375,19 +302,11 @@ async function main() {
 			}
 		}
 
-		// Roster agreement across surfaces: every joined phone must show the same singer count. The
-		// phone doesn't render a lobby (it shows the search/queue), so we assert on the /api/me +
-		// server sync directory it received. If a phone's WS never delivered a queue:sync, `singers`
-		// will be short.
-		//
-		// (Reads from the same fetch each phone can make, since we don't expose the store.)
+		// The phone renders no lobby and the store is not exposed, so read the session off /api/me.
 		const perPhoneSingers = await Promise.all(
 			phones.map((p) =>
 				p.page.evaluate(
 					`(async () => {
-						// Approximate the phone's roster view: singers WITH pending songs in the DOM plus the
-						// singers-list we can infer from the queue rows. When there are no rows yet, we
-						// fall back to /api/me for a smoke check that the socket is alive.
 						const me = await fetch('/api/me').then(r => r.ok ? r.json() : { singer: null });
 						return { hasMe: !!me.singer, name: me.singer?.displayName ?? null };
 					})()`
@@ -406,7 +325,7 @@ async function main() {
 			report('PASS', `${NUM_PHONES}/${NUM_PHONES} phones report a joined session`);
 		}
 
-		// ── 2. Name collision — a duplicate name must produce a human 409, not a dead form ──
+		// 2. A duplicate name must produce a human 409, not a dead form.
 		{
 			const dup = await joinPhone(browser, PHONE_NAMES[0], PRESET_COLOUR_NAMES[1]);
 			if (dup.outcome === 'joined') {
@@ -427,11 +346,7 @@ async function main() {
 						`src/lib/components/JoinLanding.svelte:26 error rendering; server: src/lib/server/singers/join.ts:21 NameTakenError message`
 					);
 				} else {
-					// The form must remain usable — the input the user can now edit is the whole point of
-					// this test (the lesson recorded on this branch was that the join page just "sat there
-					// looking broken"). Verify (a) the name input still exists and is enabled, (b) the
-					// error is announced via role=alert, (c) the submit button is present and can be
-					// re-triggered with a different name.
+					// A 409 that leaves the form unusable looks exactly like a broken app.
 					const usable = await dup.page.evaluate(
 						`(() => {
 							const nameEl = document.querySelector(${JSON.stringify(SEL.nameInput)});
@@ -453,10 +368,7 @@ async function main() {
 							`src/lib/components/JoinLanding.svelte:14 submitting flag reset`
 						);
 					} else {
-						// And prove recovery actually works: type a fresh name and submit. Driven through the
-						// driver's verbs for the same reason as `joinPhone` — a synthesised click on the button
-						// found by text was landing on an inner text node rather than the button itself, so the
-						// form never submitted and the recovery this arm claims to prove was never exercised.
+						// Retype and resubmit for real: a by-text click lands on the inner text node.
 						await dup.page.fill(SEL.nameInput, 'ZZReplay');
 						await dup.page.clickByRole('button', 'Start singing');
 						const recovered = await dup.page.waitFor(joinedExpression(), { timeout: 8_000 }).catch(() => false);
@@ -468,7 +380,6 @@ async function main() {
 								'duplicate-name 409 leaves the form recoverable, and retyping works',
 								`error text: ${JSON.stringify(msg)}`
 							);
-							// This phone joined as ZZReplay — remember to close it.
 							phones.push({ page: dup.page, name: 'ZZReplay', outcome: 'joined' });
 						}
 					}
@@ -476,9 +387,9 @@ async function main() {
 			}
 		}
 
-		// ── 3. Hard WS drop with a page still resident ─────────────────────
+		// 3. A hard WS drop with the page still resident.
 		{
-			// Pick a mid-list phone so the drop is not at the boundary that might get special-cased.
+			// A mid-list phone, so the drop is not at a boundary that might be special-cased.
 			const victim = phones[3];
 			const before = await victim.page.evaluate(`window.__p8.connectCount`);
 			const dropped = await victim.page.evaluate(`window.__p8.dropLast()`);
@@ -489,8 +400,7 @@ async function main() {
 					'sockets was empty or already CLOSED — probe scaffolding, not a defect'
 				);
 			} else {
-				// The WsClient's reconnect backoff starts at 250ms. Give it enough to complete a full
-				// cycle including the hello -> queue:sync resync handshake.
+				// 10s covers a full 250ms-backoff cycle plus the hello -> queue:sync handshake.
 				const reconnected = await victim.page
 					.waitFor(`window.__p8.connectCount > ${before}`, { timeout: 10_000 })
 					.catch(() => false);
@@ -502,28 +412,20 @@ async function main() {
 						`src/lib/ws/client.ts:107 scheduleReconnect + capped backoff`
 					);
 				} else {
-					// Have another phone queue a song WHILE the victim was down, then verify the victim
-					// SEES it after reconnecting: proves the resync (hello -> queue:sync) actually
-					// re-syncs, not just that a socket came back.
+					// A row queued while the victim is down is what proves the resync, not just the socket.
 					const other = phones[5];
 					const otherResult = await searchAndQueue(other.page);
 					if (!otherResult.queued) {
 						report('ENV', 'could not queue on the witness phone for the WS-drop test', `reason=${otherResult.reason}`);
 					} else {
-						// Give a broadcast + reconnect resync a moment.
-						await delay(1500);
+						await delay(RESYNC_SETTLE_MS);
 						const witnessRows = await other.page.evaluate(
 							`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
 						);
 						const victimState = await getState(victim.page);
-						// Only assert on parity if the witness itself confirms a row landed. If the
-						// witness has 0 rows too, the queue-add didn't take at all — a different
-						// defect class (search/queue path), not a resync one.
+						// Parity means nothing until the witness confirms a row landed at all.
 						if (witnessRows < 1) {
-							// Pull evidence for the report: /health rev + the last WS traffic the
-							// witness recorded. A rev at 0 means no op ever hit the state store; a
-							// non-zero rev with 0 rows means the row landed and then something dropped
-							// it before render.
+							// rev 0 = no op reached the store; rev > 0 with no row = dropped before render.
 							const rev = await fetch(`${BASE}/health`)
 								.then((r) => r.json())
 								.then((j) => j.rev)
@@ -553,24 +455,17 @@ async function main() {
 			}
 		}
 
-		// ── 4. AWAY: sever without leaving, verify TV shows away + keep queued songs ──
+		// 4. Sever without leaving: the TV must show away, and the queued song must survive.
 		{
-			// Give this its own singer to make the assertion legible.
 			const away = phones[7];
-			// First: put a song IN their queue so we can prove it survives.
 			const queued = await searchAndQueue(away.page, 'caroline');
 			if (!queued.queued) {
 				report('ENV', 'could not queue a song for the away test', `reason=${queued.reason}`);
 			} else {
-				// Sever the socket. `setOffline` alone is NOT enough: Chromium's
-				// `Network.emulateNetworkConditions({offline:true})` applies to CONNECTIONS INITIATED
-				// AFTER the call, and leaves existing WebSockets connected — a documented CDP
-				// limitation, invisible in a single run because the queue-add still flies over the
-				// live socket. `dropLast()` fires the client-side close(3000), the server sees the
-				// close and marks the singer away. Order matters: dropLast BEFORE setOffline, or the
-				// offline emulator drops the outbound close frame at the IP layer and the server sits
-				// waiting for its own idleTimeout instead of learning the phone went away.
-				await delay(600);
+				// ORDER IS LOAD-BEARING: dropLast() BEFORE setOffline(), which only affects connections
+				// opened after it. Offline first swallows the close frame and the server waits out its
+				// own idleTimeout instead of learning the phone went away.
+				await delay(ROSTER_BROADCAST_MS);
 				const beforeConnects = await away.page.evaluate(`window.__p8.connectCount`);
 				const dropped = await away.page.evaluate(`window.__p8.dropLast()`);
 				if (!dropped) {
@@ -580,11 +475,8 @@ async function main() {
 						'the instrumentation returned false — no socket to drop'
 					);
 				}
-				// Now block reconnects — the WsClient reconnects on its own within 250ms, and we want
-				// to observe the room WHILE the phone is unreachable.
+				// Block the 250ms re-dial, so the room can be observed while the phone is unreachable.
 				await away.page.setOffline(true);
-				// The server reacts on socket close; wire this back to the TV via refreshMembership,
-				// which broadcasts singer:presence to the whole room. This should be near-instant.
 				const tvSaidAway = await tv
 					.waitFor(
 						`(() => {
@@ -607,8 +499,7 @@ async function main() {
 					report('PASS', 'severed phone appears as AWAY on the TV, still counted', `${shot}`);
 				}
 
-				// Their queued song must still be in the queue — a locked phone that keeps its turn is
-				// the whole point of `away`.
+				// A locked phone keeping its turn is the whole point of `away`.
 				const otherSurface = await phones[2].page.evaluate(
 					`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
 				);
@@ -623,9 +514,7 @@ async function main() {
 					report('PASS', 'a phone\u2019s queued song survives the phone going away', `others see ${otherSurface} rows`);
 				}
 
-				// Bring them back — reconnect, verify they return to `here` (or at least not stuck on
-				// away). Turn offline off and give the client's wake() a synthetic online event; the
-				// #bindLifecycle handler listens for it and calls wake() → dial() unconditionally.
+				// A synthetic `online` event is what wakes the client and makes it re-dial.
 				await away.page.setOffline(false);
 				await away.page.evaluate(`window.dispatchEvent(new Event('online'))`);
 				await away.page.waitFor(`window.__p8.connectCount > ${beforeConnects}`, { timeout: 15_000 }).catch(() => null);
@@ -652,15 +541,12 @@ async function main() {
 			}
 		}
 
-		// ── 5. OPTIMISTIC OP while socket severed ─────────────────────────
+		// 5. An optimistic queue op taken while the socket is severed.
 		{
 			const p = phones[6];
-			// Baseline count on another phone (source of truth is any other phone's view).
 			const witness = phones[2];
 			const before = await witness.page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`);
-			// Populate search results FIRST while online — we can't rely on /api/search reaching the
-			// server while offline (setOffline(true) does affect NEW HTTP requests). Row appears; then
-			// we sever and click.
+			// Search WHILE ONLINE: setOffline does block a new HTTP request, so the row must be up first.
 			await openBrowseFromHome(p.page);
 			await p.page.evaluate(
 				`(() => {
@@ -683,14 +569,12 @@ async function main() {
 			if (!rows) {
 				report('ENV', 'could not populate search rows before the offline test', `rows=${rows}`);
 			} else {
-				// Sever the WS first, THEN block the reconnect. Same close-frame ordering as step 4.
+				// Sever the WS first, THEN block the reconnect — same close-frame ordering as step 4.
 				const beforeConnects = await p.page.evaluate(`window.__p8.connectCount`);
 				await p.page.evaluate(`window.__p8.dropLast()`);
 				await p.page.setOffline(true);
-				await delay(800);
-				// Tap the queue action. This runs store.addSong → #optimistic → ws.send on a socket
-				// that is now CLOSED or CONNECTING (reconnect backoff); trySend returns false, the op
-				// remains in #pending. The optimistic row must appear on THIS phone.
+				await delay(OFFLINE_SETTLE_MS);
+				// The send lands on a closed socket, so the op stays pending and only the local row shows.
 				await p.page.evaluate(
 					`(() => {
 						const row = document.querySelector(${JSON.stringify(SEL.songRow)});
@@ -701,8 +585,6 @@ async function main() {
 				const optimistic = await p.page.evaluate(
 					`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length + document.querySelectorAll(${JSON.stringify(SEL.processing)}).length`
 				);
-				// Even though we're offline, the local (already-hydrated) DOM should render the
-				// optimistic row — if not, the store's #optimistic path failed to render at all.
 				if (optimistic === 0) {
 					report(
 						'HIGH',
@@ -711,18 +593,17 @@ async function main() {
 						`src/lib/stores/queue.ts:120 #optimistic`
 					);
 				}
-				// Bring the network back and let the client wake up.
 				await p.page.setOffline(false);
 				await p.page.evaluate(`window.dispatchEvent(new Event('online'))`);
 				await p.page.waitFor(`window.__p8.connectCount > ${beforeConnects}`, { timeout: 15_000 }).catch(() => null);
-				await delay(3000);
+				await delay(RECONCILE_SETTLE_MS);
 				const after = await witness.page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`);
 				const offlineRowsOnP = await p.page.evaluate(
 					`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
 				);
 				const delta = after - before;
 				if (delta === 1) {
-					// Reconciled — the op made it through resendPending() (called after queue:sync).
+					// Reconciled: the op made it through the pending resend that follows queue:sync.
 					const parity = offlineRowsOnP === after;
 					if (!parity) {
 						report(
@@ -764,12 +645,11 @@ async function main() {
 			}
 		}
 
-		// ── 6. Explicit leave via /api/leave ─────────────────────────────
+		// 6. An explicit leave through /api/leave.
 		{
 			const leaver = phones[4];
-			// Queue something first so `leave` has real songs to handle.
-			await searchAndQueue(leaver.page, 'caroline');
-			await delay(800);
+			await searchAndQueue(leaver.page, 'caroline'); // so leave has real songs to handle
+			await delay(OFFLINE_SETTLE_MS);
 			const beforeCount = await phones[2].page.evaluate(
 				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
 			);
@@ -779,7 +659,7 @@ async function main() {
 			const leaveRes = await leaver.page.evaluate(
 				`fetch('/api/leave', { method: 'POST' }).then(r => r.ok ? r.json() : ({error: r.status}))`
 			);
-			await delay(1500);
+			await delay(RESYNC_SETTLE_MS);
 			const afterCount = await phones[2].page.evaluate(
 				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
 			);
@@ -787,7 +667,6 @@ async function main() {
 				report('HIGH', '/api/leave returned an error', `status=${leaveRes.error}`);
 			} else {
 				const removed = Array.isArray(leaveRes.removed) ? leaveRes.removed.length : NaN;
-				// The queued (non-playing) songs must go: leave.ts unqueues them explicitly.
 				const drop = beforeCount - afterCount;
 				if (drop < removed) {
 					report(
@@ -804,10 +683,8 @@ async function main() {
 					);
 				}
 			}
-			// Mark the leaver's page dead so downstream steps don't count it as a shooter — its /api/me
-			// is 401 now and it will silently no-op on tap.
+			// Not a shooter any more: its session is 401, so a tap no-ops and reads as a lost row.
 			leaver.outcome = 'left';
-			// And their name must return to the pool: rejoining with the same name should succeed now.
 			const rejoin = await joinPhone(browser, leaver.name, PRESET_COLOUR_NAMES[3]);
 			if (rejoin.outcome !== 'joined') {
 				report(
@@ -823,28 +700,19 @@ async function main() {
 			}
 		}
 
-		// ── 7. BURST: N phones queue simultaneously ─────────────────────
+		// 7. NUM_BURST phones queue simultaneously.
 		{
-			// Pick still-live phones. `outcome` starts as 'joined' at successful join, and is set to
-			// 'left' when we leave() a phone above. A left phone still has a page, but its /api/me is
-			// 401 and its queue-command sees `join the room first` — its tap silently no-ops, which
-			// makes it look like the burst lost a row.
+			// Only `joined` phones: a left phone still has a page, but its tap no-ops silently.
 			const shooters = phones.filter((p) => p.outcome === 'joined').slice(0, NUM_BURST);
 			if (shooters.length < NUM_BURST) {
 				report('ENV', `burst had only ${shooters.length} joined shooters`, `expected ${NUM_BURST}`);
 			}
-			// Snapshot the queue on a witness.
 			const witness = shooters[0];
 			const before = await witness.page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`);
-			// Fire all clicks in the same event-loop turn from the test harness's perspective; each
-			// page mints its own clientOpId + entry.id.
+			// All taps in one turn; each page mints its own clientOpId and entry id.
 			await Promise.all(shooters.map((p) => searchAndQueue(p.page, 'caroline')));
-			// Give the server + broadcast a moment to settle.
-			await delay(3500);
-			// Every phone (including the shooters) should now report the same number of rows: before +
-			// NUM_BURST. Do NOT read on the origin phones alone — the origin sees its own optimistic
-			// row before the broadcast, and a lost broadcast would still leave the origin looking
-			// correct.
+			await delay(BURST_SETTLE_MS);
+			// EVERY joined phone: an origin renders its own row, so a lost broadcast still looks correct.
 			const counts = await Promise.all(
 				phones
 					.filter((p) => p.outcome === 'joined')
@@ -867,12 +735,9 @@ async function main() {
 					`src/lib/server/state/store.ts:91 applyQueueOp / applyAndReseq`
 				);
 			} else {
-				// Also verify no duplicate row ids — a duplicate row with different ids would still add
-				// up to the same count but be a real bug.
+				// A duplicated row under a different id sums to the same count, so check titles too.
 				const ids = await witness.page.evaluate(
 					`(() => {
-						// The store's ids are on entry.id; the DOM does not stamp them, so we approximate
-						// by titles which will collide when duplicated.
 						const titles = [...document.querySelectorAll(${JSON.stringify(SEL.queueTitle)})].map(e => e.textContent.trim());
 						return titles;
 					})()`
@@ -885,10 +750,7 @@ async function main() {
 					`every phone reports ${expected} rows; titles=${ids.length}, unique=${uniqTitles.size} (dups are legal — same media queued by different singers); ${shot}`
 				);
 			}
-			// Note the design observation: the command envelope carries NO revision context — the
-			// former baseRev field was deleted because nothing on the server ever read it.
-			// Concurrency is therefore the whole clientOpId-dedupe story: replays of the same op are
-			// idempotent, and there is no revision-based rejection to count on. This is deliberate.
+			// No revision context in the envelope by design: concurrency is clientOpId dedupe alone.
 			report(
 				'PASS',
 				'concurrency reduces to clientOpId dedupe — no revision context in the envelope',
@@ -899,7 +761,6 @@ async function main() {
 	} catch (err) {
 		report('CRITICAL', 'probe threw before finishing', String(err instanceof Error ? err.stack : err));
 	} finally {
-		// Take one final TV shot to make the frame ordering legible even if a later step failed.
 		try {
 			if (tv) await tv.screenshot(join(OUT_DIR, '99-final.png'));
 		} catch {
@@ -914,7 +775,6 @@ async function main() {
 		await browser?.close();
 	}
 
-	// ── Report ────────────────────────────────────────────────────────────
 	/** @type {Partial<Record<Level, number>>} */
 	const summary = findings.reduce(
 		(/** @type {Partial<Record<Level, number>>} */ m, f) => ((m[f.level] = (m[f.level] || 0) + 1), m),
@@ -928,8 +788,7 @@ async function main() {
 
 	const real = /** @type {Level[]} */ (['CRITICAL', 'HIGH']).reduce((n, l) => n + (summary[l] || 0), 0);
 	const env = summary['ENV'] || 0;
-	// A run that only produced ENV items is EXIT 2 (harness gap), not 0 — the whole point of the
-	// exit-code convention is that a green result must mean "we asserted and nothing failed".
+	// ENV items with no PASS is exit 2, never 0: green has to mean "we asserted and nothing failed".
 	if (real > 0) process.exit(1);
 	if (env > 0 && (summary['PASS'] || 0) === 0) process.exit(2);
 	process.exit(0);

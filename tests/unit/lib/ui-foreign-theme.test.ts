@@ -1,27 +1,11 @@
 /*
- * ── RETIRED BY'S RESTRUCTURE ────────────────────────────────────────────────────────
+ * DELIBERATELY EMPTY. This file banned shadcn theme names (`bg-primary`, `text-muted-foreground`) in a
+ * copied-in component, on the premise that `app.css` defined none of them. `app.css` now defines the
+ * semantic layer and bridges it in `@theme` so a vendored component works UNEDITED, which makes those
+ * class names the intended mechanism — a guard banning them would forbid the architecture.
  *
- * This file asserted that a copied-in component references NO shadcn theme name — `bg-primary`,
- * `text-muted-foreground`, `border-ring` — because `app.css` defined none of them, so such a class
- * resolved to nothing and rendered unstyled.
- *
- * The restructure inverted that premise deliberately. `app.css` now defines the semantic layer
- * (`--primary: var(--accent)` and friends) and bridges it in `@theme`, precisely so a vendored
- * component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the 13 components
- * S2-S8 still brings in. Those class names are now the correct, intended mechanism. A guard banning
- * them would forbid the thing the architecture is built on.
- *
- * SUCCESSORS, which together cover strictly more than this file did:
- *   - `shadcn-ink-ban.test.ts` — bans the INK direction (`text-primary`, `text-destructive`, …) in
- *     app source, exempting the vendored tree by path. That is the real hazard: `--accent` as ink
- *     measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2, 2.90 on --card-tint2. Four AA failures.
- *   - `tailwind-toolchain.test.ts` — still bans registering a PLAYER HUE in `@theme`, whose per-stop
- *     ink/fill split (13 of 48 differ) no single minted utility can respect.
- *   - `components/motion.test.ts` — its net arm is what caught `transition-all` shipping in the stock
- *     Button, and is what will catch its return after any `--overwrite`.
- *
- * Its `files.length` non-vacuity floor is retired from `non-vacuity-floors.test.ts` in the same commit,
- * as that file requires: retiring a guard without retiring its floor makes the floor fire and reads as
- * "the guard is broken, lower the number".
+ * Covered instead by `shadcn-ink-ban.test.ts` (the INK direction, the real contrast hazard),
+ * `tailwind-toolchain.test.ts` and `components/motion.test.ts`. The full retirement record, including the
+ * retired `files.length` floor, is in `tests/guards/meta/non-vacuity-floors.test.ts`.
  */
 export {};

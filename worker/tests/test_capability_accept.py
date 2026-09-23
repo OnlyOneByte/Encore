@@ -1,13 +1,9 @@
 """A worker must accept a job it can actually run, even when the capability is NAMESPACED.
 
-REGRESSION THIS PINS. `can_accept` compared the job type to the capability list as a literal string.
-Both axes namespace their capabilities -- a separator engine advertises `stems:roformer`, a downloader
-advertises `fetch:ytdlp` -- so a `fetch` job arriving at a worker advertising `fetch:ytdlp` was rejected
-with "unsupported job type: fetch". Every acquisition silently bounced: the core kept the job assigned,
-the worker logged nothing, and the song sat at 0% forever, which reads exactly like a hung download.
-
-It was invisible to unit tests because those built the processor and called it directly; nothing
-exercised the ACCEPT decision on the dial-home message path. Hence this file.
+`can_accept` must match the job type against a namespaced capability list, not compare literal
+strings — a separator engine advertises `stems:roformer`, a downloader advertises `fetch:ytdlp` — or
+a job silently bounces forever: the core keeps it assigned, the worker logs nothing, and the song
+sits at 0%, indistinguishable from a hung download.
 """
 
 from __future__ import annotations
@@ -63,17 +59,10 @@ def test_no_free_slots_still_refuses_a_supported_action():
     assert reason == "no free slots"
 
 
-# ── stems-upgrade, the one action whose capability lives under a DIFFERENT name ──────────────────────
-#
 # `stems-upgrade` is a fourth Action, but no capability token is ever named `stems-upgrade` or
-# `stems-upgrade:*`: `capabilities.probe_all` emits only `fetch:ytdlp`, `stems`, `stems:roformer`,
-# `stems:ensemble`, `align`, and the ENCORE_CAPABILITIES override can only NARROW that set. The core
-# (`dispatch.ts requiredCapability`) maps the upgrade action onto a STEMS-family capability
-# (`stems` for demucs, `stems:roformer`/`stems:ensemble` otherwise), while the worker used to derive
-# its capability textually from the job type — so `supports("stems-upgrade")` was False on EVERY
-# possible capability set and every stems-upgrade job was refused at the accept gate and re-dispatched
-# forever. `test_a_namespaced_fetch_capability_accepts_a_fetch_job` above (the prior instance of this
-# bug class) never exercised `stems-upgrade` precisely because its capability is not `stems-upgrade:*`.
+# `stems-upgrade:*`: the core maps the upgrade action onto a STEMS-family capability (`stems` for
+# demucs, `stems:roformer`/`stems:ensemble` otherwise), so `supports("stems-upgrade")` must resolve
+# through that family mapping rather than deriving a capability textually from the job type.
 
 
 def test_a_demucs_stems_worker_accepts_a_stems_upgrade_job():
@@ -102,18 +91,11 @@ def test_a_fetch_only_worker_still_refuses_a_stems_upgrade_job():
     assert "unsupported job type: stems-upgrade" in reason
 
 
-# ── class-closing guard: EVERY action the core can dispatch must be accepted by a worker advertising
-#    the capability the core's requiredCapability would demand for it. This is the loop the issue asks
-#    for; it would have caught this bug, the original `fetch:ytdlp` regression, and the earlier `align` one.
-#
-# The demanded capability is mirrored from src/server/jobs/dispatch.ts `requiredCapability`:
-# fetch -> fetch:<fetcher>, stems -> the default engine's capability, stems-upgrade -> the upgrade
-# engine's capability, align -> `align`. We assert acceptance for each action against the WORST-CASE
-# demanded token (the most-namespaced form the core can ask for), so a worker advertising exactly that
-# token — and nothing broader — still accepts. If the two vocabularies drift again for any action,
-# exactly one row here reds. Kept as an explicit table (not derived from Action) so a new action must
-# be added deliberately with the capability the core would demand, and a silently-added action fails
-# loudly rather than being waved through.
+# EVERY action the core can dispatch must be accepted by a worker advertising the capability the
+# core's requiredCapability (src/server/jobs/dispatch.ts) would demand for it. Asserted against the
+# WORST-CASE demanded token (the most-namespaced form) so a worker advertising exactly that token and
+# nothing broader still accepts. Kept as an explicit table, not derived from Action, so a new action
+# must be added deliberately with the capability the core would demand for it.
 _CORE_REQUIRED_CAPABILITY = {
     "fetch": "fetch:ytdlp",
     "stems": "stems:roformer",

@@ -19,7 +19,6 @@ from src.host.backends import BackendChoice, resolve_backend  # noqa: E402
 from src.vocabulary import Backend, Engine  # noqa: E402
 
 
-# ── this box: torch/cpu, nothing accelerated ─────────────────────────────────────
 def test_torch_is_always_available():
     assert backends.backend_available(Backend.TORCH) is True
 
@@ -41,7 +40,6 @@ def test_cpu_and_empty_devices_are_always_available():
     assert backends.torch_device_available("") is True
 
 
-# ── explicit requests never silently downgrade ────────────────────────────────────
 def test_explicit_unavailable_backend_raises_rather_than_falling_back(monkeypatch):
     monkeypatch.setattr(backends, "backend_available", lambda b, e=Engine.DEMUCS: b is Backend.TORCH)
     with pytest.raises(ValueError, match="not available for engine"):
@@ -59,7 +57,6 @@ def test_explicit_unavailable_device_raises(monkeypatch):
         backends.preferred_torch_device("xpu")
 
 
-# ── auto device probing ───────────────────────────────────────────────────────────
 def test_auto_device_prefers_accelerators_in_order(monkeypatch):
     monkeypatch.setattr(backends, "torch_device_available", lambda d: d in ("xpu", "cpu", ""))
     device, reason = backends.preferred_torch_device(None)
@@ -81,7 +78,6 @@ def test_explicit_available_device_is_honoured(monkeypatch):
     assert "explicitly configured" in reason
 
 
-# ── MLX is engine-scoped and platform-gated ───────────────────────────────────────
 def test_mlx_is_only_offered_for_demucs_and_only_on_apple_silicon(monkeypatch):
     monkeypatch.setattr(backends, "_module_available", lambda name: True)
     monkeypatch.setattr(backends, "is_apple_silicon", lambda: True)

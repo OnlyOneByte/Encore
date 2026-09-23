@@ -1,14 +1,9 @@
-// Guard for the defect that blocked the direction-A phone home shell's first head: direction A moved the search box off `/` and
-// behind the browse push, and FIFTEEN driver/probe call sites still waited for it immediately after
-// joining. Every driven flow then timed out at its first step — `bun run e2e` could not get past
-// joining — while all four unit gates stayed green, because none of them drives a browser.
-//
-// That shape is the worst one this repo has: the driven probes are its ONLY rendered-behaviour guards,
-// so a dozen of them unable to reach step one is a guard that never fires, at scale, silently. The fix
-// was one shared helper (`e2e/lib/phone.mjs`); THIS file is what stops the fifteen sites drifting apart
-// again, and it runs in `bun test` with no server and no Chromium — the same reasoning contract.test.ts
-// states for itself: a browser test cannot police this, because on a machine without a browser it
-// skips, and a permanently-skipped test is indistinguishable from the rot it was meant to prevent.
+// guard: fifteen driver/probe call sites waited for the search box immediately after joining, after the
+// phone shell moved search off `/` behind the browse push — so every driven flow timed out at its first
+// step while all four unit gates stayed green, because none of them drives a browser. The driven probes are
+// this repo's ONLY rendered-behaviour guards, so a dozen of them unable to reach step one is a guard that
+// never fires, at scale, silently. The fix was one shared helper (`e2e/lib/phone.mjs`); this file stops the
+// fifteen sites drifting apart again, and it runs in `bun test` with no server and no Chromium.
 import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -41,15 +36,12 @@ function previousCodeLine(lines: string[], idx: number): string {
 }
 
 test('the contract names the way to the docked search box, and homeReady resolves', () => {
-	// REVERSED: the search box is no longer on home at all — it is the `/find` route, reached by tapping
-	// the band's magnifier. So `homeReady` is now the BAND, which is a better readiness signal than the
-	// box ever was: the layout mounts it on every phone surface, so it says "the joined app has painted"
-	// rather than "this one route rendered". There IS something to click again, and the shared helper
-	// clicks it. `contract.test.ts` proves the selector resolves to real source; this proves it exists.
+	// `homeReady` is the BAND, not the search box: the layout mounts it on every phone surface, so it says
+	// "the joined app has painted" rather than "this one route rendered". `openBrowse` was retired with the
+	// `+ Add a turn` button and must not linger in SEL or HOOKS.
 	expect(SEL.homeReady).toBe('.band');
 	const ids = HOOKS.map((h) => h.id);
 	expect(ids).toContain('homeReady');
-	// `openBrowse` was RETIRED with the `+ Add a turn` button — it must not linger in SEL or HOOKS.
 	expect('openBrowse' in SEL).toBe(false);
 	expect(ids).not.toContain('openBrowse');
 });
@@ -58,9 +50,8 @@ test('the shared post-join helper reaches the docked search box with no click', 
 	const helper = join(E2E, 'lib', 'phone.mjs');
 	expect(existsSync(helper)).toBe(true);
 	const src = readFileSync(helper, 'utf8');
-	// Two waits, in order: home is up (the docked band), then the search box is up. There is no click —
-	// the box is docked unconditionally now, so a helper that tried to click a `+ Add a turn` button
-	// would time out on markup that no longer exists.
+	// Two waits, in order: home is up (the docked band), then the search box. There is no click — the box is
+	// docked unconditionally now, so a helper clicking a `+ Add a turn` button would time out on dead markup.
 	const wait = src.indexOf('SEL.homeReady');
 	const search = src.lastIndexOf('SEL.search');
 	expect(wait).toBeGreaterThan(-1);
@@ -71,8 +62,7 @@ test('the shared post-join helper reaches the docked search box with no click', 
 });
 
 test('no driver waits for the search box as its post-join readiness signal', () => {
-	// THE DEFECT, stated as a scan. `search` is not on `/`, so a `waitFor` on it straight after joining
-	// waits forever. The joined-home signal is `homeReady`; reaching `search` is `openBrowseFromHome`.
+	// THE DEFECT as a scan: `search` is not on `/`, so a `waitFor` on it straight after joining waits forever.
 	const offenders: string[] = [];
 	for (const path of driverFiles()) {
 		const lines = readFileSync(path, 'utf8').split('\n');
@@ -96,9 +86,8 @@ test('no driver waits for the search box as its post-join readiness signal', () 
 });
 
 test('every driver that types into search reaches the browse screen first', () => {
-	// The other half: a `fill` on a screen that does not have the field throws on a null element. The
-	// helper is a no-op when the field is already there, so calling it defensively costs one 250ms probe
-	// and makes this property mechanical rather than a thing each author has to remember.
+	// The other half: a `fill` on a screen without the field throws on a null element. The helper is a no-op
+	// when the field is already there, so calling it defensively costs one 250ms probe.
 	const offenders: string[] = [];
 	for (const path of driverFiles()) {
 		const lines = readFileSync(path, 'utf8').split('\n');
@@ -114,9 +103,8 @@ test('every driver that types into search reaches the browse screen first', () =
 });
 
 test('the scan is non-vacuous — it is really reading the drivers', () => {
-	// An empty-offenders assertion is what a working guard produces AND what a guard reading nothing
-	// produces. Same floor discipline as contract.test.ts's source-population floor: if this fires,
-	// restore the walk, never lower the number.
+	// An empty-offenders assertion is what a working guard produces AND what a guard reading nothing produces.
+	// If this fires, restore the walk; never lower the number.
 	const files = driverFiles();
 	expect(files.length).toBeGreaterThanOrEqual(15);
 	const usingSearch = files.filter((f) => readFileSync(f, 'utf8').includes('SEL.search'));

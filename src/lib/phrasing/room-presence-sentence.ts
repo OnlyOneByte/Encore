@@ -1,66 +1,34 @@
-// The scanned-guest confirmation, in words (Q1-B). Pure and DOM-free so it unit-tests without
-// a browser: the "confirmed in words" acceptance is a string property, and it is the one thing this
-// screen must get right for a guest who cannot see the QR they scanned.
+// The scanned-guest confirmation, in words. Pure and DOM-free, because the sentence IS the requirement.
 //
-// Rooms have no name (see /api/room-preview), so "confirmed in words" means "who is here", never the
-// code. The count is authoritative; names are a courtesy that degrade gracefully as they run out.
+// Rooms have no name, so "confirmed in words" means WHO IS HERE, never the code. The COUNT is authoritative;
+// names are a courtesy that degrades as they run out.
 
 /** Shape of GET /api/room-preview's success body. */
 export interface RoomPreview {
 	code: string;
 	presentCount: number;
 	names: string[];
-	/**
-	 * The present singers' identity colours, in the same order as `names` — what the join screen's colour
-	 * ring draws as hollow "already taken" pips.
-	 *
-	 * OPTIONAL, and deliberately so rather than for the convenience of the callers that build a preview
-	 * in a test. It is the same courtesy `names` is: the COUNT is the authoritative fact this endpoint
-	 * exists to state, and a consumer that has no use for the colours (the sentence below never reads
-	 * them) must not be made to supply them. A caller reading a preview from an older server, or from a
-	 * fixture written before this field existed, gets an empty ring rather than a crash — and an empty
-	 * ring is a state the picker already has to render, because an empty room has no pips either.
-	 */
+	/** The present singers' identity colours, in the same order as `names` — the colour ring's "already taken"
+	 * pips. OPTIONAL, like `names`: only the count is authoritative, and an absent list is an empty ring,
+	 * which is a state the picker already renders for an empty room. */
 	colors?: string[];
-	/**
-	 * How many of `presentCount` are AWAY rather than reachable — a locked phone, a pocket, a walk to the
-	 * kitchen. They are in the room (that is what the grace window means, and it is why the name they hold
-	 * is not free), so they are counted; this field is what lets the sentence avoid claiming they are
-	 * standing in front of you.
-	 *
-	 * OPTIONAL for the same reason `colors` is: the COUNT is the authoritative fact, and a preview from an
-	 * older server or a fixture written before this field existed must still produce a sentence. Absent is
-	 * read as 0 — i.e. "everyone counted is reachable", which is the shape this endpoint used to have.
-	 */
+	/** How many of `presentCount` are AWAY rather than reachable. They are still COUNTED — the grace window is
+	 * what holds their names — and this is what lets the sentence avoid claiming they are in front of you.
+	 * Optional, and absent reads as 0. */
 	awayCount?: number;
 }
 
 /**
- * A sentence naming the room by its people. Never re-presents the code (that is the thing
- * rules out once the guest has arrived).
+ * A sentence naming the room by its people, and never re-presenting the code.
  *
- *   0 present  → "This room is empty right now — you'll be the first here."
- *   1, named   → "Maya is here."
- *   2, named   → "Maya and Dana are here."
- *   3, named   → "Maya, Dana and Lee are here."
- *   5, 2 named → "5 people here, including Maya and Dana."
- *   n, 0 named → "6 people here." (count known, names withheld/unavailable)
+ * THE ALL-AWAY BRANCH exists because the alternative is a lie in one direction or the other. Away members
+ * hold their names, so they MUST be counted — a room that reports itself empty and then rejects your name is
+ * the defect this endpoint was carrying — but saying someone is "here" when their phone is asleep is the same
+ * overclaim in reverse, while the TV's roster renders them as away to the same party. "away right now" is the
+ * wall's own word, so the two surfaces agree.
  *
- * ── AND WHEN EVERYONE COUNTED IS AWAY ────────────────────────────────────────────────────────────
- *
- *   1, named   → "Maya is in the room, away right now."
- *   2, named   → "Maya and Dana are in the room, away right now."
- *   4, 0 named → "4 people in the room, all away right now."
- *
- * That branch exists because the alternative is a lie in one direction or the other. Away members hold
- * their names (the grace window is why `assertNameFree` refuses them), so they MUST be counted — a room
- * that reports itself empty and then rejects your name is the defect `/api/room-preview` was carrying.
- * But "Maya is here." about someone whose phone is asleep is the same overclaim in reverse, and the TV's
- * roster is meanwhile rendering "Maya AWAY" to the same party. "away right now" is the wall's own word,
- * so the two surfaces agree.
- *
- * A MIXED room needs no special case: somebody reachable IS here, and the away members are the
- * difference between the count and the names — which the count already carries.
+ * A MIXED room needs no special case: somebody reachable IS here, and the away members are the difference
+ * between the count and the names, which the count already carries.
  */
 export function roomPresenceSentence(preview: RoomPreview): string {
 	const count = Math.max(0, preview.presentCount);

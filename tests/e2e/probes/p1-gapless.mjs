@@ -1,32 +1,11 @@
 /*
- * P1 — GAPLESS PLAYBACK AND AUTO-ADVANCE.
+ * P1 — GAPLESS PLAYBACK AND AUTO-ADVANCE. Processes two library songs to real decodable audio, queues
+ * them as two DIFFERENT singers and dense-polls the TV. The F1–F9 findings below are the questions.
  *
- * Processes two library songs to real decodable audio via the fake worker, queues them as two DIFFERENT
- * singers, opens the TV headless (autoplay allowed), and answers with numbers:
- *
- *   (1) auto-advance   — does song 2 start with no human touch?
- *   (2) gapless bound   — measure the gap between the last decoded byte of song 1 and the first
- *                          decoded byte of song 2, on the TV's TWO <audio> slots
- *   (3) double audio    — is there ever a sample window where BOTH slots decode? that would be two
- *                          songs at once
- *   (4) song-intro card — does the interstitial appear, name the right singer, and time out to
- *                          ENCORE_SONG_INTRO_MS? does audio start before/during/after it?
- *   (5) last-song end   — does the TV settle into attract, or strand?
- *   (6) lower-third     — does .ls-name change to the new singer at the swap, and only then?
- *
- * WHAT COUNTS AS PROOF. The same rule playback.mjs spelled out: `paused === false` proves nothing,
- * `readyState === 4` proves nothing; the decoded byte counter climbing is what proves samples reached
- * the pipeline. Every finding below is anchored to that counter and to the wall clock, not to
- * `paused` or `currentTime` alone.
- *
- * ENVIRONMENT LIMITS. This box has no deno / no ffmpeg encode / no torch / no ffmpeg volumedetect
- * (see e2e/HARNESS.md). Nothing here needs any of them: the fake worker publishes real 16-bit PCM WAV
- * by hand (wav.mjs) and the whole process happens over the real wire.
+ * Autoplay is GRANTED, so this is NOT-A-TV (docs/E2E.md#autoplay). Every finding is anchored to the
+ * decoded byte counter and the wall clock (docs/E2E.md#proving-audio), never to `paused`.
  *
  *   PORT=5221 EPORT=5221 bun tests/e2e/probes/p1-gapless.mjs   # boot server + worker first
- *
- * Exit codes:  0 = all findings collected AND no CRITICAL/HIGH  ·  1 = at least one HIGH+ defect  ·
- *              2 = the environment could not host the test (no server, no library, no Chromium)
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,56 +15,35 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json, following the same
- * pattern as the sibling probes. Browser/Page are derived from driver.mjs's own return types so they
- * cannot drift from the driver. page.evaluate() is typed Promise<any> by driver.mjs, so DOM/API-shaped
- * results are cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
  * @typedef {{ sev: Severity, id: string, title: string, evidence: string, path: string }} Finding
- *
- * A media row as returned by /api/search (the fields this probe reads).
  * @typedef {{ id: string, title: string, source?: string, instrumentalRef?: string, stemStatus?: string }} Media
- *
- * A joined singer with its session cookie.
  * @typedef {{ name: string, singerId: string, cookie: string }} Singer
- *
- * One audio/video element read out of the TV page per sample.
- * @typedef {{
- *   tag: string, src: string, readyState: number, paused: boolean, muted: boolean, volume: number,
- *   currentTime: number, duration: number, ended: boolean, decoded: number | null,
- *   error: { code: number, message: string } | null, slotIdx: number, slotVisible: boolean | null
- * }} Elem
- *
- * One dense-poll sample of the TV: the element readout plus the lower-third / up-next / attract state.
- * @typedef {{
- *   t: number, slotCount: number, slotVisible: boolean[], elems: Elem[],
+ * @typedef {{ tag: string, src: string, readyState: number, paused: boolean, muted: boolean,
+ *   volume: number, currentTime: number, duration: number, ended: boolean, decoded: number | null,
+ *   error: { code: number, message: string } | null, slotIdx: number, slotVisible: boolean | null }} Elem
+ * One dense-poll sample of the TV.
+ * @typedef {{ t: number, slotCount: number, slotVisible: boolean[], elems: Elem[],
  *   lowerThird: { visible: boolean, name: string, song: string },
  *   upNext: { visible: boolean, label: string, name: string, song: string, kind: string | null },
- *   attract: boolean, wallMs: number, relMono: number
- * }} Sample
- *
- * The context handed to analyze(): the two readied songs and the two singers.
+ *   attract: boolean, wallMs: number, relMono: number }} Sample
  * @typedef {{ song1: Media, song2: Media, alice: Singer, bob: Singer }} Ctx
  */
 
-// ── config ─────────────────────────────────────────────────────────────────────────────────────
 const PORT = process.env.EPORT ?? process.env.PORT ?? '5221';
 const base = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? '/tmp';
 const artDir = join(SCRATCH, `p1-gapless-${PORT}`);
 mkdirSync(artDir, { recursive: true });
 
-// The fixtures are 8 seconds long. The room defaults ENCORE_SONG_INTRO_MS to 2500. So one full
-// song-to-song cycle is roughly 8s song + 2.5s card + 8s song = 18.5s of screen time. Give a
-// generous margin around that for process, initial intro card, and post-end settle.
+// The fixtures are 8s and ENCORE_SONG_INTRO_MS defaults to 2500, so one song-to-song cycle is ~18.5s
+// of screen time. The budget below leaves margin for process, the first intro card and the end settle.
 const PROCESS_TIMEOUT_MS = 30_000;
 const OBSERVE_TIMEOUT_MS = 45_000;
 const SAMPLE_MS = 40; // ~25 Hz — dense enough to see a boundary the size of one video frame
 
-// ── little helpers ─────────────────────────────────────────────────────────────────────────────
 /** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
@@ -101,23 +59,15 @@ async function j(url, init = {}) {
 		return { ok: res.ok, status: res.status, headers: res.headers, body: text };
 	}
 }
-/** Parse an `encore_singer=<token>` value out of one or more Set-Cookie response headers. */
-/** @param {string | null} setCookie @returns {string | null} */
+/** Parses `encore_singer=<token>` out of Set-Cookie. @param {string | null} setCookie @returns {string | null} */
 function parseSessionCookie(setCookie) {
 	if (!setCookie) return null;
 	const m = /encore_singer=([^;]+)/.exec(setCookie);
 	return m ? m[1] : null;
 }
-// ── findings sink ──────────────────────────────────────────────────────────────────────────────
 /** @type {Finding[]} */
 const findings = []; // {sev, id, title, evidence, path}
-/**
- * @param {Severity} sev
- * @param {string} id
- * @param {string} title
- * @param {string} [evidence]
- * @param {string} [path]
- */
+/** @param {Severity} sev @param {string} id @param {string} title @param {string} [evidence] @param {string} [path] */
 function record(sev, id, title, evidence, path = '') {
 	findings.push({ sev, id, title, evidence: evidence ?? '', path });
 	console.log(`\n[${sev}] ${id}  ${title}`);
@@ -125,23 +75,18 @@ function record(sev, id, title, evidence, path = '') {
 	if (evidence) console.log(`  ${evidence.split('\n').join('\n  ')}`);
 }
 
-// ── preflight ──────────────────────────────────────────────────────────────────────────────────
 if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 	bail(`no Encore server on ${base}. Start one and re-run per e2e/HARNESS.md.`);
 }
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 
-// The fake worker must be dial-homed for processes to complete. HARNESS.md tells the caller to start it,
-// but a caller who forgot would otherwise sit for 30s at "process did not complete" with no signpost.
-// Cheap check: enqueue one process and give up early if it never even reaches `queued`
-// beyond the initial dispatch. But the simplest tell is a healthy /health + a search that lands.
+// Without a dial-homed fake worker no process ever completes, and the caller would sit 30s at
+// "process did not complete" with no signpost. A healthy /health plus a search that lands is the tell.
 const preSearch = await j(`${base}/api/search?q=`);
 if (!preSearch.ok) bail(`search endpoint failed: ${preSearch.status} ${JSON.stringify(preSearch.body)}`);
 
-// ── pick two DIFFERENT library songs ───────────────────────────────────────────────────────────
-/** Fetch a specific library title from the four demo tracks. */
-/** @param {string} q @returns {Promise<Media | null>} */
+/** Fetches one of the four demo tracks by title. @param {string} q @returns {Promise<Media | null>} */
 async function findLocalByTitle(q) {
 	const r = await j(`${base}/api/search?q=${encodeURIComponent(q)}`);
 	if (!r.ok) bail(`search failed for ${JSON.stringify(q)}: ${r.status}`);
@@ -163,7 +108,6 @@ if (song1.id === song2.id) bail('sanity: search returned the same media for both
 console.log(`song1: "${song1.title}"  ${song1.id}`);
 console.log(`song2: "${song2.title}"  ${song2.id}`);
 
-// ── two singers via /api/join ───────────────────────────────────────────────────────────────────
 /** @param {string} name @param {string} color @returns {Promise<Singer>} */
 async function joinSinger(name, color) {
 	const res = await fetch(`${base}/api/join`, {
@@ -182,7 +126,6 @@ const alice = await joinSinger(`Alice-${Date.now() % 100000}`, '#ff5cae');
 const bob = await joinSinger(`Bob-${Date.now() % 100000}`, '#66d1ff');
 console.log(`joined ${alice.name} ${alice.singerId} and ${bob.name} ${bob.singerId}`);
 
-// ── process both songs ─────────────────────────────────────────────────────────────────────────────
 /** @param {string} mediaId @param {string} cookie @param {string} label @returns {Promise<Media>} */
 async function processAndWait(mediaId, cookie, label) {
 	const res = await fetch(`${base}/api/process`, {
@@ -194,7 +137,6 @@ async function processAndWait(mediaId, cookie, label) {
 		const body = await res.text();
 		bail(`process ${label} failed: ${res.status} ${body}`);
 	}
-	// poll /api/search?q=<title> until this media appears in `ready`
 	const q = label === /** @type {Media} */ (song1).title ? 'caroline' : 'believin';
 	const deadline = Date.now() + PROCESS_TIMEOUT_MS;
 	while (Date.now() < deadline) {
@@ -210,7 +152,6 @@ const readied2 = await processAndWait(song2.id, bob.cookie, song2.title);
 console.log(`processed: ${readied1.title} → ${readied1.instrumentalRef}`);
 console.log(`processed: ${readied2.title} → ${readied2.instrumentalRef}`);
 
-// ── launch Chromium; open TV so we can observe from t=0 of the first song ──────────────────────
 
 /** @type {Browser | undefined} */
 let browser;
@@ -226,24 +167,19 @@ const timeline = []; // per-sample rows: {t, elems:[{tag,src,decoded,currentTime
 try {
 	browser = await connect();
 
-	// TV first. That way our observation starts BEFORE any queue mutation, so we can see the
-	// attract → loading → playing entry too.
+	// TV FIRST, so observation starts before any queue mutation and the attract → playing entry is seen.
 	tv = await browser.newPage();
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
-	// Guard: the TV route must render its own DOM.
 	await tv.waitForSelector(SEL.tvRoot);
 
-	// Now the two singers on their own contexts — a fresh browser context is fresh cookies, which is
-	// the whole reason they land as distinct sessions. We ALREADY joined them via /api/join above
-	// (so we have their session tokens), so drive the browsers with those cookies rather than doing a
-	// second UI join — the API-side singer would collide on name and the /join form would 409.
+	// One context per singer, because a fresh context is fresh cookies. They are already joined via
+	// /api/join, so inject those cookies rather than joining again — a second UI join would 409 on the name.
 	/** @param {Page} page @param {string} cookieValue */
 	async function withCookie(page, cookieValue) {
-		// Land on ANY same-origin URL first so `document.cookie` has an origin to attach to.
+		// Any same-origin URL first, so `document.cookie` has an origin to attach to.
 		await page.goto(`${base}/health`);
-		// A JS-set cookie is not httpOnly, but the server does not care about the httpOnly flag when
-		// RECEIVING cookies — the flag is a browser-side read gate. Same-origin requests carry it.
+		// httpOnly is a browser-side READ gate, so a JS-set cookie still rides same-origin requests.
 		await page.evaluate(`document.cookie = ${JSON.stringify(cookieValue + '; path=/')}`);
 	}
 
@@ -251,7 +187,6 @@ try {
 	await phone1.viewport(390, 844);
 	await withCookie(phone1, alice.cookie);
 	await phone1.goto(`${base}/`);
-	// Home is the queue under direction A — reach the search box through the browse push.
 	await openBrowseFromHome(phone1);
 
 	phone2 = await browser.newPage();
@@ -260,36 +195,29 @@ try {
 	await phone2.goto(`${base}/`);
 	await openBrowseFromHome(phone2);
 
-	// Alice queues song 1. The .add button only appears on ready songs, which we've now processed.
+	// The add action only renders on a READY song, which is why both were processed first.
 	await phone1.fill(SEL.search, 'caroline');
 	await phone1.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const has1 = await phone1.count(SEL.addTurn);
 	if (has1 === 0) bail('phone1: processed song 1 did not offer .add (readiness UI is out of step with server)');
 	await phone1.click(SEL.addTurn);
-	// Back to the queue before counting rows: the rotation is NOT rendered in the results view, so a
-	// `.qrow` count taken here reads an empty list and times out. `returnHomeFromBrowse` clears the
-	// search, which is what brings the queue back — its own docstring names this exact mistake.
+	// The rotation is NOT rendered in the results view, so a .qrow count taken there times out on an
+	// empty list. Clearing the search is what brings the queue back.
 	await returnHomeFromBrowse(phone1);
 	await phone1.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
-	// Bob queues song 2. Between his join and this add, the server has already autostarted playback of
-	// song 1 (reconcileOnReady), so Bob's add lands as UP-NEXT.
+	// The server has already autostarted song 1 by now, so this add lands as UP-NEXT.
 	await openBrowseFromHome(phone2); // search lives behind the browse push
 	await phone2.fill(SEL.search, 'believin');
 	await phone2.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const has2 = await phone2.count(SEL.addTurn);
 	if (has2 === 0) bail('phone2: processed song 2 did not offer .add');
 	await phone2.click(SEL.addTurn);
-	// Back to the queue before counting rows: the rotation is NOT rendered in the results view, so a
-	// `.qrow` count taken here reads an empty list and times out. `returnHomeFromBrowse` clears the
-	// search, which is what brings the queue back — its own docstring names this exact mistake.
 	await returnHomeFromBrowse(phone2);
 	await phone2.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
-	// ── the assertion path — dense polling of the TV ────────────────────────────────────────────
-	// Give the room a beat to publish the second queue add + nowplaying:changed and let the hidden
-	// slot pre-warm before we start reading. Without this, sample #0 can catch a state where song 2
-	// is not yet on the wire, which is not a defect but reads like one.
+	// Let the second add, nowplaying:changed and the hidden slot's pre-warm land first: sample #0 would
+	// otherwise catch song 2 not yet on the wire, which is not a defect but reads like one.
 	await sleep(400);
 	const probe = `(() => {
 		const t = performance.now();
@@ -346,19 +274,17 @@ try {
 		s.wallMs = Date.now() - t0;
 		s.relMono = s.t - t0Mono;
 		timeline.push(s);
-		// Track state transitions for an early exit — once we've seen song 1, song 2, then attract, we
-		// can stop rather than burn the full timeout budget.
+		// Early exit once song 1, song 2 and attract have all been seen, rather than burning the budget.
 		if (s.elems.some((e) => (e.decoded ?? 0) > 0)) sawFirstSong = true;
 		if (
 			sawFirstSong &&
 			s.elems.filter((e) => (e.decoded ?? 0) > 0 && e.src).length >= 1 &&
-			// two distinct src values have carried decoded bytes over the run
 			timelineDistinctDecodedSrcs(timeline).size >= 2
 		) {
 			sawSecondSong = true;
 		}
 		if (sawSecondSong && s.attract) {
-			// give it one more sample window so we lock in the terminal state
+			// One more sample window, to lock in the terminal state.
 			await sleep(SAMPLE_MS);
 			timeline.push(/** @type {Sample} */ ({ ...(await tv.evaluate(probe)), wallMs: Date.now() - t0, relMono: 0 }));
 			break;
@@ -366,15 +292,13 @@ try {
 		await sleep(SAMPLE_MS);
 	}
 
-	// Screenshot as evidence.
 	const shot = join(artDir, 'tv-end.png');
 	await tv.screenshot(shot);
 	console.log(`\ncaptured ${timeline.length} samples over ~${Math.round((Date.now() - t0) / 1000)}s`);
 	console.log(`TV frame: ${shot}`);
 
-	// ── analysis ────────────────────────────────────────────────────────────────────────────────
 	analyze(timeline, { song1: readied1, song2: readied2, alice, bob });
-	// Persist the timeline in machine-readable form so a follow-up can dig deeper without re-driving.
+	// Persist the timeline so a follow-up can dig deeper without re-driving the browser.
 	writeFileSync(join(artDir, 'timeline.json'), JSON.stringify(timeline, null, 1));
 	console.log(`timeline: ${join(artDir, 'timeline.json')}`);
 } catch (err) {
@@ -389,10 +313,8 @@ try {
 	browser?.close();
 }
 
-// ── analysis helpers ───────────────────────────────────────────────────────────────────────────
 
-/** Set of distinct decoded-carrying src strings across the timeline so far. */
-/** @param {Sample[]} tl @returns {Set<string>} */
+/** Distinct decoded-carrying src strings so far. @param {Sample[]} tl @returns {Set<string>} */
 function timelineDistinctDecodedSrcs(tl) {
 	const s = new Set();
 	for (const row of tl) {
@@ -403,8 +325,7 @@ function timelineDistinctDecodedSrcs(tl) {
 	return s;
 }
 
-/** Per-src stream: first sample where decoded>0 (start), last sample where it climbed (end). */
-/** @param {Sample[]} tl @param {(src: string) => boolean} srcMatch */
+/** Per-src: first sample with decoded>0, last where it climbed. @param {Sample[]} tl @param {(src: string) => boolean} srcMatch */
 function decodingWindow(tl, srcMatch) {
 	let first = -1;
 	let lastClimb = -1;
@@ -422,18 +343,14 @@ function decodingWindow(tl, srcMatch) {
 	return { first, lastClimb, peak };
 }
 
-/**
- * The core of P1. Every finding here should carry numbers a reviewer can re-derive from timeline.json.
- */
-/** @param {Sample[]} tl @param {Ctx} ctx */
+/** Every finding carries numbers a reviewer can re-derive from timeline.json. @param {Sample[]} tl @param {Ctx} ctx */
 function analyze(tl, ctx) {
 	if (tl.length === 0) {
 		record('CRITICAL', 'P1-NO-SAMPLES', 'no timeline samples were collected', '', 'tests/e2e/probes/p1-gapless.mjs');
 		return;
 	}
 	const { song1, song2 } = ctx;
-	// Anchor srcs on the two songs. `playbackRef` resolves to instrumentalRef, so the src the element
-	// holds is `/media/<mediaId>-instrumental.wav`.
+	// playbackRef resolves to instrumentalRef, so an element's src is /media/<mediaId>-instrumental.wav.
 	const isSong1 = (/** @type {string} */ src) =>
 		src.includes(song1.id) || (song1.instrumentalRef ? src.includes(song1.instrumentalRef) : false);
 	const isSong2 = (/** @type {string} */ src) =>
@@ -442,14 +359,12 @@ function analyze(tl, ctx) {
 	const w1 = decodingWindow(tl, isSong1);
 	const w2 = decodingWindow(tl, isSong2);
 
-	// A stuck-at-preload element reports a non-zero decoded byte count from buffering alone. Real
-	// playback grows the counter as samples are consumed, so require a genuine climb before we count
-	// a song as having "played".
+	// Buffering alone gives a stuck element a non-zero decoded count, so "played" requires a CLIMB.
 	const REAL_PLAYBACK_BYTES = 60_000; // preload of a decode-only WebAudio buffer is 8–24KB
 	const w1Played = w1.peak >= REAL_PLAYBACK_BYTES;
 	const w2Played = w2.peak >= REAL_PLAYBACK_BYTES;
 
-	// ── (F1) did song 1 EVER produce sound at all? ─────────────────────────────────────────────
+	// F1: did song 1 ever produce sound at all?
 	if (!w1Played) {
 		record(
 			'CRITICAL',
@@ -462,7 +377,7 @@ function analyze(tl, ctx) {
 		);
 		return; // nothing else makes sense
 	}
-	// ── (F2) did song 2 ACTUALLY PLAY? → the AUTO-ADVANCE question ──────────────────────────────
+	// F2: did song 2 actually play — the auto-advance question.
 	if (!w2Played) {
 		const stuckAtPreload = w2.first >= 0 && w2.peak > 0 && w2.peak < REAL_PLAYBACK_BYTES;
 		const evidence = stuckAtPreload
@@ -482,15 +397,14 @@ function analyze(tl, ctx) {
 		);
 	}
 
-	// ── (F3) BOUNDARY — the gap between last-decoded of song 1 and first-decoded of song 2 ─────
+	// F3: the boundary — song 1's last decoded byte to song 2's first.
 	if (w1.lastClimb >= 0 && w2.first >= 0) {
 		const tEndA = tl[w1.lastClimb].wallMs;
 		const tStartB = tl[w2.first].wallMs;
 		const deltaMs = tStartB - tEndA;
 		const deltaLabel = deltaMs >= 0 ? `${deltaMs}ms of GAP` : `${-deltaMs}ms of OVERLAP`;
-		// The A/B swap is meant to be a single composited frame, no network at transition. On this
-		// harness a boundary in the low tens of ms is the expected shape; anything past ~250ms reads
-		// as an audible dead-air seam, and anything negative reads as double-audio.
+		// The A/B swap is one composited frame with no network, so low tens of ms is the shape. Past
+		// ~250ms is an audible dead-air seam; negative is double audio.
 		/** @type {Severity} */
 		let sev = 'LOW';
 		if (deltaMs > 400) sev = 'HIGH';
@@ -507,14 +421,13 @@ function analyze(tl, ctx) {
 		);
 	}
 
-	// ── (F4) DOUBLE AUDIO — do BOTH slots decode within the same sample window? ─────────────────
+	// F4: double audio — do BOTH slots decode within one sample window?
 	let simulRows = 0;
 	let firstSimulT = -1;
 	let maxSimul = 0;
 	for (let i = 1; i < tl.length; i++) {
 		const prev = tl[i - 1];
 		const cur = tl[i];
-		// per-src growth
 		const growthByTag = new Map();
 		for (const el of cur.elems) {
 			if (!el.src) continue;
@@ -539,9 +452,8 @@ function analyze(tl, ctx) {
 			''
 		);
 	} else {
-		// Simultaneous decoding is the audible double-song bug when it lasts more than one frame — but
-		// a single row at the swap boundary can be an artifact of sampling jitter (both counters
-		// updated between the same two reads) and does NOT prove overlap. Flag by duration.
+		// Simultaneous decoding is the double-song bug only if it OUTLASTS one frame: a single row at the
+		// boundary is sampling jitter (both counters moved between the same two reads). Flag by duration.
 		const dur = simulRows * SAMPLE_MS;
 		const sev = simulRows > 3 ? 'HIGH' : simulRows > 1 ? 'MEDIUM' : 'LOW';
 		record(
@@ -560,9 +472,8 @@ function analyze(tl, ctx) {
 		);
 	}
 
-	// ── (F5) SONG-INTRO CARD — appears, names the right singer, dismisses on schedule ──────────
+	// F5: the song-intro card appears, names the right singer, and dismisses on schedule.
 	const upFrames = tl.map((r, i) => ({ i, r, up: r.upNext.visible && r.upNext.kind === 'next' ? r.upNext : null }));
-	// Find contiguous ranges of `next` cards.
 	const cards = [];
 	let cur = null;
 	for (const f of upFrames) {
@@ -593,7 +504,7 @@ function analyze(tl, ctx) {
 			const start = tl[c.startI].wallMs;
 			const end = tl[c.endI].wallMs;
 			const dur = end - start;
-			// Nominal 2500ms. Sampling adds ±SAMPLE_MS at both edges, so a window in [~2300, ~2700] is on-nominal.
+			// Nominal 2500ms, ±SAMPLE_MS at each edge, so [~2300, ~2700] is on-nominal.
 			const drift = dur - 2500;
 			/** @type {Severity} */
 			let sev = 'LOW';
@@ -608,7 +519,6 @@ function analyze(tl, ctx) {
 				'src/routes/tv/+page.svelte (holdSongIntro)'
 			);
 
-			// Which singer is the card announcing?
 			const expectSong = k === 0 ? ctx.song1.title : ctx.song2.title;
 			const expectSinger = k === 0 ? ctx.alice.name : ctx.bob.name;
 			if (!c.name.includes(expectSinger.split('-')[0])) {
@@ -633,7 +543,7 @@ function analyze(tl, ctx) {
 		}
 	}
 
-	// ── (F5b) does AUDIO play behind the intro card? ───────────────────────────────────────────
+	// F5b: does audio play behind the intro card?
 	if (cards.length > 0 && w1.first >= 0) {
 		const firstCard = cards[0];
 		const cardT0 = tl[firstCard.startI].wallMs;
@@ -655,9 +565,7 @@ function analyze(tl, ctx) {
 		);
 	}
 
-	// ── (F6) LOWER-THIRD — did .ls-name change at the swap, and only then? ─────────────────────
-	// Collect the first sample carrying song1-decoded and the first sample carrying song2-decoded,
-	// then look at .ls-name text around those anchors.
+	// F6: did .ls-name change at the swap, and only then?
 	if (w1.first >= 0 && w2.first >= 0) {
 		const nameDuringSong1 = tl[w1.first + 3]?.lowerThird?.name ?? tl[w1.first]?.lowerThird?.name ?? '';
 		const nameDuringSong2 = tl[w2.first + 3]?.lowerThird?.name ?? tl[w2.first]?.lowerThird?.name ?? '';
@@ -672,7 +580,6 @@ function analyze(tl, ctx) {
 				'src/routes/tv/+page.svelte (.lower-third .ls-name; singers map)'
 			);
 		} else {
-			// Where did it actually flip? Find first sample where name differs from the song-1 name.
 			const flipI = tl.findIndex((r, i) => i >= w1.first && r.lowerThird.name && r.lowerThird.name !== nameDuringSong1);
 			const flipT = flipI >= 0 ? tl[flipI].wallMs : null;
 			const w2StartT = tl[w2.first].wallMs;
@@ -689,7 +596,7 @@ function analyze(tl, ctx) {
 		}
 	}
 
-	// ── (F7) LAST-SONG END → attract or stranded? ──────────────────────────────────────────────
+	// F7: last song ends — attract, or stranded?
 	if (w2.first >= 0) {
 		const tailStart = Math.min(w2.lastClimb + 1, tl.length - 1);
 		const tail = tl.slice(tailStart);
@@ -706,7 +613,7 @@ function analyze(tl, ctx) {
 				'src/lib/tv/screen.ts (tvScreen: no current → attract)'
 			);
 		} else if (!sawAttract) {
-			// Might have been cut short by OBSERVE_TIMEOUT — say so explicitly rather than crying wolf.
+			// A run cut short by OBSERVE_TIMEOUT must say so rather than cry wolf.
 			const lastRow = tl[tl.length - 1];
 			const lastEl = lastRow.elems.find((e) => e.src && isSong2(e.src));
 			const stillPlaying = lastEl && !lastEl.paused && !lastEl.ended;
@@ -723,7 +630,7 @@ function analyze(tl, ctx) {
 		}
 	}
 
-	// ── (F8) sanity: instrumental plays through <audio>, not <video> ──────────────────────────
+	// F8: the instrumental plays through <audio>, not <video>.
 	const seenTags = new Set();
 	for (const r of tl) {
 		for (const e of r.elems) {
@@ -749,11 +656,9 @@ function analyze(tl, ctx) {
 		);
 	}
 
-	// ── (F9) SLOT ARCHITECTURE — is the hidden slot mounting a pre-warm <audio> at all? ────────
-	// The gapless design mounts TWO slots (A + B), one visible for the current song and one hidden
-	// pre-warming the upNext. If we only ever see ONE <audio> element in the DOM, the hidden slot is
-	// mounted as a div but never given a media, so there is no pre-warm buffer at all — every swap
-	// costs the visible slot a fresh element and a cold load. That defeats the whole feature.
+	// F9: does the hidden slot mount a pre-warm <audio> at all?
+	// Two slots, one visible and one pre-warming upNext. Seeing only ONE <audio> ever means the hidden
+	// slot has no media, so every swap costs the visible slot a cold load — the feature defeated.
 	const slotCounts = new Set(tl.map((r) => r.slotCount));
 	const maxAudioCount = tl.reduce((m, r) => Math.max(m, r.elems.length), 0);
 	if (!slotCounts.has(2)) {
@@ -766,13 +671,10 @@ function analyze(tl, ctx) {
 			'src/routes/tv/+page.svelte'
 		);
 	}
-	// Both slot divs may be mounted, but their audio elements are conditionally rendered per media.
-	// Count how many distinct sources ever CO-EXISTED in the DOM at the same time.
+	// Both slot divs may be mounted while their <audio> children are conditional, so count CO-EXISTENCE.
 	if (maxAudioCount < 2 && w2.first >= 0) {
-		// We saw song 2 play, but never two <audio>s at once — that means slot B's audio was never
-		// mounted alongside slot A's while song 1 was playing. The pre-warm buffer literally didn't
-		// exist. That is the mechanical reason the swap opens up the 369ms gap in F3: with no
-		// warmed hidden element, the visible slot has to load song 2 cold at the swap moment.
+		// Song 2 played but the two <audio>s never coexisted, so there was no pre-warm buffer — which is
+		// the mechanical cause of any seam F3 measures.
 		record(
 			'HIGH',
 			'P1-F9-NO-PREWARM-MOUNT',
@@ -787,8 +689,7 @@ function analyze(tl, ctx) {
 		);
 	}
 
-	// Was song 2's <audio> ever present at the same time as song 1's? Concretely: any sample where at
-	// least one element carries song 1's src AND another carries song 2's src.
+	// Any sample where one element carries song 1's src and another carries song 2's.
 	const overlapMountSamples = tl.filter(
 		(r) => r.elems.some((e) => e.src && isSong1(e.src)) && r.elems.some((e) => e.src && isSong2(e.src))
 	).length;
@@ -815,7 +716,6 @@ function analyze(tl, ctx) {
 	}
 }
 
-// ── final summary ──────────────────────────────────────────────────────────────────────────────
 const bySev = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
 for (const f of findings) bySev[f.sev] = (bySev[f.sev] ?? 0) + 1;
 console.log(`\n── SUMMARY ──`);

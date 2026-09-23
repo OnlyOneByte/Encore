@@ -1,8 +1,7 @@
 // POST /api/join must carry a room code through to doJoin, refuse an unknown code with 404, and return
 // the room the join landed in to the caller. These drive the REAL POST handler against a
 // real RoomRepository + SingerRepository on an in-memory migrated DB, so the pinned mechanism is
-// end-to-end: the request's `code` reaches the room resolution and the resolved roomId reaches the
-// response body.
+// end-to-end: the request's `code` reaches the room resolution and the resolved roomId reaches the response body.
 //
 // A cleanup removed the second cookie this route used to set (`encore_room`), which had no reader anywhere:
 // the room a socket may act in is derived from the session token via the singers row, never from a

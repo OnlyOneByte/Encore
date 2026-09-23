@@ -1,26 +1,14 @@
-// unit: a permanently failed process stays failed across a restart, and an unservable job dies on a clock.
+// A permanently failed process stays failed across a RESTART, and an unservable job dies on a CLOCK. Two
+// defects of one shape: the in-memory fix works and the durable or periodic half is never wired.
 //
-// TWO DEFECTS, found while writing the XR-JOB requirement rows. They share one shape: the fix that was
-// applied worked in memory, and the durable or periodic half was never wired.
-//
-// 1. THE READINESS GATE SETTLED IN MEMORY ONLY. `settleStemsGate` puts a dead process's song back to
-//    `stemStatus: 'none'` so `isProcessing` stops reading it as in-flight — its own comment describes the
-//    "processing FOREVER" bug it was written to end. But `stem_status` is a STORED column, the *queued* flip
-//    IS persisted (the process route upserts right after enqueue), and the terminal-failure epilogue
-//    carried no persistence sink at all. `hydrateMediaCatalog` wins at boot, so a restart resurrected
-//    exactly the stranding the settle exists to prevent: terminal job row, song reads as processing, no Sing
-//    button, and nothing a guest can do about it.
-//
-// 2. THE UNSERVABLE TTL WAS NOT ON A CLOCK. Both the stamp and the expiry check live inside `dispatch()`,
-//    which is event-driven. The reaper does tick every ~3s, but it only called its dispatch hook on a tick
-//    that CHANGED a job — and an unservable job is never assigned or running, so the sweep produces no
-//    actions, `dispatch()` is never called again, and the 120s TTL is never reached. The job parks queued
-//    forever: the exact hang the TTL was introduced to end.
-//
-//    The existing coverage in `worker-hub.test.ts` cannot catch this, and the reason is the point: it calls
-//    `hub.dispatch()` itself to advance the clock, supplying the second pass production may never make. It
-//    is green about a path the running system cannot reach. The arms below drive the TTL through the
-//    REAPER, so removing the periodic trigger reds them.
+// 1. `settleStemsGate` puts a dead process's song back to `stemStatus: 'none'`, but that is a STORED column
+//    and the queued flip IS persisted, so without a persistence sink on the terminal-failure epilogue
+//    `hydrateMediaCatalog` wins at boot and a restart resurrects the stranding the settle exists to prevent.
+// 2. Both the unservable stamp and its expiry check live inside `dispatch()`, which is event-driven, and the
+//    reaper only called its dispatch hook on a tick that CHANGED a job — but an unservable job is never
+//    assigned or running, so the sweep has no actions, `dispatch()` is never called again, and the TTL is
+//    never reached. `worker-hub.test.ts` cannot catch that: it calls `hub.dispatch()` itself, supplying a
+//    second pass production may never make. These arms drive the TTL through the REAPER instead.
 
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
@@ -81,9 +69,8 @@ test('a terminal stems failure persists the settled gate, not only the in-memory
 	});
 
 	expect(settled).toBe(true);
-	// the in-memory half, which already worked
 	expect(mediaById.get('m1')!.stemStatus).toBe('none');
-	// the durable half — without it the next boot re-reads 'queued' from the row and strands the song
+	// The durable half: without it the next boot re-reads 'queued' from the row and strands the song.
 	expect(
 		persisted,
 		'the settled gate was never handed to a persistence sink, so a restart resurrects the dead process'
@@ -91,8 +78,8 @@ test('a terminal stems failure persists the settled gate, not only the in-memory
 });
 
 test('a failure that settles NO gate does not write', () => {
-	// stems-upgrade deliberately keeps the working instrumental, so there is nothing to settle and
-	// nothing to persist. A sink called unconditionally would write a row per failure for no reason.
+	// A stems-upgrade keeps the working instrumental, so there is nothing to settle and nothing to persist:
+	// a sink called unconditionally writes a row per failure for no reason.
 	const { jobs, mediaById } = harness();
 	mediaById.set('m1', media('m1', { stemStatus: 'ready' }));
 	const persisted: string[] = [];
@@ -109,8 +96,7 @@ test('a failure that settles NO gate does not write', () => {
 });
 
 test('the epilogue still works with no sink wired, so the hub unit-tests bare', () => {
-	// `persist` is optional on purpose: WorkerHubDeps.persistMedia is already optional so the hub can be
-	// built without a DB. An epilogue that REQUIRED a sink would break every such test.
+	// `persist` is optional because `WorkerHubDeps.persistMedia` is, so the hub can be built without a DB.
 	const { jobs, mediaById } = harness();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	const failed = jobs.fail(job.id, 'boom', T0 + 1_000);
@@ -119,27 +105,25 @@ test('the epilogue still works with no sink wired, so the hub unit-tests bare', 
 });
 
 test('settleStemsGate alone does not persist — the epilogue owns that', () => {
-	// Pins the division of labour. If settling grew its own write, the epilogue would double-write and the
-	// two sites could disagree about when a row is flushed.
+	// The division of labour: settling must not grow its own write, or the epilogue double-writes and the
+	// two sites disagree about when a row is flushed.
 	const mediaById = new Map<string, Media>([['m1', media('m1', { stemStatus: 'queued' })]]);
 	expect(settleStemsGate('m1', mediaById)).toBe(true);
 	expect(mediaById.get('m1')!.stemStatus).toBe('none');
 });
 
 test('the hub wires its own persistMedia into the terminal-failure epilogue', () => {
-	// End to end through the hub rather than through the exported function: a worker reports a terminal
-	// failure and the hub must hand its persistence sink to the epilogue. This is the arm that fails if
-	// only the standalone function is fixed and the two call sites in worker-hub are missed.
+	// End to end through the HUB, not the exported function: this is the arm that fails if the standalone
+	// function is fixed and the two call sites in worker-hub are missed.
 	const { hub, jobs, persisted, mediaById } = harness();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
 	expect(jobs.byId(job.id)!.status).toBe('assigned');
 
-	// The worker has to ACCEPT before it can report a failure: #onFailed refuses anything not `running`,
-	// which is what keeps a stale session from failing a job it no longer owns.
+	// The worker must ACCEPT before it can fail: #onFailed refuses anything not `running`, which is what
+	// keeps a stale session from failing a job it no longer owns.
 	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
 	expect(jobs.byId(job.id)!.status).toBe('running');
-	// `retryable: false` is terminal on the first report — no need to exhaust attempts.
 	hub.handle({ type: 'job:failed', jobId: job.id, workerId: 'w1', error: 'boom', retryable: false });
 	expect(jobs.byId(job.id)!.status).toBe('failed');
 	expect(mediaById.get('m1')!.stemStatus).toBe('none');
@@ -151,14 +135,13 @@ test('the hub wires its own persistMedia into the terminal-failure epilogue', ()
 test('an unservable job reaches terminal failed on the reaper clock, with nobody calling dispatch', () => {
 	const { hub, jobs, setClock } = harness();
 	const job = jobs.enqueue('m1', 'align', 0, T0);
-	// A worker connects that can never serve it, exactly as the existing TTL test sets up. The job is
-	// first seen unservable here — and from now on nothing is assigned or running, so the reaper's sweep
-	// has no actions to take on any tick.
+	// A worker that can never serve it, so the job is first seen unservable here — and from now on nothing
+	// is assigned or running, so the reaper's sweep has no actions to take on any tick.
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
 	expect(jobs.byId(job.id)!.status).toBe('queued');
 
-	// The reaper is the only clock in the system. Wire it as app.ts does and let it tick. Crucially this
-	// test never calls hub.dispatch() again — production would not.
+	// The reaper is the only CLOCK in the system, wired as app.ts does. This test never calls
+	// hub.dispatch() again, because production would not.
 	const reaper = new JobReaper(jobs, {
 		now: () => jobsNow,
 		tickMs: 1_000_000,
@@ -182,8 +165,7 @@ test('an unservable job reaches terminal failed on the reaper clock, with nobody
 });
 
 test('the reaper fires its tick hook even when it changes nothing', () => {
-	// The load-bearing difference from `onReaped`, and the whole fix for the starvation above: this is what
-	// makes the reaper a CLOCK rather than a change notifier.
+	// The difference from `onReaped`: this is what makes the reaper a CLOCK rather than a change notifier.
 	const db = migratedDb();
 	const jobs = new JobRepository(db, new AttemptLedger(db));
 	let ticks = 0;
@@ -194,8 +176,8 @@ test('the reaper fires its tick hook even when it changes nothing', () => {
 });
 
 test('onReaped keeps its documented meaning: only on a tick that changed a job', () => {
-	// Deliberately NOT merged into onTick. They answer different questions — "capacity may have changed,
-	// redispatch now" versus "time has passed" — and collapsing them makes the no-op case invisible.
+	// Deliberately NOT merged into onTick: "capacity may have changed, redispatch now" and "time has
+	// passed" are different questions, and collapsing them makes the no-op case invisible.
 	const db = migratedDb();
 	const jobs = new JobRepository(db, new AttemptLedger(db));
 	let reaped = 0;
@@ -205,7 +187,7 @@ test('onReaped keeps its documented meaning: only on a tick that changed a job',
 });
 
 test('a job that finds a worker before the TTL is not failed by the periodic pass', () => {
-	// Regression guard for fix 2: making dispatch periodic must not start failing healthy jobs.
+	// Making dispatch periodic must not start failing healthy jobs.
 	const { hub, jobs, setClock } = harness();
 	const job = jobs.enqueue('m1', 'align', 0, T0);
 	hub.handle({ type: 'worker:hello', workerId: 'w-stems', capabilities: ['stems'], concurrency: 1, version: '1' });

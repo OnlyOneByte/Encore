@@ -1,9 +1,7 @@
 """Steps that get a job's bytes onto disk.
 
-`AcquireAudio` is the step three processors used to each implement for themselves. `fetch.py`'s docstring
-already claimed `resolve_source_audio` was "the one place that answers 'where are this job's bytes, and do
-I have to go and get them'" — it was true of exactly one of its four callers. Now there is one step, and
-the enforcement test in `tests/test_worker_layers.py` keeps it that way.
+`AcquireAudio` is the ONE acquisition path, shared by every job type; `tests/test_worker_layers.py`
+enforces that no processor re-implements it.
 """
 
 from __future__ import annotations
@@ -32,31 +30,17 @@ from ..vocabulary import Fetcher, Stage
 class AcquireAudio(Step):
     """Put the retained original on disk, downloading only if it is not already there.
 
-    THE ONE acquisition path. There were three, and they were not merely duplicated — they disagreed,
-    which is why deduplicating them meant deciding which was right:
+    Downloads via `%(ext)s` and DISCOVERS the real filename with `find_downloaded` (globs `<id>.*`)
+    rather than assuming one: the extension is whatever YouTube served (m4a or webm), and a literal
+    `.wav` target would silently mislabel the bytes (invisible only because ffmpeg sniffs content
+    rather than trusting the extension). This also finds legacy mislabelled files already on disk.
 
-      * `separation/demucs` and `separation/roformer` downloaded to `<id>.%(ext)s` and then called
-        `find_downloaded` to see what yt-dlp actually served.
-      * `acquisition/fetch.resolve_source_audio` and the old `whisperx` both used
-        `source_audio_path(...)`, which is `audio/<id>.wav` — a literal name with no `%(ext)s`.
-
-    The second is WRONG, and `download_argv`'s own docstring says so: "`out_template` must carry
-    `%(ext)s` — the extension is whatever YouTube served (m4a or webm), so the caller discovers the real
-    filename with `find_downloaded` rather than assuming one." Given a literal path, yt-dlp writes the
-    m4a or webm bytes into a file called `.wav`. It has worked only because ffmpeg sniffs content and
-    ignores the extension, so the mislabelling was invisible until something trusted the name.
-
-    So this step takes the DISCOVER semantics, which is also backward compatible: `find_downloaded` globs
-    `<id>.*`, so it finds both the legacy mislabelled `.wav` files already on the owner's volume and
-    correctly-named new downloads.
-
-    Two skips, both of which used to be inline `if`s in three separate processors:
-
-      * a DECLARED-local source is already a path under the media volume — nothing to fetch. Declared by
-        the core rather than inferred from the URI's shape, because inference sent every unrecognised
-        scheme down the local path to die inside ffmpeg with "No such file" several stages later.
-      * the file already exists, because an earlier job fetched it. An align job for a processed song then
-        costs no network at all, which is the whole reason the raw original is a retained artifact.
+    Two skips:
+      * a DECLARED-local source (from the core, never inferred from the URI's shape — inference would
+        send an unrecognised scheme down the local path to die inside ffmpeg several stages later) is
+        already a path under the media volume — nothing to fetch.
+      * the file already exists because an earlier job fetched it, so an align job for a processed
+        song costs no network at all — the whole reason the raw original is a retained artifact.
     """
 
     name = "acquire-audio"
@@ -67,9 +51,7 @@ class AcquireAudio(Step):
     )
 
     def __init__(self, *, ytdlp_bin: str = "yt-dlp") -> None:
-        # The worker's configured yt-dlp binary (ENCORE_YTDLP_BIN), threaded from the plan the same way
-        # ffmpeg_bin / demucs_bin reach their steps. A never-sent job param stays as a per-job override.
-        self.ytdlp_bin = ytdlp_bin
+        self.ytdlp_bin = ytdlp_bin  # ENCORE_YTDLP_BIN, threaded from the plan like ffmpeg_bin/demucs_bin
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         job = ctx.job
@@ -96,15 +78,14 @@ class AcquireAudio(Step):
 
         template = os.path.join(audio_dir, f"{job.media_id}.%(ext)s")
         argv = download_argv(job.source_uri, template, _ytdlp_bin(ctx, self.ytdlp_bin))
-        # The single subprocess-with-progress loop, shared with the other steps that shell out.
         async for ev in run_stage(ctx.runner, self.stage, argv, parse_ytdlp_progress):
             yield ev
 
         ctx.audio.path = find_downloaded(audio_dir, job.media_id)
         if ctx.audio.path is None:
-            # A hard failure, not a degrade: every later step needs these bytes. Naming the directory
-            # matters because the usual cause is yt-dlp resolving no audio-only format at all (a missing
-            # JavaScript runtime for YouTube's player challenge), which otherwise reads as a broken worker.
+            # A hard failure, not a degrade: every later step needs these bytes. The usual cause is
+            # yt-dlp resolving no audio-only format (a missing JS runtime for YouTube's player
+            # challenge), which otherwise reads as a broken worker.
             raise RuntimeError(f"download produced no file for {job.media_id} in {audio_dir}")
         self._capture_youtube_credit(ctx, audio_dir)
 
@@ -126,18 +107,14 @@ class AcquireAudio(Step):
 def _existing_vocals(ctx: Ctx) -> str | None:
     """The isolated vocals stem, if a stems job already published one.
 
-    Returned only when it EXISTS. The ASR baseline reads this, and a path to a missing file would make it
-    fail rather than decline — and a declining baseline is a real, honest outcome (stems not processed yet),
-    while a failing one looks like a broken worker.
+    Returned only when it EXISTS: a path to a missing file would make the ASR baseline fail rather
+    than decline, and a declining baseline is a real, honest outcome (stems not processed yet).
 
-    Extension-blind, exactly as `find_downloaded` is for the retained original above. `VOCALS_EXT`
-    switched from `m4a` to `flac` in an earlier change for NEW processes, but the worker re-derives this path
-    on every
-    align job from the CURRENT `VOCALS_EXT` — it is never sent the stored ref — so an interim-era song
-    (instrumental `.flac` + vocals `.m4a`, the whole library up to that commit) has a real stem on disk
-    under an unexpected name. Nothing migrates those files. Glob `<id>-vocals.*`, prefer the current
-    extension when several exist so a fresh re-process wins, and fall back to the legacy file otherwise.
-    No transcode: AAC → FLAC recovers nothing, which an earlier change already ruled — align just has to LOOK.
+    Extension-blind, exactly as `find_downloaded` is for the retained original above: the worker
+    re-derives this path on every align job from the CURRENT `VOCALS_EXT` rather than a stored ref, so
+    a song whose stem predates a `VOCALS_EXT` change has it on disk under an unexpected extension.
+    Glob `<id>-vocals.*`, prefer the current extension when several exist, fall back to the legacy
+    file otherwise. No transcode — align just has to LOOK.
     """
     from ..processor import VOCALS_EXT, vocals_path
 
@@ -146,15 +123,13 @@ def _existing_vocals(ctx: Ctx) -> str | None:
         return canonical
 
     stem_dir = os.path.dirname(canonical)
-    # basename is "<id>-vocals.<VOCALS_EXT>"; strip the extension to build the glob prefix so this
-    # stays derived from the canonical key rather than re-hardcoding the stems layout.
+    # basename is "<id>-vocals.<VOCALS_EXT>"; strip the extension. glob.escape guards a media id
+    # containing a glob metacharacter.
     prefix = os.path.basename(canonical)[: -(len(VOCALS_EXT) + 1)]
-    # escape the literal id/prefix so a media id with a glob metacharacter can't misresolve.
     matches = sorted(glob.glob(os.path.join(stem_dir, glob.escape(prefix) + "*")))
     return matches[0] if matches else None
 
 
 def _ytdlp_bin(ctx: Ctx, configured: str = "yt-dlp") -> str:
-    # A job param wins if the core ever starts sending one; otherwise the worker's configured binary
-    # (ENCORE_YTDLP_BIN, threaded in through the plan) is what runs — not a bare "yt-dlp" from PATH.
+    # A job param wins if the core ever sends one; otherwise the worker's configured binary runs.
     return str(ctx.params.get("ytdlpBin") or configured)

@@ -1,14 +1,26 @@
 # Encore — architecture requirements
 
 > **Purpose.** The subsystem contracts as requirements a person can disagree with and a machine can
-> often check. Its sibling [`../ux/`](../ux/README.md) holds the same kind of document for the
-> **design** rules; ratified decisions are in [`../DECISIONS.md`](../DECISIONS.md), how the system
-> works now is [`../ARCHITECTURE.md`](../ARCHITECTURE.md), and how to operate it safely is
-> [`../HANDOFF.md`](../HANDOFF.md). Open work is tracked in **GitHub issues**.
+> often check. How the system works now is [`../ARCHITECTURE.md`](../ARCHITECTURE.md); the rules a
+> change has to respect are [`../SERVER.md`](../SERVER.md) and [`../FRONTEND.md`](../FRONTEND.md);
+> what the guard suite already enforces is [`../GUARDS.md`](../GUARDS.md). Open work is tracked in
+> **GitHub issues**.
 
-**35 requirements** across three sections. Row format, field meanings and the `Source` markers are
-defined once in [`../ux/README.md`](../ux/README.md#how-to-read-a-row) and are identical here — a
-reader who knows one tree can read the other without relearning anything.
+**35 requirements** across three sections. Each row is a table with the same seven fields:
+
+| Field          | What it carries                                                                     |
+| -------------- | ----------------------------------------------------------------------------------- |
+| **Statement**  | the requirement itself, in the present tense, with its named exemptions             |
+| **Surfaces**   | where a user meets the consequence, or `None directly` for a server-only rule       |
+| **Rationale**  | what goes wrong without it — the cost, not the mechanism                            |
+| **Source**     | `Cited` (repo evidence, with file and line) or `DERIVED` (with its model stated)     |
+| **Acceptance** | given/when/then, ending in the single observation that would falsify it             |
+| **Check**      | the test that defends it, or what is missing — `exists`, `half exists`, or `to be written` |
+| **Priority**   | `Ship-blocking`, or the reason it is not                                            |
+
+A row may name a test that does not exist yet, but it has to say so at the site:
+`tests/guards/docs/cited-paths-resolve.test.ts` fails a cited path that resolves to nothing unless the
+line admits it.
 
 | Section                      | Rows | Covers                                                                                          |
 | ---------------------------- | ---- | ----------------------------------------------------------------------------------------------- |

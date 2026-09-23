@@ -1,14 +1,8 @@
-"""The stems action, as steps.
+"""The stems action, as steps. Engine differences live behind the seam in `separation/engines.py`.
 
-Was `DemucsProcessor.process()` and `RoformerProcessor.process()` — two ~100-line methods that agreed on
-most of their shape and differed silently where it mattered. One plan now, with the engine differences
-behind the seam in `separation/engines.py`.
-
-THE BUG THIS FIXES BY CONSTRUCTION. Only demucs probed the vocals stem for digital silence; roformer
-published whatever it produced. The probe exists because separation can SUCCEED and still write silence —
-it has happened twice on the owner's library, both stems pinned at the 16-bit floor, ~50KB against 20MB —
-and a silent guiding track is worse than a missing one, because the singer drags the control up and
-nothing happens. As a step, both engines get it.
+Separation can SUCCEED and still write digital silence (both stems pinned at the 16-bit floor,
+~50KB against 20MB, has happened on real audio) — a silent guiding track is worse than a missing
+one, since the singer drags the control up and nothing happens. Every engine gets probed for it.
 """
 
 from __future__ import annotations
@@ -58,13 +52,10 @@ class DecodeToWav(Step):
         out = engine.input_wav(ctx.work)
         os.makedirs(os.path.dirname(out), exist_ok=True)
         if not ctx.audio.path:
-            # Guaranteed non-empty by AcquireAudio, which raises if it cannot retain the original.
-            # The old `or ""` would hand ffmpeg an empty input and die as the opaque
-            # "ffmpeg: : No such file or directory"; name the missing key instead.
-            # PermanentError (retryable=False): a step running out of order with no audio.path is a
-            # deterministic plan error — every retry re-runs the same passes and fails identically, so
-            # it must fail fast rather than burn three attempts (the same class as a CLI that exits 0 with no
-            # output).
+            # Guaranteed non-empty by AcquireAudio (which raises if it cannot retain the original);
+            # name the missing key rather than handing ffmpeg an empty input. PermanentError
+            # (retryable=False): a step running out of order is a deterministic plan error that would
+            # fail identically on every retry, so it must fail fast rather than burn three attempts.
             raise PermanentError("decode-to-wav: audio.path is empty (AcquireAudio did not run or failed)")
         await run_quiet(ctx.runner, decode_argv(ctx.audio.path, out, self._ffmpeg))
         ctx.audio.decoded_wav = out
@@ -75,9 +66,8 @@ class DecodeToWav(Step):
 class Separate(Step):
     """Split the mix, and record which engine and checkpoint actually ran.
 
-    `facts` carries the RESOLVED model, not the token the core sent. That distinction is the whole reason
-    the field exists: a token was once found to resolve to a different checkpoint than the one
-    benchmarked under that name, and nothing in the ledger would have shown it.
+    `facts` carries the RESOLVED model, not the token the core sent, so a token that resolves to a
+    different checkpoint than the one benchmarked under that name is visible in the ledger.
     """
 
     name = "separate"
@@ -95,17 +85,14 @@ class Separate(Step):
         os.makedirs(out_dir, exist_ok=True)
 
         argv = engine.separate_argv(ctx.audio.decoded_wav or "", out_dir, model)
-        # The ONE subprocess-with-progress loop, shared by every step that shells out. Its docstring
-        # records that it was written to kill exactly this copy (demucs/whisperx each had one; roformer
-        # borrowed it) — and the local copy this replaces had drifted back, emitting an UNCONDITIONAL
-        # final pct=100 that double-fired whenever a parser already reached 100. run_stage guards it.
+        # run_stage is the ONE subprocess-with-progress loop, shared by every step that shells out,
+        # so no per-engine copy can drift into double-firing pct=100.
         async for ev in run_stage(ctx.runner, self.stage, argv, engine.parse_progress):
             yield ev
 
-        # Some engines' CLIs do not themselves write the 2-stem {no_vocals,vocals} layout the pipeline
-        # reads. The MLX engine (demucs-mlx) emits four/six stems and derives the instrumental with a
-        # mix-minus ffmpeg pass declared here; demucs and roformer return no derivation. Each runs
-        # quietly through the same runner, in order, before outputs are located.
+        # Some engines' CLIs do not write the 2-stem {no_vocals,vocals} layout the pipeline reads: the
+        # MLX engine emits four/six stems and derives the instrumental with a mix-minus ffmpeg pass
+        # declared here; demucs and roformer return no derivation.
         for derive_argv in engine.derive_argvs(ctx.audio.decoded_wav or "", out_dir, model):
             await run_quiet(ctx.runner, derive_argv)
 
@@ -119,25 +106,18 @@ class Separate(Step):
 class ProbeSilence(Step):
     """Measure whether either separated stem is digital silence, before paying to encode it.
 
-    Applies to BOTH engines now. Only demucs used to check, so a roformer process could publish a silent
-    guiding track — the failure the probe exists to catch.
+    Probes the RAW separated WAV rather than the encoded stem — same answer (encoding silence yields
+    silence) and it saves the encode entirely when the stem is silent.
 
-    Probes the RAW separated WAV rather than the encoded stem, which is where demucs used to do it. Same
-    answer — encoding silence yields silence, and an encode that fails raises rather than emptying a file
-    — and it saves the encode entirely when the stem is silent.
+    The two stems fail DIFFERENTLY:
 
-    The two stems fail DIFFERENTLY, which is why one verdict is recorded and the other raises:
-
-    * A silent VOCALS stem costs the room a guide track nobody hears at volume. Recorded, not fatal, and
-      the stem is NOT deleted: the profile analysis in the next step reads the raw vocals WAV regardless,
-      so a silent-vocals song still gets a present-but-empty songProfile and reads as processed rather
-      than stuck.
+    * A silent VOCALS stem costs the room a guide track nobody hears at volume. Recorded, not fatal,
+      and the stem is NOT deleted: the next step's profile analysis still reads the raw vocals WAV, so
+      a silent-vocals song gets a present-but-empty songProfile and reads as processed, not stuck.
     * A silent INSTRUMENTAL is the file that plays at volume, so publishing it means the room plays
-      four minutes of nothing while every surface says Ready and the TV reports advancing telemetry.
-      There is no honest way to serve that, so it fails the job like any other unusable separation
-      (compare Separate.run, which raises when no instrumental is produced at all). Failing puts the
-      song in the operator's ledger and leaves it re-processable — possibly on the other engine — instead
-      of silently poisoning the rotation.
+      nothing while every surface says Ready. It fails the job like any other unusable separation,
+      putting the song in the operator's ledger and leaving it re-processable rather than silently
+      poisoning the rotation.
     """
 
     name = "probe-silence"
@@ -149,8 +129,8 @@ class ProbeSilence(Step):
         self._ffmpeg = ffmpeg_bin
 
     def applies(self, ctx: Ctx) -> bool:
-        # Either stem is worth probing. Gating on vocals alone skipped the whole step for a process that
-        # produced only an instrumental — the one stem whose silence is fatal.
+        # Either stem is worth probing: gating on vocals alone would skip a process that produced
+        # only an instrumental — the one stem whose silence is fatal.
         return bool(ctx.stems.raw.get("vocals") or ctx.stems.raw.get("instrumental"))
 
     async def _is_silent(self, ctx: Ctx, path: str) -> bool:
@@ -161,7 +141,6 @@ class ProbeSilence(Step):
         instrumental = ctx.stems.raw.get("instrumental")
         if instrumental:
             # No try/except: unlike the guide, a probe that cannot answer must not be read as "fine".
-            # An ffmpeg that fails here would fail the encode in PublishStems anyway.
             if await self._is_silent(ctx, instrumental):
                 raise PermanentError(
                     "instrumental stem is digital silence — refusing to publish a song that would "
@@ -184,18 +163,13 @@ class ProbeSilence(Step):
 class PublishStems(Step):
     """Encode and publish the stems.
 
-    Both stems to LOSSLESS FLAC. The instrumental plays at volume as the master and a second lossy
-    generation is audible on high-frequency transients — a crash cymbal especially. The vocals stem is the
-    GUIDING TRACK — a second audio element the TV mixes under the instrumental and pitch-shifts with the key
-    (src/lib/tv/TvPlayer.svelte) — so it plays aloud too, and it also feeds pitch extraction and
-    vocal-range analysis. Encoding it through the SAME encoder as the instrumental (encode_flac_argv, one
-    codec, one container) is the point: an AAC-in-m4a encoder adds priming samples (~1024, ~21 ms at 48 kHz)
-    that shift the vocals START relative to the FLAC instrumental. That offset sat above guide-sync's 15 ms
-    deadband, so the player converged it out with a startup rate-trim — matching codecs removes the NEED for
-    that correction, since both stems now decode to a sample-exact common start.
+    Both stems to LOSSLESS FLAC, same encoder, same container: a lossy AAC-in-m4a encoder adds
+    priming samples (~1024, ~21ms at 48kHz) that shift the vocals guide track's start relative to the
+    instrumental — enough to require a startup rate-trim to converge. Matching codecs makes both
+    stems decode to a sample-exact common start instead.
 
-    The vocals stem is BEST-EFFORT throughout. A missing, silent or unencodable vocals file must never
-    fail the load-bearing instrumental.
+    The vocals stem is BEST-EFFORT throughout: a missing, silent or unencodable vocals file must
+    never fail the load-bearing instrumental.
     """
 
     name = "publish-stems"
@@ -208,14 +182,11 @@ class PublishStems(Step):
     ) -> None:
         self._ffmpeg = ffmpeg_bin
         self._flac_level = flac_level
-        # ENCORE_GUIDE_MIX=0 turns the extra encode off. It exists because the mix roughly DOUBLES a song's
-        # derived stem bytes (it is the two stems again, in one container), and a box tight on disk has no
-        # other way to keep processing songs without paying that. Off now means the song offers NO GUIDING
-        # TRACK — this used to fall back to a two-element guide path and merely "degrade the guide's
-        # precision", but that path was deleted (the TV carries the guide inside the master as channels
-        # 2/3), so the knob trades the guide away entirely rather than trading its accuracy. Still never
-        # degrades the SONG: the instrumental is untouched. Injected rather than read inline so the step
-        # stays testable without touching the environment.
+        # ENCORE_GUIDE_MIX=0 turns the extra encode off, for a box tight on disk: the mix roughly
+        # DOUBLES a song's derived stem bytes (the two stems again, in one container). Off means the
+        # song offers NO GUIDING TRACK AT ALL — there is no lower-precision fallback — but the
+        # instrumental itself is always untouched. Injected rather than read inline so the step stays
+        # testable without touching the environment.
         self._guide_mix_enabled = (
             os.environ.get("ENCORE_GUIDE_MIX", "1") != "0" if guide_mix is None else guide_mix
         )
@@ -225,11 +196,9 @@ class PublishStems(Step):
         raw_inst = ctx.stems.raw.get("instrumental")
         if not raw_inst:
             # Guaranteed present by Separate (raises when no instrumental is produced) and by
-            # ProbeSilence (raises on a silent instrumental). The old `or ""` would encode an
-            # empty path into "ffmpeg: : No such file or directory"; name the missing key instead.
-            # PermanentError (retryable=False): a missing instrumental key is a deterministic plan
-            # error — every retry re-runs the same passes and fails identically, so it must fail fast
-            # rather than burn three attempts (the same class as a CLI that exits 0 with no output).
+            # ProbeSilence (raises on a silent instrumental); name the missing key rather than
+            # encoding an empty path. PermanentError: a missing key here is a deterministic plan
+            # error that would fail identically on every retry.
             raise PermanentError("publish-stems: stems.raw['instrumental'] is missing (Separate did not run)")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
@@ -245,66 +214,25 @@ class PublishStems(Step):
             except Exception:  # noqa: BLE001 — an enhancement must never fail the job
                 ctx.note("vocals encode failed (non-fatal) — publishing the instrumental alone")
 
-        # The GUIDE MIX: both stems folded into ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals).
-        # This is what lets the TV play the guide from a SINGLE media element, and therefore a single
-        # playhead — see `encode_guide_mix_argv` for why two elements cannot be held in sync from script
-        # at all, and `guide_mix_path` for why it lives beside the stems it is built from.
-        #
-        # Built from the RAW scratch WAVs, not the encoded FLACs: they are the sample-exact PCM
-        # separation just produced, so the mix inherits that alignment rather than trusting two decodes
-        # to agree. It is skipped entirely when there is no publishable vocals stem — a "mix" of the
-        # instrumental alone is just the instrumental, and offering one would advertise a guiding track
-        # that carries nothing (the same lie the silent-stem refusal above exists to prevent).
-        #
-        # THERE IS NO OFFSET MEASUREMENT ANY MORE, and the deletion is the point. Both stems come out of
-        # ONE separation pass over ONE decoded input, so they are sample-aligned by construction — the
-        # separator writes them from the same model output at the same rate, and nothing between that and
-        # this step can shift one relative to the other. The measurement existed for a case that can no
-        # longer occur: a legacy `.m4a` vocals stem from before both stems shared one codec, whose
-        # container priming put its content ~21 ms late. Every stem this pipeline writes today is one
-        # lossless container from one pass.
-        #
-        # What the measurement cost while it lasted was worse than nothing. Its result gated the guide mix
-        # — a non-zero reading REFUSED to build one, to route the song onto the two-element guide where a
-        # playback-time governor could still trim the offset out. `guide-sync.ts` was that governor, and it
-        # is gone: the TV now carries the guide inside the master as channels 2/3, so a song with no mix
-        # offers NO GUIDE AT ALL. The refusal therefore stopped protecting a correctable path and started
-        # withholding the only guide mechanism that exists, on the strength of a measurement of a
-        # difference that cannot arise.
-
-        # The GUIDE MIX: both stems folded into ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals).
-        # This is what lets the TV play the guide from a SINGLE media element, and therefore a single
-        # playhead — see `encode_guide_mix_argv` for why two elements cannot be held in sync from script at
-        # all, and `guide_mix_path` for why it lives beside the stems it is built from.
-        #
-        # Built from the RAW scratch stems, not the encoded FLACs: they are the sample-exact PCM separation
-        # just produced, so the mix inherits that alignment rather than trusting two decodes to agree.
-        #
-        # NOT GATED ON AN ALIGNMENT MEASUREMENT. It used to be: a measured non-zero guide/instrumental
-        # offset refused the mix so the song would take the two-element guide instead, where a
-        # playback-time governor could still trim the offset out. Both halves of that reasoning are gone.
-        # The stems are sample-aligned by construction (one separation pass, one decoded input, one rate),
-        # and the two-element path no longer exists — the TV carries the guide inside the master as channels
-        # 2/3, so a song with no mix offers no guide at all. The refusal had stopped protecting anything and
-        # started withholding the only guide there is.
-        #
-        # Skipped entirely when there is no publishable vocals stem — a "mix" of the instrumental alone is
-        # just the instrumental, and offering one would advertise a guiding track that carries nothing (the
-        # same lie the silent-stem refusal above exists to prevent).
-        #
-        # BEST-EFFORT: the instrumental is load-bearing and the mix is not, so a failure here leaves a room
-        # that plays the song without a guiding track rather than a room that plays nothing.
+        # The GUIDE MIX: both stems folded into ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3
+        # vocals), so the TV plays the guide from a SINGLE media element with a single playhead (see
+        # `encode_guide_mix_argv` for why two elements cannot be held in sync from script at all).
+        # Built from the RAW scratch WAVs, not the encoded FLACs, so the mix inherits their
+        # sample-exact PCM alignment rather than trusting two decodes to agree. NOT gated on an
+        # alignment measurement: both stems come from ONE separation pass over ONE decoded input, so
+        # they are sample-aligned by construction and no correction is needed. Skipped entirely when
+        # there is no publishable vocals stem — a "mix" of the instrumental alone would advertise a
+        # guiding track that carries nothing. BEST-EFFORT: the instrumental is load-bearing and the
+        # mix is not, so a failure here leaves a room that plays the song without a guiding track
+        # rather than a room that plays nothing.
         mix_wanted = bool(raw_vox) and bool(ctx.stems.published.get("vocals"))
         if mix_wanted:
-            # The LENGTH guard stays, and it is a different question from alignment: `join` TRUNCATES to the
-            # shorter input and exits 0, and silently resamples a rate mismatch —
-            # both measured. Since channels 0/1 of this file are the instrumental the TV plays as master, a
-            # short vocals stem yields a mix that ENDS EARLY, and the room hears the song cut off with
-            # nothing in any log. Not reachable with today's engines (all three derive both stems from one
-            # model pass over one resampled input, so they are sample-aligned by construction) — which is
-            # exactly why it deserves a guard rather than a comment: nothing else would notice if that ever
-            # stopped being true. An unreadable header returns None and is treated as "cannot confirm",
-            # which skips the mix rather than shipping a possibly-truncated master.
+            # LENGTH is a different question from alignment: `join` TRUNCATES to the shorter input
+            # and exits 0. Since ch 0/1 of this file are the instrumental the TV plays as master, a
+            # short vocals stem would yield a mix that ends the song early with nothing in any log.
+            # Not reachable with today's engines (all derive both stems from one model pass over one
+            # resampled input), but guarded rather than assumed. An unreadable header returns None
+            # and is treated as "cannot confirm", skipping the mix rather than risking a truncation.
             assert raw_vox is not None
             inst_len, vox_len = wav_frame_length(raw_inst), wav_frame_length(raw_vox)
             if inst_len is None or vox_len is None or inst_len != vox_len:
@@ -318,14 +246,11 @@ class PublishStems(Step):
             mix_wanted = False
         if mix_wanted:
             mix = guide_mix_path(job.media_dir, job.media_id)
-            # ENCODE TO A TEMP SIBLING AND RENAME. ffmpeg writes its output incrementally, and a SIGTERM
-            # (which is how a timeout kills it) makes it FINALISE what it has — so a killed or ENOSPC'd
-            # encode leaves a *valid but short* FLAC. Written straight to the published path, that file is
-            # indistinguishable from a good one, and because the mix is what the TV plays as MASTER it owns
-            # `duration`, so the room hears the song cut off early with nothing in any log. A rename is
-            # atomic within a directory, so the published path only ever holds a complete file. Same idiom
-            # the core's sidecar writer uses, for the reason it records: "a crash, kill, or ENOSPC mid-write
-            # leaves partial" output.
+            # Encode to a temp sibling and rename. A SIGTERM (a timeout kill) makes ffmpeg FINALISE
+            # what it has, so a killed or ENOSPC'd encode leaves a valid but short FLAC —
+            # indistinguishable from a good one if written straight to the published path, and since
+            # the mix is what the TV plays as MASTER it owns `duration`, so the room hears the song
+            # cut off early with nothing in any log. Rename is atomic within a directory.
             tmp = f"{mix}.{os.getpid()}.tmp"
             try:
                 assert raw_vox is not None  # narrowed by mix_wanted; keeps mypy honest about the argv
@@ -336,28 +261,22 @@ class PublishStems(Step):
                 os.replace(tmp, mix)
                 ctx.stems.published["guideMix"] = mix
             except Exception as err:  # noqa: BLE001 — an enhancement must never fail the job
-                # NAME THE REASON. This note used to carry none, and that is why a guide mix which
-                # failed on EVERY song — for one fixable reason, an output name ffmpeg could not
-                # mux — read in the log as an unremarkable fallback line and stayed unfixed while
-                # every room heard a drifting two-element guide. Non-fatal is a statement about the
-                # JOB, not a licence to discard the cause: the guide is the part of the pipeline the
-                # room actually notices, so the reason belongs beside the fallback it explains.
+                # Name the reason: non-fatal is a statement about the JOB, not a licence to discard
+                # the cause — the guide is the part of the pipeline the room actually notices.
                 ctx.note(
                     f"guide-mix encode failed (non-fatal: {type(err).__name__}: {err})"
                     " — this song will offer no guiding track"
                 )
             finally:
-                # Never leave the temp behind: it is in `derived/`, so an orphan would be counted by the
-                # retention cap forever while naming no artifact any media owns.
+                # Never leave the temp behind: it is in `derived/`, so an orphan would be counted by
+                # the retention cap forever while naming no artifact any media owns.
                 if os.path.exists(tmp):
                     with contextlib.suppress(OSError):
                         os.remove(tmp)
 
-        # songProfile sits at the TOP level, a SIBLING of stems. The core reads it there; publishing it
-        # nested inside `stems` is a shape mismatch that would stall every process at "Separating vocals"
-        # forever, because the process gate requires the profile to be present and the re-process check reads
-        # hasInstrumental rather than the gate. Pinned from the other side of the wire by
-        # src/server/jobs/vocabulary-parity.test.ts.
+        # songProfile sits at the TOP level, a SIBLING of stems, not nested inside it: the process
+        # gate requires the profile there and would stall every process at "Separating vocals"
+        # forever otherwise. Pinned from the TS side by src/server/jobs/vocabulary-parity.test.ts.
         ctx.out.artifacts["stems"] = dict(ctx.stems.published)
         ctx.out.artifacts["songProfile"] = ctx.stems.song_profile
         ctx.out.media_uri = final

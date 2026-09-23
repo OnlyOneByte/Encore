@@ -52,7 +52,10 @@ test('F2 non-vacuous: all five named sites exist, are non-empty, and still discu
  * then reports a correctly-attributed sentence as a false claim.
  */
 function refusalWindows(src: string): string[] {
-	const flat = src.replace(/\s+/g, ' ');
+	// Comment markers come off BEFORE the flatten, or a denial that WRAPS across two comment lines reads
+	// as `does NOT // refuse` — `isDenial` then misses its own negation and the guard reports a correct
+	// comment as the false claim it exists to ban. Plain sentences (the discrimination arm) are unaffected.
+	const flat = src.replace(/^[ \t]*(?:\/\/+|\*)[ \t]?/gm, ' ').replace(/\s+/g, ' ');
 	const out: string[] = [];
 	for (const m of flat.matchAll(/refus[a-z]*/gi)) {
 		const at = m.index;

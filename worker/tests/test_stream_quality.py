@@ -24,8 +24,6 @@ from src.acquisition import fetch as fetch_mod
 from src.acquisition import stream_quality
 from src.acquisition.stream_quality import FORMAT_SELECTOR
 
-# ── the format selector ─────────────────────────────────────────────────────────────
-
 
 def test_selector_prefers_opus_then_m4a_then_falls_back_to_bestaudio():
     # Ordered preference with `/` alternatives: yt-dlp takes the FIRST branch that matches, so codec
@@ -57,9 +55,6 @@ def test_download_argv_uses_the_ranked_selector_not_bare_bestaudio():
     assert FORMAT_SELECTOR in argv, argv
     # the extension stays a template -- the container is whichever branch won
     assert "%(ext)s" in " ".join(argv)
-
-
-# ── no dead in-worker candidate-ranking chain ───────────────────────────────────────
 
 
 def test_module_carries_no_dead_candidate_ranking_chain():

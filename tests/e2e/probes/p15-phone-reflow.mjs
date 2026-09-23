@@ -1,41 +1,13 @@
 // @ts-check
-/*
- * REFLOW AT 320 CSS px AND 200% TEXT SCALE, MEASURED.
- *
- * the standard asks that every phone surface reflow at a 320px viewport with the
- * guest's text size at 200%: `scrollWidth <= clientWidth` on the scrolling element, no clipping, no
- * horizontal scrollbar (SC 1.4.10 Reflow, AA). Its own Check row says the measurement is
- * "Rendered-DOM or driven-browser measurement. **Not a source scan** — both halves are geometry",
- * and defers to the rendered rung. This file is that rendered rung for the reflow half.
- *
- * WHY IT HAD TO BE A DRIVEN BROWSER. `/stats` overflowed a 320px viewport by 8px at 200%
- * while `phone-inventory.test.ts`'s arm was green, and that arm was not broken: it flags a
- * single declaration wider than 320px, and this overflow was a SUM — two grid tracks plus two cards'
- * padding, against a word that cannot wrap once type doubles. No scan over declarations can add that
- * up, because the addends are resolved lengths that only exist after layout. Read the scan arm as the
- * cheap always-on floor beneath this probe, never as proof of the row.
- *
- * WHAT IT MEASURES, and why each number is here. Per surface, at 320x480 DPR 2 with
- * `documentElement.style.fontSize = '32px'`:
- *
- *   • `documentElement.scrollWidth` vs `clientWidth` — the criterion itself. An overflow anywhere in
- *     the page raises the scroll width of the scrolling element, so this one number is the whole row.
- *   • every visible element whose `right` exceeds `clientWidth` — WHICH element, so a failure names a
- *     selector to fix instead of a page to hunt through. A bare scroll-width delta is a true failure
- *     report and a useless one.
- *
- * 32px is the faithful simulation: SC 1.4.4 concerns the guest's own text-size setting, which scales
- * `rem`/`em` and not an absolute `px`, and every phone text rule sizes in `rem` against an `html` that
- * declares no font-size. Doubling the root font-size is therefore exactly what the setting does. It is
- * NOT the same as page zoom, which scales the viewport too and cannot expose this class at all.
- *
- * SELF-HOSTING: boots its own ephemeral server and its own Chromium on ports it owns, so there is no
- * fixture to prepare. It needs no processed song and no worker — the tiles render at zero.
- *
- *   bun tests/e2e/probes/p15-phone-reflow.mjs
- *
- * Exit 0 every surface reflows / 1 at least one overflows / 2 the environment could not host it.
- */
+// SC 1.4.10 REFLOW at 320 CSS px and 200% text scale, per surface: `scrollWidth <= clientWidth`, plus
+// WHICH element overflowed. Only a driven browser can see it — an overflow here is a SUM of resolved
+// lengths that exist after layout, which no scan over declarations can add up; treat
+// `tests/guards/layout/phone-inventory.test.ts` as the always-on floor beneath this, not proof of it.
+// Doubling the ROOT FONT-SIZE faithfully simulates the guest's text-size setting; page ZOOM does not,
+// because it scales the viewport too and cannot expose this class at all.
+//
+//   bun tests/e2e/probes/p15-phone-reflow.mjs        # self-hosting
+
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,11 +20,9 @@ import { repoRoot } from '../lib/repo-root.mjs';
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
- * A single offending element as read in-page; every field comes from a getBoundingClientRect.
- * @typedef {{ sel: string, right: number, width: number, text: string }} Offender
+ * @typedef {{ sel: string, right: number, width: number, text: string }} Offender one overflowing element
  */
 
-// The criterion's own numbers. 320 CSS px is SC 1.4.10's width; 32px is 200% of the 16px default.
 const VIEWPORT_W = 320;
 const VIEWPORT_H = 480;
 const SCALED_ROOT_FONT_SIZE = '32px';
@@ -75,11 +45,9 @@ function bail(msg) {
 	process.exit(2);
 }
 
-// ── environment ────────────────────────────────────────────────────────────
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
-// The server serves the BUILT UI, so an unbuilt tree yields pages with no app in them — which would
-// measure as a trivially-reflowing 320px and report PASS. Exit 2, loudly, rather than green.
+// An unbuilt tree serves pages with no app in them, which measure as a clean 320px: a false PASS.
 if (!existsSync(join(repoRoot, 'build', 'client')))
 	bail(`no built UI at ${join(repoRoot, 'build', 'client')}. Run: bun run build`);
 
@@ -126,21 +94,9 @@ for (let i = 0; i < 60 && !up; i++) {
 }
 if (!up) bail(`the ephemeral server never became healthy on ${BASE}`);
 
-// No browser spawn here any more: the driver launches its own, so a second Chromium on a debug port would
-// be a process nothing drives. `spawned` still tracks the server and worker children.
-
-// ── the measurement ────────────────────────────────────────────────────────
-/*
- * Read in ONE pass over the live DOM so the scroll-width verdict and the offender list describe the
- * same layout. Zero-area elements are skipped: an `<svelte:head>` leftover or a collapsed wrapper has
- * no rect to overflow with, and listing them buries the element that actually does.
- *
- * The walk is a TreeWalker rather than a universal query, deliberately. `contract.test.ts` bans a
- * driver from spelling a selector out for itself, and a universal token is the one shape that cannot be
- * put in `contract.ts` instead — it has no anchor to resolve against, which is why p10's own universal
- * read sits quarantined there. A TreeWalker enumerates every element without naming a selector at all,
- * so this probe needs no quarantine entry and no exemption.
- */
+// ONE pass, so the verdict and the offender list describe the same layout; zero-area elements cannot
+// overflow and listing them buries the one that does. A TreeWalker, not a universal query: a driver may
+// not spell a selector out for itself, and a universal token has no anchor to put in `contract.ts`.
 const READ = `(() => {
 	const de = document.documentElement;
 	const out = { scrollWidth: de.scrollWidth, clientWidth: de.clientWidth, elements: 0, offenders: [] };
@@ -165,28 +121,21 @@ const browser = await connect();
 const page = await browser.newPage();
 await page.viewport(VIEWPORT_W, VIEWPORT_H, 2);
 
-/**
- * Navigate, apply the scale, settle, and read. Returns the measurement WITHOUT asserting on it.
- * `skipNav` measures the page AS IT STANDS (already navigated and populated by the caller — e.g. the
- * browse screen after a search), because re-navigating would wipe that state back to an empty list.
- * @param {string} label @param {string} path @param {{ skipNav?: boolean }} [opts]
- */
+/** Navigate, scale, settle and read, WITHOUT asserting. `skipNav` measures the page as the caller left it
+ *  — re-navigating would wipe that state back to an empty list.
+ *  @param {string} label @param {string} path @param {{ skipNav?: boolean }} [opts] */
 async function measureRaw(label, path, { skipNav = false } = {}) {
 	if (!skipNav) await page.goto(BASE + path);
-	// The root font-size is set AFTER navigation and re-asserted on every surface, because a fresh
-	// document resets it — a scale set once and assumed to persist measures the page at 100%.
+	// Re-asserted on EVERY surface: a fresh document resets it, so a scale set once measures at 100%.
 	await page.evaluate(`document.documentElement.style.fontSize = ${JSON.stringify(SCALED_ROOT_FONT_SIZE)}`);
 	await page.waitFor(
 		`getComputedStyle(document.documentElement).fontSize === ${JSON.stringify(SCALED_ROOT_FONT_SIZE)}`
 	);
-	// This app hydrates and then fetches, so the tiles/rows that carry the overflow appear after
-	// readyState complete. Settle before reading, or the measurement is of a loading placeholder.
+	// The app hydrates and THEN fetches, so without this settle the measurement is of a placeholder.
 	await sleep(1200);
 	/** @type {{ scrollWidth: number, clientWidth: number, elements: number, offenders: Offender[] }} */
 	const m = await page.evaluate(READ);
-	// A page with no app in it measures as a trivially-clean 320 and would report PASS on every arm, so
-	// prove the surface actually rendered before believing its width. The count comes from the same walk
-	// that took the measurement, so it cannot describe a different document.
+	// Non-vacuity, off the same walk: a page with no app in it measures a clean 320 and PASSES every arm.
 	if (m.elements < 10) bail(`${label} rendered only ${m.elements} elements — the surface is not there to measure`);
 	return m;
 }
@@ -205,8 +154,7 @@ async function measure(label, path, opts) {
 		detail
 	);
 	if (ok && m.offenders.length) {
-		// A clean scroll width with elements past the right edge means something is clipping the
-		// overflow rather than reflowing it — content loss, which the row forbids just as plainly.
+		// Clean scroll width WITH elements past the right edge means the overflow is CLIPPED, not reflowed.
 		check(`${label} has no element clipped past the right edge`, false, detail);
 	}
 	return m;
@@ -214,22 +162,15 @@ async function measure(label, path, opts) {
 
 console.log(`viewport ${VIEWPORT_W}x${VIEWPORT_H} @ DPR 2, root font-size ${SCALED_ROOT_FONT_SIZE}\n`);
 
+// The unjoined `/` IS the join surface, and its six-box code entry is the widest fixed row on it.
 await measure('/', '/');
-// `/join` was retired (Q2-A): the unjoined `/` above IS the join surface now, and its six-segment
-// code entry is the widest fixed row on it — six boxes in a flex row at a 32px root is the
-// exact reflow class this rung is about, and `measure('/', '/')` renders it (no session → unjoined).
 await measure('/settings', '/settings');
 await measure('/stats', '/stats');
 
-/*
- * The browse screen is `/` with a session, which is a different layout from the unjoined `/` above —
- * it adds the search dock and the queue peek, the two bottom-docked bands the rationale names.
- * Joining from inside the page is what puts the cookie on this context; a fetch from the probe process
- * would authenticate the probe and leave the browser unjoined. A unique name per run: singer names are
- * unique per room and a 409 leaves the page sitting on the join screen, which measures as a pass. No
- * colour is sent: join normalizes an absent one to a default, and a hex literal here would read to
- * contract.test.ts's shape rule as a hand-written selector.
- */
+// Join from INSIDE the page: that is what puts the cookie on this browser CONTEXT, where a fetch from the
+// probe process would authenticate the probe instead. Unique name per run, because a duplicate gets a 409
+// and leaves the page on the join screen, which measures as a pass. No colour — a hex literal here would
+// read to the no-hand-written-selector rule as a selector.
 await page.goto(BASE + '/');
 const joined = await page.evaluate(`(async () => {
 	const res = await fetch('/api/join', {
@@ -241,28 +182,13 @@ const joined = await page.evaluate(`(async () => {
 })()`);
 if (!joined) bail('could not join the ephemeral room, so the browse screen could not be measured');
 
-/*
- * MEASURE BROWSE WITH ITS REAL OFFENDER ON SCREEN. The browse-screen reflow lives in SongRow's
- * control labels at doubled type, and the widest is the odd-duration chip: a whole phrase ("Longer
- * than a song") that `.chip`'s blanket `white-space: nowrap` turned into an unshrinkable ~230px box,
- * pushing the row — and the browse page — past a 320px viewport. An EMPTY joined room renders no rows
- * at all, so measuring it would be a clean 320 over a surface that never grew the label the criterion
- * is about — the vacuity the register exists to forbid, and the reason this arm was rejected once.
- *
- * So the arm SEARCHES first. `openBrowseFromHome` is the shared post-join step — it reaches the
- * browse screen and its search box the one sanctioned way — and typing into `SEL.search` surfaces the
- * canned result set, which deterministically includes songs past the 8-minute unusual-duration
- * threshold (`isUnusualSongDuration`); every one renders the odd-duration chip. Both the browse push
- * and the query go through the contract's own hooks, so no hand-written selector enters this driver.
- * This is the discriminating measurement: it REDS on the base CSS (the chip cannot wrap → scrollWidth
- * 331 > 320) and passes on the fix (the chip wraps).
- */
+// SEARCH FIRST, so the real offender is on screen: an EMPTY joined room renders no rows, which measures
+// a clean 320 over a surface that never grew the label — vacuous, not a pass. The canned result set
+// deterministically includes songs past the unusual-duration threshold, so every row carries the chip.
 await page.goto(BASE + '/');
 await openBrowseFromHome(page);
 await page.fill(SEL.search, 'caroline');
-// The result set arrives over a debounced fetch; wait for the rows to actually land before measuring,
-// or the read is of a still-empty list (a false clean 320). A room that returned no results at all is
-// an environment failure, not a pass. The row count reads the contract's own `SEL.songRow`.
+// DEBOUNCED fetch: without this wait the read is of a still-empty list, a false clean 320.
 const rowsReady = await page
 	.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length >= 1`, { timeout: 12_000 })
 	.catch(() => false);
@@ -278,7 +204,5 @@ if (failed.length) {
 	console.log('\nThe 320px reflow requirement is not met.');
 	process.exit(1);
 }
-// Exit explicitly. The spawned server and browser are live child processes, so an implicit exit never
-// comes — the probe would print a verdict and then hang, which reads to a caller as a failure to run.
-// killAll() is registered on 'exit' and reaps both.
+// Exit EXPLICITLY: the spawned server is a live child, so an implicit exit never comes and this hangs.
 process.exit(0);

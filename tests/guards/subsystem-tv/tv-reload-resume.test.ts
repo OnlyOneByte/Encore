@@ -2,36 +2,24 @@ import { expect, it } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PLAYHEAD_ALIGN_SEC, SEEK_JUMP_SEC, resumeSeekTarget } from '$lib/tv/playhead-sync';
 
-/*
- * — reloading the TV page mid-song desynced audio playback.
- *
- * Measured cause (triage): the room's position (`playback:state.positionSec`) is delivered BEFORE the
- * <audio> master exists on a cold mount, because the element is gated on the `nowplaying:changed` the
- * server sends one frame later. The seek effect fires against a null master and drops the target;
- * position telemetry never bumps `rev`, so `seekPlan`'s effect is never re-woken and the target is
- * never re-offered. The fresh master plays from 0 while the room is at 6s, and the TV's own telemetry
- * then drags the server's position backwards.
- *
- * The fix mirrors the guide pre-roll: hold the last room position, and apply it ONCE on the
- * master's `canplay` via a pure decision function, then clear the held target so catalog churn cannot
- * re-yank a stale position onto a later song (the stale-seek invariant).
- *
- * Two halves are pinned here: (1) `resumeSeekTarget` decides correctly, and (2) TvPlayer.svelte is
- * WIRED to it — the position is held, taken on the master's `canplay`, and consumed. A pure test
- * cannot see the wiring, so the wiring block is a mutation-proof source scan (the same shape as
- * autoplay-recovery.test.ts).
- */
+// Caught: reloading the TV page mid-song desynced playback. The room's position arrives BEFORE the <audio> master
+// exists on a cold mount (the element is gated on the `nowplaying:changed` the server sends a frame later), so the
+// seek effect fires against a null master and drops the target — and position telemetry never bumps `rev`, so the
+// effect is never re-woken and the target never re-offered. The fresh master plays from 0 while the room is at 6s,
+// and the TV's own telemetry then drags the server's position backwards.
+//
+// The fix holds the last room position and applies it ONCE on the master's `canplay` via a pure decision, then
+// clears the held target so catalog churn cannot re-yank a stale position onto a later song.
 
 it('resumeSeekTarget — a cold-mounted master resumes to the room position: seeks when the room is meaningfully ahead of a fresh element at 0 (the bug: reload mid-song)', () => {
-	// The measured case: room at 6s, fresh master at ~0. Base drops this entirely.
 	const plan = resumeSeekTarget(0, 6);
 	expect(plan.seek).toBe(true);
 	expect(plan.target).toBe(6);
 });
 
 it('resumeSeekTarget — a cold-mounted master resumes to the room position: resumes even under SEEK_JUMP_SEC — this is NOT a scrub subject to the jump threshold', () => {
-	// A reload 1s into a song. `seekPlan` would read 1s as sub-threshold telemetry and drop it
-	// (1 < SEEK_JUMP_SEC = 1.5), leaving the reload stuck at 0. The resume decision must still fire.
+	// A reload 1s into a song: `seekPlan` would read 1s as sub-threshold telemetry and drop it, leaving the
+	// reload stuck at 0. The resume decision must still fire.
 	expect(SEEK_JUMP_SEC).toBeGreaterThan(1);
 	const plan = resumeSeekTarget(0, 1);
 	expect(plan.seek).toBe(true);
@@ -39,8 +27,7 @@ it('resumeSeekTarget — a cold-mounted master resumes to the room position: res
 });
 
 it('resumeSeekTarget — a cold-mounted master resumes to the room position: does not flush when the element is already at the room position (within the pre-roll tolerance)', () => {
-	// A genuine resume-to-0, or a mount that already landed on the right spot — no decoder flush
-	// for nothing, the same cost the pre-roll and drift governor both refuse to pay.
+	// No decoder flush for nothing — the same cost the pre-roll and the drift governor both refused to pay.
 	expect(resumeSeekTarget(0, 0).seek).toBe(false);
 	expect(resumeSeekTarget(6, 6).seek).toBe(false);
 	expect(resumeSeekTarget(6, 6 + PLAYHEAD_ALIGN_SEC / 2).seek).toBe(false);
@@ -52,11 +39,8 @@ it('resumeSeekTarget — a cold-mounted master resumes to the room position: nev
 	expect(resumeSeekTarget(0, Infinity).seek).toBe(false);
 });
 
-/*
- * Source-scan wiring guards. A pure decision is worthless if the component never calls it, so these
- * pin the three load-bearing wiring facts and RED if any is removed. `stripComments` blanks comments
- * so a fact asserted in prose above the code cannot pass the scan for it.
- */
+// A pure decision is worthless if the component never calls it. `stripComments` blanks comments so a fact
+// asserted in prose above the code cannot pass the scan for it.
 function stripComments(src: string): string {
 	return src
 		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
@@ -64,67 +48,52 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1) => p1 + '');
 }
 
-// Was `at('src/lib/tv/TvPlayer.svelte')` — the subject was this guard's own SIBLING in
-// src/lib/tv, which is also where `guide-sync` above was imported from with a bare `./`.
-// Named in full now, so neither depends on where this test lives.
 const raw = read('src/lib/tv/TvPlayer.svelte');
 const src = stripComments(raw);
 
 it('TvPlayer.svelte is wired to resume on a cold mount: imports and calls the resumeSeekTarget decision (not a hand-rolled inline comparison)', () => {
 	expect(src).toContain('resumeSeekTarget');
-	// The decision is taken inside applyResume, from the held target and the element playhead.
 	const fn = src.split('function applyResume(')[1]?.split('\n\tfunction ')[0] ?? '';
 	expect(fn).not.toBe('');
 	expect(fn).toContain('resumeSeekTarget(');
 });
 
 it('TvPlayer.svelte is wired to resume on a cold mount: holds the room position ONLY when there is no element to take it', () => {
-	// The hold is CONDITIONAL on the element, and it lives inside `applySeek` beside the `master` read
-	// it depends on — not in the effect body, whose dependency set the playhead-isolation guard keeps
-	// down to "what a playback command asked for".
-	//
-	// THIS ASSERTION WAS INVERTED, and that is worth stating: it used to require the unconditional
-	// `resumeTarget = target;` in the effect body, so it actively pinned the defect. An unconditional
-	// hold survives a declined (sub-threshold) seek, and any later `canplay` — which fires on every
-	// readyState rise, not once per mount — applies it and rewinds the song. See
-	// tests/unit/lib/tv/playhead-canplay-jump.test.ts for the behavioural proof.
+	// THIS ASSERTION IS INVERTED FROM ITS FIRST FORM, which required an unconditional `resumeTarget = target;` in the
+	// effect body and so actively pinned the defect: an unconditional hold survives a DECLINED (sub-threshold) seek,
+	// and any later `canplay` — which fires on every readyState rise, not once per mount — then applies it and rewinds
+	// the song. Behavioural proof: tests/unit/lib/tv/playhead-canplay-jump.test.ts. The hold also lives inside
+	// `applySeek`, beside the `master` read it depends on, not in the effect body whose dependency set the
+	// playhead-isolation guard keeps down to what a playback command asked for.
 	const fn = src.split('function applySeek(')[1]?.split('\n\tfunction ')[0] ?? '';
 	expect(fn).not.toBe('');
-	// Conditional on the element: held when there is none, CLEARED when there is one.
+	// Held when there is no element, CLEARED when there is one.
 	expect(fn).toMatch(/resumeTarget\s*=\s*el\s*\?\s*undefined\s*:\s*seekTarget/);
-	// The element is read through untrack, like every other input to this decision.
 	expect(fn).toContain('untrack(() => master)');
-	// The effect still drives it, and still holds no target of its own.
 	const effectBody = src.split('const target = seekSec;')[1]?.split('});')[0] ?? '';
 	expect(effectBody).toContain('applySeek(target)');
 	expect(effectBody).not.toMatch(/resumeTarget\s*=/);
 });
 
 it('TvPlayer.svelte is wired to resume on a cold mount: takes the resume on the master canplay and CONSUMES it (once per load, stale seeks stay shut)', () => {
-	// The master <audio> calls applyResume on canplay — the only place the fresh element's buffer
-	// is primed and its playhead is where audio will emerge.
+	// `canplay` is the only moment the fresh element's buffer is primed and its playhead is where audio will emerge,
+	// and applyResume clears the held target after applying it so a later load finds nothing held.
 	expect(src).toContain('oncanplay={() => applyResume()}');
-	// applyResume clears the held target after applying it, so a later element load finds nothing
-	// held and cannot re-yank a stale position onto the next song.
 	const fn = src.split('function applyResume(')[1]?.split('\n\tfunction ')[0] ?? '';
 	expect(fn).toContain('resumeTarget = undefined;');
-	// It reads the element through untrack, like applySeek — an input to the decision, never a
-	// trigger for it.
+	// The element is read through untrack, like applySeek — an input to the decision, never a trigger for it.
 	expect(fn).toContain('untrack(() => master)');
 });
 
 it('TvPlayer.svelte is wired to resume on a cold mount: guards applyResume on the ACTIVE, playable slot like applySeek — the prewarm regression', () => {
-	// The regression the cold-mount fix opened: the prewarming (hidden, INACTIVE) slot reaches
-	// canplay, so without applySeek's `active`/playable guard, applyResume parks the NEXT song's
-	// element at the outgoing song's position, corrupting the room position on advance. applyResume
-	// must carry the same guard, and it must GUARD (early-return) rather than merely skip the seek.
+	// The prewarming (hidden, INACTIVE) slot also reaches canplay, so without applySeek's active/playable guard
+	// applyResume parks the NEXT song's element at the outgoing song's position, corrupting the room position on
+	// advance. It must EARLY-RETURN, leaving the target held for the slot's own later activation, rather than fall
+	// through to the seek — so the return is asserted to sit BEFORE it.
 	const fn = src.split('function applyResume(')[1]?.split('\n\tfunction ')[0] ?? '';
 	expect(fn).not.toBe('');
 	expect(fn).toContain('untrack(() => active)');
 	expect(fn).toContain('isPlayable(');
-	// The guard must EARLY-RETURN on the inactive/non-playable slot (a no-op that leaves the target
-	// held for the slot's own later activation), not fall through to the seek. Assert the return
-	// tests !isActive, and that it sits BEFORE the seek that reads the plan.
 	expect(fn).toContain('!isActive) return;');
 	const guardIdx = fn.indexOf('!isActive) return;');
 	const seekIdx = fn.indexOf('resumeSeekTarget(');

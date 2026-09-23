@@ -91,9 +91,8 @@ available` — which reads as a broken worker rather than a missing dependency. 
 `deno` plus `/etc/yt-dlp.conf`; a native run does not, so install `deno` and either copy
 `worker/yt-dlp.conf` to `/etc/yt-dlp.conf` or point yt-dlp at it with `--config-location`.
 
-Separately: **not every YouTube video will download.** Upstream bot-checking rejects some, and a
-handful of failed processes on specific videos is not a broken install — see
-.
+Separately: **not every YouTube video will download.** Upstream bot-checking rejects some, so a handful
+of failed processes on specific videos is not a broken install.
 
 `ENCORE_PROCESSOR=stub` swaps in a no-ML processor for smoke-testing the plumbing, and needs only
 `pip install websockets`. Two caveats worth knowing before you reach for it: it writes a
@@ -174,8 +173,25 @@ src/lib/contract/   ← the realtime contract, made physical (imported by client
   src/routes/        phone (+page), /join, /tv, /settings, /stats, /metrics, /api
   e2e/               selector contract + guard, the party flow, the screenshot capture
 worker/       ← Container 2: Python stems/align (dials home; `--profile stems`)
-docs/              ← ARCHITECTURE + HANDOFF + DECISIONS; loop/ deploy/ benchmarks/ mocks/ research/
+docs/              ← the written record; see the index below
 ```
+
+### The documents
+
+| Document                                  | What it holds                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------------- |
+| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | how the system works, as a narrative: authority, rotation, media, jobs, lyrics  |
+| [`LAYOUT.md`](docs/LAYOUT.md)             | where a file goes, and what may not move                                        |
+| [`FRONTEND.md`](docs/FRONTEND.md)         | the rules a UI change must respect — styling, runes, components, routes, the TV |
+| [`SERVER.md`](docs/SERVER.md)             | the same for the server, the shared contract, the job pipeline and the worker   |
+| [`GUARDS.md`](docs/GUARDS.md)             | how the guard suite defends itself, and every trap it has learned               |
+| [`E2E.md`](docs/E2E.md)                   | the browser harness, the selector contract, and what each probe proves          |
+| [`arch/`](docs/arch/README.md)            | subsystem contracts as numbered requirements a machine can often check          |
+| [`deploy/`](docs/deploy/README.md)        | getting a secure context, and the WSL2 case that breaks it                      |
+
+`FRONTEND.md`, `SERVER.md`, `GUARDS.md` and `E2E.md` exist so the source can state a rule in one line and
+point at the reasoning, instead of carrying the reasoning inline. A rule that outlives one file belongs in
+one of them.
 
 ## Configuration
 

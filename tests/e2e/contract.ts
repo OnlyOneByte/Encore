@@ -1,164 +1,94 @@
 /*
- * THE E2E SELECTOR CONTRACT.
+ * THE E2E SELECTOR CONTRACT — one declaration of every hook the browser flows drive, imported by both
+ * the flows and tests/guards/hygiene/contract.test.ts so the two can never disagree about the UI.
  *
- * One declaration of every hook the browser flow drives, imported by BOTH the flow (party.mjs) and the
- * guard (contract.test.ts) so the two can never disagree about what the UI looks like.
- *
- * WHY THIS EXISTS. The previous e2e was a detached script, and it rotted silently: it clicked a
- * `Library` tab that was deleted when search was unified around readiness, selected a colour by an
- * aria-label of `color #ff5cae` when the real label had become `violet swatch`, and read rows from
- * `.result` after the component started rendering `.row`. Three separate selector families had moved
- * and the suite stayed green the whole time, because nothing in `bun test` ever looked at the script.
- *
- * The guard is the load-bearing half. It needs no browser, so it runs everywhere `bun test` runs, on
- * every change, and it fails the moment a selector's anchor disappears from the source. The browser
- * flow proves the app actually works; the guard proves the flow is still aimed at the app.
- *
- * Each entry names the source it must exist in, so a failure says which file moved the ground.
+ * See docs/E2E.md#why-selectors-are-centralised, docs/E2E.md#what-a-sel--hooks-entry-means and
+ * docs/E2E.md#anchor-discipline. Each HOOKS entry names the source file it must exist in, so a failure
+ * says which file moved the ground.
  */
 
 /** A hook the e2e drives, plus the source anchor proving it still exists. */
 export interface Hook {
 	/** What the flow calls it. */
 	id: string;
-	/** Source file, relative to .. */
+	/** Source file, relative to the repo root. */
 	file: string;
 	/** Substring that must appear in that file. The anchor. */
 	anchor: string;
-	/** Why the flow needs it — so a failure explains what breaks, not just that something moved. */
+	/** What breaks without it — printed in the guard's failure, so it names a consequence. */
 	why: string;
 }
 
+/*
+ * RETIRED IDS AND VALUES, PINNED BY contract.test.ts — reviving any of these reds the guard, because a
+ * dead name gets pointed at a class that has returned on another surface:
+ *   `.hero`, `.hero .song`, `.tools-toggle`, `.tools-peek`  — the drawer replaced the hero and its
+ *     disclosure; `.hero` still RESOLVES, but only against TV markup, which is why the ban is by value.
+ *   `.band .handle`, key `bandExpand`, hooks `bandExpand` / `bandExpandWired` — the band's own pull
+ *     handle is gone; the successors are `bandOpen` + `bandOpenWired`.
+ *   hook `drawerHandleOnly` — vaul's `handleOnly` was replaced by `data-vaul-no-drag` on `.np-fit`.
+ *   `SEL.play` — it named an `aria-label="play/pause"` nothing carries, so it would resolve against
+ *     nothing while reading as though the old flow worked. The whole transport is in the band row.
+ *   no HOOK may name NowPlayingHero.svelte — the component is deleted.
+ */
+
 /** How the flow addresses each hook at runtime. */
 export const SEL = {
-	// ── join ──────────────────────────────────────────────────────────────
+	// join
 	nameInput: 'input[placeholder^="e.g."]',
 	/**
-	 * THE JOIN SCREEN'S COLOUR PICKER — one `role="slider"` over the 48-stop palette (ColourRing.svelte).
+	 * Both identity panes' colour picker — one `role="slider"` over a 48-stop palette.
 	 *
-	 * It REPLACED `swatch` + `hueSlider` on BOTH identity panes — the join screen first, then
-	 * /settings?tab=you — and those two are still NOT retired: ColourPicker.svelte is unchanged and the
-	 * /components gallery renders it with a live binding, so they resolve, they are honest, and their
-	 * entries below are re-pointed at that surface. That is the whole hazard this comment exists for — a
-	 * driver reaching for `SEL.swatch` on either identity pane now addresses a control that exists only
-	 * in the gallery, which is the `.hero` shape (a selector resolving green against the wrong surface)
-	 * rather than a timeout. contract.test.ts pins the split.
-	 *
-	 * Addressed by CLASS, not by `{role, name}`: the ring names itself `aria-label={label}` — an
-	 * EXPRESSION, so no literal `aria-label="Your color"` exists in source for the resolver to find — and
-	 * the class is what a driver can hand to `pressKey`. Which is how a driver picks a colour now: the
-	 * ring is a slider, so `Home`/`End`/arrows move it, and there is no per-colour element to click.
+	 * Addressed by CLASS, not `{role, name}`: the ring names itself `aria-label={label}`, an EXPRESSION,
+	 * so no literal exists for the resolver to find. A driver picks a colour with `Home`/`End`/arrows;
+	 * there is no per-colour element to click.
 	 */
 	colourRing: '.colour-ring',
 	/**
-	 * The preset swatch, addressed by the radio's accessible name.
-	 *
-	 * RE-POINTED SURFACE TWICE, SAME CONTROL. The ring took the join pane, leaving the presets on
-	 * /settings?tab=you; it has now taken that pane too, so this is the /components gallery's demo —
-	 * ColourPicker.svelte is unchanged and still renders the eight presets there, so nothing about the
-	 * selector moved; what moved is where a flow can drive it. Both identity panes use `colourRing`.
-	 *
-	 * That name is the BARE colour name ("pink"), not "pink swatch": the element already has
-	 * role=radio, so announcing "swatch" was noise a screen reader had to sit through on all eight.
-	 * This helper is where the format lives, and it has now drifted in BOTH directions -- the header
-	 * note above records the driver still asking for `color #ff5cae` after the label became
-	 * "violet swatch", and then this file asking for "violet swatch" after the label became "violet".
-	 * The name LIST is asserted against the component in contract.test.ts; so is this FORMAT, because
-	 * matching lists cannot tell you the wrapper around each entry is still right.
+	 * A preset swatch, by the radio's accessible name — the BARE colour name ("pink"), since the element
+	 * already has role=radio. Only the /components gallery renders these. contract.test.ts asserts the name
+	 * LIST and this FORMAT separately: matching lists cannot tell you the wrapper around each is still right.
 	 */
 	swatch: (colourName: string) => ({ role: 'radio' as const, name: colourName }),
-	/**
-	 * The hue rail beside those presets — also the GALLERY's now, for the same reason as `swatch`.
-	 * Neither identity pane has this range input any more: the ring is a `div[role=slider]`, so a driver
-	 * that reaches for this on the join or settings pane finds another page's control or nothing.
-	 * (/settings does still carry a native `input[type="color"]` — the STAGE colour — which this
-	 * `type="range"` selector deliberately does not match.)
-	 */
+	/** The gallery picker's hue rail. No identity pane has a range input any more, and /settings' native
+	 *  `input[type="color"]` (the STAGE colour) deliberately does not match this. */
 	hueSlider: 'input[type="range"]',
 	submit: /Start singing/,
-	/*
-	 * The join-page error announcement: `<div class="err" role="alert">` (lib/components/JoinLanding.svelte).
-	 * A class + UNQUOTED attribute compound the p8-presence probe reads to tell a duplicate-name
-	 * rejection (form sits on /join with this alert) from a clean join (lands on / with the search box).
-	 * Migrated here from KNOWN_OFFENDERS as Group B of the per-driver SEL split.
-	 */
+	/** The join-page alert (`<div class="err" role="alert">`) — how p8 tells a duplicate-name rejection
+	 *  from a clean join, which otherwise looks identical: the form simply stays put. */
 	joinError: '.err[role=alert]',
 
-	// ── phone remote ──────────────────────────────────────────────────────
-	// ── phone remote ──────────────────────────────────────────────────────
-	/*
-	 * HOME IS THE QUEUE, THE LIBRARY AND SEARCH, in one column: the field, what is queued, what is being made,
-	 * what is ready to sing. The search box has been docked on `/`, then its own `/find` route, and is a field at
-	 * the top of `/` again since that route was merged back (2026-09-22) — the band's magnifier is gone with it.
-	 *
-	 * `homeReady` is the post-join readiness check and is the BAND, which the layout mounts exactly when a singer
-	 * is joined, so it answers "joined" — which is what both call sites ask. The band is app chrome on every phone
-	 * surface, so callers that also need "and on home" pair it with `location.pathname === '/'`.
-	 *
-	 * RETIRED with the browse mode: `openBrowse` (`.cta-dock .cta`, the `+ Add a turn` button that pushed
-	 * `?browse=1`) and `browseToggle`. Neither returns — the library IS the default content of the column and
-	 * typing filters it, so there is nothing to reveal and nothing to switch on.
-	 */
+	// phone remote
+	/** The post-join readiness signal. The layout mounts the band exactly when a singer is joined, so its
+	 *  presence answers "joined" — and it is chrome on EVERY phone surface, so a caller that also needs
+	 *  "and on home" pairs it with `location.pathname === '/'`. */
 	homeReady: '.band',
-	/*
-	 * THE DOCKED ROW, which is the element `--dock-h` is actually published from — and it is NOT `.band`.
-	 *
-	 * Since the band became snap point 0 of the now-playing sheet, the bottom-most chrome is
-	 * `NowPlayingDrawer`'s `.band-slot`: vaul's pull handle, then the band strip. The layout binds THAT
-	 * element's `clientHeight` (through the drawer's `bandH` prop) and writes it as `--dock-h`, so the token
-	 * is the row's height — 80px — while `.band` alone is the 56px strip inside it.
-	 *
-	 * `gate:measured` was comparing the token against `.band` and reported an 80-vs-56 mismatch as a broken
-	 * contract. It is not broken: a scrolling column has to clear the whole docked row, handle included, or a
-	 * thumb reaching for the grab bar lands on page content. The claim was right and its SUBJECT had moved,
-	 * which is what this entry fixes — `homeReady` stays the strip (it answers "is a singer joined", which is
-	 * what a readiness poll wants), and the RESERVATION contract is measured here.
+	/**
+	 * The docked row `--dock-h` is published from — NOT `.band`. The layout binds THIS element's
+	 * `clientHeight` (handle plus strip, 80px); `.band` alone is the 56px strip inside it, and a scrolling
+	 * column must clear the WHOLE row or a thumb reaching for the grab bar lands on page content.
 	 */
 	dockRow: '.band-slot',
-	/**
-	 * The scrolling content column. The measured gate reads its padding-bottom to prove the docked band
-	 * is RESERVED rather than overlapping the list, which is a geometry claim about this
-	 * element and so cannot be spelled out at the call site.
-	 */
+	/** The scrolling content column. The measured gate reads its padding-bottom to prove the docked row is
+	 *  RESERVED rather than overlapping the list. */
 	mainColumn: 'main',
 	/** GuidingTrack's root; `.gt.disabled` is the subtree dimmed with opacity — the subject. */
 	guidingTrackRoot: '.gt',
 	/** Its readout, which reads 'Off' rather than a live-looking number when the track is dead. */
 	guideReadout: '.gt-val',
-	/**
-	 * The vendored slider's root, by shadcn's OWN `data-slot` rather than an Encore class. That
-	 * choice is the point: a class in a copied-in component belongs to the component and a re-vendor
-	 * may rename it, while `data-slot` is the contract shadcn itself maintains.
-	 *
-	 * Note it is NOT `input[type="range"]` — see `hueSlider`, which still is one. GuidingTrack's
-	 * control stopped being a native range when it moved to the vendored <Slider>; the colour picker's hue rail did not.
-	 */
+	/** The vendored slider's root, by shadcn's OWN `data-slot`: a class in a copied-in component belongs to
+	 *  the component and a re-vendor may rename it. NOT `input[type="range"]` — see `hueSlider`. */
 	slider: "[data-slot='slider']",
-	/**
-	 * Back to the queue from a PUSHED phone surface — a song page, settings, stats. A real `<a href="/">` that
-	 * `PageHeader` renders inside its `.back-slot` wrapper.
-	 *
-	 * RE-ANCHORED TWICE: it was a test-only hook on the in-place "← Queue" control that called `clearSearch()`, then
-	 * the find route's own `back` link. Search is a section of home again, so THAT subject is gone — a link to `/`
-	 * rendered on `/` points at itself. The way back from a search is `clearSearch`; this keeps the job it still
-	 * has, leaving a pushed surface. Two different acts, two names.
-	 *
-	 * Addressed by the page-rendered wrapper plus the tag rather than by a class on the control, which is a
-	 * `<Button href>` whose classes can be re-vendored. `.back-slot` pins THIS control; the `a` resolves as "this
-	 * tag is rendered somewhere", since a source scan cannot see co-location.
-	 */
+	/** Back to the queue from a PUSHED phone surface — a real `<a href="/">` PageHeader renders inside
+	 *  `.back-slot`, addressed by wrapper plus tag because the `<Button href>`'s classes can be
+	 *  re-vendored. `clearSearch` is a different act. */
 	backToQueue: '.back-slot a',
-	/** The search field itself. On `/` again since the find route was merged into home (2026-09-22) — it
-	 *  was on `/` docked, then on `/find`, and the aria-label is deliberately unchanged through all three,
-	 *  so only the FILE ever moved and no driver's selector had to. */
 	search: 'input[aria-label="Search a song or artist"]',
-	/** The search box: the wrapper holding the mark, the field, the searching spinner and the clear
-	 *  control. At the top of the home column, in normal flow — neither docked nor sticky. */
+	/** The search box — mark, field, spinner and clear control — at the top of the home column, in normal
+	 *  flow: neither docked nor sticky. */
 	findBox: '.findbox',
-	/** The box's clear control — empties the query, which restores the queue and the library in place. It
-	 *  is the whole way "back" from a search now (2026-09-22): the results are a section of the page the
-	 *  guest is already on, so there is nowhere to navigate to. `backToQueue` below is a different act —
-	 *  leaving a PUSHED surface (a song page, settings) for home. */
+	/** Empties the query, which restores the queue and the library in place. It is the whole way "back"
+	 *  from a search: the results are a section of the page the guest is already on. */
 	clearSearch: '[aria-label="Clear the search"]',
 	songRow: '.row',
 	songTitle: '.row .t',
@@ -166,260 +96,115 @@ export const SEL = {
 	sing: '.row [data-testid="song-sing"]',
 	queueRow: '.qrow',
 	queueTitle: '.qrow .t',
-	/*
-	 * A song processing in the rotation. ProcessingCard renders `class="qrow proc ..."`, so `.proc` is a
-	 * SUBSET of `.qrow`, not a sibling of it — the flow's `queued + processing > 0` therefore
-	 * double-counts a processing card. Harmless for an existence check, and named here so nobody later
-	 * reads an exact total off the pair.
-	 */
+	/** A song processing in the rotation. ProcessingCard renders `class="qrow proc …"`, so `.proc` is a
+	 *  SUBSET of `.qrow` — `queued + processing` double-counts a processing card. Fine for an existence
+	 *  check; never read an exact total off the pair. */
 	processing: '.proc',
-	/*
-	 * Bare remote-list handles the probes read directly (not scoped under .row like addTurn/sing/songTitle
-	 * above): p3/p8/p10 query the row actions and `.t` on their own to check an action or a title exists at all,
-	 * and p8/p12 read the presence and empty-state chrome. Named here so those reads come through the
-	 * contract instead of being spelled out per probe (migrated from KNOWN_OFFENDERS).
-	 */
+	/** Bare remote-list handles, unscoped (unlike `addTurn`/`sing`/`songTitle` above): p3/p8/p10 ask
+	 *  whether a row offers an action or a title at all, and p8/p12 read presence and empty-state chrome. */
 	addAction: '[data-testid="song-add"]',
 	singAction: '[data-testid="song-sing"]',
-	/** "queued or ready" in one query — p8 asks whether a row offers EITHER queue action; a comma
-	 *  union, so one branch resolving is enough. */
+	/** "queued or ready" in one query — a comma union, so one branch resolving is enough. */
 	addOrSing: '[data-testid="song-add"],[data-testid="song-sing"]',
 	rowTitle: '.t',
-	/*
-	 * The empty-state line — on `/`, for both an empty rotation and a query that matched nothing. One surface
-	 * carries both states since the find route was merged into home (2026-09-22).
+	/**
+	 * The empty-state line on `/`, for both an empty rotation and a query that matched nothing.
 	 *
-	 * RE-ANCHORED to `.encore-empty`; `.empty` is gone. The empty state is `<Empty.Root>` now, and
-	 * ui/empty/empty.svelte keeps the registry's Root/Header/Description structure while carrying Encore's
-	 * appearance under its own base class — the old `.empty` rule (dim ink, `--space-2xs` inline padding,
-	 * `--ph-text-md`) moved there verbatim, which is why the copy the drivers read is unchanged. Same defect
-	 * shape as the `.chip` → `.encore-chip` re-anchor above: a primitive adoption took the hand-rolled class
-	 * with it and left the contract pointing at nothing. This one is NOT part of the hero move; it was
-	 * already red on this branch and is fixed here because it is this file's own broken anchor.
-	 *
-	 * NOT `[data-slot='empty']`, though the same element carries that too. The resolver's attribute anchor is
-	 * a PREFIX substring (`data-slot="empty`), and the family ships `empty-title`, `empty-header`,
-	 * `empty-description`, `empty-content` and `empty-icon` — so that spelling would keep resolving after
-	 * Root itself was deleted, off a sub-slot no driver reads. `classPresent` matches an EXACT token, which
-	 * makes the class the stronger anchor here; it is the same tightening G2 pinned when `.b` was resolving
-	 * off the `badqr-b` fragment.
+	 * NOT `[data-slot='empty']`, though the same element carries it: the resolver's attribute anchor is a
+	 * PREFIX, and the family ships `empty-title`/`empty-header`/…, so that spelling keeps resolving off a
+	 * sub-slot after Root itself is deleted. `classPresent` matches an EXACT token.
 	 */
 	empty: '.encore-empty',
-	/** A SongRow status/kind chip — the SCALING probe (p10) contrast-checks its text on the remote.
-	 *  Migrated from KNOWN_OFFENDERS (Group E).
-	 *
-	 *  RE-ANCHORED to `.encore-chip`, which is what the control actually carries. `<Badge>` owns these
-	 *  chips and its base class is `encore-chip`, so `.chip` never matched a SongRow chip after that
-	 *  migration — it was resolving against the phone home's chip BUTTONS instead, which are a different
-	 *  control and are now `<Button>`. The mis-anchor only surfaced when those buttons migrated and the
-	 *  selector suddenly matched nothing at all. */
+	/** A SongRow status/kind chip, which p10 contrast-checks. `<Badge>`'s base class — the phone home's
+	 *  chip BUTTONS are a different control and carry `<Button>`'s classes. */
 	chip: '.encore-chip',
 	away: '.away',
-	/* Attract-only markup used as a freshness gate by p8: the fixed `Karaoke` label on the split attract
-	   panel (the old `.is-label` "Nobody here yet" strip was removed with the previous attract design). */
+	/** Attract-only markup p8 uses as a freshness gate: the fixed `Karaoke` label on the split panel. */
 	isLabel: '.phrase-kick',
 	strip: '.strip',
 	stripPerson: '.strip .person',
 
-	// ── the now-playing band (app chrome: +layout.svelte → NowPlayingBand.svelte) ──────────────
-	/*
-	 * The band's controls. It is the bottom-most app chrome on EVERY phone surface, so unlike anything above these
-	 * are reachable wherever a driver happens to be.
-	 *
-	 * `bandTransport` is addressed by CLASS, not by role/name, deliberately: the disc names itself
-	 * `aria-label={isPlaying ? 'Pause' : 'Play'}` — an EXPRESSION — so neither literal exists as source text and a
-	 * `{role, name}` entry could not resolve. The HOOK below anchors the expression instead, so the pair of labels
-	 * cannot be renamed unnoticed.
-	 *
-	 * NOT the same control as `play` further down, which is the DRAWER's. Two transports exist on two surfaces and
-	 * conflating them is how a driver asserts one surface's state against a tap on the other — and since the merge
-	 * BOTH are always mounted (they are the same sheet at two heights), so only the SCOPE can tell them apart:
-	 * this one is inside `.band`, `play` is inside `.np-drawer` past the fold.
-	 */
+	// the now-playing band (+layout.svelte → NowPlayingDrawer.svelte → NowPlayingBand.svelte)
+	/** The band's transport disc — play/pause at both sheet heights, no gesture needed. By CLASS, because it
+	 *  names itself `aria-label={isPlaying ? 'Pause' : 'Play'}`: an EXPRESSION, so neither literal exists as
+	 *  source text and a `{role, name}` entry could not resolve. The HOOK anchors the expression. */
 	bandTransport: '.disc',
-	/*
-	 * THE BAND'S EXPAND CONTROL — the metadata block, which is a real `<button>` whenever a drawer is
-	 * behind it. `bandExpand`'s claim, come back in a different shape; see that retirement record below for
-	 * why this is a new id rather than a revival of the old one.
+	/**
+	 * The band's expand control — the metadata block in its `<button>` form, and the ONLY way into the sheet
+	 * for a keyboard or a screen reader, since `drawerHandle` is a `<div aria-hidden="true">` with no
+	 * tabindex and no role.
 	 *
-	 * WHY IT EXISTS AGAIN. The retirement reasoned that a permanently-mounted sheet has no closed surface to
-	 * open, which is true of the sheet and false of the guest: what replaced the band's button as the way in
-	 * was `drawerHandle`, and that element is a `<div aria-hidden="true">` with no tabindex and no role. So
-	 * for as long as it was the only affordance, the sheet — and with it the transport, the ± keycaps, the
-	 * guiding track, the lyrics reselect and the `···` that is the ONLY link to /song/[mediaId] — could not
-	 * be reached by a keyboard or announced to a screen reader at all.
-	 *
-	 * A CLASS, not a role+name pair, and that is forced rather than preferred: the button's accessible name
-	 * interpolates the song title (`${title} — open the player`, which is SC 2.5.3's label-in-name), so there
-	 * is no literal for `clickByRole` to match. `.meta-btn` is the class the band puts on the button form of
-	 * the block; the inert `<div class="meta">` the /components gallery renders does NOT carry it, which is
-	 * what keeps this selector from resolving against a control that cannot act.
+	 * A class, forced: the accessible name interpolates the song title (SC 2.5.3 label-in-name), so there is
+	 * no literal for `clickByRole`. The inert `<div class="meta">` the gallery renders has no `.meta-btn`,
+	 * which keeps this off a control that cannot act.
 	 */
 	bandOpen: '.meta-btn',
-	/*
-	 * The playing song's title on the band, and the default successor to the retired `heroTitle` (see that
-	 * record above). Reach for this one first: the band is present on every phone surface whenever a singer
-	 * is joined, so it answers "what is playing / is my song up?" with no gesture, where the drawer's
-	 * `npSong` is below the fold until the sheet is pulled up (`activeSnapPoint` `0.82`) — mounted, so a
-	 * presence read passes, but not on screen, so anything measured off it is measured off a hidden
-	 * element. The rotation reads need it because a playing entry renders no `.qrow` at all.
-	 */
+	/** Reach for this first for "what is playing / is my song up?": the band is present on every phone
+	 *  surface with no gesture, where the sheet's own title is below the fold until it is pulled up. The
+	 *  rotation reads need it because a playing entry renders no `.qrow` at all. */
 	bandTitle: '.band .title',
 
-	// ── the now-playing sheet (app chrome: +layout.svelte → NowPlayingDrawer.svelte → NowPlayingBand) ──
-	/*
-	 * WHERE THE HERO WENT. The drawer carries everything NowPlayingHero did — song identity, seek row, transport,
-	 * live controls — and since the merge it carries the BAND too, as snap point 0.
+	// the now-playing sheet (NowPlayingDrawer.svelte, which also composes the band as snap point 0)
+	/**
+	 * PRESENCE DOES NOT MEAN OPEN — see docs/E2E.md#presence-is-not-visibility.
 	 *
-	 * PRESENCE NO LONGER MEANS OPEN, and this is the one fact every driver has to respect. The sheet is PERMANENTLY
-	 * MOUNTED, so `.np-drawer` is present at all times and everything in this block can be waited on cold; the
-	 * state that distinguishes collapsed from pulled up is `activeSnapPoint`, whose values are the vaul snap
-	 * VALUES (`'80px'` and `0.82`) — not an index, not a boolean.
-	 *
-	 * SO THE FAILURE MODE INVERTED: a driver that waits for presence gets no timeout, ever. Its wait succeeds
-	 * against a collapsed sheet whose content sits below the fold, so any geometry, contrast or visibility read
-	 * taken there is measured off a hidden element and reported as fact. A read that cannot time out is not a read
-	 * that cannot be wrong.
-	 *
-	 * Addressed by Encore's OWN class rather than the vendored `data-slot='drawer-content'` the same element
-	 * carries — the opposite of `slider`'s choice, for a reason that does not contradict it: the data-slot is the
-	 * sturdier name but not a UNIQUE one (any second drawer carries it identically), where `.np-drawer` says THIS
-	 * drawer. Both halves are pinned as HOOKS.
+	 * Addressed by Encore's own class rather than the vendored `data-slot='drawer-content'` the same element
+	 * carries — the opposite of `slider`'s choice, because the data-slot is sturdier but not UNIQUE: any
+	 * second drawer carries it identically, where `.np-drawer` says THIS drawer. Both are pinned as HOOKS.
 	 */
 	npDrawer: '.np-drawer',
-	/** The playing song's title inside the drawer — `heroTitle`'s other successor, scoped to the drawer so
-	 *  it cannot be confused with the band's copy of the same fact. Mounted at all times since the merge,
-	 *  so prefer `bandTitle` for a bare "what is playing" read: this one is only ON SCREEN once the sheet
-	 *  is at `0.82`. */
-	/*
-	 * The sheet's DRAG handle — and since the merge, the ONLY handle in the app, doing both jobs: it is the
-	 * way IN (drag up from the collapsed band to snap `0.82`) and the drag surface once there. It replaced
-	 * the band's retired pull handle (see the `bandExpand` record above) rather than joining it.
-	 *
-	 * Addressed by the `data-slot` the vendored component maintains.
-	 *
-	 * It is the only drag surface in the drawer: the Root sets `handleOnly` because the body is sliders, and
-	 * a drag-to-dismiss surface under a slider thumb is the gesture collision the rule bans. That makes its
-	 * absence a silent failure rather than a cosmetic one — with no element carrying vaul's handle attribute
-	 * the drawer cannot be dragged AT ALL and nothing warns, which is precisely what shadcn's copy-in did
-	 * with a decorative div and why drawer-handle.svelte exists. The merge RAISED that stake: the same
-	 * silent loss now also means the sheet can never leave the band height, so the transport and every live
-	 * control become unreachable rather than merely awkward.
-	 */
+	/** The sheet's only drag surface, and its absence is a SILENT failure: with no element carrying vaul's
+	 *  handle attribute the sheet cannot be dragged at all, nothing warns, and it can never leave the band
+	 *  height — so the transport and every live control become unreachable. */
 	drawerHandle: "[data-slot='drawer-handle']",
-	/*
-	 * THE DRAWER'S ONLY HEADER AFFORDANCE — the "\u00b7\u00b7\u00b7" that opens /song/[mediaId].
-	 *
-	 * Addressed as the ANCHOR inside the slot rather than as the slot, because the anchor is the claim:
-	 * it is a real `<a href>` so back is the browser's own back and the route stays shareable, which a
-	 * history.back() button gives up. A driver reading the slot would pass over a button.
-	 *
-	 * It renders only with a playing song, so a driver must open the drawer on one — its absence with
-	 * nothing playing is correct, not a missing hook.
-	 */
+	/** The `···` that opens /song/[mediaId], addressed as the ANCHOR inside the slot because being a real
+	 *  `<a href>` is the claim — back is the browser's own and the route stays shareable. It renders only
+	 *  with a playing song, so its absence with nothing playing is correct, not a missing hook. */
 	songDoor: '.more-slot a',
-	/*
-	 * RE-POINTED, NOT RETIRED — the call the drawer move turned on, because BOTH class names survived into it. A
-	 * wrong decision here does not go red; it leaves a selector quietly resolving to something it was not written
-	 * for.
-	 *
-	 * `toolsNote` is unambiguous: same class, same sentence, same claim, new file.
-	 *
-	 * `toolsBody` needed deciding. Its recorded reason was disclosure-relative ("the explanation must sit inside
-	 * the body, which keeps it out of the collapsed summary") and there is no summary any more — but a hook's
-	 * identity is its SUBJECT, and the subject moved intact. What changed is its CONDITION: `.tools-body` now means
-	 * ONLY "a song is playing", because the sheet it lives in is mounted unconditionally. A driver must not read it
-	 * as an open/closed signal, nor — the trap the merge added — as a pulled-up one: it is present while the sheet
-	 * is collapsed, just below the fold.
-	 *
-	 * The opposite call (retire and add fresh) was right for `searchDock` → `findBox`, where the NAME carried the
-	 * dead claim. Here the name says "the body of the tools" and the element still is that.
-	 */
+	/** The live-controls body. It means ONLY "a song is playing" — the sheet it lives in is mounted
+	 *  unconditionally, so it is present while collapsed, just below the fold. Never read it as an
+	 *  open/closed or a pulled-up signal. */
 	toolsBody: '.tools-body',
+	/** The no-shared-drag-surface sentence; p16 asserts its presence for a dead control and its absence
+	 *  for a live one. */
 	toolsNote: '.tools-note',
 
-	// ── transport (in the now-playing SHEET since the hero was deleted) ────
-	// THREE controls in the row — Restart · Play/Pause · Skip (2026-09-18) — and only two of them are named
-	// here. All three are MOUNTED at all times but sit below the fold while the sheet is collapsed, and a real
-	// tap has to land on a visible element, so pull the sheet up before driving them. `bandTransport` needs no
-	// gesture at all.
-	/*
-	 * THE WHOLE TRANSPORT IS IN THE BAND ROW, so there is no second play/pause anywhere in the app and the sheet's
-	 * copy deliberately has no selector of its own. Three arrangements preceded it, each reported on sight: the
-	 * pair in the sheet's body with play/pause only on the disc; that row given its own play/pause (two identical
-	 * buttons ~100px apart); and the disc hidden at snap 1 (a nearly-empty band row above a group floating
-	 * mid-body).
-	 *
-	 * FOR A DRIVER: `bandTransport` ('.disc') is play/pause at both heights and needs no gesture, and since
-	 * 2026-09-22 `restart` and `skip` are visible at both heights too, so none of the three needs
-	 * `openNowPlaying` first.
-	 *
-	 * `SEL.play` STAYS BANNED: it named an earlier button's literal `aria-label="play/pause"`, which nothing
-	 * carries now, so reviving it would resolve against nothing while reading as though the old flow worked.
-	 */
+	// transport — Restart · Play/Pause · Skip, all three in the band row and visible at both sheet
+	// heights, so none of them needs `openNowPlaying` first. Play/pause is `bandTransport`.
 	skip: { role: 'button' as const, name: 'skip' },
-	/*
-	 * `restart` IS CAPITALISED NOW, because the control was relabelled with its icon.
-	 *
-	 * It always called `onrestart` and its label always read "restart", but it was drawn with the `prev`
-	 * glyph — the previous-track mark, for something a rotation has no concept of. Icon, title and
-	 * accessible name now agree, and the name is sentence-cased like every other user-facing label.
-	 */
+	/** Capitalised, and drawn with its own glyph: it always called `onrestart` but wore the `prev` mark —
+	 *  the previous-track glyph, for something a rotation has no concept of. */
 	restart: { role: 'button' as const, name: 'Restart' },
 
-	// ── TV ────────────────────────────────────────────────────────────────
-	/*
-	 * THE EMPTY-ROOM STAGE, and the three things asserted on it.
-	 *
-	 * `.attract` is the state itself (the split attract panel). It is what "the room is empty" is
-	 * keyed on: the flow used to wait for `.url`, which is the LOBBY's typed address (TvLobby.svelte)
-	 * and therefore appears only once somebody HAS joined. The gate was inverted — it could not pass on
-	 * the fresh empty room it demanded.
-	 *
-	 * The attract screen's own typed address is `.jt-url` (in the right join panel) and its read-once
-	 * headline is `.phrase-line` (the rotating phrase). BOTH the QR and the typed lines live behind the
-	 * reachable-origin branch: when the advertised address is loopback or a bare hostname the TV
-	 * replaces the QR block with `.badqr` (correctly — a QR to an unroutable address is a
-	 * working-looking dead end). So `.badqr` is part of the contract too, because it is how the flow
-	 * tells "the origin is not routable" apart from "someone already joined".
-	 */
-	/** The TV's socket indicator. `.on` appears when the WebSocket opens, which is the only barrier the
-	 *  flow has before the room state it renders can be believed. */
+	// TV
+	/** The TV's socket indicator. `.on` appears when the WebSocket opens, which is the only barrier before
+	 *  the room state it renders can be believed. */
 	tvConnected: '.status.on',
+	/** The empty-room state, and what "the room is fresh" must be keyed on. NOT the lobby's typed address
+	 *  (`lobbyAddress`), which appears only once somebody HAS joined — gating on that inverted the check,
+	 *  so it could not pass on the fresh empty room it demanded. */
 	attract: '.attract',
 	joinAddress: '.jt-url',
-	/*
-	 * THE ROOM CODE, as the attract panel prints it — six characters at the largest type on the screen,
-	 * because it is the thing being TRANSCRIBED.
-	 *
-	 * IT IS ALSO HOW EVERY DRIVER JOINS NOW, which is why a presentational-looking class earns a contract
-	 * entry. The join screen is two panes: a guest who scanned arrives with `?room=CODE` and lands on the
-	 * IDENTITY pane, and a guest with no code gets the six-box CODE pane first. Every driver used to
-	 * `goto('/')` and immediately fill the name field — a field that only exists on the second pane — so all
-	 * of them broke silently when the panes landed, including `gate:measured`, which is the one gate with no
-	 * skip path. `joinAs()` in `lib/join.mjs` reads the code from HERE and takes the scanned path instead,
-	 * so there is one place that knows how joining works.
-	 *
-	 * Read off `/tv` rather than from an API on purpose: no endpoint publishes the active room's code (the
-	 * TV's server load is what resolves it), and the QR encodes it in a data URL that a driver cannot decode.
-	 * This element is the room's own advertisement of itself.
+	/**
+	 * The room code as the attract panel prints it — how every driver joins: `joinAs()` in `lib/join.mjs`
+	 * reads it here and takes the scanned `?room=CODE` path, because the name field is not on the code pane.
+	 * Read off /tv deliberately: no endpoint publishes the active room's code, and the QR encodes it in a
+	 * data URL a driver cannot decode.
 	 */
 	attractCode: '.jt-code',
 	stageHeadline: '.phrase-line',
 	/** The wordmark whose inset proves stage chrome clears the overscan region. */
 	stageBrand: '.brand',
+	/** When the advertised address is loopback or a bare hostname the TV replaces the QR block with this
+	 *  notice — correctly, since a QR to an unroutable address is a working-looking dead end. So it is
+	 *  also how a flow tells "the origin is not routable" apart from "someone already joined". */
 	badQr: '.badqr',
-	/*
-	 * The `.badqr` operator-notice card's own text lines the SCALING probe (p10) contrast-checks —
-	 * migrated from KNOWN_OFFENDERS (Group E of the per-driver split).
-	 * All three are children of `.badqr` in src/lib/tv/JoinBadge.svelte: `.badqr-t` is the
-	 * state line ("No external IP set") and `.badqr-fix` the remedy clause beside it. p10 reads
-	 * them for existence/geometry/contrast, never clicks them.
-	 */
+	/** The notice's own two text lines (state, then remedy) — p10 reads them for existence, geometry and
+	 *  contrast, never clicks them. */
 	badQrTitle: '.badqr-t',
 	badQrFix: '.badqr-fix',
 	/** The TV's master/guide media elements. An <audio> carries the instrumental, so a bare `video`
-	 *  selector read -1 forever and every playing frame in the gallery was silently skipped. */
+	 *  selector read -1 forever and every playing frame was silently skipped. */
 	mediaEl: 'video, audio',
 	/** A page's landmark heading — capture waits on it to know a route has painted. */
 	pageHeading: 'h1',
@@ -431,31 +216,23 @@ export const SEL = {
 	stateNext: '.state-next',
 	stateError: '.state-error',
 	stateWaiting: '.state-waiting',
-	/** The three transient TV states as one union — p8 asks "is the stage in any non-playing state?" in a
-	 *  single query; the resolver treats a comma list as a union, so one branch existing is enough. */
+	/** The three transient TV states as one union — "is the stage in any non-playing state?" in a single
+	 *  query; the resolver treats a comma list as a union, so one branch existing is enough. */
 	anyTransientState: '.state-error, .state-waiting, .state-next',
-	/*
-	 * TV STAGE STRUCTURE the timing/scaling probes read (migrated from KNOWN_OFFENDERS).
-	 *
-	 * `.tv` is the stage root; `.lobby` is the joined-but-not-playing screen (distinct from `.attract`,
-	 * the empty room); `.interstitial` is the between-songs card. `.slot` is a rotation media slot and
-	 * `.slot.visible` the one currently on screen. `.up-*` are the "up next" label/name/song lines the
-	 * gapless probe measures. All are read for existence/geometry, never clicked.
-	 */
+	/** Stage structure the timing/scaling probes read for existence and geometry, never click. `.tv` is
+	 *  the stage root, `.lobby` the joined-but-not-playing screen (distinct from `.attract`, the empty
+	 *  room), `.interstitial` the between-songs card, `.slot` a rotation media slot. */
 	tvRoot: '.tv',
 	lobby: '.lobby',
 	interstitial: '.interstitial',
 	slot: '.slot',
 	slotVisible: '.slot.visible',
-	/** The master audio element inside the visible slot — the audible stage master (p4 scopes past the
-	 *  pre-warm slot's paused <audio>). A descendant selector ending in a bare tag; the resolver models
-	 *  the `.slot.visible` class-compound part and the `audio` tag part. */
+	/** The audible stage master — scoped past the pre-warm slot's paused <audio>, which is why p4 cannot
+	 *  just query `audio`. */
 	slotVisibleAudio: '.slot.visible audio',
 	/** The transport's elapsed-time readout inside the seek row (p4 reads its text). */
 	seekTime: '.seekrow .time',
-	/** The seek-row fill bar's inner element — p4 reads its scaleX transform for a fractional progress
-	 *  check. A `>` child combinator into a bare tag; the resolver models the `.seekrow .track`
-	 *  class-compound parts and the `i` tag part. */
+	/** The seek-row fill bar's inner element — p4 reads its scaleX transform for fractional progress. */
 	seekFill: '.seekrow .track > i',
 	upLabel: '.up-label',
 	upName: '.up-name',
@@ -463,13 +240,9 @@ export const SEL = {
 	/** The lower-third's own name/song lines, scoped — p10 measures these nested under .lower-third. */
 	nowNameScoped: '.lower-third .ls-name',
 	nowSongScoped: '.lower-third .ls-song',
-	/*
-	 * LYRICS OVERLAY internals the lyrics probe reads. `.lyrics` is the overlay; `.reel` scrolls,
-	 * `.viewport` clips it, `.row`/`.row.current` are the lines, `.lyrics.unverified` flags ASR-only text,
-	 * `.ls-source` is the provenance badge naming the lyrics source (`.ls-asr` = its amber guess variant),
-	 * `.ball` is the bouncing dot. `activeWord` (below) is the word
-	 * the ball sits on.
-	 */
+	/** Lyrics overlay internals. `.reel` scrolls, `.viewport` clips it, `.row`/`.row.current` are the
+	 *  lines, `.lyrics.unverified` flags ASR-only text, `.ls-source` names the provenance (`.ls-asr` its
+	 *  amber guess variant), `.ball` is the bouncing dot. */
 	lyrics: '.lyrics',
 	lyricsReel: '.lyrics .reel',
 	lyricsViewport: '.lyrics .viewport',
@@ -481,57 +254,39 @@ export const SEL = {
 	ball: '.ball',
 	/** The full-screen tap-to-start affordance the autoplay-block probe checks for. */
 	autoplayHint: '.autoplay-hint',
-	/*
-	 * LOBBY strip the overlap probe reads. `.strip` is the joined-singers ribbon, `.person` a
-	 * chip in it, `.url` the lobby's typed join address. Scoped forms are what lobby-overlap.mjs queries.
-	 * The "+N more" overflow chip is RETIRED: the lobby now shows every guest with no
-	 * truncation, so there is no overflow chip and no `.person.more` anchor.
-	 */
+	/** The LOBBY's roster ribbon and typed join address, in the scoped forms lobby-overlap.mjs queries.
+	 *  The lobby shows every guest with no truncation, so there is no overflow chip to anchor. */
 	lobbyUrl: '.lobby .url',
 	lobbyStrip: '.lobby .strip',
 	lobbyStripPerson: '.lobby .strip .person',
 	lobbyAddress: '.url',
-	/* The bottom-right fullscreen control. It is position:absolute above the lobby roster strip,
-	   so the roster must not paint a chip UNDER it — the measured gate and lobby-overlap
-	   probe sweep the roster against this. */
+	/** The bottom-right fullscreen control. It is position:absolute above the lobby roster strip, so the
+	 *  roster must not paint a chip UNDER it — the measured gate and lobby-overlap sweep the roster
+	 *  against this. */
 	fsBtn: '.fs-btn',
-	/* KEY-SHIFT control the transpose probe reads: the +/- buttons and the current-key label.
-	   RE-ANCHORED from `.key .key-btn` when the pair became `<Button variant="keycap">`. The class went
-	   with the hand-rolled rule; `.key-cell` is the page-rendered wrapper that survives, and the tag is
-	   what the component renders, so this addresses the same two controls without depending on a class
-	   the component would have to carry for the test's benefit. */
+	/** The ± keycaps and the current-key label. `.key-cell` is the page-rendered wrapper plus the tag the
+	 *  component renders, so this addresses both controls without depending on a class a `<Button
+	 *  variant="keycap">` would have to carry for the test's benefit. */
 	keyBtn: '.key-cell button',
 	keyLabel: '.key .lab',
-	/* The remote's app shell (p10 measures its width to catch a capped grid leaving a void). */
+	/** The remote's app shell (p10 measures its width to catch a capped grid leaving a void). */
 	appShell: '.app-shell',
-	/*
-	 * The join QR, addressed by the ALT TEXT rather than a class.
-	 *
-	 * capture.mjs used to wait for `.url` to decide the attract screen had painted. That class no
-	 * longer exists — the short address is `.u` inside `.hero`/`.corner` — so the very first step of a
-	 * capture run timed out and took all 40-odd frames with it. The alt text is what a user is
-	 * promised, so it moves far less often than the presentational class beside it, and anchoring here
-	 * means `bun test` reports the move instead of a capture run discovering it.
-	 */
+	/** The join QR, by ALT TEXT rather than a class: the alt text is what a user is promised, so it moves
+	 *  far less often than the presentational class beside it, and anchoring here means `bun test` reports
+	 *  the move instead of a capture run discovering it 40 frames in. */
 	qrImage: 'img[alt="QR code to join Encore"]',
-	/** The word the ball is currently sitting on — proof the reel is MOVING, not merely rendered. */
+	/** The word the ball is sitting on — proof the reel is MOVING, not merely rendered. */
 	activeWord: '.lyrics .word.active',
 
-	// ── settings (capture drives the room variants through these) ──────────
-	/*
-	 * Every room/global control the capture flips, by id. Addressed by id because these are real
-	 * <select>/<input> elements with stable ids, and because a settings page has many controls whose
-	 * visible labels are similar ("Off" appears in four different pickers).
-	 */
+	// settings (capture drives the room variants through these)
+	/** Every room/global control the capture flips, by id — these are real <select>/<input> elements with
+	 *  stable ids, and a settings page has many controls whose visible labels are similar ("Off" appears
+	 *  in four different pickers). */
 	setting: (id: string) => `#${id}`,
-	/**
-	 * A settings SCOPE tab, by id. Capture drives the real tab rather than navigating to `?tab=`, so
-	 * the control that gates every setting below it is exercised too. The ids are template-interpolated
-	 * in the source (`id="tab-{t.id}"`), so there is no `id="tab-you"` to grep for and no id list is
-	 * kept here — a hand-kept copy of the page's `TABS` registry is exactly the duplicated vocabulary
-	 * this repo keeps getting wrong. What is asserted instead is this helper's FORMAT against the
-	 * page's own interpolated attribute; see contract.test.ts.
-	 */
+	/** A settings SCOPE tab, by id. Capture drives the real tab rather than navigating to `?tab=`, so the
+	 *  control gating every setting below it is exercised too. The ids are template-interpolated, so no id
+	 *  list is kept here — a hand-kept copy of the page's TABS registry is the duplicated vocabulary this
+	 *  repo keeps getting wrong; contract.test.ts asserts this helper's FORMAT instead. */
 	settingsTab: (id: string) => `#tab-${id}`,
 	SETTING_IDS: [
 		'join-origin',
@@ -546,42 +301,22 @@ export const SEL = {
 		'lyrics-case'
 	],
 
-	// ── dashboards (the stats/metrics /stats page the p11 probe reads) ─────
-	/*
-	 * The /stats dashboard's card/tile/chart hooks the p11-dashboards probe reads. Migrated here from
-	 * KNOWN_OFFENDERS as Group D of the per-driver SEL split — the ENGINE-HEAVY
-	 * group, because `dashChartOrBody` uses shapes the resolver could not model on base: the `+`
-	 * adjacent-sibling combinator and a `:not()` exclusion chain. The resolver now models both (see
-	 * selectorResolves in contract.test.ts), so all four resolve against the /stats page's own markup.
-	 */
-	/** A dashboard card — `<div class="card">` / `<div class="card tile …">` (routes/stats/+page.svelte). */
+	// dashboards (/stats, read by p11)
+	/** A dashboard card — `<div class="card">` / `<div class="card tile …">`. */
 	dashCard: '.card',
 	/** A table inside a dashboard card — the step/stage timing tables the probe pulls text from. */
 	dashCardTable: '.card table',
-	/** A stat tile's headline number — `<span class="n">` inside a `.card.tile` (routes/stats/+page.svelte). */
+	/** A stat tile's headline number — `<span class="n">` inside a `.card.tile`. */
 	dashTileNumber: '.tile .n',
-	/*
-	 * The chart element a card's <h2> heads: `.card h2 + .bars` (the <Bars> chart's `<ol class="bars">`),
-	 * or the same slot as anything-but-a-table/note/scroller — `.card h2 + :not(table):not(.note):not(.scroller)`.
-	 * A comma UNION so one branch resolving is enough; the first branch's `.card`/`h2`/`.bars` parts
-	 * carry it. The `:not()` arguments are EXCLUSIONS the source need not render (see the resolver's
-	 * `:not()` branch), and the `+` sibling combinator resolves like `>`/descendant — both sides must
-	 * exist, their relative position is not source-checkable.
-	 */
+	/** The chart element a card's <h2> heads, as a comma UNION so one branch resolving is enough. The
+	 *  `:not()` arguments are EXCLUSIONS the source need not render, and `+` resolves like `>`: both sides
+	 *  must exist, their relative position is not source-checkable. */
 	dashChartOrBody: '.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)',
-	// ── admin dashboard (/admin — the an earlier change entry-delete surface the admin-delete probe drives) ──
-	/*
-	 * RE-POINTED BY THE PRIMITIVE-ADOPTION PASS. These three were `.song-row`, `.delete` and `.confirm .danger` — classes
-	 * on a hand-rolled <li> and three hand-rolled buttons. The row is Item.Root/Content/Actions and the
-	 * controls are Button variants now, so the classes are gone along with 13 CSS rules and all seven of
-	 * this page's hardcoded colours. The anchors moved to things that describe the CONTROL rather than its
-	 * styling: the row keys on Item's own `data-slot`, and the two destructive steps key on the per-song
-	 * `aria-label` added in the same change (they had none, so AT announced "Delete, button" N times with
-	 * nothing to tell the rows apart). A styling class is a poor test handle — that is what left an
-	 * orphaned `.chip` in LyricsReselect — and an aria-label cannot be deleted without a real a11y
-	 * regression, which makes it the sturdier contract.
-	 */
-	/** A deletable song row on /admin: <Item.Root> (routes/admin/+page.svelte). */
+
+	// admin (/admin — the entry-delete surface admin-delete drives). Anchored on things that describe the
+	// CONTROL rather than its styling: Item's own data-slot, and the per-song aria-label/data-act. A
+	// styling class is a poor test handle, where an aria-label cannot be deleted without a real a11y regression.
+	/** A deletable song row on /admin: `<Item.Root>`. */
 	adminSongRow: "[data-slot='item']",
 	/** The first-step Delete button on an admin song row — arms the confirm. */
 	adminDelete: "[data-act='arm-delete']",
@@ -597,9 +332,8 @@ export const SEL = {
 export const PRESET_COLOUR_NAMES = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'] as const;
 
 export const HOOKS: Hook[] = [
-	// join (both identity panes' colour picker is the RING — ColourRing.svelte; the eight-preset
-	// ColourPicker's remaining surface is the /components gallery, so its hooks below are re-pointed at
-	// that surface, not retired)
+	// join. Both identity panes pick a colour on the RING; the eight-preset ColourPicker's only remaining
+	// surface is the /components gallery, so its hooks are pointed at that surface rather than retired.
 	{
 		id: 'nameInput',
 		file: 'src/lib/components/JoinLanding.svelte',
@@ -610,25 +344,25 @@ export const HOOKS: Hook[] = [
 		id: 'colourRing',
 		file: 'src/lib/components/ColourRing.svelte',
 		anchor: 'class="colour-ring"',
-		why: 'the join screen picks a colour on the ring now; SEL.colourRing addresses this class because the control names itself from a prop expression, so there is no literal aria-label to resolve'
+		why: 'SEL.colourRing addresses this class because the control names itself from a prop expression, so there is no literal aria-label to resolve'
 	},
 	{
 		id: 'colourRingSlider',
 		file: 'src/lib/components/ColourRing.svelte',
 		anchor: 'role="slider"',
-		why: 'the ring replaced a native range input, so its keyboard operation is not inherited — a driver drives it with Home/End/arrows, and a keyboard guest reaches all 48 stops the same way'
+		why: 'the ring is not a native range input, so its keyboard operation is not inherited — a driver drives it with Home/End/arrows, and a keyboard guest reaches all 48 stops the same way'
 	},
 	{
 		id: 'colourRingMounted',
 		file: 'src/lib/components/JoinLanding.svelte',
 		anchor: '<ColourRing',
-		why: 'colourRing resolves against a COMPONENT; the identity pane rendering it is a separate claim, and it is the one that says the join screen has a colour picker at all (the same reason bandMounted exists beside homeReady)'
+		why: 'colourRing resolves against a COMPONENT; the identity pane rendering it is the separate claim that the join screen has a colour picker at all'
 	},
 	{
 		id: 'swatchRadiogroup',
 		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: 'aria-label={colorName(c)}',
-		why: 'presets are selected by accessible name; the old flow used a hex and broke. RE-POINTED SURFACE TWICE: this picker is the /components gallery demo now — both identity panes use colourRing'
+		why: 'presets are selected by accessible name, not by hex; this picker is the /components gallery demo, since both identity panes use colourRing'
 	},
 	{
 		id: 'colourNames',
@@ -640,7 +374,7 @@ export const HOOKS: Hook[] = [
 		id: 'hueSlider',
 		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: 'aria-label="Pick your own color by hue"',
-		why: 'the gallery picker still proves a non-preset hue survives the round trip; both identity panes prove it through the ring instead, whose 48 stops are all non-preset by construction'
+		why: 'the gallery picker proves a non-preset hue survives the round trip; the identity panes prove it through the ring, whose 48 stops are all non-preset by construction'
 	},
 	{
 		id: 'submit',
@@ -654,22 +388,22 @@ export const HOOKS: Hook[] = [
 		id: 'search',
 		file: 'src/routes/+page.svelte',
 		anchor: 'aria-label="Search a song or artist"',
-		why: 'the flow searches the library through this field. It has been on `/` (docked), on `/find` (its own route), and is on `/` again since that route was merged into home (2026-09-22) — the label is deliberately unchanged through all three, so only the FILE ever moved'
+		why: 'the flow searches the library through this field. The label is deliberately unchanged across every move of the box, so only the FILE ever has to be re-pointed'
 	},
 	{
 		id: 'songDoor',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'class="more-slot"',
-		why: 'the \u00b7\u00b7\u00b7 door to /song/[mediaId]; SEL.songDoor addresses the anchor INSIDE this slot, because being a real <a href> is the property that matters'
+		why: 'the ··· door to /song/[mediaId]; SEL.songDoor addresses the anchor INSIDE this slot, because being a real <a href> is the property that matters'
 	},
 	{
 		id: 'findBox',
 		file: 'src/routes/+page.svelte',
 		anchor: 'class="findbox"',
-		why: 'the box the field sits in, at the TOP of the home column — the successor to the retired docked search band, and since the /find merge (2026-09-22) it is the first thing above the queue rather than a separate surface'
+		why: 'the box the field sits in, at the TOP of the home column — the first thing above the queue rather than a separate surface'
 	},
 	{
-		// Anchored on the OPENING TAG, not the bare `<main>`: the element carries a style attribute now
+		// Anchored on the OPENING TAG, not the bare `<main>`: the element carries a style attribute
 		// (`--row-h`, the one measured row height the live sort multiplies through the rows it displaces).
 		id: 'mainColumn',
 		file: 'src/routes/+page.svelte',
@@ -680,31 +414,31 @@ export const HOOKS: Hook[] = [
 		id: 'npDrawer',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'class="np-drawer"',
-		why: 'the surface the hero became — song, seek row, transport and live controls, pulled up from the band instead of rendered at the top of home'
+		why: 'the sheet carrying song identity, the seek row, the transport and the live controls'
 	},
 	{
 		id: 'drawerMounted',
 		file: 'src/routes/+layout.svelte',
 		anchor: '<NowPlayingDrawer',
-		why: 'npDrawer can only resolve because the LAYOUT mounts the sheet; the component rendering the class is not the same claim as the app showing it. Since the merge this is the TOP of a two-link chain (layout → drawer → band), and `bandMounted` is its other link — the layout mounts nothing else, so if this anchor goes the band goes with it'
+		why: 'npDrawer can only resolve because the LAYOUT mounts the sheet; the component rendering the class is not the same claim as the app showing it. This is the TOP of a two-link chain (layout → drawer → band) whose other link is bandMounted'
 	},
 	{
 		id: 'drawerHandle',
 		file: 'src/lib/components/ui/drawer/drawer-handle.svelte',
 		anchor: 'data-slot="drawer-handle"',
-		why: 'handleOnly restricts dragging TO this element, so losing it makes the drawer silently undraggable rather than merely unadorned — shadcn ships a decorative div in its place, which is the trap this file exists to avoid'
+		why: 'losing it makes the sheet silently undraggable rather than merely unadorned — shadcn ships a decorative div in its place, which is the trap this file exists to avoid'
 	},
 	{
 		id: 'toolsBody',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'class="tools-body"',
-		why: 'the same live-controls body, re-pointed with the move: it now means the drawer is open AND a song is playing, rather than a disclosure having been revealed'
+		why: 'the live-controls body; it means a song is playing, not that a disclosure has been revealed'
 	},
 	{
 		id: 'toolsNote',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'class="tools-note"',
-		why: 'the no-shared-drag-surface rule IS this sentence; p16 asserts its presence for a dead control and its absence for a live one — unchanged by the move except for the file'
+		why: 'the no-shared-drag-surface rule IS this sentence; p16 asserts its presence for a dead control and its absence for a live one'
 	},
 	{
 		id: 'guidingTrackRoot',
@@ -722,13 +456,13 @@ export const HOOKS: Hook[] = [
 		id: 'slider',
 		file: 'src/lib/components/ui/slider/slider.svelte',
 		anchor: 'data-slot="slider"',
-		why: 'the vendored slider is addressed by shadcn own data-slot, which survives a re-vendor'
+		why: "the vendored slider is addressed by shadcn's own data-slot, which survives a re-vendor"
 	},
 	{
 		id: 'backToQueue',
 		file: 'src/routes/song/[mediaId]/+page.svelte',
 		anchor: "back={{ href: '/', label: 'Back to the queue' }}",
-		why: 'a pushed phone surface must OFFER a way back to the queue; this is a route asking PageHeader for one. RE-ANCHORED (2026-09-22) from the find route, which no longer exists — search is a section of home, so the surface that used to need this link is the page it pointed at. The song page is the pushed surface that still needs it, and the anchor is the same literal'
+		why: 'a pushed phone surface must OFFER a way back to the queue; this is a route asking PageHeader for one'
 	},
 	{
 		id: 'backSlot',
@@ -742,35 +476,17 @@ export const HOOKS: Hook[] = [
 		anchor: 'class="band"',
 		why: 'the band is the chrome a JOINED singer gets, so its presence is the post-join readiness signal both call sites poll for'
 	},
-	/*
-	 * RE-POINTED, NOT RETIRED: `bandMounted`'s anchor `<NowPlayingBand` moved out of
-	 * `src/routes/+layout.svelte` and into `src/lib/components/NowPlayingDrawer.svelte`. The CLAIM is
-	 * unchanged and is why the name stays — `homeReady` (`.band`) resolves against a component, and a
-	 * component rendering a class is not the same thing as the app rendering the component, so the mount
-	 * itself has to be pinned somewhere. Only the file moved, exactly as `search`'s has each time it changed
-	 * surface: the band is composed as snap point 0 of the sheet instead of being a fixed sibling of it.
-	 *
-	 * IT IS NOW HALF A CHAIN, and that is a strengthening rather than a dilution. `drawerMounted` pins
-	 * layout → drawer and this pins drawer → band; both must hold for `.band` to reach a phone, and each
-	 * fails at the file that broke. Neither could catch the other's break: dropping `<NowPlayingBand` from
-	 * the drawer leaves the layout's mount perfectly intact.
-	 *
-	 * NOT SATISFIED BY THE LAYOUT'S IMPORT. `+layout.svelte` still carries
-	 * `import NowPlayingBand from '$lib/components/NowPlayingBand.svelte'` with no remaining call site —
-	 * dead after the merge, and outside this file's scope to remove. The anchor is deliberately `<`-
-	 * prefixed, so an import cannot satisfy it and the hook keys on the band being RENDERED.
-	 */
 	{
 		id: 'bandMounted',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: '<NowPlayingBand',
-		why: 'homeReady only holds because the sheet COMPOSES the band as its snap-0 content on every phone surface; the component rendering the class is not the same claim as the app showing it'
+		why: "homeReady only holds because the sheet COMPOSES the band as its snap-0 content on every phone surface. The anchor is `<`-prefixed so the layout's leftover import cannot satisfy it — it keys on the band being RENDERED"
 	},
 	{
 		id: 'bandRestart',
 		file: 'src/lib/components/NowPlayingBand.svelte',
 		anchor: 'aria-label="Restart"',
-		why: 'restart is in the band row at BOTH sheet heights since the magnifier left it, so a driver can tap it with no gesture; it was hidden at rest for one release and a flow had to open the sheet first'
+		why: 'restart is in the band row at BOTH sheet heights, so a driver can tap it with no gesture'
 	},
 	{
 		id: 'bandSkip',
@@ -788,55 +504,40 @@ export const HOOKS: Hook[] = [
 		id: 'dockRow',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'class="band-slot"',
-		why: "the docked row whose clientHeight IS --dock-h (bound through the drawer's bandH prop and written by the layout). The measured band contract reads the token against THIS element; `.band` is the strip inside it and is 24px shorter"
+		why: "the docked row whose clientHeight IS --dock-h (bound through the drawer's bandH prop and written by the layout). `.band` is the strip inside it and is 24px shorter"
 	},
 	{
 		id: 'bandOpen',
 		file: 'src/lib/components/NowPlayingBand.svelte',
 		anchor: 'class="meta meta-btn"',
-		why: 'the band\'s expand control — the metadata block in its BUTTON form. Anchored on the class pair because the accessible name interpolates the song title, so there is no literal for a role+name hook to bind to; the pair also distinguishes it from the inert `<div class="meta">` the gallery renders'
+		why: 'the band\'s expand control in its BUTTON form. Anchored on the class pair because the accessible name interpolates the song title, so there is no literal for a role+name hook; the pair also distinguishes it from the inert `<div class="meta">` the gallery renders'
 	},
 	{
 		id: 'bandOpenWired',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'onexpand={() =>',
-		why: "bandExpandWired's successor, and the half that makes `bandOpen` real: the button is gated on `{#if onexpand}`, so a hook on the component alone would pass while nothing passed one — which is exactly how the retired pair came to assert a control the app could not render. Deleting this wiring reds here rather than silently returning the sheet to pointer-only"
+		why: 'the half that makes `bandOpen` real: the button is gated on `{#if onexpand}`, so a hook on the component alone would pass while nothing passed one. Deleting this wiring reds here rather than silently returning the sheet to pointer-only'
 	},
-	/*
-	 * `drawerHandleOnly` BECAME `drawerBodyNoDrag` (2026-09-21) — the same claim, from the other side.
-	 *
-	 * It anchored the `handleOnly` prop: dragging restricted to the grab bar, so a body made of sliders was
-	 * not also a drag surface. Reported: the top edge of a sheet that plainly looks draggable was
-	 * draggable only at one 6px bar. `handleOnly` is all-or-nothing in vaul, so the fix was to drop it and
-	 * EXCLUDE instead — `data-vaul-no-drag` on `.np-fit`, resolved by `closest()`, covering the head, the
-	 * body, the guiding-track slider, the keycaps and the range visualiser in one attribute.
-	 *
-	 * Still a whitelist in effect ("only the band row drags"): a control added to the sheet lands inside
-	 * `.np-fit` and is excluded by construction, which is the property the old prop was chosen for. A new id
-	 * rather than a re-anchor, by the `searchDock` → `findBox` rule: the mechanism changed, not just its
-	 * spelling, and a reader who greps the old name should land on this record.
-	 */
 	{
 		id: 'drawerBodyNoDrag',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: '<div class="np-fit" data-vaul-no-drag',
-		why: 'the band row is the drag surface, so this attribute is the whole of on this sheet: without it vaul drags from anywhere in a body made of sliders and the guiding-track thumb and the dismiss gesture become one gesture, with the drawer winning as the ancestor — a gesture collision rather than a missing element'
+		why: 'the band row is the only drag surface, and this attribute is what keeps a body made of sliders off it. Without it vaul drags from anywhere and the guiding-track thumb and the dismiss gesture become one gesture, with the drawer winning as the ancestor — a gesture collision rather than a missing element. A control added to the sheet lands inside `.np-fit` and is excluded by construction'
 	},
 	{
 		id: 'bandTitle',
 		file: 'src/lib/components/NowPlayingBand.svelte',
 		anchor: 'class="title"',
-		why: 'the playing song read with no gesture, on chrome present across every phone surface — the default successor to the retired heroTitle, because a playing entry renders no queue row'
+		why: 'the playing song read with no gesture, on chrome present across every phone surface — needed because a playing entry renders no queue row'
 	},
 	{
 		id: 'songRow',
 		file: 'src/lib/components/SongRow.svelte',
 		// Anchored on `class="row ` WITHOUT a closing quote: the flow queries `.row`, and the class list
-		// beside it is presentational and will keep changing (it just gained the shared `list-row`
-		// primitive, which broke a full-string anchor while `.row` itself never moved). The open-ended
-		// form still proves the element the flow drives exists, without pinning the classes next to it.
+		// beside it is presentational and keeps changing. The open-ended form proves the element exists
+		// without pinning the classes next to it.
 		anchor: 'class="row ',
-		why: 'search results are read from .row — the old flow read .result and found nothing'
+		why: 'search results are read from .row'
 	},
 	{
 		id: 'addTurn',
@@ -866,12 +567,8 @@ export const HOOKS: Hook[] = [
 		id: 'emptyState',
 		file: 'src/lib/components/ui/empty/empty.svelte',
 		anchor: "'encore-empty'",
-		why: 'SEL.empty was re-anchored here from the deleted `.empty`; the class is an Encore deviation inside a copy-in, so it is exactly the kind of thing a re-vendor drops silently'
+		why: 'the class is an Encore deviation inside a copy-in, so it is exactly the kind of thing a re-vendor drops silently'
 	},
-	// transport — in the now-playing SHEET since NowPlayingHero.svelte was deleted. The SELECTORS are
-	// unchanged (same aria-labels on the same three controls); only which file to look in moved. Since the
-	// merge the sheet is mounted at all times, so these resolve and exist without a gesture — but they are
-	// below the fold until it is pulled up to `0.82`, so a tap or a measurement still needs the drag.
 	{
 		id: 'skip',
 		file: 'src/lib/components/NowPlayingBand.svelte',
@@ -879,14 +576,9 @@ export const HOOKS: Hook[] = [
 		why: 'the flow advances the rotation to prove round-robin ordering'
 	},
 
-	// TV
-	/*
-	 * The attract screen and the two pieces of type the flow measures on it, anchored to the FILE and
-	 * not merely to the class. That distinction is the whole lesson of the `.url` rot: `.brand` is
-	 * rendered by BOTH tv/+page.svelte and TvLobby.svelte, so a check that only asks "does any source
-	 * carry this class" stays green when the attract screen loses it and the lobby keeps it — which is
-	 * the exact shape of the bug that made the flow assert the lobby's address against the empty room.
-	 */
+	// TV. Anchored to the FILE and not merely to the class: `.brand` is rendered by BOTH tv/+page.svelte
+	// and TvLobby.svelte, so "does any source carry this class" stays green when the attract screen loses
+	// it and the lobby keeps it — which is how the flow came to assert the lobby's address against the empty room.
 	{
 		id: 'attract',
 		file: 'src/routes/tv/+page.svelte',
@@ -947,18 +639,11 @@ export const HOOKS: Hook[] = [
 		id: 'guidingTrack',
 		file: 'src/lib/components/GuidingTrack.svelte',
 		anchor: 'aria-label="Guiding track — original vocal level"',
-		why: 'the flow mixes the original vocals back in through this control — a <Slider> since the shadcn vendoring, not a range input, though the aria-label anchoring it is deliberately unchanged'
+		why: 'the flow mixes the original vocals back in through this control — a <Slider>, not a range input, though the aria-label anchoring it is deliberately unchanged'
 	},
 
-	// per-song stage background hook removed: the stage look now lives only in room settings, so the
-	// phone route no longer renders a .bg-pick override control for the contract to anchor to.
-
-	// identity (phone header → /settings?tab=you → name / colour / leave)
-	//
-	// These three used to anchor into ProfileSheet.svelte. That sheet was retired when the settings page
-	// was split into You / Party / Server scopes: a name editable in two places is two save paths that
-	// can disagree, so the sheet's contents moved onto the You tab and the header button became a link
-	// to it. The hooks follow the controls.
+	// identity (phone header → /settings?tab=you → name / colour / leave). A name editable in two places
+	// is two save paths that can disagree, so the controls live on the You tab and the header is a link.
 	{
 		id: 'profileOpen',
 		file: 'src/routes/+page.svelte',
@@ -984,23 +669,18 @@ export const HOOKS: Hook[] = [
 		why: 'the three scope tabs are how every other settings control is reached at all'
 	},
 
-	// away / presence indicator (queue row)
 	{
 		id: 'queueAway',
 		file: 'src/lib/components/QueueRow.svelte',
 		anchor: 'class="away"',
 		why: 'the flow proves an unreachable singer is marked away so the room can decide to skip them'
 	},
-
-	// TV visualizer picker (settings)
 	{
 		id: 'tvVisualizer',
 		file: 'src/routes/settings/+page.svelte',
 		anchor: 'id="tv-visualizer"',
 		why: 'the flow selects which audio visualizer paints the TV stage'
 	},
-
-	// stats + metrics pages
 	{
 		id: 'statsPage',
 		file: 'src/routes/stats/+page.svelte',
@@ -1014,24 +694,20 @@ export const HOOKS: Hook[] = [
 		why: 'the internal metrics page landmark the flow lands on at /metrics'
 	},
 
-	/*
-	 * Anchors the CAPTURE flow depends on (tests/e2e/capture.mjs).
-	 *
-	 * Registered here for the same reason as everything above: capture is a long stateful chain, and
-	 * when an anchor moves the run does not go red in a useful way — it produces a plausible-looking
-	 * but wrong set of frames, or dies on step one. `.url` moving is precisely what happened.
-	 */
+	// Anchors the CAPTURE flow depends on. Registered for the same reason as everything above: capture is
+	// a long stateful chain, so a moved anchor does not go red usefully — it produces a plausible-looking
+	// but wrong set of frames, or dies on step one.
 	{
 		id: 'qrImage',
 		file: 'src/lib/tv/JoinBadge.svelte',
 		anchor: 'alt="QR code to join Encore"',
-		why: 'capture waits on this to know the attract screen has painted; `.url` rotted and broke the run'
+		why: 'capture waits on this to know the attract screen has painted'
 	},
 	{
 		id: 'badQr',
 		file: 'src/lib/tv/JoinBadge.svelte',
 		anchor: 'No external IP set',
-		why: "the misconfigured-origin frame is the first-run failure worth showing; capture drives it deliberately. RE-ANCHORED (2026-09-21) from the card headline 'Join QR unavailable': the state is a one-line notice beside a QR that still renders, so the headline it used to anchor no longer exists — this is the line that replaced it"
+		why: 'the misconfigured-origin frame is the first-run failure worth showing; capture drives it deliberately. The state is a one-line notice beside a QR that still renders, so this line is the anchor rather than a card headline'
 	},
 	{
 		id: 'activeWord',

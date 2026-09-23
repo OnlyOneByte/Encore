@@ -16,7 +16,6 @@ import { sqlitePersistence } from '$lib/server/state/persistence';
 import type { PlaybackState, QueueEntry } from '$lib/contract';
 
 test('migrations create all tables and every entity round-trips', () => {
-	// in-memory bun:sqlite — no disk, fully isolated per test run
 	const { db } = openDb(':memory:');
 	runMigrations(db);
 
@@ -79,9 +78,7 @@ test('media defaults: stemStatus none', () => {
 	expect(row.stemStatus).toBe('none');
 });
 
-// media.lyrics_override_ref arrives via migration 0010 (not a baseline edit), defaults null
-// ("no human override → the ranking decides"), and round-trips a stored ref. RED on base: the media
-// baseline has no lyrics_override_ref column, so this insert/read cannot preserve it.
+// media.lyrics_override_ref arrives via migration 0010, defaults null, and round-trips a stored ref.
 test('media.lyrics_override_ref defaults null and round-trips a stored ref', () => {
 	const { db, sqlite } = openDb(':memory:');
 	runMigrations(db);
@@ -109,11 +106,9 @@ test('media.lyrics_override_ref defaults null and round-trips a stored ref', () 
 	expect(byId.get('o1')).toBe('derived/lyrics/o1-manual-word.json');
 });
 
-// media.lyrics_override_text arrives via migration 0011 (not a baseline edit), defaults null ("no
-// pasted text → the pin names a candidate already on disk"), and round-trips the words behind a pasted
-// override. It is the column that makes a paste survive a restart between enqueue and dispatch, where
-// `assignParams` re-derives the align job's `pinnedText` from this row. RED on base: the media table has
-// no lyrics_override_text column, so this insert/read cannot preserve it.
+// media.lyrics_override_text arrives via migration 0011, defaults null, and round-trips the words behind a
+// pasted override — the column that makes a paste survive a restart between enqueue and dispatch, where
+// `assignParams` re-derives the align job's `pinnedText` from this row.
 test('media.lyrics_override_text defaults null and round-trips pasted words', () => {
 	const { db, sqlite } = openDb(':memory:');
 	runMigrations(db);
@@ -143,12 +138,9 @@ test('media.lyrics_override_text defaults null and round-trips pasted words', ()
 	expect(byId.get('t1')).toBe('hello darkness my old friend\nive come to talk with you again');
 });
 
-// the room_settings.lyrics_ball COLUMN default is 'off' (owner decision C — flip the marker
-// default to No marker, keep the styles). This pins the SQLite column default itself: a raw insert
-// that omits lyrics_ball must read back 'off'. Reverting schema.ts's .default('off') -> 'bounce'
-// reds this. (The app read path never hits this default — getRoom returns DEFAULT_ROOM_SETTINGS for
-// a no-row room and setRoom writes every column — so this guards the migration / hand-edited-DB path
-// the column default actually governs.)
+// The room_settings.lyrics_ball COLUMN default is 'off'. This pins the SQLite default itself: a raw insert
+// omitting lyrics_ball must read back 'off'. The app read path never hits it (getRoom returns defaults for a
+// no-row room, setRoom writes every column), so this guards the migration / hand-edited-DB path it governs.
 test('room_settings column defaults: lyrics_ball is off', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
@@ -157,12 +149,9 @@ test('room_settings column defaults: lyrics_ball is off', () => {
 	expect(row.lyricsBall).toBe('off');
 });
 
-// — the job_attempts.selection column must arrive as an INCREMENTAL migration (0001), not an edit
-// to the baseline. An existing deployment restarts and re-runs runMigrations; drizzle replays only
-// migrations it has not recorded, so a new column belongs in a new numbered file. Editing 0000 in place
-// makes an existing DB replay the baseline and throw on CREATE TABLE of an already-existing table (an
-// availability failure, reproduced by the reviewer in code review). This pins the column reaches the schema
-// through migration and round-trips. RED on base: no 0001, so the column is absent and the insert throws.
+// job_attempts.selection must arrive as an INCREMENTAL migration (0001), not an edit to the baseline:
+// drizzle replays only migrations it has not recorded, so editing 0000 in place makes an existing DB replay
+// the baseline and throw on CREATE TABLE of an already-existing table — an availability failure.
 test('job_attempts.selection is added by migration and round-trips', () => {
 	const { db, sqlite } = openDb(':memory:');
 	runMigrations(db);
@@ -211,11 +200,8 @@ test('job_attempts.selection is added by migration and round-trips', () => {
 	expect(a2.selection).toBeNull();
 });
 
-// playback_state is KEYED BY ROOM. Two rooms each hold their own now-playing / position /
-// key-shift / background — the mechanism is the `room_id` primary key replacing the single
-// 'singleton' row. On base this REDS: the old table has one PK-'singleton' row, so the second
-// insert collides on the primary key (one shared row per deployment) and hydrate can only ever
-// return one room's playback for both.
+// playback_state is KEYED BY ROOM: the `room_id` primary key replaced the single 'singleton' row. On base
+// the second insert collides on the primary key, so hydrate can only ever return one room's playback.
 test('two rooms hold independent playback state, keyed by room_id', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
@@ -224,7 +210,6 @@ test('two rooms hold independent playback state, keyed by room_id', () => {
 	db.insert(rooms).values({ id: 'roomA', code: 'AAAAAA', createdAt: now }).run();
 	db.insert(rooms).values({ id: 'roomB', code: 'BBBBBB', createdAt: now }).run();
 
-	// Each room is playing something different, at a different position, in a different key.
 	db.insert(playbackState)
 		.values({ roomId: 'roomA', currentEntryId: 'entryA', positionSec: 12, isPlaying: true, keyShift: 2 })
 		.run();
@@ -248,10 +233,8 @@ test('two rooms hold independent playback state, keyed by room_id', () => {
 	expect(b?.keyShift).toBe(-3);
 });
 
-// queue_entries is KEYED BY ROOM. Two rooms each hold their own queue + rotation — the mechanism
-// is the `room_id` column plus the write-behind sink and boot-hydrate both scoping by room_id. On base
-// this REDS: queue_entries has no room_id, so the two rooms' entries land in ONE undifferentiated
-// table and hydrate(roomA)/hydrate(roomB) each return BOTH rooms' entries — a shared deployment queue.
+// queue_entries is KEYED BY ROOM, via the `room_id` column plus write-behind and boot-hydrate both scoping
+// by it. On base there is no room_id, so hydrate(roomA)/hydrate(roomB) each return BOTH rooms' entries.
 test('two rooms hold independent queues, keyed by room_id (persist + hydrate)', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
@@ -291,8 +274,7 @@ test('two rooms hold independent queues, keyed by room_id (persist + hydrate)', 
 	).toEqual(['a1', 'a2']);
 	expect(hydrate(db, 'roomB').entries.map((e) => e.id)).toEqual(['b1']);
 
-	// AND a room's write-behind replace only clears ITS OWN rows: re-persisting roomA's queue must not
-	// wipe roomB's. A global `delete` in the sink (the pre-0003 shape) would fail this.
+	// AND a room's write-behind replace clears only ITS OWN rows — a global `delete` in the sink fails this.
 	sqlitePersistence(db, 'roomA').persist({ entries: [qe('a3', 'ana', 0)], playback: idle });
 	expect(hydrate(db, 'roomA').entries.map((e) => e.id)).toEqual(['a3']);
 	expect(hydrate(db, 'roomB').entries.map((e) => e.id)).toEqual(['b1']); // roomB untouched

@@ -1,12 +1,8 @@
-// Pure lease policy — no DB, no clock, no IO (the I/O orchestrator is reaper.ts). Leases are the
-// crash-recovery mechanism: a job is only "owned" by a worker with a live WS session, enforced by
-// a deadline the reaper checks. See docs/ARCHITECTURE.md.
-//
-// Two lease kinds, distinguished by the job's STATUS (not stored separately):
-//   • ack lease     — set on `assign`; worker must `job:accept` before it expires, else requeue
-//                     (NO attempt burned — the worker never started).
-//   • progress lease — set on `accept`/`progress`; worker must heartbeat before it expires, else
-//                      the worker is assumed dead → attempts++ → requeue, or fail if exhausted.
+// Pure lease policy — no DB, no clock, no IO; the I/O orchestrator is reaper.ts. A job is "owned" by a
+// worker only while a deadline the reaper checks hasn't passed; the lease kind is inferred from the
+// job's STATUS, not stored separately. Ack lease (assigned, pre-accept) requeues with attempts
+// unchanged on expiry — the worker never started. Progress lease (running) means expiry burns an
+// attempt (worker assumed dead). See docs/ARCHITECTURE.md §7.
 
 import type { Job } from '../../contract';
 
@@ -22,16 +18,9 @@ export const DEFAULT_LEASE_CONFIG: LeaseConfig = {
 	progressLeaseMs: 30_000
 };
 
-/**
- * Have this job's processing attempts run out? The §8 retry policy: a job with `attempts` burned may
- * still be retried while it has budget left, and fails terminally once `attempts` reaches
- * `maxAttempts`. This is the ONE place that rule is written. It was inlined in two places that had
- * to stay in lockstep by hand — the reaper's progress-lease-expiry branch (`sweep`, below) and the
- * worker-hub's `job:failed` handler — with the second spelling it as the complement
- * (`attempts < job.maxAttempts`), so a change to the policy (say, a per-job-type cap) had to be
- * mirrored across both sites or they would silently disagree about when a process is dead. Named once,
- * shared, so the retry ceiling cannot drift between the reaper path and the worker-reported path.
- */
+/** The ONE place the retry-exhaustion rule is written; `sweep` below and worker-hub's `job:failed`
+ *  handler both call it rather than re-testing `attempts >= maxAttempts` themselves, so a policy change
+ *  (e.g. a per-job-type cap) cannot leave the two call sites silently disagreeing about when a job is dead. */
 export function attemptsExhausted(attempts: number, maxAttempts: number): boolean {
 	return attempts >= maxAttempts;
 }
@@ -51,13 +40,8 @@ export type ReapAction =
 	| { id: string; kind: 'requeue'; attempts: number; reason: 'ack-timeout' | 'progress-lease-expired' }
 	| { id: string; kind: 'fail'; attempts: number; error: string };
 
-/**
- * Decide reaper actions for a batch of in-flight (assigned/running) jobs at time `now`. PURE — the
- * caller (reaper.ts) applies the actions. A job whose lease is still alive (or null) is left alone.
- *   • assigned + expired → ack-timeout → requeue, attempts UNCHANGED (worker never started).
- *   • running  + expired → progress-lease-expired → attempts++; fail if that hits maxAttempts (§8),
- *                          else requeue.
- */
+/** PURE — reaper.ts applies the actions. `assigned` expiry (ack-timeout) requeues with attempts
+ *  UNCHANGED since the worker never started; `running` expiry burns an attempt, failing if exhausted. */
 export function sweep(jobs: Job[], now: number): ReapAction[] {
 	const actions: ReapAction[] = [];
 	for (const job of jobs) {
@@ -82,11 +66,9 @@ export function sweep(jobs: Job[], now: number): ReapAction[] {
 	return actions;
 }
 
-/**
- * Boot recovery selector (§3): on core startup every owning WS session is gone by definition, so
- * every `assigned`/`running` job must reset to `queued` for redispatch. PURE — returns the ids;
- * the caller requeues them. Attempts are NOT incremented (a core restart isn't the worker's fault).
- */
+/** Boot recovery: every owning WS session is gone by definition, so every in-flight job resets to
+ *  `queued`. PURE — returns ids for the caller to requeue. Attempts are NOT incremented; a core
+ *  restart isn't the worker's fault. */
 export function inflightToRecover(jobs: Job[]): string[] {
 	return jobs.filter((j) => j.status === 'assigned' || j.status === 'running').map((j) => j.id);
 }

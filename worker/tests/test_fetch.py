@@ -1,10 +1,7 @@
 """The `fetch` action: acquisition as its own job.
 
-WHY THESE TESTS. Two behaviours matter and neither is exercised by the separation tests. First, that a
-DECLARED fetcher decides how audio is obtained -- the URI's shape must no longer decide anything, which
-is the defect this module replaced. Second, that a fetch reuses audio already retained on the volume,
-because that reuse is what makes acquisition worth splitting out instead of repeating inside every
-consumer.
+Two behaviours matter here: a DECLARED fetcher decides how audio is obtained (the URI's shape decides
+nothing), and a fetch reuses audio already retained on the volume rather than re-downloading.
 
 No network and no yt-dlp: the runner is injected, exactly as it is for the separation processors.
 """
@@ -53,8 +50,7 @@ def fake_runner(lines, *, writes: tuple[str, str] | None = None):
 
 
 def test_fetcher_is_declared_never_inferred_from_the_uri():
-    # A non-http scheme is NOT local just because it lacks an http prefix -- the old shape test made
-    # exactly this mistake and failed later inside ffmpeg instead of here.
+    # A non-http scheme is NOT local just because it lacks an http prefix.
     odd = spec("/m", source_uri="spotify:track:4cOdK2wGLETKBW3PvgPWqT", fetcher="ytdlp")
     assert fetch_mod.job_fetcher(odd) is Fetcher.YTDLP
     assert fetch_mod.job_fetcher(spec("/m", fetcher="local")) is Fetcher.LOCAL
@@ -76,15 +72,10 @@ def test_local_paths_resolve_against_the_media_volume(tmp_path):
 
 @pytest.mark.asyncio
 async def test_the_download_TEMPLATE_carries_ext_so_the_file_is_not_mislabelled(tmp_path):
-    """The bug this unification fixed, pinned at the boundary.
-
-    `download_argv`'s docstring is explicit: the template "must carry `%(ext)s` — the extension is
-    whatever YouTube served (m4a or webm), so the caller discovers the real filename with
-    `find_downloaded` rather than assuming one." Two of the four call sites passed a literal
-    `audio/<id>.wav` instead, so yt-dlp wrote m4a or webm bytes into a file named `.wav`.
-
-    Nothing broke, because ffmpeg sniffs content and ignores the extension — which is exactly why it went
-    unnoticed, and why it needs a test rather than a reader's attention.
+    """The template must carry `%(ext)s`: the extension is whatever YouTube served (m4a or webm), so
+    the caller discovers the real filename with `find_downloaded` rather than assuming one. A literal
+    `audio/<id>.wav` would silently write m4a/webm bytes into a file named `.wav` — invisible because
+    ffmpeg sniffs content and ignores the extension.
     """
     seen: list[list[str]] = []
 
@@ -113,9 +104,8 @@ async def test_the_download_TEMPLATE_carries_ext_so_the_file_is_not_mislabelled(
 
 
 async def test_a_legacy_mislabelled_wav_is_still_found(tmp_path):
-    """Backward compatibility, and the reason `find_downloaded` semantics were the right choice rather
-    than simply correcting the extension. A live volume already holds `audio/<id>.wav` files containing
-    m4a bytes; they must keep being reused rather than re-downloaded."""
+    """A live volume already holds `audio/<id>.wav` files containing m4a bytes; they must keep being
+    reused rather than re-downloaded."""
     audio = tmp_path / "audio"
     audio.mkdir()
     (audio / "m1.wav").write_bytes(b"actually m4a")
@@ -192,12 +182,9 @@ async def test_a_local_job_never_downloads(tmp_path):
 
 @pytest.mark.asyncio
 async def test_a_download_that_lands_nothing_FAILS_rather_than_reporting_success(tmp_path):
-    # Reporting success for a file that is not there would have the core chain a separation against
-    # missing input, which surfaces as a confusing decode error one stage later.
-    #
-    # The check now lives in AcquireAudio rather than at the end of the fetch action, so it protects
-    # stems and align too — and it names the directory, because the usual cause is yt-dlp resolving no
-    # audio-only format at all (a missing JavaScript runtime for YouTube's player challenge).
+    # Reporting success for a missing file would chain a separation against missing input, surfacing
+    # as a confusing decode error one stage later. The check lives in AcquireAudio, protecting stems
+    # and align too.
     proc = plans.fetch_runner(runner=fake_runner(["[download] 100%"]))
     with pytest.raises(RuntimeError, match="produced no file"):
         await drain(proc, spec(tmp_path, fetcher="ytdlp"))
@@ -260,10 +247,9 @@ async def test_no_lookup_keys_means_no_annotation_attempted(tmp_path):
         runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=annotator
     )
     done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp")) if isinstance(e, CompleteResult)][0]
-    # OBSERVE the attempt, not just the outcome: with no artist/track the lookup must be DECLINED
-    # BEFORE any query is built, so search() is never reached. Asserting only the absent artifact is
-    # blind -- a query built from (None, None) blows up in escape_lucene and is swallowed by the
-    # blanket except, producing the same empty-artifact outcome. This pins the DECLINE.
+    # OBSERVE the attempt, not just the outcome: asserting only the absent artifact would be blind to
+    # a query built from (None, None) that blows up and is swallowed by the blanket except, producing
+    # the same empty-artifact outcome.
     assert annotator.search_calls == [], f"expected no lookup attempt, saw {annotator.search_calls}"
     assert "annotation" not in done.artifacts
 
@@ -305,15 +291,9 @@ async def test_annotation_can_be_switched_off_entirely(tmp_path):
 
 @pytest.mark.asyncio
 async def test_configured_ytdlp_binary_reaches_the_download_argv(tmp_path):
-    """The fetch path. ENCORE_YTDLP_BIN was probed and logged but never reached the
-    subprocess: `fetch_runner` accepted a `ytdlp_bin` and dropped it, because `fetch_plan` built
-    `AcquireAudio()` with the hardcoded default and the only surviving reader was a `ytdlpBin` job
-    param the core never sends. So argv[0] was the literal "yt-dlp" in every reachable configuration,
-    and a worker configured with an off-PATH binary probed one yt-dlp and ran another.
-
-    Drives the REAL `plans.fetch_runner(ytdlp_bin=...)` end to end and pins that the binary the worker
-    was configured with is the one that lands at argv[0]. The expected value is a literal standalone
-    path the code never constructs, so this cannot pass by re-deriving the code's own default.
+    """The configured ENCORE_YTDLP_BIN must reach the download subprocess's argv[0], not just be
+    probed and logged — or a worker configured with an off-PATH binary probes one yt-dlp and runs
+    another. Drives the REAL `plans.fetch_runner(ytdlp_bin=...)` end to end.
     """
     configured = "/opt/encore/bin/yt-dlp"
     seen: list[list[str]] = []
@@ -338,9 +318,6 @@ async def test_configured_ytdlp_binary_reaches_the_download_argv(tmp_path):
 
     assert seen, "yt-dlp must have been invoked"
     assert seen[0][0] == configured, f"argv[0] must be the configured ENCORE_YTDLP_BIN, got {seen[0][0]!r}"
-
-
-# ── capture YouTube's OWN declared credit at download time ───────────────────────────────────
 
 
 def test_download_argv_writes_the_info_json():
@@ -385,9 +362,8 @@ def test_read_info_json_degrades_to_none_on_absence_or_garbage(tmp_path):
 
 @pytest.mark.asyncio
 async def test_a_fetch_captures_the_youtube_credit_and_publishes_it_as_the_annotation(tmp_path):
-    # The whole point of the declared-credit path: when the upload declares track/artist, that citation is
-    # published as the
-    # annotation — with NO MusicBrainz query needed to reach it.
+    # When the upload declares track/artist, that citation publishes as the annotation directly, with
+    # NO MusicBrainz query needed to reach it.
     audio = tmp_path / "audio" / "m1.m4a"
     info = tmp_path / "audio" / "m1.info.json"
 

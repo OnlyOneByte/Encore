@@ -27,8 +27,7 @@ test('a processed song plays its instrumental, NOT its origin', () => {
 
 test('an unseparated song has NOTHING to play — the origin is never a playback ref', () => {
 	// This is the whole point of removing the embed path: a YouTube id is an identity, not something
-	// the player can load. Returning sourceRef here is what used to let the room sing over the
-	// original vocals.
+	// the player can load. Returning sourceRef here is what used to let the room sing over the original vocals.
 	expect(playbackRef(m())).toBe('');
 	expect(isPlayable(m())).toBe(false);
 });

@@ -1,44 +1,15 @@
-// P12 -- SEARCH, READINESS ORDERING AND THE LIBRARY.
+// P12 -- search, readiness ordering and the library.
 //
-// The surface: ONE search box across every source (local files + YouTube via yt-dlp), organised on the
-// READINESS axis. Three buckets: `ready` (stems on disk, sing now), `processing` (a stems job in flight;
-// rotation HOLDS the slot, so still queueable), `unacquired` (nothing to play yet, a candidate to process).
-// The client union additionally carries `failed`, which only arrives from a LIVE media:status.
+// Buckets on the READINESS axis: `ready` (stems on disk), `processing` (a stems job in flight — rotation
+// HOLDS the slot, so still queueable) and `unacquired`. The client union also carries `failed`, which only
+// ever arrives on a LIVE media:status. The eight questions are the S1..S8 sections below.
 //
-// This probe answers eight questions with evidence:
+// Expects the server on $PORT with the fake worker connected. Chromium is OPTIONAL: without it only the
+// UI-render checks (S9, S10) skip. YouTube DOWNLOAD is impossible here (no deno for the player challenge)
+// while SEARCH is fine, so the transition checks drive a LOCAL file, whose fetcher needs neither.
 //
-//   1. Deduped partition -- catalog wins over resolver, so an already-processed song is never missed
-//      because the resolver ranked it low or titled it differently.
-//   2. The live transition unacquired -> processing -> ready over the WebSocket, with no reload; the
-//      row stays queueable while processing.
-//   3. Ready bucket order/label; the one-tap action per row is unambiguous (a ready row offers .add,
-//      a raw row offers ONE.sing that both queues and processes).
-//   4. Empty state for a query with no matches, and for an empty box.
-//   5. Adversarial queries -- long strings, regex meta, quotes, unicode, emoji, SQL-ish, path-ish --
-//      no crash, no 500, no injection, sane matching.
-//   6. Case-insensitive across title AND artist.
-//   7. Browse-by-artist / -genre agrees with what is actually processed on disk; a song whose file has
-//      been deleted under it still browses safely.
-//   8. A failed process stays VISIBLE (live) with a real reason rather than vanishing.
-//
-// Boot per HARNESS.md; this file expects the server on $PORT and the fake worker connected. Chromium
-// is optional -- if it is not present we skip only the two UI-render checks (S9, S10) with a clear
-// note. Everything else runs against the HTTP + WS surfaces, which is where the readiness contract
-// lives.
-//
-// EXIT CODES
-//   0  all findings passed
-//   1  one or more real defects
-//   2  environment could not host the test (server down, seed missing, etc.)
-//
-// Environment limits (NOT defects, per HARNESS.md):
-//   * YouTube DOWNLOAD is impossible on this box (no deno for the player challenge). YouTube SEARCH
-//     is fine. Processing a real YouTube result requires a fetch:ytdlp worker and would time out here;
-//     the process-transition checks therefore process a LOCAL file, whose fetcher is `local` and does not
-//     need yt-dlp at all.
-//
-// Selector rule: never hand-write a selector. Contract lives in ./contract.ts (guarded by
-// contract.test.ts), so anchoring on `.row`/`.add`/`.sing` here is the same handle the guard checks.
+// Boot recipe: tests/e2e/HARNESS.md. Exit codes: docs/E2E.md#exit-codes-and-what-ran-means
+// Selectors come from ./contract.ts — see docs/E2E.md#why-selectors-are-centralised
 
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, unlinkSync } from 'node:fs';
@@ -51,36 +22,24 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 import { openJoin } from '../lib/join.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * earlier changes pattern). Browser/Page are derived from driver.mjs's own return types.
- * fetch().json() and page.evaluate() are Promise<any>, so API-shaped results are typed via the Media
- * row shape and the SearchBody/LibraryBody response shapes below, cast at the call site.
+ * Browser/Page derive from driver.mjs's own return types. fetch().json() and page.evaluate() are
+ * Promise<any>, so API results are typed through the shapes below and cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'PASS'} Severity
- *
- * One finding row: a pass/fail check with its severity and evidence.
  * @typedef {{ sev: Severity, name: string, ok: boolean, detail: string, evidence: string }} Finding
- *
- * A media row as returned by /api/search and /api/library (the fields this probe reads).
  * @typedef {{
  *   id: string, source?: string, sourceRef?: string, stemStatus?: string, title?: string,
  *   instrumentalRef?: string, status?: string, artist?: string, artistCanonical?: string,
  *   count?: number, media?: { id: string }
  * }} Media
- *
- * The /api/search response shape (buckets are arrays of Media; recent/popular on an empty query).
  * @typedef {{
  *   ready: Media[], processing: Media[], results: Media[], recent?: Media[], popular?: Media[]
  * } & Record<string, any>} SearchBody
- *
- * The /api/library response shape.
  * @typedef {{
  *   library: Media[], processing?: Media[], facets?: { artists?: { artist: string, count: number }[] }
  * } & Record<string, any>} LibraryBody
- *
- * One media:status event seen over the WebSocket.
  * @typedef {{ status: string, pct: number }} StatusEvent
  */
 
@@ -89,8 +48,6 @@ const base = `http://127.0.0.1:${PORT}`;
 const wsBase = `ws://127.0.0.1:${PORT}/ws`;
 const MEDIA_DIR = process.env.MEDIA_DIR ?? '';
 
-// Each finding is a structured record; severities per HARNESS: real defect vs environment limit.
-// path:line evidence points at the SOURCE that would need to change.
 /** @type {Finding[]} */
 const findings = [];
 /**
@@ -110,7 +67,6 @@ function record(sev, name, ok, detail, evidence) {
 	}
 }
 
-// ─── preflight: is the environment even booted? ──────────────────────────────
 const healthRes = await fetch(`${base}/health`).catch(() => null);
 if (!healthRes?.ok) {
 	console.error(
@@ -122,9 +78,8 @@ if (!healthRes?.ok) {
 	process.exit(2);
 }
 
-// The local library only indexes files that actually exist on disk (see server.ts presentTracks).
-// If seeding was skipped, every check that touches a local song reads as an app defect when it is not.
-// Refuse to run and say so, rather than let the test lie by omission.
+// server.ts indexes only files that exist on disk, so an unseeded library makes every local-song check
+// read as an app defect. Refuse to run rather than lie by omission.
 if (MEDIA_DIR) {
 	const seeded = existsSync(join(MEDIA_DIR, 'library', 'sweet-caroline.mp4'));
 	if (!seeded) {
@@ -137,8 +92,7 @@ if (MEDIA_DIR) {
 	}
 }
 
-// Join once as a probe singer. Cookie jar is a live Map<string,string>; the search API is
-// unauthenticated but /api/process is not, so we keep the session cookie for the process triggers.
+// /api/search is unauthenticated but /api/process is not, so the session cookie is kept for the triggers.
 /** @param {string} name @param {string} [color] */
 async function joinRoom(name, color = '#ff5cae') {
 	const res = await fetch(`${base}/api/join`, {
@@ -154,7 +108,7 @@ async function joinRoom(name, color = '#ff5cae') {
 	const cookies = set.map((c) => c.split(';')[0]).join('; ');
 	return { cookies, singer: (await res.json()).singer };
 }
-// Unique names per probe run so a room the previous run left non-empty doesn't 409 us out.
+// Unique per run: a room the previous run left non-empty would 409 a repeated name.
 const session = await joinRoom(`P12-${Date.now()}`);
 if (!session) process.exit(1);
 const bearer = { headers: { cookie: session.cookies, 'content-type': 'application/json' } };
@@ -180,7 +134,6 @@ async function processMedia(mediaId) {
 	return { status: res.status, body: await res.json().catch(() => null) };
 }
 
-/** Poll an async predicate until it returns truthy (or timeout). Never sleeps blind. */
 /** @param {() => Promise<any>} fn @param {{ timeoutMs?: number, everyMs?: number, name?: string }} [opts] */
 async function waitFor(fn, { timeoutMs = 10_000, everyMs = 200, name = 'condition' } = {}) {
 	const deadline = Date.now() + timeoutMs;
@@ -197,15 +150,9 @@ async function waitFor(fn, { timeoutMs = 10_000, everyMs = 200, name = 'conditio
 	throw new Error(`waitFor(${name}) timed out after ${timeoutMs}ms; last=${JSON.stringify(last)}`);
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// S1 -- catalog wins over resolver: an already-processed song is never missed.
-// A ready local song must appear in `ready` (not `results`), and it must NOT be shadowed by any raw
-// resolver row for a title the user actually typed.
-// ═════════════════════════════════════════════════════════════════════════════
-//
-// Strategy: seed one process (Sweet Caroline), then search for "caroline" -- YouTube returns a dozen
-// unrelated hits, so the row easily disappears behind a resolver whose 12 rows outrank a single local.
-// The partition must place Sweet Caroline in `ready` regardless of the resolver's ranking.
+// S1 -- catalog wins over resolver. A ready local song must land in `ready`, never shadowed by a raw
+// resolver row for the title typed. "caroline" returns a dozen unrelated YouTube hits, so one local row
+// is easy to bury: the partition must place it in `ready` whatever the resolver ranks.
 
 const svc = await search('caroline');
 if (!svc.body || !Array.isArray(svc.body.results)) {
@@ -231,7 +178,7 @@ if (!localCaroline) {
 	process.exit(2);
 }
 
-// Process it (fake worker completes stems + align in ~2s at default FAKE_SLOW_MS=120).
+// The fake worker completes stems + align in ~2s at the default FAKE_SLOW_MS=120.
 const mk1 = await processMedia(localCaroline.id);
 if (mk1.status !== 200 || (!mk1.body?.job && !mk1.body?.alreadyReady)) {
 	record(
@@ -259,7 +206,6 @@ try {
 		String(e),
 		'tests/e2e/fake-stems-worker.mjs (must be running with fetch/stems/align caps)'
 	);
-	// If the process never completes, everything downstream is meaningless.
 	process.exit(2);
 }
 
@@ -274,7 +220,6 @@ record(
 	`ready=${after.body.ready.length}, processing=${after.body.processing.length}, results=${after.body.results.length}; sweet-caroline in ready=${inReady} in results=${inResults}. See src/lib/server/media/readiness.ts:51 partitionSearch (catalog upserted before resolver hits into a byId Map).`
 );
 
-// Dedupe by (source, sourceRef): search a second time and confirm the processed song appears exactly once.
 const idCount = [...after.body.ready, ...after.body.processing, ...after.body.results].filter(
 	(m) => m.id === localCaroline.id
 ).length;
@@ -286,10 +231,9 @@ record(
 	`sweet-caroline appears ${idCount} times. See src/routes/api/search/+server.ts:81 (materialize -- upsert-or-reuse by id) + readiness.ts:60 (byId Map dedupe).`
 );
 
-// Cross-source dedupe is INTENTIONAL non-dedupe: a local file "Bohemian Rhapsody" and a YouTube "Queen
-// - Bohemian Rhapsody" are different recordings and should both appear. Verify they do -- and check
-// ALL three buckets since the local file might already be processed from an earlier check, which lands
-// it in `ready` while the YouTube upload stays in `results`.
+// Cross-source non-dedupe is INTENTIONAL: a local "Bohemian Rhapsody" and a YouTube "Queen — Bohemian
+// Rhapsody" are different recordings and both belong. All three buckets are checked, because the local
+// file may already be processed and so sit in `ready` while the YouTube upload stays in `results`.
 const bohRes = await search('bohemian rhapsody');
 const bohAll = [...(bohRes.body.ready ?? []), ...(bohRes.body.processing ?? []), ...(bohRes.body.results ?? [])];
 const bohLocal = bohAll.find((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
@@ -302,10 +246,8 @@ record(
 	`local=${!!bohLocal} youtube=${!!bohYT}. See src/routes/api/search/+server.ts:82 (dedupe key is source+sourceRef, not title -- a local file and a YouTube upload of the same song are two rows).`
 );
 
-// ═════════════════════════════════════════════════════════════════════════════
-// S2 -- live transition unacquired → processing → ready over the WebSocket.
-// Also: the entry stays queueable throughout (rotation HOLDS a processing slot).
-// ═════════════════════════════════════════════════════════════════════════════
+// S2 -- the live unacquired → processing → ready transition over the WebSocket, with the entry staying
+// queueable throughout because rotation HOLDS a processing slot.
 
 /** @param {string} mediaId @param {number} [timeoutMs] */
 async function subscribeMediaStatus(mediaId, timeoutMs = 20_000) {
@@ -334,7 +276,6 @@ async function subscribeMediaStatus(mediaId, timeoutMs = 20_000) {
 	return { events, done: settled, ws };
 }
 
-// Process a fresh song so the sequence starts CLEANLY (Sweet Caroline is already ready from S1).
 const s = await search('believin');
 const believin = [...(s.body.ready ?? []), ...(s.body.results ?? [])].find(
 	(m) => m.source === 'local' && m.sourceRef?.includes('believin')
@@ -348,9 +289,8 @@ if (!believin) {
 		'tests/e2e/seed-media.mjs'
 	);
 } else {
-	// It might already be processed from a prior run (ENCORE_EPHEMERAL=1 resets state but keeps media
-	// files -- and a repeat run of this probe would already have processed it once). Cancel + re-process
-	// isn't wired via HTTP, so if it's already ready we just report S2 as a skip. Fresh run: no problem.
+	// ENCORE_EPHEMERAL=1 resets state but keeps media files, so a repeat run finds it already ready.
+	// Re-processing is not wired over HTTP, so S2 reports a SKIP rather than nothing.
 	const preReadiness = await search('believin');
 	const preState = preReadiness.body.ready?.some((m) => m.id === believin.id)
 		? 'ready'
@@ -393,12 +333,8 @@ if (!believin) {
 	}
 }
 
-// The row stays queueable while processing (rotation HOLDS the slot). Directly assert this on the
-// search response: a processing row must appear in `processing`, be presented with `stemStatus: 'queued'`
-// (i.e. not `none` -- would look raw, offering only .sing) and NOT show up as `ready`.
-// Process a fresh un-processed local song. If none is available (all four seeds already processed from a
-// prior run against the same MEDIA_DIR), record that as a skip rather than silently omitting -- an
-// invisible test is exactly the failure mode HARNESS.md exists to prevent.
+// Rotation HOLDS a processing slot, so the row must be in `processing`, carry stemStatus 'queued' and be
+// absent from `ready`. With no un-processed seed left this records a SKIP, never silence.
 const processableCandidate = await (async () => {
 	for (const q of ['bohemian', 'dancing queen', 'take on me', 'brightside']) {
 		const r = await search(q);
@@ -418,9 +354,7 @@ if (processableCandidate) {
 			const asReady = snap.body.ready?.find((m) => m.id === processableCandidate.id);
 			if (asProcessing) {
 				sawProcessing = true;
-				// A processing row's stemStatus MUST read 'queued' -- 'none' would send the client's
-				// readinessOf() back to 'unacquired', which only offers .sing (not .add). Rotation's
-				// held-slot rule requires the row to remain queueable while processing.
+				// 'queued', never 'none': 'none' sends readinessOf() back to 'unacquired', which offers only .sing.
 				if (asProcessing.stemStatus === 'queued') queueableWhileProcessing = true;
 				break;
 			}
@@ -441,7 +375,6 @@ if (processableCandidate) {
 			"a processing row's stemStatus must read `queued` so the client's readinessOf → 'processing' and the row still shows.add (rotation holds its slot)",
 			'src/lib/readiness.ts:12 readinessOf + src/lib/components/SongRow.svelte:174-194 ({#if onmake}.sing {:else}.add {/if}) + src/routes/+page.svelte:864-877 (processing row uses onmake={canProcess(r) ?...: undefined}; a processing readiness returns false for canProcess so onmake is undefined and.add renders)'
 		);
-		// Let it finish so subsequent probes see a stable ready state.
 		try {
 			await waitFor(async () => (await library()).body?.library?.some((m) => m.id === processableCandidate.id), {
 				timeoutMs: 15_000,
@@ -467,15 +400,10 @@ if (processableCandidate) {
 	);
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// S3 -- ready bucket sort/label; one-tap action per row.
-// ═════════════════════════════════════════════════════════════════════════════
-
+// S3 -- ready bucket sort/label. partitionSearch returns `ready` in mediaById INSERTION order while the
+// library route's listReady orders by desc(id), newest-first ULID, so a song's position differs between a
+// search and a browse of the same library. MEDIUM: surprising, not fatal.
 const rq = await search('caroline');
-// Ready bucket ordering: partitionSearch returns ready in mediaById INSERTION ORDER (server-side Map
-// iteration). listReady on the library route, by contrast, orders by desc(id) -- newest-first ULID.
-// These disagree, which means a song's position in the ready group can be different in a search vs
-// browse of the same library. Flag as MEDIUM (surprising, not fatal).
 const libAll = await library();
 const libReadyIds = libAll.body.library.map((m) => m.id);
 const searchReadyIds = rq.body.ready.map((m) => m.id);
@@ -490,9 +418,7 @@ record(
 	`search-ready(caroline shared)=${JSON.stringify(sharedIds)} vs library-ready(shared)=${JSON.stringify(libOrderOnShared)}. See src/lib/server/media/readiness.ts:51 partitionSearch (ready group is Map insertion order, not sorted) vs src/lib/server/media/repository.ts:149 listReady (orderBy desc(media.id) newest-first ULID).`
 );
 
-// The label: search returns three arrays named `ready`, `processing`, `results`. The client renders
-// group heads "Ready to sing" and "Needs karaoke", on routes/+page.svelte (they moved off
-// 828). Assert the API shape carries the three keys and no others that we depend on being absent.
+// The API must carry exactly the three bucket keys the client's group heads are built from.
 const shape = Object.keys(rq.body).sort();
 record(
 	'HIGH',
@@ -502,11 +428,8 @@ record(
 	`keys=${JSON.stringify(shape)}. See src/routes/api/search/+server.ts:94.`
 );
 
-// ═════════════════════════════════════════════════════════════════════════════
 // S4 -- empty state for no-results / empty input.
-// ═════════════════════════════════════════════════════════════════════════════
-
-// Empty q must return recent+popular in the same shape as a real search (see search/+server.ts:78).
+// An empty q must return recent+popular in the SAME shape as a real search.
 const empty = await search('');
 const emptyShapeOk =
 	Array.isArray(empty.body.ready) &&
@@ -522,8 +445,8 @@ record(
 	`shape=${JSON.stringify(shape)}. Body keys=${JSON.stringify(Object.keys(empty.body))}.`
 );
 
-// A single-space query (URL-encoded) must be treated as empty (server trims). Otherwise the client's
-// searchActive check (query.trim().length>0) diverges from what the server does.
+// A single-space query must read as empty: the server trims, and the client's searchActive check is
+// query.trim().length > 0, so a divergence here splits the two.
 const oneSpace = await search(' ');
 record(
 	'MEDIUM',
@@ -533,9 +456,8 @@ record(
 	`oneSpace body=${JSON.stringify(oneSpace.body).slice(0, 120)}. See src/routes/api/search/+server.ts:66 (q.trim()).`
 );
 
-// A garbage query with no matches: server responds { ready:[], processing:[], results:[] } and the phone
-// falls through to the "No results" paragraph in routes/+page.svelte:875. Verify at the API level.
-// (The MISLEADING copy of that empty paragraph is S9 -- it needs the browser.)
+// A garbage query: the server returns three empty buckets and the phone falls through to its "No results"
+// paragraph. Asserted at the API level here; the COPY of that paragraph is S9, which needs a browser.
 const garbage = await search('zzzzzzznotasongzzzzzz');
 const garbageAllEmpty =
 	garbage.body.ready?.length === 0 && garbage.body.processing?.length === 0 && garbage.body.results?.length === 0;
@@ -547,18 +469,9 @@ record(
 	`body=${JSON.stringify(garbage.body).slice(0, 200)}`
 );
 
-// ═════════════════════════════════════════════════════════════════════════════
-// S5 -- adversarial queries. None may crash, 500, or persist state.
-// ═════════════════════════════════════════════════════════════════════════════
-
-// Enumerated attack surfaces:
-//   (a) very long strings
-//   (b) FTS5 metacharacters that would poison LocalLibrary if unescaped -- see local.ts:52
-//   (c) SQL-ish input (there is no SQL substitution, but the try/catch must swallow anyway)
-//   (d) path-ish input (must never reach the filesystem)
-//   (e) regex meta and shell-ish input
-//   (f) unicode + emoji
-//   (g) HTTP-header injection via newline
+// S5 -- adversarial queries: none may crash, 500 or persist state. Surfaces covered are long strings;
+// FTS5 metacharacters that would poison LocalLibrary if unescaped (local.ts:52); SQL-ish and path-ish
+// input; regex and shell meta; unicode and emoji; and a newline for header injection.
 const adversarial = [
 	{ name: 'long-2048', q: 'a'.repeat(2048) },
 	{ name: 'fts-openparen', q: '(sweet' },
@@ -598,11 +511,9 @@ record(
 	advDetails.join(' | ')
 );
 
-// Silent-drop bug: FTS5 metacharacters in the query silently discard the LOCAL result. `caroline`
-// returns the local Sweet Caroline; `(caroline)` should return the same local song (a user might
-// type parens from a title like "Sweet Caroline (Live)") but does not, because local.ts:52 builds
-// `(caroline)*` as the FTS match expression which fails FTS5 tokenisation. The FTS error is caught
-// by safeSearch and folded to [], so the singer sees "no local match" with no indication of why.
+// SILENT-DROP DEFECT: local.ts:52 builds the match expression as `<query>*`, so FTS5 metacharacters
+// (`(caroline)`, plausible from "Sweet Caroline (Live)") fail tokenisation; safeSearch folds the error to
+// [], and the singer sees "no local match" with no indication of why.
 const baseline = await search('caroline');
 const parenised = await search('(caroline)');
 const starred = await search('caroline*');
@@ -618,17 +529,14 @@ const starredHasLocal = starred.body.results
 record(
 	'HIGH',
 	'S5b-fts-meta-silent-drop',
-	// This is documenting a DEFECT: baseline finds it, parenised/starred do not. The check is that
-	// the parenised/starred queries EITHER find it OR at minimum don't lose it uniformly.
-	// Currently baseline=true parenised=false starred=false, which is the defect.
+	// Documents the defect: the parenised/starred queries must EITHER find it or at least not lose it
+	// uniformly. Currently baseline=true, parenised=false, starred=false.
 	baselineHasLocal && parenisedHasLocal && starredHasLocal,
 	'FTS5 metacharacters ("(", ")", "*") in the query silently drop local matches -- safeSearch catches the tokeniser throw and returns []',
 	`baseline(caroline)=local:${baselineHasLocal}, "(caroline)"=local:${parenisedHasLocal}, "caroline*"=local:${starredHasLocal}. See src/lib/server/media/local.ts:56 (\`.replace(/["']/g,'')\` strips quotes but not parens/star, then appends \`*\` -- the resulting FTS5 expression throws at tokenise time) + src/routes/api/search/+server.ts:19 safeSearch (silences the throw and returns []).`
 );
 
-// Injection surface: verify the query text is echoed VERBATIM into any resolvable field. Nothing
-// suggests otherwise but check for good measure -- if the server were rendering the query into HTML,
-// a `<script>` payload would appear reflected in .body.
+// Injection surface: a `<script>` payload must not come back reflected in the body.
 const xss = await search('<script>alert(1)</script>');
 const xssReflected = JSON.stringify(xss.body).includes('<script>alert(1)</script>');
 record(
@@ -639,12 +547,8 @@ record(
 	xssReflected ? 'reflected in body -- see /api/search response' : ''
 );
 
-// ═════════════════════════════════════════════════════════════════════════════
-// S6 -- case-insensitive across title AND artist.
-// ═════════════════════════════════════════════════════════════════════════════
-
-// Local library uses FTS5 with the default `simple` tokenizer, which folds ASCII case.
-// Title match: seed contains "Bohemian Rhapsody" (Queen). Variants must all find the local row.
+// S6 -- case-insensitive across title AND artist: FTS5's default `simple` tokenizer folds ASCII case, so
+// every variant must find the local row.
 const titleVariants = ['Bohemian', 'bohemian', 'BOHEMIAN', 'BoHeMiAn'];
 const titleHits = [];
 for (const q of titleVariants) {
@@ -662,7 +566,7 @@ record(
 	JSON.stringify(titleHits)
 );
 
-// Artist match: "Queen" only appears in `artist`, never in the title text. All-cases should match.
+// "Queen" appears only in `artist`, never in the title text.
 const artistVariants = ['queen', 'Queen', 'QUEEN', 'qUeEn'];
 const artistHits = [];
 for (const q of artistVariants) {
@@ -680,20 +584,11 @@ record(
 	JSON.stringify(artistHits)
 );
 
-// ═════════════════════════════════════════════════════════════════════════════
 // S7 -- browse-by-artist / -genre agrees with disk.
-// ═════════════════════════════════════════════════════════════════════════════
-
-// After the S1 process, Sweet Caroline is on disk with artist "Neil Diamond". The library facets
-// should include Neil Diamond (repository.artistFacets excludes null-artist rows). GET
-// /api/library?artist=Neil Diamond must return that song. Same behaviour for genre if tagged.
-//
-// REAL DEFECT observed here: local-library files carry an `artist` field but the browse facets read
-// `artistCanonical`, and canonical is only set by the MusicBrainz annotation step that runs during a
-// YouTube fetch. A local file processed from disk has artist='Neil Diamond' AND artistCredit='Neil Diamond'
-// AND stemStatus='ready' -- everything a user would expect -- but artistFacets() filters out rows with
-// null artistCanonical, so a library made ONLY of local files (the common case on an offline party)
-// has NO browsable artists.
+// REAL DEFECT: browse facets read `artistCanonical`, which only the MusicBrainz annotation step of a
+// YouTube fetch ever sets, and artistFacets() drops null-canonical rows. A local file has artist,
+// artistCredit and stemStatus='ready' — everything a singer expects — so a library of ONLY local files
+// (the common case at an offline party) has NO browsable artists.
 const libFull = await library();
 const localReady = libFull.body.library?.filter((m) => m.source === 'local' && m.stemStatus === 'ready') ?? [];
 const artistFacet = libFull.body.facets?.artists?.find((f) => f.artist === 'Neil Diamond');
@@ -716,11 +611,8 @@ if (artistFacet) {
 		`browse artist='Neil Diamond' returned ${JSON.stringify(returnedIds)}. Expected includes ${localCaroline.id}. See src/lib/server/media/repository.ts:241 byArtist.`
 	);
 
-	// Case-sensitivity of the browse endpoint: repository.byArtist uses `eq(...artistCanonical, artist)`
-	// -- a case-SENSITIVE compare. Passing a different casing must still work OR the facet is a trap
-	// (the facet name is the exact string the byArtist filter needs). This is a documented behaviour
-	// worth pinning: canonical artist is normalised, so the facet name matches its filter -- the
-	// facet is the safe way to browse, not free-form input.
+	// repository.byArtist compares artistCanonical with `eq`, case-SENSITIVELY, and the facet name is exactly
+	// the string that filter needs — so browsing THROUGH the facet is the safe path; free-form input is not.
 	const wrongCase = await library(`?artist=${encodeURIComponent('neil diamond')}`);
 	const foundWrong = wrongCase.body.library?.some((m) => m.id === localCaroline.id);
 	record(
@@ -732,9 +624,8 @@ if (artistFacet) {
 	);
 }
 
-// S7d -- delete a stem file underneath the library, see how it behaves.
-// Only run if we have write access to MEDIA_DIR (we do -- we own it). On repeat runs the stem
-// will already be missing; we still record what the endpoint returns, but flag the situation.
+// S7d -- delete a stem file underneath the library. On a repeat run it is already missing; the
+// endpoint's answer is still recorded, flagged.
 if (MEDIA_DIR) {
 	const stemsDir = join(MEDIA_DIR, 'derived', 'stems');
 	if (existsSync(stemsDir)) {
@@ -748,9 +639,8 @@ if (MEDIA_DIR) {
 		} else {
 			alreadyMissing = true;
 		}
-		// Browse must still list the song (the DB row is unchanged), but the media file endpoint
-		// must 404 when it tries to serve the missing stem. That way rotation would skip it and the
-		// TV would not silently freeze.
+		// Browse must still list it (the DB row is unchanged) while /media 404s, so rotation skips it rather
+		// than the TV freezing silently.
 		const lib2 = await library();
 		const stillListed = lib2.body.library?.some((m) => m.id === localCaroline.id);
 		const search2 = await search('caroline');
@@ -785,33 +675,10 @@ if (MEDIA_DIR) {
 	}
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// S8 -- failed process stays visible with a real reason (LIVE).
-// ═════════════════════════════════════════════════════════════════════════════
-
-// Failed processes arrive as a LIVE `media:status: failed` broadcast -- see readiness.ts:34 which is the
-// only place `failed` can appear in the client's Readiness union. The catalog itself does NOT record
-// failure (settleStemsGate resets stemStatus to `none`), so a phone that RELOADS after a failure
-// sees the row as `unacquired` again -- documented, but a real UX consequence worth pinning.
-//
-// To fail a process, we would need to restart the fake worker with FAKE_FAIL=stems. That is out of
-// scope for a probe that must not touch other files; but we CAN verify the two client-facing
-// guarantees from the transcript:
-//   (i)  the server broadcasts `media:status: failed` when a job errors out permanently, and
-//   (ii) the client (see routes/+page.svelte:222) sets stemStatus back to 'none' on failure so
-//        readinessOf drops back to 'unacquired' -- combined with mediaStatus[failed] entry, the row
-//        renders as `failed` via displayReadiness.
-//
-// The evidence chain proves the *design*; the LIVE run is proved by the earlier ws probe. Record
-// this as a MEDIUM code-path assertion rather than a live probe: the fake worker isn't controllable
-// from here without spawning a second one, and the harness explicitly says "the interesting defects
-// are all in the unhappy paths -- restart the worker with FAKE_FAIL=stems to see them."
-//
-// However, we CAN empirically test the after-reload defect via a fresh WebSocket that never saw the
-// failure: seed a fresh process, kill... wait, we can't kill the worker from here without touching files.
-// Instead: rely on the client's cold-load behaviour that /api/library only enumerates readinessOf ==
-// 'processing' entries -- which by construction excludes 'failed'. So a phone reloading loses the failed
-// row entirely.
+// S8 -- a failed process stays visible with a real reason, but only LIVE: `failed` enters the client's
+// Readiness union solely through a `media:status` broadcast (readiness.ts:34). The catalog cannot record
+// failure (settleStemsGate resets stemStatus) and /api/library enumerates only 'processing' rows, so a
+// phone that RELOADS after a failure loses the row entirely. That is the consequence pinned here.
 
 const processingResult = await library();
 const failedInProcessing = processingResult.body.processing?.some((c) => c.status === 'failed');
@@ -823,11 +690,8 @@ record(
 	`processing.failed=${failedInProcessing} (always false by construction). See src/lib/server/media/readiness.ts:15 (catalog cannot express failed) + src/routes/api/library/+server.ts:33 (processing = readinessOf === 'processing'). Live phones see it via WebSocket only (mediaStatus map, routes/+page.svelte:180-210); cold reload loses it.`
 );
 
-// The failed BROADCAST guarantee is testable by wiring the fake worker to fail. Spawn a fail-worker
-// alongside whatever worker(s) are already connected. The pre-existing worker may WIN the race for
-// the job (that is exactly how the fake worker in HARNESS.md is meant to be used) -- in that case
-// the process completes normally, and we say so as an ENV limit rather than a defect, per HARNESS.md's
-// "never conflate 2 with 0" rule.
+// The fail-worker is spawned ALONGSIDE whatever workers are already connected, so a pre-existing one
+// may win the race for the job. That outcome is recorded as an ENV limit, never as a defect.
 try {
 	const failWorker = spawn(
 		process.execPath.includes('bun') ? process.execPath : 'bun',
@@ -848,11 +712,9 @@ try {
 		}
 	);
 	failWorker.unref();
-	// Give it a moment to join.
 	await sleep(1200);
 
-	// Pick a fresh un-processed local song. If all four seeds are already processed, we can't run this
-	// check -- flag as skip rather than fail.
+	// With all four seeds already processed this flags a SKIP rather than a failure.
 	const failCandidate = await (async () => {
 		for (const q of ['livin', 'believin', 'bohemian', 'sweet']) {
 			const r = await search(q);
@@ -878,8 +740,8 @@ try {
 					'a permanently-failed job broadcasts `media:status: failed` on the WebSocket',
 					`events=${JSON.stringify(sub.events)}`
 				);
-				// Right after failure, /api/library.processing must NOT include this song (settleStemsGate
-				// resets stemStatus, readinessOf falls back to 'unacquired').
+				// settleStemsGate resets stemStatus, so readinessOf falls back to 'unacquired' and the song must be
+				// absent from /api/library.processing.
 				await sleep(300);
 				const post = await library();
 				const stillInProcessing = post.body.processing?.some((c) => c.media?.id === failCandidate.id);
@@ -926,10 +788,7 @@ try {
 	record('MEDIUM', 'S8b-failed-broadcast', false, `spawn fail-worker error: ${String(err)}`);
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// S9 -- UI: one-tap action per row, and the empty-state copy.
-// Requires Chromium.
-// ═════════════════════════════════════════════════════════════════════════════
+// S9 -- UI: one-tap action per row, and the empty-state copy. Requires Chromium.
 
 const chromium = findChromium();
 if (!chromium) {
@@ -945,25 +804,19 @@ if (!chromium) {
 		browser = await connect();
 		const phone = await browser.newPage();
 
-		// Join first (an unjoined visitor gets the join landing at / (no separate /join route since Q2-A)).
 		await openJoin(phone, base);
 		await phone.fill(SEL.nameInput, `P12ui-${Date.now() % 100000}`);
-		// The join screen's colour picker is the 48-stop RING now, one role=slider with no per-colour
-		// element to click — `SEL.swatch` resolves against the settings picker, not this surface. Any stop
-		// will do here; this probe is about row actions, not identity.
+		// The colour ring is a role=slider with no per-colour element to click, so a keypress picks a stop.
+		// Any stop will do: this probe is about row actions, not identity.
 		await phone.pressKey(SEL.colourRing, 'End');
 		await phone.clickByRole('button', 'Start singing');
 		await phone.waitFor(`location.pathname === '/'`);
-		// the search box moved behind the browse push, so joining lands on the queue.
 		await openBrowseFromHome(phone);
 
-		// Search for something we know is processed (Sweet Caroline is ready from S1).
 		await phone.fill(SEL.search, 'caroline');
 		await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length >= 1`, { timeout: 10_000 });
 
-		// Per-row action count. The row exposes EITHER a .add OR a .sing button, never both. This is
-		// the anti-ambiguity guarantee -- the previous design offered both side-by-side and either
-		// one alone was a dead end.
+		// A row exposes EITHER .add OR .sing, never both: offering both side by side made each one a dead end.
 		const perRow = await phone.evaluate(`
 			[...document.querySelectorAll(${JSON.stringify(SEL.songRow)})].map((row) => ({
 				add: row.querySelectorAll(${JSON.stringify(SEL.addTurn)}).length,
@@ -981,7 +834,6 @@ if (!chromium) {
 			`perRow=${JSON.stringify(perRow).slice(0, 500)}. See src/lib/components/SongRow.svelte:174-194 ({#if onmake} .sing {:else} .add {/if}).`
 		);
 
-		// A ready row must show .add; a raw row must show .sing.
 		const readyRowsOk = perRow.every(
 			(/** @type {any} */ r) => r.readiness !== 'ready' || (r.add === 1 && r.sing === 0)
 		);
@@ -994,7 +846,6 @@ if (!chromium) {
 			`perRow=${JSON.stringify(perRow).slice(0, 500)}`
 		);
 
-		// Zero-result copy: search a garbage string and read the rendered text.
 		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'zzzzzzznotasongzzzzzz');
 		await sleep(600); // debounce is 150ms; give the search a fair moment
@@ -1010,10 +861,8 @@ if (!chromium) {
 			`rendered="${noResultsText}". See src/routes/+page.svelte:875 ("No results. YouTube search needs yt-dlp installed on the server.").`
 		);
 
-		// Empty-state for a query the ready library cannot answer: this is where readyEmptyState fires
-		// the "None of your N karaoke songs match X" copy + "Show all" button. It used to need a click on
-		// the Ready readiness chip; an earlier change deleted the chips, and the state is now reached by the condition
-		// it was always really about — a non-matching query against a non-empty library.
+		// A non-matching query against a NON-EMPTY library is what fires readyEmptyState's
+		// "None of your N karaoke songs match X" copy and its "Show all" button.
 		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'xyznotasongxyz');
 		await sleep(600);
@@ -1035,7 +884,6 @@ if (!chromium) {
 	}
 }
 
-// ─── report ──────────────────────────────────────────────────────────────────
 
 console.log('\n═══ P12 findings ═══');
 /** @type {Record<string, Finding[]>} */

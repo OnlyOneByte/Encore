@@ -32,14 +32,10 @@ _KS_MINOR = np.array(
     [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17], dtype=np.float64
 )
 
-# MIDI note number of the lowest pitch class bin we accumulate. A4=69=440Hz, so C1=24≈32.7Hz; above
-# ~C8 there is almost no chordal energy. This floor sits BELOW the rfft resolution limit on purpose,
-# not at it: at frame=8192 / 44100Hz the bins are 5.38Hz apart, so a semitone first spans a whole bin
-# only at ~90Hz (MIDI ~42) — the lowest 18 semitones of the band (MIDI 24-41) are folded at
-# sub-semitone resolution, and the band deliberately reaches down into that region rather than stopping
-# at it. The floor is here to BOUND the fold (bass fundamentals, ~31-65Hz, do carry real chordal
-# energy and are kept in — this is not a rumble/hiss reject, which would start well above 32.7Hz), so
-# tuning the low end means changing _MIN_MIDI, not trusting it to already respect a resolution limit.
+# MIDI note number of the lowest pitch class bin accumulated (C1≈32.7Hz; above ~C8 there is almost
+# no chordal energy). This is deliberately set to BOUND the fold BELOW the rfft resolution limit at
+# this frame size: bass fundamentals (~31-65Hz) carry real chordal energy and are kept in on purpose,
+# not filtered out as rumble.
 _MIN_MIDI = 24  # C1
 _MAX_MIDI = 108  # C8
 
@@ -75,8 +71,7 @@ def chromagram(samples: np.ndarray, sample_rate: int, *, frame: int = 8192, hop:
     if x.size == 0:
         return np.zeros(12, dtype=np.float64)
 
-    # rfft bin centre frequencies for this frame size — the same for every frame, so compute the
-    # bin→pitch-class map ONCE outside the frame loop (the whole reason to fix `frame`).
+    # Same for every frame, so compute the bin->pitch-class map ONCE outside the frame loop.
     freqs = np.fft.rfftfreq(frame, d=1.0 / sample_rate)
     with np.errstate(divide="ignore"):
         midi = 69.0 + 12.0 * np.log2(np.where(freqs > 0, freqs, np.nan) / 440.0)

@@ -3,29 +3,22 @@
 Two jobs, one module, because they answer the same question from opposite ends: is this timing good
 enough to put a bouncing ball on?
 
-WHY VALIDATION AT ALL. `is_valid_lyrics` only asks whether SOME word carries a timestamp. Six real
-artifacts on the reference box passed that check while containing a 63-second hole mid-song, a single
-word smeared across 5.7 seconds, and function words collapsed to 20ms. All three are visible on screen
-and none of them was detectable downstream.
+`is_valid_lyrics` only asks whether SOME word carries a timestamp — real artifacts have passed that
+check while containing a multi-second hole mid-song, a word smeared across seconds, or function words
+collapsed to milliseconds, none of it detectable downstream without this module's checks.
 
-WHY THE LRC IS A GUIDE AND NOT AN ANCHOR. Ruled 2026-09-04. LRCLIB matches on artist/track/duration
-with tolerance, and this library holds many uploads of the same song at different lengths (five "Take
-On Me (Lyrics)" rows at 226-227s; two "Zombie Song" rows at 172s and 254s). A live cut, a remaster or a
-lyric video has a different intro length and sometimes a different master tempo, so an LRC's ABSOLUTE
-timestamps may belong to a recording we did not separate. Constraining word search to those line
-windows would place words confidently wrong, and would fail worst on exactly the live/remaster uploads
-people pick out of search.
+THE LRC IS A GUIDE, NOT AN ANCHOR: LRCLIB matches on artist/track/duration with tolerance, and one
+song can have several uploads at different lengths (a live cut, remaster, or lyric video with a
+different intro or tempo), so an LRC's ABSOLUTE timestamps may belong to a recording that was not
+separated. Constraining word search to those line windows would place words confidently wrong.
 
-What survives a version difference is the RELATIVE structure: line order always, the ratio of gaps
-between lines under a constant offset, and where the long instrumental breaks sit. So the LRC is fitted
-to the aligner's output as a two-parameter (offset, scale) model and the RESIDUALS are read:
+What survives a version difference is the RELATIVE structure: line order, the ratio of gaps between
+lines under a constant offset, and where long instrumental breaks sit. So the LRC is fitted to the
+aligner's output as a two-parameter (offset, scale) model and the RESIDUALS are read:
 
-  small residuals            -> same recording; keep the aligner's timing (it is what gets published,
-                                and it is right for THIS audio). The fitted offset only quantifies how
-                                far the LRC was shifted from that timing; it is reported as a
-                                diagnostic, NOT applied as a display lead. It cannot be: the offset is
-                                only measurable when alignment succeeded, and that is exactly the case
-                                whose published timings come from the aligner, not the LRC.
+  small residuals            -> same recording; keep the aligner's timing (it is what gets published
+                                and is right for THIS audio). The fitted offset is reported only as a
+                                diagnostic, never applied as a display lead.
   large systematic residual  -> different version; keep the aligner's timing and DISCARD the LRC's
   fine except one region     -> that region is where alignment failed
 """
@@ -38,8 +31,7 @@ from typing import Any
 
 from .model import LyricsDoc, lyrics_tokens
 
-# ── validation thresholds ────────────────────────────────────────────────────────────────────────
-# Each is a shape a real artifact exhibited, not a guess.
+# Each threshold below is a shape a real artifact exhibited, not a guess.
 
 #: A gap this long between consecutive words is either an instrumental break (fine) or a region the
 #: aligner lost (not fine). Flagged for a human/log, never fatal — a real song has real breaks.
@@ -51,9 +43,9 @@ MAX_WORD_SEC = 3.0
 #: Below this a word cannot be seen — it flashes. Measured: "a" at 20ms.
 MIN_WORD_SEC = 0.03
 
-#: Coverage below this is worth a look. NOT a fault threshold: instrumental breaks and outros legitimately
-#: carry no words, and measured artifacts sit at 87-96% for that reason alone. Tuned to pass those and
-#: still surface the 64% case, which turned out to be a media/duration mismatch rather than bad timing.
+#: Coverage below this is worth a look. NOT a fault threshold: instrumental breaks and outros
+#: legitimately carry no words, and measured artifacts sit at 87-96% coverage for that reason alone.
+#: Tuned to pass those while still surfacing a genuine media/duration mismatch (measured at 64%).
 MIN_COVERAGE = 0.80
 
 #: Residual above this means the LRC is timed against a different recording.
@@ -70,44 +62,35 @@ class TimingReport:
     smeared: list[tuple[str, float]] = field(default_factory=list)
     flashed: list[tuple[str, float]] = field(default_factory=list)
     out_of_order: int = 0
-    #: Seconds the lyrics run PAST the end of the audio. A one-sided metric coverage cannot carry: the
-    #: `min(1.0, …)` clamp below makes coverage report a candidate timed for a longer master (a
-    #: wrong-version pick) as a flawless 1.0. This is that discarded signal, kept as its own number so
-    #: coverage's thin/MIN_COVERAGE meaning is untouched — they answer different questions.
+    #: Seconds the lyrics run PAST the end of the audio. Coverage's `min(1.0, …)` clamp would report a
+    #: candidate timed for a longer master (a wrong-version pick) as a flawless 1.0; this carries that
+    #: discarded signal as its own number, so coverage's thin/MIN_COVERAGE meaning stays untouched.
     overshoot_sec: float = 0.0
 
     @property
     def usable(self) -> bool:
         """Is this publishable as WORD timing?
 
-        Only ORDER violations disqualify, because they are the one defect with no better alternative:
-        a highlight that jumps backwards is incoherent, and line sync is strictly better than that.
+        Only ORDER violations disqualify: a highlight that jumps backwards is incoherent, and line
+        sync is strictly better than that.
 
-        Thin coverage does NOT disqualify, and an earlier version of this that refused on coverage was
-        wrong — it dropped the ASR candidate entirely and published nothing, which is worse than what it
-        prevented. If ASR only transcribed the first third of a song, the timing for that third is still
-        correct, and the alternative (line sync over the same partial text) freezes in exactly the same
-        place. Coverage is reported loudly instead, because it diagnoses a TRANSCRIPTION gap, not an
-        alignment fault.
+        Thin coverage does NOT disqualify: if ASR only transcribed the first third of a song, the
+        timing for that third is still correct, and refusing would publish nothing, worse than what
+        it prevents (the line-sync alternative over the same partial text freezes in the same place).
+        Coverage is reported loudly instead, since it diagnoses a TRANSCRIPTION gap, not an alignment
+        fault.
 
-        Smears and flashes are likewise defects, not disqualifications: the rest of the song is timed
-        correctly and a handful of bad words beats losing per-word timing everywhere.
+        Smears and flashes are likewise defects, not disqualifications: a handful of bad words beats
+        losing per-word timing everywhere.
         """
         return self.out_of_order == 0 and self.words > 0
 
     @property
     def thin_coverage(self) -> bool:
-        """Timing stops well before the song does. A PROMPT TO LOOK, not a fault.
-
-        Measured on real songs, a shortfall is usually correct: an instrumental break or a long outro
-        genuinely contains no words. Take On Me's synth break has its vocals stem 18-28 dB below the
-        instrumental, and two independent Whisper models given only that clip both transcribe nothing.
-        The coarse reading that called this an "ASR gap" was wrong, and was reached by averaging energy
-        across a window that mixed a sung passage with a break.
-
-        It stays reported because the one genuinely broken case looks identical from here: an artifact
-        aligned against a DIFFERENT upload than the duration on record (observed: timings ending at
-        164s against a row claiming 254s — 64% coverage).
+        """Timing stops well before the song does. A PROMPT TO LOOK, not a fault: a shortfall is
+        usually correct (an instrumental break or long outro genuinely has no words). It stays
+        reported because the one genuinely broken case looks identical from here: an artifact aligned
+        against a DIFFERENT upload than the duration on record.
         """
         return 0.0 < self.coverage < MIN_COVERAGE
 
@@ -132,8 +115,8 @@ class TimingReport:
 def _words_of(doc: dict[str, Any]) -> list[dict[str, Any]]:
     """Every timed word in document order.
 
-    The doc's SHAPE is `model.LyricsDoc`'s business, not this module's: `validate.py` owns judgements
-    about timing QUALITY, and it used to re-derive what a line even was before it could judge one.
+    The doc's SHAPE is `model.LyricsDoc`'s business, not this module's: `validate.py` owns
+    judgements about timing QUALITY only.
     """
     return LyricsDoc(doc).timed_words()
 
@@ -207,24 +190,18 @@ class RepairReport:
 def repair_word_spans(doc: dict[str, Any]) -> RepairReport:
     """ACT on the smears and flashes validate_timing only reports.
 
-    validate_timing DIAGNOSES; this REPAIRS, and the split is deliberate — the note stays honest about
-    what the aligner produced, and this records what was done about it. Two transforms, both provably
-    order-preserving so a repair can never manufacture the one defect that is genuinely disqualifying
-    (an out-of-order word → backwards highlight):
+    Two transforms, both provably order-preserving so a repair can never manufacture the one
+    genuinely disqualifying defect (an out-of-order word -> backwards highlight):
 
-      SMEAR (dur > MAX_WORD_SEC): a word cannot plausibly be held 3+ seconds; the measured worst was one
-        word smeared across 5.7s. Clamp its `end` DOWN to `start + MAX_WORD_SEC`. This only ever SHRINKS
-        the span, so it cannot reach into the next word (whose start already sat at or after the smear's
-        original, longer end); the reclaimed time becomes a dark gap, which reads far better than a word
-        lit wrongly for seconds. Non-smeared words are untouched.
+      SMEAR (dur > MAX_WORD_SEC): clamp `end` DOWN to `start + MAX_WORD_SEC`. This only SHRINKS the
+        span, so it cannot reach into the next word; the reclaimed time becomes a dark gap, which
+        reads far better than a word lit wrongly for seconds.
 
-      FLASH (dur < MIN_WORD_SEC): a ~20ms word is invisible. Extend its `end` UP toward
-        `start + MIN_WORD_SEC`, but ONLY when the extended end does not reach the next word's start
-        (`new_end <= next_start`). When there is no room, the flash is LEFT and reported: a flash beats a
-        backwards jump. Extending never moves `start`, so it cannot reorder either.
+      FLASH (dur < MIN_WORD_SEC): extend `end` UP toward `start + MIN_WORD_SEC`, but ONLY when the
+        extended end does not reach the next word's start. When there is no room, the flash is LEFT
+        and reported: a flash beats a backwards jump. Extending never moves `start`.
 
-    Mutates the word dicts in place and returns what it changed. Operates on the same word list
-    validate_timing walks (`_words_of`), in document order, so `next_start` is well defined.
+    Mutates the word dicts in place and returns what it changed.
     """
     report = RepairReport()
     words = _words_of(doc)
@@ -245,9 +222,6 @@ def repair_word_spans(doc: dict[str, Any]) -> RepairReport:
                 report.flashed_uncorrectable.append((name, dur))
     report.smeared_clamped.sort(key=lambda t: -t[1])
     return report
-
-
-# ── the LRC as a guide ───────────────────────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -271,17 +245,14 @@ def fit_lrc_to_aligned(lrc_starts: Iterable[float], aligned_starts: Iterable[flo
     recording even when absolute timestamps do not. Requires equal counts — a differing line count
     means the two texts are not the same lyrics and no fit is meaningful.
 
-    Scale absorbs a tempo difference between masters; offset absorbs a different intro length. What is
-    left over is either alignment error or a genuinely different arrangement, and the caller decides
-    which by looking at whether the residual is spread out (error) or concentrated (one bad region).
+    Scale absorbs a tempo difference between masters; offset absorbs a different intro length. What
+    is left over is either alignment error or a genuinely different arrangement, decided by whether
+    the residual is spread out (error) or concentrated (one bad region).
 
-    THE ESTIMATOR IS THEIL-SEN, NOT LEAST SQUARES, and that is load-bearing. Least squares was tried
-    first and failed its own test: a single line landing 55s late (one alignment failure in an
-    otherwise perfect song) dragged the fitted offset to 7.9s, which inflated EVERY residual past the
-    threshold and reported a matching recording as the wrong version — the exact misdiagnosis this
-    module exists to prevent. Theil-Sen takes the median of pairwise slopes, so a minority of outliers
-    cannot move the line they are outliers from. O(n²) in line count (~50-70 lines, a few thousand
-    pairs) which is nothing next to the alignment that produced the input.
+    THE ESTIMATOR IS THEIL-SEN, NOT LEAST SQUARES, and that is load-bearing: least squares lets a
+    single badly-aligned line drag the fitted offset far enough to inflate EVERY residual past the
+    threshold and misreport a matching recording as the wrong version. Theil-Sen takes the median of
+    pairwise slopes, so a minority of outliers cannot move the line they are outliers from.
     """
     xs = [float(x) for x in lrc_starts]
     ys = [float(y) for y in aligned_starts]
@@ -318,26 +289,18 @@ def _median(values: list[float]) -> float:
     return s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2.0
 
 
-# ── placing the LRC on THIS audio's timeline, BEFORE it is aligned ───────────────────────────
+# The wrong-version check above (`lrc_fit_notes`) runs AFTER alignment, which is not enough on its
+# own: the aligner is confined to the LRC's own line windows, so an upload whose vocal starts LATER
+# than the LRC's master (an added intro, a talk-over) is aligned against the wrong span and publishes
+# confident, EARLY word times. The post-align fit cannot see it either — it would compare the
+# aligner's output against the very windows that bounded that aligner, a self-comparison that
+# manufactures the agreement it reports.
 #
-# The wrong-version check above (`lrc_fit_notes`) runs AFTER alignment, and a defect showed why that is not
-# enough on its own: the aligner is confined to the LRC's own line windows (`steps/lyrics.py` hands it
-# `align_windows`/`segments`, and `whisperx.align` crops the audio per segment), so an upload whose
-# vocal starts LATER than the LRC's master — an added intro, a talk-over, `bad guy`'s quiet whispered
-# pre-section — is aligned against the wrong span and publishes confident, EARLY word times. The
-# post-align fit cannot see it, because it compares the aligner's output against the very windows that
-# bounded that aligner: a self-comparison that manufactures the agreement it reports.
-#
-# Owner ruling 2026 (Q1-A): estimate the LRC→audio offset from a series the LRC did NOT
-# bound — the Whisper baselines `AcquireTexts` measured on THIS audio (the vocals stem and the mix) —
-# and shift the LRC's line windows onto this recording BEFORE handing them to the aligner. Then the
-# aligner searches the right span, and the post-align fit stops being a self-comparison.
-#
-# The estimator reuses the Theil-Sen `fit_lrc_to_aligned` (offset absorbs the intro difference, scale a
-# tempo difference, and a minority of mis-paired lines cannot drag the fit). What it CANNOT reuse is the
-# positional/exact-text pairing the post-align fit uses: a baseline is Whisper's own segmentation of
-# GUESSED words on this audio, so it neither has the LRC's line count nor echoes its text. So a fuzzy
-# token-overlap pairing runs first, matching each LRC line to the baseline line it best overlaps.
+# The fix: estimate the LRC->audio offset from a series the LRC did NOT bound — the Whisper baselines
+# `AcquireTexts` measured on THIS audio — and shift the LRC's line windows onto this recording BEFORE
+# handing them to the aligner. Reuses the Theil-Sen `fit_lrc_to_aligned`, but pairs lines by fuzzy
+# token overlap first (not position/exact-text), since a Whisper baseline neither has the LRC's line
+# count nor echoes its text exactly.
 
 
 @dataclass
@@ -345,9 +308,8 @@ class LrcShift:
     """The estimated placement of an LRC onto THIS audio's timeline, from a baseline the LRC did not bound.
 
     `applied` is the gate the step reads: only a confident, non-trivial shift is worth moving the
-    aligner's search windows for. A shift the estimator could not measure (too few paired lines, a
-    degenerate baseline) leaves `offset_sec == 0.0`, `applied == False` and the windows untouched, so
-    the fix can only ever HELP the mis-placed case and is a no-op on every song that was already placed.
+    aligner's search windows for. An unmeasurable shift (too few paired lines, a degenerate baseline)
+    leaves `offset_sec == 0.0`, `applied == False`, so the fix is a no-op on a song already placed.
     """
 
     offset_sec: float = 0.0
@@ -374,17 +336,13 @@ def _pair_lrc_to_baseline(
 ) -> tuple[list[float], list[float]]:
     """Pair each LRC line's start against the baseline line it best overlaps, by TOKEN content.
 
-    A baseline is Whisper's guess at what is audible, so exact-text and positional pairing (what the
-    post-align fit uses) both miss it. This walks the LRC lines in order, and for each takes the
-    forward-most baseline line whose token-set Jaccard is the best AND clears `_MIN_PAIR_JACCARD`.
-    Matching is monotonic — the baseline cursor only advances — so line order is preserved and a
-    repeated chorus line cannot pair backwards onto an earlier occurrence. Lines with no confident
-    baseline match contribute nothing (they are just not in the returned series), which is correct:
-    the fit needs agreement, not coverage.
+    A baseline is Whisper's guess at what is audible, so exact-text and positional pairing both miss
+    it. Walks the LRC lines in order, taking the forward-most baseline line whose token-set Jaccard is
+    best AND clears `_MIN_PAIR_JACCARD`. Matching is monotonic — the baseline cursor only advances —
+    so a repeated chorus line cannot pair backwards onto an earlier occurrence. Lines with no
+    confident match contribute nothing: the fit needs agreement, not coverage.
 
-    Returns (lrc_starts, baseline_starts), equal length, in LRC order — the two time series the fit
-    consumes. `lyrics_tokens` now comes from `model`, the package's dependency-free base, so this module
-    needs no import from `chain` at all — the lazy in-function import that used to dodge the cycle is gone.
+    Returns (lrc_starts, baseline_starts), equal length, in LRC order.
     """
     base_tokens = [set(lyrics_tokens(str(bl.get("text") or ""))) for bl in baseline_lines]
     base_starts = [bl.get("start") for bl in baseline_lines]
@@ -442,9 +400,7 @@ def estimate_lrc_shift(lrc_lines: list[dict[str, Any]], baseline_lines: list[dic
 def shift_segments(segments: list[dict[str, Any]], shift: LrcShift) -> list[dict[str, Any]]:
     """Apply an LrcShift to a list of {start, end, ...} windows, returning NEW dicts (the source's own
     `segments` must stay un-shifted for the line-sync fallback that publishes them, so this never
-    mutates in place). A window's start/end map as `scale * t + offset` — the exact model the fit
-    solved — so a stretched master is corrected as well as a shifted one. Non-numeric bounds pass
-    through untouched. A no-op shift (`applied == False`) returns copies with identical numbers, so the
+    mutates in place). A no-op shift (`applied == False`) returns copies with identical numbers, so the
     caller can shift unconditionally and let `applied` decide whether it mattered."""
     if not shift.applied:
         return [dict(s) for s in segments]
@@ -459,32 +415,19 @@ def shift_segments(segments: list[dict[str, Any]], shift: LrcShift) -> list[dict
     return out
 
 
-# ── the LRC-fit decision, moved out of steps/lyrics.py ──────────────────────────────────────
-#
-# `TimeTexts.run` used to hold ~45 lines deciding one domain question — does a source's OWN line
-# timing fit THIS recording — even though its two other halves (`fit_lrc_to_aligned`, `line_starts`)
-# already live here. The audit moved the decision and its two pure pairing helpers into the
-# domain package so the whole thing is reachable from `tests/test_lyrics_*` and sits under the
-# layering guard, leaving `TimeTexts.run` as align → validate → note → write. Behaviour is unchanged:
-# `lrc_fit_notes` returns exactly the note strings the step used to build inline, and the step still
-# owns computing `windows`/`opens` (via `_opens_for`, whose emitted-map preference is pinned in the
-# step layer) and emitting the notes through `ctx.note`.
+# `TimeTexts.run` delegates the LRC-fit decision here so it stays reachable from `tests/test_lyrics_*`
+# and under the layering guard, leaving the step as align -> validate -> note -> write.
 def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[int]:
     """Indices into `windows` of the window that OPENS each human line.
 
     `align_windows` is a flat list where each human `segment` contributes one or more windows: the
-    first (opening) window of a line keeps the line's own `start` (`_subdivide` sets its first piece's
-    `lo` to the segment start exactly), while every interior window start is a char-count guess. Walk
-    the segments in order and take, for each, the next window whose `start` equals that segment's
-    start — that is the one window per line carrying a real source timestamp. Returns one index per
-    matched segment. Matching is strict-in-order: `si` advances only on a match, so if a segment's
-    opening window is ever absent, the search for it consumes the rest of the windows and every later
-    segment is dropped from the result too. That degenerate path is currently UNREACHABLE — every
-    producer of a segment/window start rounds to 3 decimals (`presplit._subdivide`, `source._stamp_to_sec`
-    / `entries_to_segments` / `plain_lyrics_to_segments`, `captions._cue_seconds`) so the opening window
-    of each line is always present and matches exactly — hence it is left as-is. The drop-tolerance that
-    matters for the version fit lives in `_pair_openings_to_aligned`, which re-derives the surviving
-    pairs by TEXT rather than trusting this index.
+    opening window of a line keeps the line's own `start` exactly, while every interior window start
+    is a char-count guess. Walk the segments in order and take, for each, the next window whose
+    `start` equals that segment's start. Matching is strict-in-order: `si` advances only on a match,
+    so if a segment's opening window is ever absent, every later segment is dropped from the result
+    too — currently UNREACHABLE since every producer of a segment/window start rounds to 3 decimals,
+    so the opening window always matches exactly. The drop-tolerance that matters for the version fit
+    lives in `_pair_openings_to_aligned`, which re-derives the surviving pairs by TEXT instead.
     """
     opens: list[int] = []
     si = 0
@@ -508,24 +451,18 @@ def _pair_openings_to_aligned(
 ) -> tuple[list[float], list[float]]:
     """Pair each opening window's source start against the aligned line it produced, drop-tolerant.
 
-    The wrong-version fit needs two time series over the SAME human lines: the source's own line
-    starts (the opening windows) and where the aligner placed those lines. The obvious pairing —
-    `line_starts(doc)[k]` for each opening index `k` — is WRONG, because `doc` is `normalize_lyrics`
-    output and that function DROPS a segment with neither timed words nor bounds (`artifact.py`), so
-    `doc["lines"][k]` is not guaranteed to be the aligned result of `windows[k]`. One dropped line
-    shifts every later positional pairing: a correctly aligned song then reads as slipped or,
-    once counts diverge, the check goes silently inert on a genuinely different master.
+    The wrong-version fit needs two time series over the SAME human lines. The obvious pairing —
+    `line_starts(doc)[k]` for each opening index `k` — is WRONG: `normalize_lyrics` DROPS a segment
+    with neither timed words nor bounds, so `doc["lines"][k]` is not guaranteed to be the aligned
+    result of `windows[k]`, and one dropped line shifts every later positional pairing.
 
-    So recover which window each SURVIVING aligned line came from, rather than trusting position. The
-    aligner emits one line per window it was given, in order, and `normalize_lyrics` preserves that
-    order — it only DROPS. So walk the full window stream and the aligned lines in LOCKSTEP, matching
-    on stripped text, and advance both together. This assigns each surviving aligned line to its
-    window even when several openings share the same text ("a very long line…" repeated), because the
-    distinct interior windows between them keep the two cursors in sync — text alone is not unique, but
-    text-in-order over the whole stream is. A window whose aligned line was dropped simply has no match
-    at its turn and is left unpaired. Then keep only the OPENING windows (the ones carrying a real
-    source timestamp): their source start and their recovered aligned start, one entry each, both
-    series built together so they can never diverge in length.
+    So recover which window each SURVIVING aligned line came from, rather than trusting position: the
+    aligner emits one line per window in order, and `normalize_lyrics` only DROPS, never reorders. Walk
+    the full window stream and the aligned lines in LOCKSTEP, matching on stripped text and advancing
+    both together — this correctly assigns even repeated-text openings, since the distinct interior
+    windows between them keep the two cursors in sync. A window whose aligned line was dropped simply
+    has no match at its turn and is left unpaired. Then keep only the OPENING windows, both series
+    built together so they can never diverge in length.
     """
     aligned = [
         (str(ln.get("text", "")).strip(), float(ln["start"]))
@@ -553,18 +490,11 @@ def _pair_openings_to_aligned(
 def lrc_fit_notes(text_source: str, windows: list[dict], opens: list[int], doc: dict[str, Any]) -> list[str]:
     """Decide whether a source's own line timing fits this recording, and return the operator note(s).
 
-    Only meaningful for a source that brought its OWN line timings (a synced LRCLIB record) and was
-    then force-aligned: that gives two independent time series over the same lines, which is exactly
-    what the fit needs. The caller (``TimeTexts.run``) guards that condition and computes ``windows`` /
-    ``opens`` — the OPENING window index of each human line — so this function stays pure of ``ctx``,
-    the step layer, and the ``_opens_for`` emitted-map preference (pinned in the step layer).
-
-    Returns a list of note strings (0 or 1 today) rather than calling ``ctx.note`` itself, so the
-    layering direction is preserved: the domain package never reaches into ``steps/``.
-
-    The pairing is drop-tolerant and keyed by text, not position — see ``_pair_openings_to_aligned``
-    for why (a dropped ``normalize_lyrics`` line would otherwise shift every later positional pair,
-    re-opening the two positional-pairing defects).
+    Only meaningful for a source that brought its OWN line timings and was then force-aligned: that
+    gives two independent time series over the same lines. The caller (``TimeTexts.run``) guards that
+    condition and computes ``windows``/``opens``, so this function stays pure of ``ctx`` and the step
+    layer. Returns note strings rather than calling ``ctx.note`` itself, preserving the layering
+    direction: the domain package never reaches into ``steps/``.
     """
     lrc_starts, aligned_starts = _pair_openings_to_aligned(windows, opens, doc)
     fit = fit_lrc_to_aligned(lrc_starts, aligned_starts)
@@ -576,12 +506,9 @@ def lrc_fit_notes(text_source: str, windows: list[dict], opens: list[int], doc: 
             "for this audio; the WORDS may belong to another version."
         ]
     if fit.verdict == "same_version":
-        # same_version, so the LRC does match. Report the fitted (offset, scale): the offset
-        # is how far the LRC sits from the aligner timing we actually publish, and the scale
-        # is the master-tempo ratio. Both are DIAGNOSTIC only — the published timings are the
-        # aligner's and are not shifted by these — but they were computed here and are worth
-        # seeing in the log rather than discarded. Outliers, when present, are the lines where
-        # ALIGNMENT slipped: a different and much more actionable fault than a wrong LRC.
+        # Report the fitted (offset, scale) as DIAGNOSTIC only — published timings are the
+        # aligner's, not shifted by these. Outliers, when present, are lines where ALIGNMENT
+        # slipped: a different and much more actionable fault than a wrong LRC.
         fit_note = (
             f"{text_source}: matches this recording "
             f"(fitted offset {fit.offset_sec:+.2f}s, scale {fit.scale:.3f} over {fit.pairs} "

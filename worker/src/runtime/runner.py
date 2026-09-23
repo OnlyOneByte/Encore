@@ -1,9 +1,5 @@
 """The runner: the ONE thing that executes a plan.
 
-Every processor used to own its own copy of this — the scratch dir, the subprocess stage wrapper, the
-keepalive, the CompleteResult assembly. `demucs.py` and `whisperx.py` each had a `_run_stage`;
-`roformer.py` imported demucs to borrow one. One implementation, four actions.
-
 What lives here and nowhere else:
 
   * the scratch directory for a job
@@ -60,9 +56,7 @@ class PlanRunner:
         self._runner = runner
         self._resolve_engines = resolve_engines or (lambda params: ResolvedEngines())
         # Plan LOOKUP is injectable so a test can hand in a plan carrying fake seams, without a global
-        # registry mutation that would leak between tests. Every production runner in `plans.py`
-        # (align_runner / stems_runner / fetch_runner) injects `plans=`, so the `plan_for` fallback
-        # below is the test/default path, not the one production takes.
+        # registry mutation that would leak between tests.
         self._plan_for = plans or plan_for
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
@@ -78,12 +72,9 @@ class PlanRunner:
         plan = self._plan_for(job, ctx.engines)
         validate_plan(plan)  # cheap, and a malformed plan must never reach a real process
 
-        # The notes buffer is the worker's own diagnosis of a job (baseline scores, caption-fetch
-        # misses, the "aligning against the MIX" warning, the silent-instrumental refusal). A step
-        # raising is the documented way it signals FAILURE (step.py) — and that is exactly when those
-        # notes are the explanation the operator needs. So the flush lives in `finally`, not after the
-        # loop: it runs once, on the normal exit AND before a step's exception propagates. The single
-        # call site is the `finally` below, so there is no double-flush path to guard against.
+        # The notes buffer is the worker's own diagnosis of a job. A step raising is how it signals
+        # FAILURE, and that is exactly when the notes are the explanation the operator needs — so the
+        # flush lives in `finally`, running once whether the loop exits normally or a step raises.
         def _flush_notes() -> None:
             for line in ctx.out.notes:
                 print(f"[worker] {job.job_type} {job.media_id}: {line}", flush=True)
@@ -127,22 +118,15 @@ class PlanRunner:
 async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> AsyncIterator[ProgressEvent]:
     """Run a CLI, translating its output into progress for one stage.
 
-    A free function, not a PlanRunner method, because the only thing it needs is the runner callable —
-    and a `Step.run(ctx)` is handed `ctx` alone, never the PlanRunner driving it. As a method, the three
-    steps that wanted it had to construct a throwaway `PlanRunner(runner=ctx.runner)` to borrow it.
+    A free function, not a PlanRunner method: the only thing it needs is the runner callable, and a
+    `Step.run(ctx)` is handed `ctx` alone, never the PlanRunner driving it.
 
-    Was duplicated in demucs.py and whisperx.py, with roformer.py importing demucs to borrow it. The
-    S0-S6 refactor left this with no callers and the copies drifted apart again — one step emitted an
-    UNCONDITIONAL final 100, double-firing the stage's completion event. The `last < 100` guard below is
-    the behaviour that divergence lost.
-
-    A stage whose child emits no NEW percentage for a long stretch (roformer's `parse_progress` returns
-    None unconditionally, so a 45-minute separation parses nothing at all) used to go silent between its
-    opening 0 and closing 100 — long past the core's 30 s progressLeaseMs, so the reaper requeued a
-    HEALTHY process and each retry re-ran the whole pass. So we race each line against `LEASE_KEEPALIVE_SEC`
-    and, when the child is quiet, emit a TIME-BASED keepalive at the last-known pct (the same cadence and
-    hold-the-bar convention `run_blocking` uses for in-process ML). The keepalive never moves the bar
-    backward and never above 100.
+    A stage whose child emits no NEW percentage for a long stretch (e.g. roformer's `parse_progress`
+    returns None unconditionally, so a 45-minute separation parses nothing at all) would otherwise go
+    silent between its opening 0 and closing 100 — long past the core's 30s progressLeaseMs, so the
+    reaper requeues a HEALTHY process and each retry re-runs the whole pass. So each line races against
+    `LEASE_KEEPALIVE_SEC`, and when the child is quiet a TIME-BASED keepalive fires at the last-known
+    pct (same convention `run_blocking` uses). The keepalive never moves the bar backward or above 100.
     """
     yield ProgressEvent(stage=stage, pct=0)
     last = -1
@@ -158,10 +142,8 @@ async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> Asy
             # actually resolves, so the child runs to completion regardless of how many keepalives fire.
             done, _ = await asyncio.wait({pending}, timeout=LEASE_KEEPALIVE_SEC)
             if pending not in done:
-                # The child produced no new line within one keepalive interval. It is alive but quiet —
-                # a long roformer/ffmpeg pass that parses no percentage — so renew the lease with a
-                # heartbeat at the last pct we reported (0 until the first real percentage). Holds the
-                # bar; never moves it backward, never above 100.
+                # Alive but quiet: renew the lease with a heartbeat at the last pct reported (0 until
+                # the first real percentage). Holds the bar; never moves it backward.
                 yield ProgressEvent(stage=stage, pct=max(last, 0))
                 continue
             try:
@@ -186,11 +168,9 @@ async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> Asy
 async def run_quiet(runner: Runner, argv: list[str]) -> None:
     """Run a subprocess and DISCARD its output.
 
-    The drain loop `async for _line in ctx.runner(argv): pass`, written three times in steps/separate.py
-    (decode, and both FLAC encodes). Those calls run ffmpeg with `-loglevel error`, so there is nothing
-    to read on success and a non-zero exit raises inside the runner regardless — draining is the whole
-    interaction. One name for it means a step never re-writes the loop (and never accidentally forgets
-    to consume the generator, which would leave the child unwaited).
+    Those calls run ffmpeg with `-loglevel error`, so there is nothing to read on success and a
+    non-zero exit raises inside the runner regardless — draining is the whole interaction. One name
+    for it means a step never forgets to consume the generator, which would leave the child unwaited.
     """
     async for _line in runner(argv):
         pass
@@ -212,34 +192,23 @@ async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIter
     """Run a BLOCKING call in a thread, yielding ("progress", ev) keepalives until it finishes, then
     ("result", value) exactly once.
 
-    MOVED INTACT from whisperx.py. Both halves matter, and both were real failures observed on a live
-    process — this is not defensive coding:
+    Two real failures observed on a live process, not defensive coding:
 
-      1. torch/whisper calls are synchronous. Awaiting them inline froze the asyncio event loop for the
-         whole ML pass, so the worker could not answer the websocket keepalive ping and the server closed
-         the connection mid-job ("keepalive ping timeout").
-      2. With the loop frozen, no job:progress could be sent either, so the core's 30 s PROGRESS LEASE
-         expired and the reaper requeued a job that was running fine — observed as attempts=1 on a job
-         that never actually failed. Each retry costs a full ASR + align pass, so with maxAttempts=3 a
-         slightly slower song fails permanently after minutes of CPU.
+      1. torch/whisper calls are synchronous. Awaiting them inline freezes the asyncio event loop for
+         the whole ML pass, so the worker cannot answer the websocket keepalive ping and the server
+         closes the connection mid-job.
+      2. With the loop frozen, no job:progress can be sent either, so the core's 30s PROGRESS LEASE
+         expires and the reaper requeues a job that was running fine — each retry then costs a full
+         ASR + align pass, so with maxAttempts=3 a slightly slower song fails permanently.
 
-    Demucs never hit this because it is a subprocess awaited through asyncio; in-process ML is not.
+    Demucs never hits this because it is a subprocess awaited through asyncio; in-process ML is not.
 
-    ON UNWIND we do NOT abandon the thread. When the consuming job is cancelled (dial_home._on_cancel
-    calls task.cancel()), a GeneratorExit / CancelledError is thrown into the `yield` below and this
-    generator unwinds. Without the `finally` the `to_thread` future was simply dropped: the worker's
-    slot was freed by _run_job's finally while the native ML call kept running, so the box believed it
-    had a capacity it did not — a cancelled process went on burning CPU/VRAM and a concurrency>1 worker
-    over-committed.
-
-    A thread executing native torch code CANNOT be forcibly killed — Python has no such primitive, and
-    cancelling the to_thread future does NOT stop the thread, it only detaches our handle so the work
-    keeps running unobserved (worse, not better). So the honest fix is not to pretend we killed it: we
-    AWAIT the still-running future on the way out, shielded from the very cancellation that is unwinding
-    us, so this generator does not finish until the thread genuinely has. The caller frees its slot only
-    when run_blocking returns, so the slot now stays held for exactly as long as real work is in flight.
-    The cost is that a cancelled ML process does not free its slot instantly — it frees it when the current
-    pass ends — which is the truthful behaviour, not the lie that capacity is already back.
+    ON UNWIND we do NOT abandon the thread. A thread executing native torch code CANNOT be forcibly
+    killed — cancelling the to_thread future does not stop it, only detaches our handle so the work
+    keeps running unobserved. So we AWAIT the still-running future on the way out, shielded from the
+    very cancellation that is unwinding us, so the caller's slot (freed only when run_blocking
+    returns) stays held for exactly as long as real work is in flight — a cancelled ML process frees
+    its slot when the current pass ends, not instantly, which is the truthful behaviour.
     """
     task = asyncio.ensure_future(asyncio.to_thread(fn))
     try:
@@ -250,20 +219,18 @@ async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIter
                 return
             yield ("progress", ProgressEvent(stage=stage, pct=pct))
     finally:
-        # Reached on the normal `return` (task already done — cheap no-op) and on the cancel/exception
-        # unwind (thread may still be running). Block until it truly finishes so the slot the caller is
-        # about to free is not still occupied by a live thread. shield() because the unwinding
-        # CancelledError would otherwise cut this await short and re-detach the thread we are waiting on.
+        # Reached on the normal `return` (task already done, cheap no-op) and on the cancel/exception
+        # unwind (thread may still be running). shield() because the unwinding CancelledError would
+        # otherwise cut this await short and re-detach the thread we are waiting on.
         while not task.done():
             try:
                 await asyncio.shield(asyncio.wait({task}))
             except asyncio.CancelledError:
-                # A SECOND cancellation reached us through the shield. shield() raises to its awaiter
-                # immediately while the inner wait keeps running concurrently, so the thread is NOT
-                # finished here — loop and await it again instead of returning with the thread live.
+                # A second cancellation reached us through the shield; the inner wait keeps running
+                # concurrently, so loop and await again instead of returning with the thread still live.
                 pass
         # Retrieve any exception the abandoned run raised so it is not reported as "exception never
-        # retrieved"; we are unwinding an already-decided outcome and its value is not wanted here.
+        # retrieved" — we are unwinding an already-decided outcome and its value is not wanted here.
         if task.done() and not task.cancelled():
             _ = task.exception()
 
@@ -273,28 +240,19 @@ def scratch_for(job: JobSpec) -> str:
     return os.path.join(job.media_dir, "work", job.job_id)
 
 
-# ── the write guard (test mode) ────────────────────────────────────────────────────
-
-
 def _snapshot(ctx: Ctx, step: Any) -> dict[str, Any]:
     """Every namespace a step did NOT declare, so an undeclared write can be detected.
 
-    `ctx.out` is watched at FIELD granularity, not as a whole: `notes` is appended by every step via
-    `ctx.note()` and `timings_sec` is filled by the runner itself, so neither is a declared write and
-    both must stay exempt. EVERY OTHER `Outputs` field is wire-shaped — it becomes part of the
-    CompleteResult — so the guard has to cover it, and a step that writes one without declaring `out`
-    is caught the same way an undeclared `ctx.audio` write is. The set is derived from the dataclass
-    fields minus the exempt pair rather than hardcoded, so a wire-shaped field added later (as
-    `media_uri`, then `selection`, each were — the same defect landed three times
-    on a hardcoded list) is watched automatically instead of silently slipping through.
+    `ctx.out` is watched at FIELD granularity, not as a whole: `notes` (appended via `ctx.note()`) and
+    `timings_sec` (filled by the runner itself) are legitimate undeclared writes and stay exempt.
+    EVERY OTHER `Outputs` field is wire-shaped, becoming part of the CompleteResult, so the guard must
+    cover it. The set is derived from the dataclass fields minus the exempt pair rather than
+    hardcoded, so a wire-shaped field added later is watched automatically.
     """
     watched = {"audio", "lyrics", "stems", "engines"}
     declared_roots = {w.split(".", 1)[0] for w in step.writes}
     snap = {root: repr(getattr(ctx, root)) for root in watched - declared_roots}
     if "out" not in declared_roots:
-        # Mechanical exemptions only: the runner fills `timings_sec` after the step returns, and every
-        # step appends `notes` via `ctx.note()` — both are legitimate undeclared writes. Anything else
-        # `Outputs` grows is wire-shaped and watched with no code change.
         exempt = {"notes", "timings_sec"}
         watched_out = tuple(
             getattr(ctx.out, f.name) for f in dataclasses.fields(ctx.out) if f.name not in exempt
@@ -306,10 +264,8 @@ def _snapshot(ctx: Ctx, step: Any) -> dict[str, Any]:
 def _assert_declared_writes(ctx: Ctx, step: Any, before: dict[str, Any]) -> None:
     """Fail loudly when a step wrote somewhere it did not declare.
 
-    Keeps `Ctx` from decaying into a god-object where any step writes anything — which is the standing
-    objection to a shared mutable context, and the reason the declarations have to be enforced rather
-    than merely written. Compares the per-root reprs `_snapshot` captured before the step ran: coarse
-    (whole namespaces, or `ctx.out`'s wire-shaped fields), but it needs no bookkeeping in the steps
+    Keeps `Ctx` from decaying into a god-object where any step writes anything. Compares the per-root
+    reprs `_snapshot` captured before the step ran: coarse, but needs no bookkeeping in the steps
     themselves, and the failure names the step and the namespace.
     """
     after = _snapshot(ctx, step)

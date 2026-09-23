@@ -1,20 +1,11 @@
-"""The two remaining missing-key guards in steps/separate.py must classify NON-RETRYABLE.
+"""DecodeToWav's empty-`audio.path` guard and PublishStems' missing-instrumental guard must classify
+NON-RETRYABLE: both are DETERMINISTIC plan errors (a step ran out of order), so a retry re-runs the
+same passes and fails identically, and a bare RuntimeError (retryable by default) would burn up to
+three attempts on a job that can never succeed.
 
-Follow-up to the earlier fixes for the ProbeSilence (silent instrumental) and Separate (produced no
-instrumental) sites. Two sibling guards, both added as bare RuntimeError raises, were left
-behind:
-
-  * DecodeToWav (:61)   — audio.path is empty (AcquireAudio did not run or failed)
-  * PublishStems (:203) — stems.raw['instrumental'] is missing (Separate did not run)
-
-Both describe a DETERMINISTIC plan error: a step ran out of order / a required key is absent. A retry
-re-runs the same passes and fails identically, so a bare RuntimeError — which retry_policy.is_retryable
-defaults to retryable (no PERMANENT_MARKER in the message) — burns up to three attempts on a job that can
-never succeed. The fix raises PermanentError (retryable=False) at both sites.
-
-These guards assert the CLASSIFICATION (is_retryable is False), not the exception type: PermanentError
-IS-A RuntimeError, so a `pytest.raises(RuntimeError)` matches on base too. Only the is_retryable
-assertion reds on base, where the bare RuntimeError classifies retryable.
+These assert the CLASSIFICATION (is_retryable is False), not the exception type: PermanentError IS-A
+RuntimeError, so `pytest.raises(RuntimeError)` matches even on a reverted bare raise — only the
+is_retryable assertion reds in that case.
 """
 
 from __future__ import annotations

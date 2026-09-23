@@ -11,9 +11,8 @@ import {
 } from '$lib/readiness';
 import { isEntryReady } from '$lib/server/rotation';
 import { expect, test } from 'bun:test';
-// The client's readiness view must agree with the server's classification, and must let a live
-// media:status win over a stale catalog copy — otherwise tapping "✨ Karaoke" leaves the row looking
-// untouched until the next full sync.
+// The client's readiness view must agree with the server's classification and let a live media:status win
+// over a stale catalog copy, or tapping Karaoke leaves the row untouched until the next full sync.
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -36,8 +35,8 @@ const cases: Media[] = [
 	m({ stemStatus: 'queued' }),
 	m({ source: 'local', stemStatus: 'none' }),
 	m({ stemStatus: 'ready' }), // ready status, no artifact — must classify the same on both sides
-	// Separated, now mid-align: stems done but lyrics still queued. Neither 'ready' nor 'queued' — the
-	// case that used to fall through to 'unacquired' and show a Sing button on a separated song.
+	// Separated, mid-align: neither 'ready' nor 'queued', which is the case that falls through to
+	// 'unacquired' and shows a Sing button on an already-separated song.
 	m({
 		stemStatus: 'ready',
 		lyricsStatus: 'queued',
@@ -47,15 +46,14 @@ const cases: Media[] = [
 ];
 
 test('THE BUG: a separated song mid-align reads as processing, not unacquired', () => {
-	// stems ready + lyrics queued is past the stems gate but not finished. Before the gate-driven fix
-	// this matched neither 'ready' nor stemStatus==='queued', fell through to 'unacquired', and showed
-	// a Sing button on an already-separated song.
+	// Past the stems gate but not finished: matching neither 'ready' nor stemStatus==='queued' falls
+	// through to 'unacquired'.
 	const midAlign = m({
 		stemStatus: 'ready',
 		lyricsStatus: 'queued',
 		instrumentalRef: 'derived/stems/i-instrumental.flac',
-		// The stems job emits the profile with the instrumental, so a real mid-align song already has it;
-		// without it the stems gate is not done and this would read as unacquired, not processing.
+		// The stems job emits the profile with the instrumental, so without it the stems gate is not done
+		// and this reads as unacquired rather than processing.
 		songProfile: EMPTY_SONG_PROFILE
 	});
 	expect(readinessOf(midAlign)).toBe('processing');
@@ -71,15 +69,13 @@ test('a live media:status wins over the catalog copy (the row responds to the ta
 });
 
 test('a failed process READS as failed, so the singer learns the process died', () => {
-	// This used to fall through to the catalog and report 'unacquired' — or, while stemStatus was still
-	// mid-flight, 'processing', which is what made a dead process read "Making karaoke… 0%" forever. The only
-	// failure signal was a four-second toast; look away and the information was gone for good.
+	// Falling through to the catalog reports 'unacquired', or 'processing' while stemStatus is mid-flight, which is what
+	// makes a dead process read "Making karaoke… 0%" forever with a four-second toast as the only failure signal.
 	expect(displayReadiness(m(), { status: 'failed' })).toBe('failed');
 });
 
 test('a failed process on an already-singable song is not a failure the guest needs', () => {
-	// A dead lyrics upgrade on a processed song: still fully singable, so reporting failure would be
-	// alarming and wrong. The gates decide singability, as everywhere else.
+	// A dead lyrics upgrade on a processed song is still fully singable: the gates decide singability.
 	const processed = m({
 		stemStatus: 'ready',
 		instrumentalRef: 'derived/stems/m1-instrumental.flac',
@@ -90,19 +86,15 @@ test('a failed process on an already-singable song is not a failure the guest ne
 
 test('an unacquired or FAILED song can be processed; one in flight or done cannot', () => {
 	expect(canProcess(m(), 'unacquired')).toBe(true);
-	// The retry path. A failed process settles back to un-processed server-side, so offering Sing again is a
-	// real action rather than a button that answers "already processed".
+	// A failed process settles back to un-processed server-side, so Sing is a real action again.
 	expect(canProcess(m(), 'failed')).toBe(true);
 	expect(canProcess(m(), 'ready')).toBe(false);
 	expect(canProcess(m(), 'processing')).toBe(false);
 });
 
-// Regression (reported from a real party session): "when I hit karaoke on a song, it clears the
-// remote of the downloaded library. It just says No karaoke-ready songs yet". The library was never
-// cleared — the Ready group is query-scoped while a search is active, so a query matching none of the
-// library emptied the group and the phone announced the library was empty. Reproduced with 5 songs
-// in /api/library: the group vanished and the false copy appeared; clearing the query brought all 5
-// back. These tests pin the copy to the truth.
+// The Ready group is query-scoped while a search is active, so a query matching none of the library
+// empties the group — and the copy must not then announce that the library itself is empty. Reported from
+// a real party as "it clears the remote of the downloaded library".
 test('a genuinely empty library keeps the original "none yet" copy', () => {
 	const s = readyEmptyState({ searchActive: false, libraryCount: 0 });
 	expect(s.message).toContain('No karaoke-ready songs yet');
@@ -119,23 +111,14 @@ test('THE BUG: a non-empty library during a search must NOT claim there are none
 	const s = readyEmptyState({ searchActive: true, libraryCount: 5, query: 'zzzz' });
 	expect(s.message).not.toContain('No karaoke-ready songs yet');
 	expect(s.message).toContain('zzzz'); // names what was searched
-	/*
-	 * `toContain('5')` USED TO SIT HERE, as the evidence that the message acknowledged a non-empty
-	 * library. The count moved out of the sentence and onto the control that acts on it — the
-	 * "Show all 5" button, i.e. `showAllCount` below — because stating it in both places is the
-	 * duplication that made this copy read like an explanation. The invariant is unchanged and still
-	 * pinned twice over: the message must not claim there are none (above), and the count must reach
-	 * the surface (below).
-	 */
+	// The count lives on the control that acts on it ("Show all 5", `showAllCount` below), not in the sentence. Both
+	// halves stay pinned: the message must not claim there are none, and the count must reach the surface.
 	expect(s.showAllCount).toBe(5); // and offers the one tap back to the library
 });
 
 test('singular wording for a one-song library', () => {
-	/*
-	 * RE-POINTED at the branch that still counts. The searching branch names no count any more (see the
-	 * arm above), so it has no singular/plural to get wrong — and "Show all 1", which is where the
-	 * count went, needs no noun. This branch does still count, so the agreement claim lives here.
-	 */
+	// The singular/plural agreement claim lives on the branch that still names a count; the searching
+	// branch names none, and "Show all 1" needs no noun.
 	const s = readyEmptyState({ searchActive: false, libraryCount: 1 });
 	expect(s.message).toContain('1 karaoke song ');
 	expect(s.message).not.toContain('songs');
@@ -148,10 +131,8 @@ test('a blank query while searchActive still reads sensibly (no empty quotes)', 
 	expect(s.showAllCount).toBe(3);
 });
 
-// ── up-next must match what the server will actually play ─────────────────────
-// The phone used to label the FIRST queued row "up next". The server's nextPlayable() skips an entry
-// whose stems are still processing, so whenever row 0 was processing the phone promised a song the TV was
-// about to skip past. These pin the agreement.
+// Up-next must match what the server will actually play. The server's nextPlayable() skips an entry whose
+// stems are still processing, so labelling the FIRST queued row promises a song the TV skips past.
 
 const entry = (id: string, mediaId: string) => ({ id, mediaId });
 
@@ -168,8 +149,8 @@ test('a live processing status beats a catalog copy that still says ready', () =
 });
 
 test('separated but lyrics never ran is NOT playable — the gate waits for the whole process', () => {
-	// The gate change: a song is finished when every required step is done, not when the instrumental
-	// exists. Rotation holds its slot and moves on to whoever IS finished.
+	// A song is finished when every required step is done, not when the instrumental exists: rotation
+	// holds its slot and moves on to whoever IS finished.
 	const noLyrics = m({
 		stemStatus: 'ready',
 		instrumentalRef: 'derived/stems/i-instrumental.flac',
@@ -238,14 +219,12 @@ test('nothing playable → no up-next (the whole queue is processing)', () => {
 	).toBeNull();
 });
 
-// ── a cancel is not a failure ──────────────────────────────────────────────────────────────────
-// Removing a processing song settles it back to un-processed exactly like a terminal failure, so the two
-// need the SAME store effect and OPPOSITE copy. Reusing 'failed' for a cancel made the phone tell a
-// guest who deliberately removed a song "Couldn't make karaoke" — a lie about their own action.
+// A cancel is not a failure. Removing a processing song settles it back to un-processed exactly like a
+// terminal failure, so the two need the SAME store effect and OPPOSITE copy: reusing 'failed' tells a
+// guest who removed a song "Couldn't make karaoke", a lie about their own action.
 
 test('a canceled process reads from the catalog, not as a failure', () => {
 	expect(displayReadiness(m(), { status: 'canceled' })).toBe('unacquired');
-	// The distinction that matters: same input shape, different verdict.
 	expect(displayReadiness(m(), { status: 'failed' })).toBe('failed');
 });
 
@@ -263,15 +242,11 @@ test('a canceled status leaves playability to the catalog, like failed', () => {
 	expect(entryPlayable(m(), { status: 'canceled' })).toBe(false);
 });
 
-// ── F2: the singer's own queue card must say when the process died ──────────────────────────────
-// A rotation entry chose between the process-progress card and a plain waiting row on an "is it in
-// flight" test, and a terminally failed process is not in flight — so a dead turn rendered
-// byte-for-byte as a turn about to play, with nothing saying the process failed while nextPlayable held
-// its slot forever. queueCardKind selects the card, and MUST route a failed live status to a failed
-// card. Expected values are hard-coded, not derived from displayReadiness the same way the code is.
+// The singer's own queue card must say when the process died. Choosing between the progress card and a plain waiting
+// row on an "is it in flight" test renders a dead turn byte-for-byte as a turn about to play, while nextPlayable holds
+// its slot forever. Expected values are literals, not re-derived through displayReadiness the way the code is.
 test('a live failed status selects the FAILED card, not a plain waiting row', () => {
-	// The exact reported state: media settled back to un-processed (stemStatus none) after a dead proc,
-	// live status failed. On base this returned a plain row.
+	// Media settled back to un-processed after a dead process, live status failed.
 	expect(queueCardKind(m({ stemStatus: 'none' }), { status: 'failed' })).toBe('failed');
 });
 
@@ -281,17 +256,15 @@ test('a process in flight still selects the processing card', () => {
 });
 
 test('a settled or absent status leaves a plain waiting row', () => {
-	// ready and canceled are terminal-and-settled: an ordinary turn again, no process card.
+	// ready and canceled are terminal-and-settled: an ordinary turn, no process card.
 	expect(queueCardKind(m(), { status: 'ready' })).toBe('plain');
 	expect(queueCardKind(m(), { status: 'canceled' })).toBe('plain');
-	// no live status at all — the common case, a plain queued turn.
 	expect(queueCardKind(m(), undefined)).toBe('plain');
 });
 
 test('a failed lyrics upgrade on a still-singable song is NOT marked broken', () => {
-	// The one case a raw status===failed test gets wrong: the song is fully processed and singable, and a
-	// failed lyrics upgrade must not label a turn that WILL play as a dead one. Deferred to
-	// displayReadiness, which reads the catalog, so this stays plain.
+	// The case a raw `status === failed` test gets wrong: the song is fully processed and singable, so a failed lyrics
+	// upgrade must not label a turn that WILL play as dead. Deferred to displayReadiness, which reads the catalog.
 	const singable = m({
 		stemStatus: 'ready',
 		instrumentalRef: 'derived/stems/m1-instrumental.flac',
@@ -302,18 +275,9 @@ test('a failed lyrics upgrade on a still-singable song is NOT marked broken', ()
 	expect(queueCardKind(singable, { status: 'failed' })).toBe('plain'); // so: plain, not failed
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * Merged in from `processing-group-query-scope.test.ts`.
- *
- * It was a satellite: a separate file named for ONE behaviour of the module this file already
- * covers. Several files about one module tell a reader nothing about which holds what, so finding
- * where a behaviour is pinned meant opening all of them. The tests are unchanged.
- * ───────────────────────────────────────────────────────────────────────────── */
-// a PROCESSING song must obey the search-match filter. The Processing group used to be re-derived
-// from the whole live status map and the whole catalog with no reference to the query, so a song
-// someone else was processing appeared under an UNRELATED search ("I want it that way" under "never
-// gonna give you up"). The server already returns a query-scoped `processing` group; the group's
-// id-selection now lives in the pure `processingGroupIds` helper, scoped to the query when searching.
+// A PROCESSING song must obey the search-match filter. Re-deriving the group from the whole live status
+// map and the whole catalog with no reference to the query shows a song someone else is processing under
+// an UNRELATED search. `processingGroupIds` is scoped to the query when searching.
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
 	id,
@@ -325,9 +289,8 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-// The "I want it that way" trap: it is genuinely processing (someone else kicked it off), so it lives
-// in the live status map and the catalog — but it does NOT match the current query, so the server's
-// query-matched processing group (`processingResults`) does not contain it.
+// The trap: genuinely processing (someone else started it) so it is in the live status map and the
+// catalog, but it does NOT match the query, so `processingResults` does not contain it.
 const rickroll = media('rickroll', { title: 'Never Gonna Give You Up' });
 const bsb = media('bsb', { title: 'I Want It That Way' });
 
@@ -344,8 +307,8 @@ const status = new Map<string, { status: MediaStatus }>([
 const readiness = (m: Media) => displayReadiness(m, status.get(m.id));
 
 test('THE BUG: with a search active, a processing song that does NOT match the query is absent', () => {
-	// The wire returned ONLY the query-matching processing song (rickroll); bsb was processing but did not
-	// match "never gonna give you up", so partitionSearch excluded it.
+	// The wire returned only the query-matching processing song; the other was processing but did not
+	// match, so partitionSearch excluded it.
 	const ids = processingGroupIds({
 		searchActive: true,
 		processingResults: [rickroll],
@@ -371,8 +334,8 @@ test("don't over-correct: a processing song that DOES match the query is present
 });
 
 test('empty query preserves the guaranteed-visible union of every in-flight process', () => {
-	// No search box → the escape-hatch requirement holds: a process you started stays visible from both
-	// the live status map and the catalog, regardless of `processingResults`.
+	// With no search box the escape hatch holds: a process you started stays visible from both the live
+	// status map and the catalog, regardless of `processingResults`.
 	const ids = processingGroupIds({
 		searchActive: false,
 		processingResults: [],

@@ -1,40 +1,13 @@
 <!--
-  ── ENCORE DEVIATIONS (S3) ───────────────────────────────────────────────────────────────────
-  Encore's range geometry, replacing the registry's. The incumbent was a hand-styled
-  `input[type='range']` with per-engine `::-webkit-slider-*` and `::-moz-range-*` rules; Bits UI builds
-  the same control out of real elements, so those two parallel rule sets collapse into one.
+  Encore's range geometry over the Bits UI primitive. Three styling mechanisms, each forced rather than
+  chosen: the ROOT is reached by data-slot in a global rule (it is a child component, so a scoped class
+  compiles to a hash that lands on no element and the whole rule dies silently); the TRACK is ordinary
+  scoped CSS because this file renders that span; the FILL and THUMB are utilities because a class is the
+  only thing that reaches a child component.
 
-  1. The thumb is 28px on a 6px track, not `size-4` on `h-1.5`. Those numbers are the incumbent's, and
-     the old CSS carried a comment about WebKit anchoring a 28px thumb to the track top — a bug that
-     stops existing here, because the thumb is a positioned element rather than a pseudo-element.
-
-     ITS SHADOW IS THE GUIDING THUMB'S, not `--shadow`. `--shadow` is `0 8px 30px rgba(0,0,0,.45)` — a
-     panel shadow, sized for a card — and on a 28px control a 30px blur with an 8px offset reads as a
-     smudge under the thumb rather than as elevation: on /settings it painted a soft halo wider than the
-     control itself. The smaller thumb beside it already used `0 2px 8px rgba(0,0,0,.5)` for exactly this
-     reason, so the two now agree and the pair reads as one family at two sizes.
-  2. The root keeps `min-height: var(--tap)`. A 6px track is not a 44px target; the old rule got there
-     with `height: var(--tap)` on the input and this does the same, which is what touch-targets.test.ts
-     reads. `touch-none` stays: the reorder drag must not be re-read as a page scroll.
-  3. The fill is `var(--accent)`. This is the ONE deliberate visible change in the slice — a native
-     range draws no filled portion, so the settings sliders gain one. It is not invention: GuidingTrack
-     already shows a fill and drove it with a `--fill` custom property, which this replaces with the
-     Range element Bits UI provides for exactly that purpose.
-  4. GUIDINGTRACK IS NOT ON THIS COMPONENT, and the reason is a hard conflict rather than a preference.
-     Bits UI's Slider reads `offsetWidth` to place its thumb. Encore's mount rung deliberately hardens
-     `offsetWidth` to THROW, because happy-dom fabricates a zero and a fabricated zero is
-     worse than no answer. So a Bits UI Slider cannot be MOUNTED in this harness at all — and
-     `hero-live-controls.test.ts` mounts GuidingTrack seven times to hold and
-     The settings sliders are unaffected because every settings test is a source scan; nothing
-     mounts that page. Migrating GuidingTrack means moving those seven renders to the LAYOUT rung, which
-     skips wherever Chromium is absent — a coverage trade that is the owner's call, not this commit's.
-  5. Three different mechanisms, and each one is forced rather than chosen:
-       - the ROOT is `:global([data-slot='slider'])`. It was a scoped class for one build, and the rule
-         matched nothing — the root is a Bits UI component, so Svelte's hash lands on no element. The
-         style block below records what that cost.
-       - the TRACK is ordinary scoped CSS, because it is a `<span>` THIS file renders.
-       - the FILL and THUMB are utilities, because they are child components and a class is the only
-         thing that reaches them.
+  GuidingTrack deliberately does NOT use this component: Bits UI's Slider reads offsetWidth to place its
+  thumb, and the mount rung hardens offsetWidth to throw, so a Bits UI Slider cannot be mounted under
+  happy-dom at all. See docs/FRONTEND.md#shared-components.
 -->
 <script lang="ts">
 	import { Slider as SliderPrimitive } from 'bits-ui';
@@ -104,14 +77,10 @@ get along, so we shut typescript up by casting `value` to `never`.
 
 <style>
 	/*
-	 * `:global`, keyed on shadcn's own data-slot. This was `.encore-slider` — a SCOPED class — and the
-	 * rule compiled to `.encore-slider.svelte-<hash>`, which can never match: the root is a Bits UI
-	 * COMPONENT, so Svelte puts the hash on nothing. The whole rule was dead in the build, the 44px tap
-	 * floor with it, and the 28px thumb overflowed upward into the label above every settings slider.
-	 *
-	 * Nothing in the suite could see it. touch-targets.test.ts reads the RULE, so it passed on a rule
-	 * that never applied — which is why `ui-scoped-style-reach.test.ts` now checks reach, and why
-	 * this was found by a screenshot instead.
+	 * `:global`, keyed on shadcn's own data-slot, because the root is a Bits UI component: a scoped class
+	 * here compiles to a hash that matches no element, so the rule and the 44px tap floor with it die in
+	 * the build while `touch-targets.test.ts` still reads the rule and passes.
+	 * `ui-scoped-style-reach.test.ts` is what checks reach.
 	 */
 	:global([data-slot='slider']) {
 		min-height: var(--tap);

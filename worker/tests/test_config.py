@@ -15,9 +15,8 @@ from src.separation import demucs
 
 def test_defaults_are_the_shipped_behaviour():
     c = WorkerConfig.from_env({})
-    # Capabilities are no longer DECLARED here. from_env is pure over env, and what a box can actually
-    # do depends on PATH and importable modules — host facts. So the env layer carries only an optional
-    # narrowing override, and the effective set is filled in by config.resolve() from probes.
+    # Capabilities are PROVEN by probes in config.resolve(), not declared here: from_env is pure over
+    # env, and the env layer carries only an optional narrowing override.
     assert c.capabilities == (), "unresolved until probed — never a hardcoded guess"
     assert c.capabilities_override is None, "no override means 'advertise everything provable'"
     assert c.concurrency == 1
@@ -28,12 +27,10 @@ def test_defaults_are_the_shipped_behaviour():
     assert c.demucs_overlap is None
     assert c.demucs_segment is None
     assert c.demucs_shifts is None
-    # Alignment no longer defaults to a hardcoded "cpu" — that made a GPU box transcribe on the CPU
-    # unless a human set a second variable. None means "derive it from the resolved device".
+    # None means "derive it from the resolved device" (a GPU box must not transcribe on the CPU).
     assert c.whisperx_device is None
     # torch_threads is the ONE exception to "unset = let the tool decide": leaving it alone means every
-    # one of `concurrency x demucs_jobs` separations defaults to all cores and they fight. Derived from
-    # the box rather than hardcoded, so this asserts the derivation and not one machine's answer.
+    # one of `concurrency x demucs_jobs` separations defaults to all cores and they fight.
     assert c.torch_threads == auto_torch_threads(c.concurrency, c.demucs_jobs)
     assert c.warnings == ()
 
@@ -51,10 +48,6 @@ def test_every_perf_knob_is_settable():
             "ENCORE_WORKER_CONCURRENCY": "3",
             "ENCORE_FLAC_LEVEL": "5",
             "ENCORE_FFMPEG_BIN": "/opt/ffmpeg",
-            # These three were previously omitted despite the test's name claiming completeness, so a
-            # deployment that stopped reading any of them would have shipped green. ENCORE_WHISPERX_DEVICE
-            # is the operator override for the alignment device; ENCORE_SEPARATOR_BACKEND selects the
-            # separation implementation; ENCORE_ANNOTATE toggles the MusicBrainz identify step.
             "ENCORE_WHISPERX_DEVICE": "cuda",
             "ENCORE_SEPARATOR_BACKEND": "mlx",
             "ENCORE_ANNOTATE": "0",
@@ -64,8 +57,7 @@ def test_every_perf_knob_is_settable():
     assert (c.demucs_overlap, c.demucs_segment, c.demucs_shifts) == (0.1, 7, 2)
     assert (c.torch_threads, c.concurrency) == (4, 3)
     assert (c.flac_level, c.ffmpeg_bin) == (5, "/opt/ffmpeg")
-    # from_env carries the operator override verbatim; whether it is HONOURED is decided later in
-    # resolve() (see the whisperx-device tests below). Backend is lower-cased; annotate is a flag.
+    # from_env carries the override verbatim; whether it is HONOURED is decided later in resolve().
     assert c.whisperx_device == "cuda"
     assert c.separator_backend == "mlx"
     assert c.annotate is False
@@ -73,8 +65,6 @@ def test_every_perf_knob_is_settable():
 
 
 def test_legacy_demucs_device_still_works_but_says_it_is_deprecated():
-    # An existing deployment must not break on upgrade — but the old name applied to separation only,
-    # and now sets the device for the whole worker, which is what every operator setting it wanted.
     c = WorkerConfig.from_env({"ENCORE_DEMUCS_DEVICE": "cuda"})
     assert c.device == "cuda"
     assert any("deprecated" in w for w in c.warnings)
@@ -87,7 +77,6 @@ def test_the_new_device_name_wins_over_the_legacy_one():
 
 
 def test_auto_jobs_scales_with_cores_and_never_ooms_a_small_box():
-    # Each job holds its own model copy, so the default must not assume a big machine.
     assert auto_demucs_jobs(1) == 1
     assert auto_demucs_jobs(4) == 1
     assert auto_demucs_jobs(8) == 1
@@ -97,17 +86,13 @@ def test_auto_jobs_scales_with_cores_and_never_ooms_a_small_box():
 
 
 def test_auto_torch_threads_divides_the_box_among_contending_separations():
-    # 32 cores, 2 concurrent songs x 4 chunk jobs = 8 processes -> 4 threads each, i.e. one per core.
     assert auto_torch_threads(2, 4, 32) == 4
     assert auto_torch_threads(1, 4, 32) == 8
     assert auto_torch_threads(4, 4, 16) == 1
-    # Never zero: a thread cap of 0 would be a worker that separates nothing.
-    assert auto_torch_threads(8, 8, 4) == 1
+    assert auto_torch_threads(8, 8, 4) == 1  # never zero
 
 
 def test_auto_torch_threads_declines_when_nothing_can_contend():
-    # os.cpu_count() reports LOGICAL cpus while torch's own default is physical-core aware, so pinning
-    # to it with no contention could only make a single separation slower on an SMT box.
     assert auto_torch_threads(1, 1, 32) is None
     assert auto_torch_threads(0, 0, 32) is None, "clamped to 1x1, still nothing to divide"
 
@@ -142,18 +127,15 @@ def test_shifts_may_be_zero_but_jobs_may_not():
 
 
 def test_blank_capability_override_is_treated_as_absent_not_as_an_empty_set():
-    # " , ," must mean "no override given", NOT "advertise nothing". Reading it as an empty set would
-    # produce a worker that connects and is never given work — the exact silent failure the probe
-    # exists to remove.
+    # " , ," must mean "no override given", NOT "advertise nothing" — reading it as an empty set would
+    # produce a worker that connects and is never given work.
     c = WorkerConfig.from_env({"ENCORE_WORKER_CAPABILITIES": " , ,"})
     assert c.capabilities_override is None
 
 
 def test_blank_env_vars_fall_back_to_defaults_not_to_empty_strings():
-    # Compose plumbs optional overrides as `FOO=${FOO:-}`, which puts an EMPTY STRING in the
-    # environment rather than leaving it absent. `dict.get(key, default)` sees a present value and
-    # returns "", so an unset override became demucs_model="" — a worker that passes `-n ''` to demucs
-    # and fails every process for a reason the config line would not explain.
+    # Compose plumbs optional overrides as `FOO=${FOO:-}`, an EMPTY STRING rather than absent, and
+    # `dict.get(key, default)` sees a present value and returns "".
     blank = {
         k: ""
         for k in (
@@ -197,7 +179,6 @@ def test_describe_names_the_throughput_settings():
     assert "jobs=8" in line and "device=cuda" in line and "concurrency=1" in line
 
 
-# ── the flags actually reach the CLI ────────────────────────────────────────────────
 def test_unset_knobs_are_OMITTED_so_demucs_defaults_apply():
     argv = demucs.demucs_argv("in.wav", "/out")
     for flag in ("-j", "--overlap", "--segment", "--shifts", "-d"):
@@ -220,7 +201,6 @@ def test_jobs_of_one_is_not_passed_since_it_is_the_default():
     assert "-j" not in demucs.demucs_argv("in.wav", "/out", jobs=1)
 
 
-# ── worker token (FIX 1: close the auth loop with the core's role=worker gate) ──────────
 def test_worker_token_is_unset_by_default():
     c = WorkerConfig.from_env({})
     assert c.worker_token == ""
@@ -232,14 +212,12 @@ def test_worker_token_read_from_env():
 
 
 def test_authed_core_ws_unset_token_is_byte_identical_to_core_ws():
-    # The pre-auth behaviour: no token means the URL is passed through unchanged.
     c = WorkerConfig.from_env({"ENCORE_CORE_WS": "ws://host:3000/ws?role=worker"})
     assert c.worker_token == ""
     assert c.authed_core_ws() == "ws://host:3000/ws?role=worker"
 
 
 def test_authed_core_ws_appends_token_when_url_already_has_a_query():
-    # The documented form already carries ?role=worker, so the token must be an ADDITIONAL param.
     c = WorkerConfig.from_env(
         {"ENCORE_CORE_WS": "ws://host:3000/ws?role=worker", "ENCORE_WORKER_TOKEN": "abc123"}
     )
@@ -276,9 +254,6 @@ def test_describe_shows_token_presence_not_value():
     assert "worker_token=set" in d
     assert "TOP-SECRET-VALUE" not in d
     assert WorkerConfig.from_env({}).describe().count("worker_token=unset") == 1
-
-
-# ── segment sizing from FREE accelerator memory ───────────────────────────────────
 
 
 def test_no_measurement_means_demucs_chooses():
@@ -326,21 +301,14 @@ def test_free_memory_is_what_is_measured_not_physical_capacity():
     assert auto_demucs_segment(int(12.0 * 1024**3)) is None
 
 
-# ── the alignment device (FIX: pin whisperx_device_for + config.resolve, which no test reached) ──────
-#
 # CTranslate2 (what whisperx transcribes through) has only a cuda backend and a cpu backend, so the
 # one device that runs the whole worker cannot be handed straight to the aligner: an Intel/Apple box
-# separates on its accelerator but must still align on the CPU. `whisperx_device_for` is that mapping
-# and `resolve()` is the only thing that wires it, yet nothing exercised either — a `return "cpu"`
-# regression (a CUDA box separating on the GPU then transcribing every song on the CPU: slow,
-# correct-looking, and silent) would have shipped green. These assert the mapping AS VALUES and drive
-# the real production functions, not a reimplementation.
+# separates on its accelerator but must still align on the CPU. `whisperx_device_for` is that mapping.
 
 
 def test_whisperx_device_for_maps_only_cuda_to_cuda():
-    # A cuda device (with or without an ordinal) aligns on cuda; EVERYTHING else aligns on cpu, because
-    # CTranslate2 has no xpu/mps backend. Asserting the concrete values kills a `return "cpu"` (the
-    # pre-fix regression) and a `return "<garbage>"` alike.
+    # A cuda device (with or without an ordinal) aligns on cuda; EVERYTHING else aligns on cpu, since
+    # CTranslate2 has no xpu/mps backend.
     assert whisperx_device_for("cuda") == "cuda"
     assert whisperx_device_for("cuda:1") == "cuda"
     assert whisperx_device_for("cuda:0") == "cuda"
@@ -349,8 +317,7 @@ def test_whisperx_device_for_maps_only_cuda_to_cuda():
 
 
 def test_resolve_derives_the_align_device_from_the_separation_device():
-    # The wiring at config.py:391. A GPU box with no explicit override must align on cuda, NOT fall back
-    # to a hardcoded cpu — that fallback is the exact bug this code exists to prevent.
+    # A GPU box with no explicit override must align on cuda, not fall back to a hardcoded cpu.
     resolved, _warnings, _p = resolve(WorkerConfig.from_env({}), device="cuda:0")
     assert resolved.whisperx_device == "cuda"
 
@@ -360,9 +327,8 @@ def test_resolve_derives_the_align_device_from_the_separation_device():
 
 
 def test_resolve_lets_an_explicit_operator_override_win_over_the_derivation():
-    # An operator who sets ENCORE_WHISPERX_DEVICE must have it honoured, not silently replaced by the
-    # derived value. `cpu` on a cuda box is a real choice (e.g. the GPU is reserved for separation), so
-    # the override has to survive resolve().
+    # `cpu` on a cuda box is a real choice (e.g. the GPU is reserved for separation), so an explicit
+    # ENCORE_WHISPERX_DEVICE must survive resolve() rather than being replaced by the derived value.
     resolved, _warnings, _p = resolve(
         WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "cpu"}), device="cuda:0"
     )
@@ -370,8 +336,7 @@ def test_resolve_lets_an_explicit_operator_override_win_over_the_derivation():
 
 
 def test_resolve_warns_on_an_align_device_ctranslate2_cannot_use():
-    # A typo like ENCORE_WHISPERX_DEVICE=mps must not be swallowed: CTranslate2 supports only cuda and
-    # cpu, so alignment would fail, and the one message explaining why must be emitted.
+    # A typo like ENCORE_WHISPERX_DEVICE=mps must not be swallowed: CTranslate2 supports only cuda/cpu.
     _resolved, warnings, _p = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "mps"}), device=None)
     assert any("CTranslate2" in w for w in warnings), warnings
 
@@ -382,10 +347,6 @@ def test_resolve_warns_on_an_align_device_ctranslate2_cannot_use():
 
 
 def test_annotate_flag_is_case_insensitive_like_its_siblings():
-    # ENCORE_ANNOTATE was the only boolean parsed WITHOUT .lower(), so the natural
-    # capitalized spellings silently left annotation ON on the very box the flag exists to spare.
-    # Expected values are hard-coded (never derived through the config's own parse) so the assertion
-    # cannot agree with a still-broken parse. off-spellings resolve to False; on-spellings to True.
     off_values = ["0", "false", "False", "FALSE", "no", "No", "NO", "off", "Off", "OFF", " False ", " no "]
     for v in off_values:
         c = WorkerConfig.from_env({"ENCORE_ANNOTATE": v})

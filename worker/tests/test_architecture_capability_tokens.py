@@ -1,15 +1,9 @@
 """Guard: ARCHITECTURE.md's capability-routing prose may only name `stems*` tokens that `probe_all`
-can actually ADVERTISE.
-
-The doc twice named tokens the probe cannot emit: `stems:ensemble` (hard-coded unavailable by
-an earlier fix) and `stems:mlx` (never a token -- capabilities key on the ENGINE, not the backend).
-Both are the exact "the doc conforms to code that does something else" class the generated-region
-freshness test (test_worker_layers.py) exists to prevent, but this prose sits ~90 lines above the
-generated markers and is hand-maintained, so nothing caught the drift.
-
-This test reads the hand-maintained capability-routing enumeration and cross-checks it against what
-`probe_all` reports available on a maximal box -- the same in-memory simulation the issue used
-(every CLI present, whisperx importable). Reverting the doc to re-add either phantom reds it.
+can actually ADVERTISE — `stems:ensemble` (hard-coded unavailable) and `stems:mlx` (never a token;
+capabilities key on the ENGINE, not the backend) are the two phantoms this has caught before. This
+prose sits well above the generated-region markers `test_worker_layers.py` freshness-checks and is
+hand-maintained, so nothing else catches it drifting from `probe_all`'s real output on a maximal box
+(every CLI present, whisperx importable).
 """
 
 from __future__ import annotations

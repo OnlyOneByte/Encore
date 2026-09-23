@@ -1,19 +1,10 @@
-// HTTP byte-range parsing for the /media route — pure, so it is tested without a server or a file.
+// HTTP byte-range parsing for the /media route — pure, so it's tested without a server or a file.
 //
-// WHY THIS EXISTS. The route used to answer every request with `200 OK` and the whole body, chunked,
-// with no `Content-Length` and no `Accept-Ranges`. Chromium tolerates that and plays anyway, which is
-// why it survived every headless-Chromium check on this project. WebKit does NOT: Safari and every
-// iOS browser probe a media resource with `Range: bytes=0-1` and, on being handed a `200` with the
-// entire file instead of a `206`, abandon the resource. The element then never reaches
-// `canplaythrough`, never fires `timeupdate`, and never plays — silently, with no `error` event.
-//
-// That failure is invisible on the surfaces you would look at: the phone interpolates its progress bar
-// from the last known position plus a wall clock, and takes duration from the media row, so the bar
-// climbs perfectly over a song that is not playing. The tell is on the TV — frozen lyrics, and a song
-// that never ends.
-//
-// It also made SEEKING impossible for every browser: without `Accept-Ranges` the element cannot ask
-// for a later offset, so the phone's scrub could only ever work inside what was already buffered.
+// WebKit (Safari, every iOS browser) probes a media resource with `Range: bytes=0-1`; a `200` with
+// the whole file instead of `206` makes it abandon the resource SILENTLY — no error event, the
+// element never reaches `canplaythrough` or fires `timeupdate`. The tell is on the TV (frozen
+// lyrics, a song that never ends), not the phone, whose progress bar interpolates from a wall clock
+// and keeps climbing regardless. Range support is also what makes seeking possible at all.
 
 /** What to do with a request, once the Range header has been read against the resource's real size. */
 export type RangeDecision =
@@ -24,14 +15,10 @@ export type RangeDecision =
 
 /**
  * Decide how to answer, given the raw `Range` header (or null) and the resource's byte size.
- *
- * Deliberately narrow: only `bytes` with a SINGLE range is honoured. Multi-range requests (which would
- * need a `multipart/byteranges` body) and any unit other than `bytes` fall back to a full `200` —
- * which is legal, and which no media element ever needs, because they all request one range at a time.
- *
- * Both suffix (`bytes=-500`, the last 500 bytes) and open-ended (`bytes=1024-`) forms are supported:
- * media elements use the open-ended form for the initial probe and for seeks, and WebKit uses the
- * two-byte `bytes=0-1` form to test whether ranges work at all.
+ * Deliberately narrow: only a SINGLE `bytes` range is honoured — multi-range and any other unit
+ * fall back to a full `200` (legal; no media element needs more). Both suffix (`bytes=-500`) and
+ * open-ended (`bytes=1024-`) forms are supported: media elements use open-ended for probes/seeks,
+ * WebKit uses the two-byte `bytes=0-1` form to test whether ranges work at all.
  */
 export function parseRangeHeader(header: string | null, size: number): RangeDecision {
 	if (!header || !Number.isFinite(size) || size < 0) return { kind: 'full', size };
@@ -55,9 +42,8 @@ export function parseRangeHeader(header: string | null, size: number): RangeDeci
 	let end: number;
 
 	if (rawStart === '') {
-		// Suffix form `bytes=-N`: the LAST n bytes. Malformed digits are IGNORED (a full 200, per
-		// RFC 9110's "ignore an invalid Range"), while a well-formed `bytes=-0` asks for the last zero
-		// bytes — a real request that genuinely cannot be satisfied.
+		// Suffix `bytes=-N`: the LAST n bytes. Malformed digits are IGNORED (RFC 9110: ignore an
+		// invalid Range), but a well-formed `bytes=-0` genuinely cannot be satisfied.
 		const n = toInt(rawEnd);
 		if (n === null) return { kind: 'full', size };
 		if (n <= 0) return { kind: 'unsatisfiable', size };

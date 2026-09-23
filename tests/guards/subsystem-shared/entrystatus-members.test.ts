@@ -1,12 +1,7 @@
-// 'waiting' and 'skipped' were two EntryStatus members that never had a writer anywhere in the
-// repo (only three values are ever minted: queued/playing/done). Removing them is a pure vocabulary
-// deletion, so nothing BEHAVIOURAL reds if a member comes back — this source-scan guard is the
-// load-bearing regression trap. It reads the two contract files, ISOLATES the specific declaration
-// (so a same-named string elsewhere — e.g. the unrelated TvState 'waiting', or the prose word "skip"
-// — can neither satisfy nor trip a check), strips comments (so a comment naming a removed member
-// cannot fool an absence assertion), and asserts each removed member is gone while the three live
-// members survive. It also pins the two isTerminal readers so a future edit cannot re-introduce a
-// 'skipped' arm that reads a value nothing writes.
+// 'waiting' and 'skipped' were EntryStatus members no code ever wrote — only queued/playing/done are minted —
+// so removing them is a pure vocabulary deletion that nothing BEHAVIOURAL reds on if one returns. Each
+// declaration is ISOLATED (the unrelated TvState 'waiting' and the prose word "skip" must neither satisfy nor
+// trip a check) and comments are stripped, so a comment naming a removed member cannot fool an absence check.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -15,11 +10,8 @@ const stripComments = (s: string): string =>
 		.replace(/\/\*[\s\S]*?\*\//g, '') // block comments
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // line comments (avoid eating http://)
 
-// `readSrc` was `readFileSync(at('src/lib/contract/queue'))`, so all four subjects were spelled as
-// offsets from this file's old home in src/lib/contract/queue — including a `../../../../.`
-// climb out of the package entirely. They are named from the repo root now, and `read` throws when one
-// is missing: load-bearing here, because every REMOVED-member assertion is an ABSENCE check that an
-// empty read would satisfy while proving nothing.
+// `read` throws on a missing path, which is load-bearing here: every REMOVED-member assertion is an ABSENCE
+// check that an empty read would satisfy while proving nothing.
 const readSrc = (rel: string): string => read(rel);
 
 const REMOVED = ["'waiting'", "'skipped'"] as const;
@@ -35,7 +27,6 @@ test('the EntryStatus union in types.ts holds exactly queued/playing/done', () =
 });
 
 test('the drizzle queue_entries.status enum mirrors exactly queued/playing/done', () => {
-	// schema.ts lives in ., named from the repo root (was a four-level `../../../../` climb).
 	const src = stripComments(readSrc('src/lib/server/db/schema.ts'));
 	// isolate the status column's own enum:[...] array, not any other enum in the file.
 	const m = src.match(/status:\s*text\('status',\s*\{\s*enum:\s*\[([^\]]*)\]/);
@@ -46,8 +37,7 @@ test('the drizzle queue_entries.status enum mirrors exactly queued/playing/done'
 });
 
 test('the two isTerminal predicates carry no dead "skipped" arm', () => {
-	// The shared canonical predicate. A SIBLING READ before the move — `./rotation.ts`, "the rotation\n	// next to me" — which is src/lib/contract/queue/rotation.ts, the queue module that exports the one
-	// canonical isTerminal. Named explicitly now, since nothing can infer it from tests/guards/.
+	// rotation.ts exports the one canonical isTerminal.
 	const rot = stripComments(readSrc('src/lib/contract/queue/rotation.ts'));
 	const rm = rot.match(/export function isTerminal\([^)]*\)[^{]*\{([^}]*)\}/);
 	expect(rm).not.toBeNull(); // not-vacuous
@@ -55,11 +45,9 @@ test('the two isTerminal predicates carry no dead "skipped" arm', () => {
 	expect(body).toContain("=== 'done'"); // survival: still terminal on done
 	expect(body).not.toContain("'skipped'");
 
-	// leave.ts must NOT re-introduce a hand-duplicated local copy — it imports the shared one.
-	// Either spelling of the barrel counts: the server tree imports the contract RELATIVELY, because
-	// `$lib` resolves only through the generated .svelte-kit tsconfig that the runtime image never
-	// copies. What this guard is about is that the predicate is imported rather than re-declared, so
-	// it matches on the contract barrel however it is spelled.
+	// leave.ts must import the shared predicate rather than re-declare a local copy. Either spelling of the
+	// barrel counts: the server tree imports the contract RELATIVELY because `$lib` resolves only through the
+	// generated .svelte-kit tsconfig, which the runtime image never copies.
 	const leave = stripComments(readSrc('src/lib/server/singers/leave.ts'));
 	expect(leave).toMatch(/import\s*\{[^}]*\bisTerminal\b[^}]*\}\s*from\s*'(?:\$lib\/contract|(?:\.\.\/)+contract)'/); // uses the shared predicate
 	expect(leave).not.toMatch(/const isTerminal\s*=/); // no local re-definition

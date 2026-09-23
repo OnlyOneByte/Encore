@@ -22,11 +22,9 @@ from tests.cli_fakes import fake_cli_runner  # noqa: E402
 from tests.conftest import drain  # noqa: E402
 
 
-# ── pure helpers ──────────────────────────────────────────────────────────────────
 def test_acquisition_is_DECLARED_not_inferred_from_the_uri_shape():
-    """The bug this replaces: acquisition was guessed from an http(s) prefix, so any other scheme was
-    silently treated as a local path and failed later inside ffmpeg. A declared value fails at the
-    boundary instead, and the URI's shape no longer decides anything."""
+    """Acquisition (which fetcher runs) is a DECLARED job field, never guessed from the URI shape —
+    a non-http scheme must not be silently treated as local."""
     from src.acquisition.fetch import job_fetcher
     from src.vocabulary import Fetcher
 
@@ -71,12 +69,8 @@ def test_demucs_argv_and_output_path():
 
 
 def test_demucs_argv_and_paths_agree_on_the_declared_format():
-    """The invariant worth pinning: the argv's format flag and the derived paths never disagree.
-
-    A hardcoded extension on one side and a free-floating format flag on the other is what made an
-    audiosep job look like "the separator produced nothing" — `find_outputs` probed a path that could
-    not exist. Both sides now read the same StemFormat, so pin them together for each value.
-    """
+    """The argv's format flag and the derived paths must never disagree, or `find_outputs` probes a
+    path that cannot exist and the job looks like "the separator produced nothing"."""
     for fmt, flag_present, ext in ((StemFormat.FLAC, True, ".flac"), (StemFormat.WAV, False, ".wav")):
         argv = demucs.demucs_argv("/w/in.wav", "/w/sep", model="htdemucs", stem_format=fmt)
         assert ("--flac" in argv) is flag_present, f"{fmt} argv flag wrong"
@@ -112,7 +106,6 @@ def test_process_error_carries_retryable():
     assert transient.retryable is True
 
 
-# ── DemucsProcessor flow with a fake runner ─────────────────────────────────────────
 def fake_runner(
     scripted: dict[str, list[str]],
     *,
@@ -121,13 +114,10 @@ def fake_runner(
     write_vocals: bool = True,
 ):
     """Build a runner that emits canned lines keyed by the binary name (argv[0]), optionally raising
-    a ProcessError for one binary. It also CREATES the files the real CLIs would, so the processor's
-    existence checks + move succeed. `--two-stems=vocals` writes BOTH stems; `write_vocals=False`
-    simulates a run that produced the instrumental but not the vocals (best-effort path).
-
-    The acquisition / volumedetect / encode branches (and the volumedetect branch that makes the silence
-    probe real) live in the shared `fake_cli_runner`; only the demucs-specific writes are
-    here."""
+    a ProcessError for one binary. Also CREATES the files the real CLIs would, so the processor's
+    existence checks + move succeed. `write_vocals=False` simulates a run that produced the
+    instrumental but not the vocals (best-effort path). Shared acquisition/volumedetect/encode
+    branches live in `fake_cli_runner`; only demucs-specific writes are here."""
 
     async def demucs_handler(argv):
         out_dir = argv[argv.index("-o") + 1]
@@ -176,7 +166,6 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
     assert final.endswith("m1-instrumental.flac")
     assert Path(final).exists()
     assert completes[0].artifacts["stems"]["instrumental"] == final
-    # the isolated vocals stem is ALSO published (was previously discarded)
     vocals = completes[0].artifacts["stems"]["vocals"]
     assert vocals.endswith("m1-vocals.flac")  # vocals stem is lossless FLAC
     assert Path(vocals).exists()
@@ -184,11 +173,8 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
 
 @pytest.mark.asyncio
 async def test_separating_reaches_100_exactly_once_when_the_parser_already_did(tmp_path):
-    """The Separate step used to emit an UNCONDITIONAL final pct=100 on top of whatever the parser
-    yielded, so a separator whose last progress line was `100%` produced TWO ('separating', 100) events.
-    Routing the step through the runner's run_stage — the single loop, which guards the tail with
-    `if last < 100` — collapses that to one. Non-vacuous: on the old inline loop this asserts 2.
-    """
+    """run_stage guards the tail with `if last < 100`, so a separator whose last progress line is
+    already `100%` must not also get an unconditional final pct=100 appended (which would double-fire)."""
     runner = fake_runner(
         {
             "yt-dlp": ["[download] 100% of 4MiB"],
@@ -205,8 +191,7 @@ async def test_separating_reaches_100_exactly_once_when_the_parser_already_did(t
 
 @pytest.mark.asyncio
 async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
-    # demucs wrote the instrumental but not vocals.wav → the job still completes with the
-    # instrumental; the vocals key is simply absent (never fails the load-bearing output).
+    # A missing vocals stem never fails the load-bearing instrumental: the vocals key is just absent.
     runner = fake_runner(
         {
             "yt-dlp": ["[download] 100% of 4MiB"],
@@ -225,8 +210,8 @@ async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_pa
 
 @pytest.mark.asyncio
 async def test_local_source_skips_download_stage(tmp_path):
-    # A pre-existing local file: no yt-dlp stage should run. The job DECLARES fetcher=local — the path
-    # no longer being an http URL is not what makes it local, which is the whole point of the change.
+    # fetcher=local is a DECLARED job field; the path shape (not being an http URL) is not what
+    # makes a source local.
     local = tmp_path / "library" / "song.wav"
     local.parent.mkdir(parents=True)
     local.write_bytes(b"LOCAL")
@@ -275,23 +260,15 @@ async def test_missing_instrumental_output_raises(tmp_path):
         await drain(proc, spec(tmp_path))
 
 
-# ── audio format policy ────────────────────────────────────────────────────────
-# Measured on a real 5:20 song: YouTube's best audio is ~5 MB (Opus 135k / AAC 129k), which the old
-# `-x --audio-format wav` inflated to 58.7 MB -- 12x the bytes for zero fidelity, since you cannot
-# restore what YouTube already discarded. These tests pin the policy so it cannot silently regress.
-
-
 def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
     argv = fetch_mod.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
-    # Assert the POLICY (a codec-ranked selector whose final fallback can always download something)
-    # rather than one literal token. The last branch is `best`, not `bestaudio`: a `bestaudio` branch
-    # needs an audio-only stream to exist, and a muxed-only video would otherwise fail the process.
+    # A codec-ranked selector whose final fallback is `best`, not `bestaudio`: a muxed-only video has
+    # no audio-only stream, so a `bestaudio` final fallback would fail the process.
     assert "-f" in argv
     selector = argv[argv.index("-f") + 1]
     assert selector.split("/")[-1] == "best", selector
     assert "bestaudio[acodec=opus]" in selector, selector
     assert "bestvideo" not in selector
-    # the regression that cost ~12x: no extract-audio transcode, and no wav anywhere
     assert "--audio-format" not in argv
     assert "wav" not in " ".join(argv)
     # the extension must stay a template -- YouTube decides whether it is m4a or webm
@@ -299,8 +276,8 @@ def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
 
 
 def test_decode_forces_stereo_but_NEVER_resamples():
-    # The resample was a real quality bug: YouTube serves 48 kHz Opus, so forcing 44100 here threw away
-    # information for nothing -- FLAC, AAC and Opus all handle 48 kHz natively.
+    # YouTube serves 48 kHz Opus; forcing 44100 here would throw away information for nothing, since
+    # FLAC/AAC/Opus all handle 48 kHz natively.
     argv = demucs.decode_argv("/m/audio/id1.webm", "/w/input.wav")
     joined = " ".join(argv)
     assert "-ac 2" in joined
@@ -310,9 +287,8 @@ def test_decode_forces_stereo_but_NEVER_resamples():
 
 
 def test_both_stems_are_encoded_LOSSLESS_flac():
-    # both stems go through encode_flac_argv. The instrumental plays at volume (a second lossy
-    # generation is audible on crash cymbals); the vocals stem is the guiding track (a played second
-    # <audio>) and sharing the FLAC codec removes the AAC-in-m4a priming-sample start offset.
+    # Sharing the FLAC codec on both stems removes the AAC-in-m4a priming-sample start offset that
+    # would otherwise desync the played-aloud vocals guide track from the instrumental.
     for out in ("/m/derived/stems/id1-instrumental.flac", "/m/derived/stems/id1-vocals.flac"):
         argv = " ".join(demucs.encode_flac_argv("/w/stem.wav", out))
         assert "-c:a flac" in argv
@@ -329,25 +305,19 @@ def test_find_downloaded_ignores_partial_downloads():
         assert fetch_mod.find_downloaded(d, "id1") is None
         open(_os.path.join(d, "id1.webm.part"), "w").close()
         assert fetch_mod.find_downloaded(d, "id1") is None  # an interrupted download is not a result
-        # --write-info-json drops `<id>.info.json` beside the audio. `.info.json` sorts BEFORE
-        # `.webm`/`.m4a` in the `sorted(os.listdir(...))` scan, so without the skip it would be
-        # returned as ctx.audio.path on every fresh download (and the retained-original early-return
-        # would then point at the JSON). It is metadata, never the audio.
+        # `.info.json` (from --write-info-json) sorts BEFORE `.webm`/`.m4a` alphabetically, so it must
+        # be skipped explicitly or it would be returned as the audio path.
         open(_os.path.join(d, "id1.info.json"), "w").close()
         assert fetch_mod.find_downloaded(d, "id1") is None  # the info sidecar alone is not a result
         open(_os.path.join(d, "id1.webm"), "w").close()
-        # `.info.json` sorts first, but the real audio must still be the one returned.
         assert fetch_mod.find_downloaded(d, "id1").endswith("id1.webm")
 
 
 def test_find_downloaded_ignores_interrupted_fragmented_download():
-    """A killed fragmented (HLS/DASH/premiere) download leaves `<id>.<ext>.part-Frag<N>` fragment
-    payloads plus the `.part` stream file and the `.ytdl` fragment index. yt-dlp writes fragments as
-    `%(tmpfilename)s-Frag%(index)d` where tmpfilename is the `.part` name, so the leftovers are
-    `id1.m4a.part`, `id1.m4a.part-Frag0`, `id1.m4a.part-Frag1`, `id1.m4a.ytdl` -- NONE of which END
-    with `.part`, which is why the old `endswith` predicate adopted `id1.m4a.part-Frag0` (a valid
-    standalone segment, so it decoded silently as a few-seconds original that poisoned the media id
-    forever). None of these is a finished download.
+    """A killed fragmented (HLS/DASH/premiere) download leaves `id1.m4a.part`,
+    `id1.m4a.part-Frag0`, `id1.m4a.part-Frag1`, `id1.m4a.ytdl` — none of which end with `.part`, so a
+    naive `endswith(".part")` check would adopt a fragment as a valid standalone segment and decode it
+    as a poisoned few-seconds "original". None of these is a finished download.
     """
     import os as _os
     import tempfile
@@ -356,7 +326,7 @@ def test_find_downloaded_ignores_interrupted_fragmented_download():
         for leftover in ("id1.m4a.part", "id1.m4a.part-Frag0", "id1.m4a.part-Frag1", "id1.m4a.ytdl"):
             open(_os.path.join(d, leftover), "w").close()
         assert fetch_mod.find_downloaded(d, "id1") is None
-        # the postprocessor temp `<id>.temp.<ext>` is also in-progress, not a result
+        # the postprocessor temp <id>.temp.<ext> is also in-progress, not a result
         open(_os.path.join(d, "id1.temp.m4a"), "w").close()
         assert fetch_mod.find_downloaded(d, "id1") is None
         # once fragments concatenate into the real output, it is adopted
@@ -364,7 +334,6 @@ def test_find_downloaded_ignores_interrupted_fragmented_download():
         assert fetch_mod.find_downloaded(d, "id1").endswith("id1.m4a")
 
 
-# ── per-job demucs model selection ──────────────────────────────────────────
 def test_resolve_demucs_model_defaults_when_unset():
     assert demucs.resolve_demucs_model({}) == demucs.DEFAULT_MODEL
     assert demucs.resolve_demucs_model({"model": None}) == demucs.DEFAULT_MODEL
@@ -377,19 +346,13 @@ def test_resolve_demucs_model_accepts_whitelisted_variants():
 
 
 def test_resolve_demucs_model_rejects_unknown_rather_than_silently_falling_back():
-    # A silent fallback would ship a DIFFERENT instrumental than the room asked for — worse than a
-    # loud failure the ledger can surface. Every roformer/ensemble model id is unknown to demucs.
+    # A silent fallback would ship a DIFFERENT instrumental than the room asked for.
     import pytest as _pytest
 
     with _pytest.raises(ValueError, match="unknown demucs model"):
         demucs.resolve_demucs_model({"model": "bs-roformer-1297"})
     with _pytest.raises(ValueError, match="unknown demucs model"):
         demucs.resolve_demucs_model({"model": "../etc/passwd"})
-
-
-# ── the REAL subprocess_runner (FIX 2 kill+reap, FIX 3 idle timeout) ────────────────
-# The rest of the suite injects fake runners, so subprocess_runner itself — the code that was
-# broken — had ZERO coverage. These drive a REAL trivial child (python, always on PATH here).
 
 
 @pytest.mark.asyncio
@@ -401,7 +364,7 @@ async def test_subprocess_runner_streams_lines_and_reaps_on_normal_exit():
 
 @pytest.mark.asyncio
 async def test_subprocess_runner_raises_ProcessError_on_nonzero_exit():
-    # emit a line, then exit 3 — the tail must be carried into the ProcessError.
+    # emit a line, then exit 3: the tail must be carried into the ProcessError.
     argv = [sys.executable, "-c", "import sys; print('boom-line'); sys.exit(3)"]
     with pytest.raises(demucs.ProcessError) as ei:
         async for _ in demucs.subprocess_runner(argv):
@@ -411,10 +374,9 @@ async def test_subprocess_runner_raises_ProcessError_on_nonzero_exit():
 
 
 # A parent that forks a long-lived child, prints the CHILD's pid, then sleeps — mirrors demucs -j,
-# where the pid we launch is not the pid holding the memory. The grandchild survives a bare
-# proc.kill() and only dies if the whole process group is signalled + reaped, so asserting on its
-# liveness is downstream of the actual kill+reap guarantee (a plain sleep in the direct child would
-# die on any kill and could not tell the invariant apart from its absence).
+# where the pid launched is not the pid holding the memory. The grandchild survives a bare
+# proc.kill() and only dies if the whole process group is signalled+reaped, so its liveness is
+# downstream of the actual kill+reap guarantee.
 _CANCEL_REAP_PARENT = (
     "import os,sys,time\n"
     "pid=os.fork()\n"
@@ -439,11 +401,8 @@ def _alive(pid: int) -> bool:
 @pytest.mark.asyncio
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="needs POSIX fork/process groups")
 async def test_subprocess_runner_kills_and_reaps_the_child_when_the_generator_is_cancelled():
-    # Consume the runner inside a task, cancel the task mid-stream (as _run_job's unwind does via
-    # GeneratorExit), and assert the forked grandchild was actually killed+reaped — the FIX 2
-    # guarantee. This exercises the task-CANCELLATION unwind path; test_subprocess_group_kill covers
-    # the mid-stream `break` path. Without subprocess_runner's finally: _terminate the grandchild
-    # outlives the cancelled task, and the assert below goes red.
+    # Cancel mid-stream (as _run_job's unwind does via GeneratorExit) and assert the forked
+    # grandchild was actually killed+reaped (test_subprocess_group_kill covers the `break` path).
     started = _asyncio.Event()
     captured: dict[str, int] = {}
 
@@ -452,8 +411,7 @@ async def test_subprocess_runner_kills_and_reaps_the_child_when_the_generator_is
         async for line in gen:
             captured["pid"] = int(line.strip())
             started.set()
-            # hold the generator open (as _run_job does mid-stream) until cancelled
-            await _asyncio.sleep(300)
+            await _asyncio.sleep(300)  # hold the generator open (as _run_job does) until cancelled
 
     task = _asyncio.ensure_future(consume())
     await _asyncio.wait_for(started.wait(), timeout=10)
@@ -464,8 +422,8 @@ async def test_subprocess_runner_kills_and_reaps_the_child_when_the_generator_is
     with pytest.raises(_asyncio.CancelledError):
         await task
 
-    # Give the group kill a moment to land, then assert the grandchild is gone — the observable proof
-    # the kill reached the whole tree, not just the CLI we launched.
+    # Give the group kill a moment to land, then assert the grandchild is gone — proof the kill
+    # reached the whole tree, not just the launched CLI.
     for _ in range(60):
         if not _alive(child_pid):
             break
@@ -478,8 +436,8 @@ async def test_subprocess_runner_kills_and_reaps_the_child_when_the_generator_is
 
 @pytest.mark.asyncio
 async def test_subprocess_runner_times_out_a_silent_child_and_raises_retryable(monkeypatch):
-    # Shrink the idle timeout so a child that prints nothing and sleeps trips it fast. The raised
-    # error must be the retryable ProcessTimeout so the core's existing retry path handles it.
+    # Shrink the idle timeout so a silent child trips it fast; the raised error must be the
+    # retryable ProcessTimeout so the core's existing retry path handles it.
     monkeypatch.setattr(demucs, "SUBPROCESS_IDLE_TIMEOUT_SEC", 0.3)
     argv = [sys.executable, "-c", "import time; time.sleep(30)"]
     with pytest.raises(demucs.ProcessTimeout) as ei:
@@ -490,8 +448,8 @@ async def test_subprocess_runner_times_out_a_silent_child_and_raises_retryable(m
 
 @pytest.mark.asyncio
 async def test_subprocess_runner_idle_timer_resets_on_each_line(monkeypatch):
-    # A child that keeps printing under the idle window must NOT be killed, even though its TOTAL
-    # runtime exceeds the idle timeout — proving this is an idle-output timeout, not a wall-clock cap.
+    # A child that keeps printing under the idle window must NOT be killed even though its TOTAL
+    # runtime exceeds the idle timeout: this is an idle-output timeout, not a wall-clock cap.
     monkeypatch.setattr(demucs, "SUBPROCESS_IDLE_TIMEOUT_SEC", 0.5)
     argv = [
         sys.executable,
@@ -499,38 +457,34 @@ async def test_subprocess_runner_idle_timer_resets_on_each_line(monkeypatch):
         "import time,sys\nfor i in range(6):\n    print(i, flush=True); time.sleep(0.2)\n",
     ]
     lines = [ln async for ln in demucs.subprocess_runner(argv)]
-    assert lines == ["0", "1", "2", "3", "4", "5"]  # ran ~1.2s total, over the 0.5s idle cap, uninterrupted
+    assert lines == ["0", "1", "2", "3", "4", "5"]  # ~1.2s total, over the 0.5s idle cap, uninterrupted
 
 
 def test_classify_retryable_flows_through_the_shared_retry_policy_table():
-    """(Part 2/3 of an earlier change): demucs.classify_retryable must CONSUME retry_policy's one canonical
-    PERMANENT_MARKERS table, not keep a divergent copy. demucs raises ProcessError for ffmpeg and
-    bs-roformer-infer too, so a deterministic separator/encoder failure whose stderr hits a canonical
-    marker must classify NON-retryable — reds on base, whose download-only list omitted these markers.
+    """demucs.classify_retryable must CONSUME retry_policy's one canonical PERMANENT_MARKERS table,
+    not keep a divergent copy: demucs raises ProcessError for ffmpeg and bs-roformer-infer too, so a
+    deterministic separator/encoder failure whose stderr hits a canonical marker must classify
+    NON-retryable.
     """
     from src import retry_policy
 
-    # The two markers the old divergent demucs list lacked but the canonical union carries.
-    # On base these classified retryable (retried to maxAttempts); now they are permanent.
     assert demucs.classify_retryable("ffmpeg: Codec is unsupported") is False
     assert demucs.classify_retryable("state_dict load failed: corrupt checkpoint") is False
 
-    # The table is genuinely SHARED, not re-declared: demucs must agree with retry_policy on every
-    # canonical marker, and there is no private _PERMANENT_MARKERS tuple left to drift.
+    # The table is genuinely SHARED, not re-declared: no private _PERMANENT_MARKERS tuple to drift.
     assert not hasattr(demucs, "_PERMANENT_MARKERS")
     for marker in retry_policy.PERMANENT_MARKERS:
         assert demucs.classify_retryable(f"some prefix {marker} some suffix") is False
 
-    # A ProcessError raised by a non-download CLI now carries the shared non-retryable verdict.
+    # A ProcessError raised by a non-download CLI carries the shared non-retryable verdict too.
     err = demucs.ProcessError(["bs-roformer-infer", "run"], 1, "RuntimeError: corrupt state_dict")
     assert err.retryable is False
 
 
 def test_resolve_demucs_model_unknown_is_structurally_non_retryable():
-    """The unknown-model ValueError now routes through retry_policy.BoundaryError (coordination
-    note), so it stays a ValueError drop-in but carries the shared structured retryable = False —
-    an unknown model fails fast instead of burning three attempts. Reds on base (plain ValueError,
-    no .retryable, so is_retryable would default it retryable off the heuristic)."""
+    """The unknown-model ValueError routes through retry_policy.BoundaryError, so it stays a
+    ValueError drop-in but carries the shared structured retryable=False — an unknown model fails
+    fast instead of burning three attempts."""
     from src import retry_policy
 
     with pytest.raises(ValueError, match="unknown demucs model") as excinfo:
@@ -540,20 +494,10 @@ def test_resolve_demucs_model_unknown_is_structurally_non_retryable():
     assert retry_policy.is_retryable(excinfo.value) is False
 
 
-# ── an earlier change: the resolved backend must DRIVE the run, not just reach a log line ───────
-# Before this fix, backends.resolve_backend picked a backend (mlx on an Apple-Silicon box) that
-# reached nothing but a startup print: stems_runner had no backend parameter, engine_for always built
-# the torch DemucsEngine, and facts.backend was the hardcoded class attribute "torch". So a Mac
-# announced "separator backend: mlx" at startup and then recorded "torch" for every process — the log
-# lied. These pin the two halves of the wire: torch is recorded because it RAN, and an mlx resolution
-# builds the (unimplemented) MLX engine that refuses loudly rather than a torch process wearing an mlx label.
+# The resolved backend must DRIVE the run, not just reach a log line: `facts.backend` has to record
+# the backend that actually RAN, never a hardcoded constant that could disagree with the startup log.
 def test_demucs_engine_backend_is_the_resolved_value_not_a_hardcoded_constant():
-    """The engine reports the backend it was CONSTRUCTED with, so facts.backend follows the resolution.
-
-    Red on base: `DemucsEngine.backend` was a class attribute `= "torch"` and `__init__` took no
-    `backend`, so this constructor call raised TypeError and the attribute could never be anything but
-    "torch" regardless of what backends.resolve_backend chose.
-    """
+    """The engine reports the backend it was CONSTRUCTED with, so facts.backend follows resolution."""
     from src.separation.engines import DemucsEngine
 
     assert DemucsEngine().backend == "torch"  # the portable default, unchanged
@@ -562,21 +506,15 @@ def test_demucs_engine_backend_is_the_resolved_value_not_a_hardcoded_constant():
 
 
 def test_engine_for_mlx_backend_builds_the_mlx_engine_not_torch():
-    """`engine_for('demucs', backend='mlx')` builds the MLX engine (backend 'mlx') — it NEVER returns a
-    torch DemucsEngine under an mlx label.
-
-    This is the machine-checkable form of the log-lies-to-you bug: an mlx resolution must not
-    silently produce a torch process. an earlier change implemented the MLX engine, so it now builds and runs
-    rather than
-    refusing — but it is still a distinct engine reporting backend 'mlx', never the torch DemucsEngine.
-    """
+    """`engine_for('demucs', backend='mlx')` builds the MLX engine (backend 'mlx') — it NEVER returns
+    a torch DemucsEngine under an mlx label: an mlx resolution must not silently produce a torch process."""
     from src.separation.engines import DemucsEngine, MlxDemucsEngine, engine_for
 
     mlx = engine_for("demucs", backend="mlx")
     assert isinstance(mlx, MlxDemucsEngine)
     assert mlx.backend == "mlx"
     assert not isinstance(mlx, DemucsEngine)
-    # torch (and the None default) still build the real engine, so the portable path is untouched.
+    # torch (and the None default) still build the real engine: the portable path is untouched.
     assert engine_for("demucs", backend="torch").backend == "torch"
     assert engine_for("demucs").backend == "torch"
 
@@ -596,19 +534,14 @@ async def test_a_torch_stems_process_records_torch_because_torch_ran(tmp_path):
 
 @pytest.mark.asyncio
 async def test_an_mlx_resolved_stems_process_runs_demucs_mlx_and_derives_the_instrumental(tmp_path):
-    """The wire, end-to-end: stems_runner(backend='mlx') runs the `demucs-mlx` CLI (never the
-    torch `demucs` CLI), derives the instrumental with an ffmpeg mix-minus pass over the non-vocal
-    stems, publishes it, and records facts.backend == 'mlx' because MLX actually RAN.
-
-    Before an earlier change this process failed loudly at construction ('demucs-mlx engine is not
-    implemented'); the
-    MLX runtime is now implemented, so it completes. The torch demucs CLI must still never run for an
-    mlx process — that is the an earlier change honesty contract preserved.
+    """End-to-end: stems_runner(backend='mlx') runs the `demucs-mlx` CLI (never the torch `demucs`
+    CLI), derives the instrumental with an ffmpeg mix-minus pass over the non-vocal stems, publishes
+    it, and records facts.backend == 'mlx' because MLX actually RAN.
     """
     ran: list[str] = []
 
     async def mlx_handler(argv):
-        # demucs-mlx: emit four source stems in the nested <out>/<input-stem>/<source>.wav layout.
+        # demucs-mlx emits four source stems in the nested <out>/<input-stem>/<source>.wav layout.
         out_dir = argv[argv.index("-o") + 1]
         input_wav = argv[-1]
         for source in ("vocals", "drums", "bass", "other"):

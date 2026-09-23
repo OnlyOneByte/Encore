@@ -1,21 +1,19 @@
-// JOB_TRANSITIONS steps 2/3/4, built on the event-typed machine.
+// Three properties of the event-typed job machine:
 //
-//  Step 2 — the LEDGER hooks `transition`, not the seven named wrappers. Now that the event is a
-//           parameter, `transition` alone seals the attempt (COMPLETE→ready, FAIL→failed,
-//           CANCEL→canceled, REJECT/LEASE_EXPIRED/RECOVER→abandoned + open the next). A caller that
-//           reaches `transition` DIRECTLY — bypassing complete()/fail()/cancel()/requeue() — is no
-//           longer invisible to history. On base only the wrappers wrote the ledger, so a raw
-//           transition left the attempt open (outcome === null): these tests are RED there.
+//   LEDGER. `transition` ALONE seals the attempt (COMPLETE→ready, FAIL→failed, CANCEL→canceled,
+//   REJECT/LEASE_EXPIRED/RECOVER→abandoned + open the next), so a caller reaching it directly and
+//   bypassing complete()/fail()/cancel()/requeue() is not invisible to history. Hooking the wrappers
+//   instead leaves a raw transition's attempt open, with outcome === null.
 //
-//  Step 3 — SLOT accounting rides the machine's release hook. `transition` frees the OWNING worker's
-//           concurrency slot on a worker-reported release event (REJECT/COMPLETE/FAIL) and NOT on a
-//           reaper/boot requeue (LEASE_EXPIRED/RECOVER) or a CANCEL (cancel.ts's deliberate
-//           no-release, to avoid double-freeing against an in-flight completion). On base there was
-//           no setSlotReleaseHook and the release was three hand-paired calls in worker-hub.ts.
+//   SLOTS ride the machine's release hook: `transition` frees the OWNING worker's concurrency slot on a
+//   worker-reported release event (REJECT/COMPLETE/FAIL) and NOT on a reaper or boot requeue
+//   (LEASE_EXPIRED/RECOVER), nor on a CANCEL, which deliberately does not release so it cannot
+//   double-free against an in-flight completion. Hand-paired release calls in worker-hub are the
+//   alternative this replaces.
 //
-//  Step 4 — ONE shared exhausted-attempts predicate (`attemptsExhausted`) behind both the reaper's
-//           progress-lease-expiry branch (leases.sweep) and the worker-hub `job:failed` handler,
-//           which on base spelled the same policy as the complement `attempts < job.maxAttempts`.
+//   ONE shared exhausted-attempts predicate (`attemptsExhausted`) behind both the reaper's
+//   progress-lease-expiry branch and the worker-hub `job:failed` handler, rather than two spellings of
+//   the same policy.
 import { test, expect } from 'bun:test';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
@@ -31,9 +29,7 @@ function wired(): { jobs: JobRepository; ledger: AttemptLedger } {
 	return { jobs: new JobRepository(db, ledger), ledger };
 }
 
-// ————————————————————————————————————————————————————————————————————————
-// Step 2 — the ledger hooks the machine (raw `transition` seals the attempt)
-// ————————————————————————————————————————————————————————————————————————
+// The ledger hooks the machine: a raw `transition` seals the attempt.
 
 test('step2: a raw COMPLETE transition seals the open attempt ready (not just complete())', () => {
 	const { jobs, ledger } = wired();
@@ -42,7 +38,7 @@ test('step2: a raw COMPLETE transition seals the open attempt ready (not just co
 	jobs.accept(job.id, null, T0 + 2);
 	expect(ledger.openFor(job.id)?.outcome).toBeNull(); // in flight
 
-	// Bypass the complete() wrapper — go straight through the machine.
+	// Bypass the complete() wrapper and go straight through the machine.
 	jobs.transition(job.id, 'COMPLETE', { progressPct: 100, leaseExpiresAt: null, workerId: null }, T0 + 3);
 
 	expect(ledger.openFor(job.id)).toBeNull(); // sealed — RED on base (transition never touched the ledger)
@@ -88,9 +84,7 @@ test('step2: a raw requeue event (REJECT) abandons the old attempt AND opens a f
 	expect(all[1].attempt).toBe(2);
 });
 
-// ————————————————————————————————————————————————————————————————————————
-// Step 3 — slot accounting via the machine's release hook
-// ————————————————————————————————————————————————————————————————————————
+// Slot accounting, via the machine's release hook.
 
 function ownedRunning(jobs: JobRepository): Job {
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
@@ -107,11 +101,10 @@ test('step3: COMPLETE fires the slot-release hook with the owning worker', () =>
 	expect(released).toEqual(['w1']); // owner read from the pre-write row
 });
 
-// FAIL is NOT a machine-release event, because it is not exclusively worker-reported — the
-// reaper's exhausted-attempts branch and the unservable-TTL branch also call fail(). Releasing off
-// the FAIL event freed the slot of a worker that was still holding the job whenever the reaper fired.
-// The worker-REPORTED terminal FAIL releases explicitly at its one call site (#onFailed's terminal
-// branch), so a raw FAIL transition through the machine must free NOTHING here.
+// FAIL is NOT a machine-release event, because it is not exclusively worker-reported: the reaper's
+// exhausted-attempts and unservable-TTL branches also call fail(), so releasing off FAIL frees the slot of
+// a worker still holding the job. The worker-REPORTED terminal FAIL releases explicitly at its one call
+// site, so a raw FAIL transition must free NOTHING.
 test('step3: FAIL does NOT fire the machine slot-release hook (released at the worker-report call site)', () => {
 	const { jobs } = wired();
 	const released: string[] = [];
@@ -151,9 +144,7 @@ test('step3: reaper/boot requeue events (LEASE_EXPIRED, RECOVER) do NOT release 
 	}
 });
 
-// ————————————————————————————————————————————————————————————————————————
-// Step 4 — one shared exhausted-attempts predicate
-// ————————————————————————————————————————————————————————————————————————
+// One shared exhausted-attempts predicate.
 
 test('step4: attemptsExhausted is the ceiling — false below maxAttempts, true at and above', () => {
 	expect(attemptsExhausted(2, 3)).toBe(false);
@@ -162,9 +153,8 @@ test('step4: attemptsExhausted is the ceiling — false below maxAttempts, true 
 });
 
 test('step4: the reaper progress-lease-expiry branch routes its exhaustion check through the predicate', () => {
-	// A running job with a dead lease and attempts one below max: the shared predicate says NOT
-	// exhausted, so sweep requeues rather than fails; at max it fails. This pins that leases.sweep
-	// and worker-hub agree on the SAME ceiling.
+	// A running job with a dead lease one below max: NOT exhausted, so sweep requeues; at max it fails.
+	// This is what pins leases.sweep and worker-hub to the SAME ceiling.
 	const base = {
 		id: 'j',
 		mediaId: 'm',

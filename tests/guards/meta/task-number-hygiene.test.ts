@@ -1,78 +1,40 @@
-// guard: a task/ticket number must never live in source, a comment, a test, or fixture data.
+// guard: a task/ticket number must never live in source, a comment, a test, or fixture data. They belong in a
+// PR, a commit message, or docs/ — where a reader chasing the history looks. In a comment they are noise: six
+// months on nobody has the backlog in their head, and a ticket code says strictly less than the behavioural
+// sentence it replaced. The live convention is `T-<n>`; `B-<n>` and `M<n>-C<n>` are retired families.
 //
-// THE RULE. Task IDs belong in a PR, a commit message, or docs/ — the places a reader who is chasing
-// the history goes looking. In a comment they are noise: six months on, nobody has the backlog in
-// their head, and `shipped in M6-C1` says strictly less than the behavioural sentence it replaced.
-// The convention is `T-<n>`; two retired families (`B-<n>`, `M<n>-C<n>`) predate it and are what this
-// sweep removed.
-//
-// WHY THE HYPHEN IS LOAD-BEARING. A bare-number scheme cannot be guarded: `T1` (and `T0`) already
-// occur ~320 times as timestamp constants in play-log.test.ts, so `\bT[0-9]+\b` would fire on data
-// that has nothing to do with a ticket. The hyphenated form `T-<n>` occurs zero times outside an
-// intended reference, so the hyphen is the thing that makes this decidable — the guard keys on it.
-//
-// WHY A SOURCE SCAN, AND WHY IT READS COMMENTS. The defect is a property of the source text, so it is
-// decidable without running anything. Unlike the emoji guard (icons.test.ts), this scan deliberately
-// does NOT strip comments first: a task ref in a comment is the exact thing being banned, so blanking
-// comments would blind the guard to its whole purpose. This file is the sole exception — it carries
-// the patterns as regex literals and prose, so it excludes itself by path.
-//
-// WHY IT ALSO SCANS docs/ AND CONFIG. The retired families lived mostly in docs (a ROADMAP and an
-// archive, both since deleted) and in the worker's Dockerfile / requirements.txt /.env.example — not
-// in.ts source. Task tracking is GitHub issues now, so the scan covers.md,.txt,.yml and those
-// config basenames as well, and a re-added ticket code in any of them reds this guard. THE RULE's
-// "or docs/" is honoured by exactly one documented carve-out — see EXEMPT_PREFIXES below, which is
-// docs/loop/ and nothing else, and which has its own non-vacuity sentinel at the bottom of this file.
+// This scan deliberately does NOT strip comments — a task ref in a comment is the exact thing banned — and it
+// covers every GIT-TRACKED file, including .md/.txt/.yml and the worker's config basenames, because the
+// retired families lived mostly in docs and in the Dockerfile. This file is the sole exception, by path,
+// because it carries the patterns as regex literals and prose.
 import { test, expect } from 'bun:test';
 import { at, repoRoot } from '@encore/test-support';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { basename, join } from 'node:path';
 
-// Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
-// how the worker (Python) source is reached — CWD-independent, since `bun test` runs from..
-// Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
-// Repo-root anchored; `git ls-files` is run with -C REPO, so this must be the real root.
+// Repo-root anchored: `git ls-files` is run with -C REPO, and paths come from `at()`, so this guard encodes no
+// depth of its own.
 const REPO = repoRoot;
 
-// The task-id families, plus GitHub issue refs in test prose.
+// The task-id families, plus GitHub issue refs.
 //
-// `T-<n>` is the live convention and must stay absent from source; `B-<n>` and `M<n>-C<n>` are the
-// retired schemes this sweep cleared. `\b` on both ends is what keeps `T-<n>` from firing inside, say, a
-// hyphenated identifier, and what makes the bare-number timestamp constants (`T1`) unreachable.
+// WHY THE HYPHEN IS LOAD-BEARING. A bare-number scheme cannot be guarded: `T1` already occurs ~320 times as a
+// timestamp constant in play-log.test.ts, so `\bT[0-9]+\b` would fire on data that has nothing to do with a
+// ticket. The hyphenated `T-<n>` occurs zero times outside an intended reference, so the hyphen is what makes
+// this decidable.
 //
-// `#<n>` NOW APPLIES REPO-WIDE. It began scoped to `*.test.ts`, and that scope was recorded here as a
-// finding rather than a convenience: THE RULE above says task ids belong in a PR, a commit message, or
-// docs, so an issue number in a test name was noise by that reasoning — but production source and docs
-// carried ~1,800 and ~235 more, and banning those was a separate decision with a separate cost.
+// `#<n>` APPLIES REPO-WIDE, at one to four digits. It was `{3,4}` and scoped to `*.test.ts`, which left
+// two-digit references sitting in banned files while this guard passed. Widening it brings in two conventions
+// that are NOT issue numbers and must survive, excluded by PATTERN rather than by a site list so a new one
+// needs no edit here: a numbered review `Finding #4` (a resolvable reference), and ordinals that count things
+// (`socket 0`, `frame #1`) — a ban that ate those would rewrite `socket 0 drops` into nonsense.
 //
-// That decision has since been made: the references are gone from source, docs, migrations and config too,
-// so the scope is lifted and the guard now covers every tracked file. The measured totals at the time were
-// 2,198 references across 343 files; 957 came out mechanically and the remainder by hand, because most of
-// what was left sat in SUBJECT position where deleting the number leaves a sentence without one.
-//
-// THE DIGIT RANGE WAS ALSO WRONG. It matched `#[0-9]{3,4}`, so two-digit references were invisible to it —
-// `#88` and `#64` sat in banned files while this guard passed. It is now `{1,4}`, which brings in the
-// 1- and 2-digit references and, with them, two conventions that are NOT GitHub issues and must survive:
-//
-//   * `Finding #4` — a numbered REVIEW finding. A different scheme, never ruled on, and stripping it would
-//     destroy a reference a reader can actually resolve (the findings are listed in the review).
-//   * ordinals — `socket 0`, `sample #0`, `frame #1`. Not references at all: they count things. There are
-//     8 in the tree, and a ban that ate them would rewrite `socket 0 drops` into nonsense.
-//
-// Both are excluded by pattern rather than by an exemption list, because they are shapes rather than sites:
-// a new `Finding #7` or `slot #3` should be allowed without anyone editing this file.
-//
-// DISCRIMINATING AN ISSUE FROM A COLOUR. There is no syntactic difference between the issue `` and
-// the three-digit hex colour ``, so the only signal is the CLOSING quote: a colour is written as a
-// string literal (`''`), while an issue reference in prose is followed by space or punctuation.
-// A six-digit colour matters too — `#7254e6` opens with four digits — which is what the trailing
-// `[0-9a-fA-F]` exclusion covers.
-//
-// An earlier version excluded a quote on EITHER side, which looked symmetrical and was wrong — it made
-// the pattern blind to exactly the case this ban exists for, a test name opening `test('…`, where
-// the quote sits immediately before the `#`. Only the trailing quote may be excluded. The mutation arm
-// at the bottom of this file pins both halves so that cannot regress.
+// DISCRIMINATING AN ISSUE FROM A COLOUR. There is no syntactic difference between a three-digit issue and a
+// three-digit hex colour, so the only signal is the CLOSING quote: a colour is a string literal, while a
+// reference in prose is followed by space or punctuation. Only the TRAILING quote may be excluded — an earlier
+// version excluded a quote on either side, which looked symmetrical and blinded the pattern to the case this
+// ban exists for, a test name opening `test('#…`. The mutation arm at the bottom pins both halves.
 const ORDINAL_NOUNS = 'socket|sample|slot|step|entry|row|frame|attempt|worker|stop|revision|track|stem|tier|pass';
 const PATTERNS: { re: RegExp; family: string; only?: (rel: string) => boolean }[] = [
 	{ re: /\bT-[0-9]+\b/, family: 'T-<n>' },
@@ -83,23 +45,17 @@ const PATTERNS: { re: RegExp; family: string; only?: (rel: string) => boolean }[
 			// not preceded by a hex digit, a `#`, `Finding `, or an ordinal noun…
 			`(?<![0-9a-fA-F#])(?<!\\bFinding )(?<!\\bFinding #[0-9]{1,4}/)(?<!\\b(?:${ORDINAL_NOUNS}) )` +
 				// …one to four decimal digits…
-				// A LEADING ZERO makes it a colour, not an issue. Issue numbers start at 1 and never carry one,
-				// while `` in prose (`both are >4.5:1 vs by construction`) is a three-digit hex value
-				// written unquoted — which the trailing-quote exclusion below cannot see. This is the
-				// discriminator that covers the unquoted case.
+				// A LEADING ZERO makes it a colour, not an issue: issue numbers start at 1 and never carry one, while an
+				// unquoted `#0xx` in prose is a hex value the trailing-quote exclusion cannot see.
 				`#(?!0)[0-9]{1,4}` +
-				// …and not closing a quoted parenthetical VALUE. `"Lady Gaga — Telephone (243s, #1)"` is
-				// production data — the lyrics registry's own same-title disambiguator — and the trailing
-				// character there is `)`, not a quote, so the exclusion below does not reach it. A reference
-				// in prose is never followed by `)` immediately before a string ends.
+				// …and not closing a quoted parenthetical VALUE. `"Lady Gaga — Telephone (243s, #1)"` is production
+				// data (the lyrics registry's same-title disambiguator), and a reference in prose is never followed by
+				// `)` immediately before a string ends.
 				`(?!\\)['"])` +
-				// …not followed by a hex digit or a closing quote (either would make it a colour).
-				//
-				// EXCEPT A POSSESSIVE (2026-09-22). `'` alone was enough to excuse a match, which let
-				// `#836's drag` and `#913's components` sit in src/ and a README with this guard green: the
-				// apostrophe of a possessive is indistinguishable from the closing quote of `'#836'`. A colour
-				// literal is never followed by `s`, so requiring that the quote NOT begin `'s` recovers those
-				// four references without re-catching a single hex value.
+				// …not followed by a hex digit or a closing quote, either of which makes it a colour — EXCEPT a
+				// possessive. `'` alone excused a match, which let `#836's drag` sit in src/ with this guard green,
+				// because a possessive apostrophe is indistinguishable from a closing quote. A colour literal is never
+				// followed by `s`.
 				`(?![0-9a-fA-F])(?!['"](?!s\\b))`
 		),
 		family: 'GitHub issue #<n>'
@@ -107,24 +63,14 @@ const PATTERNS: { re: RegExp; family: string; only?: (rel: string) => boolean }[
 ];
 
 /**
- * Lines where an issue number is the SUBJECT of an assertion, not prose about one.
+ * Lines where an issue number is the SUBJECT of an assertion, not prose about one: each reads a source file or
+ * a doc and requires a specific reference to still be present, enforcing the convention in the OPPOSITE
+ * direction from the ban above. Stripping these would break the guard rather than tidy it.
  *
- * Nine assertions read a source file or a doc and require a specific issue reference to still be present
- * in it — so they enforce the convention in the OPPOSITE direction from the ban above. Stripping these
- * would not tidy the test, it would break the guard.
- *
- * Recorded per line with a reason, in the shape EXEMPT_PREFIXES uses, so a tenth entry is a conscious act
- * a reviewer sees. Note the standing consequence: if production source and docs are ever cleaned of issue
- * references, every one of these nine reds — which is the correct signal, and the reason the wider
- * cleanup needs its own ruling rather than being folded in here.
+ * Keyed per line with a reason so a new entry is a conscious act. Standing consequence: if production source
+ * and docs are ever cleaned of issue references, every one of these reds — which is the correct signal.
  */
 const ISSUE_SUBJECT_EXEMPT: { file: string; contains: string; why: string }[] = [
-	/*
-	 * The `You're #3 · after Sam` entry was HERE: product copy quoted in the requirement that specified it,
-	 * where `#3` means third in line — the one meaning of `#N` this product ships to a user. Its document
-	 * was deleted in the docs cleanup (2026-09-22), so the exemption has no line to cover. The product copy
-	 * itself is unaffected: the phone still renders it, and `positionWords` is where it is built and tested.
-	 */
 	{
 		file: 'tests/guards/design-system/lyrics-singer-colour-wiring.test.ts',
 		contains: '`--reel-now` is deliberately NOT overridden',
@@ -193,13 +139,9 @@ const ISSUE_SUBJECT_EXEMPT: { file: string; contains: string; why: string }[] = 
 ];
 
 /**
- * Is this line a recorded exempt site?
- *
- * KEYED ON CONTENT, NOT A LINE NUMBER. The first version keyed `path:line` and broke within the hour: a
- * sibling edit two lines above shifted `browse-screen.test.ts` from 236/237 to 237/238, so two
- * exemptions silently stopped matching while a third began pointing at ordinary prose. A line number is a
- * fact about everything ABOVE a site rather than about the site itself, which makes it the wrong key for a
- * record meant to outlive edits.
+ * Is this line a recorded exempt site? KEYED ON CONTENT, NOT A LINE NUMBER: the first version keyed `path:line`
+ * and broke within the hour when a sibling edit two lines above shifted two exemptions off their sites while a
+ * third began pointing at ordinary prose. A line number is a fact about everything ABOVE a site.
  */
 function isExemptSite(rel: string, line: string): boolean {
 	return ISSUE_SUBJECT_EXEMPT.some((e) => e.file === rel && line.includes(e.contains));
@@ -209,37 +151,17 @@ const SCANNED_EXT = ['.ts', '.svelte', '.py', '.js', '.mjs', '.md', '.txt', '.ym
 // Extensionless / dotfile config that carried retired task tokens (M<n>-C<n>, B-<n>) and must stay clean.
 const SCANNED_NAMES = new Set(['Dockerfile', '.env.example', '.npmrc']);
 
-// This guard is the one file that must contain the patterns (as literals + prose), so it excludes
-// itself.
-// Named from the root rather than from 'wherever I am', so moving this file cannot silently switch
-// off its own self-exemption and turn its documented patterns into offenders.
+// This guard is the one file that must contain the patterns, so it excludes itself — named from the root, so
+// moving the file cannot silently switch off its own self-exemption.
 const SELF = at('tests/guards/meta/task-number-hygiene.test.ts');
 
-// THE ONE PATH EXEMPTION, and the reason lives here — the shape page-header.test.ts:24-27 uses, so
-// adding a second entry is a conscious act a reviewer sees rather than a drive-by widening.
-//
-// This resolves a contradiction inside this very file: THE RULE above says task IDs belong "in a PR, a
-// commit message, or docs/" — one of the places a reader chasing the history goes looking — and then
-// the scan banned them in docs/ anyway. docs/loop/ is where that bites. Those briefs quote the retired
-// LOOP.md / FLEET.md texts VERBATIM in order to reconcile them, and you cannot record "the scope fence
-// on the four large tickets is described three contradictory ways" without naming the tickets. A
-// reconciliation that paraphrases its sources can no longer be checked against them, which is the
-// artifact's whole value.
-//
-// Exempt by DIRECTORY, not by file list. docs/loop/ churns: today's two hits are COMMON.md and
-// PR-BOT.md, while the DRIFT.md that was filed against has already been deleted — so a file
-// list is a treadmill that reds main again on the next brief that cites a ticket. Everything else stays
-// scanned, the REST of docs/ included, which is the coverage the retired B-<n> / M<n>-C<n> families
-// (they lived mostly in docs) exist for. The trailing slash is load-bearing: a bare `docs/loop` prefix
-// would also swallow a sibling such as docs/loopback.md.
 /*
- * EMPTY (2026-09-22), and that is the strongest this guard has ever been: THE RULE now has no carve-out at
- * all. The single entry was `docs/loop/` — pipeline steering that quoted the retired briefs verbatim, so
- * the task ids there WERE the artifact being reconciled. The docs cleanup deleted that tree, so the
- * exemption has no subject and the ban applies to every tracked file without exception.
+ * THE PATH EXEMPTIONS, EMPTY — the ban has no carve-out at all. The single entry was `docs/loop/`, whose briefs
+ * quoted retired texts verbatim so the task ids there WERE the artifact being reconciled; that tree is deleted.
  *
- * The map stays declared, with its sentinel below, because an exemption is the kind of thing that will be
- * wanted again and the arm that keeps each one honest is worth more than the two lines it costs.
+ * The map stays declared, with its sentinel below, because an exemption is the kind of thing that will be wanted
+ * again. Any future prefix is a DIRECTORY with a trailing slash, which is load-bearing: a bare `docs/loop` would
+ * also swallow a sibling such as docs/loopback.md.
  */
 const EXEMPT_PREFIXES: Record<string, string> = {};
 
@@ -248,13 +170,9 @@ function isExempt(rel: string): boolean {
 	return Object.keys(EXEMPT_PREFIXES).some((prefix) => rel.startsWith(prefix));
 }
 
-// The scanned set is the GIT-TRACKED files only. `git ls-files` lists exactly what is under version
-// control, so an untracked /.gitignore'd path (the repo-root agent-state tree of operational
-// markdown, and anything similar added later) is never in scope — the guard polices the repo, not the
-// working directory. This also removes the need to hand-maintain a SKIP_DIRS prune list: generated and
-// vendored trees (node_modules, build,.svelte-kit, dist, media, __pycache__) are all untracked.
-// Paths stay REPO-RELATIVE throughout, because that is the form both the exemption and the offender
-// message are written in.
+// The scanned set is the GIT-TRACKED files only, so an untracked or .gitignore'd path is never in scope — the
+// guard polices the repo, not the working directory, and needs no hand-maintained prune list because generated
+// and vendored trees are all untracked. Paths stay REPO-RELATIVE, the form the exemptions and messages use.
 function trackedScannedFiles(): string[] {
 	const listed = execFileSync('git', ['-C', REPO, 'ls-files', '-z'], {
 		encoding: 'utf8',
@@ -265,21 +183,18 @@ function trackedScannedFiles(): string[] {
 }
 
 /**
- * Every scanned TRACKED file in the repo — source, comments, tests and fixtures alike, across the TS
- * core, the shared packages, and the Python worker (its src AND its tests) — minus this guard itself
- * and the documented EXEMPT_PREFIXES. Driving off `git ls-files` (rather than a raw filesystem walk) is
- * what keeps the coverage matching this guard's name AND its scope: a task ref that lands in
- * `packages/` or `worker/tests/` is the same defect and must not hide, but a ref inside an
- * untracked / git-ignored operational tree is not a repo defect and must not red this guard.
+ * Every scanned TRACKED file — source, comments, tests and fixtures alike, across the TS core, the shared
+ * packages and the Python worker — minus this guard and the documented EXEMPT_PREFIXES. Driving off
+ * `git ls-files` is what keeps a ref in `packages/` or `worker/tests/` from hiding while a ref in an untracked
+ * operational tree does not red this guard.
  */
 function scannedFiles(): string[] {
 	return trackedScannedFiles().filter((rel) => join(REPO, rel) !== SELF && !isExempt(rel));
 }
 
 /**
- * The offenders in one file's text, in the form the guard reports them. Pure — it takes the text rather
- * than reading it — which is what lets the non-vacuity sentinel below plant a token in a scanned path
- * without writing anything into the tree.
+ * The offenders in one file's text. PURE — it takes the text rather than reading it — which is what lets the
+ * non-vacuity sentinel below plant a token in a scanned path without writing anything into the tree.
  */
 function offendersIn(rel: string, text: string): string[] {
 	const found: string[] = [];
@@ -302,9 +217,8 @@ function offendersIn(rel: string, text: string): string[] {
 test('no task/ticket number appears in source, comments, tests or fixtures', () => {
 	const offenders: string[] = [];
 	const files = scannedFiles();
-	// Non-vacuity floor: the walk was unanchored — if `git ls-files` returned nothing
-	// (guard run outside the git tree, or the ext/name filter matched none), the scan iterated zero
-	// files and passed while guarding nothing. Pin a floor well below the true count (hundreds).
+	// Non-vacuity floor: the walk is unanchored, so a `git ls-files` returning nothing (run outside the git tree,
+	// or an ext filter matching none) iterated zero files and passed while guarding nothing.
 	expect(files.length).toBeGreaterThan(50); // @nvf-floor files.length
 	for (const rel of files) {
 		offenders.push(...offendersIn(rel, readFileSync(join(REPO, rel), 'utf8')));
@@ -312,18 +226,12 @@ test('no task/ticket number appears in source, comments, tests or fixtures', () 
 	expect(offenders).toEqual([]);
 });
 
-// NON-VACUITY SENTINEL for the exemption map above. An exemption that quietly stops the guard biting
-// anywhere is strictly worse than the red it silenced, so pin the properties the map must keep.
-// Without this, `EXEMPT_PREFIXES` could be widened to `''` — or the patterns hollowed out — and the
-// guard above would still report a serene green.
-//
-// THE MAP IS EMPTY NOW (2026-09-22): its one entry was `docs/loop/`, and the docs cleanup deleted that
-// tree. So the arm asserts the map is empty AND that nothing is exempt — which is a stronger claim than
-// the narrowness it used to check, and it reds the moment a carve-out is re-added without a reason.
+// NON-VACUITY SENTINEL for the exemption map. An exemption that quietly stops the guard biting anywhere is
+// worse than the red it silenced: without this, `EXEMPT_PREFIXES` could be widened to `''` — or the patterns
+// hollowed out — and the guard above would still report a serene green.
 test('nothing is exempt from the ban, and the guard still bites everywhere', () => {
-	// 1. The patterns still fire. A planted token in a scanned, non-exempt path is still an offender,
-	//    and all three families still match — so the exemption did not arrive with a quiet regex
-	//    narrowing or with `.md` dropped from SCANNED_EXT.
+	// 1. The patterns still fire: a planted token in a scanned, non-exempt path is still an offender, and all
+	//    three families still match, so no quiet regex narrowing or dropped extension can pass.
 	const planted = offendersIn('src/lib/planted.ts', 'const n = 1; // shipped in T-1\n');
 	expect(planted).toHaveLength(1);
 	expect(planted[0]).toContain('src/lib/planted.ts:1');
@@ -331,10 +239,8 @@ test('nothing is exempt from the ban, and the guard still bites everywhere', () 
 	expect(offendersIn('docs/ARCHITECTURE.md', 'closed by B-8')).toHaveLength(1);
 	expect(offendersIn('worker/Dockerfile', '# M6-C1')).toHaveLength(1);
 
-	// 2. NOTHING is exempt. The map is empty and `isExempt` says so for every shape that used to be near
-	//    the one carve-out — including `docs/loopback.md`, the trailing-slash trap a bare `docs/loop`
-	//    prefix would have swallowed, which is worth keeping as a case so a re-added prefix must still
-	//    prove it does not over-reach.
+	// 2. NOTHING is exempt, asserted for every shape that used to sit near the one carve-out — including
+	//    `docs/loopback.md`, the trailing-slash trap, so a re-added prefix must prove it does not over-reach.
 	expect(Object.keys(EXEMPT_PREFIXES)).toEqual([]);
 	for (const rel of [
 		'docs/loop/COMMON.md',
@@ -354,15 +260,11 @@ test('nothing is exempt from the ban, and the guard still bites everywhere', () 
 	expect(files.some((rel) => rel.startsWith('docs/'))).toBe(true);
 });
 
-// guard: the paths retired in the repo-cleanup sweep stay retired.
-//
-// The cleanup deleted the docs ROADMAP (open work is GitHub issues now), the whole docs/archive tree
-// and docs/specs/ (old specs folded into ARCHITECTURE / DECISIONS), and two dead screenshot trees.
-// A pure deletion cannot be pinned by a behavioural test — the suite stays green whether the file is
-// there or not — so this existence check is the only thing that reds when one is re-added by a stray
-// `git mv`, a revert, or a rebase resurrecting it. Each entry is a real regression, not a style nit:
-// re-adding ROADMAP.md reinstates a second what-to-build-next authority beside the issue tracker, and
-// re-adding an archive spec resurrects a doc whose citations were all repointed to ARCHITECTURE.
+// guard: the paths retired in the repo-cleanup sweep stay retired. A pure deletion cannot be pinned by a
+// behavioural test — the suite is green whether the file is there or not — so this existence check is the only
+// thing that reds when one is re-added by a stray `git mv`, a revert, or a rebase. Each is a real regression:
+// re-adding ROADMAP.md reinstates a second what-to-build-next authority beside the issue tracker, and re-adding
+// an archive spec resurrects a doc whose citations were all repointed to ARCHITECTURE.
 test('the paths retired by the repo-cleanup stay absent from the tree', () => {
 	const RETIRED = [
 		'docs/ROADMAP.md',
@@ -370,10 +272,8 @@ test('the paths retired by the repo-cleanup stay absent from the tree', () => {
 		'docs/specs',
 		'docs/shots',
 		'temp-screenshots/per-song-word-clamp',
-		// Re-adding this reinstates a second answer to *how work arrives*, beside the polling
-		// contract and ARCHITECTURE.md. The webhook ingress it documented
-		// was torn down; a revert or a rebase resurrecting the file would put a live-looking
-		// mechanism back in front of every lane.
+		// Re-adding this reinstates a second answer to *how work arrives*, beside the polling contract. The
+		// webhook ingress it documented was torn down.
 		'docs/loop/WEBHOOKS.md'
 	];
 	const present = RETIRED.filter((rel) => existsSync(join(REPO, rel)));

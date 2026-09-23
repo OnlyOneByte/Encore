@@ -59,7 +59,6 @@ test('no eligible worker (capability mismatch) → job left queued', () => {
 test('need-order: lower priority (=sooner rotationSeq) dispatches first', () => {
 	const a = job('far', { priority: 9 });
 	const b = job('soon', { priority: 1 });
-	// only ONE slot — the sooner-needed job must win it
 	expect(planAssignments([a, b], [worker('w1', 1)])).toEqual([{ jobId: 'soon', workerId: 'w1' }]);
 });
 
@@ -93,16 +92,8 @@ test('eligible() requires both a free slot and a matching capability', () => {
 	expect(eligible(worker('w', 1, ['align']), job('a', { jobType: 'stems' }))).toBe(false);
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * Merged in from `align-enqueue.test.ts`.
- *
- * It was a satellite: a separate file named for ONE behaviour of the module this file already
- * covers. Several files about one module tell a reader nothing about which holds what, so finding
- * where a behaviour is pinned meant opening all of them. The tests are unchanged.
- * ───────────────────────────────────────────────────────────────────────────── */
-// Lyrics were unreachable for two reasons at once — nothing ever enqueued an `align` job,
-// and `job:assign` could not carry what align needs. These pin both, plus the confidence rule that
-// decides whether a lyrics lookup is even attempted.
+// Align enqueueing, the fields `job:assign` must carry for it, and the confidence rule that decides
+// whether a lyrics lookup is attempted at all.
 
 const media = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -117,10 +108,8 @@ const media = (over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-// ── the process pipeline ─────────────────────────────────────────────────────────
 test('the process is fetch -> stems -> align, and ends there', () => {
-	// align is the LAST step of the process, not an optional garnish: a song is not finished until its
-	// words are timed.
+	// align is the LAST step of a process: a song is not finished until its words are timed.
 	expect(followUps('fetch')).toEqual(['stems']);
 	expect(followUps('stems')).toEqual(['align']);
 });
@@ -129,12 +118,9 @@ test('align does not chain further — no infinite pipeline', () => {
 	expect(followUps('align')).toEqual([]);
 });
 
-// ── the artist credit: telling two RECORDINGS of one song apart ────────────────
-//
-// A lyrics provider holds a record per version, and every one of them matches the primary artist. So
-// "Lady Gaga / Telephone" alone cannot distinguish the release with Beyoncé's verse from the one
-// without, and the worker was handed whichever record the provider happened to return. The full billing
-// is parsed already; these pin that it now reaches the job that needs it.
+// The artist credit tells two RECORDINGS of one song apart. A lyrics provider holds a record per
+// version and every one matches the primary artist, so "Lady Gaga / Telephone" alone cannot pick the
+// release with Beyoncé's verse over the one without — the worker gets whichever the provider returns.
 
 test('THE GAP: the full billing rides on an align job, not just the primary artist', () => {
 	const p = assignParams(
@@ -146,8 +132,8 @@ test('THE GAP: the full billing rides on an align job, not just the primary arti
 });
 
 test('the credit is omitted when it would only repeat the primary artist', () => {
-	// A solo song's billing IS its primary artist. Sending it would add a field with no signal, and the
-	// worker's ranking axis would score every candidate identically — noise, not evidence.
+	// A solo song's billing IS its primary artist, so sending it scores every candidate identically:
+	// noise on the worker's ranking axis, not evidence.
 	const p = assignParams(
 		'align',
 		media({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me', artistCredit: 'a-ha' })
@@ -156,15 +142,15 @@ test('the credit is omitted when it would only repeat the primary artist', () =>
 });
 
 test('a song with no parsed credit sends none', () => {
-	// Absent, not empty: a source that needs it must be able to tell "no credit" from "credit is blank".
+	// Absent, not empty: a consumer must tell "no credit" from "credit is blank".
 	expect(
 		assignParams('align', media({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me' })).artistCredit
 	).toBeUndefined();
 });
 
 test('the credit is NOT a lookup key — it never replaces artist or track', () => {
-	// Querying the full billing would miss every record filed under the primary alone, which is the
-	// opposite of the fix. It only ever ranks what a search already returned.
+	// The credit only RANKS what a search returned: querying the full billing misses every record filed
+	// under the primary artist alone.
 	const p = assignParams(
 		'align',
 		media({ artistCanonical: 'Lady Gaga', titleCanonical: 'Telephone', artistCredit: 'Lady Gaga feat. Beyoncé' })
@@ -182,7 +168,6 @@ test('fetch carries the credit too, since it shares the lookup keys', () => {
 	expect(p.artistCredit).toBe('Lady Gaga feat. Beyoncé');
 });
 
-// ── params derivation ─────────────────────────────────────────────────────────
 test('stems still gets its separation model', () => {
 	expect(assignParams('stems', media()).model).toBe('htdemucs');
 });
@@ -214,7 +199,6 @@ test('THE BUG: align now carries canonical artist + track, not the uploader and 
 	const p = assignParams('align', media({ artistCanonical: 'Britney Spears', titleCanonical: 'Baby One More Time' }));
 	expect(p.artist).toBe('Britney Spears');
 	expect(p.track).toBe('Baby One More Time');
-	// NOT the values that made 4 of 5 library songs miss on metadata alone
 	expect(p.artist).not.toBe('7clouds');
 	expect(p.track).not.toContain('(Lyrics)');
 });
@@ -224,8 +208,8 @@ test('durationSec rides along to narrow the match', () => {
 });
 
 test('a low-confidence parse OMITS the field rather than sending a guess', () => {
-	// artistCanonical/titleCanonical are undefined when the normalizer was not confident. Omitting is
-	// how the worker learns "no authoritative lookup is possible" and goes straight to transcription.
+	// Omitting artistCanonical/titleCanonical is how the worker learns no authoritative lookup is
+	// possible and goes straight to transcription.
 	const p = assignParams('align', media());
 	expect(p.artist).toBeUndefined();
 	expect(p.track).toBeUndefined();
@@ -238,11 +222,9 @@ test('a confident artist with an unconfident title still omits only the title', 
 	expect(p.track).toBeUndefined();
 });
 
-// ── the lyrics engines reach the worker ───────────────────────────────────────
 test("the operator's chosen reader and timing mode ride on every align job", () => {
-	// This is the whole delivery mechanism for the setting. Both were hardcoded on the worker
-	// (DEFAULT_MODEL = "base" in whisperx.py, and forced alignment as the only path), and dial_home.py
-	// never passed a model at all — so nothing an operator did could change the words on the TV.
+	// The whole delivery mechanism for the setting: without these fields on the job, nothing an operator
+	// changes can reach the words on the TV.
 	const p = assignParams('align', media(), {
 		...DEFAULT_GLOBAL_SETTINGS,
 		asrModel: 'medium',
@@ -253,15 +235,14 @@ test("the operator's chosen reader and timing mode ride on every align job", () 
 });
 
 test('with no settings, align falls back to what the worker used when these were hardcoded', () => {
-	// So a unit test, or a core that predates the setting, produces an align job that behaves exactly
-	// as align always did rather than silently changing the model.
+	// A caller that passes no settings must not silently change the model.
 	const p = assignParams('align', media());
 	expect(p.asrModel).toBe('base');
 	expect(p.syncMode).toBe('forced');
 });
 
 test('the lyrics engines are for align only — a stems job carries a separator instead', () => {
-	// Keeps the two axes from bleeding into each other: a separation job has no opinion about words.
+	// A separation job has no opinion about words, so the two axes must not bleed into each other.
 	const s = { ...DEFAULT_GLOBAL_SETTINGS, asrModel: 'small' as const, syncMode: 'lines' as const };
 	expect(assignParams('stems', media(), s).asrModel).toBeUndefined();
 	expect(assignParams('stems', media(), s).syncMode).toBeUndefined();
@@ -269,25 +250,13 @@ test('the lyrics engines are for align only — a stems job carries a separator 
 });
 
 test('unknown media and a zero duration do not produce junk params', () => {
-	// The fetcher is a DECLARATION the worker needs, not junk — it is what replaced inferring
-	// acquisition from the URI's shape. The lyrics engines are declarations of the same kind: an align
-	// job now says which model reads the words and how they get timestamps, exactly as a stems job says
-	// which separator to run. Only the LOOKUP keys must stay absent when unconfident.
+	// The fetcher and the lyrics engines are DECLARATIONS the worker needs, not junk: an align job says
+	// which model reads the words and how they get timestamps, as a stems job says which separator to
+	// run. Only the LOOKUP keys stay absent when unconfident.
 	expect(assignParams('align', undefined)).toEqual({ fetcher: 'ytdlp', asrModel: 'base', syncMode: 'forced' });
 	expect(assignParams('align', media({ durationSec: 0 })).durationSec).toBeUndefined();
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * Merged in from `capability-routing.test.ts`.
- *
- * It was a satellite: a separate file named for ONE behaviour of the module this file already
- * covers. Several files about one module tell a reader nothing about which holds what, so finding
- * where a behaviour is pinned meant opening all of them. The tests are unchanged.
- *
- * Its `job, worker` fixture(s) were renamed with the `_CapabilityRouting` suffix: this file already had a
- * declaration of that name meaning something slightly different, so both are kept and each block
- * keeps the fixture its assertions were written against. Collapsing them is a separate, readable step.
- * ───────────────────────────────────────────────────────────────────────────── */
 function job_CapabilityRouting(id: string, jobType: Job['jobType']): Job {
 	return {
 		id,
@@ -323,7 +292,7 @@ test('requiredCapability is engine-derived for stems, plain type otherwise', () 
 	expect(requiredCapability('stems', settings({ defaultEngine: 'roformer' }))).toBe('stems:roformer');
 	expect(requiredCapability('stems-upgrade', settings({ upgradeEngine: 'ensemble' }))).toBe('stems:ensemble');
 	expect(requiredCapability('align', settings({}))).toBe('align');
-	// no settings → demucs default → plain 'stems' (no regression for existing single-cap workers)
+	// No settings means the demucs default and a plain 'stems' capability, which single-cap workers serve.
 	expect(requiredCapability('stems')).toBe('stems');
 });
 
@@ -344,22 +313,8 @@ test('default capabilityFor (no resolver) preserves plain job_CapabilityRouting-
 	expect(planAssignments([job_CapabilityRouting('a', 'stems')], demucsOnly)).toEqual([{ jobId: 'a', workerId: 'w1' }]);
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * Merged in from `fetch-chain.test.ts`.
- *
- * It was a satellite: a separate file named for ONE behaviour of the module this file already
- * covers. Several files about one module tell a reader nothing about which holds what, so finding
- * where a behaviour is pinned meant opening all of them. The tests are unchanged.
- *
- * Its `media, settings` fixture(s) were renamed with the `_FetchChain` suffix: this file already had a
- * declaration of that name meaning something slightly different, so both are kept and each block
- * keeps the fixture its assertions were written against. Collapsing them is a separate, readable step.
- * ───────────────────────────────────────────────────────────────────────────── */
-// The acquisition CHAIN: a process starts by getting the bytes, then separates them.
-//
-// Kept separate from the separator-routing tests because the failure it guards against is different:
-// enqueueing `stems` directly would dispatch a separation before its input existed, and a `fetch`
-// that chained to nothing would leave every song stuck with audio on disk and no instrumental.
+// The acquisition CHAIN: get the bytes, then separate them. Enqueueing `stems` directly dispatches a separation before
+// its input exists; a `fetch` that chains to nothing leaves every song with audio on disk and no instrumental.
 
 const settings_FetchChain = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({ ...DEFAULT_GLOBAL_SETTINGS, ...o });
 const media_FetchChain = (over: Partial<Media> = {}): Media => ({
@@ -377,15 +332,13 @@ test('fetch chains to stems — acquisition is never a dead end', () => {
 });
 
 test('fetch does NOT chain align/score directly — those need the vocals stem', () => {
-	// align reads the isolated vocals, which only exists after separation. Chaining it off
-	// fetch would race the separation that produces its input.
+	// align reads the isolated vocals, so chaining it off fetch races the separation that produces it.
 	const next = followUps('fetch', settings_FetchChain());
 	expect(next).not.toContain('align');
 });
 
 test('fetch routes on the DOWNLOADER capability, not on stems', () => {
-	// This is what lets a box that can pull audio and a box that can separate it be different
-	// machines: neither capability implies the other.
+	// Neither capability implies the other, so the two steps can run on different machines.
 	expect(requiredCapability('fetch', settings_FetchChain())).toBe('fetch:ytdlp');
 	expect(requiredCapability('stems', settings_FetchChain())).toBe('stems');
 	expect(requiredCapability('fetch', settings_FetchChain())).not.toBe(
@@ -398,7 +351,6 @@ test('fetch capability falls back sanely with no settings_FetchChain at all (old
 });
 
 test('every job that touches source audio declares HOW to obtain it', () => {
-	// The worker parses this at its boundary instead of testing the URI for an http prefix.
 	for (const jobType of ['fetch', 'stems', 'stems-upgrade', 'align'] as const) {
 		expect(assignParams(jobType, media_FetchChain(), settings_FetchChain()).fetcher).toBe('ytdlp');
 	}
@@ -407,7 +359,7 @@ test('every job that touches source audio declares HOW to obtain it', () => {
 test('a LOCAL media_FetchChain declares `local`, so the worker reads a path instead of downloading', () => {
 	const local = media_FetchChain({ source: 'local', sourceRef: 'library/x.mp4' });
 	expect(assignParams('stems', local, settings_FetchChain()).fetcher).toBe('local');
-	// and it is `local` even though the deployment's downloader is yt-dlp — the bytes are already here
+	// `local` even though the deployment's downloader is yt-dlp: the bytes are already here.
 	expect(assignParams('fetch', local, settings_FetchChain({ defaultFetcher: 'ytdlp' })).fetcher).toBe('local');
 });
 
@@ -418,8 +370,8 @@ test('a fetch job carries no separator params — it produces nothing singable',
 });
 
 test('a fetch carries the LOOKUP KEYS too — annotation runs as its final step', () => {
-	// The worker cannot search MusicBrainz without them, and an absent key is the signal to decline
-	// rather than search on a guess. Same confidence gate as an align job's LRCLIB lookup.
+	// An absent key is the signal to DECLINE rather than search MusicBrainz on a guess — the same
+	// confidence gate as an align job's LRCLIB lookup.
 	const p = assignParams(
 		'fetch',
 		media_FetchChain({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me' }),
@@ -438,12 +390,9 @@ test('an unconfident parse sends NO lookup keys to ALIGN, so the worker declines
 });
 
 test('a fetch DOES send the unconfident guess — MusicBrainz is the gate, not the parser', () => {
-	// The regression this fixes, verbatim from the live library. `cleanTitleNoise` strips the trailing
-	// "| Worlds 2017 - League of Legends" tag, which leaves a title with no separator in it, so the
-	// parser falls back to the uploader and marks itself `low` — and `resultToMedia` then stores no
-	// canonicals. Under the old shared gate that meant no keys, no MusicBrainz call, and a TV rendering
-	// the entire upload string. The uploader IS the credited artist here, and MusicBrainz confirms the
-	// pair exactly.
+	// Verbatim from the live library. `cleanTitleNoise` strips the trailing tag, leaving a title with no separator, so the
+	// parser falls back to the uploader, marks itself `low`, and stores no canonicals. A shared gate then means no keys,
+	// no MusicBrainz call, and a TV rendering the whole upload string — even though the uploader IS the credited artist.
 	const yt = media_FetchChain({
 		title: 'Legends Never Die (ft. Against The Current) [OFFICIAL AUDIO] | Worlds 2017 - League of Legends',
 		artist: 'League of Legends',
@@ -451,21 +400,20 @@ test('a fetch DOES send the unconfident guess — MusicBrainz is the gate, not t
 	});
 	const p = assignParams('fetch', yt, settings_FetchChain());
 	expect(p.artist).toBe('League of Legends');
-	// The guest credit is lifted OUT of the song name: MusicBrainz calls the recording "Legends Never
-	// Die" and returns zero results for the title with "(ft. …)" still in it.
+	// The guest credit is lifted OUT of the song name: MusicBrainz returns zero results for a title with
+	// "(ft. …)" still in it.
 	expect(p.track).toBe('Legends Never Die');
 	expect(p.durationSec).toBe(179);
-	// No `artistCredit`: only the align step reads it (to rank lyrics records), and the annotate step
-	// takes artist/track/durationSec alone. MusicBrainz returns the full billing itself.
+	// No `artistCredit`: only align reads it, to rank lyrics records. Annotate takes artist/track/
+	// durationSec alone, and MusicBrainz returns the full billing itself.
 	expect(p.artistCredit).toBeUndefined();
-	// ...and align still refuses to guess for the same media_FetchChain: LRCLIB would answer with its nearest
-	// record rather than declining, and that is another song's words.
+	// align still refuses to guess: LRCLIB answers with its nearest record rather than declining, and
+	// that is another song's words.
 	expect(assignParams('align', yt, settings_FetchChain()).artist).toBeUndefined();
 });
 
 test('a fetch does NOT guess from an aggregator uploader — "7clouds" is not an artist', () => {
-	// The parser returns `unparsed` for a lyrics channel with no separator to split on, so there is
-	// nothing to send. Asking MusicBrainz about a channel name is a wasted paced request.
+	// `unparsed` means there is nothing to send: asking MusicBrainz about a channel name is a wasted paced request.
 	const p = assignParams('fetch', media_FetchChain({ title: 'Wake Me Up', artist: '7clouds' }), settings_FetchChain());
 	expect(p.artist).toBeUndefined();
 	expect(p.track).toBeUndefined();
@@ -492,17 +440,6 @@ test('a CONFIDENT canonical is never overwritten by the guess', () => {
 	expect(p.track).toBe('Take On Me');
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * Merged in from `upgrade-chain.test.ts`.
- *
- * It was a satellite: a separate file named for ONE behaviour of the module this file already
- * covers. Several files about one module tell a reader nothing about which holds what, so finding
- * where a behaviour is pinned meant opening all of them. The tests are unchanged.
- *
- * Its `media, settings` fixture(s) were renamed with the `_UpgradeChain` suffix: this file already had a
- * declaration of that name meaning something slightly different, so both are kept and each block
- * keeps the fixture its assertions were written against. Collapsing them is a separate, readable step.
- * ───────────────────────────────────────────────────────────────────────────── */
 import { isQualityUpgrade, qualityRank, DEFAULT_GLOBAL_SETTINGS, type Media, type GlobalSettings } from '$lib/contract';
 
 const settings_UpgradeChain = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({
@@ -523,7 +460,6 @@ function media_UpgradeChain(o: Partial<Media> = {}): Media {
 	} as Media;
 }
 
-// ── the ladder ────────────────────────────────────────────────────────────────
 test('quality ranks order the ladder and unranked pairs score zero', () => {
 	expect(qualityRank('demucs', 'htdemucs')).toBeLessThan(qualityRank('demucs', 'htdemucs_ft'));
 	expect(qualityRank('demucs', 'htdemucs_ft')).toBeLessThan(qualityRank('roformer', 'bs-roformer-1297'));
@@ -541,11 +477,10 @@ test('isQualityUpgrade requires strictly better and treats missing current as up
 	expect(isQualityUpgrade(fast, { engine: 'demucs', model: 'bogus' })).toBe(false);
 });
 
-// ── follow-ups ────────────────────────────────────────────────────────────────
 test('a process chains align, and the upgrade only when it would improve quality', () => {
 	expect(followUps('stems', settings_UpgradeChain())).toEqual(['align']); // upgrade disabled
 	expect(followUps('stems', settings_UpgradeChain({ enqueueUpgrade: true }))).toEqual(['align', 'stems-upgrade']);
-	// enabled but the "upgrade" is not actually better → not enqueued, so no wasted 40-min process
+	// Enabled, but the "upgrade" is not better — so not enqueued, and no wasted 40-minute process.
 	expect(
 		followUps(
 			'stems',
@@ -559,7 +494,6 @@ test('an upgrade job chains nothing further (depth-1 fan-out)', () => {
 	expect(followUps('align', settings_UpgradeChain())).toEqual([]);
 });
 
-// ── provenance + the swap guard ────────────────────────────────────────────────
 test('separatorFor reports the pairing a separation job used, and nothing for others', () => {
 	expect(separatorFor('stems', settings_UpgradeChain({ defaultModel: 'htdemucs_ft' }))).toEqual({
 		engine: 'demucs',
@@ -616,12 +550,12 @@ test('THE INVARIANT: a worse or equal result never replaces a published instrume
 			})
 		]
 	]);
-	// a worse engine result arriving late (e.g. a re-queued plain process) is refused
+	// A worse engine's result arriving late (a re-queued plain process) is refused.
 	expect(
 		markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'demucs', model: 'htdemucs' })
 	).toBe(false);
 	expect(byId.get('m1')!.separator).toEqual(published); // unchanged
-	// and an identical re-process is a no-op rather than a churn
+	// An identical re-process is a no-op rather than a churn.
 	expect(markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', published)).toBe(false);
 });
 

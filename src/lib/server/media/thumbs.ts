@@ -9,9 +9,9 @@ import { join } from 'node:path';
 // The thumb cache is DERIVED — regenerable, and therefore the first thing safe to evict.
 const THUMB_DIR = () => join(derivedDir(), 'thumbs');
 
-// SSRF guard (Finding #1): the proxy must only fetch the hosts yt-dlp actually returns for
-// thumbnails. Without an allowlist, ?u=http://169.254.169.254/... turns this into a
-// server-side request forgery probe of the internal network / cloud metadata endpoint.
+// SSRF guard: only fetch hosts yt-dlp actually returns for thumbnails — without an allowlist,
+// ?u=http://169.254.169.254/... turns this into a probe of the internal network / cloud metadata
+// endpoint. See docs/ARCHITECTURE.md §10.
 const ALLOWED_THUMB_HOSTS = new Set([
 	'i.ytimg.com',
 	'i9.ytimg.com',
@@ -34,8 +34,8 @@ export function isAllowedThumbUrl(u: string): boolean {
 
 /** Stable, collision-resistant, filesystem-safe cache filename for a remote thumbnail URL. */
 export function thumbKey(url: string): string {
-	// SHA-256 hex (Finding #5a): deterministic across restarts + collision-resistant, unlike the
-	// 64-bit seeded Bun.hash which could map two videos' thumbnails to the same cache file.
+	// SHA-256 hex: deterministic across restarts + collision-resistant, unlike the 64-bit seeded
+	// Bun.hash, which could map two videos' thumbnails to the same cache file.
 	const h = createHash('sha256').update(url).digest('hex').slice(0, 32);
 	const ext = url.match(/\.(jpg|jpeg|png|webp)(\?|$)/i)?.[1]?.toLowerCase() ?? 'jpg';
 	return `${h}.${ext}`;
@@ -67,9 +67,8 @@ export async function serveThumb(url: string): Promise<Response> {
 	try {
 		const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 		if (!res.ok) {
-			// the upstream status (a deleted video's thumb 404, a 429) is dropped by the bare
-			// 'upstream error' body, which the <img> element throws away too. Name it so "why are the
-			// thumbnails blank on this box?" has an answer in the log. Still a 502 — degrade unchanged.
+			// The upstream status (404, 429) is dropped by the bare 'upstream error' body, which <img>
+			// throws away too — name it in the log so "why are thumbnails blank?" has an answer.
 			console.warn(`[thumbs] upstream fetch for ${url} returned ${res.status}; serving 502`);
 			return new Response('upstream error', { status: 502 });
 		}
@@ -83,8 +82,8 @@ export async function serveThumb(url: string): Promise<Response> {
 			}
 		});
 	} catch (err) {
-		// the AbortSignal.timeout(5000) firing is indistinguishable from a DNS/TLS failure once
-		// collapsed to 'fetch failed'. Bind and name it; still a 502.
+		// AbortSignal.timeout firing is indistinguishable from a DNS/TLS failure once collapsed to
+		// 'fetch failed' — bind and name it; still a 502.
 		console.warn(`[thumbs] fetch for ${url} failed (timeout/network); serving 502:`, err);
 		return new Response('fetch failed', { status: 502 });
 	}

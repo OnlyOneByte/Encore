@@ -1,16 +1,10 @@
 /*
- * CANONICAL Chromium discovery for every e2e driver.
+ * CANONICAL Chromium discovery for every e2e driver — `tests/guards/hygiene/chromium.test.ts` asserts no
+ * other .mjs under tests/e2e redefines it, because the copies drifted (only some validated PW_CHROMIUM,
+ * one hardcoded a home path, the short variants dropped the /usr/bin fallback).
  *
- * `findChromium()` was copy-pasted into 15 drivers under tests/e2e and drifted three ways
- *: only two copies validated PW_CHROMIUM, one hardcoded a personal
- * home path, and the 4-line variants dropped the /usr/bin fallback. This is the single source of
- * truth so that drift is inexpressible — a source-scan guard in bun test (see lib/chromium.test.ts)
- * asserts no other .mjs under e2e/ redefines it.
- *
- * VALIDATED, not trusted: an unset-but-wrong PW_CHROMIUM used to sail past the trusting copies and
- * surface as a CDP connect failure, which reads like a driver bug instead of a missing browser. When
- * PW_CHROMIUM is set to a path that does not exist we return null (the caller bails loudly) rather
- * than handing a bogus path to spawn.
+ * PW_CHROMIUM is VALIDATED, not trusted: a set-but-wrong path returns null so the caller bails loudly,
+ * instead of handing a bogus path to spawn and surfacing as a launch failure that reads like a driver bug.
  */
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';

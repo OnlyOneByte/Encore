@@ -1,9 +1,7 @@
-// The scheme in the TV's join QR.
-//
-// REGRESSION: adapter-node computes the protocol as `PROTOCOL_HEADER && header || "https"`, so with no
-// proxy header configured it reports **https** for a plain HTTP request. `url.origin` was therefore
-// `https://192.168.1.20:3000` on the deployment the README documents, and the QR encoded a URL no phone
-// on the LAN could open. Invisible in normal testing because the usual path is an https tunnel.
+// The scheme in the TV's join QR. adapter-node computes the protocol as `PROTOCOL_HEADER && header || "https"`, so with
+// no proxy header configured it reports **https** for a plain HTTP request: `url.origin` became
+// `https://192.168.1.20:3000` on the deployment the README documents, and the QR encoded a URL no phone on the LAN could
+// open. Invisible in normal testing, because the usual path is an https tunnel.
 import { test, expect } from 'bun:test';
 import {
 	publicOrigin,
@@ -48,11 +46,9 @@ test('with no Host header at all it falls back to the request URL host', () => {
 	);
 });
 
-// ── ENCORE_PUBLIC_ORIGIN ────────────────────────────────────────────────────────
-// The request is the right source for a PHONE (it reached us, so its route works) and the wrong one
-// for the TV: on a Windows/WSL2 box the server often cannot reach its own LAN address, so the only
-// URL that opens /tv there is localhost — which puts `localhost` in the QR and points every phone at
-// itself. An operator that knows the public address must be able to say so.
+// ENCORE_PUBLIC_ORIGIN. The request is the right source for a PHONE (it reached us, so its route works) and the wrong
+// one for the TV: on a Windows/WSL2 box the server often cannot reach its own LAN address, so the only URL that opens
+// /tv is localhost — which puts `localhost` in the QR and points every phone at itself.
 
 const withOrigin = <T>(value: string | undefined, fn: () => T): T => {
 	const prior = process.env.ENCORE_PUBLIC_ORIGIN;
@@ -104,12 +100,10 @@ test('unset falls back to the request, so existing deployments are unchanged', (
 	);
 });
 
-// ── publicOriginIsHttps: the session cookie's Secure attribute ───────────────────
-// REGRESSION this locks out: /api/join used `url.protocol === 'https:'`, and adapter-node reports
-// https for every request unless PROTOCOL_HEADER is set. The session cookie was therefore marked
-// Secure on a plain-HTTP LAN party, so the phone's browser discarded it — /join returned 200 and
-// /api/me then returned 401 with no cookie to read. Invisible on the host box, because browsers accept
-// Secure over http://localhost (a trustworthy origin), so it only ever broke actual phones.
+// publicOriginIsHttps: the session cookie's Secure attribute. /api/join used `url.protocol === 'https:'`, and
+// adapter-node reports https for every request unless PROTOCOL_HEADER is set, so the session cookie was marked Secure on
+// a plain-HTTP LAN party and the phone's browser discarded it: /join returned 200, /api/me then 401 with no cookie.
+// Invisible on the host box, because browsers accept Secure over http://localhost, so it only broke actual phones.
 
 test('a plain-HTTP LAN request is NOT https, so the cookie is not marked Secure', () => {
 	expect(publicOriginIsHttps(req({ host: '10.69.1.169:3000' }), url)).toBe(false);
@@ -133,9 +127,8 @@ test('an explicit http origin does NOT, even when a proxy claims https', () => {
 });
 
 test('the cookie flag and the per-request origin can never disagree about the scheme', () => {
-	// One derivation, two callers: assert they agree rather than trusting that they do. NOTE this is the
-	// PER-REQUEST origin, not the advertised join address — see the joinOrigin block below for why those
-	// two are allowed to differ.
+	// One derivation, two callers: assert they agree rather than trusting that they do. NOTE this is the PER-REQUEST
+	// origin, not the advertised join address — see the joinOrigin block below for why those two are allowed to differ.
 	const cases: Record<string, string>[] = [
 		{ host: '10.69.1.169:3000' },
 		{ host: 'h', 'x-forwarded-proto': 'https' },
@@ -147,13 +140,10 @@ test('the cookie flag and the per-request origin can never disagree about the sc
 	}
 });
 
-// ── joinOrigin: the address the TV advertises ────────────────────────────────────
-// Same problem as ENCORE_PUBLIC_ORIGIN, one layer up: the person who can fix a QR that says
-// `localhost` is standing in the room, not restarting the container. So the address is also a stored
-// GLOBAL SETTING, which wins over the env var, which wins over the request.
-//
-// `resolveOrigin` is the rule with the source of the declared value factored out, so the precedence is
-// testable without standing up an app singleton (which is what holds the settings repository).
+// joinOrigin: the address the TV advertises. Same problem as ENCORE_PUBLIC_ORIGIN one layer up — the person who can fix
+// a QR that says `localhost` is standing in the room, not restarting the container — so the address is also a stored
+// GLOBAL SETTING, which wins over the env var, which wins over the request. `resolveOrigin` is that rule with the source
+// of the declared value factored out, so the precedence is testable without standing up an app singleton.
 
 test('a declared origin wins over every header — the localhost-TV case, from the settings page', () => {
 	const o = resolveOrigin(

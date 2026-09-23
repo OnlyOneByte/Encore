@@ -1,30 +1,16 @@
 /*
- * THE ROOM LINK — one socket, one room truth, for the whole app.
+ * THE ROOM LINK — one socket, one room truth, for the whole app. The socket is not a property of a route:
+ * one phone joins one room once, and the connection must outlive every navigation, which is why a component
+ * mounted by the LAYOUT can read the playback state at all.
  *
- * WHY THIS EXISTS. Everything in here used to live in `routes/+page.svelte`'s `onMount`: the
- * `/api/me` probe, the `QueueStore`, the `WsClient`, and every field the room broadcasts into. That
- * placement made the ROUTE the owner of app-wide truth, which had one consequence that finally
- * forced this move: a component mounted in `+layout.svelte` — the persistent now-playing band — could
- * not read the playback state, because the only thing that knew it was a sibling route component.
- * The socket is not a property of a route. One phone joins one room once, and the connection must
- * outlive any navigation between the queue, the find surface and a song page.
+ * A PLAIN CLASS WITH AN EXPLICIT `subscribe`, never a rune-backed store, and that is a correctness choice:
+ * a module-level `$state` singleton is shared across SSR requests on the server, which is a cross-request
+ * state leak waiting to happen, while plain fields that only move in the browser cannot leak that way. It
+ * also matches `QueueStore` beside it, and it lets a component mirror only the fields it renders.
  *
- * THE IDIOM IS THE REPO'S OWN, deliberately. This is a plain class with an explicit `subscribe`,
- * exactly like `QueueStore` beside it — NOT a rune-backed `.svelte.ts` store. Three reasons, in
- * order of weight:
- *   1. A module-level `$state` singleton is shared across SSR requests on the server, which is a
- *      cross-request state leak waiting to happen. Plain fields that only ever move in the browser
- *      cannot leak that way.
- *   2. `QueueStore` already established subscribe-and-mirror here, and it is tested that way.
- *      A second, different store idiom in the same directory is a thing every future reader has to
- *      learn twice.
- *   3. Components mirror only the fields they render, so the band does not re-render on a library
- *      merge it does not read.
- *
- * WHAT IT DOES NOT DO: no toasts, no navigation, no DOM. A failure that a human must see is handed
- * to whoever registered `onError`, because the surface that should say so is a UI decision and this
- * file has no business making it. The scar persistence IS here, though — that is state that must
- * survive a reload, not a way of telling someone something.
+ * NO TOASTS, NO NAVIGATION, NO DOM. A failure a human must see goes to whoever registered `onError`,
+ * because which surface says so is a UI decision. The scar PERSISTENCE is here, though — that is state
+ * which must survive a reload, not a way of telling someone something.
  */
 
 import {
@@ -67,23 +53,18 @@ export class RoomLink {
 	singers = new Map<string, PublicSinger>();
 	mediaCatalog = new Map<string, Media>();
 	settings: EffectiveSettings = DEFAULT_EFFECTIVE_SETTINGS;
-	/**
-	 * Singers who are in the room but unreachable. An absent singer's queued song looks exactly like
-	 * anyone else's without this, and the phone is the surface holding the skip control — so it is the
-	 * one surface that must be able to tell there is a decision to make.
-	 */
+	/** Singers in the room but unreachable. The phone holds the skip control, so it is the one surface that
+	 * must be able to tell there is a decision to make. */
 	awaySingers = new Set<string>();
 	/** Live process progress per mediaId, from `media:status` and seeded from /api/library. */
 	mediaStatus = new Map<string, LiveMediaStatus>();
 	/** The room's standing guiding-track default — needed to LABEL a null (inherit) per-song override. */
 	roomGuideDefault = 0;
 	/**
-	 * THE SAVED LIBRARY. Owned here rather than by the surface that lists it, because the fetch does
-	 * two jobs for two different readers: it gives /find the rows to render, AND it seeds the media
-	 * catalog and the live process statuses that HOME reads for its queue titles and its progress bars
-	 * on a cold load. Those used to share one function body in the route, which meant the queue's
-	 * titles depended on the search surface having run — invisible while they were the same file, a
-	 * silent breakage the moment they were not.
+	 * THE SAVED LIBRARY, owned here rather than by the surface that lists it, because the fetch does two jobs
+	 * for two readers: it supplies the browse rows AND seeds the catalog and live statuses the queue needs for
+	 * its titles and progress bars on a cold load. Owned by a surface, the queue's titles would silently
+	 * depend on that surface having run.
 	 */
 	library: Media[] = [];
 	libraryTags: Record<string, string[]> = {};
@@ -97,10 +78,9 @@ export class RoomLink {
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string) => void>();
 	/**
-	 * Failed-process scars captured once on connect. HELD, because a `queue:sync` REPLACES the
-	 * catalog and a failed song is not in the room's media (it settled to un-processed server-side) —
-	 * so without re-merging these on every sync, the room's first sync wipes the scarred media and the
-	 * row vanishes again on the very reload the scar exists to survive.
+	 * Failed-process scars captured once on connect, and HELD: a sync REPLACES the catalog, and a failed song
+	 * is not in the room's media because it settled back to un-processed server-side — so without re-merging
+	 * these on every sync, the first sync wipes the scarred row on the very reload the scar exists to survive.
 	 */
 	#scarred: Media[] = [];
 	#state: 'idle' | 'connecting' | 'live' | 'guest' | 'closed' = 'idle';
@@ -177,13 +157,13 @@ export class RoomLink {
 			onEvent: (e: ServerEvent) => this.#onServerEvent(e)
 		});
 
-		// Re-surface failed processes that a reload would otherwise have erased: the live mediaStatus
-		// map is in-memory only, so a persisted scar is seeded back as a synthetic `failed` status. It
-		// flows through the same readiness path a live failure takes, with no extra UI.
+		// The live status map is in-memory only, so a reload erases a failed process. A persisted scar is
+		// seeded back as a synthetic `failed` status and flows through the same readiness path a live failure
+		// takes, with no extra UI.
 		this.#scarred = activeScars();
 		if (this.#scarred.length) {
-			// GET /api/library returns only ready + processing media, so a failed song is not in the
-			// catalog — merge the scar's snapshot in so its row can render, then mark it failed.
+			// The library endpoint returns only ready and processing media, so a failed song is not in the
+			// catalog — its snapshot has to be merged in before its row can render.
 			this.mergeMissingMedia(this.#scarred);
 			const withScars = new Map(this.mediaStatus);
 			for (const m of this.#scarred) if (!withScars.has(m.id)) withScars.set(m.id, { status: 'failed', pct: 0 });
@@ -207,9 +187,9 @@ export class RoomLink {
 	 * Re-pick a song's lyrics: choose a stored candidate by ref, or paste new words. The server pins the
 	 * choice and re-times it, and the live `media:status` broadcasts drive the row.
 	 *
-	 * IT LIVES ON THE LINK because the control that calls it is app chrome now — the drawer, mounted by
-	 * the layout — and the layout should not be making fetches. A human edit must produce a NEW `manual`
-	 * candidate rather than mutate one, which is the server's rule; this only reports the choice.
+	 * It lives on the link because the control that calls it is app chrome — the drawer, mounted by the
+	 * layout — and the layout should not be making fetches. A human edit must produce a NEW candidate rather
+	 * than mutate one, which is the server's rule; this only reports the choice.
 	 */
 	async reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }): Promise<void> {
 		try {
@@ -282,10 +262,9 @@ export class RoomLink {
 		const next = new Map(this.mediaStatus);
 		next.set(mediaId, { status, pct, etaSec });
 		this.mediaStatus = next;
-		// Reflect the flip on the catalog copy so readiness agrees without a full sync. A `failed` or
-		// `canceled` process settles back to un-processed server-side (settleStemsGate), so the
-		// optimistic copy follows it — preserving the mid-flight status is what kept a row reading as
-		// processing after the job had already died.
+		// The catalog copy follows, so readiness agrees without a full sync: a failed or canceled process
+		// settles back to un-processed server-side, and preserving the mid-flight status here is what leaves a
+		// row reading as processing after the job has died.
 		const m = this.mediaCatalog.get(mediaId);
 		if (m) {
 			const nm = new Map(this.mediaCatalog);
@@ -356,9 +335,8 @@ export class RoomLink {
 		this.#emit();
 	}
 	/**
-	 * Re-read the saved library. Called on connect and whenever a process goes ready, so no surface has
-	 * to remember to ask — which is what the removed `onLibraryChanged` hook existed to arrange, one
-	 * commit ago. Failure is deliberately silent: the library is an accelerator, never a blocker.
+	 * Re-read the saved library, on connect and whenever a process goes ready, so no surface has to remember
+	 * to ask. Failure is deliberately SILENT: the library is an accelerator, never a blocker.
 	 */
 	async refreshLibrary(): Promise<void> {
 		try {

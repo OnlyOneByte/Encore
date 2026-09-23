@@ -1,137 +1,53 @@
-// What a process LEARNED about a song's music: its key, and how high and low the original singer went.
+// What a process LEARNED about a song's music. SONG, never SINGER: nothing here measures a person.
+// Readiness and gate rules: docs/SERVER.md#song-profile-and-readiness.
 //
-// One record rather than two fields, and the name says SONG not SINGER on purpose. Nobody's voice is
-// measured here — there is no per-singer calibration in Encore and no place to store one (`singers`
-// is id/displayName/color/sessionToken/joinedAt). Everything below describes the MATERIAL, so the
-// phone can answer "can I sing this, and what does the key button do to that answer" without ever
-// having heard the person holding it.
-//
-// Both halves come out of the SAME stems job, which is what makes them one record:
-//   • the key from the instrumental (`no_vocals.wav`) — a chroma profile of the full backing
-//   • the range from the isolated vocals (`vocals.wav`) — the pitch track's voiced frames
-// They are analysed while both WAVs are still in the worker's temp dir, before either is encoded, so
-// the whole feature costs no extra separation, no extra decode, and no extra job type.
-//
-// KEY ACCURACY DOES NOT AFFECT THE RANGE. The range is measured MIDI off the vocal stem; the key is a
-// template correlation that is right maybe three times in four on pop, with relative-major/minor and
-// perfect-fifth confusions as its standard failures. A wrong key label is therefore cosmetic and
-// cannot poison the range readout — which is why a low-confidence key is simply not shown while the
-// range still is.
-//
-// ASCII ACCIDENTALS, DELIBERATELY. `G#`/`Ab`, never the typographic U+266F/U+266D. Those codepoints sit
-// inside 0x2600-0x27BF, which `apps/core/src/lib/ui/icons.test.ts` bans outright from every client
-// surface — and for the reason that applies here too: a stripped smart-TV browser renders a font it
-// does not have as a tofu box, and the sharp sign is exactly as optional in a minimal font as an
-// emoji is. The spelling a singer reads must not depend on the TV's font coverage.
+// ASCII ACCIDENTALS ONLY — `G#`/`Ab`, never the typographic codepoints. A stripped smart-TV browser renders a
+// glyph its font lacks as a tofu box, and the spelling a singer reads must not depend on font coverage.
 
-/**
- * A pitch class: semitones above C, `0` = C through `11` = B. Octave-free.
- *
- * Stored as a NUMBER rather than a spelled name because transposition is then `(tonic + n) % 12` and
- * the spelling stays a rendering decision. A detector yields a pitch class; it has no opinion on
- * whether class 8 is `G#` or `Ab`, and baking one spelling into storage would make the stored value
- * wrong for half of all transpositions.
- */
+/** A pitch class: semitones above C, octave-free. A NUMBER and not a spelled name, so transposition is
+ *  modular and the spelling stays a rendering decision. */
 export type PitchClass = number;
 
 export type KeyMode = 'major' | 'minor';
 
-/**
- * How to spell a black note: `sharp` -> `G#`, `flat` -> `Ab`.
- *
- * Not cosmetic. Transposing UP reads as sharps and DOWN as flats to anyone who has seen a chord
- * chart, so the direction of the singer's own key change picks the spelling — see `keyLabel`.
- */
+/** How to spell a black note. Not cosmetic: transposing UP reads as sharps and DOWN as flats, so the
+ *  direction of the shift picks the spelling. */
 export type Accidental = 'sharp' | 'flat';
 
 const SHARP_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 const FLAT_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'] as const;
 
-/**
- * Below this, the key is not shown at all.
- *
- * A chroma-template match reports a best correlation even for a song with no functional key
- * (spoken word, a drone, a drum track), so a confidence floor is the difference between "we think
- * it's G" and "we have no idea and said G anyway". The row simply omits the chip, matching the
- * omit-when-null convention every other chip in `SongRow` already follows — a missing chip is
- * honest, a wrong key is not.
- */
+/** Below this the key is not shown at all: a template match reports a best correlation even for a song with
+ *  no functional key, and a missing chip is honest where a wrong key is not. */
 export const MIN_KEY_CONFIDENCE = 0.55;
 
-/**
- * The analysis a finished process attaches to a song. ALWAYS WRITTEN once the stems job completes, with
- * every inner field nullable.
- *
- * That "always written, inner fields nullable" shape is load-bearing, because this record is half of
- * the `stems` process gate (see gates.ts). The gate has to distinguish:
- *
- *   • not analysed yet          -> profile absent      -> song is still processing
- *   • analysed, found nothing   -> profile present, nulls inside -> song is FINISHED
- *
- * If the gate keyed on the presence of range DATA instead, a song whose vocal stem came back as
- * digital silence — which really happens, and is why `media/loudness.ts` exists — would be
- * permanently unsingable AND would never re-process, because the re-process check reads `hasInstrumental`
- * rather than the gate. It would sit at "Separating vocals" forever with no way out. This mirrors the
- * `lyrics` gate's own rule, quoted in its comment: done means the step RAN, not that it produced
- * output, because an instrumental with no words is a legitimate finished song.
- */
+/** The analysis a finished process attaches to a song: ALWAYS WRITTEN once the stems job completes, with every
+ *  inner field nullable. That shape is what the `stems` gate reads — see
+ *  docs/SERVER.md#song-profile-and-readiness. */
 export interface SongProfile {
 	/** Tonic of the detected key, or `null` when detection did not clear `MIN_KEY_CONFIDENCE`. */
 	keyTonic: PitchClass | null;
 	keyMode: KeyMode | null;
 	/** 0..1 correlation of the winning key template. Kept even when it lost, so `/metrics` can show why. */
 	keyConfidence: number | null;
-	/**
-	 * The absolute extremes of the sung melody, in MIDI note numbers. `null` when the vocal stem had no
-	 * voiced frames at all (silence, an instrumental, or a separation that produced nothing pitched).
-	 *
-	 * These are the WHISKERS on the range bar and nothing more — one shrieked grace note lands here and
-	 * would badly misrepresent the song if it were the headline. Use the percentiles for that.
-	 */
+	/** The absolute extremes of the sung melody; the WHISKERS on the range bar and never the headline, since one
+	 *  shrieked grace note lands here. */
 	lowMidi: number | null;
 	highMidi: number | null;
-	/**
-	 * The 5th and 95th percentile of voiced frames — where the song actually LIVES.
-	 *
-	 * This is the honest headline for "is this in my range", because it discards the tails that make
-	 * every pop song look like it spans two octaves. Rendered as the solid block inside the whiskers.
-	 */
+	/** The 5th and 95th percentile of voiced frames — where the song LIVES, and the honest headline. */
 	p05Midi: number | null;
 	p95Midi: number | null;
-	/**
-	 * Seconds spent on each semitone from `lowMidi` upward — index 0 is `lowMidi`.
-	 *
-	 * Drives the SHADING weight of the range block, which is the whole reason a histogram is stored
-	 * rather than four numbers: it is what makes a chorus that lives high look different from a verse
-	 * that merely touches the same note once. `null` alongside a null range.
-	 */
+	/** Seconds spent on each semitone from `lowMidi` upward (index 0 IS `lowMidi`). Stored rather than reduced,
+	 *  because it drives the range block's shading. */
 	histogram: number[] | null;
-	/**
-	 * Integrated loudness of the INSTRUMENTAL in LUFS (EBU R128 / ITU-R BS.1770-4), or `null` when the
-	 * stem could not be measured — digital silence, shorter than one 400 ms gating block, unreadable.
-	 *
-	 * A THIRD independent half of this record, measured by the same analysis step (see the worker's
-	 * `analysis/loudness.py`) off the same scratch WAV. The instrumental rather than the vocals on
-	 * purpose: the instrumental is the file that plays in the room, and the guide-vocal knob is a
-	 * fraction of it, so levelling the instrumental is also what makes a guide set to 15% mean the
-	 * same thing on the next song.
-	 *
-	 * A negative float; mastered music sits around -8 to -20 LUFS. `null` means "not normalizable",
-	 * and the only safe reading of that is to leave the song's level alone — never to substitute a
-	 * default, because 0 LUFS would read as a deafening master and be attenuated into inaudibility.
-	 */
+	/** Integrated loudness of the INSTRUMENTAL in LUFS — the instrumental, because that is what plays in the
+	 *  room. `null` means NOT NORMALIZABLE: leave the level alone and never substitute a default. See
+	 *  docs/SERVER.md#song-profile-and-readiness. */
 	loudnessLufs: number | null;
 }
 
-/**
- * The window a real BS.1770 integrated measurement can land in. Anything outside it is not a
- * measurement of PCM audio and degrades to `null` rather than being trusted as a level.
- *
- * The floor is the standard's OWN absolute gate: BS.1770 discards gating blocks below -70 LUFS, so a
- * programme measuring under that had every block thrown away and there is nothing left to normalize.
- * The ceiling is what K-weighting can produce from full-scale content — stage 1 of the filter is a
- * +4 dB high shelf, so even a clipped 0 dBFS master cannot integrate above roughly +4.
- */
+/** The window a real integrated measurement can land in; outside it a value is a bad reading, not a quiet or
+ *  loud song. The floor is the standard's own absolute gate, the ceiling what K-weighting can produce. */
 export const MIN_MEASURABLE_LUFS = -70;
 export const MAX_MEASURABLE_LUFS = 4;
 
@@ -151,13 +67,7 @@ export const EMPTY_SONG_PROFILE: SongProfile = {
 /** A profile whose key fields are all present — what {@link hasKey} narrows to. */
 export type ProfileWithKey = SongProfile & { keyTonic: PitchClass; keyMode: KeyMode; keyConfidence: number };
 
-/**
- * Does this profile carry a key worth showing? Confidence floor applied here, once.
- *
- * A TYPE PREDICATE: a true result narrows `p` to {@link ProfileWithKey}, so callers read
- * `p.keyTonic` / `p.keyMode` directly instead of asserting each field non-null. The runtime check is
- * unchanged from the previous `boolean` version.
- */
+/** Does this profile carry a key worth showing? The confidence floor is applied HERE, once. */
 export function hasKey(p: SongProfile | null | undefined): p is ProfileWithKey {
 	return (
 		!!p &&
@@ -171,12 +81,7 @@ export function hasKey(p: SongProfile | null | undefined): p is ProfileWithKey {
 /** A profile whose range fields are all present — what {@link hasVocalRange} narrows to. */
 export type ProfileWithRange = SongProfile & { lowMidi: number; highMidi: number; p05Midi: number; p95Midi: number };
 
-/**
- * Does this profile carry a usable vocal range? The percentiles are what the bar needs.
- *
- * A TYPE PREDICATE: a true result narrows `p` to {@link ProfileWithRange}, so callers read the four
- * range fields directly instead of asserting each non-null. The runtime check is unchanged.
- */
+/** Does this profile carry a usable vocal range? Narrows `p`, so callers need no non-null assertions. */
 export function hasVocalRange(p: SongProfile | null | undefined): p is ProfileWithRange {
 	return !!p && p.lowMidi !== null && p.highMidi !== null && p.p05Midi !== null && p.p95Midi !== null;
 }
@@ -186,24 +91,14 @@ export function transposePitchClass(tonic: PitchClass, semitones: number): Pitch
 	return (((Math.trunc(tonic) + Math.trunc(semitones)) % 12) + 12) % 12;
 }
 
-/**
- * Spell a key: `keyLabel(7, 'major')` -> `'G major'`.
- *
- * `accidental` defaults to sharps. Callers showing a TRANSPOSED key should pass the direction of the
- * shift instead (`keyShift < 0 ? 'flat': 'sharp'`) so a singer dropping the key reads flats, which is
- * how the change is actually notated.
- */
+/** Spell a key. Defaults to sharps; a caller showing a TRANSPOSED key must pass the shift's direction. */
 export function keyLabel(tonic: PitchClass, mode: KeyMode, accidental: Accidental = 'sharp'): string {
 	const names = accidental === 'flat' ? FLAT_NAMES : SHARP_NAMES;
 	return `${names[transposePitchClass(tonic, 0)]} ${mode}`;
 }
 
-/**
- * The key the room is HEARING: the detected key moved by the current shift.
- *
- * Returns `null` when there is no trustworthy key to move, so a caller renders nothing rather than
- * transposing a guess. Spelling follows the shift's direction, per `keyLabel`.
- */
+/** The key the room is HEARING. `null` with no trustworthy key, so a caller renders nothing rather than
+ *  transposing a guess. */
 export function soundingKeyLabel(p: SongProfile | null | undefined, keyShift: number): string | null {
 	if (!hasKey(p)) return null;
 	const shift = Math.trunc(keyShift);
@@ -215,14 +110,8 @@ export function originalKeyLabel(p: SongProfile | null | undefined): string | nu
 	return hasKey(p) ? keyLabel(p.keyTonic, p.keyMode) : null;
 }
 
-// ── note names ────────────────────────────────────────────────────────────────────
-
-/**
- * MIDI number -> scientific pitch name: `50` -> `'D3'`, `69` -> `'A4'`.
- *
- * A singer reads note names, not MIDI integers, so every range the UI shows goes through here.
- * Rounds first: a range boundary derived from a percentile is fractional, and `D3.4` is not a note.
- */
+/** MIDI number → scientific pitch name. Rounds first: a percentile boundary is fractional, and `D3.4` is not
+ *  a note. */
 export function midiToNoteName(midi: number): string {
 	const n = Math.round(midi);
 	const octave = Math.floor(n / 12) - 1;
@@ -236,40 +125,15 @@ export function rangeLabel(p: SongProfile | null | undefined, semitones = 0): st
 	return `${midiToNoteName(p.p05Midi + shift)} - ${midiToNoteName(p.p95Midi + shift)}`;
 }
 
-/**
- * How many octaves the range spans, to one decimal — the "is this a big sing" number.
- *
- * MEASURED OVER p05..p95, WHICH IS THE SAME PAIR `rangeLabel` PRINTS, and that is the whole point of
- * this note. It used to span `lowMidi..highMidi` — the absolute extremes — while `rangeLabel` above has
- * always used the 5th..95th percentile. Both numbers were individually correct and both are rendered
- * ADJACENT, as one value, by the only two callers (`routes/song/[mediaId]` and `NowPlayingDrawer`:
- * `{rangeText}{octaves} oct`). On the first real processed song in the library that read
- *
- *     "A3 - A#4    3.7 oct"
- *
- * — a 13-semitone label beside a 3.7-octave span, because p05/p95 were 56.76/69.70 while low/high were
- * 40.50/84.85. A singer cannot reconcile those, and the pair is what they are being asked to judge
- * "can I sing this?" from.
- *
- * The extremes are still the honest measurement of what the tracker HEARD; they are just not what the
- * label describes. They keep their own home: `RangeBar` draws the histogram off `lowMidi` and the
- * lives-here block off p05..p95, so nothing that wants the full span loses it.
- *
- * An interval is shift-invariant, so this takes no `semitones` — transposing moves both ends equally.
- */
+/** How many octaves the range spans. MEASURED OVER THE SAME PAIR `rangeLabel` prints, because the two are
+ *  rendered adjacent as one value. Takes no `semitones`: an interval is shift-invariant. */
 export function rangeOctaves(p: SongProfile | null | undefined): number | null {
 	if (!hasVocalRange(p)) return null;
 	return Math.round(((p.p95Midi - p.p05Midi) / 12) * 10) / 10;
 }
 
-// ── voice bands ───────────────────────────────────────────────────────────────────
-
-/**
- * The axis the range bar is drawn against: C2 to C6, four octaves.
- *
- * Matches the vocal window the pitch tracker actually searches (`FMIN_HZ` 65 Hz is about C2,
- * `FMAX_HZ` 1175 Hz is about D6), so a measured range can never fall off the ends of its own chart.
- */
+/** The axis the range bar is drawn against. It MATCHES the worker's pitch-tracker window, so a measured range
+ *  can never fall off the ends of its own chart. */
 export const AXIS_LOW_MIDI = 36; // C2
 export const AXIS_HIGH_MIDI = 84; // C6
 
@@ -281,23 +145,8 @@ export interface VoiceBand {
 	readonly highMidi: number;
 }
 
-/**
- * The five conventional voice types, low to high, with their real ranges.
- *
- * Registry-shaped (`{id, label,...}` + a guard + a resolver) to match `TV_PROGRESS_STYLES` and
- * `TV_BACKGROUND_STYLES`, so adding a band later is a table edit.
- *
- * These describe MATERIAL, not people: the UI says "sits in tenor range", never "for tenors". The
- * distinction matters at a party — a label that tells a guest what they are is a worse experience than
- * no label, and it would be wrong anyway, since nothing here measured them.
- *
- * TYPED NON-EMPTY (`[VoiceBand,...VoiceBand[]]`) rather than `readonly VoiceBand[]`, because the
- * registry having a first entry is a real invariant that `voiceBandFor` depends on: it seeds its
- * nearest-centre search with `VOICE_BANDS[0]` and returns that seed if no band ever scores closer.
- * Under `noUncheckedIndexedAccess` a plain array makes that seed `VoiceBand | undefined`, so the
- * declared `VoiceBand | null` return was unassignable — the type understated the table, and the honest
- * fix is to state the invariant here rather than assert it away at the use site.
- */
+/** The five conventional voice types with their real (overlapping) ranges. They describe MATERIAL, never
+ *  people. TYPED NON-EMPTY, because `voiceBandFor` seeds its search with the first entry. */
 export const VOICE_BANDS: readonly [VoiceBand, ...VoiceBand[]] = [
 	{ id: 'bass', label: 'Bass', lowMidi: 40, highMidi: 64 }, // E2-E4
 	{ id: 'baritone', label: 'Baritone', lowMidi: 45, highMidi: 69 }, // A2-A4
@@ -312,19 +161,8 @@ export function isVoiceBandId(v: unknown): v is VoiceBandId {
 	return typeof v === 'string' && VOICE_BANDS.some((b) => b.id === v);
 }
 
-/**
- * Non-overlapping zones for SHADING the axis, derived from `VOICE_BANDS`.
- *
- * THIS IS AN APPROXIMATION AND MUST STAY ONE. Real voice types overlap heavily — a tenor's C3-C5 sits
- * almost entirely inside an alto's F3-F5 — so they cannot be laid out as adjacent stripes on a single
- * linear axis without misstating them. Drawing the truth would need five stacked lanes, which does not
- * fit a phone.
- *
- * So the shading splits at the MIDPOINT BETWEEN ADJACENT BAND CENTRES: soft background colour that
- * tells a reader roughly where they are, while the actual claim the UI makes in words comes from
- * `voiceBandFor`, which uses the true overlapping ranges. Do not "fix" these zones into precise voice
- * ranges — they are not, and cannot be.
- */
+/** Non-overlapping zones for SHADING the axis. AN APPROXIMATION THAT MUST STAY ONE — real bands overlap, so
+ *  do not "fix" these into precise ranges; the claim made IN WORDS comes from `voiceBandFor`. */
 export function voiceBandZones(): { id: VoiceBandId; label: string; lowMidi: number; highMidi: number }[] {
 	const centre = (b: VoiceBand) => (b.lowMidi + b.highMidi) / 2;
 	return VOICE_BANDS.map((b, i) => {
@@ -339,16 +177,8 @@ export function voiceBandZones(): { id: VoiceBandId; label: string; lowMidi: num
 	});
 }
 
-/**
- * Which voice band this song sits in, from where it LIVES (the percentiles) rather than its extremes.
- *
- * Nearest band centre to the song's centre. Using the true overlapping ranges here — rather than the
- * display zones — is the point: the words the UI shows should be right even though the shading behind
- * them is a simplification.
- *
- * `semitones` shifts the range first, so transposing can move the label. That is the feature: tapping
- * `-2` and watching "Soprano" become "Alto" is what makes the key buttons mean something.
- */
+/** Which voice band this song sits in, from where it LIVES, using the TRUE overlapping ranges and not the
+ *  display zones. `semitones` shifts first, so transposing moves the label. */
 export function voiceBandFor(p: SongProfile | null | undefined, semitones = 0): VoiceBand | null {
 	if (!hasVocalRange(p)) return null;
 	const shift = Math.trunc(semitones);
@@ -371,13 +201,8 @@ export function voiceBandSentence(p: SongProfile | null | undefined, semitones =
 	return band ? `Sits in ${band.label.toLowerCase()} range` : null;
 }
 
-/**
- * Where to draw the range bar, as fractions of the axis: whiskers (`lo`/`hi`) and the lives-here block
- * (`blockLo`/`blockHi`), each 0..1 left-to-right.
- *
- * Clamped to the axis so a freak measurement outside C2-C6 renders at the edge rather than overflowing
- * its track. Returns `null` with no range, so the caller renders nothing instead of an empty bar.
- */
+/** Where to draw the range bar, as 0..1 fractions of the axis. Clamped, so a freak measurement renders at the
+ *  edge rather than overflowing its track. */
 export function rangeBarFractions(
 	p: SongProfile | null | undefined,
 	semitones = 0
@@ -394,17 +219,9 @@ export function rangeBarFractions(
 	};
 }
 
-// ── wire validation ───────────────────────────────────────────────────────────────
-
-/**
- * Normalize an untrusted profile off the wire (a worker `complete` frame, or a sidecar written by an
- * older build) into a valid `SongProfile`.
- *
- * Every field is validated INDEPENDENTLY and a bad one degrades to `null` rather than rejecting the
- * record, because the two halves have independent producers: a garbage key must not throw away a
- * perfectly good measured range. `null` in, `EMPTY_SONG_PROFILE` out — "analysis ran, found nothing"
- * is a real and gate-satisfying answer, and refusing to represent it is what would strand a song.
- */
+/** Normalize an untrusted profile off the wire. Every field is validated INDEPENDENTLY — a garbage key must
+ *  not discard a good measured range — and `null` in gives `EMPTY_SONG_PROFILE` out, because "ran, found
+ *  nothing" is a real gate-satisfying answer. */
 export function normalizeSongProfile(input: unknown): SongProfile {
 	if (!input || typeof input !== 'object') return { ...EMPTY_SONG_PROFILE };
 	const o = input as Record<string, unknown>;
@@ -420,8 +237,7 @@ export function normalizeSongProfile(input: unknown): SongProfile {
 	const high = num(o.highMidi);
 	const p05 = num(o.p05Midi);
 	const p95 = num(o.p95Midi);
-	// A range is only meaningful as a complete, ordered set. A half-written one is discarded whole
-	// rather than half-trusted — an inverted or partial range would render a backwards bar.
+	// A range is only meaningful as a COMPLETE, ORDERED set; a partial one renders a backwards bar.
 	const rangeOk =
 		low !== null && high !== null && p05 !== null && p95 !== null && low <= p05 && p05 <= p95 && p95 <= high;
 
@@ -429,9 +245,7 @@ export function normalizeSongProfile(input: unknown): SongProfile {
 		? o.histogram.filter((x): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0)
 		: null;
 
-	// Loudness is its OWN half, validated against the measurable window rather than merely being
-	// finite: an out-of-window number is not a quiet or loud song, it is a bad reading, and trusting
-	// one would attenuate a song by a gain derived from noise. Out of window -> null -> left alone.
+	// Validated against the measurable WINDOW, not finiteness: trusting a bad reading attenuates on noise.
 	const lufs = num(o.loudnessLufs);
 	const lufsOk = lufs !== null && lufs >= MIN_MEASURABLE_LUFS && lufs <= MAX_MEASURABLE_LUFS;
 

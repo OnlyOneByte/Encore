@@ -1,17 +1,13 @@
 """The shared ffmpeg command shape.
 
-Three builders — `decode_argv` (separation/demucs.py), `encode_flac_argv` (separation/demucs.py) and
-`volumedetect_argv` (processor.py) — hand-repeated the same `[bin, -hide_banner, ...]` preamble, and the
-steps that run them each hand-rolled the same drain loop. `ffmpeg_argv` folds the preamble into one place;
-`run_quiet` / `run_capture` in runtime/runner.py fold the drain loops. Pure argv assembly, stdlib only, so
-it sits at the root beside `retry_policy` rather than inside a domain.
+Folds the `[bin, -hide_banner, ...]` preamble used by every argv builder (decode, encode, guide mix,
+volumedetect) into one place. Pure argv assembly, stdlib only, so it sits at the root beside
+`retry_policy` rather than inside a domain.
 
-ONE deliberate asymmetry: the WRITING calls (decode, encode, the guide mix) run quiet —
-`-loglevel error -y` — while
-`volumedetect` must NOT be quiet. volumedetect prints its `max_volume:` summary to stderr at ffmpeg's
-INFO level, which `-loglevel error` would suppress, so `parse_max_volume_db` would read nothing and every
-stem would measure UNMEASURABLE (treated as not-silent). `quiet=False` selects the `-nostats` preamble it
-needs — the flag split that the collapse has to preserve, not erase.
+ONE deliberate asymmetry: the WRITING calls run quiet (`-loglevel error -y`), but `volumedetect` must
+NOT be: it prints its `max_volume:` summary to stderr at ffmpeg's INFO level, which `-loglevel error`
+would suppress, making `parse_max_volume_db` read nothing and every stem measure UNMEASURABLE
+(treated as not-silent). `quiet=False` selects the `-nostats` preamble instead.
 """
 
 from __future__ import annotations
@@ -48,10 +44,8 @@ def ffmpeg_argv(
         preamble.append("-y")
     inputs = [input_path] if isinstance(input_path, str) else list(input_path)
     if not inputs:
-        # An empty sequence would assemble an argv with NO `-i` at all — silently malformed, and ffmpeg
-        # then dies with an error about the filter or the output that names nothing about the real cause.
-        # The contract is "one or more inputs"; say so here rather than letting a caller discover it from
-        # an unrelated stderr line.
+        # An empty sequence would assemble an argv with NO `-i` at all — ffmpeg would then die on an
+        # unrelated stderr line about the filter/output, naming nothing about the real cause.
         raise ValueError("ffmpeg_argv: at least one input is required")
     argv = list(preamble)
     for path in inputs:

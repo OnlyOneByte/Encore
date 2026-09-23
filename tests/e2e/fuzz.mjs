@@ -1,76 +1,30 @@
-/*
- * FUZZ — a seeded, stateful, adversarial input fuzzer for the karaoke room.
- *
- *   bun run e2e:fuzz                      # boots its own private room, random seed
- *   FUZZ_SEED=123456 bun run e2e:fuzz     # replay that run, input for input
- *   FUZZ_AUTOPLAY=1 bun run e2e:fuzz      # grant autoplay — labelled NOT-A-TV, see below
- *   EPORT=5388 bun run e2e:fuzz           # drive an ALREADY-RUNNING room (owns/kills nothing)
- *
- * WHY A FUZZER AND NOT MORE PROBES. Every probe in e2e/probes drives a curated sequence, and the
- * curated sequences and the live-party reports found almost disjoint defect sets: the bugs were in the
- * ADJACENCY — restart arriving while a process was in flight, skip landing on the last entry, a transport
- * tap landing while an entry was changing state. A curated list cannot cover the adjacency space of
- * ten inputs across two phones, and a human cannot hand-write the interleavings. A seeded PRNG can,
- * and the seed makes any finding replayable by hand.
- *
- * THE DRIVING IS NOT THE POINT — THE INVARIANTS ARE. A fuzzer that only checks "did it crash" finds
- * nothing here, because none of this room's defects crashed anything. All six invariants below are
- * re-evaluated after EVERY SINGLE INPUT, never once at the end:
- *
- *   I1  currentTime is monotonic within a song; it may only fall across an intentional seek, restart
- *       or entry change.
- *   I2  exactly one queue entry is `playing` — not zero while the TV renders a song, not two.
- *   I3  the TV's RENDERED now-playing equals the SERVER's currentEntryId. Compared against server
- *       state read off its own socket, never against another client's guess.
- *   I4  the lyrics active index is consistent with currentTime — the active line's window contains it.
- *   I5  no entry is simultaneously `playing` and waiting, and the phones' rendered rotation agrees
- *       with the server's waiting set.
- *   I6  webkitAudioDecodedByteCount CLIMBS whenever the UI claims to be playing. Sampled twice,
- *       1.5s apart, strict growth required.
- *
- * I6 IS THE ONE THAT CANNOT BE DROPPED. A media element reports `paused === false` while stuck at
- * currentTime 0 behind a failed decode: `paused` reports INTENT, not progress, and is never an oracle
- * for "audio is happening". That is the FLAC-in-a-<video> defect exactly — valid file, element
- * "playing", zero decoded bytes, silent room.
- *
- * GESTURELESS BY DEFAULT, AND WHY THAT MATTERS. Chromium launches here WITHOUT
- * --autoplay-policy=no-user-gesture-required, because that flag grants a permission a real television
- * does not have. Measured side by side on one real processed song:
- *
- *     launch                    paused   currentTime   decoded bytes
- *     gestureless (a real TV)   true     0.00          24576  — the preload burst, and nothing more
- *     autoplay granted          false    5.41          507904
- *
- * So a run made with the flag cannot support a claim about whether the room makes a sound. FUZZ_AUTOPLAY=1
- * opts in and prints the literal token NOT-A-TV beside the seed so no reader mistakes that run for
- * evidence about a real television. The honest consequence, printed in this run's own summary: under
- * the gestureless default the TV never starts, so I1/I4/I6 have nothing to measure and report as
- * SKIPPED rather than passing vacuously. Both policies are worth running; only one is a TV.
- *
- * SELECTORS ARE ALL IMPORTED FROM ../contract.ts. contract.test.ts guards that file against the source
- * without needing a browser, so a hand-written selector rots silently and invisibly while every suite
- * stays green — that is how the previous e2e ended up clicking a deleted tab. Where a control this
- * fuzzer needs has NO entry in the contract, it is NOT inlined here: the gap is reported on stderr at
- * startup and the input is driven through the WIRE COMMAND the UI control would have sent, which is the
- * same server path (p4-transport does this for seek, which has no UI control at all). See GAPS below.
- *
- * GAPS FOUND WHILE BUILDING THIS — reported, not papered over:
- *   • `back` does not exist. There is no `back` PlayerCommand in src/lib/contract/core/events.ts, no
- *     control anywhere in the app, and no previous-entry concept in the server. The spec's alphabet and
- *     its "back-then-pause" seam therefore cannot be driven as written. The nearest reachable analogue
- *     is `restart` (the room's only backwards transport — it even renders the `prev` icon), so
- *     restart→pause is weighted up in its place and named RESTART-THEN-PAUSE in the output so nobody
- *     reads it as evidence about a `back` button.
- *   • no contract entry for the key-shift buttons (`.key-btn` in routes/+page.svelte), the guiding-track
- *     slider (GuidingTrack.svelte, which HAS a HOOKS entry but no SEL entry), or the per-row remove
- *     button (`aria-label="remove from queue"`). Driven as wire commands.
- *   • no contract entry for the TV's visible gapless slot (`.slot.visible`), which is how a probe tells
- *     the on-stage master element from the paused pre-warm one. Worked around by identifying the master
- *     via the server's own instrumentalRef; see pickMaster().
- *
- * EXIT CODES, NEVER CONFLATED.  0 every invariant held · 1 a real violation · 2 the environment could
- * not host the run. Conflating 2 with 0 is exactly how this project's original audio hole stayed hidden.
- */
+// FUZZ — a seeded, stateful, adversarial input fuzzer for the karaoke room.
+//
+//   bun run e2e:fuzz                      # boots its own private room, random seed
+//   FUZZ_SEED=123456 bun run e2e:fuzz     # replay that run, input for input
+//   FUZZ_AUTOPLAY=1 bun run e2e:fuzz      # grant autoplay — labelled NOT-A-TV
+//   EPORT=5388 bun run e2e:fuzz           # drive an ALREADY-RUNNING room (owns/kills nothing)
+//
+// WHY A FUZZER AND NOT MORE PROBES: every defect this room has produced lived in the ADJACENCY of two
+// inputs — restart arriving mid-process, skip landing on the last entry, a transport tap landing while an
+// entry changed state — and a curated sequence cannot cover the adjacency space of ten inputs across two
+// phones. A seeded PRNG can, and the seed makes any finding replayable by hand.
+//
+// THE INVARIANTS ARE THE POINT, and all six (I1..I6, listed in docs/E2E.md#the-fuzz-invariants) are
+// re-evaluated after EVERY input, never once at the end. Each has its own function below.
+//
+// GESTURELESS BY DEFAULT (docs/E2E.md#autoplay). `FUZZ_AUTOPLAY=1` opts in and prints the literal token
+// NOT-A-TV beside the seed. The honest consequence, printed in the summary: without a gesture the TV never
+// starts, so I1/I4/I6 report SKIPPED rather than passing vacuously.
+//
+// WHERE A CONTROL HAS NO CONTRACT ENTRY it is NOT inlined here: the gap is reported on stderr at startup
+// and the input goes out as the WIRE COMMAND the control would have sent, which is the same server path.
+// That covers seek (no UI control exists at all), the key-shift caps, the guiding-track slider and the
+// per-row remove. `back` is not driven at all — no PlayerCommand, no control, no previous-entry concept in
+// the server — so `restart` stands in for it and the seam is named RESTART-THEN-PAUSE in the output, so
+// nobody reads it as evidence about a back button.
+//
+// Exit 0 / 1 / 2 per docs/E2E.md#exit-codes-and-what-ran-means.
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -82,37 +36,24 @@ import { atRepo as at } from './lib/repo-root.mjs';
 import { openJoin } from './lib/join.mjs';
 
 /**
- * Types for the out-of-program driver. This file runs under tsconfig.e2e.json; the shapes
- * below are derived from driver.mjs's own return types so they cannot drift from the driver.
+ * Shapes derived from driver.mjs's own return types so they cannot drift from the driver. The
+ * `evaluate`-derived fields stay loose on purpose: the bridge returns protocol-shaped values, so call
+ * sites cast.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'I1' | 'I2' | 'I3' | 'I4' | 'I5' | 'I6'} InvariantId
  * @typedef {keyof typeof BASE_WEIGHT} InputName
- *
- * A driven input as recorded in the sequence. `evaluate`-derived fields stay loose on purpose: the CDP
- * bridge returns protocol-shaped values (driver.mjs types `evaluate` as `Promise<any>`), so call sites cast.
  * @typedef {{ who: string, input: string, detail: string, noop?: boolean, seam?: string | null }} Step
- *
  * @typedef {{ present: boolean, disabled: boolean }} TransportState
- *
- * One violation record, or null when the invariant held / was skipped.
  * @typedef {{ id: InvariantId, title: string, observed: string, expected: string, context: string }} Violation
- *
- * A single audio/video element as read back by TV_PROBE.
  * @typedef {{ tag: string, src: string, readyState: number, paused: boolean, muted: boolean, volume: number, currentTime: number, duration: number, decoded: number | null, error: { code: number, message: string } | null }} MediaRow
- *
- * The server's own snapshot, read off a probe socket.
  * @typedef {{ rev?: number, entries?: any[], media?: any[], settings?: any, playback?: any }} ServerSnapshot
- *
- * The reduced world the weighting/seam functions read.
  * @typedef {{ current: any, waiting: number, processing: number }} WorldLite
- *
- * The full world one readWorld() call produces.
  * @typedef {{ srv: ServerSnapshot, tv: any, cat: { ready: any[], processing: any[], raw: any[] }, mediaById: Map<any, any>, current: any, curMedia: any, master: MediaRow | null, masterHow: string, waiting: number, playing: any[], processing: number }} World
  */
 
-// ── seed and policy: the FIRST line of output, before anything can fail ───────────────────────────
+// Seed and policy: the FIRST line of output, before anything can fail.
 const SEED = Number.isFinite(Number(process.env.FUZZ_SEED))
 	? Number(process.env.FUZZ_SEED) >>> 0
 	: (Math.random() * 0xffffffff) >>> 0;
@@ -124,8 +65,8 @@ console.log(
 );
 
 /**
- * mulberry32 — 32 bits of state, four lines, no dependency. Every random decision this run makes goes
- * through `rnd`, so a seed reproduces the sequence exactly; nothing reads Math.random or the clock.
+ * mulberry32. EVERY random decision goes through `rnd`, so a seed reproduces the sequence exactly —
+ * nothing here may read Math.random or the clock.
  */
 /** @param {number} a */
 function mulberry32(a) {
@@ -145,13 +86,13 @@ const int = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
 let idCounter = 0;
 const fuzzId = () => `FZ${SEED.toString(32).toUpperCase()}${(idCounter++).toString(32).toUpperCase().padStart(4, '0')}`;
 
-// ── knobs ────────────────────────────────────────────────────────────────────────────────────────
+// Knobs.
 const N_INPUTS = Number(process.env.FUZZ_INPUTS ?? 24); // tens, not thousands — a human must replay it
 const SETTLE_MS = 700; // let one input land before reading state
 const CROSS_MS = 3000; // budget for a cross-surface value to propagate before it counts as a violation
 const DECODE_GAP_MS = 1500; // "sample twice, seconds apart"
 
-// ── output ───────────────────────────────────────────────────────────────────────────────────────
+// Output.
 /** Everything driven so far, in order — this list IS the reproduction recipe. */
 /** @type {Step[]} */
 const sequence = [];
@@ -164,10 +105,7 @@ const stats = {
 	I5: { checked: 0, skipped: 0, why: new Set() },
 	I6: { checked: 0, skipped: 0, why: new Set() }
 };
-/**
- * @param {InvariantId} id
- * @param {string} why
- */
+/** @param {InvariantId} id @param {string} why */
 function skip(id, why) {
 	stats[id].skipped++;
 	stats[id].why.add(why);
@@ -190,7 +128,7 @@ function violation(id, title, observed, expected, context = '') {
 	return { id, title, observed, expected, context };
 }
 
-/** Processes and directories THIS run created — requirement 9 is about what we own, not what we found. */
+/** Processes and directories THIS run created — never what it found already running. */
 /** @type {{ procs: import('node:child_process').ChildProcess[], dirs: string[] }} */
 const owned = { procs: [], dirs: [] };
 let cleanedUp = false;
@@ -228,7 +166,7 @@ function bail(msg) {
 	process.exit(2);
 }
 
-// ── the room: attach to one, or boot a private one and own it ────────────────────────────────────
+// The room: attach to one, or boot a private one and own it.
 /** @param {string | number} port */
 async function healthy(port) {
 	try {
@@ -266,13 +204,9 @@ async function bootRoom() {
 	}
 	if (given) bail(`EPORT=${given} was set but no server answers /health there.`);
 
-	/*
-	 * An EXPLICIT FUZZ_PORT is bind-tested too. Found by a run of this fuzzer: a port handed in on the
-	 * command line was already serving a DIFFERENT Encore, our own server died with EADDRINUSE, the
-	 * /health probe cheerfully passed against the stranger, and the fake worker then failed its upgrade
-	 * against a server that had never heard of it. Silently driving somebody else's room is worse than
-	 * refusing to start.
-	 */
+	// An EXPLICIT FUZZ_PORT is bind-tested too: a port already serving a DIFFERENT Encore kills our own
+	// server with EADDRINUSE while /health passes against the stranger, and the run then drives somebody
+	// else's room — worse than refusing to start.
 	/** @type {number | null} */
 	let port = Number(process.env.FUZZ_PORT) || 0;
 	if (port) {
@@ -323,9 +257,8 @@ async function bootRoom() {
 	}
 	if (!(await healthy(port))) bail(`the server never became healthy on :${port}\n${serverLog.slice(-900)}`);
 
-	// The fake worker stands in for torch/demucs/whisperx, which are absent on this box. It publishes
-	// REAL audio (hand-written 16-bit PCM WAV) and real word-level lyrics, so there is something to
-	// decode and something to highlight — a placeholder fixture makes I4 and I6 unassertable.
+	// The fake worker publishes REAL audio and real word-level lyrics, so there is something to decode and
+	// something to highlight: a placeholder fixture makes I4 and I6 unassertable.
 	const worker = spawn('bun', [at('tests/e2e/fake-stems-worker.mjs')], {
 		env: { ...process.env, EPORT: String(port), MEDIA_DIR: media },
 		stdio: ['ignore', 'pipe', 'pipe']
@@ -350,20 +283,17 @@ const PORT = room.port;
 const base = `http://127.0.0.1:${PORT}`;
 const wsBase = `ws://127.0.0.1:${PORT}`;
 
-// ── process enough songs that a rotation exists, and leave some raw ──────────────────────────────────
 /**
  * The catalog, split the three ways this fuzzer cares about.
  *
- * `/api/library` is the honest source for READY and PROCESSING, and its `processing` list is the SERVER's own
- * `readinessOf(m) === 'processing'` verdict rather than a guess at what a `stemStatus` string means — which
- * matters, because a song mid-align has ready stems and queued lyrics and still counts as processing.
+ * `/api/library` is the honest source for READY and PROCESSING, because its `processing` list is the
+ * SERVER's own `readinessOf()` verdict rather than a guess at a `stemStatus` string — a song mid-align has
+ * ready stems and queued lyrics and still counts as processing.
  *
- * RAW songs are the awkward case: `/api/library` deliberately lists only ready rows ("the catalog holds
- * every search result ever materialised … browsing the whole table would bury the library in things you
- * cannot sing yet"), and a search with an EMPTY query returns nothing at all. So the raw local rows are
- * discovered once, up front, with a handful of short queries pinned to `source=local` — which keeps the
- * probe offline and off YouTube. They matter because `sing` on a raw song is the ONLY way to put a process
- * in flight, and therefore the only way the RESTART-DURING-PROCESS seam becomes reachable.
+ * RAW songs are the awkward case: `/api/library` lists only ready rows, and an EMPTY query returns nothing,
+ * so the raw local rows are discovered once up front with short queries pinned to `source=local` (which
+ * keeps this offline and off YouTube). They matter because `sing` on a raw song is the ONLY way to put a
+ * process in flight, and so the only way the RESTART-DURING-PROCESS seam becomes reachable.
  */
 const RAW_PROBE_TERMS = ['a', 'e', 'i', 'o', 'u', 's', 'b', 'd', 'l', 'm', 'n', 'r', 't', 'w'];
 /** @type {Map<string, any> | null} */
@@ -395,19 +325,18 @@ async function catalog() {
 }
 
 /**
- * Singer names are UNIQUE PER ROOM: a reused one gets a 409 and the join page simply stays put, which
- * looks exactly like a broken flow. So every singer this run creates carries a per-run nonce.
+ * Singer names are UNIQUE PER ROOM: a reused one gets a 409 and the join page simply stays put, which looks
+ * exactly like a broken flow — so every singer carries a per-run nonce.
  *
- * The nonce is DELIBERATELY outside the seed. A display name is not an input — it appears in no
- * invariant and no decision — so making it seed-derived would buy nothing and would make a replay
- * against a room that has already hosted one run fail at join with a 409 instead of reproducing.
+ * The nonce is DELIBERATELY outside the seed: a display name appears in no invariant and no decision, and a
+ * seed-derived one would make a replay against a room that has already hosted a run fail at join with a 409
+ * instead of reproducing.
  */
 const NONCE = Date.now().toString(36).toUpperCase().slice(-5);
 
 /**
- * Two processed songs give a rotation, so `skip` has somewhere to land and I3 has something to disagree
- * about. Fewer than one and no playback invariant means anything, which is an exit-2 environment
- * problem rather than a green run.
+ * Two processed songs give a rotation, so `skip` has somewhere to land and I3 something to disagree about.
+ * Fewer than one and no playback invariant means anything, which is exit 2, never a green run.
  */
 /** @param {number} want */
 async function processSongs(want) {
@@ -459,17 +388,13 @@ if (processedRows.length === 0) {
 	);
 }
 
-// ── authoritative server state, read off the server's own socket ──────────────────────────────────
 /**
- * A `hello` gets back queue:sync + playback:state + nowplaying:changed, which together are a complete
- * consistent snapshot of what the SERVER believes. Read on a fresh short-lived socket per snapshot
- * rather than mirrored from a long-lived one: a mirror has to re-implement the rev/patch reconciliation
- * the clients do, and a bug in the mirror would look exactly like a bug in the room.
+ * Authoritative server state. A `hello` gets back queue:sync + playback:state + nowplaying:changed, which
+ * together are one consistent snapshot of what the SERVER believes. Read on a FRESH short-lived socket per
+ * snapshot rather than mirrored from a long-lived one: a mirror would have to re-implement the clients'
+ * rev/patch reconciliation, and a bug in the mirror would look exactly like a bug in the room.
  */
-/**
- * @param {number} [timeoutMs]
- * @returns {Promise<ServerSnapshot>}
- */
+/** @param {number} [timeoutMs] @returns {Promise<ServerSnapshot>} */
 function serverSnapshot(timeoutMs = 4000) {
 	return new Promise((resolve, reject) => {
 		const ws = new WebSocket(`${wsBase}/ws?role=probe`);
@@ -532,27 +457,21 @@ async function lyricsFor(ref) {
 	return doc;
 }
 
-// ── the browser ──────────────────────────────────────────────────────────────────────────────────
+// The browser.
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM to an existing browser binary.');
-// The flags this flow needs are passed to the DRIVER, which launches the browser. Only one of them is
-// interesting: the autoplay policy is CONDITIONAL and is the experiment itself — without the flag this is a
-// television, with it, it is not. It must stay a per-run choice rather than a driver default, or the negative
-// half of the fuzz stops being runnable while still reporting a pass.
+// The autoplay policy is CONDITIONAL and is the experiment itself, so it must stay a per-run choice rather
+// than a driver default, or the gestureless half stops being runnable while still reporting a pass.
 const chromeArgs = AUTOPLAY ? ['--autoplay-policy=no-user-gesture-required'] : [];
 
 /**
- * The TV's on-stage master element.
+ * The TV's on-stage master element. The gapless controller mounts TWO slots and the hidden one pre-warms
+ * the next song with its own <audio>, PAUSED at currentTime 0 with only the preload burst decoded — so
+ * "any audio with an instrumental src" can read a permanently silent element as the stage.
  *
- * The gapless controller mounts TWO slots; the hidden one pre-warms the next song and exposes its own
- * <audio>, PAUSED at currentTime 0 with only the preload burst decoded. Picking "any audio with an
- * instrumental src" can grab the pre-warm one and read a permanently silent element as the stage.
- *
- * p4-transport scopes to `.slot.visible audio` — but `.slot` has NO entry in the contract, and a
- * hand-written selector here would rot invisibly, which is the one thing this file must not do. So the
- * master is identified by matching the element's src against the SERVER's own instrumentalRef for the
- * entry it says is current. When that cannot be resolved the fallback is the furthest-advanced
- * instrumental element, and the reason is recorded so a skipped check is never read as a pass.
+ * Identified by matching the element's src against the SERVER's own instrumentalRef for the entry it says
+ * is current. When that cannot be resolved the fallback is the furthest-advanced instrumental element, and
+ * the reason is RECORDED so a skipped check is never read as a pass.
  */
 /**
  * @param {MediaRow[]} rows
@@ -592,10 +511,9 @@ const TV_PROBE = `(() => {
 	const t = (sel) => { const el = document.querySelector(sel); return el ? el.textContent.trim() : null; };
 	const activeWordEl = document.querySelector(${JSON.stringify(SEL.activeWord)});
 	/*
-	 * The bouncing ball is a CHILD of the active word span, so textContent on it reads "●we". The ball
-	 * carries aria-hidden="true" (it is decoration a screen reader must not announce), so the word as a
-	 * PERSON reads it is the concatenation of the children that are not hidden. Filtered that way rather
-	 * than by stripping the glyph or by selecting .ball, which the contract does not name.
+	 * The bouncing ball is a CHILD of the active word span, so textContent reads the glyph too. It carries
+	 * aria-hidden="true", so the word a PERSON reads is the concatenation of the children that are NOT
+	 * hidden — filtered that way rather than by stripping the glyph.
 	 */
 	const wordText = activeWordEl
 		? [...activeWordEl.childNodes]
@@ -624,14 +542,10 @@ let tv;
 const phones = [];
 
 /**
- * A phone's own authenticated socket, opened ONCE and kept.
- *
- * Three of the ten inputs (seek, key-shift, guide-level) plus queue-remove have no usable contract
- * selector — seek has no UI control in the app at all, and the other three have controls the contract
- * does not name. Rather than inline a literal, they go out as the exact wire frame the control would
- * have sent, from the phone's OWN socket so the server resolves the same singerId from the same session
- * cookie and runs the same authorization. `__fzRev` tracks the rev so a queue command carries a real
- * baseRev instead of a made-up one.
+ * A phone's own authenticated socket, opened ONCE and kept. The inputs with no usable contract selector go
+ * out as the exact wire frame the control would have sent, from the phone's OWN socket, so the server
+ * resolves the same singerId from the same session cookie and runs the same authorization. `__fzRev` tracks
+ * the rev so a queue command carries a real baseRev instead of a made-up one.
  */
 /** @param {Page} page */
 async function openWire(page) {
@@ -655,10 +569,7 @@ async function openWire(page) {
 	}))()`);
 }
 
-/**
- * @param {Page} page
- * @param {Record<string, unknown>} command
- */
+/** @param {Page} page @param {Record<string, unknown>} command */
 async function wirePlayer(page, command) {
 	return page.evaluate(`(() => {
 		if (!window.__fz || window.__fz.readyState !== 1) return 'closed';
@@ -667,11 +578,7 @@ async function wirePlayer(page, command) {
 	})()`);
 }
 
-/**
- * @param {Page} page
- * @param {Record<string, unknown>} op
- * @param {string} opId
- */
+/** @param {Page} page @param {Record<string, unknown>} op @param {string} opId */
 async function wireQueueOp(page, op, opId) {
 	return page.evaluate(`(() => {
 		if (!window.__fz || window.__fz.readyState !== 1) return 'closed';
@@ -683,11 +590,9 @@ async function wireQueueOp(page, op, opId) {
 	})()`);
 }
 
-// ── the input alphabet ───────────────────────────────────────────────────────────────────────────
 /**
- * Ten inputs were specified; NINE are drivable. `back` is absent from this codebase entirely (no
- * PlayerCommand, no control, no previous-entry concept), so it is not silently mapped onto something
- * else — see the header. Weights are a starting point that the adjacency bias below then reshapes.
+ * The input alphabet. `back` is absent from this codebase entirely, so it is not silently mapped onto
+ * something else — see the header. These weights are a starting point the adjacency bias below reshapes.
  */
 /** @type {Set<InputName>} */
 const TRANSPORT = new Set(['pause', 'resume', 'skip', 'restart', 'seek']);
@@ -704,20 +609,12 @@ const BASE_WEIGHT = {
 };
 
 /**
- * Every defect found in this room so far lived in the SEAM between two inputs, not in one, so the
- * draw is conditioned on what just happened and on what the room is currently doing:
- *
- *   • back-to-back transport is tripled, because that is the seam class as a whole.
- *   • RESTART-DURING-PROCESS — a process in flight makes `restart` (and `queue-remove`, which cancels one)
- *     far more likely.
- *   • SKIP-AT-LAST-ENTRY — nothing waiting behind the current song makes `skip` far more likely.
- *   • RESTART-THEN-PAUSE — the reachable stand-in for the specified back-then-pause seam.
+ * The draw is conditioned on what just happened AND on what the room is doing, because every defect so far
+ * lived in the seam between two inputs: back-to-back transport is tripled; a process in flight makes
+ * `restart` and `queue-remove` far likelier (RESTART-DURING-PROCESS); nothing waiting makes `skip` likelier
+ * (SKIP-AT-LAST-ENTRY); and RESTART-THEN-PAUSE stands in for the unreachable back-then-pause seam.
  */
-/**
- * @param {InputName | null} prev
- * @param {WorldLite} world
- * @returns {Record<InputName, number>}
- */
+/** @param {InputName | null} prev @param {WorldLite} world @returns {Record<InputName, number>} */
 function weightsFor(prev, world) {
 	const w = { ...BASE_WEIGHT };
 	if (prev && TRANSPORT.has(prev)) for (const k of TRANSPORT) w[k] *= 3;
@@ -734,11 +631,7 @@ function weightsFor(prev, world) {
 	return w;
 }
 
-/**
- * @param {InputName | null} prev
- * @param {WorldLite} world
- * @returns {InputName}
- */
+/** @param {InputName | null} prev @param {WorldLite} world @returns {InputName} */
 function drawInput(prev, world) {
 	const w = weightsFor(prev, world);
 	const keys = /** @type {InputName[]} */ (Object.keys(w)).filter((k) => w[k] > 0);
@@ -752,12 +645,7 @@ function drawInput(prev, world) {
 }
 
 /** Which seam, if any, this draw was biased toward — printed in the sequence so a replay reads clearly. */
-/**
- * @param {InputName} input
- * @param {InputName | null} prev
- * @param {WorldLite} world
- * @returns {string | null}
- */
+/** @param {InputName} input @param {InputName | null} prev @param {WorldLite} world @returns {string | null} */
 function seamLabel(input, prev, world) {
 	if (input === 'restart' && world.processing > 0) return 'RESTART-DURING-PROCESS';
 	if (input === 'skip' && world.current && world.waiting === 0) return 'SKIP-AT-LAST-ENTRY';
@@ -766,7 +654,7 @@ function seamLabel(input, prev, world) {
 	return null;
 }
 
-// ── invariants ───────────────────────────────────────────────────────────────────────────────────
+// Invariants.
 /** currentTime may only fall across an intentional discontinuity. */
 /** @type {{ entryId: string | null, t: number | null }} */
 let lastPos = { entryId: null, t: null };
@@ -785,9 +673,9 @@ async function readWorld() {
 	const cur = (srv.entries ?? []).find((/** @type {any} */ e) => e.id === srv.playback?.currentEntryId) ?? null;
 	const curMedia = cur ? (mediaById.get(cur.mediaId) ?? null) : null;
 	const { master, how } = pickMaster(tvState.rows, curMedia?.instrumentalRef);
-	// Record the FIRST decoded byte-count seen for this src — the preload burst a blocked TV never
-	// exceeds. atPreloadFloor() reads this to tell an un-started TV from one that is genuinely playing,
-	// which is what makes the refusal excuse survive a seek without crying wolf.
+	// Record the FIRST decoded byte-count seen for this src — the preload burst a blocked TV never exceeds.
+	// atPreloadFloor() reads it to tell an un-started TV from a playing one, which is what lets the
+	// autoplay-refusal excuse survive a seek without crying wolf.
 	if (master && master.decoded !== null && master.decoded !== undefined && !preloadFloor.has(master.src)) {
 		preloadFloor.set(master.src, master.decoded);
 	}
@@ -857,7 +745,7 @@ function checkI3(w) {
 			`server.currentEntryId=${w.current.id} → media ${JSON.stringify(w.curMedia.title)}`
 		);
 	}
-	// The lower third prints the TITLE; that rendered string is what a person in the room sees.
+	// The lower third prints the TITLE — the rendered string a person in the room sees.
 	const want = String(w.curMedia.title ?? '');
 	const got = String(w.tv.nowSong);
 	if (!(got === want || got.includes(want) || want.includes(got))) {
@@ -883,8 +771,8 @@ function checkI3(w) {
 /** I5 · no entry is both playing and waiting, and the phones' rotation agrees with the server. */
 /** @param {World} w */
 async function checkI5(w) {
-	// The server models status as ONE field, so "both at once" can only appear as a disagreement:
-	// either the current entry is not marked playing, or something marked playing is not the current.
+	// The server models status as ONE field, so "both at once" can only appear as a disagreement: either the
+	// current entry is not marked playing, or something marked playing is not the current.
 	if (w.current && w.current.status !== 'playing') {
 		return violation(
 			'I5',
@@ -903,9 +791,9 @@ async function checkI5(w) {
 			);
 		}
 	}
-	// The rotation VIEW: the phone renders exactly the entries whose status is `queued` (one #each over
-	// `queued`, rendering a QueueRow or a ProcessingCard — both carry .qrow). So a count mismatch means
-	// a phone is showing a rotation the server does not have.
+	// The rotation VIEW: the phone renders exactly the entries whose status is `queued` (a QueueRow or a
+	// ProcessingCard, both carrying .qrow), so a count mismatch means a phone is showing a rotation the
+	// server does not have.
 	for (let i = 0; i < phones.length; i++) {
 		const n = await phones[i].count(SEL.queueRow);
 		if (n !== w.waiting) {
@@ -922,10 +810,7 @@ async function checkI5(w) {
 }
 
 /** I1 · currentTime monotonic within a song. */
-/**
- * @param {World} w
- * @param {InputName} lastInput
- */
+/** @param {World} w @param {InputName} lastInput */
 function checkI1(w, lastInput) {
 	if (!w.master) return skip('I1', 'no master element on stage to measure');
 	const t = w.master.currentTime;
@@ -948,21 +833,15 @@ function checkI1(w, lastInput) {
 }
 
 /**
- * The launch policy decides whether a master that is not making sound is excusable. Gestureless and
- * BEFORE the run's one real tap, an autoplay refusal is what a real television does (paused, only its
- * preload burst decoded), so any check that reads the decoder or the playhead has nothing to measure
- * and must SKIP with that reason named rather than judge it a defect. Shared by I4 and I6 so the two
- * cannot drift.
+ * Whether a silent master is EXCUSABLE. Gestureless and before the run's one real tap, an autoplay refusal
+ * is what a real television does, so a check that reads the decoder or the playhead must SKIP with that
+ * reason named. Shared by I4 and I6 so the two cannot drift.
  *
- * The honest predicate for "this television has not been started yet" is NOT `currentTime === 0`: a
- * `seek` on a still-blocked master moves the playhead off 0 while the element stays paused and the
- * decoder stays at its preload floor, so keying on currentTime turns every gestureless
- * seek into a phantom I6. Key instead on what is actually true of an un-started element: its decoder
- * has not advanced past the preload burst it recorded the first time it saw this src (`atPreloadFloor`).
- * That is honest across a transport too — a skip mounts a fresh element that sits at its OWN preload
- * floor until it is started, so the excuse follows the element, not a run-level flag. maybeDeliverTap
- * keeps the current master started (re-applying the one gesture as a real TV’s sticky activation would);
- * once the decoder climbs past the floor, there is no refusal left to blame and a silent room is a real defect.
+ * The honest predicate for "not started yet" is NOT `currentTime === 0`: a `seek` on a blocked master moves
+ * the playhead off 0 while the element stays paused at its preload floor, so keying on currentTime turns
+ * every gestureless seek into a phantom I6. Key on the DECODER not having advanced past the preload burst
+ * recorded for this src — which also follows a transport, since a skip mounts a fresh element at its OWN
+ * floor. Once the decoder climbs past the floor there is no refusal left to blame and silence is a defect.
  */
 /** First decoded byte-count seen for each src — the preload burst floor a blocked TV never exceeds. */
 const preloadFloor = new Map();
@@ -973,10 +852,9 @@ function atPreloadFloor(w) {
 	const m = w.master;
 	if (!m) return false;
 	const d = m.decoded;
-	// A missing decoder counter means neither caller can claim the element is at its preload floor, so
-	// this returns false: autoplayRefused stops EXCUSING the master and maybeDeliverTap stops RE-TAPPING
-	// it, and it falls through to a real I6 evaluation. That is deliberate — fail toward measuring audio
-	// rather than toward silently excusing a state we cannot read.
+	// A missing decoder counter returns FALSE deliberately: the master stops being excused and stops being
+	// re-tapped, and falls through to a real I6 evaluation. Fail toward measuring audio rather than toward
+	// excusing a state that cannot be read.
 	if (d === null || d === undefined) return false;
 	const floor = preloadFloor.get(m.src);
 	return floor !== undefined && d <= floor;
@@ -987,10 +865,7 @@ function autoplayRefused(w) {
 }
 
 /** I4 · the lyrics active index is consistent with currentTime. */
-/**
- * @param {World} w
- * @param {InputName} lastInput
- */
+/** @param {World} w @param {InputName} lastInput */
 async function checkI4(w, lastInput) {
 	if (!w.master) return skip('I4', 'no master element on stage to measure');
 	if (autoplayRefused(w))
@@ -998,12 +873,9 @@ async function checkI4(w, lastInput) {
 			'I4',
 			'gestureless, before the tap: the browser refused autoplay (paused, decoder still at its preload floor) — exactly what a real TV does before someone taps it, so the reel advances off the server intent while audio has not started; nothing about the highlight vs currentTime is testable yet'
 		);
-	// The lyrics reel re-syncs to a new song off a broadcast, ASYNCHRONOUSLY — exactly like the
-	// cross-surface invariants. So the first read after the current entry changes (or after any
-	// position-resetting transport) sees the OLD reel against a playhead that just snapped to ~0,
-	// which is propagation lag, not a highlight defect. Skip that one read with its reason named,
-	// the same way I1 skips a currentTime fall across an entry change (reachable only once the TV
-	// really starts).
+	// The reel re-syncs to a new song off a broadcast, ASYNCHRONOUSLY, so the first read after the current
+	// entry changes (or after any position-resetting transport) sees the OLD reel against a playhead that
+	// just snapped to ~0 — propagation lag, not a highlight defect. Skip that one read, reason named.
 	{
 		const id = w.current?.id ?? null;
 		const changed = id !== lastLyricsEntry;
@@ -1020,7 +892,7 @@ async function checkI4(w, lastInput) {
 	if (!w.tv.activeWord) return skip('I4', 'no active word rendered (between words, or word-highlight is off)');
 	const doc = await lyricsFor(w.curMedia.lyricsRef);
 	if (!doc) return skip('I4', 'the lyrics artifact could not be read');
-	// The rendered ACTIVE WORD identifies the active line — the contract names the word, not the row.
+	// The rendered ACTIVE WORD identifies the active line: the contract names the word, not the row.
 	/** @type {number[]} */
 	const hits = [];
 	doc.lines.forEach((/** @type {any} */ l, /** @type {number} */ i) => {
@@ -1036,9 +908,8 @@ async function checkI4(w, lastInput) {
 	}
 	if (hits.length > 1) return skip('I4', 'the highlighted word text is ambiguous across lines');
 	const idx = hits[0];
-	// The highlight is cued LEAD_SEC ahead of the playhead, and the reel holds a line through the gap
-	// until the next line starts (see activeLineIndex in src/lib/tv/lyrics.ts), so the legal window for
-	// line i runs from its own start to the NEXT line's start.
+	// The highlight is cued LEAD_SEC ahead of the playhead and the reel HOLDS a line through the gap until
+	// the next one starts, so the legal window for line i runs from its own start to the next line's start.
 	const cue = w.master.currentTime + LEAD_SEC;
 	const start = doc.lines[idx].start;
 	const nextStart = idx + 1 < doc.lines.length ? doc.lines[idx + 1].start : Number.POSITIVE_INFINITY;
@@ -1061,17 +932,13 @@ async function checkI4(w, lastInput) {
 /**
  * I6 · decoded bytes climbing whenever the UI claims to be playing.
  *
- * THE GATE IS THE ROOM'S CLAIM, NOT `master.paused`. Keying this on the element's own `paused` looks
- * natural and is exactly wrong: it makes the check skip itself in the one state worth catching, where
- * the server says isPlaying, every phone renders a playing transport, and the element sits paused at 0
- * with only its preload burst decoded. `paused` reports INTENT, and so does `isPlaying` — the ONLY
- * evidence that audio is happening is the decoder consuming bytes.
+ * THE GATE IS THE ROOM'S CLAIM, NOT `master.paused`: keying on the element's own `paused` makes the check
+ * skip itself in the one state worth catching, where the server says isPlaying, every phone renders a
+ * playing transport, and the element sits paused at 0 with only its preload burst decoded.
  *
- * The launch policy decides whether a paused master is excusable. Gestureless, an autoplay refusal is
- * what a real television does and is a property of the environment, so it is SKIPPED with that reason
- * named rather than counted as a defect — reporting the environment as a failure is the same
- * conflation exit code 2 exists to prevent, one category over. With autoplay granted there is no
- * refusal left to blame, so a paused master under a playing room is a real violation.
+ * Gestureless, an autoplay refusal is a property of the environment and is SKIPPED with that reason named;
+ * with autoplay granted there is no refusal left to blame, so a paused master under a playing room is a
+ * real violation.
  */
 /** @param {World} w */
 async function checkI6(w) {
@@ -1090,8 +957,8 @@ async function checkI6(w) {
 	const after0 = await tv.evaluate(TV_PROBE);
 	const { master: m2 } = pickMaster(after0.rows, w.curMedia?.instrumentalRef);
 	if (!m2 || m2.src !== before.src) return skip('I6', 'the song changed between the two samples');
-	// A pause that ARRIVED between the samples is a legal transport action, not a defect — but only if
-	// the room stopped claiming to be playing too. Re-read the server rather than trusting the element.
+	// A pause that ARRIVED between the samples is a legal transport action — but only if the room stopped
+	// claiming to be playing too, so re-read the server rather than trusting the element.
 	const srv2 = await serverSnapshot().catch(() => null);
 	if (srv2 && srv2.playback?.isPlaying !== true) return skip('I6', 'playback was stopped between the two samples');
 	if ((m2.decoded ?? 0) <= before.decoded) {
@@ -1111,8 +978,7 @@ async function checkI6(w) {
 
 /**
  * Cross-surface invariants are asynchronous BY DESIGN — a phone learns the rotation changed from a
- * broadcast, so a disagreement read one millisecond after an input is propagation, not a defect. Those
- * three (I2/I3/I5) are retried against fresh snapshots until they hold or the budget runs out; the
+ * broadcast — so I2/I3/I5 are retried against fresh snapshots until they hold or the budget runs out. The
  * single-surface ones (I1/I4/I6) are read once, because there is nothing to wait for.
  */
 function snapshotStats() {
@@ -1135,8 +1001,8 @@ async function checkAll(lastInput) {
 	/** @type {Violation | null} */
 	let cross;
 	for (;;) {
-		// Each retry is a DISCARDED reading, so its bookkeeping is rolled back — otherwise a value that
-		// took three attempts to propagate would inflate the summary's counts threefold.
+		// Each retry is a DISCARDED reading, so its bookkeeping is rolled back: otherwise a value that took
+		// three attempts to propagate inflates the summary's counts threefold.
 		restoreStats(before);
 		world = await readWorld();
 		cross = checkI2(world) ?? checkI3(world) ?? (await checkI5(world));
@@ -1144,18 +1010,14 @@ async function checkAll(lastInput) {
 		await sleep(250);
 	}
 	if (cross) return { v: cross, world };
-	// I6 is evaluated BEFORE I4 deliberately, even though the spec numbers it last. A silent room makes
-	// the lyrics reel drift, so the drift is a downstream SYMPTOM of the decoder finding — reporting the
-	// symptom first would send a reader to LyricsOverlay when the fault is in the player.
+	// I6 is evaluated BEFORE I4 deliberately: a silent room makes the reel drift, so the drift is a
+	// downstream SYMPTOM, and reporting it first sends a reader to the overlay when the fault is the player.
 	const single = checkI1(world, lastInput) ?? (await checkI6(world)) ?? (await checkI4(world, lastInput));
 	return { v: single, world };
 }
 
-// ── the inputs, driven ───────────────────────────────────────────────────────────────────────────
-/**
- * @param {InputName} input
- * @param {World} world
- */
+// The inputs, driven.
+/** @param {InputName} input @param {World} world */
 async function driveInput(input, world) {
 	const phoneIdx = int(0, phones.length - 1); // interleaved between the two phones on purpose
 	const page = phones[phoneIdx];
@@ -1163,19 +1025,12 @@ async function driveInput(input, world) {
 	const playing = world.srv.playback?.isPlaying === true;
 	let detail;
 
-	/**
-	 * The transport controls are DISABLED when there is nothing for them to act on, and calling .click()
-	 * on a disabled button does precisely nothing and throws nothing. Recording "clicked" for one of
-	 * those would put a beat in the reproduction recipe that never happened, so the state is read first.
-	 */
-	/*
-	 * The band's disc, addressed by CLASS rather than by label — it is the app's only play/pause, and its
-	 * accessible name alternates ("Play" / "Pause"), so there is no fixed label to ask for. It is on screen
-	 * at BOTH sheet heights, which is what lets this driver tap it without first knowing which height the
-	 * sheet happens to be at. Same shape as `tapTransport` below: report a no-op rather than clicking a
-	 * control that is absent or disabled, because a fuzz step that silently does nothing is
-	 * indistinguishable from one that worked.
-	 */
+	// A DISABLED transport button swallows .click() silently — no action, no throw — so state is read
+	// first and a no-op is RECORDED as one: a fuzz step that silently did nothing is indistinguishable
+	// from one that worked, and a replay must see the same sequence.
+	//
+	// The disc is addressed by CLASS because its accessible name alternates, so there is no fixed label to
+	// ask for; it is on screen at both sheet heights, so this needs no drag first.
 	async function tapDisc() {
 		const state = await page.evaluate(`(() => {
 			const el = document.querySelector(${JSON.stringify(SEL.bandTransport)});
@@ -1201,9 +1056,8 @@ async function driveInput(input, world) {
 
 	switch (input) {
 		case 'pause': {
-			// The control is ONE toggle keyed on playback.isPlaying, so a `pause` when the room is
-			// already paused is a no-op rather than a second command. Recorded as such: a replay must
-			// see the same sequence, including the beats that did nothing.
+			// ONE toggle keyed on playback.isPlaying, so a `pause` on an already-paused room is a no-op
+			// rather than a second command.
 			if (!playing) return { who, input, detail: 'no-op (already paused)', noop: true };
 			return await tapDisc();
 		}
@@ -1216,9 +1070,9 @@ async function driveInput(input, world) {
 		case 'restart':
 			return await tapTransport(SEL.restart.name);
 		case 'seek': {
-			// No seek control exists in the app; this is the wire command the control would send.
-			// Mostly in-file, but 1 in 10 lands past EOF deliberately — a media element that hits the
-			// end fires `ended`, which the server treats as advance-to-next, and that is a seam.
+			// No seek control exists in the app; this is the wire command one would send. Mostly in-file, but
+			// 1 in 10 lands past EOF deliberately: an element that hits the end fires `ended`, which the
+			// server treats as advance-to-next, and that is a seam.
 			const beyond = rnd() < 0.1;
 			const positionSec = beyond ? int(60, 400) : int(0, 7);
 			const r = await wirePlayer(page, { cmd: 'seek', positionSec });
@@ -1239,8 +1093,8 @@ async function driveInput(input, world) {
 		case 'queue-add': {
 			const { ready, raw } = world.cat;
 			if (ready.length === 0 && raw.length === 0) return { who, input, detail: 'no-op (empty library)', noop: true };
-			// 30% of adds deliberately target a RAW song, which starts a process and is the only way the
-			// RESTART-DURING-PROCESS seam becomes reachable at all.
+			// 30% of adds target a RAW song, which starts a process — the only way RESTART-DURING-PROCESS
+			// becomes reachable.
 			const wantRaw = raw.length > 0 && (ready.length === 0 || rnd() < 0.3);
 			const row = pick(wantRaw ? raw : ready);
 			const term = String(row.title).split(/\s+/)[0].toLowerCase();
@@ -1268,9 +1122,8 @@ async function driveInput(input, world) {
 			return { who, input, detail };
 		}
 		case 'queue-remove': {
-			// No contract entry for the per-row remove button, so this is its wire op. Any joined singer
-			// may remove any entry (capabilities.ts: every joined singer is a host), so the fuzzer is
-			// allowed to remove a turn it did not add — including the one that is playing, which is the
+			// No contract entry for the per-row remove button, so this is its wire op. Every joined singer is
+			// a host, so removing a turn it did not add is legal — including the PLAYING one, which is the
 			// dangling-current-entry seam.
 			const candidates = (world.srv.entries ?? []).filter(
 				(/** @type {any} */ e) => e.status === 'queued' || e.status === 'playing'
@@ -1291,7 +1144,7 @@ async function driveInput(input, world) {
 	}
 }
 
-// ── report ───────────────────────────────────────────────────────────────────────────────────────
+// Report.
 /** @param {boolean} markLast */
 function printSequence(markLast) {
 	for (let i = 0; i < sequence.length; i++) {
@@ -1305,10 +1158,7 @@ function printSequence(markLast) {
 	}
 }
 
-/**
- * @param {Violation} v
- * @param {World} world
- */
+/** @param {Violation} v @param {World} world */
 function reportViolation(v, world) {
 	console.log('');
 	console.log('════════════════════════════════════════════════════════════════════════════');
@@ -1369,23 +1219,16 @@ function printSummary() {
 }
 
 /**
- * THE GESTURE, DELIVERED — AND KEPT. A trusted real tap was added to the driver (driver.mjs realClick,
- * proven 7/7 by p13-tap-to-start.mjs), but this randomised driver never called it — so gesturelessly
- * the TV never started and I4/I6 could only ever SKIP. Deliver the real tap the first time
- * the room has a mounted master on the current song and claims to be playing, and re-apply it whenever
- * the CURRENT master is paused at its own preload floor under a playing room. No --autoplay-policy flag
- * is granted, so this is still a television; a viewer’s tap is the one gesture a living-room TV gets,
- * and on a real TV that gesture’s user activation is STICKY — it carries across the auto-advance a
- * skip triggers, so the next song plays without a second tap. Headless mounts a fresh <audio> per
- * entry and does not always re-apply that activation on its own, so re-tapping models the real TV
- * rather than inventing a permission: the tap is only ever re-applied to a master ALREADY sitting at
- * its preload floor, which is exactly the un-started state a real sticky activation would have cleared.
+ * THE ONE GESTURE, DELIVERED AND KEPT. A real trusted tap (`realClick`) is what a living-room TV gets, and
+ * no --autoplay-policy flag is granted, so this is still a television. On a real TV that activation is
+ * STICKY and carries across the auto-advance a skip triggers; headless mounts a fresh <audio> per entry and
+ * does not always re-apply it, so the tap is RE-APPLIED — but only to a master already sitting at its own
+ * preload floor, which is exactly the un-started state a sticky activation would have cleared. That models
+ * the real TV rather than inventing a permission.
  *
  * The FIRST tap is recorded in the sequence as an explicit input so a replay stays faithful; later
- * re-applications are silent recovery of the same one gesture, not new inputs.
- *
- * autoplay-granted (NOT-A-TV) runs skip the tap entirely: the browser already needs no gesture there,
- * and the whole point of that policy is that it is not a television.
+ * re-applications are silent recovery of the same gesture. NOT-A-TV runs skip it: the browser needs no
+ * gesture there, which is the whole point of that policy.
  * @param {World} world
  */
 async function maybeDeliverTap(world) {
@@ -1406,14 +1249,13 @@ async function maybeDeliverTap(world) {
 	await sleep(1200); // let the decoder begin climbing before the next invariant read
 }
 
-// ── run ──────────────────────────────────────────────────────────────────────────────────────────
+// Run.
 let exitCode = 0;
 try {
 	browser = await connect({ args: chromeArgs });
 
-	// Two phones, each its own isolated context and therefore its own session — two genuinely
-	// different guests, not one guest in two tabs. That is the whole point of the topology: a
-	// single-client sequence cannot produce a cross-surface disagreement.
+	// Two phones, each its own context and therefore its own session: a single-client sequence cannot
+	// produce a cross-surface disagreement at all.
 	/** @param {string} name @returns {Promise<Page>} */
 	async function newPhone(name) {
 		const page = await /** @type {Browser} */ (browser).newPage();
@@ -1424,9 +1266,7 @@ try {
 		await page.waitFor(`location.pathname === '/'`, { timeout: 15000 });
 		await openBrowseFromHome(page, { timeout: 15000 });
 		await openWire(page);
-		// The transport used to need the queue sheet opened. It now lives on the now-playing hero on
-		// HOME, so the fuzzer starts each phone there — that is where its transport taps and its `.qrow`
-		// counts both apply.
+		// Start each phone on HOME: that is where its transport taps and its `.qrow` counts both apply.
 		await returnHomeFromBrowse(page);
 		return page;
 	}
@@ -1438,8 +1278,8 @@ try {
 	await tv.goto(`${base}/tv`);
 	await tv.waitForSelector(SEL.tvConnected, { timeout: 15000 }).catch(() => {});
 
-	// The room starts empty; seed it with one add so the first input has something to act on. Recorded
-	// in the sequence like any other input, because it is one.
+	// The room starts empty; seed it with one add so the first input has something to act on. Recorded in
+	// the sequence like any other input, because it is one.
 	{
 		const world = await readWorld();
 		const first = await driveInput('queue-add', world);
@@ -1456,8 +1296,8 @@ try {
 			waiting: world.waiting,
 			processing: world.processing
 		};
-		// The one real tap lands as soon as the room is playing a mounted master. Faithful to a
-		// living-room TV, and what makes I4/I6 measurable at all under the gestureless default.
+		// The one real tap lands as soon as the room is playing a mounted master — what makes I4/I6
+		// measurable at all under the gestureless default.
 		await maybeDeliverTap(world);
 		const input = drawInput(prev, w);
 		const seam = seamLabel(input, prev, w);
@@ -1476,10 +1316,8 @@ try {
 
 	if (exitCode === 0) {
 		printSummary();
-		// NON-VACUITY FLOOR. I6 is the invariant this file calls the one that cannot be dropped;
-		// a run that never got to evaluate it measured nothing about audio and must NOT wear a green badge.
-		// Exit 2 ("the environment could not host the run") is the file’s own contract for a run that
-		// proved nothing — never 0. Never conflate 2 with 0; that conflation is how the original hole hid.
+		// NON-VACUITY FLOOR: a run that never evaluated I6 measured nothing about audio, so it exits 2 (the
+		// environment could not host the run) rather than wearing a green badge.
 		if (stats.I6.checked === 0) {
 			console.log(
 				'\nNON-VACUITY: I6 (decoded bytes climbing while the room claims to play) never evaluated — this run measured nothing about audio, so it cannot report green. Exiting 2.'
@@ -1490,8 +1328,7 @@ try {
 		}
 	}
 } catch (err) {
-	// An error in the DRIVER is an environment problem, not a room defect — reporting it as a violation
-	// would be exactly the conflation requirement 8 forbids, one category over.
+	// An error in the DRIVER is an environment problem, not a room defect, so it exits 2.
 	console.error(`\nENVIRONMENT: the fuzzer could not complete its run: ${/** @type {any} */ (err)?.stack ?? err}`);
 	if (sequence.length) {
 		console.error('  sequence so far:');

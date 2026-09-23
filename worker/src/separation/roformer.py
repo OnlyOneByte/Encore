@@ -1,26 +1,21 @@
 """BS-RoFormer separation engine: its model registry, its argv, and where it writes stems.
 
 Selected when a stems job carries `params.engine == 'roformer'`, resolved by `engine_for` in
-`separation/engines.py` before the first step runs. Uses the bs-roformer-infer package (inference-only,
-MIT), which owns checkpoint download + sha256 verification and a repointable model registry.
+`separation/engines.py`. Uses the bs-roformer-infer package (inference-only, MIT), which owns
+checkpoint download + sha256 verification and a repointable model registry.
 
 INTEGRATION: bs-roformer-infer 0.1.5 exposes a CLI (`bs-roformer-infer`), not the README's
-BSRoformerSession (that API is not in 0.1.5). So this engine shells the CLI as a subprocess — which
-matches the demucs pattern exactly and keeps bs_roformer/torch OFF the dial-home process. `--model
-<slug>` auto-resolves and sha256-downloads the checkpoint on first use, so there is no separate
-download step. Flags confirmed against `bs-roformer-infer --help` on 0.1.5.
+BSRoformerSession (not in 0.1.5). This engine shells the CLI as a subprocess, matching the demucs
+pattern and keeping bs_roformer/torch OFF the dial-home process. `--model <slug>` auto-resolves and
+sha256-downloads the checkpoint on first use.
 
-PURE, all of it: the model-token→slug map, the argv builder, and the output-stem discovery. No torch, no
-subprocess, no orchestration — `RoformerProcessor` was deleted in S3 and `steps/separate.py` runs the job.
-The two places this engine genuinely differs from demucs (its input must be ALONE in a directory, and its
-outputs must be DISCOVERED rather than derived from the model name) are stated in `engines.py`.
+PURE, all of it: the model-token->slug map, the argv builder, and output-stem discovery. No torch, no
+subprocess, no orchestration.
 
-⚠️ A REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT. A ~45-minute CPU process plus the ~700MB first-run
-checkpoint download are needed to confirm (a) the exact output-stem filenames bs-roformer-infer
-writes into --store_dir, and (b) that each allowlist token maps to a live registry slug. The package
-IMPORTS and pip-checks clean on the pinned torch 2.8 stack (verified); the end-to-end process does not
-run here. Until a network-enabled worker confirms it, a roformer process only runs where an operator has
-set the `stems:roformer` capability.
+A REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT: confirming the exact output-stem filenames and that
+each allowlist token maps to a live registry slug needs a ~45-minute CPU process plus a ~700MB
+first-run checkpoint download. The package imports and pip-checks clean; a roformer process only runs
+where an operator has explicitly set the `stems:roformer` capability.
 """
 
 from __future__ import annotations
@@ -29,39 +24,23 @@ import os
 
 from ..retry_policy import BoundaryError
 
-# ── pure helpers (no torch, no session) ──────────────────────────────────────────
-
-#: Our stable allowlist tokens (src/lib/contract/lyrics/separators.ts) → bs-roformer-infer registry
-#: slugs. Kept here, not in the shared TS, because the slug is a WORKER-side resolution detail the
-#: core never needs to know — the core only validates the token.
+#: Our stable allowlist tokens (src/lib/contract/lyrics/separators.ts) -> bs-roformer-infer registry
+#: slugs. Kept here, not in the shared TS, since the slug is a WORKER-side resolution detail the core
+#: never needs to know.
 #:
-#: ⚠️ KNOWN MISMATCH, verified against the installed package on 2026-09-03. The token
-#: `bs-roformer-1297` resolves to `BS-Rofo-SW-Fixed.ckpt` (registry entry "BS Roformer SW by
-#: jarredou", category multi-stem) — which is NOT `model_bs_roformer_ep_317_sdr_12.9755.ckpt`, the
-#: 2-stem checkpoint that was actually benchmarked and quality-approved. bs-roformer-infer 0.1.5's
-#: registry holds exactly ten models (see ROFORMER_REGISTRY_SLUGS) and the ep_317 checkpoint is not
-#: among them, so this token cannot currently be pointed at the approved model through this package.
-#: Deliberately NOT silently repointed to some other slug: swapping the processed model without a
-#: listening test is the failure this comment exists to prevent. The engine-package decision
-#: (adopt python-audio-separator ALONGSIDE bs-roformer-infer — both engines, owner ruling
-#: Q1(b)) is on the record, and the dependency pin carries the same reason in
-#: worker/requirements.txt. Both are named on purpose: a single pointer orphans the claim the
-#: moment either file is reorganised, which is how this comment came to cite a register that did not
-#: yet hold the ruling.
-#:
-#: The former `mel-roformer-inst-v2` token is GONE. It mapped to
-#: `roformer-model-bs-roformer-fno-instrumental-by-pcunwa`, which is absent from the registry, and
-#: mel-band is unreachable regardless: bs_roformer's `get_model_from_config` implements only
-#: `model_type == 'bs_roformer'`, and the package ships no mel_band module. It was an option the phone
-#: offered that no worker could ever have satisfied.
+#: KNOWN MISMATCH: the token `bs-roformer-1297` resolves to a multi-stem checkpoint ("BS Roformer SW
+#: by jarredou"), NOT the 2-stem checkpoint that was actually benchmarked and quality-approved —
+#: bs-roformer-infer 0.1.5's registry (ROFORMER_REGISTRY_SLUGS, ten models) does not carry the
+#: approved checkpoint at all. Deliberately NOT silently repointed to some other slug: swapping the
+#: processed model without a listening test is the failure this note exists to prevent.
 ROFORMER_MODELS = {
     "bs-roformer-1297": "roformer-model-bs-roformer-sw-by-jarredou",
 }
 
 #: Every slug bs-roformer-infer 0.1.5 can actually resolve, read out of its own
 #: `bs_roformer/data/bs_models.json`. Checked in so `ROFORMER_MODELS` is verifiable by a unit test
-#: rather than by a string-shape assertion — the previous test asserted only that a slug *started
-#: with* "roformer-model-", which is exactly why a nonexistent slug shipped.
+#: against real slugs, not a `starts with "roformer-model-"` string-shape assertion (which is how a
+#: nonexistent slug shipped once).
 ROFORMER_REGISTRY_SLUGS = frozenset(
     {
         "roformer-model-bs-roformer-chorus-male-female-by-sucial",
@@ -77,22 +56,14 @@ ROFORMER_REGISTRY_SLUGS = frozenset(
     }
 )
 
-#: Measured execution settings per allowlist token — the worker-side mirror of
-#: `SeparatorCost` in src/lib/contract/lyrics/separators.ts. Benchmarked on the reference box
-#: (32-core Graviton 3, CPU) on 2026-09-03: 26.59s per 8s window at fp32, 16.55s at bf16.
+#: Measured execution settings per allowlist token — the worker-side mirror of `SeparatorCost` in
+#: src/lib/contract/lyrics/separators.ts. `precision` is per-token, not globally derivable: bf16 is
+#: faster than fp32 on this checkpoint but SLOWER measured on mel-band models, and fp16 on CPU has no
+#: kernels and is much slower than fp32.
 #:
-#: `precision` is per-token and NOT globally derivable: bf16 is 1.6× faster than fp32 on this
-#: checkpoint, but measured 1.4–1.8× SLOWER on the mel-band models with an 8s window, and fp16 on CPU
-#: is 6.5× slower than fp32 (no fp16 CPU kernels). A GPU backend overrides `precision` — fp16 is the
-#: lever on Arc XMX and Apple MPS.
-#:
-#: ⚠️ NEITHER VALUE IS APPLIED TODAY. bs-roformer-infer 0.1.5's CLI takes only
-#: model_type/config_path/model_path/model/models_dir/input_folder/store_dir/device/device_ids: there
-#: is no overlap flag and no precision flag, and its `inference.py` contains no autocast at all.
-#: `overlap` is reachable only indirectly, by writing a modified config YAML and passing
-#: `--config_path` (its inference loop reads `config.inference.num_overlap`); `precision` is not
-#: reachable without patching the package. Recorded here as the measured intent so the numbers are not
-#: lost, and as concrete evidence for the engine-package decision.
+#: NEITHER VALUE IS APPLIED TODAY: bs-roformer-infer 0.1.5's CLI has no overlap flag and no precision
+#: flag, and its inference loop has no autocast at all. Recorded here as measured intent so the
+#: numbers are not lost.
 ROFORMER_COST = {
     "bs-roformer-1297": {"overlap": 4, "precision": "bf16", "rt_factor": 8.28},
 }
@@ -115,25 +86,19 @@ def resolve_roformer_slug(params: dict, default: str = DEFAULT_ROFORMER_MODEL) -
     token = params.get("model") or default
     slug = ROFORMER_MODELS.get(token)
     if slug is None:
-        # BoundaryError subclasses ValueError (drop-in for the existing pytest.raises(ValueError))
-        # but carries the shared structured retryable = False, so an unknown roformer
-        # model fails fast via retry_policy instead of burning three process attempts on a
-        # token that can never resolve — the identical treatment demucs.resolve_demucs_model
-        # already has, which the docstring above already claims.
+        # BoundaryError subclasses ValueError but carries structured retryable=False, so an unknown
+        # model fails fast via retry_policy instead of burning three attempts on a token that can
+        # never resolve.
         raise BoundaryError(f"unknown roformer model {token!r}; expected one of {sorted(ROFORMER_MODELS)}")
     return slug
 
 
 def _find_roformer_stem(store_dir: str, marker: str) -> str | None:
     """bs-roformer-infer writes `<name>_(Instrumental)_<slug>.<ext>` and `<name>_(Vocals)_<slug>.<ext>`
-    into store_dir. Match the DELIMITED role marker (`_(instrumental)_` / `_(vocals)_`), not a bare
-    `"instrumental"` / `"vocal"` substring: the resolved model slug is part of the filename and six of
-    the ten registry slugs themselves contain `vocals`/`instrumental` (e.g.
-    `roformer-model-bs-roformer-vocals-by-gabox`), so a bare substring test lets the instrumental file
-    satisfy the vocals search and vice-versa. The marker sits before the slug and is unaffected
-    by it. Listing is sorted so the pick is deterministic — os.listdir order is unspecified, matching the
-    deliberate sort in acquisition/fetch.py:find_downloaded. Matched case-insensitively so an upstream
-    output-naming tweak does not silently break the pickup (the exact template is confirmed by a process)."""
+    into store_dir. Match the DELIMITED role marker, not a bare `"instrumental"`/`"vocal"` substring:
+    several registry slugs themselves contain those words (e.g. `...-vocals-by-gabox`), so a bare
+    substring test would let the instrumental file satisfy the vocals search and vice-versa. Listing
+    is sorted so the pick is deterministic (os.listdir order is unspecified)."""
     if not os.path.isdir(store_dir):
         return None
     needle = marker.lower()

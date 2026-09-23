@@ -1,18 +1,12 @@
 """Plans: what each action does, and the one seam that decides iteration order.
 
-A plan is a list of steps. Execution is linear. Divergence is resolved by `plan_for` BEFORE the first
-step runs, never mid-plan — see `docs/ARCHITECTURE.md` §7.1, which tabulates every
-divergence candidate in this codebase and on the roadmap and shows each one is answerable from job
-params, settings or the resolved engine up front.
+A plan is a list of steps, executed linearly. Divergence is resolved by `plan_for` BEFORE the first
+step runs, never mid-plan — see docs/ARCHITECTURE.md §7.1 (static plan EXECUTION, dynamic plan
+SELECTION).
 
-    static plan EXECUTION, dynamic plan SELECTION
-
-THE SEAM. `Plan.after()` is the only place iteration order is decided. `LinearPlan` returns the next
-entry; a future `GraphPlan` would return a transition. Steps, `Ctx`, the reads/writes declarations, the
-enforcement tests and the doc generator are identical either way, so choosing a state machine later
-costs one class rather than a rewrite. The revisit trigger is written down in the spec: the first
-divergence `plan_for` cannot resolve up front, where moving it to the core would be wrong rather than
-merely inconvenient.
+`Plan.after()` is the only place iteration order is decided (`LinearPlan` returns the next entry; a
+future `GraphPlan` would return a transition), so choosing a state machine later costs one class
+rather than a rewrite.
 """
 
 from __future__ import annotations
@@ -60,8 +54,6 @@ class LinearPlan:
         return self._steps[i + 1] if i + 1 < len(self._steps) else None
 
 
-# ── validation ────────────────────────────────────────────────────────────────────
-#
 # The keys the runner itself guarantees before any step runs. A step may read these without an earlier
 # step writing them.
 SEEDED_KEYS = frozenset(
@@ -94,13 +86,9 @@ class PlanError(RuntimeError):
 def validate_plan(plan: Plan) -> None:
     """Assert every step's `reads` are satisfied by an earlier `writes` or by the seed.
 
-    This is what a declared plan buys. A reordered step, or one dropped into the wrong slot, is a
-    mistake that otherwise shows up as a confusing `None` several steps later — on the deploy box, in
-    the middle of a process. Here it is a test failure with the step and the key named.
-
-    Deliberately ignores `applies()`: a plan must be well-formed for the case where every step runs.
-    A step whose input is only *sometimes* produced should declare it in `reads` and handle absence, which
-    is the honest shape — a plan that is only valid on some paths is one nobody can reason about.
+    A reordered step, or one dropped into the wrong slot, otherwise shows up as a confusing `None`
+    several steps later mid-process; here it is a test failure naming the step and key. Deliberately
+    ignores `applies()`: a plan must be well-formed for the case where every step runs.
     """
     produced = set(SEEDED_KEYS)
     seen: set[str] = set()
@@ -127,12 +115,9 @@ def _parent(dotted: str) -> str:
 def stages_of(plan: Plan) -> list[Stage]:
     """The coarse stages a plan emits, in order, deduped.
 
-    `vocabulary.STAGE_PLANS` is a HAND-WRITTEN literal that MUST agree with what this returns — it is not
-    computed from the plans (it sits below them in the import graph, so importing the plans there would
-    be a cycle). The agreement is ENFORCED instead, by E4 (`test_STAGE_PLANS_agrees_with_what_the_plan
-    _actually_emits`), which is what stops the drift it had before: the table said align was two stages
-    while the real action emitted DOWNLOADING three times and covered acquisition, grading and wav2vec2
-    under one ALIGNING span.
+    `vocabulary.STAGE_PLANS` is a HAND-WRITTEN literal that MUST agree with what this returns (it
+    sits below the plans in the import graph, so it cannot be computed from them). Agreement is
+    ENFORCED by a test instead, to prevent silent drift between the two.
     """
     out: list[Stage] = []
     for step in plan.steps():
@@ -142,20 +127,16 @@ def stages_of(plan: Plan) -> list[Stage]:
     return out
 
 
-# ── the plans ─────────────────────────────────────────────────────────────────────
-# Populated by src/plans.py, which imports the steps. Kept separate so the runtime never imports a step
-# and the dependency rule in the spec's §3 ("dependencies point down only") holds mechanically.
+# Populated by src/plans.py, which imports the steps: kept separate so the runtime never imports a
+# step (dependencies point down only).
 PLANS: dict[Action, Plan] = {}
 
 
 def plan_for(job: JobSpec, engines: ResolvedEngines) -> Plan:
     """The plan this job will run.
 
-    DIVERGENCE LIVES HERE. Everything that selects different work — which separator engine, a
-    lead-vs-backing split producing four stems instead of two, a scoring tier — is knowable from job
-    params, settings or the resolved engine before any step executes, so it is a lookup rather than a
-    branch. `engines` is accepted (unused today) because that is the input a future plan choice would
-    read, and leaving it out is what would make adding one a signature change across the runner.
+    DIVERGENCE LIVES HERE: anything that selects different work is knowable from job params, settings
+    or the resolved engine before any step executes, so this is a lookup, not a branch.
     """
     action = parse_action(job.job_type)
     plan = PLANS.get(action)

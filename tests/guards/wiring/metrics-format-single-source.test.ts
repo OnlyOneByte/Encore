@@ -1,34 +1,21 @@
-//
-// Guards the two /metrics route components against re-growing their OWN copy of a formatter that
-// $lib/metrics-format.ts (and $lib/clock.ts) exists to single-source.
-//
-// THE DEFECT THESE BOUND. Both routes rendered the realtime factor by open-coding its glyph — it
-// lived at four sites across the two files while a `rt()` helper sat in one of them, bypassed three
-// lines below its own call site. (The rate is now printed as a PERCENTAGE of the song's length,
-// `15%`, rather than the `0.15×` multiplier it started as; the scan anchor moved with it, because a
-// guard pinned to a format that no longer exists passes by being blind.) And the per-song audit page
-// had a THIRD mm:ss implementation, `songLength`, that dropped the hour: a >59-minute song read
-// `62:05` there while every other surface reads `1:02:05` via `formatClock`. Neither is visible to
-// `tsc` (both are template literals over a `number`) and zero behavioural tests reference either
-// route file, so only a source scan reds on the drift. This is a RUN guard, proven to red on base
-// and green on the fix.
-//
+// The two /metrics routes must not re-grow their own copy of a formatter `$lib/metrics-format.ts` and
+// `$lib/clock.ts` exist to single-source. Caught: the realtime rate was open-coded at four sites across
+// the two files while an `rt()` helper sat three lines below one of them, and the audit page had a THIRD
+// mm:ss implementation that dropped the hour, so a >59-minute song read `62:05` where every other surface
+// reads `1:02:05`. Both are template literals over a `number`, so `tsc` sees nothing, and no behavioural
+// test references either route file.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
 
-// Was `at('src')` from src/lib, which meant src. `srcDir` is that
-// same directory named directly, and it is derived from the repo-root marker rather than from wherever
-// this test happens to sit — the four reads below all throw on a missing file, so a wrong root is loud.
 const SRC = srcDir;
 const METRICS = join(SRC, 'routes/metrics/+page.svelte');
 const AUDIT = join(SRC, 'routes/metrics/[mediaId]/+page.svelte');
 const FORMAT = join(SRC, 'lib/metrics-format.ts');
 const CLOCK = join(SRC, 'lib/clock.ts');
 
-// The natural fix adds a comment at the extraction site quoting the old form; a comment carrying a
-// banned literal must not trip the scan. So the scan reads comment-stripped source.
+/** The extraction site quotes the old form in a comment, and a banned literal in prose must not trip. */
 function stripComments(src: string): string {
 	return src
 		.replace(/\/\*[\s\S]*?\*\//g, '')
@@ -42,7 +29,6 @@ function count(src: string, re: RegExp): number {
 const RATE = /Math\.round\([^)]*\*\s*100\)\}%/g; // the open-coded percent-of-song-length glyph
 const MMSS = /Math\.floor\([^)]*\/\s*60\)/g; // the hour-dropping mm:ss floor-divide
 
-// ---- ARM 1: the rate format is single-sourced in metrics-format.ts, not open-coded in the routes ----
 test('the realtime-rate glyph is written once, in metrics-format.ts, and at neither route', () => {
 	const metrics = stripComments(readFileSync(METRICS, 'utf8'));
 	const audit = stripComments(readFileSync(AUDIT, 'utf8'));
@@ -52,28 +38,25 @@ test('the realtime-rate glyph is written once, in metrics-format.ts, and at neit
 	expect(count(format, RATE), 'metrics-format.ts should own the one rate() boundary').toBe(1);
 });
 
-// ---- ARM 2: the audit page uses clock.ts for mm:ss instead of its own hour-dropping copy ----
 test('the audit page has no home-grown mm:ss and imports formatClock from $lib/clock', () => {
 	const audit = stripComments(readFileSync(AUDIT, 'utf8'));
 	expect(count(audit, MMSS), '[mediaId]/+page.svelte still floor-divides seconds by 60 itself').toBe(0);
 	expect(audit.includes("from '$lib/clock'"), '[mediaId]/+page.svelte must import from $lib/clock').toBe(true);
 });
 
-// ---- SENTINELS: keep the scan honest — it must break if the anchors move or the feature is deleted ----
 test('sentinels: anchors present and the audit surface still renders', () => {
 	const metrics = stripComments(readFileSync(METRICS, 'utf8'));
 	const audit = stripComments(readFileSync(AUDIT, 'utf8'));
 	const format = readFileSync(FORMAT, 'utf8');
 	const clock = readFileSync(CLOCK, 'utf8');
-	// both routes still consume the shared module
 	expect(metrics.includes("from '$lib/metrics-format'")).toBe(true);
 	expect(audit.includes("from '$lib/metrics-format'")).toBe(true);
-	// the anchors the arms key on still exist
+	// The anchors the two arms key on must still exist, or they scan for a format nothing writes.
 	expect(/export function dur\(/.test(format)).toBe(true);
 	expect(/export function pct\(/.test(format)).toBe(true);
 	expect(/export function vsClaimed\(/.test(format)).toBe(true);
 	expect(/export function formatClock\(/.test(clock)).toBe(true);
-	// deleting the audit's song-length line must FAIL this guard, not satisfy it
+	// Deleting the audit's song-length line must FAIL this guard, not satisfy ARM 2 at zero.
 	expect(audit.includes(' long ·')).toBe(true);
 });
 
@@ -82,10 +65,8 @@ test('sentinel: the comment stripper removes both banned forms so a documenting 
 		'/* was `${Math.round(v * 100)}%` and `Math.floor(sec / 60)` before extraction */',
 		'// old rate: `${Math.round(v * 100)}%`; old mm:ss: `Math.floor(sec / 60)`'
 	].join('\n');
-	// present before stripping
 	expect(count(planted, RATE)).toBe(2);
 	expect(count(planted, MMSS)).toBe(2);
-	// gone after
 	const clean = stripComments(planted);
 	expect(count(clean, RATE)).toBe(0);
 	expect(count(clean, MMSS)).toBe(0);

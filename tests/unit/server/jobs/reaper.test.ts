@@ -9,8 +9,8 @@ import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { expect, spyOn, test } from 'bun:test';
 
-// Done-when: a stalled job requeues; boot recovery clears in-flight. Drives the real
-// JobRepository (in-memory sqlite) through the reaper with an injected clock — no wall-clock waits.
+// A stalled job requeues; boot recovery clears in-flight. Drives the real JobRepository (in-memory sqlite) through the
+// reaper with an injected clock — no wall-clock waits.
 
 function setup(now: () => number, onReaped?: () => void) {
 	const db = migratedDb();
@@ -74,7 +74,7 @@ test('progress-lease exhaustion → terminal failed (not requeued forever)', () 
 	const { jobs, reaper } = setup(() => clock);
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 
-	// burn attempts up to maxAttempts-1 via repeated assign→accept→lease-expiry
+	// Burn attempts to maxAttempts-1 via repeated assign→accept→lease-expiry.
 	for (let i = 0; i < 2; i++) {
 		jobs.assign(job.id, 'w', ackDeadline(clock), clock);
 		jobs.accept(job.id, progressDeadline(clock), clock);
@@ -82,7 +82,6 @@ test('progress-lease exhaustion → terminal failed (not requeued forever)', () 
 		reaper.tick();
 		expect(jobs.byId(job.id)!.status).toBe('queued');
 	}
-	// third strike: attempts hits maxAttempts → failed
 	jobs.assign(job.id, 'w', ackDeadline(clock), clock);
 	jobs.accept(job.id, progressDeadline(clock), clock);
 	clock += 31_000;
@@ -131,12 +130,11 @@ test('onReaped fires once per tick that changed ≥1 job, and not on a no-op', (
 	expect(calls).toBe(1);
 });
 
-// ── an earlier change: a reaper-killed process must settle its readiness gate ──────────────────────
-// The worker box died mid-process, so the failure reaches terminal `failed` via the reaper's own
-// attempts-exhaustion path — never through #onFailed. Before an earlier change the gate stayed mid-flight
-// forever: readyToSing never flipped and rotation held the queue entry on every pass, even with the
-// instrumental on disk. The reaper has no catalog, so app.ts wires its onFailed hook to
-// settleGatesForFailedJob(job, mediaById) — this test drives that live wiring, not a reimplementation.
+// A reaper-killed process must settle its readiness gate. When the worker box dies mid-process the
+// failure reaches terminal `failed` through the reaper's attempts-exhaustion path and NEVER through
+// #onFailed, so a gate left mid-flight never flips readyToSing and rotation holds the queue entry on
+// every pass, even with the instrumental on disk. The reaper has no catalog, so app.ts wires its
+// onFailed hook to settleGatesForFailedJob — driven live here, never reimplemented.
 
 const mkMedia = (id: string, over: Partial<Media> = {}): Media => ({
 	id,
@@ -153,7 +151,6 @@ function exhaustToFailed(jobType: 'stems' | 'align', over: Partial<Media> = {}) 
 	const db = migratedDb();
 	const jobs = new JobRepository(db);
 	const mediaById = new Map<string, Media>([['m1', mkMedia('m1', over)]]);
-	// The exact wiring app.ts uses: the reaper hands the failed job up, we settle its gate.
 	const reaper = new JobReaper(jobs, {
 		now: () => clock,
 		tickMs: 1_000_000,
@@ -170,15 +167,15 @@ function exhaustToFailed(jobType: 'stems' | 'align', over: Partial<Media> = {}) 
 }
 
 test('reaper: a dead stems process settles the STEMS gate back to un-processed', () => {
-	// stemStatus 'queued' (separation in flight) → the box dies → reaper exhausts attempts.
+	// Separation in flight, then the box dies and the reaper exhausts attempts.
 	const { jobs, mediaById, job } = exhaustToFailed('stems', { stemStatus: 'queued' });
 	expect(jobs.byId(job.id)!.status).toBe('failed'); // reaper path, not #onFailed
-	// The regression: before an earlier change this stayed 'queued' forever → isProcessing true → rotation holds it.
+	// Left 'queued', isProcessing stays true and rotation holds the entry forever.
 	expect(mediaById.get('m1')!.stemStatus).toBe('none');
 });
 
 test('reaper: a dead align process settles the LYRICS gate so the playable song can be sung', () => {
-	// The song already has its instrumental and plays; only lyrics were pending → align dies.
+	// The song already plays; only lyrics were pending, so it is align that dies.
 	const { jobs, mediaById, job } = exhaustToFailed('align', {
 		stemStatus: 'ready',
 		instrumentalRef: 'derived/stems/m1-instrumental.flac',
@@ -189,30 +186,14 @@ test('reaper: a dead align process settles the LYRICS gate so the playable song 
 	expect(mediaById.get('m1')!.stemStatus).toBe('ready'); // never walk the finished process backwards
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * Merged in from `reaper-broadcast-on-failure.test.ts`.
- *
- * It was a satellite: a separate file named for ONE behaviour of the module this file already
- * covers. Several files about one module tell a reader nothing about which holds what, so finding
- * where a behaviour is pinned meant opening all of them. The tests are unchanged.
- *
- * Its `T0, mkMedia` fixture(s) were renamed with the `_ReaperBroadcastOnFailure` suffix: this file already had a
- * declaration of that name meaning something slightly different, so both are kept and each block
- * keeps the fixture its assertions were written against. Collapsing them is a separate, readable step.
- * ───────────────────────────────────────────────────────────────────────────── */
-// Done-when: a reaper-killed process is REPORTED, not silent, and every terminal-fail path
-// runs the SAME four-step epilogue. an earlier change wired the reaper's onFailed hook to settle the
-// readiness gate, but the hook did nothing else — no media:status broadcast, no operator log, no
-// scratch reclaim — so the phone that watched the process stayed pinned on "Making karaoke… N%" with no
-// Sing button forever.
+// A reaper-killed process must be REPORTED, not silent: every terminal-fail path runs the SAME epilogue
+// — settle the gate, broadcast media:status failed, log one operator line, reclaim the scratch. Settling
+// the gate alone leaves the watching phone pinned on "Making karaoke… N%" with no Sing button forever.
 //
-// This test drives a REAL JobReaper + JobRepository (in-memory sqlite) to attempts-exhaustion with
-// the PRODUCTION `reportTerminalFailure` wired as the onFailed hook — the same function app.ts and
-// both worker-hub paths call. It used to reconstruct that hook inline (the "fourth copy"
-// names); asserting the real function instead means a site that diverges from it can no longer pass.
-// A `media:status: failed` must reach the broadcast sink and the scratch must be reclaimed.
-// reaper.test.ts asserts the media STATE after the settle, but nothing about a broadcast — there was
-// no broadcast seam before this fix.
+// Drives a REAL JobReaper + JobRepository to attempts-exhaustion with the PRODUCTION
+// `reportTerminalFailure` as the onFailed hook — the same function app.ts and both worker-hub paths
+// call — so a site that diverges from it can no longer pass. Reconstructing the hook inline here would
+// make this a fourth copy of the epilogue rather than a test of it.
 
 const T0_ReaperBroadcastOnFailure = 1_700_000_000_000;
 
@@ -232,9 +213,9 @@ function exhaust(jobType: 'stems' | 'align' | 'stems-upgrade', over: Partial<Med
 	const jobs = new JobRepository(db);
 	const mediaById = new Map<string, Media>([['m1', mkMedia_ReaperBroadcastOnFailure('m1', over)]]);
 	const broadcasts: ServerEvent[] = [];
-	// Wire the REAL production epilogue as the reaper's onFailed hook (exactly as app.ts does), over
-	// an injected broadcast sink. cleanJobWork inside it is a no-op here (no filesystem scratch for
-	// these ids); the log line goes through console.warn, which each test spies.
+	// The REAL production epilogue as the onFailed hook, exactly as app.ts wires it, over an injected
+	// broadcast sink. cleanJobWork is a no-op here (no scratch for these ids) and the log line goes
+	// through console.warn, which each test spies.
 	const reaper = new JobReaper(jobs, {
 		now: () => clock,
 		tickMs: 1_000_000,
@@ -254,15 +235,14 @@ test('reaper-killed stems process broadcasts media:status failed + logs uniforml
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
 		const { jobs, job, broadcasts } = exhaust('stems', { stemStatus: 'queued' });
-		// Reaper path reached terminal failed (not #onFailed).
 		expect(jobs.byId(job.id)!.status).toBe('failed');
-		// The regression: before broadcasts was []. Now exactly one media:status: failed reaches the sink.
+		// Exactly one media:status failed reaches the sink.
 		const statusEvents = broadcasts.filter((e) => e.type === 'media:status');
 		expect(statusEvents.length).toBe(1);
 		const ev = statusEvents[0] as Extract<ServerEvent, { type: 'media:status' }>;
 		expect(ev.status).toBe('failed');
 		expect(ev.mediaId).toBe('m1');
-		// And the operator gets exactly one line, in the uniform key=value format with the reaper cause.
+		// Exactly one operator line, in the uniform key=value format, naming the reaper cause.
 		expect(warn).toHaveBeenCalledTimes(1);
 		const line = warn.mock.calls[0]![0] as string;
 		expect(line).toContain('cause=reaper');
@@ -278,7 +258,7 @@ test('reaper-killed stems process broadcasts media:status failed + logs uniforml
 test('reaper-killed align process (playable song) still broadcasts failed', () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
-		// align dies on an already-playable song; the lyrics gate settles but the room must still hear failed.
+		// align dies on an already-playable song: the lyrics gate settles, and the room still hears failed.
 		const { broadcasts } = exhaust('align', {
 			stemStatus: 'ready',
 			instrumentalRef: 'derived/stems/m1-instrumental.flac',
@@ -312,17 +292,6 @@ test('a dead stems-upgrade on an ALREADY-singable song is NOT broadcast (no read
 	}
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * Merged in from `reaper-fail-not-slot-release-555.test.ts`.
- *
- * It was a satellite: a separate file named for ONE behaviour of the module this file already
- * covers. Several files about one module tell a reader nothing about which holds what, so finding
- * where a behaviour is pinned meant opening all of them. The tests are unchanged.
- *
- * Its `T0` fixture(s) were renamed with the `_ReaperFailNotSlotRelease` suffix: this file already had a
- * declaration of that name meaning something slightly different, so both are kept and each block
- * keeps the fixture its assertions were written against. Collapsing them is a separate, readable step.
- * ───────────────────────────────────────────────────────────────────────────── */
 // The job machine read slot release off the EVENT NAME alone, so the reaper's terminal
 // FAIL (a presumed-DEAD worker whose progress lease lapsed with attempts exhausted) freed the slot
 // of a worker that was STILL holding a live job, driving an assign/reject storm.
@@ -338,8 +307,7 @@ test('a dead stems-upgrade on an ALREADY-singable song is NOT broadcast (no read
 // These tests wire the real JobReaper against a real JobRepository + WorkerRegistry with the hub's
 // own release hook (`setSlotReleaseHook`), exactly as worker-hub.ts:167 wires it in production, and
 // assert the reaper's FAIL does not disturb a live worker's slot. RED on base: the reaper's fail()
-// fires the machine's release hook, so slotsFree goes 0 → 1 and planAssignments lands a job on the
-// still-busy worker.
+// fires the machine's release hook, so slotsFree goes 0 → 1 and planAssignments lands a job on the still-busy worker.
 
 const T0_ReaperFailNotSlotRelease = 1_700_000_000_000;
 

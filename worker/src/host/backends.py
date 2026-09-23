@@ -75,9 +75,8 @@ def backend_available(backend: Backend, engine: Engine = Engine.DEMUCS) -> bool:
         # Metal, so it is only advertised where MLX imports AND the machine is Apple Silicon.
         return engine is Engine.DEMUCS and _module_available("demucs_mlx") and is_apple_silicon()
     if backend is Backend.OPENVINO:
-        # Intel publishes IR weights with STFT/iSTFT stripped for a C++ pipeline; there is no Python
-        # inference path to call. Registered so configuration and routing can name it, but it never
-        # reports available until that pipeline is ported.
+        # No Python inference path exists (Intel ships IR weights for a C++ pipeline only).
+        # Registered so configuration and routing can name it, but never reports available.
         return False
     return False
 
@@ -102,13 +101,11 @@ def preferred_torch_device(configured: str | None) -> tuple[str | None, str]:
     with no Intel GPU raises rather than quietly running on CPU, because the whole point of setting it
     was to get the accelerator.
 
-    Auto-detection asks `torch.accelerator` first (PyTorch's own device-agnostic API, ≥ 2.6 and so
-    present on the pinned 2.8). It reports the accelerator the WHEEL was built for, which is exactly
-    the right question given that a wheel carries one backend — but only that, so its answer is still
-    put through `torch_device_available` before being used. Presence in the build is not usability on
-    the box: a cu128 wheel on a machine with no NVIDIA card answers "cuda" and would then fail on the
-    first allocation. The explicit ladder remains as the fallback for anything torch.accelerator
-    cannot see.
+    Auto-detection asks `torch.accelerator` first (PyTorch's device-agnostic API). It reports the
+    accelerator the WHEEL was built for, which is presence in the build, not usability on the box (a
+    cu128 wheel on a machine with no NVIDIA card answers "cuda"), so its answer still goes through
+    `torch_device_available` before use. The explicit ladder is the fallback for anything
+    torch.accelerator cannot see.
     """
     if configured:
         if not torch_device_available(configured):

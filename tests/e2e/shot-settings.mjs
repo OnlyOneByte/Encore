@@ -1,9 +1,6 @@
-// Settings-only capture, for reviewing the copy pass before/after.
-//
-// The full capture.mjs walks ~30 frames and needs a media library seeded; this needs three tabs and
-// a joined session. It reuses the same driver, the same selector contract and the same scope() wait
-// (click the trigger, then wait for aria-selected — not a sleep), so a frame here is reached the way
-// the real capture reaches it.
+// Settings-only capture: three tabs and a joined session, where capture.mjs walks ~30 frames and needs a
+// seeded library. `scope()` clicks the trigger and waits for aria-selected rather than sleeping, so a frame
+// here is reached the way the real capture reaches it.
 //
 // Usage: EPORT=3411 OUT=/abs/dir TAG=before bun run tests/e2e/shot-settings.mjs
 import { mkdirSync } from 'node:fs';

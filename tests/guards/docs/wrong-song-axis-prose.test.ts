@@ -45,7 +45,14 @@ function docAbove(source: string, anchor: string): string {
 	expect(close).toBeGreaterThan(open);
 	// The block must be the one attached to the anchor: nothing but whitespace between them.
 	expect(before.slice(close + 2).trim()).toBe('');
-	return before.slice(open, close + 2);
+	// Returned with the ` * ` markers stripped and whitespace collapsed, so every assertion below matches
+	// the SENTENCE rather than one line-wrapping of it. Without this, re-flowing a paragraph moves a word
+	// across a line break, `size asymmetry` becomes `size\n *  asymmetry`, and the guard reports a claim as
+	// missing while it is right there — which reads as the defect returning.
+	return before
+		.slice(open, close + 2)
+		.replace(/^[ \t]*\*[ \t]?/gm, ' ')
+		.replace(/\s+/g, ' ');
 }
 
 test('non-vacuous: both documented files exist, are non-trivial, and still discuss the axis split', () => {
@@ -87,7 +94,8 @@ test('LyricsCandidate.coverage is documented as the one axis the wrong-song judg
 
 test('lyricsRank documents tier 1 as reading coverage, NOT the ranking score', () => {
 	const doc = docAbove(src(SITES.lyrics), 'export function lyricsRank(');
-	expect(doc).toMatch(/reads `coverage`, NOT `agreement`/);
+	// Wording-independent: the CLAIM is "tier 1 reads coverage, not agreement", not one phrasing of it.
+	expect(doc).toMatch(/reads `coverage`[^.]{0,16}NOT `agreement`/);
 	// The consequence of getting it wrong, named so a future reader does not re-swap it.
 	expect(doc).toMatch(/convicts a CORRECT/);
 	// The issue label that used to sit here was removed with every other reference in production source.

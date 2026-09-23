@@ -23,32 +23,23 @@
 	} from '$lib/contract';
 	import type { LyricsCandidate } from '$lib/contract';
 
-	/*
-	 * Fixture singer colours, taken from the shared palette by INDEX rather than retyped as hexes.
-	 * These are data (a guest's chosen accent), not theme tokens -- but the literals were byte-identical
-	 * to SINGER_COLORS[0..2], so a reorder of that array would have left the gallery demonstrating
-	 * colours the app can no longer produce. Named so each demo reads as a different singer.
-	 */
+	// Fixture singer colours: DATA (a guest's chosen accent), not theme tokens, but taken from the palette
+	// by index so a reorder cannot leave the gallery demoing a colour the app can no longer produce.
 	const VIOLET = SINGER_COLORS[0];
 	const PINK = SINGER_COLORS[1];
 	const GREEN = SINGER_COLORS[2];
-	/*
-	 * Named for the an earlier change highlight cards. Mint is the pick there rather than another violet because the
-	 * cards need a singer colour that can be COLLIDED with a stage colour convincingly — a mid-tone teal
-	 * field reads as a plausible room choice, where a mid-tone violet field does not.
-	 */
+	// Mint, because the highlight cards below need a singer colour that collides convincingly with a
+	// mid-tone stage field. A violet does not read as a plausible room choice.
 	const MINT = SINGER_COLORS[7];
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import TvProgress from '$lib/tv/TvProgress.svelte';
 	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
 
-	// The dark stage backdrop every TV overlay demo sits on, as ONE constant so the wrappers cannot
-	// drift apart. It re-expresses the real stage glow (--stage-glow over --bg); tokens, not literals,
-	// so it tracks a theme change the way the real.stage does.
+	// One constant so the overlay wrappers cannot drift apart, in tokens so it tracks a theme change.
 	const stageBg = 'radial-gradient(120% 90% at 50% 20%, var(--stage-glow), var(--bg))';
 
-	// A tiny inline QR stand-in for the gallery — the real one is generated server-side per room.
+	// A stand-in QR — the real one is generated server-side per room.
 	const demoQr =
 		'data:image/svg+xml;utf8,' +
 		encodeURIComponent(
@@ -69,9 +60,8 @@
 	import type { LyricsDoc } from '$lib/tv/lyrics';
 	import { onMount } from 'svelte';
 
-	// Demo SongProfiles for the RangeBar gallery. A tenor-ish chorus that lives high, so the histogram
-	// weight is visibly lopsided (index 0 = lowMidi = 48/C3). p05..p95 is the solid block; low/high the
-	// whiskers. `keyFull` carries a detected key too, for the SongRow chip example below.
+	// A chorus that lives high, so the histogram weight is visibly lopsided (index 0 = lowMidi = 48/C3).
+	// p05..p95 is the solid block, low/high the whiskers.
 	const profileFull: SongProfile = {
 		keyTonic: 7, // G
 		keyMode: 'major',
@@ -80,17 +70,17 @@
 		highMidi: 72, // C5
 		p05Midi: 55, // G3
 		p95Midi: 67, // G4
-		// 25 semitones C3..C5; time piles up around the upper-middle (the chorus camps high)
+		// 25 semitones C3..C5, weighted upper-middle.
 		histogram: [2, 3, 4, 5, 6, 9, 14, 20, 26, 30, 28, 22, 15, 10, 7, 5, 4, 3, 2, 1, 1, 0, 0, 0, 0],
 		loudnessLufs: -11.2 // a loud modern master, for the level half of the profile
 	};
-	// Same range, but NO histogram — the block must degrade to a flat fill (range known, weight unknown).
+	/** Range known, weight unknown: the block must degrade to a flat fill. */
 	const profileNoHist: SongProfile = { ...profileFull, histogram: null };
 
-	// Drives the two drawer triggers below — a portalled overlay can only show one state at a time.
+	// A portalled overlay can only show one state at a time, so the drawer gets triggers.
 	let drawerOpen = $state(false);
 	let drawerHasSong = $state(true);
-	// A key but NO measured range (silent/instrumental vocal stem). The bar renders NOTHING.
+	/** A key but no measured range, as a silent or instrumental stem gives. The bar renders NOTHING. */
 	const profileKeyOnly: SongProfile = {
 		keyTonic: 2, // D
 		keyMode: 'minor',
@@ -103,8 +93,7 @@
 		loudnessLufs: null // unmeasurable level too — never a default, so nothing normalizes it
 	};
 
-	// Demo: a word-timed fixture + an auto-advancing position so the karaoke sweep is visible
-	// here in the dev gallery (the real /tv route feeds position from player telemetry).
+	// Word-timed, driven by the auto-advancing clock below so the karaoke sweep is visible here.
 	const demoLyrics: LyricsDoc = {
 		language: 'en',
 		lines: [
@@ -289,39 +278,23 @@
 		words: []
 	};
 
-	// The line-sync floor: same lines, no per-word timings — what an un-alignable LRC renders as.
+	/** The line-sync floor: same lines, no per-word timings, as an un-alignable LRC gives. */
 	const demoLineOnly: LyricsDoc = {
 		language: 'en',
 		lines: demoLyrics.lines.map((l) => ({ ...l, words: [] })),
 		words: []
 	};
-	/*
-	 * A CONFIDENT DUET, as the worker's diarization would write it: alternating lines
-	 * carry an abstract `part` letter ("A"/"B"). The overlay maps the two parts onto two DISTINCT
-	 * legible SINGER_COLORS through `duetPartColors`, so the two frames below show line 0 (part A) and
-	 * line 1 (part B) painted in different colours. An undiarized song has no `part` on any line and
-	 * renders exactly as the VERIFIED card above — that fallback is the demoLyrics cards, unchanged.
-	 */
+	/** A confident duet as diarization writes one: an abstract `part` letter per line. */
 	const demoDuet: LyricsDoc = {
 		language: 'en',
 		lines: demoLyrics.lines.map((l, i) => ({ ...l, part: i % 2 === 0 ? 'A' : 'B' })),
 		words: []
 	};
 	/*
-	 * THE LINE-ONLY SONG, as a candidate — the fixture the per-song clamp is judged against.
-	 *
-	 * `demoLineOnly` above is only half of a line-only song: it is the DOC, and the resolver never sees
-	 * a doc. What decides the treatment is the candidate's `timing`, so a card that renders the doc
-	 * while passing `highlight` by hand cannot exercise the clamp at all — which is why every card
-	 * below this one was blind to the defect. The doc and the candidate must agree, and they are stated
-	 * together here so they cannot drift.
-	 *
-	 * Both halves match what the real worker publishes, verified against the producer rather than
-	 * guessed: `worker/src/lyrics/source.py:line_synced_lyrics` writes lines with an EMPTY
-	 * `words: []` (not an absent key), and `worker/src/steps/lyrics.py:333` records
-	 * `"timing": "line"` on the candidate. Checking that is not optional ceremony — a fixture in this
-	 * repo once published `startSec`/`endSec` where the parser reads `start`/`end` and manufactured a
-	 * false CRITICAL against a working overlay (fixed in c544f46).
+	 * The other half of a line-only song: the resolver never sees a doc, only a candidate's `timing`, so a
+	 * card that renders `demoLineOnly` while passing `highlight` by hand cannot exercise the clamp at all.
+	 * Doc and candidate must agree, and both must match what the worker publishes — an empty `words: []`
+	 * (not an absent key) and `"timing": "line"`.
 	 */
 	const lineOnlyCandidate: LyricsCandidate = {
 		ref: 'derived/lyrics/demo.lrclib.line.json',
@@ -330,21 +303,14 @@
 		textConfidence: 'high',
 		createdAt: 0
 	};
-	/*
-	 * A stock deployment: the default word-level `syncMode` and the default word-level room treatment.
-	 * Held as the DEFAULTS rather than literals so this card keeps demonstrating what a fresh install
-	 * actually does after a defaults change, instead of a combination nobody ships.
-	 */
+	// Held as the DEFAULTS, not literals, so the card keeps showing what a fresh install actually does.
 	const wordLevelDeployment = { global: DEFAULT_GLOBAL_SETTINGS, room: DEFAULT_ROOM_SETTINGS };
-	// Ask the SAME resolver the TV asks. Passing `highlight`/`ball` by hand here would make the card a
-	// picture of a decision rather than a test of one, and the decision is the thing that was wrong.
+	// Ask the SAME resolver the TV asks: passing `highlight`/`ball` by hand makes the card a picture of a
+	// decision rather than a test of one.
 	const lineOnlyResolved = $derived(resolveLyricsPresentation(wordLevelDeployment, lineOnlyCandidate.timing));
 	/*
-	 * A SHORT-line variant, for the row-count cards only.
-	 *
-	 * The real demo lines wrap to two visual lines at gallery width, which doubles a row's height and
-	 * makes "how many rows are showing" impossible to read off a frame — the one thing those cards
-	 * exist to show. Two words per line cannot wrap, so a row is one line and the count is countable.
+	 * Two words a line, for the row-count cards only: the real demo lines wrap at gallery width, which
+	 * doubles a row's height and makes "how many rows are showing" unreadable off a frame.
 	 */
 	const demoShort: LyricsDoc = {
 		language: 'en',
@@ -367,19 +333,13 @@
 		return () => cancelAnimationFrame(raf);
 	});
 
-	// FIXTURE: a stand-in singer's chosen accent — this is DATA, not styling, deliberately a literal.
-	// The picker is bindable/stateful. Keep the gallery interactive so its real behaviour
-	// (preset-vs-slider agreement) can be exercised, not just posed.
+	// Bound, not posed: the picker's preset-vs-rail agreement can only be exercised interactively.
 	let demoColour = $state(VIOLET);
 </script>
 
 <main style="padding:14px 16px 200px;">
 	<h2 class="section">SongRow · the readiness axis</h2>
-	<!--
-		One row shape, three states. Thumbnails are the DERIVED i.ytimg mqdefault URL (see
-		ytThumbnailUrl), served through /api/thumb — so on a box with no route to the internet these
-		render the gradient placeholder rather than a broken image, which is itself worth seeing here.
-	-->
+	<!-- Thumbnails are derived i.ytimg URLs via /api/thumb, so a box with no route out shows the placeholder. -->
 	<SongRow
 		title="a-ha - Take On Me (Official Video)"
 		artistCanonical="a-ha"
@@ -420,15 +380,7 @@
 		viewCount={265947}
 		pct={68}
 	/>
-	<!--
-		an earlier change SPARKLE-HUG, made visible. The three processing rows above all carry a title long enough to
-		wrap to two lines, so none of them shows the case an earlier change is about: a SHORT title where the clamp
-		box must SHRINK to hug its text (flex: 0 1 auto) so the processing sparkle sits right beside the
-		title instead of floating out at the metadata column’s right edge. Reopen an earlier change (.t { flex: 1 },
-		in the base rule OR the <=380px @media rule) and the sparkle jumps ~80px away on this row while
-		the wrapped rows above barely move — which is exactly why the eyes-on gallery could not see it
-		before. No status/etaSec: a short processing title mid-fetch is a real, un-decorated state.
-	-->
+	<!-- A SHORT processing title: the clamp box must hug its text (flex: 0 1 auto) or the sparkle floats right. -->
 	<SongRow
 		title="Africa"
 		artistCanonical="Toto"
@@ -439,13 +391,7 @@
 		viewCount={630000000}
 		pct={42}
 	/>
-	<!--
-		THE an earlier change BUG STATE, made visible. `status="downloading" pct={100}` is the exact instant this
-		issue names: the FETCH step reports 100% while separating/aligning/ready are unstarted. With the
-		live status threaded in, the bar reads OVERALL process completion (~20% — the top of the downloading
-		band) and the readout says "20%", NOT the solid "100%" the raw per-step number produced before.
-		A row without a status (the fixture above) is unchanged — it still shows the raw pct.
-	-->
+	<!-- Fetch at 100% with later steps unstarted must read ~20% overall; a statusless row shows the raw pct. -->
 	<SongRow
 		title="Sweet Caroline — Neil Diamond (first step at 100%, process barely started)"
 		artistCanonical="Neil Diamond"
@@ -457,12 +403,7 @@
 		status="downloading"
 		pct={100}
 	/>
-	<!--
-		an earlier change ROUNDING check, committed. `status="separating" pct={68}` gives overallProcessPct ~67.6 (a
-		band-interpolated FLOAT), so the readout MUST print a rounded "68%", never "67.6%". The bar keeps
-		the unrounded fraction for a smooth transition. This is the fractional case the two band-edge
-		fixtures (downloading pct=100 -> exactly 20; statusless control -> raw 68) could not exercise.
-	-->
+	<!-- The fractional case: overallProcessPct ~67.6 must print as a rounded 68% while the bar keeps the fraction. -->
 	<SongRow
 		title="Bohemian Rhapsody — Queen (mid-separation, fractional overall pct)"
 		artistCanonical="Queen"
@@ -483,11 +424,7 @@
 	/>
 
 	<h2 class="section">SongRow · telling one song's uploads apart</h2>
-	<!--
-		The reason this row exists, as real yt-dlp results for one query. Under the old one-line row all
-		six read as the same song: the version marker was truncated, there was no duration, and the
-		thumbnail was a grey gradient. Rows 5 and 6 are a movie trailer and a 22-minute concert rip.
-	-->
+	<!-- Real yt-dlp results for one query: rows 5 and 6 are a trailer and a concert rip, and only metadata says so. -->
 	<SongRow
 		title="Queen – Bohemian Rhapsody (Official Video Remastered)"
 		artistCanonical="Queen"
@@ -539,16 +476,7 @@
 	<!-- No thumbnail, no duration, no views — a local library file. Must degrade, not break. -->
 	<SongRow title="A local file with no metadata at all" readiness="unacquired" onmake={() => {}} />
 
-	<!--
-		THE DRAWER GETS TRIGGERS, NOT A STACK OF FRAMES, and the reason is structural rather than lazy.
-		Every other entry on this page is an inline card, so five of them sit side by side and one
-		screenshot judges all five. A drawer is PORTALLED to the end of the body and fixed to the
-		viewport: two open at once occupy the same 82dvh, so a stack of them would show one frame with
-		four invisible siblings underneath. So the states are reachable one at a time, and the frame that
-		matters is captured by driving the real app.
-		(This is also the only surface here that cannot be judged without interacting — worth knowing
-		before trusting a gallery screenshot of it.)
-	-->
+	<!-- Triggers, not stacked frames: the drawer is portalled and fixed, so two open would share the same 82dvh. -->
 	<h2 class="section">NowPlayingDrawer</h2>
 	<div class="row-demo">
 		<Button
@@ -568,9 +496,7 @@
 			}}>Open · nothing playing</Button
 		>
 	</div>
-	<!-- `mediaId` is a real-shaped id so the "···" affordance renders and its href is inspectable. The
-	     affordance is gated on `hasSong && mediaId`, so the nothing-playing trigger correctly shows no
-	     door — which is the pair worth being able to see side by side. -->
+	<!-- A real-shaped `mediaId` so the door renders; it is gated on `hasSong && mediaId`, so the empty state has none. -->
 	<NowPlayingDrawer
 		bind:open={drawerOpen}
 		title={drawerHasSong ? "Livin' on a Prayer" : null}
@@ -591,22 +517,15 @@
 	/>
 
 	<h2 class="section">QueueRow</h2>
-	<!-- singerColor values here are FIXTURE data — each is a singer's chosen accent standing in for a
-	     person, not a theme token (some equal --accent2, but they mean "this singer's colour"). -->
+	<!-- singerColor is fixture DATA throughout: a person's accent, never a token, even where the hex matches one. -->
 	<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
 	<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
 	<QueueRow seq={4} title="Sweet Caroline" singerName="Liam" singerColor="#5cb8ff" />
 
 	<QueueRow seq={5} title="Wonderwall" singerName="You" singerColor={PINK} mine pending="add" />
-	<!-- an earlier change / the unconfirmed REORDER, which had no fixture because the state did not exist —
-	     a pending move was indistinguishable from a landed one. Paired directly below its `pending="add"`
-	     twin so the only difference under review is the WORD: a row already in the queue must say
-	     "moving…", never "adding…". Both share the warn surface, which is the state signal (never
-	     opacity). -->
+	<!-- Paired with its `pending="add"` twin so only the WORD differs: a queued row says "moving…", not "adding…". -->
 	<QueueRow seq={6} title="Wonderwall" singerName="You" singerColor={PINK} mine pending="move" />
-	<!-- issue an earlier change: a 32-char name (the profile-name maxlength) overflows the byline. The identity dot
-	     (.who i) must keep its 10px width — it is flex:0 0 auto, not a shrinkable flex item — so the
-	     singer's colour survives on the very row where the truncated name least disambiguates them. -->
+	<!-- A 32-char name overflows the byline; the identity dot must keep flex:0 0 auto or its colour is lost. -->
 	<QueueRow
 		seq={7}
 		title="Africa"
@@ -616,16 +535,7 @@
 		subtitle="after Liam"
 	/>
 
-	<!--
-		THE WAIT ON THE BYLINE — its own section, so its numbering restarts at 1 (the uniqueness guard is
-		scoped per section, and a row claiming "up next" has to be able to show a 1 in its bubble).
-
-		This is where the deleted `MyPositionCard`'s one unique line went: the card sat above the home queue
-		reading "1st · You're up next. · Roughly 3 minutes." over a row that already said the same ordinal and
-		the same badge, so only the wait was its own. Three rows, the three states `waitShort` produces — a
-		known wait beside the up-next badge, the sub-minute phrase, and (the one that matters) an UNKNOWN
-		wait, which renders no clause at all rather than a guess.
-	-->
+	<!-- Its own section so numbering restarts at 1. The three `waitShort` states, last an UNKNOWN wait: no clause. -->
 	<h2 class="section">QueueRow · the wait</h2>
 	<QueueRow seq={1} title="Forever Young" singerName="You" singerColor={PINK} mine up subtitle="up next · ~3 min" />
 	<QueueRow seq={2} title="Africa" singerName="You" singerColor={PINK} mine subtitle="<1 min" />
@@ -634,13 +544,7 @@
 	<h2 class="section">ProcessingCard</h2>
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
 
-	<!-- an earlier change: the pending ProcessingCard, which had no fixture at all — the only `pending` surface in
-	     the gallery was the QueueRow above, so the processing card's unconfirmed state (the one that
-	     actually renders during the primary ✨ Sing flow) had never been eyes-on anywhere. Paired
-	     immediately below its non-pending twin so the state signal is judged as a DIFFERENCE: the warn
-	     tint and border must be obvious, while `Making karaoke… / 68%`, the byline and the singer dot
-	     must stay exactly as legible as they are on the card above. Re-introducing `opacity` on
-	     `.pending` is visible here as all three washing out together. -->
+	<!-- Paired with its non-pending twin: the warn tint must be obvious, and `opacity` on `.pending` washes out. -->
 	<ProcessingCard
 		seq={2}
 		title="Bohemian Rhapsody"
@@ -651,9 +555,7 @@
 		pending="add"
 	/>
 
-	<!-- The bug this fixed: an early stage (downloading) at pct=100. Old code filled the bar solid and
-	     read 100%; overallProcessPct maps it to the downloading band top (20%), so this card is the one that
-	     makes the fix self-evident to a human eyes-on. -->
+	<!-- The same band-edge case on a card: downloading at 100% must read 20% overall, not a solid bar. -->
 	<ProcessingCard
 		seq={2}
 		title="Africa (downloading complete)"
@@ -663,13 +565,7 @@
 		pct={100}
 	/>
 
-	<!-- A processing song is still a queue entry, so it carries the SAME controls as a ready row. Paired
-	     with the QueueRow below deliberately: the two reorder/remove button groups must line up, so a
-	     song finishing its process doesn't visually reshuffle its own buttons. -->
-	<!-- `grip` is on this one deliberately: a processing card became DRAGGABLE on 2026-09-22 (see the prop's
-	     note), and the handle sits in the same place, at the same size, as a QueueRow's. Two kinds in one
-	     list is exactly the pair a gallery exists to put side by side — if this handle ever stops matching
-	     the row's, that is visible here and nowhere else. -->
+	<!-- A processing song is a queue entry: its controls and grip must line up with the QueueRow below. -->
 	<ProcessingCard
 		seq={3}
 		title="Toto - Africa (Lyrics)"
@@ -682,13 +578,7 @@
 		gripId="demo-proc"
 		onremove={() => {}}
 	/>
-	<!-- Coverage gap closed: the only long-name fixture used to be a QueueRow, so
-	     the narrower `.who` on a processing card WITH its queue controls was never eyes-on. This is the
-	     reachable-collapse case — actions cluster present, name at the 32-char profile maxlength. The
-	     name is a single UNBROKEN token (no space, so it cannot wrap): dropping the `.who i { flex: 0 0
-	     auto }` rule the surface protects then collapses the dot to 0px, the unmissable failure an earlier change
-	     was filed to keep on demo (a spaced name would only shrink it to ~5.45px, an easy-to-miss
-	     witness). ChristopherAlexanderMontgomeryJr is 32 chars, exactly the profile-name maxlength. -->
+	<!-- Reachable collapse: a 32-char UNBROKEN name. Drop the `.who i` flex:0 0 auto rule and the dot goes to 0px. -->
 	<ProcessingCard
 		seq={5}
 		title="Toto - Africa (Lyrics)"
@@ -711,22 +601,9 @@
 	/>
 
 	<h2 class="section">NowPlayingBand · every state</h2>
-	<!--
-		The band, which on the phone is DOCKED to the bottom of the viewport and (from phase 1b) lives in
-		the layout as app chrome. Here it renders inline, so its top border and shadow read as a seam
-		rather than as a lift off the page — that is the gallery's cost, not a defect.
-
-		Each state is captioned with what it proves. Two of them are the ones a screenshot is for:
-		`progress={null}` must draw an EMPTY ring rather than one pinned at zero (a 0% ring reads as a
-		stalled song), and the long-title case must ellipsise inside the band instead of sizing it, which
-		is only true while `.meta` keeps its `min-width: 0`.
-	-->
-	<!--
-		CONSTRAINED TO PHONE WIDTH ON PURPOSE. The gallery's column is desktop-wide, and the band is a
-		phone surface whose two controls are pinned right — demoed full-width they fall off the edge and
-		the long-title case stops proving anything, because a 900px band fits any title. 390px is the
-		reference device, so these five read as they will on the thing they are for.
-	-->
+	<!-- Inline here, so the band's top border reads as a seam rather than a lift — the gallery's cost, not a defect. -->
+	<!-- `progress={null}` must draw an EMPTY ring, and a long title must ellipsise while `.meta` keeps min-width:0. -->
+	<!-- Held to 390px: the band's controls are pinned right, so at gallery width a long title proves nothing. -->
 	<div style="display:grid;grid-template-columns:minmax(0,390px);gap:20px;">
 		<div>
 			<p class="caption">Playing, mid-song — the canonical state</p>
@@ -778,9 +655,7 @@
 	</div>
 
 	<h2 class="section">GuidingTrack · every state</h2>
-	<!-- Off (the shipped default), a faint guide, halfway, full sing-along, and unavailable because the
-	     song has no isolated vocals stem. There is no longer a pinned-override variant: the
-	     override-vs-room-default hint was removed, so that card rendered identically to `pct={40}`. -->
+	<!-- Off (the shipped default), faint, halfway, full sing-along, and unavailable for want of a vocals stem. -->
 	<div style="display:grid;gap:14px;">
 		<GuidingTrack pct={0} available={true} />
 		<GuidingTrack pct={15} available={true} />
@@ -790,12 +665,7 @@
 	</div>
 
 	<h2 class="section">RangeBar · every state</h2>
-	<!--
-		The vocal-range bar in each state it must survive. Rendered on a card so the token colours match
-		the sheet body it lives in on the phone. Each is captioned with what it proves, because several
-		of these states render NOTHING and a blank space is only correct if you know it is meant to be
-		blank.
-	-->
+	<!-- Captions are load-bearing: several of these states render NOTHING, and a blank needs saying so. -->
 	<div style="display:grid;gap:16px;">
 		<div>
 			<p class="caption">Full range + histogram (chorus lives high)</p>
@@ -824,11 +694,7 @@
 	</div>
 
 	<h2 class="section">ColourPicker · presets plus hue wheel</h2>
-	<!-- The identity picker. This gallery is its ONLY surface now — the ring took /join first and then
-	     the settings You tab — which is why the demo binds live state rather than posing: the
-	     preset-vs-rail agreement has nowhere else left to be exercised. Bound to live
-	     state so the preset-vs-slider agreement (picking a swatch moves the wheel, and vice versa) can
-	     actually be exercised here, not just posed. The bound value IS a singer colour = fixture data. -->
+	<!-- The picker's only remaining surface, so preset-vs-rail agreement has nowhere else to be exercised. -->
 	<div style="max-width:420px;">
 		<ColourPicker
 			bind:value={demoColour}
@@ -836,20 +702,6 @@
 			hint="How you'll spot yourself in the queue and on the TV."
 		/>
 	</div>
-
-	<!--
-		ProfileSheet's demo lived here. The sheet was retired when /settings split into You / Party /
-		Server scopes — its name field, this picker and the leave-the-room confirm are now the You tab, so
-		the surface to review is that route rather than a component in isolation.
-	-->
-
-	<!--
-		QueueSheet's and QueueSheetDrawer's demos lived here. Both were retired with the drawer surface
-		itself: the ratified phone design has no drawer, an earlier change built the inline-rows/hero/docked-band
-		home instead, and the gallery was the only place either component still rendered — so a fix landed
-		here reached no guest. The band contract they carried now lives on.cta-dock /.search-dock in
-		routes/+page.svelte, which publish --dock-h for the vaul port spike this also retires.
-	-->
 
 	<h2 class="section">LyricsOverlay (TV) · VERIFIED text</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
@@ -862,8 +714,7 @@
 		/>
 	</div>
 
-	<!-- The same doc, same perfect sweep, but the words are a GUESS. The pair is the point —
-	     without the caption these two are visually indistinguishable, which is exactly the problem. -->
+	<!-- Same doc, same sweep, but the words are a GUESS: without the caption these two frames are identical. -->
 	<h2 class="section">LyricsOverlay · AUTO-TRANSCRIBED</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
 		<LyricsOverlay
@@ -887,26 +738,8 @@
 		/>
 	</div>
 
-	<!--
-		A LINE-ONLY SONG ON A WORD-LEVEL DEPLOYMENT — the case the clamp exists for, and the one no card
-		here could show before.
-
-		The card above renders the same doc at the DEFAULT highlight, so it shows the floor looking
-		correct while never asking the resolver anything. This one takes the whole route: a stock
-		word-level deployment, a stock word-level room, and one song whose winning candidate is
-		line-only. What it paints is whatever `resolveLyricsPresentation` decides, so the frame is
-		evidence about the decision and not about this markup.
-
-		Pinned position, `playing={false}`: the current row's colour is the whole observable, and a
-		running clock makes two frames incomparable. Read the CURRENT (brightest) row —
-
-		  clamped correctly  → the accent colour, and no marker: line-level is what this song can honour
-		  clamp not firing   → plain white, no marker, no accent — visually identical to a room that
-		                        asked for NO highlight at all, which is the reported symptom. The word
-		                        treatment cannot draw itself here: the overlay only emits word spans for
-		                        a line that has words, so `hl-word` on an empty `words[]` silently
-		                        selects the plain-text branch and loses the one cue the room asked for.
-	-->
+	<!-- The case the clamp exists for: a stock word-level room, and a song whose winning candidate is line-only. -->
+	<!-- Read the CURRENT row — accent with no marker means the clamp fired; plain white means it did not. -->
 	<h2 class="section">
 		LyricsOverlay · line-only song, word-level deployment · resolved: {lineOnlyResolved.highlight} / marker
 		{lineOnlyResolved.ball}{lineOnlyResolved.clamped ? ' (clamped)' : ''}
@@ -928,23 +761,8 @@
 		/>
 	</div>
 
-	<!--
-		Every room-selectable treatment, on one doc, at ONE PINNED position. Side by side is the only way
-		to judge these: the difference between a bouncing and a steady dot is motion, and between word and
-		line highlighting is what a patchy artifact does to each.
-
-		`playing={false}` and a fixed position are load-bearing, not laziness. The demo clock above loops
-		0-18s, so with it running each card renders a different moment and the variants are not comparable
-		— and a screenshot lands wherever the rAF happened to be. The frame is pinned by the CODE, not by
-		a default defined elsewhere: positionSec=0.8 and leadSec=0.3 are both passed here, so the
-		highlight sits at 1.1s where "the" is mid-word and one frame shows all three word states at once
-		("Is"/"this" sung, "the" current, "real"/"life" still ahead) regardless of what LYRICS_LEAD_SEC
-		defaults to.
-
-		These cards are TALLER than the ones above because the reel is 9.5em of a clamp()-scaled font —
-		around 470px here. At 280px the card clipped it and hid the centred current row, which is the row
-		these variants exist to show.
-	-->
+	<!-- `playing={false}` plus a pinned position is load-bearing: the demo clock loops, so frames would differ. -->
+	<!-- positionSec and leadSec are BOTH passed so 1.1s shows all three word states; 500px fits the reel's 9.5em. -->
 	{#each LYRICS_BALL_STYLES as s (s.id)}
 		<h2 class="section">LyricsOverlay · marker: {s.label}</h2>
 		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:{stageBg};">
@@ -977,28 +795,12 @@
 		</div>
 	{/each}
 
-	<!--
-		The TYPE settings. These cards are chosen for what a STILL frame can actually prove: a size
-		extreme, an asymmetric row count, a case transform and a font swap all show up in one shot,
-		whereas the marker variants needed motion. Each holds every other knob at its default so one
-		card demonstrates one thing.
-
-		Row-count cards carry their own height, because the reel's height is now DERIVED from the count —
-		a fixed 500px box would clip the 7-row case and hide exactly what it is meant to show.
-
-		The demo doc has SIX lines, so the largest reels reserve rows the song cannot fill: at 4 lines
-		after, a current line near the end shows empty space below rather than four lyrics. That is the
-		doc's limit, not the reel's — the exact row counts and offsets are asserted numerically against
-		the DOM rather than read off these frames.
-	-->
+	<!-- One knob per card, every other at its default. Row-count cards carry their OWN height, derived from it. -->
+	<!-- The doc has six lines, so the largest reels reserve rows it cannot fill; counts are asserted on the DOM. -->
 	{#each [{ what: 'size 100% (the neutral legibility floor)', props: { scalePct: 100 }, h: 500, short: false }, { what: 'size 300% (the ceiling)', props: { scalePct: 300 }, h: 900, short: false }, { what: 'case ALL CAPS — note the extra wrapping', props: { textCase: 'upper' as const }, h: 500, short: false }, { what: 'case all lowercase', props: { textCase: 'lower' as const }, h: 500, short: false }, { what: 'font serif', props: { font: 'serif' as const }, h: 500, short: false }, { what: 'font monospace — fewest words per row', props: { font: 'mono' as const }, h: 500, short: false }, { what: 'rows 0 before / 2 after — no history', props: { linesBefore: 0, linesAfter: 2 }, h: 460, short: true }, { what: 'rows 2 before / 0 after — nothing revealed ahead', props: { linesBefore: 2, linesAfter: 0 }, h: 460, short: true }, { what: 'rows 2 before / 2 after — the default, for comparison', props: { linesBefore: 2, linesAfter: 2 }, h: 700, short: true }, { what: 'rows 1 before / 4 after — asymmetric, current line sits high', props: { linesBefore: 1, linesAfter: 4 }, h: 820, short: true }, { what: 'rows 3 before / 4 after — the maximum reel', props: { linesBefore: 3, linesAfter: 4 }, h: 1080, short: true }] as c (c.what)}
 		<h2 class="section">LyricsOverlay · {c.what}</h2>
 		<div style="position:relative;height:{c.h}px;border-radius:16px;overflow:hidden;background:{stageBg};">
-			<!--
-				9.5s puts the current line at index 3 of 6, so there are three lines BEFORE it and two
-				after. Pinning at 0.8s (as the marker cards do) sits on line 0, where "2 lines before" has
-				nothing to show and the card proves nothing — which is exactly how it read first time.
-			-->
+			<!-- 9.5s puts the current line at index 3 of 6, so rows exist before AND after it; 0.8s has none before. -->
 			<LyricsOverlay
 				doc={c.short ? demoShort : demoLyrics}
 				positionSec={9.5}
@@ -1012,26 +814,8 @@
 		</div>
 	{/each}
 
-	<!--
-WHOSE COLOUR THE HIGHLIGHT IS.
-
-		Four cards, and the pairing is the whole point: the first is the room accent (what every song
-		painted before this feature), the second is a singer's own colour on the same doc at the same
-		pinned position, so the ONLY difference between those two frames is the active word's hue.
-
-		Pinned at 0.8s with `playing={false}` for the same reason the marker cards are: the active word's
-		colour is the entire observable, and a running clock makes two frames incomparable.
-
-		The last two cards are the case the owner's ruling turns on. an earlier change removed the pinned stage tier,
-		so a room may now paint the field ANY colour — including one that lands on top of the singer's.
-		Card 3 puts a mint singer on a mid-tone teal stage (a realistic collision); card 4 is the
-		pathological floor, the stage set to the singer's colour EXACTLY, so the fill has 1:1 contrast
-		against the field behind it and the ONLY thing separating the glyphs from the background is the
-		reel's own `-webkit-text-stroke`. If the words are still readable in card 4, the ruling
-		("keep the hue, rely on the stroke") holds for every less-extreme case by construction. No second
-		stroke is added for these — `lyrics-stroke.test.ts` asserts there is exactly one, and one is what
-		this leans on.
-	-->
+	<!-- Four frames at one position, so the active word's hue is the only difference between them. -->
+	<!-- Cards 3 and 4 are the stage-colour collision: only `-webkit-text-stroke` holds card 4, and there is one. -->
 	{#each [{ what: 'highlight colour: the ROOM ACCENT (nobody up — the before frame)', singer: null, bg: stageBg }, { what: 'highlight colour: the SINGER (violet) — same doc, same position', singer: VIOLET, bg: stageBg }, { what: 'highlight colour: mint singer on a mid-tone TEAL stage — low contrast, held by the stroke', singer: MINT, bg: '#1f6f63' }, { what: 'highlight colour: mint singer on a stage of EXACTLY that mint — 1:1 fill contrast, stroke only', singer: MINT, bg: MINT }] as c (c.what)}
 		<h2 class="section">LyricsOverlay · {c.what}</h2>
 		<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{c.bg};">
@@ -1048,16 +832,7 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 		</div>
 	{/each}
 
-	<!--
-		DUET PARTS IN TWO COLOURS — the visible half of the duet feature. The worker's
-		diarization writes an abstract `part` letter on each line of a confident duet; the reel
-		maps the parts onto two DISTINCT legible SINGER_COLORS (the same palette + `isLegibleSingerColor`
-		floor the singer colour above uses — a hard-coded second colour is rejected because it would skip
-		that floor). The two cards are the SAME duet doc at two positions: the first frame's current line
-		is part A, the second's is part B, so the two colours are visible side by side. Frames pinned
-		(playing={false}) so the two are comparable. An undiarized song has no `part` and renders as the
-		VERIFIED card far above — nothing here changes that path.
-	-->
+	<!-- The duet doc at two positions. Both part colours come from SINGER_COLORS through the legibility floor. -->
 	{#each [{ what: 'duet part A sings (line 0) — first part colour', pos: 0.8 }, { what: 'duet part B sings (line 1) — second, distinct part colour', pos: 3.3 }] as c (c.what)}
 		<h2 class="section">LyricsOverlay · {c.what}</h2>
 		<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
@@ -1074,8 +849,7 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 	{/each}
 
 	<h2 class="section">TV room states · lobby + corner join card</h2>
-	<!-- The three TV surfaces, scaled down. The point of the pair is that "nobody here" and "people
-	     here, nothing queued" are now DIFFERENT screens — they used to be the same one. -->
+	<!-- "Nobody here" and "people here, nothing queued" are different screens; this is the pair. -->
 	<div style="position:relative;height:300px;border-radius:16px;overflow:hidden;background:var(--bg);">
 		<TvLobby
 			qrDataUrl={demoQr}
@@ -1087,12 +861,9 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 			]}
 			overflow={2}
 		/>
-		<!-- roster colours above are FIXTURE data — each is a singer's chosen accent, not a theme token
-		     (violet/pink happen to equal --accent/--accent2 but here they stand in for a person). -->
 	</div>
 	<div style="position:relative;height:300px;margin-top:10px;border-radius:16px;overflow:hidden;background:{stageBg};">
-		<!-- Faint decorative placeholder standing in for the paused music video behind the join badge;
-		     a low-opacity white with no matching semantic token, so left as a literal rgba. -->
+		<!-- Stands in for the paused music video; no token matches a faint decorative wash, so the rgba is literal. -->
 		<span
 			style="position:absolute;inset:0;display:grid;place-items:center;font-size:.8rem;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.22);"
 			>music video</span
@@ -1100,11 +871,7 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 		<JoinBadge qrDataUrl={demoQr} joinUrl="encore.local/join" placement="corner" onlineCount={4} />
 	</div>
 
-	<!-- TvProgress · every room-selectable placement. A settings picker offers card / corner / edge /
-	     off, so each is rendered here on a stage backdrop. 'card' renders inline (the caller places it
-	     inside the now-singing card), so it gets a small dark card to sit in; the other two position
-	     themselves absolutely against the stage. 'off' renders nothing on purpose — shown so the picker
-	     option that means "no TV progress" is not a blank the gallery silently omits. -->
+	<!-- Every room-selectable placement, 'off' included, so the option is not a blank the gallery omits. -->
 	<h2 class="section">TvProgress (TV) · song progress placements</h2>
 	<div style="display:grid;gap:12px;">
 		{#each TV_PROGRESS_STYLES as p (p.id)}
@@ -1115,9 +882,7 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 					{p.label}
 				</div>
 				{#if p.id === 'card'}
-					<!-- Inline placement: a stand-in for the now-singing card. This surface CARRIES TEXT
-					     (the time readouts), so it uses --accent + --on-accent, never --grad
-					     (decoration only, no text label on any stop). -->
+					<!-- This surface carries TEXT, so --accent with --on-accent, never --grad: no stop is contrast-checked. -->
 					<div style="padding:14px 18px;border-radius:16px;background:var(--accent);color:var(--on-accent);">
 						<TvProgress style={p.id} elapsedSec={82} durationSec={358} />
 					</div>
@@ -1130,10 +895,7 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 		{/each}
 	</div>
 
-	<!-- VisualizerStage · all four variants. Absent from the gallery until now, which is exactly why the
-	     "green tests, dead motion" bug survived: the renderers were unit-tested but the loop that drives
-	     them was never mounted anywhere a human could watch it move. Each tile mounts the REAL component
-	     (a live ~30fps rAF loop) so a still tile here is a real regression, not a fixture artefact. -->
+	<!-- Each tile mounts the REAL component and its rAF loop: a still tile here is a regression, not a fixture. -->
 	<h2 class="section">VisualizerStage (TV) · audio-paced backgrounds</h2>
 	<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
 		{#each TV_VISUALIZERS as v (v.id)}
@@ -1152,13 +914,6 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 </main>
 
 <style>
-	/*
-	 * ONE header rule for the whole gallery, so ~30 hand-inlined <h2> styles cannot drift apart. Kept
-	 * LOCAL on purpose: a shared cross-file header primitive is scheduled separately, and this only
-	 * needs to make the gallery's own headers agree with each other.
-	 */
-	/* The drawer's two triggers, side by side. A portalled overlay cannot be stacked like the inline
-	   cards above it, so the states are reachable one at a time — see the note beside them. */
 	.row-demo {
 		display: flex;
 		flex-wrap: wrap;
@@ -1172,11 +927,6 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 		text-transform: uppercase;
 		color: var(--ink-dim);
 	}
-	/*
-	 * The per-demo caption. Same reason as.section: the RangeBar block arrived with six identical
-	 * inline copies of this, and a state that deliberately renders NOTHING is only readable as
-	 * intentional if its caption says so -- so the captions have to stay legible and consistent.
-	 */
 	.caption {
 		margin: 0 0 var(--space-2xs);
 		font-size: 0.7rem;

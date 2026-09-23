@@ -18,7 +18,6 @@ from src.separation import audiosep  # noqa: E402
 from tests.conftest import drain as _drain  # noqa: E402
 
 
-# ── pure helpers ──────────────────────────────────────────────────────────────────
 def test_every_whitelist_token_resolves_to_a_checkpoint_filename():
     """Each token must map to a concrete `--model_filename` audio-separator can resolve. A token with no
     mapping would reach the CLI as the token string and fail to download."""
@@ -93,7 +92,6 @@ def test_audiosep_argv_includes_model_file_dir_when_set():
     assert argv[argv.index("--model_file_dir") + 1] == "/models"
 
 
-# ── engine routing ─────────────────────────────────────────────────────────────────
 def test_engine_for_builds_a_real_audiosep_engine():
     """The parity contract for the new token: `engine_for("audiosep")` must build a real engine
     (capabilities.py advertises `stems:audiosep` only when the dep is present, and the core routes a
@@ -115,9 +113,9 @@ def test_engine_selection_reads_audiosep_from_the_job_param():
 
 
 def test_a_demucs_default_cannot_reach_the_audiosep_engine():
-    """Issue an earlier change class, applied to the new engine. `plans.stems_runner` forwards this worker's
-    `demucs_model` into `engine_for` on every process. The audiosep branch must ignore it and keep its OWN
-    default (`instrumental_becruily`), never resolve to a demucs checkpoint."""
+    """`plans.stems_runner` forwards this worker's `demucs_model` into `engine_for` on every process.
+    The audiosep branch must ignore it and keep its OWN default (`instrumental_becruily`), never
+    resolve to a demucs checkpoint."""
     from src.separation.audiosep import DEFAULT_AUDIOSEP_MODEL, resolve_audiosep_checkpoint
     from src.separation.engines import engine_for
 
@@ -126,7 +124,6 @@ def test_a_demucs_default_cannot_reach_the_audiosep_engine():
     assert eng.resolve_model({}) == resolve_audiosep_checkpoint({}, DEFAULT_AUDIOSEP_MODEL)
 
 
-# ── end-to-end audiosep process (fake audio-separator runner) ──────────────────────────
 import os as _os  # noqa: E402
 
 from src import plans  # noqa: E402

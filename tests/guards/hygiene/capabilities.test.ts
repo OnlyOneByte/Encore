@@ -1,5 +1,5 @@
-// The capability gate. Its value today is not that it refuses much — every joined singer is a host —
-// but that the decision lives in ONE function, so narrowing it later is an edit there and nowhere else.
+// The capability gate. Every joined singer is a host today; the value is that the decision lives in ONE
+// function, so narrowing it later is an edit there and nowhere else.
 import { test, expect } from 'bun:test';
 import { can, type Capability } from '$lib/server/capabilities';
 
@@ -16,8 +16,7 @@ test('a joined singer holds every capability today', () => {
 });
 
 test('a socket that never joined holds none', () => {
-	// This is the real change: player:command had NO gate, so any socket — a TV, a spectator, a script
-	// on the LAN — could pause, skip or seek the room's music.
+	// The real change: player:command had NO gate — any socket on the LAN could pause, skip or seek the music.
 	for (const cap of ALL) expect(can({ singerId: undefined }, cap)).toBe(false);
 });
 
@@ -30,10 +29,8 @@ test('a missing or empty actor is refused rather than treated as trusted', () =>
 	}
 });
 
-// --- The owner CONFIRMED all five authority rulings on 2026-09-09, every one "any joined
-// singer is a host". These assertions pin each ruling to the capability that enforces it, so a flip of
-// can() (narrowing any capability to a host role) reds the test naming that ruling. Published, non-source
-// statement of record: the owner rulings, CONFIRMED 2026-09-09.
+// The five authority rulings are each "any joined singer is a host". Pinning each to the capability that
+// enforces it means a flip of can() — narrowing any capability to a host role — reds the test naming it.
 const anySinger = { singerId: 'guest-1' };
 
 test('Q1 — skip stays open to any joined singer (player:control)', () => {
@@ -53,8 +50,7 @@ test('Q3 — deployment-scoped settings stay open to any joined singer (settings
 });
 
 test('Q4 — cross-singer reorder stays open to everyone (queue:reorder-any)', () => {
-	// Pinning removal + last-write-wins mechanics belong to the cross-singer reorder change; the policy
-	// side is that this resolves to "anyone".
+	// Pinning removal + last-write-wins mechanics belongs elsewhere; the policy side resolves to "anyone".
 	expect(can(anySinger, 'queue:reorder-any')).toBe(true);
 });
 
@@ -62,18 +58,5 @@ test('— queue:remove-any (unchanged by the rulings) stays open to any joined s
 	expect(can(anySinger, 'queue:remove-any')).toBe(true);
 });
 
-// Q5 (no per-singer queue-depth cap) is a validateCommand concern, not a capability, so it has no can()
-// assertion here — its guard lives in the queue add-arm tests. This comment records why it is absent.
-
-/*
- * THE DOC-PARITY ARM IS RETIRED (2026-09-22), because its subject was deleted.
- *
- * It read `docs/ux/05-concurrency.md`'s "Owner rulings" section and asserted that every member of the
- * `Capability` union appeared there, and that all five rulings were still the status-quo option A — so the
- * published policy could not silently drift from `can`. The docs tree was cleaned up and that file went
- * with it, and a guard whose subject does not exist asserts nothing.
- *
- * WHAT STILL HOLDS THE POLICY. The arms above are the policy now: each names its ruling and asserts the
- * `can` result, so flipping any of them to a gated answer still reds here. What is lost is the prose
- * mirror, not the behaviour — and a mirror with nothing on the other side of it was the weaker half.
- */
+// Q5 (no per-singer queue-depth cap) is a validateCommand concern, not a capability; its guard is in the
+// queue add-arm tests.

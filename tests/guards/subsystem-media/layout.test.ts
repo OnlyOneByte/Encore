@@ -1,6 +1,5 @@
-// The storage layout: class-aware key resolution, the absolute-path normalizer, and the
-// one-shot migration off the legacy layout. Uses a real temp filesystem, because the whole point of
-// the migration is that it moves actual bytes.
+// The storage layout: class-aware key resolution, the absolute-path normalizer, and the one-shot migration
+// off the legacy layout — on a real temp filesystem, because the migration moves actual bytes.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, chmodSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,8 +16,7 @@ import {
 } from '$lib/server/media/paths';
 import { planMigration, applyMigration, ensureLayout } from '$lib/server/media/migrate-layout';
 
-// What `migrateStorageLayout` itself checks -- asserted the same way here, so the test cannot pass
-// against a predicate production does not use.
+// The predicate `migrateStorageLayout` itself uses, so the test cannot pass against a different one.
 const nothingLeftToDo = (root: string) => {
 	const plan = planMigration(root);
 	return plan.moves.length === 0 && plan.prunes.length === 0;
@@ -47,11 +45,10 @@ describe('keys', () => {
 	it('every artifact class has a stable relative key', () => {
 		expect(audioKey('m1')).toBe('audio/m1.wav');
 		expect(audioKey('m1', 'm4a')).toBe('audio/m1.m4a');
-		// the two stems get different formats: lossless where it is heard, lossy where it is not
+		// Both stems are lossless FLAC: one codec, one container, a sample-exact common start.
 		expect(instrumentalKey('m1')).toBe('derived/stems/m1-instrumental.flac');
-		// both stems are lossless FLAC now: one codec, one container, a sample-exact common start
 		expect(vocalsKey('m1')).toBe('derived/stems/m1-vocals.flac');
-		// a pre-policy song keeps its own extension — the ref is stored per media, not re-derived
+		// A pre-policy song keeps its own extension — the ref is stored per media, not re-derived.
 		expect(instrumentalKey('m1', 'wav')).toBe('derived/stems/m1-instrumental.wav');
 		expect(lyricsKey('m1')).toBe('derived/lyrics/m1.json');
 		expect(metaKey('m1')).toBe('meta/m1.json');
@@ -67,17 +64,22 @@ describe('keys', () => {
 
 describe('toRelativeKey — the absolute-path bug', () => {
 	it('normalizes a worker-reported absolute path back to a servable ref', () => {
-		// Workers hand back os.path.join(media_dir, key). safeMediaPath rejects anything starting
-		// with "/", so storing the raw uri meant lyricsRef could never be fetched.
+		// Workers hand back os.path.join(media_dir, key), and safeMediaPath rejects anything starting with
+		// "/", so storing the raw uri means lyricsRef can never be fetched.
 		const abs = join(root, 'derived', 'lyrics', 'm1.json');
 		expect(toRelativeKey(abs)).toBe('derived/lyrics/m1.json');
 	});
 
-	it('passes a relative ref through untouched', () => {});
+	it('passes a relative ref through untouched', () => {
+		// The body was empty, so this named an invariant it never checked. A ref that is ALREADY relative must
+		// survive verbatim — it is what the store is keyed on, so rewriting it would 404 a file that exists. A
+		// leading-slash ref is not this case: it is absolute, so it takes the class-root branch above.
+		expect(toRelativeKey('derived/lyrics/m1.json')).toBe('derived/lyrics/m1.json');
+		expect(toRelativeKey('audio/m1.wav')).toBe('audio/m1.wav');
+	});
 
 	it('returns null for a path outside every storage class', () => {
-		// a worker writing somewhere we do not serve is a config error, not something to persist
-		expect(toRelativeKey('/etc/passwd')).toBeNull();
+		expect(toRelativeKey('/etc/passwd')).toBeNull(); // a path we do not serve is a config error
 		expect(toRelativeKey('')).toBeNull();
 		expect(toRelativeKey(undefined)).toBeNull();
 	});
@@ -95,7 +97,7 @@ describe('safeMediaPath is class-aware and still traversal-proof', () => {
 		expect(safeMediaPath('derived/stems/m1-instrumental.m4a')).toBe(
 			join(root, 'derived', 'stems', 'm1-instrumental.m4a')
 		);
-		// a legacy .wav ref from before the audio policy must still resolve
+		// A legacy .wav ref from before the audio policy must still resolve.
 		expect(safeMediaPath('derived/stems/m1-instrumental.wav')).toBe(
 			join(root, 'derived', 'stems', 'm1-instrumental.wav')
 		);
@@ -118,7 +120,7 @@ describe('safeMediaPath is class-aware and still traversal-proof', () => {
 	});
 
 	it('never serves the sidecar records or the thumb cache', () => {
-		// meta/ is the library's source of truth and carries retained raw metadata — not streamable.
+		// meta/ is the library's source of truth and carries retained raw metadata; it is not streamable.
 		expect(safeMediaPath('meta/m1.json')).toBeNull();
 		expect(safeMediaPath('derived/thumbs/abc.jpg')).toBeNull();
 		expect(safeMediaPath('.thumbs/abc.jpg')).toBeNull();
@@ -140,10 +142,9 @@ describe('migration off the legacy layout', () => {
 	it('PROMOTES the raw audio out of scratch instead of deleting it with the rest', () => {
 		seedLegacy();
 		applyMigration(planMigration(root));
-		// the one unrecoverable asset survives, as a first-class file
+		// The one unrecoverable class survives as a first-class file; the scratch dir itself goes.
 		expect(readFileSync(join(root, 'audio', 'm1.wav'), 'utf8')).toBe('RAW-AUDIO-M1');
 		expect(readFileSync(join(root, 'audio', 'm2.wav'), 'utf8')).toBe('RAW-AUDIO-M2');
-		// and the scratch dir itself is gone
 		expect(existsSync(join(root, 'stems', '_work'))).toBe(false);
 	});
 
@@ -163,7 +164,7 @@ describe('migration off the legacy layout', () => {
 		});
 		expect(rewrites.get('m1')).toMatchObject({
 			audioRef: 'audio/m1.wav',
-			// a migrated legacy stem keeps its .wav name — the migration moves bytes, it does not transcode
+			// a migrated legacy stem keeps its .wav name: the migration moves bytes, it does not transcode
 			instrumentalRef: 'derived/stems/m1-instrumental.wav',
 			lyricsRef: 'derived/lyrics/m1.json'
 		});
@@ -177,8 +178,7 @@ describe('migration off the legacy layout', () => {
 
 		const second = applyMigration(planMigration(root));
 		expect(second.moved).toBe(0);
-		// the migrated files are untouched
-		expect(readFileSync(join(root, 'audio', 'm1.wav'), 'utf8')).toBe('RAW-AUDIO-M1');
+		expect(readFileSync(join(root, 'audio', 'm1.wav'), 'utf8')).toBe('RAW-AUDIO-M1'); // untouched
 	});
 
 	it('is a no-op on a fresh volume', () => {
@@ -196,14 +196,13 @@ describe('migration off the legacy layout', () => {
 
 	it('refuses to prune a legacy dir that still holds files it did not understand', () => {
 		const plan = planMigration(root);
-		// drop the move so the file stays put, then confirm the dir is NOT deleted with data in it
-		const res = applyMigration({ ...plan, moves: [] });
+		const res = applyMigration({ ...plan, moves: [] }); // no move, so the file stays put
 		expect(res.pruned).toBe(0);
 	});
 
 	it('ONE unmovable file does not abandon the rest of the migration', () => {
-		// The real failure mode: a scratch dir written by the worker CONTAINER is owned by its uid, so
-		// renaming a file out of it is EACCES. The first live run of this crashed server startup.
+		// A scratch dir written by the worker CONTAINER is owned by its uid, so renaming a file out of it is
+		// EACCES — which crashed server startup on the first live run.
 		seedLegacy();
 		const plan = planMigration(root);
 		const bogus = join(root, 'stems', '_work', 'ghost', 'source.wav');
@@ -212,15 +211,14 @@ describe('migration off the legacy layout', () => {
 			moves: [[bogus, join(root, 'audio', 'ghost.wav')] as [string, string], ...plan.moves]
 		};
 		const res = applyMigration(withBadEntry);
-		// the missing one is skipped, everything real still moved
-		expect(res.skipped).toBeGreaterThan(0);
+		expect(res.skipped).toBeGreaterThan(0); // the missing one is skipped, everything real still moved
 		expect(readFileSync(join(root, 'audio', 'm1.wav'), 'utf8')).toBe('RAW-AUDIO-M1');
 		expect(readFileSync(join(root, 'derived', 'stems', 'm1-instrumental.wav'), 'utf8')).toBe('INST-M1');
 	});
 
 	it('preserves the bytes by COPYING when the source cannot be removed', () => {
-		// A read-only source directory: rename and unlink both fail, copy still works. Losing the only
-		// unrecoverable class to a permission bit would be the worse outcome, so a copy counts as done.
+		// A read-only source dir: rename and unlink both fail but copy works, and losing the only
+		// unrecoverable class to a permission bit is worse, so a copy counts as done.
 		seedLegacy();
 		const dir = join(root, 'stems', '_work', 'm1');
 		chmodSync(dir, 0o500); // r-x: can read/traverse, cannot unlink
@@ -243,9 +241,9 @@ describe('migration off the legacy layout', () => {
 	});
 
 	it('worker-written dirs are SHARED-WRITE, meta is not', () => {
-		// The core and the worker are different uids on one mounted volume. A 0755 dir created by the
-		// core is unwritable by the worker -- which is how the layout migration first broke every process with
-		// "Permission denied: /app/media/work/<jobId>". meta/ is core-only and stays restrictive.
+		// Core and worker are different uids on one mounted volume, so a 0755 dir created by the core is
+		// unwritable by the worker and every process dies with "Permission denied: /app/media/work/<jobId>".
+		// meta/ is core-only and stays restrictive.
 		ensureLayout();
 		const mode = (p: string) => statSync(p).mode & 0o777;
 		for (const d of ['audio', 'derived/stems', 'derived/lyrics', 'work']) {

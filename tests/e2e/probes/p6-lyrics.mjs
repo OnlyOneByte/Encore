@@ -1,25 +1,13 @@
 /*
- * P6 — WORD-TIMED LYRICS OVERLAY probe.
+ * P6 — WORD-TIMED LYRICS OVERLAY: does the reel appear without a reload, does the highlight track the
+ * audio clock, do the reel and ball move, do live room settings change what is on screen, and does an
+ * unlyriced song render nothing broken.
  *
- * The overlay's whole job is to show the singer which word to sing NOW. Everything else
- * — the ball, the reel, the amber tint, the presentation pickers — is in service of that
- * one thing. So this probe measures whether the surface actually delivers on it: does
- * the reel appear without a reload, does the highlight track the audio clock, does the
- * reel scroll and the ball move, does the room's live settings actually change what
- * is on screen, does an unlyriced song render nothing broken.
+ * THE FIXTURE CAN LOOK LIKE THE BUG. Every timing signal comes from the artifact the fake worker
+ * writes, so schema agreement is checked first and the time-varying findings are re-tested against an
+ * artifact the probe writes itself. docs/E2E.md#exit-codes-and-what-ran-means
  *
- * Distinguishing real defects from environment limits matters here more than usual: the
- * fake worker in e2e/fake-stems-worker.mjs writes its own lyrics artifact, and that
- * fixture is where every timing signal in this probe comes from. If the fixture is
- * shaped wrong the overlay LOOKS broken while the overlay is actually fine — and this
- * probe therefore also verifies the fixture-vs-parser schema agreement, and re-tests the
- * time-varying findings against a corrected fixture written by the probe itself.
- *
- *   EPORT=5226 MEDIA_DIR=$KIROCREW_SCRATCH/e2e-5226/media \
- *     bun tests/e2e/probes/p6-lyrics.mjs
- *
- * Exit 0 — every finding passed; 1 — one or more real defects; 2 — the environment could
- * not host the test. Never conflate 2 with 0 (HARNESS.md).
+ *   EPORT=5226 MEDIA_DIR=$KIROCREW_SCRATCH/e2e-5226/media bun tests/e2e/probes/p6-lyrics.mjs
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -32,31 +20,18 @@ import { atRepo } from '../lib/repo-root.mjs';
 import { openJoin } from '../lib/join.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * earlier changes pattern). Browser/Page are derived from driver.mjs's own return types
- * so they cannot drift from the driver. page.evaluate()/fetch().json() come back Promise<any>, so
- * DOM/API-shaped results are cast at the call site via the domain typedefs below.
+ * `page.evaluate()` and `fetch().json()` are Promise<any>, so results are cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
- *
- * One finding row: a pass/fail check with its id, severity and evidence.
  * @typedef {{ id: string, sev: Severity, ok: boolean, name: string, detail: string }} Finding
- *
- * One search-result / ready row from /api/search (only the fields this probe reads).
  * @typedef {{ id: string, title: string, source: string, lyricsRef?: string }} SongRow
- *
- * The /api/search response body.
  * @typedef {{ results: SongRow[], ready: SongRow[] }} SearchBody
- *
- * One tracking sample read out of the TV overlay.
  * @typedef {{
  *   wall: number, currentTime: number, active: string | null, current: string | null,
  *   reelTransform: string
  * }} TrackSample
- *
- * The expected-word entry the fake-worker timing table yields for a given time.
  * @typedef {{ word: string, start: number, end: number } | null} ExpectedWord
  */
 
@@ -64,8 +39,7 @@ const PORT = process.env.EPORT ?? '5226';
 const base = `http://127.0.0.1:${PORT}`;
 const MEDIA_DIR = resolve(process.env.MEDIA_DIR ?? './media');
 
-/** Findings, printed at the end grouped by severity.
- * @type {Finding[]} */
+/** @type {Finding[]} */
 const findings = [];
 /**
  * @param {string} id
@@ -92,11 +66,7 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 }
 console.log(`\nP6 lyrics probe — server ${base}, media ${MEDIA_DIR}\n`);
 
-// ── Sanity: is the fake-worker fixture even something the client parser can read? ─────
-// The fake worker's align payload writes {startSec,endSec,text} on words/lines, but the
-// TV overlay's parseLyricsDoc reads {start,end,word}. If the fixture is wrong every
-// downstream timing check is meaningless, so surface that BEFORE processing a song and
-// looking at moving pixels.
+// SCHEMA SANITY FIRST: the worker writes {startSec,endSec,text} where the parser reads {start,end,word}.
 const parserCheck = await (async () => {
 	const raw = {
 		lines: [{ start: 0, end: 1, text: 'x', words: [{ word: 'x', start: 0, end: 1 }] }]
@@ -116,7 +86,6 @@ const parserCheck = await (async () => {
 })();
 const fixtureShapeMatchesParser = !parserCheck.badWordsDropped;
 
-// ── Process a song, using the running fake worker ─────────────────────────────
 const jar = join(process.env.KIROCREW_SCRATCH ?? '/tmp', `p6-jar-${process.pid}`);
 await fetch(`${base}/api/join`, {
 	method: 'POST',
@@ -128,8 +97,8 @@ await fetch(`${base}/api/join`, {
 });
 const cookieHeader = existsSync(jar) ? readFileSync(jar, 'utf8') : '';
 
-/** Process a fresh song by title-fragment, returning its media id when the align artifact lands. */
 /**
+ * Process a fresh song by title-fragment, resolving when the align artifact lands.
  * @param {string} query
  * @param {{ waitForAlign?: boolean, timeoutMs?: number }} [opts]
  * @returns {Promise<{ id: string, row: SongRow }>}
@@ -168,10 +137,8 @@ try {
 }
 console.log(`processed: "${processed.row.title}" id=${processed.id} lyricsRef=${processed.row.lyricsRef}\n`);
 
-// ── Boot Chromium once, drive two contexts (phone + TV) ─────────────────────
-/** Kick the media element once — headless refuses unmuted autoplay without either a gesture
- * or the CLI flag above, and this is the same one-shot the capture flow uses. */
-/** @param {Page} tv */
+/** One-shot kick: headless refuses unmuted autoplay without a gesture. docs/E2E.md#autoplay
+ * @param {Page} tv */
 async function kickPlayback(tv) {
 	return tv.evaluate(`(async () => {
 		const out = [];
@@ -206,8 +173,8 @@ async function ensurePlaying(tv, phone, attempts = 4) {
 	}
 	return { ok: false, report: lastReport };
 }
-/** Seek the current media back to 0 by clicking restart on the phone; kick again if needed. */
-/** @param {Page} tv @param {Page} phone */
+/** Seek back to 0 by clicking restart on the phone; kick again if needed.
+ * @param {Page} tv @param {Page} phone */
 async function seekToStart(tv, phone) {
 	try {
 		await phone.clickByLabel(SEL.restart.name);
@@ -222,7 +189,6 @@ let browser;
 try {
 	browser = await connect({ args: ['--autoplay-policy=no-user-gesture-required'] });
 
-	// ── phone joins and queues the processed song ────────────────────────────
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
 	await openJoin(phone, base);
@@ -235,24 +201,17 @@ try {
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const hasAdd = await phone.count(SEL.addTurn);
 	await phone.click(hasAdd > 0 ? SEL.addTurn : SEL.sing);
-	// Back to the queue before counting rows: the rotation is NOT rendered in the results view, so a
-	// `.qrow` count taken here reads an empty list and times out. `returnHomeFromBrowse` clears the
-	// search, which is what brings the queue back — its own docstring names this exact mistake.
+	// Back to the queue BEFORE counting rows: the rotation is not rendered in the results view.
 	await returnHomeFromBrowse(phone);
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
-	// ── TV opens the /tv route ───────────────────────────────────────────
 	const tv = await browser.newPage();
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 
-	// Keep the TV off its HTTP cache for media, so a subsequent artifact overwrite is actually SEEN by
-	// the overlay. The /media route replies `Cache-Control: public, max-age=86400` (see
-	// src/routes/media/[...path]/+server.ts), so without this the browser reuses the first fetch of a
-	// given lyricsRef until tomorrow — and every reload-based re-test lies.
+	// Off the HTTP cache for /media (`max-age=86400`), or an artifact overwritten below is never re-fetched.
 	await tv.bypassCacheFor('**/media/**');
 
-	// Wait for a media element with a src so we know the stage is up.
 	await tv
 		.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 })
 		.catch(() => {});
@@ -262,19 +221,15 @@ try {
 			`WARN: playback never started — subsequent findings may all be N/A. last kick report: ${kicked.report}`
 		);
 
-	// ── FINDING (1): the reel appears without a reload ────────────────────
-	// The overlay fetches /media/<ref> on mount and re-fetches when lyricsRef changes; a
-	// green here means the fetch → parse → render path completes in a single navigation.
-	// Give it plenty of time — the room's own play-when-queued path starts the song, and
-	// the interstitial ("Next up") can hold the reel off for several seconds.
+	// (1) the reel appears without a reload. The wait is long: the play-when-queued path and the 'Next up'
+	// interstitial both delay it.
 	const reelPresent = await (async () => {
 		const deadline = Date.now() + 20_000;
 		let lastDiag = 0;
 		while (Date.now() < deadline) {
 			const p = await tv.evaluate(`document.querySelector(${JSON.stringify(SEL.lyrics)}) !== null`);
 			if (p) return true;
-			// Every 3s, print a diagnostic snapshot of the page state so we can tell WHY the reel is
-			// not there yet (attract screen, interstitial, loading, media element failure).
+			// A periodic snapshot, so a timeout says WHY (attract, interstitial, loading, element failure).
 			if (Date.now() - lastDiag > 3000) {
 				lastDiag = Date.now();
 				const diag = await tv.evaluate(`(() => {
@@ -295,7 +250,6 @@ try {
 					};
 				})()`);
 				console.log('  P6-1 diag:', JSON.stringify(diag));
-				// Kick playback periodically in case autoplay was refused.
 				await kickPlayback(tv);
 			}
 			await sleep(400);
@@ -310,7 +264,6 @@ try {
 		reelPresent ? '' : 'no.lyrics element ever appeared on /tv while a processed song with lyricsRef was current'
 	);
 
-	// Under what state exactly does it render? Useful context for the visual finding.
 	const overlayState = await tv.evaluate(`(() => {
 		const l = document.querySelector(${JSON.stringify(SEL.lyrics)});
 		if (!l) return { present: false };
@@ -329,9 +282,6 @@ try {
 	})()`);
 	console.log('  overlay state:', JSON.stringify(overlayState));
 
-	// ── FIXTURE / PARSER SCHEMA agreement — the elephant behind (2)/(3) ──────
-	// Report this BEFORE the tracking checks, because the finding is what tells the
-	// reader why the numbers below look the way they do.
 	record(
 		'P6-fixture',
 		'MEDIUM',
@@ -346,11 +296,8 @@ try {
 					`writes the correct shape — this is a FIXTURE bug in the e2e harness, not an overlay defect.`
 	);
 
-	// ── FINDING (2): does the active word track the clock? ────────────────
-	// Sample .word.active text and the master's currentTime together at several points.
-	// If the fixture shape is wrong the highlight cannot exist AT ALL, so measure two
-	// scenarios: (a) as-is, and (b) after we override the artifact with a well-shaped
-	// version and reload.
+	// (2) does the active word track the clock? Sampled as-is, then again after the artifact is rewritten
+	// in the parser's shape — a wrong shape means no highlight can exist at all.
 	/**
 	 * @param {string} tag
 	 * @param {(t: number) => ExpectedWord} expectedByTime
@@ -359,7 +306,6 @@ try {
 	async function sampleTracking(tag, expectedByTime) {
 		const samples = [];
 		const start = Date.now();
-		// Poll every ~300ms for up to 6s.
 		for (let i = 0; i < 20 && Date.now() - start < 6500; i++) {
 			const s = await tv.evaluate(`(() => {
 				const v = document.querySelector('video,audio');
@@ -367,10 +313,7 @@ try {
 				const c = document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)});
 				const reel = document.querySelector(${JSON.stringify(SEL.lyricsReel)});
 				const t = reel ? getComputedStyle(reel).transform : '';
-				// The .word.active element wraps both the ball glyph (a <span class="ball">) AND the
-				// word's own text. textContent lumps them together and yields "●here" — strip that
-				// glyph so downstream matching sees "here". Reading the last text-node child would
-				// also work, but this is trivially reversible.
+				// The .word.active span wraps the ball glyph too, so textContent yields the glyph — strip it.
 				const rawActive = a ? a.textContent.trim() : null;
 				const active = rawActive ? rawActive.replace(/^[●·]+\s*/, ''): null;
 				const rawCurrent = c ? c.textContent.trim() : null;
@@ -386,11 +329,9 @@ try {
 			samples.push(s);
 			await sleep(300);
 		}
-		// Compute lag: for each sample with an active word, look up the expected word at that
-		// currentTime, and if they match, record (currentTime - word.start). Positive means the
-		// audio has moved past the word's start (the highlight is late, or the sample landed
-		// AFTER the ball moved onto the word); with LYRICS_LEAD_SEC=0.3 the ball moves onto a
-		// word 0.3s BEFORE the audio reaches its start, so the natural lag ≈ +300..+700ms.
+		// Lag = currentTime - word.start where sampled and expected agree. LYRICS_LEAD_SEC=0.3 puts the ball
+		// on a word 0.3s BEFORE the audio, so a healthy lag is ≈ +300..+700ms; near 0 means no lead, negative
+		// means late.
 		/** @type {{ t: number, word: string, lagSec: number }[]} */
 		const lags = [];
 		for (const s of samples) {
@@ -404,8 +345,7 @@ try {
 		return { tag, samples, lags };
 	}
 
-	// The fake worker's timing table (see fake-stems-worker.mjs align branch): 9 words
-	// at 0.8s intervals, each of length 0.7s. i.e. word i covers [i*0.8, i*0.8+0.7).
+	// The fake worker's table: 9 words at 0.8s intervals, each 0.7s long — word i covers [i*.8, i*.8+.7).
 	const fakeWords = ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
 	const expectedByFakeTime = (/** @type {number} */ t) => {
 		const idx = Math.floor(t / 0.8);
@@ -413,7 +353,6 @@ try {
 		return { word: fakeWords[idx], start: idx * 0.8, end: idx * 0.8 + 0.7 };
 	};
 
-	// Restart the song so we're near t=0.
 	await seekToStart(tv, phone);
 	const asIsTracking = await sampleTracking('as-is', expectedByFakeTime);
 	const activeSeenAsIs = asIsTracking.samples.filter((s) => s.active).length;
@@ -428,9 +367,7 @@ try {
 					`Root cause: fixture/parser schema mismatch above — no word timings survive parseLyricsDoc.`
 	);
 
-	// ── Override the artifact file with the CORRECT shape, so we can measure real
-	// tracking behavior of the overlay itself. Field names {start,end,word} match the
-	// real Python worker at worker/src/lyrics/artifact.py.
+	// Rewrite the artifact in the real worker's shape, so this measures the overlay and not the fixture.
 	if (!processed.row.lyricsRef) throw new Error('processed song has no lyricsRef');
 	const lyricsPath = join(MEDIA_DIR, processed.row.lyricsRef);
 	const correctedDoc = {
@@ -447,7 +384,6 @@ try {
 	} catch (err) {
 		console.warn(`WARN could not overwrite ${lyricsPath}: ${err instanceof Error ? err.message : String(err)}`);
 	}
-	// Force the overlay to re-fetch: reload the TV route.
 	await tv.goto(`${base}/tv`);
 	await tv
 		.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 })
@@ -455,10 +391,8 @@ try {
 	await ensurePlaying(tv, phone);
 	await seekToStart(tv, phone);
 	await sleep(300);
-	// Confirm we actually reset the song and playback is moving before sampling.
 	const t0 = await tv.evaluate(`document.querySelector('video,audio')?.currentTime ?? -1`);
 	if (t0 > 1.5) {
-		// Fall back: click restart again, kick.
 		await seekToStart(tv, phone);
 		await sleep(600);
 	}
@@ -466,7 +400,6 @@ try {
 	const correctedTracking = await sampleTracking('corrected', expectedByFakeTime);
 	const activeSeenCorrected = correctedTracking.samples.filter((s) => s.active).length;
 	console.log('  corrected samples (last 6):', JSON.stringify(correctedTracking.samples.slice(-6), null, 1));
-	// After sampling, verify what the browser is actually seeing on disk.
 	const fileNow = (() => {
 		try {
 			return readFileSync(lyricsPath, 'utf8').slice(0, 200);
@@ -490,15 +423,10 @@ try {
 					`this would be a real overlay defect, not an env limit.`
 	);
 
-	// Report lag / drift, only if any lags landed on the expected word.
 	if (correctedTracking.lags.length > 0) {
 		const lagsMs = correctedTracking.lags.map((l) => Math.round(l.lagSec * 1000));
 		const meanLag = Math.round(lagsMs.reduce((a, b) => a + b, 0) / lagsMs.length);
 		const varLag = Math.round(Math.sqrt(lagsMs.reduce((a, b) => a + (b - meanLag) ** 2, 0) / lagsMs.length));
-		// The overlay adds LYRICS_LEAD_SEC=0.3s to cuePos, so the highlight is expected to
-		// LEAD the audio: `currentTime - word.start` should sit near +LYRICS_LEAD (positive
-		// = ahead of audio) when the ball reaches a word. So a good lag is around +300ms.
-		// A value near 0 means no lead applied; a negative means the highlight is late.
 		const okLag = meanLag >= -100 && meanLag <= 900; // roomy — includes lead + reasonable sampling jitter
 		record(
 			'P6-2c',
@@ -517,9 +445,7 @@ try {
 		);
 	}
 
-	// ── FINDING (3): does the reel SCROLL and does the ball MOVE? ─────────
-	// Reel scrolling shows up as a changing translateY on .reel. Ball moving means the
-	//.word.active element identity moves along the row over time.
+	// (3) the reel scrolls (translateY changes) and the ball walks the row.
 	const reelSamples = correctedTracking.samples.map((s) => s.reelTransform).filter(Boolean);
 	const distinctTransforms = new Set(reelSamples).size;
 	record(
@@ -544,8 +470,7 @@ try {
 			: `only one active word ever seen: ${JSON.stringify([...new Set(activeWords)])}`
 	);
 
-	// Explicit reconciliation: audio advancing AND reel frozen is one bug shape; reel
-	// moving AND audio stalled is another. Distinguish them.
+	// Audio advancing with a frozen reel is one bug; a moving reel over stalled audio is another.
 	const audioAdvanced =
 		correctedTracking.samples.length >= 2 &&
 		correctedTracking.samples[correctedTracking.samples.length - 1].currentTime -
@@ -566,10 +491,7 @@ try {
 				)}s across ${correctedTracking.samples.length} samples — the reel-frozen finding above is CAUSED by silent audio, not by the overlay.`
 	);
 
-	// ── FINDING (4): readability at 1920x1080 ─────────────────────────────
-	// Take a screenshot mid-song, then READ it — but the honest thing is also to compute
-	// numeric size + contrast from the DOM, because the screenshot is downsampled and a
-	// human-eye reading is a subjective supplement.
+	// (4) readability at 1920x1080, computed from the DOM as well as shot: the screenshot is a supplement.
 	const shotPath = join(process.env.KIROCREW_SCRATCH ?? '/tmp', `p6-lyrics-1080.png`);
 	await tv.screenshot(shotPath);
 	console.log(`\n  screenshot: ${shotPath}`);
@@ -590,9 +512,7 @@ try {
 	})()`);
 	console.log('  reel geometry:', JSON.stringify(geom));
 
-	// TVs at 1080p are read from ~10 feet away — the app's own type scale
-	// (src/app.css --tv-lyric) sits in the 60-90px range. Anything below
-	// 40px would be unreadable from a couch.
+	// 1080p is read from ~10 feet and --tv-lyric sits at 60-90px, so under 40px is unreadable.
 	const sizeOk = !!geom && geom.currentTextPx >= 40;
 	record(
 		'P6-4a',
@@ -602,10 +522,8 @@ try {
 		sizeOk ? '' : `current-line font-size is ${geom?.currentTextPx}px — a couch-distance TV needs ≥40px.`
 	);
 
-	// A quick contrast check via ratio on the current word's colour vs the stage floor.
-	// The stage is pure black under the lyrics (see .tv rule in +page.svelte). The
-	// component defines white/amber as ink; both are >4.5:1 vs an earlier change by construction, and
-	// the >=7:1 check here catches an accidental drop to a mid-grey.
+	// Black stage, white/amber ink clear 4.5:1 by construction, so the 7:1 threshold is what catches an
+	// accidental drop to a mid-grey.
 	/** @param {number[]} rgb */
 	function relLum(rgb) {
 		const [r, g, b] = rgb.map((/** @type {number} */ c) => {
@@ -632,22 +550,15 @@ try {
 			: `ink colour ${geom?.currentColor} lands at ${ratio?.toFixed(1)}:1 — below the WCAG AAA 7:1 target for large text.`
 	);
 
-	// ── FINDING (5): provenance label for transcribed words ───────────────
-	// The overlay's amber tint AND the "Auto-transcribed" provenance label both hang off
-	// `chosenCandidate(media)` returning a candidate whose textSource is 'asr' /
-	// 'captions'. The fake worker in fake-stems-worker.mjs sends `artifacts.lyrics.uri`
-	// but NOT `artifacts.lyrics.candidates`, so setMediaLyrics attaches only the ref and
-	// chosenCandidate returns null → provenance is null → no label rendered.
+	// (5) the amber tint and 'Auto-transcribed' label hang off a chosen candidate with textSource
+	// asr/captions. The fake worker sends no `candidates`, so no label renders — an ENV LIMIT, because a
+	// real ASR worker sends both.
 	const provState = await tv.evaluate(`(() => ({
 		asrLabel: document.querySelector(${JSON.stringify(SEL.lsAsr)})?.textContent.trim() ?? null,
 		unverified: !!document.querySelector(${JSON.stringify(SEL.lyricsUnverified)}),
 		reelColor: (() => { const w = document.querySelector(${JSON.stringify(SEL.activeWord)}); return w ? getComputedStyle(w).color : null; })()
 	}))()`);
 	console.log('  provenance state:', JSON.stringify(provState));
-	// This is a LEGIT env limit rather than a real defect: real ASR workers (whisperx.py
-	// via worker/src/lyrics/artifact.py) also pass candidates alongside the uri, so
-	// the label DOES appear in a real process. The fake worker exposes the surface — the
-	// probe therefore records the finding but classifies it as MEDIUM/env-limit.
 	const provOk = provState.asrLabel === 'Auto-transcribed' && provState.unverified;
 	record(
 		'P6-5',
@@ -663,21 +574,15 @@ try {
 					`Real workers via apps/worker do send candidates, so this surface works in a real process.`
 	);
 
-	// ── FINDING (6): live settings changes take effect with NO restart ────
-	// Flip each of lyrics-highlight, lyrics-ball, lyrics-font, lyrics-case, sync-mode
-	// through the real /api/settings/room endpoint (same call the settings UI makes), and
-	// assert the overlay reacted.
+	// (6) each lyrics/sync setting flipped through the real /api/settings/room takes effect with no restart.
 
-	// Make sure a song is playing (the 8s fixture may have ended between findings).
 	async function ensureSongOnStage() {
 		const has = await tv.evaluate(`document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)}) !== null`);
 		if (has) return true;
-		// First cheapest attempt — seek back to 0 in the current song via the phone.
 		await seekToStart(tv, phone);
 		await sleep(800);
 		const nowHas = await tv.evaluate(`document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)}) !== null`);
 		if (nowHas) return true;
-		// Fall back to re-queueing.
 		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'caroline');
 		await sleep(300);
@@ -692,16 +597,14 @@ try {
 		await sleep(600);
 		return tv.evaluate(`document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)}) !== null`);
 	}
-	// Ensure lyricsHighlight is `word` so ball/marker rules below are meaningful. Also
-	// force lyricsBall back to bounce (the default) — a previous run may have changed it.
+	// highlight=word and ball=bounce are preconditions for the marker checks below.
 	await putRoom({ lyricsHighlight: 'word', lyricsBall: 'bounce', lyricsFont: 'system', lyricsCase: 'natural' });
 	await sleep(400);
 	const settingsHaveSong = await ensureSongOnStage();
 	if (!settingsHaveSong) console.warn('WARN: could not restore a playing song before settings sweep');
 	/** @param {Record<string, unknown>} body */
 	async function putRoom(body) {
-		// Use the phone's browser context — it holds the real singer session cookie set by the
-		// /join redirect, and settings API auth rides on that cookie.
+		// The phone's context holds the singer session cookie settings auth rides on.
 		return phone.evaluate(`fetch('/api/settings/room', {
 			method: 'PUT', headers: {'content-type': 'application/json'},
 			body: ${JSON.stringify(JSON.stringify(body))}
@@ -731,8 +634,7 @@ try {
 			};
 		})()`);
 	}
-	/** readClasses with an "ensure a song is on stage" fallback — a setting flip that lands during a
-	 * silent gap between songs would otherwise read null and be mis-attributed as a failed live-flip. */
+	/** A flip that lands during a silent gap between songs would read null and be mis-attributed. */
 	async function readAfterFlip() {
 		let out = await readClasses();
 		if (!out) {
@@ -742,24 +644,20 @@ try {
 		}
 		return out;
 	}
-	/** Read the ball's class over a short polling window — the ball only mounts under an ACTIVE word,
-	 * and words are ~0.7s wide with ~0.1s gaps between, so a single-sample read may catch the gap
-	 * and mis-report a genuinely present marker as absent. Returns the first non-null observation. */
+	/** Polled, because the ball only mounts under an ACTIVE word and words are ~0.7s wide with ~0.1s
+	 * gaps, so a single sample can catch the gap and report a present marker as absent. */
 	async function readBallClassPatient(timeoutMs = 1500) {
 		const deadline = Date.now() + timeoutMs;
 		while (Date.now() < deadline) {
 			const s = await readAfterFlip();
 			if (s?.ballClass) return { ballClass: s.ballClass, ballPresent: s.ballPresent };
-			// Also accept "no marker" as a legitimate off-state when we specifically expected it.
 			await sleep(150);
 		}
 		const final = await readAfterFlip();
 		return final ?? {};
 	}
-	// Baseline
 	const base0 = await readClasses();
 
-	// lyrics-highlight
 	await putRoom({ lyricsHighlight: 'line' });
 	await sleep(700);
 	const afterHlLine = await readAfterFlip();
@@ -781,7 +679,6 @@ try {
 			: `hlClass went ${base0?.hlClass} → line:${afterHlLine?.hlClass}, off:${afterHlOff?.hlClass}, word:${afterHlWord?.hlClass}`
 	);
 
-	// lyrics-ball (only meaningful under highlight=word; already restored)
 	await putRoom({ lyricsBall: 'steady' });
 	await sleep(700);
 	const afterBallSteady = await readBallClassPatient();
@@ -790,12 +687,10 @@ try {
 	const afterBallUnder = await readBallClassPatient();
 	await putRoom({ lyricsBall: 'off' });
 	await sleep(700);
-	// For `off`, the ball element must NOT mount. Read once — no need to poll for it appearing.
 	const afterBallOff = await readAfterFlip();
 	await putRoom({ lyricsBall: 'bounce' });
 	await sleep(700);
 	const afterBallBounce = await readBallClassPatient();
-	// `off` should mean no ball element mounted; each named style should set its class.
 	const ballLive =
 		afterBallSteady?.ballClass === 'steady' &&
 		afterBallUnder?.ballClass === 'underline' &&
@@ -811,17 +706,14 @@ try {
 			: `ball went steady:${afterBallSteady?.ballClass}, under:${afterBallUnder?.ballClass}, off-present:${afterBallOff?.ballPresent}, bounce:${afterBallBounce?.ballClass}`
 	);
 
-	// lyrics-font — the family is applied to .viewport but inherited on rows, so read
-	// getComputedStyle on the .row.current.
+	// The font family is set on .viewport and inherited, so read it off .row.current.
 	await putRoom({ lyricsFont: 'serif' });
 	await sleep(700);
 	const afterFontSerif = await readAfterFlip();
 	await putRoom({ lyricsFont: 'system' });
 	await sleep(700);
 	const afterFontSystem = await readAfterFlip();
-	// A simple `includes('serif')` check breaks because a system-ui stack ends in `sans-serif`,
-	// which contains the substring "serif". Compare the fully-resolved family strings instead;
-	// they differ character-for-character between font ids.
+	// `includes('serif')` is wrong: a system-ui stack ends in 'sans-serif'. Compare resolved families.
 	const fontLive =
 		!!afterFontSerif?.fontFamily &&
 		!!afterFontSystem?.fontFamily &&
@@ -836,7 +728,6 @@ try {
 			: `serif=${afterFontSerif?.fontFamily}, system=${afterFontSystem?.fontFamily} — no observable change`
 	);
 
-	// lyrics-case
 	await putRoom({ lyricsCase: 'upper' });
 	await sleep(700);
 	const afterCaseUpper = await readAfterFlip();
@@ -852,18 +743,15 @@ try {
 		caseLive ? '' : `upper=${afterCaseUpper?.textTransform}, natural=${afterCaseNatural?.textTransform}`
 	);
 
-	// sync-mode — flipping to `lines` should CLAMP the highlight/ball; overlay should not
-	// break, and (per the settings warning) the resolved values differ from what was asked.
+	// sync-mode `lines` CLAMPS hl-word to hl-line and `forced` restores it, so the resolved values differ
+	// from what was asked and the overlay must not break under the clamp.
 	await putGlobal({ syncMode: 'lines' });
 	await sleep(1000);
 	const afterSyncLines = await readAfterFlip();
 	await putGlobal({ syncMode: 'forced' });
 	await sleep(700);
 	const afterSyncForced = await readAfterFlip();
-	// Overlay must still render throughout (not break under the clamp).
 	const syncSurvives = !!afterSyncLines && !!afterSyncForced;
-	// Under `lines`, resolveLyricsPresentation clamps `word` → `line`, so hlClass should be
-	// `hl-line`; under `forced` it goes back to `hl-word`.
 	const syncEffective = afterSyncLines?.hlClass === 'hl-line' && afterSyncForced?.hlClass === 'hl-word';
 	record(
 		'P6-6e',
@@ -875,10 +763,8 @@ try {
 			: `overlay survives=${syncSurvives}, hlClass went lines:${afterSyncLines?.hlClass}, forced:${afterSyncForced?.hlClass}`
 	);
 
-	// ── FINDING (7): a song with NO lyrics renders no broken reel ─────────
-	// Strategy: overwrite the artifact file with empty content, force a re-fetch by
-	// briefly clearing lyricsRef through a settings ping (no such endpoint) or, more
-	// portably, replace the file with `null`-parsing JSON and reload the TV.
+	// (7) no lyrics renders nothing broken: the artifact is replaced with content that parses to null,
+	// since there is no endpoint for clearing lyricsRef.
 	writeFileSync(lyricsPath, '{}');
 	await tv.goto(`${base}/tv`);
 	await tv
@@ -896,7 +782,6 @@ try {
 			hasText: (document.querySelector(${JSON.stringify(SEL.lyrics)})?.textContent ?? '').trim().length
 		};
 	})()`);
-	// Overlay must render nothing observable when parseLyricsDoc returns null.
 	const emptyOk = !emptyState.present || (!emptyState.hasCurrent && emptyState.hasText === 0);
 	record(
 		'P6-7',
@@ -913,7 +798,6 @@ try {
 	browser?.close();
 }
 
-// ── Summary ────────────────────────────────────────────────────────────────
 const pass = findings.filter((f) => f.ok).length;
 const total = findings.length;
 console.log(`\n${'─'.repeat(72)}\n${pass}/${total} passed\n`);

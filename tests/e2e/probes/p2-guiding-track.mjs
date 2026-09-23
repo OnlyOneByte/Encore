@@ -1,26 +1,13 @@
 /*
- * p2 — THE GUIDING TRACK: mixing the original vocals back under the instrumental.
+ * P2 — THE GUIDING TRACK: mixing the original vocals back under the instrumental. Drives guideLevel
+ * (null inherits the room default, 0 is off, n is a per-song override clamped to [0,1]), the reset to
+ * null on every song boundary, and the governor holding the TV's SECOND <audio> in time against the
+ * master. It reads element state, never audio: docs/E2E.md#proving-audio
  *
- * The design under test: RoomSettings.guideLevelDefault plus PlaybackState.guideLevel where
- *   null → inherit the room default
- *   0    → explicitly OFF for this song
- *   n    → per-song override, clamped to [0,1]
- * with a `{cmd:'guide', level: number|null}` wire command, an authoritative reset to null on every
- * song boundary, and — because there are TWO independent <audio> elements on the TV — a governor that
- * holds the guide in time against the master instrumental with a tempo trim.
- *
- * WHAT THIS CAN AND CANNOT JUDGE. This probe reads element state (mount, .volume, currentTime,
- * webkitAudioDecodedByteCount) and settings state (queue:sync media catalog, playback:state). It CANNOT
- * hear anything. So "the guide is quieter than the instrumental" is expressed as the ELEMENT'S .volume
- * being lower — not as an audibility judgement. Whether the mix sounds right can only be judged live.
- *
- * WORKER OWNERSHIP. This probe owns the entire server + worker lifecycle for its port. It refuses to
- * run if anything is already listening on the port, to keep dispatch deterministic across process cycles
- * (in particular the audible→silent worker swap needed for FAKE_SILENT_VOCALS).
+ * IT OWNS THE WHOLE SERVER + WORKER LIFECYCLE FOR ITS PORT and refuses to run if anything is already
+ * listening, because dispatch must stay deterministic across the audible→silent worker swap.
  *
  *   EPORT=5222 bun tests/e2e/probes/p2-guiding-track.mjs
- *
- * Exit 0 all passed · 1 a real failure · 2 the environment could not host the test.
  */
 
 import { mkdirSync, openSync } from 'node:fs';
@@ -35,27 +22,14 @@ import { spawnChild, killChild } from '../lib/child.mjs';
 import { openJoin } from '../lib/join.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * /pattern). Browser/Page are derived from driver.mjs's own return types so they
- * cannot drift from the driver. page.evaluate() is typed Promise<any> by driver.mjs, so DOM/API-shaped
- * results are cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {import('node:child_process').ChildProcess} Child
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
- *
- * A media row as returned by /api/search or /api/library (the fields this probe reads).
  * @typedef {{ id: string, title?: string, source?: string, stemStatus?: string, instrumentalRef?: string, vocalsRef?: string }} Media
- *
- * One audio/video element read out of a page by ELEMENTS_EXPR.
- * @typedef {{
- *   i: number, tag: string, src: string, readyState: number, paused: boolean, muted: boolean,
- *   volume: number, playbackRate: number, currentTime: number, duration: number,
- *   decoded: number | null, error: { code: number, message: string } | null
- * }} Elem
- *
- * The master/vocals pair classified out of an element readout.
+ * @typedef {{ i: number, tag: string, src: string, readyState: number, paused: boolean,
+ *   muted: boolean, volume: number, playbackRate: number, currentTime: number, duration: number,
+ *   decoded: number | null, error: { code: number, message: string } | null }} Elem
  * @typedef {{ master: Elem | undefined, vocals: Elem | undefined }} Pair
  */
 
@@ -65,16 +39,9 @@ const SCRATCH = process.env.KIROCREW_SCRATCH ?? '/tmp';
 const RUN_DIR = join(SCRATCH, `p2-guide-${PORT}-${process.pid}`);
 const MEDIA_DIR = process.env.MEDIA_DIR ?? join(RUN_DIR, 'media');
 
-// ── reporting ──────────────────────────────────────────────────────────────
 /** @type {{ sev: Severity, name: string, ok: boolean, obs?: string, exp?: string }[]} */
 const findings = [];
-/**
- * @param {Severity} sev
- * @param {string} name
- * @param {boolean} ok
- * @param {string} [obs]
- * @param {string} [exp]
- */
+/** @param {Severity} sev @param {string} name @param {boolean} ok @param {string} [obs] @param {string} [exp] */
 function record(sev, name, ok, obs, exp) {
 	findings.push({ sev, name, ok, obs, exp });
 	const badge = ok ? 'PASS   ' : `${sev.padEnd(7, ' ')}`;
@@ -91,19 +58,14 @@ function bail(msg) {
 	process.exit(2);
 }
 
-// ── process lifecycle ──────────────────────────────────────────────────────
 /** @type {import('node:child_process').ChildProcess[]} */
 const childProcs = [];
 /** @type {Browser | undefined} */
 let browser;
 /** @type {Child | undefined} */
 
-/**
- * Tracks every child so `cleanup()` can reap them; the spawn itself is shared.
- * @param {string} cmd
- * @param {string[]} args
- * @param {import('node:child_process').SpawnOptions} [opts]
- */
+/** Tracks every child so `cleanup()` can reap them.
+ *  @param {string} cmd @param {string[]} args @param {import('node:child_process').SpawnOptions} [opts] */
 function track(cmd, args, opts = {}) {
 	const p = spawnChild(cmd, args, opts);
 	childProcs.push(p);
@@ -132,7 +94,6 @@ process.on('SIGTERM', () => {
 	process.exit(143);
 });
 
-// ── environment discovery ──────────────────────────────────────────────────
 
 async function serverAlive() {
 	try {
@@ -142,12 +103,8 @@ async function serverAlive() {
 		return false;
 	}
 }
-/**
- * @template T
- * @param {() => Promise<T>} fn
- * @param {{ timeout?: number, every?: number, name?: string }} [opts]
- * @returns {Promise<NonNullable<T>>}
- */
+/** @template T @param {() => Promise<T>} fn
+ *  @param {{ timeout?: number, every?: number, name?: string }} [opts] @returns {Promise<NonNullable<T>>} */
 async function waitFor(fn, { timeout = 30_000, every = 250, name = 'condition' } = {}) {
 	const deadline = Date.now() + timeout;
 	let last;
@@ -163,12 +120,10 @@ async function waitFor(fn, { timeout = 30_000, every = 250, name = 'condition' }
 	throw new Error(`waitFor(${name}) timed out after ${timeout}ms; last: ${JSON.stringify(last)}`);
 }
 
-// ── seed + boot server ─────────────────────────────────────────────────────
 async function bootServer() {
 	if (await serverAlive()) bail(`something is already listening on ${BASE}; this probe owns the port and the workers`);
 	mkdirSync(join(MEDIA_DIR), { recursive: true });
 
-	// seed library placeholders (idempotent — see seed-media.mjs's own header)
 	await new Promise((res, rej) => {
 		const p = track('bun', ['run', 'tests/e2e/seed-media.mjs'], {
 			cwd: repoRoot,
@@ -200,13 +155,8 @@ async function bootServer() {
 	return proc;
 }
 
-// ── fake worker orchestration ──────────────────────────────────────────────
-/**
- * Spawn a fake worker and RESOLVE only once it has been welcomed. The welcome is emitted by the
- * worker on its stdout ("welcomed; …"), so waiting for that line means the server has this worker on
- * its registry and can dispatch to it. Not waiting produced a race where process enqueued a job
- * before ANY worker was live, and processState was 'queued' forever with nothing to work it.
- */
+/** Resolves only once the worker prints "welcomed" — without that wait, process enqueues a job before
+ *  any worker is live and processState stays 'queued' forever. */
 /** @param {'audible' | 'silent'} kind */
 async function spawnWorker(kind) {
 	/** @type {Record<string, string | undefined>} */
@@ -215,8 +165,6 @@ async function spawnWorker(kind) {
 		EPORT: PORT,
 		MEDIA_DIR,
 		FAKE_WORKER_ID: `p2-${kind}-${process.pid}`,
-		// FAKE_SLOW_MS keeps progress frames short so tests don't sit on a spinning bar; the whole point
-		// of the fake is speed.
 		FAKE_SLOW_MS: '50'
 	};
 	if (kind === 'silent') env.FAKE_SILENT_VOCALS = '1';
@@ -227,9 +175,8 @@ async function spawnWorker(kind) {
 		stdio: ['ignore', logHandle, logHandle],
 		env
 	});
-	// Poll the log file for the "welcomed" line — the fd-based redirect keeps the child's stdout from
-	// being sensitive to our event loop, which was long enough to matter (the WS died the moment the
-	// probe's stdout listener was buried under something else).
+	// Poll the LOG FILE, not stdout: an fd redirect is immune to this probe's event loop, and a buried
+	// stdout listener is enough to kill the worker's WS.
 	const started = Date.now();
 	while (Date.now() - started < 10_000) {
 		try {
@@ -246,7 +193,6 @@ async function spawnWorker(kind) {
 	throw new Error(`worker ${kind} never welcomed (see ${logFd})`);
 }
 
-// ── HTTP helpers with a probe session cookie ───────────────────────────────
 let COOKIE = ''; // set on join
 /** @param {string} path @param {RequestInit} [init] @returns {Promise<Response>} */
 async function api(path, init = {}) {
@@ -273,7 +219,6 @@ async function apiJoin(name) {
 async function searchFor(q) {
 	const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
 	const d = await r.json();
-	// Prefer a local hit — those are decodable on this box.
 	const all = [...(d.ready ?? []), ...(d.results ?? []), ...(d.processing ?? [])];
 	return /** @type {Media[]} */ (all).find((x) => x.source === 'local') ?? all[0] ?? null;
 }
@@ -308,10 +253,8 @@ async function setRoomGuideDefault(pct01) {
 	return r.json();
 }
 
-// ── page helpers ───────────────────────────────────────────────────────────
-/** The complete audio-element snapshot on a page. Read as ONE object rather than a per-field call so
- *  a compare across a sleep sees a coherent set. `webkitAudioDecodedByteCount` is the load-bearing
- *  field — see playback.mjs's note on what actually proves decoding. */
+/** ONE object, not a per-field call, so a compare across a sleep sees a coherent set;
+ *  `webkitAudioDecodedByteCount` is the load-bearing field (docs/E2E.md#proving-audio). */
 const ELEMENTS_EXPR = `(() => {
 	const els = [...document.querySelectorAll('audio,video')];
 	return els.map((el, i) => ({
@@ -341,11 +284,9 @@ async function tvElements(tv) {
 	return classify(/** @type {Elem[]} */ (await tv.evaluate(ELEMENTS_EXPR)));
 }
 
-/** Send a player command over a probe WebSocket opened from the phone page's context — same origin,
- *  so the phone session cookie rides on the handshake and the socket is authorised. Keeping ONE
- *  connection in `window.probeWs` avoids a fresh handshake per command (a slam of them at the
- *  throttle boundary would race the client's queue:sync). */
-/** @param {Page} phone */
+/** Opened from the phone page's context so the session cookie rides the handshake and the socket is
+ *  authorised. ONE connection in `window.probeWs`: per-command handshakes race the client's queue:sync.
+ *  @param {Page} phone */
 async function ensureProbeWs(phone) {
 	await phone.evaluate(`
 		(async () => {
@@ -369,9 +310,7 @@ async function sendPlayer(phone, command) {
 /** @param {Page} phone @param {string} mediaId @param {string} singerId */
 async function sendQueueAdd(phone, mediaId, singerId) {
 	await ensureProbeWs(phone);
-	// Wire shape: { type: 'queue:command', command: { clientOpId, op: { op: 'add', entry: {...} } } }
-	// The validator requires entry.singerId === actorSingerId (the browser session's singer). Making
-	// up an id would silently reject the op.
+	// The validator requires entry.singerId === this session's singer; a made-up id is silently rejected.
 	const now = Date.now();
 	const entry = {
 		id: `p2-e-${now}-${Math.floor(Math.random() * 1e6)}`,
@@ -388,12 +327,10 @@ async function sendQueueAdd(phone, mediaId, singerId) {
 	await phone.evaluate(
 		`window.probeWs.send(JSON.stringify({ type: 'queue:command', command: ${JSON.stringify(command)} }))`
 	);
-	// A brief settle — the server broadcasts back a queue:patch, and callers usually chain a follow-up
-	// player:command that needs the entry to exist.
+	// Settle: callers chain a player:command that needs the queue:patch to have landed.
 	await sleep(200);
 }
 
-// ── the probe ──────────────────────────────────────────────────────────────
 async function main() {
 	mkdirSync(RUN_DIR, { recursive: true });
 	const chromium = findChromium();
@@ -401,7 +338,6 @@ async function main() {
 
 	await bootServer();
 
-	// 1. Process three audible songs, so the room has enough content for reset + default tests.
 	let worker = await spawnWorker('audible');
 	await apiJoin(`Probe${Date.now() % 100000}`);
 	const AUDIBLE_QUERIES = ['caroline', 'believin', 'bohemian'];
@@ -418,8 +354,7 @@ async function main() {
 	}
 	console.log(`[process] 3 audible songs ready:`, audibleMedia.map((m) => m.id).join(', '));
 
-	// 2. Swap workers: kill audible, spawn silent — so the fourth process goes to a silent producer with
-	//    no chance of race.
+	// Swap workers so the fourth process goes to a silent producer with no chance of a race.
 	await killChild(worker, 1500);
 	worker = await spawnWorker('silent');
 	const silentHit = await searchFor('prayer');
@@ -429,15 +364,11 @@ async function main() {
 	console.log(`[process] silent-vocals song ready: ${silentMedia.id} vocalsRef=${silentMedia.vocalsRef}`);
 	await killChild(worker, 1500);
 
-	// 3. Chromium.
 
-	// give it a beat to open the CDP port
 	await sleep(600);
 	browser = await connect();
 
-	// Phone page joins THROUGH the UI so the singer is real and its cookie is bound to the browser
-	// context — the WS ensureProbeWs relies on that. The phone doesn't need to be visible for anything;
-	// it exists to drive commands and to render the guiding-track control if we want to look at it.
+	// Join THROUGH the UI: ensureProbeWs needs a real singer whose cookie is bound to this context.
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
 	await openJoin(phone, BASE);
@@ -446,24 +377,19 @@ async function main() {
 	await phone.waitFor(`location.pathname === '/'`, { timeout: 15_000 });
 	await openBrowseFromHome(phone, { timeout: 15_000 });
 
-	// TV page — this is where we read audio-element state.
 	const tv = await browser.newPage();
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${BASE}/tv`);
 	await sleep(500);
 
-	// Read the browser's singer id (bound to the browser's cookie via /api/join) — every queue:add
-	// must match the actor singerId or the op is rejected with 'singerId does not match this session'.
 	const phoneSingerId = await phone.evaluate(`fetch('/api/me').then(r => r.json()).then(d => d.singer?.id ?? null)`);
 	if (!phoneSingerId) bail('phone /api/me returned no singer id');
 	console.log(`[join] phone singer=${phoneSingerId}`);
 
-	// Queue two audible songs to start with. Room default guideLevelDefault is 0 unless we move it,
-	// so the default state is: level 0, guide element unmounted.
+	// guideLevelDefault is 0 until moved, so the resting state is level 0 with the guide unmounted.
 	await sendQueueAdd(phone, audibleMedia[0].id, phoneSingerId);
 	await sendQueueAdd(phone, audibleMedia[1].id, phoneSingerId);
-	// The server auto-starts playback on an idle add, so the TV should be decoding within a couple of
-	// seconds. Wait for it — the actual assertions come next.
+	// The server auto-starts playback on an idle add, so wait for the TV to be decoding.
 	const decodedAfterStart = await waitFor(
 		async () => {
 			const { master } = await tvElements(tv);
@@ -475,7 +401,7 @@ async function main() {
 		`[tv] master decoding: ${decodedAfterStart.decoded} bytes, t=${decodedAfterStart.currentTime.toFixed(2)}s`
 	);
 
-	// ── Finding 1: at guide level 0 (the resting default), the vocals element must not mount. ───
+	// Finding 1: at level 0 the vocals element must not mount.
 	{
 		const { master, vocals } = await tvElements(tv);
 		record(
@@ -487,11 +413,9 @@ async function main() {
 		);
 	}
 
-	// ── Finding 2: at 0.15, the vocals element mounts, decodes, and reports .volume=0.15 while the
-	//               master reports .volume=1. The TWO decode-byte-count checks (both elements climb)
-	//               is what makes this a real mix, not a silent-second-element pass. ────
+	// Finding 2: vocals mount at .volume=0.15 beside a master at 1, and BOTH decode counters climb —
+	// one alone would pass a silent second element as a mix.
 	await sendPlayer(phone, { cmd: 'guide', level: 0.15 });
-	// wait for the element to load its bytes and start advancing
 	const guideT0 = await waitFor(
 		async () => {
 			const els = await tvElements(tv);
@@ -537,16 +461,14 @@ async function main() {
 		record(
 			'MEDIUM',
 			'level 0.15: no Web Audio graph on the naked (unshifted) path — WebAudio gain not needed',
-			// Nothing to assert directly here beyond source; recorded as PASS with the source pointer.
 			true,
 			undefined,
 			undefined
 		);
 	}
 
-	// ── Finding 3: sync between the two elements. Governor lives in guide-sync.ts. Steady-state drift
-	//               should sit in the deadband (0.015s) after ramp-up; peak drift should stay below
-	//               the reseek threshold (0.3s), which is where you'd hear an echo. ─────
+	// Finding 3: sync (governor in guide-sync.ts). Steady-state drift belongs in the 0.015s deadband;
+	// peak drift must stay under the 0.3s reseek threshold, which is where a listener hears an echo.
 	{
 		const samples = [];
 		for (let i = 0; i < 8; i++) {
@@ -580,7 +502,7 @@ async function main() {
 		);
 	}
 
-	// ── Finding 4: the per-song override survives pause/resume. ────────────────────────────────
+	// Finding 4: the per-song override survives pause/resume.
 	await sendPlayer(phone, { cmd: 'pause' });
 	await sleep(700);
 	const paused = await tvElements(tv);
@@ -611,10 +533,9 @@ async function main() {
 		);
 	}
 
-	// ── Finding 5: on a song change, the override resets to null. With room default still 0, this
-	//               means the vocals element unmounts. ────────────────────────────────────────
+	// Finding 5: a song change resets the override to null, so at room default 0 the vocals unmount.
 	await sendPlayer(phone, { cmd: 'skip' });
-	// wait for the new master src to appear (upNext becomes current) — same signal playback.mjs uses.
+	// The new master src appearing is the song-change signal — the same one playback.mjs uses.
 	const afterSkip = await waitFor(
 		async () => {
 			const els = await tvElements(tv);
@@ -635,21 +556,15 @@ async function main() {
 		`no vocals element mounted (effectiveGuide=0 → wantsGuide=false)`
 	);
 
-	// ── Finding 6: the room DEFAULT applies to a fresh song with no override. Set it via the API,
-	//               then queue and play a fresh song. ────────────────────────────────────────
-	// Queue the third audible song FIRST so a skip has somewhere to go.
+	// Finding 6: the room DEFAULT applies to a fresh song. Queue song three FIRST so the skip has a target.
 	await sendQueueAdd(phone, audibleMedia[2].id, phoneSingerId);
 	await sleep(400);
 	await setRoomGuideDefault(0.3);
-	// Give the TV a beat to fold the settings:changed broadcast in BEFORE the skip races it — a race
-	// here would leave the fresh slot mounting with the pre-broadcast effectiveGuide (0), i.e. no
-	// vocals element at all, which is a different failure mode than the one we're actually testing.
+	// settings:changed must land BEFORE the skip: lose that race and the fresh slot mounts with the
+	// pre-broadcast effectiveGuide of 0 — no vocals element, and a different failure than the one tested.
 	await sleep(600);
 	await sendPlayer(phone, { cmd: 'skip' });
-	// Wait for the fresh song's master to load its src AND actually be decoding. No sendPlayer
-	// inside the poll — repeatedly issuing play() while the TV is mid-transition churns the
-	// transport effect and can KEEP it paused rather than settling. If we still haven't seen it
-	// decode after 15s of a genuinely settled state, we record the observation and continue.
+	// No sendPlayer inside this poll: repeated play() mid-transition churns the transport and keeps it paused.
 	let withDefault = null;
 	try {
 		withDefault = await waitFor(
@@ -675,8 +590,7 @@ async function main() {
 		`master src=${withDefault.master?.src ?? 'none'} paused=${withDefault.master?.paused} · vocals mounted=${!!withDefault.vocals} volume=${withDefault.vocals?.volume ?? 'n/a'}`,
 		`vocals mounted at .volume=0.30 (effectiveGuideLevel(null, 0.30) → 0.30)`
 	);
-	// … and it's actually decoding under the room default: poll for progress with a real timeout so a
-	// slow first buffer doesn't false-fail.
+	// Poll with a real timeout so a slow first buffer does not false-fail.
 	let vocalsDecoded;
 	try {
 		vocalsDecoded = await waitFor(
@@ -699,13 +613,10 @@ async function main() {
 		`vocals decoded byte count climbs within 8s of mount`
 	);
 
-	// ── Finding 7: FAKE_SILENT_VOCALS — the process produces a media whose vocalsRef IS set, so the
-	//               control is offered and the guide element does mount. What we can and cannot judge:
-	//               we cannot judge how it sounds; we CAN check that the element decodes, and that
-	//               hasGuidingTrack(media) returns true even though the file is at the digital floor.
-	// Queue the silent-vocals song NEXT.
+	// Finding 7: FAKE_SILENT_VOCALS still sets vocalsRef, so the control is offered and the element
+	// mounts. Checkable: it decodes, and hasGuidingTrack() is true even at the digital floor.
 	await sendQueueAdd(phone, silentMedia.id, phoneSingerId);
-	// Reset the per-song override so the room default is what applies (0.30 from above).
+	// Reset the override so the room default (0.30, set above) is what applies.
 	await sendPlayer(phone, { cmd: 'guide', level: null });
 	await sleep(300);
 	await sendPlayer(phone, { cmd: 'skip' });
@@ -717,12 +628,11 @@ async function main() {
 		{ timeout: 20_000, name: 'silent-vocals song playing' }
 	);
 	{
-		// Read hasGuidingTrack via the phone route's own client-side state — a live check against the
-		// same code the phone uses to decide whether to render the GuidingTrack control at all.
+		// Read it through the phone's own client state — the same code that decides whether to render at all.
 		const guideAvailable = await phone.evaluate(`
 			(async () => {
 				const mod = await import('/node_modules/$lib/contract/dist/guide-level.js').catch(() => null);
-				// Not importable from the bundled build; fall back to reading the DOM's disabled state.
+				// Not importable from the bundled build; fall back to the DOM's disabled state.
 				const range = document.querySelector('input[aria-label="Guiding track — original vocal level"]');
 				return { rangeExists: !!range, rangeDisabled: range?.disabled ?? null };
 			})()
@@ -750,13 +660,8 @@ async function main() {
 		);
 	}
 
-	// ── Finding 8: vocalsRef ABSENT — environment limit. The fake-stems-worker.mjs always publishes
-	//               `artifacts.stems.vocals = vocRef` regardless of FAKE_SILENT_VOCALS, so a media with
-	//               a truly missing vocalsRef cannot be produced end-to-end without modifying the
-	//               worker (which this probe is not permitted to do). What CAN be checked here:
-	//               hasGuidingTrack, in source, requires !!m.vocalsRef — a null/undefined value would
-	//               return false and the phone would not render the control (GuidingTrack.svelte's own
-	//               `available` prop drives its disabled state).
+	// Finding 8 is an ENVIRONMENT LIMIT: the fake worker always publishes artifacts.stems.vocals, so an
+	// absent vocalsRef cannot be produced end to end. Source-only check.
 	record(
 		'LOW',
 		'vocalsRef absent: unmeasured (environment limit; fake worker always publishes vocals artifact)',
@@ -765,7 +670,6 @@ async function main() {
 		`covered by unit tests src/lib/contract/lyrics/guide-level.test.ts:hasGuidingTrack; not reproducible via the fake worker without editing it`
 	);
 
-	// ── screenshot for the record ─────────────────────────────────────────
 	try {
 		const shot = join(RUN_DIR, 'tv-guide.png');
 		await tv.screenshot(shot);
@@ -785,8 +689,7 @@ try {
 		console.log('failed:');
 		for (const f of failed) console.log(`  [${f.sev}] ${f.name}`);
 	}
-	// A CRITICAL failure is a real defect; anything else is worth flagging but not a hard fail
-	// (silent-vocals surface behaviour is arguable, sync numbers may be flaky under load).
+	// Only CRITICAL is a hard fail: sync numbers go flaky under load, and the silent-vocals surface is arguable.
 	exitCode = criticals.length ? 1 : 0;
 } catch (err) {
 	console.error(`\nFATAL: ${/** @type {Error} */ (err)?.stack ?? err}`);

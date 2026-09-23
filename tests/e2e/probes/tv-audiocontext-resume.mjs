@@ -1,24 +1,12 @@
-/*
- * Diagnostic: does the TV's AudioContext ever RESUME, with no gesture in the room?
- *
- * Why this exists. A probe measured the pitch shifter's maths as correct (per-partial ratio 1.1236
- * against a theoretical 1.1225 at +2 semitones) while the owner reports the ± buttons doing nothing at
- * a real party. Both can be true: the shifter is documented to degrade to
- * audible-but-unshifted-never-silent when its context cannot run, and /tv has no gesture handler, so a
- * set-and-forget television may never hand the page the user gesture resume() requires.
- *
- * The earlier probe launched Chromium with --autoplay-policy=no-user-gesture-required, which grants
- * exactly the permission a real TV lacks — so it would have masked this. This run compares the two
- * policies side by side and reports the AudioContext state under each. It changes no code.
- *
- * Reading the result:
- *   GESTURELESS ctx.state === 'suspended'  → confirms hypothesis 1. The fix is a gesture affordance on
- *                                            /tv, NOT a change to the shifter.
- *   GESTURELESS ctx absent while shift > 0 → the graph never built; look at `active` (hypothesis 2).
- *   GESTURELESS ctx.state === 'running'    → the context is fine and the cause is elsewhere (3).
- *
- *   EPORT=<port> bun tests/e2e/probes/tv-audiocontext-resume.mjs
- */
+// Does the TV's AudioContext ever RESUME with no gesture in the room? The shifter degrades to
+// audible-but-unshifted when its context cannot run, so correct maths and dead ± buttons are both true at
+// once on a television that never hands the page the gesture resume() requires. Both autoplay policies run
+// SIDE BY SIDE, because granting autoplay grants the permission a real TV lacks (docs/E2E.md#autoplay).
+// Gestureless: 'suspended' means the fix is a gesture affordance on /tv and not a change to the shifter;
+// no ctx means the graph never built; 'running' means the cause is elsewhere.
+//
+//   EPORT=<port> bun tests/e2e/probes/tv-audiocontext-resume.mjs
+
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join as pathJoin } from 'node:path';
@@ -48,10 +36,8 @@ if (!ready.length) {
 	process.exit(2);
 }
 
-/**
- * Instrument the page BEFORE it runs any script, so every AudioContext the app constructs is
- * recorded. Reading `.state` after the fact cannot tell you whether one was ever created.
- */
+/** Instrument the page BEFORE any app script, so every AudioContext constructed is recorded: reading
+ *  `.state` after the fact cannot tell you whether one was ever created. */
 const HOOK = `(() => {
   window.__ctx = [];
   for (const K of ['AudioContext', 'webkitAudioContext']) {
@@ -79,15 +65,11 @@ async function runUnder(label, extraFlags, tag) {
 	/** @type {Awaited<ReturnType<typeof connect>> | undefined} */
 	let browser;
 	try {
-		// `extraFlags` MUST reach the browser: this probe's whole design is an A/B between a gestureless
-		// launch (`[]`) and one granted `--autoplay-policy=no-user-gesture-required`. The driver launches
-		// the browser now, so the flags go to it — passed through here rather than dropped, or both arms
-		// would run identically and the probe would report a difference it never created.
+		// `extraFlags` MUST reach the browser: drop them and both arms run identically.
 		browser = await connect({ args: extraFlags });
 
-		// Queue a song through the REAL phone UI first. A hand-rolled WS frame with an invented
-		// singerId is rejected, which leaves the TV on the lobby with no media element — and then the
-		// absence of an AudioContext proves nothing at all about the shifter.
+		// Queue through the REAL phone UI: an invented singerId is rejected, leaving the TV on the lobby with
+		// no media element, where a missing AudioContext proves nothing.
 		const phone = await browser.newPage();
 		await phone.viewport(390, 844);
 		await openJoin(phone, base);
@@ -102,12 +84,10 @@ async function runUnder(label, extraFlags, tag) {
 
 		const tv = await browser.newPage();
 		await tv.viewport(1920, 1080, 1);
-		// Install the hook before app script runs.
 		await tv.evaluate(`(${JSON.stringify(HOOK)}, 0)`).catch(() => {});
 		await tv.goto(`${base}/tv`);
 		await tv.evaluate(HOOK); // idempotent; also covers the post-navigation context
-		// Wait for a media element to actually exist, so a null reading means "no context" and not
-		// "nothing was playing".
+		// So a null reading means "no context" rather than "nothing was playing".
 		await tv
 			.waitFor(`[...document.querySelectorAll('audio,video')].some(e => e.currentSrc || e.src)`, { timeout: 20000 })
 			.catch(() => {});
@@ -115,7 +95,7 @@ async function runUnder(label, extraFlags, tag) {
 
 		const before = await tv.evaluate(READ);
 
-		// Ask for a non-zero shift the way a phone does, then give the graph time to build.
+		// A non-zero shift the way a phone asks for one, then time for the graph to build.
 		const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`);
 		await new Promise((r) => {
 			ws.onopen = r;
@@ -140,9 +120,7 @@ async function runUnder(label, extraFlags, tag) {
 	}
 }
 
-// The real living room: no autoplay grant, no gesture.
 const gestureless = await runUnder('GESTURELESS (what a real TV is)', [], 9401);
-// The earlier probe's environment, for contrast.
 const granted = await runUnder(
 	'AUTOPLAY GRANTED (what the earlier probe measured)',
 	['--autoplay-policy=no-user-gesture-required'],

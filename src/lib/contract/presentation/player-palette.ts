@@ -1,32 +1,18 @@
-// The 48-stop player palette, as something code can read.
+// The 48-stop player palette. The JSON beside this file is GENERATED and MEASURED — every stop carries its
+// fill, the ink that may sit on it, and measured contrast against the real surface tokens — and a guard
+// regenerates it byte-identically. This module is the ONLY place the app reads it.
 //
-// `player-palette-48.json` beside this file is a GENERATED, MEASURED registry: every stop carries its
-// fill, the ink that may sit on it, and the contrast ratios that fill was measured at against the real
-// `--bg` / `--card` tokens (see tests/guards/design-system/palette-registry.test.ts, which
-// regenerates it byte-identically and re-derives every published `r_*` figure). This module is the only
-// place the app reads it, so a consumer never has to know the JSON's shape.
-//
-// WHY `uniform` AND NOT `chromatic`. There are two variants and picking the wrong one is a real defect,
-// not a preference. `chromatic` spans L 0.56–0.88 because it is for the TV, where a stop is a whole
-// field and lightness variety is the point. `uniform` pins every stop at L≈0.72 — the same band
-// `hueToHex` emits at SINGER_L — which is what makes any two stops equally visible as a small identity
-// DOT on a dark card, and what makes the ring a hue-only choice. A guest picking off `chromatic` could
-// land on a stop that is legible as a field and weak as a dot.
-//
-// WHAT THIS REPLACES. The join screen used to compute its hues live: `hueToHex` at 24 stops, plus eight
-// hand-picked presets. The generated registry is the SAME band with 48 stops that have been measured
-// and guard-verified, and it carries two things arithmetic cannot — a NAME per stop (so a screen reader
-// says "Turquoise", not "hue 180") and the published contrast figure the picker can show. `colors.ts`
-// keeps the wheel maths: it is still what `hueOfColor` and the singer-colour validator are built on, and
-// every stop here clears that validator (asserted in tests/guards/design-system/colour-ring-palette.test.ts).
+// IT MUST READ THE `uniform` VARIANT: `chromatic` spans a wide lightness range for the TV, where a stop is a
+// whole field, while `uniform` pins every stop in the band `hueToHex` emits at `SINGER_L`, which is what makes
+// any two stops equally visible as a small identity DOT. A `chromatic` stop can read as a field and fail as a
+// dot. The registry also buys what hue arithmetic cannot: a spoken NAME per stop, and a publishable figure.
 import registry from './player-palette-48.json';
 import { hueOfColor, parseHex } from './colors';
 
 /**
- * One stop of the palette. A SUBSET of the JSON's per-stop fields — the ones the app actually paints or
- * says out loud. The registry carries more (`chroma`, `srgb_hue`, `d_danger`…); they are inputs to the
- * generator and its guards rather than anything a component needs, and naming them here would invite a
- * consumer to depend on a generator detail.
+ * One stop. A SUBSET of the JSON's per-stop fields — the ones the app paints or says out loud. The registry
+ * carries more, but those are generator inputs, and naming them here would invite a consumer to depend on a
+ * generator detail.
  */
 export interface PaletteStop {
 	/** 1-based position on the ring. What `aria-valuenow` reports, so it matches what a guest counts. */
@@ -56,16 +42,13 @@ export const PALETTE_STOPS: readonly PaletteStop[] = registry.variants.uniform.s
 export const PALETTE_STOP_ARC_DEG = 360 / PALETTE_STOPS.length;
 
 /**
- * Where stop 0 starts, as a `conic-gradient` `from` angle: −90° puts the first stop at 9 o'clock, which
- * is the ratified mockup's rendering.
+ * Where stop 0 starts, as a `conic-gradient` `from` angle.
  *
- * THIS CONSTANT IS THE WHOLE POINT OF PUTTING THE ANGLE MATHS HERE. A `conic-gradient` measures from 12
- * o'clock and `from` rotates the paint; a knob positioned with `rotate()` measures from 12 o'clock too
- * and does NOT know about the paint's rotation. So a knob placed at a stop's GRADIENT angle sits 90° away
- * from the colour it claims to point at — which is exactly the error in the approved mockup's static
- * markup (its knob is drawn at 161.25° while Turquoise is painted at 71.25°). `paletteConicGradient` and
- * `paletteRingAngle` both read this one constant, so the paint and the knob cannot disagree, and
- * `colour-ring-palette.test.ts` asserts the pair round-trips.
+ * THIS CONSTANT IS WHY THE ANGLE MATHS LIVES HERE. A `conic-gradient` measures from 12 o'clock and `from`
+ * rotates the PAINT, while a knob positioned with `rotate()` measures from 12 o'clock and knows nothing
+ * about that rotation — so a knob placed at a stop's gradient angle points 90° away from the colour it
+ * claims. Both `paletteConicGradient` and `paletteRingAngle` read this one constant, so paint and knob
+ * cannot disagree.
  */
 export const PALETTE_RING_FROM_DEG = -90;
 
@@ -102,19 +85,15 @@ function hueGap(a: number, b: number): number {
 }
 
 /**
- * The stop closest to an arbitrary colour.
+ * The stop closest to an arbitrary colour: EXACT first, then nearest by HUE ANGLE.
  *
- * EXACT FIRST, then nearest by HUE ANGLE. The exact path is what makes a stop round-trip: a value the
- * ring itself produced must map back to the same index, or the knob drifts a stop every time the
- * component re-derives its position. The nearest path exists for a colour the ring did not produce —
- * a legacy `SINGER_COLORS` preset, or a hue from the retired 24-stop wheel — so an existing singer's
- * dot lands on the ring somewhere sensible rather than at stop 0.
+ * The exact path is what makes a stop round-trip — a value the ring produced must map back to the same
+ * index, or the knob drifts a stop each time the component re-derives its position. The nearest path serves
+ * a colour the ring did not produce, such as a legacy preset.
  *
- * HUE ANGLE, NOT OKLab DISTANCE, and that is measured rather than stylistic: `nearestSingerHue` in
- * colors.ts compares (a, b) euclidean against candidates generated at ONE lightness, so a colour from a
- * different tier snaps to the wrong stop (its own comment records 15 of 24 hues coming back wrong).
- * `hueOfColor` is an `atan2` of the same axes and is scale-free, so it reads the hue of a preset at
- * L≈0.56 and a stop at L≈0.72 on the same terms.
+ * HUE ANGLE and NOT OKLab distance, which is measured rather than stylistic: a euclidean (a, b) comparison
+ * against candidates generated at ONE lightness snaps a colour from a different tier to the wrong stop,
+ * while `hueOfColor`'s `atan2` is scale-free and reads both tiers on the same terms.
  */
 export function nearestPaletteStop(input: string): PaletteStop {
 	const hex = canonHex(input);
@@ -139,11 +118,9 @@ function deg(n: number): string {
 }
 
 /**
- * The ring's paint: one `conic-gradient` with a hard sector per stop.
- *
- * Hard-edged (each stop names both its start and end angle) rather than interpolated, because the ring
- * is a PICKER of 48 discrete colours, not a continuous field — a blended band would show colours the
- * ring cannot return, and the guest would aim at one and get its neighbour.
+ * The ring's paint: one `conic-gradient` with a HARD sector per stop — each naming both its start and end
+ * angle — because the ring is a picker of discrete colours and not a continuous field. A blended band shows
+ * colours the ring cannot return, so a guest aims at one and gets its neighbour.
  */
 export function paletteConicGradient(): string {
 	const arc = PALETTE_STOP_ARC_DEG;

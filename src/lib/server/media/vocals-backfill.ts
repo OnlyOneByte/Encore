@@ -1,15 +1,10 @@
-// Guiding-track backfill — give ALREADY-PROCESSED songs their vocals ref.
+// Guiding-track backfill — give ALREADY-PROCESSED songs their vocals ref, for songs whose stem file
+// already exists on disk but whose ref was never recorded (a fixed bug, not something worth
+// re-processing a working song over — the same trap the lyrics backfill was written for). Runs off
+// the filesystem alone: zero cpu, zero downloads, no worker.
 //
-// WHY THIS EXISTS. Separation has been writing a vocals stem next to the instrumental for a long
-// time, but the core dropped the ref on the floor, so every song processed before that was fixed has a
-// perfectly good file on disk that nothing can find. Re-processing is the only other route and nobody
-// re-processes a working song — the same trap the lyrics backfill was written for. On the owner's live
-// library that is seven of nine processed songs gaining a guiding track for ZERO cpu, zero downloads,
-// and no worker at all: this pass only looks at the filesystem.
-//
-// It also refuses to link a SILENT stem. Two of those nine songs are the silent-stem defect (both
-// stems pinned at the 16-bit floor), and a ref set on existence alone would advertise a guiding
-// track that plays nothing — worse than offering none, because it looks like it works.
+// Refuses to link a SILENT stem: a ref set on existence alone would advertise a guiding track that
+// plays nothing, worse than offering none because it looks like it works.
 //
 // PURE selector + injected IO, like backfill.ts and retention.ts, so the policy is testable without
 // a disk or a probe.
@@ -17,13 +12,9 @@
 import type { Media } from '../../contract';
 import { vocalsKey, legacyVocalsRefs } from './paths';
 
-/**
- * Processed songs that could have a guiding track but have no ref for it yet.
- *
- * Only processed songs: the vocals stem is a product of separation, and an unprocessed song will get its
- * ref through the normal `job:complete` path when someone processes it. A song that already has a ref is
- * skipped — this pass never re-probes settled work.
- */
+/** Processed songs that could have a guiding track but have no ref for it yet — an unprocessed song
+ *  gets its ref through the normal `job:complete` path instead; one that already has a ref is
+ *  skipped, since this pass never re-probes settled work. */
 export function needsVocalsBackfill(catalog: Iterable<Media>): string[] {
 	const out: string[] = [];
 	for (const m of catalog) {
@@ -35,12 +26,10 @@ export function needsVocalsBackfill(catalog: Iterable<Media>): string[] {
 }
 
 /**
- * Every ref a media's vocals stem might live at, best guess first.
- *
- * The legacy shape matters: songs processed under the older layout have an instrumental ref whose
- * sibling vocals file follows the same name, and retention.ts already carries this exact
- * `-instrumental.` → `-vocals.` substitution for the same reason. Deriving only the modern key would
- * silently miss those songs.
+ * Every ref a media's vocals stem might live at, best guess first. Songs from the older layout have
+ * an instrumental ref whose sibling vocals file shares the same name (the same
+ * `-instrumental.` → `-vocals.` substitution retention.ts uses) — deriving only the modern key would
+ * silently miss them.
  */
 export function candidateVocalsRefs(m: Media): string[] {
 	const refs = [vocalsKey(m.id), ...(m.instrumentalRef ? legacyVocalsRefs(m.instrumentalRef) : [])].filter(
@@ -54,11 +43,8 @@ export interface VocalsBackfillIO {
 	resolve(ref: string): string | null;
 	/** Does the file exist on disk? */
 	exists(absPath: string): boolean;
-	/**
-	 * Measure the file. `'unknown'` means the probe could not run at all (no ffmpeg) — deliberately
-	 * distinct from `'audible'`, because the two justify the same ACTION but are very different
-	 * operational facts and the operator needs to be told which one happened.
-	 */
+	/** Measure the file. `'unknown'` (probe couldn't run, e.g. no ffmpeg) is deliberately distinct
+	 *  from `'audible'` — same ACTION follows either way, but the operator needs to know which happened. */
 	measure(absPath: string): Promise<'audible' | 'silent' | 'unknown'>;
 	/** Record the ref on the media (runtime map + durable index). */
 	link(mediaId: string, ref: string): void;
@@ -71,21 +57,14 @@ export interface VocalsBackfillResult {
 	silent: number;
 	/** Songs with no vocals file at all (processed before the stem was published). */
 	missing: number;
-	/**
-	 * Linked WITHOUT being measured, because no probe was available.
-	 *
-	 * These are counted apart from `linked` rather than hidden inside it. Refusing to link when the
-	 * probe cannot run would mean a box with no ffmpeg offers no guiding track at all, which is far
-	 * worse than trusting a file the worker already wrote — but an operator reading "linked 4" when
-	 * two of the four are silent has been told something false. So: link, and say so.
-	 */
+	/** Linked WITHOUT being measured (no probe available) — counted apart from `linked` rather than
+	 *  folded into it, since a box with no ffmpeg still deserves a guiding track, but an operator
+	 *  reading "linked" for an unverified file would be told something false. */
 	unmeasured: number;
 }
 
-/**
- * Link the vocals stem for every processed song missing one. Existence AND loudness, in that order —
- * the probe is the expensive half, so it only runs on a file that is actually there.
- */
+/** Link the vocals stem for every processed song missing one. Existence AND loudness, in that
+ *  order — the probe is the expensive half, so it only runs on a file that's actually there. */
 export async function backfillVocalsRefs(
 	catalog: Iterable<Media>,
 	io: VocalsBackfillIO

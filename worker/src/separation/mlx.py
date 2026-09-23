@@ -3,35 +3,19 @@ derivation that turns its four stems into the two the pipeline expects.
 
 PURE, like `demucs.py` — argv builders and path resolvers only, nothing here runs a job.
 
-WHY THIS EXISTS AS ITS OWN MODULE, not a flag on `demucs.py`. `demucs-mlx` is a different CLI with a
-different output contract, MEASURED against its published contract (README + `demucs_mlx/separate.py`
-on `ssmall256/demucs-mlx`), not assumed to match the torch `demucs` CLI:
+Its own module because demucs-mlx's CLI contract genuinely differs from torch demucs: NO
+`--two-stems` (always emits every source the model carries, so the instrumental does not exist as a
+file and must be DERIVED), NO `--filename` template (writes the nested `<out>/<track-stem>/<source>.wav`
+layout instead of `<out>/<model>/<stem>.wav`), NO `-d/--device` (MLX targets Metal, no torch device
+string) and NO `-j/--jobs` (parallelises with `-b`/`--write-workers` instead).
 
-  * NO `--two-stems`. It always emits every source the model carries — four for htdemucs / htdemucs_ft
-    (drums, bass, other, vocals), six for htdemucs_6s (adds piano, guitar). There is no flag to ask it
-    for a 2-stem vocals/no_vocals split, so the instrumental does not exist as a file and must be
-    DERIVED.
-  * NO `--filename` template. The torch engine flattens its output to `<out>/<model>/<stem>.wav` with
-    `--filename {stem}.{ext}`; demucs-mlx has no such flag and writes the demucs-native nested layout
-    `<out>/<track-stem>/<source>.wav`, where `<track-stem>` is the input filename without its
-    extension (`separate.py`: `track_out = out_dir / path.stem`). So the decoded input is named
-    `input.wav` and the stems land in `<out>/input/{vocals,drums,bass,other}.wav`.
-  * Flags it DOES take: `-n/--name`, `-o/--out`, `--overlap`, `--shifts`, `--segment`, `-b/--batch-size`.
-    No `-d/--device` (MLX targets Metal on Apple Silicon and its own CPU fallback; there is no torch
-    device string to pass) and no `-j/--jobs` (it parallelises with `-b`/`--write-workers`, not demucs's
-    per-chunk model-copy jobs).
-
-THE MIX-MINUS DERIVATION. The rest of the pipeline wants ONE instrumental WAV (`no_vocals.wav`) plus the
-isolated vocals. demucs-mlx gives four stems, so the instrumental is `drums + bass + other` summed with
-`amix`. The one trap, and the reason `normalize=0` is not optional: `amix` NORMALISES by default, dividing
-the sum by the input count — three stems summed with the default would come out at a THIRD of the level, a
-quiet instrumental that sounds merely "turned down" rather than broken, so it would pass a naive listen and
-ship. `normalize=0` makes `amix` a true sum, which is the level the source had. Summing the non-vocal stems
-(rather than phase-subtracting vocals from the source mix) is deliberate: the stems are the model's own
-decomposition of the identical resampled input, so they are sample-aligned by construction, whereas a
-phase-subtraction against the pre-separation mix depends on exact phase/level alignment that mlx-audio-io's
-resample step does not guarantee. The residual energy the model assigns to none of drums/bass/other is left
-out — an accepted, small loss versus the correctness risk of a misaligned subtraction.
+THE MIX-MINUS DERIVATION sums the non-vocal stems (`drums + bass + other`, htdemucs_6s adds
+piano/guitar) via ffmpeg `amix`. `normalize=0` is load-bearing: `amix` normalizes by default, dividing
+the sum by the input count, so 3 stems would ship the instrumental at a THIRD of the level — quiet
+enough to sound merely "turned down" rather than broken, passing a naive listen. Summing stems rather
+than phase-subtracting vocals from the source mix is deliberate: the stems are the model's own
+decomposition of the same resampled input, so they are sample-aligned by construction, whereas a
+phase-subtraction depends on alignment the resample step does not guarantee.
 """
 
 from __future__ import annotations
@@ -43,16 +27,14 @@ from ..retry_policy import BoundaryError
 
 DEFAULT_MODEL = "htdemucs"
 
-# The demucs-family checkpoints demucs-mlx carries AND this engine will run. Intersection of the
-# torch engine's whitelist (src/lib/contract/lyrics/separators.ts, mirrored in demucs.py DEMUCS_MODELS)
-# with the models demucs-mlx ships — the same three, so an mlx process resolves the exact checkpoint a
-# torch process would. Defence in depth: the core validates engine+model before enqueue, but a worker
-# must never shell `demucs-mlx -n <arbitrary>` from a job param.
+# The demucs-family checkpoints demucs-mlx carries AND this engine will run — the same three the
+# torch engine allows (demucs.py DEMUCS_MODELS), so an mlx process resolves the exact checkpoint a
+# torch process would. Defence in depth: the worker must never shell an arbitrary model from a job param.
 MLX_MODELS = ("htdemucs", "htdemucs_ft", "htdemucs_6s")
 
 # The non-vocal sources of a 4-stem htdemucs/htdemucs_ft model, summed to form the instrumental.
-# htdemucs_6s adds "piano" and "guitar"; see mlx_instrumental_sources below, which derives the set
-# from the model rather than hardcoding four names.
+# htdemucs_6s adds "piano"/"guitar"; see mlx_instrumental_sources, which derives the set from the
+# model rather than hardcoding four names.
 _FOUR_STEM_INSTRUMENTAL = ("drums", "bass", "other")
 _SIX_STEM_EXTRA = ("piano", "guitar")
 

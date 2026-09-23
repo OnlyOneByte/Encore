@@ -21,7 +21,7 @@ import {
 
 const NOW = 1_788_400_000_000;
 
-// A real-shaped row: the uploader in `artist`, the artist buried in `title` (the title-normalizer problem).
+// A real-shaped row: the uploader in `artist`, the real artist buried in `title`.
 const media = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
 	source: 'youtube',
@@ -79,7 +79,7 @@ describe('sidecarFromMedia', () => {
 	});
 
 	it('a MANUAL edit survives a rewrite — curation must not be erased by a re-parse', () => {
-		// The DB has no idea a human set these, so a naive rebuild would stomp them.
+		// The DB has no idea a human set these, so a naive re-parse would stomp them.
 		const curated: MediaSidecar = {
 			...sidecarFromMedia(media(), NOW),
 			canonical: {
@@ -183,18 +183,17 @@ describe('sidecar I/O and index rebuild', () => {
 			warnings.push(args.map(String).join(' '));
 		};
 		try {
-			// Missing: normal, must NOT warn.
-			expect(await readSidecar('never-existed')).toBeNull();
+			expect(await readSidecar('never-existed')).toBeNull(); // missing is normal: must NOT warn
 			expect(warnings).toHaveLength(0);
 
-			// Present but unparseable: corruption of the authoritative record — must warn, must not throw.
+			// Corruption of the authoritative record must warn and must not throw: unparseable, then valid
+			// JSON of the wrong shape.
 			await writeSidecar(sidecarFromMedia(media(), NOW));
 			await Bun.write(join(root, 'meta', 'm1.json'), '{ half a fi');
 			expect(await readSidecar('m1')).toBeNull();
 			expect(warnings.length).toBe(1);
 			expect(warnings[0]).toContain('m1.json');
 
-			// Present, valid JSON, but wrong shape: still corruption, still warns.
 			warnings.length = 0;
 			await Bun.write(join(root, 'meta', 'm1.json'), '{"not":"a sidecar"}');
 			expect(await readSidecar('m1')).toBeNull();
@@ -206,12 +205,9 @@ describe('sidecar I/O and index rebuild', () => {
 	});
 
 	it('a PARTIAL sidecar (only `id`) fails the shape check — a hand edit must not throw a boot pass (defect 2)', async () => {
-		// Hand-editing meta/<id>.json is the design (writeSidecar is pretty-printed on purpose). A hand
-		// edit that keeps only the id — the shape `{"id":"m1"}` — used to PASS readSidecar's id-only check,
-		// then throw deep inside a boot maintenance pass (mediaFromSidecar reads s.origin/raw/canonical,
-		// the browse-sync pass reads s.canonical.genre, retention reads s.library) — and with no per-pass
-		// isolation that one throw aborted backfill, lyrics AND retention behind one silent warn. Require
-		// the sections its consumers dereference, down the existing warn-and-return-null path.
+		// Hand-editing meta/<id>.json is the design, and `{"id":"m1"}` passed an id-only check then threw deep
+		// inside a boot maintenance pass — with no per-pass isolation that one throw aborted backfill, lyrics AND
+		// retention behind a single silent warn. The check requires every section a consumer dereferences.
 		const warnings: string[] = [];
 		const orig = console.warn;
 		console.warn = (...args: unknown[]) => {
@@ -230,8 +226,7 @@ describe('sidecar I/O and index rebuild', () => {
 	});
 
 	it('mediaFromSidecar throws on the partial shape readSidecar now rejects — proving the rejection matters (defect 2)', () => {
-		// This is what USED to run when readSidecar returned the partial: a dereference of a missing
-		// section. It documents why widening the predicate is the fix — the partial is genuinely unusable.
+		// The partial is genuinely unusable, which is why widening readSidecar's predicate is the fix.
 		expect(() => mediaFromSidecar({ id: 'm1' } as unknown as MediaSidecar)).toThrow();
 	});
 
@@ -240,14 +235,12 @@ describe('sidecar I/O and index rebuild', () => {
 		const s = sidecarFromMedia(media(), NOW);
 		await writeSidecar(s);
 		const metaFiles = readdirSync(join(root, 'meta'));
-		// Exactly the target — no leftover .tmp sibling from the write-then-rename.
-		expect(metaFiles).toEqual(['m1.json']);
+		expect(metaFiles).toEqual(['m1.json']); // no leftover .tmp sibling from the write-then-rename
 		expect(await readSidecar('m1')).toEqual(s); // fully written, parseable
 	});
 
 	it('overwriting an existing sidecar never exposes a partial file', async () => {
-		// Two writes to the same id land via distinct temps + rename, so a reader always sees one whole
-		// file — either the old complete one or the new complete one.
+		// Distinct temps + rename, so a reader always sees one whole file: the old one or the new one.
 		await writeSidecar(sidecarFromMedia(media({ id: 'x' }), NOW));
 		const updated = sidecarFromMedia(
 			media({ id: 'x', instrumentalRef: 'derived/stems/x-instrumental.m4a' }),
@@ -265,8 +258,7 @@ describe('sidecar I/O and index rebuild', () => {
 	});
 
 	it('THE POINT: an empty index is rebuilt entirely from the volume', async () => {
-		// Simulates losing the SQLite file: all the bytes are on disk, and the sidecars are what let
-		// the catalog come back rather than being permanently lost with the DB.
+		// Losing the SQLite file: the bytes are on disk, and the sidecars are what bring the catalog back.
 		await writeSidecar(sidecarFromMedia(media({ id: 'a', instrumentalRef: 'derived/stems/a-instrumental.m4a' }), NOW));
 		await writeSidecar(sidecarFromMedia(media({ id: 'b' }), NOW));
 
@@ -293,8 +285,7 @@ describe('sidecar I/O and index rebuild', () => {
 	});
 
 	it('backfill describes songs that predate sidecars, and never clobbers a curated one', async () => {
-		// Without the backfill, only songs added after the sidecar became authoritative would survive
-		// losing the SQLite file — every song already in the catalog would still be permanently lost.
+		// Without the backfill, every song predating the sidecar is still lost permanently with the DB.
 		const curated = sidecarFromMedia(media({ id: 'curated' }), NOW);
 		curated.canonical.genre = ['soul'];
 		curated.provenance.artist = { by: 'manual', confidence: 'high' };
@@ -317,9 +308,7 @@ describe('sidecar I/O and index rebuild', () => {
 
 describe('annotation persistence', () => {
 	it('the artist CREDIT survives a sidecar round trip', () => {
-		// The sidecar is authoritative — the DB is rebuilt from it. A credit that lived only in a column
-		// would be lost on a rebuild, and the align job would silently go back to being unable to tell
-		// two recordings of a song apart.
+		// A credit living only in a column is lost on a rebuild, and align can no longer tell two recordings apart.
 		const m = media({ title: 'Lady Gaga ft. Beyoncé - Telephone (Lyrics)', artist: 'Lady Gaga' });
 		const side = sidecarFromMedia(m, NOW);
 		expect(side.canonical.artistCredit).toBe('Lady Gaga ft. Beyoncé');
@@ -327,12 +316,9 @@ describe('annotation persistence', () => {
 	});
 
 	it('a LOW-confidence credit is not projected into the Media (LRCLIB tiebreak poison)', () => {
-		// A no-separator title with a plausible uploader parses `uploader-fallback` at LOW confidence:
-		// artist is the uploader channel, which is a guess. The credit is still STORED verbatim (it is
-		// the raw billing and must survive re-annotation), but it must NOT reach the projected Media,
-		// where `LrclibSource.fetch` would score the near-tie tiebreak against the channel name via
-		// `credit = req.artist_credit or req.artist`. browseArtist already gates the artist to null; the
-		// credit now gates the same way.
+		// A no-separator title parses `uploader-fallback` at LOW confidence, so the artist is a guess. The credit
+		// is still STORED verbatim (the raw billing must survive re-annotation) but must NOT reach the projected
+		// Media, where `LrclibSource.fetch` would score its near-tie tiebreak against the channel name.
 		const m = media({ title: 'Baby One More Time', artist: 'SomeChannel' });
 		const side = sidecarFromMedia(m, NOW);
 		expect(side.provenance.artist?.confidence).toBe('low');
@@ -343,8 +329,8 @@ describe('annotation persistence', () => {
 	});
 
 	it('a MusicBrainz citation does not overwrite the credit with a narrower one', () => {
-		// The annotator returns a PRIMARY artist, so letting a citation write here would replace a real
-		// two-artist billing with one name — losing exactly the signal that distinguishes the versions.
+		// The annotator returns a PRIMARY artist, so a citation writing here would replace a two-artist
+		// billing with one name — losing the signal that distinguishes the versions.
 		const m = media({
 			title: 'Lady Gaga ft. Beyoncé - Telephone (Lyrics)',
 			artist: 'Lady Gaga',
@@ -358,9 +344,7 @@ describe('annotation persistence', () => {
 	});
 
 	it('a YouTube citation round-trips as source "youtube" and is not re-parsed away', () => {
-		// YouTube's OWN declared metadata is a citation (no MBID). It must persist with provenance
-		// by=youtube, project back with annotation.source=youtube, and survive a later re-parse of the
-		// raw title — the same never-regress the MusicBrainz path gets, via keepCited.
+		// YouTube's OWN metadata is a citation (no MBID), so keepCited gives it the MusicBrainz never-regress.
 		const m = media({
 			title: 'some noisy upload title',
 			artist: 'SomeChannel',
@@ -376,8 +360,7 @@ describe('annotation persistence', () => {
 		expect(back.artistCanonical).toBe('a-ha');
 		expect(back.annotation).toEqual({ source: 'youtube', confidence: 'high' });
 
-		// A later write whose Media lost the runtime annotation (an index-only hydrate) must keep the
-		// stored citation rather than re-parse the raw title into the artist slot.
+		// A write whose Media lost the runtime annotation keeps the stored citation rather than re-parsing.
 		const reparsed = media({ title: 'some noisy upload title', artist: 'SomeChannel' });
 		const side2 = sidecarFromMedia(reparsed, NOW, side);
 		expect(side2.canonical.artist).toBe('a-ha'); // keepCited protected it
@@ -385,9 +368,8 @@ describe('annotation persistence', () => {
 	});
 
 	it('a MusicBrainz citation survives a sidecar round trip', () => {
-		// REGRESSION: mbid and annotation were runtime-only — no columns, not in the sidecar — so a
-		// restart forgot that an artist had been CITED, and the never-regress rule then had nothing to
-		// compare against: the next `medium` annotation would overwrite a `high` freely.
+		// mbid and annotation were runtime-only, so a restart forgot an artist had been CITED and the
+		// never-regress rule had nothing to compare against: a `medium` could overwrite a `high` freely.
 		const cited = media({
 			mbid: 'mb-42',
 			artistCanonical: 'Tears for Fears',
@@ -401,16 +383,14 @@ describe('annotation persistence', () => {
 	});
 
 	it('a later write does NOT downgrade a citation back to a title parse', () => {
-		// Every sidecar write re-parses the raw title. Without the cited guard that parse would
-		// overwrite the citation — reintroducing through persistence the exact regression
-		// applyAnnotation refuses at runtime.
+		// Every sidecar write re-parses the raw title, so without the cited guard persistence reintroduces
+		// the exact regression applyAnnotation refuses at runtime.
 		const cited = media({
 			mbid: 'mb-42',
 			artistCanonical: 'Tears for Fears',
 			annotation: { source: 'musicbrainz', confidence: 'high' }
 		});
 		const first = sidecarFromMedia(cited, NOW);
-		// a second write from a media that has LOST its runtime annotation (e.g. rebuilt from an index)
 		const stripped = { ...cited, mbid: undefined, annotation: undefined };
 		const second = sidecarFromMedia(stripped, NOW, first);
 		expect(second.canonical.mbid).toBe('mb-42');
@@ -450,11 +430,9 @@ describe('clearArtifacts (eviction must stick) (§1)', () => {
 	});
 
 	it('makes an eviction STICK: a re-derive does not resurrect the song as processed', async () => {
-		// The bug: app.ts eviction sets instrumentalRef = undefined and upserts, but sidecarFromMedia
-		// does `m.instrumentalRef ?? prev?.artifacts.instrumental`, so undefined ?? prev RESTORES the
-		// just-deleted ref; mediaFromSidecar then re-derives stemStatus 'ready', resurrecting an evicted
-		// song as processed with a ref to a deleted file. clearArtifacts nulls the fields directly so the
-		// eviction sticks. This test reproduces BOTH halves.
+		// Eviction upserts a Media with instrumentalRef undefined, but sidecarFromMedia does `m.instrumentalRef
+		// ?? prev?.artifacts.instrumental`, so undefined ?? prev RESTORES the just-deleted ref and
+		// mediaFromSidecar re-derives 'ready'. clearArtifacts nulls the fields so the eviction sticks.
 		const processed = media({
 			instrumentalRef: 'derived/stems/m1-instrumental.flac',
 			vocalsRef: 'derived/stems/m1-vocals.flac',
@@ -463,8 +441,7 @@ describe('clearArtifacts (eviction must stick) (§1)', () => {
 		});
 		await writeSidecar(sidecarFromMedia(processed, NOW));
 
-		// Eviction as app.ts performs it: the runtime Media loses its refs (undefined) and is upserted,
-		// which fires sidecarFromMedia with the PRIOR sidecar as `previous`.
+		// As app.ts performs it: the upsert fires sidecarFromMedia with the PRIOR sidecar as `previous`.
 		const prev = await readSidecar('m1');
 		const evicted: Media = {
 			...processed,
@@ -475,11 +452,9 @@ describe('clearArtifacts (eviction must stick) (§1)', () => {
 			stemStatus: 'none'
 		};
 		const restored = sidecarFromMedia(evicted, NOW, prev);
-		// Without clearArtifacts, the ?? prev restores the ref — proving the defect is real:
 		expect(restored.artifacts.instrumental).toBe('derived/stems/m1-instrumental.flac');
 		expect(mediaFromSidecar(restored).stemStatus).toBe('ready'); // resurrected — the bug
 
-		// clearArtifacts on the authoritative record is what makes the eviction stick:
 		await writeSidecar(restored); // simulate the upsert sink having written the restored sidecar
 		await clearArtifacts('m1');
 		const final = await readSidecar('m1');

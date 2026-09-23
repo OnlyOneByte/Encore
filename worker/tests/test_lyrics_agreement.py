@@ -48,12 +48,9 @@ from src.lyrics.grading import agreement as _chain_agreement
 
 
 def _repo_root() -> Path:
-    """The repo root, by walking up for `bunfig.toml`.
-
-    Not a hop count: `parents[N]` encodes this file's distance from the root, and flattening the `apps/`
-    layer changed that distance for every worker test at once — 15 of them failed reading files that had
-    moved outside their computed root. The marker is the same file the TypeScript harness uses, so both
-    sides of the repo agree on the answer by construction.
+    """The repo root, by walking up for `bunfig.toml` — the same marker file the TypeScript harness
+    uses, so both sides of the repo agree on the answer by construction rather than a hop count that
+    breaks whenever a directory layer moves.
     """
     here = Path(__file__).resolve()
     for candidate in [here.parent, *here.parents]:
@@ -67,7 +64,6 @@ _SHARED_LYRICS_TS = _REPO / "src" / "lib" / "contract" / "lyrics" / "lyrics.ts"
 _CORPUS_TS = _REPO / "src" / "lib" / "contract" / "lyrics" / "lyrics-agreement-corpus.ts"
 
 
-# ── reading the TypeScript authority ─────────────────────────────────────────────────
 def _ts_number(name: str) -> float:
     """The numeric literal `export const <name> = <n>;` declares in lyrics.ts."""
     text = _SHARED_LYRICS_TS.read_text(encoding="utf-8")
@@ -139,19 +135,14 @@ def _old_set_jaccard(a: str, b: str) -> float:
     return len(set_a & set_b) / len(set_a | set_b)
 
 
-# ── 1. parity ────────────────────────────────────────────────────────────────────────
 def test_the_thresholds_mirror_the_typescript_authority():
-    """The constants are declared authoritative in lyrics.ts; assert the Python copies equal THEM.
-
-    RED ON BASE in the other direction too: asserting a Python literal only proves Python equals itself,
-    so every TS-side drift — the normal way any of these changes — would stay green on both suites.
-    """
+    """The constants are declared authoritative in lyrics.ts; assert the Python copies equal THEM
+    (a Python literal alone only proves Python equals itself)."""
     assert MIN_TOKENS_TO_COMPARE == _ts_number("MIN_TOKENS_TO_COMPARE")
     assert SUSPECT_COVERAGE == _ts_number("SUSPECT_COVERAGE")
     assert SEQUENCE_WEIGHT == _ts_number("SEQUENCE_WEIGHT")
-    # And the retired name is no longer DECLARED, so a half-finished rename cannot read as parity. Matched
-    # as a declaration rather than as a substring: the new constant's docstring names the old one on
-    # purpose, to tell a reader carrying 0.25 in their head that the axis moved.
+    # The retired name must no longer be DECLARED, matched as a declaration rather than a substring,
+    # so a half-finished rename cannot read as parity.
     assert not re.search(
         r"export const SUSPECT_AGREEMENT\s*=", _SHARED_LYRICS_TS.read_text(encoding="utf-8")
     ), "lyrics.ts still declares SUSPECT_AGREEMENT — the rename is half-applied"
@@ -194,13 +185,10 @@ def test_the_rank_score_blend_is_pinned_to_a_hand_computed_value():
     assert abs(got - 0.9128787878787878) < 1e-12, got
 
 
-# ── 2. what the new metric sees that set Jaccard could not ───────────────────────────
 def test_repeated_and_reordered_text_no_longer_scores_a_perfect_agreement():
-    """The two blind spots, stated as behaviour rather than as corpus rows.
-
-    RED ON BASE: on origin/main both pairs score exactly 1.0, because token SETS are identical. The
-    absolute judgement must NOT fire on either — the words are all there, so it is the same song — which
-    is why coverage stays 1.0 while the ranking score drops.
+    """The two blind spots, stated as behaviour rather than as corpus rows: set Jaccard scores both
+    pairs 1.0 since token SETS are identical, but the absolute judgement must NOT fire on either (the
+    words are all there, so it is the same song) — coverage stays 1.0 while the ranking score drops.
     """
     twelve = "alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima"
 
@@ -234,12 +222,9 @@ def test_argument_order_is_load_bearing():
     assert forwards.rank_score == backwards.rank_score  # rank itself stays symmetric
 
 
-# ── 3. the measured band SUSPECT_COVERAGE sits in ────────────────────────────────────
 #
-# A synthetic corpus with an explicit degradation model, all original text. Not a calibration set (the real
-# corpus
-# is still open); it measures how the METRIC behaves on the three pair shapes that matter, which is what
-# choosing the judgement axis and its threshold needs.
+# A synthetic corpus with an explicit degradation model, all original text — not a calibration set,
+# it measures how the METRIC behaves on the three pair shapes that matter.
 
 _VERSE_A = (
     "i left the harbour lights behind me on a tuesday in the rain "
@@ -416,7 +401,6 @@ def test_a_truncated_candidate_is_now_caught_where_set_jaccard_accepted_it():
     assert _old_set_jaccard(_CHORUS, baseline) > 0.25, "the old metric accepted exactly this"
 
 
-# ── 4. through the real selection seam, not just the metric ──────────────────────────
 def _text(body: str, *, role: str, source: str, rank: int | None = None, variant: str | None = None):
     return LyricsText(
         text_source=source,
@@ -430,12 +414,9 @@ def _text(body: str, *, role: str, source: str, rank: int | None = None, variant
 
 
 def test_selection_prefers_the_right_version_over_the_longer_master():
-    """The call chain the issue describes: acquire → select_by_baselines → publish.
-
-    The report was a wrong-version pick winning selection. Both candidates are the same song, so no
-    threshold can order them (`SUSPECT_COVERAGE` correctly fires on neither) — the argmax over the ranking
-    score has to, and it can only do that if the score is count- and position-aware. On origin/main both
-    candidates score within a few percent of each other on set Jaccard.
+    """Both candidates are the same song, so no threshold can order them (`SUSPECT_COVERAGE`
+    correctly fires on neither) — the argmax over the ranking score has to, and only can if that
+    score is count- and position-aware (set Jaccard scores them within a few percent of each other).
     """
     baseline = _text(asr_baseline(SONG, 0.20), role=ROLE_BASELINE, source=SOURCE_ASR, rank=0)
     right = _text(SONG, role=ROLE_CANDIDATE, source=SOURCE_LRCLIB, variant="right")
@@ -448,11 +429,10 @@ def test_selection_prefers_the_right_version_over_the_longer_master():
 
 
 def test_selection_judges_on_coverage_so_a_partial_baseline_publishes_the_candidate_alone():
-    """A correct candidate + a baseline that only heard a third: NOT suspect, so no fallback is published.
-
-    RED ON BASE in the sense that matters: with the judgement on a mixed score, this candidate is demoted
-    to `low` confidence and the ASR baseline is published beside it — the room is shown a warning and a
-    transcript for lyrics that were right all along.
+    """A correct candidate + a baseline that only heard a third: NOT suspect, so no fallback is
+    published. Judging on a mixed score instead would demote this candidate to `low` confidence and
+    publish the ASR baseline beside it — a warning and a transcript for lyrics that were right all
+    along.
     """
     third = " ".join(asr_baseline(SONG, 0.20).split()[: len(SONG.split()) // 3])
     sel = select_by_baselines(
@@ -498,19 +478,12 @@ def test_composite_reports_both_axes_over_the_same_quorum():
     assert nothing.score is None and nothing.coverage is None and nothing.votes == []
 
 
-# ── the public surface the rename moved ───────────────────────────────────────────────
 def test_the_package_root_re_exports_the_new_agreement_surface():
-    """`src.lyrics` is the import surface every caller outside this module uses, so the rename is not
-    finished until the package root carries it.
-
-    This is deliberately an API-surface guard rather than a behavioural one. The three new names and the
-    renamed threshold are re-exported by `src/lyrics/__init__.py`; dropping one of those re-export lines
-    changes NO behaviour reachable from a test that imports `src.lyrics.grading` directly (which every
-    other test here does), so nothing else in either suite notices. Importing through the ROOT is what
-    makes a dropped line red.
-
-    It also catches the half-applied rename in the other direction: `SUSPECT_AGREEMENT` must be gone from
-    the root, not merely shadowed, or a caller keeps importing a name whose axis silently changed.
+    """`src.lyrics` is the import surface every caller outside this module uses. Deliberately an
+    API-surface guard, not a behavioural one: dropping a re-export line in `src/lyrics/__init__.py`
+    changes no behaviour reachable through `src.lyrics.grading` directly, so only importing through
+    the ROOT makes it red. Also catches the half-applied rename in the other direction:
+    `SUSPECT_AGREEMENT` must be gone from the root, not merely shadowed.
     """
     import src.lyrics as pkg
     from src.lyrics import SUSPECT_COVERAGE as root_threshold
@@ -534,17 +507,11 @@ def test_the_package_root_re_exports_the_new_agreement_surface():
 
 
 def test_a_fresh_Selection_reports_an_unknown_coverage_rather_than_raising():
-    """`Selection.winner_coverage` must be a DECLARED field with a `None` default.
-
-    `Selection` is a plain (non-slots) dataclass and `select_by_baselines` assigns the winner's coverage
-    as an attribute, so Python would happily create it on the instance even with the field declaration
-    deleted — which is exactly why the rest of the suite stays green when that hunk is reverted. The
-    declaration is still load-bearing: any consumer holding a `Selection` that did NOT come out of
-    `select_by_baselines` reads the default, and without the field that read is an AttributeError instead
-    of "not judged". `steps/lyrics.py` formats this value on the suspect path.
-
-    Asserting the DEFAULT on a directly-constructed instance is the only thing that distinguishes a
-    declared field from an attribute the selection path happens to set.
+    """`Selection.winner_coverage` must be a DECLARED field with a `None` default: any consumer
+    holding a `Selection` that did NOT come out of `select_by_baselines` reads the default, and
+    without the field that read is an AttributeError instead of "not judged". Asserting the default
+    on a directly-constructed instance is what distinguishes a declared field from an attribute the
+    selection path merely happens to set.
     """
     fresh = Selection()
     assert fresh.winner_coverage is None
