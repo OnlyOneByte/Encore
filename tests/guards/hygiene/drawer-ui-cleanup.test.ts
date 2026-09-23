@@ -43,20 +43,6 @@ test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the c
 	expect(code).toContain('disabled={!available}');
 	expect(code).not.toMatch(/no isolated vocals/i);
 	expect(code).not.toMatch(/re-?process it to get a guiding track/i);
-	/*
-	 * RETIRED, ON THE RECORD: the three arms that pinned the HINT'S EXISTENCE —
-	 *   const hint = $derived(...)  ·  `available ? … : ''`  ·  {#if hint}<p class="gt-hint">
-	 *
-	 * The hint is gone entirely. It existed to explain the effect ("Fades the original singer back in,
-	 * quietly, …"), and the owner removed it as surplus copy on a performance surface. These arms were
-	 * built to stop the OUT-OF-PLACE "No isolated vocals" line coming back through the hint, and that
-	 * claim is now stronger rather than weaker: with no hint at all, the two `not.toMatch` arms above
-	 * are the whole guarantee and they still bite. Re-pointing them at a `null` hint would leave the
-	 * test looking authoritative while asserting nothing about the copy.
-	 *
-	 * The control's own arms (Slider present, guiding variant, disabled wiring) are untouched, so this
-	 * test still fails if the CONTROL regresses — which is what its name claims.
-	 */
 	expect(code).not.toMatch(/gt-hint/);
 });
 

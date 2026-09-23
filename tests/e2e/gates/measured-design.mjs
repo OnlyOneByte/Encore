@@ -756,22 +756,6 @@ try {
 			browse.rowCount >= 1,
 			`${browse.rowCount} rows rendered for the query "a"`
 		);
-		/*
-		 * RETIRED: "no result row is occluded by the band, at rest" — which required ZERO of the rendered
-		 * rows to intersect the band before any scrolling. That was satisfiable only because the browse
-		 * screen was BOTTOM-ANCHORED and scrolled itself to the end on every keystroke, so "at rest" and
-		 * "at the end of the list" were the same position. The column reads downward from the field, so at rest
-		 * a list longer than the viewport necessarily continues underneath the band — 2 of 28 rows did, and
-		 * the arm redded on a surface that is behaving correctly. Demanding it back would mean demanding a
-		 * list no longer than one screen.
-		 *
-		 * ITS GUARANTEE SPLITS IN TWO, and both halves are asserted rather than dropped. That no row is
-		 * PERMANENTLY hidden is the reservation arm below (the last row clears the band once scrolled to
-		 * the end) — that is the half that was ever load-bearing. What can still be said at rest is the
-		 * half a downward list gets and an upward one never had: the TOP of the ranking, the best match,
-		 * is never under the chrome. On the old screen the best match was the row nearest the thumb and
-		 * this was free; here it is a real claim about where the column starts.
-		 */
 		check(
 			'CLAIM 3 the TOP of the ranking is clear of the band at rest — the best match is never under the chrome',
 			browse.firstRowBottom !== null && browse.firstRowBottom <= browse.dockTop + 1,

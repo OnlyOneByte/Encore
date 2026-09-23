@@ -1,72 +1,42 @@
 // Rendered-DOM guards for the phone now-playing surface and the queue rows around it.
 //
-// These MOUNT the components under the repo's happy-dom + compiled-Svelte harness (tests/setup/,
-// wired by the root bunfig.toml) rather than scanning their source, because every claim below is
-// about what RENDERS: whether the song is a heading, whether the progress row exists, whether a
-// disclosure ended up between a singer and a control they need mid-song. is explicit that a
-// measurement claim cannot be satisfied by a source scan, and this repo's own record is that the
-// defects that shipped were invisible to a passing suite.
+// These MOUNT the components under the repo's happy-dom + compiled-Svelte harness rather than scanning their
+// source, because every claim below is about what RENDERS: whether the song is a heading, whether the progress row
+// exists, whether a disclosure ended up between a singer and a control they need mid-song. A measurement claim
+// cannot be satisfied by a source scan, and this repo's record is that the defects which shipped were invisible to
+// a passing suite.
 //
-// ── RE-POINTED FROM `NowPlayingHero` TO `NowPlayingDrawer` ────────────────────────────────────────
+// ── ONE PERMANENTLY-MOUNTED SHEET, NOT TWO SURFACES ──────────────────────────────────────────────
 //
-// NowPlayingHero was DELETED. Its job moved into NowPlayingDrawer, a bottom drawer mounted in
-// `+layout.svelte` as the expansion of the persistent now-playing band; home is queue-only now. This
-// file imported the deleted component, so it FAILED TO LOAD and its 15 tests silently stopped
-// running — a coverage hole, not a passing state. Every assertion below is the same assertion,
-// re-pointed; the handful whose SUBJECT genuinely no longer exists were transformed to the assertion
-// that now carries the same guarantee, and each of those says so at its site.
+// The band and the drawer it expanded into are one vaul drawer with snap points (`'80px'` = the band strip, a
+// clamped fraction at most `0.82` = pulled up), with `NowPlayingBand` composed as the content's first child. Three
+// consequences, each handled at its site:
 //
-// ── ONE PERMANENTLY-MOUNTED SHEET, NOT TWO SURFACES: WHAT THAT CHANGED HERE ──────────────────────
+//   A. THERE IS NO CLOSED STATE. `open` defaults true and never changes, so `.np-drawer` is in the document at all
+//      times and the old `openOnMount: false` arm modelled nothing.
+//   B. THE WHOLE BODY STAYS MOUNTED at either height — below the fold is not out of the tree. Asserted rather than
+//      assumed, and it is what surfaced the duplicate "Nothing playing" the idle arm pins: two elements in ONE
+//      dialog saying the same thing, invisibly, to a screen reader.
+//   C. IT NEEDS A `ResizeObserver` TO RENDER AT ALL, because `.band-slot` carries `bind:clientHeight`. That one is
+//      LENT for the duration of a mount rather than swallowed — see `withResizeObserver`.
 //
-// The persistent band and the drawer it expanded into were MERGED into one vaul drawer with snap
-// points (`'80px'` = the band strip, a clamped fraction at most `0.82` = pulled up), and
-// `NowPlayingBand` is COMPOSED as the
-// content's first child. Three consequences for this file, each handled at its site:
+// ── TWO THINGS THE DRAWER CHANGES ABOUT MOUNTING ─────────────────────────────────────────────────
 //
-//   A. THERE IS NO CLOSED STATE. `open` defaults true and never changes, so `.np-drawer` is in the
-//      document at all times and the harness's old `openOnMount: false` arm modelled nothing. The
-//      guarantee it carried ("before the reveal, the control is not on screen") has no mount-rung
-//      expression left; see the retirement comment on the collapsed arm below.
-//   B. THE WHOLE BODY STAYS MOUNTED at either height — below the fold is not out of the tree. That is
-//      asserted, not assumed, and it is what surfaced the duplicate "Nothing playing" the idle arm
-//      pins: two elements in ONE dialog said the same thing, invisibly, to a screen reader.
-//   C. IT NEEDS A `ResizeObserver` TO RENDER AT ALL, because `.band-slot` carries `bind:clientHeight`.
-//      That one is lent for the duration of a mount rather than swallowed — see `withResizeObserver`
-//      for why swallowing it leaves every query below running against an empty document.
+// 1. IT PORTALS. vaul moves the content to the end of `document.body`, so the host `mount()` was given holds
+//    nothing. Every query runs against the one `[data-slot="drawer-content"]` element `openDrawer()` locates —
+//    which also means a leaked portal from a previous test reds (it asserts there is exactly one) rather than
+//    quietly satisfying a query.
 //
-// ── TWO THINGS THE DRAWER CHANGES ABOUT MOUNTING, AND HOW THIS FILE HANDLES THEM ──────────────────
+// 2. IT MEASURES, incidentally, on no path this file asserts about: bits-ui's body-scroll-lock reads
+//    `documentElement.clientWidth`, and the Bits UI Slider inside GuidingTrack reads `offsetWidth`. Both fire AFTER
+//    the content tree is fully built — measured, with the throw let through, the rendered content carries
+//    everything down to the deepest child — so `openDrawer()` swallows that ONE class of error, matched on the
+//    refusal's own message, and rethrows anything else.
 //
-// 1. IT PORTALS. vaul moves the content to the end of `document.body`, so the host element `mount()`
-//    was given holds nothing. Every query therefore runs against the ONE `[data-slot="drawer-content"]`
-//    element `openDrawer()` locates in the document — which also means a leaked portal from a previous
-//    test reds (`openDrawer` asserts there is exactly one) instead of quietly satisfying a query.
-//
-// 2. IT MEASURES — INCIDENTALLY, AND NOT ON ANY PATH THIS FILE ASSERTS ABOUT. Opening the drawer
-//    reaches two geometry reads the mount rung deliberately replaces with a throw (//    tests/setup/svelte-dom-preload.ts):
-//
-//      - `document.documentElement.clientWidth`, from bits-ui's body-scroll-lock, which computes
-//        scrollbar-width compensation when a modal dialog opens
-//        (node_modules/bits-ui/dist/internal/body-scroll-lock.svelte.js:97, inside a `watch`). Fires
-//        for EVERY open drawer, idle or playing.
-//      - `offsetWidth`, from the Bits UI Slider inside GuidingTrack, which mounts whenever
-//        `hasSong` is true.
-//
-//    Both fire AFTER the content tree is fully built — MEASURED: with the throw let through, the
-//    rendered content carries the eyebrow, the title, the byline, the seek row, the transport, the
-//    guiding track, the key row, the range bar and its axis labels, i.e. everything down to the last
-//    element of the deepest child. So `openDrawer()` swallows that ONE class of error — matched on
-//    the refusal's own message — and rethrows anything else.
-//
-//    THIS IS NOT FAKING GEOMETRY, and the distinction is the whole reason it is allowed here.
-//    `hero-live-controls.test.ts` moved four arms to rung L rather than install a zero-returning
-//    `offsetWidth` and a no-op `ResizeObserver`, because a fabricated measurement is a silent green.
-//    Nothing is fabricated here: the refusal still throws, no zero is produced, and no assertion in
-//    this file reads a geometry value. What is skipped is a dependency's scrollbar padding and the
-//    slider thumb's pixel position — neither of which any claim below is about. Every claim that DOES
-//    depend on the slider's own geometry stays on rung L, in
-//    `tests/e2e/probes/p16-hero-live-controls.mjs`, and the last test in this file BOUNDS the swallowed
-//    refusals by name, so a future edit that makes the drawer itself measure something new reds here
-//    instead of being absorbed alongside the two known reads.
+//    THAT IS NOT FAKING GEOMETRY, which is why it is allowed: the refusal still throws, no zero is produced, and no
+//    assertion here reads a geometry value. Claims that DO depend on the slider's geometry stay on rung L, and the
+//    last test in this file BOUNDS the swallowed refusals by name — so a future edit that makes the drawer measure
+//    something new reds here instead of being absorbed alongside the two known reads.
 import { test, expect, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { mount, unmount, flushSync } from '$setup/svelte-client';
@@ -148,36 +118,25 @@ function swallowGeometryRefusal(fn: () => void): void {
 /**
  * The ONE notification API the mount rung has to be lent for this drawer to render at all.
  *
- * `ResizeObserver` is deliberately ABSENT from the preload, and `tests/guards/meta/mount-rung.test.ts`
- * has a named arm holding it absent: happy-dom ships one whose `observe()` is a no-op, so installing it
- * suite-wide would give `bind:clientHeight` a silent path to its initial value.
+ * `ResizeObserver` is deliberately ABSENT from the preload, and `mount-rung.test.ts` holds it absent: happy-dom
+ * ships one whose `observe()` is a no-op, so installing it suite-wide would give `bind:clientHeight` a silent path
+ * to its initial value.
  *
- * WHY IT CANNOT SIMPLY BE SWALLOWED LIKE `offsetWidth`. The merged sheet's `.band-slot` carries
- * `bind:clientHeight` (it is what publishes `--dock-h`), and Svelte's size binding constructs a
- * `ResizeObserver` inside a RENDER effect. MEASURED: the resulting `ReferenceError` aborts the whole
- * effect flush before bits-ui's portal effect runs, so `Drawer.Content` never reaches the document and
- * the host is left holding eight empty anchors and nothing else. The geometry swallow works only
- * because those reads happen AFTER the tree is complete; this one happens instead of it.
+ * WHY IT CANNOT BE SWALLOWED LIKE `offsetWidth`: `.band-slot` carries `bind:clientHeight`, and Svelte's size
+ * binding constructs the observer inside a RENDER effect — so the `ReferenceError` aborts the whole effect flush
+ * before bits-ui's portal effect runs, and `Drawer.Content` never reaches the document. The geometry swallow works
+ * only because those reads happen AFTER the tree is complete; this one happens instead of it.
  *
- * WHY LENDING IT FABRICATES NOTHING, which is the whole reason it is allowed. A `ResizeObserver` is a
- * NOTIFICATION API, not a measurement one. This stub notifies nobody, and all six geometry accessors
- * the guard enumerates — `clientHeight` included — still throw, so there is no path to a fabricated
- * zero: `bandH` simply keeps the default `NowPlayingDrawer` declares for it, and NOTHING in this file
- * reads a bound size. That is the distinction `hero-live-controls.test.ts` drew when it refused a
- * zero-returning `offsetWidth`; a stub that measures nothing is not a stub that measures wrong.
+ * LENDING IT FABRICATES NOTHING, which is why it is allowed: a ResizeObserver is a NOTIFICATION API, not a
+ * measurement one. This stub notifies nobody and every geometry accessor still throws, so there is no path to a
+ * fabricated zero — `bandH` keeps its declared default and nothing here reads a bound size.
  *
- * SCOPED, and self-policing. It is installed for the duration of one call and deleted in a `finally`,
- * and it asserts the global was ABSENT on entry — so a leak from this file or anywhere else reds here
- * rather than quietly making the suite's other mounts measurable. `mount-rung.test.ts`'s two claims
- * (the global is undefined; the preload never names it) both stay true.
+ * SCOPED and self-policing: installed for one call, deleted in a `finally`, and it asserts the global was ABSENT on
+ * entry, so a leak reds here rather than quietly making other mounts measurable.
  *
- * ONE HONEST RESIDUE, recorded rather than hidden: Svelte's size binding goes through a MODULE-LEVEL
- * `ResizeObserverSingleton` that caches its observer instance on first use
- * (`svelte/src/internal/client/dom/elements/bindings/size.js`). So the stub instance outlives this
- * helper inside Svelte's own module state for the rest of the process. It still notifies nobody and
- * still reads no geometry, so it cannot turn any measurement into a number — but a later file mounting
- * a `bind:clientHeight` component in the same run gets a constructed observer instead of a
- * `ReferenceError`, and the thing protecting it there is the `clientHeight` accessor's own throw.
+ * ONE HONEST RESIDUE: Svelte's size binding goes through a module-level singleton that caches its observer on first
+ * use, so the stub instance outlives this helper inside Svelte's module state for the rest of the process. It still
+ * measures nothing; what protects a later file is the `clientHeight` accessor's own throw.
  */
 function withResizeObserver<T>(fn: () => T): T {
 	const g = globalThis as Record<string, unknown>;
@@ -395,12 +354,6 @@ test('an unknown song length hides the progress row rather than pinning a bar at
 	expect(count(unknown, '.seekrow')).toBe(0);
 	expect(count(unknown, '[role="progressbar"]')).toBe(0);
 
-	// S6: the bar is <Progress> now — the same hand-rolled idiom lived in three components, and it
-	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged; the fill is found by
-	// the vendored bar's data-slot rather than by `.track > i`.
-	//
-	// Two mounts in one test, so the first is torn down before the second opens — `openDrawer` allows
-	// exactly one drawer in the document, which is also what proves the first one really went away.
 	dropDrawer();
 	const known = openDrawer(PLAYING);
 	expect(count(known, '[role="progressbar"]')).toBe(1);

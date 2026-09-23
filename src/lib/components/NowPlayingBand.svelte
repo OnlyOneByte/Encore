@@ -1,22 +1,15 @@
 <script lang="ts">
-	// THE BAND — the phone's one docked surface, and (from phase 1b) app chrome rather than a
-	// home-screen element.
+	// THE BAND — the phone's one docked surface, and app chrome rather than a home-screen element. It answers the
+	// two questions a phone is holding (what is playing, and the transport) in 80px, and pulls up into the drawer
+	// for everything else.
 	//
-	// WHY IT IS A BAND AND NOT A HERO CARD. The home screen used to open with a hero for a song
-	// SOMEONE ELSE is singing, which spent the top third of the screen on the one thing the guest
-	// cannot act on. The band answers the two questions a phone is actually holding — what is playing,
-	// and how do I add a song — in 80px, and pulls up into the drawer for everything else.
+	// PRESENTATIONAL ONLY, deliberately: no socket, no store, no `$app/*` import, so it mounts under the test
+	// harness and renders in isolation. Resolving what is playing, throttling and publishing `--dock-h` belong to
+	// the caller — the same split GuidingTrack uses, so one component cannot drift between its two call sites.
 	//
-	// PRESENTATIONAL ONLY, DELIBERATELY. It owns no socket, no store and no `$app/*` import, so it
-	// mounts under the test harness and renders in isolation. Resolving what is playing, throttling,
-	// and publishing `--dock-h` all belong to the caller — the same split GuidingTrack.svelte uses,
-	// for the same reason: one component that cannot drift between its two call sites.
-	//
-	// THE RING IS THE PROGRESS READOUT. It replaced both an elapsed number and a separate 40px
-	// thumbnail: the transport button can BE the artwork, so the band carries one disc instead of a
-	// thumbnail, a number and a button. `progress` is a fraction and may be null — an unknown duration
-	// draws an empty ring rather than one pinned at zero, because a 0% ring reads as a stalled song
-	// (the same null-not-zero rule progressFraction already applies in the queue peek).
+	// THE RING IS THE PROGRESS READOUT, replacing both an elapsed number and a separate 40px thumbnail: the
+	// transport button can BE the artwork. `progress` may be null — an unknown duration draws an EMPTY ring
+	// rather than one pinned at zero, because a 0% ring reads as a stalled song.
 	import Icon from '$lib/ui/Icon.svelte';
 
 	interface Props {
@@ -40,11 +33,6 @@
 		 * from the phone" with it.
 		 */
 		canStart?: boolean;
-		/*
-		 * `onsearch` RETIRED (2026-09-22) with the magnifier it fired. Search is a field at the top of home
-		 * now, not a control in the chrome, so the band has nothing to navigate to and nothing to focus — and
-		 * the row it vacated is what makes room for the transport to be visible at all times.
-		 */
 		ontoggleplay?: () => void;
 		/**
 		 * Restart and skip — the two controls that flank the disc, always rendered.
@@ -157,29 +145,18 @@
 </script>
 
 <!--
-	THE METADATA BLOCK IS THE KEYBOARD PATH INTO THE SHEET, and it exists because the previous one stopped
-	rendering.
+	THE METADATA BLOCK IS THE KEYBOARD PATH INTO THE SHEET. What replaced the old grab-bar button is vaul's
+	`Drawer.Handle`: a `<div aria-hidden="true">` with no tabindex and no role. Measured on the collapsed home
+	route, the only drawer controls a keyboard could reach were the magnifier and a play/pause button off screen —
+	the transport, the ± keycaps, the slider and the only entry point to /song/[mediaId] were pointer-only.
 
-	This file used to declare a `<button class="handle">` above the strip — a grab bar that was a real
-	button, carrying the comment "so the band is reachable without a pointer — a drag-only affordance is
-	unreachable by keyboard and by a screen reader". It was gated on `{#if onexpand}`, and when the band
-	became snap point 0 of the drawer no call site passed one any more, so the branch was never entered and
-	the button never rendered ANYWHERE. What replaced it as the way in is vaul's `Drawer.Handle`: a
-	`<div aria-hidden="true">` with no tabindex and no role. Measured on the collapsed home route, the only
-	drawer controls a keyboard could reach were the magnifier and a play/pause button sitting off screen —
-	the transport, the ± keycaps, the guiding-track slider and "More about this song" were pointer-only, and
-	so was `/song/[mediaId]`, whose single entry point lives inside this sheet.
+	THE ACTION MOVED ONTO THE TEXT RATHER THAN GROWING A SECOND BAR: rendering another grab bar here is a defect
+	that already shipped once (vaul's handle plus a hand-rolled one drew TWO stacked pull-up lines). The metadata
+	block is real, visible, focusable content that names what it opens, and tapping the track info to open the full
+	player is what every mini-player already does.
 
-	SO THE ACTION MOVED ONTO THE TEXT RATHER THAN GROWING A SECOND BAR. Rendering another grab bar here is
-	a defect that already shipped once: vaul's handle plus a hand-rolled one drew TWO stacked pull-up lines
-	(recorded in drawer-content.svelte). The metadata block is the better host — real, visible, focusable
-	content that names what it opens; the handle's own hit box already claims it ("what it legitimately owns
-	is the inert title text, where a tap opening the now-playing detail is what a mini-player does anyway");
-	and tapping the track info to open the full player is what every mini-player on a phone already does. No
-	new chrome, no second affordance, no layout change.
-
-	Still gated on `onexpand`, for the original reason: /components renders five bands with no drawer behind
-	them, and a labelled button that swallows its press is worse than inert text.
+	Still gated on `onexpand`: /components renders five bands with no drawer behind them, and a labelled button
+	that swallows its press is worse than inert text.
 -->
 {#snippet metaBlock()}
 	<span class="title">{hasSong ? title : 'Nothing playing'}</span>
@@ -222,29 +199,18 @@
 			{/if}
 
 			<!--
-				THE TRANSPORT GROUP — restart·play·skip in one row, ALL THREE VISIBLE AT ALL TIMES (2026-09-22).
-				The sheet used to carry restart and skip in a centred row of its own in the body, with only the disc
-				up here: on a laptop that left this header almost empty and floated a three-button group in the
-				middle of nothing, and on a phone it split one control group across two rows. Reported, twice, as
-				the controls not being unified — which is what put all three here.
+				THE TRANSPORT GROUP — restart·play·skip in one row, all three visible at all times. The sheet used to
+				carry restart and skip in a centred row of its own, which on a laptop left this header almost empty and
+				floated a three-button group in the middle of nothing, and on a phone split one control group across two
+				rows. Reported twice as the controls not being unified.
 
-				NO REVEAL AND NO ANIMATION ANY MORE. For one release `.tp-side` was `display: none` at rest and the
-				drawer grew the pair in as its sheet rose, because the magnifier sat in this row and the three-up
-				group was too much for a collapsed bar beside it. The magnifier is GONE — search is a field at the
-				top of home, not a control in the chrome — so the row has the space, and a transport that is simply
-				there beats one that has to be summoned. What went with the reveal: the band's `display: none`, the
-				drawer's `.sheet-up`/`.sheet-down` classes, the imperative `classList` effect that toggled them, and
-				three pairs of keyframes.
+				`data-vaul-no-drag` ON THE GROUP is a correctness fix: the sheet composing this band drags from the band
+				row, and vaul sets pointer CAPTURE on press — so a drag begun on the disc would retarget its `pointerup`
+				back to the button and fire a click, pausing the song on the way to opening the sheet. vaul resolves the
+				attribute with `closest()`, so one covers all three.
 
-				`data-vaul-no-drag` ON THE GROUP, and it is a correctness fix rather than tidiness. The sheet that
-				composes this band drags from the band row (`handleOnly` is gone; see the Root note in
-				NowPlayingDrawer), and vaul sets pointer CAPTURE on press — so a drag begun on the disc would
-				retarget its `pointerup` back to the button and fire a click, pausing the song on the way to opening
-				the sheet. vaul resolves the attribute with `closest()`, so one attribute here covers all three.
-
-				THE DISC IS THE ONE PLAY/PAUSE. It carries the progress ring and sits in the thumb zone; the pair
-				flanks it. The sheet's own duplicate copy — a second play/pause about 100px below this one — stays
-				deleted, which is what this arrangement is for.
+				THE DISC IS THE ONE PLAY/PAUSE: it carries the progress ring and sits in the thumb zone, and the pair
+				flanks it. The sheet's own duplicate copy stays deleted.
 			-->
 			<div class="tp" data-vaul-no-drag>
 				<button
@@ -327,21 +293,13 @@
 	}
 
 	/*
-	 * FULL-BLEED SURFACE, CAPPED INNER STRIP — and the split is the whole desktop answer.
+	 * FULL-BLEED SURFACE, CAPPED INNER STRIP. A bottom-docked surface must track `--max-w` or it floats free of
+	 * the content column: the shell caps its column and grows it in two steps, so a band whose CONTENT ran the
+	 * full viewport would put its transport out at the far edge of a laptop, pointing at nothing.
 	 *
-	 * A bottom-docked surface must track `--max-w` or it floats free of the content column it is
-	 * supposed to belong to: the app shell caps its column at `--max-w` and grows it in two steps
-	 * (480 → 760 at 768px → 1080 at 1200px), so a band whose CONTENT ran the full viewport width would
-	 * put its transport under the singer's thumb on a phone and out at the far edge of a laptop,
-	 * pointing at nothing.
-	 *
-	 * The surface stays full-bleed deliberately — the paint, the top border and the safe-area inset
-	 * span the viewport, so the band reads as app chrome rather than as a floating card, and on a phone
-	 * (where the viewport is narrower than the cap) the two are identical.
-	 *
-	 * It also makes the component honest in ANY container: the strip is bounded by the token, not by
-	 * whoever renders it, so a desktop-wide gallery column no longer stretches the controls to its
-	 * edges — which is exactly how the first captured frame lost them off-screen.
+	 * The surface stays full-bleed deliberately — paint, top border and safe-area inset span the viewport, so the
+	 * band reads as chrome rather than a floating card, and on a phone the two are identical. It also makes the
+	 * component honest in ANY container: the strip is bounded by the token rather than by whoever renders it.
 	 */
 	.inner {
 		max-width: var(--max-w);
@@ -351,23 +309,15 @@
 	}
 
 	/*
-	 * `.handle`, `.handle::after` and `.handle > i` WERE DELETED WITH THE BUTTON THEY STYLED, and the
-	 * history is worth keeping because two of those rules were themselves defect fixes.
-	 *
-	 * The bar they drew is now vaul's — `Drawer.Handle`, rendered by NowPlayingDrawer inside `.band-slot`
-	 * (see drawer-handle.svelte, which supplies the var(--tap) hit area vaul ships no dimensions for). The
-	 * expand ACTION moved onto `.meta-btn` below; see the markup note for why it is the text rather than a
-	 * second bar.
-	 *
-	 * What those rules had learned, so it is not re-learned from scratch:
-	 *   • the drawn bar must not BE the tap target (a 6px control), and growing `min-height` to var(--tap)
-	 *     would have added 24px to a band whose height is published as `--dock-h`, so the target was an
-	 *     inset pseudo-element costing no layout;
-	 *   • that pseudo-element must expand DOWNWARD ONLY. Symmetric (±12px) it reached above a band that is
-	 *     fixed to the viewport and stole taps from whatever page content scrolled under it — gate:measured
-	 *     read a 44px control on /settings as a 0px hit extent, "blocked by button.handle". vaul's own hit
-	 *     area is centred on its bar, so this is the hazard to re-measure if that bar ever moves down into
-	 *     the strip.
+	 * `.handle`, `.handle::after` and `.handle > i` WENT WITH THE BUTTON THEY STYLED — the bar is vaul's now, and
+	 * the expand ACTION moved onto `.meta-btn`. Two of those rules were defect fixes, so what they learned:
+	 *   • the drawn bar must not BE the tap target (a 6px control), and growing `min-height` to var(--tap) would
+	 *     add 24px to a band whose height is published as `--dock-h` — so the target was an inset pseudo-element
+	 *     costing no layout;
+	 *   • that pseudo-element must expand DOWNWARD ONLY. Symmetric, it reached above a viewport-fixed band and
+	 *     stole taps from the page content scrolling under it — gate:measured read a 44px control on /settings as
+	 *     a 0px hit extent. vaul's own hit area is centred on its bar, so this is the hazard to re-measure if that
+	 *     bar ever moves down into the strip.
 	 */
 
 	/*
@@ -429,21 +379,14 @@
 		flex: 0 0 auto;
 	}
 	/*
-	 * `.btn.tp-side { display: none }` AND THE `.tp-side` CLASS ITSELF ARE GONE (2026-09-22), with the reveal.
-	 *
-	 * The pair was hidden at rest and grown in by the drawer as its sheet rose, because the magnifier shared
-	 * this row and four controls was too many for a collapsed bar. The magnifier has left the band — search
-	 * is a field at the top of home — so the space is there and the transport is simply always visible. What
-	 * that rule cost while it existed is worth keeping on the record: it had to be COMPOUNDED (`.btn.tp-side`,
-	 * not `.tp-side`) because as a single class it lost to `.btn`'s own `display: grid` declared further down
-	 * this file, and the pair rendered in the collapsed bar — caught on a screenshot, not by the suite, since
+	 * NO `display: none` ON THE FLANKING PAIR ANY MORE — the transport is always visible. Worth keeping from the
+	 * rule that hid it: as a single class (`.tp-side`) it LOST to `.btn`'s own `display: grid` declared further
+	 * down this file, so the pair rendered in the collapsed bar — caught on a screenshot, not by the suite, since
 	 * presence is all the mount rung can see and visibility is a layout claim.
 	 *
-	 * THE CLASS GOES TOO, rather than being kept as a hook: with no rule behind it, nothing in the cascade
-	 * can reach it, and `app-class-resolution.test.ts` reds on exactly that — a class in markup that no
-	 * rule matches is either dead or a rule that was deleted by accident, and the guard cannot tell which.
-	 * The two flanking controls are addressed as `.tp .btn` instead, which names the same pair by structure:
-	 * the group holds the disc (`.disc`) and these two, so `.btn` inside it IS the pair.
+	 * The class went too: with no rule behind it nothing in the cascade can reach it, and
+	 * `app-class-resolution.test.ts` reds on a class in markup that no rule matches. The pair is addressed as
+	 * `.tp .btn`, which names it by structure — the group holds the disc and these two.
 	 */
 	/*
 	 * THE FOCUS RING HUGS THE DISC INSTEAD OF LANDING ON ITS PROGRESS RING.
@@ -571,28 +514,18 @@
 		color: var(--ink-dim);
 	}
 	/*
-	 * HOVER — the state these two never had, and they are the only controls on this surface without one.
+	 * HOVER — the state these two never had, being the only hand-rolled `<button>`s on this surface. Everything
+	 * else goes through the shadcn variants, which carry one; a cursor over these got no response at all, which on
+	 * a laptop reads as "not a control".
 	 *
-	 * Everything else in the drawer and the header goes through the shadcn `<Button>` variants, which
-	 * carry a hover as a matter of course (`hover:bg-muted`, i.e. `--card2`). These two are hand-rolled
-	 * `<button>`s and so inherited nothing: a cursor over the magnifier or the transport got no response
-	 * at all, which on a laptop reads as "not a control" and was reported as exactly that. The rules
-	 * above this point are a `min-height` and a z-tier — nothing that answers a pointer.
-	 *
-	 * A SURFACE LIFT, NEVER AN OPACITY CHANGE. the rule rejects a subtree alpha for any state (the
-	 * disabled case above uses an ink token for the same reason), so hover mixes a little `--ink` into
-	 * the fill the control already has. That is the move the `secondary` variant already makes, and it
-	 * keeps hover reading as "the same surface, warmer" rather than as a new colour with its own
-	 * meaning. `--focus` is deliberately NOT borrowed here: it is the focus ring's colour, and a hover
+	 * A SURFACE LIFT, NEVER AN OPACITY CHANGE: the rule rejects a subtree alpha for any state, so hover mixes a
+	 * little `--ink` into the fill the control already has — "the same surface, warmer" rather than a new colour
+	 * with its own meaning. `--focus` is deliberately not borrowed: it is the focus ring's colour, and a hover
 	 * wearing it would make the two states indistinguishable.
 	 *
-	 * NO TRANSITION, matching `.arc-fill` above and the incumbent `.btn-accent` this pair descends from.
-	 * A paint change is correct instantly, so there is no motion to gate on `prefers-reduced-motion` and
-	 * nothing here for motion.test.ts to weigh.
-	 *
-	 * `:not(:disabled)` because `.disc` IS disabled with no song, and a dead transport that lights up
-	 * under the cursor promises a tap it will swallow — the same lie the handle's old `cursor: grab`
-	 * told. `:focus-visible` is untouched: separate rule, separate property (outline).
+	 * NO TRANSITION, so there is no motion to gate on `prefers-reduced-motion`. `:not(:disabled)` because `.disc`
+	 * IS disabled with no song, and a dead transport that lights up under the cursor promises a tap it will
+	 * swallow.
 	 */
 	.btn:hover:not(:disabled) {
 		background: color-mix(in srgb, var(--card2) 88%, var(--ink));
@@ -631,20 +564,15 @@
 		color: inherit;
 	}
 	/*
-	 * NAMED `arc`, NOT `ring` — and the rename is a defect fix, not a preference.
+	 * NAMED `arc`, NOT `ring`, and the rename is a defect fix. `ring` is one of Tailwind's own utility names, and
+	 * the vendored button and drawer both use `focus-visible:ring-3`, so Tailwind emits the class into the bundle
+	 * — a plain `class="ring"` on this SVG then matched it and picked up a two-layer box-shadow on a 50×50 box
+	 * with `border-radius: 0`, painting a pale SQUARE around a round play button.
 	 *
-	 * `ring` is one of Tailwind's own utility names (`box-shadow: 0 0 0 <n>px var(--tw-ring-color)`), and
-	 * the vendored button and drawer both use `focus-visible:ring-3 ring-ring/50`, so Tailwind emits the
-	 * `ring` class into the bundle. A plain `class="ring"` on this SVG then matched it and picked up a
-	 * two-layer box-shadow on a 50x50 box with `border-radius: 0` — painting a pale SQUARE around a round
-	 * play button. Reported as "a weird white box around the play button", and measured here: the svg
-	 * carried a box-shadow it never declared.
-	 *
-	 * This is the third member of a family app.css already documents in prose: `.underline` collided with
-	 * the lyrics ball's marker style and `.block` with the same enum's `block` value, which is why the
-	 * `source(none)` fence exists at all. The fence stops utilities being GENERATED from app markup; it
-	 * cannot stop an app class from colliding with a utility another file legitimately generated. The only
-	 * defence is not to use a utility's name, so this one does not.
+	 * Third member of a family app.css documents: `.underline` collided with the lyrics ball's marker style and
+	 * `.block` with the same enum's value. The `source(none)` fence stops utilities being GENERATED from app
+	 * markup; it cannot stop an app class colliding with one another file legitimately generated. The only
+	 * defence is not to use a utility's name.
 	 */
 	.arc {
 		position: absolute;

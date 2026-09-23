@@ -69,12 +69,6 @@
 	let candidates = $state<LyricsCandidate[]>([]);
 	let chosenRef = $state<string | undefined>(undefined);
 	let overrideRef = $state<string | undefined>(undefined);
-	/*
-	 * `newerExists` IS GONE FROM HERE (2026-09-21): it fed the sheet's re-selection disclosure — "a better
-	 * match is available" — and that control moved to /song/[mediaId], which computes the same thing from the
-	 * same pure helper at its own call site. The layout mirrors what the SHEET reads, and the sheet now only
-	 * NAMES the lyrics source rather than offering to change it.
-	 */
 
 	onMount(() => {
 		const sync = () => {

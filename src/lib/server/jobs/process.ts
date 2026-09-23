@@ -516,31 +516,22 @@ export interface TerminalFailureDeps {
 }
 
 /**
- * The terminal-failure EPILOGUE — the four things every permanently-failed process must do, in one
- * place. Before this, three sites open-coded the identical four steps
- * (worker-hub #onFailed, worker-hub's unservable-TTL branch, and app.ts's reaper onFailed hook) and a
- * fourth copy was reconstructed inside reaper-broadcast-on-failure.test.ts. Only the inner gate rule
- * (settleGatesForFailedJob) had been extracted, so the epilogue AROUND it kept drifting: the TTL
- * branch omitted cleanJobWork, app.ts hand-reimplemented the private #emitStatus, and all three log
- * lines diverged (different tag, some missing media/attempts) so no single grep found every terminal
- * failure — the shape that let the reaper path ship silent.
+ * The terminal-failure EPILOGUE — the four things every permanently-failed process must do, in one place. Three
+ * sites open-coded the identical steps and a fourth copy was reconstructed in a test; only the inner gate rule had
+ * been extracted, so the epilogue AROUND it kept drifting (one branch omitted `cleanJobWork`, another
+ * hand-reimplemented the private emit, and all three log lines diverged so no single grep found every terminal
+ * failure — the shape that let the reaper path ship silent).
  *
- * The four steps, in order:
- *   1. Settle the readiness gate for this job type so `readyToSing` can flip and rotation stops
- *      holding the queue entry (settleGatesForFailedJob).
- *   2. Broadcast `media:status` so a watching phone leaves 'processing' → 'failed' and the Sing button
- *      returns — gated on shouldBroadcastProcess exactly as #emitStatus is, so a dead `stems-upgrade` on
- *      an already-singable song does not flip every ready row back to "Making karaoke".
- *   3. One operator log line, now in a UNIFORM key=value format (`job= media= attempts= reason=`, with
- *      a `cause=` discriminator) so `grep 'reaper failure'` or `grep 'job=<id>'` finds it on every
- *      path — the divergent formats used to drop the reaper case and never carry a media id on the
- *      unservable case.
- *   4. Reclaim the job's scratch (cleanJobWork) — its work/<jobId>/ holds a decoded source plus both
- *      stems and nothing resumes from a terminal job. A no-op when the dir is absent (a remote
- *      worker's scratch the core never had).
+ *   1. Settle the readiness gate for this job type, so `readyToSing` can flip and rotation stops holding the entry.
+ *   2. Broadcast `media:status` so a watching phone leaves 'processing' → 'failed' — gated on
+ *      `shouldBroadcastProcess`, so a dead `stems-upgrade` on an already-singable song does not flip every ready
+ *      row back to "Making karaoke".
+ *   3. One operator log line in a uniform key=value format, so `grep 'job=<id>'` finds it on every path.
+ *   4. Reclaim the job's scratch: it holds a decoded source plus both stems and nothing resumes from a terminal
+ *      job. A no-op when the dir is absent (a remote worker's scratch the core never had).
  *
- * `job` is the ALREADY-terminal job (post JobRepository.fail), so it carries the final attempts count
- * and error. Returns whether the gate settle changed anything, for a caller that wants it.
+ * `job` is the ALREADY-terminal job, so it carries the final attempts count and error. Returns whether the gate
+ * settle changed anything.
  */
 export function reportTerminalFailure(job: Job, cause: TerminalFailureCause, deps: TerminalFailureDeps): boolean {
 	// 1. Settle the gate for this job type (the half already extracted).

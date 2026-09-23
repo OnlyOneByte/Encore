@@ -53,12 +53,6 @@
 {:else}
 	<!-- role=group (not img): img would make the per-day buttons presentational to AT, hiding the
 	     counts. The group carries the summary via aria-label; each column button exposes its own day. -->
-	<!--
-		S8: <Chart.Container> supplies the series config, so the column colour comes from
-		`--color-sings` rather than a hardcoded token reference. The marks stay Encore's own BUTTONS —
-		layerchart's rects are neither focusable nor individually labelled, and the per-day counts are the
-		point of this chart (see the role note below).
-	-->
 	<Chart.Container config={{ sings: { label: 'Sings', color: 'var(--accent)' } }}>
 		<div class="chart" role="group" aria-label="{total} sings over {calendar.length} days">
 			{#each calendar as slot (slot.day)}

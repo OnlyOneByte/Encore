@@ -59,13 +59,13 @@ test('the .viewport max-height cap equals the parent chrome band, with no extra 
 });
 
 test('the corrected comment no longer claims the cap is inactive at the defaults', () => {
-	// The false clause (the reel is "unaffected" at the default five rows) is what misleads the next
-	// editor. It must be gone; asserting only its absence would let the prose degrade to saying
-	// nothing, so also require the accurate statement that the cap IS active at the defaults on short
-	// panels. (Assert against the COMMENT text, i.e. the raw source minus the stripped body.)
+	// The false clause (the reel is "unaffected" at the default five rows) is what misleads the next editor, so it
+	// must be gone — and asserting only its absence would let the prose degrade to saying nothing, so the accurate
+	// claim is required too. Matched on the SHORT form rather than a sentence, so rewording the comment does not
+	// red this for a reason that has nothing to do with the claim.
 	expect(raw).not.toContain('so the reel is unaffected');
 	expect(raw).not.toMatch(/well under this cap/);
-	expect(raw.toLowerCase()).toContain('active at the defaults');
+	expect(raw.toLowerCase()).toMatch(/(active|bite[s]?) at the defaults/);
 });
 
 test('the --lyrics-scale render folds in LYRICS_SCALE_BASE (the 80-is-the-new-100 rebase)', () => {

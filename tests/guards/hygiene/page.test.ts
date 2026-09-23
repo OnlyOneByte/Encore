@@ -21,27 +21,12 @@ const SONNER = at('src/lib/components/ui/sonner/sonner.svelte');
 
 /** Body of the first `<style>`-scoped rule whose selector matches `sel`. */
 function ruleBody(src: string, sel: string): string | null {
-	/*
-	 * S5: escape EVERY regex metacharacter, not just `.` and `\`. An attribute selector such as
-	 * `[data-sonner-toast] [data-button]` was otherwise compiled with its brackets intact and matched as
-	 * a character class, so the rule was reported missing from a file that plainly declares it.
-	 */
 	const re = new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^{}]*)\\}`, 's');
 	const m = src.match(re);
 	return m ? m[1]! : null;
 }
 
 test('the Undo toast control reaches the tap floor (padding-only guard gap)', () => {
-	/*
-	 * S5: the control moved into ui/sonner, so this reads THERE. Undo is a real toast ACTION now
-	 * rather than a button this page positions, and sonner renders it with its own `[data-button]`
-	 * attribute — which is what the rule is keyed on, because sonner's own attribute survives a
-	 * re-vendor where a class of ours would not.
-	 *
-	 * The claim is unchanged, and so is the reason it exists: this is the one interactive control on the
-	 * phone that fell under the app's own tap floor, and it sits on a five-second timer, which makes it
-	 * the hardest to hit in time.
-	 */
 	const src = readFileSync(SONNER, 'utf8');
 	const body = ruleBody(src, ':global([data-sonner-toast] [data-button])');
 	expect(body).not.toBeNull();
@@ -79,20 +64,3 @@ test('the docked toast declares a width a phone can actually use (S5, was the le
 	expect(toaster, 'the Toaster must declare --width').toContain('--width:');
 	expect(/[0-9]+vw/.test(toaster), 'the width must be viewport-relative, not a fixed pixel box').toBe(true);
 });
-
-/*
- * RETIRED BY S5: 'the error toast docks off the undo toast MEASURED height'.
- *
- * It pinned `--error-dock: calc(... + var(--undo-h) ...)` against a real bug -- the undo toast's height
- * is content-dependent and unbounded, so ANY fixed px reserve is the same overlap at a longer title.
- * Its premise was that there are TWO independently positioned toasts, one of which must offset off the
- * other's measured height.
- *
- * Sonner stacks its own toasts, so there is no second surface to offset and no height to publish:
- * `--error-dock`, `--undo-h`, the `bind:clientHeight` and the `setProperty` effect are all deleted
- * rather than ported. A guard for the offset BETWEEN two surfaces cannot fail when there is one, and
- * the overlap it existed to prevent is now structurally impossible instead of merely pinned.
- *
- * The tap-floor arm and the width arm are what remain of this trio, both re-aimed at the new
- * implementation rather than deleted.
- */

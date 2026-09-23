@@ -426,13 +426,6 @@ it('utilities are minted from the copy-in target only: no class a copied-in comp
 	const uiComponents = svelteFiles(SRC).filter((f) => f.startsWith(uiDir + '/'));
 
 	/** Every whitespace-separated static class token in a `class="…"`, interpolations blanked. */
-	/*
-	 * S3: strip comments FIRST. This scanned raw text, so a component's own documentation
-	 * naming a class — `<label class="check">` in the Checkbox's deviation header — was collected as
-	 * a class the component USES, and reported as a collision with the app. A guard that criminalises
-	 * its own explanation teaches people to stop writing the explanation. The mutation arm below
-	 * proves the stripper does not blind the scan.
-	 */
 	const classTokens = (src: string): Set<string> => {
 		const out = new Set<string>();
 		const code = src.replace(/<!--[\s\S]*?-->/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');

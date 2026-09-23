@@ -241,17 +241,6 @@ test('driven-find 3 · the drag-active state is separate from the drag SUBJECT',
 });
 
 test('driven-find 4 · there is no tap-versus-drop ambiguity left to get wrong', () => {
-	/*
-	 * RETIRED AND INVERTED (2026-09-21). This pinned `TAP_SLOP_PX`: treating every release as a drop made a
-	 * TAP open the mode and immediately close it, because `hoverSlot` started at the row's own index so the
-	 * release resolved to "move to where you already are". The threshold existed to tell the two apart.
-	 *
-	 * A live sort has no mode to open, so a press with no travel has nothing to resolve TO: `dragTo` is the
-	 * row's own index, `commitMove` returns early when the target equals the current position, and the
-	 * gesture ends having done nothing. The ambiguity is gone by construction rather than by a constant, so
-	 * the arm asserts the construction — an early return on "same position" — and that the constant did not
-	 * come back with a mode attached to it.
-	 */
 	const src = stripComments(page());
 	expect(src).toMatch(/if \(from < 0 \|\| to === from\) return;/);
 	expect(src, 'a tap threshold means a mode that a release could close by accident').not.toContain('TAP_SLOP_PX');

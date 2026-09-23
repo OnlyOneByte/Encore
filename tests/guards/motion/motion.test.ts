@@ -48,13 +48,6 @@ function tsSources(dir: string): string[] {
 // comment (e.g. tv/+page.svelte's 'not a transition: work in progress' note) must not false-positive.
 // All three tests use this stripper — test 3 now scans Svelte
 // markup for `style:animation` directives too, so it needs `<!-- -->` blanked.
-/*
- * S6: the two NAME-scanning arms below read through this too, not just the declaration scans.
- * They flagged a vendored component's own DEVIATIONS header for quoting `transition-all` while
- * explaining that it had been removed — the fourth time in this migration that a guard has
- * criminalised its own documentation. A guard that punishes the explanation teaches people to stop
- * writing it. The mutation arm at the end of this file proves the stripping does not blind the scan.
- */
 function stripAllComments(src: string): string {
 	return src.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 }

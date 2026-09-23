@@ -458,22 +458,6 @@
 	 * a shared right edge you can run your eye down. Scrolling keeps the grid intact and costs one
 	 * gesture. The first column stays put so a scrolled row is still identifiable.
 	 */
-	/*
-	 * S8: the table's own rules moved to ui/table — including the two that are behaviour rather
-	 * than decoration: the 34rem minimum that makes eight numeric columns scroll instead of crushing,
-	 * and the sticky first column that keeps the step name beside its numbers while they do. `.scroller`
-	 * stays HERE because it is this page's layout, and the component's rules key off it as an ancestor.
-	 *
-	 * ONE SCROLL CONTAINER, AND IT IS THIS ONE. shadcn's <Table> renders its own
-	 * `<div data-slot="table-container" class="relative w-full overflow-x-auto">` around the <table>, so
-	 * before the rule below there were TWO nested scroll boxes: the inner one, being `w-full`, was
-	 * exactly as wide as `.scroller`, took all the overflow, and did all the scrolling — while
-	 * `.scroller` reported `scrollWidth === clientWidth` and looked broken to anyone measuring it (it
-	 * cost this author a wrong diagnosis). Nothing was unreachable, but the page could not own the
-	 * scroll state of a box it does not render, which is what the shadow affordance below needs.
-	 * Neutralising the inner container hands the overflow back to `.scroller`; the sticky first column
-	 * follows, because sticky resolves against the nearest scrolling ancestor.
-	 */
 	:global(.scroller [data-slot='table-container']) {
 		overflow-x: visible;
 		width: auto;
@@ -523,18 +507,8 @@
 			linear-gradient(to left, var(--bg), transparent) right center / 1.25rem 100% no-repeat scroll;
 	}
 	/* .card in app.css has no padding — see the note in routes/stats/+page.svelte. */
-	/*
-	 * S4: `.card`'s local padding left this file — shadcn's Card owns its spacing through
-	 * `--card-spacing`. The visual change is accepted deliberately (a ring rather than a border, its
-	 * own scale). Layout classes that must apply to the GRID ITEM stay on a wrapper element, because a
-	 * scoped rule cannot reach an element a child component renders.
-	 */
 	/* Full-strength ink and a rule beneath, so a section title out-ranks the dim column headers
 	   directly below it. Both were --ink-dim uppercase, which made them compete. */
-	/*
-	 * S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
-	 * title where this was hand-styled, which is part of the visual change accepted for S4.
-	 */
 	/*
 	 * `.banner` is GONE — the no-worker state is `Alert variant="warn" role="status"` with its sentence
 	 * in `Alert.Title`. The reasoning the old rule carried is preserved where it now lives: the warn
