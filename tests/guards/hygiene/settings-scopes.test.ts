@@ -7,18 +7,16 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
-import { svelteFiles } from '@encore/test-support/scan';
+import { stripComments, svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir;
 const SETTINGS = join(SRC, 'routes/settings/+page.svelte');
 
-/** Comments naming the retired sheet are documentation, not a second editor. */
-function stripComments(src: string): string {
-	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '');
-}
-
 test('the name field exists in exactly one place', () => {
-	const owners = svelteFiles(SRC).filter((f) => stripComments(readFileSync(f, 'utf8')).includes('id="profile-name"'));
+	// Comments naming the retired sheet are documentation, not a second editor.
+	const owners = svelteFiles(SRC).filter((f) =>
+		stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true, drop: true }).includes('id="profile-name"')
+	);
 
 	expect(owners.map((f) => f.replace(SRC, 'src'))).toEqual(['src/routes/settings/+page.svelte']);
 });
@@ -26,7 +24,9 @@ test('the name field exists in exactly one place', () => {
 test('the leave-the-room action exists in exactly one place', () => {
 	// Same reasoning as the name field, and the stakes are higher: a leave clears the cookie and forgets the singer,
 	// so the confirm is the only thing between a tap and a lost queue. Two paths is two confirms.
-	const owners = svelteFiles(SRC).filter((f) => stripComments(readFileSync(f, 'utf8')).includes('Leave the room'));
+	const owners = svelteFiles(SRC).filter((f) =>
+		stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true, drop: true }).includes('Leave the room')
+	);
 
 	expect(owners.map((f) => f.replace(SRC, 'src'))).toEqual(['src/routes/settings/+page.svelte']);
 });
@@ -36,7 +36,7 @@ test('nothing imports the retired profile sheet or its modal helper', () => {
 	// only consumer was that sheet.
 	const offenders: string[] = [];
 	for (const f of svelteFiles(SRC)) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true, drop: true });
 		if (/ProfileSheet\.svelte|\$lib\/ui\/modal/.test(src)) offenders.push(f.replace(SRC, 'src'));
 	}
 
@@ -60,7 +60,7 @@ test('every scope tab controls a panel that exists, and vice versa', () => {
 
 	// This page must not re-declare the tabpanel contract Tabs.Content already provides. Comments stripped first, so
 	// the note explaining WHY does not trip the rule.
-	const markup = stripComments(src);
+	const markup = stripComments(src, { markup: true, keepLine: true, drop: true });
 	expect(markup, 'the page re-declares role="tabpanel" that Tabs.Content already renders').not.toContain(
 		'role="tabpanel"'
 	);

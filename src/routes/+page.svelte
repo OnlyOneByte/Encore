@@ -206,7 +206,11 @@
 			}));
 	});
 
-	/** Ids another group already shows, so no song appears twice and no job draws two progress bars. */
+	/** Ids another group already shows, so no song appears twice and no job draws two progress bars. THE TWO `ids.add`
+	 * LOOPS ARE PINNED BY `browse-screen.test.ts` mechanism 1, which reads them as source text to prove the
+	 * de-duplication covers both the ready list and the processing rows ungated — so this stays an accumulator, and the
+	 * `svelte/prefer-svelte-reactivity` warning it raises stays with it. A `SvelteSet` would be the wrong answer anyway:
+	 * this is a plain value recomputed wholesale, so reactive sources on it buy nothing. */
 	const accountedFor = $derived.by(() => {
 		const ids = new Set<string>();
 		for (const m of searchActive ? readyResults : library) ids.add(m.id);

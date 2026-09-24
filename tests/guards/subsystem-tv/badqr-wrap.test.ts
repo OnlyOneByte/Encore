@@ -5,13 +5,9 @@
 // for no gain. See the markup note in JoinBadge.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const SRC = read('src/lib/tv/JoinBadge.svelte');
-
-function stripComments(s: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return s.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
 
 /** The declarations inside one scoped rule `.sel { ... }` (no nested braces in this file's rules). */
 function ruleBody(css: string, sel: string): string {
@@ -19,7 +15,7 @@ function ruleBody(css: string, sel: string): string {
 	return re.exec(css)?.[1] ?? '';
 }
 
-const CSS = stripComments(SRC);
+const CSS = stripComments(SRC, { markup: true, keepLine: true });
 
 test('the unroutable state never replaces the QR — both placements still render their image', () => {
 	// Caught: standing in FOR the QR also took the typed path with it, because attract and the lobby
@@ -81,7 +77,7 @@ test("the card's prose parts stay retired, so the sentence cannot be reassembled
 	// orphaning onto the next line inside a two-word-wide column. The notice prints no address at all (attract
 	// and the lobby print the real one below it), so reintroducing any part of that sentence reintroduces the
 	// paragraph. Read comment-STRIPPED, because the component's own note names these three classes.
-	const MARKUP = stripComments(SRC);
+	const MARKUP = stripComments(SRC, { markup: true, keepLine: true });
 	expect(MARKUP).not.toMatch(/<\/b>\s*,\s*which/);
 	for (const gone of ['badqr-addr', 'badqr-lead', 'badqr-b"'])
 		expect(MARKUP, `\`${gone}\` belongs to the retired card`).not.toContain(gone);

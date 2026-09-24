@@ -7,6 +7,7 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';
+import { stripComments } from '@encore/test-support/scan';
 
 class StubNode {
 	connections: unknown[] = [];
@@ -102,15 +103,11 @@ test('control: WITHOUT the pre-set level, a freshly built master graph defaults 
 	expect(lastCtx!.gains[0].gain.value).toBeCloseTo(1, 6);
 });
 
-function stripComments(s: string): string {
-	return s.replace(/[/][*][\s\S]*?[*][/]/g, '').replace(/(^|[^:])[/][/][^\n]*/g, '$1');
-}
-
 const TV = read('src/lib/tv/TvPlayer.svelte');
 
 test('the level effect applies the master level at BOTH the native and routed sites', () => {
 	// Both, because a WebAudio capture bypasses `.volume` once a shift exists. Deleting either line reds this.
-	const stripped = stripComments(TV);
+	const stripped = stripComments(TV, { drop: true });
 	const anchor = 'master.volume = effectiveMasterLevel';
 	const at = stripped.indexOf(anchor);
 	expect(at, 'expected a master.volume = effectiveMasterLevel assignment').toBeGreaterThanOrEqual(0);
@@ -130,7 +127,7 @@ function pitchEffectMasterRegion(s: string): string {
 }
 
 test('guard: the pitch effect re-applies the master level after (re)building the master graph', () => {
-	const region = stripComments(pitchEffectMasterRegion(TV));
+	const region = stripComments(pitchEffectMasterRegion(TV), { drop: true });
 	expect(region).toMatch(/masterGraph\s*=\s*new PitchShiftGraph/);
 	expect(region).toMatch(/masterGraph[?][.]setShift[(]\s*shift\s*[)]/);
 	// Without the re-apply a transpose builds the graph at gain 1 and the pulldown evaporates.
@@ -140,7 +137,7 @@ test('guard: the pitch effect re-applies the master level after (re)building the
 test('guard: the per-song reset re-applies the master level in place (graph is reset, not detached)', () => {
 	// A song change resets the graph in place with setShift(0), and a reset graph is back at gain 1, so the
 	// level must be re-asserted here too — exactly as the guide is.
-	const stripped = stripComments(TV);
+	const stripped = stripComments(TV, { drop: true });
 	const anchor = 'void masterGraph?.setShift(0)';
 	const at = stripped.indexOf(anchor);
 	expect(at, 'expected the in-place master reset setShift(0)').toBeGreaterThanOrEqual(0);
@@ -150,7 +147,7 @@ test('guard: the per-song reset re-applies the master level in place (graph is r
 
 test('effectiveMasterLevel is derived clamped to [0,1] (attenuate-only, never a boost)', () => {
 	// Clamped in the component too, so a route bug cannot push the master above unity.
-	const stripped = stripComments(TV);
+	const stripped = stripComments(TV, { drop: true });
 	expect(stripped).toMatch(
 		/effectiveMasterLevel\s*=\s*\$derived[(]\s*Math[.]max[(]0,\s*Math[.]min[(]1,\s*masterLevel[)][)]\s*[)]/
 	);
@@ -160,7 +157,7 @@ test('the TV route resolves masterLevel from the loudness gain and passes it to 
 	// The decision lives in the route, which owns the library catalog and the room toggle; the player is a
 	// pure applier.
 	const route = read('src/routes/tv/+page.svelte');
-	const src = stripComments(route);
+	const src = stripComments(route, { drop: true });
 	expect(src).toMatch(/loudnessNormalizationGain[(]/);
 	expect(src).toMatch(/enabled:\s*settings[.]room[.]loudnessNormalization/);
 	expect(src).toMatch(/masterLevelA\s*=\s*\$derived/);

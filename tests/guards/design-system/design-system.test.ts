@@ -6,22 +6,13 @@ import { test, expect } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { at, repoRoot, srcDir } from '@encore/test-support';
-import { svelteFiles, styleFiles } from '@encore/test-support/scan';
+import { stripComments, styleFiles, svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir;
 const REPO = repoRoot; // the breakpoint scan reaches beyond src/
 // Comment-stripped symmetrically with the component reads below, so a token that exists only inside a
 // comment does not count as defined.
-const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
-
-/** Blanks rather than deletes, so `lineOf` offsets stay true. `//` is stripped too, sparing `https://`. */
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
-}
+const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'), { markup: true });
 
 function lineOf(src: string, index: number): number {
 	return src.slice(0, index).split('\n').length;
@@ -66,7 +57,7 @@ test('no component hard-codes a colour the palette already owns', () => {
 	const SVG_PAINT = /(fill|stroke|stop-color)=["']$/;
 
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const m of src.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {
 			const hex = normaliseHex(m[0]);
 			if (UNIVERSAL.has(hex)) continue;
@@ -96,7 +87,7 @@ test('no component hard-codes an rgb()/rgba() colour the palette already owns', 
 	const offences: string[] = [];
 	const RGB_RE = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,[^)]*)?\)/g;
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const m of src.matchAll(RGB_RE)) {
 			const key = `${Number(m[1])},${Number(m[2])},${Number(m[3])}`;
 			if (UNIVERSAL_RGB.has(key)) continue;
@@ -117,7 +108,7 @@ test('every token a component references is actually defined', () => {
 	const missing: string[] = [];
 
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		// Locally-scoped properties (set via style= or a parent rule) are legitimate.
 		const local = new Set([...src.matchAll(/--([a-z0-9-]+)\s*:/g)].map((m) => m[1]!));
 		for (const m of src.matchAll(/var\(\s*--([a-z0-9-]+)\s*\)/g)) {
@@ -174,7 +165,7 @@ test('a component never references a token that exists only in the @theme bridge
 	const offences: string[] = [];
 	let bridgeRefsScanned = 0;
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		const local = new Set([...src.matchAll(/--([a-z0-9-]+)\s*:/g)].map((m) => m[1]!));
 		for (const m of src.matchAll(/var\(\s*--([a-z0-9-]+)\s*[,)]/g)) {
 			bridgeRefsScanned++;
@@ -249,7 +240,7 @@ test('no component hard-codes a spacing value the scale already owns', () => {
 	const offences: string[] = [];
 	let spacingDeclsSeen = 0;
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const [sel, body, at] of rules(src)) {
 			for (const d of body.matchAll(/([a-z-]+)\s*:\s*([^;]+)/g)) {
 				if (!PROPS.test(d[1]!)) continue;
@@ -281,7 +272,7 @@ test('no component hard-codes a phone type size the ladder already owns', () => 
 	const offences: string[] = [];
 	let fontDeclsSeen = 0;
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const [sel, body, at] of rules(src)) {
 			for (const d of body.matchAll(/(?<![\w-])font-size\s*:\s*([^;]+)/g)) {
 				fontDeclsSeen++;
@@ -307,7 +298,7 @@ test('no component hard-codes a line height the scale already owns', () => {
 	const offences: string[] = [];
 	let leadingDeclsSeen = 0;
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const [sel, body, at] of rules(src)) {
 			for (const d of body.matchAll(/(?<![\w-])line-height\s*:\s*([^;]+)/g)) {
 				leadingDeclsSeen++;
@@ -335,7 +326,7 @@ test('no component hard-codes a motion duration the scale already owns', () => {
 	const offences: string[] = [];
 	let motionDeclsSeen = 0;
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const [sel, body, at] of rules(src)) {
 			for (const d of body.matchAll(/(?<![\w-])(transition|animation)(-duration)?\s*:\s*([^;]+)/g)) {
 				motionDeclsSeen++;
@@ -362,7 +353,7 @@ test('every z-index in a component names a paint-order tier, never a bare intege
 	const offences: string[] = [];
 	let zDeclsSeen = 0;
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		// To end-of-line, not a quote: one value is a Svelte expression containing quotes and braces.
 		for (const m of src.matchAll(/z-index\s*:\s*([^;\n]*)/g)) {
 			zDeclsSeen++;
@@ -426,7 +417,7 @@ test('the phone type ladder never reaches a TV surface', () => {
 	expect(TV.length).toBeGreaterThanOrEqual(5); // @nvf-floor TV.length
 	const offences: string[] = [];
 	for (const f of TV) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const m of src.matchAll(/var\(\s*(--ph-[a-z0-9-]+)\s*[,)]/g)) {
 			offences.push(
 				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[1]} is a PHONE size on a TV surface — the stage reads from three metres and has its own ladder (--tv-*), and the ten-foot floor in tv/stage-scale.test.ts cannot see through a token`
@@ -456,7 +447,7 @@ test('every @media width literal in source is a declared breakpoint', () => {
 	for (const root of roots) {
 		for (const f of styleFiles(root)) {
 			if (/\.test\./.test(f)) continue;
-			const src = stripComments(readFileSync(f, 'utf8'));
+			const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 			for (const m of src.matchAll(WIDTH_RE)) {
 				literalsFound++;
 				const w = Number(m[1]);
@@ -501,7 +492,7 @@ test('the colour picker anchors arrow movement on nextSwatchIndex, not a bare in
 	// A bare `SINGER_COLORS.indexOf(value)` is -1 for any wheel hex, so after a hue pick the first
 	// ArrowRight did not move and ArrowLeft skipped mint. The import is pinned too, because reverting it
 	// alone leaves a call to an unimported symbol — a build break bun test does not see.
-	const picker = stripComments(readFileSync(join(SRC, 'lib/components/ColourPicker.svelte'), 'utf8'));
+	const picker = stripComments(readFileSync(join(SRC, 'lib/components/ColourPicker.svelte'), 'utf8'), { markup: true });
 	expect(picker).toMatch(/import \{[^}]*\bnextSwatchIndex\b[^}]*\} from '\$lib\/contract';/);
 	expect(picker).toMatch(/const next = nextSwatchIndex\(value, step\);/);
 	expect(picker).not.toMatch(/indexOf\(value\)/);
@@ -546,7 +537,7 @@ test('form controls never sit below the 16px iOS zoom threshold', () => {
 	let controlSizesResolved = 0;
 
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const m of src.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
 			const [sel, body] = [m[1]!, m[2]!];
 			if (!CONTROL.test(sel)) continue;
@@ -602,7 +593,9 @@ test('the bottom-docked band clears the home indicator', () => {
 
 	// Comment-stripped: drawer-content.svelte's own prose contains `fixed`, and deleting it from the class
 	// list left this arm green against that comment.
-	const content = stripComments(readFileSync(join(SRC, 'lib/components/ui/drawer/drawer-content.svelte'), 'utf8'));
+	const content = stripComments(readFileSync(join(SRC, 'lib/components/ui/drawer/drawer-content.svelte'), 'utf8'), {
+		markup: true
+	});
 	expect(content, 'the vendored drawer content must still be what fixes the sheet to the viewport').toMatch(
 		/\bfixed\b/
 	);
@@ -612,7 +605,9 @@ test('the bottom-docked band clears the home indicator', () => {
 
 	// If the `:global(.band)` surface-paint suppression grows a `padding-bottom`, the inset leaves the
 	// measurement and every offset control stops clearing the home indicator while the band looks right.
-	const drawer = stripComments(readFileSync(join(SRC, 'lib/components/NowPlayingDrawer.svelte'), 'utf8'));
+	const drawer = stripComments(readFileSync(join(SRC, 'lib/components/NowPlayingDrawer.svelte'), 'utf8'), {
+		markup: true
+	});
 	expect(drawer, '--dock-h must still be measured off the.band-slot that holds the band').toMatch(
 		/class="band-slot"[^>]*bind:clientHeight=\{bandH\}/
 	);
@@ -631,7 +626,7 @@ test('every documentElement custom-property write (--dock-h) tears down on unmou
 	const sites: Array<{ file: string; prop: string }> = [{ file: 'routes/+layout.svelte', prop: '--dock-h' }];
 	expect(sites.length).toBeGreaterThanOrEqual(1);
 	for (const { file, prop } of sites) {
-		const src = stripComments(readFileSync(join(SRC, file), 'utf8'));
+		const src = stripComments(readFileSync(join(SRC, file), 'utf8'), { markup: true });
 		const setRe = new RegExp(`documentElement\\.style\\.setProperty\\(\\s*['"]${prop}['"]`);
 		const removeRe = new RegExp(`removeProperty\\(\\s*['"]${prop}['"]\\s*\\)`);
 		expect(src.match(setRe), `${file} must still be the writer of ${prop}`).not.toBeNull();
@@ -643,7 +638,7 @@ test('every documentElement custom-property write (--dock-h) tears down on unmou
 	for (const { file, prop } of sites) {
 		const writers = FILES.filter((f) =>
 			new RegExp(`documentElement\\.style\\.setProperty\\(\\s*['"]${prop}['"]`).test(
-				stripComments(readFileSync(f, 'utf8'))
+				stripComments(readFileSync(f, 'utf8'), { markup: true })
 			)
 		).map((f) => f.replace(SRC + '/', ''));
 		expect(writers, `${prop} must have exactly one writer`).toEqual([file]);
@@ -654,7 +649,7 @@ test('the phone header truncates a long display name instead of growing the row'
 	// take it below that: 23 chars overflowed at 390px and 31 pushed the settings gear off the viewport. The
 	// fix is `min-width: 0` up the whole flex chain plus overflow/text-overflow/white-space on the name, and
 	// text-overflow only fires on a BLOCK box, never an anonymous flex item.
-	const page = stripComments(readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8'));
+	const page = stripComments(readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8'), { markup: true });
 
 	expect(page).toMatch(/<span class="me-name">\{me\.displayName\}<\/span>/);
 
@@ -675,7 +670,9 @@ test('the phone header truncates a long display name instead of growing the row'
 	expect(slot).not.toBeNull();
 	expect(slot![1]!).toMatch(/min-width:\s*0/);
 	// The variant must free its own minimum AND undo the base's `shrink-0`, or text-overflow never fires.
-	const button = stripComments(readFileSync(join(SRC, 'lib/components/ui/button/button.svelte'), 'utf8'));
+	const button = stripComments(readFileSync(join(SRC, 'lib/components/ui/button/button.svelte'), 'utf8'), {
+		markup: true
+	});
 	const identity = button.match(/identity:\s*\n?\s*'([^']*)'/)?.[1] ?? '';
 	expect(identity).toMatch(/\bmin-w-0\b/);
 	expect(identity).toMatch(/\bshrink\b/);
@@ -700,7 +697,7 @@ test('every identity-dot rule declares a non-shrinking flex basis', () => {
 		dotRules.push({ where: `src/app.css:${lineOf(css, m.index!)}.singer-dot`, body: m[1]! });
 	}
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const re of [/\.who\s+i\s*\{([^}]*)\}/g, /\.singer-dot\s*\{([^}]*)\}/g]) {
 			for (const m of src.matchAll(re)) {
 				dotRules.push({ where: `${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}`, body: m[1]! });
@@ -736,7 +733,7 @@ test('a route page block that caps its width also centres it under the app-shell
 		const rootClassMatch = markup.match(/<(?:section|main|div|article)\b[^>]*\sclass="([a-z][a-z0-9-]*)/i);
 		if (!rootClassMatch) continue; // no single classed root block -> out of scope
 		const rootClass = rootClassMatch[1]!;
-		const css = stripComments(raw);
+		const css = stripComments(raw, { markup: true });
 		const rule = css.match(new RegExp(`\\.${rootClass}\\s*\\{([^}]*)\\}`));
 		if (!rule) continue;
 		const body = rule[1]!;

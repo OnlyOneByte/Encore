@@ -6,14 +6,15 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 
 from ...lyrics import (
-    OVERSHOOT_FRACTION_MAX,
     SUSPECT_COVERAGE,
     baselines_of,
     candidate_last_end,
     candidates_of,
+    fits_audio,
     presplit_texts,
     select_by_baselines,
 )
+from ...lyrics.grading import Selection
 from ...processor import ProgressEvent
 from ...runtime.ctx import Ctx
 from ...runtime.step import Step, StepResult
@@ -70,69 +71,79 @@ class GradeAndSelect(Step):
         """
         return _pinned_ref(ctx) is None
 
+    def _overshoot_pool(self, ctx: Ctx) -> list[tuple[tuple[str, str | None], str, float | None]]:
+        """Every DISTINCT candidate and alternate as (key, label, its own last end time).
+
+        Built from the PRE-selection candidates, not `sel.publish`: a candidate demoted for overshoot is
+        not among the survivors, so iterating `sel.publish` stays silent exactly when the demotion changed
+        the outcome. `select_by_baselines` rebinds via `replace`, so `texts` is still the whole pool.
+        """
+        pool: list[tuple[tuple[str, str | None], str, float | None]] = []
+        seen_keys: set[tuple[str, str | None]] = set()
+        for candidate in candidates_of(ctx.lyrics.texts):
+            for text in (candidate, *candidate.alternates):
+                key = (text.text_source, text.variant)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                pool.append((key, text.variant or text.text_source, candidate_last_end(text)))
+        return pool
+
+    def _note_overshoots(self, ctx: Ctx, sel: Selection, duration_sec: float) -> None:
+        """One operator note per text whose OWN timings run past the end of the audio.
+
+        Separate from `run` because it decides nothing — every judgement was already made by
+        `select_by_baselines`; this only explains, in the operator's terms, what the pool looked like when
+        it did. Reads the same `fits_audio` boundary the demotion does, so the note and the decision cannot
+        disagree.
+        """
+        published_keys = {(p.text_source, p.variant) for p in sel.publish}
+        winner_label = (sel.publish[0].variant or sel.publish[0].text_source) if sel.publish else "none"
+        # Walked once, because the verdict below needs POOL facts, not just this text's fate.
+        pool = self._overshoot_pool(ctx)
+        fitting_labels = [label for _k, label, end in pool if fits_audio(end, duration_sec)]
+        for key, label, last_end in pool:
+            if last_end is None:
+                continue
+            over = max(0.0, last_end - duration_sec)
+            if over <= 0:
+                continue
+            is_published = key in published_keys
+            if fits_audio(last_end, duration_sec):
+                # State whether it published: `sel.choices` names a winner only when one source
+                # offered several versions, so a bare note reads as an overshoot on the SHIPPED
+                # lyrics even when it was on a rejected rival.
+                verdict = (
+                    "within tolerance"
+                    if is_published
+                    else f"within tolerance — NOT published, {winner_label} was"
+                )
+            elif is_published:
+                # Over the limit and it WON: the penalty is COMPARATIVE, so an overshooter leading a
+                # fitting rival by more than the overshoot fraction still publishes. Whether a
+                # fitting candidate existed is a POOL fact, undecidable from `is_published`.
+                verdict = "past the OVERSHOOT limit — PUBLISHED anyway"
+                verdict += (
+                    f", over {', '.join(fitting_labels)} which fits the audio"
+                    if fitting_labels
+                    else ", no candidate that fits the audio"
+                )
+            else:
+                # `is_published` False only means it is absent from `sel.publish`, never that the
+                # penalty is WHY — a wrong-song candidate can lose purely on agreement. Worded from
+                # the fact the step has, not an unproven causation.
+                verdict = f"past the OVERSHOOT limit — NOT published, {winner_label} was"
+            ctx.note(
+                f"lyrics overshoot — {label} runs "
+                f"+{over:.0f}s past audio-end ({over / duration_sec:.0%} of {duration_sec:.0f}s) "
+                f"— {verdict}"
+            )
+
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         duration_sec = ctx.audio.duration_sec
         sel = select_by_baselines(ctx.lyrics.texts, duration_sec)
-        # From the PRE-selection candidates, not `sel.publish`: a candidate demoted for overshoot is not
-        # among the survivors, so iterating `sel.publish` stays silent exactly when the demotion changed
-        # the outcome. `select_by_baselines` rebinds via `replace`, so `texts` is still the whole pool.
         if duration_sec and duration_sec > 0:
-            published_keys = {(p.text_source, p.variant) for p in sel.publish}
-            winner_label = (sel.publish[0].variant or sel.publish[0].text_source) if sel.publish else "none"
-            # Walked once, because the verdict below needs POOL facts, not just this text's fate.
-            pool: list[tuple[tuple[str, str | None], str, float | None]] = []
-            seen_keys: set[tuple[str, str | None]] = set()
-            for candidate in candidates_of(ctx.lyrics.texts):
-                for text in (candidate, *candidate.alternates):
-                    key = (text.text_source, text.variant)
-                    if key in seen_keys:
-                        continue
-                    seen_keys.add(key)
-                    pool.append((key, text.variant or text.text_source, candidate_last_end(text)))
-            # FITS = its own timings stay inside the audio, or it carries none at all, since a text-only
-            # source is force-aligned to THIS recording after selection. The same boundary
-            # `overshoot_penalized` demotes on.
-            fits_audio = [
-                label
-                for _k, label, end in pool
-                if end is None or max(0.0, end - duration_sec) / duration_sec <= OVERSHOOT_FRACTION_MAX
-            ]
-            for key, label, last_end in pool:
-                if last_end is None:
-                    continue
-                over = max(0.0, last_end - duration_sec)
-                if over <= 0:
-                    continue
-                is_published = key in published_keys
-                if over / duration_sec <= OVERSHOOT_FRACTION_MAX:
-                    # State whether it published: `sel.choices` names a winner only when one source
-                    # offered several versions, so a bare note reads as an overshoot on the SHIPPED
-                    # lyrics even when it was on a rejected rival.
-                    verdict = (
-                        "within tolerance"
-                        if is_published
-                        else f"within tolerance — NOT published, {winner_label} was"
-                    )
-                elif is_published:
-                    # Over the limit and it WON: the penalty is COMPARATIVE, so an overshooter leading a
-                    # fitting rival by more than the overshoot fraction still publishes. Whether a
-                    # fitting candidate existed is a POOL fact, undecidable from `is_published`.
-                    verdict = "past the OVERSHOOT limit — PUBLISHED anyway"
-                    verdict += (
-                        f", over {', '.join(fits_audio)} which fits the audio"
-                        if fits_audio
-                        else ", no candidate that fits the audio"
-                    )
-                else:
-                    # `is_published` False only means it is absent from `sel.publish`, never that the
-                    # penalty is WHY — a wrong-song candidate can lose purely on agreement. Worded from
-                    # the fact the step has, not an unproven causation.
-                    verdict = f"past the OVERSHOOT limit — NOT published, {winner_label} was"
-                ctx.note(
-                    f"lyrics overshoot — {label} runs "
-                    f"+{over:.0f}s past audio-end ({over / duration_sec:.0%} of {duration_sec:.0f}s) "
-                    f"— {verdict}"
-                )
+            self._note_overshoots(ctx, sel, duration_sec)
         for note in sel.baseline_notes:
             ctx.note(f"baseline — {note}")
         for choice in sel.choices:

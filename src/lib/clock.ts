@@ -1,12 +1,19 @@
+/** WHOLE SECONDS as m:ss, growing to h:mm:ss past an hour — THE ONE renderer of that shape. Every caller
+ * differs only in how it reduces its own input to whole seconds (floor for an elapsed clock, round for a
+ * catalog duration), and a second copy of this arithmetic is how one surface came to drop the hour and print
+ * a 62-minute song as `62:05`. See tests/guards/wiring/metrics-format-single-source.test.ts. */
+export function formatHms(totalSec: number): string {
+	const h = Math.floor(totalSec / 3600);
+	const m = Math.floor((totalSec % 3600) / 60);
+	const s = totalSec % 60;
+	const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
+	return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`;
+}
+
 /** Format seconds as m:ss, or h:mm:ss past an hour. Clamps negatives to 0 and rounds DOWN, so a fresh song reads
  * 0:00 rather than 0:01 and the elapsed label never shows a second the singer has not heard yet. */
 export function formatClock(sec: number): string {
-	const t = Number.isFinite(sec) ? Math.max(0, Math.floor(sec)) : 0;
-	const h = Math.floor(t / 3600);
-	const m = Math.floor((t % 3600) / 60);
-	const s = t % 60;
-	const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
-	return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`;
+	return formatHms(Number.isFinite(sec) ? Math.max(0, Math.floor(sec)) : 0);
 }
 
 /** Time left, as `−2:12`. Rounds UP, so the label only reaches −0:00 when the song is genuinely over rather than

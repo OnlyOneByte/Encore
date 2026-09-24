@@ -167,7 +167,7 @@ test('a legitimate later add still lands AFTER an earlier one (fix is not clamp-
 });
 
 test('server stamps are strictly increasing across two adds in the same singerId', () => {
-	const { state, deps } = harness();
+	const { deps } = harness();
 	const p1 = handleQueueCommand(addCmd('q1'), deps)!;
 	const p2 = handleQueueCommand(addCmd('q2'), deps)!;
 	const a1 = (p1.patch.ops[0] as Extract<ServerEvent, { type: 'queue:patch' }>['patch']['ops'][number] & { op: 'add' })
@@ -178,5 +178,4 @@ test('server stamps are strictly increasing across two adds in the same singerId
 	expect(a2).toBeGreaterThan(a1);
 	// And the client's minted addedAt (1) was NOT what got stored — the server owns it now.
 	expect(a1).toBeGreaterThan(1);
-	void state;
 });

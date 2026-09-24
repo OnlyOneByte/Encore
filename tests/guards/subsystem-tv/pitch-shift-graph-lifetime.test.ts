@@ -8,6 +8,7 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';
+import { stripComments } from '@encore/test-support/scan';
 
 class StubNode {
 	connections: unknown[] = [];
@@ -92,10 +93,6 @@ test('control: detach() (the OLD per-song call) closes the context -- the silenc
 	expect(graph.isDegraded).toBe(false);
 });
 
-function stripComments(s: string): string {
-	return s.replace(/[/][*][\s\S]*?[*][/]/g, '').replace(/(^|[^:])[/][/][^\n]*/g, '$1');
-}
-
 function resetEffectBody(s: string): string {
 	const anchor = 'if (id === resetForId) return;';
 	const start = s.indexOf(anchor);
@@ -116,19 +113,19 @@ function resetEffectBody(s: string): string {
 const TV = read('src/lib/tv/TvPlayer.svelte');
 
 test('guard: the per-song reset resets the master graph via setShift(0)', () => {
-	const body = stripComments(resetEffectBody(TV));
+	const body = stripComments(resetEffectBody(TV), { drop: true });
 	expect(body).toMatch(/masterGraph[?][.]setShift[(]\s*0\s*[)]/);
 });
 
 test('guard (mutation trap): the per-song reset must NOT detach the master graph', () => {
-	const body = stripComments(resetEffectBody(TV));
+	const body = stripComments(resetEffectBody(TV), { drop: true });
 	expect(body).not.toMatch(/masterGraph[?][.]detach[(]/);
 });
 
 test('guard (not-vacuous): the destroy effect detaches the graph on slot unmount', () => {
 	// ONE graph, because there is one element: a reappearing `guideGraph?.detach()` here would mean the
 	// second <audio> and its own PitchShiftGraph came back.
-	const stripped = stripComments(TV);
+	const stripped = stripComments(TV, { drop: true });
 	const destroyIdx = stripped.indexOf('return () => {');
 	expect(destroyIdx).toBeGreaterThanOrEqual(0);
 	const destroyRegion = stripped.slice(destroyIdx, destroyIdx + 300);
@@ -160,7 +157,7 @@ function masterUnmountEffectBody(s: string): string {
 }
 
 test('guard: the element-unmount effect releases the master graph AND drops the reference', () => {
-	const stripped = stripComments(TV);
+	const stripped = stripComments(TV, { drop: true });
 	const body = masterUnmountEffectBody(stripped);
 	// Not-vacuous: this really is the `if (!master)` shadow-clear effect (renaming it away reds here).
 	expect(body).toMatch(/if\s*[(]\s*!master\s*[)]/);
@@ -176,7 +173,7 @@ test('guard: the element-unmount effect releases the master graph AND drops the 
 test('guard (symmetry): master graph is released in BOTH destroy and element unmount', () => {
 	// Destroy alone needs the whole slot torn down (a page reload), which no host would do -- so there must be
 	// more than one `masterGraph?.detach()`: the destroy effect plus the element-unmount effect.
-	const stripped = stripComments(TV);
+	const stripped = stripComments(TV, { drop: true });
 	const detaches = stripped.match(/masterGraph[?][.]detach[(]/g) ?? [];
 	expect(detaches.length).toBeGreaterThan(1);
 });

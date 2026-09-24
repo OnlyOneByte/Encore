@@ -11,6 +11,7 @@ import type { DB } from '$lib/server/db/index';
 import { migratedDb } from '$lib/server/db/test-db';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const T0 = 1_700_000_000_000;
 
@@ -273,10 +274,6 @@ describe('the ledger is observability, never a failure mode', () => {
 // semantics are measurably wrong (a straddling process reports complete with an understated span). A public
 // method on an exported class is invisible to the unused-EXPORT sweep, so only this scan catches its return.
 describe('the removed row-count window stays removed', () => {
-	const stripComments = (src: string): string => {
-		const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-		return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
-	};
 	const SRC = stripComments(readFileSync(at('src/lib/server/jobs/attempts.ts'), 'utf8'));
 
 	it('exposes no `allFinished` method outside comments', () => {

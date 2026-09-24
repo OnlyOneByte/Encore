@@ -4,23 +4,15 @@
 // silently restores the pre-fix behaviour and breaks not one existing test.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const PAGE = 'src/routes/tv/+page.svelte';
 
 /**
- * Blank comments out, keeping newlines so reported line numbers stay true. LOAD-BEARING, and measured
- * rather than asserted: leaving the correct call in a comment — the shape a disable actually takes — makes
- * the scan below pass on its own documentation.
+ * STRIPPED IS LOAD-BEARING, and measured rather than asserted: leaving the correct call in a comment — the
+ * shape a disable actually takes — makes the scan below pass on its own documentation.
  */
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
-}
-
-const src = stripComments(read(PAGE));
+const src = stripComments(read(PAGE), { markup: true });
 
 test('resolveLyricsPresentation is called with a SECOND argument, not settings alone', () => {
 	// The resolver's second parameter is optional by design (the Settings page legitimately has no song), so

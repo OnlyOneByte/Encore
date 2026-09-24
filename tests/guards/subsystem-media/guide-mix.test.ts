@@ -22,11 +22,7 @@ import {
 	clearArtifacts,
 	SIDECAR_SCHEMA
 } from '$lib/server/media/sidecar';
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
-}
+import { stripComments } from '@encore/test-support/scan';
 
 const ready = (over: Partial<Media> = {}): Media =>
 	({

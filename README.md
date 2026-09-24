@@ -52,7 +52,9 @@ Then open **`/tv`** on the television, and **scan the QR** with phones.
 
 > Prefer `bun run start` (→ `server.ts`) over the adapter's `build/index.js`. `server.ts` owns **both**
 > the SvelteKit handler and the WebSocket hub in one process; serving `build/index.js` directly gives
-> you a UI with no realtime at all.
+> you a UI with no realtime at all. `vite preview` has the same defect — it answers 200 on `/` and 404s
+> `/health`, so the screen looks right while the queue never moves — which is why there is no
+> `preview` script.
 
 ### The process worker
 

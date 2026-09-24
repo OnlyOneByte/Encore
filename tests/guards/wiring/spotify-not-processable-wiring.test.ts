@@ -6,13 +6,10 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from 'bun:test';
 import { at, read } from '@encore/test-support';
-
-function stripComments(src: string): string {
-	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-}
+import { flattenDoc, stripComments } from '@encore/test-support/scan';
 
 const processRaw = readFileSync(at('src/lib/server/jobs/process.ts'), 'utf8');
-const processCode = stripComments(processRaw);
+const processCode = stripComments(processRaw, { drop: true });
 const readinessRaw = read('src/lib/readiness.ts');
 const songRowRaw = read('src/lib/components/SongRow.svelte');
 
@@ -99,11 +96,7 @@ function summaryOf(doc: string): string {
  * "or null" onto separate lines and the reason-list anchor stopped matching a docstring that still said it.
  */
 function flatten(doc: string): string {
-	return doc
-		.replace(/^\s*\/\*\*|\*\/\s*$/g, ' ')
-		.replace(/^[ \t]*\*[ \t]?/gm, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
+	return flattenDoc(doc.replace(/^\s*\/\*\*|\*\/\s*$/g, ' ')).trim();
 }
 
 test("requestProcess's docstring no longer makes a promise it breaks", () => {

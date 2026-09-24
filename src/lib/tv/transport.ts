@@ -25,7 +25,12 @@ export function transportFor({ hasSrc, playable, active, visible, playing }: Tra
 	return active && visible && playing ? 'play' : 'pause';
 }
 
-/** Src-string comparison only, so it is blind to two turns of the same song. Prefer `slotHoldsSong`. */
+/**
+ * KEPT AS A REGRESSION ORACLE, AND BANNED IN PRODUCTION — `tests/guards/subsystem-tv/transport.test.ts` asserts no
+ * production call site passes this as `hasSrc`, then uses it to demonstrate the same-song-advance bug that a test of
+ * `transportFor` alone cannot see. Src-string comparison only, so it is blind to two turns of the same song, which is
+ * exactly what makes it the oracle. Production compares entry-scoped tokens with `slotHoldsSong`.
+ */
 export function slotHoldsSrc(held: string | null | undefined, wanted: string | null | undefined): boolean {
 	return !!held && !!wanted && held === wanted;
 }

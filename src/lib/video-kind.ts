@@ -2,6 +2,8 @@
    HEURISTIC over a title someone else wrote: `unknown` is a first-class answer and must never be read as "this is a
    studio recording". Separate from the server's track-title normaliser, which STRIPS these markers for LOOKUPS. */
 
+import { formatHms } from '$lib/clock';
+
 /** The kinds, in the order a picker cares about them. `suspect` is not "bad" but "probably not a performance of the
  * song" — a trailer sits in an ordinary song duration on a verified channel. */
 export type VideoKind = 'suspect' | 'live' | 'lyric' | 'official' | 'unknown';
@@ -91,15 +93,12 @@ export function durationHint(durationSec: number | undefined): string | null {
 	return durationSec! > SONG_MAX_SEC ? 'Longer than a song' : 'Shorter than a song';
 }
 
-/** `3:44` / `21:56` / `1:02:03`. Empty string for an absent or zero duration, so the badge can hide. */
+/** `3:44` / `21:56` / `1:02:03`. Empty string for an absent or zero duration, so the badge can hide. ROUNDS,
+ * unlike the elapsed clock's floor — a catalog length is a fact, not a position — but renders through the SAME
+ * `formatHms`, so the two surfaces cannot disagree about the shape. */
 export function formatDuration(durationSec: number | undefined): string {
 	if (!durationSec || durationSec <= 0) return '';
-	const total = Math.round(durationSec);
-	const h = Math.floor(total / 3600);
-	const m = Math.floor((total % 3600) / 60);
-	const s = total % 60;
-	const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
-	return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`;
+	return formatHms(Math.round(durationSec));
 }
 
 /** A compact view count, because the number is a TIEBREAKER rather than a datum. Empty string for undefined so the

@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SINGER_COLORS } from '$lib/contract';
 import { read, srcDir } from '@encore/test-support';
-import { svelteFiles } from '@encore/test-support/scan';
+import { stripComments, svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir;
 const css = read('src/app.css');
@@ -63,13 +63,6 @@ function composite(fg: string, alpha: number, behind: string): string {
 			.map((v) => v.toString(16).padStart(2, '0'))
 			.join('')
 	);
-}
-
-/** Blank comments so a scan never matches prose ABOUT a declaration — the components below carry a
- *  comment naming the very `opacity` this file bans. */
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
 }
 
 /** `selector` targets the class `name`, not merely a longer class that contains its text. */
@@ -246,7 +239,9 @@ test('no card root dims its own subtree with opacity', () => {
 	let rootsScanned = 0;
 
 	for (const f of files) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		// Stripped, so a scan never matches prose ABOUT a declaration: the components below carry a comment
+		// naming the very `opacity` this file bans.
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		const roots = cardRootClasses(src);
 		if (roots.length === 0) continue;
 		rootsScanned++;

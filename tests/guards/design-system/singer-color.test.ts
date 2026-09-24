@@ -7,14 +7,9 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
-import { svelteFiles } from '@encore/test-support/scan';
+import { stripComments, svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir; // src
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
 
 /**
  * The per-stop roles an interpolated colour can carry: a stop ships `fill`, `on_fill`, `accent_ink` and
@@ -34,7 +29,7 @@ test('no hex alpha digits are concatenated onto an interpolated colour', () => {
 	const offenders: string[] = [];
 	const concat = new RegExp(String.raw`\{[^{}]*${COLOUR_ROLE}[^{}]*\}[0-9a-fA-F]{2}`, 'g');
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		// `}` closing an interpolation immediately followed by hex digits
 		for (const m of src.matchAll(concat)) {
 			const line = src.slice(0, m.index!).split('\n').length;
@@ -48,7 +43,7 @@ test('singer colour is passed as a custom property, not straight into background
 	const offenders: string[] = [];
 	const bare = new RegExp(String.raw`background:\s*\{[^{}]*${COLOUR_ROLE}[^{}]*\}`, 'g');
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		// the form that cannot be composed against
 		for (const m of src.matchAll(bare)) {
 			const line = src.slice(0, m.index!).split('\n').length;

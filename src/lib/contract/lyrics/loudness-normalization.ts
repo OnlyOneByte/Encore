@@ -14,13 +14,18 @@ export const LOUDNESS_CLAMP_N_DB = 6;
 /** Below this the "library median" is not a population, and clamping against it attenuates on noise. */
 export const LOUDNESS_MEASURED_FLOOR = 8;
 
+/** A DATA POINT: `null` entries are not, and a non-finite value is dropped defensively, because a pure
+ *  function must not trust its input. The ONE definition, so the median and the floor count the same set. */
+function isMeasured(v: number | null | undefined): v is number {
+	return typeof v === 'number' && Number.isFinite(v);
+}
+
 /**
- * `null` entries are not data points; a non-finite value is dropped defensively, because a pure function must
- * not trust its input. Returns `null` when nothing measurable remains, so a caller can tell "no population"
- * from "a real median that happens to be 0".
+ * Returns `null` when nothing measurable remains, so a caller can tell "no population" from "a real median
+ * that happens to be 0".
  */
 export function libraryLoudnessMedian(levels: ReadonlyArray<number | null | undefined>): number | null {
-	const measured = levels.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+	const measured = levels.filter(isMeasured);
 	if (measured.length === 0) return null;
 	const sorted = [...measured].sort((a, b) => a - b);
 	const mid = Math.floor(sorted.length / 2);
@@ -67,9 +72,9 @@ export function loudnessNormalizationGain(input: LoudnessNormalizationInput): Lo
 
 	// No measured level means NOT NORMALIZABLE, never "assume a default": there is nothing to compare.
 	const songLufs = input.songLufs;
-	if (typeof songLufs !== 'number' || !Number.isFinite(songLufs)) return UNITY(null, 0);
+	if (!isMeasured(songLufs)) return UNITY(null, 0);
 
-	const measured = input.libraryLevels.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+	const measured = input.libraryLevels.filter(isMeasured);
 	if (measured.length < LOUDNESS_MEASURED_FLOOR) return UNITY(null, measured.length);
 
 	const median = libraryLoudnessMedian(measured);

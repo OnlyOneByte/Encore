@@ -5,6 +5,55 @@ import { filesIn, read } from './tree.ts';
 /** The one walk's exclusion set, re-exported because `test-helpers.test.ts` asserts on it here. */
 export { SKIP_DIRS } from './tree.ts';
 
+/** How much of a comment a caller wants gone. Every flag DEFAULTS OFF, so the bare call is the code-comment case. */
+export interface StripOptions {
+	/** Also strip markup comments. For `.svelte`/`.html`; a `.ts` caller has none to lose. */
+	markup?: boolean;
+	/** Leave `//` line comments STANDING — for a guard that reads its subject's line prose on purpose. */
+	keepLine?: boolean;
+	/** DELETE comments instead of blanking them: shorter text, and byte offsets and line numbers do NOT survive. */
+	drop?: boolean;
+}
+
+/**
+ * THE comment stripper. A guard scans source TEXT, so prose mentioning a banned token convicts correct code and
+ * prose mentioning a required one satisfies a presence arm — both have happened here. The hand-rolled per-file
+ * copies had drifted into a dozen shapes, one of which stripped markup and block comments but NOT `//`, which is
+ * how a line comment leaked into an absence arm and reddened it on production prose.
+ *
+ * Comments are BLANKED with spaces by default, never deleted, so a caller that reports an offset, counts a line or
+ * slices between two anchors still reads true positions. `drop` is for the callers whose assertions were written
+ * against the collapsed text instead.
+ *
+ * A `//` preceded by a colon, a quote or a backtick is NOT a comment — it is the `//` in a URL or in a pattern —
+ * so it is left alone. An unguarded strip ate the rest of the line and took real code with it.
+ */
+export function stripComments(src: string, options: StripOptions = {}): string {
+	const { markup = false, keepLine = false, drop = false } = options;
+	const wipe = (m: string): string => (drop ? '' : m.replace(/[^\n]/g, ' '));
+	let out = src;
+	if (markup) out = out.replace(/<!--[\s\S]*?-->/g, wipe);
+	out = out.replace(/\/\*[\s\S]*?\*\//g, wipe);
+	if (!keepLine) out = out.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1: string) => p1 + wipe(m.slice(p1.length)));
+	return out;
+}
+
+/**
+ * A documentation block as ONE line: the leading markers off, whitespace collapsed. Every prose guard needs this,
+ * because a match against the raw block matches one LINE-WRAPPING of a sentence rather than the sentence —
+ * re-flowing a paragraph then puts a break between two of its words and a live claim reads as deleted.
+ *
+ * `line: true` also treats a `//` at the start of a line as a marker, for a guard whose subject's prose is line
+ * comments rather than a block. Without it a re-flow puts `//` BETWEEN two words of a sentence, and a negation
+ * that wraps across two comment lines reads as its own opposite.
+ *
+ * No `.trim()`: a caller that wants one says so, and the callers disagree about it.
+ */
+export function flattenDoc(block: string, options: { line?: boolean } = {}): string {
+	const marker = options.line ? /^[ \t]*(?:\/\/+|\*)[ \t]?/gm : /^[ \t]*\*[ \t]?/gm;
+	return block.replace(marker, ' ').replace(/\s+/g, ' ');
+}
+
 export function svelteFiles(dir: string): string[] {
 	return filesIn(dir, ['.svelte']);
 }

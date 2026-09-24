@@ -13,7 +13,7 @@ import type {
 } from '../../contract';
 import { singHistoryFrom } from '../../contract';
 import type { AuthoritativeState } from '../state/store';
-import { can } from '../capabilities';
+import { can, type Capability } from '../capabilities';
 import { queueEntries } from '../db/schema';
 
 // queue_entries.status is the single source of truth for the entry-status VALUE LIST; its enumValues are read below ONLY to CLASSIFY
@@ -64,6 +64,46 @@ export interface HubDeps {
 }
 
 /** Validate a command against current state. Returns an error string, or null if valid. */
+/**
+ * Ops that name an EXISTING entry and may be issued by a client — derived from `QueueOp` rather than listed,
+ * so a new `{ id }`-bearing op joins this type automatically. `status` is excluded because it is server-owned
+ * and refused outright.
+ */
+type EntryMutatingOp = Exclude<Extract<QueueOp, { id: string }>['op'], 'status'>;
+
+/**
+ * The capability each entry op asks for, and what it says when refused.
+ *
+ * `satisfies Record<EntryMutatingOp, …>` is the load-bearing part: a new entry-mutating op cannot COMPILE
+ * without a gate here. The previous shape — one hand-written `if (!can(…))` per switch arm — could only be
+ * policed by a guard grepping the three arms it knew about, so a fourth arm added with a copy-pasted
+ * capability was both legal and invisible.
+ */
+const ENTRY_OP_GATE = {
+	remove: { capability: 'queue:remove-any', refusal: 'not allowed to remove this entry' },
+	move: { capability: 'queue:reorder-any', refusal: 'not allowed to reorder this entry' },
+	'move-to-index': { capability: 'queue:reorder-any', refusal: 'not allowed to reorder this entry' }
+} as const satisfies Record<EntryMutatingOp, { capability: Capability; refusal: string }>;
+
+/**
+ * The one gate for every entry op. Order is the whole contract:
+ *  1. unknown entry first, so a ghost id never reports as a permission problem;
+ *  2. `toIdx` shape next — a non-integer is refused rather than silently clamped to 0 by `moveToIndex`;
+ *  3. OWNERSHIP SHORT-CIRCUITS BEFORE `can()`. The `-any` capabilities mean "someone else's entry", so
+ *     asking for one on your own song would refuse a singer their own turn the moment `can()` narrows to a
+ *     host role. `can()` ignores its capability today, which is exactly why this cannot be caught by a test
+ *     of behaviour — see tests/guards/wiring/capability-wiring.test.ts.
+ */
+function entryOpRefusal(op: Extract<QueueOp, { op: EntryMutatingOp }>, deps: HubDeps): string | null {
+	const target = deps.state.entries.find((e) => e.id === op.id);
+	if (!target) return `unknown entry: ${op.id}`;
+	if (op.op === 'move-to-index' && !Number.isInteger(op.toIdx)) return `invalid toIdx: ${String(op.toIdx)}`;
+	if (target.singerId === deps.actorSingerId) return null;
+	const gate = ENTRY_OP_GATE[op.op];
+	if (!can({ singerId: deps.actorSingerId }, gate.capability)) return gate.refusal;
+	return null;
+}
+
 export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | null {
 	// Envelope BEFORE destructuring: a frame with no `command`/`op`/`clientOpId` must fail here, not
 	// crash on the next property read.
@@ -103,36 +143,10 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			}
 			return null;
 		}
-		case 'remove': {
-			const removeTarget = deps.state.entries.find((e) => e.id === op.id);
-			if (!removeTarget) return `unknown entry: ${op.id}`;
-			// `queue:remove-any` gates removing SOMEONE ELSE'S entry only. Gating every remove through it
-			// would wrongly block a singer's own song once can() starts enforcing a host role.
-			if (removeTarget.singerId !== deps.actorSingerId) {
-				if (!can({ singerId: deps.actorSingerId }, 'queue:remove-any')) return 'not allowed to remove this entry';
-			}
-			return null;
-		}
-		case 'move': {
-			const moveTarget = deps.state.entries.find((e) => e.id === op.id);
-			if (!moveTarget) return `unknown entry: ${op.id}`;
-			// Same ownership scope as remove: `queue:reorder-any` is only asked for SOMEONE ELSE'S entry.
-			if (moveTarget.singerId !== deps.actorSingerId) {
-				if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder this entry';
-			}
-			return null;
-		}
-		case 'move-to-index': {
-			const target = deps.state.entries.find((e) => e.id === op.id);
-			if (!target) return `unknown entry: ${op.id}`;
-			// toIdx indexes the WHOLE queued list, so it jumps another singer — same gate as `move`. A
-			// non-integer is rejected rather than silently clamped to 0 by moveToIndex.
-			if (!Number.isInteger(op.toIdx)) return `invalid toIdx: ${String(op.toIdx)}`;
-			if (target.singerId !== deps.actorSingerId) {
-				if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder this entry';
-			}
-			return null;
-		}
+		case 'remove':
+		case 'move':
+		case 'move-to-index':
+			return entryOpRefusal(op, deps);
 		case 'status':
 			// SERVER-OWNED: only player.ts calls applyQueueOp directly for a status change. From a client it
 			// could forge a second 'playing' entry, or retire a song whose process keeps running.

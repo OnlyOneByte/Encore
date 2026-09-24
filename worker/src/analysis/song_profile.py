@@ -12,6 +12,9 @@ raises. A profile failure must never fail the job.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
+
 from . import key_detect, loudness, vocal_range, wav
 
 # The exact wire shape core validates. Every key is always present; values are null when unknown.
@@ -33,6 +36,24 @@ def empty_profile() -> dict:
     """A fresh, fully-null profile object. Returned as-is when both analyses are skipped or fail, so
     the artifact is still PRESENT (core's gate: present == the step ran)."""
     return dict(_NULL_PROFILE)
+
+
+@contextlib.contextmanager
+def _degrades_to_nulls(log, problem: str, media_id: str, consequence: str) -> Iterator[None]:
+    """Run one half of the analysis, degrading to nulls with a REASON if it raises.
+
+    The "each half fails independently" contract stated once, so the three halves below cannot be given
+    three subtly different versions of it. What varies is only the wording — `problem` names what broke,
+    `consequence` names which fields stay null — and both are the operator's whole diagnosis, so neither
+    is optional.
+    """
+    try:
+        yield
+    except Exception as exc:  # noqa: BLE001 — analysis must never fail the process
+        log(
+            f"[worker] {problem} for {media_id} ({type(exc).__name__}: {exc}); {consequence}",
+            flush=True,
+        )
 
 
 def build_song_profile(
@@ -61,27 +82,17 @@ def build_song_profile(
     inst_samples = None
     inst_rate = 0
     if instrumental_wav:
-        try:
+        with _degrades_to_nulls(
+            log, "could not read the instrumental", media_id, "publishing null key and null loudness"
+        ):
             inst_samples, inst_rate = wav.read_wav_mono(instrumental_wav)
-        except Exception as exc:  # noqa: BLE001 — analysis must never fail the process
-            log(
-                f"[worker] could not read the instrumental for {media_id} "
-                f"({type(exc).__name__}: {exc}); publishing null key and null loudness",
-                flush=True,
-            )
 
     if inst_samples is not None:
-        try:
+        with _degrades_to_nulls(log, "key detection failed", media_id, "publishing null key"):
             tonic, mode, confidence = key_detect.detect_key(inst_samples, inst_rate)
             profile["keyTonic"] = tonic
             profile["keyMode"] = mode
             profile["keyConfidence"] = confidence
-        except Exception as exc:  # noqa: BLE001 — analysis must never fail the process
-            log(
-                f"[worker] key detection failed for {media_id} "
-                f"({type(exc).__name__}: {exc}); publishing null key",
-                flush=True,
-            )
 
     # The INSTRUMENTAL is the file that plays in the room, so its level is what's stored — never a
     # derived gain, since the actual gain is an outlier clamp against the whole library and would go
@@ -98,18 +109,12 @@ def build_song_profile(
         )
 
     if vocals_wav:
-        try:
+        with _degrades_to_nulls(log, "vocal-range summary failed", media_id, "publishing null range"):
             rng = vocal_range.summarize_wav(vocals_wav)
             profile["lowMidi"] = rng["lowMidi"]
             profile["highMidi"] = rng["highMidi"]
             profile["p05Midi"] = rng["p05Midi"]
             profile["p95Midi"] = rng["p95Midi"]
             profile["histogram"] = rng["histogram"]
-        except Exception as exc:  # noqa: BLE001 — analysis must never fail the process
-            log(
-                f"[worker] vocal-range summary failed for {media_id} "
-                f"({type(exc).__name__}: {exc}); publishing null range",
-                flush=True,
-            )
 
     return profile

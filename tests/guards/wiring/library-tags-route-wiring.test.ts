@@ -6,11 +6,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
-}
+import { stripComments } from '@encore/test-support/scan';
 
 const SRC = stripComments(readFileSync(at('src/routes/api/library/+server.ts'), 'utf8'));
 

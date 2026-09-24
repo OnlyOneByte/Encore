@@ -144,10 +144,10 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 			advance(deps);
 			break;
 		case 'key': {
-			// Only for a song whose stems are ready — nothing to re-pitch before separation.
+			// Only for a song whose stems are ready — nothing to re-pitch before separation. `isEntryReady`
+			// resolves the media itself and is false when there is none, so no separate lookup is needed.
 			const cur = state.entries.find((e) => e.id === state.playback.currentEntryId);
-			const media = cur && deps.mediaById.get(cur.mediaId);
-			if (cur && media && isEntryReady(cur, deps.mediaById)) {
+			if (cur && isEntryReady(cur, deps.mediaById)) {
 				state.setPlayback({ keyShift: clampKeyShift(cmd.semitones) });
 			}
 			break;

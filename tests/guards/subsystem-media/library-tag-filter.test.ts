@@ -5,6 +5,7 @@
 // query shape is the thing under test.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
+import { flattenDoc } from '@encore/test-support/scan';
 import { MediaRepository } from '$lib/server/media/repository';
 import { migratedDb } from '$lib/server/db/test-db';
 import { openDb } from '$lib/server/db/index';
@@ -230,10 +231,7 @@ test('readyTagged hands its media ids down to readySongs, unconditionally', () =
 function docAbove(name: string): string {
 	const m = new RegExp(`/\\*\\*([\\s\\S]*?)\\*/\\s*\\nfunction ${name}\\(`).exec(SRC);
 	if (!m) throw new Error(`no doc comment found above ${name} in repository.ts`);
-	return m[1]
-		.replace(/^[ \t]*\*[ \t]?/gm, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
+	return flattenDoc(m[1]!).trim();
 }
 
 test('prose non-vacuous: the file and both docstrings are really there', () => {

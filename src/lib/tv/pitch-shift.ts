@@ -246,8 +246,8 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 		// deliberately not an edge-clamping interpolator and must not be unified into one.
 	histSample(s, absIdx) {
 		if (absIdx < 0) return 0;
-		if (absIdx >= s.writePos) return 0;
-		if (absIdx < s.writePos - HIST) return 0;
+		if (absIdx >= this.writePos) return 0;
+		if (absIdx < this.writePos - HIST) return 0;
 		return s.hist[absIdx % HIST];
 	}
 }

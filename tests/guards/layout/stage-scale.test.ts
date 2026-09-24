@@ -6,15 +6,10 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
-import { svelteFiles, TAP, TAP_FLOOR } from '@encore/test-support/scan';
+import { TAP, TAP_FLOOR, stripComments, svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir;
 const TV_DIRS = [join(SRC, 'lib', 'tv'), join(SRC, 'routes', 'tv')];
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
 
 function lineOf(src: string, i: number): number {
 	return src.slice(0, i).split('\n').length;
@@ -31,7 +26,7 @@ test('no TV type is sized below the ten-foot floor with a literal size', () => {
 	// is relative to its PARENT, which is how the bouncing-ball dot is legitimately `0.5em` of its lyric.
 	const offenders: string[] = [];
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		for (const m of src.matchAll(/font-size:\s*([0-9.]+)(rem|px)/g)) {
 			const n = Number(m[1]);
 			const unit = m[2]!;
@@ -54,7 +49,7 @@ test('no TV font-size is a px literal or a per-token viewport term — the floor
 	const offenders: string[] = [];
 	let rootFloorsSeen = 0;
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		for (const m of src.matchAll(/font-size:\s*([^;]+);/g)) {
 			const value = m[1]!.trim();
 			if (TV_ROOT_FLOOR_RE.test(value)) {
@@ -81,7 +76,7 @@ test('no TV font-size is a px literal or a per-token viewport term — the floor
 });
 
 test('the TV type ladder in app.css is rem off the root — no tier carries a viewport term', () => {
-	const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
+	const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'), { markup: true, keepLine: true });
 	// --tv-safe-* and --tv-attract-qr are the named geometry exemption and are intentionally NOT in this list.
 	const TYPE_TOKENS = [
 		'--tv-small',
@@ -122,7 +117,7 @@ test('nothing on the stage is docked to an edge with a fixed pixel offset', () =
 	// developer's monitor, which does not overscan.
 	const offenders: string[] = [];
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		for (const m of src.matchAll(/(?:^|[;{\s])(top|right|bottom|left):\s*(-?[0-9.]+)px/g)) {
 			// 0 is full-bleed, which is intentional (scrims, the fixed .tv shell, mask layers)
 			if (Number(m[2]) === 0) continue;
@@ -137,7 +132,7 @@ test('a full-bleed edge container insets its content with the safe-area tokens',
 	// paints a background and has padding, that padding is what keeps its content out of the overscan.
 	const offenders: string[] = [];
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
 			const body = m[2]!;
 			const docked = /(?:top|bottom|left|right):\s*0(?:px)?\s*;/.test(body);
@@ -173,7 +168,7 @@ test('the three transient TV states are visually distinct', () => {
  * hid the words. Geometry the DOM-less runner cannot see, so these arms pin the precondition.
  */
 test('app.css defines the --tv-chrome-h band from responsive tokens, not a bare px edge', () => {
-	const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
+	const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'), { markup: true, keepLine: true });
 	const decl = /--tv-chrome-h:\s*([^;]+);/.exec(css);
 	expect(decl).not.toBeNull();
 	const value = decl![1]!;
@@ -183,7 +178,10 @@ test('app.css defines the --tv-chrome-h band from responsive tokens, not a bare 
 });
 
 test('the lyrics reel reserves the bottom chrome band instead of filling the whole screen', () => {
-	const src = stripComments(readFileSync(join(SRC, 'lib', 'tv', 'LyricsOverlay.svelte'), 'utf8'));
+	const src = stripComments(readFileSync(join(SRC, 'lib', 'tv', 'LyricsOverlay.svelte'), 'utf8'), {
+		markup: true,
+		keepLine: true
+	});
 	const block = /\.lyrics\s*\{([^}]*)\}/.exec(src)?.[1] ?? '';
 	expect(block).not.toBe('');
 	// `inset: 0` is exactly the state that let the cards cover the words.
@@ -198,7 +196,7 @@ const APP_CSS = readFileSync(join(SRC, 'app.css'), 'utf8');
 test('the TV fullscreen button floors its clamp on var(--tap)', () => {
 	// touch-targets.test.ts walks the PHONE surfaces only, so `.fs-btn` sat outside every touch guard while
 	// its comment claimed a `--tap` floor it did not have. `clamp(var(--tap), 5.2vmin, 88px)` keeps both.
-	const css = stripComments(TV_ROUTE);
+	const css = stripComments(TV_ROUTE, { markup: true, keepLine: true });
 	const rule = /\.fs-btn\s*\{([^}]*)\}/s.exec(css);
 	expect(rule).not.toBeNull();
 	const body = rule![1]!;
@@ -222,7 +220,7 @@ test('every HERO join badge sizes from a vmin TV-QR token, never a bare pixel nu
 		['routes/tv/+page.svelte', TV_ROUTE],
 		['lib/tv/TvLobby.svelte', TV_LOBBY]
 	] as const) {
-		const clean = stripComments(src);
+		const clean = stripComments(src, { markup: true, keepLine: true });
 		let seenInFile = 0;
 		for (const m of clean.matchAll(/<JoinBadge\b[^>]*?placement="hero"[^>]*?>/gs)) {
 			seenInFile++;
@@ -246,7 +244,7 @@ test('every HERO join badge sizes from a vmin TV-QR token, never a bare pixel nu
 });
 
 test('the TV-QR token is defined in vmin, not a fixed px', () => {
-	const css = stripComments(APP_CSS);
+	const css = stripComments(APP_CSS, { markup: true, keepLine: true });
 	for (const tok of ['--tv-attract-qr']) {
 		const decl = new RegExp(`${tok}:\\s*([^;]+);`).exec(css);
 		expect(decl, `${tok} declaration`).not.toBeNull();
@@ -259,14 +257,14 @@ test('the TV-QR token is defined in vmin, not a fixed px', () => {
  * under-counted the card's real height, and re-broke on any added row.
  */
 test('the TV route measures the lower-third with a ResizeObserver', () => {
-	const clean = stripComments(TV_ROUTE);
+	const clean = stripComments(TV_ROUTE, { markup: true, keepLine: true });
 	expect(clean).toContain('ResizeObserver');
 	expect(/bind:this=\{lowerThirdEl\}/.test(clean)).toBe(true);
 	expect(/lower-third/.test(clean)).toBe(true);
 });
 
 test('the measured card height overrides --tv-chrome-h on the stage', () => {
-	const clean = stripComments(TV_ROUTE);
+	const clean = stripComments(TV_ROUTE, { markup: true, keepLine: true });
 	// `tvStyle` COMPOSES `chromeBandStyle` with the measured --tv-upnext-h, so both the composition and `.tv`
 	// reading the composed value are asserted.
 	expect(/--tv-chrome-h:\s*calc\(/.test(clean)).toBe(true);
@@ -285,7 +283,9 @@ test('the TV process wording comes from process-phrasing, not a hand-written str
 		expect(src).toContain("from '$lib/phrasing/process-phrasing'");
 		expect(src.includes('processStageLabel')).toBe(true);
 	}
-	const clean = stripComments(TV_ROUTE) + stripComments(TV_LOBBY);
+	const clean =
+		stripComments(TV_ROUTE, { markup: true, keepLine: true }) +
+		stripComments(TV_LOBBY, { markup: true, keepLine: true });
 	expect(/Stripping the vocals/i.test(clean)).toBe(false);
 });
 
@@ -295,20 +295,54 @@ test('the TV process wording comes from process-phrasing, not a hand-written str
  * has its own callback.
  */
 test('TvPlayer gates its visible-ready report on visibility and separates the pre-warm signal', () => {
-	const player = stripComments(readFileSync(join(SRC, 'lib', 'tv', 'TvPlayer.svelte'), 'utf8'));
+	const player = stripComments(readFileSync(join(SRC, 'lib', 'tv', 'TvPlayer.svelte'), 'utf8'), {
+		markup: true,
+		keepLine: true
+	});
 	const onreadyEffect = /if\s*\(\s*visible\s*&&[\s\S]*?onready\?\.\(\)/.test(player);
 	expect(onreadyEffect).toBe(true);
 	expect(player).toContain('onprewarmed');
 });
 
 test('the route drives onVisibleReady from onready and onHiddenReady from onprewarmed — never mixed', () => {
-	const clean = stripComments(TV_ROUTE);
-	for (const m of clean.matchAll(/onready=\{[^}]*\}/g)) {
-		expect(m[0]).not.toContain('onHiddenReady');
-	}
-	const prewarms = [...clean.matchAll(/onprewarmed=\{[^}]*\}/g)];
-	expect(prewarms.length).toBe(2);
-	for (const m of prewarms) expect(m[0]).toContain('onHiddenReady');
+	// The property is the PAIRING, not where the handler body sits. This used to require `onprewarmed={…}` to
+	// appear exactly twice with `onHiddenReady` spelled INSIDE each binding, which pinned two inline copies in
+	// place: a named handler, or one `{#each}` over the A/B slots, reddened it while the pairing was intact.
+	// One level of indirection is resolved instead, so extracting a handler is allowed and swapping the two
+	// callbacks still is not.
+	const clean = stripComments(TV_ROUTE, { markup: true, keepLine: true });
+
+	/** A binding's body, following an identifier to its declaration in the same route. */
+	const resolve = (expr: string): string => {
+		const id = /^\s*([A-Za-z_$][\w$]*)\s*$/.exec(expr);
+		if (!id) return expr;
+		const decl = new RegExp(
+			`(?:function\\s+${id[1]}\\s*\\([^)]*\\)|(?:const|let)\\s+${id[1]}\\s*=[^;{]*?)\\s*\\{`
+		).exec(clean);
+		if (!decl) return expr;
+		let depth = 0;
+		for (let i = decl.index + decl[0].length - 1; i < clean.length; i++) {
+			if (clean[i] === '{') depth++;
+			else if (clean[i] === '}' && --depth === 0) return clean.slice(decl.index, i + 1);
+		}
+		return expr;
+	};
+
+	const bindings = (attr: string) =>
+		[...clean.matchAll(new RegExp(`${attr}=\\{([^}]*)\\}`, 'g'))].map((m) => resolve(m[1]!));
+
+	const readys = bindings('onready');
+	const prewarms = bindings('onprewarmed');
+	// Non-vacuity: both callbacks must be wired at all, or the two loops below assert over nothing.
+	expect(readys.length, 'no onready binding found on the route').toBeGreaterThanOrEqual(1);
+	expect(prewarms.length, 'no onprewarmed binding found on the route').toBeGreaterThanOrEqual(1);
+	for (const body of readys) expect(body).not.toContain('onHiddenReady');
+	for (const body of prewarms) expect(body).toContain('onHiddenReady');
+	// And the visible half is really wired, so "never mixed" is not satisfied by both being empty.
+	expect(
+		readys.some((b) => b.includes('onVisibleReady')),
+		'onready never reaches onVisibleReady'
+	).toBe(true);
 });
 
 test('the pitch-shift graph teardown runs per song change — and not on media identity churn', () => {
@@ -316,7 +350,7 @@ test('the pitch-shift graph teardown runs per song change — and not on media i
 	// a media change posts setShift() to a dead node. But `media`'s object identity churns on every queue
 	// mutation, so keying teardown on the signal tore down a live graph mid-song: gate on the id VALUE.
 	const raw = readFileSync(join(SRC, 'lib', 'tv', 'TvPlayer.svelte'), 'utf8');
-	const player = stripComments(raw).replace(/\/\/[^\n]*/g, '');
+	const player = stripComments(raw, { markup: true, keepLine: true }).replace(/\/\/[^\n]*/g, '');
 	// Picked by the id read, NOT by a detach() call — the master detach was removed from this effect.
 	const bodies = [...player.matchAll(/\$effect\(\(\)\s*=>\s*\{([\s\S]*?)\n\t\}\);/g)].map((m) => m[1]);
 	const teardown = bodies.find((b) => /media\?\.id/.test(b) && /resetForId/.test(b)) ?? '';
@@ -340,7 +374,10 @@ test('the pitch-shift graph teardown runs per song change — and not on media i
  * as `.lyrics.unverified .row.current .word` out-specified the word ladder and flattened sung and unsung
  * words on an ASR line to one colour, while LOSING to `.hl-line` on source order. Invisible in a still.
  */
-const LYRICS_OVERLAY = stripComments(readFileSync(join(SRC, 'lib', 'tv', 'LyricsOverlay.svelte'), 'utf8'));
+const LYRICS_OVERLAY = stripComments(readFileSync(join(SRC, 'lib', 'tv', 'LyricsOverlay.svelte'), 'utf8'), {
+	markup: true,
+	keepLine: true
+});
 const REEL_STATE_VARS = ['--reel-current', '--reel-ahead', '--reel-done', '--reel-line', '--reel-now'] as const;
 
 test('every reel colour state is declared once as a variable and consumed through it', () => {
@@ -385,7 +422,7 @@ test('the unverified tint overrides variables only — it never re-selects a wor
 test('the lobby roster strip wraps the full roster in flow — not absolutely docked, not clipped', () => {
 	// The lobby shows EVERY guest with no truncation, so the strip WRAPS and the step-down rule keeps a large
 	// party inside the title-safe band. What is preserved is that the strip is IN FLOW.
-	const lobby = stripComments(TV_LOBBY);
+	const lobby = stripComments(TV_LOBBY, { markup: true, keepLine: true });
 	const stripBlock = /\.strip\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
 	expect(stripBlock).not.toBe('');
 	expect(/position:\s*absolute/.test(stripBlock)).toBe(false);
@@ -397,7 +434,7 @@ test('the lobby roster strip wraps the full roster in flow — not absolutely do
 
 test('the lobby shows the whole roster with a chip step-down rule, never a "+N more" fold', () => {
 	const src = TV_LOBBY;
-	const lobby = stripComments(src);
+	const lobby = stripComments(src, { markup: true, keepLine: true });
 	// The step-down is a RULE with a named threshold, applied by a `dense` class the script derives.
 	expect(/const\s+CHIP_STEPDOWN\s*=\s*\d+/.test(lobby)).toBe(true);
 	// It keys on COUNT **and** TOTAL WIDTH: `displayName` is user-typed and admits 32 characters, so nine
@@ -428,7 +465,7 @@ test('the lobby shows the whole roster with a chip step-down rule, never a "+N m
 });
 
 test('the lobby centres its stack in the space ABOVE the strip, not across the whole box', () => {
-	const lobby = stripComments(TV_LOBBY);
+	const lobby = stripComments(TV_LOBBY, { markup: true, keepLine: true });
 	// A column, so the strip's height is subtracted from the region the stack centres in.
 	const lobbyBlock = /\.lobby\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
 	expect(/flex-direction:\s*column/.test(lobbyBlock)).toBe(true);

@@ -5,6 +5,7 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { runBootMaintenance, type BootTask } from '$lib/server/boot-maintenance';
+import { stripComments } from '@encore/test-support/scan';
 
 test('a pass that throws does NOT skip the passes after it (the whole point of the isolated boot runner)', async () => {
 	const ran: string[] = [];
@@ -105,10 +106,6 @@ test('a disabled pass is skipped silently (not counted as a failure)', async () 
 	expect(warnings).toHaveLength(0);
 });
 
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
-}
 const APP = stripComments(read('src/lib/server/app.ts'));
 
 test('app.ts imports runBootMaintenance and drives the boot passes through it (the wiring)', () => {

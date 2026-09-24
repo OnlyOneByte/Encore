@@ -107,7 +107,11 @@
 	{#if hint}<p class="field-hint">{hint}</p>{/if}
 
 	<div class="swatches" role="radiogroup" aria-label={label} tabindex="-1" onkeydown={onSwatchKey}>
-		{#each SINGER_COLORS as c, i}
+		<!-- Keyed on the INDEX, not the hex: this list is position-identified by construction — PRESET_NAMES maps to it by
+				position, `data-swatch` publishes the index, and `presetTabStopIndex`/`nextSwatchIndex` both speak in indices.
+				SINGER_COLORS is a module-level `as const`, so it can never reorder, which makes an index key exactly the
+				unkeyed diffing this replaced. -->
+		{#each SINGER_COLORS as c, i (i)}
 			<button
 				role="radio"
 				aria-checked={value === c}

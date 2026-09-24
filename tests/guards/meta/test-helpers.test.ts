@@ -1,11 +1,16 @@
 /*
  * guard: each scan helper has exactly one definition, because these helpers decide WHAT A GUARD CAN SEE.
  *
- * Four of the five were per-file copies, one a verbatim rename of another. A copy that drifts — a different
- * glob, a missed directory, an extra exclusion — silently narrows one guard's population while it stays
- * green on the smaller surface. Consolidating is a refactor no existing assertion notices, so this source
- * scan is what makes it observable. KNOWN LIMIT: arm 1 is keyed on the five NAMES, so a rival walker under
+ * Four of the five walk helpers were per-file copies, one a verbatim rename of another. A copy that drifts — a
+ * different glob, a missed directory, an extra exclusion — silently narrows one guard's population while it
+ * stays green on the smaller surface. Consolidating is a refactor no existing assertion notices, so this
+ * source scan is what makes it observable. KNOWN LIMIT: arm 1 is keyed on the NAMES, so a rival walker under
  * a different name is not caught; three exist today. See docs/GUARDS.md#the-hygiene-and-meta-guards.
+ *
+ * `stripComments` and `flattenDoc` joined the list for the same reason, measured: the tree carried ~100
+ * hand-rolled strippers in a dozen shapes, one of which blanked block and markup comments but NOT `//` — so a
+ * line comment leaked into an absence arm and reddened it on production prose. They decide what a guard can
+ * see just as much as a walk does.
  */
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -21,7 +26,15 @@ const HOME = 'tests/support/src/scan.ts';
  */
 const WALK_HOME = 'tests/support/src/tree.ts';
 
-const HELPERS = ['svelteFiles', 'styleFiles', 'markupControls', 'allSvelte', 'classPresent'];
+const HELPERS = [
+	'svelteFiles',
+	'styleFiles',
+	'markupControls',
+	'allSvelte',
+	'classPresent',
+	'stripComments',
+	'flattenDoc'
+];
 
 /**
  * REAL SOURCE, and an explicit list rather than a walk: a file dropping out of scrutiny has to be a visible
@@ -37,12 +50,25 @@ const CONSUMERS = [
 	'tests/guards/design-system/singer-color.test.ts',
 	'tests/guards/layout/stage-scale.test.ts',
 	'tests/guards/hygiene/icons.test.ts',
-	'tests/guards/hygiene/contract.test.ts'
+	'tests/guards/hygiene/contract.test.ts',
+	// The prose guards, added with `flattenDoc`: each flattens a comment block to match a SENTENCE rather than
+	// one line-wrapping of it, and each had grown its own copy of that two-replace chain.
+	'tests/guards/docs/wrong-song-axis-prose.test.ts',
+	'tests/guards/docs/spotify-enforcement-prose.test.ts',
+	'tests/guards/wiring/spotify-not-processable-wiring.test.ts',
+	'tests/guards/subsystem-media/library-tag-filter.test.ts',
+	'tests/guards/subsystem-tv/lyrics-reel-cap.test.ts',
+	'tests/guards/subsystem-realtime/queue-column-enforcement.test.ts',
+	'tests/guards/design-system/lyrics-singer-colour-wiring.test.ts'
 ];
 
 /**
  * Blank comments, preserving newlines so reported offsets stay true. Load-bearing: the consumers NAME the
  * helpers they no longer declare, and prose about a helper must neither satisfy nor trip an assertion.
+ *
+ * DELIBERATELY LOCAL, and the one stripper in the tree that must stay so: `stripComments` is now one of the
+ * helpers this file polices, and a guard that read its subjects THROUGH the thing it polices would report a
+ * clean tree the moment that thing broke.
  */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

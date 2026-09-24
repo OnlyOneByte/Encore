@@ -7,21 +7,15 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { repoRoot } from '@encore/test-support';
-
-function stripComments(src: string): string {
-	return src
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-}
+import { stripComments } from '@encore/test-support/scan';
 
 const ROOT = repoRoot;
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
 
 const songRowRaw = read('src/lib/components/SongRow.svelte');
 const pageRaw = read('src/routes/+page.svelte');
-const songRow = stripComments(songRowRaw);
-const page = stripComments(pageRaw);
+const songRow = stripComments(songRowRaw, { markup: true, drop: true });
+const page = stripComments(pageRaw, { markup: true, drop: true });
 
 test('non-vacuous: both surfaces were really read and still contain their action wiring', () => {
 	expect(songRowRaw.length).toBeGreaterThan(2000);

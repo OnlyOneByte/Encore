@@ -5,19 +5,22 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from 'bun:test';
 import { at } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
-function stripComments(src: string): string {
-	return src
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-}
-
-const songRow = stripComments(readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8'));
-const processingCard = stripComments(readFileSync(at('src/lib/components/ProcessingCard.svelte'), 'utf8'));
-const page = stripComments(readFileSync(at('src/routes/+page.svelte'), 'utf8'));
-const processAndQueue = stripComments(readFileSync(at('src/lib/process-and-queue.ts'), 'utf8'));
-const readiness = stripComments(readFileSync(at('src/lib/readiness.ts'), 'utf8'));
+const songRow = stripComments(readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8'), {
+	markup: true,
+	drop: true
+});
+const processingCard = stripComments(readFileSync(at('src/lib/components/ProcessingCard.svelte'), 'utf8'), {
+	markup: true,
+	drop: true
+});
+const page = stripComments(readFileSync(at('src/routes/+page.svelte'), 'utf8'), { markup: true, drop: true });
+const processAndQueue = stripComments(readFileSync(at('src/lib/process-and-queue.ts'), 'utf8'), {
+	markup: true,
+	drop: true
+});
+const readiness = stripComments(readFileSync(at('src/lib/readiness.ts'), 'utf8'), { markup: true, drop: true });
 
 test('F1: the .sing button consumes inQueue via a retryProcess term (was silently discarded)', () => {
 	const m = songRow.match(/const\s+retryProcess\s*=\s*\$derived\(([^;]*)\);/);

@@ -17,6 +17,21 @@ function measurable(a: JobAttempt): boolean {
 	return a.outcome === 'ready' && a.startedAt !== null && a.finishedAt !== null;
 }
 
+/** Bucket by a derived key, FIRST-SEEN key order preserved — every rollup below either walks its own key
+ *  order or sorts, so the order only settles ties. A null/undefined key is NOT grouped: several rollups
+ *  have rows carrying no axis to group on (a row written before process ids existed has no process). */
+function groupBy<T, K>(items: Iterable<T>, keyOf: (item: T) => K | null | undefined): Map<K, T[]> {
+	const out = new Map<K, T[]>();
+	for (const item of items) {
+		const key = keyOf(item);
+		if (key === null || key === undefined) continue;
+		const list = out.get(key);
+		if (list) list.push(item);
+		else out.set(key, [item]);
+	}
+	return out;
+}
+
 /** Processing time in ms — start of work to finish, excluding every kind of waiting. */
 export function processingMs(a: JobAttempt): number | null {
 	if (a.startedAt === null || a.finishedAt === null) return null;
@@ -63,12 +78,7 @@ export interface StepStats {
 const STEP_ORDER: JobType[] = ['fetch', 'stems', 'align', 'stems-upgrade'];
 
 export function perStep(attempts: JobAttempt[]): StepStats[] {
-	const byType = new Map<JobType, JobAttempt[]>();
-	for (const a of attempts) {
-		const list = byType.get(a.jobType) ?? [];
-		list.push(a);
-		byType.set(a.jobType, list);
-	}
+	const byType = groupBy(attempts, (a) => a.jobType);
 	const out: StepStats[] = [];
 	for (const jobType of STEP_ORDER) {
 		const all = byType.get(jobType);
@@ -110,13 +120,8 @@ export interface ProcessStats {
 /** One row per process. Only processes whose every attempt is sealed are reported — a process still
  *  in flight has no end, and "now" as its end would report a shrinking duration as it runs. */
 export function perProcess(attempts: JobAttempt[], windowStartMs: number | null = null): ProcessStats[] {
-	const byProcess = new Map<string, JobAttempt[]>();
-	for (const a of attempts) {
-		if (!a.processingId) continue; // rows written before process ids existed cannot be grouped
-		const list = byProcess.get(a.processingId) ?? [];
-		list.push(a);
-		byProcess.set(a.processingId, list);
-	}
+	// `|| null` so a row written before process ids existed is skipped rather than bucketed under ''.
+	const byProcess = groupBy(attempts, (a) => a.processingId || null);
 	const out: ProcessStats[] = [];
 	for (const [processingId, list] of byProcess) {
 		const sealed = list.filter((a) => a.finishedAt !== null);
@@ -166,15 +171,11 @@ export interface ModelStats {
 }
 
 export function perModel(attempts: JobAttempt[]): ModelStats[] {
-	const groups = new Map<string, JobAttempt[]>();
-	for (const a of attempts) {
-		if (!measurable(a)) continue;
-		if (!a.model && !a.engine) continue; // a step with no model axis (a fetch) is not a model row
-		const key = `${a.engine ?? ''}\u0000${a.model ?? ''}`;
-		const list = groups.get(key) ?? [];
-		list.push(a);
-		groups.set(key, list);
-	}
+	// A step with no model axis (a fetch) is not a model row.
+	const groups = groupBy(
+		attempts.filter((a) => measurable(a) && (!!a.model || !!a.engine)),
+		(a) => `${a.engine ?? ''}\u0000${a.model ?? ''}`
+	);
 	const out: ModelStats[] = [];
 	for (const list of groups.values()) {
 		const rts = list.map(realtimeFactor).filter((v): v is number => v !== null);
@@ -204,14 +205,10 @@ export interface AsrStats {
 }
 
 export function perAsrModel(attempts: JobAttempt[]): AsrStats[] {
-	const groups = new Map<string, JobAttempt[]>();
-	for (const a of attempts) {
-		if (!measurable(a) || !a.asrModel) continue;
-		const key = `${a.asrModel}\u0000${a.syncMode ?? ''}`;
-		const list = groups.get(key) ?? [];
-		list.push(a);
-		groups.set(key, list);
-	}
+	const groups = groupBy(
+		attempts.filter((a) => measurable(a) && !!a.asrModel),
+		(a) => `${a.asrModel}\u0000${a.syncMode ?? ''}`
+	);
 	return [...groups.values()]
 		.map((list) => ({
 			asrModel: list[0].asrModel,
@@ -225,16 +222,12 @@ export function perAsrModel(attempts: JobAttempt[]): AsrStats[] {
 
 /** Mean ms per named sub-step, from the worker's reported breakdown. */
 export function perStage(attempts: JobAttempt[]): { stage: string; n: number; meanMs: number | null }[] {
-	const groups = new Map<string, number[]>();
-	for (const a of attempts) {
-		for (const s of attemptStages(a)) {
-			const list = groups.get(s.stage) ?? [];
-			list.push(s.ms);
-			groups.set(s.stage, list);
-		}
-	}
+	const groups = groupBy(
+		attempts.flatMap((a) => attemptStages(a)),
+		(s) => s.stage
+	);
 	return [...groups.entries()]
-		.map(([stage, ms]) => ({ stage, n: ms.length, meanMs: mean(ms) }))
+		.map(([stage, reported]) => ({ stage, n: reported.length, meanMs: mean(reported.map((s) => s.ms)) }))
 		.sort((a, b) => (b.meanMs ?? 0) - (a.meanMs ?? 0));
 }
 

@@ -30,9 +30,6 @@
 		/** Live pointer offset in px for the moving row. CSS-var driven — see the `.moving` rule. */
 		dragY?: number;
 		ongripdown?: (e: PointerEvent) => void;
-		/** Click or keyboard activation of the grip, which opens the mode without a pointer drag. It receives
-		 * the grip ELEMENT because focus must return there when the mode closes, and the page cannot name it. */
-		ongrip?: (el: HTMLElement | null) => void;
 		/** Published on the grip as `data-grip`, and focus return DEPENDS on it: entering the mode inserts drop-slot
 		 * buttons into this list, so Svelte recreates the row's DOM and the grip the guest pressed is a detached node by
 		 * the time the mode closes. A stable attribute survives the re-render, so the page re-finds the grip by id. */
@@ -59,7 +56,6 @@
 		moving = false,
 		dragY = 0,
 		ongripdown,
-		ongrip,
 		gripId,
 		onremove,
 		onnudge
@@ -123,8 +119,7 @@
 							// The list owns what a step means; this only stops the page scrolling under the guest while they use it.
 							e.preventDefault();
 							onnudge?.(e.key === 'ArrowUp' ? -1 : 1);
-						}}
-						onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></Button
+						}}><Icon name="grip" /></Button
 					>
 				{/if}
 				<!-- THE NUMBER IS KEYED ON ITSELF, so a change swaps the element rather than mutating a text node — which gives the

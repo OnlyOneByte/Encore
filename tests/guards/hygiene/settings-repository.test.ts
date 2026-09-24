@@ -598,17 +598,31 @@ describe('SettingsRepository room scope: the ordering algorithm', () => {
 		// create-copy-drop-rename dance on a `__new_*` TEMP table renamed into place, which is NOT a replay — the temp
 		// name never collides with a live table. So: forbid a CREATE TABLE of a baseline table name, allow `__new_*`.
 		const baselineSql = readFileSync(join(folder, '0000_baseline.sql'), 'utf8');
-		const baselineTables = new Set(
-			[...baselineSql.matchAll(/create\s+table\s+`?([a-z_]+)`?/gi)].map((m) => m[1]!.toLowerCase())
-		);
+		// ONE character class for both scans. The baseline's was `[a-z_]+` while the migration's was
+		// `[a-z_0-9]+`, so a baseline table whose name carried a digit never entered the set and was invisible to
+		// the ban below — a migration could replay it and this arm would pass.
+		const CREATE_TABLE = /create\s+table\s+`?([a-z_0-9]+)`?/gi;
+		const baselineTables = new Set([...baselineSql.matchAll(CREATE_TABLE)].map((m) => m[1]!.toLowerCase()));
+		// The ban is `!baselineTables.has(name)`, so an EMPTY set passes it for every table in every migration.
+		// That is the failure mode: the set is derived by regex, and a regex that stops matching turns this arm
+		// green while the invariant goes undefended. 11 tables at the time of writing.
+		expect(
+			baselineTables.size,
+			'no CREATE TABLE parsed out of 0000_baseline.sql — the ban below would pass against an empty set'
+		).toBeGreaterThanOrEqual(8);
 		for (const e of journal.entries.slice(1)) {
 			const body = readFileSync(join(folder, `${e.tag}.sql`), 'utf8');
-			for (const m of body.matchAll(/create\s+table\s+`?([a-z_0-9]+)`?/gi)) {
+			for (const m of body.matchAll(CREATE_TABLE)) {
 				const name = m[1]!.toLowerCase();
 				// A `__new_*` temp table renamed into place is the SQLite PK-change idiom, not a replay.
 				const isRebuildTemp =
 					name.startsWith('__new_') && new RegExp(`alter\\s+table\\s+\`?${name}\`?\\s+rename\\s+to`, 'i').test(body);
-				expect(isRebuildTemp || !baselineTables.has(name)).toBe(true);
+				expect(
+					isRebuildTemp || !baselineTables.has(name),
+					`${e.tag}.sql re-creates the baseline table \`${name}\`. A CREATE TABLE for a table 0000 already ` +
+						'made throws on any existing database. If this is the SQLite primary-key rebuild, the temp table ' +
+						'must be named `__new_<table>` and renamed into place in the same migration.'
+				).toBe(true);
 			}
 		}
 	});

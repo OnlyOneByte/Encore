@@ -129,14 +129,6 @@ SEQUENCE_WEIGHT = 0.5
 OVERSHOOT_FRACTION_MAX = 0.10
 
 
-def _multiset_overlap(a: list[str], b: list[str]) -> int:
-    """How many tokens the two sequences share COUNTING MULTIPLICITY: Σ min(count_a, count_b). A
-    candidate that repeats a chorus four times where the audio has it twice agrees on the words but
-    disagrees on how many, and "how many" is half of what tells versions of a recording apart."""
-    counts_b = Counter(b)
-    return sum(min(n, counts_b.get(token, 0)) for token, n in Counter(a).items())
-
-
 def _adjacent_pairs(tokens: list[str]) -> list[tuple[str, str]]:
     """Every neighbouring token pair, in order — the position-aware view of a token sequence.
 
@@ -231,8 +223,10 @@ class TokenView:
 
 
 def _counter_overlap(a: Counter, b: Counter) -> int:
-    """Σ min(count_a, count_b) over precomputed counters — the multiset overlap `_multiset_overlap`
-    computes, without rebuilding either side."""
+    """How many tokens the two texts share COUNTING MULTIPLICITY: Σ min(count_a, count_b), over
+    precomputed counters so neither side is rebuilt. A candidate that repeats a chorus four times where
+    the audio has it twice agrees on the words but disagrees on how many, and "how many" is half of what
+    tells versions of a recording apart."""
     return sum(min(n, b.get(token, 0)) for token, n in a.items())
 
 
@@ -350,6 +344,30 @@ def candidate_last_end(candidate: LyricsText) -> float | None:
     return max(ends) if ends else None
 
 
+def overshoot_fraction(last_end: float | None, duration_sec: float | None) -> float | None:
+    """How far past the end of the audio a text's own timings run, as a FRACTION of duration, or None
+    when the question cannot be asked (untimed text, or unknown/zero duration).
+
+    A fraction and never raw seconds, or the same absolute overshoot is lenient on a long track and
+    harsh on a clip. Clamped at 0, so a text ending early reads as no overshoot rather than a negative one.
+    """
+    if last_end is None or not duration_sec or duration_sec <= 0:
+        return None
+    return max(0.0, last_end - duration_sec) / duration_sec
+
+
+def fits_audio(last_end: float | None, duration_sec: float | None) -> bool:
+    """Do this text's OWN timings stay inside the audio (or does it carry none at all)?
+
+    THE one definition of the overshoot boundary, so the demotion in `overshoot_penalized` and the
+    operator notes in `steps/lyrics/grade.py` cannot drift onto different thresholds — they are the same
+    judgement read for two purposes. An unanswerable question (untimed text, unknown duration) counts as
+    fitting: a text-only source is force-aligned to THIS recording after selection.
+    """
+    fraction = overshoot_fraction(last_end, duration_sec)
+    return fraction is None or fraction <= OVERSHOOT_FRACTION_MAX
+
+
 def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float | None) -> float:
     """The candidate's composite score after DEMOTING it for running past the end of the audio.
 
@@ -363,13 +381,8 @@ def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float
     to flip a real measured wrong-version pick (0.94) against a clean rival (0.55). `duration_sec`
     unknown, or the candidate untimed, means no judgement is possible — return the score unchanged.
     """
-    if not duration_sec or duration_sec <= 0:
-        return score
-    last_end = candidate_last_end(candidate)
-    if last_end is None:
-        return score
-    fraction = max(0.0, last_end - duration_sec) / duration_sec
-    if fraction <= OVERSHOOT_FRACTION_MAX:
+    fraction = overshoot_fraction(candidate_last_end(candidate), duration_sec)
+    if fraction is None or fraction <= OVERSHOOT_FRACTION_MAX:
         return score
     # FLOORED AT ZERO because `select_by_baselines` uses -1.0 as the UNJUDGEABLE sentinel and relies on
     # it sitting beneath every judged score: an unclamped subtraction could push a catastrophic overshoot

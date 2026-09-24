@@ -117,37 +117,81 @@ export function normalizeMaxProcesses(input: unknown): number | null {
 	return n;
 }
 
+// Untrusted input degrades PER FIELD against the CURRENT value and is never rejected wholesale, so refusing
+// one bad field cannot wipe an unrelated valid choice. BOTH layers state that rule as a TABLE rather than by
+// hand, so each field is named once instead of three times. See docs/SERVER.md#contract-boundary.
+
+/** One field's rule — the untrusted value and the CURRENT value in, the value to store out. */
+type FieldRule<V> = (input: unknown, base: V) => V;
+
+/** A rule for EVERY field of `S`: a new settings field is a compile error until it has one. */
+type FieldRules<S> = { [K in keyof S]: FieldRule<S[K]> };
+
+/** Walk the table. Key order follows the TABLE, so each one is declared in its interface's field order. */
+function normalizeFields<S extends object>(rules: FieldRules<S>, input: Partial<S> | null | undefined, base: S): S {
+	const out = {} as S;
+	// Generic in the key, so each rule is applied at its own field's type with no cast.
+	const applyRule = <K extends keyof S>(key: K): void => {
+		out[key] = rules[key](input?.[key], base[key]);
+	};
+	for (const key of Object.keys(rules) as (keyof S)[]) applyRule(key);
+	return out;
+}
+
+/** Keep the current value unless a registry guard admits the incoming one. */
+function admitted<V>(isValid: (v: unknown) => v is V): FieldRule<V> {
+	return (input, base) => (isValid(input) ? input : base);
+}
+
+/** The registry guards that take a `string` rather than an `unknown`: a non-string must read as "not
+ *  admitted" instead of reaching a guard typed for strings. */
+function stringId<V extends string>(isValid: (v: string) => v is V): (v: unknown) => v is V {
+	return (v): v is V => typeof v === 'string' && isValid(v);
+}
+
+/** A bounded integer is CLAMPED rather than rejected, so a junk value still leaves a usable room. */
+function clampedInt(lo: number, hi: number): FieldRule<number> {
+	return (input, base) =>
+		typeof input === 'number' && Number.isFinite(input) ? Math.min(hi, Math.max(lo, Math.round(input))) : base;
+}
+
+const keptBoolean: FieldRule<boolean> = (input, base) => (typeof input === 'boolean' ? input : base);
+
+/** Rounded to a hundredth, the unit BOTH 0..1 room fractions use, so they compare alike. */
+const fraction01: FieldRule<number> = (input, base) =>
+	typeof input === 'number' && Number.isFinite(input) ? Math.round(Math.min(1, Math.max(0, input)) * 100) / 100 : base;
+
+/** The two engine+model PAIRS are absent: a model is legal only against its own engine, so neither half can
+ *  be judged as a field on its own. `normalizeGlobalSettings` validates each pair as a pair. */
+const GLOBAL_FIELD_RULES: FieldRules<
+	Omit<GlobalSettings, 'defaultEngine' | 'defaultModel' | 'upgradeEngine' | 'upgradeModel'>
+> = {
+	// A de-whitelisted or `local` fetcher degrades to the current value rather than being stored.
+	defaultFetcher: admitted((v): v is FetcherId => typeof v === 'string' && isValidFetcher(v) && v !== 'local'),
+	enqueueUpgrade: keptBoolean,
+	asrModel: admitted(stringId(isValidAsrModel)),
+	syncMode: admitted(stringId(isValidSyncMode)),
+	// An unusable origin keeps the current one: re-enabling auto-detection puts `localhost` in the QR.
+	joinOrigin: (input, base) => normalizeJoinOrigin(input) ?? base,
+	maxProcessesPerSinger: (input, base) => normalizeMaxProcesses(input) ?? base
+};
+
 /** A caller patching existing settings MUST pass the current values as `base`.
  *  See docs/SERVER.md#contract-boundary. */
 export function normalizeGlobalSettings(
 	input: Partial<GlobalSettings> | null | undefined,
 	base: GlobalSettings = DEFAULT_GLOBAL_SETTINGS
 ): GlobalSettings {
-	const d = base;
+	// Each pair is validated together and falls back together — see `GLOBAL_FIELD_RULES`.
 	const live =
 		input && isLiveSelectable(input.defaultEngine ?? '', input.defaultModel ?? '')
 			? { defaultEngine: input.defaultEngine!, defaultModel: input.defaultModel! }
-			: { defaultEngine: d.defaultEngine, defaultModel: d.defaultModel };
+			: { defaultEngine: base.defaultEngine, defaultModel: base.defaultModel };
 	const upgrade =
 		input && isValidSeparator(input.upgradeEngine ?? '', input.upgradeModel ?? '')
 			? { upgradeEngine: input.upgradeEngine!, upgradeModel: input.upgradeModel! }
-			: { upgradeEngine: d.upgradeEngine, upgradeModel: d.upgradeModel };
-	// A de-whitelisted or `local` fetcher degrades to the default rather than being stored.
-	const fetcher =
-		input?.defaultFetcher && isValidFetcher(input.defaultFetcher) && input.defaultFetcher !== 'local'
-			? input.defaultFetcher
-			: d.defaultFetcher;
-	return {
-		...live,
-		...upgrade,
-		defaultFetcher: fetcher,
-		enqueueUpgrade: typeof input?.enqueueUpgrade === 'boolean' ? input.enqueueUpgrade : d.enqueueUpgrade,
-		asrModel: input?.asrModel && isValidAsrModel(input.asrModel) ? input.asrModel : d.asrModel,
-		syncMode: input?.syncMode && isValidSyncMode(input.syncMode) ? input.syncMode : d.syncMode,
-		// An unusable origin keeps the current one: re-enabling auto-detection puts `localhost` in the QR.
-		joinOrigin: normalizeJoinOrigin(input?.joinOrigin) ?? d.joinOrigin,
-		maxProcessesPerSinger: normalizeMaxProcesses(input?.maxProcessesPerSinger) ?? d.maxProcessesPerSinger
-	};
+			: { upgradeEngine: base.upgradeEngine, upgradeModel: base.upgradeModel };
+	return { ...live, ...upgrade, ...normalizeFields(GLOBAL_FIELD_RULES, input, base) };
 }
 
 // A setting belongs in the ROOM layer only when two rooms on one core could want different values.
@@ -293,86 +337,45 @@ export function effectiveSongIntroMs(room: Pick<RoomSettings, 'songIntroEnabled'
 	return room.songIntroEnabled ? room.songIntroMs : 0;
 }
 
+/** EVERY field falls back to the CURRENT room value except `maxQualityRank`, which is the one deliberate
+ *  exception and therefore the one rule that ignores its `base`. */
+const ROOM_FIELD_RULES: FieldRules<RoomSettings> = {
+	// An unlisted algorithm leaves the room on the one it is running, never swapping mid-party.
+	queueOrder: admitted(isQueueOrder),
+	tvProgressStyle: admitted(isTvProgressStyle),
+	tvBackgroundStyle: admitted(isTvBackgroundStyle),
+	tvBackgroundColor: normalizeStageColor,
+	tvBackgroundDim: normalizeStageDim,
+	tvVisualizer: admitted(isTvVisualizer),
+	songIntroEnabled: keptBoolean,
+	// 0 is deliberately BELOW the range: the boolean owns "off".
+	songIntroMs: clampedInt(MIN_SONG_INTRO_MS, MAX_SONG_INTRO_MS),
+	// THE EXCEPTION: an invalid or absent ceiling means NO ceiling, or the cap becomes unremovable.
+	maxQualityRank: (input) =>
+		typeof input === 'number' && Number.isFinite(input) && input > 0 ? Math.round(input) : null,
+	lyricsBall: admitted(isValidLyricsBall),
+	lyricsHighlight: admitted(isValidLyricsHighlight),
+	// A NEGATIVE lead clamps to 0: a highlight BEHIND the audio reads as a broken overlay.
+	lyricsLeadMs: clampedInt(0, MAX_LYRICS_LEAD_MS),
+	lyricsScalePct: clampedInt(MIN_LYRICS_SCALE_PCT, MAX_LYRICS_SCALE_PCT),
+	lyricsFont: admitted(isValidLyricsFont),
+	lyricsCase: admitted(isValidLyricsCase),
+	// 0 is a real choice for both: a room may want no history, or nothing revealed ahead.
+	lyricsLinesBefore: clampedInt(0, MAX_LYRICS_LINES_BEFORE),
+	lyricsLinesAfter: clampedInt(0, MAX_LYRICS_LINES_AFTER),
+	// NOT nullable: this is the floor a per-song override inherits.
+	guideLevelDefault: fraction01,
+	loudnessNormalization: keptBoolean,
+	// 0 IS a real choice (no grace at all), so it is a bound, not a rejected value.
+	presenceGraceMinutes: clampedInt(MIN_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES)
+};
+
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
 export function normalizeRoomSettings(
 	input: Partial<RoomSettings> | null | undefined,
 	base: RoomSettings = DEFAULT_ROOM_SETTINGS
 ): RoomSettings {
-	// EVERY field falls back to the CURRENT room value except `maxQualityRank` (below). Bounded integers are
-	// CLAMPED rather than rejected, so a junk value still leaves a usable room.
-	const d = base;
-	const clampInt = (v: unknown, lo: number, hi: number, fallback: number) =>
-		typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback;
-	// 0 is deliberately BELOW the range: the boolean owns "off".
-	const songIntroMs = clampInt(input?.songIntroMs, MIN_SONG_INTRO_MS, MAX_SONG_INTRO_MS, d.songIntroMs);
-	const enabled = input?.songIntroEnabled;
-	const songIntroEnabled = typeof enabled === 'boolean' ? enabled : d.songIntroEnabled;
-	const cap = input?.maxQualityRank;
-	// THE EXCEPTION: an invalid or absent ceiling means NO ceiling, or the cap becomes unremovable.
-	const maxQualityRank = typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? Math.round(cap) : null;
-	const style = input?.tvProgressStyle;
-	const tvProgressStyle = isTvProgressStyle(style) ? style : d.tvProgressStyle;
-	// An unlisted algorithm leaves the room on the one it is running, never swapping mid-party.
-	const orderId = input?.queueOrder;
-	const queueOrder = isQueueOrder(orderId) ? orderId : d.queueOrder;
-	const ball = input?.lyricsBall;
-	const lyricsBall = isValidLyricsBall(ball) ? ball : d.lyricsBall;
-	const highlight = input?.lyricsHighlight;
-	const lyricsHighlight = isValidLyricsHighlight(highlight) ? highlight : d.lyricsHighlight;
-	// A NEGATIVE lead clamps to 0: a highlight BEHIND the audio reads as a broken overlay.
-	const lyricsLeadMs = clampInt(input?.lyricsLeadMs, 0, MAX_LYRICS_LEAD_MS, d.lyricsLeadMs);
-	const lyricsScalePct = clampInt(input?.lyricsScalePct, MIN_LYRICS_SCALE_PCT, MAX_LYRICS_SCALE_PCT, d.lyricsScalePct);
-	// 0 is a real choice for both: a room may want no history, or nothing revealed ahead.
-	const lyricsLinesBefore = clampInt(input?.lyricsLinesBefore, 0, MAX_LYRICS_LINES_BEFORE, d.lyricsLinesBefore);
-	const lyricsLinesAfter = clampInt(input?.lyricsLinesAfter, 0, MAX_LYRICS_LINES_AFTER, d.lyricsLinesAfter);
-	const font = input?.lyricsFont;
-	const lyricsFont = isValidLyricsFont(font) ? font : d.lyricsFont;
-	const textCase = input?.lyricsCase;
-	const lyricsCase = isValidLyricsCase(textCase) ? textCase : d.lyricsCase;
-	const bg = input?.tvBackgroundStyle;
-	const tvBackgroundStyle = isTvBackgroundStyle(bg) ? bg : d.tvBackgroundStyle;
-	const tvBackgroundColor = normalizeStageColor(input?.tvBackgroundColor, d.tvBackgroundColor);
-	// Rounded to a hundredth like `guideLevelDefault`: the two 0..1 room fractions must compare alike.
-	const tvBackgroundDim = normalizeStageDim(input?.tvBackgroundDim, d.tvBackgroundDim);
-	// 0 IS a real choice (no grace at all), so it is a bound, not a rejected value.
-	const presenceGraceMinutes = clampInt(
-		input?.presenceGraceMinutes,
-		MIN_PRESENCE_GRACE_MINUTES,
-		MAX_PRESENCE_GRACE_MINUTES,
-		d.presenceGraceMinutes
-	);
-	// NOT nullable: this is the floor a per-song override inherits.
-	const gl = input?.guideLevelDefault;
-	const guideLevelDefault =
-		typeof gl === 'number' && Number.isFinite(gl)
-			? Math.round(Math.min(1, Math.max(0, gl)) * 100) / 100
-			: d.guideLevelDefault;
-	const ln = input?.loudnessNormalization;
-	const loudnessNormalization = typeof ln === 'boolean' ? ln : d.loudnessNormalization;
-	const viz = input?.tvVisualizer;
-	const tvVisualizer = isTvVisualizer(viz) ? viz : d.tvVisualizer;
-	return {
-		queueOrder,
-		tvProgressStyle,
-		tvBackgroundStyle,
-		tvBackgroundColor,
-		tvBackgroundDim,
-		tvVisualizer,
-		songIntroEnabled,
-		songIntroMs,
-		maxQualityRank,
-		lyricsBall,
-		lyricsHighlight,
-		lyricsLeadMs,
-		lyricsScalePct,
-		lyricsFont,
-		lyricsCase,
-		lyricsLinesBefore,
-		lyricsLinesAfter,
-		guideLevelDefault,
-		loudnessNormalization,
-		presenceGraceMinutes
-	};
+	return normalizeFields(ROOM_FIELD_RULES, input, base);
 }
 
 /** Both layers as one payload — what a client renders and what `queue:sync` carries. */

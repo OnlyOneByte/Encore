@@ -50,6 +50,7 @@ test('null / undefined media degrade to an empty title and no artist, never thro
 // consolidated — hence a comment-stripped source scan.
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const SELF = at('src/lib/contract/presentation/song-display.ts');
 const STATS = at('src/routes/api/stats/+server.ts');
@@ -59,11 +60,8 @@ const METRICS = at('src/routes/api/metrics/+server.ts');
 // `\w+\.title` would count raw == stripped there and never prove that comment-stripping is load-bearing.
 const DISPLAY_TITLE = /titleCanonical\s*\?\?\s*[A-Za-z_$.?]*title/g;
 
-function stripComments(src: string): string {
-	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-}
 function count(path: string): number {
-	return (stripComments(readFileSync(path, 'utf8')).match(DISPLAY_TITLE) ?? []).length;
+	return (stripComments(readFileSync(path, 'utf8'), { drop: true }).match(DISPLAY_TITLE) ?? []).length;
 }
 
 test('the display-title rule appears exactly once in the codebase — inside songDisplay itself', () => {

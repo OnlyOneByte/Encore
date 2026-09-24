@@ -4,11 +4,7 @@
 // harness, so reverting either leaves every other test green while a scanned QR joins the wrong party.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
-}
+import { stripComments } from '@encore/test-support/scan';
 
 // `read` throws on a miss, so a moved subject reds as a path failure rather than letting these scans
 // pass over an empty string.

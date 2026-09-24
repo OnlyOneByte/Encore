@@ -4,11 +4,7 @@
 // trip a check) and comments are stripped, so a comment naming a removed member cannot fool an absence check.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-
-const stripComments = (s: string): string =>
-	s
-		.replace(/\/\*[\s\S]*?\*\//g, '') // block comments
-		.replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // line comments (avoid eating http://)
+import { stripComments } from '@encore/test-support/scan';
 
 // `read` throws on a missing path, which is load-bearing here: every REMOVED-member assertion is an ABSENCE
 // check that an empty read would satisfy while proving nothing.
@@ -18,7 +14,7 @@ const REMOVED = ["'waiting'", "'skipped'"] as const;
 const LIVE = ["'queued'", "'playing'", "'done'"] as const;
 
 test('the EntryStatus union in types.ts holds exactly queued/playing/done', () => {
-	const src = stripComments(readSrc('src/lib/contract/core/types.ts'));
+	const src = stripComments(readSrc('src/lib/contract/core/types.ts'), { drop: true });
 	const m = src.match(/export type EntryStatus =[^;]*;/);
 	expect(m).not.toBeNull(); // not-vacuous: the declaration must exist
 	const decl = m![0];
@@ -27,7 +23,7 @@ test('the EntryStatus union in types.ts holds exactly queued/playing/done', () =
 });
 
 test('the drizzle queue_entries.status enum mirrors exactly queued/playing/done', () => {
-	const src = stripComments(readSrc('src/lib/server/db/schema.ts'));
+	const src = stripComments(readSrc('src/lib/server/db/schema.ts'), { drop: true });
 	// isolate the status column's own enum:[...] array, not any other enum in the file.
 	const m = src.match(/status:\s*text\('status',\s*\{\s*enum:\s*\[([^\]]*)\]/);
 	expect(m).not.toBeNull(); // not-vacuous
@@ -38,7 +34,7 @@ test('the drizzle queue_entries.status enum mirrors exactly queued/playing/done'
 
 test('the two isTerminal predicates carry no dead "skipped" arm', () => {
 	// rotation.ts exports the one canonical isTerminal.
-	const rot = stripComments(readSrc('src/lib/contract/queue/rotation.ts'));
+	const rot = stripComments(readSrc('src/lib/contract/queue/rotation.ts'), { drop: true });
 	const rm = rot.match(/export function isTerminal\([^)]*\)[^{]*\{([^}]*)\}/);
 	expect(rm).not.toBeNull(); // not-vacuous
 	const body = rm![1];
@@ -48,7 +44,7 @@ test('the two isTerminal predicates carry no dead "skipped" arm', () => {
 	// leave.ts must import the shared predicate rather than re-declare a local copy. Either spelling of the
 	// barrel counts: the server tree imports the contract RELATIVELY because `$lib` resolves only through the
 	// generated .svelte-kit tsconfig, which the runtime image never copies.
-	const leave = stripComments(readSrc('src/lib/server/singers/leave.ts'));
+	const leave = stripComments(readSrc('src/lib/server/singers/leave.ts'), { drop: true });
 	expect(leave).toMatch(/import\s*\{[^}]*\bisTerminal\b[^}]*\}\s*from\s*'(?:\$lib\/contract|(?:\.\.\/)+contract)'/); // uses the shared predicate
 	expect(leave).not.toMatch(/const isTerminal\s*=/); // no local re-definition
 });

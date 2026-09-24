@@ -4,21 +4,16 @@
 // distinct days under one fingertip. See docs/GUARDS.md#touch-targets.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { TAP, TAP_FLOOR } from '@encore/test-support/scan';
+import { TAP, TAP_FLOOR, stripComments } from '@encore/test-support/scan';
 
 const TREND = read('src/lib/charts/Trend.svelte');
 const CSS = read('src/app.css');
 // The containment claim moved to ui/card with the rule; the tap-target arms read Trend.svelte directly.
 const CARD_COMPONENT = 'src/lib/components/ui/card/card.svelte';
 
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
-
 /** Body of one scoped-CSS rule by class name; a crude split is enough for hand-written CSS. */
 function ruleBody(src: string, cls: string): string {
-	const m = stripComments(src).match(new RegExp(`\\.${cls}\\s*\\{([^{}]*)\\}`, 's'));
+	const m = stripComments(src, { markup: true, keepLine: true }).match(new RegExp(`\\.${cls}\\s*\\{([^{}]*)\\}`, 's'));
 	if (!m) throw new Error(`no .${cls} rule found in the source given`);
 	return m[1]!;
 }

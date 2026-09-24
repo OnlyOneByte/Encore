@@ -4,20 +4,13 @@
 // assertion per production hunk, so reverting any single hunk reds a NAMED test.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
-}
+import { flattenDoc, stripComments } from '@encore/test-support/scan';
 
 const OVERLAY = 'src/lib/tv/LyricsOverlay.svelte';
 const TV_ROUTE = 'src/routes/tv/+page.svelte';
 
-const overlaySrc = () => stripComments(read(OVERLAY));
-const routeSrc = () => stripComments(read(TV_ROUTE));
+const overlaySrc = () => stripComments(read(OVERLAY), { markup: true });
+const routeSrc = () => stripComments(read(TV_ROUTE), { markup: true });
 /** The overlay WITH comments intact — only the comment/code parity guard reads this. */
 const overlayRaw = () => read(OVERLAY);
 
@@ -89,9 +82,7 @@ test('the amber provenance override still wins for the line treatment, and still
 test('the provenance comment no longer claims the highlight is pink (comment/code parity)', () => {
 	// Comment markers stripped and whitespace collapsed, so each claim is matched as a SENTENCE: re-flowing
 	// the paragraph otherwise puts `//` between two of its words and a live claim reads as deleted.
-	const raw = overlayRaw()
-		.replace(/^[ \t]*(?:\/\/+|\*)[ \t]?/gm, ' ')
-		.replace(/\s+/g, ' ');
+	const raw = flattenDoc(overlayRaw(), { line: true });
 	// The active word is the SINGER's colour, not pink on every song…
 	expect(raw).not.toMatch(/Pink means "sing this word now" on every song/i);
 	// …and the source must still state that `--reel-now` is deliberately left alone, which is the fact a

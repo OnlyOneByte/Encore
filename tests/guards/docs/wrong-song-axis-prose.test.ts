@@ -5,6 +5,7 @@
 // of the symbol it documents, so the same words elsewhere in the file cannot satisfy it.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
+import { flattenDoc } from '@encore/test-support/scan';
 import { isLikelyWrongSong, lyricsRank, SUSPECT_COVERAGE } from '$lib/contract';
 
 // `read` supplies the repo root and throws if a site moves, so a renamed file is a path failure rather
@@ -29,13 +30,10 @@ function docAbove(source: string, anchor: string): string {
 	expect(close).toBeGreaterThan(open);
 	// The block must be the one attached to the anchor: nothing but whitespace between them.
 	expect(before.slice(close + 2).trim()).toBe('');
-	// Returned with the ` * ` markers stripped and whitespace collapsed, so every assertion below matches the
-	// SENTENCE rather than one line-wrapping of it: without this, re-flowing a paragraph turns `size asymmetry`
-	// into `size\n *  asymmetry` and the guard reports a live claim as missing.
-	return before
-		.slice(open, close + 2)
-		.replace(/^[ \t]*\*[ \t]?/gm, ' ')
-		.replace(/\s+/g, ' ');
+	// Flattened, so every assertion below matches the SENTENCE rather than one line-wrapping of it: without
+	// this, re-flowing a paragraph turns `size asymmetry` into `size\n *  asymmetry` and the guard reports a
+	// live claim as missing.
+	return flattenDoc(before.slice(open, close + 2));
 }
 
 test('non-vacuous: both documented files exist, are non-trivial, and still discuss the axis split', () => {

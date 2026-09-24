@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fetcherFor, needsFetch, sourceUriFor, DEFAULT_FETCHER } from '$lib/contract';
 import { at } from '@encore/test-support';
+import { flattenDoc } from '@encore/test-support/scan';
 
 const REPO = at('.');
 
@@ -40,7 +41,7 @@ test('F2 non-vacuous: all five named sites exist, are non-empty, and still discu
 function refusalWindows(src: string): string[] {
 	// Comment markers come off BEFORE the flatten, or a denial that WRAPS across two comment lines reads as
 	// `does NOT // refuse` and `isDenial` misses its own negation. Plain sentences are unaffected.
-	const flat = src.replace(/^[ \t]*(?:\/\/+|\*)[ \t]?/gm, ' ').replace(/\s+/g, ' ');
+	const flat = flattenDoc(src, { line: true });
 	const out: string[] = [];
 	for (const m of flat.matchAll(/refus[a-z]*/gi)) {
 		const at = m.index;

@@ -119,13 +119,9 @@ test('isProcessing is gate-driven — it catches a song sitting between two gate
 // gates.ts invites exactly that — filling in pendingLabel and shipping copy that renders nowhere.
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 /** Blank comments in place, so this file's own mention of the removed symbols cannot skew a scan. */
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
-}
-
 const GATES_SRC = stripComments(readFileSync(at('src/lib/contract/queue/gates.ts'), 'utf8'));
 
 test('gates.ts source was read (guard is not vacuous)', () => {
