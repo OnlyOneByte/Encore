@@ -1,0 +1,22 @@
+{
+	// Shared compiler options for the TESTS tree. It lives HERE, beside its only consumer, rather than at the repo
+	// root where it read as the project-wide base it never was: the app and server configs descend from SvelteKit's
+	// generated tsconfig instead, so a reader at the root reasonably assumed this governed `src` and it did not.
+	// It carries no `include` or `paths` either — `extends` lets the child REPLACE both, and tests/tsconfig.json
+	// does, so declaring them here was two more keys that looked authoritative and were dead.
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"types": ["bun-types"],
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"skipLibCheck": true,
+		"verbatimModuleSyntax": true,
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"paths": {}
+	},
+	"include": ["server.ts", "src"]
+}

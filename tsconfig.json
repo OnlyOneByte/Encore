@@ -10,7 +10,7 @@
 		"sourceMap": true,
 		"strict": true,
 		// `arr[i]` and `map[key]` are typed as POSSIBLY UNDEFINED, which is what they are. This was declared only in
-		// tsconfig.base.json, whose sole consumer is tests/tsconfig.json — so the test tree was type-checked more
+		// tests/tsconfig.base.json, whose sole consumer is tests/tsconfig.json — so the test tree was checked more
 		// strictly than the production code it tests. Declared here, where the app's program actually reads it.
 		"noUncheckedIndexedAccess": true,
 		"moduleResolution": "bundler",

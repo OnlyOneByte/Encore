@@ -1,0 +1,169 @@
+[project]
+name = "encore-worker"
+version = "0.1.0"
+description = "Encore worker — durable audio/lyrics processing as DBOS workflows"
+requires-python = ">=3.12"
+
+# The RUNTIME set that is not ML. Everything heavy is an extra below, so `uv sync` on a dev box
+# costs no multi-GB download — the test suite fakes every heavy seam and must stay runnable
+# without torch. That property was deliberate in the old worker (requirements-test.txt existed
+# only to preserve it) and is now expressed in the dependency graph rather than in two files.
+dependencies = [
+    "dbos>=2.0",
+    "websockets==15.0.1",
+    # Pinned because yt-dlp ships breaking extractor changes often. Shelled out to by name via PATH,
+    # but declared so a venv install is self-sufficient.
+    "yt-dlp==2026.8.19",
+]
+
+[project.optional-dependencies]
+# torch/torchaudio/torchvision MUST match minor exactly: a drifting torchaudio wheel carries an
+# incompatible C++ ABI and fails as `ImportError: undefined symbol`. demucs/whisperx/pyannote were
+# resolved together against this set — do NOT re-pin any one of them without re-resolving the group.
+#
+# `cpu` and `cu124` differ ONLY in which index torch comes from (see [tool.uv.sources]); the pins are
+# identical, so a box switching backends does not silently move model versions too.
+cpu = [
+    "torch==2.8.0",
+    "torchaudio==2.8.0",
+    "torchvision==0.23.0",
+]
+cu124 = [
+    "torch==2.8.0",
+    "torchaudio==2.8.0",
+    "torchvision==0.23.0",
+]
+# The model stack itself, independent of which torch index served the tensors.
+ml = [
+    "demucs==4.0.1",
+    "whisperx==3.8.6",
+    "pyannote.audio==4.0.0",
+    "bs-roformer-infer==0.1.5",
+    # No published arm64-mac wheel; the MLX path covers Apple Silicon instead.
+    "audio-separator==0.47.0; sys_platform != 'darwin' or platform_machine != 'arm64'",
+    "soundfile>=0.13",
+    "pyloudnorm==0.2.0",
+    "scipy==1.16.2",
+]
+# Text extraction for operator-pasted lyrics files.
+text = [
+    "pyperclip==1.11.0",
+    "docx2txt==0.9",
+    "striprtf==0.0.33",
+]
+
+[dependency-groups]
+# PEP 735. `uv sync --only-group dev` installs the gates with no ML download at all.
+dev = [
+    "pytest==8.4.2",
+    # asyncio_mode=auto is this plugin's setting — without it every async test is silently skipped
+    # as an un-awaited coroutine rather than failing.
+    "pytest-asyncio==1.4.0",
+    # A wedged test fails alone instead of erasing the rest of the run's signal.
+    "pytest-timeout==2.4.0",
+    # EXACT, not `>=`: a formatter's output is part of the gate, so a newer minor can turn
+    # `ruff format --check` red on files nobody touched.
+    "ruff==0.16.8",
+    "mypy==2.3.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/encore_worker"]
+
+# ── uv ────────────────────────────────────────────────────────────────────────────────────────────
+# WHY uv AND NOT poetry/pdm. Three reasons specific to this worker: it manages the INTERPRETER (worker
+# boxes ship python3 older than this project's floor — the host running this scaffold has 3.10.13);
+# it has first-class support for per-extra package indexes, which is the only clean way to express
+# "same torch pin, different wheel index per backend"; and it shares a vendor and release cadence
+# with ruff, which the gates already pin exactly.
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+# `explicit` so NOTHING resolves from here unless a [tool.uv.sources] entry says to. Without it this
+# index shadows PyPI for every package it happens to carry.
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu124", extra = "cu124" },
+]
+torchaudio = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu124", extra = "cu124" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu124", extra = "cu124" },
+]
+
+[tool.uv]
+# Declaring the two backends MUTUALLY EXCLUSIVE is what lets one lockfile hold both: uv resolves a
+# separate branch per extra instead of trying to satisfy two torch indexes at once (which is
+# unsatisfiable, and without this is a resolution error rather than a clear message).
+conflicts = [[{ extra = "cpu" }, { extra = "cu124" }]]
+
+# ── ruff ──────────────────────────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+# pycodestyle(E), pyflakes(F), isort(I), bugbear(B), pyupgrade(UP), tidy-imports(TID).
+select = ["E", "F", "I", "B", "UP", "TID"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Relative imports INSIDE the package are the correct intra-package form; tests import absolutely.
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+"src/encore_worker/**/*.py" = ["TID252"]
+
+# ── mypy ──────────────────────────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+# `assert_never` in the verdict dispatch only fails the build if exhaustiveness is actually checked.
+enable_error_code = ["exhaustive-match"]
+
+# The ML stack ships no type stubs (C-extension or untyped). Declared per-module so a genuine type
+# error in OUR code is never drowned by "cannot find stub" noise. Every name here is third-party.
+[[tool.mypy.overrides]]
+module = [
+    "audio_separator.*",
+    "bs_roformer_infer.*",
+    "demucs.*",
+    "docx2txt",
+    "mlx.*",
+    "pyannote.*",
+    "pyloudnorm.*",
+    "pyperclip",
+    "scipy.*",
+    "soundfile",
+    "striprtf.*",
+    "torch.*",
+    "torchaudio.*",
+    "websockets.*",
+    "whisperx.*",
+]
+ignore_missing_imports = true
+
+# ── pytest ────────────────────────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+# Without asyncio_mode=auto every async test is silently skipped rather than failing.
+asyncio_mode = "auto"
+testpaths = ["tests"]
+timeout = 120
+timeout_method = "thread"

@@ -164,11 +164,18 @@ export async function awaitMaster(page: Page, timeout = 30_000): Promise<MediaRo
 		const master = pickMaster(last);
 		if (master?.src) return master;
 		if (Date.now() >= deadline) {
+			// The two cases are different bugs, so they get different sentences: NO ELEMENT means the stage is not
+			// on the playing screen at all, where an element holding an EMPTY src means the app declined to commit
+			// one — on a guide-mix song that is `masterSrcPlan` holding out for a split graph that never routed.
+			const diagnosis =
+				last.elems.length === 0
+					? `no <audio>/<video> is mounted at all: the stage is showing ` +
+						`${last.attract ? 'the ATTRACT screen' : last.lobby ? 'the LOBBY' : 'neither attract nor lobby'}, ` +
+						`so nothing is playing.`
+					: `${last.elems.length} element(s) are mounted and none carries a src.`;
 			throw new Error(
 				`the TV never mounted a media element with a src within ${timeout}ms. Nothing can be measured ` +
-					`without one, and an element with an EMPTY src means the app declined to commit one — on a ` +
-					`guide-mix song that is masterSrcPlan holding out for a split graph that never routed.\n\n` +
-					`stage: ${JSON.stringify(last)}`
+					`without one. ${diagnosis}\n\nstage: ${JSON.stringify(last)}`
 			);
 		}
 		await new Promise((r) => setTimeout(r, 100));
