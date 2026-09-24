@@ -1,6 +1,12 @@
 # Encore — one container for the MVP. The worker is gated behind the `stems` profile:
 #   MVP:        docker compose up
 #   With stems: docker compose --profile stems up
+#
+# THIS FILE STAYS AT THE REPO ROOT while the Dockerfile lives in docker/. Compose resolves relative bind
+# mounts AND loads `.env` from the PROJECT DIRECTORY, which defaults to wherever this file sits — so moving
+# it under docker/ would quietly stop the root `.env` being read and leave every `${ENCORE_*}` below empty.
+# `.dockerignore` stays at the root for the same class of reason: Docker reads it from the build CONTEXT,
+# not from beside the Dockerfile.
 # Hardening on every service: the app is a plain HTTP/WS server needing no Linux capabilities, so
 # dropping them shrinks the blast radius of any RCE. Runs non-root (see Dockerfile USER).
 x-hardening: &hardening
@@ -14,7 +20,7 @@ services:
     <<: *hardening
     build:
       context: . # repo root — the Dockerfile copies the whole tree
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     ports:
       - "3000:3000"
     environment:

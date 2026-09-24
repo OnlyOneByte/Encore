@@ -14,7 +14,7 @@
 		"gate:measured": "bun run tests/e2e/gates/measured-design.mjs",
 		"lint": "eslint --cache --cache-strategy content --cache-location .eslintcache 'src/**/*.{ts,mjs,svelte}' 'server.ts' 'tests/**/*.{ts,mjs,svelte}'",
 		"format": "prettier --write 'src/**/*.{ts,svelte,mjs}' 'tests/**/*.{ts,svelte}' '*.{json,md}'",
-		"deadcode": "npm_config_registry=https://registry.npmjs.org/ bunx knip@5",
+		"deadcode": "npm_config_registry=https://registry.npmjs.org/ bunx knip@5 --config config/knip.ts",
 		"format:check": "prettier --check 'src/**/*.{ts,svelte,mjs}' 'tests/**/*.{ts,svelte}' '*.{json,md}'",
 		"typecheck:root": "tsc -p tsconfig.server.json",
 		"typecheck:tests": "bun --bun svelte-kit sync && tsc -p tests/tsconfig.json",
@@ -70,5 +70,24 @@
 		"typescript-eslint": "^8.69.0",
 		"vite": "^8.0.16",
 		"ws": "^8.21.3"
+	},
+	"prettier": {
+		"useTabs": true,
+		"singleQuote": true,
+		"printWidth": 120,
+		"semi": true,
+		"trailingComma": "none",
+		"plugins": [
+			"prettier-plugin-svelte"
+		],
+		"overrides": [
+			{
+				"files": "*.svelte",
+				"options": {
+					"parser": "svelte"
+				}
+			}
+		],
+		"svelteAllowShorthand": false
 	}
 }

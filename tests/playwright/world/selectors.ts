@@ -214,8 +214,7 @@ export const SEL = {
 	dashTileNumber: '.tile .n',
 	/** A comma UNION. The `:not()` arguments are EXCLUSIONS the source need not render, and `+` resolves
 	 *  like `>`: both sides must exist, their relative position is not source-checkable. */
-	dashChartOrBody:
-		'.encore-card h2 + .bars, .encore-card h2 + :not(table):not(.note):not(.scroller)',
+	dashChartOrBody: '.encore-card h2 + .bars, .encore-card h2 + :not(table):not(.note):not(.scroller)',
 
 	// admin (/admin — the entry-delete surface admin-delete drives)
 	adminSongRow: "[data-slot='item']",

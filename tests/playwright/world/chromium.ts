@@ -41,7 +41,9 @@ export function resolveChromium(): string | undefined {
 	const declared = process.env.PW_CHROMIUM?.trim();
 	if (declared) {
 		if (!existsSync(declared)) {
-			throw new Error(`PW_CHROMIUM is set to ${declared}, which does not exist. Unset it, or point it at a real binary.`);
+			throw new Error(
+				`PW_CHROMIUM is set to ${declared}, which does not exist. Unset it, or point it at a real binary.`
+			);
 		}
 		return declared;
 	}

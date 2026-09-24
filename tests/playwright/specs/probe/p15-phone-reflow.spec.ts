@@ -53,7 +53,8 @@ async function read(page: Page): Promise<Reading> {
 			const r = el.getBoundingClientRect();
 			if (r.width === 0 && r.height === 0) continue;
 			if (r.right <= de.clientWidth + 0.5) continue;
-			const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : '';
+			const cls =
+				typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : '';
 			out.offenders.push({
 				sel: el.tagName.toLowerCase() + cls,
 				right: Math.round(r.right * 100) / 100,

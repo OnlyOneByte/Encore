@@ -1,0 +1,16 @@
+# uv-managed virtualenv
+.venv/
+
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# DBOS's local durable state. Per-box and per-process: it holds in-flight workflow checkpoints, so it
+# is machine state, never source. A committed one would also let a stale checkpoint "recover" on a
+# different box and republish work the core has already reassigned.
+*.sqlite
+*.sqlite3
+dbos.sqlite*
+.dbos/

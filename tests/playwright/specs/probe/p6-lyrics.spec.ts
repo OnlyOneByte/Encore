@@ -191,7 +191,10 @@ test('the lyrics overlay renders once the align artifact is available, without a
 	try {
 		// The wait is long because the play-when-queued path and the 'Next up' intro card both delay it — and
 		// nothing reloads the TV between the song arriving and this.
-		await expect(stage.tv.locator(SEL.lyrics), 'no .lyrics element ever appeared on /tv while a processed song with a lyricsRef was current').toBeAttached({
+		await expect(
+			stage.tv.locator(SEL.lyrics),
+			'no .lyrics element ever appeared on /tv while a processed song with a lyricsRef was current'
+		).toBeAttached({
 			timeout: 25_000
 		});
 		await expect(stage.tv.locator(SEL.lyricsRow).first()).toBeAttached();
@@ -257,7 +260,13 @@ test('the active word is drawn, walks the line and tracks the audio clock', asyn
 						const c = document.querySelector(rowCurrent);
 						const r = document.querySelector(reel);
 						// The .word.active span wraps the ball glyph too, so textContent yields the glyph — strip it.
-						const strip = (s: string | null | undefined) => (s ? s.trim().replace(/^[●·]+\s*/, '').trim() : null);
+						const strip = (s: string | null | undefined) =>
+							s
+								? s
+										.trim()
+										.replace(/^[●·]+\s*/, '')
+										.trim()
+								: null;
 						return {
 							currentTime: v ? v.currentTime : -1,
 							active: strip(a?.textContent),
@@ -316,7 +325,10 @@ test('the active word is drawn, walks the line and tracks the audio clock', asyn
 			`the reel transform stayed at ${JSON.stringify([...new Set(transforms)])} throughout — a frozen reel with ` +
 				`advancing audio — ${detail}`
 		).toBeGreaterThan(1);
-		expect(lags.length, `no sample landed on an expected word; the highlight lag cannot be computed — ${detail}`).toBeGreaterThan(0);
+		expect(
+			lags.length,
+			`no sample landed on an expected word; the highlight lag cannot be computed — ${detail}`
+		).toBeGreaterThan(0);
 		expect(meanLag, `the highlight does not track the audio clock — ${detail}`).toBeGreaterThanOrEqual(LAG_MIN_MS);
 		expect(meanLag, `the highlight does not track the audio clock — ${detail}`).toBeLessThanOrEqual(LAG_MAX_MS);
 	} finally {
@@ -377,9 +389,10 @@ test('transcribed lyrics carry the "Auto-transcribed" label and the amber unveri
 	const stage = await lyricsStage(world);
 	try {
 		await expect(stage.tv.locator(SEL.lyrics)).toBeAttached({ timeout: 25_000 });
-		await expect(stage.tv.locator(SEL.lsAsr), 'no .ls-asr provenance line rendered for an ASR-sourced artifact').toHaveText(
-			'Auto-transcribed'
-		);
+		await expect(
+			stage.tv.locator(SEL.lsAsr),
+			'no .ls-asr provenance line rendered for an ASR-sourced artifact'
+		).toHaveText('Auto-transcribed');
 		await expect(
 			stage.tv.locator(SEL.lyricsUnverified),
 			'the reel carries no .unverified tint for an ASR-sourced artifact'
@@ -465,9 +478,7 @@ test('lyrics-case applies via text-transform live', async ({ world }) => {
 		await putRoom(stage.phone, { lyricsCase: 'upper' });
 		await expect.poll(transform, { message: 'lyrics-case=upper did not reach the reel' }).toBe('uppercase');
 		await putRoom(stage.phone, { lyricsCase: 'natural' });
-		await expect
-			.poll(transform, { message: 'lyrics-case=natural left the reel uppercased' })
-			.not.toBe('uppercase');
+		await expect.poll(transform, { message: 'lyrics-case=natural left the reel uppercased' }).not.toBe('uppercase');
 	} finally {
 		await stage.worker.stop();
 	}

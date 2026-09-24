@@ -46,7 +46,11 @@ async function readOverlap(page: import('@playwright/test').Page): Promise<Overl
 			const chips = [...document.querySelectorAll(lobbyStripPerson)];
 			return {
 				overlap: sb ? Math.max(0, ub.bottom - sb.top) : 0,
-				painted: hit ? (typeof hit.className === 'string' && hit.className ? '.' + hit.className.split(' ')[0] : hit.tagName) : null,
+				painted: hit
+					? typeof hit.className === 'string' && hit.className
+						? '.' + hit.className.split(' ')[0]
+						: hit.tagName
+					: null,
 				inStrip: hit ? !!hit.closest(strip) : false,
 				stripHeight: sb ? +sb.height.toFixed(1) : null,
 				clipped: stripEl
