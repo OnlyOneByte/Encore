@@ -36,8 +36,6 @@ def multiline(starts):
     }
 
 
-
-
 def test_clean_timing_is_usable():
     d = doc([("Coming", 1.0, 1.3), ("out", 1.3, 1.5), ("of", 1.5, 1.7)])
     rep = validate_timing(d, duration_sec=2.0)
@@ -80,8 +78,6 @@ def test_out_of_order_words_are_DISQUALIFYING():
     rep = validate_timing(d, duration_sec=10.0)
     assert rep.out_of_order == 1
     assert not rep.usable
-
-
 
 
 def test_repair_clamps_a_smeared_word():
@@ -168,8 +164,6 @@ def test_missing_duration_does_not_fail_the_document():
 
 def test_an_empty_document_is_not_usable():
     assert not validate_timing({"lines": []}, duration_sec=100.0).usable
-
-
 
 
 def test_same_recording_fits_with_a_small_residual():
@@ -285,8 +279,6 @@ def test_overshoot_is_named_in_the_summary():
     rep = validate_timing(d, duration_sec=268.0)
     assert "OVERSHOOT" in rep.summary()
     assert "+106s" in rep.summary()
-
-
 
 
 def _lrc(*pairs):

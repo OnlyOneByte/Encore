@@ -192,7 +192,6 @@ export class JobRepository {
 		return this.transition(id, 'REPRIORITIZE', { priority }, now);
 	}
 
-
 	/** Dispatch: offer the job to a worker; the caller sets the ack-lease deadline. */
 	assign(id: string, workerId: string, leaseExpiresAt: number | null, now: number, facts: AttemptFacts = {}): Job {
 		const job = this.transition(id, 'DISPATCH', { workerId, leaseExpiresAt }, now);

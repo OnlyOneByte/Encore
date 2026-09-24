@@ -101,8 +101,6 @@ def test_path_is_a_sibling_of_the_stems_and_never_reads_as_a_mixdown() -> None:
     assert guide_mix_path("/media", "abc123") == "/media/derived/stems/abc123-guidemix.flac"
 
 
-
-
 def _tone(path: str, hz: float, sr: int = 48000, dur: float = 1.5) -> None:
     t = np.arange(int(sr * dur)) / sr
     mono = 0.5 * np.sin(2 * np.pi * hz * t)

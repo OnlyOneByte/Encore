@@ -218,7 +218,8 @@ async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIter
             try:
                 await asyncio.shield(asyncio.wait({task}))
             except asyncio.CancelledError:
-                # A second cancellation came through the shield, so loop rather than return with a live thread.
+                # A second cancellation came through the shield, so loop rather than
+                # return with a live thread.
                 pass
         # Retrieved only so it is not reported as "exception never retrieved"; the value is not wanted.
         if task.done() and not task.cancelled():

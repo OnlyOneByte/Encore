@@ -209,7 +209,8 @@ async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_pa
 
 @pytest.mark.asyncio
 async def test_local_source_skips_download_stage(tmp_path):
-    # fetcher=local is a DECLARED job field; the path shape (not being an http URL) is not what makes a source local.
+    # fetcher=local is a DECLARED job field; the path shape (not being an http URL)
+    # is not what makes a source local.
     local = tmp_path / "library" / "song.wav"
     local.parent.mkdir(parents=True)
     local.write_bytes(b"LOCAL")

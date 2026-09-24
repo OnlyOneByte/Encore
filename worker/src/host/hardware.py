@@ -148,7 +148,6 @@ def available_memory_bytes(root: str = "") -> int | None:
     return min(known) if known else None
 
 
-
 @dataclass(frozen=True)
 class Accelerator:
     """A detected compute device. `vram_bytes` is PHYSICAL capacity, not free memory."""
@@ -231,7 +230,6 @@ def free_vram_bytes() -> int | None:
     except Exception:
         pass
     return None
-
 
 
 @dataclass(frozen=True)

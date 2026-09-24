@@ -294,7 +294,8 @@ class WorkerClient:
 
 
 def _is_retryable(exc: Exception) -> bool:
-    # The one retry decision point; also governs _run_job's scratch lifetime. See docs/SERVER.md#worker-runtime.
+    # The one retry decision point; also governs _run_job's scratch lifetime.
+    # See docs/SERVER.md#worker-runtime.
     return is_retryable(exc)
 
 

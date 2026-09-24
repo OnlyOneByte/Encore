@@ -11,7 +11,11 @@ from typing import Any
 from .vocabulary import STAGE_PLANS as _STAGE_PLANS
 from .vocabulary import Action, Stage, serves_family
 
-# Message type strings (must match src/lib/contract/core/events.ts). worker -> core
+# Message type strings (must match src/lib/contract/core/events.ts).
+# The two direction markers below are DATA, not prose: tests/guards/docs/vocabulary-parity.test.ts
+# slices this block on them to check each direction against its TypeScript union. Merging either
+# marker into another line throws there.
+# worker -> core
 HELLO = "worker:hello"
 HEARTBEAT = "worker:heartbeat"
 ACCEPT = "job:accept"

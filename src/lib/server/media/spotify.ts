@@ -123,7 +123,7 @@ export async function spotifySearch(
 		}
 		return parseSpotifySearchJson(await res.json());
 	} catch (err) {
-			// Logged, or a timeout-abort and a network fault collapse indistinguishably into [].
+		// Logged, or a timeout-abort and a network fault collapse indistinguishably into [].
 		console.warn('[spotify] search failed (timeout/network); degrading to empty:', err);
 		return [];
 	} finally {
