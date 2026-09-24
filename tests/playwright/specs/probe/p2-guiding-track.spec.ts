@@ -81,11 +81,19 @@ async function stage(world: World, tracks = [TRACKS.caroline, TRACKS.believin]):
 	const tv = await world.openTv();
 	await armGraphHook(tv);
 	await tv.reload();
-	await awaitMaster(tv);
-	// ONE REAL TAP: the split graph refuses to capture the element unless its AudioContext is RUNNING, and a
-	// context is only resumable from a gesture. Without it the gate resolves `denied`, the plain instrumental
-	// plays, and every reading below would measure the fallback instead of the feature.
+	// The SHELL first: a mouse click dispatched into a document that has not finished loading is a click the
+	// renderer can drop, and then the tap below buys no activation at all.
+	await tv.locator(SEL.tvRoot).first().waitFor({ state: 'attached', timeout: 30_000 });
+	// ONE REAL TAP, AND IT COMES FIRST. The split graph refuses to capture the element unless its AudioContext is
+	// RUNNING, and a context is only resumable from a gesture — so on a guide-mix song, which builds EAGERLY the
+	// moment the element mounts, a tap that arrives after the mount is a tap that arrives after the decision. The
+	// gate then resolves `denied`, the plain instrumental plays, and every reading below would be measuring the
+	// fallback instead of the feature.
 	await tapStage(tv);
+	// The ELEMENT, not its src: `masterSrcPlan` deliberately commits no src at all while the gate is `pending`, so
+	// waiting for a src here would blame the missing element for a graph that is merely still building.
+	// `awaitMixSrc` is what each test below waits on, and it names the gate in its own failure.
+	await tv.locator(SEL.mediaEl).first().waitFor({ state: 'attached', timeout: 30_000 });
 	return { worker, phone, tv, media };
 }
 
@@ -138,14 +146,24 @@ async function awaitGuideGain(
 
 /** Wait until the master element holds the 4-channel mix, which only a ROUTED split graph is handed. */
 async function awaitMixSrc(tv: Page, media: ReadyMedia): Promise<void> {
-	await expect
-		.poll(async () => (await readMaster(tv))?.src ?? '', {
-			timeout: 20_000,
-			message:
-				`the master never took the guide mix (${media.guideMixRef}). masterSrcPlan commits it only when the ` +
-				`split graph reports routed AND split, so this is the graph failing to build, not the level failing to apply.`
-		})
-		.toContain(media.guideMixRef!);
+	const deadline = Date.now() + 20_000;
+	for (;;) {
+		const src = (await readMaster(tv))?.src ?? '';
+		if (src.includes(media.guideMixRef!)) return;
+		if (Date.now() >= deadline) {
+			// THE GRAPH STATE IS THE DIAGNOSIS, so it is read at the moment of failure rather than described in the
+			// abstract: `contexts: 1, contextStates: ["closed"], gains: 0, sources: []` is PitchShiftGraph#buildOnce
+			// bailing at its own `state !== 'running'` check and closing the context — the room then plays the plain
+			// instrumental with no guide and NO hint, because only the pitch path has an `onpitchblocked`.
+			const graph = await readGraphState(tv);
+			throw new Error(
+				`the master never took the guide mix (${media.guideMixRef}) within 20s; it is holding "${src}". ` +
+					`masterSrcPlan commits the mix only when the split graph reports routed AND split, so this is the ` +
+					`graph failing to build, not the level failing to apply.\n\ngraph: ${JSON.stringify(graph)}`
+			);
+		}
+		await new Promise((r) => setTimeout(r, 150));
+	}
 }
 
 test('[MOVED] at level 0 the guide is silent while the instrumental plays', async ({ world }) => {
@@ -334,8 +352,11 @@ test('[MOVED] a guide at the digital floor still offers the control and still pl
 		const tv = await world.openTv();
 		await armGraphHook(tv);
 		await tv.reload();
-		await awaitMaster(tv);
+		// TAP BEFORE THE MOUNT, for the reason `stage()` gives: the eager split build takes its decision the moment
+		// the element appears, and a context with no activation behind it resolves the gate `denied`.
+		await tv.locator(SEL.tvRoot).first().waitFor({ state: 'attached', timeout: 30_000 });
 		await tapStage(tv);
+		await tv.locator(SEL.mediaEl).first().waitFor({ state: 'attached', timeout: 30_000 });
 		await awaitMixSrc(tv, media);
 
 		// The phone still OFFERS the control. `.gt.disabled` is the anchor the component's own source names for
