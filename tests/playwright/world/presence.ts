@@ -21,7 +21,9 @@ const HUES = ['#8b5cf6', '#ec4899', '#22c55e', '#f59e0b', '#3b82f6', '#f43f5e', 
  * append-only, so a reused name is refused with 409 and the run aborts against a confusing symptom.
  */
 export function longNames(prefix: string, count: number): string[] {
-	return Array.from({ length: count }, (_, i) => `Guest${i}${prefix}`.padEnd(MAX_DISPLAY_NAME, 'x').slice(0, MAX_DISPLAY_NAME));
+	return Array.from({ length: count }, (_, i) =>
+		`Guest${i}${prefix}`.padEnd(MAX_DISPLAY_NAME, 'x').slice(0, MAX_DISPLAY_NAME)
+	);
 }
 
 export interface Roster {

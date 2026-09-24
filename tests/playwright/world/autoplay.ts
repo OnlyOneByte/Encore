@@ -68,7 +68,8 @@ export async function requireActivationForPlayback(
 			if (!gateAudioContext) return;
 			// A real AudioContext constructed without activation starts `suspended` and stays there until a
 			// gesture. Emulated narrowly: resume() is a no-op that leaves state 'suspended' until activation.
-			const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+			const Ctor =
+				window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 			if (!Ctor) return;
 			const nativeResume = Ctor.prototype.resume;
 			Ctor.prototype.resume = function resume(this: AudioContext) {

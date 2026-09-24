@@ -157,16 +157,30 @@ stateDiagram-v2
     Running --> Orphaned : box gone; core requeues<br/>to another worker
     Reconcile --> Running : core confirms we still own this job
     Reconcile --> Cancelled : core reassigned it — abandon,<br/>do not publish
+    Running --> Publish : work complete
+    Publish --> Committed : ownership re-asserted
+    Publish --> Cancelled : lease lost DURING the work
     Orphaned --> [*]
+    Cancelled --> [*]
+    Committed --> [*]
 ```
 
 The one genuinely new problem: a recovered workflow may no longer own its job, because the core's reaper
-requeued it on `LEASE_EXPIRED` and another worker may already be running or finished it. So **the
-transport re-checks ownership on reconnect and cancels orphaned workflows before they can publish**. The
-core already holds `workerId` on the job row, which is the authority; DBOS exposes `executor_id` on the
-worker side.
+requeued it on `LEASE_EXPIRED` and another worker may already be running or finished it.
 
-This is why publication is the last step and nothing before it is externally visible.
+**DECIDED: publication is guarded.** Two layers, and both are needed:
+
+1. **On reconnect, the transport re-checks ownership** for every workflow DBOS recovered, and cancels the
+   ones the core has reassigned. The core holds `workerId` on the job row and that is the authority;
+   DBOS exposes `executor_id` on the worker side.
+2. **`publish` re-asserts ownership as its first act**, inside the step, immediately before it writes.
+   Not redundant with (1): a lease can expire *during* a long alignment, so a workflow that was
+   legitimately ours at reconnect can be reassigned before it reaches publication. A check that only
+   runs at reconnect leaves exactly the window where two workers publish different lyrics for one song.
+
+So the ordering rule is: **nothing before `publish` is externally visible, and `publish` is the only step
+that can be refused for a reason that has nothing to do with the work it did.** A refused publish is not
+a failure — the job belongs to someone else now, and that is a normal outcome.
 
 ---
 
@@ -184,6 +198,14 @@ percentage, which cannot express "re-aligning, attempt 2, vocals→mix". Frames:
 | `job:progress` | worker → core | stage + pct, for the phone's bar |
 | `job:complete` | worker → core | artifacts, facts, selection, and the full decision trail |
 | `job:failed` | worker → core | error, and whether it is retryable |
+| `job:revoked` | core → worker | **new** — the core reassigned this job; stop and do not publish |
+| `job:claim` / `job:claim-ack` | worker ⇄ core | **new** — "do I still own these job ids?", for reconnect and for the pre-publish guard |
+
+The last two are what make the ownership guard above implementable, and they are deliberately BOTH a
+push and a pull. `job:revoked` closes the window continuously, which a poll cannot; `job:claim` exists
+because a push is exactly what a disconnect loses, and a disconnect is the event that causes a
+reassignment in the first place. Either alone leaves a case where two workers publish different lyrics
+for one song.
 
 `job:state` is the point. "Why did this job publish these lyrics" is currently `ctx.note()` printed to
 stdout, and the old code notes the process log rotates. Making the decision trail a wire frame puts it

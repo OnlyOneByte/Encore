@@ -205,7 +205,8 @@ async function readSheet(page: Page, expectedRange: string | null): Promise<Shee
 				noteDimmedByAncestor: dimAncestor,
 				gtDimmed: !!gt && gt.classList.contains('disabled'),
 				keyCapCount: keyCaps.length,
-				keyCapsLive: keyCaps.length > 0 && keyCaps.every((b) => !b.disabled && b.getAttribute('aria-disabled') !== 'true'),
+				keyCapsLive:
+					keyCaps.length > 0 && keyCaps.every((b) => !b.disabled && b.getAttribute('aria-disabled') !== 'true'),
 				keyLabelText: keyLab?.textContent?.trim() ?? null,
 				rangeShown: painted(rangeEl) && onScreen(rangeEl),
 				rangeBelowKeyRow: !!(
@@ -291,7 +292,9 @@ async function setupArm(world: World, kind: ArmKind): Promise<Arm> {
 		throw new Error(`"${song.title}" processed with NO vocals ref; the with-stem arm has no subject`);
 	}
 	if (song.vocalsRef && kind === 'noVocals') {
-		throw new Error(`noVocals did not withhold the vocals ref (got ${song.vocalsRef}); the degraded arm has no subject`);
+		throw new Error(
+			`noVocals did not withhold the vocals ref (got ${song.vocalsRef}); the degraded arm has no subject`
+		);
 	}
 	if (!song.guideMixRef && kind === 'withGuideMix') {
 		throw new Error(`"${song.title}" processed with NO guide mix ref; the ENABLED arm has no subject`);
@@ -505,7 +508,8 @@ test.describe('a song WITH a guide mix', () => {
 		try {
 			await raiseSheet(arm.phone, arm.expectedRange);
 			const box = await arm.phone.locator(SEL.drawerHandle).boundingBox();
-			if (!box) throw new Error("the sheet renders no vaul handle, so 'a drag on the handle puts it away' has no subject");
+			if (!box)
+				throw new Error("the sheet renders no vaul handle, so 'a drag on the handle puts it away' has no subject");
 			const x = box.x + box.width / 2;
 			const y = box.y + box.height / 2;
 			await drag(arm.phone, { x, y }, { x, y: y + 420 }, 14);

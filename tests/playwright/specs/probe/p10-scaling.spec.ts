@@ -119,15 +119,24 @@ function gradeContrast(pairs: Record<string, ColourReading>): Record<string, Con
 	const out: Record<string, ContrastReading> = {};
 	for (const [sel, info] of Object.entries(pairs)) {
 		const ratio = contrastRatio(info.fg, info.bg);
-		const largeText = info.fontSizePx >= LARGE_PX || (info.fontSizePx >= LARGE_BOLD_PX && parseInt(info.fontWeight) >= 700);
-		out[sel] = { ...info, ratio, largeText, passAA: ratio === null ? null : ratio >= (largeText ? AA_LARGE : AA_NORMAL) };
+		const largeText =
+			info.fontSizePx >= LARGE_PX || (info.fontSizePx >= LARGE_BOLD_PX && parseInt(info.fontWeight) >= 700);
+		out[sel] = {
+			...info,
+			ratio,
+			largeText,
+			passAA: ratio === null ? null : ratio >= (largeText ? AA_LARGE : AA_NORMAL)
+		};
 	}
 	return out;
 }
 function failedAA(report: Record<string, ContrastReading>): string[] {
 	return Object.entries(report)
 		.filter(([, r]) => r.passAA === false)
-		.map(([sel, r]) => `${sel} ${r.ratio?.toFixed(2)}:1 (${r.largeText ? 'large' : 'normal'}, ${r.fontSizePx}px ${r.fontWeight}) fg=${r.fg} bg=${r.bg} ${JSON.stringify(r.text)}`);
+		.map(
+			([sel, r]) =>
+				`${sel} ${r.ratio?.toFixed(2)}:1 (${r.largeText ? 'large' : 'normal'}, ${r.fontSizePx}px ${r.fontWeight}) fg=${r.fg} bg=${r.bg} ${JSON.stringify(r.text)}`
+		);
 }
 
 /**
@@ -176,7 +185,17 @@ interface TvReading {
 	tokens: Record<string, TokenReading>;
 	screen: string;
 	/** Every transient/error overlay that is on stage, with its own overflow and clipping. */
-	overlays: Record<string, { rect: Rect; scrollWidth: number; clientWidth: number; overflowsSelf: boolean; clippedRight: boolean; clippedLeft: boolean } | null>;
+	overlays: Record<
+		string,
+		{
+			rect: Rect;
+			scrollWidth: number;
+			clientWidth: number;
+			overflowsSelf: boolean;
+			clippedRight: boolean;
+			clippedLeft: boolean;
+		} | null
+	>;
 	/** `.badqr`'s children, which is where a long unbreakable address escapes its parent. */
 	badqrChildren: { tag: string; cls: string; text: string; overflowsSelf: boolean; escapesParent: boolean | null }[];
 	qr: (Rect & { computedWidth: string }) | null;
@@ -352,12 +371,22 @@ async function readRemote(phone: Page, label: string): Promise<RemoteReading> {
 			(el.getAttribute('aria-label') || el.textContent?.trim() || el.tagName).slice(0, 40);
 		return {
 			viewport: { w: innerWidth, h: innerHeight },
-			overflow: { horizontal: de.scrollWidth > de.clientWidth, scrollWidth: de.scrollWidth, clientWidth: de.clientWidth },
+			overflow: {
+				horizontal: de.scrollWidth > de.clientWidth,
+				scrollWidth: de.scrollWidth,
+				clientWidth: de.clientWidth
+			},
 			shell: rect(document.querySelector(appShell)),
 			undersized: controls
 				.map((el) => {
 					const r = el.getBoundingClientRect();
-					return { label: describe(el), w: r.width, h: r.height, tag: el.tagName.toLowerCase(), cls: String(el.className || '') };
+					return {
+						label: describe(el),
+						w: r.width,
+						h: r.height,
+						tag: el.tagName.toLowerCase(),
+						cls: String(el.className || '')
+					};
 				})
 				.filter((c) => c.w < 44 || c.h < 44)
 				.slice(0, 40),
@@ -406,10 +435,16 @@ test('the TV type scale grows with the panel rather than pinning at a clamp max'
 			await tv.setViewportSize({ width: size.w, height: size.h });
 			// The scale is vh-relative, so it re-resolves on resize — but `getBoundingClientRect` in the same task
 			// as the resize can read the old layout, so the wait is for the viewport the reading claims.
-			await expect.poll(async () => tv.evaluate(() => innerWidth), { message: `viewport never became ${size.label}` }).toBe(size.w);
+			await expect
+				.poll(async () => tv.evaluate(() => innerWidth), { message: `viewport never became ${size.label}` })
+				.toBe(size.w);
 			readings.push(await readTv(tv, size.label));
 		}
-		await attach(testInfo, 'tv-tokens.json', readings.map((r) => ({ label: r.label, rootFontPx: r.rootFontPx, tokens: r.tokens })));
+		await attach(
+			testInfo,
+			'tv-tokens.json',
+			readings.map((r) => ({ label: r.label, rootFontPx: r.rootFontPx, tokens: r.tokens }))
+		);
 
 		// THE HEADER'S OWN QUESTION, as a falsifiable claim: every step up the ladder must resolve LARGER type, or
 		// the scale has pinned at a ceiling and a 4K panel reads at 1080p sizes.
@@ -440,13 +475,22 @@ test('no TV surface is clipped past the right edge, at any panel size', async ({
 		const readings: TvReading[] = [];
 		for (const size of TV_SIZES) {
 			await tv.setViewportSize({ width: size.w, height: size.h });
-			await expect.poll(async () => tv.evaluate(() => innerWidth), { message: `viewport never became ${size.label}` }).toBe(size.w);
+			await expect
+				.poll(async () => tv.evaluate(() => innerWidth), { message: `viewport never became ${size.label}` })
+				.toBe(size.w);
 			readings.push(await readTv(tv, size.label));
 		}
 		await attach(
 			testInfo,
 			'tv-overflow.json',
-			readings.map((r) => ({ label: r.label, screen: r.screen, viewport: r.viewport, overlays: r.overlays, badqrChildren: r.badqrChildren, qr: r.qr }))
+			readings.map((r) => ({
+				label: r.label,
+				screen: r.screen,
+				viewport: r.viewport,
+				overlays: r.overlays,
+				badqrChildren: r.badqrChildren,
+				qr: r.qr
+			}))
 		);
 
 		for (const r of readings) {
@@ -479,7 +523,9 @@ test('measured TV contrast clears WCAG AA on real computed colours', async ({ wo
 		const graded: Record<string, Record<string, ContrastReading>> = {};
 		for (const size of TV_SIZES) {
 			await tv.setViewportSize({ width: size.w, height: size.h });
-			await expect.poll(async () => tv.evaluate(() => innerWidth), { message: `viewport never became ${size.label}` }).toBe(size.w);
+			await expect
+				.poll(async () => tv.evaluate(() => innerWidth), { message: `viewport never became ${size.label}` })
+				.toBe(size.w);
 			graded[size.label] = gradeContrast(await readColours(tv, TV_COLOUR_TARGETS));
 		}
 		await attach(testInfo, 'tv-contrast.json', graded);
@@ -493,7 +539,10 @@ test('measured TV contrast clears WCAG AA on real computed colours', async ({ wo
 				`only ${Object.keys(report).length} contrast target(s) resolved on /tv at ${label} — the claim would ` +
 					`pass on an empty measurement: ${JSON.stringify(Object.keys(report))}`
 			).not.toHaveLength(0);
-			expect(Object.keys(report).length, `too few contrast targets resolved at ${label} to be evidence`).toBeGreaterThanOrEqual(5);
+			expect(
+				Object.keys(report).length,
+				`too few contrast targets resolved at ${label} to be evidence`
+			).toBeGreaterThanOrEqual(5);
 			// The large-text allowance is size-dependent, so the same colour pair that clears 3:1 as large type at
 			// 2160p is held to 4.5:1 at 720p — which is why every size is graded rather than just the reference one.
 			const failures = failedAA(report);
@@ -518,7 +567,14 @@ test('the remote never scrolls horizontally, from 320px to 2400px', async ({ wor
 		await attach(
 			testInfo,
 			'remote-geometry.json',
-			readings.map((r) => ({ label: r.label, viewport: r.viewport, overflow: r.overflow, shell: r.shell, undersized: r.undersized, clippedRight: r.clippedRight }))
+			readings.map((r) => ({
+				label: r.label,
+				viewport: r.viewport,
+				overflow: r.overflow,
+				shell: r.shell,
+				undersized: r.undersized,
+				clippedRight: r.clippedRight
+			}))
 		);
 
 		for (const r of readings) {

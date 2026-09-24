@@ -309,9 +309,10 @@ test('the blocked latch survives the idle window: the hint returns with a song b
 			'the TV was NOT under the no-activation policy, so a returning hint would prove nothing about a latch'
 		).toBe(true);
 		expect(room.blocked.hint, 'the hint was never up before the drain, so its RETURN proves nothing').toBe(true);
-		expect(room.drained.hint, 'the scrim never cleared, so this spec cannot tell a survived latch from a stuck one').toBe(
-			false
-		);
+		expect(
+			room.drained.hint,
+			'the scrim never cleared, so this spec cannot tell a survived latch from a stuck one'
+		).toBe(false);
 
 		// The song is READY by now, so the home row offers the plain add rather than the process-and-queue action.
 		await room.phone.locator(SEL.addTurn).first().click();
