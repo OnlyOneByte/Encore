@@ -37,6 +37,7 @@ vite.config.ts.timestamp-*
 __pycache__/
 .mypy_cache/
 .ruff_cache/
+worker/.dev-ytdlp/
 *.pyc
 .venv/
 .pytest_cache/

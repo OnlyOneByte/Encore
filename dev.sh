@@ -14,6 +14,13 @@
 #   bash dev.sh --reset --nuke-models     # also drop the multi-GB ML model caches
 #   bash dev.sh --reset --yes    # skip the destructive-action confirmation
 #
+# Environment:
+#   PORT                   core's port (default 3000); read here as well as by server.ts
+#   ENCORE_WORKER_PYTHON   interpreter for the worker venv (must be >= 3.11)
+#   ENCORE_SKIP_DENO=1     do not fetch deno; YouTube downloads will fail without it
+#   ENCORE_SKIP_UV=1       do not fetch uv; falls back to python -m venv + pip
+#   ENCORE_ENV_FILE        a .env other than ./.env
+#
 # WHY --ui IS SEPARATE. `bun run dev` (vite) serves the UI with HMR but NOT the WebSocket hub —
 # server.ts owns both in one process, and vite only runs the SvelteKit half. A song will never cook
 # and the queue will never move under --ui. Use it for pure styling work, nothing else.
@@ -75,7 +82,11 @@ for v in MEDIA_DIR DATA_DIR ENCORE_CORE_WS; do
 done
 export MEDIA_DIR="$ROOT/media"
 export DATA_DIR="$ROOT/data"
-CORE_URL="http://localhost:3000"
+# Read from the environment or .env, because server.ts does (`process.env.PORT ?? 3000`). Every check
+# below uses it: hardcoding 3000 here while .env moved the listener costs a 45-second wait and then a
+# "core did not become healthy" that names the wrong cause.
+export PORT="${PORT:-3000}"
+CORE_URL="http://localhost:$PORT"
 
 DO_PULL=0 DO_RESET=0 DO_START=1 CORE_ONLY=0 UI_MODE=0 ASSUME_YES=0 NUKE_MODELS=0
 for arg in "$@"; do
@@ -94,6 +105,11 @@ for arg in "$@"; do
 	esac
 done
 
+if [ "$DO_RESET" != 1 ]; then
+	[ "$NUKE_MODELS" = 1 ] && { echo "--nuke-models only applies with --reset; nothing to do." >&2; exit 2; }
+	[ "$ASSUME_YES" = 1 ] && echo "note: --yes only skips the --reset confirmation; ignoring it." >&2
+fi
+
 say() { printf '\n=== %s ===\n' "$*"; }
 
 need() {
@@ -104,11 +120,81 @@ need() {
 say "preflight"
 need bun "install from https://bun.sh" || exit 1
 need ffmpeg "brew install ffmpeg — the worker transcodes every stem" || exit 1
-# yt-dlp's JS challenge solver needs deno or node; without one YouTube resolves no audio-only format and
-# every cook dies at download. Warn rather than fail, because --core-only is still fine.
-if ! command -v deno >/dev/null && ! command -v node >/dev/null; then
-	echo "WARNING: no deno or node on PATH — yt-dlp cannot solve YouTube's JS challenge, so downloads will fail."
-fi
+# Solving YouTube's player challenge takes TWO things, and missing either kills every download with
+# "Requested format is not available" — which reads as a broken worker. The image has both baked in; a
+# native run has neither, so dev.sh supplies the config and checks for the runtime.
+#   1. deno on PATH. The image installs deno specifically, so that is what this checks for.
+#   2. `--remote-components ejs:github`, which lives in worker/yt-dlp.conf. The image copies that to
+#      /etc/yt-dlp.conf; natively we point the worker's XDG_CONFIG_HOME at a copy instead.
+YTDLP_CONFIG_HOME="$ROOT/worker/.dev-ytdlp"
+TOOLS_DIR="$ROOT/worker/.dev-tools/bin"
+DENO_DIR="$TOOLS_DIR"
+# The SAME version worker/Dockerfile installs, read out of the Dockerfile so a bump there cannot leave a
+# dev box on a different deno than prod.
+DENO_VERSION="$(sed -n 's/^ARG DENO_VERSION=\(.*\)$/\1/p' "$ROOT/worker/Dockerfile")"
+
+# Fetched PROJECT-LOCAL, never system-wide: no brew, no sudo, nothing outside the repo, and a system deno
+# always wins if there is one. The zip is checksum-verified BEFORE it is made executable, because this
+# downloads a binary and then runs it.
+#
+# `uname -m` is NOT deno's target name on a Mac — it reports `arm64` where deno ships `aarch64`. The
+# Dockerfile interpolates uname directly because a Linux container reports `aarch64`/`x86_64` verbatim;
+# copying that line here would 404 on Apple Silicon.
+deno_target() {
+	local os arch
+	case "$(uname -s)" in
+		Darwin) os="apple-darwin" ;;
+		Linux) os="unknown-linux-gnu" ;;
+		*) return 1 ;;
+	esac
+	case "$(uname -m)" in
+		arm64 | aarch64) arch="aarch64" ;;
+		x86_64 | amd64) arch="x86_64" ;;
+		*) return 1 ;;
+	esac
+	echo "${arch}-${os}"
+}
+
+ensure_deno() {
+	if command -v deno >/dev/null 2>&1; then
+		echo "deno    $(deno --version 2>/dev/null | head -1 | cut -d' ' -f2) (system)"
+		return 0
+	fi
+	if [ -x "$DENO_DIR/deno" ] && "$DENO_DIR/deno" --version 2>/dev/null | grep -q "deno $DENO_VERSION"; then
+		echo "deno    $DENO_VERSION (repo-local)"
+		return 0
+	fi
+	if [ "${ENCORE_SKIP_DENO:-0}" = 1 ]; then
+		echo "WARNING: no deno, and ENCORE_SKIP_DENO=1 — every YouTube download will fail." >&2
+		return 0
+	fi
+	local target
+	target="$(deno_target)" || {
+		echo "WARNING: no deno, and this platform ($(uname -s)/$(uname -m)) has no deno release to fetch." >&2
+		return 0
+	}
+	say "fetching deno $DENO_VERSION for $target (~40 MB, into worker/.dev-ytdlp/bin)"
+	"${PY:-python3}" - "$DENO_VERSION" "$target" "$DENO_DIR" <<'PYEOF' || {
+import hashlib, io, os, stat, sys, urllib.request, zipfile
+
+version, target, dest = sys.argv[1], sys.argv[2], sys.argv[3]
+base = f"https://github.com/denoland/deno/releases/download/v{version}/deno-{target}.zip"
+blob = urllib.request.urlopen(base, timeout=300).read()
+want = urllib.request.urlopen(base + ".sha256sum", timeout=60).read().decode().split()[0]
+got = hashlib.sha256(blob).hexdigest()
+if got != want:
+    sys.exit(f"deno checksum mismatch: expected {want}, got {got} — refusing to install")
+os.makedirs(dest, exist_ok=True)
+zipfile.ZipFile(io.BytesIO(blob)).extract("deno", dest)
+path = os.path.join(dest, "deno")
+os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+PYEOF
+		echo "WARNING: could not fetch deno — every YouTube download will fail with 'Requested format is" >&2
+		echo "         not available'. Install it yourself (brew install deno) or set ENCORE_SKIP_DENO=1." >&2
+		return 0
+	}
+	echo "deno    $("$DENO_DIR/deno" --version | head -1 | cut -d' ' -f2) (repo-local, checksum-verified)"
+}
 echo "bun     $(bun --version)"
 echo "ffmpeg  $(ffmpeg -version 2>/dev/null | head -1 | cut -d' ' -f3)"
 echo "media   $MEDIA_DIR"
@@ -122,7 +208,7 @@ echo "env     $ENV_REPORT"
 
 # `-sTCP:LISTEN` is essential: a bare `lsof -ti:3000` also matches CLIENTS, so a browser tab left open on
 # the TV view reports as "port in use" and refuses a perfectly fine start.
-port_owner() { lsof -ti:3000 -sTCP:LISTEN 2>/dev/null || true; }
+port_owner() { lsof -ti:"$PORT" -sTCP:LISTEN 2>/dev/null || true; }
 
 preflight_free() {
 	local stale owner
@@ -138,7 +224,7 @@ preflight_free() {
 	owner="$(port_owner)"
 	if [ -n "$owner" ]; then
 		echo
-		echo "refusing to start — something is LISTENING on port 3000:" >&2
+		echo "refusing to start — something is LISTENING on port $PORT:" >&2
 		ps -o pid,command -p "$(echo "$owner" | tr '\n' ',' | sed 's/,$//')" >&2 || true
 		return 1
 	fi
@@ -165,9 +251,10 @@ if [ "$DO_RESET" = 1 ]; then
 	TARGETS=(
 		"$ROOT/media"      # audio + derived + meta + job scratch — the whole library
 		"$ROOT/data"       # sqlite + WAL + shm
-		"$ROOT/media" "$ROOT/data"   # strays from a process started at the repo root
+		"$ROOT/temp"       # an abandoned store from an older layout; nothing reads it
 		"$ROOT/.svelte-kit" "$ROOT/build"
-		"$ROOT/worker/.pytest_cache"
+		"$ROOT/worker/.pytest_cache" "$ROOT/worker/.mypy_cache" "$ROOT/worker/.ruff_cache"
+		"$YTDLP_CONFIG_HOME/yt-dlp"   # the generated config; the deno beside it is a tool, not state
 	)
 	if [ "$NUKE_MODELS" = 1 ]; then
 			# Demucs checkpoints plus whisper/wav2vec2 weights. Multi-GB, slow to refetch, and never the
@@ -200,6 +287,10 @@ fi
 
 VENV="$ROOT/worker/.venv"
 REQS="$ROOT/worker/requirements.txt"
+# The known-good transitive set. requirements.txt pins 16 direct deps that resolve to ~128 packages, so
+# without this the other 112 versions are whatever the day of your install decided.
+CONSTRAINTS="$ROOT/worker/constraints.txt"
+UV_VERSION=0.9.2
 # Not in requirements.txt on purpose: installed --no-deps because its own dependency list is 30
 # packages of .doc/.rtf readers we never call.
 KLP_PIN="karaoke-lyrics-processor==0.6.0"
@@ -235,36 +326,102 @@ sha_of() {
 	else sha256sum "$1" | cut -d' ' -f1; fi
 }
 
+# uv, fetched the same way as deno: pinned, checksum-verified, project-local, and a system uv always
+# wins. It buys three things pip does not: it installs the constraint set in seconds rather than minutes,
+# it can PROVIDE a >= 3.11 interpreter on a box whose `python3` is older (which is the common case — this
+# repo's floor is 3.11 and plenty of machines still ship 3.9/3.10), and `uv pip install -c` applies the
+# constraints per platform, which a single lockfile cannot do here (see constraints.txt for why).
+uv_target() {
+	local os arch
+	case "$(uname -s)" in
+		Darwin) os="apple-darwin" ;;
+		Linux) os="unknown-linux-gnu" ;;
+		*) return 1 ;;
+	esac
+	case "$(uname -m)" in
+		arm64 | aarch64) arch="aarch64" ;;
+		x86_64 | amd64) arch="x86_64" ;;
+		*) return 1 ;;
+	esac
+	echo "${arch}-${os}"
+}
+
+UV=""
+ensure_uv() {
+	if command -v uv >/dev/null 2>&1; then UV="$(command -v uv)"; return 0; fi
+	if [ -x "$TOOLS_DIR/uv" ]; then UV="$TOOLS_DIR/uv"; return 0; fi
+	[ "${ENCORE_SKIP_UV:-0}" = 1 ] && return 1
+	local target
+	target="$(uv_target)" || return 1
+	say "fetching uv $UV_VERSION for $target (into worker/.dev-tools/bin)"
+	python3 - "$UV_VERSION" "$target" "$TOOLS_DIR" <<'PYEOF' || return 1
+import hashlib, io, os, sys, tarfile, urllib.request
+
+version, target, dest = sys.argv[1], sys.argv[2], sys.argv[3]
+base = f"https://github.com/astral-sh/uv/releases/download/{version}/uv-{target}.tar.gz"
+blob = urllib.request.urlopen(base, timeout=300).read()
+want = urllib.request.urlopen(base + ".sha256", timeout=60).read().decode().split()[0]
+got = hashlib.sha256(blob).hexdigest()
+if got != want:
+    sys.exit(f"uv checksum mismatch: expected {want}, got {got} — refusing to install")
+os.makedirs(dest, exist_ok=True)
+with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
+    for member in tar.getmembers():
+        if os.path.basename(member.name) in ("uv", "uvx") and member.isfile():
+            member.name = os.path.basename(member.name)
+            tar.extract(member, dest)
+            os.chmod(os.path.join(dest, member.name), 0o755)
+PYEOF
+	[ -x "$TOOLS_DIR/uv" ] || return 1
+	UV="$TOOLS_DIR/uv"
+	echo "uv      $("$UV" --version | cut -d' ' -f2) (repo-local, checksum-verified)"
+}
+
 install_worker_deps() {
 	# Drop the stamp FIRST, so an install that dies halfway leaves an unready venv the next run retries.
 	rm -f "$STAMP"
-	"$VENV/bin/pip" install --quiet --upgrade pip
-	"$VENV/bin/pip" install -r "$REQS"
-	"$VENV/bin/pip" install --quiet --no-deps "$KLP_PIN"
-	printf 'python=%s\nrequirements=%s\nklp=%s\n' \
-		"$(py_abi "$VENV/bin/python")" "$(sha_of "$REQS")" "$KLP_PIN" > "$STAMP"
+	if [ -n "$UV" ]; then
+		"$UV" pip install --python "$VENV/bin/python" -r "$REQS" -c "$CONSTRAINTS"
+		"$UV" pip install --python "$VENV/bin/python" --no-deps "$KLP_PIN"
+	else
+		"$VENV/bin/pip" install --quiet --upgrade pip
+		"$VENV/bin/pip" install -r "$REQS" -c "$CONSTRAINTS"
+		"$VENV/bin/pip" install --quiet --no-deps "$KLP_PIN"
+	fi
+	printf 'python=%s\nrequirements=%s\nconstraints=%s\nklp=%s\n' \
+		"$(py_abi "$VENV/bin/python")" "$(sha_of "$REQS")" "$(sha_of "$CONSTRAINTS")" "$KLP_PIN" > "$STAMP"
 }
 
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
-	PY="$(pick_python)" || {
+	ensure_uv || echo "note: no uv — falling back to python -m venv + pip (slower, and it cannot supply an interpreter)"
+	# uv can DOWNLOAD a 3.12, so a box whose `python3` is 3.9/3.10 is no longer stuck. Without uv we still
+	# need a system interpreter that clears the floor.
+	PY="$(pick_python)" || PY=""
+	if [ -z "$PY" ] && [ -z "$UV" ]; then
 		echo "no Python >= 3.11 on PATH — scipy 1.16.2 publishes nothing below it, and pip then" >&2
 		echo "refuses the WHOLE requirements.txt (websockets included)." >&2
 		echo "  brew install python@3.12      # matches worker/Dockerfile" >&2
 		echo "  # or: ENCORE_WORKER_PYTHON=/path/to/python3.12 bash dev.sh" >&2
+		echo "  # or let uv fetch one: unset ENCORE_SKIP_UV and re-run" >&2
 		[ -n "${PYENV_VERSION:-}" ] && echo "  (note: PYENV_VERSION=$PYENV_VERSION is pinning your python3)" >&2
 		exit 1
-	}
+	fi
 
 	# A venv on the wrong interpreter can never hold this dependency set, so rebuild rather than report.
 	# Safe unasked (a venv is a regenerable cache) but announced loudly, because it costs minutes.
 	if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
-		say "worker venv is Python $(py_tag "$VENV/bin/python") — too old for the pinned deps, rebuilding on $PY"
+		say "worker venv is Python $(py_tag "$VENV/bin/python") — too old for the pinned deps, rebuilding on ${PY:-uv-managed 3.12}"
 		rm -rf "$VENV"
 	fi
 
 	if [ ! -x "$VENV/bin/python" ]; then
-		say "creating worker venv on $PY $(py_tag "$PY") (multi-GB: torch + demucs + whisperx)"
-		"$PY" -m venv "$VENV"
+		if [ -n "$UV" ]; then
+			say "creating worker venv via uv on Python 3.12 (multi-GB: torch + demucs + whisperx)"
+			"$UV" venv --python 3.12 "$VENV"
+		else
+			say "creating worker venv on $PY $(py_tag "$PY") (multi-GB: torch + demucs + whisperx)"
+			"$PY" -m venv "$VENV"
+		fi
 		install_worker_deps
 	else
 			# READINESS IS THE STAMP, NOT THE DIRECTORY: `python3 -m venv` produces an executable python
@@ -272,6 +429,7 @@ if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 			# stamp hashes requirements.txt too, which is what makes --pull's refresh automatic.
 		want="python=$(py_abi "$VENV/bin/python")
 requirements=$(sha_of "$REQS")
+constraints=$(sha_of "$CONSTRAINTS")
 klp=$KLP_PIN"
 		if [ "$(cat "$STAMP" 2>/dev/null)" != "$want" ]; then
 			say "worker deps out of date (or never finished installing) — installing"
@@ -285,6 +443,14 @@ klp=$KLP_PIN"
 	fi
 fi
 
+# The worker's own yt-dlp config, mirroring what worker/Dockerfile puts at /etc/yt-dlp.conf. Rewritten
+# every run so an edit to worker/yt-dlp.conf lands without a --reset.
+if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
+	mkdir -p "$YTDLP_CONFIG_HOME/yt-dlp"
+	cp "$ROOT/worker/yt-dlp.conf" "$YTDLP_CONFIG_HOME/yt-dlp/config"
+	ensure_deno
+fi
+
 # ── build ────────────────────────────────────────────────────────────────────────────
 # server.ts serves the built SvelteKit output; without a build it starts with "ui:not built".
 if [ "$UI_MODE" != 1 ] && { [ "$DO_PULL" = 1 ] || [ "$DO_RESET" = 1 ] || [ ! -d "$ROOT/build" ]; }; then
@@ -296,7 +462,7 @@ fi
 
 # Checked here rather than in preflight: --pull / --reset need no port, and blocking them on a port
 # conflict blocks the command that unsticks you.
-preflight_free || exit 1
+[ "$UI_MODE" = 1 ] || preflight_free || exit 1
 
 # ── run ──────────────────────────────────────────────────────────────────────────────
 CORE_PID="" WORKER_PID=""
@@ -334,7 +500,7 @@ cleanup() {
 		left=""
 		[ -n "$WORKER_PID" ] && kill -0 "$WORKER_PID" 2>/dev/null && left="$left worker($WORKER_PID)"
 		[ -n "$CORE_PID" ] && kill -0 "$CORE_PID" 2>/dev/null && left="$left core($CORE_PID)"
-		[ -n "$(port_owner)" ] && left="$left port-3000-still-listening"
+		[ -n "$(port_owner)" ] && left="$left port-$PORT-still-listening"
 		[ -z "$left" ] && break
 		sleep 0.25
 	done
@@ -342,7 +508,7 @@ cleanup() {
 		echo "WARNING: still running after cleanup —$left"
 		echo "  kill with: pkill -f 'src.dial_home'; pkill -f 'bun run ./server.ts'"
 	else
-		echo "stopped — core and worker both gone, port 3000 released."
+		echo "stopped — core and worker both gone, port $PORT released."
 	fi
 }
 trap cleanup EXIT INT TERM
@@ -373,8 +539,9 @@ if [ "$CORE_ONLY" != 1 ]; then
 	(
 		cd "$ROOT/worker"
 		exec env \
-			PATH="$VENV/bin:$PATH" \
-			ENCORE_CORE_WS="ws://localhost:3000/ws?role=worker" \
+			PATH="$VENV/bin:$DENO_DIR:$PATH" \
+			ENCORE_CORE_WS="ws://localhost:$PORT/ws?role=worker" \
+			XDG_CONFIG_HOME="$YTDLP_CONFIG_HOME" \
 			MEDIA_DIR="$MEDIA_DIR" \
 			"$VENV/bin/python" -m src.dial_home
 	) & WORKER_PID=$!
@@ -386,7 +553,7 @@ LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/nu
 echo "  core     $CORE_URL"
 echo "  tv       $CORE_URL/tv        (open on the television)"
 if [ -n "$LAN_IP" ]; then
-	echo "  phones   http://$LAN_IP:3000        (the TV's QR encodes this)"
+	echo "  phones   http://$LAN_IP:$PORT        (the TV's QR encodes this)"
 else
 	echo "  phones   could not resolve a LAN IP — the TV will say so on screen rather than show a dead QR"
 fi
