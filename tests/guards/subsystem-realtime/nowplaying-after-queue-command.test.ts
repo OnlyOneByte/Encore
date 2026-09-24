@@ -1,11 +1,8 @@
-// `nowplaying:changed` feeds the TV's Up next strip, the Next up card and the gapless preload slot; every
-// BROADCAST producer of it is a PLAYBACK transition in player.ts, and a QUEUE mutation publishes
-// `queue:patch` alone (hub.ts). Caught: an add/remove/move mid-song changed WHO PLAYS NEXT with nothing
-// re-broadcasting it, so the TV kept naming a departed song and `syncSlots` pre-warmed the gapless slot from
-// it. A queue:command must therefore re-emit nowplaying even when no playback recovery is due.
-//
-// Expected values are HARD-CODED entry ids, never re-derived via `upNextAfter`: a test that recomputed the
-// projection with the code's own function could not detect a wrong projection at all.
+// `nowplaying:changed` feeds the TV's Up next strip, the Next up card and the gapless preload slot, and
+// every BROADCAST producer of it was a PLAYBACK transition, so an add/remove/move mid-song changed WHO
+// PLAYS NEXT with nothing re-broadcasting it. Expected values are HARD-CODED entry ids, never re-derived
+// via `upNextAfter`: a test recomputing the projection with the code's own function could not detect a
+// wrong projection at all.
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { reconcileOnReady, emitNowPlaying } from '$lib/server/realtime/player';
@@ -26,10 +23,8 @@ const readyMedia = (id: string): Media => ({
 	songProfile: EMPTY_SONG_PROFILE
 });
 
-/**
- * A song still PROCESSING: `readyToSing` is false, so an entry on it is SKIP-DESTINED — `upNextAfter`
- * holds its rotation slot but walks past it, and it must never be advertised as the song that plays next.
- */
+/** A song still PROCESSING: `readyToSing` is false, so `upNextAfter` holds its rotation slot but walks
+ *  past it, and it must never be advertised as the song that plays next. */
 const processingMedia = (id: string): Media => ({
 	id,
 	source: 'youtube',
@@ -77,19 +72,15 @@ function advertisedUpNextId(published: ServerEvent[]): string | null | undefined
 	return np.current === null && np.upNext === null ? null : (np.upNext?.id ?? null);
 }
 
-/**
- * server.ts's `queue:command` arm: an UNCONDITIONAL reconcileOnReady. On the "current resolves" path it skips its
- * recovery block and falls through to the single tail emitNowPlaying, so it re-emits without double-broadcasting.
- */
+/** server.ts's `queue:command` arm: an UNCONDITIONAL reconcileOnReady. On the "current resolves" path it
+ *  skips the recovery block and falls through to the single tail emit, so it never double-broadcasts. */
 function queueCommandArm(cmd: ClientCommand, deps: HubDeps) {
 	handleQueueCommand(cmd, deps);
 	reconcileOnReady(deps);
 }
 
-/**
- * The defect shape, kept deliberately: the recovery gate with no re-emit on the resolves path. NOT a mirror of
- * production — which is why the single-source census (nowplaying-single-source.test.ts) scans production only.
- */
+/** The defect shape, kept deliberately: the recovery gate with no re-emit on the resolves path. NOT a
+ *  mirror of production, which is why the single-source census scans production only. */
 function queueCommandArmPreFix(cmd: ClientCommand, deps: HubDeps) {
 	handleQueueCommand(cmd, deps);
 	if (!deps.state.entries.some((e) => e.id === deps.state.playback.currentEntryId)) reconcileOnReady(deps);
@@ -161,10 +152,9 @@ test('without the else, a mid-song queue mutation leaves the advertised next nam
 	expect(advertisedUpNextId(published)).toBeNull();
 });
 
-// server.ts is the Bun.serve entry with no unit harness, so the half above only mirrors its composition. The
-// property pinned below: after a queue:command needing no recovery, exactly one nowplaying:changed is
-// published, carried by the unconditional `reconcileOnReady(deps)` whose single tail emit sits OUTSIDE the
-// `if (!currentResolves)` block. Comments blanked, since the prose beside the fix names the call.
+// server.ts is the Bun.serve entry with no unit harness, so the half above only mirrors its composition.
+// Pinned below: after a queue:command needing no recovery, exactly one nowplaying:changed is published, by
+// the unconditional `reconcileOnReady(deps)` whose single tail emit sits OUTSIDE `if (!currentResolves)`.
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 

@@ -4,12 +4,10 @@ Self-hosted karaoke for a room full of phones. Scan a QR, queue anything from Yo
 library, and sing — Encore strips the vocals itself, times the words to the music, and keeps the
 rotation fair. One container to run it; a second if you want it making karaoke tracks for you.
 
-| Phone remote                                                            | TV stage                                                                             |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| ![the phone remote, searching](docs/mocks/tour-phone-search-eyeson.png) | ![the TV mid-song with word-timed lyrics](docs/mocks/tour-tv-lyrics-word-eyeson.png) |
-
-Every surface has a frame in [`docs/mocks/`](docs/mocks/) — 30 of them, each one the real app driven
-into that state. Design and rationale live in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Every surface has a capture recipe in [`tests/e2e/capture.mjs`](tests/e2e/capture.mjs), which drives the
+real app into each state and writes the frame set to `docs/mocks/`. The frames themselves are generated
+rather than committed, so regenerate them locally when you want to look. Design and rationale live in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Quickstart
 
@@ -28,8 +26,8 @@ docker compose --profile stems up    # core + the worker that makes karaoke trac
 **Local dev (Bun ≥ 1.3), from the repo root:**
 
 ```bash
-bun install                        # workspaces; uses public npm via the repo.npmrc
-bun run build && bun run start     # prod build, served on:3000
+bun install                        # workspaces; uses public npm via the repo's .npmrc
+bun run build && bun run start     # prod build, served on :3000
 # or: bun run dev                  # vite dev server — UI HMR only, no realtime (see below)
 ```
 
@@ -62,12 +60,12 @@ To run it natively instead of in Docker:
 
 ```bash
 cd worker
-python3 -m venv.venv
+python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt        # torch + demucs + whisperx (multi-GB)
 
 PATH="$PWD/.venv/bin:$PATH" \
   ENCORE_CORE_WS='ws://localhost:3000/ws?role=worker' \
-  MEDIA_DIR=../core/media \
+  MEDIA_DIR=../media \
 .venv/bin/python -m src.dial_home
 ```
 
@@ -168,10 +166,10 @@ container for core; a Python **separator + WhisperX** worker joins as container 
 src/lib/contract/   ← the realtime contract, made physical (imported by client AND server)
          ← Container 1: Bun + SvelteKit
   server.ts          Bun.serve entry: HTTP + native WS pub/sub hub (one process)
-  src/server/        authoritative backend (state, rotation, playback, jobs, media, db)
+  src/lib/server/    authoritative backend (state, rotation, playback, jobs, media, db)
   src/lib/           client: optimistic store, ws client, components, TV gapless controller
-  src/routes/        phone (+page), /join, /tv, /settings, /stats, /metrics, /api
-  e2e/               selector contract + guard, the party flow, the screenshot capture
+  src/routes/        phone (+page), /tv, /settings, /stats, /metrics, /song, /api
+  tests/e2e/         selector contract + guard, the party flow, the screenshot capture
 worker/       ← Container 2: Python stems/align (dials home; `--profile stems`)
 docs/              ← the written record; see the index below
 ```
@@ -263,10 +261,8 @@ or you want to deliberately limit a box:
   trades memory for throughput, and the only measurement this repo has is on a 32-core CPU box where it was
   worthless because those cores already saturate at batch 1 — reasoning that says nothing about a Metal
   GPU. Nothing on Apple Silicon has been measured yet, and a value that speeds up a 32 GB Mac can OOM a
-  16 GB one mid-song, which reads as a failed song. Run
-  [`docs/benchmarks/scripts/mlx_batch_bench.sh`](docs/benchmarks/scripts/mlx_batch_bench.sh) before setting
-  it; the open question and the results table are
-  §7)
+  16 GB one mid-song, which reads as a failed song. Measure it on the box you
+  care about before setting it)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is
   blocked), `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network), `ENCORE_KEEP_RAW_CAPTIONS` (`0`; set `1` to retain the raw `.vtt`/`.srt` caption track in `derived/captions/` for post-process diagnosis — counted and evicted by the `ENCORE_MEDIA_MAX_GB` cap)
@@ -299,41 +295,47 @@ that prefers Opus over legacy AAC.
 
 **Next:** swap stem separation to `python-audio-separator` (better models than `htdemucs`; also
 improves the ASR lyrics tier, which reads the vocals stem), hot-titles persistence, and accounts +
-multi-room. Open work
-in GitHub issues. Ratified decisions and the parked scope fence are in
-. Agent and
-human onboarding:.
+multi-room. Open work is tracked in GitHub issues.
 
 ## Dev notes
 
 ```bash
+bash dev.sh       # run core + a NATIVE worker locally — `--help` lists nine flags, including
+                  # --core-only, --ui, --reset and --fresh. On a Mac this is the only way to get
+                  # Metal: see docs/deploy/README.md for why a containerised worker cannot.
+
 bun test          # unit/integration tests — runnable from the root
 bun run check     # svelte-check + types, 0 errors
-bun run typecheck # both workspaces
+bun run typecheck # app, server entry and the e2e drivers
+bun run gates     # the full seven-leg release gate (test, worker pytest, types, lint, format,
+                  # build, gate:measured). The last leg needs a Chromium.
+bun run deadcode  # knip; a clean run is ZERO findings
+bun run e2e:probes # the browser probe suite — needs a built app and seeded media
 
-# Worker (worker) — install the pinned dev toolchain once, then run all four gates:
-cd worker && pip install -r requirements.txt -r requirements-dev.txt
+# Worker (worker) — install the pinned tooling once, then run all four gates:
+cd worker && pip install -r requirements-test.txt
 pytest -q                    # worker unit tests (asyncio_mode=auto)
-ruff check.                 # lint (pyflakes/pycodestyle/isort/bugbear/pyupgrade/tidy-imports)
-ruff format --check.        # format gate (ruff is the formatter; no separate black)
+ruff check .                 # lint (pyflakes/pycodestyle/isort/bugbear/pyupgrade/tidy-imports)
+ruff format --check .        # format gate (ruff is the formatter; no separate black)
 mypy                         # type-check src/ (config in pyproject.toml)
 ```
 
-`requirements-dev.txt` pins the worker's dev toolchain (pytest, pytest-asyncio, ruff, mypy) so the
-gates above reproduce from the repo alone. `pytest.ini` sets `asyncio_mode = auto`, so without
-**`pytest-asyncio`** the async tests fail with "async def functions are not natively supported" — a
-missing test dep, not a real failure. `ruff check`, `ruff format --check` and `mypy` all exit 0 on a
-clean tree; any non-zero exit is a real finding.
+`requirements-test.txt` pins the worker's tooling (pytest, pytest-asyncio, pytest-timeout, ruff, mypy)
+so the gates above reproduce from the repo alone, and it is deliberately separate from
+`requirements.txt`: running the suite costs five small pure-Python packages instead of a multi-GB torch
+stack, because every heavy seam is faked. Add `-r requirements.txt` on top only to run a REAL job.
+`pytest.ini` sets `asyncio_mode = auto`, so without **`pytest-asyncio`** the async tests are silently
+skipped as un-awaited coroutines rather than failing. `ruff check`, `ruff format --check` and `mypy` all
+exit 0 on a clean tree; any non-zero exit is a real finding.
 
 - `tests/e2e/contract.ts` is the **selector contract**: one declaration of every hook the browser
   flows drive, guarded by `contract.test.ts` so `bun test` fails the moment a selector's anchor
   disappears from the source. It exists because the previous e2e rotted silently — three selector
   families moved and the suite stayed green.
 - `tests/e2e/party.mjs` — the full two-phone + TV flow against a live server.
-- `tests/e2e/capture.mjs` — regenerates every frame in `docs/mocks/`. See
-  for how to run it and the two things that make the
-  playing-state frames possible.
-- Every UI surface is eyes-on verified; frames live in `docs/mocks/` as `tour-<what>-eyeson.png` —
-  one regenerable set with stable filenames, so refreshing a frame updates every reference to it.
+- `tests/e2e/capture.mjs` — regenerates the whole frame set into `docs/mocks/`, one file per surface as
+  `tour-<what>-eyeson.png`. Stable filenames, so refreshing a frame updates every reference to it.
+  `tests/e2e/HARNESS.md` has the boot recipe it needs.
+- Every UI surface is eyes-on verified rather than assumed from a passing test.
 - A green suite is the floor, not the bar — several real defects here were invisible to passing tests
-  and only surfaced by driving the app. See §8.
+  and only surfaced by driving the app.

@@ -1,18 +1,7 @@
-// guard: the components gallery renders a ProcessingCard carrying its queue controls AND a singer name at
-// the full profile-name maxlength — the surface the identity dot's `flex: 0 0 auto` protects.
-//
-// The dot collapses to 0px only on a card whose actions cluster is present (it cuts `.who` to ~134px) with
-// a name long enough to overflow it, and every long-name fixture was a QueueRow, so this exact surface was
-// never eyes-on. design-system.test.ts pins the CSS rule; this pins the DEMO that makes the rule's
-// necessity visible.
-//
-// The demo name must be an UNBROKEN token: only an unbreakable name makes the dot absorb the ENTIRE
-// deficit and collapse to 0px. A name WITH spaces wraps and merely shrinks the dot to ~5.45px (measured at
-// 390px), which an eye can miss. The second test pins the component's own comment to that mechanism, since
-// it once claimed the dot "does NOT reach 0px here" — false at the maxlength with an unbroken name.
-//
-// The maxlength is read from repository.ts rather than hard-coded, so this cannot pass by coincidence if
-// the maxlength moves.
+// guard: the gallery renders a ProcessingCard carrying its queue controls AND a singer name at the full
+// profile-name maxlength — the surface the identity dot's `flex: 0 0 auto` protects, which every long-name
+// fixture being a QueueRow left un-eyes-on. The demo name must be an UNBROKEN token: a name WITH spaces
+// wraps and merely shrinks the dot to ~5.45px at 390px. The maxlength is read from repository.ts.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 

@@ -1,8 +1,7 @@
 // Readiness — the axis the search UI is organised around. Users do not care which source a song
 // came from; they care whether they can sing it right now without vocals. So a search returns ONE
 // deduped set of songs partitioned by readiness, not one list per source.
-//
-// Pure: no DB, no network, no clock. The route supplies the catalog + resolver results.
+//  Pure: no DB, no network, no clock. The route supplies the catalog + resolver results.
 
 import { type Media } from '../../contract';
 

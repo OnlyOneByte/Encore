@@ -4,7 +4,6 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-/** Blank comments, so a commented-out wiring line cannot satisfy a match. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
@@ -24,12 +23,10 @@ test('app.ts buildHubDeps wires HubDeps.onEntryAdded to reprioritizeProcessForMe
 });
 
 test('the wired hook passes the job ledger, the post-add entries, and a dispatch kick', () => {
-	// All three deps in ONE anchored match over the whole call. Unanchored substring scans were vacuous
-	// here — `jobs: app.jobs`, `entries,` and `dispatch:` each also match unrelated call sites — and stayed
-	// green with `entries` substituted by `entries.filter((e) => e.status === 'playing')`, the type-valid
-	// partial that restores the bug: without app.jobs the outstanding process is not found, without the
-	// UNFILTERED post-add entries `soonestSeqFor` sees no queued turn and returns NO_QUEUE_PRIORITY, and
-	// without dispatch() the un-stuck process waits for an unrelated trigger.
+	// All three deps in ONE anchored match over the whole call: unanchored substring scans were vacuous here,
+	// and stayed green with `entries` substituted by a `.filter(…)` — the type-valid partial that restores the
+	// defect. Without app.jobs the outstanding process is not found, without the UNFILTERED post-add entries
+	// `soonestSeqFor` returns NO_QUEUE_PRIORITY, and without dispatch() the un-stuck process waits.
 
 	// The hook opening must be present, so a broken or empty read reds here first.
 	expect(APP).toMatch(

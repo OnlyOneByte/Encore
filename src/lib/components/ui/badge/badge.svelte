@@ -1,8 +1,6 @@
-<!--
-  Encore's chip, not the registry's four generic tones: these chips are a semantic STATE system mapping a
-  song's readiness and kind onto --ok / --warn / --danger / --accent-ink, each a certified
-  surface+border+ink triple. Appearance is scoped CSS rather than utilities.
--->
+<!-- Encore's chip, not the registry's four generic tones: these chips are a semantic STATE system mapping a song's
+  readiness and kind onto --ok / --warn / --danger / --accent-ink, each a certified surface+border+ink triple. Appearance
+  is scoped CSS rather than utilities. -->
 <script lang="ts" module>
 	import { type VariantProps, tv } from 'tailwind-variants';
 
@@ -17,9 +15,8 @@
 				accent: 'encore-chip-accent',
 				tag: 'encore-chip-accent encore-chip-tag'
 			},
-			/* A chip carrying a PHRASE rather than a token must opt into wrapping: under the base's
-			   `white-space: nowrap` its min-content width is its full width, so it cannot shrink and pushes
-			   the page past the 320px reflow floor at 200% text. */
+			/* A chip carrying a PHRASE rather than a token must opt into wrapping: under the base's `white-space: nowrap` its
+				   min-content width is its full width, so it pushes the page past the 320px reflow floor at 200% text. */
 			wrap: {
 				true: 'encore-chip-wrap',
 				false: ''
@@ -77,9 +74,8 @@
 		color: var(--ink-dim);
 		white-space: nowrap;
 	}
-	/* Claws back about a fifth of a row on the narrowest phone, where how many songs fit at once is the
-	   feature — without shrinking the title or the 44px target. It belongs here rather than in the row: a
-	   scoped rule there cannot reach the element this component renders. */
+	/* Claws back about a fifth of a row on the narrowest phone, without shrinking the title or the 44px target. It belongs
+	   here rather than in the row: a scoped rule there cannot reach the element this component renders. */
 	@media (max-width: 380px) {
 		.encore-chip {
 			font-size: 0.62rem;
@@ -104,8 +100,7 @@
 		border-color: var(--danger-line);
 		color: var(--danger-ink);
 	}
-	/* A tag is a describing word, so it reads as a word: capitalised, and washed in accent rather than any
-	   status colour — a tag is not a warning. */
+	/* A tag is a describing word, so it reads as one: capitalised, and washed in accent rather than any status colour. */
 	.encore-chip-tag {
 		text-transform: capitalize;
 	}

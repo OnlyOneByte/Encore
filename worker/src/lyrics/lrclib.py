@@ -26,24 +26,21 @@ LRCLIB_BASE = "https://lrclib.net"
 USER_AGENT = "Encore/0.2 (+https://github.com/OnlyOneByte/Encore)"
 
 
-#: LRCLIB is a small free service; a burst reads as abuse. Pace requests process-globally (the limit
-#: is a property of the source IP, not of a client object) at one per second — same interval as its
-#: MusicBrainz twin (metadata/annotate.py).
+#: Paced PROCESS-GLOBALLY, because the limit is a property of the source IP rather than of a client
+#: object. A burst on a small free service reads as abuse.
 MIN_INTERVAL_SEC = 1.0
 
 
-#: A transient failure (503 "busy / over the limit", 429 "too many requests") is retried with
-#: exponential backoff so one blip does not lose the lyrics for that song; bounded so a genuinely
-#: down/blocked service degrades to a legible LyricsFetchError rather than hammering it forever.
+#: Exponential backoff, so one blip does not lose the lyrics; BOUNDED, so a genuinely down service
+#: degrades to a legible LyricsFetchError rather than being hammered forever.
 MAX_ATTEMPTS = 3
 
 
 BACKOFF_BASE_SEC = 1.0
 
 
-#: The statuses worth retrying. MusicBrainz's twin only ever sees 503; LRCLIB documents 429 for its
-#: own rate limit, so both count as "wait and try again" here. A 404 is a miss and 4xx/5xx outside
-#: this set is a hard LyricsFetchError — neither is retried.
+#: Both count as "wait and try again". A 404 is a MISS and any other 4xx/5xx is a hard
+#: LyricsFetchError — neither is retried.
 RETRY_STATUSES = frozenset({503, 429})
 
 
@@ -57,9 +54,8 @@ class LrclibResult:
     instrumental: bool
     synced_lyrics: str | None
     plain_lyrics: str | None
-    #: The record's OWN metadata, as LRCLIB has it. Absent from an /api/get response we already know
-    #: the query for, but load-bearing for /api/search: with several records under one artist+track
-    #: these fields are the only thing distinguishing "Telephone" from "Telephone (feat. Beyoncé)".
+    #: Load-bearing for /api/search: with several records under one artist+track these fields are the only
+    #: thing distinguishing "Telephone" from "Telephone (feat. Beyoncé)".
     track_name: str | None = None
     artist_name: str | None = None
     album_name: str | None = None
@@ -135,20 +131,17 @@ def parse_lrclib_response(d: dict[str, Any]) -> LrclibResult:
     )
 
 
-#: How many records from a search are worth carrying forward. Each one costs a token-set comparison,
-#: not an alignment, so the cap is about bounding response size and log noise rather than compute.
+#: Each costs a token-set comparison rather than an alignment, so this bounds response size, not compute.
 MAX_VARIANTS = 5
 
 
-#: A duration gap beyond this is strong evidence of a different recording, but NOT a disqualification:
-#: a padded lyric-video upload legitimately runs long, and refusing those is how the correct record
-#: gets dropped. It only ever pushes a candidate down the order.
+#: Strong evidence of a different recording but NOT a disqualification: a padded lyric-video upload
+#: legitimately runs long, so this only ever pushes a candidate DOWN the order.
 DURATION_TOLERANCE_SEC = 10.0
 
 
 def _credit_tokens(s: str | None) -> set[str]:
-    # NFKC first so a credit differing only in Unicode form (full/half-width, composed/decomposed)
-    # tokenises the same on both sides of the overlap. Idempotent on ASCII. See lyrics_tokens.
+    # NFKC first, so a credit differing only in Unicode form tokenises the same on both sides.
     return {t for t in re.split(r"[^\w']+", unicodedata.normalize("NFKC", s or "").lower()) if t}
 
 
@@ -230,8 +223,7 @@ class RateLimiter:
         self._lock = threading.Lock()
         self._now = now or _time.monotonic
         self._sleep = sleep or _time.sleep
-        # None, not 0.0: "never called" must be distinguishable from "called at t=0" (0.0 is falsy, so
-        # a truthiness check would skip the very first pacing interval by luck).
+        # None, not 0.0: "never called" must stay distinguishable from "called at t=0", which is falsy.
         self._last_call: float | None = None
         self.calls = 0
         self.retries = 0
@@ -261,7 +253,7 @@ class RateLimiter:
                 status, body = call()
                 if status not in self._retry_statuses:
                     return status, body
-                # over the limit / service busy: same remedy either way — wait longer.
+                # Over the limit or service busy: the same remedy either way.
                 self.throttled += 1
                 if attempt == MAX_ATTEMPTS:
                     return status, body
@@ -280,8 +272,7 @@ class RateLimiter:
         }
 
 
-#: The process-wide gate. Every client shares it by default — a per-instance limiter would let two
-#: clients in one process burst past a per-IP limit.
+#: Shared by default: a per-instance limiter lets two clients in one process burst past a per-IP limit.
 _LIMITER = RateLimiter()
 
 
@@ -307,8 +298,7 @@ class LrclibClient:
     ) -> None:
         self._fetch = fetcher or _urllib_fetch
         self._base = base_url
-        # Every request is paced through the process-global gate; injectable purely so tests are
-        # hermetic. See RateLimiter — production always shares one.
+        # Injectable purely so tests are hermetic; production always shares the process-global gate.
         self._limiter = rate_limiter or _LIMITER
 
     def get(
@@ -363,11 +353,9 @@ def _urllib_fetch(url: str, headers: dict[str, str]) -> tuple[int, str]:
         with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 (fixed https base, not user-controlled scheme)
             return resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        # An HTTP status is a legible answer — hand it back so the client's status ladder decides
-        # (404 -> miss, other non-200 -> LyricsFetchError).
+        # An HTTP status is a legible answer, so the client's status ladder decides.
         return e.code, ""
     except urllib.error.URLError as e:
-        # No HTTP status at all (DNS failure, connection refused, TLS failure, timeout). Convert to
-        # the explicit transport class the chain understands, so a provider outage surfaces as a
-        # loud note rather than being swallowed as an ordinary "no lyrics" miss.
+        # No HTTP status at all. Converted to the explicit transport class the chain understands, so a
+        # provider outage surfaces as a loud note rather than an ordinary "no lyrics" miss.
         raise LyricsFetchError(f"lrclib unreachable: {e.reason}") from e

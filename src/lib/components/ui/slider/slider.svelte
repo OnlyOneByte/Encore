@@ -1,14 +1,8 @@
-<!--
-  Encore's range geometry over the Bits UI primitive. Three styling mechanisms, each forced rather than
-  chosen: the ROOT is reached by data-slot in a global rule (it is a child component, so a scoped class
-  compiles to a hash that lands on no element and the whole rule dies silently); the TRACK is ordinary
-  scoped CSS because this file renders that span; the FILL and THUMB are utilities because a class is the
-  only thing that reaches a child component.
-
-  GuidingTrack deliberately does NOT use this component: Bits UI's Slider reads offsetWidth to place its
-  thumb, and the mount rung hardens offsetWidth to throw, so a Bits UI Slider cannot be mounted under
-  happy-dom at all. See docs/FRONTEND.md#shared-components.
--->
+<!-- Encore's range geometry over the Bits UI primitive. Three styling mechanisms, each forced rather than chosen: the
+  ROOT is reached by data-slot in a global rule (it is a child component, so a scoped class compiles to a hash that lands
+  on no element and the whole rule dies silently), the TRACK is ordinary scoped CSS because this file renders that span,
+  and the FILL and THUMB are utilities because a class is the only thing that reaches a child component. GuidingTrack
+  deliberately does NOT use this component: Bits UI's Slider reads offsetWidth, which the mount rung hardens to throw. -->
 <script lang="ts">
 	import { Slider as SliderPrimitive } from 'bits-ui';
 	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
@@ -25,10 +19,8 @@
 	} = $props();
 </script>
 
-<!--
-Discriminated Unions + Destructing (required for bindable) do not
-get along, so we shut typescript up by casting `value` to `never`.
--->
+<!-- Discriminated unions + destructuring (required for bindable) do not get along, so we shut TypeScript up by casting
+  `value` to `never`. -->
 <SliderPrimitive.Root
 	bind:ref={ref}
 	bind:value={value as never}
@@ -76,12 +68,9 @@ get along, so we shut typescript up by casting `value` to `never`.
 </SliderPrimitive.Root>
 
 <style>
-	/*
-	 * `:global`, keyed on shadcn's own data-slot, because the root is a Bits UI component: a scoped class
-	 * here compiles to a hash that matches no element, so the rule and the 44px tap floor with it die in
-	 * the build while `touch-targets.test.ts` still reads the rule and passes.
-	 * `ui-scoped-style-reach.test.ts` is what checks reach.
-	 */
+	/* `:global`, keyed on shadcn's own data-slot, because the root is a Bits UI component: a scoped class here compiles to
+	   a hash that matches no element, so the rule and the 44px tap floor with it die in the build while
+	   `touch-targets.test.ts` still reads the rule and passes. `ui-scoped-style-reach.test.ts` checks reach. */
 	:global([data-slot='slider']) {
 		min-height: var(--tap);
 		width: 100%;

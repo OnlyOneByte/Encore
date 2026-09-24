@@ -5,11 +5,10 @@ import type { Media } from '$lib/contract';
 import { processIsTerminal, mergeCatalog, snapshot } from '$lib/tv/catalog';
 import { at } from '@encore/test-support';
 
-// Caught: a song finishing PROCESSING yanked the playing song's playhead back to an earlier position. The route
-// minted a fresh `Media` identity on every `media:status` tick, `syncSlots()` handed TvPlayer a new object, and the
-// seek $effect — which read `media` / `isPlayable(media)` as TRACKED dependencies — re-ran and re-applied `seekSec`,
-// the position from the last playback COMMAND, stale by design because position telemetry does not broadcast. These
-// guards pin the BOUNDARY, not the spelling of one fix, so the class cannot return through another churn source.
+// Caught: a song finishing PROCESSING yanked the playing song's playhead back. The route minted a fresh
+// `Media` identity on every `media:status` tick, `syncSlots()` handed TvPlayer a new object, and the seek
+// $effect — which read `media` / `isPlayable(media)` as TRACKED dependencies — re-applied `seekSec`, stale
+// by design because position telemetry does not broadcast. These pin the BOUNDARY, not one fix's spelling.
 
 const tvDir = at('src/lib/tv');
 const player = readFileSync(join(tvDir, 'TvPlayer.svelte'), 'utf8');
@@ -26,11 +25,9 @@ function stripComments(src: string): string {
 /**
  * Every way the live `Media` type could get a binding inside a component allowed only the
  * `PlaybackSnapshot` seam. `not.toContain('type Media')` had a PROVEN hole: the braces in
- * `import type { Media } from '…'` sit between the two words. Alternative 1 therefore looks for `Media`
- * anywhere INSIDE the braces (covering the specifier modifier, an alias and any list position) with a
- * `[^{}]*` body that spans newlines but cannot cross a `}`; 2–5 are the spellings braces cannot see. No `g`
- * flag: `lastIndex` would carry across `.test()` calls and make the mutation arm below order-dependent.
- * See docs/GUARDS.md#tv
+ * `import type { Media } from '…'` sit between the two words, so alternative 1 looks for `Media` anywhere
+ * INSIDE the braces and 2–5 are the spellings braces cannot see. No `g` flag: `lastIndex` would carry
+ * across `.test()` calls and make the mutation arm below order-dependent. See docs/GUARDS.md#tv
  */
 const MEDIA_LEAKS = new RegExp(
 	[
@@ -122,8 +119,7 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 		expect(trigger).toContain('seekRev');
 	});
 
-	// The elements and the slot flag are banned too: an INPUT to the decision must never be a TRIGGER for it, and a
-	// re-run on any of them re-applies a stale position.
+	// The elements and the slot flag are banned too: an INPUT to the decision must never be a TRIGGER for it.
 	it('tracks NOTHING else — no catalog read, no element, no slot flag, in the effect body', () => {
 		for (const banned of ['media', 'isPlayable', 'master', 'vocals', 'active']) {
 			expect(trigger).not.toContain(banned);
@@ -135,8 +131,8 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 			player.split('function applySeek(seekTarget: number): void {')[1]?.split('\n\t}')[0] ?? ''
 		);
 		expect(body).not.toBe('');
-		// `untrack(() => vocals)` was the original case: the guide element MOUNTING re-ran the seek effect and yanked
-		// the master to a stale position. That element is gone; the rule governs the three reads that remain.
+		// `untrack(() => vocals)` was the original case: the guide element MOUNTING re-ran the seek effect and
+		// yanked the master to a stale position. That element is gone; the rule governs the three reads left.
 		for (const read of ['untrack(() => master)', 'untrack(() => media)', 'untrack(() => active)']) {
 			expect(body).toContain(read);
 		}
@@ -145,9 +141,8 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 	it('takes the playing song as a snapshot type, so the page cannot hand it a live catalog record', () => {
 		const code = stripComments(player);
 		expect(code).toContain('media: PlaybackSnapshot | null;');
-		// The seam is imported CO-LOCATED (`./catalog`) because TvPlayer.svelte sits beside catalog.ts and takes the
-		// sibling form every other seam here takes; `$lib/tv/catalog` is the NON-co-located spelling, pinned on the
-		// route below, and asserting it here failed on the import path rather than on the boundary.
+		// The seam is imported CO-LOCATED (`./catalog`), the sibling form every other seam here takes;
+		// `$lib/tv/catalog` is the non-co-located spelling, pinned on the route below.
 		expect(code).toContain("import type { PlaybackSnapshot } from './catalog';");
 		// Reported as the matched text rather than a bare boolean, so a future failure names the leak.
 		expect(code.match(MEDIA_LEAKS)?.[0] ?? null).toBe(null);
@@ -193,15 +188,15 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 		expect(MEDIA_LEAKS.test(stripComments(player))).toBe(false);
 	});
 
-	// A plain function, not a second `$effect`: as an effect every read it makes would be tracked again and `untrack`
-	// would be the only thing between a catalog churn and the playhead. As a function the deps are the CALLER's.
+	// A plain function, not a second `$effect`: as an effect every read it makes would be tracked again and
+	// `untrack` would be the only thing between a catalog churn and the playhead.
 	it('applySeek is a plain function, so the dependency set belongs to the one calling effect', () => {
 		const after = player.split('function applySeek(seekTarget: number): void {')[1] ?? '';
 		expect(after).not.toBe('');
 		const close = after.indexOf('\n\t}');
 		expect(close).toBeGreaterThan(0);
-		// Read the closing token itself: a body sliced at `\n\t}` can never contain its own `});`, which is how this
-		// assertion was blind on its first draft.
+		// Read the closing token itself: a body sliced at `\n\t}` can never contain its own `});`, which is how
+		// this assertion was blind on its first draft.
 		expect(after.slice(close + 3, close + 4)).not.toBe(')');
 		expect(after.slice(0, close)).not.toContain('$effect');
 	});

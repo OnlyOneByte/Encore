@@ -30,7 +30,7 @@ try {
 	console.log('captured confirm');
 	await browser.close?.();
 } catch (e) {
-	console.error('probe error', e?.message || e);
+	console.error('probe error', e instanceof Error ? e.message : e);
 	code = 1;
 }
 process.exit(code);

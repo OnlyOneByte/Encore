@@ -1,10 +1,8 @@
-// guard: the visualizer honours `prefers-reduced-motion`. See docs/GUARDS.md#motion.
-//
-// motion.test.ts parses CSS `@keyframes` and `transition`, and the visualizer's motion is a JS rAF loop on
-// a canvas — invisible to it, so the motion policy would silently stop applying at the single largest piece
-// of motion on the TV. A behavioural test would need a DOM, a canvas and a fake matchMedia; the renderers
-// are unit-tested directly, so what is left is that the loop consults the preference at all and draws a
-// frame rather than nothing when it says reduce.
+// guard: the visualizer honours `prefers-reduced-motion`. motion.test.ts parses CSS `@keyframes` and
+// `transition`, and the visualizer's motion is a JS rAF loop on a canvas — invisible to it, so the motion
+// policy would silently stop applying at the single largest piece of motion on the TV. The renderers are
+// unit-tested directly, so what is left is that the loop consults the preference at all and draws one still
+// frame rather than nothing. See docs/GUARDS.md#motion.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 

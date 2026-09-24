@@ -1,7 +1,6 @@
-// One-shot storage-layout migration to the classes in docs/ARCHITECTURE.md §6 (#media-storage-and-paths).
-// Runs at boot before the catalog is read. IDEMPOTENT — safe to leave wired in forever. Promotes
-// legacy scratch-retained raw audio into `audio/` (unregenerable) and moves legacy derived artifacts
-// under `derived/`, rewriting DB refs in the same pass.
+// One-shot layout migration to the classes in docs/ARCHITECTURE.md §6, run at boot before the catalog is
+// read. IDEMPOTENT, so it is safe to leave wired in forever. Promotes legacy scratch-retained raw audio into
+// `audio/` and moves legacy derived artifacts under `derived/`, rewriting DB refs in the same pass.
 
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, copyFileSync, chmodSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
@@ -25,9 +24,8 @@ export interface MigrationResult {
 	alreadyMigrated: boolean;
 }
 
-// Rename first (instant, atomic, same-device); on failure, copy + best-effort unlink instead — a
-// container-written bind mount may deny the write permission rename needs though the file is
-// readable, and preserving `audio/` (unrecoverable) matters more than throwing.
+// Rename first, then copy + best-effort unlink on failure: a container-written bind mount may deny the
+// write permission rename needs though the file is readable, and preserving `audio/` beats throwing.
 function moveFile(from: string, to: string): 'renamed' | 'copied' {
 	mkdirSync(dirname(to), { recursive: true });
 	try {
@@ -63,8 +61,7 @@ function listFiles(dir: string): string[] {
 	}
 }
 
-// Work out what needs moving. Only READS — nothing moves until `applyMigration` runs, which is what
-// makes this inspectable and testable.
+// READS ONLY: nothing moves until `applyMigration` runs, which is what makes this inspectable.
 export function planMigration(root = mediaRoot()): MigrationPlan {
 	const moves: Array<[string, string]> = [];
 	const prunes: string[] = [];
@@ -126,8 +123,7 @@ export function planMigration(root = mediaRoot()): MigrationPlan {
 	return { moves, prunes, refRewrites };
 }
 
-// Execute a plan. `rewriteRefs` is injected (not imported) so this unit-tests with no database, and
-// so the caller owns transaction boundaries.
+// `rewriteRefs` is INJECTED, so this unit-tests with no database and the caller owns the transaction.
 export function applyMigration(
 	plan: MigrationPlan,
 	rewriteRefs?: (mediaId: string, fields: Record<string, string>) => void
@@ -154,7 +150,7 @@ export function applyMigration(
 			continue;
 		}
 		const bytes = sizeOf(from);
-		// Per-file isolation: one unmovable file (mixed-ownership volume) must not abort the rest.
+		// Per-file isolation: one unmovable file must not abort the rest.
 		try {
 			const how = moveFile(from, to);
 			res.moved++;
@@ -171,8 +167,7 @@ export function applyMigration(
 		res.refsRewritten++;
 	}
 
-	// Prune only after moves, and only if now empty — a non-empty dir holds data this migration
-	// doesn't understand, and must not be deleted.
+	// Only after moves, and only if EMPTY: a non-empty dir holds data this migration does not understand.
 	for (const dir of plan.prunes) {
 		if (!existsSync(dir)) continue;
 		try {
@@ -191,16 +186,14 @@ export function applyMigration(
 }
 
 /**
- * Ensure every class dir exists (cheap, idempotent) so the first write never races a missing dir.
- *
- * Core and worker are separate containers at DIFFERENT uids on the same mounted volume; whichever
- * process creates a dir owns it, so a 0755 dir made by one is unwritable by the other. Worker-written
- * dirs are therefore created world-writable (`mkdirSync`'s mode is masked by umask, hence the
- * explicit chmod). `meta/` stays restrictive and core-only — the authoritative record, not a drop box.
+ * So the first write never races a missing dir. Core and worker are separate containers at DIFFERENT uids on
+ * one volume, and whichever creates a dir owns it, so a 0755 dir made by one is unwritable by the other —
+ * hence world-writable worker dirs, via an explicit chmod because umask masks `mkdirSync`'s mode. `meta/`
+ * stays restrictive and core-only: it is the authoritative record, not a drop box.
  */
 export function ensureLayout(): void {
 	const shared = [
-		// worker-written: raw downloads, stems, pitch tracks, lyrics, job scratch
+		// Worker-written.
 		audioDir(),
 		join(derivedDir(), 'stems'),
 		join(derivedDir(), 'pitch'),
@@ -216,7 +209,7 @@ export function ensureLayout(): void {
 			/* pre-existing dir owned by another uid — already works or already doesn't */
 		}
 	}
-	// Parents too, traversable+writable, so a worker can create a missing subdir itself.
+	// Parents too, so a worker can create a missing subdir itself.
 	for (const dir of [mediaRoot(), derivedDir()]) {
 		mkdirSync(dir, { recursive: true });
 		try {
@@ -228,7 +221,7 @@ export function ensureLayout(): void {
 	mkdirSync(metaDir(), { recursive: true }); // core-only: the authoritative sidecar records
 }
 
-// Boot entry: create the layout, migrate anything legacy, return a result the caller can log.
+// Boot entry: create the layout, migrate anything legacy, return a loggable result.
 export function migrateStorageLayout(
 	rewriteRefs?: (mediaId: string, fields: Record<string, string>) => void
 ): MigrationResult {
@@ -250,7 +243,7 @@ export function migrateStorageLayout(
 	return applyMigration(plan, rewriteRefs);
 }
 
-// Remove a finished job's scratch dir. Best-effort — never fails a completed job over it.
+// Best-effort: never fails a completed job over it.
 export function cleanJobWork(jobId: string): void {
 	const dir = join(workDir(), jobId);
 	try {

@@ -1,9 +1,6 @@
-<!--
-  Used for its GRAMMAR, not its appearance: three list rows each invented their own names for the same
-  four parts (leading indicator, title, subtitle, trailing action cluster) and Item names them once.
-  Encore's rows pass the `bare` tone and size, which contribute nothing but the group context — the app's
-  rows are already surfaces, so the registry's border and radius would double their own.
--->
+<!-- Used for its GRAMMAR, not its appearance: three list rows each invented their own names for the same four parts
+  (leading indicator, title, subtitle, trailing action cluster) and Item names them once. Encore's rows pass the `bare`
+  tone and size, which contribute nothing but the group context — the app's rows are already surfaces. -->
 <script lang="ts" module>
 	import { tv, type VariantProps } from 'tailwind-variants';
 
@@ -70,12 +67,9 @@
 {/if}
 
 <style>
-	/*
-	 * LAYOUT ONLY — no colour, no background, no alpha, and that boundary is what keeps the app's
-	 * contrast analysis working: `contrast.test.ts` reasons about a row by reading the rules in THE ROW'S
-	 * OWN FILE. A rule that declares a colour cannot move here, because a descendant rule cannot follow
-	 * its ancestor into a component that exposes no `child` snippet.
-	 */
+	/* LAYOUT ONLY — no colour, no background, no alpha, and that boundary is what keeps the app's contrast analysis
+	   working: `contrast.test.ts` reasons about a row by reading the rules in THE ROW'S OWN FILE. A rule that declares a
+	   colour cannot move here, because a descendant rule cannot follow its ancestor into a component with no `child`. */
 	:global([data-slot='item-media']) {
 		flex: 0 0 auto;
 	}

@@ -101,8 +101,8 @@
 	};
 	const factLabel = (k: string) => FACT_LABELS[k] ?? k;
 
-	// The distinction worth keeping: 'agreement' means a baseline voted, so a wrong pick there is a metric
-	// problem; 'metadata' means none could and cheap ordering stood, which a better metric does not fix.
+	// The distinction worth keeping: 'agreement' means a baseline voted, so a wrong pick there is a metric problem;
+	// 'metadata' means none could and cheap ordering stood, which a better metric does not fix.
 	const DECIDED_LABELS: Record<string, string> = {
 		agreement: 'a baseline judged it',
 		metadata: 'no baseline could judge — chosen on metadata'
@@ -179,8 +179,8 @@
 									)}{:else}{' · still going'}{/if}
 							</p>
 
-							<!-- The <li> stays via Item's `child`: `class:` is invalid on a component and .failed must land here. -->
-							<!-- One Item.Content only: Item's base is a flex row, so a second child sits beside the first. -->
+							<!-- The <li> stays via Item's `child`: `class:` is invalid on a component and .failed must land here. One
+									Item.Content only — Item's base is a flex row, so a second child sits beside the first. -->
 							<ol class="steps">
 								{#each process.attempts as a (a.id)}
 									<Item.Root variant="bare" size="bare">
@@ -267,8 +267,8 @@
 </section>
 
 <style>
-	/* Capped below the shell: this is a timeline of short rows, and at full desktop width a row's two ends
-	   stop reading as a pair. */
+	/* Capped below the shell: this is a timeline of short rows, and at full desktop width a row's two ends stop reading
+	   as a pair. */
 	.audit {
 		display: grid;
 		gap: 1rem;
@@ -301,8 +301,8 @@
 		display: grid;
 		gap: 0.6rem;
 	}
-	/* An attempt is a nested panel on its run's card, so it needs its own surface as well as the rule —
-	   a border alone reads as the same depth as the run above it. */
+	/* An attempt is a nested panel on its run's card, so it needs its own surface as well as the rule — a border alone
+	   reads as the same depth as the run above it. */
 	.steps li {
 		background: var(--bg2);
 		border-left: 2px solid var(--line-strong);
@@ -341,8 +341,7 @@
 		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 	}
-	/* Ink on top of .secondary rather than a Badge: this is a sentence, and a pill wrapping a sentence
-	   reads as a broken token. */
+	/* Ink on top of .secondary rather than a Badge: this is a sentence, and a pill wrapping a sentence reads as broken. */
 	.suspect {
 		color: var(--warn);
 	}

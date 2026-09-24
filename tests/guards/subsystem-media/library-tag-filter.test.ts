@@ -1,14 +1,8 @@
-// guard: the library tag FILTER reads the media_tags byKindValue index, not a client-side pass.
-// This pins the repository half:
-//   1. byTag(value) returns exactly the READY songs carrying that 'tag'-kind value — and NOTHING else
-//      (not other tags, not other kinds, not non-ready songs), so ?tag= narrows correctly.
-//   2. tagFacets() counts READY songs per 'tag' value, most-first, so the browse rail lists real tags.
-//   3. the 'tag' KIND is load-bearing: a genre-kind value must NOT surface through the tag filter/facet
-//      (the same wrong-kind defect already guarded on the read side).
-//   4. both sides of the filter narrow in SQL: the media read is the tagged ids, not the whole ready
-//      library. Counted in rows, not asserted in prose — see that section's own header.
-//   5. and the two docstrings that described the OLD one-sided read stay corrected.
-// Runtime, against a real migrated DB — the query shape is the thing under test, so exercise it.
+// guard: the library tag FILTER reads the media_tags byKindValue index, not a client-side pass. `byTag`
+// and `tagFacets` are 'tag'-KIND only and READY-only, so a genre value never surfaces through them; both
+// sides of the filter narrow in SQL, counted in ROWS rather than asserted in prose; and the two docstrings
+// that described the OLD one-sided read stay corrected. Runtime, against a real migrated DB, because the
+// query shape is the thing under test.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { MediaRepository } from '$lib/server/media/repository';
@@ -67,8 +61,8 @@ test('the tag filter reads the tag KIND, not genre — a genre value must not su
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(processed('g'));
 	repo.setTags('g', 'genre', ['rock']); // a GENRE, not a tag
-	// byTag/tagFacets are tag-kind only; a genre value is invisible to them (the genre fence keeps
-	// genre browse dead, and the tag filter does not reintroduce it).
+	// byTag/tagFacets are tag-kind only, so a genre value is invisible to them: the genre fence keeps genre
+	// browse dead and the tag filter does not reintroduce it.
 	expect(repo.byTag('rock')).toEqual([]);
 	expect(repo.tagFacets()).toEqual([]);
 });
@@ -90,24 +84,17 @@ test('tagFacets counts ready songs per tag, most-first', () => {
 	]);
 });
 
-// ── the media side of a tag filter narrows in SQL too ──────────────────────────────────────────────
-//
-// `readyTagged` narrowed only the `media_tags` side and then called `readySongs(db)` with no `extra`,
-// so every tag-filter request read the WHOLE ready library and ran the gate over all of it before the
-// join threw the non-matching rows away. Measured on the issue: 900 media rows read to return 1, at
-// 4.42 ms/call, where narrowing the media side reads 1 row at 0.39 ms.
-//
-// The pins below are BEHAVIOURAL: they count the rows bun:sqlite actually hands back for the `media`
-// statement, so a revert to `readySongs(db)` reds them by row count rather than by shape. `openDb` +
-// `runMigrations` is `migratedDb()`'s own body — spelled out here only because the sqlite handle is
-// what makes the read observable, and `migratedDb()` discards it (precedent: rooms/repository.test.ts).
+// `readyTagged` narrowed only the `media_tags` side and then called `readySongs(db)` with no `extra`, so
+// every tag-filter request read the WHOLE ready library and ran the gate over all of it before the join
+// threw the non-matching rows away: 900 media rows read to return 1, at 4.42 ms/call, against 1 row at
+// 0.39 ms. The pins below are BEHAVIOURAL — they count the rows bun:sqlite hands back for the `media`
+// statement, so a revert to `readySongs(db)` reds by row count rather than by shape.
 
 /**
- * A canonical migrated DB whose `media` reads are counted. Returns the row count of every SELECT
- * against `media` that bun:sqlite runs, newest last, plus a `reset` to scope a measurement to one call.
- *
- * Drizzle's bun-sqlite driver reads a select through `Statement.values()`, and those methods are not
- * assignable on the native statement, hence the Proxy.
+ * A canonical migrated DB whose `media` reads are counted: the row count of every SELECT against `media`
+ * that bun:sqlite runs, newest last, plus a `reset` to scope a measurement to one call. Drizzle's
+ * bun-sqlite driver reads a select through `Statement.values()`, which is not assignable on the native
+ * statement — hence the Proxy.
  */
 function countingDb(): { db: ReturnType<typeof migratedDb>; reads: number[]; reset: () => void } {
 	const { db, sqlite } = openDb(':memory:');
@@ -144,16 +131,16 @@ test('byTag reads only the tagged media rows, not the whole ready library', () =
 	const repo = new MediaRepository(db);
 	libraryOf30(repo);
 
-	// Control FIRST, so a recorder that observed nothing could not pass the pin below by reading 0:
-	// the unfiltered library legitimately reads all 30, and that is the number a lost push-down
-	// would put on the tag filter as well.
+	// Control FIRST, so a recorder that observed nothing could not pass the pin below by reading 0: the
+	// unfiltered library legitimately reads all 30, which is the number a lost push-down would put on the
+	// tag filter as well.
 	reset();
 	expect(repo.listReady()).toHaveLength(30);
 	expect(reads).toEqual([30]);
 
 	reset();
 	expect(repo.byTag('ballad').map((m) => m.id)).toEqual(['s07']);
-	// ONE media statement, and it returns the one tagged row. On base this is [30].
+	// ONE media statement, returning the one tagged row.
 	expect(reads).toEqual([1]);
 });
 
@@ -179,16 +166,15 @@ test('a tag nothing carries reads ZERO media rows — the empty case must not sk
 
 	reset();
 	expect(repo.byTag('nonexistent')).toEqual([]);
-	// `inArray(media.id, [])` compiles to `where false` on drizzle-orm 0.45.2 — zero bound params,
-	// zero rows — so the empty case needs no branch. A worker that "guards" it by skipping the
-	// `extra` when nothing is tagged restores the whole-library read for the cheapest query there
-	// is, and this reads [30] instead of [0].
+	// `inArray(media.id, [])` compiles to `where false` on drizzle-orm 0.45.2 — zero bound params, zero rows —
+	// so the empty case needs no branch. "Guarding" it by skipping the `extra` when nothing is tagged restores
+	// the whole-library read for the cheapest query there is, and this reads [30] instead of [0].
 	expect(reads).toEqual([0]);
 });
 
 test('the push-down is pure: identical answers across every readiness state', () => {
-	// Parity, hard-coded rather than derived: these expectations hold under BOTH shapes, which is
-	// what makes the change a push-down and not a behaviour change. Six seeded states, four queries.
+	// Parity, hard-coded rather than derived: these expectations hold under BOTH shapes, which is what makes
+	// the change a push-down and not a behaviour change.
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(processed('s1-finished'));
 	repo.upsert({ ...processed('s2-midalign'), lyricsStatus: 'queued' }); // stems done, lyrics gate open
@@ -200,8 +186,8 @@ test('the push-down is pure: identical answers across every readiness state', ()
 		repo.setTags(id, 'tag', ['ballad']);
 	repo.setTags('s6-twotags', 'tag', ['ballad', 'duet']);
 
-	// Only the two FINISHED songs are browsable, newest id first — the four unfinished ones carry the
-	// tag and are still absent, so the gate still runs after the narrowing.
+	// Only the two FINISHED songs are browsable, newest id first — the four unfinished ones carry the tag and
+	// are still absent, so the gate still runs after the narrowing.
 	expect(repo.byTag('ballad').map((m) => m.id)).toEqual(['s6-twotags', 's1-finished']);
 	expect(repo.byTag('duet').map((m) => m.id)).toEqual(['s6-twotags']);
 	expect(repo.byTag('nonexistent')).toEqual([]);
@@ -211,17 +197,14 @@ test('the push-down is pure: identical answers across every readiness state', ()
 	]);
 });
 
-/** The real production file, read once. Comments are stripped per-assertion, not here — the prose
- *  guards below have the comments as their subject. */
-// SIBLING READ, now named explicitly. This guard used to live in src/lib/server/media/, so
-// `dirname(fileURLToPath(import.meta.url))` + 'repository.ts' meant "the media repository next to me".
-// Confirmed present at this path before re-anchoring.
+/** The real production file, read once. Comments are stripped per-assertion, not here — the prose guards
+ *  below have the comments as their subject. */
 const SRC = read('src/lib/server/media/repository.ts');
 
 test('readyTagged hands its media ids down to readySongs, unconditionally', () => {
-	// Shape ban beside the row-count pins: the regression has exactly two spellings, and both are
-	// cheap to read out of the real source. Reads the production file, comments stripped so the
-	// docstring describing the old shape is not mistaken for the old shape.
+	// Shape ban beside the row-count pins: the regression has exactly two spellings, and both are cheap to
+	// read out of the real source. Comments stripped, so the docstring describing the old shape is not
+	// mistaken for the old shape.
 	const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 	const body = /\nfunction readyTagged\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(CODE);
 	expect(body).not.toBeNull();
@@ -233,27 +216,28 @@ test('readyTagged hands its media ids down to readySongs, unconditionally', () =
 	expect(tagged).not.toMatch(/readySongs\(\s*db\s*\)/);
 });
 
-// ── prose: the two docstrings that described the OLD read ──────────────────────────────────────────
-//
-// Both docstrings were accurate before this change and are false after it, which is the defect class
-// `COMMON.md` files under `internal` ("a comment contradicting its code"). `readySongs`'s doc named
-// `extra` as "the artist filter's index push-down" — one caller, when `readyTagged` is now a second —
-// and `readyTagged`'s doc explained the tag-row narrowing and said nothing about the media side, so a
-// reader who trusted it would not know a push-down is there to preserve. A comment-STRIPPED scan is
-// the wrong shape here because the comments ARE the subject, so this asserts the raw prose, anchored
-// on the mechanism each sentence names. It is also what closes the per-hunk prover's UNVERIFIED
-// verdict on the two comment-only hunks: prose cannot red a behavioural test by construction.
+// Prose: the two docstrings that described the OLD read. Both were accurate before the change and false
+// after it — a comment contradicting its code. `readySongs`'s doc named `extra` as "the artist filter's
+// index push-down", one caller, when `readyTagged` is now a second; and `readyTagged`'s doc said nothing
+// about the media side, so a reader who trusted it would not know a push-down is there to preserve. The
+// comments ARE the subject, so this asserts the raw prose, anchored on the mechanism each sentence names.
 
-/** The doc comment immediately above a declaration, RAW (a comment is the subject here). */
+/**
+ * The doc comment immediately above a declaration, with its ` * ` markers stripped and whitespace collapsed
+ * so each arm below matches the SENTENCE rather than one line-wrapping of it — re-flowing a paragraph
+ * otherwise moves a word across a line break and a live claim reads as missing.
+ */
 function docAbove(name: string): string {
 	const m = new RegExp(`/\\*\\*([\\s\\S]*?)\\*/\\s*\\nfunction ${name}\\(`).exec(SRC);
 	if (!m) throw new Error(`no doc comment found above ${name} in repository.ts`);
-	return m[1];
+	return m[1]
+		.replace(/^[ \t]*\*[ \t]?/gm, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
 }
 
 test('prose non-vacuous: the file and both docstrings are really there', () => {
-	// Without this sentinel a renamed helper passes every scan below on an empty read, and the guard
-	// silently stops guarding.
+	// Without this sentinel a renamed helper passes every scan below on an empty read.
 	expect(SRC.length).toBeGreaterThan(200);
 	expect(docAbove('readySongs').length).toBeGreaterThan(200);
 	expect(docAbove('readyTagged').length).toBeGreaterThan(200);
@@ -269,12 +253,12 @@ test("readySongs's docstring no longer attributes `extra` to the artist filter a
 
 test("readyTagged's docstring says BOTH sides narrow, and names the empty-case trap", () => {
 	const doc = docAbove('readyTagged');
-	// The media half of the claim — absent on base, where the doc discussed only the tag rows.
-	expect(doc).toMatch(/BOTH sides narrow in SQL/);
+	// The media half of the claim, which the old doc omitted entirely.
+	expect(doc).toMatch(/BOTH sides narrow in SQL/i);
 	// The measured evidence the push-down rests on; it wraps mid-line, so match each half.
-	expect(doc).toMatch(/900 rows read at/);
-	expect(doc).toMatch(/versus 1 row at 0\.39 ms/);
+	expect(doc).toMatch(/900 rows read at/i);
+	expect(doc).toMatch(/versus 1 row at 0\.39 ms/i);
 	// And the trap, spelled out because "guarding" the empty case is what reintroduces the defect.
 	expect(doc).toMatch(/inArray\(media\.id, \[\]\)/);
-	expect(doc).toMatch(/SKIPPING the `extra`/);
+	expect(doc).toMatch(/SKIPPING the `extra`/i);
 });

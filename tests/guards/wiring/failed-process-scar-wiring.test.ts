@@ -6,7 +6,6 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-/** Blank comments in place, so a seam cannot be satisfied by prose while the live code has lost it. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);

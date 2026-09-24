@@ -1,11 +1,9 @@
-// Caught: every song change opened the new turn with the lyrics reel parked on the old song's last lines
-// and the progress bar two-thirds full for ~260ms, and for one frame the reel rendered the PREVIOUS song's
-// lyrics under the new song's title.
-//
-// The drawn-position anchor (`positionSec`) and its `durationSec` were never reset on an entry change. Both have
-// exactly two writers — the active slot's `onposition` — and neither runs until the NEW <audio> fires its first
-// `timeupdate` (~250ms in Chromium), so until then `drawPosition` extrapolates FORWARD from the previous song's
-// anchor. The fix resets both in `applyNowPlaying` and clears the overlay's cached doc on a ref CHANGE.
+// guard: every song change opened the new turn with the lyrics reel parked on the old song's last lines and
+// the progress bar two-thirds full for ~260ms, and for one frame the reel rendered the PREVIOUS song's
+// lyrics under the new song's title. The drawn-position anchor (`positionSec`) and its `durationSec` were
+// never reset on an entry change, and their only writer is the active slot's `onposition`, which does not
+// run until the NEW <audio> fires its first `timeupdate` (~250ms in Chromium) — until then `drawPosition`
+// extrapolates FORWARD from the previous song's anchor.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -54,12 +52,11 @@ test('F1/F2: applyNowPlaying resets the drawn-position anchor on the entry chang
 });
 
 test('F1/F2: the reset fires ONLY on a real entry change, never on every playback command', () => {
-	// The other half, and it was missing — which is why this guard stayed green through a real defect. The server
-	// calls `emitNowPlaying` at the tail of EVERY player command, not only on an advance, so an unguarded reset ran
-	// on every pause, resume, restart, key press and guide nudge: `positionSec = 0` flows into the overlay and
-	// `activeLineIndex(lines, 0)` returns 0, snapping the reel to the FIRST line and emptying the bar, and under the
-	// guide slider's ~8 commands/second it is re-pinned faster than telemetry recovers. Asserting the reset EXISTS is
-	// compatible with the bug; asserting it is CONDITIONAL is what closes it.
+	// The other half, and it was missing — which is why this guard stayed green through a real defect. The
+	// server calls `emitNowPlaying` at the tail of EVERY player command, so an unguarded reset ran on every
+	// pause, resume, restart, key press and guide nudge: `positionSec = 0` snaps the reel to the FIRST line and
+	// empties the bar, and under the guide slider's ~8 commands/second it is re-pinned faster than telemetry
+	// recovers. Asserting the reset EXISTS is compatible with the bug; asserting it is CONDITIONAL closes it.
 	const clean = stripComments(ROUTE);
 	const body = functionBody(clean, 'applyNowPlaying');
 	expect(body, 'applyNowPlaying body must be found').not.toBe('');

@@ -1,16 +1,8 @@
 /*
- * THE ROOM LINK — one socket, one room truth, for the whole app. The socket is not a property of a route:
- * one phone joins one room once, and the connection must outlive every navigation, which is why a component
- * mounted by the LAYOUT can read the playback state at all.
- *
- * A PLAIN CLASS WITH AN EXPLICIT `subscribe`, never a rune-backed store, and that is a correctness choice:
- * a module-level `$state` singleton is shared across SSR requests on the server, which is a cross-request
- * state leak waiting to happen, while plain fields that only move in the browser cannot leak that way. It
- * also matches `QueueStore` beside it, and it lets a component mirror only the fields it renders.
- *
- * NO TOASTS, NO NAVIGATION, NO DOM. A failure a human must see goes to whoever registered `onError`,
- * because which surface says so is a UI decision. The scar PERSISTENCE is here, though — that is state
- * which must survive a reload, not a way of telling someone something.
+ * THE ROOM LINK — one socket, one room truth, for the whole app. It must outlive every navigation, which is why a
+ * component mounted by the LAYOUT can read the playback state at all. NO TOASTS, NO NAVIGATION, NO DOM: a failure a
+ * human must see goes to whoever registered `onError`, because which surface says so is a UI decision. The scar
+ * PERSISTENCE is here, though — that is state which must survive a reload.
  */
 
 import {
@@ -38,7 +30,6 @@ export interface LiveMediaStatus {
 }
 
 export class RoomLink {
-	// ── the room's truth ────────────────────────────────────────────────
 	/** The joined singer, or null for a guest who has not joined (no socket is opened for them). */
 	me: PublicSinger | null = null;
 	connected = false;
@@ -53,19 +44,15 @@ export class RoomLink {
 	singers = new Map<string, PublicSinger>();
 	mediaCatalog = new Map<string, Media>();
 	settings: EffectiveSettings = DEFAULT_EFFECTIVE_SETTINGS;
-	/** Singers in the room but unreachable. The phone holds the skip control, so it is the one surface that
-	 * must be able to tell there is a decision to make. */
+	/** Singers in the room but unreachable. The phone holds the skip control, so it is the one surface that must be
+	 * able to tell there is a decision to make. */
 	awaySingers = new Set<string>();
 	/** Live process progress per mediaId, from `media:status` and seeded from /api/library. */
 	mediaStatus = new Map<string, LiveMediaStatus>();
 	/** The room's standing guiding-track default — needed to LABEL a null (inherit) per-song override. */
 	roomGuideDefault = 0;
-	/**
-	 * THE SAVED LIBRARY, owned here rather than by the surface that lists it, because the fetch does two jobs
-	 * for two readers: it supplies the browse rows AND seeds the catalog and live statuses the queue needs for
-	 * its titles and progress bars on a cold load. Owned by a surface, the queue's titles would silently
-	 * depend on that surface having run.
-	 */
+	/** Owned here rather than by the surface that lists it, because the fetch does two jobs: it supplies the browse
+	 * rows AND seeds the catalog and live statuses the queue needs for its titles and progress bars on a cold load. */
 	library: Media[] = [];
 	libraryTags: Record<string, string[]> = {};
 	/** The optimistic queue. Undefined until a joined singer connects. */
@@ -77,11 +64,8 @@ export class RoomLink {
 	#ws: WsClient | undefined;
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string) => void>();
-	/**
-	 * Failed-process scars captured once on connect, and HELD: a sync REPLACES the catalog, and a failed song
-	 * is not in the room's media because it settled back to un-processed server-side — so without re-merging
-	 * these on every sync, the first sync wipes the scarred row on the very reload the scar exists to survive.
-	 */
+	/** Captured once on connect and HELD: a sync REPLACES the catalog and a failed song is not in the room's media,
+	 * so without re-merging these on every sync the first sync wipes the scarred row. */
 	#scarred: Media[] = [];
 	#state: 'idle' | 'connecting' | 'live' | 'guest' | 'closed' = 'idle';
 
@@ -109,11 +93,8 @@ export class RoomLink {
 		return m ? `${m.title}${m.artist ? ' — ' + m.artist : ''}` : mediaId;
 	}
 
-	/**
-	 * Join the room's socket. IDEMPOTENT and browser-only: the layout calls it on mount, and calling
-	 * it again (a second mount, a navigation) is a no-op rather than a second socket. A guest who has
-	 * not joined settles at `guest` with no socket at all — and stays there, because joining navigates.
-	 */
+	/** IDEMPOTENT and browser-only: the layout calls it on mount, and calling it again (a second mount, a navigation)
+	 * is a no-op rather than a second socket. A guest who has not joined settles at `guest` with no socket at all. */
 	async connect(): Promise<void> {
 		if (typeof window === 'undefined') return; // SSR: this singleton must stay inert on the server
 		if (this.#state !== 'idle') return;
@@ -121,8 +102,7 @@ export class RoomLink {
 
 		const res = await fetch('/api/me');
 		if (!res.ok) {
-			// Unjoined. `/` is the landing page, so the route renders its JoinLanding state — no store
-			// and no socket for a guest.
+			// Unjoined: `/` is the landing page, so the route renders its JoinLanding state — no store and no socket.
 			this.#state = 'guest';
 			this.#emit();
 			return;
@@ -134,8 +114,8 @@ export class RoomLink {
 			singerId: this.me.id,
 			sendCommand: (cmd: ClientCommand) => this.#ws?.send({ type: 'queue:command', command: cmd }),
 			onReject: (reason) => this.#fail(`Couldn't do that: ${reason}`),
-			// Read at apply time, not captured: both the algorithm and the sing history change while the
-			// party runs, and predicting with a stale ordering is what makes a row jump.
+			// Read at apply time, not captured: both the algorithm and the sing history change while the party runs, and
+			// predicting with a stale ordering is what makes a row jump.
 			ordering: () => ({
 				order: this.settings.room.queueOrder,
 				lastSungAt: singHistoryFrom(this.singers.values())
@@ -157,13 +137,11 @@ export class RoomLink {
 			onEvent: (e: ServerEvent) => this.#onServerEvent(e)
 		});
 
-		// The live status map is in-memory only, so a reload erases a failed process. A persisted scar is
-		// seeded back as a synthetic `failed` status and flows through the same readiness path a live failure
-		// takes, with no extra UI.
+		// The live status map is in-memory only, so a reload erases a failed process. A persisted scar is seeded back as a
+		// synthetic `failed` status and flows through the same readiness path a live failure takes, with no extra UI.
 		this.#scarred = activeScars();
 		if (this.#scarred.length) {
-			// The library endpoint returns only ready and processing media, so a failed song is not in the
-			// catalog — its snapshot has to be merged in before its row can render.
+			// The library endpoint returns only ready and processing media, so a failed song is not in the catalog.
 			this.mergeMissingMedia(this.#scarred);
 			const withScars = new Map(this.mediaStatus);
 			for (const m of this.#scarred) if (!withScars.has(m.id)) withScars.set(m.id, { status: 'failed', pct: 0 });
@@ -183,14 +161,9 @@ export class RoomLink {
 		this.#ws = undefined;
 	}
 
-	/**
-	 * Re-pick a song's lyrics: choose a stored candidate by ref, or paste new words. The server pins the
-	 * choice and re-times it, and the live `media:status` broadcasts drive the row.
-	 *
-	 * It lives on the link because the control that calls it is app chrome — the drawer, mounted by the
-	 * layout — and the layout should not be making fetches. A human edit must produce a NEW candidate rather
-	 * than mutate one, which is the server's rule; this only reports the choice.
-	 */
+	/** Re-pick a song's lyrics: choose a stored candidate by ref, or paste new words. It lives on the link because the
+	 * control that calls it is app chrome — the drawer, mounted by the layout — and the layout should not be making
+	 * fetches. A human edit must produce a NEW candidate rather than mutate one; this only reports the choice. */
 	async reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }): Promise<void> {
 		try {
 			const res = await fetch('/api/lyrics-reselect', {
@@ -214,14 +187,12 @@ export class RoomLink {
 		if (e.type === 'queue:sync') {
 			if (e.settings) {
 				this.settings = e.settings;
-				// The room's guiding-track default — needed to LABEL the control, since a null per-song
-				// override means "inherit" and the phone would otherwise show 0%.
+				// A null per-song override means "inherit", so the control needs the room default to label itself.
 				this.roomGuideDefault = e.settings.room.guideLevelDefault;
 			}
 			if (e.singers) this.singers = new Map(e.singers.map((s) => [s.id, s]));
 			if (e.media) this.mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
-			// Re-apply failed-process scars: a sync REPLACES the catalog, so without this the scarred row
-			// is wiped by the very first sync. A real entry for the id (already added above) wins.
+			// Re-apply failed-process scars: a sync REPLACES the catalog, so without this the first sync wipes the scarred row.
 			if (this.#scarred.length) this.mergeMissingMedia(this.#scarred);
 			// An omitted list means "no info", not "nobody is away" — do not blank what we have.
 			if (e.away) this.awaySingers = new Set(e.away);
@@ -231,23 +202,19 @@ export class RoomLink {
 		if (e.type === 'queue:patch' && e.patch.media) this.mergeMedia(e.patch.media);
 		if (e.type === 'settings:changed') {
 			this.settings = e.settings;
-			// A room default changed mid-party: adopt it so the guiding-track control keeps reporting the
-			// level the TV is actually mixing at.
+			// A room default changed mid-party: adopt it so the control keeps reporting the level the TV is mixing at.
 			this.roomGuideDefault = e.settings.room.guideLevelDefault;
 		}
 		if (e.type === 'singer:joined') this.singers = new Map(this.singers).set(e.singer.id, e.singer);
-		// A rename must land on every OTHER phone too, or their queue rows keep naming someone who no
-		// longer goes by that.
+		// A rename must land on every OTHER phone too, or their queue rows keep naming someone who no longer goes by that.
 		if (e.type === 'singer:updated') this.singers = new Map(this.singers).set(e.singer.id, e.singer);
-		// Someone left on purpose. Their entries arrive as ordinary remove patches; this is what takes
-		// them out of the away set, which no patch would have implied.
+		// Someone left on purpose. Their entries arrive as ordinary remove patches; this takes them out of the away set.
 		if (e.type === 'singer:left') {
 			const nextAway = new Set(this.awaySingers);
 			nextAway.delete(e.singerId);
 			this.awaySingers = nextAway;
-			// Also drop them from the singers map. A singer who leaves with no queued songs produces no
-			// queue:patch, so without this their name keeps rendering on every other phone until the next
-			// full sync. joined/updated rebuild this map; left must too.
+			// A singer who leaves with no queued songs produces no queue:patch, so without this their name keeps rendering on
+			// every other phone until the next full sync. joined/updated rebuild this map; left must too.
 			const nextSingers = new Map(this.singers);
 			nextSingers.delete(e.singerId);
 			this.singers = nextSingers;
@@ -262,9 +229,8 @@ export class RoomLink {
 		const next = new Map(this.mediaStatus);
 		next.set(mediaId, { status, pct, etaSec });
 		this.mediaStatus = next;
-		// The catalog copy follows, so readiness agrees without a full sync: a failed or canceled process
-		// settles back to un-processed server-side, and preserving the mid-flight status here is what leaves a
-		// row reading as processing after the job has died.
+		// The catalog copy follows, so readiness agrees without a full sync: a failed or canceled process settles back to
+		// un-processed server-side, and preserving the mid-flight status here leaves a row reading as processing.
 		const m = this.mediaCatalog.get(mediaId);
 		if (m) {
 			const nm = new Map(this.mediaCatalog);
@@ -274,15 +240,13 @@ export class RoomLink {
 			});
 			this.mediaCatalog = nm;
 		}
-		// A song that just finished processing belongs in the saved library now, and a successful
-		// re-process clears any failed-process scar so the row never lingers as failed while it is ready.
+		// A successful re-process clears any failed-process scar, so the row never lingers as failed while it is ready.
 		if (status === 'ready') {
 			clearScar(mediaId);
 			this.#scarred = this.#scarred.filter((s) => s.id !== mediaId);
 			void this.refreshLibrary();
 		}
-		// Surface a died process instead of leaving the row silently stuck, and persist a per-device
-		// scar so the failure survives a reload (the live map does not).
+		// Surface a died process instead of leaving the row stuck, and persist a per-device scar so it survives a reload.
 		if (status === 'failed') {
 			const failedMedia = this.mediaCatalog.get(mediaId);
 			if (failedMedia) {
@@ -293,11 +257,8 @@ export class RoomLink {
 		}
 	}
 
-	/**
-	 * Merge media into the client catalog. The catalog is otherwise fed ONLY by queue:sync/patch, so a
-	 * song that came from search or the library — and is not (yet) in anyone's queue — has no
-	 * resolvable title: a processing card would render a raw ULID.
-	 */
+	/** The catalog is otherwise fed ONLY by queue:sync/patch, so a song that came from search or the library has no
+	 * resolvable title and a processing card would render a raw ULID. */
 	mergeMedia(list: Media[]): void {
 		if (!list.length) return;
 		const next = new Map(this.mediaCatalog);
@@ -305,10 +266,8 @@ export class RoomLink {
 		this.mediaCatalog = next;
 		this.#emit();
 	}
-	/**
-	 * Merge media but only for ids the catalog does NOT already hold — used to re-apply failed-process
-	 * scars after a queue:sync without clobbering a fresher server copy of the same song.
-	 */
+	/** Only for ids the catalog does NOT already hold — used to re-apply failed-process scars after a queue:sync
+	 * without clobbering a fresher server copy of the same song. */
 	mergeMissingMedia(list: Media[]): void {
 		if (!list.length) return;
 		const next = new Map(this.mediaCatalog);
@@ -334,10 +293,8 @@ export class RoomLink {
 		this.mediaStatus = new Map([...this.mediaStatus].filter(([id]) => id !== mediaId));
 		this.#emit();
 	}
-	/**
-	 * Re-read the saved library, on connect and whenever a process goes ready, so no surface has to remember
-	 * to ask. Failure is deliberately SILENT: the library is an accelerator, never a blocker.
-	 */
+	/** Re-read the saved library, on connect and whenever a process goes ready, so no surface has to remember to ask.
+	 * Failure is deliberately SILENT: the library is an accelerator, never a blocker. */
 	async refreshLibrary(): Promise<void> {
 		try {
 			const j = await (await fetch('/api/library')).json();
@@ -366,8 +323,6 @@ export class RoomLink {
 	}
 }
 
-/**
- * THE app's link to its room. A singleton because there is one phone, one room and one socket; the
- * class is exported beside it so a test can build an isolated one.
- */
+/** THE app's link to its room. A singleton because there is one phone, one room and one socket; the class is exported
+ * beside it so a test can build an isolated one. */
 export const room = new RoomLink();

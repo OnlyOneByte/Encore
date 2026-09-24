@@ -1,20 +1,17 @@
-// P16 — the now-playing drawer's live controls, and their honest degradation.
+// P16 — the now-playing drawer's live controls, and their honest degradation. Two arms on one server:
+// WITH a guide mix, a live control and no explanation beside it; with NO guide mix, the control stays on
+// screen disabled, its readout says 'Off', and a sentence naming what still works renders BEFORE it.
 //
-// Two arms, two songs, one server:
-//   - WITH a guide mix → a live control and NO explanation beside it.
-//   - NO guide mix → the control STAYS on screen disabled, its readout says 'Off', and a sentence
-//     naming what still works renders BEFORE the control, dimmed by no ancestor's opacity.
-// Plus the gesture pair, which is the part no source scan can reach: a real pointer drag on the
+// Plus the gesture pair, the part no source scan can reach: a real pointer drag on the
 // SLIDER moves the guiding track and does NOT dismiss the sheet (`handleOnly` on Drawer.Root), while
 // a drag on the HANDLE does. See docs/E2E.md#gestures
 //
-// The filename keeps `hero` so this stays paired with tests/guards/hygiene/hero-live-controls.test.ts;
-// renaming means both files, the entry in tests/e2e/run-probes.mjs and the guards' keys in one sweep.
+// The filename keeps `hero` so this stays paired with tests/guards/hygiene/hero-live-controls.test.ts:
+// renaming costs both files, the tests/e2e/run-probes.mjs entry and the guards' keys in one sweep.
 //
 //   EPORT=5216 bun tests/e2e/probes/p16-hero-live-controls.mjs
 //
 // Needs `bun run build`: server.ts serves the BUILT app, so a stale build measures yesterday's markup.
-// Exit codes: see docs/E2E.md#exit-codes-and-what-ran-means
 import { existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -29,7 +26,7 @@ import { openJoin } from '../lib/join.mjs';
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ p05Midi?: number | null, p95Midi?: number | null, keyTonic?: number | null }} Profile
- * @typedef {{ id: string, title: string, source?: string, stemStatus?: string, instrumentalRef?: string | null, vocalsRef?: string | null, songProfile?: Profile | null }} Media
+ * @typedef {{ id: string, title: string, source?: string, stemStatus?: string, instrumentalRef?: string | null, vocalsRef?: string | null, guideMixRef?: string | null, songProfile?: Profile | null }} Media
  */
 
 const PORT = process.env.EPORT ?? '5216';
@@ -168,11 +165,8 @@ async function library() {
 }
 
 /**
- * Process one local song by title fragment and wait for it to be ready.
- *
- * Discovery goes through `/api/search`, not `/api/library`: the library lists media the room already
- * knows about, and a freshly seeded file is not that until something has looked at it. Searching is
- * what surfaces a local file, which is why p2 does the same.
+ * Discovery goes through `/api/search`, not `/api/library`: the library lists media the room already knows
+ * about, and a freshly seeded file is not that until something has looked at it.
  * @param {string} q
  */
 async function processOne(q) {
@@ -247,8 +241,7 @@ async function queueAdd(phone, mediaId, singerId) {
 	await sleep(250);
 }
 
-// Every selector handed to the page ONCE, so no in-page expression spells one as a literal — the
-// contract guard bans that. See docs/E2E.md#why-selectors-are-centralised
+// Every selector handed to the page ONCE — docs/E2E.md#why-selectors-are-centralised.
 const PRELUDE = `
 	const S = {
 		drawer: ${JSON.stringify(SEL.npDrawer)},
@@ -338,8 +331,7 @@ function stateExpr(expectedRange) {
 			sliderInBody: !!(slider && body && body.contains(slider)),
 			sliderOnDragHandle: !!(slider && handle && handle.contains(slider)),
 			dragHandlePresent: !!handle,
-			// PRESENCE, not value: Bits UI emits data-disabled="" when disabled and omits it entirely
-			// when enabled, which the non-vacuity mutation in the header confirmed.
+			// PRESENCE, not value: Bits UI emits data-disabled="" when disabled and omits it when enabled.
 			sliderDisabled: !!slider && (slider.hasAttribute('data-disabled') || slider.getAttribute('aria-disabled') === 'true'),
 			readout: q(S.readout)?.textContent?.trim() ?? null,
 			notePresent: !!note,
@@ -365,8 +357,7 @@ function stateExpr(expectedRange) {
 				(keyLab.compareDocumentPosition(rangeEl) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
 			),
 			pageTextHasFragment: (document.body.textContent ?? '').toLowerCase().includes(FRAGMENT),
-			// The "\u00b7\u00b7\u00b7" door to /song/[mediaId]. An ANCHOR, deliberately: back is then the browser's
-			// own back and the route stays shareable, which a history.back() button gives up.
+			// The door to /song/[mediaId]. An ANCHOR, so back is the browser's own and the route is shareable.
 			moreHref: /** @type {HTMLAnchorElement | null} */ (q(S.songDoor))?.getAttribute('href') ?? null,
 			moreLabel: q(S.songDoor)?.getAttribute('aria-label') ?? null,
 			moreIsAnchor: q(S.songDoor)?.tagName === 'A'
@@ -386,9 +377,7 @@ async function waitForBandTitle(phone, title) {
 }
 
 /**
- * Open the drawer from the band's expand button and wait for the song it should be about.
- *
- * IDEMPOTENT and gated on the drawer being shut: while it is open vaul's overlay covers the band, so a
+ * IDEMPOTENT and gated on the drawer being SHUT: while it is open vaul's overlay covers the band, so a
  * second tap lands on a scrim instead of the button.
  * @param {Page} phone @param {string} title
  */
@@ -550,8 +539,7 @@ async function main() {
 	if (!clicked?.found || clicked?.disabled) {
 		bail(`the join control was ${clicked?.found ? 'disabled' : 'not found'} — the name field never took its value`);
 	}
-	// `SEL.homeReady` is `.band`, which the layout mounts on exactly this condition, so it answers
-	// "this singer is joined" with no gesture.
+	// The band is mounted on exactly this condition, so it answers "joined" with no gesture.
 	await waitFor(async () => await phone.evaluate(`!!document.querySelector(${JSON.stringify(SEL.homeReady)})`), {
 		timeout: 20_000,
 		name: 'the joined phone (the now-playing band)'

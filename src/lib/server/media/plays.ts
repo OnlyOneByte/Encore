@@ -7,8 +7,7 @@
 // preloads the next-ready song) — counting every emit would inflate plays on an unrelated finish.
 // The same song queued twice in one night is two entries and genuinely two plays; one entry
 // re-emitted five times is one.
-//
-// Pure tracker, injectable sink — testable without a filesystem.
+//  Pure tracker, injectable sink — testable without a filesystem.
 
 /** Notified once per genuinely-new current entry. */
 export type PlaySink = (mediaId: string, entryId: string) => void;

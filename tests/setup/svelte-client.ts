@@ -3,10 +3,9 @@
 // `onResolve` cannot intercept the test ENTRY file's own bare imports — so tests import
 // mount/unmount/flushSync from here instead.
 //
-// `createRequire` rather than a static import: a static deep-path import of `src/index-client.js` has no
+// `createRequire` rather than a static import: a deep-path import of `src/index-client.js` has no
 // declaration file, so `svelte-check` reports an implicit `any`. Loading it at runtime and typing the
-// handles against `svelte`'s public signatures gives `bun test` the client functions AND `svelte-check`
-// real types, with nothing to resolve statically.
+// handles against `svelte`'s public signatures satisfies both.
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type { mount as MountFn, unmount as UnmountFn, flushSync as FlushFn, tick as TickFn } from 'svelte';

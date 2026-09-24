@@ -1,9 +1,7 @@
 <script lang="ts">
-	// The VOCAL RANGE bar — a fixed pitch axis with the song's sung range drawn on it.
-	//
-	// INTENTIONALLY DUMB ABOUT MUSIC: every judgement lives in the contract's pure helpers and arrives here
-	// as fractions, so this component only paints. That split is why the same helpers feed the TV without a
-	// second copy of the geometry, and why the arithmetic is unit-testable without a DOM.
+	// The VOCAL RANGE bar — a fixed pitch axis with the song's sung range drawn on it. INTENTIONALLY DUMB ABOUT MUSIC:
+	// every judgement lives in the contract's pure helpers and arrives as fractions, so this component only paints, and
+	// the same helpers feed the TV without a second copy of the geometry.
 	import { voiceBandZones, rangeBarFractions, AXIS_LOW_MIDI, AXIS_HIGH_MIDI, type SongProfile } from '$lib/contract';
 
 	interface Props {
@@ -29,13 +27,9 @@
 	const frac = $derived(rangeBarFractions(profile, keyShift));
 
 	/*
-	 * The histogram as shaded segments under the block, so a chorus that camps on a high note looks denser
-	 * than a verse that grazes it. Opacity is normalised against the busiest bucket, so the shape reads
-	 * regardless of song length; an absent histogram degrades to a flat fill, which is honest — the range is
-	 * known and only the weighting is not.
-	 *
-	 * The shift is applied HERE too, so the weighting slides in lockstep with the block and the whiskers;
-	 * without it a transposed song shows its density in the wrong place.
+	 * The histogram as shaded segments under the block, so a chorus that camps on a high note looks denser than a verse
+	 * that grazes it. Opacity is normalised against the busiest bucket, so the shape reads regardless of song length; an
+	 * absent histogram degrades to a flat fill. The shift applies HERE too, or a transposed song shades the wrong place.
 	 */
 	const histBars = $derived.by(() => {
 		if (!profile || !profile.histogram || profile.lowMidi === null) return [];
@@ -58,20 +52,16 @@
 </script>
 
 {#if frac}
-	<!--
-		aria-hidden because this is decorative REINFORCEMENT of the readout beside it, which already states the
-		same facts in words — otherwise a screen reader announces an unlabelled graphic repeating what it read.
-	-->
+	<!-- aria-hidden because this is decorative REINFORCEMENT of the readout beside it, which already states the same
+			facts in words — otherwise a screen reader announces an unlabelled graphic repeating what it read. -->
 	<div class="rangebar" aria-hidden="true">
-		<!-- Layer 1: voice-band zones as soft shading. Deliberately faint: it says roughly where you are and
-		     makes no claim. -->
+		<!-- Layer 1: voice-band zones as soft shading. Deliberately faint: it says roughly where you are, no more. -->
 		<div class="zones">
 			{#each zones as z (z.id)}
 				<span class="zone {z.id}" style="left:{z.pctLo}%;width:{z.pctW}%"></span>
 			{/each}
 		</div>
 
-		<!-- The axis hairline the whiskers and block sit on. -->
 		<div class="track"></div>
 
 		<!-- Layer 2: histogram weight, painted under the block so density reads through it. -->
@@ -79,8 +69,7 @@
 			<span class="hist" style="left:{b.leftPct}%;width:{b.widthPct}%;opacity:{b.opacity}"></span>
 		{/each}
 
-		<!-- Layer 3: the WHISKERS — absolute extremes, so one shrieked note lands here. Kept low-key so they
-		     never outshout the block. -->
+		<!-- Layer 3: the WHISKERS — absolute extremes, so one shrieked note lands here. Kept low-key on purpose. -->
 		<span class="whisker" style="left:{frac.lo * 100}%"></span>
 		<span class="whisker" style="left:{frac.hi * 100}%"></span>
 		<span class="whisker-line" style="left:{frac.lo * 100}%;width:{(frac.hi - frac.lo) * 100}%"></span>
@@ -94,13 +83,9 @@
 {/if}
 
 <style>
-	/*
-	 * SUB-TOKEN RADII ARE DELIBERATE: these are drawing geometry inside an aria-hidden chart, not surfaces on
-	 * the app's radius scale, whose smallest step is larger than the hairlines here. Snapping a 2px hairline
-	 * up would round it into a lozenge and change what the strip depicts. The scale governs SURFACES.
-	 *
-	 * Everything positions absolutely off this box, so the helpers' fractions land as percentages directly.
-	 */
+	/* SUB-TOKEN RADII ARE DELIBERATE: these are drawing geometry inside an aria-hidden chart, not surfaces on the app's
+	   radius scale, whose smallest step is larger than the hairlines here — snapping a 2px hairline up rounds it into a
+	   lozenge. Everything positions absolutely off this box, so the helpers' fractions land as percentages directly. */
 	.rangebar {
 		position: relative;
 		height: 34px;
@@ -114,9 +99,8 @@
 		position: absolute;
 		inset: 0;
 	}
-	/* Low voices cool, high voices warm — a rough cue reinforcing the WORDS beside the bar, never the sole
-	   carrier. Washes derived from the accent family, deliberately NOT the singer-colour tokens: those are
-	   identity, and reusing one here would make a chart look like a person. */
+	/* Low voices cool, high voices warm — a rough cue reinforcing the WORDS beside the bar, never the sole carrier.
+	   Washes from the accent family, deliberately NOT the singer-colour tokens: those are identity. */
 	.zone {
 		position: absolute;
 		top: 0;
@@ -138,7 +122,6 @@
 		background: color-mix(in srgb, var(--accent2) 15%, transparent);
 	}
 
-	/* The axis hairline, centred vertically. */
 	.track {
 		position: absolute;
 		left: 0;
@@ -150,8 +133,7 @@
 		border-radius: 3px;
 	}
 
-	/* Above the zones and below the block, so a dense region reads through it as extra saturation.
-	   `min-width` is what stops a sub-pixel column vanishing on a narrow phone. */
+	/* Above the zones and below the block. `min-width` is what stops a sub-pixel column vanishing on a narrow phone. */
 	.hist {
 		position: absolute;
 		top: 6px;
@@ -160,13 +142,9 @@
 		background: var(--accent2);
 	}
 
-	/*
-	 * The solid, confident middle, on top of the histogram shading.
-	 *
-	 * NEVER NAMED `block`: that is one of Tailwind's own utility names and vendored components use it, so the
-	 * class would inherit `display: block` from a utility emitted for something else. This is the third such
-	 * collision in the tree, and the only defence is not to use a utility's name.
-	 */
+	/* The solid, confident middle, on top of the histogram shading. NEVER NAMED `block`: that is one of Tailwind's own
+	   utility names and vendored components use it, so the class would inherit `display: block` from a utility emitted for
+	   something else. This is the third such collision in the tree, and the only defence is not to use a utility's name. */
 	.lives-here {
 		position: absolute;
 		top: 50%;
@@ -178,8 +156,8 @@
 		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 	}
 
-	/* Whiskers: thin vertical ticks at the absolute extremes, joined by a faint connecting line so the
-	   full span reads even where the block is narrow. Deliberately quieter than the block. */
+	/* Thin vertical ticks at the absolute extremes, joined by a faint line so the full span reads even where the block
+	   is narrow. Deliberately quieter than the block. */
 	.whisker {
 		position: absolute;
 		top: 50%;
@@ -202,8 +180,8 @@
 	.axis-ends {
 		display: flex;
 		justify-content: space-between;
-		/* Below the ladder's smallest step, for the same reason the radii here are sub-token: this is chart
-		   furniture on an aria-hidden graphic, and the facts it labels are stated in text beside it. */
+		/* Below the ladder's smallest step, for the same reason the radii are sub-token: this is chart furniture on an
+			   aria-hidden graphic, and the facts it labels are stated in text beside it. */
 		font-size: 0.6rem;
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;

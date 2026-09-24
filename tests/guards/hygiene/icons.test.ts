@@ -1,7 +1,7 @@
-// guard: no functional control is a Unicode codepoint, and no UI-visible string carries an emoji.
-// Caught the transport controls written as U+23EE/U+23F8/U+23ED/U+25B6: those carry
-// Emoji_Presentation=Yes, app.css owns none of them, so iOS's last-resort matcher drew full-colour
-// Apple emoji. Comments are stripped before scanning — several scanned files name these codepoints in prose.
+// guard: no functional control is a Unicode codepoint, and no UI-visible string carries an emoji. Caught the
+// transport controls written as U+23EE/U+23F8/U+23ED/U+25B6: those carry Emoji_Presentation=Yes, app.css owns none
+// of them, so iOS's last-resort matcher drew full-colour Apple emoji. Comments are stripped before scanning —
+// several scanned files name these codepoints in prose.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
@@ -34,15 +34,14 @@ const REPLACED: Record<string, string> = {
 
 const FE0F = '\uFE0F';
 
-// Emoji are banned outright: one codepoint is a different drawing on Apple/Google/Samsung/Windows and a
-// tofu box where no emoji font exists — which is what the TV wordmark rendered as in a screenshot here.
-// An emoji is the one mark whose appearance is never the app's to choose.
+// Emoji are banned outright: one codepoint is a different drawing on Apple/Google/Samsung/Windows and a tofu box
+// where no emoji font exists — the one mark whose appearance is never the app's to choose.
 const EMOJI_RANGES = [
 	[0x1f000, 0x1faff], // pictographs, symbols, transport & map, supplemental
 	[0x2190, 0x21ff], // ARROWS — the glyphs the arrow-* marks replaced; a bare arrow is a platform-drawn cue
 	[0x2600, 0x27bf], // misc symbols + dingbats (☀ ✨ ✅ ➡)
 	[0x2b00, 0x2bff], // misc symbols and arrows
-	// ‹ › only, not the whole block: these two get pressed into service as nav chevrons that chevron-left/right own.
+	// ‹ › only: these two get pressed into service as nav chevrons that chevron-left/right own.
 	[0x2039, 0x203a],
 	[0xfe0f, 0xfe0f] // the emoji-presentation selector itself
 ] as const;
@@ -133,9 +132,8 @@ test('no emoji in any UI-visible string', () => {
 	expect(offenders).toEqual([]);
 });
 
-// Copy in .ts (empty states, toasts) cannot hold a component, so the emoji goes and the sentence stands
-// alone. `lib/server` is excluded: server files hold emoji as DATA — track-title.ts strips them out of
-// scraped titles and its fixtures must keep them.
+// Copy in .ts (empty states, toasts) cannot hold a component, so the emoji goes and the sentence stands alone.
+// `lib/server` is excluded: server files hold emoji as DATA — track-title.ts strips them out of scraped titles.
 test('no emoji in user-facing copy in $lib', () => {
 	const offenders: string[] = [];
 	for (const f of tsFiles(join(SRC, 'lib'))) {

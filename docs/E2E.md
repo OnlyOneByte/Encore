@@ -113,13 +113,13 @@ intermediate moves. A teleporting pointer, or a synthetic click, proves nothing 
 Each of these exists because the knowledge it holds moved and cost N driver edits the last time it
 was inlined.
 
-| Module                        | Holds                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/e2e/lib/join.mjs`      | how joining works. `/` is a two-pane screen: with `?room=CODE` a guest lands on the identity pane, without one on the six-box code pane — and the name field is only on the second. Drivers take the scanned path, reading the code off the TV's attract panel (`SEL.attractCode`), because no endpoint publishes it and the QR hides it in a data URL. Cached per base URL; pass `fresh: true` after restarting a server. |
-| `tests/e2e/lib/phone.mjs`     | the phone's post-join step. Search has been docked on `/`, then its own `/find` route, and is a field at the top of `/` again; ~20 call sites go through `openBrowseFromHome` so each move costs one file.                                                                                                                                                                                                                 |
-| `tests/e2e/lib/chromium.mjs`  | `findChromium()`. PW_CHROMIUM is VALIDATED, not trusted: a set-but-wrong path returns null so the caller bails loudly instead of surfacing as a launch failure.                                                                                                                                                                                                                                                            |
-| `tests/e2e/lib/child.mjs`     | `spawnChild` (piped stdio) and `killChild` (SIGTERM escalating to SIGKILL, polled, no-op on an exited child so a `finally` can call it unconditionally).                                                                                                                                                                                                                                                                   |
-| `tests/e2e/lib/repo-root.mjs` | the repo root, found by walking up for `bunfig.toml` rather than counting `..` hops. Hop-counting encodes a file's distance from the root and broke for six probes when the tree moved under `tests/`. A plain relative import, because drivers run under bare `bun run` where the `@encore/test-support` alias does not resolve.                                                                                          |
+| Module                        | Holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tests/e2e/lib/join.mjs`      | how joining works. `/` is a two-pane screen: with `?room=CODE` a guest lands on the identity pane, without one on the six-box code pane — and the name field is only on the identity pane, so a bare `goto('/')` plus a fill of the name input times out. Drivers take the scanned path, reading the code off the TV's attract panel (`SEL.attractCode`), because no endpoint publishes it and the QR hides it in a data URL. Cached per base URL; pass `fresh: true` after restarting a server. |
+| `tests/e2e/lib/phone.mjs`     | the phone's post-join step. Search has been docked on `/`, then its own `/find` route, and is a field at the top of `/` again; ~20 call sites go through `openBrowseFromHome` so each move costs one file.                                                                                                                                                                                                                                                                                       |
+| `tests/e2e/lib/chromium.mjs`  | `findChromium()`. PW_CHROMIUM is VALIDATED, not trusted: a set-but-wrong path returns null so the caller bails loudly instead of surfacing as a launch failure.                                                                                                                                                                                                                                                                                                                                  |
+| `tests/e2e/lib/child.mjs`     | `spawnChild` (piped stdio) and `killChild` (SIGTERM escalating to SIGKILL, polled, no-op on an exited child so a `finally` can call it unconditionally).                                                                                                                                                                                                                                                                                                                                         |
+| `tests/e2e/lib/repo-root.mjs` | the repo root, found by walking up for `bunfig.toml` rather than counting `..` hops. Hop-counting encodes a file's distance from the root and broke for six probes when the tree moved under `tests/`. A plain relative import, because drivers run under bare `bun run` where the `@encore/test-support` alias does not resolve.                                                                                                                                                                |
 
 ### Reachability
 
@@ -286,18 +286,45 @@ budget runs out; I1/I4/I6 are single-surface and read once.
 | I5  | no entry is both `playing` and waiting, and the phones' rendered rotation agrees with the server's waiting set                                                                               |
 | I6  | `webkitAudioDecodedByteCount` CLIMBS whenever the UI claims to be playing, sampled twice 1.5s apart. The one that cannot be dropped: a run that never evaluated it exits 2 rather than green |
 
+### Fuzzing the room
+
+`bun run e2e:fuzz` boots its own private room on a free port; `EPORT=<port>` drives an already-running one
+and owns nothing it found. The knobs:
+
+| Env                | Does                                                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `FUZZ_SEED=123456` | replay a run input for input. Every random decision goes through the seeded PRNG                            |
+| `FUZZ_INPUTS=24`   | how many inputs after the opening add. Tens, not thousands — a human must replay it                         |
+| `FUZZ_AUTOPLAY=1`  | grant autoplay, and print the literal token NOT-A-TV beside the seed                                        |
+| `FUZZ_PORT=5401`   | host the private room here instead. Bind-tested, so a stranger's Encore on it is refused rather than driven |
+
+Gestureless is the default, so the one real tap is delivered by `realClick` and nothing more. The honest
+consequence, printed in the summary: before that tap the browser refuses autoplay, so I1/I4/I6 report
+SKIPPED with that reason named rather than passing vacuously.
+
+**Where a control has no contract entry the fuzzer does not inline a selector.** The gap is reported on
+stderr at startup and the input goes out as the WIRE COMMAND the control would have sent, from the phone's
+own authenticated socket, which is the same server path. That covers `seek` (no UI control exists at all),
+the key-shift caps, the guiding-track slider and the per-row remove.
+
+`back` is not driven at all — no PlayerCommand, no control, and no previous-entry concept in the server — so
+`restart` stands in for it and the seam is labelled RESTART-THEN-PAUSE in the output, so nobody reads it as
+evidence about a back button.
+
 ### Fault injection
 
 Env vars on `tests/e2e/fake-stems-worker.mjs`, which is how every unhappy path is reached.
 
-| Env                          | Injects                                                                     |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| `FAKE_SILENT_INSTRUMENTAL=1` | floor-level instrumental — the guard must refuse to publish it              |
-| `FAKE_SILENT_VOCALS=1`       | floor-level vocals — must NOT fail the process; the guide track is optional |
-| `FAKE_SKIP_WRITE=1`          | a ref reported for a file never written — the unservable path               |
-| `FAKE_NO_PROFILE=1`          | completion with no `songProfile` — the gate must not deadlock               |
-| `FAKE_FAIL=stems`            | fail that job type instead of completing it                                 |
-| `FAKE_SLOW_MS=1500`          | dwell between progress frames, to watch the processing UI                   |
+| Env                          | Injects                                                                                                                                                                                                                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FAKE_SILENT_INSTRUMENTAL=1` | floor-level instrumental — the guard must refuse to publish it                                                                                                                                                                                                                |
+| `FAKE_SILENT_VOCALS=1`       | floor-level vocals — must NOT fail the process; the guide track is optional                                                                                                                                                                                                   |
+| `FAKE_SKIP_WRITE=1`          | a ref reported for a file never written — the unservable path                                                                                                                                                                                                                 |
+| `FAKE_NO_PROFILE=1`          | completion with no `songProfile` — the gate must not deadlock                                                                                                                                                                                                                 |
+| `FAKE_FAIL=stems`            | fail that job type instead of completing it                                                                                                                                                                                                                                   |
+| `FAKE_SLOW_MS=1500`          | dwell between progress frames, to watch the processing UI                                                                                                                                                                                                                     |
+| `FAKE_NO_VOCALS=1`           | no vocals ref at all — a real state, not a fault: a worker that could not encode vocals reports none and the song stays playable. NOT what disables the guiding track                                                                                                         |
+| `FAKE_GUIDE_MIX=1`           | publish the 4-channel guide MIX. `hasGuidingTrack()` reads `guideMixRef`, not the vocals stem, and this worker publishes no mix by default — so this flag is the only way to reach the ENABLED arm of the slider. Opt-in, so existing probes keep exercising the degraded one |
 
 Singer names are unique per room: reusing one gets a 409 and the join page simply stays put, which
 looks exactly like a broken flow. Use a fresh name per probe.

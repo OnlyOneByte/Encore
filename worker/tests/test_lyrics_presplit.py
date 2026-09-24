@@ -27,10 +27,8 @@ from src.lyrics.grading import (  # noqa: E402
 )
 
 
-# The constants below are declared TWICE — once in TypeScript (the authority) and once in Python (a
-# hand-kept mirror; see grading.py). These tests read the TS SOURCE as text (no node/tsc) and
-# cross-check the Python constant against what the authority actually declares today, so a TS-side
-# drift reds here instead of both sides staying green independently.
+# These read the TS SOURCE as text (no node/tsc) and cross-check the Python mirror against what the
+# authority declares today, so a TS-side drift reds here instead of both sides staying green alone.
 def _repo_root() -> Path:
     """The repo root, by walking up for `bunfig.toml` — the same marker file the TypeScript harness
     locates its own root by, so both sides agree by construction rather than by hop counts kept in
@@ -77,8 +75,7 @@ def _ts_is_authoritative(text_source: str, text_confidence: str) -> bool:
     return text_source != forbidden_source and text_confidence != forbidden_confidence
 
 
-# A synthetic one-line blob, shaped like what whisper `transcribe()` returns: several lyric lines run
-# together. Original text, not a real song.
+# Shaped like whisper `transcribe()` output: several lyric lines run together. Original text.
 BLOB = (
     "I walked the empty harbour road, until the morning came around, and every light behind me "
     "faded out. So tell me where the river goes, when all the bridges burn."
@@ -97,7 +94,7 @@ def test_is_authoritative_text_mirrors_the_ts_predicate():
                 f"Python is_authoritative_text disagrees with the TS authority for "
                 f"source={source!r}, confidence={confidence!r} — the two have drifted"
             )
-    # Known-truth rows, so a bug breaking BOTH sides identically is still caught.
+    # Known-truth rows, so a bug breaking both sides identically is still caught.
     assert is_authoritative_text(SOURCE_LRCLIB, "high")
     assert is_authoritative_text(SOURCE_CAPTIONS, "medium")  # a real human caption track
     assert not is_authoritative_text(SOURCE_ASR, "high")  # ASR is never authoritative, however sure
@@ -130,34 +127,30 @@ def bound_only(lines, max_chars):
     return out
 
 
-# A short authoritative line and a long one on their own segments. The long one is a single human lyric
-# line that overflows a TV row; the short one already fits.
+# One human lyric line that overflows a TV row, and one that already fits.
 LONG_AUTHORITATIVE = "and I will wait right here for you until the very last light goes out tonight"
 
 
 def test_presplit_length_bounds_authoritative_text_INTO_ALIGNER_WINDOWS_not_segments():
-    # Length-bounding LRCLIB synced/plain text must NOT rewrite the source's own line timings: an
-    # over-long authoritative line yields tight per-row ALIGNER WINDOWS (`align_windows`) while
-    # `segments` stay the human lines verbatim, since the line-sync fallback publishes `segments` as
-    # `high` and a character-count-derived boundary shipped there would be a fabricated timestamp.
+    # Length-bounding must NOT rewrite the source's own line timings: an over-long authoritative line
+    # yields tight `align_windows` while `segments` stay verbatim, because the line-sync fallback
+    # publishes `segments` at `high` and a character-derived boundary there is a fabricated timestamp.
     seg = [{"start": 0.0, "end": 8.0, "text": LONG_AUTHORITATIVE, "words": []}]
     lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=seg, timing=TIMING_LINE, text_confidence="high")
     out = lp.presplit_texts([lrclib], bounder=bound_only)
-    # segments: the source's own line, un-subdivided, timing untouched
+    # The source's own line, un-subdivided.
     assert len(out[0].segments) == 1
     assert out[0].segments[0]["text"] == LONG_AUTHORITATIVE
     assert (out[0].segments[0]["start"], out[0].segments[0]["end"]) == (0.0, 8.0)
-    # align_windows: the bounded per-row search hints for the forced aligner
+    # The bounded per-row search hints for the forced aligner.
     assert out[0].align_windows is not None
     assert len(out[0].align_windows) > 1
     assert all(len(w["text"]) <= lp.MAX_LINE_CHARS for w in out[0].align_windows)
 
 
 def test_line_sync_publishes_the_authoritative_source_OWN_timings_not_a_char_count_guess():
-    # The line-sync fallback publishes `line_synced_lyrics(text.segments)` at timingConfidence "high"
-    # ("the source's own timings, unmodified"). If presplit subdivided an over-long authoritative
-    # line, the interior boundary it invents (`start + (chars/total)*span`) is a character count, not
-    # a timestamp, and must never ship as the human source's own.
+    # The fallback publishes `segments` at timingConfidence "high" — the source's own timings,
+    # unmodified — so a subdivided interior boundary would ship a character count as a timestamp.
     from src.lyrics.lrc import line_synced_lyrics
 
     over_long = "I walked the empty harbour road until the very morning came around again"  # > MAX_LINE_CHARS
@@ -172,16 +165,14 @@ def test_line_sync_publishes_the_authoritative_source_OWN_timings_not_a_char_cou
     published_starts = [line["start"] for line in doc["lines"]]
     # The source authored exactly two lines at 10.0 and 34.0; nothing between them was invented.
     assert published_starts == [10.0, 34.0]
-    # No published boundary sits strictly inside the first line's [10, 34] window — that is exactly
-    # where a proportional-char subdivision guess would land (the bug published ~[10, 23.9, 34]).
+    # No published boundary sits strictly inside [10, 34], where a proportional-char guess would land.
     assert not any(10.0 < s < 34.0 for s in published_starts)
-    # The aligner still gets tight windows to search — the bounded pieces are not lost, only rerouted.
+    # The bounded pieces are not lost, only rerouted to the aligner.
     assert out[0].align_windows is not None and len(out[0].align_windows) > 1
 
 
 def test_presplit_does_NOT_run_the_semantic_splitter_on_authoritative_text():
-    # Length bounding runs on every tier, but the semantic re-lineator (comma/opener/sentence rules)
-    # must NOT touch human-authored lines.
+    # Length bounding runs on every tier; the semantic re-lineator must NOT touch human-authored lines.
     rich = "I walked the harbour road, and every light faded. So tell me where it goes"
     assert len(lp.boundary_split(rich)) > 1  # boundary_split WOULD split this
     seg = [{"start": 0.0, "end": 8.0, "text": rich, "words": []}]
@@ -220,8 +211,7 @@ def test_bound_blob_text_preserves_provenance_and_does_not_mutate_input():
 
 
 def test_bound_blob_text_passes_a_WORD_TIMED_authoritative_segment_through_whole():
-    # A synced LRC line that already carries word timings must not be re-partitioned: splitting the
-    # text would orphan the timings from the words.
+    # Re-partitioning a line that already carries word timings would orphan them from the words.
     seg = {
         "start": 0.0,
         "end": 8.0,
@@ -268,9 +258,8 @@ def test_the_conjunction_set_is_case_insensitive(conj):
 
 
 def test_a_BARE_comma_is_SPENT_ONLY_on_a_line_that_does_not_fit():
-    # A comma is weaker evidence than a sentence end or opener, so it buys a break only where there
-    # is a problem to solve. MEASURED on 171 real over-long ASR lines: this took the share fully
-    # resolved with no bisection from 3% to 47%.
+    # A comma is weaker evidence than a sentence end or an opener, so it buys a break only where there
+    # is a problem to solve.
     fits = "I walked the harbour road, alone"
     assert lp.boundary_split(fits) == [fits]  # 32 chars — one row, leave it whole
     assert lp.boundary_split("I walked the empty harbour road, until the morning came around again") == [
@@ -289,8 +278,8 @@ def test_a_capitalised_OPENER_breaks_a_line_that_has_no_punctuation_at_all():
 
 
 def test_a_capitalised_PROPER_NOUN_is_not_a_boundary():
-    # Why `_LINE_OPENERS` is a closed set: splitting every lowercase->Capital transition would break
-    # these two real-corpus lines mid-phrase. Neither "Africa" nor "London" opens a lyric line.
+    # Why `_LINE_OPENERS` is a CLOSED set: splitting every lowercase->Capital transition breaks these
+    # two real-corpus lines mid-phrase.
     assert lp.boundary_split("I bless the rains down in Africa tonight") == [
         "I bless the rains down in Africa tonight"
     ]
@@ -300,8 +289,7 @@ def test_a_capitalised_PROPER_NOUN_is_not_a_boundary():
 
 
 def test_a_STRANDED_fragment_is_folded_into_the_phrase_it_opens():
-    # Two individually-reasonable rules firing in sequence (", but" then a capital "I") stranded
-    # "but still" on a 9-char row of its own, with "I lose my mind" beneath it.
+    # Two individually-reasonable rules firing in sequence strand "but still" on a 9-char row.
     assert lp.boundary_split("I must confess, but still I lose my mind") == [
         "I must confess,",
         "but still I lose my mind",
@@ -309,8 +297,7 @@ def test_a_STRANDED_fragment_is_folded_into_the_phrase_it_opens():
 
 
 def test_coalescing_never_reaches_across_a_full_STOP():
-    # "faded out." is short but it is a real lyric line; gluing it to the next sentence because the pair
-    # happens to fit would be a worse read, so coalescing is scoped per sentence.
+    # Gluing a short real lyric line to the next sentence reads worse, so coalescing is per sentence.
     assert lp.boundary_split("faded out. So tell me where it goes.") == [
         "faded out.",
         "So tell me where it goes.",
@@ -318,14 +305,13 @@ def test_coalescing_never_reaches_across_a_full_STOP():
 
 
 def test_a_fragment_with_nowhere_to_fit_is_KEPT_not_dropped():
-    # Neither neighbour can absorb it without blowing the row budget. Keeping a short row beats
-    # deleting words from the screen.
+    # Neither neighbour can absorb it within the row budget, and a short row beats deleting words.
     out = lp.boundary_split("I need to know right now this very moment. Oh. Tell me all about it please")
     assert "Oh." in out
 
 
 def test_conservative_when_there_is_nothing_unambiguous_to_split_on():
-    # Exactly the unpunctuated shape whisper returns. We add nothing; length bounding is upstream's job.
+    # The unpunctuated shape whisper returns. Nothing is added; length bounding is upstream's job.
     line = "i walked the empty harbour road until the morning came around"
     assert lp.boundary_split(line) == [line]
 
@@ -340,8 +326,7 @@ def test_empty_and_whitespace_yield_nothing():
 
 
 def test_the_full_blob_lands_on_its_real_lyric_lines():
-    # Every break here is a true lyric boundary, and every line fits a row without upstream bisecting
-    # anything — which is the whole point of doing the semantic pass BEFORE the length bounder.
+    # Every line fits without upstream bisecting anything, which is why the semantic pass runs FIRST.
     out = lp.boundary_split(BLOB)
     assert out == [
         "I walked the empty harbour road,",
@@ -382,8 +367,7 @@ def test_a_segment_with_no_numeric_bounds_keeps_its_missing_bounds():
 
 
 def test_a_WORD_TIMED_segment_is_passed_through_whole():
-    # Splitting the text would orphan the word timings from the words they belong to. Measured: whisper
-    # transcribe() returns no word timings, so this is a guard against a case that shouldn't arise.
+    # Splitting would orphan the word timings from their words.
     seg = {"start": 0.0, "end": 8.0, "text": BLOB, "words": [{"word": "I", "start": 0.0, "end": 0.2}]}
     asr = LyricsText(text_source=SOURCE_ASR, segments=[seg], timing=TIMING_WORD, text_confidence="low")
     assert lp.split_blob_text(asr, bounder=passthrough).segments == [seg]
@@ -440,8 +424,8 @@ def test_a_bounder_that_splits_further_is_honoured():
 
 
 def test_bound_lines_is_a_NO_OP_when_upstream_is_absent(monkeypatch):
-    # The dependency is genuinely optional: the boundary split still ran, and the TV's LINE_MAX_CHARS
-    # fallback still bounds a row. A missing package must not cost us the lineation we can do ourselves.
+    # The dependency is genuinely optional: a missing package must not cost the lineation we can do
+    # ourselves, and the LINE_MAX_CHARS fallback still bounds a row.
     monkeypatch.setattr(lp, "_KLP", None)
     lines = ["a line that upstream would otherwise have to bound because it is rather long indeed"]
     assert lp.bound_lines(lines) == lines
@@ -457,8 +441,8 @@ def test_a_raising_upstream_degrades_to_the_unbounded_lines(monkeypatch):
 
 
 def test_max_line_chars_mirrors_the_tv_row_width():
-    # LINE_MAX_CHARS in src/lib/tv/lyrics.ts is the authority; narrowing the TV row on that side must
-    # red here instead of silently re-splitting at display time. Explicitly NOT upstream's default of 36.
+    # src/lib/tv/lyrics.ts is the authority: narrowing the TV row there must red HERE rather than
+    # silently re-split at display time. Explicitly NOT upstream's default of 36.
     assert lp.MAX_LINE_CHARS == _ts_number(_TV_LYRICS_TS, "LINE_MAX_CHARS")
 
 
@@ -468,23 +452,20 @@ def test_real_upstream_bounds_an_over_long_line_and_isolates_parentheses():
     lines = lp.bound_lines(["and I will wait right here for you at seventeen (ooh, ooh)"], 42)
     assert all(len(ln) <= 42 for ln in lines)
     assert "(ooh, ooh)" in lines  # nested-paren isolation is the half upstream does well
-    # and the handler it attaches to its module logger does not accumulate across calls
+    # The handler it attaches to its module logger must not accumulate across calls.
     import logging
 
     lp.bound_lines(["another line"], 42)
     assert len(logging.getLogger("karaoke_lyrics_processor.karaoke_lyrics_processor").handlers) == 0
 
 
-# A second over-long human line, distinct from LONG_AUTHORITATIVE, to stand in as a losing LRCLIB
-# version attached as an alternate. Both overflow a TV row (len > MAX_LINE_CHARS = 42).
+# A second over-long human line, standing in as a losing LRCLIB version attached as an alternate.
 LONG_ALTERNATE = "so hold my hand and don't you ever let it go no matter what the morning brings us now"
 
 
 def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
-    # presplit runs BEFORE select_by_baselines, which grades `[cand, *cand.alternates]` and may
-    # publish an alternate (the version that best matches what was heard wins). If presplit only
-    # bounded the top-level list, an alternate winner would reach the aligner with
-    # align_windows=None and get re-split by display-time char count instead.
+    # presplit runs BEFORE select_by_baselines, which may publish an ALTERNATE. Bounding only the
+    # top-level list leaves an alternate winner at align_windows=None, re-split by display-time chars.
     assert len(LONG_ALTERNATE) > lp.MAX_LINE_CHARS  # the fixture actually overflows a row
     cand = LyricsText(
         text_source=SOURCE_LRCLIB,
@@ -502,7 +483,7 @@ def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
 
     out = lp.presplit_texts([cand], bounder=bound_only)
 
-    # Top-level still bounded (proves the run did the ordinary work).
+    # Top-level still bounded, proving the run did the ordinary work.
     assert out[0].align_windows is not None and len(out[0].align_windows) > 1
     # The alternate is bounded too.
     assert len(out[0].alternates) == 1
@@ -510,8 +491,7 @@ def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
     assert alt_out.align_windows is not None
     assert len(alt_out.align_windows) > 1
     assert all(len(w["text"]) <= lp.MAX_LINE_CHARS for w in alt_out.align_windows)
-    # The alternate's own segments stay the source's verbatim line (bounding produces windows, not a
-    # segment rewrite — same invariant as the top-level).
+    # Bounding produces windows, never a segment rewrite — the same invariant as the top-level.
     assert len(alt_out.segments) == 1
     assert alt_out.segments[0]["text"] == LONG_ALTERNATE
     # And the fence is a fresh object, not the untouched input alternate.
@@ -519,9 +499,8 @@ def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
 
 
 def test_presplit_leaves_a_SHORT_alternate_unwindowed_246():
-    # The fence is honest, not blanket: an alternate whose line already fits a row gets align_windows
-    # left None, exactly as a short top-level text would. This pins that we route alternates through
-    # the SAME fence (which no-ops on short/authoritative text) rather than force-bounding them.
+    # The fence is honest, not blanket: alternates go through the SAME fence, which no-ops on short or
+    # authoritative text, rather than being force-bounded.
     short = "a short line that fits"
     assert len(short) <= lp.MAX_LINE_CHARS
     cand = LyricsText(
@@ -544,10 +523,9 @@ def test_presplit_leaves_a_SHORT_alternate_unwindowed_246():
     assert out[0].alternates[0].align_windows is None
 
 
-# "Package absent", "stub broke on import", and "no line was over-long" (a legitimate no-op of a
-# WORKING package) must be THREE distinguishable observations, not one collapsed `_KLP = None` — klp
-# is installed --no-deps on the deploy box and absent on the dev box, so a broken-import regression
-# on deploy would otherwise look identical to the always-absent dev box.
+# "Absent", "broke on import" and "nothing was over-long" must stay THREE distinguishable
+# observations: klp is installed on the deploy box and absent on the dev box, so a broken-import
+# regression on deploy would otherwise look identical to the always-absent dev box.
 
 
 def _reset_klp_cache(monkeypatch):
@@ -558,8 +536,7 @@ def _reset_klp_cache(monkeypatch):
 
 
 def test_klp_status_ABSENT_when_the_package_is_not_installed(monkeypatch):
-    # find_spec says None AND the import raises ModuleNotFoundError -> not installed. This is the
-    # normal dev-box state and an EXPECTED degrade, not a fault.
+    # Not installed: the normal dev-box state, an EXPECTED degrade rather than a fault.
     _reset_klp_cache(monkeypatch)
     monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _name: None)
     monkeypatch.delitem(sys.modules, "karaoke_lyrics_processor", raising=False)
@@ -571,14 +548,12 @@ def test_klp_status_ABSENT_when_the_package_is_not_installed(monkeypatch):
 
 
 def test_klp_status_BROKEN_when_installed_but_the_import_raises(monkeypatch):
-    # find_spec finds it (installed) but importing raises (a shim/version regression). This is the
-    # one an operator MUST be able to see, because on base it is indistinguishable from "absent".
+    # Installed but failing to import — the one an operator MUST be able to tell from "absent".
     _reset_klp_cache(monkeypatch)
     # Pretend the package IS installed...
     monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _name: object())
 
-    # ...but importing it raises. A module object whose attribute access raises makes
-    # `from karaoke_lyrics_processor import KaraokeLyricsProcessor` fail at the attribute bind.
+    # ...but importing raises: an attribute-raising module fails at the attribute bind.
     class _Broken(types.ModuleType):
         def __getattr__(self, _n):
             raise ImportError("stub broke: KaraokeLyricsProcessor renamed upstream")
@@ -592,7 +567,7 @@ def test_klp_status_BROKEN_when_installed_but_the_import_raises(monkeypatch):
 
 
 def test_klp_status_AVAILABLE_when_it_imports(monkeypatch):
-    # find_spec finds it and the class imports -> available. bound_lines will actually run.
+    # Available: bound_lines will actually run.
     _reset_klp_cache(monkeypatch)
     monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _name: object())
 
@@ -610,7 +585,7 @@ def test_klp_status_AVAILABLE_when_it_imports(monkeypatch):
 
 
 def test_the_three_klp_outcomes_are_ALL_DISTINGUISHABLE(monkeypatch):
-    # absent, broken and available must yield three DIFFERENT status strings, not one silent `None`.
+    # Three DIFFERENT status strings, never one silent `None`.
     def _status_for(*, spec, module):
         _reset_klp_cache(monkeypatch)
         monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _n: spec)
@@ -635,8 +610,7 @@ def test_the_three_klp_outcomes_are_ALL_DISTINGUISHABLE(monkeypatch):
 
 
 def test_klp_probe_line_names_the_resolved_state(monkeypatch):
-    # The startup line an operator reads (wired into dial_home._run_forever next to the other probed
-    # lines). It must carry the resolved status word, not a bare "disabled".
+    # The startup line an operator reads: it must carry the resolved status word, not "disabled".
     _reset_klp_cache(monkeypatch)
     monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _name: None)
     monkeypatch.delitem(sys.modules, "karaoke_lyrics_processor", raising=False)
@@ -647,10 +621,9 @@ def test_klp_probe_line_names_the_resolved_state(monkeypatch):
 
 
 def test_bound_blob_text_emits_align_window_opens_mapping_each_segment_to_its_opening_window():
-    # presplit KNOWS the segment->window map as it subdivides, so it emits `align_window_opens`
-    # (the index of each human segment's OPENING window) beside `align_windows`. The consumer then uses
-    # this exact map instead of re-deriving it by float-equality on window starts — a re-derivation that
-    # strands every later line the moment one start fails to match to 1e-6.
+    # presplit KNOWS the segment->window map as it subdivides, so it emits `align_window_opens` beside
+    # `align_windows`. The consumer uses that exact map instead of re-deriving by float-equality, which
+    # strands every later line the moment one start misses by 1e-6.
     segs, t = [], 0.0
     for i in range(4):
         txt = f"a very long human authored karaoke lyric line that overflows a tv row number {i} here"
@@ -662,8 +635,7 @@ def test_bound_blob_text_emits_align_window_opens_mapping_each_segment_to_its_op
     assert out.align_window_opens is not None
     # one open per human segment...
     assert len(out.align_window_opens) == len(out.segments)
-    # ...strictly increasing, first at 0, and each opening window's start equals its segment's start
-    # (the opening window is the one carrying the source's own timestamp).
+    # ...strictly increasing from 0, and each opening window carries its segment's own timestamp.
     assert out.align_window_opens[0] == 0
     assert out.align_window_opens == sorted(out.align_window_opens)
     for seg_i, win_i in enumerate(out.align_window_opens):
@@ -671,8 +643,7 @@ def test_bound_blob_text_emits_align_window_opens_mapping_each_segment_to_its_op
 
 
 def test_bound_blob_text_leaves_opens_None_when_no_line_overflows():
-    # When nothing overflows a row, align_windows is None (the aligner searches segments as-is), so the
-    # opens map is None too — there are no windows to index into.
+    # Nothing overflows, so align_windows is None and there are no windows for the map to index.
     seg = {"start": 0.0, "end": 4.0, "text": "and I will wait for you", "words": []}
     lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=[seg], timing=TIMING_LINE, text_confidence="high")
     out = lp.bound_blob_text(lrclib, bounder=bound_only)

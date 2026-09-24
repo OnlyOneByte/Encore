@@ -1,10 +1,7 @@
-// A synthetic `el.click()` through evaluate dispatches an UNTRUSTED event and grants NO user activation, so it
-// can never unblock autoplay. Caught: every click verb in the driver was synthetic, leaving tap-to-start — the
-// only route out of a silent TV — with zero e2e coverage. Both halves are pinned because either alone ships
-// green: the driver needs a trusted-gesture `realClick`, and a probe must actually call it.
-//
-// Probes under tests/e2e/probes/ are live-server .mjs scripts nothing in `bun test` invokes, so the driver's and
-// probe's own text is the subject. Comments blanked, since prose describes the old synthetic behaviour.
+// guard: a synthetic `el.click()` through evaluate dispatches an UNTRUSTED event and grants NO user
+// activation, so it can never unblock autoplay. Caught: every click verb in the driver was synthetic,
+// leaving tap-to-start — the only route out of a silent TV — with zero e2e coverage. Both halves are pinned
+// because either alone ships green: the driver needs a trusted-gesture `realClick`, and a probe must call it.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 

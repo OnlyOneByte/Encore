@@ -1,16 +1,8 @@
-<!--
-	CodeEntry — the typed join path. One box per character rather than a free text field: the segment count
-	teaches the format without an instruction line, and the boxes enforce the SERVER's restricted alphabet from
-	the one shared copy, so a character the server would reject is refused at the keystroke.
-
-	The duties here are SC 3.3.1 (a rejected character states WHY, in words) and SC 3.3.2 (the disabled CTA has
-	a text reason). The group is ONE accessible name and the boxes are ONE tab stop with arrow and backspace
-	movement between them, so a keyboard or switch user tabs into the code once rather than once per box.
-
-	KNOWN HAZARD for a probe author, not a defect here: Svelte 5's `bind:value` on a rune does not pick up
-	synthetic CDP input, so a probe must dispatch REAL key and paste events or the field reads as empty and the
-	CTA as correctly disabled.
--->
+<!-- CodeEntry — the typed join path. One box per character rather than a free text field: the segment count teaches
+	the format without an instruction line, and the boxes enforce the SERVER's restricted alphabet from the one shared
+	copy. The duties are SC 3.3.1 (a rejected character states WHY, in words) and SC 3.3.2; the group is ONE accessible
+	name and ONE tab stop. KNOWN HAZARD for a probe author, not a defect here: Svelte 5's `bind:value` on a rune does not
+	pick up synthetic CDP input, so a probe must dispatch REAL key and paste events or the field reads as empty. -->
 <script lang="ts">
 	import { CODE_LENGTH, isRoomCodeChar, normalizeRoomCodeInput, CODE_EXCLUDED_NOTE } from '$lib/contract';
 
@@ -19,19 +11,15 @@
 		value: string;
 		/** Accessible name for the whole six-box group. */
 		label?: string;
-		/**
-		 * Fired when every box is filled, and IT MUST CARRY THE CODE: `value` reaches the parent through the
-		 * `$effect` below, on the NEXT tick, while every call to this fires synchronously from inside an input
-		 * handler. A parent reading its own binding here sees the code one character short and returns
-		 * silently, so the last keystroke and a whole-code paste both do nothing.
-		 */
+		/** Fired when every box is filled, and IT MUST CARRY THE CODE: `value` reaches the parent through the `$effect`
+		 * below, on the NEXT tick, while every call to this fires synchronously from inside an input handler. A parent
+		 * reading its own binding here sees the code one character short and returns silently. */
 		oncomplete?: (code: string) => void;
 	}
 	let { value = $bindable(''), label = 'Room code', oncomplete }: Props = $props();
 
-	// THE BOXES ARE THE SOURCE OF TRUTH and `value` is derived from them, so a parent binding always equals
-	// what is on screen. A per-box array rather than slicing `value` keeps the caret and the DOM element list
-	// stable across re-renders.
+	// THE BOXES ARE THE SOURCE OF TRUTH and `value` is derived from them, so a parent binding always equals what is on
+	// screen. A per-box array rather than slicing `value` keeps the caret and the DOM element list stable.
 	const seed = normalizeRoomCodeInput(value);
 	let chars = $state<string[]>(Array.from({ length: CODE_LENGTH }, (_, i) => seed[i] ?? ''));
 	let inputs: HTMLInputElement[] = $state([]);
@@ -46,11 +34,9 @@
 	const filled = $derived(chars.filter((c) => c !== '').length);
 	const complete = $derived(filled === CODE_LENGTH);
 
-	/**
-	 * What the code WILL be once box `i` holds `ch` — PROJECTED, never read back: the insert path has to know
-	 * whether this keystroke completes the code in the same synchronous turn that handles it, and reading a
-	 * `$derived` after a write in that turn is the assumption that made the last keystroke inert.
-	 */
+	/** What the code WILL be once box `i` holds `ch` — PROJECTED, never read back: the insert path has to know whether
+	 * this keystroke completes the code in the same synchronous turn that handles it, and reading a `$derived` after a
+	 * write in that turn is the assumption that made the last keystroke inert. */
 	function withChar(i: number, ch: string): string {
 		const next = [...chars];
 		next[i] = ch;
@@ -116,16 +102,15 @@
 		}
 	}
 
-	// A whole-code paste into ANY box fills every box: the code is copied off the TV as one string, so making
-	// the guest place each character defeats the paste. Normalised through the same shared filter.
+	// A whole-code paste into ANY box fills every box: the code is copied off the TV as one string. Same shared filter.
 	function onPaste(e: ClipboardEvent, i: number) {
 		const raw = e.clipboardData?.getData('text') ?? '';
 		const cleaned = normalizeRoomCodeInput(raw);
 		if (!cleaned) return; // nothing usable — let the native paste no-op
 		e.preventDefault();
 		const next = [...chars];
-		// A single character lands in the focused box; a longer paste fills from the START, which is what a
-		// whole-code paste means regardless of which box was focused.
+		// A single character lands in the focused box; a longer paste fills from the START, which is what a whole-code paste
+		// means regardless of which box was focused.
 		if (cleaned.length === 1) {
 			next[i] = cleaned;
 			chars = next;
@@ -145,8 +130,8 @@
 <div class="code-entry" role="group" aria-labelledby="code-entry-label">
 	<span id="code-entry-label" class="code-label">{label}</span>
 	<div class="segments">
-		<!-- `name` is purely the identity the platform asks for — without it the browser reports a missing
-		     id-or-name once per box on the first screen of the app. Autofill is already declined. -->
+		<!-- `name` is purely the identity the platform asks for — without it the browser reports a missing id-or-name once
+				per box on the first screen of the app. Autofill is already declined. -->
 		{#each chars as ch, i (i)}
 			<input
 				bind:this={inputs[i]}
@@ -166,14 +151,9 @@
 		{/each}
 	</div>
 
-	<!--
-		THE REJECTION REASON ONLY (SC 3.3.1), on one polite live region so a refused keystroke is announced
-		without interrupting typing. No progress count: the boxes ARE the progress indicator, and the SC 3.3.2
-		duty is discharged by the CTA's own reason.
-
-		The region STAYS MOUNTED rather than being conditional markup, so a rejection announces on a live region
-		assistive tech is already watching instead of one that appears at the moment it speaks.
-	-->
+	<!-- THE REJECTION REASON ONLY (SC 3.3.1), on one polite live region so a refused keystroke is announced without
+			interrupting typing. No progress count: the boxes ARE the progress indicator. The region STAYS MOUNTED rather than
+			being conditional markup, so a rejection announces on a region assistive tech is already watching. -->
 	<p class="code-note" role="status" aria-live="polite">
 		{#if rejection}
 			{rejection}
@@ -194,8 +174,8 @@
 		text-transform: uppercase;
 		color: var(--ink-dim);
 	}
-	/* The boxes size to the row rather than to a fixed width, so they fit a narrow phone and grow on a wider
-	   one without ever wrapping mid-code. */
+	/* The boxes size to the row rather than to a fixed width, so they fit a narrow phone and grow on a wider one
+	   without ever wrapping mid-code. */
 	.segments {
 		display: flex;
 		gap: var(--space-sm);

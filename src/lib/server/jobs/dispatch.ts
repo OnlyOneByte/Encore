@@ -1,7 +1,5 @@
-// Pure dispatch policy (§4) — no DB, no IO, no sockets. Decides which queued job goes to which
-// worker, honoring capability match, least-loaded selection, and need-order (priority = the
-// rotationSeq of the soonest queue entry that needs this media; lower = sooner). The I/O wrapper
-// (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
+// Pure dispatch policy — no DB, no IO, no sockets. Capability match, least-loaded selection, and
+// need-order (priority = the rotationSeq of the soonest entry needing this media; lower = sooner).
 
 import type { Job, JobParams, JobType, Media, GlobalSettings } from '../../contract';
 import {
@@ -19,12 +17,7 @@ import {
 import type { WorkerSession } from './registry';
 import { parseTrackTitle } from '../media/track-title';
 
-/** The jobs a just-completed job should enqueue next, PURE. `fetch → stems → align` is CHAINED, not
- *  enqueued up front, because each step's input (bytes on disk, then the vocals stem) doesn't exist
- *  until the previous step finishes — enqueueing together would race producer and consumer for the
- *  same cores. `align` is the pipeline's last required step. `stems-upgrade` is an optional extra
- *  chain: it runs from retained audio (CPU only, no re-download), gated on a setting since it's
- *  background work on an already-finished song, and `markMediaReady` still gates whether it publishes. */
+/** PURE. Follow-ups CHAIN and are never enqueued together — see docs/SERVER.md#idempotency-and-the-process-cap. */
 export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[] {
 	if (jobType === 'fetch') return ['stems'];
 	if (jobType !== 'stems') return [];
@@ -42,11 +35,9 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
 }
 
 /**
- * The inputs a job of this type needs, derived from its media. PURE — no DB, no clock. An align job
- * gets the CANONICAL artist/title only when the normalizer was confident — an absent key tells the
- * worker "no authoritative lookup is possible, transcribe instead" rather than sending a raw uploader
- * string as if it were an answer. `fetch` is the deliberate exception and takes the guess too, since
- * MusicBrainz refuses a disagreement rather than answering with its nearest match (see annotationKeys).
+ * PURE — no DB, no clock. An align job gets CANONICAL artist/title only when the normalizer was
+ * confident: an ABSENT key tells the worker "no authoritative lookup is possible, transcribe instead",
+ * where a raw uploader string would look like an answer. `fetch` is the deliberate exception.
  */
 export function assignParams(jobType: JobType, media: Media | undefined, settings?: GlobalSettings): JobParams {
 	const fetcher = media ? fetcherFor(media.source, settings?.defaultFetcher) : DEFAULT_FETCHER;
@@ -66,16 +57,14 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 		};
 	}
 	if (jobType !== 'align') return { fetcher };
-	// Falls back to the pre-settings hardcoded values, so an align job with no settings behaves as before.
 	return {
 		fetcher,
 		asrModel: settings?.asrModel ?? DEFAULT_ASR_MODEL,
 		syncMode: settings?.syncMode ?? DEFAULT_SYNC_MODE,
 		...lookupKeys(media),
-		// A HUMAN re-pick: when the song carries a lyrics override, align must RE-TIME that exact
-		// candidate rather than re-select, or it could discard the very candidate the user chose.
-		// `pinnedText` only ever rides inside this block (never alone) since it's meaningless without
-		// `pinnedRef` to name — present only for a pasted pick; a stored-candidate pick sends the ref alone.
+		// With an override the align must RE-TIME that exact candidate, never re-select, or it can discard
+		// the candidate the human chose. `pinnedText` rides ONLY inside this block: it is meaningless
+		// without a `pinnedRef` to name.
 		...(media?.lyricsOverrideRef
 			? {
 					pinnedRef: media.lyricsOverrideRef,
@@ -86,18 +75,15 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 }
 
 /**
- * The confidence-gated lookup keys a metadata call needs: canonical artist/title only when the parse
- * was confident, plus duration whenever it is real.
- *
- * Used by `align` (LRCLIB), whose trap is that a lookup on a guessed title returns nothing, or another
- * song's words, and the second is worse. An absent key is the signal to decline; a raw uploader string
- * would look like an answer. `fetch` starts from these and then goes further — see annotationKeys.
+ * Canonical artist/title only when the parse was confident, plus duration whenever it is real. `align`'s
+ * trap is that a lookup on a guessed title returns nothing or ANOTHER SONG'S words, and the second is
+ * worse — so an absent key is the signal to decline.
  */
 function lookupKeys(media: Media | undefined): Partial<JobParams> {
 	const out: Partial<JobParams> = {};
 	if (media?.artistCanonical) out.artist = media.artistCanonical;
 	if (media?.titleCanonical) out.track = media.titleCanonical;
-	// NOT a lookup key: rides along so the worker can RANK records of the same song (guest verse vs not).
+	// NOT a lookup key: rides along so the worker can RANK records of the same song.
 	if (media?.artistCredit && media.artistCredit !== media.artistCanonical) out.artistCredit = media.artistCredit;
 	if (media && Number.isFinite(media.durationSec) && media.durationSec > 0) {
 		out.durationSec = media.durationSec;
@@ -105,19 +91,15 @@ function lookupKeys(media: Media | undefined): Partial<JobParams> {
 	return out;
 }
 
-/** Keys `fetch`'s MusicBrainz step searches with: confident canonicals when they exist, else the
- *  normalizer's UNCONFIDENT guess — unlike `lookupKeys`'s callers, safe ONLY here because of what each
- *  consumer does with a wrong key. MusicBrainz's `pick_best` requires the match to AGREE on artist AND
- *  title (and be within 5s on length), so a wrong guess produces no match and writes nothing — the same
- *  outcome as not asking. LRCLIB instead returns the closest record it has, which for align's wrong key
- *  would be another song's words, so align never gets the unconfident guess. The parse is re-run here
- *  rather than stored, since a low-confidence twin of the persisted canonical columns would be a trap
- *  for the next reader. */
+/** Takes the normalizer's UNCONFIDENT guess where `lookupKeys` refuses to, and that is safe ONLY here:
+ *  MusicBrainz's `pick_best` requires agreement on artist AND title, so a wrong guess writes nothing,
+ *  while LRCLIB returns its closest record — another song's words. The parse is re-run rather than
+ *  stored, since a low-confidence twin of the persisted canonical columns would be a trap. */
 function annotationKeys(media: Media | undefined): Partial<JobParams> {
 	const out = lookupKeys(media);
 	if (!media || (out.artist && out.track)) return out;
-	// media.artist is the UPLOADER, the right fallback answer except on an aggregator channel, which
-	// yields a null artist instead — so this never asks MusicBrainz about a lyrics channel.
+	// media.artist is the UPLOADER. An aggregator channel yields null instead, so this never asks
+	// MusicBrainz about a lyrics channel.
 	const guess = parseTrackTitle(media.title, media.artist);
 	if (!out.artist && guess.artist) out.artist = guess.artist;
 	// Only worth sending alongside an artist: the worker declines unless it has both.
@@ -125,23 +107,18 @@ function annotationKeys(media: Media | undefined): Partial<JobParams> {
 	return out;
 }
 
-/** Only separation publishes a playable instrumental. Calling `markMediaReady` for a `fetch`
- *  completion would derive an instrumental key for a file that doesn't exist yet and mark the media
- *  `ready` regardless — the TV then loads a 404 for any song whose separation hasn't landed. */
+/** Only separation publishes a playable instrumental: `markMediaReady` on a `fetch` completion would
+ *  derive a key for a file that does not exist yet and mark the media ready anyway, 404ing the TV. */
 export function publishesInstrumental(jobType: JobType): boolean {
 	return jobType === 'stems' || jobType === 'stems-upgrade';
 }
 
-/** Whether a follow-up step belongs to the SAME process as the job that triggered it. `fetch → stems →
- *  align` is one run and shares a process id (see docs/ARCHITECTURE.md §7). `stems-upgrade` does NOT:
- *  it is background work on an already-finished song, and inheriting the process id would fold its own
- *  duration into a process that already delivered a singable song, corrupting the e2e average. */
+/** Controls the process id AND singer attribution together — see docs/SERVER.md#idempotency-and-the-process-cap. */
 export function inheritsProcess(next: JobType): boolean {
 	return next !== 'stems-upgrade';
 }
 
-/** Engine+model a completed separation job used, for `markMediaReady`'s quality comparison before
- *  swapping a published instrumental. Non-separation jobs return undefined. */
+/** For `markMediaReady`'s quality comparison. Non-separation jobs return undefined. */
 export function separatorFor(
 	jobType: JobType,
 	settings?: GlobalSettings
@@ -163,10 +140,8 @@ export interface Assignment {
 	workerId: string;
 }
 
-/** The worker CAPABILITY a job requires. PURE. A separation job's capability is engine-derived (a
- *  roformer process needs `stems:roformer` and must NOT go to a demucs-only worker); everything else
- *  is named after its job type. With no `settings`, falls back to the default engine's capability
- *  (plain `'stems'` for demucs) so existing single-capability workers keep matching. */
+/** PURE. A separation job's capability is ENGINE-derived: a roformer process needs `stems:roformer` and
+ *  must NOT go to a demucs-only worker. With no `settings`, falls back to the default engine's. */
 export function requiredCapability(jobType: JobType, settings?: GlobalSettings): string {
 	if (jobType === 'fetch') {
 		return getFetcher(settings?.defaultFetcher ?? DEFAULT_FETCHER)?.capability ?? `fetch:${DEFAULT_FETCHER}`;
@@ -178,8 +153,7 @@ export function requiredCapability(jobType: JobType, settings?: GlobalSettings):
 	return jobType;
 }
 
-/** Resolves the capability a job needs. Defaults to the job's own type so callers that don't care
- *  about engine routing (older tests) behave exactly as before. */
+/** Defaults to the job's own type, for callers that do not care about engine routing. */
 export type CapabilityFor = (job: Pick<Job, 'jobType'>) => string;
 const defaultCapabilityFor: CapabilityFor = (job) => job.jobType;
 
@@ -188,17 +162,14 @@ function eligible(worker: WorkerSession, job: Job, capabilityFor: CapabilityFor 
 	return worker.slotsFree > 0 && worker.capabilities.includes(capabilityFor(job));
 }
 
-/** PURE and greedy: take the highest-priority queued job, give it to the least-loaded eligible worker,
- *  decrement its slots locally, repeat.
- *    next_job = queued.order_by(priority ASC, createdAt ASC).first
- *    worker   = eligible.order_by(slotsFree DESC).first
- *  A job with no eligible worker is left queued. Returns assignments in send order. */
+/** PURE and greedy: highest-priority queued job (priority ASC, createdAt ASC) to the least-loaded
+ *  eligible worker (slotsFree DESC), decrement locally, repeat. No eligible worker leaves it queued. */
 export function planAssignments(
 	queued: Job[],
 	workers: WorkerSession[],
 	capabilityFor: CapabilityFor = defaultCapabilityFor
 ): Assignment[] {
-	// local slot view so we don't over-assign within a single planning pass
+	// Local slot view, so one planning pass cannot over-assign.
 	const slots = new Map(workers.map((w) => [w.workerId, w.slotsFree]));
 
 	const jobs = [...queued].sort((a, b) => a.priority - b.priority || a.createdAt - b.createdAt);
@@ -219,8 +190,7 @@ export function planAssignments(
 	return assignments;
 }
 
-/** Whether ANY live worker could ever take this job (capability match, ignoring current load) —
- *  used to decide if a job should wait for capacity vs. is unservable by the current fleet. */
+/** Capability match ignoring current load: separates "wait for capacity" from "unservable". */
 export function hasCapableWorker(
 	job: Job,
 	workers: WorkerSession[],

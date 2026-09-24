@@ -1,22 +1,13 @@
 /*
- * A worker that dials home, claims real jobs, and publishes REAL AUDIO — the whole core-side process path
- * for real (dispatch → accept → progress → publish → markMediaReady → queue:sync → TV loads → sound comes
- * out), skipping only what this box cannot do: no torch/demucs/whisperx, and no ffmpeg that can encode. So
- * it writes hand-emitted PCM (./wav.mjs) instead of separated stems.
- *
- * A green run therefore proves the core's contract, the storage layout, the readiness gates and the
- * browser's decode path. It does NOT prove separation quality, alignment accuracy, or that yt-dlp can
- * still reach YouTube.
+ * A worker that dials home, claims real jobs and publishes REAL AUDIO, running the whole core-side process
+ * path (dispatch → accept → progress → publish → markMediaReady → queue:sync → TV loads → sound comes out)
+ * and skipping only what this box cannot do: no torch/demucs/whisperx, and no ffmpeg that can encode, so it
+ * writes hand-emitted PCM (./wav.mjs) instead of separated stems. It proves nothing about separation
+ * quality, alignment accuracy, or whether yt-dlp can still reach YouTube.
  *
  *   EPORT=5200 MEDIA_DIR=/path/to/media bun tests/e2e/fake-stems-worker.mjs
  *
- * Fault-injection env vars: see docs/E2E.md#fault-injection. Two of them are subtler than the rest:
- *   FAKE_NO_VOCALS=1   a real state, not a fault — a worker that could not encode vocals reports none,
- *                      and the song is still playable. It is NOT what disables the guiding track.
- *   FAKE_GUIDE_MIX=1   `hasGuidingTrack()` is `isPlayable(m) && !!m.guideMixRef` — the 4-channel MIX, not
- *                      the vocals stem — and this worker publishes no mix by default, so the phone's
- *                      guiding-track slider is correctly disabled. This flag is the ONLY way to reach the
- *                      enabled arm; it is opt-in so existing probes keep exercising the degraded one.
+ * Fault-injection env vars: docs/E2E.md#fault-injection.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

@@ -55,11 +55,12 @@ Bun's primitives map directly to it.
 Repository shape:
 
 ```
-packages/shared/   realtime contract + pure shared reducers
-         SvelteKit surfaces + Bun server + SQLite + media/job coordination
-worker/       dial-home Python worker + separator/WhisperX processors
-docs/              ARCHITECTURE + HANDOFF + DECISIONS at root; everything else in a subfolder
-                   (deploy/ benchmarks/ mocks/ research/)
+src/lib/contract/  realtime contract + pure shared reducers, imported by browser AND server
+src/               SvelteKit surfaces, the authoritative backend under src/lib/server/
+server.ts          Bun.serve entry: the SvelteKit handler and the WS hub in ONE process
+worker/            dial-home Python worker + separator/WhisperX processors
+tests/             guards, unit tests, and the browser e2e drivers
+docs/              this file, LAYOUT, SERVER, FRONTEND, GUARDS, E2E, plus arch/ and deploy/
 ```
 
 ## 3. Authority and realtime
@@ -732,7 +733,7 @@ there is no mid-plan branching — the rationale and the trigger that would revi
 The tables below are **generated from the plans**, because hand-written architecture prose about this
 worker has a track record: `fetch.py` claimed a function was "the one place" three of its four callers
 bypassed, and `STAGE_PLANS` declared two stages for an action with eight steps. Regenerate with
-`cd apps/worker && python3 -m src.docgen --write`; a test fails if the committed region drifts.
+`cd worker && python3 -m src.docgen --write`; a test fails if the committed region drifts.
 
 <!-- BEGIN generated:worker-pipeline -->
 
@@ -1003,10 +1004,3 @@ Known and accepted, not an oversight:
 - `/stats` and `/api/stats` are public **by design** and are aggregate-only. This is structural rather
   than a filter: the `plays` table has no singer column, so no per-singer figure can be served from it
   even by mistake.
-
-## 11. Historical source specs
-
-The original standalone specs are preserved verbatim under [`archive/reference/`](archive/reference/):
-optimistic reconciliation, TV preload, job lifecycle, performance, media storage, the original
-master design, and the deferred vocal-guide proposal. They contain dated milestone language and
-some superseded decisions; this document wins on conflict.

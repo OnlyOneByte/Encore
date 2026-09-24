@@ -5,12 +5,10 @@ import { srcDir } from '@encore/test-support';
 
 /*
  * EVERY CLASS IN APP MARKUP RESOLVES TO A RULE. A token that matches no rule renders NOTHING and looks fine in
- * source — the most-repeated defect of the shadcn migration (six instances, four of which shipped past a green
- * suite): `.card` deleted from app.css while nine elements still spelled it mid-list, two grids left on the
- * wrong element, `.encore-slider` scoped onto a Bits UI root, `.tile-slot` with no rule at all, `.name` deleted
- * while the class stayed. `app.css` uses `source(none)` with one `@source` over `lib/components/ui`, so a
- * utility-shaped token written in a page emits no CSS and an unresolved token is unresolved. Resolution is
- * per-file plus global, never bundle-wide-by-name — `.name` exists in the bundle under other scope hashes.
+ * source — the most-repeated defect of the shadcn migration, six instances, four of which shipped past a green
+ * suite. `app.css` uses `source(none)` with one `@source` over `lib/components/ui`, so a utility-shaped token
+ * written in a page emits no CSS and an unresolved token stays unresolved. Resolution is per-file plus global,
+ * never bundle-wide-by-name — `.name` exists in the bundle under other scope hashes.
  */
 
 const SRC = srcDir;
@@ -28,7 +26,6 @@ function svelteFiles(dir: string): string[] {
 	return out;
 }
 
-/** Markup only: style blocks, script blocks and comments cannot apply a class. */
 function markupOf(src: string): string {
 	return src
 		.replace(/<style[\s\S]*?<\/style>/g, ' ')
@@ -36,7 +33,6 @@ function markupOf(src: string): string {
 		.replace(/<!--[\s\S]*?-->/g, ' ');
 }
 
-/** Style text with CSS comments removed, so prose cannot define a class. */
 function styleOf(src: string): string {
 	return (src.match(/<style[\s\S]*?<\/style>/g) ?? []).join('\n').replace(/\/\*[\s\S]*?\*\//g, ' ');
 }
@@ -61,9 +57,8 @@ function globallyDefined(): Set<string> {
 }
 
 /**
- * Class tokens present on main and still unresolved, each with why it is not this PR's business. Measured
- * against `origin/main`, and recorded rather than fixed so a NEW unresolved class is a hard failure rather than
- * noise in a list nobody reads. Fixing one means deleting its line here.
+ * Class tokens present on main and still unresolved, each with why it is not this change's business. Recorded
+ * rather than fixed so a NEW unresolved class is a hard failure rather than noise in a list nobody reads.
  */
 const PRE_EXISTING: Record<string, string> = {
 	qrow: 'QueueRow.svelte — only `.qrow.proc` exists, and it is scoped to ProcessingCard, so the bare token has never resolved',
@@ -84,7 +79,7 @@ function unresolvedTokens(): Record<string, string[]> {
 		/*
 		 * `{…}` spans are BLANKED TO A MARKER, not used to skip the attribute: matching `class="([^"{}]*)"` let one
 		 * interpolation discard every static token beside it, so `class="topbar {cls}"` checked nothing at all. A
-		 * marker rather than a space because a token can be built across the boundary — `class="hl-{i}"` is one
+		 * marker rather than a space because a token can be built ACROSS the boundary — `class="hl-{i}"` is one
 		 * dynamic name, and blanking to a space leaves `hl-` looking like a static token with no rule.
 		 */
 		const scannable = markupOf(src).replace(/\{[^{}]*\}/g, DYNAMIC);
@@ -104,7 +99,6 @@ test('every static class in app markup resolves to a rule that can reach it', ()
 	const files = svelteFiles(join(SRC, 'lib'))
 		.concat(svelteFiles(join(SRC, 'routes')))
 		.filter((f) => !f.includes(VENDORED));
-	// Non-vacuity: the walk found the app side. An empty walk reports zero offenders like a clean tree.
 	expect(files.length).toBeGreaterThanOrEqual(30); // @nvf-floor files.length
 
 	const unresolved = unresolvedTokens();
@@ -124,7 +118,6 @@ test('every static class in app markup resolves to a rule that can reach it', ()
 test('the pre-existing list stays honest in both directions', () => {
 	const unresolved = unresolvedTokens();
 
-	// A recorded token that now resolves must LEAVE the list, or it rots into a record of what used to be true.
 	const fixed = Object.keys(PRE_EXISTING).filter((tok) => !(tok in unresolved));
 	expect(
 		fixed,
@@ -138,10 +131,10 @@ test('the pre-existing list stays honest in both directions', () => {
 
 test('the resolution check catches the shapes it can reach', () => {
 	/*
-	 * Mutation proof on synthetic sources, so a refactor of this file cannot quietly stop detecting them. THREE of
-	 * the six shapes, structurally: 1, 5 and 6 are missing-rule defects in app markup, which is what this file
-	 * scans; 2 and 3 were layout on the wrong ELEMENT, which no check of this kind can see; 4 is a scoped rule that
-	 * cannot reach a child component's element, mutation-proved in `ui-scoped-style-reach.test.ts`.
+	 * Mutation proof on SYNTHETIC sources, so a refactor of this file cannot quietly stop detecting them. THREE of
+	 * the six shapes: 1, 5 and 6 are missing-rule defects in app markup, which is what this file scans; 2 and 3
+	 * were layout on the wrong ELEMENT, which no check of this kind can see; 4 is a scoped rule that cannot reach a
+	 * child component's element, mutation-proved in `ui-scoped-style-reach.test.ts`.
 	 */
 	const resolves = (markup: string, style: string, global = new Set<string>()) => {
 		const own = classNamesIn(style.replace(/\/\*[\s\S]*?\*\//g, ' '));
@@ -151,23 +144,18 @@ test('the resolution check catches the shapes it can reach', () => {
 		return toks.filter((t) => !own.has(t) && !global.has(t));
 	};
 
-	// 5. a wrapper with no rule anywhere — `.tile-slot`
 	expect(resolves(`<div class="tile-slot primary">x</div>`, `.tiles { display: grid }`)).toEqual([
 		'tile-slot',
 		'primary'
 	]);
 
-	// 6. the rule deleted while the class stayed — `.name`
 	expect(resolves(`<Table.Cell class="name">x</Table.Cell>`, `.scroller { overflow: auto }`)).toEqual(['name']);
 	expect(resolves(`<Table.Cell class="name">x</Table.Cell>`, ``, new Set(['name']))).toEqual([]);
 
-	// 1. the mid-list token the original `class="card[ "]` grep could not see
 	expect(resolves(`<div class="row card list-row">x</div>`, `.row {} .list-row {}`)).toEqual(['card']);
 
-	// A comment naming a class must NOT count as defining it.
 	expect(resolves(`<div class="ghost">x</div>`, `/* .ghost is intentionally unstyled */`)).toEqual(['ghost']);
 
-	// …and a class only mentioned in a style block or script must not count as APPLIED.
 	expect(resolves(`<style>.only-here {}</style>`, `.only-here {}`)).toEqual([]);
 
 	expect(resolves(`<div class="a b">x</div>`, `.a {} .b {}`)).toEqual([]);
@@ -175,11 +163,9 @@ test('the resolution check catches the shapes it can reach', () => {
 
 /*
  * THE VENDORED TREE IS NOT EXEMPT FROM ITS OWN NAMESPACE. Skipping `components/ui` by path is right for `flex`
- * and `bg-card` and wrong for `encore-*`, which is our own namespace: no utility grammar produces
- * `.encore-table`, so a path exemption switched this guard off across the largest, newest and least-reviewed
- * hundred files in the change. Five `encore-*` tokens were in fact being written into the DOM with no rule
- * anywhere — nothing rendered wrong, because `:global([data-slot='…'])` had taken over the painting, but each
- * was an invitation to write a rule for a class that lands nowhere.
+ * and wrong for `encore-*`, which is our own namespace: no utility grammar produces `.encore-table`, so a path
+ * exemption switched this guard off across the largest and least-reviewed hundred files in the change, and five
+ * `encore-*` tokens were being written into the DOM with no rule anywhere.
  */
 const ENCORE_PREFIX = /^encore-/;
 
@@ -188,7 +174,6 @@ test('every `encore-*` class in the vendored tree has a rule', () => {
 	// Named distinctly from the app-side arm's `files`: two floors in one file with the same subject are
 	// indistinguishable to the anti-laundering check in non-vacuity-floors.test.ts, which matches on it.
 	const vendoredFiles = svelteFiles(join(SRC, 'lib', 'components', 'ui'));
-	// Non-vacuity: the vendored tree was reached.
 	expect(vendoredFiles.length).toBeGreaterThanOrEqual(55); // @nvf-floor vendoredFiles.length
 
 	let tokensSeen = 0;
@@ -196,7 +181,6 @@ test('every `encore-*` class in the vendored tree has a rule', () => {
 	for (const f of vendoredFiles) {
 		const src = readFileSync(f, 'utf8');
 		const own = classNamesIn(styleOf(src));
-		// Class strings reach these elements through cn() and tv() bases too, so every string literal counts.
 		const region = src.replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<!--[\s\S]*?-->/g, ' ');
 		for (const lit of region.matchAll(/["'`]([^"'`\n]*)["'`]/g)) {
 			for (const tok of lit[1]!.split(/\s+/)) {
@@ -208,7 +192,6 @@ test('every `encore-*` class in the vendored tree has a rule', () => {
 		}
 	}
 
-	// Non-vacuity: the namespace is really in use, so an empty orphan list means clean rather than blind.
 	expect(tokensSeen).toBeGreaterThanOrEqual(15); // @nvf-floor tokensSeen
 
 	expect(

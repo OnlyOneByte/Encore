@@ -1,8 +1,8 @@
-// The two OKLCH colour tiers — SINGER (identity dots) and STAGE (TV backgrounds). Guests choose a HUE only;
-// lightness and chroma are pinned. Rules: docs/SERVER.md#colour-tiers, narrative: docs/ARCHITECTURE.md §4.
+// Two OKLCH tiers, SINGER and STAGE. Guests choose a HUE only; lightness and chroma are pinned.
+// Rules: docs/SERVER.md#colour-tiers.
 
-/** The original eight, kept as PRESETS and as the fallback for unparseable input. They sit deliberately
- *  OUTSIDE the wheel's lightness band, which is why the validator tests legibility and not membership. */
+/** PRESETS, and the fallback for unparseable input. They sit deliberately OUTSIDE the wheel's lightness
+ *  band, which is why the validator tests legibility and never membership. */
 export const SINGER_COLORS = [
 	'#7c5cff', // violet (accent)
 	'#ff5cae', // pink (accent2)
@@ -14,18 +14,17 @@ export const SINGER_COLORS = [
 	'#5cffd6' // mint
 ] as const;
 
-/** Perceptual lightness the wheel emits. Chosen so every hue clears 3:1 on --bg and --card. */
+/** Chosen so every hue clears 3:1 on --bg and --card. */
 export const SINGER_L = 0.7;
-/** Chroma the wheel aims for. Clamped down per hue where it would leave the sRGB gamut. */
+/** Clamped down per hue where it would leave the sRGB gamut. */
 export const SINGER_C = 0.16;
-/** Hue quantisation. Coarse enough that two guests cannot land a degree apart and look identical. */
+/** Coarse enough that two guests cannot land a degree apart and look identical. */
 export const SINGER_HUE_STEP = 15;
 
-/** The surfaces a dot must stay visible against. PINNED LITERALS held equal to their CSS tokens by a parity
- *  assertion, because a browser bundle cannot read `src/app.css`. See docs/SERVER.md#colour-tiers. */
+/** PINNED LITERALS held equal to their CSS tokens by a parity assertion, because a browser bundle cannot
+ *  read `src/app.css`. */
 export const SURFACES = ['#0b0b12', '#1a1a28'] as const; // --bg, --card
-/** WCAG minimum for a non-text UI object — the applicable bar, because a singer colour is only ever a
- *  fill. See docs/SERVER.md#colour-tiers. */
+/** The non-text UI bar, because a singer colour is only ever a fill. */
 const MIN_DOT_CONTRAST = 3;
 
 function srgbToLinear(c: number): number {
@@ -38,7 +37,7 @@ function linearToSrgb(u: number): number {
 	return Math.round(Math.min(1, Math.max(0, v)) * 255);
 }
 
-/** Parse #rgb or #rrggbb. Returns null for anything else — including rgb()/oklch()/named colours. */
+/** Null for anything else, including rgb()/oklch()/named colours. */
 export function parseHex(input: string): [number, number, number] | null {
 	const m = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec((input ?? '').trim());
 	if (!m) return null;
@@ -70,8 +69,8 @@ export function contrastRatio(a: string, b: string): number {
 	return (hi + 0.05) / (lo + 0.05);
 }
 
-/** OKLCH → sRGB plus whether the colour was IN GAMUT before clamping. The flag is what lets a caller reduce
- *  chroma instead of accepting a clip, which SHIFTS a hue rather than desaturating it. */
+/** The in-gamut flag lets a caller reduce chroma instead of accepting a clip, which SHIFTS a hue rather
+ *  than desaturating it. */
 export function oklchToRgb(L: number, C: number, hueDeg: number): { rgb: [number, number, number]; inGamut: boolean } {
 	const h = (hueDeg * Math.PI) / 180;
 	const a = C * Math.cos(h);
@@ -93,12 +92,11 @@ export function oklchToRgb(L: number, C: number, hueDeg: number): { rgb: [number
 	return { rgb: [linearToSrgb(lr), linearToSrgb(lg), linearToSrgb(lb)] as [number, number, number], inGamut };
 }
 
-/** A wheel hue as canonical 6-digit hex — the form SQLite, the wire and a `style` attribute all accept.
- *  Chroma is reduced until the colour fits sRGB rather than letting it clip. */
+/** Canonical 6-digit hex — the form SQLite, the wire and a `style` attribute all accept. */
 export function hueToHex(hueDeg: number, l: number = SINGER_L, c: number = SINGER_C): string {
 	const hue = ((hueDeg % 360) + 360) % 360;
-	// Bounded by chroma REACHING ZERO, never by an iteration count — a fixed count covers only a fixed span,
-	// so a larger `c` exits still out of gamut. See docs/SERVER.md#colour-tiers.
+	// Bounded by chroma REACHING ZERO, never by an iteration count: a fixed count covers a fixed span, so a
+	// larger `c` would exit still out of gamut.
 	let chroma = c;
 	while (chroma > 0) {
 		const { rgb, inGamut } = oklchToRgb(l, chroma, hue);
@@ -108,43 +106,35 @@ export function hueToHex(hueDeg: number, l: number = SINGER_L, c: number = SINGE
 	return toHex(oklchToRgb(l, 0, hue).rgb);
 }
 
-/** The wheel's stops, in order. What the picker renders and the only hues it can produce. */
+/** What the picker renders, and the only hues it can produce. */
 export const SINGER_HUES: readonly number[] = Array.from(
 	{ length: Math.round(360 / SINGER_HUE_STEP) },
 	(_, i) => i * SINGER_HUE_STEP
 );
 
-// The STAGE tier: the whole screen, behind word-timed lyrics, so far darker and less saturated. It governs
-// every stage colour nobody picked by hand. See docs/SERVER.md#colour-tiers.
+// The STAGE tier is the whole screen behind word-timed lyrics, so far darker and less saturated.
 
-/** Perceptual lightness for a full-screen stage background. */
 export const STAGE_BG_L = 0.22;
-/** Chroma for a full-screen stage background. */
 export const STAGE_BG_C = 0.07;
 
-/** `--accent2`, the active-word colour and the centre of the guard band below. A PINNED LITERAL under the
- *  same parity assertion as `SURFACES`. */
+/** The active-word colour and the centre of the guard band. PINNED, like `SURFACES`. */
 export const ACCENT2 = '#ff5cae';
 
 const ACCENT2_HUE = nearestSingerHue(ACCENT2);
 
-/** Angular width of the guard band. Deliberately a RAMP and not a threshold, which would put a cliff in the
- *  wheel between two adjacent stops. */
+/** Deliberately a RAMP and not a threshold, which would put a cliff between two adjacent stops. */
 const ACCENT2_GUARD_DEG = 60;
 
-/** Lightness at the worst case — a stage hue sitting exactly on the active-word hue. */
+/** The worst case: a stage hue sitting exactly on the active-word hue. */
 const STAGE_BG_L_GUARDED = 0.13;
 
-/** Shortest angular distance between two hues, in degrees (0–180). */
+/** Shortest angular distance, in degrees (0–180). */
 function hueDistance(a: number, b: number): number {
 	const d = Math.abs((((a - b) % 360) + 360) % 360);
 	return Math.min(d, 360 - d);
 }
 
-/**
- * Stage lightness for a hue: `STAGE_BG_L` everywhere except inside the guard band, ramping linearly
- * down to `STAGE_BG_L_GUARDED` as the hue closes on the active-word hue.
- */
+/** `STAGE_BG_L` except inside the guard band, ramping linearly to `STAGE_BG_L_GUARDED`. */
 export function stageLightnessForHue(hueDeg: number): number {
 	const hue = ((hueDeg % 360) + 360) % 360;
 	const dist = hueDistance(hue, ACCENT2_HUE);
@@ -153,18 +143,16 @@ export function stageLightnessForHue(hueDeg: number): number {
 	return STAGE_BG_L_GUARDED + t * (STAGE_BG_L - STAGE_BG_L_GUARDED);
 }
 
-/** A stage background for a hue: the stage tier plus the guard. A hue near `--accent2` steals the active
- *  word's cue, so the guard gives up only BRIGHTNESS and keeps hue and chroma. */
+/** A hue near `--accent2` steals the active word's cue, so the guard gives up only BRIGHTNESS. */
 export function stageHueToHex(hueDeg: number): string {
 	return hueToHex(hueDeg, stageLightnessForHue(hueDeg), STAGE_BG_C);
 }
 
-/** The stage colour a room starts with. A LITERAL because a SQLite column DEFAULT and a migration backfill
- *  need these exact bytes and SQL cannot run an OKLCH conversion. See docs/SERVER.md#colour-tiers. */
+/** A LITERAL because a SQLite column DEFAULT and a migration backfill need these exact bytes, and SQL
+ *  cannot run an OKLCH conversion. */
 export const DEFAULT_STAGE_COLOR = '#001d31';
 
-/** The hue angle of an arbitrary colour (0–359), scale-free, so it reads both tiers on the same terms.
- *  `nearestSingerHue` CANNOT serve here. See docs/SERVER.md#colour-tiers. */
+/** Scale-free, so it reads both tiers on the same terms. `nearestSingerHue` CANNOT serve here. */
 export function hueOfColor(input: string): number {
 	const rgb = parseHex(input);
 	if (!rgb) return 0;
@@ -173,8 +161,7 @@ export function hueOfColor(input: string): number {
 	return ((deg % 360) + 360) % 360;
 }
 
-/** Is this a colour a singer may be identified by? Tests LEGIBILITY on both surfaces, never membership of a
- *  list — an allowlist silently rewrites every non-preset hue. */
+/** Tests LEGIBILITY on both surfaces, never list membership — an allowlist silently rewrites every non-preset hue. */
 export function isLegibleSingerColor(input: string): boolean {
 	const rgb = parseHex(input);
 	if (!rgb) return false;
@@ -182,8 +169,7 @@ export function isLegibleSingerColor(input: string): boolean {
 	return SURFACES.every((s) => contrastRatio(hex, s) >= MIN_DOT_CONTRAST);
 }
 
-/** The colour the TV lyric highlight paints for the singer who is up, or `null` to leave the room accent. It
- *  must stay SEPARATE from `normalizeSingerColor`. See docs/SERVER.md#colour-tiers. */
+/** `null` leaves the room accent. MUST stay separate from `normalizeSingerColor`. */
 export function lyricHighlightColor(input: string | null | undefined): string | null {
 	if (typeof input !== 'string') return null;
 	const rgb = parseHex(input);
@@ -192,8 +178,7 @@ export function lyricHighlightColor(input: string | null | undefined): string | 
 	return isLegibleSingerColor(hex) ? hex : null;
 }
 
-/** Coerce arbitrary input into a storable colour. Canonical 6-digit lowercase hex is load-bearing — see
- *  docs/SERVER.md#colour-tiers. */
+/** Canonical 6-digit lowercase hex is load-bearing — see docs/SERVER.md#colour-tiers. */
 export function normalizeSingerColor(input: string): string {
 	const rgb = parseHex(input);
 	if (rgb) {
@@ -203,31 +188,26 @@ export function normalizeSingerColor(input: string): string {
 	return SINGER_COLORS[0];
 }
 
-/** Coerce arbitrary input into a STAGE background colour. DELIBERATELY NO LEGIBILITY GATE, unlike its singer
- *  sibling; unparseable input keeps the colour the room chose. See docs/SERVER.md#colour-tiers. */
+/** DELIBERATELY NO LEGIBILITY GATE, unlike its singer sibling; unparseable input keeps the room's colour. */
 export function normalizeStageColor(input: unknown, fallback: string): string {
 	const rgb = typeof input === 'string' ? parseHex(input) : null;
 	return rgb ? toHex(rgb) : fallback;
 }
 
-// The room's 0..1 stage dimmer: a LIGHTNESS control, never an opacity layer over the video. It only changes
-// the value the existing stage layer already paints.
+// The dimmer is a LIGHTNESS control, never an opacity layer over the video.
 
-/** No dim — the stage colour at full strength. */
 export const MIN_STAGE_DIM = 0;
-/** Full dim — the stage colour pulled all the way to black. */
 export const MAX_STAGE_DIM = 1;
 export const DEFAULT_STAGE_DIM = 0;
 
-/** Clamp an untrusted dim fraction into 0..1, rounded to a hundredth — the same quantisation
- *  `guideLevelDefault` uses, so the two room fractions compare alike. */
+/** Rounded to a hundredth like `guideLevelDefault`, so the two room fractions compare alike. */
 export function normalizeStageDim(input: unknown, fallback: number): number {
 	if (typeof input !== 'number' || !Number.isFinite(input)) return fallback;
 	return Math.round(Math.min(MAX_STAGE_DIM, Math.max(MIN_STAGE_DIM, input)) * 100) / 100;
 }
 
-/** Darken a hex colour toward black by a 0..1 fraction. A colour is darkened, never composited, and
- *  unparseable input returns VERBATIM — a CSS variable cannot be arithmetic-dimmed without a DOM. */
+/** Darkened, never composited. Unparseable input returns VERBATIM — a CSS variable cannot be
+ *  arithmetic-dimmed without a DOM. */
 export function dimTowardBlack(hex: string, dim: number): string {
 	const rgb = parseHex(hex);
 	if (!rgb) return hex;
@@ -235,8 +215,7 @@ export function dimTowardBlack(hex: string, dim: number): string {
 	return toHex(rgb.map((c) => Math.round(c * f)) as [number, number, number]);
 }
 
-/** The wheel stop closest to an arbitrary colour, keeping the swatches and the slider two VIEWS OF ONE
- *  SELECTION. Valid ONLY at the wheel tier — see `hueOfColor`. */
+/** Keeps the swatches and the slider two VIEWS OF ONE SELECTION. Valid ONLY at the wheel tier. */
 export function nearestSingerHue(input: string): number {
 	const rgb = parseHex(input);
 	if (!rgb) return 0;
@@ -254,7 +233,7 @@ export function nearestSingerHue(input: string): number {
 	return best;
 }
 
-/** sRGB → the OKLab chromatic axes. Hue lives in (a, b); lightness is deliberately ignored here. */
+/** Hue lives in (a, b); lightness is deliberately ignored here. */
 function rgbToOklabAb([r, g, b]: [number, number, number]): { a: number; b: number } {
 	const lr = srgbToLinear(r);
 	const lg = srgbToLinear(g);
@@ -268,26 +247,24 @@ function rgbToOklabAb([r, g, b]: [number, number, number]): { a: number; b: numb
 	};
 }
 
-/** Which preset index is the keyboard tab stop. It returns 0 when nothing matches, and that fallback is
- *  load-bearing: the wheel PROVABLY never lands on a preset hex, so without it one wheel pick drops every
- *  preset out of the tab order permanently. */
+/** The 0 fallback is load-bearing: the wheel PROVABLY never lands on a preset hex, so without it one
+ *  wheel pick drops every preset out of the tab order permanently. */
 export function presetTabStopIndex(value: string): number {
 	const i = (SINGER_COLORS as readonly string[]).indexOf(value);
 	return i === -1 ? 0 : i;
 }
 
-/** The swatch an arrow key moves to, wrapping. The base MUST be `presetTabStopIndex` and never a bare
- *  `indexOf`, which returns -1 after a wheel pick and desynchronises movement from the focus ring. */
+/** The base MUST be `presetTabStopIndex`, never a bare `indexOf`, which returns -1 after a wheel pick and
+ *  desynchronises movement from the focus ring. */
 export function nextSwatchIndex(value: string, step: number): number {
 	const base = presetTabStopIndex(value);
 	const n = SINGER_COLORS.length;
 	return (base + step + n) % n;
 }
 
-/** Map a diarized duet's `part` letters onto legible reel colours, in the order parts first APPEAR. Every
- *  colour must clear `isLegibleSingerColor` rather than being a hard-coded pair, and THE FALLBACK IS BY
- *  ABSENCE: no part returns an EMPTY map, which the reel reads as the single-colour path.
- */
+/** In the order parts first APPEAR. Every colour must clear `isLegibleSingerColor` rather than being a
+ *  hard-coded pair, and THE FALLBACK IS BY ABSENCE: no part returns an EMPTY map, which the reel reads as
+ *  the single-colour path. */
 export function duetPartColors(lines: readonly { part?: string }[] | null | undefined): Map<string, string> {
 	const out = new Map<string, string>();
 	if (!lines) return out;

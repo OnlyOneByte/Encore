@@ -1,14 +1,9 @@
 <script lang="ts">
 	import { Slider } from '$lib/components/ui/slider';
 	import * as Field from '$lib/components/ui/field';
-	// The GUIDING TRACK control — how loud the original vocals sit under the instrumental.
-	//
-	// PRESENTATIONAL: it owns the label copy, the shape and the disabled state and reports raw percentages up.
-	// Throttling, the websocket command and the override-versus-room-default resolution belong to the caller,
-	// because those are room state.
-	//
-	// It must stay in the sheet's BODY rather than any drag surface: a range input inside one fights the
-	// sheet's own gesture on every drag.
+	// The GUIDING TRACK control — how loud the original vocals sit under the instrumental. PRESENTATIONAL: throttling,
+	// the websocket command and the override-versus-room-default resolution belong to the caller, because those are room
+	// state. It must stay in the sheet's BODY: a range input inside a drag surface fights the sheet's own gesture.
 	interface Props {
 		/** The level currently shown, 0..100. */
 		pct: number;
@@ -25,13 +20,10 @@
 
 <div class="gt" class:disabled={!available}>
 	<!--
-		The label row is the Field primitive's `data-inline` hook, which supplies the flex row, the top rhythm
-		and the dim ink.
-
-		`.lab` KEEPS its own typography rather than handing the text straight to the primitive, and that is a
-		role difference: the primitive's label type is larger than this uppercase EYEBROW, which would make the
-		label bigger than the value it labels. The declarations sit on a plain span THIS file renders, because a
-		scoped rule cannot reach a class handed to a component.
+		The label row is the Field primitive's `data-inline` hook, which supplies the flex row, the top rhythm and the dim
+		ink. `.lab` KEEPS its own typography rather than handing the text to the primitive: the primitive's label type is
+		larger than this uppercase EYEBROW, which would make the label bigger than the value it labels. It sits on a plain
+		span this file renders, because a scoped rule cannot reach a class handed to a component.
 	-->
 	<Field.Label data-inline for="guiding-track">
 		<span class="lab">Guiding track</span>
@@ -54,17 +46,13 @@
 
 <style>
 	.gt {
-		/* NO top margin: the Field label supplies the same rhythm that separates one settings control from the
-		   next, and a margin here would stack the two. */
+		/* NO top margin: the Field label supplies the same rhythm that separates one settings control from the next. */
 		margin: 0 0 var(--space-3xs);
 	}
 	/*
-	 * DISABLED DIMS BY TOKEN, never by an opacity on this wrapper: an alpha here flattens the whole subtree
-	 * against the page and drops the eyebrow under AA, and contrast.test.ts's ancestor-opacity ban does not
-	 * reach it because that arm scopes itself to card ROOTS. The CONTROL keeps its own leaf-level opacity,
-	 * which carries no text.
-	 *
-	 * `class:disabled` is the anchor a measured probe reads this state by, so it must stay on this element.
+	 * DISABLED DIMS BY TOKEN, never by an opacity on this wrapper: an alpha here flattens the whole subtree against the
+	 * page and drops the eyebrow under AA, and contrast.test.ts's ancestor-opacity ban does not reach it because that arm
+	 * scopes itself to card ROOTS. `class:disabled` is the anchor a measured probe reads this state by, so it must stay.
 	 */
 	.gt.disabled .gt-val {
 		color: var(--ink-dim);

@@ -130,3 +130,41 @@ way to confirm an override landed where you meant:
 ```bash
 docker compose -f docker-compose.yml -f docs/deploy/docker-compose.cuda.yml --profile stems config
 ```
+
+## "No audio-only format" is not proof the image is broken
+
+`worker/yt-dlp.conf` enables yt-dlp's challenge-solver remote component, and the worker image ships the
+deno runtime that executes it. Together those are **necessary but not sufficient**: measured from inside
+the built image on a datacenter host, with the whole chain demonstrably live — yt-dlp logged the config,
+detected deno, downloaded the solver and ran it with no signature or n-challenge failure — YouTube still
+offered only storyboards and the legacy muxed format 18 for a mainstream video, identical to what it
+offers with the config removed.
+
+So a second, independent cause produces the same symptom: **the format set is also restricted by who is
+asking**, and a datacenter IP can be served a minimal one no matter how well the challenge is solved.
+Two consequences, both easy to get backwards:
+
+- A cook that fails to find an audio-only format is **not** evidence that the config or the runtime is
+  broken. Verify from the host that will actually run the worker — a residential connection and a
+  datacenter one get different answers.
+- The format selector's bare `best` final branch is what keeps such a host working at all. See
+  `FORMAT_SELECTOR` in `worker/src/acquisition/stream_quality.py`; every `bestaudio` branch misses
+  format 18.
+
+## `audio-separator` is excluded on Apple Silicon, by upstream's own constraint
+
+`worker/requirements.txt` carries an environment marker on `audio-separator` that skips it on
+darwin-arm64. That is upstream's constraint, not a preference of ours: 0.47.0 declares
+`torch<3,>=2.13; sys_platform == "darwin" and platform_machine == "arm64"` (and `torch<3,>=2.3`
+everywhere else). No released torch satisfies `>=2.13`, so on an arm64 Mac the package is unsatisfiable
+against **any** torch. Pinning around it would mean abandoning the coupled torch 2.8 set that
+demucs, whisperx and pyannote share, to gain an engine that has never run on that platform anyway (see
+the "unverified in this environment" warning in `worker/src/separation/audiosep.py`).
+
+The marker mirrors upstream's exactly, so the image, CI and every Linux deploy install it unchanged;
+only a dev Mac skips it, and `worker/src/host/capabilities.py` then simply does not advertise
+`stems:audiosep`. Drop the marker the moment upstream's darwin-arm64 floor becomes reachable.
+
+Note that the PyPI distribution is `audio-separator`. `python-audio-separator` is the project name used
+in prose; a requirement spelled that way resolves to nothing on every platform, and pip then abandons
+the **whole** requirements file rather than that one line.

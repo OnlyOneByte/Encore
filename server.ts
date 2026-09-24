@@ -1,5 +1,5 @@
-// Encore core: one Bun process serves both SvelteKit and the realtime WS hub — no network hop,
-// one in-process authoritative state. See docs/SERVER.md#authority-and-the-hub. Prod entry: bun run server.ts
+// One Bun process serves both SvelteKit and the realtime WS hub — no network hop, one in-process
+// authoritative state. See docs/SERVER.md#authority-and-the-hub.
 
 // Imports below MUST stay relative: `$lib` resolves only via the gitignored .svelte-kit/tsconfig.json,
 // which the runtime image never copies — an alias here type-checks locally but fails in the container.
@@ -26,37 +26,32 @@ import { existsSync } from 'node:fs';
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
-// Shared secret gating role=worker WS upgrades: when set, a role=worker upgrade must present a
-// matching `token` query param or get 401 — otherwise any LAN device could register as a worker and
-// fabricate job completions. Unset means unauthenticated upgrades (boot warning below); phone/TV are unaffected.
+// When set, a role=worker upgrade must present a matching `token` query param or get 401 — otherwise any
+// LAN device could register as a worker and fabricate job completions. Unset means unauthenticated.
 const WORKER_TOKEN = process.env.ENCORE_WORKER_TOKEN?.trim() || null;
 
-// Shared singleton — the SAME authoritative state instance the SvelteKit /api routes use.
+// The SAME authoritative state instance the SvelteKit /api routes use.
 const app = getApp();
 const state = app.state;
 
-// Live worker sockets keyed by workerId (in-memory, process-lifetime — workers dial home, see
-// docs/ARCHITECTURE.md §10). SocketData.roomId/singerId resolve at WS upgrade from the session
-// cookie, never a client claim; a worker, an unbound TV, and a not-yet-joined phone carry neither.
+// SocketData.roomId/singerId resolve at WS upgrade from the session cookie, NEVER a client claim; a
+// worker, an unbound TV and a not-yet-joined phone carry neither.
 type SocketData = { role: string; workerId?: string; singerId?: string; roomId?: string };
 type WorkerSocket = import('bun').ServerWebSocket<SocketData>;
 const workerSockets = new Map<string, WorkerSocket>();
-// server.ts owns the transport: the WorkerHub calls app.toWorker(id, cmd) → look up the socket.
+// server.ts owns the transport: the WorkerHub calls app.toWorker(id, cmd).
 app.toWorker = (workerId: string, cmd: WorkerCommand) => {
 	workerSockets.get(workerId)?.send(JSON.stringify(cmd));
 };
 
-// Starts the job reaper's ~3s lease-expiry tick; requeues/fails jobs whose worker went silent and
-// redispatches (onReaped, wired in app.ts). Runs after getApp()'s boot recovery already reconciled.
+// Runs AFTER getApp()'s boot recovery has already reconciled. See docs/SERVER.md#the-attempt-ledger.
 app.reaper.start();
 
-// Dedupes resent client ops across reconnects (bounded, insertion-ordered, in-memory) so a retry
-// never double-applies.
+// Dedupes resent client ops across reconnects, so a retry never double-applies.
 const seenOps = new Set<string>();
 
-// Demo/harness catalog; real media is resolved via /api/search and persisted on demand. Seed only
-// IDs not already present — getApp() already hydrated the durable catalog, so an unconditional set
-// would stomp a previously-processed song's real stem status with this stub, forcing a reprocess.
+// Seed only IDs not already present: getApp() has hydrated the durable catalog, so an unconditional set
+// would stomp a processed song's real stem status with this stub and force a reprocess.
 const mediaById = app.mediaById;
 for (const m of [
 	{
@@ -90,9 +85,8 @@ for (const m of [
 	if (!mediaById.has(m.id)) mediaById.set(m.id, m);
 }
 
-// Seeds the local FTS library index in dev (a real deployment scans MEDIA_DIR instead), indexing
-// only files that actually resolve on disk — unfiltered, these four were queueable but unplayable,
-// burning job attempts on ffmpeg's ENOENT.
+// Dev only (a real deployment scans MEDIA_DIR). Indexes only files that RESOLVE on disk — unfiltered,
+// a seed row is queueable but unplayable and burns job attempts on ffmpeg's ENOENT.
 const seededLibrary: LocalTrack[] = [
 	{ sourceRef: 'library/dont-stop-believin.mp4', title: "Don't Stop Believin'", artist: 'Journey', durationSec: 250 },
 	{ sourceRef: 'library/sweet-caroline.mp4', title: 'Sweet Caroline', artist: 'Neil Diamond', durationSec: 201 },
@@ -111,12 +105,12 @@ if (presentLibrary.length < seededLibrary.length) {
 	);
 }
 
-// SvelteKit handler from the Bun adapter's build output (guarded so WS still boots pre-build).
+// Guarded so WS still boots pre-build.
 type SvelteHandler = (req: Request, server: import('bun').Server<SocketData>) => Response | Promise<Response>;
 let svelteKitFetch: SvelteHandler | null = null;
 try {
-	// build/handler.js is svelte-adapter-bun's generated (gitignored) output — untyped, hence the cast
-	// and the @ts-expect-error (not @ts-ignore, so it self-clears once the adapter ships types).
+	// Generated, gitignored, untyped adapter output. @ts-expect-error not @ts-ignore, so it self-clears
+	// once the adapter ships types.
 	// @ts-expect-error — generated, untyped adapter output; shape asserted by the cast below
 	const { getHandler } = (await import('./build/handler.js')) as { getHandler: () => { fetch: SvelteHandler } };
 	svelteKitFetch = getHandler().fetch;
@@ -124,8 +118,7 @@ try {
 	console.warn('[core] build/handler.js not found — run `bun run build`. Serving WS + /health + /harness only.');
 }
 
-// The room's membership, as the TV renders it. `here` holds a socket; `away` is in the room but
-// unreachable (a locked phone, a pocket) and is still counted.
+// `here` holds a socket; `away` is in the room but unreachable, and is still counted.
 let membership = { here: [] as string[], away: [] as string[] };
 
 /** A singer holds a stake in the room while any entry of theirs is still waiting to be sung. */
@@ -133,11 +126,8 @@ function hasPendingSongs(singerId: string): boolean {
 	return state.entries.some((e) => e.singerId === singerId && (e.status === 'queued' || e.status === 'playing'));
 }
 
-/**
- * Advance membership and broadcast only if it changed. Driven by socket edges AND a timer — "gone"
- * is a function of elapsed time, so no socket event announces it; comparing against the last
- * broadcast keeps a quiet room's periodic sweep silent instead of a heartbeat every client parses.
- */
+/** Driven by socket edges AND a timer, because "gone" is a function of elapsed time and no socket event
+ *  announces it. Comparing against the last broadcast keeps a quiet room's sweep silent. */
 function refreshMembership(): void {
 	const next = app.presence.evaluate({
 		now: app.now(),
@@ -147,8 +137,7 @@ function refreshMembership(): void {
 	const same = next.here.join() === membership.here.join() && next.away.join() === membership.away.join();
 	membership = { here: next.here, away: next.away };
 	if (!same) {
-		// A per-room broadcast like any other — published only to the served room's topic, so
-		// another party never sees this room's roster.
+		// Published only to the served room's topic, so another party never sees this roster.
 		server.publish(
 			broadcastTopicFor(app.activeRoomId),
 			JSON.stringify({ type: 'singer:presence', online: next.here, away: next.away } satisfies ServerEvent)
@@ -156,8 +145,8 @@ function refreshMembership(): void {
 	}
 }
 
-// A singer's grace clock starts when their last pending song leaves the queue, so queue changes can
-// move membership as surely as a socket closing. 20s balances timeliness against a per-tick scan.
+// The grace clock starts when a singer's last pending song leaves the queue, so a queue change moves
+// membership as surely as a socket closing. 20s balances timeliness against a per-tick scan.
 const MEMBERSHIP_SWEEP_MS = 20_000;
 
 const server = Bun.serve<SocketData>({
@@ -170,15 +159,13 @@ const server = Bun.serve<SocketData>({
 
 		if (url.pathname === '/ws') {
 			const role = url.searchParams.get('role') ?? 'phone';
-			// A role=worker socket carries dispatch authority. Require the shared token when configured
-			// and refuse an unauthenticated worker with 401 rather than upgrading it (see WORKER_TOKEN above).
+			// role=worker carries dispatch authority: refuse with 401 rather than upgrading it.
 			if (role === 'worker' && WORKER_TOKEN && url.searchParams.get('token') !== WORKER_TOKEN) {
 				return new Response('unauthorized worker', { status: 401 });
 			}
-			// Resolve which singer (and room) this socket belongs to, at upgrade, from the session
-			// cookie — never a client claim. No singerId means an anonymous spectator. A TV instead binds
-			// via its join code (?room=<code>, same as the QR) through tvRoomId; mutations stay gated by
-			// the per-command checks below regardless of how a socket resolved its room. See docs/SERVER.md#sessions-and-cookies.
+			// Resolved from the session cookie at upgrade, NEVER a client claim; no singerId is an anonymous
+			// spectator. A TV binds via its join code instead. Mutations stay gated per command either way.
+			// See docs/SERVER.md#sessions-and-cookies.
 			const me = app.singers.bySessionToken(readSessionToken(req.headers.get('cookie')));
 			const roomId =
 				role === 'tv'
@@ -195,7 +182,7 @@ const server = Bun.serve<SocketData>({
 				rev: state.rev
 			});
 		}
-		// Dev harness — two iframes + live queue JSON to eyeball cross-client sync.
+		// Dev harness: two iframes + live queue JSON to eyeball cross-client sync.
 		if (url.pathname === '/harness') return new Response(harnessHtml(), { headers: { 'content-type': 'text/html' } });
 		if (url.pathname === '/harness/phone')
 			return new Response(phoneHtml(), { headers: { 'content-type': 'text/html' } });
@@ -208,17 +195,16 @@ const server = Bun.serve<SocketData>({
 
 	websocket: {
 		open(ws) {
-			// Workers are NOT room subscribers — they speak the dial-home protocol, not queue events.
+			// Workers are NOT room subscribers: they speak the dial-home protocol, not queue events.
 			if (ws.data.role === 'worker') return;
-			// Subscribe to the socket's own room topic only — isolation is between rooms, not against a
-			// viewer of the one room this box serves; an unscoped spectator defaults to the served room.
+			// Own room topic only: isolation is between rooms, not against a viewer of the room this box
+			// serves. An unscoped spectator defaults to the served room.
 			ws.subscribe(subscribeTopicFor(ws.data.roomId, app.activeRoomId));
-			// Broadcast sink wired once at boot via setPublish (below), not per-connection.
-			// Announce only on the 0→1 transition so a second tab doesn't spam an unchanged roster.
+			// Announce only on the 0→1 transition, so a second tab does not spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();
 		},
 		message(ws, raw) {
-			// Dial-home worker protocol (§5) — a separate message family on role=worker sockets.
+			// A separate message family, on role=worker sockets only.
 			if (ws.data.role === 'worker') {
 				let parsed: unknown;
 				try {
@@ -226,12 +212,11 @@ const server = Bun.serve<SocketData>({
 				} catch {
 					return;
 				}
-				// role=worker carries dispatch authority and, when ENCORE_WORKER_TOKEN is unset, is
-				// reachable unauthenticated. validateWorkerMessage must run before any field access below
-				// — a malformed frame would otherwise throw out of this handler instead of being dropped.
+				// validateWorkerMessage MUST run before any field access: this family carries dispatch
+				// authority and is reachable unauthenticated, so a malformed frame would throw out of here.
 				if (validateWorkerMessage(parsed) !== null) return;
 				const msg = parsed as WorkerMessage;
-				// Remember this socket's workerId so disconnect can deregister + free its slots.
+				// Remembered so disconnect can deregister and free its slots.
 				if ('workerId' in msg && msg.workerId) {
 					ws.data.workerId = msg.workerId;
 					workerSockets.set(msg.workerId, ws);
@@ -246,8 +231,7 @@ const server = Bun.serve<SocketData>({
 			} catch {
 				return;
 			}
-			// buildHubDeps (app.ts) wires every app-derived hook in one place; only what varies per
-			// socket/frame is supplied here.
+			// buildHubDeps (app.ts) wires every app-derived hook; only per-socket values are supplied here.
 			const deps: HubDeps = buildHubDeps(app, {
 				broadcast,
 				actorSingerId: ws.data.singerId,
@@ -259,41 +243,35 @@ const server = Bun.serve<SocketData>({
 					if (seenOps.size > 4096) seenOps.delete(seenOps.values().next().value!);
 					return false;
 				},
-				// Non-recording peek at the same ledger, for the validation-failure re-ack path. Never
-				// inserts — a rejected op must not enter the ledger, or its resend would falsely re-ack.
+				// NON-recording, for the validation-failure re-ack path: a rejected op must not enter the
+				// ledger, or its own resend would falsely re-ack.
 				hasOp: (id) => seenOps.has(id)
 			});
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 
-			// Room isolation: every frame mutates app.activeRoomId. A socket scoped to a different room
-			// is dropped outright; an unscoped spectator passes this gate but mutations stay refused below.
+			// Every frame mutates app.activeRoomId, so a socket scoped to a different room is dropped
+			// outright. An unscoped spectator passes this gate but stays refused below.
 			if (isForeignRoom(ws.data.roomId, app.activeRoomId)) return; // drop the frame, reply nothing
 
 			switch (evt.type) {
 				case 'hello': {
-					// Resync: reply with full authoritative state (queue + playback + nowplaying) to this
-					// client only, so a reconnecting TV/phone resumes exactly where the room is.
+					// Full authoritative state, to THIS client only.
 					ws.send(JSON.stringify(syncEvent(state, deps)));
 					ws.send(JSON.stringify({ type: 'playback:state', state: state.playback, rev: state.rev }));
-					// nowPlayingEvent is the same builder the broadcast path uses, so a change to what
-					// nowplaying:changed carries reaches the reconnecting client and the live room together.
+					// The same builder the broadcast path uses, so a resync and the live room cannot differ.
 					ws.send(JSON.stringify(nowPlayingEvent(deps)));
 					break;
 				}
 				case 'queue:command':
 					handleQueueCommand(evt.command, deps, sendToOrigin);
-					// Reconcile after every queue mutation — reconcileOnReady (player.ts) owns the decision:
-					// auto-start on idle+queued, self-heal a DANGLING currentEntryId, or just re-derive
-					// upNext. Its tail emitNowPlaying fires exactly once per command outside that branch,
-					// so this call site must never also emit one.
+					// reconcileOnReady owns the decision. Its tail emitNowPlaying fires exactly once per
+					// command, so this call site must never also emit one.
 					reconcileOnReady(deps);
-					// A grace clock starts when someone's last pending song leaves the queue and clears when
-					// they queue another, so a queue change can move membership exactly as a socket can.
+					// A queue change can move membership exactly as a socket can (see AWAY_GRACE).
 					refreshMembership();
 					break;
 				case 'player:command':
-					// player:control requires only being IN the room — every joined singer is a host today.
-					// See docs/ARCHITECTURE.md §10 and src/lib/server/capabilities.ts.
+					// player:control requires only being IN the room; see src/lib/server/capabilities.ts.
 					if (!can({ singerId: ws.data.singerId }, 'player:control')) break;
 					handlePlayerCommand(evt.command, deps);
 					break;
@@ -303,22 +281,21 @@ const server = Bun.serve<SocketData>({
 			}
 		},
 		close(ws) {
-			// Worker disconnect: deregister + drop the socket; in-flight jobs keep their lease and are
-			// reclaimed by the reaper at expiry, same as any worker that silently died.
+			// In-flight jobs keep their lease and are reclaimed by the reaper at expiry, as for any worker
+			// that silently died.
 			if (ws.data.role === 'worker' && ws.data.workerId) {
 				app.workers.remove(ws.data.workerId);
 				workerSockets.delete(ws.data.workerId);
 				return;
 			}
-			// Last socket closing marks AWAY, not gone — chip, place, and songs are kept. Expiry to
-			// `gone` is the sweep's job, once the queue is empty and the room's grace window has run out.
+			// The last socket closing marks AWAY, not gone: chip, place and songs are kept. Expiry to
+			// `gone` is the sweep's job.
 			if (ws.data.singerId && app.presence.disconnect(ws.data.singerId, app.now())) refreshMembership();
 		}
 	}
 });
 
-// The room broadcast sink, wired into the shared app via setPublish so /api/join's singer:joined
-// (and other app-driven publishes) route through the same instance handleQueueCommand uses via `deps`.
+// Wired via setPublish so app-driven publishes route through the same instance `deps` uses.
 const broadcast = (e: ServerEvent) => server.publish(broadcastTopicFor(app.activeRoomId), JSON.stringify(e));
 setPublish(broadcast);
 
@@ -328,7 +305,7 @@ console.log(
 	`🎤 Encore core on http://${HOST}:${PORT}  (ws:/ws · health:/health · harness:/harness · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
 );
 
-// Loud boot warning when worker upgrades are unauthenticated, so an open box isn't silently exposed.
+// Loud, so an open box is not silently exposed.
 if (!WORKER_TOKEN) {
 	console.warn(
 		'[core] ENCORE_WORKER_TOKEN is not set — role=worker WS upgrades are UNAUTHENTICATED. Any device ' +
@@ -337,15 +314,15 @@ if (!WORKER_TOKEN) {
 	);
 }
 
-// Graceful shutdown: state write-behinds on a 250ms debounce, so a `docker stop` landing inside that
-// window would drop the pending write unless flushed here. Guarded against re-entry from a second signal.
+// State write-behinds on a 250ms debounce, so a `docker stop` inside that window drops the pending write
+// unless flushed here. Guarded against re-entry from a second signal.
 let shuttingDown = false;
 function gracefulShutdown(signal: string): void {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	console.log(`[core] ${signal} received — flushing state and shutting down.`);
-	// Exit non-zero on a failed flush — exit(0) would tell the supervisor the stop was clean when
-	// queue/playback state was actually lost; the log line alone isn't visible to an out-of-band probe.
+	// Non-zero on a failed flush: exit(0) would tell the supervisor the stop was clean when state was
+	// actually lost, and a log line is not visible to an out-of-band probe.
 	let ok = true;
 	try {
 		state.flushNow();

@@ -1,11 +1,7 @@
 /*
- * THE CONTROL REGISTER AND THE MEASURED NUMBERS — data only, no driving.
- *
- * Read by two callers: `measured-design.mjs`, which measures against it, and
- * `tests/guards/wiring/measured-design-gate.test.ts`, which runs in `bun test` on every box and asserts
- * this register is non-vacuous, that every quarantine entry carries a substantive reason, and that the
- * gate is wired into the gate list — a register only the gate can read is a register nobody checks when
- * the gate does not run. The quarantine rules are in docs/E2E.md#gates.
+ * THE CONTROL REGISTER AND THE MEASURED NUMBERS — data only, no driving. Read by `measured-design.mjs` and
+ * by `tests/guards/wiring/measured-design-gate.test.ts`, which runs in `bun test` on every box. The
+ * quarantine rules and what that guard asserts are in docs/E2E.md#gates.
  */
 
 import { readFileSync } from 'node:fs';
@@ -63,14 +59,13 @@ export const CONTROL_SELECTOR = [
 	'[tabindex]:not([tabindex="-1"])'
 ].join(', ');
 
-/** Text-entry input types, for. A range or colour input has no text to zoom. */
+/** Text-entry input types only: a range or colour input has no text to zoom. */
 export const TEXT_INPUT_TYPES = ['text', 'search', 'email', 'url', 'tel', 'number', 'password', ''];
 
 /*
- * THREE PLATFORM PREDICATES, single-sourced here rather than in contract.ts. The driver ban is about
- * selectors naming Encore's own markup, which rot when that markup moves; `[inert]`, `label` and
- * `:focus-visible` are DOM and CSS constructs that cannot drift with it, and two of them have no anchor
- * in any .svelte file for the contract's resolver to bind to.
+ * THREE PLATFORM PREDICATES, here rather than in contract.ts: the driver ban is about selectors naming
+ * Encore's own markup, and these are DOM/CSS constructs that cannot drift with it. Two of them have no
+ * anchor in any .svelte file for the contract's resolver to bind to.
  */
 
 /** A subtree the user cannot reach — behind an open modal. A reading there is legitimately 0. */
@@ -79,28 +74,24 @@ export const INERT_SELECTOR = '[inert]';
 /** The wrapper whose text names a bare control (a checkbox has no accessible name of its own). */
 export const LABEL_SELECTOR = 'label';
 
-/** The state is about. An element not in it is UNMEASURED, never satisfied. */
+/** The state CLAIM 4 is about. An element that cannot be driven into it is UNMEASURED, never satisfied. */
 export const FOCUS_VISIBLE = ':focus-visible';
 
 /**
- * Known sub-floor controls, each with the number it measures and why it is not fixed here. EMPTY today,
- * which means the gate holds every control it drives to the floor with no exceptions.
+ * Known sub-floor controls. EMPTY today, so the gate holds every control it drives to the floor.
  *
- * `where` is the surface the gate drove to reach it. `match` is matched against the reading's own identity
- * fields, ALL of which must be present and equal — a partial match is not a match, so a quarantine cannot
- * silently absorb a new offender that happens to share a tag. `measured` is the worst hit extent seen
- * across every viewport; the gate fails if a reading is more than 1px worse (sub-pixel layout differs
- * between widths) AND fails if a reading reaches TAP.
+ * `where` is the surface the gate drove to reach it. Every field of `match` must be present and equal — a
+ * partial match is not a match, so a quarantine cannot silently absorb a new offender sharing a tag.
+ * `measured` is the worst hit extent seen across every viewport; the gate fails on a reading more than 1px
+ * worse (sub-pixel layout differs between widths) AND on one that reaches TAP.
  *
  * @type {{ where: string, match: { tag: string, type?: string | null, cls?: string, near?: string }, measured: number, reason: string }[]}
  */
 export const QUARANTINE = [];
 
 /**
- * Controls that WERE quarantined and are now resolved, kept on the record — the same shape as
- * tests/guards/meta/non-vacuity-floors.test.ts's RETIRED map. `was` is the number it measured while
- * quarantined and `reason` names what changed, so leaving the set is visible rather than a silent
- * deletion; the wiring guard checks each reason is substantive.
+ * Controls that WERE quarantined and are now resolved, kept on the record so leaving the set is visible
+ * rather than a silent deletion. The wiring guard checks each `reason` is substantive.
  *
  * @type {{ where: string, match: { tag: string, type?: string | null, cls?: string, near?: string }, was: number, reason: string }[]}
  */
@@ -136,10 +127,9 @@ export const RETIRED = [
 ];
 
 /**
- * NON-VACUITY FLOORS FOR THE GATE ITSELF: a driver that navigates successfully but finds no controls — a
- * changed selector, a route that now redirects, a join that silently failed — would otherwise report every
- * assertion satisfied over an empty set. The floors sit well under the real counts so ordinary UI churn
- * does not trip them, and a firing floor is a FINDING, never a number to adjust.
+ * NON-VACUITY FLOORS FOR THE GATE ITSELF: a drive that navigates but finds no controls would otherwise
+ * report every assertion satisfied over an empty set. They sit well under the real counts, so a firing
+ * floor is a FINDING, never a number to adjust.
  */
 export const FLOORS = {
 	/** interactive controls measured, summed over every surface and every viewport */

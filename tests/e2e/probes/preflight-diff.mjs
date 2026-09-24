@@ -2,10 +2,9 @@
 //
 //   bun run tests/e2e/probes/preflight-diff.mjs <before.json> <after.json>
 //
-// Elements pair BY INDEX in document order, which is sound only while both runs rendered the same DOM, and
-// several surfaces here are DATA-DEPENDENT. So a surface is compared only when its full TAG SEQUENCE
-// matches, and one whose sequence differs is reported NOT-COMPARABLE with its counts — never quietly
-// skipped, never quietly compared, because the failure mode here is a FALSE difference, not a missed one.
+// Elements pair BY INDEX in document order, sound only while both runs rendered the same DOM — and several
+// surfaces here are DATA-DEPENDENT. So a surface is compared only when its full TAG SEQUENCE matches, and
+// one whose sequence differs is reported NOT-COMPARABLE with its counts, never quietly either way.
 
 import { readFileSync } from 'node:fs';
 
@@ -21,7 +20,7 @@ const PX_EPSILON = 0.01;
 
 // Tags that render nothing. Preflight's universal rules reach them too, so an unfiltered tally counts
 // `tab-size` on every `<meta>` and reads as a far larger change than the screen sustains. Counted
-// SEPARATELY rather than dropped: "it reached them and did not matter" is not "it did not reach them".
+// SEPARATELY rather than dropped.
 const INERT_TAGS = new Set(['html', 'head', 'meta', 'link', 'title', 'script', 'style', 'base']);
 
 let comparable = 0;

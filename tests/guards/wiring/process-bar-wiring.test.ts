@@ -40,14 +40,11 @@ test('SongRow derives its process bar from overallProcessPct', () => {
 	expect(src).toMatch(/processStageLabel\('queued',\s*\{\s*pct:\s*Math\.round\(barPct\)/);
 });
 
-// The CALLER side: SongRow reads overall completion only when its parent passes the live `status`, so a
-// site passing `pct=` without `status=` silently falls back to the raw per-step pct — the bug fully
-// restored with the callee still compliant. The population is WALKED rather than named, so the next route
-// to grow a song list is covered; floors on both page and element counts keep it non-vacuous.
-//
-// `routes/components` is excluded on purpose: it is the eyes-on gallery, and rendering the un-decorated
-// `pct` beside the overall-pct bar is how a human confirms the fix. The invariant is about the render
-// path a guest reaches, not about a demo of the bug.
+// The CALLER side: SongRow reads overall completion only when its parent passes the live `status`, so a site
+// passing `pct=` without `status=` silently falls back to the raw per-step pct — the defect fully restored
+// with the callee still compliant. The population is WALKED rather than named, so the next route to grow a
+// song list is covered. `routes/components` is excluded on purpose: the gallery renders the un-decorated
+// `pct` beside the overall-pct bar, which is how a human confirms the fix.
 const FIXTURE_PAGES = ['src/routes/components/+page.svelte'];
 
 test('every route page SongRow that passes pct also passes status', () => {

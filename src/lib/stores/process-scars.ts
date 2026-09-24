@@ -1,32 +1,19 @@
-// Process scars — a per-device memory that a song's process FAILED, surviving a phone reload.
-//
-// A failed process is a LIVE signal: the catalog records no failure (a dead process settles back to
-// un-processed server-side) and the in-memory status map is lost on reload, so without this a guest who
-// reloads sees the song back as a plain un-processed row with no trace that it broke. A client-side scar was
-// chosen over a server column: per-device, data-free, no migration.
-//
-// A scar carries a MINIMAL MEDIA SNAPSHOT, not just an expiry, because the library endpoint returns only ready
-// and processing media — a failed song is not in the catalog, so a bare-id scar would have nothing to render.
-//
-// SSR-SAFE and storage-failure-tolerant: storage access is behind a runtime presence check and wrapped, so a
-// server render, a quota failure or a malformed value all degrade to "no scar" rather than throwing. The pure
-// helpers take a plain record and an explicit `now`, so the TTL logic is unit-testable with no DOM.
+// Process scars — a per-device memory that a song's process FAILED, surviving a phone reload. A failed process is a
+// LIVE signal: the catalog records no failure (a dead process settles back to un-processed server-side) and the
+// in-memory status map is lost on reload. A scar carries a MINIMAL MEDIA SNAPSHOT, not just an expiry, because the
+// library endpoint returns only ready and processing media, so a bare-id scar would have nothing to render. SSR-SAFE
+// and storage-failure-tolerant: a server render, a quota failure or a malformed value all degrade to "no scar".
 import type { Media } from '$lib/contract';
 
 /** localStorage key. One key holds the whole `{ mediaId: Scar }` map. */
 export const PROCESS_SCARS_KEY = 'encore:process-scars';
 
-/**
- * How long a scar survives. The row is re-processable, so this is a "recently broke" HINT rather than a durable
- * state: long enough that a guest who reloads to see why their song never came finds out, short enough that a
- * stale failure does not haunt a row someone else could process cleanly.
- */
+/** How long a scar survives. The row is re-processable, so this is a "recently broke" HINT: long enough that a guest
+ * who reloads to see why their song never came finds out, short enough that it does not haunt a clean row. */
 export const PROCESS_SCAR_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
-/**
- * The Media fields a scarred row needs after a reload: a strict subset, so spreading a snapshot yields a valid
- * UN-PROCESSED Media, which is what the failed process settled it back to.
- */
+/** The Media fields a scarred row needs after a reload: a strict subset, so spreading a snapshot yields a valid
+ * UN-PROCESSED Media, which is what the failed process settled it back to. */
 export type ScarMedia = Pick<Media, 'id' | 'source' | 'sourceRef' | 'title' | 'durationSec'> &
 	Partial<Pick<Media, 'artist' | 'artistCanonical' | 'thumbnail' | 'viewCount'>>;
 
@@ -36,7 +23,6 @@ export interface Scar {
 	media: ScarMedia;
 }
 
-/** `{ [mediaId]: Scar }`. */
 export type ScarMap = Record<string, Scar>;
 
 /** Reduce a full Media to the snapshot a scarred row needs. */
@@ -68,12 +54,11 @@ export function pruneScars(map: ScarMap, now: number): ScarMap {
 	return out;
 }
 
-// The backing store, INJECTABLE so the I/O layer is testable without a real `localStorage`. Null means "no
-// scars" to every caller, never an error.
+// The backing store, INJECTABLE so the I/O layer is testable without a real `localStorage`. Null means "no scars".
 function storageOf(store?: Storage): Storage | null {
 	if (store) return store;
-	// A runtime presence check rather than the framework's browser flag, so this layer stays unit-testable off
-	// a browser. Accessing the global can itself throw in a sandboxed or private-mode context.
+	// A runtime presence check rather than the framework's browser flag, so this layer stays unit-testable off a
+	// browser. Accessing the global can itself throw in a sandboxed or private-mode context.
 	try {
 		return typeof localStorage !== 'undefined' ? localStorage : null;
 	} catch {
@@ -122,10 +107,8 @@ export function clearScar(mediaId: string, now: number = Date.now(), store?: Sto
 	writeScars(map, store);
 }
 
-/**
- * The unexpired scars, as rehydrated un-processed Media. Reading PRUNES back to storage, which is what makes
- * the persisted map self-clean.
- */
+/** The unexpired scars, as rehydrated un-processed Media. Reading PRUNES back to storage, which is what makes the
+ * persisted map self-clean. */
 export function activeScars(now: number = Date.now(), store?: Storage): Media[] {
 	const pruned = pruneScars(readScars(store), now);
 	writeScars(pruned, store);

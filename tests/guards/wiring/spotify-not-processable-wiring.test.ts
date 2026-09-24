@@ -1,16 +1,8 @@
-// Wiring guards for the Spotify not-processable ruling — the hunks whose revert a runtime suite cannot see.
-//
-// The behavioural halves live in spotify-not-processable.test.ts (processState's verdict, the rotation
-// consequence), not-processable-arm.test.ts (the route arm) and spotify-affordance.test.ts (the
-// markup). What is left is four hunks that are TYPE-ONLY or PROSE, plus one relocated predicate — none
-// of which can red a runtime assertion, so `prove_per_hunk.py` reports them green-when-reverted. Each
-// gets a scan against the REAL production file here, so reverting it fails a named test instead of only
-// a typecheck.
-//
-// The ProcessState member is the sharpest of them, and the issue said so in advance: adding it forces
-// NOTHING. There is no `Record<ProcessState, …>` and no exhaustive `switch` anywhere in the repo, so the
-// union member type-checks clean while every consumer keeps falling through its `if (state === …)`
-// chain. Without the scan below, deleting that member is invisible to `bun test`.
+// guard: the Spotify not-processable hunks whose revert a runtime suite cannot see — four TYPE-ONLY or
+// PROSE hunks plus one relocated predicate, each scanned against the REAL production file so a revert
+// fails a named test instead of only a typecheck. The `ProcessState` member is the sharpest: there is no
+// `Record<ProcessState, …>` and no exhaustive `switch` anywhere, so deleting it typechecks clean while
+// every consumer keeps falling through its `if (state === …)` chain. Behaviour lives in the siblings.
 import { readFileSync } from 'node:fs';
 import { test, expect } from 'bun:test';
 import { at, read } from '@encore/test-support';
@@ -36,31 +28,26 @@ test('non-vacuous: the three production files were really read', () => {
 });
 
 test('ProcessState DECLARES not-processable (the member the compiler does not force)', () => {
-	// Type-only hunk. Its runtime effect is proven in spotify-not-processable.test.ts; this pins the
-	// declaration itself. Reverting it makes processState return a value outside its own union — a
-	// typecheck failure and nothing else, which `bun test` would sail straight past.
+	// Type-only hunk; its runtime effect is proven in spotify-not-processable.test.ts. Reverting it makes
+	// processState return a value outside its own union — a typecheck failure and nothing `bun test` sees.
 	const union = processCode.match(/export type ProcessState =[\s\S]*?;/);
 	expect(union).not.toBeNull();
 	expect(union![0]).toMatch(/\|\s*'not-processable'/);
-	// the members it must NOT have displaced — a fix that replaced an existing state rather than adding
-	// one would change how the route answers for a song that is merely playing or already processed.
+	// the members it must NOT have displaced: replacing an existing state rather than adding one changes how
+	// the route answers for a song that is merely playing or already processed.
 	for (const member of ['unknown', 'playing', 'ready', 'processing', 'over-limit', 'processable']) {
 		expect(union![0]).toContain(`'${member}'`);
 	}
 });
 
 test('the standalone source check is GONE from requestProcess', () => {
-	// The relocated predicate. `prove_per_hunk.py` reports this hunk WEAK rather than PINNED because the
-	// replacement is split across two hunks: reverting only the second re-adds the old
+	// The relocated predicate. Reverting only the second of its two hunks re-adds the old
 	// `const state = processState(…)` beside the one the first hunk moved up, so the revert breaks the build
-	// instead of reddening a test — and a build break is not a proof (§3).
-	//
-	// ARM 1: the literal is gone.
+	// instead of reddening a test — and a build break is not a proof. ARM 1: the literal is gone.
 	expect(processCode).not.toMatch(/media\.source\s*===\s*'spotify'/);
-	// ARM 2: and the discredited SHAPE is banned under any name. The finding was not "this check is
-	// unused", it was "this check is in the WRONG PLACE" — a local source comparison anywhere in this
-	// file re-creates exactly the defect, because a rule enforced beside the code that acts on it is
-	// invisible to the layer that decides whether to act. The one authority is `isProcessableSource`.
+	// ARM 2: the discredited SHAPE is banned under any name. The finding was not "this check is unused" but
+	// "this check is in the WRONG PLACE" — a local source comparison anywhere in this file re-creates the
+	// defect, because a rule enforced beside the code that acts on it is invisible to the deciding layer.
 	expect(processCode).not.toMatch(/\.source\s*===\s*'spotify'/);
 	expect(processCode).not.toMatch(/'spotify'\s*===/);
 	// …and the refusal is off the STATE, so every caller that asks processState first sees it coming.
@@ -69,9 +56,8 @@ test('the standalone source check is GONE from requestProcess', () => {
 });
 
 test('ARM 2 DISCRIMINATES — the ban catches a renamed copy of the old check', () => {
-	// Proving the ban is not vacuous, per §3: a literal-name scan that cannot see a renamed
-	// reintroduction is a guard in name only. These are the shapes a future author would most plausibly
-	// write, and each must be caught by the same expressions asserted above.
+	// Proving the ban is not vacuous: a literal-name scan that cannot see a renamed reintroduction is a guard
+	// in name only. These are the shapes a future author would most plausibly write.
 	const renamed = [
 		"if (m.source === 'spotify') return null;",
 		"if (theMedia.source === 'spotify') return null;",
@@ -86,12 +72,9 @@ test('ARM 2 DISCRIMINATES — the ban catches a renamed copy of the old check', 
 });
 
 /**
- * The docstring IMMEDIATELY above a declaration.
- *
- * Anchoring matters: a lazy `[\s\S]*?` from the first `/**` in the file will happily span several
- * unrelated comment blocks to reach the declaration, so an assertion about "the docstring" silently
- * becomes an assertion about half the file — and passes on prose that lives somewhere else entirely.
- * This takes the LAST comment block that ends immediately before the declaration.
+ * The docstring IMMEDIATELY above a declaration. Anchoring matters: a lazy `[\s\S]*?` from the first block
+ * in the file spans several unrelated comment blocks to reach the declaration, so an assertion about "the
+ * docstring" silently becomes one about half the file. This takes the LAST block ending before it.
  */
 function docFor(src: string, declaration: string): string | null {
 	const at = src.indexOf(declaration);
@@ -110,30 +93,39 @@ function summaryOf(doc: string): string {
 	return doc.split(/\n\s*\*\s*\n/)[0] ?? doc;
 }
 
+/**
+ * A docstring with its ` * ` markers stripped and whitespace collapsed, so an arm matches the SENTENCE
+ * rather than one line-wrapping of it. Without this, re-flowing the paragraph moved "Returns the job," and
+ * "or null" onto separate lines and the reason-list anchor stopped matching a docstring that still said it.
+ */
+function flatten(doc: string): string {
+	return doc
+		.replace(/^\s*\/\*\*|\*\/\s*$/g, ' ')
+		.replace(/^[ \t]*\*[ \t]?/gm, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
 test("requestProcess's docstring no longer makes a promise it breaks", () => {
 	// Prose hunk. The docstring told callers to ask `processState` to tell its refusals apart, and for THIS
 	// refusal that was false — which is what let every caller act as though a process were about to start.
-	// The sentence is load-bearing documentation of an invariant, so it is pinned like one.
 	const doc = docFor(processRaw, 'export function requestProcess');
 	expect(doc).not.toBeNull();
 	expect(doc!).toMatch(/processState/);
-	// It must NAME the metadata-only refusal in its own LIST of the reasons it returns null. The list is
-	// the thing that misled a caller: it enumerated four reasons and there were five.
-	const reasons = doc!.match(/Returns the job, or null when there is no work[\s\S]*?\./);
+	// It must NAME the metadata-only refusal in its own LIST of the reasons it returns null: that list is what
+	// misled a caller, enumerating four reasons where there were five. Matched on the FLATTENED docstring and
+	// with the lead-in loosened to `null when there is no work`, so a reword or a re-wrap cannot pass as a
+	// deleted list — the claim being banned is a reason list with the metadata-only refusal missing from it.
+	const reasons = flatten(doc!).match(/null when there is no work[\s\S]*?\./);
 	expect(reasons).not.toBeNull();
 	expect(reasons![0]).toMatch(/metadata-only|not-processable/i);
 });
 
 test("canProcess's docstring SUMMARY states that it reads the media, not readiness alone", () => {
-	// Prose hunk on the client gate. The signature change is pinned by behaviour
-	// (spotify-not-processable.test.ts) and by the four template call sites
-	// (spotify-affordance.test.ts); this pins the reason, because the next author to add a fifth row
-	// reads the docstring, not the issue.
-	//
-	// Asserted on the SUMMARY specifically — the first sentence, which is what an editor tooltip shows
-	// at a call site. The long explanation further down is a different hunk and cannot stand in for it:
-	// a summary that still says "only for a song that is neither done nor in flight" describes the
-	// predicate this fix replaced.
+	// Prose hunk on the client gate. The signature change is pinned by behaviour and by the four template call
+	// sites, so this pins the REASON, because the next author to add a fifth row reads the docstring. Asserted
+	// on the SUMMARY specifically — the first sentence, which is what an editor tooltip shows at a call site —
+	// since a summary still saying "neither done nor in flight" describes the predicate this replaced.
 	const doc = docFor(readinessRaw, 'export function canProcess');
 	expect(doc).not.toBeNull();
 	expect(summaryOf(doc!)).toMatch(/acquir/i);
@@ -142,10 +134,8 @@ test("canProcess's docstring SUMMARY states that it reads the media, not readine
 });
 
 test('SongRow DECLARES the processable prop (type-only, so nothing else pins it)', () => {
-	// Type-only hunk in the Props interface. Its rendered effect is pinned in
-	// spotify-affordance.test.ts; reverting the declaration alone breaks only the typecheck.
+	// Type-only hunk in the Props interface; reverting the declaration alone breaks only the typecheck.
 	expect(songRowRaw).toMatch(/processable\?\s*:\s*boolean;/);
-	// declared optional AND defaulted true, which together are what make this change safe for the
-	// existing callers that pass nothing.
+	// declared optional AND defaulted true, which together make this safe for callers that pass nothing.
 	expect(songRowRaw).toMatch(/processable\s*=\s*true/);
 });

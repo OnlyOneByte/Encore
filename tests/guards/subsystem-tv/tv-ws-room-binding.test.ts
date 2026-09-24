@@ -1,9 +1,8 @@
-// one-TV-per-room, the CLIENT half: the TV must pass its resolved room code on the WS URL so the server can
-// bind the socket to that room (tvRoomId).
-//
-// The client WS-URL line is the one hunk whose reversion breaks the feature SILENTLY: the loader still
-// resolves the room and the server still binds `?room`, but a client connecting with a bare `?role=tv` makes
-// the server fall back to the SERVED room, so the TV can no longer be pointed at a specific party.
+// guard: one-TV-per-room, the CLIENT half — the TV must pass its resolved room code on the WS URL so the
+// server can bind the socket to that room. The client WS-URL line is the one hunk whose reversion breaks the
+// feature SILENTLY: the loader still resolves the room and the server still binds `?room`, but a client
+// connecting with a bare `?role=tv` makes the server fall back to the SERVED room, so the TV can no longer
+// be pointed at a specific party.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 

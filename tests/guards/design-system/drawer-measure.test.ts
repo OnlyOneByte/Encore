@@ -1,19 +1,8 @@
-// guard: the now-playing sheet's head and body share ONE measure, and both keep it. See
-// docs/GUARDS.md#vendored-component-seams.
-//
-// THE DEFECT. The head and body were capped and centred by one rule with two selectors, and a new rule
-// inserted BETWEEN them silently dropped the head out of the list: it picked up the declarations of the
-// rule that now followed its comma and went FULL-BLEED above `--max-w`, so on a 1639px window the song
-// title sat pinned to the window edges while the transport was centred 280px inside them.
-//
-// Nothing caught it. A class-resolution guard asks whether a class matches SOME rule that can reach it,
-// and `.np-head` still did — the wrong one. The rendered gate drives phone viewports, where a capped box
-// and an uncapped one are the same width. And the head is rendered by a COMPONENT, so its rule must be
-// `:global()`, which puts it in exactly the kind of selector list a careless insertion splits.
-//
-// So the claim is asserted on the DECLARATIONS rather than the text of one rule: each selector must
-// resolve to a rule carrying the cap AND the centring, which survives reordering, reformatting and a
-// deliberate split into two rules.
+// guard: the now-playing sheet's head and body share ONE measure. A rule inserted BETWEEN the two
+// selectors of their shared rule dropped the head out of the list and took it FULL-BLEED above `--max-w`;
+// `.np-head` still matched SOME rule that could reach it, and the rendered gate drives phone viewports,
+// where a capped box and an uncapped one are the same width. So the claim is asserted on the DECLARATIONS
+// each selector resolves to. See docs/GUARDS.md#vendored-component-seams.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 

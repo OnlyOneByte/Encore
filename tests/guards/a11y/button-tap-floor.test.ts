@@ -1,22 +1,10 @@
-// guard: no call site may ask for a Button size whose box is PINNED under the tap floor. See
-// docs/GUARDS.md#touch-targets.
-//
-// The registry's size axis is built for a 36px-default desktop UI, so against `--tap: 44px` every stock
-// size is under the floor (xs 24, sm 32, default 36, lg 40). An inline control that is neither a square
-// nor full-width had no compliant size to migrate onto and `sm` is the obvious-looking choice, which
-// silently dropped four 44px hand-rolled controls to 32px. `size="tap"` exists for exactly that.
-//
-// THE RULE IS A MEASUREMENT, NOT A SPELLING: non-compliant iff it PINS a fixed box under the floor, as an
-// `h-<n>`/`size-<n>` literal times Tailwind's 4px multiplier. `block`/`tap`/`icon` defer to the token;
-// `blockLg` pins NO height and pads with `--space-2xl`, so its box grows with its content and clears the
-// floor on padding alone — demanding the token instead would flag a compliant size.
-//
-// This is the successor touch-targets.test.ts names: that guard measures rules that size their own box in
-// a PAGE stylesheet, and a migrated control declares no such rule (its box comes from a utility string
-// inside the component), which is why its `controlRulesSeen` floor was re-based downward.
-//
-// SCOPE. Phone and desktop-page surfaces. The TV is exempt by name: no pointer, its own type ladder, and
-// `--tap` is a finger standard.
+// guard: no call site may ask for a Button size whose box is PINNED under the tap floor. The registry's size
+// axis is built for a 36px-default desktop UI, so against `--tap: 44px` every stock size is under the floor
+// (xs 24, sm 32, default 36, lg 40); `sm` is the obvious-looking choice and silently dropped four 44px
+// hand-rolled controls to 32px, which is why `size="tap"` exists. A MEASUREMENT, NOT A SPELLING: an
+// `h-<n>`/`size-<n>` literal times Tailwind's 4px multiplier, so `blockLg` — which pins no height and pads
+// with `--space-2xl` — is compliant. SCOPE: phone and desktop pages; the TV has no pointer.
+// See docs/GUARDS.md#touch-targets.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

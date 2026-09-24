@@ -23,7 +23,6 @@ import {
 	SIDECAR_SCHEMA
 } from '$lib/server/media/sidecar';
 
-/** Blank comments (preserving offsets) so a commented-out call cannot satisfy a text assertion. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);

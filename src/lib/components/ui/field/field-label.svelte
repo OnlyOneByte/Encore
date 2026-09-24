@@ -1,9 +1,6 @@
-<!--
-  The margin in the style block is the settings page's entire vertical rhythm — it stacks 27 of these, and
-  the registry's label is `flex w-fit` with no margins, so dropping it collapses every field against its
-  neighbour. Reached by a global data-slot rule because this file renders a component, which scoped CSS
-  cannot style, and the attribute survives a re-vendor where a class of ours would not.
--->
+<!-- The margin in the style block is the settings page's entire vertical rhythm — it stacks 27 of these, and the
+  registry's label is `flex w-fit` with no margins, so dropping it collapses every field against its neighbour. Reached
+  by a global data-slot rule because this file renders a component, and the attribute survives a re-vendor. -->
 <script lang="ts">
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { cn } from '$lib/utils.js';
@@ -26,9 +23,8 @@
 </Label>
 
 <style>
-	/* A label laying out INLINE with content it contains (settings' stage-colour swatch). A data attribute
-	   rather than a passed class, because a class handed to a component is stripped as unused at the
-	   caller. */
+	/* A label laying out INLINE with content it contains (settings' stage-colour swatch). A data attribute rather than a
+	   passed class, because a class handed to a component is stripped as unused at the caller. */
 	:global([data-slot='field-label'][data-inline]) {
 		display: flex;
 		flex-wrap: wrap;

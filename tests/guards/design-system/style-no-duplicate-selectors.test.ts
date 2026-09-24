@@ -1,16 +1,8 @@
 // guard: no class selector is declared twice inside the TV page's <style> block, because the later copy
-// overrides the earlier one INVISIBLY.
-//
-// A deleted "now singing card" design left a whole second copy of its rule block in the same <style>,
-// re-declaring `.ls-name` / `.ls-song` / `.ls-artist` / `.ls-key` LATER in source than the live rules, so
-// by the cascade its declarations silently won. The load-bearing one added
-// `overflow: hidden; text-overflow: ellipsis; white-space: nowrap` to `.ls-artist`, which is an INLINE
-// <span>: on an inline element overflow and text-overflow are INERT while `white-space: nowrap` applies, so
-// a long joined credit became one unbreakable run that overflowed `.lower-third`'s 46vw and was hard-
-// clipped MID-WORD with no ellipsis.
-//
-// Nothing else could see it: the design-system, stage-scale and contrast guards read app.css and computed
-// properties, not the shape of a component's own <style>.
+// wins INVISIBLY. A deleted design left a second copy of its rule block re-declaring `.ls-name`/`.ls-song`/
+// `.ls-artist`/`.ls-key`, and its `white-space: nowrap` on the INLINE `.ls-artist` span — where overflow and
+// text-overflow are INERT — made a long joined credit one unbreakable run, clipped MID-WORD with no
+// ellipsis, invisible to every guard that reads app.css and computed properties.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -37,7 +29,6 @@ test('no class selector is declared more than once in the TV page <style>', () =
 	const seen = new Map<string, number>();
 	for (const h of heads) seen.set(h, (seen.get(h) ?? 0) + 1);
 	const dupes = [...seen.entries()].filter(([, n]) => n > 1).map(([sel, n]) => `${sel} (\u00d7${n})`);
-	// Red on the pre-fix tree, where each of the four appeared twice.
 	expect(dupes).toEqual([]);
 });
 

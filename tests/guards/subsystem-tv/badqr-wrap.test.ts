@@ -8,7 +8,6 @@ import { read } from '@encore/test-support';
 
 const SRC = read('src/lib/tv/JoinBadge.svelte');
 
-/** Blank comments so a commented-out declaration cannot satisfy an assertion. */
 function stripComments(s: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return s.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
@@ -78,13 +77,10 @@ test('the notice declares no row layout, so its parts stay on one line rather th
 });
 
 test("the card's prose parts stay retired, so the sentence cannot be reassembled inline", () => {
-	// The failure shape was `<b>{shortUrl}</b>, which phones can't reach.` — the address inline, with the
-	// comma orphaning onto the next line inside a two-word-wide column. The notice prints no address at all
-	// (attract and the lobby print the real one directly below it), so reintroducing any part of that
-	// sentence means reintroducing the paragraph.
-	//
-	// Read off the comment-STRIPPED source: the component's own note names these three classes to record
-	// what retired with the card, so a raw scan would red on the prose explaining the deletion.
+	// The failure shape was `<b>{shortUrl}</b>, which phones can't reach.` — the address inline, with the comma
+	// orphaning onto the next line inside a two-word-wide column. The notice prints no address at all (attract
+	// and the lobby print the real one below it), so reintroducing any part of that sentence reintroduces the
+	// paragraph. Read comment-STRIPPED, because the component's own note names these three classes.
 	const MARKUP = stripComments(SRC);
 	expect(MARKUP).not.toMatch(/<\/b>\s*,\s*which/);
 	for (const gone of ['badqr-addr', 'badqr-lead', 'badqr-b"'])

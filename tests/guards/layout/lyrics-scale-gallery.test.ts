@@ -1,9 +1,6 @@
-// guard: the lyrics-scale demo frames in the components gallery demonstrate the ACTUAL band.
-//
-// The gallery renders one card at the scale floor and one at the ceiling so a reviewer can see the range.
-// When the shared band moves — as it did when the scale was rebased — the demo values must move with it, or
-// the gallery quietly shows a value no longer in range. The band's own values are pinned where they are
-// declared; this only ties the demo to them.
+// guard: the lyrics-scale demo frames in the components gallery demonstrate the ACTUAL band. When the
+// shared band moves, the demo values must move with it or the gallery quietly shows a value no longer in
+// range. The band's own values are pinned where they are declared; this only ties the demo to them.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { MIN_LYRICS_SCALE_PCT, MAX_LYRICS_SCALE_PCT } from '$lib/contract';

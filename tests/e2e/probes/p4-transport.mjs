@@ -1,20 +1,11 @@
 /*
- * P4 — TRANSPORT, SEEK AND POSITION TELEMETRY.
+ * P4 — TRANSPORT, SEEK AND POSITION TELEMETRY. Each arm is marked `T<n> ·` at its own site below.
  *
- * Every failure mode here is one the DOM hides: the tap landed and the media element did nothing, or
- * the server's authoritative state fell out of step with what a phone renders.
+ * THE PHONE BAR IS ONLY AUTHORITATIVE AT PAUSE. `displayPos` interpolates from the last playback:state
+ * anchor plus a wall clock, so during PLAY it climbs perfectly even while telemetry is dropping. Every
+ * phone-bar read below therefore waits for an `isPlaying:false` broadcast first.
  *
- *   T1 play/pause/skip/restart move the master <audio> · T2 a `seek` lands within tolerance and keeps
- *   decoding, which needs a mid-file 206 (asserted against /media directly) · T3 server
- *   PlaybackState.positionSec tracks the TV rather than staying pinned at 0 · T4 pausing does not
- *   reset the phone bar to 0 · T5 the transport is DISABLED with nothing playable · T6 skip on the
- *   LAST song reaches attract cleanly · T7 restart returns to 0 and keeps decoding.
- *
- * THE PHONE BAR IS ONLY AUTHORITATIVE AT PAUSE. `displayPos` interpolates from the last
- * playback:state anchor plus a wall clock, so during PLAY it climbs perfectly even while telemetry is
- * dropping. Every phone-bar read below therefore waits for an `isPlaying:false` broadcast first.
- *
- * See docs/E2E.md#proving-audio and #exit-codes-and-what-ran-means.
+ * See docs/E2E.md#proving-audio.
  */
 import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
@@ -24,8 +15,6 @@ import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from '../lib
 import { openJoin } from '../lib/join.mjs';
 
 /**
- * `page.evaluate()` and `fetch().json()` come back Promise<any>, so results are cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO'} Severity
@@ -118,7 +107,6 @@ async function readServerPlayback(timeoutMs = 2500) {
 		};
 	});
 }
-
 
 // SCOPE TO `.slot.visible audio`: the hidden pre-warm slot carries its own PAUSED <audio> at
 // currentTime 0, so a looser selector can pick that one and read the stage as silent.

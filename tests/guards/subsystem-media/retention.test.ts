@@ -1,6 +1,6 @@
-// Retention. The invariant that matters: nothing UNRECOVERABLE is ever deleted. `audio/` and
-// `meta/` are untouchable; only `derived/` (regenerable from audio, at the cost of a re-process) is fair
-// game, and pre-policy WAVs are recompressed in place rather than evicted so the song stays singable.
+// guard: retention. Nothing UNRECOVERABLE is ever deleted — `audio/` and `meta/` are untouchable and only
+// `derived/` is evictable, and pre-policy WAVs are recompressed in place so the song stays singable.
+// See docs/GUARDS.md#media-retention.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -69,9 +69,8 @@ describe('legacy-format detection', () => {
 	});
 
 	it('does NOT flag a lossy stem for "upgrade" to lossless — that would be actively harmful', () => {
-		// When the instrumental target became FLAC, a rule of "anything not the current format" would
-		// have transcoded every.m4a to FLAC. That cannot recover what AAC discarded: it produces a ~4x
-		// larger file containing identical audio. A real codec upgrade means re-processing from raw audio.
+		// A rule of "anything not the current format" would have transcoded every .m4a to FLAC, which cannot
+		// recover what AAC discarded: a ~4x larger file containing identical audio. An upgrade means re-processing.
 		expect(isLegacyStemRef('derived/stems/a-instrumental.m4a')).toBe(false);
 		expect(isLegacyStemRef('derived/stems/a-instrumental.flac')).toBe(false);
 		expect(planRecompress([media('a', { instrumentalRef: 'derived/stems/a-instrumental.m4a' })])).toEqual([]);
@@ -163,10 +162,9 @@ describe('planEviction', () => {
 	});
 
 	it('NEVER evicts a protected id — the playing or queued song survives even as the LRU candidate', () => {
-		// 'old' is the least-recently-used and would be evicted first, but it is the currently-playing
-		// (or queued) song. A pure-LRU plan would strip it mid-party — reset stemStatus to 'none' and
-		// delete its stems out from under a live entry. The exclusion is enforced HERE so no caller can
-		// forget it. It falls through to 'mid' instead to make the same room.
+		// 'old' is least-recently-used and would be evicted first, but it is the currently-playing (or queued)
+		// song and a pure-LRU plan would strip it mid-party. The exclusion is enforced HERE so no caller can
+		// forget it; it falls through to 'mid' to make the same room.
 		const out = planEviction([c('new', 100, 300), c('mid', 100, 200), c('old', 100, 100)], 150, new Set(['old']));
 		expect(out).not.toContain('old'); // protected, though it is the oldest
 		expect(out).toEqual(['mid', 'new']); // freed 200 ≥ the 150 needed, oldest-first among the rest
@@ -192,11 +190,9 @@ describe('evictDerived', () => {
 	});
 
 	it('counts the vocals stem under the CURRENT extensions, not just when they happen to match', () => {
-		// The modern layout is BOTH stems FLAC. derivedBytesOf must count the vocals stem via
-		// vocalsKey, which now names -vocals.flac; the ext-blind "-instrumental."→"-vocals." swap also
-		// resolves it here because the two stems share.flac. derivedBytesOf feeds planEviction's cap
-		// comparison, so undercounting means retention concludes there is nothing to reclaim while the
-		// volume is genuinely over budget.
+		// The modern layout is BOTH stems FLAC, so `vocalsKey` and the ext-blind "-instrumental."→"-vocals." swap
+		// both resolve. derivedBytesOf feeds planEviction's cap comparison, so undercounting means retention
+		// concludes there is nothing to reclaim while the volume is genuinely over budget.
 		put('derived/stems/a-instrumental.flac', 500);
 		put('derived/stems/a-vocals.flac', 400);
 		const m = media('a', { instrumentalRef: 'derived/stems/a-instrumental.flac' });
@@ -207,13 +203,9 @@ describe('evictDerived', () => {
 	});
 
 	it('counts an INTERIM process (flac instrumental + m4a vocals) via the stored m.vocalsRef', () => {
-		// regression pin: flipping VOCALS_EXT to.flac makes BOTH vocalsKey and the ext-blind swap
-		// derive -vocals.flac, so neither names the.m4a vocals stem an interim process actually left on
-		// disk (this PR deliberately does not recompress it). The ONLY thing that still counts it is the
-		// STORED m.vocalsRef. This is the real on-disk layout, not a synthetic one. Deleting m.vocalsRef
-		// from derivedRefsOf reds this (drops to 500) — proving the stored ref is load-bearing.
-		// derivedBytesOf feeds planEviction's cap comparison, so an undercount makes retention reclaim
-		// nothing on a volume genuinely over budget; evictDerived would also orphan the.m4a file.
+		// Both `vocalsKey` and the ext-blind swap derive `-vocals.flac`, so neither names the interim `.m4a`
+		// vocals stem a process actually left on disk. The ONLY thing that still counts it is the STORED
+		// `m.vocalsRef`; deleting it from derivedRefsOf reds this at 500, proving the stored ref is load-bearing.
 		put('derived/stems/a-instrumental.flac', 500);
 		put('derived/stems/a-vocals.m4a', 400);
 		const m = media('a', {
@@ -243,13 +235,9 @@ describe('evictDerived', () => {
 	});
 
 	it('deletes and counts ALL lyrics-candidate JSONs, not just the chosen lyricsRef (§3)', () => {
-		// A song carries one lyrics JSON per text source (worker lyrics/chain.py mints a distinct key
-		// each), all retained in m.lyricsCandidates; lyricsRef is only the CHOSEN one. derivedRefsOf
-		// listing lyricsRef alone saw 1 of N — the other N-1 were never counted toward the cap and,
-		// worse, never deleted on eviction, orphaning them on disk permanently. Enumerating every
-		// candidate ref (retention.ts derivedRefsOf) is what this pins. Removing the
-		// `...(m.lyricsCandidates ?? []).map((c) => c.ref)` line reds this: bytes drops to 500+200 and the
-		// two extra candidate files survive.
+		// A song carries one lyrics JSON per text source, all retained in m.lyricsCandidates, and `lyricsRef` is
+		// only the CHOSEN one. Listing it alone saw 1 of N: the other N-1 were never counted toward the cap and,
+		// worse, never deleted on eviction, orphaning them on disk permanently.
 		mkdirSync(join(root, 'derived', 'lyrics'), { recursive: true });
 		put('derived/stems/a-instrumental.flac', 500);
 		put('derived/lyrics/a-chosen.json', 200);
@@ -296,14 +284,10 @@ describe('evictDerived', () => {
 	});
 
 	it('counts AND evicts the retained raw caption track the cap claims to bound', () => {
-		// THE F1 PIN. shipped ENCORE_KEEP_RAW_CAPTIONS retention, whose docstring claims the track
-		// "inherits the retention the cap already bounds" — but eviction here is ref-driven and
-		// derivedRefsOf enumerated no raw-caption key, so derivedBytesOf undercounted (the identical
-		// / undercount) and evictDerived orphaned the file on disk PERMANENTLY: retention strips
-		// the song to un-processed and the raw caption survives the eviction with nothing left pointing at it.
-		// The worker writes it to derived/captions/<kind>/<id>.captions.<ext> keyed per media id (no ref
-		// stored on Media), so derivedRefsOf enumerates CAPTION_KINDS × KNOWN_CAPTION_EXTS via rawCaptionKey.
-		// Removing that enumeration line reds this: bytes drops to 500 and both caption files survive.
+		// Eviction is ref-driven and derivedRefsOf enumerated no raw-caption key, so derivedBytesOf undercounted
+		// and evictDerived orphaned the file on disk PERMANENTLY. The worker writes it to
+		// derived/captions/<kind>/<id>.captions.<ext> keyed per media id with no ref stored on Media, so
+		// derivedRefsOf enumerates CAPTION_KINDS × KNOWN_CAPTION_EXTS via rawCaptionKey instead.
 		mkdirSync(join(root, 'derived', 'captions', 'captions'), { recursive: true });
 		mkdirSync(join(root, 'derived', 'captions', 'auto-captions'), { recursive: true });
 		put('derived/stems/a-instrumental.flac', 500);
@@ -327,13 +311,13 @@ describe('evictDerived', () => {
 	});
 });
 
-// ──: retention must report bytes it actually freed, and derive the vocals ref in ONE place ──
+// Source scans: retention must report bytes it actually freed, and derive the vocals ref in ONE place.
 import { readFileSync as _readFileSync } from 'node:fs';
 import { chmodSync, statSync as _statSync } from 'node:fs';
 import { join as _join } from 'node:path';
 
-// Strip block and line comments so a scan measures LOGIC, not the prose that describes the old form.
-// retention.ts's docstrings mention `-instrumental.` in prose, which would satisfy a naive scan.
+// Comments stripped so a scan measures LOGIC: retention.ts's docstrings mention `-instrumental.` in prose,
+// which would satisfy a naive scan.
 const stripComments = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
 const mediaSrcDir = at('src/lib/server/media');
@@ -341,16 +325,16 @@ const readSrc = (name: string) => _readFileSync(_join(mediaSrcDir, name), 'utf8'
 
 describe('§1 — evictDerived reports only bytes it actually freed', () => {
 	it('counts ZERO bytes for a file it could not delete, and leaves it on disk', () => {
-		// The reachable trigger: a derived file `existsSync` can see but `rmSync` cannot dispose of.
-		// `force` suppresses ENOENT only; EACCES/EPERM/EROFS/EBUSY still throw. We reproduce EACCES by
-		// making the parent directory non-writable. Root ignores mode bits, so skip under uid 0.
+		// The reachable trigger: a derived file `existsSync` can see but `rmSync` cannot dispose of. `force`
+		// suppresses ENOENT only; EACCES/EPERM/EROFS/EBUSY still throw, reproduced with a non-writable parent
+		// directory. Root ignores mode bits, so skip under uid 0.
 		if (process.getuid?.() === 0) return; // root ignores mode bits — the throw cannot be reproduced
 		put('derived/stems/a-instrumental.flac', 4096);
 		const parent = _join(root, 'derived', 'stems');
 		chmodSync(parent, 0o555); // read+execute, no write → unlink throws EACCES
 		try {
 			const { removed, bytes } = evictDerived(media('a', { instrumentalRef: 'derived/stems/a-instrumental.flac' }));
-			// BASE (count-before-delete) reported bytes = 4096 for a file still on disk. Fixed: 0.
+			// A count taken before the delete reported 4096 bytes for a file that was still on disk.
 			expect(bytes).toBe(0);
 			expect(removed).toEqual([]);
 			expect(existsSync(_join(root, 'derived/stems/a-instrumental.flac'))).toBe(true);
@@ -360,9 +344,8 @@ describe('§1 — evictDerived reports only bytes it actually freed', () => {
 	});
 
 	it('binds the disposal error and logs it — a swallowed failure is undiagnosable', () => {
-		// Portable structural guard (the behavioural arm above needs a non-root uid). Two invariants:
-		// (1) the byte count happens AFTER the disposal call, not before; (2) the catch binds the error
-		// and logs it rather than being a bare `catch {}`. Both red on base.
+		// Portable structural guard, since the behavioural arm needs a non-root uid: the byte count happens AFTER
+		// the disposal call, and the catch binds the error and logs it rather than being a bare `catch {}`.
 		const body = stripComments(readSrc('retention.ts'));
 		const fn = body.match(/export function evictDerived[\s\S]*?\n}/);
 		expect(fn).not.toBeNull();
@@ -372,9 +355,9 @@ describe('§1 — evictDerived reports only bytes it actually freed', () => {
 		const countAt = evict.indexOf('bytes +=');
 		expect(rmAt).toBeGreaterThan(-1); // disposal-call anchor found
 		expect(countAt).toBeGreaterThan(-1); // count anchor found
-		// count AFTER disposal: BASE FAILS (count precedes rmSync)
+		// count AFTER disposal
 		expect(countAt).toBeGreaterThan(rmAt);
-		// error is bound and logged: BASE FAILS (bare `catch {}` with no console call)
+		// the error is bound and logged, never a bare `catch {}`
 		expect(evict).toMatch(/catch\s*\(/);
 		expect(evict).toMatch(/console\.(warn|error)/);
 	});
@@ -382,8 +365,8 @@ describe('§1 — evictDerived reports only bytes it actually freed', () => {
 
 describe('§2 — the vocals ref is derived in exactly one place', () => {
 	it('the -instrumental.->-vocals. substitution appears exactly ONCE in production source', () => {
-		// GUARD 1: comments stripped, scan retention.ts / vocals-backfill.ts / paths.ts. BASE = 3
-		// (retention.ts: 2, vocals-backfill.ts: 1). After the extraction into paths.ts it is 1.
+		// GUARD 1: comments stripped, scanning retention.ts / vocals-backfill.ts / paths.ts. After the extraction
+		// into paths.ts the substitution exists exactly once.
 		const swap = /\.replace\(\s*['"]-instrumental\.['"]\s*,\s*['"]-vocals\.['"]\s*\)/g;
 		const files = ['retention.ts', 'vocals-backfill.ts', 'paths.ts'];
 		const hits = files.reduce((n, f) => n + (stripComments(readSrc(f)).match(swap)?.length ?? 0), 0);
@@ -392,8 +375,8 @@ describe('§2 — the vocals ref is derived in exactly one place', () => {
 	});
 
 	it('proves comment-stripping is load-bearing, not decorative', () => {
-		// The raw source mentions the swap more often than the stripped source (the docstrings describe
-		// it). Passes on base; fails honestly the day the comments stop mentioning it.
+		// The raw source mentions the swap more often than the stripped source, because the docstrings describe
+		// it. Fails honestly the day the comments stop mentioning it.
 		const raw = readSrc('retention.ts');
 		const rawCount = (raw.match(/-instrumental\./g) ?? []).length;
 		const strippedCount = (stripComments(raw).match(/-instrumental\./g) ?? []).length;
@@ -401,8 +384,8 @@ describe('§2 — the vocals ref is derived in exactly one place', () => {
 	});
 
 	it('derivedRefsOf reads the shared candidate list AND retains the stored ref', () => {
-		// GUARD 3: retention re-derived its own list; it must delegate to candidateVocalsRefs.
-		// The m.vocalsRef arm (added by) is a regression guard: it must still be present.
+		// GUARD 3: retention re-derived its own list, so it must delegate to candidateVocalsRefs — and the
+		// m.vocalsRef arm must still be present.
 		const body = stripComments(readSrc('retention.ts'));
 		const fn = body.match(/function derivedRefsOf[\s\S]*?\n}/);
 		expect(fn).not.toBeNull();
@@ -411,25 +394,20 @@ describe('§2 — the vocals ref is derived in exactly one place', () => {
 	});
 });
 
-// ──: the recompress encoder must emit FLAC into the.flac destination it plans ──
-// The suite's fakeTranscode writes bytes at `to` and returns true, IGNORING the destination extension
-// and the codec entirely — so before this block, mutating the production argv to `-c:a aac` (or any
-// codec) left the whole suite green (§3, mutation-proven). These tests exercise the REAL
-// `ffmpegTranscoder` end-to-end by pointing it at a fake `ffmpeg` executable that records the argv it
-// is handed, so the codec the production builder emits is asserted rather than assumed. ffmpeg need
-// not be installed on the box: the fake IS the ffmpeg the transcoder spawns.
+// The recompress encoder must emit FLAC into the `.flac` destination it plans. The suite's fakeTranscode
+// writes bytes at `to` and returns true, IGNORING the destination extension and the codec, so mutating the
+// production argv to `-c:a aac` left the whole suite green. These tests point the REAL `ffmpegTranscoder`
+// at a fake `ffmpeg` that records the argv it is handed, so ffmpeg need not be installed on the box.
 import { chmodSync as _chmodSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
 describe('the legacy-stem recompress encoder matches its.flac destination', () => {
-	// Write a fake `ffmpeg` that appends every argv it receives (one JSON array per invocation) to
-	// $argvLog, then produces the requested output file so the transcoder's success path runs. Returns
-	// the absolute path to the fake bin.
+	// Write a fake `ffmpeg` that appends every argv it receives to $argvLog, then produces the requested
+	// output file so the transcoder's success path runs. Returns the absolute path to the fake bin.
 	const writeFakeFfmpeg = (argvLog: string): string => {
 		const bin = join(root, 'fake-ffmpeg.sh');
-		// Record the argv robustly: one arg per line, then a lone "---" marker terminating the
-		// invocation, then produce the output file (last arg) so the transcoder's success path runs.
-		// A line-per-arg log sidesteps shell quoting entirely (no JSON hand-encoding in bash).
+		// One arg per line then a lone "---" marker terminating the invocation, which sidesteps shell quoting
+		// entirely, and then the output file (the last arg) so the transcoder's success path runs.
 		writeFileSync(
 			bin,
 			[
@@ -465,7 +443,7 @@ describe('the legacy-stem recompress encoder matches its.flac destination', () =
 		expect(invocations.length).toBeGreaterThan(0); // the transcoder actually spawned the encoder
 		const argv = invocations[0];
 
-		// The destination is a.flac ref, so the codec MUST be flac. BASE FAILS: base emits `-c:a aac`.
+		// The destination is a .flac ref, so the codec MUST be flac.
 		const ca = argv.indexOf('-c:a');
 		expect(ca).toBeGreaterThan(-1);
 		expect(argv[ca + 1]).toBe('flac');
@@ -482,9 +460,8 @@ describe('the legacy-stem recompress encoder matches its.flac destination', () =
 	});
 
 	it('reports failure and leaves the source WAV when the encoder genuinely fails', async () => {
-		// A fake ffmpeg that exits non-zero (a real encode error, not a missing binary) must degrade to
-		// keeping the larger-but-playable original — the caller's failure contract is unchanged by the
-		// codec fix. Also confirms the single-invocation path (no MP4 faststart retry) still reports.
+		// A fake ffmpeg exiting non-zero (a real encode error, not a missing binary) must degrade to keeping the
+		// larger-but-playable original, and confirms the single-invocation path still reports.
 		transcodeDiagnostics.lastError = '';
 		const failBin = join(root, 'fail-ffmpeg.sh');
 		writeFileSync(failBin, '#!/usr/bin/env bash\necho "boom" >&2\nexit 1\n');

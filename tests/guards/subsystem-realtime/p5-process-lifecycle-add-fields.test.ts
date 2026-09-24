@@ -1,10 +1,7 @@
-// The hub's add arm rejects a non-finite addedAt and any status !== 'queued', so an add frame missing them is
-// refused outright. Caught: p5-process-lifecycle.mjs's queueViaWs minted { id, mediaId, singerId, source,
-// requestedBy } — three real QueueEntry fields plus two that are not fields at all — so every scenario in the
-// probe died at setup on an op:reject. The frame must mint all SIX required fields.
-//
-// The probe is a live-server .mjs script with no unit harness and no bun test runner, so its own source is the
-// subject. Comments are blanked, since its docstring now names the six fields in prose.
+// guard: the hub's add arm rejects a non-finite addedAt and any status !== 'queued', so an add frame missing
+// them is refused outright. p5-process-lifecycle.mjs's queueViaWs minted three real QueueEntry fields plus
+// two that are not fields at all, so every scenario in the probe died at setup on an op:reject. The frame
+// must mint all SIX required fields. The probe has no unit harness, so its own source is the subject.
 import { readFileSync } from 'node:fs';
 import { test, expect } from 'bun:test';
 import { at } from '@encore/test-support';

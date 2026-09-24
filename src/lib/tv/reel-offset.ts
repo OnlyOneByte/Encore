@@ -1,10 +1,7 @@
-// The VERTICAL scroll offset the lyrics reel is drawn at, as a pure function of measured DOM geometry, so
-// the clamp invariant is unit-testable without a real element.
+// The VERTICAL scroll offset the lyrics reel is drawn at, as a pure function of measured DOM geometry.
 //
-// The current row is placed by an asymmetric bias, `((linesBefore - linesAfter) / 2) * rowHeight`, then
-// clamped into the UNMASKED window `[fadeTop, band - fadeBot]` — NOT the band: each edge with context rows
-// fades one row to transparent, so clamping to the band parks the sung row congruent with a ramp, fainter
-// than the line after it and with the ball in the lowest-alpha slice.
+// The current row is placed by an asymmetric bias, then clamped into the UNMASKED window `[fadeTop, band - fadeBot]` —
+// NOT the band, because clamping to the band parks the sung row inside an edge-fade ramp.
 // See docs/FRONTEND.md#the-lyrics-reel.
 
 export interface ReelOffsetInputs {
@@ -25,9 +22,8 @@ export interface ReelOffsetInputs {
 }
 
 /**
- * The translateY the reel should be drawn at (px). A positive linesBefore - linesAfter pushes the current
- * line DOWN; the clamp only ever moves the offset back toward keeping the row inside the window, so it
- * cannot re-introduce the asymmetry.
+ * The translateY the reel is drawn at, in px. A positive `linesBefore - linesAfter` pushes the current line DOWN — the
+ * sign is easy to get backwards, since wanting MORE lines after means the sung line sits HIGHER.
  */
 export function reelOffset(inp: ReelOffsetInputs): number {
 	const { rowTop, rowHeight, band, linesBefore, linesAfter } = inp;
@@ -39,8 +35,8 @@ export function reelOffset(inp: ReelOffsetInputs): number {
 	const winHeight = winBot - winTop;
 	const winCentre = winTop + winHeight / 2;
 	if (rowHeight >= winHeight) {
-		// Window too short to hold the row (a wrapped row, or ramps leaving < one row of plateau): centre it.
-		// Honouring the bias here would push the sung words further into a ramp.
+		// Window too short to hold the row (a wrapped row, or ramps leaving under one row of plateau): centre it, because
+		// honouring the bias here pushes the sung words further into a ramp.
 		return -(rowTop + rowHeight / 2 - winCentre);
 	}
 	const bias = ((linesBefore - linesAfter) / 2) * rowHeight;

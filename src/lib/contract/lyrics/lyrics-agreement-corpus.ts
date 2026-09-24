@@ -1,23 +1,18 @@
 /**
- * The cross-language parity corpus for `agreement`, which is implemented TWICE — here in TypeScript (the
- * authority) and in the worker's Python mirror. The two suites cannot import each other, so both read this
- * table and a drift on either side reds that side.
+ * The cross-language parity corpus for `agreement`. The two suites cannot import each other, so both read
+ * this table and a drift on either side reds that side.
  *
- * EVERY EXPECTATION IS AN INTEGER `[numerator, denominator]` PAIR, worked out BY HAND from the token
- * sequences below and never produced by running either implementation: an expectation computed by the code
- * under test can only prove that code self-consistent. Each side divides the pair itself, so neither compares
- * against a transcribed decimal. `null` means the comparison is not made at all, below
- * `MIN_TOKENS_TO_COMPARE`.
- *
- * The vocabulary is plain lowercase ASCII, so `lyricsTokens`' NFKC fold and punctuation strip are identities
- * here and cannot muddy the counts.
+ * EVERY EXPECTATION IS AN INTEGER `[numerator, denominator]` PAIR worked out BY HAND, never produced by
+ * running either implementation, which could only prove that code self-consistent. Each side divides the pair
+ * itself, so neither compares against a transcribed decimal. The vocabulary is plain lowercase ASCII, so
+ * `lyricsTokens`' NFKC fold and punctuation strip are identities here and cannot muddy the counts.
  */
 
 /** `[numerator, denominator]` of a hand-computed expectation, or `null` when not comparable. */
 export type CountRatio = readonly [number, number] | null;
 
 export interface AgreementParityCase {
-	/** What the pair is a case OF — quoted verbatim in both suites' failure messages. */
+	/** Quoted verbatim in both suites' failure messages. */
 	readonly name: string;
 	readonly candidate: string;
 	readonly baseline: string;
@@ -25,18 +20,17 @@ export interface AgreementParityCase {
 	readonly coverage: CountRatio;
 	/** shared tokens (multiset) / candidate tokens. */
 	readonly fidelity: CountRatio;
-	/** shared adjacent pairs (multiset) / adjacent pairs of the LONGER side. */
+	/** shared adjacent pairs (multiset) / pairs of the LONGER side. */
 	readonly sequence: CountRatio;
-	/** What symmetric set Jaccard scored this pair, for contrast with the directional metric. */
+	/** Symmetric set Jaccard, for contrast with the directional metric. */
 	readonly oldSetJaccard: CountRatio;
 }
 
 const TWELVE = 'alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima';
 /**
- * EVERY TOKEN MUST BE A NAMED CONST, never bare text inside a template literal: the Python mirror does not
- * evaluate TypeScript, and its parser resolves a literal by collecting the `${NAME}` interpolations and
- * joining them with a space, silently dropping bare text. Inline, the mirror would compare a 12-token string
- * against a 13-token expectation and still pass, guarding nothing.
+ * EVERY TOKEN MUST BE A NAMED CONST, never bare text in a template literal: the Python mirror resolves a
+ * literal by joining its `${NAME}` interpolations and SILENTLY DROPS bare text, so inline it would compare a
+ * 12-token string against a 13-token expectation and still pass, guarding nothing.
  */
 const ALPHA = 'alpha';
 const ELEVEN = 'alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo';
@@ -55,9 +49,8 @@ export const AGREEMENT_PARITY_CORPUS: readonly AgreementParityCase[] = [
 		oldSetJaccard: [11, 13] // 11 shared of a 13-token union
 	},
 	{
-		// Same token SET, so set Jaccard scores a perfect 1. With multiplicity: 12 shared of 12 baseline
-		// tokens but of 24 candidate tokens. Pairs: 23 on the candidate (11 forward twice, plus the seam), 11
-		// on the baseline, 11 shared.
+		// Same token SET, so set Jaccard scores a perfect 1; with multiplicity, 12 shared of 12 baseline
+		// tokens but of 24 candidate ones. Pairs: 23 on the candidate, 11 on the baseline, 11 shared.
 		name: 'candidate repeats the chorus, the audio has it once',
 		candidate: `${TWELVE} ${TWELVE}`,
 		baseline: TWELVE,
@@ -68,8 +61,7 @@ export const AGREEMENT_PARITY_CORPUS: readonly AgreementParityCase[] = [
 	},
 	{
 		// Every count agrees and not one adjacent pair survives. Coverage stays 1, because the same words ARE
-		// the same song and the absolute judgement must not fire, while the ranking score loses the whole
-		// position term.
+		// the same song, while the ranking score loses the whole position term.
 		name: 'identical words in reversed order',
 		candidate: TWELVE,
 		baseline: TWELVE_REVERSED,
@@ -80,9 +72,8 @@ export const AGREEMENT_PARITY_CORPUS: readonly AgreementParityCase[] = [
 	},
 	{
 		// THE CASE THAT TELLS A MULTISET FROM A SET, and the only one that can: the doubling above is
-		// ONE-SIDED, so `min(2, 1)` equals distinct counting and a set-based overlap scores it identically.
-		// Here both sides repeat a token — 13 tokens, 12 distinct — so multiset overlap reaches 13 while a
-		// set-based one caps at the 12 distinct tokens. The pairs are all distinct either way.
+		// ONE-SIDED, so `min(2, 1)` equals distinct counting. Here BOTH sides repeat a token (13 tokens, 12
+		// distinct), so multiset overlap reaches 13 where a set-based one caps at 12.
 		name: 'a token repeated on both sides, which only multiplicity can count',
 		candidate: `${ALPHA} ${TWELVE}`,
 		baseline: `${ALPHA} ${TWELVE}`,

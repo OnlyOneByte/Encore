@@ -1,10 +1,8 @@
-// Guard: the TV lyric reel carries a hard OUTLINE, not only a soft glow.
-//
-// The rule is to keep the lyrics readable on ANY background by stroking the text, because `.lyrics` had only
-// `text-shadow: 0 2px 18px var(--scrim-strong)` — a blurred shadow, which lifts the ink off a dark video but
-// dissolves against a mid-tone stage colour of similar brightness, exactly the field a hue-only background
-// paints. `-webkit-text-stroke` is a crisp edge that survives any backdrop, with `paint-order: stroke fill`
-// so the outline paints BEHIND the glyph and does not eat the white ink.
+// guard: the TV lyric reel carries a hard OUTLINE, not only a soft glow. `.lyrics` had only
+// `text-shadow: 0 2px 18px var(--scrim-strong)`, a blurred shadow that lifts the ink off dark video but
+// dissolves against a mid-tone stage colour of similar brightness — exactly the field a hue-only background
+// paints. `-webkit-text-stroke` survives any backdrop, with `paint-order: stroke fill` so the outline paints
+// BEHIND the glyph and does not eat the white ink.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -12,7 +10,6 @@ import { read } from '@encore/test-support';
 // satisfiable by nothing at all if the source ever came back empty.
 const OVERLAY = 'src/lib/tv/LyricsOverlay.svelte';
 
-/** Blank comments out, keeping newlines so reported line numbers stay true (matches lyrics-reel-cap). */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src

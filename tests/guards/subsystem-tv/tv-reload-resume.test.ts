@@ -2,14 +2,11 @@ import { expect, it } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PLAYHEAD_ALIGN_SEC, SEEK_JUMP_SEC, resumeSeekTarget } from '$lib/tv/playhead-sync';
 
-// Caught: reloading the TV page mid-song desynced playback. The room's position arrives BEFORE the <audio> master
-// exists on a cold mount (the element is gated on the `nowplaying:changed` the server sends a frame later), so the
-// seek effect fires against a null master and drops the target — and position telemetry never bumps `rev`, so the
-// effect is never re-woken and the target never re-offered. The fresh master plays from 0 while the room is at 6s,
-// and the TV's own telemetry then drags the server's position backwards.
-//
-// The fix holds the last room position and applies it ONCE on the master's `canplay` via a pure decision, then
-// clears the held target so catalog churn cannot re-yank a stale position onto a later song.
+// guard: reloading the TV page mid-song desynced playback. The room's position arrives BEFORE the <audio>
+// master exists on a cold mount, so the seek effect fired against a null master and dropped the target — and
+// position telemetry never bumps `rev`, so the effect was never re-woken. The fresh master played from 0
+// while the room was at 6s, and the TV's own telemetry then dragged the server's position backwards. The fix
+// holds the last room position, applies it ONCE on the master's `canplay`, then clears the held target.
 
 it('resumeSeekTarget — a cold-mounted master resumes to the room position: seeks when the room is meaningfully ahead of a fresh element at 0 (the bug: reload mid-song)', () => {
 	const plan = resumeSeekTarget(0, 6);
@@ -59,12 +56,11 @@ it('TvPlayer.svelte is wired to resume on a cold mount: imports and calls the re
 });
 
 it('TvPlayer.svelte is wired to resume on a cold mount: holds the room position ONLY when there is no element to take it', () => {
-	// THIS ASSERTION IS INVERTED FROM ITS FIRST FORM, which required an unconditional `resumeTarget = target;` in the
-	// effect body and so actively pinned the defect: an unconditional hold survives a DECLINED (sub-threshold) seek,
-	// and any later `canplay` — which fires on every readyState rise, not once per mount — then applies it and rewinds
-	// the song. Behavioural proof: tests/unit/lib/tv/playhead-canplay-jump.test.ts. The hold also lives inside
-	// `applySeek`, beside the `master` read it depends on, not in the effect body whose dependency set the
-	// playhead-isolation guard keeps down to what a playback command asked for.
+	// THIS ASSERTION IS INVERTED FROM ITS FIRST FORM, which required an unconditional `resumeTarget = target;`
+	// and so actively pinned the defect: an unconditional hold survives a DECLINED sub-threshold seek, and any
+	// later `canplay` — which fires on every readyState rise, not once per mount — then applies it and rewinds
+	// the song. The hold lives inside `applySeek`, beside the `master` read it depends on, rather than in the
+	// effect body whose dependency set the playhead-isolation guard keeps minimal.
 	const fn = src.split('function applySeek(')[1]?.split('\n\tfunction ')[0] ?? '';
 	expect(fn).not.toBe('');
 	// Held when there is no element, CLEARED when there is one.

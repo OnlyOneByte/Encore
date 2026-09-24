@@ -1,18 +1,9 @@
-<!--
-  Three traps, all of them silent.
-
-  NO T-SHIRT SIZING UTILITY MAY APPEAR HERE. Encore bridges t-shirt SPACING keys into the theme and does
-  not bridge Tailwind's container scale, so `max-w-xs` resolves through the spacing namespace instead and
-  emits `max-width: var(--space-xs)` — six pixels. Nothing but a screenshot sees it. Every width here is
-  an arbitrary value, which resolves through no namespace. The same hazard covers any `w-*` and `min-w-*`.
-
-  Radius and spacing are arbitrary values for the same reason: `--radius-*` is deliberately unregistered,
-  so `rounded-xl` resolves against Tailwind's default scale, and numeric spacing utilities resolve against
-  Tailwind's `--spacing` multiplier rather than Encore's ten-step scale.
-
-  `z-50` is correct rather than arbitrary — the phone ladder tops out at --z-dock (30) and a modal must
-  clear the docked bands. The scrim lives on alert-dialog-overlay.svelte, not here.
--->
+<!-- Three traps, all of them silent. NO T-SHIRT SIZING UTILITY MAY APPEAR HERE: Encore bridges t-shirt SPACING keys
+  into the theme and does not bridge Tailwind's container scale, so `max-w-xs` resolves through the spacing namespace and
+  emits `max-width: var(--space-xs)` — six pixels, which nothing but a screenshot sees. Radius and spacing are arbitrary
+  values for the same reason: `--radius-*` is deliberately unregistered, and numeric spacing utilities resolve against
+  Tailwind's own multiplier. `z-50` is correct rather than arbitrary — the phone ladder tops out at --z-dock (30) and a
+  modal must clear the docked bands. The scrim lives on alert-dialog-overlay.svelte, not here. -->
 <script lang="ts">
 	import { AlertDialog as AlertDialogPrimitive } from 'bits-ui';
 	import { cn, type WithoutChild, type WithoutChildrenOrChild } from '$lib/utils.js';
@@ -47,12 +38,9 @@
 </AlertDialogPortal>
 
 <style>
-	/*
-	 * The element is rendered by a CHILD component, so it carries no scoping hash for this file and a
-	 * plain class rule would ship and match nothing; a global data-slot rule is the correct reach. Motion
-	 * is opt-in inside the no-preference block — the registry's `animate-*` utilities cannot honour
-	 * Reduce Motion, which is why they are absent from the class list above.
-	 */
+	/* The element is rendered by a CHILD component, so it carries no scoping hash for this file and a plain class rule
+	   would ship and match nothing; a global data-slot rule is the correct reach. Motion is opt-in inside the
+	   no-preference block — the registry's `animate-*` utilities cannot honour Reduce Motion. */
 	@media (prefers-reduced-motion: no-preference) {
 		:global([data-slot='alert-dialog-content'][data-state='open']) {
 			animation: encore-alert-in var(--motion-fast) ease-out;

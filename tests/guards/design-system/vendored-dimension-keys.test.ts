@@ -1,20 +1,10 @@
-// guard: a vendored component may not size itself through a NAMED scale key. See
-// docs/GUARDS.md#tailwind-v4-toolchain.
-//
-// `alert-dialog` arrived from the registry with `data-[size=default]:max-w-xs` and rendered as a
-// SIX-PIXEL-WIDE strip with its text overflowing both sides. Tailwind resolves `max-w-<key>` against the
-// `--container-*` namespace, which this app does not bridge, so it fell through to the SPACING namespace,
-// which it does, and emitted `max-width: var(--space-xs)` — 6px. It passed eslint, `svelte-check` 0/0 and
-// 2799 tests; only a screenshot found it. That is the signature of the class: a named key resolving
-// through the WRONG namespace to a real number off by an order of magnitude rather than an error.
-//
-// Arbitrary values (`max-w-[26rem]`, `w-[calc(100vw-2*var(--space-4xl))]`), fractions and keywords
-// (`w-full`, `w-1/2`, `h-auto`) resolve nothing through a namespace and cannot land in the wrong one.
-// Numeric steps are permitted here and policed by a11y/button-tap-floor.test.ts, which measures what they
-// compute to — banning them here would duplicate that judgment in a second, disagreeing place.
-//
-// SCOPE. Only the vendored tree: `app.css` sets `source(none)` with a single `@source` over
-// `components/ui`, so a utility written in a page is emitted nowhere.
+// guard: a vendored component may not size itself through a NAMED scale key. `alert-dialog` arrived with
+// `max-w-xs` and rendered as a SIX-PIXEL-WIDE strip: Tailwind resolves `max-w-<key>` through the
+// `--container-*` namespace, which this app does not bridge, so it fell through to SPACING and emitted
+// `max-width: var(--space-xs)`. Arbitrary values, fractions and keywords resolve nothing through a
+// namespace; numeric steps are policed by a11y/button-tap-floor.test.ts, which measures what they compute
+// to. SCOPE: the vendored tree only, since `source(none)` emits nothing written in a page.
+// See docs/GUARDS.md#tailwind-v4-toolchain.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

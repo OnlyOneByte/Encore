@@ -1,16 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	/*
-	 * THE NOW-PLAYING DRAWER — one surface at two heights, whose collapsed height IS the docked band.
-	 * The snap-point model and the drag-exclusion rules are in docs/FRONTEND.md#shared-components.
-	 *
-	 * THE BAND ROW IS THE DRAG SURFACE AND `.np-fit` IS EXCLUDED: vaul drags to dismiss from anywhere in its
-	 * content, and this body is sliders, so one `data-vaul-no-drag` on `.np-fit` covers every control ever
-	 * added below the band row.
-	 *
-	 * The `···` NAVIGATES and collapses the sheet on the way, because this component lives in the layout and
-	 * survives the route change — leaving it open would cover the page it just opened.
-	 */
+	/* One surface at two heights, whose collapsed height IS the docked band. The snap-point model, the
+	   drag-exclusion rules and the three drawer props are in docs/FRONTEND.md#shared-components. */
 	import * as Drawer from '$lib/components/ui/drawer';
 	import { Button } from '$lib/components/ui/button';
 	import { Progress } from '$lib/components/ui/progress';
@@ -35,28 +26,20 @@
 
 	interface Props {
 		open?: boolean;
-		/**
-		 * The band's measured height. Bindable so the layout publishes it as `--dock-h` and stays the only
-		 * writer of that token. The default is a plausible band height rather than 0, because a first paint
-		 * at 0 would collapse the sheet to nothing before the measurement lands.
-		 */
+		/** Bindable, so the layout publishes it as `--dock-h` and stays that token's only writer. The default is a
+		 * plausible band height rather than 0: a first paint at 0 collapses the sheet before the measure lands. */
 		bandH?: number;
-		/**
-		 * Which snap point the sheet is at, as the VALUE vaul writes rather than an index. `open`
-		 * distinguishes nothing (the sheet is permanently mounted), so this is the only handle a test has on
-		 * collapsed-versus-pulled-up.
-		 */
+		/** The VALUE vaul writes, not an index. `open` distinguishes nothing (the sheet is permanently mounted),
+		 * so this is the only handle a test has on collapsed-versus-pulled-up. */
 		activeSnapPoint?: number | string | null;
 		title?: string | null;
 		artist?: string | null;
 		singerName?: string | null;
 		singerColor?: string | null;
-		/** The song's musical profile — this component derives every key and range string from it. */
 		profile?: SongProfile | null;
 		keyShift?: number;
 		/** ±key needs separated stems; there is nothing to re-pitch before that. */
 		keyShiftEnabled?: boolean;
-		/** The room's effective guide level as a percentage, from the server. */
 		guideServerPct?: number;
 		/** A song with no isolated vocals stem keeps the row, disabled, with its reason stated. */
 		guideEnabled?: boolean;
@@ -107,17 +90,17 @@
 		onguide
 	}: Props = $props();
 
-	/* THE SNAP ARRAY IS ONLY EVER REPLACED WHILE NOTHING POINTS INTO IT — the rule every write below follows,
-	   and both failure modes are silent. See docs/FRONTEND.md#the-now-playing-drawer-one-surface-at-two-heights. */
+	/* THE SNAP ARRAY IS ONLY EVER REPLACED WHILE NOTHING POINTS INTO IT, and both failure modes are silent.
+	   See docs/FRONTEND.md#the-now-playing-drawer-one-surface-at-two-heights. */
 	let viewportH = $state(0);
-	/* The sheet's natural height, measured off `.np-fit` rather than the content box, which spans the viewport
-	   and so always answers "the viewport". 0 reads as "not measured". */
+	/* Measured off `.np-fit`, not the content box, which spans the viewport and so always answers "the
+	   viewport". 0 reads as "not measured". */
 	let fitH = $state(0);
 	const contentH = $derived(fitH > 0 ? bandH + fitH + OPEN_CONTENT_SLACK_PX : 0);
 	const SNAP_OPEN = $derived(openSnapFraction(viewportH, contentH));
 
-	/* Re-seat when the content changes height. Only for a NUMBER: snap 0 is a px string, so a number that is
-	   not the current fraction is exactly the stale-pointer case. `untrack` so this cannot re-enter itself. */
+	/* Re-seat on a content height change, and only for a NUMBER: snap 0 is a px string, so a number that is not
+	   the current fraction is exactly the stale-pointer case. `untrack` so this cannot re-enter itself. */
 	$effect(() => {
 		const open = SNAP_OPEN;
 		const at = untrack(() => activeSnapPoint);
@@ -129,9 +112,8 @@
 		});
 	});
 
-	/* Seated ONCE, `onMount` plus `tick` and never an `$effect`: the write must land after the content has
-	   bound its ref, and must be a CHANGE for vaul's lazy watch to see it. `viewportH` is written first and
-	   synchronously, so `snapPoints` reaches its real value while nothing points into it. */
+	/* Seated ONCE, `onMount` plus `tick` and never an `$effect`: the write must land after the content has bound
+	   its ref, and must be a CHANGE for vaul's lazy watch to see it. */
 	onMount(() => {
 		viewportH = window.innerHeight;
 		void tick().then(() => {
@@ -140,12 +122,8 @@
 		return armResizeReseat();
 	});
 
-	/*
-	 * RESIZING MUST RE-LAY THE SHEET OUT and nothing in vaul does it, so the sheet otherwise keeps the pixel
-	 * translate it was given at the old height. Debounced, because a window drag emits a resize per frame and
-	 * each re-seat restarts vaul's transition. IT RESTORES BY WHICH SNAP POINT WAS ACTIVE, NEVER BY ITS VALUE:
-	 * snap 1 changes value with the height, so a captured fraction is no longer in the array.
-	 */
+	/* Debounced, because a window drag emits a resize per frame and each re-seat restarts vaul's transition. IT
+	   RESTORES BY WHICH SNAP POINT WAS ACTIVE, NEVER BY ITS VALUE: snap 1's value changes with the height. */
 	const RESIZE_SETTLE_MS = 120;
 
 	function armResizeReseat(): () => void {
@@ -180,20 +158,14 @@
 	/** Collapse to the band, expressed as a height because the sheet never closes. */
 	const collapse = () => (activeSnapPoint = SNAP_BAND);
 
-	/*
-	 * THE MOUNT RUNG: `.band-slot` carries `bind:clientHeight`, so ANY reactive update in that part of the
-	 * template re-runs its size binding, and a geometry read under happy-dom is a deliberate throw. So the
-	 * band takes no `expanded` prop and nothing there may be driven by a reactive prop or a `class:`
-	 * directive — an attribute write re-renders nothing and is the way to add state.
-	 * See docs/FRONTEND.md#shared-components.
-	 */
+	/* THE MOUNT RUNG: `.band-slot` carries `bind:clientHeight`, so nothing in that part of the template may be
+	   driven by a reactive prop or a `class:` directive — an attribute write re-renders nothing and is the way to
+	   add state. See docs/FRONTEND.md#the-mount-rung-and-the-rule-it-puts-on-size-bindings. */
 
-	/* One fraction, two consumers: the seek bar at snap 1 and the transport arc on the band row at snap 0,
-	   derived once here so the two cannot disagree mid-song. `null` (never 0) for an unknown length, so the
-	   seek row HIDES rather than pinning a bar at zero, which reads as a stalled song. */
+	/* One fraction, two consumers — the seek bar at snap 1 and the transport arc at snap 0 — so the two cannot
+	   disagree mid-song. `null` and never 0 for an unknown length: the seek row HIDES rather than pinning a bar. */
 	const progress = $derived(progressFraction(elapsedSec, durationSec));
 
-	// Every music string comes from the shared pure helpers; this file only decides WHEN to show each.
 	const keyOriginal = $derived(originalKeyLabel(profile));
 	const keySounding = $derived(soundingKeyLabel(profile, keyShift));
 	const keyShifted = $derived(keyShift !== 0 && keySounding !== null && keySounding !== keyOriginal);
@@ -202,8 +174,7 @@
 	const octaves = $derived(rangeOctaves(profile));
 	const bandSentence = $derived(voiceBandSentence(profile, keyShift));
 
-	/* While a finger is on the slider the LOCAL value wins, or the thumb fights the throttled echo coming
-	   back over the websocket and jumps under the finger. */
+	/* While a finger is on the slider the LOCAL value wins, or the thumb fights the throttled websocket echo. */
 	let guideDragging = $state(false);
 	let guideDraft = $state(0);
 	const guidePct = $derived(guideDragging ? guideDraft : guideServerPct);
@@ -241,13 +212,11 @@
 		guideDragging = false;
 	}
 
-	/* Which lyrics the TV is showing. The OVERRIDE wins over the auto pick, because that is the order the
-	   server resolves them in. `null` when there is nothing honest to say — no candidates yet, or a chosen
-	   ref matching none of them — because a pill reading "undefined" is worse than no pill. */
+	/* The OVERRIDE wins over the auto pick, because that is the order the server resolves them in. `null` when
+	   there is nothing honest to say, because a pill reading "undefined" is worse than no pill. */
 	const chosenLyrics = $derived(candidates.find((c) => c.ref === (overrideRef ?? chosenRef)) ?? null);
 	const lyricsSource = $derived(chosenLyrics ? lyricsSourceLabel(chosenLyrics) : null);
-	/* `warn` rather than `bad`: an auto-transcribed guess is something a singer should know about before
-	   trusting the screen, but the words are still usable. */
+	/* `warn` rather than `bad`: an auto-transcribed guess is worth knowing about, but the words are still usable. */
 	const lyricsSourceTone = $derived(chosenLyrics && isAuthoritativeText(chosenLyrics) ? 'ok' : ('warn' as const));
 
 	const guideNote = $derived(
@@ -255,14 +224,9 @@
 	);
 </script>
 
-<!--
-	The band is snap point 0 OF THIS DRAWER, because a separate fixed band cannot be dragged open: an outside
-	element can START a pointer gesture but cannot hand the in-flight pointer to vaul.
-
-	`dismissible={false}` with `open` is vaul's pairing for a sheet that never closes; `modal={false}` is a
-	necessity that drawer-overlay-modality.test.ts ties to the absent scrim; and `handleOnly` is deliberately
-	ABSENT, because it is all-or-nothing and the body's sliders would become drag surfaces.
--->
+<!-- `dismissible={false}` with `open` is vaul's pairing for a sheet that never closes; `modal={false}` is a
+	necessity that drawer-overlay-modality.test.ts ties to the absent scrim, and `handleOnly` is deliberately
+	ABSENT because it is all-or-nothing and the body's sliders would become drag surfaces. -->
 <Drawer.Root
 	open={open}
 	dismissible={false}
@@ -270,34 +234,20 @@
 	snapPoints={[SNAP_BAND, SNAP_OPEN]}
 	bind:activeSnapPoint={activeSnapPoint}
 >
-	<!--
-		`aria-label` IS THE DIALOG'S NAME at every state, not a fallback: the head renders no Drawer.Title, and
-		the primitive sets `aria-labelledby` only once a Title has registered an id. `trapFocus={false}` is why
-		you can type in the search box, and `modal={false}` does not cover it — see the doc section above.
-	-->
+	<!-- `aria-label` IS THE DIALOG'S NAME at every state, not a fallback: the head renders no Drawer.Title, and
+		the primitive sets `aria-labelledby` only once a Title has registered an id. `trapFocus={false}` is why you
+		can type in the search box. -->
 	<Drawer.Content class="np-drawer" trapFocus={false} aria-label="Now playing">
-		<!--
-			SNAP 0 — the band row. It must stay the content's FIRST child: vaul sizes the content to the largest snap
-			point and translates it down, so what shows at snap 0 is the TOP of this element. `bind:clientHeight` is
-			what the layout re-publishes as `--dock-h`.
-		-->
+		<!-- SNAP 0 — the band row, and it must stay the content's FIRST child: vaul sizes the content to the largest
+			snap point and translates it down, so what shows at snap 0 is the TOP of this element. -->
 		<div class="band-slot" style="--snap-band: {SNAP_BAND}" bind:clientHeight={bandH}>
-			<!--
-				THE SHEET'S ONE AND ONLY GRAB BAR, composed here because this is the row a thumb pulls, and vaul's REAL
-				Handle rather than a decorative bar — its click handler is what cycles the snap points for a tap.
-			-->
+			<!-- vaul's REAL Handle, not a decorative bar: its click handler is what cycles the snap points for a tap. -->
 			<Drawer.Handle />
-			<!--
-				`onexpand` IS THE ONLY WAY IN WITHOUT A POINTER: vaul's Handle is an aria-hidden div with no role, so
-				without this everything below the band row is unreachable by Tab. It TOGGLES because nothing else can
-				collapse the sheet by tap — vaul's own handle computes one point past the end at the last one.
-
-				NO `expanded` PROP MAY GO WITH IT: any prop that changes after mount re-runs the size bindings above,
-				which throw on the mount rung. See docs/FRONTEND.md#the-mount-rung-and-the-rule-it-puts-on-size-bindings.
-
-				This note sits OUTSIDE the tag: ui-scoped-style-reach.test.ts walks a component tag tracking quote
-				state, so an apostrophe in prose inside one swallows the rest of the file.
-			-->
+			<!-- `onexpand` IS THE ONLY WAY IN WITHOUT A POINTER: vaul's Handle is an aria-hidden div with no role. It
+				TOGGLES because nothing else can collapse the sheet by tap. NO `expanded` PROP MAY GO WITH IT — a prop that
+				changes after mount re-runs the size bindings above, which throw on the mount rung. This note sits OUTSIDE
+				the tag: ui-scoped-style-reach.test.ts walks a component tag tracking quote state, so an apostrophe in prose
+				inside one swallows the rest of the file. -->
 			<NowPlayingBand
 				title={title}
 				artist={artist}
@@ -312,25 +262,17 @@
 				onexpand={() => (activeSnapPoint = activeSnapPoint === SNAP_OPEN ? SNAP_BAND : SNAP_OPEN)}
 			/>
 		</div>
-		<!--
-			`.np-fit` EXISTS TO BE MEASURED — snap 1's content cap needs the height of everything below the band row —
-			and it is a plain block, so the head and body keep their own padding and page measure. Its
-			`data-vaul-no-drag` is what excludes the whole body from the drag (see the Root).
-		-->
+		<!-- `.np-fit` EXISTS TO BE MEASURED — snap 1's content cap needs the height of everything below the band row.
+			Its `data-vaul-no-drag` is what excludes the whole body from the drag (see the Root). -->
 		<div class="np-fit" data-vaul-no-drag bind:clientHeight={fitH}>
-			<!--
-				THE HEAD IS EMPTY AND STILL RENDERS: it gives the sheet its data-slot structure and `phone-home`
-				asserts a header renders below the band slot. Zero-height with no padding, so it costs no space.
-			-->
+			<!-- The head is EMPTY and still renders: it gives the sheet its data-slot structure and `phone-home`
+				asserts a header renders below the band slot. Zero-height, so it costs no space. -->
 			<Drawer.Header class="np-head"></Drawer.Header>
 
 			<div class="np-body">
 				{#if progress !== null}
-					<!--
-						`aria-hidden` IS ON THE TIMES, NEVER THE ROW: the clocks are restated in words elsewhere, but the
-						`···` is the app's only route to the song page, so hiding the row makes that page unreachable to a
-						screen reader. Time REMAINING on the right, because the question this surface answers is "when am I up?".
-					-->
+					<!-- `aria-hidden` IS ON THE TIMES, NEVER THE ROW: the clocks are restated in words elsewhere, but the `···`
+						is the app's only route to the song page. Time REMAINING on the right answers "when am I up?". -->
 					<div class="seekrow">
 						<span class="time" aria-hidden="true">{formatClock(elapsedSec)}</span>
 						<div class="bar-slot" aria-hidden="true"><Progress value={progress * 100} size="sm" /></div>
@@ -351,11 +293,8 @@
 					</div>
 				{/if}
 
-				<!--
-					THE TRANSPORT LIVES IN THE BAND ROW, never here: split across the two heights it reads as two
-					transports or as an empty band. The live controls below exist only for a song playing NOW, so an idle
-					room shows the transport and stops there rather than offering knobs with nothing behind them.
-				-->
+				<!-- THE TRANSPORT LIVES IN THE BAND ROW, never here: split across the two heights it reads as two transports
+					or as an empty band. The live controls below exist only for a song playing NOW. -->
 				{#if hasSong}
 					<div class="tools-body">
 						{#if guideNote}<p class="tools-note">{guideNote}</p>{/if}
@@ -397,10 +336,8 @@
 							</div>
 						</div>
 
-						<!--
-							DIRECTLY BELOW KEY, with no disclosure: the picture answers "can I sing this, in this key?" and
-							the ± buttons are what it answers about, so a tap between them splits one question in two.
-						-->
+						<!-- DIRECTLY BELOW KEY, with no disclosure: the picture answers "can I sing this, in this key?" and the ±
+							buttons are what it answers about, so a tap between them splits one question in two. -->
 						{#if rangeText}
 							<div class="range">
 								<div class="range-facts">
@@ -412,11 +349,8 @@
 							</div>
 						{/if}
 
-						<!--
-							THE LYRICS SOURCE IS A FACT HERE, NOT A CONTROL: re-picking lyrics is a decision made once about a
-							song, sitting still, and this sheet is what a singer reaches for mid-performance. The picker lives
-							on the song page, which the `···` above opens. A pill because the string names itself.
-						-->
+						<!-- THE LYRICS SOURCE IS A FACT HERE, NOT A CONTROL: re-picking lyrics is a decision made once about a song,
+							and this sheet is what a singer reaches for mid-performance. The picker lives on the song page. -->
 						{#if lyricsSource}
 							<div class="lyricsrc">
 								<Badge variant={lyricsSourceTone}>{lyricsSource}</Badge>
@@ -430,12 +364,10 @@
 </Drawer.Root>
 
 <style>
-	/*
-	 * THE BAND ROW AT SNAP 0. The band paints its own fill, top border and shadow, all three of which the sheet
-	 * already carries — suppressed HERE rather than in the band, which still renders standalone in the gallery.
-	 * Its `padding-bottom: env(safe-area-inset-bottom)` is deliberately NOT suppressed: it is the app's only
-	 * home-indicator inset, and this element's measured height becomes --dock-h.
-	 */
+	/* The band paints its own fill, top border and shadow, all three of which the sheet already carries —
+	   suppressed HERE rather than in the band, which still renders standalone in the gallery. Its
+	   `padding-bottom: env(safe-area-inset-bottom)` is deliberately NOT suppressed: it is the app's only
+	   home-indicator inset, and this element's measured height becomes --dock-h. */
 	.band-slot {
 		position: relative;
 		/* From `$lib/sheet-snap`'s BAND_SNAP_PX, so the rendered strip and snap 0 cannot drift. */
@@ -447,41 +379,31 @@
 		border-top: 0;
 		box-shadow: none;
 	}
-	/*
-	 * FULL-HEIGHT CONTENT WITH `max-height` DEFEATED, which is what makes the snap offsets land: vaul translates
-	 * the content down by (container height − snap height), so a shorter box puts its correct transform below
-	 * the fold. The OPEN height comes from the snap point, never from a cap.
-	 */
+	/* FULL-HEIGHT CONTENT WITH `max-height` DEFEATED, which is what makes the snap offsets land: vaul translates
+	   the content down by (container height − snap height), so a shorter box puts its transform below the fold. */
 	:global([data-slot='drawer-content'].np-drawer) {
 		height: 100dvh;
 		max-height: none;
 	}
 	:global([data-slot='drawer-content'].np-drawer) {
-		/* Elevation, or the sheet reads as a DUPLICATE of the band rather than its expansion: both surfaces are
-		   --card with the same top border and radius, so without a shadow two matching top edges show for the
-		   length of the transition. */
+		/* Elevation, or the sheet reads as a DUPLICATE of the band: both surfaces are --card with the same top
+		   border and radius, so without a shadow two matching top edges show for the length of the transition. */
 		box-shadow: var(--shadow);
-		/* THE DRAWER COVERS THE BAND, so it is bottom-most while open and carries the home-indicator inset itself.
-		   That does not break the one-env() rule: the two are never bottom-most at once, and nothing measures the
-		   drawer into --dock-h. */
+		/* THE DRAWER COVERS THE BAND, so it carries the home-indicator inset itself. That does not break the
+		   one-env() rule: the two are never bottom-most at once, and nothing measures the drawer into --dock-h. */
 		padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--space-lg));
 	}
-	/*
-	 * `!important` IS REQUIRED: vaul writes its transition as an INLINE style from JS, which no author rule can
-	 * otherwise reach and `motion.test.ts` cannot see. `transition-duration: 0s` rather than `transition: none`,
-	 * so its own bookkeeping still sees a transition it can complete instantly.
-	 */
+	/* `!important` IS REQUIRED: vaul writes its transition as an INLINE style from JS. `transition-duration: 0s`
+	   rather than `transition: none`, so vaul's own bookkeeping still sees a transition it completes instantly. */
 	@media (prefers-reduced-motion: reduce) {
 		:global([data-slot='drawer-content']) {
 			transition-duration: 0s !important;
 		}
 	}
 
-	/*
-	 * THE MEASURE, SHARED BY THE HEAD AND THE BODY — one rule, two selectors, and they must STAY one rule.
-	 * Inserting anything BETWEEN these two selectors drops the head out of the list, so it silently takes the
-	 * declarations of whatever follows and goes full-bleed above --max-w. Add a rule AFTER this block.
-	 */
+	/* THE MEASURE, SHARED BY THE HEAD AND THE BODY — one rule, two selectors, and they must STAY one rule.
+	   Inserting anything BETWEEN these two selectors drops the head out of the list, so it silently takes the
+	   declarations of whatever follows and goes full-bleed above --max-w. Add a rule AFTER this block. */
 	:global(.np-head),
 	.np-body {
 		width: 100%;
@@ -490,17 +412,14 @@
 		/* A nowrap child must not set a floor this box cannot go under — the band's own defect class. */
 		min-width: 0;
 	}
-	/*
-	 * THE MEASURED BLOCK, whose height is snap 1's content cap. `flex: 0 0 auto` is load-bearing: the default
-	 * shrink lets a body grown past the viewport SHRINK this wrapper, so `clientHeight` under-reports and the cap
-	 * clips a control — the one direction it must never err in.
-	 */
+	/* Snap 1's content cap is this block's height. `flex: 0 0 auto` is load-bearing: the default shrink lets an
+	   over-tall body SHRINK this wrapper, so `clientHeight` under-reports and the cap clips a control. */
 	.np-fit {
 		flex: 0 0 auto;
 		min-width: 0;
 	}
-	/* Zero-height: the head renders (see the markup note) and shows nothing, so the vendored header's own
-	   padding and gap would be blank space at the top of every open sheet. */
+	/* Zero-height: the head renders and shows nothing, so the vendored header's own padding and gap would be
+	   blank space at the top of every open sheet. */
 	:global(.np-head) {
 		padding: 0;
 		gap: 0;
@@ -508,12 +427,8 @@
 	.np-body {
 		padding: 0 var(--space-2xl);
 	}
-	/*
-	 * THE DOOR, as the seek row's last item. `flex: 0 0 auto` so the bar keeps taking the width; the negative
-	 * right margin is the optical pull that lines the glyph up with the column edge rather than the button's box
-	 * (PageHeader's back-slot does the same). It can sit after the clock because the remaining-time is
-	 * `tabular-nums`, so the door cannot shift as it counts down.
-	 */
+	/* THE DOOR, as the seek row's last item. `flex: 0 0 auto` so the bar keeps taking the width; the negative
+	   right margin is the optical pull that lines the glyph up with the column edge, not the button's box. */
 	.more-slot {
 		flex: 0 0 auto;
 		display: flex;
@@ -539,7 +454,6 @@
 		flex: 1;
 		min-width: 0;
 	}
-	/* The provenance pill: a value with no label, and every other value in this column sits right. */
 	.lyricsrc {
 		display: flex;
 		justify-content: flex-end;

@@ -1,20 +1,9 @@
 /*
- * guard: the shadcn Field rhythm must come from somewhere, and that somewhere must be visible. See
- * docs/GUARDS.md#vendored-component-seams.
- *
- * shadcn splits a field into a WRAPPER that owns the rhythm (`Field` is `gap-3`, `Field.Group` `gap-7`)
- * and LEAVES with no vertical margin of their own. The settings page adopted the leaves and skipped the
- * wrappers — `Field.Label` 27 times and `Field.Description` 23 times with ZERO `Field`, `Field.Group` or
- * `Field.Set` — which on the registry's own CSS stacks 27 labels, 23 descriptions, 14 selects and 9
- * sliders flush. It renders correctly only because Encore hand-added `:global` margins INSIDE the two leaf
- * components, two files away from the page they rescue. Deleting either block is an obvious tidy-up, since
- * the registry has no such rule and a re-pull drops it, and it collapses 50 controls with every gate green.
- *
- * So: (1) while any file renders a leaf WITHOUT a wrapper, the leaves must keep supplying the rhythm,
- * pinned as the actual declarations; (2) the wrapper parts really are what carry a gap, since a re-vendor
- * that moves the gap onto the leaves ends premise (1); (3) every file rendering a leaf mounts a wrapper or
- * spaces the leaves itself. Adopting `Field`/`Field.Group` on the settings page is the real fix and would
- * let both `:global` blocks go — at which point arm (1) is retired on the record.
+ * guard: the shadcn Field rhythm must come from somewhere, and that somewhere must be visible. The
+ * settings page adopted 27 labels and 23 descriptions with ZERO wrapper, and renders correctly only because
+ * Encore hand-added `:global` margins INSIDE the two leaf components — an obvious tidy-up, since a re-pull
+ * drops them, that collapses 50 controls with every gate green. Adopting `Field`/`Field.Group` is the real
+ * fix and would retire arm (1) on the record. See docs/GUARDS.md#vendored-component-seams.
  */
 import { describe, expect, test } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -46,10 +35,9 @@ function markupOf(src: string): string {
 
 const LEAVES = ['Field.Label', 'Field.Description', 'Field.Title', 'Field.Error'] as const;
 /*
- * Matched with a REGEX, not a substring: `markup.includes('<Field')` silently matched `<Field.Label` too,
- * so every leaf user looked like it had a wrapper, `wrapperless` came back empty, and arm 1 returned early
- * without checking anything — a guard that passed by never running, caught by mutation. The boundary is
- * what distinguishes the root from its own leaves.
+ * Matched with a REGEX, not a substring: `markup.includes('<Field')` also matched `<Field.Label`, so every
+ * leaf user looked like it had a wrapper and arm 1 returned early without checking anything — a guard that
+ * passed by never running. The boundary is what distinguishes the root from its own leaves.
  */
 const WRAPPER_RE = /<Field(?![.\w])|<Field\.(Group|Set|Content)\b/;
 const WRAPPER_NAMES = '<Field (root), Field.Group, Field.Set, Field.Content';

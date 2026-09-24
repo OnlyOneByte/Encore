@@ -24,23 +24,18 @@ import os
 
 from ..retry_policy import BoundaryError
 
-#: Our stable allowlist tokens (src/lib/contract/lyrics/separators.ts) -> bs-roformer-infer registry
-#: slugs. Kept here, not in the shared TS, since the slug is a WORKER-side resolution detail the core
-#: never needs to know.
+#: Allowlist tokens -> bs-roformer-infer registry slugs. HERE and not in the shared TS, because the slug
+#: is a WORKER-side resolution detail the core never needs.
 #:
-#: KNOWN MISMATCH: the token `bs-roformer-1297` resolves to a multi-stem checkpoint ("BS Roformer SW
-#: by jarredou"), NOT the 2-stem checkpoint that was actually benchmarked and quality-approved —
-#: bs-roformer-infer 0.1.5's registry (ROFORMER_REGISTRY_SLUGS, ten models) does not carry the
-#: approved checkpoint at all. Deliberately NOT silently repointed to some other slug: swapping the
-#: processed model without a listening test is the failure this note exists to prevent.
+#: KNOWN MISMATCH: `bs-roformer-1297` resolves to a MULTI-stem checkpoint, not the 2-stem one that was
+#: benchmarked and approved, which the registry does not carry at all. Deliberately NOT silently
+#: repointed: swapping the processed model without a listening test is what this note prevents.
 ROFORMER_MODELS = {
     "bs-roformer-1297": "roformer-model-bs-roformer-sw-by-jarredou",
 }
 
-#: Every slug bs-roformer-infer 0.1.5 can actually resolve, read out of its own
-#: `bs_roformer/data/bs_models.json`. Checked in so `ROFORMER_MODELS` is verifiable by a unit test
-#: against real slugs, not a `starts with "roformer-model-"` string-shape assertion (which is how a
-#: nonexistent slug shipped once).
+#: Read out of bs-roformer-infer's own `bs_models.json` and checked in, so `ROFORMER_MODELS` is
+#: verifiable against REAL slugs rather than a string-shape assertion, which let a bad slug ship.
 ROFORMER_REGISTRY_SLUGS = frozenset(
     {
         "roformer-model-bs-roformer-chorus-male-female-by-sucial",
@@ -56,14 +51,11 @@ ROFORMER_REGISTRY_SLUGS = frozenset(
     }
 )
 
-#: Measured execution settings per allowlist token — the worker-side mirror of `SeparatorCost` in
-#: src/lib/contract/lyrics/separators.ts. `precision` is per-token, not globally derivable: bf16 is
-#: faster than fp32 on this checkpoint but SLOWER measured on mel-band models, and fp16 on CPU has no
-#: kernels and is much slower than fp32.
+#: The worker-side mirror of `SeparatorCost`. `precision` is PER-TOKEN and not globally derivable: bf16
+#: beats fp32 on this checkpoint but is slower on mel-band models, and fp16 on CPU has no kernels.
 #:
-#: NEITHER VALUE IS APPLIED TODAY: bs-roformer-infer 0.1.5's CLI has no overlap flag and no precision
-#: flag, and its inference loop has no autocast at all. Recorded here as measured intent so the
-#: numbers are not lost.
+#: NEITHER VALUE IS APPLIED TODAY: the CLI has no overlap or precision flag and its inference loop has no
+#: autocast. Recorded as measured intent so the numbers are not lost.
 ROFORMER_COST = {
     "bs-roformer-1297": {"overlap": 4, "precision": "bf16", "rt_factor": 8.28},
 }
@@ -86,9 +78,8 @@ def resolve_roformer_slug(params: dict, default: str = DEFAULT_ROFORMER_MODEL) -
     token = params.get("model") or default
     slug = ROFORMER_MODELS.get(token)
     if slug is None:
-        # BoundaryError subclasses ValueError but carries structured retryable=False, so an unknown
-        # model fails fast via retry_policy instead of burning three attempts on a token that can
-        # never resolve.
+        # BoundaryError carries structured retryable=False, so an unknown model fails fast instead of
+        # burning three attempts on a token that can never resolve.
         raise BoundaryError(f"unknown roformer model {token!r}; expected one of {sorted(ROFORMER_MODELS)}")
     return slug
 

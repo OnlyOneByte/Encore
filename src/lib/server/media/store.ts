@@ -1,9 +1,7 @@
-// MediaStore — lets a worker on a SECOND box read/write media the core can also reach: `local`
-// (shared volume, single-box) or `object` (S3/MinIO, scale-out), flipped via env var;
-// `worker:welcome` carries the resolved config. A STORE ANSWERS BYTES, NOT URLS: every ref reaches a
-// client through the same-origin `/media/<ref>` route. Do not re-add a `url(ref)`/presigned-URL
-// member — the same-origin guarantee is depended on elsewhere, and cross-origin media is a product
-// decision, not a store detail.
+// Lets a worker on a SECOND box reach media the core can: `local` (shared volume) or `object` (S3/MinIO),
+// flipped via env var and carried in `worker:welcome`. A STORE ANSWERS BYTES, NOT URLS — every ref reaches a
+// client through the same-origin `/media/<ref>` route. Do NOT re-add a `url(ref)`/presigned member: the
+// same-origin guarantee is depended on elsewhere, and cross-origin media is a product decision.
 
 import type { MediaStoreConfig } from '../../contract';
 import { safeMediaPath } from './local-files';
@@ -13,11 +11,8 @@ export type MediaStoreKind = MediaStoreConfig['kind'];
 export type ObjectStoreConfig = Extract<MediaStoreConfig, { kind: 'object' }>;
 export type { MediaStoreConfig };
 
-/**
- * Resolve the MediaStore config from env (PURE — takes the env bag, not process.env, so testable).
- * `MEDIA_STORE=object` requires S3_BUCKET; anything else, or a missing bucket, FALLS BACK to local
- * with no throw — the party must still run single-box even if the flag is set without a bucket.
- */
+/** PURE: takes the env bag, not process.env. `MEDIA_STORE=object` requires S3_BUCKET, and a missing bucket
+ *  FALLS BACK to local with no throw — the party must still run single-box. */
 export function resolveMediaStoreConfig(env: Record<string, string | undefined>): MediaStoreConfig {
 	if ((env.MEDIA_STORE ?? 'local').toLowerCase() !== 'object') return { kind: 'local' };
 	const bucket = env.S3_BUCKET?.trim();
@@ -42,30 +37,24 @@ export function objectKey(prefix: string | undefined, ref: string): string {
 	return `${prefix ?? ''}${ref}`;
 }
 
-/** What every store can do. Bytes only — the same-origin `/media` route is the sole URL builder. */
+/** Bytes only: the same-origin `/media` route is the sole URL builder. */
 export interface MediaStore {
 	readonly kind: MediaStoreKind;
 	/** Does this ref exist in the store? */
 	exists(ref: string): Promise<boolean>;
-	/** Read the bytes (used by the /media proxy for object stores; the worker pulls the source). */
+	/** Used by the /media proxy for object stores; the worker pulls the source itself. */
 	get(ref: string): Promise<ReadableStream | null>;
-	/**
-	 * Byte size of the object, or null when absent/unknown. OPTIONAL: `/media` serves HTTP byte
-	 * ranges only for a store answering both this and `getRange`, else degrades to a plain `200` —
-	 * range support is what makes a media element seekable, and what makes WebKit play at all (media/http-range.ts).
-	 */
+	/** OPTIONAL: `/media` serves byte ranges only for a store answering both this and `getRange`, else
+	 *  degrades to a plain `200`. Range support is what makes a media element seekable — and WebKit play. */
 	size?(ref: string): Promise<number | null>;
-	/**
-	 * Read an INCLUSIVE byte range (already validated against real size by the caller). SHOULD
-	 * return a `Blob` rather than a stream: a Blob-built Response carries `Content-Length`, so a
-	 * media element knows the resource size without decoding to the end.
-	 */
+	/** INCLUSIVE, already validated against real size by the caller. SHOULD return a `Blob`, not a stream:
+	 *  a Blob-built Response carries `Content-Length`, so a media element knows the size up front. */
 	getRange?(ref: string, start: number, end: number): Promise<ReadableStream | Blob | null>;
 	/** Write bytes (the worker pushes stems/lyrics). */
 	put(ref: string, data: Uint8Array | ReadableStream | Blob): Promise<void>;
 }
 
-/** Local volume store — the MVP default. Wraps the existing safeMediaPath guard + Bun.file. */
+/** The default. Wraps the safeMediaPath guard plus Bun.file. */
 export class LocalMediaStore implements MediaStore {
 	readonly kind = 'local' as const;
 
@@ -93,11 +82,8 @@ export class LocalMediaStore implements MediaStore {
 		return (await file.exists()) ? file.size : null;
 	}
 
-	/**
-	 * A slice of the file, as a Blob so the response carries `Content-Length`. `Blob.slice` is
-	 * EXCLUSIVE-end while HTTP ranges are inclusive, hence `end + 1` — getting this wrong drops the
-	 * final byte of every chunk, read by a decoder as a corrupt stream.
-	 */
+	/** A Blob, so the response carries `Content-Length`. `Blob.slice` is EXCLUSIVE-end where HTTP ranges are
+	 *  inclusive, hence `end + 1`: getting it wrong drops the final byte of every chunk. */
 	async getRange(ref: string, start: number, end: number): Promise<Blob | null> {
 		const abs = this.#abs(ref);
 		if (!abs) return null;

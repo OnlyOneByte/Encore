@@ -68,10 +68,8 @@ def test_explicit_default_is_honoured_for_an_absent_value():
     assert parse_sync_mode(None, SyncMode.LINES) is SyncMode.LINES
 
 
-# Engine resolution is a PURE function into per-job state, not a mutation of shared processor
-# instance fields — with ENCORE_WORKER_CONCURRENCY > 1, two jobs carrying different `asrModel` would
-# otherwise race (one nulling the other's cached sources mid-acquire, or transcribing with the
-# other's weights).
+# A PURE function into per-job state, never a mutation of shared instance fields: with concurrency > 1, two
+# jobs carrying different `asrModel` would race over each other's cached sources and weights.
 
 
 def test_job_params_override_the_worker_defaults():
@@ -113,8 +111,7 @@ def test_an_unknown_model_on_the_wire_fails_before_any_work():
         plans.resolve_engines({"asrModel": "not-a-model"}, ResolvedEngines())
 
 
-# The model cache is a module-level cache keyed by configuration, not shared processor instance
-# state: a fresh transcriber per job would re-read multi-GB weights on every align job.
+# A module-level cache keyed by CONFIGURATION: a fresh transcriber per job re-reads multi-GB weights.
 
 
 def test_two_jobs_on_the_same_checkpoint_SHARE_one_loaded_model():
@@ -144,14 +141,11 @@ def test_the_aligner_is_cached_per_device_on_the_same_reasoning():
     assert aligner_for("cpu") is not aligner_for("cuda")
 
 
-# The tests above pin that the cache HOLDS, not the `with ML_LOCK:` that guards the check-then-set
-# INSIDE the factory: after the first call populates the module dict, every later call short-circuits
-# on `.get()` regardless of the lock. The race only appears when two callers hit an EMPTY cache at
-# once (aligner_for runs on a real worker thread, so ENCORE_WORKER_CONCURRENCY>1 can enter the
-# check-then-set concurrently): without the lock, both construct their own instance with its own
-# `self._cache`, silently doubling VRAM/resident memory since the process still succeeds either way.
-# Drives the concurrency THROUGH the production factory rather than re-implementing the lock in the
-# test. Parametrised over both factories, since `transcriber_for` has the identical shape.
+# The tests above pin that the cache HOLDS, not the `with ML_LOCK:` guarding the check-then-set: once the
+# module dict is populated every later call short-circuits on `.get()` regardless of the lock. The race only
+# appears when two callers hit an EMPTY cache at once, and without the lock both construct their own
+# instance with its own `self._cache` — silently doubling resident memory, since the process still succeeds.
+# Driven THROUGH the production factory rather than re-implementing the lock here.
 @pytest.mark.parametrize("factory", ["aligner", "transcriber"])
 def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, factory):
     """N threads hit an empty cache at once off a Barrier; the module lock must make exactly one
@@ -179,8 +173,7 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
     real_init = cls.__init__
 
     def slow_init(self, *args, **kwargs):
-        # Dwell INSIDE the check-then-set window so other threads that already passed the `.get() is
-        # None` check also construct before this one stores, without the factory's lock.
+        # Dwell INSIDE the check-then-set window, so other threads past the `.get()` also construct.
         with con_lock:
             constructions.append(id(self))
         time.sleep(0.02)
@@ -191,8 +184,7 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
     old_interval = sys.getswitchinterval()
     sys.setswitchinterval(1e-9)  # widen the interleave so the tiny window is hit reliably
     try:
-        # Loop trials: the window is narrow, so one trial can miss it even unlocked. A handful of trials
-        # makes the unlocked race virtually certain to surface while staying bounded.
+        # The window is narrow, so one trial can miss it even unlocked; a handful stays bounded.
         for _ in range(20):
             cache.clear()
             constructions.clear()
@@ -226,8 +218,7 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
 
 
 def test_worker_config_rejects_an_unknown_model():
-    # Same rule at the other entry point: a bad ENCORE_ASR_MODEL must fail when the worker is built, not
-    # at the first process of the night.
+    # A bad ENCORE_ASR_MODEL must fail when the worker is BUILT, not at the first process of the night.
     async def _noop(argv):  # pragma: no cover - never invoked; construction fails first
         yield ""
 
@@ -304,8 +295,7 @@ def test_forced_mode_runs_the_aligner_and_yields_word_timings():
 
 
 def test_lines_mode_skips_the_aligner_entirely():
-    # The whole point of the mode: one fewer ML pass per process. If this ever calls the aligner, the
-    # setting is cosmetic.
+    # The whole point of the mode: one fewer ML pass. Calling the aligner makes the setting cosmetic.
     spy = _SpyAligner()
     doc, timing, _ = _time_one(spy, _ctx("lines"), _line_text(), "vocals.wav", "en")
     assert spy.calls == 0
@@ -314,11 +304,9 @@ def test_lines_mode_skips_the_aligner_entirely():
 
 
 def test_lines_mode_declines_a_source_with_no_timings_at_all():
-    # `lines` will not go and FIND timings, so a plain-lyrics record has nothing honest to publish —
-    # the floor stays line-level sync rather than a wall of synthetic even spacing sold as line timing.
-    # Segments here use numeric (evenly-spaced) bounds, the real shape `plain_lyrics_to_segments`
-    # emits, so the TIMING_LINE guard — not `is_line_synced`'s non-numeric-start rejection — is what
-    # is actually under test.
+    # `lines` will not go and FIND timings, so a plain-lyrics record has nothing honest to publish and the
+    # floor stays line sync rather than synthetic even spacing sold as line timing. Segments use the numeric
+    # bounds `plain_lyrics_to_segments` really emits, so the TIMING_LINE guard is what is under test.
     spy = _SpyAligner()
     segs = plain_lyrics_to_segments("no timings here\nsecond line", 120.0)
     assert all(isinstance(seg["start"], (int, float)) for seg in segs)  # production shape, not start=None
@@ -333,9 +321,8 @@ def test_lines_mode_declines_a_source_with_no_timings_at_all():
 
 
 def test_lines_mode_keeps_word_timings_a_source_already_had():
-    # "Do not RUN the aligner" is not "throw away timings that already exist". A source that supplies
-    # word timings unaided still gets them published — discarding them would be strictly worse output
-    # for no saving, since no alignment pass is involved either way.
+    # "Do not RUN the aligner" is not "discard timings that already exist": a source supplying word timings
+    # unaided still publishes them, since no alignment pass is involved either way.
     spy = _SpyAligner()
     worded = LyricsText(
         text_source=SOURCE_ASR,

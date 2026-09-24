@@ -1,15 +1,10 @@
-// Caught: skip a song and the instrumental is silent until you touch the semitones.
-//
-// A PitchShiftGraph binds a PERMANENT MediaElementAudioSourceNode to its element (createMediaElementSource
-// in PitchShiftGraph.build, pitch-shift.ts). The master audio element is mounted unconditionally and lives
-// as long as the SLOT, but the per-song reset effect used to detach() its graph on every song change, and
-// detach() cannot restore the native path -- so the still-captured element was left feeding a disconnected
-// node. A later keyShift built a NEW graph on the same element and re-routed it, which is exactly the
-// touch-the-semitones workaround in the report.
-//
-// Two halves: the behavioural primitive the fix leans on (a routed graph SURVIVES setShift(0) still routed,
-// whereas detach() tears the context down), under stubbed WebAudio; and a source scan proving the per-song
-// reset is wired to setShift(0) and NOT to detach(), since bun cannot execute a .svelte effect.
+// guard: skip a song and the instrumental was silent until you touched the semitones. A PitchShiftGraph
+// binds a PERMANENT MediaElementAudioSourceNode to its element, and the master element lives as long as the
+// SLOT — but the per-song reset effect used to detach() its graph on every song change, and detach() cannot
+// restore the native path, so the still-captured element was left feeding a disconnected node until a later
+// keyShift built a new graph on it. Two halves: the behavioural primitive the fix leans on (a routed graph
+// SURVIVES setShift(0) still routed, where detach() tears the context down) under stubbed WebAudio, and a
+// source scan that the reset is wired to setShift(0) and NOT detach(), since bun cannot run a .svelte effect.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';

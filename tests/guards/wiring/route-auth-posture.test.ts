@@ -1,12 +1,9 @@
-// Every HTTP route's auth posture is pinned per METHOD. Caught: deleting the gate on
-// `POST /api/delete-media`, the hard-delete endpoint, reddened nothing. `capability-wiring.test.ts` reads
-// like the guard for this and is not — it scans `hub.ts`, the websocket seam, which holds no route path.
-// See docs/GUARDS.md#wiring-routes
-//
-// PER-METHOD, not per-file: `settings/+server.ts` gates `PUT` but its `GET` is `async () =>`, taking no
-// arguments and therefore unable to read a cookie, so a per-file scan sees `bySessionToken` and reports
-// the whole module protected. The registry is CLOSED — a route method with no entry FAILS — because the
-// risk is a new endpoint arriving ungated, not an existing gate being removed.
+// guard: every HTTP route's auth posture is pinned per METHOD. Caught: deleting the gate on
+// `POST /api/delete-media`, the hard-delete endpoint, reddened nothing. PER-METHOD, not per-file:
+// `settings/+server.ts` gates `PUT` but its `GET` is `async () =>`, taking no arguments and so unable to
+// read a cookie, and a per-file scan sees `bySessionToken` and reports the whole module protected. The
+// registry is CLOSED — a route method with no entry FAILS — because the risk is a new endpoint arriving
+// ungated. See docs/GUARDS.md#wiring-routes
 
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';

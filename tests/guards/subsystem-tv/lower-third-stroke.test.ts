@@ -1,10 +1,8 @@
-// Guard: the TV lower-third (singer name, key, provenance marker) carries a hard OUTLINE, not only a soft
-// glow — so it stays legible on ANY stage colour a room picks, including white.
-//
-// Caught: `.lower-third` had no card and leaned solely on `text-shadow: 0 2px 14px rgba(0,0,0,.9)`, a
-// blurred shadow that dissolves against a bright field of similar luminance. On a white stage the white
-// singer name measured ~1.10:1 and the amber provenance marker ~1.72:1. The fix gives it the same treatment
-// the lyric reel got: `-webkit-text-stroke` + `paint-order: stroke fill`.
+// guard: the TV lower-third (singer name, key, provenance marker) carries a hard OUTLINE, not only a soft
+// glow, so it stays legible on ANY stage colour a room picks, including white. Caught: `.lower-third` leaned
+// solely on `text-shadow: 0 2px 14px rgba(0,0,0,.9)`, a blurred shadow that dissolves against a bright field
+// of similar luminance — on a white stage the white singer name measured ~1.10:1 and the amber provenance
+// marker ~1.72:1. The fix is `-webkit-text-stroke` + `paint-order: stroke fill`.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 

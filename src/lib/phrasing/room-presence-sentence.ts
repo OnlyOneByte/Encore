@@ -1,34 +1,24 @@
-// The scanned-guest confirmation, in words. Pure and DOM-free, because the sentence IS the requirement.
-//
-// Rooms have no name, so "confirmed in words" means WHO IS HERE, never the code. The COUNT is authoritative;
-// names are a courtesy that degrades as they run out.
+// The scanned-guest confirmation, in words. Pure and DOM-free, because the sentence IS the requirement. Rooms have no
+// name, so "confirmed in words" means WHO IS HERE, never the code. The COUNT is authoritative; names are a courtesy.
 
 /** Shape of GET /api/room-preview's success body. */
 export interface RoomPreview {
 	code: string;
 	presentCount: number;
 	names: string[];
-	/** The present singers' identity colours, in the same order as `names` — the colour ring's "already taken"
-	 * pips. OPTIONAL, like `names`: only the count is authoritative, and an absent list is an empty ring,
-	 * which is a state the picker already renders for an empty room. */
+	/** The present singers' identity colours, in the same order as `names` — the colour ring's "already taken" pips.
+	 * OPTIONAL: only the count is authoritative, and an absent list is an empty ring, which the picker already renders. */
 	colors?: string[];
-	/** How many of `presentCount` are AWAY rather than reachable. They are still COUNTED — the grace window is
-	 * what holds their names — and this is what lets the sentence avoid claiming they are in front of you.
-	 * Optional, and absent reads as 0. */
+	/** How many of `presentCount` are AWAY rather than reachable. They are still COUNTED — the grace window holds their
+	 * names — and this is what lets the sentence avoid claiming they are in front of you. Absent reads as 0. */
 	awayCount?: number;
 }
 
 /**
- * A sentence naming the room by its people, and never re-presenting the code.
- *
- * THE ALL-AWAY BRANCH exists because the alternative is a lie in one direction or the other. Away members
- * hold their names, so they MUST be counted — a room that reports itself empty and then rejects your name is
- * the defect this endpoint was carrying — but saying someone is "here" when their phone is asleep is the same
- * overclaim in reverse, while the TV's roster renders them as away to the same party. "away right now" is the
- * wall's own word, so the two surfaces agree.
- *
- * A MIXED room needs no special case: somebody reachable IS here, and the away members are the difference
- * between the count and the names, which the count already carries.
+ * A sentence naming the room by its people, and never re-presenting the code. THE ALL-AWAY BRANCH exists because the
+ * alternative is a lie in one direction or the other: away members hold their names so they MUST be counted, but saying
+ * someone is "here" when their phone is asleep is the same overclaim in reverse. "away right now" is the wall's own
+ * word, so the two surfaces agree. A MIXED room needs no special case: somebody reachable IS here.
  */
 export function roomPresenceSentence(preview: RoomPreview): string {
 	const count = Math.max(0, preview.presentCount);

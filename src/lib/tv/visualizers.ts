@@ -1,19 +1,12 @@
-// The four visualizer renderers, as PURE functions of `t`, taking a structural 2D context so they can be
-// driven against a fake and asserted on. The component owns only the loop.
+// The four visualizer renderers, as PURE functions of `t`. The component owns only the loop.
 //
-// THE BRIGHTNESS BOUND. This is the stage background, sitting behind the word-timed lyric reel. Every colour
-// MUST come from `stageHueToHex` (lightness pinned to STAGE_BG_L, accent2 guard applied); a raw hsl()/rgb()
-// value is how a visualizer becomes the brightest thing on screen. Bounded by the same cap as a static
-// background — no visualizer-specific constant, no dim-while-lyrics-show.
+// THE BRIGHTNESS BOUND: every colour MUST come from `stageHueToHex` (lightness pinned to STAGE_BG_L, accent2 guard
+// applied), because a raw hsl()/rgb() value is how a stage visualizer becomes the brightest thing behind the reel.
 //
-// Deliberately absent: spectrum bars and oscilloscopes. Both claim to draw the audio signal and nothing here
-// reads it. They arrive with real analysis or not at all.
+// Deliberately absent: spectrum bars and oscilloscopes. Both claim to draw the audio signal and nothing here reads it.
 import { stageHueToHex, type TvVisualizerId } from '$lib/contract';
 
-/**
- * The subset of CanvasRenderingContext2D these renderers use. Structural rather than the DOM interface
- * so a test can pass a recording stub. Keep it minimal — every method added is one a fake must provide.
- */
+/** Structural rather than the DOM interface, so a test can pass a stub. Every method added is one a fake must provide. */
 export interface VizContext {
 	fillStyle: string | CanvasGradient | CanvasPattern;
 	strokeStyle: string | CanvasGradient | CanvasPattern;
@@ -39,14 +32,14 @@ export interface VizFrame {
 	h: number;
 }
 
-/** Hue offset helper: a second hue a fixed angle from the room's, still inside the stage bound. */
+/** A second hue a fixed angle from the room's, still inside the stage bound. */
 function shifted(hue: number, deg: number): string {
 	return stageHueToHex(hue + deg);
 }
 
 /**
- * Wipe to the stage floor. Every renderer starts here, so a dropped frame or a resize cannot streak and
- * no renderer depends on the accumulated history of the frames before it.
+ * Every renderer starts here, so a dropped frame or a resize cannot streak and no renderer depends on the accumulated
+ * history of the frames before it.
  */
 function clear(ctx: VizContext, f: VizFrame): void {
 	ctx.globalAlpha = 1;
@@ -54,10 +47,7 @@ function clear(ctx: VizContext, f: VizFrame): void {
 	ctx.fillRect(0, 0, f.w, f.h);
 }
 
-/**
- * Plasma — summed sinusoids on a coarse grid. Filled cells rather than per-pixel `ImageData`, which is
- * far too slow on a TV browser at 1080p and reads the same on a reduced backing store.
- */
+/** Summed sinusoids on a coarse grid. Filled cells, not per-pixel `ImageData`, which is far too slow at 1080p. */
 export function drawPlasma(ctx: VizContext, f: VizFrame): void {
 	clear(ctx, f);
 	// ~24 effective px after the CSS upscale. Doubling this reads as hard blocks, not a soft field.
@@ -87,16 +77,13 @@ function starRand(i: number, salt: number): number {
 	return v - Math.floor(v);
 }
 
-/**
- * Starfield. Each star's depth is `t` modulo its own cycle, so the field needs no accumulated per-frame
- * state and a star wrapping to the far distance reads as continuous travel.
- */
+/** Each star's depth is `t` modulo its own cycle, so the field needs no accumulated per-frame state. */
 export function drawStarfield(ctx: VizContext, f: VizFrame): void {
 	clear(ctx, f);
 	const cx = f.w / 2;
 	const cy = f.h / 2;
-	// Density and size are the only levers for reading as a FIELD rather than stray dots, because the
-	// stage tier caps brightness. Below ~200 on a 640x360 backing store it stops reading as a field.
+	// Density and size are the only levers for reading as a FIELD rather than stray dots, because the stage tier caps
+	// brightness. Below ~200 on a 640x360 backing store it stops reading as a field.
 	const count = 320;
 	const near = stageHueToHex(f.hue);
 	const far = shifted(f.hue, 40);
@@ -118,10 +105,7 @@ export function drawStarfield(ctx: VizContext, f: VizFrame): void {
 	ctx.globalAlpha = 1;
 }
 
-/**
- * Ripples — two ring systems at slightly different periods, so the interference walks. Stroked circles
- * rather than a computed field: cheap, and hard-edged.
- */
+/** Two ring systems at slightly different periods, so the interference walks. Stroked circles: cheap, hard-edged. */
 export function drawMoire(ctx: VizContext, f: VizFrame): void {
 	clear(ctx, f);
 	const maxR = Math.hypot(f.w, f.h) / 2;
@@ -144,9 +128,7 @@ export function drawMoire(ctx: VizContext, f: VizFrame): void {
 	ctx.globalAlpha = 1;
 }
 
-/**
- * Phase curves — a Lissajous figure whose frequency ratio drifts, so the curve never settles.
- */
+/** A Lissajous figure whose frequency ratio drifts, so the curve never settles. */
 export function drawLissajous(ctx: VizContext, f: VizFrame): void {
 	clear(ctx, f);
 	const cx = f.w / 2;
@@ -174,10 +156,7 @@ export function drawLissajous(ctx: VizContext, f: VizFrame): void {
 	ctx.globalAlpha = 1;
 }
 
-/**
- * The registry's id -> renderer map. `Record<TvVisualizerId, …>` on purpose: adding an id to
- * TV_VISUALIZERS without a renderer is a compile error.
- */
+/** `Record<TvVisualizerId, …>` on purpose: adding an id to TV_VISUALIZERS with no renderer is a compile error. */
 export const VISUALIZER_RENDERERS: Record<TvVisualizerId, (ctx: VizContext, f: VizFrame) => void> = {
 	plasma: drawPlasma,
 	starfield: drawStarfield,

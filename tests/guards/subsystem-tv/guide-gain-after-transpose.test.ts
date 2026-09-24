@@ -1,11 +1,9 @@
-// Caught: set a guide level, then transpose, and the isolated vocals jump to FULL volume under the
-// instrumental for the rest of the song.
-//
-// The level is owned by a gain $effect whose tracked deps are the element and `effectiveGuide` only — the
-// graph variable is a plain `let`, so it is invisible to that effect. The pitch $effect builds the graph on
-// the first non-zero shift, build() writes the graph's remembered gain straight into the GainNode, and the
-// level effect does NOT re-run on graph construction. Once routed, `HTMLMediaElement.volume` is bypassed,
-// so the level the room set is simply gone. Whatever builds a graph must therefore re-apply the level itself.
+// guard: set a guide level, then transpose, and the isolated vocals jumped to FULL volume under the
+// instrumental for the rest of the song. The level is owned by a gain $effect whose tracked deps are the
+// element and `effectiveGuide` only — the graph variable is a plain `let`, invisible to it — while the pitch
+// $effect builds the graph on the first non-zero shift and build() writes the graph's remembered gain into
+// the GainNode. Once routed, `HTMLMediaElement.volume` is bypassed, so the level the room set is gone.
+// Whatever builds a graph must therefore re-apply the level itself.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';

@@ -23,13 +23,12 @@
 	} from '$lib/contract';
 	import type { LyricsCandidate } from '$lib/contract';
 
-	// Fixture singer colours: DATA (a guest's chosen accent), not theme tokens, but taken from the palette
-	// by index so a reorder cannot leave the gallery demoing a colour the app can no longer produce.
+	// Fixture singer colours: DATA (a guest's chosen accent), not theme tokens, but taken from the palette by index so a
+	// reorder cannot leave the gallery demoing a colour the app can no longer produce.
 	const VIOLET = SINGER_COLORS[0];
 	const PINK = SINGER_COLORS[1];
 	const GREEN = SINGER_COLORS[2];
-	// Mint, because the highlight cards below need a singer colour that collides convincingly with a
-	// mid-tone stage field. A violet does not read as a plausible room choice.
+	// Mint, because the highlight cards below need a singer colour that collides convincingly with a mid-tone stage field.
 	const MINT = SINGER_COLORS[7];
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
@@ -60,8 +59,8 @@
 	import type { LyricsDoc } from '$lib/tv/lyrics';
 	import { onMount } from 'svelte';
 
-	// A chorus that lives high, so the histogram weight is visibly lopsided (index 0 = lowMidi = 48/C3).
-	// p05..p95 is the solid block, low/high the whiskers.
+	// A chorus that lives high, so the histogram weight is visibly lopsided (index 0 = lowMidi = 48/C3); p05..p95 is the
+	// solid block, low/high the whiskers.
 	const profileFull: SongProfile = {
 		keyTonic: 7, // G
 		keyMode: 'major',
@@ -290,12 +289,9 @@
 		lines: demoLyrics.lines.map((l, i) => ({ ...l, part: i % 2 === 0 ? 'A' : 'B' })),
 		words: []
 	};
-	/*
-	 * The other half of a line-only song: the resolver never sees a doc, only a candidate's `timing`, so a
-	 * card that renders `demoLineOnly` while passing `highlight` by hand cannot exercise the clamp at all.
-	 * Doc and candidate must agree, and both must match what the worker publishes — an empty `words: []`
-	 * (not an absent key) and `"timing": "line"`.
-	 */
+	/* The other half of a line-only song: the resolver never sees a doc, only a candidate's `timing`, so a card that
+	   renders `demoLineOnly` while passing `highlight` by hand cannot exercise the clamp at all. Doc and candidate must
+	   agree, and both must match what the worker publishes — an empty `words: []` (not an absent key) and `"timing": "line"`. */
 	const lineOnlyCandidate: LyricsCandidate = {
 		ref: 'derived/lyrics/demo.lrclib.line.json',
 		textSource: 'lrclib',
@@ -305,13 +301,10 @@
 	};
 	// Held as the DEFAULTS, not literals, so the card keeps showing what a fresh install actually does.
 	const wordLevelDeployment = { global: DEFAULT_GLOBAL_SETTINGS, room: DEFAULT_ROOM_SETTINGS };
-	// Ask the SAME resolver the TV asks: passing `highlight`/`ball` by hand makes the card a picture of a
-	// decision rather than a test of one.
+	// Ask the SAME resolver the TV asks: passing `highlight`/`ball` by hand makes the card a picture of a decision.
 	const lineOnlyResolved = $derived(resolveLyricsPresentation(wordLevelDeployment, lineOnlyCandidate.timing));
-	/*
-	 * Two words a line, for the row-count cards only: the real demo lines wrap at gallery width, which
-	 * doubles a row's height and makes "how many rows are showing" unreadable off a frame.
-	 */
+	/* Two words a line, for the row-count cards only: the real demo lines wrap at gallery width, which doubles a row's
+	   height and makes "how many rows are showing" unreadable off a frame. */
 	const demoShort: LyricsDoc = {
 		language: 'en',
 		lines: demoLyrics.lines.map((l) => {
@@ -601,9 +594,9 @@
 	/>
 
 	<h2 class="section">NowPlayingBand · every state</h2>
-	<!-- Inline here, so the band's top border reads as a seam rather than a lift — the gallery's cost, not a defect. -->
-	<!-- `progress={null}` must draw an EMPTY ring, and a long title must ellipsise while `.meta` keeps min-width:0. -->
-	<!-- Held to 390px: the band's controls are pinned right, so at gallery width a long title proves nothing. -->
+	<!-- Inline here, so the band's top border reads as a seam rather than a lift — the gallery's cost, not a defect.
+			`progress={null}` must draw an EMPTY ring, and a long title must ellipsise while `.meta` keeps min-width:0. Held to
+			390px: the band's controls are pinned right, so at gallery width a long title proves nothing. -->
 	<div style="display:grid;grid-template-columns:minmax(0,390px);gap:20px;">
 		<div>
 			<p class="caption">Playing, mid-song — the canonical state</p>
@@ -738,8 +731,8 @@
 		/>
 	</div>
 
-	<!-- The case the clamp exists for: a stock word-level room, and a song whose winning candidate is line-only. -->
-	<!-- Read the CURRENT row — accent with no marker means the clamp fired; plain white means it did not. -->
+	<!-- The case the clamp exists for: a stock word-level room, and a song whose winning candidate is line-only. Read the
+			CURRENT row — accent with no marker means the clamp fired; plain white means it did not. -->
 	<h2 class="section">
 		LyricsOverlay · line-only song, word-level deployment · resolved: {lineOnlyResolved.highlight} / marker
 		{lineOnlyResolved.ball}{lineOnlyResolved.clamped ? ' (clamped)' : ''}
@@ -761,8 +754,8 @@
 		/>
 	</div>
 
-	<!-- `playing={false}` plus a pinned position is load-bearing: the demo clock loops, so frames would differ. -->
-	<!-- positionSec and leadSec are BOTH passed so 1.1s shows all three word states; 500px fits the reel's 9.5em. -->
+	<!-- `playing={false}` plus a pinned position is load-bearing: the demo clock loops, so frames would differ. positionSec
+			and leadSec are BOTH passed so 1.1s shows all three word states; 500px fits the reel's 9.5em. -->
 	{#each LYRICS_BALL_STYLES as s (s.id)}
 		<h2 class="section">LyricsOverlay · marker: {s.label}</h2>
 		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:{stageBg};">
@@ -795,8 +788,8 @@
 		</div>
 	{/each}
 
-	<!-- One knob per card, every other at its default. Row-count cards carry their OWN height, derived from it. -->
-	<!-- The doc has six lines, so the largest reels reserve rows it cannot fill; counts are asserted on the DOM. -->
+	<!-- One knob per card, every other at its default. Row-count cards carry their OWN height, derived from it; the doc has
+			six lines, so the largest reels reserve rows it cannot fill, and counts are asserted on the DOM. -->
 	{#each [{ what: 'size 100% (the neutral legibility floor)', props: { scalePct: 100 }, h: 500, short: false }, { what: 'size 300% (the ceiling)', props: { scalePct: 300 }, h: 900, short: false }, { what: 'case ALL CAPS — note the extra wrapping', props: { textCase: 'upper' as const }, h: 500, short: false }, { what: 'case all lowercase', props: { textCase: 'lower' as const }, h: 500, short: false }, { what: 'font serif', props: { font: 'serif' as const }, h: 500, short: false }, { what: 'font monospace — fewest words per row', props: { font: 'mono' as const }, h: 500, short: false }, { what: 'rows 0 before / 2 after — no history', props: { linesBefore: 0, linesAfter: 2 }, h: 460, short: true }, { what: 'rows 2 before / 0 after — nothing revealed ahead', props: { linesBefore: 2, linesAfter: 0 }, h: 460, short: true }, { what: 'rows 2 before / 2 after — the default, for comparison', props: { linesBefore: 2, linesAfter: 2 }, h: 700, short: true }, { what: 'rows 1 before / 4 after — asymmetric, current line sits high', props: { linesBefore: 1, linesAfter: 4 }, h: 820, short: true }, { what: 'rows 3 before / 4 after — the maximum reel', props: { linesBefore: 3, linesAfter: 4 }, h: 1080, short: true }] as c (c.what)}
 		<h2 class="section">LyricsOverlay · {c.what}</h2>
 		<div style="position:relative;height:{c.h}px;border-radius:16px;overflow:hidden;background:{stageBg};">
@@ -814,8 +807,8 @@
 		</div>
 	{/each}
 
-	<!-- Four frames at one position, so the active word's hue is the only difference between them. -->
-	<!-- Cards 3 and 4 are the stage-colour collision: only `-webkit-text-stroke` holds card 4, and there is one. -->
+	<!-- Four frames at one position, so the active word's hue is the only difference. Cards 3 and 4 are the stage-colour
+			collision: only `-webkit-text-stroke` holds card 4, and there is one. -->
 	{#each [{ what: 'highlight colour: the ROOM ACCENT (nobody up — the before frame)', singer: null, bg: stageBg }, { what: 'highlight colour: the SINGER (violet) — same doc, same position', singer: VIOLET, bg: stageBg }, { what: 'highlight colour: mint singer on a mid-tone TEAL stage — low contrast, held by the stroke', singer: MINT, bg: '#1f6f63' }, { what: 'highlight colour: mint singer on a stage of EXACTLY that mint — 1:1 fill contrast, stroke only', singer: MINT, bg: MINT }] as c (c.what)}
 		<h2 class="section">LyricsOverlay · {c.what}</h2>
 		<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{c.bg};">

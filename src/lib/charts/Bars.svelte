@@ -1,10 +1,6 @@
-<!--
-  A ranked horizontal bar list, hand-rolled because one bar row is a div with a width and a charting
-  dependency to draw a rectangle would be the larger cost.
-
-  Bars scale to the LARGEST value in the set, never to a round number above it, so the longest bar always
-  fills its row — against a fixed axis a handful of plays renders every bar as a stub.
--->
+<!-- A ranked horizontal bar list, hand-rolled because one bar row is a div with a width and a charting dependency to
+  draw a rectangle would be the larger cost. Bars scale to the LARGEST value in the set, never to a round number above it,
+  so the longest bar always fills its row — against a fixed axis a handful of plays renders every bar as a stub. -->
 <script lang="ts">
 	import * as Empty from '$lib/components/ui/empty';
 	import * as Chart from '$lib/components/ui/chart';
@@ -32,10 +28,8 @@
 		</Empty.Header>
 	</Empty.Root>
 {:else}
-	<!--
-		The marks stay a labelled list, because this is a proportional LIST: each row's label and value are real
-		text, not a plotted series whose values live in a path a screen reader cannot read.
-	-->
+	<!-- The marks stay a labelled list, because this is a proportional LIST: each row's label and value are real text, not
+			a plotted series whose values live in a path a screen reader cannot read. -->
 	<Chart.Container config={{ plays: { label: 'Plays', color: 'var(--grad)' } }}>
 		<ol class="bars">
 			{#each rows as row, i (row.label + i)}

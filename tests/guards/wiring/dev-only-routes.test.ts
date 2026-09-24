@@ -1,9 +1,8 @@
-// A route that calls itself dev-only must be GATED at runtime and PRESENT on disk. Caught: the component
-// gallery opened with "dev-only gallery. Not a product surface." and had no gate at all, so it built and
-// served in production and a guest who typed /components got fixture songs with invented singer names.
-// It is not simply deleted because five guards read it as SOURCE for fixtures a real library rarely
-// produces — a 60-character title, a row mid-pending-add, every singer colour at once, a lyrics card at
-// the scale floor. Both halves are asserted here, so removing either reds.
+// guard: a route that calls itself dev-only must be GATED at runtime and PRESENT on disk. The component
+// gallery opened with "dev-only gallery" and had no gate at all, so it built and served in production and a
+// guest who typed /components got fixture songs with invented singer names. It is not simply deleted
+// because five guards read it as SOURCE for fixtures a real library rarely produces. Both halves are
+// asserted, so removing either reds.
 
 import { test, expect } from 'bun:test';
 import { at, read } from '@encore/test-support';

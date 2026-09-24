@@ -89,10 +89,8 @@ def test_step_passes_duration_through_so_overcovered_candidate_is_demoted(tmp_pa
     fits = _timed(SOURCE_CAPTIONS, FITS_THIS_RECORDING_265, "fits-the-audio", per_word_end=241.0)
     baseline = _timed(SOURCE_ASR, AUDIBLE_268, "whisper/vocals", per_word_end=241.0, role=ROLE_BASELINE)
 
-    # Non-vacuity floor: the over-covered candidate MUST out-score the fitting one on RAW agreement,
-    # otherwise the fitting one wins with or without the penalty and this test proves nothing. This
-    # fires if the two fixtures are ever swapped back to a byte-identical-to-baseline rival (the exact
-    # way the old fixture went vacuous).
+    # Non-vacuity floor: the over-covered candidate MUST out-score the fitting one on RAW agreement, or the
+    # fitting one wins with or without the penalty and this test proves nothing.
     assert composite_score(over, [baseline]).score > composite_score(fits, [baseline]).score, (
         "fixture is vacuous: the fitting rival already out-scores the overshooter on raw agreement"
     )
@@ -114,9 +112,8 @@ def test_step_reports_overshoot_in_the_process_log_when_the_published_pick_overs
     assert any("overshoot" in n.lower() and "+80s" in n for n in notes), notes
 
 
-# The overshoot NOTE must not be silent when the demotion actually fires, and must not claim
-# "demoted" for a pick that published: a demoted candidate is not a survivor of sel.publish, so
-# reporting must walk the pre-selection pool, not just the winners.
+# The NOTE must not be silent when the demotion fires, nor claim "demoted" for a pick that published: a
+# demoted candidate is no survivor of sel.publish, so reporting must walk the PRE-selection pool.
 
 
 def test_a_demoted_overshooting_candidate_still_gets_an_overshoot_note_naming_the_demotion(tmp_path):
@@ -129,8 +126,7 @@ def test_a_demoted_overshooting_candidate_still_gets_an_overshoot_note_naming_th
 
     ctx, notes = _run_step([over, fits, baseline], 268.0, tmp_path)
 
-    # the demotion worked: the fitting rival is what publishes, and the penalty is why (see the
-    # non-vacuity floor above, which proves the overshooter led on raw agreement)
+    # The fitting rival publishes and the penalty is why — see the non-vacuity floor above.
     assert ctx.lyrics.selection.publish[0].variant == "fits-the-audio"
     overshoot_notes = [n for n in notes if "overshoot" in n.lower()]
     assert overshoot_notes, notes
@@ -156,12 +152,11 @@ def test_an_overshooting_published_pick_is_not_reported_as_demoted(tmp_path):
     assert "PUBLISHED anyway" in note, note
 
 
-# A wrong-song candidate loses on AGREEMENT by a margin the comparative overshoot penalty never comes
-# near — switching the penalty off still yields the same winner — so the note must NOT claim the
-# penalty caused the pick from `is_published` alone.
+# A wrong-song candidate loses on AGREEMENT by a margin the penalty never comes near, so the note must
+# NOT claim the penalty caused the pick from `is_published` alone.
 
-#: A genuinely DIFFERENT song, and a LONGER one (its own timings run to 180s against 100s of audio).
-#: Low agreement with the audible words, so it loses on the metric — the penalty is not why.
+#: A DIFFERENT and LONGER song: 180s of timings against 100s of audio, but low agreement, so it loses on
+#: the metric and the penalty is not why.
 WRONG_SONG_LONGER = (
     "humpty dumpty sat on a wall humpty dumpty had a great fall all the kings horses and "
     "all the kings men couldnt put humpty together again not once not ever no how no way"
@@ -177,7 +172,7 @@ def test_a_demoted_wrong_song_pick_is_not_reported_as_caused_by_the_overshoot_pe
     fits = _timed(SOURCE_CAPTIONS, AUDIBLE_268, "fits-the-audio", per_word_end=90.0)
     baseline = _timed(SOURCE_ASR, AUDIBLE_268, "whisper/vocals", per_word_end=90.0, role=ROLE_BASELINE)
 
-    # control: with the penalty OFF, the same candidate still wins — the demotion is not what rejected it
+    # Control: with the penalty OFF the same candidate still wins.
     control = select_by_baselines([wrong, fits, baseline], None)
     ctx, notes = _run_step([wrong, fits, baseline], 100.0, tmp_path)
     assert [p.variant for p in control.publish] == [p.variant for p in ctx.lyrics.selection.publish], (
@@ -194,22 +189,20 @@ def test_a_demoted_wrong_song_pick_is_not_reported_as_caused_by_the_overshoot_pe
     assert "fits-the-audio" in note, note
 
 
-# The verdict must not claim "no candidate that fits the audio" from `is_published` alone, which is
-# false whenever the COMPARATIVE overshoot penalty is smaller than the overshooter's score lead, and
-# must not drop `is_published` entirely, or a tolerated overshoot on a REJECTED rival reads as one on
-# the lyrics that shipped.
+# The verdict must not claim "no candidate that fits the audio" from `is_published` alone, false whenever
+# the COMPARATIVE penalty is smaller than the overshooter's lead — nor drop `is_published`, or a tolerated
+# overshoot on a REJECTED rival reads as one on the lyrics that shipped.
 
 #: The audible words — what the ASR baseline heard off this recording.
 AUDIBLE_268 = (
     "once upon a time i was falling in love but now im only falling apart "
     "theres nothing i can do a total eclipse of the heart"
 )
-#: A LONGER MASTER: every audible word plus a tail this recording does not contain. High agreement,
-#: and its own timings run to 300s against 268s of audio — +12%, just past OVERSHOOT_FRACTION_MAX.
+#: A LONGER MASTER: every audible word plus a tail this recording lacks. 300s of timings against 268s of
+#: audio, +12%, just past OVERSHOOT_FRACTION_MAX.
 LONGER_MASTER_300 = AUDIBLE_268 + " turn around bright eyes turn around bright eyes every now and then i know"
-#: A poorer transcription of THIS recording: lower agreement, but its timings stop at 265s, inside
-#: the audio. Chosen so the +12% penalty (0.646 -> 0.526) does NOT close the gap to its 0.506, which
-#: is the whole reachable trigger — the overshooter publishes with a fitting rival in the pool.
+#: A poorer transcription of THIS recording: lower agreement, timings inside the audio. Chosen so the
+#: +12% penalty does NOT close the gap, which is the whole reachable trigger.
 FITS_THIS_RECORDING_265 = (
     "once upon a day i was drifting in love yet now im merely falling away "
     "theres little else i can do a partial eclipse of my heart"
@@ -229,7 +222,7 @@ def test_a_published_overshoot_does_not_claim_nothing_fit_when_a_fitting_rival_w
 
     ctx, notes = _run_step([over, fits, baseline], 268.0, tmp_path)
 
-    # the trigger: the penalty did NOT flip the pick, and the rival that fits stayed unpublished
+    # The trigger: the penalty did NOT flip the pick, and the fitting rival stayed unpublished.
     assert [p.variant for p in ctx.lyrics.selection.publish] == ["longer-master"]
     assert candidate_last_end(fits) is not None and candidate_last_end(fits) <= 268.0
     overshoot_notes = [n for n in notes if "overshoot" in n.lower() and "longer-master" in n]
@@ -250,7 +243,7 @@ def test_a_tolerated_overshoot_on_a_rejected_candidate_says_it_was_not_published
 
     ctx, notes = _run_step([fits, mildly_long, baseline], 100.0, tmp_path)
 
-    # the trigger: what shipped fits the audio; the overshooting candidate is the one that lost
+    # The trigger: what shipped fits the audio, and the overshooter lost.
     assert [p.variant for p in ctx.lyrics.selection.publish] == ["fits-the-audio"]
     tolerance_notes = [n for n in notes if "within tolerance" in n]
     assert tolerance_notes, notes
@@ -260,15 +253,14 @@ def test_a_tolerated_overshoot_on_a_rejected_candidate_says_it_was_not_published
     assert "fits-the-audio" in note, note
 
 
-# `select_by_baselines` ranks an unjudgeable version (score None) as the constant -1.0 and never lets
-# it be displaced by a judged one. The overshoot penalty subtraction must be CLAMPED, or an overshoot
-# fraction above ~1.0 (a candidate timed to more than double the audio, a full-album/wrong-master LRC)
-# drives a real score below -1.0 and hands the win to the unjudgeable rival.
+# An unjudgeable version ranks as the constant -1.0 and is never displaced by a judged one, so the penalty
+# subtraction MUST be clamped: an overshoot fraction above ~1.0 drives a real score below -1.0 and hands
+# the win to the unjudgeable rival.
 
 
 def test_overshoot_penalty_never_ranks_a_judged_candidate_below_the_unjudgeable_sentinel():
     """A judged score, however badly it overshoots, must stay above the -1.0 unjudgeable sentinel."""
-    # 60 s of audio against a candidate timed to 300 s — +400%, the wrong-master shape.
+    # 60s of audio against 300s of timings: +400%, the wrong-master shape.
     huge = _timed(SOURCE_LRCLIB, SHARED, "album-master", per_word_end=300.0)
     penalised = overshoot_penalized(0.40, huge, 60.0)
     assert penalised > -1.0, (
@@ -281,8 +273,8 @@ def test_overshoot_penalty_floors_at_zero_so_a_score_stays_a_score():
     """The penalty keeps the composite in [0, 1]: a demotion cannot make a score negative."""
     huge = _timed(SOURCE_LRCLIB, SHARED, "album-master", per_word_end=300.0)
     assert overshoot_penalized(0.40, huge, 60.0) == 0.0
-    # A tolerated overshoot (inside OVERSHOOT_FRACTION_MAX) is still untouched, and a real demotion
-    # inside the clamp still lands where the docstring says it does (+39% on 0.45 → ~0.06).
+    # A tolerated overshoot stays untouched, and a real demotion inside the clamp still lands where the
+    # docstring says.
     mild = _timed(SOURCE_LRCLIB, SHARED, "trailing-cue", per_word_end=64.0)  # +6.7%, tolerated
     assert overshoot_penalized(0.45, mild, 60.0) == 0.45
     demoted = _timed(SOURCE_LRCLIB, SHARED, "wrong-version", per_word_end=83.4)  # +39%

@@ -1,9 +1,7 @@
 // guard: /stats' trend makes every day a real <button>, so a phone can read that day's count — and a day
-// whose only reader is a tap must be tappable. See docs/GUARDS.md#touch-targets.
-//
-// The window is a literal 31 days, so at a phone's width `.col { flex: 1 1 0; min-width: 3px }` sized each
-// day ~9px: 0 of 31 reaching the 44px standard, with five distinct days under one fingertip. A source scan
-// over the CSS rules that PRODUCE the target size, like the other geometry guards here.
+// whose only reader is a tap must be tappable. The window is a literal 31 days, so at a phone's width
+// `.col { flex: 1 1 0; min-width: 3px }` sized each day ~9px: 0 of 31 reaching the standard, with five
+// distinct days under one fingertip. See docs/GUARDS.md#touch-targets.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { TAP, TAP_FLOOR } from '@encore/test-support/scan';

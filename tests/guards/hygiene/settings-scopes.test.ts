@@ -1,9 +1,8 @@
-// Guards the settings page's three SCOPES (You / Party / Server) and the decision that came with them:
-// identity has exactly ONE editor. Two editors means two save paths and two drafts re-seeding at different
-// moments, so a rename typed in one could be silently reverted by a stale echo from the other — invisible to
-// the type system, decidable by a source scan. `Tabs.Content` owns the panel role and its labelling, so
-// re-declaring either on an inner wrapper nests a SECOND tabpanel and every tab exposes two panels to a
-// screen reader — invisible to svelte-check and to every unit test.
+// Guards the settings page's three SCOPES (You / Party / Server) and the decision that came with them: identity
+// has exactly ONE editor. Two editors means two save paths and two drafts re-seeding at different moments, so a
+// rename typed in one could be silently reverted by a stale echo from the other. `Tabs.Content` owns the panel
+// role and its labelling, so re-declaring either on an inner wrapper nests a SECOND tabpanel and every tab
+// exposes two panels to a screen reader — invisible to svelte-check and to every unit test.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,16 +24,16 @@ test('the name field exists in exactly one place', () => {
 });
 
 test('the leave-the-room action exists in exactly one place', () => {
-	// Same reasoning as the name field, and the stakes are higher: a leave clears the cookie and forgets the
-	// singer, so the confirm is the only thing between a tap and a lost queue. Two paths is two confirms.
+	// Same reasoning as the name field, and the stakes are higher: a leave clears the cookie and forgets the singer,
+	// so the confirm is the only thing between a tap and a lost queue. Two paths is two confirms.
 	const owners = svelteFiles(SRC).filter((f) => stripComments(readFileSync(f, 'utf8')).includes('Leave the room'));
 
 	expect(owners.map((f) => f.replace(SRC, 'src'))).toEqual(['src/routes/settings/+page.svelte']);
 });
 
 test('nothing imports the retired profile sheet or its modal helper', () => {
-	// A dangling import fails the build, so this catches a REVIVAL. `modal.ts` was focus-trap infrastructure
-	// whose only consumer was that sheet; reviving either without a consumer is the repo's standing defect.
+	// A dangling import fails the build, so this catches a REVIVAL: `modal.ts` was focus-trap infrastructure whose
+	// only consumer was that sheet.
 	const offenders: string[] = [];
 	for (const f of svelteFiles(SRC)) {
 		const src = stripComments(readFileSync(f, 'utf8'));
@@ -54,13 +53,13 @@ test('every scope tab controls a panel that exists, and vice versa', () => {
 	expect(ids.length).toBeGreaterThan(1);
 
 	for (const id of ids) {
-		// One panel per tab. `Tabs.Content` OWNS the panel: it renders `role="tabpanel"` and labels it from its
-		// own trigger, so asserting the old hand-rolled `id="panel-<id>"` here would now be asserting the defect.
+		// One panel per tab. `Tabs.Content` OWNS the panel: it renders `role="tabpanel"` and labels it from its own
+		// trigger, so asserting a hand-rolled `id="panel-<id>"` here would be asserting the defect.
 		expect(src, `no Tabs.Content renders the ${id} scope`).toContain(`<Tabs.Content value="${id}">`);
 	}
 
-	// The defect stated as an invariant: this page must not re-declare the tabpanel contract Tabs.Content
-	// already provides. Comments are stripped first so the note explaining WHY does not trip the rule.
+	// This page must not re-declare the tabpanel contract Tabs.Content already provides. Comments stripped first, so
+	// the note explaining WHY does not trip the rule.
 	const markup = stripComments(src);
 	expect(markup, 'the page re-declares role="tabpanel" that Tabs.Content already renders').not.toContain(
 		'role="tabpanel"'
@@ -85,7 +84,6 @@ test('the scope tabs are reachable and named for assistive tech', () => {
 	expect(src).toContain('aria-label="Settings scope"');
 	expect(src).toContain('<Tabs.List');
 	expect(src).toContain('<Tabs.Trigger');
-	// One panel per scope, and the trigger keeps the id SEL.settingsTab and capture.mjs resolve.
 	expect(src.match(/<Tabs\.Content/g)?.length).toBe(3);
 	expect(src).toContain('id="tab-{t.id}"');
 	// The URL sync is Encore's half and no primitive can supply it: a scope must survive a reload.
@@ -93,8 +91,8 @@ test('the scope tabs are reachable and named for assistive tech', () => {
 });
 
 test('the room scope is what a bare /settings opens', () => {
-	// The complaint that started the redesign: server-wide settings (set once, then left alone) were the first
-	// thing on the page, above the rotation you change mid-song. The gear links to a bare /settings.
+	// The complaint that started the redesign: server-wide settings (set once, then left alone) were the first thing
+	// on the page, above the rotation you change mid-song.
 	const server = readFileSync(join(SRC, 'routes/settings/+page.server.ts'), 'utf8');
 
 	expect(server).toMatch(/const DEFAULT_TAB: TabId = 'party';/);

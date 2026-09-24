@@ -14,12 +14,8 @@ import { repoRoot, atRepo } from './lib/repo-root.mjs';
 import { spawnChild, killChild } from './lib/child.mjs';
 
 /**
- * Every driver, its mode, and what it is FOR.
- *
- * The paths are spelled in FULL deliberately: `e2e-reachability` resolves reachability by looking for
- * a file's name in the text reachable from a package.json script, so this manifest is what makes each
- * of these files reachable. A discovery-by-globbing runner would run them and still leave every one of
- * them looking dead to that guard.
+ * Every driver, its mode, and what it is FOR. The paths are spelled in FULL deliberately: this manifest is
+ * what makes each file reachable to `e2e-reachability` — see docs/E2E.md#reachability.
  */
 const PROBES = [
 	// self-booting
@@ -125,10 +121,9 @@ const SCRATCH = process.env.KIROCREW_SCRATCH ?? process.env.TMPDIR ?? '/tmp';
 const RUN_DIR = join(SCRATCH, `e2e-probes-${process.pid}`);
 
 /**
- * A routable-LOOKING, non-loopback origin — not this host's real address, and it need not be: the server
- * binds loopback and this only decides what the TV renders as its join URL. A loopback origin makes the
- * attract screen render its "unreachable" notice instead of the join panel, which several probes then
- * measure as a failure of the thing they were actually testing.
+ * A routable-LOOKING, non-loopback origin; it need not be this host's real address, since the server binds
+ * loopback and this only decides what the TV renders as its join URL. A loopback origin renders the
+ * "unreachable" notice instead of the join panel, which several probes then measure as a failure.
  */
 const PUBLIC_ORIGIN_HOST = process.env.ENCORE_PROBE_ORIGIN_HOST ?? '192.168.1.20';
 
@@ -157,9 +152,8 @@ function list() {
 }
 
 /**
- * Drive one library song to READY, so the `serves` probes have the fixture they ask for: `seed-media.mjs`
- * writes placeholders, enough to index, search and queue but not to process, so a READY song needs
- * `fake-stems-worker.mjs` to claim a job and report stems. Returns the worker so the caller can reap it.
+ * Drive one library song to READY, since `seed-media.mjs` only writes placeholders. Returns the worker so
+ * the caller can reap it. See docs/E2E.md#proving-audio.
  */
 /** @param {string} base @returns {Promise<import('node:child_process').ChildProcess>} */
 async function prepareReadySong(base) {
@@ -211,8 +205,8 @@ async function prepareReadySong(base) {
 }
 
 /**
- * Seed a media library and boot one PRISTINE ephemeral server, with a fake stems worker and one song
- * driven to READY. Called once per `serves` probe rather than once per run — see the loop in main().
+ * Seed a library and boot one PRISTINE ephemeral server, with a fake stems worker and one song driven to
+ * READY. Once per `serves` probe, not once per run.
  * @param {number} port
  */
 async function bootProbeServer(port) {
@@ -325,10 +319,8 @@ async function main() {
 	}
 
 	const results = [];
-	// A FRESH server per `serves` probe, never one shared across the group. Several of these assert on a
-	// PRISTINE room — `p8-presence-resilience` bails with "server was not empty at start of run" and
-	// `tv-scrim-empty-lobby` checks "one entry, nothing behind it" — so running them after a probe that
-	// joined singers reports an environment failure, or worse a FALSE finding. Costs ~10s per probe.
+	// A FRESH server per `serves` probe, never one shared across the group — docs/E2E.md#reachability says
+	// why. Costs ~10s per probe.
 	const servesGroup = selected.filter((p) => p.mode === 'serves');
 	const basePort = Number(process.env.EPORT ?? 5390);
 	for (const [i, probe] of servesGroup.entries()) {
@@ -343,9 +335,7 @@ async function main() {
 			continue;
 		}
 		try {
-			// BOTH port variables, because the probes do not agree on one: `p10-scaling` reads `PORT`
-			// alone, so passing only EPORT left it dialling its own hardcoded default, getting
-			// ERR_CONNECTION_REFUSED, and still exiting 0.
+			// BOTH port variables: the probes do not agree on which one names the port.
 			results.push(await runOne(probe, { EPORT: String(port), PORT: String(port), MEDIA_DIR: env.mediaDir }));
 		} finally {
 			await killChild(env.worker);
@@ -365,8 +355,7 @@ async function main() {
 	const failed = results.filter((r) => r.code !== 0);
 	process.stdout.write('\n──── summary ────────────────────────────────────────────────\n');
 	for (const r of results) {
-		// `ran` is NOT `passed`: a `captures` driver writes screenshots or a findings.json and exits 0
-		// whatever it saw. See docs/E2E.md#exit-codes-and-what-ran-means.
+		// `ran` is NOT `passed` — docs/E2E.md#exit-codes-and-what-ran-means.
 		const verdict = r.code !== 0 ? 'FAIL' : r.kind === 'captures' ? 'ran ' : 'ok  ';
 		process.stdout.write(`  ${verdict}  ${r.label.padEnd(28)} ${r.secs}s\n`);
 	}

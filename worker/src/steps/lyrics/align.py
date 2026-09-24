@@ -40,8 +40,8 @@ def _opens_for(text: Any) -> list[int]:
     """
     opens: list[int] | None = getattr(text, "align_window_opens", None)
     if opens is not None:
-        # Assert the emitter's invariant (one open per human segment) so a future producer that
-        # emits a mismatched map fails LOUD rather than as a silent index mismatch downstream.
+        # One open per human segment, so a mismatched map fails LOUD rather than as a silent index
+        # mismatch downstream.
         if len(opens) == len(text.segments):
             return opens
     return _opening_window_indices(text.align_windows, text.segments)
@@ -72,9 +72,7 @@ class TimeTexts(Step):
         yield ProgressEvent(stage=self.stage, pct=0)
         language = str(ctx.params.get("language") or "en").strip() or "en"
 
-        # Prefer the isolated vocals stem; fall back to the mix only when no stem exists. Aligning on
-        # the mix measurably smears word boundaries wherever the band is loud (words stretched to
-        # seconds, gaps where the aligner loses the vocal under it).
+        # The mix is a fallback only: aligning on it measurably smears word boundaries wherever the band is loud.
         align_audio = ctx.audio.vocals_path or ctx.audio.path or ""
         if ctx.audio.vocals_path is None:
             ctx.note(
@@ -113,8 +111,7 @@ class TimeTexts(Step):
         if not candidates:
             raise RuntimeError("text was acquired but nothing could be timed (no word or line sync)")
         ctx.out.artifacts["lyrics"] = {"candidates": candidates}
-        # Persist WHY this lyric won, not just which one: the process log rotates and is
-        # per-container, but this reaches the durable job_attempts audit trail.
+        # WHY it won, not just which: the process log rotates, this reaches job_attempts.
         if sel is not None:
             ctx.out.selection = sel.to_record()
         yield ProgressEvent(stage=self.stage, pct=100)
@@ -172,10 +169,8 @@ def _time_one(
         if is_valid_lyrics(doc):
             return doc, TIMING_WORD, "medium"
 
-    # Place the LRC on THIS audio's timeline before its numbers are used for anything. `shift` is
-    # measured by the caller from the Whisper baselines and is a no-op unless the song's vocal sits
-    # confidently later/earlier than the LRC master. Applied to BOTH the aligner's search windows AND
-    # the line-sync fallbacks, since those publish `text.segments` verbatim at `high`.
+    # Place the LRC on THIS audio's timeline BEFORE its numbers are used. Applied to BOTH the aligner's
+    # search windows AND the line-sync fallbacks, which publish `text.segments` verbatim at `high`.
     def _placed(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return shift_segments(segments, shift) if shift is not None else segments
 
@@ -187,20 +182,17 @@ def _time_one(
 
     try:
         al = aligner if aligner is not None else _default_aligner(ctx)
-        # Search the length-bounded per-row windows when presplit produced them: a tighter window is
-        # a better alignment anchor. `segments` stays the source's OWN line timings for the
-        # line-sync fallbacks below. Both are `_placed` first: the aligner must search the span the
-        # LRC actually occupies on this audio, or whisperx's per-segment crop confines it to the
-        # wrong window and publishes confident early word times.
+        # A tighter window is a better anchor, so search presplit's per-row windows when it produced
+        # them; `segments` stays the source's OWN timings for the fallbacks. Both are `_placed` first,
+        # or whisperx's per-segment crop confines the search and publishes confident early word times.
         base_search = text.align_windows if getattr(text, "align_windows", None) else text.segments
         search = _placed(base_search)
         aligned = al.align(search, audio, lang)
         doc = normalize_lyrics(aligned)
         if not is_valid_lyrics(doc):
             raise RuntimeError("aligner returned no word-timed lyrics")
-        # The aligner re-times the ORIGINAL script and drops the source's per-line romanization;
-        # re-attach it by source-line position. Best-effort: if the aligner split/merged lines the
-        # word-timed doc shows single script (the romanization still rides the line-sync fallbacks).
+        # The aligner drops the source's per-line romanization, so re-attach by source-line position.
+        # Best-effort: a split/merged line shows single script, and the fallbacks still carry it.
         _attach_romanizations(doc, text.segments)
         return doc, TIMING_WORD, "high"
     except Exception:  # noqa: BLE001 — degrade, never fail the whole job
@@ -212,14 +204,10 @@ def _time_one(
 
 def _baseline_line_series(ctx: Ctx) -> list[dict[str, Any]]:
     """The baseline line series Whisper measured on THIS audio, flattened."""
-    # Computed ONCE, shared by every candidate, and used to place a synced LRC's windows onto this
-    # recording before alignment (see `_shift_for_text`).
-    #
-    # Read from `lyrics.baselines`, NOT `lyrics.texts`: GradeAndSelect narrows `texts` to
-    # `sel.publish` (normally the single winning candidate) one step earlier, so deriving the series
-    # from `texts` would leave it empty on every ordinary job, not just a silent one, and placement
-    # could never run. The `or` fallback covers the pinned re-time path, where nothing populates the
-    # dedicated slot and both sides are empty anyway (a no-op).
+    # Computed ONCE and shared by every candidate. MUST read `lyrics.baselines`, not `lyrics.texts`:
+    # GradeAndSelect already narrowed `texts` to `sel.publish`, so a texts-derived series would be
+    # empty on every ordinary job and placement could never run. The `or` covers the pinned re-time
+    # path, where both sides are empty anyway.
     baseline_lines: list[dict[str, Any]] = []
     for b in ctx.lyrics.baselines or baselines_of(ctx.lyrics.texts):
         baseline_lines.extend(b.segments)
@@ -228,9 +216,8 @@ def _baseline_line_series(ctx: Ctx) -> list[dict[str, Any]]:
 
 def _shift_for_text(ctx: Ctx, t: Any, baseline_lines: list[dict[str, Any]]) -> LrcShift | None:
     """Place a source's OWN line timings onto this recording, when that is even meaningful."""
-    # Only a source that brought its OWN line timings (a synced LRCLIB record) can be mis-placed
-    # against this audio; an ASR/word source is already measured on it. No baseline -> the estimator
-    # abstains (`applied == False`), a no-op too.
+    # Only a source that brought its OWN line timings can be mis-placed; an ASR source is already
+    # measured on this audio. With no baseline the estimator abstains.
     if t.timing != TIMING_LINE or not baseline_lines:
         return None
     sh = estimate_lrc_shift(t.segments, baseline_lines)
@@ -256,14 +243,14 @@ def _judge_word_timing(
 
     Returns the possibly-rewritten `(doc, timing, timingConfidence)`; the caller `continue`s on None.
     """
-    # VALIDATE before publishing: `is_valid_lyrics` only asks whether SOME word has a timestamp,
-    # which is satisfied even by a doc containing a multi-second hole or a smeared/flashed word.
+    # `is_valid_lyrics` only asks whether SOME word has a timestamp, which a doc with a multi-second
+    # hole or a smeared word satisfies.
     if timing == TIMING_WORD:
         rep = validate_timing(doc, ctx.audio.duration_sec)
         ctx.note(f"timing — {rep.summary()}")
         if rep.thin_coverage:
-            # Deliberately does NOT blame ASR: a shortfall is usually CORRECT (an instrumental break
-            # genuinely has no words). Coverage is a prompt to look, not a diagnosis.
+            # Deliberately blames nothing: a shortfall is usually CORRECT (an instrumental break has
+            # no words). Coverage is a prompt to look, not a diagnosis.
             ctx.note(
                 f"timing covers {rep.coverage:.0%} of the song. Usually an instrumental break or "
                 "outro; occasionally a media/duration mismatch."
@@ -274,27 +261,21 @@ def _judge_word_timing(
             )
             if text.timing != TIMING_LINE:
                 return None  # nothing honest left to publish for this source
-            # This degrade path publishes the source's OWN line timings — the same wrong-number
-            # risk the line-sync fallbacks in `_time_one` carry — so place them with the same
-            # measured shift first, or an LRC whose master starts earlier re-introduces
-            # early-highlighting even though the aligner itself was placed.
+            # This degrade publishes the source's OWN line timings, so it MUST place them with the
+            # same measured shift, or an earlier-starting master re-introduces early-highlighting.
             placed = shift_segments(text.segments, shift) if shift is not None else text.segments
             doc = line_synced_lyrics(placed, language=text.language or language)
             timing, timing_confidence = TIMING_LINE, "low"
         else:
-            # ACT on the smears/flashes just diagnosed: repair_word_spans REPAIRS them in the doc
-            # that publishes, provably order-preserving so it can never turn a defect into the one
-            # disqualifier (an out-of-order word). Only reached on a usable word doc — a degraded
-            # line-sync doc has no per-word spans to repair.
+            # repair_word_spans is provably order-preserving, so it can never turn a defect into the
+            # one disqualifier. Only reached on a usable word doc, which is the only kind with spans.
             fixed = repair_word_spans(doc)
             if fixed.changed:
-                # `changed` is true exactly when a clamp/extend branch wrote a span — not a claim
-                # the written value differs from what it replaced (a word at exactly MIN_WORD_SEC
-                # can be rewritten to the value it already had).
+                # `changed` means a branch WROTE a span, not that the value differs from what it
+                # replaced — a word at exactly MIN_WORD_SEC is rewritten to what it already had.
                 ctx.note(f"timing repaired — {fixed.summary()}")
             elif fixed.flashed_uncorrectable:
-                # By construction this branch wrote NOTHING (a flash with no room before the next
-                # word), so it gets its own note rather than borrowing the past tense of "repaired".
+                # This branch wrote NOTHING, so it gets its own note rather than "repaired".
                 ctx.note(
                     f"timing NOT repairable — {len(fixed.flashed_uncorrectable)} flash(es) "
                     "left: no room before the next word"
@@ -304,21 +285,18 @@ def _judge_word_timing(
 
 def _note_lrc_fit(ctx: Ctx, text: Any, doc: dict[str, Any], timing: str, shift: LrcShift | None) -> None:
     """Is this LRC even for this recording? A cheap second opinion on the TIMING."""
-    # Only askable for a source that brought its OWN line timings (a synced LRCLIB record) and then
-    # got force-aligned: that gives two independent time series over the same lines. The two-tier
-    # baseline grading is the primary defence (scores the WORDS against what is audible); this
-    # catches the complementary case where a different master shifts or stretches every line.
+    # Askable only where a source's OWN line timings were then force-aligned, giving two independent
+    # series over the same lines. Baseline grading is the primary defence; this catches the
+    # complementary case of a different master shifting or stretching every line.
     if timing == TIMING_WORD and text.timing == TIMING_LINE:
-        # `_opens_for` prefers presplit's EMITTED opens map over re-deriving by float-equality; when
-        # presplit set no `align_windows`, the segments ARE the windows and every index opens one.
+        # `_opens_for` prefers presplit's EMITTED map; with no `align_windows` every segment opens one.
         windows = getattr(text, "align_windows", None)
         if windows:
             opens = _opens_for(text)
         else:
             windows, opens = text.segments, list(range(len(text.segments)))
-        # When the LRC was PLACED onto this audio before aligning, the aligner searched the shifted
-        # windows, so the post-align fit must compare against those SAME placed starts, or it
-        # reports the shift itself as a residual and mislabels a matching recording as different.
+        # The aligner searched the PLACED windows, so the fit must compare against those same starts,
+        # or it reports the shift itself as a residual and mislabels a matching recording.
         if shift is not None and shift.applied:
             windows = shift_segments(windows, shift)
         for note in lrc_fit_notes(text.text_source, windows, opens, doc):
@@ -336,11 +314,9 @@ def _write_candidate(
 ) -> dict[str, Any]:
     """Write the doc under the ref the core will merge on, and build its candidate record."""
     candidates: list[dict[str, Any]] = []
-    # A pinned re-time writes under the ref the CORE chose, never a re-derived key: the core merges
-    # on `ref`, so reusing it OVERWRITES the pinned candidate instead of adding a rival beside it. A
-    # derived key could not do that — `candidate_key` folds in the timing TIER, so re-timing a
-    # line-synced candidate into word timings would land on a different key. Guarded on a single
-    # text since that is the only shape the pinned path produces.
+    # A pinned re-time writes under the ref the CORE chose, never a derived key: the core merges on
+    # `ref`, so reusing it OVERWRITES the pinned candidate instead of adding a rival. `candidate_key`
+    # folds in the timing TIER, so a re-time to word timings would land on a different key.
     pinned_ref = _pinned_ref(ctx)
     ref = (
         pinned_ref
@@ -360,16 +336,14 @@ def _write_candidate(
             "timingConfidence": timing_confidence,
             "language": doc.get("language") or text.language or language,
             "createdAt": int(time.time() * 1000),
-            # The COMPOSITE score, only on the graded candidate — a baseline carries none by
-            # construction (it is the ruler, so scoring it would measure it against itself).
+            # Only on the graded candidate: a baseline is the ruler, so scoring it measures it against itself.
             **(
                 {"agreement": sel.winner_score}
                 if (sel is not None and text is sel.publish[0] and sel.winner_score is not None)
                 else {}
             ),
             # BASELINE COVERAGE too: `breaksTie` reads the ranking score above, `isLikelyWrongSong`
-            # thresholds coverage, and only coverage separates "a different song" from "the baseline
-            # heard only part of this one" (see SUSPECT_COVERAGE in lyrics/grading.py).
+            # thresholds coverage, and only coverage separates a different song from a partial baseline.
             **(
                 {"coverage": sel.winner_coverage}
                 if (sel is not None and text is sel.publish[0] and sel.winner_coverage is not None)

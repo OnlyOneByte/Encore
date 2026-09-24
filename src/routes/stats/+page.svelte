@@ -154,13 +154,12 @@
 </section>
 
 <style>
-	/* Gaps on this page stay in rem on purpose: the --space-* scale is flat px, so tokenising them would
-	   freeze the spacing under text zoom while the type it separates keeps growing. */
+	/* Gaps on this page stay in rem on purpose: the --space-* scale is flat px, so tokenising them would freeze the
+	   spacing under text zoom while the type it separates keeps growing. */
 	.stats {
 		display: grid;
 		gap: 1rem;
-		/* --dock-h reserves the band, whose own env(safe-area-inset-bottom) reaches this column through it;
-		   a second env() term here doubles the gap. */
+		/* --dock-h reserves the band, whose own env(safe-area-inset-bottom) reaches this column through it. */
 		padding: 1rem 0 calc(var(--dock-h, 0px) + 3rem);
 		max-width: var(--measure-grid);
 		/* PageHeader caps on --page-measure, so match it here or the header and its content disagree. */
@@ -173,21 +172,21 @@
 		display: grid;
 		gap: 1rem;
 	}
-	/* Card.Root is `flex flex-col` with no `h-full`, so it sizes to its content; the grid here makes it
-	   fill the row instead, which is what stops the three tiles' bottom edges stair-stepping. */
+	/* Card.Root is `flex flex-col` with no `h-full`, so it sizes to its content; the grid here makes it fill the row, which
+	   is what stops the three tiles' bottom edges stair-stepping. */
 	.tile-slot {
 		display: grid;
 	}
 
 	.tiles {
 		display: grid;
-		/* Track floor is `em`, not px: it has to hold one unwrappable word, which grows with the guest's
-		   text size. `min(100%, …)` stops the floor itself overflowing the row. */
+		/* Track floor is `em`, not px: it has to hold one unwrappable word, which grows with the guest's text size.
+			   `min(100%, …)` stops the floor itself overflowing the row. */
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 9em), 1fr));
 		gap: 0.75rem;
 	}
-	/* `max(9em, 40%)` is a two-up written as a floor: the 40% term caps the row at two tracks, the 9em term
-	   lets it fall to one when the type outgrows half the width (SC 1.4.10 Reflow). */
+	/* `max(9em, 40%)` is a two-up written as a floor: the 40% term caps the row at two tracks, the 9em term lets it fall
+	   to one when the type outgrows half the width (SC 1.4.10 Reflow). */
 	@media (max-width: 520px) {
 		.tiles {
 			grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9em, 40%)), 1fr));
@@ -196,8 +195,8 @@
 			grid-column: 1 / -1;
 		}
 	}
-	/* This grid must stay on the element that CONTAINS the spans: Card.Content sits between it and
-	   .tile-slot, so the same rule on the wrapper lays the number, label and footnote out inline. */
+	/* This grid must stay on the element that CONTAINS the spans: Card.Content sits between it and .tile-slot, so the same
+	   rule on the wrapper lays the number, label and footnote out inline. */
 	.tile {
 		display: grid;
 		gap: 0.2rem;

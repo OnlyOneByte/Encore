@@ -37,18 +37,15 @@ from typing import Any
 
 from .grading import LyricsText, is_authoritative_text
 
-#: Mirror of `LINE_MAX_CHARS` in src/lib/tv/lyrics.ts — the width of one TV reel row. NOT upstream's
-#: default of 36: measured against the actual row, and upstream's own bisection gets WORSE with more
-#: headroom, which is further evidence bisection is the wrong primitive for finding phrases.
+#: Mirrors `LINE_MAX_CHARS` in src/lib/tv/lyrics.ts, the width of one TV reel row. Explicitly NOT
+#: upstream's default of 36, which is measured against nothing here.
 MAX_LINE_CHARS = 42
 
-# A sentence terminator followed by whitespace is the strongest lyric break there is, and upstream
-# does not consider it at all. Requiring the trailing \s+ keeps decimals ("3.5") intact. Fires less
-# often than expected because whisper's full stop lands at the END of a segment.
+# The strongest lyric break there is, and upstream does not consider it at all. The trailing \s+ is
+# required, or decimals ("3.5") split.
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
-# ", and …" -> break BEFORE the conjunction, leaving the comma on the previous line: a conjunction
-# directly after a comma opens a new clause, it does not close the old one.
+# Break BEFORE the conjunction, leaving the comma behind: a conjunction after a comma OPENS a clause.
 _COMMA_CONJUNCTION_SPLIT = re.compile(
     r"(?<=,)\s+(?=(?:and|but|so|then|or|yet|nor|for|'?cause|because)\b)", re.IGNORECASE
 )
@@ -56,21 +53,17 @@ _COMMA_CONJUNCTION_SPLIT = re.compile(
 #: Any comma, as a candidate break — used only to RE-PACK a piece that is still over-long.
 _COMMA_SPLIT = re.compile(r"(?<=,)\s+")
 
-#: Never leave a fragment shorter than this. A 3-char row wastes a line of the reel and reads worse
-#: than the long line it came from, so a candidate break that would produce one is declined.
+#: A 3-char row wastes a reel line and reads worse than the long line it came from, so a candidate break
+#: that would produce one is DECLINED.
 _MIN_PIECE_CHARS = 8
 
-#: Below this a piece does not deserve a row of its own, and is folded into a neighbour that still
-#: fits. Distinct from `_MIN_PIECE_CHARS` (which declines a break): two individually-reasonable rules
-#: firing in sequence can still leave a stranded fragment, so this is a pass over the RESULT.
+#: Folded into a neighbour that still fits. DISTINCT from `_MIN_PIECE_CHARS`, which declines a break: two
+#: reasonable rules in sequence can still strand a fragment, so this is a pass over the RESULT.
 _MIN_LINE_CHARS = 12
 
-# Whisper CAPITALISES a phrase start even when it omits terminal punctuation, making case a real
-# boundary signal, not a stylistic accident.
-#
-# Gated on a CLOSED SET of openers rather than "any capital": splitting every lowercase->Capital
-# transition breaks proper nouns ("I bless the rains down in | Africa"). Openers are function words
-# and imperatives, a class proper nouns are not in, so the set excludes exactly the wrong answers.
+# Whisper CAPITALISES a phrase start even without terminal punctuation, so case is a real boundary signal.
+# Gated on a CLOSED SET rather than "any capital", because splitting every lowercase->Capital transition
+# breaks proper nouns: openers are function words and imperatives, a class proper nouns are not in.
 _LINE_OPENERS = frozenset(
     """
     i you we they he she it me my your our their his her its
@@ -83,7 +76,7 @@ _LINE_OPENERS = frozenset(
     """.split()
 )
 
-#: A lowercase (or comma) then whitespace then a Capitalised word — the candidate the set above filters.
+#: The candidate the closed set above filters.
 _CAPITAL_OPENER = re.compile(r"(?<=[a-z,])\s+(?=([A-Z][\w']*))")
 
 #: `(lines, max_chars) -> lines`. Injectable so the whole module tests without the upstream package.
@@ -194,10 +187,8 @@ def boundary_split(text: str, max_chars: int = MAX_LINE_CHARS) -> list[str]:
 _UNSET = object()
 _KLP: Any = _UNSET
 
-#: Why `_load_klp` returned what it did — probed once, reported at startup. `None` until first load.
-#: Kept as three DISTINCT statuses rather than collapsed to one "bound nothing" behaviour, because
-#: without them an operator cannot tell "package absent" (expected) from "installed but broken" (a
-#: regression that otherwise looks identical to absent) from "installed and available".
+#: Probed once, reported at startup. THREE distinct statuses rather than one "bound nothing", or an
+#: operator cannot tell "absent" (expected) from "installed but broken" (a regression).
 _KLP_STATUS: str | None = None
 _KLP_DETAIL: str = ""
 
@@ -225,9 +216,8 @@ def _load_klp() -> Any:
 
         stub.process = _unavailable  # type: ignore[attr-defined]
         sys.modules["textract"] = stub
-    # find_spec answers WITHOUT importing, so a clean "absent" is not mistaken for "broken" below.
-    # It can itself raise on a half-installed package; that IS a broken install, so it falls through
-    # to the import, which records it.
+    # find_spec answers WITHOUT importing, so a clean "absent" is not mistaken for "broken". It can itself
+    # raise on a half-installed package, which IS broken, so that falls through to the import.
     try:
         spec_absent = importlib.util.find_spec("karaoke_lyrics_processor") is None
     except Exception:  # noqa: BLE001 — a raising find_spec means a broken install, resolved by the import
@@ -321,9 +311,8 @@ def _relineate_segments(text: LyricsText, max_chars: int, lineator: Callable[[st
     aligner-window paths.
     """
     windows, _opens = _relineate_with_opens(text, lineator)
-    # Copy-with-replacement rather than a hand-listed constructor: a hand-written list would silently
-    # drop any field added to LyricsText later. It already did once — `role` was lost here, turning a
-    # BASELINE into a candidate with nothing to grade against.
+    # Copy-with-replacement, never a hand-listed constructor, which silently drops any field added to
+    # LyricsText later — losing `role` turns a BASELINE into a candidate with nothing to grade against.
     return replace(text, segments=windows)
 
 
@@ -364,9 +353,8 @@ def bound_blob_text(
     """
     bound = bounder if bounder is not None else bound_lines
     lineator = lambda body: bound([body], max_chars)  # noqa: E731 — one-line adapter, matches call sites
-    # Build the windows AND record where each human segment opens in the SAME walk, so the opening
-    # index of every line is a KNOWN fact rather than re-derived downstream by float-equality (which
-    # strands every later line after one start that misses by more than 1e-6).
+    # Windows AND the opening index of each human segment in the SAME walk, so the index is a KNOWN fact
+    # rather than re-derived downstream by float-equality, which strands every line after a 1e-6 miss.
     windows, opens = _relineate_with_opens(text, lineator)
     same = windows == list(text.segments)
     if same:
@@ -387,8 +375,7 @@ def _relineate_with_opens(
     opens: list[int] = []
     for seg in text.segments:
         if not isinstance(seg, dict):
-            # Not a real segment; still record where the (absent) block would open so indices stay
-            # aligned 1:1 with text.segments for any caller pairing by position.
+            # Not a real segment, but still recorded so indices stay 1:1 with text.segments.
             opens.append(len(windows))
             continue
         opens.append(len(windows))

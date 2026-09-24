@@ -1,18 +1,8 @@
-// guard: the leave route's header comment must name only routes that exist.
-//
-// This repo has a documented habit of comments asserting behaviour the code does not deliver
-//. The offender here was a header that documented `GET /api/leave/preview` — a route
-// that has never existed. Under SvelteKit's filesystem router the GET/POST handlers in this file
-// answer `/api/leave` (the directory), not a `/preview` sub-route, and there is no `preview/`
-// directory on disk. This guard makes that class of drift machine-checkable:
-//
-//   (1) the false path string `leave/preview` must stay ABSENT from the file, and
-//   (2) both live verbs (`GET /api/leave`, `POST /api/leave`) must stay PRESENT in the header, and
-//   (3) every `/api/leave...`-style path this file's COMMENTS mention must resolve to a real route
-//       on disk — so a future edit that documents another non-existent sub-route reds here too.
-//
-// It reads raw source (comments included) on purpose: the defect lives in a comment, so stripping
-// comments would blind the guard to its whole subject.
+// guard: the leave route's header comment must name only routes that exist. The offender was a header that
+// documented `GET /api/leave/preview` — a route that has never existed. Under SvelteKit's filesystem router
+// the handlers in this file answer `/api/leave` (the directory), not a `/preview` sub-route. So: the false
+// path string stays ABSENT, both live verbs stay PRESENT, and every `/api/leave…` path the COMMENTS mention
+// must resolve to a real route on disk. Read raw, comments included, because the defect lives in a comment.
 import { test, expect } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';

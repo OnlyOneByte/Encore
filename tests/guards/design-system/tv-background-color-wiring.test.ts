@@ -1,21 +1,10 @@
-// guard: the TV route derives its VISUALIZER angle from the room's stored stage COLOUR, and feeds its
-// SOLID stage that colour verbatim.
-//
-// The room stores `tvBackgroundColor: string` (a real hex; the legibility pin lives on the lyric reel's own
-// stroke). The visualizers build their palette by hue ARITHMETIC, so they still need an angle, and the
-// route derives it with `hueOfColor` — NOT `nearestSingerHue`, which snaps a dark stage-tier colour to the
-// wrong wheel stop for 15 of 24 hues and would rotate the visualizer palette off the room's chosen colour.
-// `stageBackgroundCss` takes the colour rather than an angle, because `solid` renders it verbatim.
-//
-// A SOURCE SCAN because there is no DOM here: a route's `$derived` wiring is decidable without rendering,
-// and reverting a derived line only breaks the build rather than reding a named test. The pure functions
-// this composes are exercised behaviourally elsewhere; the integration fact those cannot see is that the
-// route actually wires them, and keeps no reference to the retired hue field on this path.
+// guard: the TV route derives its VISUALIZER angle from the room's stored stage COLOUR with `hueOfColor` —
+// NOT `nearestSingerHue`, which snaps a dark stage-tier colour to the wrong wheel stop for 15 of 24 hues —
+// and feeds its SOLID stage that colour verbatim. A SOURCE SCAN: the pure functions are exercised
+// behaviourally elsewhere, and the fact those cannot see is that the route actually wires them.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Blank comments, preserving newlines, so a commented-out wiring line cannot satisfy a positive guard and
-// a commented-out retired reference cannot fail a negative one.
 function stripComments(src: string): string {
 	return src
 		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))

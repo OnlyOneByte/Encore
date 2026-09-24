@@ -32,10 +32,8 @@ class ResolvedEngines:
     separator: str = Engine.DEMUCS.value
     device: str | None = None
 
-    # NO `separator_model` HERE, deliberately: `Separate` resolves the checkpoint itself with
-    # `engine.resolve_model(ctx.params)`, PER ENGINE, checking the request against its own allowlist
-    # and raising on a token it cannot run. A shared field here would be a second, unvalidated owner
-    # of the same decision.
+    # NO `separator_model` here: `Separate` resolves the checkpoint PER ENGINE against that engine's own
+    # allowlist, so a shared field would be a second, unvalidated owner of the same decision.
 
 
 @dataclass
@@ -44,20 +42,18 @@ class AudioCtx:
 
     #: The retained original. Written by AcquireAudio.
     path: str | None = None
-    #: The isolated vocals stem, when a stems job already produced one. ASR wants this; a full mix
-    #: transcribes badly. Absent for a song whose stems have not been processed.
+    #: ASR wants this; a full mix transcribes badly. Absent until a stems job has produced one.
     vocals_path: str | None = None
-    #: DECLARED by the core, never inferred from the URI's shape. A local source performs no fetch at
-    #: all, which is why several steps declare `applies()` against it rather than testing it inline.
+    #: DECLARED by the core, never inferred from the URI's shape. A local source performs no fetch,
+    #: which is why several steps declare `applies()` against it rather than testing inline.
     is_local: bool = False
     #: Duration on record, for bounding line-sync fallbacks and narrowing a lyrics lookup.
     duration_sec: float | None = None
     #: Scratch WAV a separator needs, when the engine cannot read the retained original directly.
     decoded_wav: str | None = None
-    #: YouTube's OWN declared credit, captured from the download's `.info.json`. The annotation
-    #: artifact shape (`{source:'youtube', artist, title, confidence:'high'}`) or None when the upload
-    #: carried no music-panel metadata. A citation, not a parse — Annotate prefers it and also uses it
-    #: as the MusicBrainz query key so a wrong title parse can no longer defeat the lookup.
+    #: YouTube's OWN declared credit, from the download's `.info.json`. A CITATION, not a parse, so
+    #: Annotate prefers it and uses it as the MusicBrainz query key — a wrong title parse cannot then
+    #: defeat the lookup.
     youtube_credit: dict[str, Any] | None = None
 
 
@@ -67,17 +63,14 @@ class LyricsCtx:
 
     #: Cues from the upload's own AUTHORED caption track. A candidate for the song's words.
     authored_cues: list[dict[str, Any]] = field(default_factory=list)
-    #: Cues from YouTube's MACHINE track. A baseline — evidence of what is audible, never the answer
-    #: while a candidate is trustworthy. Separate field because they arrive from separate fetches into
-    #: separate directories, so the two kinds cannot be confused for one another.
+    #: A BASELINE: evidence of what is audible, never the answer while a candidate is trustworthy. A
+    #: separate field, because the two kinds arrive from separate fetches and must not be confused.
     machine_cues: list[dict[str, Any]] = field(default_factory=list)
     #: Everything every source yielded, before grading.
     texts: list[Any] = field(default_factory=list)
-    #: The BASELINE texts — what was actually audible, as measured on this recording — kept in their
-    #: own slot rather than read back out of `texts`. `texts` is NARROWED by GradeAndSelect to what
-    #: publishes (normally the single winning candidate), so a baseline survives there only on the two
-    #: unusual publish-a-baseline paths. TimeTexts derives its LRC-placement series from baselines, so
-    #: without this separate slot that series would be empty on every ordinary job.
+    #: Its OWN slot rather than read back out of `texts`, which GradeAndSelect narrows to what
+    #: publishes: TimeTexts derives its LRC-placement series from baselines, so without this slot that
+    #: series would be empty on every ordinary job.
     baselines: list[Any] = field(default_factory=list)
     #: What grading chose, and why. None until GradeAndSelect runs.
     selection: Any | None = None
@@ -87,18 +80,15 @@ class LyricsCtx:
 class StemsCtx:
     """The separation domain's working state for one stems job."""
 
-    #: Raw separated WAVs still in scratch, keyed by stem name. Analysis reads these, so it costs no
-    #: extra separation and no extra decode.
+    #: Still in scratch, so analysis costs no extra separation and no extra decode.
     raw: dict[str, str] = field(default_factory=dict)
-    #: Encoded, publishable stems keyed by name. A stem measured as digital silence is deliberately
-    #: absent rather than present-and-empty.
+    #: A stem measured as digital silence is deliberately ABSENT, not present-and-empty.
     published: dict[str, str] = field(default_factory=dict)
-    #: Did the vocals stem measure as digital silence? Separation can SUCCEED and write silence, and a
-    #: silent guiding track is worse than a missing one because it looks like it works. Recorded rather
-    #: than acted on immediately: the profile analysis still reads the raw vocals WAV, so a silent-vocals
-    #: song gets a present-but-empty profile and reads as processed rather than stuck.
+    #: Separation can SUCCEED and write silence, and a silent guiding track is worse than a missing one
+    #: because it looks like it works. RECORDED rather than acted on at once, so the profile analysis
+    #: still reads the raw WAV and the song reads as processed rather than stuck.
     vocals_silent: bool = False
-    #: Key + vocal range, or the null profile. Always written, so the process gate can require presence.
+    #: ALWAYS written, so the process gate can require presence.
     song_profile: dict[str, Any] | None = None
 
 
@@ -107,19 +97,16 @@ class Outputs:
     """What the runner turns into a CompleteResult."""
 
     artifacts: dict[str, Any] = field(default_factory=dict)
-    #: What this worker RESOLVED and ran — engine, model, device. The core dispatched intentions; these
-    #: are outcomes, and the audit page shows them per attempt.
+    #: OUTCOMES, where the core dispatched intentions. The audit page shows them per attempt.
     facts: dict[str, Any] = field(default_factory=dict)
-    #: Log lines, appended by steps and emitted by the runner. A step that printed directly could not be
-    #: asserted without capsys; a list can.
+    #: A list rather than direct printing, so a step's output can be asserted without capsys.
     notes: list[str] = field(default_factory=list)
     #: Wall time per step name, for the internal metrics page. Filled by the runner, not by steps.
     timings_sec: dict[str, float] = field(default_factory=dict)
-    #: The artifact the CompleteResult points at. First published wins; ranking is the core's job.
+    #: FIRST published wins; ranking is the core's job.
     media_uri: str = ""
-    #: Why the published lyric was chosen over the rejected candidates — the VariantChoice provenance
-    #: as durable data. None on any job that made no lyrics pick. Crosses the wire to the
-    #: job_attempts audit trail; deliberately NOT the sidecar, which is library identity not run log.
+    #: The VariantChoice provenance as durable data. Crosses the wire to the job_attempts audit trail,
+    #: deliberately NOT the sidecar, which carries library identity rather than a run log.
     selection: dict[str, Any] | None = None
 
 
@@ -134,14 +121,13 @@ class Ctx:
     lyrics: LyricsCtx = field(default_factory=LyricsCtx)
     stems: StemsCtx = field(default_factory=StemsCtx)
     out: Outputs = field(default_factory=Outputs)
-    #: How a step runs a CLI: (argv) -> async iterator of output lines. Injected by the runner so every
-    #: step tests against a fake subprocess. A field rather than something the runner attaches, because a
-    #: step reading an attribute that is not on the dataclass is invisible to a type checker.
+    #: (argv) -> async iterator of output lines, injected so every step tests against a fake subprocess.
+    #: A declared FIELD, because an attribute the runner attaches is invisible to a type checker.
     runner: Any = None
 
     @property
     def params(self) -> dict[str, Any]:
-        # Guaranteed a dict by the inbound boundary check (dial_home._on_assign); no re-guard.
+        # Guaranteed a dict by dial_home._on_assign's boundary check; no re-guard.
         return self.job.params
 
     def note(self, line: str) -> None:

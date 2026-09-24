@@ -3,9 +3,8 @@
 FROM oven/bun:1.3-debian AS build
 WORKDIR /app
 
-# install deps first (layer cache). The repo-local .npmrc points at public npm.
-# One package.json: this is a single-package repo, not the apps/ + packages/ workspace it used to
-# be, so there is no member manifest to copy alongside it.
+# install deps first (layer cache). The repo-local .npmrc points at public npm. One package.json —
+# this is a single-package repo, so there is no member manifest to copy alongside it.
 COPY package.json bun.lock .npmrc ./
 RUN bun install --frozen-lockfile
 
@@ -13,13 +12,11 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun --bun run build
 
-# ── runtime image ──────────────────────────────────────────────────────────────
 FROM oven/bun:1.3-debian AS runtime
 WORKDIR /app
 
-# system media tools: ffmpeg + yt-dlp (keyless YouTube). yt-dlp via the static binary.
-# Pinned (Finding #4): a bare :latest auto-deploys whatever upstream publishes — non-reproducible
-# and a supply-chain risk. Bump YT_DLP_VERSION deliberately.
+# system media tools: ffmpeg + yt-dlp (keyless YouTube), yt-dlp via the static binary. Pinned because a
+# bare :latest auto-deploys whatever upstream publishes. Bump YT_DLP_VERSION deliberately.
 ARG YT_DLP_VERSION=2025.06.09
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ffmpeg ca-certificates curl python3 \
@@ -27,10 +24,9 @@ RUN apt-get update \
 	&& chmod a+rx /usr/local/bin/yt-dlp \
 	&& apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-# Install production dependencies against the same lockfile. server.ts and the server-side sources
-# it pulls in are run from source at runtime, so their npm dependencies have to be present; the
-# adapter's build/ output does not bundle them. Copying node_modules from the build stage instead
-# would carry the dev dependencies too.
+# Production dependencies against the same lockfile. server.ts and the server-side sources it pulls in
+# run from source at runtime and the adapter's build/ output does not bundle their npm dependencies, so
+# they must be present. Copying node_modules from the build stage would carry the dev deps too.
 COPY --from=build /app/package.json /app/bun.lock /app/.npmrc /app/
 RUN bun install --frozen-lockfile --production
 
@@ -48,8 +44,8 @@ ENV PORT=3000 \
 VOLUME ["/app/data", "/app/media"]
 EXPOSE 3000
 
-# Run as the non-root `bun` user shipped by the base image (Finding #4): the app never needs root,
-# so don't give it root. Own the writable volumes + app tree to `bun` so SQLite/media writes work.
+# Run as the non-root `bun` user shipped by the base image: the app never needs root. Own the writable
+# volumes + app tree to `bun` so SQLite/media writes work.
 RUN mkdir -p /app/data /app/media && chown -R bun:bun /app
 USER bun
 

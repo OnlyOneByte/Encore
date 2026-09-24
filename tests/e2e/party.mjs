@@ -1,17 +1,8 @@
-// Full-flow e2e: two phones and a TV, against a live server.
-//
-//   bun run tests/e2e/party.mjs            # discovers a Chromium and starts one
-//   EPORT=3000 bun run tests/e2e/party.mjs # against an already-running server
-//
-// The server must have an EMPTY room and a ROUTABLE advertised join address — the attract screen the
-// first three checks measure exists only under both, and a loopback origin correctly shows the
-// unreachable-QR alert instead, which renders none of the type this flow reads:
+// Full-flow e2e: two phones and a TV, against a live server. `EPORT=3000` drives an already-running one.
+// The server needs an EMPTY room AND a routable advertised origin — see docs/E2E.md#the-flows-outside-probes:
 //
 //   ENCORE_EPHEMERAL=1 HOST=127.0.0.1 PORT=5181 MEDIA_DIR=<seeded> \
 //     ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:5181 bun run server.ts
-//
-// Controls are driven by ACCESSIBLE NAME wherever one exists, not by class: a control that loses its
-// accessible name SHOULD break this flow. See docs/E2E.md#the-driver.
 import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
@@ -19,8 +10,6 @@ import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from './lib/
 import { openJoin } from './lib/join.mjs';
 
 /**
- * Browser/Page derive from driver.mjs's return types so they cannot drift; page.evaluate() is
- * Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check
@@ -67,20 +56,11 @@ try {
 	const tv = await browser0.newPage();
 	await tv.goto(`${base}/tv`);
 
-	// TWO preconditions, reported SEPARATELY, because conflating them turns an environment gap into a
-	// false regression report:
-	//
-	// (1) The room must be EMPTY — the attract screen renders only before anyone joins, and the server is
-	//     ephemeral but not per-run, so a previous run's guests are still in it.
-	// (2) The advertised join address must be ROUTABLE, or the TV correctly swaps the QR block for the
-	//     `.badqr` alert and the type this flow measures does not exist. The flow cannot fix it itself:
-	//     `PUT /api/settings` needs a joined singer, and joining destroys (1).
-	//
-	// AND THE FIRST RENDER CANNOT ANSWER (1). `online`/`away` start empty on the client and are filled by
-	// the socket's `queue:sync`, so the server renders ATTRACT for every room, leftover guests included.
-	// Reading `.attract` straight after load answers "has the socket synced yet" — and on a stale server it
-	// passes, then unmounts the element mid-flight and reports 0px. So wait for the socket, let the sync
-	// land, and re-check the screen at the moment of measurement.
+	// TWO preconditions, reported SEPARATELY: conflating them turns an environment gap into a false regression
+	// report. (1) The room must be EMPTY, the server being ephemeral but not per-run. (2) The advertised origin
+	// must be ROUTABLE, and the flow cannot fix that itself — `PUT /api/settings` needs a joined singer, and
+	// joining destroys (1). AND THE FIRST RENDER CANNOT ANSWER (1): `online`/`away` start empty and are filled
+	// by the socket's `queue:sync`, so wait for the socket and re-check the screen at measurement time.
 	const socketUp = await tv.waitForSelector(SEL.tvConnected, { timeout: 8000 }).catch(() => false);
 	if (!socketUp) {
 		console.error(`\nThe TV never opened its WebSocket to ${base}. Is the server still running?`);
@@ -115,11 +95,9 @@ try {
 		process.exit(2);
 	}
 
-	// MEASURE ALL THREE, re-check the screen ONCE, and only then assert. The order is the point: a late
-	// `queue:sync` that swaps attract for the lobby must be reported as the environment problem it is, for
-	// every value. Each value fails differently on the lobby, which is the trap — an unmounted element
-	// reads 0px, while `.brand` still exists but in-flow, so `left` computes to `auto` → NaN, and
-	// `NaN >= 48` reads exactly like a real layout regression.
+	// MEASURE ALL THREE, re-check the screen ONCE, then assert. Each value fails DIFFERENTLY on the lobby,
+	// which is the trap: an unmounted element reads 0px, while `.brand` still exists but in-flow, so `left`
+	// computes to `auto` → NaN, and `NaN >= 48` reads exactly like a real layout regression.
 	const urlSize = parseFloat((await tv.css(SEL.joinAddress, 'font-size')) ?? '0');
 	const headlineSize = parseFloat((await tv.css(SEL.stageHeadline, 'font-size')) ?? '0');
 	const brandLeft = parseFloat((await tv.css(SEL.stageBrand, 'left')) ?? '0');
@@ -137,7 +115,6 @@ try {
 		urlSize >= 26,
 		`computed ${urlSize}px — the ten-foot floor is 26px, and this was 22.4px before`
 	);
-	// The attract screen's instruction ("Scan to join the party").
 	check('stage headline clears the ten-foot floor', headlineSize >= 26, `computed ${headlineSize}px`);
 	check(
 		'stage chrome sits inside the overscan-safe margin',
@@ -145,9 +122,7 @@ try {
 		`computed left ${brandLeft}px — a bare 48px would sit inside the overscan region on many sets`
 	);
 
-	// Two guests join, each on its own end of the colour ring. COLOUR IS A KEYPRESS: the ring is one
-	// `role="slider"` over 48 stops, so there is no per-colour element to click, and `Home`/`End` are what
-	// land two guests on colours far apart deterministically.
+	// Two guests, each on one end of the colour ring: `Home`/`End` land them far apart deterministically.
 	/** @param {string} name @param {{ stop?: string }} [opts] @returns {Promise<Page>} */
 	async function joinAs(name, { stop } = {}) {
 		const page = await browser0.newPage();
@@ -156,7 +131,6 @@ try {
 		if (stop) await page.pressKey(SEL.colourRing, stop);
 		await page.clickByRole('button', 'Start singing');
 		await page.waitFor(`location.pathname === '/'`);
-		// openBrowseFromHome waits for the joined home and then for the search box.
 		await openBrowseFromHome(page);
 		return page;
 	}
@@ -195,10 +169,9 @@ try {
 	} else {
 		check('the unified search box returns rows', true, `${rows} rows`);
 
-		// A fresh install has NO ready songs, so results are raw and carry `.sing` rather than `.add`. Take
-		// whichever is offered: insisting on `.add` would make this pass only on a machine already used.
-		// The raw path is the more interesting one anyway — `.sing` queues AND starts a process, and the
-		// rotation must HOLD the slot while it processes.
+		// A fresh install has NO ready songs, so results carry `sing` rather than `add`. Take whichever is
+		// offered: insisting on `add` would make this pass only on a machine already used. The raw path is
+		// the more interesting one anyway — the rotation must HOLD the slot while the song processes.
 		const readyCount = await maya.count(SEL.addTurn);
 		const rawCount = await maya.count(SEL.sing);
 		const queueAction = readyCount > 0 ? SEL.addTurn : SEL.sing;
@@ -209,8 +182,7 @@ try {
 		);
 
 		await maya.click(queueAction);
-		// Back to the QUEUE: the rotation rows, the position line and the transport all live on home, and
-		// this flow reads all three. Ada comes home too, before her rotation is compared.
+		// Back to the QUEUE: rotation rows, position line and transport all live on home. Ada comes too.
 		await returnHomeFromBrowse(maya);
 		await returnHomeFromBrowse(ada);
 		// Poll for the optimistic row rather than sleeping: the store renders it immediately, but the server
@@ -224,9 +196,9 @@ try {
 		const queued = await maya.count(SEL.queueRow);
 		const processing = await maya.count(SEL.processing);
 		// THREE shapes count, because the invariant is "the singer is in the rotation": an idle room
-		// auto-starts the add and `queued` filters a playing entry out, so the first song of the night is
-		// NOT a row — it is on the band. It reads as `.qrow` when someone else is singing and as `.proc`
-		// while it processes. Asserting only `.qrow` reports an empty rotation for a room playing perfectly.
+		// auto-starts the add and `queued` filters a playing entry out, so the FIRST song of the night is not
+		// a row at all — it is on the band. Asserting only `.qrow` reports an empty rotation for a healthy
+		// room.
 		const heroSong = (await maya.texts(SEL.bandTitle)).filter(
 			(/** @type {string} */ t) => t && t !== 'Nothing playing'
 		);
@@ -236,10 +208,9 @@ try {
 			`${queued} ${SEL.queueRow} (of which ${processing} processing — ProcessingCard carries both classes), hero=${JSON.stringify(heroSong)} — a processing song HOLDS its slot and a PLAYING one is the hero, which is why all three count`
 		);
 
-		// Cross-client sync: wait for the OTHER phone to catch up over the socket rather than assuming a
-		// latency, and CAPTURE the wait result — an empty rotation must fail as a missing precondition
-		// rather than slip past the agreement check, where '[]' === '[]' reads as agreement. Compare the
-		// playing song AND the waiting rows, for the same reason.
+		// Wait for the OTHER phone rather than assuming a latency, and CAPTURE the wait result: an empty
+		// rotation must fail as a missing precondition rather than slip past the agreement check, where
+		// '[]' === '[]' reads as agreement. Both the playing song and the waiting rows, for the same reason.
 		const rotationOf = async (/** @type {typeof maya} */ page) => [
 			...(await page.texts(SEL.bandTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing'),
 			...(await page.texts(SEL.queueTitle))
@@ -284,13 +255,12 @@ try {
 				`before="${shownFirst}" after="${shownSecond}"`
 			);
 		} else {
-			// Nothing playable is CORRECT here — the queued song is still processing and this environment
-			// has no worker to finish it — so assert the OBSERVABLE requirement: the TV must not sit on a
-			// blank stage or a stale lower-third.
+			// Nothing playable is CORRECT here (no worker to finish the process), so assert the OBSERVABLE
+			// requirement: the TV must not sit on a blank stage or a stale lower-third.
 			//
-			// Deliberately NOT `.state-waiting`: reaching that state needs the PLAYER to be actively
-			// holding, so a queued-but-never-started process falls through to the lobby copy even though
-			// someone has picked a song. Pinning a test to that would freeze a wording bug in place.
+			// Deliberately NOT `.state-waiting`: reaching that state needs the PLAYER to be actively holding,
+			// so a queued-but-never-started process falls through to the lobby copy. Pinning a test to that
+			// would freeze a wording bug in place.
 			const stale = await tv.count(SEL.lowerThird);
 			const explains = (await tv.text(SEL.pageBody)).length > 20;
 			check(

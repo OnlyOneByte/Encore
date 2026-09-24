@@ -25,8 +25,6 @@ vite.config.ts.timestamp-*
 # `media/` previously matched those and silently excluded the entire M4 search subsystem from git.
 /data/
 /media/
-/data/
-/media/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
@@ -37,6 +35,8 @@ vite.config.ts.timestamp-*
 
 # python worker
 __pycache__/
+.mypy_cache/
+.ruff_cache/
 *.pyc
 .venv/
 .pytest_cache/

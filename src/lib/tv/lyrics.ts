@@ -1,6 +1,5 @@
-// Pure karaoke-timing logic for the TV lyrics overlay — no DOM, no Svelte. Consumes the word-timed artifact
-// the worker publishes; all times are SECONDS. Model output is UNTRUSTED, so every accessor is defensive:
-// missing/NaN bounds never throw, they read as "not yet sung".
+// Pure karaoke-timing logic for the TV lyrics overlay. All times are SECONDS, and model output is UNTRUSTED, so
+// every accessor is defensive: missing/NaN bounds never throw, they read as "not yet sung".
 
 export interface LyricWord {
 	word: string;
@@ -12,16 +11,10 @@ export interface LyricLine {
 	end: number | null;
 	text: string;
 	words: LyricWord[];
-	/**
-	 * A second-script rendering the source shipped alongside the original (pinyin under a Chinese line),
-	 * present only when the LRCLIB record interleaved one. Display-only: no timings, drives no ball.
-	 */
+	/** A second script the source shipped alongside the original (pinyin under a Chinese line). Display-only. */
 	romanization?: string;
-	/**
-	 * Which abstract duet PART sings this line. Written only when the worker's diarization is CONFIDENT the
-	 * song is a duet; a solo or low-confidence result leaves it undefined, which reads as one colour for the
-	 * whole song. Abstract on purpose, never a singer identity. Display-only.
-	 */
+	// Which abstract duet PART sings this line, written only when the worker's diarization is CONFIDENT: a solo or a
+	// low-confidence result leaves it undefined, which reads as one colour for the whole song. Never an identity.
 	part?: string;
 }
 export interface LyricsDoc {
@@ -32,10 +25,7 @@ export interface LyricsDoc {
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
-/**
- * Parse an untrusted `/media/*.json` payload into a LyricsDoc, dropping malformed lines/words.
- * Returns null when there is nothing word-timed to show (so the overlay can no-op cleanly).
- */
+/** Parse an untrusted payload, dropping malformed lines/words. null when there is nothing to show. */
 export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 	if (!raw || typeof raw !== 'object') return null;
 	const r = raw as Record<string, unknown>;
@@ -72,15 +62,13 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 	};
 }
 
-// PAUSE-BASED LINE SPLITTING. Whisper returns VAD/decoder SEGMENTS of up to ~30s, not lyric lines, so a blob
-// can hold four lyric lines that the overlay then wraps at arbitrary points. After forced alignment every
-// word has timings, so the PAUSES are where the lines break. Done in the display layer, not the worker, so it
-// fixes artifacts that already exist with no re-process.
+// PAUSE-BASED LINE SPLITTING. Whisper returns VAD/decoder SEGMENTS of up to ~30s, not lyric lines, and after forced
+// alignment every word has timings, so the PAUSES are where the lines break. In the DISPLAY layer, not the worker, so
+// it fixes artifacts that already exist with no re-process. See docs/FRONTEND.md#reading-a-lyrics-artifact.
 
 /**
- * How far AHEAD of the audio the highlight runs, applied at DISPLAY time so the artifact stays a faithful
- * record of where the words actually are. ZERO BY DEFAULT: one global lead cannot be right for both a ballad
- * and a fast rap line, and it masks per-song text/audio mismatch. `lyricsLeadMs` is the per-room opt-in.
+ * Applied at DISPLAY time, so the artifact stays a faithful record of where the words actually are. ZERO BY DEFAULT:
+ * one global lead cannot be right for both a ballad and a fast rap line, and it masks text/audio mismatch.
  */
 export const LYRICS_LEAD_SEC = 0;
 
@@ -90,10 +78,8 @@ export const LINE_GAP_SEC = 0.45;
 export const LINE_MAX_CHARS = 42;
 /** Only resegment when the timed words actually cover the line's text (see below). */
 const COVERAGE_MIN = 0.8;
-/**
- * A single-word line sung for less than this is folded into an adjacent line. Pause splitting turns a held
- * note or breath into its own row, which flashes past unreadably and costs the reel a row the sung words need.
- */
+// A single-word line sung for less than this is folded into a neighbour: pause splitting turns a held note or a breath
+// into its own row, which flashes past unreadably and costs the reel a row the sung words need.
 export const ORPHAN_MAX_SEC = 1.0;
 
 function lineFromWords(words: LyricWord[]): LyricLine {
@@ -106,14 +92,11 @@ function lineFromWords(words: LyricWord[]): LyricLine {
 }
 
 /**
- * Split one line at pauses, and at `LINE_MAX_CHARS` when a run has no pause. ONLY fires on a line that is
- * actually too long: a pause is evidence of a line break only when there is a reason to look for one, and
- * applied unconditionally it splits on any held note and turns a correct short line into two flashing rows.
- * The blob case is handled upstream in the worker, so this is the safety net for older artifacts.
+ * Split one line at pauses, and at `LINE_MAX_CHARS` when a run has no pause. ONLY fires on a line that is actually too
+ * long: applied unconditionally a pause splits on any held note and turns a correct short line into two flashing rows.
  *
- * REFUSES to split when the timed words do not cover the line's text (`COVERAGE_MIN`). `normalize_lyrics`
- * drops un-timed words, so rebuilding a poorly-aligned line from `words` would silently DELETE lyrics from
- * the screen — one badly-wrapped line beats a line with words missing.
+ * REFUSES to split when the timed words do not cover the line's text (`COVERAGE_MIN`), because `normalize_lyrics` drops
+ * un-timed words and rebuilding from `words` would silently DELETE lyrics from the screen.
  */
 export function resegmentLine(
 	line: LyricLine,
@@ -141,19 +124,17 @@ export function resegmentLine(
 		cur.push(w);
 	}
 	if (cur.length) out.push(lineFromWords(cur));
-	// A duet PART belongs to the whole source line, so every row it splits into keeps it or a long duet line
-	// loses its colour. `romanization` needs no such carry: it only appears on line-synced docs, which are
-	// never resegmented.
+	// A duet PART belongs to the whole source line, so every row it splits into keeps it or a long duet line loses its
+	// colour. `romanization` needs no carry: it appears only on line-synced docs, which are never resegmented.
 	const split = out.length ? coalesceOrphans(out) : [line];
 	if (line.part !== undefined) for (const l of split) l.part = line.part;
 	return split;
 }
 
 /**
- * Fold away single-word lines that own the screen for under `ORPHAN_MAX_SEC`, merging each into whichever
- * neighbour it is CLOSER TO IN TIME (previous wins a tie) — the pause lengths already encode which phrase the
- * word belongs to, and both directions occur: "...I don't belong | here" merges BACK, "I | want a perfect
- * body." merges FORWARD. Always appending backwards produces "I want to have control. I".
+ * Merge each orphan into whichever neighbour it is CLOSER TO IN TIME (previous wins a tie), because the pause lengths
+ * already encode which phrase the word belongs to and BOTH directions occur: "...I don't belong | here" merges BACK,
+ * "I | want a perfect body." merges FORWARD, and always appending backwards produces "I want to have control. I".
  *
  * A merge may push a line past `LINE_MAX_CHARS`; one extra short word reads better than a flashed row.
  */
@@ -165,9 +146,8 @@ function coalesceOrphans(input: LyricLine[]): LyricLine[] {
 		const l = lines[i]!;
 		const prev = out[out.length - 1];
 		const next = lines[i + 1];
-		// The word's own SUNG duration, not the time to the next line: trailing silence would let a lone word
-		// followed by a long pause survive as "long-lived", while a genuinely held note still does. Read off
-		// the WORDS, because `LyricLine.start/end` are nullable and a kept word's are finite.
+		// The word's own SUNG duration, not the time to the next line: trailing silence would let a lone word followed by
+		// a long pause survive as "long-lived". Read off the WORDS, because `LyricLine.start/end` are nullable.
 		const first = l.words[0];
 		const sung = first ? first.end - first.start : Infinity;
 		if (l.words.length !== 1 || sung >= ORPHAN_MAX_SEC || (!prev && !next) || !first) {
@@ -197,8 +177,8 @@ export function lineBounds(line: LyricLine): [number, number] | null {
 }
 
 /**
- * Index of the line to spotlight at `pos`: the line being sung, else the last that has already ended (so a
- * finished line stays lit through a gap), else 0 before the first begins. Lines are assumed chronological.
+ * The line being sung, else the last that has already ended (so a finished line stays lit through a gap), else 0 before
+ * the first begins. Lines are assumed chronological.
  */
 export function activeLineIndex(lines: LyricLine[], pos: number): number {
 	if (lines.length === 0) return -1;
@@ -223,7 +203,6 @@ export function activeWordIndex(line: LyricLine, pos: number): number {
 	return -1;
 }
 
-// ── honesty about where the words came from ──────────────────────────
 import { isAuthoritativeText, type LyricsCandidate } from '$lib/contract';
 
 /** The provenance slice the overlay needs — a Pick of the stored candidate. */
@@ -235,12 +214,9 @@ export function isAutoTranscribed(p: LyricsProvenance | null | undefined): boole
 }
 
 /**
- * The provenance TAG for the now-playing card: WHERE the words came from, so "these lyrics are wrong" and
- * "these lyrics are a guess" stop looking the same. Provenance only — never a confidence score, never
- * interactive. The amber "not verified" tint is a SEPARATE axis (`isAutoTranscribed`).
- *
- * `null` for UNKNOWN provenance, where the card must say NOTHING rather than "unknown": a source that cannot
- * be traced is not asserted.
+ * WHERE the words came from, so "these lyrics are wrong" and "these lyrics are a guess" stop looking the same.
+ * Provenance only, never a confidence score; the amber "not verified" tint is a SEPARATE axis. `null` for UNKNOWN
+ * provenance, where the card must say NOTHING rather than "unknown".
  */
 export function provenanceLabel(p: LyricsProvenance | null | undefined): string | null {
 	if (!p) return null;

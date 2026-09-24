@@ -1,11 +1,7 @@
-// Delete a song from the library entirely: a hard delete that reclaims the bytes. A song queued by
-// someone else is removed along with their turn; a song playing now is SKIPPED to the next entry
-// rather than refused. Admin/host gated (every guest, today). The first irreversible action in the
-// product, so the ORDER below is load-bearing: meta/<id>.json is the AUTHORITATIVE record and SQLite
-// is a rebuildable index over it (docs/ARCHITECTURE.md §6) — a boot rescan restores any media whose
-// sidecar still exists, so the sidecar must be unlinked FIRST or a crash mid-delete resurrects the song.
-//
-// A SERVER op with no QueueOp — packages/shared is untouched — so it lives beside the media modules.
+// A hard delete that reclaims the bytes. A song queued by someone else loses their turn with it; a song
+// playing now is SKIPPED rather than refused. THE ORDER BELOW IS LOAD-BEARING: meta/<id>.json is the
+// AUTHORITATIVE record and SQLite only indexes it, so a boot rescan restores any media whose sidecar
+// still exists — the sidecar MUST be unlinked FIRST or a crash mid-delete resurrects the song.
 
 import type { QueueEntry, ServerEvent, Media } from '../../contract';
 import type { HubDeps } from '../realtime/hub';
@@ -29,11 +25,8 @@ import {
 import { rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 
-/**
- * Everything the delete needs. `hub` is the full HubDeps the queue/playback paths already take;
- * `cancel` is the cancelJobsForMedia bag MINUS the fields this module supplies itself; `deleteFile`
- * is injected so a test can assert the ORDER of unlinks without touching a disk.
- */
+/** `cancel` is the cancelJobsForMedia bag MINUS the fields this module supplies itself. `deleteFile` is
+ *  injected so a test can assert the ORDER of unlinks without touching a disk. */
 export interface DeleteMediaDeps {
 	hub: HubDeps;
 	media: MediaRepository;
@@ -48,11 +41,11 @@ export interface DeleteMediaResult {
 	wasPlaying: boolean;
 	/** How many queue entries were removed (across all singers). */
 	removedEntries: number;
-	/** The refs actually unlinked, IN ORDER — the mutation proof reads this to pin sidecar-first. */
+	/** IN ORDER — the mutation proof reads this to pin sidecar-first. */
 	unlinked: string[];
 }
 
-/** Recursively unlink the absolute path a ref resolves to; never throws on a missing file. */
+/** Never throws on a missing file. */
 function realDeleteFile(ref: string): void {
 	const { base, rest } = resolveBase(ref);
 	const abs = resolve(join(base, rest));
@@ -60,10 +53,9 @@ function realDeleteFile(ref: string): void {
 }
 
 /**
- * Every derived artifact ref a media might own. Delegates to `retention.ts`'s `derivedRefsOf` — the
- * authority for everything a media STORED — rather than re-listing it, so the two lists cannot drift
- * apart again. Adds only what retention has no reason to name: ID-derived keys for a legacy scheme
- * that never stored a ref at all. Missing files are a no-op for the unlink, so naming a superset is free.
+ * DELEGATES to `retention.ts`'s `derivedRefsOf` rather than re-listing, so the two cannot drift. Adds only
+ * what retention has no reason to name: id-derived keys for a legacy scheme that stored no ref. A missing
+ * file is a no-op for the unlink, so a superset is free.
  */
 function derivedRefsFor(mediaId: string, m: Media | undefined): string[] {
 	const refs = new Set<string>(m ? derivedRefsOf(m) : []);
@@ -77,11 +69,8 @@ function derivedRefsFor(mediaId: string, m: Media | undefined): string[] {
 	return [...refs];
 }
 
-/**
- * Delete a media and everything derived from it, in the load-bearing order documented above. Returns a
- * summary the route turns into a response and the test asserts on. Idempotent for a media absent from
- * the runtime catalog (returns deleted:false); the file unlinks are ENOENT-tolerant.
- */
+/** In the load-bearing order documented above. Idempotent for a media absent from the runtime catalog,
+ *  and the file unlinks are ENOENT-tolerant. */
 export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): DeleteMediaResult {
 	const { hub, media } = deps;
 	const del = deps.deleteFile ?? realDeleteFile;
@@ -91,46 +80,41 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 		return { deleted: false, wasPlaying: false, removedEntries: 0, unlinked: [] };
 	}
 
-	// 1. cancel any in-flight process. Empty remainingEntries → cancel unconditionally, since every
-	// referencing entry is about to be removed anyway; cancelJobsForMedia is a no-op if nothing is live.
+	// Empty remainingEntries → cancel unconditionally, since every referencing entry is about to go.
 	const cancelDeps: CancelJobsDeps = { ...deps.cancel, remainingEntries: [] };
 	cancelJobsForMedia(mediaId, cancelDeps);
 
-	// 2. remove every queue entry pointing at this media — no FK cascade (schema.ts), so rows must be
-	// deleted explicitly. If the PLAYING entry is among them, currentEntryId goes DANGLING and
-	// reconcileOnReady skips to the next playable singer (or settles idle if none is ready).
+	// No FK cascade, so entry rows must be deleted explicitly. If the PLAYING entry is among them,
+	// currentEntryId goes DANGLING and reconcileOnReady skips to the next playable singer.
 	const doomed = hub.state.entries.filter((e: QueueEntry) => e.mediaId === mediaId);
 	const wasPlaying = doomed.some((e: QueueEntry) => e.id === hub.state.playback.currentEntryId);
 	for (const e of doomed) hub.state.applyQueueOp({ op: 'remove', id: e.id });
 	if (wasPlaying) reconcileOnReady(hub);
-	// A non-playing delete still mutates the queue (who plays next can change) but applyQueueOp
-	// publishes nothing on its own, so the queue and the advertised next must be re-broadcast here too
-	// — queue first, since nowplaying:changed names an entry the client should already hold.
+	// applyQueueOp publishes nothing on its own. Queue FIRST, since nowplaying:changed names an entry the
+	// client should already hold.
 	else {
 		if (doomed.length > 0) publishQueue(hub);
 		emitNowPlaying(hub);
 	}
 
-	// 3–4. unlink files: SIDECAR FIRST (see header), then audio, then derived.
+	// SIDECAR FIRST (see header), then audio, then derived.
 	const unlinked: string[] = [];
 	const unlink = (ref: string) => {
 		del(ref);
 		unlinked.push(ref);
 	};
 	unlink(metaKey(mediaId));
-	// The raw audio's real extension is whatever YouTube served and is recorded nowhere (`Media` has no
-	// audio field), so every candidate extension is unlinked rather than one guessed key — see
-	// `candidateAudioRefs`. This is the one unrecoverable class if missed.
+	// The raw audio's real extension is recorded NOWHERE, so every candidate is unlinked rather than one
+	// guessed key. This is the one unrecoverable class if missed.
 	for (const ref of candidateAudioRefs(mediaId)) unlink(ref);
 	for (const ref of derivedRefsFor(mediaId, m)) unlink(ref);
 
-	// 5. drop the index row + tags and the runtime hot-read catalog, so no surface resolves the song
-	// after this returns.
+	// Index row, tags and the runtime catalog, so no surface resolves the song after this returns.
 	media.remove(mediaId);
 	hub.mediaById.delete(mediaId);
 
-	// 6. broadcast so every surface drops the song at once. media:status canceled (there is no
-	// 'deleted' member) tells any surface still keyed on the live-status map the song is gone.
+	// `canceled` because there is no 'deleted' member: it tells any surface keyed on the live-status
+	// map that the song is gone.
 	const event: ServerEvent = { type: 'media:status', mediaId, status: 'canceled', pct: 0 };
 	hub.publish(event);
 

@@ -1,7 +1,6 @@
-// guard: nothing under `tests/` speaks the Chrome DevTools Protocol by hand. Two probes grew private CDP
-// clients (socket on `webSocketDebuggerUrl`, id counter, `Target.*` plumbing) because the shared Playwright
-// driver lacked the verb each wanted, and one rotted silently — dialling a debugging port that no longer
-// existed while no command ran it. Add a verb to tests/e2e/driver.mjs instead; Playwright's own
+// guard: nothing under `tests/` speaks the Chrome DevTools Protocol by hand. Two probes grew private CDP clients
+// because the shared Playwright driver lacked the verb each wanted, and one rotted silently — dialling a debugging
+// port that no longer existed while no command ran it. Add a verb to tests/e2e/driver.mjs instead; Playwright's own
 // `context.newCDPSession` stays allowed, since the ban is on hand-rolling the transport.
 
 import { test, expect } from 'bun:test';
@@ -34,8 +33,8 @@ const HAND_ROLLED = [
 	}
 ];
 
-// Exempt for ONE construct, Playwright's own `newCDPSession` (no Playwright API exists for safe-area
-// insets), narrowed to the construct so a `/json/version` fetch in `driver.mjs` itself still reds.
+// Exempt for ONE construct, `newCDPSession` (no Playwright API exists for safe-area insets), narrowed to the
+// construct so a `/json/version` fetch in `driver.mjs` itself still reds.
 const DRIVER = 'tests/e2e/driver.mjs';
 const SELF = 'tests/guards/meta/no-hand-rolled-cdp.test.ts';
 
@@ -69,15 +68,14 @@ test('no file under tests/ hand-rolls a CDP connection', () => {
 });
 
 test('the scan reads code, not the prose that explains the removal', () => {
-	// Both directions: the driver's own header discusses these names at length to say they are gone, so prose
-	// must not red while real transport code must.
+	// Both directions: the driver's own header discusses these names to say they are gone, so prose must not red
+	// while real transport code must, each shape caught by exactly the pattern that names it.
 	const prose = '// we used to fetch /json/version and open the webSocketDebuggerUrl by hand';
 	for (const { re } of HAND_ROLLED) expect(re.test(codeOnly(prose))).toBe(false);
 
 	const block = '/*\n * `send("Target.createTarget")` was how a page got made here.\n */\nconst x = 1;';
 	for (const { re } of HAND_ROLLED) expect(re.test(codeOnly(block))).toBe(false);
 
-	// …and the real shapes, each caught by exactly the pattern that names it.
 	const version = 'const v = await fetch(`http://127.0.0.1:${p}/json/version`).then((r) => r.json());';
 	expect(HAND_ROLLED[0]!.re.test(codeOnly(version))).toBe(true);
 	expect(HAND_ROLLED[1]!.re.test(codeOnly('const ws = new WebSocket(v.webSocketDebuggerUrl);'))).toBe(true);
@@ -86,17 +84,15 @@ test('the scan reads code, not the prose that explains the removal', () => {
 });
 
 test("Playwright's own CDP session is what the driver uses, and only for what has no API", () => {
-	// The exemption is a claim about the driver, so it is asserted rather than assumed: a hand-rolled
-	// replacement reds the first test, and dropping the construct reds here, so comment and code stay in step.
+	// The exemption is a claim about the driver, asserted rather than assumed: a hand-rolled replacement reds the
+	// first test, dropping the construct reds here, and the session must be released rather than left attached.
 	const driver = read(DRIVER);
 	expect(driver).toContain('newCDPSession');
 	expect(driver).toContain('setSafeAreaInsetsOverride');
 
-	// It must be Playwright's session, not a socket of our own.
 	const code = codeOnly(driver);
 	expect(code).not.toMatch(/\/json\/version/);
 	expect(code).not.toMatch(/webSocketDebuggerUrl/);
 
-	// And the session must be released rather than left attached for the life of the page.
 	expect(driver).toContain('cdp.detach()');
 });

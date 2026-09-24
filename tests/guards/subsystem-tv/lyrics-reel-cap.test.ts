@@ -1,18 +1,15 @@
-// Guard: the lyrics reel's max-height cap must NOT double-charge the safe-area inset.
-//
-// Caught: `.lyrics` already reserves the bottom chrome band via `top: 0; bottom: var(--tv-chrome-h)`, so the
-// reel box is already `100vh - --tv-chrome-h` tall — and the `.viewport` cap then subtracted a FURTHER
-// `- var(--tv-safe-y)` from `100vh`. Because that box is `justify-content: center`, the extra subtraction
-// bought only `--tv-safe-y / 2` of top inset while removing a full `--tv-safe-y` of reel height, and
-// `--tv-chrome-h` is itself `calc(--tv-safe-y + …)` in app.css, so the top mirror it paid for was already
-// inside the band. The second lookahead row was hard-masked mid-glyph with unused height beneath it.
+// guard: the lyrics reel's max-height cap must NOT double-charge the safe-area inset. `.lyrics` already
+// reserves the bottom chrome band via `top: 0; bottom: var(--tv-chrome-h)`, so the reel box is already
+// `100vh - --tv-chrome-h` tall — and the `.viewport` cap then subtracted a FURTHER `- var(--tv-safe-y)`.
+// Because that box is `justify-content: center` the extra subtraction bought only `--tv-safe-y / 2` of top
+// inset while removing a full `--tv-safe-y` of height, and `--tv-chrome-h` already contains one, so the
+// second lookahead row was hard-masked mid-glyph with unused height beneath it.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
 const OVERLAY = at('src/lib/tv/LyricsOverlay.svelte');
 
-/** Blank comments out, keeping newlines so reported line numbers stay true (matches lyrics-clamp). */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src
@@ -41,12 +38,13 @@ test('the .viewport max-height cap equals the parent chrome band, with no extra 
 test('the corrected comment no longer claims the cap is inactive at the defaults', () => {
 	// The false clause (the reel is "unaffected" at the default five rows) is what misleads the next editor,
 	// so it must be gone — and asserting only its absence would let the prose degrade to saying nothing, so
-	// the accurate claim is required too. Matched on the SHORT form rather than a sentence, so rewording the
-	// comment does not red this for a reason unrelated to the claim.
-	expect(raw).not.toContain('so the reel is unaffected');
-	expect(raw).not.toMatch(/well under this cap/);
-	expect(raw, 'the cap comment must still say the cap applies at the default row count').toMatch(
-		/(active|bites?|applies|clips)\b[^.\n]{0,40}default/i
+	// the accurate claim is required too. Matched on the SHORT form, over comment markers stripped and
+	// whitespace collapsed, so neither a reword nor a re-wrap reds this for a reason unrelated to the claim.
+	const prose = raw.replace(/^[ \t]*(?:\/\/+|\*)[ \t]?/gm, ' ').replace(/\s+/g, ' ');
+	expect(prose).not.toContain('so the reel is unaffected');
+	expect(prose).not.toMatch(/well under this cap/i);
+	expect(prose, 'the cap comment must still say the cap applies at the default row count').toMatch(
+		/(active|bites?|applies|clips)\b.{0,40}default/i
 	);
 });
 

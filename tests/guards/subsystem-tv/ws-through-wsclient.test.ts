@@ -1,15 +1,10 @@
-// guard: the TV route drives its realtime channel through the shared, tested WsClient — the client with the
-// heartbeat, liveness watchdog (#presumeDead), capped-backoff reconnect and page-lifecycle rebinding — and
-// holds NO hand-rolled socket lifecycle of its own.
-//
-// Caught: the TV hand-rolled its own connect()/onclose/backoff socket. It had reconnect but none of the
-// heartbeat, liveness watchdog or page-lifecycle rebinding the tested client gives the phone, so it was
-// missing exactly the failure #presumeDead was written for: a socket that stops answering but never fires
-// close. The TV runs unattended for hours on a set-top browser, so it is the one that most needs the tested
-// client, and it was the only route not using it.
-//
-// WsClient's own behaviour is covered by client.test.ts and liveness.test.ts against a mock socket; this
-// guard's job is the integration fact those cannot see.
+// guard: the TV route drives its realtime channel through the shared, tested WsClient — heartbeat, liveness
+// watchdog (#presumeDead), capped-backoff reconnect and page-lifecycle rebinding — and holds NO hand-rolled
+// socket lifecycle of its own. Caught: the TV hand-rolled its own connect()/onclose/backoff socket, with
+// reconnect but none of the rest, so it was missing exactly the failure #presumeDead was written for: a
+// socket that stops answering but never fires close. The TV runs unattended for hours on a set-top browser,
+// so it is the one that most needs the tested client, and it was the only route not using it. WsClient's own
+// behaviour is covered elsewhere; this guard's job is the integration fact those cannot see.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';

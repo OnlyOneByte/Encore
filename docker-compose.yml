@@ -1,10 +1,8 @@
-# Encore — one container for the MVP. The worker is gated behind the `stems` profile,
-# so `docker compose up` runs ONLY core until you opt into stem-separation.
+# Encore — one container for the MVP. The worker is gated behind the `stems` profile:
 #   MVP:        docker compose up
 #   With stems: docker compose --profile stems up
-# Container hardening (Finding #4): no-new-privileges + cap_drop ALL on every service. The app
-# is a plain HTTP/WS server that needs no Linux capabilities; dropping them shrinks the blast
-# radius of any RCE. Runs as non-root `bun` (see Dockerfile USER).
+# Hardening on every service: the app is a plain HTTP/WS server needing no Linux capabilities, so
+# dropping them shrinks the blast radius of any RCE. Runs non-root (see Dockerfile USER).
 x-hardening: &hardening
   security_opt:
     - no-new-privileges:true
@@ -15,23 +13,19 @@ services:
   core:
     <<: *hardening
     build:
-      context: . # repo root — the Dockerfile copies src/shared + .
+      context: . # repo root — the Dockerfile copies the whole tree
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
       - MEDIA_STORE=local
-      # The address the TV's join QR should advertise. Leave UNSET and it is derived from the request,
-      # which is correct for phones and for a tunnel. Set it when the machine showing /tv cannot reach
-      # its own public address — notably a Windows/WSL2 box, where the port proxy forwards traffic
-      # arriving from the network but not the host's own loopback, so the only URL that opens /tv there
-      # is localhost:3000 and the QR would tell every phone to connect to itself.
-      #   ENCORE_PUBLIC_ORIGIN=http://10.69.1.169:3000
+      # The address the TV's join QR advertises. UNSET = derived from the request, right for phones and
+      # tunnels. Set it (e.g. http://10.69.1.169:3000) where /tv's own host cannot reach its public
+      # address — notably WSL2, where the QR would otherwise tell every phone to connect to itself.
       - ENCORE_PUBLIC_ORIGIN=${ENCORE_PUBLIC_ORIGIN:-}
-      # Storage classes, split by REPLACEABILITY (docs/ARCHITECTURE.md §2). Each defaults
-      # under MEDIA_DIR, so these lines are documentation as much as configuration — point any one at
-      # its own volume to separate the disks (audio on the big one, derived on the fast one).
+      # Storage classes, split by REPLACEABILITY (docs/ARCHITECTURE.md §2). Each defaults under
+      # MEDIA_DIR — point any one at its own volume to separate the disks.
       - MEDIA_DIR=/app/media
       - ENCORE_AUDIO_DIR=/app/media/audio # raw originals — NOT regenerable; this is what to back up
       - ENCORE_DERIVED_DIR=/app/media/derived # stems/pitch/lyrics/thumbs — safe to delete, recomputable
@@ -44,42 +38,22 @@ services:
 
   worker:
     <<: *hardening
-    # PID-1 zombie reaping. The worker runs `python -m src.dial_home` as PID 1, and
-    # demucs/ffmpeg grandchildren reparent to it when their intermediate parent exits. Python is
-    # not an init and does not reap them, so they accumulate as zombies over a long-running
-    # worker. `init: true` interposes Docker's tiny init (tini) as PID 1 to reap them. No app change.
+    # PID-1 zombie reaping: demucs/yt-dlp grandchildren reparent to the worker, which runs as PID 1 and
+    # is not an init, so they pile up. `init: true` interposes Docker's tini as PID 1 instead.
     init: true
     build:
       context: .
       dockerfile: worker/Dockerfile
     profiles: ["stems"] # not started in the default MVP up
     environment:
-      # The ONLY two settings a deployer must get right. Everything else the worker measures about
-      # itself at startup: which accelerator is present, how many cores it may actually use, how much
-      # memory, and which engines are installed (and therefore which capabilities it can honestly
-      # advertise). See worker/src/hardware.py and capabilities.py.
+      # Two settings a deployer must get right: ENCORE_CORE_WS (where core is — no probe can guess it) and
+      # MEDIA_DIR (the volume core is also using; set by the image, so it is the volume mapping below that
+      # must agree, or core serves a file that is not there). Everything else the worker measures about
+      # itself at startup — accelerator, usable cores, memory, installed engines. See src/host/hardware.py.
       - ENCORE_CORE_WS=ws://core:3000/ws?role=worker
-      # MEDIA_DIR is set by the image; the volume below is what has to agree with core's.
-      #
-      # ── overrides, all optional and all unset by default ─────────────────────────────
-      # Present so a measurement that turns out wrong on some box can be corrected without a rebuild.
-      # Leave them empty unless you have measured a reason:
-      #
-      #   ENCORE_WORKER_CAPABILITIES  NARROWS what this box advertises (e.g. `fetch:ytdlp` for a
-      #                               download-only worker). It can only subtract from what the worker
-      #                               can prove — a claim it cannot honour is refused with a warning,
-      #                               because that is what used to leave songs stuck at 0% forever.
-      #   ENCORE_DEVICE               forces cpu/cuda/xpu/mps. An unreachable device fails LOUDLY at
-      #                               startup, which is the point: naming it turns a driver or
-      #                               passthrough mistake into a crash instead of a silent CPU cook.
-      #   ENCORE_WORKER_CONCURRENCY   songs cooked at once. 1 is right until measured otherwise.
-      #   ENCORE_DEMUCS_MODEL         htdemucs_ft = better, ~4x slower.
-      #   ENCORE_DEMUCS_JOBS          parallel chunk jobs; auto-sized from usable cores.
-      #   ENCORE_TORCH_THREADS        intra-op cap; auto-sized from concurrency x jobs.
-      #   ENCORE_DEMUCS_OVERLAP/_SEGMENT/_SHIFTS, ENCORE_STEM_BITRATE, ENCORE_FLAC_LEVEL
-      #
-      # A worker id is derived from the hostname when unset, so two workers can no longer collide on a
-      # shared default and silently replace each other in the core's registry.
+      # The rest are optional and unset by default, so a wrong measurement is correctable without a
+      # rebuild; one per-variable reference lives in README.md "Configuration". Note that
+      # ENCORE_WORKER_CAPABILITIES can only NARROW what host/capabilities.py proves.
       - ENCORE_WORKER_CAPABILITIES=${ENCORE_WORKER_CAPABILITIES:-}
       - ENCORE_DEVICE=${ENCORE_DEVICE:-}
       - ENCORE_WORKER_CONCURRENCY=${ENCORE_WORKER_CONCURRENCY:-}
@@ -92,17 +66,13 @@ services:
       - ENCORE_STEM_BITRATE=${ENCORE_STEM_BITRATE:-}
       - ENCORE_FLAC_LEVEL=${ENCORE_FLAC_LEVEL:-}
     volumes:
-      # Shares the local MediaStore volume (single-box mode). The worker writes raw audio into
-      # audio/ and stems into derived/ using the SAME keys the core resolves — see
-      # worker/src/processor.py, which must stay byte-for-byte in step with core paths.ts.
+      # Shares the local MediaStore volume (single-box mode), using the SAME keys the core resolves —
+      # worker/src/processor.py must stay byte-for-byte in step with src/lib/server/media/paths.ts.
       - ${ENCORE_MEDIA_VOLUME:-./media}:/app/media
-      # Model + tool cache, kept OUT of the container's writable layer so it survives `docker rm`.
-      # Holds the demucs checkpoints, the RoFormer checkpoint (~700 MB, fetched on the first
-      # stems:roformer cook) and yt-dlp's JS challenge-solver script. Without this, replacing the
-      # container re-downloads all of it — the same trap that made a hand-installed yt-dlp vanish.
-      # A NAMED volume rather than a bind path on purpose: Docker initialises it from the image's
-      # own $XDG_CACHE_HOME, so it inherits the worker's ownership, whereas a fresh bind directory
-      # is created root-owned and the unprivileged worker cannot write to it.
+      # Model + tool cache (demucs checkpoints, the ~700 MB RoFormer checkpoint, yt-dlp's solver script),
+      # kept OUT of the writable layer so it survives `docker rm`. NAMED rather than a bind path on
+      # purpose: Docker initialises it from the image's own $XDG_CACHE_HOME so it inherits the worker's
+      # ownership, whereas a fresh bind directory is created root-owned and unwritable by the worker.
       - worker-cache:/home/worker/.cache
     depends_on:
       - core
@@ -110,6 +80,5 @@ services:
     # deploy.resources.reservations.devices for GPU added when stems land
 
 volumes:
-  # Declared for the `stems` profile only; the default MVP `up` never creates it because the worker
-  # service it belongs to is not started.
+  # Created only by the `stems` profile — the default MVP `up` never starts the worker that uses it.
   worker-cache:

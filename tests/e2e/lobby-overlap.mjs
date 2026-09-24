@@ -7,20 +7,16 @@
 // measured property behind it.
 //
 // WHY THESE INPUTS. `lobbyRoster` caps the roster at 8, so n = 8 is the PRODUCTION CEILING rather than a
-// stress case, and long display names are ordinary user data. Both rect AND `elementFromPoint` at the
-// address centre are read, so "nothing is painted over the address" is measured rather than deduced. The
-// two short panels (1280x720, 1366x768) are the bug's own sizes; 1920x1080 is a non-regression floor.
+// stress case. The two short panels (1280x720, 1366x768) are the bug's own sizes; 1920x1080 is a
+// non-regression floor.
 //
-// Presence is seeded deterministically — POST /api/join per singer, then one phone WebSocket per singer
-// held open, since the roster is presence-derived from live sockets — because driving the join UI does not
-// update Svelte 5's bound $state reliably in headless. The TV is a real page, so the cascade is the real one.
+// Presence is seeded over HTTP + a held socket per singer, not through the join UI, which does not update
+// Svelte 5's bound $state reliably in headless. The TV is a real page, so the cascade is the real one.
 import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 
 /**
- * Browser/Page derive from driver.mjs's return types so they cannot drift; page.evaluate() is
- * Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check

@@ -1,12 +1,6 @@
-<!--
-	ColourPicker — the presets plus the hue wheel, as one control. The preset-and-slider agreement is the
-	whole reason `pickPreset` also moves the hue: two controls for one choice is two places to drift.
-
-	HUE IS THE ONLY AXIS a guest controls; lightness and chroma are pinned in the contract. That is what
-	guarantees every reachable colour stays visible on the dark surfaces and distinguishable from the next
-	guest's — a free picker allows near-black (the identity dot disappears) or a hue one degree from
-	someone else's, and on the TV roster that dot is the only thing telling two singers apart besides the name.
--->
+<!-- ColourPicker — the presets plus the hue wheel, as one control. The preset-and-slider agreement is the whole reason
+	`pickPreset` also moves the hue: two controls for one choice is two places to drift. HUE IS THE ONLY AXIS a guest
+	controls; lightness and chroma are pinned in the contract, so no reachable colour can vanish on a dark surface. -->
 <script lang="ts">
 	import {
 		SINGER_COLORS,
@@ -21,21 +15,15 @@
 	interface Props {
 		/** The selected colour, as a canonical hex. Bindable. */
 		value: string;
-		/** Heading above the swatches. */
 		label?: string;
-		/** One line under the heading; omit for a compact placement. */
 		hint?: string;
 	}
 	let { value = $bindable(), label = 'Your color', hint = '' }: Props = $props();
 
 	/*
-	 * Names, because a hex tells a screen-reader user nothing they can act on, and a sighted guest picking off
-	 * a wheel deserves to know what they landed on too.
-	 *
-	 * LOAD-BEARING COUPLING: this list maps to the shared `SINGER_COLORS` BY POSITION, so neither can be
-	 * reordered without the other. `presetIndex()` below is the single chokepoint every read goes through.
-	 * Two guards pin the LENGTHS staying equal, so a resize that would announce a preset as `undefined` reds;
-	 * nothing can check ORDER, because nothing in a hex says "violet".
+	 * Names, because a hex tells a screen-reader user nothing they can act on. LOAD-BEARING COUPLING: this list maps to
+	 * the shared `SINGER_COLORS` BY POSITION, so neither can be reordered without the other, and `presetIndex()` below is
+	 * the single chokepoint every read goes through. Two guards pin the LENGTHS staying equal; nothing can check ORDER.
 	 */
 	const PRESET_NAMES = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'];
 	const HUE_NAMES = [
@@ -69,7 +57,6 @@
 	/* Seeded from the incoming value so the slider and the swatch agree on the very first paint. */
 	let hue = $state(nearestSingerHue(value));
 
-	/** The label for whatever is currently selected, preset or wheel pick. */
 	const colorLabel = $derived(presetIndex(value) !== -1 ? PRESET_NAMES[presetIndex(value)]! : hueName(hue));
 
 	/** The one place the name-by-index coupling is made explicit; -1 for a wheel hue rather than a preset. */
@@ -78,11 +65,9 @@
 	}
 
 	/**
-	 * The BARE colour name, never "violet swatch": this is a radio's aria-label and the role already
-	 * announces the control type, so the noun makes a reader say "violet swatch, radio button".
-	 *
-	 * @knipignore Used only by this component's markup, which knip cannot see — it is handed the script
-	 * blocks alone. The `export` is load-bearing too: two source scans match on it.
+	 * The BARE colour name, never "violet swatch": this is a radio's aria-label and the role already announces the
+	 * control type. @knipignore Used only by this component's markup, which knip cannot see. The `export` is load-bearing
+	 * too: two source scans match on it.
 	 */
 	export function colorName(hex: string): string {
 		const i = presetIndex(hex);
@@ -96,8 +81,7 @@
 
 	function pickPreset(c: string) {
 		value = c;
-		// Keep the slider a VIEW of the same selection: without this the thumb stays at hue 0 (red)
-		// while showing violet, and the two controls silently disagree about what is selected.
+		// Keep the slider a VIEW of the same selection: without this the thumb stays at hue 0 while showing violet.
 		hue = nearestSingerHue(c);
 	}
 
@@ -135,18 +119,14 @@
 				class:sel={value === c}
 				style="background:{c};"
 			>
-				<!-- A tick, not just the ring: selection conveyed by colour alone is invisible to a
-				     colour-blind guest choosing between the two violets or the two pinks. -->
+				<!-- A tick, not just the ring: selection by colour alone is invisible between the two violets or the two pinks. -->
 				{#if value === c}<span class="tick"><Icon name="check" strokeWidth={3} /></span>{/if}
 			</button>
 		{/each}
 	</div>
 
-	<!--
-	  A range input rather than a native colour input: it keeps the single-tab-stop, arrow-key model the swatch
-	  group already has, where a native colour popup is inconsistent across browsers and not reliably
-	  keyboard-operable.
-	-->
+	<!-- A range input rather than a native colour input: it keeps the single-tab-stop, arrow-key model the swatch group
+		already has, where a native colour popup is inconsistent across browsers and not reliably keyboard-operable. -->
 	<label class="hue" style="--singer:{value}">
 		<span class="field-label">Or pick your own</span>
 		<input
@@ -180,9 +160,8 @@
 		justify-content: space-between;
 		gap: var(--space-lg);
 	}
-	/* Deliberately NOT the Field primitive despite the name: these are presentational headings for a
-	   radiogroup that carries its own aria-label, so a real label element would be a label with no control —
-	   and the primitive's data-slot would inherit the settings page's vertical rhythm into this head row. */
+	/* Deliberately NOT the Field primitive despite the name: these head a radiogroup that carries its own aria-label, so
+	   a real label element would have no control — and the primitive's data-slot would inherit the settings rhythm. */
 	.field-label {
 		font-size: var(--ph-text-sm);
 		letter-spacing: 0.12em;
@@ -214,21 +193,17 @@
 		gap: var(--space-sm);
 		margin-top: var(--space-2xs);
 	}
-	/*
-	 * The track shows the REACHABLE colours rather than a generic rainbow, built from the same pinned
-	 * lightness and chroma the picker emits, so what you drag through is what you can get.
-	 *
-	 * The INPUT BOX is var(--tap) tall and transparent, with the thinner rainbow painted on the
-	 * runnable-track pseudo-elements: sizing the box to the drawn track gives a hit area under the floor.
-	 */
+	/* The track shows the REACHABLE colours rather than a generic rainbow, built from the same pinned lightness and
+	   chroma the picker emits, so what you drag through is what you can get. The INPUT BOX is var(--tap) tall and
+	   transparent, with the thinner rainbow on the runnable-track pseudo-elements: sizing the box to the drawn track
+	   gives a hit area under the floor. */
 	.hue input {
 		-webkit-appearance: none;
 		appearance: none;
 		height: var(--tap);
 		background: transparent;
 		cursor: pointer;
-		/* Own the touch gesture: inside a scrollable sheet a hue drag with any vertical component is handed to
-		   the sheet's scroller and the hue never moves. The slider travels on ONE axis, so this costs nothing. */
+		/* Own the touch gesture: inside a scrollable sheet a hue drag with any vertical component goes to the scroller. */
 		touch-action: none;
 	}
 	.hue input::-webkit-slider-runnable-track {
@@ -265,8 +240,8 @@
 			oklch(0.7 0.16 360)
 		);
 	}
-	/* Bigger than the track so it reads as the grab affordance; the negative margin is what centres it on the
-	   track, and it is half the difference between the two heights. */
+	/* Bigger than the track so it reads as the grab affordance; the negative margin is half the height difference,
+		   which is what centres it. */
 	.hue input::-webkit-slider-thumb {
 		-webkit-appearance: none;
 		appearance: none;

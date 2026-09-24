@@ -1,15 +1,14 @@
-// P12 -- search, readiness ordering and the library.
+// P12 -- search, readiness ordering and the library. The S1..S8 sections below are the questions.
 //
 // Buckets on the READINESS axis: `ready` (stems on disk), `processing` (a stems job in flight — rotation
 // HOLDS the slot, so still queueable) and `unacquired`. The client union also carries `failed`, which only
-// ever arrives on a LIVE media:status. The eight questions are the S1..S8 sections below.
+// ever arrives on a LIVE media:status.
 //
 // Expects the server on $PORT with the fake worker connected. Chromium is OPTIONAL: without it only the
 // UI-render checks (S9, S10) skip. YouTube DOWNLOAD is impossible here (no deno for the player challenge)
 // while SEARCH is fine, so the transition checks drive a LOCAL file, whose fetcher needs neither.
 //
-// Boot recipe: tests/e2e/HARNESS.md. Exit codes: docs/E2E.md#exit-codes-and-what-ran-means
-// Selectors come from ./contract.ts — see docs/E2E.md#why-selectors-are-centralised
+// Boot recipe: tests/e2e/HARNESS.md.
 
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, unlinkSync } from 'node:fs';
@@ -22,9 +21,6 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 import { openJoin } from '../lib/join.mjs';
 
 /**
- * Browser/Page derive from driver.mjs's own return types. fetch().json() and page.evaluate() are
- * Promise<any>, so API results are typed through the shapes below and cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'PASS'} Severity
@@ -883,7 +879,6 @@ if (!chromium) {
 		browser?.close();
 	}
 }
-
 
 console.log('\n═══ P12 findings ═══');
 /** @type {Record<string, Finding[]>} */

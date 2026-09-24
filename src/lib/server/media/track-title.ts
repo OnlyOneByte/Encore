@@ -1,10 +1,8 @@
-// Track-title normalization: turn a YouTube title + uploader into a canonical artist/title guess.
-// `Media.artist` is otherwise the YouTube uploader, which for lyric-video channels is not the artist
-// — breaking browse-by-artist grouping and LRCLIB lookup. PURE: no network, no I/O, no clock.
-// HEURISTIC: every result carries `by`/`confidence` per the provenance convention in
-// docs/ARCHITECTURE.md §6, so a caller can treat a guess differently from a confirmed parse.
+// `Media.artist` is the YouTube UPLOADER, which on a lyric-video channel is not the artist — breaking
+// browse grouping and the LRCLIB lookup. PURE, and HEURISTIC: every result carries `by`/`confidence`, so a
+// caller can treat a guess differently from a confirmed parse.
 
-/** Which rule produced the parse. Recorded as provenance on the canonical fields. */
+/** Recorded as provenance on the canonical fields. */
 export type TrackParseRule =
 	| 'uploader-confirmed' // the uploader matched one side of the split — strongest signal
 	| 'collab-marker-flip' // "A - B x C": the collaboration marker is on the RIGHT, so B x C is the artist
@@ -13,18 +11,18 @@ export type TrackParseRule =
 	| 'unparsed'; // no separator and the uploader looks like an aggregator channel
 
 export interface ParsedTrack {
-	/** Primary artist for lookup ("Marvin Gaye"), or null when we genuinely cannot tell. */
+	/** The PRIMARY, for lookup ("Marvin Gaye"). Null when we genuinely cannot tell. */
 	artist: string | null;
 	/** Every credited artist as written ("Marvin Gaye x Tammi Terrell"). Null iff `artist` is null. */
 	artistFull: string | null;
-	/** Cleaned song title. Never empty — falls back to the cleaned raw title. */
+	/** Never empty — falls back to the cleaned raw title. */
 	title: string;
 	by: TrackParseRule;
 	confidence: 'high' | 'medium' | 'low';
 }
 
-// Parenthetical/bracketed junk describing the upload, not the recording. Excludes (Live)/(Acoustic)/
-// (Remix)/(Remastered) deliberately — those name a different recording and dropping them would merge two songs.
+// Junk describing the UPLOAD, not the recording. Excludes (Live)/(Acoustic)/(Remix)/(Remastered)
+// deliberately: those name a different recording, and dropping them would merge two songs.
 const NOISE_TERMS = [
 	'lyrics',
 	'lyric',
@@ -56,7 +54,7 @@ const NOISE_TERMS = [
 	'legendado'
 ];
 
-/** Uploader names that are aggregator / lyric channels rather than artists. */
+/** Aggregator and lyric channels, which are not artists. */
 const AGGREGATOR_MARKERS = [
 	'lyric',
 	'lyrics',
@@ -69,15 +67,15 @@ const AGGREGATOR_MARKERS = [
 	'records tv'
 ];
 
-/** Collaboration markers. Their presence on one side of the split means THAT side names artists. */
+/** Their presence on one side of the split means THAT side names artists. */
 const COLLAB_RE = /(?:\bft\b\.?|\bfeat\b\.?|\bfeaturing\b|\bwith\b|\bx\b|&|,|\bvs\b\.?)/i;
 
 /** Separators between artist and title, longest first so " -- " beats " - ". */
 const SEPARATORS = [' — ', ' – ', ' -- ', ' - ', ' | ', ' _ ', '–', '—'];
 
-/** Strip emoji, pictographs and stray symbol runs. Corp-box titles are full of them ("🎵", "🇺🇸"). */
+/** Corp-box titles are full of emoji and stray symbol runs. */
 function stripEmoji(s: string): string {
-	// Keeps letters, digits, punctuation and CJK; stripping either half of a regional-indicator pair still removes the composed flag emoji, as intended.
+	// Keeps letters, digits, punctuation and CJK. Stripping either half of a regional-indicator pair still removes the composed flag emoji, as intended.
 	// eslint-disable-next-line no-misleading-character-class
 	return s.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{2B00}-\u{2BFF}]/gu, '');
 }
@@ -86,7 +84,7 @@ function collapseWs(s: string): string {
 	return s.replace(/\s+/g, ' ').trim();
 }
 
-/** Is this bracketed chunk pure upload-noise (and therefore droppable)? */
+/** Is this bracketed chunk pure upload-noise, and so droppable? */
 function isNoise(inner: string): boolean {
 	const t = collapseWs(stripEmoji(inner))
 		.toLowerCase()
@@ -97,10 +95,7 @@ function isNoise(inner: string): boolean {
 	return words.length > 0 && words.every((w) => NOISE_TERMS.includes(w));
 }
 
-/**
- * Remove upload-noise from a title: bracketed noise groups, then trailing bare noise
- * ("... We Are Young Official Lyrics"), then leftover punctuation.
- */
+/** Bracketed noise groups, then trailing bare noise, then leftover punctuation. */
 export function cleanTitleNoise(raw: string): string {
 	let s = stripEmoji(raw);
 
@@ -118,30 +113,26 @@ export function cleanTitleNoise(raw: string): string {
 		}
 	}
 
-	// a trailing "| Channel Name" style tag adds nothing once noise is gone
+	// A trailing "| Channel Name" tag adds nothing once the noise is gone.
 	s = s.replace(/\s*\|\s*[^|]{0,40}$/, '');
 
 	return collapseWs(s).replace(/^[\s\-–—|:·]+|[\s\-–—|:·,]+$/g, '');
 }
 
-/** The primary artist out of a credit string: "Fun. ft Janelle Monae" → "Fun.". */
+/** "Fun. ft Janelle Monae" -> "Fun.". */
 export function primaryArtist(credit: string): string {
 	const m = COLLAB_RE.exec(credit);
 	const head = m && m.index > 0 ? credit.slice(0, m.index) : credit;
 	return collapseWs(head).replace(/[\s,&]+$/, '') || collapseWs(credit);
 }
 
-/**
- * A bracketed guest credit inside a TITLE — "(ft. Against The Current)", "[feat. Beyoncé]". Only
- * unambiguous markers; "with" is deliberately absent since "(with subtitles)" would invent an artist.
- */
+/** Only UNAMBIGUOUS markers: "with" is deliberately absent, since "(with subtitles)" would invent an artist. */
 const FEATURED_GROUP_RE = /[([{]\s*(?:ft|feat|featuring)\b\.?\s*([^)\]}]+)[)\]}]/i;
 
 /**
- * Lift a guest credit OUT of a song title: "(ft. X)" is billing, not part of the name — MusicBrainz
- * keys the recording without it. MUST run BEFORE the artist/title split, else a bracketed credit gets
- * mistaken for a `COLLAB_RE` side marker (e.g. "Lady Gaga - Telephone (feat. Beyoncé)" would flip).
- * Returns the input unchanged when the credit is all there is — an empty title is worse than a noisy one.
+ * "(ft. X)" is billing, not part of the name, and MusicBrainz keys the recording without it. MUST run
+ * BEFORE the artist/title split, or a bracketed credit is mistaken for a `COLLAB_RE` side marker and the
+ * sides flip. Returns the input unchanged when the credit is all there is.
  */
 export function splitFeaturedCredit(title: string): { title: string; featured: string | null } {
 	const m = FEATURED_GROUP_RE.exec(title);
@@ -155,12 +146,12 @@ export function splitFeaturedCredit(title: string): { title: string; featured: s
 	return { title: stripped, featured };
 }
 
-/** Join a primary billing with a lifted guest credit, in MusicBrainz's own phrasing. */
+/** In MusicBrainz's own phrasing. */
 function withFeatured(artistFull: string, featured: string | null): string {
 	return featured ? `${artistFull} feat. ${featured}` : artistFull;
 }
 
-/** Normalize for comparison: case-fold, drop emoji/punctuation, collapse space. */
+/** Case-fold, drop emoji and punctuation, collapse space. */
 function comparable(s: string): string {
 	return collapseWs(
 		stripEmoji(s)
@@ -187,10 +178,9 @@ function splitSides(s: string): [string, string] | null {
 }
 
 /**
- * Best-effort canonical artist/title from a YouTube title + uploader. Rule order (first match wins)
- * is documented per-case on TrackParseRule. Callers should gate BROWSE grouping on
- * `confidence !== 'low'` — a low-confidence artist is fine to try against a lyrics API (a miss costs
- * nothing) but not to render as a library heading.
+ * First match wins; the rule order is documented per-case on TrackParseRule. Callers MUST gate BROWSE
+ * grouping on `confidence !== 'low'`: a low-confidence artist is fine to try against a lyrics API, where a
+ * miss costs nothing, but not to render as a library heading.
  */
 export function parseTrackTitle(rawTitle: string, uploader?: string | null): ParsedTrack {
 	const cleaned = cleanTitleNoise(rawTitle ?? '');
@@ -203,8 +193,8 @@ export function parseTrackTitle(rawTitle: string, uploader?: string | null): Par
 
 	const sides = splitSides(body);
 
-	// Each rule below names one side the artist; the lifted guest is added to that side's billing and
-	// never to `artist`, which stays the PRIMARY a metadata lookup keys on.
+	// Each rule names one side the artist. The lifted guest joins that side's BILLING and never `artist`,
+	// which stays the PRIMARY a metadata lookup keys on.
 	const resolve = (
 		artistSide: string,
 		titleSide: string,
@@ -226,9 +216,8 @@ export function parseTrackTitle(rawTitle: string, uploader?: string | null): Par
 			const u = comparable(up);
 			const l = comparable(left);
 			const r = comparable(right);
-			// The uploader must CONTAIN the side, one direction only: "Adele" ⊂ "AdeleVEVO". The reverse
-			// test (side.includes(u)) lets a channel name sitting anywhere inside a longer side promote
-			// the WHOLE side to artist at the parser's highest confidence — never use that direction.
+			// One direction ONLY — the uploader CONTAINS the side ("Adele" in "AdeleVEVO"). The reverse test
+			// lets a channel name anywhere inside a longer side promote the WHOLE side at top confidence.
 			if (u && l && u.includes(l)) {
 				return resolve(left, right, 'uploader-confirmed', 'high');
 			}
@@ -249,6 +238,6 @@ export function parseTrackTitle(rawTitle: string, uploader?: string | null): Par
 	if (up && !looksLikeAggregator(up)) {
 		return resolve(up, fallbackTitle, 'uploader-fallback', 'low');
 	}
-	// No separator, no usable uploader: drop the guest credit rather than promote it as the artist.
+	// No separator and no usable uploader: DROP the guest credit rather than promote it as the artist.
 	return { artist: null, artistFull: null, title: fallbackTitle, by: 'unparsed', confidence: 'low' };
 }

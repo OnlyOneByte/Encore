@@ -1,9 +1,8 @@
-// Room isolation is only real once it is WIRED into the WS layer. `server.ts` calls Bun.serve and
-// process.exit, so importing it into bun:test would terminate the runner; the isolation decisions are unit
-// tested in room-scope.test.ts and this scan pins that the wire routes through them. Four seams, each of
-// which alone reopens the gap: the WS UPGRADE captures the roomId scope onto the socket; `websocket.open`
-// subscribes via `subscribeTopicFor`; the broadcast sink publishes via `broadcastTopicFor`; and the client
-// message switch refuses a foreign-room socket before hello/mutate. See docs/GUARDS.md#wiring
+// guard: room isolation is only real once it is WIRED into the WS layer, across four seams that each alone
+// reopen the gap: the UPGRADE captures the roomId scope onto the socket, `websocket.open` subscribes via
+// `subscribeTopicFor`, the broadcast sink publishes via `broadcastTopicFor`, and the client message switch
+// refuses a foreign-room socket before hello or mutate. `server.ts` calls Bun.serve and process.exit, so
+// importing it into bun:test would terminate the runner. See docs/GUARDS.md#wiring
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -11,7 +10,6 @@ import { read } from '@encore/test-support';
 // checks an empty string would satisfy.
 const SERVER_RAW = read('server.ts');
 
-/** Blank comments, preserving newlines, so a commented-out wiring line cannot satisfy a match. */
 function stripComments(src: string): string {
 	return src
 		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))

@@ -1,8 +1,6 @@
-<!--
-  Encore's settings scope switcher is a pill segmented control. Styled by global data-slot rules rather
-  than utilities, because `touch-targets.test.ts` reads CSS RULES and would not see a `min-h-tap` in a
-  class attribute. See docs/FRONTEND.md#shared-components.
--->
+<!-- Encore's settings scope switcher is a pill segmented control, styled by global data-slot rules rather than
+  utilities, because `touch-targets.test.ts` reads CSS RULES and would not see a `min-h-tap` in a class attribute.
+  See docs/FRONTEND.md#shared-components. -->
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from 'bits-ui';
 	import { cn } from '$lib/utils.js';
@@ -15,8 +13,7 @@
 <style>
 	:global([data-slot='tabs-trigger']) {
 		flex: 1;
-		/* Named, never restated as a literal: `touch-targets.test.ts` checks every control rule that
-		   declares a box. */
+		/* Named, never restated as a literal: `touch-targets.test.ts` checks every control rule that declares a box. */
 		min-height: var(--tap);
 		border: 0;
 		border-radius: var(--radius-pill);
@@ -27,13 +24,9 @@
 		font-weight: 700;
 		cursor: pointer;
 	}
-	/*
-	 * `data-state="active"`, NEVER `data-active`: the registry's Tailwind variant is spelled that way but
-	 * raw CSS needs the attribute bits-ui actually emits, and a wrong spelling leaves the selected tab
-	 * with no fill while `aria-selected` and the roving tabindex both stay correct.
-	 *
-	 * --accent with --on-accent is the certified pair; the fill and its ink are set together or neither.
-	 */
+	/* `data-state="active"`, NEVER `data-active`: the registry's Tailwind variant is spelled that way but raw CSS needs
+	   the attribute bits-ui actually emits, and a wrong spelling leaves the selected tab with no fill while
+	   `aria-selected` and the roving tabindex stay correct. --accent with --on-accent is the certified pair. */
 	:global([data-slot='tabs-trigger'][data-state='active']) {
 		background: var(--accent);
 		color: var(--on-accent);

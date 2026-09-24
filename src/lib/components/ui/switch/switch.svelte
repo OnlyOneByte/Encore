@@ -1,19 +1,9 @@
-<!--
-  Four rules an innocent edit would break.
-
-  EVERY STATE VARIANT IS `data-[state=checked]`, never `data-checked`: bits-ui emits `data-state`, so the
-  shorthand matches nothing, Tailwind emits no rule at all, and the switch is silently inert in both
-  states with no compile or test signal.
-
-  `p-0` is load-bearing, not tidiness. The root is a button and Preflight is off, so the UA's own
-  `padding: 1px 6px` eats the track's content box and leaves a 16px thumb 2px of travel.
-
-  No tap box here on purpose: these sit inside a label whose min-height is var(--tap), which is where the
-  row's target lives. Giving the switch its own would put two competing targets in one row.
-
-  Sizes stay arbitrary values, which vendored-dimension-keys.test.ts requires — a named scale key resolves
-  through the spacing namespace and collapses the control.
--->
+<!-- Four rules an innocent edit would break. EVERY STATE VARIANT IS `data-[state=checked]`, never `data-checked`:
+  bits-ui emits `data-state`, so the shorthand matches nothing, Tailwind emits no rule at all, and the switch is silently
+  inert in both states. `p-0` is load-bearing, not tidiness — the root is a button and Preflight is off, so the UA's own
+  `padding: 1px 6px` eats the track's content box and leaves a 16px thumb 2px of travel. No tap box here on purpose:
+  these sit inside a label whose min-height is var(--tap). Sizes stay arbitrary values, which
+  vendored-dimension-keys.test.ts requires — a named scale key collapses the control. -->
 <script lang="ts">
 	import { Switch as SwitchPrimitive } from 'bits-ui';
 	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
@@ -50,12 +40,9 @@
 </SwitchPrimitive.Root>
 
 <style>
-	/*
-	 * The thumb is a CHILD component, so it carries no scoping hash for this file and a plain rule would
-	 * ship and match nothing; data-slot is also more stable across a re-vendor than a class of ours.
-	 * Motion is opt-in inside a no-preference block rather than declared-then-reset, and the transition is
-	 * on `transform` alone — the utility form (`transition-transform`) cannot honour Reduce Motion.
-	 */
+	/* The thumb is a CHILD component, so it carries no scoping hash for this file and a plain rule would ship and match
+	   nothing; data-slot is also more stable across a re-vendor than a class of ours. Motion is opt-in inside a
+	   no-preference block rather than declared-then-reset, and the transition is on `transform` alone. */
 	@media (prefers-reduced-motion: no-preference) {
 		:global([data-slot='switch-thumb']) {
 			transition: transform var(--motion-fast) ease-out;

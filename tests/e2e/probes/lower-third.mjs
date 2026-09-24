@@ -13,7 +13,6 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 import { SEL } from '../contract.ts';
 
 /**
- * Browser/Page derive from driver.mjs so they cannot drift; page.evaluate() is Promise<any>, cast at use.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ n: string, ok: boolean }} Check

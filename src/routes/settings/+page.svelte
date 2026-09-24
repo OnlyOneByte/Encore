@@ -1,6 +1,6 @@
-<!-- Three scopes: You is one person, Party is this room, Server is the machine. docs/FRONTEND.md#settings -->
-<!-- No socket here. Every write is a per-field patch the server re-normalizes over CURRENT values, so a stale -->
-<!-- page can only change the field it sends. -->
+<!-- Three scopes: You is one person, Party is this room, Server is the machine. No socket here — every write is a
+	per-field patch the server re-normalizes over CURRENT values, so a stale page can only change the field it sends.
+	docs/FRONTEND.md#settings -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -25,8 +25,7 @@
 		TV_BACKGROUND_STYLES,
 		TV_VISUALIZERS,
 		ASR_MODELS,
-		// Every id-to-record lookup goes through these accessors, never a hand-rolled `.find`, so the
-		// registry owns the shape.
+		// Every id-to-record lookup goes through these accessors, never a hand-rolled `.find`, so the registry owns the shape.
 		getAsrModel,
 		getEngine,
 		getLyricsHighlight,
@@ -92,19 +91,19 @@
 
 	let tab = $state<TabId>(untrack(() => data.tab));
 
-	// `replaceState`, not `goto`: a scope switch must not stack history entries that make Back walk tabs
-	// instead of leaving the page. Shallow, so the server load does not re-run for a panel already in memory.
+	// `replaceState`, not `goto`: a scope switch must not stack history entries that make Back walk tabs instead of
+	// leaving the page. Shallow, so the server load does not re-run for a panel already in memory.
 	function showTab(id: TabId) {
 		tab = id;
 		replaceState(`?tab=${id}`, {});
 	}
 
-	// Local state, not a derived, because a write lands optimistically. The effect below re-adopts `data` so a
-	// load re-run shows fresh server values rather than the mount-time snapshot.
+	// Local state, not a derived, because a write lands optimistically. The effect below re-adopts `data`, so a load
+	// re-run shows fresh server values rather than the mount-time snapshot.
 	let settings = $state<EffectiveSettings>(untrack(() => data.settings));
 
-	// The last value the SERVER confirmed. `settings` moves on every drag frame; this does not, so a rejected
-	// commit rolls back to what the server holds rather than to the dragged value it refused.
+	// The last value the SERVER confirmed. `settings` moves on every drag frame; this does not, so a rejected commit
+	// rolls back to what the server holds rather than to the dragged value it refused.
 	let committed = untrack(() => data.settings);
 
 	// PROCESSES_UNCAPPED is 0, and a bare 0 beside this label reads as a missing value — say it in words.
@@ -138,15 +137,12 @@
 	let liveModels = $derived(engineOf(settings.global.defaultEngine)?.models ?? []);
 	let upgradeModels = $derived(engineOf(settings.global.upgradeEngine)?.models ?? []);
 
-	// A slow engine on the LIVE path is the footgun worth naming in the UI: ~44min per song on CPU against
-	// ~50s. Someone should learn that here, not at a party.
+	// A slow engine on the LIVE path is the footgun worth naming in the UI: ~44min per song on CPU against ~50s.
 	let liveSlow = $derived(engineOf(settings.global.defaultEngine)?.speed === 'slow');
 
-	/*
-	 * Built from the same registry and `qualityRank` that `resolveProcessSeparator` reads, so every offered
-	 * ceiling is one the resolver can honour. Sorted low→high because the cap is downward-only, and rank 0 is
-	 * excluded: an unranked model never wins, so offering it names a floor nothing sits at.
-	 */
+	/* Built from the same registry and `qualityRank` that `resolveProcessSeparator` reads, so every offered ceiling is
+	   one the resolver can honour. Sorted low→high because the cap is downward-only, and rank 0 is excluded: an unranked
+	   model never wins, so offering it names a floor nothing sits at. */
 	const qualityCeilings = liveEngines
 		.flatMap((engine) =>
 			engine.models.map((model) => ({
@@ -157,20 +153,18 @@
 		.filter((c) => c.rank > 0)
 		.sort((a, b) => a.rank - b.rank);
 
-	// A cap at or above the default changes nothing, and the copy must say so rather than imply it raised
-	// quality.
+	// A cap at or above the default changes nothing, and the copy must say so rather than imply it raised quality.
 	let defaultRank = $derived(qualityRank(settings.global.defaultEngine, settings.global.defaultModel));
 	let capAboveDefault = $derived(settings.room.maxQualityRank !== null && settings.room.maxQualityRank >= defaultRank);
 
 	// `local` names one media's already-present bytes, not a default a room could pick.
 	const defaultFetchers = FETCHERS.filter((f) => f.id !== 'local');
 
-	// Same footgun as a slow splitter: the one lever on wrong words is also the one that turns a two-minute
-	// process into a long wait on a CPU box.
+	// Same footgun as a slow splitter: the one lever on wrong words is also the one that turns a two-minute process
+	// into a long wait on a CPU box.
 	let asrSlow = $derived(['slow', 'slowest'].includes(getAsrModel(settings.global.asrModel)?.speed ?? ''));
 
-	// Swatch and input both render the STORED string, with no generator between the choice and the TV, so the
-	// phone cannot promise a colour the TV renders differently.
+	// Swatch and input both render the STORED string, so the phone cannot promise a colour the TV renders differently.
 	let tvBackgroundPreview = $derived(settings.room.tvBackgroundColor);
 
 	// An "upgrade" that is not better never runs, so say so rather than let the toggle look active.
@@ -179,8 +173,8 @@
 			qualityRank(settings.global.defaultEngine, settings.global.defaultModel)
 	);
 
-	// Ask the SAME resolver the TV asks, never re-test syncMode here: a second opinion would make this page
-	// confidently wrong about what is on screen.
+	// Ask the SAME resolver the TV asks, never re-test syncMode here: a second opinion would make this page confidently
+	// wrong about what is on screen.
 	let resolved = $derived(resolveLyricsPresentation(settings));
 	let lyricsClamped = $derived(resolved.clamped);
 	let resolvedHighlight = $derived(getLyricsHighlight(resolved.highlight)?.label.toLowerCase() ?? resolved.highlight);
@@ -212,8 +206,8 @@
 	const onglobal = (body: Partial<GlobalSettings>) => patch('global', body);
 	const onroom = (body: Partial<RoomSettings>) => patch('room', body);
 
-	// Moves one field on screen WITHOUT a write, so the readout — the only display of the value — tracks the
-	// thumb. The commit is separate, and `committed` is the rollback baseline, so a drag frame is never it.
+	// Moves one field on screen WITHOUT a write, so the readout — the only display of the value — tracks the thumb. The
+	// commit is separate, and `committed` is the rollback baseline, so a drag frame is never it.
 	function liveRoom<K extends keyof RoomSettings>(field: K, value: RoomSettings[K]) {
 		settings = { ...settings, room: { ...settings.room, [field]: value } };
 	}
@@ -225,8 +219,8 @@
 	function pickEngine(id: string) {
 		const engine = engineOf(id);
 		if (!engine) return;
-		// Switching engine MUST also move the model, or the server normalizes the invalid pair back and the
-		// choice reads as not having stuck.
+		// Switching engine MUST also move the model, or the server normalizes the invalid pair back and the choice reads as
+		// not having stuck.
 		onglobal({ defaultEngine: id as SeparatorEngineId, defaultModel: engine.models[0]!.id });
 	}
 
@@ -236,12 +230,12 @@
 		onglobal({ upgradeEngine: id as SeparatorEngineId, upgradeModel: engine.models[0]!.id });
 	}
 
-	// The one free-text setting, so it needs a draft: `http` is not yet a valid origin, and a normalizer
-	// running per keystroke fights the typist.
+	// The one free-text setting, so it needs a draft: `http` is not yet a valid origin, and a normalizer running per
+	// keystroke fights the typist.
 	let joinDraft = $state(untrack(() => data.settings.global.joinOrigin));
 	let joinError = $state('');
-	// Re-adopt ONLY when the persisted value moves. A plain effect mirroring `settings` also fires when an
-	// unrelated field is patched, and would discard whatever is half-typed here.
+	// Re-adopt ONLY when the persisted value moves: a plain effect mirroring `settings` also fires when an unrelated
+	// field is patched, and would discard whatever is half-typed here.
 	let syncedJoin = untrack(() => data.settings.global.joinOrigin);
 	$effect(() => {
 		const stored = settings.global.joinOrigin;
@@ -251,8 +245,7 @@
 		}
 	});
 
-	// An https address on a plain-http party makes the QR unopenable from the LAN. The reverse still opens, so
-	// it is not warned about.
+	// An https address on a plain-http party makes the QR unopenable from the LAN. The reverse still opens.
 	let joinSchemeMismatch = $derived(settings.global.joinOrigin.startsWith('https://') && !data.requestIsHttps);
 
 	function commitJoinOrigin() {
@@ -270,11 +263,9 @@
 		onglobal({ joinOrigin: normalized });
 	}
 
-	/*
-	 * A DRAFT seeded from `data.me`, not a view of it: `untrack` keeps an echo of your own save from rewriting
-	 * the field under the cursor. `savedName`/`savedColour` are what the server last confirmed, and `dirty` has
-	 * to compare against those — the load never re-runs, so `data.me` would leave Save enabled forever.
-	 */
+	/* A DRAFT seeded from `data.me`, not a view of it: `untrack` keeps an echo of your own save from rewriting the field
+	   under the cursor. `savedName`/`savedColour` are what the server last confirmed, and `dirty` has to compare against
+	   those — the load never re-runs, so `data.me` would leave Save enabled forever. */
 	let name = $state(untrack(() => data.me.displayName));
 	let colour = $state(untrack(() => data.me.color));
 	let savedName = $state(untrack(() => data.me.displayName));
@@ -329,8 +320,8 @@
 	async function leaveRoom() {
 		leaving = true;
 		await fetch('/api/leave', { method: 'POST' });
-		// The cookie is gone, so `/` (the landing page) is the only honest destination; a reload would 401
-		// into the same place after a flash of an empty page.
+		// The cookie is gone, so `/` (the landing page) is the only honest destination; a reload would 401 into the same
+		// place after a flash of an empty page.
 		await goto('/');
 	}
 
@@ -363,15 +354,15 @@
 		<Tabs.Root value={tab} onValueChange={(v) => showTab(v as TabId)}>
 			<Tabs.List aria-label="Settings scope">
 				{#each TABS as t (t.id)}
-					<!-- The explicit id is load-bearing: Bits UI would generate its own, and both SEL.settingsTab -->
-					<!-- and capture.mjs resolve `#tab-<id>` by this spelling. -->
+					<!-- The explicit id is load-bearing: Bits UI would generate its own, and both SEL.settingsTab and capture.mjs
+							resolve `#tab-<id>` by this spelling. -->
 					<Tabs.Trigger id="tab-{t.id}" value={t.id}>{t.label}</Tabs.Trigger>
 				{/each}
 			</Tabs.List>
 
 			<Tabs.Content value="you">
-				<!-- `.panel` is LAYOUT only and must carry no tabpanel role, aria-labelledby or tabindex: -->
-				<!-- Tabs.Content already renders the tabpanel, and a second one nests two inside each other. -->
+				<!-- `.panel` is LAYOUT only and must carry no tabpanel role, aria-labelledby or tabindex: Tabs.Content already
+						renders the tabpanel, and a second one nests two inside each other. -->
 				<div class="panel">
 					<Card.Root>
 						<Card.Header>
@@ -389,8 +380,8 @@
 								bind:value={name}
 							/>
 
-							<!-- `taken` is DELIBERATELY empty: the pips mean "somebody in the room holds this", and this -->
-							<!-- page's load carries no occupancy, so an invented list would draw pips at nobody. -->
+							<!-- `taken` is DELIBERATELY empty: the pips mean "somebody in the room holds this", and this page's load carries
+									no occupancy, so an invented list would draw pips at nobody. -->
 							<ColourRing
 								bind:value={colour}
 								label="Your color"
@@ -415,8 +406,8 @@
 							<Card.Title>Leaving</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<!-- AlertDialog, not Dialog: `role="alertdialog"` announces the description on open, and it has -->
-							<!-- no click-outside dismissal, which a destructive confirm must not have. -->
+							<!-- AlertDialog, not Dialog: `role="alertdialog"` announces the description on open, and it has no click-outside
+									dismissal, which a destructive confirm must not have. -->
 							<AlertDialog.Root bind:open={confirmingLeave}>
 								<AlertDialog.Trigger>
 									{#snippet child({ props })}
@@ -426,8 +417,7 @@
 								<AlertDialog.Content>
 									<AlertDialog.Header>
 										<AlertDialog.Title>Leave the room?</AlertDialog.Title>
-										<!-- The DESCRIPTION, never a second role="alert" paragraph: alertdialog already -->
-										<!-- announces this on open, so a live region would say it twice. -->
+										<!-- The DESCRIPTION, never a second role="alert" paragraph: alertdialog already announces this on open. -->
 										<AlertDialog.Description>{leaveWarning}</AlertDialog.Description>
 									</AlertDialog.Header>
 									<AlertDialog.Footer>
@@ -441,8 +431,8 @@
 						</Card.Content>
 					</Card.Root>
 
-					<!-- Every tab needs this exit: Save is disabled until dirty, so without it the You tab is a -->
-					<!-- dead end for anyone who changed nothing. -->
+					<!-- Every tab needs this exit: Save is disabled until dirty, so without it the You tab is a dead end for anyone
+							who changed nothing. -->
 					<Button size="block" onclick={() => goto('/')}>Done</Button>
 				</div>
 			</Tabs.Content>
@@ -560,8 +550,8 @@
 									Background colour
 									<span class="swatch" style="background: {tvBackgroundPreview}" aria-hidden="true"></span>
 								</Field.Label>
-								<!-- oninput/onchange split as every slider here does: the native picker fires `input` -->
-								<!-- continuously, so the swatch tracks live while only `change` writes and broadcasts. -->
+								<!-- oninput/onchange split as every slider here does: the native picker fires `input` continuously, so the swatch
+										tracks live while only `change` writes and broadcasts. -->
 								<input
 									id="tv-background-color"
 									class="colour"
@@ -574,8 +564,8 @@
 								<Field.Label for="tv-background-dim">
 									Darken the stage · {Math.round(settings.room.tvBackgroundDim * 100)}%
 								</Field.Label>
-								<!-- A lightness control on the stage colour, not a layer over the video. Stored 0..1 and shown -->
-								<!-- as a percent, spanning the full range the server clamp accepts. -->
+								<!-- A lightness control on the stage colour, not a layer over the video. Stored 0..1 and shown as a percent,
+										spanning the full range the server clamp accepts. -->
 								<Slider
 									id="tv-background-dim"
 									type="single"
@@ -647,8 +637,8 @@
 								</div>
 							</div>
 
-							<!-- Say when a choice is not honoured: under line-only timing a word treatment has nothing to -->
-							<!-- light, and a picker that silently does nothing is worse than one that explains itself. -->
+							<!-- Say when a choice is not honoured: under line-only timing a word treatment has nothing to light, and a picker
+									that silently does nothing is worse than one that explains itself. -->
 							{#if lyricsClamped}
 								<p class="warn">
 									No word timings on this server, so it shows <strong>{resolvedHighlight}</strong>{resolvedBall
@@ -791,8 +781,7 @@
 							<Card.Title>Making karaoke</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<!-- Stacked, not paired: these registries carry the app's longest labels, which truncate in half -->
-							<!-- a 390px row. -->
+							<!-- Stacked, not paired: these registries carry the app's longest labels, which truncate in half a 390px row. -->
 							<Field.Label for="engine">Stem splitter</Field.Label>
 							<NativeSelect
 								id="engine"
@@ -830,8 +819,8 @@
 								{/each}
 							</NativeSelect>
 
-							<!-- A slider, not a number field: the range is short and bounded at both ends, and a text field -->
-							<!-- would invite the 3000 that `normalizeMaxProcesses` exists to refuse. -->
+							<!-- A slider, not a number field: the range is short and bounded at both ends, and a text field would invite the
+									3000 that `normalizeMaxProcesses` exists to refuse. -->
 							<Field.Label for="max-processes">Songs one singer can make at once · {processCapLabel}</Field.Label>
 							<Slider
 								id="max-processes"
@@ -856,8 +845,7 @@
 							<Card.Title>Lyrics engine</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<!-- Stacked for the same measured reason as the splitter above: a half-width select at 390px -->
-							<!-- leaves ~120px, and these labels are the app's longest. -->
+							<!-- Stacked for the same measured reason as the splitter above: a half-width select at 390px leaves ~120px. -->
 							<Field.Label for="asr-model">Lyrics reader</Field.Label>
 							<NativeSelect
 								id="asr-model"
@@ -917,8 +905,8 @@
 
 					<Card.Root>
 						<Card.Content>
-							<!-- Collapsible owns aria-expanded, aria-controls and the toggle; the <button> stays here through -->
-							<!-- the `child` snippet so this file's scoped CSS can reach it. -->
+							<!-- Collapsible owns aria-expanded, aria-controls and the toggle; the <button> stays here through the `child`
+									snippet so this file's scoped CSS can reach it. -->
 							<Collapsible.Root bind:open={advancedOpen}>
 								<Collapsible.Trigger>
 									{#snippet child({ props })}
@@ -944,7 +932,6 @@
 												Re-process at higher quality, from the saved audio
 											</label>
 
-											<!-- Stacked: these default to the roformer names, the longest labels in any registry. -->
 											<Field.Label for="upgrade-engine">Upgrade splitter</Field.Label>
 											<NativeSelect
 												id="upgrade-engine"
@@ -977,8 +964,8 @@
 						</Card.Content>
 					</Card.Root>
 
-					<!-- /metrics is ungated, so this is its ONLY link: from the remote or the TV it would advertise -->
-					<!-- worker ids, model names, host details and error strings to every device in the room. -->
+					<!-- /metrics is ungated, so this is its ONLY link: from the remote or the TV it would advertise worker ids, model
+							names, host details and error strings to every device in the room. -->
 					<Button variant="outline" size="block" href="/metrics">
 						<Icon name="clock" />
 						Processing metrics <Badge variant="neutral">internal</Badge>
@@ -996,8 +983,8 @@
 	   See docs/FRONTEND.md#settings for what each token means and where each level applies. */
 	.settings-page {
 		--page-measure: var(--measure-grid);
-		/* Not --measure-prose (560): two of those plus the gap need 1132, more than the widest shell, so a
-		   prose threshold would never pair anything. At 420 the panel pairs from 852 up. */
+		/* Not --measure-prose (560): two of those plus the gap need 1132, more than the widest shell, so a prose threshold
+			   would never pair anything. At 420 the panel pairs from 852 up. */
 		--settings-col: 420px;
 	}
 
@@ -1005,18 +992,15 @@
 		/* Kept in sync with --page-measure above, so the header aligns with this column. */
 		max-width: var(--measure-grid);
 		margin: 0 auto;
-		/* Reserves the band. No env() term: the band carries the only home-indicator inset, and it reaches
-		   this column through --dock-h, so a second one here is the doubled gap. */
+		/* Reserves the band. No env() term: the band carries the only home-indicator inset, and it reaches this column
+			   through --dock-h, so a second one here is the doubled gap. */
 		padding: var(--space-md) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 
-	/*
-	 * A label binds to its own control, fixed in the CASCADE rather than by restructuring every row into
-	 * Field.Root wrappers: the card's single gap shrinks to the intra-group distance, and a label that FOLLOWS
-	 * a control takes the inter-group distance back as a margin. The sibling selector is what makes that safe —
-	 * only a label with a control before it starts a group, so a card's first label is untouched. Keyed on
-	 * `data-slot`, which survives a re-vendor, and `:global()` because scoped CSS cannot reach ui/card's box.
-	 */
+	/* A label binds to its own control, fixed in the CASCADE rather than by restructuring every row into Field.Root
+	   wrappers: the card's single gap is the intra-group distance, and a label that FOLLOWS a control takes the
+	   inter-group distance back as a margin, so a card's first label is untouched. Keyed on `data-slot`, which survives a
+	   re-vendor, and `:global()` because scoped CSS cannot reach ui/card's box. */
 	main :global([data-slot='card-content']) {
 		gap: var(--space-sm);
 	}
@@ -1025,22 +1009,22 @@
 	}
 
 	.panel {
-		/* A grid, not a flex column: `auto-fit` collapses the empty tracks, so at one column this is the plain
-		   stack. `align-items: start` matters — `stretch` would pad the shorter card out to its neighbour. */
+		/* A grid, not a flex column: `auto-fit` collapses the empty tracks, so at one column this is the plain stack.
+			   `align-items: start` matters — `stretch` would pad the shorter card out to its neighbour. */
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--settings-col)), 1fr));
 		align-items: start;
 		gap: var(--space-lg);
 	}
-	/* Anything in a panel that is not a card is about the PANEL, so it spans: a half-width footer button would
-	   land beside a card and read as part of it. Keyed on shadcn's attribute, so a new control gets this free. */
+	/* Anything in a panel that is not a card is about the PANEL, so it spans: a half-width footer button would land
+	   beside a card and read as part of it. Keyed on shadcn's attribute, so a new control gets this free. */
 	.panel > :global(:not([data-slot='card'])) {
 		grid-column: 1 / -1;
 	}
 
 	.pair {
-		/* Grid, not flex, so the gap SURVIVES the collapse below: a flex row switched to `display:block`
-		   loses its gap entirely, which met a Cancel and a destructive action edge-to-edge. */
+		/* Grid, not flex, so the gap SURVIVES the collapse below: a flex row switched to `display:block` loses its gap
+			   entirely, which met a Cancel and a destructive action edge-to-edge. */
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: var(--space-md);
@@ -1055,8 +1039,8 @@
 		}
 	}
 
-	/* Carries no text, so it needs no contrast floor of its own — and neither does the stage colour: the
-	   contrast that matters is the lyrics ON the stage, which the reel enforces with its own stroke. */
+	/* Carries no text, so it needs no contrast floor of its own — and neither does the stage colour: what matters is the
+	   lyrics ON the stage, which the reel enforces with its own stroke. */
 	.swatch {
 		display: inline-block;
 		width: 1em;
@@ -1066,8 +1050,8 @@
 		border: 1px solid var(--line);
 		vertical-align: -0.15em;
 	}
-	/* Native `type="color"`, so eyedroppers and OS palettes come free, sized up to --tap because the
-	   browser's default swatch is well under a thumb's worth of target. */
+	/* Native `type="color"`, so eyedroppers and OS palettes come free, sized up to --tap because the browser's default
+	   swatch is well under a thumb's worth of target. */
 	input[type='color'].colour {
 		width: 100%;
 		height: var(--tap);
@@ -1098,8 +1082,8 @@
 		font-size: var(--ph-text-md);
 	}
 
-	/* Position only, on a wrapper: Tailwind mints nothing for app source, and scoped CSS cannot reach inside
-	   a component. Save is the page's one accent control, because it is the one thing a tap is needed for. */
+	/* Position only, on a wrapper: Tailwind mints nothing for app source, and scoped CSS cannot reach inside a component.
+	   Save is the page's one accent control, because it is the one thing a tap is needed for. */
 	.save-slot {
 		margin-top: var(--space-xl);
 	}

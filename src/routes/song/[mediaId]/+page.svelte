@@ -1,9 +1,7 @@
 <script lang="ts">
-	/*
-	 * Reachable for ANY song id, so the row is fetched from `/api/audit/[mediaId]` rather than read from
-	 * the room catalog, which only holds songs this room has touched. The link is still subscribed for the
-	 * live key shift the audit row cannot know. See docs/FRONTEND.md#the-song-page.
-	 */
+	/* Reachable for ANY song id, so the row is fetched from `/api/audit/[mediaId]` rather than read from the room catalog,
+	   which only holds songs this room has touched. The link is still subscribed for the live key shift the audit row
+	   cannot know. See docs/FRONTEND.md#the-song-page. */
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import {
@@ -136,16 +134,16 @@
 					{#if bandSentence}<p class="band-sentence">{bandSentence}</p>{/if}
 					<RangeBar profile={profile} keyShift={keyShift} />
 				{:else}
-					<!-- A singable song can have no measured range: the analysis needs a vocals stem. Say so, rather than -->
-					<!-- drawing an empty strip that reads as "range = zero". -->
+					<!-- A singable song can have no measured range: the analysis needs a vocals stem. Say so, rather than drawing an
+							empty strip that reads as "range = zero". -->
 					<p class="band-sentence">No vocal range yet — that needs karaoke.</p>
 				{/if}
 			</section>
 
 			<!-- Quick-select only: picking among the ranker's versions. Authoring one is a separate surface. -->
 			{#if candidates.length}
-				<!-- Bound out of the narrowed branch: a callback escapes Svelte's narrowing, so `media.id` inside one -->
-				<!-- reads as possibly-null to the checker. -->
+				<!-- Bound out of the narrowed branch: a callback escapes Svelte's narrowing, so `media.id` inside one reads as
+						possibly-null to the checker. -->
 				{@const songId = media.id}
 				<section class="lyrics" aria-label="Lyrics">
 					<h2 class="grouphead">Lyrics</h2>
@@ -167,8 +165,8 @@
 
 <style>
 	.song-page {
-		/* Set the measure, or PageHeader falls back to the shell's cap and stops agreeing with the column
-		   under it. Prose width, as on /settings: this is a labelled fact list, not a grid of rows. */
+		/* Set the measure, or PageHeader falls back to the shell's cap and stops agreeing with the column under it. Prose
+			   width, as on /settings: this is a labelled fact list, not a grid of rows. */
 		--page-measure: var(--measure-prose);
 	}
 	main {

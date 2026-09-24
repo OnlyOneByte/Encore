@@ -1,17 +1,9 @@
-// guard: the drawer's scrim and its modality are ONE decision. See
-// docs/GUARDS.md#vendored-component-seams.
-//
-// `NowPlayingDrawer` must be `modal={false}`, being a permanently-mounted sheet whose collapsed height is
-// the docked band on every phone surface — a scrim and a focus trap would cover the page in use. But
-// `vaul-svelte` gates its overlay on exactly that flag (`shouldRender = ctx.modal.current`), so the
-// `<DrawerOverlay />` the vendored content rendered could never mount: measured on the running app, no
-// `[data-slot='drawer-overlay']` in the DOM at either snap point. So the render, the Root's
-// `fadeFromIndex`, and ~50 lines of fade CSS with two `-global-` keyframes were all describing a scrim
-// that does not exist, and all three are gone.
-//
-// The coupling is invisible in both directions: setting `modal={true}` later silently ships a modal dialog
-// with NO scrim, and `shadcn-svelte add drawer --overwrite` silently restores the render, putting the dead
-// fade back in a file whose header says it was deleted.
+// guard: the drawer's scrim and its modality are ONE decision. `NowPlayingDrawer` is `modal={false}`, and
+// `vaul-svelte` gates its overlay on exactly that flag, so `<DrawerOverlay />` could never mount and the
+// render, `fadeFromIndex` and the fade CSS were all describing a scrim that does not exist. The coupling is
+// invisible both ways: `modal={true}` later ships a modal dialog with NO scrim, and
+// `shadcn-svelte add drawer --overwrite` restores the dead render.
+// See docs/GUARDS.md#vendored-component-seams.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -19,7 +11,6 @@ const CONTENT = read('src/lib/components/ui/drawer/drawer-content.svelte');
 const OVERLAY = read('src/lib/components/ui/drawer/drawer-overlay.svelte');
 const DRAWER = read('src/lib/components/NowPlayingDrawer.svelte');
 
-/** Blank comments, so a rule that survives only in prose does not count as live source. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);

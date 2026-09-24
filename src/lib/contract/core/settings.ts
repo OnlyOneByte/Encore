@@ -54,8 +54,7 @@ import {
 // TYPE-ONLY: lyrics.ts is dependency-free, and a value import is the first edge to compromise that.
 import type { LyricsTiming } from '../lyrics/lyrics';
 
-/** Deployment-wide separator and process policy, writable by any joined singer. See
- *  docs/SERVER.md#settings-scopes. */
+/** Writable by any joined singer. See docs/SERVER.md#settings-scopes. */
 export interface GlobalSettings {
 	/** Engine+model every new process uses. Must be a `liveSelectable` pairing. */
 	defaultEngine: SeparatorEngineId;
@@ -71,10 +70,9 @@ export interface GlobalSettings {
 	asrModel: AsrModelId;
 	/** How words get their timestamps — forced alignment (per-word) or the source's own line timings. */
 	syncMode: SyncModeId;
-	/** Origin the TV advertises for joining. `''` means "not declared": fall back to the env var, then to the
-	 *  address the TV was opened at. See docs/SERVER.md#settings-scopes. */
+	/** `''` means "not declared": fall back to the env var, then to the address the TV was opened at. */
 	joinOrigin: string;
-	/** How many processes ONE singer may have in flight at once. Never a lifetime quota. */
+	/** In flight at once — never a lifetime quota. */
 	maxProcessesPerSinger: number;
 }
 
@@ -96,8 +94,7 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 	maxProcessesPerSinger: 3
 };
 
-/** Coerce an operator-supplied join address to a bare origin, or `null` if it cannot be one. `''` survives as
- *  `''`, so a caller can tell cleared from rejected; only http and https do. */
+/** `null` when it cannot be an origin; `''` survives as `''`, so a caller can tell cleared from rejected. */
 export function normalizeJoinOrigin(input: unknown): string | null {
 	if (typeof input !== 'string') return null;
 	const raw = input.trim();
@@ -112,8 +109,7 @@ export function normalizeJoinOrigin(input: unknown): string | null {
 	return parsed.origin;
 }
 
-/** Coerce a client-supplied process cap, or `null` = keep the current value. FLOORED, and a negative is
- *  REJECTED rather than clamped, because 0 means uncapped. See docs/SERVER.md#settings-scopes. */
+/** `null` = keep the current value. A negative is REJECTED rather than clamped, because 0 means uncapped. */
 export function normalizeMaxProcesses(input: unknown): number | null {
 	if (typeof input !== 'number' || !Number.isFinite(input)) return null;
 	const n = Math.floor(input);
@@ -121,8 +117,8 @@ export function normalizeMaxProcesses(input: unknown): number | null {
 	return n;
 }
 
-/** Coerce a partial/untrusted object to valid GlobalSettings, falling back per-field. A caller patching
- *  existing settings MUST pass the current values as `base`. See docs/SERVER.md#contract-boundary. */
+/** A caller patching existing settings MUST pass the current values as `base`.
+ *  See docs/SERVER.md#contract-boundary. */
 export function normalizeGlobalSettings(
 	input: Partial<GlobalSettings> | null | undefined,
 	base: GlobalSettings = DEFAULT_GLOBAL_SETTINGS
@@ -148,15 +144,13 @@ export function normalizeGlobalSettings(
 		enqueueUpgrade: typeof input?.enqueueUpgrade === 'boolean' ? input.enqueueUpgrade : d.enqueueUpgrade,
 		asrModel: input?.asrModel && isValidAsrModel(input.asrModel) ? input.asrModel : d.asrModel,
 		syncMode: input?.syncMode && isValidSyncMode(input.syncMode) ? input.syncMode : d.syncMode,
-		// An unusable origin keeps the current one: silently re-enabling auto-detection is how a party ends
-		// up with `localhost` in the QR again.
+		// An unusable origin keeps the current one: re-enabling auto-detection puts `localhost` in the QR.
 		joinOrigin: normalizeJoinOrigin(input?.joinOrigin) ?? d.joinOrigin,
 		maxProcessesPerSinger: normalizeMaxProcesses(input?.maxProcessesPerSinger) ?? d.maxProcessesPerSinger
 	};
 }
 
-// The room layer: a setting belongs here only when two rooms on one core could genuinely want different
-// values. See docs/SERVER.md#settings-scopes.
+// A setting belongs in the ROOM layer only when two rooms on one core could want different values.
 
 /** How the TV shows song progress. */
 export const TV_PROGRESS_STYLES = [
@@ -170,6 +164,9 @@ export type TvProgressStyle = (typeof TV_PROGRESS_STYLES)[number]['id'];
 
 const tvProgressRegistry = makeRegistry(TV_PROGRESS_STYLES);
 
+/** @knipignore The registry's `get` half. A registry ships its accessor whether or not a caller has
+ *  needed it yet — that rule is what stops a new entry being added with no way to resolve it — and
+ *  `tests/unit/contract/barrel-surface.test.ts` pins it as public surface. */
 export function getTvProgressStyle(id: string): (typeof TV_PROGRESS_STYLES)[number] | undefined {
 	return tvProgressRegistry.get(id);
 }
@@ -179,9 +176,9 @@ export function isTvProgressStyle(v: unknown): v is TvProgressStyle {
 }
 
 /**
- * What the TV paints behind the song. Type, registry and guards live in a leaf module because
- * `PlaybackState` in types.ts also references the type: holding it here makes types.ts import UP from the
- * config layer and closes a cycle. Re-exported AND imported locally, since a re-export binds no name here.
+ * Type, registry and guards live in a leaf module because `PlaybackState` in types.ts also references the
+ * type: holding it here makes types.ts import UP from the config layer and closes a cycle. Re-exported AND
+ * imported locally, since a re-export binds no name here.
  */
 import { isTvBackgroundStyle, type TvBackgroundStyle } from '../presentation/tv-background';
 export {
@@ -191,11 +188,8 @@ export {
 	type TvBackgroundStyle
 } from '../presentation/tv-background';
 
-/**
- * Which visualizer the `visualizer` background runs. ADMISSION RULE: an entry must be a pure function of TIME
- * and must not assert it is drawing the audio signal, since nothing on the TV reads it — which is why bars and
- * a scope are absent. See docs/ARCHITECTURE.md §4.
- */
+/** ADMISSION RULE: an entry must be a pure function of TIME and must not assert it draws the audio signal,
+ *  since nothing on the TV reads it — which is why bars and a scope are absent. */
 export const TV_VISUALIZERS = [
 	{
 		id: 'plasma',
@@ -215,6 +209,7 @@ export type TvVisualizerId = (typeof TV_VISUALIZERS)[number]['id'];
 
 const tvVisualizerRegistry = makeRegistry(TV_VISUALIZERS);
 
+/** @knipignore The registry's `get` half — see `getTvProgressStyle` above for why it ships unused. */
 export function getTvVisualizer(id: string): (typeof TV_VISUALIZERS)[number] | undefined {
 	return tvVisualizerRegistry.get(id);
 }
@@ -224,53 +219,44 @@ export function isTvVisualizer(v: unknown): v is TvVisualizerId {
 }
 
 export interface RoomSettings {
-	/** Which ordering algorithm decides who sings next — the ONE room setting that is not a render-time
-	 *  choice, so a write must re-derive the live queue. See docs/SERVER.md#queue-ordering-and-rotation. */
+	/** The ONE room setting that is not a render-time choice, so a write MUST re-derive the live queue. */
 	queueOrder: QueueOrderId;
 	/** Which progress treatment the TV renders. */
 	tvProgressStyle: TvProgressStyle;
 	/** What the TV paints behind the song. */
 	tvBackgroundStyle: TvBackgroundStyle;
-	/** The stage's colour as canonical 6-digit lowercase hex, read by BOTH the `solid` and `visualizer`
-	 *  backgrounds. Deliberately unbounded for brightness, and the canonical shape is load-bearing. See
-	 *  docs/SERVER.md#colour-tiers. */
+	/** Canonical 6-digit lowercase hex, read by BOTH the `solid` and `visualizer` backgrounds. Unbounded for
+	 *  brightness, and the canonical shape is load-bearing. See docs/SERVER.md#colour-tiers. */
 	tvBackgroundColor: string;
-	/** How far the stage is dimmed toward black, 0..1. A LIGHTNESS control on the resolved colour, never an
-	 *  opacity layer over the video. */
+	/** 0..1. A LIGHTNESS control on the resolved colour, never an opacity layer over the video. */
 	tvBackgroundDim: number;
-	/**
-	 * Which visualizer runs when `tvBackgroundStyle === 'visualizer'`. Ignored otherwise, but held
-	 * across a switch away, so toggling the visualizer off and on does not forget the choice.
-	 */
+	/** Ignored unless `tvBackgroundStyle === 'visualizer'`, but held across a switch away, so toggling the
+	 *  visualizer off and on does not forget the choice. */
 	tvVisualizer: TvVisualizerId;
-	/** Whether the TV shows the song intro card. A separate boolean and NOT a `songIntroMs === 0` sentinel,
-	 *  which would destroy the dialled-in duration on toggle off. */
+	/** A separate boolean and NOT a `songIntroMs === 0` sentinel, which would destroy the dialled-in
+	 *  duration on toggle off. */
 	songIntroEnabled: boolean;
 	/** How long the intro card holds, in ms (integer; surfaced in seconds). */
 	songIntroMs: number;
-	/** Optional per-room ceiling on process quality, as a `qualityRank`; `null` = no ceiling. LOWERS ONLY —
-	 *  see docs/SERVER.md#settings-scopes. */
+	/** A `qualityRank` ceiling; `null` = none. LOWERS ONLY — see docs/SERVER.md#settings-scopes. */
 	maxQualityRank: number | null;
-	/** How the TV marks the word being sung, and how the current lyric is lit. Read them ONLY through
-	 *  `resolveLyricsPresentation`. See docs/SERVER.md#settings-scopes. */
+	/** Read ONLY through `resolveLyricsPresentation`. See docs/SERVER.md#settings-scopes. */
 	lyricsBall: LyricsBallStyleId;
 	lyricsHighlight: LyricsHighlightId;
 	/** How far ahead of the audio the highlight runs, in ms. See `DEFAULT_LYRICS_LEAD_MS`. */
 	lyricsLeadMs: number;
-	/** The reel's TYPE, as opposed to the marks on it. Read STRAIGHT off the room: routing these through the
-	 *  resolver would dilute what its `clamped` flag means. */
+	/** Read STRAIGHT off the room: routing it through the resolver would dilute what `clamped` means. */
 	lyricsScalePct: number;
 	lyricsFont: LyricsFontId;
 	lyricsCase: LyricsCaseId;
 	/** Lines of already-sung context above the current one, and of upcoming lyric below it. */
 	lyricsLinesBefore: number;
 	lyricsLinesAfter: number;
-	/** Default guiding-track level (0..1) — how loud the original vocals sit under the instrumental when
-	 *  a song carries no per-song override. */
+	/** 0..1 — how loud the original vocals sit when a song carries no per-song override. */
 	guideLevelDefault: number;
 	/** Whether this room pulls loud outlier songs DOWN toward the library level. Attenuate-only. */
 	loudnessNormalization: boolean;
-	/** How long a singer stays after their last socket drops AND their last pending song leaves the queue.
+	/** Applies once the last socket drops AND the last pending song leaves the queue.
 	 *  See docs/SERVER.md#membership-and-presence. */
 	presenceGraceMinutes: number;
 }
@@ -312,8 +298,8 @@ export function normalizeRoomSettings(
 	input: Partial<RoomSettings> | null | undefined,
 	base: RoomSettings = DEFAULT_ROOM_SETTINGS
 ): RoomSettings {
-	// EVERY field falls back to the CURRENT room value; `maxQualityRank` is the one deliberate exception,
-	// below. Bounded integers are CLAMPED rather than rejected, so a junk value still leaves a usable room.
+	// EVERY field falls back to the CURRENT room value except `maxQualityRank` (below). Bounded integers are
+	// CLAMPED rather than rejected, so a junk value still leaves a usable room.
 	const d = base;
 	const clampInt = (v: unknown, lo: number, hi: number, fallback: number) =>
 		typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback;
@@ -326,14 +312,14 @@ export function normalizeRoomSettings(
 	const maxQualityRank = typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? Math.round(cap) : null;
 	const style = input?.tvProgressStyle;
 	const tvProgressStyle = isTvProgressStyle(style) ? style : d.tvProgressStyle;
-	// A de-whitelisted algorithm leaves the room on the one it is running, never swapping mid-party.
+	// An unlisted algorithm leaves the room on the one it is running, never swapping mid-party.
 	const orderId = input?.queueOrder;
 	const queueOrder = isQueueOrder(orderId) ? orderId : d.queueOrder;
 	const ball = input?.lyricsBall;
 	const lyricsBall = isValidLyricsBall(ball) ? ball : d.lyricsBall;
 	const highlight = input?.lyricsHighlight;
 	const lyricsHighlight = isValidLyricsHighlight(highlight) ? highlight : d.lyricsHighlight;
-	// A NEGATIVE lead clamps to 0: running the highlight BEHIND the audio reads as the overlay being broken.
+	// A NEGATIVE lead clamps to 0: a highlight BEHIND the audio reads as a broken overlay.
 	const lyricsLeadMs = clampInt(input?.lyricsLeadMs, 0, MAX_LYRICS_LEAD_MS, d.lyricsLeadMs);
 	const lyricsScalePct = clampInt(input?.lyricsScalePct, MIN_LYRICS_SCALE_PCT, MAX_LYRICS_SCALE_PCT, d.lyricsScalePct);
 	// 0 is a real choice for both: a room may want no history, or nothing revealed ahead.
@@ -346,16 +332,16 @@ export function normalizeRoomSettings(
 	const bg = input?.tvBackgroundStyle;
 	const tvBackgroundStyle = isTvBackgroundStyle(bg) ? bg : d.tvBackgroundStyle;
 	const tvBackgroundColor = normalizeStageColor(input?.tvBackgroundColor, d.tvBackgroundColor);
-	// Rounded to a hundredth, like `guideLevelDefault`: the two 0..1 room fractions must compare alike.
+	// Rounded to a hundredth like `guideLevelDefault`: the two 0..1 room fractions must compare alike.
 	const tvBackgroundDim = normalizeStageDim(input?.tvBackgroundDim, d.tvBackgroundDim);
-	// 0 IS a real choice (no grace once your songs are done), so it is a bound, not a rejected value.
+	// 0 IS a real choice (no grace at all), so it is a bound, not a rejected value.
 	const presenceGraceMinutes = clampInt(
 		input?.presenceGraceMinutes,
 		MIN_PRESENCE_GRACE_MINUTES,
 		MAX_PRESENCE_GRACE_MINUTES,
 		d.presenceGraceMinutes
 	);
-	// NOT nullable: this is the floor a per-song override inherits, so there is nothing below it.
+	// NOT nullable: this is the floor a per-song override inherits.
 	const gl = input?.guideLevelDefault;
 	const guideLevelDefault =
 		typeof gl === 'number' && Number.isFinite(gl)
@@ -400,8 +386,7 @@ export const DEFAULT_EFFECTIVE_SETTINGS: EffectiveSettings = {
 	room: DEFAULT_ROOM_SETTINGS
 };
 
-/** The engine+model a process here should use: the global default, or the best live-selectable pairing under
- *  the room's ceiling. Downward-only. */
+/** The global default, or the best live-selectable pairing under the room's ceiling. Downward-only. */
 export function resolveProcessSeparator(settings: EffectiveSettings): { engine: SeparatorEngineId; model: string } {
 	const { defaultEngine, defaultModel } = settings.global;
 	const cap = settings.room.maxQualityRank;
@@ -426,18 +411,15 @@ export interface LyricsPresentation {
 	highlight: LyricsHighlightId;
 	/** Seconds, because that is the unit the overlay and the position telemetry both work in. */
 	leadSec: number;
-	/** True when the room asked for something the words cannot support, so Settings can say so rather than
-	 *  show a control that silently does nothing. With no song passed, only the fleet-wide half applies. */
+	/** True when the room asked for what the words cannot support, so Settings can say so rather than show a
+	 *  control that silently does nothing. With no song passed, only the fleet-wide half applies. */
 	clamped: boolean;
 }
 
 /**
- * Resolve the room's lyrics presentation against what can actually be drawn. DOWNWARD-ONLY, against TWO
- * independent bounds of which only one is config, and `songTiming` absent means UNKNOWN and does not clamp.
- * See docs/SERVER.md#settings-scopes.
- *
- * Reads `needsWords`/`granularity` off the registries rather than testing style ids, so adding a style stays
- * a registry entry.
+ * DOWNWARD-ONLY against TWO independent bounds of which only one is config; an absent `songTiming` means
+ * UNKNOWN and does not clamp. Reads `needsWords`/`granularity` off the registries rather than testing style
+ * ids, so adding a style stays a registry entry. See docs/SERVER.md#settings-scopes.
  */
 export function resolveLyricsPresentation(
 	settings: EffectiveSettings,

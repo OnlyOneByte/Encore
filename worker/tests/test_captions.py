@@ -28,8 +28,8 @@ from src.lyrics.captions import (
     read_captions,
 )
 
-# A real-shaped WebVTT track: header, a NOTE block, cue identifiers, cue settings, inline markup,
-# an annotation-only cue, and a line held on screen across two cues.
+# Real-shaped WebVTT: header, NOTE block, cue ids, settings, inline markup, an annotation-only cue, and
+# a line held across two cues.
 SAMPLE_VTT = """WEBVTT
 Kind: subtitles
 Language: en
@@ -241,12 +241,10 @@ def test_the_original_language_track_wins_over_a_translation(tmp_path):
     assert chosen is not None and chosen.endswith("captions.es-orig.vtt")
 
 
-# The tests above pin `caption_argv` (one kind per call) and the parser, but not the step-level
-# guarantee that the two kinds land in SEPARATE directories: yt-dlp names both kinds' files
-# identically (`captions.en.vtt`), so if `FetchCaptions` derived both output directories from one
-# expression, the machine fetch would target the directory the authored fetch already populated, hit
-# yt-dlp's no-overwrite default, and read the AUTHORED cues back as the machine BASELINE. These drive
-# the real `FetchCaptions` steps in plan order to pin that the directories stay distinct.
+# The step-level guarantee that the two kinds land in SEPARATE directories: yt-dlp names both files
+# identically, so one shared output expression would make the machine fetch target the directory the
+# authored fetch already populated, hit yt-dlp's no-overwrite default, and read the AUTHORED cues back as
+# the machine BASELINE.
 
 import os  # noqa: E402
 import sys  # noqa: E402
@@ -261,8 +259,8 @@ from src.processor import JobSpec  # noqa: E402
 from src.runtime import Ctx  # noqa: E402
 from src.steps.lyrics import AUTHORED, MACHINE, FetchCaptions  # noqa: E402
 
-# Two distinct VTT tracks: authored (correct words) and machine (ASR of the mixed audio). If the
-# guarantee breaks, the machine baseline comes back reading as the authored candidate.
+# Authored (correct words) and machine (ASR of the mix). If the guarantee breaks, the machine baseline
+# comes back reading as the authored candidate.
 _AUTHORED_VTT = (
     "WEBVTT\n\n00:00:09.500 --> 00:00:12.000\nHello, hello baby\n\n"
     "00:00:12.000 --> 00:00:14.250\nYou called, I can't hear a thing\n"
@@ -333,8 +331,7 @@ async def test_FetchCaptions_writes_the_two_kinds_into_separate_directories(tmp_
     )
     assert AUTHORED != MACHINE  # the directory names themselves must differ
 
-    # Both cue sets were populated, and the machine BASELINE did not come back as the authored
-    # CANDIDATE (which is what a directory collapse would produce).
+    # Both cue sets populated, and the machine BASELINE is not the authored CANDIDATE.
     assert ctx.lyrics.authored_cues, "authored fetch must yield cues"
     assert ctx.lyrics.machine_cues, "machine fetch must yield cues"
     authored_text = " ".join(c["text"] for c in ctx.lyrics.authored_cues)
@@ -388,10 +385,9 @@ async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
         )
 
 
-# The caption fetch writes the raw `.vtt` into per-job scratch, which `dial_home._run_job` rmtrees
-# when the job ends, so only the PARSED cues normally survive. `ENCORE_KEEP_RAW_CAPTIONS=1` copies the
-# raw track out to the durable `derived/` store BEFORE teardown (off by default, so an ordinary
-# process's footprint is unchanged), keeping the authored/machine distinction structural (a directory).
+# The raw `.vtt` lands in per-job scratch, which is rmtree'd at job end, so only PARSED cues normally
+# survive. `ENCORE_KEEP_RAW_CAPTIONS=1` copies it to durable `derived/` BEFORE teardown, keeping the
+# authored/machine distinction STRUCTURAL as a directory.
 
 from src.processor import raw_caption_path  # noqa: E402
 
@@ -434,7 +430,7 @@ async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted
     )
     assert os.sep + "derived" + os.sep in authored_dest, "must land under the derived/ storage class"
 
-    # The durable bytes are IDENTICAL to what landed in scratch, i.e. exactly what the parser saw.
+    # The durable bytes are IDENTICAL to what the parser saw.
     authored_scratch = os.path.join(ctx.work, AUTHORED, "captions.en.vtt")
     machine_scratch = os.path.join(ctx.work, MACHINE, "captions.en.vtt")
     assert Path(authored_dest).read_text(encoding="utf-8") == Path(authored_scratch).read_text(
@@ -442,7 +438,7 @@ async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted
     )
     assert Path(machine_dest).read_text(encoding="utf-8") == Path(machine_scratch).read_text(encoding="utf-8")
 
-    # The two retained tracks are DIFFERENT (authored candidate vs machine baseline), not one copied twice.
+    # The two retained tracks are DIFFERENT, not one copied twice.
     assert Path(authored_dest).read_text(encoding="utf-8") != Path(machine_dest).read_text(encoding="utf-8")
 
 
@@ -486,13 +482,11 @@ def test_keep_raw_captions_defaults_off_when_unset():
     assert WorkerConfig.from_env({}).keep_raw_captions is False
 
 
-# The fixture below is a real YouTube automatic-caption track (not hand-written), captured with the
-# exact `caption_argv(auto=True)` flags so the grammar is what production parses. Provenance is fixed
-# by content hash so a re-capture that drifted would fail loudly rather than silently re-shape the test.
+# A REAL YouTube automatic-caption track, captured with the exact `caption_argv(auto=True)` flags so the
+# grammar is what production parses, and pinned by content hash so a drifted re-capture fails loudly.
 #
-# YouTube's rolling format emits cues in triplets: (a) a word-timed cue whose payload OPENS with a
-# whitespace-only line and carries `<c>` per-word markup, (b) a ~10ms cue holding the plain text, then
-# (c) a cue repeating that text and APPENDING the next words — the text rolls forward as a growing prefix.
+# The rolling format emits cues in TRIPLETS: a word-timed cue whose payload opens with a whitespace-only
+# line, a ~10ms cue holding the plain text, then a cue repeating that text and APPENDING the next words.
 
 import hashlib  # noqa: E402
 
@@ -519,9 +513,8 @@ def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
     """
     segs = parse_vtt(_ROLLING_FIXTURE.read_text(encoding="utf-8"))
 
-    # No adjacent pair where the earlier line is a strict prefix of the later one AND long enough to
-    # be a real rolling extend. Sub-threshold short leftovers from the scroll trim below (a 1-2 word
-    # line quoted at the head of the next) are deliberately spared by the >= _SCROLL_MIN_OVERLAP_WORDS bound.
+    # No adjacent pair where the earlier line is a strict prefix of the later AND long enough to be a real
+    # rolling extend. Short leftovers from the scroll trim are deliberately spared by the bound.
     prefix_extends = sum(
         1
         for a, b in zip(segs, segs[1:], strict=False)
@@ -534,9 +527,8 @@ def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
         "a strict prefix of the later one"
     )
 
-    # The SCROLL residual is gone too: YouTube's window also scrolls (words drop off the front), so
-    # line N+1's HEAD repeats line N's TAIL without N being a prefix of N+1 — a shape a prefix-only
-    # fold cannot reach.
+    # The SCROLL residual too: the window also scrolls, so line N+1's HEAD repeats line N's TAIL without N
+    # being a prefix — a shape a prefix-only fold cannot reach.
     def _tail_overlap_words(a: str, b: str) -> int:
         wa, wb = a.split(), b.split()
         for k in range(min(len(wa), len(wb)), 0, -1):
@@ -554,14 +546,13 @@ def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
         "the previous tail by >= 3 words"
     )
 
-    # The trim keeps ONE window per real line rather than merging the run into far fewer lines — the
-    # guard that fails for a merge-shaped fix and passes for a trim-shaped one.
+    # ONE window per real line rather than a merge: this fails for a merge-shaped fix.
     assert 100 <= len(segs) <= 150, f"expected the rolling track to collapse to ~half; got {len(segs)}"
 
     # The triplet's 10ms hold cue must be folded into its run, not left as a degenerate line.
     assert min(s["end"] - s["start"] for s in segs) > 0.05
 
-    # Sanity: monotonic, non-empty, and the opening rolled line is fully assembled (not truncated).
+    # Monotonic, non-empty, and the opening rolled line fully assembled.
     assert segs[0]["text"].startswith("was this week's phone scam. Check it out.")
     assert all(a["start"] <= b["start"] for a, b in zip(segs, segs[1:], strict=False))
 

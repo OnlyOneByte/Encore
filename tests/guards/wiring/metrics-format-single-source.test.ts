@@ -1,9 +1,8 @@
-// The two /metrics routes must not re-grow their own copy of a formatter `$lib/metrics-format.ts` and
-// `$lib/clock.ts` exist to single-source. Caught: the realtime rate was open-coded at four sites across
-// the two files while an `rt()` helper sat three lines below one of them, and the audit page had a THIRD
-// mm:ss implementation that dropped the hour, so a >59-minute song read `62:05` where every other surface
-// reads `1:02:05`. Both are template literals over a `number`, so `tsc` sees nothing, and no behavioural
-// test references either route file.
+// guard: the two /metrics routes must not re-grow their own copy of a formatter `$lib/metrics-format.ts`
+// and `$lib/clock.ts` exist to single-source. Caught: the realtime rate was open-coded at four sites while
+// an `rt()` helper sat three lines below one of them, and the audit page had a THIRD mm:ss implementation
+// that dropped the hour, so a >59-minute song read `62:05`. Both were template literals over a `number`, so
+// `tsc` sees nothing, and no behavioural test references either route file.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

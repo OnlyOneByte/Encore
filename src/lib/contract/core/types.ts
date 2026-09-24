@@ -23,60 +23,51 @@ export interface Media {
 	title: string;
 	/** The UPLOADER as the source reported it (a YouTube channel, often not the artist at all). */
 	artist?: string;
-	/** The canonical artist, set only when the parse was CONFIDENT — a weak guess stays undefined rather than
-	 *  displaying as fact. Prefer this over `artist` for display and grouping. */
+	/** Set only when the parse was CONFIDENT — a weak guess stays undefined rather than displaying as fact. */
 	artistCanonical?: string;
-	/** The FULL billing where `artistCanonical` holds only the primary; set only when they differ. Neither
-	 *  display nor a lookup key — it RANKS provider records, which all match the primary artist. */
+	/** The FULL billing where `artistCanonical` holds only the primary. Neither display nor a lookup key —
+	 *  it RANKS provider records, which all match the primary artist. */
 	artistCredit?: string;
 	/** The canonical TITLE, same rule as `artistCanonical`. `title` stays RAW because search matches on it. */
 	titleCanonical?: string;
 	/** MusicBrainz recording id, set only when annotation agreed on artist AND title. Absent is normal. */
 	mbid?: string;
-	/** How the canonical fields came to be trusted. `musicbrainz` and `youtube` are CITATIONS, `normalizer` is
-	 *  a parse, and the difference decides overwrite rights. See docs/SERVER.md#media-storage-and-paths. */
+	/** `musicbrainz` and `youtube` are CITATIONS, `normalizer` is a parse, and the difference decides
+	 *  overwrite rights. See docs/SERVER.md#media-storage-and-paths. */
 	annotation?: { source: 'musicbrainz' | 'youtube' | 'normalizer'; confidence: 'high' | 'medium' };
 	durationSec: number;
 	thumbnail?: string;
-	/** Views the SOURCE last reported. Display and tie-breaking ONLY — never ranking, dedupe or any gate,
-	 *  because a popularity number must not decide what plays. Optional, not 0, so a row omits the chip. */
+	/** Display and tie-breaking ONLY — never ranking, dedupe or any gate: a popularity number must not
+	 *  decide what plays. Optional, not 0, so a row omits the chip. */
 	viewCount?: number;
 	stemStatus: StemStatus;
-	/** MediaStore key of the separated instrumental, set when a stems job completes. What the TV loads. */
+	/** What the TV loads. Set when a stems job completes. */
 	instrumentalRef?: string;
-	/** Which separator produced the CURRENT `instrumentalRef`, so an upgrade can compare ranks and never
-	 *  install a worse one. See docs/SERVER.md#registries-and-the-quality-ladder. */
+	/** So an upgrade can compare ranks and never install a worse one.
+	 *  See docs/SERVER.md#registries-and-the-quality-ladder. */
 	separator?: { engine: string; model: string };
-	/** MediaStore key of the ISOLATED VOCALS stem. Present means the file existed AND carried audio — a
-	 *  separation can succeed and write digital silence, and a ref set on trust advertises a guide that plays
-	 *  nothing. */
+	/** Present means the file existed AND carried audio: a separation can succeed and write digital silence,
+	 *  and a ref set on trust advertises a guide that plays nothing. */
 	vocalsRef?: string;
-	/** The GUIDE MIX: both stems in ONE 4-channel file, so the guide shares one playhead and cannot drift. A
-	 *  SECOND ref and not a replacement; absent routes to the no-mix path. See docs/ARCHITECTURE.md §6. */
+	/** Both stems in ONE 4-channel file, so the guide shares one playhead and cannot drift. A SECOND ref, not
+	 *  a replacement; absent routes to the no-mix path. */
 	guideMixRef?: string;
-	/** MediaStore key of the word-timed lyrics artifact driving the TV overlay — the CHOSEN candidate.
-	 *  Absent until an align job completes; the overlay no-ops without it. */
+	/** The CHOSEN candidate's artifact; the overlay no-ops without it. */
 	lyricsRef?: string;
-	/** Every lyrics artifact this song has, one per text source; the losers are KEPT. Read provenance via
-	 *  `chosenCandidate(media)`. See docs/SERVER.md#lyrics-candidates-and-grading. */
+	/** One per text source; the losers are KEPT. See docs/SERVER.md#lyrics-candidates-and-grading. */
 	lyricsCandidates?: LyricsCandidate[];
-	/** A HUMAN's explicit lyrics pick, by candidate `ref`. A SEPARATE field the resolver consults, never a
-	 *  change to the ranking. See docs/SERVER.md#lyrics-candidates-and-grading. */
+	/** A HUMAN's pick, by candidate `ref`. A SEPARATE field the resolver consults, never a ranking change. */
 	lyricsOverrideRef?: string;
-	/** The WORDS a human pasted for a `manual` re-pick. It lives on the MEDIA because a job row carries no
-	 *  params, so a paste held anywhere narrower is lost by a restart between enqueue and dispatch. ALWAYS
-	 *  paired with `lyricsOverrideRef`. See docs/SERVER.md#lyrics-candidates-and-grading. */
+	/** On the MEDIA because a job row carries no params: a paste held anywhere narrower is lost by a restart
+	 *  between enqueue and dispatch. ALWAYS paired with `lyricsOverrideRef`. */
 	lyricsOverrideText?: string;
-	/** How far the `align` step has got. `ready` means alignment RAN, not that it found words. See
-	 *  docs/SERVER.md#song-profile-and-readiness. */
+	/** `ready` means alignment RAN, not that it found words. */
 	lyricsStatus?: StepStatus;
-	/** What the process LEARNED about the music: key, range, loudness. Third artifact of the `stems` job, so
-	 *  present means analysis RAN. See docs/SERVER.md#song-profile-and-readiness. */
+	/** Key, range, loudness. Third artifact of the `stems` job, so present means analysis RAN. */
 	songProfile?: SongProfile;
 }
 
-/** The MediaStore key the player should load, or `''` when nothing is playable. Nothing plays unprocessed, and
- *  one pure helper is what lets `sourceRef` stay immutable. */
+/** `''` when nothing is playable. One pure helper here is what lets `sourceRef` stay immutable. */
 export function playbackRef(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): string {
 	return m.stemStatus === 'ready' && m.instrumentalRef ? m.instrumentalRef : '';
 }
@@ -114,11 +105,11 @@ export interface PlaybackState {
 	positionSec: number;
 	isPlaying: boolean;
 	keyShift: number; // semitones the current song is transposed (+sharp / -flat), 0 = original
-	/** Per-song override of the room's TV background; `null` = defer to the room. EPHEMERAL, and the per-song
-	 *  reset is a trap — see docs/SERVER.md#authority-and-the-hub. */
+	/** `null` = defer to the room. EPHEMERAL, and the per-song reset is a trap — see
+	 *  docs/SERVER.md#authority-and-the-hub. */
 	background: TvBackgroundStyle | null;
-	/** The GUIDING TRACK level for the current song, 0..1. `null` is NOT zero — it means inherit the room, and
-	 *  is what this resets to per song. Resolve with `effectiveGuideLevel`, never raw. */
+	/** 0..1. `null` is NOT zero — it means inherit the room, and is what this resets to per song. Resolve
+	 *  with `effectiveGuideLevel`, never raw. */
 	guideLevel: number | null;
 }
 
@@ -136,10 +127,8 @@ export function clampKeyShift(semitones: number): number {
 export type JobType = 'fetch' | 'stems' | 'align' | 'stems-upgrade';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
-/**
- * The wire vocabulary that CAUSES a job status change — the event, never the destination status, because a
- * status pair is event-lossy. See docs/SERVER.md#the-attempt-ledger.
- */
+/** The event, never the destination status, because a status pair is event-lossy. See
+ *  docs/SERVER.md#the-attempt-ledger. */
 export const JOB_EVENTS = [
 	'DISPATCH', // queued → assigned: offered to a worker
 	'ACCEPT', // assigned → running: worker accepted, processing begins
@@ -166,12 +155,10 @@ export interface Job {
 	id: string;
 	mediaId: string;
 	jobType: JobType;
-	/** The PROCESS this job belongs to — one id shared by every step of one run. `mediaId` cannot group runs,
-	 *  and a `stems-upgrade` starts a NEW one. See docs/SERVER.md#the-attempt-ledger. */
+	/** One id shared by every step of one run. `mediaId` cannot group runs, and a `stems-upgrade` starts a
+	 *  NEW one. See docs/SERVER.md#the-attempt-ledger. */
 	processingId: string;
-	/** The singer who REQUESTED this process, or `null` for an internal caller that imposes no per-singer
-	 *  cap. The cap counts live process JOBS and never queue entries — see
-	 *  docs/SERVER.md#idempotency-and-the-process-cap. */
+	/** `null` for an internal caller, which imposes no cap. See docs/SERVER.md#idempotency-and-the-process-cap. */
 	singerId: string | null;
 	status: JobStatus;
 	priority: number; // mirror of soonest rotationSeq; lower = sooner
@@ -187,7 +174,7 @@ export interface Job {
 	updatedAt: number;
 }
 
-/** How one attempt at one job ended. `abandoned` = returned to the queue (reject / lease expiry). */
+/** `abandoned` = returned to the queue (reject / lease expiry). */
 export const ATTEMPT_OUTCOMES = ['ready', 'failed', 'canceled', 'abandoned'] as const;
 export type AttemptOutcome = (typeof ATTEMPT_OUTCOMES)[number];
 
@@ -203,13 +190,9 @@ export interface JobAttempt {
 	attempt: number;
 	workerId: string | null;
 
-	/**
-	 * FOUR clocks; every reported duration is a subtraction between two of them, and each stays null until its
-	 * moment happens. See docs/SERVER.md#the-attempt-ledger.
-	 *
-	 *   assignedAt − enqueuedAt → queue wait      startedAt − assignedAt → ack latency
-	 *   finishedAt − startedAt  → processing time  finishedAt − enqueuedAt, by processingId → end-to-end
-	 */
+	/** FOUR clocks, each null until its moment happens. Queue wait, ack latency and processing time are the
+	 *  successive differences; end-to-end is finishedAt − enqueuedAt grouped by processingId. See
+	 *  docs/SERVER.md#the-attempt-ledger. */
 	enqueuedAt: number;
 	assignedAt: number | null;
 	startedAt: number | null;
@@ -229,17 +212,15 @@ export interface JobAttempt {
 	/** The song's length, SNAPSHOTTED so a later re-annotation cannot rewrite historical rates. */
 	audioSec: number | null;
 
-	/** Per-stage wall clock as a JSON string. Stored whole because it is only ever READ whole; read it with
-	 *  `attemptStages()`. */
+	/** Per-stage wall clock, stored whole because it is only ever READ whole; parse with `attemptStages()`. */
 	stages: string | null;
 
-	/** WHY the published lyric was chosen, as a JSON string; parse with `attemptSelection()`. Its home is the
-	 *  audit trail and NOT the sidecar: a rejected candidate is run history, not library identity. */
+	/** Parse with `attemptSelection()`. Belongs to the audit trail and NOT the sidecar: a rejected candidate
+	 *  is run history, not library identity. */
 	selection: string | null;
 }
 
-/** Parse an attempt's stage breakdown. Returns [] for absent or malformed JSON — a corrupt diagnostic
- *  must degrade to "no breakdown", never throw inside a dashboard render. */
+/** [] for absent or malformed JSON: a corrupt diagnostic must never throw inside a dashboard render. */
 export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; ms: number }[] {
 	if (!a.stages) return [];
 	try {
@@ -251,8 +232,8 @@ export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; m
 	}
 }
 
-/** WHY one lyric candidate won, as durable data, because a log is gone by the time someone notices wrong
- *  lyrics. Deliberately NOT the rejected lyric BODIES — label plus score says which arm fired. */
+/** Durable, because a log is gone by the time someone notices wrong lyrics. Deliberately NOT the rejected
+ *  lyric BODIES — label plus score says which arm fired. */
 export interface SelectionRecord {
 	/** True when no candidate existed and a baseline is being shown as the answer. */
 	baselineFallback: boolean;
@@ -262,14 +243,9 @@ export interface SelectionRecord {
 	/** Composite RANKING score of the published winner, or null when nothing could judge it. This is
 	 *  what ordered the candidates; it is NOT the axis `winnerSuspect` was decided on. */
 	winnerScore: number | null;
-	/**
-	 * Baseline COVERAGE of the published winner — the number `winnerSuspect` was actually thresholded
-	 * against. Null when nothing could judge it.
-	 *
-	 * OPTIONAL because an attempt row written before the coverage axis landed carries no such key, and
-	 * `attemptSelection` parses defensively rather than rejecting an older record: a missing coverage must
-	 * read as "not recorded", never as a decision made on nothing.
-	 */
+	/** Baseline COVERAGE of the published winner — the number `winnerSuspect` was actually thresholded
+	 *  against. OPTIONAL because a row written before the coverage axis landed carries no such key, and a
+	 *  missing coverage must read as "not recorded", never as a decision made on nothing. */
 	winnerCoverage?: number | null;
 	/** One entry per source that offered a choice among versions, in the order considered. */
 	choices: VariantChoiceRecord[];
@@ -289,16 +265,14 @@ export interface VariantChoiceRecord {
 	rejected: { label: string | null; score: number | null }[];
 }
 
-/** Parse an attempt's selection provenance. Returns null for absent or malformed JSON, so a corrupt
- *  diagnostic degrades to "no record" and never throws inside a dashboard render. */
+/** Null for absent or malformed JSON, so a corrupt diagnostic never throws inside a dashboard render. */
 export function attemptSelection(a: Pick<JobAttempt, 'selection'>): SelectionRecord | null {
 	if (!a.selection) return null;
 	try {
 		const p = JSON.parse(a.selection);
 		if (!p || typeof p !== 'object' || !Array.isArray(p.choices)) return null;
-		// Every choice must carry a string `textSource`: the metrics page keys its `{#each}` on it, so an
-		// element from a partial worker would key on undefined and THROW at render. Reject the whole record
-		// rather than render half of one.
+		// `textSource` must be a string on EVERY choice: the metrics page keys its `{#each}` on it, so one
+		// element from a partial worker keys on undefined and THROWS at render.
 		if (
 			!p.choices.every(
 				(c: unknown) =>
@@ -320,16 +294,15 @@ export function realtimeFactor(a: Pick<JobAttempt, 'startedAt' | 'finishedAt' | 
 	return (a.finishedAt - a.startedAt) / 1000 / a.audioSec;
 }
 
-/** The candidate a media is currently showing — where the TV reads provenance. Null when the artifact
- *  predates candidate tracking, because "unknown" is the honest answer. */
+/** Where the TV reads provenance. Null when the artifact predates candidate tracking — "unknown" is the
+ *  honest answer. */
 export function chosenCandidate(m: Pick<Media, 'lyricsRef' | 'lyricsCandidates'>): LyricsCandidate | null {
 	if (!m.lyricsRef || !m.lyricsCandidates?.length) return null;
 	return m.lyricsCandidates.find((c) => c.ref === m.lyricsRef) ?? null;
 }
 
-/** The single place that resolves WHICH candidate wins: a human override if one is set and still on disk,
- *  otherwise the ranking. BOTH rank-derivation sites must route through here. See
- *  docs/SERVER.md#lyrics-candidates-and-grading. */
+/** A human override if one is set and still on disk, otherwise the ranking. BOTH rank-derivation sites
+ *  MUST route through here. See docs/SERVER.md#lyrics-candidates-and-grading. */
 export function resolveLyricsRef(
 	candidates: readonly LyricsCandidate[] | undefined,
 	overrideRef: string | null | undefined
@@ -339,8 +312,8 @@ export function resolveLyricsRef(
 	return pickBestLyrics(set)?.ref;
 }
 
-/** Under a sticky override, would the RANKER now prefer a different candidate? Drives the phone's "a better
- *  version exists" hint. `false` with no override, on agreement, or when the pinned ref is gone. */
+/** Drives the phone's "a better version exists" hint. `false` with no override, on agreement, or when the
+ *  pinned ref is gone. */
 export function hasNewerCandidateThanOverride(
 	candidates: readonly LyricsCandidate[] | undefined,
 	overrideRef: string | null | undefined

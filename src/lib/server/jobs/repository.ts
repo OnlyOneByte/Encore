@@ -1,7 +1,5 @@
-// The durable state-of-record for process processing (Demucs stems, WhisperX align, scoring). SQLite
-// is authority here, not the transport: workers dial home over WS and the ledger tracks
-// ownership/lifecycle. I/O layer; legal-transition rules live in the pure transitions.ts. See
-// docs/ARCHITECTURE.md §7.
+// The durable state-of-record for job processing. I/O layer only — legal-transition rules live in the
+// pure transitions.ts. See docs/ARCHITECTURE.md §7 and docs/SERVER.md#the-attempt-ledger.
 
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import type { DB } from '../db/index';
@@ -18,9 +16,8 @@ import {
 import { assertEvent } from './transitions';
 import type { AttemptLedger, AttemptFacts } from './attempts';
 
-// Dedup slot occupancy: a (mediaId, jobType) is "taken" by any job NOT failed/canceled — the same set
-// the partial unique index `jobs_live_media_type_idx` enforces (schema.ts). A `ready` job still
-// occupies the slot (reuse the result); only failed/canceled frees it for re-processing.
+// A (mediaId, jobType) is "taken" by any job NOT failed/canceled — the same set the partial unique index
+// `jobs_live_media_type_idx` enforces. A `ready` job STILL occupies the slot; only failed/canceled frees it.
 const SLOT_FREEING_STATUSES: JobStatus[] = ['failed', 'canceled'];
 
 /** Optional fields a transition can patch alongside the status change. */
@@ -35,10 +32,9 @@ export interface JobPatch {
 	attempts?: number;
 }
 
-// The attempt OUTCOME each terminal-or-requeue event seals, driven off the event inside `transition`
-// rather than re-derived per wrapper. A requeue seals `abandoned`; terminal events seal their own name.
-// DISPATCH/ACCEPT/PROGRESS/REPRIORITIZE seal nothing here — DISPATCH/ACCEPT instead PATCH the open
-// attempt with dispatch facts / a start time via `assign`/`accept`, data the machine doesn't have.
+// Driven off the EVENT inside `transition` rather than re-derived per wrapper. A requeue seals
+// `abandoned`; terminal events seal their own name. DISPATCH/ACCEPT/PROGRESS/REPRIORITIZE seal nothing —
+// DISPATCH/ACCEPT instead PATCH the open attempt via `assign`/`accept`, data the machine does not have.
 const OUTCOME_FOR_EVENT: Partial<Record<JobEvent, AttemptOutcome>> = {
 	COMPLETE: 'ready',
 	FAIL: 'failed',
@@ -51,43 +47,31 @@ const OUTCOME_FOR_EVENT: Partial<Record<JobEvent, AttemptOutcome>> = {
 /** The requeue events — those that seal the old attempt AND open a fresh one after the status write. */
 const REQUEUE_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'LEASE_EXPIRED', 'RECOVER']);
 
-// WORKER-REPORTED events only: a live worker declined (REJECT) or finished (COMPLETE) its job, so its
-// slot is free NOW. LEASE_EXPIRED/RECOVER are absent — they fire when the worker is presumed dead, so
-// the registry reclaims the slot on the next heartbeat/session-drop instead of double-freeing against
-// an in-flight completion. FAIL is absent too, even though a worker-reported failure DOES free a slot,
-// because FAIL also arrives from the reaper's exhausted-attempts branch and worker-hub's unservable-TTL
-// branch — keying release off FAIL alone would free a slot the reaper's dead worker never actually held,
-// driving an assign/reject storm. The worker-reported FAIL instead releases explicitly at its one
-// call site (worker-hub.ts `#onFailed`'s terminal branch, guarded by `job.workerId === msg.workerId`
-// so the worker is provably alive), so the reaper's own fail correctly frees nothing here. CANCEL is
-// absent for the same double-free reason cancel.ts documents: cancel() clears `workerId` before there's
-// an owner left to notify, and the worker frees its own slot on the next heartbeat.
+// WORKER-REPORTED events ONLY, and the exclusions are deliberate — see
+// docs/SERVER.md#idempotency-and-the-process-cap. Adding FAIL, LEASE_EXPIRED, RECOVER or CANCEL here
+// double-frees a slot the registry already reclaims, which drives an assign/reject storm.
 const SLOT_RELEASING_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'COMPLETE']);
 
 export class JobRepository {
 	#db: DB;
 	#ledger: AttemptLedger | null;
 	#releaseSlot: ((workerId: string) => void) | null = null;
-	/** The ledger is OPTIONAL — a missing one is a no-op, never a throw, since it's observability, not
-	 *  correctness. app.ts wires it; tests that assert on history pass one in. */
+	/** OPTIONAL — a missing ledger is a no-op, never a throw: it is observability, not correctness. */
 	constructor(db: DB, ledger?: AttemptLedger) {
 		this.#db = db;
 		this.#ledger = ledger ?? null;
 	}
 
-	/** OPTIONAL, injected (not constructor-passed) since app.ts builds the registry after the
-	 *  repository. Fires on a SLOT_RELEASING_EVENT with the OWNING worker id read pre-write, before the
-	 *  patch clears `workerId`. Unset in tests that never touch capacity — the hook then no-ops. */
+	/** Injected rather than constructor-passed, since app.ts builds the registry after the repository.
+	 *  Fires on a SLOT_RELEASING_EVENT with the owning worker id read PRE-write, before the patch clears
+	 *  `workerId`. */
 	setSlotReleaseHook(release: (workerId: string) => void): void {
 		this.#releaseSlot = release;
 	}
 
-	/** Enqueues a job for (mediaId, jobType), or REUSES the existing live one (idempotent dedup) — two
-	 *  singers queueing the same song get one job, and reusing it does not re-open an attempt since the
-	 *  caller is subscribing to work already in flight. `processingId` omitted mints a new process id;
-	 *  passed, it threads an existing process through a chained step. `singerId` attributes the process
-	 *  to the requester for the per-singer cap; a REUSED job keeps its ORIGINAL requester rather than
-	 *  being re-attributed to whoever tapped second. */
+	/** REUSES the existing live job when there is one (idempotent dedup), without re-opening an attempt:
+	 *  the caller is subscribing to work already in flight. An omitted `processingId` mints a new process
+	 *  id. A REUSED job keeps its ORIGINAL requester rather than being re-attributed to the second tap. */
 	enqueue(
 		mediaId: string,
 		jobType: JobType,
@@ -137,13 +121,10 @@ export class JobRepository {
 		return this.#toJob(row);
 	}
 
-	/** Frees a FINISHED job's dedup slot so the song can be re-processed. A `ready` job still occupies
-	 *  the slot and is TERMINAL (no outgoing `cancel()` edge), so without this a re-run (re-picked
-	 *  lyrics, a re-process button) silently does nothing — `enqueue` just hands back the old `ready`
-	 *  job. Deletes only the row `findLive` names (the actual slot occupant, never a stray already-freed
-	 *  sibling) and only when it's TERMINAL — a live occupant is left untouched and this returns `false`,
-	 *  so a running worker's job can never be yanked out from under it. `job_attempts` is untouched, so
-	 *  the prior attempt's audit trail survives. Returns true when a row was freed. */
+	/** Frees a FINISHED job's dedup slot so the song can be re-processed. Without it a re-run silently
+	 *  does nothing, because `ready` is terminal (no `cancel()` edge) and `enqueue` hands the old job
+	 *  back. Deletes only the row `findLive` names, and only when TERMINAL, so a running worker's job can
+	 *  never be yanked away. `job_attempts` is untouched, so the audit trail survives. */
 	supersedeForRerun(mediaId: string, jobType: JobType): boolean {
 		const job = this.findLive(mediaId, jobType);
 		if (!job || !isTerminalJob(job.status)) return false;
@@ -151,10 +132,9 @@ export class JobRepository {
 		return true;
 	}
 
-	/** The first not-yet-finished job in pipeline order for this song, or null when nothing is in flight
-	 *  — /api/library's "what is processing right now" answer, checked across all three steps (not just
-	 *  `stems`) so a song mid-fetch or mid-align isn't reported as idle. `stems-upgrade` is excluded:
-	 *  background work on a finished song, not a step the room is waiting on. */
+	/** The first not-yet-finished job in pipeline order — checked across all three steps, so a song
+	 *  mid-fetch or mid-align is not reported idle. `stems-upgrade` is excluded: background work on an
+	 *  already-finished song is not a step the room waits on. */
 	findOutstandingForMedia(mediaId: string): Job | null {
 		const chain: JobType[] = ['fetch', 'stems', 'align'];
 		for (const jobType of chain) {
@@ -176,22 +156,19 @@ export class JobRepository {
 			.map((r) => this.#toJob(r)!);
 	}
 
-	/** Fires a lifecycle EVENT through the pure state machine, patching any provided fields and bumping
-	 *  `updatedAt`. The event, not a bare destination status, is the input — the machine can tell a
-	 *  REJECT from a LEASE_EXPIRED even though both land on `queued`. Throws on an unknown id or an
-	 *  event illegal from the current status. Returns the updated job. */
+	/** The EVENT, not a bare destination status, is the input — the machine can tell a REJECT from a
+	 *  LEASE_EXPIRED even though both land on `queued`. Throws on an illegal event or unknown id. */
 	transition(id: string, event: JobEvent, patch: JobPatch, now: number): Job {
 		const current = this.byId(id);
 		if (!current) throw new Error(`unknown job: ${id}`);
 		const to = assertEvent(current.status, event);
 
-		// Sealed BEFORE the row write, so a requeue's abandon dates from the pre-transition attempt; a
-		// fresh attempt opens AFTER the write (below) so its number counts the row just sealed.
+		// Sealed BEFORE the row write, so the abandon dates from the pre-transition attempt; the fresh
+		// attempt opens AFTER it, so its number counts the row just sealed. Reordering breaks both.
 		const outcome = OUTCOME_FOR_EVENT[event];
 		if (outcome) this.#ledger?.closed(id, outcome, now, patch.error ?? null);
 
-		// Reads workerId from the PRE-WRITE row: a requeue patch (REJECT) clears it before the write.
-		// Release rides ENTERING the released state, so a new terminal path can't forget it.
+		// PRE-WRITE row, because a requeue patch (REJECT) clears `workerId` before the write.
 		if (current.workerId && SLOT_RELEASING_EVENTS.has(event)) this.#releaseSlot?.(current.workerId);
 
 		const next = { ...patch, status: to, updatedAt: now };
@@ -203,25 +180,18 @@ export class JobRepository {
 		return updated;
 	}
 
-	/** Lowers a queued/in-flight job's priority WITHOUT a status change. `priority` is scheduling
-	 *  metadata, not lifecycle (dispatch sorts priority ASC, createdAt ASC); a process snapshots
-	 *  `soonestSeqFor` ONCE at enqueue, and if that lands at `NO_QUEUE_PRIORITY` (queue add lost to a
-	 *  reconnect) nothing else ever revises it. Bypasses `transition` because `queued → queued` is
-	 *  deliberately not a legal edge (transitions.ts) — opening one would let a lease-expiry requeue
-	 *  masquerade as a no-op update. Two guards: terminal jobs are never touched, and priority can only
-	 *  be LOWERED (more urgent) — so this can unstick a starved process but never demote one another
-	 *  entry still needs. No-op when the id is terminal or the new priority isn't strictly lower. */
+	/** A status-free scheduling write, so it bypasses `transition`: `queued → queued` is deliberately not
+	 *  a legal edge, and opening one would let a lease-expiry requeue masquerade as a no-op update. Can
+	 *  only ever LOWER the number, which is what makes it safe to call on every queue add. */
 	reprioritize(id: string, priority: number, now: number): Job {
 		const current = this.byId(id);
 		if (!current) throw new Error(`unknown job: ${id}`);
 		if (isTerminalJob(current.status)) return current;
 		if (priority >= current.priority) return current;
-		// An in-machine edge (queued|running --REPRIORITIZE--> same status); the two guards above stay
-		// because they encode policy the pure machine doesn't know (only-lower, terminal short-circuit).
+		// The guards above stay: they encode policy the pure machine does not know (only-lower, terminal).
 		return this.transition(id, 'REPRIORITIZE', { priority }, now);
 	}
 
-	// — semantic lifecycle helpers (thin wrappers over transition, named for the wire protocol §5) —
 
 	/** Dispatch: offer the job to a worker; the caller sets the ack-lease deadline. */
 	assign(id: string, workerId: string, leaseExpiresAt: number | null, now: number, facts: AttemptFacts = {}): Job {
@@ -230,8 +200,8 @@ export class JobRepository {
 		return job;
 	}
 
-	/** Worker accepted: begin processing. Stamps a fresh PROGRESS lease — the ack lease from `assign`
-	 *  no longer applies, so a worker accepting near the ack deadline isn't instantly reaped as dead. */
+	/** Stamps a fresh PROGRESS lease: the ack lease no longer applies, so a worker accepting near the ack
+	 *  deadline is not instantly reaped as dead. */
 	accept(id: string, leaseExpiresAt: number | null, now: number): Job {
 		const job = this.transition(id, 'ACCEPT', { leaseExpiresAt }, now);
 		this.#ledger?.started(id, now);
@@ -249,8 +219,8 @@ export class JobRepository {
 		return this.transition(id, 'COMPLETE', { progressPct: 100, leaseExpiresAt: null, workerId: null }, now);
 	}
 
-	/** Terminal failure (retries exhausted or non-retryable). `attempts` is optional: the reaper passes
-	 *  the final exhausting count; a direct non-retryable fail omits it and leaves the count as-is. */
+	/** `attempts` is optional: the reaper passes the final exhausting count, a direct non-retryable fail
+	 *  omits it and leaves the count as-is. */
 	fail(id: string, error: string, now: number, attempts?: number): Job {
 		const patch: JobPatch = { error, leaseExpiresAt: null, workerId: null };
 		if (attempts !== undefined) patch.attempts = attempts;
@@ -264,27 +234,18 @@ export class JobRepository {
 		return this.transition(id, 'CANCEL', { leaseExpiresAt: null, workerId: null }, now);
 	}
 
-	/** Returns a non-terminal job to the queue. `cause` names WHY: a worker REJECT (legal only from
-	 *  `assigned`), a `LEASE_EXPIRED` timeout, or a boot `RECOVER` (legal only from `running`) — three
-	 *  distinct events all landing on `queued`, validated against the machine so a caller can't smuggle
-	 *  in one the current status forbids. The caller decides whether `attempts` increments (an
-	 *  ack-timeout doesn't; a progress-lease expiry does). Defaults to `LEASE_EXPIRED`, legal from both
-	 *  statuses, for callers that don't care about the distinction. Two ledger writes in order: the
-	 *  in-flight attempt is ABANDONED, then a fresh one opens dated from now. */
+	/** `cause` names WHY — REJECT, LEASE_EXPIRED or boot RECOVER — three distinct events all landing on
+	 *  `queued`, validated against the machine so a caller cannot smuggle in one the status forbids. The
+	 *  CALLER decides whether `attempts` increments: an ack-timeout does not, a progress expiry does. */
 	requeue(id: string, attempts: number, now: number, cause: JobEvent = 'LEASE_EXPIRED'): Job {
-		// `transition` seals the dying attempt `abandoned` before the status write and opens the fresh
-		// one after it (see REQUEUE_EVENTS), so both ledger writes ride the machine off `cause`.
+		// Both ledger writes ride the machine off `cause` (see REQUEUE_EVENTS).
 		return this.transition(id, cause, { workerId: null, leaseExpiresAt: null, attempts }, now);
 	}
 
-	/** The DISTINCT media this singer has an in-flight process JOB for — what the per-singer
-	 *  concurrent-process cap is derived from. Counts only a live ROOT-process job (`fetch`/`stems`,
-	 *  live meaning not failed/canceled/ready), never a chained follow-up: `align`/`stems-upgrade`
-	 *  inherit the same `singerId` but are downstream of an already-admitted process, so counting them
-	 *  would let one process consume several cap slots. Ledger-backed rather than derived from queue
-	 *  entries because the process (HTTP) and the entry (WebSocket) are different transports and only
-	 *  the entry is droppable — a phone tapping Sing mid-reconnect files a process with NO entry, so an
-	 *  entry-derived count would see zero and admit every such tap, the exact bypass this closes. */
+	/** What the per-singer cap is derived from. Counts only a live ROOT-process job (`fetch`/`stems`),
+	 *  never a chained follow-up: `align`/`stems-upgrade` inherit the same `singerId` but are downstream
+	 *  of an already-admitted process, so counting them lets one process consume several cap slots.
+	 *  Ledger-backed, never entry-derived — see docs/SERVER.md#idempotency-and-the-process-cap. */
 	liveProcessMediaForSinger(singerId: string): Set<string> {
 		const rows = this.#db
 			.select({ mediaId: jobs.mediaId })
@@ -300,7 +261,7 @@ export class JobRepository {
 		return new Set(rows.map((r) => r.mediaId));
 	}
 
-	/** Map a DB row to the shared Job (the row shape mirrors Job 1:1 — see schema.ts / shared types). */
+	/** The row shape mirrors Job 1:1 — see schema.ts. */
 	#toJob(row: typeof jobs.$inferSelect | undefined): Job | null {
 		return row ?? null;
 	}

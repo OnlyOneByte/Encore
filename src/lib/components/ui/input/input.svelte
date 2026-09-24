@@ -1,10 +1,7 @@
-<!--
-  The registry's appearance is REPLACED by Encore's `.encore-field` look, in scoped CSS rather than
-  utilities. Two hard floors, shared with native-select.svelte: `min-height: var(--tap)`, which reads the
-  token rather than restating 44 because `touch-targets.test.ts` requires that; and a 16px font-size on
-  every variant, because iOS Safari auto-zooms on focusing any control under 16px and never zooms back,
-  leaving the guest stuck at 1.3x for the session. See docs/FRONTEND.md#shared-components.
--->
+<!-- The registry's appearance is REPLACED by Encore's `.encore-field` look, in scoped CSS rather than utilities. Two
+  hard floors, shared with native-select.svelte: `min-height: var(--tap)`, which reads the token rather than restating 44
+  because `touch-targets.test.ts` requires that, and a 16px font-size on every variant, because iOS Safari auto-zooms on
+  focusing any control under 16px and never zooms back. See docs/FRONTEND.md#shared-components. -->
 <script lang="ts">
 	import { cn, type WithElementRef } from '$lib/utils.js';
 	import type { HTMLInputAttributes, HTMLInputTypeAttribute } from 'svelte/elements';
@@ -74,8 +71,7 @@
 		font-size: var(--ph-text-lg);
 		background: var(--card);
 	}
-	/* A LAN address is read character by character to check it, so the digits stay monospaced. The name
-	   field deliberately does NOT inherit this. */
+	/* A LAN address is read character by character to check it, so the digits stay monospaced; the name field does not. */
 	.encore-field[data-variant='mono'] {
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 		padding: 7px var(--space-md);

@@ -1,7 +1,6 @@
-// Spotify Search is an ANNOTATOR ONLY — audio is never fetched from Spotify, only from YouTube.
-// Credentials (SPOTIFY_CLIENT_ID/SECRET, Client-Credentials flow) live in env vars only; this app
-// has no secret storage and must not become the first to add one. Creds unset degrades to []
-// instead of throwing; each failure path below names its reason so only that case stays silent.
+// An ANNOTATOR ONLY: audio is never fetched from Spotify. Credentials live in ENV VARS only — this app has
+// no secret storage and must not become the first to add one. Unset creds degrade to [] rather than
+// throwing, and each failure path below names its reason, so only a clean no-match stays silent.
 
 import type { SearchResult } from './resolver';
 
@@ -15,7 +14,7 @@ interface SpotifyEnv {
 	clientSecret: string;
 }
 
-/** Read creds from the environment. Returns null when either is unset — the graceful-degrade signal. */
+/** Null when either is unset — the graceful-degrade signal. */
 export function spotifyEnv(env: Record<string, string | undefined> = process.env): SpotifyEnv | null {
 	const clientId = env.SPOTIFY_CLIENT_ID?.trim();
 	const clientSecret = env.SPOTIFY_CLIENT_SECRET?.trim();
@@ -24,10 +23,9 @@ export function spotifyEnv(env: Record<string, string | undefined> = process.env
 }
 
 /**
- * Turns a Spotify /v1/search payload into SearchResults. `source: 'spotify'` marks provenance;
- * `sourceRef` (the Spotify track id) is NEVER fetched — `isProcessableSource` is the sole authority
- * that refuses processing it (`fetcherFor` does NOT refuse a spotify source; it returns the default
- * downloader as a floor). `duration_ms` is rounded to whole seconds; artist billing is joined in full.
+ * `sourceRef` is the Spotify track id and is NEVER fetched: `isProcessableSource` is the sole authority that
+ * refuses processing it, and `fetcherFor` does NOT refuse a spotify source — it returns the default
+ * downloader as a floor. `duration_ms` rounds to whole seconds; artist billing is joined in full.
  */
 export function parseSpotifySearchJson(json: unknown): SearchResult[] {
 	const out: SearchResult[] = [];
@@ -43,7 +41,7 @@ export function parseSpotifySearchJson(json: unknown): SearchResult[] {
 		};
 		if (!t.id || !t.name) continue;
 		const names = Array.isArray(t.artists) ? t.artists.map((a) => a?.name).filter((n): n is string => !!n) : [];
-		// Spotify lists images largest-first; the last is the smallest — cheapest thumbnail bytes.
+		// Images are listed largest-first, so the last is the cheapest thumbnail.
 		const images = t.album?.images ?? [];
 		const thumb = images.length ? images[images.length - 1]?.url : undefined;
 		out.push({
@@ -58,7 +56,7 @@ export function parseSpotifySearchJson(json: unknown): SearchResult[] {
 	return out;
 }
 
-// Module-scoped: one cached app token per process (a credential property, not a per-request one).
+// One cached app token per process: a credential property, not a per-request one.
 let _token: { value: string; expiresAt: number } | null = null;
 
 async function appToken(env: SpotifyEnv, now: () => number, fetchImpl: typeof fetch): Promise<string | null> {
@@ -74,34 +72,31 @@ async function appToken(env: SpotifyEnv, now: () => number, fetchImpl: typeof fe
 			body: 'grant_type=client_credentials'
 		});
 		if (!res.ok) {
-			// Log the status so a bad-creds 401 is distinguishable from a throttle or outage; the []-degrade is unchanged.
+			// Logged, so a bad-creds 401 stays distinguishable from a throttle or outage.
 			console.warn(`[spotify] token endpoint refused with ${res.status}; search will degrade to empty`);
 			return null;
 		}
 		const j = (await res.json()) as { access_token?: string; expires_in?: number };
 		if (!j.access_token) {
-			// a 200 with no access_token is a malformed/unexpected token response, not a miss.
+			// A 200 with no access_token is a malformed token response, not a miss.
 			console.warn('[spotify] token endpoint returned 200 but no access_token; search will degrade to empty');
 			return null;
 		}
 		_token = { value: j.access_token, expiresAt: now() + (j.expires_in ?? 3600) * 1000 };
 		return _token.value;
 	} catch (err) {
-		// Log network/DNS/TLS failures too, or a thrown fetch is invisible next to the []-degrade.
+		// Logged too, or a thrown fetch is invisible next to the []-degrade.
 		console.warn('[spotify] token fetch failed (network/DNS/TLS); search will degrade to empty:', err);
 		return null;
 	}
 }
 
-/** test-only: drop the cached token so a test controls token issuance deterministically. */
+/** Test-only: drops the cached token so a test controls issuance deterministically. */
 export function _resetSpotifyToken(): void {
 	_token = null;
 }
 
-/**
- * Wired into SpotifyResolver in prod; `fetch`/`now`/`env` are injectable for tests. Never throws —
- * returns [] on any failure (missing creds, token refusal, upstream error, timeout).
- */
+/** Never throws: [] on missing creds, token refusal, upstream error or timeout. */
 export async function spotifySearch(
 	query: string,
 	limit: number,
@@ -122,13 +117,13 @@ export async function spotifySearch(
 			signal: controller.signal
 		});
 		if (!res.ok) {
-			// Log res.status, or a throttle (429) reads identically to a clean no-match.
+			// Logged, or a throttle reads identically to a clean no-match.
 			console.warn(`[spotify] search refused with ${res.status}; degrading to empty`);
 			return [];
 		}
 		return parseSpotifySearchJson(await res.json());
 	} catch (err) {
-		// Log timeout-abort vs network fault too, or both collapse indistinguishably into [].
+			// Logged, or a timeout-abort and a network fault collapse indistinguishably into [].
 		console.warn('[spotify] search failed (timeout/network); degrading to empty:', err);
 		return [];
 	} finally {

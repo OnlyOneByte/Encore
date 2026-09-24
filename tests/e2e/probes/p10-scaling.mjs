@@ -9,8 +9,8 @@
  *   6. Contrast from COMPUTED colours against WCAG AA (4.5:1; 3:1 for large text).
  *   7. Overscan — anything important inside the 5% region a real television crops.
  *
- * Captures only: writes screenshots + findings.json under $SCRATCH/shots/p10/ and exits 0 whatever
- * it saw, so its output is the verdict. See docs/E2E.md#probes.
+ * Captures only: writes screenshots + findings.json under $SCRATCH/shots/p10/ and exits 0 whatever it
+ * saw, so its OUTPUT is the verdict.
  */
 
 import { connect, sleep } from '../driver.mjs';
@@ -159,7 +159,6 @@ async function measureTv(label, w, h) {
 				'--tv-name': cssvar('--tv-name'),
 				'--tv-joinurl': cssvar('--tv-joinurl'),
 				'--tv-hero': cssvar('--tv-hero'),
-				'--tv-qr': cssvar('--tv-qr'),
 				'--tv-safe-x': cssvar('--tv-safe-x'),
 				'--tv-safe-y': cssvar('--tv-safe-y')
 			},

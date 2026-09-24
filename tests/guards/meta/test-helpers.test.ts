@@ -13,7 +13,6 @@ import { join } from 'node:path';
 import { at } from '@encore/test-support';
 import { SKIP_DIRS, classPresent, markupControls, styleFiles, svelteFiles } from '@encore/test-support/scan';
 
-/** The one module allowed to declare these helpers. Consumer paths below are repo-relative. */
 const HOME = 'tests/support/src/scan.ts';
 
 /**
@@ -22,7 +21,6 @@ const HOME = 'tests/support/src/scan.ts';
  */
 const WALK_HOME = 'tests/support/src/tree.ts';
 
-/** The five helpers the standard names, and the one module allowed to declare them. */
 const HELPERS = ['svelteFiles', 'styleFiles', 'markupControls', 'allSvelte', 'classPresent'];
 
 /**
@@ -62,7 +60,6 @@ function declares(src: string, name: string): boolean {
 }
 
 test('no guard declares its own copy of a scan helper', () => {
-	// Non-vacuity: the consumer list is real and on disk. A typo'd path would drop a file from scrutiny.
 	expect(CONSUMERS.length).toBeGreaterThanOrEqual(10);
 
 	const offenders: string[] = [];
@@ -90,7 +87,6 @@ test('every consumer that uses a scan helper imports it from the one home', () =
 			}
 		}
 		for (const h of HELPERS) {
-			// a bare call with no import is a local copy (arm 1) or an unresolved reference the typecheck gate catches.
 			if (new RegExp(`\\b${h}\\s*\\(`).test(src) && !imported.has(h)) {
 				offenders.push(`${rel}: calls \`${h}\` without importing it from ${HOME}`);
 			}
@@ -100,57 +96,51 @@ test('every consumer that uses a scan helper imports it from the one home', () =
 });
 
 test('the shared walk excludes built and vendored trees, and allowlists no directory', () => {
-	// Asserted on the exported set rather than the source text, so it pins the value the walk consults.
 	for (const d of ['node_modules', 'build', '.svelte-kit', 'dist', '.git']) {
 		expect(SKIP_DIRS.has(d)).toBe(true);
 	}
 
-	// `src/lib/components/ui/` — the design-library copy-in target — must be in scope BY CONSTRUCTION, and
-	// cannot be asserted by walking for it because it does not exist yet. What is assertable: exactly one
-	// `readdirSync` in the module that owns the walk, and no directory-name test other than the skip set.
+	// `src/lib/components/ui/` — the copy-in target — must be in scope BY CONSTRUCTION, which cannot be asserted by
+	// walking for it. What IS assertable: exactly one `readdirSync` in the module that owns the walk, no
+	// directory-name test other than the skip set, and no second walk in the filter module.
 	const walkHome = stripComments(readFileSync(at(WALK_HOME), 'utf8'));
 	expect([...walkHome.matchAll(/readdirSync\(/g)]).toHaveLength(1);
 	const dirTests = [...walkHome.matchAll(/(\w+)\.(?:has|includes)\(\w+\.name\)/g)].map((m) => m[1]);
 	expect(dirTests).toEqual(['SKIP_DIRS']);
 
-	// …and the filter module must not have grown a second walk of its own.
 	const home = stripComments(readFileSync(at(HOME), 'utf8'));
 	expect([...home.matchAll(/readdirSync\(/g)]).toHaveLength(0);
 });
 
 test('the shared walk actually skips a directory in the exclusion set', () => {
-	// Behavioural arm, so the assertions above cannot pass over a SKIP_DIRS the walk never reads. node_modules
-	// holds .svelte and .css files, so a walk ignoring SKIP_DIRS returns far more than the source tree.
+	// Behavioural arm, so the assertions above cannot pass over a SKIP_DIRS the walk never reads: node_modules
+	// holds .svelte and .css files, so a walk ignoring it returns far more than the source tree.
 	const src = svelteFiles(at('src'));
 	const fromCore = svelteFiles(at('.'));
 	expect(src.length).toBeGreaterThanOrEqual(20);
 	expect(fromCore.some((f) => f.includes(`${join('', 'node_modules', '')}`))).toBe(false);
 	expect(styleFiles(at('.')).some((f) => f.includes(`${join('', 'node_modules', '')}`))).toBe(false);
-	// …and the walk is otherwise unfiltered: `styleFiles` is `svelteFiles` widened to `.css`, never narrowed,
-	// so it is a strict superset. A drift that narrowed either reds here.
+	// …and otherwise unfiltered: `styleFiles` is `svelteFiles` widened to `.css`, so it is a strict SUPERSET.
 	const style = new Set(styleFiles(at('src')));
 	expect(src.every((f) => style.has(f))).toBe(true);
 	expect(style.size).toBeGreaterThan(src.length);
 });
 
 test('the shared markupControls and classPresent are the ones the guards behaved with', () => {
-	// The two helpers that are not scan walks. Pin their behaviour at the shared home so the move is not a
-	// silent semantic change and a later edit cannot quietly weaken every consumer at once.
+	// The two helpers that are not scan walks, pinned at the shared home so a later edit cannot quietly weaken
+	// every consumer at once.
 	const ctrl = markupControls(
 		'<button class="gear big" onclick={x}>x</button><a href="/x" class="back">y</a><div class="plain">z</div>'
 	);
 	expect(ctrl.tags.has('button')).toBe(true);
 	expect(ctrl.tags.has('a')).toBe(true);
 	expect([...ctrl.classes].sort()).toEqual(['back', 'big', 'gear']);
-	// a non-interactive element contributes nothing
 	expect(ctrl.classes.has('plain')).toBe(false);
 
-	// exact-token semantics: a hyphen fragment and an interpolated identifier are NOT classes
 	expect(classPresent('<div class="badqr-b"></div>', 'b')).toBe(false);
 	expect(classPresent('<div class="badqr-b"></div>', 'badqr-b')).toBe(true);
 	expect(classPresent('<div class="pill {row.outcome}"></div>', 'row')).toBe(false);
 	expect(classPresent('<div class="pill {row.outcome}"></div>', 'pill')).toBe(true);
-	// the directive and <style> arms
 	expect(classPresent('<div class:active></div>', 'active')).toBe(true);
 	expect(classPresent('<style>.chip { color: red }</style>', 'chip')).toBe(true);
 });

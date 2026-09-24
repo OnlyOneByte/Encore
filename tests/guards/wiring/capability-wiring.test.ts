@@ -1,10 +1,7 @@
-// `capabilities.ts` is the ONE place that answers "is this actor allowed to do that?", so gating a
-// capability later must be an edit there and nowhere else. Caught: `queue:remove-any` and
-// `queue:reorder-any` had NO asker — remove/move were gated by membership alone and never consulted
-// `can()` — so narrowing `can()` would silently leave exactly those two ops open to every joined singer.
-//
-// Nothing to assert behaviourally, since `can()` currently returns `Boolean(actor?.singerId)` and the
-// ops still succeed either way; the defect is a MISSING CALL SITE, which is decidable from source.
+// guard: `capabilities.ts` is the ONE place that answers "is this actor allowed to do that?". Caught:
+// `queue:remove-any` and `queue:reorder-any` had NO asker — remove/move were gated by membership alone and
+// never consulted `can()` — so narrowing `can()` would silently leave exactly those two ops open to every
+// joined singer. The defect is a MISSING CALL SITE, which is decidable from source.
 // See docs/GUARDS.md#wiring
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
@@ -45,10 +42,9 @@ function switchArm(body: string, op: string): string {
 }
 
 /**
- * The full `if (!can(…)) return '<reason>'` gate shape, so an inert `can(…)` call whose result is
- * discarded cannot satisfy it. The tail must be a returned STRING, never a bare `return`: `return null`
- * is validateCommand's "command is valid" answer, so a gate whose consequent is `return null` APPROVES
- * on denial — permanently open while keeping the exact `if (!can(…))` shape.
+ * The full `if (!can(…)) return '<reason>'` gate shape, so an inert `can(…)` whose result is discarded
+ * cannot satisfy it. The tail must be a returned STRING: `return null` is validateCommand's "command is
+ * valid" answer, so a gate whose consequent is `return null` APPROVES on denial.
  */
 function gateFor(cap: string): RegExp {
 	return new RegExp(

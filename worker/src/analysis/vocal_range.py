@@ -31,23 +31,18 @@ import numpy as np
 
 from .wav import read_wav_mono
 
-# Human singing spans roughly the bass low E (~82 Hz) to a soprano high C (~1046 Hz). Clamp the f0
-# search to a padded version of that: below ~65 Hz is almost always a separation artifact / rumble,
-# above ~1100 Hz the vocals stem is mostly breath and consonant noise, not a sung pitch. The clamp
-# also bounds the autocorrelation lag search, which is what keeps this cheap.
+# A padded human singing range: below ~65 Hz is almost always separation artifact, above ~1100 Hz the stem
+# is breath and consonant noise. The clamp also bounds the autocorrelation lag search, keeping this cheap.
 _FMIN_HZ = 65.0
 _FMAX_HZ = 1100.0
 
-# A frame is unvoiced unless its normalized-autocorrelation peak clears this. Sung vowels are highly
-# periodic (peak ~0.9+); breath, sibilants, and separation bleed are not. 0.5 is the classic voiced/
-# unvoiced knife — high enough to reject noise, low enough to keep quiet-but-pitched singing.
+# Sung vowels are highly periodic (~0.9+) where breath, sibilants and separation bleed are not. 0.5 is the
+# classic voiced/unvoiced knife: high enough to reject noise, low enough to keep quiet-but-pitched singing.
 _CLARITY_THRESHOLD = 0.5
 
-# The single source of truth for the analysis frame hop. `extract_pitch_track`'s `hop` default and
-# the seconds-per-frame `summarize_wav` uses MUST be the same number — the histogram's seconds axis
-# is (voiced frame count) x (hop / sample_rate), so if the two ever disagree every published duration
-# is scaled wrong (halved/doubled) with no other field moving and no test failing. Naming it once and
-# deriving hop_sec from the same constant is what makes that desync impossible rather than unenforced.
+# The single source of truth for the frame hop. `extract_pitch_track`'s default and the seconds-per-frame
+# `summarize_wav` uses MUST be the same number: the histogram's seconds axis is (voiced frames) x (hop /
+# sample_rate), so a disagreement scales every published duration wrong with no other field moving.
 _DEFAULT_HOP = 512
 
 
@@ -90,10 +85,8 @@ def _detect_f0(frame: np.ndarray, sample_rate: int) -> tuple[float, float]:
     if energy <= 0:
         return 0.0, 0.0
 
-    # Autocorrelation via rfft, NOT np.correlate(mode="full") (numpy's direct O(n^2) convolution,
-    # 17x slower for bit-identical output). Zero-pad to a power of two >= 2n-1 so the CIRCULAR
-    # correlation an FFT computes equals the LINEAR one — without padding, lag k wraps and picks up
-    # energy from the frame's opposite end.
+    # rfft, NOT np.correlate(mode="full"), which is 17x slower for bit-identical output. Zero-padded to a
+    # power of two >= 2n-1, or the FFT's CIRCULAR correlation wraps and lag k picks up the frame's far end.
     size = 1 << (2 * n - 1).bit_length()
     spec = np.fft.rfft(frame, size)
     corr = np.fft.irfft(spec * np.conj(spec), size)[:n] / energy
@@ -105,8 +98,7 @@ def _detect_f0(frame: np.ndarray, sample_rate: int) -> tuple[float, float]:
     lag = min_lag + peak_idx
     clarity = float(window[peak_idx])
 
-    # Parabolic interpolation around the integer peak for a sub-sample lag (finer than the raw bin,
-    # so a 220Hz tone doesn't quantize to a neighbouring semitone). Guard the array edges.
+    # Sub-sample lag, so a 220Hz tone does not quantize to a neighbouring semitone.
     if 0 < lag < corr.size - 1:
         a, b, c = corr[lag - 1], corr[lag], corr[lag + 1]
         denom = a - 2.0 * b + c
@@ -168,18 +160,15 @@ def summarize_range(frames: list[PitchFrame], *, hop_sec: float | None = None) -
     midis = np.array([f.midi for f in voiced], dtype=np.float64)
     low = float(midis.min())
     high = float(midis.max())
-    # np.percentile with linear interpolation — for one voiced frame p05==p95==that note, which is the
-    # right degenerate answer (the singer sang exactly one pitch).
+    # Linear interpolation: one voiced frame gives p05 == p95, the right degenerate answer.
     p05 = float(np.percentile(midis, 5))
     p95 = float(np.percentile(midis, 95))
 
     if hop_sec is None:
         hop_sec = _infer_hop_sec(frames)
 
-    # Histogram is SECONDS per semitone bin, index 0 = round(low). Rounding both the bin count and each
-    # frame's midi to the nearest semitone means a frame contributes to exactly the semitone a listener
-    # would name it — the histogram is "how long did the singer spend on each note", which the phone can
-    # render as a range heat-strip.
+    # SECONDS per semitone bin, index 0 = round(low). Rounding both the bin count and each frame's midi
+    # means a frame contributes to exactly the semitone a listener would name.
     low_semitone = int(round(low))
     high_semitone = int(round(high))
     n_bins = high_semitone - low_semitone + 1

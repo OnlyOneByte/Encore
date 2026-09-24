@@ -1,18 +1,16 @@
 /*
  * EVERY ELEMENT'S CLASS LIST MUST BE MATCHABLE BY SOME RULE.
  *
- * THE DEFECT, WHICH SHIPPED: `LyricsReselect.svelte` rendered `<button class="chip">` and
- * `<button class="chip ghost">` with only `.chip.ghost { … }` in the tree, so "Use these lyrics" matched
- * NOTHING and — Preflight off — rendered as a ~21px native OS button in the wrong font.
- * `app-class-resolution.test.ts` is blind to it by construction: its `classNamesIn()` pulls every `.token` out
- * of a selector, so `.chip.ghost` registers BOTH as "defined" — a compound vouches for each of its parts.
+ * THE DEFECT, WHICH SHIPPED: `LyricsReselect.svelte` rendered `<button class="chip">` with only
+ * `.chip.ghost { … }` in the tree, so "Use these lyrics" matched NOTHING and — Preflight off — rendered as a
+ * ~21px native OS button in the wrong font. `app-class-resolution.test.ts` is blind to it by construction: its
+ * `classNamesIn()` pulls every `.token` out of a selector, so a compound vouches for each of its parts.
  *
- * The question is about the ELEMENT, not the token: can any rule match it as written? For each element take its
- * static class list L and require some selector to contain a compound whose class-set is a SUBSET of L. The
- * phrasing "every class written alone must be reachable alone" is WRONG — it reported five ordinary modifier
- * idioms (`class="stage bad"` with a `.stage.bad` rule) as defects immediately. Ancestors are ignored on
- * purpose (`.row .chip` counts the rightmost compound only): that can only produce false negatives, never a
- * false positive that blocks a refactor, and proving ancestry needs a DOM this rung has no engine for.
+ * The question is about the ELEMENT, not the token: for each element take its static class list L and require
+ * some selector to contain a compound whose class-set is a SUBSET of L. "Every class written alone must be
+ * reachable alone" is WRONG — it reported five ordinary modifier idioms (`class="stage bad"` with a `.stage.bad`
+ * rule) as defects immediately. Ancestors are ignored on purpose (`.row .chip` counts the rightmost compound
+ * only): that can only produce false negatives, and proving ancestry needs a DOM this rung has no engine for.
  */
 import { describe, expect, test } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -32,12 +30,10 @@ function svelteFiles(dir: string): string[] {
 	return out;
 }
 
-/** `<style>` text with CSS comments blanked, so prose cannot define a rule. */
 function styleOf(src: string): string {
 	return (src.match(/<style[\s\S]*?<\/style>/g) ?? []).join('\n').replace(/\/\*[\s\S]*?\*\//g, ' ');
 }
 
-/** Markup only: `<style>`, `<script>` and HTML comments removed. */
 function markupOf(src: string): string {
 	return src
 		.replace(/<style[\s\S]*?<\/style>/g, ' ')
@@ -97,7 +93,6 @@ function classListsIn(markup: string): string[][] {
 	return out;
 }
 
-/** True when some rule's requirement set is a subset of this element's class list. */
 function matchable(list: string[], reqs: Set<string>[]): boolean {
 	const have = new Set(list);
 	return reqs.some((req) => [...req].every((c) => have.has(c)));
@@ -121,10 +116,8 @@ describe('every element class list is matchable by some rule', () => {
 		.filter((f) => !f.includes(VENDORED));
 
 	test('no app element carries a class list that no rule can match (the shadcn migration)', () => {
-		// Non-vacuity: the walk found the app side. An empty walk reports zero offenders like a clean tree.
 		expect(files.length).toBeGreaterThanOrEqual(20); // @nvf-floor files.length
 
-		// Global reach: app.css, plus every `:global()` anywhere in the tree, including the vendored components.
 		const globalReqs = requirementSets(readFileSync(join(SRC, 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' '));
 		for (const f of svelteFiles(join(SRC, 'lib')).concat(svelteFiles(join(SRC, 'routes')))) {
 			for (const g of styleOf(readFileSync(f, 'utf8')).matchAll(/:global\(([^)]*)\)/g)) {
@@ -159,39 +152,34 @@ describe('every element class list is matchable by some rule', () => {
 		expect(listsSeen).toBeGreaterThanOrEqual(80); // @nvf-floor listsSeen
 		expect([...new Set(offenders)]).toEqual([]);
 
-		// The allowlist stays honest in the other direction too: an entry that now matches a rule is stale and must
-		// go, or the list stops describing the tree.
+		// The allowlist stays honest the other way too: an entry that now matches a rule is stale and must go.
 		const stale = Object.keys(ALLOWED_UNSTYLED).filter((k) => !allowedHit.has(k));
 		expect(stale, 'these entries no longer match an unstyled element — delete them from ALLOWED_UNSTYLED').toEqual([]);
 	});
 
 	test('the matcher is not vacuous — it models subset semantics, not token presence', () => {
-		// THE SHIPPED BUG: a compound-only rule does not style an element carrying just the base.
+		// THE SHIPPED BUG: a compound-only rule does not style an element carrying just the base. The MODIFIER IDIOM
+		// must NOT be flagged, since the element also carries a base class with a rule.
 		const chipGhost = requirementSets('.chip.ghost { color: red }');
 		expect(matchable(['chip', 'ghost'], chipGhost)).toBe(true);
 		expect(matchable(['chip'], chipGhost)).toBe(false);
-		// THE MODIFIER IDIOM, which must NOT be flagged: the element also carries a base class with a rule.
 		const stage = requirementSets('.stage { color: red } .stage.bad { color: blue }');
 		expect(matchable(['stage', 'bad'], stage)).toBe(true);
 		expect(matchable(['stage'], stage)).toBe(true);
 		expect(matchable(['whatever'], requirementSets('button { color: red }'))).toBe(false);
 		expect(matchable(['whatever'], requirementSets('.whatever { color: red }'))).toBe(true);
-		// Pseudo-classes and attribute selectors constrain the same element, not another class.
 		expect(matchable(['chip'], requirementSets('.chip:hover { color: red }'))).toBe(true);
 		expect(matchable(['chip'], requirementSets('.chip[disabled] { color: red }'))).toBe(true);
-		// A descendant combinator: the rightmost compound is what the element must satisfy.
 		expect(matchable(['chip'], requirementSets('.row .chip { color: red }'))).toBe(true);
 		expect(matchable(['chip'], requirementSets(':global(.chip) { color: red }'))).toBe(true);
 		expect(matchable(['a'], requirementSets('.a, .b.c { color: red }'))).toBe(true);
 		expect(matchable(['b'], requirementSets('.a, .b.c { color: red }'))).toBe(false);
-		// A rule inside an at-rule block still counts.
 		expect(matchable(['chip'], requirementSets('@media (max-width: 380px) { .chip { color: red } }'))).toBe(true);
 	});
 
 	test('the markup reader is not vacuous — it skips undecidable lists and reads static ones', () => {
 		expect(classListsIn('<b class="chip ghost">')).toEqual([['chip', 'ghost']]);
-		// Any interpolation makes the list undecidable: a `class:` directive or `{expr}` can supply the very token a
-		// compound rule needs.
+		// Any interpolation makes the list undecidable: a `class:` directive can supply the token a rule needs.
 		expect(classListsIn('<b class="hl-{i}">')).toEqual([]);
 		expect(classListsIn('<b class="topbar {cls}">')).toEqual([]);
 		expect(classListsIn(markupOf('<style>.chip{}</style><!-- class="ghost" -->'))).toEqual([]);

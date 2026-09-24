@@ -34,26 +34,21 @@ from typing import Any
 
 MB_BASE = "https://musicbrainz.org/ws/2"
 
-#: MusicBrainz classifies a missing or generic User-Agent as "anonymous" and throttles it harder —
-#: `Python-urllib` (stdlib's default header) is on that anonymous list — so every request sets this
-#: explicitly in the documented `Application name/<version> ( contact-url )` form.
+#: MusicBrainz throttles an "anonymous" User-Agent harder, and stdlib's `Python-urllib` is on that list,
+#: so every request sets this in the documented `Application name/<version> ( contact-url )` form.
 USER_AGENT = "Encore/0.2 ( https://github.com/OnlyOneByte/Encore )"
 
-#: Their documented limit is one request per second PER SOURCE IP, averaged. Overshooting is NOT a
-#: partial penalty: per their docs, exceeding it means they decline 100% of requests, not just the
-#: excess, until the rate drops to 1/sec or lower — so pacing must be global and serialised, never
-#: best-effort per client.
+#: One request per second PER SOURCE IP. The penalty is TOTAL, not partial: exceeding it declines 100% of
+#: requests until the rate drops, so pacing must be global and SERIALISED, never best-effort per client.
 MIN_INTERVAL_SEC = 1.0
 
-#: A 503 is how MusicBrainz says "you are over the limit" (also "we are busy"). Retrying with backoff
-#: recovers the annotation instead of losing it silently; bounded so a genuinely blocked box degrades
-#: to declining rather than hammering the service it is already annoying.
+#: A 503 is "over the limit" or "busy", so backoff recovers the annotation; BOUNDED, so a blocked box
+#: degrades to declining rather than hammering a service already refusing it.
 MAX_ATTEMPTS = 3
 BACKOFF_BASE_SEC = 1.0
 
-#: A recording whose length is within this many seconds is a `high` match; within the wider bound it
-#: is `medium`; beyond it, nothing is written. 2s is the tolerance LRCLIB itself matches on, so a
-#: `high` annotation is by construction good enough for the lookup that consumes it.
+#: Within this many seconds is `high`, within the wider bound `medium`, beyond it nothing is written. 2s
+#: is LRCLIB's own tolerance, so a `high` annotation is by construction good enough for the lookup.
 HIGH_TOLERANCE_SEC = 2.0
 MEDIUM_TOLERANCE_SEC = 5.0
 
@@ -81,8 +76,7 @@ def normalize_for_match(value: str | None) -> str:
     return _COLLAPSE.sub(" ", _STRIP_PUNCT.sub(" ", folded)).strip()
 
 
-# ── pure: query building ──────────────────────────────────────────────────────────
-#: Lucene reserves these; an unescaped one turns a title like "Where Is My Mind?" into a syntax error.
+#: Lucene RESERVES these: an unescaped one turns "Where Is My Mind?" into a syntax error.
 _LUCENE_SPECIAL = re.compile(r'([+\-&|!(){}\[\]^"~*?:\\/])')
 
 
@@ -102,7 +96,6 @@ def search_url(base: str, artist: str, track: str, limit: int = 10) -> str:
     return f"{base}/recording?{qs}"
 
 
-# ── pure: parsing + matching ──────────────────────────────────────────────────────
 @dataclass
 class Recording:
     mbid: str
@@ -112,10 +105,8 @@ class Recording:
     score: int
     album: str | None = None
     year: int | None = None
-    #: The FIRST credited artist on its own ("League of Legends" out of "League of Legends feat.
-    #: Against the Current"). Kept beside the joined credit because they are used for different jobs:
-    #: the joined string is what gets PUBLISHED and read on the TV, the primary is what a caller's
-    #: normalizer-derived guess can actually be compared against — see pick_best.
+    #: The FIRST credited artist alone. Kept beside the joined credit because they do different jobs: the
+    #: joined string is PUBLISHED, the primary is what a caller's normalizer guess can be compared against.
     artist_primary: str = ""
 
 
@@ -184,7 +175,7 @@ def parse_recordings(body: str | dict[str, Any]) -> list[Recording]:
                 mbid=str(rec["id"]),
                 title=str(rec.get("title") or ""),
                 artist=_artist_credit(rec),
-                # `length` is MILLISECONDS: treating it as seconds fails every match's tolerance.
+                # MILLISECONDS: treating it as seconds fails every match's tolerance.
                 duration_sec=(float(length) / 1000.0) if isinstance(length, (int, float)) else None,
                 score=int(rec.get("score") or 0),
                 album=album,
@@ -268,8 +259,7 @@ def pick_best(
     scored: list[tuple[int, float, int, int, Recording, str]] = []
     for rec in candidates:
         exact_credit = normalize_for_match(rec.artist) == want_artist
-        # `artist_primary` is empty for a recording with no credit list, and normalize_for_match("")
-        # is "", so this cannot accidentally agree with a real name.
+        # Empty for a recording with no credit list, and normalize_for_match("") is "", so no false agree.
         primary_credit = bool(rec.artist_primary) and normalize_for_match(rec.artist_primary) == want_artist
         if not exact_credit and not primary_credit:
             continue
@@ -283,7 +273,7 @@ def pick_best(
             if duration_sec is not None and rec.duration_sec is not None
             else float("inf")
         )
-        # Round so near-identical lengths genuinely tie and the year can decide the ranking.
+        # Rounded, so near-identical lengths TIE and the year decides.
         scored.append((0 if exact_credit else 1, round(gap, 1), rec.year or 9999, -rec.score, rec, conf))
 
     if not scored:
@@ -330,8 +320,7 @@ class RateLimiter:
         self._lock = threading.Lock()
         self._now = now or _time.monotonic
         self._sleep = sleep or _time.sleep
-        # None, not 0.0: "never called" must be distinguishable from "called at t=0" (0.0 is falsy,
-        # so a truthiness check would skip the very first pacing interval).
+        # None, not 0.0: "never called" must stay distinguishable from "called at t=0", which is falsy.
         self._last_call: float | None = None
         self.calls = 0
         self.retries = 0
@@ -378,8 +367,7 @@ class RateLimiter:
         }
 
 
-#: The process-wide gate. Every client shares it by default: a per-instance limiter would let two
-#: clients in one process burst past a per-IP limit.
+#: Shared by default: a per-instance limiter lets two clients in one process burst past a per-IP limit.
 _LIMITER = RateLimiter()
 
 
@@ -417,8 +405,7 @@ class MusicBrainzClient:
         if status == 404:
             return []
         if status == 503:
-            # Retries exhausted: the IP is being refused. Hammering an endpoint that already says no
-            # would only make the block last longer, so this declines instead.
+            # Retries exhausted, so the IP is being refused: hammering only lengthens the block.
             raise AnnotationFetchError(f"musicbrainz throttled us (503) after {MAX_ATTEMPTS} attempts")
         if status != 200:
             raise AnnotationFetchError(f"musicbrainz returned {status} for {artist} - {track}")
@@ -454,8 +441,7 @@ def annotate_or_reason(
     try:
         candidates = client.search(artist, track)
     except AnnotationFetchError as exc:
-        # A transport fault, not a miss (unreachable, a 5xx, or an IP-level throttle): read the gate
-        # so an operator can tell throttling from a slow network.
+        # A transport FAULT, not a miss: read the gate so throttling is distinguishable from a slow network.
         stats = _limiter_of(client).stats()
         return None, f"lookup failed: {exc} [rate gate: {stats}]"
     except Exception as exc:  # noqa: BLE001 - any other client fault is still a decline, never a failure

@@ -1,20 +1,19 @@
-// guard: Chromium discovery must stay single-sourced. `findChromium()` was copy-pasted into 15 e2e drivers
-// and drifted: only two validated PW_CHROMIUM, one hardcoded a personal home path, and the short variants
-// dropped the /usr/bin fallback. The drivers are deliberately NOT wired into bun test (they need a live
-// server and a real browser), so only a source scan reds when a driver grows its own copy again.
+// guard: Chromium discovery must stay single-sourced. `findChromium()` was copy-pasted into 15 e2e drivers and
+// drifted: only two validated PW_CHROMIUM, one hardcoded a personal home path, and the short variants dropped the
+// /usr/bin fallback. The drivers are deliberately NOT wired into bun test, so only a source scan reds when a
+// driver grows its own copy again.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { e2eDir } from '@encore/test-support';
 
-// Anchored on the repo root via `@encore/test-support`, not on this file's own location: a wrong root is
-// silent here, because two of the four consumers assert an EMPTY offenders array.
+// Anchored on the repo root: a wrong root is silent here, because two of the four consumers assert EMPTY.
 const E2E = e2eDir;
 const CANON = 'lib/chromium.mjs';
 
-// Every .mjs under e2e/, recursively, as paths relative to the e2e root. The non-vacuity floor lives IN the
-// walk so every consumer inherits it: two of the four assert `offenders` EMPTY, so a missing directory or a
-// widened prune list made them pass with ZERO drivers examined. A firing floor is a FINDING, not a number.
+// Every .mjs under e2e/, recursively, relative to the e2e root. The non-vacuity floor lives IN the walk so every
+// consumer inherits it: two of the four assert `offenders` EMPTY, so a missing directory or a widened prune list
+// made them pass with ZERO drivers examined.
 function e2eDrivers(): string[] {
 	const out: string[] = [];
 	const walk = (dir: string, rel: string) => {
@@ -27,16 +26,14 @@ function e2eDrivers(): string[] {
 		}
 	};
 	walk(E2E, '');
-	// 28 drivers today; pin well below. Plus a which-files sentinel: a walk that misses the canonical module
-	// is also broken, and a count alone cannot say so.
+	// Plus a which-files sentinel: a walk that misses the canonical module is also broken, and a count cannot say so.
 	expect(out.length).toBeGreaterThan(20); // @nvf-floor out.length
 	expect(out).toContain(CANON);
 	return out;
 }
 
-// Comments blanked, newlines preserved. Required: every scan below asks `src.includes('findChromium')`, so
-// a driver whose COMMENT explained that discovery belongs to the shared driver read as a driver that
-// discovers Chromium itself. A guard that criminalises its own documentation teaches people to delete it.
+// Comments blanked, newlines preserved. Required: every scan below asks `src.includes('findChromium')`, so a
+// driver whose COMMENT explained that discovery belongs to the shared driver read as one that discovers it.
 function codeOnly(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[\s;{(])\/\/[^\n]*/g, '$1 ');
 }
@@ -55,7 +52,6 @@ test('every e2e driver that discovers Chromium imports it from lib/chromium.mjs'
 		if (f === CANON) continue;
 		const src = codeOnly(readFileSync(join(E2E, f), 'utf8'));
 		if (!src.includes('findChromium')) continue; // driver doesn't need Chromium at all
-		// how deep this file sits, so we know the path back to lib/ (./lib at top level, ../lib from probes/).
 		const depth = (f.match(/\//g) ?? []).length;
 		const up = depth === 0 ? './' : '../'.repeat(depth);
 		const wanted = `${up}lib/chromium.mjs`;
@@ -80,9 +76,8 @@ test('no e2e driver hardcodes a personal home path', () => {
 });
 
 test('the scan reads code, not a comment that merely names findChromium', () => {
-	// The trap this closes, in both directions: `shot.mjs` names `findChromium` in prose to explain why it
-	// does NOT call it, and a raw-text scan read that as an undeclared discoverer. Real code must still be
-	// caught, including on a line that also carries a comment.
+	// The trap this closes, both directions: `shot.mjs` names `findChromium` in prose to explain why it does NOT call
+	// it, and a raw-text scan read that as an undeclared discoverer. Real code must still be caught.
 	expect(codeOnly("// discovery is the driver's job, via findChromium").includes('findChromium')).toBe(false);
 	expect(codeOnly('/*\n * findChromium used to be copied into every driver.\n */').includes('findChromium')).toBe(
 		false
@@ -91,6 +86,5 @@ test('the scan reads code, not a comment that merely names findChromium', () => 
 	expect(codeOnly("import { findChromium } from '../lib/chromium.mjs';").includes('findChromium')).toBe(true);
 	expect(DEF.test(codeOnly('function findChromium() { return null; }'))).toBe(true);
 	expect(DEF.test(codeOnly('const findChromium = () => null; // the copied variant'))).toBe(true);
-	// a definition named only in prose is not a definition
 	expect(DEF.test(codeOnly('// const findChromium = () => null;'))).toBe(false);
 });

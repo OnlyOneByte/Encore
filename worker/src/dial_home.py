@@ -172,8 +172,7 @@ class WorkerClient:
                 protocol.reject(self.state.worker_id, job_id, "malformed assign: missing jobType/mediaId")
             )
             return
-        # Refuse rather than complete dishonestly on an object-mode gap. See
-        # docs/SERVER.md#worker-runtime.
+        # Refuse rather than complete dishonestly on an object-mode gap. See docs/SERVER.md#worker-runtime.
         if self.media_store.is_object and not self._can_publish_object:
             reason = (
                 "object MediaStore requested but this worker has no S3 uploader wired "
@@ -295,8 +294,7 @@ class WorkerClient:
 
 
 def _is_retryable(exc: Exception) -> bool:
-    # The one retry decision point; also governs _run_job's scratch lifetime. See
-    # docs/SERVER.md#worker-runtime.
+    # The one retry decision point; also governs _run_job's scratch lifetime. See docs/SERVER.md#worker-runtime.
     return is_retryable(exc)
 
 
@@ -385,8 +383,7 @@ async def _run_forever() -> None:
             if heartbeat_task is not None:
                 heartbeat_task.cancel()
             # This client's in-flight tasks would otherwise race the core's reaper's requeue; cancel
-            # synchronously but settle detached so redial is not blocked. See
-            # docs/SERVER.md#worker-runtime.
+            # synchronously but settle detached so redial is not blocked. See docs/SERVER.md#worker-runtime.
             if client is not None:
                 client.cancel_now()
                 settle = asyncio.ensure_future(client.drain(cancel=True))

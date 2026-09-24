@@ -1,9 +1,8 @@
 // The component-test harness, wired via the root `bunfig.toml` `[test] preload` so it runs ONCE before the suite. Four
 // jobs, all at preload time, so any `*.test.ts` can import and mount a `.svelte` file: install happy-dom on
-// `globalThis`; compile `.svelte` components and `.svelte.js`/`.svelte.ts` rune modules (bun has no Svelte loader, and
-// rune modules are TypeScript, so types are stripped first); resolve SvelteKit's build-time `$app/*` and `$env/*`
-// virtual modules to real stubs under `tests/setup/kit/`, without which a ROUTE component fails to load before any
-// effect runs; and make the unimplemented geometry APIs FAIL LOUDLY (see 1b).
+// `globalThis`; compile `.svelte` components and `.svelte.js`/`.svelte.ts` rune modules; resolve SvelteKit's
+// build-time `$app/*` and `$env/*` virtual modules to real stubs under `tests/setup/kit/`, without which a ROUTE
+// component fails to load before any effect runs; and make the unimplemented geometry APIs FAIL LOUDLY (see 1b).
 //
 // THE CAPABILITY BOUNDARY. This is the MOUNT rung: mounting, the cascade, computed DECLARED values, effects, event
 // handling. Box geometry, clipping/overflow, `env()`, `dvh`/`vh`, computed colour and computed font-size are NOT
@@ -20,12 +19,9 @@ import { compile, compileModule } from 'svelte/compiler';
 import { existsSync, readFileSync } from 'node:fs';
 
 /**
- * The repo root, found by walking up for `bunfig.toml` — the SAME file bun uses to locate this preload, so the runner and
- * this module agree by construction. A `join(import.meta.dir, '..', …)` hop silently re-points when the harness moves,
- * and when it did the preload could no longer resolve `runed` and the whole suite went to 0 pass / 291 fail.
- *
- * Inlined rather than imported from `@encore/test-support` unavoidably: this file IS the preload, so it runs before any
- * tsconfig path alias exists to import that helper through.
+ * Walking up for `bunfig.toml` — the SAME file bun uses to locate this preload, so the runner and this module agree by
+ * construction, where a `join(import.meta.dir, '..', …)` hop silently re-points when the harness moves. Inlined rather
+ * than imported from `@encore/test-support`: this file IS the preload, so no tsconfig path alias exists yet.
  */
 const REPO_ROOT = (() => {
 	let dir = import.meta.dir;
@@ -72,13 +68,13 @@ if (typeof g.document === 'undefined') {
 	}
 }
 
-// 1b. Unimplemented geometry FAILS LOUDLY. happy-dom has no layout engine, so every geometry read is a fabricated zero,
-// which is worse than no API: it turns `expect(w).toBeGreaterThan(0)` into a permanent red nobody trusts and
-// `if (w > 0) expect(…)` into a permanent SILENT GREEN. All six APIs throw, naming the rung that can measure.
+// 1b. Unimplemented geometry FAILS LOUDLY. happy-dom fabricates a zero for every geometry read, which turns
+// `expect(w).toBeGreaterThan(0)` into a permanent red and `if (w > 0) expect(…)` into a permanent SILENT GREEN. All
+// six APIs throw, naming the rung that can measure.
 //
 // TWO PROTOTYPES, load-bearing: `scrollWidth`/`scrollHeight` live on `Element.prototype` but the four offset/client
-// accessors live on `HTMLElement.prototype`, which SHADOWS Element for every HTML element — patching Element alone
-// leaves `el.offsetHeight` returning 0 on exactly the elements a component test mounts.
+// accessors live on `HTMLElement.prototype`, which SHADOWS Element — patching Element alone leaves `el.offsetHeight`
+// returning 0 on exactly the elements a component test mounts.
 //
 // Deliberately OUTSIDE the DOM-install branch above, reading the ACTIVE globals: the aliasing plugins below are
 // unconditional, so hardening only when THIS preload installed the DOM would fail silently under another provider.
@@ -128,8 +124,7 @@ for (const proto of rungPrototypes) {
 }
 
 // 3. SvelteKit virtual modules — the one place a `$app/*` or `$env/*` specifier is mapped. `build.module()` is the
-// mechanism, NOT `onResolve`, which is never consulted for these specifiers (measured: the callback does not fire);
-// `build.module()` intercepts both a component import and a test-entry import. Each stub is re-exported from a real file
+// mechanism, NOT `onResolve`, which is never consulted for these specifiers. Each stub is re-exported from a real file
 // under tests/setup/kit/ rather than inline, so a test driving the stub shares ONE module instance with the component.
 const KIT_STUBS: Record<string, string> = {
 	'$app/navigation': 'app-navigation.ts',
@@ -138,8 +133,8 @@ const KIT_STUBS: Record<string, string> = {
 	'$env/dynamic/public': 'env-dynamic-public.ts'
 };
 
-// The remaining virtual modules. Nothing imports them today; registered so the first component to import one fails with
-// a message naming the fix rather than bun's bare "Cannot find module '$app/forms'", which reads as a broken component.
+// Nothing imports these today; registered so the first component to import one fails with a message naming the fix
+// rather than bun's bare "Cannot find module", which reads as a broken component.
 const KIT_UNSTUBBED = [
 	'$app/forms',
 	'$app/paths',
@@ -175,14 +170,13 @@ plugin({
 	}
 });
 
-// 3b. The bare `svelte` specifier, for DEPENDENCIES. Bits UI — which shadcn's Checkbox, Switch and Slider are built on —
-// imports `getContext`/`setContext` from it, which under `bun test` resolves to Svelte's SERVER build, whose context
-// stack is not the one a client `mount()` populates: `lifecycle_outside_component` the moment such a component mounts. A
-// dependency's imports DO go through the plugin (unlike the test entry's own), so registering the specifier redirects
-// every non-entry `import … from 'svelte'` to the client entry.
+// 3b. The bare `svelte` specifier, for DEPENDENCIES. Bits UI imports `getContext`/`setContext` from it, which under
+// `bun test` resolves to Svelte's SERVER build, whose context stack is not the one a client `mount()` populates:
+// `lifecycle_outside_component` the moment such a component mounts. A dependency's imports DO go through the plugin,
+// unlike the test entry's own.
 //
-// Scoped to the EXACT specifier, so `svelte/internal/client`, `svelte/compiler` and `svelte/server` are untouched and a
-// test that wants the server build still gets it. Existence is CHECKED because this bypasses svelte's export map.
+// Scoped to the EXACT specifier, so `svelte/internal/client`, `svelte/compiler` and `svelte/server` are untouched.
+// Existence is CHECKED because this bypasses svelte's export map.
 const SVELTE_CLIENT_ENTRY = join(
 	dirname(createRequire(import.meta.url).resolve('svelte/package.json')),
 	'src/index-client.js'
@@ -209,10 +203,9 @@ plugin({
 // store fails at test time — and the home route imports the Toaster, so without this alias the mount rung cannot load
 // `routes/+page.svelte` at all.
 //
-// RESOLVED FROM SVELTE-SONNER'S OWN PEER DIRECTORY, never by scanning the store for the greatest version. `bun.lock`
+// RESOLVED FROM SVELTE-SONNER'S OWN PEER DIRECTORY, never by scanning the store for the greatest version: `bun.lock`
 // carries THREE distinct runed resolutions and `build.module` is keyed on the SPECIFIER, so all three collapse onto
-// whichever file this picks; under 0.x every minor is breaking, so the highest handed the one dependency this exists for
-// an out-of-range module, and made the pick a function of INSTALL HISTORY. Bun's sibling link matches the lockfile.
+// whichever file this picks, and under 0.x every minor is breaking. Bun's sibling link matches the lockfile.
 const RUNED_ENTRY = (() => {
 	let ssPkg: string;
 	try {
@@ -228,9 +221,8 @@ const RUNED_ENTRY = (() => {
 	return null;
 })();
 if (!RUNED_ENTRY) {
-	// A throw, not a silent skip: as a skip the plugin simply never registered and the home route's mount test died with
-	// bun's bare `Cannot find package 'runed'`, naming nothing. Reachable via `bun install --linker=hoisted`, a
-	// differently-rooted CI cache, or a store rename.
+	// A throw, not a silent skip, which would leave the plugin unregistered and the home route's mount test dying on
+	// bun's bare `Cannot find package`. Reachable via `--linker=hoisted`, a differently-rooted cache, or a store rename.
 	throw new Error(
 		"test-setup: could not resolve `runed` from svelte-sonner's own dependency directory.\n" +
 			'svelte-sonner imports the bare specifier `runed`, and bun cannot resolve it out of its isolated\n' +

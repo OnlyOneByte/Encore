@@ -1,11 +1,7 @@
-<!--
-  Plays per day, as columns.
-
-  THE GAP RULE. The play log omits days with no plays, because it cannot distinguish "nobody sang" from "the
-  server was off". This chart PRESERVES that distinction: an absent day is a faint MISSING slot, never a
-  zero-height column, so a quiet day and a week of downtime do not draw identically. That is why the
-  component takes the window and expands the calendar itself rather than plotting the rows it was handed.
--->
+<!-- Plays per day, as columns. THE GAP RULE: the play log omits days with no plays, because it cannot distinguish
+  "nobody sang" from "the server was off". This chart PRESERVES that distinction — an absent day is a faint MISSING slot,
+  never a zero-height column — which is why it takes the window and expands the calendar itself rather than plotting the
+  rows it was handed. -->
 <script lang="ts">
 	import * as Empty from '$lib/components/ui/empty';
 	import * as Chart from '$lib/components/ui/chart';
@@ -18,7 +14,6 @@
 		points = [],
 		/** Inclusive start of the window, epoch ms — used to expand the calendar. */
 		since,
-		/** Now, epoch ms. */
 		until,
 		empty = 'No sings recorded yet'
 	}: { points?: Point[]; since: number; until: number; empty?: string } = $props();
@@ -63,8 +58,7 @@
 					aria-label={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays} sings`}
 				>
 					<div class="bar" style:height="{slot.plays === null ? 0 : Math.max(6, (slot.plays / max) * 100)}%"></div>
-					<!-- `title` is desktop-only, because touch never fires :hover — so the count also lives in the
-				     aria-label and in this readout, revealed on tap or focus. -->
+					<!-- `title` is desktop-only, because touch never fires :hover — so the count also lives in the aria-label and here. -->
 					<span class="readout">{slot.plays === null ? '·' : slot.plays}</span>
 				</button>
 			{/each}
@@ -104,8 +98,8 @@
 		cursor: pointer;
 	}
 	.readout {
-		/* The per-day count, revealed on hover, tap or focus — the path that makes the number reachable on a
-		   phone at all. Opacity only, which is the one thing here that may be transitioned. */
+		/* The per-day count, revealed on hover, tap or focus — the path that makes the number reachable on a phone at all.
+			   Opacity only, which is the one thing here that may be transitioned. */
 		position: absolute;
 		left: 50%;
 		bottom: 100%;

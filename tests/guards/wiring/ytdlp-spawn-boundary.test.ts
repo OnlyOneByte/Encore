@@ -1,15 +1,14 @@
-// The timed-child-process boundary has exactly ONE implementation (media/spawn-capture.ts), and neither
-// exit of ytdlp.ts throws its failure away. Caught: `ytDlpSearch` stayed hand-rolled after the pattern was
-// extracted, so two implementations of "spawn with a kill timer" shipped and the second discarded
-// `timedOut`. `Bun.spawn` is a global, so tsc cannot see a bypass and a hand-rolled copy is invisible to
-// behavioural tests. The availability probe's positive answer is cached for the process lifetime, so a
-// behavioural test of its catch would depend on file order; this scan pins it deterministically.
+// guard: the timed-child-process boundary has exactly ONE implementation (media/spawn-capture.ts), and
+// neither exit of ytdlp.ts throws its failure away. Caught: `ytDlpSearch` stayed hand-rolled after the
+// pattern was extracted, so two implementations of "spawn with a kill timer" shipped and the second
+// discarded `timedOut`. `Bun.spawn` is a global, so tsc cannot see a bypass. The availability probe's
+// positive answer is cached for the process lifetime, so a behavioural test of its catch would depend on
+// file order; this scan pins it deterministically.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { at, srcDir } from '@encore/test-support';
 
-/** Blank comments, preserving line count, so ARM 1's reported line numbers match grep's. */
 function stripComments(src: string): string {
 	return src
 		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))

@@ -4,12 +4,11 @@ import { join } from 'node:path';
 import { at } from '@encore/test-support';
 
 /*
- * Route-inventory guard: every route page EXCEPT /tv and /components renders exactly one <h1> landmark
- * naming the page, plus a back affordance unless it is a root/entry surface. This is the line that was
- * missing when /stats and /metrics shipped as dead ends with no heading and no way back. The root `/`
- * carries the wordmark as its own <h1 class="brand"> and is an entry point, so it needs no back. The two
- * exemptions are decisions, not oversights: /tv is a chrome-free television surface, /components a
- * dev-only gallery of primitives using <h2> section heads.
+ * Route-inventory guard: every route page EXCEPT /tv and /components renders exactly one <h1> landmark naming the
+ * page, plus a back affordance unless it is a root/entry surface. This is the line that was missing when /stats
+ * and /metrics shipped as dead ends with no heading and no way back. The root `/` carries the wordmark as its own
+ * <h1 class="brand"> and is an entry point, so it needs no back. The two exemptions are decisions, not oversights:
+ * /tv is a chrome-free television surface, /components a dev-only gallery using <h2> section heads.
  */
 
 // Anchored on the repo root: a wrong walk root is the SILENT failure this whole tree exists to close.
@@ -24,9 +23,9 @@ const EXEMPT: Record<string, string> = {
 // Root / entry surfaces: their h1 is the wordmark and they are the top of navigation, so no back is required.
 const ROOTS = new Set(['/']);
 
-// Every routed page under src/routes. The non-vacuity floor lives IN the walk so a third consumer inherits
-// it: both consumers assert `offenders` EMPTY, so a moved `routes/` or a renamed `+page.svelte` made both
-// pass with ZERO pages examined — the shape that let /stats and /metrics ship as dead ends in the first place.
+// Every routed page under src/routes. The non-vacuity floor lives IN the walk so a third consumer inherits it:
+// both consumers assert `offenders` EMPTY, so a moved `routes/` or a renamed `+page.svelte` made both pass with
+// ZERO pages examined — the shape that let /stats and /metrics ship as dead ends in the first place.
 function routePages(): { route: string; file: string; src: string }[] {
 	const out: { route: string; file: string; src: string }[] = [];
 	const walk = (dir: string, urlParts: string[]) => {
@@ -43,8 +42,8 @@ function routePages(): { route: string; file: string; src: string }[] {
 		}
 	};
 	walk(SRC, []);
-	// 9 routed pages today; pin below. Plus the which-pages sentinel: the root cannot legitimately vanish, and
-	// both EXEMPT entries must stay reachable, or the exemption test pins a decision about pages it cannot see.
+	// Plus the which-pages sentinel: the root cannot legitimately vanish, and both EXEMPT entries must stay
+	// reachable, or the exemption test pins a decision about pages it cannot see.
 	expect(out.length).toBeGreaterThanOrEqual(7); // @nvf-floor out.length
 	const routes = out.map((p) => p.route);
 	expect(routes).toContain('/');
