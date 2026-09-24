@@ -114,12 +114,17 @@ def missing_js_runtime(*, ytdlp_bin: str = "yt-dlp") -> str | None:
     """
     if not shutil.which(ytdlp_bin):
         return None
-    if any(shutil.which(rt) for rt in ("deno", "node", "bun")):
+    # DENO ONLY, deliberately. yt-dlp supports node, quickjs and bun as well, but its `--js-runtimes`
+    # option defaults to `['deno']` and its own help says "Only 'deno' is enabled by default" — a lower
+    # priority runtime needs `--no-js-runtimes` plus an explicit opt-in, which no call site here passes.
+    # Accepting node/bun here reported a healthy box that could not solve a single challenge, which is
+    # the silent-and-total degradation this warning exists to break.
+    if shutil.which("deno"):
         return None
     return (
-        f"{ytdlp_bin} is present but no JavaScript runtime (deno/node/bun) is on PATH; YouTube's "
-        "player challenge cannot be solved, so downloads will fail with 'Requested format is not "
-        "available'. Install deno."
+        f"{ytdlp_bin} is present but no ENABLED JavaScript runtime is on PATH: yt-dlp enables only "
+        "deno by default, so node/bun/quickjs do not count. YouTube's player challenge cannot be "
+        "solved, and downloads will fail with 'Requested format is not available'. Install deno."
     )
 
 

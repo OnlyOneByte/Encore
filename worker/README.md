@@ -70,6 +70,32 @@ touch.
 
 All four must be clean. There is no CI on this repo, so these are the whole verification story.
 
+### Reproducing the runtime environment
+
+`requirements.txt` pins 16 DIRECT dependencies; they resolve to ~124 packages. `constraints.txt` pins
+that whole closure, so two people installing weeks apart get the same environment — without it, a fresh
+resolve of the same requirements.txt already disagreed with a working venv on 15 packages, including
+`filelock` across a major version.
+
+`dev.sh` builds the venv for you and prefers [uv](https://github.com/astral-sh/uv) when it can:
+
+```bash
+uv venv --python 3.12 worker/.venv                                  # uv can DOWNLOAD 3.12
+uv pip install --python worker/.venv/bin/python -r requirements.txt -c constraints.txt
+uv pip install --python worker/.venv/bin/python --no-deps karaoke-lyrics-processor==0.6.0
+```
+
+That is ~26s for the whole torch/whisperx stack against minutes for pip, and uv can supply the
+interpreter on a box whose `python3` is older than the 3.11 floor. dev.sh fetches a pinned,
+checksum-verified uv into `worker/.dev-tools/bin` if there is no system one; `ENCORE_SKIP_UV=1` falls
+back to `python -m venv` + pip, which still applies the same constraints.
+
+There is deliberately **no lockfile**: `audio-separator==0.47.0` requires `torch>=2.13` on darwin-arm64
+while this stack pins `torch==2.8.0`, so a universal resolve has no solution and a per-platform lock
+generated on a Mac would silently drop that engine for everyone on Linux. Constraints apply per
+platform instead. Regenerate them from a venv you have run the suite against — the recipe is in
+`constraints.txt`'s header — and review the diff.
+
 ```bash
 pip install -r requirements-test.txt   # once — pytest, its two plugins, ruff, mypy
 pytest -q                    # 1032 tests, asyncio_mode=auto

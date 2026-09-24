@@ -167,6 +167,17 @@ def test_no_warning_when_a_js_runtime_is_present(monkeypatch, tmp_path):
     assert capabilities.missing_js_runtime() is None
 
 
+def test_node_alone_does_not_satisfy_the_js_runtime_probe(monkeypatch, tmp_path):
+    # The defect this pins: node was accepted, so a box with node and no deno reported healthy and then
+    # failed every download. yt-dlp enables only deno by default, and nothing here passes --js-runtimes.
+    _with_path(monkeypatch, tmp_path)
+    _fake_bin(tmp_path, "yt-dlp")
+    _fake_bin(tmp_path, "node")
+    warning = capabilities.missing_js_runtime()
+    assert warning is not None
+    assert "deno" in warning
+
+
 def test_no_js_warning_when_ytdlp_itself_is_absent(monkeypatch, tmp_path):
     # Nothing to warn about: the box is not going to attempt a download at all.
     _with_path(monkeypatch, tmp_path)
