@@ -57,7 +57,6 @@ export class GaplessController {
 			this.#current = current.id;
 			this.#state = 'loading'; // visible slot must (re)load the new current
 		}
-		// pre-warm the hidden slot for upNext (unless already warming/ready for it)
 		if (upNext && upNext.id !== this.#warmingId && upNext.id !== this.#readyId) {
 			this.#warmingId = upNext.id;
 			this.#readyId = null;

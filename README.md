@@ -193,12 +193,12 @@ docs/              ← the written record; see the index below
 | [`LAYOUT.md`](docs/LAYOUT.md)             | where a file goes, and what may not move                                        |
 | [`FRONTEND.md`](docs/FRONTEND.md)         | the rules a UI change must respect — styling, runes, components, routes, the TV |
 | [`SERVER.md`](docs/SERVER.md)             | the same for the server, the shared contract, the job pipeline and the worker   |
-| [`GUARDS.md`](docs/GUARDS.md)             | how the guard suite defends itself, and every trap it has learned               |
+| [`TESTS.md`](docs/TESTS.md)               | the two test rungs, what each can honestly decide, and what was cut             |
 | [`E2E.md`](docs/E2E.md)                   | the browser harness, the selector contract, and what each probe proves          |
 | [`arch/`](docs/arch/README.md)            | subsystem contracts as numbered requirements a machine can often check          |
 | [`deploy/`](docs/deploy/README.md)        | getting a secure context, and the WSL2 case that breaks it                      |
 
-`FRONTEND.md`, `SERVER.md`, `GUARDS.md` and `E2E.md` exist so the source can state a rule in one line and
+`FRONTEND.md`, `SERVER.md`, `TESTS.md` and `E2E.md` exist so the source can state a rule in one line and
 point at the reasoning, instead of carrying the reasoning inline. A rule that outlives one file belongs in
 one of them.
 

@@ -3,6 +3,12 @@
 // 2.1.1 are carried by the grip itself, through `keyboardMoveTarget`. See docs/FRONTEND.md#the-home-column.
 
 import type { EntryStatus } from '$lib/contract';
+import { ordinalWord } from '$lib/phrasing/position-sentence';
+
+/** The keyboard path announces a position, so it needs an ordinal — and there is ONE of those, in
+ *  `$lib/phrasing`. Re-exported rather than re-implemented: the two copies disagreed on a fractional and a
+ *  negative index, which is exactly the drift a second English-ordinals table invites. */
+export { ordinalWord as ordinal };
 
 /**
  * The grip renders ONLY where a reorder is real, which is the difference between an affordance and a lie:
@@ -12,22 +18,6 @@ import type { EntryStatus } from '$lib/contract';
  */
 export function gripVisible(opts: { queuedCount: number; reorderMeaningful: boolean }): boolean {
 	return opts.queuedCount > 1 && opts.reorderMeaningful;
-}
-
-/** "1st", "2nd", "3rd", "4th" … English ordinals, for the announcements the keyboard path makes. */
-export function ordinal(n: number): string {
-	const rem100 = n % 100;
-	if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
-	switch (n % 10) {
-		case 1:
-			return `${n}st`;
-		case 2:
-			return `${n}nd`;
-		case 3:
-			return `${n}rd`;
-		default:
-			return `${n}th`;
-	}
 }
 
 /**

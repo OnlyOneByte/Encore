@@ -52,6 +52,8 @@ const REQUEUE_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'LEAS
 // double-frees a slot the registry already reclaims, which drives an assign/reject storm.
 const SLOT_RELEASING_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'COMPLETE']);
 
+// The `jobs` row shape mirrors `Job` 1:1 (see schema.ts), so reads below return rows directly rather than
+// through a mapper: a column that drifted from the wire type would fail to typecheck at the return.
 export class JobRepository {
 	#db: DB;
 	#ledger: AttemptLedger | null;
@@ -108,7 +110,7 @@ export class JobRepository {
 	}
 
 	byId(id: string): Job | null {
-		return this.#toJob(this.#db.select().from(jobs).where(eq(jobs.id, id)).all()[0]);
+		return this.#db.select().from(jobs).where(eq(jobs.id, id)).all()[0] ?? null;
 	}
 
 	/** The live (slot-occupying) job for a key, if any — the dedup lookup. */
@@ -118,7 +120,7 @@ export class JobRepository {
 			.from(jobs)
 			.where(and(eq(jobs.mediaId, mediaId), eq(jobs.jobType, jobType), notInArray(jobs.status, SLOT_FREEING_STATUSES)))
 			.all()[0];
-		return this.#toJob(row);
+		return row ?? null;
 	}
 
 	/** Frees a FINISHED job's dedup slot so the song can be re-processed. Without it a re-run silently
@@ -148,12 +150,7 @@ export class JobRepository {
 	/** All jobs in any of the given statuses — feeds dispatch (queued) and the reaper. */
 	listByStatus(...statuses: JobStatus[]): Job[] {
 		if (statuses.length === 0) return [];
-		return this.#db
-			.select()
-			.from(jobs)
-			.where(inArray(jobs.status, statuses))
-			.all()
-			.map((r) => this.#toJob(r)!);
+		return this.#db.select().from(jobs).where(inArray(jobs.status, statuses)).all();
 	}
 
 	/** The EVENT, not a bare destination status, is the input — the machine can tell a REJECT from a
@@ -258,10 +255,5 @@ export class JobRepository {
 			)
 			.all();
 		return new Set(rows.map((r) => r.mediaId));
-	}
-
-	/** The row shape mirrors Job 1:1 — see schema.ts. */
-	#toJob(row: typeof jobs.$inferSelect | undefined): Job | null {
-		return row ?? null;
 	}
 }

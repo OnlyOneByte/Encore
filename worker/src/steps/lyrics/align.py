@@ -244,44 +244,46 @@ def _judge_word_timing(
 
     Returns the possibly-rewritten `(doc, timing, timingConfidence)`; the caller `continue`s on None.
     """
+    # Nothing to judge unless the aligner claimed WORD timings: a line-timed doc has no word spans to
+    # validate or repair, so it passes through as it arrived.
+    if timing != TIMING_WORD:
+        return doc, timing, timing_confidence
+
     # `is_valid_lyrics` only asks whether SOME word has a timestamp, which a doc with a multi-second
     # hole or a smeared word satisfies.
-    if timing == TIMING_WORD:
-        rep = validate_timing(doc, ctx.audio.duration_sec)
-        ctx.note(f"timing — {rep.summary()}")
-        if rep.thin_coverage:
-            # Deliberately blames nothing: a shortfall is usually CORRECT (an instrumental break has
-            # no words). Coverage is a prompt to look, not a diagnosis.
+    rep = validate_timing(doc, ctx.audio.duration_sec)
+    ctx.note(f"timing — {rep.summary()}")
+    if rep.thin_coverage:
+        # Deliberately blames nothing: a shortfall is usually CORRECT (an instrumental break has
+        # no words). Coverage is a prompt to look, not a diagnosis.
+        ctx.note(
+            f"timing covers {rep.coverage:.0%} of the song. Usually an instrumental break or "
+            "outro; occasionally a media/duration mismatch."
+        )
+
+    if rep.usable:
+        # repair_word_spans is provably order-preserving, so it can never turn a defect into the
+        # one disqualifier. Only reached on a usable word doc, which is the only kind with spans.
+        fixed = repair_word_spans(doc)
+        if fixed.changed:
+            # `changed` means a branch WROTE a span, not that the value differs from what it
+            # replaced — a word at exactly MIN_WORD_SEC is rewritten to what it already had.
+            ctx.note(f"timing repaired — {fixed.summary()}")
+        elif fixed.flashed_uncorrectable:
+            # This branch wrote NOTHING, so it gets its own note rather than "repaired".
             ctx.note(
-                f"timing covers {rep.coverage:.0%} of the song. Usually an instrumental break or "
-                "outro; occasionally a media/duration mismatch."
+                f"timing NOT repairable — {len(fixed.flashed_uncorrectable)} flash(es) "
+                "left: no room before the next word"
             )
-        if not rep.usable:
-            ctx.note(
-                f"REFUSING word timing ({rep.out_of_order} out-of-order word(s)) — degrading to line sync"
-            )
-            if text.timing != TIMING_LINE:
-                return None  # nothing honest left to publish for this source
-            # This degrade publishes the source's OWN line timings, so it MUST place them with the
-            # same measured shift, or an earlier-starting master re-introduces early-highlighting.
-            placed = shift_segments(text.segments, shift) if shift is not None else text.segments
-            doc = line_synced_lyrics(placed, language=text.language or language)
-            timing, timing_confidence = TIMING_LINE, "low"
-        else:
-            # repair_word_spans is provably order-preserving, so it can never turn a defect into the
-            # one disqualifier. Only reached on a usable word doc, which is the only kind with spans.
-            fixed = repair_word_spans(doc)
-            if fixed.changed:
-                # `changed` means a branch WROTE a span, not that the value differs from what it
-                # replaced — a word at exactly MIN_WORD_SEC is rewritten to what it already had.
-                ctx.note(f"timing repaired — {fixed.summary()}")
-            elif fixed.flashed_uncorrectable:
-                # This branch wrote NOTHING, so it gets its own note rather than "repaired".
-                ctx.note(
-                    f"timing NOT repairable — {len(fixed.flashed_uncorrectable)} flash(es) "
-                    "left: no room before the next word"
-                )
-    return doc, timing, timing_confidence
+        return doc, timing, timing_confidence
+
+    ctx.note(f"REFUSING word timing ({rep.out_of_order} out-of-order word(s)) — degrading to line sync")
+    if text.timing != TIMING_LINE:
+        return None  # nothing honest left to publish for this source
+    # This degrade publishes the source's OWN line timings, so it MUST place them with the
+    # same measured shift, or an earlier-starting master re-introduces early-highlighting.
+    placed = shift_segments(text.segments, shift) if shift is not None else text.segments
+    return line_synced_lyrics(placed, language=text.language or language), TIMING_LINE, "low"
 
 
 def _note_lrc_fit(ctx: Ctx, text: Any, doc: dict[str, Any], timing: str, shift: LrcShift | None) -> None:
@@ -289,19 +291,20 @@ def _note_lrc_fit(ctx: Ctx, text: Any, doc: dict[str, Any], timing: str, shift: 
     # Askable only where a source's OWN line timings were then force-aligned, giving two independent
     # series over the same lines. Baseline grading is the primary defence; this catches the
     # complementary case of a different master shifting or stretching every line.
-    if timing == TIMING_WORD and text.timing == TIMING_LINE:
-        # `_opens_for` prefers presplit's EMITTED map; with no `align_windows` every segment opens one.
-        windows = getattr(text, "align_windows", None)
-        if windows:
-            opens = _opens_for(text)
-        else:
-            windows, opens = text.segments, list(range(len(text.segments)))
-        # The aligner searched the PLACED windows, so the fit must compare against those same starts,
-        # or it reports the shift itself as a residual and mislabels a matching recording.
-        if shift is not None and shift.applied:
-            windows = shift_segments(windows, shift)
-        for note in lrc_fit_notes(text.text_source, windows, opens, doc):
-            ctx.note(note)
+    if timing != TIMING_WORD or text.timing != TIMING_LINE:
+        return
+    # `_opens_for` prefers presplit's EMITTED map; with no `align_windows` every segment opens one.
+    declared = getattr(text, "align_windows", None)
+    if declared:
+        windows, opens = declared, _opens_for(text)
+    else:
+        windows, opens = text.segments, list(range(len(text.segments)))
+    # The aligner searched the PLACED windows, so the fit must compare against those same starts,
+    # or it reports the shift itself as a residual and mislabels a matching recording.
+    if shift is not None and shift.applied:
+        windows = shift_segments(windows, shift)
+    for note in lrc_fit_notes(text.text_source, windows, opens, doc):
+        ctx.note(note)
 
 
 def _write_candidate(

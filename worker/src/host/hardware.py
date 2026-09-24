@@ -27,6 +27,12 @@ import platform
 import socket
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Literal
+
+#: Closed because every value comes from a probe below, never from outside. `rocm` is distinct from
+#: `cuda` deliberately: it masquerades as cuda in torch's API, and reporting it as such would send the
+#: core a hardware fact that is wrong.
+AcceleratorKind = Literal["cuda", "xpu", "mps", "rocm", "cpu"]
 
 #: cgroup v2 then v1 locations for the CPU quota and the memory ceiling. Both layouts are still in
 #: the wild (Amazon Linux 2 is v1, most modern distros are v2), and a v2-only reader silently
@@ -101,13 +107,15 @@ def meminfo_bytes(key: str = "MemAvailable", root: str = "") -> int | None:
     if not raw:
         return None
     for line in raw.splitlines():
-        if line.startswith(f"{key}:"):
-            parts = line.split()
-            if len(parts) >= 2:
-                try:
-                    return int(parts[1]) * 1024  # meminfo is in kB
-                except ValueError:
-                    return None
+        if not line.startswith(f"{key}:"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue  # the key with no value: keep scanning rather than answering from a truncated line
+        try:
+            return int(parts[1]) * 1024  # meminfo is in kB
+        except ValueError:
+            return None
     return None
 
 
@@ -152,7 +160,7 @@ def available_memory_bytes(root: str = "") -> int | None:
 class Accelerator:
     """A detected compute device. `vram_bytes` is PHYSICAL capacity, not free memory."""
 
-    kind: str  # "cuda" | "xpu" | "mps" | "rocm" | "cpu"
+    kind: AcceleratorKind
     name: str = ""
     count: int = 1
     vram_bytes: int | None = None
@@ -243,7 +251,7 @@ class HardwareReport:
     quoting a figure from different silicon.
     """
 
-    accelerator: str  # "cuda" | "xpu" | "mps" | "rocm" | "cpu"
+    accelerator: AcceleratorKind
     device_name: str
     device_count: int
     cpus: int  # EFFECTIVE cores, not the host's
@@ -328,6 +336,6 @@ def default_worker_id() -> str:
     """
     try:
         host = socket.gethostname().split(".")[0] or "worker"
-    except Exception:
+    except OSError:  # the only thing gethostname raises: an unresolvable box still gets an id
         host = "worker"
     return f"{host}-{os.getpid()}"

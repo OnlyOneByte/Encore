@@ -5,6 +5,7 @@ import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { completedStatusFor, mediaStatusFor } from '$lib/server/jobs/media-status';
 import { processState, requestProcess, maxProcessesPerSinger } from '$lib/server/jobs/process';
+import { readJsonBody, requiredString } from '$lib/server/http/json-body';
 import type { MediaStatus } from '$lib/contract';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
@@ -12,8 +13,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
 	if (!singer) return json({ error: 'not joined' }, { status: 401 });
 
-	const body = await request.json().catch(() => ({}));
-	const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
+	const mediaId = requiredString(await readJsonBody(request), 'mediaId');
 	if (!mediaId) return json({ error: 'mediaId required' }, { status: 400 });
 
 	// With a durable catalog, "already processed" is the common happy path (a song separated on a previous night), not an error — answer 200 so the phone shows "ready" instead of a red toast. getSettings is passed to BOTH processState (the over-limit check, against the configured cap) and requestProcess (to choose the fetcher via needsFetch) — one dependency, so neither path can drift from the deployment's actual settings. getGlobal(), not getEffective(): this is typed `() => GlobalSettings`, and effective settings are `{ global, room }`, which type-checks nowhere useful.

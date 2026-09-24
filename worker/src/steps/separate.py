@@ -147,8 +147,13 @@ class ProbeSilence(Step):
         if vocals:
             try:
                 silent = await self._is_silent(ctx, vocals)
-            except Exception:  # noqa: BLE001 — a failed probe must never cost the room a working guide
+            except Exception as err:  # noqa: BLE001 — a failed probe must never cost the room a guide
+                # Unmeasurable, NOT measured-healthy — so it is noted rather than swallowed.
                 silent = False
+                ctx.note(
+                    f"vocals silence probe failed ({type(err).__name__}: {err})"
+                    " — the guide stem is being published UNCHECKED"
+                )
             ctx.stems.vocals_silent = silent
             if silent:
                 ctx.note("vocals stem is digital silence — it will not be published")
@@ -255,8 +260,12 @@ class PublishStems(Step):
             try:
                 await run_quiet(ctx.runner, encode_flac_argv(raw_vox, out, self._ffmpeg, self._flac_level))
                 ctx.stems.published["vocals"] = out
-            except Exception:  # noqa: BLE001 — an enhancement must never fail the job
-                ctx.note("vocals encode failed (non-fatal) — publishing the instrumental alone")
+            except Exception as err:  # noqa: BLE001 — an enhancement must never fail the job
+                # The cause is carried, for the reason _publish_guide_mix states below.
+                ctx.note(
+                    f"vocals encode failed (non-fatal: {type(err).__name__}: {err})"
+                    " — publishing the instrumental alone"
+                )
 
         # Only ever attempted once the vocals stem actually PUBLISHED, which is what makes `raw_vox`
         # non-optional below rather than re-narrowed at each use.

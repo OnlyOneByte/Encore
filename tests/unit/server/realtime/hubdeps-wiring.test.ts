@@ -1,19 +1,11 @@
 // Wire-tests for the two optional HubDeps hooks that funnel core session state into the media
-// trackers: `onNowPlaying` (play tracking) and `recordAdd` (popularity shortcuts). Both are wired
-// in production at server.ts (onNowPlaying: server.ts, recordAdd: server.ts), but until
-// this file NO test supplied either through HubDeps — the tracker methods were exercised directly
-// (plays.test.ts calls tracker.onNowPlaying(...), popularity.test.ts calls p.recordAdd(...)),
-// leaving the one line that FEEDS each tracker unasserted. Each hook could be turned into a no-op
-// and the whole core suite stayed byte-identical to baseline.
+// trackers: `onNowPlaying` (play tracking) and `recordAdd` (popularity shortcuts). Both are wired in
+// production at server.ts, and the gap is that nothing supplied either THROUGH HubDeps — the tracker
+// methods were exercised directly — so the one line that FEEDS each tracker went unasserted and either
+// hook could be turned into a no-op with the whole core suite green.
 //
-// The sibling hooks on these same paths already ARE wire-tested — `onSang` in
-// queue-order-wiring.test.ts, `onEntryRemoved` by the jobs suite — so these two were the gap.
-//
-// Method: build HubDeps exactly as server.ts does, wiring a REAL PlayTracker / PopularityTracker
-// (server.ts wires app.plays.onNowPlaying and app.popularity.recordAdd), drive the REAL command
-// handlers, and assert the tracker observed the event. Mutation proof lives in the assertions:
-// neutering player.ts's `deps.onNowPlaying?.(...)` reds only the play-tracking tests; removing
-// hub.ts's `deps.recordAdd?.(...)` reds only the popularity tests (see the PR body for the RED runs).
+// MUTATION PROOF: neutering player.ts's `deps.onNowPlaying?.(...)` reds only the play-tracking tests;
+// removing hub.ts's `deps.recordAdd?.(...)` reds only the popularity tests.
 import { test, expect } from 'bun:test';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { handlePlayerCommand } from '$lib/server/realtime/player';

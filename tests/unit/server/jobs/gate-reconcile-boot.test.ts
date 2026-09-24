@@ -290,7 +290,8 @@ test('the pass deletes nothing and adds nothing — it only settles the two gate
 	for (const row of after) {
 		const was = before.get(row.id)!;
 		expect(was).toBeDefined();
-		expect({ ...row, stemStatus: was.stemStatus, lyricsStatus: was.lyricsStatus }).toEqual(was);
+		const restored: Media = { ...row, stemStatus: was.stemStatus, lyricsStatus: was.lyricsStatus };
+		expect(restored).toEqual(was);
 	}
 	// The jobs the pass reads are evidence, never its subject: tidying the ledger destroys the record of
 	// WHY each song was settled.

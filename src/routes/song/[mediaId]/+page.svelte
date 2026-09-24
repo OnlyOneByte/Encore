@@ -145,7 +145,8 @@
 				<!-- Bound out of the narrowed branch: a callback escapes Svelte's narrowing, so `media.id` inside one reads as
 						possibly-null to the checker. -->
 				{@const songId = media.id}
-				<section class="lyrics" aria-label="Lyrics">
+				<!-- No `class="lyrics"`: that selector is the TV overlay's e2e contract (tests/e2e/contract.ts). -->
+				<section aria-label="Lyrics">
 					<h2 class="grouphead">Lyrics</h2>
 					<LyricsReselect
 						candidates={candidates}
@@ -260,10 +261,6 @@
 		font-weight: 700;
 		margin: var(--space-2xl) var(--space-2xs) var(--space-sm);
 	}
-	.lyrics {
-		margin: 0;
-	}
-
 	@media (min-width: 768px) {
 		main {
 			display: grid;

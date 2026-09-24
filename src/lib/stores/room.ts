@@ -233,12 +233,12 @@ export class RoomLink {
 		// un-processed server-side, and preserving the mid-flight status here leaves a row reading as processing.
 		const m = this.mediaCatalog.get(mediaId);
 		if (m) {
-			const nm = new Map(this.mediaCatalog);
-			nm.set(mediaId, {
+			const nextCatalog = new Map(this.mediaCatalog);
+			nextCatalog.set(mediaId, {
 				...m,
 				stemStatus: status === 'ready' ? 'ready' : status === 'failed' || status === 'canceled' ? 'none' : 'queued'
 			});
-			this.mediaCatalog = nm;
+			this.mediaCatalog = nextCatalog;
 		}
 		// A successful re-process clears any failed-process scar, so the row never lingers as failed while it is ready.
 		if (status === 'ready') {
@@ -297,11 +297,12 @@ export class RoomLink {
 	 * Failure is deliberately SILENT: the library is an accelerator, never a blocker. */
 	async refreshLibrary(): Promise<void> {
 		try {
-			const j = await (await fetch('/api/library')).json();
-			this.library = j.library ?? [];
-			this.libraryTags = j.tags ?? {};
+			const snapshot = await (await fetch('/api/library')).json();
+			this.library = snapshot.library ?? [];
+			this.libraryTags = snapshot.tags ?? {};
 			this.mergeMedia(this.library);
-			const processing: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.processing ?? [];
+			const processing: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] =
+				snapshot.processing ?? [];
 			if (processing.length) {
 				this.mergeMedia(processing.map((c) => c.media));
 				this.seedMediaStatus(processing);

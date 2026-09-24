@@ -283,22 +283,22 @@ def _subdivide(seg: dict[str, Any], pieces: list[str]) -> list[dict[str, Any]]:
     A tighter, roughly-right window is a better anchor than one correct window around four lines.
     """
     start, end = seg.get("start"), seg.get("end")
-    numeric = isinstance(start, (int, float)) and isinstance(end, (int, float)) and end > start
-    if not numeric:
+    # Narrowed by an early return rather than a `numeric` flag, which a type checker cannot see through.
+    if not (isinstance(start, (int, float)) and isinstance(end, (int, float)) and end > start):
         return [{"start": start, "end": end, "text": p, "words": []} for p in pieces]
-    span = float(end) - float(start)  # type: ignore[arg-type]
+    span = float(end) - float(start)
     total = sum(len(p) for p in pieces) or 1
     out: list[dict[str, Any]] = []
-    cum = 0
+    consumed = 0
     for p in pieces:
-        lo = float(start) + (cum / total) * span  # type: ignore[arg-type]
-        cum += len(p)
-        hi = float(start) + (cum / total) * span  # type: ignore[arg-type]
+        lo = float(start) + (consumed / total) * span
+        consumed += len(p)
+        hi = float(start) + (consumed / total) * span
         out.append({"start": round(lo, 3), "end": round(hi, 3), "text": p, "words": []})
     return out
 
 
-def _relineate_segments(text: LyricsText, max_chars: int, lineator: Callable[[str], list[str]]) -> LyricsText:
+def _relineate_segments(text: LyricsText, lineator: Callable[[str], list[str]]) -> LyricsText:
     """Re-lineate every text-only segment of `text` with `lineator`; return a NEW LyricsText.
 
     A segment that already carries WORD timings is passed through whole: splitting its text would
@@ -327,9 +327,7 @@ def split_blob_text(
     long. Returns a NEW LyricsText; input untouched.
     """
     bound = bounder if bounder is not None else bound_lines
-    return _relineate_segments(
-        text, max_chars, lambda body: bound(boundary_split(body, max_chars), max_chars)
-    )
+    return _relineate_segments(text, lambda body: bound(boundary_split(body, max_chars), max_chars))
 
 
 def bound_blob_text(
@@ -352,7 +350,10 @@ def bound_blob_text(
     When no segment overflows a row the windows equal `segments`, so `align_windows` is left None.
     """
     bound = bounder if bounder is not None else bound_lines
-    lineator = lambda body: bound([body], max_chars)  # noqa: E731 — one-line adapter, matches call sites
+
+    def lineator(body: str) -> list[str]:
+        return bound([body], max_chars)
+
     # Windows AND the opening index of each human segment in the SAME walk, so the index is a KNOWN fact
     # rather than re-derived downstream by float-equality, which strands every line after a 1e-6 miss.
     windows, opens = _relineate_with_opens(text, lineator)

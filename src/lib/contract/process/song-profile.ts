@@ -150,18 +150,22 @@ export function isVoiceBandId(v: unknown): v is VoiceBandId {
 	return typeof v === 'string' && VOICE_BANDS.some((b) => b.id === v);
 }
 
+/** A band's midpoint — the ONE axis both the display zones and the nearest-band match are measured on. */
+function bandCentre(b: VoiceBand): number {
+	return (b.lowMidi + b.highMidi) / 2;
+}
+
 /** AN APPROXIMATION THAT MUST STAY ONE: real bands overlap, so do not "fix" these into precise ranges —
  *  the claim made IN WORDS comes from `voiceBandFor`. */
 export function voiceBandZones(): { id: VoiceBandId; label: string; lowMidi: number; highMidi: number }[] {
-	const centre = (b: VoiceBand) => (b.lowMidi + b.highMidi) / 2;
 	return VOICE_BANDS.map((b, i) => {
 		const prev = VOICE_BANDS[i - 1];
 		const next = VOICE_BANDS[i + 1];
 		return {
 			id: b.id,
 			label: b.label,
-			lowMidi: prev ? (centre(prev) + centre(b)) / 2 : AXIS_LOW_MIDI,
-			highMidi: next ? (centre(b) + centre(next)) / 2 : AXIS_HIGH_MIDI
+			lowMidi: prev ? (bandCentre(prev) + bandCentre(b)) / 2 : AXIS_LOW_MIDI,
+			highMidi: next ? (bandCentre(b) + bandCentre(next)) / 2 : AXIS_HIGH_MIDI
 		};
 	});
 }
@@ -174,7 +178,7 @@ export function voiceBandFor(p: SongProfile | null | undefined, semitones = 0): 
 	let best = VOICE_BANDS[0];
 	let bestDist = Infinity;
 	for (const b of VOICE_BANDS) {
-		const d = Math.abs((b.lowMidi + b.highMidi) / 2 - songCentre);
+		const d = Math.abs(bandCentre(b) - songCentre);
 		if (d < bestDist) {
 			bestDist = d;
 			best = b;

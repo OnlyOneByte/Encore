@@ -3,7 +3,7 @@
 // screen disabled, its readout says 'Off', and a sentence naming what still works renders BEFORE it.
 //
 // Plus the gesture pair, the part no source scan can reach: a real pointer drag on the
-// SLIDER moves the guiding track and does NOT dismiss the sheet (`handleOnly` on Drawer.Root), while
+// SLIDER moves the guiding track and does NOT dismiss the sheet (`data-vaul-no-drag` on `.np-fit`), while
 // a drag on the HANDLE does. See docs/E2E.md#gestures
 //
 // The filename keeps `hero` so this stays paired with tests/guards/hygiene/hero-live-controls.test.ts:
@@ -582,7 +582,8 @@ async function main() {
 		live.drawerPresent && live.bodyPresent && live.dragHandlePresent,
 		JSON.stringify(live)
 	);
-	// `handleOnly` makes vaul's handle the only draggable element, so the control must not be inside it.
+	// The drag surface is the whole band row, so the control has to sit in the body that `data-vaul-no-drag`
+	// excludes — a control on the handle would be a drag surface no matter what the body is marked with.
 	check(
 		'the control is in the drawer BODY, never on the drag handle',
 		live.sliderPresent && live.sliderInBody && !live.sliderOnDragHandle,
@@ -640,7 +641,7 @@ async function main() {
 	);
 
 	// One gesture, two claims: the slider ANSWERS the drag (the drawer is not swallowing the pointer) and
-	// the drawer SURVIVES it (`handleOnly` is in force). It drags AWAY from the current level so the
+	// the drawer SURVIVES it (the body is excluded from the drag). It drags AWAY from the current level so the
 	// assertion cannot pass on a level that never moved, and carries a downward component because a real
 	// thumb drag is never perfectly horizontal — the vertical part is what a drag-anywhere sheet steals.
 	const sliderBox = await boxOf(phone, SEL.slider);
@@ -667,13 +668,13 @@ async function main() {
 	);
 	const afterSliderDrag = /** @type {any} */ (await phone.evaluate(stateExpr(expectedRange)));
 	check(
-		'…and that drag does NOT dismiss the drawer — handleOnly is in force',
+		'…and that drag does NOT dismiss the drawer — the sheet body is excluded from dragging',
 		afterSliderDrag.drawerPresent && afterSliderDrag.sliderPresent && afterSliderDrag.bodyPresent,
 		JSON.stringify(afterSliderDrag)
 	);
 
-	// The other half: a `handleOnly` drawer whose vendored Handle lost vaul's `data-slot` is undraggable
-	// ENTIRELY and nothing warns, which is what the vendored drawer-handle.svelte exists to correct.
+	// The other half: a drawer whose vendored Handle lost vaul's `data-slot` leaves the handle itself inert and
+	// nothing warns, which is what the vendored drawer-handle.svelte exists to correct.
 	const handleBox = await boxOf(phone, SEL.drawerHandle);
 	if (!handleBox) bail("the drawer renders no vaul handle, so 'a drag on the handle dismisses it' has no subject");
 	const hx = handleBox.x + handleBox.w / 2;

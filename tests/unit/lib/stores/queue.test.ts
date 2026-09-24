@@ -1,4 +1,4 @@
-import { ClientCommand, Ordering, QueueEntry } from '$lib/contract';
+import type { ClientCommand, Ordering, QueueEntry } from '$lib/contract';
 import { QueueStore } from '$lib/stores/queue';
 import { expect, test } from 'bun:test';
 // done-when: add renders pre-broadcast, reconciles with zero reorder; reject rolls back.

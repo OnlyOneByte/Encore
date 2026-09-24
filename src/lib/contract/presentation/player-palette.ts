@@ -4,8 +4,14 @@
 // IT MUST READ THE `uniform` VARIANT: `chromatic` spans a wide lightness range for the TV, where a stop is a
 // whole field, while `uniform` pins every stop in the band `hueToHex` emits at `SINGER_L` — which is what
 // makes any two stops equally visible as a small identity DOT.
-import registry from './player-palette-48.json';
-import { hueOfColor, parseHex } from './colors';
+// `with { type: 'json' }` is REQUIRED, not decorative. Vite and Bun resolve a bare JSON import via
+// `resolveJsonModule`, but Node's own ESM loader refuses it — and the contract BARREL re-exports this module,
+// so any Node-side consumer that touches `$lib/contract` at runtime dies on
+// `needs an import attribute of "type: json"`. That is exactly what happened: the whole Playwright suite
+// failed to load because one spec imported a constant from `$lib/sheet-snap` and another a function from
+// `$lib/tv/lyrics`, both of which reach this file through the barrel.
+import registry from './player-palette-48.json' with { type: 'json' };
+import { canonicalHex, hueDistance, hueOfColor } from './colors';
 
 /** A SUBSET of the JSON's per-stop fields: the rest are generator inputs, and naming them here would invite
  *  a consumer to depend on a generator detail. */
@@ -43,13 +49,6 @@ export const PALETTE_STOP_ARC_DEG = 360 / PALETTE_STOPS.length;
  */
 export const PALETTE_RING_FROM_DEG = -90;
 
-/** Null for anything that is not a hex colour. */
-function canonHex(input: string): string | null {
-	const rgb = parseHex(input);
-	if (!rgb) return null;
-	return '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('');
-}
-
 const BY_FILL = new Map<string, PaletteStop>(PALETTE_STOPS.map((s) => [s.fill, s]));
 
 /** Hue is CYCLICAL, so stop 48 and stop 0 are neighbours. */
@@ -67,14 +66,8 @@ export function paletteStopAt(index: number): PaletteStop {
  *  @knipignore Pinned as public surface by `tests/unit/contract/barrel-surface.test.ts`; the palette's lookups
  *  ship as a set so a caller never has to reach past the barrel. */
 export function paletteStopByFill(input: string): PaletteStop | null {
-	const hex = canonHex(input);
+	const hex = canonicalHex(input);
 	return hex ? (BY_FILL.get(hex) ?? null) : null;
-}
-
-/** Shortest angular distance, in degrees (0–180). */
-function hueGap(a: number, b: number): number {
-	const d = Math.abs((((a - b) % 360) + 360) % 360);
-	return Math.min(d, 360 - d);
 }
 
 /**
@@ -85,14 +78,14 @@ function hueGap(a: number, b: number): number {
  * lightness snaps a colour from a different tier to the wrong stop, while `atan2` is scale-free.
  */
 export function nearestPaletteStop(input: string): PaletteStop {
-	const hex = canonHex(input);
+	const hex = canonicalHex(input);
 	const exact = hex ? BY_FILL.get(hex) : undefined;
 	if (exact) return exact;
 	const hue = hueOfColor(hex ?? '');
 	let best = PALETTE_STOPS[0]!;
 	let bestGap = Infinity;
 	for (const s of PALETTE_STOPS) {
-		const gap = hueGap(s.hue, hue);
+		const gap = hueDistance(s.hue, hue);
 		if (gap < bestGap) {
 			bestGap = gap;
 			best = s;

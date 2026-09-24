@@ -189,7 +189,6 @@
 	--secondary-foreground: var(--ink);
 	--muted: var(--card2);
 	--muted-foreground: var(--ink-dim);
-	--accent-surface: var(--card-tint);
 	--destructive: var(--danger);
 	--background: var(--bg);
 	--foreground: var(--ink);
@@ -198,7 +197,6 @@
 	--ring: var(--focus);
 	--popover: var(--card);
 	--popover-foreground: var(--ink);
-	--card-surface: var(--card);
 	/* Only the INK half was missing: an Encore card inherits --ink from the page, shadcn sets it on the element. */
 	--card-foreground: var(--ink);
 

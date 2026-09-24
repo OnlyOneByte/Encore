@@ -101,22 +101,23 @@ export function formatDuration(durationSec: number | undefined): string {
 	return formatHms(Math.round(durationSec));
 }
 
+/** Largest first, so the first match is the right magnitude. */
+const VIEW_UNITS: readonly [number, string][] = [
+	[1_000_000_000, 'B'],
+	[1_000_000, 'M'],
+	[1_000, 'K']
+];
+
 /** A compact view count, because the number is a TIEBREAKER rather than a datum. Empty string for undefined so the
  * chip is OMITTED rather than reading zero — genuinely no views and never learning a count must not look alike. */
 export function formatViewCount(views: number | undefined): string {
-	if (views === undefined || views === null || !Number.isFinite(views) || views < 0) return '';
-	if (views < 1000) return String(Math.round(views));
-	const units: Array<[number, string]> = [
-		[1_000_000_000, 'B'],
-		[1_000_000, 'M'],
-		[1_000, 'K']
-	];
-	for (const [scale, suffix] of units) {
-		if (views >= scale) {
-			const scaled = views / scale;
-			// One decimal below ten, none above: 2.1B reads better than 2B, and 306M better than 305.9M.
-			return `${scaled < 10 ? scaled.toFixed(1).replace(/\.0$/, '') : Math.round(scaled)}${suffix}`;
-		}
+	if (typeof views !== 'number' || !Number.isFinite(views) || views < 0) return '';
+	for (const [scale, suffix] of VIEW_UNITS) {
+		if (views < scale) continue;
+		const scaled = views / scale;
+		// One decimal below ten, none above: 2.1B reads better than 2B, and 306M better than 305.9M.
+		return `${scaled < 10 ? scaled.toFixed(1).replace(/\.0$/, '') : Math.round(scaled)}${suffix}`;
 	}
+	// Below the smallest unit the count reads as itself.
 	return String(Math.round(views));
 }

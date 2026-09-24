@@ -8,9 +8,11 @@ recipes and this box's tool inventory; this document carries the contracts.
 
 Two rungs, and only one of them needs a browser.
 
-- **The guard.** `tests/guards/hygiene/contract.test.ts` runs inside `bun run test` on every change
-  and reds the moment a selector's source anchor disappears. It is the load-bearing half: it proves
-  the drivers are still aimed at the app.
+- **The guard — RETIRED.** `tests/guards/hygiene/contract.test.ts` ran inside `bun run test` and red the
+  moment a selector's source anchor disappeared, which made it the load-bearing half: it proved the drivers
+  were still aimed at the app. The whole `tests/guards/` tree is deleted, so NOTHING now verifies that a
+  selector still resolves until a browser run opens the page. That is a real loss of coverage, not a
+  simplification — a renamed class is now found by a spec timing out rather than by a unit test naming it.
 - **The drivers.** Everything under `tests/e2e/` needs a built app, a seeded media dir and a
   Chromium, so it is opt-in. It proves the app works.
 
@@ -80,10 +82,12 @@ fold (geometry, contrast, a tap) is measured off a hidden element, so drag the s
 
 - **It launches; it does not attach.** `connectOverCDP` hangs under Bun (its ws client and Bun's
   runtime disagree), so `chromium.launch()` is the only path that works here.
-- **`executablePath` comes from `findChromium()`** in `tests/e2e/lib/chromium.mjs`, which is the
-  single source of browser discovery — `tests/guards/hygiene/chromium.test.ts` bans a second copy.
-  Launching with no path demands a ~150MB `playwright install`, because the pinned Playwright wants a
-  browser revision this box's cache does not hold.
+- **`executablePath` comes from `findChromium()`** in `tests/e2e/lib/chromium.mjs` for the old tree; the
+  new suite uses `resolveChromium()` in `tests/playwright/world/chromium.ts`. The guard that banned a second
+  copy is deleted. The new resolver differs deliberately: it honours `PW_CHROMIUM` (validated, so a wrong
+  path throws with the path in it), then falls back to the NEWEST cached `chromium-*` build instead of the
+  exact revision Playwright asks for — the cache here holds build 1223 while the installed @playwright/test
+  wants 1194, and failing on that digit with a usable browser present is not worth a ~150MB re-download.
 - **No `--autoplay-policy` by default.** Flags a flow depends on are the flow's to pass through
   `opts.args`; see [Autoplay](#autoplay).
 - **One browser context per phone.** Two contexts are two guests with two cookie jars, which is what
@@ -123,9 +127,11 @@ was inlined.
 
 ### Reachability
 
-`tests/guards/meta/e2e-reachability.test.ts` requires every `.mjs`/`.ts` under `tests/e2e/` to be
-reachable from a `package.json` script, or to be on a closed `UNRUN` list with its reason. The list
-is empty and should stay that way.
+`tests/guards/meta/e2e-reachability.test.ts` used to require every `.mjs`/`.ts` under `tests/e2e/` to be
+reachable from a `package.json` script, or on a closed `UNRUN` list with its reason. It is deleted along with
+the rest of `tests/guards/`. Playwright makes the rule structural instead of asserted: a spec under
+`tests/playwright/specs/<project>/` is discovered by its project, so there is no manifest to drift from — but
+equally, nothing now notices a spec file that no project's `testDir` covers.
 
 Reachability is **by name**, not only by import: the walk starts from files a script mentions and
 follows any other file's basename appearing anywhere in the text. That is deliberate — drivers spawn
@@ -171,9 +177,11 @@ decoded bytes, silent room.
 The fixture is hand-emitted, not encoded: `tests/e2e/wav.mjs` writes 16-bit PCM WAV by hand
 (`tone()` for audible audio, `silence()` for the digital-silence floor a guard must refuse), because
 both ffmpeg builds on this box are decode-only and there is no flac/sox/lame. `tests/e2e/seed-media.mjs`
-writes 16-byte ISO-BMFF placeholders — enough to index, search and queue, never enough to decode or
-process — so a READY song needs `tests/e2e/fake-stems-worker.mjs` to claim a job and publish real
-audio.
+emits the same real WAV through `world/seed.mjs`, so a seeded library track is decodable and playable —
+it no longer writes the 16-byte ISO-BMFF placeholders it once did, because core now refuses to index a
+library file whose duration it cannot read (see "The demo library"). A seeded track is still not a
+PROCESSED one: stems and lyrics come from `tests/e2e/fake-stems-worker.mjs` claiming a job and
+publishing real audio, so a READY song still needs it.
 
 ### Autoplay
 
@@ -204,8 +212,9 @@ Its rules:
   `/health` are all exit **1**, with the remedy printed. A permanently-skipped check is
   indistinguishable from the rot it was meant to catch.
 - **It measures a resolved layout**, so `bun run build` must have run first. None of the four claims
-  is decidable on the mount rung: happy-dom has no layout engine, and `tests/setup/svelte-dom-preload.ts`
-  replaces `getBoundingClientRect` with a throw naming the rung so they cannot be parked there.
+  is decidable without a real layout engine, which is why they live in a browser at all. The mount rung
+  that used to enforce this (`tests/setup/svelte-dom-preload.ts`, which replaced `getBoundingClientRect`
+  with a throw naming the rung) is deleted, so the prohibition is now a convention rather than a mechanism.
 - **Take a hit extent at the CENTRE x.** Chromium hit-tests `border-radius`, so sweeping at a
   far-edge x measures the chord through the control's own rounded corner and read every 44px pill as
   34–42px. Use far-edge probes for occlusion only, along the widest row.
@@ -221,10 +230,12 @@ Its rules:
 
 `tests/e2e/gates/measured-design-register.mjs` is the data half — the control register, the tap floor
 read live out of `--tap`, and a QUARANTINE of control classes that already measured under the floor
-when the gate was first run. The register is loaded by `tests/guards/wiring/measured-design-gate.test.ts`,
-which runs in `bun run test` on every box and asserts the register is non-vacuous, that every
-quarantine entry carries a substantive reason, and that the gate is still in the gate list — a
-register only the gate can read is a register nobody checks when the gate does not run. The gate fails
+when the gate was first run. The register WAS loaded by `tests/guards/wiring/measured-design-gate.test.ts`, which ran in `bun run test`
+on every box and asserted the register is non-vacuous, that every quarantine entry carries a substantive
+reason, and that the gate is still in the gate list. That guard is deleted, which removes exactly the
+protection its own rationale named — a register only the gate can read is a register nobody checks when the
+gate does not run, and that is now the state. Re-establishing it as a plain `tests/unit/` test is the
+cheapest way back, since `tests/helpers.ts` still exports the `read`/`stripComments` it needs. The gate fails
 when a quarantined control **improves** to the floor as well as when it regresses: a quarantine entry
 whose defect no longer reproduces is a guard that can no longer fail, and on a real browser it may
 only mean this box ships a different UA default. Either way the entry gets re-decided, never nudged.
@@ -328,3 +339,90 @@ Env vars on `tests/e2e/fake-stems-worker.mjs`, which is how every unhappy path i
 
 Singer names are unique per room: reusing one gets a 409 and the join page simply stays put, which
 looks exactly like a broken flow. Use a fresh name per probe.
+
+## The demo library
+
+`tests/e2e/world/seed.mjs` owns the demo fixture: four filenames, their tone, and the writer that puts
+them under `MEDIA_DIR/library`. `bun run e2e:seed` is a thin wrapper around it.
+
+It used to live in two halves — `server.ts` held the titles, artists and durations while `seed-media.mjs`
+held the filenames — and the seeder's own header admitted the hazard: *"Must match the seededLibrary
+sourceRefs in server.ts. NOT covered by the contract guard … so nothing reds if they drift apart."*
+Three things were wrong with that arrangement, and all three are fixed:
+
+- **It ran in production.** The seed had no environment guard, so every box — including a real
+  deployment — wrote three YouTube rows (`demo-takeonme`, `demo-mrbrightside`, `demo-dancingqueen`) and
+  four local tracks into its catalog on every boot.
+- **It was the ONLY thing in the local library.** `LocalLibrary`'s comment claimed it "scans a media
+  directory" and was "rebuilt from disk scan on boot", but nothing scanned: `index()` had exactly one
+  caller, in `server.ts`, with that hardcoded list. A deployment that dropped real files into
+  `MEDIA_DIR/library` indexed none of them. The `local library scan` boot pass in `app.ts` is the scan
+  the comment always described.
+- **The files were not decodable.** The seeder wrote 16-byte ISO-BMFF headers and said so: *"these are
+  NOT decodable media — indexing/queueing only, never playback or processing"*. They are real 8-second
+  WAV tones now, by way of `wav.mjs`. This is no longer optional: core reads a duration with ffmpeg
+  before indexing a library file and **skips** any file it cannot measure, because a track indexed at
+  `durationSec: 0` is one the wait estimate reports as instant. Their 8 seconds is a fixture value.
+
+The filename is the only metadata a library track has — `trackNameFromFile` splits `Artist - Title.ext`
+on a spaced hyphen and treats anything else as all-title. The fixture keeps kebab-case names so probes
+can match a stable substring (`sourceRef.includes('sweet-caroline')`).
+
+`/harness` and `/harness/phone` are likewise opt-in now, behind `ENCORE_DEV_HARNESS=1`: they are
+unauthenticated pages that mint queue commands, so they are a tool you ask for rather than a surface
+that is simply there. Their three buttons were hardcoded to the demo ids and are now built from
+`/api/library`.
+
+## If this tree were rewritten: use `@playwright/test`
+
+Recorded as a decision not yet executed, so the reasoning is not re-derived. `@playwright/test` is
+**already a devDependency**, and `driver.mjs` is a 250-line facade over it exposing `connect` and
+`sleep`. Everything else the framework provides is hand-rolled across ~30 entry points:
+
+| Concern                | Files re-implementing it | What replaces it |
+| ---------------------- | ----------------------- | ---------------- |
+| `bail()`               | 17                      | `test.skip()` / a failed fixture |
+| `check()`              | 10                      | `expect` |
+| `EPORT` parsing        | 31                      | a worker-scoped fixture, or `webServer` |
+| `waitFor`              | 31                      | auto-waiting + `expect.poll` |
+| its own `/health` poll | 28                      | `webServer.url` |
+| scratch-dir handling   | 21                      | `testInfo.outputDir` |
+| spawning a server      | 14                      | one fixture |
+| `run-probes.mjs`       | 371 lines of runner     | `--project=probe` |
+
+The five screenshot tools differ on only two axes — who owns the server, and which frames — so they
+collapse into one table-driven spec, with `toHaveScreenshot()` doing natively what `shoot.mjs` does by
+hand:
+
+| File                  | Lines | Server           | Frames |
+| --------------------- | ----- | ---------------- | ------ |
+| `shot.mjs`            | 23    | already running  | 1, from argv |
+| `shot-settings.mjs`   | 81    | already running  | the 3 settings tabs |
+| `shot-metrics.mjs`    | 200   | already running  | `/metrics`, `fetch` stubbed |
+| `shoot.mjs`           | 249   | boots its own    | 4 migration surfaces |
+| `capture.mjs`         | 556   | running + seeded | ~30 |
+
+Target shape:
+
+```
+tests/e2e/
+  playwright.config.ts        projects: gate | flow | probe | shot
+  world/{fixtures,seed,audio,workers,selectors}.ts
+  specs/gate/measured-design.spec.ts
+  specs/flow/{party,playback,lobby,fuzz}.spec.ts
+  specs/probe/p1-gapless.spec.ts …
+  specs/shot/frames.spec.ts
+```
+
+Two constraints on doing it, both learned the hard way:
+
+- **`gates/measured-design.mjs` moves LAST, on its own.** It is gate leg 7, it is 1,125 lines, and it
+  encodes methodology paid for in bugs — take a control's extent at the CENTRE x because Chromium
+  hit-tests `border-radius`, and shoot at DPR 1 because the frames get read back. Its assertions move
+  one-for-one or not at all.
+- **A probe's assertions are moved, never rewritten.** The 20 probes carry real domain knowledge, and a
+  mechanical translation is how a suite silently weakens.
+
+The migration also erases most of the 194 `noUncheckedIndexedAccess` errors that `tests/tsconfig.e2e.json`
+currently opts out of, because specs become real `.ts` in a real program — and it retires that config's
+hand-maintained 40-file `include` list in favour of Playwright's own discovery.

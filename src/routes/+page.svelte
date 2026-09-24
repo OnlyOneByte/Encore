@@ -28,6 +28,8 @@
 		type Readiness
 	} from '$lib/readiness';
 	import { waitShort } from '$lib/phrasing/position-sentence';
+	import { queueAnnouncement } from '$lib/phrasing/queue-announcement';
+	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { processAndQueue } from '$lib/process-and-queue';
 	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
@@ -61,9 +63,6 @@
 	/* One column read top to bottom, with `searchActive` (a non-empty query) as the SOLE switch between the queue
 	   view and the results view — no browse mode, no history entry. See docs/FRONTEND.md#the-home-column. */
 
-	// Every position is legal under `move-to-index`, so no order policy can discard a move.
-	const canReorder = true;
-
 	// Mirrored from the room link, not owned here. Optional because an unjoined guest has no queue at all, which
 	// is what every `store?.` call site below reads.
 	let store = $state<QueueStore | undefined>(undefined);
@@ -71,9 +70,6 @@
 	function mediaTitle(id: string): string {
 		const m = mediaCatalog.get(id);
 		return m ? `${m.title}${m.artist ? ' — ' + m.artist : ''}` : id;
-	}
-	function singerOf(id: string): PublicSinger | undefined {
-		return singers.get(id);
 	}
 	/* `sync()` runs ONCE before subscribing: the link is a singleton that outlives this component, so on a return
 	   to `/` it is already live and subscribing alone renders an empty queue until the room happens to speak. */
@@ -123,13 +119,20 @@
 	let inflight: AbortController | undefined;
 	const searchActive = $derived(query.trim().length > 0);
 
+	/* ALL THREE GROUPS TOGETHER, in one place: each is scoped to the query that produced it, so a group left behind
+	   renders under whatever the box shows next. Dropping them one site at a time is how `processingResults` was
+	   forgotten on the failure path. */
+	function clearResults() {
+		readyResults = [];
+		rawResults = [];
+		processingResults = [];
+	}
+
 	function onQueryInput() {
 		clearTimeout(debounceTimer);
 		const q = query.trim();
 		if (!q) {
-			readyResults = [];
-			rawResults = [];
-			processingResults = [];
+			clearResults();
 			searching = false;
 			inflight?.abort();
 			return;
@@ -159,9 +162,7 @@
 			room.mergeMedia([...readyResults, ...rawResults, ...processingResults]);
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
-				readyResults = [];
-				rawResults = [];
-				processingResults = [];
+				clearResults();
 				showError('Search failed.');
 			}
 		} finally {
@@ -284,41 +285,20 @@
 		});
 	}
 
-	/*
-	 * Announced POLITELY, never assertive. The anti-spam guard is the DIFF, not a timer: position telemetry does not
-	 * change `queued`, so it says nothing. My own adds stay silent, and the first population seeds the baseline.
-	 */
+	// Announced POLITELY, never assertive. The sentence and every rule about when there is nothing to say live in
+	// `$lib/phrasing/queue-announcement`; this holds only the last-seen ids, NULL until the first sync.
 	let liveMsg = $state('');
-	let announceReady = false; // suppress the initial sync; only later deltas are news
-	let lastQueueIds: string[] = [];
+	let announcedIds: string[] | null = null;
 	$effect(() => {
-		const ids = queued.map((e) => e.id);
-		const prev = lastQueueIds;
-		if (!announceReady) {
-			// baseline: remember what was already there so the first sync is not announced
-			lastQueueIds = ids;
-			announceReady = true;
-			return;
-		}
-		const prevSet = new Set(prev);
-		const added = queued.filter((e) => !prevSet.has(e.id));
-		if (added.length) {
-			// One line even when several land at once (a resync catch-up), naming the count.
-			const mine = added.every((e) => e.singerId === me?.id);
-			if (!mine) {
-				const others = added.filter((e) => e.singerId !== me?.id);
-				if (others.length === 1) {
-					const e = others[0]!;
-					const who = singers.get(e.singerId)?.displayName ?? 'Someone';
-					liveMsg = `${who} queued ${mediaTitle(e.mediaId)}`;
-				} else {
-					liveMsg = `${others.length} songs added to the queue`;
-				}
-			}
-		} else if (ids.length === prev.length && ids.some((id, i) => id !== prev[i])) {
-			liveMsg = 'Queue reordered';
-		}
-		lastQueueIds = ids;
+		const announcement = queueAnnouncement({
+			previousIds: announcedIds,
+			queued,
+			meId: me?.id,
+			singerName: (id) => singers.get(id)?.displayName ?? 'Someone',
+			songTitle: mediaTitle
+		});
+		announcedIds = queued.map((e) => e.id);
+		if (announcement) liveMsg = announcement;
 	});
 
 	/** The entry's index in the WHOLE queued list — the index space `move-to-index` uses. */
@@ -352,18 +332,9 @@
 			: -1
 	);
 
-	function gripFor(e: QueueEntry): boolean {
-		// `e` stays in the signature so the template asks per-row: a hard-coded literal on every row is the recorded
-		// regression, and a later per-row rule needs somewhere to read from.
-		void e;
-		return gripVisible({ queuedCount: queued.length, reorderMeaningful: canReorder });
-	}
-
-	/** Constant today, kept as one named suppression point for a rule that does need to freeze a row. */
-	function rowFrozen(e: QueueEntry): boolean {
-		void e;
-		return false;
-	}
+	/* Every position is legal under `move-to-index`, so no ordering policy can discard a move: the only condition
+	   on the grip is that a second position exists. Both row kinds take THIS value, never a literal. */
+	const gripsVisible = $derived(gripVisible({ queuedCount: queued.length, reorderMeaningful: true }));
 
 	function commitMove(id: string, to: number | null) {
 		if (to === null) return;
@@ -380,10 +351,8 @@
 		if (to === null) return;
 		commitMove(id, to);
 		liveMsg = `Moved to ${ordinal(to + 1)} in the queue.`;
-		// The row's DOM is recreated at its new position, so focus is re-found by attribute, never held.
-		void tick().then(() => {
-			(document.querySelector(`[data-grip="${CSS.escape(id)}"]`) as HTMLElement | null)?.focus?.();
-		});
+		// After the patch lands, because the row's DOM is recreated at its new position.
+		void tick().then(() => focusGrip(id));
 	}
 
 	/** End the gesture. `commit` false for a cancel or an invalidation — those commit NOTHING. */
@@ -400,12 +369,9 @@
 		rowBounds = [];
 		reorderNote = note;
 		if (note) liveMsg = note;
-		// After `tick()` and by ATTRIBUTE: the recreated row leaves the pressed grip a detached node, so focusing the
-		// captured reference puts focus nowhere. `openerEl` covers a row that has gone entirely.
+		// After the patch lands; `openerEl` is the fallback for a row that has gone entirely.
 		void tick().then(() => {
-			const sel = id ? `[data-grip="${CSS.escape(id)}"]` : '';
-			const el = sel ? (document.querySelector(sel) as HTMLElement | null) : null;
-			(el ?? openerEl)?.focus?.();
+			focusGrip(id, openerEl);
 			openerEl = null;
 		});
 	}
@@ -421,29 +387,14 @@
 		openerEl = grip;
 		// A pointer press does not focus a button in every engine, so an Escape cancel would have no origin.
 		grip.focus?.();
-		// Both reads happen ONCE, here, and nothing is measured again for the life of the gesture. `closest` rather
-		// than an index because the gap belongs to the row being carried; `.qrow` matches both row kinds in DOM order.
-		rowH = grip.closest('.qrow')?.getBoundingClientRect().height ?? 0;
-		rowBounds = [...document.querySelectorAll('.qrow')].map((el) => {
-			const b = el.getBoundingClientRect();
-			return { top: b.top, height: b.height };
+		// Both reads happen ONCE, here, and nothing is measured again for the life of the gesture.
+		rowH = measureCarriedRowHeight(grip);
+		rowBounds = measureRowBoxes();
+		dragTeardown = trackDragPointer(e, {
+			onMove: (offsetY) => (dragY = offsetY),
+			onEnd: () => endDrag(true),
+			onCancel: () => endDrag(false)
 		});
-		const startY = e.clientY;
-		// The listeners MUST go on `window`, not the grip and not behind setPointerCapture: the row's DOM is recreated
-		// as the list reorders, so a listener bound to the pressed grip delivers nothing and the release never arrives.
-		const move = (ev: PointerEvent) => {
-			dragY = ev.clientY - startY;
-		};
-		const up = () => endDrag(true);
-		const cancel = () => endDrag(false);
-		window.addEventListener('pointermove', move);
-		window.addEventListener('pointerup', up);
-		window.addEventListener('pointercancel', cancel);
-		dragTeardown = () => {
-			window.removeEventListener('pointermove', move);
-			window.removeEventListener('pointerup', up);
-			window.removeEventListener('pointercancel', cancel);
-		};
 	}
 
 	// The queue moving under a drag needs no handling — the live sort is relative to where the row IS. Only the
@@ -600,7 +551,7 @@
 				</Empty.Root>
 			{:else}
 				{#each queued as e, i (e.id)}
-					{@const s = singerOf(e.singerId)}
+					{@const s = singers.get(e.singerId)}
 					{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
 					{#if card === 'processing' || card === 'failed'}
 						{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
@@ -614,7 +565,7 @@
 							pct={proc.pct}
 							pending={pendingKind.get(e.id) ?? null}
 							onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
-							reorderable={!rowFrozen(e) && canReorder && !!me?.id && queued.length > 1}
+							reorderable={gripsVisible}
 							dimmed={false}
 							shift={rowShift(i, dragFrom, dragTo)}
 						/>
@@ -632,7 +583,7 @@
 							pending={pendingKind.get(e.id) ?? null}
 							subtitle={queueSubtitle(e)}
 							removable={e.singerId === me?.id}
-							grip={gripFor(e)}
+							grip={gripsVisible}
 							gripId={e.id}
 							dimmed={false}
 							moving={movingId === e.id && dragging}
@@ -685,10 +636,9 @@
 		{/if}
 
 		{#if searchActive}
-			{@const readyStack = readyResults}
-			{#if readyStack.length}
+			{#if readyResults.length}
 				<h2 class="grouphead">Ready to sing</h2>
-				{#each readyStack as m (m.id)}
+				{#each readyResults as m (m.id)}
 					<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 				{/each}
 			{/if}
@@ -720,7 +670,7 @@
 			{/if}
 
 			<!-- Nothing singable matched but the library has songs: clearing the box restores both it and the queue. -->
-			{#if !readyStack.length && library.length}
+			{#if !readyResults.length && library.length}
 				{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
 				<Empty.Root>
 					<Empty.Header>
@@ -945,13 +895,6 @@
 		font-weight: 700;
 		overflow-wrap: anywhere;
 	}
-	/* Docked-toast stacking, measured UP from the band: --dock-h already carries the band's safe-area inset, so a
-	   second env() term here doubles the gap. Both tokens are declared-but-unread — Sonner stacks its own. */
-	:root {
-		--undo-dock: calc(var(--dock-h, 0px) + 14px);
-		--error-dock: calc(var(--undo-dock) + var(--undo-h, 0px) + 14px);
-	}
-
 	/* --warn, not --danger: a dropped socket self-heals on the next backoff tick. */
 	.offline-pill {
 		display: inline-flex;

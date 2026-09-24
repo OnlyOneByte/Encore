@@ -13,7 +13,7 @@ shared primitives (`.card`, `.list-row`, `.singer-dot`). Nothing else in the tre
 ### Tailwind v4, with Preflight off
 
 Tailwind is imported in THREE PARTS, never as the one-line `@import 'tailwindcss'`, because that pulls
-`preflight.css` and the reset restyles a tree that predates it. `tests/guards/design-system/tailwind-toolchain.test.ts`
+`preflight.css` and the reset restyles a tree that predates it. The toolchain rule
 reds if the one-liner returns. Utilities are imported with `source(none)` plus a single `@source` over
 `src/lib/components/ui/` — auto-detection mints a utility from any bare token anywhere in the project, and the
 lyrics `ball` setting's values became real utilities on the television that way.
@@ -36,8 +36,7 @@ token it forwards** (`--spacing-sm: var(--space-sm)`), because an entry that nam
 and paints nothing, silently — that is why `--radius-*` is absent. And **no player hue may be registered
 there**: minting is all-or-nothing per namespace, so a colour hands out `text-<hue>` alongside `bg-<hue>`, and
 the ink-versus-fill split is per-stop across the palette registry. The shadcn semantic layer IS registered, so
-a vendored component works unedited, and the ink direction is banned by name in app source instead
-(`tests/guards/design-system/shadcn-ink-ban.test.ts`).
+a vendored component works unedited, and the ink direction is banned by name in app source instead.
 
 Naming traps that have all bitten at least once:
 
@@ -49,11 +48,11 @@ Naming traps that have all bitten at least once:
 | an app class named after a utility (`block`, `underline`, `ring`) | inherits the utility's declarations wherever a vendored component caused one to be emitted |
 
 Every width in a vendored component is therefore an arbitrary value, which resolves through no namespace;
-`tests/guards/design-system/vendored-dimension-keys.test.ts` catches the named form.
+The named form is the one that bites.
 
 ### Tokens, and which may never carry text
 
-A component reads `var(--…)` and never a literal. `tests/guards/design-system/design-system.test.ts` reds on a
+A component reads `var(--…)` and never a literal. The rule is broken by a
 literal that duplicates a token's value, and on an `@media` width that is not a member of the `--bp-*` list.
 Off-scale values (7px, 9px, 0.78rem) deliberately have no token, so a near-miss is invisible to that guard.
 
@@ -62,20 +61,20 @@ Three tokens carry a hard rule:
 - **`--grad` is decoration only.** Progress fills and the wordmark through `background-clip`. No ink clears AA
   at both endpoints across the palette registry, and nothing measures the interpolated interior.
 - **`--accent` is a FILL, and `--accent-ink` exists because it is not readable as text.** A fill and its ink
-  are emitted as one certified pair or neither; `tests/guards/design-system/colour-tokens.test.ts` fails a site
+  are emitted as one certified pair or neither; the rule fails at a site
   that sets one without the other.
 - **`--danger`, not `--accent2`, means failure.** Pink is a valid singer colour, so an error drawn in it reads
   as decoration.
 
-`--tap` is the one number the guards read out of the stylesheet rather than restating: `tests/support/src/scan.ts`
+`--tap` is the one number the guards read out of the stylesheet rather than restating: `tests/helpers.ts`
 parses that declaration, so a control must express the token and never 44. Type is rem on every phone surface,
-because `body` declares `font-size: 100%` and `tests/guards/layout/phone-inventory.test.ts` bans an absolute
+because `body` declares `font-size: 100%` and the inventory rule bans an absolute
 size there; form controls take a 16px floor of their own, because iOS zooms a focused sub-16px field and never
 zooms back. The two `--max-w` preludes keep px literals, since a media query is evaluated before the cascade
 and cannot read a custom property.
 
 Dimming is a SURFACE or INK change, never an opacity on a subtree: an ancestor alpha flattens text and the
-surface behind it into one buffer, so `tests/guards/a11y/contrast.test.ts` keeps passing while the guest sees
+surface behind it into one buffer, so a token-level contrast check keeps passing while the guest sees
 worse. A leaf that carries no text may use opacity. Because that guard reasons about a row by reading the rules
 in the ROW'S OWN FILE, any rule declaring a colour has to stay there — `src/lib/components/ui/item/item.svelte`
 carries the row grammar's layout and none of its colour for exactly this reason.
@@ -91,12 +90,12 @@ carries the row grammar's layout and none of its colour for exactly this reason.
   lands on nothing, ships in the bundle, and matches nothing — a dead `min-height` shipped on
   `src/lib/components/ui/slider/slider.svelte` that way while the tap-target guard read the rule and passed.
   The sanctioned form is `:global()` on the primitive's own `data-slot`, and
-  `tests/guards/design-system/ui-scoped-style-reach.test.ts` checks reach. A `:global()` that keys on a shared
+  Reach is the thing to check. A `:global()` that keys on a shared
   attribute must be ANCHORED under a scoped class, or it matches every such element in the app.
 - **A class handed to a component is stripped at the caller.** State that a component cannot carry on a variant
   travels as a `data-*` attribute the component forwards (`src/lib/components/SongRow.svelte` does this for its
   three row states).
-- **A guard's own reach is part of the trap.** `tests/guards/a11y/touch-targets.test.ts` reads CSS RULES, so a
+- **A check's own reach is part of the trap.** A tap-target check that reads CSS RULES means a
   tap floor written as a utility in a class attribute is invisible to it; its control scan reads only
   `class="…"`, so a `class:` directive removes a control from the population. A vendored component renders no
   bare `button` tag for that scan at all, which is why `src/lib/components/ui/sonner/sonner.svelte` carries its
@@ -113,8 +112,7 @@ carries the row grammar's layout and none of its colour for exactly this reason.
 
 ### Motion, in component CSS
 
-Svelte `transition:` / `in:` / `out:` / `animate:` directives are banned tree-wide
-(`tests/guards/motion/motion.test.ts`): the transition runtime writes its own inline keyframes and never
+Svelte `transition:` / `in:` / `out:` / `animate:` directives are banned tree-wide: the transition runtime writes its own inline keyframes and never
 consults the media query. Tailwind's motion utility NAMES are banned for the same reason. So motion is
 authored CSS, and the rules are:
 
@@ -157,7 +155,7 @@ tracking `positionSec` alone, a resume did not re-run the capture while the inte
 ring extrapolated from the clock recorded at PAUSE time — one second after every resume it leapt forward
 by the whole pause and clamped full on a song still playing. Both reads now live in one effect in
 `src/routes/+layout.svelte`, which makes a stale anchor unrepresentable, and
-`tests/guards/hygiene/band-clock-reanchors.test.ts` pins that shape.
+That shape is load-bearing.
 
 Note that the same two-effect arrangement is fine in `src/routes/+page.svelte`, because it reads
 `playback.positionSec` off an object `src/lib/stores/room.ts` REPLACES on every broadcast, so any playback
@@ -194,7 +192,7 @@ Its direction flag comes with three constraints, and all three are load-bearing:
 
 There is no layout engine and geometry reads throw, which puts real rules on any component that binds a
 size. See [The mount rung](#the-mount-rung-and-the-rule-it-puts-on-size-bindings) for what those are, and
-[`docs/GUARDS.md`](GUARDS.md) for the two rungs the suite is split into.
+[`docs/TESTS.md`](TESTS.md) for the two rungs the suite is split into.
 
 ## Shared components
 
@@ -243,7 +241,7 @@ sheet down ends in a click that reopens it.
 Three more drawer facts that look optional and are not. `modal={false}` is a necessity — a permanently-mounted
 sheet whose collapsed height is the docked band cannot put a scrim and a focus trap over the page in use — and
 because vaul gates the overlay on modality, `src/lib/components/ui/drawer/drawer-overlay.svelte` renders nowhere
-and carries no fade; `tests/guards/design-system/drawer-overlay-modality.test.ts` ties those facts together.
+and carries no fade; those two facts belong together.
 `trapFocus={false}` is why you can type in the search box: the trap is a layer below vaul, in the dialog
 primitive, and its scope installs a document-level `focusin` capture listener for as long as it is enabled —
 enabled is `open`, permanently true here. And the GRAB BAR is composed at the call site, not by
@@ -256,7 +254,7 @@ arithmetic on both sides, so the bar's height must stay a token rather than a Ta
 ### The mount rung, and the rule it puts on size bindings
 
 happy-dom has no layout engine, so the mount harness replaces every geometry read with a THROW rather than
-letting a fabricated zero pass (`tests/guards/meta/mount-rung.test.ts`). A zero is not a measurement, and the
+letting a fabricated zero pass. A zero is not a measurement, and the
 two natural guard shapes around one are a permanent red nobody trusts or a permanent silent green.
 
 The consequence is a rule about markup, not about tests. `.band-slot` and `.np-fit` carry `bind:clientHeight`,
@@ -286,7 +284,7 @@ a property of the event, so the band's drag-cancel logic is safe on this rung.
 in `src/lib/components/ui/item/item.svelte` through Item's `child` snippet — the row ELEMENT stays in each file,
 because a `class:` directive is not valid on a component. Their common contracts:
 
-- **The root's `class` attribute stays STATIC.** `tests/guards/a11y/contrast.test.ts` derives a row's classes by
+- **The root's `class` attribute stays STATIC.** Any contrast check derives a row's classes by
   splitting that attribute on whitespace, so an interpolation hands it a token it then applies as a regex and
   reports a nonsense defect about an unrelated rule.
 - **A processing mark is a SIBLING of the title, never a child.** The title is a clamp with `overflow: hidden`,
@@ -295,7 +293,7 @@ because a `class:` directive is not valid on a component. Their common contracts
   clamp box fills the line and pushes the mark to the column's far edge.
 - **`ProcessingCard` and `QueueRow` are deliberately byte-identical** on the drag transform, the digit roll and
   the dimmed treatment, because the two kinds sit in ONE list dragged by one gesture, and a difference reads as
-  one of them being broken. `tests/guards/design-system/processing-card-longname-fixture.test.ts` additionally
+  one of them being broken. A long-name fixture additionally
   pins the singer-dot comment in `ProcessingCard` and the gallery fixture that makes its 0px collapse visible.
 - **A dragged row is transparent to hit-testing.** It is translated to sit under the finger, so as the topmost
   element at the pointer it is what `elementFromPoint` returns instead of the drop slot beneath, and a release
@@ -325,7 +323,7 @@ short and returns silently, which is how the last keystroke and a whole-code pas
 `aria-valuetext` over the stop's NAME, arrow steps that WRAP because hue is cyclical, and a diameter derived
 from `--tap` — a percentage height resolves against an auto-height parent and computes to zero. Its `taken` pips
 are information, never a block, because two singers sharing a colour is legal. The palette's measured contrast
-is checked in `tests/guards/design-system/palette-registry.test.ts` and deliberately not shown to the person
+is checked in `tests/unit/lib/palette-registry.test.ts` and deliberately not shown to the person
 picking.
 
 `src/lib/ui/icons.ts` ships path data and no codepoints: several transport codepoints default to colour emoji,
@@ -347,7 +345,7 @@ scrollport rather than from the shell's padding.
 ### Phones versus the television
 
 `NOT_PHONE` in `src/routes/+layout.svelte` is the single list of surfaces that are not a phone, matched on
-the route or any descendant of it. It is the same set `tests/guards/layout/phone-inventory.test.ts` exempts
+the route or any descendant of it. It is the same set the phone inventory exempts
 from the phone route walk; do not fork a second opinion about what a phone is. The list gates two things
 that must agree: whether the layout opens a `role=phone` socket, and whether the band renders. An ungated
 `room.connect()` in the root layout would give `/tv` a second socket and register the television as a
@@ -389,13 +387,17 @@ query-scoped in `src/lib/readiness.ts` row by row, and it subtracts anything the
 a bar for so one job never gets two progress bars. A group heading is a claim about what follows it, so
 each is gated on having rows.
 
-Reordering is a live sort with no mode: `liveSortTarget` in `src/lib/reorder-mode.ts` both places the rows
-and decides what a release commits, so a drop cannot land somewhere the guest did not see. Geometry is
-measured once per gesture at press time (rows change height mid-flight), pointer listeners go on `window`
-because the pressed grip becomes a detached node as the list reorders, and focus is returned by attribute
-for the same reason. Arrow Up/Down on the grip is the single-pointer alternative. The wait on a singer's
-own row comes from `waitShort` in `src/lib/phrasing/position-sentence.ts`, which omits an unknown estimate
-rather than zeroing it.
+Reordering is a live sort with no mode, split in two: `liveSortTarget` in `src/lib/reorder-mode.ts` is the
+arithmetic — it both places the rows and decides what a release commits, so a drop cannot land somewhere the
+guest did not see — and `src/lib/queue-drag.ts` is the browser wiring. Geometry is measured once per gesture
+at press time (rows change height mid-flight), pointer listeners go on `window` because the pressed grip
+becomes a detached node as the list reorders, and focus is returned by attribute for the same reason; all
+three of those rules live in `queue-drag.ts`, and the route keeps only the reactive state they drive. Arrow
+Up/Down on the grip is the single-pointer alternative. Queue changes the guest did not cause are announced
+through `queueAnnouncement` in `src/lib/phrasing/queue-announcement.ts`, which is silent with no baseline so
+joining a busy room does not read the whole queue aloud. The wait on a singer's own row comes from
+`waitShort` in `src/lib/phrasing/position-sentence.ts`, which omits an unknown estimate rather than zeroing
+it.
 
 ### The join screen
 
@@ -426,7 +428,7 @@ What the two panes put on state and markup:
   the last character of a typed code and a whole pasted code both do nothing.
 - **The step dots are gated on having SEEN step 1**, set from the pane and not from the code path, because "step
   2 of 2" otherwise reports a step the scanning guest never skipped as skipped.
-- **ONE reason string and ONE live region for both panes.** `tests/guards/layout/phone-inventory.test.ts`
+- **ONE reason string and ONE live region for both panes.** The inventory rule
   enumerates every phone live region with its purpose, and the disabled reason is a single duty however many
   panes state it (SC 3.3.2). It is ANNOUNCED, not printed: shown, it is a third sentence telling a guest who can
   see six empty boxes to fill them in, above a button that is already visibly disabled.
@@ -462,9 +464,11 @@ only way to override the primitive reaches settings' own descriptions too.
 ### Settings
 
 `/settings` is three scopes in a real tablist — You (one person), Party (this room), Server (this machine
-and its worker fleet) — resolved server-side in `src/routes/settings/+page.server.ts` so the first paint is
-already on the right tab. `party` is the default. Tab switches use `replaceState`, so Back leaves the page
-instead of walking tabs. There is no socket: every write is a per-field patch the server re-normalizes over
+and its worker fleet). The scope list has ONE home, `src/lib/settings-tabs.ts`, because both halves read it:
+`src/routes/settings/+page.server.ts` narrows `?tab=` through it so the first paint is already on the right
+tab, and the page renders a trigger and a panel per id. `party` is the default — server-wide settings are set
+once and left alone, while the rotation is changed mid-song. Tab switches use `replaceState`, so Back leaves
+the page instead of walking tabs. There is no socket: every write is a per-field patch the server re-normalizes over
 current values, applied optimistically and rolled back to `committed` (the last server-confirmed snapshot)
 if refused — never to an intermediate drag frame.
 
@@ -552,7 +556,7 @@ shadcn SURFACE alias and measures 1.24:1 as text.
 `/components` renders every shared component in every state it must survive, side by side, so a state that
 deliberately renders NOTHING can be judged as intentional — which is what its captions are for. It is
 dev-only, gated in `src/routes/components/+page.server.ts` so the 404 is decided before any gallery HTML
-exists, and `tests/guards/wiring/dev-only-routes.test.ts` pins that gate. It is also load-bearing test
+exists, and that gate is the whole protection. It is also load-bearing test
 infrastructure: several guards read its source as a fixture, so it is gated rather than deleted, and a
 fixture removed from it takes a guard's subject with it. Frames that exist to be compared are pinned
 (`playing={false}`, an explicit position) because a running demo clock makes two frames incomparable, and
@@ -619,15 +623,14 @@ The reel's `max-height` is EXACTLY `calc(100vh - var(--tv-chrome-h))` and must n
 `--tv-safe-y`: the box is centred, so charging one against its height buys half of it as top inset while
 removing a full one of reel, and `--tv-chrome-h` already contains one. It does bite at the default five
 rows on short panels; seating all five needs the type budget to change.
-`tests/guards/subsystem-tv/lyrics-reel-cap.test.ts` pins the arithmetic, and
-`tests/guards/layout/reel-offset.test.ts` pins that the clamp stays on the render path.
+`tests/unit/lib/tv/reel-offset.test.ts` pins the arithmetic, and
+`tests/unit/lib/tv/reel-offset.test.ts` pins that the clamp stays on the render path.
 
 Legibility is a STROKE, not a bound on the background. A blurred shadow dissolves against a mid-tone
 stage colour of similar luminance — exactly the field a hue-only background paints — so the reel strokes
 `-webkit-text-stroke` with `paint-order: stroke fill`. The reversed paint order is load-bearing: the
 default paints the stroke on top of the fill and eats the thin parts of each glyph. Width is in `em`,
-because a px stroke reads heavy at 720p and hairline at 4K. There is exactly one stroke declaration
-(`tests/guards/subsystem-tv/lyrics-stroke.test.ts`), and it is why no visualizer or stage colour needs a
+because a px stroke reads heavy at 720p and hairline at 4K. There is exactly one stroke declaration, and it is why no visualizer or stage colour needs a
 brightness bound of its own.
 
 Highlight colour is a CHAIN of custom properties, not competing selectors: provenance and highlight are
@@ -679,8 +682,8 @@ path. Everything in `src/lib/tv/pitch-shift.ts` follows from that:
   1. The guide gain defaults to 0 on purpose: the worst case of a missed call must be a guide nobody
      hears, never isolated vocals over the backing track.
 
-`tests/guards/subsystem-tv/pitch-shift-graph-lifetime.test.ts` pins the lifetime, and
-`tests/guards/subsystem-tv/guide-mix-graph.test.ts` the split chain.
+The graph lifetime is the subtle part, and
+`tests/unit/lib/tv/guide-mix-graph.test.ts` the split chain.
 
 The guide mix is one 4-channel file with the isolated vocals at FULL SCALE on channels 2/3. Played
 natively the browser downmixes and sums them into the instrumental at full volume, so
@@ -701,12 +704,15 @@ stride, and scaling the hop too makes the read pointer diverge without bound.
 
 ### Wake lock and reload resume
 
+`keepScreenAwake()` (`src/lib/tv/wake-lock.ts`) takes the lock and returns the teardown that releases it;
+`/tv` calls it from an `$effect` gated on the on-stage screens, so the effect cleanup IS the release.
 `navigator.wakeLock` is SECURE-CONTEXT ONLY, so on a plain-HTTP LAN room it is `undefined` and the
-feature-detect makes the effect inert. The platform DROPS the lock whenever the document hides and never
-restores it, so it must be re-acquired on `visibilitychange` or it works once and quietly stops. A request
-in flight leaves the sentinel null, so a `visibilitychange` arriving mid-flight needs its own guard or it
-issues a second request and leaks the first held lock past the song's end.
-`tests/guards/subsystem-tv/wake-lock.test.ts` pins it.
+feature-detect makes the whole thing inert. The platform DROPS the lock whenever the document hides and
+never restores it, so it must be re-acquired on `visibilitychange` or it works once and quietly stops. A
+request in flight leaves the sentinel null, so a `visibilitychange` arriving mid-flight needs its own guard
+or it issues a second request and leaks the first held lock past the song's end — and a sentinel that
+resolves AFTER the teardown has to be released on arrival rather than stored.
+`tests/unit/lib/tv/wake-lock.test.ts` pins all of it, behaviourally.
 
 On a reload mid-song the room's position arrives BEFORE the `<audio>` exists: the element is gated on
 `nowplaying:changed`, which the server sends after `playback:state`, and position telemetry does not bump
@@ -721,7 +727,7 @@ re-applied by the next decode hiccup, resuming seconds earlier. It is also guard
 without consuming the target: the hidden pre-warming slot reaches `canplay` too, and would otherwise park
 the next song's element at the outgoing song's position. What keeps a stale target off the next song is
 the server publishing `positionSec: 0` with a fresh `rev` on advance.
-`tests/guards/subsystem-tv/tv-reload-resume.test.ts` pins it.
+`tests/unit/lib/tv/tv-reload-resume.test.ts` pins it.
 
 `seekPlan` admits a target of exactly 0 as a rewind when the master is past the alignment tolerance,
 because `restart` writes the integer literal 0 while the song plays on and would otherwise read as
@@ -735,7 +741,7 @@ spectator. `src/routes/tv/+page.server.ts` resolves which room the display shows
 `?room=<code>` validated against the room repo, else the room this box serves — and that one resolved code
 is both what the QR advertises and what the client passes on its WS URL, so the socket binds to the same
 party. An unknown code falls through to the served room, so a stale code never dark-screens the display.
-`tests/guards/subsystem-tv/tv-ws-room-binding.test.ts` pins the binding.
+The binding is load-bearing.
 
 The TV holds NO queue rev of its own: it never handles `queue:patch` and adopts server truth wholesale
 from each `queue:sync`, so the hello handshake always sends `lastRev 0`. It writes only `tv:telemetry`,
@@ -759,8 +765,7 @@ permanently dead and nothing on screen explaining why. Every degradation that a 
 on-screen say; a failure no tap can lift gets a non-interactive one instead.
 
 Motion on this surface lives inside `@media (prefers-reduced-motion: no-preference)` or is gated in JS.
-Svelte `transition:`/`in:`/`out:`/`animate:` directives are banned tree-wide
-(`tests/guards/motion/motion.test.ts`) because the transition runtime never consults the media query.
+Svelte `transition:`/`in:`/`out:`/`animate:` directives are banned tree-wide because the transition runtime never consults the media query.
 
 ### The TV type floor
 
@@ -774,7 +779,7 @@ regresses SC 1.4.4.
 The value is `max(2.7vh, 20px) * clamp(0.8, var(--ui-scale), 1.6)`: the `vh` term scales with the panel and
 the `20px` term is the windowed legibility floor. `--ui-scale` is declared with `@property` as a
 `<number>`, so a non-numeric write falls back to 1 instead of poisoning the `clamp()` and dropping the whole
-declaration — which would silently remove the floor. `tests/guards/layout/stage-scale.test.ts` holds the
+declaration — which would silently remove the floor. The stage-scale rule holds the
 ten-foot floor this roots.
 
 ### The attract and lobby idles
@@ -811,7 +816,7 @@ last chip landed under the fullscreen button. There is no `overflow: hidden`: a 
 roster members, so the `.dense` step-down shrinks the chips instead. Density keys on total CHARACTERS, not a
 count: `displayName` admits 32, so nine long names already overflow the two rows `max-height: 26vh` allows
 while a count rule sits quiet until 13. `CHAR_BUDGET` is `CHIP_STEPDOWN` times a typical name, and both are
-read off the DATA rather than a measurement of the rendered strip. `tests/guards/subsystem-tv/lobby-copy.test.ts`
+read off the DATA rather than a measurement of the rendered strip. The lobby copy
 pins the two situations the lobby's wording must keep apart.
 
 `src/lib/tv/JoinBadge.svelte` renders its QR in EVERY state, reachable or not, and appends a one-line notice
@@ -839,7 +844,7 @@ per-media tracking it was purpose-built not to hold.
 
 The lower-third is plain TEXT, not a card, because a filled panel over the room's chosen background amputates
 the feature they picked; legibility comes from a blurred `text-shadow` AND a `-webkit-text-stroke` with
-`paint-order: stroke fill` (`tests/guards/subsystem-tv/lower-third-stroke.test.ts`). A shadow tuned against
+`paint-order: stroke fill`. A shadow tuned against
 black disappears against a bright field of similar luminance — the singer name measured 1.10:1 on white.
 `.ls-song` clamps to two lines with `-webkit-line-clamp`, which needs the `-webkit` box display and hidden
 overflow beside it to take effect at all, and `.ls-artist` must NOT carry `white-space`/`overflow` of its
@@ -854,7 +859,7 @@ at ~30fps (`FRAME_MS = 33`) because the lyric ball keeps the stronger claim on t
 store is reduced to `SCALE = 0.5` and stretched by CSS, which cuts fill cost roughly fourfold; and `playing`
 going false CANCELS the frame rather than merely hiding the canvas. Under `prefers-reduced-motion: reduce`
 it draws ONE frame and stops — a still plasma is a legitimate background — enforced by
-`tests/guards/motion/visualizer-motion.test.ts`, because the CSS-parsing motion guard cannot see a canvas.
+a rendered probe, because a CSS-parsing check cannot see a canvas.
 
 The clock baseline lives at COMPONENT scope, not inside the effect: as a per-effect-run local it is reset by
 every `playing` toggle, `variant`/`hue` change or remount, which pins `t` near zero and draws one frame

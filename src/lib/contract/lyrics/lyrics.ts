@@ -131,14 +131,18 @@ export const SUSPECT_COVERAGE = 0.4;
 /** EQUAL with the count-aware term, because any other split is a coefficient nobody has measured. */
 export const SEQUENCE_WEIGHT = 0.5;
 
+/** How many times each token occurs. */
+function tally(tokens: readonly string[]): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const t of tokens) counts.set(t, (counts.get(t) ?? 0) + 1);
+	return counts;
+}
+
 /** Σ min(count in a, count in b) — the shared token count WITH multiplicity. */
 function multisetOverlap(a: readonly string[], b: readonly string[]): number {
-	const counts = new Map<string, number>();
-	for (const t of b) counts.set(t, (counts.get(t) ?? 0) + 1);
-	const seen = new Map<string, number>();
-	for (const t of a) seen.set(t, (seen.get(t) ?? 0) + 1);
+	const inB = tally(b);
 	let shared = 0;
-	for (const [t, n] of seen) shared += Math.min(n, counts.get(t) ?? 0);
+	for (const [t, n] of tally(a)) shared += Math.min(n, inB.get(t) ?? 0);
 	return shared;
 }
 

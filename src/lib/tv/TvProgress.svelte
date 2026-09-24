@@ -1,7 +1,8 @@
 <script lang="ts">
 	// Song progress in the three placements a room can choose between, as ONE component so the fill geometry and the
-	// reduced-motion rule are stated once. Every style is matched EXPLICITLY: a trailing else renders the edge bar for
-	// 'off'. `card` renders inline, placed INSIDE the now-singing card by the caller; the other two self-position.
+	// reduced-motion rule are stated once. Every style is matched EXPLICITLY and there is no trailing else, so `off`
+	// renders nothing and a style added later cannot silently inherit a bar. `card` renders inline, placed INSIDE the
+	// now-singing card by the caller; the other two self-position.
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
 	import type { TvProgressStyle } from '$lib/contract';
 

@@ -56,8 +56,9 @@ export function assertEvent(from: JobStatus, event: JobEvent): JobStatus {
 	return to;
 }
 
-// Derived status-pair view, kept for callers that only ask "is some edge from A to B legal" — it
-// cannot say WHICH event produced the edge, which is why the table above is keyed on the event instead.
+// Derived status-pair view, for asking only "is some edge from A to B legal". It cannot say WHICH event
+// produced the edge, which is why the table above is keyed on the event instead — and why nothing in
+// production reads these two: every real caller needs the event. They pin the table from the other side.
 
 /** True iff SOME event carries `from` to `to`. */
 export function canTransition(from: JobStatus, to: JobStatus): boolean {

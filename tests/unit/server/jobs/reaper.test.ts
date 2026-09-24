@@ -1,4 +1,4 @@
-import { Media, ServerEvent } from '$lib/contract';
+import type { Media, ServerEvent } from '$lib/contract';
 import { migratedDb } from '$lib/server/db/test-db';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { planAssignments } from '$lib/server/jobs/dispatch';
@@ -305,7 +305,7 @@ test('a dead stems-upgrade on an ALREADY-singable song is NOT broadcast (no read
 // dead-worker fail then frees nothing (the registry reclaims that slot on the next heartbeat).
 //
 // These tests wire the real JobReaper against a real JobRepository + WorkerRegistry with the hub's
-// own release hook (`setSlotReleaseHook`), exactly as worker-hub.ts:167 wires it in production, and
+// own release hook (`setSlotReleaseHook`), exactly as worker-hub.ts wires it in production, and
 // assert the reaper's FAIL does not disturb a live worker's slot. RED on base: the reaper's fail()
 // fires the machine's release hook, so slotsFree goes 0 → 1 and planAssignments lands a job on the still-busy worker.
 

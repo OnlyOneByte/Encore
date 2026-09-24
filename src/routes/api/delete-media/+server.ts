@@ -5,6 +5,7 @@ import { json } from '@sveltejs/kit';
 import { getApp, buildHubDeps } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { deleteMediaEntirely } from '$lib/server/media/delete';
+import { readJsonBody, requiredString } from '$lib/server/http/json-body';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
@@ -13,8 +14,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
 	if (!singer) return json({ error: 'not joined' }, { status: 401 });
 
-	const body = await request.json().catch(() => ({}));
-	const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
+	const mediaId = requiredString(await readJsonBody(request), 'mediaId');
 	if (!mediaId) return json({ error: 'mediaId required' }, { status: 400 });
 
 	// Route-side HubDeps from the shared app: the delete drives applyQueueOp + reconcileOnReady directly (not handleQueueCommand), so the idempotency ledger is unused — a no-op ledger is correct.

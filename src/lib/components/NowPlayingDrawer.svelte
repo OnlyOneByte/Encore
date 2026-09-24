@@ -99,6 +99,15 @@
 	const contentH = $derived(fitH > 0 ? bandH + fitH + OPEN_CONTENT_SLACK_PX : 0);
 	const SNAP_OPEN = $derived(openSnapFraction(viewportH, contentH));
 
+	/* A RE-SEAT'S SECOND HALF, shared by the content-height and the resize paths below. Both must CLEAR
+	   `activeSnapPoint` first, because vaul's lazy watch only acts on a change, and both must land the new value a
+	   tick later — but only while nothing else has claimed the sheet, since a drag released mid-change owns it. */
+	function seatAfterClear(target: number | string): void {
+		void tick().then(() => {
+			if (activeSnapPoint === null) activeSnapPoint = target;
+		});
+	}
+
 	/* Re-seat on a content height change, and only for a NUMBER: snap 0 is a px string, so a number that is not
 	   the current fraction is exactly the stale-pointer case. `untrack` so this cannot re-enter itself. */
 	$effect(() => {
@@ -106,10 +115,7 @@
 		const at = untrack(() => activeSnapPoint);
 		if (typeof at !== 'number' || at === open) return;
 		activeSnapPoint = null;
-		void tick().then(() => {
-			// Not if something else claimed the sheet between ticks — a drag released mid-change owns it.
-			if (activeSnapPoint === null) activeSnapPoint = open;
-		});
+		seatAfterClear(open);
 	});
 
 	/* Seated ONCE, `onMount` plus `tick` and never an `$effect`: the write must land after the content has bound
@@ -135,12 +141,11 @@
 			// Nothing seated yet (the mount write above has not landed) — there is no offset to refresh.
 			if (target === null || target === undefined) return;
 			const wasBand = target === SNAP_BAND;
+			// CLEARED BEFORE THE VIEWPORT WRITE: the height change re-derives SNAP_OPEN, and the effect above would
+			// otherwise see a seated number that no longer matches and queue a second re-seat against this one.
 			activeSnapPoint = null;
 			viewportH = window.innerHeight;
-			void tick().then(() => {
-				// Not if a drag released mid-resize claimed the sheet between ticks — it owns the height.
-				if (activeSnapPoint === null) activeSnapPoint = wasBand ? SNAP_BAND : SNAP_OPEN;
-			});
+			seatAfterClear(wasBand ? SNAP_BAND : SNAP_OPEN);
 		};
 
 		const onResize = () => {

@@ -23,15 +23,19 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from ..processor import CompleteResult, JobSpec, ProgressEvent
+from ..vocabulary import Stage
 from .ctx import Ctx, ResolvedEngines
 from .plan import Plan, plan_for, validate_plan
-from .step import Outcome, StepResult
+from .step import Outcome, Step, StepResult
 
 #: MUST stay comfortably under the core's progressLeaseMs (30 s), or the reaper requeues a healthy job.
 LEASE_KEEPALIVE_SEC = 10.0
 
 #: (argv) -> async iterator of output lines. Injected, so every step tests with a fake subprocess.
 Runner = Callable[[list[str]], AsyncIterator[str]]
+
+#: One output line -> a 0..100 percentage, or None when the line carries no progress.
+ProgressParser = Callable[[str], int | None]
 
 #: Test-mode only: the runner asserts each step wrote only what it declared. Production pays nothing.
 STRICT_WRITES = bool(os.environ.get("ENCORE_STRICT_STEP_WRITES"))
@@ -111,7 +115,9 @@ class PlanRunner:
         )
 
 
-async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> AsyncIterator[ProgressEvent]:
+async def run_stage(
+    runner: Runner, stage: Stage, argv: list[str], parse: ProgressParser
+) -> AsyncIterator[ProgressEvent]:
     """Run a CLI, translating its output into progress for one stage.
 
     A free function, not a PlanRunner method: the only thing it needs is the runner callable, and a
@@ -181,7 +187,7 @@ async def run_capture(runner: Runner, argv: list[str]) -> str:
     return "\n".join(lines)
 
 
-async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIterator[tuple[str, Any]]:
+async def run_blocking(fn: Callable[[], Any], stage: Stage, pct: int) -> AsyncIterator[tuple[str, Any]]:
     """Run a BLOCKING call in a thread, yielding ("progress", ev) keepalives until it finishes, then
     ("result", value) exactly once.
 
@@ -231,7 +237,7 @@ def scratch_for(job: JobSpec) -> str:
     return os.path.join(job.media_dir, "work", job.job_id)
 
 
-def _snapshot(ctx: Ctx, step: Any) -> dict[str, Any]:
+def _snapshot(ctx: Ctx, step: Step) -> dict[str, Any]:
     """Every namespace a step did NOT declare, so an undeclared write can be detected.
 
     `ctx.out` is watched at FIELD granularity, not as a whole: `notes` (appended via `ctx.note()`) and
@@ -252,7 +258,7 @@ def _snapshot(ctx: Ctx, step: Any) -> dict[str, Any]:
     return snap
 
 
-def _assert_declared_writes(ctx: Ctx, step: Any, before: dict[str, Any]) -> None:
+def _assert_declared_writes(ctx: Ctx, step: Step, before: dict[str, Any]) -> None:
     """Fail loudly when a step wrote somewhere it did not declare.
 
     Keeps `Ctx` from decaying into a god-object where any step writes anything. Compares the per-root

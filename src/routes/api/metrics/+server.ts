@@ -7,6 +7,15 @@ import { clampDays, songDisplay } from '$lib/contract';
 import { e2e, isAnecdote, perAsrModel, perProcess, perModel, perStage, perStep } from '$lib/server/jobs/metrics';
 
 const DEFAULT_LIMIT = 2000;
+const DAY_MS = 86_400_000;
+const DEFAULT_WINDOW_DAYS = 7;
+const MAX_WINDOW_DAYS = 3650;
+
+function clampLimit(raw: string | null): number {
+	const n = Number(raw);
+	if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
+	return Math.min(20_000, Math.floor(n));
+}
 
 export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();
@@ -62,13 +71,3 @@ export const GET: RequestHandler = async ({ url }) => {
 		}))
 	});
 };
-
-const DAY_MS = 86_400_000;
-const DEFAULT_WINDOW_DAYS = 7;
-const MAX_WINDOW_DAYS = 3650;
-
-function clampLimit(raw: string | null): number {
-	const n = Number(raw);
-	if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
-	return Math.min(20_000, Math.floor(n));
-}

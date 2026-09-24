@@ -183,7 +183,8 @@ export class MediaRepository {
 		return row ? fromRow(row) : undefined;
 	}
 
-	/** Hydrates the runtime `mediaById` catalog on boot. */
+	/** EVERY row ever materialised by a search, most of them unprocessed — what boot hydrates the runtime
+	 *  catalog from, and far more than the library shows. Use {@link listReady} for anything a guest sees. */
 	all(): Media[] {
 		return this.#db.select().from(media).all().map(fromRow);
 	}
@@ -193,8 +194,6 @@ export class MediaRepository {
 	listReady(): Media[] {
 		return readySongs(this.#db);
 	}
-
-	// READY only, or the library drowns in every search result ever materialized.
 
 	/** `undefined` means "do not touch" and is SKIPPED; an explicit `null` still clears. Without the
 	 *  distinction, a caller passing null for "no opinion" re-nulls real values every restart. */

@@ -442,7 +442,8 @@
 		/* Theme-bound: the marker must ride the token, never a literal. */
 		color: var(--accent2);
 	}
-	/* Dot variants sit ABOVE the word, which is what makes the loose line-height above load-bearing. */
+	/* Dot variants sit ABOVE the word, which is what makes the loose line-height above load-bearing. `steady` is
+	   the same dot as `bounce` with no animation — not a separate glyph, only the movement differs. */
 	.ball.bounce,
 	.ball.steady {
 		top: -0.85em;
@@ -452,7 +453,6 @@
 	.ball.bounce {
 		animation: bounce 0.5s ease-in-out infinite alternate;
 	}
-	/* `steady` is the same dot with no animation — not a separate glyph, only the movement differs. */
 	.ball.underline {
 		bottom: 0.42em;
 		width: 100%;

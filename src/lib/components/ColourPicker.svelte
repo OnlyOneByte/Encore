@@ -57,7 +57,11 @@
 	/* Seeded from the incoming value so the slider and the swatch agree on the very first paint. */
 	let hue = $state(nearestSingerHue(value));
 
-	const colorLabel = $derived(presetIndex(value) !== -1 ? PRESET_NAMES[presetIndex(value)]! : hueName(hue));
+	/* One lookup, so the non-null assertion below is justified by the branch immediately above it. */
+	const colorLabel = $derived.by(() => {
+		const i = presetIndex(value);
+		return i === -1 ? hueName(hue) : PRESET_NAMES[i]!;
+	});
 
 	/** The one place the name-by-index coupling is made explicit; -1 for a wheel hue rather than a preset. */
 	function presetIndex(hex: string): number {

@@ -68,10 +68,13 @@ export class JobReaper {
 	recoverOnBoot(): number {
 		const inflight = this.#jobs.listByStatus('assigned', 'running');
 		const now = this.#now();
-		const ids = inflightToRecover(inflight);
-		for (const id of ids) this.#jobs.requeue(id, this.#jobByIdAttempts(inflight, id), now, 'RECOVER');
-		if (ids.length > 0) this.#onReaped();
-		return ids.length;
+		// Walk the jobs the policy selected, not their ids, so each carries its own `attempts`.
+		const recovering = new Set(inflightToRecover(inflight));
+		for (const job of inflight) {
+			if (recovering.has(job.id)) this.#jobs.requeue(job.id, job.attempts, now, 'RECOVER');
+		}
+		if (recovering.size > 0) this.#onReaped();
+		return recovering.size;
 	}
 
 	/** Start the periodic reaper. Idempotent. */
@@ -87,9 +90,5 @@ export class JobReaper {
 			clearInterval(this.#timer);
 			this.#timer = null;
 		}
-	}
-
-	#jobByIdAttempts(inflight: { id: string; attempts: number }[], id: string): number {
-		return inflight.find((j) => j.id === id)?.attempts ?? 0;
 	}
 }

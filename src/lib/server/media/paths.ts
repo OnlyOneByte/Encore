@@ -42,7 +42,7 @@ export function classOf(ref: string): StorageClass {
 }
 
 /** The absolute directory a ref of this class resolves under. */
-export function rootForClass(cls: StorageClass): string {
+function rootForClass(cls: StorageClass): string {
 	switch (cls) {
 		case 'audio':
 			return audioDir();
@@ -78,7 +78,7 @@ export function audioKey(mediaId: string, ext = 'wav'): string {
  * is free, but one too few permanently orphans the only unrecoverable class. `wav` is a LEGACY
  * mislabelled name still holding real m4a/webm bytes.
  */
-export const KNOWN_AUDIO_EXTS = ['webm', 'opus', 'm4a', 'mp4', 'mp3', 'wav'] as const;
+const KNOWN_AUDIO_EXTS = ['webm', 'opus', 'm4a', 'mp4', 'mp3', 'wav'] as const;
 
 /** Every ref the retained original for `mediaId` could live at — `audioKey` at every known ext. */
 export function candidateAudioRefs(mediaId: string): string[] {
@@ -172,14 +172,17 @@ export function toRelativeKey(uri: string | undefined | null): string | null {
 	if (!raw) return null;
 	if (!isAbsolute(raw)) return raw.replace(/^\/+/, ''); // already relative
 	const abs = resolve(raw);
-	// Longest-prefix first, so a class dir nested under the root (the default) wins over the root.
-	const candidates: Array<[string, string]> = [
+	// Annotated BEFORE the sort, not cast after it: a bare array literal of pairs infers as `string[][]`, so the
+	// comparator's `a[0]` was an optional element and the `as` cast was papering over that rather than typing it.
+	const roots: Array<[string, string]> = [
 		[audioDir(), 'audio/'],
 		[derivedDir(), 'derived/'],
 		[metaDir(), 'meta/'],
 		[workDir(), 'work/'],
 		[mediaRoot(), '']
-	].sort((a, b) => b[0].length - a[0].length) as Array<[string, string]>;
+	];
+	// Longest-prefix first, so a class dir nested under the root (the default) wins over the root.
+	const candidates = roots.sort((a, b) => b[0].length - a[0].length);
 	for (const [dir, prefix] of candidates) {
 		if (abs === dir) continue;
 		if (abs.startsWith(dir + sep)) {

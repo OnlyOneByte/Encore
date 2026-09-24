@@ -1,4 +1,4 @@
-// packages/shared/src is grouped into domain subdirectories (core/, queue/, lyrics/, process/,
+// src/lib/contract is grouped into domain subdirectories (core/, queue/, lyrics/, process/,
 // presentation/), and `index.ts` re-exports each so `$lib/contract` import paths never move. THIS TEST
 // IS THE CONTRACT that the move preserved: the barrel's exported-name set is frozen here. A future move
 // that drops a re-export line, points it at the wrong subdir, or renames a symbol changes this set and
@@ -18,7 +18,7 @@ import { test, expect } from 'bun:test';
 import * as barrel from '$lib/contract/index';
 
 // The complete set of names `$lib/contract` exports. Sorted; regenerate with:
-//   bun -e "import * as b from '$lib/contract/src/index.ts'; console.log(Object.keys(b).sort().join('\n'))"
+//   bun -e "import * as b from './src/lib/contract/index.ts'; console.log(Object.keys(b).sort().join('\n'))"
 const EXPECTED = [
 	'ACCENT2',
 	'ASR_MODELS',
@@ -111,6 +111,13 @@ const EXPECTED = [
 	'assignSeqs',
 	'attemptSelection',
 	'attemptStages',
+	// TWO SYMBOLS JOINED THE LIST, and both joined by a DELETION. `presentation/player-palette.ts` carried a
+	// private `canonHex` that was `parseHex` followed by the same hex formatting `colors.ts` already had, and a
+	// private `hueGap` character-identical to `colors.ts`'s `hueDistance`. Each pair was one function under two
+	// names, so the palette's copies are gone and `colors.ts` — which already owns hex parsing and hue maths —
+	// exports the survivors. `canonicalHex` also replaced four hand-inlined parse-then-re-emit sites inside
+	// colors.ts itself, so nothing spells that pair out any more.
+	'canonicalHex',
 	'chosenCandidate',
 	'clampDays',
 	'clampGuideLevel',
@@ -140,6 +147,7 @@ const EXPECTED = [
 	'hasNewerCandidateThanOverride',
 	'hasUsableTiming',
 	'hasVocalRange',
+	'hueDistance',
 	'hueOfColor',
 	'hueToHex',
 	'insertEntry',

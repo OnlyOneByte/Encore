@@ -556,7 +556,7 @@ async function main() {
 	}
 
 	// (3) the audit shows every attempt, including the failed and the retried one. `needsFetch` is false for
-	// source:'local' (proc.ts:154), so a local process enqueues NO fetch step and every count below excludes it:
+	// source:'local', so a local process enqueues NO fetch step and every count below excludes it:
 	//   caroline: 1 proc, 2 attempts (stems ready, align ready)
 	//   dontstop: 1 proc, 2 attempts (stems ready, align ready)
 	//   bohemian: 1 proc, 1 attempt  (stems failed) — process outcome=failed, no align chain

@@ -30,22 +30,18 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
+
+# The gate and its retry ladder live at the root (src/ratelimit.py) because LRCLIB needs the same one.
+# Both names below are USED here: the interval configures this service's gate, and the attempt cap is
+# quoted in the exhausted-retries message so the number an operator reads is the one that was enforced.
+from ..ratelimit import MAX_ATTEMPTS, MIN_INTERVAL_SEC, RateLimiter
 
 MB_BASE = "https://musicbrainz.org/ws/2"
 
 #: MusicBrainz throttles an "anonymous" User-Agent harder, and stdlib's `Python-urllib` is on that list,
 #: so every request sets this in the documented `Application name/<version> ( contact-url )` form.
 USER_AGENT = "Encore/0.2 ( https://github.com/OnlyOneByte/Encore )"
-
-#: One request per second PER SOURCE IP. The penalty is TOTAL, not partial: exceeding it declines 100% of
-#: requests until the rate drops, so pacing must be global and SERIALISED, never best-effort per client.
-MIN_INTERVAL_SEC = 1.0
-
-#: A 503 is "over the limit" or "busy", so backoff recovers the annotation; BOUNDED, so a blocked box
-#: degrades to declining rather than hammering a service already refusing it.
-MAX_ATTEMPTS = 3
-BACKOFF_BASE_SEC = 1.0
 
 #: Within this many seconds is `high`, within the wider bound `medium`, beyond it nothing is written. 2s
 #: is LRCLIB's own tolerance, so a `high` annotation is by construction good enough for the lookup.
@@ -230,6 +226,29 @@ class Annotation:
         }
 
 
+class _Ranked(NamedTuple):
+    """One recording that AGREED, carrying the four numbers `pick_best` orders on.
+
+    Named rather than a bare tuple indexed t[0]..t[3] at the sort: every field below is a different
+    tie-break and the order between them is the whole ranking policy.
+    """
+
+    #: 0 when the full credit agreed, 1 when only the primary artist did — exact evidence wins.
+    credit_rank: int
+    #: Rounded, so near-identical lengths TIE and the year decides.
+    duration_gap: float
+    #: Earliest release first; `_UNDATED_YEAR` sorts an undated release last.
+    year: int
+    #: NEGATED, because MusicBrainz's own score is better-when-higher and this sorts ascending.
+    neg_score: int
+    recording: Recording
+    confidence: str
+
+
+#: Sorts after every real year, so an undated release loses the year tie-break without being dropped.
+_UNDATED_YEAR = 9999
+
+
 def pick_best(
     candidates: list[Recording], artist: str, track: str, duration_sec: float | None
 ) -> Annotation | None:
@@ -256,7 +275,7 @@ def pick_best(
     if not want_artist or not want_track:
         return None  # nothing confident to match against; the caller keeps the normalizer's values
 
-    scored: list[tuple[int, float, int, int, Recording, str]] = []
+    agreed: list[_Ranked] = []
     for rec in candidates:
         exact_credit = normalize_for_match(rec.artist) == want_artist
         # Empty for a recording with no credit list, and normalize_for_match("") is "", so no false agree.
@@ -265,110 +284,49 @@ def pick_best(
             continue
         if normalize_for_match(rec.title) != want_track:
             continue
-        conf = confidence_for(duration_sec, rec.duration_sec)
-        if conf is None:
+        confidence = confidence_for(duration_sec, rec.duration_sec)
+        if confidence is None:
             continue
         gap = (
             abs(duration_sec - rec.duration_sec)
             if duration_sec is not None and rec.duration_sec is not None
             else float("inf")
         )
-        # Rounded, so near-identical lengths TIE and the year decides.
-        scored.append((0 if exact_credit else 1, round(gap, 1), rec.year or 9999, -rec.score, rec, conf))
+        agreed.append(
+            _Ranked(
+                credit_rank=0 if exact_credit else 1,
+                duration_gap=round(gap, 1),
+                year=rec.year or _UNDATED_YEAR,
+                neg_score=-rec.score,
+                recording=rec,
+                confidence=confidence,
+            )
+        )
 
-    if not scored:
+    if not agreed:
         return None
-    scored.sort(key=lambda t: (t[0], t[1], t[2], t[3]))
-    *_, best, conf = scored[0]
+    # Keyed on the four numbers alone: a Recording is not orderable, and `sort` is stable so an
+    # all-four tie keeps the order MusicBrainz returned.
+    agreed.sort(key=lambda r: (r.credit_rank, r.duration_gap, r.year, r.neg_score))
+    best = agreed[0]
     return Annotation(
-        mbid=best.mbid,
-        artist=best.artist,
-        title=best.title,
-        confidence=conf,
-        album=best.album,
-        year=best.year,
+        mbid=best.recording.mbid,
+        artist=best.recording.artist,
+        title=best.recording.title,
+        confidence=best.confidence,
+        album=best.recording.album,
+        year=best.recording.year,
     )
 
 
-class RateLimiter:
-    """One gate every MusicBrainz call passes through, one at a time.
-
-    GLOBAL AND SERIALISED, not a per-client interval check: the limit is per SOURCE IP (a property of
-    the process, not a client object), and `ENCORE_WORKER_CONCURRENCY` > 1 means two fetch jobs can
-    reach this concurrently — an unlocked "has enough time passed?" check lets both read the same
-    timestamp, both decide yes, and both fire, which is exactly the burst that gets an IP blocked
-    outright. The penalty for overshooting is total, so the safe default is to queue rather than risk it.
-
-    The lock is held across the REQUEST as well as the wait: releasing before the call would let two
-    requests be in flight simultaneously, the exact thing being prevented.
-
-    Counters exist so an operator can tell "MusicBrainz is throttling us" from "the network is slow",
-    since a paced call is indistinguishable from a slow one from the outside.
-    """
-
-    def __init__(
-        self,
-        min_interval: float = MIN_INTERVAL_SEC,
-        *,
-        now: Callable[[], float] | None = None,
-        sleep: Callable[[float], None] | None = None,
-    ) -> None:
-        import threading
-        import time as _time
-
-        self._min_interval = min_interval
-        self._lock = threading.Lock()
-        self._now = now or _time.monotonic
-        self._sleep = sleep or _time.sleep
-        # None, not 0.0: "never called" must stay distinguishable from "called at t=0", which is falsy.
-        self._last_call: float | None = None
-        self.calls = 0
-        self.retries = 0
-        self.throttled = 0
-        self.waited_sec = 0.0
-
-    def _pace(self) -> None:
-        if self._last_call is not None:
-            elapsed = self._now() - self._last_call
-            if elapsed < self._min_interval:
-                wait = self._min_interval - elapsed
-                self.waited_sec += wait
-                self._sleep(wait)
-        self._last_call = self._now()
-
-    def run(self, call: Callable[[], tuple[int, str]]) -> tuple[int, str]:
-        """Execute one paced request under the gate, retrying a 503 with backoff.
-
-        Retries happen INSIDE the lock so a throttled box does not have every other queued caller pile
-        on top of the request that is already being refused.
-        """
-        with self._lock:
-            for attempt in range(1, MAX_ATTEMPTS + 1):
-                self._pace()
-                self.calls += 1
-                status, body = call()
-                if status != 503:
-                    return status, body
-                self.throttled += 1  # over the limit, or busy — same remedy either way: wait longer
-                if attempt == MAX_ATTEMPTS:
-                    return status, body
-                self.retries += 1
-                backoff = BACKOFF_BASE_SEC * (2 ** (attempt - 1))
-                self.waited_sec += backoff
-                self._sleep(backoff)
-            return status, body  # unreachable, kept for the type checker's benefit
-
-    def stats(self) -> dict[str, Any]:
-        return {
-            "calls": self.calls,
-            "retries": self.retries,
-            "throttled": self.throttled,
-            "waited_sec": round(self.waited_sec, 2),
-        }
-
+#: MusicBrainz's OWN rate-limit signal, narrower than the gate's generic set: its docs name 503 and
+#: nothing else, so a 429 stays a hard `AnnotationFetchError` on the first attempt rather than costing
+#: three paced attempts to reach the same decline.
+MB_RETRY_STATUSES = frozenset({503})
 
 #: Shared by default: a per-instance limiter lets two clients in one process burst past a per-IP limit.
-_LIMITER = RateLimiter()
+#: MusicBrainz's own gate, separate from LRCLIB's — the two budgets are independent.
+_LIMITER = RateLimiter(MIN_INTERVAL_SEC, retry_statuses=MB_RETRY_STATUSES)
 
 
 def limiter() -> RateLimiter:
@@ -456,8 +414,10 @@ def annotate(
     client: Any, artist: str | None, track: str | None, duration_sec: float | None
 ) -> Annotation | None:
     """Identify a song, or decline. NEVER raises for an ordinary failure: annotation is an enrichment,
-    and a process failing because a metadata lookup was down would be absurd. Kept as the value-only
-    shape for callers that do not need the reason; `annotate_or_reason` also explains a decline.
+    and a process failing because a metadata lookup was down would be absurd.
+
+    NO production caller — `steps/metadata.py` wants the decline reason and so calls
+    `annotate_or_reason`. This is the value-only shape the annotation tests drive.
     """
     got, _reason = annotate_or_reason(client, artist, track, duration_sec)
     return got

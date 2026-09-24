@@ -3,7 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
 	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, soundingKeyLabel } from '$lib/contract';
-	import { GaplessController } from '$lib/tv/gapless';
+	import { GaplessController, type Slot } from '$lib/tv/gapless';
 	import { telemetryFrame } from '$lib/tv/telemetry';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -32,6 +32,7 @@
 	} from '$lib/tv/screen';
 	import { isAutoTranscribed, provenanceLabel } from '$lib/tv/lyrics';
 	import { joinAddressLabel } from '$lib/tv/join-address';
+	import { keepScreenAwake } from '$lib/tv/wake-lock';
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { mergeCatalog, snapshot, processIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
 	import { makePhraseBag, reducedMotionPhrase, seedFromString, ATTRACT_PHRASES } from '$lib/tv/phrases';
@@ -58,7 +59,7 @@
 	let upNext = $state<QueueEntry | null>(null);
 	const ctl = new GaplessController();
 	let tvState = $state(ctl.state);
-	let visible = $state<'A' | 'B'>('A');
+	let visible = $state<Slot>('A');
 	let positionSec = $state(0);
 	let durationSec = $state(0);
 	let skipNotice = $state('');
@@ -135,23 +136,19 @@
 		return id ? (singers.get(id)?.displayName ?? 'Someone') : 'Someone';
 	}
 
+	/** The visible slot carries `current` and the hidden one pre-warms `upNext`, so ONE mapping serves both rows. */
+	function bySlot<T>(visibleSlot: Slot, onVisible: T, onHidden: T): { A: T; B: T } {
+		return visibleSlot === 'A' ? { A: onVisible, B: onHidden } : { A: onHidden, B: onVisible };
+	}
+
 	function syncSlots() {
-		const a = ctl.assignment();
-		visible = a.visible;
+		const visibleSlot = ctl.assignment().visible;
+		visible = visibleSlot;
 		tvState = ctl.state;
 		// SNAPSHOT HERE, and only here: `syncSlots` runs on explicit lifecycle transitions alone.
-		const curMedia = snapshot(mediaOf(current));
-		const nextMedia = snapshot(mediaOf(upNext));
+		slotMedia = bySlot(visibleSlot, snapshot(mediaOf(current)), snapshot(mediaOf(upNext)));
 		// The entry id travels with its snapshot into the SAME slot, so the per-entry transport re-arm sees a distinct id.
-		const curEntryId = current?.id ?? null;
-		const nextEntryId = upNext?.id ?? null;
-		if (a.visible === 'A') {
-			slotMedia = { A: curMedia, B: nextMedia };
-			slotEntryId = { A: curEntryId, B: nextEntryId };
-		} else {
-			slotMedia = { A: nextMedia, B: curMedia };
-			slotEntryId = { A: nextEntryId, B: curEntryId };
-		}
+		slotEntryId = bySlot(visibleSlot, current?.id ?? null, upNext?.id ?? null);
 	}
 
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
@@ -187,11 +184,17 @@
 		ws?.send(telemetryFrame(status, current, positionSec), { quiet: true });
 	}
 
+	/** A FLASH, not a state: the takeover clears itself, so nothing has to remember to retract it. */
+	const SKIP_NOTICE_MS = 4000;
+	function flashSkipNotice(message: string) {
+		skipNotice = message;
+		setTimeout(() => (skipNotice = ''), SKIP_NOTICE_MS);
+	}
+
 	function onVisibleError() {
 		// Dead media is treated like ended so the room advances rather than hanging on black. Say so on screen:
 		// several bad files in a row would otherwise just flash black across the room.
-		skipNotice = 'Skipping — that track would not play';
-		setTimeout(() => (skipNotice = ''), 4000);
+		flashSkipNotice('Skipping — that track would not play');
 		// `onVisibleEnded()` sends the single `ended` frame; a second advances the server twice and eats a turn.
 		onVisibleEnded();
 	}
@@ -278,8 +281,7 @@
 			const stuck = processIsTerminal(e);
 			if (stuck && tvState === 'waiting' && current && current.mediaId === e.mediaId) {
 				const who = singerName(current.singerId);
-				skipNotice = `Couldn't make the karaoke for ${who}'s song — skipping`;
-				setTimeout(() => (skipNotice = ''), 4000);
+				flashSkipNotice(`Couldn't make the karaoke for ${who}'s song — skipping`);
 				onVisibleEnded();
 			}
 		}
@@ -361,54 +363,11 @@
 	// The WHOLE roster, no "+N more": Infinity caps nothing, and TvLobby steps the chip size down instead.
 	const roster = $derived(lobbyRoster(online, away, singers, Infinity));
 
-	// KEEP THE TV AWAKE while a song is on stage, or the OS screensaver blanks the room mid-song.
-	// See docs/FRONTEND.md#wake-lock-and-reload-resume.
+	// KEEP THE TV AWAKE for exactly the on-stage screens, or the OS screensaver blanks the room mid-song. `isAttract` is
+	// read reactively, so the lock is released and re-taken as the room enters and leaves the stage.
 	$effect(() => {
-		// Read reactively, so the effect releases and re-takes as the room enters or leaves an on-stage screen.
-		const playing = !isAttract;
-		if (typeof navigator === 'undefined' || !navigator.wakeLock) return;
-		if (!playing) return;
-
-		let sentinel: WakeLockSentinel | null = null;
-		// `sentinel` is null for the whole in-flight window, so without this flag a mid-flight `visibilitychange` issues a
-		// SECOND request and leaks the first held lock past the song's end.
-		let acquiring = false;
-		let released = false;
-
-		const acquire = () => {
-			// A pending, in-flight or held lock needs no second request; a released sentinel is spent.
-			if (acquiring || (sentinel && !sentinel.released)) return;
-			acquiring = true;
-			navigator
-				.wakeLock!.request('screen')
-				.then((s) => {
-					if (released) {
-						// Torn down while the request was in flight — do not leak it.
-						s.release().catch(() => {});
-						return;
-					}
-					sentinel = s;
-				})
-				// A rejected request (policy, low battery) must not throw; the screen falls back to default sleep.
-				.catch(() => {})
-				.finally(() => {
-					acquiring = false;
-				});
-		};
-
-		const onVisibility = () => {
-			if (document.visibilityState === 'visible') acquire();
-		};
-
-		acquire();
-		document.addEventListener('visibilitychange', onVisibility);
-
-		return () => {
-			released = true;
-			document.removeEventListener('visibilitychange', onVisibility);
-			sentinel?.release().catch(() => {});
-			sentinel = null;
-		};
+		if (isAttract) return;
+		return keepScreenAwake();
 	});
 
 	/*
@@ -516,9 +475,6 @@
 		if (tvState === 'loading' && current) return 'loading';
 		return null;
 	});
-	/** The entry the loading treatment is announcing — the one the visible player is loading toward. */
-	const loadingDisplay = $derived(songDisplay(mediaOf(current)));
-
 	// Seeded from the room code, so a room's phrase rotation is deterministic.
 	// See docs/FRONTEND.md#the-attract-and-lobby-idles.
 	const phraseSeed = $derived(seedFromString(data.roomCode || 'encore-attract'));
@@ -574,7 +530,6 @@
 			<VisualizerStage variant={tvVisualizer} hue={tvBackgroundHue} playing={!isAttract} />
 		{/if}
 	</div>
-	<!-- two stacked player slots -->
 	<TvPlayer
 		media={slotMedia.A}
 		entryId={slotEntryId.A}
@@ -646,7 +601,6 @@
 		onplaybackfailed={(reason) => (playbackFailedReason = reason)}
 	/>
 
-	<!-- Word-timed karaoke lyrics over the active player -->
 	<LyricsOverlay
 		lyricsRef={mediaOf(current)?.lyricsRef}
 		provenance={lyricsProvenance}
@@ -807,13 +761,17 @@
 			</div>
 		</div>
 	{:else if transient === 'loading'}
-		<!-- The MISSED-PRELOAD path, held until the visible player reports ready — affirmative, a song IS coming. -->
+		<!--
+			The MISSED-PRELOAD path, held until the visible player reports ready — affirmative, a song IS coming. It
+			announces `current`, the entry the visible player is loading toward, so it reads the same display the
+			lower-third does rather than deriving a second copy of it.
+		-->
 		<div class="interstitial takeover state-next">
 			<div class="up-label">{openedOnce ? 'Up next' : 'Loading'}</div>
 			<div class="up-name hero-name">{singerName(current?.singerId)}</div>
 			<div class="up-song">
-				{loadingDisplay.title}{#if loadingDisplay.artist}<span class="up-artist-inline"
-						>{'\u00a0· '}{loadingDisplay.artist}</span
+				{nowPlayingDisplay.title}{#if nowPlayingDisplay.artist}<span class="up-artist-inline"
+						>{'\u00a0· '}{nowPlayingDisplay.artist}</span
 					>{/if}
 			</div>
 		</div>

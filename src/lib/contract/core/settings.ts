@@ -11,6 +11,8 @@ import {
 	type SeparatorEngineId
 } from '../lyrics/separators';
 import { makeRegistry } from './registry';
+import { admitted, clampedInt, keptBoolean, normalizeFields, stringId, type FieldRules } from './field-rules';
+import { clampGuideLevel } from '../lyrics/guide-level';
 import { DEFAULT_QUEUE_ORDER, isQueueOrder, type QueueOrderId } from '../queue/queue-order';
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from '../process/fetchers';
 import { DEFAULT_STAGE_COLOR, DEFAULT_STAGE_DIM, normalizeStageColor, normalizeStageDim } from '../presentation/colors';
@@ -116,50 +118,6 @@ export function normalizeMaxProcesses(input: unknown): number | null {
 	if (n < 0 || n > MAX_PROCESSES_PER_SINGER_CEILING) return null;
 	return n;
 }
-
-// Untrusted input degrades PER FIELD against the CURRENT value and is never rejected wholesale, so refusing
-// one bad field cannot wipe an unrelated valid choice. BOTH layers state that rule as a TABLE rather than by
-// hand, so each field is named once instead of three times. See docs/SERVER.md#contract-boundary.
-
-/** One field's rule — the untrusted value and the CURRENT value in, the value to store out. */
-type FieldRule<V> = (input: unknown, base: V) => V;
-
-/** A rule for EVERY field of `S`: a new settings field is a compile error until it has one. */
-type FieldRules<S> = { [K in keyof S]: FieldRule<S[K]> };
-
-/** Walk the table. Key order follows the TABLE, so each one is declared in its interface's field order. */
-function normalizeFields<S extends object>(rules: FieldRules<S>, input: Partial<S> | null | undefined, base: S): S {
-	const out = {} as S;
-	// Generic in the key, so each rule is applied at its own field's type with no cast.
-	const applyRule = <K extends keyof S>(key: K): void => {
-		out[key] = rules[key](input?.[key], base[key]);
-	};
-	for (const key of Object.keys(rules) as (keyof S)[]) applyRule(key);
-	return out;
-}
-
-/** Keep the current value unless a registry guard admits the incoming one. */
-function admitted<V>(isValid: (v: unknown) => v is V): FieldRule<V> {
-	return (input, base) => (isValid(input) ? input : base);
-}
-
-/** The registry guards that take a `string` rather than an `unknown`: a non-string must read as "not
- *  admitted" instead of reaching a guard typed for strings. */
-function stringId<V extends string>(isValid: (v: string) => v is V): (v: unknown) => v is V {
-	return (v): v is V => typeof v === 'string' && isValid(v);
-}
-
-/** A bounded integer is CLAMPED rather than rejected, so a junk value still leaves a usable room. */
-function clampedInt(lo: number, hi: number): FieldRule<number> {
-	return (input, base) =>
-		typeof input === 'number' && Number.isFinite(input) ? Math.min(hi, Math.max(lo, Math.round(input))) : base;
-}
-
-const keptBoolean: FieldRule<boolean> = (input, base) => (typeof input === 'boolean' ? input : base);
-
-/** Rounded to a hundredth, the unit BOTH 0..1 room fractions use, so they compare alike. */
-const fraction01: FieldRule<number> = (input, base) =>
-	typeof input === 'number' && Number.isFinite(input) ? Math.round(Math.min(1, Math.max(0, input)) * 100) / 100 : base;
 
 /** The two engine+model PAIRS are absent: a model is legal only against its own engine, so neither half can
  *  be judged as a field on its own. `normalizeGlobalSettings` validates each pair as a pair. */
@@ -363,8 +321,10 @@ const ROOM_FIELD_RULES: FieldRules<RoomSettings> = {
 	// 0 is a real choice for both: a room may want no history, or nothing revealed ahead.
 	lyricsLinesBefore: clampedInt(0, MAX_LYRICS_LINES_BEFORE),
 	lyricsLinesAfter: clampedInt(0, MAX_LYRICS_LINES_AFTER),
-	// NOT nullable: this is the floor a per-song override inherits.
-	guideLevelDefault: fraction01,
+	// NOT nullable: this is the floor a per-song override inherits, and it takes the OVERRIDE'S OWN rule, so
+	// the room default and a per-song pick cannot round to different hundredths. `null` there is "unusable",
+	// which is this table's "keep the current value".
+	guideLevelDefault: (input, base) => (typeof input === 'number' ? (clampGuideLevel(input) ?? base) : base),
 	loudnessNormalization: keptBoolean,
 	// 0 IS a real choice (no grace at all), so it is a bound, not a rejected value.
 	presenceGraceMinutes: clampedInt(MIN_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES)

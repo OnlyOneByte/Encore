@@ -28,28 +28,20 @@ export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 						)
 						.run();
 				}
+				// Named ONCE and reused as both the insert and the conflict update, so the two cannot drift —
+				// a `Math.floor` written twice is a floor that can be dropped from one of them.
+				const row = {
+					currentEntryId: playback.currentEntryId,
+					// `position_sec` is an INTEGER column; sub-second precision lives in-memory/on the wire and is floored HERE, at the persistence boundary, so a telemetry frame is never broadcast as an exact `0` that guide-sync.ts reads as a restart.
+					positionSec: Math.floor(playback.positionSec),
+					isPlaying: playback.isPlaying,
+					keyShift: playback.keyShift,
+					background: playback.background,
+					guideLevel: playback.guideLevel
+				};
 				tx.insert(playbackState)
-					.values({
-						roomId,
-						currentEntryId: playback.currentEntryId,
-						// `position_sec` is an INTEGER column; sub-second precision lives in-memory/on the wire and is floored HERE, at the persistence boundary, so a telemetry frame is never broadcast as an exact `0` that guide-sync.ts reads as a restart.
-						positionSec: Math.floor(playback.positionSec),
-						isPlaying: playback.isPlaying,
-						keyShift: playback.keyShift,
-						background: playback.background,
-						guideLevel: playback.guideLevel
-					})
-					.onConflictDoUpdate({
-						target: playbackState.roomId,
-						set: {
-							currentEntryId: playback.currentEntryId,
-							positionSec: Math.floor(playback.positionSec),
-							isPlaying: playback.isPlaying,
-							keyShift: playback.keyShift,
-							background: playback.background,
-							guideLevel: playback.guideLevel
-						}
-					})
+					.values({ roomId, ...row })
+					.onConflictDoUpdate({ target: playbackState.roomId, set: row })
 					.run();
 			});
 		}

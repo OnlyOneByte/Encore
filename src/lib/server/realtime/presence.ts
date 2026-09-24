@@ -7,7 +7,8 @@
 
 import { memberState, shouldStartClock, shouldClearClock, type MemberFacts, type MemberState } from '../../contract';
 
-interface Record_ {
+/** One singer's socket count plus the timestamps `memberState` derives membership from. */
+interface SingerPresence {
 	sockets: number;
 	awaySince?: number;
 	clockStartedAt?: number;
@@ -23,10 +24,9 @@ export interface MembershipSnapshot {
 }
 
 export class PresenceTracker {
-	/** singerId -> sockets + the timestamps membership is derived from. */
-	#rec = new Map<string, Record_>();
+	#rec = new Map<string, SingerPresence>();
 
-	#get(singerId: string): Record_ {
+	#get(singerId: string): SingerPresence {
 		let r = this.#rec.get(singerId);
 		if (!r) {
 			r = { sockets: 0 };

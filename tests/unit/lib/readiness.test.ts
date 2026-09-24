@@ -1,4 +1,4 @@
-import { EMPTY_SONG_PROFILE, Media, MediaStatus } from '$lib/contract';
+import { EMPTY_SONG_PROFILE, type Media, type MediaStatus } from '$lib/contract';
 import {
 	canProcess,
 	displayReadiness,

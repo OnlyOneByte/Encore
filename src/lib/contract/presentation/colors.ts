@@ -54,6 +54,13 @@ function toHex([r, g, b]: [number, number, number]): string {
 	return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
 }
 
+/** Canonical 6-digit lowercase hex, or null for anything that is not a hex colour. THE one spelling of
+ *  "parse it, then re-emit it": every normaliser below needs it, and so does the palette's stop lookup. */
+export function canonicalHex(input: string): string | null {
+	const rgb = parseHex(input);
+	return rgb ? toHex(rgb) : null;
+}
+
 /** WCAG 2.x relative luminance. */
 function luminance(rgb: [number, number, number]): number {
 	const [r, g, b] = rgb.map(srgbToLinear) as [number, number, number];
@@ -128,8 +135,9 @@ const ACCENT2_GUARD_DEG = 60;
 /** The worst case: a stage hue sitting exactly on the active-word hue. */
 const STAGE_BG_L_GUARDED = 0.13;
 
-/** Shortest angular distance, in degrees (0–180). */
-function hueDistance(a: number, b: number): number {
+/** Shortest angular distance, in degrees (0–180). Exported because the palette ring measures the same
+ *  angle to find a guest's nearest stop, and two copies of a wrap-around subtraction drift. */
+export function hueDistance(a: number, b: number): number {
 	const d = Math.abs((((a - b) % 360) + 360) % 360);
 	return Math.min(d, 360 - d);
 }
@@ -163,35 +171,29 @@ export function hueOfColor(input: string): number {
 
 /** Tests LEGIBILITY on both surfaces, never list membership — an allowlist silently rewrites every non-preset hue. */
 export function isLegibleSingerColor(input: string): boolean {
-	const rgb = parseHex(input);
-	if (!rgb) return false;
-	const hex = toHex(rgb);
+	const hex = canonicalHex(input);
+	if (!hex) return false;
 	return SURFACES.every((s) => contrastRatio(hex, s) >= MIN_DOT_CONTRAST);
 }
 
 /** `null` leaves the room accent. MUST stay separate from `normalizeSingerColor`. */
 export function lyricHighlightColor(input: string | null | undefined): string | null {
 	if (typeof input !== 'string') return null;
-	const rgb = parseHex(input);
-	if (!rgb) return null;
-	const hex = toHex(rgb);
+	const hex = canonicalHex(input);
+	if (!hex) return null;
 	return isLegibleSingerColor(hex) ? hex : null;
 }
 
 /** Canonical 6-digit lowercase hex is load-bearing — see docs/SERVER.md#colour-tiers. */
 export function normalizeSingerColor(input: string): string {
-	const rgb = parseHex(input);
-	if (rgb) {
-		const hex = toHex(rgb);
-		if (isLegibleSingerColor(hex)) return hex;
-	}
+	const hex = canonicalHex(input);
+	if (hex && isLegibleSingerColor(hex)) return hex;
 	return SINGER_COLORS[0];
 }
 
 /** DELIBERATELY NO LEGIBILITY GATE, unlike its singer sibling; unparseable input keeps the room's colour. */
 export function normalizeStageColor(input: unknown, fallback: string): string {
-	const rgb = typeof input === 'string' ? parseHex(input) : null;
-	return rgb ? toHex(rgb) : fallback;
+	return (typeof input === 'string' ? canonicalHex(input) : null) ?? fallback;
 }
 
 // The dimmer is a LIGHTNESS control, never an opacity layer over the video.

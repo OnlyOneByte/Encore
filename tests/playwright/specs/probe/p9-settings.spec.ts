@@ -1,0 +1,519 @@
+// SETTINGS, THREE SCOPES, LIVE. Does a setting persist, refuse garbage, fan out to every connected client, and
+// reach the WIRE — all without a restart, because a party cannot be rebooted.
+//
+// THE CLAIM THAT MATTERS IS "LIVE". Three sections below are only about that: a `joinOrigin` write must move
+// the address /tv serves with no process restart; a write on one phone must reach every other phone as
+// `settings:changed`; and the lyrics-engine settings must reach a worker's `job:assign` params, which
+// `assignParams` reads LIVE at assign time — so a change BETWEEN two processes must show up on the SECOND
+// assign. Proving the last one needs a worker that prints what it was handed, which is
+// `startObservingWorker` (world/workers.ts): it advertises `align`, records every assign and claims nothing.
+//
+// NO BROWSER IN MOST OF THIS, DELIBERATELY. The subject is the settings API and the wire, and p9 drove both
+// over HTTP and a raw socket. A page would add a rendering layer between the assertion and the thing asserted.
+//
+// THE RESTORES ARE GONE. p9 put every value back before the next section, because thirty sections shared one
+// server. A core per test makes that dead code — and a test that has to undo itself cannot be read in
+// isolation.
+//
+// SECTION 7 IS NOT A CHECK, AND IS PORTED ANYWAY — READ THIS BEFORE BELIEVING THE TEST NAMES. p9's security
+// section is written INVERTED: `add(observed ? 'HIGH' : 'PASS', …)`, i.e. it reports a FINDING when the
+// condition holds, and its own comment says it "report[s] the state observed rather than an opinion". Every one
+// of those five states is documented-intentional in the source it cites (`capabilities.can()` returns true for
+// any singerId — every joined singer is a host; /api/metrics and /api/audit are "documented as intentional";
+// a role=worker upgrade is ungated unless ENCORE_WORKER_TOKEN is set, and core WARNS about it on boot). A
+// Playwright spec has one channel, not six severities, so these are ported as CHARACTERISATION tests: they
+// assert the observed blast radius, with the finding text kept verbatim. If the repo ever gates one of these,
+// the test goes red and THAT IS THE SIGNAL — a narrowed blast radius — not a regression. The alternative was
+// five permanently-red tests asserting against a deliberate design.
+//
+// WHAT IS DROPPED, NAMED. (1) p9's `EXPECTED_ENV_ORIGIN` arm — "clearing joinOrigin falls back to
+// ENCORE_PUBLIC_ORIGIN" — was an INFO whenever the harness did not export that variable, which it never did,
+// so there is no condition to move. `startCore({ env })` would make it reachable, but asserting it would be a
+// NEW claim. (2) p9's closing "concurrency reduces to clientOpId dedupe" line is an unconditional PASS
+// describing source code; it measures nothing, so there is nothing to port.
+import { test, expect } from '../../world/fixtures';
+import { SEL } from '../../world/selectors';
+import { startFakeWorker, startObservingWorker } from '../../world/workers';
+import { WebSocket } from 'ws';
+import type { World } from '../../world/fixtures';
+import type { EffectiveSettings, RoomSettings } from '$lib/contract';
+
+interface ApiResult {
+	status: number;
+	text: string;
+	body: any;
+	setCookie: string | null;
+}
+
+interface ApiOptions {
+	cookie?: string | null;
+	body?: unknown;
+	/** A RAW body, for the malformed-JSON case, which must not be stringified. */
+	raw?: string;
+}
+
+async function api(baseURL: string, method: string, path: string, opts: ApiOptions = {}): Promise<ApiResult> {
+	const headers: Record<string, string> = { 'content-type': 'application/json' };
+	if (opts.cookie) headers.Cookie = opts.cookie;
+	const res = await fetch(`${baseURL}${path}`, {
+		method,
+		headers,
+		body: opts.raw !== undefined ? opts.raw : opts.body === undefined ? undefined : JSON.stringify(opts.body)
+	});
+	const text = await res.text();
+	let parsed: any = null;
+	if (text) {
+		try {
+			parsed = JSON.parse(text);
+		} catch {
+			/* left null — a non-JSON body is itself part of some cases' answer */
+		}
+	}
+	return { status: res.status, text, body: parsed, setCookie: res.headers.get('set-cookie') };
+}
+
+/** Join over HTTP and keep the session cookie. Every settings write needs one: an anonymous PUT is 401, which
+ *  section 1 is about. */
+async function joinAs(baseURL: string, displayName: string): Promise<string> {
+	const r = await api(baseURL, 'POST', '/api/join', { body: { displayName, color: '#7c5cff' } });
+	if (r.status !== 200) throw new Error(`join failed for ${displayName}: HTTP ${r.status} ${r.text}`);
+	const cookie = (r.setCookie ?? '').split(';')[0]?.trim();
+	if (!cookie) throw new Error(`no cookie back from /api/join for ${displayName}`);
+	return cookie;
+}
+
+async function getSettings(baseURL: string): Promise<EffectiveSettings> {
+	const r = await api(baseURL, 'GET', '/api/settings');
+	if (r.status !== 200) throw new Error(`GET /api/settings HTTP ${r.status}`);
+	return r.body as EffectiveSettings;
+}
+
+interface PhoneSocket {
+	/** Every frame this socket has received, oldest first. */
+	readonly events: any[];
+	close(): void;
+}
+
+/**
+ * A phone socket carrying a singer's cookie, which is what makes it receive the room's broadcasts.
+ *
+ * `ws`, not the global WebSocket: presence and scoping are resolved from the cookie on the HANDSHAKE, and
+ * Node's built-in WebSocket ignores a headers option silently — see world/presence.ts.
+ *
+ * p9 drained the first 150ms before looking, "or one of [the welcome broadcasts] satisfies the wait for
+ * settings:changed". No drain here: every look below filters by frame TYPE, and each test performs exactly one
+ * write against its own core, so there is no earlier `settings:changed` to confuse with the one it caused.
+ */
+async function openPhoneWs(baseURL: string, cookie: string): Promise<PhoneSocket> {
+	const events: any[] = [];
+	const ws = new WebSocket(`${baseURL.replace(/^http/, 'ws')}/ws?role=phone`, { headers: { Cookie: cookie } });
+	ws.on('message', (raw: Buffer | string) => {
+		try {
+			events.push(JSON.parse(String(raw)));
+		} catch {
+			/* ignore malformed */
+		}
+	});
+	await new Promise<void>((resolve, reject) => {
+		ws.once('open', () => resolve());
+		ws.once('error', (err: Error) => reject(new Error(`phone socket refused: ${err.message}`)));
+	});
+	return { events, close: () => ws.close() };
+}
+
+/** The earliest frame of a type, waited for rather than slept at. */
+async function awaitFrame(socket: PhoneSocket, type: string, who: string): Promise<any> {
+	await expect
+		.poll(() => socket.events.filter((e) => e?.type === type).length, {
+			message: `${who} never received a ${type} frame. Saw: ${socket.events.map((e) => e?.type).join(', ') || 'nothing'}`
+		})
+		.toBeGreaterThan(0);
+	return socket.events.find((e) => e?.type === type);
+}
+
+interface SongRow {
+	id: string;
+	title: string;
+	source: string;
+	instrumentalRef?: string | null;
+	stemStatus?: string;
+}
+
+/**
+ * An UNPROCESSED local song. Process on an already-ready song short-circuits with no chain, no align and no
+ * wire signal, so readiness is checked on `instrumentalRef`/`stemStatus` and not on the search alone.
+ *
+ * `world.awaitDemoTrack` first: the library scan is a detached boot pass, so a single search taken right after
+ * boot can answer from an empty index and nothing re-runs it.
+ */
+async function rawLocalSong(world: World, query: string): Promise<SongRow> {
+	await world.awaitDemoTrack(query);
+	const body = (await (await fetch(`${world.baseURL}/api/search?q=${encodeURIComponent(query)}`)).json()) as {
+		ready?: SongRow[];
+		processing?: SongRow[];
+		results?: SongRow[];
+	};
+	const all = [...(body.ready ?? []), ...(body.processing ?? []), ...(body.results ?? [])];
+	const row = all.find((m) => m.source === 'local' && !m.instrumentalRef && m.stemStatus !== 'ready');
+	if (!row) {
+		throw new Error(
+			`no raw local song matching "${query}" — the wire probe needs an UNPROCESSED song, and the demo ` +
+				`library seeds four. Saw: ${JSON.stringify(all.map((m) => [m.id, m.stemStatus]))}`
+		);
+	}
+	return row;
+}
+
+// ── 1. the auth boundary ─────────────────────────────────────────────────────────────────────────────────
+
+test('anonymous PUTs are refused on both settings scopes', async ({ world }) => {
+	const global = await api(world.baseURL, 'PUT', '/api/settings', { body: { syncMode: 'lines' } });
+	expect(global.status, 'anonymous PUT /api/settings must be refused — routes/api/settings/+server.ts').toBe(401);
+	const room = await api(world.baseURL, 'PUT', '/api/settings/room', { body: { queueOrder: 'fcfs' } });
+	expect(room.status, 'anonymous PUT /api/settings/room must be refused — routes/api/settings/room/+server.ts').toBe(
+		401
+	);
+});
+
+// ── 2. persistence ───────────────────────────────────────────────────────────────────────────────────────
+
+/** Every id the contract names must be exercised by the persistence test; an uncovered one is a hole reported
+ *  as green. Kept as the probe's own literal set rather than derived, so adding a setting breaks this. */
+const COVERED_IDS = new Set([
+	'join-origin',
+	'sync-mode', // global
+	'queue-order',
+	'tv-progress',
+	'tv-background',
+	'tv-visualizer', // room, staging
+	'lyrics-highlight',
+	'lyrics-ball',
+	'lyrics-font',
+	'lyrics-case' // room, lyrics
+]);
+
+// NO `world`, so no core boots: this asks the contract about itself.
+test('the persistence test covers every setting id the contract names', async () => {
+	const missing = SEL.SETTING_IDS.filter((id) => !COVERED_IDS.has(id));
+	expect(missing, `uncovered SEL.SETTING_IDS entries (${SEL.SETTING_IDS.length} total)`).toEqual([]);
+});
+
+/** The two scopes' controls, by their DOM id and the field each writes. */
+const ROOM_WRITE = {
+	queueOrder: 'fcfs',
+	tvProgressStyle: 'corner',
+	tvBackgroundStyle: 'solid',
+	tvVisualizer: 'starfield',
+	lyricsHighlight: 'line',
+	lyricsBall: 'off',
+	lyricsFont: 'grotesk',
+	lyricsCase: 'upper'
+} as const satisfies Partial<RoomSettings>;
+
+const ROOM_ID_BY_FIELD: Record<keyof typeof ROOM_WRITE, string> = {
+	queueOrder: 'queue-order',
+	tvProgressStyle: 'tv-progress',
+	tvBackgroundStyle: 'tv-background',
+	tvVisualizer: 'tv-visualizer',
+	lyricsHighlight: 'lyrics-highlight',
+	lyricsBall: 'lyrics-ball',
+	lyricsFont: 'lyrics-font',
+	lyricsCase: 'lyrics-case'
+};
+
+// ONE test for ten controls, because they are not independently falsifiable here: the room normalizer rejects
+// PER FIELD to the CURRENT value, so only a FULL round-trip says which field took — one PUT, one reply, ten
+// readings of it. The follow-up GET then depends on both scopes' writes, which is why it cannot be its own
+// test either.
+test('every settings control round-trips, and a follow-up GET proves SQLite rather than memory', async ({ world }) => {
+	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+
+	const joinOrigin = 'http://phones.example:8080';
+	const patch1 = await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { joinOrigin } });
+	expect(
+		patch1.body?.global?.joinOrigin,
+		'#join-origin must persist via PUT /api/settings — contract/core/settings.ts:normalizeJoinOrigin'
+	).toBe(joinOrigin);
+
+	const patch2 = await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { syncMode: 'lines' } });
+	expect(patch2.body?.global?.syncMode, '#sync-mode must persist via PUT /api/settings').toBe('lines');
+
+	const written = await api(world.baseURL, 'PUT', '/api/settings/room', { cookie, body: ROOM_WRITE });
+	const room = (written.body?.room ?? {}) as Partial<RoomSettings>;
+	for (const [field, want] of Object.entries(ROOM_WRITE) as [keyof typeof ROOM_WRITE, string][]) {
+		expect(room[field], `#${ROOM_ID_BY_FIELD[field]} must persist via PUT /api/settings/room`).toBe(want);
+	}
+
+	// A follow-up GET, because the write endpoint's own reply could be in-memory only.
+	const roundtrip = await getSettings(world.baseURL);
+	expect(
+		{
+			queueOrder: roundtrip.room.queueOrder,
+			syncMode: roundtrip.global.syncMode,
+			joinOrigin: roundtrip.global.joinOrigin
+		},
+		'GET /api/settings must return the values just written'
+	).toEqual({ queueOrder: 'fcfs', syncMode: 'lines', joinOrigin });
+});
+
+// ── 3. validation ────────────────────────────────────────────────────────────────────────────────────────
+
+// ONE test, eleven cases, for the reason the probe states: reject-to-current is PER FIELD, so a sibling must
+// survive its neighbour's junk — which is only visible if every case is measured against ONE baseline taken
+// before any of them ran. Each case names itself in its own message.
+test('garbage in a settings write degrades to the current value, per field', async ({ world }) => {
+	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+	const baseline = await getSettings(world.baseURL);
+
+	const cases: { scope: 'global' | 'room'; body: Record<string, unknown>; field: string; expected: unknown }[] = [
+		{ scope: 'global', body: { syncMode: 'no-thanks' }, field: 'syncMode', expected: baseline.global.syncMode },
+		{ scope: 'global', body: { asrModel: '../../etc/passwd' }, field: 'asrModel', expected: baseline.global.asrModel },
+		{
+			scope: 'global',
+			body: { defaultEngine: 'roformer', defaultModel: 'nope-9000' },
+			field: 'defaultModel',
+			expected: baseline.global.defaultModel
+		},
+		{
+			scope: 'global',
+			body: { joinOrigin: 'javascript:alert(1)' },
+			field: 'joinOrigin',
+			expected: baseline.global.joinOrigin
+		},
+		{ scope: 'global', body: { joinOrigin: 'not a url' }, field: 'joinOrigin', expected: baseline.global.joinOrigin },
+		{ scope: 'room', body: { queueOrder: 'fifo' }, field: 'queueOrder', expected: baseline.room.queueOrder },
+		{
+			scope: 'room',
+			body: { tvProgressStyle: 'DROP TABLE' },
+			field: 'tvProgressStyle',
+			expected: baseline.room.tvProgressStyle
+		},
+		{
+			// A colour, not an angle: the interesting junk is an unparseable colour reaching a style attribute.
+			scope: 'room',
+			body: { tvBackgroundColor: 'rebeccapurple' },
+			field: 'tvBackgroundColor',
+			expected: baseline.room.tvBackgroundColor
+		},
+		{ scope: 'room', body: { lyricsBall: 'wormhole' }, field: 'lyricsBall', expected: baseline.room.lyricsBall },
+		{ scope: 'room', body: { songIntroMs: -99999 }, field: 'songIntroMs', expected: 500 /* MIN_SONG_INTRO_MS */ },
+		{ scope: 'room', body: { songIntroMs: 99999999 }, field: 'songIntroMs', expected: 10000 /* MAX_SONG_INTRO_MS */ }
+	];
+
+	for (const c of cases) {
+		const path = c.scope === 'global' ? '/api/settings' : '/api/settings/room';
+		const r = await api(world.baseURL, 'PUT', path, { cookie, body: c.body });
+		const bucket = (c.scope === 'global' ? r.body?.global : r.body?.room) as Record<string, unknown> | undefined;
+		expect(
+			bucket?.[c.field],
+			`${c.scope}.${c.field}: garbage ${JSON.stringify(c.body[c.field])} must degrade to ` +
+				`${JSON.stringify(c.expected)}`
+		).toBe(c.expected);
+	}
+});
+
+test('a malformed or exotic JSON body is refused without a 500', async ({ world }) => {
+	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+
+	const malformed = await api(world.baseURL, 'PUT', '/api/settings', { cookie, raw: 'not-json' });
+	expect(malformed.status, 'a malformed JSON body must 400 rather than 500 — routes/api/settings/+server.ts').toBe(400);
+	// The handler reads request.json(), so null, an array and a top-level string all parse. Watch for a crash.
+	const nullBody = await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: null });
+	expect(
+		nullBody.status,
+		'a top-level JSON `null` body must be handled — settings-repository.ts:setGlobal(null|undefined)'
+	).toBeLessThan(500);
+	const arrayBody = await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: [1, 2, 3] });
+	expect(arrayBody.status, 'a top-level JSON array body must be handled').toBeLessThan(500);
+});
+
+// ── 4. joinOrigin, live ──────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * SvelteKit serialises page data through devalue, which writes an OBJECT LITERAL — `joinUrl:"…"`, with the key
+ * UNQUOTED — not JSON. p9 matched `"joinUrl":"…"` and fell back to any URL ending in `/join`; neither can match
+ * the app as it stands (the key is unquoted, and the advertised address is `<origin>/?room=CODE`, a path that
+ * never was `/join`), so its extraction returned null and its assertion could only ever have been vacuous.
+ * BOTH key spellings are accepted here, and the assertion — the served address starts with the setting — is
+ * p9's own. `joinUrl` is the string the QR image encodes (routes/tv/+page.server.ts), so this is the address a
+ * phone is actually sent to, not an echo of the value just written.
+ */
+function extractJoinUrl(html: string): string | null {
+	return html.match(/"?joinUrl"?:\s*"([^"]+)"/)?.[1] ?? null;
+}
+
+test('a runtime joinOrigin write moves the address /tv serves, with no restart', async ({ world }) => {
+	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+	const target = 'http://runtime-fix.example:1234';
+	await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { joinOrigin: target } });
+
+	const html = await (await fetch(`${world.baseURL}/tv`)).text();
+	const joinUrl = extractJoinUrl(html);
+	expect(
+		joinUrl?.startsWith(target),
+		`the settings write must reach /tv's joinUrl with no process restart — server/public-origin.ts:joinOrigin. ` +
+			`/tv served joinUrl=${joinUrl}`
+	).toBe(true);
+});
+
+// ── 5. the broadcast ─────────────────────────────────────────────────────────────────────────────────────
+
+test('a room-scope write fans out to every connected phone, carrying the same effective payload', async ({ world }) => {
+	const aliceCookie = await joinAs(world.baseURL, 'AliceProbe');
+	const bobCookie = await joinAs(world.baseURL, 'BobProbe');
+	const alice = await openPhoneWs(world.baseURL, aliceCookie);
+	const bob = await openPhoneWs(world.baseURL, bobCookie);
+	try {
+		await api(world.baseURL, 'PUT', '/api/settings/room', { cookie: aliceCookie, body: { tvProgressStyle: 'off' } });
+
+		const aliceFrame = await awaitFrame(alice, 'settings:changed', 'alice (the writer)');
+		const bobFrame = await awaitFrame(bob, 'settings:changed', 'bob (the other phone)');
+		// Two phones on /settings must converge on ONE payload: a client that had to merge two events to know
+		// the effective state would show a different room from its neighbour.
+		expect(
+			[aliceFrame?.settings?.room?.tvProgressStyle, bobFrame?.settings?.room?.tvProgressStyle],
+			'both phones must see the written value in the frame — routes/api/settings/room/+server.ts'
+		).toEqual(['off', 'off']);
+	} finally {
+		alice.close();
+		bob.close();
+	}
+});
+
+test('a global-scope write also fans out via settings:changed', async ({ world }) => {
+	const aliceCookie = await joinAs(world.baseURL, 'AliceProbe');
+	const bobCookie = await joinAs(world.baseURL, 'BobProbe');
+	const alice = await openPhoneWs(world.baseURL, aliceCookie);
+	const bob = await openPhoneWs(world.baseURL, bobCookie);
+	try {
+		await api(world.baseURL, 'PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'small' } });
+
+		const aliceFrame = await awaitFrame(alice, 'settings:changed', 'alice (the writer)');
+		const bobFrame = await awaitFrame(bob, 'settings:changed', 'bob (the other phone)');
+		expect(
+			[aliceFrame?.settings?.global?.asrModel, bobFrame?.settings?.global?.asrModel],
+			'a deployment-scope write must reach every phone too'
+		).toEqual(['small', 'small']);
+	} finally {
+		alice.close();
+		bob.close();
+	}
+});
+
+test('a room house-rule change fans out', async ({ world }) => {
+	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+	const alice = await openPhoneWs(world.baseURL, cookie);
+	try {
+		// queueOrder is stored per queue entry as rotationSeq, so the write must ALSO re-derive the queue and
+		// broadcast queue:patch — without it every client stays on the old order until a song is added or
+		// removed. An EMPTY queue makes reorder() return null and no queue:patch fires: correct, not a defect,
+		// which is why only settings:changed is asserted and the other is reported.
+		await api(world.baseURL, 'PUT', '/api/settings/room', { cookie, body: { queueOrder: 'shuffle' } });
+		await awaitFrame(alice, 'settings:changed', 'alice');
+		const alsoQueuePatch = alice.events.some((e) => e?.type === 'queue:patch');
+		expect(
+			alice.events.filter((e) => e?.type === 'settings:changed').length,
+			`a house-rule change must fan out (queue:patch=${alsoQueuePatch}; it fires only when the order ` +
+				`actually changes, and this room's queue is empty)`
+		).toBeGreaterThan(0);
+	} finally {
+		alice.close();
+	}
+});
+
+// ── 6. the wire ──────────────────────────────────────────────────────────────────────────────────────────
+
+// ONE test for two assertions, because the second one IS the first one happening twice: "live" means the
+// SECOND assign carries what was written between them, which cannot be asserted without the first.
+test('the lyrics-engine settings reach job:assign live, and a change between processes reaches the NEXT one', async ({
+	world
+}) => {
+	const cookie = await joinAs(world.baseURL, 'AliceProbe');
+	const songA = await rawLocalSong(world, 'caroline');
+	const songB = await rawLocalSong(world, 'believin');
+
+	// fetch+stems only on the CLAIMING worker: align is left to the observer, which is what reads the assign.
+	// A local library file needs no fetch, but advertising it costs nothing and matches the old pair.
+	const chain = await startFakeWorker(world, { capabilities: ['fetch', 'stems'] });
+	const observer = await startObservingWorker(world);
+	try {
+		await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { asrModel: 'medium', syncMode: 'lines' } });
+		const startA = await api(world.baseURL, 'POST', '/api/process', { cookie, body: { mediaId: songA.id } });
+		expect(startA.status, `/api/process refused "${songA.title}": ${startA.text}`).toBe(200);
+
+		const assignA = await observer.awaitAssign({ jobType: 'align', mediaId: songA.id, timeout: 45_000 });
+		expect(
+			{ asrModel: assignA.params.asrModel, syncMode: assignA.params.syncMode },
+			`the align assign must carry the settings live at assign time — server/jobs/dispatch.ts:assignParams` +
+				`\n\n${observer.log()}`
+		).toEqual({ asrModel: 'medium', syncMode: 'lines' });
+
+		// A SECOND process with CHANGED settings proves the read is LIVE rather than captured at boot.
+		await api(world.baseURL, 'PUT', '/api/settings', { cookie, body: { asrModel: 'tiny', syncMode: 'forced' } });
+		const startB = await api(world.baseURL, 'POST', '/api/process', { cookie, body: { mediaId: songB.id } });
+		expect(startB.status, `/api/process refused "${songB.title}": ${startB.text}`).toBe(200);
+
+		const assignB = await observer.awaitAssign({ jobType: 'align', mediaId: songB.id, timeout: 45_000 });
+		expect(
+			{ asrModel: assignB.params.asrModel, syncMode: assignB.params.syncMode },
+			`a global-settings change BETWEEN processes must reach the NEXT align assign, with no restart` +
+				`\n\n${observer.log()}`
+		).toEqual({ asrModel: 'tiny', syncMode: 'forced' });
+	} finally {
+		await observer.stop();
+		await chain.stop();
+	}
+});
+
+// ── 7. the blast radius (characterisation — see the header) ──────────────────────────────────────────────
+
+test('ANY joined singer holds operator authority over both settings scopes', async ({ world }) => {
+	const guest = await joinAs(world.baseURL, 'CarolProbe');
+
+	// p9, verbatim: "ANY joined singer can PUT global settings — sets the fleet's Whisper checkpoint (1550M
+	// weights)". capabilities.can() returns true for any singerId, so every phone on the LAN is a host.
+	const model = await api(world.baseURL, 'PUT', '/api/settings', { cookie: guest, body: { asrModel: 'large-v3' } });
+	expect(
+		[model.status, model.body?.global?.asrModel],
+		'a guest cookie can set the deployment-wide ASR checkpoint — server/capabilities.ts:can()'
+	).toEqual([200, 'large-v3']);
+
+	// p9, verbatim: "ANY joined singer can retarget the join QR to an attacker origin — party phishing vector
+	// for later joiners". Note the stored value drops the default port, which is the normalizer at work.
+	const origin = await api(world.baseURL, 'PUT', '/api/settings', {
+		cookie: guest,
+		body: { joinOrigin: 'http://evil.example:80' }
+	});
+	expect(
+		origin.body?.global?.joinOrigin,
+		'a guest cookie can retarget the join QR; the TV re-renders on the next request, with no restart'
+	).toBe('http://evil.example');
+});
+
+test('three operator surfaces are ungated by design', async ({ world }) => {
+	// (a) /api/metrics reveals worker ids, model names and error strings. Documented as intentional.
+	const metrics = await api(world.baseURL, 'GET', '/api/metrics');
+	expect(metrics.status, '/api/metrics is UNGATED — routes/api/metrics/+server.ts').toBe(200);
+
+	// (b) /api/audit/[mediaId], same reasoning: per-song attempt history and errors. Any indexed media will do —
+	// awaited rather than searched for once, because the library scan finishes after /health answers.
+	const someone = await world.awaitDemoTrack('caroline');
+	const audit = await api(world.baseURL, 'GET', `/api/audit/${encodeURIComponent(someone.id)}`);
+	expect(audit.status, `/api/audit/${someone.id} is UNGATED — routes/api/audit/[mediaId]/+server.ts`).toBe(200);
+
+	// (c) a role=worker socket opens with NO token unless ENCORE_WORKER_TOKEN is set — and it carries dispatch
+	// authority. `world` boots core without one, and core WARNS about exactly this on boot.
+	const worker = new WebSocket(`${world.baseURL.replace(/^http/, 'ws')}/ws?role=worker`);
+	const opened = await new Promise<boolean>((resolve) => {
+		worker.once('open', () => resolve(true));
+		worker.once('error', () => resolve(false));
+		worker.once('unexpected-response', () => resolve(false));
+		setTimeout(() => resolve(false), 5_000);
+	});
+	worker.close();
+	expect(
+		opened,
+		'a role=worker socket is accepted without a token — dispatch authority on the LAN. Set ' +
+			'ENCORE_WORKER_TOKEN to gate it (server.ts refuses the upgrade with 401 when it is set).'
+	).toBe(true);
+});

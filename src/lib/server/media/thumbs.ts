@@ -52,7 +52,7 @@ export function contentTypeFor(key: string): string {
 }
 
 const IMMUTABLE = 'public, max-age=2592000, immutable'; // 30 days
-const FETCH_TIMEOUT_MS = 5000; // Finding #5c: a hung upstream must not hold the request open
+const FETCH_TIMEOUT_MS = 5000; // a hung upstream must not hold the request open
 
 /** Serve a thumbnail: from disk if cached, else fetch (allowlisted host) → cache → serve. */
 export async function serveThumb(url: string): Promise<Response> {

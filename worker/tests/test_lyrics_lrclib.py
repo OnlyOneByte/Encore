@@ -8,6 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src import ratelimit as gate  # the shared outbound rate gate  # noqa: E402
 from src.lyrics import lrc as lf  # the FORMAT half
 from src.lyrics import lrclib as ls  # the CLIENT half  # noqa: E402
 from src.lyrics import model as lm  # the artifact-shape predicates
@@ -285,11 +286,11 @@ def test_retry_gives_up_after_cap_then_raises():
     client = ls.LrclibClient(fetcher=fetch, rate_limiter=lim)
     with pytest.raises(ls.LyricsFetchError):
         client.get("Lady Gaga", "Telephone")
-    assert fetch.calls["n"] == ls.MAX_ATTEMPTS  # tried exactly the cap, no more
-    assert lim.stats()["throttled"] == ls.MAX_ATTEMPTS
-    assert lim.stats()["retries"] == ls.MAX_ATTEMPTS - 1
+    assert fetch.calls["n"] == gate.MAX_ATTEMPTS  # tried exactly the cap, no more
+    assert lim.stats()["throttled"] == gate.MAX_ATTEMPTS
+    assert lim.stats()["retries"] == gate.MAX_ATTEMPTS - 1
     # backoff between attempts: BACKOFF_BASE * 2**0, *2**1 (no sleep after the final attempt)
-    assert clock.slept == [ls.BACKOFF_BASE_SEC, ls.BACKOFF_BASE_SEC * 2]
+    assert clock.slept == [gate.BACKOFF_BASE_SEC, gate.BACKOFF_BASE_SEC * 2]
 
 
 def test_retry_recovers_on_a_later_attempt():
@@ -326,8 +327,8 @@ def test_rate_gate_paces_successive_calls():
     assert client.get("a", "b") is None  # first call: no prior timestamp, no pacing wait
     assert clock.slept == []
     assert client.get("a", "b") is None  # second call within the interval: paced
-    assert clock.slept == [pytest.approx(ls.MIN_INTERVAL_SEC)]
-    assert lim.stats()["waited_sec"] == pytest.approx(ls.MIN_INTERVAL_SEC)
+    assert clock.slept == [pytest.approx(gate.MIN_INTERVAL_SEC)]
+    assert lim.stats()["waited_sec"] == pytest.approx(gate.MIN_INTERVAL_SEC)
 
 
 def test_non_retryable_5xx_still_raises_immediately():

@@ -20,7 +20,6 @@ export function safeMediaPath(ref: string): string | null {
 	} catch {
 		return null; // malformed %-encoding
 	}
-	// reject NUL and absolute paths outright
 	if (decoded.includes('\0') || decoded.startsWith('/') || decoded.startsWith('\\')) return null;
 
 	const { base, rest } = resolveBase(decoded);

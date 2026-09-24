@@ -2,43 +2,48 @@
 	// The tests tree's own resolution context.
 	//
 	// WHY THIS FILE EXISTS. bun resolves path aliases from the NEAREST tsconfig walking up from the
-	// importing file. Tests currently living under `src` inherit
-	// `.svelte-kit/tsconfig.json`, which SvelteKit generates with `$lib`, `$lib/server` and
-	// `$lib/contract` in it. A test moved to `tests/` leaves that context entirely, and a probe confirmed
-	// the failure is immediate and loud: `Cannot find module '$lib/phrasing/position-sentence'`. So the aliases have
-	// to be re-declared here, once, rather than rewritten into hundreds of relative paths.
+	// importing file. A test under `src` would inherit `.svelte-kit/tsconfig.json`, which SvelteKit generates
+	// with `$lib`, `$lib/server` and `$lib/contract` in it. A test under `tests/` leaves that context
+	// entirely, and the failure is immediate and loud: `Cannot find module '$lib/…'`. So the aliases are
+	// re-declared here, once, rather than rewritten into hundreds of relative paths.
 	//
 	// WHY NOT ADD THESE TO THE ROOT tsconfig INSTEAD. The root config `include`s `src`, so a
 	// `$lib` entry there would collide with the one SvelteKit generates for the same files. Scoping them to
 	// this tree keeps the two contexts independent.
 	//
-	// WHY `@encore/test-support` IS DECLARED HERE AND NOWHERE ELSE. It is test-only. Declaring it in the
-	// app's vite config would make it resolvable from production source and therefore bundleable, which is
-	// exactly the coupling this package exists to avoid. A test gains access to it by MOVING here, which is
-	// also what makes "adopt the helper" and "leave the source tree" the same commit.
-	// WHY `$routes`, `$setup` AND `$e2e` ARE HERE. `$lib` covers `src/lib` and nothing else, so a test
-	// naming a ROUTE handler, the Svelte client setup, or the e2e selector registry had no alias to use
-	// and counted `..` hops instead — 31 of them across 30 files, at depths from two to six. A hop count
-	// encodes the importing file's distance from its subject, which is the same fragility that left six
-	// e2e drivers anchored one hop short of the repo root. These three aliases delete the whole class.
+	// WHY `$test`, `$routes` AND `$e2e` ARE HERE. `$lib` covers `src/lib` and nothing else, so a test naming
+	// the shared helpers, a ROUTE handler, or the e2e selector registry had no alias to use and counted `..`
+	// hops instead. A hop count encodes the importing file's distance from its subject, so it is wrong the
+	// moment either end moves — and a wrong path does not always error: anything gating on `existsSync` reads
+	// nothing, finds no violations and PASSES. These three aliases delete the whole class.
 	//
-	// They are declared HERE, in the tests-only context, deliberately: `$routes` resolvable from
-	// production source would let a component import a route handler, and `$setup`/`$e2e` would make test
-	// scaffolding bundleable. The app's own resolution never sees them.
+	// They are declared HERE, in the tests-only context, deliberately: `$routes` resolvable from production
+	// source would let a component import a route handler, and `$test`/`$e2e` would make test scaffolding
+	// bundleable. The app's own resolution never sees them.
+	//
+	// `$test` replaced `@encore/test-support` (tests/support/src/, a 333-line two-module tree pretending to be
+	// a workspace package — it had no package.json and resolution was always just this path entry). There is
+	// no `$setup` any more either: the component-mount harness under tests/setup/ is gone.
 	"extends": "../tsconfig.base.json",
 	"compilerOptions": {
 		"baseUrl": ".",
+		// `$routes/*` pulls real route files into this program, and a `+page.server.ts` imports `./$types` —
+		// which only resolves through the rootDirs overlay SvelteKit's own generated tsconfig sets up.
+		"rootDirs": ["..", "../.svelte-kit/types"],
+		// OPT-OUT, and a debt rather than a decision — the same one tests/tsconfig.e2e.json carries and for the
+		// same reason. This tree was type-checked by NOTHING until now (`typecheck` ran app + root + e2e only, and
+		// the app config excludes `tests/**`), so 284 pre-existing errors accumulated, overwhelmingly `arr[0]` and
+		// regex groups inside test bodies. Gating the tree at all is the win; turning this on is a separate pass.
+		"noUncheckedIndexedAccess": false,
 		"paths": {
-			"@encore/test-support": ["./support/src/index.ts"],
-			"@encore/test-support/*": ["./support/src/*.ts"],
+			"$test": ["./helpers.ts"],
 			"$lib": ["../src/lib"],
 			"$lib/*": ["../src/lib/*"],
 			"$lib/server": ["../src/lib/server"],
 			"$lib/server/*": ["../src/lib/server/*"],
 			"$routes/*": ["../src/routes/*"],
-			"$setup/*": ["./setup/*"],
 			"$e2e/*": ["./e2e/*"]
 		}
 	},
-	"include": ["**/*.ts", "./support/src/**/*.ts"]
+	"include": ["**/*.ts"]
 }

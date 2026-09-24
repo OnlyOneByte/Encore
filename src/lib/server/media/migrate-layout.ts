@@ -120,10 +120,10 @@ export function planMigration(root = mediaRoot()): MigrationPlan {
 			moves.push([file, join(derivedDir(), derivedSub, name)]);
 			if (derivedSub === 'stems') {
 				const m = /^(.+)-(instrumental|vocals)\.wav$/.exec(name);
-				if (m && m[2] === 'instrumental') addRewrite(m[1], 'instrumentalRef', `derived/stems/${name}`);
+				if (m && m[2] === 'instrumental') addRewrite(m[1]!, 'instrumentalRef', `derived/stems/${name}`);
 			} else if (field) {
 				const m = /^(.+?)(?:-pitch)?\.json$/.exec(name);
-				if (m) addRewrite(m[1], field, `derived/${derivedSub}/${name}`);
+				if (m) addRewrite(m[1]!, field, `derived/${derivedSub}/${name}`);
 			}
 		}
 		prunes.push(abs);

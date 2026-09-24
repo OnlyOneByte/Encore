@@ -59,20 +59,20 @@
 		workers: { workerId: string; capabilities: string[]; slotsFree: number; host: Record<string, unknown> | null }[];
 	}
 
-	let m = $state<Metrics | null>(null);
+	let metrics = $state<Metrics | null>(null);
 	let failed = $state(false);
 
 	/** Marked in the table, because comparing mixed units down a column is arithmetic, not a glance. */
 	const slowestStep = $derived.by(() => {
-		if (!m || m.steps.length === 0) return null;
-		return m.steps.reduce((best, s) => ((s.meanMs ?? 0) > (best.meanMs ?? 0) ? s : best)).jobType;
+		if (!metrics || metrics.steps.length === 0) return null;
+		return metrics.steps.reduce((best, s) => ((s.meanMs ?? 0) > (best.meanMs ?? 0) ? s : best)).jobType;
 	});
 
 	onMount(async () => {
 		try {
 			const res = await fetch('/api/metrics');
 			if (!res.ok) throw new Error(String(res.status));
-			m = await res.json();
+			metrics = await res.json();
 		} catch {
 			failed = true;
 		}
@@ -90,8 +90,8 @@
 	};
 	function hostFacts(host: Record<string, unknown>): [string, string][] {
 		return Object.entries(HOST_LABELS)
-			.map(([k, label]): [string, string] => [label, host[k] === undefined || host[k] === null ? '' : String(host[k])])
-			.filter(([, v]) => v !== '');
+			.map(([key, label]): [string, string] => [label, host[key] == null ? '' : String(host[key])])
+			.filter(([, value]) => value !== '');
 	}
 </script>
 
@@ -106,7 +106,7 @@
 			<Alert.Root variant="destructive"><Alert.Title>Could not load metrics.</Alert.Title></Alert.Root>
 		{:else}
 			<!-- Worker state leads: with none connected, every timing below is history, not live state. -->
-			{#if m && m.workers.length === 0}
+			{#if metrics && metrics.workers.length === 0}
 				<!-- `role="status"`, not `alert`: phone-inventory.test.ts requires these live regions to be polite. -->
 				<Alert.Root variant="warn" role="status">
 					<Alert.Title>No worker connected — songs can't be processed right now.</Alert.Title>
@@ -115,25 +115,25 @@
 
 			<!-- This live region must OUTLIVE the load: one created by it arrives already holding its message. -->
 			<p class="note" role="status">
-				{#if !m}
+				{#if !metrics}
 					Loading…
 				{:else}
-					{count(m.sample.attempts, 'run')} across {count(m.sample.processes, 'song')}.
-					{#if m.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
+					{count(metrics.sample.attempts, 'run')} across {count(metrics.sample.processes, 'song')}.
+					{#if metrics.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
 				{/if}
 			</p>
 
-			{#if m}
+			{#if metrics}
 				<Card.Root>
 					<Card.Header>
 						<Card.Title>From request to ready to sing</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						<div class="kv">
-							<div><span class="k">typical</span><span class="v">{dur(m.e2e.p50Ms)}</span></div>
-							<div><span class="k">average</span><span class="v">{dur(m.e2e.meanMs)}</span></div>
-							<div><span class="k">worst</span><span class="v">{dur(m.e2e.p95Ms)}</span></div>
-							<div><span class="k">songs</span><span class="v">{m.e2e.n}</span></div>
+							<div><span class="k">typical</span><span class="v">{dur(metrics.e2e.p50Ms)}</span></div>
+							<div><span class="k">average</span><span class="v">{dur(metrics.e2e.meanMs)}</span></div>
+							<div><span class="k">worst</span><span class="v">{dur(metrics.e2e.p95Ms)}</span></div>
+							<div><span class="k">songs</span><span class="v">{metrics.e2e.n}</span></div>
 						</div>
 					</Card.Content>
 				</Card.Root>
@@ -143,7 +143,7 @@
 						<Card.Title>Each step</Card.Title>
 					</Card.Header>
 					<Card.Content>
-						{#if m.steps.length === 0}
+						{#if metrics.steps.length === 0}
 							<Empty.Root>
 								<Empty.Header>
 									<Empty.Description>Nothing processed yet.</Empty.Description>
@@ -165,7 +165,7 @@
 										</Table.Row>
 									</Table.Header>
 									<Table.Body>
-										{#each m.steps as s (s.jobType)}
+										{#each metrics.steps as s (s.jobType)}
 											<Table.Row>
 												<Table.Cell>
 													<span class="named"
@@ -194,7 +194,7 @@
 						<Card.Title>Vocal removal speed</Card.Title>
 					</Card.Header>
 					<Card.Content>
-						{#if m.models.length === 0}
+						{#if metrics.models.length === 0}
 							<Empty.Root>
 								<Empty.Header>
 									<Empty.Description>No vocals removed yet.</Empty.Description>
@@ -213,7 +213,7 @@
 										</Table.Row>
 									</Table.Header>
 									<Table.Body>
-										{#each m.models as r (String(r.engine) + String(r.model))}
+										{#each metrics.models as r (String(r.engine) + String(r.model))}
 											<Table.Row>
 												<Table.Cell>
 													<span class="named"
@@ -246,7 +246,7 @@
 						<Card.Title>Lyrics transcription</Card.Title>
 					</Card.Header>
 					<Card.Content>
-						{#if m.asr.length === 0}
+						{#if metrics.asr.length === 0}
 							<Empty.Root>
 								<Empty.Header>
 									<Empty.Description>No lyrics timed yet.</Empty.Description>
@@ -265,7 +265,7 @@
 										</Table.Row>
 									</Table.Header>
 									<Table.Body>
-										{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
+										{#each metrics.asr as r (String(r.asrModel) + String(r.syncMode))}
 											<Table.Row>
 												<Table.Cell>
 													<span class="named"
@@ -285,14 +285,14 @@
 					</Card.Content>
 				</Card.Root>
 
-				{#if m.stages.length}
+				{#if metrics.stages.length}
 					<Card.Root>
 						<Card.Header>
 							<Card.Title>Where the time goes</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<Bars
-								rows={m.stages.map((s) => ({
+								rows={metrics.stages.map((s) => ({
 									label: stageLabel(s.stage),
 									value: Math.round((s.meanMs ?? 0) / 1000),
 									hint: count(s.n, 'run')
@@ -303,7 +303,7 @@
 					</Card.Root>
 				{/if}
 
-				{#if m.slowestProcesses.length}
+				{#if metrics.slowestProcesses.length}
 					<Card.Root>
 						<Card.Header>
 							<Card.Title>Slowest songs</Card.Title>
@@ -311,7 +311,7 @@
 						<Card.Content>
 							<!-- Ranked entries: the <ol>/<li> is meaning; not Item.Title, whose clamp truncates a raw media id. -->
 							<ol class="processes">
-								{#each m.slowestProcesses as c (c.processingId)}
+								{#each metrics.slowestProcesses as c (c.processingId)}
 									<Item.Root variant="bare" size="bare">
 										{#snippet child({ props })}
 											<li {...props}>
@@ -334,14 +334,14 @@
 						<Card.Title>Workers</Card.Title>
 					</Card.Header>
 					<Card.Content>
-						{#if m.workers.length === 0}
+						{#if metrics.workers.length === 0}
 							<Empty.Root>
 								<Empty.Header>
 									<Empty.Description>Nothing is connected, so no song can be processed.</Empty.Description>
 								</Empty.Header>
 							</Empty.Root>
 						{:else}
-							{#each m.workers as w (w.workerId)}
+							{#each metrics.workers as w (w.workerId)}
 								<div class="worker">
 									<strong>{w.workerId}</strong>
 									<span class="note">{w.capabilities.join(', ')} · {w.slotsFree} free</span>

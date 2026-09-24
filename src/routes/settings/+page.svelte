@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import { untrack } from 'svelte';
+	import { SETTINGS_TABS, type SettingsTabId } from '$lib/settings-tabs';
 	import { goto, replaceState } from '$app/navigation';
 	import Icon from '$lib/ui/Icon.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
@@ -72,7 +73,7 @@
 			/** You, without the session token — the load strips it before the page is serialised. */
 			me: PublicSinger;
 			/** Which scope to open, already resolved server-side so first paint is the right tab. */
-			tab: 'you' | 'party' | 'server';
+			tab: SettingsTabId;
 			settings: EffectiveSettings;
 			/** What an empty join address resolves to — env var, else the address this page was opened at. */
 			joinOriginFallback: string;
@@ -82,18 +83,11 @@
 	}
 	let { data }: Props = $props();
 
-	const TABS = [
-		{ id: 'you', label: 'You' },
-		{ id: 'party', label: 'Party' },
-		{ id: 'server', label: 'Server' }
-	] as const;
-	type TabId = (typeof TABS)[number]['id'];
-
-	let tab = $state<TabId>(untrack(() => data.tab));
+	let tab = $state<SettingsTabId>(untrack(() => data.tab));
 
 	// `replaceState`, not `goto`: a scope switch must not stack history entries that make Back walk tabs instead of
 	// leaving the page. Shallow, so the server load does not re-run for a panel already in memory.
-	function showTab(id: TabId) {
+	function showTab(id: SettingsTabId) {
 		tab = id;
 		replaceState(`?tab=${id}`, {});
 	}
@@ -114,12 +108,12 @@
 	);
 	// Minutes read badly past an hour ("120 minutes"), and 0 is a sentinel here too.
 	const graceLabel = $derived.by(() => {
-		const m = settings.room.presenceGraceMinutes;
-		if (m === 0) return 'no grace';
-		if (m < 60) return `${m} min`;
-		const h = Math.floor(m / 60);
-		const rem = m % 60;
-		return rem === 0 ? `${h} hr` : `${h} hr ${rem} min`;
+		const minutes = settings.room.presenceGraceMinutes;
+		if (minutes === 0) return 'no grace';
+		if (minutes < 60) return `${minutes} min`;
+		const hours = Math.floor(minutes / 60);
+		const rest = minutes % 60;
+		return rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`;
 	});
 	$effect(() => {
 		settings = data.settings;
@@ -132,13 +126,11 @@
 	// Upgrade-only engines are excluded: offering one here lets a singer pick what the server rejects.
 	const liveEngines = SEPARATOR_ENGINES.filter((e) => e.liveSelectable);
 
-	const engineOf = (id: string) => getEngine(id);
-
-	let liveModels = $derived(engineOf(settings.global.defaultEngine)?.models ?? []);
-	let upgradeModels = $derived(engineOf(settings.global.upgradeEngine)?.models ?? []);
+	const liveModels = $derived(getEngine(settings.global.defaultEngine)?.models ?? []);
+	const upgradeModels = $derived(getEngine(settings.global.upgradeEngine)?.models ?? []);
 
 	// A slow engine on the LIVE path is the footgun worth naming in the UI: ~44min per song on CPU against ~50s.
-	let liveSlow = $derived(engineOf(settings.global.defaultEngine)?.speed === 'slow');
+	const liveSlow = $derived(getEngine(settings.global.defaultEngine)?.speed === 'slow');
 
 	/* Built from the same registry and `qualityRank` that `resolveProcessSeparator` reads, so every offered ceiling is
 	   one the resolver can honour. Sorted low→high because the cap is downward-only, and rank 0 is excluded: an unranked
@@ -154,31 +146,30 @@
 		.sort((a, b) => a.rank - b.rank);
 
 	// A cap at or above the default changes nothing, and the copy must say so rather than imply it raised quality.
-	let defaultRank = $derived(qualityRank(settings.global.defaultEngine, settings.global.defaultModel));
-	let capAboveDefault = $derived(settings.room.maxQualityRank !== null && settings.room.maxQualityRank >= defaultRank);
+	const defaultRank = $derived(qualityRank(settings.global.defaultEngine, settings.global.defaultModel));
+	const capAboveDefault = $derived(
+		settings.room.maxQualityRank !== null && settings.room.maxQualityRank >= defaultRank
+	);
 
 	// `local` names one media's already-present bytes, not a default a room could pick.
 	const defaultFetchers = FETCHERS.filter((f) => f.id !== 'local');
 
 	// Same footgun as a slow splitter: the one lever on wrong words is also the one that turns a two-minute process
 	// into a long wait on a CPU box.
-	let asrSlow = $derived(['slow', 'slowest'].includes(getAsrModel(settings.global.asrModel)?.speed ?? ''));
-
-	// Swatch and input both render the STORED string, so the phone cannot promise a colour the TV renders differently.
-	let tvBackgroundPreview = $derived(settings.room.tvBackgroundColor);
+	const asrSlow = $derived(['slow', 'slowest'].includes(getAsrModel(settings.global.asrModel)?.speed ?? ''));
 
 	// An "upgrade" that is not better never runs, so say so rather than let the toggle look active.
-	let upgradeIsBetter = $derived(
+	const upgradeIsBetter = $derived(
 		qualityRank(settings.global.upgradeEngine, settings.global.upgradeModel) >
 			qualityRank(settings.global.defaultEngine, settings.global.defaultModel)
 	);
 
 	// Ask the SAME resolver the TV asks, never re-test syncMode here: a second opinion would make this page confidently
 	// wrong about what is on screen.
-	let resolved = $derived(resolveLyricsPresentation(settings));
-	let lyricsClamped = $derived(resolved.clamped);
-	let resolvedHighlight = $derived(getLyricsHighlight(resolved.highlight)?.label.toLowerCase() ?? resolved.highlight);
-	let resolvedBall = $derived(resolved.ball !== 'off');
+	const resolved = $derived(resolveLyricsPresentation(settings));
+	const lyricsClamped = $derived(resolved.clamped);
+	const resolvedHighlight = $derived(getLyricsHighlight(resolved.highlight)?.label.toLowerCase() ?? resolved.highlight);
+	const resolvedBall = $derived(resolved.ball !== 'off');
 
 	/** Optimistic, then reconciled on the authoritative response; a refused write rolls back. */
 	async function patch(scope: 'global' | 'room', body: Record<string, unknown>) {
@@ -216,18 +207,18 @@
 		settings = { ...settings, global: { ...settings.global, [field]: value } };
 	}
 
-	function pickEngine(id: string) {
-		const engine = engineOf(id);
+	/* Switching engine MUST also move the model, or the server normalizes the invalid pair back and the choice reads as
+	   not having stuck. One function for both slots, so the pairing cannot hold on one and be forgotten on the other. */
+	function pickEngine(slot: 'default' | 'upgrade', id: string) {
+		const engine = getEngine(id);
 		if (!engine) return;
-		// Switching engine MUST also move the model, or the server normalizes the invalid pair back and the choice reads as
-		// not having stuck.
-		onglobal({ defaultEngine: id as SeparatorEngineId, defaultModel: engine.models[0]!.id });
-	}
-
-	function pickUpgradeEngine(id: string) {
-		const engine = engineOf(id);
-		if (!engine) return;
-		onglobal({ upgradeEngine: id as SeparatorEngineId, upgradeModel: engine.models[0]!.id });
+		const engineId = id as SeparatorEngineId;
+		const modelId = engine.models[0]!.id;
+		onglobal(
+			slot === 'default'
+				? { defaultEngine: engineId, defaultModel: modelId }
+				: { upgradeEngine: engineId, upgradeModel: modelId }
+		);
 	}
 
 	// The one free-text setting, so it needs a draft: `http` is not yet a valid origin, and a normalizer running per
@@ -351,9 +342,9 @@
 			</Alert.Root>
 		{/if}
 
-		<Tabs.Root value={tab} onValueChange={(v) => showTab(v as TabId)}>
+		<Tabs.Root value={tab} onValueChange={(v) => showTab(v as SettingsTabId)}>
 			<Tabs.List aria-label="Settings scope">
-				{#each TABS as t (t.id)}
+				{#each SETTINGS_TABS as t (t.id)}
 					<!-- The explicit id is load-bearing: Bits UI would generate its own, and both SEL.settingsTab and capture.mjs
 							resolve `#tab-<id>` by this spelling. -->
 					<Tabs.Trigger id="tab-{t.id}" value={t.id}>{t.label}</Tabs.Trigger>
@@ -546,9 +537,12 @@
 
 							<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
 							{#if settings.room.tvBackgroundStyle === 'solid' || settings.room.tvBackgroundStyle === 'visualizer'}
+								<!-- Swatch and input both render the STORED string, so the phone cannot promise a colour the TV renders
+										differently. It arrives as a custom property, never interpolated into `background:` — see
+										docs/GUARDS.md#colour-tokens-and-the-48-stop-palette. -->
 								<Field.Label data-inline for="tv-background-color">
 									Background colour
-									<span class="swatch" style="background: {tvBackgroundPreview}" aria-hidden="true"></span>
+									<span class="swatch" style="--swatch:{settings.room.tvBackgroundColor}" aria-hidden="true"></span>
 								</Field.Label>
 								<!-- oninput/onchange split as every slider here does: the native picker fires `input` continuously, so the swatch
 										tracks live while only `change` writes and broadcasts. -->
@@ -786,7 +780,7 @@
 							<NativeSelect
 								id="engine"
 								value={settings.global.defaultEngine}
-								onchange={(e) => pickEngine(e.currentTarget.value)}
+								onchange={(e) => pickEngine('default', e.currentTarget.value)}
 							>
 								{#each liveEngines as engine (engine.id)}
 									<option value={engine.id}>{engine.label}</option>
@@ -922,7 +916,12 @@
 
 								<Collapsible.Content>
 									{#snippet child({ props })}
-										<Card.Content id="advanced-body" {...props}>
+										<!-- NO `id` here. bits-ui's Collapsible.Content defaults `id = createId(uid)` and passes it
+											 through `{...props}`, which spreads AFTER any literal and wins — so an `id` written here is
+											 silently dropped. Do not "fix" that by moving the literal after the spread either: the
+											 Trigger's `aria-controls` names bits-ui's generated id, so overriding it would point the
+											 control at an element that no longer carries that id. -->
+										<Card.Content {...props}>
 											<label class="check" for="enqueue-upgrade">
 												<Switch
 													id="enqueue-upgrade"
@@ -936,7 +935,7 @@
 											<NativeSelect
 												id="upgrade-engine"
 												value={settings.global.upgradeEngine}
-												onchange={(e) => pickUpgradeEngine(e.currentTarget.value)}
+												onchange={(e) => pickEngine('upgrade', e.currentTarget.value)}
 											>
 												{#each SEPARATOR_ENGINES as engine (engine.id)}
 													<option value={engine.id}>{engine.label}</option>
@@ -1043,6 +1042,7 @@
 	   lyrics ON the stage, which the reel enforces with its own stroke. */
 	.swatch {
 		display: inline-block;
+		background: var(--swatch);
 		width: 1em;
 		height: 1em;
 		margin-left: 0.5em;

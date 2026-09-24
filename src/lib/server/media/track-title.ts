@@ -134,10 +134,10 @@ const FEATURED_GROUP_RE = /[([{]\s*(?:ft|feat|featuring)\b\.?\s*([^)\]}]+)[)\]}]
  * BEFORE the artist/title split, or a bracketed credit is mistaken for a `COLLAB_RE` side marker and the
  * sides flip. Returns the input unchanged when the credit is all there is.
  */
-export function splitFeaturedCredit(title: string): { title: string; featured: string | null } {
+function splitFeaturedCredit(title: string): { title: string; featured: string | null } {
 	const m = FEATURED_GROUP_RE.exec(title);
 	if (!m) return { title, featured: null };
-	const featured = collapseWs(m[1]).replace(/[\s,&]+$/, '');
+	const featured = collapseWs(m[1]!).replace(/[\s,&]+$/, '');
 	const stripped = collapseWs(`${title.slice(0, m.index)} ${title.slice(m.index + m[0].length)}`).replace(
 		/^[\s\-–—|:·]+|[\s\-–—|:·,]+$/g,
 		''

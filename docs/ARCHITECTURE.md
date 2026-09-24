@@ -3,7 +3,7 @@
 > **Status:** living · canonical description of the system as built.
 >
 > This is the one architecture document: how the system works. The rules a change has to respect live
-> beside it, in [`SERVER.md`](SERVER.md), [`FRONTEND.md`](FRONTEND.md), [`GUARDS.md`](GUARDS.md) and
+> beside it, in [`SERVER.md`](SERVER.md), [`FRONTEND.md`](FRONTEND.md), [`TESTS.md`](TESTS.md) and
 > [`E2E.md`](E2E.md); subsystem contracts as checkable requirements are in [`arch/`](arch/README.md).
 > Open work is tracked in GitHub issues.
 

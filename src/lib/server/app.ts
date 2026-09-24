@@ -9,7 +9,8 @@ import { openDb, defaultDbPath, type DB } from './db/index';
 import { runMigrations, hydrate } from './db/migrate';
 import { sqlitePersistence } from './state/persistence';
 import { SettingsRepository } from './state/settings-repository';
-import { LocalLibrary } from './media/local';
+import { LocalLibrary, scanLibrary } from './media/local';
+import { ffmpegDurationProbe } from './media/duration';
 import { YouTubeResolver } from './media/youtube';
 import { SpotifyResolver } from './media/spotify-resolver';
 import { spotifySearch } from './media/spotify';
@@ -30,8 +31,9 @@ import { needsLyricsBackfill, BACKFILL_PRIORITY } from './jobs/backfill';
 import { backfillVocalsRefs } from './media/vocals-backfill';
 import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
-import { guideMixKey } from './media/paths';
-import { existsSync, rmSync } from 'node:fs';
+import { guideMixKey, mediaRoot } from './media/paths';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { markLyricsQueued, reportTerminalFailure } from './jobs/process';
 import { reconcileStrandedGates } from './jobs/gate-reconcile';
@@ -43,11 +45,9 @@ import {
 	sidecarFromMedia,
 	rebuildIndexFromMeta,
 	backfillSidecars,
-	browseArtist,
-	lookupTitle,
+	canonicalsOf,
 	readAllSidecars,
-	clearArtifacts,
-	type MediaSidecar
+	clearArtifacts
 } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
@@ -106,18 +106,6 @@ function buildMediaStore(): { store: MediaStore; config: MediaStoreConfig } {
 		return { store: new ObjectMediaStore(bunS3Client(config), config), config };
 	}
 	return { store: new LocalMediaStore(), config };
-}
-
-/** The browse index's view of one sidecar, named ONCE so the live-persist callback and the boot sync pass
- *  cannot drift. browseArtist/lookupTitle return null on a low-confidence parse, so a guess never becomes a
- *  library heading. */
-function canonicalsOf(s: MediaSidecar): {
-	artist: string | null;
-	title: string | null;
-	album: string | null;
-	year: number | null;
-} {
-	return { artist: browseArtist(s), title: lookupTitle(s), album: s.canonical.album, year: s.canonical.year };
 }
 
 // SvelteKit's prod bundle is a SEPARATE module graph from server.ts's, so a module-level `let _app` gives each its own instance (split-brain state). globalThis is what guarantees ONE across both.
@@ -218,6 +206,13 @@ export function getApp(): EncoreApp {
 	} catch (err) {
 		console.warn(`[core] stale readiness-gate reconciliation skipped: ${(err as Error).message}`);
 	}
+
+	// ONE probe for the whole app, so a stem silent enough to refuse at publish time is silent enough to refuse a guide link. Declared ABOVE the boot passes and the hub that close over it: below them it is only initialised in time because every pass awaits first, which is a microtask-ordering accident rather than a guarantee.
+	const loudness = ffmpegLoudnessProbe();
+
+	// Declared ABOVE the boot passes for the same reason `loudness` is: the library-scan pass closes over it,
+	// and reaching it through the app literal below would only work by microtask-ordering accident.
+	const localLibrary = new LocalLibrary();
 
 	// Each pass is ISOLATED: one throwing must not skip the rest, and its failure must be NAMED rather than folded into one catch that cannot say which pass died.
 	const bootTasks: BootTask[] = [
@@ -386,6 +381,26 @@ export function getApp(): EncoreApp {
 					);
 				}
 			}
+		},
+		{
+			name: 'local library scan',
+			run: async () => {
+				const dir = join(mediaRoot(), 'library');
+				if (!existsSync(dir)) return;
+				const probeDuration = ffmpegDurationProbe();
+				const { tracks, skipped } = await scanLibrary(readdirSync(dir), async (ref) => {
+					const abs = safeMediaPath(ref);
+					return abs ? await probeDuration(abs) : null;
+				});
+				localLibrary.index(tracks);
+				if (tracks.length > 0) console.log(`[core] library: indexed ${tracks.length} track(s) from ${dir}`);
+				if (skipped.length > 0) {
+					// Named, because "my song is not in search" is otherwise indistinguishable from a broken scan.
+					console.warn(
+						`[core] library: skipped ${skipped.length} file(s) with no readable duration (${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? ', …' : ''}) — not decodable, or ffmpeg is missing`
+					);
+				}
+			}
 		}
 	];
 
@@ -410,9 +425,6 @@ export function getApp(): EncoreApp {
 			}
 		})();
 	});
-
-	/* ONE probe for the whole app, so a stem silent enough to refuse at publish time is silent enough to refuse a guide link. */
-	const loudness = ffmpegLoudnessProbe();
 
 	const workerHub = new WorkerHub({
 		jobs,
@@ -498,7 +510,7 @@ export function getApp(): EncoreApp {
 		workerHub,
 		mediaById,
 		media: mediaRepo,
-		localLibrary: new LocalLibrary(),
+		localLibrary,
 		youtube: new YouTubeResolver(ytDlpSearch),
 		spotify: new SpotifyResolver((q, n) => spotifySearch(q, n)),
 		popularity: createPopularityTracker(),

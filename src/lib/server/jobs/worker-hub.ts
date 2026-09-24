@@ -17,7 +17,7 @@ import type {
 import { sourceUriFor, resolveProcessSeparator } from '../../contract';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
-import { WorkerRegistry } from './registry';
+import { WorkerRegistry, type WorkerSession } from './registry';
 import {
 	planAssignments,
 	assignParams,
@@ -26,7 +26,8 @@ import {
 	separatorFor,
 	publishesInstrumental,
 	inheritsProcess,
-	hasCapableWorker
+	hasCapableWorker,
+	type CapabilityFor
 } from './dispatch';
 import {
 	markMediaReady,
@@ -359,42 +360,33 @@ export class WorkerHub {
 		}
 	}
 
-	/** Plans assignments against live capacity, then per job: assign (ack lease) + claim slot + send
-	 *  job:assign. Idempotent — safe after any event that frees capacity or enqueues work. */
-	dispatch(): void {
-		const queued = this.#d.jobs.listByStatus('queued');
-		if (queued.length === 0) return;
-		const workers = this.#d.registry.list();
-		const now = this.#d.now();
-
-		// Routed by the SETTINGS-resolved capability (e.g. stems:roformer), not the bare job type, so a
-		// room-lowered process quality reaches a matching worker.
-		const settings = this.#processSettings();
-		const capabilityFor = (j: { jobType: JobType }) => requiredCapability(j.jobType, settings);
-
-		// "Waiting for a slot" and "no worker can EVER run this" must stay distinguishable: conflated,
-		// a missing capability reads as a hung worker with the song at 0% forever.
+	/**
+	 * Tracks jobs no connected worker can serve, and fails one once it has been unservable for
+	 * UNSERVABLE_TTL_MS. Separate from assignment because "waiting for a slot" and "no worker can EVER run
+	 * this" must stay distinguishable: conflated, a missing capability reads as a hung worker with the song
+	 * at 0% forever.
+	 */
+	#sweepUnservable(queued: Job[], workers: WorkerSession[], capabilityFor: CapabilityFor, now: number): void {
+		const ttlSec = Math.round(UNSERVABLE_TTL_MS / 1000);
 		for (const job of queued) {
 			if (hasCapableWorker(job, workers, capabilityFor)) continue;
+			const cap = capabilityFor(job);
 			const since = this.#unservableSince.get(job.id);
 			if (since !== undefined) {
-				if (now - since >= UNSERVABLE_TTL_MS) {
-					const cap = capabilityFor(job);
-					const updated = this.#d.jobs.fail(
-						job.id,
-						`no connected worker advertised capability '${cap}' within ${Math.round(UNSERVABLE_TTL_MS / 1000)}s`,
-						now
-					);
-					this.#unservableSince.delete(job.id);
-					reportTerminalFailure(updated, 'unservable', this.#failureSinks());
-				}
+				if (now - since < UNSERVABLE_TTL_MS) continue;
+				const updated = this.#d.jobs.fail(
+					job.id,
+					`no connected worker advertised capability '${cap}' within ${ttlSec}s`,
+					now
+				);
+				this.#unservableSince.delete(job.id);
+				reportTerminalFailure(updated, 'unservable', this.#failureSinks());
 				continue;
 			}
 			this.#unservableSince.set(job.id, now);
-			const cap = capabilityFor(job);
 			console.warn(
 				`[hub] job ${job.id} (${job.jobType}) needs capability '${cap}' and NO connected worker ` +
-					`advertises it — it will stay queued until one does or ${Math.round(UNSERVABLE_TTL_MS / 1000)}s elapse. ` +
+					`advertises it — it will stay queued until one does or ${ttlSec}s elapse. ` +
 					`Connected: ${workers.length === 0 ? 'none' : workers.map((w) => `${w.workerId}[${w.capabilities.join(',')}]`).join(' ')}`
 			);
 			// Only tell the ROOM when the stall blocks singing: broadcasting 'queued' for an unservable
@@ -409,6 +401,22 @@ export class WorkerHub {
 				unservable: true
 			});
 		}
+	}
+
+	/** Plans assignments against live capacity, then per job: assign (ack lease) + claim slot + send
+	 *  job:assign. Idempotent — safe after any event that frees capacity or enqueues work. */
+	dispatch(): void {
+		const queued = this.#d.jobs.listByStatus('queued');
+		if (queued.length === 0) return;
+		const workers = this.#d.registry.list();
+		const now = this.#d.now();
+
+		// Routed by the SETTINGS-resolved capability (e.g. stems:roformer), not the bare job type, so a
+		// room-lowered process quality reaches a matching worker.
+		const settings = this.#processSettings();
+		const capabilityFor = (j: { jobType: JobType }) => requiredCapability(j.jobType, settings);
+
+		this.#sweepUnservable(queued, workers, capabilityFor, now);
 
 		for (const { jobId, workerId } of planAssignments(queued, workers, capabilityFor)) {
 			this.#unservableSince.delete(jobId); // it found a worker; a later stall is a fresh event

@@ -72,6 +72,7 @@ async function runToCompletion(h: ReturnType<typeof harness>, ref: string | unde
 		type: 'job:complete',
 		workerId: 'w1',
 		jobId: job.id,
+		mediaUri: 'media/m1-instrumental.mp3',
 		artifacts: ref ? { stems: { instrumental: ref } } : {}
 	});
 	// The gate is async: the probe is awaited before the completion body runs. One drain suffices because
