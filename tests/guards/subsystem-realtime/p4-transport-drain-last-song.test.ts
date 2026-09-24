@@ -1,12 +1,9 @@
-// The count of PROCESSED media and the count of QUEUED turns are different things: a room can hold one
-// processed song yet several waiting turns on it. Caught: p4-transport.mjs's single-processed-song arm issued
-// ONE skip and then asserted currentEntryId === null, so an extra queued turn made one skip advance INTO it
-// (correct rotation per player.ts advance()) and fired four PHANTOM failures, one CRITICAL, against a room that
-// behaved correctly. The arm must DRAIN every queued turn — skip until currentEntryId reads null — before
-// asserting, which also establishes the T5 precondition that nothing is playing.
-//
-// The probe is a live-server .mjs script with no unit harness, so its own control-flow text is the subject.
-// Comments are blanked, since the prose above the arm describes both the old single-skip and the new drain.
+// guard: the count of PROCESSED media and the count of QUEUED turns are different things. p4-transport.mjs's
+// single-processed-song arm issued ONE skip then asserted currentEntryId === null, so an extra queued turn
+// made that skip advance INTO it and fired four PHANTOM failures, one CRITICAL, against a correct room. The
+// arm must DRAIN every queued turn — skip until currentEntryId reads null — which also establishes the T5
+// precondition that nothing is playing. The probe is a live-server .mjs, so its control-flow text is the
+// subject, with comments blanked because the prose above the arm describes both shapes.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';

@@ -3,13 +3,12 @@
  * P11 — the three read-only dashboards against real data: /stats + /api/stats (public, aggregate-only),
  * /metrics + /api/metrics (internal, ungated), /metrics/<id> + /api/audit/<id>.
  *
- * A dashboard that quietly shows zeros, NaN or a stale count is the class of defect a green unit suite
- * cannot catch, so this drives a shape a real server sees — several successful processes, one FAILED
- * (FAKE_FAIL=stems), one RETRIED and some PLAYS — then counts each thing itself and compares.
+ * It drives the shape a real server sees — several successful processes, one FAILED (FAKE_FAIL=stems), one
+ * RETRIED and some PLAYS — then counts each thing ITSELF and compares.
  *
  *   PORT=5231 bun tests/e2e/probes/p11-dashboards.mjs      # port 5231 exclusively, never a collision
  *
- * Boot recipe: tests/e2e/HARNESS.md. Exit codes: docs/E2E.md#exit-codes-and-what-ran-means
+ * Boot recipe: tests/e2e/HARNESS.md.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -19,9 +18,6 @@ import { findChromium } from '../lib/chromium.mjs';
 import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
- * Browser/Page derive from driver.mjs's own return types so they cannot drift. Every JSON endpoint and
- * page.evaluate() result is protocol-shaped and stays loose (evaluate is Promise<any>), cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof import('../driver.mjs').connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
@@ -79,7 +75,6 @@ process.on('SIGINT', () => {
 
 /** @param {number} ms */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 
 async function waitForHealth(timeoutMs = 15000) {
 	const deadline = Date.now() + timeoutMs;

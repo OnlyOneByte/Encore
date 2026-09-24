@@ -1,7 +1,7 @@
-// guard: the boot maintenance chain must ISOLATE each pass. One pass failing or hanging must not disable the
-// passes after it, and a failure must be visible and NAMED — not one terminal catch that cannot say which of
-// six passes died. Two halves: the runner's behaviour here in a pure harness, and the app.ts wiring that
-// makes this runner the one the boot chain uses (a source scan — getApp() has no unit harness).
+// guard: the boot maintenance chain must ISOLATE each pass. One pass failing or hanging must not disable the passes
+// after it, and a failure must be visible and NAMED — not one terminal catch that cannot say which of six passes
+// died. Two halves: the runner's behaviour in a pure harness, and the app.ts wiring that makes this runner the one
+// the boot chain uses (a source scan — getApp() has no unit harness).
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { runBootMaintenance, type BootTask } from '$lib/server/boot-maintenance';
@@ -59,18 +59,16 @@ test('a failed pass surfaces a NAMED, non-silent note that keeps the stack', asy
 	await runBootMaintenance(tasks, (m) => warnings.push(m));
 
 	expect(warnings).toHaveLength(1);
-	// The note names WHICH pass — the exact thing the single terminal catch could not do.
+	// The note names WHICH pass — the exact thing the single terminal catch could not do — and keeps the stack, where
+	// `(err as Error)?.message ?? err` interpolated a thrown object as "[object Object]".
 	expect(warnings[0]).toContain('guiding-track backfill');
 	expect(warnings[0]).toContain('FAILED');
-	// And keeps the stack rather than discarding it (the old `(err as Error)?.message`).
 	expect(warnings[0]).toContain('instrumental is undefined');
 });
 
 test('a thrown non-Error is reported as text, never "[object Object]"', async () => {
 	const warnings: string[] = [];
 	const tasks: BootTask[] = [
-		// The old catch did `(err as Error)?.message ?? err`; a thrown object has no .message, so it
-		// interpolated as "[object Object]".
 		{
 			name: 'weird',
 			run: async () => {
@@ -115,8 +113,7 @@ const APP = stripComments(read('src/lib/server/app.ts'));
 
 test('app.ts imports runBootMaintenance and drives the boot passes through it (the wiring)', () => {
 	expect(APP).toMatch(/import\s*\{[^}]*\brunBootMaintenance\b[^}]*\}\s*from\s*'\.\/boot-maintenance'/);
-	// The passes are a table handed to the isolated runner; a revert to the old single `.then(…).catch(…)`
-	// chain breaks both matches.
+	// The passes are a table handed to the isolated runner; a revert to a single `.then(…).catch(…)` chain breaks both.
 	expect(APP).toMatch(/const\s+bootTasks\s*:\s*BootTask\[\]\s*=/);
 	expect(APP).toMatch(/runBootMaintenance\(\s*bootTasks\b/);
 });

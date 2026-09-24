@@ -1,30 +1,8 @@
-// Regression guard — the browse block answered "is this song ready" three different
-// ways, so browsing could reveal a song the library hides and a chip's count could open an empty list.
-//
-// The gap is a single row shape: a song mid-align. `stemStatus: 'ready'` with an instrumental on disk
-// but `lyricsStatus: 'queued'` and no lyrics artifact is PAST the stems gate and NOT finished — as
-// `gates.ts` says in as many words. `listReady` and `byTag` deferred to `readyToSing` and hid it;
-// `byArtist`, `artistFacets` and `tagFacets` asked only the SQL narrowing and showed/counted it.
-//
-// Two arms, and they answer different questions:
-//   BEHAVIOURAL — the five readers agree with `readyToSing` about EIGHT seeded rows covering SEVEN
-// distinct gate shapes, against a real migrated DB and the real MediaRepository. Expected
-//     ids/counts are HARD-CODED from the seed, never derived by re-running `readyToSing`, so the test
-// cannot agree with the code by construction.'s own seed carried only one not-ready shape
-//     (mid-align), so every other arm of both gates rested entirely on the source scan.
-//   SOURCE SCAN — the five readers all resolve readiness through the ONE shared helper. The
-//     behavioural arm proves today's answers agree; this arm is what stops a sixth reader (or a
-//     revert of one body) from re-introducing a second definition, which is the actual defect.
-//
-// Its FLOOR and its CEILING, stated together because measured the gap between them. The
-//     floor bans a readiness comparison against `stemStatus` under ANY spelling — drizzle's
-//     `eq(media.stemStatus, 'ready')` and a JS `m.stemStatus === 'ready'` re-derivation alike — plus
-// any second call of the gate. shipped the comma spelling only, so a sixth reader whose body
-//     was `.map(fromRow).filter((m) => m.stemStatus === 'ready' && !!m.instrumentalRef)` left the
-//     whole suite green. The floor does NOT reach a re-derivation that never names `stemStatus`:
-//     `!!m.instrumentalRef && (m.lyricsStatus === 'ready' || !!m.lyricsRef)` still slips through. That
-//     ceiling is ASSERTED below, not merely described, so raising the floor further has to move the
-//     assertion on purpose rather than leaving this comment behind.
+// guard: the browse block answered "is this song ready" three different ways, so browsing could reveal a
+// song the library hides and a chip's count could open an empty list. The gap is one row shape, a song
+// mid-align, which `listReady` and `byTag` hid while `byArtist`, `artistFacets` and `tagFacets` counted it.
+// A behavioural arm with ids hard-coded from the seed, plus a source scan banning a second definition by
+// SHAPE. See docs/GUARDS.md#wiring-single-source for the ban's ceiling.
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { read } from '@encore/test-support';
 import { MediaRepository } from '$lib/server/media/repository';
@@ -46,22 +24,16 @@ const finished = (id: string): Media => ({
 	songProfile: { ...EMPTY_SONG_PROFILE }
 });
 
-/**
- * A song MID-ALIGN — the whole defect window. Separation is done (status + artifact), alignment is
- * still enqueued and there is no lyrics artifact, so the lyrics gate is open and the song is not
- * finished. Only valid `StepStatus` values are used ('none' | 'queued' | 'ready').
- */
+/** MID-ALIGN, the defect window: separation done, alignment still enqueued, no lyrics artifact. */
 const midAlign = (id: string): Media => ({
 	...finished(id),
 	lyricsStatus: 'queued',
 	lyricsRef: undefined
 });
 
-// ── the four shapes's seed never held, one per remaining gate arm ──────────────────────
-//
-// The stems gate is `stemStatus === 'ready' && !!instrumentalRef` and the lyrics gate is
-// `lyricsStatus === 'ready' || !!lyricsRef`, so between them there are four ways to be not-ready that
-// `midAlign` does not express, plus one way to be ready that it hides. Each gets its own row.
+// The stems gate is `stemStatus === 'ready' && !!instrumentalRef` and the lyrics gate
+// `lyricsStatus === 'ready' || !!lyricsRef`, so there are four not-ready shapes `midAlign` does not
+// express plus one ready shape it hides. One seeded row each.
 
 /** Nothing acquired: separation never started, so there is no instrumental either. */
 const unacquired = (id: string): Media => ({
@@ -77,17 +49,13 @@ const stemsQueued = (id: string): Media => ({
 	instrumentalRef: undefined
 });
 
-/**
- * `stemStatus: 'ready'` with NO instrumental artifact. The ARTIFACT arm of the stems gate on its own:
- * this row satisfies the status column a SQL narrowing would read and is still not singable, which is
- * what `isNotNull(media.instrumentalRef)` carries in `readySongs`.
- */
+/** The ARTIFACT arm alone: satisfies the status column a SQL narrowing reads and is still not singable. */
 const stemsReadyNoArtifact = (id: string): Media => ({
 	...finished(id),
 	instrumentalRef: undefined
 });
 
-/** Alignment never ran: `lyricsStatus: 'none'` and no artifact — a browse block listing this is an earlier change. */
+/** Alignment never ran: `lyricsStatus: 'none'` and no artifact. */
 const lyricsNeverRan = (id: string): Media => ({
 	...finished(id),
 	lyricsStatus: 'none',
@@ -95,10 +63,9 @@ const lyricsNeverRan = (id: string): Media => ({
 });
 
 /**
- * A LEGACY row: processed before `lyricsStatus` existed, so it carries no status but does carry a lyrics
- * artifact. `gates.ts` treats that as done deliberately — narrowing the lyrics gate to
- * `lyricsStatus === 'ready'` would make every pre-upgrade song unsingable forever. So this row IS
- * ready, and it is the only row besides `finished` that any reader may return.
+ * A LEGACY row: no `lyricsStatus`, but a lyrics artifact. `gates.ts` treats that as done deliberately —
+ * narrowing the gate to `lyricsStatus === 'ready'` makes every pre-upgrade song unsingable forever. It is
+ * the only row besides `finished` that any reader may return.
  */
 const legacyLyricsRef = (id: string): Media => ({
 	...finished(id),
@@ -111,20 +78,9 @@ let repo: MediaRepository;
 describe('every browse reader answers readiness the same way', () => {
 	beforeEach(() => {
 		repo = new MediaRepository(migratedDb());
-		// 's measured three rows, plus the five added so every gate arm has a seeded row:
-		//   a — finished, READY.                       artist 'The Band',       tag 'acoustic'
-		//   b — mid-align, not ready.                  artist 'The Band',       tag 'acoustic'  (shares both with a)
-		//   c — mid-align, not ready.                  artist 'Other',          tag 'ballad'
-		//   d — unacquired, not ready.                 artist 'The Band',       tag 'unacquired'
-		//   e — stems queued, not ready.               artist 'The Band',       tag 'stems-queued'
-		//   f — stems ready / no artifact, not ready.  artist 'The Band',       tag 'no-instrumental'
-		//   g — alignment never ran, not ready.        artist 'The Band',       tag 'lyrics-never-ran'
-		//   h — legacy lyricsRef, READY.               artist 'Legacy Library', tag 'legacy'
-		//
-		// The two groupings are deliberate and catch different leaks. Five not-ready rows share artist
-		// 'The Band' with a, so a leak INFLATES that one facet count and lengthens its filter. Each
-		// not-ready row also holds its tag ALONE, so the tag readers name WHICH row leaked instead of
-		// only reporting a wrong total.
+		// Ready rows are 'a' (finished) and 'h' (legacy lyricsRef). Five not-ready rows share artist 'The Band'
+		// with a, so a leak INFLATES that facet count and lengthens its filter; each not-ready row also holds
+		// its tag ALONE, so the tag readers name WHICH row leaked rather than only reporting a wrong total.
 		repo.upsert(finished('a'));
 		repo.upsert(midAlign('b'));
 		repo.upsert(midAlign('c'));
@@ -151,16 +107,14 @@ describe('every browse reader answers readiness the same way', () => {
 		repo.setTags('h', 'tag', ['legacy']);
 	});
 
-	// Expected values are hard-coded from the seed above: 'a' and 'h' are the only ready songs, so they
-	// are the only ids any reader may return and the only songs any facet may count. `readySongs`
+	// Expected values are hard-coded from the seed, never derived by re-running `readyToSing`. `readySongs`
 	// orders newest-id-first, so the library reads ['h', 'a'].
 	it('the library list holds only the ready songs', () => {
 		expect(repo.listReady().map((m) => m.id)).toEqual(['h', 'a']);
 	});
 
 	it('the artist filter does not reveal the not-ready songs the library hides (F1)', () => {
-		// base: ['g', 'f', 'e', 'd', 'b', 'a'] — filtering a list narrowed it INTO rows the unnarrowed
-		// list refuses. Five of the six are the shapes's seed never held.
+		// Before the fix this returned six ids: filtering narrowed INTO rows the unnarrowed list refuses.
 		expect(repo.byArtist('The Band').map((m) => m.id)).toEqual(['a']);
 		// 'Other' has one song and it is not ready, so its filter is empty…
 		expect(repo.byArtist('Other')).toEqual([]);
@@ -168,8 +122,8 @@ describe('every browse reader answers readiness the same way', () => {
 	});
 
 	it('the artist rail counts only ready songs, and never offers a heading that opens empty (F2)', () => {
-		// base: [{ 'The Band', 6 }, { 'Other', 1 }, { 'Legacy Library', 1 }] — 6 under a chip whose list
-		// holds 1, and a chip for 'Other' whose list is empty. Facet order is count desc, then value asc.
+		// Before the fix: 6 under a chip whose list holds 1, and an 'Other' chip opening empty. Facet order is
+		// count desc, then value asc.
 		expect(repo.artistFacets()).toEqual([
 			{ artist: 'Legacy Library', count: 1 },
 			{ artist: 'The Band', count: 1 }
@@ -177,8 +131,7 @@ describe('every browse reader answers readiness the same way', () => {
 	});
 
 	it('the tag rail counts only ready songs, and never offers a heading that opens empty (F2)', () => {
-		// base: acoustic 2, ballad 1, unacquired 1, stems-queued 1, no-instrumental 1,
-		// lyrics-never-ran 1, legacy 1 — five of those seven chips opened a measured EMPTY list.
+		// Before the fix five of these seven chips opened an empty list.
 		expect(repo.tagFacets()).toEqual([
 			{ tag: 'acoustic', count: 1 },
 			{ tag: 'legacy', count: 1 }
@@ -191,10 +144,9 @@ describe('every browse reader answers readiness the same way', () => {
 		expect(repo.byTag('legacy').map((m) => m.id)).toEqual(['h']);
 	});
 
-	// One row per not-ready gate shape, checked against all five readers. `it.each` names the shape in
-	// the failure line, so a leak points at the gate arm that let it through rather than at a total.
-	// Each row's tag is held by that row alone (b is the exception — it shares 'acoustic' with a, which
-	// is what the count assertions above cover), so `byTag` and `tagFacets` discriminate per row.
+	// One row per not-ready gate shape against all five readers; `it.each` names the shape in the failure
+	// line, so a leak points at the gate arm that let it through. Each row holds its tag alone except b,
+	// which shares 'acoustic' with a.
 	it.each([
 		['b', 'mid-align, sharing both groupings with a', 'The Band', 'acoustic'],
 		['c', 'mid-align, sole holder of its groupings', 'Other', 'ballad'],
@@ -206,8 +158,7 @@ describe('every browse reader answers readiness the same way', () => {
 		expect(repo.listReady().map((m) => m.id)).not.toContain(id);
 		expect(repo.byArtist(artist).map((m) => m.id)).not.toContain(id);
 		expect(repo.byTag(tag).map((m) => m.id)).not.toContain(id);
-		// A leak in either rail shows up as an extra heading, or as an inflated count on 'The Band' /
-		// 'acoustic'. Both totals are hard-coded from the seed, never read back from a reader.
+		// A leak shows as an extra heading or an inflated count; both totals are hard-coded from the seed.
 		expect(repo.artistFacets()).toEqual([
 			{ artist: 'Legacy Library', count: 1 },
 			{ artist: 'The Band', count: 1 }
@@ -219,9 +170,8 @@ describe('every browse reader answers readiness the same way', () => {
 	});
 
 	it('the legacy lyrics-artifact row IS ready, and every one of the five readers shows it', () => {
-		// The other direction: a gate narrowed to `lyricsStatus === 'ready'` — dropping the legacy arm
-		// in `gates.ts` — would HIDE this song from all five readers. 'a' alone cannot detect that,
-		// because it carries `lyricsStatus: 'ready'` and satisfies either spelling.
+		// The other direction: dropping the legacy arm in `gates.ts` HIDES this song from all five readers, and
+		// 'a' alone cannot detect that because it satisfies either spelling.
 		expect(repo.listReady().map((m) => m.id)).toContain('h');
 		expect(repo.byArtist('Legacy Library').map((m) => m.id)).toEqual(['h']);
 		expect(repo.byTag('legacy').map((m) => m.id)).toEqual(['h']);
@@ -229,8 +179,7 @@ describe('every browse reader answers readiness the same way', () => {
 		expect(repo.tagFacets()).toContainEqual({ tag: 'legacy', count: 1 });
 	});
 
-	// The invariants, stated over whatever the readers return rather than over the seed. These are the
-	// two the issue names, and they are what a sixth reader would break.
+	// The invariants, stated over whatever the readers return rather than over the seed.
 	it('every artist facet count equals the length of the filter it opens, whose rows are all in the library', () => {
 		const libraryIds = new Set(repo.listReady().map((m) => m.id));
 		const facets = repo.artistFacets();
@@ -256,8 +205,8 @@ describe('every browse reader answers readiness the same way', () => {
 	});
 });
 
-// Non-vacuity sentinel: with every not-ready row absent, all the assertions above must PASS on base too
-// — so the redness above comes from the not-ready windows, not from the invariants being unsatisfiable.
+// Sentinel: with every not-ready row absent the invariants must still hold, or they are unsatisfiable
+// and the redness above says nothing about the not-ready windows.
 describe('the same invariants hold for a library of finished songs alone', () => {
 	it('a finished-only library agrees across all five readers', () => {
 		const r = new MediaRepository(migratedDb());
@@ -273,20 +222,10 @@ describe('the same invariants hold for a library of finished songs alone', () =>
 	});
 });
 
-// ── source scan: one definition, and it stays one ──────────────────────────────────────────────────
-//
-// Reads the REAL production file. The behavioural arm cannot express "there is only one predicate" —
-// it can only observe that today's answers happen to agree, which is exactly what was true of
-// `listReady` and `byTag` while three other readers disagreed. This arm bans the second definition
-// by SHAPE (a readiness comparison against `stemStatus`, and the gate call), not by name, so a renamed
-// copy of the old per-reader spelling trips it too — and, since, so does a JS re-derivation that
-// never touches drizzle. What it still cannot see is a re-derivation that never mentions `stemStatus`
-// at all; that ceiling is asserted at the bottom of this block so it cannot silently drift.
-//
-// Named from the repo root. This anchor sat 250 lines BELOW the imports as `join(HERE, 'repository.ts')`,
-// which is why the sweeps that re-anchored this suite walked past it: a self-derived path is not
-// necessarily near the import block. `read()` throws with the guard's name attached when the subject
-// moves, where `readFileSync` on a wrong join reported nothing but an ENOENT.
+// Source scan over the real production file. The behavioural arm can only observe that today's answers
+// agree, which was already true of `listReady` and `byTag` while three other readers disagreed. The
+// second definition is banned by SHAPE rather than by name, and the ban's ceiling is asserted below so
+// it cannot silently drift.
 const SRC = read('src/lib/server/media/repository.ts');
 
 /** Strip comments, so a docstring quoting the narrowing is never mistaken for a second one. */
@@ -307,15 +246,9 @@ function docAbove(name: string): string {
 }
 
 /**
- * A readiness comparison against `stemStatus`, under ANY name and in EITHER language: drizzle's
- * `eq(media.stemStatus, 'ready')` (the comma form) and a JS `m.stemStatus === 'ready'` re-derivation.
- *
- * shipped the comma form alone, which caught the shape that actually occurred in — a renamed
- * copy of a per-reader query — and missed the one measured: a sixth reader spelling the same
- * predicate in JS after `.map(fromRow)`, which is neither this pattern nor a gate call. Widening to the
- * comparison operators keeps the file's count at exactly 1 (the `eq(…)` in `readySongs`), so this costs
- * no false positive today. `stemStatus: r.stemStatus,` in the row mappers is not a comparison and does
- * not match.
+ * A readiness comparison against `stemStatus` in EITHER language: drizzle's `eq(media.stemStatus, 'ready')`
+ * comma form and a JS `m.stemStatus === 'ready'` re-derivation. The comparison operators keep the file's
+ * count at exactly 1, and `stemStatus: r.stemStatus,` in the row mappers is a copy, not a comparison.
  */
 const NARROWING = /stemStatus\s*(?:,|===|==)\s*'ready'/g;
 /** The authoritative gate call, under any receiver. */
@@ -330,35 +263,24 @@ describe('readiness is defined once for the whole browse block', () => {
 	});
 
 	it('the readiness comparison appears exactly once in the file, and the gate call exactly once', () => {
-		// This is the drift ban. A second spelling anywhere in this file — a new reader, or a revert of
-		// one body to its own query, in SQL or in JS — makes one of these two counts 2.
+		// The drift ban: a second spelling anywhere in this file, in SQL or in JS, makes one count 2.
 		expect(count(NARROWING, CODE)).toBe(1);
 		expect(count(GATE, CODE.replace(/^import.*$/gm, ''))).toBe(1);
 	});
 
-	// The floor and the ceiling of that ban, asserted against fixture strings rather than production —
-	// the point is what the PATTERN can see, and production holds exactly one match by the test above.
-	// Fixtures, not the real file, is also what lets the JS shape be checked at all: it does not exist
-	// in `repository.ts` and must not be added there to test for it.
+	// Floor and ceiling asserted against FIXTURES, not production: the subject is what the PATTERN can see,
+	// and the JS shape must not be added to `repository.ts` merely to be testable.
 	describe('what the drift ban catches, and what it admits it does not', () => {
-		/** The pattern an earlier change shipped: the drizzle comma form only. Kept so the widening is pinned, not assumed. */
+		/** The narrower earlier pattern: the drizzle comma form only. Kept so the widening is pinned. */
 		const PRE_799 = /stemStatus\s*,\s*'ready'/g;
 
 		/** The drizzle spelling the real `readySongs` uses. */
 		const SQL_FORM = "const narrowing = and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef));";
 
-		/**
-		 * The sixth reader measured. Its body re-derives readiness in JS after `.map(fromRow)` — it
-		 * calls no gate and writes no drizzle predicate, so's ban saw nothing and the whole suite
-		 * stayed green with it in the file.
-		 */
+		/** A sixth reader re-deriving in JS: no gate call and no drizzle predicate, so the narrow ban saw nothing. */
 		const JS_REDERIVATION = ".map(fromRow).filter((m) => m.stemStatus === 'ready' && !!m.instrumentalRef)";
 
-		/**
-		 * The CEILING, stated as code. A re-derivation that never names `stemStatus` — reading the
-		 * artifact columns the two gates happen to imply — is invisible to a `stemStatus`-anchored ban
-		 * and to a `readyToSing` grep alike. Nothing here claims otherwise.
-		 */
+		/** The CEILING as code: a re-derivation naming only artifact columns is invisible to both patterns. */
 		const NEVER_NAMES_STEMSTATUS =
 			".map(fromRow).filter((m) => !!m.instrumentalRef && (m.lyricsStatus === 'ready' || !!m.lyricsRef))";
 
@@ -373,9 +295,7 @@ describe('readiness is defined once for the whole browse block', () => {
 		});
 
 		it('does NOT catch a re-derivation that never names stemStatus — the stated ceiling', () => {
-			// Deliberate, and documented in this file's header. If a later change raises the floor past
-			// this shape, this assertion must be moved on purpose and the header updated with it —
-			// which is the point of asserting a limitation instead of only writing it in prose.
+			// Deliberate: raising the floor past this shape has to move this assertion on purpose.
 			expect(count(NARROWING, NEVER_NAMES_STEMSTATUS)).toBe(0);
 			expect(count(GATE, NEVER_NAMES_STEMSTATUS)).toBe(0);
 		});
@@ -400,8 +320,7 @@ describe('readiness is defined once for the whole browse block', () => {
 	});
 
 	it('the tag helper inherits readiness from the shared set instead of re-asking it', () => {
-		// `readyTagged` must not carry its own readiness clause; membership of readySongs() IS the
-		// gate. Without this, the tag pair of readers could drift from the other three again.
+		// Membership of readySongs() IS the gate, so `readyTagged` carries no readiness clause of its own.
 		const tagged = body('readyTagged');
 		expect(tagged).toMatch(/readySongs\(/);
 		expect(count(NARROWING, tagged)).toBe(0);
@@ -409,10 +328,8 @@ describe('readiness is defined once for the whole browse block', () => {
 	});
 
 	it('the SQL aggregation machinery is gone from this file, so a facet count cannot go back into SQL', () => {
-		// `sql` and `asc` were imported for ONE purpose: the facets' `count(*)` / `ORDER BY count(*)
-		// DESC, value ASC`. A count taken in SQL cannot consult the gate table, which is the
-		// defect, so re-importing either is the shape of a relapse — deliberate re-use would have to
-		// update this assertion on purpose.
+		// `sql` and `asc` existed for the facets' `count(*)` / `ORDER BY count(*) DESC, value ASC`. A count
+		// taken in SQL cannot consult the gate, so re-importing either is the shape of a relapse.
 		const importLine = /^import \{[^}]*\} from 'drizzle-orm';$/m.exec(SRC)?.[0] ?? '';
 		expect(importLine).not.toBe('');
 		expect(importLine).not.toMatch(/\bsql\b/);
@@ -422,9 +339,8 @@ describe('readiness is defined once for the whole browse block', () => {
 	});
 
 	it("listReady's own docstring no longer claims to narrow in SQL itself", () => {
-		// RAW text, because a comment is the subject. `listReady` is now a one-liner containing no SQL
-		// at all, so the old sentence describing its query became a comment contradicting its code —
-		// the exact defect class's own report names in `tagFacets`.
+		// RAW text, because a comment is the subject: `listReady` holds no SQL at all now, so the old sentence
+		// describing its query became a comment contradicting its code.
 		expect(SRC).not.toContain('The SQL narrows to separated songs');
 		expect(docAbove('listReady')).toMatch(/readySongs/);
 	});

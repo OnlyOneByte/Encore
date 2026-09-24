@@ -1,5 +1,4 @@
-// Join logic — pure-ish handler so it unit-tests without HTTP. The +server.ts route is a thin
-// wrapper that parses the request, calls this, sets the session cookie, and returns JSON.
+// A pure-ish handler so it unit-tests without HTTP; the route is a thin wrapper around it.
 
 import { normalizeSingerColor, graceMsOf, type Singer } from '../../contract';
 import type { EncoreApp } from '../app';
@@ -19,8 +18,7 @@ export interface JoinResult {
 
 /** Thrown when the requested display name is already held by someone still in the room. The message IS guest copy — `/api/join` returns it as `error` and JoinLanding renders it verbatim into `.err[role=alert]`, so it must read as a sentence with a next step, not developer text. `takenName` stays for callers and logs. */
 export class NameTakenError extends Error {
-	// NOT a field called `name` — Error already owns that, and shadowing it makes the thrown error
-	// stringify as the singer's name instead of its type.
+	// NOT called `name`: Error owns that, and shadowing it stringifies the error as the singer's name.
 	readonly takenName: string;
 	constructor(takenName: string) {
 		super('That name is taken — try another.');
@@ -43,11 +41,14 @@ export const nameKey = (name: string): string => name.trim().toLowerCase().repla
 /** Codes are minted uppercase (see RoomRepository's CODE_ALPHABET), but a guest types one off a TV, so accept any case and surrounding whitespace and canonicalise to the stored form before lookup. */
 export const normalizeRoomCode = (code: string): string => code.trim().toUpperCase();
 
-/** A public singer — what `listPublic` projects onto the wire (no session token, no roomId). */
+/** What `listPublic` projects onto the wire: no session token, no roomId. */
 type Member = Omit<Singer, 'sessionToken'>;
 
 /**
- * WHO IS STILL IN THIS ROOM, split by whether their phone is reachable. `assertNameFree` refuses a name held by anyone not `gone` (here OR away) — the grace window's whole point is that a locked phone doesn't hand your name to the next guest. Read ONCE here so both `assertNameFree` and /api/room-preview derive from the same membership; deriving it twice let them disagree about who was in the room. `here` first in the returned lists so a caller naming only a few people names reachable ones first.
+ * Split by whether the phone is reachable. `assertNameFree` refuses a name held by anyone not `gone` — the
+ * grace window's point is that a locked phone does not hand your name to the next guest. Read ONCE here so
+ * `assertNameFree` and /api/room-preview cannot disagree about who is in the room; `here` comes first, so a
+ * caller naming only a few people names reachable ones first.
  */
 export function roomMembership(app: EncoreApp, roomId: string): { here: Member[]; away: Member[] } {
 	const graceMs = graceMsOf(app.settings.getRoom(roomId).presenceGraceMinutes);
@@ -60,19 +61,20 @@ export function roomMembership(app: EncoreApp, roomId: string): { here: Member[]
 			here.push(s);
 			continue;
 		}
-		// Not connected: still in the room only while the grace clock is running, or while holding a
-		// turn (which keeps that clock unstarted) — exactly the test `assertNameFree` applies.
+		// Not connected: in the room only while the grace clock runs, or while holding a turn.
 		if (app.presence.stateOf(s.id, now, graceMs, hasPendingSongs(app, s.id)) !== 'gone') away.push(s);
 	}
 	return { here, away };
 }
 
 /**
- * Refuse a name already held by someone still IN THE ROOM — scoped to membership, not the table: `singers` is append-only and file-backed, so an unqualified unique check would claim a name FOREVER. Checking membership returns the name to the pool once its owner is actually gone, and holds it through the grace window otherwise. `roomId` scopes to ONE party (two rooms can each have a Dana); `exceptId` is for a RENAME, so a singer changing capitalisation doesn't collide with themselves.
+ * Scoped to MEMBERSHIP, not the table: `singers` is append-only and file-backed, so an unqualified unique
+ * check claims a name FOREVER. Membership returns the name to the pool once its owner is gone and holds it
+ * through the grace window otherwise. `exceptId` is for a RENAME, so a re-capitalisation does not self-collide.
  */
 export function assertNameFree(app: EncoreApp, roomId: string, name: string, exceptId?: string): void {
 	const key = nameKey(name);
-	// Through `roomMembership`, not re-derived, so the set this refuses from IS the set /api/room-preview describes.
+	// Through `roomMembership`, so the set this refuses from IS the set /api/room-preview describes.
 	const { here, away } = roomMembership(app, roomId);
 	const clash = [...here, ...away].some((s) => s.id !== exceptId && nameKey(s.displayName) === key);
 	if (clash) throw new NameTakenError(name);
@@ -85,8 +87,7 @@ export function hasPendingSongs(app: EncoreApp, singerId: string): boolean {
 
 /** Validate + create a singer, then broadcast singer:joined. Throws on invalid input. */
 export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
-	// Resolve WHICH room this join lands in first — a bad code fails before we create a singer, so a
-	// mistyped code never leaves an orphaned row behind. Absent code means the single active room.
+	// Resolved FIRST, so a bad code fails before a singer exists and leaves no orphaned row.
 	const rawCode = (input.code ?? '').trim();
 	let room;
 	if (rawCode) {
@@ -94,7 +95,7 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 		if (!room) throw new RoomNotFoundError(rawCode);
 	} else {
 		room = app.rooms.byId(app.activeRoomId);
-		// The active room is minted at boot, so this is a should-never-happen guard rather than a path.
+		// The active room is minted at boot, so this is a guard rather than a path.
 		if (!room) throw new Error('no active room');
 	}
 
@@ -106,18 +107,14 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 
 	const singer = app.singers.create(name, color, app.now(), room.id);
 
-	// Register the new singer with presence RIGHT NOW (connect then disconnect → an away-ish state), so
-	// their name is held through the gap between this HTTP response and their WebSocket actually
-	// opening — without lying about a live socket. Composes correctly downstream: the real WS `connect`
-	// promotes them to here, an explicit `leave` frees the name immediately, and the grace sweep
-	// expires them to gone on its own if the socket never comes. A rehydrated singer from a prior
-	// process never runs this, so it stays gone and reclaimable.
+	// Registered RIGHT NOW (connect then disconnect, an away-ish state), so the name is held across the gap
+	// between this HTTP response and the WebSocket opening, without claiming a live socket. The real WS
+	// `connect` promotes them, an explicit `leave` frees the name, and the sweep expires them otherwise.
 	app.presence.connect(singer.id);
 	app.presence.disconnect(singer.id, app.now());
 
-	// SECURITY: this broadcast reaches every socket in the room, including a cookie-less spectator that
-	// never joined. `singer` carries the session token — the whole auth axis (bySessionToken resolves
-	// identity) — so it MUST be stripped before the wire, same as api/join, api/me, and settings already do.
+	// This broadcast reaches EVERY socket in the room, including a cookie-less spectator, and `singer`
+	// carries the session token — the whole auth axis — so it MUST be stripped before the wire.
 	const { sessionToken: _t, ...publicSinger } = singer;
 	app.publish({ type: 'singer:joined', singer: publicSinger });
 	return { singer, roomId: room.id };

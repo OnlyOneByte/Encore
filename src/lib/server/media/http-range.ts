@@ -1,10 +1,7 @@
-// HTTP byte-range parsing for the /media route — pure, so it's tested without a server or a file.
-//
-// WebKit (Safari, every iOS browser) probes a media resource with `Range: bytes=0-1`; a `200` with
-// the whole file instead of `206` makes it abandon the resource SILENTLY — no error event, the
-// element never reaches `canplaythrough` or fires `timeupdate`. The tell is on the TV (frozen
-// lyrics, a song that never ends), not the phone, whose progress bar interpolates from a wall clock
-// and keeps climbing regardless. Range support is also what makes seeking possible at all.
+// PURE, so it tests without a server or a file. WebKit probes a media resource with `Range: bytes=0-1`, and
+// a `200` with the whole file instead of `206` makes it abandon the resource SILENTLY — no error event, and
+// the element never reaches `canplaythrough`. The tell is on the TV, not the phone, whose progress bar
+// interpolates from a wall clock and keeps climbing. Range support is also what makes seeking possible.
 
 /** What to do with a request, once the Range header has been read against the resource's real size. */
 export type RangeDecision =
@@ -14,11 +11,9 @@ export type RangeDecision =
 	| { kind: 'unsatisfiable'; size: number };
 
 /**
- * Decide how to answer, given the raw `Range` header (or null) and the resource's byte size.
- * Deliberately narrow: only a SINGLE `bytes` range is honoured — multi-range and any other unit
- * fall back to a full `200` (legal; no media element needs more). Both suffix (`bytes=-500`) and
- * open-ended (`bytes=1024-`) forms are supported: media elements use open-ended for probes/seeks,
- * WebKit uses the two-byte `bytes=0-1` form to test whether ranges work at all.
+ * Deliberately narrow: only a SINGLE `bytes` range is honoured, and multi-range or any other unit falls back
+ * to a full `200`, which is legal and enough for every media element. Both suffix and open-ended forms are
+ * supported, because elements use open-ended for seeks and WebKit uses `bytes=0-1` to test range support.
  */
 export function parseRangeHeader(header: string | null, size: number): RangeDecision {
 	if (!header || !Number.isFinite(size) || size < 0) return { kind: 'full', size };
@@ -35,15 +30,15 @@ export function parseRangeHeader(header: string | null, size: number): RangeDeci
 	const rawStart = spec.slice(0, dash).trim();
 	const rawEnd = spec.slice(dash + 1).trim();
 
-	// A zero-byte file can satisfy no range at all — `bytes */0` is the only honest answer.
+	// A zero-byte file satisfies no range: `bytes */0` is the only honest answer.
 	if (size === 0) return { kind: 'unsatisfiable', size };
 
 	let start: number;
 	let end: number;
 
 	if (rawStart === '') {
-		// Suffix `bytes=-N`: the LAST n bytes. Malformed digits are IGNORED (RFC 9110: ignore an
-		// invalid Range), but a well-formed `bytes=-0` genuinely cannot be satisfied.
+		// The LAST n bytes. Malformed digits are IGNORED per RFC 9110, but a well-formed `bytes=-0` cannot
+		// be satisfied.
 		const n = toInt(rawEnd);
 		if (n === null) return { kind: 'full', size };
 		if (n <= 0) return { kind: 'unsatisfiable', size };
@@ -52,8 +47,7 @@ export function parseRangeHeader(header: string | null, size: number): RangeDeci
 	} else {
 		const s = toInt(rawStart);
 		if (s === null) return { kind: 'full', size }; // malformed digits — not a range we understand
-		// A start at or past EOF is genuinely unsatisfiable and MUST be a 416, not a truncated 206:
-		// answering 206 with no bytes is what makes a player retry forever.
+		// At or past EOF MUST be a 416, not a truncated 206: a 206 with no bytes makes a player retry forever.
 		if (s >= size) return { kind: 'unsatisfiable', size };
 		start = s;
 		if (rawEnd === '') {
@@ -62,8 +56,8 @@ export function parseRangeHeader(header: string | null, size: number): RangeDeci
 			const e = toInt(rawEnd);
 			if (e === null) return { kind: 'full', size };
 			if (e < s) return { kind: 'unsatisfiable', size };
-			// Clamp past-EOF ends rather than rejecting: a client asking for more than exists is asking
-			// for "the rest", and every media element does this on the last chunk of a file.
+			// CLAMPED rather than rejected: a client asking past EOF is asking for "the rest", which every
+			// media element does on the last chunk.
 			end = Math.min(e, size - 1);
 		}
 	}
@@ -71,7 +65,7 @@ export function parseRangeHeader(header: string | null, size: number): RangeDeci
 	return { kind: 'partial', start, end, size };
 }
 
-/** Digits only — no signs, no whitespace, no exponents. Returns null for anything else. */
+/** Digits only: no signs, whitespace or exponents. */
 function toInt(s: string): number | null {
 	if (!/^\d+$/.test(s)) return null;
 	const n = Number(s);
@@ -83,7 +77,7 @@ export function contentRange(start: number, end: number, size: number): string {
 	return `bytes ${start}-${end}/${size}`;
 }
 
-/** `Content-Range` for a 416 — the only form allowed there, and what tells the client the real size. */
+/** The only form allowed on a 416, and what tells the client the real size. */
 export function unsatisfiedContentRange(size: number): string {
 	return `bytes */${size}`;
 }

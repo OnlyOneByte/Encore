@@ -279,8 +279,8 @@ async def test_aligner_failure_falls_back_to_line_sync(tmp_path):
     assert lyrics_pkg.is_valid_lyrics(doc) is False  # no word timings — but still shipped line-sync
 
 
-# A song with no words COMPLETES rather than raising: raising would leave a genuine instrumental
-# stuck forever behind the readiness gate that waits on this step.
+# A song with no words COMPLETES rather than raising, or a genuine instrumental sits forever behind
+# the readiness gate waiting on this step.
 
 
 async def _completes_with_no_lyrics(proc, job) -> None:
@@ -323,8 +323,7 @@ async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(
     await _completes_with_no_lyrics(proc, job)
 
 
-# Acquisition (fetching all sources) is separate from timing: an unreachable LRCLIB must mean "no
-# AUTHORITATIVE lyrics", not "no lyrics" — other sources still run.
+# An unreachable LRCLIB means "no AUTHORITATIVE lyrics", never "no lyrics": other sources still run.
 from src.lyrics.grading import (  # noqa: E402
     ROLE_CANDIDATE,
     SOURCE_ASR,
@@ -360,8 +359,8 @@ def _text(source, timing, lines=("line one here", "line two here"), conf="high",
     segs = [{"start": i * 2.0, "end": i * 2.0 + 1.5, "text": t} for i, t in enumerate(lines)]
     if timing == TIMING_WORD:
         for s in segs:
-            # Sequence words within the line, as a real aligner would — giving every word the line's
-            # own start/end would look out-of-order and the timing validator would refuse it.
+            # Sequenced within the line: giving every word the line's own bounds reads as out-of-order
+            # and the timing validator refuses it.
             toks = s["text"].split()
             span = (s["end"] - s["start"]) / max(1, len(toks))
             s["words"] = [
@@ -372,8 +371,7 @@ def _text(source, timing, lines=("line one here", "line two here"), conf="high",
                 }
                 for i, w in enumerate(toks)
             ]
-    # role is explicit: LyricsText defaults fail-closed (ROLE_UNSPECIFIED), so a fake bypassing the
-    # registry must set it or nothing publishes.
+    # LyricsText defaults fail-closed (ROLE_UNSPECIFIED), so a fake bypassing the registry must set it.
     return LyricsText(text_source=source, segments=segs, timing=timing, text_confidence=conf, role=role)
 
 
@@ -626,7 +624,7 @@ async def test_aligner_that_PLACES_NO_WORD_degrades_via_the_FAILURE_path_not_val
     ctx = await _drive_time_texts(EmptyAligner(), text, tmp_path)
     cands = ctx.out.artifacts["lyrics"]["candidates"]
 
-    # degraded via the FAILURE path: source's own line sync at HIGH, not (line, low) via validate.
+    # The FAILURE path: the source's own line sync at HIGH, not (line, low) via validate.
     assert (cands[0]["timing"], cands[0]["timingConfidence"]) == (TIMING_LINE, "high"), cands[0]
     # absence of a REFUSING note is what distinguishes the failure path from the validate path.
     assert not any("REFUSING word timing" in n for n in ctx.out.notes), ctx.out.notes
@@ -654,8 +652,7 @@ class FakeTranscriber:
         return self._out
 
 
-# Real whisper transcribe() output: segments with start/end/text and NO words. Word timings come
-# from the separate align() pass, never from transcription.
+# Real whisper transcribe() output has NO words: word timings come from the separate align() pass.
 ASR_RAW = {
     "language": "en",
     "segments": [
@@ -672,8 +669,7 @@ def test_asr_source_reads_the_VOCALS_stem_and_lets_whisper_detect_language():
     )
     assert t.calls == [("/vocals.m4a", None)]  # the STEM, not the mix; language auto-detected
     assert got is not None and got.text_source == "asr"
-    # LINE, not word: transcription gives segment bounds only. The timing layer force-aligns this text
-    # to get word timings, exactly as it does for an LRCLIB lookup.
+    # LINE, not word: transcription gives segment bounds only, and the timing layer force-aligns.
     assert got.timing == TIMING_LINE
     assert got.text_confidence == "low"  # never authoritative — the TV must label it
     assert got.language == "en"
@@ -928,8 +924,7 @@ def test_concurrent_ML_calls_are_serialized_on_the_shared_model(monkeypatch, tmp
     from src.lyrics.aligner import ML_LOCK, WhisperxForcedAligner
     from src.lyrics.asr import WhisperxTranscriber
 
-    # Fail fast on a non-reentrant lock: the nested transcribe()->_load() / align()->_model()
-    # acquisition below would otherwise DEADLOCK the drive with no verdict.
+    # Fail fast, or the nested transcribe()->_load() acquisition below DEADLOCKS with no verdict.
     with ML_LOCK:
         got = ML_LOCK.acquire(timeout=1.0)
         if got:
@@ -980,8 +975,7 @@ def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader(monke
     _stub_whisperx(monkeypatch)
     audio = str(tmp_path / "vocals.wav")
 
-    # Fail fast on a non-reentrant lock instead of deadlocking the suite: hold ML_LOCK once, then try
-    # a bounded second acquire. An RLock re-grants it; a plain Lock blocks and acquire() times out.
+    # Hold ML_LOCK once, then try a bounded second acquire: an RLock re-grants it, a plain Lock blocks.
     with ML_LOCK:
         got = ML_LOCK.acquire(timeout=1.0)
         if got:
@@ -1041,8 +1035,7 @@ def _candidate(body, source=SOURCE_LRCLIB):
 
 
 def test_agreement_score_matches_the_TS_semantics():
-    # agreement_score/agreement take (candidate, baseline) order. Full parity contract against the
-    # shared corpus lives in test_lyrics_agreement.py; this pins the same shapes at the align seam.
+    # (candidate, baseline) order. The full parity contract lives in test_lyrics_agreement.py.
     near = "we could be heroes just for one day standing near the wall guns above their heads and we kissed"
     assert agreement_score(_SUNG, near) > 0.7
     other = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
@@ -1064,12 +1057,11 @@ def test_lyrics_tokens_fold_unicode_form_so_form_variants_match():
     # ligature: "ﬁ" (U+FB01 fi) folds to "fi", so "ﬁnd" == "find"
     assert lyrics_tokens("\ufb01nd") == ["find"]
 
-    # BEHAVIOR-PRESERVING on ASCII: identical output to the plain lowercase+strip on ASCII lyrics.
+    # BEHAVIOR-PRESERVING on ASCII: identical to a plain lowercase+strip.
     ascii_text = "[00:12.50]Hello, World! [Chorus] don't stop the music"
     assert lyrics_tokens(ascii_text) == ["hello", "world", "don't", "stop", "the", "music"]
 
-    # The whole corpus here is ASCII, so a real same-song comparison is unchanged and still scores far
-    # above any wrong-song band — proving the fold did not disturb the metric's ASCII behaviour.
+    # The corpus is ASCII, so a same-song comparison still scores far above any wrong-song band.
     near = "we could be heroes just for one day standing near the wall guns above their heads and we kissed"
     assert agreement_score(_SUNG, near) > 0.7
 
@@ -1080,8 +1072,7 @@ def test_composite_is_the_MEAN_over_baselines_that_can_speak():
     got = composite_score(_candidate(_SUNG), [_baseline(_SUNG), _baseline(near, rank=1)])
     assert len(got.votes) == 2
     assert got.score == pytest.approx(sum(got.votes) / 2)
-    # the composite now also carries the mean baseline COVERAGE — the axis the wrong-song
-    # judgement reads — over the same two speaking baselines.
+    # The composite also carries mean baseline COVERAGE, the axis the wrong-song judgement reads.
     assert got.coverage is not None
 
 
@@ -1111,9 +1102,8 @@ async def test_A_WRONG_SONG_LOOKUP_IS_DEMOTED_not_shown_as_authoritative(tmp_pat
     cands = done.artifacts["lyrics"]["candidates"]
     bysrc = {c["textSource"]: c for c in cands}
     assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "low"  # demoted: no longer authoritative
-    # The recorded `agreement` field is the composite RANKING score (winner_score). The DEMOTION itself
-    # is judged on baseline coverage now, but a genuinely different song scores near zero on both
-    # axes, so the recorded score is well below any wrong-song band.
+    # The recorded `agreement` is the RANKING score; the demotion is judged on coverage. A genuinely
+    # different song scores near zero on both, so this is well below any wrong-song band.
     assert bysrc[SOURCE_LRCLIB]["agreement"] < SUSPECT_COVERAGE
     assert SOURCE_ASR in bysrc  # the baseline was published as a real alternative
 
@@ -1127,13 +1117,12 @@ async def test_an_AGREEING_lookup_keeps_its_authority_and_records_the_score(tmp_
     bysrc = {c["textSource"]: c for c in done.artifacts["lyrics"]["candidates"]}
     assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "high"
     assert bysrc[SOURCE_LRCLIB]["agreement"] == 1.0
-    # A trustworthy winner means the baselines have done their job by grading it — publishing one for its
-    # own sake would cost a whole extra alignment pass to produce words nobody shows.
+    # Publishing a baseline for its own sake costs an extra alignment pass for words nobody shows.
     assert SOURCE_ASR not in bysrc
 
 
-#: Long enough that a THIRD of it still clears MIN_TOKENS_TO_COMPARE; `_SUNG` alone does not. Distinct
-#: lines, so coverage is not inflated by a repeated chorus.
+#: Long enough that a THIRD still clears MIN_TOKENS_TO_COMPARE, and distinct lines, so coverage is
+#: not inflated by a repeated chorus.
 _LONG_SUNG = " ".join(
     [
         "we could be heroes just for one day standing by the wall",
@@ -1188,9 +1177,8 @@ async def test_a_genuinely_different_song_is_still_condemned_on_coverage_806(tmp
     assert SOURCE_ASR in bysrc  # what was actually heard is offered as a real alternative
 
 
-#: A synced LRC long enough for the fit to MEAN anything: with two or three lines almost any series
-#: fits and the verdict is `inconclusive`. Sixteen lines is where a structural difference stops being
-#: absorbable by scale alone.
+#: Long enough for the fit to MEAN anything: with two or three lines almost any series fits and the
+#: verdict is `inconclusive`.
 LRC_STARTS = [2 * i + 1 for i in range(16)]
 SIXTEEN_LINE_LRC = "\n".join(f"[00:{s:02d}.00]line {i} of the song here" for i, s in enumerate(LRC_STARTS))
 
@@ -1284,8 +1272,7 @@ def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_
     from src.lyrics.grading import SOURCE_LRCLIB, TIMING_LINE, LyricsText
     from src.steps import lyrics as steps_lyrics
 
-    # An authoritative line-timed text with ONE human line at [10, 34] plus bounded windows the
-    # presplit step would have produced for the aligner to search.
+    # ONE human line at [10, 34], plus the bounded windows presplit would have produced.
     text = LyricsText(
         text_source=SOURCE_LRCLIB,
         segments=[
@@ -1305,8 +1292,8 @@ def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_
         ok, _ctx_forced(monkeypatch), text, audio="/x.wav", language="en"
     )
     assert ok.calls and ok.calls[0][0] == 2  # searched the two bounded windows, not one whole line
-    # pin WHICH windows by value (not just the count), or a mutated timestamp could ship a
-    # 24-second line crushed into one second while calls[0][0] == 2 stays green.
+    # By VALUE, not just count: a mutated timestamp could crush a 24s line into one while the count
+    # assertion stays green.
     assert ok.searched[0] == [
         (10.0, 22.0, "a very long human"),
         (22.0, 34.0, "authored karaoke lyric line"),
@@ -1333,9 +1320,8 @@ def test_time_one_lines_mode_publishes_source_timings_not_the_aligner_windows(mo
     from src.steps import lyrics as steps_lyrics
     from src.vocabulary import SyncMode
 
-    # Same authoritative line-timed text: ONE human line at [10, 34], with two bounded windows the
-    # presplit step would have produced. The interior 22.0 boundary is a character count, not a real
-    # LRC timestamp, so it must NOT reach the published doc.
+    # ONE human line at [10, 34] with two bounded windows. The interior 22.0 boundary is a character
+    # count, not a real LRC timestamp, so it must NOT reach the published doc.
     text = LyricsText(
         text_source=SOURCE_LRCLIB,
         segments=[
@@ -1371,8 +1357,7 @@ def test_time_one_forced_path_keeps_dual_script_romanization(monkeypatch):
     from src.lyrics.grading import SOURCE_LRCLIB, TIMING_LINE, LyricsText
     from src.steps import lyrics as steps_lyrics
 
-    # A folded bilingual LRCLIB text: two lines, each the non-Latin script as ``text`` and its Latin
-    # romanization twin as ``romanization`` — exactly what ``fold_romanization_entries`` produces.
+    # What ``fold_romanization_entries`` produces: the script as ``text``, its twin as ``romanization``.
     text = LyricsText(
         text_source=SOURCE_LRCLIB,
         segments=[
@@ -1401,17 +1386,15 @@ def test_time_one_forced_path_keeps_dual_script_romanization(monkeypatch):
     assert ok.calls  # the force-align branch actually ran (not a fallback)
     assert timing == TIMING_WORD and conf == "high"
 
-    # THE PIN, by value: both source lines' romanization rode through to the word-timed doc. Deleting
-    # or reordering ``_attach_romanizations`` in ``steps/lyrics.py`` makes this ``[None, None]``.
+    # By value: deleting or reordering ``_attach_romanizations`` makes this ``[None, None]``.
     assert [ln.get("romanization") for ln in doc["lines"]] == [
         "zhen qing xiang cao yuan guang mao",
         "xue hua piao piao bei feng xiao xiao",
     ]
 
 
-# The romanization pass-through at artifact.py is defensive depth: no TIMING_WORD producer emits a
-# segment carrying `romanization`, so the copy never fires in production. Two guards, each pinning
-# one half: A) the copy exists at all; B) AsrSource never emits a 5th key that would make it live.
+# Defensive depth: no TIMING_WORD producer emits a segment carrying `romanization`, so the copy never
+# fires in production. Two guards — the copy exists, and AsrSource emits no 5th key to make it live.
 def test_normalize_lyrics_copies_a_segment_romanization_through():
     """Guard A: normalize_lyrics copies a `romanization` off a segment that carries one — a
     word-timed segment with a second script must surface it on the produced line."""
@@ -1445,11 +1428,9 @@ def test_asr_source_segment_keys_are_exactly_start_end_text_words():
         assert set(seg.keys()) == {"start", "end", "text", "words"}
 
 
-# The aligner at steps/lyrics.py searches `align_windows` (per-row bounded windows) instead of
-# `segments` when presplit set them, so `doc` has one aligned line per WINDOW — MORE lines than
-# `segments`. The wrong-version fit must be paired against `align_windows` too, or
-# `fit_lrc_to_aligned` sees a line-count mismatch and goes `inconclusive`, silently disabling the
-# detector on exactly the long-line authoritative LRCs presplit produces windows for.
+# The aligner searches `align_windows` when presplit set them, so `doc` has one line per WINDOW —
+# MORE than `segments`. The wrong-version fit MUST pair against `align_windows` too, or the line-count
+# mismatch reads as `inconclusive` and silently disables the detector.
 
 
 def _mismatched_windows_text(n_lines=16, bridge_after=8):
@@ -1559,17 +1540,15 @@ async def test_217_a_matching_recording_with_split_windows_is_NOT_flagged(tmp_pa
     aligner = _WindowBridgeAligner(bridge_after=999)  # never shifts → same recording
     ctx = await _drive_time_texts(aligner, text, tmp_path)
     assert not any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
-    # A same_version fit that ran surfaces its diagnostic (offset, scale) in a note; published
-    # timings stay the aligner's — the note is diagnostic only.
+    # A same_version fit surfaces offset and scale in a note; published timings stay the aligner's.
     assert any(
         "matches this recording" in n and "fitted offset" in n and "diagnostic only" in n
         for n in ctx.out.notes
     ), ctx.out.notes
 
 
-# When validate_timing reports an out-of-order word (usable == False), the worker must NOT publish
-# word timing: it degrades to line sync at (line, low) with a REFUSING note. A word-only ASR source
-# (no line timings to fall back to) must be DROPPED instead of line-synced.
+# An out-of-order word (usable == False) must NOT publish word timing: it degrades to (line, low) with
+# a REFUSING note, and a word-only ASR source with no line fallback is DROPPED instead.
 
 
 class _OneBackwardsWordAligner:
@@ -1662,16 +1641,11 @@ async def test_326_a_word_only_ASR_source_with_unusable_timing_is_DROPPED_not_li
         await _drive_time_texts(aligner, text, tmp_path)
 
 
-# Only the OPENING window of each human line carries the source's own timestamp; `_subdivide`
-# (presplit.py) spreads every interior window start PROPORTIONALLY TO CHARACTER COUNT across a span
-# ending at the next line's start, which can land deep in an instrumental rest while a faithful
-# aligner re-times words where they are actually SUNG (early). Pairing the wrong-version fit against
-# those interior guesses reads that gap as a residual and misreports "alignment slipped" on a
-# correctly aligned song, so the fit must pair against OPENING windows only (real human starts).
-#
-# Every test here injects an aligner that RE-TIMES words inside each window rather than echoing the
-# window bounds — an echoing aligner makes interior residuals zero by construction and cannot see
-# this defect. Windows are built by the real `bound_blob_text` / `_subdivide`.
+# Only the OPENING window of each human line carries the source's own timestamp: `_subdivide` spreads
+# interior starts by CHARACTER COUNT, which can land deep in an instrumental rest while the aligner
+# re-times words where they are actually sung. So the fit MUST pair against opening windows only, or a
+# correctly aligned song is misreported as slipped. Every test here injects an aligner that RE-TIMES
+# inside each window — an echoing one zeroes interior residuals by construction and sees nothing.
 
 _CHARS_PER_SEC_336 = 12.0
 
@@ -1740,7 +1714,7 @@ class _SungWordsAligner:
         cursor = 0.0
         for w in segments:
             ws = w["start"]
-            # An opening window's start matches the next human line start; reset the sung cursor there.
+            # An opening window's start matches the next human line start.
             if li + 1 < len(self.human_starts) and abs(ws - self.human_starts[li + 1]) < 1e-6:
                 li += 1
                 cursor = self.human_starts[li]
@@ -1786,8 +1760,7 @@ async def test_336_wrong_version_is_still_detected_after_openings_only_pairing(t
     text = _instrumental_break_text_336()
     human_starts = [s["start"] for s in text.segments]
 
-    # Shift the whole back half by 15s: a structural, non-linear difference a scale+offset fit cannot
-    # absorb — what a different release looks like.
+    # A structural, non-linear difference a scale+offset fit cannot absorb.
     aligner = _SungWordsAligner(human_starts, bridge=15.0, bridge_after=len(human_starts) // 2)
     ctx = await _drive_time_texts(aligner, text, tmp_path)
 
@@ -1795,10 +1768,8 @@ async def test_336_wrong_version_is_still_detected_after_openings_only_pairing(t
     assert any("may belong to another version" in n for n in ctx.out.notes)
 
 
-# normalize_lyrics DROPS a segment with neither timed words nor bounds (artifact.py); pairing the fit
-# by align-window INDEX into normalize_lyrics(doc) does not survive that drop — every later
-# positional pairing shifts. The fit must pair by the line's own TEXT (a stable key both _subdivide
-# and normalize_lyrics keep verbatim) so a dropped line is left out of both series together.
+# normalize_lyrics DROPS a segment with neither timed words nor bounds, so positional pairing shifts
+# after it. The fit MUST pair by the line's own TEXT, which both sides keep verbatim.
 
 
 class _DroppingAligner:
@@ -1814,8 +1785,7 @@ class _DroppingAligner:
 
     def align(self, segments, audio_path, language):
         res = self._inner.align(segments, audio_path, language)
-        # Walk the INPUT windows to find opening entries (start == a human start), in order; blank
-        # the requested opening ordinals into the drop shape.
+        # Walk the INPUT windows for opening entries in order, blanking the requested ordinals.
         opening_ordinal = -1
         for i, w in enumerate(segments):
             ws = w.get("start")
@@ -1845,7 +1815,7 @@ async def test_410_one_dropped_aligned_line_does_NOT_make_a_correct_song_read_as
     text = _instrumental_break_text_336()
     human_starts = [s["start"] for s in text.segments]
 
-    # Drop the SECOND opening line (ordinal 1) — a mid-song drop, so it shifts the tail of the pairing.
+    # A MID-song drop, so it shifts the tail of the pairing.
     aligner = _DroppingAligner(human_starts, drop_openings={1}, bridge=0.0)
     ctx = await _drive_time_texts(aligner, text, tmp_path)
 
@@ -1964,10 +1934,8 @@ async def test_534_F1_an_inconclusive_fit_does_NOT_report_a_match(tmp_path):
     assert not any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
 
 
-# Re-deriving opening-window indices by float-equality (_opening_window_indices) strands every line
-# after one start that fails to match to 1e-6 — a latent trap the moment a producer stops rounding to
-# 3 dp. presplit emits the exact segment->window map as `align_window_opens`; `_opens_for` must prefer
-# it and fall back to re-derivation only when the map is absent.
+# Re-deriving by float-equality strands every line after one start that misses by 1e-6, so `_opens_for`
+# must PREFER presplit's emitted `align_window_opens` map and re-derive only when it is absent.
 
 
 def test_459_opens_for_prefers_the_emitted_map_and_is_immune_to_a_perturbed_start():
@@ -1976,8 +1944,7 @@ def test_459_opens_for_prefers_the_emitted_map_and_is_immune_to_a_perturbed_star
     text = _instrumental_break_text_336()
     assert text.align_window_opens is not None and len(text.align_window_opens) == len(text.segments)
 
-    # Perturb the SECOND line's opening-window start by 2e-6 — invisible to the emitted map, but enough
-    # to defeat the float-equality re-derivation.
+    # 2e-6: invisible to the emitted map, enough to defeat float-equality re-derivation.
     windows = [dict(w) for w in text.align_windows]
     op1 = text.align_window_opens[1]
     windows[op1] = {**windows[op1], "start": windows[op1]["start"] + 2e-6}
@@ -1985,23 +1952,20 @@ def test_459_opens_for_prefers_the_emitted_map_and_is_immune_to_a_perturbed_star
 
     perturbed = _dc_replace(text, align_windows=windows)
 
-    # Ground truth: float-equality re-derivation strands (fewer than one index per segment) under
-    # this perturbation.
+    # Ground truth: re-derivation strands under this perturbation.
     stranded = _opening_window_indices(perturbed.align_windows, perturbed.segments)
     assert len(stranded) < len(perturbed.segments), (
         "the re-derivation must strand under a 2e-6 perturbation for this test to bite"
     )
 
-    # The consumer must return the EMITTED map, one exact index per human segment, unaffected by the
-    # perturbed start.
+    # The EMITTED map, one exact index per human segment, unaffected by the perturbation.
     got = _opens_for(perturbed)
     assert got == perturbed.align_window_opens == list(text.align_window_opens)
     assert len(got) == len(perturbed.segments)
 
 
 def test_459_opens_for_falls_back_to_rederivation_for_a_hand_built_text_without_the_map():
-    # A hand-built LyricsText may set align_windows without the emitted opens map; the consumer must
-    # still work by re-deriving.
+    # A hand-built LyricsText may omit the opens map; the consumer must still re-derive.
     from src.steps.lyrics import _opening_window_indices, _opens_for
 
     text = _instrumental_break_text_336()
@@ -2012,8 +1976,7 @@ def test_459_opens_for_falls_back_to_rederivation_for_a_hand_built_text_without_
 
 
 def test_459_TimeTexts_run_uses_opens_for_at_the_call_site_not_inline_rederivation():
-    # TimeTexts.run must CALL _opens_for and must NOT call _opening_window_indices directly — that
-    # bypass would silently put the version fit back on the float-equality path that strands lines.
+    # Calling _opening_window_indices directly would silently put the fit back on the stranding path.
     import ast
     from pathlib import Path
 
@@ -2030,12 +1993,10 @@ def test_459_TimeTexts_run_uses_opens_for_at_the_call_site_not_inline_rederivati
                     break
     assert run_fn is not None, "TimeTexts.run not found"
 
-    # Follow the delegation from `run` rather than pinning one function body: the invariant is that
-    # the STEP layer makes this choice, not the lyrics domain, so helpers `run` calls count too but
-    # the whole module does not (that would pass on a call from anywhere).
+    # Follow the delegation from `run`, not one function body: the invariant is that the STEP layer
+    # makes this choice, so helpers `run` calls count but the whole module does not.
     module_fns = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    # Do NOT descend into `_opens_for` — it legitimately calls _opening_window_indices as its own
-    # fallback, which would falsely fail the second assertion below on correct code.
+    # Do NOT descend into `_opens_for`, whose own fallback legitimately calls it.
     opaque = {"_opens_for"}
     reachable = [run_fn]
     seen: set[str] = set()
@@ -2096,10 +2057,10 @@ async def test_the_variant_pick_provenance_reaches_ctx_out_selection_and_the_Com
     assert len(choices) >= 1
     lrc_choice = next(c for c in choices if c["textSource"] == SOURCE_LRCLIB)
     assert lrc_choice["considered"] == 2  # two versions were weighed
-    # The two facts that make a mis-pick diagnosable: what basis decided it, and how many baselines voted.
+    # What makes a mis-pick diagnosable: the basis, and how many baselines voted.
     assert lrc_choice["decidedBy"] == "agreement"
     assert lrc_choice["votes"] >= 1
-    # Every rejected version is retained with its score — the evidence gone today. NOT the bodies.
+    # Every rejected version retained with its score. NOT the bodies.
     assert len(lrc_choice["rejected"]) == 1
     label, sc = lrc_choice["rejected"][0]["label"], lrc_choice["rejected"][0]["score"]
     assert label == "lrclib-alt"
@@ -2162,8 +2123,7 @@ def test_Selection_to_record_persists_the_coverage_winnerSuspect_was_decided_on_
     assert Selection(choices=[vc]).to_record()["winnerCoverage"] is None
 
 
-# `keep_raw` threads config -> dial_home -> align_runner -> align_plan -> FetchCaptions. These pin
-# each seam of that chain: reverting any hunk stops a FetchCaptions step from carrying the flag.
+# `keep_raw` threads config -> dial_home -> align_runner -> align_plan -> FetchCaptions; one pin per seam.
 from src.host.config import WorkerConfig  # noqa: E402
 from src.steps.lyrics import FetchCaptions as _FetchCaptions  # noqa: E402
 
@@ -2183,8 +2143,7 @@ def test_align_plan_threads_keep_raw_into_both_fetch_caption_steps():
 
 
 def _plan_from_runner(runner):
-    # The production align_runner injects plans=lambda job, engines: plan, so _plan_for returns that
-    # captured plan for any job. A minimal align job is enough to pull the steps out.
+    # align_runner injects plans=lambda job, engines: plan, so a minimal align job pulls the steps out.
     job = JobSpec(
         job_id="j-kr",
         media_id="m-kr",
@@ -2217,8 +2176,7 @@ def test_build_processor_wires_config_keep_raw_captions_to_the_align_steps():
     for flag in (True, False):
         base = WorkerConfig.from_env({"ENCORE_KEEP_RAW_CAPTIONS": "1" if flag else "0"})
         assert base.keep_raw_captions is flag
-        # align is only registered when the worker advertises the capability; force it (this is a
-        # wiring test, not a capability test).
+        # align registers only with the capability advertised; forced, since this is a wiring test.
         cfg = dataclasses.replace(base, capabilities=("align",))
         proc = _build_processor(cfg)
         align = proc._by_type["align"]
@@ -2323,8 +2281,8 @@ async def test_773_a_flash_only_doc_is_NOT_logged_as_repaired_but_is_still_repor
 
     def _record(segments, audio_path, language):
         res = inner(segments, audio_path, language)
-        # snapshot BEFORE the step runs: repair_word_spans mutates the word dicts in place, so a
-        # live reference would compare the published doc against itself.
+        # BEFORE the step runs: repair_word_spans mutates in place, so a live reference would compare
+        # the published doc against itself.
         given["words"] = [(w["word"], w["start"], w["end"]) for seg in res["segments"] for w in seg["words"]]
         return res
 

@@ -1,13 +1,11 @@
 <script lang="ts">
-	// One media surface (slot A or B). Plays the separated instrumental and reports ready/ended up so the
-	// GaplessController can orchestrate the swap. See docs/FRONTEND.md#the-stage-and-its-stacking-order.
+	// One media surface (slot A or B). See docs/FRONTEND.md#the-stage-and-its-stacking-order.
 	//
 	// <audio> AND NOT <video>: `playbackRef` resolves to the separated instrumental, which has no video track,
 	// and <audio> is the more permissive element for codec support.
 	//
-	// THE ONE RULE THAT MUST NOT BE BROKEN: the guiding track is channels 2/3 of this ONE element's 4-channel
-	// file, and such a file must never reach an element that is not routed through a running split graph, or the
-	// browser downmixes it and sums the vocals in at full volume. `guide-mix-src.ts` owns that gate.
+	// THE ONE RULE THAT MUST NOT BE BROKEN: the 4-channel guide mix must never reach an element that is not routed
+	// through a running split graph, or the browser downmixes it and sums the vocals in at full volume.
 	import { playbackRef, isPlayable, guidePath } from '$lib/contract';
 	import type { PlaybackSnapshot } from './catalog';
 	import { untrack } from 'svelte';
@@ -17,52 +15,40 @@
 	import { transportFor, slotHoldsSong, songToken } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
 	interface Props {
-		// A `PlaybackSnapshot`, not a live `Media`. The brand makes this a compiler boundary, so the page
-		// cannot hand this slot a catalog record a process can still change underneath it.
+		/** A `PlaybackSnapshot`, not a live `Media`: the brand makes this a compiler boundary. */
 		media: PlaybackSnapshot | null;
-		// The id of the QUEUE ENTRY, NOT the media/song id: a song queued twice is two entries over ONE media
-		// record, so `media.id` and the resolved src are byte-identical across the advance. The transport
-		// re-arms on THIS, and without it turn 2 never calls play() and the room goes silent at 0.
+		// The QUEUE ENTRY id, NOT the media id: a song queued twice is two entries over ONE media record, so `media.id`
+		// and the src are byte-identical across the advance and turn 2 never calls play() without this.
 		entryId?: string | null;
 		visible: boolean;
 		active: boolean; // is this the playing slot (vs the hidden pre-warming slot)
 		playing?: boolean; // playback:state.isPlaying — pause/resume from the phone
-		seekSec?: number; // playback:state.positionSec — jump the video when the phone seeks
-		// The server `rev`, tracked by the seek effect so a restart whose reported position EQUALS the last one
-		// still re-takes the decision — a restart under the threshold writes 0 over 0, which notifies nothing.
+		seekSec?: number; // playback:state.positionSec
+		// Tracked by the seek effect, so a restart whose position EQUALS the last one still re-takes the decision: a
+		// restart under the threshold writes 0 over 0, which notifies nothing.
 		seekRev?: number;
-		keyShift?: number; // ± semitones for a file song — selects the keyed instrumental
+		keyShift?: number; // ± semitones, applied in the browser
 		guideLevel?: number; // 0..1 — how loud the original vocals sit under the instrumental
-		// The loudness-normalization pulldown, resolved by the route. ATTENUATE-ONLY: never above 1. Applied at
-		// BOTH the native and routed sites, because WebAudio capture bypasses `.volume`.
+		/** ATTENUATE-ONLY. Applied at BOTH the native and routed sites, because WebAudio capture bypasses `.volume`. */
 		masterLevel?: number;
-		// Gating on visibility is load-bearing: the hidden slot buffers a whole song ahead, so reporting here
-		// flips the room to `playing` over the visible slot's black frame.
+		/** Gated on VISIBILITY: the hidden slot buffers a song ahead, so firing there flips the room over a black frame. */
 		onready?: () => void;
-		// Fires when the buffer settles REGARDLESS of visibility — the gapless pre-warm signal. The controller
-		// only acts on it when the id matches the slot it is warming, so the visible slot's call is a no-op.
+		/** The gapless pre-warm signal, fired REGARDLESS of visibility; the controller filters it by slot id. */
 		onprewarmed?: () => void;
 		onended?: () => void;
 		onerror?: () => void; // dead/unplayable media — caller should skip
 		onposition?: (sec: number, dur: number) => void;
-		// Autoplay was REFUSED and the room is silent until a gesture, which a TV wall never produces on its
-		// own. Active+visible only, so the hint tracks the room the viewer is looking at.
+		/** Autoplay was REFUSED; the room is silent until a gesture. Active+visible only. */
 		onautoplayblocked?: () => void;
-		// A gesture (or a later transport re-attempt) got the instrumental playing after a block — the
-		// page can retract the hint.
+		/** Something got the instrumental playing after a block — the page can retract the hint. */
 		onautoplayrecovered?: () => void;
-		// Whether the MASTER element is actually running — the honest counterpart to the room's `playing`
-		// INTENT. Active+visible only, so the paused hidden slot cannot report the room as stopped. Feeds
-		// `lyricsAdvancing`, so the reel freezes when the element is not advancing.
+		// Whether the MASTER is actually running — the honest counterpart to the room's `playing` INTENT. Active+visible
+		// only, so the paused hidden slot cannot report the room as stopped.
 		onplayingchange?: (playing: boolean) => void;
-		// An error a gesture CANNOT lift, so the page renders an on-screen state rather than leaving only a
-		// console warn nobody at a party reads. Active+visible only.
+		/** An error a gesture CANNOT lift, so the page can render it. Active+visible only. */
 		onplaybackfailed?: (reason: string) => void;
-		/*
-		 * A TRANSPOSE WAS ASKED FOR AND COULD NOT ROUTE. With no user activation `PitchShiftGraph` degrades to
-		 * audible-but-UNSHIFTED, because capturing into a suspended graph is permanent silence. Without a reader,
-		 * a TV that autoplays correctly answers every ± press with nothing. Active+visible only.
-		 */
+		// A transpose could not route: with no user activation the graph degrades to audible-but-UNSHIFTED, so without a
+		// reader a TV that autoplays correctly answers every ± press with nothing.
 		onpitchblocked?: () => void;
 		/** The transpose is routing (or nothing is pending) — retract any hint raised above. */
 		onpitchrouted?: () => void;
@@ -93,85 +79,69 @@
 
 	let master: HTMLAudioElement | undefined = $state();
 
-	// ONE graph, because there is ONE element: the guide rides inside the master's own file, so the split
-	// graph IS this graph in `split` mode. Not $state — an imperative WebAudio handle.
+	// ONE graph, because the capture is one per ELEMENT: the split graph IS this graph in `split` mode.
 	let masterGraph: PitchShiftGraph | undefined;
-	/**
-	 * Has this song's split-graph routing attempt SETTLED? Two jobs: it is the REACTIVE signal the src effect
-	 * needs (`isRouted`/`isSplit` are plain getters and cannot wake an effect), and it is `MixGate`'s
-	 * `pending` half — while false the src effect commits NOTHING on a mix song, which is what stops the src
-	 * being decided twice and rewritten on a playing element. Reset per SONG, not per graph.
-	 */
+	// Two jobs: the REACTIVE signal the src effect needs (`isRouted`/`isSplit` are plain getters and cannot wake an
+	// effect), and `MixGate`'s `pending` half. Reset per SONG, not per graph.
 	let mixSettled = $state(false);
 
-	// The guide is shifted by the SAME amount as the instrumental because it IS the instrumental's file:
-	// one worklet, four channels, one ratio, so the guide cannot fall out of key with what is playing.
+	// One worklet, four channels, ONE ratio, so the guide cannot fall out of key with what is playing.
 	const effectiveGuide = $derived(Math.max(0, Math.min(1, guideLevel)));
 
-	// Clamped here as a second guard even though the route already clamps. Attenuate-only: a song is only
-	// ever pulled DOWN.
+	// A second clamp even though the route clamps. Attenuate-only: a song is only ever pulled DOWN.
 	const effectiveMasterLevel = $derived(Math.max(0, Math.min(1, masterLevel)));
 
 	/** WHICH guide this song offers — one 4-channel mix, or none. No second-element alternative. */
 	const guidePlan = $derived(media ? guidePath(media) : ({ kind: 'none' } as const));
 
-	// READINESS. The slot is ready for a gapless swap when its MASTER can play, which is the whole story:
-	// the guide lives inside the master's own file, so a master that can play is a guide that can play.
+	// The guide lives inside the master's own file, so a master that can play is a guide that can play.
 	let masterReady = $state(false);
-	// HELD so a cold mount can take it on the master's `canplay` — the element does not exist when the frame
-	// arrives on a reload. NOT reactive: read only inside the untracked `applyResume`, so it never re-triggers
-	// the seek effect. What keeps a STALE target off the next song is the SERVER publishing `positionSec: 0`
-	// with a fresh `rev`. See docs/FRONTEND.md#wake-lock-and-reload-resume.
+	// HELD so a cold mount can take it on `canplay` — the element does not exist when the frame arrives on a reload. NOT
+	// reactive, so it never re-triggers the seek effect. See docs/FRONTEND.md#wake-lock-and-reload-resume.
 	let resumeTarget: number | undefined;
-	// Two latches, because a slot that buffers WHILE HIDDEN and is later swapped in must still fire onready
-	// then, which one shared latch would already have spent.
+	// TWO latches: a slot that buffers while hidden and is later swapped in must still fire onready, which one shared
+	// latch would already have spent.
 	let prewarmedFired = $state(false);
 	let visibleReadyFired = $state(false);
-	// The src the element holds, as the reactive signal the transport effect gates on. The AUTHORITATIVE
-	// copy is the element's own `src` attribute — see the assign effect.
+	// The reactive signal the transport gates on; the AUTHORITATIVE copy is the element's own `src` attribute.
 	let currentSrc = $state<string>('');
-	// Written in LOCKSTEP with `currentSrc`: that alone cannot tell turn 2 of a song from turn 1, since the
-	// src is byte-identical, so the transport compares the entry-scoped token and this is its `held` half.
+	// Written in LOCKSTEP with `currentSrc`, which alone cannot tell turn 2 from turn 1: the transport compares the
+	// entry-scoped token, and this is its `held` half.
 	let currentEntryId = $state<string | null>(null);
 
-	// A plain <audio> in a page that never received a gesture is refused under the default policy — exactly
-	// the case a set-and-forget TV wall is in. Drives the gesture listener below AND the page's hint.
+	// Drives the gesture listener below AND the page's hint: a page that never received a gesture is refused playback,
+	// which is exactly the case a set-and-forget TV wall is in.
 	let autoplayBlocked = $state(false);
 
 	// The song this slot has already reset for. A PLAIN variable: guard bookkeeping, nothing renders off it.
 	let resetForId: string | null | undefined;
 
-	// GUARDED ON THE ID *VALUE*, not on the `media` signal, whose object identity churns on any queue mutation.
-	// Keying on the signal reset a MID-SONG slot: latches cleared — and `canplaythrough` will NOT fire again on
-	// a loaded element, so `onready` was spent forever — and the graph was torn down under a transposed song.
-	// The teardown is imperative for the same reason: a cleanup runs before EVERY re-run.
+	// GUARDED ON THE ID *VALUE*, not the `media` signal, whose identity churns on any queue mutation: keying on the
+	// signal reset a MID-SONG slot, and `canplaythrough` will NOT fire again on a loaded element, so `onready` was spent
+	// forever and the graph was torn down under a transposed song. The teardown is imperative for the same reason — a
+	// cleanup runs before EVERY re-run.
 	$effect(() => {
 		const id = media?.id ?? null;
 		if (id === resetForId) return;
 		resetForId = id;
-		// Per-song graph handling follows the ELEMENT's lifetime, not the media's, because the capture is
-		// PERMANENT and detach() cannot restore the native path. The MASTER outlives a song change, so its graph
-		// must NOT be detached here — that leaves the captured element feeding a disconnected node. `setShift(0)`
-		// keeps the chain intact and is a no-op on an un-built graph.
+		// The MASTER outlives a song change, so its graph must NOT be detached here — that leaves the captured
+		// element feeding a disconnected node. `setShift(0)` keeps the chain intact and no-ops on an un-built graph.
 		void masterGraph?.setShift(0);
-		// A song change resets the graph IN PLACE and a graph defaults its gain to 1, so re-assert the pulldown.
+		// A graph defaults its gain to 1 and `desiredGuideGain` to 0, so BOTH levels must be re-asserted here or the song
+		// plays at full volume with a silent guide.
 		masterGraph?.setGain(effectiveMasterLevel);
-		// And the GUIDE pair's gain on that same graph: a fresh graph defaults `desiredGuideGain` to 0, so
-		// without this a mix song plays with a silent guide until the slider moves.
 		masterGraph?.setGuideGain(effectiveGuide);
 		masterReady = false;
-		// A new song re-takes the mix decision from scratch: a non-mix song must not inherit the previous
-		// song's `routed`, and `guidePath` may differ between two mix songs. Costs one flush, not a stall.
+		// A new song re-takes the mix decision from scratch: a non-mix song must not inherit the previous `routed`.
 		mixSettled = false;
 		prewarmedFired = false;
 		visibleReadyFired = false;
-		// NOT cleared on a song CHANGE: the element still holds the old src, and clearing makes the assign
-		// effect rewrite a byte-identical src, which RELOADS and resets currentTime to 0. The stale-across-a-
-		// remount case is handled by the `if (!master)` effect, which fires only when the element is GONE.
+		// `currentSrc` is deliberately NOT cleared: the element still holds the old src, and clearing makes the assign
+		// effect rewrite a byte-identical one, which RELOADS and resets currentTime to 0. The stale-across-a-remount case
+		// belongs to the `if (!master)` effect, which fires only when the element is GONE.
 	});
 
-	// Component destroy. Its own effect with NO tracked dependencies, so it never re-runs and its cleanup
-	// means exactly "this slot is going away".
+	// NO tracked dependencies, so it never re-runs and its cleanup means exactly "this slot is going away".
 	$effect(() => {
 		return () => {
 			masterGraph?.detach();
@@ -179,8 +149,7 @@
 		};
 	});
 
-	// Buffer settled. Reported on ANY slot; the controller ignores it unless the id is the one it is
-	// warming, which is what lets the hidden slot advertise a gapless-ready next song.
+	// Reported on ANY slot, which is what lets the hidden slot advertise a gapless-ready next song.
 	$effect(() => {
 		if (masterReady && !prewarmedFired) {
 			prewarmedFired = true;
@@ -188,8 +157,7 @@
 		}
 	});
 
-	// Because it also depends on `visible`, a slot that settled while hidden fires this the moment a swap
-	// makes it visible — and never from the hidden slot, which would flip the room over a black frame.
+	// Depending on `visible` too is what fires this when a slot that settled while hidden is swapped in.
 	$effect(() => {
 		if (visible && masterReady && !visibleReadyFired) {
 			visibleReadyFired = true;
@@ -198,15 +166,13 @@
 	});
 
 	/**
-	 * The transport for this slot — ONE decision. `currentSrc` is the load-bearing input: `play()` before the
-	 * src is assigned is undone by the assignment itself, so the transport must depend on the src having
-	 * LANDED rather than racing the effect that assigns it.
+	 * ONE decision, and `currentSrc` is the load-bearing input: a `play()` issued before the src is assigned is
+	 * undone by the assignment itself, so the transport must depend on the src having LANDED.
 	 */
 	const transport = $derived(
 		transportFor({
-			// THIS ENTRY's src, not merely SOME turn of this song: the shadows survive a change, so a src-only
-			// comparison stays true and the memoized transport never re-fires its effect. The entry-scoped token
-			// gives an `idle -> play` edge WITHOUT rewriting a byte-identical src.
+			// THIS ENTRY's src: the shadows survive a change, so a src-only comparison stays true and the memoized transport
+			// never re-fires. The entry token gives an `idle -> play` edge with no src rewrite.
 			hasSrc: slotHoldsSong(
 				songToken(currentEntryId, currentSrc),
 				songToken(entryId, media && isPlayable(media) ? fileSrc(media) : null)
@@ -218,10 +184,8 @@
 		})
 	);
 
-	// Only once the element is actually HOLDING its media. The src is assigned from an effect declared BELOW
-	// this one, so without the `hasSrc` gate this calls play() on a src-less element; the assignment's load
-	// algorithm then sets `paused` back to true and rejects with AbortError, and nothing re-runs this effect,
-	// so the master sits paused at 0 forever with no sound, no `ontimeupdate` and no telemetry.
+	// The src is assigned from an effect BELOW this one, so without the transport's `hasSrc` gate this plays a
+	// src-less element: the assignment's load algorithm re-pauses it, nothing re-runs, and the master sits at 0.
 	$effect(() => {
 		if (!master) return;
 		if (transport === 'idle') return;
@@ -229,33 +193,26 @@
 			master.pause();
 			return;
 		}
-		// A refusal must degrade to a silent room, never a stalled song, and never SILENTLY: a NotAllowedError
-		// is exactly the state a gesture can lift, so it arms the recovery path rather than ending there.
 		void tryPlayMaster();
 	});
 
-	// A DRAINED room UNMOUNTS the master and the shadows OUTLIVE it. Re-adding the SAME song resolves to the
-	// byte-identical string, so a src-only comparison read `true` on a FRESH, src-less element and the write
-	// aborted the pending play(). Tracking the BINDING's presence is the reactive signal; reading an
-	// attribute off `master` registers no dependency.
+	// A DRAINED room UNMOUNTS the master while the shadows OUTLIVE it, so re-adding the same song read `true` on a
+	// FRESH, src-less element. Tracking the BINDING is the reactive signal; reading `master`'s attribute is not.
 	$effect(() => {
 		if (!master) {
 			currentSrc = '';
 			currentEntryId = null;
-			// The element is GONE, so the graph holds a PERMANENT capture on a dead element. Release it AND drop the
-			// reference: detach() alone leaves `masterGraph` truthy, so the `!masterGraph` build guard never fires
-			// again and the NEXT song's element is never captured. This is the ELEMENT's death, not a song change.
+			// The ELEMENT's death, not a song change: release the permanent capture AND drop the reference, because
+			// detach() alone leaves `masterGraph` truthy and the `!masterGraph` build guard never fires again.
 			masterGraph?.detach();
 			masterGraph = undefined;
 		}
 	});
 
 	/**
-	 * The ONE place that resolves a `master.play()` promise, so the one place that can tell "the room will be
-	 * silent" from "silent UNTIL a tap".
-	 *
-	 * CRITICALLY it touches ONLY the plain element — no AudioContext, no MediaElementSource. That capture is
-	 * PERMANENT, so eagerly wrapping the element to "solve" autoplay commits all room audio to WebAudio.
+	 * The ONE place that resolves a `master.play()` promise, so the one place that can tell "the room will be silent"
+	 * from "silent UNTIL a tap". It touches ONLY the plain element — no AudioContext, no MediaElementSource, whose
+	 * capture is permanent and would commit all room audio to WebAudio.
 	 */
 	async function tryPlayMaster(): Promise<void> {
 		if (!master) return;
@@ -269,24 +226,22 @@
 		} catch (err: unknown) {
 			const name = err instanceof Error ? err.name : String(err);
 			if (name === 'NotAllowedError') {
-				// Recoverable by a gesture, so latch rather than treat as final. Announced only from the slot the
-				// viewer is looking at, so the paused hidden slot cannot raise a phantom hint.
+				// Recoverable by a gesture, so latch rather than treat as final. Announced only from the slot on screen.
 				if (!autoplayBlocked) {
 					autoplayBlocked = true;
 					console.warn('[tv] autoplay was blocked (NotAllowedError) — waiting for a tap to start the music');
 					if (active && visible) onautoplayblocked?.();
 				}
 			} else if (master && master.paused) {
-				// A rejection that LEAVES THE ELEMENT PAUSED is not terminal: the room believes it is playing, so
-				// silence is a dead end. Arm the SAME gesture recovery — by then the element is holding its src.
+				// A rejection that LEAVES THE ELEMENT PAUSED is not terminal — the room believes it is playing — so arm the SAME
+				// gesture recovery; by then the element is holding its src.
 				console.warn(`[tv] the instrumental was interrupted (${name}) — arming a tap to restart the music`);
 				if (!autoplayBlocked) {
 					autoplayBlocked = true;
 					if (active && visible) onautoplayblocked?.();
 				}
 			} else {
-				// A rejection that did NOT leave the element paused is a genuine interruption, so a later pass plays
-				// the new song. The room is not stuck.
+				// Still advancing, so a genuine interruption a later pass plays through. The room is not stuck.
 				console.warn(`[tv] the instrumental refused to start (${name}) — the room will be silent`);
 				if (active && visible) onplaybackfailed?.(name);
 			}
@@ -294,9 +249,8 @@
 	}
 
 	/**
-	 * Re-drive a transpose that could not route for want of user activation. A gesture is the only moment an
-	 * AudioContext becomes resumable, and none of the pitch effect's tracked deps change when the wall is
-	 * finally tapped. The `needsShift` guard keeps the keyShift-0 invariant.
+	 * A gesture is the only moment an AudioContext becomes resumable, and none of the pitch effect's tracked deps
+	 * change when the wall is finally tapped. The `needsShift` guard keeps the keyShift-0 invariant.
 	 */
 	async function retryPitchAfterGesture(): Promise<void> {
 		if (!needsShift(keyShift)) return;
@@ -306,19 +260,14 @@
 		if (masterGraph.isRouted) onpitchrouted?.();
 	}
 
-	// Recovery from a blocked autoplay AND the one chance a pending transpose has of routing. A gesture anywhere
-	// authorises playback and WebAudio for this document, so play() is re-attempted SYNCHRONOUSLY inside the
-	// handler — it must share the gesture's task to consume the activation.
-	//
-	// THE LISTENER IS ARMED UNCONDITIONALLY. Gated on `autoplayBlocked` it existed only on a TV whose autoplay
-	// had been REFUSED, so a correctly-autoplaying TV had no listener, its context could never resume, and ± was
-	// permanently dead with no error anywhere. The autoplay half still runs only while the latch is up (read at
-	// gesture time, not as a dependency); the pitch half runs on ANY gesture.
+	// play() is re-attempted SYNCHRONOUSLY inside the handler, which must share the gesture's task to consume the
+	// activation. THE LISTENER IS ARMED UNCONDITIONALLY: gated on `autoplayBlocked` it existed only on a TV whose
+	// autoplay had been REFUSED, so a correctly-autoplaying TV could never resume its context and ± was permanently dead.
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onGesture = () => {
-			// Read the latch HERE, not in the effect body: that is what keeps the listener armed on a TV that
-			// never raised it while keeping the play() nudge exclusive to one that was blocked.
+			// Read the latch HERE, not in the effect body: that is what keeps the listener armed on a TV that never
+			// raised it while keeping the play() nudge exclusive to one that was blocked.
 			if (autoplayBlocked) {
 				void tryPlayMaster();
 				// A mix song's only chance at a split graph after a pre-gesture refusal; without it the first song of
@@ -333,12 +282,11 @@
 						});
 				}
 			}
-			// The pitch retry runs on ANY gesture, blocked or not — a TV that autoplayed fine still needs
-			// this one tap before WebAudio will run, and it is the only reason this listener is armed there.
+			// On ANY gesture, blocked or not: a TV that autoplayed fine still needs one tap before WebAudio will run.
 			void retryPitchAfterGesture();
 		};
-		// `capture` so it sees the gesture even if something downstream stops propagation; passive because we
-		// never preventDefault; NOT `once`, so a pending transpose can still take a late gesture.
+		// `capture` so it sees the gesture even if something downstream stops propagation; passive because we never
+		// preventDefault; NOT `once`, so a pending transpose can still take a late gesture.
 		const opts: AddEventListenerOptions = { capture: true, passive: true };
 		window.addEventListener('pointerdown', onGesture, opts);
 		window.addEventListener('keydown', onGesture, opts);
@@ -348,50 +296,38 @@
 		};
 	});
 
-	// ONE site, because the guide is a channel pair inside the master. Set UNCONDITIONALLY: the value is
-	// remembered on a graph that is not yet built and applied when it is, so the level cannot be lost.
+	// ONE site, set UNCONDITIONALLY: an un-built graph remembers the value and applies it on construction.
 	$effect(() => {
 		masterGraph?.setGuideGain(effectiveGuide);
 	});
 
-	// BOTH sites: `.volume` governs the native path, and once a transpose routes the master through WebAudio
-	// its `.volume` is bypassed, so `setGain` must carry the same level.
+	// BOTH sites: `.volume` governs the native path, and once a transpose routes the master through WebAudio its
+	// `.volume` is bypassed, so `setGain` must carry the same level.
 	$effect(() => {
 		if (master) master.volume = effectiveMasterLevel;
 		masterGraph?.setGain(effectiveMasterLevel);
 	});
 
-	// Reposition on a real JUMP — a restart, a scrub, a skip, or a reconnect whose position has moved on.
-	//
-	// ONE-LINE DEPENDENCY SET, ON PURPOSE. Everything the decision NEEDS is an INPUT, read inside `applySeek`
-	// through `untrack`, never a reason to re-take it: reading `media` here as a tracked dependency made ANY
-	// fresh Media identity re-apply the position from the last playback COMMAND, so an unrelated song's
-	// processing yanked the playing song's playhead back to where the last pause left it.
+	// ONE-LINE DEPENDENCY SET, ON PURPOSE: everything else the decision needs is read inside `applySeek` through
+	// `untrack`. Reading `media` here as a tracked dependency made ANY fresh Media identity re-apply the position
+	// from the last playback COMMAND, so an unrelated song's processing yanked the playing playhead backwards.
 	$effect(() => {
-		// Dependency 1: the position a playback COMMAND asked for.
 		const target = seekSec;
-		// Bumped by every `setPlayback` but NEVER by position telemetry, so tracking it re-takes the decision
-		// on a restart-to-0 from under the threshold without reopening telemetry-chasing.
+		// Bumped by every `setPlayback` but NEVER by position telemetry, so tracking it re-takes the decision on a
+		// restart-to-0 from under the threshold without reopening telemetry-chasing.
 		void seekRev;
 		if (target === undefined) return;
-		// The COLD-MOUNT hold lives inside `applySeek`, with the element read it depends on, which is what keeps
-		// this dependency set to exactly "what a playback command asked for".
 		applySeek(target);
 	});
 
 	/**
-	 * Apply a seek target to the master. Called ONLY by the effect above. Every read in here is `untrack`ed,
-	 * and that is the INVARIANT rather than tidiness: an input to the decision must never become a trigger
-	 * for it. Only a jump clearing `SEEK_JUMP_SEC` acts, so telemetry does not fight the playhead.
+	 * Called ONLY by the effect above. Every read in here is `untrack`ed, and that is the INVARIANT rather than
+	 * tidiness: an input to the decision must never become a trigger for it.
 	 */
 	function applySeek(seekTarget: number): void {
 		const el = untrack(() => master);
-		/*
-		 * THE COLD-MOUNT HOLD. With NO element there is nothing to seek, so the position is held for the master's
-		 * `canplay`. With an element the hold MUST be cleared: `canplay` fires again on every warm re-buffer, and
-		 * the plan below declines live telemetry as sub-threshold, so a retained stash gets applied by the next
-		 * decode hiccup and resumes seconds EARLIER. See docs/FRONTEND.md#wake-lock-and-reload-resume.
-		 */
+		// THE COLD-MOUNT HOLD. With no element the position waits for `canplay`; with one the hold MUST be cleared, because
+		// `canplay` fires again on every warm re-buffer and a retained stash resumes seconds EARLIER.
 		resumeTarget = el ? undefined : seekTarget;
 		const snap = untrack(() => media);
 		const isActive = untrack(() => active);
@@ -401,18 +337,16 @@
 	}
 
 	/**
-	 * Resume to the room's position on a COLD MOUNT, taken when the master can actually play rather than at
-	 * effect time before the element exists. The decision is `resumeSeekTarget`, NOT `seekPlan`: a
-	 * cold-mounted element has no playhead to protect, so the room's position is a RESUME rather than a jump
-	 * subject to the telemetry-vs-scrub threshold.
+	 * The decision is `resumeSeekTarget`, NOT `seekPlan`: a cold-mounted element has no playhead to protect, so the
+	 * room's position is a RESUME rather than a jump subject to the telemetry-vs-scrub threshold.
+	 * See docs/FRONTEND.md#wake-lock-and-reload-resume.
 	 */
 	function applyResume(): void {
 		const el = untrack(() => master);
 		const target = resumeTarget;
 		if (target === undefined || !el) return;
-		// Mirror applySeek's full guard: the prewarming (hidden, INACTIVE) slot DOES reach `canplay`, so without
-		// it the next song's element is parked at the outgoing position and setPosition writes that stale
-		// playhead to every phone. Do NOT consume `resumeTarget` — the slot may become active later.
+		// Mirror applySeek's full guard: the prewarming (hidden, INACTIVE) slot DOES reach `canplay`, so without it the next
+		// song's element parks at the outgoing position. Do NOT consume `resumeTarget` — the slot may become active later.
 		const snap = untrack(() => media);
 		const isActive = untrack(() => active);
 		if (!snap || !isPlayable(snap) || !isActive) return;
@@ -422,25 +356,23 @@
 		resumeTarget = undefined;
 	}
 
-	// PITCH SHIFT. ONE graph per element, built LAZILY on the first non-zero shift; see pitch-shift.ts and the
-	// doc for the full trap. Enforced HERE: at keyShift 0 no graph is constructed, so the audio path is the plain
-	// element; only the ACTIVE slot shifts, because the capture is permanent and the hidden slot is paused; and
-	// THE GUIDE MIX IS THE ONE EXCEPTION, because withholding its src until the graph is confirmed would
-	// otherwise land the gapless seam on a song that still has to build one.
+	// PITCH SHIFT, enforced HERE: at keyShift 0 no graph is constructed, so the audio path is the plain element, and
+	// only the ACTIVE slot shifts, because the capture is permanent and the hidden slot is paused.
+	// See docs/FRONTEND.md#the-pitch-shift-graph.
 	$effect(() => {
 		// Read reactive deps up front so the effect re-runs when any of them change.
 		const shift = active ? keyShift : 0;
 		const v = master;
 		if (!v) return;
-		// GUIDE-MIX SONGS BUILD EAGERLY, in SPLIT mode: their guiding track does not exist until the splitter runs.
-		// `mixSettled` flips on EVERY outcome because it gates the src — an attempt that never settles leaves the
-		// room silent — and the three settling paths below are exhaustive.
+		// GUIDE-MIX SONGS ARE THE ONE EXCEPTION and build EAGERLY, in SPLIT mode: their guiding track does not exist until
+		// the splitter runs. `mixSettled` gates the src and an attempt that never settles leaves the room silent, so the
+		// three settling paths below must stay exhaustive.
 		if (wantsEagerGraph(guidePlan)) {
 			if (!masterGraph) masterGraph = new PitchShiftGraph(v, { split: true });
 			masterGraph.setGuideGain(effectiveGuide);
 			if (masterGraph.isRouted) {
-				// Already routed, possibly by a PRIOR song whose graph mode is now fixed. Settle and let `mixGateFor`
-				// judge: a leftover non-split graph resolves to `denied`, so the mix is withheld rather than downmixed.
+				// Possibly routed by a PRIOR song, whose mode is now fixed: a leftover non-split graph resolves to `denied`, so
+				// `mixGateFor` withholds the mix rather than downmixing it.
 				if (!mixSettled) mixSettled = true;
 			} else {
 				void masterGraph
@@ -452,10 +384,10 @@
 					});
 			}
 		}
-		// Only ever build once there is a real shift to apply; setShift(0) on an un-built graph is a no-op.
+		// setShift(0) on an un-built graph is a no-op, so nothing is constructed until a real shift is asked for.
 		if (needsShift(shift) && !masterGraph) masterGraph = new PitchShiftGraph(v);
-		// REPORT THE OUTCOME. `setShift` resolves whether or not the graph could route, and one that could not
-		// leaves the song audible but UNSHIFTED. Telling the page lets it ask for the tap that would fix it.
+		// `setShift` resolves whether or not the graph routed, and one that did not leaves the song audible but UNSHIFTED,
+		// so the page is told and can ask for the tap that would fix it.
 		const applied = masterGraph?.setShift(shift);
 		if (applied) {
 			void applied
@@ -464,7 +396,6 @@
 					// Only the slot the viewer is looking at may raise a hint.
 					if (!active || !visible) return;
 					if (!needsShift(shift)) {
-						// Back at concert pitch: nothing is pending.
 						onpitchrouted?.();
 					} else if (masterGraph && !masterGraph.isRouted) {
 						onpitchblocked?.();
@@ -476,21 +407,16 @@
 			// No graph and no shift wanted: the keyShift-0 invariant path. Nothing is pending.
 			onpitchrouted?.();
 		}
-		// HERE too: the level effect's deps are `master` and `effectiveMasterLevel` only, and `masterGraph` is a
-		// plain variable, so an attenuated song would jump to FULL volume on the first ±.
+		// BOTH levels here too: the level effect's deps are `master` and `effectiveMasterLevel` only and `masterGraph` is a
+		// plain variable, so on the first ± an attenuated song jumps to FULL volume and a fresh graph's guide goes silent.
 		masterGraph?.setGain(effectiveMasterLevel);
-		// And the GUIDE pair's gain, for the same reason: a fresh graph defaults `desiredGuideGain` to 0 (see
-		// pitch-shift.ts — the worst case of a missed call must be a guide nobody hears).
 		masterGraph?.setGuideGain(effectiveGuide);
-		// The guide needs no shift of its own: ONE worklet shifts all four channels at one ratio, so the pair
-		// cannot fall out of key with the instrumental.
 	});
 
 	function fileSrc(m: PlaybackSnapshot): string {
-		// The SINGLE separated instrumental — no per-key files, because transposition happens in the browser, so the
-		// src never depends on keyShift. On a GUIDE-MIX song this may be the 4-channel mix, but only once the split
-		// graph has captured the element and confirmed a running context. `mixGateFor` folds in BOTH halves — routed
-		// AND split — because `isRouted` alone let a leftover non-split graph take the mix and downmix it.
+		// No per-key files — transposition happens in the browser. On a GUIDE-MIX song this may be the 4-channel mix, but
+		// only once the split graph has captured the element and confirmed a running context; `mixGateFor` folds in BOTH
+		// halves, because `isRouted` alone let a leftover non-split graph take the mix and downmix it.
 		const plan = masterSrcPlan(guidePlan, playbackRef(m), mixGateFor(masterGraph, mixSettled));
 		// `plan.mixed` is the src's own claim. Asserting it against the graph turns a disagreement into a loud
 		// failure instead of a room full of full-volume vocals.
@@ -502,9 +428,9 @@
 	}
 
 	/**
-	 * Assign the src ONLY when the resolved STRING changes. Catalog churn rebuilds the media objects, so a
-	 * markup binding re-evaluates on identity alone and reassigns — and assigning `HTMLMediaElement.src`
-	 * RELOADS the resource and resets `currentTime` to 0 even when the URL is byte-identical.
+	 * Assign the src ONLY when the resolved STRING changes: assigning `HTMLMediaElement.src` RELOADS the resource
+	 * and resets `currentTime` to 0 even when the URL is byte-identical, and catalog churn rebuilds the media
+	 * objects, so a markup binding would reassign on identity alone.
 	 */
 	$effect(() => {
 		if (!master) return;
@@ -515,15 +441,13 @@
 		// cannot wake an effect, and while this is false `masterSrcPlan` commits no src at all on a mix song.
 		void mixSettled;
 		const resolved = playable ? fileSrc(media) : '';
-		// Compare against what the ELEMENT ACTUALLY HOLDS. The attribute is authoritative and cannot go stale; a
-		// shadow failed both ways — cleared while the element still held its src (reloading the playing song to 0)
-		// and retained across a remount (leaving a fresh element silent). `getAttribute` round-trips because every
-		// src assigned here is root-relative; `master.src` returns an absolutised URL.
+		// Compare against what the ELEMENT ACTUALLY HOLDS: the attribute is authoritative and cannot go stale, and
+		// `getAttribute` round-trips because every src assigned here is root-relative, where `master.src` absolutises.
 		const decision = nextVideoSrc(master.getAttribute('src') ?? '', resolved, playable);
 		if (decision.changed) master.src = decision.src;
-		// A NOT-PLAYABLE pass must leave BOTH shadows AND the element's src untouched: clearing `currentSrc` tells
-		// the transport the still-playing song has no src and stops it. The genuine clear is the {#if} unmount. The
-		// two shadows are written in LOCKSTEP, because a half-stale entry token reintroduces the silent second turn.
+		// A NOT-PLAYABLE pass must leave BOTH shadows AND the element's src untouched: clearing `currentSrc` tells the
+		// transport the still-playing song has no src. The two are written in LOCKSTEP, or a half-stale entry token
+		// reintroduces the silent second turn.
 		if (playable) {
 			currentSrc = resolved;
 			currentEntryId = entryId;
@@ -531,16 +455,12 @@
 	});
 </script>
 
-<!--
-	The two crossfading slots share one box, so which of them is on top IS the crossfade. Named tiers rather
-	than bare integers, so the pair reads against the rest of the stage ladder in app.css.
--->
+<!-- The two slots share one box, so which of them is on top IS the crossfade. -->
 <div class="slot" class:visible={visible} style="z-index:{visible ? 'var(--z-tv-video-active)' : 'var(--z-tv-video)'}">
 	{#if media && isPlayable(media)}
 		<!--
-			THE MASTER, and the ONLY media element. An <audio>, not a <video> — see the note at the top of this
-			file. It owns the clock: play/pause, currentTime, `ended`, and the position telemetry the lyrics overlay
-			and the room's progress bar both run on.
+			THE MASTER, and the ONLY media element. It owns the clock: play/pause, currentTime, `ended`, and the
+			position telemetry the lyrics overlay and the room's progress bar both run on.
 		-->
 		<audio
 			bind:this={master}
@@ -572,12 +492,8 @@
 	.slot.visible {
 		opacity: 1;
 	}
-	/*
-	 * The master carries no picture, so it is hidden outright rather than sized and letterboxed.
-	 *
-	 * `display: none` on an <audio> element does NOT stop it playing — unlike a <video>, there is no render
-	 * surface for the compositor to skip.
-	 */
+	/* `display: none` on an <audio> element does NOT stop it playing — unlike a <video>, there is no render surface
+	   for the compositor to skip, so the master can be hidden outright rather than sized and letterboxed. */
 	audio {
 		display: none;
 	}

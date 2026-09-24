@@ -397,6 +397,68 @@ for the same reason. Arrow Up/Down on the grip is the single-pointer alternative
 own row comes from `waitShort` in `src/lib/phrasing/position-sentence.ts`, which omits an unknown estimate
 rather than zeroing it.
 
+### The join screen
+
+`src/lib/components/JoinLanding.svelte` is the UNJOINED state of `/`, not a route of its own. It has TWO PANES,
+and which one is on screen is DERIVED from the resolved room preview rather than from a hand-advanced counter, so
+no state can show an identity pane for a room that was never confirmed. Step 1 is the CODE pane, a FALLBACK
+reached only by a guest with no code in the URL or whose scanned code did not resolve. Step 2 is the IDENTITY
+pane — the room confirmed IN WORDS, the name field, the colour ring, the CTA — and the only pane a guest who
+scanned the television's QR ever sees. The room has no NAME in the schema, so "confirmed in words" is who is
+here, from the room-preview endpoint.
+
+**Both paths must stay offered, never one instead of the other.** A typed code alone is a cognitive-function test
+under SC 3.3.8, and the scan path is what makes this screen conformant. There is nonetheless NO scan affordance
+on the code pane, deliberately: that pane is unreachable for anyone who scanned, since a scanned QR resolves and
+opens the identity pane directly, and a camera row would be inoperable anyway — the app is served from a
+plain-http LAN origin and `navigator.mediaDevices` is secure-context gated. What that costs is the NARRATION: the
+SC 3.3.8 argument still rests on the QR existing on the television, but it is no longer stated on this screen. A
+deliberate ruling; revisit it here if the conformance claim needs re-making.
+
+What the two panes put on state and markup:
+
+- **The code the join carries is the one the PREVIEW resolved from**, never `scannedCode`. The two differ in
+  exactly one case — a scan that failed, dropped to step 1, and was corrected by hand — and reading the scanned
+  value there joins the wrong room.
+- **`continueToIdentity` takes the code as an ARGUMENT, and the argument wins.** `CodeEntry` fires `oncomplete`
+  synchronously from inside its own input handler while its `value` binding arrives an `$effect` later, so
+  reading the local copy sees one character too few, fails the length check and returns silently — which is how
+  the last character of a typed code and a whole pasted code both do nothing.
+- **The step dots are gated on having SEEN step 1**, set from the pane and not from the code path, because "step
+  2 of 2" otherwise reports a step the scanning guest never skipped as skipped.
+- **ONE reason string and ONE live region for both panes.** `tests/guards/layout/phone-inventory.test.ts`
+  enumerates every phone live region with its purpose, and the disabled reason is a single duty however many
+  panes state it (SC 3.3.2). It is ANNOUNCED, not printed: shown, it is a third sentence telling a guest who can
+  see six empty boxes to fill them in, above a button that is already visibly disabled.
+- **One `h1` that changes shape, never two that swap**, and it must stay hoisted out of the branch. Inside an
+  `{#if}` it unmounts on every flip, leaving nothing for the browser to interpolate, which forces a JS crossfade
+  — and that both generates keyframes no media query can reach and reads geometry, which the mount rung throws
+  on. Hoisted, only its class changes and the transform interpolates natively.
+- **A `div`, never a second `<main>`.** This renders inside the layout's own main, so a `main` here is invalid
+  HTML and two landmarks to choose between on the first screen of the app.
+
+The wordmark's flight is `transform` ALONE, because the repo animates transform and opacity and nothing else: the
+shrink cannot be a `font-size` and the move cannot be a margin. Both states write the same two functions in the
+same order, or the browser interpolates matrices instead of per-function, and `transform-origin: left top` pulls
+the shrink toward the corner the mark is heading for — a centre origin drifts the top-left corner off the gutter.
+The header is a grid with two NAMED ROWS whose brand band is RESERVED, so its height does not depend on which
+pane is open and nothing below it moves as the mark flies; a per-pane padding would move the mark by changing
+LAYOUT instead. `container-type: inline-size` is there for the centring, which needs the CONTAINER's width,
+because a percentage inside a `transform` resolves against the transformed element itself. Step 2's scale factor
+is `--ph-text-base` over `--ph-text-2xl` written as a RATIO, because CSS cannot divide one length by another.
+
+The CTA docks to the bottom of `.join-main` by an auto margin, and that only works because
+`:global(main:has(.join-main))` makes the layout's `main` a flex column — a block child shrinks to its content
+and an auto margin has no free space to consume. It is reached with `:has()` rather than by making that main a
+column for every route, because the joined queue view is the other thing inside it. The dock is load-bearing
+beyond tidiness: `app.html` sets the interactive-widget mode that shrinks the LAYOUT viewport when the on-screen
+keyboard opens, so bottom-anchored content rides above the keyboard instead of under it. Headless Chromium has no
+soft keyboard, so no measured gate can verify that placement. Finally `.confirm`, `.err` and `.cta-reason` stay
+ordinary elements rather than Field primitives: `tests/e2e/contract.ts` addresses `.err` as a class on the
+alerting element and a class handed to a component carries no scoped rule; `.confirm` is the scanned path's
+headline and the primitive would dim and shrink it; `.cta-reason` needs its gap BELOW and centred text, and the
+only way to override the primitive reaches settings' own descriptions too.
+
 ### Settings
 
 `/settings` is three scopes in a real tablist — You (one person), Party (this room), Server (this machine
@@ -699,3 +761,128 @@ on-screen say; a failure no tap can lift gets a non-interactive one instead.
 Motion on this surface lives inside `@media (prefers-reduced-motion: no-preference)` or is gated in JS.
 Svelte `transition:`/`in:`/`out:`/`animate:` directives are banned tree-wide
 (`tests/guards/motion/motion.test.ts`) because the transition runtime never consults the media query.
+
+### The TV type floor
+
+`src/routes/tv/+page.svelte` declares `font-size` on `:global(:root)`, and both halves of that are
+load-bearing. It must be `:root`, because every `--tv-*` tier in `src/app.css` is a `rem` multiple of it and
+a `font-size` on `.tv` would not re-root its descendants. It must come from inside THIS component rather
+than `app.css`, because a Svelte stylesheet is injected only while its component is mounted, so the floor
+reaches the `/tv` document alone — a global `:root` re-roots the phone's `--ph-*` ladder to ~19px and
+regresses SC 1.4.4.
+
+The value is `max(2.7vh, 20px) * clamp(0.8, var(--ui-scale), 1.6)`: the `vh` term scales with the panel and
+the `20px` term is the windowed legibility floor. `--ui-scale` is declared with `@property` as a
+`<number>`, so a non-numeric write falls back to 1 instead of poisoning the `clamp()` and dropping the whole
+declaration — which would silently remove the floor. `tests/guards/layout/stage-scale.test.ts` holds the
+ten-foot floor this roots.
+
+### The attract and lobby idles
+
+Both idles are the same screen at two scales, so a change to one belongs in the other. Attract is TWO
+COLUMNS rather than a centred stack: the phrase can be a large left-aligned statement while the join block
+stays a self-contained panel a guest scans or transcribes from. The fixed `Karaoke` label never rotates,
+because it is the only thing telling a stranger what they are looking at, and `.phrase-box` is a FIXED
+height computed as `--tv-phrase * 1.03 * --tv-phrase-lines` — the `1.03` is `.phrase-line`'s own
+`line-height`, and the two must agree or the box no longer holds whole lines. A one-line and a two-line
+phrase must not move the label above them.
+
+The phrase set is a shuffled bag (`src/lib/tv/phrases.ts`) seeded from the room code, so a room's rotation
+is deterministic and no phrase repeats until the set has shown; the only place a repeat could appear is the
+SEAM between two passes, which `refill` re-draws against. `MAX_PHRASE_CHARS` is 24, measured in-browser at
+84px/900 in the 820px panel, where 23 chars fits two lines and 30 spills to three. Reduced motion stops the
+rotation TWO independent ways, either sufficient: the JS clock never starts, and the crossfade is a CSS
+animation gated on `no-preference` replayed by a `{#key}` remount.
+
+A typed address is ONE unbreakable token, so SHRINKING beats breaking: neither `.jt-url` nor the lobby's
+`.url` carries `overflow-wrap`, and what makes them FIT is `--tv-attract-right`, sized from a measured
+23-character address plus the overscan padding. `.asplit-r` charges `--tv-safe-x` on its right edge only,
+because its left edge is the interior 2px border and not a screen edge. Wherever a value is tracked out
+(`.jt-code`, the lobby's `.code-l`/`.code-v`) the `padding-left` must EQUAL that element's own
+`letter-spacing`: tracking adds its space after the last glyph too, and a centred shrink-to-fit box includes
+it, so the glyphs otherwise sit left of true centre by half the tracking.
+
+The lobby is a flex COLUMN whose roster strip is IN FLOW, not `position: absolute`: centred across the full
+`inset: 0` box with the strip pinned to the bottom, the two intersected on short panels and DOM order
+painted the chips over the typed join address. The strip's own height is what reserves its band at every
+resolution. Its horizontal padding is `--tv-strip-corner-clear` on BOTH sides, which carries the overscan
+inset AND reserves the bottom-right corner controls, which paint above it — without it a wrapped roster's
+last chip landed under the fullscreen button. There is no `overflow: hidden`: a hard clip silently ate
+roster members, so the `.dense` step-down shrinks the chips instead. Density keys on total CHARACTERS, not a
+count: `displayName` admits 32, so nine long names already overflow the two rows `max-height: 26vh` allows
+while a count rule sits quiet until 13. `CHAR_BUDGET` is `CHIP_STEPDOWN` times a typical name, and both are
+read off the DATA rather than a measurement of the rendered strip. `tests/guards/subsystem-tv/lobby-copy.test.ts`
+pins the two situations the lobby's wording must keep apart.
+
+`src/lib/tv/JoinBadge.svelte` renders its QR in EVERY state, reachable or not, and appends a one-line notice
+rather than replacing the panel — replacing it took the typed path with it, leaving the one screen that
+could still be joined by hand offering neither address nor code. The STATED TRADE is that a guest can scan a
+code that will not resolve; that is accepted, because the address is only unroutable when nobody has set a
+party address, which in practice means a laptop showing this to itself. The `.badqr` family names are kept
+deliberately even though nothing about it is a card any more: they are how the e2e contract, the party flow
+and the scaling probe recognise the state. The corner treatment hides the fix clause rather than restating
+it, so the one string cannot drift, and `.corner` is scoped `:not(.badqr)` so the QR's flex row does not
+reach the notice, whose block children would otherwise become side-by-side columns.
+
+### The full-screen takeovers
+
+Each takeover carries its own colour family AND its own eyebrow AND (for error/processing) its own mark, so
+colour is never the only carrier. `--accent` appears only as a non-text border or fill, which is what it is
+certified for; takeover text is `--ink` or `--accent2`. The backdrop is a radial SCRIM, not an opaque wash:
+a wash blanks the room's chosen backdrop for every song change, which is the exact black flash the
+background layer's visibility band exists to avoid, undone one layer up — and it would hide the join block
+that must stay visible through it. "Next up" is untrue for the first song of the evening, so the label reads
+"Now singing" until `openedOnce`. The processing takeover's words come from `processStageLabel`, the one
+guest-facing process vocabulary shared with the phone, and the TV holds only a COARSE "processing" state, so
+it feeds the total `processStep` mapping a representative mid-process value rather than inventing the
+per-media tracking it was purpose-built not to hold.
+
+The lower-third is plain TEXT, not a card, because a filled panel over the room's chosen background amputates
+the feature they picked; legibility comes from a blurred `text-shadow` AND a `-webkit-text-stroke` with
+`paint-order: stroke fill` (`tests/guards/subsystem-tv/lower-third-stroke.test.ts`). A shadow tuned against
+black disappears against a bright field of similar luminance — the singer name measured 1.10:1 on white.
+`.ls-song` clamps to two lines with `-webkit-line-clamp`, which needs the `-webkit` box display and hidden
+overflow beside it to take effect at all, and `.ls-artist` must NOT carry `white-space`/`overflow` of its
+own: the overflow pair is inert on an inline element while `nowrap` DOES apply and hard-clips a long credit
+mid-word.
+
+### The visualizer stage
+
+`src/lib/tv/VisualizerStage.svelte` owns only the loop; the renderers in `src/lib/tv/visualizers.ts` are
+pure functions of `t`. This is the SECOND rAF loop on the TV, so three costs are managed: the draw is capped
+at ~30fps (`FRAME_MS = 33`) because the lyric ball keeps the stronger claim on the frame budget; the backing
+store is reduced to `SCALE = 0.5` and stretched by CSS, which cuts fill cost roughly fourfold; and `playing`
+going false CANCELS the frame rather than merely hiding the canvas. Under `prefers-reduced-motion: reduce`
+it draws ONE frame and stops — a still plasma is a legitimate background — enforced by
+`tests/guards/motion/visualizer-motion.test.ts`, because the CSS-parsing motion guard cannot see a canvas.
+
+The clock baseline lives at COMPONENT scope, not inside the effect: as a per-effect-run local it is reset by
+every `playing` toggle, `variant`/`hue` change or remount, which pins `t` near zero and draws one frame
+forever. Every reactive input is read SYNCHRONOUSLY in the effect body, because a value read only inside the
+rAF callback is read outside the effect's synchronous pass and the effect subscribes to nothing, dropping a
+room's hue change until a remount. Every renderer's colour comes from `stageHueToHex`, which is the
+brightness bound: a raw `hsl()`/`rgb()` value is how a stage visualizer becomes the brightest thing behind
+the reel. Spectrum bars and oscilloscopes are deliberately ABSENT — both claim to draw the audio signal and
+nothing here reads it.
+
+### Reading a lyrics artifact
+
+`src/lib/tv/lyrics.ts` treats model output as UNTRUSTED: every accessor is defensive, and a missing or NaN
+bound reads as "not yet sung" rather than throwing. Whisper returns VAD/decoder SEGMENTS of up to ~30s
+rather than lyric lines, and after forced alignment every word has timings, so the PAUSES are where lines
+break. That resegmentation lives in the DISPLAY layer rather than the worker, so it fixes artifacts already
+on disk with no re-process.
+
+Two refusals in it are load-bearing. It only splits a line that is ALREADY too long, because applied
+unconditionally a pause splits on any held note and turns a correct short line into two rows that flash
+past. And it REFUSES to split at all when the timed words do not cover the line's text (`COVERAGE_MIN`),
+because `normalize_lyrics` drops un-timed words and rebuilding from `words` would silently DELETE lyrics
+from the screen — one badly-wrapped line beats a line with words missing. An orphan merges into whichever
+neighbour it is closer to IN TIME, because both directions occur in real lyrics and always appending
+backwards produces "I want to have control. I". A duet `part` is carried onto every row a source line splits
+into, or a long duet line loses its colour; `romanization` needs no carry, since it appears only on
+line-synced docs, which are never resegmented.
+
+`LYRICS_LEAD_SEC` is 0 and is applied at DISPLAY time, so the artifact stays a faithful record of where the
+words are: one global lead cannot be right for both a ballad and a fast rap line, and it masks per-song
+text/audio mismatch.

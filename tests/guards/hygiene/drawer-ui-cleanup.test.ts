@@ -1,9 +1,8 @@
-// Guard: the processing-status UI had redundant elements removed. Each was a pure-markup deletion, so
-// nothing BEHAVIOURAL reds if one comes back — this source scan is the load-bearing regression trap. It
-// strips comments (so prose NAMING the removed elements neither satisfies nor trips a check) and pins two
-// removals: GuidingTrack's out-of-place "No isolated vocals …" line, and ProcessingCard's per-stage status
-// pills. Each is paired with a sentinel that reds if the whole component vanished, and with a STRUCTURAL,
-// name-independent assertion — a literal matcher alone passes on any reworded or renamed reintroduction.
+// Guard: the processing-status UI had redundant elements removed. Each was a pure-markup deletion, so nothing
+// BEHAVIOURAL reds if one comes back. It strips comments (so prose NAMING the removed elements neither satisfies
+// nor trips a check) and pins two removals: GuidingTrack's out-of-place "No isolated vocals …" line, and
+// ProcessingCard's per-stage status pills. Each is paired with a sentinel that reds if the whole component
+// vanished, and with a STRUCTURAL, name-independent assertion — a literal matcher alone passes on any rewording.
 
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -21,7 +20,6 @@ function read(rel: string): string {
 
 test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the control', () => {
 	const code = read('src/lib/components/GuidingTrack.svelte');
-	// The control is <Slider variant="guiding"> now; this arm cares that the CONTROL is present, not how it is spelled.
 	expect(code).toContain('<Slider');
 	expect(code).toContain('variant="guiding"');
 	expect(code).toContain('disabled={!available}');
@@ -33,7 +31,6 @@ test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the c
 test('ProcessingCard drops the per-stage status pills, keeps bar + stage line', () => {
 	const code = read('src/lib/components/ProcessingCard.svelte');
 	expect(code).toContain('class="progress"');
-	// the bar is <Progress> now — same idiom, and it carries role="progressbar" with aria-valuenow.
 	expect(code).toContain('<Progress');
 	expect(code).toContain('class="stage"');
 	expect(code).not.toContain('class="chips"');

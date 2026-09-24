@@ -1,13 +1,11 @@
-// `checkI4` must SKIP under a gestureless autoplay refusal BEFORE it judges the lyrics highlight against
-// the playhead. fuzz.mjs runs gestureless by default, so the browser refuses autoplay and the master sits
-// paused at t=0 with only its preload burst decoded while the server says isPlaying and the reel advances
-// off the server intent. Caught: with no skip, I4 compared `cue = currentTime + LEAD_SEC` against a frozen
-// playhead and filed a PHANTOM violation on every gestureless run, so the seams it exists to reach were
-// never reached. It must STILL BITE with the master genuinely decoding — a blanket disable is a vacuous pass.
+// guard: `checkI4` must SKIP under a gestureless autoplay refusal BEFORE it judges the lyrics highlight
+// against the playhead. fuzz.mjs runs gestureless, so the master sits paused at t=0 with only its preload
+// burst decoded while the server says isPlaying. With no skip, I4 compared `cue = currentTime + LEAD_SEC`
+// against a frozen playhead and filed a PHANTOM violation on every run. It must STILL BITE with the master
+// genuinely decoding — a blanket disable is a vacuous pass.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-/** Blank comments, so the prose describing the defect cannot satisfy or trip a check. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
@@ -39,13 +37,13 @@ const BODY = checkI4Body(PROBE);
 test('checkI4 exists and still computes the cue-vs-window judgement (not vacuous)', () => {
 	// The skip must not have deleted I4's ability to bite: the cue-vs-window judgement stays.
 	expect(BODY).toMatch(/const\s+cue\s*=\s*w\.master\.currentTime\s*\+\s*LEAD_SEC/);
-	expect(BODY).toMatch(/the lyrics highlight is on a line whose window does not contain the playhead/);
+	expect(BODY).toMatch(/the lyrics highlight is on a line whose window does not contain the playhead/i);
 });
 
 test('checkI4 skips under a gestureless autoplay refusal', () => {
 	// A skip(), not a violation, and it must carry the refusal reason.
 	expect(BODY).toMatch(/if\s*\(\s*autoplayRefused\(w\)\s*\)/);
-	expect(BODY).toMatch(/skip\(\s*[\s\S]*?'I4'[\s\S]*?the browser refused autoplay/);
+	expect(BODY).toMatch(/skip\(\s*[\s\S]*?'I4'[\s\S]*?the browser refused autoplay/i);
 });
 
 test('checkI4 skips a refused master BEFORE it computes the cue (regression trap)', () => {

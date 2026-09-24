@@ -1,18 +1,8 @@
-// guard: the join screen's colour ring is the MEASURED palette, and its paint agrees with its knob. Two
-// claims, both source-decidable and both of which a rendered screenshot would pass while broken.
-//
-// 1. EVERY STOP THE RING CAN RETURN IS A LEGAL SINGER COLOUR. The picker it replaced computed its
-//    reachable set with `hueToHex` at the pinned `SINGER_L`, so legibility was a property of the
-//    generator; reading fills out of a JSON file gives that up, and a stop that fails
-//    `isLegibleSingerColor` is a guest whose identity dot is invisible on somebody else's TV — which they
-//    cannot see. palette-registry.test.ts measures the CHROMATIC variant against the role floors; this
-//    measures the UNIFORM variant against the app's own gate, a different function and threshold.
-//
-// 2. THE PAINT AND THE KNOB SHARE ONE ANGLE FRAME. A `conic-gradient`'s `from` rotates the paint, while a
-//    knob placed with `rotate()` measures from 12 o'clock and knows nothing about that rotation — so a
-//    knob drawn at a stop's GRADIENT angle sits 90° from the colour it claims to point at, which is what
-//    the approved mockup's static markup does (knob at 161.25°, Turquoise painted at 71.25°). Invisible in
-//    a still: the knob is on A colour, just not the one the hub names.
+// guard: the join screen's colour ring is the MEASURED palette, and its paint agrees with its knob. Caught
+// a knob drawn at a stop's GRADIENT angle sitting 90° from the colour it claims (knob 161.25°, Turquoise
+// painted 71.25°), because a `conic-gradient`'s `from` rotates the paint while a `rotate()` knob measures
+// from 12 o'clock. Every returnable stop must also clear `isLegibleSingerColor`; palette-registry.test.ts
+// measures the CHROMATIC variant against the role floors, this the UNIFORM variant against the app's gate.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -39,7 +29,6 @@ const SETTINGS = readFileSync(join(SRC, 'routes/settings/+page.svelte'), 'utf8')
 const GALLERY = readFileSync(join(SRC, 'routes/components/+page.svelte'), 'utf8');
 
 test('every stop the ring can return is a colour a singer may legally be identified by', () => {
-	// A broken import leaves an empty list, and `every` over [] is true.
 	expect(PALETTE_STOPS.length).toBeGreaterThanOrEqual(48); // @nvf-floor PALETTE_STOPS.length
 	const illegible = PALETTE_STOPS.filter((s) => !isLegibleSingerColor(s.fill)).map((s) => `${s.name} ${s.fill}`);
 	expect(illegible, 'the ring offers a colour whose identity dot fails the 3:1 non-text floor').toEqual([]);
@@ -75,14 +64,14 @@ test('a stop round-trips: the colour painted at a knob’s angle is the stop the
 
 test('the paint names all 48 fills, in ring order, with hard sector edges', () => {
 	const grad = paletteConicGradient();
-	// The `from` in the paint is the SAME constant the knob angle is offset by. Two copies of this number
-	// is precisely how the two frames drift apart.
+	// The `from` in the paint is the SAME constant the knob angle is offset by; two copies of this number is
+	// precisely how the two frames drift apart.
 	expect(grad.startsWith(`conic-gradient(from ${PALETTE_RING_FROM_DEG}deg,`)).toBe(true);
 	for (const [k, s] of PALETTE_STOPS.entries()) {
 		const from = k * PALETTE_STOP_ARC_DEG;
 		const to = (k + 1) * PALETTE_STOP_ARC_DEG;
-		// BOTH edges: an interpolated band shows colours the ring cannot return, so a guest aims at one
-		// and is handed its neighbour.
+		// BOTH edges: an interpolated band shows colours the ring cannot return, so a guest aims at one and is
+		// handed its neighbour.
 		expect(grad, `${s.name} is not painted as its own hard sector`).toContain(`${s.fill} ${from}deg ${to}deg`);
 	}
 	// Distinct fills, so the sector list cannot be 48 copies of one colour.
@@ -103,9 +92,8 @@ test('a colour the ring cannot produce maps onto the ring by hue, and one it can
 
 test('both identity surfaces render the RING, and the eight-preset picker still has a surface', () => {
 	// Both halves, because the absence alone would be satisfied by deleting the picker outright — and it is
-	// not deleted. `SEL.swatch` and `SEL.hueSlider` still resolve, so nothing reds if a flow points at them;
-	// only a pinned split says which surface each belongs to. The picker's one remaining surface is the
-	// /components gallery, which is a live binding rather than a graveyard.
+	// not deleted. `SEL.swatch` and `SEL.hueSlider` still resolve, so only a pinned split says which surface
+	// each belongs to.
 	expect(LANDING).toMatch(/<ColourRing\b/);
 	expect(LANDING).not.toMatch(/<ColourPicker\b/);
 	expect(SETTINGS, 'the settings identity control is the ring now, like the join pane').toMatch(/<ColourRing\b/);
@@ -115,15 +103,14 @@ test('both identity surfaces render the RING, and the eight-preset picker still 
 	);
 	// REAL occupancy from the same preview the room sentence is built from, not a sample.
 	expect(LANDING).toMatch(/taken=\{preview\?\.colors \?\? \[\]\}/);
-	// Settings has no occupancy in its load, so it passes an EMPTY list rather than inventing one — pinned
-	// so a sample list has to argue with this line instead of slipping in as a plausible default.
+	// Settings has no occupancy in its load, so it passes an EMPTY list rather than inventing one — pinned so
+	// a sample list has to argue with this line instead of slipping in as a plausible default.
 	expect(SETTINGS).toMatch(/taken=\{\[\]\}/);
 });
 
 test('the ring declares the slider contract it no longer inherits from a range input', () => {
 	// A native `<input type=range>` brought all of this with it. The ring is a div, so each attribute is
-	// hand-written and deletable in isolation; the BEHAVIOUR is driven in a unit test, and this pins that
-	// the attributes a reader depends on are actually emitted.
+	// hand-written and deletable in isolation; the BEHAVIOUR is driven in a unit test.
 	expect(RING).toMatch(/role="slider"/);
 	expect(RING).toMatch(/tabindex="0"/);
 	expect(RING).toMatch(/aria-valuemin=\{1\}/);
@@ -136,19 +123,16 @@ test('the ring declares the slider contract it no longer inherits from a range i
 	for (const key of ['ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'Home', 'End']) {
 		expect(RING, `${key} is not handled`).toContain(`'${key}'`);
 	}
-	// The ring restates the global focus rule to make its outline a circle, so a paste of the wrong colour
-	// here would be invisible to that rule's own guard.
+	// The ring restates the global focus rule to make its outline a circle, so a wrong colour pasted here
+	// would be invisible to that rule's own guard.
 	expect(RING).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--focus\)/s);
 });
 
 test('the ring sizes itself off --tap, so the band a thumb hits is one tap target wide', () => {
-	// The band's width is `d/2 - hole`, both derived from `--tap`, which is what makes "the ring is the
-	// touch target" true rather than a coincidence of a screenshot's numbers. The KNOB's box is a full tap
-	// target even though the dot inside it is drawn smaller.
-	//
-	// `--cr-d` MUST NOT carry a percentage: a percentage height resolves against this pane's auto-height
-	// column, so `min(…, 100%)` computed the disc's height to 0 — a 220×0 line with no band and a collapsed
-	// hub. Pinning the expression stops that returning as an apparently-safe responsive tweak.
+	// The band's width is `d/2 - hole`, both derived from `--tap`, which is what makes "the ring is the touch
+	// target" true rather than a coincidence of a screenshot's numbers. `--cr-d` MUST NOT carry a percentage: a
+	// percentage height resolves against this pane's auto-height column, so `min(…, 100%)` computed the disc's
+	// height to 0 — a 220×0 line with no band and a collapsed hub. Pinning the expression stops that returning.
 	expect(RING).toMatch(/--cr-d:\s*calc\(var\(--tap\) \* 5\);/);
 	expect(RING, 'a percentage in the diameter resolves to 0 height on an auto-height parent').not.toMatch(
 		/--cr-d:[^;]*%/
@@ -156,8 +140,8 @@ test('the ring sizes itself off --tap, so the band a thumb hits is one tap targe
 	expect(RING).toMatch(/--cr-hole:\s*calc\(var\(--cr-d\) \/ 2 - var\(--tap\)\)/);
 	expect(RING).toMatch(/\.cr-knob\s*\{[^}]*width:\s*var\(--tap\)[^}]*height:\s*var\(--tap\)/s);
 	// No hard-coded length anywhere in the ring's geometry. COMMENT-STRIPPED, because this file's own prose
-	// names resolved pixel sizes. `2px` is exempt: it is the focus outline's WIDTH, spelled exactly as
-	// app.css's global `:focus-visible` rule spells it, and there is no width token to name instead.
+	// names resolved pixel sizes. `2px` is exempt: it is the focus outline's WIDTH, spelled as app.css's global
+	// `:focus-visible` rule spells it, and there is no width token to name instead.
 	const style = RING.slice(RING.indexOf('<style>')).replace(/\/\*[\s\S]*?\*\//g, ' ');
 	const literals = [...style.matchAll(/(?<![\w.-])(\d+)px\b/g)].map((m) => m[0]).filter((v) => v !== '2px');
 	expect(literals, 'the ring hard-codes a length instead of deriving it from a token').toEqual([]);

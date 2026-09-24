@@ -1,9 +1,6 @@
-// Client-side readiness view state: display overrides, card kinds, empty states, playability.
-//
-// The CLASSIFICATION is shared with the server through `$lib/contract/process/readiness` and must stay
-// there: two copies with a parity test is one function with two homes. What is genuinely client-only is
-// that a LIVE media:status can override the catalog, and that 'failed' exists only as a live event — so
-// the display union is the catalog union plus that one member.
+// Client-side readiness view state. The CLASSIFICATION is shared with the server through
+// `$lib/contract/process/readiness` and must stay there: two copies with a parity test is one function with two
+// homes. Client-only here: a LIVE media:status can override the catalog, and 'failed' exists only as a live event.
 import { isProcessableSource, readyToSing, type Media, type MediaStatus } from '$lib/contract';
 import { readinessOf, type CatalogReadiness } from '$lib/contract/process/readiness';
 
@@ -12,15 +9,9 @@ export { readinessOf };
 /** Catalog readiness plus `failed`, which only a live `media:status` event can produce. */
 export type Readiness = CatalogReadiness | 'failed';
 
-/**
- * Readiness for display, letting a LIVE status override the catalog: the event arrives before the catalog
- * copy is refreshed, so a song the singer just tapped must read as processing immediately or the row
- * visibly fails to respond to the tap.
- *
- * A `failed` status is SURFACED, never swallowed — falling through to the catalog leaves a dead process
- * still saying it is making karaoke, forever. Only when the song is not actually singable, though: a failed
- * lyrics upgrade on an already-processed song is not a failure the guest needs.
- */
+/** Readiness for display, letting a LIVE status override the catalog: the event arrives before the catalog copy is
+ * refreshed, so a song the singer just tapped must read as processing immediately. A `failed` status is SURFACED,
+ * never swallowed — but only when the song is not actually singable, so a failed lyrics upgrade does not surface. */
 export function displayReadiness(m: Media, live?: { status: MediaStatus }): Readiness {
 	if (live) {
 		if (live.status === 'ready') return 'ready';
@@ -33,15 +24,9 @@ export function displayReadiness(m: Media, live?: { status: MediaStatus }): Read
 	return readinessOf(m);
 }
 
-/**
- * Which card an entry in the ROTATION gets — the singer's own queue slot, not a search row. A terminally
- * failed process is NOT in flight, so an "is it in flight" test renders a dead turn as an ordinary waiting
- * one while the rotation holds its slot and skips it on every pass.
- *
- * Failure is decided by `displayReadiness`, NEVER by a fresh `status === 'failed'` test, so this cannot
- * disagree with the row and the header that already read it — and it buys the case a raw status test gets
- * wrong: a turn that WILL play must not be labelled broken.
- */
+/** Which card an entry in the ROTATION gets. A terminally failed process is NOT in flight, so an "is it in flight"
+ * test renders a dead turn as an ordinary waiting one while the rotation holds its slot and skips it every pass.
+ * Failure is decided by `displayReadiness`, NEVER by a fresh `status === 'failed'` test, so this cannot disagree. */
 export type QueueCardKind = 'processing' | 'failed' | 'plain';
 
 export function queueCardKind(media: Media | undefined, live?: { status: MediaStatus }): QueueCardKind {
@@ -53,26 +38,16 @@ export function queueCardKind(media: Media | undefined, live?: { status: MediaSt
 	return 'processing';
 }
 
-/**
- * Whether offering "make karaoke" makes sense: only for a song that is neither done nor in flight, AND whose
- * audio can actually be acquired. A FAILED song qualifies — the process settled back to un-processed
- * server-side, so a retry is a real action.
- *
- * IT MUST TAKE THE MEDIA, not just its readiness: readiness is derived from the process gates, so a
- * metadata-only hit that can never be processed reads as un-acquired exactly like a fresh upload. Offering
- * Sing there takes the singer's turn (the queue-add comes first, by design) and the server then refuses the
- * process, leaving a turn nothing can ever make ready and no failure event because no job was enqueued.
- * `isProcessableSource` is the single shared authority; the server's own check asks it too.
- */
+/** Whether offering "make karaoke" makes sense: only for a song neither done nor in flight, AND whose audio can
+ * actually be acquired. A FAILED song qualifies. IT MUST TAKE THE MEDIA, not just its readiness: a metadata-only hit
+ * that can never be processed reads as un-acquired exactly like a fresh upload, and offering Sing there takes the
+ * singer's turn and leaves a turn nothing can ever make ready. `isProcessableSource` is the shared authority. */
 export function canProcess(m: Media, r: Readiness): boolean {
 	return isProcessableSource(m.source) && (r === 'unacquired' || r === 'failed');
 }
 
-/**
- * What the Ready filter says when it has nothing to show. The group is query-scoped while a search is active
- * and the LIBRARY is not, so an unmatched search empties the group — and "no karaoke-ready songs yet" is then
- * a false statement about the whole library, which reads as the app having thrown the downloads away.
- */
+/** What the Ready filter says when it has nothing to show. The group is query-scoped while a search is active and
+ * the LIBRARY is not, so "no karaoke-ready songs yet" would be a false statement about the whole library. */
 export interface ReadyEmptyState {
 	message: string;
 	/** When set, the UI offers a one-tap way back to the full library (clears the search). */
@@ -88,8 +63,8 @@ export function readyEmptyState(opts: {
 	// A genuinely empty library — this copy is correct here, and only here.
 	if (libraryCount === 0) {
 		return {
-			// No control name and no mark: a plain string cannot hold one, and naming a button here is how
-			// the copy came to point at a control that had been relabelled.
+			// No control name and no mark: a plain string cannot hold one, and naming a button is how copy comes to point
+			// at a control that has been relabelled.
 			message: 'No karaoke-ready songs yet.',
 			showAllCount: null
 		};
@@ -107,25 +82,19 @@ export function readyEmptyState(opts: {
 	return { message: `${libraryCount} karaoke ${libraryCount === 1 ? 'song' : 'songs'} ready.`, showAllCount: null };
 }
 
-/**
- * Will this entry's media actually play right now? Client mirror of the server's own check, and the two MUST
- * agree or the phone narrates a different rotation than the TV performs.
- */
+/** Client mirror of the server's own playability check, and the two MUST agree or the phone narrates a different
+ * rotation than the TV performs. */
 export function entryPlayable(media: Media | undefined, live?: { status: MediaStatus }): boolean {
-	// A live status decides in BOTH directions: `ready` means the process landed before the catalog caught up,
-	// anything else mid-flight means still processing. `failed` and `canceled` are terminal and say nothing
-	// about playability, so the catalog answers for both.
+	// A live status decides in BOTH directions: `ready` means the process landed before the catalog caught up.
+	// `failed` and `canceled` are terminal and say nothing about playability, so the catalog answers for both.
 	if (live && live.status === 'ready') return true;
 	if (live && live.status !== 'failed' && live.status !== 'canceled') return false; // still processing
 	if (!media) return false;
 	return readyToSing(media);
 }
 
-/**
- * Which queued entry will ACTUALLY play next — the first PLAYABLE one, never the first in the list: the server
- * skips an entry whose stems are still processing (it keeps its fair slot but yields its turn), so "first"
- * promises a song the TV is about to skip past. `entries` must already be in rotation order.
- */
+/** The first PLAYABLE queued entry, never the first in the list: the server skips an entry whose stems are still
+ * processing, so "first" promises a song the TV is about to skip past. `entries` must be in rotation order. */
 export function nextPlayableEntryId<E extends { id: string; mediaId: string }>(
 	entries: E[],
 	mediaOf: (mediaId: string) => Media | undefined,
@@ -134,16 +103,10 @@ export function nextPlayableEntryId<E extends { id: string; mediaId: string }>(
 	return entries.find((e) => entryPlayable(mediaOf(e.mediaId), liveOf(e.mediaId)))?.id ?? null;
 }
 
-/**
- * The media ids that belong in the "Processing" group, as an ORDER-INDEPENDENT set because the caller
- * re-hydrates each id from the catalog and imposes its own order.
- *
- * THE QUERY IS A LOAD-BEARING INPUT. With a search active this restricts to the server's query-matched
- * group, because re-deriving from the whole status map lets someone else's processing song appear under an
- * unrelated search — a row bypassing the search filter. With no search it is the full union of every
- * in-flight song, which is what guarantees a process you started is visible; `failed` is included, because a
- * dead process keeps its row, and `ready`/`canceled` are not.
- */
+/** The media ids that belong in the "Processing" group, as an ORDER-INDEPENDENT set. THE QUERY IS A LOAD-BEARING
+ * INPUT: with a search active this restricts to the server's query-matched group, because re-deriving from the whole
+ * status map lets someone else's processing song appear under an unrelated search. With no search it is the full
+ * union, which guarantees a process you started is visible; `failed` is included, `ready` and `canceled` are not. */
 export function processingGroupIds(opts: {
 	searchActive: boolean;
 	processingResults: Media[];

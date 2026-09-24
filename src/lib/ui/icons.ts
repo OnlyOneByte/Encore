@@ -1,61 +1,44 @@
 /*
- * The icon set, as path data.
- *
- * NO CODEPOINT MAY BE SHIPPED AS AN ICON. Several transport codepoints carry `Emoji_Presentation=Yes`, so
- * colour emoji is their Unicode default and the platform's last-resort matcher wins whenever the font stack
- * owns no glyph for them. The text-presentation selector is not a fix — WebKit honours it unreliably on
- * exactly these codepoints, and even when honoured it controls only colour, not stroke weight or metrics.
- *
- * INLINE PATHS AND NO DEPENDENCY, because this app is self-hosted and expected to work on a LAN with no
- * internet: a webfont is the same failure class being escaped, a CDN is a hard offline failure, and a sprite
- * sheet is a fetch to reason about against the service worker.
- *
- * Geometry is Lucide's (ISC licence): a 24×24 grid, 2px stroke, round caps and joins. Only the geometry is
- * vendored. Values are the INNER markup of the svg, and being compile-time constants in our own source with
- * no interpolation is what makes rendering them via {@html} in Icon.svelte safe.
+ * The icon set, as path data. NO CODEPOINT MAY BE SHIPPED AS AN ICON: several transport codepoints carry
+ * `Emoji_Presentation=Yes`, so colour emoji is their Unicode default, and the text-presentation selector is honoured
+ * unreliably on exactly those. INLINE PATHS AND NO DEPENDENCY, because this app is self-hosted and expected to work on
+ * a LAN with no internet. Geometry is Lucide's (ISC licence), a 24×24 grid with a 2px stroke; values are the svg's
+ * INNER markup, and being compile-time constants with no interpolation is what makes {@html} in Icon.svelte safe.
  */
 
 export const ICON_PATHS = {
-	// transport
 	prev: '<polygon points="19 20 9 12 19 4 19 20"/><line x1="5" x2="5" y1="19" y2="5"/>',
 	play: '<polygon points="6 3 20 12 6 21 6 3"/>',
 	pause: '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
 	next: '<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/>',
-	/*
-	 * RESTART, and it must NOT be drawn with `prev`: there is no previous-track concept in a rotation, so the
-	 * skip-back mark advertises something the app cannot do. Stroked rather than filled, which is why it is
-	 * absent from SOLID_ICONS — those are a family of directional wedges, and a rotation arrow is a path.
-	 */
+	/* RESTART, and it must NOT be drawn with `prev`: there is no previous-track concept in a rotation, so the skip-back
+	   mark advertises something the app cannot do. Stroked rather than filled, which is why it is absent from SOLID_ICONS. */
 	restart: '<path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8"/><path d="M3 3v5h5"/>',
 
-	// queue reorder and dismissal
 	'arrow-up': '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
 	'arrow-down': '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
 	close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
 	grip: '<circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>',
 
-	// navigation
 	'arrow-left': '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
 	'arrow-right': '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
 	'chevron-up': '<path d="m18 15-6-6-6 6"/>',
 	'chevron-down': '<path d="m6 9 6 6 6-6"/>',
 	'chevron-right': '<path d="m9 18 6-6-6-6"/>',
 
-	// affirmative and additive
 	check: '<path d="M20 6 9 17l-5-5"/>',
 	plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
 	minus: '<path d="M5 12h14"/>',
 
-	/* Dots rather than an info or cog mark, for a positional reason: every surface here puts a round icon-only
-	   control in the header's right column, so a second round glyph there reads as its sibling and gets taken
-	   for app settings. Each circle sets `fill` ITSELF, because Icon.svelte's root declares `fill="none"`. */
+	/* Dots rather than an info or cog mark, for a positional reason: every surface here puts a round icon-only control in
+	   the header's right column. Each circle sets `fill` ITSELF, because Icon.svelte's root declares `fill="none"`. */
 	dots: '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
 	gear: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
 	warning:
 		'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
 
-	/* An emoji is the one mark whose appearance is NEVER yours: a different drawing on every platform, and a
-	   tofu box on a browser with no emoji font — which is what a smart-TV browser can be. */
+	/* An emoji is the one mark whose appearance is NEVER yours: a different drawing on every platform, and a tofu box on
+	   a browser with no emoji font — which is what a smart-TV browser can be. */
 	mic: '<path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/>',
 	sparkle:
 		'<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
@@ -67,11 +50,8 @@ export const ICON_PATHS = {
 
 export type IconName = keyof typeof ICON_PATHS;
 
-/**
- * Marks drawn as solid shapes. Fill must be OPT-IN per mark rather than applied to every rect and polygon:
- * `pause` is two filled bars, but `mic` uses a rect for its capsule and filling it turns the microphone into
- * a blob.
- */
+/** Marks drawn as solid shapes. Fill must be OPT-IN per mark rather than applied to every rect and polygon: `pause` is
+ * two filled bars, but `mic` uses a rect for its capsule and filling it turns the microphone into a blob. */
 export const SOLID_ICONS: readonly IconName[] = ['prev', 'play', 'pause', 'next'];
 
 /** Every mark, for the gallery and for the guard test to assert the set stays renderable. */

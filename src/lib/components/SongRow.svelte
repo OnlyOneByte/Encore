@@ -1,11 +1,6 @@
 <script lang="ts">
-	// A search row. ONE row shape for all readiness states, because they are one kind of thing at points on
-	// one axis: the state decides the badge line and which actions appear, and the layout never changes, so
-	// a row that finishes processing morphs in place instead of jumping between lists.
-	//
-	// The row's job is telling near-identical uploads of one song apart at a glance, which is what the
-	// thumbnail, the duration, the version chip and the view count are each for — the duration and the view
-	// count because they are the two signals a title cannot fake.
+	// ONE row shape for all readiness states: the state decides the badge line and which actions appear, and the
+	// layout never changes, so a row that finishes processing morphs in place instead of jumping between lists.
 	import type { Readiness } from '$lib/readiness';
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { type MediaStatus } from '$lib/contract';
@@ -25,12 +20,8 @@
 	} from '$lib/video-kind';
 
 	interface Props {
-		/**
-		 * The RAW source title, shown verbatim, and deliberately NOT the canonical one. The normalizer feeds
-		 * LOOKUPS, where a wrong guess costs a missed match; here a wrong guess is shown to a human as fact,
-		 * and its `Artist - Title` split mis-titles any upload whose left side is the song. Truncating a long
-		 * title is a far smaller harm than renaming a song, or than dropping the words the singer searched for.
-		 */
+		/** The RAW source title, shown verbatim and deliberately NOT the canonical one: the normalizer feeds LOOKUPS,
+		 * where a wrong guess costs a missed match, and here a wrong guess would be shown to a human as fact. */
 		title: string;
 		/** The UPLOADER as the source reported it — a YouTube channel, often not the artist. */
 		artist?: string;
@@ -43,30 +34,20 @@
 		durationSec?: number;
 		/** Views as the source reported them. Absent → no chip; see Media.viewCount. */
 		viewCount?: number;
-		/**
-		 * The song's ORIGINAL key as a spelled label, or absent. A FLAT prop rather than the whole profile,
-		 * because the row shows only this string and the parent already derives it.
-		 * MUST stay ASCII ('G#'/'Ab'): a typographic sharp or flat trips icons.test.ts.
-		 */
+		/** A FLAT prop rather than the whole profile, because the row shows only this string. MUST stay ASCII
+		 * ('G#'/'Ab'): a typographic sharp or flat trips icons.test.ts. */
 		keyName?: string;
 		/** Descriptive library tags, shown on a READY row only — a raw search result has none worth showing. */
 		tags?: string[];
 		pct?: number; // processing progress, 0..100
-		/**
-		 * The live process status. Present, the bar shows `overallProcessPct(status, pct)` rather than the raw
-		 * per-step pct, which fills to 100% at the end of EVERY step and jumps backward when the next resets
-		 * it. Absent (a raw search row), the raw pct is used unchanged.
-		 */
+		/** Present, the bar shows `overallProcessPct(status, pct)` rather than the raw per-step pct, which fills to
+		 * 100% at the end of EVERY step and jumps backward when the next resets it. Absent, the raw pct is used. */
 		status?: MediaStatus;
 		/** Already in the rotation — the add action becomes a confirmation instead of a repeat. */
 		inQueue?: boolean;
-		/**
-		 * Whether the song's audio can be acquired at all. False is the metadata-only case (a name-match hit
-		 * that sharpens a query but whose bytes are never pulled), and BOTH actions must go with it: the two
-		 * branches below are an either/or, so dropping only `onmake` falls through to a live add — and a turn
-		 * on a song that can never be processed is held in the rotation and silently skipped every pass. The
-		 * row still renders, and says why in the chip line rather than only in a `title` a phone cannot hover.
-		 */
+		/** False is the metadata-only case, and BOTH actions must go with it: the branches below are an either/or, so
+		 * dropping only `onmake` falls through to a live add — and a turn on a song that can never be processed is held
+		 * in the rotation and silently skipped every pass. The row still says why, in the chip line. */
 		processable?: boolean;
 		onadd?: () => void;
 		/** Request stem separation. Absent when it makes no sense (already ready / already processing). */
@@ -90,68 +71,53 @@
 		onmake
 	}: Props = $props();
 
-	/*
-	 * The byline answers a different question on each side of `ready`. A raw or processing row is a CANDIDATE
-	 * UPLOAD, where the channel is what distinguishes two uploads of one song (and is raw data, so unlike the
-	 * canonical it cannot be wrong); a ready row is a song in YOUR LIBRARY, where the channel is meaningless
-	 * and the artist is the useful fact.
-	 */
+	/* The byline answers a different question on each side of `ready`: a raw or processing row is a CANDIDATE
+	   UPLOAD, where the channel distinguishes two uploads of one song and is raw data so cannot be wrong; a ready
+	   row is a song in YOUR LIBRARY, where the channel is meaningless and the artist is the useful fact. */
 	const byline = $derived(
 		readiness === 'ready' ? (artistCanonical ?? artist ?? '') : (artist ?? artistCanonical ?? '')
 	);
 
-	/*
-	 * ALWAYS through the app's own proxy, never straight to the upstream host: the phone may be on a LAN with
-	 * no route to the internet, and a direct img would leak every guest's IP and User-Agent upstream on every
-	 * keystroke of a search.
-	 */
+	/* ALWAYS through the app's own proxy, never straight to the upstream host: the phone may be on a LAN with no
+	   route to the internet, and a direct img would leak every guest's IP and User-Agent upstream per keystroke. */
 	const thumbSrc = $derived(thumbnail ? `/api/thumb?u=${encodeURIComponent(thumbnail)}` : null);
 
 	const duration = $derived(formatDuration(durationSec));
-	// The odd-duration signal is carried by BOTH the badge colour and a worded chip: colour alone reads as
-	// "a red badge you don't understand".
+	// Carried by BOTH the badge colour and a worded chip: colour alone reads as "a red badge you don't understand".
 	const oddDuration = $derived(isUnusualSongDuration(durationSec));
 	const durationNote = $derived(durationHint(durationSec));
 
-	// Guessed from the RAW title, so `unknown` yields no label and therefore no chip — better than an empty
-	// pill or a confident, false "Official".
+	// Guessed from the RAW title, so `unknown` yields no label and therefore no chip, not a false "Official".
 	const kind = $derived(classifyVideoKind(title));
 	const kindLabel = $derived(VIDEO_KIND_LABEL[kind]);
 
 	const views = $derived(formatViewCount(viewCount));
 
-	/* The key and the tags are READY-row facts only: a raw or processing row has no analysed key yet, so one
-	   here would be a phantom, and a tag on a candidate upload is noise. A falsy guard removes the chip and,
-	   when it is the last one, the whole wrapper — the omit-when-null convention every chip here follows. */
+	/* READY-row facts only: a raw or processing row has no analysed key yet, so one here would be a phantom, and a
+	   tag on a candidate upload is noise. A falsy guard removes the chip and, when last, the whole wrapper. */
 	const showKey = $derived(readiness === 'ready' && !!keyName);
 	const showTags = $derived(readiness === 'ready' && !!tags && tags.length > 0);
 
-	// Guest-facing copy in this file is PARTY ENGLISH: what a guest waits for is a karaoke track, not
-	// "separating vocals" or an "instrumental".
+	// Guest-facing copy in this file is PARTY ENGLISH: a guest waits for a karaoke track, not an "instrumental".
 	const barPct = $derived(status ? overallProcessPct(status, pct) : pct);
 
 	const stateChip = $derived.by(() => {
 		if (readiness === 'ready') return processStageLabel('ready');
 		// A dead process must say so, or it keeps rendering the in-flight line forever on a stopped job.
 		if (readiness === 'failed') return processStageLabel('failed');
-		// 'queued' is passed as the LEAST-COMMITTAL in-flight value, because the row has no worker sub-status
-		// and naming a step would print a guess as fact. Only the READOUT is rounded: the bar keeps the
-		// unrounded value so its transition stays smooth, but overallProcessPct returns a band-interpolated
-		// float, so an unrounded readout prints "31.200000000000003%".
+		// 'queued' is the LEAST-COMMITTAL in-flight value: the row has no worker sub-status and naming a step would
+		// print a guess as fact. Only the READOUT is rounded — the bar keeps the unrounded value so its transition
+		// stays smooth, and an unrounded readout prints "31.200000000000003%".
 		if (readiness === 'processing') return processStageLabel('queued', { pct: Math.round(barPct) });
-		// Metadata-only, LAST so it can never mask a real process state. The row MUST say why its actions are
-		// gone: this is a phone, so a `title` on a disabled button is unreachable, and an unexplained dead
-		// control reads as the app being broken.
+		// Metadata-only, LAST so it can never mask a real process state. The row MUST say why its actions are gone:
+		// on a phone a `title` on a disabled button is unreachable, and a dead control reads as a broken app.
 		if (!processable) return 'Name match only — search to sing it';
 		return null;
 	});
 
-	// The buttons are bare marks, so these labels are the whole announcement. The process label names its
-	// COST, which is the difference between the two actions and the one thing an icon cannot say.
-	//
-	// `onmake` WITH `inQueue` is the retry state — the singer already holds a turn and its process died — so
-	// it needs its own words: "Sing this" would promise a turn the action does not take. Not disabled, since
-	// the retry is the whole point of showing a failed row.
+	// The buttons are bare marks, so these labels are the whole announcement, and the process label names its COST.
+	// `onmake` WITH `inQueue` is the retry state — the singer already holds a turn and its process died — so it needs
+	// its own words: "Sing this" would promise a turn the action does not take.
 	const retryProcess = $derived(!!onmake && inQueue);
 	const actionLabel = $derived(
 		retryProcess
@@ -168,14 +134,9 @@
 	);
 </script>
 
-<!--
-	THE ROW IS A CONTAINER, NEVER A BUTTON: as a role="button" wrapper it announces one control while offering
-	three, and lets a keyboard user add the same song twice. The two buttons carry the actions.
-
-	Item.Root supplies the row grammar through its `child` snippet, so this file keeps the row element and its
-	readiness state classes — a `class:` directive is not valid on a component. The `class` ATTRIBUTE must stay
-	static, because contrast.test.ts splits it on whitespace to derive the row's classes.
--->
+<!-- THE ROW IS A CONTAINER, NEVER A BUTTON: as a role="button" wrapper it announces one control while offering
+	three, and lets a keyboard user add the same song twice. Item.Root supplies the row grammar through its `child`
+	snippet; the `class` ATTRIBUTE must stay static, because contrast.test.ts splits it to derive the row's classes. -->
 <Item.Root variant="bare" size="bare">
 	{#snippet child({ props })}
 		<div
@@ -187,8 +148,7 @@
 			<Item.Media data-media="thumb"
 				><div class="thumb">
 					{#if thumbSrc}
-						<!-- alt="" on purpose: the title sits immediately beside it, so a described thumbnail makes a
-						     screen reader announce the same song twice. -->
+						<!-- alt="" on purpose: the title sits immediately beside it, so a described thumbnail says the song twice. -->
 						<img src={thumbSrc} alt="" loading="lazy" decoding="async" width="84" height="47" />
 					{:else}
 						<!-- No thumbnail (a local library file, or a resolver that reports none) — keep the mark. -->
@@ -201,10 +161,8 @@
 			>
 
 			<Item.Content>
-				<!--
-			THE MARK MUST STAY A SIBLING of `.t`, never a child: `.t` is a two-line clamp with overflow hidden, so a
-			mark inside it is laid out on the discarded third line and never paints on a phone.
-		-->
+				<!-- THE MARK MUST STAY A SIBLING of `.t`, never a child: `.t` is a two-line clamp with overflow hidden, so a
+					mark inside it is laid out on the discarded third line and never paints on a phone. -->
 				<div class="title-line">
 					<span class="t">{title}</span>
 					{#if readiness === 'processing'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
@@ -213,8 +171,7 @@
 				{#if kindLabel || stateChip || views || durationNote || showKey || showTags}
 					<div class="chips">
 						{#if stateChip}
-							<!-- The tone IS the meaning, so it is passed as a variant: each is a certified
-							     surface+border+ink triple. `wrap` because this chip carries a phrase, not a token. -->
+							<!-- The tone IS the meaning, so it is passed as a variant; `wrap` because this chip carries a phrase. -->
 							<Badge
 								variant={readiness === 'ready'
 									? 'ok'
@@ -238,11 +195,9 @@
 												? 'bad'
 												: 'neutral'}>{kindLabel}</Badge
 							>{/if}
-						<!-- The key and the tags stay NEUTRAL chips: each is a fact about the song, not a status, so
-						     neither may borrow the semantic tints. -->
+						<!-- NEUTRAL chips: each is a fact about the song, not a status, so neither may borrow the semantic tints. -->
 						{#if showKey}<Badge>{keyName}</Badge>{/if}
-						<!-- The duration warning, in words as well as colour, ordered after the kind so "Live · Longer
-						     than a song" reads as one thought about the same recording. -->
+						<!-- Ordered after the kind, so "Live · Longer than a song" reads as one thought about one recording. -->
 						{#if durationNote}<Badge variant="bad" wrap>{durationNote}</Badge>{/if}
 						{#if views}<Badge>{views} views</Badge>{/if}
 						{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
@@ -255,16 +210,10 @@
 			</Item.Content>
 
 			{#if onmake}
-				<!--
-			ONE action, never two: queueing without processing holds a rotation slot that can never become ready,
-			and processing without queueing gives the singer no turn. This action is the whole intent — take a
-			turn AND start the process — with the held-slot rule keeping the singer's place. See
-			src/lib/process-and-queue.ts.
-
-			Icon-only, and the MARK is load-bearing: the two actions differ on three axes (this sparkle on an
-			accent fill against the plus outlined in green below, plus the group header). Making both a bare plus
-			puts an expensive minute-long action in the same clothes as a free instant one.
-		-->
+				<!-- ONE action, never two: queueing without processing holds a rotation slot that can never become ready, and
+					processing without queueing gives the singer no turn. Icon-only, and the MARK is load-bearing: the two actions
+					differ on three axes, so a bare plus for both dresses an expensive action as a free one. See
+					src/lib/process-and-queue.ts. -->
 				<Button
 					variant="iconPrimary"
 					size="icon"
@@ -301,10 +250,8 @@
 </Item.Root>
 
 <style>
-	/*
-	 * Geometry comes from `.list-row` in app.css, shared with the two queue rows. Every rule that declares a
-	 * COLOUR has to stay in this file: contrast.test.ts reasons about a row's surfaces from its own rules.
-	 */
+	/* Geometry comes from `.list-row` in app.css, shared with the two queue rows. Every rule that declares a COLOUR
+	   has to stay in this file: contrast.test.ts reasons about a row's surfaces from its own rules. */
 	.row {
 		transition: background var(--motion-fast) ease;
 	}
@@ -335,9 +282,8 @@
 		height: 100%;
 		object-fit: cover;
 	}
-	/* The placeholder mark is a real element, never a `content:` codepoint — a glyph in CSS is the one place
-	   an attribute-level scan for stray marks cannot find it. Its translucent white is a PHOTO-OVERLAY
-	   exception, like the duration badge's ink below, not a theme colour. */
+	/* A real element, never a `content:` codepoint — a glyph in CSS is the one place an attribute-level scan for
+	   stray marks cannot find it. Its translucent white is a PHOTO-OVERLAY exception, not a theme colour. */
 	.ph {
 		color: rgba(255, 255, 255, 0.55);
 		font-size: var(--ph-text-md);
@@ -350,9 +296,8 @@
 		position: absolute;
 		right: 3px;
 		bottom: 3px;
-		/* Both the literal `#fff` and the sub-ladder font-size are deliberate PHOTO-OVERLAY exceptions: this
-		   sits on an arbitrary video frame rather than a theme surface, and a ladder step would push the badge
-		   past the 84×47 frame it labels. */
+		/* Both the literal `#fff` and the sub-ladder font-size are PHOTO-OVERLAY exceptions: this sits on an arbitrary
+		   video frame, and a ladder step would push the badge past the 84×47 frame it labels. */
 		background: var(--scrim-strong);
 		color: #fff;
 		font-size: 0.62rem;
@@ -369,11 +314,9 @@
 		color: var(--danger-bg);
 	}
 
-	/*
-	 * TWO lines, not one: a single ellipsised line is what hides the version marker at the end of a title.
-	 * `flex-grow` MUST STAY 0 — with grow:1 the clamp box fills the whole line and pushes the mark to the
-	 * column's right edge, far from the short title it marks — while `flex-shrink: 1` still clamps a long one.
-	 */
+	/* TWO lines, not one: a single ellipsised line is what hides the version marker at the end of a title.
+	   `flex-grow` MUST STAY 0 — with grow:1 the clamp box fills the whole line and pushes the mark to the column's
+	   right edge, far from the short title it marks — while `flex-shrink: 1` still clamps a long one. */
 	.title-line {
 		display: flex;
 		align-items: flex-start;
@@ -421,29 +364,19 @@
 		margin-top: 7px;
 	}
 
-	/*
-	 * THREE ROW STATES the Button's own axes cannot carry — a retry ring, "already queued", "not
-	 * processable". None can be a class PASSED to the component: Tailwind scans only the vendored directory,
-	 * and a class handed to a component is scoped to this file, where Svelte strips it as unused. So each
-	 * arrives as a data attribute the component forwards, reached with `:global()`.
-	 *
-	 * Every one is ANCHORED under `.row`, which is scoped to this file. Unanchored they would match every
-	 * button in the app carrying these attributes.
-	 */
+	/* THREE ROW STATES the Button's own axes cannot carry, each arriving as a data attribute the component forwards:
+	   a class PASSED to the component is scoped to this file, where Svelte strips it as unused. Every one is ANCHORED
+	   under `.row` — unanchored they would match every button in the app carrying these attributes. */
 	.row :global([data-slot='button'][data-retry]) {
-		/* A retry keeps the primary fill — it is still the action to press — and the ring is what says it has
-		   failed once, without spending the danger family's fill on an invitation. */
+		/* A retry keeps the primary fill — it is still the action to press — and the ring is what says it failed once. */
 		box-shadow: inset 0 0 0 2px var(--danger-line);
 	}
 	.row :global([data-slot='button'][data-row-state='queued']) {
 		/* Dimmed but still GREEN: the song is in the rotation, which is the success state. */
 		opacity: 0.7;
 	}
-	/*
-	 * NOT-PROCESSABLE MUST NOT WEAR "GO" CLOTHES: the disabled attribute alone leaves a dimmed GREEN button,
-	 * which reads as "queued" rather than "impossible". Neutralising the border and ink is what separates this
-	 * disabled state from the one above it.
-	 */
+	/* NOT-PROCESSABLE MUST NOT WEAR "GO" CLOTHES: `disabled` alone leaves a dimmed GREEN button, which reads as
+	   "queued" rather than "impossible". Neutralising the border and ink is what separates the two states. */
 	.row :global([data-slot='button'][data-row-state='unavailable']) {
 		border-color: var(--line);
 		color: var(--ink-dim);
@@ -464,8 +397,7 @@
 		.row {
 			gap: 9px;
 		}
-		/* Tighter gaps claw back about a fifth of a row on the narrowest phone, where how many songs fit at
-		   once is the feature — without shrinking the title or the 44px target. */
+		/* Tighter gaps claw back about a fifth of a row on the narrowest phone, without shrinking the 44px target. */
 		.chips {
 			gap: var(--space-2xs);
 			margin-top: 5px;

@@ -1,14 +1,7 @@
-// guard: the components gallery keeps the four frames that are the RENDERED evidence for the
-// singer-colour lyric highlight.
-//
-// The ruling was to keep the singer's hue and lean on the outline the reel already strokes rather than
-// derive a legibility-safe variant, which is only defensible if someone can SEE the words hold up when the
-// singer's colour collides with the stage behind them. So the gallery carries a pair that ISOLATES the
-// change (room accent vs a singer's colour, same doc, same pinned position) plus two collision frames, the
-// second painting the stage in EXACTLY the singer's colour so the fill has 1:1 contrast against its own
-// background and nothing but the stroke separates them. Delete the cards and the claim is unreproducible.
-//
-// A SOURCE SCAN: it pins the wiring and the values, not the pixels.
+// guard: the components gallery keeps the four frames that are the RENDERED evidence for the singer-colour
+// lyric highlight — an isolating pair plus two collision frames, the second painting the stage in EXACTLY
+// the singer's colour so nothing but the stroke separates them. Delete the cards and the ruling to keep the
+// singer's hue is unreproducible. A SOURCE SCAN: it pins the wiring and the values, not the pixels.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { SINGER_COLORS, lyricHighlightColor } from '$lib/contract';

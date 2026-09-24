@@ -1,14 +1,11 @@
 // guard: SettingsRepository's four room-scoped methods (getRoom/setRoom/hasRoom/getEffective) must take a
-// REQUIRED roomId — no default initialiser — so a caller can never silently address the default room
-// 'main'. A defaulted parameter is invisible to `tsc`, so nothing forces the Nth call site; the un-threaded
-// roomId on PUT /api/settings/room already shipped that bug, and deleting a default is behaviour-preserving,
-// so only a source scan can red on base. ARMS 3 and 4 keep DEFAULT_ROOM_ID deleted from CODE: it had zero
-// non-test callers and previously a docstring claiming 'main' IS the default room's id, which
-// `rooms.byId('main')` returns null for (create mints a ULID) — so `getRoom(DEFAULT_ROOM_ID)` type-checked,
-// threw nothing and served pristine defaults instead of the room the box was running.
-//
-// Both arms are comment-stripped, banning the identifier from CODE only: a comment explaining the historical
-// defect may legitimately still name it, and a comment must never be able to fail a test.
+// REQUIRED roomId — no default initialiser — so a caller can never silently address the default room 'main'. A
+// defaulted parameter is invisible to `tsc`, so nothing forces the Nth call site; the un-threaded roomId on
+// PUT /api/settings/room already shipped that bug, and deleting a default is behaviour-preserving, so only a
+// source scan can red on base. ARMS 3 and 4 keep DEFAULT_ROOM_ID deleted from CODE: it had zero non-test callers
+// and a docstring claiming 'main' IS the default room's id, which `rooms.byId('main')` returns null for, so
+// `getRoom(DEFAULT_ROOM_ID)` type-checked, threw nothing and served pristine defaults instead of the room the box
+// was running. Both arms are comment-stripped, banning the identifier from CODE only.
 import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -52,8 +49,8 @@ test('ARM 1 — no room-scoped method defaults its roomId', () => {
 });
 
 test('ARM 2 — no production caller invokes a room method with an empty argument list', () => {
-	// Belt over the mechanism. KNOWN LIMIT: the empty-paren shape cannot see `setRoom(<body>)` with a body
-	// but no room — that is why ARM 1 is load-bearing. Once the defaults are gone, tsc enforces every site.
+	// Belt over the mechanism. KNOWN LIMIT: the empty-paren shape cannot see `setRoom(<body>)` with a body but no
+	// room — that is why ARM 1 is load-bearing. Once the defaults are gone, tsc enforces every site.
 	const bare = /\.(getRoom|setRoom|hasRoom|getEffective)\(\s*\)/g;
 	let total = 0;
 	for (const src of CALLERS) total += [...src.matchAll(bare)].length;
@@ -61,7 +58,6 @@ test('ARM 2 — no production caller invokes a room method with an empty argumen
 });
 
 test('sentinel — the repository and its four methods still exist (non-vacuous)', () => {
-	// If any of these fail the guard is testing the wrong file, not a green fix.
 	expect(REPO).toMatch(/export class SettingsRepository/);
 	for (const m of ['getRoom', 'setRoom', 'hasRoom', 'getEffective']) {
 		expect(REPO).toMatch(new RegExp(`\\b${m}\\(`));
@@ -69,8 +65,7 @@ test('sentinel — the repository and its four methods still exist (non-vacuous)
 });
 
 test('ARM 3 — the repository no longer names DEFAULT_ROOM_ID in CODE', () => {
-	// PURE DELETION, so nothing behavioural can red. Comment-stripped: banned from CODE only, so a comment
-	// explaining the historical defect may still name it.
+	// PURE DELETION, so nothing behavioural can red. Banned from CODE only.
 	expect(REPO).not.toMatch(/DEFAULT_ROOM_ID/);
 });
 
@@ -82,7 +77,6 @@ test('ARM 4 — no non-test production file under . contains DEFAULT_ROOM_ID in 
 });
 
 test('sentinel — ARM 4 really walks the production tree (census not vacuous)', () => {
-	// A mis-pathed or empty file list would make ARM 4 pass by reading nothing.
 	expect(PROD_FILES.length).toBeGreaterThanOrEqual(50);
 	expect(PROD_FILES).toContain(REPO_FILE);
 	expect(PROD_FILES.some((f) => readFileSync(f, 'utf8').includes('export class SettingsRepository'))).toBe(true);

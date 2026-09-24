@@ -1,11 +1,8 @@
-// guard: a singer's colour reaches CSS as a custom property, never string-concatenated. See
-// docs/GUARDS.md#colour-tokens-and-the-48-stop-palette.
-//
-// The phone header drew its avatar halo as `box-shadow: 0 0 0 3px {me.color}30`, appending hex alpha digits
-// onto the colour string, which worked only because all eight presets were 6-digit hex. Guests pick their
-// own hue now, so a 3-digit hex, an `rgb()` or an `oklch()` makes the whole declaration invalid and the ring
-// silently disappears — no error, no test failure. Pass the colour as a property and derive with
-// `color-mix()`, which accepts any syntax.
+// guard: a singer's colour reaches CSS as a custom property, never string-concatenated. The phone header
+// drew its avatar halo as `box-shadow: 0 0 0 3px {me.color}30`, which worked only because all eight presets
+// were 6-digit hex; guests pick their own hue now, so a 3-digit hex, an `rgb()` or an `oklch()` makes the
+// whole declaration invalid and the ring silently disappears. Derive with `color-mix()` instead, which
+// accepts any syntax. See docs/GUARDS.md#colour-tokens-and-the-48-stop-palette.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,10 +17,9 @@ function stripComments(src: string): string {
 }
 
 /**
- * The per-stop roles an interpolated colour can carry. A stop ships four — `fill`, `on_fill`, `accent_ink`
- * and `accent2` — and the trap is identical for each, so matching the identifier `color` alone is no longer
- * complete. Naming the roles rather than matching any identifier keeps the scan from firing on unrelated
- * interpolations that merely end in two hex-ish characters.
+ * The per-stop roles an interpolated colour can carry: a stop ships `fill`, `on_fill`, `accent_ink` and
+ * `accent2`, and the trap is identical for each. Naming the roles rather than matching any identifier keeps
+ * the scan off unrelated interpolations that merely end in two hex-ish characters.
  */
 const COLOUR_ROLE = String.raw`(?:[cC]olor|[cC]olour|[fF]ill|[iI]nk|[aA]ccent|[hH]ue)`;
 

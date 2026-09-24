@@ -1,9 +1,8 @@
-// guard: an icon-only control with a fixed box must actually centre its mark. Icon.svelte renders
-// `display:block`, so a mark inside a control with no centring context lands wherever the box's default
-// layout drops it — the reported "the X in the remove button is off-centre": QueueRow's and
-// ProcessingCard's `.act,.remove` pinned 44x44px but declared no grid/flex and no place-items, while every
-// other icon button in the app did. Scope: rules pinning BOTH axes in px — a content-sized or one-axis
-// control has not created the trap, and labelled text buttons centre their text by default.
+// guard: an icon-only control with a fixed box must actually centre its mark. Icon.svelte renders `display:block`,
+// so a mark inside a control with no centring context lands wherever the box's default layout drops it — the
+// reported "the X in the remove button is off-centre": QueueRow's and ProcessingCard's `.act,.remove` pinned
+// 44x44px but declared no grid/flex and no place-items, while every other icon button did. Scope: rules pinning
+// BOTH axes in px — a content-sized or one-axis control has not created the trap.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,8 +28,8 @@ test('the icon-centring scan actually reads a non-empty surface', () => {
 	expect(FILES.length).toBeGreaterThan(7); // @nvf-floor FILES.length
 });
 
-// The icon-only controls, by the class names they are addressed by: these carry a bare <Icon> and no text
-// child, so the mark's position depends entirely on the box. A labelled `.chip`/`.btn-accent` is excluded.
+// The icon-only controls, by the class names they are addressed by: these carry a bare <Icon> and no text child, so
+// the mark's position depends entirely on the box. A labelled `.chip`/`.btn-accent` is excluded.
 const ICON_CONTROL = /(^|[\s,>])(\.act\b|\.remove\b|\.sing\b|\.add\b|\.ic\b|\.gear\b|\.x\b|\.mic-btn\b)/;
 
 /** Does a rule body establish a centring context for a block-level child? */
@@ -50,8 +49,8 @@ test('every icon-only control with a fixed box centres its mark', () => {
 			const sel = m[1]!.trim();
 			const body = m[2]!;
 			if (!ICON_CONTROL.test(sel)) continue;
-			// A compound-class modifier (`.ic.play`) restyles a base rule and inherits its centring; only the base
-			// rule owns the centring contract, so a modifier that merely re-pins the box is not the trap.
+			// A compound-class modifier (`.ic.play`) restyles a base rule and inherits its centring; only the base rule owns
+			// the centring contract, so a modifier that merely re-pins the box is not the trap.
 			if (/(\.act|\.remove|\.sing|\.add|\.ic|\.gear|\.x|\.mic-btn)\.[\w-]/.test(sel)) continue;
 			// Only rules that pin BOTH axes to a fixed px box create the off-centre trap.
 			const fixedW = /(^|[;\s])width:\s*[0-9.]+px/.test(body);

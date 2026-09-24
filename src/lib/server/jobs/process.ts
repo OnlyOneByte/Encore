@@ -1,7 +1,4 @@
-// The entry point for "strip the vocals from this song." Marks the media as PROCESSING
-// (stemStatus:queued) so rotation HOLDS its slot until stems are ready, then enqueues a stems job at
-// the priority of the soonest queue entry that needs it. worker-hub flips the media to ready on
-// completion. See docs/ARCHITECTURE.md §6, §7.
+// Marks a media PROCESSING so rotation HOLDS its slot until stems exist. See docs/ARCHITECTURE.md §6, §7.
 
 import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '../../contract';
 import {
@@ -28,33 +25,21 @@ export interface ProcessDeps {
 	mediaById: Map<string, Media>;
 	state: AuthoritativeState;
 	now: () => number;
-	/** Optional so existing callers and tests keep working; absent means shared defaults. */
+	/** Must be threaded to BOTH `processState` and `requestProcess` — see docs/SERVER.md#idempotency-and-the-process-cap. */
 	getSettings?: () => GlobalSettings;
 }
 
-/** Priority for a process nobody is waiting on: sorts after every queued turn, so it still gets
- *  processed, just at the back. `backfill.ts` reuses this exact value (both mean "nobody is waiting
- *  on this") — see BACKFILL_PRIORITY. */
+/** Sorts after every queued turn; `backfill.ts` reuses this exact value as BACKFILL_PRIORITY. */
 export const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
 
-/** How many processes ONE singer may have in flight — a SETTING (`GlobalSettings.maxProcessesPerSinger`),
- *  not a constant, because the right cap is a function of how many workers a deployment has.
- *  `requestProcess` dedups on stems-existence alone, so nothing else stops one phone from tapping Sing
- *  down a whole results page and enqueueing a GPU job per distinct song. Callers with no `getSettings`
- *  (backfill, most unit tests) get the shipped DEFAULT, never "uncapped" — omitting the dependency must
- *  not be a way to bypass the bound. */
+/** A missing `getSettings` resolves to the shipped DEFAULT, never "uncapped": omitting the dependency must not bypass the bound. */
 export function maxProcessesPerSinger(deps: Pick<ProcessDeps, 'getSettings'>): number {
 	const configured = deps.getSettings?.().maxProcessesPerSinger;
 	return typeof configured === 'number' ? configured : DEFAULT_GLOBAL_SETTINGS.maxProcessesPerSinger;
 }
 
-/** How many DISTINCT songs this singer currently has processing — the bound `over-limit` enforces.
- *  Attributed through the JOB LEDGER, not queue entries: the entry (WebSocket) and the process (HTTP)
- *  ride different transports and only the entry is droppable, so a phone tapping Sing during a
- *  reconnect window would file a process with no entry and an entry-derived count would see zero and
- *  admit every such tap. The ledger attributes each process to its requester at enqueue instead, so the
- *  count doesn't depend on the second transport. `exclude` drops the media being requested, so a re-tap
- *  of a song already processing is never counted against its own owner. */
+/** Counted from the JOB LEDGER, never from queue entries — see docs/SERVER.md#idempotency-and-the-process-cap.
+ *  `exclude` drops the media being requested, so a re-tap is not counted against itself. */
 export function countInFlightProcesses(
 	singerId: string,
 	deps: Pick<ProcessDeps, 'jobs' | 'mediaById'>,
@@ -64,17 +49,14 @@ export function countInFlightProcesses(
 	for (const mediaId of deps.jobs.liveProcessMediaForSinger(singerId)) {
 		if (mediaId === exclude) continue;
 		const media = deps.mediaById.get(mediaId);
-		// A finished process no longer costs the fleet. The ledger filter above usually suffices (ready
-		// and the media flipping ready coincide); this keeps the count honest if they briefly diverge.
+		// Keeps the count honest if the ledger filter and the media's ready flip briefly diverge.
 		if (media && isProcessed(media)) continue;
 		processing.add(mediaId);
 	}
 	return processing.size;
 }
 
-/** The deterministic MediaStore key for a media's instrumental stem. MUST match the worker's output
- *  location (worker/src/processor.py `instrumental_path`), since the TV file player resolves
- *  `/media/${playbackRef(media)}` from it. Defined once in ../media/paths.ts; never hand-write this string. */
+/** MUST match worker/src/processor.py's `instrumental_path` or the TV 404s. Never hand-write this string. */
 export const instrumentalKey = layoutInstrumentalKey;
 
 /** The soonest (lowest) rotationSeq among queued entries that point at this media; ∞ if none. */
@@ -91,16 +73,15 @@ export function isProcessed(media: Media): boolean {
 	return isPlayable(media);
 }
 
-/** Why a process request can (or can't) proceed. Lets the route answer honestly: an already-processed
- *  song is a SUCCESS ("nothing to do, it's ready"), not an error. */
+/** Lets the route answer honestly: an already-processed song is a SUCCESS, not an error. */
 export type ProcessState =
 	| 'unknown' // not in the catalog
-	| 'not-processable' // metadata-only source (Spotify): no fetcher can pull its bytes, so it never can be
-	| 'playing' // the live song; processing it would yank the video out from under the room
-	| 'ready' // stems already separated (persisted from an earlier session) — no re-process
-	| 'processing' // a live job is already working on it; a repeat request dedupes to that job
-	| 'over-limit' // this singer is at the configured in-flight cap (GlobalSettings.maxProcessesPerSinger)
-	| 'processable'; // nothing separated yet — go
+	| 'not-processable' // metadata-only source: no fetcher can pull its bytes, so it never can be
+	| 'playing' // processing the live song would yank the video out from under the room
+	| 'ready' // stems already separated — no re-process
+	| 'processing' // a live job has it; a repeat request dedupes to that job
+	| 'over-limit' // at `GlobalSettings.maxProcessesPerSinger`
+	| 'processable';
 
 export function processState(
 	mediaId: string,
@@ -109,22 +90,15 @@ export function processState(
 ): ProcessState {
 	const media = deps.mediaById.get(mediaId);
 	if (!media) return 'unknown';
-	// Checked FIRST, ahead of `playing`/`ready`/`over-limit`, because this is a property of the SONG,
-	// not of the moment: those other states are ones a song passes through, but a metadata-only source
-	// can never leave this one, and answering anything else here is what let the phone book a turn that
-	// could never play.
+	// The arm ORDER is load-bearing (docs/SERVER.md#idempotency-and-the-process-cap): a metadata-only
+	// source can never LEAVE this state, so it is decided ahead of the transient ones.
 	if (!isProcessableSource(media.source)) return 'not-processable';
 	const current = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId);
 	if (current && current.mediaId === mediaId) return 'playing';
 	if (isProcessed(media)) return 'ready';
 	if (media.stemStatus === 'queued') return 'processing';
-	// Checked LAST — an already-processing/ready song starts no new work, so the cap never blocks it.
-	// Only evaluated when a singer is named; anonymous internal callers (backfill) are bounded by the
-	// work they enqueue, not a per-singer count.
-	//
-	// `cap !== PROCESSES_UNCAPPED` MUST be tested before `count >= cap`: `0` means uncapped, and with a
-	// bare `0` the comparison `count >= 0` is true for every singer, so turning the cap off would instead
-	// refuse everyone. Named as a sentinel for exactly this reason — never compare against a bare 0.
+	// `cap !== PROCESSES_UNCAPPED` MUST be tested before `count >= cap`: `0` means uncapped, and a bare
+	// `count >= 0` is true for everyone, so turning the cap off would instead refuse every first request.
 	const cap = maxProcessesPerSinger(deps);
 	if (singerId && cap !== PROCESSES_UNCAPPED && countInFlightProcesses(singerId, deps, mediaId) >= cap) {
 		return 'over-limit';
@@ -133,36 +107,28 @@ export function processState(
 }
 
 /**
- * Requests stem-separation for a media. Idempotent: a repeat request, or two singers queueing the
- * same song, dedupes to the SAME job, and stems already on disk are never re-processed.
- * Returns the job, or null when there is no work — unknown media, a metadata-only source, the
- * currently-playing song, already processed, or the singer's in-flight cap. Callers that need to tell
- * those apart ask `processState` with the same `singerId`; every refusal here is visible there too.
+ * Idempotent: a repeat request, or two singers queueing one song, dedupes to the SAME job. Returns the job,
+ * or null when there is no work — unknown media, a metadata-only source, the currently-playing song, already
+ * processed, or the singer's in-flight cap. `processState` with the same `singerId` tells those apart.
  */
 export function requestProcess(mediaId: string, deps: ProcessDeps, singerId?: string): Job | null {
 	const media = deps.mediaById.get(mediaId);
 	if (!media) return null;
 
+	// Refused off the STATE, never off `media.source`, so every refusal is visible to `processState` too.
+	// `processing` deliberately falls through to the dedup below.
 	const state = processState(mediaId, deps, singerId);
-	// Refused off the STATE, not off `media.source` directly, so the refusal is visible to every caller
-	// that asks `processState` first — a metadata-only source (e.g. Spotify) has no fetcher that can
-	// pull its bytes; enqueueing one anyway would only die downstream at the worker.
 	if (state === 'not-processable') return null;
-	if (state === 'playing') return null; // would disrupt the live song
-	if (state === 'ready') return null; // already separated — recomputing is the exact waste avoided
-	// An already-processing song (`processing`) is NOT blocked here — it starts no new work, so it
-	// falls through to the dedup below. Only a brand-new process can be `over-limit`.
+	if (state === 'playing') return null;
+	if (state === 'ready') return null;
 	if (state === 'over-limit') return null;
 
 	media.stemStatus = 'queued'; // rotation holds this slot until the instrumental exists
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
-	// A local file skips straight to `stems` — nothing to download, and enqueueing a fetch for it would
-	// need a worker capability no fetcher advertises.
 	const first: JobType = needsFetch(media.source, deps.getSettings?.()?.defaultFetcher) ? 'fetch' : 'stems';
 	const job = deps.jobs.enqueue(mediaId, first, priority, deps.now(), undefined, singerId);
-	// The dedup index treats a `ready` job as live, so this can hand back a COMPLETED job whose media
-	// object lost its ready flags (e.g. a runtime catalog entry rebuilt from a stub). Leaving the media
-	// `queued` against a job that will never run again would deadlock rotation forever, so reconcile it.
+	// A `ready` job still occupies the dedup slot, so enqueue can hand one back for a media whose ready flags
+	// were lost — and leaving that `queued` against a job that will never run again deadlocks rotation.
 	if (job.status === 'ready') markMediaReady(mediaId, deps.mediaById);
 	return job;
 }
@@ -176,29 +142,21 @@ export type ReselectRefusal =
 
 export interface ReselectResult {
 	job: Job;
-	/** The candidate ref now pinned — an existing candidate's ref, or the minted manual ref. */
+	/** An existing candidate's ref, or the minted manual ref. */
 	ref: string;
 }
 
-/** Deterministic MediaStore key for a pasted manual candidate, so a repeated paste OVERWRITES the same
- *  artifact rather than stacking duplicates — the worker derives the same key from `pinnedRef`, and
- *  `mergeLyricsCandidate` dedupes on it. A re-time always lands word timings, so the tier is fixed. */
+/** The idempotency key for a pasted candidate: a repeat paste OVERWRITES rather than stacking, and the
+ *  worker derives this same key from `pinnedRef`. */
 export function manualLyricsRef(mediaId: string): string {
 	return `derived/lyrics/${mediaId}-manual-word.json`;
 }
 
 /**
- * A HUMAN RE-PICK of the lyrics set, then a re-time. Two shapes: pick an already-stored candidate by
- * `ref`, or paste new `text`. Either way the choice is pinned (`lyricsOverrideRef`) so it OUTRANKS
- * `pickBestLyrics` everywhere the candidate is resolved, and an `align` job is made to actually RUN.
+ * A HUMAN RE-PICK, then a re-time. The pinned `lyricsOverrideRef` OUTRANKS `pickBestLyrics` everywhere.
  *
- * The re-run is the load-bearing part: a finished `align` sits terminal `ready`, which does NOT free
- * the dedup slot, so a bare `enqueue` would hand back the OLD job and silently run nothing. This
- * CANCELs a live align (or SUPERSEDEs a terminal one) first, to free the slot, then enqueues a fresh
- * one. `dispatch.ts` reads `media.lyricsOverrideRef`/`lyricsOverrideText` onto that job's params.
- *
- * No capability gate here — any joined singer may re-pick, like every other room control; the endpoint
- * enforces "joined" and this function does not re-check identity.
+ * ORDER IS LOAD-BEARING: a finished `align` is terminal `ready` and still holds the dedup slot, so the slot
+ * must be freed BEFORE the enqueue, or the caller gets the OLD job back and nothing re-runs.
  */
 export function requestLyricsReselect(
 	mediaId: string,
@@ -208,8 +166,7 @@ export function requestLyricsReselect(
 ): ReselectResult | ReselectRefusal {
 	const media = deps.mediaById.get(mediaId);
 	if (!media) return 'unknown-media';
-	// Re-timing runs the aligner over the retained VOCALS stem, so without one there's nothing to align
-	// against — refuse rather than enqueue a job that cannot work.
+	// The aligner runs over the retained VOCALS stem; without one there is nothing to align against.
 	if (!media.vocalsRef) return 'not-processed';
 
 	const pasted = typeof choice.text === 'string' ? choice.text.trim() : '';
@@ -218,41 +175,32 @@ export function requestLyricsReselect(
 		ref = manualLyricsRef(mediaId);
 	} else {
 		const picked = typeof choice.ref === 'string' ? choice.ref : '';
-		// A paste of nothing but whitespace is `no-text`, not a fall-through to the ref branch — the
-		// caller named the paste shape, so `unknown-candidate` would blame a ref they never sent.
+		// Whitespace-only paste is `no-text`, not `unknown-candidate` — the caller named the paste shape.
 		if (!picked && typeof choice.text === 'string') return 'no-text';
-		// A pick must name a candidate actually on disk, or it would pin the media to a pointer nothing
-		// resolves, blanking the overlay. Pasting is the only way to introduce a NEW ref.
+		// Pasting is the only way to introduce a NEW ref; an unresolvable pick blanks the overlay.
 		if (!picked || !(media.lyricsCandidates ?? []).some((c) => c.ref === picked)) return 'unknown-candidate';
 		ref = picked;
 	}
 
 	media.lyricsOverrideRef = ref; // pinned BEFORE enqueue so dispatch.assignParams reads it onto align
-	// The PASTED WORDS themselves: a manual ref names a candidate no provider has written, so without
-	// the text the worker gets a pointer to a file that doesn't exist. Stored on the media, not the job,
-	// so it survives a restart's requeue too. CLEARED on a ref pick — a leftover paste would outrank
-	// `pinnedRef` in the worker and re-time over the candidate the human just chose.
+	// On the media, not the job, so it survives a restart's requeue. MUST be cleared on a ref pick: a
+	// leftover paste outranks `pinnedRef` in the worker and re-times over the human's choice.
 	media.lyricsOverrideText = pasted || undefined;
 
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
 	const now = deps.now();
-	// A finished align occupies the dedup slot AND is terminal (neither reusable nor cancellable), so:
-	// still-live → CANCEL it (frees the slot); terminal → SUPERSEDE it (deletes the row, frees the
-	// slot). A song that never aligned has neither, and the enqueue below starts the first one.
 	const live = deps.jobs.findLive(mediaId, 'align');
 	if (live && !isTerminalJob(live.status)) deps.jobs.cancel(live.id, now);
 	else deps.jobs.supersedeForRerun(mediaId, 'align');
 	const job = deps.jobs.enqueue(mediaId, 'align', priority, now, undefined, singerId);
-	// NOT via markLyricsQueued, which refuses to walk a SETTLED gate backwards — a re-pick is the one
-	// case where reopening a finished lyrics gate is correct, since a NEW align really is about to run.
-	// Rotation gates on stems, not lyrics, so this can't un-play a live song.
+	// Direct, NOT markLyricsQueued, which refuses to walk a settled gate backwards: a re-pick is the one
+	// case where reopening a finished lyrics gate is correct.
 	media.lyricsStatus = 'queued';
 	return { job, ref };
 }
 
-/** Flips a media to READY after its stems job completes, so rotation's isEntryReady unblocks the held
- *  entry. `sourceRef` is deliberately LEFT ALONE: it's the song's origin identity, and overwriting it
- *  would make the next search fail to recognise the song and mint a second, unprocessed row. */
+/** `sourceRef` is deliberately LEFT ALONE: it is the song's origin identity, and overwriting it makes the
+ *  next search miss the song and mint a second, unprocessed row. */
 export function markMediaReady(
 	mediaId: string,
 	mediaById: Map<string, Media>,
@@ -262,23 +210,20 @@ export function markMediaReady(
 	const media = mediaById.get(mediaId);
 	if (!media) return false;
 
-	// An UPGRADE must never publish a worse instrumental than the one already there; a plain process
-	// (no separator reported, or nothing published yet) always applies.
+	// An UPGRADE must never publish a worse instrumental than the one already there.
 	if (separator && media.instrumentalRef && !isQualityUpgrade(media.separator, separator)) {
 		return false;
 	}
 
-	// Prefers what the worker ACTUALLY wrote over re-deriving the key, so a future container format
-	// change can't desync the ref from the file and 404 the TV.
+	// What the worker ACTUALLY wrote beats re-deriving: a container change would desync ref from file.
 	media.instrumentalRef = toRelativeKey(reportedUri) ?? instrumentalKey(mediaId);
 	media.stemStatus = 'ready';
 	if (separator) media.separator = separator;
 	return true;
 }
 
-/** Marks the lyrics gate SETTLED — align has run, whatever it found. "Settled", not "succeeded": a
- *  song with no words is a legitimate finished song, and requiring a lyrics artifact would leave every
- *  genuine instrumental stuck processing forever on a step that worked correctly. */
+/** SETTLED, not "succeeded": requiring a lyrics artifact would leave every genuine instrumental stuck
+ *  processing on a step that worked correctly. */
 export function settleLyricsGate(mediaId: string, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);
 	if (!media) return false;
@@ -286,11 +231,8 @@ export function settleLyricsGate(mediaId: string, mediaById: Map<string, Media>)
 	return true;
 }
 
-/** Settles the STEMS side after a separation permanently fails: back to un-processed. Without this a
- *  terminal stems failure leaves `stemStatus` mid-flight, so the song reads as processing FOREVER —
- *  `processState` refuses to ever let it re-process. Reverts to 'none', not 'failed', because that's
- *  the truth (nothing was separated, so it's a fresh candidate); the failure itself reaches the phone
- *  only through the ephemeral `media:status` broadcast, not a permanent scar on the record. */
+/** Without this `stemStatus` stays mid-flight and `processState` reads the song as processing FOREVER,
+ *  refusing a re-process. 'none' not 'failed': nothing was separated, so it is a fresh candidate. */
 export function settleStemsGate(mediaId: string, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);
 	if (!media || media.stemStatus === 'ready') return false; // never walk a finished process backwards
@@ -298,25 +240,15 @@ export function settleStemsGate(mediaId: string, mediaById: Map<string, Media>):
 	return true;
 }
 
-/**
- * THE per-gate settlement rule, as a TABLE rather than if/else, because it now has TWO readers that
- * must never drift apart: `settleGatesForFailedJob` (below) asks "one job just died, which gate does it
- * settle?"; `reconcileStrandedGates` (gate-reconcile.ts) asks the same question from the boot direction
- * ("no job is alive for this gate and none ever will be — which job types should I have expected?").
- * Mirrors `GATES` in `$lib/contract/queue/gates.ts` under the same gate ids and pipeline order — that
- * table says whether a step is DONE, this one says what happens when it can never finish. `stems-upgrade`
- * appears in no `settledBy` list: the song still has its working instrumental, so a dead upgrade settles
- * nothing.
- */
+/** A TABLE, not if/else, because two callers read it from opposite directions and must not drift (see
+ *  docs/SERVER.md#idempotency-and-the-process-cap). `stems-upgrade` is in no `settledBy` list. */
 export interface GateSettlement {
-	/** Matches the `ProcessGate.id` in the contract's `GATES`, so a log line reads the same on both sides. */
+	/** Matches `ProcessGate.id` in `GATES`, so a log line reads the same on both sides. */
 	readonly id: 'stems' | 'lyrics';
 	/** Job types whose completion or failure is what moves this gate. */
 	readonly settledBy: readonly JobType[];
-	/** Is this gate MID-FLIGHT — a step actively claimed as running, not done or never started? Narrow
-	 *  on purpose: only the explicit `'queued'` marker counts. A NULL/absent status means "predates the
-	 *  gate" or "nothing ever started", not "in progress" — settling either would forge a step that
-	 *  never ran and mark an unprocessed song finished. */
+	/** Only the explicit `'queued'` marker counts: a NULL status means "predates the gate" or "never
+	 *  started", and settling either forges a step that never ran. */
 	readonly inFlight: (m: Media) => boolean;
 	/** How the gate settles when nothing will ever finish it. */
 	readonly settle: (mediaId: string, mediaById: Map<string, Media>) => boolean;
@@ -325,8 +257,8 @@ export interface GateSettlement {
 export const GATE_SETTLEMENT: readonly GateSettlement[] = [
 	{
 		id: 'stems',
-		// `fetch` counts because requestProcess marks the media processing BEFORE the download starts,
-		// so a song mid-fetch has a legitimately in-flight stems gate and no stems job yet.
+		// `fetch` counts: the media is marked processing BEFORE the download, so a song mid-fetch has a
+		// legitimately in-flight stems gate and no stems job yet.
 		settledBy: ['fetch', 'stems'],
 		inFlight: (m) => m.stemStatus === 'queued',
 		settle: settleStemsGate
@@ -339,55 +271,39 @@ export const GATE_SETTLEMENT: readonly GateSettlement[] = [
 	}
 ] as const;
 
-/** Widened from `Job` so the boot reconciliation can ask this same question about a job that no longer
- *  EXISTS — a gate stranded by a cancelled row with its dedup slot freed has no `Job` to pass, and
- *  fabricating a fake one would be worse than just naming the two fields the rule needs. */
+/** Narrower than `Job`, so boot reconciliation can ask about a gate stranded by a row that is GONE. */
 export type SettleableJob = Pick<Job, 'mediaId' | 'jobType'>;
 
-/** THE single rule for what a dead process does to its song's readiness, so every terminal-fail path
- *  settles the same way and a fourth path can't reopen the hole. A process can die on three paths — the
- *  worker's own `job:failed` report, the unservable TTL, or the reaper's exhausted-attempts sweep — and
- *  ALL must settle, or a TTL-/reaper-killed process leaves its gate mid-flight forever, holding the
- *  queue entry with `readyToSing` never flipping even though the instrumental is on disk. The per-type
- *  mapping lives in `GATE_SETTLEMENT` above, not restated here, so the boot reconciliation can't drift
- *  from it. Returns whether it changed anything, for the caller's logging. */
+/** All three death paths (`job:failed`, the unservable TTL, the reaper) MUST route through here, or a
+ *  killed process leaves its gate mid-flight forever and `readyToSing` never flips. */
 export function settleGatesForFailedJob(job: SettleableJob, mediaById: Map<string, Media>): boolean {
 	const gate = GATE_SETTLEMENT.find((g) => g.settledBy.includes(job.jobType));
 	return gate ? gate.settle(job.mediaId, mediaById) : false; // no gate: stems-upgrade keeps its instrumental
 }
 
-/** Why a job reached terminal `failed`, so the operator can tell the three death paths apart from one
- *  grep: `worker` (job:failed, retries exhausted), `unservable` (no worker ever advertised the required
- *  capability within the TTL), `reaper` (a lease expired and attempts exhausted with no worker involved). */
+/** `worker` = job:failed with retries exhausted; `unservable` = no worker advertised the capability in
+ *  the TTL; `reaper` = a lease expired with attempts exhausted and no worker involved. */
 export type TerminalFailureCause = 'worker' | 'unservable' | 'reaper';
 
 export interface TerminalFailureDeps {
 	/** The room sink. Injected because process cannot reach worker-hub's private #emitStatus. */
 	broadcast: (event: ServerEvent) => void;
 	mediaById: Map<string, Media>;
-	/** Flushes the song's row after a gate settles. Optional, matching `WorkerHubDeps.persistMedia`.
-	 *  REQUIRED for durability, though: `settleGatesForFailedJob` only mutates the in-memory `Media`, but
-	 *  `stemStatus`/`lyricsStatus` are STORED columns and `hydrateMediaCatalog` wins at boot over the
-	 *  sidecar path — skip this and a restart resurrects the exact stranding `settleStemsGate` exists to
-	 *  end, this time unrecoverable (no user action clears it, and the process never runs again to). */
+	/** Optional in the type, REQUIRED for durability: the settle only mutates in-memory `Media`, while
+	 *  `hydrateMediaCatalog` wins at boot off the stored columns — skip it and a restart resurrects the
+	 *  stranding, with nothing a user can do to clear it. */
 	persist?: (mediaId: string) => void;
 }
 
-/** The terminal-failure EPILOGUE every permanently-failed process must run, in one place so all death
- *  paths settle identically:
- *    1. Settle the readiness gate for this job type, so `readyToSing` can flip and rotation lets go.
- *    2. Broadcast `media:status`, gated on `shouldBroadcastProcess` (a dead `stems-upgrade` on an
- *       already-singable song must not flip a ready row back to "Making karaoke").
- *    3. One uniform operator log line, so `grep 'job=<id>'` finds it on every path.
- *    4. Reclaim the job's scratch — nothing resumes from a terminal job.
- *  `job` is the ALREADY-terminal job. Returns whether the gate settle changed anything. */
+/** One place, so all three death paths settle identically: settle the gate, broadcast `media:status`, log
+ *  one uniform line, reclaim the scratch. `job` is already terminal. */
 export function reportTerminalFailure(job: Job, cause: TerminalFailureCause, deps: TerminalFailureDeps): boolean {
 	const settled = settleGatesForFailedJob(job, deps.mediaById);
-	// Gated on `settled`: a stems-upgrade failure settles nothing, so persisting there would flush a row
-	// for no change. Ordered before the broadcast so the room is never told 'failed' while the row that
-	// outlives the process still says 'processing'.
+	// BEFORE the broadcast, so the room is never told 'failed' while the durable row says 'processing'.
+	// Gated on `settled`, because a stems-upgrade failure settles nothing to flush.
 	if (settled) deps.persist?.(job.mediaId);
 	const media = deps.mediaById.get(job.mediaId);
+	// Gated: a dead `stems-upgrade` must not flip an already-singable row back to "Making karaoke".
 	if (shouldBroadcastProcess(job, media)) {
 		deps.broadcast({
 			type: 'media:status',
@@ -414,13 +330,9 @@ export function markLyricsQueued(mediaId: string, mediaById: Map<string, Media>)
 }
 
 /**
- * Applies a `fetch` job's annotation, or refuses. Two citation sources, both stronger than the title
- * parse they replace: `musicbrainz` (a search that AGREED on artist and title with a corroborating
- * duration, carries an MBID) and `youtube` (YouTube's own extracted `track`/`artist`, a citation
- * because the uploader DECLARED it rather than us reverse-engineering it — `high` confidence, never an
- * MBID). NEVER REGRESSES: once a media holds a `high` citation from either source, a later `medium`
- * must not overwrite it, since the field that suffers is the one the LRCLIB query matches on. A
- * normalizer-derived value is always overwritable — it's a title parse, not a citation.
+ * Only two sources count as CITATIONS: `musicbrainz`, which carries an MBID, and `youtube`, the uploader's
+ * own declared credit. NEVER REGRESSES — a later `medium` must not overwrite a stored `high`, because the
+ * field that suffers is the one the LRCLIB query matches on. A normalizer title parse is overwritable.
  */
 export function applyAnnotation(
 	mediaId: string,
@@ -429,14 +341,12 @@ export function applyAnnotation(
 ): boolean {
 	const media = mediaById.get(mediaId);
 	if (!media || !annotation?.artist || !annotation.title) return false;
-	// Anything but these two sources (a normalizer echo, a typo) is not an identification.
 	const source =
 		annotation.source === 'musicbrainz' ? 'musicbrainz' : annotation.source === 'youtube' ? 'youtube' : null;
 	if (!source) return false;
 	if (source === 'musicbrainz' && !annotation.mbid) return false; // defined by its MBID
 	const confidence = annotation.confidence === 'high' ? 'high' : 'medium';
 
-	// Same rank comparison in spirit as the separator upgrade gate: at least as good as what's published.
 	const current = media.annotation;
 	const currentIsCitation = current?.source === 'musicbrainz' || current?.source === 'youtube';
 	if (currentIsCitation && current!.confidence === 'high' && confidence !== 'high') {
@@ -450,10 +360,8 @@ export function applyAnnotation(
 	return true;
 }
 
-/** Attaches the word-timed lyrics artifact (align output), additive and independent of the stems flip.
- *  The uri is NORMALIZED to a relative key, since workers report absolute filesystem paths and
- *  `safeMediaPath` rejects any ref starting with "/" — storing the raw uri would make the overlay
- *  unable to fetch an artifact that exists on disk. Returns true if a usable ref was set. */
+/** The uri MUST be normalized to a relative key: workers report ABSOLUTE paths and `safeMediaPath` rejects
+ *  any ref starting with "/", so a raw uri cannot fetch an artifact that is on disk. */
 export function setMediaLyrics(
 	mediaId: string,
 	uri: string | undefined,
@@ -463,8 +371,7 @@ export function setMediaLyrics(
 	const media = mediaById.get(mediaId);
 	if (!media) return false;
 
-	// Merge into the stored set and let the resolver choose — never "last write wins", which would let a
-	// later line-level source silently replace existing word timings.
+	// MERGE, never "last write wins", which would let a later line-level source replace word timings.
 	if (candidates?.length) {
 		let merged = media.lyricsCandidates ?? [];
 		for (const c of candidates) {
@@ -473,8 +380,7 @@ export function setMediaLyrics(
 			merged = mergeLyricsCandidate(merged, { ...c, ref });
 		}
 		media.lyricsCandidates = merged;
-		// The SHARED resolver, so a human override wins here exactly as it does on a sidecar restore —
-		// a live completion and a restore can never disagree.
+		// The SHARED resolver, so a live completion and a sidecar restore can never disagree.
 		const chosen = resolveLyricsRef(merged, media.lyricsOverrideRef);
 		if (chosen) {
 			media.lyricsRef = chosen; // only move the pointer if something is actually showable
@@ -482,18 +388,15 @@ export function setMediaLyrics(
 		}
 	}
 
-	// No candidates (an older worker, or a job that only reported `uri`) → the legacy single-ref path.
+	// No candidates (an older worker, or a `uri`-only report) → the legacy single-ref path.
 	const ref = toRelativeKey(uri);
 	if (!ref) return false;
 	media.lyricsRef = ref;
 	return true;
 }
 
-/** Attaches the isolated VOCALS stem (the guiding track), additive and independent of the stems flip —
- *  a song is perfectly playable with only the instrumental. Trusts the worker's report, like
- *  markMediaReady, for both the container format AND the content check: a worker that measures its own
- *  vocals as silence omits the artifact entirely, so an absent ref is a real answer, not a missing one
- *  (media/loudness.ts covers the other direction — already-processed songs being backfilled). */
+/** Additive: a song is playable with only the instrumental. An ABSENT ref is a real answer, not a missing
+ *  one — a worker that measures its own vocals as silence omits the artifact entirely. */
 export function setMediaVocals(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);
 	const ref = toRelativeKey(uri);
@@ -503,18 +406,9 @@ export function setMediaVocals(mediaId: string, uri: string | undefined, mediaBy
 }
 
 /**
- * Attaches the GUIDE MIX — both stems in ONE 4-channel file, so the TV plays the guiding track from a
- * single playhead instead of holding two elements in time against each other.
- *
- * ALWAYS WRITES, unlike `setMediaVocals` — the asymmetry is the whole point. The mix is not an
- * independent artifact but a DERIVATIVE of the two stems at a fixed path every process overwrites, so
- * its validity is tied to the stem generation that produced it. If a `stems-upgrade`'s mix encode fails
- * and the OLD ref were preserved, the room would keep playing a mix built from SUPERSEDED stems while
- * `instrumentalRef`/`Media.separator` advertise the better ones — and unrecoverably so, since the
- * backfill classifies a song with a ref as `settled` and never rebuilds it. So an absent key instead
- * CLEARS the ref: the song falls back to the two-element guide path, `guideMixEligibility` reports it
- * eligible again, and the next boot's backfill rebuilds the mix from the NEW stems. The caller deletes
- * the stale FILE (worker-hub.ts); this owns the ref only.
+ * Both stems in ONE 4-channel file, so the TV plays the guide from a single playhead. An absent key CLEARS
+ * the ref rather than preserving the old one, because the mix is a DERIVATIVE tied to the stem generation
+ * that produced it (docs/SERVER.md#idempotency-and-the-process-cap). The caller deletes the stale FILE.
  */
 export function setMediaGuideMix(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);
@@ -530,15 +424,9 @@ export function setMediaGuideMix(mediaId: string, uri: string | undefined, media
 }
 
 /**
- * Attaches the SONG PROFILE (key + vocal-range analysis), additive and independent of the instrumental
- * flip like setMediaVocals — but TWO things differ, both load-bearing. First, it ALWAYS WRITES once
- * stems completes, even when the worker reported nothing: a profile's PRESENCE is half the stems
- * process gate (gates.ts), so `undefined`/garbage normalizes to EMPTY_SONG_PROFILE (all-null) rather
- * than leaving the field unset — the honest "analysis ran, found nothing" answer that lets a
- * silent-vocal song finish processing instead of hanging on "Separating vocals" forever. Second, it
- * normalizes at THIS boundary: the value is untrusted wire data, and `normalizeSongProfile` degrades a
- * bad half to null independently rather than rejecting the whole record. Always returns true when the
- * media exists — an empty profile is itself a valid, gate-satisfying result.
+ * ALWAYS WRITES once stems completes, even on an empty report: a profile's PRESENCE is half the stems gate,
+ * so garbage normalizes to EMPTY_SONG_PROFILE rather than leaving the field unset — otherwise a
+ * silent-vocal song hangs on "Separating vocals" forever. Normalized HERE because the value is untrusted.
  */
 export function setMediaSongProfile(mediaId: string, profile: unknown, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);

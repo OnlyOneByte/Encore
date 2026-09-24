@@ -1,11 +1,6 @@
 /*
- * Real, decodable audio — EMITTED, not encoded, because both ffmpeg builds on this box are decode-only and
- * there is no flac/sox/lame. A RIFF/PCM header is 44 documented bytes and s16le samples are integers, so a
- * WAV needs no dependencies at all, `wav: 'audio/wav'` is already in the media route's content-type map,
- * and Chromium decodes it natively. See docs/E2E.md#proving-audio.
- *
- * The audio is deliberately LOUD and HARMONIC rather than noise, so a human opening the artifact hears a
- * chord and not a hiss, and so `webkitAudioDecodedByteCount` climbing is unambiguous.
+ * Real, decodable audio — EMITTED, not encoded; docs/E2E.md#proving-audio says why. The tone is deliberately
+ * LOUD and HARMONIC rather than noise, so a human opening the artifact hears a chord and not a hiss.
  */
 
 /** One 16-bit PCM WAV, mono, 44.1 kHz, from a set of summed sine partials. */
@@ -42,13 +37,7 @@ export function tone({ seconds = 8, hz = [220, 277.18, 329.63], rate = 44100, am
 	return bytes;
 }
 
-/**
- * Digital silence, at the exact 16-bit floor the silence guard looks for.
- *
- * Its purpose is to be REFUSED. Two of the songs on the real library separated to a floor-level stem
- * and published as ready, so the room played four minutes of nothing with no signal on any surface;
- * a fixture that cannot reproduce that cannot prove the guard against it works.
- */
+/** Digital silence at the exact 16-bit floor the silence guard looks for. Its purpose is to be REFUSED. */
 export function silence({ seconds = 8, rate = 44100 } = {}) {
 	return tone({ seconds, rate, amp: 0, hz: [1] });
 }

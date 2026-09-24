@@ -5,10 +5,7 @@ dist
 **/*.min.js
 bun.lock
 
-# GENERATED, and pinned byte-for-byte by palette-registry-820.test.ts, which regenerates it from
-# scripts/_player_palette.py and requires an exact match. Prettier's JSON printer disagrees with the
-# generator's, so formatting this file reds that guard with a diff that looks like a palette change.
-# `bun run format`'s own globs do not reach a .json under src/, so this is a guard against a BROADER
-# invocation (`prettier --write src`, an editor-on-save, a future glob widening) rather than against
-# the script as it stands today. Regenerate it, never reformat it.
+# GENERATED, and pinned byte-for-byte by palette-registry-820.test.ts against its generator's output.
+# Prettier's JSON printer disagrees with the generator's, so formatting this file reds that guard with a
+# diff that looks like a palette change. Regenerate it, never reformat it.
 src/lib/contract/presentation/player-palette-48.json

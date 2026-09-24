@@ -1,13 +1,9 @@
-// The lobby's wording, pinned.
-//
-// Caught: `/tv` told a room "Waiting for someone to pick a song…" while somebody's song was actively
-// separating — and while that person's phone was simultaneously saying "You're next once it's ready". The
-// cause was not tvScreen()'s precedence: `lobby` covers TWO situations and the copy described only one,
-// because a queued-but-unplayable entry routes to `lobby` — tvScreen's `waiting` means the narrower "the
-// PLAYER is actively holding", not "something queued is not ready".
-//
-// These assertions are about MEANING rather than exact strings, so a copy edit is free but reintroducing
-// the contradiction is not.
+// guard: the lobby's wording. Caught: `/tv` told a room "Waiting for someone to pick a song…" while
+// somebody's song was actively separating, and while that person's phone said "You're next once it's
+// ready". The cause was not tvScreen()'s precedence: `lobby` covers TWO situations and the copy described
+// only one, because a queued-but-unplayable entry routes to `lobby` while tvScreen's `waiting` means the
+// narrower "the PLAYER is actively holding". These assertions are about MEANING rather than exact strings,
+// so a copy edit is free but reintroducing the contradiction is not.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 

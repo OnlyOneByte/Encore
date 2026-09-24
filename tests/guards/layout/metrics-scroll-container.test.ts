@@ -1,16 +1,8 @@
-// guard: the metrics tables have exactly ONE horizontal scroll container, and it is the page's own
-// `.scroller`. See docs/GUARDS.md#vendored-component-seams.
-//
-// shadcn's `Table` renders its own `<div data-slot="table-container" class="… overflow-x-auto">` INSIDE
-// `.scroller`, and because that wrapper is `w-full` it is exactly as wide, so it absorbed all the overflow
-// and did all the scrolling while `.scroller` reported `scrollWidth === clientWidth`. Nothing was
-// unreachable, but the page cannot own the scroll state of a box it does not render: the right-edge shadow
-// that tells a phone user there are more columns is painted by `.scroller` and is dead the moment the
-// inner container takes the overflow back.
-//
-// Invisible to `tsc` and `svelte-check` (it is CSS) and to every behavioural test, because the page still
-// LOOKS right — the table scrolls, just from the wrong element. Re-vendoring the table, or tidying away a
-// `:global` rule that appears to do nothing, restores it in one line.
+// guard: the metrics tables have exactly ONE horizontal scroll container, the page's own `.scroller`.
+// shadcn's `Table` renders its own `overflow-x-auto` wrapper INSIDE it at `w-full`, so the wrapper absorbed
+// all the overflow while `.scroller` reported `scrollWidth === clientWidth` and the right-edge shadow that
+// tells a phone user there are more columns died. Invisible to `tsc`, `svelte-check` and every behavioural
+// test, because the table still scrolls — from the wrong element. See docs/GUARDS.md#vendored-component-seams.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

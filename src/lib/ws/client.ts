@@ -1,9 +1,6 @@
-// Client realtime socket. Connects to /ws, heartbeats, auto-reconnects with capped backoff,
-// and resyncs on (re)connect via hello{lastRev} -> queue:sync. Gap detection: a queue:patch
-// whose rev skips ahead triggers a full resync. See docs/ARCHITECTURE.md.
-//
-// Testable: inject a WebSocket factory (the `connect` option) so a mock socket can simulate
-// drop/restore without a real server. In the browser, the default factory uses global WebSocket.
+// Client realtime socket: connects to /ws, heartbeats, auto-reconnects with capped backoff, and resyncs on
+// (re)connect via hello{lastRev} -> queue:sync. Gap detection: a queue:patch whose rev skips ahead triggers a full
+// resync. Testable by injecting a WebSocket factory (the `connect` option). See docs/ARCHITECTURE.md.
 
 import type { ServerEvent, ClientEvent } from '$lib/contract';
 import { trySend } from './send';
@@ -28,11 +25,8 @@ export interface WsClientOptions {
 	/** Fired on every connected-state edge, so the UI can show an offline cue. */
 	onConnectionChange?: (connected: boolean) => void;
 	heartbeatMs?: number;
-	/**
-	 * How long a heartbeat may go unanswered before this socket is presumed dead. The server answers
-	 * every `hello` with a `queue:sync`, so silence past this window means the socket is gone even
-	 * though it never fired `close` — see #presumeDead.
-	 */
+	/** How long a heartbeat may go unanswered before this socket is presumed dead. The server answers every `hello`
+	 * with a `queue:sync`, so silence past this window means the socket is gone though it never fired `close`. */
 	livenessTimeoutMs?: number;
 	backoff?: number[]; // reconnect delays (ms), last value repeats
 	/** Bind page-lifecycle listeners (visibility/online/pageshow/resume). No-op outside a browser. */
@@ -66,10 +60,9 @@ export class WsClient {
 			livenessTimeoutMs: 10_000,
 			bindLifecycle: true,
 			backoff: [250, 500, 1000, 2000, 5000],
-			// WRAPPED, never a bare `setTimeout`: stored on an object and called as a method, a bare reference
-			// gets the wrong `this` and the browser throws "Illegal invocation". That throw lands inside onopen,
-			// so the heartbeat never arms and auto-reconnect never schedules — and tests pass either way,
-			// because they inject their own timer functions.
+			// WRAPPED, never a bare `setTimeout`: stored on an object and called as a method, a bare reference gets the wrong
+			// `this` and the browser throws "Illegal invocation". That throw lands inside onopen, so the heartbeat never arms
+			// and auto-reconnect never schedules — and tests pass either way, because they inject their own timer functions.
 			setTimeoutFn: ((fn: () => void, ms?: number) => setTimeout(fn, ms)) as typeof setTimeout,
 			clearTimeoutFn: ((id: ReturnType<typeof setTimeout>) => clearTimeout(id)) as typeof clearTimeout,
 			onResyncNeeded: undefined,
@@ -94,17 +87,11 @@ export class WsClient {
 	}
 
 	/**
-	 * Send a client event. Returns whether it actually went out — every send goes through `trySend`, because
-	 * optional chaining guards an ABSENT socket and not a connecting, closing or closed one, and sending on
-	 * those throws.
-	 *
-	 * DELIBERATELY NOT A RETRY QUEUE: replaying a queued `pause` after a reconnect could act on a different
-	 * song than the one the guest was looking at, so the honest failure is to drop it and say so. The
-	 * reconnect path resyncs authoritative state, which is what corrects the phone.
-	 *
-	 * `quiet` is for a caller whose drop is expected and high-rate — the TV's telemetry stream, where the next
-	 * frame is milliseconds away and a warning per drop would flood the console through any reconnect. It
-	 * changes only whether the drop is LOGGED, never whether it is sent.
+	 * Send a client event, reporting whether it actually went out: every send goes through `trySend`, because optional
+	 * chaining guards an ABSENT socket and not a connecting, closing or closed one, and sending on those throws.
+	 * DELIBERATELY NOT A RETRY QUEUE — replaying a queued `pause` after a reconnect could act on a different song than
+	 * the one the guest was looking at, so the honest failure is to drop it and say so; the reconnect path resyncs
+	 * authoritative state. `quiet` changes only whether the drop is LOGGED, never whether it is sent.
 	 */
 	send(e: ClientEvent, opts?: { quiet?: boolean }): boolean {
 		const sent = trySend(this.#sock, JSON.stringify(e));
@@ -112,12 +99,9 @@ export class WsClient {
 		return sent;
 	}
 
-	/**
-	 * Re-verify the connection after the page was frozen or the network came back. A socket frozen with its
-	 * page is INDISTINGUISHABLE from a live one — `connected` stays true and no close fires until the OS gets
-	 * round to it, which on mobile can be never — so a wake does not trust `connected`: it beats immediately
-	 * and lets the liveness watchdog settle the question.
-	 */
+	/** Re-verify the connection after the page was frozen or the network came back. A socket frozen with its page is
+	 * INDISTINGUISHABLE from a live one — `connected` stays true and no close fires until the OS gets round to it,
+	 * which on mobile can be never — so a wake beats immediately and lets the liveness watchdog settle the question. */
 	wake(): void {
 		if (this.#closedByUs) return;
 		this.#attempt = 0; // a wake is not a retry — it must not inherit a capped backoff delay
@@ -130,10 +114,9 @@ export class WsClient {
 	}
 
 	#dial(): void {
-		// DISCARD BEFORE OVERWRITING `#sock`. A redial can happen while a previous socket is still live or
-		// connecting, and without this the old one is orphaned with its handlers attached: it delivers frames to
-		// a field that no longer points at it, and its eventual `onclose` runs the teardown against the CURRENT
-		// socket — killing the live heartbeat and multiplying connections.
+		// DISCARD BEFORE OVERWRITING `#sock`. A redial can happen while a previous socket is still live or connecting, and
+		// without this the old one is orphaned with its handlers attached: its eventual `onclose` runs the teardown against
+		// the CURRENT socket, killing the live heartbeat and multiplying connections.
 		this.#discard(this.#sock);
 		const sock = this.#opt.connect(this.#opt.url);
 		this.#sock = sock;
@@ -201,11 +184,9 @@ export class WsClient {
 		this.#scheduleReconnect();
 	}
 
-	/**
-	 * Detach a socket's handlers, THEN close it. The order is the contract: handlers off first, so the socket's
-	 * own `onclose` cannot fire this client's reconnect and timer logic on top of whatever the caller does
-	 * next. The caller owns `#sock`; this only makes the passed socket dead.
-	 */
+	/** Detach a socket's handlers, THEN close it. The order is the contract: handlers off first, so the socket's own
+	 * `onclose` cannot fire this client's reconnect and timer logic on top of whatever the caller does next. The caller
+	 * owns `#sock`; this only makes the passed socket dead. */
 	#discard(sock: MinimalSocket | null): void {
 		if (!sock) return;
 		sock.onopen = null;

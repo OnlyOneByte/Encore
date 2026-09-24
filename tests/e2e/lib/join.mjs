@@ -1,11 +1,6 @@
-// JOINING A ROOM, IN ONE PLACE. `/` is a TWO-PANE join screen: with `?room=CODE` a guest lands on the
-// IDENTITY pane (name + colour ring), and with no code on the six-box CODE pane — where the name field does
-// not exist, so a bare `goto('/')` + `fill(nameInput)` is a 10s timeout.
-//
-// Every driver takes the SCANNED path, and not because it is easier to drive: it is the case the design is
-// built around, it exercises the same `/api/room-preview` resolution the typed path finishes with, and it is
-// the path that reaches the colour ring. A driver that specifically wants the six-box pane drives it itself.
-// See docs/E2E.md#shared-helpers.
+// JOINING A ROOM, IN ONE PLACE — see docs/E2E.md#shared-helpers for the two panes and why every driver
+// takes the SCANNED path. The trap this file exists to remove: the name field is on the IDENTITY pane only,
+// so a bare `goto('/')` + `fill(nameInput)` lands on the six-box code pane and times out after 10s.
 import { SEL } from '../contract.ts';
 
 /** Matches the drivers' own ceiling for a first paint after a navigation. */
@@ -15,12 +10,8 @@ const DEFAULT_TIMEOUT = 15_000;
 const codeCache = new Map();
 
 /**
- * The active room's join code, read off the TV's attract panel. NO ENDPOINT PUBLISHES IT: the TV's own
- * server load resolves the active room, `/health` reports the room ID rather than its code, and the QR
- * encodes it in a data URL a driver cannot decode.
- *
- * Cached per base URL, since the code is minted once per server boot. A flow that restarts its server
- * mid-run must pass `fresh: true`.
+ * The active room's join code, read off the TV's attract panel. Pass `fresh: true` after restarting a
+ * server mid-run.
  *
  * @param {{ goto: (url: string) => Promise<unknown>,
  *           waitForSelector: (sel: string, opts?: { timeout?: number }) => Promise<unknown>,
@@ -31,9 +22,9 @@ const codeCache = new Map();
  */
 export async function roomCode(page, base, { timeout = DEFAULT_TIMEOUT, fresh = false } = {}) {
 	// AN EXPLICIT CODE WINS — the escape hatch for a server that ALREADY has guests. `/tv` renders the
-	// attract panel, and therefore the code, only while the room is EMPTY; after a join it shows the lobby.
-	// Flows here open `/tv` before their first join so the cache is primed, but a driver pointed at a warm
-	// server has no such moment and must be told: `ENCORE_ROOM_CODE=ABCD23`.
+	// attract panel, and therefore the code, only while the room is EMPTY. Flows here open `/tv` before
+	// their first join so the cache is primed; a driver pointed at a warm server must be told, with
+	// `ENCORE_ROOM_CODE=ABCD23`.
 	const declared = (typeof process !== 'undefined' ? process.env?.ENCORE_ROOM_CODE : '')?.trim().toUpperCase();
 	if (declared) return declared;
 	if (!fresh && codeCache.has(base)) return codeCache.get(base);
@@ -57,9 +48,8 @@ export async function roomCode(page, base, { timeout = DEFAULT_TIMEOUT, fresh = 
 }
 
 /**
- * Land on the IDENTITY pane — the name field and the colour ring. Deliberately the smaller helper: it
- * navigates and waits, leaving the name, the colour and the submit to the caller, because each driver has
- * its own opinion about those. `joinAs` below is the whole flow, for a call site that has none.
+ * Land on the IDENTITY pane. Deliberately the smaller helper: it navigates and waits, leaving the name, the
+ * colour and the submit to the caller. `joinAs` below is the whole flow, for a call site with no opinion.
  *
  * @param {{ goto: (url: string) => Promise<unknown>,
  *           waitForSelector: (sel: string, opts?: { timeout?: number }) => Promise<unknown>,
@@ -76,11 +66,9 @@ export async function openJoin(page, base, { code, timeout = DEFAULT_TIMEOUT } =
 }
 
 /**
- * Join as `name` through the real screen and land on the joined home. `stop` is a key handed to the colour
- * ring (`Home`/`End` are the two ends of the 48-stop palette): the ring is a `role="slider"`, so a colour
- * is a keypress, not a click on a per-colour element.
- *
- * Leaves the page on `/` and deliberately does NOT open search — that is `openBrowseFromHome`.
+ * Join as `name` through the real screen and land on the joined home. `stop` is a KEY for the colour ring
+ * (`Home`/`End` are the two ends of the 48-stop palette): the ring is a `role="slider"`, so a colour is a
+ * keypress and there is no per-colour element to click. Leaves the page on `/` and does NOT open search.
  *
  * @param {{ goto: (url: string) => Promise<unknown>,
  *           fill: (sel: string, value: string) => Promise<unknown>,
@@ -97,8 +85,7 @@ export async function joinAs(page, base, name, { stop, code, timeout = DEFAULT_T
 	await openJoin(page, base, { code, timeout });
 	await page.fill(SEL.nameInput, name);
 	if (stop) await page.pressKey(SEL.colourRing, stop);
-	// `SEL.submit` is a regex whose source IS the literal label, so the name is derived rather than
-	// re-typed — `clickByRole` wants the string.
+	// `SEL.submit` is a regex whose source IS the literal label, so the name is derived rather than re-typed.
 	await page.clickByRole('button', SEL.submit.source);
 	// The join reloads `/` by hand (a client-side goto from `/` to `/` is a no-op), so wait for the BAND
 	// rather than for the URL: the path never changed.

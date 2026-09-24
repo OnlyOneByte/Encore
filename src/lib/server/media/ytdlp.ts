@@ -1,17 +1,13 @@
-// yt-dlp backend — keyless YouTube search + metadata via the yt-dlp binary (Bun.spawn). Graceful
-// degradation: an absent yt-dlp (common in dev) makes search return [] rather than throw, so the
-// local library + demo catalog stay usable. The parser is pure and separated so it unit-tests
-// without the binary; `ytDlpSearch` is the YtSearchBackend wired into YouTubeResolver in prod.
+// Keyless YouTube search via the yt-dlp binary. An absent yt-dlp makes search return [] rather than throw,
+// so the local library stays usable. The parser is pure and separate, so it unit-tests without the binary.
 
 import type { SearchResult } from './resolver';
 import { runCapturing } from './spawn-capture';
 
 /**
- * The thumbnail URL for a YouTube video id, DERIVED rather than taken from yt-dlp's `thumbnails[]`:
- * that list's aspect ratio and size vary by result set, and its URLs carry signature query params
- * that defeat the proxy's URL-keyed disk cache (thumbs.ts `thumbKey`) with duplicate copies. The bare
- * `mqdefault.jpg` form is a fixed, query-string-free 320×180 that every YouTube video has.
- * `i.ytimg.com` is already on the proxy's SSRF host allowlist (docs/ARCHITECTURE.md §10).
+ * DERIVED rather than taken from yt-dlp's `thumbnails[]`, whose aspect ratio varies by result set and whose
+ * URLs carry signature query params that defeat the proxy's URL-keyed disk cache with duplicates. The bare
+ * `mqdefault.jpg` form is a fixed, query-string-free 320x180 every video has, on the SSRF host allowlist.
  */
 export function ytThumbnailUrl(videoId: string): string {
 	return `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/mqdefault.jpg`;
@@ -33,9 +29,8 @@ export function parseSearchJson(lines: string): SearchResult[] {
 				artist: j.uploader ?? j.channel ?? undefined,
 				durationSec: Math.round(j.duration ?? 0),
 				thumbnail: ytThumbnailUrl(j.id),
-				// `view_count` IS present in --flat-playlist output (measured), unlike `upload_date` and
-				// `release_timestamp`, which are null there and would each cost a per-video metadata call.
-				// Guarded on the type because a non-number would render as "NaN views".
+				// `view_count` IS present in --flat-playlist output, unlike `upload_date`, which would cost a
+				// per-video call. Type-guarded because a non-number renders as "NaN views".
 				viewCount: typeof j.view_count === 'number' && Number.isFinite(j.view_count) ? j.view_count : undefined
 			});
 		} catch {
@@ -45,8 +40,8 @@ export function parseSearchJson(lines: string): SearchResult[] {
 	return out;
 }
 
-// Availability probe: cache only a POSITIVE result forever; re-probe after a TTL when negative, so
-// yt-dlp installed after boot — or a racey first probe — doesn't disable search until restart.
+// Only a POSITIVE result caches forever; a negative re-probes after a TTL, so yt-dlp installed after boot
+// does not disable search until restart.
 let _available: boolean | null = null;
 let _negativeCheckedAt = 0;
 const NEGATIVE_TTL_MS = 60_000;
@@ -55,13 +50,12 @@ export async function ytDlpAvailable(spawn = Bun.spawn, now: () => number = Date
 	if (_available === true) return true;
 	if (_available === false && now() - _negativeCheckedAt < NEGATIVE_TTL_MS) return false;
 	try {
-		// A wedged binary or stuck mount must not hang the probe (and every caller waiting on it) forever.
+		// A wedged binary must not hang the probe and every caller waiting on it.
 		const r = await runCapturing(['yt-dlp', '--version'], AVAILABLE_TIMEOUT_MS, spawn);
 		_available = !r.timedOut && r.code === 0;
 	} catch (err) {
-		// yt-dlp is invoked by name via PATH, so a missing PATH entry lands here — bind and log the
-		// reason rather than swallowing it, so an empty search result is attributable. The degrade
-		// itself is unchanged: still [], never a throw.
+		// yt-dlp is invoked by name via PATH, so a missing entry lands here. Logged rather than swallowed,
+		// so an empty search result is attributable; the degrade is still [], never a throw.
 		console.warn('[ytdlp] availability probe failed; YouTube search will degrade to empty:', err);
 		_available = false;
 	}
@@ -71,7 +65,7 @@ export async function ytDlpAvailable(spawn = Bun.spawn, now: () => number = Date
 
 const SEARCH_TIMEOUT_MS = 10_000; // a hung yt-dlp must not hold the request open
 
-/** Injectable seams for `ytDlpSearch`, so each of its exits is reachable from a test. */
+/** So each of `ytDlpSearch`'s exits is reachable from a test. */
 export interface YtDlpSearchDeps {
 	/** Threaded into BOTH the availability probe and the search itself. */
 	spawn?: typeof Bun.spawn;
@@ -82,13 +76,10 @@ export interface YtDlpSearchDeps {
 }
 
 /**
- * YtSearchBackend: run `yt-dlp ytsearchN:<query> --dump-json --flat-playlist`. An absent yt-dlp still
- * yields `[]` rather than throwing, but every other empty is now attributable rather than silent: a
- * KILLED search is reported (a killed run's truncated trailing line is silently dropped by
- * `parseSearchJson`, so it would otherwise be indistinguishable from a complete short page, and
- * `YouTubeResolver` caches that partial page for 5 minutes); a NON-ZERO exit is reported with stderr;
- * a spawn that cannot start is reported instead of escaping the function. Only a genuinely empty
- * result set stays silent.
+ * An absent yt-dlp still yields `[]` rather than throwing, but every OTHER empty is attributable: a KILLED
+ * search is reported, because its truncated trailing line is dropped silently and would otherwise look like a
+ * complete short page that `YouTubeResolver` then caches for 5 minutes; a non-zero exit is reported with
+ * stderr; a spawn that cannot start is reported rather than escaping. Only a genuinely empty set stays silent.
  */
 export async function ytDlpSearch(query: string, limit: number, deps: YtDlpSearchDeps = {}): Promise<SearchResult[]> {
 	const spawn = deps.spawn ?? Bun.spawn;
@@ -98,10 +89,10 @@ export async function ytDlpSearch(query: string, limit: number, deps: YtDlpSearc
 	// query is one argv element, never shell-interpolated — see docs/ARCHITECTURE.md §10.
 	const argv = ['yt-dlp', `ytsearch${limit}:${query}`, '--dump-json', '--flat-playlist', '--no-warnings'];
 	try {
-		// The spawn is INSIDE the try because it is runCapturing's, not ours.
+		// The spawn is INSIDE the try, because it is runCapturing's and not ours.
 		const r = await runCapturing(argv, timeoutMs, spawn);
 		const results = parseSearchJson(r.stdout);
-		// The query is JSON-quoted so a newline in it cannot forge a second log line.
+		// JSON-quoted, so a newline in the query cannot forge a second log line.
 		if (r.timedOut) {
 			console.warn(
 				`[ytdlp] search for ${JSON.stringify(query)} was KILLED after ${timeoutMs}ms; returning the ${results.length} result(s) that had arrived (the page may be truncated)`

@@ -8,15 +8,15 @@
 
 **35 requirements** across three sections. Each row is a table with the same seven fields:
 
-| Field          | What it carries                                                                     |
-| -------------- | ----------------------------------------------------------------------------------- |
-| **Statement**  | the requirement itself, in the present tense, with its named exemptions             |
-| **Surfaces**   | where a user meets the consequence, or `None directly` for a server-only rule       |
-| **Rationale**  | what goes wrong without it — the cost, not the mechanism                            |
-| **Source**     | `Cited` (repo evidence, with file and line) or `DERIVED` (with its model stated)     |
-| **Acceptance** | given/when/then, ending in the single observation that would falsify it             |
+| Field          | What it carries                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| **Statement**  | the requirement itself, in the present tense, with its named exemptions                    |
+| **Surfaces**   | where a user meets the consequence, or `None directly` for a server-only rule              |
+| **Rationale**  | what goes wrong without it — the cost, not the mechanism                                   |
+| **Source**     | `Cited` (repo evidence, naming the file) or `DERIVED` (with its model stated)              |
+| **Acceptance** | given/when/then, ending in the single observation that would falsify it                    |
 | **Check**      | the test that defends it, or what is missing — `exists`, `half exists`, or `to be written` |
-| **Priority**   | `Ship-blocking`, or the reason it is not                                            |
+| **Priority**   | `Ship-blocking`, or the reason it is not                                                   |
 
 A row may name a test that does not exist yet, but it has to say so at the site:
 `tests/guards/docs/cited-paths-resolve.test.ts` fails a cited path that resolves to nothing unless the
@@ -30,18 +30,17 @@ line admits it.
 
 ## Why this tree exists separately
 
-`../ux/` opens by declaring itself **UX requirements** — the design rules. Media layout, HTTP status
-codes and job retry ceilings are not design rules, and filing them there would dilute a document
-whose stated purpose is the thing a designer argues about. The split is by _kind of concern_, not by
-importance: a ship-blocking row lives in whichever tree its subject belongs to.
+These are subsystem contracts, not design rules: media layout, HTTP status codes and job retry
+ceilings are not things a designer argues about. A ship-blocking row lives in whichever document its
+subject belongs to.
 
-Two areas deliberately did **not** get a namespace here:
+Two areas deliberately have no namespace of their own here:
 
-- **`lib/server/realtime`** extends `XR-CON` instead. Concurrency and authority already govern that
-  ground and already cite its call sites; a second namespace over the same subject would produce
-  two places to look and two rows to keep in agreement.
-- **`lib/components` and `lib/tv`** went to `../ux/` as `XR-CMP` and `XR-TVM`. They are the
-  components the design rules already constrain, so their contracts belong beside them.
+- **`src/lib/server/realtime`** extends the concurrency rows instead. Authority already governs that
+  ground and already cites its call sites; a second namespace over the same subject would produce two
+  places to look and two rows to keep in agreement.
+- **`src/lib/components` and `src/lib/tv`** are governed by the design rules in
+  [`../FRONTEND.md`](../FRONTEND.md), so their contracts belong beside them rather than here.
 
 ## What these three sections found
 

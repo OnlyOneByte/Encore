@@ -1,18 +1,15 @@
-// The historical record of job processing, and the ONLY place a duration is kept. The `jobs` table
-// (repository.ts) is the dispatch slot — one live row per (mediaId, jobType), mutated in place, always
-// describing the present, never the past. Every attempt gets its own row here: opened on queue entry,
-// sealed on outcome; a retry opens a new row rather than overwriting the old one. The named lifecycle
-// helpers below (not `transition`, which can't tell a reject from a lease expiry) are the ONLY
-// supported way to touch a row — bypassing them to call `transition` directly leaves no trace here.
+// The ONLY place a duration is kept. Every attempt gets its own row: opened on queue entry, sealed on
+// outcome, and a retry opens a NEW row rather than overwriting. The named lifecycle helpers below are the
+// only supported way to touch a row — calling `transition` directly leaves no trace here.
+// See docs/SERVER.md#the-attempt-ledger.
 
 import { and, asc, desc, eq, gte, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { jobAttempts } from '../db/schema';
 import { ulid, type AttemptOutcome, type Job, type JobAttempt } from '../../contract';
 
-/** Every field optional: an absent field means "not applicable to this step" (e.g. a `fetch` has no
- *  separator) and is recorded as NULL, never a placeholder — a fabricated value would corrupt the
- *  per-model rollup that reads these columns. */
+/** An absent field means "not applicable to this step" and is recorded as NULL, never a placeholder: a
+ *  fabricated value corrupts the per-model rollup that reads these columns. */
 export interface AttemptFacts {
 	engine?: string | null;
 	model?: string | null;
@@ -31,10 +28,9 @@ export class AttemptLedger {
 		this.#db = db;
 	}
 
-	/** Called on enqueue AND requeue — both are the moment a fresh wait begins, so dating a retry's
-	 *  queue wait from the job's original `createdAt` would charge it for time the prior attempt spent.
-	 *  `attempt` is derived from the row count, not `job.attempts`, because the job counter is
-	 *  deliberately not incremented on an ack-timeout (no work was performed) and would undercount. */
+	/** On enqueue AND requeue: both begin a fresh wait, so dating a retry from the job's `createdAt` would
+	 *  charge it for the prior attempt's time. `attempt` comes from the ROW COUNT, not `job.attempts`,
+	 *  which is deliberately not incremented on an ack-timeout and would undercount. */
 	open(job: Pick<Job, 'id' | 'mediaId' | 'processingId' | 'jobType'>, now: number): JobAttempt {
 		const attempt = this.#countFor(job.id) + 1;
 		const row: JobAttempt = {
@@ -65,34 +61,31 @@ export class AttemptLedger {
 		return row;
 	}
 
-	/** Offered to a worker. Records the dispatched facts — what was ASKED for (see AttemptFacts). */
+	/** Records what was ASKED for, not what ran. */
 	assigned(jobId: string, workerId: string, facts: AttemptFacts, now: number): void {
 		this.#patchOpen(jobId, { workerId, assignedAt: now, ...pickFacts(facts) });
 	}
 
-	/** Worker accepted: processing begins here. `finishedAt − startedAt` is the number that matters. */
+	/** `finishedAt − startedAt` is the number that matters. */
 	started(jobId: string, now: number): void {
 		this.#patchOpen(jobId, { startedAt: now });
 	}
 
-	/** Seals the in-flight attempt; after this the row is never written again — a retry calls `open()`.
-	 *  `abandoned` covers a return to the queue (worker reject, lease expiry, boot recovery): the attempt
-	 *  is over even though the job lives on. */
+	/** After this the row is NEVER written again; a retry calls `open()`. `abandoned` covers a return to
+	 *  the queue: the attempt is over even though the job lives on. */
 	closed(jobId: string, outcome: AttemptOutcome, now: number, error?: string | null): void {
 		this.#patchOpen(jobId, { finishedAt: now, outcome, error: error ?? null });
 	}
 
-	/** Overwrites facts with what the worker actually resolved — a different claim from `assigned`'s
-	 *  request, since a worker can legitimately resolve a model alias, an unsupported backend, or a
-	 *  device fallback. Only the reported fields are touched, so a partial report can't blank out
-	 *  what dispatch already knew. */
+	/** What the worker actually resolved, a different claim from `assigned`'s request. Only the REPORTED
+	 *  fields are touched, so a partial report cannot blank out what dispatch already knew. */
 	reportFacts(jobId: string, facts: AttemptFacts): void {
 		const patch = pickFacts(facts);
 		if (Object.keys(patch).length === 0) return;
 		this.#patchOpen(jobId, patch);
 	}
 
-	/** Every attempt for one song, oldest first — the per-song audit timeline. */
+	/** Oldest first. */
 	byMedia(mediaId: string): JobAttempt[] {
 		return this.#db
 			.select()
@@ -102,7 +95,7 @@ export class AttemptLedger {
 			.all();
 	}
 
-	/** Every attempt of one process, oldest first — end-to-end spans one of these. */
+	/** Oldest first; an end-to-end duration spans one of these. */
 	byProcess(processingId: string): JobAttempt[] {
 		return this.#db
 			.select()
@@ -117,9 +110,8 @@ export class AttemptLedger {
 		return this.#findOpen(jobId) ?? null;
 	}
 
-	/** A TIME window (not a row-count cap), so the caller can pair the edge `sinceMs` with
-	 *  `perProcess(rows, sinceMs)` to flag a boundary-straddling process `clipped` and exclude it,
-	 *  rather than measure its span from only the surviving rows and understate it. */
+	/** A TIME window, not a row-count cap, so the caller can pair `sinceMs` with `perProcess` to flag a
+	 *  boundary-straddling process `clipped` rather than understate its span from surviving rows. */
 	finishedSince(sinceMs: number, limit = 20_000): JobAttempt[] {
 		return this.#db
 			.select()
@@ -130,7 +122,7 @@ export class AttemptLedger {
 			.all();
 	}
 
-	/** How many sealed attempts exist in total — the honest denominator behind a windowed sample. */
+	/** The honest denominator behind a windowed sample. */
 	countFinished(): number {
 		const row = this.#db
 			.select({ n: sql<number>`count(*)` })
@@ -152,8 +144,8 @@ export class AttemptLedger {
 		return this.#db.select().from(jobAttempts).where(eq(jobAttempts.jobId, jobId)).all().length;
 	}
 
-	/** No-op when there's no open attempt, never a throw: the ledger is OBSERVABILITY and must never be
-	 *  able to break a process — a job in flight when this table was added has no open attempt to patch. */
+	/** No-op when there is no open attempt, never a throw: the ledger is OBSERVABILITY and must never be
+	 *  able to break a process. */
 	#patchOpen(jobId: string, patch: Partial<JobAttempt>): void {
 		const open = this.#findOpen(jobId);
 		if (!open) return;

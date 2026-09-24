@@ -12,7 +12,6 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 import { openJoin } from '../lib/join.mjs';
 
 /**
- * Browser/Page derive from driver.mjs so they cannot drift; page.evaluate() is Promise<any>, cast at use.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check

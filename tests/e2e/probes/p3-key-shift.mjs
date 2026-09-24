@@ -1,17 +1,14 @@
 /*
- * P3 — DOES THE PITCH SHIFTER ACTUALLY MAKE A SOUND, AT THE RIGHT PITCH?
- *
- * A unit test can run the worklet maths and still not see whether the worklet is WIRED into the
- * browser's graph, whether the AudioContext resumes, or whether the phone → server → TV round-trip
- * lands the right ratio. This measures the rendered graph and the OUTPUT samples off a parallel tap.
+ * P3 — DOES THE PITCH SHIFTER ACTUALLY MAKE A SOUND, AT THE RIGHT PITCH? Measures the rendered graph and
+ * the OUTPUT samples off a parallel tap.
  *
  * THE FIXTURE IS WHAT MAKES IT DECISIVE: an 8s WAV chord of three equal-amplitude sines
- * (tests/e2e/wav.mjs), so an FFT peak lands cleanly on one partial and moves by exactly the pitch
- * ratio. A real recording could not carry that property.
+ * (tests/e2e/wav.mjs), so an FFT peak lands cleanly on one partial and moves by exactly the pitch ratio.
+ * A real recording could not carry that property.
  *
  *   PORT=5223 bun tests/e2e/probes/p3-key-shift.mjs
  *
- * See docs/E2E.md#proving-audio and #exit-codes-and-what-ran-means.
+ * See docs/E2E.md#proving-audio.
  */
 
 import { join } from 'node:path';
@@ -21,8 +18,6 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from '../lib/phone.mjs';
 
 /**
- * `page.evaluate()` is Promise<any>, so DOM/API-shaped results are cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity

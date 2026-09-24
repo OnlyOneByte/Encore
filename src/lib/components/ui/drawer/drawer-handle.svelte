@@ -1,11 +1,7 @@
 <script lang="ts">
-	/*
-	 * The real vaul handle, which is the element carrying `data-vaul-handle` plus its own hit-area span.
-	 * The registry's decorative div is not a substitute: with `handleOnly` on the Root and no element
-	 * carrying that attribute, vaul has nothing to restrict dragging to and the sheet cannot be dragged at
-	 * all, silently. The app needs `handleOnly` because the sheet's body holds sliders, and a
-	 * drag-to-dismiss surface under a slider fights the thumb.
-	 */
+	/* The real vaul handle: the element carrying `data-vaul-handle` plus its own hit-area span. The registry's
+	   decorative div is not a substitute — with `handleOnly` on the Root and no element carrying that attribute, vaul has
+	   nothing to restrict dragging to and the sheet cannot be dragged at all, silently. */
 	import { Drawer as DrawerPrimitive } from 'vaul-svelte';
 	import { cn } from '$lib/utils.js';
 
@@ -20,13 +16,9 @@
 />
 
 <style>
-	/*
-	 * THE GRAB AREA IS BIGGER THAN THE BAR IT DRAWS: vaul renders a hit-area span for exactly this but
-	 * ships no dimensions, so without these rules the drag target is the 6px bar. The bar's height must
-	 * stay a TOKEN rather than a Tailwind class, because the hit-area rule subtracts it from --tap and a
-	 * literal on one side of that arithmetic silently drifts the centring. Global because the span is
-	 * rendered by a child component, which a scope hash cannot reach.
-	 */
+	/* THE GRAB AREA IS BIGGER THAN THE BAR IT DRAWS: vaul renders a hit-area span for exactly this but ships no
+	   dimensions, so without these rules the drag target is the 6px bar. The bar's height must stay a TOKEN rather than a
+	   Tailwind class, because the hit-area rule subtracts it from --tap and a literal there drifts the centring. */
 	:global([data-slot='drawer-handle']) {
 		height: var(--space-xs);
 	}

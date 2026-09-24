@@ -29,34 +29,28 @@ test('a missing or empty actor is refused rather than treated as trusted', () =>
 	}
 });
 
-// The five authority rulings are each "any joined singer is a host". Pinning each to the capability that
-// enforces it means a flip of can() — narrowing any capability to a host role — reds the test naming it.
+// The five authority rulings are each "any joined singer is a host". Pinning each to the capability that enforces
+// it means a flip of can() — narrowing any capability to a host role — reds the test naming it. Queue-depth caps
+// are a validateCommand concern rather than a capability, and are guarded in the queue add-arm tests.
 const anySinger = { singerId: 'guest-1' };
 
 test('Q1 — skip stays open to any joined singer (player:control)', () => {
-	// skip is a player:command, gated on player:control at server.ts:379.
 	expect(can(anySinger, 'player:control')).toBe(true);
 });
 
 test('Q2 — live guide/pitch/range controls stay open to anyone (player:control)', () => {
-	// key/guide arms of handlePlayerCommand ride the same player:control gate — no new capability.
 	expect(can(anySinger, 'player:control')).toBe(true);
 });
 
 test('Q3 — deployment-scoped settings stay open to any joined singer (settings:write-global)', () => {
 	expect(can(anySinger, 'settings:write-global')).toBe(true);
-	// room-scoped stays open too (safe for anyone by construction).
 	expect(can(anySinger, 'settings:write-room')).toBe(true);
 });
 
 test('Q4 — cross-singer reorder stays open to everyone (queue:reorder-any)', () => {
-	// Pinning removal + last-write-wins mechanics belongs elsewhere; the policy side resolves to "anyone".
 	expect(can(anySinger, 'queue:reorder-any')).toBe(true);
 });
 
 test('— queue:remove-any (unchanged by the rulings) stays open to any joined singer', () => {
 	expect(can(anySinger, 'queue:remove-any')).toBe(true);
 });
-
-// Q5 (no per-singer queue-depth cap) is a validateCommand concern, not a capability; its guard is in the
-// queue add-arm tests.

@@ -2,16 +2,14 @@ import { expect, it } from 'bun:test';
 import { read } from '@encore/test-support';
 
 /*
- * THE BAND'S CLOCK MUST NOT JUMP ON RESUME. Pause for forty seconds, resume, and a second later the band's
- * progress ring and the drawer's elapsed / remaining readouts leap forward by the whole pause duration and
- * stay there — clamping the ring full on a song still playing.
+ * THE BAND'S CLOCK MUST NOT JUMP ON RESUME. Pause for forty seconds, resume, and a second later the band's progress
+ * ring and the drawer's elapsed / remaining readouts leap forward by the whole pause duration and stay there.
  *
  * `positionSec` arrives on an event, not a frame, so the band extrapolates from an anchor plus wall clock. The
- * anchor used to be captured by its OWN $effect tracking `positionSec` ALONE; play/pause only write
- * `isPlaying`, so a resume re-delivers the SAME number, and writing an equal primitive into a `$state` scalar
- * notifies nothing (strict ===) — the anchor effect did not re-run while the interval effect did, so the
- * interval extrapolated from the wall clock recorded at pause time. The arithmetic was never wrong; WHICH
- * SIGNALS re-run the capture was, and a dependency set is not a value a pure function can be handed.
+ * anchor used to be captured by its OWN $effect tracking `positionSec` ALONE; play/pause only write `isPlaying`, so
+ * a resume re-delivers the SAME number, and writing an equal primitive into a `$state` scalar notifies nothing
+ * (strict ===) — the anchor effect did not re-run while the interval effect did. The arithmetic was never wrong;
+ * WHICH SIGNALS re-run the capture was, and a dependency set is not a value a pure function can be handed.
  */
 
 const LAYOUT = 'src/routes/+layout.svelte';
@@ -42,10 +40,10 @@ function extrapolationEffect(src: string): string {
 
 it('the band re-anchors its clock on resume: the wall clock is captured in the effect that tracks isPlaying', () => {
 	const body = extrapolationEffect(read(LAYOUT));
-	// Both signals in the SAME effect: `isPlaying` makes a resume re-run it, `positionSec` makes a seek snap.
+	// Both signals in the SAME effect: `isPlaying` makes a resume re-run it, `positionSec` makes a seek snap, and the
+	// clock is read HERE so every re-run re-anchors.
 	expect(body).toContain('positionSec');
 	expect(body).toContain('isPlaying');
-	// And the clock is read HERE, so every re-run re-anchors.
 	expect(body).toContain('performance.now()');
 });
 
@@ -58,8 +56,8 @@ it('the band keeps no anchor outside that effect — a separate $state pair is t
 
 it('the extrapolation reads its OWN captured locals, never a value that can go stale between runs', () => {
 	const body = extrapolationEffect(read(LAYOUT));
-	// `pos` and `wall` must be declared inside this effect: a capture hoisted above it is reachable from a run
-	// that did not refresh it, which is precisely the pause-time wall clock the bug extrapolated from.
+	// `pos` and `wall` must be declared INSIDE this effect: a capture hoisted above it is reachable from a run that
+	// did not refresh it, which is precisely the pause-time wall clock the bug extrapolated from.
 	expect(body).toMatch(/const\s+pos\s*=\s*positionSec/);
 	expect(body).toMatch(/const\s+wall\s*=\s*performance\.now\(\)/);
 });

@@ -1,9 +1,6 @@
-// guard: every TS↔Python contract the worker hand-mirrors. See docs/GUARDS.md#cross-language-parity.
-//
-// The worker cannot import $lib/contract, so each shared enum, artifact key, path builder and threshold
-// exists twice. Drift is silent — core enqueues a job whose capability no worker advertises and the song
-// sits at 0% looking like a hung worker. Every check here reads the Python as TEXT so it needs no
-// interpreter and reds inside the ordinary `bun test` gate.
+// guard: every TS↔Python contract the worker hand-mirrors. Drift is silent — core enqueues a job whose
+// capability no worker advertises and the song sits at 0% looking like a hung worker. Every check reads
+// the Python as TEXT, so it needs no interpreter. See docs/GUARDS.md#cross-language-parity.
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -35,9 +32,8 @@ const WORKER_SRC = at('worker/src');
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
 const protocolPy = readFileSync(join(WORKER_SRC, 'protocol.py'), 'utf8');
 
-// `songProfile` is a SIBLING of `stems` in the artifacts dict. Reading it one level deeper
-// (`artifacts.stems.songProfile`) yields undefined, and because the `stems` gate requires the profile to
-// be PRESENT every separated song then sits at "Separating vocals" forever with nothing retrying it.
+// `songProfile` is a SIBLING of `stems` in the artifacts dict. One level deeper it is undefined, and the
+// `stems` gate requires it PRESENT, so every separated song sits at "Separating vocals" with no retry.
 const ARTIFACT_WRITERS = ['steps/separate.py'] as const;
 
 describe('artifact envelope parity (worker yield vs core read)', () => {
@@ -55,8 +51,8 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 
 	test('core reads it from the top level too — no reaching through stems', () => {
 		const raw = readFileSync(at('src/lib/server/jobs/worker-hub.ts'), 'utf8');
-		// Comment-stripped: the read site's own comment names the bad path, so an unstripped scan would
-		// flag its own explanation. Newlines preserved so nothing else about the file shifts.
+		// Comment-stripped, or the read site's own comment naming the bad path flags its own explanation;
+		// newlines are preserved so nothing else about the file shifts.
 		const hub = raw
 			.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
 			.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
@@ -65,9 +61,8 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 	});
 });
 
-// An artifact key the worker writes but `JobArtifacts` does not declare is written, undeclared and
-// unread — the drift that stalled processes when `songProfile` and a fetch job's `source` key shipped
-// undeclared. Covers all `steps/*.py`, not just separate.py.
+// An artifact key the worker writes but `JobArtifacts` does not declare is written, undeclared and unread
+// — the drift that stalled processes twice. Covers all `steps/*.py`, not just separate.py.
 describe('every worker-written artifact key is declared in JobArtifacts', () => {
 	function declaredArtifactKeys(): Set<string> {
 		const events = readFileSync(at('src/lib/contract/core/events.ts'), 'utf8');
@@ -109,11 +104,8 @@ function pyEnumValues(src: string, className: string): string[] {
 }
 
 /**
- * Frame-name constants from `protocol.py`, for one direction.
- *
- * protocol.py's `# worker -> core` / `# core -> worker` COMMENTS are the section delimiters, so they are
- * load-bearing data here, not prose: delete either one and this throws. Reading the whole file instead
- * would conflate the two unions and let a verb move sides unnoticed.
+ * Frame-name constants from `protocol.py`, for one direction. Its `# worker -> core` / `# core -> worker`
+ * COMMENTS are the section delimiters — load-bearing data, not prose — so deleting either one throws.
  */
 function pyWireVerbs(section: 'worker -> core' | 'core -> worker'): string[] {
 	const start = protocolPy.indexOf(`# ${section}`);
@@ -126,9 +118,8 @@ function pyWireVerbs(section: 'worker -> core' | 'core -> worker'): string[] {
 }
 
 function pyCapabilityTokens(): string[] {
-	// The `Capability` enum is the tokens' single source of truth; the worker's own suite asserts its
-	// probes are the same set. An empty extraction would make every routed capability read as "missing"
-	// while the assertions below all pass, so it throws rather than returning [].
+	// The `Capability` enum is the tokens' single source of truth. An empty extraction would make every
+	// routed capability read as "missing" while the assertions below all pass, so it throws rather than [].
 	const tokens = pyEnumValues(vocabulary, 'Capability');
 	if (tokens.length === 0) throw new Error('no Capability members found in vocabulary.py — the extraction broke');
 	return tokens;
@@ -137,7 +128,7 @@ function pyCapabilityTokens(): string[] {
 describe('TS↔Python vocabulary parity', () => {
 	test('JobType matches the worker Action enum', () => {
 		// A bare union has no runtime value to import, so the members are listed and the `_exhaustive`
-		// assignment makes TypeScript check the list IS the union — it cannot silently fall behind.
+		// assignment makes TypeScript check the list IS the union.
 		const tsJobTypes = ['fetch', 'stems', 'stems-upgrade', 'align'] as const;
 		const _exhaustive: readonly import('$lib/contract').JobType[] = tsJobTypes;
 		void _exhaustive;
@@ -160,8 +151,8 @@ describe('TS↔Python vocabulary parity', () => {
 		expect(pyEnumValues(vocabulary, 'Fetcher').sort()).toEqual(FETCHERS.map((f) => f.id).sort());
 	});
 
-	// vocabulary.py is read at module load, so a move throws a bare ENOENT and every parity test above
-	// fails for the wrong reason. This arm makes the moved file name itself.
+	// vocabulary.py is read at module load, so a move throws a bare ENOENT and every parity test above fails
+	// for the wrong reason; this arm makes the moved file name itself.
 	test('vocabulary.py is where the parity reads expect it', () => {
 		const path = join(WORKER_SRC, 'vocabulary.py');
 		expect(existsSync(path), `vocabulary.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
@@ -182,8 +173,7 @@ describe('TS↔Python vocabulary parity', () => {
 	});
 
 	test('every engine capability string is one the worker can advertise', () => {
-		// dispatch.ts compares these by raw `capabilities.includes(cap)`, so a typo on either side parks
-		// the job forever rather than failing loudly.
+		// dispatch.ts compares these by raw `capabilities.includes(cap)`, so a typo parks the job forever.
 		const advertisable = new Set(pyCapabilityTokens());
 		const missing = SEPARATOR_ENGINES.map((e) => e.capability).filter((c) => !advertisable.has(c));
 		expect(missing).toEqual([]);
@@ -196,24 +186,21 @@ describe('TS↔Python vocabulary parity', () => {
 		expect(routed.filter((c) => !advertisable.has(c))).toEqual([]);
 	});
 
-	// The core routes on `requiredCapability(jobType)`, whose last branch is a bare `return jobType`.
-	// `align` and `stems-upgrade` fall through it and appear in neither capability table, so enumerating
-	// the tables misses them: rename the worker's `align` probe and every align job parks at 0% with both
-	// suites green. Asserting the ROUTED set subsumes both table checks above.
+	// `requiredCapability`'s last branch is a bare `return jobType`, so `align` and `stems-upgrade` fall
+	// through it and appear in neither capability table: rename the worker's `align` probe and every align job
+	// parks at 0% with both suites green. Asserting the ROUTED set subsumes both table checks above.
 	test('every JobType routes to a capability the worker can advertise', () => {
 		const jobTypes = ['fetch', 'stems', 'stems-upgrade', 'align'] as const;
 		const _exhaustive: readonly JobType[] = jobTypes;
 		void _exhaustive;
 		const advertisable = new Set(pyCapabilityTokens());
-		// With no settings, requiredCapability returns each type's DEFAULT-routed capability — what the
-		// worker must serve out of the box.
+		// With no settings, requiredCapability returns each type's DEFAULT-routed capability.
 		const missing = jobTypes
 			.map((jt) => ({ jt, cap: requiredCapability(jt) }))
 			.filter(({ cap }) => !advertisable.has(cap));
 		expect(missing).toEqual([]);
 	});
-	// Rename a frame on either side and the worker silently ignores an unrecognised `type` (or the core
-	// drops the worker's): a worker that connects, handshakes, then never accepts a job.
+	// Rename a frame on either side and the worker connects, handshakes, then never accepts a job.
 	test('worker→core frame names match the WorkerMessage union', () => {
 		const tsWorkerMessages = [
 			'worker:hello',
@@ -236,9 +223,8 @@ describe('TS↔Python vocabulary parity', () => {
 		expect(pyWireVerbs('core -> worker').sort()).toEqual([...tsWorkerCommands].sort());
 	});
 
-	// The worker emits `Stage` as `job:progress.stage` and the core rebroadcasts it to phones, so a stage
-	// the union lacks renders no label. SUBSET, not equality: `queued`/`ready`/`failed`/`canceled` are
-	// core-side states no worker emits.
+	// The worker emits `Stage` as `job:progress.stage` and the core rebroadcasts it, so a stage the union
+	// lacks renders no label. SUBSET, not equality: queued/ready/failed/canceled are core-side only.
 	test('worker stages are all valid MediaStatus values', () => {
 		const tsMediaStatuses = ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed', 'canceled'] as const;
 		const _exhaustive: readonly import('$lib/contract').MediaStatus[] = tsMediaStatuses;
@@ -255,14 +241,14 @@ describe('TS↔Python vocabulary parity', () => {
 });
 
 // The roformer token→checkpoint mapping DIVERGES on purpose: `separators.ts` ranks `bs-roformer-1297` on
-// numbers measured against a checkpoint the worker does not resolve it to. These tests pin the divergence
-// as it is rather than bless it, so repointing the token has to come here and say so.
+// numbers measured against a checkpoint the worker does not resolve it to. Pinned as it is, so repointing
+// the token has to come here and say so.
 describe('roformer token ↔ checkpoint identity', () => {
 	const roformerPy = readFileSync(join(WORKER_SRC, 'separation/roformer.py'), 'utf8');
 
 	function pyRoformerModels(): Record<string, string> {
-		// Column-0 anchored (`^` under `m`): a `#`-commented copy of the table above the live one cannot
-		// start at column 0, so it can never be the first match and mask a real divergence.
+		// Column-0 anchored (`^` under `m`), so a `#`-commented copy of the table above the live one can never be
+		// the first match and mask a real divergence.
 		const block = roformerPy.match(/^ROFORMER_MODELS\s*=\s*\{([\s\S]*?)\n\}/m);
 		if (!block)
 			throw new Error(
@@ -282,8 +268,7 @@ describe('roformer token ↔ checkpoint identity', () => {
 	});
 
 	test('bs-roformer-1297 still resolves to the KNOWN-MISMATCHED slug, not the benchmarked one', () => {
-		// Change this only together with the rtFactor/rank in separators.ts: the pin exists so the two move
-		// as one.
+		// Change this only together with the rtFactor/rank in separators.ts; the pin exists so they move as one.
 		expect(pyRoformerModels()['bs-roformer-1297']).toBe('roformer-model-bs-roformer-sw-by-jarredou');
 	});
 });
@@ -311,17 +296,15 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 		expect(keepaliveMs).toBeLessThan(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
 	});
 
-	// The `heartbeatIntervalSec` the core advertises is bound by the same half-lease margin, since a worker
-	// that honours it paces its progress by it. Recomputed from the DIVISOR LITERALS the source applies, not
-	// by re-evaluating its expression, so dropping the `/ 2` reds.
+	// The advertised `heartbeatIntervalSec` is bound by the same half-lease margin, since a worker that
+	// honours it paces its progress by it. Recomputed from the DIVISOR LITERALS, so dropping the `/ 2` reds.
 	const hubRaw = readFileSync(at('src/lib/server/jobs/worker-hub.ts'), 'utf8');
 	const hubStripped = hubRaw
 		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
 		.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
 
 	test('core advertises heartbeatIntervalSec derived from progressLeaseMs', () => {
-		// Must be a Math.floor over progressLeaseMs and nothing else, so the value tracks the lease instead
-		// of being a literal that can desync from it.
+		// Math.floor over progressLeaseMs and nothing else, so the value tracks the lease rather than desyncing.
 		const m = /heartbeatIntervalSec:\s*Math\.floor\(\s*this\.#config\.progressLeaseMs\s*((?:\/\s*\d+\s*)+)\)/.exec(
 			hubStripped
 		);
@@ -351,8 +334,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 	const processorPath = join(WORKER_SRC, PROCESSOR_REL);
 	const processorPy = readFileSync(processorPath, 'utf8');
 
-	// Run through the real core key builders rather than a re-typed literal, so the reference moves with a
-	// change to the builder shape.
+	// Through the real core key builders, not a re-typed literal, so the reference moves with the builder.
 	const ID = 'sample-media-id';
 
 	/** A `NAME = "value"` module-level string constant in processor.py, by name. Throws if absent. */
@@ -363,18 +345,16 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 	}
 
 	/**
-	 * The relative ref a `*_path` builder produces for ID, reconstructed from its `os.path.join(...)` call
-	 * as TEXT, never executed. `media_dir` is the caller's volume root and is NOT part of the wire ref, so
-	 * it is dropped; every other segment is a literal or an f-string this expands. An unrecognised segment
-	 * shape throws rather than returning a half-parsed ref.
+	 * The relative ref a `*_path` builder produces for ID, parsed from its `os.path.join(...)` call as TEXT
+	 * and never executed. `media_dir` is the caller's volume root and not part of the wire ref, so it is
+	 * dropped; an unrecognised segment shape throws rather than returning a half-parsed ref.
 	 */
 	function pyPathRef(fnName: string, subs: Record<string, string>): string {
 		const fn = new RegExp(`def ${fnName}\\([^)]*\\)[^:]*:([\\s\\S]*?)\\n(?:def |[A-Za-z@#])`, 'm').exec(
 			processorPy + '\ndef '
 		);
 		if (!fn) throw new Error(`def ${fnName} not found in ${PROCESSOR_REL}`);
-		// GREEDY to the last `)` on the line: a non-greedy match stops at the inner `)` of a call like
-		// `ext.lstrip('.')` and truncates the arg list.
+		// GREEDY to the last `)` on the line: a non-greedy match stops at the inner `)` of `ext.lstrip('.')`.
 		const retLine = /return\s+os\.path\.join\(([\s\S]*)\)\s*$/m.exec(fn[1]!);
 		if (!retLine) throw new Error(`${fnName} does not end in os.path.join(...) — shape changed?`);
 		const joinCall = retLine;
@@ -433,8 +413,8 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 	});
 
 	test('the GUIDE MIX key agrees byte-for-byte', () => {
-		// The mix is what the TV plays as MASTER on a mix song, so a key mismatch is a 404 on the file the
-		// room is trying to play — `guidePath` has already committed to the mix path by then.
+		// The mix is what the TV plays as MASTER on a mix song, so a key mismatch 404s the file the room is
+		// trying to play — `guidePath` has already committed to the mix path by then.
 		const worker = pyPathRef('guide_mix_path', {
 			media_id: ID,
 			GUIDE_MIX_EXT: pyStrConst('GUIDE_MIX_EXT')
@@ -450,8 +430,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 	});
 
 	test('the retained raw caption key agrees byte-for-byte', () => {
-		// retention.ts enumerates this key per (kind, ext) to count and evict the retained track, so both
-		// kinds and both known exts are checked.
+		// retention.ts enumerates this key per (kind, ext), so both kinds and both known exts are checked.
 		for (const kind of ['captions', 'auto-captions']) {
 			for (const ext of ['vtt', 'srt']) {
 				const worker = pyPathRef('raw_caption_path', { media_id: ID, kind, ext });
@@ -476,20 +455,16 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 	});
 });
 
-// One physical constant declared on both sides, answering "is this vocals stem digital silence?". The
-// comparison is NUMERIC because the literals are spelled differently on purpose (`-90.0` keeps the Python
-// side a float so its `<=` never mixes types), so a string compare would red on a correct tree.
-// See docs/GUARDS.md#cross-language-parity.
+// One physical constant declared on both sides. The comparison is NUMERIC because the literals are
+// spelled differently on purpose — `-90.0` keeps the Python side a float so its `<=` never mixes types —
+// so a string compare would red on a correct tree. See docs/GUARDS.md#cross-language-parity.
 describe('silence floor parity (worker processor.py vs core loudness.ts)', () => {
 	const SILENCE_REL = 'processor.py';
 	const silencePath = join(WORKER_SRC, SILENCE_REL);
 	const silencePy = readFileSync(silencePath, 'utf8');
 
-	/**
-	 * The worker's effective `SILENCE_FLOOR_DB`, read as text. Column-0 anchored so the `#:` doc lines
-	 * directly above the constant cannot be the match, and LAST-match because Python's effective value is
-	 * the last assignment executed.
-	 */
+	// The worker's effective `SILENCE_FLOOR_DB`, read as text. Column-0 anchored so the `#:` doc lines above
+	// the constant cannot match, and LAST-match because Python's effective value is the last assignment run.
 	function pyFloorDb(): number | null {
 		const ms = [...silencePy.matchAll(/^SILENCE_FLOOR_DB\s*=\s*(-?\d+(?:\.\d+)?)/gm)];
 		const last = ms[ms.length - 1];
@@ -501,16 +476,14 @@ describe('silence floor parity (worker processor.py vs core loudness.ts)', () =>
 	});
 
 	test('the worker floor is present and parses as a finite number', () => {
-		// Makes the parity assertion below load-bearing: a regex slip returning 0 or NaN would not
-		// necessarily red there, so pin that a real number was read.
+		// A regex slip returning 0 or NaN would not necessarily red below, so pin that a real number was read.
 		const py = pyFloorDb();
 		expect(
 			py,
 			`SILENCE_FLOOR_DB not found at module level in ${SILENCE_REL} — did the constant move or get commented out?`
 		).not.toBeNull();
 		expect(Number.isFinite(py!)).toBe(true);
-		// A dBFS floor: negative, and in the range a 16-bit silence measurement lives in. A regex that
-		// started matching an unrelated number would clear the finite check but not these.
+		// A dBFS floor: negative, and in the range a 16-bit silence measurement lives in.
 		expect(py!).toBeLessThan(0);
 		expect(py!).toBeGreaterThan(-200);
 	});
@@ -520,23 +493,23 @@ describe('silence floor parity (worker processor.py vs core loudness.ts)', () =>
 	});
 
 	test('both sides still COMPARE against the floor, so the constant is not merely declared', () => {
-		// Inline either comparison to a bare literal and the two numbers stay in agreement while the code
-		// stops reading them — a parity check on a constant nothing reads is bookkeeping.
+		// Both sides must COMPARE against it, or the two numbers stay in agreement while the code stops reading
+		// them — a parity check on a constant nothing reads is bookkeeping.
 		expect(silencePy).toMatch(/max_volume_db\s*<=\s*SILENCE_FLOOR_DB/);
 		const loudnessTs = readFileSync(at('src/lib/server/media/loudness.ts'), 'utf8');
 		expect(loudnessTs).toMatch(/maxDb\s*<=\s*SILENCE_FLOOR_DB/);
 	});
 });
 
-// Add a checkpoint to separators.ts alone and it becomes selectable, the core validates the pairing against
-// separators.ts and enqueues, then `resolve_demucs_model` raises — a permanent config error no retry can fix.
+// A checkpoint added to separators.ts alone becomes selectable, then `resolve_demucs_model` raises — a
+// permanent config error no retry can fix.
 describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)', () => {
 	const demucsPy = readFileSync(join(WORKER_SRC, 'separation/demucs.py'), 'utf8');
 
 	/** The ids in `DEMUCS_MODELS = ("a", "b", ...)`, read from demucs.py as text. */
 	function pyDemucsModels(): string[] {
-		// Column-0 anchored: unanchored, a commented-out CORRECT tuple parked above a live wrong one would
-		// be the first match and grant a false exemption on the exact drift this catches.
+		// Column-0 anchored: unanchored, a commented-out CORRECT tuple parked above a live wrong one would be
+		// the first match and grant a false exemption on the exact drift this catches.
 		const block = demucsPy.match(/^DEMUCS_MODELS\s*=\s*\(([\s\S]*?)\)/m);
 		if (!block)
 			throw new Error(
@@ -558,8 +531,8 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
 			offered.length,
 			'the demucs engine offers no models in separators.ts — did the registry move?'
 		).toBeGreaterThan(0);
-		// Equality, not subset, in BOTH directions: offered ⊄ worker parks every process on a non-retryable
-		// ValueError, worker ⊄ offered is dead config that drifts unnoticed.
+		// Equality in BOTH directions: offered ⊄ worker parks every process on a non-retryable ValueError, and
+		// worker ⊄ offered is dead config that drifts unnoticed.
 		expect([...worker].sort()).toEqual([...offered].sort());
 	});
 

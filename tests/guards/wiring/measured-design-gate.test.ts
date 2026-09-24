@@ -1,7 +1,6 @@
-// The measured-design gate is WIRED and its register is not vacuous. The four measurement claims live
-// in `tests/e2e/gates/measured-design.mjs`, which needs a browser and a booted server and so cannot run
-// under `bun test`; this file asserts only the wiring, never re-implementing a claim, because a source
-// scan standing in for a measurement is the thing the rule forbids.
+// guard: the measured-design gate is WIRED and its register is not vacuous. The four measurement claims
+// live in `tests/e2e/gates/measured-design.mjs`, which needs a browser and a booted server, so this file
+// asserts only the wiring — a source scan standing in for a measurement is what the rule forbids.
 import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,10 +24,8 @@ const gate = readFileSync(join(REPO, GATE_REL), 'utf8');
 /** The script name every lane runs. Changing it means changing all four briefs in the same commit. */
 const SCRIPT = 'gate:measured';
 
-/**
- * The four measured claims, keyed on the SUBJECT each one measures rather than on a requirement id: an
- * id only proves a label was pasted in, where a subject reds when a renamed claim stops measuring it.
- */
+/** The four measured claims, keyed on the SUBJECT each one measures rather than on a requirement id: an id
+ *  only proves a label was pasted in, where a subject reds when a renamed claim stops measuring it. */
 const CLAIMS = [
 	'measured hit extent',
 	'text-entry field computes',
@@ -39,8 +36,8 @@ const CLAIMS = [
 test('the measured-design gate imports the layout-rung driver, and names each claim it measures', () => {
 	// `driver.mjs` IS the layout rung — a measurement-classified check must import it.
 	expect(gate).toMatch(/import \{[^}]*\bconnect\b[^}]*\} from '\.\.\/driver\.mjs';/);
-	// Chromium comes from the single-sourced helper, never a private copy: `e2e/lib/chromium.test.ts`
-	// bans a redefinition, and this pins that this gate consumes it.
+	// Chromium comes from the single-sourced helper, never a private copy: `e2e/lib/chromium.test.ts` bans a
+	// redefinition, and this pins that this gate consumes it.
 	expect(gate).toMatch(/import \{ findChromium \} from '\.\.\/lib\/chromium\.mjs';/);
 	for (const claim of CLAIMS) {
 		expect(gate, `${GATE_REL} must carry a check naming ${claim}`).toContain(claim);
@@ -64,9 +61,9 @@ test(`the fifth gate is declared as \`${SCRIPT}\` in the root package.json`, () 
 
 test('the CDP driver exposes exactly ONE safe-area method, and every caller uses that name', () => {
 	// Caught: two branches each added a safe-area override to the shared driver under a different name
-	// (`setSafeAreaInsets` vs `safeAreaInsets`) — same body, same CDP call, two names, which no import
-	// check can see. The regex matches method DEFINITIONS on the page object only, never a call site and
-	// never the CDP wire method `Emulation.setSafeAreaInsetsOverride`, which is the protocol's name.
+	// (`setSafeAreaInsets` vs `safeAreaInsets`) — same body, same CDP call, which no import check can see. The
+	// regex matches method DEFINITIONS on the page object only, never a call site and never the CDP wire method
+	// `Emulation.setSafeAreaInsetsOverride`, which is the protocol's own name.
 	const cdp = readFileSync(join(REPO, 'tests/e2e/driver.mjs'), 'utf8');
 	const defined = [...cdp.matchAll(/^\t\tasync\s+(\w+)\s*\(/gm)].map((m) => m[1]!).filter((n) => /safearea/i.test(n));
 	expect(defined).toEqual(['safeAreaInsets']);
@@ -97,8 +94,8 @@ test('the CDP driver exposes exactly ONE safe-area method, and every caller uses
 	};
 	walk(join(REPO, 'tests/e2e'));
 	expect(offenders).toEqual([]);
-	// Non-vacuity floor: the docked-band arm sets a simulated inset then resets it, so there are exactly
-	// two call sites. A walk that found none would pass while enforcing nothing.
+	// Non-vacuity floor: the docked-band arm sets a simulated inset then resets it, so there are exactly two
+	// call sites.
 	expect(callsSeen).toBeGreaterThanOrEqual(2);
 });
 
@@ -106,8 +103,8 @@ test('every quarantined control carries a substantive reason and a real identity
 	const offenders: string[] = [];
 	for (const q of QUARANTINE) {
 		const who = `${q.where} ${q.match.tag}`;
-		// 60 chars is the same bar as `non-vacuity-floors.test.ts`'s RETIRED map: the invariant, what
-		// left scope, and what covers it now does not fit in a few words.
+		// 60 chars is the same bar as `non-vacuity-floors.test.ts`'s RETIRED map: the invariant, what left scope,
+		// and what covers it now does not fit in a few words.
 		if (q.reason.trim().length < 60)
 			offenders.push(`${who}: reason is not substantive (${q.reason.trim().length} chars)`);
 		// A quarantine matching on a tag alone would absorb every future offender of that tag.

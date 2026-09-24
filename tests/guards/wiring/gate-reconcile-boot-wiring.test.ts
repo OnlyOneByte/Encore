@@ -1,16 +1,9 @@
 /*
- * The boot reconciliation of stale readiness gates is WIRED, and wired where it works. The behavioural
- * arms drive `reconcileStrandedGates` directly and stay green if app.ts never calls it.
- *
- *   1. BOTH deps are passed: `findLiveJob` stops it clobbering a live process, `persist` makes the settle
- *      survive to the next boot (settling in memory only was the original bug).
- *   2. It runs AFTER hydrateMediaCatalog, which fills the runtime map the pass reads — before the hydrate
- *      the call is a green no-op that repairs nothing.
- *   3. It runs SYNCHRONOUSLY at boot, not on the detached boot-maintenance chain, or a stranded song stays
- *      observable to the first phone that loads the library for as long as the passes ahead of it take.
- *
- * This asserts code shape only, anchored on real symbols rather than a file-length floor, because a comment
- * must never be able to fail a test.
+ * guard: the boot reconciliation of stale readiness gates is WIRED, and wired where it works — the
+ * behavioural arms drive `reconcileStrandedGates` directly and stay green if app.ts never calls it. BOTH
+ * deps must be passed (`findLiveJob` stops it clobbering a live process, `persist` makes the settle survive
+ * the next boot); it must run AFTER hydrateMediaCatalog, which fills the map it reads; and SYNCHRONOUSLY at
+ * boot, or a stranded song stays observable to the first phone that loads the library.
  */
 
 import { test, expect } from 'bun:test';
@@ -64,7 +57,7 @@ test('a failed reconciliation cannot stop the party server booting', () => {
 	const after = APP.slice(reconcile);
 	const catchIdx = after.indexOf('} catch');
 	expect(catchIdx).toBeGreaterThanOrEqual(0);
-	expect(after.slice(catchIdx, catchIdx + 400)).toMatch(/readiness-gate reconciliation skipped/);
+	expect(after.slice(catchIdx, catchIdx + 400)).toMatch(/readiness-gate reconciliation skipped/i);
 });
 
 // ONE settlement rule, two readers. Two halves ask it from opposite ends — "this job died, which gate

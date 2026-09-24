@@ -1,8 +1,6 @@
-// Durable play log — one row per performance, the only thing that can answer WHEN. Does NOT replace
-// the sidecar's `library.playCount` (still authoritative for the lifetime total; retention's LRU
-// reads `lastPlayedAt`) — a counter has no time axis. `queue_entries` can't answer either: it's
-// deleted whole on every persistence flush, leaving no trace of a finished performance. No singer
-// column by design — see the `plays` table comment in schema.ts.
+// One row per performance, the only thing that can answer WHEN. Does NOT replace the sidecar's
+// `library.playCount`, still authoritative for the lifetime total, and `queue_entries` cannot answer either:
+// it is deleted whole on every persistence flush. No singer column, by design.
 
 import { desc, eq, gte, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
@@ -27,11 +25,8 @@ export class PlayLog {
 		this.#db = db;
 	}
 
-	/**
-	 * Record one play. Idempotent on `entryId`: PlayTracker's in-memory dedupe resets on restart
-	 * while the DB's unique index does not, so replaying the entry on screen when the server died
-	 * would otherwise double-count it — this swallows that conflict rather than throwing into playback.
-	 */
+	/** Idempotent on `entryId`: the in-memory dedupe resets on restart while the unique index does not, so
+	 *  this swallows the conflict rather than throwing into playback. */
 	record(mediaId: string, entryId: string, now: number): void {
 		this.#db
 			.insert(plays)
@@ -40,12 +35,12 @@ export class PlayLog {
 			.run();
 	}
 
-	/** Total plays ever recorded IN THIS LOG. Not the lifetime total — see the header. */
+	/** IN THIS LOG, not the lifetime total. */
 	total(): number {
 		return this.#count();
 	}
 
-	/** Plays at or after `since`. This is the question the sidecar counter cannot answer. */
+	/** The question the sidecar counter cannot answer. */
 	totalSince(since: number): number {
 		return this.#count(since);
 	}
@@ -63,11 +58,8 @@ export class PlayLog {
 		return rows.map((r) => ({ mediaId: r.mediaId, plays: Number(r.plays) }));
 	}
 
-	/**
-	 * Plays per UTC day, oldest first. Days with NO plays are absent, not zero-filled — the log can't
-	 * tell "nobody sang" from "the server was off", so a synthetic zero would draw both identically;
-	 * the caller decides how to render a gap.
-	 */
+	/** A day with NO plays is ABSENT, never zero-filled: the log cannot tell "nobody sang" from "the server
+	 *  was off", so a synthetic zero would draw both identically. */
 	perDay(since: number): PlaysPerDay[] {
 		const rows = this.#db
 			.select({
@@ -82,7 +74,7 @@ export class PlayLog {
 		return rows.map((r) => ({ day: r.day, plays: Number(r.plays) }));
 	}
 
-	/** Every play of one song, newest first — the per-song history on the audit page. */
+	/** Newest first. */
 	forMedia(mediaId: string, limit = 100): { at: number; entryId: string }[] {
 		return this.#db
 			.select({ at: plays.at, entryId: plays.entryId })

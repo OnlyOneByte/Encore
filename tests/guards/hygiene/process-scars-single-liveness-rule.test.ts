@@ -1,8 +1,8 @@
-// guard: process-scars.ts must expose exactly ONE "is this scar alive" rule. It used to export a second
-// liveness predicate, `scarActive`, with zero non-test callers — the one a reader would reach for, being the
-// only one NAMED after the question — yet it omitted the `&& scar.media` term `pruneScars` requires, so a
-// media-less scar was DEAD to the module and ALIVE to its public-looking predicate. Comments are blanked
-// first; the parse check backstops a source scan's blindness to a SyntaxError.
+// guard: process-scars.ts must expose exactly ONE "is this scar alive" rule. It used to export a second liveness
+// predicate, `scarActive`, with zero non-test callers — the one a reader would reach for, being the only one NAMED
+// after the question — yet it omitted the `&& scar.media` term `pruneScars` requires, so a media-less scar was DEAD
+// to the module and ALIVE to its public-looking predicate. Comments are blanked first; the parse check backstops a
+// source scan's blindness to a SyntaxError.
 import { readFileSync } from 'node:fs';
 import { test, expect } from 'bun:test';
 import { at } from '@encore/test-support';
@@ -21,7 +21,6 @@ test('process-scars.ts parses — a source scan is blind to a SyntaxError', () =
 });
 
 test('the dead scarActive predicate is gone — no re-export, no re-declaration', () => {
-	// The module had one export of it and no internal use, so a correct tree names it nowhere but comments.
 	expect(SRC).not.toMatch(/\bscarActive\b/);
 });
 
@@ -50,10 +49,9 @@ test('pruneScars is the single live liveness rule and keeps its media term', () 
 });
 
 test('the expiry comparison lives ONLY inside pruneScars — no restated liveness rule under any name', () => {
-	// The name arm above stops `scarActive` returning verbatim, but the finding was that the EXPRESSION was
-	// wrong, so re-adding the same comparison under a new name must red too: an `expiresAt` </> comparison IS
-	// the liveness decision and may exist in exactly one place. Any second predicate must DERIVE from
-	// pruneScars, never re-compare. The module's other two `expiresAt` uses are a type field and a `+` write.
+	// The name arm above stops `scarActive` returning verbatim, but the finding was that the EXPRESSION was wrong, so
+	// re-adding the same comparison under a new name must red too: an `expiresAt` </> comparison IS the liveness
+	// decision and may exist in exactly one place. Any second predicate must DERIVE from pruneScars, never re-compare.
 	const sig = SRC.indexOf('export function pruneScars');
 	expect(sig).toBeGreaterThanOrEqual(0);
 	const open = SRC.indexOf('{', sig);
@@ -80,7 +78,7 @@ test('the expiry comparison lives ONLY inside pruneScars — no restated livenes
 });
 
 test('the three live entry points survive — deleting the module reds instead of vacuously passing', () => {
-	// Non-vacuity sentinel: the reachable API. activeScars is the only one the app calls; the other two route through pruneScars.
+	// Non-vacuity sentinel: the reachable API. activeScars is the only one the app calls.
 	expect(SRC).toMatch(/export function activeScars\b/);
 	expect(SRC).toMatch(/export function recordScar\b/);
 	expect(SRC).toMatch(/export function clearScar\b/);

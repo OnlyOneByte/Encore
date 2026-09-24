@@ -1,12 +1,9 @@
-// Singer membership — who is in the room RIGHT NOW, and who has actually gone. The singer table is
-// append-only, so "everyone who ever joined" grows unbounded; the roster must show who's here now.
+// Who is in the room RIGHT NOW. The singer table is append-only, so "everyone who ever joined" grows
+// unbounded and the roster must show who is here.
 //
-// Ref-counted because a singer legitimately holds several sockets at once (two tabs, a reconnect
-// before the old socket's close fires); dropping on the FIRST close would flicker them out while
-// still present. A dropped socket alone is ambiguous (locked phone vs. walked away), so departure
-// goes through a grace clock rather than firing on socket-close — see
-// src/lib/contract/queue/membership.ts for the three-state policy and why the clock starts on an
-// empty queue, not on the drop. Socket-free so it unit-tests without a server; server.ts drives the sweep.
+// REF-COUNTED, because a singer legitimately holds several sockets at once and dropping on the FIRST close
+// would flicker them out while still present. A dropped socket alone is ambiguous, so departure goes through
+// a GRACE CLOCK — see contract/queue/membership.ts for why the clock starts on an empty queue, not the drop.
 
 import { memberState, shouldStartClock, shouldClearClock, type MemberFacts, type MemberState } from '../../contract';
 
@@ -19,9 +16,9 @@ interface Record_ {
 export interface MembershipSnapshot {
 	/** Live socket. Insertion (arrival) order. */
 	here: string[];
-	/** In the room but unreachable — a locked phone, a pocket, a walk to the kitchen. */
+	/** In the room but unreachable. */
 	away: string[];
-	/** Newly expired this sweep. Reported so a caller can release their names. */
+	/** Newly expired, so a caller can release their names. */
 	gone: string[];
 }
 
@@ -38,36 +35,34 @@ export class PresenceTracker {
 		return r;
 	}
 
-	/** Register a live socket for a singer. @returns true if this made them newly here (worth broadcasting). */
+	/** @returns true when this made them newly here, i.e. worth broadcasting. */
 	connect(singerId: string): boolean {
 		const r = this.#get(singerId);
 		const was = r.sockets;
 		r.sockets = was + 1;
-		// Cancels the clock outright rather than pausing it: someone who returns hasn't half-left, and
-		// a stale start time would expire them early on their next drop.
+		// CANCELS the clock rather than pausing it: a stale start would expire them early on the next drop.
 		r.awaySince = undefined;
 		r.clockStartedAt = undefined;
 		return was === 0;
 	}
 
-	/** Drop one live socket for a singer. @returns true if this took them from here to away. */
+	/** @returns true when this took them from here to away. */
 	disconnect(singerId: string, now: number): boolean {
 		const r = this.#rec.get(singerId);
 		if (!r || r.sockets === 0) return false; // unknown singer, or already away — no-op, not a zero entry
 		r.sockets -= 1;
 		if (r.sockets > 0) return false;
 		r.awaySince = now;
-		// NOT started here — starts on the first sweep finding them with no pending songs, since a
-		// queued song means they're still in the room.
+		// NOT started here: it starts on the first sweep finding them with no pending songs.
 		return true;
 	}
 
-	/** Ids of every singer with a live socket. Order is insertion (arrival) order. */
+	/** In arrival order. */
 	online(): string[] {
 		return [...this.#rec.entries()].filter(([, r]) => r.sockets > 0).map(([id]) => id);
 	}
 
-	/** Live socket count for one singer — exposed for the ref-count assertions in tests. */
+	/** Exposed for the ref-count assertions in tests. */
 	sockets(singerId: string): number {
 		return this.#rec.get(singerId)?.sockets ?? 0;
 	}
@@ -79,18 +74,14 @@ export class PresenceTracker {
 		return memberState({ ...r, hasPendingSongs }, now, graceMs);
 	}
 
-	/** Drop a singer outright, without waiting for any clock — what an EXPLICIT leave uses, since
-	 *  telling us removes the ambiguity the grace window exists for. Name returns to the pool immediately. */
+	/** What an EXPLICIT leave uses: telling us removes the ambiguity the grace window exists for, so the
+	 *  name returns to the pool immediately. */
 	forget(singerId: string): boolean {
 		return this.#rec.delete(singerId);
 	}
 
-	/**
-	 * Advance membership and report it — the only thing that starts/clears a grace clock or moves a
-	 * singer to `gone` (a property of elapsed time, not a socket event). Run on a timer AND after
-	 * anything that changes the queue. A gone singer is FORGOTTEN, not kept as a tombstone, so the
-	 * map stays bounded across a long night.
-	 */
+	/** The ONLY thing that starts or clears a grace clock, or moves a singer to `gone`, which is a property
+	 *  of elapsed time rather than a socket event. A gone singer is FORGOTTEN, not kept as a tombstone. */
 	evaluate(opts: { now: number; graceMs: number; hasPendingSongs: (singerId: string) => boolean }): MembershipSnapshot {
 		const { now, graceMs, hasPendingSongs } = opts;
 		const here: string[] = [];

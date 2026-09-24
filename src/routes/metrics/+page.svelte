@@ -359,8 +359,8 @@
 <style>
 	.metrics {
 		display: grid;
-		/* minmax(0, 1fr), never the implicit `auto`: a track sizes to its widest child, so an 8-column
-		   table wider than the viewport would stretch this column and drag the prose off-screen. */
+		/* minmax(0, 1fr), never the implicit `auto`: a track sizes to its widest child, so an 8-column table wider than the
+			   viewport would stretch this column and drag the prose off-screen. */
 		grid-template-columns: minmax(0, 1fr);
 		gap: 1rem;
 		padding: 1rem 0 3rem;
@@ -373,13 +373,12 @@
 	}
 	main {
 		display: grid;
-		/* The tables are items of THIS grid, so it needs the same floor as .metrics or one wide table
-		   stretches the column instead of scrolling inside its own. */
+		/* The tables are items of THIS grid, so it needs the same floor as .metrics or one wide table stretches the column. */
 		grid-template-columns: minmax(0, 1fr);
 		gap: 1rem;
 	}
-	/* Wide numeric tables scroll rather than squash or reflow into cards: a shared right edge is what
-	   makes them readable. The vendored container's own overflow is handed to .scroller below. */
+	/* Wide numeric tables scroll rather than squash or reflow into cards: a shared right edge is what makes them readable.
+	   The vendored container's own overflow is handed to .scroller below. */
 	:global(.scroller [data-slot='table-container']) {
 		overflow-x: visible;
 		width: auto;
@@ -388,18 +387,15 @@
 		overflow-x: auto;
 		/* Room for the sticky column's own background to cover what slides under it. */
 		margin: 0 -0.1rem;
-		/*
-		 * The pair is a `local` cover over a `scroll` shadow: the cover travels with the content and hides
-		 * the shadow exactly when there is nothing further that way, so a table that fits shows no fade.
-		 * Keep both, keep them linear, and keep them right-side only.
-		 * See docs/FRONTEND.md#the-metrics-table-scroller.
-		 */
+		/* The pair is a `local` cover over a `scroll` shadow: the cover travels with the content and hides the shadow exactly
+			   when there is nothing further that way, so a table that fits shows no fade. Keep both, keep them linear, and keep
+			   them right-side only. See docs/FRONTEND.md#the-metrics-table-scroller. */
 		background:
 			linear-gradient(to left, var(--card) 55%, transparent) right center / 1.5rem 100% no-repeat local,
 			linear-gradient(to left, var(--bg), transparent) right center / 1.25rem 100% no-repeat scroll;
 	}
-	/* The badge is a component, so the gap between a name and its qualifier belongs to the pairing here —
-	   a class handed to the Badge would be scoped to this file and reach nothing. */
+	/* The badge is a component, so the gap between a name and its qualifier belongs to the pairing here — a class handed
+	   to the Badge would be scoped to this file and reach nothing. */
 	.named {
 		display: inline-flex;
 		align-items: center;
@@ -416,8 +412,8 @@
 	.faster {
 		color: var(--ok);
 	}
-	/* Stays a hand-rolled grid, not Item.Group: that primitive is a vertical stack, and a class handed to
-	   it is scoped here and cannot reach what it renders. */
+	/* Stays a hand-rolled grid, not Item.Group: that primitive is a vertical stack, and a class handed to it is scoped
+	   here and cannot reach what it renders. */
 	.kv {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(90px, 140px));
@@ -448,8 +444,8 @@
 		display: grid;
 		gap: 0.6rem;
 	}
-	/* --ink plus an underline, never an accent: --accent measures 3.38:1 on --card and fails AA as text,
-	   and the underline is what keeps the link from being signalled by colour alone. */
+	/* --ink plus an underline, never an accent: --accent measures 3.38:1 on --card and fails AA as text, and the underline
+	   is what keeps the link from being signalled by colour alone. */
 	.processes a {
 		color: var(--ink);
 		text-decoration: underline;

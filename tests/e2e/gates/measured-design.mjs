@@ -1,15 +1,6 @@
-// THE FIFTH GATE — the design claims a source scan cannot decide, measured on real headless Chromium.
-//
-//   bun run gate:measured        # from the repo root, AFTER `bun run build`
-//
-// THERE IS NO SKIP PATH: a missing Chromium, an unbuilt app and a server that will not boot are all
-// exit 1 with the remedy printed, never a green run over nothing. Full rules, and the measurement
-// methodology this gate paid for, in docs/E2E.md#gates.
-//
-// None of the claims is decidable on the mount rung — happy-dom has no layout engine, and
-// tests/setup/svelte-dom-preload.ts replaces `getBoundingClientRect` with a throw naming the rung — and
-// the source scans that used to stand in for them read a DECLARATION, which is invisible to a control
-// that declares no height at all.
+// The measured-design gate: `bun run gate:measured`, from the repo root, AFTER `bun run build`.
+// Rules and methodology — no skip path, no exit 2, why none of this is decidable on the mount rung —
+// in docs/E2E.md#gates.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -99,17 +90,14 @@ function sweepExpr(scope) {
 			el.scrollIntoView({ block: 'center' });
 			const r = el.getBoundingClientRect();
 			if (r.width === 0 || r.height === 0) continue;
-			// A checkbox/radio has no accessible box worth tapping: its target is DELEGATED to the wrapping
-			// <label>, which carries min-height: var(--tap). Without this the sweep saw only the 18px glyph
-			// and read a 44px label as an 18px false floor.
+			// A checkbox/radio DELEGATES its target to the wrapping <label>, which carries min-height:
+			// var(--tap); measuring the glyph itself reads an 18px floor off a 44px label.
 			const type = (el.getAttribute('type') || '').toLowerCase();
 			const glyph = el.tagName === 'INPUT' && (type === 'checkbox' || type === 'radio');
-			// A SWITCH IS THE SAME DELEGATION IN NEW MARKUP — a button with role=switch inside the same
-			// label.check. The delegation follows the CONTROL, not the tag it used to have.
+			// The same delegation, in newer markup: the switch is a role=switch button in the same label.check.
 			const switchBtn = el.getAttribute('role') === 'switch';
 			// A SLIDER THUMB'S TARGET IS ITS TRACK: Bits UI moves the thumb to wherever the track is pressed.
-			// If the slider ROOT is also short this still fails, which credits a real target without excusing
-			// a small one.
+			// A short slider ROOT still fails, so this credits a real target without excusing a small one.
 			const thumb = el.matches('[data-slot="slider-thumb"]');
 			const target =
 				glyph || switchBtn
@@ -121,15 +109,10 @@ function sweepExpr(scope) {
 			const tr = target.getBoundingClientRect();
 			const cx = Math.min(Math.max(Math.round(tr.left + tr.width / 2), 0), innerWidth - 1);
 			const cy = Math.round(tr.top + tr.height / 2);
-			// Vertical hit extent at the CENTRE x — the reading the 44px floor is about.
-			/*
-			 * OFF-VIEWPORT IS NOT ZERO-HEIGHT. elementFromPoint returns null for any point outside the
-			 * viewport, so a control below the fold reads hitH 0 and occluded 3/3 — an unhittable, fully
-			 * covered target that is simply further down the page. The test is on the CENTRE POINT, not the
-			 * box: a control straddling the fold intersects the viewport and still has no hittable centre. Its
-			 * declared box is still credited, the occlusion probe is skipped (nothing can cover what is not
-			 * painted), and the skip is counted in offscreen so it cannot absorb a whole surface.
-			 */
+			// Vertical hit extent at the CENTRE x. OFF-VIEWPORT IS NOT ZERO-HEIGHT, and the test is on the
+			// CENTRE POINT rather than the box: a control straddling the fold intersects the viewport and still
+			// has no hittable centre, so its declared box is credited, the occlusion probe is skipped, and the
+			// skip is counted in the offscreen tally. (No backticks here: template literal.)
 			const onScreen = cy >= 0 && cy < innerHeight;
 			let hitH = onScreen ? 0 : Math.round(tr.height * 10) / 10;
 			if (onScreen && inTarget(document.elementFromPoint(cx, cy))) {
@@ -138,13 +121,11 @@ function sweepExpr(scope) {
 				while (bottom + 1 < innerHeight && inTarget(document.elementFromPoint(cx, bottom + 1))) bottom++;
 				hitH = bottom - top + 1;
 			}
-			// Occlusion, as a SEPARATE reading along the widest row. Sweeping the vertical extent at a far-edge
-			// x measures the chord through the control's own border-radius — Chromium hit-tests the rounded
-			// shape — so every pill read 34-42px of a 44px box and the floor was unmeetable by construction.
+			// Occlusion, as a SEPARATE reading along the widest row — never a vertical sweep at a far-edge x,
+			// which measures the chord through the control's own border-radius.
 			let occluded = 0;
-			// WHAT blocked it, not just that something did: naming the topmost element makes the failure message
-			// the diagnosis. null means the point had no element at all, which after the offscreen guard above
-			// can only mean a gap in the target's own paint.
+			// WHAT blocked it, so the failure message is the diagnosis. A null means no element at that point,
+			// which after the offscreen guard can only be a gap in the target's own paint.
 			let blockedBy = null;
 			if (onScreen) {
 				for (const f of [0.25, 0.5, 0.75]) {
@@ -184,9 +165,8 @@ function sweepExpr(scope) {
 }
 
 /**
- * Is this reading the control a quarantine entry describes? Every field the entry names must match;
- * `near` matches as a PREFIX, because the raw value is a 46-character slice of surrounding label
- * text and a shorter, stable head of it is what makes the entry readable.
+ * Every field a quarantine entry names must match. `near` matches as a PREFIX, the raw value being a
+ * 46-character slice of surrounding label text.
  * @param {Reading} r
  * @param {(typeof QUARANTINE)[number]} q
  */
@@ -199,16 +179,15 @@ function matches(r, q) {
 }
 
 /**
- * Does a quarantine entry's `where` cover this surface? A PREFIX, so one entry covers `/settings` and its
- * tabs — the same controls on the same page, where listing each tab separately would invite a partial
- * quarantine that lets a real new offender in on whichever tab was forgotten.
+ * A PREFIX, so one entry covers `/settings` and its tabs: listing each tab separately would invite a
+ * partial quarantine that lets a real new offender in on whichever tab was forgotten.
  * @param {string} where @param {string} label
  */
 function covers(where, label) {
 	return label === where || label.startsWith(`${where}#`);
 }
 
-// ── PRECONDITIONS — each one red, never skipped ────────────────────────────────────────────────
+// PRECONDITIONS — each one red, never skipped.
 
 const chromium = findChromium();
 if (!chromium) {
@@ -226,7 +205,7 @@ if (!existsSync(join(CORE, 'build', 'handler.js')) && !existsSync(join(CORE, 'bu
 	);
 }
 
-// ── BOOT: a private server on a free port, with its own seeded media directory ─────────────────
+// BOOT: a private server on a free port, with its own seeded media directory.
 
 const port = await freePort();
 const base = `http://127.0.0.1:${port}`;
@@ -307,8 +286,6 @@ try {
 	const joinSweep = /** @type {Reading[]} */ (await page.evaluate(sweepExpr()));
 	await page.fill(SEL.nameInput, `Gate${Date.now() % 1000000}`);
 	await page.clickByRole('button', 'Start singing');
-	// `homeReady` is the joined-home signal, and the shared step leaves the page where the sweep below types.
-	// Both the selectors and the step come from the contract, so this does not re-spell the sequence.
 	await page.waitFor(`location.pathname === '/'`, { timeout: 20000 });
 	await openBrowseFromHome(page, { timeout: 20000 });
 	check('the drive reaches a joined session — every phone surface below is behind one', joinSweep.length > 0);
@@ -369,10 +346,8 @@ try {
 
 	for (const vp of VIEWPORTS) {
 		await page.viewport(vp.w, vp.h);
-		/*
-		 * TWO phone surfaces, not one: `/` carries the queue's own controls and the docked band, and the
-		 * library rows are a screen further in. Measuring only one silently stops measuring the other.
-		 */
+		// TWO phone surfaces, not one: `/` carries the queue's controls and the docked band, and the library
+		// rows are a screen further in. Measuring only one silently stops measuring the other.
 		await surface('/', async () => {
 			await page.goto(base + '/');
 			await page.waitForSelector(SEL.homeReady, { timeout: 15000 });
@@ -417,24 +392,17 @@ try {
 		smallFields.join('\n        ')
 	);
 
-	// CLAIM 3: the docked band's published height and its safe-area term.
-	//
-	// ONE ELEMENT FOR THE WHOLE APP, AND IT IS THE ROW RATHER THAN THE STRIP: `SEL.dockRow` (`.band-slot`:
-	// vaul's pull handle, then the band strip) is the bottom-most chrome on every phone surface, the LAYOUT
-	// publishes `--dock-h` from that ROW's clientHeight, and the band carries the only
-	// `env(safe-area-inset-bottom)` term in the stack. A column must clear the WHOLE row or a thumb reaching
-	// for the grab bar lands on page content, so comparing the token against `.band` (24px shorter) reports a
-	// broken contract where there is none. The block after this one measures the SAME band with a query up.
+	// CLAIM 3: the docked band's published height and its safe-area term. THE ROW, NOT THE STRIP — the layout
+	// publishes `--dock-h` from `SEL.dockRow`'s clientHeight and a column must clear the WHOLE row, so
+	// comparing the token against `.band` (24px shorter) reports a broken contract where there is none.
 	await page.viewport(390, 844);
 	await page.goto(base + '/');
 	await page.waitForSelector(SEL.homeReady, { timeout: 15000 });
 	await sleep(600); // let the measured --dock-h write land
 
-	// TWO ELEMENTS, TWO CLAIMS. The RESERVATION contract (`--dock-h` vs what a column must clear) is about
-	// the ROW `SEL.dockRow`, which the layout measures and which is the whole of what sits over the page; the
-	// SAFE-AREA contract is about the STRIP `SEL.homeReady`, because the band declares the inset term and is
-	// the bottom-most PAINTED surface. Reading the row for both measures padding-bottom 0 at every inset,
-	// reporting a composed term as missing when it is declared one element further in.
+	// TWO ELEMENTS, TWO CLAIMS. RESERVATION is about the ROW; the SAFE-AREA term is declared on the STRIP
+	// `SEL.homeReady`. Reading the row for both measures padding-bottom 0 at every inset, reporting a
+	// composed term as missing when it is declared one element further in.
 	const dockProbe = `(() => {
 		const dock = document.querySelector(${JSON.stringify(SEL.dockRow)});
 		if (!dock) return null;
@@ -465,14 +433,13 @@ try {
 			`no ${SEL.dockRow} found on / — the layout mounts the docked row for a joined singer, so its absence is either an unjoined drive or the row itself`
 		);
 	} else {
-		// WHICH HEIGHT, and it matters by exactly the 1px that would make this arm red on a correct app.
-		// `--dock-h` is `bind:clientHeight` on a wrapper with no padding or border, so it is the band's OUTER
-		// box; read off `.band`, `clientHeight` EXCLUDES its 1px border-top. Use `getBoundingClientRect()`.
+		// WHICH HEIGHT, by exactly the 1px that would red this arm on a correct app: `--dock-h` is
+		// `bind:clientHeight` on a wrapper with no padding or border, so it is the OUTER box, and `.band`'s
+		// own `clientHeight` EXCLUDES its 1px border-top. Use `getBoundingClientRect()`.
 		//
-		// The 1px tolerance is for `clientHeight`'s INTEGER rounding, not slack: the defects this catches — a
-		// stale token, a hardcoded guess, a height published off a different element — are wrong by tens of
-		// pixels. The computed-vs-inline pair is asserted EXACTLY, because that is the half saying the value
-		// was written by the layout's measurement rather than inherited from a stylesheet.
+		// The 1px tolerance is `clientHeight`'s INTEGER rounding, not slack — the defects this catches are
+		// wrong by tens of pixels. The computed-vs-inline pair is EXACT: that is the half saying the value was
+		// written by the layout's measurement rather than inherited from a stylesheet.
 		check(
 			"CLAIM 3 --dock-h equals the docked band's REAL rendered height — the contract every docked control offsets from",
 			dock.dockVar !== '' &&
@@ -502,17 +469,10 @@ try {
 		await page.safeAreaInsets({ top: 0, right: 0, bottom: 0, left: 0 });
 	}
 
-	// CLAIM 3 IN THE SEARCH VIEW: the same one band in the second STATE — the column with a query up, whose
-	// rows are results rather than queue rows. The box sits at the TOP of the column in normal flow while the
-	// band is still the bottom-most chrome, so this reading exists to be COMPARED against the resting one.
-	// The failure is per-STATE as much as per-surface: a results list is longer than a queue, so "scrolled to
-	// the very end" is a different row here.
-	//
-	// The reflow half (320px at 200% text) is deliberately NOT re-asserted: tests/guards/layout/
-	// phone-inventory.test.ts owns it, and two geometry checks of one criterion is duplicated vocabulary.
+	// CLAIM 3 IN THE SEARCH VIEW: the same band in the second STATE, COMPARED against the resting one — a
+	// results list is longer than a queue, so "scrolled to the very end" is a different row here. The reflow
+	// half is NOT re-asserted: tests/guards/layout/phone-inventory.test.ts owns it.
 	await page.viewport(390, 844);
-	// Reach the field through the ONE helper, then type: `openBrowseFromHome` is the single place that knows
-	// how search is reached, so this drive survived every move of the box untouched.
 	await openBrowseFromHome(page, { timeout: 15000 });
 	await page.fill(SEL.search, 'a');
 	await page
@@ -572,10 +532,9 @@ try {
 				Math.abs(parseFloat(browse.dockVar) - browse.dockOuterHeight) <= 1,
 			`--dock-h resolved "${browse.dockVar}" (inline "${browse.dockInline}") against a band whose outer box is ${browse.dockOuterHeight.toFixed(1)}px (see the height note on the / arm above)`
 		);
-		// THE ARM ONE BAND ON TWO SURFACES MAKES POSSIBLE. `--dock-h` is written once by the layout, so a
-		// per-surface disagreement means the band rendered to a different height here than on `/` (a header, a
-		// font, a route-scoped rule reaching it) while each `main` reserved whatever the token last said.
-		// Neither single-surface reading above can see that; only the comparison can.
+		// `--dock-h` is written once by the layout, so a per-surface disagreement means the band rendered to a
+		// different height here than on `/` while each `main` reserved whatever the token last said. Neither
+		// single-surface reading above can see that; only the comparison can.
 		check(
 			'CLAIM 3 the ONE band renders to the SAME height at rest and with results up — one element, one token, no per-state drift',
 			dock !== null && Math.abs(browse.dockOuterHeight - dock.dockOuterHeight) <= 1,
@@ -593,11 +552,9 @@ try {
 			browse.mainPadBottom >= browse.dockClientHeight,
 			`main padding-bottom ${browse.mainPadBottom}px against a ${browse.dockClientHeight}px band`
 		);
-		// THE CRITERION: the controls a guest reaches mid-song must not cost a regrip, so they belong in the
-		// bottom third. The subject is the TRANSPORT — restart, play/pause and skip are all in the band row —
-		// and one reading covers every phone surface, because the band is chrome. Search is the first element
-		// in the column now, so reaching it is a scroll to the top rather than a control in the chrome, and
-		// pointing this arm at the field would assert the OPPOSITE of what the surface deliberately does.
+		// THE CRITERION: the controls a guest reaches mid-song must not cost a regrip, so the TRANSPORT belongs
+		// in the bottom third; one reading covers every phone surface because the band is chrome. NOT the
+		// search field, which sits at the top of the column by design — this arm would assert the opposite.
 		const thumbLine = (browse.innerHeight * 2) / 3;
 		const transportCentres = [...browse.sideCentresY, browse.discCentreY];
 		check(
@@ -618,11 +575,9 @@ try {
 		);
 	}
 
-	// CLAIM 3, THE RESERVATION UNDER SCROLL. With the list driven to its very END, the last row must still
-	// CLEAR the band. That is the only position where `main`'s `calc(var(--dock-h, 0px) + 28px)` can be
-	// observed doing its job: at rest the last row of a long list is off-screen entirely, so the at-rest
-	// occlusion arm above passes over a row nobody can see. Scrolled to the end, a reservation that is
-	// missing, stale or measured off the wrong element puts the final row under fixed chrome.
+	// CLAIM 3, THE RESERVATION UNDER SCROLL. The END of the list is the only position where `main`'s
+	// `calc(var(--dock-h, 0px) + 28px)` can be observed doing its job: at rest the last row of a long list is
+	// off-screen, so the at-rest occlusion arm above passes over a row nobody can see.
 	await page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)');
 	await sleep(400); // no smooth scrolling in this app; this is paint settle, not animation
 	const endProbe = `(() => {
@@ -652,8 +607,8 @@ try {
 			`no ${SEL.dockRow} or no ${SEL.songRow} in the search view after scrolling to the end`
 		);
 	} else {
-		// The precondition, stated as its own arm: if the column never scrolled there is no end to be at,
-		// and the two arms below would pass on the at-rest layout the block above already measured.
+		// If the column never scrolled there is no end to be at, and the two arms below would pass on the
+		// at-rest layout the block above already measured.
 		check(
 			'CLAIM 3 the drive really reached the END of the list — the reservation is measured where it can fail',
 			end.scrollY >= end.maxScroll - 1,
@@ -671,11 +626,9 @@ try {
 		);
 	}
 
-	// CLAIM 3, THE SHORT CASE: the band contract when the column cannot scroll. A non-matching query is the
-	// cheapest way to reach a genuinely different GEOMETRY — a column with nothing in it, shorter than the
-	// viewport, unable to scroll — and the contract has to hold there too: a band whose measured height only
-	// survives while content pushes against it is a band whose height is a coincidence. The empty line
-	// (`SEL.empty`) sits near the TOP by design; wherever it sits, it must not be under the band.
+	// CLAIM 3, THE SHORT CASE: a column shorter than the viewport, unable to scroll. A band whose measured
+	// height only survives while content pushes against it is a band whose height is a coincidence. The
+	// empty line sits near the TOP by design; wherever it sits, it must not be under the band.
 	await page.fill(SEL.search, 'zzzzznotasongzzzzz');
 	await page.waitForSelector(SEL.empty, { timeout: 15000 }).catch(() => {});
 	await sleep(900);
@@ -726,7 +679,7 @@ try {
 		);
 	}
 
-	// ── CLAIM 4: the focus indicator's FORM, on a genuinely :focus-visible element ──
+	// CLAIM 4: the focus indicator's FORM, on a genuinely :focus-visible element.
 	await page.viewport(390, 844);
 
 	const focusProbe = `(() => {
@@ -747,15 +700,10 @@ try {
 			const visible = el.matches(${JSON.stringify(FOCUS_VISIBLE)});
 			const cs = getComputedStyle(el);
 			/*
-			 * THE INDICATOR MAY BE ON THE FIELD RATHER THAN ON THE CONTROL, and this is what reads it there. A
-			 * composite field — a bordered box holding a mark, an input, a spinner and a clear control — IS the
-			 * field to anyone looking at it, so the ring belongs around the whole box; drawing it on the bare
-			 * input nests one rounded rect inside another and strands the mark outside the ring it belongs to.
-			 *
-			 * So the walk goes UP while the control is focused, at most three levels, and reports the first
-			 * ancestor that satisfies the floor. A widening of WHERE, never of WHAT: the same >=2px in the
-			 * resolved --focus is required, and a control with no qualifying ring on itself or a near ancestor
-			 * still fails. Three levels, because a field wrapper is one.
+			 * THE INDICATOR MAY BE ON THE FIELD RATHER THAN ON THE CONTROL: a composite field is one box to
+			 * anyone looking at it, so the ring belongs around the whole of it. The walk goes UP three levels
+			 * (a field wrapper is one) and reports the first ancestor satisfying the floor. A widening of
+			 * WHERE, never of WHAT — the same >=2px in the resolved --focus is still required.
 			 *
 			 * NO BACKTICKS in this comment: it lives inside a template literal, where one would end the string.
 			 */
@@ -786,9 +734,8 @@ try {
 
 	const focusReadings =
 		/** @type {{ what: string, tag: string, focusVisible: boolean, style: string, width: number, color: string, ring: { style: string, width: number, color: string, on: string } | null, shadowChanged: boolean, wanted: string }[]} */ ([]);
-	// Two surfaces, because the phone route carries the queue's controls plus the search FIELD — the only
-	// text entry on the remote, and the one control whose ring is on its wrapper — while /settings carries
-	// twenty-two, including every <select> and the range inputs, whose rings come from different rules.
+	// Two surfaces: the phone route carries the search FIELD, the one control whose ring is on its wrapper,
+	// while /settings carries every <select> and range input, whose rings come from different rules.
 	for (const where of ['/', '/settings']) {
 		await page.goto(base + where);
 		await sleep(600);
@@ -821,13 +768,10 @@ try {
 		badFocus.join('\n        ')
 	);
 
-	// CLAIM 5: the TV type floor is ONE declaration and the ladder is rem. The source-scan half lives in
-	// tests/guards/layout/stage-scale.test.ts and cannot make a computed claim. What only a render settles:
-	// that the `.tv` root font-size calc RESOLVES as intended at a 1920x1080 CSS viewport, that every rem
-	// tier multiplies THAT root, and that pushing --ui-scale to its 0.8 bound keeps every tier at or above
-	// 20px. --ui-scale is read off the live element and overridden IN PLACE, so this measures the real
-	// cascade rather than a recomputation of the token file. `/tv` always mounts `.tv` whatever the playback
-	// state, so the attract screen is enough.
+	// CLAIM 5: the TV type floor is ONE declaration and the ladder is rem; the source-scan half is in
+	// tests/guards/layout/stage-scale.test.ts. Only a render settles that the `.tv` root calc resolves as
+	// intended at 1920x1080, that every rem tier multiplies THAT root, and that --ui-scale at its 0.8 bound
+	// keeps every tier at or above 20px. It is overridden IN PLACE, so this measures the real cascade.
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
 	await page.waitForSelector(SEL.tvRoot, { timeout: 15000 });
@@ -906,9 +850,8 @@ try {
 			`.tv root at --ui-scale 0.8 computed to ${tv08?.rootPx}px (expected ~23.33)`
 		);
 
-		// Reset --ui-scale to a non-numeric value: the @property <number> registration must REJECT it and
-		// fall back to initial-value 1, so the floor holds rather than the whole font-size dropping (the
-		// reviewer's advisory — a non-numeric --ui-scale silently removing the floor). Root stays 29.16.
+		// A non-numeric --ui-scale must be REJECTED by the @property <number> registration and fall back to
+		// initial-value 1, so the floor holds rather than the font-size dropping. Root stays 29.16.
 		await page.evaluate(`document.documentElement.style.setProperty('--ui-scale', 'banana')`);
 		await sleep(200);
 		const tvBad = await page.evaluate(tvProbe);
@@ -919,9 +862,8 @@ try {
 		);
 		await page.evaluate(`document.documentElement.style.removeProperty('--ui-scale')`);
 
-		// 720p: the px term of max(2.7vh, 20px) must engage. At a 720-tall viewport 2.7vh = 19.44px < 20px,
-		// so the root floors at 20px — the windowed/short-panel case the px term exists for (reviewer's
-		// advisory: the 1080p arms alone would miss a 720p regression).
+		// 720p: the px term of max(2.7vh, 20px) must engage. At a 720-tall viewport 2.7vh = 19.44px < 20px, so
+		// the root floors at 20px — the windowed/short-panel case the 1080p arms cannot reach.
 		await page.viewport(1280, 720);
 		await sleep(200);
 		const tv720 = await page.evaluate(tvProbe);
@@ -933,16 +875,13 @@ try {
 		await page.viewport(1920, 1080);
 	}
 
-	// CLAIM 5b: `.fs-btn` overlaps NO z-tier-7 chrome box, on the render. The fullscreen button and the
-	// corner chrome (join QR, lower-third, Up-next) all sit at z-tier 7, so whichever is later in the DOM
-	// paints on top and a shared anchor is a silent occlusion no source scan can see — a string-inequality
-	// guard on ONE anchor pair stayed green while the button overlapped ~3000px². Measured at 1080p AND 4K.
+	// CLAIM 5b: `.fs-btn` overlaps NO z-tier-7 chrome box, at 1080p AND 4K. The button and the corner chrome
+	// all sit at z-tier 7, so whichever is later in the DOM paints on top and a shared anchor is a silent
+	// occlusion no source scan can see.
 	//
 	// WHY SYNTHETIC BOXES: those classes render only in the PLAYING branch, which needs live WS playback this
-	// self-hosting drive has no processed media for. So one element per class is MOUNTED under the real
-	// `.tv`, where the tokens resolve and the loaded stylesheet positions it as production does; `.upnext`
-	// gets a realistic wrapped height so `--tv-upnext-h` is exercised non-zero, DOM order mirrors production
-	// so paint order is honest, and the boxes are removed after measuring.
+	// drive has no processed media for. One element per class is MOUNTED under the real `.tv`, where the loaded
+	// stylesheet positions it as production does, with a realistic `.upnext` height and production DOM order.
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
 	await page.waitForSelector(SEL.tvRoot, { timeout: 15000 });
@@ -952,9 +891,8 @@ try {
 		const tv = document.querySelector(${JSON.stringify(SEL.tvRoot)});
 		if (!tv) return null;
 		// The route's CSS is Svelte-SCOPED ('.fs-btn.svelte-HASH'), so a bare class gets NONE of the production
-		// positioning — and .corner belongs to a DIFFERENT component with its own hash. Resolve each class's
-		// own scope hash from the live stylesheets and stamp THAT on the synthetic element; fail loudly if one
-		// cannot be found, because an unscoped box measures unstyled geometry.
+		// positioning, and .corner belongs to a DIFFERENT component with its own hash. Resolve each hash from
+		// the live stylesheets and fail loudly if one is missing: an unscoped box measures unstyled geometry.
 		function scopeFor(cls) {
 			const re = new RegExp('\\\\.' + cls + '\\\\.(svelte-[a-z0-9]+)');
 			for (const sheet of document.styleSheets) {
@@ -975,9 +913,8 @@ try {
 		}
 		const holder = document.createElement('div');
 		holder.setAttribute('data-889-probe', '1');
-		// One element per z-tier-7 chrome class, in production DOM order (chrome first, fs-btn LAST so it paints
-		// on top at equal z — the exact condition the guard must catch). .upnext gets its real child classes so
-		// it renders at a production-realistic wrapping height, and each box carries its own scope hash.
+		// Production DOM order: chrome first, fs-btn LAST so it paints on top at equal z — the exact condition
+		// the guard must catch. .upnext gets its real child classes so it wraps to a realistic height.
 		const uh = scopes['upnext'], lh = scopes['lower-third'], ch = scopes['corner'];
 		const specs = [
 			{ cls: 'lower-third', html: '<div class="ls-name ' + lh + '">Now singing</div><div class="ls-song ' + lh + '">A Song Title</div>' },
@@ -994,9 +931,8 @@ try {
 			made[s.cls] = el;
 		}
 		tv.appendChild(holder);
-		// Publish .upnext's REAL rendered height as --tv-upnext-h, exactly as the production
-		// ResizeObserver does. This is what makes the fix's offset (which reads --tv-upnext-h) correct
-		// AND what makes a fixed-offset regression (one that ignores it) overlap the block.
+		// Publish .upnext's REAL height as --tv-upnext-h, as the production ResizeObserver does: without it a
+		// fixed-offset regression (one ignoring the token) would not overlap the block here.
 		const upH = Math.ceil(made['upnext'].getBoundingClientRect().height);
 		tv.style.setProperty('--tv-upnext-h', upH + 'px');
 		// Reflow so .fs-btn's top:calc(... + var(--tv-upnext-h) ...) re-resolves against the new value.
@@ -1037,16 +973,12 @@ try {
 	await page.viewport(1920, 1080);
 
 	// CLAIM 6: the ratified TV states, measured on the render. The source-scan half lives in
-	// tests/guards/subsystem-tv/tv-ratified-states.test.ts and cannot make a measured claim. What only a
-	// render settles, and what shipped green past a source scan: the join URL is ONE unbreakable token
-	// (`.jt-url` must not break mid-octet, scrollWidth <= clientWidth) at the realistic long LAN address the
-	// repo documents; and every roster member is shown with no chip OCCLUDED by a corner control, swept with
-	// LONG-name fixtures at 6/10/12/13 guests, because name length is load-bearing here. The takeover frames
-	// need live WS playback to mount, so their invariants stay on the source-scan guard.
+	// tests/guards/subsystem-tv/tv-ratified-states.test.ts. Only a render settles that the join URL is ONE
+	// unbreakable token (scrollWidth <= clientWidth) at a realistic long LAN address, and that no roster chip
+	// is OCCLUDED — swept at 6/10/12/13 guests, because name length is load-bearing here.
 	{
-		// Long-name fixtures (name length is load-bearing for). Colours are irrelevant to the
-		// occlusion measurement and are passed as a CSS named colour, NOT a `#hex` literal — a `#`-led
-		// string reads as an id selector to the driver-selector-ban guard (contract.test.ts).
+		// Chip colour is passed as a CSS NAMED colour, never a `#hex` literal: a `#`-led string reads as an id
+		// selector to the driver-selector-ban guard in contract.test.ts.
 		const NAMES = [
 			'Bartholomew',
 			'Alexandria',
@@ -1063,8 +995,7 @@ try {
 			'Persephone'
 		];
 		const CHIP_COLOR = 'rebeccapurple';
-		/** Join one singer via the production path and HOLD a phone socket so presence counts them. */
-		/** @type {WebSocket[]} */
+		/** Join via the production path and HOLD a phone socket, so presence counts them. @type {WebSocket[]} */
 		const heldSockets = [];
 		/** @param {string} displayName @param {string} color */
 		async function joinOne(displayName, color) {
@@ -1084,9 +1015,8 @@ try {
 			heldSockets.push(ws);
 		}
 
-		// The lobby is where both measured invariants are reachable in this drive: the phone-flow claims above
-		// already joined a singer, and the lobby carries the same join panel and the roster. The attract
-		// `.jt-url` and the takeover frames stay on the source-scan guard.
+		// The lobby, not the attract screen: this drive has already joined a singer, and the lobby carries the
+		// same join panel plus the roster.
 		const lobbyProbe = `(() => {
 			const chips = [...document.querySelectorAll(${JSON.stringify(SEL.lobbyStripPerson)})];
 			const url = document.querySelector(${JSON.stringify(SEL.lobbyUrl)});

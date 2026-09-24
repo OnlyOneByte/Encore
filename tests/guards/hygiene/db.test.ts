@@ -63,7 +63,6 @@ test('migrations create all tables and every entity round-trips', () => {
 	expect(db.select().from(singers).all()[0]!.displayName).toBe('Maya');
 	expect(db.select().from(jobs).all()[0]!.jobType).toBe('stems');
 
-	// boot-hydrate returns the durable queue + playback to seed memory
 	const { entries, playback } = hydrate(db, 'room1');
 	expect(entries).toHaveLength(1);
 	expect(entries[0]!.id).toBe('q1');
@@ -106,9 +105,9 @@ test('media.lyrics_override_ref defaults null and round-trips a stored ref', () 
 	expect(byId.get('o1')).toBe('derived/lyrics/o1-manual-word.json');
 });
 
-// media.lyrics_override_text arrives via migration 0011, defaults null, and round-trips the words behind a
-// pasted override — the column that makes a paste survive a restart between enqueue and dispatch, where
-// `assignParams` re-derives the align job's `pinnedText` from this row.
+// media.lyrics_override_text arrives via migration 0011, defaults null, and round-trips the words behind a pasted
+// override — the column that makes a paste survive a restart between enqueue and dispatch, where `assignParams`
+// re-derives the align job's `pinnedText` from this row, newlines and all.
 test('media.lyrics_override_text defaults null and round-trips pasted words', () => {
 	const { db, sqlite } = openDb(':memory:');
 	runMigrations(db);
@@ -134,13 +133,12 @@ test('media.lyrics_override_text defaults null and round-trips pasted words', ()
 			.map((r) => [r.id, r.lyricsOverrideText])
 	);
 	expect(byId.get('t0')).toBeNull(); // no pasted text — a ref pick, or no pin at all
-	// Newlines survive: the worker splits the paste into one line per lyric line.
 	expect(byId.get('t1')).toBe('hello darkness my old friend\nive come to talk with you again');
 });
 
 // The room_settings.lyrics_ball COLUMN default is 'off'. This pins the SQLite default itself: a raw insert
-// omitting lyrics_ball must read back 'off'. The app read path never hits it (getRoom returns defaults for a
-// no-row room, setRoom writes every column), so this guards the migration / hand-edited-DB path it governs.
+// omitting lyrics_ball must read back 'off'. The app read path never hits it, so this guards the migration /
+// hand-edited-DB path it governs.
 test('room_settings column defaults: lyrics_ball is off', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
@@ -149,9 +147,9 @@ test('room_settings column defaults: lyrics_ball is off', () => {
 	expect(row.lyricsBall).toBe('off');
 });
 
-// job_attempts.selection must arrive as an INCREMENTAL migration (0001), not an edit to the baseline:
-// drizzle replays only migrations it has not recorded, so editing 0000 in place makes an existing DB replay
-// the baseline and throw on CREATE TABLE of an already-existing table — an availability failure.
+// job_attempts.selection must arrive as an INCREMENTAL migration (0001), not an edit to the baseline: drizzle
+// replays only migrations it has not recorded, so editing 0000 in place makes an existing DB replay the baseline
+// and throw on CREATE TABLE of an already-existing table — an availability failure.
 test('job_attempts.selection is added by migration and round-trips', () => {
 	const { db, sqlite } = openDb(':memory:');
 	runMigrations(db);
@@ -180,7 +178,6 @@ test('job_attempts.selection is added by migration and round-trips', () => {
 		.run();
 	const [row] = db.select().from(jobAttempts).all();
 	expect(row.selection).toBe(rec);
-	// A row that recorded no selection stores NULL, never undefined — the column is nullable by design.
 	db.insert(jobAttempts)
 		.values({
 			id: 'a2',
@@ -200,8 +197,8 @@ test('job_attempts.selection is added by migration and round-trips', () => {
 	expect(a2.selection).toBeNull();
 });
 
-// playback_state is KEYED BY ROOM: the `room_id` primary key replaced the single 'singleton' row. On base
-// the second insert collides on the primary key, so hydrate can only ever return one room's playback.
+// playback_state is KEYED BY ROOM: without the `room_id` primary key the second insert collides, so hydrate can
+// only ever return one room's playback.
 test('two rooms hold independent playback state, keyed by room_id', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
@@ -217,10 +214,8 @@ test('two rooms hold independent playback state, keyed by room_id', () => {
 		.values({ roomId: 'roomB', currentEntryId: 'entryB', positionSec: 99, isPlaying: false, keyShift: -3 })
 		.run();
 
-	// Both rows coexist — not one shared 'singleton' row that the second write overwrote.
 	expect(db.select().from(playbackState).all()).toHaveLength(2);
 
-	// Boot-hydrate reads each room's OWN playback, independently.
 	const a = hydrate(db, 'roomA').playback;
 	const b = hydrate(db, 'roomB').playback;
 	expect(a?.currentEntryId).toBe('entryA');
@@ -233,8 +228,8 @@ test('two rooms hold independent playback state, keyed by room_id', () => {
 	expect(b?.keyShift).toBe(-3);
 });
 
-// queue_entries is KEYED BY ROOM, via the `room_id` column plus write-behind and boot-hydrate both scoping
-// by it. On base there is no room_id, so hydrate(roomA)/hydrate(roomB) each return BOTH rooms' entries.
+// queue_entries is KEYED BY ROOM, via the `room_id` column plus write-behind and boot-hydrate both scoping by it.
+// Without it, hydrate(roomA)/hydrate(roomB) each return BOTH rooms' entries.
 test('two rooms hold independent queues, keyed by room_id (persist + hydrate)', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
@@ -259,11 +254,9 @@ test('two rooms hold independent queues, keyed by room_id (persist + hydrate)', 
 		addedAt: now + seq
 	});
 
-	// Each room persists its OWN queue through the real write-behind path, bound to its own room id.
 	sqlitePersistence(db, 'roomA').persist({ entries: [qe('a1', 'ana', 0), qe('a2', 'ana', 1)], playback: idle });
 	sqlitePersistence(db, 'roomB').persist({ entries: [qe('b1', 'ben', 0)], playback: idle });
 
-	// The rows coexist in one table but are partitioned by room_id — not one shared queue.
 	expect(db.select().from(queueEntries).all()).toHaveLength(3);
 
 	// Boot-hydrate reads each room's OWN queue, independently. A song queued in A never appears in B.

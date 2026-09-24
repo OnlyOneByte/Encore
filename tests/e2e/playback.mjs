@@ -1,10 +1,7 @@
 /*
- * Does a sound actually come out? Every other flow here stops at the DOM; this one is the worked example
- * of the decoded-byte proof rule — see docs/E2E.md#proving-audio.
+ * Does a sound actually come out? The worked example of docs/E2E.md#proving-audio.
  *
  *   EPORT=5210 bun tests/e2e/playback.mjs
- *
- * Exit 0 / 1 / 2 per docs/E2E.md#exit-codes-and-what-ran-means.
  */
 import { join } from 'node:path';
 import { connect, sleep } from './driver.mjs';
@@ -14,8 +11,6 @@ import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from './lib/
 import { openJoin } from './lib/join.mjs';
 
 /**
- * Browser/Page derive from driver.mjs's return types so they cannot drift; page.evaluate() is
- * Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check

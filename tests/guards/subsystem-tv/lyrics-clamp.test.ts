@@ -1,20 +1,16 @@
-// Guard: the TV route must hand the PLAYING SONG's granularity to the lyrics clamp.
-//
-// `resolveLyricsPresentation`'s per-song bound has full branch coverage as a pure function, which says
-// nothing about whether anything CALLS it with a song. The clamp is especially exposed to that because its
-// unknown case is deliberately PERMISSIVE: drop the argument and every song silently reads as "granularity
-// unknown", which resolves to exactly the pre-fix behaviour and breaks not one existing test.
+// guard: the TV route must hand the PLAYING SONG's granularity to the lyrics clamp.
+// `resolveLyricsPresentation` has full branch coverage as a pure function, which says nothing about whether
+// anything CALLS it with a song — and its unknown case is deliberately PERMISSIVE, so dropping the argument
+// silently restores the pre-fix behaviour and breaks not one existing test.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
 const PAGE = 'src/routes/tv/+page.svelte';
 
 /**
- * Blank comments out, keeping newlines so reported line numbers stay true.
- *
- * LOAD-BEARING, and measured rather than asserted: leaving the correct call in a comment —
- * `// const lyricsStyle = $derived(resolveLyricsPresentation(settings, …))`, the shape a disable actually
- * takes — makes the scan below pass on its own documentation. Checked both ways against that mutant.
+ * Blank comments out, keeping newlines so reported line numbers stay true. LOAD-BEARING, and measured
+ * rather than asserted: leaving the correct call in a comment — the shape a disable actually takes — makes
+ * the scan below pass on its own documentation.
  */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

@@ -1,9 +1,5 @@
 /*
- * P9 — SETTINGS, THREE SCOPES, LIVE. A control is only a setting if changing it (i) sticks in SQLite,
- * (ii) fans out to every connected client as `settings:changed`, and (iii) reaches the WORKERS at
- * assign time. Fail any one and it is a slider that does nothing, or an env var wearing a UI.
- *
- * Findings carry path:line evidence. Exit codes: docs/E2E.md#exit-codes-and-what-ran-means
+ * P9 — SETTINGS, THREE SCOPES, LIVE. Findings carry path:line evidence.
  *   EPORT=5229 bun tests/e2e/probes/p9-settings.mjs
  */
 import { spawn } from 'node:child_process';

@@ -1,21 +1,9 @@
-// guard: a HubDeps composition must fill every optional hook the interface declares — a PARITY guard
-// against HubDeps itself rather than a thirteenth one-hook wiring guard.
-//
-// HubDeps has 3 required fields and 12 OPTIONAL ones, and every optional key is type-legal to omit, so a
-// composition site can silently drop a hook while the suite stays green: each one feeds a LIVE service
-// (onNowPlaying → app.plays, recordAdd → app.popularity, onSang → app.singers, onEntryRemoved →
-// cancelJobsForMedia, hasOp → the re-ack peek), but nothing reads the composition. Measured: deleting any
-// of 11 keys from the hand-written bag left 1452 pass / 0 fail.
-//
-// THE KEY LIST IS DERIVED from hub.ts rather than hardcoded, so the NEXT optional hook fails this guard
-// until it is wired instead of needing another one-hook guard. The parity target is the `buildHubDeps`
-// factory's RETURN literal, the single place every optional hook is wired to its service; server.ts's call
-// site passes only the per-frame subset, whose completeness the `HubDepsPerFrame` param type checks.
-// `reconcileOnReady` is the second, deliberately-partial composition, pinned to its four load-bearing
-// hooks.
-//
-// Comments are blanked so a commented-out wiring cannot satisfy the scan, and each assertion anchors on a
-// LITERAL rather than the whole file, because several hook names also appear at unrelated call sites.
+// guard: a HubDeps composition must fill every optional hook the interface declares. All 12 optional keys
+// are type-legal to omit while feeding a LIVE service (onNowPlaying → app.plays, onSang → app.singers,
+// onEntryRemoved → cancelJobsForMedia, hasOp → the re-ack peek), and nothing reads the composition: deleting
+// any of 11 from the hand-written bag left the suite green. THE KEY LIST IS DERIVED from hub.ts, so the NEXT
+// optional hook fails this guard until it is wired. The parity target is `buildHubDeps`'s RETURN literal,
+// and each assertion anchors on a LITERAL, because several hook names appear at unrelated call sites.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -43,10 +31,9 @@ function literalBody(src: string, openMarker: RegExp): string {
 	return '';
 }
 
-// The three subjects: the Bun.serve entry, the server composition root, and the realtime hub declaring
-// the HubDeps interface the key list is DERIVED from. `read` throws on a missing file, which matters most
-// for hub.ts — an empty body yields zero OPTIONAL_KEYS and the parity check passes having compared
-// nothing. The sentinel below floors the key count for the same reason.
+// The three subjects: the Bun.serve entry, the server composition root, and the realtime hub declaring the
+// HubDeps interface the key list is DERIVED from. `read` throws on a missing file, which matters most for
+// hub.ts — an empty body yields zero OPTIONAL_KEYS and the parity check passes having compared nothing.
 const SERVER = stripComments(read('server.ts'));
 const HUB = stripComments(read('src/lib/server/realtime/hub.ts'));
 const APP = stripComments(read('src/lib/server/app.ts'));
@@ -96,9 +83,9 @@ test('app.ts buildHubDeps factory fills EVERY optional HubDeps hook', () => {
 	expect(missing).toEqual([]);
 });
 
-// `reconcileOnReady` takes the full HubDeps type but supplies a deliberate subset. `listSingers` and `getSettings` are
-// load-bearing — without them it picks with fair rotation while every client sees the room's chosen order — and
-// `onNowPlaying`/`onSang` carry play-tracking and least-recently-sung through the reconcile path.
+// `reconcileOnReady` takes the full HubDeps type but supplies a deliberate subset. `listSingers` and
+// `getSettings` are load-bearing — without them it picks with fair rotation while every client sees the
+// room's chosen order — and `onNowPlaying`/`onSang` carry play-tracking through the reconcile path.
 test('app.ts reconcileOnReady fills its load-bearing hooks (listSingers, getSettings, onNowPlaying, onSang)', () => {
 	for (const k of ['listSingers', 'getSettings', 'onNowPlaying', 'onSang']) {
 		expect(RECONCILE).toMatch(new RegExp(`(^|[\\s,{])${k}\\s*:`));

@@ -1,9 +1,7 @@
-// guard: the TV must HOLD THE SCREEN AWAKE while a song is on stage, and release it when idle.
-//
-// Caught: nothing in the app held the screen on, so the OS screensaver blanked the room mid-song — a long
-// instrumental break with no input was enough to lose the lyrics. An $effect now takes a Screen Wake Lock
-// while a song is on stage and releases it in the effect's cleanup, mirroring the ResizeObserver effect in
-// the same file.
+// guard: the TV must HOLD THE SCREEN AWAKE while a song is on stage, and release it when idle. Nothing in
+// the app held the screen on, so the OS screensaver blanked the room mid-song — a long instrumental break
+// with no input was enough to lose the lyrics. An $effect takes a Screen Wake Lock while a song is on stage
+// and releases it in the effect's cleanup.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 

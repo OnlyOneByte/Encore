@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	// A row in the rotation queue. Ported from docs/mocks.
 	import { SINGER_COLORS } from '$lib/contract';
 	import Icon from '$lib/ui/Icon.svelte';
 	import * as Item from '$lib/components/ui/item';
@@ -17,11 +16,8 @@
 		subtitle?: string; // e.g. "now playing", "after Liam"
 		pending?: 'add' | 'move' | null; // optimistic, not yet confirmed — see pendingLabel
 		removable?: boolean; // show the remove affordance (mine, not currently playing)
-		/**
-		 * How far this row must slide to clear one dragged past it, in ROWS rather than pixels: the pixel
-		 * height is the page's business (it measures one row at press time), and a component taking px would
-		 * need the same measurement twice.
-		 */
+		/** In ROWS rather than pixels: the pixel height is the page's business (it measures one row at press time),
+		 * and a component taking px would need the same measurement twice. */
 		shift?: -1 | 0 | 1;
 		/** Show the drag grip. The caller passes `gripVisible()` from `$lib/reorder-mode`, never a raw boolean:
 		 * the grip is a promise that a move will land, and the conditions for that are argued there. */
@@ -33,17 +29,13 @@
 		moving?: boolean;
 		/** Live pointer offset in px for the moving row. CSS-var driven — see the `.moving` rule. */
 		dragY?: number;
-		/** Pointer press on the grip: begins the drag. */
 		ongripdown?: (e: PointerEvent) => void;
 		/** Click or keyboard activation of the grip, which opens the mode without a pointer drag. It receives
 		 * the grip ELEMENT because focus must return there when the mode closes, and the page cannot name it. */
 		ongrip?: (el: HTMLElement | null) => void;
-		/**
-		 * The queue entry's id, published on the grip as `data-grip`, and focus return DEPENDS on it: entering
-		 * the mode inserts drop-slot buttons into this list, so Svelte recreates the row's DOM and the grip the
-		 * guest pressed is a detached node by the time the mode closes — focusing it puts focus nowhere. A
-		 * stable attribute is what survives the re-render, so the page re-finds the grip by id.
-		 */
+		/** Published on the grip as `data-grip`, and focus return DEPENDS on it: entering the mode inserts drop-slot
+		 * buttons into this list, so Svelte recreates the row's DOM and the grip the guest pressed is a detached node by
+		 * the time the mode closes. A stable attribute survives the re-render, so the page re-finds the grip by id. */
 		gripId?: string;
 		/** A keyboard step from the grip: -1 for Arrow Up, +1 for Arrow Down. */
 		onnudge?: (delta: number) => void;
@@ -53,8 +45,7 @@
 		seq,
 		title,
 		singerName,
-		// A default is required: without one `--singer` resolves against undefined, so the identity dot's
-		// background has no value and the dot renders invisible.
+		// A default is required: without one `--singer` resolves against undefined and the identity dot renders invisible.
 		singerColor = SINGER_COLORS[0],
 		mine = false,
 		up = false,
@@ -74,25 +65,14 @@
 		onnudge
 	}: Props = $props();
 
-	/** One expression for both unconfirmed states, so a pending MOVE cannot drift back into announcing the
-	 * add path's word on a row that is already in the queue. */
+	/** One expression for both unconfirmed states, so a pending MOVE cannot drift back into the add path's word. */
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
 
-	/**
-	 * Which way the position number just moved, read by the bubble as `--seq-dir` so the incoming digit rolls
-	 * in from the side it came from. Three constraints, all load-bearing:
-	 *
-	 * `$effect.pre`, never `$effect`: the direction must be on the element BEFORE the keyed block replaces
-	 * the digit, because an animation reads its keyframes when it starts and a later write cannot retune one
-	 * already running.
-	 *
-	 * `prevSeq` is a PLAIN `let`, not `$state` — it is a record of what was rendered, not a dependency, and
-	 * as state it would put this effect in a loop with itself.
-	 *
-	 * It is seeded INSIDE the effect rather than from `seq` at its declaration, because `let prevSeq = seq`
-	 * is a `state_referenced_locally` warning and this repo holds `bun run check` at 0 errors 0 warnings.
-	 * The seeded form also guarantees the first run writes no state, so the mount rung sees no extra pass.
-	 */
+	/** Which way the position number just moved, read by the bubble as `--seq-dir`. `$effect.pre`, never `$effect`:
+	 * the direction must be on the element BEFORE the keyed block replaces the digit, because an animation reads its
+	 * keyframes when it starts and a later write cannot retune one already running. `prevSeq` is a PLAIN `let` — as
+	 * state it would put this effect in a loop with itself — and it is seeded INSIDE the effect, because
+	 * `let prevSeq = seq` is a `state_referenced_locally` warning and `bun run check` is held at 0 warnings. */
 	let seqDir = $state(0);
 	let prevSeq: number | undefined;
 	$effect.pre(() => {
@@ -105,16 +85,10 @@
 	});
 </script>
 
-<!--
-	Item.Root supplies the row GRAMMAR while this file keeps the row ELEMENT through Item's `child` snippet.
-	That is load-bearing: the root carries five conditional state classes and the drag offset as a custom
-	property, and a `class:` directive is not valid on a component while a class handed to one is scoped to the
-	caller and stripped there.
-
-	THE ROOT'S `class` ATTRIBUTE MUST STAY STATIC, and written after the spread so it wins. contrast.test.ts
-	derives this row's classes by splitting that attribute on whitespace, so an interpolation there hands it a
-	token it applies as a regex quantifier — matching every rule in the file and reporting a nonsense defect.
--->
+<!-- Item.Root supplies the row GRAMMAR while this file keeps the row ELEMENT through Item's `child` snippet: the root
+	carries five conditional state classes and the drag offset as a custom property, and a `class:` directive is not
+	valid on a component. THE ROOT'S `class` ATTRIBUTE MUST STAY STATIC, written after the spread so it wins —
+	contrast.test.ts splits it on whitespace, so an interpolation hands it a token it applies as a regex quantifier. -->
 <Item.Root variant="bare" size="bare">
 	{#snippet child({ props })}
 		<div
@@ -129,21 +103,12 @@
 			style="--drag-y:{dragY}px; --row-shift:{shift}"
 		>
 			<Item.Media>
-				<!--
-					THE GRIP LEADS THE ROW, as a handle rather than a fourth action on it.
-
-					`press="grab"` is not styling: that variant is where `cursor: grab` and the `touch-action: none`
-					the drag needs are declared, and the cursor must live on this control and never on a row.
-
-					IT IS ALSO THE NON-DRAG PATH. Arrow Up/Down while it has focus moves the row one place and
-					commits, which is SC 2.5.7's single-pointer alternative and SC 2.1.1's keyboard operability;
-					`aria-keyshortcuts` announces it, and the label names the ACTION rather than the gesture so it is
-					honest for both paths.
-
-					It is withheld while a move is unconfirmed, because a second reorder against a position the server
-					has not agreed to issues an op for an index that no longer means what the guest saw. The seq
-					bubble stays, so the row keeps its place while it settles.
-				-->
+				<!-- THE GRIP LEADS THE ROW, as a handle rather than a fourth action on it. `press="grab"` is not styling: that
+						variant is where `cursor: grab` and the `touch-action: none` the drag needs are declared, and the cursor must
+						live on this control and never on a row. IT IS ALSO THE NON-DRAG PATH — Arrow Up/Down while it has focus moves
+						the row one place and commits, which is SC 2.5.7's single-pointer alternative and SC 2.1.1's keyboard
+						operability. Withheld while a move is unconfirmed: a second reorder against a position the server has not
+						agreed to issues an op for an index that no longer means what the guest saw. -->
 				{#if grip && !pending}
 					<Button
 						variant="ghost"
@@ -155,34 +120,25 @@
 						onpointerdown={(e) => ongripdown?.(e)}
 						onkeydown={(e) => {
 							if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-							// The list owns what a step means; this only reports which way and stops the page
-							// scrolling under the guest while they use it.
+							// The list owns what a step means; this only stops the page scrolling under the guest while they use it.
 							e.preventDefault();
 							onnudge?.(e.key === 'ArrowUp' ? -1 : 1);
 						}}
 						onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></Button
 					>
 				{/if}
-				<!--
-					THE NUMBER IS KEYED ON ITSELF, so a change swaps the element rather than mutating a text node —
-					which is what gives the digit an entrance with no class-toggle timer and no geometry read to
-					restart the keyframe, and a geometry read here throws on the mount rung.
-				-->
+				<!-- THE NUMBER IS KEYED ON ITSELF, so a change swaps the element rather than mutating a text node — which gives the
+						digit an entrance with no class-toggle timer and no geometry read, and a geometry read throws on the mount rung. -->
 				<div class="seq" style="--seq-dir:{seqDir}">
 					{#key seq}<span class="n">{seq}</span>{/key}
 				</div>
 			</Item.Media>
 			<Item.Content>
 				<div class="t">{title}</div>
-				<!--
-					The singer line is fenced from the formatter because it is BOTH whitespace-load-bearing and pinned
-					by a guard. The separators must stay EXPRESSIONS rather than literal text, since Svelte trims the
-					leading whitespace of a text node that opens a block and welds the dot to the name; and prettier's
-					line-break idiom for an inline element changes the SOURCE TEXT that
-					tests/guards/hygiene/queue-pending-add.test.ts scans for the literal marker span.
-
-					The fence sits on the ELEMENT, because prettier-ignore does not apply to a bare mustache run.
-				-->
+				<!-- The singer line is fenced from the formatter because it is BOTH whitespace-load-bearing and pinned by a guard:
+						the separators must stay EXPRESSIONS rather than literal text, since Svelte trims the leading whitespace of a text
+						node that opens a block and welds the dot to the name, and prettier's line-break idiom changes the SOURCE TEXT
+						queue-pending-add.test.ts scans. The fence sits on the ELEMENT — prettier-ignore skips a bare mustache run. -->
 				<!-- prettier-ignore -->
 				<div class="who">
 					<i class="singer-dot" class:dim={singerAway} style="--singer:{singerColor}"></i>
@@ -192,10 +148,8 @@
 			</Item.Content>
 			{#if !pending}
 				<Item.Actions>
-					<!--
-						ONE action on the right. A reorder without a drag lives on the GRIP above (Arrow Up/Down), which
-						is what keeps SC 2.5.7 / 2.1.1 satisfied for no layout at all — see `$lib/reorder-mode`.
-					-->
+					<!-- ONE action on the right. A reorder without a drag lives on the GRIP above (Arrow Up/Down), which keeps
+							SC 2.5.7 / 2.1.1 satisfied for no layout at all — see `$lib/reorder-mode`. -->
 					{#if removable}
 						<Button
 							variant="outline"
@@ -220,10 +174,8 @@
 		background: linear-gradient(var(--card), var(--card-tint));
 	}
 	/* The unconfirmed state is signalled on the SURFACE, never with opacity: a subtree alpha here composites the
-	   explanatory text and the singer dot under their floors, and no alpha fixes it, because the value that
-	   clears AA is indistinguishable from 1.0 — a legible dim is not a perceptible state signal.
-	   MUST STAY AFTER `.mine`: both are single-class, so source order is what lets a pending row override its
-	   own `mine` gradient. contrast.test.ts reds if the opacity comes back. */
+	   explanatory text and the singer dot under their floors, and the value that clears AA is indistinguishable from 1.0.
+	   MUST STAY AFTER `.mine`: both are single-class, so source order is what lets pending override its own gradient. */
 	.pending {
 		background: var(--warn-bg);
 		border-color: var(--warn-line);
@@ -241,8 +193,8 @@
 		background: var(--card2);
 		color: var(--ink-dim);
 		flex: 0 0 auto;
-		/* The bubble is the roll's WINDOW: the arriving digit starts outside it and must be clipped on the way
-		   in, or the old number is briefly legible above the new one. */
+		/* The bubble is the roll's WINDOW: the arriving digit must be clipped on the way in, or the old number is
+			   briefly legible above the new one. */
 		overflow: hidden;
 	}
 	/* `from` only, so the landing state is the element's own and nothing is restated; a `--seq-dir` of 0
@@ -293,22 +245,16 @@
 	.adding {
 		color: var(--warn);
 	}
-	/*
-	 * Another guest's row while the reorder mode is open: not a legal drop target. DE-EMPHASISED WITH A SURFACE,
-	 * NEVER `opacity` — these rows stay INFORMATIONAL during the mode, being who you are ordering yourself
-	 * around, so the inactive-component contrast exemption does not apply and their text must keep passing AA.
-	 * MUST STAY AFTER `.mine`, for the same source-order reason `.pending` records.
-	 */
+	/* Another guest's row while the reorder mode is open: not a legal drop target. DE-EMPHASISED WITH A SURFACE, NEVER
+	   `opacity` — these rows stay INFORMATIONAL during the mode, so the inactive-component contrast exemption does not
+	   apply and their text must keep passing AA. MUST STAY AFTER `.mine`, for the reason `.pending` records. */
 	.dimmed {
 		background: var(--bg2);
 		border-color: var(--line);
 	}
-	/*
-	 * NO `transition` AND NO KEYFRAME HERE, which is what makes this reduced-motion-safe by construction:
-	 * nothing is interpolated, so there is no duration to zero out, and the position is a 1:1 response to the
-	 * pointer. It is also why no drag library is used — a library animates the settle in JS, where
-	 * `motion.test.ts` cannot see it.
-	 */
+	/* NO `transition` AND NO KEYFRAME HERE, which is what makes this reduced-motion-safe by construction: nothing is
+	   interpolated, so there is no duration to zero out, and the position is a 1:1 response to the pointer. It is also
+	   why no drag library is used — a library animates the settle in JS, where `motion.test.ts` cannot see it. */
 	.moving {
 		transform: translateY(var(--drag-y, 0px));
 		/* Above its siblings while it travels, so it is not clipped by the next row's surface. */
@@ -320,11 +266,9 @@
 		   the pointer, so it is what `elementFromPoint` returns instead of the drop slot beneath. */
 		pointer-events: none;
 	}
-	/*
-	 * THE ROWS THE DRAGGED ONE PASSES SLIDE OUT OF ITS WAY, which is what makes this a LIVE SORT. `--row-shift`
-	 * is a COUNT of rows and `--row-h` the one height measured at press time, so pixels stay out of the markup.
-	 * THE TRANSITION IS GATED, unlike `.moving`: it is the one interpolated movement on this row.
-	 */
+	/* THE ROWS THE DRAGGED ONE PASSES SLIDE OUT OF ITS WAY, which is what makes this a LIVE SORT. `--row-shift` is a
+	   COUNT of rows and `--row-h` the one height measured at press time, so pixels stay out of the markup. THE
+	   TRANSITION IS GATED, unlike `.moving`: it is the one interpolated movement on this row. */
 	.shifted {
 		transform: translateY(calc(var(--row-shift, 0) * var(--row-h, 0px)));
 	}

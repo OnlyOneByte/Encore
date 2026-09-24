@@ -1,21 +1,10 @@
 /*
- * guard: the shared `.card` surface in app.css and its callers move together, in both directions. See
- * docs/GUARDS.md#vendored-component-seams.
- *
- * THE DEFECT. `.card` was deleted from app.css on the premise that nothing referenced it after 28 content
- * cards moved to <Card.Root>. Nine elements still did — `class="row card list-row"`,
- * `class="qrow card list-row …"` and friends — and every one lost its background, border and radius,
- * because the audit grepped `class="card[ "]`, which only matches a class list STARTING with `card`.
- *
- * Nothing in the suite could catch it: a global class has no unused-selector warning when the RULE
- * disappears (that warning fires the other way round), and no guard asserted these elements have a
- * surface at all. Search results rendered as a flat list on the page background with no border for the
- * ready row's green ring to colour. It was found by comparing screenshots.
- *
- * So: (1) while any markup lists `card`, app.css must define `.card` WITH a background — a rule that
- * exists but paints nothing is the same defect wearing a rule; (2) every caller is enumerated here, which
- * is the moment a reader asks whether it wants this surface or a <Card.Root>. The second half is what
- * makes the first honest, since a floor on a set nobody enumerates can be satisfied by an empty set.
+ * guard: the shared `.card` surface in app.css and its callers move together, in both directions. `.card`
+ * was deleted on the strength of a `class="card[ "]` grep, which only matches a class list STARTING with
+ * `card`, so nine elements spelling it mid-list lost their background, border and radius — and a global
+ * class has no unused-selector warning when the RULE disappears, so it was found on a screenshot. While any
+ * markup lists `card`, app.css must define `.card` WITH a background, and every caller is enumerated here,
+ * which is what makes that floor honest. See docs/GUARDS.md#vendored-component-seams.
  */
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -24,8 +13,8 @@ import { srcDir } from '@encore/test-support';
 
 const SRC = srcDir;
 
-/** The elements that take the shared surface rather than a <Card.Root>, each with why it is not one:
- *  a <Card.Root> is a container with Header/Title/Content, and none of these want that structure. */
+/** Elements taking the shared surface rather than a <Card.Root>, each with why it is not one: a
+ *  <Card.Root> is a container with Header/Title/Content, and none of these want that structure. */
 const CALLERS: { file: string; why: string }[] = [
 	{ file: 'lib/components/SongRow.svelte', why: 'a library/search row — its structure is Item, not Card' },
 	{ file: 'lib/components/QueueRow.svelte', why: 'a queue row — Item, plus its own drag and state classes' },
@@ -62,9 +51,8 @@ function markupOf(src: string): string {
 function callersInTree(): string[] {
 	const out = new Set<string>();
 	for (const f of svelteFiles(SRC)) {
-		// MARKUP ONLY: a class list inside a comment, a style block or a script string applies to nothing, and
-		// counting it makes this guard fire on its own documentation — a comment naming
-		// `<div class="card tile primary">` registered the stats page as a live caller and redded the suite.
+		// MARKUP ONLY: a class list inside a comment, a style block or a script string applies to nothing, and a
+		// comment naming `<div class="card tile primary">` registered the stats page as a live caller.
 		const src = markupOf(readFileSync(f, 'utf8'));
 		for (const m of src.matchAll(/class="([^"]*)"/g)) {
 			if (m[1]!.split(/\s+/).includes('card')) out.add(f.slice(SRC.length + 1));
@@ -75,8 +63,8 @@ function callersInTree(): string[] {
 
 test('while anything uses `card`, app.css defines it WITH a background', () => {
 	const callers = callersInTree();
-	// Non-vacuity: an empty set would make the rule below unfalsifiable. This floor may only ever be
-	// lowered by a caller that is GONE, never to accommodate one that quietly stopped being scanned.
+	// Non-vacuity: this floor may only ever be lowered by a caller that is GONE, never to accommodate one
+	// that quietly stopped being scanned.
 	expect(callers.length).toBeGreaterThanOrEqual(6); // @nvf-floor callers.length
 
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
@@ -92,7 +80,6 @@ test('while anything uses `card`, app.css defines it WITH a background', () => {
 			`no \`.card\` rule. Every one of them renders with no surface. Restore the rule, or migrate those ` +
 			`elements and delete the class from their markup in the same change.`
 	).not.toBeNull();
-	// Non-vacuity: at least one rule was collected, so the assertions below read something.
 	expect(rules.length).toBeGreaterThanOrEqual(1); // @nvf-floor rules.length
 
 	// `lastOf` takes the final declaration of a property across every `.card` rule — what the browser uses.
@@ -105,12 +92,9 @@ test('while anything uses `card`, app.css defines it WITH a background', () => {
 
 	/*
 	 * …and no OTHER rule un-paints it. "The last declaration wins" holds only at equal specificity and equal
-	 * importance, so two shapes still strip the surface from every caller with everything above green:
-	 * `body .card { background: none }` (higher specificity, unmatched by the bare-rule regex) and
-	 * `.card { background: none !important }` (wins from anywhere, including earlier in the file).
-	 *
-	 * Deliberately narrow: any rule whose selector mentions `.card` and which sets background or border to
-	 * something that is not the token. A variant like `.card.compact { padding: … }` sets neither.
+	 * importance, so `body .card { background: none }` and `.card { background: none !important }` both still
+	 * strip the surface with everything above green. Deliberately narrow: any selector mentioning `.card` that
+	 * sets background or border to something that is not the token.
 	 */
 	const suspicious: string[] = [];
 	for (const m of css.matchAll(/(?:^|\n)([^{}\n]*\.card[^{}\n]*)\{([^}]*)\}/g)) {
@@ -154,7 +138,7 @@ test('every `card` caller is enumerated, so a new one is a decision', () => {
 });
 
 test('a later rule that un-paints `card` is caught, not just a deleted one', () => {
-	// Mutation proof for the override direction. Deleting the rule already redded; NEUTRALISING it with a
+	// Mutation proof for the override direction: deleting the rule already redded, NEUTRALISING it with a
 	// second rule did not, and that is the likelier accident — a reset block, a theme override.
 	const lastOf = (css: string, prop: string): string | null => {
 		const rules = [...css.matchAll(/(?:^|\n)\s*\.card\s*\{([^}]*)\}/g)].map((m) => m[1]!);

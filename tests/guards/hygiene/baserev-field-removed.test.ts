@@ -1,8 +1,8 @@
-// guard: `ClientCommand.baseRev` was a required field, minted client-side, documented as an
-// optimistic-concurrency check — and read by NOTHING on the server. It could not simply be wired either:
-// `rev` is a ROOM revision that `setPlayback` (a pause) bumps, so a naive `baseRev !== state.rev → reject`
-// would spuriously reject valid queue commands after any pause/play/key/guide/background change. The field
-// is deleted; these scans keep it gone. Comments are blanked so the prose above cannot satisfy or trip them.
+// guard: `ClientCommand.baseRev` was a required field, minted client-side, documented as an optimistic-concurrency
+// check — and read by NOTHING on the server. It could not simply be wired either: `rev` is a ROOM revision that
+// `setPlayback` (a pause) bumps, so a naive `baseRev !== state.rev → reject` would spuriously reject valid queue
+// commands after any pause/play/key/guide/background change. The field is deleted; these scans keep it gone, with
+// comments blanked so the prose above cannot satisfy or trip them.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,14 +15,13 @@ function stripComments(src: string): string {
 		.replace(/\/\/[^\n]*/g, blank); // line comments
 }
 
-// Anchored on the repo root marker rather than counted up from this file's own location.
 const REPO_ROOT = repoRoot;
 const OPS_PATH = at('src', 'lib', 'contract', 'core', 'ops.ts');
 const CORE_SRC = srcDir;
 const CORE_ENTRY = at('server.ts');
 
-// Slice out the `export interface ClientCommand { ... }` body via a brace-depth walk, so we assert on the
-// CONTRACT itself and ServerPatch etc. cannot leak into the match.
+// Slice the `export interface ClientCommand { ... }` body via a brace-depth walk, so the assertions land on the
+// CONTRACT itself and ServerPatch cannot leak into the match.
 function clientCommandBody(): string {
 	const src = stripComments(readFileSync(OPS_PATH, 'utf8'));
 	const decl = src.indexOf('interface ClientCommand');
@@ -44,10 +43,8 @@ function clientCommandBody(): string {
 
 test('ClientCommand no longer carries baseRev, and still carries its live fields', () => {
 	const body = clientCommandBody();
-	// The live fields stay — proves we sliced the real interface, not an empty match.
 	expect(body).toMatch(/\bclientOpId\b/);
 	expect(body).toMatch(/\bop\b/);
-	// The dead field is gone. Re-adding `baseRev: number;` to the interface reds this.
 	expect(body).not.toMatch(/\bbaseRev\b/);
 });
 
@@ -78,10 +75,10 @@ test('no non-test source under . references baseRev', () => {
 	expect(offenders).toEqual([]);
 });
 
-// The scans above do NOT reach the e2e harness: `tests/e2e/**/*.mjs` are live-server scripts nothing in
-// `bun test` invokes, so the deletion left three of them still sending the dead field. This bans the
-// AFFIRMATIVE declaration `baseRev:`, not the bare word: the probes legitimately NAME it as the removed
-// field inside a `report()` string literal, which stripComments cannot blank, and a bare-word ban self-reds.
+// The scans above do NOT reach the e2e harness: `tests/e2e/**/*.mjs` are live-server scripts nothing in `bun test`
+// invokes, so the deletion left three of them still sending the dead field. This bans the AFFIRMATIVE declaration
+// `baseRev:`, not the bare word: the probes legitimately NAME it inside a `report()` string literal, which
+// stripComments cannot blank, and a bare-word ban self-reds.
 const E2E_DIR = e2eDir;
 
 function collectMjs(root: string): string[] {

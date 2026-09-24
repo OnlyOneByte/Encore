@@ -39,10 +39,9 @@ class SeparatorEngine(Protocol):
     id: str
     backend: str
 
-    #: The container this engine writes its RAW scratch stems in. DECLARED rather than inferred: demucs
-    #: and demucs-mlx emit PCM WAV, audio-separator emits FLAC, and a reader that assumes WAV (stdlib
-    #: `wave`) cannot open a FLAC — an unreadable container silently reads as "stems do not match"
-    #: rather than naming the real cause. A fifth engine cannot ship without answering this.
+    #: DECLARED rather than inferred: a reader assuming WAV cannot open a FLAC, and an unreadable
+    #: container silently reads as "stems do not match" rather than naming the cause. A fifth engine
+    #: cannot ship without answering this.
     stem_format: StemFormat
 
     def resolve_model(self, params: dict) -> str: ...
@@ -114,9 +113,8 @@ class DemucsEngine(SeparatorDefaults):
         self._shifts = shifts
         # DECLARED: the same value reaches both the argv and the output paths below.
         self.stem_format = stem_format
-        # The RESOLVED hardware backend this process runs through (backends.resolve_backend), recorded
-        # into facts so the ledger matches the startup log. MLX resolves to MlxDemucsEngine instead of
-        # reaching this class under an "mlx" label.
+        # The RESOLVED backend, recorded into facts so the ledger matches the startup log. MLX resolves
+        # to MlxDemucsEngine rather than reaching this class under an "mlx" label.
         self.backend = backend
 
     def resolve_model(self, params: dict) -> str:
@@ -178,9 +176,8 @@ class MlxDemucsEngine(SeparatorDefaults):
     id = "demucs"
     backend = "mlx"
 
-    #: WAV, and NOT configurable: demucs-mlx has no output format flag. The derived instrumental
-    #: COULD be re-encoded to FLAC, but that would hand back a FLAC instrumental beside a WAV vocals
-    #: stem, and the guide mix — which folds the two together — depends on them sharing one container.
+    #: NOT configurable: demucs-mlx has no output-format flag. Re-encoding just the derived instrumental
+    #: would leave a FLAC beside a WAV vocals stem, and the guide mix depends on one shared container.
     stem_format = StemFormat.WAV
 
     def __init__(
@@ -201,8 +198,7 @@ class MlxDemucsEngine(SeparatorDefaults):
         self._segment = segment
         self._shifts = shifts
         self._batch_size = batch_size
-        # The decoded input this process separates, set by separate_argv: demucs-mlx names its
-        # per-track output folder from this filename, so derive_argvs/find_outputs need it.
+        # Set by separate_argv: demucs-mlx names its output folder from this filename.
         self._input_wav = "input.wav"
 
     def resolve_model(self, params: dict) -> str:
@@ -247,9 +243,8 @@ class RoformerEngine(SeparatorDefaults):
     id = "roformer"
     backend = "bs-roformer-infer"
 
-    #: WAV, and NOT configurable: `bs-roformer-infer` takes no output-format flag. `find_outputs`
-    #: actually DISCOVERS stems by scanning for a delimited filename (`.wav` or `.flac`); this
-    #: declaration exists so a reader does not have to read the glob to know what to expect.
+    #: NOT configurable: `bs-roformer-infer` takes no output-format flag. `find_outputs` DISCOVERS stems
+    #: by scanning, so this declaration exists only so a reader need not read the glob.
     stem_format = StemFormat.WAV
 
     def __init__(
@@ -351,12 +346,10 @@ class AudioSepEngine(SeparatorDefaults):
         }
 
 
-#: Constructor parameters a CALLER of `engine_for` may never set, excluded from every derived
-#: allowlist below.
-#:   * `default_model` — a per-JOB decision resolved by `engine.resolve_model(ctx.params)`; letting a
-#:     caller replace it at construction would put a second, unvalidated owner on that decision.
-#:   * `backend` — `engine_for` takes it as its own named argument; admitting it from `**kwargs` too
-#:     would be a way to override the RESOLVED backend.
+#: Excluded from every derived allowlist below. `default_model` is a per-JOB decision resolved by
+#: `engine.resolve_model(ctx.params)`, so a construction-time override would be a second unvalidated
+#: owner; `backend` is `engine_for`'s own named argument, and admitting it from `**kwargs` would override
+#: the RESOLVED backend.
 _FACTORY_OWNED = frozenset({"default_model", "backend"})
 
 
@@ -402,9 +395,8 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
             kw["default_model"] = given["roformer_model"]
         return RoformerEngine(**kw)
     if name == AudioSepEngine.id:
-        # `stem_format` is accepted here and by the torch demucs branch below only: those are the two
-        # CLIs with an output-format flag. demucs-mlx and bs-roformer-infer declare a fixed format
-        # instead, so a caller cannot ask them for a choice the CLI cannot honour.
+        # `stem_format` is accepted only here and by the torch demucs branch: those are the two CLIs with
+        # an output-format flag, so a caller cannot ask the others for a choice they cannot honour.
         kw = {k: v for k, v in given.items() if k in _settable(AudioSepEngine)}
         if "audiosep_model" in given:
             kw["default_model"] = given["audiosep_model"]
@@ -420,8 +412,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
         if "demucs_model" in given:
             kw["default_model"] = given["demucs_model"]
         return DemucsEngine(backend=backend or "torch", **kw)
-    # PermanentError (retryable=False): a name with no registered engine cannot be honoured by
-    # retrying.
+    # PermanentError: a name with no registered engine cannot be honoured by retrying.
     raise PermanentError(f"no separator engine: {name}")
 
 

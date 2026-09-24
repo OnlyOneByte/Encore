@@ -1,11 +1,9 @@
-// Guard: the MASTER instrumental's loudness-normalization pulldown must be applied at BOTH the native
-// (`master.volume`) and routed (`masterGraph.setGain`) sites, and must SURVIVE a transpose.
-//
-// Same shape and same reason as the guide's guard: once a shift routes the master through WebAudio,
-// `HTMLMediaElement.volume` is bypassed and only the GainNode governs level, and a freshly built
-// PitchShiftGraph defaults its gain to 1 — so unless the level is re-applied when the graph is built, an
-// attenuated song jumps to FULL volume the moment anyone transposes. Three sites carry it: the dedicated
-// level effect (native + routed), the pitch effect's master branch, and the per-song reset.
+// guard: the MASTER instrumental's loudness-normalization pulldown must be applied at BOTH the native
+// (`master.volume`) and routed (`masterGraph.setGain`) sites, and must SURVIVE a transpose. Once a shift
+// routes the master through WebAudio, `HTMLMediaElement.volume` is bypassed and only the GainNode governs
+// level, and a freshly built PitchShiftGraph defaults its gain to 1 — so unless the level is re-applied when
+// the graph is built, an attenuated song jumps to FULL volume the moment anyone transposes. Three sites
+// carry it: the level effect (native + routed), the pitch effect's master branch, and the per-song reset.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';

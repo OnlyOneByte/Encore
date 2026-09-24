@@ -1,10 +1,6 @@
-<!--
-  FactList — labelled key/value pairs for the operator dashboards, in place of a raw JSON dump.
-
-  A COMPONENT rather than a rule in app.css: this is one small widget's layout, not a palette or a scale, and a
-  global class would be reachable by any page that happened to spell it. The emptiness check lives HERE too,
-  because a list with no pairs is this component's empty case rather than each caller's.
--->
+<!-- FactList — labelled key/value pairs for the operator dashboards, in place of a raw JSON dump. A COMPONENT rather
+  than a rule in app.css: this is one small widget's layout, not a palette or a scale, and a global class would be
+  reachable by any page that happened to spell it. The emptiness check lives HERE, not in each caller. -->
 <script lang="ts">
 	let {
 		/** Already-labelled pairs, in display order. The caller owns the wording of each key. */

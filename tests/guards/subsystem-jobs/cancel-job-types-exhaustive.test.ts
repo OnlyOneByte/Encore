@@ -8,7 +8,6 @@ import { at } from '@encore/test-support';
 const cancelSrc = readFileSync(at('src/lib/server/jobs/cancel.ts'), 'utf8');
 const typesSrc = readFileSync(at('src/lib/contract/core/types.ts'), 'utf8');
 
-/** Strip line and block comments so prose describing the old layout cannot satisfy or trip a scan. */
 function stripComments(s: string): string {
 	return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 }

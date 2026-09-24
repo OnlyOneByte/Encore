@@ -1,12 +1,7 @@
-<!--
-  Each variant is a fill + line + ink TRIPLE, so a tinted banner is legible on its own; the registry's
-  two variants carry the tone in the ink over a flat card. Every one names its own border colour, because
-  the registry's bare `border` sets width only and falls back to currentColor — an ink-bright hairline.
-  `ok` is deliberately undefined: no call site needs it, and vendored-but-unwired reads as migrated.
-
-  Radius, spacing and type are arbitrary values off Encore's tokens rather than t-shirt or numeric
-  utilities, which resolve against Tailwind's own scales instead. See docs/FRONTEND.md#shared-components.
--->
+<!-- Each variant is a fill + line + ink TRIPLE, so a tinted banner is legible on its own; the registry's two variants
+  carry the tone in the ink over a flat card. Every one names its own border colour, because the registry's bare `border`
+  sets width only and falls back to currentColor — an ink-bright hairline. `ok` is deliberately undefined. Radius,
+  spacing and type are arbitrary values off Encore's tokens rather than t-shirt or numeric utilities. -->
 <script lang="ts" module>
 	import { type VariantProps, tv } from 'tailwind-variants';
 
@@ -43,8 +38,7 @@
 		...restProps
 	}: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
 		variant?: AlertVariant;
-		/* Overridable, unlike the registry's hardcoded `alert`: `phone-inventory.test.ts` inventories every
-		   live region and requires all of them to be POLITE, so the two banner call sites pass `status`. */
+		/* Overridable, unlike the registry's hardcoded `alert`: `phone-inventory.test.ts` requires every live region to be POLITE. */
 		role?: 'alert' | 'status' | null;
 	} = $props();
 </script>

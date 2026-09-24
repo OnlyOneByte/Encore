@@ -33,8 +33,7 @@ from .model import LyricsDoc, lyrics_tokens
 
 # Each threshold below is a shape a real artifact exhibited, not a guess.
 
-#: A gap this long between consecutive words is either an instrumental break (fine) or a region the
-#: aligner lost (not fine). Flagged for a human/log, never fatal — a real song has real breaks.
+#: Either an instrumental break (fine) or a region the aligner lost. Flagged, never fatal.
 LONG_GAP_SEC = 12.0
 
 #: One word cannot plausibly hold this long. Measured worst case on the mix was 5.7s.
@@ -43,9 +42,8 @@ MAX_WORD_SEC = 3.0
 #: Below this a word cannot be seen — it flashes. Measured: "a" at 20ms.
 MIN_WORD_SEC = 0.03
 
-#: Coverage below this is worth a look. NOT a fault threshold: instrumental breaks and outros
-#: legitimately carry no words, and measured artifacts sit at 87-96% coverage for that reason alone.
-#: Tuned to pass those while still surfacing a genuine media/duration mismatch (measured at 64%).
+#: NOT a fault threshold: instrumental breaks and outros legitimately carry no words. Tuned to pass a
+#: real artifact while still surfacing a genuine media/duration mismatch.
 MIN_COVERAGE = 0.80
 
 #: Residual above this means the LRC is timed against a different recording.
@@ -62,9 +60,8 @@ class TimingReport:
     smeared: list[tuple[str, float]] = field(default_factory=list)
     flashed: list[tuple[str, float]] = field(default_factory=list)
     out_of_order: int = 0
-    #: Seconds the lyrics run PAST the end of the audio. Coverage's `min(1.0, …)` clamp would report a
-    #: candidate timed for a longer master (a wrong-version pick) as a flawless 1.0; this carries that
-    #: discarded signal as its own number, so coverage's thin/MIN_COVERAGE meaning stays untouched.
+    #: Coverage's `min(1.0, …)` clamp reports a candidate timed for a LONGER master as a flawless 1.0, so
+    #: this carries that discarded signal as its own number and leaves coverage's meaning untouched.
     overshoot_sec: float = 0.0
 
     @property
@@ -150,8 +147,7 @@ def validate_timing(doc: dict[str, Any], duration_sec: float | None) -> TimingRe
     rep.smeared.sort(key=lambda t: -t[1])
     last_end = max(float(w["end"]) for w in words)
     rep.coverage = 1.0 if not duration_sec or duration_sec <= 0 else min(1.0, last_end / duration_sec)
-    # Coverage is clamped and one-sided; overshoot is the OTHER side, kept separate. When the song
-    # length is unknown we cannot judge it, so it stays 0.0 (same policy coverage uses).
+    # Coverage is clamped and one-sided, so overshoot is kept separate. Unknown length stays 0.0.
     rep.overshoot_sec = 0.0 if not duration_sec or duration_sec <= 0 else max(0.0, last_end - duration_sec)
     return rep
 
@@ -164,8 +160,8 @@ class RepairReport:
     smeared_clamped: list[tuple[str, float]] = field(default_factory=list)
     #: (word, original_dur) for each flashed word whose end was extended up toward MIN_WORD_SEC.
     flashed_extended: list[tuple[str, float]] = field(default_factory=list)
-    #: (word, original_dur) for flashed words left alone because extending them would have collided
-    #: with the next word's start — a flash beats an out-of-order jump, so those are reported, not fixed.
+    #: Left alone because extending would collide with the next word's start: a flash beats an
+    #: out-of-order jump, so these are reported and not fixed.
     flashed_uncorrectable: list[tuple[str, float]] = field(default_factory=list)
 
     @property
@@ -234,7 +230,7 @@ class LrcFit:
     pairs: int = 0
     #: same_version | different_version | inconclusive
     verdict: str = "inconclusive"
-    #: Aligned line indices whose residual is an outlier while the rest fit — where alignment failed.
+    #: Residual outliers while the rest fit — where alignment failed.
     outlier_lines: list[int] = field(default_factory=list)
 
 
@@ -272,8 +268,7 @@ def fit_lrc_to_aligned(lrc_starts: Iterable[float], aligned_starts: Iterable[flo
     fit.offset_sec = _median([y - fit.scale * x for x, y in zip(xs, ys, strict=False)])
 
     resid = [y - (fit.scale * x + fit.offset_sec) for x, y in zip(xs, ys, strict=False)]
-    # MEDIAN, not mean: one badly-aligned region must not decide the verdict for the whole song. That
-    # is the difference between "this LRC is the wrong version" and "alignment failed in the bridge".
+    # MEDIAN, not mean: one badly-aligned region must not decide the verdict for the whole song.
     fit.residual_sec = _median([abs(r) for r in resid])
     fit.verdict = "same_version" if fit.residual_sec <= SUSPECT_RESIDUAL_SEC else "different_version"
     if fit.verdict == "same_version":
@@ -289,18 +284,14 @@ def _median(values: list[float]) -> float:
     return s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2.0
 
 
-# The wrong-version check above (`lrc_fit_notes`) runs AFTER alignment, which is not enough on its
-# own: the aligner is confined to the LRC's own line windows, so an upload whose vocal starts LATER
-# than the LRC's master (an added intro, a talk-over) is aligned against the wrong span and publishes
-# confident, EARLY word times. The post-align fit cannot see it either — it would compare the
-# aligner's output against the very windows that bounded that aligner, a self-comparison that
-# manufactures the agreement it reports.
+# `lrc_fit_notes` above runs AFTER alignment, which is not enough alone: the aligner is confined to the
+# LRC's own line windows, so an upload whose vocal starts LATER than the LRC's master is aligned against the
+# wrong span and publishes confident EARLY word times — and the post-align fit cannot see it, since it
+# compares the aligner's output against the very windows that bounded it.
 #
-# The fix: estimate the LRC->audio offset from a series the LRC did NOT bound — the Whisper baselines
-# `AcquireTexts` measured on THIS audio — and shift the LRC's line windows onto this recording BEFORE
-# handing them to the aligner. Reuses the Theil-Sen `fit_lrc_to_aligned`, but pairs lines by fuzzy
-# token overlap first (not position/exact-text), since a Whisper baseline neither has the LRC's line
-# count nor echoes its text exactly.
+# So the offset is estimated from a series the LRC did NOT bound: the Whisper baselines measured on THIS
+# audio, with lines paired by FUZZY token overlap rather than position, since a baseline neither matches the
+# LRC's line count nor echoes its text.
 
 
 @dataclass
@@ -318,16 +309,14 @@ class LrcShift:
     applied: bool = False
 
 
-#: A |offset| below this is noise, not a real intro difference — do not perturb windows that were fine.
-#: `bad guy`'s reported pre-section is "a couple of seconds", well above this.
+#: Below this an offset is noise, not a real intro difference: do not perturb windows that were fine.
 MIN_SHIFT_SEC = 0.35
 
-#: The fuzzy pairing keeps an LRC↔baseline line pair only when their token overlap (Jaccard) clears
-#: this. High enough that a chorus line does not pair with an unrelated verse; low enough to survive
-#: Whisper mishearing a few words in a line it did roughly transcribe.
+#: High enough that a chorus line does not pair with an unrelated verse, low enough to survive Whisper
+#: mishearing a few words in a line it did roughly transcribe.
 _MIN_PAIR_JACCARD = 0.5
 
-#: Fewer surviving pairs than this cannot fit two parameters robustly — abstain (`applied == False`).
+#: Fewer pairs than this cannot fit two parameters robustly, so the estimator abstains.
 _MIN_SHIFT_PAIRS = 3
 
 
@@ -415,8 +404,8 @@ def shift_segments(segments: list[dict[str, Any]], shift: LrcShift) -> list[dict
     return out
 
 
-# `TimeTexts.run` delegates the LRC-fit decision here so it stays reachable from `tests/test_lyrics_*`
-# and under the layering guard, leaving the step as align -> validate -> note -> write.
+# Delegated here from `TimeTexts.run`, so it stays under the layering guard and the step stays
+# align -> validate -> note -> write.
 def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[int]:
     """Indices into `windows` of the window that OPENS each human line.
 
@@ -506,9 +495,8 @@ def lrc_fit_notes(text_source: str, windows: list[dict], opens: list[int], doc: 
             "for this audio; the WORDS may belong to another version."
         ]
     if fit.verdict == "same_version":
-        # Report the fitted (offset, scale) as DIAGNOSTIC only — published timings are the
-        # aligner's, not shifted by these. Outliers, when present, are lines where ALIGNMENT
-        # slipped: a different and much more actionable fault than a wrong LRC.
+        # DIAGNOSTIC only: published timings stay the aligner's. Outliers are lines where ALIGNMENT
+        # slipped, a different and far more actionable fault than a wrong LRC.
         fit_note = (
             f"{text_source}: matches this recording "
             f"(fitted offset {fit.offset_sec:+.2f}s, scale {fit.scale:.3f} over {fit.pairs} "

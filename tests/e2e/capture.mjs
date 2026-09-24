@@ -1,19 +1,11 @@
 // Capture every UI surface, driven into each state rather than photographed as it happens to load.
 //
-//   bun run e2e:seed                                   # or point MEDIA_DIR at a real processed library
 //   ENCORE_EPHEMERAL=1 PORT=3500 MEDIA_DIR=<media> bun run start EPORT=3500 bun run tests/e2e/capture.mjs [outDir]
 //
-// TWO PRECONDITIONS, both easy to lose and both silent when lost:
-//
-//   1. `--autoplay-policy=no-user-gesture-required`, granted below. Without it the element never starts
-//      and every playing-state frame degrades to the lobby — no error, just the wrong screen 20 times.
-//      This is therefore a NOT-A-TV run by construction; see docs/E2E.md#autoplay.
-//   2. REAL processed songs (stems + lyrics + songProfile). `e2e:seed` writes undecodable placeholders,
-//      so point MEDIA_DIR at a processed library for the playing frames and expect this script to skip
-//      them (loudly) when nothing is ready to sing.
-//
-// The TV is shot at 1920x1080 because its type scale is vh-relative: a frame taken at the wrong height
-// is measuring a different design.
+// TWO PRECONDITIONS, both silent when lost. Autoplay is GRANTED below, which makes this a NOT-A-TV run by
+// construction (docs/E2E.md#autoplay); without it every playing-state frame degrades to the lobby with no
+// error. And the playing frames need REAL processed songs — `e2e:seed` writes undecodable placeholders, so
+// point MEDIA_DIR at a processed library or expect those frames to be skipped, loudly.
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect, sleep } from './driver.mjs';
@@ -24,9 +16,6 @@ import { atRepo as at } from './lib/repo-root.mjs';
 import { openJoin } from './lib/join.mjs';
 
 /**
- * Browser/Page derive from driver.mjs's own return types so they cannot drift; page.evaluate() comes back
- * Promise<any>, so DOM-shaped results are cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  */
@@ -86,9 +75,8 @@ async function setSetting(page, id, value, settleMs = 700) {
 	await sleep(settleMs);
 }
 
-// Select one of the settings page's three scopes. Driven through the real tab, not by navigating to
-// `?tab=`, so the control gating every setting below is exercised too. The wait is on `aria-selected`,
-// which flips only once the panel has swapped — a fixed sleep here shoots the OUTGOING tab.
+// Driven through the real tab, not `?tab=`, so the control gating every setting is exercised too. The wait
+// is on `aria-selected`, which flips only once the panel has swapped: a fixed sleep shoots the OUTGOING tab.
 /** @param {Page} page @param {string} id */
 async function scope(page, id) {
 	await page.click(SEL.settingsTab(id));
@@ -98,10 +86,9 @@ async function scope(page, id) {
 	await sleep(350);
 }
 
-// Size the viewport to the page's own content: the desktop pages vary enormously in height with how much
-// data the instance has, and a fixed tall viewport turns a 660px page into a frame two thirds black, which
-// reads as a rendering bug rather than a small library. Capped at 2000px, past which the tooling that
-// reviews these frames cannot read them back.
+// Size the viewport to the page's own content: a fixed tall viewport turns a 660px page into a frame two
+// thirds black, which reads as a rendering bug rather than a small library. Capped at 2000px, past which
+// the tooling that reviews these frames cannot read them back.
 /** @param {Page} page @param {number} width @param {{ min?: number, max?: number, pad?: number }} [opts] */
 async function fitViewport(page, width, { min = 600, max = 2000, pad = 40 } = {}) {
 	await page.viewport(width, min, 1);
@@ -115,9 +102,8 @@ async function fitViewport(page, width, { min = 600, max = 2000, pad = 40 } = {}
 
 // Start the TV's media element by hand — NOT a shortcut around the app: the phone has already sent the real
 // play command and the room is in its playing state. Headless Chromium refuses to start an UNMUTED element
-// without a gesture, so the autoplay flag is necessary and not sufficient, and every frame still looks
-// plausible when this is skipped: the only tell is the reel frozen on line one, because the lyrics are
-// driven by the element's own timeupdate.
+// without a gesture, so the autoplay flag is necessary and not sufficient. Skipping this leaves every frame
+// looking plausible; the only tell is the reel frozen on line one.
 /** @param {Page} tv @returns {Promise<string>} */
 async function kickPlayback(tv) {
 	const report = await tv.evaluate(`(async () => {
@@ -135,8 +121,7 @@ async function kickPlayback(tv) {
  * @param {Page} tv @param {number} [overMs] @returns {Promise<boolean>} */
 async function positionAdvancing(tv, overMs = 1600) {
 	const read = () =>
-		// `video, audio` — the master is an <audio> (an instrumental has no picture). Pinned to a bare
-		// 'video' this read returns -1 forever, which reads as "not advancing".
+		// The master is an <audio> — an instrumental has no picture. A bare 'video' reads -1 forever here.
 		tv.evaluate(
 			`(() => { const v = document.querySelector(${JSON.stringify(SEL.mediaEl)}); return v ? v.currentTime : -1; })()`
 		);
@@ -146,10 +131,9 @@ async function positionAdvancing(tv, overMs = 1600) {
 	return b > a + 0.2;
 }
 
-// Get the room genuinely singing, and PROVE it: the lower third only means a song is CURRENT, and since the
-// room starts the song itself when one is queued with a TV attached, a single play/pause tap lands on an
-// already-playing room and PAUSES it. So toggle, kick the element past the headless autoplay block, and
-// accept it only once the position has moved.
+// Get the room genuinely singing, and PROVE it. The room starts the song ITSELF once one is queued with a TV
+// attached, so a single play/pause tap lands on an already-playing room and PAUSES it. Toggle, kick the
+// element past the headless autoplay block, and accept it only once the position has moved.
 /** @param {Page} tv @param {Page} phone @param {{ attempts?: number }} [opts] @returns {Promise<boolean>} */
 async function ensurePlaying(tv, phone, { attempts = 3 } = {}) {
 	for (let i = 0; i < attempts; i++) {
@@ -166,8 +150,7 @@ async function ensurePlaying(tv, phone, { attempts = 3 } = {}) {
 /** @type {Browser | undefined} */
 let browser;
 try {
-	// The autoplay grant, without which every captured frame is the poster. The driver does not grant it by
-	// default: a flow that needs it says so, because the gestureless probes need it ABSENT.
+	// The autoplay grant, without which every captured frame is the poster. The driver never grants it.
 	const browser0 = await connect({ args: ['--autoplay-policy=no-user-gesture-required'] });
 	browser = browser0;
 
@@ -175,9 +158,7 @@ try {
 	const tv = await browser0.newPage();
 	await tv.viewport(...TV, 1);
 	await tv.goto(`${base}/tv`);
-	// Wait on the QR's ALT TEXT, not a class: the alt text is what a user is promised, so it moves far less
-	// often than the presentational class beside it — and it is a HOOK, so `bun test` reports a move before
-	// a capture run discovers it at step one.
+	// Wait on the QR's ALT TEXT: it is a HOOK, so `bun test` reports a move before this run reaches step one.
 	await tv.waitForSelector(SEL.qrImage);
 	await frame('tv-attract', () => shoot(tv, 'tv-attract', 'nobody here yet — the QR owns the screen'));
 
@@ -186,8 +167,7 @@ try {
 	await maya.viewport(...PHONE);
 	await openJoin(maya, base);
 
-	// The ring is driven by KEY, because a slider has no per-colour element to click: `End` walks to the
-	// last stop, which is both a real interaction and visibly not the default.
+	// `End` walks the ring to its last stop — a real interaction, and visibly not the default.
 	await frame('join-colour-ring', async () => {
 		await maya.pressKey(SEL.colourRing, 'End');
 		await sleep(300);
@@ -321,8 +301,7 @@ try {
 	// The TV, now that someone is singing.
 	if (playing) {
 		// Wait for the ball to land on a word BEFORE shooting: songs open with an instrumental intro, so a
-		// frame taken the moment the lower third appears catches a reel parked on line one — which is what
-		// a frozen-playback bug looks like too.
+		// frame taken as the lower third appears catches a reel on line one — a frozen-playback bug's twin.
 		await frame('tv-lyrics-word', async () => {
 			await tv.waitForSelector(SEL.activeWord, {
 				timeout: 60_000
@@ -335,10 +314,9 @@ try {
 			await shoot(tv, 'tv-playing', 'now singing — the lower third names who has the mic');
 		});
 
-		// The key shift goes AFTER the lyrics frames: shifting re-routes audio through the pitch shifter's
-		// AudioWorklet graph, and in headless Chromium that leaves the element PAUSED, so any lyrics frame
-		// taken afterwards shows a frozen reel while looking otherwise correct. The sweep below re-kicks
-		// playback rather than trusting it survived.
+		// AFTER the lyrics frames: shifting re-routes audio through the pitch shifter's AudioWorklet graph,
+		// which in headless Chromium leaves the element PAUSED, so any later lyrics frame shows a frozen reel
+		// while looking otherwise correct. The sweep below re-kicks playback rather than trusting it.
 		await frame('phone-key-shifted', async () => {
 			await maya.clickByText('semitone'); // the first ± button
 			await sleep(700);
@@ -346,11 +324,9 @@ try {
 		});
 	}
 
-	// Settings. REUSE ADA'S PAGE: every newPage() is an isolated context with its own cookie jar, so a
-	// fresh page has no session and /settings redirects it to the join screen.
-	//
-	// The page is three SCOPES and only one is rendered at a time, so a control on an unselected tab is not
-	// in the DOM at all — every frame and flip below declares the scope that owns its control.
+	// Settings. REUSE ADA'S PAGE: every newPage() has its own cookie jar, so a fresh page has no session and
+	// /settings redirects it to the join screen. And only ONE of the three scopes is in the DOM at a time, so
+	// every frame and flip below declares the scope that owns its control.
 	await ada.goto(`${base}/settings`);
 	await ada.waitFor(`location.pathname === '/settings'`);
 	await sleep(700);
@@ -391,10 +367,8 @@ try {
 		await shoot(ada, 'settings-advanced', 'the advanced disclosure open — the progressive upgrade chain');
 	});
 
-	// The clamp notice. Server timing decides whether per-word timings EXIST and the room only decides how
-	// they are drawn, so asking for a word-level marker on a line-sync deployment is a request the room
-	// cannot honour — and the page names the substitution and the setting that undoes it. TWO SCOPES, in
-	// order: the cause is on Server, the effect is drawn on Party, which is why this frame switches tabs.
+	// The clamp notice. Server timing decides whether per-word timings EXIST; the room only decides how they
+	// are drawn. TWO SCOPES, in order — the cause is on Server, the effect on Party, hence the tab switch.
 	await frame('settings-lyrics-clamped', async () => {
 		await scope(ada, 'server');
 		await setSetting(ada, 'sync-mode', 'lines');
@@ -411,8 +385,7 @@ try {
 	});
 
 	// The misconfigured-QR screen, driven through the real setting rather than staged: it is the commonest
-	// first-run failure (a loopback bind, a WSL2 NAT, a proxy forwarding no X-Forwarded-*), and the room
-	// looks broken with no clue why unless someone recognises this screen.
+	// first-run failure (a loopback bind, a WSL2 NAT, a proxy forwarding no X-Forwarded-*).
 	await frame('tv-join-unreachable', async () => {
 		// A server-scope setting, so select that tab before reaching for the control.
 		await scope(ada, 'server');
@@ -516,17 +489,16 @@ try {
 		await setSetting(ada, 'tv-background', 'off');
 	}
 
-	// Process something raw, for the processing state and the job ledger — deliberately AFTER the playing
-	// frames. This is also the only way `/metrics` and the per-song audit have anything to show: they read
-	// the append-only job_attempts ledger, which gets rows only when a job is really assigned to a worker,
-	// so with no worker connected both pages are structurally empty and their frames are skipped.
+	// Process something raw, deliberately AFTER the playing frames. It is also the only way `/metrics` and the
+	// per-song audit have anything to show: they read the append-only job_attempts ledger, which gets rows only
+	// when a job is really assigned, so with no worker connected both pages are empty and skipped.
 	await frame('phone-processing', async () => {
 		await maya.goto(`${base}/`);
 		await openBrowseFromHome(maya);
 		await maya.fill(SEL.search, 'believin');
-		// Wait for the PROCESS ACTION, not for `.row`: the library is already on screen when the box is
-		// typed into, so `.row` matches instantly against rows that are not the results yet, and the
-		// `.sing` count a moment later reads 0 for timing reasons rather than for want of a processable.
+		// Wait for the PROCESS ACTION, not for a row: the library is already on screen when the box is typed
+		// into, so a row matches instantly against results that have not arrived, and the count a moment
+		// later reads 0 for timing reasons rather than for want of a processable.
 		await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.sing)}).length > 0`, {
 			timeout: 20_000
 		});

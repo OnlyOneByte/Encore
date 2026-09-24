@@ -1,18 +1,10 @@
 // guard: the duet part colour reaches the reel. Part colour LAYERS OVER singer colour, which layers over the
-// room accent: `--reel-part` defaults to `--reel-singer`, and both highlight treatments read `--reel-part`. On
-// an undiarized song no line carries a part, `--reel-part` is never written, and the reel renders exactly as
-// before — the fallback is reached by ABSENCE, mirroring the worker, which writes a `part` letter only on a
-// confident duet. Colours come from `SINGER_COLORS` through `isLegibleSingerColor`, never hard-coded, because
-// a second colour that skips that legibility floor is unreadable over video with a scrim.
-//
-// One assertion per production hunk, so reverting any single wiring hunk reds a NAMED test rather than leaving
-// a half-connected feature green. The behavioural proof that the mapping yields two distinct legible colours
-// is on the pure `duetPartColors`.
+// room accent: `--reel-part` defaults to `--reel-singer` and both treatments read `--reel-part`, so on an
+// undiarized song the fallback is reached by ABSENCE, mirroring the worker. Colours come from
+// `SINGER_COLORS` through `isLegibleSingerColor`, never hard-coded. One assertion per production hunk.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-/** Comments blanked, newlines preserved, so a commented-out wiring line cannot satisfy a positive assertion
- *  nor a commented-out reference trip a negative one. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src

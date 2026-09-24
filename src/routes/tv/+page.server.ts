@@ -1,8 +1,6 @@
-// TV load: build the join QR from the address PHONES should use, which is NOT `url.origin`. adapter-node
-// reports https for every request unless PROTOCOL_HEADER is set, so `url.origin` produces an unopenable https
-// QR on a plain-HTTP LAN, and the TV's own address is frequently one only the TV can reach (a WSL2 host opens
-// /tv at `localhost`, which would hand every phone a QR pointing at itself). `joinOrigin()` prefers the
-// declared address — settings, then env — and falls back to the request.
+// The join QR is built from the address PHONES should use, which is NOT `url.origin`: adapter-node reports https for
+// every request unless PROTOCOL_HEADER is set, and the TV's own address is often one only the TV can reach (a WSL2 host
+// opens /tv at `localhost`). `joinOrigin()` prefers the declared address — settings, then env — then the request.
 import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
 import { getApp } from '$lib/server/app';
@@ -13,10 +11,8 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	const origin = joinOrigin(request, url);
 	// What an EMPTY setting resolves to, so the TV can recognise a change that CLEARED the address.
 	const fallback = fallbackJoinOrigin(request, url);
-	// ONE TV PER ROOM. An explicit ?room=<code>, validated against the room repo, points the TV at that party;
-	// a bare /tv falls back to the room this box serves. The resolved code is both what the QR advertises AND
-	// what the client passes on its WS URL, so the socket binds to the same room. An UNKNOWN code falls
-	// through to the served room, so a stale code never dark-screens the display.
+	// ONE TV PER ROOM: the resolved code is both what the QR advertises AND what the client passes on its WS URL. An
+	// UNKNOWN code falls through to the served room, so a stale code never dark-screens the display.
 	// See docs/FRONTEND.md#the-tv-socket.
 	let roomCode = '';
 	try {
@@ -33,10 +29,9 @@ export const load: PageServerLoad = async ({ url, request }) => {
 		width: 320,
 		color: { dark: '#0b0b12', light: '#ffffff' }
 	});
-	// Returned as ONE `EffectiveSettings` rather than field-by-field: the TV needs BOTH layers to call
-	// `resolveLyricsPresentation`, and copying individual fields out here and again in the `settings:changed`
-	// branch is two lists that drift the moment a field is added. `ENCORE_SONG_INTRO_MS=0` means the intro is
-	// OFF — the toggle, not a sentinel duration.
+	// Returned as ONE `EffectiveSettings`, not field-by-field: the TV needs BOTH layers for
+	// `resolveLyricsPresentation`, and a per-field copy here and again in `settings:changed` is two lists that drift.
+	// `ENCORE_SONG_INTRO_MS=0` means the intro is OFF — the toggle, not a sentinel duration.
 	const envRaw = process.env.ENCORE_SONG_INTRO_MS ?? process.env.INTERSTITIAL_MS;
 	const envMs = envRaw === undefined ? undefined : Math.max(0, Number(envRaw));
 	const envRoom =
@@ -55,7 +50,7 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	} catch {
 		// Absent under prerender/unit load; the env default is the correct answer, not a failed load.
 	}
-	// `joinOrigin` rides along so the TV can tell a settings change that MOVED the join address from one
-	// that did not: the QR is a server-rendered image, so only that case needs the load to re-run.
+	// `joinOrigin` rides along so the TV can tell a settings change that MOVED the join address from one that did not:
+	// the QR is a server-rendered image, so only that case needs the load to re-run.
 	return { joinUrl, qrDataUrl, joinOrigin: origin, joinFallbackOrigin: fallback, settings, roomCode };
 };

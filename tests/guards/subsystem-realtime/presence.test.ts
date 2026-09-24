@@ -155,9 +155,9 @@ it('membership: away is not gone — reconnecting cancels the clock outright rat
 });
 
 it('membership: away is not gone — a reconnect that re-drops inside one sweep interval still gets a full fresh window', () => {
-	// The pocket case: a phone wakes on a notification and re-locks before the next 20s sweep, so no sweep
-	// runs between the reconnect and the re-drop. connect() must clear the running clock outright (awaySince
-	// AND clockStartedAt) — merely pausing carries the stale start over and expires her a full window early.
+	// The pocket case: a phone wakes on a notification and re-locks before the next 20s sweep, so no sweep runs
+	// between the reconnect and the re-drop. connect() must clear the running clock outright — merely pausing
+	// carries the stale start over and expires her a full window early.
 	const p = new PresenceTracker();
 	p.connect('dana');
 	p.disconnect('dana', NOW);
@@ -238,8 +238,8 @@ it('membership rides the sync handshake: omits both entirely when no membership 
 });
 
 // The deleted isOnline()/count() returned exactly the `sockets > 0` predicate that IS the locked-phone
-// eviction bug the three-state here/away/gone policy replaces — and they were the cheapest presence check
-// to reach for. Nothing called them, so deleting them has no runtime-observable regression: guard the SOURCE.
+// eviction bug the three-state here/away/gone policy replaces, and they were the cheapest presence check to
+// reach for. Nothing called them, so deleting them has no runtime-observable regression: guard the SOURCE.
 const stripComments = (src: string) =>
 	src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/[^\n]*/g, '');
 const source = stripComments(read('src/lib/server/realtime/presence.ts'));

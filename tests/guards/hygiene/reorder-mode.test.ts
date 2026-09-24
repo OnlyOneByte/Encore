@@ -16,7 +16,6 @@ import { at } from '@encore/test-support';
 
 const PAGE = at('src/routes/+page.svelte');
 
-// The both-true case, so each test below can negate exactly one condition.
 const OK = { queuedCount: 2, reorderMeaningful: true };
 
 test('a grip renders when two or more songs are queued under a reordering policy', () => {
@@ -30,24 +29,21 @@ test('the grip renders on ANY queued row, not only the guest\u2019s own', () => 
 });
 
 test('no grip with fewer than two songs queued', () => {
-	// One song has no second position to move it to; zero is empty.
 	expect(gripVisible({ ...OK, queuedCount: 1 })).toBe(false);
 	expect(gripVisible({ ...OK, queuedCount: 0 })).toBe(false);
 });
 
 test('no grip under an ordering that ignores addedAt — a move there is a legal no-op', () => {
-	// `shuffle` ranks by entry id, so a move changes nothing and a grip would promise a reorder the reducer
-	// discards.
+	// `shuffle` ranks by entry id, so a move changes nothing and a grip would promise a reorder the reducer discards.
 	expect(gripVisible({ ...OK, reorderMeaningful: false })).toBe(false);
 });
 
-// The boxes a real render would report: five 60px rows from y=0, uniform so the hand-over points are the
-// same numbers the single-row-height arms were written against.
+// The boxes a real render would report: five 60px rows from y=0, uniform so the hand-over points are the same
+// numbers the single-row-height arms were written against.
 const UNIFORM = [0, 60, 120, 180, 240].map((top) => ({ top, height: 60 }));
 
 test('the target follows the finger, a row at a time', () => {
 	const at = (offsetPx: number) => liveSortTarget({ fromIndex: 1, offsetPx, rowBoundsPx: UNIFORM, count: 5 });
-	// Not moved: still where it started, so a release commits nothing (the page early-returns on same-index).
 	expect(at(0)).toBe(1);
 	// HALF a row is the hand-over point, stated as geometry: the leading edge clears the next row's midpoint.
 	expect(at(29)).toBe(1);
@@ -58,9 +54,9 @@ test('the target follows the finger, a row at a time', () => {
 });
 
 test('a MIXED list is exact — one tall card among short rows, in both directions', () => {
-	// THE DEFECT THE BOXES FIXED. The queue holds a ~65px queued row and a ~104px processing card, so dividing
-	// the travel by ONE height was wrong both ways round: a card dragged two short rows read 130/104 = 1.25 →
-	// one position, and a short row dragged past a card read 104/65 = 1.6 → two.
+	// THE DEFECT THE BOXES FIXED: the queue holds a ~65px queued row and a ~104px processing card, so dividing the
+	// travel by ONE height was wrong both ways round — a card dragged two short rows read 130/104 = 1.25 (one
+	// position) and a short row dragged past a card read 104/65 = 1.6 (two).
 	// Geometry: 65, 104 (the card, index 1), 65, 65 from y=0. Midpoints 32.5, 117, 201.5, 266.5.
 	const MIXED = [
 		{ top: 0, height: 65 },
@@ -68,12 +64,11 @@ test('a MIXED list is exact — one tall card among short rows, in both directio
 		{ top: 169, height: 65 },
 		{ top: 234, height: 65 }
 	];
-	// The CARD dragged down clears index 2's midpoint (201.5) after 32.5px — HALF OF THE ROW IT IS PASSING,
-	// not half of its own 104. A single height demanded 52.
+	// The CARD dragged down clears index 2's midpoint (201.5) after 32.5px — HALF OF THE ROW IT IS PASSING, not
+	// half of its own 104. A single height demanded 52.
 	const card = (offsetPx: number) => liveSortTarget({ fromIndex: 1, offsetPx, rowBoundsPx: MIXED, count: 4 });
 	expect(card(30)).toBe(1);
 	expect(card(40)).toBe(2);
-	// …and on to the next, at 266.5 − 169 = 97.5px.
 	expect(card(90)).toBe(2);
 	expect(card(100)).toBe(3);
 	// A SHORT ROW dragged UP passes the card's midpoint (117) after 117px — half of the CARD, not of itself.
@@ -88,8 +83,7 @@ test('dragging past either end lands on the end, never outside the list', () => 
 	const bounds = [0, 60, 120].map((top) => ({ top, height: 60 }));
 	const at = (fromIndex: number, offsetPx: number) =>
 		liveSortTarget({ fromIndex, offsetPx, rowBoundsPx: bounds, count: 3 });
-	// Clamping is right HERE and only here: the finger has left the list, and the row is visibly sitting at the
-	// nearest end when they let go.
+	// Clamping is right HERE and only here: the finger has left the list, and the row is visibly at the nearest end.
 	expect(at(0, -600)).toBe(0);
 	expect(at(2, 600)).toBe(2);
 	expect(at(1, 6000)).toBe(2);
@@ -97,35 +91,29 @@ test('dragging past either end lands on the end, never outside the list', () => 
 
 test('a measurement that cannot answer moves nothing', () => {
 	// Boxes that do not cover the list they describe cannot say where a row travelled: no movement, not a guess.
+	// An empty list has no position to name; 0 rather than -1 so no caller can index with it.
 	expect(liveSortTarget({ fromIndex: 1, offsetPx: 400, rowBoundsPx: [], count: 4 })).toBe(1);
 	expect(liveSortTarget({ fromIndex: 1, offsetPx: 400, rowBoundsPx: UNIFORM.slice(0, 2), count: 4 })).toBe(1);
-	// An empty list has no position to name; 0 rather than -1 so no caller can index with it.
 	expect(liveSortTarget({ fromIndex: 0, offsetPx: 0, rowBoundsPx: [], count: 0 })).toBe(0);
 });
 
 test('the rows between the two positions shift exactly one place, and no others', () => {
-	// Dragging row 1 down to 3: rows 2 and 3 come up one, everything else stays.
 	expect([0, 1, 2, 3, 4].map((i) => rowShift(i, 1, 3))).toEqual([0, 0, -1, -1, 0]);
 	expect([0, 1, 2, 3, 4].map((i) => rowShift(i, 3, 1))).toEqual([0, 1, 1, 0, 0]);
-	// Not moved: nothing shifts, so an idle list cannot be left displaced.
 	expect([0, 1, 2, 3, 4].map((i) => rowShift(i, 2, 2))).toEqual([0, 0, 0, 0, 0]);
-	// The dragged row is placed by the finger, never by this.
 	expect(rowShift(1, 1, 4)).toBe(0);
 });
 
 test('the position NUMBERS follow the rows mid-drag, and are a permutation at every step', () => {
 	// THE DEFECT: the rows animated and the numbers did not — every bubble rendered `sourceIndex + 1` until the
 	// server patch landed, so a drag showed 2 above 1 and then corrected every number in one jump. Asserted as a
-	// PERMUTATION because that is what makes the label trustworthy: at any point in the gesture the five rows
-	// show 1..5 in some order. A number derived separately from the placement could still print two 3s.
+	// PERMUTATION because that is what makes the label trustworthy: at any point in the gesture the five rows show
+	// 1..5 in some order, where a number derived separately from the placement could print two 3s.
 	const seqs = (from: number, to: number) => [0, 1, 2, 3, 4].map((i) => liveSeq(i, from, to));
 
-	// Dragging row 1 (the 2nd) down to index 3 (the 4th): 2 becomes 4, and 3 and 4 each come up one.
 	expect(seqs(1, 3)).toEqual([1, 4, 2, 3, 5]);
 	expect(seqs(3, 1)).toEqual([1, 3, 4, 2, 5]);
-	// The two-row swap the report described: sliding 2 above 1 shows 1 become 2 and 2 become 1.
 	expect(seqs(1, 0)).toEqual([2, 1, 3, 4, 5]);
-	// A gesture that has not left its row numbers the list exactly as the server does.
 	expect(seqs(2, 2)).toEqual([1, 2, 3, 4, 5]);
 	// -1 is how the page spells "no drag in flight"; each falls back to source order, never a 0th row.
 	expect(seqs(-1, -1)).toEqual([1, 2, 3, 4, 5]);
@@ -145,21 +133,18 @@ test('the position NUMBERS follow the rows mid-drag, and are a permutation at ev
 });
 
 test('the keyboard step moves one place and DECLINES at the ends', () => {
-	// The non-drag path (SC 2.5.7 / 2.1.1).
 	expect(keyboardMoveTarget(1, -1, 4)).toBe(0);
 	expect(keyboardMoveTarget(1, 1, 4)).toBe(2);
-	// NULL, NOT A CLAMP, at either end. A clamp would emit a move to the position the row already occupies —
-	// which the server accepts as a real mutation and broadcasts, for a keypress that did nothing.
+	// NULL, NOT A CLAMP, at either end: a clamp would emit a move to the position the row already occupies, which
+	// the server accepts as a real mutation and broadcasts, for a keypress that did nothing.
 	expect(keyboardMoveTarget(0, -1, 4)).toBeNull();
 	expect(keyboardMoveTarget(3, 1, 4)).toBeNull();
-	// A row that is not in the list cannot be stepped.
 	expect(keyboardMoveTarget(-1, 1, 4)).toBeNull();
 	expect(keyboardMoveTarget(4, -1, 4)).toBeNull();
 	expect(keyboardMoveTarget(1.5, 1, 4)).toBeNull();
 });
 
 test('the ordinals the keyboard path announces stay correct past the irregular teens', () => {
-	// The announcement is "Moved to Nth in the queue", so these are read aloud rather than drawn.
 	expect(ordinal(1)).toBe('1st');
 	expect(ordinal(2)).toBe('2nd');
 	expect(ordinal(3)).toBe('3rd');
@@ -187,20 +172,18 @@ test('the mode closes with a reason when the moving song begins playing', () => 
 });
 
 test('the mode closes with a reason when the moving song leaves the queue', () => {
-	// Removed elsewhere: the entry is gone from `entries`, so its status is undefined.
 	expect(modeInvalidation([{ id: 'b' }], 'a', undefined)).toBe('That song left the queue — nothing was moved.');
 });
 
 test('the mode closes with a reason when the queue drops below two songs', () => {
-	// The last other song is removed elsewhere, leaving one queued entry — nothing left to reorder.
 	expect(modeInvalidation([{ id: 'a' }], 'a', 'queued')).toBe(
 		'Only one song is queued now — there is nothing to reorder.'
 	);
 });
 
 test('every close reason states what happened AND that nothing moved, or why', () => {
-	// A mode that dissolves silently is the defect, and a reason that does not say the move was dropped is half
-	// of one. Enumerated so a future reason cannot be added without a consequence in it.
+	// A mode that dissolves silently is the defect, and a reason that does not say the move was dropped is half of
+	// one. Enumerated so a future reason cannot be added without a consequence in it.
 	const reasons = [
 		modeInvalidation([{ id: 'a' }, { id: 'b' }], 'a', 'playing'),
 		modeInvalidation([{ id: 'b' }], 'a', undefined),
@@ -214,14 +197,13 @@ test('every close reason states what happened AND that nothing moved, or why', (
 });
 
 test('the moving song can be ANY guest\u2019s now, not only the actor\u2019s', () => {
-	// `movingId` need only still be a queued entry, so a drag on another guest's song stays valid.
 	expect(modeInvalidation([{ id: 'x' }, { id: 'y' }], 'x', 'queued')).toBeNull();
 	expect(modeInvalidation([{ id: 'x' }, { id: 'y' }, { id: 'z' }], 'z', 'queued')).toBeNull();
 });
 
 test('non-vacuity · +page.svelte imports and calls every predicate asserted here', () => {
-	// Without this, all of the above could pass against a module the page had stopped using. Each name is
-	// checked as a CALL, not just an import.
+	// Without this, all of the above could pass against a module the page had stopped using. Each name is checked
+	// as a CALL, not just an import.
 	const src = readFileSync(PAGE, 'utf8');
 	expect(src).toContain("from '$lib/reorder-mode'");
 	for (const fn of [

@@ -144,8 +144,7 @@ async def test_fetch_downloads_and_reports_the_retained_original(tmp_path):
 
 @pytest.mark.asyncio
 async def test_fetch_reuses_audio_already_on_the_volume_and_never_re_downloads(tmp_path):
-    # The raw original is the one asset that cannot be regenerated, so a second fetch for the same
-    # media must cost no network at all.
+    # The raw original cannot be regenerated, so a second fetch must cost no network.
     audio = tmp_path / "audio" / "m1.wav"
     audio.parent.mkdir(parents=True)
     audio.write_text("ALREADY HERE")
@@ -182,9 +181,8 @@ async def test_a_local_job_never_downloads(tmp_path):
 
 @pytest.mark.asyncio
 async def test_a_download_that_lands_nothing_FAILS_rather_than_reporting_success(tmp_path):
-    # Reporting success for a missing file would chain a separation against missing input, surfacing
-    # as a confusing decode error one stage later. The check lives in AcquireAudio, protecting stems
-    # and align too.
+    # Reporting success for a missing file chains a separation against missing input, surfacing as a decode
+    # error one stage later. The check lives in AcquireAudio, so stems and align are covered too.
     proc = plans.fetch_runner(runner=fake_runner(["[download] 100%"]))
     with pytest.raises(RuntimeError, match="produced no file"):
         await drain(proc, spec(tmp_path, fetcher="ytdlp"))
@@ -247,17 +245,15 @@ async def test_no_lookup_keys_means_no_annotation_attempted(tmp_path):
         runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=annotator
     )
     done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp")) if isinstance(e, CompleteResult)][0]
-    # OBSERVE the attempt, not just the outcome: asserting only the absent artifact would be blind to
-    # a query built from (None, None) that blows up and is swallowed by the blanket except, producing
-    # the same empty-artifact outcome.
+    # OBSERVE the attempt, not just the outcome: a query built from (None, None) that blows up and is
+    # swallowed produces the same empty-artifact outcome, so only the absent artifact would be blind.
     assert annotator.search_calls == [], f"expected no lookup attempt, saw {annotator.search_calls}"
     assert "annotation" not in done.artifacts
 
 
 @pytest.mark.asyncio
 async def test_a_DEAD_metadata_service_still_completes_the_fetch(tmp_path):
-    # The whole point of annotation being a step rather than a job: a karaoke night must not stop
-    # because MusicBrainz is unreachable. The audio is what matters and it is already on disk.
+    # Why annotation is a step, not a job: a karaoke night must not stop because MusicBrainz is down.
     audio = os.path.join(str(tmp_path), "audio", "m1.wav")
     proc = plans.fetch_runner(
         runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=FakeAnnotator(boom=True)
@@ -321,15 +317,13 @@ async def test_configured_ytdlp_binary_reaches_the_download_argv(tmp_path):
 
 
 def test_download_argv_writes_the_info_json():
-    # yt-dlp already does a full extraction to evaluate the format selector, so --write-info-json
-    # captures track/artist/album with NO extra network round trip. Pinned at the argv boundary.
+    # yt-dlp already extracts fully to evaluate the selector, so this costs NO extra round trip.
     argv = fetch_mod.download_argv("https://yt/x", "/tmp/audio/m1.%(ext)s")
     assert "--write-info-json" in argv
 
 
 def test_youtube_credit_reads_the_declared_track_and_artist():
-    # The music-panel metadata yt-dlp exposes — a citation, not a re-parse of the title. Emits the same
-    # artifact shape MusicBrainz does, with source "youtube" and no mbid.
+    # A CITATION, not a re-parse of the title, in the same artifact shape MusicBrainz emits.
     got = fetch_mod.youtube_credit({"track": "Take On Me", "artist": "a-ha", "album": "Hunting High and Low"})
     assert got == {"source": "youtube", "artist": "a-ha", "title": "Take On Me", "confidence": "high"}
 
@@ -341,8 +335,8 @@ def test_youtube_credit_takes_the_primary_when_artist_is_a_list():
 
 
 def test_youtube_credit_declines_without_both_fields():
-    # A lone artist with no track is not an identification (the title parser owns the title), and an
-    # empty/absent/non-string value declines rather than inventing a credit.
+    # A lone artist with no track is not an identification, and a bad value declines rather than
+    # inventing a credit.
     assert fetch_mod.youtube_credit({"artist": "a-ha"}) is None
     assert fetch_mod.youtube_credit({"track": "Take On Me"}) is None
     assert fetch_mod.youtube_credit({"track": "  ", "artist": "a-ha"}) is None
@@ -362,8 +356,7 @@ def test_read_info_json_degrades_to_none_on_absence_or_garbage(tmp_path):
 
 @pytest.mark.asyncio
 async def test_a_fetch_captures_the_youtube_credit_and_publishes_it_as_the_annotation(tmp_path):
-    # When the upload declares track/artist, that citation publishes as the annotation directly, with
-    # NO MusicBrainz query needed to reach it.
+    # A declared track/artist publishes directly, with NO MusicBrainz query needed.
     audio = tmp_path / "audio" / "m1.m4a"
     info = tmp_path / "audio" / "m1.info.json"
 
@@ -382,9 +375,8 @@ async def test_a_fetch_captures_the_youtube_credit_and_publishes_it_as_the_annot
 
 @pytest.mark.asyncio
 async def test_the_youtube_credit_becomes_the_musicbrainz_query_key(tmp_path):
-    # The reversed-parse defect is that a wrong artist parse ("No Vocal") defeats the MusicBrainz
-    # lookup. Querying with the YouTube CITATION instead of the parse is what lets the lookup succeed —
-    # and a MusicBrainz match then upgrades the youtube floor to a musicbrainz citation with an MBID.
+    # A wrong artist parse defeats the MusicBrainz lookup, so querying with the YouTube CITATION is what
+    # lets it succeed — and a match then upgrades the youtube floor to a musicbrainz one with an MBID.
     audio = tmp_path / "audio" / "m1.m4a"
     info = tmp_path / "audio" / "m1.info.json"
 
@@ -414,8 +406,7 @@ async def test_the_youtube_credit_becomes_the_musicbrainz_query_key(tmp_path):
 
 @pytest.mark.asyncio
 async def test_a_youtube_credit_survives_a_musicbrainz_decline(tmp_path):
-    # When MusicBrainz declines, the YouTube citation must remain the published annotation — it is a
-    # citation in its own right, not a guess that a miss should erase.
+    # On a decline the YouTube citation REMAINS published: it is a citation, not a guess a miss erases.
     audio = tmp_path / "audio" / "m1.m4a"
     info = tmp_path / "audio" / "m1.info.json"
 
@@ -434,9 +425,8 @@ async def test_a_youtube_credit_survives_a_musicbrainz_decline(tmp_path):
 
 @pytest.mark.asyncio
 async def test_a_retained_original_still_captures_the_youtube_credit_without_re_downloading(tmp_path):
-    # The self-corrects-one-song-at-a-time promise: a re-process of an already-downloaded song reads the
-    # credit from the info.json ALREADY on disk, on the `found is not None` early-return branch — no
-    # fetch. Drives AcquireAudio directly because the branch is the retained-original path.
+    # A re-process of an already-downloaded song reads the credit off the info.json ALREADY on disk, on
+    # the `found is not None` early return — no fetch. Drives AcquireAudio, the retained-original path.
     from src.runtime.ctx import Ctx
     from src.steps.acquire import AcquireAudio
 

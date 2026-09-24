@@ -1,8 +1,6 @@
-// Retention keeps derived/ volume bounded without ever losing something unrecoverable: `audio/` and
-// `meta/` are NEVER touched here (audio can't be re-acquired once an upload disappears, and meta IS
-// the library). Two jobs: RECOMPRESS legacy WAV stems to FLAC in place (reclaims pre-policy space, no
-// re-Demucs), and EVICT derived artifacts over a soft cap (regenerable via a 1-2 min re-process). Both
-// planning halves are pure so the policy is testable without a filesystem or a transcoder.
+// `audio/` and `meta/` are NEVER touched here: audio cannot be re-acquired once an upload disappears,
+// and meta IS the library. Two jobs — RECOMPRESS legacy WAV stems in place, and EVICT derived artifacts
+// over a soft cap. Both planning halves are pure, so the policy tests without a filesystem.
 
 import { existsSync, statSync, rmSync } from 'node:fs';
 import type { Media } from '../../contract';
@@ -29,10 +27,9 @@ export function retentionCapBytes(env: Record<string, string | undefined> = proc
 }
 
 /**
- * A stem ref worth transcoding: an UNCOMPRESSED (WAV) artifact from before the audio policy. Not
- * "anything not the current format" — that would also flag legacy `.m4a` vocals, and AAC→FLAC is
- * actively harmful (it cannot recover what the lossy encode discarded, only bloats the file). A real
- * codec upgrade off `.m4a` means re-processing from the retained raw audio, a different operation.
+ * UNCOMPRESSED (WAV) only, NOT "anything not the current format": that would also flag legacy `.m4a`
+ * vocals, and AAC→FLAC only bloats a file without recovering what the lossy encode discarded. A real
+ * codec upgrade off `.m4a` means re-processing from retained raw audio, a different operation.
  */
 export function isLegacyStemRef(ref: string | undefined | null): boolean {
 	if (!ref) return false;
@@ -48,14 +45,14 @@ export interface RecompressTarget {
 	kind: 'instrumental' | 'vocals';
 }
 
-/** Which artifacts of these media are on a legacy format. PURE — takes the catalog, returns work.
- *  The vocals ref is derived from the key convention (not stored on Media) and existence-checked by the caller. */
+/** PURE. The vocals ref is derived from the key convention, not stored on Media, and is
+ *  existence-checked by the caller. */
 export function planRecompress(all: Media[]): RecompressTarget[] {
 	const out: RecompressTarget[] = [];
 	for (const m of all) {
 		if (isLegacyStemRef(m.instrumentalRef)) {
 			out.push({ mediaId: m.id, from: m.instrumentalRef!, to: instrumentalKey(m.id), kind: 'instrumental' });
-			// a legacy instrumental implies a legacy vocals stem from the same process
+			// A legacy instrumental implies a legacy vocals stem from the same process.
 			out.push({ mediaId: m.id, from: siblingVocalsRef(m.instrumentalRef!), to: vocalsKey(m.id), kind: 'vocals' });
 		}
 	}
@@ -77,8 +74,8 @@ export type Transcoder = (absFrom: string, absTo: string) => Promise<boolean>;
 /** Why the last transcode failed, for a diagnosable log line. Set by ffmpegTranscoder. */
 export const transcodeDiagnostics: { lastError: string } = { lastError: '' };
 
-/** Transcode legacy stems in place; one failure must not abandon the rest. The source is deleted only
- *  once the destination exists and is non-empty — losing a playable stem to a half-written encode is worse than keeping a large file. */
+/** One failure must not abandon the rest. The source is deleted ONLY once the destination exists and is
+ *  non-empty: losing a playable stem to a half-written encode is worse than keeping a large file. */
 export async function recompressLegacyStems(
 	targets: RecompressTarget[],
 	transcode: Transcoder
@@ -97,7 +94,7 @@ export async function recompressLegacyStems(
 		const absTo = safeMediaPath(t.to);
 		if (!absFrom || !absTo || !existsSync(absFrom)) {
 			res.skipped++;
-			// The instrumental ref still needs updating if a previous run already converted it.
+			// The ref still needs updating if a previous run already converted the file.
 			if (absTo && existsSync(absTo) && t.kind === 'instrumental') res.newRefs.set(t.mediaId, t.to);
 			continue;
 		}
@@ -138,12 +135,10 @@ export interface EvictionCandidate {
 }
 
 /**
- * Which songs to strip back to un-processed, least-recently-used first, until the derived total fits
- * the cap. PURE. `protectedIds` (the currently-playing song and everything queued) is enforced HERE,
- * not left to the caller — a process stripped from under a live/queued entry vanishes mid-party
- * (stemStatus reset, stems gone, an unplayable queue entry). Protected songs still count toward the
- * total, so an unreachable cap evicts everything allowed rather than under-reporting the pressure.
- * Recency prefers `lastPlayedAt` over `addedAt`, falling back only for songs that have never played.
+ * Least-recently-used first, until the derived total fits the cap. PURE. `protectedIds` is enforced HERE
+ * rather than left to the caller, because a process stripped from under a live or queued entry vanishes
+ * mid-party. Protected songs still COUNT toward the total, so an unreachable cap evicts everything it is
+ * allowed to rather than under-reporting the pressure.
  */
 export function planEviction(
 	candidates: EvictionCandidate[],
@@ -168,36 +163,31 @@ export function planEviction(
 }
 
 /**
- * Every `derived/` ref a song could have on disk — the ONE list both `evictDerived` and
- * `derivedBytesOf` read (and that `media/delete.ts` reuses rather than keeping a rival list). Omitting
- * any category here undercounts `derivedBytesOf` and makes `evictDerived` orphan that file on disk
- * forever, since eviction only frees what it can name. `m.vocalsRef`/`m.guideMixRef` are authoritative
- * when the worker stored one, covering every legacy/interim/current extension; `vocalsKey`/
- * `guideMixKey` are id-derived fallbacks for old rows that never recorded a ref (harmless to include —
- * a key whose file is absent is skipped below). Every lyrics candidate is enumerated, not just the
- * chosen `lyricsRef`, or the rest are orphaned. Raw captions aren't stored as a ref at all — they're
- * enumerated per (kind, ext) from the id. Callers dedupe with a Set.
+ * The ONE list `evictDerived`, `derivedBytesOf` and `media/delete.ts` all read. Omitting a category
+ * undercounts the bytes AND orphans that file on disk forever, since eviction only frees what it can
+ * name. A stored ref is authoritative; the id-derived keys are fallbacks for rows that never recorded
+ * one, and a key whose file is absent is skipped below. Callers dedupe with a Set.
  */
 export function derivedRefsOf(m: Media): string[] {
 	return [
 		m.instrumentalRef,
 		m.lyricsRef,
-		// m.vocalsRef is authoritative; candidateVocalsRefs covers old rows across every legacy extension.
+		// candidateVocalsRefs covers old rows across every legacy extension.
 		m.vocalsRef,
 		...candidateVocalsRefs(m),
-		// m.guideMixRef is authoritative; guideMixKey is the fallback for a row that never recorded one.
+		// guideMixKey is the fallback for a row that never recorded one.
 		m.guideMixRef,
 		guideMixKey(m.id),
 		// Every candidate's JSON, not just the chosen lyricsRef.
 		...(m.lyricsCandidates ?? []).map((c) => c.ref),
-		// Not stored as a ref: the worker copies captions to a deterministic per-(kind,ext) path gated
-		// on ENCORE_KEEP_RAW_CAPTIONS, so they're named from the id instead.
+		// Not stored as a ref: the worker writes a deterministic per-(kind,ext) path, so these are named
+		// from the id instead.
 		...CAPTION_KINDS.flatMap((kind) => KNOWN_CAPTION_EXTS.map((ext) => rawCaptionKey(m.id, kind, ext)))
 	].filter((r): r is string => !!r);
 }
 
-/** Deletes a song's derived artifacts and returns the removed refs; NEVER touches `audio/` or `meta/`.
- *  The caller resets the media to un-processed so rotation stops treating it as playable. */
+/** NEVER touches `audio/` or `meta/`. The CALLER resets the media to un-processed, so rotation stops
+ *  treating it as playable. */
 export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 	const removed: string[] = [];
 	let bytes = 0;
@@ -206,20 +196,19 @@ export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 		if (!abs || !existsSync(abs)) continue;
 		try {
 			const size = statSync(abs).size;
-			// Count bytes only AFTER the delete succeeds (rmSync can still throw on EACCES/EPERM/etc.),
-			// or a file left on disk gets double-counted as reclaimed.
+			// Counted only AFTER the delete succeeds, or a file still on disk reads as reclaimed.
 			rmSync(abs, { force: true });
 			bytes += size;
 			removed.push(ref);
 		} catch (err) {
-			// Name the file and error rather than swallowing it, or a clean pass looks identical to one that failed silently.
+			// Named, not swallowed, or a clean pass looks identical to one that failed silently.
 			console.warn(`retention: failed to evict derived artifact ${ref}:`, err);
 		}
 	}
 	return { removed, bytes };
 }
 
-/** Total bytes of a song's derived artifacts, for the eviction plan. Must agree with evictDerived. */
+/** MUST agree with evictDerived. */
 export function derivedBytesOf(m: Media): number {
 	let n = 0;
 	for (const ref of new Set(derivedRefsOf(m))) {
@@ -239,18 +228,17 @@ export function derivedBytesOf(m: Media): number {
 const TRANSCODE_TIMEOUT_MS = 120_000;
 
 /**
- * ffmpeg-backed transcoder: lossless stereo FLAC, matching the worker's `encode_flac_argv`, so a
- * recompressed legacy stem lands in the same codec/container a freshly processed one does — a legacy
- * WAV is itself lossless, so this is not a second lossy generation. The encoder MUST be FLAC (AAC into
- * a `.flac` container is a mismatch the muxer rejects). Returns false (not throws) when ffmpeg is
- * absent or fails, so the caller keeps the larger-but-playable original.
+ * Lossless stereo FLAC, matching the worker's `encode_flac_argv`, so a recompressed legacy stem lands in
+ * the same codec a fresh process does — a legacy WAV is itself lossless, so this is no second lossy
+ * generation. The encoder MUST be FLAC: AAC into a `.flac` container is a mismatch the muxer rejects.
+ * Returns FALSE rather than throwing, so the caller keeps the larger-but-playable original.
  */
 export function ffmpegTranscoder(ffmpegBin = process.env.FFMPEG_BIN ?? 'ffmpeg'): Transcoder {
 	const base = ['-hide_banner', '-loglevel', 'error', '-y'];
 	const encode = ['-c:a', 'flac', '-compression_level', '8', '-sample_fmt', 's16', '-ac', '2'];
 
 	const run = async (argv: string[]): Promise<{ ok: boolean; err: string }> => {
-		// Killed after TRANSCODE_TIMEOUT_MS, or a hung ffmpeg on the detached boot chain stalls retention forever.
+		// Killed on timeout, or a hung ffmpeg on the detached boot chain stalls retention forever.
 		const r = await runCapturing(argv, TRANSCODE_TIMEOUT_MS);
 		if (r.timedOut) return { ok: false, err: `ffmpeg timed out after ${TRANSCODE_TIMEOUT_MS}ms` };
 		return { ok: r.code === 0, err: r.stderr };
@@ -258,7 +246,7 @@ export function ffmpegTranscoder(ffmpegBin = process.env.FFMPEG_BIN ?? 'ffmpeg')
 
 	return async (absFrom, absTo) => {
 		try {
-			// A single FLAC encode into the .flac destination is the whole operation (FLAC has no moov atom, so no faststart flag applies).
+			// FLAC has no moov atom, so no faststart flag applies.
 			const r = await run([ffmpegBin, ...base, '-i', absFrom, ...encode, absTo]);
 			if (!r.ok) transcodeDiagnostics.lastError = r.err.trim().split('\n')[0] ?? '';
 			return r.ok;

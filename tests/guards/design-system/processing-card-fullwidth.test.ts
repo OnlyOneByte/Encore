@@ -1,11 +1,8 @@
-// guard: the ProcessingCard progress bar occupies the card's FULL inner width, independent of whether the
-// action cluster renders.
-//
-// The bar and chips once lived inside the container that shares a single flex row with `.actions`, so a
-// viewer's OWN processing song (up to three 44px buttons, ~148px) got a 134px bar while a stranger's
-// action-less card kept a 294px bar — different geometry for the same component in the same list. Two
-// structural facts make it invariant: the bar and stage line are NOT nested inside the row-sharing
-// container, and the card is a grid whose progress block spans every column.
+// guard: the ProcessingCard progress bar occupies the card's FULL inner width, whether or not the action
+// cluster renders. The bar and chips once lived inside the container that shares a flex row with
+// `.actions`, so a viewer's OWN processing song got a 134px bar while a stranger's action-less card kept
+// 294px. Two structural facts make it invariant: the bar and stage line are NOT nested inside the
+// row-sharing container, and the card is a grid whose progress block spans every column.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 

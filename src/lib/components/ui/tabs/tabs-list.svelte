@@ -1,13 +1,7 @@
-<!--
-  The pill rail only — the tap floor, the certified active pair and the 16px type belong to
-  tabs-trigger.svelte. Styled by a global data-slot rule rather than utilities, because
-  `touch-targets.test.ts` reads CSS RULES: a `min-h-tap` in a class attribute makes the tap floor
-  invisible to the guard that protects it. See docs/FRONTEND.md#shared-components.
-
-  `tabsListVariants` is deliberately absent rather than exported empty: with the appearance in CSS every
-  arm returns the empty string, which reads like a styling hook and is not one. The `variant` PROP stays
-  and still lands as data-variant, so a future rule has an attribute to key on.
--->
+<!-- The pill rail only — the tap floor, the certified active pair and the 16px type belong to tabs-trigger.svelte.
+  Styled by a global data-slot rule rather than utilities, because `touch-targets.test.ts` reads CSS RULES.
+  `tabsListVariants` is deliberately absent rather than exported empty: with the appearance in CSS every arm returns the
+  empty string, which reads like a styling hook and is not one. The `variant` PROP stays and still lands as data-variant. -->
 
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from 'bits-ui';

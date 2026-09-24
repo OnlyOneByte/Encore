@@ -1,5 +1,5 @@
-// Loaded server-side so the first paint already holds persisted values: a default flashed for a frame
-// here reads as "my choice was lost". See docs/FRONTEND.md#settings.
+// Loaded server-side so the first paint already holds persisted values: a default flashed for a frame here reads as
+// "my choice was lost". See docs/FRONTEND.md#settings.
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getApp } from '$lib/server/app';
@@ -17,8 +17,8 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 	// Same bar as the write endpoints: without a join every change here would 401.
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
 	if (!singer) {
-		// Carry the tab through the join gate, or a guest sent here to fix their name lands on Party.
-		// `safeNextPath` on `/` is what keeps this `?next=` from becoming an open redirect.
+		// Carry the tab through the join gate, or a guest sent here to fix their name lands on Party. `safeNextPath` on `/`
+		// is what keeps this `?next=` from becoming an open redirect.
 		const next = encodeURIComponent(`/settings${url.search}`);
 		redirect(303, `/?next=${next}`);
 	}
@@ -35,8 +35,7 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 		settings: app.settings.getEffective(app.activeRoomId),
 		// What an empty join address resolves to, so the field can show its fallback.
 		joinOriginFallback: fallbackJoinOrigin(request, url),
-		// Only the server knows the real scheme this phone arrived on; `location.protocol` cannot be
-		// trusted for it. Drives the "https join address on a plain-http party" warning.
+		// Only the server knows the real scheme this phone arrived on; `location.protocol` cannot be trusted for it.
 		requestIsHttps: publicOriginIsHttps(request, url)
 	};
 };

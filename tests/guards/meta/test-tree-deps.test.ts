@@ -1,9 +1,8 @@
-// guard: the test tree's own dependencies stay in lockstep with the package they test.
-//
-// Node resolves a bare specifier by walking UP from the importing file, so moving these tests into `tests/`
-// broke `drizzle-orm` for two of them. Two hazards are pinned here: a package the test tree imports but no
-// manifest declares resolves today only by where node_modules happens to be hoisted, and a test asserting
-// behaviour against a different version than the app runs would be green about the wrong library.
+// guard: the test tree's own dependencies stay in lockstep with the package they test. Node resolves a bare
+// specifier by walking UP from the importing file, so moving these tests into `tests/` broke `drizzle-orm` for two
+// of them. A package the test tree imports but no manifest declares resolves today only by where node_modules
+// happens to be hoisted, and a test asserting behaviour against a different version than the app runs would be
+// green about the wrong library.
 
 import { test, expect } from 'bun:test';
 import { filesUnder, read, relative } from '@encore/test-support';
@@ -11,10 +10,10 @@ import { filesUnder, read, relative } from '@encore/test-support';
 /** Bare package specifiers, excluding builtins, path aliases and relative imports. */
 function externalImports(src: string): string[] {
 	/*
-	 * STATEMENT-BASED, deliberately, after two regex attempts failed on this corpus: these guards hold
-	 * import-shaped text as DATA (mutation fixtures, regex literals), and scanning for `from '…'` anywhere
-	 * reported `${wanted}`, `$lib\` and a fragment of another guard's body as packages. An import is a
-	 * STATEMENT, so its line begins with `import`/`export`; a fixture begins with `const` or `expect(`.
+	 * STATEMENT-BASED, after two regex attempts failed on this corpus: these guards hold import-shaped text as DATA
+	 * (mutation fixtures, regex literals), and scanning for `from '…'` anywhere reported `${wanted}`, `$lib\` and a
+	 * fragment of another guard's body as packages. An import is a STATEMENT, so its line begins with
+	 * `import`/`export`, where a fixture begins with `const` or `expect(`.
 	 */
 	const out: string[] = [];
 	const push = (spec: string): void => {
@@ -70,12 +69,10 @@ test('the scan reads import STATEMENTS and not import-shaped fixtures', () => {
 	const q = String.fromCharCode(39);
 	const stmt = (spec: string) => 'import { x } from ' + q + spec + q + ';';
 
-	// real statements
 	expect(externalImports(stmt('drizzle-orm'))).toEqual(['drizzle-orm']);
 	expect(externalImports(stmt('@scope/pkg/deep/path'))).toEqual(['@scope/pkg']);
 	expect(externalImports('const m = await import(' + q + 'some-pkg' + q + ');')).toEqual(['some-pkg']);
 
-	// the exclusions
 	expect(externalImports(stmt('bun:test'))).toEqual([]);
 	expect(externalImports(stmt('$lib/foo'))).toEqual([]);
 	expect(externalImports(stmt('$lib/contract'))).toEqual([]);

@@ -1,8 +1,7 @@
 // Measure the properties Tailwind's Preflight RESETS, on every element of every reachable surface, so a
-// before/after answer is a diff rather than an opinion: a screenshot pair cannot separate "identical" from
-// "close", nor say WHICH property moved. Element identity across two runs is BY INDEX in document order,
-// which holds only while the DOM is unchanged — `tag` is recorded beside every row so `preflight-diff.mjs`
-// can refuse to compare runs whose tag sequence disagrees.
+// before/after answer is a diff rather than an opinion. Element identity across two runs is BY INDEX in
+// document order, which holds only while the DOM is unchanged, so `tag` is recorded beside every row and
+// `preflight-diff.mjs` refuses to compare runs whose tag sequence disagrees.
 //
 //   EPORT=5911 bun run tests/e2e/probes/preflight-reset-audit.mjs <outFile.json>
 
@@ -123,6 +122,7 @@ const SURFACES = [
 ];
 
 /** @type {Record<string, unknown>} */
+/** @type {{ port: string, surfaces: Record<string, Record<string, unknown>> }} */
 const result = { port: PORT, surfaces: {} };
 let failed = 0;
 let browser;

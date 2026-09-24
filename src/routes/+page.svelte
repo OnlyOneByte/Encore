@@ -40,8 +40,7 @@
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
-	// What each row is still waiting on. A KIND, not a set of ids, because a pending reorder is marked too
-	// and must not borrow the add path's "adding…" word.
+	// A KIND, not a set of ids: a pending reorder is marked too, and must not borrow the add path's word.
 	let pendingKind = $state<Map<string, 'add' | 'move'>>(new Map());
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
@@ -59,17 +58,14 @@
 	// Seeded from /api/library as well as media:status, so a reload mid-process keeps its progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 
-	/*
-	 * One column read top to bottom, with `searchActive` (a non-empty query) as the SOLE switch between the
-	 * queue view and the results view — no browse mode, no `?browse=1`, no history entry for a search.
-	 * See docs/FRONTEND.md#the-home-column.
-	 */
+	/* One column read top to bottom, with `searchActive` (a non-empty query) as the SOLE switch between the queue
+	   view and the results view — no browse mode, no history entry. See docs/FRONTEND.md#the-home-column. */
 
 	// Every position is legal under `move-to-index`, so no order policy can discard a move.
 	const canReorder = true;
 
-	// Mirrored from the room link, not owned here. Optional because an unjoined guest has no queue at all,
-	// which is what every `store?.` call site below reads.
+	// Mirrored from the room link, not owned here. Optional because an unjoined guest has no queue at all, which
+	// is what every `store?.` call site below reads.
 	let store = $state<QueueStore | undefined>(undefined);
 
 	function mediaTitle(id: string): string {
@@ -79,11 +75,8 @@
 	function singerOf(id: string): PublicSinger | undefined {
 		return singers.get(id);
 	}
-	/*
-	 * `sync()` runs ONCE before subscribing: the link is a singleton that outlives this component, so on a
-	 * return to `/` it is already live and the next emit may be seconds away — subscribing alone renders an
-	 * empty queue until the room happens to speak. Nothing here closes the socket; it survives navigation.
-	 */
+	/* `sync()` runs ONCE before subscribing: the link is a singleton that outlives this component, so on a return
+	   to `/` it is already live and subscribing alone renders an empty queue until the room happens to speak. */
 	onMount(() => {
 		const sync = () => {
 			me = room.me;
@@ -110,18 +103,14 @@
 		};
 	});
 
-	/** The rotation in the order the room will play it. Excludes the PLAYING entry, whose status differs. */
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
 
 	function liveOf(id: string) {
 		return mediaStatus.get(id);
 	}
 
-	/*
-	 * An empty box IS the library, so typing filters the world rather than revealing it, and a query REPLACES
-	 * the queue rather than stacking above it — the keyboard leaves ~350px, which a field, a heading and two
-	 * queue rows would spend before the first match.
-	 */
+	/* An empty box IS the library, so typing filters the world rather than revealing it, and a query REPLACES the
+	   queue: the keyboard leaves ~350px, which a field, a heading and two queue rows would spend. */
 	let library = $state<Media[]>([]);
 	let libraryTags = $state<Record<string, string[]>>({});
 	let queryEl = $state<HTMLInputElement | null>(null);
@@ -132,7 +121,6 @@
 	let searching = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let inflight: AbortController | undefined;
-	/** The sole switch between the queue view and the results view. */
 	const searchActive = $derived(query.trim().length > 0);
 
 	function onQueryInput() {
@@ -194,7 +182,6 @@
 		keyName: originalKeyLabel(m.songProfile) ?? undefined,
 		tags: libraryTags[m.id]
 	});
-	/** Is this song already in MY part of the rotation? Drives the row's "queued" state. */
 	function inMyQueue(mediaId: string): boolean {
 		return queued.some((e) => e.mediaId === mediaId && e.singerId === me?.id);
 	}
@@ -230,7 +217,6 @@
 		return list.filter((m) => !accountedFor.has(m.id));
 	}
 	const queuedMediaIds = $derived(new Set(queued.map((e) => e.mediaId)));
-	/** The processing group, minus whatever the queue is already showing a bar for. */
 	const processingGroup = $derived(
 		searchActive ? processingRows : processingRows.filter((c) => !queuedMediaIds.has(c.id))
 	);
@@ -272,9 +258,9 @@
 	}
 
 	/*
-	 * NOT `unaccounted(library)`, which self-cancels: with no query `accountedFor` is seeded from `library`
-	 * itself, so subtracting it empties the primary list and "Your library" never renders. The QUEUE is
-	 * deliberately not subtracted either — a queued song is still in the library, and its row says so.
+	 * NOT `unaccounted(library)`, which self-cancels: with no query `accountedFor` is seeded from `library` itself,
+	 * so subtracting it empties the primary list and "Your library" never renders. The QUEUE is deliberately not
+	 * subtracted either — a queued song is still in the library, and its row says so.
 	 */
 	const processingIds = $derived(new Set(processingRows.map((c) => c.id)));
 	const libraryRows = $derived(library.filter((m) => !processingIds.has(m.id)));
@@ -295,9 +281,8 @@
 	}
 
 	/*
-	 * Ambient queue activity, announced POLITELY — never assertive. The anti-spam guard is the DIFF, not a
-	 * timer: position telemetry does not change `queued`, so it says nothing. My own adds stay silent, and the
-	 * first population seeds the baseline so joining a busy room does not read the queue aloud.
+	 * Announced POLITELY, never assertive. The anti-spam guard is the DIFF, not a timer: position telemetry does not
+	 * change `queued`, so it says nothing. My own adds stay silent, and the first population seeds the baseline.
 	 */
 	let liveMsg = $state('');
 	let announceReady = false; // suppress the initial sync; only later deltas are news
@@ -327,7 +312,6 @@
 				}
 			}
 		} else if (ids.length === prev.length && ids.some((id, i) => id !== prev[i])) {
-			// same songs, new order → a rotation reorder moved things under the user
 			liveMsg = 'Queue reordered';
 		}
 		lastQueueIds = ids;
@@ -337,21 +321,17 @@
 	function queuedIdx(id: string): number {
 		return queued.findIndex((e) => e.id === id);
 	}
-	/*
-	 * Reordering is a LIVE SORT with no mode: `liveSortTarget` both places the rows and decides the commit, so a
-	 * release cannot land somewhere the guest did not see. The single-pointer alternative (SC 2.5.7 / 2.1.1) is
-	 * Arrow Up/Down on the grip. See $lib/reorder-mode and docs/FRONTEND.md#the-home-column.
-	 */
-	/** The row being dragged, and the live offset of the finger from where the press began. */
+	/* Reordering is a LIVE SORT with no mode: `liveSortTarget` both places the rows and decides the commit, so a
+	   release cannot land somewhere the guest did not see. The single-pointer alternative (SC 2.5.7 / 2.1.1) is
+	   Arrow Up/Down on the grip. See $lib/reorder-mode and docs/FRONTEND.md#the-home-column. */
 	let movingId = $state<string | null>(null);
 	let dragging = $state(false);
 	let dragY = $state(0);
 	/** The dragged row's height, measured once at press time — how far its neighbours slide. */
 	let rowH = $state(0);
 	/**
-	 * Every queued row's box, measured once at press time, which is what the live sort compares against.
-	 * Both this and `rowH` are empty except during a drag, so no stale geometry can place a row: rows change
-	 * height mid-flight (a byline gains an `away` badge, another guest queues a card).
+	 * Measured once at press time, and empty except during a drag, so no stale geometry can place a row: rows
+	 * change height mid-flight (a byline gains an `away` badge, another guest queues a card).
 	 */
 	let rowBounds = $state<{ top: number; height: number }[]>([]);
 	// Announced through the SAME polite region the queue uses, and rendered visibly: a sighted guest needs it.
@@ -369,8 +349,8 @@
 	);
 
 	function gripFor(e: QueueEntry): boolean {
-		// `e` stays in the signature so the template asks per-row: a hard-coded literal on every row is the
-		// recorded regression, and a later per-row rule needs somewhere to read from.
+		// `e` stays in the signature so the template asks per-row: a hard-coded literal on every row is the recorded
+		// regression, and a later per-row rule needs somewhere to read from.
 		void e;
 		return gripVisible({ queuedCount: queued.length, reorderMeaningful: canReorder });
 	}
@@ -381,7 +361,6 @@
 		return false;
 	}
 
-	/** Commit a move, or nothing when the position has not changed. Shared by the drag and the keyboard. */
 	function commitMove(id: string, to: number | null) {
 		if (to === null) return;
 		const from = queuedIdx(id);
@@ -417,8 +396,8 @@
 		rowBounds = [];
 		reorderNote = note;
 		if (note) liveMsg = note;
-		// After `tick()` and by ATTRIBUTE: the recreated row leaves the pressed grip a detached node, so
-		// focusing the captured reference puts focus nowhere. `openerEl` covers a row that has gone entirely.
+		// After `tick()` and by ATTRIBUTE: the recreated row leaves the pressed grip a detached node, so focusing the
+		// captured reference puts focus nowhere. `openerEl` covers a row that has gone entirely.
 		void tick().then(() => {
 			const sel = id ? `[data-grip="${CSS.escape(id)}"]` : '';
 			const el = sel ? (document.querySelector(sel) as HTMLElement | null) : null;
@@ -427,8 +406,7 @@
 		});
 	}
 
-	/** Publishes the offset as a custom property for a transform to read; the target is arithmetic, not a
-	 *  hit-test for a drawn slot under the finger. */
+	/** Publishes the offset as a custom property for a transform to read; the target is arithmetic, not a hit-test. */
 	function onGripPointerDown(entry: QueueEntry, e: PointerEvent) {
 		const grip = e.currentTarget as HTMLElement | null;
 		if (!grip) return;
@@ -439,18 +417,16 @@
 		openerEl = grip;
 		// A pointer press does not focus a button in every engine, so an Escape cancel would have no origin.
 		grip.focus?.();
-		// Both reads happen ONCE, here, and nothing is measured again for the life of the gesture. `closest`
-		// rather than an index because the gap belongs to the row being carried; `.qrow` matches both row kinds
-		// and returns them in DOM order, which is the queued order.
+		// Both reads happen ONCE, here, and nothing is measured again for the life of the gesture. `closest` rather
+		// than an index because the gap belongs to the row being carried; `.qrow` matches both row kinds in DOM order.
 		rowH = grip.closest('.qrow')?.getBoundingClientRect().height ?? 0;
 		rowBounds = [...document.querySelectorAll('.qrow')].map((el) => {
 			const b = el.getBoundingClientRect();
 			return { top: b.top, height: b.height };
 		});
 		const startY = e.clientY;
-		// The listeners MUST go on `window`, not the grip and not behind setPointerCapture: the row's DOM is
-		// recreated as the list reorders, so a listener bound to the pressed grip delivers nothing and the
-		// release never arrives.
+		// The listeners MUST go on `window`, not the grip and not behind setPointerCapture: the row's DOM is recreated
+		// as the list reorders, so a listener bound to the pressed grip delivers nothing and the release never arrives.
 		const move = (ev: PointerEvent) => {
 			dragY = ev.clientY - startY;
 		};
@@ -483,8 +459,8 @@
 
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
 
-	// `playback` is a whole-object $state the store REPLACES on every broadcast, so this anchor effect re-runs
-	// on any playback change. Mirroring the fields as scalars would narrow that and strand the anchor.
+	// `playback` is a whole-object $state the store REPLACES on every broadcast, so this anchor effect re-runs on any
+	// playback change. Mirroring the fields as scalars would narrow that and strand the anchor.
 	let posAnchor = { pos: 0, wall: 0 };
 	$effect(() => {
 		posAnchor = { pos: playback.positionSec, wall: performance.now() };
@@ -493,8 +469,8 @@
 		return playback.isPlaying ? posAnchor.pos + (performance.now() - posAnchor.wall) / 1000 : posAnchor.pos;
 	}
 
-	// Once a second, not a frame: the bar's width transition covers the gap and a rAF loop would wake the phone
-	// ~60x more often for nothing. Re-arms on every playback change, so a seek snaps instead of sliding.
+	// Once a second, not a frame: the bar's width transition covers the gap. Re-arms on every playback change, so a
+	// seek snaps instead of sliding.
 	let displayPos = $state(0);
 	$effect(() => {
 		displayPos = playback.positionSec;
@@ -504,12 +480,8 @@
 	});
 	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
 
-	/*
-	 * The wait rides on my own row, and it degrades honestly in ONE place (`waitShort`): one entry ahead with no
-	 * resolvable length makes the whole estimate unknown, and an unknown estimate is OMITTED, never zeroed.
-	 * `Media.durationSec` is required, so absence from the catalog is the reachable unknown.
-	 */
-	/** My soonest queued pick: the row the wait is about. */
+	/* The wait degrades honestly in ONE place (`waitShort`): one entry ahead with no resolvable length makes the
+	   whole estimate unknown, and an unknown estimate is OMITTED, never zeroed. */
 	const myNextEntry = $derived(
 		entries
 			.filter((e) => e.singerId === me?.id && e.status === 'queued')
@@ -544,8 +516,7 @@
 {#if me}
 	<header class="topbar">
 		<h1 class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></h1>
-		<!-- The store keeps accepting taps while offline (they resend on resync), so say so rather than -->
-		<!-- letting a dead socket look identical to a live one. -->
+		<!-- The store keeps accepting taps while offline (they resend on resync), so a dead socket must not look live. -->
 		{#if me && !connected}
 			<span class="offline-pill" role="status" aria-live="polite">
 				<Icon name="warning" /> Reconnecting…
@@ -553,8 +524,6 @@
 		{/if}
 		{#if me}
 			<div class="me-cluster">
-				<!-- `.me-slot` and `.gear-slot` are page-rendered wrappers, and that is forced: Tailwind scans only -->
-				<!-- the components/ui directory, and a class handed to a component is scoped here and stripped. -->
 				<div class="me-slot">
 					<Button variant="identity" href="/settings?tab=you" aria-label="Your profile">
 						<span class="me-name">{me.displayName}</span>
@@ -572,8 +541,8 @@
 	</header>
 {/if}
 
-<!-- `--row-h` is the one measured row height, which the shifting rows multiply by their `--row-shift` count. -->
-<!-- It is 0 except during a drag, so no stale shift count can displace a row while nothing is dragged. -->
+<!-- `--row-h` is the one measured row height, which the shifting rows multiply by their `--row-shift` count. It is
+	0 except during a drag, so no stale shift count can displace a row while nothing is dragged. -->
 <main style="--row-h:{rowH}px">
 	{#if me}
 		<!-- The field is the FIRST thing on the screen, and not sticky — see the `.findbox` rule for why. -->
@@ -616,9 +585,8 @@
 				<p class="reorder-note">{reorderNote}</p>
 			{/if}
 			{#if queued.length === 0}
-				<!-- `Empty.Root` is load-bearing: phone-inventory.test.ts recognises a designed empty state by that -->
-				<!-- primitive, so a bare paragraph reports this route as having none. -->
-				<!-- `tight` drops the 40vh void, and only when something follows the state. -->
+				<!-- `Empty.Root` is load-bearing: phone-inventory.test.ts recognises a designed empty state by that
+						primitive, so a bare paragraph reports this route as having none. `tight` drops the 40vh void. -->
 				<Empty.Root>
 					<div class="queue-empty" class:tight={libraryRows.length > 0 || processingGroup.length > 0}>
 						<Empty.Header>
@@ -647,8 +615,8 @@
 							shift={rowShift(i, dragFrom, dragTo)}
 						/>
 					{:else}
-						<!-- `seq` is the LIVE position, never the source index: `liveSeq` reads the same shift -->
-						<!-- arithmetic that places the row, so a number never corrects itself when the patch lands. -->
+						<!-- `seq` is the LIVE position, never the source index: `liveSeq` reads the same shift arithmetic that
+								places the row, so a number never corrects itself when the patch lands. -->
 						<QueueRow
 							seq={liveSeq(i, dragFrom, dragTo)}
 							title={mediaTitle(e.mediaId)}
@@ -675,8 +643,8 @@
 			{/if}
 		{/if}
 
-		<!-- Ungated on purpose: what is being made now is equally relevant in both views. Its MEMBERSHIP is -->
-		<!-- query-scoped at the data layer, which decides row by row where a template gate could not. -->
+		<!-- Ungated on purpose: what is being made now is equally relevant in both views, and its MEMBERSHIP is
+				query-scoped at the data layer, which decides row by row where a template gate could not. -->
 		{#if processingGroup.length}
 			<h2 class="grouphead">Making karaoke…</h2>
 			{#each processingGroup as c (c.id)}
@@ -765,7 +733,6 @@
 			{/if}
 		{/if}
 	{:else}
-		<!-- Unjoined, `/` IS the landing page. -->
 		<JoinLanding />
 	{/if}
 </main>
@@ -773,25 +740,24 @@
 <!-- `richColors` stays off: the error tone comes from Encore's own --destructive. -->
 <Toaster position="bottom-center" offset="var(--dock-h, 0px)" style="--width: min(92vw, 420px);" />
 
-<!-- On the window, not a row: mid-gesture focus sits on the grip, and a keyboard cancel must work anywhere. -->
-<!-- Guarded on `dragging` so it never swallows an Escape the rest of the page wants. -->
+<!-- On the window, not a row: mid-gesture focus sits on the grip, so a keyboard cancel must work anywhere. Guarded
+	on `dragging` so it never swallows an Escape the rest of the page wants. -->
 <svelte:window onkeydown={(e) => dragging && e.key === 'Escape' && endDrag(false)} />
 
 <div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
 
 <style>
-	/* Reserves the band's MEASURED height so the last row stays reachable; the fallback covers the first frame.
-	   No env() term — the band carries the only inset, and it arrives through --dock-h. */
+	/* Reserves the band's MEASURED height so the last row stays reachable, with a fallback for the first frame. No
+	   env() term — the band carries the only inset, and it arrives through --dock-h. */
 	main {
 		flex: 1;
 		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	/* These wrappers hold what a component must not: flex-item layout and inherited ink. Neither can be a class
-	   passed to <Button> — Tailwind scans only the components/ui directory, and a class handed to a component is
-	   scoped here, where Svelte strips it. */
+	   passed to <Button> — Tailwind scans only components/ui, and a class handed to a component is stripped here. */
 	.me-slot {
-		/* Frees the flex minimum the name's ellipsis depends on. The `identity` variant restores `shrink`
-		   that the Button base removes; without both, a long name pushes the gear off the row. */
+		/* Frees the flex minimum the name's ellipsis depends on; without it and the `identity` variant's restored
+		   `shrink`, a long name pushes the gear off the row. */
 		min-width: 0;
 		display: flex;
 	}
@@ -838,8 +804,8 @@
 		color: transparent;
 	}
 
-	/* The colour must arrive as `--singer`, not interpolated into `background:`, so color-mix can derive the
-	   halo. Concatenating alpha digits onto the value only works for 6-digit hex and fails silently otherwise. */
+	/* The colour must arrive as `--singer`, not interpolated into `background:`, so color-mix can derive the halo:
+	   concatenating alpha digits onto the value only works for 6-digit hex and fails silently otherwise. */
 	.me-dot {
 		width: 22px;
 		height: 22px;
@@ -848,9 +814,8 @@
 		background: var(--singer);
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--singer) 19%, transparent);
 	}
-	/* The header's one user-supplied width. An unbroken token's min-content width is its full width, so shrink
-	   cannot help and the row would carry the gear off-screen: truncate, which needs a block box AND min-width:0
-	   all the way up the chain. The dot and the gear stay unshrinkable so the 44px target survives. */
+	/* The header's one user-supplied width. An unbroken token's min-content width is its full width, so shrink cannot
+	   help: truncate, which needs a block box AND min-width:0 all the way up. The dot and gear stay unshrinkable. */
 	.me-name {
 		display: block;
 		min-width: 0;
@@ -858,14 +823,13 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	/* Wide viewports spend the room on MORE SONGS, not longer rows, and only song rows flow into columns — a
-	   heading labels everything below it, so confining one would read as applying to half the list. The opt-in is
-	   INVERTED on purpose: everything spans by default, so a new block added here cannot land beside a song. */
+	/* Wide viewports spend the room on MORE SONGS, not longer rows, and only song rows flow into columns. The opt-in
+	   is INVERTED on purpose: everything spans by default, so a new block added here cannot land beside a song. */
 	@media (min-width: 768px) {
 		main {
 			display: grid;
-			/* 440px is measured off the row's contents: ~220px goes on thumbnail, badge, button and gaps, so a
-			   narrower column truncates every title. */
+			/* 440px is measured off the row's contents: ~220px goes on thumbnail, badge, button and gaps, so a narrower
+				   column truncates every title. */
 			grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
 			gap: 0 var(--space-xl);
 			align-content: start;
@@ -889,10 +853,9 @@
 		margin-top: var(--space-2xs);
 	}
 
-	/* The field must not be stuck to the viewport: `.topbar` already is, so a second one needs the header's
-	   RENDERED height as its offset, and an out-of-scale token in a calc() invalidates the declaration silently.
-	   The focus ring belongs to the WHOLE box — the rules below draw one on the wrapper and suppress app.css's
-	   global input ring, which otherwise nests a second rect inside it and strands the magnifier outside. */
+	/* The field must not be stuck to the viewport: `.topbar` already is, so a second one needs the header's RENDERED
+	   height as its offset, and an out-of-scale token in a calc() invalidates the declaration silently. The focus ring
+	   belongs to the WHOLE box, which is why app.css's global input ring is suppressed below. */
 	.findbox {
 		background: var(--card);
 		border: 1px solid var(--line);
@@ -958,10 +921,9 @@
 			padding: var(--space-sm) var(--space-xl);
 		}
 	}
-	/* `min-height`, not an absolute centring trick: this block sits in a scrolling column whose height three
-	   other rules already own. `overflow-wrap: anywhere` is the 320px reflow clause — at --ph-text-3xl and 200%
-	   text one unbreakable word is wider than the viewport, so the word must break instead of the layout. The
-	   size reaches the vendored slot through `:global()` at a data-slot because Empty.Title carries its own. */
+	/* `min-height`, not an absolute centring trick: this block sits in a scrolling column whose height three other
+	   rules already own. `overflow-wrap: anywhere` is the 320px reflow clause — at --ph-text-3xl and 200% text one
+	   unbreakable word is wider than the viewport. The size reaches the vendored slot through `:global()`. */
 	.queue-empty {
 		display: grid;
 		place-items: center;
@@ -979,9 +941,8 @@
 		font-weight: 700;
 		overflow-wrap: anywhere;
 	}
-	/* Docked-toast stacking, measured UP from the band: --dock-h already carries the band's safe-area inset, so
-	   a second env() term here doubles the gap. Both tokens are declared-but-unread on purpose — Sonner stacks
-	   its own surfaces — and two guards resolve against this text, so retiring them is a test-owning change. */
+	/* Docked-toast stacking, measured UP from the band: --dock-h already carries the band's safe-area inset, so a
+	   second env() term here doubles the gap. Both tokens are declared-but-unread — Sonner stacks its own. */
 	:root {
 		--undo-dock: calc(var(--dock-h, 0px) + 14px);
 		--error-dock: calc(var(--undo-dock) + var(--undo-h, 0px) + 14px);
@@ -1020,8 +981,7 @@
 	/* Nothing in this file animates, so there is no reduce arm: motion is opt-in inside the components. */
 
 	/* Short viewports (a phone held sideways) spend almost the whole height on chrome, so the chrome shrinks.
-	   --dock-h is NOT overridden here: an inline custom property on :root outranks this rule, so a smaller
-	   value would be silently defeated the moment the measurement landed. */
+	   --dock-h is NOT overridden here: an inline custom property on :root outranks this rule. */
 	@media (max-height: 480px) {
 		.topbar {
 			padding: var(--space-xs) var(--space-3xl) var(--space-2xs);

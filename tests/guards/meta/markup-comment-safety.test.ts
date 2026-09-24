@@ -1,13 +1,9 @@
-// guard: AN HTML COMMENT MAY NOT CONTAIN `/*` — the trap that makes guards LIE rather than fail.
-//
-// Half this repo's guards strip comments before scanning, and they strip C-style comments FIRST
-// (`.replace(/\/\*[\s\S]*?\*\//g, ' ')`), because a `<style>` block's comments are C-style. A markup comment
-// that spells a glob — `<!-- … components/ui/** … -->` — contains `/*` plus a star, so the stripper opens a C
-// comment there and runs to the NEXT `*/` anywhere in the file, blanking hundreds of lines of real markup on
-// the way. Four guards then reported failures about markup that was still perfectly present.
-//
-// Nothing errors: svelte-check is happy, the app renders, the build is fine. Only the guards see the mangled
-// text, and what they report is a lie about a different part of the file. Write the path in prose instead.
+// guard: AN HTML COMMENT MAY NOT CONTAIN `/*` — the trap that makes guards LIE rather than fail. Half this repo's
+// guards strip comments before scanning, C-style FIRST, because a `<style>` block's comments are C-style. A markup
+// comment that spells a glob contains `/*` plus a star, so the stripper opens a C comment there and runs to the
+// NEXT `*/` anywhere in the file, blanking hundreds of lines of real markup on the way; four guards then reported
+// failures about markup that was still perfectly present. Nothing errors — svelte-check is happy, the app renders,
+// the build is fine — so only the guards see the mangled text. Write the path in prose instead.
 // See docs/GUARDS.md#why-guards-are-written-this-way.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -18,8 +14,8 @@ import { svelteFiles } from '@encore/test-support/scan';
 const SRC = srcDir;
 
 /**
- * The stripper shape this ban exists for: a C-style comment removal, non-greedy up to the next comment terminator.
- * Matched against guard SOURCE, so it is spelled as the text those files contain.
+ * The stripper shape this ban exists for: a C-style comment removal, non-greedy to the next terminator. Matched
+ * against guard SOURCE, so it is spelled as the text those files contain.
  */
 const C_COMMENT_STRIP = /\/\\\*\[\\s\\S\]\*\?\\\*\\\//;
 
@@ -42,8 +38,8 @@ test('no HTML comment contains a C-style comment opener', () => {
 		}
 	}
 
-	// Non-vacuity: the walk really found HTML comments. This tree is heavily commented, so a low count means the
-	// scan broke rather than that the comments went away.
+	// Non-vacuity: the walk really found HTML comments. This tree is heavily commented, so a low count means the scan
+	// broke rather than that the comments went away.
 	expect(commentsSeen, 'found almost no HTML comments — the walk or the pattern broke').toBeGreaterThan(50);
 
 	expect(

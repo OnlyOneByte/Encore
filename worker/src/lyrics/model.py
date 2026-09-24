@@ -108,13 +108,11 @@ class LyricsDoc:
         return any(_is_num(line.get("start")) and bool(line.get("text")) for line in self.lines)
 
 
-# LyricsRequest/LyricsText live here, not in grading.py, so both grading.py and sources.py can import
-# them without an import cycle (sources.py needs them to declare what a source consumes/returns;
-# grading.py needs the source classes to run them). grading.py re-exports every name below.
+# Here rather than in grading.py, so both grading.py and sources.py can import them without a cycle.
+# grading.py re-exports every name below.
 
-# Text-source ids and timing tiers: enums in src/vocabulary.py (TextSource, Timing) so the TS<->Python
-# guard in src/lib/server/jobs/vocabulary-parity.test.ts can enforce them — a comment cannot fail a
-# build. Re-exported under the original names, and `.value` keeps them plain strings for JSON/argv/keys.
+# Source ids and timing tiers are ENUMS in src/vocabulary.py, so the TS<->Python parity guard can enforce
+# them — a comment cannot fail a build. `.value` keeps them plain strings for JSON, argv and keys.
 SOURCE_LRCLIB = TextSource.LRCLIB.value
 SOURCE_CAPTIONS = TextSource.CAPTIONS.value
 SOURCE_ASR = TextSource.ASR.value
@@ -148,27 +146,23 @@ class LyricsRequest:
     """Everything a source might need to find text for one song."""
 
     media_id: str
-    #: Confidence-gated canonicals from the core. None when the parse was not confident —
-    #: a source that needs them must decline rather than look up a guess.
+    #: CONFIDENCE-GATED: None when the parse was not confident, and a source that needs them must
+    #: decline rather than look up a guess.
     artist: str | None = None
     track: str | None = None
     duration: float | None = None
-    #: The FULL billing as the upload wrote it, vs `artist` (primary only). Not a lookup key — LRCLIB
-    #: is queried on the primary, since the full credit misses records filed under the primary alone.
-    #: It is a RANKING signal: among records matching the same artist/track, the one whose own artist
-    #: string also mentions the featured performer is the better metadata match.
+    #: NOT a lookup key: LRCLIB is queried on the primary, since the full credit misses records filed
+    #: under the primary alone. A RANKING signal — among records matching the same artist and track, the
+    #: one whose own artist string also mentions the featured performer is the better match.
     artist_credit: str | None = None
-    #: The raw mixed audio (retained original). Fine for forced alignment.
+    #: The retained original. Fine for forced alignment.
     audio_path: str = ""
-    #: The isolated vocals stem, when a stems job has already produced it. ASR wants THIS — a full mix
-    #: transcribes badly — so it may be absent for a song whose stems have not been processed.
+    #: ASR wants THIS: a full mix transcribes badly. Absent until a stems job has produced one.
     vocals_path: str | None = None
-    #: Cues from the upload's own human-authored caption track, already fetched and parsed by the
-    #: processor's async stage. None/[] means the upload has no manual track. Passed in rather than
-    #: fetched by the tier so this module performs no I/O.
+    #: Already fetched and parsed by the processor's async stage, and PASSED IN rather than fetched by
+    #: the tier, so this module performs no I/O.
     caption_segments: list[dict[str, Any]] | None = None
-    #: Cues from YouTube's AUTOMATIC caption track, fetched into a separate directory so the two can
-    #: never be confused for one another. A BASELINE input — see AutoCaptionsSource.
+    #: A BASELINE input, fetched into a SEPARATE directory so the two caption kinds cannot be confused.
     auto_caption_segments: list[dict[str, Any]] | None = None
 
 
@@ -177,44 +171,36 @@ class LyricsText:
     """Text from one source, with the provenance the TV needs to be honest about it."""
 
     text_source: str
-    #: [{start?, end?, text}] lines. `start`/`end` present only when the source itself is timed.
+    #: `start`/`end` are present only when the source itself is timed.
     segments: list[dict[str, Any]] = field(default_factory=list)
     #: What this source supplies on its own, BEFORE the timing layer runs.
     timing: str = TIMING_NONE
     text_confidence: str = "medium"
     language: str | None = None
-    #: BASELINE (evidence of what is heard) or CANDIDATE (authored text to be judged) — decides
-    #: whether a text is scored or does the scoring.
-    #:
-    #: ASSIGNED BY THE REGISTRY, not by the source that fetched the text (`lyrics/registry.py` stamps
-    #: it, and its `alternates`, from the fetching source's `SourceSpec`). The default below applies
-    #: only to a text built by hand (a test, or one rehydrated from disk). It is fail-CLOSED:
-    #: ROLE_UNSPECIFIED is in neither `candidates_of` nor `baselines_of`, so an unspecified text is
-    #: NOT published or used as grading evidence until a role is stamped — a fail-OPEN default (e.g.
-    #: ROLE_CANDIDATE) would let an unspecified construction silently publish.
+    #: BASELINE (evidence of what is heard) or CANDIDATE (authored text to be judged): decides whether
+    #: a text is scored or does the scoring. ASSIGNED BY THE REGISTRY from the fetching source's
+    #: `SourceSpec`, never by the source itself, so the default below reaches only a hand-built text.
+    #: Fail-CLOSED: ROLE_UNSPECIFIED is in neither `candidates_of` nor `baselines_of`, so an unstamped
+    #: text is never published or used as evidence — a fail-OPEN default would let one publish silently.
     role: str = ROLE_UNSPECIFIED
-    #: Preference among baselines when one must be SHOWN. None for candidates. Registry-assigned, as above.
+    #: Preference when a baseline must be SHOWN. Registry-assigned, as above.
     baseline_rank: int | None = None
-    #: A short stable id for this text WITHIN its source, so two baselines from the same source can
-    #: coexist on disk ('vocals' and 'mix' are both `asr`). Part of the artifact key; see candidate_key.
+    #: Stable WITHIN its source, so two baselines from one source coexist on disk ('vocals' and 'mix'
+    #: are both `asr`). Part of the artifact key.
     tag: str | None = None
     #: Which VERSION of the song this text is, for logs. None when the source has no notion of one.
     variant: str | None = None
-    #: Other versions of this song the same source offered, best-first by cheap metadata ranking.
-    #: Held on the winner rather than returned alongside it: only ONE may ever be published (the
-    #: artifact key is (media, source, timing)), so these are the losers of a choice not yet made —
-    #: `select_by_baselines` makes it once the ASR transcript exists to decide with.
+    #: Best-first by cheap metadata ranking, held ON the winner rather than returned alongside it: only
+    #: ONE may ever be published, since the artifact key is (media, source, timing). These are the
+    #: losers of a choice `select_by_baselines` makes once an ASR transcript exists to decide with.
     alternates: list[LyricsText] = field(default_factory=list)
-    #: Length-bounded search WINDOWS for the forced aligner, when `segments` are the source's OWN
-    #: human lines and must stay un-subdivided so the line-sync fallback publishes them verbatim.
-    #: `presplit` sets this on authoritative text whose lines overflow a row, giving the aligner
-    #: tight per-row windows while `segments` keeps the true human line timings. None means the
-    #: aligner searches `segments` as-is (the ASR tier, which invents line structure anyway).
+    #: Set by `presplit` on authoritative text whose lines overflow a row: the aligner gets tight
+    #: per-row windows while `segments` keeps the true human line timings un-subdivided, so the
+    #: line-sync fallback still publishes them verbatim. None means the aligner searches `segments`.
     align_windows: list[dict[str, Any]] | None = None
-    #: Index into ``align_windows`` of the OPENING window of each human segment (the one whose
-    #: ``start`` equals the segment start exactly). Emitted by ``bound_blob_text`` when it builds the
-    #: windows, since that is where the segment->window mapping is KNOWN; re-deriving it later by
-    #: float-equality strands every line after the first start that misses by more than 1e-6.
+    #: The OPENING window of each human segment, emitted by ``bound_blob_text`` where the
+    #: segment->window mapping is KNOWN: re-deriving it later by float-equality strands every line after
+    #: the first start that misses by more than 1e-6.
     align_window_opens: list[int] | None = None
 
     @property

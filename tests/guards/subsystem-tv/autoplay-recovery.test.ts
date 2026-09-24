@@ -1,10 +1,9 @@
-// guard: the TV must RECOVER from a blocked autoplay, and must do so WITHOUT building a WebAudio graph.
-//
-// Caught: a plain <audio> in a page that never received a user gesture is refused under the browser's default
-// autoplay policy with NotAllowedError — the state a set-and-forget TV wall is always in — and TvPlayer treated that
-// refusal as terminal, with no gesture handler anywhere on /tv to lift it. The recovery is a bare element.play()
-// re-attempt on a document-wide gesture listener; it must NOT wrap the element in a MediaElementAudioSourceNode to
-// "solve" autoplay, because that capture is PERMANENT and at keyShift===0 there must be no AudioContext at all.
+// guard: the TV must RECOVER from a blocked autoplay, and must do so WITHOUT building a WebAudio graph. A
+// plain <audio> in a page that never received a user gesture is refused with NotAllowedError — the state a
+// set-and-forget TV wall is always in — and TvPlayer treated that refusal as terminal, with no gesture
+// handler anywhere on /tv to lift it. The recovery is a bare element.play() re-attempt on a document-wide
+// gesture listener; a MediaElementAudioSourceNode capture is PERMANENT and at keyShift===0 there must be
+// no AudioContext at all.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
@@ -22,8 +21,8 @@ const TV_ROUTE = at('src/routes/tv/+page.svelte');
 
 test('TvPlayer latches recovery on NotAllowedError SPECIFICALLY, not on every rejection', () => {
 	const src = stripComments(readFileSync(TV_PLAYER, 'utf8'));
-	// Only autoplay refusal is gesture-liftable, so a blanket catch would arm the hint on an AbortError from a real
-	// src change too.
+	// Only autoplay refusal is gesture-liftable, so a blanket catch would arm the hint on an AbortError from a
+	// real src change too.
 	expect(src).toMatch(/name\s*===\s*['"]NotAllowedError['"]/);
 	expect(src).toMatch(/autoplayBlocked\s*=\s*true/);
 	// Any other rejection must STILL degrade to the logged "silent room", never be read as a blocked autoplay.
@@ -32,14 +31,14 @@ test('TvPlayer latches recovery on NotAllowedError SPECIFICALLY, not on every re
 
 test('TvPlayer arms a document-wide gesture listener that re-attempts playback', () => {
 	const src = stripComments(readFileSync(TV_PLAYER, 'utf8'));
-	// A gesture anywhere authorises playback for the document, so the listener is on window and covers a tap AND a
-	// keypress — a remote or keyboard is a valid gesture on a TV.
+	// A gesture anywhere authorises playback for the document, so the listener is on window and covers a tap
+	// AND a keypress — a remote or keyboard is a valid gesture on a TV.
 	expect(src).toMatch(/window\.addEventListener\(\s*['"]pointerdown['"]/);
 	expect(src).toMatch(/window\.addEventListener\(\s*['"]keydown['"]/);
-	// The listener is armed UNCONDITIONALLY: gating its effect on the latch means a TV whose autoplay succeeded
-	// has no gesture listener at all, so its AudioContext is never resumed and every ± press degrades silently.
-	// The play() nudge stays latch-gated INSIDE the handler, read at gesture time, so a tap cannot start a room
-	// somebody deliberately paused.
+	// The listener is armed UNCONDITIONALLY: gating its effect on the latch means a TV whose autoplay
+	// succeeded has no gesture listener at all, so its AudioContext is never resumed and every ± press
+	// degrades silently. The play() nudge stays latch-gated INSIDE the handler, read at gesture time, so a tap
+	// cannot start a room somebody deliberately paused.
 	expect(src).not.toMatch(/if\s*\(\s*!autoplayBlocked\s*\)\s*return/);
 	expect(src).toMatch(/if\s*\(\s*autoplayBlocked\s*\)\s*\{/);
 	expect(src).toContain('tryPlayMaster');
@@ -49,8 +48,8 @@ test('TvPlayer arms a document-wide gesture listener that re-attempts playback',
 	expect(src).toContain('onautoplayrecovered');
 	// A real $state, not a plain `let`: the hint's {#if} and the gesture effect both track it.
 	expect(src).toMatch(/let\s+autoplayBlocked\s*=\s*\$state\(false\)/);
-	// Each callback must appear in the DESTRUCTURE list (trailing comma OR end-of-list), so the parent's handlers
-	// are the ones invoked and a later prop does not falsify the guard.
+	// Each callback must appear in the DESTRUCTURE list (trailing comma OR end-of-list), so the parent's
+	// handlers are the ones invoked and a later prop does not falsify the guard.
 	expect(src).toMatch(/onautoplayblocked\s*,/);
 	expect(src).toMatch(/onautoplayrecovered\s*[,\n]/);
 });
@@ -83,17 +82,17 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots',
 	const rule = src.match(/\.autoplay-hint\s*\{([^}]*)\}/);
 	expect(rule, 'the .autoplay-hint style rule must exist').not.toBeNull();
 	const body = rule ? rule[1] : '';
-	// `position` is load-bearing: `inset` is ignored on a statically-positioned box and `z-index` applies
-	// only to a positioned box, so both assertions below are inert without it.
+	// `position` is load-bearing: `inset` is ignored on a statically-positioned box and `z-index` applies only
+	// to a positioned box, so both assertions below are inert without it.
 	expect(body).toMatch(/position:\s*absolute/);
 	expect(body).toMatch(/inset:\s*0/);
 	expect(body).toMatch(/z-index:\s*var\(--z-tv-affordance\)/);
 });
 
-// Caught: `{#if autoplayBlocked}` alone gated the full-screen tap-to-start scrim. The latch's only two writers are
-// per-slot props, so when the room DRAINS both players unmount and neither can fire again — the scrim then sat over
-// the lobby of an empty room, blocking the join card while promising to start music with nothing queued. Fixed by
-// also gating on `!isAttract`, NOT by clearing the latch: the block is a real property of a never-tapped TV.
+// `{#if autoplayBlocked}` alone gated the full-screen tap-to-start scrim, and the latch's only writers are
+// per-slot props, so when the room DRAINS both players unmount and the scrim sat over the lobby of an empty
+// room, blocking the join card. Fixed by also gating on `!isAttract`, NOT by clearing the latch: the block
+// is a real property of a never-tapped TV.
 test('the /tv autoplay hint is scoped to the on-stage band, so it cannot outlive the room', () => {
 	const src = stripComments(readFileSync(TV_ROUTE, 'utf8'));
 
@@ -108,8 +107,8 @@ test('the /tv autoplay hint is scoped to the on-stage band, so it cannot outlive
 	expect(expr).toContain('autoplayBlocked');
 	expect(expr, 'the hint must also require the room to be on-stage').toMatch(/!\s*isAttract/);
 
-	// The affirmative cannot catch a re-added unconditional copy elsewhere, so the bare form is banned outright —
-	// the arm that reds if the production hunk is reverted.
+	// The affirmative cannot catch a re-added unconditional copy elsewhere, so the bare form is banned outright
+	// — the arm that reds if the production hunk is reverted.
 	expect(src, 'no {#if} may gate the hint on the latch alone — that is the defect').not.toMatch(
 		/\{#if\s+autoplayBlocked\s*\}/
 	);

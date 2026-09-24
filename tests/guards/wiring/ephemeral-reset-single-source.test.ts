@@ -1,13 +1,10 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// The per-song ephemeral reset (positionSec/keyShift/background/guideLevel) must be named in ONE
-// place — the EPHEMERAL_RESET const — and spread at EVERY song-start reset site, not re-typed as a
-// literal at each setPlayback call. THE DEFECT: re-typing it at N sites let 7 of 16 (field × site)
-// pairs drop silently, and keyShift already shipped missing from one site once. A behaviour-
-// preserving refactor has no behavioural test that can red (the suite is green before and after),
-// so this is a source scan. Comments are STRIPPED first so the prose that describes the old shape
-// (or the historical keyShift leak) can neither satisfy nor trip the assertions.
+// The per-song ephemeral reset (positionSec/keyShift/background/guideLevel) is named in ONE place —
+// EPHEMERAL_RESET — and SPREAD at every song-start site. Re-typed per site, 7 of 16 field-by-site pairs
+// dropped silently and keyShift shipped missing from one site. A behaviour-preserving refactor has no
+// behavioural test that can red, so this is a source scan with comments STRIPPED first.
 const strip = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
 // Was a sibling read of the module this guard sat beside in src/lib/server/realtime — the
@@ -57,24 +54,19 @@ test('the per-song ephemeral reset set is named in exactly ONE const, not re-typ
 	expect(playerSrc).toMatch(/const\s+EPHEMERAL_RESET\s*=/);
 	expect(playerSrc).toMatch(/satisfies\s+Partial<\s*PlaybackState\s*>/);
 
-	// Every setPlayback call that CHANGES currentEntryId is a song-start / idle-clear reset site and
-	// MUST spread the const. The site set is derived from the code (not a hardcoded floor), so a
-	// NEWLY-ADDED currentEntryId-changing site that forgets the spread reds this test — the floor's
-	// hole. `>= 4` is kept ONLY as a not-vacuous sentinel (the scan must have found the four known
-	// sites), never as the enumeration itself. Anchoring on `setPlayback({` excludes store.ts's
-	// hydrate heal by construction (it assigns #playback directly, not via setPlayback), which is
-	// intentionally NOT a full ephemeral reset.
+	// Every setPlayback call that CHANGES currentEntryId is a song-start / idle-clear reset site and MUST spread
+	// the const. The site set is DERIVED from the code, so a newly-added currentEntryId-changing site that
+	// forgets the spread reds — which a floor on the spread count cannot. `>= 4` is only a sentinel. Anchoring
+	// on `setPlayback({` excludes store.ts's hydrate heal, which assigns #playback directly and is deliberately
+	// not a full ephemeral reset.
 	const resetSites = setPlaybackArgs(playerSrc).filter((a) => /\bcurrentEntryId:/.test(a));
 	expect(resetSites.length).toBeGreaterThanOrEqual(4);
 	const unspread = resetSites.filter((a) => !/\.\.\.EPHEMERAL_RESET\b/.test(a));
 	expect(unspread).toEqual([]);
 
-	// And the four ephemeral fields must NOT be re-typed as literals inside a setPlayback call
-	// anywhere else. The only `keyShift: 0` / `background: null` / `guideLevel: null` literals
-	// allowed are the ones INSIDE the const body; a re-typed reset object at a call site would push
-	// each count above 1. (positionSec: 0 is excluded — `restart` legitimately writes it alone,
-	// `setPlayback({ positionSec: 0, isPlaying: !!state.playback.currentEntryId })` at player.ts:189,
-	// which is a rewind, not a song start.)
+	// And the four fields must NOT be re-typed as literals inside a setPlayback call anywhere else: the only
+	// `keyShift: 0` / `background: null` / `guideLevel: null` literals allowed are inside the const body.
+	// `positionSec: 0` is excluded, because `restart` legitimately writes it alone as a rewind.
 	const keyShiftLiterals = playerSrc.match(/keyShift:\s*0\b/g) ?? [];
 	const backgroundNulls = playerSrc.match(/background:\s*null\b/g) ?? [];
 	const guideLevelNulls = playerSrc.match(/guideLevel:\s*null\b/g) ?? [];

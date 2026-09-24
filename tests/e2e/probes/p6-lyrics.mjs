@@ -1,11 +1,9 @@
 /*
- * P6 — WORD-TIMED LYRICS OVERLAY: does the reel appear without a reload, does the highlight track the
- * audio clock, do the reel and ball move, do live room settings change what is on screen, and does an
- * unlyriced song render nothing broken.
+ * P6 — WORD-TIMED LYRICS OVERLAY.
  *
- * THE FIXTURE CAN LOOK LIKE THE BUG. Every timing signal comes from the artifact the fake worker
- * writes, so schema agreement is checked first and the time-varying findings are re-tested against an
- * artifact the probe writes itself. docs/E2E.md#exit-codes-and-what-ran-means
+ * THE FIXTURE CAN LOOK LIKE THE BUG. Every timing signal comes from the artifact the fake worker writes,
+ * so schema agreement is checked FIRST and the time-varying findings are re-tested against an artifact
+ * this probe writes itself.
  *
  *   EPORT=5226 MEDIA_DIR=$KIROCREW_SCRATCH/e2e-5226/media bun tests/e2e/probes/p6-lyrics.mjs
  */
@@ -20,8 +18,6 @@ import { atRepo } from '../lib/repo-root.mjs';
 import { openJoin } from '../lib/join.mjs';
 
 /**
- * `page.evaluate()` and `fetch().json()` are Promise<any>, so results are cast at the call site.
- *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity

@@ -1,13 +1,12 @@
-// guard: `/` is the landing page. An unjoined visitor used to be bounced client-side to `/join` (`goto` in
-// onMount); `/join` is retired and the home route renders the JoinLanding state in place. Mounting the full
-// home route needs its whole WS/store machinery, so this pins both halves from the source instead.
+// guard: `/` is the landing page. An unjoined visitor used to be bounced client-side to `/join` (`goto` in onMount);
+// `/join` is retired and the home route renders the JoinLanding state in place. Mounting the full home route needs
+// its whole WS/store machinery, so this pins both halves from the source instead.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
 const src = read('src/routes/+page.svelte');
 
-// Strip comments so a `/join` mentioned in a comment (there is one, explaining the retirement) does not
-// masquerade as a live bounce.
+// Strip comments so a `/join` in a comment (there is one, explaining the retirement) is not a live bounce.
 function stripComments(s: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return s.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
@@ -15,7 +14,6 @@ function stripComments(s: string): string {
 const code = stripComments(src);
 
 test('the home route no longer bounces an unjoined visitor to /join', () => {
-	// The retired route must not be a navigation target anywhere in live code.
 	expect(code).not.toMatch(/goto\(\s*['"`]\/join/);
 });
 

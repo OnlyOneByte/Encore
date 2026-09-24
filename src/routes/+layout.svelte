@@ -17,18 +17,16 @@
 
 	let { children } = $props();
 
-	/*
-	 * The one list of non-phone surfaces, matched on the route or any descendant. This is the root layout,
-	 * so an ungated `room.connect()` would open a second `role=phone` socket on /tv and register the
-	 * television as a singer. See docs/FRONTEND.md#phones-versus-the-television.
-	 */
+	/* The one list of non-phone surfaces, matched on the route or any descendant. This is the root layout, so an
+	   ungated `room.connect()` would open a second `role=phone` socket on /tv and register the television as a singer.
+	   See docs/FRONTEND.md#phones-versus-the-television. */
 	const NOT_PHONE = ['/tv', '/components', '/admin', '/metrics'];
 	const isPhoneSurface = $derived(
 		!NOT_PHONE.some((r) => page.url.pathname === r || page.url.pathname.startsWith(r + '/'))
 	);
 
-	// Mirrored from the link as scalars: only the fields the band renders, so a library merge or a queue
-	// reorder does not touch this component.
+	// Mirrored from the link as scalars: only the fields the band renders, so a library merge or a queue reorder does
+	// not touch this component.
 	let me = $state<string | null>(null);
 	let title = $state<string | null>(null);
 	let artist = $state<string | null>(null);
@@ -86,13 +84,10 @@
 		return stop;
 	});
 
-	/*
-	 * `positionSec` arrives on a broadcast, not a frame, so the ring extrapolates between them. Capture
-	 * `pos` and `wall` INSIDE the effect that reads `isPlaying` too: a resume re-delivers an equal
-	 * `positionSec`, and an equal primitive write notifies nothing, so a separate anchor effect would
-	 * never re-run and the interval would extrapolate from the pause-time clock.
-	 * See docs/FRONTEND.md#the-band-and---dock-h. One second, not a frame: the arc moves sub-pixel.
-	 */
+	/* `positionSec` arrives on a broadcast, not a frame, so the ring extrapolates between them. Capture `pos` and
+	   `wall` INSIDE the effect that reads `isPlaying` too: a resume re-delivers an equal `positionSec`, and an equal
+	   primitive write notifies nothing, so a separate anchor effect would never re-run. One second, not a frame: the arc
+	   moves sub-pixel. See docs/FRONTEND.md#the-band-and---dock-h. */
 	let livePos = $state(0);
 	$effect(() => {
 		const pos = positionSec;
@@ -106,13 +101,10 @@
 	// A guest on the landing page has no room to be a remote for.
 	const showBand = $derived(isPhoneSurface && me !== null);
 
-	/*
-	 * This file is the SINGLE WRITER of --dock-h, the band's measured height, which every scrolling
-	 * column reserves in normal flow. Seed is a plausible height, not 0: it is bound to the drawer's snap
-	 * point 0, which a pushed-down 0 would collapse for a frame. The teardown is contractual, not tidy —
-	 * an inline :root property outranks stylesheets and would pad the TV's stage by a band it has not
-	 * got. See docs/FRONTEND.md#the-band-and---dock-h.
-	 */
+	/* This file is the SINGLE WRITER of --dock-h, the band's measured height, which every scrolling column reserves in
+	   normal flow. Seed is a plausible height, not 0: it is bound to the drawer's snap point 0, which a pushed-down 0
+	   would collapse for a frame. The teardown is contractual, not tidy — an inline :root property outranks stylesheets
+	   and would pad the TV's stage by a band it has not got. See docs/FRONTEND.md#the-band-and---dock-h. */
 	let dockH = $state(72);
 	$effect(() => {
 		document.documentElement.style.setProperty('--dock-h', `${dockH}px`);

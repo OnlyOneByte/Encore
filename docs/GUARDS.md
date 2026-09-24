@@ -47,6 +47,14 @@ that strong is still there. The snapshot is keyed by subject TEXT, never by line
 edits above a floor do not churn the registry; `count` is a MINIMUM occurrence count, so adding a floor
 to a listed file is fine and removing one is not.
 
+Because the key is the subject TEXT, **two floors in one file may not share a subject expression** — two
+`files.length` floors in the same guard are one indistinguishable entry to the anti-laundering check, so
+the second walk gets its own name (`vendoredFiles.length` in
+`tests/guards/hygiene/app-class-resolution.test.ts`). The registry's own two literals are also the reason
+a floored assertion may carry a failure MESSAGE: the locator accepts `expect(subject, '…')`, because a
+pattern that demanded the matcher immediately after `expect(subject)` read a messaged floor as GONE while
+it sat two characters away, which pressures an author to drop the message R4 asks a guard to carry.
+
 Two mechanisms keep the registry itself honest. Each registered assertion carries a
 `// @nvf-floor <subject>` tag **on the same line as its `expect(`**, and the scan is bidirectional: a
 registration whose site has no tag reds, and a tagged floor that is unregistered reds — including in a
@@ -112,7 +120,22 @@ Related shapes worth knowing:
   with a comment on it; a silent skip of whatever the guard failed to find is a hole with nothing on it.
   An unmodelled input is an OFFENDER, not a pass, so the model gets extended rather than the input going
   unchecked. Where an exemption map is empty, it stays declared with the sentinel that keeps each future
-  entry honest.
+  entry honest. Where a quarantine list repeats one reason many times — a `#rrggbb` swatch value, a bare
+  media-element tag union — the categories are stated ONCE at the map and only the odd entry carries its
+  own line; a reason per entry that says the same thing is prose, not a record.
+- **Where the ban's subject is a CLAIM rather than an identifier, window a verb and allow a DENIAL.**
+  Stripping comments is not enough when the defect was a comment recommending the wrong mechanism: the
+  identifier can return under a new name, and the correction has to be able to NAME the belief it
+  overturns or the next author writes nothing at all — which is the state the defect survived in. So the
+  scan takes a SYMMETRIC window around the verb (the subject of "reads" usually sits before it, and a
+  forward-only window misattributes the sentence), passes a window that denies the claim, and carries the
+  shipped sentences back as fixtures so a matcher that stopped firing reds instead of going quiet.
+  `tests/guards/hygiene/room-cookie.test.ts` and `tests/guards/docs/spotify-enforcement-prose.test.ts`
+  are the two shapes.
+- **Ban the affirmative DECLARATION, not the bare word,** where prose legitimately names a removed field.
+  `tests/guards/hygiene/baserev-field-removed.test.ts` bans `baseRev:` rather than `baseRev`, because the
+  probes name the removed field inside a `report()` string literal, which no comment stripper can blank,
+  and a bare-word ban self-reds on its own explanation.
 - **Pin what a hand-kept list cannot.** Enumerate from the tree rather than listing by hand, and floor
   the enumeration — a hand-kept list of 2 drivers left the other 22 unwatched while the documentation
   said all of them were covered.
@@ -151,6 +174,35 @@ Related shapes worth knowing:
 - Stubs are imported LAZILY inside the test that needs them and BY their `$app`/`$env` specifier, never
   at module scope: importing by specifier is what proves the mapping, and keeping the import inside the
   test means deleting a stub reds the tests that use THAT stub rather than failing the whole file to load.
+
+### What a mount harness may model
+
+A harness beside a test (`*.harness.svelte`) exists to reach a code path the test file cannot build for
+itself, and it may not model a state the component no longer has. Both drawer harnesses
+(`tests/guards/hygiene/phone-home.harness.svelte`, `tests/guards/hygiene/hero-live-controls.harness.svelte`)
+lost their two original reasons — a snippet prop, then an open/expand affordance — and the second did not
+survive as a rename: with the band and the drawer ONE permanently-mounted sheet, `open` defaults true and
+never changes, so a button flipping it false→true modelled a transition that does not exist. That is worse
+than no harness, because it keeps reading as though a closed arm were being exercised. What a test places
+instead is the snap point, which is a `$bindable` the app owns (vaul rewrites it on every drag) — and a
+snap point does NOT change which elements are MOUNTED: a snap-pointed sheet keeps its whole body in the
+document and translates it below the fold, so the collapsed placement renders the same tree as the open
+one, and which is on SCREEN is a transform offset measured on rung L. Snap values are IMPORTED, never
+restated: vaul looks the active point up by strict string equality, so a stale local copy seats index -1
+silently, in the one harness whose job is placing the sheet. Where a harness's subject cannot be mounted at
+all, a read-out declared BEFORE it is what proves the mount ran — it survives the subject's throw.
+
+### Hardening the copy the browser never sees
+
+The repo's most-repeated defect class: a hand-rolled duplicate of a framework writer gets the attribute, the
+docstring and the unit test, ships green, and changes nothing the user receives. `sessionCookie(token, secure)`
+serialized `Set-Cookie` by hand with zero production callers and its HttpOnly/SameSite/Secure WERE tested,
+while `cookies.set` in the live join route had no assertion on any attribute. The dead copy is deleted and the
+coverage lives on the writer the browser sees, as a source scan, because SvelteKit's serialization only runs
+in a live request (`tests/guards/hygiene/session-cookie-attributes.test.ts`). The same shape produced
+`scarActive` — a public-looking liveness predicate with no callers, omitting the `&& scar.media` term the real
+rule requires — and `findChromium()` copy-pasted into fifteen drivers, of which only two validated the
+environment variable they all read.
 
 ### The e2e selector contract
 
@@ -632,6 +684,57 @@ why it is pinned rather than commented.
   cleanup that `removeProperty`s it. `--dock-h` is written by the root layout, which wraps the TV too
   — and `/tv` mounts no band, so a stale value pads the stage by a phone band's height.
 
+### Paint order, shrinking boxes, and the evidence gallery
+
+- **A paint-order ladder is asserted as a strictly increasing SEQUENCE**, not as a set of names: naming a
+  tier pins WHICH tier a rule means but not where the tier sits, so the ladder could be reordered and the
+  autoplay hint would paint under the cards it exists to cover. Re-SPACING stays legal, re-ORDERING does
+  not, and every `--z-*` token belongs to exactly one ladder, so a tier added without a place in the order
+  reds rather than joining the scheme unordered (`tests/guards/design-system/design-system.test.ts`).
+- **Two angle frames must share one constant.** A `conic-gradient`'s `from` rotates the paint, while a knob
+  placed with `rotate()` measures from 12 o'clock and knows nothing about that rotation, so a knob drawn at
+  a stop's GRADIENT angle sits 90° from the colour it claims to point at — which the approved mockup's
+  static markup did (knob at 161.25°, Turquoise painted at 71.25°). Invisible in a still frame: the knob is
+  on A colour, just not the one the hub names. Every ring sector is also painted as a HARD band at both
+  edges, because an interpolated band shows colours the ring cannot return
+  (`tests/guards/design-system/colour-ring-palette.test.ts`).
+- **A class selector declared twice in one component `<style>` block** is a silent override: a deleted
+  design left a second copy of its rules LATER in source, and its `white-space: nowrap` on an INLINE span —
+  where `overflow` and `text-overflow` are inert and `nowrap` is not — clipped a long credit mid-word with
+  no ellipsis. The app.css-reading guards cannot see the shape of a component's own stylesheet
+  (`tests/guards/design-system/style-no-duplicate-selectors.test.ts`).
+- **A stray `-->` renders as TEXT.** Svelte treats an unmatched terminator as content, so a rebase that
+  drops the opening `<!--` puts it on screen with `svelte-check` at 0 errors.
+- **Shrinking a flex row needs `min-width: 0` at every rung.** A single unbroken token has a min-content
+  width equal to its full rendered width, so automatic minimum sizing refuses to shrink it: 23 characters
+  of display name overflowed the phone header at 390px and 31 carried the settings gear off the viewport.
+  `text-overflow` only fires on a BLOCK box, never an anonymous flex item, so the name is a styled span,
+  and a `<Button>` variant in the chain must BOTH free its own minimum and undo the base's `shrink-0`.
+  Conversely an EMPTY element has an automatic minimum of 0, which is how the singer identity dot
+  collapsed to 0px inside a nowrap `.who` under a 32-character name — the profile-name maxlength — losing
+  the colour from the one row where a truncated name least disambiguates. Every identity-dot rule declares
+  `flex: 0 0 auto` (or `flex-shrink: 0`).
+- **`/components` is the rendered evidence, not a demo.** Several rulings are only defensible if a human
+  can SEE the case they turn on, so the gallery carries the frames that show it: the singer-colour lyric
+  highlight against a stage painted in EXACTLY the singer's colour, where nothing but the reel's stroke
+  separates fill from field; a ProcessingCard with its action cluster AND an UNBROKEN name at the full
+  profile-name maxlength, which is the only shape that drives the dot to 0px rather than to a
+  miss-it-by-eye ~5.45px; and the lyrics scale at its floor and ceiling. Guards pin the wiring and the
+  values of those frames, never the pixels, and the maxlength is read from the repository rather than
+  hard-coded so a moved bound cannot leave a fixture passing by coincidence
+  (`tests/guards/design-system/lyrics-singer-colour-gallery.test.ts`,
+  `tests/guards/design-system/processing-card-longname-fixture.test.ts`,
+  `tests/guards/layout/lyrics-scale-gallery.test.ts`).
+- **The lobby is a flow COLUMN.** `.lobby` centred its `.stack` — whose last child is the typed join
+  address — across a full `inset: 0` box while `.strip` was absolutely docked to `bottom: 0` and grew
+  UPWARD as names wrapped, so on panels ≤768px the roster painted on top of the only way into the room when
+  a camera cannot read the QR; at 1920 and 3840 there was no overlap at any roster size, so a reserve keyed
+  to a fixed pixel band would have been wrong. The strip is IN FLOW inside a `flex: 1` region, wraps rather
+  than clipping (a raw `overflow: hidden` makes the surplus guests the first casualty), and steps its chip
+  type down on COUNT **and** total character width — a count rule alone stays quiet until 13 names while
+  nine long ones already overflow the two rows `max-height: 26vh` allows. Property-level proof across
+  roster × viewport is `tests/e2e/lobby-overlap.mjs`.
+
 ## The subsystem and wiring guards
 
 These guards cover one subsystem each, plus a `wiring/` family whose whole subject is that two correct
@@ -993,6 +1096,23 @@ Screen, lyrics and overlays.
   several guards read it as a fixture source. `tests/guards/wiring/dev-only-routes.test.ts`.
 - Joining is gated on settings; `tests/guards/wiring/settings-join-gate.test.ts` and
   `tests/guards/wiring/spotify-wiring.test.ts` pin the two seams that are otherwise type-valid when disconnected.
+- A COMPOSITION is guarded against its own interface rather than one hook at a time. All twelve optional
+  `HubDeps` keys are type-legal to omit while each feeds a live service (`onNowPlaying` → plays,
+  `onSang` → singers, `onEntryRemoved` → `cancelJobsForMedia`, `hasOp` → the re-ack peek), and nothing reads
+  the composition, so deleting any of eleven from the hand-written bag left the suite green. The key list is
+  DERIVED from the interface, so the next optional hook fails until it is wired instead of needing a
+  thirteenth one-hook guard; the parity target is the `buildHubDeps` factory's RETURN literal, since the
+  per-frame call site's completeness is already a type question. Each assertion is anchored on a LITERAL,
+  because several hook names also occur at unrelated call sites
+  (`tests/guards/layout/hubdeps-composition-parity.test.ts`).
+- A multi-dependency call is matched by ONE anchored regex over the whole call, because the type-valid
+  PARTIAL is the shape that restores the defect — substituting an unfiltered entry list with a filtered one
+  kept every unanchored substring scan green.
+- A probe under `tests/e2e/` is a live-server `.mjs` nothing in `bun test` invokes, so when a wire contract
+  moves the probe's own SOURCE is the only decidable subject: a stale add frame is rejected at setup and
+  every scenario in it dies to an audience of nobody
+  (`tests/guards/wiring/e2e-probe-add-frame-fields.test.ts`,
+  `tests/guards/subsystem-realtime/p5-process-lifecycle-add-fields.test.ts`).
 
 ### Wiring single source
 

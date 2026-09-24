@@ -12,11 +12,9 @@
 		"moduleResolution": "bundler",
 		"types": ["bun-types"]
 	},
-	// SvelteKit's generated config includes `../tests/**` — a sensible default when tests sit beside the
-	// app, which after flattening the `apps/` layer away they do. But this repo's test tree has its OWN
-	// tsconfig (`tests/tsconfig.json`) declaring `@encore/test-support` and the `$lib` aliases it needs, so
-	// pulling it into the APP's program instead produced 167 svelte-check errors on imports the app config
-	// has no reason to know about.
+	// The test tree has its OWN tsconfig (`tests/tsconfig.json`) declaring `@encore/test-support` and the
+	// `$lib` aliases it needs, so it is excluded here rather than pulled into the APP's program as
+	// SvelteKit's generated config would do.
 	//
 	// `exclude` REPLACES the base's list rather than extending it, so SvelteKit's own service-worker
 	// exclusions are repeated here — dropping them would type-check the service worker against DOM lib

@@ -1,9 +1,8 @@
-// guard: fifteen driver/probe call sites waited for the search box immediately after joining, after the
-// phone shell moved search off `/` behind the browse push — so every driven flow timed out at its first
-// step while all four unit gates stayed green, because none of them drives a browser. The driven probes are
-// this repo's ONLY rendered-behaviour guards, so a dozen of them unable to reach step one is a guard that
-// never fires, at scale, silently. The fix was one shared helper (`e2e/lib/phone.mjs`); this file stops the
-// fifteen sites drifting apart again, and it runs in `bun test` with no server and no Chromium.
+// guard: fifteen driver/probe call sites waited for the search box immediately after joining, after the phone
+// shell moved search off `/` behind the browse push — so every driven flow timed out at its first step while all
+// four unit gates stayed green, because none of them drives a browser. The driven probes are this repo's ONLY
+// rendered-behaviour guards, so a dozen unable to reach step one is a guard that never fires, at scale, silently.
+// The fix was one shared helper (`e2e/lib/phone.mjs`); this stops the fifteen sites drifting apart again.
 import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,9 +35,8 @@ function previousCodeLine(lines: string[], idx: number): string {
 }
 
 test('the contract names the way to the docked search box, and homeReady resolves', () => {
-	// `homeReady` is the BAND, not the search box: the layout mounts it on every phone surface, so it says
-	// "the joined app has painted" rather than "this one route rendered". `openBrowse` was retired with the
-	// `+ Add a turn` button and must not linger in SEL or HOOKS.
+	// `homeReady` is the BAND, not the search box: the layout mounts it on every phone surface, so it says "the joined
+	// app has painted" rather than "this one route rendered". `openBrowse` was retired with the `+ Add a turn` button.
 	expect(SEL.homeReady).toBe('.band');
 	const ids = HOOKS.map((h) => h.id);
 	expect(ids).toContain('homeReady');
@@ -50,8 +48,8 @@ test('the shared post-join helper reaches the docked search box with no click', 
 	const helper = join(E2E, 'lib', 'phone.mjs');
 	expect(existsSync(helper)).toBe(true);
 	const src = readFileSync(helper, 'utf8');
-	// Two waits, in order: home is up (the docked band), then the search box. There is no click — the box is
-	// docked unconditionally now, so a helper clicking a `+ Add a turn` button would time out on dead markup.
+	// Two waits, in order: home is up (the docked band), then the search box. There is no click — the box is docked
+	// unconditionally, so a helper clicking a `+ Add a turn` button would time out on dead markup.
 	const wait = src.indexOf('SEL.homeReady');
 	const search = src.lastIndexOf('SEL.search');
 	expect(wait).toBeGreaterThan(-1);
@@ -68,7 +66,6 @@ test('no driver waits for the search box as its post-join readiness signal', () 
 		const lines = readFileSync(path, 'utf8').split('\n');
 		lines.forEach((line, i) => {
 			if (!line.includes('SEL.search')) return;
-			// A wait whose ONLY condition is the search box existing.
 			if (/waitFor\(\s*$/.test(line) || /\bwaitFor\(/.test(line)) {
 				const isExistenceWait = /querySelector\((?:`|'|")?\$?\{?JSON\.stringify\(SEL\.search\)/.test(line);
 				if (isExistenceWait && !line.includes('SEL.homeReady')) {
@@ -86,8 +83,8 @@ test('no driver waits for the search box as its post-join readiness signal', () 
 });
 
 test('every driver that types into search reaches the browse screen first', () => {
-	// The other half: a `fill` on a screen without the field throws on a null element. The helper is a no-op
-	// when the field is already there, so calling it defensively costs one 250ms probe.
+	// The other half: a `fill` on a screen without the field throws on a null element. The helper is a no-op when the
+	// field is already there, so calling it defensively costs one 250ms probe.
 	const offenders: string[] = [];
 	for (const path of driverFiles()) {
 		const lines = readFileSync(path, 'utf8').split('\n');
@@ -103,13 +100,11 @@ test('every driver that types into search reaches the browse screen first', () =
 });
 
 test('the scan is non-vacuous — it is really reading the drivers', () => {
-	// An empty-offenders assertion is what a working guard produces AND what a guard reading nothing produces.
-	// If this fires, restore the walk; never lower the number.
+	// An empty-offenders assertion is what a working guard produces AND what one reading nothing produces.
 	const files = driverFiles();
 	expect(files.length).toBeGreaterThanOrEqual(15);
 	const usingSearch = files.filter((f) => readFileSync(f, 'utf8').includes('SEL.search'));
 	expect(usingSearch.length).toBeGreaterThanOrEqual(10);
 	const usingHelper = files.filter((f) => readFileSync(f, 'utf8').includes('openBrowseFromHome'));
-	// Every file that touches the search box must have adopted the shared path.
 	expect(usingHelper.length).toBeGreaterThanOrEqual(usingSearch.length);
 });

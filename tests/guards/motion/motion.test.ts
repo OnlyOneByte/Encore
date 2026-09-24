@@ -6,9 +6,8 @@ import { join, sep } from 'node:path';
 import { styleFiles, svelteFiles } from '@encore/test-support/scan';
 import { at, srcDir } from '@encore/test-support';
 
-// ALLOWLIST, not a denylist: anything animated that is not here reds, so `transition: all` and every
-// layout property outside a fixed list (max-height, inset, gap, flex-basis, font-size, …) is caught
-// without anyone having to enumerate them.
+// ALLOWLIST: anything animated and absent here reds, so `transition: all` and every layout property
+// outside the set is caught without anyone enumerating them.
 const COMPOSITED_PROPS = new Set([
 	'transform',
 	'opacity',
@@ -36,14 +35,12 @@ function tsSources(dir: string): string[] {
 	return out;
 }
 
-// BOTH comment forms: these tests read whole .svelte files, so a `transition:` in prose inside an HTML
-// comment must not false-positive.
+// BOTH comment forms, or a `transition:` in prose inside an HTML comment false-positives.
 function stripAllComments(src: string): string {
 	return src.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
-// Every property animated by a `transition:` shorthand or `transition-property:` longhand. A shorthand may
-// list several comma-separated animations, each of whose FIRST identifier is the animated property.
+// Each comma-separated entry of a `transition:` shorthand names its animated property first.
 function animatedProps(css: string, isSvelte: boolean): string[] {
 	const props: string[] = [];
 	for (const id of transitionPropsInStylesheet(css, isSvelte)) props.push(id);
@@ -51,11 +48,8 @@ function animatedProps(css: string, isSvelte: boolean): string[] {
 	return props;
 }
 
-/**
- * A stylesheet body and Svelte markup are different REGIONS, not different lexical shapes, so each is
- * scanned with the rule that fits it. A lexical discriminator that blanked every tag meant ONE `<` anywhere
- * in a stylesheet blanked every `transition:` to the next `>`.
- */
+// Regions, not lexical shapes: a discriminator that blanked every tag made one `<` anywhere in a
+// stylesheet blank every `transition:` to the next `>`.
 /** The stylesheet region: the concatenated <style> bodies of a .svelte source; all of a .css source. */
 function stylesheetRegion(css: string, isSvelte: boolean): string {
 	if (!isSvelte) return css;
@@ -64,17 +58,13 @@ function stylesheetRegion(css: string, isSvelte: boolean): string {
 	return bodies.join('\n');
 }
 
-/** The markup region. Removing style but NOT script is deliberate: a transition string assigned in the
- *  script block must stay visible to the markup scan. */
+/** Style is removed but NOT script: a transition string assigned in the script block stays visible. */
 function markupRegion(css: string): string {
 	return css.replace(/<style[\s\S]*?<\/style>/gi, ' ');
 }
 
-/**
- * Blank the interior of every `style={ … }` attribute, brace-BALANCED: a `\{[^}]*\}` class stops at the first
- * `}`, which in a template literal is the one closing an interpolation, so the transition-carrying tail
- * survived unblanked and the directive scan misread it.
- */
+// Brace-BALANCED: a `\{[^}]*\}` class stops at the first `}` — in a template literal the one closing an
+// interpolation — leaving the transition-carrying tail unblanked for the directive scan to misread.
 function blankBalancedStyleBraces(markup: string): string {
 	let out = markup;
 	const re = /style=\{/g;
@@ -93,9 +83,8 @@ function blankBalancedStyleBraces(markup: string): string {
 	return out;
 }
 
-// The CSS scan, over the STYLESHEET region only, where no directive or inline style= can reach it. Vendor
-// prefixes are recognised because the `[;{\s]` left boundary cannot match the `-` of `-webkit-transition`,
-// and iOS Safari is this app's phone client, so prefix-only spellings are idiomatic.
+// STYLESHEET region only, where no directive or inline style= reaches. The `[;{\s]` left boundary cannot
+// match the `-` of `-webkit-transition`, and iOS Safari makes prefix-only spellings idiomatic here.
 function transitionPropsInStylesheet(css: string, isSvelte: boolean): string[] {
 	const out: string[] = [];
 	const region = stylesheetRegion(css, isSvelte);
@@ -109,10 +98,9 @@ function transitionPropsInStylesheet(css: string, isSvelte: boolean): string[] {
 	return out;
 }
 
-// Inline transition in the MARKUP region, DELIMITER-AGNOSTIC: a quoted attribute, the braced `style={…}`
-// form, a template literal and a string built in the script block are all real inline styles, and no
-// @media wrapper or reduce reset can ever cover one. Readable values are classified; opaque ones go through
-// one sentinel, so two spellings of a single defect do not read as two causes.
+// Inline transition in the MARKUP region, DELIMITER-AGNOSTIC: quoted attribute, braced `style={…}`,
+// template literal and script-built string are all inline styles no reduce reset can cover. Opaque values
+// go through one sentinel, so two spellings of one defect do not read as two causes.
 function inlineTransitionProps(css: string): string[] {
 	const out: string[] = [];
 	const markup = markupRegion(css);
@@ -129,13 +117,12 @@ function inlineTransitionProps(css: string): string[] {
 	for (const _m of markup.matchAll(/(?<!style)\b(?:-(?:webkit|moz)-)?transition(?:-property)?:\s*[$]?[{]/g)) {
 		out.push('style-transition-directive');
 	}
-	// readable value, bounded at the next delimiter OR a tag boundary — which is what tells a Svelte
-	// `transition:<fn>` DIRECTIVE from a CSS declaration, since a real inline value is delimited by a
-	// quote, backtick, brace or semicolon and never by the surrounding element tag.
+	// Readable value, bounded at the next delimiter OR a tag boundary: a real inline value ends at a quote,
+	// backtick, brace or semicolon and never at the element tag, which is what tells it from a directive.
 	for (const m of markup.matchAll(/(?<!style)\b(?:-(?:webkit|moz)-)?transition(?:-property)?:\s*([^;"'`}<>]+)/g)) {
 		const readable = m[1]!;
-		// A directive's value is a bare identifier followed by `>`/`/`/`|`. Skipped here so the directive scan below stays
-		// its sole reporter — otherwise `<div transition:slide>` reds twice, once misread as a CSS property named `slide`.
+		// A directive's value is a bare identifier followed by `>`/`/`/`|`; skipped so the directive scan stays
+		// its sole reporter, instead of `<div transition:slide>` redding twice.
 		const tail = markup.slice((m.index ?? 0) + m[0].length);
 		if (/^[a-z][a-zA-Z0-9]*$/.test(readable.trim()) && /^\s*[>/|]/.test(tail)) continue;
 		if (/^[\s]*[{$]/.test(readable)) {
@@ -151,8 +138,7 @@ function inlineTransitionProps(css: string): string[] {
 		}
 		if (!any) out.push('style-transition-directive');
 	}
-	// `style:transition` has no `:` after `transition`, so the patterns above cannot see it. All four
-	// spellings: quoted, single-quoted, ={expr}, bare shorthand.
+	// `style:transition` has no `:` after `transition`, so the patterns above miss it. All four spellings.
 	for (const m of markup.matchAll(/style:transition(?:-property)?(?:=(?:"([^"]*)"|'([^']*)'|\{([^}]*)\}))?/g)) {
 		const readable = m[1] ?? m[2] ?? m[3];
 		if (readable === undefined || readable.trim() === '') {
@@ -170,7 +156,6 @@ function inlineTransitionProps(css: string): string[] {
 
 test('no transition animates a layout-triggering property (transform/opacity only)', () => {
 	const files = styleFiles(srcDir);
-	// A directory rename, a moved src/ or a glob typo would make this pass VACUOUSLY.
 	expect(files.length).toBeGreaterThanOrEqual(24); // @nvf-floor files.length
 	assertScanIntact(files);
 	const offenders: string[] = [];
@@ -183,8 +168,7 @@ test('no transition animates a layout-triggering property (transform/opacity onl
 	expect(offenders).toEqual([]);
 });
 
-// Brace-depth walk rather than a `\}\s*\}` terminator, which required two braces separated by whitespace
-// only — so a trailing comment before the block's close made the regex skip the ENTIRE block.
+// Brace-depth walk: a `\}\s*\}` terminator let a trailing comment before the close skip the ENTIRE block.
 function keyframeBodies(css: string): string[] {
 	const bodies: string[] = [];
 	const re = /@(?:-(?:webkit|moz)-)?keyframes[^{]*\{/g;
@@ -203,8 +187,7 @@ function keyframeBodies(css: string): string[] {
 	return bodies;
 }
 
-// The prefix is STRIPPED before the composited lookup, so `-webkit-transform` is not falsely condemned —
-// the mirror of the transition scan, where a prefix could HIDE a banned property.
+// The prefix is STRIPPED before the composited lookup, so `-webkit-transform` is not falsely condemned.
 function keyframeProps(body: string): string[] {
 	const props: string[] = [];
 	for (const m of body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:/g)) props.push(m[1]!.replace(/^-(?:webkit|moz)-/, ''));
@@ -228,26 +211,18 @@ test('@keyframes animate only GPU-composited properties', () => {
 });
 
 /*
- * The reduced-motion arm. An animation is suppressible if it is EITHER inside an
- * `@media (prefers-reduced-motion: no-preference)` block OR paired with an unconditional
- * `@media (prefers-reduced-motion: reduce) { … animation: none }` reset covering ITS OWN selector, later in
- * source. The exemption is SELECTOR-scoped, so a new unguarded animation in the same file still reds.
- * QueueRow's `.qrow { animation: pop … }` ran under Reduce Motion while the guarded helper had no callers.
+ * The reduced-motion arm; the two accepted shapes are in docs/GUARDS.md#motion. The exemption is
+ * SELECTOR-scoped and the reset must sit LATER in source. Caught QueueRow's `.qrow { animation: pop … }`
+ * running under Reduce Motion while the guarded helper had no callers.
  */
 
-/**
- * True when a prelude fires ONLY when motion is allowed. A query LIST is an OR, so
- * `(prefers-reduced-motion: no-preference), (min-width: 700px)` fires under Reduce Motion on any ≥700px
- * viewport — and every TV is one — so a list qualifies only when EVERY branch does.
- */
+// A query LIST is an OR, so `(prefers-reduced-motion: no-preference), (min-width: 700px)` fires under
+// Reduce Motion on every TV: a list qualifies only when EVERY branch does.
 function firesOnlyWhenMotionAllowed(prelude: string): boolean {
 	return splitTopLevelCommas(prelude).every(branchFiresOnlyWhenMotionAllowed);
 }
-/**
- * True when a `not` negates the prefers-reduced-motion feature opening at `featureParenIdx` — i.e. binds to
- * THIS feature rather than a sibling (`(prefers-reduced-motion: no-preference) and (not (min-width: 700px))`
- * leaves the reduce feature un-negated). Three spellings: `not (…)`, `(not (…))`, MQ3 `not all and (…)`.
- */
+// True when a `not` binds to THIS feature rather than a sibling — `… and (not (min-width: 700px))` leaves
+// the reduce feature un-negated. Three spellings: `not (…)`, `(not (…))`, MQ3 `not all and (…)`.
 function featureIsNegated(prelude: string, featureParenIdx: number): boolean {
 	const before = prelude.slice(0, featureParenIdx);
 	// MQ4: `not` then only `(`/whitespace — `not (`, `(not (`, `and (not (`
@@ -256,8 +231,7 @@ function featureIsNegated(prelude: string, featureParenIdx: number): boolean {
 	if (/\bnot\s+[a-z-]+\s+and\s*\(*\s*$/.test(before)) return true;
 	return false;
 }
-/** One comma-branch: a non-negated `no-preference` or a NEGATED `reduce` fires only when motion is
- *  allowed, and the two mirror cases fire under Reduce Motion. */
+/** A non-negated `no-preference` or a NEGATED `reduce` fires only when motion is allowed. */
 function branchFiresOnlyWhenMotionAllowed(branch: string): boolean {
 	const noPref = /prefers-reduced-motion:\s*no-preference/.exec(branch);
 	if (noPref) {
@@ -310,11 +284,8 @@ function normSelector(s: string): string {
 	return s.replace(/\s+/g, ' ').trim();
 }
 
-/**
- * A reset only wins when the OS asks for reduced motion, so its @media must fire in exactly that state and
- * no narrower one. A substring test accepts two preludes CSS discards: a `not`-inverted one (fires when
- * motion is ALLOWED) and one gated by `and (min-width: 5000px)`.
- */
+// A reset must fire in exactly the reduce state and no narrower one: a substring test accepts a
+// `not`-inverted prelude (which fires when motion is ALLOWED) and one gated by `and (min-width: 5000px)`.
 function isUnconditionalReduce(prelude: string): boolean {
 	if (!/prefers-reduced-motion:\s*reduce/.test(prelude)) return false;
 	if (/\bnot\b/.test(prelude)) return false;
@@ -322,10 +293,8 @@ function isUnconditionalReduce(prelude: string): boolean {
 	return true;
 }
 
-/**
- * Forward-scan into a flat list of rule blocks, keeping a stack of open blocks with the prelude that opened each. A
- * block is a plain style RULE when its prelude does not start with `@`, and only those own `animation:` declarations.
- */
+// Flat list of rule blocks: a prelude not starting with `@` is a plain style RULE, and only those own
+// `animation:` declarations.
 function ruleBlocks(css: string): Rule[] {
 	const rules: Rule[] = [];
 	const stack: Array<{ prelude: string; reduce: boolean }> = [];
@@ -364,11 +333,9 @@ function ruleBlocks(css: string): Rule[] {
 	return rules;
 }
 
-/**
- * Covered selector -> the source OFFSET of its reset body. A media query adds no specificity, so the LATER
- * declaration wins and a reset placed above the animation it means to defeat is not coverage. The EARLIEST
- * offset is recorded, since a later reset cannot rescue an animation the earliest already fails to cover.
- */
+// Covered selector -> the source OFFSET of its reset body. A media query adds no specificity, so the
+// LATER declaration wins and a reset above the animation it defeats is not coverage. The EARLIEST offset
+// is recorded, since a later reset cannot rescue what the earliest fails to cover.
 function reduceResetSelectors(css: string, rules: Rule[]): Map<string, number> {
 	const covered = new Map<string, number>();
 	for (const r of rules) {
@@ -407,9 +374,8 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		const spans = noPreferenceSpans(css);
 		const rules = ruleBlocks(css);
 		const resetSelectors = reduceResetSelectors(css, rules);
-		// The boundary class carries `"` and `'` so an inline `style="animation: …"` is seen: the char before
-		// `animation` there is a quote, which `^`, `;`, `{` and whitespace all miss. A quote boundary means
-		// the declaration is inline, which no wrapper or reset can cover, so it is reported directly.
+		// The boundary class carries `"` and `'` so an inline `style="animation: …"` is seen — a quote boundary
+		// means the declaration is inline, which no wrapper or reset can cover.
 		for (const m of css.matchAll(/(^|[;{"'`\s])(?:-(?:webkit|moz)-)?animation(-name)?:\s*([^;}]+)/g)) {
 			const value = m[3]!.trim();
 			if (/^none\b/.test(value)) continue; // the reset itself
@@ -421,8 +387,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 				continue;
 			}
 			const guarded = spans.some(([s, e]) => at >= s && at < e);
-			// Exempt only when the declaration's OWN selector has a reset that sits AFTER it, and a grouped
-			// owner `.a, .b` only if EVERY part is covered.
+			// Exempt only when the OWN selector's reset sits AFTER it; a grouped owner only if EVERY part is covered.
 			const owner = owningSelector(rules, at);
 			const reset =
 				owner !== null &&
@@ -432,9 +397,8 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 				});
 			if (!guarded && !reset) offenders.push(`${f}: unguarded animation: ${value.slice(0, 40)}`);
 		}
-		// `style:animation` is the same inline declaration, but the char before `animation` is the `:` of the
-		// `style:` prefix, which the boundary class misses. Same message, and VALUE-AGNOSTIC across all four
-		// spellings: pinning one quoted form and waving the expression form through is a narrower hole.
+		// `style:animation` puts a `:` before `animation`, which the boundary class misses. VALUE-AGNOSTIC across
+		// all four spellings: pinning one quoted form leaves the expression form a hole.
 		for (const m of css.matchAll(/style:animation(?:-name)?(?:=(?:"([^"]*)"|'([^']*)'|\{([^}]*)\}))?/g)) {
 			const value = (m[1] ?? m[2] ?? m[3] ?? '').trim();
 			if (/^none\b/.test(value) || /^'none'$|^"none"$/.test(value)) continue; // the reset itself
@@ -453,12 +417,9 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 				`${f}: animation in an inline style attribute (cannot honour Reduce Motion): <style-object write>`
 			);
 		}
-		// Svelte's own motion API — `transition:` / `in:` / `out:` / `animate:` — is unread by every CSS-declaration scan
-		// and is BANNED: it compiles to a runtime keyframes rule plus an inline animation, so the animated property list
-		// cannot be recovered from the call site (`slide` animates height/padding/margin/border, none composited) and the
-		// runtime never consults prefers-reduced-motion. The DIRECTIVE is rejected, not its properties, which do not exist
-		// in source. MARKUP ONLY with style= values blanked, so a compact inline `transition:transform` cannot be misread
-		// as one; a real directive survives the blanking.
+		// Svelte's `transition:`/`in:`/`out:`/`animate:` are BANNED: they compile to a runtime keyframes rule
+		// plus an inline animation, and the runtime never consults prefers-reduced-motion. MARKUP ONLY with
+		// style= values blanked, so a compact inline `transition:transform` is not misread as a directive.
 		if (f.endsWith('.svelte')) {
 			const markup = blankBalancedStyleBraces(
 				markupRegion(css)
@@ -474,19 +435,13 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 });
 
 /*
- * The utility-class arm. Every scan above reads a CSS DECLARATION or a Svelte DIRECTIVE, and a
- * Tailwind-style utility expresses the same motion with NEITHER — `class="transition-all"` puts no
- * `transition:` anywhere in source — so the moment utilities enter the tree the ban above silently stops
- * being enforced rather than failing, and a guard that stops biting must go red.
- *
- * ALLOWLIST, like the rest of the file: a `transition-x` utility is resolved to the properties it animates
- * and each looked up in COMPOSITED_PROPS, so an UNKNOWN key is an OFFENDER rather than a skip, and a
- * utility resolving to a real property outside the set reds and NAMES it — whose correct response is adding
- * the property to COMPOSITED_PROPS, never deleting this arm.
+ * The utility-class arm. `class="transition-all"` puts no `transition:` anywhere in source, so without a
+ * NAME ban the whole motion policy stops being enforced rather than failing. Each key is resolved against
+ * COMPOSITED_PROPS, so an unknown one is an OFFENDER; the response to a red is adding the property there.
  */
 
-// Tailwind's built-in `transition-*` keys plus the layout-hazard keys a config can mint. `all` resolves to
-// the pseudo-property `all`, which is never composited — that is how `transition-all` reds.
+// Built-in `transition-*` keys plus the layout-hazard keys a config can mint. `all` resolves to the
+// pseudo-property `all`, never composited — that is how `transition-all` reds.
 const UTILITY_TRANSITION_PROPS: Record<string, string[]> = {
 	// built-ins
 	'': ['color', 'background-color', 'border-color', 'opacity', 'box-shadow', 'transform', 'filter'],
@@ -510,13 +465,11 @@ const UTILITY_TRANSITION_PROPS: Record<string, string[]> = {
 // A motion utility of any family: `transition-*`, `animate-*`, and the timing families.
 const MOTION_UTILITY = /^(?:transition|animate|duration|ease|delay)(?:-[a-zA-Z0-9[\]./%_-]+)?$/;
 
-/** Judge ONE tokenised class list. `UNRESOLVED` is the sentinel the extractor pushes for an expression it
- *  could not read, and it is reported rather than dropped, which is the whole point. */
+/** Judge ONE tokenised class list. `UNRESOLVED` is the extractor's sentinel for an unreadable expression. */
 function utilityOffenders(tokens: string[]): string[] {
 	const out: string[] = [];
 	const motion = tokens.filter((t) => MOTION_UTILITY.test(t));
-	// A transition utility whose properties are ALL composited means the timing utilities beside it are
-	// tuning an allowed transition rather than being findings themselves.
+	// A fully-composited transition means the timing utilities beside it are tuning it, not findings.
 	const allowedTransition = motion.some((t) => {
 		if (!/^transition(-|$)/.test(t)) return false;
 		const key = t === 'transition' ? '' : t.slice('transition-'.length);
@@ -542,13 +495,11 @@ function utilityOffenders(tokens: string[]): string[] {
 			continue;
 		}
 		if (/^animate(-|$)/.test(t)) {
-			// No wrapper or reset can cover a keyframes animation applied from a class, so the UTILITY is
-			// rejected — the same argument as an inline `style="animation: …"`.
+			// No wrapper or reset can cover a keyframes animation applied from a class.
 			out.push(`utility \`${t}\` applies a keyframes animation that cannot honour Reduce Motion`);
 			continue;
 		}
-		// duration/ease/delay are inert alone and correct beside an allowed transition, so they are reported
-		// only when nothing in the list says WHAT they are timing.
+		// duration/ease/delay are inert alone; reported only when nothing in the list says WHAT they time.
 		if (!allowedTransition) out.push(`timing utility \`${t}\` with no resolvable transition property`);
 	}
 	return out;
@@ -563,10 +514,8 @@ function classTokens(value: string): string[] {
 		const expr = m[1]!;
 		const lits = [...expr.matchAll(/'([^']*)'|"([^"]*)"|`([^`$]*)`/g)].map((l) => l[1] ?? l[2] ?? l[3] ?? '');
 		for (const l of lits) out.push(...l.split(/\s+/).filter(Boolean));
-		// A CALL or CONCATENATION is the shape a utility list is composed with, so it must be readable or
-		// reported. A bare identifier or member access is a value from the component's own closed domain and
-		// is exempt by name; the whole-source net below keeps that honest, since a utility list assigned to
-		// such a variable is still a source literal.
+		// A CALL or CONCATENATION is how a utility list is composed, so it must be readable or reported. A bare
+		// identifier is a value from the component's own domain, exempt by name and kept honest by the net below.
 		const composed = /[(+]|\$\{/.test(expr);
 		if (composed && lits.length === 0) out.push('UNRESOLVED');
 		rest = rest.replace(m[0]!, ' ');
@@ -582,8 +531,7 @@ function classLists(markup: string): { where: string; tokens: string[] }[] {
 	for (const m of markup.matchAll(/\bclass=("([^"]*)"|'([^']*)')/g)) {
 		out.push({ where: 'class attribute', tokens: classTokens(m[2] ?? m[3] ?? '') });
 	}
-	// the whole-expression form — Tailwind's composition site. An expression yielding NO literal is
-	// UNRESOLVED, never skipped.
+	// the whole-expression form — Tailwind's composition site. No literal means UNRESOLVED, never skipped.
 	for (const m of markup.matchAll(/\bclass=\{([\s\S]*?)\}/g)) {
 		const expr = m[1]!;
 		const lits = [...expr.matchAll(/'([^']*)'|"([^"]*)"|`([^`$]*)`/g)].map((l) => l[1] ?? l[2] ?? l[3] ?? '');
@@ -603,14 +551,9 @@ test('no utility class expresses motion the declaration scans cannot see', () =>
 	expect(svelte.some((f) => f.includes(join('lib', 'tv')))).toBe(true);
 
 	/*
-	 * THE ONE NAMED EXEMPTION. A copied-in shadcn component computes its class list because `tailwind-variants` resolves
-	 * at runtime, so NO static extractor can read it and this arm reports every such component as UNRESOLVED — correct,
-	 * and unactionable, since satisfying it means hand-inlining every variant back into markup.
-	 *
-	 * It costs no COVERAGE, only the precise message: the net arm below greps every `.svelte` and `.ts`
-	 * source for the utility NAMES in any position, including inside a `tv()` variant string, which is
-	 * exactly where a copied component would carry `transition-all` (the stock Button ships it). Scoped to
-	 * `ui/**` by PATH, because anywhere else a computed class list is a place to hide.
+	 * THE ONE NAMED EXEMPTION, scoped to `ui/**` by PATH: a copied-in shadcn component computes its class list
+	 * through `tailwind-variants` at runtime, so every static extractor reports it as UNRESOLVED. It costs no
+	 * coverage, because the name net below greps `tv()` variant strings too — where the stock Button carries it.
 	 */
 	const UI_COPY_IN = join('lib', 'components', 'ui') + sep;
 	const offenders: string[] = [];
@@ -630,19 +573,16 @@ test('no utility class expresses motion the declaration scans cannot see', () =>
 });
 
 test('no motion utility name appears anywhere in source, in any position', () => {
-	// THE NET, and the reason the extractor above may take a named exemption: a class list can be composed
-	// anywhere — a `.ts` constant, a `classList.add`, a component prop — and no extractor sees every
-	// spelling, while what IS decidable is that these NAMES do not occur in source at all.
+	// THE NET, and why the extractor above may take a named exemption: a class list can be composed in a
+	// `.ts` constant or a `classList.add`, but the NAMES not occurring in source at all is decidable.
 	const netFiles = [...svelteFiles(at('src/lib')), ...svelteFiles(at('src/routes')), ...tsSources(at('src/lib'))];
 	expect(netFiles.length).toBeGreaterThanOrEqual(40); // @nvf-floor netFiles.length
 
-	// Only unambiguous names. A bare `duration-`/`ease-` is deliberately out: those are ordinary English
-	// fragments the extractor judges in context.
+	// Only unambiguous names: a bare `duration-`/`ease-` is ordinary English the extractor judges in context.
 	const LAYOUT_KEYS = Object.keys(UTILITY_TRANSITION_PROPS).filter(
 		(k) => k !== '' && k !== 'none' && !UTILITY_TRANSITION_PROPS[k]!.every((p) => COMPOSITED_PROPS.has(p))
 	);
 	const NET = new RegExp(String.raw`\b(?:transition-(?:${LAYOUT_KEYS.join('|')})|animate-[a-z][a-zA-Z0-9-]*)\b`, 'g');
-	// The net must have something to look for.
 	expect(LAYOUT_KEYS).toContain('all');
 	expect(LAYOUT_KEYS.length).toBeGreaterThanOrEqual(8);
 
@@ -656,9 +596,8 @@ test('no motion utility name appears anywhere in source, in any position', () =>
 });
 
 test('stripAllComments hides a utility named in prose and keeps one written in code', () => {
-	// The two name-scanning arms read through the stripper, so a component may DOCUMENT that it removed a
-	// motion utility. That is only safe while the stripper touches comments and nothing else: widened into
-	// markup or a class attribute, both arms go quietly green on a real offender.
+	// The name-scanning arms read through the stripper, so a component may DOCUMENT a removed utility —
+	// safe only while the stripper touches comments and nothing else.
 	const inComment = '<!-- we deleted transition-all here -->\n<div class="grid"></div>';
 	expect(stripAllComments(inComment)).not.toContain('transition-all');
 	expect(stripAllComments(inComment)).toContain('grid');

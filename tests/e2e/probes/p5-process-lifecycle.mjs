@@ -1,12 +1,7 @@
 /*
- * P5 — PROCESS LIFECYCLE, THE UNHAPPY PATHS.
- *
- * Each scenario below wipes $SCRATCH, boots a FRESH seeded server on $PORT with its own phone WS
- * observer and its own fake worker, drives one action, and reports what actually reached a phone / TV /
- * library surface. Fault-injection env vars: docs/E2E.md#fault-injection
- *
- * Findings carry a severity and path:line evidence, kept separate from ENVIRONMENT LIMITS that make a
- * proof impossible on this box. Exit codes: docs/E2E.md#exit-codes-and-what-ran-means
+ * P5 — PROCESS LIFECYCLE, THE UNHAPPY PATHS. Each scenario wipes $SCRATCH and boots a FRESH seeded server
+ * on $PORT with its own phone WS observer and its own fake worker. Fault-injection env vars:
+ * docs/E2E.md#fault-injection
  *
  *   PORT=5225 bun tests/e2e/probes/p5-process-lifecycle.mjs
  */
@@ -16,9 +11,6 @@ import { join } from 'node:path';
 import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
- * Protocol- and API-shaped values stay loose and are cast at the call site; the strong typing is on
- * this probe's own control flow.
- *
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
  * @typedef {{ severity: Severity, title: string, detail?: string, evidence?: string[] }} Finding
  * @typedef {import('node:child_process').ChildProcess} Child

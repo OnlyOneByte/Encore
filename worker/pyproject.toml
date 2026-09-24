@@ -1,12 +1,6 @@
-# Static analysis for the Encore worker (container 2). The TS half of the monorepo runs
-# `strict: true` + `noUncheckedIndexedAccess`; this file gives the Python half a linter,
-# formatter and type checker so the two sides are gated to a comparable bar.
-#
-# `ruff` is one binary that replaces flake8 + black + isort: `ruff check` lints, `ruff format`
-# formats. `mypy` type-checks the annotations that were already present but unchecked.
-# Both are pinned in requirements-test.txt — NOT requirements-dev.txt, which this line named for a long
-# time while that file held only the heavy ML runtime set and never mentioned either tool. See the note
-# at the top of requirements-test.txt for what that cost.
+# Static analysis for the Encore worker (container 2), gated to a bar comparable to the TS half's
+# `strict: true` + `noUncheckedIndexedAccess`. `ruff` is one binary replacing flake8 + black + isort;
+# `mypy` type-checks the annotations. Both are pinned in requirements-test.txt.
 
 [tool.ruff]
 line-length = 110
@@ -16,11 +10,9 @@ line-length = 110
 select = ["E", "F", "I", "B", "UP", "TID"]
 
 [tool.ruff.lint.flake8-tidy-imports]
-# TID252 bans relative imports. The `src` package is LOAD-BEARING relative: the worker runs as
-# `python -m src.dial_home` (Dockerfile:87) so `from . import protocol` is the correct intra-package
-# form and forcing `src.*` absolute would contradict the container's documented entrypoint. Tests,
-# by contrast, already import `from src.xxx import ...` (absolute) and historically carried a dead
-# `sys.path.insert(...)` per file — so the ban is scoped to tests below.
+# TID252 bans relative imports, but the `src` package is LOAD-BEARING relative: the worker's entrypoint
+# is `python -m src.dial_home` (worker/Dockerfile CMD), so `from . import protocol` is the correct
+# intra-package form. Tests already import `src.*` absolutely, so the ban is scoped to them below.
 ban-relative-imports = "all"
 
 [tool.ruff.lint.per-file-ignores]
@@ -33,10 +25,9 @@ files = ["src"]
 warn_unused_ignores = true
 warn_return_any = true
 
-# The ML stack ships no type stubs (torch/whisperx/etc. are C-extension or untyped). These are
-# not our code and stubbing them is out of scope; declare the absence per-module so a genuine
-# type error in OUR code is never drowned by "cannot find stub" noise. Anything imported here
-# is a third-party dependency from requirements.txt, never an Encore module.
+# The ML stack ships no type stubs (C-extension or untyped). Declare the absence per-module so a genuine
+# type error in OUR code is never drowned by "cannot find stub" noise. Every name here is a third-party
+# dependency from requirements.txt, never an Encore module.
 [[tool.mypy.overrides]]
 module = [
     "torch",

@@ -1,9 +1,6 @@
-<!--
-  The registry's appearance is REPLACED by Encore's `.encore-field` look, in scoped CSS rather than
-  utilities. The two hard floors are shared with input.svelte: min-height var(--tap), and a 16px
-  font-size, because iOS Safari auto-zooms on focusing any control under 16px and never zooms back.
-  See docs/FRONTEND.md#shared-components.
--->
+<!-- The registry's appearance is REPLACED by Encore's `.encore-field` look, in scoped CSS rather than utilities. The
+  two hard floors are shared with input.svelte: min-height var(--tap), and a 16px font-size, because iOS Safari auto-zooms
+  on focusing any control under 16px and never zooms back. See docs/FRONTEND.md#shared-components. -->
 <script lang="ts">
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { cn, type WithElementRef } from '$lib/utils.js';
@@ -50,11 +47,11 @@
 		width: 100%;
 		box-sizing: border-box;
 		appearance: none;
-		/* The right padding is composed from the chevron's own inset, size and a gap, so moving the mark
-		   moves the padding with it. A literal smaller than that band draws the label THROUGH the glyph. */
+		/* The right padding is composed from the chevron's own inset, size and a gap, so moving the mark moves the padding
+			   with it. A literal smaller than that band draws the label THROUGH the glyph. */
 		padding: 9px calc(var(--space-md) + 1rem + var(--space-xs)) 9px var(--space-md);
-		/* A two-up settings row at 390px gives ~106px of text box, which the longest option in two of these
-		   lists exceeds outright, so the ellipsis is the fallback no padding can replace. */
+		/* A two-up settings row at 390px gives ~106px of text box, which the longest option exceeds, so the ellipsis is the
+			   fallback no padding can replace. */
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		overflow: hidden;

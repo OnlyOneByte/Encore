@@ -1,4 +1,4 @@
-// Durable catalog behind the runtime `mediaById` Map: write-behind on upsert, boot-hydrate on startup. `requestProcess` dedupes here to avoid re-processing separated stems.
+// Write-behind on upsert, boot-hydrate on startup. See docs/SERVER.md#media-storage-and-paths.
 import { eq, and, desc, isNotNull, inArray, type SQL } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
@@ -24,9 +24,9 @@ const toRow = (m: Media): MediaRow => ({
 	annotationConfidence: m.annotation?.confidence ?? null,
 	instrumentalRef: m.instrumentalRef ?? null,
 	vocalsRef: m.vocalsRef ?? null,
-	// Index copy of the sidecar's authoritative guideMixRef; null falls back to the legacy two-element playback path. See docs/ARCHITECTURE.md §6.
+	// Index copy; null falls back to the legacy two-element playback path.
 	guideMixRef: m.guideMixRef ?? null,
-	// Index copy of the sidecar's authoritative SongProfile. Null means "stems never ran" — distinct from an all-nulls "ran, found nothing" profile; the gate needs both.
+	// Null means "stems never ran", distinct from an all-nulls "ran, found nothing". The gate needs both.
 	songProfile: m.songProfile ? JSON.stringify(m.songProfile) : null,
 	lyricsRef: m.lyricsRef ?? null,
 	// JSON blob, not a table: nothing queries inside the set.
@@ -39,7 +39,7 @@ const toRow = (m: Media): MediaRow => ({
 	titleCanonical: m.titleCanonical ?? null
 });
 
-/** Tally values into browse-rail order: most songs first, ties alphabetical. Ties break on a plain byte comparison, not `localeCompare`, to match SQLite's BINARY collation used elsewhere. */
+/** Most songs first, ties alphabetical. Ties break on a BYTE comparison, not `localeCompare`, to match SQLite's BINARY collation. */
 function facetCounts(values: string[]): Array<{ value: string; count: number }> {
 	const counts = new Map<string, number>();
 	for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
@@ -48,7 +48,7 @@ function facetCounts(values: string[]): Array<{ value: string; count: number }> 
 		.sort((a, b) => b.count - a.count || (a.value < b.value ? -1 : a.value > b.value ? 1 : 0));
 }
 
-/** Parse the stored candidate JSON, tolerating null/garbage — a corrupt blob must not brick a hydrate. */
+/** Tolerates null/garbage: a corrupt blob must not brick a hydrate. */
 function parseCandidates(raw: string | null): LyricsCandidate[] | undefined {
 	if (!raw) return undefined;
 	try {
@@ -59,7 +59,7 @@ function parseCandidates(raw: string | null): LyricsCandidate[] | undefined {
 	}
 }
 
-/** Tolerant JSON.parse for song_profile: returns `null` on garbage rather than throwing, which normalizeSongProfile maps to EMPTY_SONG_PROFILE so a corrupt blob degrades instead of crashing boot. */
+/** `null` on garbage rather than throwing, which normalizeSongProfile maps to EMPTY_SONG_PROFILE — so a corrupt blob degrades instead of crashing boot. */
 function safeParse(raw: string): unknown {
 	try {
 		return JSON.parse(raw);
@@ -80,7 +80,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	stemStatus: r.stemStatus,
 	lyricsStatus: r.lyricsStatus ?? undefined,
 	mbid: r.mbid ?? undefined,
-	// Restored only as a COMPLETE pair; a lone source or confidence would let the never-regress check compare against nothing. See docs/ARCHITECTURE.md §6.
+	// Restored only as a COMPLETE pair: a lone half lets the never-regress check compare against nothing.
 	annotation:
 		r.annotationSource && r.annotationConfidence
 			? {
@@ -92,7 +92,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	vocalsRef: r.vocalsRef ?? undefined,
 	// A NULL column means no mix — leave it UNDEFINED, which guidePath() reads as the two-element path.
 	guideMixRef: r.guideMixRef ?? undefined,
-	// NULL → UNDEFINED (gate reads as still-processing); a present string is untrusted and re-normalized here, degrading any bad half to EMPTY_SONG_PROFILE instead of throwing.
+	// NULL → UNDEFINED, which the gate reads as still-processing. A present string is untrusted and re-normalized here, degrading a bad half rather than throwing.
 	songProfile: r.songProfile ? normalizeSongProfile(safeParse(r.songProfile)) : undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
 	lyricsCandidates: parseCandidates(r.lyricsCandidates),
@@ -104,15 +104,12 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 });
 
 /**
- * THE readiness definition for the library, both browse filters, and both browse rails — every reader
- * resolves through this (or through `readyTagged`, which walks this set), so "ready" cannot be answered
- * two different ways. Two halves: the SQL `WHERE` is a cheap NARROWING (`stemStatus = 'ready' AND
- * instrumentalRef NOT NULL`), not the predicate — `readyToSing` (the gate table in `$lib/contract`)
- * makes the final call because it also knows the lyrics gate, so a song mid-align can pass the
- * narrowing and still not be finished. Treating the narrowing as the whole predicate is the push-down
- * defect: callers must narrow in SQL and decide in the gate table, never skip the gate. `extra` narrows
- * FURTHER in SQL (an index push-down for callers like the artist filter, and `readyTagged`'s id set)
- * but cannot relax the gate, which always runs after it. Newest-first by id.
+ * THE readiness definition for the library, both browse filters and both browse rails, so "ready" cannot be
+ * answered two ways. TWO HALVES: the SQL `WHERE` is a cheap NARROWING and never the predicate — `readyToSing`
+ * makes the final call, because only it knows the lyrics gate, so a song mid-align passes the narrowing and
+ * is still not finished. Callers must narrow in SQL and DECIDE in the gate table. `extra` narrows FURTHER in
+ * SQL — the artist filter's index push-down, and `readyTagged`'s id set — but cannot relax the gate, which
+ * always runs after it.
  */
 function readySongs(db: DB, extra?: SQL): Media[] {
 	const narrowing = and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef));
@@ -127,18 +124,15 @@ function readySongs(db: DB, extra?: SQL): Media[] {
 }
 
 /**
- * Every (ready song, tag) pair, newest-first — `byTag` and `tagFacets` both read this, so a chip's
- * count is the length of the list it opens BY CONSTRUCTION. Readiness is not re-asked: membership of
- * `readySongs()` IS the gate. `tag` narrows in SQL on the `media_tags` `byKindValue` index.
+ * `byTag` and `tagFacets` both read this, so a chip's count is the length of the list it opens BY
+ * CONSTRUCTION. Membership of `readySongs()` IS the gate; readiness is not re-asked.
  *
- * BOTH sides narrow in SQL: the tag rows name the only media ids that can produce a pair, passed
- * straight back as `readySongs`'s `extra` so the media read is `WHERE id IN (…)` instead of the whole
- * ready library plus a full gate pass thrown away by the join (900 rows read at 4.42 ms/call to return
- * 1, versus 1 row at 0.39 ms). `extra` narrows and cannot relax the gate, which still runs after it.
+ * BOTH sides narrow in SQL: the tag rows name the only ids that can produce a pair, passed back as
+ * `readySongs`'s `extra`, so the media read is `WHERE id IN (…)` rather than the whole ready library plus a
+ * gate pass the join throws away (900 rows read at 4.42 ms/call to return 1, versus 1 row at 0.39 ms).
  *
- * The empty case needs no branch: `inArray(media.id, [])` compiles to `false`, so nothing-tagged
- * already answers `[]`. SKIPPING the `extra` when `byMedia` is empty would restore the whole-library
- * read for exactly the query that needs no rows at all.
+ * The empty case needs NO branch: `inArray(media.id, [])` compiles to `false`. SKIPPING the `extra` when
+ * `byMedia` is empty would restore the whole-library read for the one query that needs no rows at all.
  */
 function readyTagged(db: DB, tag?: string): Array<{ song: Media; tag: string }> {
 	const rows = db
@@ -167,16 +161,16 @@ export class MediaRepository {
 		this.#onPersist = onPersist;
 	}
 
-	/** Idempotent insert/update on every artifact flip. DB is the INDEX; `meta/<id>.json` is authoritative,
-	 *  so every write also refreshes the sidecar — fire-and-forget, since it must never delay or fail the in-memory flip the room is waiting on. */
+	/** The DB is the INDEX and `meta/<id>.json` is authoritative, so every write refreshes the sidecar —
+	 *  fire-and-forget, since it must never delay the in-memory flip the room is waiting on. */
 	upsert(m: Media): void {
 		const row = toRow(m);
 		this.#db.insert(media).values(row).onConflictDoUpdate({ target: media.id, set: row }).run();
 		this.#onPersist?.(m);
 	}
 
-	/** Hard-deletes the row AND its tags in ONE transaction (bun:sqlite is synchronous, so either both land or neither) — for entry-delete. Caller must unlink the authoritative sidecar
-	 *  BEFORE calling this (`deleteMediaEntirely`), or a rescan rebuilds the row. Idempotent on an absent id. */
+	/** Row AND tags in ONE transaction, so either both land or neither. The caller MUST unlink the
+	 *  authoritative sidecar BEFORE calling this, or a rescan rebuilds the row. */
 	remove(mediaId: string): void {
 		this.#db.transaction((tx) => {
 			tx.delete(mediaTags).where(eq(mediaTags.mediaId, mediaId)).run();
@@ -184,28 +178,26 @@ export class MediaRepository {
 		});
 	}
 
-	/** One media by id, or undefined. */
 	byId(id: string): Media | undefined {
 		const row = this.#db.select().from(media).where(eq(media.id, id)).all()[0];
 		return row ? fromRow(row) : undefined;
 	}
 
-	/** All persisted media — used to hydrate the runtime `mediaById` catalog on boot. */
+	/** Hydrates the runtime `mediaById` catalog on boot. */
 	all(): Media[] {
 		return this.#db.select().from(media).all().map(fromRow);
 	}
 
-	/** The saved-karaoke library: songs that are FINISHED (every process gate satisfied), so re-queueing one skips the worker. Newest-first by id. Deliberately a one-liner over
-	 *  `readySongs` — "finished" has exactly one definition, so the library, browse filters and browse rails cannot disagree. */
+	/** Songs that are FINISHED, so re-queueing one skips the worker. Deliberately a one-liner over
+	 *  `readySongs`, so "finished" keeps exactly one definition. */
 	listReady(): Media[] {
 		return readySongs(this.#db);
 	}
 
-	// Only READY songs are browsable, or the library would drown in every search result ever materialized.
+	// READY only, or the library drowns in every search result ever materialized.
 
-	/** Mirrors canonical metadata into the index. `title`/`album`/`year` are OPTIONAL and skipped when
-	 *  `undefined` — `undefined` means "do not touch", an explicit `null` still clears. Without this, a
-	 *  caller passing null for "no opinion" (boot browse-sync) would re-null real values every restart. */
+	/** `undefined` means "do not touch" and is SKIPPED; an explicit `null` still clears. Without the
+	 *  distinction, a caller passing null for "no opinion" re-nulls real values every restart. */
 	setCanonical(
 		mediaId: string,
 		c: { artist: string | null; title?: string | null; album?: string | null; year?: number | null }
@@ -222,8 +214,8 @@ export class MediaRepository {
 			.run();
 	}
 
-	/** Idempotent replace of all tags of one kind. Delete + re-insert run in ONE transaction (bun:sqlite
-	 *  is synchronous) — otherwise a crash mid-way leaves every tag of this kind deleted and none back. */
+	/** Delete + re-insert in ONE transaction, or a crash mid-way leaves every tag of this kind deleted and
+	 *  none written back. */
 	setTags(mediaId: string, kind: 'genre' | 'tag' | 'mood', values: string[]): void {
 		const clean = [...new Set(values.map((v) => v.trim().toLowerCase()).filter(Boolean))];
 		this.#db.transaction((tx) => {
@@ -248,8 +240,8 @@ export class MediaRepository {
 			.map((r) => r.value);
 	}
 
-	/** Ready songs grouped by canonical artist, most songs first. NULL artists (low-confidence parse)
-	 *  are excluded. Counts the READY set, not SQL `count(*)` — the gate table isn't visible to SQL. */
+	/** NULL artists (a low-confidence parse) are excluded. Counts the READY set, never SQL `count(*)` —
+	 *  the gate table is not visible to SQL. */
 	artistFacets(): Array<{ artist: string; count: number }> {
 		const artists = readySongs(this.#db, isNotNull(media.artistCanonical))
 			.map((m) => m.artistCanonical)
@@ -257,24 +249,24 @@ export class MediaRepository {
 		return facetCounts(artists).map(({ value, count }) => ({ artist: value, count }));
 	}
 
-	/** Ready songs by canonical artist (exact match on the canonical value the facet returned). */
+	/** Exact match on the canonical value the facet returned. */
 	byArtist(artist: string): Media[] {
 		return readySongs(this.#db, eq(media.artistCanonical, artist));
 	}
 
-	/** Ready songs grouped by descriptive `tag`, most songs first — reads the same pairs `byTag` reads, so the count and filter cannot disagree; tags are pre-trimmed/lower-cased at the write boundary. */
+	/** Reads the same pairs `byTag` reads, so the count and the filter cannot disagree. */
 	tagFacets(): Array<{ tag: string; count: number }> {
 		return facetCounts(readyTagged(this.#db).map((p) => p.tag)).map(({ value, count }) => ({ tag: value, count }));
 	}
 
-	/** Ready songs carrying a tag (exact match); narrows on the `media_tags` `byKindValue` index and shares readiness with the unfiltered library, so a mid-align row is excluded everywhere alike. */
+	/** Shares readiness with the unfiltered library, so a mid-align row is excluded everywhere alike. */
 	byTag(tag: string): Media[] {
 		return readyTagged(this.#db, tag).map((p) => p.song);
 	}
 }
 
-/** Boot: seeds the in-memory `mediaById` Map (rotation/hub/worker's hot read path) from the durable store before the first client syncs, or a queue entry can reference an unresolvable media.
- *  Existing runtime entries win — durable rows must never clobber a live object already referenced. */
+/** Runs BEFORE the first client syncs, or a queue entry can reference an unresolvable media. Existing
+ *  runtime entries WIN: a durable row must never clobber a live object already referenced. */
 export function hydrateMediaCatalog(rows: Media[], mediaById: Map<string, Media>): number {
 	let added = 0;
 	for (const m of rows) {

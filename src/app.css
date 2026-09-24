@@ -1,31 +1,23 @@
-/*
- * Tailwind v4 in three parts, Preflight deliberately omitted — a one-line `@import 'tailwindcss'` would
- * pull the reset and restyle the hand-written tree. See docs/FRONTEND.md#styling-and-the-design-system.
- */
+/* Tailwind in three parts, never the one-line `@import 'tailwindcss'`: that pulls Preflight and restyles a
+   tree that predates it. See docs/FRONTEND.md#tailwind-v4-with-preflight-off. */
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities) source(none);
 
-/* `source(none)` plus ONE `@source` over the vendored components: auto-detection mints a utility from any
-   bare token anywhere in the project. `tailwind-toolchain.test.ts` pins the list. */
+/* `source(none)` plus ONE `@source`: auto-detection mints a utility from any bare token anywhere in the tree. */
 @source '../src/lib/components/ui/**/*.svelte';
 
-/* A theme is a pure token swap on these custom properties: components read var(--*), never a literal. */
-
 :root {
-	/* surfaces */
 	--bg: #0b0b12;
 	--bg2: #12121d;
 	--card: #1a1a28;
 	--card2: #212133;
 	--line: #2a2a3e;
 
-	/* ink */
 	--ink: #f3f3fb;
 	--ink-dim: #9a9ab5;
 
-	/* accents. A registry stop, literal because CSS cannot import the JSON; `colour-tokens.test.ts` asserts
-	   this and --on-accent stay a certified PAIR. See docs/FRONTEND.md#tokens-and-which-may-never-carry-text. */
+	/* A registry stop, literal because CSS cannot import the JSON; it and --on-accent are a certified PAIR. */
 	--accent: #7254e6;
 	/* Also the lyrics "sing this now" cue, and `colors.ts` derives ACCENT2_HUE from it. */
 	--accent2: #ff5cae;
@@ -36,38 +28,28 @@
 	/* The only ink permitted on --accent, and NOT a constant: it is this stop's certified `on_fill`. */
 	--on-accent: #ffffff;
 
-	/* Surfaces tinted toward the accent, for a row that is processing or is yours. */
 	--card-tint: #201a2e;
 	--card-tint2: #2a2440;
 	--line-tint: #3a2f55;
-	/* A line that must read as an edge rather than a hairline (grips, dashed affordances). */
 	--line-strong: #3a3a55;
-	/* Status surfaces: a tinted background + border per status colour, inked with --ok / --warn so a surface
-	   cannot drift from the colour it tints. */
 	--ok-bg: #14322a;
 	--ok-line: #1d5344;
 	--warn-bg: #33260f;
 	--warn-line: #5a441a;
-	/* Accent as INK, and it must stay a DISTINCT token: --accent itself is unreadable as small text.
-	   Certified against --card, while its read sites paint --card-tint2 — a gap `colour-tokens.test.ts` pins. */
+	/* Accent as INK, and it must stay a DISTINCT token: --accent itself is unreadable as small text. */
 	--accent-ink: #c4a9ff;
-	/* The inner stop of the stage's radial background. */
 	--stage-glow: #1b1430;
-	/* An inert track behind a progress fill. */
 	--track-bg: #2c2c44;
-	/* Failure. NOT --accent2: pink is also a valid singer colour, so an error drawn in it reads as
-	   decoration rather than as something being wrong. */
+	/* Failure. NOT --accent2: pink is also a valid singer colour, so an error drawn in it reads as decoration. */
 	--danger: #ff6b6b;
 	--danger-ink: #ffb1b1;
 	--danger-bg: #2a1b22;
 	--danger-line: #5a2b39;
-	/* Focus. One token so every surface rings identically. */
 	--focus: #9d7cff;
 
-	/* A black wash to lift text off a photo or video. One step only. */
 	--scrim-strong: rgba(0, 0, 0, 0.85);
 
-	/* shape + depth. A sixth radius value is a bug, not a decision. */
+	/* A sixth radius value is a bug, not a decision. */
 	--radius: 18px;
 	--radius-sm: 12px;
 	--radius-md: 16px;
@@ -76,20 +58,16 @@
 	--radius-pill: 999px;
 	--shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
 
-	/* Minimum touch target. `tests/support/src/scan.ts` parses THIS declaration for the number the touch
-	   guards compare against, so a control must express var(--tap) and never the literal. */
+	/* `tests/support/src/scan.ts` parses THIS declaration, so a control must express var(--tap) and never the literal. */
 	--tap: 44px;
 
-	/* layout */
 	--max-w: 480px;
 
-	/* A route picks a ROLE, never a number: --measure-grid for a surface that WANTS the shell width,
-	   --measure-prose for one where line length is the thing being protected. */
+	/* A route picks a ROLE, never a number: --measure-grid wants the shell width, --measure-prose protects line length. */
 	--measure-grid: var(--max-w);
 	--measure-prose: 560px;
 
-	/* NAMED, NOT NUMBERED, and load-bearing: a `--spacing-2` in the bridge below would make every copied-in
-	   `p-2` resolve to 2px instead of 8px. */
+	/* NAMED, NOT NUMBERED: a `--spacing-2` in the bridge below would make every copied-in `p-2` resolve to 2px. */
 	--space-3xs: 2px;
 	--space-2xs: 4px;
 	--space-xs: 6px;
@@ -101,8 +79,8 @@
 	--space-3xl: 18px;
 	--space-4xl: 20px;
 
-	/* PHONE TYPE LADDER, rem as a correctness requirement (SC 1.4.4). Form controls do NOT use it — they take
-	   their own 16px floor, because iOS zooms a focused sub-16px field and never zooms back. */
+	/* rem as a correctness requirement (SC 1.4.4). Form controls do NOT use this ladder — they take their own
+	   16px floor, because iOS zooms a focused sub-16px field and never zooms back. */
 	--ph-text-2xs: 0.68rem;
 	--ph-text-xs: 0.75rem;
 	--ph-text-sm: 0.8rem;
@@ -111,37 +89,29 @@
 	--ph-text-lg: 1.1rem;
 	--ph-text-xl: 1.25rem;
 	--ph-text-2xl: 1.5rem;
-	/* A display step: /stats's headline figure, which is the number the page exists to show, not a heading. */
 	--ph-text-3xl: 2.6rem;
 
-	/*
-	 * LINE HEIGHT — unitless so each resolves against the element's own font-size, which is what lets one
-	 * scale serve both type ladders. A px line-height breaks that pairing the moment the type scales.
-	 */
+	/* Unitless, so each resolves against the element's own font-size, which is what lets one scale serve both ladders. */
 	--lh-none: 1;
 	--lh-tight: 1.1;
 	--lh-snug: 1.25;
 	--lh-normal: 1.45;
 	--lh-loose: 1.6;
 
-	/* MOTION — durations only, and a duration token is NOT a reduced-motion mechanism. --motion-tick is a
-	   PERIOD, not a transition. See docs/FRONTEND.md#motion-in-component-css. */
+	/* A duration token is NOT a reduced-motion mechanism, and --motion-tick is a PERIOD. See docs/FRONTEND.md#motion-in-component-css. */
 	--motion-fast: 0.12s;
 	--motion-base: 0.25s;
 	--motion-slow: 0.4s;
 	--motion-tick: 1s;
 
-	/* BREAKPOINTS — `design-system.test.ts` asserts every `@media` width literal is a MEMBER of this list. The
-	   two --max-w preludes below keep px literals, because a media query is evaluated before the cascade and
-	   cannot read a custom property. --bp-320 is a declared SC 1.4.10 floor with no branch. */
+	/* `design-system.test.ts` asserts every `@media` width literal is a MEMBER of this list; --bp-320 has no branch. */
 	--bp-320: 320px;
 	--bp-xs: 380px;
 	--bp-sm: 520px;
 	--bp-md: 768px;
 	--bp-lg: 1200px;
 
-	/* PAINT ORDER — TWO LADDERS, because the same integer meant different things in two stacking worlds.
-	   Sharing a tier is legal only where the layers are mutually exclusive by state. */
+	/* TWO LADDERS: sharing a tier is legal only where the layers are mutually exclusive by state. */
 	--z-tv-bg: 0;
 	--z-tv-video: 1;
 	--z-tv-video-active: 2;
@@ -153,48 +123,32 @@
 	--z-tv-affordance: 10;
 	--z-header: 1;
 	/* A row lifted out of its list while dragged: above its siblings so the next row's surface cannot clip it
-	   mid-travel, below every page-level chrome tier so it never paints over a toast or the dock. --z-dock's
-	   wide margin above it is load-bearing, not slack — the toasts must stay reachable mid-drag. */
+	   mid-travel, below every page chrome tier. --z-dock's wide margin above it keeps toasts reachable mid-drag. */
 	--z-row-lifted: 3;
-	/* A band control above the band's own grab-handle hit box. A POSITIONED pseudo-element outranks a later
-	   sibling that establishes no stacking context, so DOM order cannot settle this and both tiers are named. */
+	/* A POSITIONED pseudo-element outranks a later sibling that establishes no stacking context, so both are named. */
 	--z-band-control: 2;
 	--z-dock: 30;
 
-	/*
-	 * TV / STAGE SCALE. A separate scale because the stage is read from three metres. Global rather than
-	 * /tv-scoped so the same components size correctly in the gallery; the ROOT that gives these rems their px
-	 * is what /tv scopes.
-	 */
-	/* env(safe-area-inset-*) is specified for NON-RECTANGULAR displays, so a rectangular TV reports 0 and the
-	   px/vw terms do the work. The 5vw / 6vh floors are the ratified action-safe margins. */
+	/* A separate scale, read from three metres. Global rather than /tv-scoped so the gallery sizes it too; /tv scopes the ROOT. */
+	/* env(safe-area-inset-*) is specified for NON-RECTANGULAR displays, so a rectangular TV reports 0 and the floors work. */
 	--tv-safe-x: max(env(safe-area-inset-left), env(safe-area-inset-right), 48px, 5vw);
 	--tv-safe-y: max(env(safe-area-inset-top), env(safe-area-inset-bottom), 40px, 6vh);
-	/*
-	 * TV TYPE LADDER — rem off ONE root floor, and THE ROOT CARRIES THE ONLY VIEWPORT TERM: a second vh term
-	 * here multiplies the panel twice. `stage-scale.test.ts` pins that, and that no TV font-size is a px
-	 * literal. The geometry tokens below are the named exemption, because they size boxes rather than type.
-	 */
-	/* THE REEL. Every row uses this ONE size, differentiated by colour: the reel derives its scroll bias from
-	   a row height, so a second tier makes that bias wrong for an asymmetric linesBefore/After. */
+	/* rem off ONE root floor, and THE ROOT CARRIES THE ONLY VIEWPORT TERM: a second vh term here multiplies twice. */
+	/* THE REEL. Every row uses this ONE size, differentiated by colour: the reel derives its scroll bias from a
+	   row height, so a second tier makes that bias wrong for an asymmetric linesBefore/After. */
 	--tv-lyric: 3.121rem;
 	/* The floor of this ladder: any lower and the composited contrast of --ink-dim breaks. */
 	--tv-small: 0.93rem;
-	/* eyebrow labels. */
 	--tv-eyebrow: 0.93rem;
-	/* key, clock and other edge metadata — the root itself. */
 	--tv-label: 1rem;
-	/* song titles, and the corner join URL. */
 	--tv-body: 1.132rem;
 	/* who is singing, and the attract panel's join URL — one unbreakable token on one line. */
 	--tv-name: 1.509rem;
 	/* An idle join-URL tier, declared but unread; a well-formed rung `stage-scale.test.ts` enumerates. */
 	--tv-joinurl: 3.02rem;
-	/* the idle headline and the ordinary takeover hero. */
 	--tv-hero: 3.567rem;
 	/* THE RATIFIED TV STATES: the no-layout-shift phrase box is --tv-phrase × --tv-phrase-lines, and "the room
-	   code is the largest element on the attract screen" is a claim about the ORDERING of these tokens —
-	   `tv-ratified-states.test.ts` pins both. */
+	   code is the largest element on the attract screen" is a claim about the ORDERING of these four tokens. */
 	/* The rotating attract phrase, the size the ≤24-char admission rule was measured at. */
 	--tv-phrase: 2.881rem;
 	/* Lines the phrase box always reserves. Unitless, so it is not a length the viewport-term scan sees. */
@@ -203,44 +157,32 @@
 	--tv-code: 3.29rem;
 	/* "Next up" names WHO to look at, so the singer out-sizes the ordinary takeover hero. */
 	--tv-takeover-name: 4.527rem;
-	/* The hero join QR, in vmin so it grows with the panel and stays square on any aspect ratio; the floor
-	   keeps it scannable at 720p. */
-	--tv-qr: clamp(300px, 26vmin, 460px);
 	/* GEOMETRY (boxes, not type) — the named exemption to the "no viewport term" rule, may carry vw/vmin. */
-	/* `clamp(floor, Nvw, ceiling)` rather than `min(px, vw)`, so the panel grows on a 4K stage instead of
-	   freezing while the vh-scaled type doubles. The right panel's floor clears the longest LAN address at
-	   --tv-name plus overscan padding, which is what lets the URL keep its fixed budget with no font escape. */
+	/* `clamp(floor, Nvw, ceiling)` rather than `min(px, vw)`, so the panel grows on a 4K stage instead of freezing
+	   while the vh-scaled type doubles. The right panel's floor clears the longest LAN address at --tv-name. */
 	--tv-attract-left: clamp(560px, 44vw, 1400px);
 	--tv-attract-right: clamp(482px, 37.5vw, 1440px);
-	/* The attract panel's own QR, not the --tv-qr hero. */
+	/* THE join QR, on the attract panel and the lobby hero alike. vmin so it grows with the panel and stays
+	   square on any aspect ratio; the floor keeps it scannable at 720p. */
 	--tv-attract-qr: clamp(190px, 16vmin, 300px);
-	/* The takeover's family-coloured left border: one token so Next-up / Still-processing / Skipping share
-	   the exact stripe width. The COLOUR is per-state. */
+	/* One token so Next-up / Still-processing / Skipping share the exact stripe width. The COLOUR is per-state. */
 	--tv-takeover-border: 14px;
-	/* The still-processing progress bar geometry (bounded 3-step). */
 	--tv-process-bar-w: min(760px, 42vw);
 	--tv-process-bar-h: 14px;
-	/* Horizontal clearance the lobby roster strip keeps from the bottom-right corner controls, applied to
-	   BOTH sides so the centred roster stays centred and no wrapped chip lands under a control. */
+	/* Applied to BOTH sides so the centred roster stays centred and no wrapped chip lands under a corner control. */
 	--tv-strip-corner-clear: calc(var(--tv-safe-x) + 88px + var(--space-2xl));
-	/* No bottom-dock height token here on purpose: the phone's docked band publishes its own MEASURED
-	   height as --dock-h, so a `:root` fallback could only go stale. Consumers spell var(--dock-h, 0px). */
+	/* No bottom-dock token here on purpose: the phone's band publishes its MEASURED height, so a `:root` fallback could
+	   only go stale. Consumers spell var(--dock-h, 0px). */
 
-	/*
-	 * The bottom band the TV overlay cards own and the lyrics reel must never enter. ONLY A FALLBACK — /tv
-	 * measures the rendered card and overrides it — and it over-reserves, so the pre-measure frame hides
-	 * surplus rows rather than covering the sung line. The 1.2 LINE-BOX factor is the trap this note exists
-	 * for: these rows declare no line-height, so summing raw font sizes under-reserves by about a quarter.
-	 */
+	/* ONLY A FALLBACK — /tv measures the rendered card and overrides it — and it over-reserves, so the pre-measure frame
+	   hides surplus rows. The 1.2 LINE-BOX factor is the trap: these rows declare no line-height. */
 	--tv-chrome-h: calc(
 		var(--tv-safe-y) + 1.2 * (var(--tv-label) + var(--tv-name) + var(--tv-body) + var(--tv-label)) + 54px
 	);
-	/* Measured height of the "Up next" block, published by /tv. The 0px fallback stands before the first
-	   measure and whenever no next song is queued. */
+	/* Published by /tv. The 0px fallback stands before the first measure and whenever no next song is queued. */
 	--tv-upnext-h: 0px;
 
-	/* THE SHADCN SEMANTIC LAYER — aliases, not new colours. Defining these names is what makes a vendored
-	   component work UNEDITED, so a re-vendor stays safe. */
+	/* Aliases, not new colours. Defining these names is what makes a vendored component work UNEDITED. */
 	--primary: var(--accent);
 	--primary-foreground: var(--on-accent);
 	--secondary: var(--card2);
@@ -257,24 +199,17 @@
 	--popover: var(--card);
 	--popover-foreground: var(--ink);
 	--card-surface: var(--card);
-	/* `--card` already means the card surface, so shadcn's `bg-card` needs no alias. Only the INK half was
-	   missing: an Encore card inherits --ink from the page, but shadcn sets it on the element. */
+	/* Only the INK half was missing: an Encore card inherits --ink from the page, shadcn sets it on the element. */
 	--card-foreground: var(--ink);
 
 	color-scheme: dark;
 }
 
-/*
- * THE TOKEN BRIDGE — registering a token here MINTS the utility family for its namespace. Three rules, all
- * load-bearing: EVERY KEY MUST BE SPELLED DIFFERENTLY FROM ITS `:root` TOKEN (an entry that names itself
- * resolves to nothing, silently, which is why `--radius-*` is absent); `inline`, so a utility emits the
- * token's own reference rather than a second hop, which matters for the TV's clamp() expressions; and NO
- * PLAYER HUE, because minting is all-or-nothing per namespace. `tailwind-toolchain.test.ts` reds on the last.
- * See docs/FRONTEND.md#tailwind-v4-with-preflight-off.
- */
+/* THE TOKEN BRIDGE — registering a token here MINTS the utility family for its namespace. EVERY KEY MUST BE
+   SPELLED DIFFERENTLY FROM ITS `:root` TOKEN (one that names itself resolves to nothing, silently, which is why
+   `--radius-*` is absent), `inline`, and NO PLAYER HUE. See docs/FRONTEND.md#tailwind-v4-with-preflight-off. */
 @theme inline {
-	/* The semantic layer IS registered, because refusing it makes every vendored component unusable unedited.
-	   The ink direction is banned by NAME in app source instead (`shadcn-ink-ban.test.ts`). */
+	/* The ink direction is banned by NAME in app source instead (`shadcn-ink-ban.test.ts`). */
 	--color-primary: var(--primary);
 	--color-primary-foreground: var(--primary-foreground);
 	--color-secondary: var(--secondary);
@@ -292,13 +227,11 @@
 	--color-card: var(--card);
 	--color-card-foreground: var(--card-foreground);
 
-	/* mints p-tap / size-tap / min-h-tap / gap-tap and the two TV safe insets, so a ported component names
-	   --tap rather than restating 44. */
+	/* mints p-tap / size-tap / min-h-tap / gap-tap and the two TV safe insets. */
 	--spacing-tap: var(--tap);
 	--spacing-tv-safe-x: var(--tv-safe-x);
 	--spacing-tv-safe-y: var(--tv-safe-y);
 
-	/* mints text-tv-*. */
 	--text-tv-small: var(--tv-small);
 	--text-tv-eyebrow: var(--tv-eyebrow);
 	--text-tv-label: var(--tv-label);
@@ -308,8 +241,7 @@
 	--text-tv-hero: var(--tv-hero);
 	--text-tv-lyric: var(--tv-lyric);
 
-	/* mints text-ph-*. PREFIXED, like the TV tiers: Tailwind's type namespace ships its own keys, so an
-	   unprefixed one here would REPLACE the size every copied-in component means by that class. */
+	/* PREFIXED, like the TV tiers: Tailwind's type namespace ships its own keys, which an unprefixed one would REPLACE. */
 	--text-ph-2xs: var(--ph-text-2xs);
 	--text-ph-xs: var(--ph-text-xs);
 	--text-ph-sm: var(--ph-text-sm);
@@ -320,7 +252,6 @@
 	--text-ph-2xl: var(--ph-text-2xl);
 	--text-ph-3xl: var(--ph-text-3xl);
 
-	/* mints p-sm / gap-lg / m-2xl. T-shirt keys only — see the spacing note in `:root`. */
 	--spacing-3xs: var(--space-3xs);
 	--spacing-2xs: var(--space-2xs);
 	--spacing-xs: var(--space-xs);
@@ -332,34 +263,27 @@
 	--spacing-3xl: var(--space-3xl);
 	--spacing-4xl: var(--space-4xl);
 
-	/* mints leading-app-*. PREFIXED, because Tailwind ships its own leading keys at different values and an
-	   unprefixed entry would quietly retune every copied-in component. */
+	/* PREFIXED, because Tailwind ships its own leading keys at different values. */
 	--leading-app-none: var(--lh-none);
 	--leading-app-tight: var(--lh-tight);
 	--leading-app-snug: var(--lh-snug);
 	--leading-app-normal: var(--lh-normal);
 	--leading-app-loose: var(--lh-loose);
 
-	/* mints duration-fast / -base / -slow / -tick. Unprefixed and safe to be: Tailwind's duration utility is
-	   bare-value, so the namespace ships no keys to overwrite. */
+	/* Unprefixed and safe to be: Tailwind's duration utility is bare-value, so no keys are overwritten. */
 	--duration-fast: var(--motion-fast);
 	--duration-base: var(--motion-base);
 	--duration-slow: var(--motion-slow);
 	--duration-tick: var(--motion-tick);
 }
 
-/* The app supplies its own box-sizing reset — the largest single thing Preflight would contribute. */
 * {
 	box-sizing: border-box;
 	-webkit-tap-highlight-color: transparent;
 }
 
-/*
- * The two other Preflight resets the vendored primitives depend on, scoped to element types rather than by
- * re-enabling Preflight (which the toolchain guard bans): `font: inherit`, because body's font-family does not
- * reach a form control, and zeroed list margins, because a vendored error list otherwise stacks its own indent
- * on the UA's. `list-style` stays the components' own.
- */
+/* The two other Preflight resets the vendored primitives depend on: `font: inherit`, because body's font-family does not
+   reach a form control, and zeroed list margins, because a vendored error list stacks its own indent on the UA's. */
 button,
 input,
 select,
@@ -372,11 +296,8 @@ ol {
 	padding: 0;
 }
 
-/*
- * The global focus ring, and it is the only one: the tap highlight is suppressed above and most controls are
- * custom-styled. A PLAIN SELECTOR LIST, NEVER `:where()` — that has specificity 0,0,0, so the ring loses to
- * any single class rule carrying `outline: none`.
- */
+/* The global focus ring, and the only one. A PLAIN SELECTOR LIST, NEVER `:where()` — at specificity 0,0,0 the
+   ring loses to any single class rule carrying `outline: none`. */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
@@ -396,14 +317,12 @@ body {
 }
 
 body {
-	/* A top-of-page vignette. `no-repeat` plus the matching `background-color` is load-bearing: the body's
-	   background propagates to the canvas as if set on the root, whose positioning area is one viewport
-	   tall, so without both the gradient tiles with a seam every viewport height. */
+	/* `no-repeat` plus the matching `background-color` is load-bearing: the body's background propagates to the
+	   canvas as if set on the root, whose positioning area is one viewport tall, so it otherwise seams. */
 	background: var(--bg) radial-gradient(120% 80% at 50% -10%, var(--stage-glow) 0%, var(--bg) 55%) no-repeat;
 	color: var(--ink);
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, system-ui, sans-serif;
-	/* 100%, never 16px: font-size inherits, so an absolute base makes the first phone text written without
-	   its own size silently unscalable under the guest's text setting (SC 1.4.4). */
+	/* 100%, never 16px: an absolute base makes phone text written without its own size unscalable (SC 1.4.4). */
 	font-size: 100%;
 	-webkit-font-smoothing: antialiased;
 }
@@ -421,12 +340,9 @@ body {
 	}
 }
 
-/*
- * The mobile-first shell: one centred column, and the app's ONE inline gutter — a `max()` against the
- * safe-area inset, never a replacement for it, since env(safe-area-inset-*) is 0px without a notch and in
- * landscape on a notched phone the inset must win. Bottom-docked chrome deliberately does not inherit this:
- * it caps on --max-w and spans the column edge to edge, because a docked bar is chrome, not content.
- */
+/* One centred column, and the app's ONE inline gutter — a `max()` against the safe-area inset, never a
+   replacement for it, since env(safe-area-inset-*) is 0px without a notch and in landscape on a notched phone the
+   inset must win. Bottom-docked chrome deliberately does not inherit it: a docked bar is chrome, not content. */
 .app-shell {
 	width: 100%;
 	max-width: var(--max-w);
@@ -438,23 +354,17 @@ body {
 		max(var(--space-2xl), env(safe-area-inset-left));
 }
 
-/*
- * THE SHARED CARD SURFACE, because not every card is a <Card.Root>: these callers are surfaces on bespoke
- * components that want three declarations rather than Header/Title/Content, and several spell `card` in the
- * MIDDLE of their class list, where an anchored grep misses them and a global class raises no unused-selector
- * warning either. `ui-card-surface.test.ts` keeps this rule and its callers together.
- */
+/* THE SHARED CARD SURFACE, because not every card is a <Card.Root>. Several callers spell `card` in the MIDDLE
+   of their class list, where an anchored grep misses them and a global class raises no unused-selector warning;
+   `ui-card-surface.test.ts` keeps this rule and its callers together. */
 .card {
 	background: var(--card);
 	border: 1px solid var(--line);
 	border-radius: var(--radius-sm);
 }
 
-/*
- * A row in one of the phone's three lists (search result, rotation entry, process in progress). Compose as
- * `class="card list-row"`; a row that genuinely differs overrides in its own scoped style. One rule because
- * three files editing one shape separately drift a pixel each, and it shows when the lists sit together.
- */
+/* A row in one of the phone's three lists. Compose as `class="card list-row"`; one rule, because three files
+   editing one shape separately drift a pixel each, and it shows when the lists sit together. */
 .list-row {
 	display: flex;
 	align-items: center;
@@ -463,14 +373,9 @@ body {
 	margin-bottom: 8px;
 }
 
-/*
- * THE SINGER IDENTITY DOT. One rule for every list, with the hue arriving as `--singer` set inline at the
- * call site. `flex: 0 0 auto` is load-bearing: the dot sits in a flex line beside a name that ellipsises,
- * and without it the dot is what shrinks away to nothing.
- *
- * Deliberately not extended to the row state classes (`.pending`, `.dimmed`) byte-identical though they
- * are: those names are too generic to be safe as globals and a guard pins `class:pending` in the markup.
- */
+/* THE SINGER IDENTITY DOT, hue arriving as `--singer` set inline at the call site. `flex: 0 0 auto` is
+   load-bearing: the dot sits beside a name that ellipsises, and without it the dot is what shrinks to nothing.
+   Deliberately NOT extended to the row state classes — those names are too generic to be safe as globals. */
 .singer-dot {
 	flex: 0 0 auto;
 	display: inline-block;

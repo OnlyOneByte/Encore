@@ -1,20 +1,18 @@
 // The one place a test says WHERE a file is, so no test has to say where it ITSELF is.
 //
-// Anchors are found by walking UP to the repo root marker, never by counting `../` down from a caller: a path that
-// encodes the TEST's location inside a claim about the SOURCE's location is wrong the moment either moves. A wrong path
-// does not always error — anything gating on `existsSync` reads nothing, finds no violations, and PASSES, which is
-// indistinguishable from a healthy guard.
+// Anchors walk UP to the repo root marker, never count `../` down from a caller: a path encoding the TEST's location
+// inside a claim about the SOURCE's is wrong the moment either moves, and a wrong path does not always error —
+// anything gating on `existsSync` reads nothing, finds no violations and PASSES.
 //
-// Hence no `readIfExists`: a missing path is always an error, never a skip. A caller that must tolerate absence says so
-// at its own call site, where a reviewer can see it, and carries a non-vacuity floor.
+// Hence no `readIfExists`: a missing path is always an error, never a skip. A caller that must tolerate absence says
+// so at its own call site, and carries a non-vacuity floor.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
 /**
- * The repo root, found by walking up for `bunfig.toml` — the marker rather than `package.json` (every workspace member
- * has one) or `.git` (absent in a worktree export, and this repo is worked on in worktrees). It is also what bun uses to
- * resolve the test preload, so this module and the runner agree on the root by construction.
+ * Walking up for `bunfig.toml` — the marker rather than `package.json` (every workspace member has one) or `.git`
+ * (absent in a worktree export). It is also what bun uses to resolve the test preload, so the root is agreed.
  */
 function findRepoRoot(): string {
 	let dir = import.meta.dir;
@@ -35,8 +33,8 @@ function findRepoRoot(): string {
 
 export const repoRoot: string = findRepoRoot();
 
-// Self-check, on load, once: a wrong anchor must be loud exactly once rather than silently wrong at every call site.
-// No landmark below can plausibly be absent from a correct root, so this fires on a misresolution, not on a refactor.
+// Self-check, on load, once: a wrong anchor must be loud once rather than silently wrong at every call site. No
+// landmark below can plausibly be absent from a correct root, so this fires on a misresolution, not a refactor.
 for (const landmark of ['bunfig.toml', 'package.json', '.', 'src/lib/contract']) {
 	if (!existsSync(join(repoRoot, landmark))) {
 		throw new Error(
@@ -47,9 +45,7 @@ for (const landmark of ['bunfig.toml', 'package.json', '.', 'src/lib/contract'])
 	}
 }
 
-/** `src` — where routes, lib and server live. */
 export const srcDir: string = join(repoRoot, 'src');
-/** `tests/e2e` — the browser-driving drivers, probes, gates and the selector contract. */
 export const e2eDir: string = join(repoRoot, 'tests', 'e2e');
 /** The ISOMORPHIC contract — code imported by both `src/lib` (client) and `src/lib/server`. */
 export const sharedSrc: string = join(srcDir, 'lib', 'contract');
@@ -64,10 +60,7 @@ export function at(...parts: string[]): string {
 	return join(repoRoot, ...parts);
 }
 
-/**
- * Read a repo-relative file. **Throws** when it is missing — deliberately, always, naming the caller, so a broken path
- * is diagnosed as one rather than as a failure of the invariant the caller was asserting.
- */
+/** **Throws** when the file is missing, naming the caller, so a broken path is not read as a failed invariant. */
 export function read(...parts: string[]): string {
 	const abs = at(...parts);
 	if (!existsSync(abs)) {
@@ -81,18 +74,15 @@ export function read(...parts: string[]): string {
 }
 
 /**
- * Directories no source walk may descend into: `build/`, `.svelte-kit/` and `dist/` hold BUILT COPIES, so a walk that
- * reaches them reports on code the app no longer runs. There is deliberately no INCLUDE allowlist — every walk is
- * unconditionally recursive, so a new source directory is in scope by construction.
+ * `build/`, `.svelte-kit/` and `dist/` hold BUILT COPIES, so a walk reaching them reports on code the app no longer
+ * runs. Deliberately no INCLUDE allowlist, so a new source directory is in scope by construction.
  */
 export const SKIP_DIRS: ReadonlySet<string> = new Set(['node_modules', 'build', '.svelte-kit', 'dist', '.git']);
 
 /**
- * THE recursive walk. Every file-listing helper here is a filter over this one function, so scope has one definition.
- *
- * `withFileTypes` rather than a `statSync` per entry: fewer syscalls, and it does not follow symlinks, so a symlinked
- * directory cannot make the walk leave the tree it was pointed at. Sorted, ALWAYS — `readdirSync` order is
- * filesystem-dependent, so an unsorted walk makes an order-sensitive assertion pass or fail per machine.
+ * THE recursive walk; every helper here is a filter over it, so scope has one definition. `withFileTypes` does not
+ * follow symlinks, so a symlinked directory cannot make the walk leave its tree. Sorted ALWAYS, because `readdirSync`
+ * order is filesystem-dependent and an unsorted walk decides an order-sensitive assertion per machine.
  */
 function walkDir(dir: string, keep: (name: string) => boolean): string[] {
 	const out: string[] = [];
@@ -119,10 +109,7 @@ export function filesUnder(rel: string, exts: readonly string[]): string[] {
 	return filesIn(root, exts);
 }
 
-/**
- * Every file under an ABSOLUTE directory, recursively, with the given extensions. Sorted. Same walk, skip set and
- * ordering as `filesUnder`; it exists because the `.svelte` helpers are handed an already-resolved directory.
- */
+/** As `filesUnder`, for an ABSOLUTE directory: the `.svelte` helpers are handed an already-resolved one. */
 export function filesIn(dir: string, exts: readonly string[]): string[] {
 	if (!existsSync(dir)) {
 		throw new Error(

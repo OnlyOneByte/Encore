@@ -1,13 +1,11 @@
-// `orderingOf(deps)` in realtime/hub.ts is the ONE place that decides what the server considers the
-// current ordering; a second source is how the server picks a different next than the queue every client
-// is looking at. Caught: app.ts hand-built a second `{ order, lastSungAt }` literal and fed THAT to
-// AuthoritativeState, so the store reseqed on one derivation while the player ran the other. They were
-// value-identical, so nothing failed — do NOT relax this into "the two literals produce equal values",
-// which would pin the duplication instead of banning it. See docs/GUARDS.md#wiring-single-source
+// guard: `orderingOf(deps)` in realtime/hub.ts is the ONE place that decides what the server considers the
+// current ordering; a second source is how the server picks a different next song than the queue every
+// client sees. app.ts hand-built a second `{ order, lastSungAt }` literal and fed THAT to AuthoritativeState;
+// they were value-identical, so nothing failed. Do NOT relax this into "the two literals produce equal
+// values", which pins the duplication instead of banning it. See docs/GUARDS.md#wiring-single-source
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-/** Blank comments, so a mention in prose cannot satisfy a check while the live code has diverged. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);

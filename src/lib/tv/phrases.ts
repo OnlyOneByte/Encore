@@ -1,9 +1,8 @@
-// The attract screen's rotating phrase set and its shuffled-bag order. Pure (no Svelte, no DOM, no clock):
-// the admission rule is checkable against the DATA and the bag's ordering against a seeded generator.
+// The attract screen's rotating phrase set and its shuffled-bag order.
 
 /**
- * The ratified phrases in canonical (pre-shuffle) order. Every one must be <= MAX_PHRASE_CHARS, enforced
- * against THIS array so a copy edit that overflows the attract panel's fixed two-line box reds a test.
+ * Canonical (pre-shuffle) order. Every phrase must be <= MAX_PHRASE_CHARS, enforced against THIS array so a copy edit
+ * that overflows the attract panel's fixed two-line box reds a test.
  */
 export const ATTRACT_PHRASES = [
 	'No wrong notes.',
@@ -15,10 +14,8 @@ export const ATTRACT_PHRASES = [
 	'The mic is open.'
 ] as const;
 
-/**
- * The admission ceiling, in characters. Measured in-browser at 84px/900 in the 820px attract panel: 23 chars
- * fits two lines, 30 spills to three, so 24 sits inside that bracket with one char of headroom.
- */
+// Measured in-browser at 84px/900 in the 820px attract panel: 23 chars fits two lines and 30 spills to three, so 24
+// sits inside that bracket with one char of headroom.
 export const MAX_PHRASE_CHARS = 24;
 
 /** Deterministic PRNG, so a room's phrase order is reproducible from its seed and stable across reloads. */
@@ -33,7 +30,7 @@ function mulberry32(seed: number): () => number {
 	};
 }
 
-/** Hash a room id or code to a 32-bit seed, so the order is derived from the room's identity. FNV-1a. */
+/** FNV-1a: hash a room id or code to a 32-bit seed, so the order derives from the room's identity. */
 export function seedFromString(s: string): number {
 	let h = 0x811c9dc5;
 	for (let i = 0; i < s.length; i++) {
@@ -54,9 +51,9 @@ function shuffledIndices(n: number, rng: () => number): number[] {
 }
 
 /**
- * The shuffled bag: each pass is the whole set in a shuffled order, and an exhausted pass is refilled with a
- * FRESH shuffle, so no phrase repeats until every one has shown. The one place a repeat could sneak in is the
- * seam between two passes, which `refill` re-draws against. Deterministic in `seed`.
+ * Each pass is the whole set shuffled and an exhausted pass is refilled with a FRESH shuffle, so no phrase repeats until
+ * every one has shown. The one place a repeat could sneak in is the SEAM between two passes, which `refill` re-draws
+ * against.
  */
 export function makePhraseBag(seed: number, phrases: readonly string[] = ATTRACT_PHRASES) {
 	const rng = mulberry32(seed);
@@ -68,7 +65,7 @@ export function makePhraseBag(seed: number, phrases: readonly string[] = ATTRACT
 	function refill(): void {
 		let order = shuffledIndices(n, rng);
 		// With n > 1 a shuffle not starting on `lastDrawn` always exists, so this terminates; n === 1 has no
-		// non-repeating order and is left alone.
+		// non-repeating order and is left alone. The `guard` is the belt: a rigged rng must not spin forever.
 		if (n > 1) {
 			let guard = 0;
 			while (order[0] === lastDrawn && guard < 64) {

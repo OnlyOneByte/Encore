@@ -1,20 +1,10 @@
 /*
- * guard: a scoped rule must be able to REACH what it styles, and a `:global([data-slot='…'])` rule must have
- * an emitter. See docs/GUARDS.md#scoped-style-reach.
- *
- * THE DEFECT. `ui/slider` put its class on `<SliderPrimitive.Root>` and styled it with an ordinary scoped rule. Svelte
- * compiles that to `.encore-slider.svelte-2rnmeq` and puts the marker on elements THIS file renders, but the element
- * carrying the class belongs to Bits UI and carries no marker — so the rule shipped in the bundle and applied to
- * nothing, and every settings slider lost its 44px tap floor while the 28px thumb overlapped the label above it.
- *
- * Nothing could see it: `svelte-check` does not warn (the class IS used, inside a `cn()` string),
- * touch-targets.test.ts read the RULE TEXT and found `min-height: var(--tap)` exactly where it expected, and
- * every other migration guard is a source scan over correct source. A rule that exists and a rule that
- * applies are different claims; it was found by looking at a screenshot.
- *
- * So a class handed to a CHILD COMPONENT must not be the subject of a non-`:global` rule in the same file.
- * Both fixes are legitimate: `:global([data-slot='…'])`, shadcn's own contract and stable across a
- * re-vendor, or the class on a plain element this file renders.
+ * guard: a scoped rule must be able to REACH what it styles, and a `:global([data-slot='…'])` rule must
+ * have an emitter. `ui/slider` put its class on `<SliderPrimitive.Root>` with an ordinary scoped rule, so
+ * the `.svelte-<hash>` marker landed on no element and every settings slider lost its 44px tap floor.
+ * Nothing could see it: `svelte-check` does not warn (the class IS used, inside a `cn()` string) and
+ * touch-targets.test.ts read the RULE TEXT and found the declaration where it expected.
+ * See docs/GUARDS.md#scoped-style-reach for the two legitimate fixes.
  */
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -23,9 +13,8 @@ import { at, srcDir } from '@encore/test-support';
 
 const UI = at('src/lib/components/ui');
 /*
- * The APP side is in scope too, and leaving it out let a real defect ship: every PAGE hands classes to shadcn
- * components as well, and `metrics/+page.svelte` did exactly that — `<Table.Cell class="name">`, whose rule
- * the same change deleted from the page.
+ * The APP side is in scope too, and leaving it out let a real defect ship: `metrics/+page.svelte` handed
+ * `<Table.Cell class="name">` a class whose rule the same change deleted from the page.
  */
 const APP = [at('src/lib/components'), at('src/routes')];
 
@@ -45,9 +34,9 @@ function styleBlock(src: string): string {
 }
 
 /**
- * Every tag of a CHILD COMPONENT — spelled with a capital or a dot, which is Svelte's own rule for telling
- * one from an element. Walked brace-aware rather than matched with `[^>]*`, because a `>` inside an attribute
- * expression (`onclick={() => a > b}`) ends a naive match early and hides any `class=` after it.
+ * Every tag of a CHILD COMPONENT — a capital or a dot, which is Svelte's own rule for telling one from an
+ * element. Walked brace-aware, because a `>` inside an attribute expression (`onclick={() => a > b}`) ends
+ * a naive match early and hides any `class=` after it.
  */
 function tagsOfChildComponents(src: string): string[] {
 	const out: string[] = [];
@@ -87,14 +76,10 @@ function classesOnChildComponents(src: string): Set<string> {
 		}
 	}
 	/*
-	 * …and a `tv()` base, but ONLY when a CHILD COMPONENT consumes it. `badge.svelte` builds its class from
-	 * `badgeVariants()` and renders `<svelte:element this={href ? "a" : "span"}>`, a REAL element that carries
-	 * the scope hash, so its scoped rule applies as intended — and a guard that cries wolf on a correct file
-	 * gets its finding waved through on the day it is right.
-	 *
-	 * Resolved TRANSITIVELY rather than by scanning tag text: hoisting `tabsListVariants({ variant })` into a
-	 * script-level `const` is an ordinary refactor that leaves the rendered DOM byte-identical, so a textual
-	 * proxy would have gone green on this exact defect by accident.
+	 * …and a `tv()` base, but ONLY when a CHILD COMPONENT consumes it: `badge.svelte` renders
+	 * `<svelte:element>`, a REAL element that carries the scope hash, and a guard that cries wolf on a correct
+	 * file gets its finding waved through. Resolved TRANSITIVELY, because hoisting `tabsListVariants({…})` into
+	 * a script-level `const` leaves the rendered DOM byte-identical and a textual proxy would go green.
 	 */
 	const assignments = new Map<string, string>();
 	for (const a of src.matchAll(/\b(?:const|let|var)\s+([A-Za-z_][\w]*)\s*=\s*([^;\n]+)/g)) {
@@ -143,9 +128,9 @@ function classesOnChildComponents(src: string): Set<string> {
 /** Rule subjects in the style block that are NOT inside `:global(...)`, with their class tokens. */
 function scopedRuleClasses(css: string): Map<string, string> {
 	const found = new Map<string, string>();
-	// COMMENTS FIRST, then `:global(...)` interiors blanked (a class named there is explicitly global). Without
-	// the comment strip the guard reds on its own documentation: a commented-out
-	// `/* .encore-seg { … } was replaced by the data-slot rule */` reads as a live scoped rule.
+	// COMMENTS FIRST, then `:global(...)` interiors blanked (a class named there is explicitly global).
+	// Without the comment strip a commented-out scoped rule reads as a live one and the guard reds on its own
+	// documentation.
 	const css2 = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
 	const scoped = css2.replace(/:global\([^)]*\)/g, (m) => ' '.repeat(m.length));
 	for (const rule of scoped.matchAll(/([^{}]+)\{[^{}]*\}/g)) {
@@ -160,8 +145,6 @@ function scopedRuleClasses(css: string): Map<string, string> {
 
 test('no scoped rule styles a class it hands to a child component', () => {
 	const files = [...new Set([...svelteFiles(UI), ...APP.flatMap(svelteFiles)])];
-	// A walk that drops materially below this lost a root, and the empty offenders array would then mean
-	// "scanned nothing" rather than "clean".
 	expect(files.length).toBeGreaterThanOrEqual(80); // @nvf-floor files.length
 
 	const offenders: string[] = [];
@@ -189,8 +172,7 @@ test('no scoped rule styles a class it hands to a child component', () => {
 });
 
 test('the reach check actually catches the shape it was written for', () => {
-	// Mutation proof on synthetic sources: the arm above must fire on the exact defect that shipped and stay
-	// quiet on both legitimate fixes.
+	// Mutation proof on synthetic sources: fire on the exact defect that shipped, stay quiet on both fixes.
 	const broken = `<SliderPrimitive.Root class={cn("encore-slider x")} />
 <style>.encore-slider { min-height: var(--tap); }</style>`;
 	expect(scopedRuleClasses(styleBlock(broken)).has('encore-slider')).toBe(true);
@@ -249,9 +231,8 @@ test('the reach check sees a class the naive scans missed (first-version blind s
 
 /**
  * A file's MARKUP: style blocks, script blocks and HTML comments removed. All three can satisfy a naive
- * `data-slot=` scan with text that renders no attribute, and the emitter check below was defeated by two at
- * once — the `:global([data-slot='tabs-trigger'])` selector contains the exact substring it looked for, so
- * the rule VOUCHED FOR ITSELF, and a header comment contributed a slot literally named `…`.
+ * `data-slot=` scan with text that renders no attribute, and the emitter check was defeated by two at once —
+ * the `:global([data-slot='tabs-trigger'])` selector VOUCHED FOR ITSELF, and a comment named a slot `…`.
  */
 function markupOnly(src: string): string {
 	return src
@@ -267,11 +248,10 @@ function styleOnly(src: string): string {
 }
 
 test('every data-slot styled via :global is emitted by markup in this tree', () => {
-	// The other direction, which the fix mechanism above opened: the defect was a rule that could not reach
-	// its element, the fix moved every such rule onto `:global([data-slot='…'])`, and nothing then checked
-	// that the markup still carries the attribute the new selector keys on. Deleting the single
-	// `data-slot="tabs-trigger"` kills the tap floor, the active fill, the focus ring and the pill radius at
-	// once with the suite FULLY GREEN, because touch-targets.test.ts matches its token against SELECTOR TEXT.
+	// The other direction, which the fix mechanism above opened: nothing checked that the markup still carries
+	// the attribute the new selector keys on. Deleting the single `data-slot="tabs-trigger"` kills the tap
+	// floor, the active fill, the focus ring and the pill radius at once with the suite FULLY GREEN, because
+	// touch-targets.test.ts matches its token against SELECTOR TEXT.
 	const styled = new Map<string, string[]>();
 	for (const f of svelteFiles(UI)) {
 		const src = styleOnly(readFileSync(f, 'utf8'));
@@ -299,8 +279,8 @@ test('every data-slot styled via :global is emitted by markup in this tree', () 
 });
 
 test('the data-slot reach check fails when the attribute is dropped', () => {
-	// Mutation proof against strings: red on a rule whose slot nothing emits, quiet when the emitter is
-	// present anywhere — including a DIFFERENT file, the normal case for a compound component.
+	// Mutation proof against strings: red when nothing emits the slot, quiet when the emitter is present
+	// anywhere — including a DIFFERENT file, the normal case for a compound component.
 	const file = `<!-- a header naming :global([data-slot='…']) as the convention -->
 <div class="wrap">slot is styled but never emitted</div>
 <style>:global([data-slot='ghost-slot']) { min-height: var(--tap); }</style>`;
@@ -321,8 +301,8 @@ test('the data-slot reach check fails when the attribute is dropped', () => {
 });
 
 test('the tv() consumer test survives hoisting the variants call', () => {
-	// Moving `tabsListVariants({ variant })` out of the tag into a script-level `const` made the base invisible
-	// to a text scan of the tag, so a scoped rule on it shipped green. Both spellings render identically.
+	// Hoisting `tabsListVariants({ variant })` out of the tag into a script-level `const` made the base
+	// invisible to a text scan of the tag, so a scoped rule on it shipped green. Both render identically.
 	const direct = `<script lang="ts" module>
 	export const xVariants = tv({ base: "encore-direct", variants: {} });
 </script>

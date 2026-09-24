@@ -11,16 +11,11 @@ import registry from '$lib/contract/presentation/player-palette-48.json';
 
 /*
  * guard: the 48-stop player palette registry's published figures describe the surfaces the app actually
- * paints. See docs/GUARDS.md#colour-tokens-and-the-48-stop-palette.
- *
- * The figures were once generated against the MOCKUP's surfaces (`#060a18 / #131a2e / #1a2238`) rather than the app's
- * `--bg / --card / --card2`, and nothing measured the difference, so six stops shipped their `accent_ink` below AA on
- * the real `--card`: Cobalt 4.473, Denim 4.477, Rose 4.477, Orchid 4.481, Magenta 4.483, Fuchsia 4.490. The generator
- * READS the three tokens out of `app.css` now, and these tests make that unfalsifiable.
- *
- * Every ratio is recomputed with production's own `contrastRatio` rather than read out of the registry's
- * `r_*` fields: a test that trusts the numbers the generator printed cannot catch a generator that
- * measured against the wrong surface, which is the whole of that defect.
+ * paints. The figures were once generated against the MOCKUP's surfaces, so six stops shipped `accent_ink`
+ * at 4.473–4.490 on the real `--card`. The generator READS `--bg`/`--card`/`--card2` out of `app.css` now,
+ * and every ratio here is recomputed with production's own `contrastRatio` rather than read out of the
+ * registry's `r_*` fields — a test that trusts the generator's own numbers cannot catch a generator that
+ * measured the wrong surface. See docs/GUARDS.md#colour-tokens-and-the-48-stop-palette.
  */
 
 const REPO = repoRoot;

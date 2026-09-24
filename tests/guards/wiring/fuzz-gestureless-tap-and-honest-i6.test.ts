@@ -1,14 +1,12 @@
-// The fuzz driver's gestureless policy must be complete about the GESTURE, not just the
-// --autoplay-policy flag. Three defects with one root cause: `autoplayRefused` keyed on
-// `currentTime === 0`, so a gestureless `seek` moved the playhead off 0 on a still-blocked master and
-// checkI6 filed a PHANTOM CRITICAL on a healthy tree; `realClick` was never called, so the TV never
-// started and I4/I6 evaluated nothing while the run printed green; and the I6 report hardcoded a
-// frozen-at-0 server position that contradicted the non-zero value interpolated beside it.
+// guard: the fuzz driver's gestureless policy must be complete about the GESTURE, not just the
+// --autoplay-policy flag. Three defects, one root cause: `autoplayRefused` keyed on `currentTime === 0`, so
+// a gestureless `seek` moved the playhead off 0 on a still-blocked master and checkI6 filed a PHANTOM
+// CRITICAL; `realClick` was never called, so the TV never started and I4/I6 evaluated nothing while the run
+// printed green; and the I6 report hardcoded a frozen-at-0 server position.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
-/** Blank comments, so the prose describing the defect cannot satisfy or trip a check. */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
@@ -66,7 +64,7 @@ test('B · a run that never evaluated I6 exits 2, never 0 — the non-vacuity fl
 
 test('C · the I6 silent-room report interpolates the server position, not a hardcoded 0', () => {
 	const I6_BODY = fnBody(PROBE, 'async function checkI6(w)');
-	expect(I6_BODY).not.toMatch(/server position frozen at 0/);
+	expect(I6_BODY).not.toMatch(/server position frozen at 0/i);
 	// It must still name the server position, by interpolating it.
 	expect(I6_BODY).toMatch(/positionSec/);
 });

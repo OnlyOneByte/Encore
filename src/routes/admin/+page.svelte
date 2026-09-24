@@ -147,8 +147,8 @@
 
 <style>
 	.admin-page {
-		/* Cap the WRAPPER so header and content share one left edge, and keep width:100% — .app-shell is
-		   a centred flex column, where a cap alone shrinks from the right instead of re-centring. */
+		/* Cap the WRAPPER so header and content share one left edge, and keep width:100% — .app-shell is a centred flex
+			   column, where a cap alone shrinks from the right instead of re-centring. */
 		max-width: var(--measure-grid);
 		margin: 0 auto;
 		--page-measure: var(--measure-grid);
@@ -162,8 +162,8 @@
 		margin: 0 0 var(--space-2xl);
 	}
 	.muted {
-		/* Dimmed INK is --ink-dim (7.16:1 on --bg). `--muted` is the shadcn SURFACE alias (--card2) and
-		   measures 1.24:1 as text — invisible, and `var(--muted, …)` never falls back because it is set. */
+		/* Dimmed INK is --ink-dim (7.16:1 on --bg). `--muted` is the shadcn SURFACE alias (--card2) and measures 1.24:1 as
+			   text — invisible, and `var(--muted, …)` never falls back because it is set. */
 		color: var(--ink-dim);
 		display: flex;
 		align-items: center;

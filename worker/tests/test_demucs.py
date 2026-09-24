@@ -61,8 +61,7 @@ def test_demucs_argv_and_output_path():
     assert argv[:3] == ["demucs", "-n", "htdemucs"]
     assert "--two-stems" in argv and "vocals" in argv
     assert "/w/in.wav" == argv[-1]
-    # FLAC is the default stem format, so the argv carries the flag that makes demucs' own
-    # `{ext}` template resolve to `flac`, and both stem paths agree with it.
+    # FLAC is the default, so the argv carries the flag that resolves demucs' `{ext}` to `flac`.
     assert "--flac" in argv
     assert demucs.demucs_no_vocals_path("/w/sep", "htdemucs") == "/w/sep/htdemucs/no_vocals.flac"
     assert demucs.demucs_vocals_path("/w/sep", "htdemucs") == "/w/sep/htdemucs/vocals.flac"
@@ -210,8 +209,7 @@ async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_pa
 
 @pytest.mark.asyncio
 async def test_local_source_skips_download_stage(tmp_path):
-    # fetcher=local is a DECLARED job field; the path shape (not being an http URL) is not what
-    # makes a source local.
+    # fetcher=local is a DECLARED job field; the path shape (not being an http URL) is not what makes a source local.
     local = tmp_path / "library" / "song.wav"
     local.parent.mkdir(parents=True)
     local.write_bytes(b"LOCAL")
@@ -262,8 +260,7 @@ async def test_missing_instrumental_output_raises(tmp_path):
 
 def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
     argv = fetch_mod.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
-    # A codec-ranked selector whose final fallback is `best`, not `bestaudio`: a muxed-only video has
-    # no audio-only stream, so a `bestaudio` final fallback would fail the process.
+    # The final fallback is `best`, not `bestaudio`: a muxed-only video has no audio-only stream.
     assert "-f" in argv
     selector = argv[argv.index("-f") + 1]
     assert selector.split("/")[-1] == "best", selector
@@ -276,8 +273,7 @@ def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
 
 
 def test_decode_forces_stereo_but_NEVER_resamples():
-    # YouTube serves 48 kHz Opus; forcing 44100 here would throw away information for nothing, since
-    # FLAC/AAC/Opus all handle 48 kHz natively.
+    # YouTube serves 48 kHz Opus, and every target codec handles it natively.
     argv = demucs.decode_argv("/m/audio/id1.webm", "/w/input.wav")
     joined = " ".join(argv)
     assert "-ac 2" in joined
@@ -287,8 +283,7 @@ def test_decode_forces_stereo_but_NEVER_resamples():
 
 
 def test_both_stems_are_encoded_LOSSLESS_flac():
-    # Sharing the FLAC codec on both stems removes the AAC-in-m4a priming-sample start offset that
-    # would otherwise desync the played-aloud vocals guide track from the instrumental.
+    # One codec on both stems removes the AAC-in-m4a priming-sample offset that desyncs the guide.
     for out in ("/m/derived/stems/id1-instrumental.flac", "/m/derived/stems/id1-vocals.flac"):
         argv = " ".join(demucs.encode_flac_argv("/w/stem.wav", out))
         assert "-c:a flac" in argv
@@ -305,8 +300,7 @@ def test_find_downloaded_ignores_partial_downloads():
         assert fetch_mod.find_downloaded(d, "id1") is None
         open(_os.path.join(d, "id1.webm.part"), "w").close()
         assert fetch_mod.find_downloaded(d, "id1") is None  # an interrupted download is not a result
-        # `.info.json` (from --write-info-json) sorts BEFORE `.webm`/`.m4a` alphabetically, so it must
-        # be skipped explicitly or it would be returned as the audio path.
+        # `.info.json` sorts BEFORE `.webm`/`.m4a`, so it must be skipped explicitly.
         open(_os.path.join(d, "id1.info.json"), "w").close()
         assert fetch_mod.find_downloaded(d, "id1") is None  # the info sidecar alone is not a result
         open(_os.path.join(d, "id1.webm"), "w").close()
@@ -373,10 +367,8 @@ async def test_subprocess_runner_raises_ProcessError_on_nonzero_exit():
     assert "boom-line" in ei.value.output_tail
 
 
-# A parent that forks a long-lived child, prints the CHILD's pid, then sleeps — mirrors demucs -j,
-# where the pid launched is not the pid holding the memory. The grandchild survives a bare
-# proc.kill() and only dies if the whole process group is signalled+reaped, so its liveness is
-# downstream of the actual kill+reap guarantee.
+# Mirrors demucs -j, where the pid LAUNCHED is not the pid holding the memory. The grandchild survives a
+# bare proc.kill() and dies only if the whole group is signalled and reaped.
 _CANCEL_REAP_PARENT = (
     "import os,sys,time\n"
     "pid=os.fork()\n"
@@ -401,8 +393,7 @@ def _alive(pid: int) -> bool:
 @pytest.mark.asyncio
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="needs POSIX fork/process groups")
 async def test_subprocess_runner_kills_and_reaps_the_child_when_the_generator_is_cancelled():
-    # Cancel mid-stream (as _run_job's unwind does via GeneratorExit) and assert the forked
-    # grandchild was actually killed+reaped (test_subprocess_group_kill covers the `break` path).
+    # Cancel mid-stream, as _run_job's unwind does, and assert the grandchild was killed and reaped.
     started = _asyncio.Event()
     captured: dict[str, int] = {}
 
@@ -422,8 +413,7 @@ async def test_subprocess_runner_kills_and_reaps_the_child_when_the_generator_is
     with pytest.raises(_asyncio.CancelledError):
         await task
 
-    # Give the group kill a moment to land, then assert the grandchild is gone — proof the kill
-    # reached the whole tree, not just the launched CLI.
+    # Let the group kill land, then assert the whole TREE died, not just the launched CLI.
     for _ in range(60):
         if not _alive(child_pid):
             break
@@ -436,8 +426,7 @@ async def test_subprocess_runner_kills_and_reaps_the_child_when_the_generator_is
 
 @pytest.mark.asyncio
 async def test_subprocess_runner_times_out_a_silent_child_and_raises_retryable(monkeypatch):
-    # Shrink the idle timeout so a silent child trips it fast; the raised error must be the
-    # retryable ProcessTimeout so the core's existing retry path handles it.
+    # A shrunk idle timeout, and the raised error must be the RETRYABLE ProcessTimeout.
     monkeypatch.setattr(demucs, "SUBPROCESS_IDLE_TIMEOUT_SEC", 0.3)
     argv = [sys.executable, "-c", "import time; time.sleep(30)"]
     with pytest.raises(demucs.ProcessTimeout) as ei:
@@ -448,8 +437,7 @@ async def test_subprocess_runner_times_out_a_silent_child_and_raises_retryable(m
 
 @pytest.mark.asyncio
 async def test_subprocess_runner_idle_timer_resets_on_each_line(monkeypatch):
-    # A child that keeps printing under the idle window must NOT be killed even though its TOTAL
-    # runtime exceeds the idle timeout: this is an idle-output timeout, not a wall-clock cap.
+    # A child printing under the idle window must NOT be killed: this is an idle-output timeout.
     monkeypatch.setattr(demucs, "SUBPROCESS_IDLE_TIMEOUT_SEC", 0.5)
     argv = [
         sys.executable,
@@ -471,7 +459,7 @@ def test_classify_retryable_flows_through_the_shared_retry_policy_table():
     assert demucs.classify_retryable("ffmpeg: Codec is unsupported") is False
     assert demucs.classify_retryable("state_dict load failed: corrupt checkpoint") is False
 
-    # The table is genuinely SHARED, not re-declared: no private _PERMANENT_MARKERS tuple to drift.
+    # Genuinely SHARED: no private _PERMANENT_MARKERS tuple to drift.
     assert not hasattr(demucs, "_PERMANENT_MARKERS")
     for marker in retry_policy.PERMANENT_MARKERS:
         assert demucs.classify_retryable(f"some prefix {marker} some suffix") is False
@@ -494,14 +482,13 @@ def test_resolve_demucs_model_unknown_is_structurally_non_retryable():
     assert retry_policy.is_retryable(excinfo.value) is False
 
 
-# The resolved backend must DRIVE the run, not just reach a log line: `facts.backend` has to record
-# the backend that actually RAN, never a hardcoded constant that could disagree with the startup log.
+# The resolved backend must DRIVE the run: `facts.backend` records what RAN, never a constant.
 def test_demucs_engine_backend_is_the_resolved_value_not_a_hardcoded_constant():
     """The engine reports the backend it was CONSTRUCTED with, so facts.backend follows resolution."""
     from src.separation.engines import DemucsEngine
 
     assert DemucsEngine().backend == "torch"  # the portable default, unchanged
-    # A distinct sentinel proves the value is THREADED from the arg, not read from a constant.
+    # A distinct sentinel proves the value is THREADED, not read from a constant.
     assert DemucsEngine(backend="a-resolved-backend").backend == "a-resolved-backend"
 
 

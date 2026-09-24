@@ -1,10 +1,7 @@
-// Two-player gapless controller — the marquee feature. Models the A/B swap as pure state so it
-// unit-tests without a DOM (docs/ARCHITECTURE.md). The Svelte TV page binds two real
-// players (iframe or <video>) to slots A/B and drives them from this controller's decisions.
+// Two-player gapless controller, modelling the A/B swap as pure state (docs/ARCHITECTURE.md).
 //
-// Invariant: the VISIBLE slot plays `current`; the HIDDEN slot pre-buffers `upNext`. On `ended`
-// we swap roles if the hidden slot is warmed for the right entry — a single composited frame,
-// no network fetch at transition time. That's what kills dead air.
+// INVARIANT: the VISIBLE slot plays `current`, the HIDDEN slot pre-buffers `upNext`, and `ended` swaps roles only if
+// the hidden slot is warmed for the right entry — one composited frame, no network fetch at transition time.
 
 import type { QueueEntry } from '$lib/contract';
 
@@ -23,9 +20,8 @@ export class GaplessController {
 	#current: string | null = null; // entryId in the visible slot
 	#warmingId: string | null = null; // entryId the hidden slot is loading
 	#readyId: string | null = null; // entryId the hidden slot has buffered (gapless-ready)
-	// The screen state is OWNED by this controller and only ever set through its own transition
-	// methods. Exposed read-only (the TV page reads `ctl.state` to render); a public writable
-	// field let any caller stomp the state machine from outside, which no caller does or should.
+	// Exposed READ-ONLY and set only through this controller's own transition methods: a public writable field lets any
+	// caller stomp the state machine from outside.
 	#state: TvState = 'attract';
 
 	get visible(): Slot {
@@ -87,11 +83,8 @@ export class GaplessController {
 	}
 
 	/**
-	 * Visible slot fired `ended`. Decide the transition:
-	 *  - no upNext        -> attract
-	 *  - hidden warmed it -> SWAP (gapless): hidden becomes visible, old visible re-warms next
-	 *  - else             -> loading (missed the preload window; short buffer)
-	 * Returns the new state for the caller to render (interstitial handled by the page timer).
+	 * No upNext -> attract; hidden warmed it -> SWAP (gapless); else loading (missed the preload window). Returns the new
+	 * state for the caller to render; the interstitial hold is the page's timer.
 	 */
 	onEnded(upNext: QueueEntry | null): TvState {
 		if (!upNext) {
@@ -120,11 +113,8 @@ export class GaplessController {
 	}
 
 	/**
-	 * Hold on the song-intro card from a state that is otherwise ready to play.
-	 *
-	 * `onEnded` reaches the interstitial via a gapless swap, which only exists between two songs. The
-	 * FIRST song of a session has nothing to swap from, so it needs its own way in — otherwise the one
-	 * song where nobody knows whose turn it is is the one song that plays unannounced.
+	 * Hold on the song-intro card from a state that is otherwise ready to play. `onEnded` reaches the interstitial via a
+	 * gapless swap, which exists only between two songs, so the FIRST song of a session needs its own way in.
 	 */
 	enterInterstitial(): void {
 		if (this.#state === 'playing' || this.#state === 'loading') this.#state = 'interstitial';

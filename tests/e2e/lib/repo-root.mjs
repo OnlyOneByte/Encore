@@ -2,18 +2,12 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
- * The repo root, for e2e drivers — found by WALKING UP for a marker, never by counting `..` hops, which
- * encodes the asking file's distance from the root and left six probes resolving one hop short when this
- * tree moved under `tests/`. Because it is a walk, this module anchors on its OWN location and moving it
- * does not change the answer.
+ * The repo root, by WALKING UP for a marker rather than counting `..` hops — see docs/E2E.md#shared-helpers.
  *
- * `bunfig.toml` is the marker rather than `package.json` (every workspace member has one) or `.git`
- * (absent in a worktree export, and this repo is worked on in worktrees). It is also what bun uses to
- * resolve the test preload, so this module, `@encore/test-support` and the worker's Python `_repo_root()`
- * agree by construction.
- *
- * A plain relative `.mjs` import on purpose: drivers run under bare `bun run` with no bundler, so the
- * `@encore/test-support` alias does not resolve at runtime.
+ * `bunfig.toml` is the marker rather than `package.json` (every workspace member has one) or `.git` (absent
+ * in a worktree export, and this repo is worked on in worktrees). It is also what bun uses to resolve the
+ * test preload, so this module, `@encore/test-support` and the worker's `_repo_root()` agree by
+ * construction.
  */
 function findRepoRoot() {
 	let dir = import.meta.dirname;
@@ -30,14 +24,9 @@ function findRepoRoot() {
 	);
 }
 
-/** Absolute path to the repo root. */
 export const repoRoot = findRepoRoot();
 
-/**
- * Join path segments onto the repo root.
- * @param {...string} segments
- * @returns {string}
- */
+/** @param {...string} segments @returns {string} */
 export function atRepo(...segments) {
 	return join(repoRoot, ...segments);
 }

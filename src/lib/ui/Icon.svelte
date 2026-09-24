@@ -1,17 +1,9 @@
 <script lang="ts">
 	/*
-	 * One mark, drawn as inline SVG.
-	 *
-	 * `1em` BY DEFAULT, so a mark takes its size from whatever contains it — that is what lets one path serve a
-	 * phone button and a ten-foot TV with no second asset. `currentColor` for the same reason on the other
-	 * axis: a mark inherits its button's colour and tracks hover, disabled and theme states. Never hard-code a
-	 * stroke colour here.
-	 *
-	 * DEFAULT IS `aria-hidden`, which is correct for both common cases — an icon beside real text, or an
-	 * icon-only button whose label is on the BUTTON. A name on both makes a screen reader announce it twice.
-	 *
-	 * The tap target belongs on the button, never here: shrinking the hit area to the glyph is how a control
-	 * ends up technically present and practically unhittable.
+	 * One mark, drawn as inline SVG. `1em` BY DEFAULT and `currentColor`, so one path serves a phone button and a
+	 * ten-foot TV with no second asset, and a mark tracks its button's hover, disabled and theme states — never hard-code
+	 * a stroke colour here. DEFAULT IS `aria-hidden`: an icon-only button's label lives on the BUTTON, and a name on both
+	 * makes a screen reader announce it twice. The tap target belongs on the button, never here.
 	 */
 	import { ICON_PATHS, SOLID_ICONS, type IconName } from './icons';
 
@@ -31,10 +23,8 @@
 	} = $props();
 </script>
 
-<!--
-  {@html} is safe here specifically: ICON_PATHS is a frozen map of compile-time string constants in
-  our own source, with no interpolation and no path from user input or the network.
--->
+<!-- {@html} is safe here specifically: ICON_PATHS is a frozen map of compile-time string constants in our own source,
+	with no interpolation and no path from user input or the network. -->
 <svg
 	class="icon"
 	class:solid={SOLID_ICONS.includes(name)}

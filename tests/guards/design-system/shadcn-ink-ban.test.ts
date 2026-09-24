@@ -1,12 +1,8 @@
 /*
- * guard: a semantic FILL is never used as ink in app source. See docs/GUARDS.md#tailwind-v4-toolchain.
- *
- * `--accent` (#7254e6) as INK measures 3.85:1 on `--bg`, 3.38 on `--card`, 3.10 on `--card2` and 2.90 on
- * `--card-tint2` — four AA failures. Refusing to REGISTER the colour prevented the class from existing and
- * also made every vendored shadcn component unusable unedited, a cost paid once per component across the
- * registry migration; the hazard was never the class existing but the class being USED. So the semantic
- * colours are registered and these NAMES are banned in app source, the same mechanism motion.test.ts's net
- * arm uses for `transition-all`. The per-stop half is in a11y/contrast.test.ts.
+ * guard: a semantic FILL is never used as ink in app source. `--accent` as INK measures 3.85:1 on `--bg`,
+ * 3.38 on `--card`, 3.10 on `--card2` and 2.90 on `--card-tint2` — four AA failures. The hazard was never
+ * the class existing but the class being USED, so the semantic colours stay registered (vendored components
+ * need them) and these NAMES are banned in app source. See docs/GUARDS.md#tailwind-v4-toolchain.
  */
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -35,14 +31,10 @@ const bannedRe = new RegExp(`\\b(?:dark:|hover:|focus:|active:|disabled:)*(?:${B
 
 function sources(): string[] {
 	// `.svelte` + `.css` covers every place a class list can be written as markup or a style rule; a utility
-	// composed in a `.ts` constant is motion.test.ts's net arm's job.
-	//
-	// DEDUPED, because `styleFiles` already returns `.svelte` as well as `.css`: composing the two counted
-	// 24 files twice, so the floor below read 57 where the truth is 33 — a floor that would still pass with
-	// a third of the tree unreachable.
-	//
-	// `src/app.css` is included deliberately: it is the shared design system, the likeliest home for an
-	// `@apply text-primary`, and it sits outside both trees.
+	// composed in a `.ts` constant is motion.test.ts's net arm's job. DEDUPED, because `styleFiles` already
+	// returns `.svelte`: composing the two counted 24 files twice, so the floor read 57 where the truth is 33.
+	// `src/app.css` is included deliberately — it is the likeliest home for an `@apply text-primary` and it
+	// sits outside both trees.
 	const appCss = at('src/app.css');
 	return [
 		...new Set([...svelteFiles(LIB), ...svelteFiles(ROUTES), ...styleFiles(LIB), ...styleFiles(ROUTES), appCss])
@@ -50,10 +42,9 @@ function sources(): string[] {
 }
 
 /**
- * Source with comments removed, so PROSE cannot red the suite: a CSS comment that merely NAMES
- * `text-primary` in order to explain why it is banned changes no behaviour and yet fails the build, which
- * makes the rule unwritable next to the code it governs. The mutation arm below proves the stripper does
- * not also BLIND the scan, which is the half that is easy to get wrong.
+ * Comments removed, so PROSE cannot red the suite: a CSS comment that NAMES `text-primary` to explain why
+ * it is banned changes no behaviour, and failing on it would make the rule unwritable next to the code it
+ * governs. The mutation arm below proves the stripper does not also BLIND the scan.
  */
 function withoutComments(src: string): string {
 	return src
@@ -67,8 +58,8 @@ const files = sources();
 test('a semantic fill is never minted into app source as ink: no app file uses a banned ink utility', () => {
 	const offenders: string[] = [];
 	for (const f of files) {
-		// The registry components are exempt BY PATH: they are vendored verbatim so `--overwrite` stays safe,
-		// and a stock component's `text-primary` on its own `bg-primary` surface is the legal pairing.
+		// The registry components are exempt BY PATH: they are vendored verbatim so `--overwrite` stays safe, and
+		// a stock component's `text-primary` on its own `bg-primary` surface is the legal pairing.
 		if (f.includes(VENDORED)) continue;
 		for (const m of withoutComments(readFileSync(f, 'utf8')).matchAll(bannedRe)) {
 			offenders.push(`${f.slice(f.indexOf('src/'))}: ${m[0]}`);

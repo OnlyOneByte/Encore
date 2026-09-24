@@ -225,8 +225,7 @@ def test_build_processor_routes_by_capability(monkeypatch):
     from src.runtime.runner import PlanRunner
 
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
-    # from_env leaves capabilities unresolved (config.resolve() fills them from probes), so a test
-    # wanting the full process must state it explicitly.
+    # from_env leaves capabilities unresolved (resolve() fills them from probes), so state them here.
     from src.host.config import WorkerConfig as _WC
 
     full_process = _WC(capabilities=("fetch:ytdlp", "stems", "align"))
@@ -242,8 +241,7 @@ def test_build_processor_routes_by_capability(monkeypatch):
     only_stems = _build_processor(_WC(capabilities=("stems",)))._by_type
     assert "align" not in only_stems and "fetch" not in only_stems
 
-    # A fetch-ONLY worker is legitimate (downloads, cannot separate) — acquisition routes on its own
-    # capability rather than riding along with stems.
+    # A fetch-ONLY worker is legitimate: acquisition routes on its own capability, not stems'.
     from src.host.config import WorkerConfig
 
     pf = _build_processor(WorkerConfig(capabilities=("fetch:ytdlp",)))
@@ -455,14 +453,14 @@ async def test_a_retried_job_REUSES_completed_step_artifacts_and_does_not_re_run
     assert ran == ["acquire", "separate", "align"], f"attempt 1 ran all three, got {ran}"
     assert (tmp_path / "work" / "jReuse" / "acquire.done").exists(), "scratch must survive the retryable fail"
 
-    # Attempt 2: SAME jobId (same scratch). Steps 1 and 2 must be SKIPPED (markers exist); only step 3 reruns.
+    # Attempt 2, SAME jobId and scratch: steps 1 and 2 skip on their markers, only step 3 reruns.
     ran.clear()
     await client._run_job(spec)
     assert ran == ["align"], f"attempt 2 must reuse completed steps' scratch, running ONLY step 3, got {ran}"
 
 
-# capabilities="none" on purpose: it matches neither stems/score nor align, so _build_processor
-# exercises the config path WITHOUT importing demucs or whisperx.
+# capabilities="none" matches neither stems nor align, so this exercises the config path without
+# importing demucs or whisperx.
 def test_torch_threads_exports_omp_for_the_demucs_SUBPROCESS(monkeypatch):
     """demucs runs as a separate CLI, so torch.set_num_threads() in THIS process cannot reach it.
     The cap has to ride os.environ, which the child inherits."""
@@ -484,8 +482,7 @@ def test_no_torch_threads_leaves_the_environment_alone(monkeypatch):
     from src.host.config import WorkerConfig
 
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
-    # jobs=1 with concurrency=1 means nothing can contend, which is the one case that keeps torch's own
-    # physical-core-aware default instead of a derived cap.
+    # Nothing can contend, the one case that keeps torch's physical-core default over a derived cap.
     _build_processor(WorkerConfig.from_env({"ENCORE_WORKER_CAPABILITIES": "none", "ENCORE_DEMUCS_JOBS": "1"}))
     assert "OMP_NUM_THREADS" not in os.environ
 
@@ -496,8 +493,7 @@ def test_threads_are_capped_automatically_once_separations_can_contend(monkeypat
     from src.host.config import WorkerConfig
 
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
-    # The knob no longer has to be set by hand: concurrency x jobs > 1 derives a cap, and the cap has
-    # to reach the demucs SUBPROCESS via the environment.
+    # concurrency x jobs > 1 derives a cap, and that cap must reach the demucs SUBPROCESS via the env.
     cfg = WorkerConfig.from_env(
         {"ENCORE_WORKER_CAPABILITIES": "none", "ENCORE_WORKER_CONCURRENCY": "2", "ENCORE_DEMUCS_JOBS": "4"}
     )
@@ -512,8 +508,7 @@ def test_oversubscription_warns_when_concurrency_times_jobs_exceeds_cores():
     cfg = WorkerConfig.from_env({"ENCORE_WORKER_CONCURRENCY": "4", "ENCORE_DEMUCS_JOBS": "4"})
     warns = dh.oversubscription_warnings(cfg, 10)
     assert any("16 parallel" in w for w in warns)
-    # No "you forgot ENCORE_TORCH_THREADS" advice any more: from_env already derived the cap, so
-    # repeating it as a warning would name a fix that is already in place.
+    # from_env already derived the cap, so a warning would name a fix already in place.
     assert not any("ENCORE_TORCH_THREADS" in w for w in warns)
 
 
@@ -569,7 +564,7 @@ async def test_cancel_cancels_the_inflight_task_and_frees_the_slot(tmp_path):
     await asyncio.gather(task, return_exceptions=True)
     await asyncio.sleep(0)  # let the task's done-callback (which pops _tasks) run
 
-    # slot freed, no dangling task entry, and NO spurious job:failed reported to the core
+    # Slot freed, no dangling task entry, and NO spurious job:failed.
     assert client.state.slots_free == 1
     assert "jX" not in client._tasks
     assert sock.of_type(protocol.FAILED) == []
@@ -577,8 +572,7 @@ async def test_cancel_cancels_the_inflight_task_and_frees_the_slot(tmp_path):
 
 @pytest.mark.asyncio
 async def test_cancel_for_an_untracked_job_still_frees_the_slot(tmp_path):
-    # A job whose task already finished (or a slot held without one) must still be freed by cancel —
-    # the pre-fix behaviour is preserved for that path.
+    # A job whose task already finished, or a slot held without one, must still be freed by cancel.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     client.state.start("ghost")
@@ -591,13 +585,13 @@ async def test_cancel_for_an_untracked_job_still_frees_the_slot(tmp_path):
 async def test_malformed_assign_missing_jobtype_rejects_just_that_job(tmp_path):
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
-    # a frame with a jobId but no jobType/mediaId used to raise KeyError and kill the socket
+    # A jobId with no jobType/mediaId must not raise out of the read loop and kill the socket.
     await client.handle({"type": protocol.ASSIGN, "jobId": "bad1"})
     await client.drain()
     rejects = sock.of_type(protocol.REJECT)
     assert len(rejects) == 1 and rejects[0]["jobId"] == "bad1"
     assert "malformed" in rejects[0]["reason"]
-    # the slot was never consumed and the client is still usable
+    # The slot was never consumed and the client is still usable.
     assert client.state.slots_free == 1
 
 
@@ -605,7 +599,7 @@ async def test_malformed_assign_missing_jobtype_rejects_just_that_job(tmp_path):
 async def test_malformed_assign_missing_jobid_is_dropped_without_raising(tmp_path):
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
-    # no usable jobId → cannot send a job-scoped reject; must log-and-ignore, never raise
+    # No usable jobId, so there is no job-scoped reject to send: log and ignore, never raise.
     await client.handle({"type": protocol.ASSIGN, "mediaId": "m1", "jobType": "stems"})
     await client.drain()
     assert sock.sent == []  # nothing sent, nothing crashed
@@ -619,7 +613,7 @@ async def test_a_bad_assign_frame_does_not_prevent_a_later_good_one(tmp_path):
     await client.handle({"type": protocol.ASSIGN, "jobId": "bad"})  # malformed
     await client.handle(assign(job_id="good"))  # well-formed
     await client.drain()
-    # the good job still ran to completion after the bad one was handled
+    # The good job still ran to completion after the bad one was handled.
     completes = sock.of_type(protocol.COMPLETE)
     assert len(completes) == 1
 
@@ -677,19 +671,19 @@ async def test_drain_cancel_cancels_inflight_tasks(tmp_path):
     assert client.state.slots_free == 0
     old_task = client._tasks["jDrop"]
 
-    # simulate the reconnect-loop finally block on a socket drop
+    # The reconnect-loop finally block on a socket drop.
     await asyncio.wait_for(client.drain(cancel=True), timeout=5)
 
     assert cancelled.is_set(), "the abandoned process was cancelled (GeneratorExit reaches the child)"
     assert old_task.cancelled() or old_task.done()
     assert "jDrop" not in client._tasks  # done-callback popped it
-    # a cancelled process reports NO job:failed (CancelledError is not the broad except that sends failed)
+    # A cancelled process reports NO job:failed — CancelledError is not the broad except that does.
     assert sock.of_type(protocol.FAILED) == []
 
 
 @pytest.mark.asyncio
 async def test_drain_without_cancel_still_awaits(tmp_path):
-    # The default (cancel=False) preserves the graceful-settle behaviour every other test relies on.
+    # cancel=False keeps the graceful-settle behaviour every other test relies on.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     await client.handle(assign())
@@ -718,7 +712,7 @@ async def test_object_store_without_uploader_rejects_the_job(tmp_path):
 
 @pytest.mark.asyncio
 async def test_object_store_with_uploader_accepts(tmp_path):
-    # When a build DOES wire an uploader (can_publish_object=True), object mode is honoured normally.
+    # With an uploader wired, object mode is honoured normally.
     sock = FakeSocket()
     client = WorkerClient(
         sock.send,
@@ -740,7 +734,7 @@ async def test_object_store_with_uploader_accepts(tmp_path):
 
 @pytest.mark.asyncio
 async def test_local_store_is_unaffected_by_the_object_guard(tmp_path):
-    # Local mode (the default and the missing/bucketless-object fallback) accepts as before.
+    # Local mode, the default and the bucketless-object fallback.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     await client.handle({"type": protocol.WELCOME, "mediaStore": {"kind": "local"}})
@@ -749,37 +743,34 @@ async def test_local_store_is_unaffected_by_the_object_guard(tmp_path):
     assert sock.of_type(protocol.COMPLETE)
 
 
-# The worker must SEND worker:heartbeat on its own, not only answer a ping the core never emits:
-# registry.heartbeat is the only path that reconciles slotsFree after the reaper requeues a
-# lease-expired job, so without a periodic sender one reaped job strands the worker's capacity
-# forever. These pin the production path (heartbeat_loop), not the passive PING responder.
+# The worker must SEND worker:heartbeat itself, not only answer a ping the core never emits:
+# registry.heartbeat is the only path that reconciles slotsFree after a reap, so without a periodic
+# sender one reaped job strands the worker's capacity forever.
 
 
 @pytest.mark.asyncio
 async def test_heartbeat_loop_sends_periodically_without_a_ping(tmp_path):
-    # The core sends no `ping`, so the ONLY way worker:heartbeat leaves the worker in production is
-    # heartbeat_loop. Drive it directly with a tiny interval and prove frames arrive with no ping.
+    # heartbeat_loop is the ONLY production path, since the core sends no `ping`.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     client.heartbeat_interval_sec = 0.1  # the loop floors the sleep at 0.1s to avoid spinning
     task = asyncio.create_task(client.heartbeat_loop())
-    # Yield long enough for at least two ticks, then stop the unbounded loop.
+    # Two ticks, then stop the unbounded loop.
     await asyncio.sleep(0.35)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
     hb = sock.of_type(protocol.HEARTBEAT)
     assert len(hb) >= 2, f"expected periodic heartbeats, got {sock.types()}"
-    # Not one PING was involved — this leg does not depend on a command the core never sends.
+    # No PING involved: this leg cannot depend on a command the core never sends.
     assert protocol.PING not in sock.types()
-    # The frame carries this worker's live capacity (the source of truth registry.heartbeat reads).
+    # The frame carries this worker's live capacity, which registry.heartbeat reads.
     assert hb[0]["slotsFree"] == 1 and hb[0]["workerId"] == "w1"
 
 
 @pytest.mark.asyncio
 async def test_heartbeat_loop_reports_reduced_slots_while_a_job_runs(tmp_path):
-    # slotsFree in the frame must reflect running jobs — that reconciled number is the whole point
-    # of the leg (the core hands the slot back from it after a reap).
+    # slotsFree must reflect running jobs: that reconciled number is what hands a slot back after a reap.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     client.heartbeat_interval_sec = 0.1
@@ -796,8 +787,7 @@ async def test_heartbeat_loop_reports_reduced_slots_while_a_job_runs(tmp_path):
 
 @pytest.mark.asyncio
 async def test_welcome_stores_heartbeat_interval_and_the_loop_honours_it(tmp_path):
-    # The declared wire field heartbeatIntervalSec was previously supplied by every producer and
-    # test and READ by nobody. Now the WELCOME arm adopts it and the loop ticks at it.
+    # The WELCOME arm adopts heartbeatIntervalSec and the loop ticks at it.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
@@ -810,14 +800,13 @@ async def test_welcome_stores_heartbeat_interval_and_the_loop_honours_it(tmp_pat
         }
     )
     assert client.heartbeat_interval_sec == 42.0
-    # Welcome still replies with nothing (the media-store contract is unchanged).
+    # Welcome still replies with nothing.
     assert sock.sent == []
 
 
 @pytest.mark.asyncio
 async def test_welcome_ignores_a_missing_or_bad_interval(tmp_path):
-    # A welcome without the field (older core), or a garbage value, must not silence the leg: the
-    # default floor stands so heartbeats keep flowing.
+    # A missing or garbage field must not silence the leg: the default floor keeps heartbeats flowing.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     await client.handle({"type": protocol.WELCOME, "mediaStore": {"kind": "local"}})
@@ -832,8 +821,8 @@ async def test_welcome_ignores_a_missing_or_bad_interval(tmp_path):
     assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
 
 
-# WIRING GUARDS below: a mechanism built, unit-tested, and never wired to its call site is invisible
-# to behavioural tests alone, so these pin the wiring at the source level (ast).
+# WIRING GUARDS: a mechanism never wired to its call site is invisible to behavioural tests, so these
+# pin the wiring at the source level (ast).
 import ast as _ast  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
 
@@ -884,7 +873,7 @@ def test_run_forever_finally_cancels_in_flight_synchronously_and_does_NOT_await_
         for stmt in _ast.walk(mod):
             if isinstance(stmt, _ast.Call) and getattr(stmt.func, "attr", None) == "cancel_now":
                 calls_cancel_now = True
-            # An `await <x>.drain(...)` directly in the finally is the base behaviour that blocks redial.
+            # An `await <x>.drain(...)` directly in the finally is what blocks redial.
             if isinstance(stmt, _ast.Await):
                 inner = stmt.value
                 if isinstance(inner, _ast.Call) and getattr(inner.func, "attr", None) == "drain":
@@ -915,7 +904,7 @@ def test_run_forever_detaches_the_drain_rather_than_awaiting_it_459():
         "_run_forever never SCHEDULES client.drain(...) as a detached task — the settle must run in "
         "the background so redial is not blocked by it"
     )
-    # The tracking set that keeps the detached task alive must be referenced by name in dial_home.
+    # The set that keeps the detached task alive must be referenced by name in dial_home.
     src = _Path(dh.__file__).read_text(encoding="utf-8")
     assert "_DETACHED_DRAINS" in src, (
         "the _DETACHED_DRAINS tracking set is gone — a detached drain task could be GC'd mid-flight "
@@ -1047,7 +1036,7 @@ def test_sweep_reclaims_a_dir_whose_whole_subtree_is_old(tmp_path):
 
 
 def test_sweep_is_a_noop_when_there_is_no_work_dir(tmp_path):
-    # A fresh box has no work/ yet — the sweep must not crash on that.
+    # A fresh box has no work/ yet, and the sweep must not crash on that.
     from src.dial_home import sweep_orphaned_scratch
 
     assert sweep_orphaned_scratch(str(tmp_path), frozenset()) == []
@@ -1192,8 +1181,7 @@ async def test_processing_id_defaults_empty_for_a_legacy_frame_without_it(tmp_pa
 
 
 def test_run_forever_reports_the_klp_line_bounder_state_at_startup():
-    # WIRING GUARD: klp_probe_line() behaving correctly is worthless unless _run_forever actually
-    # CALLS it to print the line-bounder state at startup.
+    # klp_probe_line() is worthless unless _run_forever actually CALLS it at startup.
     import ast
 
     src = Path(dh.__file__).read_text(encoding="utf-8")
@@ -1215,10 +1203,9 @@ def test_run_forever_reports_the_klp_line_bounder_state_at_startup():
 
 @pytest.mark.asyncio
 async def test_reject_when_params_is_not_an_object_issue_459(tmp_path):
-    # `params` is the last required assign field with no parse layer at the boundary (jobId/jobType/
-    # mediaId already reject). A non-dict reaches JobSpec.params: dict untyped and would raise deeper
-    # in the process, escaping into the reconnect handler and tearing down the socket for one bad frame.
-    # It must be rejected job-scoped here, the same shape as the checks above.
+    # `params` is the last required assign field with no parse layer at the boundary. A non-dict would
+    # raise deeper in the process, escape into the reconnect handler and tear down the socket for one
+    # bad frame, so it must be rejected job-scoped HERE.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     bad = assign()
@@ -1229,17 +1216,16 @@ async def test_reject_when_params_is_not_an_object_issue_459(tmp_path):
     assert len(rejects) == 1, f"expected exactly one reject, got {sock.types()}"
     assert rejects[0]["jobId"] == "j1"
     assert "params" in rejects[0]["reason"]
-    # never accepted, never started a task, slot untouched
+    # Never accepted, never started a task, slot untouched.
     assert protocol.ACCEPT not in sock.types()
     assert client.state.slots_free == 1
 
 
 @pytest.mark.asyncio
 async def test_cancel_now_cancels_in_flight_without_awaiting_issue_459(tmp_path):
-    # the reconnect finally must cancel in-flight tasks SYNCHRONOUSLY (so a subprocess step's
-    # GeneratorExit fires at once) but NOT block the loop awaiting an uninterruptible run_blocking
-    # thread. cancel_now() is the synchronous half: it requests cancellation on every tracked task and
-    # returns immediately, leaving the settle to a detached drain.
+    # The reconnect finally must cancel SYNCHRONOUSLY, so a subprocess step's GeneratorExit fires at
+    # once, without blocking the loop on an uninterruptible run_blocking thread. cancel_now() requests
+    # cancellation and returns, leaving the settle to a detached drain.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
 
@@ -1248,12 +1234,12 @@ async def test_cancel_now_cancels_in_flight_without_awaiting_issue_459(tmp_path)
 
     t = asyncio.ensure_future(_never())
     client._tasks["stuck"] = t
-    # Give the task one loop turn to actually start awaiting the sleep before we cancel it.
+    # One loop turn, so the task is actually awaiting the sleep before cancellation.
     await asyncio.sleep(0)
     client.cancel_now()
-    # cancel_now returns without awaiting — the task is not settled yet, only asked to stop.
+    # cancel_now returns without awaiting: the task is asked to stop, not settled.
     assert not t.done()
-    # ...and the cancellation it requested does land when the task is finally awaited.
+    # ...and the cancellation lands when the task is finally awaited.
     with pytest.raises(asyncio.CancelledError):
         await t
     assert t.cancelled()

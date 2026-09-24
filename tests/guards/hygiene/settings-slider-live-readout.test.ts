@@ -1,9 +1,8 @@
-// guard: every Settings range slider must update its on-screen readout LIVE during a drag.
-// Caught all eight range inputs wired with `onchange` only: the readout is a function of `settings`, which
-// only moved on `change` — fired on RELEASE — so the label held the pre-drag number for the whole drag and
-// a value could not be chosen by sight; every guess was also a committed write broadcast room-wide. The
-// split follows GuidingTrack / ColourPicker: a live handler moves ONE room field on screen with no network
-// write, the commit handler writes. Comments are stripped so a commented-out handler cannot satisfy a scan.
+// guard: every Settings range slider must update its on-screen readout LIVE during a drag. Caught all eight range
+// inputs wired with `onchange` only: the readout is a function of `settings`, which only moved on `change` —
+// fired on RELEASE — so the label held the pre-drag number for the whole drag and a value could not be chosen by
+// sight; every guess was also a committed write broadcast room-wide. The split follows GuidingTrack /
+// ColourPicker: a live handler moves ONE room field on screen with no network write, the commit handler writes.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -29,12 +28,12 @@ const SLIDERS: { id: string; field: string; div100?: boolean }[] = [
 	{ id: 'guide-default', field: 'guideLevelDefault', div100: true }
 ];
 
-// The stage colour is a `type="color"` input, not a range, but it stays in this guard: a native colour
-// picker fires `input` continuously while the user drags inside it, so the live/commit split still applies.
+// The stage colour is a `type="color"` input, not a range, but it stays here: a native colour picker fires `input`
+// continuously while the user drags inside it, so the live/commit split still applies.
 const COLOUR_INPUTS: { id: string; field: string }[] = [{ id: 'tv-background-color', field: 'tvBackgroundColor' }];
 
-// The element carrying a given id, across newlines. Self-closing. Matches <Slider> as well as <input>: the
-// seven range sliders are <Slider>, while the stage-colour control is still a native <input type="color">.
+// The element carrying a given id, across newlines. Matches <Slider> as well as <input>: the seven range sliders
+// are <Slider>, while the stage-colour control is still a native <input type="color">.
 function controlElement(src: string, id: string): string {
 	const m = src.match(new RegExp(`<(?:input|Slider)\\b[\\s\\S]*?id="${id}"[\\s\\S]*?/>`));
 	expect(m, `expected an <input|Slider id="${id}"> element in settings/+page.svelte`).not.toBeNull();
@@ -48,7 +47,7 @@ for (const { id, field, div100 } of SLIDERS) {
 	test(`the ${id} slider updates its readout live via liveRoom('${field}')`, () => {
 		const el = controlElement(src, id);
 		// The CONTRACT is live while dragging, commit on release; on Bits UI that spells `onValueChange` /
-		// `onValueCommit`, with the value handed over directly instead of dug out of a DOM event.
+		// `onValueCommit`, and the commit path must stay or a drag never writes.
 		const live = new RegExp(`onValueChange=\\{\\(v\\)\\s*=>\\s*liveRoom\\(\\s*'${field}'\\s*,[\\s\\S]*?\\)\\s*\\}`);
 		expect(
 			live.test(el),
@@ -62,7 +61,6 @@ for (const { id, field, div100 } of SLIDERS) {
 				`#guide-default's liveRoom must divide the percent value by 100 to match its onValueCommit commit`
 			).toBe(true);
 		}
-		// The commit path stays: onValueCommit still calls onroom, so a drag still writes on release.
 		expect(
 			new RegExp(`onValueCommit=\\{\\(v\\)\\s*=>\\s*onroom\\(\\{\\s*${field}:`).test(el),
 			`#${id} must keep its onchange={(e) => onroom({ ${field}: … })} commit alongside the live handler`
@@ -73,9 +71,9 @@ for (const { id, field, div100 } of SLIDERS) {
 for (const { id, field } of COLOUR_INPUTS) {
 	test(`the ${id} colour input updates its swatch live via liveRoom('${field}')`, () => {
 		const el = controlElement(src, id);
-		// It must actually BE a colour input, not a range carrying this id — the control widened to a full picker.
+		// It must actually BE a colour input, not a range carrying this id, and its value IS the field's value, so
+		// unlike the sliders there is no Number() coercion.
 		expect(/type="color"/.test(el), `#${id} must be an <input type="color">, not a range`).toBe(true);
-		// A colour input's value IS the field's value, so unlike the sliders there is no Number() coercion.
 		const live = new RegExp(`oninput=\\{\\(e\\)\\s*=>\\s*liveRoom\\(\\s*'${field}'\\s*,[\\s\\S]*?\\)\\s*\\}`);
 		expect(
 			live.test(el),
@@ -100,21 +98,19 @@ test('liveRoom moves a room field on screen without a network write', () => {
 });
 
 test('a rejected commit rolls back to the server-confirmed value, not the dragged one', () => {
-	// Because liveRoom moves `settings` every drag frame, patch() must snapshot `committed` (which advances
-	// only on a confirmed response or a load), never `settings` — the dragged value the server refused.
+	// Because liveRoom moves `settings` every drag frame, patch() must snapshot `committed` — which advances only on a
+	// confirmed response or a load re-adopt — never `settings`, the dragged value the server refused.
 	expect(
 		/async function patch\([\s\S]*?const before = committed;/.test(src),
 		"patch()'s rollback baseline must be `committed` (the server-confirmed value), not `settings` — " +
 			'otherwise a drag frame becomes the value a rejected commit reverts to'
 	).toBe(true);
-	// committed advances only on a confirmed response …
 	expect(
 		/if \(!res\.ok\) throw new Error\('rejected'\);\s*settings = await res\.json\(\);\s*committed = settings;/.test(
 			src
 		),
 		'committed must be set to the server response on a successful commit'
 	).toBe(true);
-	// … and on a load re-adopt, so an external write moves the rollback baseline too.
 	expect(
 		/\$effect\(\(\) => \{\s*settings = data\.settings;\s*committed = data\.settings;\s*\}\)/.test(src),
 		'the load effect must refresh committed alongside settings'

@@ -1,15 +1,8 @@
 <script lang="ts">
-	/*
-	 * The visualizer's canvas and its animation loop — nothing about WHAT is drawn; the renderers are pure
-	 * functions in `visualizers.ts`. Three costs are managed here, because a full-screen animation on a
-	 * smart-TV browser is where this class of feature falls over: it is the SECOND rAF loop on the TV, so it
-	 * is capped at ~30fps and the lyric ball keeps the stronger claim on the frame budget; the backing store
-	 * is REDUCED and stretched by CSS, which is period-correct and cuts fill cost roughly fourfold; and
-	 * `playing` going false CANCELS the frame rather than merely hiding the canvas.
-	 *
-	 * `prefers-reduced-motion: reduce` renders ONE frame and stops, enforced by its own test because the
-	 * CSS-parsing motion guard cannot see a canvas.
-	 */
+	// The canvas and its loop only; the renderers are pure functions in `visualizers.ts`. This is the SECOND rAF loop
+	// on the TV, so three costs are managed: the draw is capped at ~30fps because the lyric ball keeps the stronger
+	// claim on the frame budget, the backing store is REDUCED and stretched by CSS, and `playing` going false CANCELS
+	// the frame rather than merely hiding the canvas. See docs/FRONTEND.md#the-visualizer-stage.
 	import { VISUALIZER_RENDERERS, type VizContext } from './visualizers';
 	import { frameClock, frameDue, shouldAnimate } from './visualizer-loop';
 	import type { TvVisualizerId } from '$lib/contract';
@@ -26,27 +19,23 @@
 
 	/** Backing-store scale. 0.5 = quarter the pixels to fill. */
 	const SCALE = 0.5;
-	/** ~30fps. See note 1 above. */
+	/** ~30fps. */
 	const FRAME_MS = 33;
 
 	let canvas = $state<HTMLCanvasElement | null>(null);
 
-	/**
-	 * The animation clock baseline, held OUTSIDE the effect ON PURPOSE. As a per-effect-run local, every
-	 * re-run — a `playing` toggle, a `variant`/`hue` change, the block remounting — resets it and pins `t`
-	 * near zero, drawing the same frame forever. At component scope `t` keeps accumulating.
-	 */
+	// The clock baseline, held OUTSIDE the effect ON PURPOSE: as a per-effect-run local, every re-run — a `playing`
+	// toggle, a `variant`/`hue` change, a remount — resets it and pins `t` near zero, drawing one frame forever.
 	let clockStart: number | null = null;
 
-	/** Read via matchMedia rather than a CSS query, because the thing to disable is a JS LOOP. */
+	/** Via matchMedia rather than a CSS query, because the thing to disable is a JS LOOP. */
 	function prefersReducedMotion(): boolean {
 		return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 	}
 
 	$effect(() => {
-		// Read every reactive input SYNCHRONOUSLY here so the effect TRACKS it. Read only inside `render()`,
-		// which runs from the rAF callback and so outside the effect's synchronous pass, an `$effect`
-		// subscribes to NEITHER and a room's visualizer or hue change is dropped until a remount.
+		// Read every reactive input SYNCHRONOUSLY here so the effect TRACKS it: read only inside `render()`, which runs
+		// from the rAF callback, an `$effect` subscribes to nothing and a hue change is dropped until a remount.
 		const activeVariant = variant;
 		const activeHue = hue;
 		const isPlaying = playing;
@@ -66,7 +55,6 @@
 		window.addEventListener('resize', onResize);
 
 		const render = (tSec: number) => {
-			// The registry is keyed by the id union, so this lookup cannot miss.
 			VISUALIZER_RENDERERS[activeVariant](ctx as unknown as VizContext, {
 				t: tSec,
 				hue: activeHue,
@@ -76,8 +64,9 @@
 		};
 
 		if (!shouldAnimate(isPlaying, prefersReducedMotion())) {
-			// One frame, then nothing. A still plasma is a legitimate background; a moving one behind lyrics is
-			// what a reduced-motion preference is asking us not to do.
+			// One frame, then nothing: a still plasma is a legitimate background, and a moving one behind lyrics is what a
+			// reduced-motion preference is asking us not to do. Enforced by its own test, since the CSS-parsing motion
+			// guard cannot see a canvas.
 			render(0);
 			return () => window.removeEventListener('resize', onResize);
 		}
@@ -85,7 +74,6 @@
 		let raf = 0;
 		let last: number | null = null;
 		const tick = (now: number) => {
-			// Component-scoped, so the baseline carries across effect re-runs and `t` keeps climbing.
 			const clock = frameClock(now, clockStart);
 			clockStart = clock.start;
 			if (frameDue(now, last, FRAME_MS)) {
@@ -103,10 +91,7 @@
 	});
 </script>
 
-<!--
-	aria-hidden: decoration behind the words. A screen reader announcing "canvas" on the karaoke stage is
-	noise, and there is no information here the song does not already convey.
--->
+<!-- aria-hidden: decoration behind the words, carrying nothing the song does not already convey. -->
 <canvas bind:this={canvas} aria-hidden="true"></canvas>
 
 <style>

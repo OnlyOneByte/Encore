@@ -1,13 +1,8 @@
 /*
- * Seed the four demo library tracks so the e2e can exercise the queue path.
+ * Seed the four demo library tracks, as PLACEHOLDERS — see docs/E2E.md#proving-audio. server.ts indexes a
+ * demo track only when a file exists behind it, so an unseeded checkout can queue nothing.
  *
- *   bun run tests/e2e/seed-media.mjs            # into ./media
- *   MEDIA_DIR=/tmp/x bun run tests/e2e/seed-media.mjs
- *
- * server.ts indexes a demo track only when a file exists behind it, so an unseeded checkout has an empty
- * library and the e2e can queue nothing. The files written here are PLACEHOLDERS: enough for indexing,
- * searching, queueing and rotation, NOT enough to decode — playback and processing need real audio, which
- * is what `fake-stems-worker.mjs` publishes. See docs/E2E.md#proving-audio.
+ *   MEDIA_DIR=/tmp/x bun run tests/e2e/seed-media.mjs      # default ./media
  */
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';

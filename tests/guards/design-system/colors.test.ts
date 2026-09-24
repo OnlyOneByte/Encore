@@ -30,16 +30,13 @@ import {
 	duetPartColors
 } from '$lib/contract';
 
-// Every colour the wheel can emit. Derived here rather than exported: production picks a colour with
+// Every colour the wheel can emit, derived here rather than exported: production picks with
 // `hueToHex(hue)` for an arbitrary hue, so a precomputed array would be a second, unread representation.
 const SINGER_WHEEL: readonly string[] = SINGER_HUES.map((h) => hueToHex(h));
 
 const appCss = read('src/app.css');
 
-/**
- * Pull a `--name: #hex;` declaration out of `app.css`. Throws rather than silently defaulting, so a
- * renamed token reds instead of leaving the suite measuring a value nothing declares.
- */
+/** Pull a `--name: #hex;` out of `app.css`. Throws, so a renamed token reds rather than defaulting. */
 function token(name: string): string {
 	const m = appCss.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));
 	if (!m) throw new Error(`token --${name} not found in src/app.css (renamed? then update this guard)`);
@@ -47,7 +44,7 @@ function token(name: string): string {
 }
 
 // The two surfaces production measures a dot against, read FROM production rather than restated as
-// literals tied to `--bg`/`--card` by a comment only. The token-drift guard below keeps the pair honest.
+// literals tied to `--bg`/`--card` by a comment only.
 const [BG, CARD] = SURFACES;
 
 test('parseHex accepts 3- and 6-digit hex and rejects everything else', () => {
@@ -69,14 +66,12 @@ test('contrastRatio matches known WCAG values', () => {
 });
 
 test('the surfaces production measures against are the tokens app.css declares', () => {
-	// `SURFACES` cannot read `app.css` (browser bundle, no filesystem), so this is the only thing standing
-	// between `isLegibleSingerColor` and a surface the app stopped painting.
-	// `readonly string[]` rather than the `as const` tuple: comparing the tuple against values read at run
-	// time narrows the expectation to the literals under test, and `toEqual` refuses a `string` there.
+	// `SURFACES` cannot read `app.css` (browser bundle, no filesystem), so this is all that stands between
+	// `isLegibleSingerColor` and a surface the app stopped painting. `readonly string[]` rather than the
+	// `as const` tuple, or `toEqual` narrows to the literals under test and refuses a `string`.
 	const measured: readonly string[] = SURFACES;
 	expect([...measured]).toEqual([token('bg'), token('card')]);
-	// Same guard for the stage centre: `ACCENT2` is a bundled copy of `--accent2` and the whole stage ramp
-	// derives from it, so moving the token silently darkens the wrong hues.
+	// Same for the stage centre: `ACCENT2` is a bundled copy of `--accent2` and the whole ramp derives from it.
 	expect(ACCENT2).toBe(token('accent2'));
 });
 
@@ -118,8 +113,7 @@ test('near-black and near-surface picks are refused', () => {
 });
 
 test('the 3:1 dot rule is pinned at its boundary, not just far below it', () => {
-	// The rest of the negative coverage sits at or below 1.22:1, so a validator enforcing any looser
-	// threshold (1.5:1, 2:1, 2.9:1) would pass unnoticed. These bracket the exact 3:1 edge.
+	// The rest of the negative coverage sits at or below 1.22:1, so these four bracket the exact 3:1 edge.
 
 	// Mid-band: below 3:1 against BOTH surfaces (bg 2.97, card 2.60). A ~2:1 rule would wrongly pass it.
 	expect(contrastRatio('#5c5c66', BG)).toBeCloseTo(2.97, 1);
@@ -152,8 +146,7 @@ test('normalizeSingerColor falls back to a preset for unusable input', () => {
 });
 
 test('a wheel pick survives a normalize round-trip unchanged', () => {
-	// A validator that accepts the wheel in principle but rewrites its output in practice would silently
-	// undo the whole feature.
+	// A validator that accepts the wheel in principle but rewrites its output would undo the whole feature.
 	for (const c of SINGER_WHEEL) expect(normalizeSingerColor(c)).toBe(c);
 });
 
@@ -163,8 +156,7 @@ test('nearestSingerHue keeps the slider and the swatches as one selection', () =
 });
 
 test('nearestSingerHue maps each preset to a plausible hue', () => {
-	// Not exact (the presets sit outside the wheel's lightness band), but it must land in the right part
-	// of the circle rather than the opposite side.
+	// Not exact — the presets sit outside the wheel's lightness band — but in the right part of the circle.
 	expect(nearestSingerHue('#ff5cae')).toBeGreaterThan(300); // pink
 	expect(nearestSingerHue('#33d6a6')).toBeGreaterThan(120); // green/teal
 	expect(nearestSingerHue('#33d6a6')).toBeLessThan(210);
@@ -177,8 +169,8 @@ test('nearestSingerHue maps each preset to a plausible hue', () => {
 const WHITE = '#ffffff';
 
 test('every stage background is far darker than the singer dot palette', () => {
-	// The dot tier on a full screen would wash out the lyric reel, which is the whole reason the stage tier
-	// exists — so the ordering is asserted rather than trusted to two constants staying apart.
+	// The dot tier on a full screen would wash out the lyric reel, so the ordering is asserted rather than
+	// trusted to two constants staying apart.
 	expect(STAGE_BG_L).toBeLessThan(SINGER_L);
 	for (const hue of SINGER_HUES) {
 		expect(stageLightnessForHue(hue)).toBeLessThanOrEqual(STAGE_BG_L);
@@ -195,8 +187,8 @@ test('sung-white lyrics clear WCAG AA on every stage background', () => {
 });
 
 test('the active-word pink separates from every stage background', () => {
-	// A stage generated from a hue near --accent2 steals the active word's cue, because highlight and field
-	// become one hue family, so the guard trades brightness for that separation.
+	// A stage generated near --accent2 steals the active word's cue, because highlight and field become one
+	// hue family, so the guard trades brightness for that separation.
 	for (const hue of SINGER_HUES) {
 		const bg = stageHueToHex(hue);
 		expect(contrastRatio(ACCENT2, bg)).toBeGreaterThanOrEqual(3);
@@ -215,8 +207,8 @@ test('the pink singer — the worst case — is guarded harder than a distant hu
 });
 
 test('the guard ramps rather than stepping — no cliff between adjacent wheel stops', () => {
-	// A binary threshold gave neighbouring stops wildly different stages for a 15° change, so smoothness
-	// is asserted directly: no adjacent pair jumps more than one step's worth of the ramp.
+	// A binary threshold gave neighbouring stops wildly different stages for a 15° change, so no adjacent
+	// pair may jump more than one step's worth of the ramp.
 	const maxStep = 0.09 / (60 / SINGER_HUE_STEP) + 1e-9; // full ramp spread over its 60° band
 	for (const hue of SINGER_HUES) {
 		const next = (hue + SINGER_HUE_STEP) % 360;
@@ -241,10 +233,9 @@ test('every singer preset yields a usable stage, including the two that collapse
 	expect(stageHueToHex(nearestSingerHue('#33d6a6'))).toBe(stageHueToHex(nearestSingerHue('#5cffd6')));
 });
 
-// The eight presets are a roving-tabindex radiogroup: exactly one swatch is tabbable. The tab stop is
-// normally the checked preset, but the wheel emits colours that are NEVER presets, so without a fallback
-// one wheel pick drops all eight out of the tab order for good and locks a keyboard or switch-access
-// guest out of the only named colours. These pin that a valid tab stop ALWAYS exists.
+// The eight presets are a roving-tabindex radiogroup: exactly one swatch is tabbable. The wheel emits
+// colours that are NEVER presets, so without a fallback one wheel pick drops all eight out of the tab order
+// for good and locks a keyboard or switch-access guest out of the only named colours.
 
 test('presetTabStopIndex points at the matching swatch for a preset value', () => {
 	SINGER_COLORS.forEach((c, i) => {
@@ -253,9 +244,8 @@ test('presetTabStopIndex points at the matching swatch for a preset value', () =
 });
 
 test('presetTabStopIndex keeps a tab stop after a wheel pick — the closed-door bug', () => {
-	// After any hue pick no swatch matches, and `value === c ? 0 : -1` left EVERY swatch at -1 — the group
-	// fell out of the tab order and the wheel cannot return to a preset. Reverting presetTabStopIndex to a
-	// bare `indexOf` makes this fail with `-1 to be 0`.
+	// After any hue pick no swatch matches, and `value === c ? 0 : -1` left EVERY swatch at -1. Reverting
+	// presetTabStopIndex to a bare `indexOf` makes this fail with `-1 to be 0`.
 	for (const wheelHex of SINGER_WHEEL) {
 		// premise: the wheel never lands on a preset, so there is genuinely no match to fall back from
 		expect(SINGER_COLORS as readonly string[]).not.toContain(wheelHex);
@@ -264,8 +254,8 @@ test('presetTabStopIndex keeps a tab stop after a wheel pick — the closed-door
 });
 
 test('presetTabStopIndex always yields exactly one in-range tab stop', () => {
-	// For ANY value — preset, wheel hue or garbage — precisely one swatch ends up with tabindex 0, and it
-	// is a real index into the rendered swatches.
+	// For ANY value — preset, wheel hue or garbage — precisely one swatch ends up with tabindex 0, and it is a
+	// real index into the rendered swatches.
 	const inputs = [...SINGER_COLORS, ...SINGER_WHEEL, '#000000', 'not a colour', ''];
 	for (const v of inputs) {
 		const stop = presetTabStopIndex(v);
@@ -277,9 +267,8 @@ test('presetTabStopIndex always yields exactly one in-range tab stop', () => {
 });
 
 // A bare `indexOf(value)` returns -1 for a wheel hex while the tab stop falls back to 0, so after a wheel
-// pick the focus ring sat on swatch 0 while movement computed from -1: the first ArrowRight did not move
-// and ArrowLeft skipped mint, landing on purple. `nextSwatchIndex` shares the tab stop's anchor. Expected
-// indices are LITERALS, not computed, so a regression to the bare base reds them.
+// pick the first ArrowRight did not move and ArrowLeft skipped mint, landing on purple. Expected indices
+// are LITERALS, not computed, so a regression to the bare base reds them.
 
 test('nextSwatchIndex moves correctly from a preset value (the control case)', () => {
 	// violet is SINGER_COLORS[0]. Right -> pink (1), Left wraps -> mint (7).
@@ -302,8 +291,7 @@ test('nextSwatchIndex after a wheel pick matches the tab stop, not indexOf(-1)',
 test('hueToHex fully reduces chroma into sRGB gamut, even from a high starting chroma (no clip)', () => {
 	// The no-clip guarantee: chroma is reduced UNTIL the colour fits, because clipping an out-of-gamut blue
 	// hue-shifts it. A FIXED 40-iteration -0.005 loop covers only 0.20 of chroma, so from 0.30 it bottoms out
-	// at 0.10 and returns a clipped colour for any hue whose max in-gamut chroma is below that — L=0.5 is
-	// chosen because the teal hues cap around 0.084, inside that range. Non-vacuity is asserted two ways.
+	// at 0.10; L=0.5 is chosen because the teal hues cap around 0.084, inside that range.
 	const L = 0.5;
 	const START = 0.3;
 	const STEP = 0.005;
@@ -340,15 +328,15 @@ test('hueToHex fully reduces chroma into sRGB gamut, even from a high starting c
 	expect(sawFixedFloorOutOfGamut).toBe(true);
 });
 
-// The constant is a hand-written literal because SQL cannot run an OKLCH conversion — the SQLite column
-// default and the migration backfill both need these bytes. This stops that duplication rotting.
+// A hand-written literal because SQL cannot run an OKLCH conversion — the SQLite column default and the
+// migration backfill both need these bytes. This stops that duplication rotting.
 test('DEFAULT_STAGE_COLOR is exactly what the old hue-240 default rendered as', () => {
 	expect(DEFAULT_STAGE_COLOR).toBe(stageHueToHex(240));
 });
 
 test('normalizeStageColor canonicalises to 6-digit lowercase hex', () => {
-	// This value is interpolated straight into a style attribute, and a 3-digit hex concatenated with
-	// alpha digits is what silently dropped the singer halo once already.
+	// Interpolated straight into a style attribute, and a 3-digit hex concatenated with alpha digits is what
+	// silently dropped the singer halo once already.
 	expect(normalizeStageColor('#ABC', DEFAULT_STAGE_COLOR)).toBe('#aabbcc');
 	expect(normalizeStageColor('#AABBCC', DEFAULT_STAGE_COLOR)).toBe('#aabbcc');
 	expect(normalizeStageColor('  #001d31  ', DEFAULT_STAGE_COLOR)).toBe('#001d31');
@@ -391,10 +379,9 @@ function hueGap(a: number, b: number): number {
 }
 
 test('hueOfColor recovers the hue of a stage-tier colour, which nearestSingerHue cannot', () => {
-	// The visualizers build a palette by hue ARITHMETIC around the room's colour, so they need an angle back out
-	// of the stored hex. atan2 of the OKLab chromatic axes is scale-free and round-trips every legal stop
-	// within one wheel step; nearestSingerHue compares those axes by euclidean distance against candidates at
-	// the WHEEL's tier and so mis-snaps a stage colour.
+	// The visualizers build a palette by hue ARITHMETIC around the room's colour, so they need an angle back
+	// out of the stored hex. atan2 of the OKLab chromatic axes is scale-free and round-trips every legal stop
+	// within one wheel step; nearestSingerHue compares those axes against WHEEL-tier candidates and mis-snaps.
 	let worst = 0;
 	let sawNearestMismatch = false;
 	for (const h of SINGER_HUES) {
@@ -432,8 +419,7 @@ test('dimTowardBlack with dim 1 pulls any colour to black', () => {
 });
 
 test('dimTowardBlack scales every channel by (1 - dim), rounded', () => {
-	// 255 * 0.5 = 127.5 → 128 (0x80), derived from the rule rather than transcribed from a fixture, so a wrong
-	// scaling reds instead of agreeing with a matching constant.
+	// 255 * 0.5 = 127.5 → 128 (0x80), derived from the rule rather than transcribed from a fixture.
 	expect(dimTowardBlack('#ffffff', 0.5)).toBe('#808080');
 	// per channel: 0x33=51→round(20.4)=0x14, 0x66=102→round(40.8)=0x29, 0x99=153→round(61.2)=0x3d
 	expect(dimTowardBlack('#336699', 0.6)).toBe('#14293d');
@@ -457,7 +443,7 @@ test('dimTowardBlack clamps an out-of-range dim into [0,1] rather than inverting
 });
 
 test('dimTowardBlack returns an unparseable input verbatim (the token safety net)', () => {
-	// A CSS-variable gradient string must pass through unchanged rather than throw: a pure function cannot
+	// A CSS-variable gradient string passes through unchanged rather than throwing: a pure function cannot
 	// darken a var().
 	const grad = 'radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%)';
 	expect(dimTowardBlack(grad, 0.5)).toBe(grad);
@@ -481,9 +467,9 @@ test('normalizeStageDim clamps to [0,1], rounds to a hundredth, and keeps the ba
 	}
 });
 
-// Duet part colours: the worker writes an abstract `part` letter on each line of a CONFIDENT duet and NOTHING
-// on a solo or undiarized song, and `duetPartColors` maps those letters onto DISTINCT, LEGIBLE colours from
-// the singer-identity palette. The rendered `--reel-part` wiring is scanned separately.
+// Duet part colours: the worker writes an abstract `part` letter on each line of a CONFIDENT duet and
+// NOTHING on a solo or undiarized song, and `duetPartColors` maps letters onto DISTINCT, LEGIBLE colours
+// from the singer-identity palette. The rendered `--reel-part` wiring is scanned separately.
 
 test('a diarized duet gets two DISTINCT, LEGIBLE part colours', () => {
 	const lines = [{ part: 'A' }, { part: 'B' }, { part: 'A' }, { part: 'B' }];

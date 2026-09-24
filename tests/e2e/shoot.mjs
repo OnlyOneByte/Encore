@@ -1,11 +1,8 @@
 /*
- * Shoot the four surfaces a component migration changes, on a real render — evidence for a reviewer, not a
- * check. It boots the BUILT app with a processed song and joins in a phone viewport.
+ * Shoot the four surfaces a component migration changes, on a real render. Run once per tree and diff the
+ * pairs; deliberately in no gate list, because a screenshot cannot fail a build.
  *
- * Run it once per tree and diff the pairs:
  *   EPORT=5217 OUT=/tmp/after  bun tests/e2e/shoot.mjs
- *
- * Deliberately in no gate list: a screenshot cannot fail a build.
  */
 import { existsSync, mkdirSync, openSync, readdirSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
@@ -30,12 +27,17 @@ const bail = (m) => {
 	console.error(`ENVIRONMENT: ${m}`);
 	process.exit(2);
 };
-/** @param {() => Promise<unknown>} fn @param {{timeout?:number,name?:string}} [o] */
+/**
+ * @template T
+ * @param {() => Promise<T>} fn
+ * @param {{timeout?:number,name?:string}} [o]
+ * @returns {Promise<NonNullable<T>>}
+ */
 async function waitFor(fn, { timeout = 30_000, name = 'condition' } = {}) {
 	const t0 = Date.now();
 	while (Date.now() - t0 < timeout) {
 		const v = await fn().catch(() => null);
-		if (v) return v;
+		if (v) return /** @type {NonNullable<T>} */ (v);
 		await sleep(250);
 	}
 	throw new Error(`timed out after ${timeout}ms waiting for ${name}`);
@@ -101,7 +103,10 @@ async function worker() {
 	throw new Error('worker never welcomed');
 }
 
-/** @param {string} q */
+/**
+ * @param {string} q
+ * @returns {Promise<{ id: string, title: string, stemStatus?: string, instrumentalRef?: string | null }>}
+ */
 async function processMedia(q) {
 	const d = await api(`/api/search?q=${encodeURIComponent(q)}`).then((r) => r.json());
 	const all = [...(d.ready ?? []), ...(d.results ?? []), ...(d.processing ?? [])];
@@ -111,6 +116,7 @@ async function processMedia(q) {
 	if (!r.ok && r.status !== 409) throw new Error(`process ${r.status}`);
 	return await waitFor(
 		async () => {
+			/** @type {{ id: string, title: string, stemStatus?: string, instrumentalRef?: string | null }[]} */
 			const lib = (await api('/api/library').then((x) => x.json())).library ?? [];
 			return lib.find((x) => x.id === m.id && x.stemStatus === 'ready' && x.instrumentalRef);
 		},
@@ -168,10 +174,12 @@ async function main() {
 	await page.evaluate(
 		`[...document.querySelectorAll('button')].find((b) => /sing|join|start|continue/i.test((b.textContent||'') + ' ' + (b.getAttribute('aria-label')||'')))?.click()`
 	);
-	await waitFor(async () => await page.evaluate(`!!document.querySelector(${JSON.stringify(SEL.hero)})`), {
-		timeout: 20_000,
-		name: 'joined home'
-	});
+	// `homeReady` is chrome on every phone surface, so pair it with the path to mean "and on home".
+	await waitFor(
+		async () =>
+			await page.evaluate(`!!document.querySelector(${JSON.stringify(SEL.homeReady)}) && location.pathname === '/'`),
+		{ timeout: 20_000, name: 'joined home' }
+	);
 
 	// Home: search results, then the queue.
 	await page.evaluate(`(() => {

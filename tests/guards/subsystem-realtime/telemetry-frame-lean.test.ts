@@ -1,17 +1,14 @@
-// tv:telemetry is a ~4Hz hot-path stream. Caught: `durationSec`, `bufferedNextPct` and TvTelemetry.status
-// were declared on the wire contract, forwarded through server.ts, and read by NOTHING — handleTelemetry
-// reads only positionSec, entryId and ended (the forwarder derives `ended` from the wire status before the
-// handler sees it). `bufferedNextPct` was HARDCODED to 100 at both producer sites, so any future
-// buffered/preload decision wired to it would always read "the next song is fully buffered".
-//
-// Re-adding a field nothing reads leaves the whole suite green, so the absence is pinned as a source
-// property across all four links: wire frame, handler type, forwarder, and the client-side PRODUCER.
+// guard: tv:telemetry is a ~4Hz hot-path stream. Caught: `durationSec`, `bufferedNextPct` and
+// TvTelemetry.status were declared on the wire contract, forwarded through server.ts, and read by NOTHING —
+// handleTelemetry reads only positionSec, entryId and ended. `bufferedNextPct` was HARDCODED to 100 at both
+// producer sites, so any future preload decision wired to it would always read "fully buffered". Re-adding
+// a field nothing reads leaves the whole suite green, so the absence is pinned across all four links: wire
+// frame, handler type, forwarder, and the client-side PRODUCER.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { read, repoRoot } from '@encore/test-support';
 
-// Blanks rather than deletes, so reported offsets still line up.
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);

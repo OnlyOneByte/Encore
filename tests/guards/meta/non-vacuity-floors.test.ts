@@ -1,91 +1,30 @@
 /*
- * guard: the non-vacuity floors themselves.
+ * guard: the non-vacuity floors themselves — a floor can be lowered, deleted, or quietly left off a
+ * newly-added scan, and without this nothing notices.
  *
- * ── WHY THIS FILE EXISTS ───────────────────────────────────────────────────────────────────────────
+ * A FIRING FLOOR IS A FINDING, NEVER A NUMBER TO ADJUST. The three accepted resolutions (restore the
+ * scope, re-anchor, retire on the record via RETIRED) and why this is a snapshot rather than an
+ * extractor are in docs/GUARDS.md#non-vacuity-floors.
  *
- * Roughly two dozen guards in this repo derive their own scope at run time — they walk a tree, filter a
- * file list, or count the rules they matched. Every one of them then asserts an `offenders` array is
- * EMPTY. An empty array is what a working guard produces AND what a guard examining nothing produces,
- * so a scope regression (a moved directory, a renamed extension, a copy-in path outside the walk, a
- * component library that relocates markup) turns those guards GREEN rather than red.
- *
- * The repo's answer is a NON-VACUITY FLOOR: an assertion on the SIZE of what was actually examined.
- * `/metrics` and `lib/charts` both escaped hand-listed `FILES` arrays exactly this way, and
- * the floors were planted afterwards, one guard at a time.
- *
- * Which leaves one hole, and it is the hole this file closes:
- *
- *   > A FLOOR IS ITSELF A GUARD, AND NOTHING GUARDED THE FLOORS.
- *
- * A floor can be lowered, deleted, or quietly left off a newly-added scan, and no test notices. The
- * upcoming design-library migration makes that acute, because the migration's EXPECTED signal is these
- * floors firing — and a firing floor reads, to anyone who has not been told otherwise, as "the guard is
- * broken, lower the number". That reading converts a DETECTED loss of enforcement into a SILENT one,
- * which is worse than never having planted the floor.
- *
- * ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
- * │  A FIRING NON-VACUITY FLOOR IS A FINDING, NEVER A NUMBER TO ADJUST.                              │
- * │                                                                                                  │
- * │  It does not mean the guard broke. It means the guard can no longer see the surface it was        │
- * │  enforcing on. The number is the messenger.                                                      │
- * │                                                                                                  │
- * │  If you are here because this file went red, the ONLY accepted resolutions are:                   │
- * │                                                                                                  │
- * │   (a) RESTORE THE SCOPE. The walk lost sight of files it should still see — fix the walk. This is │
- * │       the common case and it is a real defect the floor just caught for you.                      │
- * │                                                                                                  │
- * │   (b) RE-ANCHOR. The surface genuinely moved and the guard should follow it. Point the scan at    │
- * │       the new location and keep the floor at a value the new scope supports.                      │
- * │                                                                                                  │
- * │   (c) RETIRE, ON THE RECORD. The invariant genuinely stopped applying. Move the floor's entry     │
- * │       from FLOORS into RETIRED below with a written reason naming (1) the invariant whose scope    │
- * │       shrank, (2) the sites that left scope, and (3) the guard that now covers them, or an        │
- * │       explicit statement that none does. RETIRED is checked: the reason must be substantive and   │
- * │       the assertion must be genuinely GONE, so "retire" cannot be used to launder a lowered       │
- * │       number.                                                                                    │
- * │                                                                                                  │
- * │  Editing the literal in FLOORS downward to match a shrunken scope is NOT on that list. It is the  │
- * │  one action this file exists to make impossible to do quietly.                                    │
- * └──────────────────────────────────────────────────────────────────────────────────────────────────┘
- *
- * ── WHY A SNAPSHOT AND NOT AN EXTRACTOR ────────────────────────────────────────────────────────────
- *
- * A regex that harvests every `toBeGreaterThan` in the suite would also harvest assertions that are not
- * floors at all (`caps.length > 0`, `ratio >= 4.5`), so its own contents would drift and it could not
- * distinguish a deleted floor from an unrelated refactor. The floors are LITERALS, which is precisely
- * what makes a checked-in snapshot decidable: each entry names the file, the subject expression, and the
- * minimum, and the check is that an assertion at least that strong is still there.
- *
- * The snapshot is keyed by subject text, NOT by line number, so ordinary edits above a floor do not
- * churn this file — only a floor's disappearance or weakening does. `count` is a MINIMUM occurrence
- * count, so a sibling PR adding a new floor to a listed file is fine; removing one is not.
+ * Keyed by subject TEXT, never by line number, so ordinary edits above a floor do not churn the registry.
+ * A Floor's `subject` is the exact expression inside `expect(…)`, `min` the weakest literal accepted (a smaller one
+ * in source is a LOWERED floor and reds), `count` a MINIMUM occurrence count, and `guards` what it protects.
  */
 import { test, expect } from 'bun:test';
 import { filesUnder, relative, repoRoot } from '@encore/test-support';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Repo-root anchored: the registry's keys are repo-relative, so its root must be too.
 const REPO = repoRoot;
 
 type Floor = {
-	/** the exact expression inside `expect(…)`, verbatim from the source */
 	subject: string;
-	/** the weakest literal accepted; a smaller one in source is a LOWERED floor and reds */
 	min: number;
-	/** how many assertions on this subject must be at least `min` (minimum, not exact) */
 	count: number;
-	/** what this floor is protecting, in one line, for the reviewer who meets its red */
 	guards: string;
 };
 
-/**
- * Every non-vacuity floor in the suite, by file.
- *
- * The 18 that already existed when this file landed, plus the four added by the same sweep: the two
- * enumerating walks that carried none (`chromium.test.ts`, `page-header.test.ts` — the gap),
- * and the two on the motion guard's new utility-class arm.
- */
+/** Every non-vacuity floor in the suite, by file. */
 const FLOORS: Record<string, Floor[]> = {
 	'tests/guards/meta/shared-contract-boundary.test.ts': [
 		{
@@ -509,8 +448,6 @@ const FLOORS: Record<string, Floor[]> = {
 				'the.svelte walk the SEL-resolution guard resolves against, added by the shared source-scan helper consolidation. The two floors beside it pin the DRIVER list and the collected literals, not the source population, so a narrowed walk whose surviving files still carry every SEL anchor left whole surfaces unexamined and every floor green.'
 		}
 	],
-	// added when the floors were planted — both walks previously had NO floor, and both feed tests that assert an
-	// offenders array is empty, so an emptied walk passed while examining nothing.
 	'tests/guards/hygiene/chromium.test.ts': [
 		{
 			subject: 'out.length',
@@ -552,12 +489,9 @@ const FLOORS: Record<string, Floor[]> = {
 };
 
 /**
- * Floors deliberately retired, with the reason. EMPTY TODAY — nothing has been retired yet.
- *
- * This is the ONLY sanctioned way for an entry to leave FLOORS. The checks below make it a real record
- * rather than an escape hatch: the reason must be substantive, and the assertion must be genuinely
- * absent from the file, so an entry cannot be parked here while a weakened version of the same floor
- * stays in the source.
+ * Floors deliberately retired, with the reason — the ONLY sanctioned way for an entry to leave FLOORS. The
+ * checks below make it a record rather than an escape hatch: the reason must be substantive and the assertion
+ * genuinely absent, so an entry cannot be parked here while a weakened copy stays in the source.
  */
 const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 	'tests/unit/lib/ui-foreign-theme.test.ts': [
@@ -589,28 +523,11 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 };
 
 /**
- * Guards whose premise a KNOWN, PLANNED change will invalidate, with the call made in advance.
- *
- * the failure mode is a reviewer meeting a red they were not expecting and resolving it by
- * deleting the assertion. The remedy is to decide the retire-or-re-anchor question BEFORE the change
- * lands, next to the guard, and then to check that the record and the guard have not drifted apart.
- *
- * `anchor` is text that must still be present in `file`. If the guard is edited away without updating
- * this record, that mismatch reds — so a stale ruling cannot sit here looking authoritative.
+ * Guards whose premise a KNOWN, PLANNED change will invalidate, with the retire-or-re-anchor call made in
+ * advance — so a reviewer does not meet an unexpected red and resolve it by deleting the assertion. `anchor`
+ * is text that must still be present in `file`, so a stale ruling cannot sit here looking authoritative.
  */
 const PENDING_RULING: { file: string; anchor: string; ruling: string }[] = [
-	/*
-	 * RESOLVED AND REMOVED BY THE DRAWER DELETION — the QueueSheet drawer-port ruling that lived here.
-	 *
-	 * Its anchor was `RECORDED RULING FOR THE QUEUESHEET DRAWER PORT` in design-system.test.ts,
-	 * and its call was RE-ANCHOR, DO NOT DELETE for the dvh sheet-cap scan and the `.peek` env() scan.
-	 * That call was right for the change it anticipated — a PORT, where both sheets still existed at a
-	 * new address. What actually happened was a REMOVAL: the drawer surface was deleted outright, so
-	 * the dvh scan had no address left to move to and was retired (see RETIRED, with its reason), while
-	 * the `.peek` env() scan DID have a live successor and was re-anchored to the docked bands
-	 * (`.cta-dock` / `.search-dock`) rather than dropped — which is the half of the ruling that
-	 * survived contact. Both outcomes are on the record; this entry is gone because its anchor is.
-	 */
 	{
 		file: 'tests/guards/a11y/contrast.test.ts',
 		anchor: 'RECORDED RULING FOR THE PALETTE MIGRATION',
@@ -628,17 +545,13 @@ const PENDING_RULING: { file: string; anchor: string; ruling: string }[] = [
 	}
 ];
 
-/** Locate a floor assertion on `subject` and return every literal asserted against it. */
 function assertedLiterals(src: string, subject: string): number[] {
 	const esc = subject.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	/*
-	 * The optional `,\s*<message>` is what lets a floored assertion also carry a failure message.
-	 *
-	 * Without it the pattern demanded `expect(subject)` immediately followed by the matcher, so
-	 * `expect(scanned.length, 'the test-file walk is broken').toBeGreaterThan(200)` read as NO floor at
-	 * all — the registry reported the floor GONE while it sat two characters away. That is the wrong
-	 * incentive: it pressures an author to drop the message to satisfy the bookkeeping, when a message
-	 * naming the wrong diagnosis is exactly what R4 asks a guard to carry.
+	 * The optional `,<message>` is what lets a floored assertion also carry a failure message. The pattern
+	 * once demanded `expect(subject)` immediately followed by the matcher, so
+	 * `expect(scanned.length, 'the walk is broken').toBeGreaterThan(200)` read as NO floor — the registry
+	 * reported it GONE while it sat two characters away, pressuring the author to drop the message.
 	 */
 	const re = new RegExp(
 		String.raw`expect\(\s*${esc}\s*(?:,[^)]*)?\)\s*\.\s*toBeGreaterThan(?:OrEqual)?\(\s*(\d+)\s*\)`,
@@ -648,30 +561,16 @@ function assertedLiterals(src: string, subject: string): number[] {
 }
 
 /**
- * The per-site anchor for option C of the self-floor slack re-triage. Every registered floor assertion carries a fixed
- * `// @nvf-floor <subject>` comment at its site. `located` above counts what the SCAN finds in each
- * source; this tag is the SITE marker the bidirectional scan below cross-checks against FLOORS, so a
- * floor cannot be registered without a real assertion (an entry whose site has no tag reds) and a
- * tagged floor cannot exist unregistered (an orphan tag reds). It closes the one hole the `located`
- * literal cannot see — a floor planted in FLOORS pointing at nothing — WITHOUT surrendering the
- * `located` literal, which stays as the only thing that reds on a deleted registration.
- *
- * The tag is the anchor precisely because an extractor over `toBeGreaterThan` is NOT usable here: the
- * suite carries 40+ non-floor `>=` assertions (`start >= 0`, `fnIdx >= 0`, `w >= 44`), so the
- * snapshot-not-extractor ruling at the top of this file stands. A tag is a deliberate, greppable mark
- * that only a floor assertion carries.
+ * The per-site anchor: every registered floor assertion carries this tag at its site, and the bidirectional
+ * scan below cross-checks tags against FLOORS. A tag rather than an extractor over `toBeGreaterThan`, because
+ * the suite carries 40+ non-floor `>=` assertions (`start >= 0`, `w >= 44`).
  */
 const NVF_TAG = '@nvf-floor';
 
 /**
- * Every `// @nvf-floor <subject>` tag in `src`, as the list of subject strings it marks.
- *
- * WHY THE LINE MUST ALSO CARRY AN ASSERTION. The tag's definition is that it marks a floor **at its
- * site**, so a line bearing the tag but no `expect(` is not a site — it is prose *about* the tag. That
- * distinction only became load-bearing when this file registered its own floor and the scanner promptly
- * read the two lines of documentation above (which spell the tag out to explain it) as two untracked
- * floors. Requiring the assertion on the same line makes the scanner agree with its own definition, and
- * is strictly narrower than stripping comments — which cannot work here, because the tag lives in one.
+ * Every `// @nvf-floor <subject>` tag in `src`. THE LINE MUST ALSO CARRY AN `expect(`: a tagged line with no
+ * assertion is prose ABOUT the tag, and without that requirement the scanner read the two lines of
+ * documentation above — which spell the tag out to explain it — as two untracked floors.
  */
 function taggedFloorSubjects(src: string): string[] {
 	const re = new RegExp(String.raw`^(.*\bexpect\s*\(.*)//\s*${NVF_TAG}\s+(.+?)\s*$`, 'gm');
@@ -708,77 +607,19 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 		}
 	}
 	expect(offenders).toEqual([]);
-	// This guard's OWN non-vacuity floor. Without it, a broken `assertedLiterals` regex, an emptied
-	// FLOORS map, or a bad REPO root would make the loop above examine nothing and pass — the exact
-	// class of failure this file exists to detect, one level up.
-	//
-	// ⚠ THIS LITERAL MUST EQUAL THE SUM OF EVERY `count` IN `FLOORS`, EXACTLY. `located` accumulates
-	// `f.count` per located floor, so any slack between the sum and this number is a LAUNDERING
-	// ALLOWANCE: a floor can be deleted from its source file AND its entry removed from `FLOORS`
-	// together, and `located` still clears a floor set below the sum. That green run is indistinguishable
-	// from a healthy one, which is precisely the hole this file exists to close — one level up again.
-	// So when you add an entry to `FLOORS`, raise this by the same amount in the same commit; when you
-	// retire one to `RETIRED`, lower it by the same amount. Measured directly rather than counted by
-	// eye: temporarily raise this literal absurdly high, run this file alone, and read `Received: N`.
-	// 38 as of the token-dimension audit (29 on its base once the tap-token audit added `boxRulesSeen`; +9 for the nine enumerating scans
-	// adds to design-system.test.ts — five dimension-duplication scans, the two @theme bridge scans,
-	// the ladder-ordering rungs, and the phone-ladder-on-TV ban). +1 for the breakpoint-token work's
-	// breakpoint-membership `literalsFound` floor, and +1 for the player-hue ban's `mintSurfaces` floor on the colour ban
-	// (tailwind-toolchain.test.ts), giving 40. Measured the way this comment prescribes, not counted:
-	// raised absurdly high, read `Received: 40`.
-	// +1 for S1's `files.length` floor, then -1 retiring it: the restructure inverted that
-	// guard's premise (the semantic layer makes shadcn's theme names correct), so it went to RETIRED
-	// with its successors named. Back to 40.
-	// -1 for the drawer deletion retiring design-system.test.ts's `scanned` floor to RETIRED (its
-	// guard's entire population was the two deleted drawer components), and +1 for the `scanned` floor
-	// on the drawer-deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
-	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
-	// prescribes rather than counted: raised absurdly high, read `Received: 64`.
-	//
-	// 65 -> 64 when the test tree's own manifest was deleted: flattening `apps/` away made the app's
-	// manifest the ROOT manifest, so `tests/package.json` had nothing left to declare. The version-lockstep
-	// arm it fed was RETIRED rather than repointed — with one manifest there are no two numbers to disagree,
-	// and an arm comparing a thing with itself is what no assertion looks like when it passes. A floor going
-	// DOWN is as much a finding as one going up, and this is its reason.
-	//
-	// 51 -> 55 when the test tree was reorganised: four floors were REGISTERED, none invented. Two belong
-	// to the new test-tree-deps guard, one is direction C's own `filesWalked`, and one is a floor on
-	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
-	// surfaced it. Both literals were re-measured, not incremented.
-	//
-	// Re-measured to 72: 71 when no-self-anchored-paths gained an `mjs.length` floor, then 72 when dev-only-routes registered its fixture-consumer floor, then 73 when no-hand-rolled-cdp registered its walk. The previous value
-	// of 66 was not wrong so much as SLACK: these are `>=` floors, so 66 kept passing while the real
-	// count drifted up to 70 without anything saying so. Measured by raising both to 99999 and reading
-	// `Received: N`, which is the only way to learn the actual number.
-	//
-	// 73 → 72 with the drawer-deletion guard's removal (owner ruling 2026-09-14: the phone remote is
-	// being rebuilt around a now-playing drawer, so `drawer-surface-removed-903.test.ts` asserted the
-	// negation of the shipped design and went, taking its one `scanned` floor and one tagged site with
-	// it). `taggedSitesSeen` below moves in the same commit, as its own comment requires — a whole
-	// deleted guard file gets NO RETIRED entry (this file's own retirement arm rejects a key that no
-	// longer resolves); the rationale lives and the deleting commit.
-	//
-	// 72 → 73 when the join screen's colour ring registered its `PALETTE_STOPS.length` floor. The ring
-	// reads its 48 colours out of a generated JSON registry rather than computing them, so the floor is
-	// the thing that tells an emptied read apart from a clean palette.
-	// 73 → 69 (2026-09-22) with the docs cleanup: `register-index-matches` carried three floors and
-	// `gates-prose-matches-script` one, and both guards were deleted because the documents they compared
-	// against — the docs/ux register index tables and the docs/loop gate briefs — no longer exist.
-	// 69 → 70 for task-number-hygiene's `ISSUE_SUBJECT_EXEMPT.length`: its new arm requires every recorded
-	// exemption to still have a subject, and an emptied list would satisfy that arm having checked nothing.
+	// This guard's OWN floor, and it is ZERO-SLACK: it MUST EQUAL the sum of every `count` in `FLOORS`,
+	// exactly. Any slack is a LAUNDERING ALLOWANCE — a floor deleted from its source AND its entry deleted
+	// from `FLOORS` together still clears a number set below the sum, and that green run is indistinguishable
+	// from a healthy one. Move it in the same commit that registers or retires a floor, and MEASURE rather
+	// than count: raise the literal absurdly high, run this file alone, read `Received: N`.
 	expect(located).toBeGreaterThanOrEqual(70);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
 test('every registered floor is tagged at its site, and every tag is registered (option C)', () => {
-	// The bidirectional per-site anchor. The `located` literal above catches a DELETED registration
-	// (both a deleted source floor and a deleted-together entry+source drop `located` below 41). What it
-	// cannot catch is a floor planted in FLOORS that points at no real assertion — `assertedLiterals`
-	// would simply find nothing and push a `GONE` offender only if the SUBJECT never appears, but a
-	// FLOORS entry whose subject is invented could name any expression. The tag closes that: a
-	// registration is real only if its assertion site is tagged, and a tagged site is legitimate only if
-	// it is registered. Neither direction touches `located`, so this ADDS coverage without trading any
-	// away.
+	// The bidirectional per-site anchor, closing the one hole `located` cannot see — a FLOORS entry whose subject is
+	// invented, pointing at no real assertion. Direction A: a registration with no tag at its site is unanchored.
+	// Direction B: an orphan tag is a floor in source that was never registered.
 	const offenders: string[] = [];
 	let taggedSitesSeen = 0;
 	for (const [rel, floors] of Object.entries(FLOORS)) {
@@ -788,9 +629,6 @@ test('every registered floor is tagged at its site, and every tag is registered 
 		const tags = taggedFloorSubjects(src);
 		taggedSitesSeen += tags.length;
 
-		// Direction A — every registered floor carries at least `count` tags at its sites. A FLOORS
-		// entry with no matching tag is an unanchored registration (the "plant a floor in FLOORS with no
-		// real source assertion" hole).
 		for (const f of floors) {
 			const marked = tags.filter((t) => t === f.subject).length;
 			if (marked < f.count) {
@@ -801,9 +639,6 @@ test('every registered floor is tagged at its site, and every tag is registered 
 			}
 		}
 
-		// Direction B — every tag in a registered file maps to a FLOORS entry for that file. An orphan
-		// tag is a floor that exists in source but was never registered (the row-3 hole from the
-		// self-floor triage: "plant a floor in a source file, never register it").
 		const registered = new Set(floors.map((f) => f.subject));
 		for (const t of tags) {
 			if (!registered.has(t)) {
@@ -816,17 +651,10 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	}
 
 	/*
-	 * Direction C — every tagged floor ANYWHERE under tests/ belongs to a registered file.
-	 *
-	 * Directions A and B both iterate FLOORS, so they only ever look inside files this registry already
-	 * knows about. That leaves the obvious remaining hole: a BRAND-NEW guard carrying floors is invisible
-	 * to the whole mechanism, because nothing in the loop above ever opens a file that is not already a
-	 * key. Direction B's comment claims it closes "plant a floor in a source file, never register it" —
-	 * that is true only for a file already registered, which is the narrower half of the claim.
-	 *
-	 * Found by walking into it: `tests/guards/meta/test-tree-deps.test.ts` was added with two tagged
-	 * floors and the suite stayed green. A registry whose coverage depends on being told what to cover is
-	 * not a registry, so the tag scan now starts from the TREE.
+	 * Direction C — every tagged floor ANYWHERE under tests/ belongs to a registered file. A and B both
+	 * iterate FLOORS, so a BRAND-NEW guard carrying floors was invisible to the whole mechanism:
+	 * `test-tree-deps.test.ts` landed with two tagged floors and the suite stayed green. So the tag scan
+	 * starts from the TREE rather than from the registry's own keys.
 	 */
 	const knownFiles = new Set(Object.keys(FLOORS));
 	let filesWalked = 0;
@@ -843,24 +671,15 @@ test('every registered floor is tagged at its site, and every tag is registered 
 			);
 		}
 	}
-	// Non-vacuity for direction C itself: the walk has to have covered the tree. A `filesUnder` that
-	// returned nothing would make the loop above trivially clean, which is this file's own recurring bug.
+	// Non-vacuity for direction C itself: a `filesUnder` that returned nothing would make the loop above
+	// trivially clean, which is this file's own recurring bug.
 	expect(filesWalked).toBeGreaterThan(200); // @nvf-floor filesWalked
 
 	expect(offenders).toEqual([]);
-	// This scan's OWN non-vacuity floor (re-triage step 4), a zero-slack literal on the tag
-	// count exactly like `located` above. Without it, an emptied FLOORS or a broken tag regex would make
-	// the loop examine nothing and pass. MUST equal the total number of `// @nvf-floor` tags across every
-	// registered file (== the `located` count sum, since every registered floor is tagged once per
-	// count). Measured the way `located`'s comment prescribes: raise absurdly high, run this file alone,
-	// read `Received: N`. 40 as of the shadcn-svelte restructure, down from 41: retiring the copied-in-component
-	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
-	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
-	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	// 73 → 72 in lockstep with `located` above, for the drawer-deletion guard's removal.
-	// 72 → 73 in lockstep again, for the colour ring's `PALETTE_STOPS.length` floor.
-	// 73 → 69 in lockstep with `located` above, for the two docs guards deleted with their subjects.
-	// 69 → 70 in lockstep again, for task-number-hygiene's `ISSUE_SUBJECT_EXEMPT.length`.
+	// This scan's OWN zero-slack floor, exactly like `located` above: it MUST equal the total number of
+	// `// @nvf-floor` tags across every registered file (== the sum of every `count`, since each floor is
+	// tagged once per count), and moves in LOCKSTEP with `located` or this arm reports a broken tag regex
+	// when the truth is one fewer floor. Measured the same way, never counted by eye.
 	expect(taggedSitesSeen).toBeGreaterThanOrEqual(70);
 });
 
@@ -869,26 +688,17 @@ test('a retired floor is retired on the record: substantive reason, and genuinel
 	let examined = 0;
 	for (const [rel, entries] of Object.entries(RETIRED)) {
 		for (const e of entries) {
-			// (1) a reason, not a shrug. the standard wants the invariant, the sites that left scope, and what
-			// covers them now — none of which fits in a few words.
 			if (e.reason.trim().length < 60) {
 				offenders.push(
 					`${rel}: retired \`${e.subject}\` with no substantive reason (got ${e.reason.trim().length} chars)`
 				);
 			}
-			// (2) it cannot be BOTH retired and live. A floor parked here while a weakened copy stays in the
-			// source is exactly the laundering this record is meant to prevent.
 			if (FLOORS[rel]?.some((f) => f.subject === e.subject)) {
 				offenders.push(`${rel}: \`${e.subject}\` is in both FLOORS and RETIRED — one of the two is wrong`);
 			}
-			// (3) the retirement is REAL — the assertion is gone from the source, not merely reduced.
-			//
-			// WHY A MISSING FILE IS AN OFFENDER AND NOT A SKIP. This read `existsSync(abs) && …`, so a keyed
-			// file that had moved or been deleted made the check quietly examine nothing. With no floor behind
-			// it (see below) the whole test then degraded to a no-op that reported green — a vacuity hole in
-			// the one file whose job is closing vacuity holes. Its three sibling tests all fail loudly in that
-			// situation; this arm was simply missed. The consequence it was protecting against is specific: a
-			// retired floor could be resurrected in weakened form in any keyed file and nothing would say so.
+			// (3) the retirement is REAL — the assertion is gone from the source, not merely reduced. A MISSING
+			// FILE IS AN OFFENDER, NOT A SKIP: an `existsSync(abs) &&` guard let a moved key examine nothing,
+			// degrading this whole test to a no-op that reported green.
 			const abs = join(REPO, rel);
 			if (!existsSync(abs)) {
 				offenders.push(
@@ -908,9 +718,7 @@ test('a retired floor is retired on the record: substantive reason, and genuinel
 		}
 	}
 	expect(offenders).toEqual([]);
-	// non-vacuity: every entry above was actually read from disk. Without this, a RETIRED map whose keys had
-	// all moved would examine nothing and pass — which is precisely the shape the rule exists to refuse.
-	// Measured, not guessed: 3 keyed files carrying 4 entries at the time of writing.
+	// non-vacuity: a RETIRED map whose keys had all moved would examine nothing and pass.
 	expect(examined).toBeGreaterThanOrEqual(4); // @nvf-floor examined
 });
 

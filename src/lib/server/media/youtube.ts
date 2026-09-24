@@ -1,8 +1,7 @@
 // YouTube resolver — keyless search via yt-dlp (no API key; matches the self-host ethos), with
 // graceful degradation when the binary is absent (dev). ARCHITECTURE §2 default. Results
 // cached + deduped by query so re-typing a song is free.
-//
-// The actual yt-dlp invocation is injected (`runSearch`) so this unit-tests without the binary.
+//  The actual yt-dlp invocation is injected (`runSearch`) so this unit-tests without the binary.
 
 import type { MediaResolver, SearchResult } from './resolver';
 

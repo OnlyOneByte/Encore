@@ -1,19 +1,13 @@
 /*
- * CANONICAL Chromium discovery for every e2e driver — `tests/guards/hygiene/chromium.test.ts` asserts no
- * other .mjs under tests/e2e redefines it, because the copies drifted (only some validated PW_CHROMIUM,
- * one hardcoded a home path, the short variants dropped the /usr/bin fallback).
- *
- * PW_CHROMIUM is VALIDATED, not trusted: a set-but-wrong path returns null so the caller bails loudly,
- * instead of handing a bogus path to spawn and surfacing as a launch failure that reads like a driver bug.
+ * CANONICAL Chromium discovery for every e2e driver — `tests/guards/hygiene/chromium.test.ts` reds if any
+ * other .mjs under tests/e2e redefines it. PW_CHROMIUM is VALIDATED, not trusted: a set-but-wrong path
+ * returns null so the caller bails loudly rather than surfacing as a launch failure.
  */
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-/**
- * Locate a usable Chromium binary, or return null if none is found.
- * @returns {string | null}
- */
+/** @returns {string | null} a usable Chromium binary, or null */
 export function findChromium() {
 	if (process.env.PW_CHROMIUM) return existsSync(process.env.PW_CHROMIUM) ? process.env.PW_CHROMIUM : null;
 	const cache = join(homedir(), '.cache', 'ms-playwright');

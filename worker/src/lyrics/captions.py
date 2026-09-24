@@ -23,49 +23,39 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-#: Caption languages worth asking for, best-first. EXPLICIT CODES, NEVER A PATTERN: a glob like
-#: `en.*` matches every one of YouTube's ~190 `en-<source>` machine-translation codes, firing dozens
-#: of timedtext requests per job and earning `HTTP Error 429: Too Many Requests` — wasted anyway,
-#: since `find_caption_file` refuses translations and keeps exactly one file. `en-orig` (the ORIGINAL
-#: auto-caption language marker) leads because it is the only track guaranteed not to be a translation.
+#: Best-first. EXPLICIT CODES, NEVER A PATTERN: `en.*` matches every one of YouTube's ~190
+#: `en-<source>` translation codes, firing dozens of requests per job and earning a 429 — wasted anyway,
+#: since `find_caption_file` refuses translations. `en-orig` leads as the only guaranteed non-translation.
 DEFAULT_SUB_LANGS = "en-orig,en,en-US,en-GB"
 
-#: Seconds to wait before EACH subtitle download — the flag that directly answers a 429, since the
-#: requests are what YouTube rate-limits.
+#: Before EACH subtitle download: the requests are what YouTube rate-limits.
 SUB_SLEEP_SEC = 1
 
-#: Backoff for a retryable HTTP error (429 included): exponential from 1s, capped at 30s. Without it
-#: yt-dlp gives a rate-limited track exactly one chance, turning a transient 429 into a permanently
-#: missing baseline.
+#: Exponential from 1s, capped at 30s. Without it yt-dlp gives a rate-limited track exactly one chance,
+#: turning a transient 429 into a permanently missing baseline.
 HTTP_RETRY_SLEEP = "http:exp=1:30"
 
-#: Retries for the extractor step itself, ahead of any track download: a 429 on the player request
-#: loses every track at once rather than one.
+#: Ahead of any track download: a 429 on the player request loses EVERY track at once.
 EXTRACTOR_RETRIES = 3
 
-# A WebVTT cue timing line: "00:01:23.456 --> 00:01:25.000 align:start position:0%".
-# Hours are optional in the spec ("01:23.456"), so the leading group is conditional.
+# Hours are OPTIONAL in the spec ("01:23.456"), so the leading group is conditional.
 _VTT_TIME = r"(?:(\d{1,3}):)?(\d{1,2}):(\d{2})[.,](\d{1,3})"
 _VTT_CUE_RE = re.compile(rf"^{_VTT_TIME}\s*-->\s*{_VTT_TIME}")
 
-#: Inline caption markup: <c.colorE5E5E5>, <00:00:12.345>, <b>, </i>. Karaoke-style per-word timing
-#: tags are common in auto tracks and harmless to strip here — this tier only claims LINE timing.
+#: Per-word timing tags are common in auto tracks and harmless to strip: this tier claims LINE timing.
 _TAG_RE = re.compile(r"<[^>]*>")
 
 #: Bracketed non-lyric annotations captioners add: [Music], [Applause], (chorus), ♪♪.
 _ANNOTATION_RE = re.compile(r"^\s*(?:[\[(][^\])]*[\])]|[♪♫\s]+)\s*$")
 
-#: How close two cues must sit in time for a prefix-extend to count as the SAME rolling line rather
-#: than a coincidentally-repeated one. A small non-zero slack absorbs float rounding without reaching
-#: across the gap to a chorus line that recurs later in the song.
+#: A small non-zero slack absorbs float rounding without reaching across the gap to a chorus line that
+#: recurs later in the song.
 _ROLLING_ADJACENCY_SEC = 0.5
 
-#: Minimum WORD overlap for the SCROLL collapse below. YouTube's rolling window does not only grow, it
-#: SCROLLS: once full, words drop off the FRONT as new ones append at the back, so a line's HEAD
-#: repeats the previous line's TAIL instead of growing as a prefix — a shape the prefix-extend fold in
-#: `parse_vtt` cannot reach. Load-bearing, not belt-and-braces: time-adjacency alone cannot separate a
-#: genuine scroll from a coincidental shared word, so 3 sits in a wide safe valley measured on a real
-#: fixture between collapsing every scroll and sparing single-word coincidences.
+#: YouTube's rolling window does not only grow, it SCROLLS: once full, words drop off the FRONT, so a
+#: line's HEAD repeats the previous line's TAIL rather than growing as a prefix — a shape the
+#: prefix-extend fold cannot reach. Load-bearing, because time-adjacency alone cannot separate a genuine
+#: scroll from a coincidental shared word.
 _SCROLL_MIN_OVERLAP_WORDS = 3
 
 
@@ -102,7 +92,7 @@ def _collapse_scroll_overlap(segs: list[dict[str, Any]]) -> list[dict[str, Any]]
                 if overlap >= _SCROLL_MIN_OVERLAP_WORDS:
                     tail = " ".join(seg["text"].split()[overlap:]).strip()
                     if not tail:
-                        # Wholly contained in the running line's tail (a pure re-hold): extend the window.
+                        # Wholly contained in the running line's tail, a pure re-hold.
                         result[-1]["end"] = max(result[-1]["end"], seg["end"])
                         continue
                     result.append({"start": seg["start"], "end": seg["end"], "text": tail})
@@ -163,8 +153,8 @@ def parse_vtt(text: str) -> list[dict[str, Any]]:
         end = _cue_seconds(m.group(5), m.group(6), m.group(7), m.group(8))
         i += 1
         payload: list[str] = []
-        # Ends at a literally EMPTY line or the next cue's timing, not a whitespace-only one (legal
-        # inside a payload, and opens the word-timed cue of a rolling triplet).
+        # A literally EMPTY line or the next cue's timing, never a whitespace-only one, which is legal
+        # inside a payload and opens the word-timed cue of a rolling triplet.
         while i < len(lines) and lines[i] != "" and _VTT_CUE_RE.match(lines[i].strip()) is None:
             payload.append(lines[i])
             i += 1
@@ -176,14 +166,13 @@ def parse_vtt(text: str) -> list[dict[str, Any]]:
             and start <= out[-1]["end"] + _ROLLING_ADJACENCY_SEC
             and (body == out[-1]["text"] or body.startswith(out[-1]["text"]))
         ):
-            # Held repeat (equal) or rolling extend (prefix): fold into the run, keep the longest text.
+            # Held repeat or rolling extend: fold into the run, keeping the longest text.
             out[-1]["text"] = body
             out[-1]["end"] = max(out[-1]["end"], end)
             continue
         out.append({"start": start, "end": end, "text": body})
     out.sort(key=lambda s: s["start"])
-    # The fold above collapses HELD and PREFIX-EXTEND duplicates only; a scrolled window's head
-    # repeats the previous line's tail instead, so a second pass trims that overlap.
+    # The fold above catches HELD and PREFIX-EXTEND only, so a second pass trims a scrolled overlap.
     return _collapse_scroll_overlap(out)
 
 
@@ -229,14 +218,11 @@ def caption_argv(
     ]
 
 
-#: A TRANSLATED caption track: YouTube exposes machine translations under the target language with a
-#: long opaque suffix ("en-nP7Qs3xK9dQ"), alongside the original ("en" or "en-orig").
+#: YouTube exposes a machine translation under the target language with a long opaque suffix.
 _TRANSLATED_SUFFIX = re.compile(r"-[A-Za-z0-9_-]{8,}$")
 
-#: A "translated FROM" marker: a lowercase language subtag after the target, as in `en-cs` (English
-#: translated from Czech) — short enough that `_TRANSLATED_SUFFIX` misses it. Discriminated from a
-#: legitimate REGION variant by case, per BCP 47: region subtags are uppercase (`en-GB`), language
-#: subtags lowercase (`en-cs`).
+#: A lowercase language subtag after the target (`en-cs`), short enough that `_TRANSLATED_SUFFIX` misses
+#: it. Told from a legitimate REGION variant by CASE, per BCP 47: regions are uppercase.
 _TRANSLATED_FROM = re.compile(r"-[a-z]{2,3}$")
 
 

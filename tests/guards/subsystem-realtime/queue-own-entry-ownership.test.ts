@@ -1,11 +1,9 @@
-// `queue:remove-any` / `queue:reorder-any` are declared "remove/reorder SOMEONE ELSE'S entry". can() ignores
+// guard: `queue:remove-any` / `queue:reorder-any` mean "remove/reorder SOMEONE ELSE'S entry". can() ignores
 // the capability today (it is `Boolean(actor?.singerId)`), so nothing breaks now — but the moment can() is
-// narrowed to a host role, asking for the -any capability on a singer's OWN entry refuses them their own song.
-// So the ownership check must SHORT-CIRCUIT BEFORE can(), which is a structural property the current policy
-// cannot observe: hence a behavioural half against the REAL can() plus a source scan over hub.ts.
-//
-// The capabilities module is deliberately NOT mocked: a top-level mock.module replaces the process-global
-// registry for the whole `bun test` run and deadlocks the runner once a later file imports the real module.
+// narrowed to a host role, asking for the -any capability on a singer's OWN entry refuses them their own
+// song. So the ownership check must SHORT-CIRCUIT BEFORE can(): a behavioural half against the REAL can()
+// plus a source scan over hub.ts. The capabilities module is deliberately NOT mocked — a top-level
+// mock.module replaces the process-global registry for the whole run and deadlocks the runner.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { validateCommand, type HubDeps } from '$lib/server/realtime/hub';

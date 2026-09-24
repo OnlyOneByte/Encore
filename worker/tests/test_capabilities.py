@@ -35,8 +35,7 @@ def test_a_capability_is_only_advertised_when_it_can_be_proven(monkeypatch, tmp_
     assert "fetch:ytdlp" in caps
     assert "stems" not in caps, "no demucs on PATH and no importable module — must not be claimed"
     assert "align" not in caps, "whisperx is not importable here"
-    # And the evidence is recorded either way, so the startup log can say WHY, rather than leaving the
-    # operator to infer it from a song stuck at 0%.
+    # Evidence is recorded either way, so the startup log says WHY rather than a song stuck at 0%.
     assert any(p.token == "stems" and not p.available and p.reason for p in probes)
 
 
@@ -51,14 +50,12 @@ def test_an_override_may_narrow_the_proven_set(monkeypatch, tmp_path):
 
     narrowed, _p, warnings = capabilities.resolve(("fetch:ytdlp",))
     assert narrowed == ("fetch:ytdlp",)
-    # Narrowing is legitimate, so it must not produce a "cannot prove" complaint. (Unrelated warnings,
-    # like the missing-JS-runtime one, are allowed through — they are about the box, not the override.)
+    # Narrowing is legitimate, so no "cannot prove" complaint. Unrelated box warnings pass through.
     assert not any("cannot prove" in w for w in warnings)
 
 
 def test_an_override_may_NOT_claim_something_unprovable(monkeypatch, tmp_path):
-    # This is the whole point. Honouring the claim means the core routes work here that can never
-    # complete — the original bug, just requested politely.
+    # Honouring the claim routes work here that can never complete: the original bug, requested politely.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "yt-dlp")
 
@@ -69,8 +66,7 @@ def test_an_override_may_NOT_claim_something_unprovable(monkeypatch, tmp_path):
 
 
 def test_dropping_a_requested_capability_is_never_silent(monkeypatch, tmp_path):
-    # Silently dropping it just moves the mystery: the operator asked for align, the worker does not do
-    # align, and nothing anywhere says so.
+    # Dropping it silently moves the mystery: nothing anywhere would say why align never runs.
     _with_path(monkeypatch, tmp_path)
     _, _probes, warnings = capabilities.resolve(("align",))
     assert warnings, "a dropped capability must be reported"
@@ -78,9 +74,7 @@ def test_dropping_a_requested_capability_is_never_silent(monkeypatch, tmp_path):
 
 
 def test_ensemble_is_never_advertised_because_no_engine_implements_it(monkeypatch, tmp_path):
-    # No ensemble engine exists (`engine_for("ensemble")` raises), so this token must never be
-    # advertised even with both real engines present — mirroring OPENVINO, registered but never
-    # available.
+    # No ensemble engine exists, so this token must never be advertised even with both real engines.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "demucs")
 
@@ -94,8 +88,7 @@ def test_ensemble_is_never_advertised_because_no_engine_implements_it(monkeypatc
     assert {"stems", "stems:roformer"} <= set(caps2)
     assert "stems:ensemble" not in caps2, "no ensemble engine implements this — must not be claimed"
 
-    # The evidence is recorded either way, so the startup log names WHY rather than the operator
-    # inferring it from an ensemble upgrade dying mid-dispatch.
+    # Evidence either way, so the log names WHY rather than an upgrade dying mid-dispatch.
     ens = next(p for p in probes2 if p.token == "stems:ensemble")
     assert not ens.available
     assert "no ensemble engine" in ens.reason
@@ -126,8 +119,8 @@ def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch
 
 
 def test_audiosep_is_advertised_only_when_its_dep_is_present(monkeypatch, tmp_path):
-    # Same honesty contract as every other token: a box with demucs but no audio-separator must NOT
-    # claim stems:audiosep, or the core would route a mel-band process that dies at plan selection.
+    # A box with demucs but no audio-separator must NOT claim stems:audiosep, or the core routes a
+    # mel-band process that dies at plan selection.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "demucs")  # separator present, but NOT audio-separator
     monkeypatch.setattr(capabilities, "_module_available", lambda _name: False)
@@ -148,8 +141,7 @@ def test_audiosep_is_advertised_only_when_its_dep_is_present(monkeypatch, tmp_pa
 
 
 def test_a_cli_on_PATH_counts_even_when_the_module_is_invisible(monkeypatch, tmp_path):
-    # The worker shells out BY NAME for the heavy lifting, so a venv-vs-system-python split (the normal
-    # shape of a native install) is a perfectly capable box. Requiring the import would deny it.
+    # The worker shells out BY NAME, so a venv-vs-system-python split is a perfectly capable box.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "demucs")
     caps, probes, _w = capabilities.resolve()
@@ -158,9 +150,8 @@ def test_a_cli_on_PATH_counts_even_when_the_module_is_invisible(monkeypatch, tmp
 
 
 def test_missing_js_runtime_warns_but_does_not_remove_the_fetch_capability(monkeypatch, tmp_path):
-    # YouTube's player challenge cannot be solved without a JS runtime, and the degradation is
-    # silent and total. But vetoing fetch would strip the capability from a deployment that is
-    # currently limping along, so the honest signal is a loud warning instead.
+    # The player challenge needs a JS runtime and degrades silently and totally, but vetoing fetch would
+    # strip the capability from a deployment currently limping along — so a loud WARNING instead.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "yt-dlp")
 
@@ -183,12 +174,9 @@ def test_no_js_warning_when_ytdlp_itself_is_absent(monkeypatch, tmp_path):
 
 
 def test_a_worker_that_can_prove_nothing_says_so_and_still_starts(monkeypatch, tmp_path):
-    # Not fatal on purpose: it must still connect so its startup log and hardware report reach the
-    # operator. Refusing to start would hide the very diagnosis they need.
-    #
-    # Both proof paths have to be closed to reach this state: an empty PATH is not enough, because the
-    # `yt_dlp` module happens to be importable in the test interpreter — which is itself the behaviour
-    # `test_a_cli_on_PATH_counts_even_when_the_module_is_invisible` pins from the other direction.
+    # NOT fatal on purpose: it must still connect so its startup log reaches the operator, since refusing
+    # to start hides the diagnosis. Both proof paths must be closed to reach this state — an empty PATH is
+    # not enough, because `yt_dlp` is importable in the test interpreter.
     _with_path(monkeypatch, tmp_path)
     monkeypatch.setattr(capabilities, "_module_available", lambda _name: False)
     caps, _p, warnings = capabilities.resolve()
@@ -197,7 +185,7 @@ def test_a_worker_that_can_prove_nothing_says_so_and_still_starts(monkeypatch, t
 
 
 def test_advertised_order_is_stable_across_restarts(monkeypatch, tmp_path):
-    # An unordered set would make the core's logs and the worker's differ run to run for no reason.
+    # An unordered set makes the core's logs and the worker's differ run to run.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "yt-dlp")
     _fake_bin(tmp_path, "demucs")
@@ -274,8 +262,7 @@ def test_narrow_for_backend_keys_on_a_real_engine_impl():
     assert demucs_engine_backed_by("torch") is True
     assert demucs_engine_backed_by(None) is True
     assert demucs_engine_backed_by("mlx") is True
-    # openvino is registered in the enum but has no runtime and can never be a RESOLVED backend
-    # (resolve_backend raises before narrowing), but the predicate is conservative rather than trusting that.
+    # openvino is registered but has no runtime and can never RESOLVE; the predicate stays conservative.
     assert demucs_engine_backed_by("openvino") is False
     assert demucs_engine_backed_by("nonsense") is False
 

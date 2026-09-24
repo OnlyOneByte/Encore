@@ -1,9 +1,6 @@
 <script lang="ts">
-	// The LYRICS RE-SELECT control — the fallback for when the auto-chosen lyrics are wrong.
-	//
-	// PRESENTATIONAL, like GuidingTrack: it owns the disclosure, the candidate list, the paste box and the
-	// hint, and reports raw choices up. The request, the optimistic status and the error toast belong to the
-	// caller, because those are room and network concerns this control does not own.
+	// The LYRICS RE-SELECT control — the fallback for when the auto-chosen lyrics are wrong. PRESENTATIONAL, like
+	// GuidingTrack: the request, the optimistic status and the error toast belong to the caller, being room concerns.
 	import type { LyricsCandidate } from '$lib/contract';
 	import { lyricsSourceLabel } from '$lib/contract';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -21,9 +18,7 @@
 		overrideRef?: string;
 		/** True when the ranker now prefers a candidate other than the pinned one (Q2=C hint). */
 		newerExists?: boolean;
-		/** Re-time an already-stored candidate. */
 		onpick?: (ref: string) => void;
-		/** Re-time pasted words as a new manual candidate. */
 		onpaste?: (text: string) => void;
 	}
 	let { candidates, chosenRef, overrideRef, newerExists = false, onpick, onpaste }: Props = $props();
@@ -37,15 +32,14 @@
 	const uid = $props.id();
 	const bodyId = `reselect-body-${uid}`;
 
-	// The provenance label is shared through `$lib/contract`: two copies of a provenance string is how one
-	// surface comes to call something "Captions" that another calls "Auto captions".
+	// The provenance label is shared through `$lib/contract`: two copies is how one surface comes to call something
+	// "Captions" that another calls "Auto captions".
 	const sourceLabel = lyricsSourceLabel;
 	function timingLabel(c: LyricsCandidate): string {
 		return c.timing === 'word' ? 'word-by-word' : c.timing === 'line' ? 'line-by-line' : 'no timing';
 	}
 
-	// A single candidate still counts as a choice, because the paste path is always available: the auto text
-	// may simply be wrong.
+	// A single candidate still counts as a choice, because the paste path is always available: the auto text may be wrong.
 	const hasChoice = $derived(candidates.length > 0);
 	const peek = $derived(newerExists ? 'A better match is available' : overrideRef ? 'Your pick' : 'Auto-selected');
 
@@ -69,13 +63,11 @@
 		{#if open}
 			<div class="reselect-body" id={bodyId}>
 				<!--
-					THE ROW IS A BUTTON, through Item's `child` snippet, because the whole row is the pick action and
-					Item.Root renders a div. The static token must come FIRST and `{props.class}` second so both
-					survive: after the spread it would drop Item's classes, and inside the spread it would be dropped
-					by them. It must also stay a real `class="…"` attribute rather than a `class:` directive, because
-					the tap-floor guard's control scan reads only the attribute form — the directive would quietly
-					remove this component's primary control from its population.
-				-->
+						THE ROW IS A BUTTON, through Item's `child` snippet, because the whole row is the pick action and Item.Root renders
+						a div. The static token must come FIRST and `{props.class}` second so both survive. It must also stay a real
+						`class="…"` attribute rather than a `class:` directive: the tap-floor guard's control scan reads only the attribute
+						form, so the directive would remove this component's primary control from its population.
+					-->
 				<Item.Group>
 					{#each candidates as c (c.ref)}
 						<Item.Root variant="outline">
@@ -88,12 +80,9 @@
 									onclick={() => onpick?.(c.ref)}
 								>
 									<Item.Content>
-										<!--
-											A PLAIN span, never Item.Title: that primitive is `w-fit`, so `fit-content` resolves against
-											its own min-content and a nowrap child grows the title past the row instead of ellipsising
-											inside it (and its clamp cannot save that — see item-title.svelte). As a direct child of the
-											content COLUMN this span stretches to the column's width, which is what engages the ellipsis.
-										-->
+										<!-- A PLAIN span, never Item.Title: that primitive is `w-fit`, so `fit-content` resolves against its own
+												min-content and a nowrap child grows the title past the row instead of ellipsising inside it. As a direct child
+												of the content COLUMN this span stretches to the column's width, which is what engages the ellipsis. -->
 										<span class="opt-src">{sourceLabel(c)}</span>
 										<Item.Description>{timingLabel(c)}</Item.Description>
 									</Item.Content>
@@ -128,13 +117,9 @@
 	.reselect {
 		margin: var(--space-md) 0 var(--space-3xs);
 	}
-	/*
-	 * THE DISCLOSURE IS HAND-ROLLED DELIBERATELY, and adopting the vendored Collapsible would cost this
-	 * component its unit tests: the primitive's content reads geometry in a watcher that fires the moment its
-	 * element gets a ref, and the mount rung replaces that accessor with a throw. The disclosure itself works;
-	 * the deferred read then fails whatever mounted it. So the toggle is a real button and supplies by hand
-	 * the one thing the primitive would have given it — `aria-controls` against the body's id.
-	 */
+	/* THE DISCLOSURE IS HAND-ROLLED DELIBERATELY: the vendored Collapsible's content reads geometry in a watcher that
+	   fires the moment its element gets a ref, and the mount rung replaces that accessor with a throw, so the deferred
+	   read fails whatever mounted it. The toggle supplies by hand the one thing the primitive would give it — `aria-controls`. */
 	.reselect-toggle {
 		display: flex;
 		align-items: center;
@@ -155,8 +140,7 @@
 	}
 	.reselect-peek {
 		margin-left: auto;
-		/* A flex item's floor is its min-content width, so without this the peek's own text sets the row's
-		   minimum and the ellipsis never engages. */
+		/* A flex item's floor is its min-content width, so without this the peek's own text sets the row's minimum. */
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -167,13 +151,11 @@
 	.reselect.newer .reselect-peek {
 		color: var(--accent-ink);
 	}
-	/*
-	 * Item.Root supplies this row's BOX, so what is left is what a native button still needs with Preflight
-	 * off: the surface, the ink, a solid border-style in place of the UA's `outset`, and the tap floor.
-	 */
+	/* Item.Root supplies this row's BOX, so what is left is what a native button still needs with Preflight off: the
+	   surface, the ink, a solid border-style in place of the UA's `outset`, and the tap floor. */
 	.reselect-opt {
-		/* Named rather than inherited from the primitive's padding: that would clear 44px only by arithmetic
-		   on a size variant a re-vendor can change, and this is the component's primary control. */
+		/* Named rather than inherited from the primitive's padding: that clears 44px only by arithmetic on a size variant
+		   a re-vendor can change, and this is the component's primary control. */
 		min-height: var(--tap);
 		background: var(--card2);
 		border-style: solid;
@@ -205,8 +187,7 @@
 		padding: var(--space-2xs) 0;
 		cursor: pointer;
 	}
-	/* The field's own appearance is ui/textarea's; only this call site's spacing is here, on the wrapper —
-	   scoped CSS cannot reach the element the component renders. */
+	/* The field's own appearance is ui/textarea's; only this call site's spacing is here, on the wrapper. */
 	.reselect-paste > :global([data-slot='textarea']) {
 		margin-top: var(--space-xs);
 	}
@@ -215,7 +196,6 @@
 		gap: var(--space-xs);
 		margin-top: var(--space-xs);
 	}
-	/* The paste actions carry NO local rule: everything comes from the Button primitive. They are addressed by
-	   `data-act` rather than a styling class, because a class that exists only so a test can find it is how a
-	   rule-less class survives here, and a scoped rule cannot reach a class handed to a child anyway. */
+	/* The paste actions carry NO local rule: everything comes from the Button primitive. They are addressed by `data-act`
+	   rather than a styling class, and a scoped rule cannot reach a class handed to a child anyway. */
 </style>

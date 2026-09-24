@@ -27,15 +27,13 @@ from .ctx import Ctx, ResolvedEngines
 from .plan import Plan, plan_for, validate_plan
 from .step import Outcome, StepResult
 
-#: How often to emit a keepalive ProgressEvent while a blocking ML call runs. MUST stay comfortably
-#: under the core's progressLeaseMs (30 s, leases.ts) or the reaper requeues a healthy job.
+#: MUST stay comfortably under the core's progressLeaseMs (30 s), or the reaper requeues a healthy job.
 LEASE_KEEPALIVE_SEC = 10.0
 
 #: (argv) -> async iterator of output lines. Injected, so every step tests with a fake subprocess.
 Runner = Callable[[list[str]], AsyncIterator[str]]
 
-#: When True, the runner asserts each step only wrote what it declared. Test-mode only — see
-#: `_assert_declared_writes`. Production pays nothing.
+#: Test-mode only: the runner asserts each step wrote only what it declared. Production pays nothing.
 STRICT_WRITES = bool(os.environ.get("ENCORE_STRICT_STEP_WRITES"))
 
 
@@ -55,15 +53,14 @@ class PlanRunner:
     ) -> None:
         self._runner = runner
         self._resolve_engines = resolve_engines or (lambda params: ResolvedEngines())
-        # Plan LOOKUP is injectable so a test can hand in a plan carrying fake seams, without a global
-        # registry mutation that would leak between tests.
+        # Injectable, so a test hands in a plan with fake seams rather than mutating a global registry.
         self._plan_for = plans or plan_for
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
         ctx = Ctx(
             job=job,
             work=scratch_for(job),
-            # params is validated to be a dict at the inbound boundary (dial_home._on_assign).
+            # Validated as a dict at the inbound boundary.
             engines=self._resolve_engines(job.params),
         )
         os.makedirs(ctx.work, exist_ok=True)
@@ -72,9 +69,8 @@ class PlanRunner:
         plan = self._plan_for(job, ctx.engines)
         validate_plan(plan)  # cheap, and a malformed plan must never reach a real process
 
-        # The notes buffer is the worker's own diagnosis of a job. A step raising is how it signals
-        # FAILURE, and that is exactly when the notes are the explanation the operator needs — so the
-        # flush lives in `finally`, running once whether the loop exits normally or a step raises.
+        # A raising step is how FAILURE is signalled, and that is exactly when the notes are the explanation
+        # the operator needs — so the flush lives in `finally` and runs on either exit.
         def _flush_notes() -> None:
             for line in ctx.out.notes:
                 print(f"[worker] {job.job_type} {job.media_id}: {line}", flush=True)
@@ -136,14 +132,12 @@ async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> Asy
         while True:
             if pending is None:
                 pending = asyncio.ensure_future(lines.__anext__())
-            # asyncio.wait — NOT wait_for — because a timeout must NOT cancel the in-flight __anext__:
-            # cancelling it mid-await would throw CancelledError into the child generator and kill it.
-            # We keep the SAME pending task alive across quiet intervals and only consume it once it
-            # actually resolves, so the child runs to completion regardless of how many keepalives fire.
+            # asyncio.wait, NOT wait_for: a timeout must not cancel the in-flight __anext__, which would
+            # throw CancelledError into the child generator and kill it. The SAME pending task is kept alive
+            # across quiet intervals and consumed only once it resolves.
             done, _ = await asyncio.wait({pending}, timeout=LEASE_KEEPALIVE_SEC)
             if pending not in done:
-                # Alive but quiet: renew the lease with a heartbeat at the last pct reported (0 until
-                # the first real percentage). Holds the bar; never moves it backward.
+                # Alive but quiet: renew the lease at the last pct reported, never moving the bar backward.
                 yield ProgressEvent(stage=stage, pct=max(last, 0))
                 continue
             try:
@@ -157,8 +151,7 @@ async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> Asy
                 last = pct
                 yield ProgressEvent(stage=stage, pct=pct)
     finally:
-        # If we unwind (caller aclose/cancel) with a line request still in flight, close the child
-        # generator's in-flight __anext__ cleanly rather than leaking a pending task.
+        # On an unwind with a line request in flight, close the child's __anext__ rather than leaking it.
         if pending is not None and not pending.done():
             pending.cancel()
     if last < 100:
@@ -219,18 +212,15 @@ async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIter
                 return
             yield ("progress", ProgressEvent(stage=stage, pct=pct))
     finally:
-        # Reached on the normal `return` (task already done, cheap no-op) and on the cancel/exception
-        # unwind (thread may still be running). shield() because the unwinding CancelledError would
-        # otherwise cut this await short and re-detach the thread we are waiting on.
+        # Reached on a normal return (a cheap no-op) and on a cancel unwind, where the thread may still run.
+        # shield(), or the unwinding CancelledError cuts this await short and re-detaches that thread.
         while not task.done():
             try:
                 await asyncio.shield(asyncio.wait({task}))
             except asyncio.CancelledError:
-                # A second cancellation reached us through the shield; the inner wait keeps running
-                # concurrently, so loop and await again instead of returning with the thread still live.
+                # A second cancellation came through the shield, so loop rather than return with a live thread.
                 pass
-        # Retrieve any exception the abandoned run raised so it is not reported as "exception never
-        # retrieved" — we are unwinding an already-decided outcome and its value is not wanted here.
+        # Retrieved only so it is not reported as "exception never retrieved"; the value is not wanted.
         if task.done() and not task.cancelled():
             _ = task.exception()
 

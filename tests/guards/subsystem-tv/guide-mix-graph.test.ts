@@ -90,8 +90,8 @@ let ctx: StubCtx | null = null;
 
 /**
  * An `AudioContext` constructor whose instance is published to `ctx`, so a test can inspect the graph built
- * internally. A factory rather than a subclass publishing itself from its own constructor: that shape is
- * lint-banned because it can publish a HALF-CONSTRUCTED instance; building fully then publishing cannot.
+ * internally. A factory rather than a subclass publishing itself: that shape is lint-banned because it can
+ * publish a HALF-CONSTRUCTED instance.
  */
 function capturingCtx(shape: (c: StubCtx) => void = () => {}): new () => StubCtx {
 	return function CapturedCtx(): StubCtx {
@@ -158,8 +158,8 @@ describe('split mode wires each channel pair to its own gain', () => {
 	test('the WHOLE chain per pair: channels 0/1 -> instrumental gain, 2/3 -> guide gain', async () => {
 		// Both halves of the contract: exchanging which merger feeds which gain puts the instrumental on the gain
 		// defaulting to 0 and the isolated vocals on the gain defaulting to 1 — full-volume vocals with no backing
-		// track. Indices alone cannot see that, so each pair is walked splitter to destination as one path, with each
-		// gain identified by the LEVEL it was told to carry.
+		// track. Indices alone cannot see that, so each pair is walked splitter to destination as one path, with
+		// each gain identified by the LEVEL it was told to carry.
 		const g = new PitchShiftGraph(el(), { split: true });
 		g.setGain(0.9);
 		g.setGuideGain(0.25);
@@ -213,10 +213,9 @@ describe('split mode wires each channel pair to its own gain', () => {
 	});
 });
 
-// `AudioWorklet` is secure-context-only, so on the documented plain-HTTP LAN TV deployment `ctx.audioWorklet` is
-// undefined — and dereferencing it unconditionally threw, taking the whole graph down (splitter included) so the
-// room silently lost the guiding track as well as ±key. The splitter needs no worklet, and every test above hands
-// the code a working one.
+// `AudioWorklet` is secure-context-only, so on a plain-HTTP LAN TV `ctx.audioWorklet` is undefined — and
+// dereferencing it unconditionally threw, taking the whole graph down (splitter included) so the room
+// silently lost the guiding track as well as ±key. The splitter needs no worklet.
 describe('with no AudioWorklet (insecure origin) the guide still works', () => {
 	/** A context shaped like a non-secure origin: no `audioWorklet` member at all, as the spec requires. */
 	const insecure = () =>
@@ -376,8 +375,8 @@ describe('the plain path is untouched', () => {
 
 describe('a context that will not run leaves the element alone', () => {
 	test('ensureRouted on a suspended context does NOT capture the element', async () => {
-		// Why `masterSrcPlan` withholds the mix src until `isRouted`: here the element is still on its native
-		// output, where a 4-channel file would be DOWNMIXED — isolated vocals at full volume.
+		// Why `masterSrcPlan` withholds the mix src until `isRouted`: on the native output a 4-channel file is
+		// DOWNMIXED — isolated vocals at full volume.
 		G.window = {
 			AudioContext: capturingCtx((c) => {
 				c.state = 'suspended';
@@ -393,9 +392,9 @@ describe('a context that will not run leaves the element alone', () => {
 	});
 
 	test('a worklet the engine REFUSES degrades to non-split, so no mix src is ever promoted', async () => {
-		// `outputChannelCount: [4]` is a documented NotSupportedError candidate, and a throw here used to happen AFTER
-		// the irreversible capture, with the catch then CLOSING the context — silencing that element for the page's
-		// life. It now falls back and clears `split`, so `mixGateFor` answers `denied`.
+		// `outputChannelCount: [4]` is a documented NotSupportedError candidate, and a throw here used to happen
+		// AFTER the irreversible capture, with the catch then CLOSING the context — silencing that element for the
+		// page's life. It now falls back and clears `split`, so `mixGateFor` answers `denied`.
 		G.AudioWorkletNode = class extends StubWorklet {
 			constructor(c: unknown, n: string, o?: Record<string, unknown>) {
 				super(c, n, o);
@@ -412,7 +411,7 @@ describe('a context that will not run leaves the element alone', () => {
 	});
 
 	test('the element is captured LAST, after every node that could throw', async () => {
-		// Ordering as a PROPERTY: make a later node construction throw and assert the element was never
+		// Ordering as a PROPERTY: a later node construction throws and the element must never have been
 		// committed, because a capture followed by a thrown build silenced an element permanently.
 		G.window = {
 			AudioContext: capturingCtx((c) => {
@@ -431,7 +430,7 @@ describe('a context that will not run leaves the element alone', () => {
 
 describe('a build interrupted by teardown does not route an orphan', () => {
 	test('detach during the build closes the context instead of leaving it running', async () => {
-		// The released-context leak reopened by the EAGER build: an orphan build reached `routed = true` on a graph
+		// The released-context leak the EAGER build reopened: an orphan build reached `routed = true` on a graph
 		// nothing holds, with its AudioContext never closed.
 		let release: (() => void) | undefined;
 		G.window = {
@@ -500,8 +499,8 @@ describe('TvPlayer wiring', () => {
 	});
 
 	test('the src effect reads the settled signal, so a mix that becomes safe is actually played', () => {
-		// The graph's getters cannot wake an effect, so without a reactive read the mix is built, becomes safe,
-		// and is never played. A bare `void` read is this repo's idiom for a dependency whose VALUE is not needed.
+		// The graph's getters cannot wake an effect, so without a reactive read the mix is built, becomes safe and
+		// is never played. A bare `void` read is this repo's idiom for a dependency whose VALUE is not needed.
 		expect(src).toMatch(/void mixSettled;/);
 	});
 

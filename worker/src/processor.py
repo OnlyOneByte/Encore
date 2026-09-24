@@ -17,15 +17,12 @@ from typing import Protocol
 from . import protocol
 from .host.ffmpeg import ffmpeg_argv
 
-# Both stems are lossless FLAC: the instrumental plays at volume (a second lossy generation would
-# smear high-frequency transients), and the vocals guide track shares the SAME codec/container so
-# both decode to a sample-exact common start (an AAC-in-m4a encoder's priming samples would otherwise
-# shift the vocals start relative to the instrumental).
+# Both stems lossless FLAC, sharing ONE codec and container so they decode to a sample-exact common start:
+# an AAC-in-m4a encoder's priming samples would shift the vocals relative to the instrumental.
 # MUST match the core's paths.ts INSTRUMENTAL_EXT / VOCALS_EXT.
 INSTRUMENTAL_EXT = "flac"
 VOCALS_EXT = "flac"
-# The GUIDE MIX: both stems in ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals), played by one
-# element with ONE playhead so the guide cannot drift from the instrumental at all.
+# Both stems in ONE 4-channel FLAC, played by one element with ONE playhead, so the guide cannot drift.
 # MUST match the core's paths.ts GUIDE_MIX_EXT.
 GUIDE_MIX_EXT = "flac"
 
@@ -41,13 +38,10 @@ class ProgressEvent:
 class CompleteResult:
     media_uri: str
     artifacts: dict
-    # What this processor ACTUALLY resolved and ran — engine/model/backend/device. Distinct from
-    # `job.params` (what the core ASKED for): a processor may resolve a model alias to a different
-    # checkpoint. Defaults empty so a processor reporting nothing leaves the core's dispatched values
-    # standing.
+    # What ACTUALLY ran, distinct from `job.params`, which is what the core ASKED for. Defaults empty, so a
+    # processor reporting nothing leaves the core's dispatched values standing.
     facts: dict = field(default_factory=dict)
-    # WHY the published lyric won: per-candidate label + composite score + decided_by + baseline vote
-    # count. Lands in the job_attempts audit trail. None on a job that made no lyrics selection.
+    # WHY the published lyric won. Lands in the job_attempts audit trail.
     selection: dict | None = None
 
 
@@ -60,9 +54,7 @@ class JobSpec:
     params: dict
     # where the worker writes outputs (the shared /media volume in single-box mode)
     media_dir: str
-    # The trace id the core mints and threads through a chained run, so the worker can correlate its
-    # logs to the process the operator sees on /metrics/<mediaId>. Empty for a core that predates
-    # carrying it on the assign frame.
+    # The trace id the core threads through a chained run, so worker logs correlate to /metrics/<mediaId>.
     processing_id: str = ""
 
 
@@ -155,21 +147,18 @@ def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt")
     return os.path.join(media_dir, "derived", "captions", kind, f"{media_id}.captions.{ext.lstrip('.')}")
 
 
-# Separation can SUCCEED and still write digital silence (measured: both stems pinned at the 16-bit
-# floor, ~50KB against 20MB), and readiness checks downstream only ever verify the file EXISTED. For
-# the guiding track this is worse than a missing stem — a silent guide looks like a working one, so
-# the singer drags the control up and nothing happens. A stem measured as silent is simply not
-# reported, so an absent artifact stays a real answer rather than a missing one.
+# Separation can SUCCEED and still write digital silence, while readiness downstream only verifies the file
+# EXISTED. For the guiding track that is worse than a missing stem: a silent guide looks like a working one.
+# So a stem measured silent is simply NOT reported, and an absent artifact stays a real answer.
 
-#: Peak at or below this (dBFS) is digital silence. 16-bit silence measures ~-91 dB; no real vocal
-#: stem peaks near it. -90 leaves headroom for a dithered "silent" file without catching real audio.
+#: 16-bit silence measures ~-91 dBFS and no real vocal stem peaks near it, so -90 leaves headroom for a
+#: dithered "silent" file without catching real audio.
 SILENCE_FLOOR_DB = -90.0
 
 
 def volumedetect_argv(path: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
     """ffmpeg argv that measures a file's mean/max volume and writes nothing."""
-    # quiet=False, not -loglevel error: volumedetect writes its max_volume summary to stderr at
-    # ffmpeg's INFO level, which -loglevel error would suppress.
+    # quiet=False: volumedetect writes max_volume to stderr at INFO, which -loglevel error suppresses.
     return ffmpeg_argv(
         ffmpeg_bin, path, ["-af", "volumedetect"], ["-f", "null", "-"], quiet=False, overwrite=False
     )

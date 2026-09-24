@@ -1,9 +1,7 @@
 // guard: a path a document cites resolves to a tracked file, so a `Check` field a reader follows to decide
-// whether a rule is defended is never unverifiable. A document cannot fail on its own, so this fails for it.
-// It does NOT check that the cited test asserts what the row claims — no static check can.
-//
-// Exemptions are keyed on CONTENT, never on `path:line`: a line-keyed registry breaks the moment a sibling
-// edit shifts an entry by one line.
+// whether a rule is defended is never unverifiable. A document cannot fail on its own, so this fails for it;
+// it does NOT check that the cited test asserts what the row claims. Exemptions are keyed on CONTENT, never
+// on `path:line`, because a line-keyed registry breaks the moment a sibling edit shifts an entry by one.
 
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
