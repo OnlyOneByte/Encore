@@ -46,7 +46,8 @@ import {
 	browseArtist,
 	lookupTitle,
 	readAllSidecars,
-	clearArtifacts
+	clearArtifacts,
+	type MediaSidecar
 } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
@@ -105,6 +106,18 @@ function buildMediaStore(): { store: MediaStore; config: MediaStoreConfig } {
 		return { store: new ObjectMediaStore(bunS3Client(config), config), config };
 	}
 	return { store: new LocalMediaStore(), config };
+}
+
+/** The browse index's view of one sidecar, named ONCE so the live-persist callback and the boot sync pass
+ *  cannot drift. browseArtist/lookupTitle return null on a low-confidence parse, so a guess never becomes a
+ *  library heading. */
+function canonicalsOf(s: MediaSidecar): {
+	artist: string | null;
+	title: string | null;
+	album: string | null;
+	year: number | null;
+} {
+	return { artist: browseArtist(s), title: lookupTitle(s), album: s.canonical.album, year: s.canonical.year };
 }
 
 // SvelteKit's prod bundle is a SEPARATE module graph from server.ts's, so a module-level `let _app` gives each its own instance (split-brain state). globalThis is what guarantees ONE across both.
@@ -183,13 +196,7 @@ export function getApp(): EncoreApp {
 				const prev = await readSidecar(m.id);
 				const next = sidecarFromMedia(m, Date.now(), prev);
 				await writeSidecar(next);
-				// browseArtist returns null on a low-confidence parse, so a guess never becomes a library heading.
-				mediaRepo.setCanonical(m.id, {
-					artist: browseArtist(next),
-					title: lookupTitle(next),
-					album: next.canonical.album,
-					year: next.canonical.year
-				});
+				mediaRepo.setCanonical(m.id, canonicalsOf(next));
 				if (next.library.tags.length) mediaRepo.setTags(m.id, 'tag', next.library.tags);
 			} catch {
 				/* the sidecar is the durable record, not the live one — never fail a flip over it */
@@ -236,19 +243,13 @@ export function getApp(): EncoreApp {
 				// Its own pass because backfilling a sidecar does not go through upsert, so without it browse only sees songs touched since the process started.
 				let indexed = 0;
 				for (const sc of await readAllSidecars()) {
-					mediaRepo.setCanonical(sc.id, {
-						artist: browseArtist(sc),
-						title: lookupTitle(sc),
-						album: sc.canonical.album,
-						year: sc.canonical.year
-					});
+					const canonical = canonicalsOf(sc);
+					mediaRepo.setCanonical(sc.id, canonical);
 					// The RUNTIME map too, not just the index: hydrate ran synchronously while this pass is async, so DB-only mirroring leaves in-memory Media without canonicals for the process's life. Patch ONLY these fields — a wholesale replace undoes an entry that flipped to processing since hydrate.
 					const live = mediaById.get(sc.id);
 					if (live) {
-						const artist = browseArtist(sc);
-						const title = lookupTitle(sc);
-						if (artist) live.artistCanonical = artist;
-						if (title) live.titleCanonical = title;
+						if (canonical.artist) live.artistCanonical = canonical.artist;
+						if (canonical.title) live.titleCanonical = canonical.title;
 					}
 					indexed++;
 				}

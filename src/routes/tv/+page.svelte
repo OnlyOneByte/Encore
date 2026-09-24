@@ -72,15 +72,15 @@
 	// The honest counterpart to `isPlaying`, which is the ROOM'S INTENT from the server: the room can intend
 	// to play while the element does not, and the reel must freeze in exactly those cases.
 	let masterAdvancing = $state(false);
-	let tvProgressStyle = $derived(settings.room.tvProgressStyle);
-	let tvBackgroundStyle = $derived(settings.room.tvBackgroundStyle);
-	let tvBackgroundColor = $derived(settings.room.tvBackgroundColor);
+	const tvProgressStyle = $derived(settings.room.tvProgressStyle);
+	const tvBackgroundStyle = $derived(settings.room.tvBackgroundStyle);
+	const tvBackgroundColor = $derived(settings.room.tvBackgroundColor);
 	// The room's 0..1 stage dimmer — a LIGHTNESS control on the resolved colour, not a layer over video.
-	let tvBackgroundDim = $derived(settings.room.tvBackgroundDim);
+	const tvBackgroundDim = $derived(settings.room.tvBackgroundDim);
 	// The visualizers build their palette by hue ARITHMETIC, so they need an ANGLE while the stored value is a
 	// hex. `hueOfColor` is scale-free, so a dark stage colour keeps its hue instead of snapping to a wheel stop.
-	let tvBackgroundHue = $derived(hueOfColor(tvBackgroundColor));
-	let tvVisualizer = $derived(settings.room.tvVisualizer);
+	const tvBackgroundHue = $derived(hueOfColor(tvBackgroundColor));
+	const tvVisualizer = $derived(settings.room.tvVisualizer);
 	let isPlaying = $state(true);
 	let seekSec = $state(0);
 	// Bumped by every playback command but NEVER by position telemetry, so the seek effect can track it to re-take its
@@ -283,10 +283,11 @@
 				onVisibleEnded();
 			}
 		}
-		// Learn singers who join AFTER the initial sync, or the lower-third shows "Someone" for late joiners.
-		if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
-		// A rename must reach the TV, or the roster chip and lower-third hold the old name until the next full sync.
-		if (e.type === 'singer:updated') singers = new Map(singers).set(e.singer.id, e.singer);
+		// ONE upsert for both: a JOIN after the initial sync would otherwise leave the lower-third saying "Someone" for a
+		// late joiner, and a RENAME would leave the roster chip and lower-third on the old name until the next full sync.
+		if (e.type === 'singer:joined' || e.type === 'singer:updated') {
+			singers = new Map(singers).set(e.singer.id, e.singer);
+		}
 		if (e.type === 'singer:left') {
 			online = online.filter((id) => id !== e.singerId);
 			away = away.filter((id) => id !== e.singerId);
@@ -307,22 +308,27 @@
 		return () => ws?.close();
 	});
 
-	// MEASURED, not predicted: the band grows with its content, so a static sum UNDER-counts and covers the sung line.
-	let lowerThirdEl = $state<HTMLElement | undefined>();
-	let measuredCardPx = $state<number | null>(null);
-	$effect(() => {
-		const el = lowerThirdEl;
+	/**
+	 * ONE observer shape for both measured bands. `borderBoxSize` is the full rendered box the reel must clear;
+	 * `offsetHeight` is the fallback where that form is unsupported. Returns the `$effect` cleanup, or `undefined`
+	 * when there is nothing to observe — the caller's effect tracks the binding by passing it in.
+	 */
+	function observeBlockSize(el: HTMLElement | undefined, set: (px: number) => void): (() => void) | undefined {
 		if (!el || typeof ResizeObserver === 'undefined') return;
 		const ro = new ResizeObserver((entries) => {
 			for (const e of entries) {
-				// borderBoxSize is the full rendered box the reel must clear; offsetHeight is the unsupported-form fallback.
 				const box = e.borderBoxSize?.[0]?.blockSize;
-				measuredCardPx = typeof box === 'number' ? box : el.offsetHeight;
+				set(typeof box === 'number' ? box : el.offsetHeight);
 			}
 		});
 		ro.observe(el);
 		return () => ro.disconnect();
-	});
+	}
+
+	// MEASURED, not predicted: the band grows with its content, so a static sum UNDER-counts and covers the sung line.
+	let lowerThirdEl = $state<HTMLElement | undefined>();
+	let measuredCardPx = $state<number | null>(null);
+	$effect(() => observeBlockSize(lowerThirdEl, (px) => (measuredCardPx = px)));
 	// Null before the first measure -> undefined style -> app.css's static fallback stands.
 	const chromeBandStyle = $derived(
 		measuredCardPx === null ? undefined : `--tv-chrome-h: calc(var(--tv-safe-y) + ${Math.ceil(measuredCardPx)}px)`
@@ -332,18 +338,7 @@
 	// the next title wraps.
 	let upnextEl = $state<HTMLElement | undefined>();
 	let measuredUpnextPx = $state<number | null>(null);
-	$effect(() => {
-		const el = upnextEl;
-		if (!el || typeof ResizeObserver === 'undefined') return;
-		const ro = new ResizeObserver((entries) => {
-			for (const e of entries) {
-				const box = e.borderBoxSize?.[0]?.blockSize;
-				measuredUpnextPx = typeof box === 'number' ? box : el.offsetHeight;
-			}
-		});
-		ro.observe(el);
-		return () => ro.disconnect();
-	});
+	$effect(() => observeBlockSize(upnextEl, (px) => (measuredUpnextPx = px)));
 	const tvStyle = $derived(
 		[chromeBandStyle, measuredUpnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`]
 			.filter(Boolean)

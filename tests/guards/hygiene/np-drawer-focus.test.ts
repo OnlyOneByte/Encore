@@ -12,24 +12,16 @@
  */
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { stripComments } from '@encore/test-support/scan';
 
 const read = (p: string) => readFileSync(p, 'utf8');
 
-/**
- * Blank every comment, preserving newlines so a reported line number still points at the right line. REQUIRED:
- * this component's prose contains the very words the bans below look for (a sentence about `aria-labelledby`
- * winning the name cascade uses "inert"), so the bans must read CODE only.
- */
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
-}
-
 const DRAWER_RAW = read('src/lib/components/NowPlayingDrawer.svelte');
-const DRAWER = stripComments(DRAWER_RAW);
+/**
+ * STRIPPED IS REQUIRED: this component's prose contains the very words the bans below look for (a sentence
+ * about `aria-labelledby` winning the name cascade uses "inert"), so the bans must read CODE only.
+ */
+const DRAWER = stripComments(DRAWER_RAW, { markup: true });
 const VENDORED_CONTENT = read('src/lib/components/ui/drawer/drawer-content.svelte');
 
 const CONTENT_TAG = (() => {

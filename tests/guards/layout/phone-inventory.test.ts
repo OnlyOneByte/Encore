@@ -7,15 +7,11 @@ import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { srcDir } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 // `relative` is node:path's two-argument form here, not the test-support helper.
 const SRC = srcDir;
 const ROUTES = join(SRC, 'routes');
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
 
 /** Recursively collect every `+page.svelte` under `dir` (absolute paths). */
 function pageFiles(dir: string): string[] {
@@ -152,7 +148,7 @@ test('every phone route renders a designed empty, loading, error and offline sta
 	let pairsChecked = 0;
 
 	for (const { route, file } of PHONE_ROUTES) {
-		const src = stripComments(readFileSync(file, 'utf8'));
+		const src = stripComments(readFileSync(file, 'utf8'), { markup: true, keepLine: true });
 		for (const c of CONDITIONS) {
 			pairsChecked++;
 			const key = `${route} × ${c}`;
@@ -187,7 +183,7 @@ test('the known-absent baseline is bounded, well-formed, and has not rotted', ()
 		expect(k.reason.length, `baseline entry ${key} needs a reason`).toBeGreaterThan(30);
 
 		const file = PHONE_ROUTES.find((r) => r.route === k.route)!.file;
-		const found = detect(stripComments(readFileSync(file, 'utf8')), k.condition);
+		const found = detect(stripComments(readFileSync(file, 'utf8'), { markup: true, keepLine: true }), k.condition);
 		if (found) rotted.push(`${key} is now designed (matched: ${found}) — delete its KNOWN_ABSENT entry`);
 	}
 
@@ -233,7 +229,7 @@ const LIVE_REGIONS: { file: string; purpose: string }[] = [
 test('every phone live region is inventoried, and all are polite', () => {
 	const found: { file: string; politeness: string }[] = [];
 	for (const f of PHONE_ANNOUNCING_FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		for (const m of src.matchAll(/aria-live\s*=\s*["']([a-z]+)["']/g)) {
 			found.push({ file: relative(SRC, f).split(sep).join('/'), politeness: m[1]! });
 		}
@@ -270,7 +266,7 @@ const ANNOUNCED_EVENTS: { event: string; implemented: boolean; match?: RegExp }[
 ];
 
 test('every phone announcement is one of the inventoried events, and the first sync is silent', () => {
-	const src = stripComments(readFileSync(join(ROUTES, '+page.svelte'), 'utf8'));
+	const src = stripComments(readFileSync(join(ROUTES, '+page.svelte'), 'utf8'), { markup: true, keepLine: true });
 
 	// Assignment sites only — the `$state('')` declaration and the initial-sync reset are not events.
 	const sites = [...src.matchAll(/liveMsg\s*=\s*(?!\$state)([`'"][^`'"\n]*)/g)].map((m) => m[1]!);
@@ -342,7 +338,7 @@ test('no phone text is sized in absolute units, so the user’s text setting rea
 	for (const f of PHONE_STYLE_FILES) {
 		filesScanned++;
 		const rel = relative(SRC, f).split(sep).join('/');
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		for (const m of src.matchAll(/font-size:\s*([0-9.]+)(px|pt)/g)) {
 			const decl = `font-size: ${m[1]}${m[2]}`;
 			if (exempt.has(`${rel} ${decl}`)) continue;
@@ -375,7 +371,7 @@ test('no phone rule fixes a horizontal dimension wider than a 320px viewport', (
 
 	for (const f of PHONE_STYLE_FILES) {
 		const rel = relative(SRC, f).split(sep).join('/');
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		// `(?<!-)` keeps `max-width`/`min-width` out of the `width` arm; the min-width arm is matched
 		// separately, so a media-query condition is never read as a dimension.
 		for (const m of src.matchAll(/(?<![-\w])(min-width|width):\s*([0-9.]+)px/g)) {
@@ -422,7 +418,7 @@ test('no phone markup de-emphasises a subtree with an inline opacity', () => {
 	for (const f of PHONE_STYLE_FILES) {
 		const rel = relative(SRC, f).split(sep).join('/');
 		filesScanned++;
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		for (const m of src.matchAll(/style\s*=\s*"([^"]*)"/g)) {
 			if (!/(?:^|[;\s])opacity\s*:/.test(m[1]!)) continue;
 			if (exempt.has(rel)) continue;

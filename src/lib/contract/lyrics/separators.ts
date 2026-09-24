@@ -153,29 +153,33 @@ export function getEngine(id: string): SeparatorEngine | undefined {
 	return SEPARATOR_ENGINES.find((e) => e.id === id);
 }
 
+/** A model is only ever resolved WITHIN its engine — a token is not unique across the registry — so the
+ *  two-step traversal is written once and every question below asks it the same way. */
+function findModel(engineId: string, modelId: string): SeparatorModel | undefined {
+	return getEngine(engineId)?.models.find((m) => m.id === modelId);
+}
+
 /** Is this a real, whitelisted engine+model pairing? Called before enqueueing, so a spoofed setting never
  *  reaches a worker that would fail mid-process. */
 export function isValidSeparator(engineId: string, modelId: string): boolean {
-	const engine = getEngine(engineId);
-	return !!engine && engine.models.some((m) => m.id === modelId);
+	return !!findModel(engineId, modelId);
 }
 
 /** A pairing valid for the LIVE default (excludes upgrade-only engines like ensemble). */
 export function isLiveSelectable(engineId: string, modelId: string): boolean {
-	const engine = getEngine(engineId);
-	return !!engine && engine.liveSelectable && engine.models.some((m) => m.id === modelId);
+	return getEngine(engineId)?.liveSelectable === true && isValidSeparator(engineId, modelId);
 }
 
 /** The declared upgrade ladder, read straight off `SeparatorModel.rank`. Returns 0 ONLY for a pairing absent
  *  from the registry, which is what makes de-whitelisting safe. See
  *  docs/SERVER.md#registries-and-the-quality-ladder. */
 export function qualityRank(engineId: string, modelId: string): number {
-	return getEngine(engineId)?.models.find((m) => m.id === modelId)?.rank ?? 0;
+	return findModel(engineId, modelId)?.rank ?? 0;
 }
 
 /** The measured cost record for a pairing, or undefined if the pairing is not whitelisted. */
 export function separatorCost(engineId: string, modelId: string): SeparatorCost | undefined {
-	return getEngine(engineId)?.models.find((m) => m.id === modelId)?.cost;
+	return findModel(engineId, modelId)?.cost;
 }
 
 /** Is `candidate` STRICTLY better than `current`? The guard the upgrade path runs before swapping a published

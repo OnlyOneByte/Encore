@@ -1,5 +1,6 @@
 import { expect, it } from 'bun:test';
 import { read } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 /*
  * THE BAND'S CLOCK MUST NOT JUMP ON RESUME. Pause for forty seconds, resume, and a second later the band's progress
@@ -14,13 +15,9 @@ import { read } from '@encore/test-support';
 
 const LAYOUT = 'src/routes/+layout.svelte';
 
-function stripComments(s: string): string {
-	return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-}
-
 /** The effect that owns the extrapolation, located by the interval it arms. */
 function extrapolationEffect(src: string): string {
-	const code = stripComments(src);
+	const code = stripComments(src, { drop: true });
 	const at_ = code.indexOf('livePos = pos + (performance.now()');
 	expect(at_, 'expected the band to extrapolate livePos from a captured pos + wall').toBeGreaterThanOrEqual(0);
 	const from = code.lastIndexOf('$effect(() => {', at_);
@@ -48,7 +45,7 @@ it('the band re-anchors its clock on resume: the wall clock is captured in the e
 });
 
 it('the band keeps no anchor outside that effect — a separate $state pair is the defect returning', () => {
-	const code = stripComments(read(LAYOUT));
+	const code = stripComments(read(LAYOUT), { drop: true });
 	// Reject the reactive SLOT rather than one spelling of the effect, so any re-introduction reds.
 	expect(code).not.toMatch(/let\s+anchor\s*=\s*\$state/);
 	expect(code).not.toMatch(/anchor\.(pos|wall)/);

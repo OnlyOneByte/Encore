@@ -7,14 +7,9 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
-import { svelteFiles } from '@encore/test-support/scan';
+import { stripComments, svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir; // src
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
 
 // The phone surfaces, matching touch-targets.test.ts. The TV has its own scale test and no icon-only taps.
 const FILES = [
@@ -44,7 +39,7 @@ function centres(body: string): boolean {
 test('every icon-only control with a fixed box centres its mark', () => {
 	const offenders: string[] = [];
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
 			const sel = m[1]!.trim();
 			const body = m[2]!;

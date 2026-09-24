@@ -4,6 +4,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const ROW = at('src/lib/components/QueueRow.svelte');
 const PAGE = at('src/routes/+page.svelte');
@@ -14,18 +15,11 @@ const BUTTON = at('src/lib/components/ui/button/button.svelte');
 const button = () => readFileSync(BUTTON, 'utf8');
 
 /**
- * Blank all three comment kinds, because an absence arm must read CODE and not prose: the source deliberately
- * names the very mechanisms banned below, so a ban that saw a comment would red on the explanation. `[^:]`
- * keeps a `https://` inside a string from being eaten.
+ * Comments come off because an absence arm must read CODE and not prose: the source deliberately names the
+ * very mechanisms banned below, so a ban that saw a comment would red on the explanation.
  */
-function stripComments(src: string): string {
-	return src
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-}
 function markup(src: string): string {
-	return stripComments(src).replace(/<style[\s\S]*?<\/style>/gi, '');
+	return stripComments(src, { markup: true, drop: true }).replace(/<style[\s\S]*?<\/style>/gi, '');
 }
 
 test('the grip IS the non-drag path, and it is a real button', () => {
@@ -66,7 +60,7 @@ test('the grip goes inert while a move is unconfirmed', () => {
 
 test('the dimmed row is de-emphasised with a surface token, not opacity', () => {
 	const src = row();
-	const rule = /\.dimmed\s*\{([^}]*)\}/.exec(stripComments(src));
+	const rule = /\.dimmed\s*\{([^}]*)\}/.exec(stripComments(src, { markup: true, drop: true }));
 	expect(rule).not.toBeNull(); // sentinel: the rule exists to be judged
 	const body = rule![1]!;
 	expect(/background:\s*var\(--[\w-]+\)/.test(body)).toBe(true);
@@ -87,12 +81,12 @@ const GRAB_RULE = /([^{}]+)\{([^}]*cursor:\s*grab\s*(?=[;}])[^}]*)\}/g;
 test('cursor:grab is declared on the grip button and on no row', () => {
 	// Scanned on the shared Button because the grip is <Button press="grab">: the grab cursor is on ONE selector
 	// and that selector is the grip control, not a row.
-	const src = stripComments(button());
+	const src = stripComments(button(), { markup: true, drop: true });
 	expect(/cursor:\s*grab\s*[;}]/.test(src)).toBe(true);
 	const grabRules = [...src.matchAll(GRAB_RULE)].map((m) => m[1]!.trim());
 	expect(grabRules).toEqual(["[data-press='grab']"]); // exactly one, and it is the grip control
 
-	expect(/cursor:\s*grab\s*[;}]/.test(stripComments(row()))).toBe(false);
+	expect(/cursor:\s*grab\s*[;}]/.test(stripComments(row(), { markup: true, drop: true }))).toBe(false);
 });
 
 test('no other component reintroduces a row-level grab cursor', () => {
@@ -100,8 +94,8 @@ test('no other component reintroduces a row-level grab cursor', () => {
 	// `.grip`, which examined nothing (the sibling above proves the row declares no grab rule at all) and
 	// would have WAVED THROUGH a `.grip { cursor: grab }` on the row — the very thing the sibling bans.
 	for (const [name, src] of [
-		['row', stripComments(row())],
-		['page', stripComments(page())]
+		['row', stripComments(row(), { markup: true, drop: true })],
+		['page', stripComments(page(), { markup: true, drop: true })]
 	] as const) {
 		expect(
 			[...src.matchAll(GRAB_RULE)].map((m) => m[1]!.trim()),
@@ -119,7 +113,7 @@ test('the grip binding goes through the predicate, never a literal', () => {
 	expect(m).toContain('grip={gripFor(e)}');
 	expect(/grip=\{(true|false|!?\w+\.\w+)\}/.test(m)).toBe(false);
 
-	const src = stripComments(page());
+	const src = stripComments(page(), { markup: true, drop: true });
 	const fn = /function gripFor\([\s\S]*?\n\t\}/.exec(src);
 	expect(fn).not.toBeNull(); // sentinel
 	const body = fn![0]!;
@@ -134,7 +128,7 @@ test('driven-find 1 · the drag listens on window, not on the grip element', () 
 	// Opening the mode re-renders the rows, so the pressed grip becomes a DETACHED node: listeners bound to it
 	// delivered nothing, and a real drag moved no row and never closed the mode. A pointer CAPTURE on that node
 	// is the same defect.
-	const src = stripComments(page());
+	const src = stripComments(page(), { markup: true, drop: true });
 	const fn = /function onGripPointerDown\([\s\S]*?\n\t\}/.exec(src);
 	expect(fn).not.toBeNull(); // sentinel
 	const body = fn![0]!;
@@ -149,7 +143,7 @@ test('driven-find 1 · the drag listens on window, not on the grip element', () 
 test('driven-find 2 · the dragged row is transparent to hit-testing', () => {
 	// The row is translated under the finger with `z-index: 2`, so it was topmost and `elementFromPoint` returned
 	// IT instead of the drop slot beneath: a drag released on a legal target committed nothing.
-	const rule = /\.moving\s*\{([^}]*)\}/.exec(stripComments(row()));
+	const rule = /\.moving\s*\{([^}]*)\}/.exec(stripComments(row(), { markup: true, drop: true }));
 	expect(rule).not.toBeNull(); // sentinel
 	expect(/pointer-events:\s*none/.test(rule![1]!)).toBe(true);
 });
@@ -158,7 +152,7 @@ test('driven-find 3 · the drag-active state is separate from the drag SUBJECT',
 	// `.moving` carries `pointer-events: none`, so if it applied for as long as a row was the SUBJECT, that row's
 	// own grip stayed untouchable and no later drag could start. Both props must read BOTH flags, and both must be
 	// cleared on the exit path or a committed drag leaves the next row inert.
-	const src = stripComments(page());
+	const src = stripComments(page(), { markup: true, drop: true });
 	expect(src).toContain('let dragging = $state(false)');
 	expect(src).toContain('moving={movingId === e.id && dragging}');
 	expect(src).toMatch(/dragY=\{movingId === e\.id && dragging \? dragY\s*:\s*0\}/);
@@ -167,7 +161,7 @@ test('driven-find 3 · the drag-active state is separate from the drag SUBJECT',
 });
 
 test('driven-find 4 · there is no tap-versus-drop ambiguity left to get wrong', () => {
-	const src = stripComments(page());
+	const src = stripComments(page(), { markup: true, drop: true });
 	expect(src).toMatch(/if \(from < 0 \|\| to === from\) return;/);
 	expect(src, 'a tap threshold means a mode that a release could close by accident').not.toContain('TAP_SLOP_PX');
 });
@@ -176,7 +170,7 @@ test('driven-find 5 · focus return is re-found by attribute, not by a held elem
 	// The pressed grip is detached once the list has reordered, so focusing the captured reference put focus
 	// nowhere — `activeElement` was `<body>` after Escape. The keyboard path re-finds it the same way, because a
 	// nudge recreates the row's DOM too.
-	const src = stripComments(page());
+	const src = stripComments(page(), { markup: true, drop: true });
 	expect(src).toContain('gripId={e.id}');
 	expect(markup(row())).toContain('data-grip={gripId}');
 	const exit = /function endDrag\([\s\S]*?\n\t\}/.exec(src);
@@ -189,18 +183,21 @@ test('driven-find 5 · focus return is re-found by attribute, not by a held elem
 test('· the .dimmed rule stays a surface token, not opacity — and no row is dimmed by the mode', () => {
 	// `.dimmed` is retained on both row kinds (the prop survives for a future mode) and still governs its SHAPE: a
 	// surface token, never subtree opacity. Every queued row is a legal target, so nothing is dimmed.
-	const src = stripComments(readFileSync(at('src/lib/components/ProcessingCard.svelte'), 'utf8'));
+	const src = stripComments(readFileSync(at('src/lib/components/ProcessingCard.svelte'), 'utf8'), {
+		markup: true,
+		drop: true
+	});
 	const rule = /\.dimmed\s*\{([^}]*)\}/.exec(src);
 	expect(rule).not.toBeNull(); // sentinel
 	const body = rule![1]!;
 	expect(/background:\s*var\(--[\w-]+\)/.test(body)).toBe(true);
 	expect(/(^|[;\s])opacity\s*:/.test(body)).toBe(false);
-	expect((stripComments(page()).match(/dimmed=\{false\}/g) ?? []).length).toBe(2);
-	expect(stripComments(page())).not.toContain('dimmed={reorderOpen');
+	expect((stripComments(page(), { markup: true, drop: true }).match(/dimmed=\{false\}/g) ?? []).length).toBe(2);
+	expect(stripComments(page(), { markup: true, drop: true })).not.toContain('dimmed={reorderOpen');
 });
 
 test('the drag is a CSS transform reading a var, with nothing interpolated over time', () => {
-	const src = stripComments(row());
+	const src = stripComments(row(), { markup: true, drop: true });
 	const moving = /\.moving\s*\{([^}]*)\}/.exec(src);
 	expect(moving).not.toBeNull(); // sentinel
 	const body = moving![1]!;
@@ -225,7 +222,7 @@ test('no drag library is pulled in for the mode', () => {
 test('the committed index IS the rendered one, so a release cannot land elsewhere', () => {
 	// "A release cannot commit somewhere the guest did not choose" holds by IDENTITY: `dragTo` is the ONE
 	// expression that both places the rows on screen and commits on release, so they cannot disagree.
-	const src = stripComments(page());
+	const src = stripComments(page(), { markup: true, drop: true });
 	expect(src).toMatch(/const dragTo = \$derived\(/);
 	expect(src).toMatch(
 		/liveSortTarget\(\{ fromIndex: dragFrom, offsetPx: dragY, rowBoundsPx: rowBounds, count: queued\.length \}\)/
@@ -243,7 +240,7 @@ test('the committed index IS the rendered one, so a release cannot land elsewher
 });
 
 test('a drag that has not moved commits nothing, and neither does a cancel', () => {
-	const src = stripComments(page());
+	const src = stripComments(page(), { markup: true, drop: true });
 	expect(src).toMatch(/function endDrag\(commit: boolean, note = ''\)/);
 	expect(src).toMatch(/if \(commit && id\) commitMove/);
 	expect(src).toMatch(/dragging && e\.key === 'Escape' && endDrag\(false\)/);
@@ -251,7 +248,7 @@ test('a drag that has not moved commits nothing, and neither does a cancel', () 
 });
 
 test('step 4 · every reorder — drag or keyboard — emits store.moveToIndex through ONE function', () => {
-	const src = stripComments(page());
+	const src = stripComments(page(), { markup: true, drop: true });
 	expect(src).toMatch(/function commitMove\(id: string, to: number \| null\)/);
 	expect((src.match(/store\?\.moveToIndex\(/g) ?? []).length, 'one op call site, shared by both paths').toBe(1);
 	expect(src).not.toContain('function moveGlobal');

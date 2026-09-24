@@ -9,6 +9,7 @@ import { read } from '@encore/test-support';
 import { validateCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand } from '$lib/contract';
+import { stripComments } from '@encore/test-support/scan';
 
 const media = (id: string): Media => ({
 	id,
@@ -87,80 +88,51 @@ test('an unknown entry rejects before any ownership/capability check', () => {
 	expect(validateCommand(cmd({ op: 'remove', id: 'ghost' }), harness())).toBe('unknown entry: ghost');
 });
 
-// (2) Source-scan: the load-bearing narrowing proof. Comments are blanked because hub.ts's own prose mentions
-// can() and the capability strings.
+// (2) Source-scan: the load-bearing narrowing proof, because can() ignores its capability today — an owner
+// who wrongly falls through to can() is still allowed, so behaviour cannot tell the two apart until can() is
+// narrowed to a host role, at which point a singer loses their own song.
+//
+// THIS NO LONGER SLICES SWITCH ARMS. It used to brace-match an ownership `if` inside each of three
+// `case` arms, which pinned three copies of the check in place and blocked collapsing them into one gate.
+// With a single gate the property is simpler AND stronger to state: in the one function that gates, the
+// ownership answer is reached BEFORE can() is consulted.
 const hubSrc = read('src/lib/server/realtime/hub.ts');
 
-function stripComments(src: string): string {
-	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+/** The body of the one function that gates every entry op. */
+function gateBody(): string {
+	const src = stripComments(hubSrc, { drop: true });
+	const start = src.indexOf('function entryOpRefusal');
+	expect(
+		start,
+		'entryOpRefusal not found — this guard asserts the ONE gate, so its absence is the finding'
+	).toBeGreaterThan(-1);
+	const rest = src.slice(start);
+	const end = rest.indexOf('\n}');
+	expect(end).toBeGreaterThan(-1);
+	return rest.slice(0, end);
 }
 
-// Slice a single `case '<op>':` arm up to the next `case '`/`default:` label.
-function switchArm(src: string, op: string): string {
-	const body = stripComments(src);
-	const label = `case '${op}':`;
-	const start = body.indexOf(label);
-	expect(start).toBeGreaterThan(-1); // non-vacuous: the arm must exist
-	const after = body.slice(start + label.length);
-	const next = after.search(/\n\s*(case '|default:)/);
-	expect(next).toBeGreaterThan(-1); // arm must be bounded by a following label
-	return after.slice(0, next);
-}
-
-// ENCLOSURE, not text order, is the property: a mere "ownership mention appears before can()" check passes when
-// the comparison is hoisted into a const for an audit log while the owner still falls through to can(), and it
-// reds on the early-return refactor, which actually strengthens the property. Two spellings must both pass:
-//   (i)  ENCLOSING    — `if (<var>.singerId !== deps.actorSingerId) { … can(…) … }`
-//   (ii) EARLY-RETURN — `if (<var>.singerId === deps.actorSingerId) return null;` before the gate
-
-// Brace-match from the `{` after the ownership `if`. Returns [openIdx, closeIdx) or null.
-function enclosingOwnershipBlock(arm: string, actorVar: string): [number, number] | null {
-	// ENCLOSING form only — the `{` is required.
-	const openRe = new RegExp(`if\\s*\\(\\s*${actorVar}\\.singerId\\s*!==\\s*deps\\.actorSingerId\\s*\\)\\s*\\{`);
-	const m = openRe.exec(arm);
-	if (!m) return null;
-	let depth = 0;
-	for (let i = m.index + m[0].length - 1; i < arm.length; i++) {
-		if (arm[i] === '{') depth++;
-		else if (arm[i] === '}') {
-			depth--;
-			if (depth === 0) return [m.index, i + 1];
-		}
-	}
-	return null; // unbalanced — treated as no enclosure
-}
-
-const ownerEarlyReturn = (v: string) =>
-	new RegExp(`if\\s*\\(\\s*${v}\\.singerId\\s*===\\s*deps\\.actorSingerId\\s*\\)\\s*return\\s+null`);
-
-// `\w+` matches whatever local the arm binds the target entry to (removeTarget / moveTarget).
-function canGatedByOwnership(arm: string, canCall: string): boolean {
-	const canIdx = arm.indexOf(canCall);
-	if (canIdx < 0) return false;
-	const block = enclosingOwnershipBlock(arm, '\\w+');
-	if (block && canIdx > block[0] && canIdx < block[1]) return true;
-	const er = ownerEarlyReturn('\\w+').exec(arm);
-	if (er && er.index < canIdx) return true;
-	return false;
-}
-
-test("the 'remove' arm reaches can('queue:remove-any') only for a NON-owner entry", () => {
-	const arm = switchArm(hubSrc, 'remove');
-	const canCall = "can({ singerId: deps.actorSingerId }, 'queue:remove-any')";
-	expect(arm.indexOf(canCall)).toBeGreaterThan(-1); // non-vacuous: the gate must be present at all
-	expect(canGatedByOwnership(arm, canCall)).toBe(true);
+test('the ONE gate decides ownership before it consults can()', () => {
+	const body = gateBody();
+	const canIdx = body.search(/\bcan\(/);
+	expect(canIdx, 'the gate does not consult can() at all').toBeGreaterThan(-1);
+	// An owner must LEAVE before can(). Either spelling passes — an early `return null` on match, or a
+	// `!==` block enclosing the call — because which one is used is not a property worth defending.
+	const early = /if\s*\(\s*\w+\.singerId\s*===\s*deps\.actorSingerId\s*\)\s*return\s+null/.exec(body);
+	const enclosing = /if\s*\(\s*\w+\.singerId\s*!==\s*deps\.actorSingerId\s*\)\s*\{/.exec(body);
+	const ownershipIdx = early ? early.index : enclosing ? enclosing.index : -1;
+	expect(
+		ownershipIdx,
+		'no ownership comparison against deps.actorSingerId in the gate — every singer would be asked for the ' +
+			'-any capability on their OWN entry, and a narrowed can() would then refuse them their own song'
+	).toBeGreaterThan(-1);
+	expect(ownershipIdx, 'the ownership check does not precede can()').toBeLessThan(canIdx);
 });
 
-test("the 'move' arm reaches can('queue:reorder-any') only for a NON-owner entry", () => {
-	const arm = switchArm(hubSrc, 'move');
-	const canCall = "can({ singerId: deps.actorSingerId }, 'queue:reorder-any')";
-	expect(arm.indexOf(canCall)).toBeGreaterThan(-1);
-	expect(canGatedByOwnership(arm, canCall)).toBe(true);
-});
-
-test("the 'move-to-index' arm reaches can('queue:reorder-any') only for a NON-owner entry", () => {
-	const arm = switchArm(hubSrc, 'move-to-index');
-	const canCall = "can({ singerId: deps.actorSingerId }, 'queue:reorder-any')";
-	expect(arm.indexOf(canCall)).toBeGreaterThan(-1); // non-vacuous: the gate must be present
-	expect(canGatedByOwnership(arm, canCall)).toBe(true); // owner never reaches can()
+test('the unknown-entry refusal precedes both, so a ghost id is never a permission answer', () => {
+	const body = gateBody();
+	const unknown = body.indexOf('unknown entry');
+	expect(unknown, 'the gate no longer refuses an unknown entry by name').toBeGreaterThan(-1);
+	expect(unknown).toBeLessThan(body.search(/\bcan\(/));
+	expect(unknown).toBeLessThan(body.search(/singerId\s*[!=]==\s*deps\.actorSingerId/));
 });

@@ -3,15 +3,12 @@
 // its whole WS/store machinery, so this pins both halves from the source instead.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const src = read('src/routes/+page.svelte');
 
 // Strip comments so a `/join` in a comment (there is one, explaining the retirement) is not a live bounce.
-function stripComments(s: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return s.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
-const code = stripComments(src);
+const code = stripComments(src, { markup: true, keepLine: true });
 
 test('the home route no longer bounces an unjoined visitor to /join', () => {
 	expect(code).not.toMatch(/goto\(\s*['"`]\/join/);

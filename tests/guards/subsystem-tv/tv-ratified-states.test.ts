@@ -6,19 +6,15 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const SRC = srcDir;
 const ROUTE = readFileSync(join(SRC, 'routes', 'tv', '+page.svelte'), 'utf8');
 const APP_CSS = readFileSync(join(SRC, 'app.css'), 'utf8');
 
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
-
 /** The numeric rem value of a `--tv-*` type token declared in app.css, or null if absent/not rem. */
 function tvRem(token: string): number | null {
-	const decl = new RegExp(`${token}:\\s*([^;]+);`).exec(stripComments(APP_CSS));
+	const decl = new RegExp(`${token}:\\s*([^;]+);`).exec(stripComments(APP_CSS, { markup: true, keepLine: true }));
 	if (!decl) return null;
 	const rem = /^([0-9.]+)rem$/.exec(decl[1]!.trim());
 	return rem ? Number(rem[1]) : null;
@@ -37,7 +33,7 @@ test('XR-TV: the room code is the largest type element on the attract screen', (
 		expect(code!, `--tv-code (${code}) must exceed ${other} (${v})`).toBeGreaterThan(v!);
 	}
 	// The markup must actually render the code in that tier, or the token ordering guards nothing.
-	const clean = stripComments(ROUTE);
+	const clean = stripComments(ROUTE, { markup: true, keepLine: true });
 	const jtCode = /\.jt-code\s*\{([^}]*)\}/.exec(clean)?.[1] ?? '';
 	expect(jtCode).not.toBe('');
 	expect(jtCode).toContain('font-size: var(--tv-code)');
@@ -55,7 +51,7 @@ test('XR-TV: the room code is the largest type element on the attract screen', (
 });
 
 test('the attract phrase system is wired to the pure phrase module, not a hand-written cycle', () => {
-	const clean = stripComments(ROUTE);
+	const clean = stripComments(ROUTE, { markup: true, keepLine: true });
 	// The set and the bag come from the guarded pure module, so the ≤24-char rule and the no-repeat bag are
 	// enforced at the data layer rather than re-implemented in the component.
 	expect(clean).toContain("from '$lib/tv/phrases'");
@@ -64,7 +60,7 @@ test('the attract phrase system is wired to the pure phrase module, not a hand-w
 });
 
 test('the phrase crossfade is a CSS animation gated on prefers-reduced-motion, never a Svelte transition', () => {
-	const clean = stripComments(ROUTE);
+	const clean = stripComments(ROUTE, { markup: true, keepLine: true });
 	expect(/@keyframes\s+phrase-fade\s*\{[^}]*opacity/.test(clean)).toBe(true);
 	// Applied ONLY under (prefers-reduced-motion: no-preference), so reduce holds still.
 	const noPref = /@media\s*\(prefers-reduced-motion:\s*no-preference\)\s*\{([\s\S]*?)\n\t\}/.exec(clean)?.[1] ?? '';
@@ -81,14 +77,14 @@ test('the phrase crossfade is a CSS animation gated on prefers-reduced-motion, n
 test('no Svelte transition/in/out/animate directive drives the phrase (motion.test.ts also bans these globally)', () => {
 	// A targeted restatement scoped to the attract markup: the Svelte transition runtime ignores
 	// prefers-reduced-motion, so the phrase must remount via {#key} + CSS instead.
-	const clean = stripComments(ROUTE);
+	const clean = stripComments(ROUTE, { markup: true, keepLine: true });
 	expect(/\{#key\s+attractPhrase\}/.test(clean)).toBe(true);
 	expect(/transition:[a-z]/.test(clean)).toBe(false);
 	expect(/\b(in|out|animate):(fade|fly|slide|scale|blur)/.test(clean)).toBe(false);
 });
 
 test('the join block survives every takeover, dimmed to 72%, in the bottom-right slot', () => {
-	const clean = stripComments(ROUTE);
+	const clean = stripComments(ROUTE, { markup: true, keepLine: true });
 	// It wraps the SAME corner JoinBadge the playing state uses, so the slot does not move.
 	expect(/\{#if transient\}[\s\S]*?class="takeover-join"[\s\S]*?<JoinBadge[^>]*placement="corner"/.test(clean)).toBe(
 		true
@@ -99,7 +95,7 @@ test('the join block survives every takeover, dimmed to 72%, in the bottom-right
 });
 
 test('each takeover owns one colour family, drawn as a family-coloured left border', () => {
-	const clean = stripComments(ROUTE);
+	const clean = stripComments(ROUTE, { markup: true, keepLine: true });
 	// The border colour is the carrier, and it must differ per state so the three cannot be confused.
 	const families = {
 		'.state-next.takeover': 'var(--accent)',
@@ -119,7 +115,7 @@ test('each takeover owns one colour family, drawn as a family-coloured left bord
 });
 
 test('XR-TV: the next-up takeover makes the singer the 132px hero', () => {
-	const clean = stripComments(ROUTE);
+	const clean = stripComments(ROUTE, { markup: true, keepLine: true });
 	// The singer name outsizes the ordinary takeover hero, and the markup applies it to that name.
 	expect(/\.hero-name\s*\{[^}]*font-size:\s*var\(--tv-takeover-name\)/.test(clean)).toBe(true);
 	expect(tvRem('--tv-takeover-name')).toBeGreaterThan(tvRem('--tv-hero')!);

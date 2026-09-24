@@ -17,10 +17,9 @@ export const GET: RequestHandler = async ({ url }) => {
 	const since = app.now() - days * DAY_MS;
 
 	const ready = app.media.listReady();
-	// Name the ranked songs here rather than making the client fetch the whole catalog to join: the play log stores media ids only, and an id is not a song title anyone can read.
+	// Name the ranked songs here rather than making the client fetch the whole catalog to join: the play log stores media ids only, and an id is not a song title anyone can read. ONE map read for both axes — per-field copies of it would be two more full-catalog allocations for the same lookups.
 	const displayOf = new Map(app.media.all().map((m) => [m.id, songDisplay(m)]));
-	const titleOf = new Map([...displayOf].map(([id, d]) => [id, d.title]));
-	const artistOf = new Map([...displayOf].map(([id, d]) => [id, d.artist]));
+	const titleOf = (mediaId: string) => displayOf.get(mediaId)?.title ?? mediaId;
 
 	const topAllTime = app.playLog.topSongs(10);
 	const topRecent = app.playLog.topSongs(10, since);
@@ -36,10 +35,10 @@ export const GET: RequestHandler = async ({ url }) => {
 			window: app.playLog.totalSince(since),
 			distinctSongs: app.playLog.distinctSongs()
 		},
-		topSongs: topAllTime.map((s) => ({ ...s, title: titleOf.get(s.mediaId) ?? s.mediaId })),
-		topRecent: topRecent.map((s) => ({ ...s, title: titleOf.get(s.mediaId) ?? s.mediaId })),
+		topSongs: topAllTime.map((s) => ({ ...s, title: titleOf(s.mediaId) })),
+		topRecent: topRecent.map((s) => ({ ...s, title: titleOf(s.mediaId) })),
 		// Artists are ranked from PLAYS, joined through the canonical name; songs with an unparseable artist are dropped by the aggregator (see topArtists) rather than bucketed as "Unknown".
-		topArtists: topArtists(topAllTime.length ? app.playLog.topSongs(500) : [], artistOf),
+		topArtists: topArtists(topAllTime.length ? app.playLog.topSongs(500) : [], displayOf),
 		perDay: app.playLog.perDay(since),
 		window: { days, since }
 	});
@@ -51,11 +50,11 @@ export const GET: RequestHandler = async ({ url }) => {
  *  usually be the largest bar on the chart and say nothing. Excluding it keeps the list short and true. */
 function topArtists(
 	plays: { mediaId: string; plays: number }[],
-	artistOf: Map<string, string | null | undefined>
+	displayOf: Map<string, { artist: string | null }>
 ): { artist: string; plays: number }[] {
 	const totals = new Map<string, number>();
 	for (const p of plays) {
-		const artist = artistOf.get(p.mediaId);
+		const artist = displayOf.get(p.mediaId)?.artist;
 		if (!artist) continue;
 		totals.set(artist, (totals.get(artist) ?? 0) + p.plays);
 	}

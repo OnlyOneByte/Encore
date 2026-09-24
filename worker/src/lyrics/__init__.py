@@ -62,6 +62,7 @@ from .grading import (
     candidate_last_end,
     candidates_of,
     composite_score,
+    fits_audio,
     is_authoritative_text,
     lyrics_tokens,
     select_by_baselines,
@@ -129,6 +130,7 @@ __all__ = [
     "candidate_last_end",
     "candidates_of",
     "composite_score",
+    "fits_audio",
     "lyrics_tokens",
     "select_by_baselines",
     # artifacts + shaping

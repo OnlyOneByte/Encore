@@ -5,15 +5,9 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
-function stripComments(src: string): string {
-	return src
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-}
-
-const src = stripComments(readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8'));
+const src = stripComments(readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8'), { markup: true, drop: true });
 
 // Collect EVERY rule for a class selector, brace-matching each body — not the first: SongRow declares its layout
 // selectors more than once, a base rule PLUS a redeclaration inside `@media (max-width: 380px)` that WINS the

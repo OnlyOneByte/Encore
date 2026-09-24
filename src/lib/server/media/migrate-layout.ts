@@ -24,6 +24,22 @@ export interface MigrationResult {
 	alreadyMigrated: boolean;
 }
 
+/** An all-zero result. `alreadyMigrated` is the only field that ever differs between the two callers —
+ *  `applyMigration`'s accumulator starts false, the nothing-to-do shortcut returns true. */
+function emptyResult(alreadyMigrated: boolean): MigrationResult {
+	return {
+		moved: 0,
+		bytesMoved: 0,
+		pruned: 0,
+		refsRewritten: 0,
+		skipped: 0,
+		copiedInPlace: 0,
+		failed: 0,
+		failures: [],
+		alreadyMigrated
+	};
+}
+
 // Rename first, then copy + best-effort unlink on failure: a container-written bind mount may deny the
 // write permission rename needs though the file is readable, and preserving `audio/` beats throwing.
 function moveFile(from: string, to: string): 'renamed' | 'copied' {
@@ -128,17 +144,7 @@ export function applyMigration(
 	plan: MigrationPlan,
 	rewriteRefs?: (mediaId: string, fields: Record<string, string>) => void
 ): MigrationResult {
-	const res: MigrationResult = {
-		moved: 0,
-		bytesMoved: 0,
-		pruned: 0,
-		refsRewritten: 0,
-		skipped: 0,
-		copiedInPlace: 0,
-		failed: 0,
-		failures: [],
-		alreadyMigrated: false
-	};
+	const res: MigrationResult = emptyResult(false);
 
 	for (const [from, to] of plan.moves) {
 		if (!existsSync(from)) {
@@ -227,19 +233,7 @@ export function migrateStorageLayout(
 ): MigrationResult {
 	ensureLayout();
 	const plan = planMigration();
-	if (plan.moves.length === 0 && plan.prunes.length === 0) {
-		return {
-			moved: 0,
-			bytesMoved: 0,
-			pruned: 0,
-			refsRewritten: 0,
-			skipped: 0,
-			copiedInPlace: 0,
-			failed: 0,
-			failures: [],
-			alreadyMigrated: true
-		};
-	}
+	if (plan.moves.length === 0 && plan.prunes.length === 0) return emptyResult(true);
 	return applyMigration(plan, rewriteRefs);
 }
 

@@ -7,7 +7,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { srcDir } from '@encore/test-support';
 import { ICON_NAMES, ICON_PATHS } from '$lib/ui/icons';
-import { svelteFiles } from '@encore/test-support/scan';
+import { stripComments, svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir; // src
 
@@ -70,15 +70,6 @@ function tsFiles(dir: string): string[] {
 	return out;
 }
 
-/** Blank out comments, preserving newlines so reported line numbers stay true. */
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank) // markup comments
-		.replace(/\/\*[\s\S]*?\*\//g, blank) // block comments, in <script> and <style>
-		.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length))); // line comments, sparing `https://`
-}
-
 function lineOf(src: string, index: number): number {
 	return src.slice(0, index).split('\n').length;
 }
@@ -95,7 +86,7 @@ test('the icon ban scans actually read a non-empty surface', () => {
 test('no functional control is a Unicode codepoint (use Icon.svelte)', () => {
 	const offenders: string[] = [];
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const [cp, icon] of Object.entries(REPLACED)) {
 			let i = src.indexOf(cp);
 			while (i !== -1) {
@@ -111,7 +102,7 @@ test('no functional control is a Unicode codepoint (use Icon.svelte)', () => {
 test('nothing forces emoji presentation with U+FE0F', () => {
 	const offenders: string[] = [];
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		let i = src.indexOf(FE0F);
 		while (i !== -1) {
 			offenders.push(`${f.replace(SRC, 'src')}:${lineOf(src, i)}: U+FE0F forces colour emoji`);
@@ -124,7 +115,7 @@ test('nothing forces emoji presentation with U+FE0F', () => {
 test('no emoji in any UI-visible string', () => {
 	const offenders: string[] = [];
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const { index, cp } of emojiIn(src)) {
 			offenders.push(`${f.replace(SRC, 'src')}:${lineOf(src, index)}: ${cp} — use <Icon /> or drop it from the copy`);
 		}
@@ -138,7 +129,7 @@ test('no emoji in user-facing copy in $lib', () => {
 	const offenders: string[] = [];
 	for (const f of tsFiles(join(SRC, 'lib'))) {
 		if (f.includes(`${sep}lib${sep}server${sep}`)) continue;
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const m of src.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
 			for (const { cp } of emojiIn(m[2]!)) {
 				offenders.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${cp} in a string`);
@@ -152,7 +143,7 @@ test('no emoji in user-facing copy in $lib', () => {
 test('no CSS content: declaration draws a glyph', () => {
 	const offenders: string[] = [];
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true });
 		for (const m of src.matchAll(/content:\s*(['"])([^'"]*)\1/g)) {
 			const value = m[2]!;
 			// eslint-disable-next-line no-control-regex

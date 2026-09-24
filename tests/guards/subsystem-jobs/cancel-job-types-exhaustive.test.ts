@@ -4,17 +4,14 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const cancelSrc = readFileSync(at('src/lib/server/jobs/cancel.ts'), 'utf8');
 const typesSrc = readFileSync(at('src/lib/contract/core/types.ts'), 'utf8');
 
-function stripComments(s: string): string {
-	return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-}
-
 /** The canonical JobType members, parsed from the union declaration in packages/shared as text. */
 function jobTypeMembers(): string[] {
-	const src = stripComments(typesSrc);
+	const src = stripComments(typesSrc, { drop: true });
 	const m = src.match(/export type JobType\s*=\s*([^;]+);/);
 	expect(m, 'JobType union declaration must exist in packages/shared/src/core/types.ts').not.toBeNull();
 	const members = m![1]
@@ -26,7 +23,7 @@ function jobTypeMembers(): string[] {
 }
 
 describe('cancel.ts job-type table is exhaustive over JobType', () => {
-	const cancelNoComments = stripComments(cancelSrc);
+	const cancelNoComments = stripComments(cancelSrc, { drop: true });
 
 	test('every JobType member is a key of the CANCELLABLE_JOB_TYPES record', () => {
 		const members = jobTypeMembers();

@@ -6,14 +6,10 @@
 // extrapolates FORWARD from the previous song's anchor.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const ROUTE = read('src/routes/tv/+page.svelte');
 const OVERLAY = read('src/lib/tv/LyricsOverlay.svelte');
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
 
 /** The brace-matched body of a top-level `function <name>(...) { ... }` in `src`, or '' if absent. */
 function functionBody(src: string, name: string): string {
@@ -30,7 +26,7 @@ function functionBody(src: string, name: string): string {
 }
 
 test('F1/F2: applyNowPlaying resets the drawn-position anchor on the entry change', () => {
-	const clean = stripComments(ROUTE);
+	const clean = stripComments(ROUTE, { markup: true, keepLine: true });
 
 	// Not vacuous: applyNowPlaying must still BE the nowplaying:changed handler, or the reset is in the wrong
 	// place and this whole guard is meaningless.
@@ -57,7 +53,7 @@ test('F1/F2: the reset fires ONLY on a real entry change, never on every playbac
 	// pause, resume, restart, key press and guide nudge: `positionSec = 0` snaps the reel to the FIRST line and
 	// empties the bar, and under the guide slider's ~8 commands/second it is re-pinned faster than telemetry
 	// recovers. Asserting the reset EXISTS is compatible with the bug; asserting it is CONDITIONAL closes it.
-	const clean = stripComments(ROUTE);
+	const clean = stripComments(ROUTE, { markup: true, keepLine: true });
 	const body = functionBody(clean, 'applyNowPlaying');
 	expect(body, 'applyNowPlaying body must be found').not.toBe('');
 
@@ -77,7 +73,7 @@ test('F1/F2: the reset fires ONLY on a real entry change, never on every playbac
 });
 
 test('F3: LyricsOverlay clears the cached doc on a ref change, not only when the ref goes falsy', () => {
-	const clean = stripComments(OVERLAY);
+	const clean = stripComments(OVERLAY, { markup: true, keepLine: true });
 
 	// Not vacuous: the fetch effect keys on a ref change via `loadedRef` and the derived doc falls back to
 	// the fetched one, so a stale `fetched` is what would render the wrong lyrics.

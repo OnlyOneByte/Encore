@@ -8,6 +8,7 @@ import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
+import { flattenDoc } from '@encore/test-support/scan';
 import { rooms, singers, media, queueEntries } from '$lib/server/db/schema';
 
 const HUB = at('src/lib/server/realtime/hub.ts');
@@ -18,10 +19,7 @@ const HUB = at('src/lib/server/realtime/hub.ts');
  * reports a live claim as missing. Case is preserved; the arms carry `/i` where the emphasis may move.
  */
 function flatProse(src: string): string {
-	return src
-		.replace(/^[ \t]*(?:\/\/+|\*)[ \t]?/gm, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
+	return flattenDoc(src, { line: true }).trim();
 }
 
 // A migrated in-memory DB seeded with the FK parents a queue_entries row needs.

@@ -10,20 +10,21 @@
 import { test, expect } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { at, read } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
-function stripComments(src: string): string {
-	return src
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-}
 const RAW = read('src/routes/+page.svelte');
-const PAGE = stripComments(RAW);
-const LAYOUT = stripComments(read('src/routes/+layout.svelte'));
-const BAND = stripComments(read('src/lib/components/NowPlayingBand.svelte'));
-const DRAWER = stripComments(read('src/lib/components/NowPlayingDrawer.svelte'));
-const DRAWER_CONTENT = stripComments(read('src/lib/components/ui/drawer/drawer-content.svelte'));
-const DRAWER_HANDLE = stripComments(read('src/lib/components/ui/drawer/drawer-handle.svelte'));
+const PAGE = stripComments(RAW, { markup: true, drop: true });
+const LAYOUT = stripComments(read('src/routes/+layout.svelte'), { markup: true, drop: true });
+const BAND = stripComments(read('src/lib/components/NowPlayingBand.svelte'), { markup: true, drop: true });
+const DRAWER = stripComments(read('src/lib/components/NowPlayingDrawer.svelte'), { markup: true, drop: true });
+const DRAWER_CONTENT = stripComments(read('src/lib/components/ui/drawer/drawer-content.svelte'), {
+	markup: true,
+	drop: true
+});
+const DRAWER_HANDLE = stripComments(read('src/lib/components/ui/drawer/drawer-handle.svelte'), {
+	markup: true,
+	drop: true
+});
 
 test('home renders NO now-playing surface — the layout owns the drawer, and the queue sheet stays gone', () => {
 	// Three claims, each falsifiable alone, together saying there is EXACTLY ONE now-playing surface and it is
@@ -125,7 +126,7 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 		/classList\.(toggle|add)\('sheet-(up|down)'/
 	);
 	expect(DRAWER, 'and no wrapper may be reintroduced to hold one').not.toContain('class="band-face"');
-	const BAND_CODE = stripComments(read('src/lib/components/NowPlayingBand.svelte'));
+	const BAND_CODE = stripComments(read('src/lib/components/NowPlayingBand.svelte'), { markup: true, drop: true });
 	expect(BAND_CODE, 'the pair must not be hidden at rest again').not.toMatch(/display:\s*none/);
 	expect(BAND_CODE, 'and the class the hiding rule keyed on stays gone, so nothing can re-hide by name').not.toContain(
 		'tp-side'

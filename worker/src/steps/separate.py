@@ -185,6 +185,58 @@ class PublishStems(Step):
             os.environ.get("ENCORE_GUIDE_MIX", "1") != "0" if guide_mix is None else guide_mix
         )
 
+    async def _publish_guide_mix(self, ctx: Ctx, raw_inst: str, raw_vox: str) -> None:
+        """Fold both stems into ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals), so the TV plays
+        the guide from a SINGLE element with one playhead.
+
+        Built from the RAW scratch WAVs, not the encoded FLACs, so it inherits their sample-exact PCM
+        alignment rather than trusting two decodes to agree; no alignment measurement is needed, since both
+        stems come from ONE pass over ONE decoded input. BEST-EFFORT throughout: every way out of here
+        leaves a room playing the song without a guide rather than a room playing nothing.
+
+        The two declines are ORDERED — a length mismatch is reported even on a box that has the mix turned
+        off, because it is a fact about the STEMS an operator wants to see either way.
+        """
+        # LENGTH is a different question from alignment: `join` TRUNCATES to the shorter input and
+        # exits 0, and since ch 0/1 are the master the TV plays, a short vocals stem ends the song
+        # early with nothing in any log. Unreachable with today's engines, but guarded rather than
+        # assumed; an unreadable header reads as "cannot confirm" and skips the mix.
+        inst_len, vox_len = wav_frame_length(raw_inst), wav_frame_length(raw_vox)
+        if inst_len is None or vox_len is None or inst_len != vox_len:
+            ctx.note(
+                f"guide mix skipped — the stems do not match ({inst_len} vs {vox_len} frames/rate);"
+                " `join` would truncate the mix to the shorter one and the song would end early"
+            )
+            return
+        if not self._guide_mix_enabled:
+            ctx.note("guide mix disabled (ENCORE_GUIDE_MIX=0) — this song will offer no guiding track")
+            return
+
+        mix = guide_mix_path(ctx.job.media_dir, ctx.job.media_id)
+        # Temp sibling then rename, which is atomic within a directory: a SIGTERM makes ffmpeg
+        # FINALISE what it has, so a killed encode leaves a valid but SHORT FLAC that is
+        # indistinguishable from a good one — and the mix owns `duration` as the TV's master.
+        tmp = f"{mix}.{os.getpid()}.tmp"
+        try:
+            await run_quiet(
+                ctx.runner,
+                encode_guide_mix_argv(raw_inst, raw_vox, tmp, self._ffmpeg, self._flac_level),
+            )
+            os.replace(tmp, mix)
+            ctx.stems.published["guideMix"] = mix
+        except Exception as err:  # noqa: BLE001 — an enhancement must never fail the job
+            # Non-fatal is a statement about the JOB, not a licence to discard the cause.
+            ctx.note(
+                f"guide-mix encode failed (non-fatal: {type(err).__name__}: {err})"
+                " — this song will offer no guiding track"
+            )
+        finally:
+            # The temp is in `derived/`, so an orphan counts against the retention cap forever
+            # while naming no artifact any media owns.
+            if os.path.exists(tmp):
+                with contextlib.suppress(OSError):
+                    os.remove(tmp)
+
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         job = ctx.job
         raw_inst = ctx.stems.raw.get("instrumental")
@@ -206,55 +258,10 @@ class PublishStems(Step):
             except Exception:  # noqa: BLE001 — an enhancement must never fail the job
                 ctx.note("vocals encode failed (non-fatal) — publishing the instrumental alone")
 
-        # Both stems folded into ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals), so the TV
-        # plays the guide from a SINGLE element with one playhead. Built from the RAW scratch WAVs, not
-        # the encoded FLACs, so it inherits their sample-exact PCM alignment rather than trusting two
-        # decodes to agree; no alignment measurement is needed, since both stems come from ONE pass over
-        # ONE decoded input. Skipped with no publishable vocals stem, and BEST-EFFORT: a failure leaves a
-        # room playing the song without a guide rather than a room playing nothing.
-        mix_wanted = bool(raw_vox) and bool(ctx.stems.published.get("vocals"))
-        if mix_wanted:
-            # LENGTH is a different question from alignment: `join` TRUNCATES to the shorter input and
-            # exits 0, and since ch 0/1 are the master the TV plays, a short vocals stem ends the song
-            # early with nothing in any log. Unreachable with today's engines, but guarded rather than
-            # assumed; an unreadable header reads as "cannot confirm" and skips the mix.
-            assert raw_vox is not None
-            inst_len, vox_len = wav_frame_length(raw_inst), wav_frame_length(raw_vox)
-            if inst_len is None or vox_len is None or inst_len != vox_len:
-                ctx.note(
-                    f"guide mix skipped — the stems do not match ({inst_len} vs {vox_len} frames/rate);"
-                    " `join` would truncate the mix to the shorter one and the song would end early"
-                )
-                mix_wanted = False
-        if mix_wanted and not self._guide_mix_enabled:
-            ctx.note("guide mix disabled (ENCORE_GUIDE_MIX=0) — this song will offer no guiding track")
-            mix_wanted = False
-        if mix_wanted:
-            mix = guide_mix_path(job.media_dir, job.media_id)
-            # Temp sibling then rename, which is atomic within a directory: a SIGTERM makes ffmpeg
-            # FINALISE what it has, so a killed encode leaves a valid but SHORT FLAC that is
-            # indistinguishable from a good one — and the mix owns `duration` as the TV's master.
-            tmp = f"{mix}.{os.getpid()}.tmp"
-            try:
-                assert raw_vox is not None  # narrowed by mix_wanted; keeps mypy honest about the argv
-                await run_quiet(
-                    ctx.runner,
-                    encode_guide_mix_argv(raw_inst, raw_vox, tmp, self._ffmpeg, self._flac_level),
-                )
-                os.replace(tmp, mix)
-                ctx.stems.published["guideMix"] = mix
-            except Exception as err:  # noqa: BLE001 — an enhancement must never fail the job
-                # Non-fatal is a statement about the JOB, not a licence to discard the cause.
-                ctx.note(
-                    f"guide-mix encode failed (non-fatal: {type(err).__name__}: {err})"
-                    " — this song will offer no guiding track"
-                )
-            finally:
-                # The temp is in `derived/`, so an orphan counts against the retention cap forever
-                # while naming no artifact any media owns.
-                if os.path.exists(tmp):
-                    with contextlib.suppress(OSError):
-                        os.remove(tmp)
+        # Only ever attempted once the vocals stem actually PUBLISHED, which is what makes `raw_vox`
+        # non-optional below rather than re-narrowed at each use.
+        if raw_vox and ctx.stems.published.get("vocals"):
+            await self._publish_guide_mix(ctx, raw_inst, raw_vox)
 
         # songProfile is a TOP-level SIBLING of stems, never nested: the process gate requires it there
         # and would otherwise stall every process at "Separating vocals" forever.

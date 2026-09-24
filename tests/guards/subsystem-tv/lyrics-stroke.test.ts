@@ -5,20 +5,13 @@
 // BEHIND the glyph and does not eat the white ink.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 // `read` throws on a missing subject, which matters more than usual here: both assertions below are
 // satisfiable by nothing at all if the source ever came back empty.
 const OVERLAY = 'src/lib/tv/LyricsOverlay.svelte';
 
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
-}
-
-const src = stripComments(read(OVERLAY));
+const src = stripComments(read(OVERLAY), { markup: true });
 
 test('the lyric reel is stroked so the words stay legible on any background', () => {
 	const stroke = [...src.matchAll(/-webkit-text-stroke:\s*([^;]+);/g)].map((m) => m[1]!.trim());

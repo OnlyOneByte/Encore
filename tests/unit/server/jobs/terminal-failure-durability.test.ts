@@ -32,7 +32,7 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-function harness(over: { capabilities?: string[] } = {}) {
+function harness() {
 	const db = migratedDb();
 	const attempts = new AttemptLedger(db);
 	const jobs = new JobRepository(db, attempts);
@@ -50,7 +50,6 @@ function harness(over: { capabilities?: string[] } = {}) {
 		persistMedia: (mediaId) => persisted.push(mediaId),
 		now: () => clock
 	});
-	void over;
 	return { hub, jobs, mediaById, broadcasts, persisted, setClock: (t: number) => (clock = t) };
 }
 

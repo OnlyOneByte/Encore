@@ -220,7 +220,3 @@ export interface JobArtifacts {
 	/** Nothing reads it today, but EVERY key the worker writes must be declared here. */
 	source?: { audio: string };
 }
-
-export * from './ops';
-export * from './types';
-export type { Media };

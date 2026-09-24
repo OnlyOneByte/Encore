@@ -7,19 +7,12 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
+import { flattenDoc, stripComments } from '@encore/test-support/scan';
 
 const OVERLAY = at('src/lib/tv/LyricsOverlay.svelte');
 
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
-}
-
 const raw = readFileSync(OVERLAY, 'utf8');
-const src = stripComments(raw);
+const src = stripComments(raw, { markup: true });
 
 test('the .viewport max-height cap equals the parent chrome band, with no extra safe-y subtraction', () => {
 	// One max-height on the reel viewport; capture its calc() expression.
@@ -40,7 +33,7 @@ test('the corrected comment no longer claims the cap is inactive at the defaults
 	// so it must be gone — and asserting only its absence would let the prose degrade to saying nothing, so
 	// the accurate claim is required too. Matched on the SHORT form, over comment markers stripped and
 	// whitespace collapsed, so neither a reword nor a re-wrap reds this for a reason unrelated to the claim.
-	const prose = raw.replace(/^[ \t]*(?:\/\/+|\*)[ \t]?/gm, ' ').replace(/\s+/g, ' ');
+	const prose = flattenDoc(raw, { line: true });
 	expect(prose).not.toContain('so the reel is unaffected');
 	expect(prose).not.toMatch(/well under this cap/i);
 	expect(prose, 'the cap comment must still say the cap applies at the default row count').toMatch(

@@ -6,7 +6,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { e2eDir, repoRoot } from '@encore/test-support';
 import { HOOKS, PRESET_COLOUR_NAMES, SEL } from '$e2e/contract';
-import { classPresent, svelteFiles } from '@encore/test-support/scan';
+import { classPresent, stripComments, svelteFiles } from '@encore/test-support/scan';
 
 const CORE = repoRoot;
 const E2E = e2eDir;
@@ -21,7 +21,7 @@ test('every selector the e2e drives still has an anchor in the source', () => {
 	for (const h of HOOKS) {
 		const p = join(CORE, h.file);
 		if (!existsSync(p)) continue; // reported by the test above
-		if (!stripComments(readFileSync(p, 'utf8')).includes(h.anchor)) {
+		if (!stripComments(readFileSync(p, 'utf8'), { markup: true }).includes(h.anchor)) {
 			broken.push(`${h.id} — "${h.anchor}" is gone from ${h.file}\n    (the flow needs it: ${h.why})`);
 		}
 	}
@@ -31,30 +31,18 @@ test('every selector the e2e drives still has an anchor in the source', () => {
 test('the e2e does not reference UI that was removed', () => {
 	// Stripped, so a dead selector named only in the flow's own prose is not a reference. Each of these three
 	// rotted in place: the Library tab (deleted), a `color #hex` swatch label, and `.result` rows (now `.row`).
-	const flow = stripComments(readFileSync(join(E2E, 'party.mjs'), 'utf8'));
+	const flow = stripComments(readFileSync(join(E2E, 'party.mjs'), 'utf8'), { markup: true });
 	expect(flow).not.toContain("name: 'Library'");
 	expect(flow).not.toMatch(/name: `color #/);
 	expect(flow).not.toContain('.result');
 });
 
 /**
- * Blank comments out, keeping newlines so reported line numbers stay true. Covers JS block/line AND
- * Svelte `<!-- -->` comments: a selector appearing only in prose of either kind is not a rendered anchor.
- */
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
-}
-
-/**
  * The source array the SEL resolver runs over. The comment-stripping regression test below consumes THIS
  * builder rather than a private copy, so the two cannot disagree about what counts as source.
  */
 function guardSources(): string[] {
-	return svelteFiles(join(CORE, 'src')).map((f) => stripComments(readFileSync(f, 'utf8')));
+	return svelteFiles(join(CORE, 'src')).map((f) => stripComments(readFileSync(f, 'utf8'), { markup: true }));
 }
 
 test('the flow imports the contract instead of hard-coding selectors', () => {
@@ -265,7 +253,7 @@ test('the retired hero family stays retired — `.hero` resolves, but only again
 	expect(selectorResolves('.hero', sources)).toBe(true);
 
 	const carriers = svelteFiles(join(CORE, 'src')).filter((f) =>
-		classPresent(stripComments(readFileSync(f, 'utf8')), 'hero')
+		classPresent(stripComments(readFileSync(f, 'utf8'), { markup: true }), 'hero')
 	);
 	expect(carriers.length).toBeGreaterThan(0); // non-vacuity: `every` over [] is true
 	expect(
@@ -295,7 +283,7 @@ test('the band pull handle is gone, and the expand claim came back as a real but
 	// affordance the sheet could not be raised by keyboard at all.
 	const sources = guardSources();
 	const bandFile = join(CORE, 'src/lib/components/NowPlayingBand.svelte');
-	const band = stripComments(readFileSync(bandFile, 'utf8'));
+	const band = stripComments(readFileSync(bandFile, 'utf8'), { markup: true });
 
 	expect(selectorResolves('.band .handle', sources), '`.band .handle` is retired — the button was deleted').toBe(false);
 	expect(band, 'the deleted handle button must not come back in the band').not.toMatch(/class="handle"/);
@@ -315,7 +303,7 @@ test('the band pull handle is gone, and the expand claim came back as a real but
 	// ...and SOMETHING hands it one, or the button cannot render however well declared.
 	const wired = svelteFiles(join(CORE, 'src'))
 		.filter((f) => f !== bandFile)
-		.filter((f) => /\bonexpand\s*=/.test(stripComments(readFileSync(f, 'utf8'))))
+		.filter((f) => /\bonexpand\s*=/.test(stripComments(readFileSync(f, 'utf8'), { markup: true })))
 		.map((f) => f.replace(CORE + '/', ''));
 	expect(
 		wired,
@@ -339,7 +327,9 @@ test('the band pull handle is gone, and the expand claim came back as a real but
 	expect(selectorResolves(SEL.drawerHandle, sources)).toBe(true);
 	expect(hookIds).toContain('drawerBodyNoDrag');
 	expect(hookIds, 'the handleOnly hook is retired and must not return').not.toContain('drawerHandleOnly');
-	const drawer = stripComments(readFileSync(join(CORE, 'src/lib/components/NowPlayingDrawer.svelte'), 'utf8'));
+	const drawer = stripComments(readFileSync(join(CORE, 'src/lib/components/NowPlayingDrawer.svelte'), 'utf8'), {
+		markup: true
+	});
 	expect(drawer, 'handleOnly must be gone, not merely shadowed by the attribute').not.toMatch(/^\s*handleOnly\s*$/m);
 
 	// EXACTLY ONE PULL BAR: shadcn's copy-in rendered a decorative div at the top of the content box while the
@@ -479,7 +469,7 @@ test('no driver spells a selector out for itself — every one comes from the co
 	const quarantined = (name: string, token: string) => (KNOWN_OFFENDERS[name] ?? []).includes(token);
 
 	for (const name of DRIVERS) {
-		const src = stripComments(readFileSync(join(E2E, name), 'utf8'));
+		const src = stripComments(readFileSync(join(E2E, name), 'utf8'), { markup: true });
 		src.split('\n').forEach((line, i) => {
 			/*
 			 * RULE 1 — shape. A quoted string starting `.`/`#` plus an identifier character, or an attribute
@@ -660,7 +650,7 @@ test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS in
  * Interpolated entries come from SEL and are covered above; only raw literals are checked.
  */
 function p10TargetLiterals(): { arrays: string[]; lits: string[] } {
-	const src = stripComments(readFileSync(join(E2E, 'probes/p10-scaling.mjs'), 'utf8'));
+	const src = stripComments(readFileSync(join(E2E, 'probes/p10-scaling.mjs'), 'utf8'), { markup: true });
 	const arrays: string[] = [];
 	for (const m of src.matchAll(/const targets = \[/g)) {
 		let depth = 0;

@@ -10,17 +10,13 @@ import {
 	TAP,
 	TAP_FLOOR,
 	expressesTap,
-	restatesTapNumber,
 	markupControls,
+	restatesTapNumber,
+	stripComments,
 	svelteFiles
 } from '@encore/test-support/scan';
 
 const SRC = srcDir;
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
-}
 
 // PHONE surfaces only; the TV's own scale is enforced by layout/stage-scale.test.ts. Nothing leaves this
 // walk: a surface nobody added is one these arms never examine, which is how both metrics pages shipped
@@ -55,7 +51,7 @@ function subjectIsControl(sel: string, ctrl: { tags: Set<string>; classes: Set<s
 // sibling while both stay green.
 function* controlRules(): Generator<{ file: string; sel: string; body: string }> {
 	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
+		const src = stripComments(readFileSync(f, 'utf8'), { markup: true, keepLine: true });
 		const ctrl = markupControls(src);
 		// a crude rule-block split is enough for hand-written scoped stylesheets
 		for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
@@ -229,7 +225,7 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 	};
 	const offenders: string[] = [];
 	for (const { file, token, name } of CONTROLS) {
-		const src = stripComments(readFileSync(file, 'utf8'));
+		const src = stripComments(readFileSync(file, 'utf8'), { markup: true, keepLine: true });
 		let sized = false;
 		let anyRule = false;
 		for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {

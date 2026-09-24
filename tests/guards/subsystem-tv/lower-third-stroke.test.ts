@@ -5,19 +5,12 @@
 // marker ~1.72:1. The fix is `-webkit-text-stroke` + `paint-order: stroke fill`.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const ROUTE = 'src/routes/tv/+page.svelte';
 
 /** Blank comments out, keeping newlines so a comment describing the stroke cannot satisfy the scan. */
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
-}
-
-const src = stripComments(read(ROUTE));
+const src = stripComments(read(ROUTE), { markup: true });
 
 /** The `.lower-third { ... }` rule body, comments already stripped. */
 function lowerThirdRule(): string {

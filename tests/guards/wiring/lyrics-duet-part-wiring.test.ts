@@ -4,19 +4,12 @@
 // `SINGER_COLORS` through `isLegibleSingerColor`, never hard-coded. One assertion per production hunk.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
-}
+import { stripComments } from '@encore/test-support/scan';
 
 // `read` throws when the file is absent, which is what keeps the NEGATIVE assertions below from passing on an
 // empty string.
 const OVERLAY = 'src/lib/tv/LyricsOverlay.svelte';
-const overlaySrc = () => stripComments(read(OVERLAY));
+const overlaySrc = () => stripComments(read(OVERLAY), { markup: true });
 
 test('the duet-part wiring scan reads a non-empty overlay source', () => {
 	expect(overlaySrc().length).toBeGreaterThan(2000);

@@ -7,6 +7,7 @@
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';
+import { stripComments } from '@encore/test-support/scan';
 
 class StubNode {
 	connections: unknown[] = [];
@@ -103,10 +104,6 @@ test("control: WITHOUT the pre-set level, a freshly built graph's GainNode defau
 	expect(lastCtx!.gains[0].gain.value).toBeCloseTo(1, 6);
 });
 
-function stripComments(s: string): string {
-	return s.replace(/[/][*][\s\S]*?[*][/]/g, '').replace(/(^|[^:])[/][/][^\n]*/g, '$1');
-}
-
 const TV = read('src/lib/tv/TvPlayer.svelte');
 
 test('guard: the pitch effect re-applies the room guide level via setGuideGain(effectiveGuide)', () => {
@@ -114,7 +111,7 @@ test('guard: the pitch effect re-applies the room guide level via setGuideGain(e
 	// one that drowns the singer — which means the first transpose SILENCES the guide unless the pitch effect
 	// re-asserts the level. Anchored on the master-level re-apply beside it: the two exist for the same
 	// reason and must not drift apart.
-	const stripped = stripComments(TV);
+	const stripped = stripComments(TV, { drop: true });
 	const at = stripped.indexOf('masterGraph?.setGain(effectiveMasterLevel)');
 	expect(at).toBeGreaterThanOrEqual(0);
 	const region = stripped.slice(at, at + 300);
@@ -125,7 +122,7 @@ test('guard (not-vacuous): the level effect still owns the level before any grap
 	// The pitch-effect re-apply is ADDITIVE: the dedicated level effect must keep pushing the guide gain too,
 	// so a level set BEFORE a transpose is remembered on a graph that does not exist yet. Assert a DISTINCT
 	// second occurrence.
-	const stripped = stripComments(TV);
+	const stripped = stripComments(TV, { drop: true });
 	const hits = [...stripped.matchAll(/masterGraph[?][.]setGuideGain[(]\s*effectiveGuide\s*[)]/g)];
 	expect(hits.length).toBeGreaterThanOrEqual(2);
 });

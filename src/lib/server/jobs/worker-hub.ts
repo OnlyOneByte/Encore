@@ -37,7 +37,8 @@ import {
 	applyAnnotation,
 	settleLyricsGate,
 	reportTerminalFailure,
-	markLyricsQueued
+	markLyricsQueued,
+	type TerminalFailureDeps
 } from './process';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, attemptsExhausted, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
@@ -146,6 +147,17 @@ export class WorkerHub {
 		if (!effective) return undefined;
 		const { engine, model } = resolveProcessSeparator(effective);
 		return { ...effective.global, defaultEngine: engine, defaultModel: model };
+	}
+
+	/** The sink bag every terminal path here hands `reportTerminalFailure` — named ONCE so a worker
+	 *  failure, a refused silent instrumental and the unservable TTL cannot settle through different
+	 *  sinks (in particular so none of the three loses the durable `persist` half). */
+	#failureSinks(): TerminalFailureDeps {
+		return {
+			broadcast: (e) => this.#d.broadcast(e),
+			mediaById: this.#d.mediaById,
+			persist: (mediaId) => this.#d.persistMedia?.(mediaId)
+		};
 	}
 
 	/** Effects go through the injected sinks. */
@@ -265,11 +277,7 @@ export class WorkerHub {
 			`[core] refused a silent instrumental for media ${job.mediaId}: the worker reported ${ref}, ` +
 				'which measures at or below the silence floor. The song stays un-processed.'
 		);
-		reportTerminalFailure(updated, 'worker', {
-			broadcast: (e) => this.#d.broadcast(e),
-			mediaById: this.#d.mediaById,
-			persist: (mediaId) => this.#d.persistMedia?.(mediaId)
-		});
+		reportTerminalFailure(updated, 'worker', this.#failureSinks());
 	}
 
 	/** The completion body proper, reached once the reported instrumental is not measurably silent. */
@@ -347,11 +355,7 @@ export class WorkerHub {
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
 			// An unsettled gate makes the song unsingable forever, so all three fail paths route through
 			// this one epilogue (see reportTerminalFailure).
-			reportTerminalFailure(updated, 'worker', {
-				broadcast: (e) => this.#d.broadcast(e),
-				mediaById: this.#d.mediaById,
-				persist: (mediaId) => this.#d.persistMedia?.(mediaId)
-			});
+			reportTerminalFailure(updated, 'worker', this.#failureSinks());
 		}
 	}
 
@@ -382,11 +386,7 @@ export class WorkerHub {
 						now
 					);
 					this.#unservableSince.delete(job.id);
-					reportTerminalFailure(updated, 'unservable', {
-						broadcast: (e) => this.#d.broadcast(e),
-						mediaById: this.#d.mediaById,
-						persist: (mediaId) => this.#d.persistMedia?.(mediaId)
-					});
+					reportTerminalFailure(updated, 'unservable', this.#failureSinks());
 				}
 				continue;
 			}

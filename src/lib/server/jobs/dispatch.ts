@@ -42,20 +42,12 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
 export function assignParams(jobType: JobType, media: Media | undefined, settings?: GlobalSettings): JobParams {
 	const fetcher = media ? fetcherFor(media.source, settings?.defaultFetcher) : DEFAULT_FETCHER;
 	if (jobType === 'fetch') return { fetcher, ...annotationKeys(media) };
-	if (jobType === 'stems') {
-		return {
-			fetcher,
-			engine: settings?.defaultEngine ?? DEFAULT_ENGINE,
-			model: settings?.defaultModel ?? DEFAULT_MODEL
-		};
-	}
-	if (jobType === 'stems-upgrade') {
-		return {
-			fetcher,
-			engine: settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine,
-			model: settings?.upgradeModel ?? DEFAULT_GLOBAL_SETTINGS.upgradeModel
-		};
-	}
+	// THROUGH separatorFor (non-undefined for exactly the two separation types), not a second spelling of
+	// the same defaults: `markMediaReady` judges an upgrade by comparing the pair a completion PUBLISHES —
+	// resolved there by separatorFor — against the pair on the media, so a drifted literal here would rank
+	// a job against a separator it was never dispatched with.
+	const separator = separatorFor(jobType, settings);
+	if (separator) return { fetcher, ...separator };
 	if (jobType !== 'align') return { fetcher };
 	return {
 		fetcher,

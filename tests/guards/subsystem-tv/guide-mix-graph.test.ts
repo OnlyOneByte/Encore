@@ -4,6 +4,7 @@
 import { test, expect, describe, beforeEach, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';
+import { stripComments } from '@encore/test-support/scan';
 
 interface Conn {
 	to: StubNode;
@@ -470,11 +471,6 @@ describe('teardown releases the split stage', () => {
 // The wiring, by source scan — the effects above live in .svelte and bun cannot execute them.
 
 // Two earlier scans here were defeated by COMMENTING THE CALL OUT; blanking rather than deleting keeps offsets.
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
-}
-
 describe('TvPlayer wiring', () => {
 	const src = stripComments(read('src/lib/tv/TvPlayer.svelte'));
 

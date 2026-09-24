@@ -5,16 +5,9 @@
 // ColourPicker: a live handler moves ONE room field on screen with no network write, the commit handler writes.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
+import { stripComments } from '@encore/test-support/scan';
 
 const PAGE = 'src/routes/settings/+page.svelte';
-
-// Blank comments, preserving newlines, so a commented-out live handler does NOT count as wired.
-function stripComments(src: string): string {
-	return src
-		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-		.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '))
-		.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
-}
 
 // Each Settings range slider: its element id and the RoomSettings field its live handler must set.
 // guideLevelDefault's input value is a percent while its field is a 0..1 fraction, so its handler divides by 100.
@@ -41,7 +34,8 @@ function controlElement(src: string, id: string): string {
 }
 
 const raw = read(PAGE);
-const src = stripComments(raw);
+// Stripped, so a commented-out live handler does NOT count as wired.
+const src = stripComments(raw, { markup: true });
 
 for (const { id, field, div100 } of SLIDERS) {
 	test(`the ${id} slider updates its readout live via liveRoom('${field}')`, () => {

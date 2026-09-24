@@ -586,3 +586,37 @@ test('4 channels: a missing input channel is silence, not a dropped block', () =
 	expect(Array.from(outs[2])).toEqual(Array.from(new Float32Array(BLOCK)));
 	expect(Array.from(outs[3])).toEqual(Array.from(new Float32Array(BLOCK)));
 });
+
+test('histSample refuses an out-of-range index instead of wrapping onto unrelated audio', () => {
+	// The contract is stated in the worklet two lines above `histSample` — "Out of range returns 0, NOT a
+	// wrapped neighbour, because a wrapped read is unrelated audio" — and NOTHING verified it, which is how
+	// it came to be false. Both guards read the write head off `s`, the per-channel entry, which has none:
+	// the 4-channel test above pins that the timeline lives on the processor and never on a channel. So
+	// `absIdx >= undefined` and `absIdx < NaN` were both false, every out-of-range read fell through to
+	// `hist[absIdx % HIST]`, and the function returned exactly the wrapped neighbour it forbids.
+	const { proc } = run(0, 220, 0.2);
+	const p = proc as unknown as {
+		writePos: number;
+		chan: { hist: Float32Array }[];
+		histSample(s: { hist: Float32Array }, absIdx: number): number;
+	};
+	const s = p.chan[0]!;
+	const HIST = s.hist.length;
+
+	// Reading PAST the write head, and reading FURTHER BACK than the ring holds.
+	const ahead = p.writePos + 64;
+	const tooOld = p.writePos - HIST - 64;
+	expect(p.histSample(s, ahead)).toBe(0);
+	expect(p.histSample(s, tooOld)).toBe(0);
+	expect(p.histSample(s, -1)).toBe(0);
+
+	// Non-vacuity, and the whole point: the wrapped slots those indices land on hold REAL audio, so a guard
+	// that did nothing would return a non-zero sample from an unrelated part of the song rather than 0.
+	const wrappedAhead = s.hist[((ahead % HIST) + HIST) % HIST]!;
+	const wrappedOld = s.hist[((tooOld % HIST) + HIST) % HIST]!;
+	expect(Math.abs(wrappedAhead) + Math.abs(wrappedOld)).toBeGreaterThan(0);
+
+	// An index INSIDE the window still reads its sample — the guards refuse, they do not mute.
+	const inside = p.writePos - 1;
+	expect(p.histSample(s, inside)).toBe(s.hist[inside % HIST]);
+});

@@ -122,7 +122,7 @@ const QUEUE_ORDER_POLICIES = [
 		note: "Everyone's first pick before anyone's second. New joiners slot into the next gap.",
 		usesSingHistory: false,
 		usesShuffleSeed: false,
-		insertIndex: (queued, entry) => insertFair(queued, entry)
+		insertIndex: insertFair
 	},
 	{
 		id: 'fcfs',
@@ -131,7 +131,7 @@ const QUEUE_ORDER_POLICIES = [
 		note: 'Strict queue order. Queue three songs and you sing three in a row.',
 		usesSingHistory: false,
 		usesShuffleSeed: false,
-		insertIndex: (queued) => insertFcfs(queued)
+		insertIndex: insertFcfs
 	},
 	{
 		id: 'shuffle',
@@ -140,7 +140,7 @@ const QUEUE_ORDER_POLICIES = [
 		note: 'Random order, fixed once a song is in.',
 		usesSingHistory: false,
 		usesShuffleSeed: true,
-		insertIndex: (queued, entry, ordering) => insertShuffle(queued, entry, ordering)
+		insertIndex: insertShuffle
 	},
 	{
 		id: 'least-recently-sung',
@@ -149,7 +149,7 @@ const QUEUE_ORDER_POLICIES = [
 		note: 'Rotation that counts songs already sung. Anyone yet to sing goes first.',
 		usesSingHistory: true,
 		usesShuffleSeed: false,
-		insertIndex: (queued, entry, ordering) => insertLeastRecentlySung(queued, entry, ordering)
+		insertIndex: insertLeastRecentlySung
 	},
 	{
 		id: 'manual',
@@ -158,7 +158,7 @@ const QUEUE_ORDER_POLICIES = [
 		note: 'New songs go to the end. Nothing moves on its own — drag songs where you want them.',
 		usesSingHistory: false,
 		usesShuffleSeed: false,
-		insertIndex: (queued) => insertManual(queued)
+		insertIndex: insertManual
 	}
 ] as const satisfies readonly QueueOrderPolicy[];
 

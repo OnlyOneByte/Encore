@@ -6,11 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from 'bun:test';
 import { at } from '@encore/test-support';
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
-}
+import { stripComments } from '@encore/test-support/scan';
 
 const SRC_PATH = at('src/lib/stores/process-scars.ts');
 const SRC_RAW = readFileSync(SRC_PATH, 'utf8');

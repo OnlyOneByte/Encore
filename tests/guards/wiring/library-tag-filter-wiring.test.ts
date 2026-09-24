@@ -4,11 +4,7 @@
 // proves `byTag`/`tagFacets` really read the tag-kind index.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-
-function stripComments(src: string): string {
-	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
-}
+import { stripComments } from '@encore/test-support/scan';
 
 const SRC = stripComments(read('src/routes/api/library/+server.ts'));
 
