@@ -1,11 +1,11 @@
 """Mutation-provable pins for several small worker invariants:
 
-  * resolve_engines parses `engine` at the boundary (unknown -> BoundaryError), like asrModel/syncMode
-  * heartbeat_loop wraps its body so a send on a half-closed socket does not end as an unretrieved exc
-  * no module-level CONFIG snapshots; WorkerClient resolves worker_id/concurrency/media_dir/version/caps
-      from CONFIG on __init__ (config read ON CALL, not captured at import)
-  * DecodeToWav / PublishStems raise a NAMED error on a missing key instead of `or ""` -> opaque ffmpeg
-  * the worker service carries `init: true` (PID-1 zombie reaping) in all three compose files
+* resolve_engines parses `engine` at the boundary (unknown -> BoundaryError), like asrModel/syncMode
+* heartbeat_loop wraps its body so a send on a half-closed socket does not end as an unretrieved exc
+* no module-level CONFIG snapshots; WorkerClient resolves worker_id/concurrency/media_dir/version/caps
+    from CONFIG on __init__ (config read ON CALL, not captured at import)
+* DecodeToWav / PublishStems raise a NAMED error on a missing key instead of `or ""` -> opaque ffmpeg
+* the worker service carries `init: true` (PID-1 zombie reaping) in all three compose files
 """
 
 from __future__ import annotations

@@ -157,7 +157,8 @@ def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
                 bad.extend(f"from . import {a.name}" for a in node.names if a.name == "acquisition")
         if bad:
             offenders[rel] = bad
-    # Non-vacuity floor: an empty scan would leave `offenders` empty and pass without inspecting a single import edge.
+    # Non-vacuity floor: an empty scan would leave `offenders` empty and pass
+    # without inspecting a single import edge.
     assert scanned > 10, (
         f"only {scanned} modules scanned -- the acquisition-caller guard has stopped guarding"
     )
@@ -327,8 +328,7 @@ def test_the_pipeline_doc_matches_what_the_plans_actually_declare():
     assert BEGIN in text and END in text, f"the generated markers are missing from {ARCHITECTURE}"
     committed = BEGIN + text.split(BEGIN, 1)[1].split(END, 1)[0] + END
     assert committed.strip() == render().strip(), (
-        "docs/ARCHITECTURE.md's generated region is stale — run `python3 -m src.docgen --write` from "
-        "worker"
+        "docs/ARCHITECTURE.md's generated region is stale — run `python3 -m src.docgen --write` from worker"
     )
 
 

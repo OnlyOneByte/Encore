@@ -72,7 +72,8 @@ class TimeTexts(Step):
         yield ProgressEvent(stage=self.stage, pct=0)
         language = str(ctx.params.get("language") or "en").strip() or "en"
 
-        # The mix is a fallback only: aligning on it measurably smears word boundaries wherever the band is loud.
+        # The mix is a fallback only: aligning on it measurably smears word
+        # boundaries wherever the band is loud.
         align_audio = ctx.audio.vocals_path or ctx.audio.path or ""
         if ctx.audio.vocals_path is None:
             ctx.note(

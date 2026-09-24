@@ -273,7 +273,8 @@ def test_no_docstring_claims_step_timings_reach_the_metrics_page():
         "it at its fact allowlist)"
     )
 
-    # Sanity: prove the ban strings actually matched the OLD text, so the guard cannot silently rot into a tautology.
+    # Sanity: prove the ban strings actually matched the OLD text, so the guard
+    # cannot silently rot into a tautology.
     _old_runner = "  * per-step timing, which is what finally gives the internal metrics page real resolution"
     _old_plans_probe = "engines get it, its cost shows up in `/metrics`, and it is testable with no ffmpeg."
     _old_plans_kar = "`profiler` parameters, so nothing could see what it cost."
