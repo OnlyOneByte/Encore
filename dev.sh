@@ -28,6 +28,8 @@ set -eo pipefail
 # Job control makes every `&` job a process-group LEADER, so cleanup can signal a whole tree. Without
 # it the worker's demucs/yt-dlp children and core's nested `bun run ./server.ts` outlive ctrl-c.
 set -m
+# `set -e` exits silently, and the last thing printed is usually a child's unrelated output. Name the line.
+trap 'code=$?; [ "$code" -eq 0 ] || echo "dev.sh: failed at line $LINENO (exit $code)" >&2' ERR
 cd "$(dirname "$0")"
 ROOT="$PWD"
 
@@ -120,6 +122,16 @@ need() {
 say "preflight"
 need bun "install from https://bun.sh" || exit 1
 need ffmpeg "brew install ffmpeg — the worker transcodes every stem" || exit 1
+# The health probe IS curl: without it the probe can never succeed and the script blames core, reporting
+# "core did not become healthy" after 45 seconds of waiting for a request it never made.
+need curl "install curl — the startup health probe uses it" || exit 1
+# lsof is how `port_owner` works. Missing, it returns empty, so the refusal-to-start-twice silently stops
+# refusing and two cores race on one SQLite file. A warning rather than fatal, because a slim container
+# may legitimately lack it — but the lost protection is named rather than discovered later.
+if ! command -v lsof >/dev/null 2>&1; then
+	echo "WARNING: no lsof — the port check is DISABLED, so nothing will stop a second core starting on"
+	echo "         port $PORT over the first. Stop any previous run yourself."
+fi
 # Solving YouTube's player challenge takes TWO things, and missing either kills every download with
 # "Requested format is not available" — which reads as a broken worker. The image has both baked in; a
 # native run has neither, so dev.sh supplies the config and checks for the runtime.
@@ -234,6 +246,7 @@ preflight_free() {
 # ── pull ─────────────────────────────────────────────────────────────────────────────
 if [ "$DO_PULL" = 1 ]; then
 	say "pulling"
+	need git "install git — --pull needs it" || exit 1
 	if [ -n "$(git status --porcelain)" ]; then
 		echo "working tree is dirty — commit or stash first, refusing to pull over local changes:" >&2
 		git status --short >&2
@@ -452,8 +465,14 @@ if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 fi
 
 # ── build ────────────────────────────────────────────────────────────────────────────
-# server.ts serves the built SvelteKit output; without a build it starts with "ui:not built".
-if [ "$UI_MODE" != 1 ] && { [ "$DO_PULL" = 1 ] || [ "$DO_RESET" = 1 ] || [ ! -d "$ROOT/build" ]; }; then
+# server.ts serves the BUILT SvelteKit output, so a stale build/ shows yesterday's UI while the source on
+# disk says otherwise — which reads as "my change did nothing" rather than as a missing build. `--help` has
+# always promised "build first if needed"; needed means CURRENT, not merely present.
+build_stale() {
+	[ -f "$ROOT/build/index.js" ] || return 0
+	[ -n "$(find "$ROOT/src" "$ROOT/server.ts" -type f -newer "$ROOT/build/index.js" -print -quit 2>/dev/null)" ]
+}
+if [ "$UI_MODE" != 1 ] && { [ "$DO_PULL" = 1 ] || [ "$DO_RESET" = 1 ] || build_stale; }; then
 	say "building core"
 	bun run build
 fi
@@ -485,7 +504,7 @@ stop_tree() {
 }
 
 cleanup() {
-	trap - EXIT INT TERM
+	trap - EXIT INT TERM HUP
 	set +m  # stop bash announcing "Terminated: 15" for each job as we take it down
 	printf '\nstopping...\n'
 	stop_tree "$WORKER_PID" worker
@@ -511,7 +530,15 @@ cleanup() {
 		echo "stopped — core and worker both gone, port $PORT released."
 	fi
 }
-trap cleanup EXIT INT TERM
+# EXIT runs cleanup and nothing more; a SIGNAL runs it and then leaves, with the conventional 128+n status.
+# Being explicit matters now that the script ends in a poll loop rather than `wait`: bash runs a trap and then
+# RESUMES the interrupted command, so a signal handler that only tidies up would hand control back to the
+# loop and carry on supervising children it had just killed. `cleanup` disarms every trap first, so EXIT
+# cannot run it twice.
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 if [ "$UI_MODE" = 1 ]; then
 	say "vite dev — UI HMR ONLY, no WebSocket hub (queue will not move, songs will not cook)"
@@ -558,4 +585,24 @@ else
 	echo "  phones   could not resolve a LAN IP — the TV will say so on screen rather than show a dead QR"
 fi
 echo "  ctrl-c to stop both"
-wait
+
+# Bare `wait` blocks until everything exits, which cannot distinguish a healthy run from one whose worker
+# died half an hour ago. Both deaths are invisible from the outside: a dead worker leaves every Karaoke
+# request sitting at `queued` with nothing on screen to explain it (the README calls that the most common
+# first-run surprise), and a dead core leaves the worker reconnecting to nothing every 3s. So poll, and say
+# which one went. Exiting runs the cleanup trap, which takes the survivor down with it.
+while :; do
+	sleep 2
+	if [ -n "$CORE_PID" ] && ! kill -0 "$CORE_PID" 2>/dev/null; then
+		echo >&2
+		echo "core exited on its own (pid $CORE_PID). Its output is above; the worker is being stopped too." >&2
+		exit 1
+	fi
+	if [ -n "$WORKER_PID" ] && ! kill -0 "$WORKER_PID" 2>/dev/null; then
+		echo >&2
+		echo "the WORKER exited on its own (pid $WORKER_PID). Core is still healthy, which is why this needs" >&2
+		echo "saying: nothing will cook from here, and every request would sit at 'queued' forever with no" >&2
+		echo "error on any screen. Its output is above — a torch/demucs import failure prints there." >&2
+		exit 1
+	fi
+done
