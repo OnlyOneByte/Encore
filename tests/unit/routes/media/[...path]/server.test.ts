@@ -96,10 +96,7 @@ test('DEGRADE floor: a store missing size()/getRange() serves a range-less 200 (
 		async get() {
 			return new Blob([new TextEncoder().encode('0123456789')]).stream();
 		},
-		async put() {},
-		url() {
-			return null;
-		}
+		async put() {}
 	};
 	installStore(bare);
 	const res = await call('stems/x.flac', 'bytes=0-1');

@@ -15,7 +15,6 @@ const INST = 'derived/stems/m1-instrumental.flac';
 const MIX = 'derived/stems/m1-guidemix.flac';
 
 const mix: GuidePath = { kind: 'mix', ref: MIX };
-const element: GuidePath = { kind: 'element', ref: 'derived/stems/m1-vocals.flac' };
 const none: GuidePath = { kind: 'none' };
 const GATES: MixGate[] = ['pending', 'routed', 'denied'];
 
@@ -35,7 +34,6 @@ describe('the src is decided ONCE — nothing is committed while the attempt is 
 	test('a NON-mix song ignores the gate entirely and plays immediately', () => {
 		// No waiting for a graph that will never be built: today's behaviour, byte for byte.
 		for (const gate of GATES) {
-			expect(masterSrcPlan(element, INST, gate)).toEqual({ ref: INST, mixed: false });
 			expect(masterSrcPlan(none, INST, gate)).toEqual({ ref: INST, mixed: false });
 		}
 	});
@@ -52,7 +50,7 @@ describe('only a routed SPLIT graph may be handed the 4-channel file', () => {
 
 	test('`mixed` is true ONLY for a routed mix — the flag and the file cannot disagree', () => {
 		for (const gate of GATES) {
-			for (const p of [element, none]) expect(masterSrcPlan(p, INST, gate).mixed).toBe(false);
+			for (const p of [none]) expect(masterSrcPlan(p, INST, gate).mixed).toBe(false);
 		}
 		expect(masterSrcPlan(mix, INST, 'pending').mixed).toBe(false);
 		expect(masterSrcPlan(mix, INST, 'denied').mixed).toBe(false);
@@ -62,7 +60,6 @@ describe('only a routed SPLIT graph may be handed the 4-channel file', () => {
 	test('nothing playable yields an empty src on every gate', () => {
 		for (const gate of GATES) {
 			expect(masterSrcPlan(mix, '', gate)).toEqual({ ref: '', mixed: false });
-			expect(masterSrcPlan(element, '', gate)).toEqual({ ref: '', mixed: false });
 		}
 	});
 });
@@ -105,7 +102,6 @@ describe('when to attempt the graph at all', () => {
 	});
 
 	test('every other song keeps the LAZY graph, so keyShift 0 stays the plain element path', () => {
-		expect(wantsEagerGraph(element)).toBe(false);
 		expect(wantsEagerGraph(none)).toBe(false);
 	});
 });

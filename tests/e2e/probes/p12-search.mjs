@@ -18,6 +18,7 @@ import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { repoRoot } from '../lib/repo-root.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
+import { DEMO_LIBRARY } from '../world/seed.mjs';
 import { openJoin } from '../lib/join.mjs';
 
 /**
@@ -74,10 +75,11 @@ if (!healthRes?.ok) {
 	process.exit(2);
 }
 
-// server.ts indexes only files that exist on disk, so an unseeded library makes every local-song check
-// read as an app defect. Refuse to run rather than lie by omission.
+// Core indexes only what is in MEDIA_DIR/library, so an unseeded library makes every local-song check read as
+// an app defect. Refuse to run rather than lie by omission. The filename comes from the fixture rather than a
+// literal, because the two used to be written separately and nothing noticed when they disagreed.
 if (MEDIA_DIR) {
-	const seeded = existsSync(join(MEDIA_DIR, 'library', 'sweet-caroline.mp4'));
+	const seeded = existsSync(join(MEDIA_DIR, 'library', DEMO_LIBRARY[0].file));
 	if (!seeded) {
 		console.error(
 			`\nMEDIA_DIR (${MEDIA_DIR}) has no seeded demo files. Run:\n` +
@@ -672,7 +674,7 @@ if (MEDIA_DIR) {
 }
 
 // S8 -- a failed process stays visible with a real reason, but only LIVE: `failed` enters the client's
-// Readiness union solely through a `media:status` broadcast (readiness.ts:34). The catalog cannot record
+// Readiness union solely through a `media:status` broadcast. The catalog cannot record
 // failure (settleStemsGate resets stemStatus) and /api/library enumerates only 'processing' rows, so a
 // phone that RELOADS after a failure loses the row entirely. That is the consequence pinned here.
 

@@ -3,7 +3,7 @@
 	// on the TV, so three costs are managed: the draw is capped at ~30fps because the lyric ball keeps the stronger
 	// claim on the frame budget, the backing store is REDUCED and stretched by CSS, and `playing` going false CANCELS
 	// the frame rather than merely hiding the canvas. See docs/FRONTEND.md#the-visualizer-stage.
-	import { VISUALIZER_RENDERERS, type VizContext } from './visualizers';
+	import { VISUALIZER_RENDERERS } from './visualizers';
 	import { frameClock, frameDue, shouldAnimate } from './visualizer-loop';
 	import type { TvVisualizerId } from '$lib/contract';
 
@@ -51,11 +51,10 @@
 			el.height = Math.max(1, Math.round(r.height * SCALE));
 		};
 		size();
-		const onResize = () => size();
-		window.addEventListener('resize', onResize);
+		window.addEventListener('resize', size);
 
 		const render = (tSec: number) => {
-			VISUALIZER_RENDERERS[activeVariant](ctx as unknown as VizContext, {
+			VISUALIZER_RENDERERS[activeVariant](ctx, {
 				t: tSec,
 				hue: activeHue,
 				w: el.width,
@@ -68,7 +67,7 @@
 			// reduced-motion preference is asking us not to do. Enforced by its own test, since the CSS-parsing motion
 			// guard cannot see a canvas.
 			render(0);
-			return () => window.removeEventListener('resize', onResize);
+			return () => window.removeEventListener('resize', size);
 		}
 
 		let raf = 0;
@@ -86,7 +85,7 @@
 
 		return () => {
 			cancelAnimationFrame(raf);
-			window.removeEventListener('resize', onResize);
+			window.removeEventListener('resize', size);
 		};
 	});
 </script>

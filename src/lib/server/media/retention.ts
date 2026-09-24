@@ -213,12 +213,12 @@ export function derivedBytesOf(m: Media): number {
 	let n = 0;
 	for (const ref of new Set(derivedRefsOf(m))) {
 		const abs = safeMediaPath(ref);
-		if (abs && existsSync(abs)) {
-			try {
-				n += statSync(abs).size;
-			} catch {
-				/* ignore */
-			}
+		if (!abs || !existsSync(abs)) continue;
+		try {
+			n += statSync(abs).size;
+		} catch {
+			// A file that vanished between the existence check and the stat contributes nothing, and this
+			// runs per artifact per song on every boot — unlike `evictDerived`, a warning here would be noise.
 		}
 	}
 	return n;

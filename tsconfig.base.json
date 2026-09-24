@@ -1,4 +1,8 @@
 {
+	// Shared compiler options for the TESTS tree — `tests/tsconfig.json` is the only file that extends this, since
+	// the app and server configs descend from SvelteKit's generated one instead. It carries no `include` or `paths`:
+	// `extends` lets the child REPLACE both, and tests/tsconfig.json does, so declaring them here only misled a
+	// reader into thinking this file governed `src`.
 	"compilerOptions": {
 		"target": "ESNext",
 		"module": "ESNext",

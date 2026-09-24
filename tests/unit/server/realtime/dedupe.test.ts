@@ -167,7 +167,7 @@ test('REGRESSION: a resent genuinely-INVALID op is rejected AGAIN, never falsely
 	// record-on-check `seenOp`, so REJECTING a never-applied op wrote its clientOpId into the ledger —
 	// and its resend (the same lost-message window: reject lost, op stays pending,
 	// resendPending fires it again) was then answered with a false re-ack instead of a reject, and the
-	// client (queue.ts:203) deletes it from pending as "server-confirmed" with no snapshot to correct
+	// client (queue.ts) deletes it from pending as "server-confirmed" with no snapshot to correct
 	// the optimistic row. Fixed by consulting the NON-RECORDING `hasOp` on the failure path. This pins
 	// it: the SAME invalid op sent twice must reject BOTH times (the property base guaranteed).
 	const { published, deps } = harness();

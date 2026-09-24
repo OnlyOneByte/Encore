@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The VOCAL RANGE bar — a fixed pitch axis with the song's sung range drawn on it. INTENTIONALLY DUMB ABOUT MUSIC:
-	// every judgement lives in the contract's pure helpers and arrives as fractions, so this component only paints, and
-	// the same helpers feed the TV without a second copy of the geometry.
+	// every judgement about a voice lives in the contract's pure helpers and arrives here as fractions, so what is left
+	// in this file is the axis arithmetic that turns a midi number into a percentage.
 	import { voiceBandZones, rangeBarFractions, AXIS_LOW_MIDI, AXIS_HIGH_MIDI, type SongProfile } from '$lib/contract';
 
 	interface Props {

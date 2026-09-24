@@ -231,6 +231,18 @@ export function credit(s: MediaSidecar): string | null {
 	return s.canonical.artistCredit ?? null;
 }
 
+/** The browse index's view of one sidecar, named ONCE so the live-persist callback and the boot sync pass
+ *  cannot drift. browseArtist/lookupTitle return null on a low-confidence parse, so a guess never becomes a
+ *  library heading. */
+export function canonicalsOf(s: MediaSidecar): {
+	artist: string | null;
+	title: string | null;
+	album: string | null;
+	year: number | null;
+} {
+	return { artist: browseArtist(s), title: lookupTitle(s), album: s.canonical.album, year: s.canonical.year };
+}
+
 function sidecarPath(mediaId: string): string {
 	return join(metaDir(), `${mediaId}.json`);
 }
@@ -316,7 +328,7 @@ export async function clearArtifacts(mediaId: string): Promise<void> {
 }
 
 /** Every media id that has a sidecar on disk. */
-export async function listSidecarIds(): Promise<string[]> {
+async function listSidecarIds(): Promise<string[]> {
 	const { readdirSync } = await import('node:fs');
 	try {
 		return readdirSync(metaDir())

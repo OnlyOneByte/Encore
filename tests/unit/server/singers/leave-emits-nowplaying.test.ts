@@ -5,13 +5,13 @@
 // promotes another singer's entry. But doLeave published only queue:patch, never nowplaying:changed,
 // so the TV's Up next kept naming a song that just left the room.
 //
-// This is the same shape the Up-next fix closed on the queue:command seam (COMMON.md shape 3, "transitions
-// handled where steady state was"): the invariant "advertised next == true next" held across the
+// This is the same shape the Up-next fix closed on the queue:command seam — "transitions handled where
+// steady state was": the invariant "advertised next == true next" held across the
 // playback transitions and across none of the queue transitions. doLeave now calls emitNowPlaying after
 // its removals (guarded on doomed.length > 0). Base-RED: on base doLeave emits no nowplaying:changed, so
 // the assertion below finds none.
 //
-// The expected next is HARD-CODED ('q-stay'), never re-derived with upNextAfter — the trap COMMON.md names.
+// The expected next is HARD-CODED ('q-stay'), never re-derived with upNextAfter — the re-derivation trap.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
 import { doJoin } from '$lib/server/singers/join';

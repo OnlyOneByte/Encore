@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field, replace
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 # Several names below are UNUSED in this module by design: kept importable from here for existing
 # callers. Each `noqa: F401` marks a deliberate re-export, not a missed use.
@@ -104,7 +104,8 @@ def acquire_with_notes(sources: list[LyricsSource], req: LyricsRequest) -> tuple
 
 
 def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]:
-    """Texts-only view of :func:`acquire_with_notes`, kept for callers that do not surface notes."""
+    """Texts-only view of :func:`acquire_with_notes`. NO production caller — the step layer always
+    surfaces the notes; this is the shape the acquisition tests drive."""
     texts, _notes = acquire_with_notes(sources, req)
     return texts
 
@@ -397,6 +398,9 @@ def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float
 # `Composite.coverage`. Selection runs BEFORE the expensive force-align, so only the winner pays it.
 
 
+DecidedBy = Literal["agreement", "metadata"]
+
+
 @dataclass
 class VariantChoice:
     """What happened when one source offered several versions. Purely a report — for logs and tests."""
@@ -407,8 +411,9 @@ class VariantChoice:
     chosen_score: float | None
     #: (label, score) of everything not chosen, in the order considered.
     rejected: list[tuple[str | None, float | None]] = field(default_factory=list)
-    #: "agreement" when the baselines decided it, "metadata" when they could not and cheap ranking stood.
-    decided_by: str = "metadata"
+    #: Which arm fired: the baselines decided it, or they could not and cheap ranking stood. A
+    #: `Literal` so the audit trail's `decidedBy` cannot gain a third spelling nothing reads.
+    decided_by: DecidedBy = "metadata"
     #: How many baselines actually voted on the winner. 0 means the mean could not be formed.
     votes: int = 0
 
@@ -478,6 +483,74 @@ class Selection:
         }
 
 
+#: The sentinel rank for a candidate NO baseline could grade. Beneath every judged score, so an
+#: ungradeable rival never wins a comparison — which is why `overshoot_penalized` floors at 0.0.
+_UNJUDGEABLE_RANK = -1.0
+
+
+class _VariantPick(NamedTuple):
+    """One source's chosen version, plus what the cross-source comparison needs to rank it."""
+
+    winner: LyricsText
+    #: The RAW agreement, for provenance — deliberately not the penalised number.
+    graded: Composite
+    #: The PENALISED key the comparison orders on. None when no baseline could grade the winner.
+    rank: float | None
+    #: Set only when there was more than one version to choose between.
+    choice: VariantChoice | None
+
+
+def _pick_variant(
+    candidate: LyricsText,
+    baselines: list[LyricsText],
+    baseline_views: list[TokenView],
+    duration_sec: float | None,
+) -> _VariantPick:
+    """Choose among ONE source's versions: the candidate and its cheap-ranked alternates.
+
+    Grade every version against the baselines, DEMOTE any whose own timings run well past the end of
+    the audio, then argmax. `(rank, -index)` so an exact tie keeps the earlier, better-metadata match.
+    With no baseline able to grade anything, the pick falls back to index 0 — the cheap metadata
+    ranking — and says so via `VariantChoice.decided_by`.
+    """
+    pool = [candidate, *candidate.alternates]
+    scored = [composite_score(c, baselines, baseline_views=baseline_views) for c in pool]
+    # The RANKING key demotes overshoot; `scored` keeps the raw agreement for provenance.
+    ranked = [
+        (overshoot_penalized(got.score, c, duration_sec) if got.score is not None else None)
+        for c, got in zip(pool, scored, strict=True)
+    ]
+    decided_by: DecidedBy
+    if any(rank is not None for rank in ranked):
+        pick = max(
+            range(len(pool)), key=lambda i: (ranked[i] if ranked[i] is not None else _UNJUDGEABLE_RANK, -i)
+        )
+        decided_by = "agreement"
+    else:
+        pick = 0
+        decided_by = "metadata"
+
+    # replace(), not in-place mutation: `candidate` is caller-owned data from the step layer.
+    winner = replace(pool[pick], alternates=[])
+    graded = scored[pick]
+    choice = None
+    if len(pool) > 1:
+        choice = VariantChoice(
+            text_source=winner.text_source,
+            considered=len(pool),
+            chosen=winner.variant,
+            chosen_score=graded.score,
+            rejected=[
+                (c.variant, got.score)
+                for i, (c, got) in enumerate(zip(pool, scored, strict=True))
+                if i != pick
+            ],
+            decided_by=decided_by,
+            votes=len(graded.votes),
+        )
+    return _VariantPick(winner=winner, graded=graded, rank=ranked[pick], choice=choice)
+
+
 def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = None) -> Selection:
     """Pick the song's words: grade every candidate against the baselines, then publish.
 
@@ -516,46 +589,14 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
     #: The PENALISED rank key, kept apart from `best_score`, which reports the raw agreement.
     best_rank: float | None = None
     for cand in candidates:
-        pool = [cand, *cand.alternates]
-        scored = [composite_score(c, baselines, baseline_views=baseline_views) for c in pool]
-        # The RANKING key demotes overshoot; `scored` keeps the raw agreement for provenance.
-        ranked = [
-            (overshoot_penalized(got.score, c, duration_sec) if got.score is not None else None)
-            for c, got in zip(pool, scored, strict=False)
-        ]
-        pick = 0
-        if any(s is not None for s in ranked):
-            # (score, -index) so an exact tie keeps the earlier, better-metadata match.
-            pick = max(range(len(pool)), key=lambda i: (ranked[i] if ranked[i] is not None else -1.0, -i))
-            decided_by = "agreement"
-        else:
-            decided_by = "metadata"
-        winner, picked = pool[pick], scored[pick]
-        score, coverage, votes = picked.score, picked.coverage, picked.votes
-        # replace(), not in-place mutation: `winner` is caller-owned data from the step layer.
-        winner = replace(winner, alternates=[])
-        if len(pool) > 1:
-            sel.choices.append(
-                VariantChoice(
-                    text_source=winner.text_source,
-                    considered=len(pool),
-                    chosen=winner.variant,
-                    chosen_score=score,
-                    rejected=[
-                        (c.variant, got.score)
-                        for i, (c, got) in enumerate(zip(pool, scored, strict=False))
-                        if i != pick
-                    ],
-                    decided_by=decided_by,
-                    votes=len(votes),
-                )
-            )
+        pick = _pick_variant(cand, baselines, baseline_views, duration_sec)
+        if pick.choice is not None:
+            sel.choices.append(pick.choice)
         # The same PENALISED rank decides across sources, so an overshooting source loses to one that fits.
-        rank = ranked[pick]
-        if best is None or (rank if rank is not None else -1.0) > (
-            best_rank if best_rank is not None else -1.0
-        ):
-            best, best_score, best_coverage, best_rank = winner, score, coverage, rank
+        rank = pick.rank if pick.rank is not None else _UNJUDGEABLE_RANK
+        if best is None or rank > (best_rank if best_rank is not None else _UNJUDGEABLE_RANK):
+            best = pick.winner
+            best_score, best_coverage, best_rank = pick.graded.score, pick.graded.coverage, pick.rank
 
     if best is None:
         # No claim at all: fall back to the best baseline.

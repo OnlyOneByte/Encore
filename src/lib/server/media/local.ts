@@ -21,6 +21,50 @@ export function presentTracks(tracks: LocalTrack[], exists: (sourceRef: string) 
 	return tracks.filter((t) => exists(t.sourceRef));
 }
 
+/** Extensions the media route can already serve; anything else in the folder is not a track. */
+const LIBRARY_EXTS = new Set(['mp4', 'm4a', 'mp3', 'wav', 'webm', 'opus', 'flac']);
+
+/** PURE. `Artist - Title.mp4` is the convention a drop-in folder actually uses, so the hyphen is the seam;
+ *  a name without one is all title, and inventing an artist from a folder name would be a guess. */
+export function trackNameFromFile(fileName: string): { title: string; artist?: string } {
+	const stem = fileName
+		.replace(/\.[^.]+$/, '')
+		.replace(/[_]+/g, ' ')
+		.trim();
+	const split = /^(.+?)\s+-\s+(.+)$/.exec(stem);
+	if (!split) return { title: stem };
+	return { artist: split[1]!.trim(), title: split[2]!.trim() };
+}
+
+/**
+ * Turn the files under MEDIA_DIR/library into indexable tracks. `probe` is injected for the same reason
+ * `exists` is above — so this is testable without ffmpeg or a filesystem.
+ *
+ * A file whose duration cannot be read is SKIPPED, not indexed at zero. That follows `presentTracks`'s rule:
+ * a song that cannot work is worse than a song that is absent, and an unmeasurable file is one whose
+ * playability is unproven. It is also what makes the placeholder-stub fixture fail loudly instead of
+ * indexing four zero-length songs.
+ */
+export async function scanLibrary(
+	files: string[],
+	probe: (sourceRef: string) => Promise<number | null>
+): Promise<{ tracks: LocalTrack[]; skipped: string[] }> {
+	const tracks: LocalTrack[] = [];
+	const skipped: string[] = [];
+	for (const file of files) {
+		const ext = file.split('.').pop()?.toLowerCase();
+		if (!ext || !LIBRARY_EXTS.has(ext)) continue;
+		const sourceRef = `library/${file}`;
+		const durationSec = await probe(sourceRef);
+		if (durationSec === null) {
+			skipped.push(file);
+			continue;
+		}
+		tracks.push({ sourceRef, durationSec, ...trackNameFromFile(file) });
+	}
+	return { tracks, skipped };
+}
+
 export class LocalLibrary implements MediaResolver {
 	readonly kind = 'local' as const;
 	#fts: Database;

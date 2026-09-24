@@ -27,7 +27,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any
+from itertools import combinations
+from statistics import median
+from typing import Any, Literal
 
 from .model import LyricsDoc, lyrics_tokens
 
@@ -220,6 +222,9 @@ def repair_word_spans(doc: dict[str, Any]) -> RepairReport:
     return report
 
 
+Verdict = Literal["same_version", "different_version", "inconclusive"]
+
+
 @dataclass
 class LrcFit:
     """A two-parameter fit of an LRC's line starts onto the aligner's, plus what the residuals say."""
@@ -228,8 +233,7 @@ class LrcFit:
     scale: float = 1.0
     residual_sec: float = 0.0
     pairs: int = 0
-    #: same_version | different_version | inconclusive
-    verdict: str = "inconclusive"
+    verdict: Verdict = "inconclusive"
     #: Residual outliers while the rest fit — where alignment failed.
     outlier_lines: list[int] = field(default_factory=list)
 
@@ -257,31 +261,24 @@ def fit_lrc_to_aligned(lrc_starts: Iterable[float], aligned_starts: Iterable[flo
         return fit  # inconclusive: not the same lyrics, or too few lines to fit two parameters
 
     slopes = [
-        (ys[j] - ys[i]) / (xs[j] - xs[i])
-        for i in range(len(xs))
-        for j in range(i + 1, len(xs))
-        if abs(xs[j] - xs[i]) > 1e-9
+        (y2 - y1) / (x2 - x1)
+        for (x1, y1), (x2, y2) in combinations(zip(xs, ys, strict=True), 2)
+        if abs(x2 - x1) > 1e-9
     ]
     if not slopes:
         return fit  # every LRC line at the same timestamp — degenerate, cannot fit
-    fit.scale = _median(slopes)
-    fit.offset_sec = _median([y - fit.scale * x for x, y in zip(xs, ys, strict=False)])
+    fit.scale = median(slopes)
+    fit.offset_sec = median([y - fit.scale * x for x, y in zip(xs, ys, strict=True)])
 
-    resid = [y - (fit.scale * x + fit.offset_sec) for x, y in zip(xs, ys, strict=False)]
+    resid = [y - (fit.scale * x + fit.offset_sec) for x, y in zip(xs, ys, strict=True)]
     # MEDIAN, not mean: one badly-aligned region must not decide the verdict for the whole song.
-    fit.residual_sec = _median([abs(r) for r in resid])
+    fit.residual_sec = median(abs(r) for r in resid)
     fit.verdict = "same_version" if fit.residual_sec <= SUSPECT_RESIDUAL_SEC else "different_version"
     if fit.verdict == "same_version":
         fit.outlier_lines = [
             i for i, r in enumerate(resid) if abs(r) > max(SUSPECT_RESIDUAL_SEC, 3 * fit.residual_sec)
         ]
     return fit
-
-
-def _median(values: list[float]) -> float:
-    s = sorted(values)
-    mid = len(s) // 2
-    return s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2.0
 
 
 # `lrc_fit_notes` above runs AFTER alignment, which is not enough alone: the aligner is confined to the
@@ -347,8 +344,7 @@ def _pair_lrc_to_baseline(
         if not lt:
             continue
         best_j, best_score = -1, 0.0
-        for j in range(bi, len(baseline_lines)):
-            bt = base_tokens[j]
+        for j, bt in enumerate(base_tokens[bi:], bi):
             if not bt:
                 continue
             inter = len(lt & bt)

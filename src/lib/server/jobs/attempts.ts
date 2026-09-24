@@ -141,7 +141,12 @@ export class AttemptLedger {
 	}
 
 	#countFor(jobId: string): number {
-		return this.#db.select().from(jobAttempts).where(eq(jobAttempts.jobId, jobId)).all().length;
+		const row = this.#db
+			.select({ n: sql<number>`count(*)` })
+			.from(jobAttempts)
+			.where(eq(jobAttempts.jobId, jobId))
+			.all();
+		return Number(row[0]?.n ?? 0);
 	}
 
 	/** No-op when there is no open attempt, never a throw: the ledger is OBSERVABILITY and must never be

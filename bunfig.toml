@@ -1,9 +1,15 @@
-# Test harness wiring. Preloads the DOM + Svelte loader once before `bun test`, so component tests
-# under src/lib/tv/ can mount the real player component and run its effects.
-#
 # The gate is `bun run test`, NOT `bun test`: `vaul-svelte` declares only a `svelte` export condition, so
 # bun's test resolver cannot find it and a bare `bun test` fails while the build stays green. The fix is
 # `--conditions=svelte`, which lives in package.json's `test` script — it CANNOT live here, since
 # `conditions` under [test] and at top level were both measured as ignored by bun 1.3.14.
+#
+# There is no `[test] preload` any more: the component-mount harness (happy-dom + a Svelte compile hook +
+# SvelteKit `$app/*` stubs) was deleted along with the 13 tests that used it. Component behaviour is the
+# Chromium rung's job now — see docs/E2E.md.
+
+# TWO RUNNERS, TWO CONVENTIONS. bun owns `tests/unit/**/*.test.ts`; Playwright owns
+# `tests/playwright/**/*.spec.ts`. bun's default matcher globs `*.spec.ts` TOO, so without this root it walks
+# into the Playwright tree and every spec dies on "Playwright Test did not expect test() to be called here" —
+# a failure that reads as a broken spec rather than as the wrong runner having opened the file.
 [test]
-preload = ["./tests/setup/svelte-dom-preload.ts"]
+root = "tests/unit"

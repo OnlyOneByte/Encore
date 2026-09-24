@@ -255,6 +255,16 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 registerProcessor('encore-pitch-shift', PitchShiftProcessor);
 `;
 
+// `webkitAudioContext` is not in the DOM lib at all, and the window is read through ONE narrowed view rather than cast
+// per name: the stubs the tests install carry `AudioContext` alone, so both names must stay optional.
+function audioContextCtor(): typeof AudioContext | undefined {
+	const g = window as unknown as {
+		AudioContext?: typeof AudioContext;
+		webkitAudioContext?: typeof AudioContext;
+	};
+	return g.AudioContext ?? g.webkitAudioContext;
+}
+
 /**
  * Wraps ONE HTMLMediaElement in a lazily-built pitch-shift graph.
  *
@@ -367,9 +377,7 @@ export class PitchShiftGraph {
 		if (this.routed) return;
 		this.degraded = false;
 		try {
-			const Ctor: typeof AudioContext =
-				(window as unknown as { AudioContext: typeof AudioContext }).AudioContext ??
-				(window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+			const Ctor = audioContextCtor();
 			if (!Ctor) {
 				this.degraded = true;
 				return;

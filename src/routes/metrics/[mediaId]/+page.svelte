@@ -73,13 +73,11 @@
 		}
 	});
 
-	/** Local zone, not UTC: a sliced-off `Z` dates an evening US run to the next day. */
-	const stamp = (ms: number) => localStamp(ms);
 	/** Drops nulls: a null model field is "not applicable", and FactList prints whatever it is handed. */
-	const modelFacts = (m: Record<string, string | null>): [string, string][] =>
-		Object.entries(m)
-			.filter((e): e is [string, string] => Boolean(e[1]))
-			.map(([k, v]): [string, string] => [factLabel(k), v]);
+	const modelFacts = (models: Record<string, string | null>): [string, string][] =>
+		Object.entries(models)
+			.filter((entry): entry is [string, string] => Boolean(entry[1]))
+			.map(([key, value]): [string, string] => [factLabel(key), value]);
 
 	const OUTCOME_LABELS: Record<string, string> = {
 		ready: 'done',
@@ -89,6 +87,10 @@
 		running: 'running'
 	};
 	const outcomeLabel = (outcome: string | null) => OUTCOME_LABELS[outcome ?? 'running'] ?? outcome ?? 'running';
+	/** One tone table for a run and for an attempt, which carry the same outcome vocabulary. Anything else — running,
+	 * canceled, not yet reported — is in-flight, so it reads as a caution rather than a verdict. */
+	const OUTCOME_TONES: Record<string, 'ok' | 'bad' | 'warn'> = { ready: 'ok', failed: 'bad', abandoned: 'bad' };
+	const outcomeTone = (outcome: string | null) => OUTCOME_TONES[outcome ?? ''] ?? 'warn';
 
 	/** The model/hardware keys, in words. `asrModel` and `syncMode` are field names, not English. */
 	const FACT_LABELS: Record<string, string> = {
@@ -165,16 +167,10 @@
 						</Card.Header>
 						<Card.Content>
 							<Card.Action>
-								<Badge
-									variant={process.outcome === 'ready'
-										? 'ok'
-										: process.outcome === 'failed' || process.outcome === 'abandoned'
-											? 'bad'
-											: 'warn'}>{outcomeLabel(process.outcome)}</Badge
-								>
+								<Badge variant={outcomeTone(process.outcome)}>{outcomeLabel(process.outcome)}</Badge>
 							</Card.Action>
 							<p class="note">
-								{stamp(process.startedAt)}{#if process.totalMs !== null}{' · took '}{dur(
+								{localStamp(process.startedAt)}{#if process.totalMs !== null}{' · took '}{dur(
 										process.totalMs
 									)}{:else}{' · still going'}{/if}
 							</p>
@@ -190,13 +186,7 @@
 													<div class="row">
 														<strong>{stepLabel(a.jobType)}</strong>
 														{#if a.attempt > 1}<Badge variant="warn">try {a.attempt}</Badge>{/if}
-														<Badge
-															variant={a.outcome === 'ready'
-																? 'ok'
-																: a.outcome === 'failed' || a.outcome === 'abandoned'
-																	? 'bad'
-																	: 'warn'}>{outcomeLabel(a.outcome)}</Badge
-														>
+														<Badge variant={outcomeTone(a.outcome)}>{outcomeLabel(a.outcome)}</Badge>
 													</div>
 													<div class="metrics-row">
 														<span class="ran">{dur(a.processingMs)}</span>
@@ -256,7 +246,7 @@
 						</Card.Header>
 						<Card.Content>
 							<ul class="plays">
-								{#each audit.plays as p (p.entryId)}<li>{stamp(p.at)}</li>{/each}
+								{#each audit.plays as p (p.entryId)}<li>{localStamp(p.at)}</li>{/each}
 							</ul>
 						</Card.Content>
 					</Card.Root>

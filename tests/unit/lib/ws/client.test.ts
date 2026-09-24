@@ -1,4 +1,4 @@
-import { ClientEvent, ServerEvent } from '$lib/contract';
+import type { ClientEvent, ServerEvent } from '$lib/contract';
 import { QueueStore } from '$lib/stores/queue';
 import { WsClient, type MinimalSocket } from '$lib/ws/client';
 import { WS_OPEN } from '$lib/ws/send';

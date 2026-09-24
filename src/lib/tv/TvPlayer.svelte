@@ -395,13 +395,12 @@
 				.then(() => {
 					// Only the slot the viewer is looking at may raise a hint.
 					if (!active || !visible) return;
-					if (!needsShift(shift)) {
-						onpitchrouted?.();
-					} else if (masterGraph && !masterGraph.isRouted) {
-						onpitchblocked?.();
-					} else {
-						onpitchrouted?.();
-					}
+					// A shift was asked for and the graph is there but did NOT route: audible, unshifted, and the tap
+					// that would fix it is the only remedy. Everything else — no shift wanted, no graph, or a routed
+					// one — is nothing pending.
+					const stuck = needsShift(shift) && !!masterGraph && !masterGraph.isRouted;
+					if (stuck) onpitchblocked?.();
+					else onpitchrouted?.();
 				});
 		} else if (!needsShift(shift) && active && visible) {
 			// No graph and no shift wanted: the keyShift-0 invariant path. Nothing is pending.

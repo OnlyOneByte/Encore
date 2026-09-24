@@ -1,4 +1,4 @@
-import type { QueueEntry } from '$lib/contract';
+import type { MediaStatus, QueueEntry } from '$lib/contract';
 import type { TvState } from './gapless';
 
 /**
@@ -105,7 +105,7 @@ export function isUnreachableJoinOrigin(origin: string | null | undefined): bool
 export const PROCESS_STEPS = ['Downloaded', 'Removing vocals', 'Timing the lyrics'] as const;
 
 /** TOTAL over every status — exactly one step is current, so the takeover can never render with none marked. */
-export function processStep(status: import('$lib/contract').MediaStatus | undefined): {
+export function processStep(status: MediaStatus | undefined): {
 	index: number;
 	fraction: string;
 } {

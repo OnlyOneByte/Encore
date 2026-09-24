@@ -34,15 +34,6 @@
 	const filled = $derived(chars.filter((c) => c !== '').length);
 	const complete = $derived(filled === CODE_LENGTH);
 
-	/** What the code WILL be once box `i` holds `ch` — PROJECTED, never read back: the insert path has to know whether
-	 * this keystroke completes the code in the same synchronous turn that handles it, and reading a `$derived` after a
-	 * write in that turn is the assumption that made the last keystroke inert. */
-	function withChar(i: number, ch: string): string {
-		const next = [...chars];
-		next[i] = ch;
-		return next.join('');
-	}
-
 	function focusBox(i: number) {
 		const el = inputs[Math.max(0, Math.min(CODE_LENGTH - 1, i))];
 		el?.focus();
@@ -59,8 +50,7 @@
 		if (e.data.length === 1 && isRoomCodeChar(e.data)) {
 			e.preventDefault();
 			rejection = '';
-			const assembled = withChar(i, up);
-			setChar(i, up);
+			const assembled = setChar(i, up);
 			if (i < CODE_LENGTH - 1) focusBox(i + 1);
 			else if (assembled.length === CODE_LENGTH) oncomplete?.(assembled);
 			return;
@@ -70,10 +60,14 @@
 		rejection = CODE_EXCLUDED_NOTE;
 	}
 
-	function setChar(i: number, ch: string) {
+	/** Writes box `i` and RETURNS the code that results — never read back off `value`: the insert path has to know
+	 * whether this keystroke completes the code in the same synchronous turn that handles it, and reading a `$derived`
+	 * after a write in that turn is the assumption that made the last keystroke inert. */
+	function setChar(i: number, ch: string): string {
 		const next = [...chars];
 		next[i] = ch;
 		chars = next;
+		return next.join('');
 	}
 
 	function onKeyDown(e: KeyboardEvent, i: number) {
@@ -81,9 +75,9 @@
 			case 'Backspace':
 				e.preventDefault();
 				if (chars[i]) {
-					setChar(i, ''); // clear this box, stay put
+					setChar(i, '');
 				} else if (i > 0) {
-					setChar(i - 1, ''); // empty box: step back and clear the previous one
+					setChar(i - 1, '');
 					focusBox(i - 1);
 				}
 				rejection = '';

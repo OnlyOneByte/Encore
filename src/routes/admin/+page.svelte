@@ -26,8 +26,13 @@
 		try {
 			const res = await fetch('/api/library');
 			if (!res.ok) throw new Error('load failed');
-			const data = await res.json();
-			songs = (data.library ?? []).map((m: LibrarySong) => ({ id: m.id, title: m.title, artist: m.artist }));
+			const body = await res.json();
+			// Narrowed to the three fields this screen renders, so a catalog field cannot leak onto an operator surface.
+			songs = (body.library ?? []).map((media: LibrarySong) => ({
+				id: media.id,
+				title: media.title,
+				artist: media.artist
+			}));
 		} catch {
 			failed = true;
 		} finally {
@@ -55,14 +60,14 @@
 				body: JSON.stringify({ mediaId: song.id })
 			});
 			if (!res.ok) {
-				const err = await res.json().catch(() => ({}));
-				notice = err.error ? `Could not delete: ${err.error}` : 'Could not delete that song.';
+				const body = await res.json().catch(() => ({}));
+				notice = body.error ? `Could not delete: ${body.error}` : 'Could not delete that song.';
 				return;
 			}
-			const data = await res.json();
+			const result = await res.json();
 			// Drop it locally at once; the broadcast reconciles every other surface.
 			songs = songs.filter((s) => s.id !== song.id);
-			notice = data.wasPlaying ? `Deleted "${song.title}" and skipped to the next song.` : `Deleted "${song.title}".`;
+			notice = result.wasPlaying ? `Deleted "${song.title}" and skipped to the next song.` : `Deleted "${song.title}".`;
 		} catch {
 			notice = 'Could not delete that song.';
 		} finally {
@@ -86,7 +91,6 @@
 			<Alert.Root variant="accent" role="status"><Alert.Title>{notice}</Alert.Title></Alert.Root>
 		{/if}
 
-		<!-- Arming replaces the focused button, so the prompt is role="alert" and each control names its song. -->
 		{#if loading}
 			<p class="muted" role="status">Loading library…</p>
 		{:else if failed}
@@ -114,6 +118,7 @@
 							{#if song.artist}<Item.Description>{song.artist}</Item.Description>{/if}
 						</Item.Content>
 						<Item.Actions>
+							<!-- Arming replaces the focused button, so the prompt is role="alert" and each control names its song. -->
 							{#if confirmingId === song.id}
 								<span class="confirm-q" role="alert">Delete for good?</span>
 								<Button

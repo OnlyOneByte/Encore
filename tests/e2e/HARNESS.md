@@ -6,10 +6,12 @@ lived in exactly that gap.
 
 ## What was missing, and what closed it
 
-`seed-media.mjs` writes 16-byte ISO-BMFF stubs. Its own header says they are "NOT enough to decode,
-so do not use this to test playback". So there was no audio in the fixture to assert about.
+`seed-media.mjs` used to write 16-byte ISO-BMFF stubs, and its own header said they were "NOT enough to
+decode, so do not use this to test playback". So there was no audio in the fixture to assert about.
 
-Two files close that:
+Two files closed that, and the seeder has since adopted the first of them — it now emits the same real
+WAV, because core reads a duration with ffmpeg before indexing a library file and skips any file it
+cannot measure. A seeded track is decodable; it is still not a PROCESSED one.
 
 | File | What it does |
 |---|---|
@@ -176,7 +178,7 @@ Three modes, because the drivers genuinely differ:
 - **serves** — the probe expects `EPORT` to name a running server. The runner boots one shared,
   seeded, ephemeral server for the group, spawns a fake stems worker, and drives one library song to
   READY, because that is the fixture several of them ask for and `seed-media.mjs` alone cannot supply
-  (it writes placeholder files — enough to index and queue, not to process).
+  (its files are decodable and queueable, but nothing has separated stems or aligned lyrics for them).
 - **tool** — takes arguments and answers a question. Listed so it is discoverable, excluded from
   `all` because no default argument would mean anything.
 

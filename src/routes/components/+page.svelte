@@ -1,5 +1,6 @@
 <script lang="ts">
 	// Component preview (dev-only gallery). Not a product surface.
+	import { onMount, type ComponentProps } from 'svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
@@ -11,6 +12,11 @@
 	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
+	import TvLobby from '$lib/tv/TvLobby.svelte';
+	import JoinBadge from '$lib/tv/JoinBadge.svelte';
+	import TvProgress from '$lib/tv/TvProgress.svelte';
+	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
+	import type { LyricsDoc } from '$lib/tv/lyrics';
 	import {
 		LYRICS_BALL_STYLES,
 		LYRICS_HIGHLIGHTS,
@@ -30,10 +36,6 @@
 	const GREEN = SINGER_COLORS[2];
 	// Mint, because the highlight cards below need a singer colour that collides convincingly with a mid-tone stage field.
 	const MINT = SINGER_COLORS[7];
-	import TvLobby from '$lib/tv/TvLobby.svelte';
-	import JoinBadge from '$lib/tv/JoinBadge.svelte';
-	import TvProgress from '$lib/tv/TvProgress.svelte';
-	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
 
 	// One constant so the overlay wrappers cannot drift apart, in tokens so it tracks a theme change.
 	const stageBg = 'radial-gradient(120% 90% at 50% 20%, var(--stage-glow), var(--bg))';
@@ -56,8 +58,6 @@
 					.join('') +
 				`</svg>`
 		);
-	import type { LyricsDoc } from '$lib/tv/lyrics';
-	import { onMount } from 'svelte';
 
 	// A chorus that lives high, so the histogram weight is visibly lopsided (index 0 = lowMidi = 48/C3); p05..p95 is the
 	// solid block, low/high the whiskers.
@@ -74,11 +74,7 @@
 		loudnessLufs: -11.2 // a loud modern master, for the level half of the profile
 	};
 	/** Range known, weight unknown: the block must degrade to a flat fill. */
-	const profileNoHist: SongProfile = { ...profileFull, histogram: null };
-
-	// A portalled overlay can only show one state at a time, so the drawer gets triggers.
-	let drawerOpen = $state(false);
-	let drawerHasSong = $state(true);
+	const profileNoHistogram: SongProfile = { ...profileFull, histogram: null };
 	/** A key but no measured range, as a silent or instrumental stem gives. The bar renders NOTHING. */
 	const profileKeyOnly: SongProfile = {
 		keyTonic: 2, // D
@@ -313,21 +309,72 @@
 		}),
 		words: []
 	};
+	/* One knob per card, every other at its default. Row-count cards carry their OWN height, derived from it; the doc
+	   has six lines, so the largest reels reserve rows it cannot fill, and counts are asserted on the DOM. `short`
+	   picks the two-words-a-line doc, which is what makes a row count readable off a frame. */
+	const KNOB_CARDS: {
+		what: string;
+		props: Partial<ComponentProps<typeof LyricsOverlay>>;
+		height: number;
+		short: boolean;
+	}[] = [
+		{ what: 'size 100% (the neutral legibility floor)', props: { scalePct: 100 }, height: 500, short: false },
+		{ what: 'size 300% (the ceiling)', props: { scalePct: 300 }, height: 900, short: false },
+		{ what: 'case ALL CAPS — note the extra wrapping', props: { textCase: 'upper' }, height: 500, short: false },
+		{ what: 'case all lowercase', props: { textCase: 'lower' }, height: 500, short: false },
+		{ what: 'font serif', props: { font: 'serif' }, height: 500, short: false },
+		{ what: 'font monospace — fewest words per row', props: { font: 'mono' }, height: 500, short: false },
+		{
+			what: 'rows 0 before / 2 after — no history',
+			props: { linesBefore: 0, linesAfter: 2 },
+			height: 460,
+			short: true
+		},
+		{
+			what: 'rows 2 before / 0 after — nothing revealed ahead',
+			props: { linesBefore: 2, linesAfter: 0 },
+			height: 460,
+			short: true
+		},
+		{
+			what: 'rows 2 before / 2 after — the default, for comparison',
+			props: { linesBefore: 2, linesAfter: 2 },
+			height: 700,
+			short: true
+		},
+		{
+			what: 'rows 1 before / 4 after — asymmetric, current line sits high',
+			props: { linesBefore: 1, linesAfter: 4 },
+			height: 820,
+			short: true
+		},
+		{
+			what: 'rows 3 before / 4 after — the maximum reel',
+			props: { linesBefore: 3, linesAfter: 4 },
+			height: 1080,
+			short: true
+		}
+	];
+
+	// The gallery's two interactive fixtures: a portalled overlay can only show one state at a time, so the drawer
+	// gets triggers, and the picker's preset-vs-rail agreement can only be exercised by binding a real value.
+	let drawerOpen = $state(false);
+	let drawerHasSong = $state(true);
+	let demoColour = $state(VIOLET);
+
+	// The demo clock every word-sweep card reads, so one loop drives them all.
 	let demoPos = $state(0);
 	onMount(() => {
-		const t0 = performance.now();
+		const startedAt = performance.now();
 		let raf = 0;
 		const loop = () => {
-			const elapsed = (performance.now() - t0) / 1000;
+			const elapsed = (performance.now() - startedAt) / 1000;
 			demoPos = elapsed % 18; // loop 0-18s across all six demo lines
 			raf = requestAnimationFrame(loop);
 		};
 		raf = requestAnimationFrame(loop);
 		return () => cancelAnimationFrame(raf);
 	});
-
-	// Bound, not posed: the picker's preset-vs-rail agreement can only be exercised interactively.
-	let demoColour = $state(VIOLET);
 </script>
 
 <main style="padding:14px 16px 200px;">
@@ -666,7 +713,7 @@
 		</div>
 		<div>
 			<p class="caption">Full range, NO histogram (flat block)</p>
-			<RangeBar profile={profileNoHist} />
+			<RangeBar profile={profileNoHistogram} />
 		</div>
 		<div>
 			<p class="caption">Shifted +5 semitones (block + weight slide right)</p>
@@ -788,11 +835,9 @@
 		</div>
 	{/each}
 
-	<!-- One knob per card, every other at its default. Row-count cards carry their OWN height, derived from it; the doc has
-			six lines, so the largest reels reserve rows it cannot fill, and counts are asserted on the DOM. -->
-	{#each [{ what: 'size 100% (the neutral legibility floor)', props: { scalePct: 100 }, h: 500, short: false }, { what: 'size 300% (the ceiling)', props: { scalePct: 300 }, h: 900, short: false }, { what: 'case ALL CAPS — note the extra wrapping', props: { textCase: 'upper' as const }, h: 500, short: false }, { what: 'case all lowercase', props: { textCase: 'lower' as const }, h: 500, short: false }, { what: 'font serif', props: { font: 'serif' as const }, h: 500, short: false }, { what: 'font monospace — fewest words per row', props: { font: 'mono' as const }, h: 500, short: false }, { what: 'rows 0 before / 2 after — no history', props: { linesBefore: 0, linesAfter: 2 }, h: 460, short: true }, { what: 'rows 2 before / 0 after — nothing revealed ahead', props: { linesBefore: 2, linesAfter: 0 }, h: 460, short: true }, { what: 'rows 2 before / 2 after — the default, for comparison', props: { linesBefore: 2, linesAfter: 2 }, h: 700, short: true }, { what: 'rows 1 before / 4 after — asymmetric, current line sits high', props: { linesBefore: 1, linesAfter: 4 }, h: 820, short: true }, { what: 'rows 3 before / 4 after — the maximum reel', props: { linesBefore: 3, linesAfter: 4 }, h: 1080, short: true }] as c (c.what)}
+	{#each KNOB_CARDS as c (c.what)}
 		<h2 class="section">LyricsOverlay · {c.what}</h2>
-		<div style="position:relative;height:{c.h}px;border-radius:16px;overflow:hidden;background:{stageBg};">
+		<div style="position:relative;height:{c.height}px;border-radius:16px;overflow:hidden;background:{stageBg};">
 			<!-- 9.5s puts the current line at index 3 of 6, so rows exist before AND after it; 0.8s has none before. -->
 			<LyricsOverlay
 				doc={c.short ? demoShort : demoLyrics}

@@ -3,7 +3,7 @@
 > **Purpose.** The subsystem contracts as requirements a person can disagree with and a machine can
 > often check. How the system works now is [`../ARCHITECTURE.md`](../ARCHITECTURE.md); the rules a
 > change has to respect are [`../SERVER.md`](../SERVER.md) and [`../FRONTEND.md`](../FRONTEND.md);
-> what the guard suite already enforces is [`../GUARDS.md`](../GUARDS.md). Open work is tracked in
+> what the tests already cover is [`../TESTS.md`](../TESTS.md). Open work is tracked in
 > **GitHub issues**.
 
 **35 requirements** across three sections. Each row is a table with the same seven fields:
@@ -18,9 +18,9 @@
 | **Check**      | the test that defends it, or what is missing — `exists`, `half exists`, or `to be written` |
 | **Priority**   | `Ship-blocking`, or the reason it is not                                                   |
 
-A row may name a test that does not exist yet, but it has to say so at the site:
-`tests/guards/docs/cited-paths-resolve.test.ts` fails a cited path that resolves to nothing unless the
-line admits it.
+A row may name a test that does not exist yet, but it has to say so at the site. Nothing checks cited
+paths automatically any more — the guard that did (`cited-paths-resolve.test.ts`) went with the guard
+suite, so a stale path here is now only caught by reading.
 
 | Section                      | Rows | Covers                                                                                          |
 | ---------------------------- | ---- | ----------------------------------------------------------------------------------------------- |
@@ -71,14 +71,15 @@ tick rather than only on a tick that changed a job. `XR-JOB-11`.
 file — its own type declaration. The worker half is built and waiting. A guest pastes correct lyrics,
 is promised a job, and watches the wrong words scroll past. `XR-API-06`.
 
-**4. Eleven auth gates had zero assertions.** Closed while this tree was being written:
-`tests/guards/wiring/route-auth-posture.test.ts` now pins every route method's posture, per method,
-because one file gates its `PUT` and leaves its `GET` open. `XR-API-12`.
+**4. Eleven auth gates had zero assertions.** Was closed by `route-auth-posture.test.ts`, which pinned every route method's posture, per method,
+because one file gates its `PUT` and leaves its `GET` open. **That guard was deleted with the guard
+suite, so this is REOPENED.** `XR-API-12`.
 
 **5. `MediaStore.url()` had no production caller — RESOLVED by deletion.** It was documented as how
 the TV resolves a playable source and presigned with a one-hour TTL; the TV string-builds the path
 directly instead. Its test exercised it _from a test_, which is what kept the production absence
 invisible to coverage. The method, `mediaProxyUrl`, `S3Like.presign` and the
 `presignExpiresIn`/`proxyUrls` options are now deleted, with the reason on record at
-`src/routes/media/[...path]/+server.ts` and the rule pinned by
-`tests/guards/subsystem-media/store-members-have-production-callers.test.ts`. `XR-MED-10`.
+`src/routes/media/[...path]/+server.ts` and the rule was pinned by
+`store-members-have-production-callers.test.ts` — **deleted with the guard suite, so the rule is now
+unenforced.** `XR-MED-10`.

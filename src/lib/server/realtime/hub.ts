@@ -63,7 +63,6 @@ export interface HubDeps {
 	actorSingerId?: string;
 }
 
-/** Validate a command against current state. Returns an error string, or null if valid. */
 /**
  * Ops that name an EXISTING entry and may be issued by a client — derived from `QueueOp` rather than listed,
  * so a new `{ id }`-bearing op joins this type automatically. `status` is excluded because it is server-owned
@@ -104,6 +103,7 @@ function entryOpRefusal(op: Extract<QueueOp, { op: EntryMutatingOp }>, deps: Hub
 	return null;
 }
 
+/** Validate a command against current state. Returns an error string, or null if valid. */
 export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | null {
 	// Envelope BEFORE destructuring: a frame with no `command`/`op`/`clientOpId` must fail here, not
 	// crash on the next property read.

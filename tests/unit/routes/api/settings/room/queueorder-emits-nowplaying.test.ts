@@ -10,7 +10,7 @@
 // reorders the queue — the production path, not a stub. Base-RED: on base the handler emits no
 // nowplaying:changed on the reorder branch, so the assertion finds none.
 //
-// Expected next is HARD-CODED, never re-derived with the projection the code runs (the COMMON.md trap).
+// Expected next is HARD-CODED, never re-derived with the projection the code runs (the re-derivation trap).
 import { test, expect, afterEach } from 'bun:test';
 import { PUT } from '$routes/api/settings/room/+server';
 import { SettingsRepository } from '$lib/server/state/settings-repository';

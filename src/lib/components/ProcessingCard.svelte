@@ -155,8 +155,9 @@
 			</Item.Content>
 			{#if !pending && (onremove || reorderable)}
 				<Item.Actions data-align="start">
-					<!-- Reordering lives on the GRIP above. `reorderable` stays in this gate deliberately: it is how the route says
-							the position can move at all, and a card that could never move should not grow a remove button. -->
+					<!-- Reordering lives on the GRIP above, so REMOVE is the only control this cluster ever holds. `reorderable`
+							only WIDENS the gate — it contributes nothing of its own — so a card the route says may move but that is
+							not the guest's to remove renders this cluster empty. -->
 					{#if onremove}
 						<Button
 							variant="outline"

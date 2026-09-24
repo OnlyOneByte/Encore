@@ -65,7 +65,6 @@ export class AuthoritativeState {
 
 	/** Seed from durable storage on boot (does NOT bump rev or schedule a flush). */
 	hydrate(entries: QueueEntry[], playback: PlaybackState | null): void {
-		// drop terminal (done) rows and normalize the room's ordering on load
 		this.#entries = assignSeqs(
 			entries.filter((e) => !isTerminal(e)),
 			this.#orderingOf()

@@ -25,10 +25,14 @@ const CONTENT_TYPES: Record<string, string> = {
 // falls to application/octet-stream below, which the browser refuses to play.
 const CACHE = 'public, max-age=86400';
 
+/* One 404 for every way a ref can fail to resolve: a rejected path and a missing object are deliberately
+   indistinguishable, so probing this route cannot enumerate what the store holds. */
+const notFound = () => new Response('not found', { status: 404 });
+
 export const GET: RequestHandler = async ({ params, request }) => {
 	const ref = params.path ?? '';
 	// Rejects traversal, absolute paths, NUL and .thumbs before the store sees the ref.
-	if (!safeMediaPath(ref)) return new Response('not found', { status: 404 });
+	if (!safeMediaPath(ref)) return notFound();
 
 	const store = getApp().mediaStore;
 	const ext = ref.split('.').pop()?.toLowerCase() ?? '';
@@ -40,12 +44,12 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	// would taint MediaElementAudioSourceNode and need bucket CORS — see docs/arch/01-media.md.
 	if (typeof store.size !== 'function' || typeof store.getRange !== 'function') {
 		const stream = await store.get(ref);
-		if (!stream) return new Response('not found', { status: 404 });
+		if (!stream) return notFound();
 		return new Response(stream, { headers: { 'content-type': type, 'cache-control': CACHE } });
 	}
 
 	const size = await store.size(ref);
-	if (size === null) return new Response('not found', { status: 404 });
+	if (size === null) return notFound();
 
 	const decision = parseRangeHeader(request.headers.get('range'), size);
 
@@ -64,7 +68,7 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	if (decision.kind === 'partial') {
 		const { start, end } = decision;
 		const body = await store.getRange(ref, start, end);
-		if (!body) return new Response('not found', { status: 404 });
+		if (!body) return notFound();
 		return new Response(body, {
 			status: 206,
 			headers: {
@@ -79,7 +83,7 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	// Full response, but through getRange so the body is a Blob the runtime can set `Content-Length` on;
 	// `accept-ranges` on a 200 is what invites the element to seek. An empty file has no range to slice.
 	const body = size > 0 ? await store.getRange(ref, 0, size - 1) : await store.get(ref);
-	if (!body) return new Response('not found', { status: 404 });
+	if (!body) return notFound();
 	return new Response(body, {
 		headers: {
 			'content-type': type,

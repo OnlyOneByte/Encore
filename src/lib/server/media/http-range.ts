@@ -21,7 +21,7 @@ export function parseRangeHeader(header: string | null, size: number): RangeDeci
 	const match = /^bytes=(.*)$/i.exec(header.trim());
 	if (!match) return { kind: 'full', size }; // an unknown unit is not an error; serve the whole thing
 
-	const spec = match[1].trim();
+	const spec = match[1]!.trim();
 	if (spec.includes(',')) return { kind: 'full', size }; // multi-range: not worth a multipart body
 
 	const dash = spec.indexOf('-');

@@ -70,10 +70,12 @@
 
 	/* A DRAG MUST NOT ALSO COUNT AS A TAP: this block is both the sheet's press-to-toggle control and most of its
 	   drag surface, and vaul captures the pointer without calling preventDefault, so dragging down from here ends with
-	   a click that reopens it. The threshold matches vaul's own; `pageY` is an event property, so no geometry is read. */
+	   a click that reopens it. The threshold matches vaul's own; `pageY` is an event property, so no geometry is read.
+	   NEITHER OF THESE IS `$state`: both are written and read only inside the handlers below, and a signal the
+	   template never looks at is a re-render this component must not cause — see the drawer's mount rung. */
 	const DRAG_CANCEL_PX = 10;
 	let pressY: number | null = null;
-	let dragged = $state(false);
+	let dragged = false;
 </script>
 
 <!-- THE METADATA BLOCK IS THE KEYBOARD PATH INTO THE SHEET, because vaul's Handle is an aria-hidden div with no role:

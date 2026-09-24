@@ -19,29 +19,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+# The gate and its retry ladder live at the root (src/ratelimit.py) because MusicBrainz needs the same
+# one. What stays LRCLIB's own is the status ladder in `get`/`search` below, and the default retry set
+# the gate hands it: 429 is LRCLIB's documented rate-limit signal and 503 is "busy", so both are worth
+# waiting out, while a 404 is a MISS and any other 4xx/5xx a hard LyricsFetchError.
+from ..ratelimit import RateLimiter
+
 LRCLIB_BASE = "https://lrclib.net"
 
 
 # LRCLIB asks non-browser clients to identify themselves + a contact/link (their docs).
 USER_AGENT = "Encore/0.2 (+https://github.com/OnlyOneByte/Encore)"
-
-
-#: Paced PROCESS-GLOBALLY, because the limit is a property of the source IP rather than of a client
-#: object. A burst on a small free service reads as abuse.
-MIN_INTERVAL_SEC = 1.0
-
-
-#: Exponential backoff, so one blip does not lose the lyrics; BOUNDED, so a genuinely down service
-#: degrades to a legible LyricsFetchError rather than being hammered forever.
-MAX_ATTEMPTS = 3
-
-
-BACKOFF_BASE_SEC = 1.0
-
-
-#: Both count as "wait and try again". A 404 is a MISS and any other 4xx/5xx is a hard
-#: LyricsFetchError — neither is retried.
-RETRY_STATUSES = frozenset({503, 429})
 
 
 class LyricsFetchError(RuntimeError):
@@ -194,85 +182,8 @@ def rank_lrclib_candidates(
     return keep[: max(0, limit)]
 
 
-class RateLimiter:
-    """One gate every LRCLIB call passes through, one at a time.
-
-    Serialised and process-global: the limit is per SOURCE IP, so two client instances pacing
-    themselves independently would still fire two requests in one second under
-    ``ENCORE_WORKER_CONCURRENCY`` > 1. The lock is held across the REQUEST as well as the wait (two
-    requests in flight at once is exactly what is being prevented), and retries happen INSIDE the
-    lock so a throttled box does not pile every queued caller onto the request already being refused.
-
-    ``now``/``sleep`` are injectable purely so tests are hermetic; production shares one gate with
-    the real monotonic clock.
-    """
-
-    def __init__(
-        self,
-        min_interval: float = MIN_INTERVAL_SEC,
-        *,
-        retry_statuses: frozenset[int] | set[int] = RETRY_STATUSES,
-        now: Callable[[], float] | None = None,
-        sleep: Callable[[float], None] | None = None,
-    ) -> None:
-        import threading
-        import time as _time
-
-        self._min_interval = min_interval
-        self._retry_statuses = frozenset(retry_statuses)
-        self._lock = threading.Lock()
-        self._now = now or _time.monotonic
-        self._sleep = sleep or _time.sleep
-        # None, not 0.0: "never called" must stay distinguishable from "called at t=0", which is falsy.
-        self._last_call: float | None = None
-        self.calls = 0
-        self.retries = 0
-        self.throttled = 0
-        self.waited_sec = 0.0
-
-    def _pace(self) -> None:
-        if self._last_call is not None:
-            elapsed = self._now() - self._last_call
-            if elapsed < self._min_interval:
-                wait = self._min_interval - elapsed
-                self.waited_sec += wait
-                self._sleep(wait)
-        self._last_call = self._now()
-
-    def run(self, call: Callable[[], tuple[int, str]]) -> tuple[int, str]:
-        """Execute one paced request under the gate, retrying a transient status with backoff.
-
-        Returns the last (status, body) seen — the caller's status ladder decides what a retried-out
-        failure means (LRCLIB: a still-transient status becomes a LyricsFetchError).
-        """
-        with self._lock:
-            status, body = 0, ""
-            for attempt in range(1, MAX_ATTEMPTS + 1):
-                self._pace()
-                self.calls += 1
-                status, body = call()
-                if status not in self._retry_statuses:
-                    return status, body
-                # Over the limit or service busy: the same remedy either way.
-                self.throttled += 1
-                if attempt == MAX_ATTEMPTS:
-                    return status, body
-                self.retries += 1
-                backoff = BACKOFF_BASE_SEC * (2 ** (attempt - 1))
-                self.waited_sec += backoff
-                self._sleep(backoff)
-            return status, body  # unreachable, kept for the type checker's benefit
-
-    def stats(self) -> dict[str, Any]:
-        return {
-            "calls": self.calls,
-            "retries": self.retries,
-            "throttled": self.throttled,
-            "waited_sec": round(self.waited_sec, 2),
-        }
-
-
 #: Shared by default: a per-instance limiter lets two clients in one process burst past a per-IP limit.
+#: LRCLIB's own gate, separate from MusicBrainz's — the two budgets are independent.
 _LIMITER = RateLimiter()
 
 

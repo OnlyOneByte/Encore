@@ -5,6 +5,7 @@ import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { mediaStatusFor } from '$lib/server/jobs/media-status';
 import { requestLyricsReselect, type ReselectRefusal } from '$lib/server/jobs/process';
+import { optionalString, readJsonBody, requiredString } from '$lib/server/http/json-body';
 import type { MediaStatus } from '$lib/contract';
 
 // The honest status code for each refusal — a 409 (conflict with the song's current state) except an unknown media (404) and an empty/absent body field (400), so the phone can tell them apart.
@@ -26,12 +27,12 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
 	if (!singer) return json({ error: 'not joined' }, { status: 401 });
 
-	const body = await request.json().catch(() => ({}));
-	const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
+	const body = await readJsonBody(request);
+	const mediaId = requiredString(body, 'mediaId');
 	if (!mediaId) return json({ error: 'mediaId required' }, { status: 400 });
 
-	const ref = typeof body.ref === 'string' ? body.ref : undefined;
-	const text = typeof body.text === 'string' ? body.text : undefined;
+	const ref = optionalString(body, 'ref');
+	const text = optionalString(body, 'text');
 	// Exactly one of ref / text names the pick. A paste with only whitespace is a no-text refusal, not a silent no-op, so the phone can say why nothing happened.
 	if (!ref && !(text && text.trim())) {
 		return json({ error: REFUSAL_MESSAGE['no-text'], reason: 'no-text' }, { status: 400 });

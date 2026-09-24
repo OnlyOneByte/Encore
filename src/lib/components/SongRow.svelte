@@ -1,6 +1,7 @@
 <script lang="ts">
 	// ONE row shape for all readiness states: the state decides the badge line and which actions appear, and the
 	// layout never changes, so a row that finishes processing morphs in place instead of jumping between lists.
+	// Every guest-facing string below is PARTY ENGLISH: a guest waits for a karaoke track, not an "instrumental".
 	import type { Readiness } from '$lib/readiness';
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { type MediaStatus } from '$lib/contract';
@@ -98,7 +99,6 @@
 	const showKey = $derived(readiness === 'ready' && !!keyName);
 	const showTags = $derived(readiness === 'ready' && !!tags && tags.length > 0);
 
-	// Guest-facing copy in this file is PARTY ENGLISH: a guest waits for a karaoke track, not an "instrumental".
 	const barPct = $derived(status ? overallProcessPct(status, pct) : pct);
 
 	const stateChip = $derived.by(() => {
@@ -234,11 +234,7 @@
 					data-testid="song-add"
 					data-row-state={inQueue ? 'queued' : !processable ? 'unavailable' : undefined}
 					aria-label={actionLabel}
-					title={!processable
-						? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
-						: inQueue
-							? 'Already in the queue'
-							: 'Add a turn'}
+					title={actionLabel}
 					disabled={inQueue || !processable}
 					onclick={() => onadd?.()}
 				>

@@ -55,9 +55,9 @@
 		pick(next);
 	}
 
-	/* `paletteStopAtRingAngle` is the exact inverse of the angle the knob is drawn at, so what you touch is what you get. */
 	let dragging = $state(false);
 
+	/* `paletteStopAtRingAngle` is the exact inverse of the angle the knob is drawn at, so what you touch is what you get. */
 	function stopUnderPointer(e: PointerEvent, el: HTMLElement): number | null {
 		const box = el.getBoundingClientRect();
 		const dx = e.clientX - (box.left + box.width / 2);

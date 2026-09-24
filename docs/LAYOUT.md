@@ -126,21 +126,18 @@ break at once.
 2. **Reach for an alias, never a `..` hop count.** Routes, the test setup and the e2e tree each have
    one, declared in the tests-only context so production source cannot reach them. A new alias must
    also be added to the test-tree dependency guard's allowlist, or it reports an undeclared package.
-3. **Know that `tests/guards/meta/no-self-anchored-paths.test.ts` walks `.ts` AND `.mjs`.** Three
-   files are exempted, each because it DEFINES an anchor and so cannot use one, and each is asserted
-   to still need its exemption. A narrowing of that extension list is what let six probes anchor one
-   hop short for as long as they did.
+3. **Do not anchor a path off the importing file's own location.** Derive it from a repo-root anchor
+   (`tests/helpers.ts`, or `tests/e2e/lib/repo-root.mjs` for the drivers), in `.ts` and `.mjs` alike.
+   Hop-counting is what let six probes anchor one hop short for as long as they did.
 
 ### Then, in the same commit as the move
 
-The test-support tree's landmark check throws on import if the contract
-directory is missing, which kills the entire suite loudly rather than
-silently — the best safety property in the codebase, and the reason a contract
-move must update the landmark list and the derived anchor together.
+`tests/helpers.ts` throws on import if its repo-root marker is missing, which
+kills the suite loudly rather than silently — the best safety property in the
+codebase, and the reason a contract move must update the anchor with it.
 
-Update together: the test-support anchors → the test tsconfig alias block →
-three path-keyed registries in the non-vacuity floor guard **plus its two
-coupled literals, currently 71** → the task-number exemption list → the e2e
+Update together: the anchors in `tests/helpers.ts` → the test tsconfig alias
+block → the e2e
 unrun list → the test-helper consumer list → the doc-citation prefix allowlist
 if a new top-level tree appears → four hand-listed file arrays that a walk
 cannot discover → the doc citations themselves, across 18 documents.

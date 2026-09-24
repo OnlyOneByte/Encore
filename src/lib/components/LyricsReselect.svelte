@@ -2,6 +2,8 @@
 	// The LYRICS RE-SELECT control — the fallback for when the auto-chosen lyrics are wrong. PRESENTATIONAL, like
 	// GuidingTrack: the request, the optimistic status and the error toast belong to the caller, being room concerns.
 	import type { LyricsCandidate } from '$lib/contract';
+	// Provenance wording stays in the contract: a local copy is how one surface comes to say "Captions" where
+	// another says "Auto captions".
 	import { lyricsSourceLabel } from '$lib/contract';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -32,9 +34,6 @@
 	const uid = $props.id();
 	const bodyId = `reselect-body-${uid}`;
 
-	// The provenance label is shared through `$lib/contract`: two copies is how one surface comes to call something
-	// "Captions" that another calls "Auto captions".
-	const sourceLabel = lyricsSourceLabel;
 	function timingLabel(c: LyricsCandidate): string {
 		return c.timing === 'word' ? 'word-by-word' : c.timing === 'line' ? 'line-by-line' : 'no timing';
 	}
@@ -83,7 +82,7 @@
 										<!-- A PLAIN span, never Item.Title: that primitive is `w-fit`, so `fit-content` resolves against its own
 												min-content and a nowrap child grows the title past the row instead of ellipsising inside it. As a direct child
 												of the content COLUMN this span stretches to the column's width, which is what engages the ellipsis. -->
-										<span class="opt-src">{sourceLabel(c)}</span>
+										<span class="opt-src">{lyricsSourceLabel(c)}</span>
 										<Item.Description>{timingLabel(c)}</Item.Description>
 									</Item.Content>
 									{#if c.ref === chosenRef}

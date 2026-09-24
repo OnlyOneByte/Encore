@@ -5,11 +5,8 @@ import type { PageServerLoad } from './$types';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { fallbackJoinOrigin, publicOriginIsHttps } from '$lib/server/public-origin';
-
-/** Resolved here so a deep link (`?tab=you`) paints on its own tab instead of swapping after a frame. */
-const TAB_IDS = ['you', 'party', 'server'] as const;
-type TabId = (typeof TAB_IDS)[number];
-const DEFAULT_TAB: TabId = 'party';
+// The scope list lives in one place because BOTH halves read it — see $lib/settings-tabs.
+import { settingsTabFromParam } from '$lib/settings-tabs';
 
 export const load: PageServerLoad = async ({ cookies, request, url }) => {
 	const app = getApp();
@@ -26,12 +23,10 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 	// Page data is serialised into the HTML, so the session token — the singer's identity — never goes in.
 	const { sessionToken: _t, ...me } = singer;
 
-	const requested = url.searchParams.get('tab');
-	const tab: TabId = (TAB_IDS as readonly string[]).includes(requested ?? '') ? (requested as TabId) : DEFAULT_TAB;
-
 	return {
 		me,
-		tab,
+		// Resolved here so a deep link (`?tab=you`) paints on its own tab instead of swapping after a frame.
+		tab: settingsTabFromParam(url.searchParams.get('tab')),
 		settings: app.settings.getEffective(app.activeRoomId),
 		// What an empty join address resolves to, so the field can show its fallback.
 		joinOriginFallback: fallbackJoinOrigin(request, url),

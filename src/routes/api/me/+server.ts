@@ -8,6 +8,7 @@ import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { assertNameFree, NameTakenError } from '$lib/server/singers/join';
 import { normalizeSingerColor } from '$lib/contract';
+import { optionalString, readJsonBody } from '$lib/server/http/json-body';
 
 export const GET: RequestHandler = async ({ cookies }) => {
 	const token = cookies.get(SESSION_COOKIE);
@@ -24,11 +25,13 @@ export const PATCH: RequestHandler = async ({ request, cookies }) => {
 	// No capability check: this is your OWN profile, which is the one thing a guest needs no standing beyond being themselves to change.
 	if (!me) return json({ error: 'join first' }, { status: 401 });
 
-	const body = await request.json().catch(() => ({}));
+	const body = await readJsonBody(request);
 	// A patch: an omitted field keeps its current value rather than resetting it, matching every other settings write in the app.
-	const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : me.displayName;
+	const requestedName = optionalString(body, 'displayName');
+	const displayName = requestedName === undefined ? me.displayName : requestedName.trim();
 	if (!displayName) return json({ error: 'display name required' }, { status: 400 });
-	const color = typeof body.color === 'string' ? normalizeSingerColor(body.color) : me.color;
+	const requestedColor = optionalString(body, 'color');
+	const color = requestedColor === undefined ? me.color : normalizeSingerColor(requestedColor);
 
 	try {
 		// Scope to `me.roomId` (uniqueness is per-party) and except `me.id`, or changing your own capitalisation would collide with yourself.

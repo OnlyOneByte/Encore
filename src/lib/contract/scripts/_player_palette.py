@@ -2,10 +2,10 @@
 """
 Encore 48-stop player palette, where a guest's identity colour IS their UI accent.
 
-This is the generator behind `src/shared/presentation/player-palette-48.json`, the one machine-readable
-source of truth for the 48 stops. Run it from anywhere; paths are repo-relative:
+This is the generator behind `src/lib/contract/presentation/player-palette-48.json`, the one
+machine-readable source of truth for the 48 stops. Run it from anywhere; paths are repo-relative:
 
-    python3 src/shared/scripts/_player_palette.py
+    python3 src/lib/contract/scripts/_player_palette.py
 
 The surfaces every figure is measured against are READ from `src/app.css`, never restated
 here -- see `css_token` below for what that cost when they were restated. Regenerating
@@ -44,10 +44,8 @@ HERE = pathlib.Path(__file__).parent
 def _repo_root() -> pathlib.Path:
     """The repo root, found by walking up for `bunfig.toml`.
 
-    This was `HERE.parents[2]`, a hop count that encoded the script's distance from the root while it
-    lived at `src/shared/scripts/`. Folding the shared package into `src/shared/` moved
-    it two levels deeper, so that expression resolved to `src` and the script tried to open
-    `src/app.css`.
+    NOT a hop count. `HERE.parents[2]` encoded this script's distance from the root, so the next move of
+    the shared tree made it resolve to `src/`, where the generator looked for `app.css` and found nothing.
 
     `bunfig.toml` is the marker because it is what the test harness uses to find the same root, so the
     guard that regenerates this file and the script itself agree by construction — and a hop count
@@ -207,21 +205,13 @@ FAMILIES = [
 
 
 def assign_names(fills):
-    srgb_h = []
-    for f in fills:
-        r, g, b = hex_rgb(f)
-        srgb_h.append(colorsys.rgb_to_hsv(r, g, b)[0] * 360)
+    srgb_hues = [colorsys.rgb_to_hsv(*hex_rgb(f))[0] * 360 for f in fills]
     pools = {i: list(fam[2]) for i, fam in enumerate(FAMILIES)}
     used, names = set(), []
-    for h in srgb_h:
+    for h in srgb_hues:
         fi = next((i for i, (lo, hi, _) in enumerate(FAMILIES) if lo <= h < hi),
                   len(FAMILIES) - 1)
-        pool = pools[fi]
-        pick = None
-        for cand in pool:
-            if cand not in used:
-                pick = cand
-                break
+        pick = next((cand for cand in pools[fi] if cand not in used), None)
         if pick is None:                       # family exhausted: number within it
             base = FAMILIES[fi][2][0]
             n = 2
@@ -230,7 +220,7 @@ def assign_names(fills):
             pick = f"{base} {n}"
         used.add(pick)
         names.append(pick)
-    return names, srgb_h
+    return names
 
 
 # ------------------------------------------------------------------ build
@@ -284,9 +274,10 @@ def pick_ink(fill, L, C, h):
             if not (0.30 <= cand_L <= 0.95):
                 continue
             f2 = oklch_hex(cand_L, max_chroma(cand_L, h, C), h)
-            d2 = oklch_hex(0.17, min(C * 0.28, 0.045), h)
-            if contrast(d2, f2) >= AA:
-                return f2, d2, f"dark (L {tag} {cand_L:.3f})"
+            # `dark` again rather than a fresh one: the dark ink is a function of hue and chroma alone, so
+            # moving the FILL's lightness cannot change it.
+            if contrast(dark, f2) >= AA:
+                return f2, dark, f"dark (L {tag} {cand_L:.3f})"
             if contrast("#ffffff", f2) >= AA:
                 return f2, "#ffffff", f"light (L {tag} {cand_L:.3f})"
     return fill, "#ffffff", "UNRESOLVED"
@@ -295,7 +286,7 @@ def pick_ink(fill, L, C, h):
 def build(mode):
     geom = stop_geometry(mode)
     fills = [oklch_hex(L, C, h) for L, C, h in geom]
-    names, srgb = assign_names(fills)
+    names = assign_names(fills)
 
     stops = []
     for i, ((L, C, h), fill) in enumerate(zip(geom, fills)):

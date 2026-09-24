@@ -8,7 +8,7 @@
 		"start": "bun run ./server.ts",
 		"prepare": "bun --bun svelte-kit sync || echo ''",
 		"check": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json",
-		"typecheck": "bun run typecheck:app && bun run typecheck:root && bun run typecheck:e2e",
+		"typecheck": "bun run typecheck:app && bun run typecheck:root && bun run typecheck:tests && bun run typecheck:e2e",
 		"test": "bun test --conditions=svelte",
 		"gates": "bun run test || { echo 'gates: FAILED at leg 1/7 - bun run test'; exit 1; }; (cd worker && python3 -m pytest -q) || { echo 'gates: FAILED at leg 2/7 - cd worker && python3 -m pytest -q'; exit 1; }; bun run typecheck || { echo 'gates: FAILED at leg 3/7 - bun run typecheck'; exit 1; }; bun run lint || { echo 'gates: FAILED at leg 4/7 - bun run lint'; exit 1; }; bun run format:check || { echo 'gates: FAILED at leg 5/7 - bun run format:check (fix with: bun run format)'; exit 1; }; bun run build || { echo 'gates: FAILED at leg 6/7 - bun run build'; exit 1; }; bun run gate:measured || { echo 'gates: FAILED at leg 7/7 - bun run gate:measured (the four MEASURED claims; needs the build above and a Chromium)'; exit 1; }; echo 'gates: all 7 legs green'",
 		"gate:measured": "bun run tests/e2e/gates/measured-design.mjs",
@@ -17,6 +17,7 @@
 		"deadcode": "npm_config_registry=https://registry.npmjs.org/ bunx knip@5",
 		"format:check": "prettier --check 'src/**/*.{ts,svelte,mjs}' 'tests/**/*.{ts,svelte}' '*.{json,md}'",
 		"typecheck:root": "tsc -p tsconfig.server.json",
+		"typecheck:tests": "bun --bun svelte-kit sync && tsc -p tests/tsconfig.json",
 		"typecheck:e2e": "tsc -p tests/tsconfig.e2e.json",
 		"e2e": "bun run tests/e2e/party.mjs",
 		"e2e:seed": "bun run tests/e2e/seed-media.mjs",
@@ -25,7 +26,12 @@
 		"e2e:probes": "bun run tests/e2e/run-probes.mjs",
 		"shot:settings": "bun run tests/e2e/shot-settings.mjs",
 		"shot:metrics": "bun run tests/e2e/shot-metrics.mjs",
-		"typecheck:app": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json"
+		"typecheck:app": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json",
+		"pw": "playwright test",
+		"pw:gate": "playwright test --project=gate",
+		"pw:flow": "playwright test --project=flow",
+		"pw:probe": "playwright test --project=probe",
+		"pw:shot": "playwright test --project=shot"
 	},
 	"dependencies": {
 		"@lucide/svelte": "^1.43.0",
@@ -45,6 +51,7 @@
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
 		"@tailwindcss/vite": "4.3.3",
 		"@types/qrcode": "^1.5.6",
+		"@types/ws": "^8.18.1",
 		"bun-types": "^1.3.14",
 		"drizzle-kit": "^0.31.10",
 		"eslint": "^10.10.0",
@@ -61,6 +68,7 @@
 		"tailwindcss": "4.3.3",
 		"typescript": "^5.6.0",
 		"typescript-eslint": "^8.69.0",
-		"vite": "^8.0.16"
+		"vite": "^8.0.16",
+		"ws": "^8.21.3"
 	}
 }

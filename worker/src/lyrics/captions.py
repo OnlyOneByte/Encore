@@ -87,17 +87,19 @@ def _collapse_scroll_overlap(segs: list[dict[str, Any]]) -> list[dict[str, Any]]
     while True:
         result: list[dict[str, Any]] = []
         for seg in segs:
-            if result and seg["start"] <= result[-1]["end"] + _ROLLING_ADJACENCY_SEC:
-                overlap = _head_tail_overlap_words(result[-1]["text"], seg["text"])
-                if overlap >= _SCROLL_MIN_OVERLAP_WORDS:
-                    tail = " ".join(seg["text"].split()[overlap:]).strip()
-                    if not tail:
-                        # Wholly contained in the running line's tail, a pure re-hold.
-                        result[-1]["end"] = max(result[-1]["end"], seg["end"])
-                        continue
-                    result.append({"start": seg["start"], "end": seg["end"], "text": tail})
-                    continue
-            result.append(dict(seg))
+            adjacent = bool(result) and seg["start"] <= result[-1]["end"] + _ROLLING_ADJACENCY_SEC
+            # A non-adjacent cue scores 0 and so takes the not-a-scroll path below: time adjacency is a
+            # precondition of the overlap meaning anything, not a separate decision.
+            overlap = _head_tail_overlap_words(result[-1]["text"], seg["text"]) if adjacent else 0
+            if overlap < _SCROLL_MIN_OVERLAP_WORDS:
+                result.append(dict(seg))
+                continue
+            tail = " ".join(seg["text"].split()[overlap:]).strip()
+            if not tail:
+                # Wholly contained in the running line's tail, a pure re-hold.
+                result[-1]["end"] = max(result[-1]["end"], seg["end"])
+                continue
+            result.append({"start": seg["start"], "end": seg["end"], "text": tail})
         if result == segs:
             return result
         segs = result
@@ -180,7 +182,7 @@ def caption_argv(
     source_uri: str,
     out_template: str,
     ytdlp_bin: str = "yt-dlp",
-    langs: str = DEFAULT_SUB_LANGS,
+    *,
     auto: bool = False,
 ) -> list[str]:
     """yt-dlp argv fetching ONE KIND of subtitle track, and no media.
@@ -199,7 +201,7 @@ def caption_argv(
         "--skip-download",
         "--write-auto-subs" if auto else "--write-subs",
         "--sub-langs",
-        langs,
+        DEFAULT_SUB_LANGS,
         "--sub-format",
         "vtt/srt/best",
         "--convert-subs",

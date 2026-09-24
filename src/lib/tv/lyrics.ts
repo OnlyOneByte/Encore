@@ -1,5 +1,6 @@
 // Pure karaoke-timing logic for the TV lyrics overlay. All times are SECONDS, and model output is UNTRUSTED, so
 // every accessor is defensive: missing/NaN bounds never throw, they read as "not yet sung".
+import { isAuthoritativeText, type LyricsCandidate } from '$lib/contract';
 
 export interface LyricWord {
 	word: string;
@@ -183,8 +184,8 @@ export function lineBounds(line: LyricLine): [number, number] | null {
 export function activeLineIndex(lines: LyricLine[], pos: number): number {
 	if (lines.length === 0) return -1;
 	let active = 0;
-	for (let i = 0; i < lines.length; i++) {
-		const b = lineBounds(lines[i]);
+	for (const [i, line] of lines.entries()) {
+		const b = lineBounds(line);
 		if (!b) continue;
 		const [start, end] = b;
 		if (pos >= start && pos < end) return i;
@@ -196,14 +197,11 @@ export function activeLineIndex(lines: LyricLine[], pos: number): number {
 
 /** Index of the word within a line being sung at `pos` (the "ball" position); -1 if none/between. */
 export function activeWordIndex(line: LyricLine, pos: number): number {
-	for (let i = 0; i < line.words.length; i++) {
-		const w = line.words[i];
+	for (const [i, w] of line.words.entries()) {
 		if (pos >= w.start && pos < w.end) return i;
 	}
 	return -1;
 }
-
-import { isAuthoritativeText, type LyricsCandidate } from '$lib/contract';
 
 /** The provenance slice the overlay needs — a Pick of the stored candidate. */
 export type LyricsProvenance = Pick<LyricsCandidate, 'textSource' | 'textConfidence' | 'timing'>;

@@ -16,6 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src import ratelimit as gate  # the shared outbound rate gate  # noqa: E402
 from src.metadata import annotate as ann  # noqa: E402
 
 # Trimmed from a real response. Note the U+2010 in every artist name.
@@ -206,7 +207,7 @@ def test_requests_are_paced_to_one_per_second():
     c.search("a", "b")  # first call never waits
     assert slept == []
     c.search("a", "b")  # immediately again → must wait out the interval
-    assert slept and slept[0] == pytest.approx(ann.MIN_INTERVAL_SEC)
+    assert slept and slept[0] == pytest.approx(gate.MIN_INTERVAL_SEC)
 
 
 def test_TWO_CLIENTS_in_one_process_share_the_gate():
@@ -217,7 +218,7 @@ def test_TWO_CLIENTS_in_one_process_share_the_gate():
     b = ann.MusicBrainzClient(fetcher=lambda u, h: (200, "{}"), rate_limiter=lim)
     a.search("x", "y")
     b.search("x", "y")  # a DIFFERENT client — must still wait its turn
-    assert slept and slept[0] == pytest.approx(ann.MIN_INTERVAL_SEC)
+    assert slept and slept[0] == pytest.approx(gate.MIN_INTERVAL_SEC)
 
 
 def test_calls_are_serialised_so_two_threads_cannot_burst():
@@ -262,11 +263,11 @@ def test_a_503_is_retried_with_backoff_then_gives_up():
     c = ann.MusicBrainzClient(fetcher=always_throttled, rate_limiter=lim)
     with pytest.raises(ann.AnnotationFetchError, match="throttled"):
         c.search("a", "b")
-    assert attempts["n"] == ann.MAX_ATTEMPTS
-    assert lim.throttled == ann.MAX_ATTEMPTS
-    assert lim.retries == ann.MAX_ATTEMPTS - 1
+    assert attempts["n"] == gate.MAX_ATTEMPTS
+    assert lim.throttled == gate.MAX_ATTEMPTS
+    assert lim.retries == gate.MAX_ATTEMPTS - 1
     # exponential, not a fixed pause
-    assert slept == [ann.BACKOFF_BASE_SEC, ann.BACKOFF_BASE_SEC * 2]
+    assert slept == [gate.BACKOFF_BASE_SEC, gate.BACKOFF_BASE_SEC * 2]
 
 
 def test_a_503_that_clears_is_recovered_rather_than_lost():

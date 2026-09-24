@@ -2,18 +2,19 @@
   than a rule in app.css: this is one small widget's layout, not a palette or a scale, and a global class would be
   reachable by any page that happened to spell it. The emptiness check lives HERE, not in each caller. -->
 <script lang="ts">
-	let {
-		/** Already-labelled pairs, in display order. The caller owns the wording of each key. */
-		facts
-	}: { facts: [string, string][] } = $props();
+	interface Props {
+		/** Label/value pairs in display order. The caller owns the wording of every label. */
+		facts: [label: string, value: string][];
+	}
+	let { facts }: Props = $props();
 </script>
 
 {#if facts.length}
 	<dl class="facts">
-		{#each facts as [k, v] (k)}
+		{#each facts as [label, value] (label)}
 			<div>
-				<dt>{k}</dt>
-				<dd>{v}</dd>
+				<dt>{label}</dt>
+				<dd>{value}</dd>
 			</div>
 		{/each}
 	</dl>

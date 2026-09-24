@@ -19,6 +19,8 @@
 #   ENCORE_WORKER_PYTHON   interpreter for the worker venv (must be >= 3.11)
 #   ENCORE_SKIP_DENO=1     do not fetch deno; YouTube downloads will fail without it
 #   ENCORE_SKIP_UV=1       do not fetch uv; falls back to python -m venv + pip
+#   ENCORE_SKIP_FFMPEG=1   do not check ffmpeg at all (presence OR codecs); stems will not encode and
+#                          every loudness reading becomes "unmeasurable", which publishes silent stems
 #   ENCORE_ENV_FILE        a .env other than ./.env
 #
 # WHY --ui IS SEPARATE. `bun run dev` (vite) serves the UI with HMR but NOT the WebSocket hub —
@@ -68,7 +70,7 @@ if [ -f "$ENV_FILE" ]; then
 			env_set+=("$key")
 		fi
 	done < "$ENV_FILE"
-	ENV_REPORT="${ENV_FILE#$ROOT/} — ${#env_set[@]} set${env_set[*]:+: ${env_set[*]}}"
+	ENV_REPORT="${ENV_FILE#"$ROOT"/} — ${#env_set[@]} set${env_set[*]:+: ${env_set[*]}}"
 	[ "${#env_shadowed[@]}" -gt 0 ] && ENV_REPORT="$ENV_REPORT; shadowed by shell: ${env_shadowed[*]}"
 fi
 
@@ -118,10 +120,176 @@ need() {
 	command -v "$1" >/dev/null 2>&1 || { echo "missing required tool: $1${2:+ — $2}" >&2; return 1; }
 }
 
+# ── ffmpeg, CHECKED BY CAPABILITY ────────────────────────────────────────────────────
+# `command -v ffmpeg` is a presence check, and presence is NOT sufficiency. A DECODE-ONLY build is a real
+# thing — tests/e2e/HARNESS.md documents a box whose ffmpeg is "decode-only — no encoding, and the loudness
+# probe's volumedetect filter is absent" — and it passes any presence check, then fails at RUNTIME, where it
+# reads as a broken worker rather than as a stripped codec set. What the code actually calls, read out of the
+# code rather than assumed:
+#
+#   volumedetect (FILTER)  src/lib/server/media/loudness.ts and worker/src/processor.py both shell
+#                          `-af volumedetect -f null -` and parse `mean_volume:`/`max_volume:` off stderr.
+#                          Absent, parseVolumeDetect() returns null forever — and null is DELIBERATELY
+#                          "unmeasurable, not silent", so nothing throws: every guiding track links
+#                          unverified, a digitally silent stem publishes as though it were fine, and no
+#                          screen anywhere says why.
+#   join (FILTER)          worker/src/separation/demucs.py encode_guide_mix_argv folds both stems into ONE
+#                          4-channel FLAC via `join=inputs=2:channel_layout=quad`. That single file is what
+#                          stops the guiding track drifting against the instrumental.
+#   amix (FILTER)          worker/src/separation/mlx.py mix_minus_instrumental_argv sums the MLX engine's
+#                          non-vocal stems with `amix=inputs=N:normalize=0`.
+#   flac (ENCODER)         every PUBLISHED stem and the guide mix (demucs.py encode_flac_argv and
+#                          encode_guide_mix_argv, `-c:a flac`), plus core's own legacy-stem recompress in
+#                          src/lib/server/media/retention.ts.
+#   pcm_s16le (ENCODER)    demucs.py decode_argv writes the scratch WAV every separator consumes
+#                          (`-c:a pcm_s16le`), as does mlx.py's summed instrumental.
+#
+# Split CORE vs WORKER because --core-only and --ui never separate anything, and the worker's extras would
+# then be a fatal error about work that is not going to happen.
+FFMPEG_FILTERS_CORE="volumedetect"
+FFMPEG_ENCODERS_CORE="flac"
+FFMPEG_FILTERS_WORKER="join amix"
+FFMPEG_ENCODERS_WORKER="pcm_s16le"
+# Each half takes its own override and defaults to a bare `ffmpeg` (core: FFMPEG_BIN, worker:
+# ENCORE_FFMPEG_BIN — and .env is already loaded above, so either may be set by the time we get here).
+# Probing PATH while the app runs some other binary would pass and then fail in exactly the way this check
+# exists to prevent. ENCORE_FFMPEG_BIN wins when both are set: it is the encode path, which needs the larger set.
+FFMPEG_BIN_PROBED="${ENCORE_FFMPEG_BIN:-${FFMPEG_BIN:-ffmpeg}}"
+FFMPEG_REPORT=""
+
+# The version field, exactly as the banner has always printed it. Never fails: `set -o pipefail` would
+# otherwise make a binary that exits non-zero on `-version` abort the whole script from inside an assignment.
+ffmpeg_version() {
+	"$FFMPEG_BIN_PROBED" -version 2>/dev/null | head -1 | cut -d' ' -f3 || true
+}
+
+# Which of the wanted capabilities are MISSING, as `filter:x encoder:y` — empty output means complete.
+# Names the gap rather than reporting "ffmpeg is broken", because the name is the whole fix.
+# ONE process per listing (~120 ms for both), never a test transcode.
+ffmpeg_gaps() {
+	local filters encoders name gaps=""
+	filters="$("$FFMPEG_BIN_PROBED" -hide_banner -filters 2>/dev/null)" || filters=""
+	encoders="$("$FFMPEG_BIN_PROBED" -hide_banner -encoders 2>/dev/null)" || encoders=""
+	# The NAME is column 2 of both listings, behind a flags column whose shape differs (`..`/`T.C` for a
+	# filter, `A....D` for an encoder) — so match on POSITION, not on the flags. Unquoted $1/$2 on purpose:
+	# these are space-separated lists.
+	for name in $1; do
+		grep -qE "^[[:space:]]*[^[:space:]]+[[:space:]]+$name([[:space:]]|\$)" <<<"$filters" || gaps="$gaps filter:$name"
+	done
+	for name in $2; do
+		grep -qE "^[[:space:]]*[^[:space:]]+[[:space:]]+$name([[:space:]]|\$)" <<<"$encoders" || gaps="$gaps encoder:$name"
+	done
+	echo "${gaps# }"
+}
+
+# The command THIS box would use, never a guessed one: apt/dnf/pacman all spell it differently and a wrong
+# line sends the user to a search engine. Empty when nothing recognisable is installed.
+ffmpeg_install_cmd() {
+	case "$(uname -s)" in
+		Darwin) command -v brew >/dev/null 2>&1 && echo "brew install ffmpeg" ;;
+		Linux)
+			if command -v apt-get >/dev/null 2>&1; then echo "sudo apt-get update && sudo apt-get install -y ffmpeg"
+			elif command -v dnf >/dev/null 2>&1; then echo "sudo dnf install -y ffmpeg"
+			elif command -v pacman >/dev/null 2>&1; then echo "sudo pacman -S --needed ffmpeg"
+			fi ;;
+	esac
+	return 0  # a missing brew is not an error here, it is an empty answer
+}
+
+# Offer the install, or print the command and give up. NEVER sudo: on Linux this only ever PRINTS, because a
+# dev script that escalates privileges unasked is a worse surprise than a missing codec.
+# $1/$2 are the wanted filter/encoder lists, re-probed after an install so "installed" cannot mean "fixed".
+ffmpeg_install() {
+	local cmd reply gaps named=FFMPEG_BIN
+	cmd="$(ffmpeg_install_cmd)"
+	[ -n "${ENCORE_FFMPEG_BIN:-}" ] && named=ENCORE_FFMPEG_BIN
+	if [ "$FFMPEG_BIN_PROBED" != ffmpeg ]; then
+		echo "  $named=$FFMPEG_BIN_PROBED is a binary you named, so installing a package would not change" >&2
+		echo "  what it resolves to. Point it at a full build, or unset it to use PATH${cmd:+ and run: $cmd}." >&2
+		return 1
+	fi
+	if [ -z "$cmd" ]; then
+		echo "  no package manager this script knows (brew / apt-get / dnf / pacman) on $(uname -s). Install a" >&2
+		echo "  full ffmpeg yourself, point FFMPEG_BIN at one, or ENCORE_SKIP_FFMPEG=1 to start without it." >&2
+		return 1
+	fi
+	if [ "$(uname -s)" != Darwin ]; then
+		echo "  install it with:  $cmd" >&2
+		echo "  dev.sh will not run that for you — it needs sudo, and this script never escalates." >&2
+		return 1
+	fi
+	# Consent, or nothing happens. Same shape as the --reset confirmation: prompt, `read -r reply`, compare
+	# against a literal. --yes is honoured (that is what -y means) but SAYS SO, so an unprompted brew install
+	# can never look like something dev.sh did on its own.
+	if [ "$ASSUME_YES" = 1 ]; then
+		echo "  running \`$cmd\` without a prompt because --yes was passed." >&2
+	elif [ -t 0 ]; then
+		printf '\nrun `%s` now? [y/N] ' "$cmd"
+		read -r reply || reply=""
+		[ "$reply" = "y" ] || { echo "  declined — nothing installed. Run it yourself:  $cmd" >&2; return 1; }
+	else
+		echo "  stdin is not a terminal, so there is nobody to ask. Run:  $cmd" >&2
+		echo "  (or re-run with --yes to let dev.sh run it for you.)" >&2
+		return 1
+	fi
+	brew install ffmpeg || { echo "  \`$cmd\` failed — its output is above." >&2; return 1; }
+	hash -r 2>/dev/null || true  # a binary that did not exist a moment ago
+	command -v "$FFMPEG_BIN_PROBED" >/dev/null 2>&1 || {
+		echo "  \`$cmd\` reported success and there is STILL no ffmpeg on PATH — check its output above." >&2
+		return 1
+	}
+	gaps="$(ffmpeg_gaps "$1" "$2")"
+	[ -z "$gaps" ] || {
+		echo "  installed, and this ffmpeg STILL cannot: $gaps — that is a stripped formula, not a missing one." >&2
+		return 1
+	}
+	FFMPEG_REPORT="$(ffmpeg_version) (installed just now)"
+	return 0
+}
+
+ensure_ffmpeg() {
+	local want_f="$FFMPEG_FILTERS_CORE" want_e="$FFMPEG_ENCODERS_CORE" gaps version
+	# Gated exactly like the venv install and the deno fetch below — --core-only / --ui run no worker, so the
+	# separation codecs are not their problem. The CORE set is NOT gated, and deliberately so: vite serves the
+	# same +page.server.ts/+server.ts handlers server.ts does, they all call getApp(), and getApp()'s boot
+	# chain runs the volumedetect probe over every linked stem and recompresses legacy ones with the flac
+	# encoder. --ui therefore needs both, and two listings cost ~120 ms, so nothing here makes --ui slower.
+	if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
+		want_f="$want_f $FFMPEG_FILTERS_WORKER"
+		want_e="$want_e $FFMPEG_ENCODERS_WORKER"
+	fi
+
+	# The escape hatch, same shape as ENCORE_SKIP_DENO: it does not pretend the capability is there, it says
+	# what breaks and gets out of the way.
+	if [ "${ENCORE_SKIP_FFMPEG:-0}" = 1 ]; then
+		FFMPEG_REPORT="NOT CHECKED (ENCORE_SKIP_FFMPEG=1)"
+		echo "WARNING: ENCORE_SKIP_FFMPEG=1 — no stem will encode, and every loudness reading becomes" >&2
+		echo "         'unmeasurable', which PUBLISHES a silent stem instead of refusing it." >&2
+		return 0
+	fi
+
+	if command -v "$FFMPEG_BIN_PROBED" >/dev/null 2>&1; then
+		version="$(ffmpeg_version)"
+		gaps="$(ffmpeg_gaps "$want_f" "$want_e")"
+		if [ -z "$gaps" ]; then
+			FFMPEG_REPORT="$version (filters: $want_f; encoders: $want_e)"
+			return 0
+		fi
+		# Name the BINARY, not just "ffmpeg": with an override set, "the one on PATH" is the wrong file to go
+		# looking at, and that misdirection is most of the cost of this failure.
+		echo "ffmpeg ${version:-?} at $(command -v "$FFMPEG_BIN_PROBED") CANNOT DO THE JOB — missing: $gaps" >&2
+		echo "  a decode-only build passes a presence check and then fails mid-cook, or worse: with no" >&2
+		echo "  volumedetect, loudness is silently 'unmeasurable' forever and silent stems publish clean." >&2
+	else
+		echo "missing required tool: $FFMPEG_BIN_PROBED — the worker transcodes every stem" >&2
+	fi
+	ffmpeg_install "$want_f" "$want_e"
+}
+
 # ── preflight ────────────────────────────────────────────────────────────────────────
 say "preflight"
 need bun "install from https://bun.sh" || exit 1
-need ffmpeg "brew install ffmpeg — the worker transcodes every stem" || exit 1
+ensure_ffmpeg || exit 1
 # The health probe IS curl: without it the probe can never succeed and the script blames core, reporting
 # "core did not become healthy" after 45 seconds of waiting for a request it never made.
 need curl "install curl — the startup health probe uses it" || exit 1
@@ -208,7 +376,7 @@ PYEOF
 	echo "deno    $("$DENO_DIR/deno" --version | head -1 | cut -d' ' -f2) (repo-local, checksum-verified)"
 }
 echo "bun     $(bun --version)"
-echo "ffmpeg  $(ffmpeg -version 2>/dev/null | head -1 | cut -d' ' -f3)"
+echo "ffmpeg  $FFMPEG_REPORT"
 echo "media   $MEDIA_DIR"
 echo "data    $DATA_DIR"
 echo "env     $ENV_REPORT"
@@ -277,7 +445,7 @@ if [ "$DO_RESET" = 1 ]; then
 
 	echo "will delete:"
 	for t in "${TARGETS[@]}"; do
-		[ -e "$t" ] && printf '  %-52s %s\n' "${t#$ROOT/}" "$(du -sh "$t" 2>/dev/null | cut -f1)"
+		[ -e "$t" ] && printf '  %-52s %s\n' "${t#"$ROOT"/}" "$(du -sh "$t" 2>/dev/null | cut -f1)"
 	done
 	echo "  (plus every __pycache__ under worker/)"
 

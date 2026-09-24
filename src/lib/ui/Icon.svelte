@@ -23,11 +23,10 @@
 	} = $props();
 </script>
 
-<!-- eslint-disable svelte/no-at-html-tags -- {@html} is safe here specifically: ICON_PATHS is a frozen map of
-	compile-time string constants in our own source, with no interpolation and no path from user input or the network,
-	and `name` is typed to its keys, so the only reachable values are those literals. The whole-file form rather than
-	`eslint-disable-next-line` because the expression sits inside a multi-line start tag, where no comment can be
-	placed on the preceding line; this file holds exactly one {@html} and nothing else the rule can reach. -->
+<!-- eslint-disable svelte/no-at-html-tags -- every ICON_PATHS value is a compile-time string literal in our own
+	source and `name` is typed to its keys, so no user or network value can reach {@html}. Whole-file rather than
+	`eslint-disable-next-line` because the expression sits inside a multi-line start tag, which leaves no preceding
+	line to put a comment on; this file holds exactly one {@html}. -->
 <svg
 	class="icon"
 	class:solid={SOLID_ICONS.includes(name)}

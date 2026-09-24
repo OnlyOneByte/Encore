@@ -22,7 +22,6 @@ const config: KnipConfig = {
 		'src/routes/**/+server.ts',
 		// The e2e drivers are SPAWNED BY NAME, never imported, so no static import graph reaches them —
 		// same reason tests/guards/meta/e2e-reachability.test.ts walks basenames rather than imports.
-		'tests/setup/**/*.ts',
 		'tests/**/*.test.ts',
 		'tests/e2e/**/*.mjs',
 		'tests/e2e/contract.ts'
@@ -36,8 +35,9 @@ const config: KnipConfig = {
 	ignoreDependencies: ['shadcn-svelte', 'svelte-check'],
 	// The worker is Python; `python3` is spawned by the gates, not resolved as a JS binary.
 	ignoreBinaries: ['python3'],
-	// SvelteKit/Vite virtual modules — synthesised at build time, and under `bun test` mapped to real
-	// files by KIT_STUBS in tests/setup/svelte-dom-preload.ts.
+	// SvelteKit/Vite virtual modules — synthesised at build time. No test resolves them any more: the
+	// component-mount harness that stubbed `$app/*` under `bun test` is gone, and so are the tests that
+	// mounted route components.
 	ignoreUnresolved: [/^\$app\//, /^\$env\//, /^\$service-worker$/],
 	// An export used inside its own file is over-exported, not dead.
 	ignoreExportsUsedInFile: true,

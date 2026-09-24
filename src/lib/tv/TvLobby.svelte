@@ -59,17 +59,18 @@
 	// With a rehydrated queue but nobody reconnected the roster is empty, so say something true rather than "0 in the
 	// room". THE PROMPT SAYS "pick a song", NOT "tap Turn": SongRow's actions are ICON-ONLY, with the words surviving
 	// as `aria-label`s alone, so naming a control sends a whole room looking for a label no phone displays.
-	const sub = $derived(
-		processing
-			? // Not "pick a song" here — they already did, and the honest answer is that the wait is the karaoke being
-				// made. "karaoke", not "the vocals"/"separation": the guest word.
-				count > 0
+	const sub = $derived.by(() => {
+		// Not "pick a song" while something is processing — they already did, and the honest answer is that the wait is
+		// the karaoke being made. "karaoke", not "the vocals"/"separation": the guest word.
+		if (processing) {
+			return count > 0
 				? `${count} in the room · making the karaoke, this takes a minute`
-				: 'Making the karaoke — this takes a minute'
-			: count > 0
-				? `${count} in the room · search on your phone and pick a song`
-				: 'Scan to join, then search on your phone and pick a song'
-	);
+				: 'Making the karaoke — this takes a minute';
+		}
+		return count > 0
+			? `${count} in the room · search on your phone and pick a song`
+			: 'Scan to join, then search on your phone and pick a song';
+	});
 </script>
 
 <!--

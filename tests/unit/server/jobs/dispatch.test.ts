@@ -1,7 +1,14 @@
-import { DEFAULT_GLOBAL_SETTINGS, Job, JobType, type GlobalSettings, type Job, type Media } from '$lib/contract';
+import {
+	DEFAULT_GLOBAL_SETTINGS,
+	isQualityUpgrade,
+	qualityRank,
+	type GlobalSettings,
+	type Job,
+	type JobType,
+	type Media
+} from '$lib/contract';
 import {
 	assignParams,
-	eligible,
 	followUps,
 	hasCapableWorker,
 	planAssignments,
@@ -10,7 +17,7 @@ import {
 	type CapabilityFor
 } from '$lib/server/jobs/dispatch';
 import { markMediaReady } from '$lib/server/jobs/process';
-import { WorkerSession } from '$lib/server/jobs/registry';
+import type { WorkerSession } from '$lib/server/jobs/registry';
 import { expect, test } from 'bun:test';
 
 // Pure dispatch policy — need-order (priority ASC, createdAt tiebreak), least-loaded worker,
@@ -84,12 +91,6 @@ test('jobs spread across workers, balancing load', () => {
 	const jobs = [job('a', { priority: 1 }), job('b', { priority: 2 })];
 	const out = planAssignments(jobs, [worker('w1', 1), worker('w2', 1)]);
 	expect(new Set(out.map((x) => x.workerId))).toEqual(new Set(['w1', 'w2']));
-});
-
-test('eligible() requires both a free slot and a matching capability', () => {
-	expect(eligible(worker('w', 1, ['stems']), job('a', { jobType: 'stems' }))).toBe(true);
-	expect(eligible(worker('w', 0, ['stems']), job('a', { jobType: 'stems' }))).toBe(false);
-	expect(eligible(worker('w', 1, ['align']), job('a', { jobType: 'stems' }))).toBe(false);
 });
 
 // Align enqueueing, the fields `job:assign` must carry for it, and the confidence rule that decides
@@ -439,8 +440,6 @@ test('a CONFIDENT canonical is never overwritten by the guess', () => {
 	expect(p.artist).toBe('a-ha');
 	expect(p.track).toBe('Take On Me');
 });
-
-import { isQualityUpgrade, qualityRank, DEFAULT_GLOBAL_SETTINGS, type Media, type GlobalSettings } from '$lib/contract';
 
 const settings_UpgradeChain = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({
 	...DEFAULT_GLOBAL_SETTINGS,

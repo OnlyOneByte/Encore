@@ -2,6 +2,7 @@
 
 import { normalizeSingerColor, graceMsOf, type Singer } from '../../contract';
 import type { EncoreApp } from '../app';
+import type { Room } from '../rooms/repository';
 
 export interface JoinInput {
 	displayName: string;
@@ -36,10 +37,10 @@ export class RoomNotFoundError extends Error {
 }
 
 /** Case- and whitespace-insensitive, because "dana" and "Dana " are the same person to everyone else. */
-export const nameKey = (name: string): string => name.trim().toLowerCase().replace(/\s+/g, ' ');
+const nameKey = (name: string): string => name.trim().toLowerCase().replace(/\s+/g, ' ');
 
 /** Codes are minted uppercase (see RoomRepository's CODE_ALPHABET), but a guest types one off a TV, so accept any case and surrounding whitespace and canonicalise to the stored form before lookup. */
-export const normalizeRoomCode = (code: string): string => code.trim().toUpperCase();
+const normalizeRoomCode = (code: string): string => code.trim().toUpperCase();
 
 /** What `listPublic` projects onto the wire: no session token, no roomId. */
 type Member = Omit<Singer, 'sessionToken'>;
@@ -85,19 +86,23 @@ export function hasPendingSongs(app: EncoreApp, singerId: string): boolean {
 	return app.state.entries.some((e) => e.singerId === singerId && (e.status === 'queued' || e.status === 'playing'));
 }
 
+/** An explicit code names one room and an unknown one is REFUSED, never silently defaulted; no code lands
+ *  in the active room. Resolved before anything is created, so a bad code leaves no orphaned singer row. */
+function resolveJoinRoom(app: EncoreApp, rawCode: string): Room {
+	if (rawCode) {
+		const room = app.rooms.byCode(normalizeRoomCode(rawCode));
+		if (!room) throw new RoomNotFoundError(rawCode);
+		return room;
+	}
+	const room = app.rooms.byId(app.activeRoomId);
+	// The active room is minted at boot, so this is a guard rather than a path.
+	if (!room) throw new Error('no active room');
+	return room;
+}
+
 /** Validate + create a singer, then broadcast singer:joined. Throws on invalid input. */
 export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
-	// Resolved FIRST, so a bad code fails before a singer exists and leaves no orphaned row.
-	const rawCode = (input.code ?? '').trim();
-	let room;
-	if (rawCode) {
-		room = app.rooms.byCode(normalizeRoomCode(rawCode));
-		if (!room) throw new RoomNotFoundError(rawCode);
-	} else {
-		room = app.rooms.byId(app.activeRoomId);
-		// The active room is minted at boot, so this is a guard rather than a path.
-		if (!room) throw new Error('no active room');
-	}
+	const room = resolveJoinRoom(app, (input.code ?? '').trim());
 
 	const name = (input.displayName ?? '').trim();
 	if (!name) throw new Error('display name required');

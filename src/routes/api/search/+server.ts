@@ -8,6 +8,9 @@ import { ulid, type Media } from '$lib/contract';
 
 const PER_SOURCE_LIMIT = 12;
 
+/** A song's ORIGIN identity — the pair `Media.sourceRef` is immutable for. NUL-joined, since neither half can contain one. */
+const originKey = (source: string, sourceRef: string): string => `${source}\u0000${sourceRef}`;
+
 /** One resolver's results, or none — a dead source (yt-dlp missing, no network) must not fail the whole search, because the local library and the already-processed catalog are still useful. */
 async function safeSearch(resolver: MediaResolver | undefined, q: string): Promise<SearchResult[]> {
 	if (!resolver) return [];
@@ -54,12 +57,21 @@ export const GET: RequestHandler = async ({ url }) => {
 		only === 'youtube' || only === 'local' ? [] : safeSearch(app.spotify, q)
 	]);
 
+	// ONE index over the catalog, not a full scan per hit: this runs on a debounced keystroke against every song ever materialised. Earliest-inserted wins per origin, and newly minted rows are fed back in, so two resolvers returning the same video still collapse to one Media.
+	const byOrigin = new Map<string, Media>();
+	for (const m of app.mediaById.values()) {
+		const key = originKey(m.source, m.sourceRef);
+		if (!byOrigin.has(key)) byOrigin.set(key, m);
+	}
+
 	// Materialize every hit into a queue-able Media. Recognising a song already SEEN (by its origin identity) is what keeps a processed song from reappearing as a second, raw row — see Media.sourceRef, immutable for exactly this reason.
 	const materialized: Media[] = [...local, ...yt, ...spotify].map((r) => {
-		const existing = [...app.mediaById.values()].find((m) => m.source === r.source && m.sourceRef === r.sourceRef);
+		const key = originKey(r.source, r.sourceRef);
+		const existing = byOrigin.get(key);
 		if (existing) return refreshDisplayFields(existing, r, (m) => app.media.upsert(m));
 		const media = resultToMedia(ulid(), r);
 		app.mediaById.set(media.id, media);
+		byOrigin.set(key, media);
 		// Persist on materialize so the id stays valid across a restart — a queue entry or processed stem referencing this media must still resolve to a title after the server bounces.
 		app.media.upsert(media);
 		return media;

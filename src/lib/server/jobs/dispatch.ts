@@ -149,11 +149,6 @@ export function requiredCapability(jobType: JobType, settings?: GlobalSettings):
 export type CapabilityFor = (job: Pick<Job, 'jobType'>) => string;
 const defaultCapabilityFor: CapabilityFor = (job) => job.jobType;
 
-/** A worker can take a job iff it has a free slot and advertises the job's REQUIRED capability. */
-function eligible(worker: WorkerSession, job: Job, capabilityFor: CapabilityFor = defaultCapabilityFor): boolean {
-	return worker.slotsFree > 0 && worker.capabilities.includes(capabilityFor(job));
-}
-
 /** PURE and greedy: highest-priority queued job (priority ASC, createdAt ASC) to the least-loaded
  *  eligible worker (slotsFree DESC), decrement locally, repeat. No eligible worker leaves it queued. */
 export function planAssignments(
@@ -191,5 +186,3 @@ export function hasCapableWorker(
 	const cap = capabilityFor(job);
 	return workers.some((w) => w.capabilities.includes(cap));
 }
-
-export { eligible };

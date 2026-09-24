@@ -16,7 +16,7 @@
 //   1. an off-shape add passes no earlier guard (id / singerId / mediaId all valid),
 //   2. would be applied to authoritative state and BROADCAST to the whole room, then
 //   3. either crashes the flush (missing addedAt / null status) or slips past it silently
-// (Infinity addedAt / off-enum-or-forged status), re-opening's forged-'playing' hole (a) through the `add` op.
+// (Infinity addedAt / off-enum-or-forged status), re-opening the forged-'playing' hole (a) through the `add` op.
 // The fix rejects all of these at the add arm's seam so nothing bad is ever applied or persisted.
 import { test, expect } from 'bun:test';
 import { validateCommand, handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
@@ -116,7 +116,7 @@ test("a client add accepts only 'queued' out of the whole queue_entries.status e
 	// Sourced from the column enum so this cannot drift: 'queued' is the ONE legal client-minted value,
 	// EVERY other enum value (playing/waiting/done/skipped — all server-owned) is rejected, and so is a
 	// value not in the column at all. This pins the INVARIANT (a client may only mint 'queued'), not the
-	// old over-broad implementation (whole-enum membership), which re-opened's forged-'playing' hole.
+	// old over-broad implementation (whole-enum membership), which re-opened the forged-'playing' hole.
 	const colEnum = [...(queueEntries.status.enumValues as readonly string[])];
 	expect(colEnum).toContain('queued');
 	expect(colEnum.length).toBeGreaterThan(1); // there ARE server-owned values that must be rejected

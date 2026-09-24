@@ -13,12 +13,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
+
+#: A `Literal` rather than `str`: the two kinds are the whole config axis, and a comment naming them
+#: cannot stop a third spelling reaching `is_object` and reading as local.
+StoreKind = Literal["local", "object"]
 
 
 @dataclass
 class MediaStoreConfig:
-    kind: str  # 'local' | 'object'
+    kind: StoreKind
     bucket: str | None = None
     endpoint: str | None = None
     region: str | None = None
@@ -71,8 +75,11 @@ def make_publisher(
         return lambda local_path, ref: None
     if s3_put is None:
         raise ValueError("object MediaStore requires an s3_put uploader")
+    # `is_object` already proved the bucket is a non-empty str; bound here so the closure carries a
+    # plain `str` instead of a cast that would outlive the property it came from.
+    bucket = config.bucket or ""
 
     def publish(local_path: str, ref: str) -> None:
-        s3_put(config.bucket, object_key(config, ref), local_path)  # type: ignore[arg-type]
+        s3_put(bucket, object_key(config, ref), local_path)
 
     return publish

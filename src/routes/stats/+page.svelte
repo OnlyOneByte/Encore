@@ -8,11 +8,16 @@
 	import * as Alert from '$lib/components/ui/alert';
 	import { count } from '$lib/metrics-format';
 
+	interface SongTally {
+		mediaId: string;
+		title: string;
+		plays: number;
+	}
 	interface Stats {
 		library: { ready: number; catalog: number };
 		sings: { total: number; window: number; distinctSongs: number };
-		topSongs: { mediaId: string; title: string; plays: number }[];
-		topRecent: { mediaId: string; title: string; plays: number }[];
+		topSongs: SongTally[];
+		topRecent: SongTally[];
 		topArtists: { artist: string; plays: number }[];
 		perDay: { day: string; plays: number }[];
 		window: { days: number; since: number };
@@ -22,12 +27,11 @@
 	let failed = $state(false);
 	const now = Date.now();
 
+	const tallyFingerprint = (rows: SongTally[]) => rows.map((s) => `${s.mediaId}:${s.plays}`).join('|');
 	/** On a young install the window covers the whole log, and one chart printed twice reads as a bug. */
 	const recentDiffers = $derived.by(() => {
 		if (!stats || stats.topRecent.length === 0) return false;
-		const a = stats.topSongs.map((s) => `${s.mediaId}:${s.plays}`).join('|');
-		const b = stats.topRecent.map((s) => `${s.mediaId}:${s.plays}`).join('|');
-		return a !== b;
+		return tallyFingerprint(stats.topSongs) !== tallyFingerprint(stats.topRecent);
 	});
 
 	onMount(async () => {

@@ -50,7 +50,8 @@ export function percentile(values: number[], p: number): number | null {
 	if (values.length === 0) return null;
 	const sorted = [...values].sort((a, b) => a - b);
 	const rank = Math.ceil((p / 100) * sorted.length);
-	return sorted[Math.min(sorted.length - 1, Math.max(0, rank - 1))];
+	// Clamped into [0, length-1] over a list the guard above proved non-empty, so this read cannot miss.
+	return sorted[Math.min(sorted.length - 1, Math.max(0, rank - 1))]!;
 }
 
 export function mean(values: number[]): number | null {
@@ -132,7 +133,8 @@ export function perProcess(attempts: JobAttempt[], windowStartMs: number | null 
 		const complete = !clipped && sealed.length === list.length && sealed.every((a) => a.outcome === 'ready');
 		out.push({
 			processingId,
-			mediaId: sealed[0].mediaId,
+			// `sealed` is non-empty from the guard above, and every attempt in one process names the same media.
+			mediaId: sealed[0]!.mediaId,
 			totalMs: Math.max(0, end - start),
 			workMs: sealed.reduce((s, a) => s + (processingMs(a) ?? 0), 0),
 			steps: sealed.length,
@@ -179,11 +181,14 @@ export function perModel(attempts: JobAttempt[]): ModelStats[] {
 	const out: ModelStats[] = [];
 	for (const list of groups.values()) {
 		const rts = list.map(realtimeFactor).filter((v): v is number => v !== null);
-		const declared = list[0].engine && list[0].model ? separatorCost(list[0].engine, list[0].model) : undefined;
+		// `groupBy` seeds each group with its first item, so no group is ever empty. Read once rather than five
+		// times: the whole group shares the engine/model pair it was keyed on, so any member answers for it.
+		const sample = list[0]!;
+		const declared = sample.engine && sample.model ? separatorCost(sample.engine, sample.model) : undefined;
 		const measured = mean(rts);
 		out.push({
-			engine: list[0].engine,
-			model: list[0].model,
+			engine: sample.engine,
+			model: sample.model,
 			n: list.length,
 			meanRtFactor: measured,
 			p95RtFactor: percentile(rts, 95),
@@ -211,8 +216,9 @@ export function perAsrModel(attempts: JobAttempt[]): AsrStats[] {
 	);
 	return [...groups.values()]
 		.map((list) => ({
-			asrModel: list[0].asrModel,
-			syncMode: list[0].syncMode,
+			// Non-empty by construction in `groupBy`, and the group shares the pair it was keyed on.
+			asrModel: list[0]!.asrModel,
+			syncMode: list[0]!.syncMode,
 			n: list.length,
 			meanRtFactor: mean(list.map(realtimeFactor).filter((v): v is number => v !== null)),
 			meanMs: mean(list.map((a) => processingMs(a)!))

@@ -10,7 +10,13 @@
 	"compilerOptions": {
 		"allowJs": true,
 		"checkJs": true,
-		"allowImportingTsExtensions": true
+		"allowImportingTsExtensions": true,
+		// OPT-OUT, and a debt rather than a decision. `noUncheckedIndexedAccess` is on for `src` and `server.ts`,
+		// and it reaches here too because this config descends from the app's. Turning it on for the drivers reports
+		// 194 errors across 18 files — overwhelmingly `arr[0]` and regex groups inside page.evaluate() bodies. They
+		// are worth fixing, but not blind: nothing here runs without a Chromium, so a "fix" that changes what a
+		// driver asserts cannot be caught by a type gate. Left explicit so the number is tracked, not silent.
+		"noUncheckedIndexedAccess": false
 	},
 	"include": [
 		"e2e/capture.mjs",
@@ -57,7 +63,8 @@
 		"e2e/shot-metrics.mjs",
 		"e2e/shot-settings.mjs",
 		"e2e/shot.mjs",
-		"e2e/wav.mjs"
+		"e2e/wav.mjs",
+		"e2e/world/seed.mjs"
 	],
 	"exclude": ["build", "node_modules"]
 }

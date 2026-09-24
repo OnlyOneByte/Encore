@@ -200,7 +200,6 @@ def align_runner(
 def stems_runner(
     *,
     runner: Any,
-    engine: Any = None,
     profiler: Any = None,
     ffmpeg_bin: str = "ffmpeg",
     ytdlp_bin: str = "yt-dlp",
@@ -209,9 +208,11 @@ def stems_runner(
 ) -> Any:
     """A PlanRunner for both separation actions, with this worker's separator configuration.
 
-    The engine is chosen per JOB from `params.engine` (plan selection, §5.2c) via `engine_for` inside
-    the Separate step, so one runner serves both demucs and roformer processes. Passing `engine`
-    overrides that entirely, which is how a test drives a fake separator.
+    The engine is chosen per JOB from `params.engine` (plan selection, §5.2c) via `engine_for` below,
+    so one runner serves both demucs and roformer processes. There is deliberately NO engine override
+    here: a test that wants a fake separator builds `stems_plan(engine=...)` or `Separate(engine=...)`
+    directly, which is where the seam actually is — an override at this level had no caller and its
+    presence claimed a seam that did not exist.
 
     `backend` is the hardware backend `backends.resolve_backend` resolved for this worker (torch/mlx),
     resolved once in `dial_home` and threaded into `engine_for` so it drives the engine that actually
@@ -236,7 +237,7 @@ def stems_runner(
         # `--two-stems`), and it must reach the ENGINE itself, not just the steps below — an
         # Apple-Silicon box with ENCORE_FFMPEG_BIN set must not fall back to a bare `ffmpeg` for the
         # one call an mlx separation needs to produce no_vocals.wav at all.
-        eng = engine or engine_for(
+        eng = engine_for(
             engines.separator, ffmpeg_bin=ffmpeg_bin, **tune.engine_kwargs(device=engines.device)
         )
         kwargs: dict[str, Any] = dict(
