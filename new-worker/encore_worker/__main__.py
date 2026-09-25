@@ -17,7 +17,7 @@ import contextlib
 import time
 from typing import Any
 
-from encore_worker.adapters import cli, lrclib, lrcmux, ml, ports, separate
+from encore_worker.adapters import cli, lrclib, lrcmux, ml, ports, separate, zoo
 from encore_worker.artifacts import scratch
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.identity import Identified
@@ -143,6 +143,9 @@ async def main() -> None:
         capabilities=caps,
         backend=backend.name,
         on_settled=settled,
+        # Enumerated OFF the event loop after registration — 4.8 s cold, and a picker's contents must not
+        # delay the handshake. None on a box without the `audiosep` extra, which skips the frame entirely.
+        catalogue=zoo.announcement if hardware.module_available("audio_separator") else None,
     )
 
     # ONE registration, before any job. `DBOS.workflow` mutates a global registry, so doing it per job would

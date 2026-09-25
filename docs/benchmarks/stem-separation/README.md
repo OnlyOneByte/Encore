@@ -125,13 +125,13 @@ with no voice in it makes "which file is the backing track" unambiguous. Command
 One table, because timing and quality on the same input is the comparison that decides anything.
 `inference` excludes weights load, which is reported separately where it can be isolated.
 
-| model | device | load (s) | inference (s) | instrumental SI-SDR | vocals SI-SDR |
-| --- | --- | --- | --- | --- | --- |
-| `melband-kim-vocal-2` | Metal (MLX) | 0.32 warm | 107.83 | **17.35 dB** | **10.42 dB** |
-| `bs-roformer-1297` | cpu | not isolable | 432.01 | **17.37 dB** | **10.46 dB** |
-| `htdemucs` | mps | not isolable | **28.19** | 14.79 dB | 7.69 dB |
-| `htdemucs` | cpu | not isolable | 92.12 | 14.79 dB | 7.68 dB |
-| *passthrough* (`est == mixture`) | — | — | — | *6.63 dB* | — |
+| model                            | device      | load (s)     | inference (s) | instrumental SI-SDR | vocals SI-SDR |
+| ----------------------------------| -------------| --------------| ---------------| ---------------------| ---------------|
+| `melband-kim-vocal-2`            | Metal (MLX) | 0.32 warm    | 107.83        | **17.35 dB**        | **10.42 dB**  |
+| `bs-roformer-1297`               | cpu         | not isolable | 432.01        | **17.37 dB**        | **10.46 dB**  |
+| `htdemucs`                       | mps         | not isolable | **28.19**     | 14.79 dB            | 7.69 dB       |
+| `htdemucs`                       | cpu         | not isolable | 92.12         | 14.79 dB            | 7.68 dB       |
+| *passthrough* (`est == mixture`) | —           | —            | —             | *6.63 dB*           | —             |
 
 Plain SDR alongside SI-SDR, since a gain offset separates them:
 
