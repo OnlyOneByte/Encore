@@ -73,6 +73,23 @@ def _read_via_soundfile(path: str) -> tuple[np.ndarray, int]:
     return data, int(sample_rate)
 
 
+def _is_stdlib_readable(path: str) -> bool:
+    """Can stdlib `wave` open this? A `.wav` extension is NOT enough to say yes.
+
+    MEASURED: bs-roformer-infer writes FLOAT32 wav (`WAVE_FORMAT_IEEE_FLOAT`, tag 3) and stdlib `wave`
+    refuses it outright with `unknown format: 3`. Before this check, every roformer stem failed both
+    `read_wav_mono` and `wav_frame_length` — so a roformer job published with NO songProfile (key and
+    vocal range silently null) and no guide-mix length check.
+    """
+    if not path.lower().endswith(_STDLIB_SUFFIXES):
+        return False
+    try:
+        with wave.open(path, "rb"):
+            return True
+    except Exception:  # noqa: BLE001 - any refusal means "not this reader's job"; soundfile gets it
+        return False
+
+
 def read_wav_mono(path: str) -> tuple[np.ndarray, int]:
     """Read a raw stem to a mono float64 signal in [-1, 1] and its sample rate.
 
@@ -80,7 +97,9 @@ def read_wav_mono(path: str) -> tuple[np.ndarray, int]:
     through `soundfile`. Downmixes multi-channel by averaging, which is what every caller here wants —
     key detection, pitch tracking and loudness are all defined on a mono signal.
     """
-    reader = _read_via_wave if path.lower().endswith(_STDLIB_SUFFIXES) else _read_via_soundfile
+    # Probed rather than inferred from the extension: a float32 `.wav` is still a `.wav`, and guessing by
+    # suffix is what made every roformer stem unreadable.
+    reader = _read_via_wave if _is_stdlib_readable(path) else _read_via_soundfile
     return reader(path)
 
 
@@ -99,7 +118,7 @@ def wav_frame_length(path: str) -> tuple[int, int] | None:
     a `None` means genuinely unreadable rather than merely "not the container I expected".
     """
     try:
-        if path.lower().endswith(_STDLIB_SUFFIXES):
+        if _is_stdlib_readable(path):
             with wave.open(path, "rb") as w:
                 return w.getnframes(), w.getframerate()
         import soundfile as sf

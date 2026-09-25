@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+from collections.abc import Callable
 
 import pytest
 
@@ -24,6 +25,7 @@ from encore_worker.adapters.lrcmux import (
     build_url,
     parse_response,
 )
+from encore_worker.adapters.ratelimit import RateLimiter
 from encore_worker.domain.document import TIMING_LINE, TIMING_WORD
 
 #: Trimmed from a real response. Times are INTEGER MILLISECONDS.
@@ -216,20 +218,56 @@ class FakeResponse:
 class FakeOpener:
     """Injected, so nothing patches a library function and no socket is opened."""
 
-    def __init__(self, *, body: str | None = None, raises: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        body: str | None = None,
+        raises: Exception | None = None,
+        raises_factory: Callable[[], Exception] | None = None,
+    ) -> None:
         self._body = body
         self._raises = raises
+        self._raises_factory = raises_factory
         self.opened: list[str] = []
 
     def open(self, request: object, timeout: float | None = None) -> FakeResponse:
         self.opened.append(getattr(request, "full_url", str(request)))
+        # A FRESH exception per call when a factory is given, because that is what production does — every
+        # `open()` raises its own HTTPError with its own body stream. Reusing one object breaks under the
+        # gate's retries: `HTTPError`'s body is a stream, CONSUMED on first read, so the second attempt sees
+        # an empty detail and the error message silently loses its reason.
+        if self._raises_factory is not None:
+            raise self._raises_factory()
         if self._raises is not None:
             raise self._raises
         return FakeResponse(self._body or "{}")
 
 
-def client(*, body: str | None = None, raises: Exception | None = None) -> LrcmuxClient:
-    return LrcmuxClient(opener=FakeOpener(body=body, raises=raises))  # type: ignore[arg-type]
+def hermetic_gate() -> RateLimiter:
+    """A gate that PACES BY ARITHMETIC ONLY — no real sleeping.
+
+    Without this the suite pays the production 1 s/request interval plus 1 s + 2 s of retry backoff on every
+    503 test: measured at 19 s for this one file. A test about a status ladder must not wait on a clock, and
+    the gate takes `now`/`sleep` precisely so it does not have to.
+    """
+    clock = [0.0]
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    return RateLimiter(now=lambda: clock[0], sleep=sleep)
+
+
+def client(
+    *,
+    body: str | None = None,
+    raises: Exception | None = None,
+    raises_factory: Callable[[], Exception] | None = None,
+) -> LrcmuxClient:
+    return LrcmuxClient(
+        opener=FakeOpener(body=body, raises=raises, raises_factory=raises_factory),  # type: ignore[arg-type]
+        gate=hermetic_gate(),
+    )
 
 
 def http(status: int, detail: str) -> urllib.error.HTTPError:
@@ -281,9 +319,15 @@ def test_anything_else_is_provider_trouble_and_is_retryable(status: int) -> None
 
 
 def test_the_error_detail_reaches_the_message() -> None:
-    """A message worth reading: the RFC7807 `detail` says which upstream failed and why."""
+    """A message worth reading: the RFC7807 `detail` says which upstream failed and why.
+
+    A 503 now goes through the gate's retry ladder first — three attempts, then the last status is returned —
+    so this also proves the detail survives being carried through the gate rather than only the direct raise.
+    """
     with pytest.raises(ProviderUnreachable, match="upstream died"):
-        client(raises=http(503, "upstream died")).fetch(artist="a", track="b", duration_sec=None)
+        client(raises_factory=lambda: http(503, "upstream died")).fetch(
+            artist="a", track="b", duration_sec=None
+        )
 
 
 def test_a_network_failure_raises() -> None:

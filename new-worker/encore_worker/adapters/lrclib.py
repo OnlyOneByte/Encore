@@ -34,6 +34,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Sequence
 
+from encore_worker.adapters.ratelimit import RateLimiter
 from encore_worker.domain.document import Segment
 
 BASE_URL = "https://lrclib.net/api/get"
@@ -48,6 +49,12 @@ TIMEOUT_SEC = 8.0
 
 #: `[mm:ss.xx] lyric text` — the LRC line format. Hundredths are optional; some sheets use thousandths.
 _LRC_LINE = re.compile(r"^\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]\s*(.*)$")
+
+
+#: ONE gate for this service, shared by every client in this process. Module-level because the budget is
+#: per SOURCE IP — a per-client instance would let two clients each pace themselves and still burst
+#: together, which is exactly what gets an IP blocked.
+_GATE = RateLimiter()
 
 
 class ProviderUnreachable(RuntimeError):
@@ -72,9 +79,13 @@ class LrclibClient:
         timeout_sec: float = TIMEOUT_SEC,
         proxy: str | None = None,
         opener: urllib.request.OpenerDirector | None = None,
+        gate: RateLimiter | None = None,
     ) -> None:
         self._base = base_url
         self._timeout = timeout_sec
+        # The SHARED module gate: the budget is per source IP, so a per-client gate would let two clients
+        # each pace themselves and still burst together. Injected only by tests, to stay hermetic.
+        self._gate = gate or _GATE
         # Injectable — see the same note in `adapters/lrcmux.LrcmuxClient.__init__`.
         self._opener = opener if opener is not None else _build_opener(proxy)
 
@@ -96,18 +107,29 @@ class LrclibClient:
         404 is the ONLY status treated as a miss. A 500 or a timeout is a provider problem and must not
         be silently indistinguishable from a song LRCLIB has never heard of.
         """
+        status, body = self._gate.run(lambda: self._fetch(url))
+        if status == 404:
+            return None
+        if status != 200:
+            raise ProviderUnreachable(f"lrclib answered {status}")
+        return body
+
+    def _fetch(self, url: str) -> tuple[int, str]:
+        """One HTTP attempt as `(status, body)`, so the gate can see a retryable status.
+
+        An HTTP error is RETURNED rather than raised: the gate decides whether 429/503 deserves another
+        attempt, and it cannot decide on an exception. A transport failure still raises — that is not a
+        status, and no amount of backoff turns it into one.
+        """
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310 - https
         try:
             with self._opener.open(request, timeout=self._timeout) as response:
                 raw: bytes = response.read()
         except urllib.error.HTTPError as failed:
-            if failed.code == 404:
-                return None
-            raise ProviderUnreachable(f"lrclib answered {failed.code}") from failed
+            return failed.code, ""
         except (urllib.error.URLError, TimeoutError, OSError) as unreachable:
             raise ProviderUnreachable(f"lrclib unreachable: {unreachable}") from unreachable
-        decoded: str = raw.decode("utf-8", errors="replace")
-        return decoded
+        return 200, raw.decode("utf-8", errors="replace")
 
 
 def _build_opener(proxy: str | None) -> urllib.request.OpenerDirector:

@@ -395,21 +395,101 @@ def test_roformer_argv_omits_device_when_unset() -> None:
     assert sep.roformer_argv("/in", "/out", "s", device="cuda")[-1] == "cuda"
 
 
-def test_stem_discovery_matches_the_delimited_role_marker(tmp_path: Path) -> None:
-    """THE trap this guards. Several registry slugs contain the word `vocals` (`...-vocals-by-gabox`), so a
-    bare substring test lets the INSTRUMENTAL file satisfy the vocals search — publishing the vocals as the
-    backing track, which is inaudible in review and unmistakable in a room."""
+INSTRUMENTAL_SLUG = "roformer-model-bs-roformer-instrumental-resurrection-by-unwa"
+
+
+def test_stem_discovery_uses_the_MEASURED_role_of_each_file(tmp_path: Path) -> None:
+    """THE bug a real run found, and the dangerous one.
+
+    Measured on a chords-only control (no vocals in the input, so the instrumental must hold everything):
+    `_other` carried 99.1% of the signal and `_instrumental` carried 2.4%. The filenames are INVERTED for
+    this model. The ported code looked for `_(Instrumental)_<slug>`, which this package never writes — so
+    discovery found nothing, which is the SAFE failure. Had it matched, the worker would have published the
+    VOCALS as the backing track, and the silence probe would have waved it through because the vocals stem is
+    loud.
+    """
     store = tmp_path / "out"
     store.mkdir()
-    (store / "input_(Instrumental)_roformer-model-bs-roformer-vocals-by-gabox.wav").write_bytes(b"i")
-    (store / "input_(Vocals)_roformer-model-bs-roformer-vocals-by-gabox.wav").write_bytes(b"v")
+    (store / "song_instrumental.wav").write_bytes(b"vocals-really")
+    (store / "song_other.wav").write_bytes(b"backing-track-really")
 
-    inst = sep.find_roformer_instrumental(str(store))
-    voc = sep.find_roformer_vocals(str(store))
-    assert inst is not None and "_(Instrumental)_" in inst
-    assert voc is not None and "_(Vocals)_" in voc
-    assert inst != voc
+    assert sep.find_roformer_instrumental(str(store), INSTRUMENTAL_SLUG) == str(store / "song_other.wav")
+    assert sep.find_roformer_vocals(str(store), INSTRUMENTAL_SLUG) == str(store / "song_instrumental.wav")
+
+
+def test_an_unmeasured_slug_finds_nothing_rather_than_guessing() -> None:
+    """A model whose stem roles have not been measured must fail in discovery, not assume an order. Guessing
+    wrong here publishes vocals as the master — a failure audible only in the room."""
+    assert sep.roformer_stem_roles("roformer-model-bs-roformer-vocals-by-gabox") == ("", "")
+
+
+def test_an_unmeasured_slug_refuses_even_with_files_present(tmp_path: Path) -> None:
+    store = tmp_path / "out"
+    store.mkdir()
+    (store / "song_instrumental.wav").write_bytes(b"x")
+    (store / "song_other.wav").write_bytes(b"y")
+    assert sep.find_roformer_instrumental(str(store), "roformer-model-bs-roformer-de-reverb") is None
+
+
+def test_the_suffix_match_is_anchored_at_the_end(tmp_path: Path) -> None:
+    """`_instrumental` and `_other` both occur inside other candidate names, so a substring test would cross
+    the two roles — which is the same class of mistake as the original bug."""
+    store = tmp_path / "out"
+    store.mkdir()
+    (store / "song_other_notes.wav").write_bytes(b"decoy")
+    (store / "song_other.wav").write_bytes(b"real")
+    assert sep.find_roformer_instrumental(str(store), INSTRUMENTAL_SLUG) == str(store / "song_other.wav")
 
 
 def test_stem_discovery_is_none_for_a_missing_directory() -> None:
-    assert sep.find_roformer_instrumental("/nope/not/here") is None
+    assert sep.find_roformer_instrumental("/nope/not/here", INSTRUMENTAL_SLUG) is None
+
+
+def test_every_roformer_slug_we_map_to_is_a_real_registry_slug() -> None:
+    """Pure cross-check: our token map must only name slugs the package actually carries.
+
+    A shape assertion ("looks like a slug") is what let a bad slug ship in the old worker, which is why the
+    registry list is checked in rather than trusted.
+    """
+    assert set(sep.ROFORMER_MODELS.values()) <= sep.ROFORMER_REGISTRY_SLUGS
+
+
+def test_the_checked_in_registry_matches_the_installed_package() -> None:
+    """Verified against the INSTALLED `bs_models.json` when bs-roformer-infer is present, so the checked-in
+    list cannot quietly go stale as the package updates.
+
+    Skipped rather than faked when absent — a test that silently asserts nothing is worse than one that says
+    why it did not run. Note the nesting: entries live under a `"models"` key, and reading the top level makes
+    every slug look missing, which is exactly the mistake this test would have caught.
+    """
+    import importlib.util
+    import json
+
+    spec = importlib.util.find_spec("bs_roformer")
+    if spec is None or not spec.submodule_search_locations:
+        pytest.skip("bs-roformer-infer is not installed, so there is no registry to verify against")
+    path = Path(spec.submodule_search_locations[0]) / "data" / "bs_models.json"
+    if not path.is_file():
+        pytest.skip(f"the installed package carries no registry at {path}")
+
+    installed = set(json.loads(path.read_text())["models"])
+    assert sep.ROFORMER_REGISTRY_SLUGS == installed, (
+        "the checked-in slug list has drifted from the installed package; "
+        f"missing={sorted(installed - sep.ROFORMER_REGISTRY_SLUGS)} "
+        f"stale={sorted(sep.ROFORMER_REGISTRY_SLUGS - installed)}"
+    )
+
+
+def test_the_default_roformer_model_is_the_two_stem_instrumental() -> None:
+    """The default must target the INSTRUMENTAL, not be a multi-stem checkpoint whose instrumental has to be
+    summed from three sources — and not a `vocals` model whose instrumental is merely the leftover. What plays
+    in the room should be the modelled output.
+    """
+    slug = sep.ROFORMER_MODELS[sep.DEFAULT_ROFORMER_MODEL]
+    assert sep.ROFORMER_SLUG_CATEGORY[slug] == "instrumental"
+
+
+def test_the_previous_multistem_mapping_still_resolves() -> None:
+    """Kept so a historical `job_attempts.model` row does not raise `UnknownModel` when an operator opens an
+    old audit page. History has to stay readable after a repoint."""
+    assert sep.ROFORMER_SLUG_CATEGORY[sep.ROFORMER_MODELS["bs-roformer-multistem"]] == "multi-stem"

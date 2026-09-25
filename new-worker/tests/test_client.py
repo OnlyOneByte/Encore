@@ -601,3 +601,113 @@ async def test_a_default_client_claims_what_it_accepted() -> None:
 
 async def _resolved(sock: FakeSocket) -> FakeSocket:
     return sock
+
+
+# ── the settled hook: which outcomes may reclaim scratch ───────────────────────────────────────────
+
+
+def settling(sock: FakeSocket, run_job: object) -> tuple[Client, list[tuple[str, bool]]]:
+    seen: list[tuple[str, bool]] = []
+
+    async def connect(_url: str) -> FakeSocket:
+        return sock
+
+    c = Client(
+        config=CFG,
+        connect=connect,
+        run_job=run_job,  # type: ignore[arg-type]
+        capabilities=CAPS,
+        backoff=no_backoff,
+        ownership=Ownership(require_confirmation=False),
+        on_settled=lambda job_id, resumable: seen.append((job_id, resumable)),
+    )
+    return c, seen
+
+
+async def test_a_published_job_may_reclaim_its_scratch() -> None:
+    """Nothing will resume a completed job, and its artifacts are already in the store."""
+
+    async def completes(a: f.Assign) -> f.Complete:
+        return f.Complete(worker_id="w1", job_id=a.job_id, media_uri="derived/x.flac")
+
+    sock = FakeSocket([assign()])
+    c, seen = settling(sock, completes)
+    async with Session(c, sock):
+        pass
+    assert seen == [("j1", False)], "published ⇒ not resumable ⇒ scratch may go"
+
+
+async def test_a_retryable_failure_must_keep_its_scratch() -> None:
+    """THE case that makes "delete at the end of every run" wrong. The core requeues the same job id, DBOS
+    resumes from the last checkpoint, and that checkpoint holds an `AudioRef` pointing INTO this scratch — so
+    deleting it breaks the one case durability exists for, and it is the 45-minute one."""
+
+    async def flaky(a: f.Assign) -> f.Failed:
+        raise _Retryable("disk hiccup")
+
+    sock = FakeSocket([assign()])
+    c, seen = settling(sock, flaky)
+    async with Session(c, sock):
+        pass
+    assert seen == [("j1", True)], "retryable ⇒ resumable ⇒ scratch must survive"
+
+
+async def test_a_non_retryable_failure_may_reclaim_its_scratch() -> None:
+    """No retry is coming by definition, so the scratch is dead weight."""
+
+    async def permanent(a: f.Assign) -> f.Failed:
+        raise _Permanent("this box has no separator")
+
+    sock = FakeSocket([assign()])
+    c, seen = settling(sock, permanent)
+    async with Session(c, sock):
+        pass
+    assert seen == [("j1", False)]
+
+
+async def test_a_reported_retryable_failure_frame_also_keeps_scratch() -> None:
+    """A workflow may RETURN a Failed frame rather than raising — the refused-silent-instrumental path does.
+    Reading only the exception would treat that as terminal and delete resumable scratch."""
+
+    async def reports(a: f.Assign) -> f.Failed:
+        return f.Failed(worker_id="w1", job_id=a.job_id, error="measure again", retryable=True)
+
+    sock = FakeSocket([assign()])
+    c, seen = settling(sock, reports)
+    async with Session(c, sock):
+        pass
+    assert seen == [("j1", True)]
+
+
+async def test_a_settled_hook_that_raises_cannot_fail_the_job() -> None:
+    """It runs in a `finally`. Reclaiming disk is maintenance; a job that reported success must not be
+    retracted because a directory was busy."""
+
+    async def completes(a: f.Assign) -> f.Complete:
+        return f.Complete(worker_id="w1", job_id=a.job_id, media_uri="derived/x.flac")
+
+    sock = FakeSocket([assign()])
+
+    async def connect(_url: str) -> FakeSocket:
+        return sock
+
+    c = Client(
+        config=CFG,
+        connect=connect,
+        run_job=completes,
+        capabilities=CAPS,
+        backoff=no_backoff,
+        ownership=Ownership(require_confirmation=False),
+        on_settled=lambda _j, _r: (_ for _ in ()).throw(OSError("busy")),
+    )
+    async with Session(c, sock):
+        pass
+    assert "job:complete" in sock.types(), "the completion must still have been reported"
+
+
+class _Retryable(RuntimeError):
+    retryable = True
+
+
+class _Permanent(RuntimeError):
+    retryable = False

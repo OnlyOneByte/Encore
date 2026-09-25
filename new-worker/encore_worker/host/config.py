@@ -15,6 +15,8 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from encore_worker.host import ffmpeg
+
 #: Emitted every this many seconds while a long step runs, so the core's lease does not expire.
 #: MUST stay comfortably under the core's progress lease (30s in the old core), or the reaper requeues a
 #: healthy job. With durable resumption a requeue is cheap now rather than fatal, but a keepalive that
@@ -60,6 +62,9 @@ class Config:
     backend: str | None = None
     device: str | None = None
     asr_model: str = "base"
+    #: The bare name as a DATACLASS default, but `from_env` resolves a real path through `host.ffmpeg` —
+    #: bundled static build first, PATH last. Left as "ffmpeg" here so a Config() built in a test does not
+    #: depend on the `ffmpeg` extra being installed.
     ffmpeg_bin: str = "ffmpeg"
     ytdlp_bin: str = "yt-dlp"
     mlx_bin: str = "demucs-mlx"
@@ -127,7 +132,11 @@ class Config:
             backend=backend,
             device=optional("ENCORE_DEVICE"),
             asr_model=asr,
-            ffmpeg_bin=text("ENCORE_FFMPEG_BIN", "ffmpeg"),
+            # RESOLVED, not read. An unset ENCORE_FFMPEG_BIN means "pick the best available", which is the
+            # bundled static build ahead of whatever PATH offers — see `host.ffmpeg` for why that order.
+            # `optional` rather than `text` so an empty string is treated as unset instead of as a request
+            # to exec "".
+            ffmpeg_bin=ffmpeg.resolve(optional("ENCORE_FFMPEG_BIN")),
             ytdlp_bin=text("ENCORE_YTDLP_BIN", "yt-dlp"),
             mlx_bin=text("ENCORE_MLX_BIN", "demucs-mlx"),
             keepalive_sec=_positive_float(src, "ENCORE_KEEPALIVE_SEC", KEEPALIVE_SEC),

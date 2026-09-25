@@ -18,9 +18,10 @@ import time
 from typing import Any
 
 from encore_worker.adapters import cli, lrclib, lrcmux, ml, ports, separate
+from encore_worker.artifacts import scratch
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.identity import Identified
-from encore_worker.host import hardware
+from encore_worker.host import ffmpeg, hardware
 from encore_worker.host.config import Config
 from encore_worker.protocol import frames as f
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
@@ -89,7 +90,11 @@ async def main() -> None:
     report = hardware.probe()
     backend = hardware.resolve_backend(config.backend, report=report)
     device = device_for(config, report)
-    caps = hardware.capabilities(backend=backend.name, ytdlp=config.ytdlp_bin, ffmpeg=config.ffmpeg_bin)
+    caps = hardware.capabilities(
+        backend=backend.name,
+        ytdlp=config.ytdlp_bin,
+        ffmpeg=config.ffmpeg_bin,
+    )
 
     print(
         f"[worker] {config.worker_id} on {report.platform} ({report.machine}); "
@@ -97,6 +102,10 @@ async def main() -> None:
         f"capabilities={','.join(sorted(caps)) or 'NONE'}",
         flush=True,
     )
+    # WHICH ffmpeg, stated once at startup. Every published stem was encoded by this binary, and nothing in
+    # `job_attempts` records its version — so without this line "why does one worker's FLAC differ" has no
+    # answer but guessing from the machine.
+    print(f"[worker] ffmpeg {ffmpeg.describe(config.ffmpeg_bin)}", flush=True)
     if not caps:
         # Not fatal: a box with no capabilities still connects and is visible on the dashboard, which is
         # more useful than a process that exits and leaves an operator wondering where the worker went.
@@ -111,12 +120,26 @@ async def main() -> None:
         ffmpeg_bin=config.ffmpeg_bin,
     )
 
+    def settled(job_id: str, resumable: bool) -> None:
+        """Reclaim a finished job's scratch — unless a retry could RESUME it.
+
+        `resumable` is the whole decision. Every checkpointed step returns paths INTO scratch, so a requeue
+        replays into those files; deleting them would break the one case durability exists for, and it is the
+        expensive one. See `artifacts/scratch.py` for the full outcome table.
+        """
+        if resumable:
+            return
+        freed = scratch.release(config.media_dir, job_id)
+        if freed > 0:
+            print(f"[worker] reclaimed {freed // (1024 * 1024)} MB of scratch for {job_id}", flush=True)
+
     client = Client(
         config=config,
         connect=_connect,
         run_job=lambda assign: _run(assign, config, adapters, separator, client, dbos),
         capabilities=caps,
         backend=backend.name,
+        on_settled=settled,
     )
 
     # ONE registration, before any job. `DBOS.workflow` mutates a global registry, so doing it per job would
@@ -160,7 +183,18 @@ async def main() -> None:
         )
 
     durable.register(dbos, align_steps_for=align_steps_for, stems_steps_for=stems_steps_for)
-    await client.serve_forever()
+
+    # The SECOND reclaim mechanism, and it is not redundant with `settled` above. Two leaks that hook cannot
+    # reach: a crash leaves no code to run it, and retries EXHAUSTING is terminal while the worker cannot see
+    # that it was the last attempt — there is no attempt count on the wire — so it preserves scratch it will
+    # never be asked about again. Periodic, so a long-lived worker reclaims without a restart.
+    sweeper = asyncio.create_task(_sweep_scratch(config))
+    try:
+        await client.serve_forever()
+    finally:
+        sweeper.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sweeper
 
 
 def _launch_dbos(config: Config) -> Any:
@@ -271,6 +305,32 @@ def _lyrics_artifacts(outcome: AlignOutcome) -> dict[str, Any] | None:
     if candidates:
         lyrics["candidates"] = candidates
     return {"lyrics": lyrics}
+
+
+async def _sweep_scratch(config: Config, *, every_sec: float = 900.0) -> None:
+    """Reclaim quiet job scratch on a timer, forever.
+
+    Safe on a volume shared with another worker because `sweep` only removes a directory whose NEWEST file is
+    older than its threshold: a live job writes continuously, so its scratch can never look quiet. That is why
+    an age check is the right test rather than a registry of "my" job ids, which would be blind to the other
+    worker's orphans.
+
+    Never lets a sweep failure stop the worker: reclaiming disk is maintenance, and a box that refused to
+    process songs because a directory was busy would trade a full disk for no service at all.
+    """
+    while True:
+        await asyncio.sleep(every_sec)
+        try:
+            got = await asyncio.to_thread(scratch.sweep, config.media_dir)
+        except Exception as exc:  # noqa: BLE001 - maintenance must never take the worker down
+            print(f"[worker] scratch sweep failed ({type(exc).__name__}: {exc})", flush=True)
+            continue
+        if got.any_removed:
+            print(
+                f"[worker] swept {len(got.removed)} orphaned scratch dir(s), "
+                f"{got.bytes_freed // (1024 * 1024)} MB freed; {got.kept_live} still live",
+                flush=True,
+            )
 
 
 async def _run(

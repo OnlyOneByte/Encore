@@ -42,6 +42,48 @@ class ToolFailed(RuntimeError):
         self.output = output
 
 
+#: Substrings every accelerator uses to say "not enough memory". Matched case-insensitively against a failed
+#: command's combined output.
+#:
+#: WHY THIS EXISTS AT ALL. Model choice is deliberately NOT gated on VRAM — a memory ceiling is a continuum,
+#: not a yes/no, and it moves with segment size, overlap and precision, so a gate would block configurations
+#: that work. The cost of letting anyone pick anything is that the FAILURE has to be legible: an OOM must say
+#: "this model needs more memory than this box has", once, rather than burning three attempts producing the
+#: same crash with a stack trace about tensors.
+OOM_MARKERS = (
+    "out of memory",
+    "outofmemoryerror",
+    "cuda error: out of memory",
+    "mps backend out of memory",
+    "hip out of memory",
+    "failed to allocate",
+    "cannot allocate memory",
+    "killed",  # the OOM killer, which leaves no message of its own
+)
+
+
+class OutOfMemory(RuntimeError):
+    """A model needed more memory than this box has.
+
+    `retryable = False`, and that is the whole point: the same model on the same audio on the same box will
+    exhaust the same memory every time, so three attempts cost three long failures and tell the operator
+    nothing the first did not. Deterministic failures must not be retried — the same reasoning
+    `SilentInstrumental` uses.
+
+    Recoverable by CHANGING something — a smaller model, a reduced segment, a bigger box — which is a
+    decision for a person, not for a retry loop.
+    """
+
+    retryable = False
+
+
+def looks_like_oom(output: str) -> bool:
+    """Did this failure run out of memory? Read from the command's own output, since a subprocess cannot
+    raise a typed exception across the boundary."""
+    low = output.lower()
+    return any(marker in low for marker in OOM_MARKERS)
+
+
 def run(argv: Sequence[str], *, on_progress: ProgressSink | None = None, timeout_sec: float = 3600.0) -> str:
     """Run a command to completion, returning its combined output.
 
@@ -81,6 +123,13 @@ def run(argv: Sequence[str], *, on_progress: ProgressSink | None = None, timeout
         raise
     output = "".join(lines)
     if code != 0:
+        if looks_like_oom(output):
+            # Raised INSTEAD of ToolFailed so the non-retryable classification survives: a subprocess cannot
+            # raise a typed exception across the boundary, so the only evidence is its output.
+            raise OutOfMemory(
+                f"{argv[0]} ran out of memory. This model needs more than this box has — try a smaller "
+                f"model, or a box with more memory. Exit {code}."
+            )
         raise ToolFailed(argv, code, output)
     return output
 

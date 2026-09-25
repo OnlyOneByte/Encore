@@ -29,6 +29,7 @@ import urllib.request
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from encore_worker.adapters.ratelimit import RateLimiter
 from encore_worker.domain.document import TIMING_LINE, TIMING_WORD, Segment
 
 BASE_URL = "https://api.lrcmux.dev"
@@ -38,6 +39,12 @@ USER_AGENT = "encore-worker (karaoke lyrics alignment)"
 #: The align flow has a fallback ladder behind this, so waiting is worse than moving on to the next
 #: provider and then to ASR. A multiplexer fans out internally, so it is slower than a single provider.
 TIMEOUT_SEC = 12.0
+
+
+#: ONE gate for this service, shared by every client in this process. Module-level because the budget is
+#: per SOURCE IP — a per-client instance would let two clients each pace themselves and still burst
+#: together, which is exactly what gets an IP blocked.
+_GATE = RateLimiter()
 
 
 class ProviderUnreachable(RuntimeError):
@@ -89,8 +96,12 @@ class LrcmuxClient:
         proxy: str | None = None,
         sources: str | None = None,
         opener: urllib.request.OpenerDirector | None = None,
+        gate: RateLimiter | None = None,
     ) -> None:
         self._base = base_url.rstrip("/")
+        # The SHARED module gate by default: the budget is per source IP, so a per-client gate would let two
+        # clients each pace themselves and still burst together. Injected only by tests, to stay hermetic.
+        self._gate = gate or _GATE
         self._timeout = timeout_sec
         self._sources = sources
         # Injectable, and a genuine seam rather than a test hook: this is also where a custom SSL
@@ -127,21 +138,38 @@ class LrcmuxClient:
         return parse_response(body)
 
     def _get(self, url: str) -> str | None:
-        """The response body, None for a 404, or an exception for anything else."""
+        """The response body, None for a 404, or an exception for anything else.
+
+        PACED through the service's shared gate, which also retries a 429/503 with backoff. The status ladder
+        stays HERE rather than inside the gate, because only this module knows that a 404 is an ordinary miss
+        for a lyrics lookup rather than a failure — a gate that retried it would triple the cost of every
+        song the provider simply does not have.
+        """
+        status, body = self._gate.run(lambda: self._fetch(url))
+        if status == 404:
+            return None  # "no lyrics found" — an ordinary miss, and the common case
+        if status == 400:
+            raise BadRequest(f"lrcmux rejected the request: {body}")
+        if status != 200:
+            raise ProviderUnreachable(f"lrcmux answered {status}: {body}")
+        return body
+
+    def _fetch(self, url: str) -> tuple[int, str]:
+        """One HTTP attempt as `(status, body)`, so the gate can see a retryable status.
+
+        An HTTP error is RETURNED rather than raised: the gate decides whether 429/503 is worth another
+        attempt, and it cannot decide on an exception. A transport failure (no route, timeout) still raises —
+        that is not a status, and no backoff turns it into one.
+        """
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310 - https
         try:
             with self._opener.open(request, timeout=self._timeout) as response:
                 raw: bytes = response.read()
         except urllib.error.HTTPError as failed:
-            if failed.code == 404:
-                return None  # "no lyrics found" — an ordinary miss
-            if failed.code == 400:
-                raise BadRequest(f"lrcmux rejected the request: {_detail(failed)}") from failed
-            raise ProviderUnreachable(f"lrcmux answered {failed.code}: {_detail(failed)}") from failed
+            return failed.code, _detail(failed)
         except (urllib.error.URLError, TimeoutError, OSError) as unreachable:
             raise ProviderUnreachable(f"lrcmux unreachable: {unreachable}") from unreachable
-        decoded: str = raw.decode("utf-8", errors="replace")
-        return decoded
+        return 200, raw.decode("utf-8", errors="replace")
 
 
 def build_opener(proxy: str | None) -> urllib.request.OpenerDirector:

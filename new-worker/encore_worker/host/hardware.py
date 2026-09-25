@@ -169,6 +169,15 @@ def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg")
     # upgrade, which no log would contradict.
     if binary_available("bs-roformer-infer"):
         caps.add("stems:roformer")
+    # An IMPORT, not a subprocess probe — which only became true with the whisperx 3.8.7rc1 pin: on 3.8.6 the
+    # huggingface-hub bound made `mlx-audio` uninstallable alongside whisperx, so this had to run a sidecar
+    # interpreter. The rc lifted the bound and the sidecar went with it.
+    #
+    # Gated on the runtime being INSTALLED, never on the accelerator being Apple Silicon: a Mac without the
+    # `mlx` extra cannot run these models, so a hardware-shaped gate would advertise work the box must reject.
+    # The platform check is implied — `mlx-audio` only installs on darwin/arm64.
+    if module_available("mlx_audio"):
+        caps.add("stems:melband-mlx")
     # NOT ADVERTISED, deliberately: `adapters/separate.build_separator` has no audiosep branch, so claiming
     # it would route work here that this worker cannot honour. The old worker has the engine; porting it is
     # tracked in new-worker/README.md's parity notes. Advertising ahead of the implementation is the exact

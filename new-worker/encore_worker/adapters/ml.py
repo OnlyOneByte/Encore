@@ -20,6 +20,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from encore_worker.domain.document import Segment
+from encore_worker.host.mlrt import ML_LOCK
 
 #: (device, checkpoint) -> loaded handle. Two concurrent jobs on one checkpoint share it; two on
 #: different checkpoints cannot evict each other, which a single-slot cache would do.
@@ -159,18 +160,23 @@ class WhisperTranscriber:
         return _cached(transcriber_device(self._device), f"whisper:{self._checkpoint}", build)
 
     def transcribe(self, audio_path: str, *, language: str | None = None) -> Sequence[Segment]:
-        import whisperx  # noqa: PLC0415
+        # ML_LOCK covers LOADING AND RUNNING, and both halves matter: two jobs loading multi-GB
+        # checkpoints at once exhausts the accelerator, and two inferences that each expect it to
+        # themselves is the same failure a step later. Only reachable with
+        # ENCORE_WORKER_CONCURRENCY > 1; at the default of 1 the lock is uncontended and free.
+        with ML_LOCK:
+            import whisperx  # noqa: PLC0415
 
-        audio = whisperx.load_audio(audio_path)
-        result = self._model().transcribe(audio, language=language)
-        segments = result.get("segments") if isinstance(result, dict) else None
-        if not segments:
-            return ()  # nothing intelligible: a RESULT, not an error
-        return tuple(
-            {"start": s.get("start"), "end": s.get("end"), "text": str(s.get("text") or "").strip()}
-            for s in segments
-            if str(s.get("text") or "").strip()
-        )
+            audio = whisperx.load_audio(audio_path)
+            result = self._model().transcribe(audio, language=language)
+            segments = result.get("segments") if isinstance(result, dict) else None
+            if not segments:
+                return ()  # nothing intelligible: a RESULT, not an error
+            return tuple(
+                {"start": s.get("start"), "end": s.get("end"), "text": str(s.get("text") or "").strip()}
+                for s in segments
+                if str(s.get("text") or "").strip()
+            )
 
 
 class WhisperXAligner:
@@ -199,59 +205,107 @@ class WhisperXAligner:
         return model, metadata
 
     def align(self, search: Sequence[Segment], audio_path: str, language: str) -> Sequence[Segment]:
-        import whisperx  # noqa: PLC0415
+        # ML_LOCK covers LOADING AND RUNNING, and both halves matter: two jobs loading multi-GB
+        # checkpoints at once exhausts the accelerator, and two inferences that each expect it to
+        # themselves is the same failure a step later. Only reachable with
+        # ENCORE_WORKER_CONCURRENCY > 1; at the default of 1 the lock is uncontended and free.
+        with ML_LOCK:
+            import whisperx  # noqa: PLC0415
 
-        # CHECKED HERE so the failure names the contract instead of surfacing as `KeyError: 'start'` from
-        # inside whisperx's cropping loop. A caller with untimed text must call `place.spread_over` first;
-        # the step does, but a future caller that forgets should be told why rather than left guessing.
-        untimed = [
-            index
-            for index, segment in enumerate(search)
-            if not isinstance(segment.get("start"), (int, float)) or isinstance(segment.get("start"), bool)
-        ]
-        if untimed:
-            raise ModelUnavailable(
-                f"the aligner needs a start on every search segment (missing on {len(untimed)} of "
-                f"{len(search)}); whisperx crops the audio per segment. Give untimed text provisional "
-                "spans with domain.lyrics.place.spread_over first."
+            # CHECKED HERE so the failure names the contract instead of surfacing as `KeyError: 'start'` from
+            # inside whisperx's cropping loop. A caller with untimed text must call `place.spread_over` first;
+            # the step does, but a future caller that forgets should be told why rather than left guessing.
+            untimed = [
+                index
+                for index, segment in enumerate(search)
+                if not isinstance(segment.get("start"), (int, float))
+                or isinstance(segment.get("start"), bool)
+            ]
+            if untimed:
+                raise ModelUnavailable(
+                    f"the aligner needs a start on every search segment (missing on {len(untimed)} of "
+                    f"{len(search)}); whisperx crops the audio per segment. Give untimed text provisional "
+                    "spans with domain.lyrics.place.spread_over first."
+                )
+
+            model, metadata = self._aligner(language)
+            audio = whisperx.load_audio(audio_path)
+            # The search spans ARE the input segments: whisperX crops per segment, which is exactly what
+            # `Knob.DROP_WINDOWS` widens when a narrow window from a mis-placed text confines the search.
+            aligned = whisperx.align(
+                [dict(s) for s in search], model, metadata, audio, self._device, return_char_alignments=False
             )
-
-        model, metadata = self._aligner(language)
-        audio = whisperx.load_audio(audio_path)
-        # The search spans ARE the input segments: whisperX crops per segment, which is exactly what
-        # `Knob.DROP_WINDOWS` widens when a narrow window from a mis-placed text confines the search.
-        aligned = whisperx.align(
-            [dict(s) for s in search], model, metadata, audio, self._device, return_char_alignments=False
-        )
-        segments = aligned.get("segments") if isinstance(aligned, dict) else None
-        if not segments:
-            # Raising rather than returning empty: the caller's fallback is a DIFFERENT strategy, and an
-            # aligner handed real text that produces no words has failed, which is not a fact about the song.
-            raise ModelUnavailable("the aligner returned no word-timed segments")
-        return tuple(dict(s) for s in segments)
+            segments = aligned.get("segments") if isinstance(aligned, dict) else None
+            if not segments:
+                # Raising rather than returning empty: the caller's fallback is a DIFFERENT strategy, and an
+                # aligner handed real text that produces no words has failed, which is not a fact
+                # about the song.
+                raise ModelUnavailable("the aligner returned no word-timed segments")
+            return tuple(dict(s) for s in segments)
 
 
 class PyannoteDiarizer:
-    """`Diarizer` over pyannote. Optional throughout: a failure degrades, never fails a job."""
+    """`Diarizer` over pyannote. Optional throughout: a failure degrades, never fails a job.
+
+    FED A PRELOADED WAVEFORM RATHER THAN A PATH, and that is the fix for a real defect rather than a
+    micro-optimisation. pyannote 4.0 depends on torchcodec, and torchcodec does not bundle FFmpeg — it
+    `dlopen`s the SHARED LIBRARIES (`libavutil.<major>`, `libavcodec`, ...) and supports only majors 4-7.
+    Checked against torchcodec 0.7.0 through 0.16.0: none of them ship those libraries, so a static ffmpeg
+    binary cannot satisfy it either.
+
+    MEASURED on this project's own Mac, which has the ffmpeg BINARY but no libav* shared libraries: every
+    one of torchcodec's four version probes fails, and yet `import pyannote.audio` still SUCCEEDS with only
+    a warning. So `module_available("pyannote.audio")` advertised the `diarize` capability on a box where
+    diarization could not decode a single file — the same "the module imports, therefore it runs" mistake
+    the roformer capability already had to be corrected for.
+
+    Handing pyannote `{"waveform", "sample_rate"}` bypasses its `Audio` loader entirely, which takes
+    torchcodec off this worker's runtime path and makes that capability honest again. The WAV being read
+    here was written by our own ffmpeg a step earlier, so nothing is decoded twice.
+    """
 
     def __init__(self, *, device: str = "cpu", checkpoint: str = "pyannote/speaker-diarization-3.1") -> None:
         self._device = device
         self._checkpoint = checkpoint
 
-    def diarize(self, audio_path: str) -> Sequence[Segment]:
-        def build() -> Any:
-            try:
-                from pyannote.audio import Pipeline  # noqa: PLC0415
-            except ImportError as missing:
-                raise ModelUnavailable("pyannote.audio is not installed") from missing
-            return Pipeline.from_pretrained(self._checkpoint)
+    @staticmethod
+    def _preloaded(audio_path: str) -> dict[str, Any]:
+        """The file as pyannote's in-memory input: a `(channel, time)` float32 tensor plus its rate.
 
-        pipeline = _cached(self._device, f"diarize:{self._checkpoint}", build)
-        annotation = pipeline(audio_path)
-        return tuple(
-            {"start": float(turn.start), "end": float(turn.end), "speaker": str(speaker)}
-            for turn, _track, speaker in annotation.itertracks(yield_label=True)
-        )
+        MONO, which is not a loss: pyannote downmixes internally anyway, and `read_wav_mono` is the reader
+        already used everywhere else here — it probes the container rather than trusting the extension,
+        which is what made float32 roformer WAVs readable.
+        """
+        import torch  # noqa: PLC0415 - lazy by design; see the module docstring
+
+        from encore_worker.domain.audio.wav import read_wav_mono  # noqa: PLC0415
+
+        signal, rate = read_wav_mono(audio_path)
+        # float64 -> float32: pyannote's models are float32 and would otherwise raise on the dtype.
+        # `[None, :]` gives the (channel, time) shape its loader asserts on.
+        waveform = torch.from_numpy(signal.astype("float32", copy=False))[None, :]
+        return {"waveform": waveform, "sample_rate": int(rate)}
+
+    def diarize(self, audio_path: str) -> Sequence[Segment]:
+        # ML_LOCK covers LOADING AND RUNNING, and both halves matter: two jobs loading multi-GB
+        # checkpoints at once exhausts the accelerator, and two inferences that each expect it to
+        # themselves is the same failure a step later. Only reachable with
+        # ENCORE_WORKER_CONCURRENCY > 1; at the default of 1 the lock is uncontended and free.
+        with ML_LOCK:
+
+            def build() -> Any:
+                try:
+                    from pyannote.audio import Pipeline  # noqa: PLC0415
+                except ImportError as missing:
+                    raise ModelUnavailable("pyannote.audio is not installed") from missing
+                return Pipeline.from_pretrained(self._checkpoint)
+
+            pipeline = _cached(self._device, f"diarize:{self._checkpoint}", build)
+            annotation = pipeline(self._preloaded(audio_path))
+            return tuple(
+                {"start": float(turn.start), "end": float(turn.end), "speaker": str(speaker)}
+                for turn, _track, speaker in annotation.itertracks(yield_label=True)
+            )
 
 
 def build_transcriber(*, device: str, checkpoint: str) -> WhisperTranscriber | None:
