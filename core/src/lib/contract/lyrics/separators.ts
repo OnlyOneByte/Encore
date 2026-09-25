@@ -102,48 +102,38 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 	},
 	{
 		id: 'audiosep',
-		label: 'Mel-Band RoFormer',
+		label: 'Model zoo',
 		capability: 'stems:audiosep',
 		liveSelectable: true,
 		speed: 'medium',
-		models: [
-			{
-				id: 'instrumental_becruily',
-				label: 'Mel-Band Instrumental (becruily)',
-				note: 'RoFormer-quality instrumental, ~10× faster than BS-RoFormer on CPU.',
-				// fp32 and NOT bf16: bf16 measured a LOSS on this architecture — the sign reversal that makes
-				// `cpuPrecision` per-model. LICENCE CAVEAT: these weights may carry non-commercial terms; the
-				// project's clearance covers packages, never checkpoint weights.
-				rank: 30,
-				cost: { rtFactor: 1.28, overlap: 2, cpuPrecision: 'fp32', provenance: 'measured' }
-			}
-		]
-	},
-	{
-		id: 'ensemble',
-		label: 'MVSEP Ensemble',
-		capability: 'stems:ensemble',
-		liveSelectable: false, // UPGRADE-ONLY: runs several models, far too slow for the live path
-		speed: 'slow',
-		models: [
-			{
-				id: 'instrumental_clean',
-				label: 'Instrumental (clean)',
-				note: 'Two-model ensemble, minimal vocal bleed.',
-				rank: 45,
-				// Estimated: two roformer-class passes plus a blend, and no ensemble worker exists yet.
-				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' }
-			},
-			{
-				id: 'instrumental_full',
-				label: 'Instrumental (full)',
-				note: 'Maximum instrument preservation.',
-				rank: 40,
-				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' }
-			}
-		]
+		/*
+		 * EMPTY ON PURPOSE — this engine's models are REPORTED BY THE WORKERS, not listed here.
+		 *
+		 * It used to carry one hardcoded entry, `instrumental_becruily`, with a cost labelled
+		 * `provenance: 'measured'`. No worker could run it: there was no audiosep adapter at all, so choosing
+		 * it queued a job that no capability matched and nothing on screen explained why. The worker now
+		 * enumerates ~135 checkpoints from the library it actually has installed and sends them in
+		 * `worker:catalogue`; the settings page appends those to this engine's list.
+		 *
+		 * Keep it empty. A name typed here is a claim about a remote box that this file cannot check, which is
+		 * exactly the failure the frame replaced.
+		 */
+		models: []
 	}
 ] as const;
+
+/*
+ * THE `ensemble` ENGINE WAS REMOVED HERE, and it is not coming back as a constant.
+ *
+ * It advertised `instrumental_clean` and `instrumental_full` at `rtFactor: 18, provenance: 'estimated'`,
+ * behind `capability: 'stems:ensemble'` — which no worker has ever advertised, because no ensemble adapter
+ * exists. Both were upgrade-only, so the failure was quiet: an operator set an upgrade model, upgrades
+ * silently never ran, and `hasCapableWorker` was false forever.
+ *
+ * If an ensemble runtime is built, it arrives the same way every other model now does: the worker announces
+ * it. `qualityRank`/`isQualityUpgrade` consult this constant, so a re-added phantom would also re-enter the
+ * upgrade-ranking maths with an invented number.
+ */
 
 /** The live default a fresh room processes with until someone changes the setting. */
 export const DEFAULT_ENGINE: SeparatorEngineId = 'demucs';
@@ -159,13 +149,38 @@ function findModel(engineId: string, modelId: string): SeparatorModel | undefine
 	return getEngine(engineId)?.models.find((m) => m.id === modelId);
 }
 
+/**
+ * The engine whose models are reported by the workers rather than listed here.
+ *
+ * Its validity cannot be decided in this file: which checkpoints exist is a property of the
+ * `audio-separator` version a worker has installed, and this module runs in the browser.
+ */
+const WORKER_POPULATED_ENGINE = 'audiosep';
+
+/**
+ * A token shaped like one a worker announces. Slug-cased, which is what `zoo.slugify` emits.
+ *
+ * DELIBERATELY A SHAPE CHECK AND NOT A MEMBERSHIP ONE, because there is no list to check against here. The
+ * consequence of a token no worker has is already handled and VISIBLE: `requiredCapability` narrows the job
+ * to `stems:model:<token>`, no worker matches, `hasCapableWorker` is false, and core reports the media as
+ * `unservable` — the same path as asking for an engine nobody runs. That is a better failure than the
+ * alternative, which is what this replaced: `isValidSeparator` consulted the static list, so every
+ * worker-reported token was silently discarded and the setting snapped back to the default.
+ */
+function looksLikeWorkerToken(modelId: string): boolean {
+	return /^[a-z0-9]+(-[a-z0-9]+)+$/.test(modelId);
+}
+
 /** Is this a real, whitelisted engine+model pairing? Called before enqueueing, so a spoofed setting never
  *  reaches a worker that would fail mid-process. */
 export function isValidSeparator(engineId: string, modelId: string): boolean {
-	return !!findModel(engineId, modelId);
+	if (findModel(engineId, modelId)) return true;
+	// The zoo's models live on the workers; see `looksLikeWorkerToken` for why a shape check is the right
+	// gate and what the failure mode is when the token names nothing.
+	return engineId === WORKER_POPULATED_ENGINE && looksLikeWorkerToken(modelId);
 }
 
-/** A pairing valid for the LIVE default (excludes upgrade-only engines like ensemble). */
+/** A pairing valid for the LIVE default (excludes any engine marked upgrade-only). */
 export function isLiveSelectable(engineId: string, modelId: string): boolean {
 	return getEngine(engineId)?.liveSelectable === true && isValidSeparator(engineId, modelId);
 }
@@ -188,8 +203,23 @@ export function isQualityUpgrade(
 	current: { engine: string; model: string } | null | undefined,
 	candidate: { engine: string; model: string }
 ): boolean {
+	// A WORKER-REPORTED MODEL HAS NO RANK IN THIS FILE, and treating that as rank 0 was a silent refusal:
+	// the upgrade job would run to completion — minutes of separation — and then be rejected at the swap,
+	// because `cand === 0` returns false below. Nothing downstream would say why.
+	//
+	// An operator who picks a specific zoo checkpoint as their upgrade target has stated an intent this
+	// registry cannot rank against, so the intent is honoured. The ladder still governs everything it
+	// actually knows about, which is every built-in pairing.
+	if (isWorkerReportedModel(candidate.engine, candidate.model)) return true;
 	const cand = qualityRank(candidate.engine, candidate.model);
 	if (cand === 0) return false;
 	if (!current) return true;
 	return cand > qualityRank(current.engine, current.model);
+}
+
+/** A pairing this file knows is valid but cannot rank, because the worker supplied it. */
+export function isWorkerReportedModel(engineId: string, modelId: string): boolean {
+	return (
+		engineId === WORKER_POPULATED_ENGINE && !findModel(engineId, modelId) && looksLikeWorkerToken(modelId)
+	);
 }

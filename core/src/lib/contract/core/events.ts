@@ -83,6 +83,45 @@ export type ClientEvent =
 	| { type: 'tv:telemetry'; positionSec: number; status: string; entryId?: string }
 	| { type: 'hello'; lastRev: number };
 
+/**
+ * One separation model a worker offers, for rendering a picker.
+ *
+ * METADATA ONLY — routing does not read this. A model is routed on the capability token
+ * `stems:model:<token>` that arrives in the same frame's `capabilities`, which the existing dispatch
+ * already matches on; a published score is not a routing input.
+ */
+export interface SeparatorOffer {
+	/** Stable token, recorded in `job_attempts.model` and sent back as `JobParams.model`. */
+	token: string;
+	label: string;
+	/** `VR` / `MDX` / `MDXC` / `Demucs`. */
+	architecture: string;
+	/**
+	 * UPSTREAM'S published figure, not this project's measurement, and not comparable to
+	 * `docs/benchmarks/stem-separation` — those are plain SDR, these are museval BSS-eval on tracks we did
+	 * not choose. Fine for ranking a hundred unknowns; do not label it "measured" in the UI.
+	 */
+	upstreamInstrumentalSdr?: number;
+	upstreamVocalsSdr?: number;
+	/**
+	 * `declared` when the model's own metadata names its stems, `unknown` when the worker determines them
+	 * from the audio. Either way the worker VERIFIES from the audio before publishing — this says only
+	 * whether there was a hint to start from, which is worth surfacing for an exotic pick.
+	 */
+	roleSource?: 'declared' | 'unknown';
+}
+
+/**
+ * A `SeparatorOffer` unioned across the connected fleet, for a picker.
+ *
+ * Lives in the contract rather than beside the union that builds it, because the settings PAGE renders it —
+ * and a component importing from `$lib/server` is what SvelteKit's server-module guard exists to stop.
+ */
+export interface OfferedModel extends SeparatorOffer {
+	/** How many connected workers advertised this token. 1 means picking it pins the job to one box. */
+	workerCount: number;
+}
+
 // The dial-home protocol: workers connect TO the core. The frame NAMES are mirrored in the worker's
 // `protocol.py` and a parity guard holds the two unions equal.
 
@@ -96,6 +135,22 @@ export type WorkerMessage =
 			concurrency: number;
 			version: string;
 			host?: WorkerHost;
+	  }
+	| {
+			/**
+			 * The selectable separation models a worker can run, sent AFTER `worker:hello` rather than in it.
+			 *
+			 * WHY A SECOND FRAME. Enumerating the worker's model zoo probes torch, the ONNX runtime and the
+			 * accelerator, and downloads a catalogue on first run — measured at 4.8 s. Registration must not
+			 * wait for a picker's contents, so the worker joins with its base capabilities and follows up.
+			 *
+			 * `capabilities` REPEATS the full set rather than sending a delta, so applying it is idempotent: a
+			 * dropped or duplicated frame cannot leave a half-updated view. Replace, never merge.
+			 */
+			type: 'worker:catalogue';
+			workerId: string;
+			capabilities: string[];
+			separators: SeparatorOffer[];
 	  }
 	| { type: 'worker:heartbeat'; workerId: string; slotsFree: number; runningJobIds: string[] }
 	| { type: 'job:accept'; workerId: string; jobId: string }

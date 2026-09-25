@@ -7,6 +7,7 @@ import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { fallbackJoinOrigin, publicOriginIsHttps } from '$lib/server/public-origin';
 // The scope list lives in one place because BOTH halves read it — see $lib/settings-tabs.
 import { settingsTabFromParam } from '$lib/settings-tabs';
+import { offeredModels } from '$lib/server/jobs/offered-models';
 
 export const load: PageServerLoad = async ({ cookies, request, url }) => {
 	const app = getApp();
@@ -31,6 +32,10 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 		// What an empty join address resolves to, so the field can show its fallback.
 		joinOriginFallback: fallbackJoinOrigin(request, url),
 		// Only the server knows the real scheme this phone arrived on; `location.protocol` cannot be trusted for it.
-		requestIsHttps: publicOriginIsHttps(request, url)
+		requestIsHttps: publicOriginIsHttps(request, url),
+		// Models the CONNECTED WORKERS reported, rather than a list compiled here. A worker knows what it can
+		// actually run; this page used to offer three checkpoints no worker had. Empty when no worker has sent
+		// its catalogue yet, which the page treats as "fall back to the built-in engines".
+		offeredModels: offeredModels(app.workers.list())
 	};
 };

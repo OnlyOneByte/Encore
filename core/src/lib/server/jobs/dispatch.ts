@@ -12,7 +12,8 @@ import {
 	getEngine,
 	getFetcher,
 	fetcherFor,
-	isQualityUpgrade
+	isQualityUpgrade,
+	SEPARATOR_ENGINES
 } from '../../contract';
 import type { WorkerSession } from './registry';
 import { parseTrackTitle } from '../media/track-title';
@@ -132,17 +133,56 @@ export interface Assignment {
 	workerId: string;
 }
 
-/** PURE. A separation job's capability is ENGINE-derived: a roformer process needs `stems:roformer` and
- *  must NOT go to a demucs-only worker. With no `settings`, falls back to the default engine's. */
+/**
+ * PURE. A separation job's capability is ENGINE-derived: a roformer process needs `stems:roformer` and
+ * must NOT go to a demucs-only worker. With no `settings`, falls back to the default engine's.
+ *
+ * A NAMED MODEL NARROWS IT FURTHER, to `stems:model:<token>`. Workers advertise one such token per
+ * checkpoint they can actually run, so a job asking for a specific model is routed only to a box that has
+ * it — using the existing single-capability match rather than any new routing code.
+ *
+ * ONLY for models a worker ANNOUNCED (`isWorkerModel`). The engine-level tokens that predate this —
+ * `htdemucs`, `bs-roformer-1297` — are resolved by the engine's own allowlist on the worker and must keep
+ * routing on the engine capability, or every existing job would suddenly require a token no worker sends.
+ */
 export function requiredCapability(jobType: JobType, settings?: GlobalSettings): string {
 	if (jobType === 'fetch') {
 		return getFetcher(settings?.defaultFetcher ?? DEFAULT_FETCHER)?.capability ?? `fetch:${DEFAULT_FETCHER}`;
 	}
-	if (jobType === 'stems') return getEngine(settings?.defaultEngine ?? DEFAULT_ENGINE)?.capability ?? 'stems';
-	if (jobType === 'stems-upgrade') {
-		return getEngine(settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine)?.capability ?? 'stems';
+	if (jobType === 'stems' || jobType === 'stems-upgrade') {
+		const upgrade = jobType === 'stems-upgrade';
+		const engineId = upgrade
+			? (settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine)
+			: (settings?.defaultEngine ?? DEFAULT_ENGINE);
+		const model = upgrade ? settings?.upgradeModel : settings?.defaultModel;
+		const engineCapability = getEngine(engineId)?.capability ?? 'stems';
+		return model && isWorkerModel(model) ? modelCapability(model) : engineCapability;
 	}
 	return jobType;
+}
+
+/** Mirrored in the worker's `adapters/zoo.MODEL_CAPABILITY_PREFIX`. */
+export const MODEL_CAPABILITY_PREFIX = 'stems:model:';
+
+export function modelCapability(token: string): string {
+	return `${MODEL_CAPABILITY_PREFIX}${token}`;
+}
+
+/**
+ * Is this token one a worker announced, rather than a checkpoint name built into core's own catalogue?
+ *
+ * The distinction is a routing one. An announced token has a matching `stems:model:<token>` capability on
+ * some worker, so requiring it is safe and precise. A BUILT-IN name has none — the worker resolves those
+ * through its own engine allowlist — so requiring `stems:model:htdemucs` would make every demucs job
+ * unservable.
+ *
+ * TESTED AGAINST THE CATALOGUE, not against the token's shape. A first attempt keyed on punctuation
+ * ("slugs have hyphens and no underscores") looked reasonable and was wrong for `bs-roformer-1297`, which
+ * is built-in and matches that description exactly — every roformer job would have become unroutable.
+ * Enumerating what core already knows about has no such edge.
+ */
+export function isWorkerModel(token: string): boolean {
+	return !SEPARATOR_ENGINES.some((engine) => engine.models.some((m) => m.id === token));
 }
 
 /** Defaults to the job's own type, for callers that do not care about engine routing. */
