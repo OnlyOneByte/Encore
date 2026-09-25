@@ -19,6 +19,7 @@ from typing import Any
 
 from encore_worker.adapters import cli, lrclib, lrcmux, ml, ports, separate
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
+from encore_worker.domain.identity import Identified
 from encore_worker.host import hardware
 from encore_worker.host.config import Config
 from encore_worker.protocol import frames as f
@@ -133,13 +134,26 @@ async def main() -> None:
         return DbosAlignSteps(impl, dbos)
 
     def stems_steps_for(job: JobRef) -> Any:
+        # Built PER JOB from the job's OWN engine param, not once at startup from the box's backend. A
+        # `stems-upgrade` job names `roformer`; honouring the startup backend instead would separate it with
+        # demucs and publish that as the upgrade, which nothing downstream could contradict.
+        chosen = (
+            separate.build_separator(
+                backend.name,
+                device=device,
+                mlx_bin=config.mlx_bin,
+                ffmpeg_bin=config.ffmpeg_bin,
+                engine=job.param_str("engine"),
+            )
+            or separator
+        )
         return SeparateStepsImpl(
             config=config,
             audio=AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client)),
             reporter=_ReporterFor(client),
             # Roots come from the JOB's media_dir, so a box serving two cores is not forced onto one layout.
             store=LocalArtifactStore(Roots.under(job.media_dir)),
-            separator=separator,
+            separator=chosen,
             probe=adapters.probe,
             # What the CORE asked for at handshake, not what this box's env says.
             publish_stem_format=client.publish_stem_format,
@@ -196,6 +210,37 @@ def _text_source_of(label: str) -> str:
     """
     head = label.split(":", 1)[0]
     return _TEXT_SOURCES.get(head, "lrclib")
+
+
+def _annotation_artifacts(found: Identified) -> dict[str, Any] | None:
+    """The `annotation` artifact — how core learns a song's canonical artist and title.
+
+    NOT the same as reporting it in `facts`. `facts` is a diagnostic record of what ran; `annotation` is what
+    core APPLIES: it sets `artistCanonical`/`titleCanonical`, and those are exactly what `assignParams` sends
+    to a later align job as its lookup keys. Reporting only `facts` means core never learns the names, so
+    every align job arrives with nothing to look up and goes straight to ASR — which is silently why the
+    provider tier never ran until a canonical artist was set by hand.
+
+    `source: "youtube"` because core's `applyAnnotation` accepts exactly `youtube` or `musicbrainz` and
+    ignores anything else. This is the YouTube FLOOR: no MBID, which core requires only for a musicbrainz
+    annotation, and `medium` confidence because a title parse is a guess about a human-typed string.
+    A MusicBrainz lookup would overwrite this with `high` and an MBID — see the README's parity note.
+
+    None when the song was not identified: core requires both names, and a half-annotation would claim a
+    lookup key that returns another song's words, which is worse than no key at all.
+    """
+    if not found.confident:
+        return None
+    return {
+        "annotation": {
+            "source": "youtube",
+            "artist": found.artist or "",
+            "title": found.track or "",
+            # A parse of an uploader-typed title, so `medium` — never `high`, which core treats as a citation
+            # that a later medium-confidence answer may not overwrite.
+            "confidence": "medium",
+        }
+    }
 
 
 def _lyrics_artifacts(outcome: AlignOutcome) -> dict[str, Any] | None:
@@ -278,6 +323,10 @@ async def _run(
             # will ever clean up and nothing can play.
             artifacts=(
                 {
+                    # ALWAYS present when separation succeeded. Core's process gate reads a present profile
+                    # as "the analysis step ran"; an absent one leaves core waiting forever for a step it
+                    # believes already happened, so the song is unsingable AND never reprocessed.
+                    "songProfile": dict(separated.profile or {}),
                     "stems": {
                         k: v
                         for k, v in (
@@ -286,7 +335,7 @@ async def _run(
                             ("guideMix", stems.guide_mix),
                         )
                         if v
-                    }
+                    },
                 }
                 if stems
                 else None
@@ -313,6 +362,7 @@ async def _run(
             worker_id=config.worker_id,
             job_id=job.job_id,
             media_uri=fetched.published,
+            artifacts=_annotation_artifacts(fetched.identified),
             facts={
                 "artist": fetched.identified.artist,
                 "track": fetched.identified.track,

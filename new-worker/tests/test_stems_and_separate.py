@@ -7,8 +7,11 @@ comment in the source explaining what breaks without them; these assert it.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from encore_worker.adapters import separate as sep
 from encore_worker.adapters.separate import (
     DEMUCS_MODELS,
     MlxDemucs,
@@ -171,6 +174,10 @@ class Fake:
         self.calls.append("probe_silence")
         return self.peak
 
+    async def measure_profile(self, job: JobRef, audio: AudioRef) -> dict[str, object]:
+        self.calls.append("measure_profile")
+        return {"keyTonic": 9, "keyMode": "minor", "loudnessLufs": -12.0}
+
     async def publish_stems(self, job: JobRef, audio: AudioRef) -> PublishedStems:
         self.calls.append("publish_stems")
         if self.publish_raises is not None:
@@ -193,7 +200,14 @@ async def test_a_good_separation_publishes() -> None:
     assert outcome.published.instrumental.endswith("-instrumental.flac")
     assert outcome.published.vocals == "derived/stems/m1-vocals.flac"
     assert outcome.published.guide_mix == "derived/stems/m1-guidemix.flac"
-    assert fake.calls == ["acquire_audio", "decode_to_wav", "separate", "probe_silence", "publish_stems"]
+    assert fake.calls == [
+        "acquire_audio",
+        "decode_to_wav",
+        "separate",
+        "probe_silence",
+        "measure_profile",
+        "publish_stems",
+    ]
 
 
 async def test_a_silent_instrumental_is_refused_before_publication() -> None:
@@ -303,3 +317,99 @@ def test_withholding_stems_does_not_withhold_unrelated_capabilities() -> None:
 
     without = hardware.capabilities(backend="torch", ytdlp="sh", ffmpeg="definitely-not-a-binary-xyz")
     assert "fetch:ytdlp" in without, "fetch does not need ffmpeg"
+
+
+# ── the songProfile artifact ──────────────────────────────────────────────────────────────────────
+
+
+async def test_the_profile_is_measured_before_publication() -> None:
+    """ORDER IS THE CONSTRAINT, not a preference. Publication moves the scratch stems into the store and
+    re-encodes them, so measuring afterwards would read files that have been consumed. This is the last
+    point where the raw separator output still exists.
+    """
+    fake = Fake(peak=-6.0)
+    await run_stems(JOB, fake)
+    assert fake.calls.index("measure_profile") < fake.calls.index("publish_stems")
+    assert fake.calls.index("separate") < fake.calls.index("measure_profile")
+
+
+async def test_a_published_outcome_always_carries_a_profile() -> None:
+    """Core's process gate reads a PRESENT profile as "the analysis step ran" and an ABSENT one as "still
+    processing" — so omitting it leaves core waiting forever for a step it believes already happened, and the
+    song is both permanently unsingable and never reprocessed. Present-with-null-fields is the correct
+    "measured, unknown" answer; absent is a different and much worse claim."""
+    fake = Fake(peak=-6.0)
+    outcome = await run_stems(JOB, fake)
+    assert outcome.published is not None
+    assert outcome.profile is not None
+
+
+async def test_the_profile_survives_a_lost_lease() -> None:
+    """The measurement already happened, and it describes the AUDIO rather than the ownership. Dropping it
+    because the lease expired would throw away work that is still true."""
+    fake = Fake(peak=-6.0, publish_raises=NotOurJob("reassigned"))
+    outcome = await run_stems(JOB, fake)
+    assert outcome.refused
+    assert outcome.profile is not None
+
+
+async def test_a_refused_silent_instrumental_never_reaches_the_profile() -> None:
+    """Silence is refused BEFORE measurement: there is nothing to characterise, and the job publishes
+    nothing, so spending a multi-minute numpy pass on it is pure waste."""
+    fake = Fake(peak=-120.0)
+    with pytest.raises(SilentInstrumental):
+        await run_stems(JOB, fake)
+    assert "measure_profile" not in fake.calls
+
+
+# ── roformer: the upgrade engine ──────────────────────────────────────────────────────────────────
+
+
+def test_a_known_roformer_token_resolves_to_a_registry_slug() -> None:
+    assert sep.resolve_roformer_slug("bs-roformer-1297").startswith("roformer-model-")
+
+
+def test_an_unknown_roformer_token_raises_rather_than_defaulting() -> None:
+    """Silently separating with the default would publish a backing track the operator did not choose, and
+    it would be indistinguishable from the one they asked for."""
+    with pytest.raises(sep.UnknownModel, match="unknown roformer model"):
+        sep.resolve_roformer_slug("bs-roformer-9999")
+
+
+def test_an_absent_roformer_token_takes_the_default() -> None:
+    assert sep.resolve_roformer_slug(None) == sep.ROFORMER_MODELS[sep.DEFAULT_ROFORMER_MODEL]
+
+
+def test_roformer_argv_separates_a_folder_not_a_file() -> None:
+    """`--input_folder` is a directory and every WAV inside it is separated — which is why the caller stages
+    the decoded input alone, or a second job's scratch would be separated too."""
+    argv = sep.roformer_argv("/in", "/out", "slug-x")
+    assert argv[argv.index("--input_folder") + 1] == "/in"
+    assert argv[argv.index("--store_dir") + 1] == "/out"
+    assert argv[argv.index("--model") + 1] == "slug-x"
+
+
+def test_roformer_argv_omits_device_when_unset() -> None:
+    """The CLI's own `auto` is better than a guess from here: it sees the box it runs on."""
+    assert "--device" not in sep.roformer_argv("/in", "/out", "s")
+    assert sep.roformer_argv("/in", "/out", "s", device="cuda")[-1] == "cuda"
+
+
+def test_stem_discovery_matches_the_delimited_role_marker(tmp_path: Path) -> None:
+    """THE trap this guards. Several registry slugs contain the word `vocals` (`...-vocals-by-gabox`), so a
+    bare substring test lets the INSTRUMENTAL file satisfy the vocals search — publishing the vocals as the
+    backing track, which is inaudible in review and unmistakable in a room."""
+    store = tmp_path / "out"
+    store.mkdir()
+    (store / "input_(Instrumental)_roformer-model-bs-roformer-vocals-by-gabox.wav").write_bytes(b"i")
+    (store / "input_(Vocals)_roformer-model-bs-roformer-vocals-by-gabox.wav").write_bytes(b"v")
+
+    inst = sep.find_roformer_instrumental(str(store))
+    voc = sep.find_roformer_vocals(str(store))
+    assert inst is not None and "_(Instrumental)_" in inst
+    assert voc is not None and "_(Vocals)_" in voc
+    assert inst != voc
+
+
+def test_stem_discovery_is_none_for_a_missing_directory() -> None:
+    assert sep.find_roformer_instrumental("/nope/not/here") is None

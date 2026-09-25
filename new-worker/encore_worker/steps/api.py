@@ -15,7 +15,7 @@ progress emitter run while a 45-minute separation blocks in a thread.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Protocol
 
 from encore_worker.steps.records import (
@@ -131,6 +131,8 @@ class SeparateSteps(Protocol):
         separation and sounds like a broken song. An UNMEASURED one is refused too — see `run_stems`.
         """
         ...
+
+    async def measure_profile(self, job: JobRef, audio: AudioRef) -> Mapping[str, object]: ...
 
     async def publish_stems(self, job: JobRef, audio: AudioRef) -> PublishedStems: ...
 

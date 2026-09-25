@@ -175,3 +175,63 @@ def test_confident_requires_both_fields() -> None:
     assert not Identified(artist="a").confident
     assert not Identified(track="b").confident
     assert not Identified().confident
+
+
+# ── the annotation artifact: how core learns the canonical names ───────────────────────────────────
+
+
+def test_an_identified_song_reports_an_annotation() -> None:
+    """NOT the same as reporting it in `facts`. `facts` is diagnostic; `annotation` is what core APPLIES to
+    set `artistCanonical`/`titleCanonical` — and those are exactly the lookup keys `assignParams` later sends
+    to an align job. Reporting only facts means core never learns the names, every align arrives with nothing
+    to look up, and the provider tier is skipped silently.
+    """
+    from encore_worker.__main__ import _annotation_artifacts
+
+    got = _annotation_artifacts(
+        Identified(artist="Louis Armstrong", track="What a Wonderful World", source="title-parse")
+    )
+    assert got is not None
+    ann = got["annotation"]
+    assert ann["artist"] == "Louis Armstrong"
+    assert ann["title"] == "What a Wonderful World"
+
+
+def test_the_annotation_source_is_one_core_accepts() -> None:
+    """Core's `applyAnnotation` accepts exactly `youtube` or `musicbrainz` and returns false for anything
+    else — so reporting our own internal label (`title-parse`) would be silently discarded."""
+    from encore_worker.__main__ import _annotation_artifacts
+
+    got = _annotation_artifacts(Identified(artist="A", track="B", source="title-parse"))
+    assert got is not None
+    assert got["annotation"]["source"] in ("youtube", "musicbrainz")
+
+
+def test_a_title_parse_claims_only_medium_confidence() -> None:
+    """`high` is a CITATION in core's never-regress rule: a later medium-confidence answer cannot overwrite
+    it. A guess at a human-typed string must not lock out a real MusicBrainz lookup later."""
+    from encore_worker.__main__ import _annotation_artifacts
+
+    got = _annotation_artifacts(Identified(artist="A", track="B"))
+    assert got is not None
+    assert got["annotation"]["confidence"] == "medium"
+
+
+def test_the_floor_carries_no_mbid() -> None:
+    """Core requires an MBID only for a `musicbrainz` annotation. Inventing one here would claim a
+    MusicBrainz identity this worker never looked up."""
+    from encore_worker.__main__ import _annotation_artifacts
+
+    got = _annotation_artifacts(Identified(artist="A", track="B"))
+    assert got is not None
+    assert not got["annotation"].get("mbid")
+
+
+def test_an_unidentified_song_reports_no_annotation() -> None:
+    """Core requires BOTH names. A half-annotation would claim a lookup key that returns another song's
+    words — worse than no key, because it looks like a hit."""
+    from encore_worker.__main__ import _annotation_artifacts
+
+    assert _annotation_artifacts(Identified()) is None
+    assert _annotation_artifacts(Identified(artist="A")) is None
+    assert _annotation_artifacts(Identified(track="B")) is None

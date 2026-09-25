@@ -17,6 +17,7 @@
 #   ./dev.sh compose up                     # DOCKER instead of native: core only
 #   ./dev.sh compose --profile stems up     # core + the karaoke worker
 #   ./dev.sh compose --cuda --profile stems up -d   # the NVIDIA deploy target
+#   ./dev.sh compose --new-stems up          # the DBOS rewrite instead of the incumbent worker
 #     Everything after `compose` is passed to `docker compose` verbatim, against
 #     docker/compose.yaml. Skips all native-dev preflight.
 #
@@ -59,6 +60,13 @@ if [ "${1:-}" = "compose" ]; then
 	if [ "${1:-}" = "--cuda" ]; then
 		shift
 		compose_files+=(-f "$ROOT/docker/compose.cuda.yaml")
+	fi
+	# `--new-stems` is sugar for the DBOS rewrite's profile. Spelled here rather than left to the caller
+	# because the two worker profiles must never run together: they advertise overlapping capabilities, so
+	# the core would round-robin jobs between them and any comparison would measure whichever was idle.
+	if [ "${1:-}" = "--new-stems" ]; then
+		shift
+		set -- --profile new-stems "$@"
 	fi
 	command -v docker >/dev/null 2>&1 || { echo "dev.sh compose: no docker on PATH" >&2; exit 127; }
 	# NO --project-directory: it would override the default and send Compose looking for `.env` in the

@@ -140,6 +140,17 @@ def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg")
     if module_available("whisperx"):
         caps.add("align")
 
+    # ADVERTISED BUT NOT ROUTED ON, and that is core's current behaviour rather than an oversight here:
+    # `requiredCapability` maps only fetch/stems/stems-upgrade/align, and core's source never mentions
+    # `diarize` at all. So this changes no dispatch — it restores what the old worker reported, which is
+    # what an operator reads off the dashboard to tell a box that can attribute lines to singers from one
+    # that publishes single-colour lyrics.
+    #
+    # Gated on the module because diarization IS an import here rather than a subprocess, unlike roformer
+    # below — pyannote is HF-gated and heavy, and a box without it simply attributes nothing.
+    if module_available("pyannote.audio"):
+        caps.add("diarize")
+
     # EVERY stems variant requires ffmpeg, and that is not a tidy-up. `decode_to_wav` shells it to
     # normalise the input, and the silence probe shells it to verify the output — so a box with demucs
     # and no ffmpeg would advertise `stems`, accept separation work, and fail every job at decode. It is
@@ -150,8 +161,16 @@ def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg")
     has_engine = module_available("demucs_mlx") if backend == "mlx" else module_available("demucs")
     if has_engine:
         caps.add("stems")
-    if module_available("bs_roformer_infer"):
+    # GATED ON THE CLI, not on the importable module — and that distinction was a real bug. The module
+    # being present proves the checkpoint code is installed; only the BINARY proves this box can run it,
+    # because the engine shells out rather than importing. Advertising on the module alone meant a box
+    # could claim `stems:roformer`, be handed a `stems-upgrade` job by the core (roformer is the default
+    # upgrade engine), and separate it with DEMUCS instead — publishing demucs output labelled as the
+    # upgrade, which no log would contradict.
+    if binary_available("bs-roformer-infer"):
         caps.add("stems:roformer")
-    if module_available("audio_separator"):
-        caps.add("stems:audiosep")
+    # NOT ADVERTISED, deliberately: `adapters/separate.build_separator` has no audiosep branch, so claiming
+    # it would route work here that this worker cannot honour. The old worker has the engine; porting it is
+    # tracked in new-worker/README.md's parity notes. Advertising ahead of the implementation is the exact
+    # failure the roformer gate above now prevents.
     return frozenset(caps)
