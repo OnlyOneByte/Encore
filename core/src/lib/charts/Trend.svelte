@@ -52,8 +52,7 @@
 			{#each calendar as slot (slot.day)}
 				<button
 					type="button"
-					class="col"
-					class:missing={slot.plays === null}
+					class={['col', { missing: slot.plays === null }]}
 					title={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays}`}
 					aria-label={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays} sings`}
 				>

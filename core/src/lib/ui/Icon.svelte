@@ -26,8 +26,7 @@
 	`eslint-disable-next-line` because the expression sits inside a multi-line start tag, which leaves no preceding
 	line to put a comment on; this file holds exactly one {@html}. -->
 <svg
-	class="icon"
-	class:solid={SOLID_ICONS.includes(name)}
+	class={['icon', { solid: SOLID_ICONS.includes(name) }]}
 	viewBox="0 0 24 24"
 	width={size}
 	height={size}

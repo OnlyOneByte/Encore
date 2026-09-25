@@ -155,7 +155,10 @@
 								{#each process.attempts as a (a.id)}
 									<Item.Root variant="bare" size="bare">
 										{#snippet child({ props })}
-											<li {...props} class:failed={a.outcome === 'failed'} class:abandoned={a.outcome === 'abandoned'}>
+											<li
+												{...props}
+												class={[props.class, { failed: a.outcome === 'failed', abandoned: a.outcome === 'abandoned' }]}
+											>
 												<Item.Content>
 													<div class="row">
 														<strong>{stepLabel(a.jobType)}</strong>

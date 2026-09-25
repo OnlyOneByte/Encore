@@ -511,7 +511,7 @@
 
 <div class="tv" style={tvStyle}>
 	<!-- The stage background, beneath both player slots. First child so document order matches paint order. -->
-	<div class="stage-bg" class:shown={!isAttract} style="background: {stageBg}">
+	<div class={['stage-bg', { shown: !isAttract }]} style="background: {stageBg}">
 		<!--
 			INSIDE the stage layer, not a sibling, so the visualizer inherits the ONE visibility gate and the one
 			crossfade already proven for backgrounds. `stageBg` is its black floor, so an unpainted first frame is
@@ -684,7 +684,7 @@
 			{/if}
 			<!-- The reel's amber tint carries the meaning; this line only names why the words look different. -->
 			{#if lyricsSourceLabel}
-				<span class="ls-source" class:ls-asr={lyricsUnverified}>{lyricsSourceLabel}</span>
+				<span class={['ls-source', { 'ls-asr': lyricsUnverified }]}>{lyricsSourceLabel}</span>
 			{/if}
 			{#if tvProgressStyle === 'card'}
 				<TvProgress style="card" elapsedSec={positionSec} durationSec={durationSec} />
@@ -753,7 +753,7 @@
 			<div class="process-bar"><i style="width: {proc.fraction}"></i></div>
 			<div class="process-steps">
 				{#each PROCESS_STEPS as label, i (label)}
-					<span class:step-current={i === proc.index} class:step-done={i < proc.index}>{label}</span>
+					<span class={{ 'step-current': i === proc.index, 'step-done': i < proc.index }}>{label}</span>
 				{/each}
 			</div>
 		</div>
@@ -851,8 +851,7 @@
 	-->
 	<button
 		type="button"
-		class="fs-btn"
-		class:shown={controlsVisible}
+		class={['fs-btn', { shown: controlsVisible }]}
 		onclick={toggleFullscreen}
 		aria-label="Toggle full screen (press f)"
 		title="Full screen (f)"
@@ -871,7 +870,7 @@
 		</svg>
 	</button>
 
-	<div class="status" class:on={connected}></div>
+	<div class={['status', { on: connected }]}></div>
 </div>
 
 <style>

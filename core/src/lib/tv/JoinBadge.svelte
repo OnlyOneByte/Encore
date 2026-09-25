@@ -53,7 +53,7 @@
 			THE `.badqr` FAMILY NAMES ARE KEPT ON PURPOSE, even though nothing here is a card any more: it is how the e2e
 			contract, the party flow and the scaling probe recognise "this screen advertises an address no phone can reach".
 		-->
-		<p class="badqr" class:corner={placement === 'corner'} class:hero={placement === 'hero'} role="status">
+		<p class={['badqr', { corner: placement === 'corner', hero: placement === 'hero' }]} role="status">
 			<b class="badqr-t">No external IP set</b><span class="badqr-fix">Set the party address in Settings</span>
 		</p>
 	{/if}

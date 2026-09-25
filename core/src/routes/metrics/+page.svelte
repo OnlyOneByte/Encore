@@ -165,7 +165,7 @@
 													>
 												</Table.Cell>
 												<Table.Cell>{s.n}</Table.Cell>
-												<Table.Cell><span class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</span></Table.Cell>
+												<Table.Cell><span class={{ lead: s.jobType === slowestStep }}>{dur(s.meanMs)}</span></Table.Cell>
 												<Table.Cell>{dur(s.p50Ms)}</Table.Cell>
 												<Table.Cell>{dur(s.p95Ms)}</Table.Cell>
 												<Table.Cell>{dur(s.meanQueueWaitMs)}</Table.Cell>
@@ -218,8 +218,10 @@
 												<Table.Cell>{pct(r.declared?.rtFactor ?? null)}</Table.Cell>
 												<Table.Cell
 													><span
-														class:slower={(r.ratioToDeclared ?? 1) > 1.5}
-														class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
+																				class={{
+																						slower: (r.ratioToDeclared ?? 1) > 1.5,
+																						faster: r.ratioToDeclared !== null && r.ratioToDeclared < 0.67
+																					}}
 														>{vsClaimed(r.ratioToDeclared)}</span
 													></Table.Cell
 												>
