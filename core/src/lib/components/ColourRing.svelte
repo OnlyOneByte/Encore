@@ -93,7 +93,7 @@
 </script>
 
 <div class="ring-field">
-	<span class="field-label">{label}</span>
+	<span class="eyebrow">{label}</span>
 	{#if hint}<p class="field-hint">{hint}</p>{/if}
 
 	<!-- The `role="slider"` sits on the DISC, not the knob, so a tap anywhere on the band is a pick and the measured
@@ -132,14 +132,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-md);
-	}
-	/* The shared eyebrow idiom: this labels a control carrying its own accessible name, so a real label element would
-	   have nothing to point at. */
-	.field-label {
-		font-size: var(--ph-text-sm);
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
 	}
 	.field-hint {
 		margin: 0;

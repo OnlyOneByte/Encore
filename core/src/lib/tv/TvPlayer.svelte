@@ -484,8 +484,14 @@
 		position: absolute;
 		inset: 0;
 		opacity: 0;
-		transition: opacity var(--motion-base) ease; /* crossfade on swap — opacity only, GPU-composited */
 		pointer-events: none;
+	}
+	/* The swap CROSSFADE, opacity only and GPU-composited — and opt-in, so a reduced-motion stage hard-cuts between
+	   slots instead. The cut is the honest degradation here: the gapless swap is already sample-accurate. */
+	@media (prefers-reduced-motion: no-preference) {
+		.slot {
+			transition: opacity var(--motion-base) ease;
+		}
 	}
 	.slot.visible {
 		opacity: 1;

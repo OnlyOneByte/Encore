@@ -12,12 +12,8 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
 	import { SNAP_BAND, OPEN_CONTENT_SLACK_PX, openSnapFraction } from '$lib/sheet-snap';
+	import { songFacts } from '$lib/song-facts';
 	import {
-		originalKeyLabel,
-		soundingKeyLabel,
-		rangeLabel,
-		rangeOctaves,
-		voiceBandSentence,
 		isAuthoritativeText,
 		lyricsSourceLabel,
 		type LyricsCandidate,
@@ -179,13 +175,15 @@
 	   disagree mid-song. `null` and never 0 for an unknown length: the seek row HIDES rather than pinning a bar. */
 	const progress = $derived(progressFraction(elapsedSec, durationSec));
 
-	const keyOriginal = $derived(originalKeyLabel(profile));
-	const keySounding = $derived(soundingKeyLabel(profile, keyShift));
-	const keyShifted = $derived(keyShift !== 0 && keySounding !== null && keySounding !== keyOriginal);
-	const keyLabel = $derived(keyShift === 0 ? 'Key' : `Key · ${keyShift > 0 ? '+' : '−'}${Math.abs(keyShift)}`);
-	const rangeText = $derived(rangeLabel(profile, keyShift));
-	const octaves = $derived(rangeOctaves(profile));
-	const bandSentence = $derived(voiceBandSentence(profile, keyShift));
+	/* One call, so this block and `/song/[mediaId]` cannot describe the same song differently. */
+	const facts = $derived(songFacts(profile, keyShift));
+	const keyOriginal = $derived(facts.keyOriginal);
+	const keySounding = $derived(facts.keySounding);
+	const keyShifted = $derived(facts.keyShifted);
+	const keyLabel = $derived(facts.keyLabel);
+	const rangeText = $derived(facts.rangeText);
+	const octaves = $derived(facts.octaves);
+	const bandSentence = $derived(facts.bandSentence);
 
 	/* While a finger is on the slider the LOCAL value wins, or the thumb fights the throttled websocket echo. */
 	let guideDragging = $state(false);

@@ -79,3 +79,85 @@ test('localStamp holds the YYYY-MM-DD HH:MM:SS shape with zero-padding and 24h m
 	// Single-digit month/day/hour stay zero-padded, so the string sorts and aligns.
 	expect(localStamp(Date.parse('2026-03-07T14:09:04Z'), 'UTC')).toBe('2026-03-07 14:09:04');
 });
+
+// ── the audit/attempt vocabulary ─────────────────────────────────────────────
+// These lived in `routes/metrics/[mediaId]/+page.svelte` and `routes/metrics/+page.svelte`, where no test could
+// reach them — the exact failure this module's header names. Tested here now that they are importable.
+import {
+	decidedLabel,
+	factLabel,
+	hostFacts,
+	modelFacts,
+	outcomeLabel,
+	outcomeTone,
+	score,
+	slowestStepType
+} from '$lib/metrics-format';
+
+test('an unknown outcome reads as running rather than blank — an in-flight row IS running', () => {
+	expect(outcomeLabel('ready')).toBe('done');
+	expect(outcomeLabel('abandoned')).toBe('gave up, retried');
+	expect(outcomeLabel(null)).toBe('running');
+	// A value the server grew that this map has not learned: shown verbatim, never as an empty cell.
+	expect(outcomeLabel('quarantined')).toBe('quarantined');
+});
+
+test('only a finished verdict gets a verdict tone; everything in flight is a caution', () => {
+	expect(outcomeTone('ready')).toBe('ok');
+	expect(outcomeTone('failed')).toBe('bad');
+	expect(outcomeTone('abandoned')).toBe('bad');
+	for (const inFlight of ['running', 'canceled', null, 'something-new']) expect(outcomeTone(inFlight)).toBe('warn');
+});
+
+test('fact labels turn field names into English, and pass through what they do not know', () => {
+	expect(factLabel('asrModel')).toBe('speech model');
+	expect(factLabel('syncMode')).toBe('timing');
+	expect(factLabel('someNewField')).toBe('someNewField');
+});
+
+test('modelFacts drops absent fields rather than printing an empty row', () => {
+	expect(modelFacts({ engine: 'demucs', model: null, device: 'cuda' })).toEqual([
+		['separator', 'demucs'],
+		['hardware', 'cuda']
+	]);
+	expect(modelFacts({})).toEqual([]);
+});
+
+test('hostFacts skips unknown and absent keys — `host` is an open bag', () => {
+	expect(hostFacts({ cpuCount: 8, platform: 'linux', somethingElse: 'ignored', torch: null })).toEqual([
+		['cpus', '8'],
+		['platform', 'linux']
+	]);
+	// A present-but-falsy value is NOT absent: 0 cpus is a reading, and dropping it would read as unmeasured.
+	expect(hostFacts({ cpuCount: 0 })).toEqual([['cpus', '0']]);
+});
+
+test('decidedLabel distinguishes a judged pick from one that fell through to metadata', () => {
+	expect(decidedLabel('agreement')).toBe('a baseline judged it');
+	expect(decidedLabel('metadata')).toBe('no baseline could judge — chosen on metadata');
+	expect(decidedLabel('unknown')).toBe('unknown');
+});
+
+test('score prints an em dash for absent, never 0.00 — which would read as a measured zero', () => {
+	expect(score(null)).toBe('—');
+	expect(score(0)).toBe('0.00');
+	expect(score(0.8166)).toBe('0.82');
+});
+
+test('slowestStepType finds the bottleneck, treats a null mean as zero, and has none among none', () => {
+	expect(slowestStepType([])).toBe(null);
+	expect(
+		slowestStepType([
+			{ jobType: 'fetch', meanMs: 400 },
+			{ jobType: 'stems', meanMs: 90_000 },
+			{ jobType: 'align', meanMs: 12_000 }
+		])
+	).toBe('stems');
+	// An unreported mean must not win the comparison by being null.
+	expect(
+		slowestStepType([
+			{ jobType: 'fetch', meanMs: null },
+			{ jobType: 'stems', meanMs: 5 }
+		])
+	).toBe('stems');
+});

@@ -18,6 +18,10 @@
  *   `SEL.play` — it named an `aria-label="play/pause"` nothing carries, so it would resolve against
  *     nothing while reading as though the old flow worked. The whole transport is in the band row.
  *   no HOOK may name NowPlayingHero.svelte — the component is deleted.
+ *   `swatch(name)`, `hueSlider` — ColourPicker is deleted, so the eight-preset swatches and the hue rail they
+ *     named exist nowhere. `hueSlider` is the dangerous one to revive: `input[type="range"]` now resolves ONLY
+ *     against /settings' sliders, which are a different control, so a revived key would pass against the wrong
+ *     element. The identity control on every surface is `colourRing`.
  */
 
 export const SEL = {
@@ -25,10 +29,6 @@ export const SEL = {
 	nameInput: 'input[placeholder^="e.g."]',
 	/** One `role="slider"` over 48 stops: a driver picks with `Home`/`End`/arrows, there is nothing to click. */
 	colourRing: '.colour-ring',
-	/** The BARE colour name ("pink"), the element already being role=radio. Only /components renders these. */
-	swatch: (colourName: string) => ({ role: 'radio' as const, name: colourName }),
-	/** The gallery picker's hue rail. /settings' native `input[type="color"]` must NOT match this. */
-	hueSlider: 'input[type="range"]',
 	submit: /Start singing/,
 	/** How p8 tells a duplicate-name rejection from a clean join: both leave the form sitting there. */
 	joinError: '.err[role=alert]',

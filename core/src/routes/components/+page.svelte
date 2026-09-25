@@ -8,7 +8,6 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
 	import type { SongProfile } from '$lib/contract';
-	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -360,7 +359,6 @@
 	// gets triggers, and the picker's preset-vs-rail agreement can only be exercised by binding a real value.
 	let drawerOpen = $state(false);
 	let drawerHasSong = $state(true);
-	let demoColour = $state(VIOLET);
 
 	// The demo clock every word-sweep card reads, so one loop drives them all.
 	let demoPos = $state(0);
@@ -731,16 +729,6 @@
 			<p class="caption">No profile: renders nothing (blank on purpose)</p>
 			<RangeBar profile={null} />
 		</div>
-	</div>
-
-	<h2 class="section">ColourPicker · presets plus hue wheel</h2>
-	<!-- The picker's only remaining surface, so preset-vs-rail agreement has nowhere else to be exercised. -->
-	<div style="max-width:420px;">
-		<ColourPicker
-			bind:value={demoColour}
-			label="Your color"
-			hint="How you'll spot yourself in the queue and on the TV."
-		/>
 	</div>
 
 	<h2 class="section">LyricsOverlay (TV) · VERIFIED text</h2>

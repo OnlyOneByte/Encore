@@ -3,7 +3,17 @@
 	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { dur, stepLabel, stageLabel, pct, vsClaimed, separatorLabel, count } from '$lib/metrics-format';
+	import {
+		count,
+		dur,
+		hostFacts,
+		pct,
+		separatorLabel,
+		slowestStepType,
+		stageLabel,
+		stepLabel,
+		vsClaimed
+	} from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
@@ -63,10 +73,7 @@
 	let failed = $state(false);
 
 	/** Marked in the table, because comparing mixed units down a column is arithmetic, not a glance. */
-	const slowestStep = $derived.by(() => {
-		if (!metrics || metrics.steps.length === 0) return null;
-		return metrics.steps.reduce((best, s) => ((s.meanMs ?? 0) > (best.meanMs ?? 0) ? s : best)).jobType;
-	});
+	const slowestStep = $derived(metrics ? slowestStepType(metrics.steps) : null);
 
 	onMount(async () => {
 		try {
@@ -78,21 +85,6 @@
 		}
 	});
 
-	/** `host` is an open bag, so an unexpected or absent key is skipped rather than thrown on. */
-	const HOST_LABELS: Record<string, string> = {
-		accelerator: 'accelerator',
-		deviceName: 'device',
-		cpuCount: 'cpus',
-		platform: 'platform',
-		python: 'python',
-		torch: 'torch',
-		contained: 'contained'
-	};
-	function hostFacts(host: Record<string, unknown>): [string, string][] {
-		return Object.entries(HOST_LABELS)
-			.map(([key, label]): [string, string] => [label, host[key] == null ? '' : String(host[key])])
-			.filter(([, value]) => value !== '');
-	}
 </script>
 
 <svelte:head><title>Encore — metrics</title></svelte:head>

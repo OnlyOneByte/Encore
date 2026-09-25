@@ -5,17 +5,13 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import {
-		originalKeyLabel,
-		soundingKeyLabel,
-		rangeLabel,
-		rangeOctaves,
-		voiceBandSentence,
 		songDisplay,
 		chosenCandidate,
 		hasNewerCandidateThanOverride,
 		type Media
 	} from '$lib/contract';
 	import { room } from '$lib/stores/room';
+	import { songFacts } from '$lib/song-facts';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
@@ -69,12 +65,14 @@
 
 	const display = $derived(songDisplay(media ?? undefined));
 	const profile = $derived(media?.songProfile ?? null);
-	const keyOriginal = $derived(originalKeyLabel(profile));
-	const keySounding = $derived(soundingKeyLabel(profile, keyShift));
-	const keyShifted = $derived(keyShift !== 0 && keySounding !== null && keySounding !== keyOriginal);
-	const rangeText = $derived(rangeLabel(profile, keyShift));
-	const octaves = $derived(rangeOctaves(profile));
-	const bandSentence = $derived(voiceBandSentence(profile, keyShift));
+	/* Same one call the drawer makes — these two surfaces state the same facts and must agree word for word. */
+	const facts = $derived(songFacts(profile, keyShift));
+	const keyOriginal = $derived(facts.keyOriginal);
+	const keySounding = $derived(facts.keySounding);
+	const keyShifted = $derived(facts.keyShifted);
+	const rangeText = $derived(facts.rangeText);
+	const octaves = $derived(facts.octaves);
+	const bandSentence = $derived(facts.bandSentence);
 	const candidates = $derived(media?.lyricsCandidates ?? []);
 
 	const heading = $derived(loading ? 'Song' : display.title || media?.title || 'Unknown song');
@@ -252,14 +250,6 @@
 		font-size: var(--ph-text-xs);
 		line-height: var(--lh-normal);
 		color: var(--ink-dim);
-	}
-	.grouphead {
-		font-size: var(--ph-text-2xs);
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-		font-weight: 700;
-		margin: var(--space-2xl) var(--space-2xs) var(--space-sm);
 	}
 	@media (min-width: 768px) {
 		main {

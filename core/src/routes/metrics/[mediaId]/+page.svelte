@@ -3,7 +3,18 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { dur, stepLabel, stageLabel, localStamp, pct } from '$lib/metrics-format';
+	import {
+		decidedLabel,
+		dur,
+		localStamp,
+		modelFacts,
+		outcomeLabel,
+		outcomeTone,
+		pct,
+		score,
+		stageLabel,
+		stepLabel
+	} from '$lib/metrics-format';
 	import { formatClock } from '$lib/clock';
 	import type { SelectionRecord } from '$lib/contract';
 	import * as Card from '$lib/components/ui/card';
@@ -74,43 +85,6 @@
 	});
 
 	/** Drops nulls: a null model field is "not applicable", and FactList prints whatever it is handed. */
-	const modelFacts = (models: Record<string, string | null>): [string, string][] =>
-		Object.entries(models)
-			.filter((entry): entry is [string, string] => Boolean(entry[1]))
-			.map(([key, value]): [string, string] => [factLabel(key), value]);
-
-	const OUTCOME_LABELS: Record<string, string> = {
-		ready: 'done',
-		failed: 'failed',
-		abandoned: 'gave up, retried',
-		canceled: 'canceled',
-		running: 'running'
-	};
-	const outcomeLabel = (outcome: string | null) => OUTCOME_LABELS[outcome ?? 'running'] ?? outcome ?? 'running';
-	/** One tone table for a run and for an attempt, which carry the same outcome vocabulary. Anything else — running,
-	 * canceled, not yet reported — is in-flight, so it reads as a caution rather than a verdict. */
-	const OUTCOME_TONES: Record<string, 'ok' | 'bad' | 'warn'> = { ready: 'ok', failed: 'bad', abandoned: 'bad' };
-	const outcomeTone = (outcome: string | null) => OUTCOME_TONES[outcome ?? ''] ?? 'warn';
-
-	/** The model/hardware keys, in words. `asrModel` and `syncMode` are field names, not English. */
-	const FACT_LABELS: Record<string, string> = {
-		engine: 'separator',
-		model: 'model',
-		backend: 'runtime',
-		device: 'hardware',
-		asrModel: 'speech model',
-		syncMode: 'timing'
-	};
-	const factLabel = (k: string) => FACT_LABELS[k] ?? k;
-
-	// The distinction worth keeping: 'agreement' means a baseline voted, so a wrong pick there is a metric problem;
-	// 'metadata' means none could and cheap ordering stood, which a better metric does not fix.
-	const DECIDED_LABELS: Record<string, string> = {
-		agreement: 'a baseline judged it',
-		metadata: 'no baseline could judge — chosen on metadata'
-	};
-	const decidedLabel = (d: string) => DECIDED_LABELS[d] ?? d;
-	const score = (n: number | null) => (n === null ? '—' : n.toFixed(2));
 
 	/** One string for the h1 and the <main> landmark's accessible name, so they cannot drift apart. */
 	const pageTitle = $derived(audit?.media?.titleCanonical ?? audit?.media?.title ?? mediaId ?? '');

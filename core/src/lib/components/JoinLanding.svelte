@@ -140,7 +140,7 @@
 	flip, which forces a JS crossfade. See docs/FRONTEND.md#the-join-screen. -->
 <header class="join-head" class:head-bar={!onCodeStep}>
 	<h1 class="brand" class:brand-bar={!onCodeStep}>
-		<Icon name="mic" /> <span class="wordmark">Encore</span>
+		<Icon name="mic" /> <span class="grad-text">Encore</span>
 	</h1>
 	<!-- THE LEDE BELONGS TO THE CODE PANE ONLY: on the identity pane the room sentence is the opening line. -->
 	{#if onCodeStep}
@@ -170,7 +170,7 @@
 		<p class="confirm" role="status">{confirmSentence}</p>
 
 		<label class="name-field">
-			<span class="name-label">Your name</span>
+			<span class="eyebrow">Your name</span>
 			<!-- `maxlength` must be a NUMBER: the DOM coerces a string, but a typed component prop does not. -->
 			<Input
 				variant="join"
@@ -270,12 +270,6 @@
 		justify-items: start;
 		text-align: left;
 	}
-	.wordmark {
-		background: var(--grad);
-		-webkit-background-clip: text;
-		background-clip: text;
-		color: transparent;
-	}
 	.lede {
 		grid-area: lede;
 		color: var(--ink-dim);
@@ -331,12 +325,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
-	}
-	.name-label {
-		font-size: var(--ph-text-sm);
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
 	}
 	/* THE COLUMN THE CTA DOCKS AGAINST. `.submit-slot`'s auto margin can only push the CTA to the bottom if this
 	   element HAS a bottom to reach: the layout's `main` is `flex: 1` without `display: flex`, so `.join-main`

@@ -14,6 +14,7 @@
 	} from '$lib/contract';
 	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
 	import { room } from '$lib/stores/room';
+	import { drawPosition, secondTicker } from '$lib/playhead';
 
 	let { children } = $props();
 
@@ -93,18 +94,20 @@
 		if (isPhoneSurface) void room.connect();
 	});
 
-	/* `positionSec` arrives on a broadcast, not a frame, so the ring extrapolates between them. Capture `pos` and
-	   `wall` INSIDE the effect that reads `isPlaying` too: a resume re-delivers an equal `positionSec`, and an equal
-	   primitive write notifies nothing, so a separate anchor effect would never re-run. One second, not a frame: the arc
-	   moves sub-pixel. See docs/FRONTEND.md#the-band-and---dock-h. */
+	/* `positionSec` arrives on a broadcast, not a frame, so the ring extrapolates between them. BOTH READS STAY INSIDE
+	   THIS EFFECT: a resume re-delivers an equal `positionSec`, and writing an equal primitive notifies nothing, so a
+	   separate anchor effect would never re-run. One second, not a frame — the arc moves sub-pixel. The arithmetic is
+	   `$lib/playhead`'s, shared with the phone home and the TV reel, and it floors the elapsed term where this site
+	   used to omit that. See docs/FRONTEND.md#the-band-and---dock-h. */
 	let livePos = $state(0);
 	$effect(() => {
-		const pos = positionSec;
-		const wall = performance.now();
-		livePos = pos;
-		if (!isPlaying) return;
-		const id = setInterval(() => (livePos = pos + (performance.now() - wall) / 1000), 1000);
-		return () => clearInterval(id);
+		const positionSecAnchor = positionSec;
+		const anchoredAtMs = performance.now();
+		const playing = isPlaying;
+		livePos = positionSecAnchor;
+		return secondTicker(playing, () => {
+			livePos = drawPosition({ positionSec: positionSecAnchor, playing, anchoredAtMs, nowMs: performance.now() });
+		});
 	});
 
 	// A guest on the landing page has no room to be a remote for.

@@ -84,7 +84,7 @@
 				ORDER: instruction, then the QR, then the typed address — the same object, at a smaller scale, that sits in
 				the corner during a song, so a guest recognises it across states.
 			-->
-			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
+			<div class="brand"><Icon name="mic" /> <span class="grad-text">Encore</span></div>
 			<div class="copy">
 				<h1>{headline}</h1>
 				<p class="sub">{sub}</p>
@@ -156,12 +156,6 @@
 		align-items: center;
 		gap: var(--space-lg);
 		margin-bottom: 2.4vh;
-	}
-	.grad {
-		background: var(--grad);
-		-webkit-background-clip: text;
-		background-clip: text;
-		color: transparent;
 	}
 	.copy {
 		text-align: center;
@@ -286,8 +280,8 @@
 		font-size: var(--tv-eyebrow);
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
-		color: var(--ink-dim);
-		opacity: 0.8;
+		/* Folded: --ink-dim AND an 0.8 alpha double-dimmed this label, and neither half read as the result. */
+		color: color-mix(in srgb, var(--ink-dim) 80%, transparent);
 	}
 	.swatch {
 		width: 0.62em;

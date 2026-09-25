@@ -32,12 +32,13 @@
 	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { processAndQueue } from '$lib/process-and-queue';
 	import { libraryShelf } from '$lib/library-browse';
+	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
-	import { Skeleton } from '$lib/components/ui/skeleton';
+	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Empty from '$lib/components/ui/empty';
 
@@ -433,22 +434,18 @@
 
 	// `playback` is a whole-object $state the store REPLACES on every broadcast, so this anchor effect re-runs on any
 	// playback change. Mirroring the fields as scalars would narrow that and strand the anchor.
-	let posAnchor = { pos: 0, wall: 0 };
-	$effect(() => {
-		posAnchor = { pos: playback.positionSec, wall: performance.now() };
-	});
-	function livePositionSec(): number {
-		return playback.isPlaying ? posAnchor.pos + (performance.now() - posAnchor.wall) / 1000 : posAnchor.pos;
-	}
-
-	// Once a second, not a frame: the bar's width transition covers the gap. Re-arms on every playback change, so a
-	// seek snaps instead of sliding.
+	/* Once a second, not a frame: the bar's width transition covers the gap. Re-arms on every playback change, so a
+	   seek snaps instead of sliding. The anchor is captured INSIDE the effect for the reason the layout's twin gives,
+	   and `drawPosition` floors the elapsed term where the hand-rolled version did not. */
 	let displayPos = $state(0);
 	$effect(() => {
-		displayPos = playback.positionSec;
-		if (!playback.isPlaying) return;
-		const id = setInterval(() => (displayPos = livePositionSec()), 1000);
-		return () => clearInterval(id);
+		const positionSec = playback.positionSec;
+		const anchoredAtMs = performance.now();
+		const playing = playback.isPlaying;
+		displayPos = positionSec;
+		return secondTicker(playing, () => {
+			displayPos = drawPosition({ positionSec, playing, anchoredAtMs, nowMs: performance.now() });
+		});
 	});
 	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
 
@@ -487,7 +484,7 @@
 <!-- Joined singers only: unjoined, JoinLanding paints its own brand, so both would say "Encore" twice. -->
 {#if me}
 	<header class="topbar">
-		<h1 class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></h1>
+		<h1 class="brand"><Icon name="mic" /> <span class="grad-text">Encore</span></h1>
 		<!-- The store keeps accepting taps while offline (they resend on resync), so a dead socket must not look live. -->
 		{#if me && !connected}
 			<span class="offline-pill" role="status" aria-live="polite">
@@ -556,17 +553,7 @@
 		</div>
 
 		{#if searching && rawResults.length === 0 && readyResults.length === 0}
-			<div role="status" aria-busy="true" aria-label="Searching…">
-				{#each [0, 1, 2] as i (i)}
-					<div class="skel-row">
-						<Skeleton variant="thumb" />
-						<div class="skel-text">
-							<Skeleton />
-							<Skeleton variant="line-short" />
-						</div>
-					</div>
-				{/each}
-			</div>
+			<SkeletonRows label="Searching…" />
 		{/if}
 
 		<!-- One scroll, two views: everything to the library is gated on `searchActive`. -->
@@ -810,12 +797,6 @@
 		margin: 0;
 		line-height: inherit;
 	}
-	.wordmark {
-		background: var(--grad);
-		-webkit-background-clip: text;
-		background-clip: text;
-		color: transparent;
-	}
 
 	/* The colour must arrive as `--singer`, not interpolated into `background:`, so color-mix can derive the halo:
 	   concatenating alpha digits onto the value only works for 6-digit hex and fails silently otherwise. */
@@ -853,14 +834,6 @@
 		main > :global(.row) {
 			grid-column: auto;
 		}
-	}
-	.grouphead {
-		font-size: var(--ph-text-2xs);
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-		font-weight: 700;
-		margin: var(--space-2xl) var(--space-2xs) var(--space-sm);
 	}
 	.grouphead:first-of-type {
 		margin-top: var(--space-2xs);
@@ -936,22 +909,6 @@
 		color: var(--ink-dim);
 	}
 
-	.skel-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-lg);
-		padding: var(--space-lg) var(--space-xl);
-		margin-bottom: var(--space-sm);
-		border-radius: var(--radius-sm);
-		background: var(--card);
-		border: 1px solid var(--line);
-	}
-	.skel-text {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-sm);
-	}
 
 	.showall-row {
 		display: flex;
