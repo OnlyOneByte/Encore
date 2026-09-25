@@ -196,5 +196,19 @@ ignore_missing_imports = true
 # Without asyncio_mode=auto every async test is silently skipped rather than failing.
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# `--strict-markers` because the DESELECTION is load-bearing here, not cosmetic. A typo'd
+# `@pytest.mark.mls` is only a warning by default, and `-m 'not ml'` then happily runs a test that needs
+# 500 MB of checkpoints — so the fast suite fails on a box with no models, and the real failure looks like
+# a broken test rather than a broken marker. `--strict-config` gives the same treatment to this table.
+addopts = ["--strict-markers", "--strict-config"]
+markers = [
+    # Launches a real DBOS instance against a temp SQLite file. Seconds rather than milliseconds, so it
+    # is deselectable with `-m 'not dbos'` — but it is the ONLY thing that exercises the durable path.
+    "dbos: end-to-end through a real DBOS instance",
+    "allow_network: this test genuinely needs outbound network access",
+    # Drives REAL models against REAL audio. Downloads checkpoints on first use and takes tens of
+    # seconds; needs the `ml` extra installed. `-m 'not ml'` for the fast suite.
+    "ml: exercises real ML models rather than Protocol fakes",
+]
 timeout = 120
 timeout_method = "thread"

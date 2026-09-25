@@ -19,14 +19,19 @@ import pytest
 
 
 def _repo_root() -> Path:
-    """The repo root, by walking up for `bunfig.toml` — the same marker file the TypeScript harness
-    uses, so both sides of the repo agree on the answer by construction rather than a hop count.
+    """The REPO root: the directory holding both `core/` and `worker/`.
+
+    NOT `bunfig.toml` any more. That was the marker while the TypeScript project sat at the repo root, and
+    it was chosen so both languages would agree by construction — but the JS project moved into `core/` and
+    took its bunfig with it, so the walk found nothing above `worker/` and every test here died at import
+    with `SystemExit`. Two directories is what actually defines this root, and neither package root can
+    satisfy it by accident.
     """
     here = Path(__file__).resolve()
     for candidate in [here.parent, *here.parents]:
-        if (candidate / "bunfig.toml").is_file():
+        if (candidate / "core").is_dir() and (candidate / "worker").is_dir():
             return candidate
-    raise SystemExit(f"no bunfig.toml above {here}")
+    raise SystemExit(f"no directory with both core/ and worker/ above {here}")
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -193,9 +198,9 @@ async def test_publish_stems_raises_named_error_when_instrumental_is_missing():
 @pytest.mark.parametrize(
     "rel",
     [
-        "docker-compose.yml",
-        "docs/deploy/docker-compose.cuda.yml",
-        "docs/deploy/docker-compose.intel.yml",
+        "docker/compose.yaml",
+        "docker/compose.cuda.yaml",
+        "docker/compose.intel.yaml",
     ],
 )
 def test_worker_service_has_init_true_for_pid1_reaping(rel):

@@ -30,20 +30,24 @@ from src.lyrics.grading import (  # noqa: E402
 # These read the TS SOURCE as text (no node/tsc) and cross-check the Python mirror against what the
 # authority declares today, so a TS-side drift reds here instead of both sides staying green alone.
 def _repo_root() -> Path:
-    """The repo root, by walking up for `bunfig.toml` — the same marker file the TypeScript harness
-    locates its own root by, so both sides agree by construction rather than by hop counts kept in
-    step. Mirrors `_repo_root()` in test_lyrics_agreement.py.
+    """The REPO root: the directory holding both `core/` and `worker/`.
+
+    NOT `bunfig.toml` any more. That was the marker while the TypeScript project sat at the repo root, and
+    it was chosen so both languages would agree by construction — but the JS project moved into `core/` and
+    took its bunfig with it, so the walk found nothing above `worker/` and every test here died at import
+    with `SystemExit`. Two directories is what actually defines this root, and neither package root can
+    satisfy it by accident.
     """
     here = Path(__file__).resolve()
     for candidate in [here.parent, *here.parents]:
-        if (candidate / "bunfig.toml").is_file():
+        if (candidate / "core").is_dir() and (candidate / "worker").is_dir():
             return candidate
-    raise SystemExit(f"no bunfig.toml above {here}")
+    raise SystemExit(f"no directory with both core/ and worker/ above {here}")
 
 
 _REPO = _repo_root()
-_TV_LYRICS_TS = _REPO / "src" / "lib" / "tv" / "lyrics.ts"
-_SHARED_LYRICS_TS = _REPO / "src" / "lib" / "contract" / "lyrics" / "lyrics.ts"
+_TV_LYRICS_TS = _REPO / "core" / "src" / "lib" / "tv" / "lyrics.ts"
+_SHARED_LYRICS_TS = _REPO / "core" / "src" / "lib" / "contract" / "lyrics" / "lyrics.ts"
 
 
 def _ts_number(src_path: Path, name: str) -> float:

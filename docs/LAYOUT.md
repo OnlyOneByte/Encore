@@ -127,7 +127,7 @@ break at once.
    one, declared in the tests-only context so production source cannot reach them. A new alias must
    also be added to the test-tree dependency guard's allowlist, or it reports an undeclared package.
 3. **Do not anchor a path off the importing file's own location.** Derive it from a repo-root anchor
-   (`tests/helpers.ts`, or `tests/e2e/lib/repo-root.mjs` for the drivers), in `.ts` and `.mjs` alike.
+   (`tests/helpers.ts`, or `repoRoot` from `tests/playwright/world/core.ts` for the specs).
    Hop-counting is what let six probes anchor one hop short for as long as they did.
 
 ### Then, in the same commit as the move

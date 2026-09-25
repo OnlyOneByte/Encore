@@ -1,0 +1,267 @@
+"""The ownership guard, and the config boundary.
+
+The guard exists to prevent ONE failure: two workers publishing different lyrics for one song after the
+core reassigned a job mid-alignment. Every test below is about a path to that, so the bias throughout is
+fail-closed — an unknown or unconfirmed job may not publish, and being wrong that way costs one
+redundant re-claim.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from encore_worker.host.config import ASR_MODELS, Config, ConfigError
+from encore_worker.host.hardware import Report, resolve_backend
+from encore_worker.transport.ownership import Ownership, Reason, Standing
+
+# ── the ledger ───────────────────────────────────────────────────────────────────────────────────
+
+
+def confirmed(*job_ids: str) -> Ownership:
+    """A ledger holding these jobs, accepted AND confirmed by a claim round."""
+    own = Ownership()
+    for job_id in job_ids:
+        own.accepted(job_id)
+    own.claim_answered(owned=frozenset(job_ids), revoked=frozenset(), unknown=frozenset())
+    return own
+
+
+def test_an_unknown_job_may_not_publish() -> None:
+    """FAIL CLOSED. Publishing for a job we cannot account for is the exact failure being prevented."""
+    own = Ownership()
+    assert own.standing("j1") is Standing.UNKNOWN
+    assert own.may_publish("j1") is False
+    assert "not in this worker's ledger" in own.explain("j1")
+
+
+def test_a_confirmed_job_may_publish() -> None:
+    own = confirmed("j1")
+    assert own.standing("j1") is Standing.OURS
+    assert own.may_publish("j1") is True
+
+
+def test_an_accepted_but_unconfirmed_job_may_not_publish_yet() -> None:
+    """The pull half. Until a claim round answers, we do not know the core still agrees."""
+    own = Ownership()
+    own.accepted("j1")
+    assert own.standing("j1") is Standing.OURS
+    assert own.may_publish("j1") is False, "ours, but not yet confirmed"
+    assert own.pending_claims() == frozenset({"j1"})
+    assert "unconfirmed" in own.explain("j1")
+
+
+def test_a_revoked_job_may_not_publish() -> None:
+    """The push half: the core told us, so no round trip is needed."""
+    own = confirmed("j1")
+    own.revoked("j1")
+    assert own.standing("j1") is Standing.LOST
+    assert own.may_publish("j1") is False
+    assert own.lost_reason("j1") is Reason.REVOKED
+    assert "taken from us" in own.explain("j1")
+
+
+def test_revocation_is_idempotent() -> None:
+    """A duplicate frame after a reconnect replay must not change anything."""
+    own = confirmed("j1")
+    own.revoked("j1")
+    own.revoked("j1")
+    assert own.standing("j1") is Standing.LOST
+    assert own.running() == frozenset()
+
+
+def test_a_disconnect_makes_everything_unconfirmed_without_abandoning_it() -> None:
+    """A blip must not abandon healthy in-flight work — but nothing may publish until re-claimed.
+
+    A disconnect is the event that both expires a lease AND hides the resulting revoked frame, so it is
+    exactly when a stale "ours" is most dangerous.
+    """
+    own = confirmed("j1", "j2")
+    own.disconnected()
+
+    assert own.standing("j1") is Standing.OURS, "still ours; a blip is not a reassignment"
+    assert own.may_publish("j1") is False, "but unconfirmed, so it may not publish"
+    assert own.pending_claims() == frozenset({"j1", "j2"})
+
+
+def test_a_reconnect_claim_round_restores_publishing() -> None:
+    own = confirmed("j1", "j2")
+    own.disconnected()
+    own.claim_answered(owned=frozenset({"j1"}), revoked=frozenset({"j2"}), unknown=frozenset())
+
+    assert own.may_publish("j1") is True
+    assert own.may_publish("j2") is False
+    assert own.lost_reason("j2") is Reason.CLAIM_DENIED
+    assert own.pending_claims() == frozenset()
+
+
+def test_a_job_the_core_never_heard_of_is_lost_with_its_own_reason() -> None:
+    """A real desync — we are running something the core has no row for — must not read as an ordinary
+    reassignment, or it disappears into the noise. It may not publish either way."""
+    own = Ownership()
+    own.accepted("ghost")
+    own.claim_answered(owned=frozenset(), revoked=frozenset(), unknown=frozenset({"ghost"}))
+
+    assert own.may_publish("ghost") is False
+    assert own.lost_reason("ghost") is Reason.CORE_NEVER_HEARD_OF_IT
+    assert own.lost_reason("ghost") is not Reason.CLAIM_DENIED
+
+
+def test_cancellation_is_recorded_distinctly_from_reassignment() -> None:
+    """An operator cancelling and the reaper reassigning both stop the work, for different reasons."""
+    own = confirmed("j1")
+    own.revoked("j1", Reason.CANCELLED)
+    assert own.lost_reason("j1") is Reason.CANCELLED
+
+
+def test_re_accepting_a_previously_lost_job_clears_the_loss() -> None:
+    """The core may legitimately hand a requeued job back to this worker."""
+    own = confirmed("j1")
+    own.revoked("j1")
+    own.accepted("j1")
+    assert own.standing("j1") is Standing.OURS
+    assert own.lost_reason("j1") is None
+
+
+def test_finished_jobs_release_their_slot() -> None:
+    own = confirmed("j1")
+    own.finished("j1")
+    assert own.standing("j1") is Standing.UNKNOWN
+    assert own.running() == frozenset()
+
+
+def test_a_loss_outlives_the_job_it_ended() -> None:
+    """A revoked job's driver cleans up the instant it is cancelled. Clearing the reason there would
+    erase why the job produced nothing, exactly when an operator asks."""
+    own = confirmed("j1")
+    own.revoked("j1", Reason.CANCELLED)
+    own.finished("j1")
+    assert own.lost_reason("j1") is Reason.CANCELLED
+    assert own.may_publish("j1") is False
+
+
+def test_retained_losses_are_bounded() -> None:
+    """This process is long-lived; a revoked job id must not stay forever."""
+    own = Ownership(_lost_cap=4)
+    for n in range(10):
+        own.revoked(f"j{n}")
+    assert len(own._lost) == 4
+    assert own.lost_reason("j9") is Reason.REVOKED, "the newest must be kept"
+    assert own.lost_reason("j0") is None, "the oldest must be evicted"
+
+
+def test_running_reports_what_the_heartbeat_should_claim() -> None:
+    own = confirmed("j1", "j2")
+    own.revoked("j2")
+    assert own.running() == frozenset({"j1"})
+
+
+# ── config ───────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_defaults_need_no_environment() -> None:
+    cfg = Config.from_env({})
+    assert cfg.concurrency == 1, "one job at a time: two GPU passes on one device is slower than two in a row"
+    assert cfg.asr_model in ASR_MODELS
+    assert cfg.backend is None, "unset means auto-select, not a guess"
+
+
+def test_reads_the_environment() -> None:
+    cfg = Config.from_env(
+        {
+            "ENCORE_CORE_URL": "ws://core.test/worker",
+            "ENCORE_WORKER_ID": "w9",
+            "ENCORE_WORKER_CONCURRENCY": "3",
+            "ENCORE_SEPARATOR_BACKEND": "mlx",
+            "ENCORE_ASR_MODEL": "large-v3",
+            "ENCORE_KEEP_RAW_CAPTIONS": "true",
+        }
+    )
+    assert (cfg.core_url, cfg.worker_id, cfg.concurrency) == ("ws://core.test/worker", "w9", 3)
+    assert (cfg.backend, cfg.asr_model, cfg.keep_raw_captions) == ("mlx", "large-v3", True)
+
+
+def test_an_unknown_backend_is_refused_at_the_boundary() -> None:
+    """Named here, or it reaches a subprocess several stages later as an opaque failure."""
+    with pytest.raises(ConfigError, match="ENCORE_SEPARATOR_BACKEND"):
+        Config.from_env({"ENCORE_SEPARATOR_BACKEND": "cuda-maybe"})
+
+
+def test_an_unknown_asr_checkpoint_is_refused() -> None:
+    with pytest.raises(ConfigError, match="ENCORE_ASR_MODEL"):
+        Config.from_env({"ENCORE_ASR_MODEL": "enormous"})
+
+
+def test_config_errors_are_not_retryable() -> None:
+    """Re-reading the same environment yields the same value; retrying only burns attempts."""
+    assert ConfigError.retryable is False
+
+
+@pytest.mark.parametrize("raw", ["0", "-1", "abc", "1.5"])
+def test_a_bad_concurrency_is_refused(raw: str) -> None:
+    with pytest.raises(ConfigError, match="ENCORE_WORKER_CONCURRENCY"):
+        Config.from_env({"ENCORE_WORKER_CONCURRENCY": raw})
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("1", True),
+        ("true", True),
+        ("TRUE", True),
+        ("yes", True),
+        ("on", True),
+        ("0", False),
+        ("false", False),
+        ("no", False),
+        ("", False),
+        ("maybe", False),
+    ],
+)
+def test_flags_read_what_an_operator_actually_types(raw: str, expected: bool) -> None:
+    """`bool("0")` and `bool("false")` are both True, which is the opposite of what was meant."""
+    assert Config.from_env({"ENCORE_KEEP_RAW_CAPTIONS": raw}).keep_raw_captions is expected
+
+
+def test_whitespace_only_values_fall_back_to_the_default() -> None:
+    """An env var set to nothing in a compose file is absent, not an override to empty string."""
+    assert Config.from_env({"ENCORE_WORKER_ID": "   "}).worker_id == "worker-1"
+
+
+# ── backend resolution ───────────────────────────────────────────────────────────────────────────
+
+
+def mac(**over: object) -> Report:
+    base: dict[str, object] = {
+        "machine": "arm64",
+        "python": "3.12.0",
+        "platform": "macOS",
+        "apple_silicon": True,
+    }
+    base.update(over)
+    return Report(**base)  # type: ignore[arg-type]
+
+
+def test_an_explicit_backend_always_wins() -> None:
+    """Even on a box that cannot honour it: the failure then names the setting, which is what the
+    operator who typed it needs to see."""
+    chosen = resolve_backend("torch", report=mac())
+    assert chosen.name == "torch"
+    assert "explicitly configured" in chosen.why
+
+
+def test_a_linux_box_auto_selects_torch() -> None:
+    linux = Report(machine="x86_64", python="3.12.0", platform="Linux", apple_silicon=False)
+    assert resolve_backend(None, report=linux).name == "torch"
+
+
+def test_the_reason_distinguishes_explicit_from_automatic() -> None:
+    """Both behave identically and mean different things when a box turns out on the wrong engine."""
+    explicit = resolve_backend("torch", report=mac())
+    automatic = resolve_backend(None, report=mac())
+    assert explicit.why != automatic.why
+
+
+def test_cuda_is_derived_from_the_accelerator_not_stored() -> None:
+    """So the two cannot disagree. ROCm reports as cuda to torch, which is why this is derived."""
+    assert Report(machine="x86_64", python="3", platform="Linux", accelerator="cuda").cuda is True
+    assert Report(machine="arm64", python="3", platform="macOS", accelerator="mps").cuda is False

@@ -4,7 +4,7 @@ Self-hosted karaoke for a room full of phones. Scan a QR, queue anything from Yo
 library, and sing — Encore strips the vocals itself, times the words to the music, and keeps the
 rotation fair. One container to run it; a second if you want it making karaoke tracks for you.
 
-Every surface has a capture recipe in [`tests/e2e/capture.mjs`](tests/e2e/capture.mjs), which drives the
+Every surface has a capture recipe in [`tests/playwright/specs/shot/frames.spec.ts`](tests/playwright/specs/shot/frames.spec.ts), which drives the
 real app into each state and writes the frame set to `docs/mocks/`. The frames themselves are generated
 rather than committed, so regenerate them locally when you want to look. Design and rationale live in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -14,9 +14,13 @@ rather than committed, so regenerate them locally when you want to look. Design 
 **Docker:**
 
 ```bash
-docker compose up                    # core only, on http://localhost:3000
-docker compose --profile stems up    # core + the worker that makes karaoke tracks
+./dev.sh compose up                    # core only, on http://localhost:3000
+./dev.sh compose --profile stems up    # core + the worker that makes karaoke tracks
 ```
+
+Everything after `compose` is handed to `docker compose` verbatim. The wrapper exists because the compose
+file lives in [`docker/`](docker/) alongside both Dockerfiles and `.env`, so the equivalent by hand is
+`docker compose -f docker/compose.yaml …` — and a forgotten `-f` acts on nothing rather than failing.
 
 > **Run the `stems` profile if you want process to work.** Core accepts a Karaoke request
 > happily and then leaves it at `queued` **forever**, because stem separation happens in the worker —
@@ -94,7 +98,7 @@ available` — which reads as a broken worker rather than a missing dependency. 
 **`dev.sh` handles both halves for you.** It writes `worker/yt-dlp.conf` into a scratch
 `XDG_CONFIG_HOME` the worker alone sees — so the solver is enabled without touching `/etc` or your own
 `~/.config` — and if `deno` is not already on PATH it fetches the same pinned release
-`worker/Dockerfile` installs, into `worker/.dev-ytdlp/bin`. The download is **sha256-verified against
+`docker/worker.Dockerfile` installs, into `worker/.dev-ytdlp/bin`. The download is **sha256-verified against
 the checksum the release publishes** before it is made executable, nothing is installed system-wide, a
 system `deno` always wins, and `ENCORE_SKIP_DENO=1` opts out. Note that **node, bun and quickjs do not
 substitute**: yt-dlp supports them but enables only `deno` by default, so a box with node and no deno
@@ -174,15 +178,17 @@ container for core; a Python **separator + WhisperX** worker joins as container 
 ## Layout
 
 ```
-src/lib/contract/   ← the realtime contract, made physical (imported by client AND server)
-         ← Container 1: Bun + SvelteKit
-  server.ts          Bun.serve entry: HTTP + native WS pub/sub hub (one process)
+server.ts             ← Container 1's entry: Bun.serve, HTTP + native WS pub/sub hub, ONE process
+src/               ← everything that entry serves. `src/` until the rename; SvelteKit finds none of
+                        it by convention any more, so vite.config.ts declares `kit.files`
+  src/lib/contract/  the realtime contract, made physical — imported by client, server AND worker
   src/lib/server/    authoritative backend (state, rotation, playback, jobs, media, db)
   src/lib/           client: optimistic store, ws client, components, TV gapless controller
   src/routes/        phone (+page), /tv, /settings, /stats, /metrics, /song, /api
-  tests/e2e/         selector contract + guard, the party flow, the screenshot capture
-worker/       ← Container 2: Python stems/align (dials home; `--profile stems`)
-docs/              ← the written record; see the index below
+worker/               ← Container 2: Python stems/align (dials home; `--profile stems`)
+tests/                  unit/ (bun) + playwright/ (Chromium: gate | flow | probe | shot)
+docker/ config/       ← Dockerfile; drizzle + knip configs
+docs/                 ← the written record; see the index below
 ```
 
 ### The documents
@@ -317,11 +323,11 @@ bash dev.sh       # run core + a NATIVE worker locally — `--help` lists nine f
 
 bun test          # unit/integration tests — runnable from the root
 bun run check     # svelte-check + types, 0 errors
-bun run typecheck # app, server entry and the e2e drivers
+bun run typecheck # app, server entry and the test tree
 bun run gates     # the full seven-leg release gate (test, worker pytest, types, lint, format,
                   # build, gate:measured). The last leg needs a Chromium.
 bun run deadcode  # knip; a clean run is ZERO findings
-bun run e2e:probes # the browser probe suite — needs a built app and seeded media
+bun run pw        # the whole Chromium suite — needs a built app (`pw:gate|flow|probe|shot` for one project)
 
 # Worker (worker) — install the pinned tooling once, then run all four gates:
 cd worker && pip install -r requirements-test.txt
@@ -339,14 +345,14 @@ stack, because every heavy seam is faked. Add `-r requirements.txt` on top only 
 skipped as un-awaited coroutines rather than failing. `ruff check`, `ruff format --check` and `mypy` all
 exit 0 on a clean tree; any non-zero exit is a real finding.
 
-- `tests/e2e/contract.ts` is the **selector contract**: one declaration of every hook the browser
-  flows drive, guarded by `contract.test.ts` so `bun test` fails the moment a selector's anchor
-  disappears from the source. It exists because the previous e2e rotted silently — three selector
-  families moved and the suite stayed green.
-- `tests/e2e/party.mjs` — the full two-phone + TV flow against a live server.
-- `tests/e2e/capture.mjs` — regenerates the whole frame set into `docs/mocks/`, one file per surface as
-  `tour-<what>-eyeson.png`. Stable filenames, so refreshing a frame updates every reference to it.
-  `tests/e2e/HARNESS.md` has the boot recipe it needs.
+- `tests/playwright/world/selectors.ts` is the **selector contract**: one declaration of every hook the
+  browser specs drive. No spec may spell a selector for itself, because a hand-written one rots in
+  silence — three selector families moved at once while the suite stayed green, which is why the
+  registry exists. Note the guard that used to verify each selector against its source anchor is gone
+  with `tests/guards/`, so nothing now catches a rotted selector until a spec opens the page.
+- `tests/playwright/specs/flow/party.spec.ts` — the full two-phone + TV flow.
+- `tests/playwright/specs/shot/frames.spec.ts` — 20 frames, each DRIVEN into its state rather than
+  photographed as it loads. `bun run pw:shot`.
 - Every UI surface is eyes-on verified rather than assumed from a passing test.
 - A green suite is the floor, not the bar — several real defects here were invisible to passing tests
   and only surfaced by driving the app.

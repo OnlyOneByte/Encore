@@ -1,35 +1,41 @@
 # Deployment examples
 
-Compose **overrides**, not replacements. Each file here layers onto the repo-root
-`docker-compose.yml` rather than copying it, so a change to the base service definition (a new volume,
+Compose **overrides**, not replacements. The override files live in [`docker/`](../../docker/) beside the
+base `compose.yaml` — this directory holds the prose runbooks that explain them. Each layers onto
+`docker/compose.yaml` rather than copying it, so a change to the base service definition (a new volume,
 a new env var, a hardening tweak) reaches every deployment automatically instead of silently applying
 to only one of several forked copies.
 
-Use them by stacking `-f` flags — later files win:
+Use them by stacking `-f` flags — later files win. `./dev.sh compose` supplies the base file, and
+`--cuda` adds the GPU override:
 
 ```bash
-docker compose -f docker-compose.yml -f docs/deploy/docker-compose.<target>.yml \
+./dev.sh compose --cuda --profile stems up -d          # the NVIDIA target
+
+# or by hand, from the repo root, for any override:
+docker compose -f docker/compose.yaml -f docker/compose.<target>.yaml \
   --profile stems up -d
 ```
 
-Storage paths are deliberately **not** set here. They stay in a `.env` beside the root compose file
-(`ENCORE_DATA_VOLUME`, `ENCORE_MEDIA_VOLUME`), because they are a property of the host's disks rather
-than of its accelerator.
+Storage paths are deliberately **not** set in an override. They stay in `docker/.env`, beside the compose
+file (`ENCORE_DATA_VOLUME`, `ENCORE_MEDIA_VOLUME`), because they are a property of the host's disks rather
+than of its accelerator. Use **absolute** paths: a relative one resolves against `docker/`, since that is
+Compose's project directory.
 
-| file                       | target                                                        | notes                                                                      |
+| file (in `docker/`)        | target                                                        | notes                                                                      |
 | -------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `docker-compose.cuda.yml`  | NVIDIA (the current deploy target: Windows + WSL2 + RTX 3080) | Needs no custom Dockerfile — see below. Full runbook: [`WSL2.md`](WSL2.md) |
-| `docker-compose.intel.yml` | Intel Arc (parked — the deploy box changed)                   | Uses the **base** Dockerfile plus the `xpu` wheel index                    |
+| `compose.cuda.yaml`  | NVIDIA (the current deploy target: Windows + WSL2 + RTX 3080) | Needs no custom Dockerfile — see below. Full runbook: [`WSL2.md`](WSL2.md) |
+| `compose.intel.yaml` | Intel Arc (parked — the deploy box changed)                   | Uses the **base** Dockerfile plus the `xpu` wheel index                    |
 
 Both overrides now contain **only what is genuinely host-side**: the GPU device reservation, the
 `/dev/dri` passthrough, the numeric render/video group ids, and the `TORCH_INDEX_URL` build arg. They
 set **no `ENCORE_*` environment at all**. The worker probes its accelerator, derives its alignment
 device from the same decision, sizes its own parallelism against the _usable_ core count, and
 advertises only the capabilities it can prove — so anything these files declared would be a second,
-staler copy of facts the box already knows. The drift between this directory's capability list and the
+staler copy of facts the box already knows. The drift between an override's capability list and the
 base compose file's is exactly what once left songs stuck at 0%.
 
-The one thing still worth stating by hand is `ENCORE_DEVICE=cuda` (or `xpu`) in a `.env`, if you want a
+The one thing still worth stating by hand is `ENCORE_DEVICE=cuda` (or `xpu`) in `docker/.env`, if you want a
 driver or passthrough mistake to fail **loudly** at startup: an explicitly named device that cannot be
 reached is a hard error, whereas auto-detection quietly falls back to CPU. That is a deployer's
 judgement about how they want to be told, not a property of the hardware, which is why it is not baked
@@ -98,7 +104,7 @@ now decoupled:** a missing or refusing worklet leaves the split graph intact, so
 a plain `http://<LAN-IP>` origin. Only ±key still needs a secure context, and `PitchShiftGraph.isShiftable`
 reports when it is unavailable so the transpose control can say so instead of moving silently.
 
-`worker/Dockerfile` already exposes `ARG TORCH_INDEX_URL`, so switching accelerator is a wheel
+`docker/worker.Dockerfile` already exposes `ARG TORCH_INDEX_URL`, so switching accelerator is a wheel
 index swap. Both of these carry the exact versions `worker/requirements.txt` already pins —
 `torch 2.8.0`, `torchaudio 2.8.0`, `torchvision 0.23.0` — so **no requirements edit is needed** for
 either:
@@ -109,7 +115,7 @@ either:
 There used to be a `Dockerfile.intel` here, because Intel Arc support originally required
 `intel-extension-for-pytorch` as an extra pip install whose version had to be matched to _both_ the
 host driver and the pinned torch. **It has been deleted.** PyTorch ships native `torch.xpu` upstream and
-the `xpu` index carries the whole pinned set, so `docker-compose.intel.yml` uses the ordinary
+the `xpu` index carries the whole pinned set, so `compose.intel.yaml` uses the ordinary
 Dockerfile; `backends.py` still imports IPEX before torch when it happens to be installed, which makes
 that path belt-and-braces rather than something needing its own image. Recover it from git history if a
 specific driver pairing ever turns out to need IPEX after all.
@@ -128,7 +134,7 @@ worker is a native run rather than an image.
 way to confirm an override landed where you meant:
 
 ```bash
-docker compose -f docker-compose.yml -f docs/deploy/docker-compose.cuda.yml --profile stems config
+./dev.sh compose --cuda --profile stems config
 ```
 
 ## "No audio-only format" is not proof the image is broken

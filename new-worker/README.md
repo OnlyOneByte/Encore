@@ -44,51 +44,74 @@ stateDiagram-v2
     Acquire --> Captions : audio on disk
     Captions --> Texts : authored + machine cues
 
-    Texts --> NoLyrics : no text from any source<br/>(instrumental, or every tier missed)
-    Texts --> Grade : ≥1 text
+    Texts --> AsrFallback : no candidate produced text
+    Texts --> Grade : ≥1 candidate
 
-    Grade --> Time : ordered pool<br/>candidates first, then baselines
+    Grade --> Time : ordered pool<br/>candidates, then ASR, then machine captions
 
     Time --> Verify : doc + TimingReport
 
     state Verify {
         direction LR
         [*] --> check
-        check --> accept : usable ∧ no defect over threshold
+        check --> accept : usable ∧ no defect with an untried knob
         check --> retime : defect WITH an untried knob
-        check --> next : knobs exhausted for this text
+        check --> next : nothing honest left for this text
     }
 
     Verify --> Diarize : accept
     Verify --> Time : retime — same text, next knob
     Verify --> Time : next — next text in pool
-    Verify --> Exhausted : pool empty
+    Verify --> AsrFallback : pool exhausted
 
-    Exhausted --> Time : an untried ASR baseline exists
-    Exhausted --> NoLyrics : nothing left that can be timed
+    AsrFallback --> Time : ASR text, promoted to publishable
+    AsrFallback --> NoLyrics : ASR itself produced nothing
 
     Diarize --> Publish
     Publish --> [*]
     NoLyrics --> [*]
 
-    note right of NoLyrics
-        A RESULT, not a failure.
-        Readiness waits on align, so raising
-        here strands an instrumental in
-        "processing" forever.
+    note right of AsrFallback
+        THE MANDATORY TIER. ASR-on-the-mix needs
+        only the audio, which every job past
+        acquisition has — so an absent ASR text
+        means the transcriber failed, which is a
+        defect to recover from, NOT evidence that
+        the song has no words.
     end note
 
-    note right of Exhausted
-        The old worker could not reach this:
-        grading dropped the baselines before
-        timing, so a candidate that failed to
-        time ended the job.
+    note right of NoLyrics
+        THE ABSOLUTE WORST CASE, and reachable from
+        exactly ONE place: after ASR has been tried
+        and produced nothing. A RESULT, not a failure —
+        readiness waits on align, so raising here
+        strands an instrumental in "processing" forever.
     end note
+
 ```
 
 `Failed` is deliberately absent from the lyric paths. It is reachable only from infrastructure faults —
 audio that will not download, a missing model, a corrupt file. **No lyric outcome is a job failure**; the
 floor is `NoLyrics`, and it is a success terminal.
+
+### The fallback ladder
+
+Three tiers, tried in order of *authority* rather than of expected quality (`domain/lyrics/policy.py`):
+
+| Tier | What it is | Why here |
+| --- | --- | --- |
+| `CANDIDATE` | LRCLIB, or the upload's authored caption track | A real lyrics sheet is the best answer when it is right |
+| `ASR` | Whisper, on the vocals stem or the mix | **The mandatory fallback.** Less likely to have the right words, but it cannot be the wrong song and cannot be misplaced in time, because it was derived from this audio |
+| `MACHINE` | YouTube's automatic caption track | The same kind of evidence as ASR, measured worse |
+
+**`NoLyrics` has exactly one inbound edge**, and it is from `AsrFallback`. A pool with no ASR entry has
+not earned the right to conclude the song has no words: ASR-on-the-mix requires only the audio, and every
+job past acquisition has that, so an absent ASR text means the transcriber failed or was never built.
+`policy.asr_is_mandatory()` is that check, and the workflow runs ASR on demand rather than terminating.
+
+The old worker inverted this. Grading narrowed the pool to a single winner and *discarded* the ASR
+baselines before timing, so a candidate that failed to time ended the job — with a guaranteed-timeable
+text sitting unused.
 
 ### The retime knobs
 
@@ -124,11 +147,14 @@ flowchart TD
 
 Dependencies point down only. `domain/` must not import `dbos`, `asyncio` or `torch` — it is the most
 valuable code in the old worker (grading, validation, presplit, key detection) and the part that ports
-over essentially unchanged. A test enforces the import graph, as `test_worker_layers.py` and
-`test_lyrics_import_graph.py` do today.
+over essentially unchanged. `tests/test_layers.py` enforces the graph by walking every module's imports —
+and it found two real violations the first time it actually worked, a step importing a workflow and two
+leaf layers importing each other. (Its first version was vacuous: it compared `dotted.split(".")[0]`,
+which is `encore_worker` for every absolute import in the package, so it examined nothing and passed.)
 
-Every `torch` import lives in `adapters/`, behind a `Protocol` in `adapters/ports.py`, so the suite runs
-with no ML installed (`uv sync --only-group dev`).
+Every `torch` import lives in `adapters/`, behind a `Protocol` in `adapters/ports.py`, and is written
+*inside a function* — `tests/test_ml_devices.py` asserts that by AST, since it is what lets a box with no
+ML import the adapter, resolve its capabilities and decline the work rather than crashing at startup.
 
 ### What DBOS deletes
 
@@ -223,15 +249,78 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy
 
 uv sync --extra cpu --extra ml --extra text    # to run real jobs on CPU
-uv sync --extra cu124 --extra ml --extra text  # on an NVIDIA box
+uv sync --extra cu128 --extra ml --extra text  # on an NVIDIA box
 ```
 
-`cpu` and `cu124` are declared mutually exclusive in `[tool.uv]`, which is what lets one lockfile hold
+`cpu` and `cu128` are declared mutually exclusive in `[tool.uv]`, which is what lets one lockfile hold
 both resolutions. The pins are identical between them; only the wheel index differs, so switching
-backends cannot silently move a model version.
+backends cannot silently move a model version. `tests/test_packaging.py` holds that and the other
+resolution invariants as assertions, because each one is a workaround for a measured failure and a
+comment saying "do not simplify this" does not survive a plausible-looking cleanup.
+
+### The three suites
+
+```bash
+uv run pytest                     # everything
+uv run pytest -m 'not ml and not dbos'   # the fast one: 416 tests, <1s, no models, no DBOS
+uv run pytest -m dbos             # 10 tests through a real DBOS on temp SQLite, ~11s
+uv run pytest -m ml               # 10 tests against real models and synthesised speech, ~17s
+```
+
+`--strict-markers` is on: a mistyped marker is an error, not a warning, because `-m 'not ml'` silently
+running a test that needs half a gigabyte of checkpoints looks like a broken test rather than a broken
+marker.
+
+Anything a marked suite proves and the fast suite could also prove belongs in both. The three ML bug
+fixes were briefly covered only by `-m ml`, which is deselected by default — so the suite that runs on
+every edit could not have caught a regression in the code written to fix them. The pure parts
+(`transcriber_device`, `spread_over`, `needs_spans`) now have fast tests too.
+
+**Known:** `libtorchcodec` fails to load here — homebrew ffmpeg is 9 and torchcodec links 4–7. Harmless
+today, because torchaudio 2.8 falls back to its own backend and we never call `torchaudio.load`
+ourselves. It becomes real at torchaudio 2.9, which routes `load` through torchcodec; demucs and whisperx
+do call it. The exact `==2.8.0` pin is what holds that off, and a test asserts the pin stays exact.
 
 ---
 
 ## Status
 
-Scaffold only. Nothing is implemented. `worker/` remains the live worker and is untouched.
+All three actions run end to end against fakes, and the process boots. **436 tests** — 416 fast, 10 through
+real DBOS, 10 against real models. The fast suite runs with no ML installed at all (`uv sync --only-group
+dev` — twelve packages, no torch), which is the property every `Protocol` in `adapters/ports.py` exists to
+preserve.
+
+| Layer | Built | Notes |
+| --- | --- | --- |
+| `protocol/` | ✅ | 15 frames as frozen dataclasses, including the new `job:state`, `job:claim`, `job:revoked` |
+| `domain/lyrics/` | ✅ | `report`, `policy`, `search`, `measure`, `place` — every retry decision, pure |
+| `steps/` | ✅ | `align_steps`, `separate_steps`, records, the `AlignSteps`/`SeparateSteps` Protocols |
+| `workflows/` | ✅ | `align` (the state machine), `stems` (deliberately linear), `dbos_align` wrapper |
+| `transport/` | ✅ | websocket client, reconnect with jittered backoff, the two-point ownership guard |
+| `host/` | ✅ | config boundary, hardware probe, backend resolution, capability narrowing |
+| `adapters/` | ✅ | yt-dlp, ffmpeg, whisperX, pyannote, demucs, demucs-mlx, LRCmux (primary), LRCLIB (fallback) |
+| `workflows/fetch.py` | ✅ | Acquire, identify, publish. Conservative title parsing that refuses to guess |
+| `__main__.py` | ✅ | Boots, probes, advertises, dials, reconnects. All three actions routed |
+
+### What is deliberately absent
+
+**No eager ASR.** The old worker transcribed every align job to build a grading baseline. This does not,
+because forced alignment is itself the wrong-song detector: a text that does not belong to this recording
+cannot align to it well, so coverage collapses and the residual blows up. A job whose first candidate is
+good never loads a model.
+
+**No `GraphPlan` for stems or fetch.** Separation has no fallback ladder and no parameter worth varying,
+so `run_stems` reads top to bottom. It still gains durability: a crash after separation resumes at
+publication rather than re-running a 45-minute pass.
+
+### Running it
+
+```bash
+uv sync --extra cpu --extra ml --extra text   # or --extra cu128 on an NVIDIA box, --extra mlx on a Mac
+ENCORE_CORE_URL=ws://core:3000/worker uv run python -m encore_worker
+```
+
+A box with no capabilities still connects and says so, rather than exiting — a process that vanishes
+leaves an operator guessing, and the core simply routes nothing to it.
+
+`worker/` remains the live worker and is untouched.

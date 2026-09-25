@@ -30,20 +30,19 @@ END = "<!-- END generated:worker-pipeline -->"
 
 
 def _repo_root() -> Path:
-    """The repo root, by walking up for `bunfig.toml`.
+    """The REPO root: the directory holding both `core/` and `worker/`.
 
-    Was `parents[3]`, a hop count from `apps/worker/src`. Flattening the `apps/` layer away made that
-    overshoot the repo entirely — it resolved to the directory ABOVE it, and the docs guard failed reading
-    `../docs/ARCHITECTURE.md` from outside the project.
-
-    The marker is the same file the TypeScript harness uses to find the root, so both languages agree by
-    construction and neither carries a distance that a future move invalidates.
+    NOT `bunfig.toml` any more. That was the marker while the TypeScript project sat at the repo root, and
+    it was chosen so both languages would agree by construction — but the JS project moved into `core/` and
+    took its bunfig with it, so the walk found nothing above `worker/` and every test here died at import
+    with `SystemExit`. Two directories is what actually defines this root, and neither package root can
+    satisfy it by accident.
     """
     here = Path(__file__).resolve()
     for candidate in [here.parent, *here.parents]:
-        if (candidate / "bunfig.toml").is_file():
+        if (candidate / "core").is_dir() and (candidate / "worker").is_dir():
             return candidate
-    raise SystemExit(f"docgen: no bunfig.toml above {here}")
+    raise SystemExit(f"no directory with both core/ and worker/ above {here}")
 
 
 ARCHITECTURE = _repo_root() / "docs" / "ARCHITECTURE.md"

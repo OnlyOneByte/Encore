@@ -19,9 +19,12 @@ PKG = Path(__file__).resolve().parent.parent / "encore_worker"
 
 #: Layer -> the sibling layers it may import. A layer absent from a value set is a violation.
 #: `protocol` is importable by anything: it is inert wire shapes with zero dependencies.
+#: Every layer may import ITSELF — a package split across files is still one layer. `protocol` and
+#: `host` were originally given empty sets, which made an ordinary sibling import inside them a
+#: violation; the check only surfaced it once it stopped being vacuous.
 ALLOWED: dict[str, frozenset[str]] = {
-    "protocol": frozenset(),
-    "host": frozenset(),
+    "protocol": frozenset({"protocol"}),
+    "host": frozenset({"host"}),
     "domain": frozenset({"domain", "host", "protocol"}),
     "adapters": frozenset({"adapters", "domain", "host", "protocol"}),
     "steps": frozenset({"steps", "adapters", "domain", "host", "protocol"}),
@@ -44,22 +47,53 @@ def _modules() -> Iterator[tuple[Path, str, ast.Module]]:
         yield path, rel.parts[0], ast.parse(path.read_text(), filename=str(path))
 
 
+PKG_NAME = "encore_worker"
+
+
+def _layer_of(dotted: str) -> str:
+    """The LAYER a module path names, stripping this package's own prefix first.
+
+    THE BUG THIS EXISTS TO PREVENT, found by this test failing to catch a real violation: taking
+    `dotted.split(".")[0]` on `encore_worker.workflows.fetch` yields `"encore_worker"`, which matches no
+    layer, so every absolute intra-package import was invisible. Since this codebase imports absolutely
+    throughout, the check was VACUOUS — passing because it examined nothing, which is exactly what a
+    working check and a broken one both look like from the outside.
+    """
+    parts = dotted.split(".")
+    if parts and parts[0] == PKG_NAME:
+        parts = parts[1:]
+    return parts[0] if parts else ""
+
+
 def _imported_roots(tree: ast.Module) -> set[str]:
-    """Top-level module names this file imports, for both absolute and intra-package relative forms."""
+    """Every layer this file imports, across all three import spellings."""
     roots: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            roots.update(alias.name.split(".")[0] for alias in node.names)
+            roots.update(_layer_of(alias.name) for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             if node.level and node.module:
-                # `from ..domain.lyrics import x` -> "domain"
-                roots.add(node.module.split(".")[0])
+                roots.add(_layer_of(node.module))  # `from ..domain.lyrics import x`
             elif node.level:
-                # `from .. import domain` -> each imported name is the sibling layer
-                roots.update(alias.name for alias in node.names)
+                roots.update(alias.name for alias in node.names)  # `from .. import domain`
             elif node.module:
-                roots.add(node.module.split(".")[0])
+                roots.add(_layer_of(node.module))  # `from encore_worker.domain import x`
     return roots
+
+
+def test_the_import_scan_actually_sees_absolute_imports() -> None:
+    """The non-vacuity floor, and it is not hypothetical.
+
+    This module's first version read the root off `dotted.split(".")[0]`, which is `"encore_worker"` for
+    every absolute import in the package — so the two checks below examined nothing and passed. A guard
+    that inspects an empty set is indistinguishable from a guard that found no violations.
+    """
+    tree = ast.parse("from encore_worker.workflows.fetch import Identified")
+    assert _imported_roots(tree) == {"workflows"}, "an absolute intra-package import must be seen"
+
+    assert _layer_of("encore_worker.domain.lyrics.policy") == "domain"
+    assert _layer_of("domain.lyrics") == "domain"
+    assert _layer_of("asyncio") == "asyncio"
 
 
 def test_layers_only_import_downward() -> None:
