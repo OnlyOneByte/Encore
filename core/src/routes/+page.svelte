@@ -210,11 +210,10 @@
 			}));
 	});
 
-	/** Ids another group already shows, so no song appears twice and no job draws two progress bars. THE TWO `ids.add`
-	 * LOOPS ARE PINNED BY `browse-screen.test.ts` mechanism 1, which reads them as source text to prove the
-	 * de-duplication covers both the ready list and the processing rows ungated — so this stays an accumulator, and the
-	 * `svelte/prefer-svelte-reactivity` warning it raises stays with it. A `SvelteSet` would be the wrong answer anyway:
-	 * this is a plain value recomputed wholesale, so reactive sources on it buy nothing. */
+	/** Ids another group already shows, so no song appears twice and no job draws two progress bars. BOTH `ids.add` loops
+	 * are required: the de-duplication has to cover the ready list AND the processing rows, which are ungated. It stays a
+	 * plain accumulator, and the `svelte/prefer-svelte-reactivity` warning it raises stays with it — a `SvelteSet` is the
+	 * wrong answer for a value recomputed wholesale, where reactive sources buy nothing. */
 	const accountedFor = $derived.by(() => {
 		const ids = new Set<string>();
 		for (const m of searchActive ? readyResults : library) ids.add(m.id);
@@ -557,7 +556,7 @@
 		</div>
 
 		{#if searching && rawResults.length === 0 && readyResults.length === 0}
-			<div aria-busy="true" aria-label="Searching…">
+			<div role="status" aria-busy="true" aria-label="Searching…">
 				{#each [0, 1, 2] as i (i)}
 					<div class="skel-row">
 						<Skeleton variant="thumb" />
@@ -618,7 +617,6 @@
 							pending={pendingKind.get(e.id) ?? null}
 							onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
 							reorderable={gripsVisible}
-							dimmed={false}
 							shift={rowShift(i, dragFrom, dragTo)}
 						/>
 					{:else}
@@ -637,7 +635,6 @@
 							removable={e.singerId === me?.id}
 							grip={gripsVisible}
 							gripId={e.id}
-							dimmed={false}
 							moving={movingId === e.id && dragging}
 							dragY={movingId === e.id && dragging ? dragY : 0}
 							shift={rowShift(i, dragFrom, dragTo)}
@@ -989,7 +986,12 @@
 	.queue-empty.tight {
 		min-height: 0;
 	}
-	.queue-empty:global([data-slot='empty-title']) {
+	/* THE SPACE IS LOAD-BEARING. Without it this is a COMPOUND selector — one element carrying both `.queue-empty`
+	   and `data-slot="empty-title"` — and `empty-title` is a GRANDCHILD (through `Empty.Header`, which computes to
+	   `display: contents`). It matched nothing, silently: `:global()` suppresses Svelte's unused-selector warning,
+	   so the size, weight and the `overflow-wrap` reflow clause below never applied and the title rendered at the
+	   vendored `text-lg`. */
+	.queue-empty :global([data-slot='empty-title']) {
 		font-size: var(--ph-text-3xl);
 		line-height: var(--lh-snug);
 		font-weight: 700;

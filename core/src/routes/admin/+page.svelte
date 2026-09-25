@@ -1,6 +1,6 @@
 <!-- Delete is irreversible and reclaims bytes: two-step, and on this operator surface. docs/FRONTEND.md#admin -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import * as Item from '$lib/components/ui/item';
 	import * as Alert from '$lib/components/ui/alert';
@@ -42,13 +42,29 @@
 
 	onMount(load);
 
-	function askDelete(id: string) {
+	/* FOCUS IS PLACED, NOT LEFT TO FALL. Arming unmounts the focused Delete button and mounts three different nodes, so
+	   focus dropped to `<body>` — on an unrecoverable action, meaning a keyboard operator pressed Enter and then had to
+	   Tab from the top of the document to reach "Yes, delete". Cancelling did the same in reverse. `tick()` first,
+	   because the node to focus does not exist until the keyed block has been patched. */
+	/** The armed row's confirm button, so focus can be PLACED on it rather than left to fall to `<body>`. */
+	let confirmEl = $state<HTMLElement | null>(null);
+	/** The control the prompt was opened from, so Cancel returns focus where it started. */
+	let armedFrom: HTMLElement | null = null;
+
+	async function askDelete(id: string, from: HTMLElement | null) {
 		notice = null;
+		armedFrom = from;
 		confirmingId = id;
+		await tick();
+		confirmEl?.focus();
 	}
 
-	function cancelDelete() {
+	async function cancelDelete() {
 		confirmingId = null;
+		await tick();
+		// Back to the control that opened the prompt; the row's own Delete button is what it became again.
+		armedFrom?.focus();
+		armedFrom = null;
 	}
 
 	async function confirmDelete(song: LibrarySong) {
@@ -86,10 +102,15 @@
 	<main class="admin">
 		<p class="lede">Hard-delete a song from the library. This removes its files and cannot be undone.</p>
 
-		{#if notice}
-			<!-- `role="status"`, and `accent` not `destructive`: a completed action must not interrupt or alarm. -->
-			<Alert.Root variant="accent" role="status"><Alert.Title>{notice}</Alert.Title></Alert.Root>
-		{/if}
+		<!-- THE REGION OUTLIVES THE MESSAGE. Mounted with its text already in place, a live region reports nothing — AT
+			 announces a CHANGE inside one it was already observing. So the wrapper is unconditional and only the contents
+			 swap; `/metrics`, `/metrics/[mediaId]` and `/stats` all state this same rule, and this page was the one that
+			 broke it. `role="status"`, and `accent` not `destructive`: a completed action must not interrupt or alarm. -->
+		<div role="status" aria-live="polite">
+			{#if notice}
+				<Alert.Root variant="accent"><Alert.Title>{notice}</Alert.Title></Alert.Root>
+			{/if}
+		</div>
 
 		{#if loading}
 			<p class="muted" role="status">Loading library…</p>
@@ -122,6 +143,7 @@
 							{#if confirmingId === song.id}
 								<span class="confirm-q" role="alert">Delete for good?</span>
 								<Button
+									bind:ref={confirmEl}
 									data-act="confirm-delete"
 									variant="destructive"
 									disabled={deletingId === song.id}
@@ -139,7 +161,7 @@
 									data-act="arm-delete"
 									variant="outline"
 									aria-label={`Delete ${song.title}`}
-									onclick={() => askDelete(song.id)}>Delete</Button
+									onclick={(e) => askDelete(song.id, e.currentTarget as HTMLElement)}>Delete</Button
 								>
 							{/if}
 						</Item.Actions>

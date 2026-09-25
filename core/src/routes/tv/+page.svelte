@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
 	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, soundingKeyLabel } from '$lib/contract';
@@ -14,7 +14,6 @@
 		hueOfColor,
 		resolveLyricsPresentation,
 		loudnessNormalizationGain,
-		type EffectiveSettings,
 		type TvBackgroundStyle
 	} from '$lib/contract';
 	import { stageBackgroundCss } from '$lib/tv/background';
@@ -47,12 +46,12 @@
 	let online = $state<string[]>([]);
 	// In the room but unreachable (a locked phone). Greyed, never erased: a dropped socket is not a departure.
 	let away = $state<string[]>([]);
-	// ONE object, so a new setting needs no local, no effect line and no handler assignment. The effect re-adopts
-	// `data`, so a load re-run is not pinned to the mount-time value.
-	let settings = $state<EffectiveSettings>(untrack(() => data.settings));
-	$effect(() => {
-		settings = data.settings;
-	});
+	/* ONE object, so a new setting needs no local, no effect line and no handler assignment. A WRITABLE `$derived`,
+	   which is what the `$state` + `untrack` + re-adopting `$effect` this replaces was emulating: the socket still
+	   assigns it below (`settings = e.settings`) and a load re-run still re-adopts `data`. Two things the effect form
+	   got wrong — it landed one microtask LATE, so the stage rendered a frame against the previous settings, and
+	   `$state` deep-proxied the whole settings object where `$derived` returns it as-is. */
+	let settings = $derived(data.settings);
 	const songIntroMs = $derived(effectiveSongIntroMs(settings.room));
 
 	let current = $state<QueueEntry | null>(null);
@@ -390,7 +389,6 @@
 	let controlsVisible = $state(true);
 	const CONTROLS_IDLE_MS = 4000;
 	$effect(() => {
-		if (typeof window === 'undefined') return;
 		let hideTimer: ReturnType<typeof setTimeout> | undefined;
 		const arm = () => {
 			if (hideTimer) clearTimeout(hideTimer);
@@ -427,7 +425,7 @@
 	/*
 	 * What the room is HEARING, plus the shift. `soundingKeyLabel` returns null with no trustworthy key, so a
 	 * song without one shows nothing rather than a guess. ASCII `+`/`-` and a Latin-1 middot, because a
-	 * typographic accidental or arrow trips `icons.test.ts`'s codepoint guard.
+	 * typographic accidental or arrow is a codepoint whose glyph a TV browser may not have.
 	 */
 	const keyLine = $derived.by(() => {
 		const label = soundingKeyLabel(mediaOf(current)?.songProfile, keyShift);
@@ -855,8 +853,8 @@
 	{/if}
 
 	<!--
-		The mark is an INLINE SVG, not a codepoint: `icons.test.ts` bans a functional control whose drawing the
-		platform picks, and there is no fullscreen mark in icons.ts to reuse.
+		The mark is an INLINE SVG, not a codepoint: a functional control must not have its drawing picked by the platform,
+		and there is no fullscreen mark in icons.ts to reuse.
 	-->
 	<button
 		type="button"
@@ -1074,7 +1072,8 @@
 		border-radius: 50%;
 		margin-right: 0.42em;
 		vertical-align: baseline;
-		/* --singer, not an inline background: singer-color.test.ts enforces the custom-property form. */
+		/* --singer as a custom property, never interpolated into `background`: color-mix needs the property to derive the
+		   halo, and concatenating alpha onto the value only works for 6-digit hex. */
 		background: var(--singer);
 	}
 	.ls-name {
@@ -1396,7 +1395,7 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 0.3em;
-		min-height: 44px;
+		min-height: var(--tap);
 		max-width: 60vw;
 		padding: 0.7em 1.4em;
 		border: 0;
@@ -1411,7 +1410,7 @@
 	.ph-head {
 		font-size: var(--tv-body);
 		font-weight: 650;
-		line-height: var(--lh-snug, 1.2);
+		line-height: var(--lh-snug);
 	}
 	.ph-sub {
 		font-size: var(--tv-small);
@@ -1461,7 +1460,7 @@
 		width: clamp(64px, 12vmin, 160px);
 		height: clamp(64px, 12vmin, 160px);
 		border-radius: 50%;
-		background: color-mix(in srgb, var(--warn, #e0a63a) 26%, transparent);
+		background: color-mix(in srgb, var(--warn) 26%, transparent);
 		/* Off the ROOT ladder, so it tracks the floor down and stays inside the vmin-scaled circle. */
 		font-size: 2.881rem;
 	}

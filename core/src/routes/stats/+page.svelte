@@ -103,7 +103,7 @@
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Most sung</Card.Title>
+						<Card.Title role="heading" aria-level={2}>Most sung</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						<Bars
@@ -117,7 +117,7 @@
 				{#if recentDiffers}
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Hot lately</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Hot lately</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
@@ -128,7 +128,7 @@
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Top artists</Card.Title>
+						<Card.Title role="heading" aria-level={2}>Top artists</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						<Bars
@@ -143,7 +143,7 @@
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Sings per day</Card.Title>
+						<Card.Title role="heading" aria-level={2}>Sings per day</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						<Trend points={stats.perDay} since={stats.window.since} until={now} />

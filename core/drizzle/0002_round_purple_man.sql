@@ -1,1 +1,0 @@
-ALTER TABLE `job_attempts` ADD `trail` text;

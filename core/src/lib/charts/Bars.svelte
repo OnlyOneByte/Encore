@@ -5,6 +5,9 @@
 	import * as Empty from '$lib/components/ui/empty';
 	import * as Chart from '$lib/components/ui/chart';
 	interface Row {
+		/** Stable identity. Optional so a caller with unique labels can omit it; `label` is the fallback.
+		 * NOT the index: these lists are RANKED, so a rank change would alter every key and recreate every node. */
+		id?: string;
 		label: string;
 		value: number;
 		/** Optional secondary text, right-aligned (e.g. an artist under a title). */
@@ -32,7 +35,7 @@
 			a plotted series whose values live in a path a screen reader cannot read. -->
 	<Chart.Container config={{ plays: { label: 'Plays', color: 'var(--grad)' } }}>
 		<ol class="bars">
-			{#each rows as row, i (row.label + i)}
+			{#each rows as row (row.id ?? row.label)}
 				<li>
 					<div class="line">
 						<span class="label" title={row.label}>{row.label}</span>

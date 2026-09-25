@@ -58,7 +58,8 @@
 	--radius-pill: 999px;
 	--shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
 
-	/* `tests/support/src/scan.ts` parses THIS declaration, so a control must express var(--tap) and never the literal. */
+	/* The measured gate resolves THIS declaration at runtime (tests/playwright/specs/gate/measured-design-support.ts),
+	   so a control must express var(--tap) and never the literal. */
 	--tap: 44px;
 
 	--max-w: 480px;
@@ -104,7 +105,9 @@
 	--motion-slow: 0.4s;
 	--motion-tick: 1s;
 
-	/* `design-system.test.ts` asserts every `@media` width literal is a MEMBER of this list; --bp-320 has no branch. */
+	/* THE RULE, now unenforced: every `@media` width literal in the tree must be a MEMBER of this list. --bp-320 has no
+	   branch. Nothing READS these tokens either — a media query is evaluated before the cascade and cannot resolve a
+	   custom property — so they are documentation for the literals below, and drift is invisible until someone looks. */
 	--bp-320: 320px;
 	--bp-xs: 380px;
 	--bp-sm: 520px;
@@ -144,7 +147,7 @@
 	--tv-body: 1.132rem;
 	/* who is singing, and the attract panel's join URL — one unbreakable token on one line. */
 	--tv-name: 1.509rem;
-	/* An idle join-URL tier, declared but unread; a well-formed rung `stage-scale.test.ts` enumerates. */
+	/* An idle join-URL tier, declared but unread — a well-formed rung of the ladder rather than a live value. */
 	--tv-joinurl: 3.02rem;
 	--tv-hero: 3.567rem;
 	/* THE RATIFIED TV STATES: the no-layout-shift phrase box is --tv-phrase × --tv-phrase-lines, and "the room
@@ -207,7 +210,7 @@
    SPELLED DIFFERENTLY FROM ITS `:root` TOKEN (one that names itself resolves to nothing, silently, which is why
    `--radius-*` is absent), `inline`, and NO PLAYER HUE. See docs/FRONTEND.md#tailwind-v4-with-preflight-off. */
 @theme inline {
-	/* The ink direction is banned by NAME in app source instead (`shadcn-ink-ban.test.ts`). */
+	/* The ink direction is banned by NAME in app source instead — see src/lib/components/ui/README.md. */
 	--color-primary: var(--primary);
 	--color-primary-foreground: var(--primary-foreground);
 	--color-secondary: var(--secondary);
@@ -368,8 +371,8 @@ body {
 }
 
 /* THE SHARED CARD SURFACE, because not every card is a <Card.Root>. Several callers spell `card` in the MIDDLE
-   of their class list, where an anchored grep misses them and a global class raises no unused-selector warning;
-   `ui-card-surface.test.ts` keeps this rule and its callers together. */
+   of their class list, where an anchored grep misses them and a global class raises no unused-selector warning, so a
+   caller that stops composing it fails silently. */
 .card {
 	background: var(--card);
 	border: 1px solid var(--line);
@@ -396,6 +399,24 @@ body {
 	height: 10px;
 	border-radius: 50%;
 	background: var(--singer);
+}
+
+/* THE VISUALLY-HIDDEN IDIOM, and it has to live here: `source(none)` plus one `@source` over the vendored tree
+   means Tailwind mints nothing for `routes/` or `components/`, so `class="sr-only"` written anywhere in app source
+   renders as ORDINARY VISIBLE TEXT. This was hand-copied three times and the copies had already drifted — only one
+   carried the legacy `clip` fallback. `clip-path` alone is not enough for older AT, so both stay.
+   NOT `display: none` and NOT `visibility: hidden`: most screen readers skip both. */
+.vh {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
 }
 
 /* GPU-composited motion only (transform/opacity) — never animate layout props. */

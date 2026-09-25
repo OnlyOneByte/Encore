@@ -272,7 +272,9 @@
 		white-space: nowrap;
 		min-width: 0;
 	}
-	/* The DOT keeps its hue, because fading the singer's identity reads as a different person. */
+	/* The name greys to --ink-dim; the DOT keeps its HUE and is only alpha-dimmed below. That distinction is the point:
+	   RECOLOURING the swatch would read as a different singer, where dimming it reads as the same singer, away. Opacity
+	   is legal on that leaf precisely because it carries no text. */
 	.person.away {
 		color: var(--ink-dim);
 		font-weight: 500;

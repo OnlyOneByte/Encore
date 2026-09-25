@@ -61,3 +61,10 @@ worker/wheelhouse/
 
 # Playwright's own bookkeeping dir (holds .last-run.json). It was committed once by accident.
 *test-results/
+
+core/data/
+core/media/
+core/tests/playwrite/.artifacts/
+# Machine-local MLX sidecar venv. Its whole purpose is to hold a dependency set that CANNOT coexist with
+# the worker's own (mlx-audio needs huggingface-hub>=1.0, whisperx needs <1.0), so it is never committed.
+.venv-mlx/

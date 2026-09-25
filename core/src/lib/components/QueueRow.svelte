@@ -22,9 +22,6 @@
 		/** Show the drag grip. The caller passes `gripVisible()` from `$lib/reorder-mode`, never a raw boolean:
 		 * the grip is a promise that a move will land, and the conditions for that are argued there. */
 		grip?: boolean;
-		/** Not a legal drop target while the reorder mode is open. De-emphasised with a SURFACE token, never
-		 * `opacity` — see the `.pending` rule below for what a subtree alpha did to this row's contrast. */
-		dimmed?: boolean;
 		/** This is the row being dragged. Its offset is `dragY`, applied as a transform. */
 		moving?: boolean;
 		/** Live pointer offset in px for the moving row. CSS-var driven — see the `.moving` rule. */
@@ -52,7 +49,6 @@
 		removable = false,
 		shift = 0,
 		grip = false,
-		dimmed = false,
 		moving = false,
 		dragY = 0,
 		ongripdown,
@@ -83,8 +79,7 @@
 
 <!-- Item.Root supplies the row GRAMMAR while this file keeps the row ELEMENT through Item's `child` snippet: the root
 	carries five conditional state classes and the drag offset as a custom property, and a `class:` directive is not
-	valid on a component. THE ROOT'S `class` ATTRIBUTE MUST STAY STATIC, written after the spread so it wins —
-	contrast.test.ts splits it on whitespace, so an interpolation hands it a token it applies as a regex quantifier. -->
+	valid on a component. The root's `class` attribute is written AFTER the spread so it wins. -->
 <Item.Root variant="bare" size="bare">
 	{#snippet child({ props })}
 		<div
@@ -93,7 +88,6 @@
 			class:mine={mine}
 			class:up={up}
 			class:pending={pending}
-			class:dimmed={dimmed}
 			class:moving={moving}
 			class:shifted={shift !== 0}
 			style="--drag-y:{dragY}px; --row-shift:{shift}"
@@ -132,8 +126,8 @@
 				<div class="t">{title}</div>
 				<!-- The singer line is fenced from the formatter because it is BOTH whitespace-load-bearing and pinned by a guard:
 						the separators must stay EXPRESSIONS rather than literal text, since Svelte trims the leading whitespace of a text
-						node that opens a block and welds the dot to the name, and prettier's line-break idiom changes the SOURCE TEXT
-						queue-pending-add.test.ts scans. The fence sits on the ELEMENT — prettier-ignore skips a bare mustache run. -->
+						node that opens a block and welds the dot to the name. The fence sits on the ELEMENT — prettier-ignore skips a
+						bare mustache run. -->
 				<!-- prettier-ignore -->
 				<div class="who">
 					<i class="singer-dot" class:dim={singerAway} style="--singer:{singerColor}"></i>
@@ -175,8 +169,8 @@
 		background: var(--warn-bg);
 		border-color: var(--warn-line);
 	}
-	/* `.seq` must STAY here: it sets both a colour and a background, which is the shape contrast.test.ts's
-	   exclusion list names. The primitive carries the BOX; the colours stay attributable to this file. */
+	/* `.seq` must STAY here: it sets both a colour and a background, and a contrast question about this row has to be
+	   answerable from this file. The primitive carries the BOX; the colours stay attributable here. */
 	.seq {
 		width: 26px;
 		height: 26px;
@@ -240,16 +234,9 @@
 	.adding {
 		color: var(--warn);
 	}
-	/* Another guest's row while the reorder mode is open: not a legal drop target. DE-EMPHASISED WITH A SURFACE, NEVER
-	   `opacity` — these rows stay INFORMATIONAL during the mode, so the inactive-component contrast exemption does not
-	   apply and their text must keep passing AA. MUST STAY AFTER `.mine`, for the reason `.pending` records. */
-	.dimmed {
-		background: var(--bg2);
-		border-color: var(--line);
-	}
 	/* NO `transition` AND NO KEYFRAME HERE, which is what makes this reduced-motion-safe by construction: nothing is
 	   interpolated, so there is no duration to zero out, and the position is a 1:1 response to the pointer. It is also
-	   why no drag library is used — a library animates the settle in JS, where `motion.test.ts` cannot see it. */
+	   why no drag library is used — a library animates the settle in JS, where no CSS-level check could see it. */
 	.moving {
 		transform: translateY(var(--drag-y, 0px));
 		/* Above its siblings while it travels, so it is not clipped by the next row's surface. */

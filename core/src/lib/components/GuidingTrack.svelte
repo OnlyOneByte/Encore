@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Slider } from '$lib/components/ui/slider';
+	import FieldSlider from '$lib/ui/FieldSlider.svelte';
 	import * as Field from '$lib/components/ui/field';
 	// The GUIDING TRACK control — how loud the original vocals sit under the instrumental. PRESENTATIONAL: throttling,
 	// the websocket command and the override-versus-room-default resolution belong to the caller, because those are room
@@ -29,7 +29,7 @@
 		<span class="lab">Guiding track</span>
 		<span class="gt-val">{valueLabel}</span>
 	</Field.Label>
-	<Slider
+	<FieldSlider
 		id="guiding-track"
 		variant="guiding"
 		type="single"
@@ -38,7 +38,7 @@
 		step={1}
 		value={shown}
 		disabled={!available}
-		aria-label="Guiding track — original vocal level"
+		label="Guiding track — original vocal level"
 		onValueChange={(v) => oninput?.(v)}
 		onValueCommit={(v) => oncommit?.(v)}
 	/>
@@ -51,8 +51,8 @@
 	}
 	/*
 	 * DISABLED DIMS BY TOKEN, never by an opacity on this wrapper: an alpha here flattens the whole subtree against the
-	 * page and drops the eyebrow under AA, and contrast.test.ts's ancestor-opacity ban does not reach it because that arm
-	 * scopes itself to card ROOTS. `class:disabled` is the anchor a measured probe reads this state by, so it must stay.
+	 * page and drops the eyebrow under AA. `class:disabled` is the anchor a measured probe reads this state by
+	 * (`.gt.disabled` in tests/playwright/world/selectors.ts), so it must stay.
 	 */
 	.gt.disabled .gt-val {
 		color: var(--ink-dim);

@@ -34,8 +34,8 @@
 {/if}
 
 <style>
-	/* scaleX on a full-width fill, never an animated width: transitioning a layout property is banned outright by
-	   motion.test.ts, and on the TV it would jank the frame underneath. */
+	/* scaleX on a full-width fill, never an animated width: animating a LAYOUT property is banned outright, and on the
+	   TV it would jank the frame underneath. */
 	.track > i,
 	.topbar > i,
 	.edgebar > i {

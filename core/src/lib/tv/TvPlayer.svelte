@@ -264,7 +264,6 @@
 	// activation. THE LISTENER IS ARMED UNCONDITIONALLY: gated on `autoplayBlocked` it existed only on a TV whose
 	// autoplay had been REFUSED, so a correctly-autoplaying TV could never resume its context and ± was permanently dead.
 	$effect(() => {
-		if (typeof window === 'undefined') return;
 		const onGesture = () => {
 			// Read the latch HERE, not in the effect body: that is what keeps the listener armed on a TV that never
 			// raised it while keeping the play() nudge exclusive to one that was blocked.

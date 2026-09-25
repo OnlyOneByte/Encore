@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bf6d91e4-e353-4b22-b043-4472e022e577",
+  "id": "13788dc8-fe01-4983-a484-e7fc9d774e67",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "global_settings": {
@@ -86,6 +86,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": "''"
+        },
+        "max_processes_per_singer": {
+          "name": "max_processes_per_singer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 3
         }
       },
       "indexes": {},
@@ -247,6 +255,13 @@
         },
         "selection": {
           "name": "selection",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "trail": {
+          "name": "trail",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -899,7 +914,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'card'"
+          "default": "'edge'"
         },
         "tv_background_style": {
           "name": "tv_background_style",
@@ -978,7 +993,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 300
+          "default": 0
         },
         "lyrics_scale_pct": {
           "name": "lyrics_scale_pct",

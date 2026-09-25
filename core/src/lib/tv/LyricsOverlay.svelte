@@ -329,7 +329,7 @@
 		gap: 0.35em;
 		font-size: calc(var(--tv-lyric) * 0.34);
 		font-family: var(--lyrics-font, inherit);
-		line-height: var(--lh-snug, 1.2);
+		line-height: var(--lh-snug);
 	}
 	.nl-head {
 		color: rgba(255, 255, 255, 0.86);

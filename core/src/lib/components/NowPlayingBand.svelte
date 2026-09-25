@@ -308,8 +308,8 @@
 		border-color: transparent;
 		background: none;
 	}
-	/* Unavailable is a SURFACE change, never a subtree opacity: `phone-inventory.test.ts` rejects dimming a subtree,
-	   because compositing ink against the page at 45% is what quietly drops it under 4.5:1. */
+	/* Unavailable is a SURFACE change, never a subtree opacity: compositing ink against the page at 45% is what quietly
+	   drops it under 4.5:1 while a token-level contrast check keeps passing. */
 	.disc:disabled {
 		color: var(--ink-dim);
 	}

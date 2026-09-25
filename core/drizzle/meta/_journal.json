@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1789415708389,
+      "when": 1790315751899,
       "tag": "0000_baseline",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1790102155855,
-      "tag": "0001_glossy_veda",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1790314438202,
-      "tag": "0002_round_purple_man",
       "breakpoints": true
     }
   ]

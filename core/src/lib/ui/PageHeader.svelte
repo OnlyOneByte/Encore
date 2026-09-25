@@ -1,7 +1,7 @@
 <script lang="ts">
 	/*
 	 * One heading line for every dashboard page, so each announces where you are the same way. /tv and /components are
-	 * deliberately exempt, and page-header.test.ts pins that list. The back control is a REAL anchor, never a
+	 * deliberately exempt (the TV has no operator and the gallery is dev-only). The back control is a REAL anchor, never a
 	 * history.back() button: back is then the browser's own, the route stays shareable, and a home-screen install with
 	 * no back gesture still has an in-app exit. Icon-only, so the aria-label is the sole carrier of the name.
 	 */

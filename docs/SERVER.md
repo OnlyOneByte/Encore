@@ -444,9 +444,19 @@ that leaves open.
   a `NOT NULL DEFAULT` matching the TypeScript default, so an inserted row is valid without the
   application, and a migration backfill can rely on it. `DEFAULT_STAGE_COLOR`'s exact bytes are one of
   those defaults, which is why it is a literal rather than a computed value.
-- **Migrations are frozen history.** `drizzle/0000_baseline.sql` is the SINGLE PRE-RELEASE BASELINE; a
-  schema change is a NEW numbered migration plus its journal entry, and one that only ever `ALTER`s. Never
+- **Migrations are frozen history — from first release, not from first commit.** `drizzle/0000_baseline.sql`
+  is the SINGLE PRE-RELEASE BASELINE: one file, pure `CREATE TABLE`, no `ALTER`, and one journal entry. A
+  schema change is a NEW numbered migration plus its journal entry, and one that only ever `ALTER`s; never
   edit a committed migration's statements or reorder them.
+  **The one exception, and it expires:** while there is no deployment to upgrade, the baseline may be RE-CUT
+  rather than grown — delete `drizzle/` and regenerate with `--name baseline`, which absorbs every `ALTER`
+  into the `CREATE TABLE`s. That has been done once, collapsing four migrations (`0001` a schema revision,
+  `0002` the `job_attempts.trail` column, `0003` the `room_settings` default parity fix) back into `0000`.
+  It is a HISTORY REWRITE: every existing database fails to boot afterwards, because the baseline's hash no
+  longer matches the one recorded in its `__drizzle_migrations`, and drizzle then replays `CREATE TABLE`
+  against tables that already exist. Every such database must be discarded, so this stops being available the
+  moment one exists that anybody cares about. `drizzle-kit` will not regenerate into a `meta/` directory that
+  exists but holds no `_journal.json`; remove `meta/` and it writes its own.
 - **Widening a Drizzle enum needs NO migration**, precisely because the column is plain text with no
   `CHECK`. The corollary is that a hand-edited database can smuggle an unknown value into any column the
   application does not normalize on read.

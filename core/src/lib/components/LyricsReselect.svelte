@@ -60,7 +60,7 @@
 			<span class="reselect-peek">{peek}</span>
 		</button>
 		{#if open}
-			<div class="reselect-body" id={bodyId}>
+			<div id={bodyId}>
 				<!--
 						THE ROW IS A BUTTON, through Item's `child` snippet, because the whole row is the pick action and Item.Root renders
 						a div. The static token must come FIRST and `{props.class}` second so both survive. It must also stay a real
