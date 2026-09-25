@@ -328,6 +328,28 @@
 	});
 </script>
 
+<!-- ONE SHAPE FOR A REGISTRY-BACKED SELECT, rendered eleven times. Every one was the same five lines: a label bound
+	by `for`, a native select, and an `{#each}` over a registry of `{id, label}`. The `id` is passed EXPLICITLY and
+	never derived, because `p9-settings.spec.ts` drives these controls by id and `SEL.settingsTab` resolves
+	`#tab-<id>` — so the spelling is a contract, not an implementation detail.
+	Two selects deliberately do NOT come through here: `quality-ceiling` carries an empty "no cap" option over a
+	registry keyed on `rank`, and `asr-model` composes its option label from two fields. Parameterising for either
+	would add a knob that exists for one caller. -->
+{#snippet selectField(
+	id: string,
+	label: string,
+	value: string,
+	options: readonly { id: string; label: string }[],
+	pick: (v: string) => void
+)}
+	<Field.Label for={id}>{label}</Field.Label>
+	<NativeSelect {id} {value} onchange={(e) => pick(e.currentTarget.value)}>
+		{#each options as o (o.id)}
+			<option value={o.id}>{o.label}</option>
+		{/each}
+	</NativeSelect>
+{/snippet}
+
 <svelte:head><title>Settings · Encore</title></svelte:head>
 
 <div class="settings-page">
@@ -437,16 +459,7 @@
 							<Card.Title role="heading" aria-level={2}>Rotation</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<Field.Label for="queue-order">Who sings next</Field.Label>
-							<NativeSelect
-								id="queue-order"
-								value={settings.room.queueOrder}
-								onchange={(e) => onroom({ queueOrder: e.currentTarget.value as QueueOrderId })}
-							>
-								{#each QUEUE_ORDERS as o (o.id)}
-									<option value={o.id}>{o.label}</option>
-								{/each}
-							</NativeSelect>
+							{@render selectField('queue-order', 'Who sings next', settings.room.queueOrder, QUEUE_ORDERS, (v) => onroom({ queueOrder: v as QueueOrderId }))}
 
 							<Field.Label for="presence-grace">
 								Kick out after · {graceLabel}
@@ -499,43 +512,16 @@
 						<Card.Content>
 							<div class="pair">
 								<div class="cell">
-									<Field.Label for="tv-background">Background</Field.Label>
-									<NativeSelect
-										id="tv-background"
-										value={settings.room.tvBackgroundStyle}
-										onchange={(e) => onroom({ tvBackgroundStyle: e.currentTarget.value as TvBackgroundStyle })}
-									>
-										{#each TV_BACKGROUND_STYLES as s (s.id)}
-											<option value={s.id}>{s.label}</option>
-										{/each}
-									</NativeSelect>
+									{@render selectField('tv-background', 'Background', settings.room.tvBackgroundStyle, TV_BACKGROUND_STYLES, (v) => onroom({ tvBackgroundStyle: v as TvBackgroundStyle }))}
 								</div>
 								<div class="cell">
-									<Field.Label for="tv-progress">Song progress</Field.Label>
-									<NativeSelect
-										id="tv-progress"
-										value={settings.room.tvProgressStyle}
-										onchange={(e) => onroom({ tvProgressStyle: e.currentTarget.value as TvProgressStyle })}
-									>
-										{#each TV_PROGRESS_STYLES as s (s.id)}
-											<option value={s.id}>{s.label}</option>
-										{/each}
-									</NativeSelect>
+									{@render selectField('tv-progress', 'Song progress', settings.room.tvProgressStyle, TV_PROGRESS_STYLES, (v) => onroom({ tvProgressStyle: v as TvProgressStyle }))}
 								</div>
 							</div>
 
 							<!-- Gated, not disabled: a control that does nothing for the current selection implies it does. -->
 							{#if settings.room.tvBackgroundStyle === 'visualizer'}
-								<Field.Label for="tv-visualizer">Which visualizer</Field.Label>
-								<NativeSelect
-									id="tv-visualizer"
-									value={settings.room.tvVisualizer}
-									onchange={(e) => onroom({ tvVisualizer: e.currentTarget.value as TvVisualizerId })}
-								>
-									{#each TV_VISUALIZERS as v (v.id)}
-										<option value={v.id}>{v.label}</option>
-									{/each}
-								</NativeSelect>
+								{@render selectField('tv-visualizer', 'Which visualizer', settings.room.tvVisualizer, TV_VISUALIZERS, (v) => onroom({ tvVisualizer: v as TvVisualizerId }))}
 							{/if}
 
 							<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
@@ -611,28 +597,10 @@
 						<Card.Content>
 							<div class="pair">
 								<div class="cell">
-									<Field.Label for="lyrics-highlight">Highlight</Field.Label>
-									<NativeSelect
-										id="lyrics-highlight"
-										value={settings.room.lyricsHighlight}
-										onchange={(e) => onroom({ lyricsHighlight: e.currentTarget.value as LyricsHighlightId })}
-									>
-										{#each LYRICS_HIGHLIGHTS as h (h.id)}
-											<option value={h.id}>{h.label}</option>
-										{/each}
-									</NativeSelect>
+									{@render selectField('lyrics-highlight', 'Highlight', settings.room.lyricsHighlight, LYRICS_HIGHLIGHTS, (v) => onroom({ lyricsHighlight: v as LyricsHighlightId }))}
 								</div>
 								<div class="cell">
-									<Field.Label for="lyrics-ball">Marker</Field.Label>
-									<NativeSelect
-										id="lyrics-ball"
-										value={settings.room.lyricsBall}
-										onchange={(e) => onroom({ lyricsBall: e.currentTarget.value as LyricsBallStyleId })}
-									>
-										{#each LYRICS_BALL_STYLES as s (s.id)}
-											<option value={s.id}>{s.label}</option>
-										{/each}
-									</NativeSelect>
+									{@render selectField('lyrics-ball', 'Marker', settings.room.lyricsBall, LYRICS_BALL_STYLES, (v) => onroom({ lyricsBall: v as LyricsBallStyleId }))}
 								</div>
 							</div>
 
@@ -648,28 +616,10 @@
 
 							<div class="pair">
 								<div class="cell">
-									<Field.Label for="lyrics-font">Font</Field.Label>
-									<NativeSelect
-										id="lyrics-font"
-										value={settings.room.lyricsFont}
-										onchange={(e) => onroom({ lyricsFont: e.currentTarget.value as LyricsFontId })}
-									>
-										{#each LYRICS_FONTS as f (f.id)}
-											<option value={f.id}>{f.label}</option>
-										{/each}
-									</NativeSelect>
+									{@render selectField('lyrics-font', 'Font', settings.room.lyricsFont, LYRICS_FONTS, (v) => onroom({ lyricsFont: v as LyricsFontId }))}
 								</div>
 								<div class="cell">
-									<Field.Label for="lyrics-case">Letter case</Field.Label>
-									<NativeSelect
-										id="lyrics-case"
-										value={settings.room.lyricsCase}
-										onchange={(e) => onroom({ lyricsCase: e.currentTarget.value as LyricsCaseId })}
-									>
-										{#each LYRICS_CASES as c (c.id)}
-											<option value={c.id}>{c.label}</option>
-										{/each}
-									</NativeSelect>
+									{@render selectField('lyrics-case', 'Letter case', settings.room.lyricsCase, LYRICS_CASES, (v) => onroom({ lyricsCase: v as LyricsCaseId }))}
 								</div>
 							</div>
 
@@ -786,42 +736,17 @@
 						</Card.Header>
 						<Card.Content>
 							<!-- Stacked, not paired: these registries carry the app's longest labels, which truncate in half a 390px row. -->
-							<Field.Label for="engine">Stem splitter</Field.Label>
-							<NativeSelect
-								id="engine"
-								value={settings.global.defaultEngine}
-								onchange={(e) => pickEngine('default', e.currentTarget.value)}
-							>
-								{#each liveEngines as engine (engine.id)}
-									<option value={engine.id}>{engine.label}</option>
-								{/each}
-							</NativeSelect>
+							{@render selectField('engine', 'Stem splitter', settings.global.defaultEngine, liveEngines, (v) =>
+								pickEngine('default', v)
+							)}
 
-							<Field.Label for="model">Model</Field.Label>
-							<NativeSelect
-								id="model"
-								value={settings.global.defaultModel}
-								onchange={(e) => onglobal({ defaultModel: e.currentTarget.value })}
-							>
-								{#each liveModels as model (model.id)}
-									<option value={model.id}>{model.label}</option>
-								{/each}
-							</NativeSelect>
+							{@render selectField('model', 'Model', settings.global.defaultModel, liveModels, (v) => onglobal({ defaultModel: v }))}
 
 							{#if liveSlow}
 								<p class="warn">~45 minutes per song on CPU.</p>
 							{/if}
 
-							<Field.Label for="fetcher">Audio source</Field.Label>
-							<NativeSelect
-								id="fetcher"
-								value={settings.global.defaultFetcher}
-								onchange={(e) => onglobal({ defaultFetcher: e.currentTarget.value as FetcherId })}
-							>
-								{#each defaultFetchers as f (f.id)}
-									<option value={f.id}>{f.label}</option>
-								{/each}
-							</NativeSelect>
+							{@render selectField('fetcher', 'Audio source', settings.global.defaultFetcher, defaultFetchers, (v) => onglobal({ defaultFetcher: v as FetcherId }))}
 
 							<!-- A slider, not a number field: the range is short and bounded at both ends, and a text field would invite the
 									3000 that `normalizeMaxProcesses` exists to refuse. -->
@@ -866,16 +791,9 @@
 								<p class="warn">Needs real memory, and minutes more per song on CPU.</p>
 							{/if}
 
-							<Field.Label for="sync-mode">Lyric timing</Field.Label>
-							<NativeSelect
-								id="sync-mode"
-								value={settings.global.syncMode}
-								onchange={(e) => onglobal({ syncMode: e.currentTarget.value as GlobalSettings['syncMode'] })}
-							>
-								{#each SYNC_MODES as mode (mode.id)}
-									<option value={mode.id}>{mode.label}</option>
-								{/each}
-							</NativeSelect>
+							{@render selectField('sync-mode', 'Lyric timing', settings.global.syncMode, SYNC_MODES, (v) =>
+								onglobal({ syncMode: v as GlobalSettings['syncMode'] })
+							)}
 						</Card.Content>
 					</Card.Root>
 
@@ -942,27 +860,15 @@
 												Re-process at higher quality, from the saved audio
 											</label>
 
-											<Field.Label for="upgrade-engine">Upgrade splitter</Field.Label>
-											<NativeSelect
-												id="upgrade-engine"
-												value={settings.global.upgradeEngine}
-												onchange={(e) => pickEngine('upgrade', e.currentTarget.value)}
-											>
-												{#each SEPARATOR_ENGINES as engine (engine.id)}
-													<option value={engine.id}>{engine.label}</option>
-												{/each}
-											</NativeSelect>
+											{@render selectField(
+												'upgrade-engine',
+												'Upgrade splitter',
+												settings.global.upgradeEngine,
+												SEPARATOR_ENGINES,
+												(v) => pickEngine('upgrade', v)
+											)}
 
-											<Field.Label for="upgrade-model">Upgrade model</Field.Label>
-											<NativeSelect
-												id="upgrade-model"
-												value={settings.global.upgradeModel}
-												onchange={(e) => onglobal({ upgradeModel: e.currentTarget.value })}
-											>
-												{#each upgradeModels as model (model.id)}
-													<option value={model.id}>{model.label}</option>
-												{/each}
-											</NativeSelect>
+											{@render selectField('upgrade-model', 'Upgrade model', settings.global.upgradeModel, upgradeModels, (v) => onglobal({ upgradeModel: v }))}
 
 											{#if settings.global.enqueueUpgrade && !upgradeIsBetter}
 												<p class="warn">Not better than the splitter above, so nothing will re-process.</p>
