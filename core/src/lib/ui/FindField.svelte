@@ -52,7 +52,7 @@
 
 <div class="findbox">
 	<span class="find-mark"><Icon name="search" /></span>
-	<input bind:this={element} bind:value {oninput} aria-label={ariaLabel} {placeholder} />
+	<input bind:this={element} bind:value={value} oninput={oninput} aria-label={ariaLabel} placeholder={placeholder} />
 	{#if busy}<Spinner aria-label="Searching" />{/if}
 	{#if clearable}
 		<Button variant="ghost" size="icon" aria-label={clearLabel} onclick={onclear}>

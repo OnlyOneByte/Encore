@@ -4,12 +4,7 @@
 	   cannot know. See docs/FRONTEND.md#the-song-page. */
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import {
-		songDisplay,
-		chosenCandidate,
-		hasNewerCandidateThanOverride,
-		type Media
-	} from '$lib/contract';
+	import { songDisplay, chosenCandidate, hasNewerCandidateThanOverride, type Media } from '$lib/contract';
 	import { room } from '$lib/stores/room';
 	import { songFacts } from '$lib/song-facts';
 	import PageHeader from '$lib/ui/PageHeader.svelte';

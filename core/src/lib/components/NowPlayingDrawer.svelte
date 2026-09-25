@@ -13,12 +13,7 @@
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
 	import { SNAP_BAND, OPEN_CONTENT_SLACK_PX, openSnapFraction } from '$lib/sheet-snap';
 	import { songFacts } from '$lib/song-facts';
-	import {
-		isAuthoritativeText,
-		lyricsSourceLabel,
-		type LyricsCandidate,
-		type SongProfile
-	} from '$lib/contract';
+	import { isAuthoritativeText, lyricsSourceLabel, type LyricsCandidate, type SongProfile } from '$lib/contract';
 
 	interface Props {
 		open?: boolean;
@@ -403,10 +398,26 @@
 		max-height: none;
 		/* Elevation, or the sheet reads as a DUPLICATE of the band: both surfaces are --card with the same top
 		   border and radius, so without a shadow two matching top edges show for the length of the transition. */
-		box-shadow: var(--shadow);
+		box-shadow:
+			var(--shadow),
+			inset 0 1px 0 var(--edge-hi);
 		/* THE DRAWER COVERS THE BAND, so it carries the home-indicator inset itself. That does not break the
 		   one-env() rule: the two are never bottom-most at once, and nothing measures the drawer into --dock-h. */
 		padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--space-lg));
+	}
+	/* THE SHEET IS THE SURFACE THE BAND WEARS — `.band-slot :global(.band)` above zeroes the band's own fill, so this is
+	   the one element to blur and the band comes with it. NO NEW STACKING CONTEXT IS CREATED, which is the fact that makes
+	   this safe: the vendored content is already `position: fixed; z-index: 50`, so `.btn`/`.disc`'s --z-band-control still
+	   resolves against the same context it did before and their clearance over vaul's handle hit area is untouched.
+	   Gated and paired exactly as `PageHeader`'s is, against the vendored `bg-popover` fill as the fallback. The blur is
+	   also why the sheet may be translucent at FULL extension: the queue behind it goes out of focus rather than
+	   competing with the controls in front. */
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		:global([data-slot='drawer-content'].np-drawer) {
+			background: var(--chrome-fill);
+			-webkit-backdrop-filter: var(--chrome-blur);
+			backdrop-filter: var(--chrome-blur);
+		}
 	}
 	/* `!important` IS REQUIRED: vaul writes its transition as an INLINE style from JS. `transition-duration: 0s`
 	   rather than `transition: none`, so vaul's own bookkeeping still sees a transition it completes instantly. */

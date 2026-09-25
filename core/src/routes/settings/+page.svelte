@@ -343,7 +343,7 @@
 	pick: (v: string) => void
 )}
 	<Field.Label for={id}>{label}</Field.Label>
-	<NativeSelect {id} {value} onchange={(e) => pick(e.currentTarget.value)}>
+	<NativeSelect id={id} value={value} onchange={(e) => pick(e.currentTarget.value)}>
 		{#each options as o (o.id)}
 			<option value={o.id}>{o.label}</option>
 		{/each}
@@ -459,7 +459,9 @@
 							<Card.Title role="heading" aria-level={2}>Rotation</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							{@render selectField('queue-order', 'Who sings next', settings.room.queueOrder, QUEUE_ORDERS, (v) => onroom({ queueOrder: v as QueueOrderId }))}
+							{@render selectField('queue-order', 'Who sings next', settings.room.queueOrder, QUEUE_ORDERS, (v) =>
+								onroom({ queueOrder: v as QueueOrderId })
+							)}
 
 							<Field.Label for="presence-grace">
 								Kick out after · {graceLabel}
@@ -512,16 +514,34 @@
 						<Card.Content>
 							<div class="pair">
 								<div class="cell">
-									{@render selectField('tv-background', 'Background', settings.room.tvBackgroundStyle, TV_BACKGROUND_STYLES, (v) => onroom({ tvBackgroundStyle: v as TvBackgroundStyle }))}
+									{@render selectField(
+										'tv-background',
+										'Background',
+										settings.room.tvBackgroundStyle,
+										TV_BACKGROUND_STYLES,
+										(v) => onroom({ tvBackgroundStyle: v as TvBackgroundStyle })
+									)}
 								</div>
 								<div class="cell">
-									{@render selectField('tv-progress', 'Song progress', settings.room.tvProgressStyle, TV_PROGRESS_STYLES, (v) => onroom({ tvProgressStyle: v as TvProgressStyle }))}
+									{@render selectField(
+										'tv-progress',
+										'Song progress',
+										settings.room.tvProgressStyle,
+										TV_PROGRESS_STYLES,
+										(v) => onroom({ tvProgressStyle: v as TvProgressStyle })
+									)}
 								</div>
 							</div>
 
 							<!-- Gated, not disabled: a control that does nothing for the current selection implies it does. -->
 							{#if settings.room.tvBackgroundStyle === 'visualizer'}
-								{@render selectField('tv-visualizer', 'Which visualizer', settings.room.tvVisualizer, TV_VISUALIZERS, (v) => onroom({ tvVisualizer: v as TvVisualizerId }))}
+								{@render selectField(
+									'tv-visualizer',
+									'Which visualizer',
+									settings.room.tvVisualizer,
+									TV_VISUALIZERS,
+									(v) => onroom({ tvVisualizer: v as TvVisualizerId })
+								)}
 							{/if}
 
 							<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
@@ -597,10 +617,18 @@
 						<Card.Content>
 							<div class="pair">
 								<div class="cell">
-									{@render selectField('lyrics-highlight', 'Highlight', settings.room.lyricsHighlight, LYRICS_HIGHLIGHTS, (v) => onroom({ lyricsHighlight: v as LyricsHighlightId }))}
+									{@render selectField(
+										'lyrics-highlight',
+										'Highlight',
+										settings.room.lyricsHighlight,
+										LYRICS_HIGHLIGHTS,
+										(v) => onroom({ lyricsHighlight: v as LyricsHighlightId })
+									)}
 								</div>
 								<div class="cell">
-									{@render selectField('lyrics-ball', 'Marker', settings.room.lyricsBall, LYRICS_BALL_STYLES, (v) => onroom({ lyricsBall: v as LyricsBallStyleId }))}
+									{@render selectField('lyrics-ball', 'Marker', settings.room.lyricsBall, LYRICS_BALL_STYLES, (v) =>
+										onroom({ lyricsBall: v as LyricsBallStyleId })
+									)}
 								</div>
 							</div>
 
@@ -616,10 +644,14 @@
 
 							<div class="pair">
 								<div class="cell">
-									{@render selectField('lyrics-font', 'Font', settings.room.lyricsFont, LYRICS_FONTS, (v) => onroom({ lyricsFont: v as LyricsFontId }))}
+									{@render selectField('lyrics-font', 'Font', settings.room.lyricsFont, LYRICS_FONTS, (v) =>
+										onroom({ lyricsFont: v as LyricsFontId })
+									)}
 								</div>
 								<div class="cell">
-									{@render selectField('lyrics-case', 'Letter case', settings.room.lyricsCase, LYRICS_CASES, (v) => onroom({ lyricsCase: v as LyricsCaseId }))}
+									{@render selectField('lyrics-case', 'Letter case', settings.room.lyricsCase, LYRICS_CASES, (v) =>
+										onroom({ lyricsCase: v as LyricsCaseId })
+									)}
 								</div>
 							</div>
 
@@ -740,13 +772,17 @@
 								pickEngine('default', v)
 							)}
 
-							{@render selectField('model', 'Model', settings.global.defaultModel, liveModels, (v) => onglobal({ defaultModel: v }))}
+							{@render selectField('model', 'Model', settings.global.defaultModel, liveModels, (v) =>
+								onglobal({ defaultModel: v })
+							)}
 
 							{#if liveSlow}
 								<p class="warn">~45 minutes per song on CPU.</p>
 							{/if}
 
-							{@render selectField('fetcher', 'Audio source', settings.global.defaultFetcher, defaultFetchers, (v) => onglobal({ defaultFetcher: v as FetcherId }))}
+							{@render selectField('fetcher', 'Audio source', settings.global.defaultFetcher, defaultFetchers, (v) =>
+								onglobal({ defaultFetcher: v as FetcherId })
+							)}
 
 							<!-- A slider, not a number field: the range is short and bounded at both ends, and a text field would invite the
 									3000 that `normalizeMaxProcesses` exists to refuse. -->
@@ -868,7 +904,13 @@
 												(v) => pickEngine('upgrade', v)
 											)}
 
-											{@render selectField('upgrade-model', 'Upgrade model', settings.global.upgradeModel, upgradeModels, (v) => onglobal({ upgradeModel: v }))}
+											{@render selectField(
+												'upgrade-model',
+												'Upgrade model',
+												settings.global.upgradeModel,
+												upgradeModels,
+												(v) => onglobal({ upgradeModel: v })
+											)}
 
 											{#if settings.global.enqueueUpgrade && !upgradeIsBetter}
 												<p class="warn">Not better than the splitter above, so nothing will re-process.</p>
