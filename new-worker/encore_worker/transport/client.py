@@ -54,6 +54,10 @@ BACKOFF_SEC = (1.0, 2.0, 5.0, 10.0, 30.0)
 #: instead of overwriting a private attribute — and so an operator could flatten it without a subclass.
 Backoff = Callable[[int], float]
 
+#: Enumerates the selectable models this box can run: `(extra capability tokens, offers to show a picker)`.
+#: SYNCHRONOUS and slow by design — the client runs it in a worker thread.
+Catalogue = Callable[[], tuple[frozenset[str], tuple[f.SeparatorOffer, ...]]]
+
 #: (seconds) -> None. Injected for the same reason: a keepalive test drives it directly rather than
 #: sleeping and hoping, which is what makes the test deterministic instead of a race.
 Sleep = Callable[[float], Awaitable[None]]
@@ -68,6 +72,12 @@ class Client:
     run_job: RunJob
     capabilities: frozenset[str]
     backend: str | None = None
+
+    #: Builds the selectable-model catalogue, or None on a box that offers none. Called OFF the event loop
+    #: (see `_announce_catalogue`) because enumerating the zoo costs ~4.8 s on a cold process and blocking
+    #: the handshake on it would delay registration by that much — or indefinitely if its first-run download
+    #: hangs. Injected rather than imported so a test can supply one without installing the extra.
+    catalogue: Catalogue | None = None
 
     ownership: Ownership = field(default_factory=Ownership)
     #: How long to wait between reconnect attempts. Default is the jittered schedule above.
@@ -124,18 +134,58 @@ class Client:
         """One connection: handshake, then read frames until the socket ends."""
         socket = await self.connect(self.config.core_url)
         self._socket = socket
+        # Bound BEFORE the try, because `finally` cancels it: an exception from the hello send would
+        # otherwise leave the name unset and turn a connection error into a NameError that hides it.
+        catalogue_task: asyncio.Task[None] | None = None
         try:
             await self._send(self._hello())
             # Re-claim BEFORE serving anything. A job held across the drop may have been reassigned,
             # and until the core answers, `may_publish` refuses — so a workflow that finishes in this
             # window waits rather than racing another worker to the same artifact.
             await self._claim_pending()
+            # AFTER the claim, and not awaited: the catalogue is a UI nicety, so it must not sit in front of
+            # either registration or re-claiming ownership of in-flight work.
+            catalogue_task = asyncio.create_task(self._announce_catalogue())
             async for raw in socket:
                 await self._on_frame(raw)
         finally:
+            # Cancelled rather than awaited: on a socket that just dropped there is nothing to send it to,
+            # and a pending 4.8 s enumeration would hold the reconnect open for no benefit.
+            if catalogue_task is not None:
+                catalogue_task.cancel()
             self._socket = None
             with contextlib.suppress(Exception):
                 await socket.close()
+
+    async def _announce_catalogue(self) -> None:
+        """Enumerate the selectable models and tell the core, or do nothing at all.
+
+        RUN IN A THREAD. `zoo.catalogue()` is synchronous, CPU- and network-bound, and measured at 4.80 s on
+        a cold process — on the event loop it would stall every heartbeat for that long, which is precisely
+        what the core's reaper reads as a dead worker.
+
+        FAILURE IS SILENT BY DESIGN. A box that cannot enumerate its zoo is a box that offers the models it
+        already advertised in `Hello`; core keeps whatever it has. Raising here would take down a connection
+        over a picker's contents.
+        """
+        if self.catalogue is None:
+            return
+        try:
+            extra, offers = await asyncio.to_thread(self.catalogue)
+        except Exception as exc:  # noqa: BLE001 - see the docstring: a picker must not fail a connection
+            print(f"[worker] model catalogue unavailable ({type(exc).__name__}: {exc})", flush=True)
+            return
+        if not extra and not offers:
+            return
+        # The FULL set, base tokens included, never a delta — see `frames.Catalogue`.
+        await self._send(
+            f.Catalogue(
+                worker_id=self.config.worker_id,
+                capabilities=tuple(sorted(self.capabilities | extra)),
+                separators=offers,
+            )
+        )
+        print(f"[worker] offered {len(offers)} selectable separation models", flush=True)
 
     def _hello(self) -> f.Hello:
         return f.Hello(

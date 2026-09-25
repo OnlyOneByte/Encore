@@ -34,6 +34,7 @@ STATE: Final = "job:state"
 COMPLETE: Final = "job:complete"
 FAILED: Final = "job:failed"
 CLAIM: Final = "job:claim"
+CATALOGUE: Final = "worker:catalogue"
 
 # ── core -> worker ────────────────────────────────────────────────────────────────────────────────
 WELCOME: Final = "worker:welcome"
@@ -104,6 +105,70 @@ class Hello:
             backend=self.backend,
             device=self.device,
             host=self.host,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SeparatorOffer:
+    """One selectable separation model, as the core's settings UI needs to describe it.
+
+    METADATA ONLY — routing does NOT read this. A model is routed on the capability token
+    `stems:model:<token>` in `Hello.capabilities`, because that is what core's existing dispatch already
+    matches on. Everything here (a label, an architecture, a published score) is for rendering a picker, and
+    a score is not a routing input.
+    """
+
+    token: str
+    label: str
+    architecture: str
+    #: Upstream's published instrumental SDR, NEVER this project's own measurement. `zoo.provenance` carries
+    #: the full caveat; the flag below is what stops a UI from printing it as if we measured it.
+    upstream_instrumental_sdr: float | None = None
+    upstream_vocals_sdr: float | None = None
+    #: `"declared"` when the model's metadata names its stems, `"unknown"` when the worker will determine
+    #: them from the audio. Surfaced so an operator picking an exotic model knows which they are getting.
+    role_source: str = "unknown"
+
+    def to_wire(self) -> dict[str, object]:
+        """A nested object, so NOT built by `_wire` — that helper stamps a `type` key, which belongs on a
+        frame and not on an element inside one. The None-dropping convention is kept by hand."""
+        fields: dict[str, object | None] = {
+            "token": self.token,
+            "label": self.label,
+            "architecture": self.architecture,
+            "upstreamInstrumentalSdr": self.upstream_instrumental_sdr,
+            "upstreamVocalsSdr": self.upstream_vocals_sdr,
+            "roleSource": self.role_source,
+        }
+        return {k: v for k, v in fields.items() if v is not None}
+
+
+@dataclass(frozen=True, slots=True)
+class Catalogue:
+    """The selectable models this box can run, sent AFTER `Hello` rather than inside it.
+
+    WHY A SECOND FRAME. Enumerating the zoo constructs an `audio-separator` `Separator`, which probes torch,
+    the ONNX runtime and the accelerator, and on a first-ever run downloads a catalogue JSON. Measured at
+    4.80 s on this project's Mac. Blocking `Hello` on that would delay registration by five seconds — and if
+    the download hangs, indefinitely — so the worker registers immediately with its base capabilities and
+    sends this when the enumeration finishes.
+
+    `capabilities` REPEATS the full set, base tokens included, rather than sending a delta. A delta requires
+    both sides to agree on an ordering and to have received every previous frame; a full set is idempotent,
+    so a reconnect or a dropped frame cannot leave core with a half-updated view.
+    """
+
+    TYPE: ClassVar[str] = CATALOGUE
+    worker_id: str
+    capabilities: tuple[str, ...]
+    separators: tuple[SeparatorOffer, ...]
+
+    def to_wire(self) -> dict[str, object]:
+        return _wire(
+            CATALOGUE,
+            workerId=self.worker_id,
+            capabilities=list(self.capabilities),
+            separators=[offer.to_wire() for offer in self.separators],
         )
 
 
@@ -268,7 +333,7 @@ class Claim:
         return _wire(CLAIM, workerId=self.worker_id, jobIds=list(self.job_ids))
 
 
-ToCore = Hello | Heartbeat | Accept | Reject | Progress | State | Complete | Failed | Claim
+ToCore = Hello | Catalogue | Heartbeat | Accept | Reject | Progress | State | Complete | Failed | Claim
 
 
 # ══ core -> worker ═══════════════════════════════════════════════════════════════════════════════

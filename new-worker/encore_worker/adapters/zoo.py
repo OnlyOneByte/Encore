@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import functools
 from dataclasses import dataclass
+from typing import Any
 
 #: Declared stem names that mean "the voice". Matched case-insensitively against the metadata.
 _VOCAL_NAMES = frozenset({"vocals", "vocal", "voice", "lead_vocals", "lead vocals"})
@@ -190,3 +191,48 @@ def by_token(token: str) -> ZooModel | None:
         if model.token == token:
             return model
     return None
+
+
+#: Prefix for the per-model capability token. Core's dispatch matches ONE capability string against a
+#: worker's list, so advertising each runnable model this way makes model-aware routing free: a job naming a
+#: checkpoint only one box has is routed to that box by machinery that already exists. See
+#: `core/src/lib/server/jobs/dispatch.ts:requiredCapability`.
+MODEL_CAPABILITY_PREFIX = "stems:model:"
+
+
+def capability_for(token: str) -> str:
+    return f"{MODEL_CAPABILITY_PREFIX}{token}"
+
+
+def model_capabilities() -> frozenset[str]:
+    """One capability per runnable zoo model.
+
+    NOT called from `host.capabilities`, deliberately: that runs before registration and this costs 4.8 s on
+    a cold process. The worker registers with its base capabilities and sends these in a follow-up
+    `worker:catalogue` frame — see `frames.Catalogue`.
+    """
+    return frozenset(capability_for(m.token) for m in catalogue())
+
+
+def announcement() -> tuple[frozenset[str], tuple[Any, ...]]:
+    """`(extra capability tokens, offers)` for the `worker:catalogue` frame. Satisfies `client.Catalogue`.
+
+    Lives here rather than in the transport because WHICH models exist is this module's question; the client
+    only knows when to ask it. Returns empty tuples on a box without the extra, which the client reads as
+    "nothing to announce" and skips the frame entirely.
+    """
+    from encore_worker.protocol.frames import SeparatorOffer  # noqa: PLC0415 - avoids an import cycle
+
+    models = catalogue()
+    offers = tuple(
+        SeparatorOffer(
+            token=m.token,
+            label=m.name,
+            architecture=m.architecture,
+            upstream_instrumental_sdr=m.upstream_instrumental_sdr,
+            upstream_vocals_sdr=m.upstream_vocals_sdr,
+            role_source=m.role_source,
+        )
+        for m in models
+    )
+    return frozenset(capability_for(m.token) for m in models), offers
