@@ -305,3 +305,54 @@ def test_a_directory_where_a_stem_should_be_degrades_to_nulls(tmp_path: Path) ->
     """A refused publish can leave a directory where a file was expected; the analysis must survive it."""
     got = profile.build_song_profile(str(tmp_path), str(tmp_path), "m1")
     assert set(got) == WIRE_KEYS
+
+
+# ── float WAV, which a real separator writes ───────────────────────────────────────────────────────
+
+
+def write_float_wav(path: Path, samples: np.ndarray, rate: int = RATE) -> str:
+    """A FLOAT32 wav — `WAVE_FORMAT_IEEE_FLOAT`, format tag 3 — which is what bs-roformer-infer writes.
+
+    Built with soundfile because stdlib `wave` cannot WRITE this format either, which is the whole point.
+    """
+    sf = pytest.importorskip("soundfile")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(path), samples, rate, subtype="FLOAT")
+    return str(path)
+
+
+def test_a_float_wav_is_readable(tmp_path: Path) -> None:
+    """MEASURED gap: bs-roformer-infer writes float32 wav, and stdlib `wave` refuses it with
+    `unknown format: 3`. Routing by EXTENSION sent it there anyway, so every roformer stem was unreadable —
+    which meant no songProfile (key and vocal range silently null) and no guide-mix length check.
+    """
+    path = write_float_wav(tmp_path / "f.wav", tone([440.0], seconds=1.0))
+    samples, rate = wav.read_wav_mono(path)
+    assert rate == RATE
+    assert samples.ndim == 1 and samples.size == RATE
+    assert float(np.max(np.abs(samples))) > 0.0
+
+
+def test_a_float_wav_header_is_readable(tmp_path: Path) -> None:
+    """The guide mix refuses to build when it cannot confirm both stems are the same length, so an unreadable
+    header costs the 4-channel file rather than erroring."""
+    path = write_float_wav(tmp_path / "f.wav", tone([440.0], seconds=1.0))
+    assert wav.wav_frame_length(path) == (RATE, RATE)
+
+
+def test_the_reader_is_chosen_by_probing_not_by_extension(tmp_path: Path) -> None:
+    """A float32 `.wav` is still a `.wav`. Guessing the reader from the suffix is exactly what broke."""
+    integer = write_wav(tmp_path / "i.wav", tone([440.0], seconds=0.5))
+    floaty = write_float_wav(tmp_path / "f.wav", tone([440.0], seconds=0.5))
+    for path in (integer, floaty):
+        samples, _rate = wav.read_wav_mono(path)
+        assert samples.size == int(0.5 * RATE), f"{path} did not read"
+
+
+def test_a_profile_can_be_built_from_float_stems(tmp_path: Path) -> None:
+    """End to end on the format a real roformer run produces."""
+    inst = write_float_wav(tmp_path / "i.wav", tone([midi_hz(m) for m in (57, 60, 64, 69)], seconds=3.0))
+    voc = write_float_wav(tmp_path / "v.wav", tone([220.0], seconds=3.0, amp=0.5))
+    got = profile.build_song_profile(inst, voc, "m1")
+    assert got["keyTonic"] == 9, f"the key half must work on float input: {got}"
+    assert got["lowMidi"] is not None, "the range half must work on float input"

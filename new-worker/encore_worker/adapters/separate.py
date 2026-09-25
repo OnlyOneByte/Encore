@@ -235,7 +235,44 @@ def decode_argv(source: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> list[s
 #: than the 2-stem one that was benchmarked. NOT silently repointed — swapping the processed model without a
 #: listening test is exactly what this note prevents.
 ROFORMER_MODELS = {
-    "bs-roformer-1297": "roformer-model-bs-roformer-sw-by-jarredou",
+    # THE 2-STEM INSTRUMENTAL MODEL, and the default. Its registry category is `instrumental`, so the
+    # checkpoint targets the thing that actually plays in the room; the vocals arrive as the complement.
+    # A `vocals`-category model is equally 2-stem but targets the reference track, which is the wrong way
+    # round for karaoke — the master should be the modelled output, not the leftover.
+    "bs-roformer-1297": "roformer-model-bs-roformer-instrumental-resurrection-by-unwa",
+    # The previous mapping, KEPT so historical `job_attempts.model` rows still resolve to something real
+    # rather than raising `UnknownModel` when an operator opens an old audit page. `multi-stem`, which is
+    # why it is no longer what `bs-roformer-1297` selects.
+    "bs-roformer-multistem": "roformer-model-bs-roformer-sw-by-jarredou",
+}
+
+#: Every slug bs-roformer-infer 0.1.5 actually carries, read out of its own `bs_models.json` and CHECKED IN.
+#:
+#: Exists so `ROFORMER_MODELS` is verifiable against REAL slugs rather than against a string-shape assertion.
+#: The old worker's note records why: a shape assertion let a bad slug ship. Restored here after the port
+#: dropped it — and it earned its place immediately, because the registry nests its entries under a "models"
+#: key and a naive read reports every slug as missing.
+ROFORMER_REGISTRY_SLUGS = frozenset(
+    {
+        "roformer-model-bs-roformer-chorus-male-female-by-sucial",
+        "roformer-model-bs-roformer-de-reverb",
+        "roformer-model-bs-roformer-instrumental-resurrection-by-unwa",
+        "roformer-model-bs-roformer-male-female-by-aufr33",
+        "roformer-model-bs-roformer-sw-by-jarredou",
+        "roformer-model-bs-roformer-vocals-by-gabox",
+        "roformer-model-bs-roformer-vocals-resurrection-by-unwa",
+        "roformer-model-bs-roformer-vocals-revive-by-unwa",
+        "roformer-model-bs-roformer-vocals-revive-v2-by-unwa",
+        "roformer-model-bs-roformer-vocals-revive-v3e-by-unwa",
+    }
+)
+
+#: Each slug's registry CATEGORY. Recorded as data because it decides how many stems come back, which is the
+#: difference between "find the instrumental file" and "find four files and sum three of them". A separator
+#: whose category changed under a stable token would break stem discovery with no error at the swap point.
+ROFORMER_SLUG_CATEGORY = {
+    "roformer-model-bs-roformer-instrumental-resurrection-by-unwa": "instrumental",
+    "roformer-model-bs-roformer-sw-by-jarredou": "multi-stem",
 }
 
 DEFAULT_ROFORMER_MODEL = "bs-roformer-1297"
@@ -274,31 +311,68 @@ def roformer_argv(
     return argv
 
 
-def _find_roformer_stem(store_dir: str, marker: str) -> str | None:
-    """bs-roformer-infer writes `<name>_(Instrumental)_<slug>.<ext>` and `<name>_(Vocals)_<slug>.<ext>`.
+#: How bs-roformer-infer 0.1.5 names its two outputs, and WHICH ROLE EACH ACTUALLY HOLDS — measured, not
+#: assumed. Both were wrong in the ported code, and the second one dangerously so.
+#:
+#: MEASURED on `roformer-model-bs-roformer-instrumental-resurrection-by-unwa`, CPU, with a chords-only control
+#: (no vocals in the input, so the instrumental stem must hold everything):
+#:
+#:     source           rms 0.03608
+#:     _instrumental    rms 0.00086   <- 2.4% of the signal. NEAR-SILENT.
+#:     _other           rms 0.03574   <- 99.1% of the signal. THIS is the instrumental.
+#:
+#: So `<name>_other.wav` carries the backing track and `<name>_instrumental.wav` carries the vocals residual.
+#: The names are inverted relative to their contents for this model.
+#:
+#: WHY THIS MATTERS MORE THAN A TYPO. The ported code looked for `<name>_(Instrumental)_<slug>.<ext>`, which
+#: this package version never writes — so discovery returned None and the job failed. That is the SAFE
+#: failure. Had the pattern matched, the worker would have published the VOCALS as the karaoke backing track,
+#: and the silence probe would have waved it through because the vocals stem is loud. Silent, and audible only
+#: in the room.
+#:
+#: Keyed by model slug because the mapping is a property of the CHECKPOINT, not of the CLI: a
+#: `vocals`-category
+#: model targets the other stem, so assuming one global order is what created this bug in the first place.
+ROFORMER_STEM_SUFFIXES: dict[str, tuple[str, str]] = {
+    # slug -> (instrumental suffix, vocals suffix)
+    "roformer-model-bs-roformer-instrumental-resurrection-by-unwa": ("_other", "_instrumental"),
+}
 
-    Matches the DELIMITED role marker, never a bare `instrumental`/`vocal` substring: several registry slugs
-    contain those words themselves (`...-vocals-by-gabox`), so a bare test would let the instrumental file
-    satisfy the vocals search and vice versa — publishing the vocals as the backing track.
+#: For a slug with no measured entry. Deliberately NOT a guess at the inverted order: an unmeasured model
+#: should fail loudly in discovery rather than risk publishing vocals as the master.
+UNMEASURED_STEMS: tuple[str, str] = ("", "")
+
+
+def roformer_stem_roles(slug: str) -> tuple[str, str]:
+    """`(instrumental_suffix, vocals_suffix)` for a slug, or empty strings when it has not been measured."""
+    return ROFORMER_STEM_SUFFIXES.get(slug, UNMEASURED_STEMS)
+
+
+def _find_by_suffix(store_dir: str, suffix: str) -> str | None:
+    """The output file whose stem name ENDS with `suffix`, before its extension.
+
+    Anchored at the end rather than matched anywhere, because `_instrumental` and `_other` both appear inside
+    other candidate names in this package's output set, and a substring test would cross them.
 
     Sorted, because `os.listdir` order is unspecified and the pick must be deterministic.
     """
-    if not os.path.isdir(store_dir):
+    if not suffix or not os.path.isdir(store_dir):
         return None
-    needle = marker.lower()
     for name in sorted(os.listdir(store_dir)):
-        low = name.lower()
-        if needle in low and low.endswith((".wav", ".flac")):
+        root, ext = os.path.splitext(name)
+        if ext.lower() in (".wav", ".flac") and root.endswith(suffix):
             return os.path.join(store_dir, name)
     return None
 
 
-def find_roformer_instrumental(store_dir: str) -> str | None:
-    return _find_roformer_stem(store_dir, "_(instrumental)_")
+def find_roformer_instrumental(store_dir: str, slug: str) -> str | None:
+    """The BACKING TRACK — measured per slug, never inferred from the filename. See ROFORMER_STEM_SUFFIXES."""
+    return _find_by_suffix(store_dir, roformer_stem_roles(slug)[0])
 
 
-def find_roformer_vocals(store_dir: str) -> str | None:
-    return _find_roformer_stem(store_dir, "_(vocals)_")
+def find_roformer_vocals(store_dir: str, slug: str) -> str | None:
+    """The vocals stem, for alignment and the guide mix."""
+    return _find_by_suffix(store_dir, roformer_stem_roles(slug)[1])
 
 
 class Roformer:
@@ -337,7 +411,7 @@ class Roformer:
             on_progress=on_progress,
         )
 
-        instrumental = find_roformer_instrumental(store)
+        instrumental = find_roformer_instrumental(store, self._slug)
         if instrumental is None:
             raise SeparationFailed(
                 f"bs-roformer-infer exited 0 but wrote no instrumental stem into {store!r} — "
@@ -345,7 +419,7 @@ class Roformer:
             )
         return Stems(
             instrumental_path=instrumental,
-            vocals_path=find_roformer_vocals(store),
+            vocals_path=find_roformer_vocals(store, self._slug),
             engine="roformer",
         )
 

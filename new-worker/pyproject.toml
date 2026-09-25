@@ -44,7 +44,26 @@ cu128 = [
 # The model stack itself, independent of which torch index served the tensors.
 ml = [
     "demucs==4.0.1",
-    "whisperx==3.8.6",
+    # A RELEASE CANDIDATE, deliberately, and the reason is a dependency bound rather than a feature:
+    #
+    #     3.8.6      requires  huggingface-hub<1.0.0
+    #     3.8.7rc1   requires  huggingface-hub>=0.28.1   (no ceiling)
+    #
+    # and `mlx-audio` requires huggingface-hub>=1.0. On 3.8.6 the two are unsatisfiable together, so MLX
+    # separation had to run in a sidecar virtualenv behind a subprocess. The rc removes the bound, which
+    # removes the sidecar, the `ENCORE_MLX_AUDIO_PYTHON` knob and its probe.
+    #
+    # 3.8.6 is still the newest STABLE; the rc has sat since 2026-06-26 with no final, so "wait for 3.8.7"
+    # is not a short wait. Verified rather than assumed: all 10 `-m ml` tests — real whisper transcription
+    # and real wav2vec2 forced alignment — pass on it, and pass with the two major bumps it pulls in
+    # (huggingface-hub 0.36->1.33, transformers 4.57->5.17). Move to 3.8.7 final when it lands; it should
+    # be a one-line change.
+    #
+    # DIARIZATION IS *NOT* COVERED BY THOSE TESTS, and this comment said it was. `pyannote/speaker-
+    # diarization-3.1` is HF-gated, so a real end-to-end diarization cannot run unattended. What IS
+    # asserted (tests/test_ffmpeg.py) is the input contract against the real pyannote loader — which is
+    # where the actual defect was.
+    "whisperx==3.8.7rc1",
     "pyannote.audio==4.0.0",
     "bs-roformer-infer==0.1.5",
     "soundfile>=0.13",
@@ -59,6 +78,14 @@ ml = [
 # rather than failing.
 mlx = [
     "demucs-mlx==1.4.14; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    # Mel-Band RoFormer on Metal: the fastest separator measured on this project — 0.55x realtime against
+    # roughly 3x for the CPU roformer path on the same clip — and MIT end to end (Apache-2.0 package, MIT
+    # architecture code, MIT weights). IN-PROCESS, which only became possible with the whisperx rc above.
+    "mlx-audio>=0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    # Required to IMPORT A SEPARATOR, which is an upstream packaging wart rather than a real need:
+    # `mlx_audio/sts/models/__init__.py` eagerly imports Moshi, so the TTS stack comes along. Declared here
+    # so it fails at install time rather than as a ModuleNotFoundError on the first stems job.
+    "sentencepiece; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 # One of four separation backends, and the only one that constrains torch, so it is ISOLATED rather
@@ -76,6 +103,27 @@ mlx = [
 audiosep = [
     "audio-separator==0.47.0; sys_platform != 'darwin'",
     "audio-separator==0.47.0; platform_machine != 'arm64'",
+]
+
+# A STATIC FFMPEG BINARY, shipped per-platform in the wheel. The worker shells ffmpeg on every path —
+# yt-dlp's WAV postprocess, `decode_to_wav`, the FLAC and guide-mix encoders, the silence probe — and
+# `hardware.capabilities` withholds `stems` entirely without it, so "the operator will have installed one"
+# is a portability assumption this removes.
+#
+# AN EXTRA RATHER THAN A BASE DEPENDENCY, because it strictly adds. `host.ffmpeg` falls back to PATH, so a
+# minimal install behaves exactly as it does today; installing this only removes the requirement to have
+# ffmpeg at all. As a base dependency it would instead BREAK the platforms it has no wheel for
+# (musl/Alpine, BSD, ppc64le), which is the opposite of the goal.
+#
+# CHOSEN OVER THE ALTERNATIVES on two facts, both checked rather than assumed:
+#   * `static-ffmpeg` ships a 0-byte py3-none-any wheel and DOWNLOADS the binary on first use — a runtime
+#     network fetch is precisely the portability failure being removed here.
+#   * `ffmpeg-binaries` has no linux-aarch64 wheel, so it cannot serve an ARM server or a CI runner.
+# imageio-ffmpeg 0.6.0 ships real wheels for macos arm64/x86_64, manylinux2014 x86_64/aarch64 and win, at
+# 20-31 MB, BSD-2. Verified its binary is a full FFmpeg 7.1 carrying every codec and filter this worker
+# uses: flac, opus, aac, vorbis, pcm_s16le, pcm_s24le, and the amix/join/volume/loudnorm filters.
+ffmpeg = [
+    "imageio-ffmpeg==0.6.0",
 ]
 
 # Text extraction for operator-pasted lyrics files.
@@ -183,6 +231,7 @@ module = [
     "bs_roformer_infer.*",
     "demucs.*",
     "docx2txt",
+    "imageio_ffmpeg",
     "pyannote.*",
     "pyloudnorm.*",
     "pyperclip",

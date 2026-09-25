@@ -11,6 +11,12 @@ WORKDIR /app/new-worker
 # ffmpeg is NOT optional here: `host/capabilities.py` refuses to advertise `stems` without it, because
 # publication encodes stems to FLAC and the guide mix is an ffmpeg filter graph. A box without it would
 # connect, advertise nothing, and look broken.
+#
+# KEPT EVEN THOUGH THE `ffmpeg` EXTRA BELOW BUNDLES ONE, and the two serve different callers.
+# `host.ffmpeg` prefers the bundled static 7.1, so that is what encodes every stem — which is the point:
+# a container and a developer's Mac then produce byte-identical FLAC instead of bookworm's 5.1 versus
+# whatever Homebrew has. This apt package stays for anything that shells `ffmpeg` BY NAME rather than
+# through our config, which no current path does but yt-dlp would if a format ever needed merging.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ffmpeg ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
@@ -35,7 +41,7 @@ ENV UV_LINK_MODE=copy \
 	UV_PYTHON_DOWNLOADS=never \
 	UV_PROJECT_ENVIRONMENT=/usr/local
 RUN --mount=type=cache,target=/root/.cache/uv \
-	uv sync --frozen --no-install-project --extra "${TORCH_EXTRA}" --extra ml --extra text
+	uv sync --frozen --no-install-project --extra "${TORCH_EXTRA}" --extra ml --extra text --extra ffmpeg
 
 # ── deno, for yt-dlp's challenge solver ──────────────────────────────────────────────────────────
 # Placed AFTER the dependency layer on purpose: a layer invalidates everything below it, so a ~40 MB

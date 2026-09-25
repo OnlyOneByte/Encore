@@ -76,6 +76,13 @@ class Client:
     #: the core announces in `worker:welcome` — core owns the storage layout, so its value wins. Mutable
     #: because a reconnect may reach a differently-configured core, and because `Config` is frozen.
     publish_stem_format: str = ""
+    #: `(job_id, resumable)` — called once per job when its run ends, with whether a retry could RESUME it.
+    #:
+    #: Injected rather than done here because scratch layout is `artifacts`' business, not the
+    #: transport's; and
+    #: because only this layer knows the outcome. `resumable=True` means "a requeue would replay a checkpoint
+    #: holding paths into this job's scratch", so the scratch must survive.
+    on_settled: Callable[[str, bool], None] | None = None
     _socket: Socket | None = field(default=None, init=False)
     _running: dict[str, asyncio.Task[None]] = field(default_factory=dict, init=False)
     #: Set once a claim round has been answered, so a publish can wait for confirmation rather than
@@ -216,18 +223,30 @@ class Client:
 
     async def _drive(self, assign: f.Assign) -> None:
         """Run one job and report the terminal frame. Never raises into the read loop."""
+        # Assume the worst until the outcome is known: if this task is cancelled between here and the
+        # assignment below, the scratch is PRESERVED rather than deleted under a job that may resume.
+        resumable = True
         try:
             terminal = await self.run_job(assign)
             await self._send(terminal)
+            # A terminal frame either way. `Failed` with retryable=True is the one outcome whose scratch must
+            # survive: the core requeues the same job id, and DBOS resumes from a checkpoint holding paths
+            # into it.
+            resumable = isinstance(terminal, f.Failed) and terminal.retryable
         except asyncio.CancelledError:
             self._note(f"job {assign.job_id} cancelled")
             raise
         except Exception as exc:  # noqa: BLE001 - a job fault is reported, not crashed on
             retryable = bool(getattr(exc, "retryable", True))
+            resumable = retryable
             await self._send(f.Failed(self.config.worker_id, assign.job_id, str(exc), retryable))
         finally:
             self.ownership.finished(assign.job_id)
             self._running.pop(assign.job_id, None)
+            if self.on_settled is not None:
+                # Diagnostics must never turn a finished job into a failed one.
+                with contextlib.suppress(Exception):
+                    self.on_settled(assign.job_id, resumable)
 
     async def drain(self, *, timeout_sec: float = 60.0) -> None:
         """Wait for every in-flight job to finish.

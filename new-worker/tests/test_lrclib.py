@@ -20,6 +20,7 @@ from encore_worker.adapters.lrclib import (
     parse_lrc,
     parse_response,
 )
+from encore_worker.adapters.ratelimit import RateLimiter
 
 # ── the URL ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -180,7 +181,17 @@ class FakeOpener:
 
 
 def client(*, body: str | None = None, raises: Exception | None = None) -> LrclibClient:
-    return LrclibClient(opener=FakeOpener(body=body, raises=raises))  # type: ignore[arg-type]
+    # A gate that paces by ARITHMETIC ONLY. Without it this file pays the production 1 s/request interval
+    # plus retry backoff on every 503 test — measured at 12 s. A status-ladder test must not wait on a clock.
+    clock = [0.0]
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    return LrclibClient(
+        opener=FakeOpener(body=body, raises=raises),  # type: ignore[arg-type]
+        gate=RateLimiter(now=lambda: clock[0], sleep=sleep),
+    )
 
 
 def test_a_hit_returns_segments() -> None:

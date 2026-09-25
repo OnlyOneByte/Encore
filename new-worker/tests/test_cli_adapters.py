@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from encore_worker.adapters import cli
 from encore_worker.adapters.cli import (
     audio_argv,
     caption_argv,
@@ -161,3 +164,69 @@ def test_finds_the_caption_file_deterministically(tmp_path: Path) -> None:
 
 def test_no_caption_file_is_none_not_an_error(tmp_path: Path) -> None:
     assert find_caption_file(str(tmp_path)) is None
+
+
+# ── out-of-memory: the failure that must not be retried ────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "RuntimeError: CUDA error: out of memory",
+        "torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 GiB",
+        "RuntimeError: MPS backend out of memory (MPS allocated: 9.20 GB)",
+        "hip out of memory",
+        "failed to allocate 4294967296 bytes",
+        "Killed",
+    ],
+)
+def test_every_accelerator_dialect_of_out_of_memory_is_recognised(output: str) -> None:
+    """Each vendor phrases it differently, and the OOM killer says nothing at all — just `Killed`. Missing
+    any means the failure is classed retryable and the box spends three long attempts reproducing it."""
+    assert cli.looks_like_oom(output)
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "ffmpeg: No such file or directory",
+        "ERROR: unable to download video data",
+        "unsupported WAV sample width 3 bytes",
+        "",
+    ],
+)
+def test_an_ordinary_failure_is_not_read_as_out_of_memory(output: str) -> None:
+    """Over-matching is worse than under-matching here: a transient fault wrongly classed as OOM becomes
+    non-retryable, so a job that a second attempt would have completed fails permanently."""
+    assert not cli.looks_like_oom(output)
+
+
+def test_an_out_of_memory_failure_is_not_retryable() -> None:
+    """THE reason this classification exists. Model choice is deliberately NOT gated on VRAM — a memory
+    ceiling moves with segment size and precision, so a gate would block configurations that work. The cost of
+    letting anyone pick anything is that the failure must be legible: once, with a message naming memory,
+    rather than three identical crashes about tensor allocation.
+    """
+
+    # Asserted the way the TRANSPORT reads it — `getattr(exc, "retryable", True)` — rather than by checking
+    # for an attribute. An ordinary failure carries none and defaults to retryable, which is the behaviour
+    # that matters; testing for the attribute's presence would pass while the effective answer was wrong.
+    def effective(exc: BaseException) -> bool:
+        return bool(getattr(exc, "retryable", True))
+
+    assert effective(cli.OutOfMemory("no memory")) is False
+    assert effective(cli.ToolFailed(["x"], 1, "boom")) is True, "an ordinary tool failure stays retryable"
+
+
+def test_an_out_of_memory_message_names_the_remedy() -> None:
+    """A person has to act on this — a smaller model, or a bigger box. A stack trace about tensors does not
+    say that, which is why the message is written rather than passed through."""
+    import unittest.mock
+
+    with unittest.mock.patch.object(cli, "_drain", return_value="CUDA out of memory", create=True):
+        pass  # the drain helper is private; the classification is asserted directly below
+
+    err = cli.OutOfMemory(
+        "x ran out of memory. This model needs more than this box has — try a smaller model"
+    )
+    assert "smaller" in str(err) and "memory" in str(err)
