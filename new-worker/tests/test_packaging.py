@@ -81,27 +81,48 @@ def test_every_pytorch_index_is_explicit(config: dict[str, Any]) -> None:
 # ── the audio-separator marker, which is a workaround for a resolver limit ────────────────────────
 
 
-def test_audiosep_stays_split_into_two_atomic_markers(config: dict[str, Any]) -> None:
-    """THE most tempting thing in this file to "clean up", and it does not resolve.
+def test_audiosep_needs_no_platform_marker_at_all(config: dict[str, Any]) -> None:
+    """THE MARKERS ARE GONE, and the pin is why.
 
-    The natural single marker — `sys_platform != 'darwin' or platform_machine != 'arm64'` — makes uv
-    conclude the package needs torch>=2.13 on EVERY platform, because it does not intersect an `or`
-    exclusion with the transitive requirement. The lock then fails outright. These two entries are the
-    De Morgan expansion and resolve correctly. Measured on uv 0.9.2.
+    This test previously asserted the opposite: two atomic entries
+    (`sys_platform != 'darwin'` / `platform_machine != 'arm64'`), the De Morgan expansion of an `or`
+    exclusion that uv 0.9.2 could not intersect with a transitive torch requirement. All of that existed to
+    work around ONE fact — audio-separator 0.46.0+ requires torch>=2.13 on arm64 mac, and this project pins
+    torch 2.8.0 for whisperx/demucs/pyannote.
+
+    The consequence was that the model zoo did not exist on Apple Silicon: the machine this project is
+    developed on could not install the thing. 0.45.0 requires only torch>=2.3 everywhere and carries the
+    IDENTICAL catalogue (verified: same 89 download entries, same 84 roformers), so pinning back removes the
+    platform exclusion, the marker workaround, and the resolver limitation together.
+
+    Asserted as "no marker" rather than deleted so that re-adding one is a decision: a marker here means the
+    zoo is unavailable somewhere, which is what it cost last time.
     """
     specs = extras(config)["audiosep"]
-    assert len(specs) == 2, f"must stay two atomic entries, not one `or` marker: {specs}"
-    assert not any(" or " in spec for spec in specs), (
-        "an `or` marker here makes the lock unsatisfiable — see the comment in pyproject.toml"
+    audio_separator = [s for s in specs if s.startswith("audio-separator")]
+    assert len(audio_separator) == 1, f"one unconditional entry, not a per-platform split: {specs}"
+    assert ";" not in audio_separator[0], (
+        f"a platform marker is back on {audio_separator[0]!r}. That makes the zoo unavailable on the "
+        "excluded platform — which is the state this pin exists to escape."
     )
-    markers = {spec.split(";", 1)[1].strip() for spec in specs}
-    assert markers == {"sys_platform != 'darwin'", "platform_machine != 'arm64'"}
+    assert "==0.45.0" in audio_separator[0], (
+        "the pin IS the fix: 0.46.0+ requires torch>=2.13 on arm64 mac against this project's 2.8.0"
+    )
+
+
+def test_audiosep_declares_the_dependency_its_own_metadata_omits(config: dict[str, Any]) -> None:
+    """`audio_separator/separator/uvr_lib_v5/spec_utils.py` does a bare `import audioread`, and 0.45.0's
+    metadata does not list it — so `from audio_separator.separator import Separator` raises
+    ModuleNotFoundError on a clean install. Declared here so it fails at resolve time rather than on the
+    first zoo job, hours later, on someone else's machine."""
+    assert any(s.startswith("audioread") for s in extras(config)["audiosep"])
 
 
 def test_audiosep_is_not_folded_into_the_ml_extra(config: dict[str, Any]) -> None:
-    """It is the only separation backend that constrains torch. Inside `ml` it would be able to move the
-    torch version the ALIGNMENT stack runs on — an optional engine dictating the pin for the mandatory
-    path."""
+    """Kept separate even though 0.45.0 no longer constrains torch, because that is a property of the
+    current pin rather than of the package: 0.46.0 did constrain it, and inside `ml` such a pin would be
+    able to move the torch version the ALIGNMENT stack runs on. An optional engine must not dictate the
+    version the mandatory path uses."""
     assert not any("audio-separator" in spec for spec in extras(config)["ml"])
 
 

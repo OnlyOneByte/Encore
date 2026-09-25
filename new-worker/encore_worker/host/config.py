@@ -68,6 +68,11 @@ class Config:
     ffmpeg_bin: str = "ffmpeg"
     ytdlp_bin: str = "yt-dlp"
     mlx_bin: str = "demucs-mlx"
+    #: Where zoo checkpoints are cached. NOT `/tmp`, which is `audio-separator`'s own default and wrong for
+    #: this: each checkpoint is 100-400 MB, they are downloaded on first use, and /tmp is cleared on reboot
+    #: (and is a tmpfs on some hosts, so a 400 MB download lands in RAM). `from_env` derives it from
+    #: XDG_CACHE_HOME, which the Docker image already points at the persistent `worker-cache` volume.
+    zoo_model_dir: str = ""
     keepalive_sec: float = KEEPALIVE_SEC
     #: The container published stems are written in. CORE'S DECISION, not this box's: core owns the storage
     #: layout and announces this at handshake, because a row's ext is recorded forever and a worker guessing
@@ -139,6 +144,7 @@ class Config:
             ffmpeg_bin=ffmpeg.resolve(optional("ENCORE_FFMPEG_BIN")),
             ytdlp_bin=text("ENCORE_YTDLP_BIN", "yt-dlp"),
             mlx_bin=text("ENCORE_MLX_BIN", "demucs-mlx"),
+            zoo_model_dir=text("ENCORE_ZOO_MODEL_DIR", _default_zoo_dir(src)),
             keepalive_sec=_positive_float(src, "ENCORE_KEEPALIVE_SEC", KEEPALIVE_SEC),
             # Read from the environment as a FALLBACK only. Core announces the live value at handshake and
             # that wins, because core owns the storage layout — this exists so a worker started against an
@@ -151,6 +157,22 @@ class Config:
             lrclib_url=text("ENCORE_LRCLIB_URL", "https://lrclib.net/api/get"),
             https_proxy=optional("ENCORE_HTTPS_PROXY"),
         )
+
+
+def _default_zoo_dir(src: Mapping[str, str]) -> str:
+    """Where zoo checkpoints live when the operator has not said.
+
+    XDG_CACHE_HOME first because the Docker image already sets it to the persistent `worker-cache` volume,
+    so the default does the right thing in a container with no extra configuration. `~/.cache` is the same
+    convention off-container.
+
+    Explicitly NOT `audio-separator`'s own `/tmp/audio-separator-models/`: these are 100-400 MB downloads,
+    /tmp is cleared on reboot, and on hosts where it is a tmpfs the download lands in RAM.
+    """
+    base = src.get("XDG_CACHE_HOME", "").strip() or os.path.join(
+        src.get("HOME", "").strip() or os.path.expanduser("~"), ".cache"
+    )
+    return os.path.join(base, "encore-worker", "separator-models")
 
 
 def _positive_int(src: Mapping[str, str], key: str, fallback: int) -> int:
