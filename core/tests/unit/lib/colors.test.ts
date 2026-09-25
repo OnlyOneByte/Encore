@@ -10,8 +10,6 @@ import {
 	isLegibleSingerColor,
 	normalizeSingerColor,
 	nearestSingerHue,
-	nextSwatchIndex,
-	presetTabStopIndex,
 	stageHueToHex,
 	stageLightnessForHue,
 	normalizeStageColor,
@@ -237,56 +235,9 @@ test('every singer preset yields a usable stage, including the two that collapse
 // colours that are NEVER presets, so without a fallback one wheel pick drops all eight out of the tab order
 // for good and locks a keyboard or switch-access guest out of the only named colours.
 
-test('presetTabStopIndex points at the matching swatch for a preset value', () => {
-	SINGER_COLORS.forEach((c, i) => {
-		expect(presetTabStopIndex(c)).toBe(i);
-	});
-});
-
-test('presetTabStopIndex keeps a tab stop after a wheel pick — the closed-door bug', () => {
-	// After any hue pick no swatch matches, and `value === c ? 0 : -1` left EVERY swatch at -1. Reverting
-	// presetTabStopIndex to a bare `indexOf` makes this fail with `-1 to be 0`.
-	for (const wheelHex of SINGER_WHEEL) {
-		// premise: the wheel never lands on a preset, so there is genuinely no match to fall back from
-		expect(SINGER_COLORS as readonly string[]).not.toContain(wheelHex);
-		expect(presetTabStopIndex(wheelHex)).toBe(0);
-	}
-});
-
-test('presetTabStopIndex always yields exactly one in-range tab stop', () => {
-	// For ANY value — preset, wheel hue or garbage — precisely one swatch ends up with tabindex 0, and it is a
-	// real index into the rendered swatches.
-	const inputs = [...SINGER_COLORS, ...SINGER_WHEEL, '#000000', 'not a colour', ''];
-	for (const v of inputs) {
-		const stop = presetTabStopIndex(v);
-		const tabbable = SINGER_COLORS.map((_, i) => i).filter((i) => i === stop);
-		expect(tabbable.length).toBe(1);
-		expect(stop).toBeGreaterThanOrEqual(0);
-		expect(stop).toBeLessThan(SINGER_COLORS.length);
-	}
-});
-
 // A bare `indexOf(value)` returns -1 for a wheel hex while the tab stop falls back to 0, so after a wheel
 // pick the first ArrowRight did not move and ArrowLeft skipped mint, landing on purple. Expected indices
 // are LITERALS, not computed, so a regression to the bare base reds them.
-
-test('nextSwatchIndex moves correctly from a preset value (the control case)', () => {
-	// violet is SINGER_COLORS[0]. Right -> pink (1), Left wraps -> mint (7).
-	expect(nextSwatchIndex(SINGER_COLORS[0]!, 1)).toBe(1);
-	expect(nextSwatchIndex(SINGER_COLORS[0]!, -1)).toBe(7);
-	// green is [2]. Right -> amber (3), Left -> pink (1).
-	expect(nextSwatchIndex(SINGER_COLORS[2]!, 1)).toBe(3);
-	expect(nextSwatchIndex(SINGER_COLORS[2]!, -1)).toBe(1);
-});
-
-test('nextSwatchIndex after a wheel pick matches the tab stop, not indexOf(-1)', () => {
-	const wheelHex = hueToHex(120);
-	expect(SINGER_COLORS as readonly string[]).not.toContain(wheelHex); // premise: genuinely non-preset
-	// The ring sits on swatch 0, so movement starts there: ArrowRight -> 1 (pink), ArrowLeft -> 7 (mint).
-	// Not 0 (dead) and not 6 (purple), which is what a bare-indexOf base returns.
-	expect(nextSwatchIndex(wheelHex, 1)).toBe(1);
-	expect(nextSwatchIndex(wheelHex, -1)).toBe(7);
-});
 
 test('hueToHex fully reduces chroma into sRGB gamut, even from a high starting chroma (no clip)', () => {
 	// The no-clip guarantee: chroma is reduced UNTIL the colour fits, because clipping an out-of-gamut blue

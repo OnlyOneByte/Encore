@@ -11,7 +11,7 @@
 		type LyricsDoc,
 		type LyricsProvenance
 	} from './lyrics';
-	import { drawPosition } from './lyrics-position';
+	import { drawPosition } from '$lib/playhead';
 	import { reelOffset as reelOffsetFor } from './reel-offset';
 	import {
 		DEFAULT_LYRICS_BALL,
@@ -398,7 +398,6 @@
 		line-height: var(--lyrics-row-h, 1.9em);
 		max-width: 100%;
 		color: rgba(255, 255, 255, 0.62); /* upcoming — must be READ, not merely sensed */
-		transition: color 0.3s ease;
 	}
 	.row.past {
 		color: rgba(255, 255, 255, 0.2); /* already sung — present for continuity, not for reading */
@@ -408,7 +407,11 @@
 		font-size: 0.62em;
 		line-height: var(--lh-snug);
 		margin-top: 0.15em;
-		opacity: 0.78;
+		/* DERIVED FROM THE ROW'S INK, not an opacity on it — which is what keeps the "fades in step with its line"
+		   behaviour above while making the dim a colour. As a subtree alpha it multiplied the row's own 0.62 to an
+		   effective ~0.48 that no reading of either rule revealed. Still dim by design: a second script is a hint
+		   under the words, not a competing line. */
+		color: color-mix(in srgb, currentColor 78%, transparent);
 		letter-spacing: 0.01em;
 	}
 	/* Covers the current line as ONE text node: under `line`/`off`, and under `word` when a poorly aligned line
@@ -425,7 +428,6 @@
 		position: relative;
 		display: inline-block;
 		color: var(--reel-ahead); /* not yet sung */
-		transition: color var(--motion-fast) linear;
 	}
 	.word.done {
 		color: var(--reel-done); /* sung */
@@ -462,6 +464,19 @@
 		/* Theme-bound like the dot marker above. */
 		background: var(--accent2);
 	}
+	/* THE TWO INK SWEEPS, opt-in. `color` is animatable per the rule, so these needed a gate as much as the reel's
+	   transform below — reduced, the highlight still moves word to word, it just steps instead of fading. Separate
+	   from the `reduce` block beneath because the reel's transform is a DEGRADATION (snap, not remove) while these
+	   are simply absent. */
+	@media (prefers-reduced-motion: no-preference) {
+		.row {
+			transition: color 0.3s ease;
+		}
+		.word {
+			transition: color var(--motion-fast) linear;
+		}
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		/* Degrade to `steady` rather than removing the mark: the singer still needs the word. */
 		.ball.bounce {

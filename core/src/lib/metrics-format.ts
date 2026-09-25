@@ -100,3 +100,77 @@ export function localStamp(ms: number, timeZone?: string): string {
 	const hour = g('hour') === '24' ? '00' : g('hour');
 	return `${g('year')}-${g('month')}-${g('day')} ${hour}:${g('minute')}:${g('second')}`;
 }
+
+/* ── The audit/attempt vocabulary ────────────────────────────────────────────
+   Moved here from `routes/metrics/[mediaId]/+page.svelte` and `routes/metrics/+page.svelte`, for the reason this
+   module's header already gives: a label map living in a `.svelte` file is a label map no test can reach, and the
+   two operator surfaces then drift apart one word at a time. */
+
+/** A run or an attempt outcome, in words. Anything unrecognised falls through to `running`, which is what an
+ *  in-flight row genuinely is — never a blank cell. */
+export const OUTCOME_LABELS: Record<string, string> = {
+	ready: 'done',
+	failed: 'failed',
+	abandoned: 'gave up, retried',
+	canceled: 'canceled',
+	running: 'running'
+};
+export const outcomeLabel = (outcome: string | null): string =>
+	OUTCOME_LABELS[outcome ?? 'running'] ?? outcome ?? 'running';
+
+/** ONE tone table for a run and for an attempt, which carry the same outcome vocabulary. Anything else — running,
+ *  canceled, not yet reported — is in-flight, so it reads as a caution rather than a verdict. */
+export const OUTCOME_TONES: Record<string, 'ok' | 'bad' | 'warn'> = { ready: 'ok', failed: 'bad', abandoned: 'bad' };
+export const outcomeTone = (outcome: string | null): 'ok' | 'bad' | 'warn' => OUTCOME_TONES[outcome ?? ''] ?? 'warn';
+
+/** The model/hardware keys, in words. `asrModel` and `syncMode` are field names, not English. */
+export const FACT_LABELS: Record<string, string> = {
+	engine: 'separator',
+	model: 'model',
+	backend: 'runtime',
+	device: 'hardware',
+	asrModel: 'speech model',
+	syncMode: 'timing'
+};
+export const factLabel = (k: string): string => FACT_LABELS[k] ?? k;
+
+/** Label/value pairs for the model block, dropping every absent field rather than printing an empty row. */
+export function modelFacts(models: Record<string, string | null>): [string, string][] {
+	return Object.entries(models)
+		.filter((entry): entry is [string, string] => Boolean(entry[1]))
+		.map(([key, value]): [string, string] => [factLabel(key), value]);
+}
+
+/** The distinction worth keeping: `agreement` means a baseline voted, so a wrong pick there is a metric problem;
+ *  `metadata` means none could and cheap ordering stood, which a better metric does not fix. */
+export const DECIDED_LABELS: Record<string, string> = {
+	agreement: 'a baseline judged it',
+	metadata: 'no baseline could judge — chosen on metadata'
+};
+export const decidedLabel = (d: string): string => DECIDED_LABELS[d] ?? d;
+
+/** Two decimals, and an em dash for absent — never `0.00`, which reads as a measured zero. */
+export const score = (n: number | null): string => (n === null ? '—' : n.toFixed(2));
+
+/** `host` is an OPEN BAG, so an unexpected or absent key is skipped rather than thrown on. */
+export const HOST_LABELS: Record<string, string> = {
+	accelerator: 'accelerator',
+	deviceName: 'device',
+	cpuCount: 'cpus',
+	platform: 'platform',
+	python: 'python',
+	torch: 'torch',
+	contained: 'contained'
+};
+export function hostFacts(host: Record<string, unknown>): [string, string][] {
+	return Object.entries(HOST_LABELS)
+		.map(([key, label]): [string, string] => [label, host[key] == null ? '' : String(host[key])])
+		.filter(([, value]) => value !== '');
+}
+
+/** Which step is the bottleneck. Marked in the table because comparing mixed units down a column is arithmetic,
+ *  not a glance. `null` for an empty set — there is no slowest step among none. */
+export function slowestStepType(steps: readonly { jobType: string; meanMs: number | null }[]): string | null {
+	if (steps.length === 0) return null;
+	return steps.reduce((best, s) => ((s.meanMs ?? 0) > (best.meanMs ?? 0) ? s : best)).jobType;
+}

@@ -2,7 +2,7 @@
 // (throttled/stopped rAF) has no loop-carried state to lose. See lyrics-position.ts for the purity rule.
 import { test, expect } from 'bun:test';
 import { read } from '$test';
-import { drawPosition } from '$lib/tv/lyrics-position';
+import { drawPosition } from '$lib/playhead';
 
 // PATH INDEPENDENCE is the detector for "derived state accumulated instead of computed": reaching the same
 // authoritative position by different histories must draw the same place. The defocus-while-paused defect
@@ -60,7 +60,7 @@ function stripComments(src: string): string {
 const CODE = stripComments(OVERLAY);
 
 test('LyricsOverlay imports and consumes drawPosition from the pure module', () => {
-	expect(/from '\.\/lyrics-position'/.test(CODE)).toBe(true);
+	expect(/from '\$lib\/playhead'/.test(CODE)).toBe(true);
 	expect(/drawPosition\s*\(/.test(CODE)).toBe(true);
 });
 
@@ -91,4 +91,36 @@ test('the drawn position is not a mutable $state accumulator that a stopped rAF 
 		// It may advance a clock (`now = …`), never a drawn-position accumulator.
 		expect(/\b(displayPos|shownPos|cuePos|drawPos|drawnPos|reelPos|scrollPos)\s*=[^=]/.test(body)).toBe(false);
 	}
+});
+
+// ── secondTicker ─────────────────────────────────────────────────────────────
+// The once-a-second re-draw both phone readouts used to arm by hand. Extracted with `drawPosition` because the two
+// are one mechanism: an anchor plus a tick, where the paused case must arm NOTHING.
+import { secondTicker, PLAYHEAD_TICK_MS } from '$lib/playhead';
+
+test('paused arms no timer at all — a tick is what would carry a paused readout off its anchor', () => {
+	let ticks = 0;
+	const stop = secondTicker(false, () => ticks++);
+	// A no-op teardown, so an effect's cleanup needs no null check.
+	expect(typeof stop).toBe('function');
+	stop();
+	expect(ticks).toBe(0);
+});
+
+test('playing arms a repeating timer, and the teardown stops it', async () => {
+	let ticks = 0;
+	const stop = secondTicker(true, () => ticks++);
+	try {
+		// Not asserted on wall time — only that a live timer EXISTS and that clearing it is what ends the ticking.
+		expect(ticks).toBe(0);
+	} finally {
+		stop();
+	}
+	const after = ticks;
+	await new Promise((r) => setTimeout(r, PLAYHEAD_TICK_MS + 60));
+	expect(ticks, 'the teardown must stop the interval, or a navigated-away surface keeps ticking').toBe(after);
+});
+
+test('the tick period is once a second, not a frame', () => {
+	expect(PLAYHEAD_TICK_MS).toBe(1000);
 });

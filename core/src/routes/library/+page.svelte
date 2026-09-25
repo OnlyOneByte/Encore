@@ -29,7 +29,7 @@
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { Skeleton } from '$lib/components/ui/skeleton';
+	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
@@ -179,17 +179,7 @@
 			</div>
 
 			{#if !libraryLoaded}
-				<div class="skels" role="status" aria-busy="true" aria-label="Loading your library…">
-					{#each [0, 1, 2, 3] as i (i)}
-						<div class="skel-row">
-							<Skeleton variant="thumb" />
-							<div class="skel-text">
-								<Skeleton />
-								<Skeleton variant="line-short" />
-							</div>
-						</div>
-					{/each}
-				</div>
+				<SkeletonRows count={4} label="Loading your library…" />
 			{:else if library.length === 0}
 				<!-- The genuinely empty library. The only useful instruction points back at the queue's field, which is
 						the one surface that can ADD a song — this page can only show what is already here. -->
@@ -392,35 +382,7 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	.grouphead {
-		font-size: var(--ph-text-2xs);
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-		font-weight: 700;
-		margin: var(--space-2xl) var(--space-2xs) var(--space-sm);
-	}
 
-	.skels {
-		display: flex;
-		flex-direction: column;
-	}
-	.skel-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-lg);
-		padding: var(--space-lg) var(--space-xl);
-		margin-bottom: var(--space-sm);
-		border-radius: var(--radius-sm);
-		background: var(--card);
-		border: 1px solid var(--line);
-	}
-	.skel-text {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-sm);
-	}
 
 	/* FLEX COLUMN, not grid + place-items: the vendored `Empty.Header` is `display: contents`, so its children become
 	   direct children of this box and grid would split the min-height between them. See `.queue-empty` on `/`. */

@@ -112,8 +112,14 @@
 		border-radius: var(--radius-xs);
 		pointer-events: none;
 		opacity: 0;
-		transition: opacity var(--motion-fast) ease;
 		white-space: nowrap;
+	}
+	/* Opt-in, per docs/FRONTEND.md#motion-in-component-css: a duration token is not a reduced-motion mechanism, so
+	   the fade has to be inside the query rather than declared and reset. Reduced, the readout simply appears. */
+	@media (prefers-reduced-motion: no-preference) {
+		.readout {
+			transition: opacity var(--motion-fast) ease;
+		}
 	}
 	/* `:focus` AS WELL AS `:focus-visible`: the latter is keyboard-driven and does not match a touch tap, so
 	   without the plain form a phone tap focuses the column and reveals nothing. */

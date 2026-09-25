@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
-	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, soundingKeyLabel } from '$lib/contract';
+	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay } from '$lib/contract';
+	import { soundingKeyLine } from '$lib/song-facts';
 	import { GaplessController, type Slot } from '$lib/tv/gapless';
 	import { telemetryFrame } from '$lib/tv/telemetry';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
@@ -422,16 +423,8 @@
 	});
 
 	const currentSingerColor = $derived(current ? (singers.get(current.singerId)?.color ?? null) : null);
-	/*
-	 * What the room is HEARING, plus the shift. `soundingKeyLabel` returns null with no trustworthy key, so a
-	 * song without one shows nothing rather than a guess. ASCII `+`/`-` and a Latin-1 middot, because a
-	 * typographic accidental or arrow is a codepoint whose glyph a TV browser may not have.
-	 */
-	const keyLine = $derived.by(() => {
-		const label = soundingKeyLabel(mediaOf(current)?.songProfile, keyShift);
-		if (!label) return null;
-		return keyShift === 0 ? label : `${label} · ${keyShift > 0 ? '+' : ''}${keyShift}`;
-	});
+	/** The ASCII form, and why it is ASCII, live in `soundingKeyLine` — see $lib/song-facts. */
+	const keyLine = $derived(soundingKeyLine(mediaOf(current)?.songProfile, keyShift));
 	// The override wins when set; `null` defers to the room.
 	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
 	const stageBg = $derived(
@@ -625,7 +618,7 @@
 	{#if screen === 'attract'}
 		<!-- NOBODY HAS JOINED. See docs/FRONTEND.md#the-attract-and-lobby-idles. -->
 		<div class="attract">
-			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
+			<div class="brand"><Icon name="mic" /> <span class="grad-text">Encore</span></div>
 			<div class="asplit-l">
 				<!-- `Karaoke` never rotates: it is what tells a stranger what they are looking at. -->
 				<div class="phrase-kick">Karaoke</div>
@@ -816,7 +809,7 @@
 			aria-label="Tap anywhere to start the music"
 		>
 			<span class="ah-mark"><Icon name="play" /></span>
-			<span class="ah-head">Tap anywhere to <span class="grad">start the music</span></span>
+			<span class="ah-head">Tap anywhere to <span class="grad-text">start the music</span></span>
 			<span class="ah-sub">This TV needs one tap before it can play sound</span>
 		</button>
 	{/if}
@@ -836,7 +829,7 @@
 			}}
 			aria-label="Tap to let this TV change the key"
 		>
-			<span class="ph-head">Tap to <span class="grad">change the key</span></span>
+			<span class="ph-head">Tap to <span class="grad-text">change the key</span></span>
 			<span class="ph-sub">This TV needs one tap before ± can shift the song</span>
 		</button>
 	{/if}
@@ -845,7 +838,7 @@
 	{#if playbackFailedReason}
 		<div class="silent-room" role="status" aria-live="polite">
 			<span class="sr-mark"><Icon name="warning" /></span>
-			<span class="sr-head">This song <span class="grad">won’t play</span></span>
+			<span class="sr-head">This song <span class="grad-text">won’t play</span></span>
 			<span class="sr-sub"
 				>The audio could not be started ({playbackFailedReason}) — the room is silent. The next song may play normally.</span
 			>
@@ -935,12 +928,6 @@
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-lg);
-	}
-	.grad {
-		background: var(--grad);
-		-webkit-background-clip: text;
-		background-clip: text;
-		color: transparent;
 	}
 	.asplit-l {
 		position: absolute;
@@ -1089,7 +1076,6 @@
 	.ls-song {
 		font-size: var(--tv-body);
 		font-weight: 600;
-		opacity: 0.97;
 		display: -webkit-box;
 		-webkit-box-orient: vertical;
 		-webkit-line-clamp: 2;
@@ -1105,10 +1091,11 @@
 	}
 	.ls-key {
 		font-size: var(--tv-label);
-		color: var(--ink-dim);
+		/* One ink, not --ink-dim plus an 0.82 subtree alpha: the pair composited to a value no contrast check on
+		   either half could see. Folded into the colour, where it is readable as the value it actually is. */
+		color: color-mix(in srgb, var(--ink-dim) 82%, transparent);
 		font-weight: 600;
 		letter-spacing: 0.04em;
-		opacity: 0.82;
 		margin-top: var(--space-3xs);
 	}
 	/* Neutral dim by default, because it is a SOURCE tag and not a warning; not uppercase and not letter-spaced,

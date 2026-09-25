@@ -122,7 +122,7 @@
 <!-- role=group with aria-labelledby gives the boxes ONE accessible name, so a screen reader announces the
      field once rather than once per unlabelled box. -->
 <div class="code-entry" role="group" aria-labelledby="code-entry-label">
-	<span id="code-entry-label" class="code-label">{label}</span>
+	<span id="code-entry-label" class="eyebrow">{label}</span>
 	<div class="segments">
 		<!-- `name` is purely the identity the platform asks for — without it the browser reports a missing id-or-name once
 				per box on the first screen of the app. Autofill is already declined. -->
@@ -160,13 +160,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
-	}
-	/* The shared eyebrow idiom, for a group that carries its own accessible name. */
-	.code-label {
-		font-size: var(--ph-text-sm);
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
 	}
 	/* The boxes size to the row rather than to a fixed width, so they fit a narrow phone and grow on a wider one
 	   without ever wrapping mid-code. */

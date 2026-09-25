@@ -90,17 +90,16 @@ test('a colour the ring cannot produce maps onto the ring by hue, and one it can
 	expect(nearestPaletteStop('not a colour').i).toBeGreaterThanOrEqual(1);
 });
 
-test('both identity surfaces render the RING, and the eight-preset picker still has a surface', () => {
-	// Both halves, because the absence alone would be satisfied by deleting the picker outright — and it is
-	// not deleted. `SEL.swatch` and `SEL.hueSlider` still resolve, so only a pinned split says which surface
-	// each belongs to.
+test('the ring is the ONLY identity control, on every surface — the picker is deleted', () => {
+	// This test previously required the picker to keep its gallery surface, so that "absent from the real
+	// surfaces" could not be satisfied by deleting it silently. It IS deleted now, deliberately: the ring had
+	// taken both shipped surfaces and the gallery was the only thing keeping 294 lines plus two contract
+	// exports alive. The assertion is inverted rather than dropped, so a reintroduction has to argue with it.
 	expect(LANDING).toMatch(/<ColourRing\b/);
 	expect(LANDING).not.toMatch(/<ColourPicker\b/);
 	expect(SETTINGS, 'the settings identity control is the ring now, like the join pane').toMatch(/<ColourRing\b/);
 	expect(SETTINGS).not.toMatch(/<ColourPicker\b/);
-	expect(GALLERY, 'the preset picker lost its remaining surface — then it is a deletion, not a move').toMatch(
-		/<ColourPicker\b/
-	);
+	expect(GALLERY, 'ColourPicker is deleted — nothing may render it').not.toMatch(/<ColourPicker\b/);
 	// REAL occupancy from the same preview the room sentence is built from, not a sample.
 	expect(LANDING).toMatch(/taken=\{preview\?\.colors \?\? \[\]\}/);
 	// Settings has no occupancy in its load, so it passes an EMPTY list rather than inventing one — pinned so

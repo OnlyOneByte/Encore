@@ -401,6 +401,45 @@ body {
 	background: var(--singer);
 }
 
+/* THE SECTION EYEBROW above a list of rows. Three routes declared this identically (`/`, `/library`, the song
+   page), which is one drift away from three slightly different eyebrows sitting on adjacent screens. Only the BASE
+   is shared: `/`'s `:first-of-type` and the short-viewport arms on two routes stay local, because they are NOT
+   universal and promoting them would silently retighten the song page. */
+.grouphead {
+	font-size: var(--ph-text-2xs);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--ink-dim);
+	font-weight: 700;
+	margin: var(--space-2xl) var(--space-2xs) var(--space-sm);
+}
+
+/* GRADIENT-FILLED GLYPHS, the one sanctioned use of --grad on text (see the token: it is DECORATION and carries no
+   ink contract, which is exactly why it may only ever be a FILL clipped to the glyph). Named for the mechanism
+   rather than for the wordmark, because it serves two roles: the brand wordmark on the phone and the join screen,
+   and in-sentence emphasis on the TV's interstitials. It was declared identically in four files under two different
+   class names, so the two roles could drift apart without either site noticing. Size and weight stay at the call
+   site — this rule is the fill and nothing else. */
+.grad-text {
+	background: var(--grad);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+/* THE EYEBROW LABEL over a control that already carries its own accessible name — a group, a slider, a composed
+   field — where a real <label> would have nothing to point at. Three components declared this identically and two of
+   them called it "the shared eyebrow idiom" in a comment, which is as close to factoring it as prose gets.
+   ONE SCALE ONLY. The `--ph-text-2xs`/0.1em labels on GuidingTrack, the song page and the drawer are NOT this rule at
+   a different size — they are a tighter tier for a fact list, and the TV's are on the --tv-* ladder entirely. Folding
+   those in would invent a shared decision that was never made. */
+.eyebrow {
+	font-size: var(--ph-text-sm);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--ink-dim);
+}
+
 /* THE VISUALLY-HIDDEN IDIOM, and it has to live here: `source(none)` plus one `@source` over the vendored tree
    means Tailwind mints nothing for `routes/` or `components/`, so `class="sr-only"` written anywhere in app source
    renders as ORDINARY VISIBLE TEXT. This was hand-copied three times and the copies had already drifted — only one

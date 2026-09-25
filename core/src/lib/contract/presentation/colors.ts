@@ -249,21 +249,6 @@ function rgbToOklabAb([r, g, b]: [number, number, number]): { a: number; b: numb
 	};
 }
 
-/** The 0 fallback is load-bearing: the wheel PROVABLY never lands on a preset hex, so without it one
- *  wheel pick drops every preset out of the tab order permanently. */
-export function presetTabStopIndex(value: string): number {
-	const i = (SINGER_COLORS as readonly string[]).indexOf(value);
-	return i === -1 ? 0 : i;
-}
-
-/** The base MUST be `presetTabStopIndex`, never a bare `indexOf`, which returns -1 after a wheel pick and
- *  desynchronises movement from the focus ring. */
-export function nextSwatchIndex(value: string, step: number): number {
-	const base = presetTabStopIndex(value);
-	const n = SINGER_COLORS.length;
-	return (base + step + n) % n;
-}
-
 /** In the order parts first APPEAR. Every colour must clear `isLegibleSingerColor` rather than being a
  *  hard-coded pair, and THE FALLBACK IS BY ABSENCE: no part returns an EMPTY map, which the reel reads as
  *  the single-colour path. */

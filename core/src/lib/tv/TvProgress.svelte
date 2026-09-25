@@ -62,7 +62,6 @@
 	.t {
 		font-size: var(--tv-label);
 		font-variant-numeric: tabular-nums;
-		opacity: 0.95;
 	}
 	.track.card {
 		width: 210px;

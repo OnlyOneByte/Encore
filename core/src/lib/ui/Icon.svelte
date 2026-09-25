@@ -10,14 +10,12 @@
 	let {
 		name,
 		size = '1em',
-		strokeWidth = 2,
 		label
 	}: {
 		name: IconName;
 		/** Any CSS length. Defaults to 1em so the mark tracks the container's font-size. */
 		size?: string;
 		/** Optical weight. Heavier reads better at TV scale, lighter at small sizes. */
-		strokeWidth?: number;
 		/** Set ONLY when this svg is the sole carrier of meaning; otherwise leave it aria-hidden. */
 		label?: string;
 	} = $props();
@@ -35,7 +33,7 @@
 	height={size}
 	fill="none"
 	stroke="currentColor"
-	stroke-width={strokeWidth}
+	stroke-width="2"
 	stroke-linecap="round"
 	stroke-linejoin="round"
 	role={label ? 'img' : undefined}

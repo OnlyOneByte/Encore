@@ -30,8 +30,8 @@ component we no longer vendor cannot compile. If you re-add `Separator`, re-add 
 A SECOND exception has since appeared, and it is the reverse shape — a part whose own RENDER goes.
 `drawer-overlay.svelte` is vendored, wired to nothing, and staying: `vaul-svelte` gates the overlay on
 `modal`, Encore's only drawer is necessarily `modal={false}`, so it could never mount. It keeps its
-component and lost its dead fade CSS, and `drawer-overlay-modality.test.ts` ties "not rendered" to "not
-modal" so the pair cannot drift. See its deviation header.
+component and lost its dead fade CSS. THE PAIR MUST NOT DRIFT: "not rendered" and "not modal" are one
+decision, so re-mounting the overlay means revisiting `modal`. See its deviation header.
 
 If you are adding the next one, the five sections below are the constraints that will bite you, in the
 order they bit that migration.
@@ -55,13 +55,13 @@ there is still exactly one place any colour is chosen.
 **3.38:1** on `--card`, **3.10:1** on `--card2` and **2.90:1** on `--card-tint2` — four AA failures.
 Registering `--color-primary` hands out `text-primary` in the same breath as `bg-primary`, and there
 is no per-family opt-out. So the hazard is handled where it actually lives:
-`shadcn-ink-ban.test.ts` bans `text-primary`, `text-destructive` and their siblings **in app
-source**, and exempts this directory by path. A vendored component pairing `bg-primary` with
+the ink direction — `text-primary`, `text-destructive` and their siblings — is banned **in app
+source**, while this directory is exempt. A vendored component pairing `bg-primary` with
 `text-primary-foreground` is correct — white on `#7254e6` is 5.09:1.
 
 Still not registered, and not negotiable: the **player hues**. The 48-stop palette splits `ink`
 from `fill` per stop (13 of 48 differ), which no single minted utility can respect.
-`tailwind-toolchain.test.ts` pins that.
+Do not register one.
 
 ## 2. A scoped rule cannot reach an element a child component renders
 
@@ -73,8 +73,9 @@ that finally carries it belongs to Bits UI and carries no hash. The rule ships i
 matches nothing.
 
 `slider.svelte` did exactly that. `min-height: var(--tap)` was dead in the build, the 28 px thumb
-overflowed into the label above every settings slider, and **`touch-targets.test.ts` passed the whole
-time** — it reads the rule's TEXT, and the text was correct. A screenshot found it.
+overflowed into the label above every settings slider, and **a source-reading check passed the whole
+time** — it read the rule's TEXT, and the text was correct. A screenshot found it. This is why the live gate
+measures RENDERED geometry (`tests/playwright/specs/gate/measured-hit-extents.spec.ts`) instead.
 
 Two correct forms:
 
@@ -84,7 +85,7 @@ Two correct forms:
 - put the class on a plain element **this** file renders. `card`, `input`, `native-select`, `badge`,
   `skeleton`, `spinner` and `table` can do this because their root is a real tag.
 
-`ui-scoped-style-reach.test.ts` fails on the broken form.
+Nothing checks this automatically any more: the broken form ships silently, so check reach by hand.
 
 ## 3. This is the only directory Tailwind scans
 
@@ -103,8 +104,8 @@ Two consequences, and the migration hit both:
 
 ## 4. Motion is banned by name, and transitions are transform/opacity only
 
-`motion.test.ts` rejects `transition-*`, `animate-*`, `duration-*` and `ease-*` as utility names
-tree-wide, because a keyframes utility cannot honour Reduce Motion. Nine of the migrated components shipped
+`transition-*`, `animate-*`, `duration-*` and `ease-*` are banned as utility NAMES tree-wide, because a
+keyframes utility cannot honour Reduce Motion. Nine of the migrated components shipped
 `transition-all`; all of it was stripped.
 
 Live motion is allowed when it is declared CSS on a composited property. `progress.svelte` transitions
@@ -119,7 +120,7 @@ An earlier measurement put the cost of enabling it at **2,696 moved boxes** acro
 shadcn component is written expecting `box-sizing: border-box`, zeroed margins and `list-style: none`.
 `app.css` sets `box-sizing: border-box` on `*` itself, which is the largest single piece, but
 **margins and list styles are not zeroed** — supply what the component needs in its own classes, and
-do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if that import comes back.
+do not re-add the global import to get it — that import is the one-liner §3 bans.
 
 ---
 
@@ -130,7 +131,7 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
    and running from `.` reports phantom failures.
 2. Strip every motion utility (§4) and check `var()` references resolve — a name that exists only in
    the `@theme` bridge mints a utility but emits **no** custom property, so reading it as
-   `var(--color-popover)` paints nothing. `design-system.test.ts` catches that.
+   `var(--color-popover)` paints nothing. Check each `var()` by hand.
 3. Give it Encore's appearance where the registry's differs, and record **why** in an `ENCORE
 DEVIATIONS` HTML comment at the top of the file, naming the test that enforces each item. They are what
    makes an `--overwrite` reviewable. Every component here carries one in that exact form bar one; `button/` is
@@ -139,22 +140,19 @@ DEVIATIONS` HTML comment at the top of the file, naming the test that enforces e
    the mandated header misses it.
 4. Watch §2 when you write the CSS.
 5. If it replaces something guarded, the guard **follows what it watches** — re-anchor it in the same
-   change, or retire it on the record with its successors named (`non-vacuity-floors.test.ts` has a
-   `RETIRED` registry for that). A guard whose premise a change ends must not be left passing
+   change, or retire it on the record with its successors named (the retired list at the top of
+   `tests/playwright/world/selectors.ts` is the surviving example of that form). A guard whose premise a change ends must not be left passing
    vacuously.
 6. Look at it. The four worst defects of the migration were all correct in source and wrong on screen, and every one
-   was found by comparing before/after screenshots — `tests/e2e/shoot.mjs` is the capture
+   was found by comparing before/after screenshots — the `shot` Playwright project is the capture
    script, and it runs against either tree.
 
 ## What is deliberately NOT here
 
 - `.card` in `app.css` is **not** dead and must stay. **Nine** elements take the shared surface rather
   than a `<Card.Root>`: three queue/list rows, the hero, the TV progress track, a code-entry segment, the
-  reorder bar, `MyPositionCard` and `JoinLanding`. `ui-card-surface.test.ts` holds that list and
-  enforces it in both directions, so the authoritative enumeration is there rather than here — if the two
-  ever disagree, the test is right.
-- `ColourPicker`'s hue slider stays a native range: its track **is** an oklch colour space and its
-  thumb shows the picked colour.
+  reorder bar, `MyPositionCard` and `JoinLanding`. That enumeration is no longer enforced in either
+  direction, so it is authoritative only as far as it is kept true — count the callers before trusting it.
 - The search dock's input stays native — a bare text node inside a composed container that wants none
   of what `Input` provides.
 - `TvPlayer`, `LyricsOverlay`, `VisualizerStage` and `RangeBar` have no registry target at all.

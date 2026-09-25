@@ -264,8 +264,11 @@
 <style>
 	/* Geometry comes from `.list-row` in app.css, shared with the two queue rows. Every rule that declares a COLOUR has
 	   to stay in this file, so a contrast question about this row is answerable from it. */
-	.row {
-		transition: background var(--motion-fast) ease;
+	/* The surface fade is opt-in; reduced, the row's background changes at once. */
+	@media (prefers-reduced-motion: no-preference) {
+		.row {
+			transition: background var(--motion-fast) ease;
+		}
 	}
 	/* Readiness is legible from the border alone, before any text is read. */
 	.row.ready {
