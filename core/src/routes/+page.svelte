@@ -39,7 +39,7 @@
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
-	import { Spinner } from '$lib/components/ui/spinner';
+	import FindField from '$lib/ui/FindField.svelte';
 	import * as Empty from '$lib/components/ui/empty';
 
 	let me = $state<PublicSinger | null>(null);
@@ -534,21 +534,18 @@
 					<Icon name="library" />
 				</Button>
 			</div>
-			<div class="findbox">
-				<span class="find-mark"><Icon name="search" /></span>
-				<input
-					bind:this={queryEl}
+			<div class="field-slot">
+				<FindField
 					bind:value={query}
-					oninput={onQueryInput}
-					aria-label="Search a song or artist"
+					bind:element={queryEl}
+					ariaLabel="Search a song or artist"
 					placeholder="Search a song or artist…"
+					busy={searching}
+					clearable={searchActive}
+					clearLabel="Clear the search"
+					onclear={clearSearch}
+					oninput={onQueryInput}
 				/>
-				{#if searching}<Spinner aria-label="Searching" />{/if}
-				{#if searchActive}
-					<Button variant="ghost" size="icon" aria-label="Clear the search" onclick={clearSearch}>
-						<Icon name="close" />
-					</Button>
-				{/if}
 			</div>
 		</div>
 
@@ -839,26 +836,6 @@
 		margin-top: var(--space-2xs);
 	}
 
-	/* The field is in NORMAL FLOW, and so is `.topbar` above it — neither is stuck to the viewport. (An earlier note
-	   here claimed the topbar was sticky; it never declares `position`, and the bottom edge is the band's anyway.) A
-	   second sticky surface would need the header's RENDERED height as its offset, and an out-of-scale token in that
-	   calc() invalidates the declaration silently. The focus ring belongs to the WHOLE box, which is why app.css's
-	   global input ring is suppressed below. */
-	.findbox {
-		background: var(--card);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		display: flex;
-		align-items: center;
-		gap: var(--space-md);
-		padding: var(--space-lg) var(--space-xl);
-		min-height: 52px;
-		/* `flex: 1` plus `min-width: 0`, NOT `width: 100%`: the box now shares a row with the library door, and at
-		   100% it would claim the whole row and push that control off the edge. min-width:0 is what lets it shrink
-		   under SC 1.4.10 reflow at 320px, where the 44px door and the gap come out of this box's width. */
-		flex: 1;
-		min-width: 0;
-	}
 	/* THE FIELD AND THE LIBRARY DOOR, one row. The bottom margin lives HERE rather than on `.findbox`, or the two
 	   controls would carry separate spacing and the shorter one would not clear the group below it.
 	   `stretch`, NOT `center`: the field is 70px at every width (--space-lg twice, a --tap-floored input and the
@@ -870,6 +847,12 @@
 		align-items: stretch;
 		gap: var(--space-md);
 		margin-bottom: var(--space-lg);
+	}
+	/* The field takes the rest of the row and is the half that SHRINKS — `min-width: 0` is what lets it, and without
+	   it the 44px door would be pushed off the edge at 320px instead. */
+	.field-slot {
+		flex: 1;
+		min-width: 0;
 	}
 	/* A wrapper, because a class handed to <Button> is scoped to this file where Svelte strips it as unused. `0 0 auto`
 	   is load-bearing: beside a field that shrinks, an unpinned 44px control is what collapses instead. */
@@ -885,29 +868,6 @@
 	.lib-slot :global([data-slot='button']) {
 		height: 100%;
 	}
-	.findbox input {
-		border: 0;
-		background: transparent;
-		color: var(--ink);
-		font-size: var(--ph-text-base);
-		/* flex + min-width:0, never width:100% — the box must be able to shrink under SC 1.4.10 reflow. */
-		flex: 1;
-		min-width: 0;
-		/* The input, not the wrapper, is the tap target. */
-		min-height: var(--tap);
-	}
-	.findbox:has(input:focus-visible) {
-		outline: 2px solid var(--focus);
-		outline-offset: 2px;
-	}
-	.findbox input:focus-visible {
-		outline: none;
-	}
-	.find-mark {
-		display: grid;
-		place-items: center;
-		color: var(--ink-dim);
-	}
 
 
 	.showall-row {
@@ -916,12 +876,6 @@
 		padding: 0 0 var(--space-sm);
 	}
 
-	@media (max-height: 480px) {
-		.findbox {
-			min-height: var(--tap);
-			padding: var(--space-sm) var(--space-xl);
-		}
-	}
 	/* `min-height`, not an absolute centring trick: this block sits in a scrolling column whose height three other
 	   rules already own. `overflow-wrap: anywhere` is the 320px reflow clause — at --ph-text-3xl and 200% text one
 	   unbreakable word is wider than the viewport. The size reaches the vendored slot through `:global()`. */

@@ -84,12 +84,7 @@
 	{#snippet child({ props })}
 		<div
 			{...props}
-			class="qrow card list-row pop-in"
-			class:mine={mine}
-			class:up={up}
-			class:pending={pending}
-			class:moving={moving}
-			class:shifted={shift !== 0}
+			class={['qrow', 'card', 'list-row', 'pop-in', { mine, up, pending, moving, shifted: shift !== 0 }]}
 			style="--drag-y:{dragY}px; --row-shift:{shift}"
 		>
 			<Item.Media>
@@ -130,7 +125,7 @@
 						bare mustache run. -->
 				<!-- prettier-ignore -->
 				<div class="who">
-					<i class="singer-dot" class:dim={singerAway} style="--singer:{singerColor}"></i>
+					<i class={['singer-dot', { dim: singerAway }]} style="--singer:{singerColor}"></i>
 					{singerName}{#if singerAway}<span class="away">· away</span
 						>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">{pendingLabel}</span>{/if}
 				</div>

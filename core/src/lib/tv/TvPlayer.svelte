@@ -454,7 +454,7 @@
 </script>
 
 <!-- The two slots share one box, so which of them is on top IS the crossfade. -->
-<div class="slot" class:visible={visible} style="z-index:{visible ? 'var(--z-tv-video-active)' : 'var(--z-tv-video)'}">
+<div class={['slot', { visible }]} style="z-index:{visible ? 'var(--z-tv-video-active)' : 'var(--z-tv-video)'}">
 	{#if media && isPlayable(media)}
 		<!--
 			THE MASTER, and the ONLY media element. It owns the clock: play/pause, currentTime, `ended`, and the

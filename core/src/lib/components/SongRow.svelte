@@ -152,9 +152,7 @@
 	{#snippet child({ props })}
 		<div
 			{...props}
-			class="row card list-row"
-			class:ready={readiness === 'ready'}
-			class:processing={readiness === 'processing'}
+			class={['row', 'card', 'list-row', { ready: readiness === 'ready', processing: readiness === 'processing' }]}
 		>
 			<Item.Media
 				><div class="thumb">
@@ -166,7 +164,7 @@
 						<span class="ph"><Icon name="play" /></span>
 					{/if}
 					{#if duration}
-						<span class="dur" class:odd={oddDuration}>{duration}</span>
+						<span class={['dur', { odd: oddDuration }]}>{duration}</span>
 					{/if}
 				</div></Item.Media
 			>

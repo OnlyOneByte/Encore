@@ -93,7 +93,7 @@
 	{/if}
 {/snippet}
 
-<div class="band" class:idle={!hasSong}>
+<div class={['band', { idle: !hasSong }]}>
 	<div class="inner">
 		<div class="strip">
 			{#if onexpand}

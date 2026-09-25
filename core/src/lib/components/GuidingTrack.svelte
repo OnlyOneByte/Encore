@@ -18,7 +18,7 @@
 	const valueLabel = $derived(!available || shown === 0 ? 'Off' : `${shown}%`);
 </script>
 
-<div class="gt" class:disabled={!available}>
+<div class={['gt', { disabled: !available }]}>
 	<!--
 		The label row is the Field primitive's `data-inline` hook, which supplies the flex row, the top rhythm and the dim
 		ink. `.lab` KEEPS its own typography rather than handing the text to the primitive: the primitive's label type is

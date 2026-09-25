@@ -27,6 +27,7 @@
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
+	import FindField from '$lib/ui/FindField.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
@@ -163,19 +164,16 @@
 		<main>
 			<!-- A FILTER, not a search: same shape as the home field for consistency, but its own placeholder, and the
 					count line below carries the actual distinction. -->
-			<div class="findbox">
-				<span class="find-mark"><Icon name="search" /></span>
-				<input
-					bind:this={queryEl}
+			<div class="field-slot">
+				<FindField
 					bind:value={query}
-					aria-label="Filter your library"
+					bind:element={queryEl}
+					ariaLabel="Filter your library"
 					placeholder="Filter your library…"
+					clearable={filtering}
+					clearLabel="Clear the filter"
+					onclear={clearFilters}
 				/>
-				{#if filtering}
-					<Button variant="ghost" size="icon" aria-label="Clear the filter" onclick={clearFilters}>
-						<Icon name="close" />
-					</Button>
-				{/if}
 			</div>
 
 			{#if !libraryLoaded}
@@ -318,43 +316,13 @@
 		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 
-	/* Same shape as the home column's field on purpose: the behaviour differs, the control should not. */
-	.findbox {
-		background: var(--card);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		display: flex;
-		align-items: center;
-		gap: var(--space-md);
-		padding: var(--space-lg) var(--space-xl);
-		min-height: 52px;
-		width: 100%;
+	/* The ring belongs to the whole box, so app.css's per-input ring is suppressed. */
+
+	/* The field's own box. A wrapper because a class handed to a component is stripped at the caller, and the spacing
+	   below the field belongs to this page rather than to the control. */
+	.field-slot {
 		margin-bottom: var(--space-sm);
 	}
-	.findbox input {
-		border: 0;
-		background: transparent;
-		color: var(--ink);
-		font-size: var(--ph-text-base);
-		/* flex + min-width:0, never width:100% — the box must shrink under SC 1.4.10 reflow. */
-		flex: 1;
-		min-width: 0;
-		min-height: var(--tap);
-	}
-	/* The ring belongs to the whole box, so app.css's per-input ring is suppressed. */
-	.findbox:has(input:focus-visible) {
-		outline: 2px solid var(--focus);
-		outline-offset: 2px;
-	}
-	.findbox input:focus-visible {
-		outline: none;
-	}
-	.find-mark {
-		display: grid;
-		place-items: center;
-		color: var(--ink-dim);
-	}
-
 	.count {
 		margin: 0 var(--space-2xs) var(--space-md);
 		font-size: var(--ph-text-sm);
@@ -427,10 +395,6 @@
 	}
 
 	@media (max-height: 480px) {
-		.findbox {
-			min-height: var(--tap);
-			padding: var(--space-sm) var(--space-xl);
-		}
 		.grouphead {
 			margin: var(--space-sm) var(--space-2xs) var(--space-2xs);
 		}

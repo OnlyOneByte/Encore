@@ -324,7 +324,7 @@
 							</div>
 						{/if}
 
-						<div class="key" class:disabled={!keyShiftEnabled} class:shifted={keyShift !== 0}>
+						<div class={['key', { disabled: !keyShiftEnabled, shifted: keyShift !== 0 }]}>
 							<span class="lab">{keyLabel}</span>
 							<div class="key-cell">
 								<!-- THE LABEL IS NOT DECORATION HERE. `Icon` is `aria-hidden` by default, so both keycaps computed to

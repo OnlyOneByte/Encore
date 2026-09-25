@@ -221,7 +221,7 @@
 </script>
 
 {#if show && doc && curLine}
-	<div class="lyrics hl-{highlight}" class:unverified={unverified} role="presentation" style={typeStyle}>
+	<div class={['lyrics', `hl-${highlight}`, { unverified }]} role="presentation" style={typeStyle}>
 		<!--
 			A SCROLLING REEL, not a two-slot swap: every line is a persistent keyed node in one column and only the
 			column transform changes, so the singer keeps the line they just sang in view.
@@ -229,10 +229,10 @@
 		<div class="viewport" bind:this={viewportEl}>
 			<div class="reel" bind:this={reelEl} style="transform: translateY({reelOffset}px)">
 				{#each doc.lines as l, i (i)}
-					<div class="row" class:current={i === lineIdx} class:past={i < lineIdx}>
+					<div class={['row', { current: i === lineIdx, past: i < lineIdx }]}>
 						{#if i === lineIdx && l.words.length && wordLevel}
 							{#each l.words as w, wi (wi)}
-								<span class="word" class:done={cuePos >= w.end} class:active={wi === ballWord}>
+								<span class={['word', { done: cuePos >= w.end, active: wi === ballWord }]}>
 									{#if wi === ballWord && ball !== 'off'}<span class="ball {ball}" aria-hidden="true"
 											>{ball === 'underline' ? '' : '●'}</span
 										>{/if}{w.word}

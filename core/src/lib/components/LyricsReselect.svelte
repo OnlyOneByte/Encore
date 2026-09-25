@@ -53,7 +53,7 @@
 </script>
 
 {#if hasChoice}
-	<div class="reselect" class:newer={newerExists}>
+	<div class={['reselect', { newer: newerExists }]}>
 		<button class="reselect-toggle" aria-expanded={open} aria-controls={bodyId} onclick={() => (open = !open)}>
 			<Icon name={open ? 'chevron-down' : 'chevron-right'} />
 			<span class="reselect-label">Lyrics</span>
@@ -73,8 +73,7 @@
 							{#snippet child({ props })}
 								<button
 									{...props}
-									class="reselect-opt {props.class}"
-									class:current={c.ref === chosenRef}
+									class={['reselect-opt', props.class, { current: c.ref === chosenRef }]}
 									aria-current={c.ref === chosenRef}
 									onclick={() => onpick?.(c.ref)}
 								>

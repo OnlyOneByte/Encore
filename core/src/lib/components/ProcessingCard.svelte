@@ -95,11 +95,7 @@
 	{#snippet child({ props })}
 		<div
 			{...props}
-			class="qrow proc card list-row"
-			class:pending={pending}
-			class:failed={failed}
-			class:moving={moving}
-			class:shifted={shift !== 0}
+			class={['qrow', 'proc', 'card', 'list-row', { pending, failed, moving, shifted: shift !== 0 }]}
 			style="--drag-y:{dragY}px; --row-shift:{shift}"
 		>
 			<!-- The digit rolls on a position change exactly as QueueRow's does: the two kinds share ONE list, and a drag
@@ -140,7 +136,7 @@
 					<div class="who">
 						<!-- Same away marker as QueueRow: a process outlives its owner's attention span. THIS LINE NAMES THE SINGER AND
 								NOTHING ELSE — process state belongs to the stage row below it, from the shared phrasing source. -->
-						<i class="singer-dot" class:dim={singerAway} style="--singer:{singerColor}"></i>
+						<i class={['singer-dot', { dim: singerAway }]} style="--singer:{singerColor}"></i>
 						{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if pending}{' · '}<span class="adding"
 								>{pendingLabel}</span
 							>{/if}

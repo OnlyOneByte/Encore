@@ -106,14 +106,14 @@
 	</div>
 
 	{#if roster.length > 0}
-		<div class="strip" class:dense={dense}>
+		<div class={['strip', { dense }]}>
 			<span class="label">In the room</span>
 			{#each roster as member (member.id)}
 				<!--
 					An away singer is GREYED, not removed: a locked phone must not erase its owner from the one place a guest
 					confirms the room saw them join. "away" is spelled OUT, because dimming alone is not legible across a room.
 				-->
-				<span class="person" class:away={member.state === 'away'}>
+				<span class={['person', { away: member.state === 'away' }]}>
 					<span class="swatch" style="--singer: {member.color}"></span><span class="name">{member.displayName}</span>
 					{#if member.state === 'away'}<span class="tag">away</span>{/if}
 				</span>

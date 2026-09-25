@@ -138,8 +138,8 @@
 
 <!-- ONE h1 THAT CHANGES SHAPE, and it MUST stay hoisted out of the branch: inside an `{#if}` it unmounts on every
 	flip, which forces a JS crossfade. See docs/FRONTEND.md#the-join-screen. -->
-<header class="join-head" class:head-bar={!onCodeStep}>
-	<h1 class="brand" class:brand-bar={!onCodeStep}>
+<header class={['join-head', { 'head-bar': !onCodeStep }]}>
+	<h1 class={['brand', { 'brand-bar': !onCodeStep }]}>
 		<Icon name="mic" /> <span class="grad-text">Encore</span>
 	</h1>
 	<!-- THE LEDE BELONGS TO THE CODE PANE ONLY: on the identity pane the room sentence is the opening line. -->
@@ -156,8 +156,8 @@
 		<p class="steps">
 			<!-- NOT a live region: the pane change is a navigation the CTA press caused, not an ambient event. -->
 			<span class="step-count">Step {pane === 'identity' ? 2 : 1} of 2</span>
-			<span class="dot" class:on={onCodeStep} aria-hidden="true"></span>
-			<span class="dot" class:on={pane === 'identity'} aria-hidden="true"></span>
+			<span class={['dot', { on: onCodeStep }]} aria-hidden="true"></span>
+			<span class={['dot', { on: pane === 'identity' }]} aria-hidden="true"></span>
 		</p>
 	{/if}
 
