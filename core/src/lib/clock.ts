@@ -1,7 +1,7 @@
 /** WHOLE SECONDS as m:ss, growing to h:mm:ss past an hour — THE ONE renderer of that shape. Every caller
  * differs only in how it reduces its own input to whole seconds (floor for an elapsed clock, round for a
  * catalog duration), and a second copy of this arithmetic is how one surface came to drop the hour and print
- * a 62-minute song as `62:05`. See tests/guards/wiring/metrics-format-single-source.test.ts. */
+ * a 62-minute song as `62:05`. Every surface showing a duration must route through here. */
 export function formatHms(totalSec: number): string {
 	const h = Math.floor(totalSec / 3600);
 	const m = Math.floor((totalSec % 3600) / 60);

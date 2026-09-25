@@ -160,6 +160,14 @@
 		};
 	}
 
+	/* COLLAPSED MEANS OUT OF THE TAB ORDER, not merely off-screen. The sheet is permanently open with
+	   `trapFocus={false}`, vaul-svelte never sets `inert`/`visibility`/`aria-hidden` on its content, and only
+	   `.band-slot` clips — so while a song played and the sheet was down, Tab walked through "More about this song",
+	   the guiding-track thumb and both keycaps, all invisible below the fold, with no way to know where focus went.
+	   The measured focus-ring gate cannot catch it either: those elements are outside the viewport.
+	   `null` (before the mount write seats snap 0) deliberately reads as NOT hidden, so nothing is inerted pre-seat. */
+	const bodyHidden = $derived(activeSnapPoint === SNAP_BAND);
+
 	/** Collapse to the band, expressed as a height because the sheet never closes. */
 	const collapse = () => (activeSnapPoint = SNAP_BAND);
 
@@ -230,7 +238,7 @@
 </script>
 
 <!-- `dismissible={false}` with `open` is vaul's pairing for a sheet that never closes; `modal={false}` is a
-	necessity that drawer-overlay-modality.test.ts ties to the absent scrim, and `handleOnly` is deliberately
+	necessity tied to the absent scrim — a modal sheet with no overlay traps the page — and `handleOnly` is deliberately
 	ABSENT because it is all-or-nothing and the body's sliders would become drag surfaces. -->
 <Drawer.Root
 	open={open}
@@ -250,9 +258,7 @@
 			<Drawer.Handle />
 			<!-- `onexpand` IS THE ONLY WAY IN WITHOUT A POINTER: vaul's Handle is an aria-hidden div with no role. It
 				TOGGLES because nothing else can collapse the sheet by tap. NO `expanded` PROP MAY GO WITH IT — a prop that
-				changes after mount re-runs the size bindings above, which throw on the mount rung. This note sits OUTSIDE
-				the tag: ui-scoped-style-reach.test.ts walks a component tag tracking quote state, so an apostrophe in prose
-				inside one swallows the rest of the file. -->
+				changes after mount re-runs the size bindings above, which throw on the mount rung. -->
 			<NowPlayingBand
 				title={title}
 				artist={artist}
@@ -269,7 +275,10 @@
 		</div>
 		<!-- `.np-fit` EXISTS TO BE MEASURED — snap 1's content cap needs the height of everything below the band row.
 			Its `data-vaul-no-drag` is what excludes the whole body from the drag (see the Root). -->
-		<div class="np-fit" data-vaul-no-drag bind:clientHeight={fitH}>
+		<!-- `inert` as an ATTRIBUTE, which is the mount rung's own sanctioned mechanism: this element carries
+			`bind:clientHeight`, so a `class:` directive or a reactive prop here would re-run the size binding and throw.
+			An attribute write re-renders nothing. `inert` does not affect layout, so `fitH` stays measurable. -->
+		<div class="np-fit" data-vaul-no-drag inert={bodyHidden || undefined} bind:clientHeight={fitH}>
 			<!-- The head is EMPTY and still renders: it gives the sheet its data-slot structure and `phone-home`
 				asserts a header renders below the band slot. Zero-height, so it costs no space. -->
 			<Drawer.Header class="np-head"></Drawer.Header>
@@ -306,7 +315,7 @@
 						<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
 
 						{#if keyOriginal}
-							<div class="key-head" class:shifted={keyShifted}>
+							<div class="key-head">
 								<span class="key-vals">
 									<span class="key-orig">{keyOriginal}</span>
 									{#if keyShifted}
@@ -320,9 +329,13 @@
 						<div class="key" class:disabled={!keyShiftEnabled} class:shifted={keyShift !== 0}>
 							<span class="lab">{keyLabel}</span>
 							<div class="key-cell">
+								<!-- THE LABEL IS NOT DECORATION HERE. `Icon` is `aria-hidden` by default, so both keycaps computed to
+										the bare word "semitone" and a screen-reader user could not tell which one lowers the key — on the
+										app's signature control. The visible text stays as it is; only the accessible name gains a direction. -->
 								<Button
 									variant="keycap"
 									size="block"
+									aria-label="Lower the key one semitone"
 									disabled={!keyShiftEnabled || keyShift <= -7}
 									onclick={() => onkey?.(keyShift - 1)}
 								>
@@ -333,6 +346,7 @@
 								<Button
 									variant="keycap"
 									size="block"
+									aria-label="Raise the key one semitone"
 									disabled={!keyShiftEnabled || keyShift >= 7}
 									onclick={() => onkey?.(keyShift + 1)}
 								>
@@ -389,8 +403,6 @@
 	:global([data-slot='drawer-content'].np-drawer) {
 		height: 100dvh;
 		max-height: none;
-	}
-	:global([data-slot='drawer-content'].np-drawer) {
 		/* Elevation, or the sheet reads as a DUPLICATE of the band: both surfaces are --card with the same top
 		   border and radius, so without a shadow two matching top edges show for the length of the transition. */
 		box-shadow: var(--shadow);
@@ -401,7 +413,9 @@
 	/* `!important` IS REQUIRED: vaul writes its transition as an INLINE style from JS. `transition-duration: 0s`
 	   rather than `transition: none`, so vaul's own bookkeeping still sees a transition it completes instantly. */
 	@media (prefers-reduced-motion: reduce) {
-		:global([data-slot='drawer-content']) {
+		/* ANCHORED on `.np-drawer` like the two rules above it. Unanchored, this reached every vaul drawer in the app —
+		   the exact unanchored-`:global()` reach trap the sibling rules avoid. */
+		:global([data-slot='drawer-content'].np-drawer) {
 			transition-duration: 0s !important;
 		}
 	}

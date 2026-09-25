@@ -78,10 +78,19 @@
 			overrideRef = media?.lyricsOverrideRef;
 		};
 		sync();
-		const stop = room.subscribe(sync);
-		// The link is idempotent, so a second surface mounting is a no-op rather than a second socket.
+		return room.subscribe(sync);
+	});
+
+	/* AN EFFECT, NOT `onMount`, and that is a bug fix rather than a preference. This is the ROOT layout, so it is not
+	   remounted across a client-side navigation — `onMount` therefore ran exactly once, on the surface first loaded.
+	   Arriving at a phone surface from a non-phone one left `connect()` never called and the remote DEAD (no socket,
+	   no queue, no band) until a hard reload. Both paths are real and shipped: `/admin`'s back link goes to `/`, and
+	   `/metrics`'s goes to `/settings`. Keyed on `isPhoneSurface`, which is derived from the pathname, so the arrival
+	   itself is what triggers it. Still gated, for the original reason: an ungated connect would open a second
+	   `role=phone` socket on /tv. `connect()` is idempotent, so re-running on any navigation within the phone
+	   surfaces is a no-op rather than a second socket. */
+	$effect(() => {
 		if (isPhoneSurface) void room.connect();
-		return stop;
 	});
 
 	/* `positionSec` arrives on a broadcast, not a frame, so the ring extrapolates between them. Capture `pos` and
@@ -115,6 +124,11 @@
 </script>
 
 <svelte:head>
+	<!-- THE FALLBACK TITLE, and it belongs here because five routes had NONE — `/`, `/library`, `/song/[mediaId]`,
+		`/tv` and the join screen all shipped untitled, which is the three surfaces a guest actually uses. The title is
+		the first thing announced on a navigation and the only thing distinguishing history entries (SC 2.4.2). A route's
+		own `<svelte:head><title>` still wins, because the last one in the head order does; this only fills the gap. -->
+	<title>Encore</title>
 	<!-- Served from static/, alongside the PNG sizes the manifest names, so the icon family has one home. -->
 	<link rel="icon" href="/icon.svg" type="image/svg+xml" />
 </svelte:head>

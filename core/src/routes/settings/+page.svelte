@@ -13,7 +13,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { NativeSelect } from '$lib/components/ui/native-select';
 	import { Switch } from '$lib/components/ui/switch';
-	import { Slider } from '$lib/components/ui/slider';
+	import FieldSlider from '$lib/ui/FieldSlider.svelte';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
@@ -92,13 +92,16 @@
 		replaceState(`?tab=${id}`, {});
 	}
 
-	// Local state, not a derived, because a write lands optimistically. The effect below re-adopts `data`, so a load
-	// re-run shows fresh server values rather than the mount-time snapshot.
-	let settings = $state<EffectiveSettings>(untrack(() => data.settings));
+	/* WRITABLE `$derived`, because a write lands optimistically AND a load re-run must re-adopt `data`. That is exactly
+	   what writable `$derived` is; the `$state` + `untrack` + effect form this replaces was emulating it one microtask
+	   late. `svelte/prefer-writable-derived` did NOT flag this one — the effect assigned TWO variables, which defeats
+	   the rule's pattern match — so it survived while its twin on /tv was reported. */
+	let settings = $derived(data.settings);
 
-	// The last value the SERVER confirmed. `settings` moves on every drag frame; this does not, so a rejected commit
-	// rolls back to what the server holds rather than to the dragged value it refused.
-	let committed = untrack(() => data.settings);
+	/* The last value the SERVER confirmed. `settings` moves on every drag frame; this does not, so a rejected commit
+	   rolls back to what the server holds rather than to the dragged value it refused. Also writable-derived: `patch()`
+	   assigns it on a confirmed write, and a load re-run re-adopts. */
+	let committed = $derived(data.settings);
 
 	// PROCESSES_UNCAPPED is 0, and a bare 0 beside this label reads as a missing value — say it in words.
 	const processCapLabel = $derived(
@@ -115,11 +118,6 @@
 		const rest = minutes % 60;
 		return rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`;
 	});
-	$effect(() => {
-		settings = data.settings;
-		committed = data.settings;
-	});
-
 	let advancedOpen = $state(false);
 	let failed = $state(false);
 
@@ -333,6 +331,10 @@
 <svelte:head><title>Settings · Encore</title></svelte:head>
 
 <div class="settings-page">
+	<!-- `Card.Title` renders a <div>, so every styled card title on this page was a visual heading with no heading
+		SEMANTICS — a 1,090-line page whose whole outline was its h1. Screen-reader users navigate a long dashboard by
+		heading, so `role="heading" aria-level={2}` is added at each call site rather than re-vendoring the primitive,
+		which forwards restProps for exactly this. Level 2 because PageHeader owns the single h1. -->
 	<PageHeader title="Settings" icon="gear" back={{ href: '/', label: 'Back to the remote' }} />
 
 	<main>
@@ -357,7 +359,7 @@
 				<div class="panel">
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>You</Card.Title>
+							<Card.Title role="heading" aria-level={2}>You</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<Field.Label for="profile-name">Name</Field.Label>
@@ -394,7 +396,7 @@
 					<!-- Its own card: leaving cannot be undone, so the boundary is drawn rather than implied. -->
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Leaving</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Leaving</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<!-- AlertDialog, not Dialog: `role="alertdialog"` announces the description on open, and it has no click-outside
@@ -432,7 +434,7 @@
 					<!-- layout only — see the YOU panel for why no tabpanel role here -->
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Rotation</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Rotation</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<Field.Label for="queue-order">Who sings next</Field.Label>
@@ -449,8 +451,9 @@
 							<Field.Label for="presence-grace">
 								Kick out after · {graceLabel}
 							</Field.Label>
-							<Slider
+							<FieldSlider
 								id="presence-grace"
+								label="Grace period before a quiet phone loses its turn"
 								type="single"
 								min={MIN_PRESENCE_GRACE_MINUTES}
 								max={MAX_PRESENCE_GRACE_MINUTES}
@@ -464,7 +467,7 @@
 
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Process quality</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Process quality</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<Field.Label for="quality-ceiling">Quality ceiling</Field.Label>
@@ -491,7 +494,7 @@
 
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>The TV</Card.Title>
+							<Card.Title role="heading" aria-level={2}>The TV</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<div class="pair">
@@ -560,8 +563,9 @@
 								</Field.Label>
 								<!-- A lightness control on the stage colour, not a layer over the video. Stored 0..1 and shown as a percent,
 										spanning the full range the server clamp accepts. -->
-								<Slider
+								<FieldSlider
 									id="tv-background-dim"
+									label="TV background dim"
 									type="single"
 									min={0}
 									max={100}
@@ -585,8 +589,9 @@
 								Song intro duration · {(settings.room.songIntroMs / 1000).toFixed(1)}s
 							</Field.Label>
 							<!-- The range MUST match the server clamp exactly, or the UI silently refuses values it takes. -->
-							<Slider
+							<FieldSlider
 								id="song-intro-ms"
+								label="Song intro length"
 								type="single"
 								min={MIN_SONG_INTRO_MS}
 								max={MAX_SONG_INTRO_MS}
@@ -601,7 +606,7 @@
 
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Lyrics on the TV</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Lyrics on the TV</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<div class="pair">
@@ -671,8 +676,9 @@
 							<Field.Label for="lyrics-scale"
 								>Lyric size · {settings.room.lyricsScalePct}% of the TV's default</Field.Label
 							>
-							<Slider
+							<FieldSlider
 								id="lyrics-scale"
+								label="Lyric size on the TV"
 								type="single"
 								min={MIN_LYRICS_SCALE_PCT}
 								max={MAX_LYRICS_SCALE_PCT}
@@ -685,8 +691,9 @@
 							<Field.Label for="lyrics-lead">
 								Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
 							</Field.Label>
-							<Slider
+							<FieldSlider
 								id="lyrics-lead"
+								label="How far ahead of the audio the lyric highlight runs"
 								type="single"
 								min={0}
 								max={MAX_LYRICS_LEAD_MS}
@@ -699,8 +706,9 @@
 							<div class="pair">
 								<div class="cell">
 									<Field.Label for="lyrics-before">Lines behind · {settings.room.lyricsLinesBefore}</Field.Label>
-									<Slider
+									<FieldSlider
 										id="lyrics-before"
+										label="Lyric lines kept behind the current one"
 										type="single"
 										min={0}
 										max={MAX_LYRICS_LINES_BEFORE}
@@ -712,8 +720,9 @@
 								</div>
 								<div class="cell">
 									<Field.Label for="lyrics-after">Lines ahead · {settings.room.lyricsLinesAfter}</Field.Label>
-									<Slider
+									<FieldSlider
 										id="lyrics-after"
+										label="Lyric lines shown ahead of the current one"
 										type="single"
 										min={0}
 										max={MAX_LYRICS_LINES_AFTER}
@@ -729,14 +738,15 @@
 
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Sound</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Sound</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<Field.Label for="guide-default">
 								Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
 							</Field.Label>
-							<Slider
+							<FieldSlider
 								id="guide-default"
+								label="Default guiding-track level for the room"
 								type="single"
 								min={0}
 								max={100}
@@ -772,7 +782,7 @@
 
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Making karaoke</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Making karaoke</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<!-- Stacked, not paired: these registries carry the app's longest labels, which truncate in half a 390px row. -->
@@ -816,8 +826,9 @@
 							<!-- A slider, not a number field: the range is short and bounded at both ends, and a text field would invite the
 									3000 that `normalizeMaxProcesses` exists to refuse. -->
 							<Field.Label for="max-processes">Songs one singer can make at once · {processCapLabel}</Field.Label>
-							<Slider
+							<FieldSlider
 								id="max-processes"
+								label="Songs one singer can make at once"
 								type="single"
 								min={PROCESSES_UNCAPPED}
 								max={MAX_PROCESSES_PER_SINGER_CEILING}
@@ -836,7 +847,7 @@
 
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Lyrics engine</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Lyrics engine</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<!-- Stacked for the same measured reason as the splitter above: a half-width select at 390px leaves ~120px. -->
@@ -870,7 +881,7 @@
 
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Joining</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Joining</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<Field.Label for="join-origin">Join address</Field.Label>
@@ -1028,8 +1039,8 @@
 		grid-template-columns: 1fr 1fr;
 		gap: var(--space-md);
 	}
+	/* `.pair` is a grid, so no `flex` here — only the shrink floor the ellipsis needs. */
 	.cell {
-		flex: 1;
 		min-width: 0;
 	}
 	@media (max-width: 380px) {

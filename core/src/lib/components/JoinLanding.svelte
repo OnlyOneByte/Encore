@@ -51,8 +51,8 @@
 	const canJoin = $derived(pane === 'identity' && name.trim().length > 0 && !submitting);
 	const onCodeStep = $derived(pane === 'code');
 	const ctaEnabled = $derived(onCodeStep ? canContinue : canJoin);
-	/* ONE reason string for BOTH panes, because there is one live region for it below and
-	   `phone-inventory.test.ts` enumerates every phone live region with its purpose (SC 3.3.2). */
+	/* ONE reason string for BOTH panes, because there is one live region for it below and a second would compete with
+	   it for the same announcement (SC 3.3.2). */
 	const ctaReason = $derived.by(() => {
 		if (onCodeStep) {
 			if (previewLoading) return '';

@@ -1,1 +1,0 @@
-ALTER TABLE `global_settings` ADD `max_processes_per_singer` integer DEFAULT 3 NOT NULL;

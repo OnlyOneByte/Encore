@@ -157,7 +157,7 @@ export const roomSettings = sqliteTable('room_settings', {
 		.default('fair'),
 	tvProgressStyle: text('tv_progress_style', { enum: ['card', 'corner', 'edge', 'off'] })
 		.notNull()
-		.default('card'),
+		.default('edge'),
 	tvBackgroundStyle: text('tv_background_style', { enum: ['off', 'gradient', 'singer', 'solid', 'visualizer'] })
 		.notNull()
 		.default('off'),
@@ -179,7 +179,7 @@ export const roomSettings = sqliteTable('room_settings', {
 	lyricsHighlight: text('lyrics_highlight', { enum: ['word', 'line', 'off'] })
 		.notNull()
 		.default('word'),
-	lyricsLeadMs: integer('lyrics_lead_ms').notNull().default(300),
+	lyricsLeadMs: integer('lyrics_lead_ms').notNull().default(0),
 	// `lyrics_scale_pct` is a PERCENT of the computed distance-based scale, never a size — see DEFAULT_LYRICS_SCALE_PCT.
 	lyricsScalePct: integer('lyrics_scale_pct').notNull().default(100),
 	lyricsFont: text('lyrics_font', { enum: ['system', 'grotesk', 'serif', 'mono'] })

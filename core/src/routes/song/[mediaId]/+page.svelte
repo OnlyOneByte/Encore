@@ -93,7 +93,7 @@
 		{/if}
 
 		{#if loading}
-			<div class="facts" aria-busy="true" aria-label="Loading this song…">
+			<div class="facts" role="status" aria-busy="true" aria-label="Loading this song…">
 				<Skeleton variant="line-short" />
 				<Skeleton />
 				<Skeleton />

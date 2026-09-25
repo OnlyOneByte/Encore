@@ -42,9 +42,6 @@
 		/** In ROWS rather than pixels: the pixel height is the page's business, and a component taking px would need
 		 * the same measurement twice. */
 		shift?: -1 | 0 | 1;
-		/** A processing song is still a queue entry, so it is one of the rows the reorder mode must de-emphasise.
-		 * Surface token, never `opacity`. */
-		dimmed?: boolean;
 	}
 	let {
 		seq,
@@ -63,8 +60,7 @@
 		onnudge,
 		moving = false,
 		dragY = 0,
-		shift = 0,
-		dimmed = false
+		shift = 0
 	}: Props = $props();
 
 	// The pct is shown separately in the stage row, so the line itself omits it.
@@ -94,8 +90,7 @@
 </script>
 
 <!-- Item.Root supplies the row grammar through its `child` snippet, so this file keeps the row ELEMENT: a `class:`
-	directive is not valid on a component and a class handed to one is scoped to the caller. THE ROOT'S `class`
-	ATTRIBUTE MUST STAY STATIC: contrast.test.ts derives the row's classes by splitting it on whitespace. -->
+	directive is not valid on a component and a class handed to one is scoped to the caller. -->
 <Item.Root variant="bare" size="bare">
 	{#snippet child({ props })}
 		<div
@@ -103,7 +98,6 @@
 			class="qrow proc card list-row"
 			class:pending={pending}
 			class:failed={failed}
-			class:dimmed={dimmed}
 			class:moving={moving}
 			class:shifted={shift !== 0}
 			style="--drag-y:{dragY}px; --row-shift:{shift}"
@@ -173,19 +167,26 @@
 				{#if failed}
 					<!-- No bar for a dead process: a bar stuck near 0 reads as stalled rather than failed, so the tinted stage
 							line carries the state on its own. -->
-					<div class="stage bad" aria-live="polite"><span>{stageLabel}</span></div>
+					<div class="stage bad"><span>{stageLabel}</span></div>
 				{:else}
 					<div class="bar-slot"><Progress value={overall} aria-label="Process progress" /></div>
-					<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
+					<div class="stage"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
 				{/if}
 			</div>
 		</div>
 	{/snippet}
 </Item.Root>
 
+<!-- THE STAGE TRANSITION IS THE ANNOUNCEMENT, NEVER THE PERCENTAGE. The visible row above carried `aria-live` over text
+	containing the pct, and the hub rebroadcasts `media:status` on every worker progress report with no throttle — so a
+	guest waiting on three songs got several hundred polite announcements, starving the regions that matter (the queue
+	announcer and the reorder notes). `stageLabel` is pct-free, so this speaks once per real transition. The bar keeps
+	`role="progressbar"` with its value, which AT reads ON DEMAND instead of being pushed. -->
+<div class="vh" role="status">{stageLabel}</div>
+
 <style>
-	/* `.seq`, `.t` and `.who` must STAY in this file, because they declare COLOUR and contrast.test.ts reasons about
-	   this row by reading those rules here. `.list-row` gives the padding, margin and gap; this card overrides the
+	/* `.seq`, `.t` and `.who` must STAY in this file, because they declare COLOUR and a contrast question about this row
+	   has to be answerable from here. `.list-row` gives the padding, margin and gap; this card overrides the
 	   display to a two-row grid, so the actions cluster cannot eat into the bar. */
 	.qrow.proc {
 		display: grid;
@@ -212,19 +213,13 @@
 	/* The unconfirmed state is a warn tint on the CARD SURFACE, never a subtree opacity: an alpha here composites the
 	   stage line to 3.76:1 against a 4.5:1 floor and the singer dot to 2.57:1, and the value that clears AA is
 	   indistinguishable from 1.0. MUST STAY AFTER `.proc` so a pending card overrides its processing gradient;
-	   `.proc.failed`'s border wins on specificity, deliberately. contrast.test.ts reds if the opacity comes back. */
+	   `.proc.failed`'s border wins on specificity, deliberately. Do not restore the opacity. */
 	.pending {
 		background: var(--warn-bg);
 		border-color: var(--warn-line);
 	}
 	.adding {
 		color: var(--warn);
-	}
-	/* Token for token QueueRow's `.dimmed`, because the two kinds sit in the same list and de-emphasising only one
-	   reads as "this row is special". Surface and border, never opacity. After `.pending`, for the same reason. */
-	.dimmed {
-		background: var(--bg2);
-		border-color: var(--line);
 	}
 	.seq {
 		width: 26px;

@@ -1,14 +1,3 @@
--- SINGLE PRE-RELEASE BASELINE: the whole schema from an empty database in one migration, not
--- incremental history. Regenerated from src/lib/server/db/schema.ts.
---
--- Anyone holding an OLDER dev database must delete it and let the library rebuild -- its
--- __drizzle_migrations records hashes that no longer exist in this folder, so it cannot migrate
--- forward; the meta/ sidecars are authoritative and will repopulate it.
---
--- Once this ships to a real box, STOP editing this file: every later schema change is a new numbered
--- migration that only ALTERs. tests/guards/hygiene/settings-repository.test.ts enforces that, and is
--- why this header must survive any regeneration.
-
 CREATE TABLE `global_settings` (
 	`id` text PRIMARY KEY DEFAULT 'singleton' NOT NULL,
 	`default_engine` text DEFAULT 'demucs' NOT NULL,
@@ -19,7 +8,8 @@ CREATE TABLE `global_settings` (
 	`default_fetcher` text DEFAULT 'ytdlp' NOT NULL,
 	`asr_model` text DEFAULT 'base' NOT NULL,
 	`sync_mode` text DEFAULT 'forced' NOT NULL,
-	`join_origin` text DEFAULT '' NOT NULL
+	`join_origin` text DEFAULT '' NOT NULL,
+	`max_processes_per_singer` integer DEFAULT 3 NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `job_attempts` (
@@ -44,7 +34,8 @@ CREATE TABLE `job_attempts` (
 	`sync_mode` text,
 	`audio_sec` integer,
 	`stages` text,
-	`selection` text
+	`selection` text,
+	`trail` text
 );
 --> statement-breakpoint
 CREATE INDEX `job_attempts_media_idx` ON `job_attempts` (`media_id`,`enqueued_at`);--> statement-breakpoint
@@ -144,7 +135,7 @@ CREATE INDEX `queue_entries_room_idx` ON `queue_entries` (`room_id`);--> stateme
 CREATE TABLE `room_settings` (
 	`room_id` text PRIMARY KEY NOT NULL,
 	`queue_order` text DEFAULT 'fair' NOT NULL,
-	`tv_progress_style` text DEFAULT 'card' NOT NULL,
+	`tv_progress_style` text DEFAULT 'edge' NOT NULL,
 	`tv_background_style` text DEFAULT 'off' NOT NULL,
 	`tv_background_color` text DEFAULT '#001d31' NOT NULL,
 	`tv_background_dim` real DEFAULT 0 NOT NULL,
@@ -154,7 +145,7 @@ CREATE TABLE `room_settings` (
 	`max_quality_rank` integer,
 	`lyrics_ball` text DEFAULT 'off' NOT NULL,
 	`lyrics_highlight` text DEFAULT 'word' NOT NULL,
-	`lyrics_lead_ms` integer DEFAULT 300 NOT NULL,
+	`lyrics_lead_ms` integer DEFAULT 0 NOT NULL,
 	`lyrics_scale_pct` integer DEFAULT 100 NOT NULL,
 	`lyrics_font` text DEFAULT 'system' NOT NULL,
 	`lyrics_case` text DEFAULT 'natural' NOT NULL,

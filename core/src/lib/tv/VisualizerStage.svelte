@@ -5,6 +5,7 @@
 	// the frame rather than merely hiding the canvas. See docs/FRONTEND.md#the-visualizer-stage.
 	import { VISUALIZER_RENDERERS } from './visualizers';
 	import { frameClock, frameDue, shouldAnimate } from './visualizer-loop';
+	import { MediaQuery } from 'svelte/reactivity';
 	import type { TvVisualizerId } from '$lib/contract';
 
 	interface Props {
@@ -28,10 +29,13 @@
 	// toggle, a `variant`/`hue` change, a remount — resets it and pins `t` near zero, drawing one frame forever.
 	let clockStart: number | null = null;
 
-	/** Via matchMedia rather than a CSS query, because the thing to disable is a JS LOOP. */
-	function prefersReducedMotion(): boolean {
-		return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-	}
+	/* A REACTIVE query, not a CSS one, because the thing to disable is a JS LOOP — and not a bare `matchMedia()` call
+	   either, which is what this was. Called once per effect run, it registered no `change` listener, so toggling the OS
+	   preference mid-party left the canvas animating behind the lyrics until something unrelated re-ran the effect. The
+	   phrase rotator on this same screen DID listen, so one feature had two motion gates that disagreed. `MediaQuery`
+	   is SSR-safe given the explicit fallback, and reading `.current` inside the effect is what makes the effect track
+	   it. */
+	const reducedMotion = new MediaQuery('prefers-reduced-motion: reduce', false);
 
 	$effect(() => {
 		// Read every reactive input SYNCHRONOUSLY here so the effect TRACKS it: read only inside `render()`, which runs
@@ -39,6 +43,8 @@
 		const activeVariant = variant;
 		const activeHue = hue;
 		const isPlaying = playing;
+		// Read with the others so the effect TRACKS the preference: an OS toggle must re-run this and cancel the loop.
+		const reduced = reducedMotion.current;
 		const el = canvas;
 		if (!el) return;
 		const ctx = el.getContext('2d');
@@ -62,10 +68,10 @@
 			});
 		};
 
-		if (!shouldAnimate(isPlaying, prefersReducedMotion())) {
+		if (!shouldAnimate(isPlaying, reduced)) {
 			// One frame, then nothing: a still plasma is a legitimate background, and a moving one behind lyrics is what a
-			// reduced-motion preference is asking us not to do. Enforced by its own test, since the CSS-parsing motion
-			// guard cannot see a canvas.
+			// reduced-motion preference is asking us not to do. `shouldAnimate` carries the decision and is unit-tested;
+			// no CSS-parsing check could see a canvas anyway.
 			render(0);
 			return () => window.removeEventListener('resize', size);
 		}

@@ -36,7 +36,8 @@
 		/** Views as the source reported them. Absent → no chip; see Media.viewCount. */
 		viewCount?: number;
 		/** A FLAT prop rather than the whole profile, because the row shows only this string. MUST stay ASCII
-		 * ('G#'/'Ab'): a typographic sharp or flat trips icons.test.ts. */
+		 * ('G#'/'Ab'): a typographic sharp or flat is a codepoint whose glyph the platform picks, and a TV browser may
+		 * have none for it. */
 		keyName?: string;
 		/** Descriptive library tags, shown on a READY row only — a raw search result has none worth showing. */
 		tags?: string[];
@@ -101,6 +102,16 @@
 
 	const barPct = $derived(status ? overallProcessPct(status, pct) : pct);
 
+	/* WHAT IS ANNOUNCED, and deliberately NOT `stateChip`, which carries the percentage. The chip's text changes on every
+	   whole-percent step, so as a live region it announced hundreds of times per song and drowned out the queue
+	   announcer. This is the STAGE only, so it speaks once per real transition; the progress bar still exposes its value
+	   for AT to read on demand. Empty for a row with no process state, which renders no region at all. */
+	const announcedStage = $derived(
+		readiness === 'processing' || readiness === 'failed' || readiness === 'ready'
+			? processStageLabel(readiness === 'processing' ? 'queued' : readiness === 'failed' ? 'failed' : 'ready')
+			: ''
+	);
+
 	const stateChip = $derived.by(() => {
 		if (readiness === 'ready') return processStageLabel('ready');
 		// A dead process must say so, or it keeps rendering the in-flight line forever on a stopped job.
@@ -136,7 +147,7 @@
 
 <!-- THE ROW IS A CONTAINER, NEVER A BUTTON: as a role="button" wrapper it announces one control while offering
 	three, and lets a keyboard user add the same song twice. Item.Root supplies the row grammar through its `child`
-	snippet; the `class` ATTRIBUTE must stay static, because contrast.test.ts splits it to derive the row's classes. -->
+	snippet, and this file keeps the row ELEMENT so its state classes stay attributable here. -->
 <Item.Root variant="bare" size="bare">
 	{#snippet child({ props })}
 		<div
@@ -145,7 +156,7 @@
 			class:ready={readiness === 'ready'}
 			class:processing={readiness === 'processing'}
 		>
-			<Item.Media data-media="thumb"
+			<Item.Media
 				><div class="thumb">
 					{#if thumbSrc}
 						<!-- alt="" on purpose: the title sits immediately beside it, so a described thumbnail says the song twice. -->
@@ -180,8 +191,7 @@
 										: readiness === 'failed'
 											? 'bad'
 											: 'neutral'}
-								wrap
-								aria-live="polite">{stateChip}</Badge
+								wrap>{stateChip}</Badge
 							>
 						{/if}
 						{#if kindLabel}<Badge
@@ -245,9 +255,15 @@
 	{/snippet}
 </Item.Root>
 
+<!-- THE STAGE TRANSITION IS THE ANNOUNCEMENT, NEVER THE PERCENTAGE — see `announcedStage`. Gated on being non-empty, so
+	a ready-to-queue row with no process state mounts no region at all rather than an empty one. -->
+{#if announcedStage}
+	<div class="vh" role="status">{announcedStage}</div>
+{/if}
+
 <style>
-	/* Geometry comes from `.list-row` in app.css, shared with the two queue rows. Every rule that declares a COLOUR
-	   has to stay in this file: contrast.test.ts reasons about a row's surfaces from its own rules. */
+	/* Geometry comes from `.list-row` in app.css, shared with the two queue rows. Every rule that declares a COLOUR has
+	   to stay in this file, so a contrast question about this row is answerable from it. */
 	.row {
 		transition: background var(--motion-fast) ease;
 	}

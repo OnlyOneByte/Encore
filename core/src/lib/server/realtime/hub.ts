@@ -91,7 +91,7 @@ const ENTRY_OP_GATE = {
  *  3. OWNERSHIP SHORT-CIRCUITS BEFORE `can()`. The `-any` capabilities mean "someone else's entry", so
  *     asking for one on your own song would refuse a singer their own turn the moment `can()` narrows to a
  *     host role. `can()` ignores its capability today, which is exactly why this cannot be caught by a test
- *     of behaviour — see tests/guards/wiring/capability-wiring.test.ts.
+ *     of behaviour: every capability resolves the same, so the ORDER is the only thing carrying the rule.
  */
 function entryOpRefusal(op: Extract<QueueOp, { op: EntryMutatingOp }>, deps: HubDeps): string | null {
 	const target = deps.state.entries.find((e) => e.id === op.id);

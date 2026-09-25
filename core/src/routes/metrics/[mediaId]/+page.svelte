@@ -163,7 +163,7 @@
 				{#each audit.processes as process, i (process.processingId)}
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Run {i + 1}</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Run {i + 1}</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<Card.Action>
@@ -242,7 +242,7 @@
 				{#if audit.plays.length}
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Sung</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Sung</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<ul class="plays">

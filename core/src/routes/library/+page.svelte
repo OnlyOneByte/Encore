@@ -35,10 +35,18 @@
 	import { toast } from 'svelte-sonner';
 
 	let me = $state<PublicSinger | null>(null);
-	let library = $state<Media[]>([]);
-	let libraryTags = $state<Record<string, string[]>>({});
+	/* `$state.raw`, NOT `$state`, for the three mirrored collections: `sync()` REASSIGNS each one wholesale from the
+	   room link and nothing here ever mutates them, so deep reactivity buys nothing and costs a proxy per object.
+	   `library` is the whole ready catalog and every Media carries nested `songProfile` and `lyricsCandidates`, so
+	   plain `$state` proxies hundreds of nested objects on every sync — on a page whose entire claim is that
+	   filtering is instant. Raw still updates on REASSIGNMENT, which is the only way these ever change. If a future
+	   edit needs to mutate one in place, it has to reassign instead — that is the trade being made here. */
+	let library = $state.raw<Media[]>([]);
+	let libraryTags = $state.raw<Record<string, string[]>>({});
+	let entries = $state.raw<QueueEntry[]>([]);
 	let libraryLoaded = $state(false);
-	let entries = $state<QueueEntry[]>([]);
+	/* Left un-raw deliberately, and it is not an oversight: Svelte proxies plain objects and arrays, never class
+	   instances, so there is no proxy here to avoid. */
 	let store = $state<QueueStore | undefined>(undefined);
 
 	/* As on `/`: `sync()` runs ONCE before subscribing, because the link is a singleton that outlives this component,
@@ -171,7 +179,7 @@
 			</div>
 
 			{#if !libraryLoaded}
-				<div class="skels" aria-busy="true" aria-label="Loading your library…">
+				<div class="skels" role="status" aria-busy="true" aria-label="Loading your library…">
 					{#each [0, 1, 2, 3] as i (i)}
 						<div class="skel-row">
 							<Skeleton variant="thumb" />
@@ -430,7 +438,9 @@
 	.lib-empty.tight {
 		min-height: 0;
 	}
-	.lib-empty:global([data-slot='empty-title']) {
+	/* The space is load-bearing — see the twin rule on `/`. Compound, this matched nothing and the title rendered at
+	   the vendored `text-lg`; `empty-title` is a grandchild through `Empty.Header`'s `display: contents`. */
+	.lib-empty :global([data-slot='empty-title']) {
 		font-size: var(--ph-text-2xl);
 		line-height: var(--lh-snug);
 		font-weight: 700;

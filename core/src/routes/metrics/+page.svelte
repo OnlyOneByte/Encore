@@ -107,7 +107,7 @@
 		{:else}
 			<!-- Worker state leads: with none connected, every timing below is history, not live state. -->
 			{#if metrics && metrics.workers.length === 0}
-				<!-- `role="status"`, not `alert`: phone-inventory.test.ts requires these live regions to be polite. -->
+				<!-- `role="status"`, not `alert`: a standing condition must not interrupt what the operator is reading. -->
 				<Alert.Root variant="warn" role="status">
 					<Alert.Title>No worker connected — songs can't be processed right now.</Alert.Title>
 				</Alert.Root>
@@ -126,7 +126,7 @@
 			{#if metrics}
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>From request to ready to sing</Card.Title>
+						<Card.Title role="heading" aria-level={2}>From request to ready to sing</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						<div class="kv">
@@ -140,7 +140,7 @@
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Each step</Card.Title>
+						<Card.Title role="heading" aria-level={2}>Each step</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						{#if metrics.steps.length === 0}
@@ -191,7 +191,7 @@
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Vocal removal speed</Card.Title>
+						<Card.Title role="heading" aria-level={2}>Vocal removal speed</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						{#if metrics.models.length === 0}
@@ -243,7 +243,7 @@
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Lyrics transcription</Card.Title>
+						<Card.Title role="heading" aria-level={2}>Lyrics transcription</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						{#if metrics.asr.length === 0}
@@ -288,7 +288,7 @@
 				{#if metrics.stages.length}
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Where the time goes</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Where the time goes</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<Bars
@@ -306,7 +306,7 @@
 				{#if metrics.slowestProcesses.length}
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Slowest songs</Card.Title>
+							<Card.Title role="heading" aria-level={2}>Slowest songs</Card.Title>
 						</Card.Header>
 						<Card.Content>
 							<!-- Ranked entries: the <ol>/<li> is meaning; not Item.Title, whose clamp truncates a raw media id. -->
@@ -331,7 +331,7 @@
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Workers</Card.Title>
+						<Card.Title role="heading" aria-level={2}>Workers</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						{#if metrics.workers.length === 0}
