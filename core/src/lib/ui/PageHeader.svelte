@@ -60,12 +60,27 @@
 		width: 100%;
 		max-width: min(var(--page-measure, var(--max-w)), calc(100dvw - 2 * var(--space-2xl)));
 		border-radius: var(--radius-pill);
-		/* `--card`, the same fill the band and the drawer paint. Fully OPAQUE and it must stay so: the element is sticky, so
-			   a translucent fill lets scrolled content read through the title, and this design has no backdrop blur. */
+		/* `--card`, the same fill the band and the drawer paint, and the OPAQUE FALLBACK for the blurred one below: on a
+			   sticky element a translucent fill with nothing behind it lets scrolled content read straight through the title.
+			   The `@supports` arm is what earns the translucency — see the note there. */
 		background: var(--card);
-		/* One elevation token and no hairline: nothing is flush against this surface, so the gap separates it. */
-		box-shadow: var(--shadow);
+		/* The FLOATING rung: this surface sticks over a scrolling column, so it is the far end of the ladder from the rows
+		   passing beneath it. With the lit edge, so it agrees with `.card` about where the light is. */
+		box-shadow:
+			var(--shadow),
+			inset 0 1px 0 var(--edge-hi);
 		z-index: var(--z-header);
+	}
+	/* THE BLUR IS GATED, and that is the whole reason the opaque fill stays declared above: `backdrop-filter` is the only
+	   thing that makes a translucent sticky surface legible, so the fill may only go translucent where the filter is
+	   actually applied. Both spellings are tested — Safari shipped this prefixed and still matches only `-webkit-`. The
+	   pair comes from `--chrome-fill`/`--chrome-blur` so the header, the sheet and the band cannot drift apart. */
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.page-header {
+			background: var(--chrome-fill);
+			-webkit-backdrop-filter: var(--chrome-blur);
+			backdrop-filter: var(--chrome-blur);
+		}
 	}
 	/* The cap lives on the SURFACE, because that is what has to align with the column, so this is layout only. The
 	   vertical padding must stay symmetric — inside a stadium an uneven inset reads as the contents sitting low. */

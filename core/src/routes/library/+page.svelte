@@ -17,13 +17,7 @@
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import { originalKeyLabel } from '$lib/contract';
-	import {
-		artistFacetsOf,
-		browseLibrary,
-		FACET_CHIP_LIMIT,
-		tagFacetsOf,
-		type LibrarySort
-	} from '$lib/library-browse';
+	import { artistFacetsOf, browseLibrary, FACET_CHIP_LIMIT, tagFacetsOf, type LibrarySort } from '$lib/library-browse';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
@@ -350,8 +344,6 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-
-
 	/* FLEX COLUMN, not grid + place-items: the vendored `Empty.Header` is `display: contents`, so its children become
 	   direct children of this box and grid would split the min-height between them. See `.queue-empty` on `/`. */
 	.lib-empty {
@@ -370,10 +362,13 @@
 	}
 	/* The space is load-bearing — see the twin rule on `/`. Compound, this matched nothing and the title rendered at
 	   the vendored `text-lg`; `empty-title` is a grandchild through `Empty.Header`'s `display: contents`. */
+	/* Full --ink, matching `/`'s twin: `.encore-empty` dims its whole subtree, which on a heading this size reads as a
+	   placeholder rather than as a title. The SIZE was already right here and is what `/` was brought down to. */
 	.lib-empty :global([data-slot='empty-title']) {
 		font-size: var(--ph-text-2xl);
 		line-height: var(--lh-snug);
 		font-weight: 700;
+		color: var(--ink);
 		overflow-wrap: anywhere;
 	}
 

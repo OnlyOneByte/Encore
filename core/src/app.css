@@ -49,6 +49,21 @@
 
 	--scrim-strong: rgba(0, 0, 0, 0.85);
 
+	/* THE LIT TOP EDGE — a 1px inset highlight, and the reason it is a token rather than three copies: on a dark page a
+	   surface separated only by a border reads as an OUTLINE, not as a thing sitting above something. The highlight is
+	   what makes it read as lit from above, and it has to move in step with the shadow rung below or the two disagree
+	   about where the light is. Deliberately a literal rgba and not a `--ink` mix: this is light falling on an edge, not
+	   ink, so it must not follow a theme's text colour. */
+	--edge-hi: rgba(255, 255, 255, 0.05);
+
+	/* DOCKED AND STICKY CHROME ONLY — never a card in the scrolling column, which has nothing behind it to blur and
+	   would pay the compositing for no effect. The two are a PAIR and must be applied together: the fill alone lets
+	   scrolled text read through the surface, which is the exact fault `PageHeader` was opaque to avoid. Every call
+	   site gates both behind `@supports`, so a browser without the filter keeps its opaque fill rather than going
+	   see-through. */
+	--chrome-blur: blur(20px) saturate(135%);
+	--chrome-fill: color-mix(in srgb, var(--card) 82%, transparent);
+
 	/* A sixth radius value is a bug, not a decision. */
 	--radius: 18px;
 	--radius-sm: 12px;
@@ -56,7 +71,14 @@
 	--radius-btn: 10px;
 	--radius-xs: 4px;
 	--radius-pill: 999px;
-	--shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+	/* ELEVATION AS A LADDER, because one value cannot express two heights: a row resting in a list and a sheet floating
+	   over the whole page were both wearing the same 30px shadow, so nothing read as nearer than anything else.
+	   `--shadow` STAYS THE NAME OF THE TOP RUNG — four files already spell it, and they are all the floating tier — so
+	   adding the ladder renames nothing. A fourth rung is a bug, not a decision, on the `--radius` rule's reasoning. */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+	--shadow-md: 0 4px 14px rgba(0, 0, 0, 0.38);
+	--shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.45);
+	--shadow: var(--shadow-lg);
 
 	/* The measured gate resolves THIS declaration at runtime (tests/playwright/specs/gate/measured-design-support.ts),
 	   so a control must express var(--tap) and never the literal. */
@@ -377,6 +399,13 @@ body {
 	background: var(--card);
 	border: 1px solid var(--line);
 	border-radius: var(--radius-sm);
+	/* THE RESTING RUNG PLUS THE LIT EDGE, and they belong together on this one rule rather than per caller: a border
+	   alone made every surface in the app read as an outline drawn on the page. Both are PAINT — no layout property is
+	   touched — so this reaches the song rows, the queue rows and the song page's fact block without moving a pixel,
+	   which is what makes it safe to put on the shared surface. No transition: a card does not change elevation. */
+	box-shadow:
+		var(--shadow-sm),
+		inset 0 1px 0 var(--edge-hi);
 }
 
 /* A row in one of the phone's three lists. Compose as `class="card list-row"`; one rule, because three files

@@ -180,7 +180,13 @@
 	.band {
 		background: var(--card);
 		border-top: 1px solid var(--line);
-		box-shadow: var(--shadow);
+		/* The lit edge joins the shadow so this surface agrees with `.card` and the sheet about where the light is. NO
+		   BLUR HERE, and no translucency: all three of these declarations are suppressed by `.band-slot` in the real app,
+		   where the SHEET paints the surface and carries the blur. Standalone this only renders in the gallery, with
+		   nothing behind it to blur, so a filter here would buy compositing and no effect. */
+		box-shadow:
+			var(--shadow),
+			inset 0 1px 0 var(--edge-hi);
 		padding-bottom: env(safe-area-inset-bottom, 0px);
 		z-index: var(--z-dock);
 		/* An item's automatic minimum is its MIN-CONTENT width and `.title` is nowrap, so without this the band's

@@ -559,10 +559,20 @@
 					promise the page cannot keep, and the only useful instruction here points back at the field above. -->
 			<Empty.Root>
 				<div class="queue-empty">
+					<!-- A MARK, and it is not decoration: this block is the whole screen on a first run, and a lone sentence in a
+							void reads as a page that failed to load rather than as a state someone designed. `aria-hidden` because the
+							title beside it already says this in words. -->
+					<span class="empty-mark" aria-hidden="true"><Icon name="mic" /></span>
 					<Empty.Header>
 						<Empty.Title>Nothing queued yet</Empty.Title>
-						<Empty.Description>Search above for a song and we'll make the karaoke track.</Empty.Description>
+						<Empty.Description>Find any song and we'll make the karaoke track for it.</Empty.Description>
 					</Empty.Header>
+					<!-- THE ACTION, IN THE STATE. It used to say "Search above", which makes a guest look away from the sentence
+							they are reading to find an unlabelled field — and on a phone the field needs a tap to raise the keyboard
+							anyway, which is exactly what this does. Not an `href`: the destination is a control on this same screen. -->
+					<Button variant="secondary" size="tap" onclick={() => queryEl?.focus()}>
+						<Icon name="search" /> Search for a song
+					</Button>
 				</div>
 			</Empty.Root>
 		{/if}
@@ -869,7 +879,6 @@
 		height: 100%;
 	}
 
-
 	.showall-row {
 		display: flex;
 		justify-content: center;
@@ -888,10 +897,21 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: var(--space-sm);
-		min-height: 40vh;
+		gap: var(--space-lg);
+		/* 32vh, DOWN FROM 40: the block now carries a mark, a title, a line and a button, so the void that used to stand in
+		   for content is no longer doing that job. Still a `min-height` and still not a centring trick, for the reason the
+		   original note gives — three other rules own this column's height. */
+		min-height: 32vh;
 		padding: var(--space-2xl) var(--space-md);
 		text-align: center;
+	}
+	/* The mark's own size, on the type ladder rather than a px literal so it scales with the text it sits above. Dim,
+	   because the TITLE is the thing to read — an accent-coloured glyph here would out-shout it. */
+	.empty-mark {
+		display: grid;
+		place-items: center;
+		font-size: var(--ph-text-2xl);
+		color: var(--ink-dim);
 	}
 	/* See the markup note: the void is only right when nothing follows the state. */
 	.queue-empty.tight {
@@ -902,10 +922,15 @@
 	   `display: contents`). It matched nothing, silently: `:global()` suppresses Svelte's unused-selector warning,
 	   so the size, weight and the `overflow-wrap` reflow clause below never applied and the title rendered at the
 	   vendored `text-lg`. */
+	/* --ph-text-2xl, DOWN FROM 3xl (2.6rem / ~42px). The old size was both the largest type in the app AND dimmed by
+	   `.encore-empty`'s --ink-dim, which is the worst pair available: big enough to dominate the screen, faint enough to
+	   read as a placeholder nobody finished. Full --ink at a heading size states it once, properly. It also now agrees
+	   with /library's twin, which was already at this step. */
 	.queue-empty :global([data-slot='empty-title']) {
-		font-size: var(--ph-text-3xl);
+		font-size: var(--ph-text-2xl);
 		line-height: var(--lh-snug);
 		font-weight: 700;
+		color: var(--ink);
 		overflow-wrap: anywhere;
 	}
 	/* --warn, not --danger: a dropped socket self-heals on the next backoff tick. */

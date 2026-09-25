@@ -100,6 +100,29 @@
 	const showKey = $derived(readiness === 'ready' && !!keyName);
 	const showTags = $derived(readiness === 'ready' && !!tags && tags.length > 0);
 
+	/*
+	 * WHAT EARNS A PILL, and this is the row's one typographic rule: a pill is for a CLASSIFICATION the eye should
+	 * catch — the process state, the video kind, a library tag. A row was spending up to FIVE of them in four colours,
+	 * and three of those were carrying MEASUREMENTS: a view count, a key, a duration verdict. Numbers in pills is what
+	 * made the row read as a debug dump rather than a list, and the wrapping second pill row cost a whole line.
+	 *
+	 * So the measurements join the byline as dim text on a `·`, which is the same grammar the band's own byline and the
+	 * queue subtitle already use. Built HERE and not inline: an `{#if}` between two lines of markup puts a NEWLINE in
+	 * the element's text, which reaches a screen reader and any assertion — the defect already fixed once on
+	 * /library's count line. MUST STAY BELOW `showKey`, which it reads: `$derived` is lazy at runtime, but the checker
+	 * sees a direct reference and reports a block-scoped use before declaration.
+	 */
+	const metaFacts = $derived(
+		[byline, views ? `${views} views` : '', showKey ? keyName : ''].filter(Boolean).join(' · ')
+	);
+	/* `durationNote` IS NOT IN THAT JOIN, and the measurement is why. It was demoted to byline text with the other two
+	   and it does not fit: the byline is 144px on a 390px phone and "Longer than a song" alone measures 116 of them.
+	   Sharing one ellipsising box truncated the WARNING away ("StopMotion Movies · 36…"); making it unshrinkable instead
+	   crushed the ARTIST to 28px of a 183px string. Both readings are worse than the pill. So it keeps a pill — the only
+	   measurement that does — and the fix for the original complaint is the TONE: `warn`, not `bad`. Amber is the right
+	   register for "this is probably not a song", it stops a mild metadata note wearing the failure colour, and it
+	   matches the `Live` chip that sits beside it on most of these same rows. */
+
 	const barPct = $derived(status ? overallProcessPct(status, pct) : pct);
 
 	/* WHAT IS ANNOUNCED, and deliberately NOT `stateChip`, which carries the percentage. The chip's text changes on every
@@ -176,8 +199,10 @@
 					<span class="t">{title}</span>
 					{#if readiness === 'processing'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
 				</div>
-				{#if byline}<div class="byline">{byline}</div>{/if}
-				{#if kindLabel || stateChip || views || durationNote || showKey || showTags}
+				<!-- THE BYLINE NOW CARRIES THE MEASUREMENTS — see `metaFacts`. One expression and no inline `{#if}`, so it
+					cannot contribute a stray newline to the element's text. -->
+				{#if metaFacts}<div class="byline">{metaFacts}</div>{/if}
+				{#if kindLabel || stateChip || durationNote || showTags}
 					<div class="chips">
 						{#if stateChip}
 							<!-- The tone IS the meaning, so it is passed as a variant; `wrap` because this chip carries a phrase. -->
@@ -203,11 +228,13 @@
 												? 'bad'
 												: 'neutral'}>{kindLabel}</Badge
 							>{/if}
-						<!-- NEUTRAL chips: each is a fact about the song, not a status, so neither may borrow the semantic tints. -->
-						{#if showKey}<Badge>{keyName}</Badge>{/if}
-						<!-- Ordered after the kind, so "Live · Longer than a song" reads as one thought about one recording. -->
-						{#if durationNote}<Badge variant="bad" wrap>{durationNote}</Badge>{/if}
-						{#if views}<Badge>{views} views</Badge>{/if}
+						<!-- `warn`, NOT `bad`, and ordered after the kind so "Live · Longer than a song" reads as one thought about
+							one recording. The tone change is the whole fix here: red is the failure colour and this is a mild metadata
+							note. It is the one measurement that keeps a pill, because it is the one that does not fit the byline —
+							`durationNote`'s note has the numbers. -->
+						{#if durationNote}<Badge variant="warn" wrap>{durationNote}</Badge>{/if}
+						<!-- TAGS ARE THE OTHER SURVIVING PILL, and they earn it: a tag is a describing WORD, which is what a pill is
+							for. The key and the view count used to sit here and have moved to the byline — see `metaFacts`. -->
 						{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
 					</div>
 				{/if}
@@ -357,7 +384,10 @@
 		margin-top: var(--space-3xs);
 	}
 
-	/* The uploader / canonical artist, alone on its line so it is never truncated by prose beside it. */
+	/* The uploader / canonical artist, now followed by the view count and the key on a `·` — see `metaFacts`. ONE
+	   ellipsising box, which only works because the demoted facts are SHORT: the artist comes first, so what a narrow
+	   phone drops is the tail of a view count rather than the identity, and both numbers are restated on
+	   /song/[mediaId]. Letting it wrap instead would give the row a variable height. */
 	.byline {
 		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
