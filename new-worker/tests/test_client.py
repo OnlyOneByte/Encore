@@ -711,3 +711,97 @@ class _Retryable(RuntimeError):
 
 class _Permanent(RuntimeError):
     retryable = False
+
+
+# ── worker:catalogue — announced after the handshake, never inside it ─────────────────────────────
+
+
+def _offer(token: str) -> f.SeparatorOffer:
+    return f.SeparatorOffer(token=token, label=token, architecture="MDXC")
+
+
+async def test_the_catalogue_is_sent_after_hello_and_the_claim() -> None:
+    """ORDER IS THE POINT. Registration and re-claiming ownership of in-flight work must not queue behind a
+    4.8 s model enumeration — a job held across a reconnect waits on the claim, and `may_publish` refuses
+    until the core answers it."""
+    socket = FakeSocket()
+    c = client(socket)
+    c.catalogue = lambda: (frozenset({"stems:model:a-model"}), (_offer("a-model"),))
+
+    async with Session(c, socket):
+        await _until(lambda: any(s["type"] == "worker:catalogue" for s in socket.sent))
+
+    kinds = [s["type"] for s in socket.sent]
+    assert kinds.index("worker:hello") < kinds.index("worker:catalogue")
+
+
+async def test_the_catalogue_repeats_the_base_capabilities_alongside_the_models() -> None:
+    """A FULL SET, not a delta: the core REPLACES on receipt, so omitting the base tokens would make a worker
+    that can align appear unable to."""
+    socket = FakeSocket()
+    c = client(socket, caps=frozenset({"stems", "align"}))
+    c.catalogue = lambda: (frozenset({"stems:model:a-model"}), (_offer("a-model"),))
+
+    async with Session(c, socket):
+        await _until(lambda: any(s["type"] == "worker:catalogue" for s in socket.sent))
+
+    frame = next(s for s in socket.sent if s["type"] == "worker:catalogue")
+    assert set(frame["capabilities"]) == {"stems", "align", "stems:model:a-model"}
+
+
+async def test_a_box_with_no_catalogue_sends_no_frame() -> None:
+    """`catalogue` is None without the `audiosep` extra. An empty frame would tell the core to replace a
+    worker's capabilities with nothing."""
+    socket = FakeSocket()
+    c = client(socket)
+    assert c.catalogue is None
+
+    async with Session(c, socket):
+        pass
+
+    assert not any(s["type"] == "worker:catalogue" for s in socket.sent)
+
+
+async def test_an_empty_enumeration_sends_no_frame() -> None:
+    """Same reasoning one step later: a box where the enumeration legitimately finds nothing must not
+    announce an empty capability set."""
+    socket = FakeSocket()
+    c = client(socket)
+    c.catalogue = lambda: (frozenset(), ())
+
+    async with Session(c, socket):
+        pass
+
+    assert not any(s["type"] == "worker:catalogue" for s in socket.sent)
+
+
+async def test_a_failing_enumeration_does_not_take_down_the_connection() -> None:
+    """A picker's contents must never fail a worker. The box keeps serving with the capabilities it already
+    announced in `hello`, which is exactly what it could do before this frame existed."""
+    socket = FakeSocket()
+    c = client(socket)
+
+    def explode() -> tuple[frozenset[str], tuple[f.SeparatorOffer, ...]]:
+        raise RuntimeError("audio_separator is broken here")
+
+    c.catalogue = explode
+
+    async with Session(c, socket):
+        pass
+
+    assert any(s["type"] == "worker:hello" for s in socket.sent)
+    assert not any(s["type"] == "worker:catalogue" for s in socket.sent)
+
+
+async def _until(predicate: Callable[[], bool], timeout_sec: float = 5.0) -> None:
+    """Wait for a condition the SESSION does not gate on.
+
+    `Session.__aenter__` returns once inbound frames are drained, but the catalogue is an outbound frame
+    produced by a background task — so there is nothing inbound to wait for. Polling beats a fixed sleep:
+    the enumeration runs in a thread and its completion is not observable from here.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout_sec
+    while not predicate():
+        if asyncio.get_running_loop().time() > deadline:
+            raise AssertionError("condition never became true")
+        await asyncio.sleep(0.01)

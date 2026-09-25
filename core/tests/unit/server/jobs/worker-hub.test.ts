@@ -3,7 +3,7 @@
 // socket — sinks capture the effects.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
-import { WorkerHub } from '$lib/server/jobs/worker-hub';
+import { WorkerHub, validateWorkerMessage } from '$lib/server/jobs/worker-hub';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
@@ -58,6 +58,115 @@ function harness() {
 
 const cmdsOfType = (sent: { cmd: WorkerCommand }[], type: WorkerCommand['type']) =>
 	sent.filter((s) => s.cmd.type === type).map((s) => s.cmd);
+
+// ── worker:catalogue — the models a worker reports it can run ────────────────────────────────────
+
+test('a catalogue frame replaces capabilities and records the offers', () => {
+	const { hub, registry } = harness();
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({
+		type: 'worker:catalogue',
+		workerId: 'w1',
+		capabilities: ['stems', 'stems:audiosep', 'stems:model:a-model'],
+		separators: [{ token: 'a-model', label: 'A Model', architecture: 'MDXC' }]
+	});
+	const w = registry.get('w1')!;
+	expect(w.capabilities).toContain('stems:model:a-model');
+	expect(w.separators!.map((o) => o.token)).toEqual(['a-model']);
+});
+
+test('a catalogue REPLACES rather than merges, so a withdrawn model stops being routable', () => {
+	// The worker sends its full set for exactly this reason. Merging would keep a model a worker has since
+	// stopped offering — an extra uninstalled, a version downgraded — and core would route a job to a box
+	// that now refuses it.
+	const { hub, registry } = harness();
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	const frame = (tokens: string[]) =>
+		({
+			type: 'worker:catalogue' as const,
+			workerId: 'w1',
+			capabilities: ['stems', ...tokens.map((t) => `stems:model:${t}`)],
+			separators: tokens.map((t) => ({ token: t, label: t, architecture: 'MDXC' }))
+		});
+	hub.handle(frame(['gone', 'kept']));
+	hub.handle(frame(['kept']));
+	const w = registry.get('w1')!;
+	expect(w.capabilities).not.toContain('stems:model:gone');
+	expect(w.separators!.map((o) => o.token)).toEqual(['kept']);
+});
+
+test('a catalogue for an unregistered worker is ignored, not used to resurrect it', () => {
+	// Arriving after a close is stale. Inventing a session from it would bring back a worker the reaper has
+	// already written off, with slots core would then dispatch into.
+	const { hub, registry } = harness();
+	hub.handle({
+		type: 'worker:catalogue',
+		workerId: 'ghost',
+		capabilities: ['stems'],
+		separators: [{ token: 'a-model', label: 'A', architecture: 'MDXC' }]
+	});
+	expect(registry.get('ghost')).toBeNull();
+});
+
+test('a catalogue does not disturb slotsFree', () => {
+	// It says nothing about load, and resetting it here would discard the dispatcher's view seconds after a
+	// reconnect had already rebuilt it.
+	const { hub, jobs, registry } = harness();
+	jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 2, version: '1' });
+	const before = registry.get('w1')!.slotsFree;
+	hub.handle({ type: 'worker:catalogue', workerId: 'w1', capabilities: ['stems'], separators: [] });
+	expect(registry.get('w1')!.slotsFree).toBe(before);
+});
+
+test('a catalogue dispatches, because a job may have been unservable waiting for it', () => {
+	// `hasCapableWorker` is false for `stems:model:<token>` until this frame lands. Without the dispatch the
+	// job would sit queued until the next unrelated event.
+	const { hub, jobs, sent } = harness();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: [], concurrency: 1, version: '1' });
+	expect(cmdsOfType(sent, 'job:assign')).toHaveLength(0); // nothing it can serve yet
+	hub.handle({
+		type: 'worker:catalogue',
+		workerId: 'w1',
+		capabilities: ['stems'],
+		separators: [{ token: 'a-model', label: 'A', architecture: 'MDXC' }]
+	});
+	const assigns = cmdsOfType(sent, 'job:assign') as Array<Extract<WorkerCommand, { type: 'job:assign' }>>;
+	expect(assigns.map((a) => a.jobId)).toEqual([job.id]);
+});
+
+test('capability summarising collapses the per-model tokens', () => {
+	// A zoo worker advertises ~137 tokens, 135 of them `stems:model:*`. Printed verbatim that is a 6 KB log
+	// line that buries the two or three tokens anyone reads a join message for.
+	const many = ['align', 'stems', ...Array.from({ length: 135 }, (_, i) => `stems:model:m${i}`)];
+	const summary = WorkerHub.summariseCapabilities(many);
+	expect(summary).toBe('align,stems,+135 models');
+	expect(summary.length).toBeLessThan(60);
+});
+
+test('capability summarising leaves a worker without models exactly as it was', () => {
+	expect(WorkerHub.summariseCapabilities(['align', 'stems'])).toBe('align,stems');
+	expect(WorkerHub.summariseCapabilities([])).toBe('none');
+});
+
+test('validateWorkerMessage refuses a catalogue whose offers carry no token', () => {
+	// The token is what a job names and what lands in `job_attempts.model`. A blank one is unroutable.
+	expect(
+		validateWorkerMessage({ type: 'worker:catalogue', workerId: 'w1', capabilities: [], separators: [{ label: 'x' }] })
+	).toBe('malformed separators');
+	expect(
+		validateWorkerMessage({ type: 'worker:catalogue', workerId: 'w1', capabilities: [], separators: [{ token: '' }] })
+	).toBe('malformed separators');
+	expect(
+		validateWorkerMessage({
+			type: 'worker:catalogue',
+			workerId: 'w1',
+			capabilities: ['stems'],
+			separators: [{ token: 'ok', label: 'Ok', architecture: 'MDXC' }]
+		})
+	).toBeNull();
+});
 
 test('hello → welcome handshake + dispatch of a waiting job', () => {
 	const { hub, jobs, sent } = harness();

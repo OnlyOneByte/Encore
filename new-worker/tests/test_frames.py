@@ -276,3 +276,56 @@ def test_assign_still_requires_what_it_genuinely_cannot_default() -> None:
         del raw[missing]
         with pytest.raises(f.ProtocolError, match=missing):
             f.parse(raw)
+
+
+# ── worker:catalogue ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_catalogue_frame_carries_the_full_capability_set_not_a_delta() -> None:
+    """A full set is IDEMPOTENT, which is the property that matters: a dropped or duplicated frame cannot
+    leave the core with a half-updated view. A delta would require both sides to agree on an ordering and to
+    have received every previous frame."""
+    frame = f.Catalogue(
+        worker_id="w1",
+        capabilities=("align", "stems", "stems:model:a-model"),
+        separators=(f.SeparatorOffer(token="a-model", label="A Model", architecture="MDXC"),),
+    )
+    wire = frame.to_wire()
+    assert wire["type"] == "worker:catalogue"
+    assert wire["capabilities"] == ["align", "stems", "stems:model:a-model"]
+
+
+def test_an_offer_carries_no_type_key() -> None:
+    """It is an element INSIDE a frame, not a frame. `_wire` stamps a `type`, which is why offers are not
+    built by it — a stray `type` on a nested object is the kind of thing a permissive parser ignores and a
+    strict one rejects."""
+    offer = f.SeparatorOffer(token="t", label="L", architecture="MDXC")
+    assert "type" not in offer.to_wire()
+
+
+def test_an_offer_omits_an_absent_score_rather_than_sending_null() -> None:
+    """The module convention, and it is what keeps a newer worker compatible with an older core: an unknown
+    key is ignored, where an explicit `null` may not be. Most zoo models have no published score."""
+    wire = f.SeparatorOffer(token="t", label="L", architecture="VR").to_wire()
+    assert "upstreamInstrumentalSdr" not in wire
+    assert "upstreamVocalsSdr" not in wire
+
+
+def test_an_offer_sends_its_score_camelCased_when_it_has_one() -> None:
+    wire = f.SeparatorOffer(
+        token="t", label="L", architecture="MDXC", upstream_instrumental_sdr=16.45, upstream_vocals_sdr=9.1
+    ).to_wire()
+    assert wire["upstreamInstrumentalSdr"] == 16.45
+    assert wire["upstreamVocalsSdr"] == 9.1
+
+
+def test_role_source_travels_so_an_operator_knows_what_they_picked() -> None:
+    """`unknown` means the worker will determine the stem roles from the audio rather than from metadata.
+    Either way it verifies before publishing — this only says whether there was a hint to start from."""
+    assert f.SeparatorOffer(token="t", label="L", architecture="MDXC").to_wire()["roleSource"] == "unknown"
+    assert (
+        f.SeparatorOffer(token="t", label="L", architecture="MDXC", role_source="declared").to_wire()[
+            "roleSource"
+        ]
+        == "declared"
+    )
