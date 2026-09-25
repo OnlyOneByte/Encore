@@ -17,9 +17,19 @@ from encore_worker.transport.ownership import Ownership, Reason, Standing
 # ── the ledger ───────────────────────────────────────────────────────────────────────────────────
 
 
+def strict() -> Ownership:
+    """A ledger with the PULL half enabled — i.e. against a core that answers `job:claim`.
+
+    Explicit because the default is now False: today's core implements neither claim frame, and requiring a
+    confirmation it can never send would refuse every publish. Tests of the strong guarantee must opt in, so
+    that what they prove is unambiguous.
+    """
+    return Ownership(require_confirmation=True)
+
+
 def confirmed(*job_ids: str) -> Ownership:
     """A ledger holding these jobs, accepted AND confirmed by a claim round."""
-    own = Ownership()
+    own = strict()
     for job_id in job_ids:
         own.accepted(job_id)
     own.claim_answered(owned=frozenset(job_ids), revoked=frozenset(), unknown=frozenset())
@@ -42,7 +52,7 @@ def test_a_confirmed_job_may_publish() -> None:
 
 def test_an_accepted_but_unconfirmed_job_may_not_publish_yet() -> None:
     """The pull half. Until a claim round answers, we do not know the core still agrees."""
-    own = Ownership()
+    own = strict()
     own.accepted("j1")
     assert own.standing("j1") is Standing.OURS
     assert own.may_publish("j1") is False, "ours, but not yet confirmed"

@@ -279,11 +279,23 @@ class Welcome:
     TYPE: ClassVar[str] = WELCOME
     #: Echoed back so a worker can detect the core disagreeing about who it is.
     worker_id: str | None = None
+    #: The container the core wants PUBLISHED stems in. `None` when the core said nothing — an older core
+    #: that does not announce it — and the worker then keeps its configured fallback.
+    #:
+    #: CORE'S DECISION, not this box's: core owns the storage layout, a row's extension is recorded forever,
+    #: and a worker publishing a different container writes a file whose recorded ref 404s.
+    publish_stem_format: str | None = None
 
     @staticmethod
     def parse(raw: dict[str, Any]) -> Welcome:
         got = raw.get("workerId")
-        return Welcome(worker_id=got if isinstance(got, str) else None)
+        fmt = raw.get("publishStemFormat")
+        # Normalised the same way core normalises it, so `.FLAC` and `flac` cannot become two formats.
+        cleaned = fmt.strip().lstrip(".").lower() if isinstance(fmt, str) and fmt.strip() else None
+        return Welcome(
+            worker_id=got if isinstance(got, str) else None,
+            publish_stem_format=cleaned,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,21 +308,35 @@ class Assign:
     job_id: str
     media_id: str
     action: str
-    media_dir: str
+    #: The media volume, when the core names one. USUALLY None: the core does not send this, because the
+    #: volume is a property of the WORKER'S HOST, not of the job — two workers on different boxes mount it
+    #: at different paths, and only each worker knows its own. The composition root falls back to
+    #: `Config.media_dir`.
+    #:
+    #: It was `_require`d here originally, which rejected every real `job:assign` the core sent with
+    #: "missing required field 'mediaDir'" — the worker connected, advertised, and then silently ignored
+    #: every assignment. Found only by running against a live core.
+    media_dir: str | None = None
     source_uri: str | None = None
     params: dict[str, Any] | None = None
+    #: The core's own handle for this processing attempt. Echoed in nothing yet; kept so a frame the core
+    #: sends is not silently dropped on the floor.
+    processing_id: str | None = None
 
     @staticmethod
     def parse(raw: dict[str, Any]) -> Assign:
         source = raw.get("sourceUri")
         params = raw.get("params")
+        media_dir = raw.get("mediaDir")
+        processing = raw.get("processingId")
         return Assign(
             job_id=_require(raw, "jobId", str),
             media_id=_require(raw, "mediaId", str),
             action=_require(raw, "jobType", str),
-            media_dir=_require(raw, "mediaDir", str),
+            media_dir=media_dir if isinstance(media_dir, str) and media_dir else None,
             source_uri=source if isinstance(source, str) else None,
             params=params if isinstance(params, dict) else None,
+            processing_id=processing if isinstance(processing, str) else None,
         )
 
 

@@ -14,6 +14,7 @@ import type {
 	GlobalSettings,
 	EffectiveSettings
 } from '../../contract';
+import { publishStemFormat } from '$lib/server/media/paths';
 import { sourceUriFor, resolveProcessSeparator } from '../../contract';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
@@ -197,7 +198,10 @@ export class WorkerHub {
 			// reaper requeues a healthy process as `progress-lease-expired`.
 			heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000 / 2),
 			ackTimeoutSec: Math.floor(this.#config.ackTimeoutMs / 1000),
-			mediaStore: this.#d.mediaStore ?? { kind: 'local' }
+			mediaStore: this.#d.mediaStore ?? { kind: 'local' },
+			// Core owns the storage layout, so core names the format rather than trusting each worker's env
+			// to agree. A worker that publishes a different container writes a file whose recorded ref 404s.
+			publishStemFormat: publishStemFormat()
 		});
 		this.dispatch();
 	}

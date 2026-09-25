@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.document import Segment
 from encore_worker.domain.lyrics.policy import Knob, Tier
 from encore_worker.host.config import Config
@@ -418,12 +419,23 @@ async def test_a_note_failure_never_fails_a_job(tmp_path: Path) -> None:
 # ── the silence probe's honesty ──────────────────────────────────────────────────────────────────
 
 
+def _store(tmp_path: Path) -> LocalArtifactStore:
+    """A real store over a temp tree. Real rather than faked: it holds four strings and touches no disk
+    until something is published, and these tests publish nothing."""
+    return LocalArtifactStore(Roots.under(str(tmp_path / "media")))
+
+
 async def test_probe_silence_reports_none_rather_than_inventing_a_loud_reading(tmp_path: Path) -> None:
     """With no probe the step must say "I do not know", not return a number meaning "definitely fine"."""
     from encore_worker.steps.separate_steps import SeparateStepsImpl
 
     impl = SeparateStepsImpl(
-        config=CFG, audio=steps(tmp_path), reporter=Reporter(), separator=None, probe=None
+        config=CFG,
+        audio=steps(tmp_path),
+        reporter=Reporter(),
+        store=_store(tmp_path),
+        separator=None,
+        probe=None,
     )
     assert await impl.probe_silence(job(tmp_path), audio(tmp_path)) is None
 
@@ -439,7 +451,12 @@ async def test_probe_silence_passes_through_a_real_measurement(tmp_path: Path) -
             return -6.5
 
     impl = SeparateStepsImpl(
-        config=CFG, audio=steps(tmp_path), reporter=Reporter(), separator=None, probe=Probe()
+        config=CFG,
+        audio=steps(tmp_path),
+        reporter=Reporter(),
+        store=_store(tmp_path),
+        separator=None,
+        probe=Probe(),
     )
     assert await impl.probe_silence(job(tmp_path), audio(tmp_path)) == -6.5
 

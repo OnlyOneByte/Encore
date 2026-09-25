@@ -44,7 +44,10 @@ class Config:
 
     #: Where the core is. The one setting with no sensible default — a worker that guesses this
     #: silently dials a machine nobody meant.
-    core_url: str = "ws://localhost:3000/worker"
+    #: `/ws?role=worker` — the path AND the role param are both required: core routes every socket through
+    #: one `/ws` endpoint and reads `role` to decide what the connection may do (`core/server.ts`). A worker
+    #: dialling `/worker` is simply not upgraded, which looks like the core being down.
+    core_url: str = "ws://localhost:3000/ws?role=worker"
     worker_id: str = "worker-1"
     version: str = "0.1.0"
     #: How many jobs at once. One by default: separation and alignment are both GPU-bound, and two
@@ -61,6 +64,17 @@ class Config:
     ytdlp_bin: str = "yt-dlp"
     mlx_bin: str = "demucs-mlx"
     keepalive_sec: float = KEEPALIVE_SEC
+    #: The container published stems are written in. CORE'S DECISION, not this box's: core owns the storage
+    #: layout and announces this at handshake, because a row's ext is recorded forever and a worker guessing
+    #: differently from core makes a file that exists 404 (core's paths.ts: "a mismatch is SILENT").
+    #:
+    #: NOT `ENCORE_STEM_FORMAT`, which is a different setting — the SCRATCH container a separator writes,
+    #: legitimately `wav` to skip an encode on a CPU-bound box. Conflating them would let a scratch choice
+    #: silently change what the library stores.
+    publish_stem_format: str = "flac"
+    #: FLAC compression level. 8 is the size/CPU knee and is decode-cheap, which is what matters for a
+    #: browser starting playback in a room.
+    flac_level: int = 8
     #: Retain the raw caption track under `derived/` for diagnosing the parser. Off by default: it is
     #: evidence for a specific investigation, not something every room needs on disk.
     keep_raw_captions: bool = False
@@ -104,7 +118,7 @@ class Config:
             )
 
         return Config(
-            core_url=text("ENCORE_CORE_URL", "ws://localhost:3000/worker"),
+            core_url=text("ENCORE_CORE_URL", "ws://localhost:3000/ws?role=worker"),
             worker_id=text("ENCORE_WORKER_ID", "worker-1"),
             version=text("ENCORE_WORKER_VERSION", "0.1.0"),
             concurrency=_positive_int(src, "ENCORE_WORKER_CONCURRENCY", 1),
@@ -117,6 +131,11 @@ class Config:
             ytdlp_bin=text("ENCORE_YTDLP_BIN", "yt-dlp"),
             mlx_bin=text("ENCORE_MLX_BIN", "demucs-mlx"),
             keepalive_sec=_positive_float(src, "ENCORE_KEEPALIVE_SEC", KEEPALIVE_SEC),
+            # Read from the environment as a FALLBACK only. Core announces the live value at handshake and
+            # that wins, because core owns the storage layout — this exists so a worker started against an
+            # older core (which announces nothing) still publishes something core can read.
+            publish_stem_format=text("ENCORE_PUBLISH_STEM_FORMAT", "flac").lstrip(".").lower(),
+            flac_level=_positive_int(src, "ENCORE_FLAC_LEVEL", 8),
             keep_raw_captions=_flag(src, "ENCORE_KEEP_RAW_CAPTIONS"),
             offline=_flag(src, "ENCORE_OFFLINE"),
             lrcmux_url=text("ENCORE_LRCMUX_URL", "https://api.lrcmux.dev"),

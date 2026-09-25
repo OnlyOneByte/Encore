@@ -55,6 +55,10 @@ export class RoomLink {
 	 * rows AND seeds the catalog and live statuses the queue needs for its titles and progress bars on a cold load. */
 	library: Media[] = [];
 	libraryTags: Record<string, string[]> = {};
+	/** Whether the fetch has RETURNED, success or failure — not whether it found anything. /library needs the two apart:
+	 * an empty `library` before the first response is a loading skeleton, and after it is "you own no karaoke tracks",
+	 * and showing the second while the first is true accuses a full library of being empty for one frame. */
+	libraryLoaded = false;
 	/** The optimistic queue. Undefined until a joined singer connects. */
 	queue: QueueStore | undefined;
 	entries: QueueEntry[] = [];
@@ -310,6 +314,11 @@ export class RoomLink {
 			this.#emit();
 		} catch {
 			/* ignore — the library is an accelerator, never a blocker */
+		} finally {
+			// In `finally`, so a failed fetch still RESOLVES the loading state: left false, /library would spin forever
+			// on a dropped request rather than saying it has nothing to show.
+			this.libraryLoaded = true;
+			this.#emit();
 		}
 	}
 

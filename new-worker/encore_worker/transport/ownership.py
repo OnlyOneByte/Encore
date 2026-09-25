@@ -54,22 +54,34 @@ class Ownership:
     enough to be worth asking about again.
     """
 
+    #: Does the CORE answer `job:claim` with `job:claim-ack`? When it does not, the pull half of the guard
+    #: cannot run and requiring it would deadlock every job: `accepted()` would mark the job unconfirmed,
+    #: nothing would ever clear it, and `may_publish` would refuse forever — after the full 40-minute cook.
+    #:
+    #: DEFAULT FALSE, because today's core implements neither frame and drops unknown ones silently
+    #: (`core/server.ts:172`). False leaves the PUSH half (`job:revoked`) working, which is exactly the
+    #: guard the old worker ships with — so this is parity, not a regression. Flip it on in the same change
+    #: that teaches core the two frames, and the stronger guarantee arrives with its counterpart.
+    require_confirmation: bool = False
     _ours: set[str] = field(default_factory=set)
     #: Why each lost job was lost. RETAINED past the job's end, deliberately — see `finished()`.
     #: Bounded, because this process is long-lived and a revoked job id would otherwise never leave.
     _lost: dict[str, Reason] = field(default_factory=dict)
     _lost_cap: int = 512
     #: Jobs accepted since the last successful claim round. Re-asked after every reconnect, because a
-    #: reconnect is the event most likely to have hidden a revocation.
+    #: reconnect is the event most likely to have hidden a revocation. Always EMPTY when
+    #: `require_confirmation` is False — nothing populates it, so nothing waits on it.
     _unconfirmed: set[str] = field(default_factory=set)
 
     # ── what the transport tells it ──────────────────────────────────────────────────────────────
 
     def accepted(self, job_id: str) -> None:
-        """We took an assignment. Ours until told otherwise, but unconfirmed until a claim round."""
+        """We took an assignment. Ours until told otherwise, and unconfirmed until a claim round IF the
+        core can answer one."""
         self._ours.add(job_id)
         self._lost.pop(job_id, None)
-        self._unconfirmed.add(job_id)
+        if self.require_confirmation:
+            self._unconfirmed.add(job_id)
 
     def revoked(self, job_id: str, reason: Reason = Reason.REVOKED) -> None:
         """The core reassigned it, or cancelled it. Idempotent: a duplicate frame changes nothing."""
@@ -104,8 +116,13 @@ class Ownership:
         Standing is NOT reset to LOST here — that would abandon healthy in-flight work on every blip, and
         a reconnect usually confirms the same jobs. But every one of them must be re-claimed before it
         can publish, which is what `pending_claims()` then reports.
+
+        A no-op without `require_confirmation`: with no core to answer, marking jobs unconfirmed would
+        strand them rather than protect them. The residual exposure is the honest one — a revocation pushed
+        while the socket was down is never seen, which is the same window the old worker lives with.
         """
-        self._unconfirmed |= set(self._ours)
+        if self.require_confirmation:
+            self._unconfirmed |= set(self._ours)
 
     def finished(self, job_id: str) -> None:
         """Release a job's slot. Does NOT clear a recorded loss.

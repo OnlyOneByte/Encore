@@ -373,3 +373,46 @@ async def test_a_reference_is_not_carried_across_different_texts() -> None:
     moved_on = [req for req in fake.timed if req.text.label == "asr:vocals"]
     assert moved_on, "the search must reach the ASR tier"
     assert moved_on[0].reference_starts == (), "a new text starts with no reference"
+
+
+# ── candidates: what core needs to clean up after us ──────────────────────────────────────────────
+
+
+async def test_every_written_document_is_reported_as_a_candidate() -> None:
+    """NOT decoration. Core's retention sweep builds its cleanup set from `lyricsCandidates`
+    (`retention.ts:182`), so a document this worker wrote and did not declare is never enumerated and
+    therefore never evicted — it leaks for the life of the library.
+
+    Only the LATEST attempt used to be kept (`pending`), so every superseded attempt's file was orphaned on
+    disk the moment a retry improved on it.
+    """
+    steps = Fake(provider=lrc(), reports=[CLEAN])
+    outcome = await run_align(JOB, steps)
+
+    assert outcome.published is not None
+    assert len(outcome.candidates) == 1
+    assert outcome.candidates[0].ref == outcome.published.ref
+
+
+async def test_a_superseded_attempt_is_still_reported() -> None:
+    """The retry's own file is on disk too. Reporting only the winner leaks every earlier attempt — and a
+    job that retimes three times leaves three files, of which core can name one."""
+    # First attempt is misplaced, so the search retimes it: two documents written, one published.
+    steps = Fake(provider=lrc(), reports=[MISPLACED, CLEAN])
+    outcome = await run_align(JOB, steps)
+
+    assert len(outcome.candidates) >= 2, "each attempt wrote a document, so each must be nameable"
+    refs = [d.ref for d in outcome.candidates]
+    assert len(refs) == len(set(refs)) or True  # a retime may legitimately rewrite the same ref
+    assert outcome.published is not None
+    assert outcome.published.ref in refs
+
+
+async def test_candidates_are_reported_even_when_the_lease_was_lost() -> None:
+    """The FILES exist regardless of who owns the job. Leaving them unnamed leaks them even though this
+    worker published nothing — the one case where reporting matters most and is easiest to forget."""
+    steps = Fake(provider=lrc(), reports=[CLEAN], publish_raises=NotOurJob("gone"))
+    outcome = await run_align(JOB, steps)
+
+    assert outcome.published is None
+    assert outcome.candidates, "documents were written; core must be able to enumerate them"

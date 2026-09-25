@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from encore_worker.steps.api import NotOurJob, SeparateSteps
-from encore_worker.steps.records import AudioRef, JobRef
+from encore_worker.steps.records import AudioRef, JobRef, PublishedStems
 
 STATE_DECODE = "decode"
 STATE_SEPARATE = "separate"
@@ -32,15 +32,20 @@ SILENCE_FLOOR_DBFS = -90.0
 
 @dataclass(frozen=True, slots=True)
 class StemsOutcome:
-    """How a stems job ended. `published` is empty when the instrumental was refused."""
+    """How a stems job ended. `published` is None when nothing was made visible.
 
-    published: str
+    Carries the whole `PublishedStems` record rather than one ref, because core's artifacts envelope has a
+    field per stem and a caller reporting only the instrumental leaves the others unrecorded — core would
+    then have nothing to serve, evict, or delete for them.
+    """
+
+    published: PublishedStems | None
     why: str
     audio: AudioRef | None = None
 
     @property
     def refused(self) -> bool:
-        return not self.published
+        return self.published is None
 
 
 class SilentInstrumental(RuntimeError):
@@ -95,7 +100,7 @@ async def run_stems(job: JobRef, steps: SeparateSteps) -> StemsOutcome:
     try:
         published = await steps.publish_stems(job, separated)
     except NotOurJob as lost:
-        return StemsOutcome(published="", why=f"abandoned before publishing: {lost}", audio=separated)
+        return StemsOutcome(published=None, why=f"abandoned before publishing: {lost}", audio=separated)
     return StemsOutcome(
         published=published,
         why=f"separated at {peak:.1f} dBFS peak",

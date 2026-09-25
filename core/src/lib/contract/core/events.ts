@@ -185,7 +185,25 @@ export interface JobParams {
 
 // core -> worker
 export type WorkerCommand =
-	| { type: 'worker:welcome'; heartbeatIntervalSec: number; ackTimeoutSec: number; mediaStore: MediaStoreConfig }
+	| {
+			type: 'worker:welcome';
+			heartbeatIntervalSec: number;
+			ackTimeoutSec: number;
+			mediaStore: MediaStoreConfig;
+			/**
+			 * The container the worker must write PUBLISHED stems in. CORE'S DECISION, announced here rather
+			 * than configured on the worker: core owns the storage layout, a row's extension is recorded
+			 * forever, and a worker guessing differently produces a file that exists while its ref 404s
+			 * (see `paths.ts` — "a mismatch is SILENT").
+			 *
+			 * NOT the worker's `ENCORE_STEM_FORMAT`, which is the SCRATCH container a separator writes and is
+			 * legitimately `wav` to skip an encode on a CPU-bound box.
+			 *
+			 * Additive and safe for older workers: they parse this frame field-by-field with `msg.get()` and
+			 * ignore keys they do not know.
+			 */
+			publishStemFormat: string;
+	  }
 	| {
 			type: 'job:assign';
 			jobId: string;

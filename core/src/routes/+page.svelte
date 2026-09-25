@@ -31,6 +31,7 @@
 	import { queueAnnouncement } from '$lib/phrasing/queue-announcement';
 	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { processAndQueue } from '$lib/process-and-queue';
+	import { libraryShelf } from '$lib/library-browse';
 	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
 	import { Toaster } from '$lib/components/ui/sonner';
@@ -61,7 +62,9 @@
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 
 	/* One column read top to bottom, with `searchActive` (a non-empty query) as the SOLE switch between the queue
-	   view and the results view — no browse mode, no history entry. See docs/FRONTEND.md#the-home-column. */
+	   view and the results view. Still no browse MODE on this column and no history entry for a search — browsing is a
+	   separate ROUTE (/library), reached from the door beside the field and from the shelf's `See all`, so this column keeps
+	   one switch. The library here is a four-row shelf, not the library. See docs/FRONTEND.md#the-home-column. */
 
 	// Mirrored from the room link, not owned here. Optional because an unjoined guest has no queue at all, which
 	// is what every `store?.` call site below reads.
@@ -269,6 +272,21 @@
 	 */
 	const processingIds = $derived(new Set(processingRows.map((c) => c.id)));
 	const libraryRows = $derived(library.filter((m) => !processingIds.has(m.id)));
+
+	/* A SHELF, not the library — /library is the library. The cap, the reason for its value and the rule that hides
+	   the door when nothing is behind it all live in `libraryShelf`. */
+	const shelf = $derived(libraryShelf(libraryRows));
+
+	/**
+	 * THE FIRST-RUN SCREEN: nothing queued, nothing in the library, nothing on the way. It gets ONE empty state
+	 * instead of two, because the two it used to get said overlapping things 460px apart — `Nothing Queued`
+	 * reserved `40vh` and pushed `No karaoke tracks yet.` off the fold on a phone and into the middle of a void
+	 * on a desktop. The 40vh is right only when that block is the LAST thing on screen, which in this case it
+	 * never is. Measured at 1335x1151: the queued empty was 460px tall with the library empty at y=641.
+	 */
+	const nothingYet = $derived(
+		!searchActive && queued.length === 0 && libraryRows.length === 0 && processingGroup.length === 0
+	);
 
 	function showError(msg: string) {
 		toast.error(msg, { duration: 4000 });
@@ -500,22 +518,42 @@
 	0 except during a drag, so no stale shift count can displace a row while nothing is dragged. -->
 <main style="--row-h:{rowH}px">
 	{#if me}
-		<!-- The field is the FIRST thing on the screen, and not sticky — see the `.findbox` rule for why. -->
-		<div class="findbox">
-			<span class="find-mark"><Icon name="search" /></span>
-			<input
-				bind:this={queryEl}
-				bind:value={query}
-				oninput={onQueryInput}
-				aria-label="Search a song or artist"
-				placeholder="Search a song or artist…"
-			/>
-			{#if searching}<Spinner aria-label="Searching" />{/if}
-			{#if searchActive}
-				<Button variant="ghost" size="icon" aria-label="Clear the search" onclick={clearSearch}>
-					<Icon name="close" />
+		<!-- The field is the FIRST thing on the screen, and not sticky — see the `.findbox` rule for why.
+				THE LIBRARY DOOR SITS BESIDE IT, not in the topbar and not after the queue. Beside the field is the one
+				place that states the relationship: finding a song you do not have and browsing the ones you do are
+				PEERS, so they share a row. After the rotation it was reachable only by scrolling past every queued
+				song, which is the whole complaint.
+				ON THE LEADING EDGE, because the field's TRAILING edge is already occupied — a spinner while a search
+				runs and the clear `×` whenever one is active — so a control placed after the box joins a cluster of
+				three and moves as that cluster changes. Here its position never shifts.
+				`secondary`, NOT `ghost` and NOT `outline`: a ghost is a bare glyph, and `outline` fills with
+				`bg-background` — the PAGE colour — so beside a `--card` field it reads as a hole punched in the row
+				instead of a control. `secondary` puts it on `--card2`, one step ABOVE the field's own surface, which
+				is what makes it the prominent thing in the row. Always rendered, even with an empty library — a
+				destination that comes and goes cannot be learned, and /library says plainly when it holds nothing.
+				The LABELLED entry point is the `See all N songs` row under the shelf, where the name gets taught. -->
+		<div class="find-row">
+			<div class="lib-slot">
+				<Button variant="secondary" size="icon" href="/library" aria-label="Your library" title="Your library">
+					<Icon name="library" />
 				</Button>
-			{/if}
+			</div>
+			<div class="findbox">
+				<span class="find-mark"><Icon name="search" /></span>
+				<input
+					bind:this={queryEl}
+					bind:value={query}
+					oninput={onQueryInput}
+					aria-label="Search a song or artist"
+					placeholder="Search a song or artist…"
+				/>
+				{#if searching}<Spinner aria-label="Searching" />{/if}
+				{#if searchActive}
+					<Button variant="ghost" size="icon" aria-label="Clear the search" onclick={clearSearch}>
+						<Icon name="close" />
+					</Button>
+				{/if}
+			</div>
 		</div>
 
 		{#if searching && rawResults.length === 0 && readyResults.length === 0}
@@ -533,17 +571,31 @@
 		{/if}
 
 		<!-- One scroll, two views: everything to the library is gated on `searchActive`. -->
-		{#if !searchActive}
+		{#if nothingYet}
+			<!-- ONE state for the whole screen. No `Queued` heading either: a section label above nothing is a
+					promise the page cannot keep, and the only useful instruction here points back at the field above. -->
+			<Empty.Root>
+				<div class="queue-empty">
+					<Empty.Header>
+						<Empty.Title>Nothing queued yet</Empty.Title>
+						<Empty.Description>Search above for a song and we'll make the karaoke track.</Empty.Description>
+					</Empty.Header>
+				</div>
+			</Empty.Root>
+		{/if}
+		{#if !searchActive && !nothingYet}
 			<h2 class="grouphead">Queued</h2>
 			<!-- Not mode chrome: a drag invalidated mid-flight has to say why, visibly as well as announced. -->
 			{#if reorderNote}
 				<p class="reorder-note">{reorderNote}</p>
 			{/if}
 			{#if queued.length === 0}
-				<!-- `Empty.Root` is load-bearing: phone-inventory.test.ts recognises a designed empty state by that
-						primitive, so a bare paragraph reports this route as having none. `tight` drops the 40vh void. -->
+				<!-- `Empty.Root` is load-bearing: a designed empty state is recognised by that primitive, so a bare
+						paragraph reports this route as having none. ALWAYS `tight` here — this branch only runs when the
+						library or the processing group has rows below, and the 40vh void is for a block with nothing
+						after it. `nothingYet` above owns the case where this really is the whole screen. -->
 				<Empty.Root>
-					<div class="queue-empty" class:tight={libraryRows.length > 0 || processingGroup.length > 0}>
+					<div class="queue-empty tight">
 						<Empty.Header>
 							<Empty.Title>Nothing Queued</Empty.Title>
 						</Empty.Header>
@@ -617,13 +669,23 @@
 			{/each}
 		{/if}
 
-		{#if !searchActive}
+		{#if !searchActive && !nothingYet}
 			<!-- Every heading here is gated on having rows: a group heading is a claim about what follows it. -->
 			{#if libraryRows.length}
 				<h2 class="grouphead">Your library</h2>
-				{#each libraryRows as m (m.id)}
+				{#each shelf.shown as m (m.id)}
 					<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 				{/each}
+				<!-- The LABELLED door to /library, stating the number it hides: "See all" alone gives no reason to tap, and
+						the count is the only thing here that says this shelf is a subset. Gated on rows ACTUALLY being hidden —
+						with three songs there is nothing behind it, and the door beside the field still goes there. -->
+				{#if shelf.hidden > 0}
+					<div class="showall-row">
+						<Button variant="secondary" size="tap" href="/library">
+							<Icon name="library" /> See all {libraryRows.length} songs
+						</Button>
+					</div>
+				{/if}
 			{:else if processingGroup.length === 0}
 				<!-- Nothing ready AND nothing on the way: the only genuinely empty library. -->
 				<Empty.Root>
@@ -807,9 +869,11 @@
 		margin-top: var(--space-2xs);
 	}
 
-	/* The field must not be stuck to the viewport: `.topbar` already is, so a second one needs the header's RENDERED
-	   height as its offset, and an out-of-scale token in a calc() invalidates the declaration silently. The focus ring
-	   belongs to the WHOLE box, which is why app.css's global input ring is suppressed below. */
+	/* The field is in NORMAL FLOW, and so is `.topbar` above it — neither is stuck to the viewport. (An earlier note
+	   here claimed the topbar was sticky; it never declares `position`, and the bottom edge is the band's anyway.) A
+	   second sticky surface would need the header's RENDERED height as its offset, and an out-of-scale token in that
+	   calc() invalidates the declaration silently. The focus ring belongs to the WHOLE box, which is why app.css's
+	   global input ring is suppressed below. */
 	.findbox {
 		background: var(--card);
 		border: 1px solid var(--line);
@@ -819,8 +883,37 @@
 		gap: var(--space-md);
 		padding: var(--space-lg) var(--space-xl);
 		min-height: 52px;
-		width: 100%;
+		/* `flex: 1` plus `min-width: 0`, NOT `width: 100%`: the box now shares a row with the library door, and at
+		   100% it would claim the whole row and push that control off the edge. min-width:0 is what lets it shrink
+		   under SC 1.4.10 reflow at 320px, where the 44px door and the gap come out of this box's width. */
+		flex: 1;
+		min-width: 0;
+	}
+	/* THE FIELD AND THE LIBRARY DOOR, one row. The bottom margin lives HERE rather than on `.findbox`, or the two
+	   controls would carry separate spacing and the shorter one would not clear the group below it.
+	   `stretch`, NOT `center`: the field is 70px at every width (--space-lg twice, a --tap-floored input and the
+	   border), while `size="icon"` is a FIXED 44px square, so centring left the door 26px short of the thing it
+	   sits beside. Stretching binds the two heights together instead of restating a number that would then drift
+	   from the field's padding. */
+	.find-row {
+		display: flex;
+		align-items: stretch;
+		gap: var(--space-md);
 		margin-bottom: var(--space-lg);
+	}
+	/* A wrapper, because a class handed to <Button> is scoped to this file where Svelte strips it as unused. `0 0 auto`
+	   is load-bearing: beside a field that shrinks, an unpinned 44px control is what collapses instead. */
+	.lib-slot {
+		flex: 0 0 auto;
+		display: flex;
+	}
+	/* `size-tap` sets a fixed height as well as a width, so filling the stretched slot needs this override. Keyed on
+	   the primitive's OWN `data-slot` and anchored under `.lib-slot`, which is the sanctioned form — a bare class rule
+	   would compile to a hash that lands on nothing. Only the HEIGHT is released: the 44px width stays, so the door
+	   reads as a control paired with the field rather than a second box competing with it, and the tap floor holds on
+	   both axes by construction. */
+	.lib-slot :global([data-slot='button']) {
+		height: 100%;
 	}
 	.findbox input {
 		border: 0;
@@ -878,9 +971,16 @@
 	/* `min-height`, not an absolute centring trick: this block sits in a scrolling column whose height three other
 	   rules already own. `overflow-wrap: anywhere` is the 320px reflow clause — at --ph-text-3xl and 200% text one
 	   unbreakable word is wider than the viewport. The size reaches the vendored slot through `:global()`. */
+	/* FLEX COLUMN, not `grid` + `place-items: center`. The vendored `Empty.Header` is `display: contents`, so its
+	   children become direct children of THIS box — under grid they became two auto rows that split the 40vh
+	   between them and put the description 220px below its own title. A centred flex column stacks them as one
+	   group with a real gap, and reads the same when there is only a title. */
 	.queue-empty {
-		display: grid;
-		place-items: center;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-sm);
 		min-height: 40vh;
 		padding: var(--space-2xl) var(--space-md);
 		text-align: center;

@@ -1,6 +1,6 @@
 // Done-when: FTS returns ranked local matches.
 import { test, expect } from 'bun:test';
-import { LocalLibrary } from '$lib/server/media/local';
+import { ftsPrefixQuery, LocalLibrary } from '$lib/server/media/local';
 import { resultToMedia } from '$lib/server/media/resolver';
 import { isPlayable } from '$lib/contract';
 
@@ -41,6 +41,47 @@ test('limit is respected', async () => {
 
 test('empty query returns nothing', async () => {
 	expect(await lib().search('   ', 10)).toEqual([]);
+});
+
+// ── a punctuated query must not empty the local library ──────────────────────
+// Terms went into FTS5 UNQUOTED, so a metacharacter was parsed as syntax: `spirit (live)` raised
+// `fts5: syntax error near "("` and `nirvana: mtv` raised `no such column: nirvana`. Both threw out of
+// `.all()`, and /api/search's `safeSearch` treats a throwing resolver as a dead source — so every local
+// song vanished from a merged search and read as "you own nothing" rather than as a failure.
+test('THE BUG: a term containing FTS5 syntax still matches instead of throwing', async () => {
+	// Its own fixture, because the shared one has no parenthesised title and the bracket has to land on a
+	// real token to prove the term was SEARCHED rather than merely survived.
+	const l = new LocalLibrary();
+	l.index([{ sourceRef: 'x.mp4', title: 'Smells Like Teen Spirit (Live)', artist: 'Nirvana', durationSec: 301 }]);
+	expect((await l.search('spirit (live)', 10)).map((x) => x.title)).toEqual(['Smells Like Teen Spirit (Live)']);
+});
+
+test('THE BUG: a colon is a literal, not a column filter', async () => {
+	// `queen: greatest` once parsed `queen` as a column name. Nothing matches `greatest`, so the honest
+	// answer is no rows — the point is that it ANSWERS.
+	expect(await lib().search('queen: greatest', 10)).toEqual([]);
+});
+
+test('an apostrophe is indexed, not stripped', async () => {
+	const l = new LocalLibrary();
+	l.index([{ sourceRef: 'x.mp4', title: "Don't Stop Me Now", artist: 'Queen', durationSec: 210 }]);
+	// Stripping it built `dont*`, which cannot match the `don` + `t` tokens FTS5 actually indexes.
+	expect((await l.search("don't", 10)).map((x) => x.title)).toEqual(["Don't Stop Me Now"]);
+});
+
+test('a term with no indexable character is dropped rather than quoted into an empty phrase', async () => {
+	// `""` is itself an FTS5 syntax error, so these must reduce to "no query" and return nothing.
+	for (const q of ['(((', '!!!', '-', '...']) expect(await lib().search(q, 10)).toEqual([]);
+});
+
+test('punctuation around a real term does not cost the match', async () => {
+	expect((await lib().search('(bohemian)', 10)).map((x) => x.title)).toEqual(['Bohemian Rhapsody']);
+});
+
+test('ftsPrefixQuery puts the prefix star OUTSIDE the quotes, or it is just an asterisk to tokenize', () => {
+	expect(ftsPrefixQuery('teen spirit')).toBe('"teen"* "spirit"*');
+	expect(ftsPrefixQuery('a "b" c')).toBe('"a"* """b"""* "c"*');
+	expect(ftsPrefixQuery('   ')).toBe('');
 });
 
 test('resultToMedia leaves a local file UNPROCESSED, so it is not playable yet', async () => {
