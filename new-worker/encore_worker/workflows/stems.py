@@ -1,0 +1,103 @@
+"""The stems flow: decode, separate, check, publish. And the fetch flow, which is shorter still.
+
+DELIBERATELY LINEAR. Unlike align, separation has no fallback ladder and no parameter worth retrying — an
+engine either produces stems or it does not, and a second pass with a different setting would produce a
+different-sounding backing track rather than a better-timed one. So this reads top to bottom, and the
+`GraphPlan`-shaped machinery align needs is absent here on purpose.
+
+What it still gains from durability: a crash after separation but before publication resumes at
+publication instead of re-running a 45-minute pass.
+
+THE ONE REAL DECISION is `probe_silence`. A separator that emits a digitally silent instrumental has
+"succeeded" by every other measure — the files exist, the exit code was zero — and the room hears nothing.
+Refusing is the only way that failure becomes visible.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from encore_worker.steps.api import NotOurJob, SeparateSteps
+from encore_worker.steps.records import AudioRef, JobRef
+
+STATE_DECODE = "decode"
+STATE_SEPARATE = "separate"
+STATE_PROBE = "probe-silence"
+STATE_PUBLISH = "publish"
+
+#: Peak level below which an instrumental is digital silence rather than a quiet mix. 16-bit silence
+#: measures around -91 dBFS; -90 leaves headroom for dither so a legitimately quiet passage is not refused.
+SILENCE_FLOOR_DBFS = -90.0
+
+
+@dataclass(frozen=True, slots=True)
+class StemsOutcome:
+    """How a stems job ended. `published` is empty when the instrumental was refused."""
+
+    published: str
+    why: str
+    audio: AudioRef | None = None
+
+    @property
+    def refused(self) -> bool:
+        return not self.published
+
+
+class SilentInstrumental(RuntimeError):
+    """The separator produced silence and called it success.
+
+    `retryable = False`: the same input through the same engine produces the same silence, so three
+    attempts only delay the operator finding out. A different engine is a different job.
+    """
+
+    retryable = False
+
+
+class UnverifiedInstrumental(RuntimeError):
+    """The instrumental could not be measured, so it cannot be vouched for.
+
+    A SEPARATE exception from `SilentInstrumental` on purpose: "this is silent" and "nobody knows whether
+    this is silent" are different diagnoses and lead to different fixes — the first is a separation
+    problem, the second is a broken ffmpeg or an unreadable output file.
+
+    `retryable = True`, unlike its sibling. A measurement failure CAN be transient — a truncated write, a
+    full disk, an ffmpeg killed by the OOM reaper — and the work is already done, so a retry that only
+    re-measures is cheap. Contrast the silence case, where re-running produces the same silence.
+    """
+
+    retryable = True
+
+
+async def run_stems(job: JobRef, steps: SeparateSteps) -> StemsOutcome:
+    """Run one separation job to a terminal outcome."""
+    audio = await steps.acquire_audio(job)
+    wav = await steps.decode_to_wav(job, audio)
+    separated = await steps.separate(job, wav)
+
+    peak = await steps.probe_silence(job, separated)
+    if peak is None:
+        # UNMEASURED is not the same as fine. The earlier version of this code returned 0.0 for "could
+        # not measure" — the loudest possible reading — so an unverifiable separation published as
+        # though it had passed. Refusing here is only reasonable because `host.capabilities` does not
+        # advertise `stems` without ffmpeg, so a box reaching this line HAS a probe and it failed.
+        raise UnverifiedInstrumental(
+            "the instrumental could not be measured, so it cannot be confirmed audible — refusing to "
+            "publish an unverified separation"
+        )
+    if peak <= SILENCE_FLOOR_DBFS:
+        # Refused rather than published. A silent instrumental looks like a successful separation and
+        # sounds like a broken song, so shipping it moves the failure from this log to a living room.
+        raise SilentInstrumental(
+            f"instrumental measures {peak:.1f} dBFS, at or below the {SILENCE_FLOOR_DBFS:.0f} dBFS "
+            "silence floor — refusing to publish it as ready"
+        )
+
+    try:
+        published = await steps.publish_stems(job, separated)
+    except NotOurJob as lost:
+        return StemsOutcome(published="", why=f"abandoned before publishing: {lost}", audio=separated)
+    return StemsOutcome(
+        published=published,
+        why=f"separated at {peak:.1f} dBFS peak",
+        audio=separated,
+    )

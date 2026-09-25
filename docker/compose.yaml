@@ -1,0 +1,110 @@
+# Encore — one container for the MVP. The worker is gated behind the `stems` profile:
+#   ./dev.sh compose up                    # MVP: core only
+#   ./dev.sh compose --profile stems up    # core + the worker that makes karaoke tracks
+#
+# ── WHY THE PATHS BELOW LOOK ODD ─────────────────────────────────────────────────────────────────
+# Compose resolves relative bind mounts AND loads `.env` from the PROJECT DIRECTORY, which defaults to
+# the folder holding this file — so here that is `docker/`, not the repo root. Three consequences, each
+# handled explicitly rather than by accident:
+#
+#   1. `name:` is set below. Without it the project name comes from the project directory's base name,
+#      which would be `docker` — renaming every container and, worse, the `worker-cache` volume to
+#      `docker_worker-cache`. That orphans the existing model cache (demucs checkpoints plus the ~700 MB
+#      RoFormer one) and silently re-downloads it.
+#   2. `.env` lives in `docker/`, beside this file, so interpolation finds it with no flags.
+#   3. Bind-mount defaults are `../data` and `../media` — they must climb OUT of docker/ to reach the
+#      repo root, where they were before this file moved.
+#
+# The build CONTEXT is `..` (the repo root) because both images copy from sibling trees: core.Dockerfile
+# reads `core/`, worker.Dockerfile reads `worker/`. That is also why `.dockerignore` stays at the repo
+# root — Docker reads it from the build context, never from beside the Dockerfile.
+#
+# Hardening on every service: the app is a plain HTTP/WS server needing no Linux capabilities, so
+# dropping them shrinks the blast radius of any RCE. Runs non-root (see each Dockerfile's USER).
+
+# Pinned, NOT derived from the directory name. See note 1 above — this one line is what keeps the
+# named volumes and container names stable across this file's move.
+name: encore
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  core:
+    <<: *hardening
+    build:
+      context: .. # the repo root: core.Dockerfile copies from core/
+      dockerfile: docker/core.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MEDIA_STORE=local
+      # The address the TV's join QR advertises. UNSET = derived from the request, right for phones and
+      # tunnels. Set it (e.g. http://10.69.1.169:3000) where /tv's own host cannot reach its public
+      # address — notably WSL2, where the QR would otherwise tell every phone to connect to itself.
+      - ENCORE_PUBLIC_ORIGIN=${ENCORE_PUBLIC_ORIGIN:-}
+      # Storage classes, split by REPLACEABILITY (docs/ARCHITECTURE.md §2). Each defaults under
+      # MEDIA_DIR — point any one at its own volume to separate the disks.
+      - MEDIA_DIR=/app/media
+      - ENCORE_AUDIO_DIR=/app/media/audio # raw originals — NOT regenerable; this is what to back up
+      - ENCORE_DERIVED_DIR=/app/media/derived # stems/pitch/lyrics/thumbs — safe to delete, recomputable
+      - ENCORE_META_DIR=/app/media/meta # sidecar records — the authoritative library
+    volumes:
+      # Host paths are overridable from docker/.env so the volumes can move without editing this file.
+      # `../` because relative paths resolve against the PROJECT DIRECTORY, which is docker/ — see note 3
+      # in the header. An override in .env should be an ABSOLUTE path to avoid inheriting that base.
+      - ${ENCORE_DATA_VOLUME:-../data}:/app/data # sqlite (WAL)
+      - ${ENCORE_MEDIA_VOLUME:-../media}:/app/media # audio + derived + meta + job scratch
+    restart: unless-stopped
+
+  worker:
+    <<: *hardening
+    # PID-1 zombie reaping: demucs/yt-dlp grandchildren reparent to the worker, which runs as PID 1 and
+    # is not an init, so they pile up. `init: true` interposes Docker's tini as PID 1 instead.
+    init: true
+    build:
+      context: .. # the repo root: worker.Dockerfile copies from worker/
+      dockerfile: docker/worker.Dockerfile
+    profiles: ["stems"] # not started in the default MVP up
+    environment:
+      # Two settings a deployer must get right: ENCORE_CORE_WS (where core is — no probe can guess it) and
+      # MEDIA_DIR (the volume core is also using; set by the image, so it is the volume mapping below that
+      # must agree, or core serves a file that is not there). Everything else the worker measures about
+      # itself at startup — accelerator, usable cores, memory, installed engines. See src/host/hardware.py.
+      - ENCORE_CORE_WS=ws://core:3000/ws?role=worker
+      # The rest are optional and unset by default, so a wrong measurement is correctable without a
+      # rebuild; one per-variable reference lives in README.md "Configuration". Note that
+      # ENCORE_WORKER_CAPABILITIES can only NARROW what host/capabilities.py proves.
+      - ENCORE_WORKER_CAPABILITIES=${ENCORE_WORKER_CAPABILITIES:-}
+      - ENCORE_DEVICE=${ENCORE_DEVICE:-}
+      - ENCORE_WORKER_CONCURRENCY=${ENCORE_WORKER_CONCURRENCY:-}
+      - ENCORE_DEMUCS_MODEL=${ENCORE_DEMUCS_MODEL:-}
+      - ENCORE_DEMUCS_JOBS=${ENCORE_DEMUCS_JOBS:-}
+      - ENCORE_DEMUCS_OVERLAP=${ENCORE_DEMUCS_OVERLAP:-}
+      - ENCORE_DEMUCS_SEGMENT=${ENCORE_DEMUCS_SEGMENT:-}
+      - ENCORE_DEMUCS_SHIFTS=${ENCORE_DEMUCS_SHIFTS:-}
+      - ENCORE_TORCH_THREADS=${ENCORE_TORCH_THREADS:-}
+      - ENCORE_STEM_BITRATE=${ENCORE_STEM_BITRATE:-}
+      - ENCORE_FLAC_LEVEL=${ENCORE_FLAC_LEVEL:-}
+    volumes:
+      # Shares the local MediaStore volume (single-box mode), using the SAME keys the core resolves —
+      # worker/src/processor.py must stay byte-for-byte in step with core/src/lib/server/media/paths.ts.
+      # Must resolve to the SAME host path as core's mount above, or core serves a file that is not there.
+      - ${ENCORE_MEDIA_VOLUME:-../media}:/app/media
+      # Model + tool cache (demucs checkpoints, the ~700 MB RoFormer checkpoint, yt-dlp's solver script),
+      # kept OUT of the writable layer so it survives `docker rm`. NAMED rather than a bind path on
+      # purpose: Docker initialises it from the image's own $XDG_CACHE_HOME so it inherits the worker's
+      # ownership, whereas a fresh bind directory is created root-owned and unwritable by the worker.
+      - worker-cache:/home/worker/.cache
+    depends_on:
+      - core
+    restart: unless-stopped
+    # deploy.resources.reservations.devices for GPU added when stems land
+
+volumes:
+  # Created only by the `stems` profile — the default MVP `up` never starts the worker that uses it.
+  worker-cache:

@@ -175,10 +175,10 @@ renders its content always and merely hides it.
 
 The routes then divide by the question each answers:
 
-| Surface           | Answers                              | Notes                                                                                        |
-| ----------------- | ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Surface           | Answers                              | Notes                                                                                                                                                                     |
+| ----------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/`               | who is up, and what can I sing       | one column: the search field, the queue, what is being made, and the **saved library** as the zero-query state. A guest who has not joined gets the landing state instead |
-| `/song/[mediaId]` | can I sing THIS, are the words right | reached from the drawer's "···"; shares `GET /api/audit/[mediaId]` with `/metrics/[mediaId]` |
+| `/song/[mediaId]` | can I sing THIS, are the words right | reached from the drawer's "···"; shares `GET /api/audit/[mediaId]` with `/metrics/[mediaId]`                                                                              |
 
 Two of those are reversals worth recording rather than quietly dropping.
 
@@ -613,7 +613,7 @@ device that is unavailable **raises at worker startup** rather than silently dow
 misconfigured accelerator should be loud, not merely slow.
 
 Intel Arc is a torch **device** (`xpu`), not a separate backend: the pipeline is unchanged and only the
-dependency and device differ. `docs/deploy/docker-compose.intel.yml` is that deployment, and it needs
+dependency and device differ. `docker/compose.intel.yaml` is that deployment, and it needs
 no custom image — PyTorch ships native `torch.xpu` upstream and the `xpu` wheel index carries the exact
 versions already pinned, so the ordinary Dockerfile plus an index swap is enough. (An IPEX-based
 `Dockerfile.intel` used to sit beside it and has been deleted; `backends.py` still imports IPEX before

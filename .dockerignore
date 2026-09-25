@@ -1,3 +1,7 @@
+# STAYS AT THE REPO ROOT even though the Dockerfiles live in docker/. Docker reads this from the BUILD
+# CONTEXT, never from beside the Dockerfile, and both images build with the repo root as context (core
+# copies from core/, the worker from worker/) — so one file covers both. Moving it into docker/ would not
+# error; it would silently stop excluding anything, and node_modules would be sent to the daemon.
 **/node_modules
 **/.svelte-kit
 **/build

@@ -48,20 +48,24 @@ from src.lyrics.grading import agreement as _chain_agreement
 
 
 def _repo_root() -> Path:
-    """The repo root, by walking up for `bunfig.toml` — the same marker file the TypeScript harness
-    uses, so both sides of the repo agree on the answer by construction rather than a hop count that
-    breaks whenever a directory layer moves.
+    """The REPO root: the directory holding both `core/` and `worker/`.
+
+    NOT `bunfig.toml` any more. That was the marker while the TypeScript project sat at the repo root, and
+    it was chosen so both languages would agree by construction — but the JS project moved into `core/` and
+    took its bunfig with it, so the walk found nothing above `worker/` and every test here died at import
+    with `SystemExit`. Two directories is what actually defines this root, and neither package root can
+    satisfy it by accident.
     """
     here = Path(__file__).resolve()
     for candidate in [here.parent, *here.parents]:
-        if (candidate / "bunfig.toml").is_file():
+        if (candidate / "core").is_dir() and (candidate / "worker").is_dir():
             return candidate
-    raise SystemExit(f"no bunfig.toml above {here}")
+    raise SystemExit(f"no directory with both core/ and worker/ above {here}")
 
 
 _REPO = _repo_root()
-_SHARED_LYRICS_TS = _REPO / "src" / "lib" / "contract" / "lyrics" / "lyrics.ts"
-_CORPUS_TS = _REPO / "src" / "lib" / "contract" / "lyrics" / "lyrics-agreement-corpus.ts"
+_SHARED_LYRICS_TS = _REPO / "core" / "src" / "lib" / "contract" / "lyrics" / "lyrics.ts"
+_CORPUS_TS = _REPO / "core" / "src" / "lib" / "contract" / "lyrics" / "lyrics-agreement-corpus.ts"
 
 
 def _ts_number(name: str) -> float:

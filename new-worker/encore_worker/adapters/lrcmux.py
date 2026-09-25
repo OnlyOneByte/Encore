@@ -1,0 +1,307 @@
+"""LRCmux: a multiplexer that fans one lookup out across several lyrics providers.
+
+WHY THIS IS THE PRIMARY PROVIDER NOW. It queries many sources and returns the best hit, so a song LRCLIB
+has never heard of may still be found — and crucially it can return WORD-LEVEL timings, which LRCLIB
+cannot. A word-timed sheet is a much better starting point for alignment than a line-timed one, because
+the aligner is correcting positions rather than inventing them.
+
+MILLISECONDS, NOT SECONDS. `start`/`end` are integer milliseconds throughout the native response — the
+first line of "Take On Me" comes back as `43004`, not `43.004`. Everything downstream in this worker is
+seconds, so the conversion happens HERE, once, at the boundary. Getting it wrong would not fail: it would
+publish lyrics running a thousand times fast, which looks like a bug in the player.
+
+STATUS CODES, MEASURED AGAINST THE LIVE API rather than read off the spec (which declares only `200` and
+`default`):
+
+    404  {"detail": "no lyrics found"}                          -> a MISS. Ordinary.
+    400  {"detail": "provide either ISRC or both artist..."}     -> OUR bug. Never retried.
+    anything else                                               -> provider trouble. Retryable.
+
+The 400 case matters: it is a malformed request, so retrying sends the same malformed request twice.
+"""
+
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+from encore_worker.domain.document import TIMING_LINE, TIMING_WORD, Segment
+
+BASE_URL = "https://api.lrcmux.dev"
+
+USER_AGENT = "encore-worker (karaoke lyrics alignment)"
+
+#: The align flow has a fallback ladder behind this, so waiting is worse than moving on to the next
+#: provider and then to ASR. A multiplexer fans out internally, so it is slower than a single provider.
+TIMEOUT_SEC = 12.0
+
+
+class ProviderUnreachable(RuntimeError):
+    """LRCmux could not be reached, or answered in a way that is not about this song.
+
+    `retryable = True`: a transient network or upstream failure is the common case, and raising rather
+    than returning empty is the whole point — "this provider is down" must not look like "this song has
+    no lyrics".
+    """
+
+    retryable = True
+
+
+class BadRequest(ValueError):
+    """We asked for something malformed — a 400 from the API.
+
+    `retryable = False`: the same malformed request sent again is still malformed. This should be
+    unreachable, since `fetch` requires both artist and title, so reaching it means a caller bypassed
+    that check.
+    """
+
+    retryable = False
+
+
+@dataclass(frozen=True, slots=True)
+class Result:
+    """A parsed LRCmux answer: the words, how precisely they are timed, and who supplied them."""
+
+    segments: tuple[Segment, ...]
+    #: `word`, `line`, or None when there is nothing usable. Decides `TextRef.timing`, and therefore
+    #: which retry knobs the search can offer for this text.
+    timing: str | None
+    #: The upstream provider LRCmux actually got this from ("KuGou", "Musixmatch", …). Recorded on the
+    #: completion facts, so a systematically bad source is identifiable rather than anonymous.
+    source: str | None = None
+    instrumental: bool = False
+
+
+class LrcmuxClient:
+    """`LyricsProvider` over LRCmux's native endpoint."""
+
+    name = "lrcmux"
+
+    def __init__(
+        self,
+        *,
+        base_url: str = BASE_URL,
+        timeout_sec: float = TIMEOUT_SEC,
+        proxy: str | None = None,
+        sources: str | None = None,
+        opener: urllib.request.OpenerDirector | None = None,
+    ) -> None:
+        self._base = base_url.rstrip("/")
+        self._timeout = timeout_sec
+        self._sources = sources
+        # Injectable, and a genuine seam rather than a test hook: this is also where a custom SSL
+        # context, a client certificate or an auth handler would go. A test hands in a fake, which is
+        # why nothing here has to monkeypatch a library function — the previous arrangement did, and
+        # silently stopped intercepting the moment the client built its own opener.
+        self._opener = opener if opener is not None else build_opener(proxy)
+        #: The last answer's upstream source, for the caller to record. Not part of the port, so it is
+        #: read opportunistically by whoever cares and ignored by whoever does not.
+        self.last_source: str | None = None
+
+    def fetch(self, *, artist: str, track: str, duration_sec: float | None) -> Sequence[Segment]:
+        """Lyrics for this song, or empty when no provider has it."""
+        result = self.lookup(artist=artist, track=track, duration_sec=duration_sec)
+        self.last_source = result.source
+        return result.segments
+
+    def lookup(self, *, artist: str, track: str, duration_sec: float | None) -> Result:
+        """The full answer, including the sync level and the upstream source.
+
+        Separate from `fetch` because the port only promises segments, but the sync level decides which
+        retry knobs apply and the source is worth recording — and a caller that wants those should not
+        have to re-parse the payload.
+        """
+        if not artist or not track:
+            raise BadRequest("lrcmux needs both artist and title")
+        body = self._get(
+            build_url(
+                self._base, artist=artist, track=track, duration_sec=duration_sec, sources=self._sources
+            )
+        )
+        if body is None:
+            return Result(segments=(), timing=None)
+        return parse_response(body)
+
+    def _get(self, url: str) -> str | None:
+        """The response body, None for a 404, or an exception for anything else."""
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310 - https
+        try:
+            with self._opener.open(request, timeout=self._timeout) as response:
+                raw: bytes = response.read()
+        except urllib.error.HTTPError as failed:
+            if failed.code == 404:
+                return None  # "no lyrics found" — an ordinary miss
+            if failed.code == 400:
+                raise BadRequest(f"lrcmux rejected the request: {_detail(failed)}") from failed
+            raise ProviderUnreachable(f"lrcmux answered {failed.code}: {_detail(failed)}") from failed
+        except (urllib.error.URLError, TimeoutError, OSError) as unreachable:
+            raise ProviderUnreachable(f"lrcmux unreachable: {unreachable}") from unreachable
+        decoded: str = raw.decode("utf-8", errors="replace")
+        return decoded
+
+
+def build_opener(proxy: str | None) -> urllib.request.OpenerDirector:
+    """An opener that honours a proxy, explicit or from the environment.
+
+    Constructed rather than relying on `urlopen`'s module-level default, and that is measured rather than
+    cautious: `build_opener` OMITS `ProxyHandler` entirely when no proxy variable is set at the moment the
+    default opener is first built, and that opener is then cached for the life of the process. In a
+    resident worker, a proxy configured after the first lookup would be silently ignored forever.
+    """
+    handler = urllib.request.ProxyHandler({"https": proxy, "http": proxy} if proxy else None)
+    return urllib.request.build_opener(handler)
+
+
+def build_url(
+    base: str,
+    *,
+    artist: str,
+    track: str,
+    duration_sec: float | None = None,
+    sources: str | None = None,
+    level: str = "word",
+) -> str:
+    """The lookup URL. Pure, so the exact query is assertable without a network.
+
+    `level=word` asks for the most precise timing available and FALLS BACK on its own — `strict` is
+    deliberately not set, because a line-timed hit is far better than no hit, and the search's own knobs
+    handle a line-timed text perfectly well.
+    """
+    params: dict[str, str] = {"artist": artist, "title": track, "format": "json", "level": level}
+    if duration_sec is not None and duration_sec > 0:
+        # Integer seconds: the API's parameter is an integer, and a fractional value is noise to a
+        # duration matcher that works to a tolerance anyway.
+        params["duration"] = str(int(round(duration_sec)))
+    if sources:
+        params["sources"] = sources
+    return f"{base}/get?{urllib.parse.urlencode(params)}"
+
+
+def parse_response(body: str) -> Result:
+    """Segments, sync level and source from a native LRCmux payload.
+
+    Milliseconds become seconds here. A line whose `start` is missing keeps no timing rather than a
+    fabricated zero, because a zero start is a real value — it would put the line at the top of the song.
+    """
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return Result(segments=(), timing=None)
+    if not isinstance(payload, dict):
+        return Result(segments=(), timing=None)
+
+    raw_meta = payload.get("meta")
+    meta: dict[str, object] = raw_meta if isinstance(raw_meta, dict) else {}
+    source = _source_name(meta)
+    if meta.get("instrumental") is True:
+        # A positive statement that the track has no words. Still "no text" to the caller, and the ASR
+        # tier will confirm it by hearing nothing.
+        return Result(segments=(), timing=None, source=source, instrumental=True)
+
+    raw_lines = payload.get("lines")
+    if not isinstance(raw_lines, list) or not raw_lines:
+        return Result(segments=(), timing=None, source=source)
+
+    segments: list[Segment] = []
+    for line in raw_lines:
+        if not isinstance(line, dict):
+            continue
+        text = str(line.get("text") or "").strip()
+        if not text:
+            continue
+        segment: dict[str, object] = {"text": text}
+        start = _sec(line.get("start"))
+        end = _sec(line.get("end"))
+        if start is not None:
+            segment["start"] = start
+        if end is not None:
+            segment["end"] = end
+        words = _words_of(line)
+        if words:
+            segment["words"] = words
+        segments.append(segment)
+
+    if not segments:
+        return Result(segments=(), timing=None, source=source)
+
+    # The DECLARED level is not trusted over the payload: a response tagged `word` whose lines carry no
+    # word spans cannot be word-timed, and believing the tag would offer knobs that have nothing to act on.
+    declared = meta.get("level") if isinstance(meta.get("level"), str) else None
+    has_words = any("words" in s for s in segments)
+    has_starts = any("start" in s for s in segments)
+    if has_words and declared != "none":
+        timing = TIMING_WORD
+    elif has_starts:
+        timing = TIMING_LINE
+    else:
+        timing = None
+    return Result(segments=tuple(segments), timing=timing, source=source)
+
+
+def _words_of(line: dict[str, object]) -> tuple[Segment, ...]:
+    """Word spans for one line, in the document shape, with times in seconds.
+
+    The `text` key becomes `word`, which is what `measure.timed_words` reads first. Trailing whitespace
+    is stripped: the provider uses it to encode word separation, and a span labelled `"Talking "` would
+    show up in a smear report with a spurious space.
+    """
+    raw = line.get("words")
+    if not isinstance(raw, list):
+        return ()
+    out: list[Segment] = []
+    for word in raw:
+        if not isinstance(word, dict):
+            continue
+        text = str(word.get("text") or "").strip()
+        start = _sec(word.get("start"))
+        if not text or start is None:
+            continue
+        end = _sec(word.get("end"))
+        out.append({"word": text, "start": start, "end": end if end is not None else start})
+    return tuple(out)
+
+
+def _sec(value: object) -> float | None:
+    """Integer milliseconds to seconds. `bool` excluded — `True` would become 0.001s."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    got = float(value)
+    if got != got or got in (float("inf"), float("-inf")):
+        return None
+    return got / 1000.0
+
+
+def _source_name(meta: dict[str, object]) -> str | None:
+    source = meta.get("source")
+    if not isinstance(source, dict):
+        return None
+    name = source.get("name") or source.get("id")
+    return str(name) if name else None
+
+
+def _detail(failed: urllib.error.HTTPError) -> str:
+    """The `detail` out of an RFC7807 problem document, for a message worth reading."""
+    try:
+        payload = json.loads(failed.read())
+    except Exception:  # noqa: BLE001 - a diagnostic must not raise over a diagnostic
+        return failed.reason if isinstance(failed.reason, str) else "no detail"
+    if isinstance(payload, dict):
+        detail = payload.get("detail")
+        if isinstance(detail, str):
+            return detail
+    return "no detail"
+
+
+def build_provider(
+    *,
+    enabled: bool = True,
+    base_url: str = BASE_URL,
+    proxy: str | None = None,
+    sources: str | None = None,
+) -> LrcmuxClient | None:
+    """The provider, or None when disabled."""
+    return LrcmuxClient(base_url=base_url, proxy=proxy, sources=sources) if enabled else None

@@ -456,7 +456,7 @@ column for every route, because the joined queue view is the other thing inside 
 beyond tidiness: `app.html` sets the interactive-widget mode that shrinks the LAYOUT viewport when the on-screen
 keyboard opens, so bottom-anchored content rides above the keyboard instead of under it. Headless Chromium has no
 soft keyboard, so no measured gate can verify that placement. Finally `.confirm`, `.err` and `.cta-reason` stay
-ordinary elements rather than Field primitives: `tests/e2e/contract.ts` addresses `.err` as a class on the
+ordinary elements rather than Field primitives: `tests/playwright/world/selectors.ts` addresses `.err` as a class on the
 alerting element and a class handed to a component carries no scoped rule; `.confirm` is the scanned path's
 headline and the primitive would dim and shrink it; `.cta-reason` needs its gap BELOW and centred text, and the
 only way to override the primitive reaches settings' own descriptions too.
@@ -492,7 +492,7 @@ margin, so a card's first label is untouched.
 
 Other rules a change here must respect: a slider's range must match the server clamp exactly, or the UI
 silently refuses values the server accepts; `id="tab-<scope>"` and `id="max-processes"` are spelled
-explicitly because `tests/e2e/contract.ts` and the capture script resolve those literals; `.panel` carries
+explicitly because `tests/playwright/world/selectors.ts` and the shot specs resolve those literals; `.panel` carries
 no `role="tabpanel"` of its own, because `Tabs.Content` already renders one and a second nests two; the
 identity ring gets `taken={[]}` because this page's load carries no room occupancy, and inventing one would
 draw pips at colours nobody holds. `PROCESSES_UNCAPPED` is `0` and means uncapped, so it must be tested

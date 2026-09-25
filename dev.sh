@@ -14,6 +14,12 @@
 #   bash dev.sh --reset --nuke-models     # also drop the multi-GB ML model caches
 #   bash dev.sh --reset --yes    # skip the destructive-action confirmation
 #
+#   ./dev.sh compose up                     # DOCKER instead of native: core only
+#   ./dev.sh compose --profile stems up     # core + the karaoke worker
+#   ./dev.sh compose --cuda --profile stems up -d   # the NVIDIA deploy target
+#     Everything after `compose` is passed to `docker compose` verbatim, against
+#     docker/compose.yaml. Skips all native-dev preflight.
+#
 # Environment:
 #   PORT                   core's port (default 3000); read here as well as by server.ts
 #   ENCORE_WORKER_PYTHON   interpreter for the worker venv (must be >= 3.11)
@@ -21,7 +27,7 @@
 #   ENCORE_SKIP_UV=1       do not fetch uv; falls back to python -m venv + pip
 #   ENCORE_SKIP_FFMPEG=1   do not check ffmpeg at all (presence OR codecs); stems will not encode and
 #                          every loudness reading becomes "unmeasurable", which publishes silent stems
-#   ENCORE_ENV_FILE        a .env other than ./.env
+#   ENCORE_ENV_FILE        a .env other than ./docker/.env
 #
 # WHY --ui IS SEPARATE. `bun run dev` (vite) serves the UI with HMR but NOT the WebSocket hub —
 # server.ts owns both in one process, and vite only runs the SvelteKit half. A song will never cook
@@ -35,16 +41,46 @@ trap 'code=$?; [ "$code" -eq 0 ] || echo "dev.sh: failed at line $LINENO (exit $
 cd "$(dirname "$0")"
 ROOT="$PWD"
 
-# .env is loaded FOR THE WORKER'S BENEFIT: Bun reads it for core by itself, but the worker has no dotenv
-# dependency and is launched through a bare `env`, so it sees only what this script exports. Every
-# ENCORE_* worker setting is inert under dev.sh without this — and ENCORE_WORKER_TOKEN is the sharp one,
-# because core starts returning 401 to role=worker upgrades the moment it sees a token the worker lacks,
+# ── `dev.sh compose ...` — the DOCKER path, handled before anything else ──────────────────────────
+# Intercepted here, ahead of the flag parser, for two reasons: the parser rejects unknown flags and would
+# choke on `--profile stems up -d`, and none of the native-dev preflight below (venv, deno, ffmpeg codec
+# probe) applies to a container build.
+#
+# It exists so `-f docker/compose.yaml` is written ONCE. Compose derives its project directory from the
+# compose file's folder, so a bare `docker compose -f docker/compose.yaml` would resolve `../data` and
+# `../media` against docker/ — correct — but every doc and muscle-memory command would need the path
+# spelled out, and a forgotten `-f` silently acts on nothing.
+#
+# `--cuda` is sugar for adding the GPU override, since that is the real deploy target and the two-file
+# invocation is the single most-mistyped command in the runbook.
+if [ "${1:-}" = "compose" ]; then
+	shift
+	compose_files=(-f "$ROOT/docker/compose.yaml")
+	if [ "${1:-}" = "--cuda" ]; then
+		shift
+		compose_files+=(-f "$ROOT/docker/compose.cuda.yaml")
+	fi
+	command -v docker >/dev/null 2>&1 || { echo "dev.sh compose: no docker on PATH" >&2; exit 127; }
+	# NO --project-directory: it would override the default and send Compose looking for `.env` in the
+	# repo root, where it no longer lives. Letting it default to docker/ is what makes `docker/.env` and
+	# the `../data` defaults line up.
+	exec docker compose "${compose_files[@]}" "$@"
+fi
+
+# .env is loaded FOR THE WORKER'S BENEFIT, and for core's: the worker has no dotenv dependency and is
+# launched through a bare `env`, so it sees only what this script exports — and Bun does NOT walk up for
+# a `.env`, it reads only its own cwd, which for core is core/. So neither half finds docker/.env by
+# itself. Every ENCORE_* setting is inert under dev.sh without this, and ENCORE_WORKER_TOKEN is the sharp
+# one: core starts returning 401 to role=worker upgrades the moment it sees a token the worker lacks,
 # which stops all processing with nothing in the queue to explain why.
+#
+# It lives in docker/ because that is where Compose reads it from without a flag (the project directory
+# is the compose file's folder). One file serves both run modes; ENCORE_ENV_FILE overrides for anything else.
 #
 # Precedence matches Bun: a variable already in the environment WINS over the file, so both halves can
 # never disagree about a key. PARSED, NOT SOURCED — `set -a; . .env` would execute a value containing
 # $(...) or a backtick.
-ENV_FILE="${ENCORE_ENV_FILE:-$ROOT/.env}"
+ENV_FILE="${ENCORE_ENV_FILE:-$ROOT/docker/.env}"
 ENV_REPORT="no .env — using defaults"
 if [ -f "$ENV_FILE" ]; then
 	env_set=() env_shadowed=()
@@ -84,6 +120,10 @@ for v in MEDIA_DIR DATA_DIR ENCORE_CORE_WS; do
 		*" $v "*) echo "note: $v from ${ENV_FILE##*/} overridden — a native run needs absolute paths and localhost" ;;
 	esac
 done
+# The TypeScript half is its own project now (its own package.json, node_modules and configs), mirroring
+# worker/. Every bun invocation below runs in there; everything else stays rooted at the repo.
+CORE="$ROOT/core"
+
 export MEDIA_DIR="$ROOT/media"
 export DATA_DIR="$ROOT/data"
 # Read from the environment or .env, because server.ts does (`process.env.PORT ?? 3000`). Every check
@@ -122,8 +162,8 @@ need() {
 
 # ── ffmpeg, CHECKED BY CAPABILITY ────────────────────────────────────────────────────
 # `command -v ffmpeg` is a presence check, and presence is NOT sufficiency. A DECODE-ONLY build is a real
-# thing — tests/e2e/HARNESS.md documents a box whose ffmpeg is "decode-only — no encoding, and the loudness
-# probe's volumedetect filter is absent" — and it passes any presence check, then fails at RUNTIME, where it
+# thing — a box was observed whose ffmpeg was decode-only: no encoding, and the loudness probe's
+# volumedetect filter absent — and it passes any presence check, then fails at RUNTIME, where it
 # reads as a broken worker rather than as a stripped codec set. What the code actually calls, read out of the
 # code rather than assumed:
 #
@@ -309,9 +349,20 @@ fi
 YTDLP_CONFIG_HOME="$ROOT/worker/.dev-ytdlp"
 TOOLS_DIR="$ROOT/worker/.dev-tools/bin"
 DENO_DIR="$TOOLS_DIR"
-# The SAME version worker/Dockerfile installs, read out of the Dockerfile so a bump there cannot leave a
-# dev box on a different deno than prod.
-DENO_VERSION="$(sed -n 's/^ARG DENO_VERSION=\(.*\)$/\1/p' "$ROOT/worker/Dockerfile")"
+# The SAME version docker/worker.Dockerfile installs, read out of the Dockerfile so a bump there cannot
+# leave a dev box on a different deno than prod.
+#
+# CHECKED, not just read: a wrong path or a renamed ARG makes sed print nothing and succeed, and the empty
+# result would be interpolated into a download URL that 404s much later — inverting the guarantee this line
+# exists for. It is the one place in this script that depends on another file's internal text.
+WORKER_DOCKERFILE="$ROOT/docker/worker.Dockerfile"
+DENO_VERSION="$(sed -n 's/^ARG DENO_VERSION=\(.*\)$/\1/p' "$WORKER_DOCKERFILE")"
+[ -n "$DENO_VERSION" ] || {
+	echo "dev.sh: no 'ARG DENO_VERSION=' found in $WORKER_DOCKERFILE" >&2
+	echo "  the dev deno version is pinned FROM that file so dev and prod cannot drift apart." >&2
+	echo "  if the Dockerfile moved or the ARG was renamed, fix this line rather than hardcoding a version." >&2
+	exit 1
+}
 
 # Fetched PROJECT-LOCAL, never system-wide: no brew, no sudo, nothing outside the repo, and a system deno
 # always wins if there is one. The zip is checksum-verified BEFORE it is made executable, because this
@@ -433,7 +484,7 @@ if [ "$DO_RESET" = 1 ]; then
 		"$ROOT/media"      # audio + derived + meta + job scratch — the whole library
 		"$ROOT/data"       # sqlite + WAL + shm
 		"$ROOT/temp"       # an abandoned store from an older layout; nothing reads it
-		"$ROOT/.svelte-kit" "$ROOT/build"
+		"$CORE/.svelte-kit" "$CORE/build"
 		"$ROOT/worker/.pytest_cache" "$ROOT/worker/.mypy_cache" "$ROOT/worker/.ruff_cache"
 		"$YTDLP_CONFIG_HOME/yt-dlp"   # the generated config; the deno beside it is a tool, not state
 	)
@@ -461,9 +512,9 @@ if [ "$DO_RESET" = 1 ]; then
 fi
 
 # ── deps ─────────────────────────────────────────────────────────────────────────────
-if [ "$DO_PULL" = 1 ] || [ ! -d "$ROOT/node_modules" ]; then
+if [ "$DO_PULL" = 1 ] || [ ! -d "$CORE/node_modules" ]; then
 	say "js deps"
-	bun install
+	(cd "$CORE" && bun install)
 fi
 
 VENV="$ROOT/worker/.venv"
@@ -480,7 +531,7 @@ STAMP="$VENV/.encore-deps"
 
 # The interpreter must be >= 3.11 and is deliberately not bare `python3`: scipy publishes nothing below
 # 3.11, and pip then aborts the ENTIRE install including websockets — which surfaces three steps later
-# as the worker dying on ModuleNotFoundError. 3.12 is tried first because that is what worker/Dockerfile
+# as the worker dying on ModuleNotFoundError. 3.12 is tried first because that is what docker/worker.Dockerfile
 # ships, so a dev venv resolves the same wheels prod does; 3.14 is not a candidate because torch
 # publishes no cp314 wheel. Override with ENCORE_WORKER_PYTHON=/path/to/python.
 pick_python() {
@@ -581,7 +632,7 @@ if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 	if [ -z "$PY" ] && [ -z "$UV" ]; then
 		echo "no Python >= 3.11 on PATH — scipy 1.16.2 publishes nothing below it, and pip then" >&2
 		echo "refuses the WHOLE requirements.txt (websockets included)." >&2
-		echo "  brew install python@3.12      # matches worker/Dockerfile" >&2
+		echo "  brew install python@3.12      # matches docker/worker.Dockerfile" >&2
 		echo "  # or: ENCORE_WORKER_PYTHON=/path/to/python3.12 bash dev.sh" >&2
 		echo "  # or let uv fetch one: unset ENCORE_SKIP_UV and re-run" >&2
 		[ -n "${PYENV_VERSION:-}" ] && echo "  (note: PYENV_VERSION=$PYENV_VERSION is pinning your python3)" >&2
@@ -624,7 +675,7 @@ klp=$KLP_PIN"
 	fi
 fi
 
-# The worker's own yt-dlp config, mirroring what worker/Dockerfile puts at /etc/yt-dlp.conf. Rewritten
+# The worker's own yt-dlp config, mirroring what docker/worker.Dockerfile puts at /etc/yt-dlp.conf. Rewritten
 # every run so an edit to worker/yt-dlp.conf lands without a --reset.
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 	mkdir -p "$YTDLP_CONFIG_HOME/yt-dlp"
@@ -637,12 +688,12 @@ fi
 # disk says otherwise — which reads as "my change did nothing" rather than as a missing build. `--help` has
 # always promised "build first if needed"; needed means CURRENT, not merely present.
 build_stale() {
-	[ -f "$ROOT/build/index.js" ] || return 0
-	[ -n "$(find "$ROOT/src" "$ROOT/server.ts" -type f -newer "$ROOT/build/index.js" -print -quit 2>/dev/null)" ]
+	[ -f "$CORE/build/index.js" ] || return 0
+	[ -n "$(find "$CORE/src" "$CORE/server.ts" -type f -newer "$CORE/build/index.js" -print -quit 2>/dev/null)" ]
 }
 if [ "$UI_MODE" != 1 ] && { [ "$DO_PULL" = 1 ] || [ "$DO_RESET" = 1 ] || build_stale; }; then
 	say "building core"
-	bun run build
+	(cd "$CORE" && bun run build)
 fi
 
 [ "$DO_START" = 1 ] || { say "done (--no-start)"; exit 0; }
@@ -710,11 +761,11 @@ trap 'cleanup; exit 129' HUP
 
 if [ "$UI_MODE" = 1 ]; then
 	say "vite dev — UI HMR ONLY, no WebSocket hub (queue will not move, songs will not cook)"
-	exec bun run dev
+	cd "$CORE" && exec bun run dev
 fi
 
 say "starting core"
-bun run start & CORE_PID=$!
+(cd "$CORE" && bun run start) & CORE_PID=$!
 
 # Wait for health first: the worker retries every 3s anyway, but a clean first connect reads better.
 for _ in $(seq 1 45); do

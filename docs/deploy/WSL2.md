@@ -220,8 +220,8 @@ but let the containers own the writes.
 
 ## 4. Configure
 
-No edits to `docker-compose.yml` are needed. The GPU deployment is a compose **override**:
-[`docs/deploy/docker-compose.cuda.yml`](deploy/docker-compose.cuda.yml). It supplies the CUDA wheel
+No edits to `docker/compose.yaml` are needed. The GPU deployment is a compose **override**:
+[`docker/compose.cuda.yaml`](../../docker/compose.cuda.yaml). It supplies the CUDA wheel
 index as a build arg, the NVIDIA device reservation, and the device env — layered onto the base file
 rather than forking it, so later changes to core, the hardening anchor or the volume wiring still
 reach this deployment. See [`docs/deploy/README.md`](README.md) for the pattern.
@@ -230,11 +230,11 @@ Every command below uses one prefix; export it once per shell:
 
 ```bash
 cd /srv/Encore
-export EC="docker compose -f docker-compose.yml -f docs/deploy/docker-compose.cuda.yml"
+export EC="./dev.sh compose --cuda"
 ```
 
 The only thing you must set yourself is **where state lives**, because that is a property of the host's
-disks rather than its GPU. A `.env` beside the root compose file:
+disks rather than its GPU. `docker/.env`, beside the compose file:
 
 ```dotenv
 # ext4 inside the distro. NEVER /mnt/c — see §3.
@@ -265,7 +265,7 @@ $EC --profile stems config | less    # look for TORCH_INDEX_URL and driver: nvid
 ```
 
 The overrides intentionally set no `ENCORE_*` device or capability variables any more — the worker
-probes its own accelerator and reports it. `ENCORE_DEVICE` appears here only if you put it in a `.env`
+probes its own accelerator and reports it. `ENCORE_DEVICE` appears here only if you put it in `docker/.env`
 yourself, which is worth doing on this box for the reason in the verification step below.
 
 ---
@@ -319,7 +319,7 @@ $EC exec worker python -c \
    If it instead reports `accel=cpu` and "no accelerator detected", the GPU is not reachable inside the
    container — driver, `nvidia-container-toolkit`, or the device reservation. Auto-detection falls back
    to CPU **quietly**, which on this workload is the difference between minutes and most of an hour, so
-   on a box you _expect_ to have a GPU it is worth putting `ENCORE_DEVICE=cuda` in a `.env`: per
+   on a box you _expect_ to have a GPU it is worth putting `ENCORE_DEVICE=cuda` in `docker/.env`: per
    `backends.py`'s contract an explicitly-requested-but-unavailable device _raises_, turning a silent
    20x slowdown into a startup failure you cannot miss. The config line from `describe()` also carries
    `device=`; `device=auto` there means nothing was forced, not that nothing was found — read the
@@ -404,7 +404,7 @@ but only once Docker is running, and under WSL that needs a nudge at logon.
 Simplest: enable "Start Docker Desktop when you log in", plus a Task Scheduler task at logon running
 
 ```
-wsl -d Ubuntu --cd /srv/Encore -- docker compose -f docker-compose.yml -f docs/deploy/docker-compose.cuda.yml --profile stems up -d
+wsl -d Ubuntu --cd /srv/Encore -- ./dev.sh compose --cuda --profile stems up -d
 ```
 
 Then stop Windows from sleeping mid-song:
@@ -418,12 +418,12 @@ powercfg /change hibernate-timeout-ac 0
 
 ## 9. Rollback
 
-The GPU path lives entirely in the override file, so reverting is dropping one `-f` flag and
-rebuilding against the CPU wheels:
+The GPU path lives entirely in the override file, so reverting is dropping `--cuda` (the flag that adds
+that `-f`) and rebuilding against the CPU wheels:
 
 ```bash
-docker compose --profile stems build worker
-docker compose --profile stems up -d worker
+./dev.sh compose --profile stems build worker
+./dev.sh compose --profile stems up -d worker
 ```
 
 Data and media are untouched by this — they live in the volumes from §4, not in the image.
@@ -443,7 +443,7 @@ git pull
 $EC --profile stems build         # rebuild core + worker against the new source
 $EC --profile stems up -d         # recreate the changed containers only
 $EC --profile stems ps            # confirm both came back up
-docker compose logs -f --tail=50 worker
+$EC --profile stems logs -f --tail=50 worker
 ```
 
 Migrations apply automatically on core's boot, so there is no separate step. `data/` and `media/`

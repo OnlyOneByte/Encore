@@ -1,0 +1,72 @@
+# NVIDIA GPU worker — compose OVERRIDE for docker/compose.yaml.
+#
+#   ./dev.sh compose --cuda --profile stems up -d
+#
+# or, spelled out (the wrapper exists so this does not have to be):
+#
+#   docker compose -f docker/compose.yaml -f docker/compose.cuda.yaml \
+#     --profile stems up -d
+#
+# Run from the repo root either way. The base file sets `name: encore`, so the project name does not
+# depend on which directory you invoke from.
+#
+# Current deploy target: Windows x86_64 + WSL2 + RTX 3080 (10 GB). Full runbook, including the WSL
+# networking that breaks first, is docs/deploy/WSL2.md — read that before running this.
+#
+# An override rather than a second full compose file: core's definition, the hardening anchor and the
+# volume wiring all keep coming from the base file, so a change there reaches this deployment too
+# instead of rotting in a fork.
+#
+# Deliberately NOT set here:
+#   * ENCORE_DATA_VOLUME / ENCORE_MEDIA_VOLUME — a property of the host's disks, not its GPU. Put them
+#     in `docker/.env`, beside the base compose file. Prefer ABSOLUTE paths: a relative one resolves
+#     against docker/, not the repo root. On WSL2 they MUST point at the distro's own ext4 and never at
+#     /mnt/c: 9p is slow and does not honour POSIX locking, and core runs SQLite in WAL mode.
+#   * worker-cache — already a NAMED volume in the base file, for a reason documented there. Do not
+#     convert it to a bind mount; Docker initialises a named volume from the image's own
+#     $XDG_CACHE_HOME, so it inherits the worker's ownership, whereas a fresh bind directory arrives
+#     root-owned and the uid-10001 worker cannot write to it.
+
+services:
+  worker:
+    # PID-1 zombie reaping — see the note in the base compose.yaml. Restated
+    # here because a reader of this override should not have to know Compose merge rules to see it.
+    init: true
+    build:
+      args:
+        # The whole CUDA change. cu128 carries the exact versions requirements.txt already pins
+        # (torch 2.8.0, torchaudio 2.8.0, torchvision 0.23.0), so there is no requirements edit and no
+        # custom Dockerfile — the base one already takes this arg. torch's wheels bundle the CUDA
+        # runtime as nvidia-* packages, so no CUDA base image is needed either.
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
+
+    # Deliberately NO `environment:` block. Everything this override used to set —
+    # ENCORE_DEMUCS_DEVICE=cuda, ENCORE_WHISPERX_DEVICE=cuda, the capability list, the concurrency —
+    # is now measured by the worker at startup: it probes for an accelerator, derives the alignment
+    # device from the same decision, and advertises only the capabilities it can prove. Setting them
+    # here again would just be a second, staler copy of facts the box already knows, and the drift
+    # between this file's capability list and the base file's is precisely what left songs at 0%.
+    #
+    # If you want the old fail-loud behaviour on a driver or passthrough mistake, put ENCORE_DEVICE=cuda
+    # in docker/.env: an explicitly named device that cannot be reached is still a hard startup failure,
+    # whereas auto-detection quietly falls back to CPU. That is the one thing worth stating by hand,
+    # and it is a deployer's judgement rather than a property of this file.
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            # Honoured by `docker compose up` — unlike most other `deploy` keys, which are Swarm-only.
+            # `gpus: all` is the newer shorthand if you prefer it.
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # ── escape hatch, deliberately left commented ────────────────────────────────────────────────
+    # The base file drops ALL Linux capabilities and sets no-new-privileges on every service. CUDA
+    # needs device nodes rather than capabilities, so this SHOULD be compatible — but it is unverified
+    # on this stack. If `docker run --gpus all ... nvidia-smi` works standalone while the GPU is
+    # invisible inside the worker, uncomment this to confirm the hardening is the cause before changing
+    # anything else, then put it back.
+    # security_opt: []
+    # cap_drop: []
