@@ -113,11 +113,14 @@ async def main() -> None:
 
     dbos = _launch_dbos(config)
     adapters = build_adapters(config, device=device)
+    # The STARTUP fallback, used only when a job names no engine of its own. No `model` here on purpose:
+    # there is no job to read one from, so each engine takes its own default.
     separator = separate.build_separator(
         backend.name,
         device=device,
         mlx_bin=config.mlx_bin,
         ffmpeg_bin=config.ffmpeg_bin,
+        zoo_model_dir=config.zoo_model_dir,
     )
 
     def settled(job_id: str, resumable: bool) -> None:
@@ -160,6 +163,13 @@ async def main() -> None:
         # Built PER JOB from the job's OWN engine param, not once at startup from the box's backend. A
         # `stems-upgrade` job names `roformer`; honouring the startup backend instead would separate it with
         # demucs and publish that as the upgrade, which nothing downstream could contradict.
+        #
+        # `model` IS READ HERE, and its absence was a PORT REGRESSION. Core has always sent it — `worker-hub`
+        # puts `settings.upgradeModel` on the assign frame — and the old worker honoured it in every engine
+        # (`src/separation/{demucs,roformer,mlx}.py` all read `params.get("model")`). This worker read only
+        # `engine`, so `resolve_model`/`resolve_roformer_slug` always saw None and returned their defaults:
+        # an operator changing upgradeModel got no effect and no error. That is exactly the failure those
+        # two functions raise `UnknownModel` to prevent, reached from the one direction they could not see.
         chosen = (
             separate.build_separator(
                 backend.name,
@@ -167,6 +177,8 @@ async def main() -> None:
                 mlx_bin=config.mlx_bin,
                 ffmpeg_bin=config.ffmpeg_bin,
                 engine=job.param_str("engine"),
+                model=job.param_str("model"),
+                zoo_model_dir=config.zoo_model_dir,
             )
             or separator
         )

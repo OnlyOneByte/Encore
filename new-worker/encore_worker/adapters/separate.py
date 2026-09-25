@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import shutil
 from dataclasses import dataclass
+from typing import Any
 
 from encore_worker.adapters.cli import ToolFailed, run
 from encore_worker.adapters.ports import ProgressSink
@@ -110,7 +111,7 @@ class TorchDemucs:
 
     name = "demucs"
 
-    def __init__(self, *, model: str = "htdemucs", device: str = "cpu", jobs: int = 1) -> None:
+    def __init__(self, *, model: str | None = "htdemucs", device: str = "cpu", jobs: int = 1) -> None:
         self._model = resolve_model(model)
         self._device = device
         self._jobs = jobs
@@ -179,7 +180,7 @@ class MlxDemucs:
     name = "demucs-mlx"
 
     def __init__(
-        self, *, model: str = "htdemucs", mlx_bin: str = "demucs-mlx", ffmpeg_bin: str = "ffmpeg"
+        self, *, model: str | None = "htdemucs", mlx_bin: str = "demucs-mlx", ffmpeg_bin: str = "ffmpeg"
     ) -> None:
         self._model = resolve_model(model)
         self._bin = mlx_bin
@@ -437,22 +438,41 @@ class SeparationFailed(RuntimeError):
 def build_separator(
     backend: str,
     *,
-    model: str = "htdemucs",
+    model: str | None = "htdemucs",
     device: str = "cpu",
     mlx_bin: str,
     ffmpeg_bin: str,
     engine: str | None = None,
-) -> TorchDemucs | MlxDemucs | Roformer | None:
+    zoo_model_dir: str = "",
+) -> TorchDemucs | MlxDemucs | Roformer | Any | None:
     """The separator for the RESOLVED backend, or None when this box cannot build one.
 
     None rather than a raise: `host.capabilities` already declines to advertise `stems` on a box with no
     engine, so reaching here with an unbuildable backend means the two disagreed — and returning None
     makes that a refused job rather than a crashed process.
+
+    `model` MAY BE None, meaning "this job named none, use the engine's default". That is distinct from the
+    empty string and from a name: `resolve_model` and `resolve_roformer_slug` both RAISE on an explicit
+    unknown name and fall back only on None, because silently separating with the default would publish a
+    backing track the operator did not choose and would be indistinguishable from the one they asked for.
     """
     from encore_worker.host.hardware import binary_available, module_available
 
     # An explicit engine wins over the box's default backend: a `stems-upgrade` job names `roformer`, and
     # honouring the backend instead would separate with demucs and label the result as the upgrade.
+    if engine == "audiosep":
+        if not module_available("audio_separator"):
+            return None
+        from encore_worker.adapters import zoo  # noqa: PLC0415
+        from encore_worker.adapters.audiosep import ZooSeparator  # noqa: PLC0415
+
+        # No default checkpoint for the zoo, unlike demucs: there are ~135 and no single one is the obvious
+        # choice, so the best-published-score entry is used when a job names none. `catalogue()` is sorted
+        # by upstream instrumental SDR, so [0] IS that entry.
+        token = model or (zoo.catalogue()[0].token if zoo.catalogue() else None)
+        if token is None:
+            return None
+        return ZooSeparator(token=token, model_file_dir=zoo_model_dir, device=device)
     if engine == "roformer":
         return (
             Roformer(model=model if model in ROFORMER_MODELS else None, device=device)

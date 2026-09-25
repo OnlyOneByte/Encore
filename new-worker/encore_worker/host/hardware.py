@@ -178,8 +178,13 @@ def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg")
     # The platform check is implied — `mlx-audio` only installs on darwin/arm64.
     if module_available("mlx_audio"):
         caps.add("stems:melband-mlx")
-    # NOT ADVERTISED, deliberately: `adapters/separate.build_separator` has no audiosep branch, so claiming
-    # it would route work here that this worker cannot honour. The old worker has the engine; porting it is
-    # tracked in new-worker/README.md's parity notes. Advertising ahead of the implementation is the exact
-    # failure the roformer gate above now prevents.
+    # THE MODEL ZOO, now advertised because it is now implemented — `adapters/audiosep.ZooSeparator` and the
+    # `audiosep` branch in `build_separator`. It was deliberately withheld before that existed, since
+    # advertising ahead of the implementation is the exact failure the roformer gate above prevents.
+    #
+    # Gated on the module, which is sufficient here in a way it was NOT for roformer: the zoo runs
+    # in-process, so an importable `audio_separator` really is the whole requirement — there is no separate
+    # binary whose absence could make an importable module unrunnable. Checkpoints download on demand.
+    if module_available("audio_separator"):
+        caps.add("stems:audiosep")
     return frozenset(caps)

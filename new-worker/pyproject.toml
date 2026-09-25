@@ -88,21 +88,31 @@ mlx = [
     "sentencepiece; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
-# One of four separation backends, and the only one that constrains torch, so it is ISOLATED rather
-# than part of `ml`. On arm64 mac it needs torch>=2.13 (the MLX path covers Apple Silicon instead, so
-# the marker excludes it there); everywhere else it accepts torch>=2.3 and coexists with the pin above.
-# Kept separate because uv's universal resolver does not intersect that exclusion marker with the
-# transitive torch requirement, and because an optional engine should not be able to move the version
-# of torch the ALIGNMENT stack runs on.
+# THE MODEL ZOO, and the reason this worker can offer ~90 separators instead of 3. One package carries the
+# VR, MDX, MDX23C and RoFormer architectures — 84 of the 89 catalogue entries are RoFormer checkpoints,
+# against the 10 that `bs-roformer-infer` shipped — plus an upstream `models-scores.json` with per-model
+# vocals/instrumental SDR that lets an operator rank them instead of guessing from filenames.
 #
-# SPLIT INTO TWO ENTRIES, and it must stay that way. The single `or` marker that reads more naturally
-# (`sys_platform != 'darwin' or platform_machine != 'arm64'`) does not resolve: uv does not intersect an
-# `or` exclusion with the transitive torch requirement, so it concludes this needs torch>=2.13 on every
-# platform and the lock fails. These two atomic markers are the De Morgan expansion of that `or` and
-# resolve identically. Measured on uv 0.9.2 — do not "simplify" them back.
+# PINNED TO 0.45.0 RATHER THAN 0.47.0 ON PURPOSE, and the pin is what makes the zoo available on Apple
+# Silicon at all:
+#
+#     0.46.0+   torch<3,>=2.13 ; sys_platform == 'darwin' and platform_machine == 'arm64'
+#     0.45.0    torch>=2.3     (every platform)
+#
+# This project pins torch 2.8.0 for whisperx/demucs/pyannote, so 0.47.0 was UNINSTALLABLE on arm64 mac and
+# the previous markers excluded it there — which meant the zoo did not exist on the machine this project is
+# developed on. 0.45.0 carries the IDENTICAL catalogue (verified: same 89 entries, same 84 roformers), so
+# the downgrade costs no models and buys the platform. Revisit if torch moves past 2.13.
+#
+# The old two-entry De Morgan split is gone with the markers it existed to express: there is no longer a
+# platform to exclude, so there is no `or` marker for uv to fail to intersect.
 audiosep = [
-    "audio-separator==0.47.0; sys_platform != 'darwin'",
-    "audio-separator==0.47.0; platform_machine != 'arm64'",
+    "audio-separator==0.45.0",
+    # AN UNDECLARED DEPENDENCY OF 0.45.0, not a preference. `separator/uvr_lib_v5/spec_utils.py` does a
+    # bare `import audioread` and the release's metadata does not list it, so `Separator` fails to import
+    # with ModuleNotFoundError on a clean install. Declared here so the failure happens at resolve time
+    # rather than on the first zoo job. Drop it if a future pin lists its own dependencies correctly.
+    "audioread>=3.0",
 ]
 
 # A STATIC FFMPEG BINARY, shipped per-platform in the wheel. The worker shells ffmpeg on every path —

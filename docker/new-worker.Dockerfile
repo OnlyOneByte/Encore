@@ -41,7 +41,7 @@ ENV UV_LINK_MODE=copy \
 	UV_PYTHON_DOWNLOADS=never \
 	UV_PROJECT_ENVIRONMENT=/usr/local
 RUN --mount=type=cache,target=/root/.cache/uv \
-	uv sync --frozen --no-install-project --extra "${TORCH_EXTRA}" --extra ml --extra text --extra ffmpeg
+	uv sync --frozen --no-install-project --extra "${TORCH_EXTRA}" --extra ml --extra text --extra ffmpeg --extra audiosep
 
 # ── deno, for yt-dlp's challenge solver ──────────────────────────────────────────────────────────
 # Placed AFTER the dependency layer on purpose: a layer invalidates everything below it, so a ~40 MB
