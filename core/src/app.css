@@ -314,6 +314,21 @@ body {
 	height: 100%;
 }
 
+/* THE STAGE IS A FIXED, NON-SCROLLING SURFACE, and the canvas behind it must agree.
+   `/tv` renders `.tv` as `position: fixed; inset: 0` with a pure black floor, so the document never scrolls —
+   but it can still OVERSCROLL. A rubber-band drags the fixed stage off the edge and exposes the canvas, which
+   carries body's radial glow (it propagates to the root, per the note below). On a television that shows as a
+   seam plus a stray bright arc, and on a desktop browser it looks like you scrolled past the background.
+   Two halves, both needed: stop the rubber-band, and make what is behind it black anyway so any residual
+   overscroll is invisible. Setting a background on `html` also STOPS the propagation that causes the arc.
+   `:has()` scopes this to the route with no JS and no class plumbing through the layout — the same mechanism
+   `.app-shell:has(.join-main)` already uses. */
+html:has(.tv),
+html:has(.tv) body {
+	overscroll-behavior: none;
+	background: #000;
+}
+
 body {
 	/* `no-repeat` plus the matching `background-color` is load-bearing: the body's background propagates to the
 	   canvas as if set on the root, whose positioning area is one viewport tall, so it otherwise seams. */

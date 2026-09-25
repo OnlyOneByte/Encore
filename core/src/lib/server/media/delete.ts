@@ -14,10 +14,12 @@ import {
 	candidateAudioRefs,
 	instrumentalKey,
 	vocalsKey,
+	guideMixKey,
 	lyricsKey,
 	rawCaptionKey,
 	legacyVocalsRefs,
 	KNOWN_VOCALS_EXTS,
+	KNOWN_STEM_EXTS,
 	KNOWN_CAPTION_EXTS,
 	CAPTION_KINDS,
 	resolveBase
@@ -59,7 +61,14 @@ function realDeleteFile(ref: string): void {
  */
 function derivedRefsFor(mediaId: string, m: Media | undefined): string[] {
 	const refs = new Set<string>(m ? derivedRefsOf(m) : []);
-	refs.add(instrumentalKey(mediaId));
+	// EVERY known stem ext, not just today's default. The publish format is configurable, so a library
+	// holds rows written under whatever it was at the time; assuming one ext leaves those files on disk
+	// forever, unreferenced and therefore invisible to retention as well.
+	for (const ext of KNOWN_STEM_EXTS) {
+		refs.add(instrumentalKey(mediaId, ext));
+		refs.add(vocalsKey(mediaId, ext));
+		refs.add(guideMixKey(mediaId, ext));
+	}
 	for (const ext of KNOWN_VOCALS_EXTS) refs.add(vocalsKey(mediaId, ext));
 	refs.add(lyricsKey(mediaId));
 	for (const kind of CAPTION_KINDS) for (const ext of KNOWN_CAPTION_EXTS) refs.add(rawCaptionKey(mediaId, kind, ext));

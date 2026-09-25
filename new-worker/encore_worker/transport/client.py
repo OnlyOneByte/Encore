@@ -72,11 +72,21 @@ class Client:
     ownership: Ownership = field(default_factory=Ownership)
     #: How long to wait between reconnect attempts. Default is the jittered schedule above.
     backoff: Backoff | None = None
+    #: The live published-stem container. Starts at the configured FALLBACK and is overwritten by whatever
+    #: the core announces in `worker:welcome` — core owns the storage layout, so its value wins. Mutable
+    #: because a reconnect may reach a differently-configured core, and because `Config` is frozen.
+    publish_stem_format: str = ""
     _socket: Socket | None = field(default=None, init=False)
     _running: dict[str, asyncio.Task[None]] = field(default_factory=dict, init=False)
     #: Set once a claim round has been answered, so a publish can wait for confirmation rather than
     #: guessing. Replaced on every disconnect, because the previous round's answer is now stale.
     _confirmed: asyncio.Event = field(default_factory=asyncio.Event, init=False)
+
+    def __post_init__(self) -> None:
+        # Seeded from config so a core that announces nothing — an older one — still publishes at a valid
+        # extension rather than at an empty one.
+        if not self.publish_stem_format:
+            self.publish_stem_format = self.config.publish_stem_format
 
     # ── the connection loop ──────────────────────────────────────────────────────────────────────
 
@@ -163,8 +173,20 @@ class Client:
                 self._confirmed.set()
                 for job_id in frame.unknown:
                     self._note(f"DESYNC: the core has no row for job {job_id}, which we are running")
-            case f.Welcome() | f.Ping():
-                pass  # nothing to do; the handshake and liveness need no local state
+            case f.Welcome() as welcome:
+                # The one thing the handshake CARRIES that changes behaviour: core names the published stem
+                # format, because core owns the storage layout. Recorded on the client rather than mutating
+                # the frozen Config, so a reconnect to a differently-configured core takes effect and the
+                # configured value stays visible as what it is — a fallback.
+                if welcome.publish_stem_format:
+                    if welcome.publish_stem_format != self.publish_stem_format:
+                        self._note(
+                            f"core publishes stems as {welcome.publish_stem_format!r} "
+                            f"(was {self.publish_stem_format!r})"
+                        )
+                    self.publish_stem_format = welcome.publish_stem_format
+            case f.Ping():
+                pass  # liveness needs no local state
             case _ as unreachable:
                 assert_never(unreachable)
 

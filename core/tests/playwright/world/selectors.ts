@@ -55,6 +55,18 @@ export const SEL = {
 	findBox: '.findbox',
 	/** Empties the query, restoring queue and library in place — the whole way "back" from a search. */
 	clearSearch: '[aria-label="Clear the search"]',
+	/* ── /library ─────────────────────────────────────────────────────────────
+	   The browse page. Its field FILTERS rows already in memory where `search` above FETCHES, so the two carry
+	   separate aria-labels and separate keys on purpose — a test that mixed them would pass against the wrong
+	   surface. See docs/FRONTEND.md#the-library-page. */
+	libraryLink: 'a[aria-label="Your library"]',
+	libraryFilter: 'input[aria-label="Filter your library"]',
+	clearLibraryFilter: '[aria-label="Clear the filter"]',
+	/** "N of M songs", the line that tells a guest this box hides rows rather than fetching them. */
+	libraryCount: '.count',
+	/** The labelled door under the home shelf. Present only while the shelf actually hides rows. Scoped by the
+	 *  WRAPPER, because `<Button href>`'s own classes come from tailwind-variants and can be re-vendored. */
+	librarySeeAll: '.showall-row a[href="/library"]',
 	songRow: '.row',
 	songTitle: '.row .t',
 	addTurn: '.row [data-testid="song-add"]',

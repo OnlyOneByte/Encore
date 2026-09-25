@@ -20,6 +20,7 @@ candidate is good never runs a model at all.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import assert_never
 
 from encore_worker.domain.lyrics.report import TimingReport
@@ -80,6 +81,9 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
     #: The document produced by the outstanding `Try`. `record()` returns the NEXT step, so at `Commit`
     #: this still holds the attempt that earned it.
     pending: TimedDoc | None = None
+    #: Every document written, so none is left unreported — see `AlignOutcome.candidates` for why an
+    #: unreported document is a permanent leak rather than a missing nicety.
+    written: list[TimedDoc] = []
     step = search.begin()
 
     while True:
@@ -106,6 +110,8 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
                 )
                 # A step that produced nothing is judged by the same policy as a bad alignment.
                 pending = doc
+                if doc is not None:
+                    written.append(doc)
                 step = search.record(doc.report if doc is not None else NOTHING_TIMED)
 
             case RunAsr(why):
@@ -128,18 +134,23 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
                     raise RuntimeError("Commit with no timed document — the search was driven wrongly")
                 await steps.note(job, STATE_PUBLISH, attempt_no, "accept", why, None)
                 settled = await steps.diarize(job, audio, pending)
-                return await _publish(job, steps, settled, why, search)
+                return await _publish(job, steps, settled, why, search, written)
 
             case GiveUp(why):
                 await steps.note(job, STATE_PUBLISH, attempt_no, "no-lyrics", why, None)
-                return await _publish(job, steps, None, why, search)
+                return await _publish(job, steps, None, why, search, written)
 
             case _ as unreachable:
                 assert_never(unreachable)
 
 
 async def _publish(
-    job: JobRef, steps: AlignSteps, doc: TimedDoc | None, why: str, search: Search
+    job: JobRef,
+    steps: AlignSteps,
+    doc: TimedDoc | None,
+    why: str,
+    search: Search,
+    written: Sequence[TimedDoc] = (),
 ) -> AlignOutcome:
     """Publish, treating a lost lease as a normal outcome rather than a failure.
 
@@ -149,12 +160,15 @@ async def _publish(
     try:
         await steps.publish(job, doc)
     except NotOurJob as lost:
+        # The candidates are still reported: the FILES exist regardless of who owns the job, so leaving
+        # them unnamed would leak them even though this worker published nothing.
         return AlignOutcome(
             published=None,
             why=f"abandoned before publishing: {lost}",
             trail=search.trail,
+            candidates=tuple(written),
         )
-    return AlignOutcome(published=doc, why=why, trail=search.trail)
+    return AlignOutcome(published=doc, why=why, trail=search.trail, candidates=tuple(written))
 
 
 async def _acquire_texts(job: JobRef, audio: AudioRef, steps: AlignSteps) -> list[TextRef]:

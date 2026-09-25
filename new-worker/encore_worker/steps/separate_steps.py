@@ -11,12 +11,15 @@ import asyncio
 import os
 
 from encore_worker.adapters import separate as sep
+from encore_worker.adapters.encode import EncodeFailed, FfmpegEncoder
 from encore_worker.adapters.ports import AudioProbe, Separator
+from encore_worker.artifacts import keys
+from encore_worker.artifacts.ports import ArtifactStore
 from encore_worker.domain.identity import Identified, identify_from_title
 from encore_worker.host.config import Config
 from encore_worker.steps.align_steps import AlignStepsImpl, Reporter
 from encore_worker.steps.api import NotOurJob
-from encore_worker.steps.records import AudioRef, JobRef
+from encore_worker.steps.records import AudioRef, JobRef, PublishedStems
 
 
 class SeparateStepsImpl:
@@ -28,14 +31,25 @@ class SeparateStepsImpl:
         config: Config,
         audio: AlignStepsImpl,
         reporter: Reporter,
+        store: ArtifactStore,
         separator: Separator | None = None,
         probe: AudioProbe | None = None,
+        encoder: FfmpegEncoder | None = None,
+        publish_stem_format: str | None = None,
     ) -> None:
         self._cfg = config
         self._audio = audio
         self._out = reporter
         self._sep = separator
         self._probe = probe
+        self._store = store
+        # Required, not optional: a box without ffmpeg cannot publish, and `host.capabilities` already
+        # refuses to advertise `stems` without it — so defaulting one here is safe rather than hopeful.
+        self._encoder = encoder or FfmpegEncoder(config.ffmpeg_bin, config.flac_level)
+        # The LIVE value, which the transport learned from `worker:welcome`. Falls back to config only when
+        # the caller has nothing better — core owns this decision, so its announcement must win over a local
+        # setting rather than the other way round.
+        self._publish_ext = publish_stem_format or config.publish_stem_format
 
     async def acquire_audio(self, job: JobRef) -> AudioRef:
         """Identical to align's, by delegation. See the module docstring for why not inheritance."""
@@ -81,11 +95,76 @@ class SeparateStepsImpl:
             return None
         return await asyncio.to_thread(self._probe.peak_dbfs, audio.path)
 
-    async def publish_stems(self, job: JobRef, audio: AudioRef) -> str:
-        """Guarded, exactly as align's publish is: the lease may have expired during separation."""
+    async def publish_stems(self, job: JobRef, audio: AudioRef) -> PublishedStems:
+        """Encode the scratch stems to the published format and place them at core's keys.
+
+        THIS USED TO BE `os.path.relpath(audio.path, job.media_dir)` — a ref shaped correctly and pointing
+        at the separator's raw output inside `work/{job_id}/`. Core recorded it, so the row looked healthy,
+        while the file sat in job scratch that retention evicts and carried the wrong extension for the
+        player. Nothing failed; the song just stopped working later.
+
+        ORDER MATTERS. Ownership is re-asserted FIRST, before any bytes become visible: separation takes
+        tens of minutes, so a lease that was valid at the start routinely is not here. Then the stems are
+        encoded into scratch, and only then placed — so a failure halfway leaves the store untouched rather
+        than half-updated.
+
+        The guide mix is built from the ENCODED stems, not the raw ones, so what the TV splits is byte-wise
+        the same audio it would get from the two separate files.
+        """
         if not await self._out.confirm_ownership(job.job_id):
             raise NotOurJob(self._out.explain_ownership(job.job_id))
-        return os.path.relpath(audio.path, job.media_dir)
+
+        work = self._work(job)
+        ext = self._publish_ext
+        staged_instrumental = await asyncio.to_thread(
+            self._encoder.stem, audio.path, os.path.join(work, f"publish-instrumental.{ext}")
+        )
+        staged_vocals = (
+            await asyncio.to_thread(
+                self._encoder.stem, audio.vocals_path, os.path.join(work, f"publish-vocals.{ext}")
+            )
+            if audio.vocals_path
+            else None
+        )
+
+        # Built before anything is placed, and best-effort: a box that cannot produce the 4-channel join
+        # still has two usable stems, and the TV falls back to the two-element guide. Refusing the whole
+        # publication over the optional artifact would throw away a completed separation.
+        staged_guide: str | None = None
+        if staged_vocals is not None:
+            try:
+                staged_guide = await asyncio.to_thread(
+                    self._encoder.guide_mix,
+                    staged_instrumental,
+                    staged_vocals,
+                    os.path.join(work, f"publish-guidemix.{ext}"),
+                )
+            except EncodeFailed as exc:
+                # Fire-and-forget through the same decision trail align uses, so "why is there no guide
+                # mix" is answerable from the job row rather than only from a process log.
+                await self._out.state(
+                    job.job_id,
+                    "publish",
+                    1,
+                    "degraded",
+                    f"guide mix unavailable, publishing stems only: {exc}",
+                    None,
+                )
+
+        instrumental_ref = keys.instrumental_key(job.media_id, ext)
+        await self._store.put(instrumental_ref, staged_instrumental)
+
+        vocals_ref: str | None = None
+        if staged_vocals is not None:
+            vocals_ref = keys.vocals_key(job.media_id, ext)
+            await self._store.put(vocals_ref, staged_vocals)
+
+        guide_ref: str | None = None
+        if staged_guide is not None:
+            guide_ref = keys.guide_mix_key(job.media_id, ext)
+            await self._store.put(guide_ref, staged_guide)
+
+        return PublishedStems(instrumental=instrumental_ref, vocals=vocals_ref, guide_mix=guide_ref)
 
     def _work(self, job: JobRef) -> str:
         path = os.path.join(job.media_dir, "work", job.job_id)

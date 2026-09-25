@@ -65,6 +65,30 @@ export async function scanLibrary(
 	return { tracks, skipped };
 }
 
+/** A character the unicode61 tokenizer will actually index. A term made only of punctuation tokenizes to NOTHING, and
+ * an empty FTS5 phrase (`""`) is a syntax error in its own right, so such terms are dropped rather than quoted. */
+const TOKEN_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * A prefix query over every term, each one QUOTED. The quoting is the whole point: inside a double-quoted FTS5 string
+ * every character is literal text to be tokenized, so `(`, `:`, `*`, `^` and the bare AND/OR/NOT/NEAR keywords lose
+ * their syntactic meaning. Unquoted, they kept it — `sam (live)` and `nirvana: mtv` were SYNTAX ERRORS, which threw
+ * from `.all()`, and `safeSearch` in /api/search catches a dead resolver so the whole local library silently returned
+ * nothing. A punctuated query therefore dropped every local song and looked like an empty library rather than a
+ * failure. The old `replace(/["']/g, '')` addressed only the two quote characters, and stripping the apostrophe was
+ * itself a miss: `dont*` does not match the `don` + `t` tokens FTS5 indexes for "don't".
+ *
+ * `"term"*` is a phrase-prefix query, so the `*` MUST sit outside the closing quote — inside, it is just an asterisk
+ * to tokenize away. A literal `"` inside a string doubles, per FTS5.
+ */
+export function ftsPrefixQuery(query: string): string {
+	return query
+		.split(/\s+/)
+		.filter((t) => TOKEN_CHAR.test(t))
+		.map((t) => `"${t.replace(/"/g, '""')}"*`)
+		.join(' ');
+}
+
 export class LocalLibrary implements MediaResolver {
 	readonly kind = 'local' as const;
 	#fts: Database;
@@ -88,13 +112,8 @@ export class LocalLibrary implements MediaResolver {
 	}
 
 	async search(query: string, limit: number): Promise<SearchResult[]> {
-		const q = query.trim();
-		if (!q) return [];
-		// prefix-match each term; bm25() ranks (lower = better)
-		const match = q
-			.split(/\s+/)
-			.map((t) => `${t.replace(/["']/g, '')}*`)
-			.join(' ');
+		const match = ftsPrefixQuery(query);
+		if (!match) return [];
 		const rows = this.#fts
 			.prepare(
 				`SELECT source_ref, title, artist, duration_sec FROM tracks

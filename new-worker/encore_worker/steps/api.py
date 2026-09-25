@@ -21,6 +21,7 @@ from typing import Protocol
 from encore_worker.steps.records import (
     AudioRef,
     JobRef,
+    PublishedStems,
     Segment,
     TextRef,
     TimedDoc,
@@ -131,7 +132,7 @@ class SeparateSteps(Protocol):
         """
         ...
 
-    async def publish_stems(self, job: JobRef, audio: AudioRef) -> str: ...
+    async def publish_stems(self, job: JobRef, audio: AudioRef) -> PublishedStems: ...
 
 
 class NotOurJob(RuntimeError):

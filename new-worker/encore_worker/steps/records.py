@@ -77,6 +77,25 @@ class AudioRef:
 
 
 @dataclass(frozen=True, slots=True)
+class PublishedStems:
+    """The REFS separation put in the store — what core records, not where the files were built.
+
+    Three refs rather than one string because core's `JobArtifacts.stems` has three fields, and a worker
+    that reports only the instrumental leaves the other two unrecorded: core then has no ref to serve, no
+    ref to evict under retention, and no ref to delete with the media. They are published together, so they
+    are reported together.
+
+    `guide_mix` is OPTIONAL because it is built FROM the other two — a box whose ffmpeg cannot produce the
+    4-channel join still has two usable stems, and the TV falls back to the two-element guide. The
+    instrumental is not optional: without it there is nothing to play.
+    """
+
+    instrumental: str
+    vocals: str | None = None
+    guide_mix: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class TextRef:
     """One acquired text, with the facts that decide which knobs apply to it.
 
@@ -183,6 +202,14 @@ class AlignOutcome:
     published: TimedDoc | None
     why: str
     trail: tuple[Mapping[str, object], ...] = ()
+    #: EVERY document this job wrote, winner included, in the order they were produced.
+    #:
+    #: Reported to the core as `artifacts.lyrics.candidates`, and that is not cosmetic: core's retention
+    #: sweep builds its cleanup set from `lyricsCandidates` (`retention.ts:182`), so a document the worker
+    #: wrote and did NOT report is never enumerated and therefore never evicted — it leaks for the life of
+    #: the library. It is also what makes re-selection possible without re-fetching the audio, which is what
+    #: `/api/lyrics-reselect` exists to do.
+    candidates: tuple[TimedDoc, ...] = ()
 
     @property
     def no_lyrics(self) -> bool:

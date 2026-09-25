@@ -91,6 +91,21 @@ export function candidateAudioRefs(mediaId: string): string[] {
  */
 export const INSTRUMENTAL_EXT = 'flac';
 export const VOCALS_EXT = 'flac';
+
+/**
+ * The container the worker is TOLD to publish stems in, and the default the id-derived keys above use.
+ *
+ * Lossless by default, and the reason is SYNC rather than fidelity: a lossy container with encoder pre-roll
+ * (AAC-in-m4a priming samples) shifts the vocals relative to the instrumental, and the two must stay
+ * sample-aligned for the guide mix and the highlight to mean anything.
+ *
+ * READ ONCE PER CALL rather than cached, so a restart is enough to change it — and nothing already on disk
+ * is affected, because every stored ref carries its own extension.
+ */
+export function publishStemFormat(): string {
+	const raw = process.env.ENCORE_PUBLISH_STEM_FORMAT?.trim().toLowerCase().replace(/^\./, '');
+	return raw || INSTRUMENTAL_EXT;
+}
 /** MUST match the worker's `GUIDE_MIX_EXT`, or a file that exists 404s. */
 export const GUIDE_MIX_EXT = 'flac';
 
@@ -112,6 +127,18 @@ export function guideMixKey(mediaId: string, ext: string = GUIDE_MIX_EXT): strin
 
 /** Newest first: a row's on-disk extension depends on VOCALS_EXT at the time it was processed. */
 export const KNOWN_VOCALS_EXTS = ['flac', 'm4a', 'wav'] as const;
+
+/**
+ * Every extension a STEM of any kind could be on disk at — instrumental, vocals or guide mix.
+ *
+ * Needed because the publish format is configurable: a library accumulates rows written under whatever it
+ * was at the time, so any id-DERIVED key (the fallback for a legacy row that recorded no ref) has to
+ * enumerate rather than assume today's value. Assuming one ext is how a delete misses a file and leaks it
+ * past retention forever.
+ *
+ * A superset is free — every consumer is existence-checked or ENOENT-tolerant.
+ */
+export const KNOWN_STEM_EXTS = ['flac', 'm4a', 'wav'] as const;
 
 /**
  * The SINGLE authority for the legacy `-instrumental.` → `-vocals.` fallback. With no stored vocals ref

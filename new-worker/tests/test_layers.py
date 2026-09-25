@@ -26,8 +26,12 @@ ALLOWED: dict[str, frozenset[str]] = {
     "protocol": frozenset({"protocol"}),
     "host": frozenset({"host"}),
     "domain": frozenset({"domain", "host", "protocol"}),
+    # Where published bytes go. Peer of `adapters` rather than under it: both are outbound seams, and this
+    # one is deliberately unable to reach `domain` or `adapters` — a store must not learn what a lyric is,
+    # and a key must be derivable from an id alone. `keys` is pure; only `local` touches a filesystem.
+    "artifacts": frozenset({"artifacts", "host", "protocol"}),
     "adapters": frozenset({"adapters", "domain", "host", "protocol"}),
-    "steps": frozenset({"steps", "adapters", "domain", "host", "protocol"}),
+    "steps": frozenset({"steps", "artifacts", "adapters", "domain", "host", "protocol"}),
     "workflows": frozenset({"workflows", "steps", "domain", "protocol"}),
     "transport": frozenset({"transport", "workflows", "protocol", "host"}),
 }

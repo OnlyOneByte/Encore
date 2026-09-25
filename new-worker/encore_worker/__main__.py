@@ -14,19 +14,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from typing import Any
 
 from encore_worker.adapters import cli, lrclib, lrcmux, ml, ports, separate
+from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.host import hardware
 from encore_worker.host.config import Config
 from encore_worker.protocol import frames as f
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
-from encore_worker.steps.records import JobRef
+from encore_worker.steps.records import AlignOutcome, JobRef
 from encore_worker.steps.separate_steps import FetchStepsImpl, SeparateStepsImpl
 from encore_worker.transport.client import Client
-from encore_worker.workflows.align import run_align
+from encore_worker.workflows import durable
 from encore_worker.workflows.fetch import run_fetch
-from encore_worker.workflows.stems import run_stems
 
 
 def build_adapters(config: Config, *, device: str) -> Adapters:
@@ -116,6 +117,35 @@ async def main() -> None:
         capabilities=caps,
         backend=backend.name,
     )
+
+    # ONE registration, before any job. `DBOS.workflow` mutates a global registry, so doing it per job would
+    # re-register the same name every time — and its ABSENCE is what meant every step ran outside a workflow
+    # context and checkpointed nothing at all.
+    #
+    # The steps are supplied as PROVIDERS rather than as workflow arguments because DBOS serialises its
+    # arguments into the system database: a steps object holds loaded models, a websocket and subprocess
+    # handles, so passing it raises `PicklingError`. Only `JobRef` crosses the boundary; these closures keep
+    # the process-level state on this side of it.
+    def align_steps_for(job: JobRef) -> Any:
+        from encore_worker.workflows.dbos_align import DbosAlignSteps  # noqa: PLC0415
+
+        impl = AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client))
+        return DbosAlignSteps(impl, dbos)
+
+    def stems_steps_for(job: JobRef) -> Any:
+        return SeparateStepsImpl(
+            config=config,
+            audio=AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client)),
+            reporter=_ReporterFor(client),
+            # Roots come from the JOB's media_dir, so a box serving two cores is not forced onto one layout.
+            store=LocalArtifactStore(Roots.under(job.media_dir)),
+            separator=separator,
+            probe=adapters.probe,
+            # What the CORE asked for at handshake, not what this box's env says.
+            publish_stem_format=client.publish_stem_format,
+        )
+
+    durable.register(dbos, align_steps_for=align_steps_for, stems_steps_for=stems_steps_for)
     await client.serve_forever()
 
 
@@ -151,6 +181,53 @@ async def _connect(url: str) -> Any:
     return await websockets.connect(url, max_size=None)
 
 
+#: Worker labels are `provider` / `captions:authored` / `asr:vocals`-shaped; core's `LyricsTextSource` is a
+#: closed set of four. Mapped explicitly rather than by splitting on ":", because an unmapped value would
+#: reach core's contract as a string it does not accept and be dropped without a word.
+_TEXT_SOURCES: dict[str, str] = {"captions": "captions", "asr": "asr", "manual": "manual"}
+
+
+def _text_source_of(label: str) -> str:
+    """Core's `LyricsTextSource` for one of this worker's labels.
+
+    Everything that is not captions/asr/manual is a PROVIDER, and core spells that `lrclib` — the name is
+    historical there (it predates lrcmux), so a provider label maps onto it rather than inventing a fifth
+    value core would refuse.
+    """
+    head = label.split(":", 1)[0]
+    return _TEXT_SOURCES.get(head, "lrclib")
+
+
+def _lyrics_artifacts(outcome: AlignOutcome) -> dict[str, Any] | None:
+    """The `artifacts` envelope for an align completion.
+
+    CANDIDATES ARE NOT OPTIONAL DECORATION. Core's retention sweep builds its cleanup set from
+    `lyricsCandidates` (`retention.ts:182`), so any document this worker wrote and did not declare here is
+    never enumerated and therefore never evicted — it leaks for the life of the library. They are also what
+    lets `/api/lyrics-reselect` switch to another reading without re-fetching the audio.
+
+    Reported even when nothing was PUBLISHED: the files exist regardless, so they must be nameable.
+    """
+    if not outcome.published and not outcome.candidates:
+        return None
+    now = int(time.time() * 1000)
+    candidates = [
+        {
+            "ref": doc.ref,
+            "textSource": _text_source_of(doc.label),
+            "timing": doc.timing,
+            "textConfidence": doc.confidence,
+            "createdAt": now,
+            **({"language": doc.language} if doc.language else {}),
+        }
+        for doc in outcome.candidates
+    ]
+    lyrics: dict[str, Any] = {"uri": outcome.published.ref if outcome.published else ""}
+    if candidates:
+        lyrics["candidates"] = candidates
+    return {"lyrics": lyrics}
+
+
 async def _run(
     assign: f.Assign,
     config: Config,
@@ -167,39 +244,53 @@ async def _run(
     job = JobRef(
         job_id=assign.job_id,
         media_id=assign.media_id,
-        media_dir=assign.media_dir,
+        # The core does not name the volume — it is a property of THIS host, so this box's config is the
+        # authority. An assignment that does name one wins, for a core that mounts it somewhere specific.
+        media_dir=assign.media_dir or config.media_dir,
         source_uri=assign.source_uri,
         params=assign.params or {},
     )
-    impl = AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client))
-
     if assign.action == "align":
-        from encore_worker.workflows.dbos_align import DbosAlignSteps  # noqa: PLC0415
-
-        outcome = await run_align(job, DbosAlignSteps(impl, dbos))
+        outcome = await durable.align(job)
         return f.Complete(
             worker_id=config.worker_id,
             job_id=job.job_id,
             media_uri=outcome.published.ref if outcome.published else "",
-            artifacts={"lyrics": {"ref": outcome.published.ref}} if outcome.published else None,
+            # `uri`, NOT `ref`. Core's `JobArtifacts.lyrics` is `{ uri, candidates? }` and reads
+            # `artifacts?.lyrics?.uri` — `ref` is the field on a CANDIDATE, so the old key left core with
+            # an undefined uri and no lyrics on a job that had just published them.
+            artifacts=_lyrics_artifacts(outcome),
             facts={"backend": config.backend, "noLyrics": outcome.no_lyrics},
             trail=tuple(dict(entry) for entry in outcome.trail),
         )
 
     if assign.action in ("stems", "stems-upgrade"):
-        stems_impl = SeparateStepsImpl(
-            config=config,
-            audio=impl,
-            reporter=_ReporterFor(client),
-            separator=separator,
-            probe=adapters.probe,
-        )
-        separated = await run_stems(job, stems_impl)
+        separated = await durable.stems(job)
+        stems = separated.published
         return f.Complete(
             worker_id=config.worker_id,
             job_id=job.job_id,
-            media_uri=separated.published,
-            artifacts={"stems": {"instrumental": separated.published}} if not separated.refused else None,
+            # `mediaUri` is REQUIRED by core's validation (`worker-hub.ts` rejects a non-string), so a
+            # refusal sends "" rather than omitting it — the frame must still parse to report the refusal.
+            media_uri=stems.instrumental if stems else "",
+            # EVERY ref, not just the instrumental. Core has a field per stem and uses them to serve, to
+            # evict under retention and to delete with the media — an unreported ref is a file nothing
+            # will ever clean up and nothing can play.
+            artifacts=(
+                {
+                    "stems": {
+                        k: v
+                        for k, v in (
+                            ("instrumental", stems.instrumental),
+                            ("vocals", stems.vocals),
+                            ("guideMix", stems.guide_mix),
+                        )
+                        if v
+                    }
+                }
+                if stems
+                else None
+            ),
             facts={
                 "backend": config.backend,
                 "engine": getattr(separator, "name", None),
@@ -208,8 +299,15 @@ async def _run(
         )
 
     if assign.action == "fetch":
+        # Fetch is deliberately NOT durable: it is one download, and DBOS would checkpoint a step whose
+        # retry is cheaper than its bookkeeping. See new-worker/README.md "What is deliberately absent".
         fetched = await run_fetch(
-            job, FetchStepsImpl(config=config, audio=impl, reporter=_ReporterFor(client))
+            job,
+            FetchStepsImpl(
+                config=config,
+                audio=AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client)),
+                reporter=_ReporterFor(client),
+            ),
         )
         return f.Complete(
             worker_id=config.worker_id,

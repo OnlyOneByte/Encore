@@ -375,14 +375,29 @@ published on `documentElement` so every scrolling column can reserve it in norma
 own wordmark — the topbar is for joined singers only). Joined, it renders in this order:
 
 1. the search field, first on the screen and in normal flow — nothing here is stuck to an edge, because the
-   band owns the bottom one and the topbar is already sticky;
+   band owns the bottom one and nothing else declares `position` either (the topbar is NOT sticky, despite an
+   earlier note in this file and in the route saying so);
 2. `Queued`, the rotation in play order, drawn as `QueueRow` or `ProcessingCard` per entry;
 3. `Making karaoke…`, which renders in BOTH views;
-4. with an empty field, `Your library`; with a query, `Ready to sing` then `Needs karaoke`.
+4. with an empty field, `Your library` — a four-row SHELF, not the library; with a query, `Ready to sing` then
+   `Needs karaoke`.
 
 `searchActive` (a non-empty query) is the sole switch between the queue view and the results view. There is
-no browse mode, no `?browse=1`, and no history entry for a search — clearing the field restores the queue,
-so Back always means leave the room. The processing group is deliberately ungated: its membership is
+no browse mode on this column, no `?browse=1`, and no history entry for a search — clearing the field restores
+the queue, so Back always means leave the room. Browsing is a separate route (`/library`, below) precisely so
+that stays true; the column reaches it from a door BESIDE THE SEARCH FIELD and from the shelf's `See all N songs`.
+The door sits on the field's LEADING edge: the trailing edge already carries a spinner while a search runs and the
+clear `×` whenever one is active, so a control after the box would be third in a cluster that changes size. It uses
+the `secondary` variant rather than `ghost` or `outline` — `outline` fills with `bg-background`, the page colour, so
+beside a `--card` field it reads as a hole rather than a control.
+
+The shelf caps at `LIBRARY_SHELF` (4) via `libraryShelf` in `src/lib/library-browse.ts`, which also reports how
+many it hid — 0 hides the `See all` door, because a control promising more than it has is worse than none. The
+whole library used to render here, under an unbounded queue, so a busy rotation put the songs you already own
+metres down the scroll. The cap lives in that module rather than inline because the Playwright fixture seeds
+exactly four demo tracks and so can never truncate it; the number is proved in the unit suite instead.
+
+The processing group is deliberately ungated: its membership is
 query-scoped in `src/lib/readiness.ts` row by row, and it subtracts anything the queue above already draws
 a bar for so one job never gets two progress bars. A group heading is a claim about what follows it, so
 each is gated on having rows.
@@ -398,6 +413,52 @@ through `queueAnnouncement` in `src/lib/phrasing/queue-announcement.ts`, which i
 joining a busy room does not read the whole queue aloud. The wait on a singer's own row comes from
 `waitShort` in `src/lib/phrasing/position-sentence.ts`, which omits an unknown estimate rather than zeroing
 it.
+
+### The library page
+
+`/library` is browsing, and it exists because the home column could not be it: the shelf above sat under an
+unbounded queue, and the home field cannot stand in for a library because it FETCHES from three resolvers and
+needs a name you already know. Browsing is for when you do not.
+
+**What "your library" is.** The READY catalog — `MediaRepository.listReady()`, served by `/api/library` and
+mirrored whole in `room.library`. It is NOT the `local` resolver, which searches audio FILES in the media
+directory: a processed YouTube song is in the library and absent from that list, so `/api/search?source=local`
+answers a different question and must not back this page.
+
+**The filter is a filter, not a search.** `browseLibrary` in `src/lib/library-browse.ts` narrows rows already in
+memory, with no request — the whole ready list is there, because the shelf and this page both read it. That is
+also the one thing keeping the two fields distinguishable, so the page STATES it: the `N of M songs` count line
+is the only element that says this box hides rows rather than fetching them. Two fields that looked alike and did
+opposite things would be a worse problem than the reachability one this page fixes.
+
+Matching folds through `foldForMatch` — NFD, marks stripped, punctuation collapsed to a space, so "beyonce"
+reaches "Beyoncé" and "dc" still reaches "AC/DC" (deleting punctuation instead would weld that to "acdc").
+Terms match as substrings, not prefixes: this narrows a shelf you already own, where half-remembering a word in
+the middle of a title is normal, and the cost of hiding a song you own is the point of the page.
+
+**Facets describe the whole library, never the filtered rows** — the rule `/api/library` states for its own
+`facets`, because facets derived from the current filter collapse to the value you just picked and strand you
+there. Artist facets count `artistCanonical` only, as on the server: `artist` is the uploader a source reported,
+so a channel name would otherwise pose as an artist. Artist and tag are mutually exclusive, artist winning, so
+the two can never intersect into an unexplained empty page.
+
+**Sort & filter is collapsed by default, and that is the page's main design decision.** Expanded, the chip rows
+are ~420px of chrome on a nine-song library and put the first song row near y=650 on a 390×844 phone — the exact
+fault this route exists to fix, relocated. Scrolling songs is the default state. The trigger names the active
+facet (`Sort & filter · Queen`) because the panel showing the pressed chip may be shut, and without it a guest
+reads `2 of 9 songs` as the page having lost their songs. It is the first caller of the `eyebrow` button variant,
+which was missing `bg-transparent` and so rendered as a grey `buttonface` slab — see the note on that variant.
+
+`newest` sorts on `id` descending, which is genuinely time descending because a media id is a ULID whose first
+ten characters are a base32 millisecond clock; it is the time the row was MATERIALISED by a search, not the time
+its stems finished. Ordering is applied explicitly rather than trusting `listReady()`'s own
+`orderBy(desc(media.id))`, so this page's order is not an undocumented side effect of a server query.
+
+Adding a song does NOT navigate: you came here to pick, and picking two is normal. The toast carries the way
+back (`View queue`) instead, so nothing strands you on a leaf route. Unjoined, the route renders `JoinLanding`
+exactly as `/` does — `refreshLibrary` never runs for a guest, so there would be nothing to browse. `libraryLoaded`
+on the room link is what separates "not fetched yet" from "you own nothing", so a full library is never accused of
+being empty for one frame.
 
 ### The join screen
 

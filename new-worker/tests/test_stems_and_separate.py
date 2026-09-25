@@ -25,7 +25,7 @@ from encore_worker.adapters.separate import (
     resolve_model,
 )
 from encore_worker.steps.api import NotOurJob
-from encore_worker.steps.records import AudioRef, JobRef
+from encore_worker.steps.records import AudioRef, JobRef, PublishedStems
 from encore_worker.workflows.stems import (
     SILENCE_FLOOR_DBFS,
     SilentInstrumental,
@@ -171,11 +171,15 @@ class Fake:
         self.calls.append("probe_silence")
         return self.peak
 
-    async def publish_stems(self, job: JobRef, audio: AudioRef) -> str:
+    async def publish_stems(self, job: JobRef, audio: AudioRef) -> PublishedStems:
         self.calls.append("publish_stems")
         if self.publish_raises is not None:
             raise self.publish_raises
-        return "derived/stems/m1-instrumental.flac"
+        return PublishedStems(
+            instrumental="derived/stems/m1-instrumental.flac",
+            vocals="derived/stems/m1-vocals.flac",
+            guide_mix="derived/stems/m1-guidemix.flac",
+        )
 
 
 async def test_a_good_separation_publishes() -> None:
@@ -183,7 +187,12 @@ async def test_a_good_separation_publishes() -> None:
     outcome = await run_stems(JOB, fake)
 
     assert outcome.refused is False
-    assert outcome.published.endswith(".flac")
+    assert outcome.published is not None
+    # Every stem reported, not just the instrumental: an unreported ref is a file core can neither serve
+    # nor ever clean up.
+    assert outcome.published.instrumental.endswith("-instrumental.flac")
+    assert outcome.published.vocals == "derived/stems/m1-vocals.flac"
+    assert outcome.published.guide_mix == "derived/stems/m1-guidemix.flac"
     assert fake.calls == ["acquire_audio", "decode_to_wav", "separate", "probe_silence", "publish_stems"]
 
 

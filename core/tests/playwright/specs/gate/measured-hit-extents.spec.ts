@@ -110,6 +110,15 @@ test('CLAIM 1 every control reaches the tap floor and CLAIM 2 every field comput
 				.waitFor({ state: 'attached', timeout: 15_000 })
 				.catch(() => {});
 		});
+		// The browse page. Its controls are its own — a filter field, the clear control, and the empty state's
+		// button — and none of them is reachable from the two surfaces above, so without this entry they were
+		// measured nowhere. On a core with nothing processed this sweeps the EMPTY arm; the facet and sort chips
+		// need a ready library and are measured by p17 instead. `surface()` skips a label that yields no readings,
+		// so this cannot go vacuously green.
+		await surface('/library', async () => {
+			await page.goto('/library');
+			await page.locator(SEL.libraryFilter).waitFor({ state: 'attached', timeout: 15_000 });
+		});
 		await surface('/settings', async () => {
 			await page.goto('/settings');
 		});

@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from encore_worker.adapters import ports
+from encore_worker.artifacts import keys
 from encore_worker.domain.document import Segment
 from encore_worker.domain.lyrics import attribute, measure, place, presplit
 from encore_worker.domain.lyrics.policy import Tier
@@ -96,7 +97,22 @@ class AlignStepsImpl:
         """
         local = job.param_str("fetcher") == "local"
         path = job.source_uri or ""
-        if not local:
+        if local:
+            # A LOCAL source_uri is a STORE REF, not a path: core's local fetcher is
+            # `uri: (sourceRef) => sourceRef`, so it arrives relative to the media volume — and only this
+            # worker knows where that volume is mounted. Handing the bare ref to ffmpeg resolves it against
+            # the process CWD instead, which fails as `Error opening input: No such file or directory` with
+            # nothing naming the media dir. Found by running against a live core.
+            if path and not os.path.isabs(path):
+                path = os.path.join(job.media_dir, path)
+            if not os.path.isfile(path):
+                # Named explicitly, because "the volume is mounted somewhere else" and "the file is gone"
+                # look identical several stages later inside ffmpeg.
+                raise _Permanent(
+                    f"local source {job.source_uri!r} resolves to {path!r}, which is not a file — "
+                    f"check this worker's media volume (currently {job.media_dir!r}) matches the core's"
+                )
+        else:
             if self._a.fetcher is None:
                 raise _Permanent("this worker has no audio fetcher, so it cannot acquire a remote source")
             path = await asyncio.to_thread(self._a.fetcher.fetch, path, self._work(job), on_progress=None)
@@ -109,15 +125,31 @@ class AlignStepsImpl:
     def _vocals_of(self, job: JobRef) -> str | None:
         """The stem a previous stems job published, if it is actually on disk.
 
-        Checked rather than assumed: align is chained after stems, but a stems job that refused to
-        publish a silent instrumental leaves the ref recorded and the file absent. Aligning against a
-        path that does not exist fails deep inside the model instead of degrading to the mix.
+        Checked rather than assumed: align is chained after stems, but a stems job that refused to publish
+        a silent instrumental leaves the ref recorded and the file absent. Aligning against a path that
+        does not exist fails deep inside the model instead of degrading to the mix.
+
+        FALLS BACK TO THE CONVENTIONAL KEY, because the core does NOT send `vocalsRef` on an align
+        assignment — it sends `fetcher`, `asrModel`, `syncMode` and the lookup keys, and nothing more
+        (`dispatch.ts assignParams`). Reading only the param meant every align ran on the MIX even when a
+        clean vocals stem was sitting right there: materially worse timings, because the band smears word
+        boundaries, AND it silently removed `Knob.ALIGN_ON_MIX` from the retry ladder by making the mix the
+        starting point rather than the fallback.
+
+        Every known extension is tried, for the same reason core's `legacyVocalsRefs` does: the publish
+        format is configurable, so a row separated under an earlier setting has its own ext forever.
         """
-        ref = job.param_str("vocalsRef")
-        if ref is None:
-            return None
-        candidate = os.path.join(job.media_dir, ref)
-        return candidate if os.path.exists(candidate) else None
+        named = job.param_str("vocalsRef")
+        candidates = (
+            [named]
+            if named is not None
+            else [keys.vocals_key(job.media_id, ext) for ext in keys.KNOWN_STEM_EXTS]
+        )
+        for ref in candidates:
+            path = os.path.join(job.media_dir, ref)
+            if os.path.isfile(path):
+                return path
+        return None
 
     async def fetch_captions(self, job: JobRef, *, automatic: bool) -> TextRef | None:
         """The upload's caption track. A miss is the common case and must not raise."""

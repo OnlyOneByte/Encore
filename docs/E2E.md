@@ -205,6 +205,13 @@ other's traces. Pass `--output=` when running alongside something else.
 puts them under `MEDIA_DIR/library`. The `world` fixture calls it before core boots, because indexing the
 library is a boot pass and a file written afterwards is not in it.
 
+**FOUR is a ceiling on what this suite can observe, not just a count.** Two things sit outside it and are proved
+in the unit suite instead, each named where it lives: the home shelf's four-row cap (`libraryShelf` — four tracks
+can never truncate it, so a spec asserting the `See all N songs` door would be permanently vacuous), and every
+artist or tag facet (`trackNameFromFile` reads an artist only off the `Artist - Title.ext` form, and every fixture
+filename is kebab-case, so there is no artist and no tag to find — `p12-search` documents the same gap for its own
+artist-facet sections, and `p17-library-page` asserts the chip rows ABSENT because that is the honest observable).
+
 It used to live in two halves — `server.ts` held the titles, artists and durations while `seed-media.mjs`
 held the filenames — and the seeder's own header admitted the hazard: _"Must match the seededLibrary
 sourceRefs in server.ts. NOT covered by the contract guard … so nothing reds if they drift apart."_

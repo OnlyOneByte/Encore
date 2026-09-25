@@ -426,41 +426,36 @@ test('no adversarial query crashes the search or changes its shape', async ({ wo
 	).toEqual([]);
 });
 
-// KNOWN LIVE DEFECT, and the reason this test is annotated `fail` rather than deleted: the claim is correct and
-// the product violates it. LocalLibrary.search builds its match expression as `<term>*` after stripping only
-// quotes, so `(caroline)` becomes `(caroline)*` and `caroline*` becomes `caroline**` — both throw at FTS5
-// tokenise time. /api/search's safeSearch folds that throw to [], and the catalog cannot rescue it either
-// (`matchesQuery` is a plain substring test, and no title contains the parentheses). The singer sees "no local
-// match" with nothing to say why. REMOVE THE ANNOTATION once the match expression escapes its metacharacters.
-test.fail(
-	'FTS5 metacharacters in a query must not silently drop local matches',
-	{
-		annotation: {
-			type: 'known-defect',
-			description:
-				'LocalLibrary.search appends `*` to an unescaped term, so "(caroline)" and "caroline*" throw at ' +
-				'FTS5 tokenise time and safeSearch folds the throw to []. The assertion is correct; the product is not.'
-		}
-	},
-	async ({ world }) => {
-		const phone = await world.openPhone('P12-S5b');
-		await world.awaitDemoTrack(CAROLINE.q);
-		const hasLocal = async (q: string): Promise<boolean> => {
-			const { body } = await search(phone, q);
-			return [...body.results, ...body.ready].some((m) => m.source === 'local' && m.sourceRef?.includes(CAROLINE.ref));
-		};
-		const baseline = await hasLocal('caroline');
-		const parenised = await hasLocal('(caroline)');
-		const starred = await hasLocal('caroline*');
-		expect(
-			baseline && parenised && starred,
-			`baseline(caroline)=local:${baseline}, "(caroline)"=local:${parenised}, "caroline*"=local:${starred}. ` +
-				`See src/lib/server/media/local.ts LocalLibrary.search — \`.replace(/["']/g,'')\` strips quotes but not ` +
-				`parens or star, then appends \`*\`, so the resulting FTS5 expression throws — plus ` +
-				`src/routes/api/search/+server.ts safeSearch, which silences the throw and returns [].`
-		).toBe(true);
-	}
-);
+// WAS A KNOWN LIVE DEFECT, ANNOTATED `fail`, NOW FIXED — and the annotation is removed rather than the test,
+// exactly as its own note instructed. The defect: `LocalLibrary.search` built its match expression as `<term>*`
+// after stripping only quotes, so `(caroline)` became `(caroline)*` and threw at FTS5 tokenise time
+// (`fts5: syntax error near "("`), while a colon threw `no such column: …`. /api/search's `safeSearch` folds a
+// throwing resolver to [], and the catalog could not rescue it either (`matchesQuery` is a plain substring test
+// and no title contains the parentheses), so a punctuated query returned NO local songs and read as an empty
+// library rather than a failure.
+//
+// The fix is `ftsPrefixQuery` in src/lib/server/media/local.ts: every term is QUOTED and the prefix `*` moved
+// OUTSIDE the closing quote, because inside a double-quoted FTS5 string every character is literal text to
+// tokenize. Terms with no indexable character are dropped, since `""` is itself a syntax error. The unit suite
+// covers the expression shape directly; this stays as the end-to-end half, through a real phone and a real index.
+test('FTS5 metacharacters in a query must not silently drop local matches', async ({ world }) => {
+	const phone = await world.openPhone('P12-S5b');
+	await world.awaitDemoTrack(CAROLINE.q);
+	const hasLocal = async (q: string): Promise<boolean> => {
+		const { body } = await search(phone, q);
+		return [...body.results, ...body.ready].some((m) => m.source === 'local' && m.sourceRef?.includes(CAROLINE.ref));
+	};
+	const baseline = await hasLocal('caroline');
+	const parenised = await hasLocal('(caroline)');
+	const starred = await hasLocal('caroline*');
+	expect(
+		baseline && parenised && starred,
+		`baseline(caroline)=local:${baseline}, "(caroline)"=local:${parenised}, "caroline*"=local:${starred}. ` +
+			`See src/lib/server/media/local.ts \`ftsPrefixQuery\` — each term must be quoted with the prefix star ` +
+			`OUTSIDE the quotes, or a metacharacter is parsed as syntax and src/routes/api/search/+server.ts ` +
+			`safeSearch silences the throw and returns [].`
+	).toBe(true);
+});
 
 test('the server does not reflect a raw script payload into the response body', async ({ world }) => {
 	const phone = await world.openPhone('P12-S5c');

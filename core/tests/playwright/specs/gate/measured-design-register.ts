@@ -164,8 +164,10 @@ export const RETIRED: RetiredEntry[] = [
 export const FLOORS = {
 	/** interactive controls measured, summed over every surface and every viewport */
 	controlsMeasured: 90,
-	/** distinct surfaces the drive actually reached and swept */
-	surfacesSwept: 4,
+	/** distinct surfaces the drive actually reached and swept. Raised 4 → 5 when /library was added: the floor
+	 *  stays well under the eight the drive really reaches (verified by temporarily setting it to 8), per the
+	 *  note above — it rises with the surface count so that deleting a surface outright still trips it. */
+	surfacesSwept: 5,
 	/** text-entry fields whose computed font-size was read */
 	fieldsMeasured: 3,
 	/** elements focused and whose focus indicator was read */

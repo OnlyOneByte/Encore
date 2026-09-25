@@ -28,9 +28,13 @@
 				keycap:
 					'border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-dim)] whitespace-normal [overflow-wrap:anywhere] enabled:border-solid enabled:border-[var(--line)] enabled:text-[var(--ink)]',
 				/* A disclosure trigger styled as a section eyebrow — a LABEL treatment, so no stock variant
-				   is close. `whitespace-normal` for the same 200%-text reason as `keycap`. */
+				   is close. `whitespace-normal` for the same 200%-text reason as `keycap`. `bg-transparent` for the
+				   same reason `ghost` carries it, and it was MISSING until this variant got its first caller
+				   (/library's `Sort & filter`): it declares only a hover background, so with Preflight off the UA's
+				   mid-grey `buttonface` painted the rest of the time and an eyebrow LABEL rendered as a grey slab
+				   that reads as disabled. */
 				eyebrow:
-					'justify-start gap-[7px] px-[var(--space-3xs)] text-[length:var(--ph-text-2xs)] font-bold tracking-[0.14em] uppercase whitespace-normal text-[var(--ink-dim)] hover:text-[var(--ink)] hover:bg-transparent',
+					'justify-start gap-[7px] px-[var(--space-3xs)] text-[length:var(--ph-text-2xs)] font-bold tracking-[0.14em] uppercase whitespace-normal bg-transparent text-[var(--ink-dim)] hover:text-[var(--ink)] hover:bg-transparent',
 				/* SongRow's "add a turn". It must NOT converge with `iconPrimary`: that accent fill is the expensive minute-long
 				   process, this is the free instant queue-add, and inverting the weight puts the primary fill on the dead-end
 				   action. `--ok` is the readiness colour the row's "Karaoke ready" badge already uses. */

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -394,3 +395,90 @@ async def test_a_timing_report_survives_the_checkpoint(dbos_instance: object) ->
 
     assert got == original
     assert got.summary() == original.summary(), "the derived summary must be reproducible after a replay"
+
+
+# ── the wiring, not the design ────────────────────────────────────────────────────────────────────
+
+
+async def test_production_wiring_records_a_workflow(dbos_instance: object, tmp_path: Path) -> None:
+    """THE test whose absence let durability be missing from the running worker for this whole rewrite.
+
+    Every other test in this file declares its OWN `@DBOS.workflow` and then asserts steps were recorded —
+    which proves DBOS works, and proves nothing about whether `__main__` asks it to. Production wrapped its
+    STEPS with `DBOS.step` and called them from a plain `async def`, so nothing ran in a workflow context and
+    nothing checkpointed. A live job confirmed it: zero rows in `workflow_status`.
+
+    So this goes through `durable.align` — the exact call the composition root makes — and asserts the
+    system database saw a workflow. No wrapper is declared here on purpose; supplying one is what hid the
+    bug.
+    """
+    from dbos import DBOS
+
+    from encore_worker.workflows import durable
+    from encore_worker.workflows.dbos_align import DbosAlignSteps
+
+    (tmp_path / "original.mp3").write_bytes(b"x")
+    impl, _ = build(tmp_path, aligner=CountingAligner(), transcriber=Transcriber())
+    durable.register(
+        dbos_instance,
+        align_steps_for=lambda _job: DbosAlignSteps(impl, dbos_instance),
+        stems_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+    )
+
+    job = job_of(tmp_path)
+    outcome = await durable.align(job)
+    assert outcome.published is not None, "the flow must still work through the workflow layer"
+
+    steps = await DBOS.list_workflow_steps_async(job.job_id)
+    assert steps, (
+        "DBOS recorded no steps for the job id, so production is still running outside a workflow "
+        "context and a crash would restart from scratch rather than resume"
+    )
+
+
+async def test_the_workflow_id_is_the_job_id(dbos_instance: object, tmp_path: Path) -> None:
+    """What makes a requeue idempotent rather than duplicated work.
+
+    The core requeues the SAME job id when a lease expires, so pinning the workflow to it is what lets DBOS
+    recognise the second attempt as a resumption. With a generated id, a requeue after a 45-minute
+    separation would start a parallel workflow and separate the song again.
+    """
+    from dbos import DBOS
+
+    from encore_worker.workflows import durable
+    from encore_worker.workflows.dbos_align import DbosAlignSteps
+
+    (tmp_path / "original.mp3").write_bytes(b"x")
+    impl, _ = build(tmp_path, aligner=CountingAligner(), transcriber=Transcriber())
+    durable.register(
+        dbos_instance,
+        align_steps_for=lambda _job: DbosAlignSteps(impl, dbos_instance),
+        stems_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+    )
+
+    job = job_of(tmp_path)
+    await durable.align(job)
+
+    # Addressable BY THE JOB ID, with no handle retained — which is exactly what a resuming process has.
+    status: Any = await DBOS.retrieve_workflow_async(job.job_id)
+    assert status is not None
+    assert await status.get_result() is not None
+
+
+async def test_a_box_without_dbos_still_runs_the_flow(tmp_path: Path) -> None:
+    """A worker with no durable state is DEGRADED, not broken. `register(None)` must leave the flow callable,
+    because a box that cannot checkpoint should still process songs."""
+
+    from encore_worker.workflows import durable
+    from encore_worker.workflows.dbos_align import DbosAlignSteps
+
+    (tmp_path / "original.mp3").write_bytes(b"x")
+    impl, _ = build(tmp_path, aligner=CountingAligner(), transcriber=Transcriber())
+    durable.register(
+        None,
+        align_steps_for=lambda _job: DbosAlignSteps(impl, None),
+        stems_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+    )
+
+    outcome = await durable.align(job_of(tmp_path))
+    assert outcome.published is not None

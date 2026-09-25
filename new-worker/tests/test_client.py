@@ -23,7 +23,7 @@ from encore_worker.host.config import Config
 from encore_worker.protocol import frames as f
 from encore_worker.protocol.vocabulary import Stage
 from encore_worker.transport.client import Client, jittered_backoff, keepalive
-from encore_worker.transport.ownership import Reason
+from encore_worker.transport.ownership import Ownership, Reason
 
 CFG = Config(core_url="ws://core.test/w", worker_id="w1", concurrency=1, version="9")
 CAPS = frozenset({"align", "stems"})
@@ -89,6 +89,7 @@ def client(
     run_job: Callable[[f.Assign], Awaitable[f.Complete]] | None = None,
     caps: frozenset[str] = CAPS,
     cfg: Config = CFG,
+    strict: bool = False,
 ) -> Client:
     async def ok(a: f.Assign) -> f.Complete:
         return f.Complete(worker_id=cfg.worker_id, job_id=a.job_id, media_uri="media/m1.mp3")
@@ -103,6 +104,9 @@ def client(
         capabilities=caps,
         backend="mlx",
         backoff=no_backoff,
+        # Opt-in, because the default is now the PUSH-ONLY guard: today's core answers no `job:claim`, and
+        # requiring a confirmation it cannot send would refuse every publish after the full cook.
+        ownership=Ownership(require_confirmation=strict),
     )
 
 
@@ -241,9 +245,58 @@ async def test_a_non_retryable_failure_says_so() -> None:
 async def test_claims_a_job_it_just_accepted() -> None:
     """The core assigned it, but `accepted` marks it unconfirmed — publishing on that is the failure."""
     sock = FakeSocket([assign()])
-    async with Session(client(sock), sock):
+    async with Session(client(sock, strict=True), sock):
         pass
     assert sock.first("job:claim")["jobIds"] == ["j1"]
+
+
+# ── the push-only guard: what actually runs against today's core ──────────────────────────────────
+
+
+async def test_by_default_it_does_not_claim_at_all() -> None:
+    """Today's core implements neither claim frame and DROPS unknown ones silently
+    (`core/server.ts:172` returns without closing or erroring). Asking a question nothing can answer is a
+    wasted frame, so the claim is suppressed rather than sent into the void.
+
+    When core learns the two frames, `require_confirmation=True` turns this back on — that is the whole
+    switch, and this test is what pins the two halves together.
+    """
+    sock = FakeSocket([assign()])
+    async with Session(client(sock), sock):
+        pass
+    assert "job:claim" not in sock.types()
+
+
+async def test_by_default_an_accepted_job_may_publish_without_a_claim_round() -> None:
+    """THE reason the default flipped. With confirmation required and no core able to answer, every job ran
+    to completion — a full download, separation and alignment — and then `may_publish` refused it forever.
+    Fail-closed is right, but only when the counterpart exists; without it, it is a total outage.
+
+    The residual exposure is deliberate and equals the OLD worker's: a `job:revoked` pushed while the
+    socket is down is never seen. Parity, not a regression.
+
+    Asserted WHILE THE JOB IS LIVE, behind the gate: `finished()` releases the slot the moment the job
+    ends, so a check after the session drains reads an empty ledger and passes for the wrong reason.
+    """
+    gate = Gate()
+    sock = FakeSocket([assign()])
+    c = client(sock, run_job=gate)
+    async with Session(c, sock):
+        await asyncio.wait_for(gate.entered.wait(), 5.0)
+        assert c.ownership.may_publish("j1") is True
+        assert c.ownership.pending_claims() == frozenset(), "nothing may wait on an ack that cannot come"
+        gate.release.set()
+
+
+async def test_the_push_half_still_revokes_by_default() -> None:
+    """What is NOT given up. `job:revoked` is core-initiated, so it needs no support the core lacks — the
+    strong half of the guard is the one that already works."""
+    sock = FakeSocket([assign(), {"type": "job:revoked", "jobId": "j1", "reason": "lease expired"}])
+    c = client(sock)
+    async with Session(c, sock):
+        pass
+    assert c.ownership.may_publish("j1") is False
+    assert c.ownership.lost_reason("j1") is Reason.REVOKED
 
 
 async def test_a_revoked_frame_stops_the_job_and_forbids_publishing() -> None:
@@ -272,7 +325,7 @@ async def test_a_claim_ack_confirms_and_permits_publishing() -> None:
     """Asserted while the job is live: `finished()` releases the slot the moment it ends."""
     gate = Gate()
     sock = FakeSocket([assign(), {"type": "job:claim-ack", "owned": ["j1"]}])
-    c = client(sock, run_job=gate)
+    c = client(sock, run_job=gate, strict=True)
     async with Session(c, sock):
         await asyncio.wait_for(gate.entered.wait(), 5.0)
         assert c.ownership.may_publish("j1") is True
@@ -296,8 +349,11 @@ async def test_confirm_ownership_permits_a_confirmed_job_immediately() -> None:
 
 async def test_an_unanswered_claim_is_a_refusal() -> None:
     """A timeout means ownership could not be ESTABLISHED, and publishing without establishing it is
-    exactly what the guard prevents. Waiting forever would hang the job instead."""
-    c = client(FakeSocket())
+    exactly what the guard prevents. Waiting forever would hang the job instead.
+
+    STRICT: this is the pull half, so it only means anything against a core that answers claims. With the
+    default push-only guard there is no claim to go unanswered — see the pair of tests below."""
+    c = client(FakeSocket(), strict=True)
     c.ownership.accepted("j1")
     assert await c.confirm_ownership("j1", timeout_sec=0.01) is False
 
@@ -321,7 +377,7 @@ async def test_a_desync_is_surfaced_not_folded_into_a_reassignment() -> None:
 async def test_a_disconnect_leaves_held_jobs_unconfirmed() -> None:
     """A blip must not abandon healthy work, but nothing may publish until re-claimed."""
     sock = FakeSocket()
-    c = client(sock)
+    c = client(sock, strict=True)
     c.ownership.accepted("j1")
     c.ownership.claim_answered(owned=frozenset({"j1"}), revoked=frozenset(), unknown=frozenset())
     async with Session(c, sock):
@@ -480,3 +536,37 @@ async def test_drain_on_an_idle_worker_returns_immediately() -> None:
 
 async def _never(assign: f.Assign) -> f.Complete:  # pragma: no cover - never invoked
     raise AssertionError("run_job should not be called")
+
+
+# ── the published stem format is negotiated, not configured ───────────────────────────────────────
+
+
+async def test_the_core_announcement_overrides_the_local_setting() -> None:
+    """Core owns the storage layout: it records the ref forever and serves it. A worker that preferred its
+    own env would write files whose recorded refs 404 — silently, per core's own note."""
+    sock = FakeSocket([{"type": "worker:welcome", "publishStemFormat": "wav"}])
+    c = client(sock)
+    assert c.publish_stem_format == "flac", "seeded from config before the handshake"
+    async with Session(c, sock):
+        pass
+    assert c.publish_stem_format == "wav"
+
+
+async def test_an_older_core_leaves_the_configured_fallback_in_place() -> None:
+    """A core that announces nothing must not blank the format — publishing at an empty extension would
+    write `m1-instrumental.` and record a ref naming no file."""
+    sock = FakeSocket([{"type": "worker:welcome"}])
+    c = client(sock)
+    async with Session(c, sock):
+        pass
+    assert c.publish_stem_format == "flac"
+
+
+async def test_a_reconnect_picks_up_a_changed_format() -> None:
+    """Mutable on the client rather than on the frozen Config precisely so this works: an operator changing
+    core's format and restarting it should not need to restart every worker."""
+    sock = FakeSocket([{"type": "worker:welcome", "publishStemFormat": "m4a"}])
+    c = client(sock)
+    async with Session(c, sock):
+        pass
+    assert c.publish_stem_format == "m4a"
