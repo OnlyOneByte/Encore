@@ -11,6 +11,7 @@ only shows up on a real 45-minute separation assertable in a millisecond.
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass
 
 from encore_worker.adapters.cli import ToolFailed, run
@@ -219,9 +220,155 @@ def decode_argv(source: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> list[s
     ]
 
 
+# ── bs-roformer ──────────────────────────────────────────────────────────────────────────────────
+# The UPGRADE engine: core's `DEFAULT_GLOBAL_SETTINGS.upgradeEngine` is `roformer`, so a `stems-upgrade`
+# job routes on `stems:roformer`. Ported from the old worker's `separation/roformer.py`, slugs and all.
+#
+# Shelled out to as a CLI rather than imported, for the same reason demucs is: it keeps bs_roformer and its
+# torch import out of this process, so a box that merely ADVERTISES the capability does not pay a multi-second
+# import at startup.
+
+#: Allowlist tokens -> bs-roformer-infer registry slugs. Worker-side, because the slug is a resolution detail
+#: the core never needs to know.
+#:
+#: KNOWN MISMATCH, carried over deliberately: `bs-roformer-1297` resolves to a MULTI-stem checkpoint rather
+#: than the 2-stem one that was benchmarked. NOT silently repointed — swapping the processed model without a
+#: listening test is exactly what this note prevents.
+ROFORMER_MODELS = {
+    "bs-roformer-1297": "roformer-model-bs-roformer-sw-by-jarredou",
+}
+
+DEFAULT_ROFORMER_MODEL = "bs-roformer-1297"
+
+
+def resolve_roformer_slug(token: str | None, default: str = DEFAULT_ROFORMER_MODEL) -> str:
+    """An allowlist token to a registry slug. An explicit-but-unknown token RAISES rather than falling back.
+
+    Same contract as `resolve_model`: silently separating with the default would publish a backing track the
+    operator did not choose, and it would be indistinguishable from the one they asked for.
+    """
+    chosen = token or default
+    slug = ROFORMER_MODELS.get(chosen)
+    if slug is None:
+        raise UnknownModel(f"unknown roformer model {chosen!r}; expected one of {sorted(ROFORMER_MODELS)}")
+    return slug
+
+
+def roformer_argv(
+    input_folder: str,
+    store_dir: str,
+    slug: str,
+    *,
+    device: str | None = None,
+    bin: str = "bs-roformer-infer",
+) -> list[str]:
+    """bs-roformer-infer CLI argv.
+
+    `--model <slug>` auto-resolves AND sha256-downloads the checkpoint on first use, so there is no separate
+    download step. `--input_folder` is a DIRECTORY, not a file: every WAV inside it is separated, which is why
+    the caller stages the decoded input alone in its own directory.
+    """
+    argv = [bin, "--model", slug, "--input_folder", input_folder, "--store_dir", store_dir]
+    if device:
+        argv += ["--device", device]
+    return argv
+
+
+def _find_roformer_stem(store_dir: str, marker: str) -> str | None:
+    """bs-roformer-infer writes `<name>_(Instrumental)_<slug>.<ext>` and `<name>_(Vocals)_<slug>.<ext>`.
+
+    Matches the DELIMITED role marker, never a bare `instrumental`/`vocal` substring: several registry slugs
+    contain those words themselves (`...-vocals-by-gabox`), so a bare test would let the instrumental file
+    satisfy the vocals search and vice versa — publishing the vocals as the backing track.
+
+    Sorted, because `os.listdir` order is unspecified and the pick must be deterministic.
+    """
+    if not os.path.isdir(store_dir):
+        return None
+    needle = marker.lower()
+    for name in sorted(os.listdir(store_dir)):
+        low = name.lower()
+        if needle in low and low.endswith((".wav", ".flac")):
+            return os.path.join(store_dir, name)
+    return None
+
+
+def find_roformer_instrumental(store_dir: str) -> str | None:
+    return _find_roformer_stem(store_dir, "_(instrumental)_")
+
+
+def find_roformer_vocals(store_dir: str) -> str | None:
+    return _find_roformer_stem(store_dir, "_(vocals)_")
+
+
+class Roformer:
+    """`Separator` over the bs-roformer-infer CLI.
+
+    NEVER RUN END TO END in this environment: a real pass needs a ~700 MB first-use checkpoint download and
+    tens of minutes of CPU. The argv builder and the stem discovery below are unit-tested; the process is not.
+
+    That is why `build_separator` returns this only when the CLI is on PATH. Advertising a capability the box
+    cannot honour is WORSE than not advertising it: the core then routes upgrade work here and receives demucs
+    output labelled as roformer, which nothing downstream can contradict.
+    """
+
+    name = "roformer"
+
+    def __init__(
+        self, *, model: str | None = None, device: str | None = None, bin: str = "bs-roformer-infer"
+    ) -> None:
+        self._slug = resolve_roformer_slug(model)
+        self._device = device
+        self._bin = bin
+
+    def separate(self, input_wav: str, out_dir: str, *, on_progress: ProgressSink | None = None) -> Stems:
+        # `--input_folder` separates EVERY wav in the directory, so the input is staged alone. Without this a
+        # second job's scratch in the same tree would be separated too, silently doubling the runtime.
+        staged = os.path.join(out_dir, "roformer-in")
+        store = os.path.join(out_dir, "roformer-out")
+        os.makedirs(staged, exist_ok=True)
+        os.makedirs(store, exist_ok=True)
+        target = os.path.join(staged, os.path.basename(input_wav))
+        if os.path.abspath(target) != os.path.abspath(input_wav):
+            shutil.copy2(input_wav, target)
+
+        run(
+            roformer_argv(staged, store, self._slug, device=self._device, bin=self._bin),
+            on_progress=on_progress,
+        )
+
+        instrumental = find_roformer_instrumental(store)
+        if instrumental is None:
+            raise SeparationFailed(
+                f"bs-roformer-infer exited 0 but wrote no instrumental stem into {store!r} — "
+                f"found {sorted(os.listdir(store)) if os.path.isdir(store) else 'nothing'}"
+            )
+        return Stems(
+            instrumental_path=instrumental,
+            vocals_path=find_roformer_vocals(store),
+            engine="roformer",
+        )
+
+
+class SeparationFailed(RuntimeError):
+    """An engine exited successfully but produced nothing usable.
+
+    RETRYABLE: the usual cause is a truncated checkpoint download or a killed subprocess, both of which a
+    second attempt can fix. A genuinely broken registry slug raises `UnknownModel` at construction instead.
+    """
+
+    retryable = True
+
+
 def build_separator(
-    backend: str, *, model: str = "htdemucs", device: str = "cpu", mlx_bin: str, ffmpeg_bin: str
-) -> TorchDemucs | MlxDemucs | None:
+    backend: str,
+    *,
+    model: str = "htdemucs",
+    device: str = "cpu",
+    mlx_bin: str,
+    ffmpeg_bin: str,
+    engine: str | None = None,
+) -> TorchDemucs | MlxDemucs | Roformer | None:
     """The separator for the RESOLVED backend, or None when this box cannot build one.
 
     None rather than a raise: `host.capabilities` already declines to advertise `stems` on a box with no
@@ -230,6 +377,14 @@ def build_separator(
     """
     from encore_worker.host.hardware import binary_available, module_available
 
+    # An explicit engine wins over the box's default backend: a `stems-upgrade` job names `roformer`, and
+    # honouring the backend instead would separate with demucs and label the result as the upgrade.
+    if engine == "roformer":
+        return (
+            Roformer(model=model if model in ROFORMER_MODELS else None, device=device)
+            if binary_available("bs-roformer-infer")
+            else None
+        )
     if backend == "mlx":
         if not binary_available(mlx_bin):
             return None
@@ -241,6 +396,9 @@ def build_separator(
 
 __all__ = [
     "DEMUCS_MODELS",
+    "ROFORMER_MODELS",
+    "Roformer",
+    "SeparationFailed",
     "MlxDemucs",
     "Stems",
     "ToolFailed",

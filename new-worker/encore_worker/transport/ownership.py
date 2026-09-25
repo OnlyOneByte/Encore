@@ -58,11 +58,17 @@ class Ownership:
     #: cannot run and requiring it would deadlock every job: `accepted()` would mark the job unconfirmed,
     #: nothing would ever clear it, and `may_publish` would refuse forever — after the full 40-minute cook.
     #:
-    #: DEFAULT FALSE, because today's core implements neither frame and drops unknown ones silently
-    #: (`core/server.ts:172`). False leaves the PUSH half (`job:revoked`) working, which is exactly the
-    #: guard the old worker ships with — so this is parity, not a regression. Flip it on in the same change
-    #: that teaches core the two frames, and the stronger guarantee arrives with its counterpart.
-    require_confirmation: bool = False
+    #: DEFAULT TRUE, now that core implements both halves: `WorkerHub.#onClaim` answers every `job:claim`
+    #: with a three-way `job:claim-ack`, and the reaper pushes `job:revoked` to whoever held a job BEFORE
+    #: the requeue clears the row.
+    #:
+    #: It was False for exactly as long as core could not answer. Requiring a confirmation nothing sends
+    #: deadlocks every publish after the full cook — a total outage rather than a safe default — so the flip
+    #: belongs in the same change as the core handlers and nowhere else.
+    #:
+    #: Set it FALSE to run a new worker against an OLD core: that core drops the claim silently (an unknown
+    #: frame simply returns), so nothing would ever clear `_unconfirmed`.
+    require_confirmation: bool = True
     _ours: set[str] = field(default_factory=set)
     #: Why each lost job was lost. RETAINED past the job's end, deliberately — see `finished()`.
     #: Bounded, because this process is long-lived and a revoked job id would otherwise never leave.

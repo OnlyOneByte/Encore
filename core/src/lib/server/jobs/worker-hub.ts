@@ -83,6 +83,10 @@ export interface WorkerHubDeps {
 /** Validates an inbound frame BEFORE anything reads a field off it. This family carries DISPATCH
  *  AUTHORITY and is reachable UNAUTHENTICATED whenever `ENCORE_WORKER_TOKEN` is unset, so a malformed
  *  frame must never throw out of the socket handler. Returns an error string, or null when shape-safe. */
+/** A trail EXPLAINS an outcome, so the most recent decisions are the ones worth keeping. Bounded because a
+ *  pathological worker could otherwise stream `job:state` until the process runs out of memory. */
+const TRAIL_CAP = 200;
+
 export function validateWorkerMessage(msg: unknown): string | null {
 	if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return 'malformed worker frame';
 	const m = msg as Record<string, unknown>;
@@ -121,6 +125,14 @@ export function validateWorkerMessage(msg: unknown): string | null {
 			if (typeof m.error !== 'string') return 'malformed error';
 			if (typeof m.retryable !== 'boolean') return 'malformed retryable';
 			return null;
+		case 'job:state':
+			if (typeof m.jobId !== 'string' || m.jobId.length === 0) return 'missing jobId';
+			if (typeof m.state !== 'string' || m.state.length === 0) return 'malformed state';
+			if (typeof m.attempt !== 'number' || !Number.isFinite(m.attempt)) return 'malformed attempt';
+			return null;
+		case 'job:claim':
+			if (!Array.isArray(m.jobIds) || !m.jobIds.every((j) => typeof j === 'string')) return 'malformed jobIds';
+			return null;
 		default:
 			return 'unknown worker frame type';
 	}
@@ -133,6 +145,8 @@ export class WorkerHub {
 	 *  UNSERVABLE_TTL_MS measures. Pruned on every terminal path or an id for a job that died while
 	 *  queued leaks. */
 	#unservableSince = new Map<string, number>();
+	/** Per-job decision trails from `job:state`, bounded. Flushed to the attempt ledger on completion. */
+	#trails = new Map<string, Array<Record<string, unknown>>>();
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
@@ -179,7 +193,81 @@ export class WorkerHub {
 				return this.#onComplete(msg);
 			case 'job:failed':
 				return this.#onFailed(msg);
+			case 'job:state':
+				return this.#onState(msg);
+			case 'job:claim':
+				return this.#onClaim(msg);
 		}
+	}
+
+	/**
+	 * Append one decision to the job's trail. DIAGNOSTIC ONLY — it never changes a job's status, so a lost
+	 * frame costs an explanation rather than correctness.
+	 *
+	 * BOUNDED per job, because a pathological worker could otherwise stream frames until the process runs out
+	 * of memory: a trail is an explanation, and the most recent decisions are the ones that explain an
+	 * outcome. Kept in memory and flushed to the attempt ledger on completion, alongside `stages`.
+	 */
+	#onState(msg: Extract<WorkerMessage, { type: 'job:state' }>): void {
+		const job = this.#d.jobs.byId(msg.jobId);
+		// Stale frames are dropped rather than recorded: a trail entry for a job this worker no longer owns
+		// would attribute another worker's reasoning to it.
+		if (!job || job.workerId !== msg.workerId) return;
+		const trail = this.#trails.get(msg.jobId) ?? [];
+		trail.push({
+			state: msg.state,
+			attempt: msg.attempt,
+			...(msg.verdict ? { verdict: msg.verdict } : {}),
+			...(msg.why ? { why: msg.why } : {}),
+			...(msg.knob ? { knob: msg.knob } : {}),
+			at: this.#d.now()
+		});
+		if (trail.length > TRAIL_CAP) trail.splice(0, trail.length - TRAIL_CAP);
+		this.#trails.set(msg.jobId, trail);
+	}
+
+	/**
+	 * Answer a `job:claim` — the PULL half of the ownership guard.
+	 *
+	 * Partitioned three ways because the worker acts differently on each: `owned` releases a publish,
+	 * `revoked` is an ordinary reassignment, and `unknown` means the worker is running something this core
+	 * has no row for — a real desync, and folding it into `revoked` would hide it.
+	 *
+	 * A job is OURS only when the row still names this worker AND is still running. A job that finished, was
+	 * cancelled or was requeued is not this worker's to publish, even though the row exists.
+	 */
+	#onClaim(msg: Extract<WorkerMessage, { type: 'job:claim' }>): void {
+		const owned: string[] = [];
+		const revoked: string[] = [];
+		const unknown: string[] = [];
+		for (const jobId of msg.jobIds) {
+			const job = this.#d.jobs.byId(jobId);
+			if (!job) unknown.push(jobId);
+			else if (job.workerId === msg.workerId && (job.status === 'running' || job.status === 'assigned'))
+				owned.push(jobId);
+			else revoked.push(jobId);
+		}
+		this.#d.toWorker(msg.workerId, { type: 'job:claim-ack', owned, revoked, unknown });
+	}
+
+	/** The PUSH half: tell a worker a job stopped being theirs, the moment it happens. */
+	revoke(jobId: string, workerId: string | null | undefined, reason: string): void {
+		if (!workerId) return;
+		this.#d.toWorker(workerId, { type: 'job:revoked', jobId, reason });
+	}
+
+	/** The trail to persist: the streamed frames when there are any, else whatever the completion carried.
+	 *  `undefined` when neither exists, so an absent trail stays absent rather than becoming `"[]"`. */
+	#trailJson(jobId: string, reported: unknown): string | undefined {
+		const streamed = this.#trails.get(jobId);
+		if (streamed?.length) return JSON.stringify(streamed);
+		if (Array.isArray(reported) && reported.length) return JSON.stringify(reported);
+		return undefined;
+	}
+
+	/** The recorded trail for a job, oldest first. Emptied when the job leaves the hub. */
+	trailOf(jobId: string): Array<Record<string, unknown>> {
+		return this.#trails.get(jobId) ?? [];
 	}
 
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
@@ -294,8 +382,13 @@ export class WorkerHub {
 		this.#d.attempts?.reportFacts(msg.jobId, {
 			...(msg.facts ?? {}),
 			stages: msg.stages?.length ? JSON.stringify(msg.stages) : undefined,
-			selection: msg.selection ? JSON.stringify(msg.selection) : undefined
+			selection: msg.selection ? JSON.stringify(msg.selection) : undefined,
+			// The worker sends its trail on completion AND streams it as `job:state`; prefer the streamed one,
+			// which survives a worker that died before reporting. Same storage reasoning as `stages`: one JSON
+			// column, read whole to explain one attempt, never queried inside.
+			trail: this.#trailJson(msg.jobId, msg.trail)
 		});
+		this.#trails.delete(msg.jobId);
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#processSettings();
 		const separator = separatorFor(job.jobType, settings);

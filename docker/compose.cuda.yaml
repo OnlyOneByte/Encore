@@ -70,3 +70,19 @@ services:
     # anything else, then put it back.
     # security_opt: []
     # cap_drop: []
+
+  # The rewrite, same change: the CUDA wheels come from the `cu128` EXTRA rather than an index URL, because
+  # `[tool.uv.sources]` already maps each extra to its own index and declares the two mutually exclusive.
+  # Without this a `--profile new-stems` GPU deploy silently builds CPU-only and cooks on the CPU.
+  new-worker:
+    init: true
+    build:
+      args:
+        TORCH_EXTRA: cu128
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

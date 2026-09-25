@@ -12,7 +12,14 @@ media
 .git
 docs/mocks/*.png
 **/__pycache__
-.venv
+# `**/`, NOT a bare `.venv`: a root-anchored pattern misses `new-worker/.venv`, which is a MULTI-GB ML
+# virtualenv — it would be uploaded to the daemon on every build and then ignored by the image.
+**/.venv
+# Durable DBOS state is per-box machine state. Copying a dev box's checkpoints into an image would make it
+# try to recover another machine's in-flight workflows on first boot.
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
 worker/wheelhouse/
 *.whl
 *.tar.gz

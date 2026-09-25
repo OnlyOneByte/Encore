@@ -15,6 +15,7 @@ Refusing is the only way that failure becomes visible.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from encore_worker.steps.api import NotOurJob, SeparateSteps
@@ -42,6 +43,13 @@ class StemsOutcome:
     published: PublishedStems | None
     why: str
     audio: AudioRef | None = None
+    #: The `songProfile` artifact, ALWAYS the full wire shape once separation succeeded.
+    #:
+    #: Never None on a published outcome, and that is the contract rather than tidiness: core's process gate
+    #: reads a PRESENT profile as "the analysis step ran" and an ABSENT one as "still processing", so a
+    #: missing profile makes core wait forever for a step it believes already happened. Every inner field may
+    #: be null — that is a real, gate-satisfying answer meaning "measured, unknown".
+    profile: Mapping[str, object] | None = None
 
     @property
     def refused(self) -> bool:
@@ -97,12 +105,24 @@ async def run_stems(job: JobRef, steps: SeparateSteps) -> StemsOutcome:
             "silence floor — refusing to publish it as ready"
         )
 
+    # Measured BEFORE publication, from the scratch WAVs: publication moves those files into the store and
+    # re-encodes them, so this is the last point where the raw separator output still exists. Best-effort by
+    # construction — `build_song_profile` cannot raise, and degrades each half to nulls independently, so an
+    # unreadable stem costs the key reading but not the vocal range.
+    profile = await steps.measure_profile(job, separated)
+
     try:
         published = await steps.publish_stems(job, separated)
     except NotOurJob as lost:
-        return StemsOutcome(published=None, why=f"abandoned before publishing: {lost}", audio=separated)
+        return StemsOutcome(
+            published=None,
+            why=f"abandoned before publishing: {lost}",
+            audio=separated,
+            profile=profile,
+        )
     return StemsOutcome(
         published=published,
+        profile=profile,
         why=f"separated at {peak:.1f} dBFS peak",
         audio=separated,
     )

@@ -112,8 +112,44 @@ export type WorkerMessage =
 			stages?: StageTiming[];
 			/** Absent on every non-align job, and on an align that made no choice among versions. */
 			selection?: SelectionRecord;
+			/**
+			 * The ordered decision history the worker's state machine produced. Also streamed live as
+			 * `job:state`; this is the belt-and-braces copy for a worker that reported nothing until the end.
+			 */
+			trail?: Array<Record<string, unknown>>;
 	  }
-	| { type: 'job:failed'; workerId: string; jobId: string; error: string; retryable: boolean };
+	| { type: 'job:failed'; workerId: string; jobId: string; error: string; retryable: boolean }
+	| {
+			/**
+			 * WHERE THE WORKER'S STATE MACHINE IS, and why it moved. Distinct from `job:progress` on purpose: a
+			 * stage and a percentage cannot express "re-aligning, attempt 2, knob vocals->mix, because coverage
+			 * was 0.42". That explanation previously went to the worker's stdout, and a process log rotates —
+			 * putting it on the wire is what makes "why did this job publish these lyrics" answerable later.
+			 *
+			 * Appended to the job's trail and persisted with its attempt. Diagnostic only: it never changes a
+			 * job's status, so a lost frame costs an explanation rather than correctness.
+			 */
+			type: 'job:state';
+			workerId: string;
+			jobId: string;
+			state: string;
+			attempt: number;
+			knob?: string;
+			verdict?: string;
+			why?: string;
+	  }
+	| {
+			/**
+			 * "Do I still own these?" — the PULL half of the ownership guard.
+			 *
+			 * A push (`job:revoked`) alone cannot close the window: a disconnect DROPS pushed frames, and a
+			 * disconnect is precisely what expires a lease and causes a reassignment. So the one event that
+			 * revokes a job is the same event that hides the revocation. The worker re-asks on every reconnect.
+			 */
+			type: 'job:claim';
+			workerId: string;
+			jobIds: string[];
+	  };
 
 /** What ACTUALLY ran, which differs routinely from what was asked. Every field optional, so a step
  *  reports only the axes that apply. See docs/SERVER.md#what-the-worker-is-told. */
@@ -214,6 +250,28 @@ export type WorkerCommand =
 			params: JobParams;
 	  }
 	| { type: 'job:cancel'; jobId: string; reason: string }
+	| {
+			/**
+			 * PUSHED the moment a job stops belonging to a worker — a reaper requeue, a reassignment. Closes the
+			 * race continuously, which a poll cannot: the reassignment happens at a moment nobody chose.
+			 */
+			type: 'job:revoked';
+			jobId: string;
+			reason: string;
+	  }
+	| {
+			/**
+			 * The answer to `job:claim`, partitioned three ways.
+			 *
+			 * `unknown` is NOT folded into `revoked`, and the distinction is load-bearing: a job the core has no
+			 * row for means the worker is running something core never recorded — a real desync worth surfacing —
+			 * whereas `revoked` is an ordinary reassignment. Both forbid publishing; only one is a bug.
+			 */
+			type: 'job:claim-ack';
+			owned: string[];
+			revoked: string[];
+			unknown: string[];
+	  }
 	| { type: 'ping' };
 
 export interface JobArtifacts {

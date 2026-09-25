@@ -20,6 +20,7 @@ export interface AttemptFacts {
 	audioSec?: number | null;
 	stages?: string | null; // per-stage breakdown, serialized, from job:complete
 	selection?: string | null; // variant-pick provenance, serialized, from job:complete on align
+	trail?: string | null; // the worker's decision history, serialized, from job:state / job:complete
 }
 
 export class AttemptLedger {
@@ -55,7 +56,8 @@ export class AttemptLedger {
 			syncMode: null,
 			audioSec: null,
 			stages: null,
-			selection: null
+			selection: null,
+			trail: null
 		};
 		this.#db.insert(jobAttempts).values(row).run();
 		return row;
@@ -169,6 +171,7 @@ function pickFacts(facts: AttemptFacts): Partial<JobAttempt> {
 		'syncMode',
 		'audioSec',
 		'stages',
+		'trail',
 		'selection'
 	] as const) {
 		if (facts[k] !== undefined) out[k] = facts[k] as never;

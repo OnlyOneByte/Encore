@@ -17,6 +17,11 @@ dependencies = [
     # Pinned because yt-dlp ships breaking extractor changes often. Shelled out to by name via PATH,
     # but declared so a venv install is self-sufficient.
     "yt-dlp==2026.8.19",
+    # The songProfile analysis (key detection, vocal range) is pure numpy and lives in `domain/audio/`, so
+    # numpy is a BASE dependency rather than part of `ml`: those algorithms must be testable against
+    # synthesised signals on a box with no models, which is the property every Protocol here exists to keep.
+    # ~20 MB, so it does not break "uv sync costs no multi-GB download".
+    "numpy>=2.1",
 ]
 
 [project.optional-dependencies]

@@ -264,7 +264,11 @@ export const jobAttempts = sqliteTable(
 		// The split the core's own clocks cannot see. One JSON column, not a table: nothing queries inside it.
 		stages: text('stages'),
 		// Read whole to explain one attempt, never queried inside — the same reasoning as `stages`.
-		selection: text('selection')
+		selection: text('selection'),
+		// The worker's own decision trail: which text was tried, which knob was varied, and why each attempt
+		// was rejected. One JSON column for the same reason as `stages` — nothing queries inside it, and it is
+		// the answer to "why did this job publish THESE lyrics" weeks later, which no counter can give.
+		trail: text('trail')
 	},
 	(t) => ({
 		byMedia: index('job_attempts_media_idx').on(t.mediaId, t.enqueuedAt),

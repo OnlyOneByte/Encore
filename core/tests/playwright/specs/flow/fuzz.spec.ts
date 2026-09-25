@@ -56,11 +56,18 @@
  * same index into an array the room hands back in a different order, so two runs of one seed agree on every
  * actor, input, seam and number and disagree on WHICH SONG — which is a replay in name only.
  *
- * CARRIED VERBATIM EVEN THOUGH IT LOOKS WRONG, because an assertion is MOVED here, never rewritten — both are
- * reported instead: LEAD_SEC reads `settings.lyricsLeadMs` off the sync frame, where the frame actually
- * carries `settings.room.lyricsLeadMs`, so it always falls back to 0.3 (the real default is 0) and I4's window
- * has been running 300ms off-centre; and `__fzRev` is tracked with a comment about carrying a "real baseRev"
- * when the contract has no baseRev on a queue command at all and nothing sends one.
+ * THREE, AND IT WAS A REPORTED DEFECT OF THIS DRIVER RATHER THAN OF THE ROOM: LEAD_SEC read
+ * `settings.lyricsLeadMs` off the sync frame, but the frame carries `EffectiveSettings = { global, room }` and
+ * the lead is a ROOM setting. That read always resolved `undefined`, so the fallback stood and I4's window ran
+ * 300ms off-centre against a real default of 0 — the literal `0.3` happened to match `schema.ts`'s dead
+ * `.default(300)` on the column, which no insert ever reaches because `setRoom` names every field. It now reads
+ * `settings.room.lyricsLeadMs` and falls back to `DEFAULT_LYRICS_LEAD_MS`, so the window is centred on the lead
+ * the room actually applies and cannot drift from the contract. I4's tolerance is +-1.0s, so this moved the
+ * window's centre without changing which runs pass.
+ *
+ * STILL CARRIED VERBATIM, because an assertion is MOVED here and never rewritten: `__fzRev` is tracked with a
+ * comment about carrying a "real baseRev" when the contract has no baseRev on a queue command at all and
+ * nothing sends one.
  */
 import { test, expect } from '../../world/fixtures';
 import type { Page } from '@playwright/test';
@@ -71,6 +78,7 @@ import { SEL } from '../../world/selectors';
 import { openBrowseFromHome, returnHomeFromBrowse } from '../../world/actors';
 import { startFakeWorker, type FakeWorkerFaults } from '../../world/workers';
 import type { World } from '../../world/fixtures';
+import { DEFAULT_LYRICS_LEAD_MS } from '$lib/contract';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Seed and knobs.
@@ -194,12 +202,14 @@ interface Playback {
 }
 
 /**
- * NOT the real settings shape. The sync frame carries `EffectiveSettings = { global, room }`, so
- * `settings.lyricsLeadMs` is always absent and LEAD_SEC falls back — see the header. Typed as the old driver
- * READ it, deliberately, so the port cannot quietly move I4's window.
+ * THE REAL FRAME SHAPE. `queue:sync` carries `EffectiveSettings = { global, room }` and the lead is a ROOM
+ * setting, so it is read at `settings.room.lyricsLeadMs`. Partial and optional throughout because this is a
+ * wire snapshot, not the contract type: a frame that arrives before settings are published has neither half,
+ * and only the one field I4 needs is named — widening this to the real `EffectiveSettings` would make every
+ * unrelated settings change a compile error in the fuzz driver.
  */
 interface Settings {
-	lyricsLeadMs?: number;
+	room?: { lyricsLeadMs?: number };
 }
 
 interface ServerSnapshot {
@@ -337,8 +347,10 @@ let rawSeen: Map<string, Media> | null = null;
 /** Lyrics docs, fetched once per ref from the same /media route the TV overlay reads. */
 const lyricsCache = new Map<string, LyricsDoc | null>();
 
-/** Lead applied to the lyrics highlight, in seconds — the reel is cued slightly AHEAD of the playhead. */
-let LEAD_SEC = 0.3;
+/** Lead applied to the lyrics highlight, in seconds — the reel is cued AHEAD of the playhead. Seeded from the
+ *  CONTRACT default rather than a literal, so the room's default and I4's window cannot drift apart; the run
+ *  overwrites it with what the server actually reports. */
+let LEAD_SEC = DEFAULT_LYRICS_LEAD_MS / 1000;
 let base = '';
 let wsBase = '';
 let tv: Page;
@@ -359,7 +371,7 @@ function startRun(): void {
 	tapped = false;
 	rawSeen = null;
 	lyricsCache.clear();
-	LEAD_SEC = 0.3;
+	LEAD_SEC = DEFAULT_LYRICS_LEAD_MS / 1000;
 	phones.length = 0;
 }
 
@@ -1386,9 +1398,11 @@ test('the six invariants hold after every input', async ({ world }, testInfo) =>
 		const probe0 = await serverSnapshot().catch((e: Error) => {
 			throw new Error(`cannot read server state: ${e.message}\n\n${world.core.log()}`);
 		});
-		// DELIBERATELY the old driver's read, which misses: the frame carries `settings.room.lyricsLeadMs`, so
-		// this resolves undefined and the fallback stands. Reported, not fixed — see the header.
-		LEAD_SEC = Number.isFinite(probe0?.settings?.lyricsLeadMs) ? (probe0.settings?.lyricsLeadMs ?? 0) / 1000 : 0.3;
+		// The lead is a ROOM setting, so it is read off `settings.room` — the frame carries
+		// `EffectiveSettings = { global, room }` and never a bare `settings.lyricsLeadMs`. A frame with no settings
+		// yet falls back to the CONTRACT default, which is what a room with no written row actually resolves to.
+		const reportedLeadMs = probe0?.settings?.room?.lyricsLeadMs;
+		LEAD_SEC = (Number.isFinite(reportedLeadMs) ? (reportedLeadMs ?? 0) : DEFAULT_LYRICS_LEAD_MS) / 1000;
 
 		// Two phones, each its own context and session: one client cannot disagree with itself. Each starts on
 		// HOME — that is where its transport taps and its `.qrow` counts both apply.

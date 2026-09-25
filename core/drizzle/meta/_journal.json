@@ -15,6 +15,13 @@
       "when": 1790102155855,
       "tag": "0001_glossy_veda",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790314438202,
+      "tag": "0002_round_purple_man",
+      "breakpoints": true
     }
   ]
 }

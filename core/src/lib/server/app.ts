@@ -490,7 +490,11 @@ export function getApp(): EncoreApp {
 		// EVERY tick, not only when sweep() reaps something: dispatch() is event-driven, so on an EMPTY fleet nothing else ever calls it and a job with no capable worker parks queued forever.
 		onTick: () => workerHub.dispatch(),
 		// A reaper-killed process reaches terminal `failed` without the worker reporting it, so it never hits worker-hub's onFailed. The SAME shared epilogue must run here, or the phone stays pinned on the processing percentage forever.
-		onFailed: (job) => reportTerminalFailure(job, 'reaper', { broadcast: (e) => app.publish(e), mediaById })
+		onFailed: (job) => reportTerminalFailure(job, 'reaper', { broadcast: (e) => app.publish(e), mediaById }),
+		// The PUSH half of the ownership guard. A worker may be 40 minutes into a separation when its lease
+		// expires; without this it finishes and publishes over whoever the job was reassigned to, and the last
+		// writer wins with no error anywhere.
+		onRevoked: (jobId, workerId, reason) => workerHub.revoke(jobId, workerId, reason)
 	});
 
 	app = {

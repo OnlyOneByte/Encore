@@ -250,16 +250,16 @@ async def test_claims_a_job_it_just_accepted() -> None:
     assert sock.first("job:claim")["jobIds"] == ["j1"]
 
 
-# ── the push-only guard: what actually runs against today's core ──────────────────────────────────
+# ── the push-only guard: the OLD-CORE compatibility mode ──────────────────────────────────────────
 
 
-async def test_by_default_it_does_not_claim_at_all() -> None:
-    """Today's core implements neither claim frame and DROPS unknown ones silently
-    (`core/server.ts:172` returns without closing or erroring). Asking a question nothing can answer is a
-    wasted frame, so the claim is suppressed rather than sent into the void.
+async def test_with_confirmation_off_it_does_not_claim_at_all() -> None:
+    """The mode for running a NEW worker against an OLD core — one that implements neither claim frame and
+    drops unknown ones silently, so asking is a wasted frame sent into the void.
 
-    When core learns the two frames, `require_confirmation=True` turns this back on — that is the whole
-    switch, and this test is what pins the two halves together.
+    No longer the default: core now answers claims, so `require_confirmation` is True and the full two-sided
+    guard runs. This stays covered because the compatibility mode is a real supported configuration, and
+    because it is what makes the deadlock impossible if core is ever rolled back.
     """
     sock = FakeSocket([assign()])
     async with Session(client(sock), sock):
@@ -267,9 +267,9 @@ async def test_by_default_it_does_not_claim_at_all() -> None:
     assert "job:claim" not in sock.types()
 
 
-async def test_by_default_an_accepted_job_may_publish_without_a_claim_round() -> None:
-    """THE reason the default flipped. With confirmation required and no core able to answer, every job ran
-    to completion — a full download, separation and alignment — and then `may_publish` refused it forever.
+async def test_with_confirmation_off_a_job_may_publish_without_a_claim_round() -> None:
+    """THE reason this mode exists. With confirmation required and no core able to answer, every job ran to
+    completion — a full download, separation and alignment — and then `may_publish` refused it forever.
     Fail-closed is right, but only when the counterpart exists; without it, it is a total outage.
 
     The residual exposure is deliberate and equals the OLD worker's: a `job:revoked` pushed while the
@@ -288,9 +288,9 @@ async def test_by_default_an_accepted_job_may_publish_without_a_claim_round() ->
         gate.release.set()
 
 
-async def test_the_push_half_still_revokes_by_default() -> None:
-    """What is NOT given up. `job:revoked` is core-initiated, so it needs no support the core lacks — the
-    strong half of the guard is the one that already works."""
+async def test_the_push_half_still_revokes_with_confirmation_off() -> None:
+    """What is NOT given up in the compatibility mode. `job:revoked` is core-initiated, so it needs no
+    support an older core lacks — the strong half of the guard works either way."""
     sock = FakeSocket([assign(), {"type": "job:revoked", "jobId": "j1", "reason": "lease expired"}])
     c = client(sock)
     async with Session(c, sock):
@@ -570,3 +570,34 @@ async def test_a_reconnect_picks_up_a_changed_format() -> None:
     async with Session(c, sock):
         pass
     assert c.publish_stem_format == "m4a"
+
+
+async def test_the_full_guard_is_on_by_default() -> None:
+    """The DEFAULT is now the two-sided guard, because core implements both halves: `#onClaim` answers every
+    claim three ways, and the reaper pushes `job:revoked` before a requeue clears the row.
+
+    Pinned as a test because the value is a one-word edit whose consequences are invisible locally: True
+    against an old core deadlocks every publish, and False against a new one silently gives up the pull half
+    that exists for the disconnect case — the event that both expires a lease AND hides the revocation.
+    """
+    assert Ownership().require_confirmation is True
+
+
+async def test_a_default_client_claims_what_it_accepted() -> None:
+    """End to end through the default construction, not a hand-set flag: an accepted job must be re-asked
+    about before it may publish."""
+    sock = FakeSocket([assign()])
+    c = Client(
+        config=CFG,
+        connect=lambda _url: _resolved(sock),
+        run_job=Gate(),
+        capabilities=CAPS,
+        backoff=no_backoff,
+    )
+    async with Session(c, sock):
+        pass
+    assert "job:claim" in sock.types()
+
+
+async def _resolved(sock: FakeSocket) -> FakeSocket:
+    return sock

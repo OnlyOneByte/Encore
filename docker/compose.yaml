@@ -105,6 +105,63 @@ services:
     restart: unless-stopped
     # deploy.resources.reservations.devices for GPU added when stems land
 
+  # ── the DBOS rewrite, on its own profile ─────────────────────────────────────────────────────────
+  # SEPARATE SERVICE rather than a replacement, so the two can be compared on one box: run
+  # `--profile stems` for the incumbent, `--profile new-stems` for this, and never both — they advertise
+  # overlapping capabilities, so the core would round-robin jobs between them and a comparison would
+  # measure whichever happened to be idle.
+  new-worker:
+    <<: *hardening
+    # demucs/yt-dlp grandchildren reparent to this process, which runs as PID 1 and is not an init, so
+    # they accumulate. `init: true` interposes Docker's tini instead.
+    init: true
+    build:
+      context: ..
+      dockerfile: docker/new-worker.Dockerfile
+      args:
+        # Which torch index, and so which accelerator. Overridden to `cu128` by the CUDA compose override.
+        TORCH_EXTRA: ${ENCORE_TORCH_EXTRA:-cpu}
+    profiles: ["new-stems"]
+    environment:
+      # `/ws?role=worker` — the path AND the role param are both required: core routes every socket
+      # through one `/ws` endpoint and reads `role` to decide what the connection may do. A worker
+      # dialling `/worker` is simply never upgraded, which looks exactly like the core being down.
+      - ENCORE_CORE_URL=ws://core:3000/ws?role=worker
+      - ENCORE_WORKER_ID=${ENCORE_NEW_WORKER_ID:-new-worker-1}
+      # Everything below is OPTIONAL and unset by default: the worker measures its own accelerator, cores
+      # and installed engines at startup, so a wrong guess here is worse than no value. Note that
+      # ENCORE_WORKER_CAPABILITIES can only NARROW what host/capabilities.py can prove.
+      - ENCORE_WORKER_CAPABILITIES=${ENCORE_WORKER_CAPABILITIES:-}
+      - ENCORE_DEVICE=${ENCORE_DEVICE:-}
+      - ENCORE_WORKER_CONCURRENCY=${ENCORE_WORKER_CONCURRENCY:-}
+      - ENCORE_ASR_MODEL=${ENCORE_ASR_MODEL:-base}
+      # The SCRATCH container a separator writes. NOT the published format — core announces that at
+      # handshake, because core owns the storage layout.
+      - ENCORE_STEM_FORMAT=${ENCORE_STEM_FORMAT:-}
+      - ENCORE_FLAC_LEVEL=${ENCORE_FLAC_LEVEL:-}
+      - ENCORE_OFFLINE=${ENCORE_OFFLINE:-}
+      - ENCORE_LRCMUX_URL=${ENCORE_LRCMUX_URL:-}
+      - ENCORE_HTTPS_PROXY=${ENCORE_HTTPS_PROXY:-}
+    volumes:
+      # The SAME host path core mounts, or core serves a ref to a file this worker never wrote. The refs
+      # themselves are computed by artifacts/keys.py, mirrored from core's paths.ts.
+      - ${ENCORE_MEDIA_VOLUME:-../media}:/app/media
+      # Model + tool cache, kept OUT of the writable layer so it survives `docker rm`. NAMED rather than a
+      # bind path on purpose: Docker initialises a named volume from the image's own $XDG_CACHE_HOME so it
+      # inherits the worker's ownership, whereas a fresh bind directory arrives root-owned and unwritable.
+      - new-worker-cache:/home/worker/.cache
+      # DURABLE STATE, and its own volume rather than a directory under the media mount: it holds in-flight
+      # DBOS checkpoints, so it is per-box machine state and must survive `docker rm` while staying clear of
+      # any retention sweep over `media/`.
+      - new-worker-state:/home/worker/state
+    depends_on:
+      - core
+    restart: unless-stopped
+
 volumes:
   # Created only by the `stems` profile — the default MVP `up` never starts the worker that uses it.
   worker-cache:
+  # Likewise for `new-stems`. Separate from `worker-cache` so switching profiles does not make one image
+  # read the other's half-downloaded checkpoints.
+  new-worker-cache:
+  new-worker-state:

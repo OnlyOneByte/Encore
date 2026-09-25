@@ -111,6 +111,7 @@ const EXPECTED = [
 	'assignSeqs',
 	'attemptSelection',
 	'attemptStages',
+	'attemptTrail',
 	// TWO SYMBOLS JOINED THE LIST, and both joined by a DELETION. `presentation/player-palette.ts` carried a
 	// private `canonHex` that was `parseHex` followed by the same hex formatting `colors.ts` already had, and a
 	// private `hueGap` character-identical to `colors.ts`'s `hueDistance`. Each pair was one function under two

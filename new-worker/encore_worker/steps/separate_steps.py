@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Mapping
 
 from encore_worker.adapters import separate as sep
 from encore_worker.adapters.encode import EncodeFailed, FfmpegEncoder
 from encore_worker.adapters.ports import AudioProbe, Separator
 from encore_worker.artifacts import keys
 from encore_worker.artifacts.ports import ArtifactStore
+from encore_worker.domain.audio import profile as audio_profile
 from encore_worker.domain.identity import Identified, identify_from_title
 from encore_worker.host.config import Config
 from encore_worker.steps.align_steps import AlignStepsImpl, Reporter
@@ -94,6 +96,27 @@ class SeparateStepsImpl:
         if self._probe is None:
             return None
         return await asyncio.to_thread(self._probe.peak_dbfs, audio.path)
+
+    async def measure_profile(self, job: JobRef, audio: AudioRef) -> Mapping[str, object]:
+        """The `songProfile` artifact: key from the instrumental, vocal range from the vocals.
+
+        ALWAYS returns the full wire shape and NEVER raises — `build_song_profile` catches per-half and
+        degrades to nulls. That total is the contract, not defensiveness: core's process gate reads a present
+        profile as "the analysis ran", so a raise that lost the artifact would leave core waiting forever for
+        a step it thinks already happened, and the song permanently unsingable AND never reprocessed.
+
+        `to_thread` because the analysis is numpy over a multi-minute decode — tens of seconds of CPU that
+        would otherwise freeze the event loop and stop the socket keepalive.
+
+        Measured on the SCRATCH stems, which is why it must run before publication moves and re-encodes them.
+        """
+        return await asyncio.to_thread(
+            audio_profile.build_song_profile,
+            audio.path,
+            audio.vocals_path,
+            job.media_id,
+            log=lambda *a, **k: None,  # the decision trail is the operator surface, not stdout
+        )
 
     async def publish_stems(self, job: JobRef, audio: AudioRef) -> PublishedStems:
         """Encode the scratch stems to the published format and place them at core's keys.
