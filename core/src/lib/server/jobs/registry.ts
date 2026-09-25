@@ -1,7 +1,7 @@
 // In-memory only, rebuilt from worker reconnects, never persisted. A dropped worker's in-flight
 // jobs are reclaimed by the reaper via lease expiry, not by anything in this file.
 
-import type { WorkerHost } from '../../contract';
+import type { SeparatorOffer, WorkerHost } from '../../contract';
 
 export interface WorkerSession {
 	workerId: string;
@@ -12,6 +12,12 @@ export interface WorkerSession {
 	lastSeen: number; // epoch ms of the last hello/heartbeat (liveness)
 	/** Host info reported at handshake; optional since older workers send none. Lets a reader tell a slow GPU stems run from a shared-core one. */
 	host?: WorkerHost;
+	/**
+	 * Selectable separation models, from the follow-up `worker:catalogue` frame. Absent until that arrives
+	 * (a few seconds after joining) and on any worker that offers none — so every reader must treat an empty
+	 * list as "not reported", never as "this worker can separate nothing".
+	 */
+	separators?: SeparatorOffer[];
 }
 
 export class WorkerRegistry {
@@ -37,6 +43,28 @@ export class WorkerRegistry {
 		};
 		this.#workers.set(workerId, session);
 		return session;
+	}
+
+	/**
+	 * Apply a `worker:catalogue` frame: REPLACES capabilities and the offer list wholesale.
+	 *
+	 * Replace rather than merge, because the worker sends its full set for exactly this reason — merging
+	 * would keep a model that a worker has since stopped offering (an extra uninstalled, a version
+	 * downgraded), and core would route a job to a box that now refuses it.
+	 *
+	 * `slotsFree` is deliberately untouched: this frame says nothing about load, and resetting it here would
+	 * discard the dispatcher's view a few seconds after a reconnect already rebuilt it.
+	 *
+	 * No-op when the worker is not registered — a catalogue arriving after a close is stale, and inventing a
+	 * session from it would resurrect a worker the reaper has already written off.
+	 */
+	catalogue(workerId: string, capabilities: string[], separators: SeparatorOffer[], now: number): boolean {
+		const w = this.#workers.get(workerId);
+		if (!w) return false;
+		w.capabilities = [...capabilities];
+		w.separators = [...separators];
+		w.lastSeen = now;
+		return true;
 	}
 
 	/** The worker is the source of truth for slotsFree; no-op if it isn't registered (stale heartbeat). */
@@ -68,7 +96,11 @@ export class WorkerRegistry {
 
 	/** All live worker sessions (defensive copies — callers must not mutate registry state). */
 	list(): WorkerSession[] {
-		return [...this.#workers.values()].map((w) => ({ ...w, capabilities: [...w.capabilities] }));
+		return [...this.#workers.values()].map((w) => ({
+			...w,
+			capabilities: [...w.capabilities],
+			...(w.separators ? { separators: [...w.separators] } : {})
+		}));
 	}
 
 	get size(): number {

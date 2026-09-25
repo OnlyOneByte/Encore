@@ -12,6 +12,8 @@ import {
 	followUps,
 	hasCapableWorker,
 	planAssignments,
+	isWorkerModel,
+	modelCapability,
 	requiredCapability,
 	separatorFor,
 	type CapabilityFor
@@ -291,10 +293,72 @@ const settings = (o: Partial<GlobalSettings>): GlobalSettings => ({
 test('requiredCapability is engine-derived for stems, plain type otherwise', () => {
 	expect(requiredCapability('stems', settings({ defaultEngine: 'demucs' }))).toBe('stems');
 	expect(requiredCapability('stems', settings({ defaultEngine: 'roformer' }))).toBe('stems:roformer');
-	expect(requiredCapability('stems-upgrade', settings({ upgradeEngine: 'ensemble' }))).toBe('stems:ensemble');
+	// `ensemble` was removed from the registry, so an unknown engine now falls back to plain 'stems' —
+	// which is the fail-open every single-capability worker can serve.
+	expect(requiredCapability('stems-upgrade', settings({ upgradeEngine: 'audiosep' }))).toBe('stems:audiosep');
 	expect(requiredCapability('align', settings({}))).toBe('align');
 	// No settings means the demucs default and a plain 'stems' capability, which single-cap workers serve.
 	expect(requiredCapability('stems')).toBe('stems');
+});
+
+// ── model-aware routing, for the models workers announce themselves ──────────────────────────────
+
+test('a BUILT-IN model keeps routing on its engine capability', () => {
+	// The whole reason `isWorkerModel` exists. Workers resolve these through their own engine allowlist and
+	// advertise no `stems:model:` token for them, so narrowing here would make every such job unservable.
+	expect(requiredCapability('stems', settings({ defaultEngine: 'demucs', defaultModel: 'htdemucs' }))).toBe(
+		'stems'
+	);
+	expect(
+		requiredCapability('stems', settings({ defaultEngine: 'demucs', defaultModel: 'htdemucs_ft' }))
+	).toBe('stems');
+	// THE CASE A SHAPE-BASED HEURISTIC GOT WRONG: hyphens, no underscores, and nonetheless built in.
+	expect(
+		requiredCapability(
+			'stems-upgrade',
+			settings({ upgradeEngine: 'roformer', upgradeModel: 'bs-roformer-1297' })
+		)
+	).toBe('stems:roformer');
+});
+
+test('a WORKER-ANNOUNCED model narrows the capability to that exact checkpoint', () => {
+	const token = 'roformer-model-bs-roformer-viperx-1297';
+	expect(
+		requiredCapability('stems-upgrade', settings({ upgradeEngine: 'audiosep', upgradeModel: token }))
+	).toBe(`stems:model:${token}`);
+	expect(modelCapability(token)).toBe(`stems:model:${token}`);
+});
+
+test('isWorkerModel separates announced tokens from core’s own catalogue', () => {
+	expect(isWorkerModel('htdemucs')).toBe(false);
+	expect(isWorkerModel('htdemucs_ft')).toBe(false);
+	expect(isWorkerModel('bs-roformer-1297')).toBe(false);
+	expect(isWorkerModel('roformer-model-bs-roformer-viperx-1297')).toBe(true);
+});
+
+test('a job naming a model only ONE worker announced goes to that worker', () => {
+	// The payoff: model-aware routing with no new dispatch code, because a model is just a capability.
+	const token = 'roformer-model-melband-roformer-kim-inst-v2-by-unwa';
+	const cap: CapabilityFor = (j) =>
+		requiredCapability(j.jobType, settings({ upgradeEngine: 'audiosep', upgradeModel: token }));
+	const workers = [
+		worker_CapabilityRouting('no-zoo', ['stems', 'stems:roformer']),
+		worker_CapabilityRouting('has-zoo', ['stems', 'stems:audiosep', `stems:model:${token}`])
+	];
+	const plan = planAssignments([job('j1', { jobType: 'stems-upgrade' })], workers, cap);
+	expect(plan).toEqual([{ jobId: 'j1', workerId: 'has-zoo' }]);
+});
+
+test('a job naming a model NO worker announced stays queued rather than failing somewhere else', () => {
+	// `hasCapableWorker` false means "unservable", which is how core distinguishes waiting for capacity from
+	// waiting forever. Without the narrowing this job would be handed to a worker that then refused it.
+	const token = 'roformer-model-nobody-has-this';
+	const cap: CapabilityFor = (j) =>
+		requiredCapability(j.jobType, settings({ upgradeEngine: 'audiosep', upgradeModel: token }));
+	const workers = [worker_CapabilityRouting('w1', ['stems', 'stems:audiosep'])];
+	const j = job('j1', { jobType: 'stems-upgrade' });
+	expect(planAssignments([j], workers, cap)).toEqual([]);
+	expect(hasCapableWorker(j, workers, cap)).toBe(false);
 });
 
 test('a roformer process is NOT dispatched to a demucs-only worker_CapabilityRouting', () => {
@@ -462,8 +526,14 @@ function media_UpgradeChain(o: Partial<Media> = {}): Media {
 test('quality ranks order the ladder and unranked pairs score zero', () => {
 	expect(qualityRank('demucs', 'htdemucs')).toBeLessThan(qualityRank('demucs', 'htdemucs_ft'));
 	expect(qualityRank('demucs', 'htdemucs_ft')).toBeLessThan(qualityRank('roformer', 'bs-roformer-1297'));
-	expect(qualityRank('roformer', 'bs-roformer-1297')).toBeLessThan(qualityRank('ensemble', 'instrumental_clean'));
+	// `ensemble:instrumental_clean` was the top rung and is gone with the engine — it advertised
+	// `stems:ensemble`, which no worker ever implemented. bs-roformer-1297 is now the highest ranked.
+	expect(qualityRank('ensemble', 'instrumental_clean')).toBe(0);
 	expect(qualityRank('demucs', 'bogus')).toBe(0);
+	// A WORKER-REPORTED token also ranks 0 here, because this registry cannot rank what it has never seen.
+	// That is why `isQualityUpgrade` special-cases it — as rank 0 alone it would have been refused at the
+	// swap, after the upgrade had already run.
+	expect(qualityRank('audiosep', 'roformer-model-bs-roformer-viperx-1297')).toBe(0);
 });
 
 test('isQualityUpgrade requires strictly better and treats missing current as upgradeable', () => {

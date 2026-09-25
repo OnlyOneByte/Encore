@@ -20,6 +20,7 @@
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import * as Alert from '$lib/components/ui/alert';
+	import type { OfferedModel } from '$lib/contract';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -79,6 +80,13 @@
 			joinOriginFallback: string;
 			/** Whether this phone reached the server over https. Only the server can answer this. */
 			requestIsHttps: boolean;
+			/**
+			 * Separation models the CONNECTED WORKERS reported they can run, best upstream score first.
+			 *
+			 * Absent on an older server and empty until a worker's `worker:catalogue` frame lands, so every
+			 * reader must fall back to the built-in engine lists rather than showing an empty picker.
+			 */
+			offeredModels?: OfferedModel[];
 		};
 	}
 	let { data }: Props = $props();
@@ -124,8 +132,32 @@
 	// Upgrade-only engines are excluded: offering one here lets a singer pick what the server rejects.
 	const liveEngines = SEPARATOR_ENGINES.filter((e) => e.liveSelectable);
 
+	/* Models the CONNECTED WORKERS reported, newest catalogue first. Empty until a worker sends its
+	   `worker:catalogue` frame (a few seconds after it joins) and on a fleet with no zoo installed — in which
+	   case the pickers below show exactly what they always did.
+
+	   This is the fix for a list that was compiled here by hand: it offered `instrumental_becruily` and two
+	   ensemble models that no worker could run, so choosing one queued a job forever. A worker is the only
+	   thing that knows what it can run. */
+	const offered = $derived(data.offeredModels ?? []);
+	/* Labelled with the architecture and the UPSTREAM score — never "measured", because it is not ours; see
+	   SeparatorOffer. `⚠` marks a model only one worker has, since picking it pins every such job to that box. */
+	const offeredOptions = $derived(
+		offered.map((m) => {
+			const sdr =
+				typeof m.upstreamInstrumentalSdr === 'number'
+					? ` · ${m.upstreamInstrumentalSdr.toFixed(1)} dB upstream`
+					: '';
+			const lone = m.workerCount === 1 && (data.offeredModels ?? []).length > 0 ? ' ⚠ 1 worker' : '';
+			return { id: m.token, label: `${m.label} [${m.architecture}]${sdr}${lone}` };
+		})
+	);
 	const liveModels = $derived(getEngine(settings.global.defaultEngine)?.models ?? []);
 	const upgradeModels = $derived(getEngine(settings.global.upgradeEngine)?.models ?? []);
+	/* Built-in checkpoints first, then everything the fleet reported. Concatenated rather than replaced: the
+	   built-ins route on their engine capability and keep working even with no catalogue at all. */
+	const liveModelChoices = $derived([...liveModels, ...offeredOptions]);
+	const upgradeModelChoices = $derived([...upgradeModels, ...offeredOptions]);
 
 	// A slow engine on the LIVE path is the footgun worth naming in the UI: ~44min per song on CPU against ~50s.
 	const liveSlow = $derived(getEngine(settings.global.defaultEngine)?.speed === 'slow');
@@ -772,7 +804,7 @@
 								pickEngine('default', v)
 							)}
 
-							{@render selectField('model', 'Model', settings.global.defaultModel, liveModels, (v) =>
+							{@render selectField('model', 'Model', settings.global.defaultModel, liveModelChoices, (v) =>
 								onglobal({ defaultModel: v })
 							)}
 
@@ -908,7 +940,7 @@
 												'upgrade-model',
 												'Upgrade model',
 												settings.global.upgradeModel,
-												upgradeModels,
+												upgradeModelChoices,
 												(v) => onglobal({ upgradeModel: v })
 											)}
 

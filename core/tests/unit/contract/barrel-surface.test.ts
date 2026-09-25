@@ -175,6 +175,7 @@ const EXPECTED = [
 	'isValidLyricsFont',
 	'isValidLyricsHighlight',
 	'isValidSeparator',
+	'isWorkerReportedModel',
 	'isValidSyncMode',
 	'isVoiceBandId',
 	'keyLabel',

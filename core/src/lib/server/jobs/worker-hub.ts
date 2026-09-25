@@ -87,6 +87,15 @@ export interface WorkerHubDeps {
  *  pathological worker could otherwise stream `job:state` until the process runs out of memory. */
 const TRAIL_CAP = 200;
 
+/**
+ * Prefix of the per-model capability token a worker advertises for each separator it can run.
+ *
+ * Mirrored in the worker's `adapters/zoo.MODEL_CAPABILITY_PREFIX`. Routing a job to a box that has a
+ * particular checkpoint needs no new machinery because of this: `planAssignments` already matches one
+ * capability string against a worker's list.
+ */
+export const MODEL_CAPABILITY_PREFIX = 'stems:model:';
+
 export function validateWorkerMessage(msg: unknown): string | null {
 	if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return 'malformed worker frame';
 	const m = msg as Record<string, unknown>;
@@ -98,6 +107,23 @@ export function validateWorkerMessage(msg: unknown): string | null {
 				return 'malformed capabilities';
 			if (typeof m.concurrency !== 'number' || !Number.isFinite(m.concurrency)) return 'malformed concurrency';
 			if (typeof m.version !== 'string') return 'malformed version';
+			return null;
+		case 'worker:catalogue':
+			if (!Array.isArray(m.capabilities) || !m.capabilities.every((c) => typeof c === 'string'))
+				return 'malformed capabilities';
+			// Each offer must carry a usable token, because that token is what a job will name and what lands
+			// in `job_attempts.model`. Everything else is display and may be absent.
+			if (
+				!Array.isArray(m.separators) ||
+				!m.separators.every(
+					(o) =>
+						!!o &&
+						typeof o === 'object' &&
+						typeof (o as Record<string, unknown>).token === 'string' &&
+						((o as Record<string, unknown>).token as string).length > 0
+				)
+			)
+				return 'malformed separators';
 			return null;
 		case 'worker:heartbeat':
 			if (typeof m.slotsFree !== 'number' || !Number.isFinite(m.slotsFree)) return 'malformed slotsFree';
@@ -181,6 +207,8 @@ export class WorkerHub {
 		switch (msg.type) {
 			case 'worker:hello':
 				return this.#onHello(msg);
+			case 'worker:catalogue':
+				return this.#onCatalogue(msg);
 			case 'worker:heartbeat':
 				return this.#onHeartbeat(msg);
 			case 'job:accept':
@@ -270,6 +298,60 @@ export class WorkerHub {
 		return this.#trails.get(jobId) ?? [];
 	}
 
+	/**
+	 * A worker's capability list, COLLAPSED for a log line.
+	 *
+	 * A worker offering the model zoo advertises ~137 capability tokens, 135 of them `stems:model:<token>`.
+	 * Printed verbatim that is a 6 KB line that buries the two or three tokens anyone reads a join message
+	 * for. So the per-model tokens are counted rather than listed, and the base capabilities print as before.
+	 */
+	static summariseCapabilities(capabilities: string[]): string {
+		const models = capabilities.filter((c) => c.startsWith(MODEL_CAPABILITY_PREFIX));
+		const base = capabilities.filter((c) => !c.startsWith(MODEL_CAPABILITY_PREFIX));
+		const tail = models.length > 0 ? `,+${models.length} models` : '';
+		return `${base.join(',') || 'none'}${tail}`;
+	}
+
+	/**
+	 * A worker reported the models it can run. Applied to the registry, then dispatched — because a job may
+	 * have been sitting unservable waiting for exactly this: `hasCapableWorker` was false for
+	 * `stems:model:<token>` until this frame arrived.
+	 */
+	#onCatalogue(msg: Extract<WorkerMessage, { type: 'worker:catalogue' }>): void {
+		const applied = this.#d.registry.catalogue(
+			msg.workerId,
+			msg.capabilities,
+			msg.separators,
+			this.#d.now()
+		);
+		if (!applied) return; // stale: the worker closed before its catalogue landed
+
+		// ITS OWN LOG LINE, deliberately separate from the join message. The join happens seconds earlier and
+		// this arrives asynchronously, so folding it into that line would mean either delaying the join
+		// message or rewriting it. Two lines also read better: one says a worker appeared, one says what it
+		// can do.
+		const byArchitecture = new Map<string, number>();
+		for (const offer of msg.separators) {
+			const key = offer.architecture || 'unknown';
+			byArchitecture.set(key, (byArchitecture.get(key) ?? 0) + 1);
+		}
+		const breakdown = [...byArchitecture.entries()]
+			.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+			.map(([arch, n]) => `${arch} ${n}`)
+			.join(', ');
+		const best = msg.separators
+			.filter((o) => typeof o.upstreamInstrumentalSdr === 'number')
+			.sort((a, b) => (b.upstreamInstrumentalSdr ?? 0) - (a.upstreamInstrumentalSdr ?? 0))[0];
+		// "upstream" is stated because it is NOT our measurement — see SeparatorOffer's doc comment.
+		const top = best
+			? `; best upstream ${best.upstreamInstrumentalSdr?.toFixed(2)} dB (${best.token})`
+			: '';
+		console.log(
+			`[hub] worker ${msg.workerId} offers ${msg.separators.length} separation models: ${breakdown}${top}`
+		);
+		this.dispatch();
+	}
+
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
 	#onHello(msg: Extract<WorkerMessage, { type: 'worker:hello' }>): void {
 		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now(), msg.host);
@@ -278,7 +360,7 @@ export class WorkerHub {
 			? `${msg.host.accelerator ?? (msg.host.cuda ? 'cuda' : 'cpu')}/${msg.host.cpuCount ?? '?'}cpu${msg.host.contained ? ' (contained)' : ''}`
 			: 'hardware unreported';
 		console.log(
-			`[hub] worker ${msg.workerId} joined: ${hw}, caps=[${msg.capabilities.join(',')}], slots=${msg.concurrency}`
+			`[hub] worker ${msg.workerId} joined: ${hw}, caps=[${WorkerHub.summariseCapabilities(msg.capabilities)}], slots=${msg.concurrency}`
 		);
 		this.#d.toWorker(msg.workerId, {
 			type: 'worker:welcome',
@@ -484,7 +566,7 @@ export class WorkerHub {
 			console.warn(
 				`[hub] job ${job.id} (${job.jobType}) needs capability '${cap}' and NO connected worker ` +
 					`advertises it — it will stay queued until one does or ${ttlSec}s elapse. ` +
-					`Connected: ${workers.length === 0 ? 'none' : workers.map((w) => `${w.workerId}[${w.capabilities.join(',')}]`).join(' ')}`
+					`Connected: ${workers.length === 0 ? 'none' : workers.map((w) => `${w.workerId}[${WorkerHub.summariseCapabilities(w.capabilities)}]`).join(' ')}`
 			);
 			// Only tell the ROOM when the stall blocks singing: broadcasting 'queued' for an unservable
 			// `align` on a playable song would regress a ready row to processing on every phone.

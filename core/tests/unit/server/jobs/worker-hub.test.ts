@@ -563,7 +563,16 @@ test('a terminally failed FETCH also settles the media — the common stranding 
 // absent profile to EMPTY_SONG_PROFILE, so calling it anyway wipes the detected key and vocal range.
 test('a refused stems-upgrade leaves the key, range, vocals and instrumental untouched', () => {
 	const { hub, jobs, mediaById } = harness();
-	// Already processed at the TOP of the ladder (ensemble, rank 45), with a real profile and guide ref.
+	// Already processed at the TOP of the ladder, with a real profile and guide ref.
+	//
+	// This used to be `ensemble:instrumental_clean` (rank 45). That engine has been REMOVED from the registry
+	// — it advertised `stems:ensemble`, which no worker ever implemented — so it now ranks 0 and any candidate
+	// would outrank it, inverting this test. bs-roformer-1297 (35) is the highest remaining rung, and the
+	// default upgrade target resolves to the same pairing: equal rank is not STRICTLY better, so it is
+	// refused, which is the behaviour under test.
+	//
+	// No real row can carry the old value: the capability was never implemented, so no worker ever produced
+	// an ensemble separation to record.
 	const profile = {
 		keyTonic: 3,
 		keyMode: 'major',
@@ -579,13 +588,13 @@ test('a refused stems-upgrade leaves the key, range, vocals and instrumental unt
 		media('m1', {
 			stemStatus: 'ready',
 			instrumentalRef: 'derived/stems/m1-instrumental.flac',
-			separator: { engine: 'ensemble', model: 'instrumental_clean' }, // rank 45
+			separator: { engine: 'roformer', model: 'bs-roformer-1297' }, // rank 35, the top of the ladder
 			vocalsRef: 'derived/stems/m1-vocals.flac',
 			songProfile: profile as unknown as Media['songProfile']
 		})
 	);
-	// With no settings the upgrade resolves to roformer:bs-roformer-1297 (rank 35), which does NOT outrank the published
-	// ensemble, so markMediaReady refuses it.
+	// With no settings the upgrade resolves to roformer:bs-roformer-1297 (rank 35) — the SAME pairing already
+	// published, which does not strictly outrank itself, so markMediaReady refuses it.
 	const job = jobs.enqueue('m1', 'stems-upgrade', 0, T0);
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems:roformer'], concurrency: 1, version: '1' });
 	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
@@ -607,7 +616,7 @@ test('a refused stems-upgrade leaves the key, range, vocals and instrumental unt
 	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.flac'); // NOT the UPGRADE key
 	expect(m.vocalsRef).toBe('derived/stems/m1-vocals.flac'); // NOT the UPGRADE vocals
 	expect(m.songProfile).toEqual(profile as unknown as Media['songProfile']); // key + range preserved
-	expect(m.separator).toEqual({ engine: 'ensemble', model: 'instrumental_clean' }); // still the better one
+	expect(m.separator).toEqual({ engine: 'roformer', model: 'bs-roformer-1297' }); // unchanged by the refusal
 });
 
 test('an ACCEPTED stems-upgrade DOES swap the artifacts (the guard is not over-eager)', () => {

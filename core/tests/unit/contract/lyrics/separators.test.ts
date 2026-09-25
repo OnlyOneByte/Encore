@@ -56,13 +56,33 @@ describe('separator registry', () => {
 		expect(isLiveSelectable(DEFAULT_ENGINE, DEFAULT_MODEL)).toBe(true);
 	});
 
-	it('every engine has at least one model and a distinct capability', () => {
+	it('every engine has a distinct capability, and only the zoo may list no models', () => {
+		// The "at least one model" half USED TO APPLY TO EVERY ENGINE, and the `audiosep` engine now
+		// legitimately breaks it: its models are reported by the workers in `worker:catalogue`, because only a
+		// worker knows which checkpoints its installed library can run. A name listed here would be an
+		// unverifiable claim about a remote box — which is exactly how this file came to advertise three
+		// models no worker could run.
 		const caps = new Set<string>();
 		for (const e of SEPARATOR_ENGINES) {
-			expect(e.models.length).toBeGreaterThan(0);
+			if (e.id !== 'audiosep') expect(e.models.length).toBeGreaterThan(0);
 			expect(caps.has(e.capability)).toBe(false); // capabilities route jobs, so must be unique
 			caps.add(e.capability);
 		}
+	});
+
+	it('the zoo engine lists no models, so nothing here can claim a remote box can run something', () => {
+		const zoo = SEPARATOR_ENGINES.find((e) => e.id === 'audiosep');
+		expect(zoo).toBeDefined();
+		expect(zoo!.models).toEqual([]);
+	});
+
+	it('no engine advertises a capability no worker implements', () => {
+		// `stems:ensemble` was advertised for as long as this registry existed and NEVER implemented, behind
+		// two upgrade-only models. The failure was silent by construction: upgrades simply never ran, and
+		// `hasCapableWorker` was false forever with nothing on screen to say so.
+		const advertised = SEPARATOR_ENGINES.map((e) => e.capability);
+		expect(advertised).not.toContain('stems:ensemble');
+		expect(SEPARATOR_ENGINES.some((e) => e.id === 'ensemble')).toBe(false);
 	});
 
 	it('rejects unknown engine or unknown model', () => {
@@ -70,12 +90,13 @@ describe('separator registry', () => {
 		expect(isValidSeparator('demucs', 'no-such-model')).toBe(false);
 	});
 
-	it('ensemble is a real engine but NOT live-selectable (upgrade-only)', () => {
-		const ensemble = getEngine('ensemble');
-		expect(ensemble).toBeTruthy();
-		const model = ensemble!.models[0]!.id;
-		expect(isValidSeparator('ensemble', model)).toBe(true); // valid as an upgrade target
-		expect(isLiveSelectable('ensemble', model)).toBe(false); // but never as the live default
+	it('the ensemble engine is gone, and re-adding it as a constant would be the same bug', () => {
+		// It was a real ENTRY but never a real ENGINE: `stems:ensemble` had no adapter on any worker, so the
+		// two upgrade-only models it carried made every upgrade unservable, silently. An ensemble runtime, if
+		// built, announces itself through `worker:catalogue` like every other model.
+		expect(getEngine('ensemble')).toBeUndefined();
+		expect(isValidSeparator('ensemble', 'instrumental_clean')).toBe(false);
+		expect(isLiveSelectable('ensemble', 'instrumental_clean')).toBe(false);
 	});
 
 	it('demucs whitelist carries the three htdemucs variants', () => {
@@ -85,15 +106,15 @@ describe('separator registry', () => {
 		expect(ids).toContain('htdemucs_6s');
 	});
 
-	it('offers audiosep as a live-selectable mel-band engine with instrumental_becruily', () => {
-		// The mel-band instrumental_becruily checkpoint is live-selectable, NOT upgrade-only like ensemble.
+	it('offers audiosep as a live-selectable engine whose models come from the workers', () => {
 		const audiosep = getEngine('audiosep');
 		expect(audiosep).toBeTruthy();
 		expect(audiosep!.capability).toBe('stems:audiosep'); // distinct capability routes the process
-		expect(isValidSeparator('audiosep', 'instrumental_becruily')).toBe(true);
-		expect(isLiveSelectable('audiosep', 'instrumental_becruily')).toBe(true); // Option A, not upgrade-only
-		// Below bs-roformer-1297 (35): community, so it must not outrank the ear-approved top of the ladder.
-		expect(qualityRank('audiosep', 'instrumental_becruily')).toBeLessThan(qualityRank('roformer', 'bs-roformer-1297'));
+		expect(audiosep!.liveSelectable).toBe(true);
+		// `instrumental_becruily` was the one hardcoded entry here and NO WORKER COULD RUN IT — there was no
+		// audiosep adapter at all. Picking it queued a job that no capability matched. It is not replaced by a
+		// different hardcoded name; the worker reports what it has.
+		expect(isValidSeparator('audiosep', 'instrumental_becruily')).toBe(false);
 	});
 
 	it('does NOT offer a mel-band roformer model', () => {
@@ -133,6 +154,10 @@ describe('measured cost', () => {
 	it('the engine speed label agrees with its models measured cost', () => {
 		// `speed` is a coarse UI hint, `rtFactor` the measurement. Bands: fast < 1× realtime, medium < 4×.
 		for (const engine of SEPARATOR_ENGINES) {
+			// The zoo engine lists no models, so there is no cost here to agree with — its per-model figures
+			// arrive from the workers and are UPSTREAM numbers, which deliberately never become an `rtFactor`
+			// in this registry. `Math.max()` of nothing is -Infinity, which would silently read as "fast".
+			if (engine.models.length === 0) continue;
 			const worst = Math.max(...engine.models.map((m) => m.cost.rtFactor));
 			const band = worst < 1 ? 'fast' : worst < 4 ? 'medium' : 'slow';
 			expect(engine.speed).toBe(band);
@@ -177,18 +202,31 @@ describe('normalizeGlobalSettings', () => {
 		expect(out.defaultModel).toBe(DEFAULT_MODEL);
 	});
 
-	it('accepts a valid live default and a valid (even upgrade-only) upgrade target', () => {
+	it('accepts a valid live default and a WORKER-REPORTED upgrade target', () => {
+		// The pairing that matters now, and the one that used to be silently discarded: `isValidSeparator`
+		// consulted only the static list, so a token the fleet reported was replaced by the default here —
+		// the picker would offer 135 models and the setting would snap back on save.
 		const out = normalizeGlobalSettings({
 			defaultEngine: 'demucs',
 			defaultModel: 'htdemucs_ft',
 			enqueueUpgrade: true,
-			upgradeEngine: 'ensemble',
-			upgradeModel: 'instrumental_clean'
+			upgradeEngine: 'audiosep',
+			upgradeModel: 'roformer-model-bs-roformer-viperx-1297'
 		});
 		expect(out.defaultModel).toBe('htdemucs_ft');
 		expect(out.enqueueUpgrade).toBe(true);
-		expect(out.upgradeEngine).toBe('ensemble'); // upgrade target MAY be upgrade-only
-		expect(out.upgradeModel).toBe('instrumental_clean');
+		expect(out.upgradeEngine).toBe('audiosep');
+		expect(out.upgradeModel).toBe('roformer-model-bs-roformer-viperx-1297');
+	});
+
+	it('a malformed zoo token still falls back, so the shape check is a gate and not a bypass', () => {
+		const out = normalizeGlobalSettings({
+			defaultEngine: 'demucs',
+			defaultModel: 'htdemucs',
+			upgradeEngine: 'audiosep',
+			upgradeModel: 'Not A Token!'
+		});
+		expect(out.upgradeModel).toBe(DEFAULT_GLOBAL_SETTINGS.upgradeModel);
 	});
 
 	it('an invalid upgrade pairing falls back but keeps a valid live default', () => {
@@ -307,20 +345,26 @@ describe('resolveProcessSeparator', () => {
 		expect(picked).toEqual({ engine: 'demucs', model: 'htdemucs' }); // not upgraded to roformer
 	});
 
-	it('never resolves to an upgrade-only engine for a live process', () => {
-		// Drives the SEARCH loop, which only runs when the global default ranks ABOVE the cap. No live-selectable default
-		// can reach it (the highest is roformer at 35, every ensemble rung 40+), so only an out-of-contract global
-		// reaches the `liveSelectable` filter — asserted to fail CLOSED.
+	it('the search always lands on a live-selectable pairing', () => {
+		// Entering the SEARCH loop needs a default ranking ABOVE the cap. `ensemble:instrumental_clean` (45)
+		// used to provide that and has been removed from the registry, so the highest remaining rung does:
+		// roformer:bs-roformer-1297 at 35, against a cap of 30.
 		const global = {
 			...DEFAULT_GLOBAL_SETTINGS,
-			defaultEngine: 'ensemble' as const,
-			defaultModel: 'instrumental_clean'
+			defaultEngine: 'roformer' as const,
+			defaultModel: 'bs-roformer-1297'
 		};
-		// Cap 44 skips the early return and admits ensemble:instrumental_full (40); the filter must reject it, leaving
-		// roformer (35) as best.
-		const picked = resolveProcessSeparator(withCap(44, global));
-		expect(picked.engine).not.toBe('ensemble');
+		const picked = resolveProcessSeparator(withCap(30, global));
+		expect(qualityRank(picked.engine, picked.model)).toBeLessThanOrEqual(30);
 		expect(isLiveSelectable(picked.engine, picked.model)).toBe(true);
+	});
+
+	it('the upgrade-only filter in the search is currently UNREACHABLE, and that is worth knowing', () => {
+		// `resolveProcessSeparator` skips engines with `liveSelectable: false`. With `ensemble` removed there
+		// is no such engine left, so that branch cannot fire. Asserted rather than deleted: the guard is
+		// correct and should stay, but anyone adding an upgrade-only engine needs to know they are the first
+		// to exercise it since the registry changed.
+		expect(SEPARATOR_ENGINES.filter((e) => !e.liveSelectable)).toEqual([]);
 	});
 });
 
