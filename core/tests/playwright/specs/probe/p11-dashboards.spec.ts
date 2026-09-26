@@ -672,7 +672,7 @@ test('/metrics uses operator vocabulary and right-aligns its numeric columns', a
 		// EITHER branch the old probe accepted: human wording, OR the bar labels reading "separate"/"align",
 		// which is a HARNESS ARTEFACT and not a UI defect — the fake worker emits short stage tokens in its
 		// job:complete `stages` array while the real Python worker uses the long forms STAGE_LABELS is keyed on
-		// (worker/src/vocabulary.py), so a real process renders "removing vocals" / "timing lyrics" as intended.
+		// (new-worker/encore_worker/protocol/vocabulary.py), so a real process renders "removing vocals" / "timing lyrics" as intended.
 		expect(
 			leaksStageInBar || speaksHuman,
 			`/metrics must speak human: neither "typical"/"worst"/"remove vocals" in the body nor the known ` +

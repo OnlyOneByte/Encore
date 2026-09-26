@@ -17,16 +17,18 @@ import contextlib
 import time
 from typing import Any
 
-from encore_worker.adapters import cli, lrclib, lrcmux, ml, ports, separate, zoo
+from encore_worker.adapters import cli, lrclib, lrcmux, ml, musicbrainz, ports, separate, zoo
 from encore_worker.artifacts import scratch
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.identity import Identified
 from encore_worker.host import ffmpeg, hardware
 from encore_worker.host.config import Config
 from encore_worker.protocol import frames as f
+from encore_worker.protocol.vocabulary import Stage
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.records import AlignOutcome, JobRef
 from encore_worker.steps.separate_steps import FetchStepsImpl, SeparateStepsImpl
+from encore_worker.transport import client as transport_client
 from encore_worker.transport.client import Client
 from encore_worker.workflows import durable
 from encore_worker.workflows.fetch import run_fetch
@@ -280,6 +282,20 @@ def _annotation_artifacts(found: Identified) -> dict[str, Any] | None:
     """
     if not found.confident:
         return None
+    if found.source == "musicbrainz" and found.mbid:
+        # THE FULL ANNOTATION, and the reason `mbid` is required rather than optional here: core accepts
+        # `source: "musicbrainz"` only with one, so sending the source without the id would be silently
+        # ignored — a worse outcome than the youtube floor below, because it looks like it worked.
+        return {
+            "annotation": {
+                "source": "musicbrainz",
+                "mbid": found.mbid,
+                "artist": found.artist or "",
+                "title": found.track or "",
+                # `high` ONLY when a duration corroborated the names; see `domain/metadata.confidence_for`.
+                "confidence": found.confidence,
+            }
+        }
     return {
         "annotation": {
             "source": "youtube",
@@ -360,6 +376,16 @@ async def _run(
 
     The action-to-workflow mapping lives here and nowhere else. An unknown action fails NON-retryably:
     the core should not have routed it, and three attempts cannot teach this worker a new verb.
+
+    WRAPPED IN A PROGRESS KEEPALIVE, and that is a correctness requirement rather than a nicety.
+    `job:progress` doubles as the core's LEASE refresh (`leases.ts`: `progressLeaseMs` is 30 s), and this
+    worker emitted no progress frame of any kind — `keepalive()` existed, fully written and documented, with
+    no caller, and every `on_progress` was passed as None.
+
+    MEASURED: a 195 s song fetched in 2.1 s and separated in 22.3 s, then its align job was revoked at 32.9 s
+    with `progress-lease-expired` and requeued. Nothing was wrong with the job. Under 30 s of work per step
+    the bug is invisible, which is why earlier end-to-end runs on short clips passed — so the failure
+    arrives only with real songs, on slower boxes, in exactly the case that matters.
     """
     job = JobRef(
         job_id=assign.job_id,
@@ -370,6 +396,39 @@ async def _run(
         source_uri=assign.source_uri,
         params=assign.params or {},
     )
+    # One task per job, cancelled in `finally` below. The stage is the coarse one the phone's bar reads; a
+    # keepalive cannot know a real percentage, so it repeats the stage rather than inventing progress.
+    keeper = asyncio.create_task(
+        transport_client.keepalive(client, job.job_id, _STAGE_FOR.get(assign.action, Stage.SEPARATING))
+    )
+    try:
+        return await _dispatch(assign, job, config, adapters, separator, client, dbos)
+    finally:
+        keeper.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await keeper
+
+
+#: The stage a keepalive reports for each action, so the phone shows the right word while a long step runs.
+_STAGE_FOR = {
+    "fetch": Stage.DOWNLOADING,
+    "stems": Stage.SEPARATING,
+    "stems-upgrade": Stage.SEPARATING,
+    "align": Stage.ALIGNING,
+}
+
+
+async def _dispatch(
+    assign: f.Assign,
+    job: JobRef,
+    config: Config,
+    adapters: Adapters,
+    separator: Any,
+    client: Client,
+    dbos: Any,
+) -> f.Complete | f.Failed:
+    """The action-to-workflow mapping. Split from `_run` so the keepalive wraps every branch including the
+    unknown-action refusal — a job that fails to dispatch still holds a lease until its frame lands."""
     if assign.action == "align":
         outcome = await durable.align(job)
         return f.Complete(
@@ -431,6 +490,9 @@ async def _run(
                 config=config,
                 audio=AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client)),
                 reporter=_ReporterFor(client),
+                # Built per fetch rather than once at startup: it holds no models and no socket, so there is
+                # nothing to amortise, and `ENCORE_ANNOTATE=0` is then honoured without a restart.
+                annotator=musicbrainz.build_client(),
             ),
         )
         return f.Complete(

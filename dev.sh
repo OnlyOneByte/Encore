@@ -15,17 +15,15 @@
 #   bash dev.sh --reset --yes    # skip the destructive-action confirmation
 #
 #   ./dev.sh compose up                     # DOCKER instead of native: core only
-#   ./dev.sh compose --profile stems up     # core + the karaoke worker
-#   ./dev.sh compose --cuda --profile stems up -d   # the NVIDIA deploy target
+#   ./dev.sh compose --new-stems up         # core + the karaoke worker
+#   ./dev.sh compose --cuda --new-stems up -d      # the NVIDIA deploy target
 #   ./dev.sh compose --new-stems up          # the DBOS rewrite instead of the incumbent worker
 #     Everything after `compose` is passed to `docker compose` verbatim, against
 #     docker/compose.yaml. Skips all native-dev preflight.
 #
 # Environment:
 #   PORT                   core's port (default 3000); read here as well as by server.ts
-#   ENCORE_WORKER_PYTHON   interpreter for the worker venv (must be >= 3.11)
 #   ENCORE_SKIP_DENO=1     do not fetch deno; YouTube downloads will fail without it
-#   ENCORE_SKIP_UV=1       do not fetch uv; falls back to python -m venv + pip
 #   ENCORE_SKIP_FFMPEG=1   do not check ffmpeg at all (presence OR codecs); stems will not encode and
 #                          every loudness reading becomes "unmeasurable", which publishes silent stems
 #   ENCORE_ENV_FILE        a .env other than ./docker/.env
@@ -44,7 +42,7 @@ ROOT="$PWD"
 
 # ── `dev.sh compose ...` — the DOCKER path, handled before anything else ──────────────────────────
 # Intercepted here, ahead of the flag parser, for two reasons: the parser rejects unknown flags and would
-# choke on `--profile stems up -d`, and none of the native-dev preflight below (venv, deno, ffmpeg codec
+# choke on `--profile new-stems up -d`, and none of the native-dev preflight below (uv sync, deno, ffmpeg codec
 # probe) applies to a container build.
 #
 # It exists so `-f docker/compose.yaml` is written ONCE. Compose derives its project directory from the
@@ -175,16 +173,16 @@ need() {
 # reads as a broken worker rather than as a stripped codec set. What the code actually calls, read out of the
 # code rather than assumed:
 #
-#   volumedetect (FILTER)  src/lib/server/media/loudness.ts and worker/src/processor.py both shell
+#   volumedetect (FILTER)  src/lib/server/media/loudness.ts and new-worker's encode path and core both shell
 #                          `-af volumedetect -f null -` and parse `mean_volume:`/`max_volume:` off stderr.
 #                          Absent, parseVolumeDetect() returns null forever — and null is DELIBERATELY
 #                          "unmeasurable, not silent", so nothing throws: every guiding track links
 #                          unverified, a digitally silent stem publishes as though it were fine, and no
 #                          screen anywhere says why.
-#   join (FILTER)          worker/src/separation/demucs.py encode_guide_mix_argv folds both stems into ONE
+#   join (FILTER)          new-worker adapters/encode.py guide_mix_argv folds both stems into ONE
 #                          4-channel FLAC via `join=inputs=2:channel_layout=quad`. That single file is what
 #                          stops the guiding track drifting against the instrumental.
-#   amix (FILTER)          worker/src/separation/mlx.py mix_minus_instrumental_argv sums the MLX engine's
+#   amix (FILTER)          new-worker adapters/separate.py mix_minus_argv sums the MLX engine's
 #                          non-vocal stems with `amix=inputs=N:normalize=0`.
 #   flac (ENCODER)         every PUBLISHED stem and the guide mix (demucs.py encode_flac_argv and
 #                          encode_guide_mix_argv, `-c:a flac`), plus core's own legacy-stem recompress in
@@ -297,7 +295,7 @@ ffmpeg_install() {
 
 ensure_ffmpeg() {
 	local want_f="$FFMPEG_FILTERS_CORE" want_e="$FFMPEG_ENCODERS_CORE" gaps version
-	# Gated exactly like the venv install and the deno fetch below — --core-only / --ui run no worker, so the
+	# Gated exactly like the uv sync and the deno fetch below — --core-only / --ui run no worker, so the
 	# separation codecs are not their problem. The CORE set is NOT gated, and deliberately so: vite serves the
 	# same +page.server.ts/+server.ts handlers server.ts does, they all call getApp(), and getApp()'s boot
 	# chain runs the volumedetect probe over every linked stem and recompresses legacy ones with the flac
@@ -352,18 +350,18 @@ fi
 # "Requested format is not available" — which reads as a broken worker. The image has both baked in; a
 # native run has neither, so dev.sh supplies the config and checks for the runtime.
 #   1. deno on PATH. The image installs deno specifically, so that is what this checks for.
-#   2. `--remote-components ejs:github`, which lives in worker/yt-dlp.conf. The image copies that to
+#   2. `--remote-components ejs:github`, which lives in docker/yt-dlp.conf. The image copies that to
 #      /etc/yt-dlp.conf; natively we point the worker's XDG_CONFIG_HOME at a copy instead.
-YTDLP_CONFIG_HOME="$ROOT/worker/.dev-ytdlp"
-TOOLS_DIR="$ROOT/worker/.dev-tools/bin"
+YTDLP_CONFIG_HOME="$ROOT/new-worker/.dev-ytdlp"
+TOOLS_DIR="$ROOT/new-worker/.dev-tools/bin"
 DENO_DIR="$TOOLS_DIR"
-# The SAME version docker/worker.Dockerfile installs, read out of the Dockerfile so a bump there cannot
+# The SAME version docker/new-worker.Dockerfile installs, read out of the Dockerfile so a bump there cannot
 # leave a dev box on a different deno than prod.
 #
 # CHECKED, not just read: a wrong path or a renamed ARG makes sed print nothing and succeed, and the empty
 # result would be interpolated into a download URL that 404s much later — inverting the guarantee this line
 # exists for. It is the one place in this script that depends on another file's internal text.
-WORKER_DOCKERFILE="$ROOT/docker/worker.Dockerfile"
+WORKER_DOCKERFILE="$ROOT/docker/new-worker.Dockerfile"
 DENO_VERSION="$(sed -n 's/^ARG DENO_VERSION=\(.*\)$/\1/p' "$WORKER_DOCKERFILE")"
 [ -n "$DENO_VERSION" ] || {
 	echo "dev.sh: no 'ARG DENO_VERSION=' found in $WORKER_DOCKERFILE" >&2
@@ -457,7 +455,7 @@ preflight_free() {
 		echo "refusing to start — an earlier core/worker is still running:" >&2
 		pgrep -fl 'src\.dial_home|bun run \./server\.ts' >&2
 		echo >&2
-		echo "stop it first:  pkill -f 'src.dial_home'; pkill -f 'bun run ./server.ts'" >&2
+		echo "stop it first:  pkill -f 'encore_worker'; pkill -f 'bun run ./server.ts'" >&2
 		return 1
 	fi
 	owner="$(port_owner)"
@@ -493,7 +491,7 @@ if [ "$DO_RESET" = 1 ]; then
 		"$ROOT/data"       # sqlite + WAL + shm
 		"$ROOT/temp"       # an abandoned store from an older layout; nothing reads it
 		"$CORE/.svelte-kit" "$CORE/build"
-		"$ROOT/worker/.pytest_cache" "$ROOT/worker/.mypy_cache" "$ROOT/worker/.ruff_cache"
+		"$ROOT/new-worker/.pytest_cache" "$ROOT/new-worker/.mypy_cache" "$ROOT/new-worker/.ruff_cache"
 		"$YTDLP_CONFIG_HOME/yt-dlp"   # the generated config; the deno beside it is a tool, not state
 	)
 	if [ "$NUKE_MODELS" = 1 ]; then
@@ -515,7 +513,7 @@ if [ "$DO_RESET" = 1 ]; then
 	fi
 
 	for t in "${TARGETS[@]}"; do rm -rf "$t"; done
-	find "$ROOT/worker" -name '__pycache__' -type d -not -path '*/.venv/*' -exec rm -rf {} + 2>/dev/null || true
+	find "$ROOT/new-worker" -name '__pycache__' -type d -not -path '*/.venv/*' -exec rm -rf {} + 2>/dev/null || true
 	echo "reset done — next boot recreates the dirs and applies drizzle/0000_baseline.sql from empty."
 fi
 
@@ -525,169 +523,41 @@ if [ "$DO_PULL" = 1 ] || [ ! -d "$CORE/node_modules" ]; then
 	(cd "$CORE" && bun install)
 fi
 
-VENV="$ROOT/worker/.venv"
-REQS="$ROOT/worker/requirements.txt"
-# The known-good transitive set. requirements.txt pins 16 direct deps that resolve to ~128 packages, so
-# without this the other 112 versions are whatever the day of your install decided.
-CONSTRAINTS="$ROOT/worker/constraints.txt"
-UV_VERSION=0.9.2
-# Not in requirements.txt on purpose: installed --no-deps because its own dependency list is 30
-# packages of .doc/.rtf readers we never call.
-KLP_PIN="karaoke-lyrics-processor==0.6.0"
-# The venv is "ready" only when this file says so, and it is written LAST — see install_worker_deps.
-STAMP="$VENV/.encore-deps"
+# ── the worker's Python environment ──────────────────────────────────────────────────
+# ONE COMMAND, because the new worker ships a LOCKFILE. Everything that used to live here — pick_python,
+# a hand-rolled uv fetch, a requirements/constraints sha stamp, a websockets canary, a karaoke-lyrics-processor
+# --no-deps pin — existed because `requirements.txt` pinned 16 direct deps that resolved to ~128 packages
+# whose versions were whatever the day of your install decided. `uv sync --frozen` reads
+# new-worker/uv.lock, so the dev box and docker/new-worker.Dockerfile resolve the identical wheels, and uv
+# supplies its own 3.12 on a box whose python3 is older.
+#
+# `--frozen` FAILS rather than re-resolving when the lock disagrees with pyproject.toml, which is the whole
+# point of committing one: a silent re-resolve is how a dev box ends up testing versions nobody pinned.
+WORKER_DIR="$ROOT/new-worker"
+VENV="$WORKER_DIR/.venv"
 
-# The interpreter must be >= 3.11 and is deliberately not bare `python3`: scipy publishes nothing below
-# 3.11, and pip then aborts the ENTIRE install including websockets — which surfaces three steps later
-# as the worker dying on ModuleNotFoundError. 3.12 is tried first because that is what docker/worker.Dockerfile
-# ships, so a dev venv resolves the same wheels prod does; 3.14 is not a candidate because torch
-# publishes no cp314 wheel. Override with ENCORE_WORKER_PYTHON=/path/to/python.
-pick_python() {
-	local cand
-	for cand in "${ENCORE_WORKER_PYTHON:-}" python3.12 python3.13 python3.11 python3; do
-		[ -n "$cand" ] || continue
-		command -v "$cand" >/dev/null 2>&1 || continue
-		# Let python do the version comparison — a shell glob over "3.10" vs "3.9" gets it wrong.
-		"$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null || continue
-		echo "$cand"
-		return 0
-	done
-	return 1
-}
-
-# py_tag is for humans; py_abi is what the stamp compares. The stamp must NOT carry the patch level —
-# wheels are tagged by minor (cp312), so a `brew upgrade python@3.12` would otherwise force a
-# spurious multi-GB reinstall of the whole torch set.
-py_tag() { "$1" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || echo unknown; }
-py_abi() { "$1" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo unknown; }
-
-sha_of() {
-	if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
-	else sha256sum "$1" | cut -d' ' -f1; fi
-}
-
-# uv, fetched the same way as deno: pinned, checksum-verified, project-local, and a system uv always
-# wins. It buys three things pip does not: it installs the constraint set in seconds rather than minutes,
-# it can PROVIDE a >= 3.11 interpreter on a box whose `python3` is older (which is the common case — this
-# repo's floor is 3.11 and plenty of machines still ship 3.9/3.10), and `uv pip install -c` applies the
-# constraints per platform, which a single lockfile cannot do here (see constraints.txt for why).
-uv_target() {
-	local os arch
-	case "$(uname -s)" in
-		Darwin) os="apple-darwin" ;;
-		Linux) os="unknown-linux-gnu" ;;
-		*) return 1 ;;
-	esac
-	case "$(uname -m)" in
-		arm64 | aarch64) arch="aarch64" ;;
-		x86_64 | amd64) arch="x86_64" ;;
-		*) return 1 ;;
-	esac
-	echo "${arch}-${os}"
-}
-
-UV=""
-ensure_uv() {
-	if command -v uv >/dev/null 2>&1; then UV="$(command -v uv)"; return 0; fi
-	if [ -x "$TOOLS_DIR/uv" ]; then UV="$TOOLS_DIR/uv"; return 0; fi
-	[ "${ENCORE_SKIP_UV:-0}" = 1 ] && return 1
-	local target
-	target="$(uv_target)" || return 1
-	say "fetching uv $UV_VERSION for $target (into worker/.dev-tools/bin)"
-	python3 - "$UV_VERSION" "$target" "$TOOLS_DIR" <<'PYEOF' || return 1
-import hashlib, io, os, sys, tarfile, urllib.request
-
-version, target, dest = sys.argv[1], sys.argv[2], sys.argv[3]
-base = f"https://github.com/astral-sh/uv/releases/download/{version}/uv-{target}.tar.gz"
-blob = urllib.request.urlopen(base, timeout=300).read()
-want = urllib.request.urlopen(base + ".sha256", timeout=60).read().decode().split()[0]
-got = hashlib.sha256(blob).hexdigest()
-if got != want:
-    sys.exit(f"uv checksum mismatch: expected {want}, got {got} — refusing to install")
-os.makedirs(dest, exist_ok=True)
-with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
-    for member in tar.getmembers():
-        if os.path.basename(member.name) in ("uv", "uvx") and member.isfile():
-            member.name = os.path.basename(member.name)
-            tar.extract(member, dest)
-            os.chmod(os.path.join(dest, member.name), 0o755)
-PYEOF
-	[ -x "$TOOLS_DIR/uv" ] || return 1
-	UV="$TOOLS_DIR/uv"
-	echo "uv      $("$UV" --version | cut -d' ' -f2) (repo-local, checksum-verified)"
-}
-
-install_worker_deps() {
-	# Drop the stamp FIRST, so an install that dies halfway leaves an unready venv the next run retries.
-	rm -f "$STAMP"
-	if [ -n "$UV" ]; then
-		"$UV" pip install --python "$VENV/bin/python" -r "$REQS" -c "$CONSTRAINTS"
-		"$UV" pip install --python "$VENV/bin/python" --no-deps "$KLP_PIN"
-	else
-		"$VENV/bin/pip" install --quiet --upgrade pip
-		"$VENV/bin/pip" install -r "$REQS" -c "$CONSTRAINTS"
-		"$VENV/bin/pip" install --quiet --no-deps "$KLP_PIN"
-	fi
-	printf 'python=%s\nrequirements=%s\nconstraints=%s\nklp=%s\n' \
-		"$(py_abi "$VENV/bin/python")" "$(sha_of "$REQS")" "$(sha_of "$CONSTRAINTS")" "$KLP_PIN" > "$STAMP"
-}
+# The extras a dev box needs. `ffmpeg` bundles a static FFmpeg 7.1 so publication does not depend on what
+# Homebrew installed; `audiosep` is the ~135-model zoo; `mlx` is marker-gated and installs nothing off
+# Apple Silicon.
+WORKER_EXTRAS="--extra ml --extra text --extra ffmpeg --extra audiosep --extra mlx --extra cpu"
 
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
-	ensure_uv || echo "note: no uv — falling back to python -m venv + pip (slower, and it cannot supply an interpreter)"
-	# uv can DOWNLOAD a 3.12, so a box whose `python3` is 3.9/3.10 is no longer stuck. Without uv we still
-	# need a system interpreter that clears the floor.
-	PY="$(pick_python)" || PY=""
-	if [ -z "$PY" ] && [ -z "$UV" ]; then
-		echo "no Python >= 3.11 on PATH — scipy 1.16.2 publishes nothing below it, and pip then" >&2
-		echo "refuses the WHOLE requirements.txt (websockets included)." >&2
-		echo "  brew install python@3.12      # matches docker/worker.Dockerfile" >&2
-		echo "  # or: ENCORE_WORKER_PYTHON=/path/to/python3.12 bash dev.sh" >&2
-		echo "  # or let uv fetch one: unset ENCORE_SKIP_UV and re-run" >&2
-		[ -n "${PYENV_VERSION:-}" ] && echo "  (note: PYENV_VERSION=$PYENV_VERSION is pinning your python3)" >&2
+	if ! command -v uv >/dev/null 2>&1; then
+		echo "dev.sh: uv is required to run the worker (it reads new-worker/uv.lock)." >&2
+		echo "  brew install uv        # or: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+		echo "  # core alone needs none of this: bash dev.sh --core-only" >&2
 		exit 1
 	fi
-
-	# A venv on the wrong interpreter can never hold this dependency set, so rebuild rather than report.
-	# Safe unasked (a venv is a regenerable cache) but announced loudly, because it costs minutes.
-	if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
-		say "worker venv is Python $(py_tag "$VENV/bin/python") — too old for the pinned deps, rebuilding on ${PY:-uv-managed 3.12}"
-		rm -rf "$VENV"
-	fi
-
-	if [ ! -x "$VENV/bin/python" ]; then
-		if [ -n "$UV" ]; then
-			say "creating worker venv via uv on Python 3.12 (multi-GB: torch + demucs + whisperx)"
-			"$UV" venv --python 3.12 "$VENV"
-		else
-			say "creating worker venv on $PY $(py_tag "$PY") (multi-GB: torch + demucs + whisperx)"
-			"$PY" -m venv "$VENV"
-		fi
-		install_worker_deps
-	else
-			# READINESS IS THE STAMP, NOT THE DIRECTORY: `python3 -m venv` produces an executable python
-			# before a single package is installed, so a half-finished install would look ready forever. The
-			# stamp hashes requirements.txt too, which is what makes --pull's refresh automatic.
-		want="python=$(py_abi "$VENV/bin/python")
-requirements=$(sha_of "$REQS")
-constraints=$(sha_of "$CONSTRAINTS")
-klp=$KLP_PIN"
-		if [ "$(cat "$STAMP" 2>/dev/null)" != "$want" ]; then
-			say "worker deps out of date (or never finished installing) — installing"
-			install_worker_deps
-		elif ! "$VENV/bin/python" -c 'import websockets' 2>/dev/null; then
-			# Backstop for a venv edited behind the stamp's back. websockets is the canary because dial_home
-			# imports it lazily at connect time, so its absence is otherwise invisible until core is up.
-			say "worker venv is stamped but incomplete (websockets missing) — reinstalling"
-			install_worker_deps
-		fi
-	fi
+	say "syncing worker deps from new-worker/uv.lock (multi-GB on a cold cache: torch + whisperx + demucs)"
+	# shellcheck disable=SC2086 # WORKER_EXTRAS is a deliberate word list
+	(cd "$WORKER_DIR" && uv sync --frozen $WORKER_EXTRAS)
 fi
 
-# The worker's own yt-dlp config, mirroring what docker/worker.Dockerfile puts at /etc/yt-dlp.conf. Rewritten
-# every run so an edit to worker/yt-dlp.conf lands without a --reset.
+# The worker's own yt-dlp config, mirroring what docker/new-worker.Dockerfile puts at /etc/yt-dlp.conf. Rewritten
+# every run so an edit to docker/yt-dlp.conf lands without a --reset.
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 	mkdir -p "$YTDLP_CONFIG_HOME/yt-dlp"
-	cp "$ROOT/worker/yt-dlp.conf" "$YTDLP_CONFIG_HOME/yt-dlp/config"
+	cp "$ROOT/docker/yt-dlp.conf" "$YTDLP_CONFIG_HOME/yt-dlp/config"
 	ensure_deno
 fi
 
@@ -752,7 +622,7 @@ cleanup() {
 	done
 	if [ -n "$left" ]; then
 		echo "WARNING: still running after cleanup —$left"
-		echo "  kill with: pkill -f 'src.dial_home'; pkill -f 'bun run ./server.ts'"
+		echo "  kill with: pkill -f 'encore_worker'; pkill -f 'bun run ./server.ts'"
 	else
 		echo "stopped — core and worker both gone, port $PORT released."
 	fi
@@ -791,13 +661,18 @@ if [ "$CORE_ONLY" != 1 ]; then
 		# `exec` is load-bearing — it replaces the subshell with python, so $! is python's own pid; without
 		# it cleanup kills a shell that has already forked and the worker survives.
 	(
-		cd "$ROOT/worker"
+		cd "$WORKER_DIR"
+		# `ENCORE_CORE_URL`, not `ENCORE_CORE_WS`: the new worker reads the full ws URL from one variable.
+		# `ENCORE_DBOS_DB` is per-box durable state and must NOT sit under MEDIA_DIR, where a retention
+		# sweep would be free to evict the checkpoints a resumed job replays from.
 		exec env \
 			PATH="$VENV/bin:$DENO_DIR:$PATH" \
-			ENCORE_CORE_WS="ws://localhost:$PORT/ws?role=worker" \
+			ENCORE_CORE_URL="ws://localhost:$PORT/ws?role=worker" \
 			XDG_CONFIG_HOME="$YTDLP_CONFIG_HOME" \
+			ENCORE_MEDIA_DIR="$MEDIA_DIR" \
 			MEDIA_DIR="$MEDIA_DIR" \
-			"$VENV/bin/python" -m src.dial_home
+			ENCORE_DBOS_DB="$DATA_DIR/new-worker.sqlite" \
+			"$VENV/bin/python" -m encore_worker
 	) & WORKER_PID=$!
 fi
 

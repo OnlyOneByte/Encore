@@ -1,6 +1,6 @@
 # Encore — one container for the MVP. The worker is gated behind the `stems` profile:
 #   ./dev.sh compose up                    # MVP: core only
-#   ./dev.sh compose --profile stems up    # core + the worker that makes karaoke tracks
+#   ./dev.sh compose --new-stems up       # core + the worker that makes karaoke tracks
 #
 # ── WHY THE PATHS BELOW LOOK ODD ─────────────────────────────────────────────────────────────────
 # Compose resolves relative bind mounts AND loads `.env` from the PROJECT DIRECTORY, which defaults to
@@ -8,9 +8,9 @@
 # handled explicitly rather than by accident:
 #
 #   1. `name:` is set below. Without it the project name comes from the project directory's base name,
-#      which would be `docker` — renaming every container and, worse, the `worker-cache` volume to
-#      `docker_worker-cache`. That orphans the existing model cache (demucs checkpoints plus the ~700 MB
-#      RoFormer one) and silently re-downloads it.
+#      which would be `docker` — renaming every container and, worse, the `new-worker-cache` volume to
+#      `docker_new-worker-cache`. That orphans the existing model cache (whisper and demucs checkpoints plus
+#      the separation zoo, hundreds of MB per model) and silently re-downloads it.
 #   2. `.env` lives in `docker/`, beside this file, so interpolation finds it with no flags.
 #   3. Bind-mount defaults are `../data` and `../media` — they must climb OUT of docker/ to reach the
 #      repo root, where they were before this file moved.
@@ -61,55 +61,9 @@ services:
       - ${ENCORE_MEDIA_VOLUME:-../media}:/app/media # audio + derived + meta + job scratch
     restart: unless-stopped
 
-  worker:
-    <<: *hardening
-    # PID-1 zombie reaping: demucs/yt-dlp grandchildren reparent to the worker, which runs as PID 1 and
-    # is not an init, so they pile up. `init: true` interposes Docker's tini as PID 1 instead.
-    init: true
-    build:
-      context: .. # the repo root: worker.Dockerfile copies from worker/
-      dockerfile: docker/worker.Dockerfile
-    profiles: ["stems"] # not started in the default MVP up
-    environment:
-      # Two settings a deployer must get right: ENCORE_CORE_WS (where core is — no probe can guess it) and
-      # MEDIA_DIR (the volume core is also using; set by the image, so it is the volume mapping below that
-      # must agree, or core serves a file that is not there). Everything else the worker measures about
-      # itself at startup — accelerator, usable cores, memory, installed engines. See src/host/hardware.py.
-      - ENCORE_CORE_WS=ws://core:3000/ws?role=worker
-      # The rest are optional and unset by default, so a wrong measurement is correctable without a
-      # rebuild; one per-variable reference lives in README.md "Configuration". Note that
-      # ENCORE_WORKER_CAPABILITIES can only NARROW what host/capabilities.py proves.
-      - ENCORE_WORKER_CAPABILITIES=${ENCORE_WORKER_CAPABILITIES:-}
-      - ENCORE_DEVICE=${ENCORE_DEVICE:-}
-      - ENCORE_WORKER_CONCURRENCY=${ENCORE_WORKER_CONCURRENCY:-}
-      - ENCORE_DEMUCS_MODEL=${ENCORE_DEMUCS_MODEL:-}
-      - ENCORE_DEMUCS_JOBS=${ENCORE_DEMUCS_JOBS:-}
-      - ENCORE_DEMUCS_OVERLAP=${ENCORE_DEMUCS_OVERLAP:-}
-      - ENCORE_DEMUCS_SEGMENT=${ENCORE_DEMUCS_SEGMENT:-}
-      - ENCORE_DEMUCS_SHIFTS=${ENCORE_DEMUCS_SHIFTS:-}
-      - ENCORE_TORCH_THREADS=${ENCORE_TORCH_THREADS:-}
-      - ENCORE_STEM_BITRATE=${ENCORE_STEM_BITRATE:-}
-      - ENCORE_FLAC_LEVEL=${ENCORE_FLAC_LEVEL:-}
-    volumes:
-      # Shares the local MediaStore volume (single-box mode), using the SAME keys the core resolves —
-      # worker/src/processor.py must stay byte-for-byte in step with core/src/lib/server/media/paths.ts.
-      # Must resolve to the SAME host path as core's mount above, or core serves a file that is not there.
-      - ${ENCORE_MEDIA_VOLUME:-../media}:/app/media
-      # Model + tool cache (demucs checkpoints, the ~700 MB RoFormer checkpoint, yt-dlp's solver script),
-      # kept OUT of the writable layer so it survives `docker rm`. NAMED rather than a bind path on
-      # purpose: Docker initialises it from the image's own $XDG_CACHE_HOME so it inherits the worker's
-      # ownership, whereas a fresh bind directory is created root-owned and unwritable by the worker.
-      - worker-cache:/home/worker/.cache
-    depends_on:
-      - core
-    restart: unless-stopped
-    # deploy.resources.reservations.devices for GPU added when stems land
-
-  # ── the DBOS rewrite, on its own profile ─────────────────────────────────────────────────────────
-  # SEPARATE SERVICE rather than a replacement, so the two can be compared on one box: run
-  # `--profile stems` for the incumbent, `--profile new-stems` for this, and never both — they advertise
-  # overlapping capabilities, so the core would round-robin jobs between them and a comparison would
-  # measure whichever happened to be idle.
+  # THE ONLY WORKER. The incumbent `worker` service and its `stems` profile were deleted at the hard
+  # switchover; this one kept its own name and its `new-stems` profile so existing invocations and the
+  # `new-worker-cache` / `new-worker-state` volumes did not have to be renamed in the same change.
   new-worker:
     <<: *hardening
     # demucs/yt-dlp grandchildren reparent to this process, which runs as PID 1 and is not an init, so
@@ -159,9 +113,8 @@ services:
     restart: unless-stopped
 
 volumes:
-  # Created only by the `stems` profile — the default MVP `up` never starts the worker that uses it.
-  worker-cache:
-  # Likewise for `new-stems`. Separate from `worker-cache` so switching profiles does not make one image
-  # read the other's half-downloaded checkpoints.
+  # Created only by the `new-stems` profile — the default MVP `up` never starts the worker that uses it.
+  # Holds the ML model caches: whisper, demucs, and the ~135-model separation zoo, which are large and
+  # expensive to refetch, so it lives outside the writable layer and survives `docker rm`.
   new-worker-cache:
   new-worker-state:

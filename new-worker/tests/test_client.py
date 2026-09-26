@@ -14,6 +14,7 @@ different lyrics for one song.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 
@@ -22,6 +23,7 @@ import pytest
 from encore_worker.host.config import Config
 from encore_worker.protocol import frames as f
 from encore_worker.protocol.vocabulary import Stage
+from encore_worker.transport import client as transport
 from encore_worker.transport.client import Client, jittered_backoff, keepalive
 from encore_worker.transport.ownership import Ownership, Reason
 
@@ -805,3 +807,63 @@ async def _until(predicate: Callable[[], bool], timeout_sec: float = 5.0) -> Non
         if asyncio.get_running_loop().time() > deadline:
             raise AssertionError("condition never became true")
         await asyncio.sleep(0.01)
+
+
+# ── the progress keepalive, whose ABSENCE was a real outage ───────────────────────────────────────
+
+
+async def test_the_keepalive_emits_progress_on_a_timer() -> None:
+    """`job:progress` doubles as the core's LEASE refresh (`leases.ts`: progressLeaseMs is 30 s), so a step
+    that reports nothing for 30 s is revoked as `progress-lease-expired` however healthy it is.
+
+    MEASURED against a live core: a 195 s song fetched in 2.1 s and separated in 22.3 s, then its align job
+    was revoked at 32.9 s and requeued. `keepalive()` was fully written, documented — and had NO CALLER, with
+    every `on_progress` passed as None. Under 30 s of work per step the bug is invisible, which is why
+    earlier runs on short clips passed.
+    """
+    socket = FakeSocket()
+    c = client(socket)
+    ticks: list[float] = []
+
+    async def fake_sleep(sec: float) -> None:
+        ticks.append(sec)
+        if len(ticks) >= 3:
+            raise asyncio.CancelledError
+
+    async with Session(c, socket):
+        with contextlib.suppress(asyncio.CancelledError):
+            await transport.keepalive(c, "j1", Stage.ALIGNING, sleep=fake_sleep)
+
+    sent = [s for s in socket.sent if s["type"] == "job:progress"]
+    assert len(sent) >= 2, "a long quiet step must keep refreshing the lease"
+    assert all(s["stage"] == "aligning" for s in sent)
+
+
+async def test_the_keepalive_interval_leaves_room_for_a_dropped_frame() -> None:
+    """Its default must be comfortably inside the core's 30 s lease: at the full value one dropped tick
+    breaches it, which is the same reasoning behind core's `heartbeatIntervalSec` being HALF the lease."""
+    socket = FakeSocket()
+    c = client(socket)
+    intervals: list[float] = []
+
+    async def capture(sec: float) -> None:
+        intervals.append(sec)
+        raise asyncio.CancelledError
+
+    async with Session(c, socket):
+        with contextlib.suppress(asyncio.CancelledError):
+            await transport.keepalive(c, "j1", Stage.SEPARATING, sleep=capture)
+
+    assert intervals and intervals[0] <= 15.0, (
+        f"keepalive every {intervals[0]}s against a 30s lease leaves no room for a dropped frame"
+    )
+
+
+def test_every_action_has_a_keepalive_stage() -> None:
+    """The mapping is what decides which word the phone shows during a long step. A missing entry falls back
+    to `separating`, which would be wrong — and silently so — for an align or a fetch."""
+    from encore_worker.__main__ import _STAGE_FOR
+
+    assert set(_STAGE_FOR) == {"fetch", "stems", "stems-upgrade", "align"}
+    assert _STAGE_FOR["align"] is Stage.ALIGNING
+    assert _STAGE_FOR["fetch"] is Stage.DOWNLOADING

@@ -62,7 +62,7 @@ p='/usr/local/bin/deno'; os.chmod(p, os.stat(p).st_mode | stat.S_IXUSR | stat.S_
 # Enables yt-dlp's challenge-solver remote component, without which the deno runtime above solves nothing.
 # Shared verbatim with the old worker: yt-dlp reads /etc/yt-dlp.conf before the command line, so this
 # covers every call site without threading a flag through each one.
-COPY worker/yt-dlp.conf /etc/yt-dlp.conf
+COPY docker/yt-dlp.conf /etc/yt-dlp.conf
 
 # ── the application ──────────────────────────────────────────────────────────────────────────────
 # Last, so a source edit rebuilds only from here down.

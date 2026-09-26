@@ -1,5 +1,16 @@
 # 01 — Media subsystem requirements
 
+> [!IMPORTANT]
+> **This document analyses the ORIGINAL worker (`worker/`), which was DELETED at the hard switchover to
+> `new-worker/`.** Every `worker/src/...` citation below refers to code that no longer exists in the tree;
+> read them against git history, not against the current checkout.
+>
+> The findings are kept because most of them are about the CORE side, or about a core↔worker seam that still
+> exists — but each one needs re-verifying against `new-worker/encore_worker/` before it is acted on. Paths
+> were deliberately NOT rewritten: a mechanical remap produced citations that named real new files which do
+> not contain what the finding describes (`LEASE_KEEPALIVE_SEC`, `default_worker_id`, `plan_for` are all
+> gone), which is worse than an obviously-stale path.
+
 IDs `XR-MED-nn`. Subsystem under specification: `src/lib/server/media` — 25 modules, ~3,950
 lines, that own **where a song's bytes live, which of them may be destroyed, and what the product is
 allowed to claim about a file it has not measured**. Nothing here specifies a rendered surface; where a
