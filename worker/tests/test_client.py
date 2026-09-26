@@ -748,7 +748,9 @@ async def test_the_catalogue_repeats_the_base_capabilities_alongside_the_models(
         await _until(lambda: any(s["type"] == "worker:catalogue" for s in socket.sent))
 
     frame = next(s for s in socket.sent if s["type"] == "worker:catalogue")
-    assert set(frame["capabilities"]) == {"stems", "align", "stems:model:a-model"}
+    capabilities = frame["capabilities"]
+    assert isinstance(capabilities, list)
+    assert set(capabilities) == {"stems", "align", "stems:model:a-model"}
 
 
 async def test_a_box_with_no_catalogue_sends_no_frame() -> None:

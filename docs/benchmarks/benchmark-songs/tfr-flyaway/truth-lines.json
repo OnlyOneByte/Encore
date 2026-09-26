@@ -1,0 +1,380 @@
+{
+ "source": "tfr-flyaway.authored.en.json3",
+ "lines": [
+  {
+   "start": 13.2,
+   "end": 14.28,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 14.28,
+   "end": 16.5,
+   "text": "with me"
+  },
+  {
+   "start": 16.5,
+   "end": 17.42,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 17.42,
+   "end": 19.660000000000004,
+   "text": "with me (e-e-ee)"
+  },
+  {
+   "start": 19.66,
+   "end": 20.88,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 20.88,
+   "end": 22.32,
+   "text": "with me"
+  },
+  {
+   "start": 22.32,
+   "end": 23.7,
+   "text": "(ca-ca) Come and fly away"
+  },
+  {
+   "start": 23.76,
+   "end": 26.060000000000002,
+   "text": "with me (e-e-ee-ee)"
+  },
+  {
+   "start": 26.06,
+   "end": 27.16,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 27.16,
+   "end": 29.16,
+   "text": "with me"
+  },
+  {
+   "start": 29.16,
+   "end": 30.3,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 30.3,
+   "end": 32.72,
+   "text": "with me (e-e-ee)"
+  },
+  {
+   "start": 32.72,
+   "end": 33.699999999999996,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 33.7,
+   "end": 35.260000000000005,
+   "text": "with me"
+  },
+  {
+   "start": 35.26,
+   "end": 36.879999999999995,
+   "text": "(ca-ca) Come and fly away"
+  },
+  {
+   "start": 36.88,
+   "end": 39.120000000000005,
+   "text": "with me (e-e-ee-ee)"
+  },
+  {
+   "start": 39.12,
+   "end": 40.239999999999995,
+   "text": "Dont you be afraid"
+  },
+  {
+   "start": 40.24,
+   "end": 41.440000000000005,
+   "text": "Everything will change"
+  },
+  {
+   "start": 41.44,
+   "end": 42.379999999999995,
+   "text": "You and I"
+  },
+  {
+   "start": 42.38,
+   "end": 43.480000000000004,
+   "text": "Jumping off the edge"
+  },
+  {
+   "start": 43.48,
+   "end": 45.339999999999996,
+   "text": "They say dreamers never die, so"
+  },
+  {
+   "start": 45.34,
+   "end": 47.080000000000005,
+   "text": "Come and fly, come and fly"
+  },
+  {
+   "start": 47.08,
+   "end": 48.339999999999996,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 48.34,
+   "end": 50.38,
+   "text": "with me"
+  },
+  {
+   "start": 52.56,
+   "end": 53.980000000000004,
+   "text": "We're rising"
+  },
+  {
+   "start": 53.98,
+   "end": 55.62,
+   "text": "We're falling"
+  },
+  {
+   "start": 55.62,
+   "end": 58.839999999999996,
+   "text": "We'll make it through"
+  },
+  {
+   "start": 58.84,
+   "end": 60.56,
+   "text": "We're climbing"
+  },
+  {
+   "start": 60.56,
+   "end": 62.02,
+   "text": "We're soaring"
+  },
+  {
+   "start": 62.02,
+   "end": 64.64,
+   "text": "A thousand views"
+  },
+  {
+   "start": 65.42,
+   "end": 66.8,
+   "text": "We're rising"
+  },
+  {
+   "start": 66.8,
+   "end": 68.39999999999999,
+   "text": "We're falling"
+  },
+  {
+   "start": 68.4,
+   "end": 71.60000000000001,
+   "text": "We'll make it through"
+  },
+  {
+   "start": 71.6,
+   "end": 73.3,
+   "text": "We're climbing"
+  },
+  {
+   "start": 73.3,
+   "end": 74.8,
+   "text": "We're soaring"
+  },
+  {
+   "start": 74.8,
+   "end": 77.89999999999999,
+   "text": "A thousand views"
+  },
+  {
+   "start": 94.08,
+   "end": 97.22,
+   "text": "Somewhere by the emerald sea"
+  },
+  {
+   "start": 97.22,
+   "end": 100.64,
+   "text": "Where the moon and water meet"
+  },
+  {
+   "start": 100.64,
+   "end": 103.58,
+   "text": "Somewhere close to harmony"
+  },
+  {
+   "start": 103.58,
+   "end": 107.12,
+   "text": "When the world is sound asleep"
+  },
+  {
+   "start": 107.12,
+   "end": 110.38000000000001,
+   "text": "Something's gonna bring the change"
+  },
+  {
+   "start": 110.38,
+   "end": 113.74,
+   "text": "Journeys we are meant to take"
+  },
+  {
+   "start": 113.74,
+   "end": 116.86,
+   "text": "Something at the edge of space"
+  },
+  {
+   "start": 116.86,
+   "end": 120.26,
+   "text": "Calling us to fly away"
+  },
+  {
+   "start": 120.26,
+   "end": 121.34,
+   "text": "Don't you be afraid"
+  },
+  {
+   "start": 121.34,
+   "end": 122.60000000000001,
+   "text": "Everything will change"
+  },
+  {
+   "start": 122.6,
+   "end": 123.41999999999999,
+   "text": "You and I"
+  },
+  {
+   "start": 123.42,
+   "end": 124.66,
+   "text": "Jumping off the edge"
+  },
+  {
+   "start": 124.66,
+   "end": 126.66,
+   "text": "They say dreamers never die, so"
+  },
+  {
+   "start": 126.66,
+   "end": 128.28,
+   "text": "Come and fly, come and fly"
+  },
+  {
+   "start": 128.28,
+   "end": 129.56,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 129.56,
+   "end": 131.56,
+   "text": "with me"
+  },
+  {
+   "start": 133.48,
+   "end": 135.26,
+   "text": "We're rising"
+  },
+  {
+   "start": 135.26,
+   "end": 136.84,
+   "text": "We're falling"
+  },
+  {
+   "start": 136.84,
+   "end": 139.94,
+   "text": "We'll make it through"
+  },
+  {
+   "start": 139.94,
+   "end": 141.7,
+   "text": "We're climbing"
+  },
+  {
+   "start": 141.7,
+   "end": 143.32,
+   "text": "We're soaring"
+  },
+  {
+   "start": 143.32,
+   "end": 146.6,
+   "text": "A thousand views"
+  },
+  {
+   "start": 146.6,
+   "end": 148.34,
+   "text": "We're rising"
+  },
+  {
+   "start": 148.34,
+   "end": 149.92000000000002,
+   "text": "We're falling"
+  },
+  {
+   "start": 149.92,
+   "end": 153.1,
+   "text": "We'll make it through"
+  },
+  {
+   "start": 153.1,
+   "end": 154.84,
+   "text": "We're climbing"
+  },
+  {
+   "start": 154.84,
+   "end": 156.4,
+   "text": "We're soaring"
+  },
+  {
+   "start": 156.4,
+   "end": 159.18,
+   "text": "A thousand views"
+  },
+  {
+   "start": 159.18,
+   "end": 160.42000000000002,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 160.42,
+   "end": 162.26,
+   "text": "Come and come and fly away"
+  },
+  {
+   "start": 162.26,
+   "end": 165.29999999999998,
+   "text": "Come and fly away with me"
+  },
+  {
+   "start": 165.3,
+   "end": 166.76000000000002,
+   "text": "Come and fly away"
+  },
+  {
+   "start": 166.76,
+   "end": 168.92,
+   "text": "Come and come and fly away"
+  },
+  {
+   "start": 168.92,
+   "end": 172.14,
+   "text": "Come and fly away with me"
+  },
+  {
+   "start": 175.22,
+   "end": 178.56,
+   "text": "Something's gonna bring a change"
+  },
+  {
+   "start": 178.56,
+   "end": 181.7,
+   "text": "Journeys we are meant to take"
+  },
+  {
+   "start": 181.7,
+   "end": 184.98,
+   "text": "Something at the edge of space"
+  },
+  {
+   "start": 184.98,
+   "end": 186.0,
+   "text": "Calling us to"
+  },
+  {
+   "start": 186.0,
+   "end": 189.54,
+   "text": "FLY AWAY"
+  }
+ ]
+}

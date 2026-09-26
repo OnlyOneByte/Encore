@@ -69,6 +69,14 @@ ml = [
     "soundfile>=0.13",
     "pyloudnorm==0.2.0",
     "scipy==1.16.2",
+    # SYLLABIFICATION for the karaoke ball (alignment v2). Both are pure-python and tiny next to torch.
+    # `cmudict` is the CMU pronouncing dictionary — phoneme-based, so it knows "come" is ONE syllable where
+    # orthography says two. NOT `pronouncing`: that package still imports `pkg_resources`, which this venv
+    # (correctly) does not carry, so it fails at import on any modern install. `pyphen` is hyphenation
+    # dictionaries for ~70 languages, the non-English tier. The naive vowel-group fallback in
+    # domain/lyrics/syllabify.py keeps a box without either working.
+    "cmudict==1.1.1",
+    "pyphen==0.17.2",
 ]
 # The Apple-Silicon separation backend. NOT a Python import: `host/backends.py` gates on
 # `find_spec("demucs_mlx")` and the engine shells out to the `demucs-mlx` CLI by name, so this extra
@@ -239,10 +247,12 @@ enable_error_code = ["exhaustive-match"]
 module = [
     "audio_separator.*",
     "bs_roformer_infer.*",
+    "cmudict",
     "demucs.*",
     "docx2txt",
     "imageio_ffmpeg",
     "pyannote.*",
+    "pyphen",
     "pyloudnorm.*",
     "pyperclip",
     "scipy.*",

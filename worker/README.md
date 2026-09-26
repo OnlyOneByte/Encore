@@ -128,6 +128,68 @@ site in the old worker; the only new thing is being able to go back and change i
 
 Ordering matters: the shift re-estimate is cheapest and highest-yield for out-of-sync, so it goes first.
 
+**A correction that runs BEFORE the first alignment, not as a knob** (on by default): a timed text is
+fitted against the audio's own vocal-activity envelope (`domain/audio/activity.py`) and shifted onto this
+recording's clock before whisperx ever sees it. Measured need: whisperx crops audio to each segment's
+span, so an offset LRC passes through with unity gain — `bias = 1.005 × offset + 131 ms` over a 0–5 s
+sweep — and the RESHIFT knob above cannot fix a first attempt, because its reference is the previous
+alignment's own (equally offset) output. The fit recovers an injected offset to 10–20 ms on the vocals
+stem and refuses a wrong song's sheet (envelope r gate). Full numbers:
+`docs/benchmarks/forced-alignment/`.
+
+### Alignment: the global decode
+
+The `Time` step's default path, an inversion of the old one: **timings are evidence, never instructions.**
+Instead of handing a text's timings to whisperx as its search windows, the worker computes the full
+song's wav2vec2 emission matrix once (~4 s CPU, cached) and force-aligns the text globally — no windows,
+no trust. Incoming timings are then *reconciled* against ours (`domain/lyrics/reconcile.py`): agreement
+raises per-line confidence, disagreement is diagnosed (`offset` / `drift` / `structural` / `unrelated`)
+and recorded on the trail, and an `unrelated` verdict is arbitrated by asking the audio which series
+matches actual singing. The decode is char-level, so each word also carries **syllable spans** — the
+sung durations a karaoke ball needs — grouped by a CMUdict→pyphen→naive syllabifier
+(`domain/lyrics/syllabify.py`).
+
+```mermaid
+flowchart TD
+    A[audio] --> E["emissions E (once, cached)<br/>+ activity envelope A"]
+    T[text only — claimed timings NOT passed] --> G[global CTC decode<br/>lines / words / syllables + per-line scores]
+    E --> G
+    G --> R[reconcile vs claimed timings]
+    R -- "unrelated & claims fit the audio better" --> R1["R1: re-decode every claimed line<br/>inside its claim window"]
+    R -- "structural: disputed lines" --> R2["R2: re-decode disputed lines<br/>inside their claim windows"]
+    R -- "blind repeats, no claim anchor" --> R3["R3: re-decode repeats jointly<br/>between unique-line anchors"]
+    R1 --> GATE{envelope gate, on the repaired series<br/>r≥0.40 in ±0.5s, or r≥0.25 in ±0.1s}
+    R2 --> GATE
+    R3 --> GATE
+    R -- no repair needed --> GATE
+    GATE -- refuse --> FAIL[attempt fails → verify ladder:<br/>next knob / next text / ASR tier]
+    GATE -- pass --> P[grade per line → publish word+syllable timing]
+```
+
+**Disagreements are repaired in place, never escalated to a different engine.** Every repair is a
+re-decode of the SAME emission matrix inside a window some other evidence vouches for — a claim span, or
+the gap between two trusted unique lines — so a repair costs milliseconds, keeps syllable spans, and a
+failed repair keeps the original timing (`domain/lyrics/generate.regenerate`). A repaired line whose
+window decode HEARD NOTHING (stuck at the window edge, or scoring far below the song's median) instead
+**adopts the claim's own timing** at `low` confidence — measured on tfr-chosen's chopped-vocal outro,
+where no decode can recognise words the captions time correctly. Every refusal lands a `job:state` trail
+note with its reason and numbers — a silent one proved indistinguishable from the step never running.
+Measured (claims present, vs authored captions): **0 gross errors on all three benchmark songs** (14→0
+on tfr-chosen), flyaway 96.0% / mayday 94.2% of lines within ±250 ms after bias correction, ≥98% within
+±500 ms raw. R3 (blind-repeat anchored re-decode) measured a no-op on real audio — kept as a cheap
+guard; the real blind-repeat fix is future occurrence assignment.
+
+Measured on `tfr-flyaway` against authored-caption truth: an UNTIMED sheet goes from **1.3% → 70.7%** of
+lines within ±250 ms (the windowed path's spread-over floor is gone), and a deliberately offset LRC is
+*diagnosed*, not obeyed. Blind repeats stay `low` confidence even after the anchored re-decode: an anchor
+vouches for the region, not for which occurrence is which.
+
+The **windowed whisperx aligner survives only as a capability fallback** — an aligner that cannot produce
+an emission matrix at all (a language without a CTC dictionary model) — and for the LINE_SYNC terminal
+knob. The RESHIFT and DROP_WINDOWS knobs parameterize that windowed search; the global engine never
+reports a placement residual, so `policy.decide` never offers them against its documents. Measurements:
+`docs/benchmarks/forced-alignment/README.md`.
+
 ---
 
 ## Layers
