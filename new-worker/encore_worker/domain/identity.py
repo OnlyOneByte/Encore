@@ -20,9 +20,15 @@ class Identified:
 
     artist: str | None = None
     track: str | None = None
-    #: Where the identification came from: "tags", "title-parse", "none". Recorded so a bad lookup
-    #: downstream is traceable to how the song was named rather than to the provider.
+    #: Where the identification came from: "tags", "title-parse", "musicbrainz", "job-params", "none".
+    #: Recorded so a bad lookup downstream is traceable to how the song was named rather than to the provider.
     source: str = "none"
+    #: MusicBrainz recording id, set ONLY by a musicbrainz match. Core requires it for a `musicbrainz`
+    #: annotation and ignores the field otherwise, so a title parse must leave it None rather than invent one.
+    mbid: str | None = None
+    #: `high` only when a duration corroborated the names; a title parse is `medium` by construction. Core
+    #: treats `high` as fact, so the two tiers are not interchangeable — see `domain/metadata.confidence_for`.
+    confidence: str = "medium"
 
     @property
     def confident(self) -> bool:

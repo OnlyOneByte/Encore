@@ -1,12 +1,12 @@
 # Intel Arc GPU worker — compose OVERRIDE for docker/compose.yaml.
 #
 #   docker compose -f docker/compose.yaml -f docker/compose.intel.yaml \
-#     --profile stems up -d
+#     --new-stems up -d
 #
 # Run from the repo root. There is no ./dev.sh compose flag for this one: the target is PARKED.
 #
 # PARKED. The deploy target moved to NVIDIA (see compose.cuda.yaml). Kept because the Arc box
-# may come back, and because the selection logic in worker/src/host/backends.py already models `xpu`
+# may come back, and because the selection logic in new-worker/encore_worker/host/hardware.py already models `xpu`
 # as a torch DEVICE rather than a separate backend — so this path needs no separator code, only wheels
 # and device passthrough.
 #
@@ -22,13 +22,18 @@
 # repo and Intel's documentation, not measured.
 
 services:
-  worker:
+  new-worker:
     # PID-1 zombie reaping — see the note in the base compose.yaml. Restated
     # here because a reader of this override should not have to know Compose merge rules to see it.
     init: true
     build:
       args:
-        TORCH_INDEX_URL: https://download.pytorch.org/whl/xpu
+        # BLOCKED, and stated rather than left to fail at build time: the new worker selects its torch index
+        # through an EXTRA (`[tool.uv.sources]` maps `cpu` and `cu128` to their own indexes), and there is no
+        # `xpu` extra in new-worker/pyproject.toml. Reviving this target means adding one there — a lock
+        # change, not a compose change. `TORCH_INDEX_URL` is inert here; the old worker read it, this one
+        # does not.
+        TORCH_EXTRA: cpu
 
     # No `environment:` block. The device, the alignment device, the capability list and the
     # concurrency are all measured by the worker now: it probes for xpu (importing

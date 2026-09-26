@@ -93,12 +93,12 @@ enabled via `--remote-components ejs:github`. Miss either and extraction degrade
 audio-only format resolves at all, so every process fails at download with `Requested format is not
 available` — which reads as a broken worker rather than a missing dependency. The Docker images ship
 `deno` plus `/etc/yt-dlp.conf`; a hand-rolled native run has neither, so install `deno` and either copy
-`worker/yt-dlp.conf` to `/etc/yt-dlp.conf` or point yt-dlp at it with `--config-location`.
+`docker/yt-dlp.conf` to `/etc/yt-dlp.conf` or point yt-dlp at it with `--config-location`.
 
-**`dev.sh` handles both halves for you.** It writes `worker/yt-dlp.conf` into a scratch
+**`dev.sh` handles both halves for you.** It writes `docker/yt-dlp.conf` into a scratch
 `XDG_CONFIG_HOME` the worker alone sees — so the solver is enabled without touching `/etc` or your own
 `~/.config` — and if `deno` is not already on PATH it fetches the same pinned release
-`docker/worker.Dockerfile` installs, into `worker/.dev-ytdlp/bin`. The download is **sha256-verified against
+`docker/new-worker.Dockerfile` installs, into `new-worker/.dev-tools/bin`. The download is **sha256-verified against
 the checksum the release publishes** before it is made executable, nothing is installed system-wide, a
 system `deno` always wins, and `ENCORE_SKIP_DENO=1` opts out. Note that **node, bun and quickjs do not
 substitute**: yt-dlp supports them but enables only `deno` by default, so a box with node and no deno

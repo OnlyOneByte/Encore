@@ -209,24 +209,75 @@ class FetchStepsImpl:
     `Identified.source`, so a later wrong-lyrics report is traceable to how the song was named.
     """
 
-    def __init__(self, *, config: Config, audio: AlignStepsImpl, reporter: Reporter) -> None:
+    def __init__(
+        self,
+        *,
+        config: Config,
+        audio: AlignStepsImpl,
+        reporter: Reporter,
+        annotator: object | None = None,
+    ) -> None:
         self._cfg = config
         self._audio = audio
         self._out = reporter
+        #: A MusicBrainz client, or None when annotation is off or the box has no network. None degrades to
+        #: the title parse, which is the behaviour before this existed.
+        self._annotator = annotator
 
     async def acquire_audio(self, job: JobRef) -> AudioRef:
         return await self._audio.acquire_audio(job)
 
     async def annotate(self, job: JobRef, audio: AudioRef) -> Identified:
-        """Identify the song. Never raises — not knowing is a real answer, not a failure."""
+        """Identify the song. Never raises — not knowing is a real answer, not a failure.
+
+        THREE TIERS, and the MusicBrainz one is what makes the result worth having. Core applies this to
+        `artistCanonical`/`titleCanonical`, and `assignParams` sends exactly those to a later align job as
+        its LYRICS LOOKUP KEYS — so a title parse standing alone is an LRCLIB miss and a fall back to ASR
+        for a song whose words are published somewhere.
+
+        MusicBrainz REFINES the parse rather than replacing it: the lookup needs a name to search on, so a
+        parse that found nothing cannot be improved. And a decline at any point leaves the parse standing,
+        because an annotation is an upgrade and never a requirement.
+        """
         artist, track = job.param_str("artist"), job.param_str("track")
         if artist and track:
-            # The core already knows: an operator typed it, or a previous fetch recorded it.
-            return Identified(artist=artist, track=track, source="job-params")
+            # Core already has names — but they are ITS OWN TITLE PARSE, not a citation: `dispatch.ts`
+            # runs `parseTrackTitle(media.title, media.artist)` and sends the result. So these are refined
+            # like any other guess rather than returned as final, which is what an earlier version did —
+            # and because core sends them on every job, that made the MusicBrainz lookup unreachable.
+            supplied = Identified(artist=artist, track=track, source="job-params")
+            return await self._refine(job, supplied, audio)
         title = job.param_str("title")
-        if title:
-            return identify_from_title(title)
-        return Identified(source="none")
+        if not title:
+            return Identified(source="none")
+        return await self._refine(job, identify_from_title(title), audio)
+
+    async def _refine(self, job: JobRef, parsed: Identified, audio: AudioRef) -> Identified:
+        """Upgrade a title parse to a MusicBrainz match, or return the parse untouched.
+
+        `to_thread` because the lookup is a blocking HTTP call behind a one-request-per-second gate: awaiting
+        it inline would freeze the event loop for up to three paced attempts, stop the progress keepalive,
+        and let the core's lease expire on a healthy job.
+        """
+        if self._annotator is None or not parsed.confident:
+            return parsed
+        from encore_worker.adapters.musicbrainz import annotate_or_reason  # noqa: PLC0415
+
+        found, why = await asyncio.to_thread(
+            annotate_or_reason, self._annotator, parsed.artist, parsed.track, audio.duration_sec
+        )
+        if found is None:
+            # Recorded on the trail rather than swallowed: a throttled box and a per-song miss look
+            # identical from the outside, and only one of them is worth an operator's attention.
+            await self._out.state(job.job_id, "annotate", 1, "declined", why or "no match", None)
+            return parsed
+        return Identified(
+            artist=found.artist,
+            track=found.title,
+            source="musicbrainz",
+            mbid=found.mbid,
+            confidence=found.confidence,
+        )
 
     async def publish_original(self, job: JobRef, audio: AudioRef, found: Identified) -> str:
         """Guarded, like every other publish."""

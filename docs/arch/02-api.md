@@ -1,5 +1,16 @@
 # 02 — The HTTP surface: contract, status discipline and what an unjoined caller may reach
 
+> [!IMPORTANT]
+> **This document analyses the ORIGINAL worker (`worker/`), which was DELETED at the hard switchover to
+> `new-worker/`.** Every `worker/src/...` citation below refers to code that no longer exists in the tree;
+> read them against git history, not against the current checkout.
+>
+> The findings are kept because most of them are about the CORE side, or about a core↔worker seam that still
+> exists — but each one needs re-verifying against `new-worker/encore_worker/` before it is acted on. Paths
+> were deliberately NOT rewritten: a mechanical remap produced citations that named real new files which do
+> not contain what the finding describes (`LEASE_KEEPALIVE_SEC`, `default_worker_id`, `plan_for` are all
+> gone), which is worse than an obviously-stale path.
+
 **IDs:** `XR-API-nn`
 ---
 
