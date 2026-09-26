@@ -1,4 +1,4 @@
-# Encore new-worker — the DBOS rewrite of the make-karaoke box. Gated behind the compose `new-stems`
+# Encore worker — the DBOS rewrite of the make-karaoke box. Gated behind the compose `stems`
 # profile, so neither the MVP nor the existing `stems` profile builds this multi-GB image.
 #
 # Differs from worker.Dockerfile in exactly one structural way: dependencies come from `uv` against a
@@ -6,7 +6,7 @@
 # the dev box tested. Everything else it inherits deliberately — the deno runtime, /etc/yt-dlp.conf, the
 # non-root uid and the cache volume were each paid for in the old image and none of the reasons changed.
 FROM python:3.12-slim-bookworm AS runtime
-WORKDIR /app/new-worker
+WORKDIR /app/worker
 
 # ffmpeg is NOT optional here: `host/capabilities.py` refuses to advertise `stems` without it, because
 # publication encodes stems to FLAC and the guide mix is an ffmpeg filter graph. A box without it would
@@ -31,7 +31,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
 # `--frozen` fails the build if the lockfile disagrees with pyproject.toml, rather than silently
 # re-resolving to versions no one tested — the whole reason for locking. `--no-install-project` installs
 # the dependencies without the package itself, which is what keeps this layer independent of `encore_worker`.
-COPY new-worker/pyproject.toml new-worker/uv.lock ./
+COPY worker/pyproject.toml worker/uv.lock ./
 
 # Which torch index, and therefore which accelerator. `cpu` by default; a CUDA deploy overrides the extra
 # rather than the index URL, because `[tool.uv.sources]` already maps each extra to its own index and the
@@ -66,8 +66,8 @@ COPY docker/yt-dlp.conf /etc/yt-dlp.conf
 
 # ── the application ──────────────────────────────────────────────────────────────────────────────
 # Last, so a source edit rebuilds only from here down.
-COPY new-worker/encore_worker ./encore_worker
-COPY new-worker/README.md ./README.md
+COPY worker/encore_worker ./encore_worker
+COPY worker/README.md ./README.md
 
 ENV PYTHONUNBUFFERED=1 \
 	PYTHONDONTWRITEBYTECODE=1 \

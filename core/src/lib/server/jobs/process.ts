@@ -56,7 +56,7 @@ export function countInFlightProcesses(
 	return processing.size;
 }
 
-/** MUST match the worker's published instrumental key (new-worker artifacts/keys.py) or the TV 404s. Never hand-write this string. */
+/** MUST match the worker's published instrumental key (worker/encore_worker/artifacts/keys.py) or the TV 404s. Never hand-write this string. */
 export const instrumentalKey = layoutInstrumentalKey;
 
 /** The soonest (lowest) rotationSeq among queued entries that point at this media; ∞ if none. */

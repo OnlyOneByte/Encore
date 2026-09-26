@@ -62,7 +62,7 @@ def _read_via_soundfile(path: str) -> tuple[np.ndarray, int]:
     except ImportError as exc:  # pragma: no cover — depends on the box, not the logic
         raise RuntimeError(
             f"cannot read {path!r}: reading a non-WAV stem needs the `soundfile` package "
-            "(pinned in new-worker/pyproject.toml's `ml` extra). A worker separating to FLAC "
+            "(pinned in worker/pyproject.toml's `ml` extra). A worker separating to FLAC "
             "must have it installed."
         ) from exc
 

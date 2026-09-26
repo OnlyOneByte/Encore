@@ -25,7 +25,7 @@ Compose's project directory.
 | file (in `docker/`)        | target                                                        | notes                                                                      |
 | -------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `compose.cuda.yaml`  | NVIDIA (the current deploy target: Windows + WSL2 + RTX 3080) | Needs no custom Dockerfile — see below. Full runbook: [`WSL2.md`](WSL2.md) |
-| `compose.intel.yaml` | Intel Arc (parked — the deploy box changed, and now BLOCKED) | Needs an `xpu` extra in `new-worker/pyproject.toml`, which does not exist  |
+| `compose.intel.yaml` | Intel Arc (parked — the deploy box changed, and now BLOCKED) | Needs an `xpu` extra in `worker/pyproject.toml`, which does not exist  |
 
 Both overrides now contain **only what is genuinely host-side**: the GPU device reservation, the
 `/dev/dri` passthrough, the numeric render/video group ids, and the `TORCH_EXTRA` build arg. They
@@ -104,8 +104,8 @@ now decoupled:** a missing or refusing worklet leaves the split graph intact, so
 a plain `http://<LAN-IP>` origin. Only ±key still needs a secure context, and `PitchShiftGraph.isShiftable`
 reports when it is unavailable so the transpose control can say so instead of moving silently.
 
-`docker/new-worker.Dockerfile` exposes `ARG TORCH_EXTRA`, so switching accelerator selects a different
-EXTRA rather than swapping an index URL: `[tool.uv.sources]` in `new-worker/pyproject.toml` maps each extra
+`docker/worker.Dockerfile` exposes `ARG TORCH_EXTRA`, so switching accelerator selects a different
+EXTRA rather than swapping an index URL: `[tool.uv.sources]` in `worker/pyproject.toml` maps each extra
 to its own index and declares `cpu` and `cu128` mutually exclusive. Both carry the exact versions the lock
 already pins — `torch 2.8.0`, `torchaudio 2.8.0`, `torchvision 0.23.0` — so **no manifest edit is needed**:
 
@@ -160,7 +160,7 @@ Two consequences, both easy to get backwards:
   broken. Verify from the host that will actually run the worker — a residential connection and a
   datacenter one get different answers.
 - The format selector's final fallback is what keeps such a host working at all. The new worker asks for
-  `-f bestaudio/best` (`audio_argv` in `new-worker/encore_worker/adapters/cli.py`), and the trailing `best`
+  `-f bestaudio/best` (`audio_argv` in `worker/encore_worker/adapters/cli.py`), and the trailing `best`
   is that fallback: every `bestaudio` branch misses format 18.
 
 ## `audio-separator` now installs everywhere, including Apple Silicon
@@ -174,12 +174,12 @@ project is developed on.
 
 0.45.0 requires only `torch>=2.3` on every platform and carries the IDENTICAL catalogue (verified: the same
 89 download entries, the same 84 RoFormer checkpoints), so the pin was moved back and the marker deleted.
-`new-worker/pyproject.toml` now lists `audio-separator==0.45.0` unconditionally, plus `audioread` — an
+`worker/pyproject.toml` now lists `audio-separator==0.45.0` unconditionally, plus `audioread` — an
 undeclared dependency of that release, imported by `uvr_lib_v5/spec_utils.py` but absent from its metadata,
 so without it `Separator` fails to import on a clean install.
 
-`new-worker/encore_worker/host/hardware.py` advertises `stems:audiosep` whenever the module is importable,
-and `new-worker/encore_worker/adapters/zoo.py` enumerates what the installed version can actually run —
+`worker/encore_worker/host/hardware.py` advertises `stems:audiosep` whenever the module is importable,
+and `worker/encore_worker/adapters/zoo.py` enumerates what the installed version can actually run —
 ~135 usable models out of 169, the rest being de-reverb, de-noise, drum-separation and similar, which cannot
 produce a karaoke master. Revisit the pin if torch moves past 2.13.
 

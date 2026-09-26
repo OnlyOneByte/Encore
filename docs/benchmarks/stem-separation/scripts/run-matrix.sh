@@ -29,7 +29,7 @@ run() {  # model device song
   fi
   echo "RUN   $3 $1 $2  -> $log"
   local started=$SECONDS
-  uv run --project ../../../../new-worker python bench.py "$1" --device "$2" --song "$3" >"$log" 2>&1 \
+  uv run --project ../../../../worker python bench.py "$1" --device "$2" --song "$3" >"$log" 2>&1 \
     || echo "FAIL  $3 $1 $2  (see $log)"
   echo "      $((SECONDS - started))s"
 }
