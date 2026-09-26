@@ -28,10 +28,6 @@
 #     root-owned and the uid-10001 worker cannot write to it.
 
 services:
-  # THE ONLY WORKER since the hard switchover — the incumbent `worker:` override block was deleted with the
-  # service it extended, because an override for a service the base file no longer defines is a compose error
-  # rather than a no-op.
-  #
   # The CUDA wheels come from the `cu128` EXTRA rather than an index URL, because `[tool.uv.sources]` already
   # maps each extra to its own index and declares the two mutually exclusive. Without this a
   # `--stems` GPU deploy silently builds CPU-only and cooks on the CPU.
