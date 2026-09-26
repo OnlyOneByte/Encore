@@ -67,10 +67,22 @@ core/media/
 core/tests/playwrite/.artifacts/
 
 # Benchmark audio that a SCRIPT REBUILDS, so it is not committed:
-#   youtube-mix.wav    re-downloaded by docs/benchmarks/stem-separation/scripts/fetch_baseline.sh
+#   youtube-mix.wav    re-downloaded by docs/benchmarks/stem-separation/scripts/prepare.py
 #   reference-*.wav    re-derived from the artist's stems by the same script, deterministically
 # The STEMS themselves are the irreplaceable input and are committed — they are TheFatRat's royalty-free
 # release, and re-deriving the reference from them is exact, so keeping ~190 MB of derived WAV in history
 # would buy nothing.
 docs/benchmarks/benchmark-songs/*/youtube-mix.wav
 docs/benchmarks/benchmark-songs/*/reference-*.wav
+
+# The raw caption download is an intermediate; `truth.py` re-fetches it.
+docs/benchmarks/benchmark-songs/*/*.authored*.json3
+
+# `truth-lines.json` is DELIBERATELY NOT IGNORED. It is the pinned ground truth for the forced-alignment
+# benchmark, and unlike the audio above it is NOT deterministically rebuildable: an uploader can edit their
+# caption track at any time, which would silently make every number in that README incomparable to a
+# re-run. A few KB of JSON buys reproducibility over time.
+
+# Temporary working plan for the alignment-v2 build — tracking scaffolding, deliberately never committed.
+# Lasting decisions move into module docstrings and docs/benchmarks/forced-alignment/README.md as they land.
+docs/PLAN-alignment-v2.md

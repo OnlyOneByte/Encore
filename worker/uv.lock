@@ -799,6 +799,19 @@ wheels = [
 ]
 
 [[package]]
+name = "cmudict"
+version = "1.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "importlib-metadata" },
+    { name = "importlib-resources" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/98/cf/6f1fe88339c28e38acfa8f478b640778f7e5cc8bb1bd2cbf32cfcd2c515e/cmudict-1.1.1.tar.gz", hash = "sha256:23c3914c85465f6a7d26d2d8974fa341dd7bc924d1ffa501b41406b936923db1", size = 935697, upload-time = "2025-07-24T10:51:09.6Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/5d/b14b1d8319c977771e8e94eb7f34404dd116f1d7d78dd9e0f2da87ac4609/cmudict-1.1.1-py3-none-any.whl", hash = "sha256:4b4737c0fa52375b1601d7b63824f155879a824064b6ecac07d347eae60fc046", size = 939663, upload-time = "2025-07-24T10:51:08.117Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1151,9 +1164,11 @@ ffmpeg = [
 ]
 ml = [
     { name = "bs-roformer-infer" },
+    { name = "cmudict" },
     { name = "demucs" },
     { name = "pyannote-audio" },
     { name = "pyloudnorm" },
+    { name = "pyphen" },
     { name = "scipy" },
     { name = "soundfile" },
     { name = "whisperx" },
@@ -1183,6 +1198,7 @@ requires-dist = [
     { name = "audio-separator", marker = "extra == 'audiosep'", specifier = "==0.45.0" },
     { name = "audioread", marker = "extra == 'audiosep'", specifier = ">=3.0" },
     { name = "bs-roformer-infer", marker = "extra == 'ml'", specifier = "==0.1.5" },
+    { name = "cmudict", marker = "extra == 'ml'", specifier = "==1.1.1" },
     { name = "dbos", specifier = ">=3.1" },
     { name = "demucs", marker = "extra == 'ml'", specifier = "==4.0.1" },
     { name = "demucs-mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'mlx'", specifier = "==1.4.14" },
@@ -1193,6 +1209,7 @@ requires-dist = [
     { name = "pyannote-audio", marker = "extra == 'ml'", specifier = "==4.0.0" },
     { name = "pyloudnorm", marker = "extra == 'ml'", specifier = "==0.2.0" },
     { name = "pyperclip", marker = "extra == 'text'", specifier = "==1.11.0" },
+    { name = "pyphen", marker = "extra == 'ml'", specifier = "==0.17.2" },
     { name = "scipy", marker = "extra == 'ml'", specifier = "==1.16.2" },
     { name = "sentencepiece", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'mlx'" },
     { name = "soundfile", marker = "extra == 'ml'", specifier = ">=0.13" },
@@ -1791,6 +1808,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f3/49/3b30cad09e7771a4982d9975a8cbf64f00d4a1ececb53297f1d9a7be1b10/importlib_metadata-8.7.1.tar.gz", hash = "sha256:49fef1ae6440c182052f407c8d34a68f72efc36db9ca90dc0113398f2fdde8bb", size = 57107, upload-time = "2025-12-21T10:00:19.278Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/5e/f8e9a1d23b9c20a551a8a02ea3637b4642e22c2626e3a13a9a29cdea99eb/importlib_metadata-8.7.1-py3-none-any.whl", hash = "sha256:5a1f80bf1daa489495071efbb095d75a634cf28a8bc299581244063b53176151", size = 27865, upload-time = "2025-12-21T10:00:18.329Z" },
+]
+
+[[package]]
+name = "importlib-resources"
+version = "7.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/06/b56dfa750b44e86157093bc8fca0ab81dccbf5260510de4eaf1cb69b5b99/importlib_resources-7.1.0.tar.gz", hash = "sha256:0722d4c6212489c530f2a145a34c0a7a3b4721bc96a15fada5930e2a0b760708", size = 44985, upload-time = "2026-04-12T16:36:09.232Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/db/55a262f3606bebcae07cc14095338471ad7c0bbcaa37707e6f0ee49725b7/importlib_resources-7.1.0-py3-none-any.whl", hash = "sha256:1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1", size = 37232, upload-time = "2026-04-12T16:36:08.219Z" },
 ]
 
 [[package]]
@@ -3907,6 +3933,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e8/52/d87eba7cb129b81563019d1679026e7a112ef76855d6159d24754dbd2a51/pyperclip-1.11.0.tar.gz", hash = "sha256:244035963e4428530d9e3a6101a1ef97209c6825edab1567beac148ccc1db1b6", size = 12185, upload-time = "2025-09-26T14:40:37.245Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/df/80/fc9d01d5ed37ba4c42ca2b55b4339ae6e200b456be3a1aaddf4a9fa99b8c/pyperclip-1.11.0-py3-none-any.whl", hash = "sha256:299403e9ff44581cb9ba2ffeed69c7aa96a008622ad0c46cb575ca75b5b84273", size = 11063, upload-time = "2025-09-26T14:40:36.069Z" },
+]
+
+[[package]]
+name = "pyphen"
+version = "0.17.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/56/e4d7e1bd70d997713649c5ce530b2d15a5fc2245a74ca820fc2d51d89d4d/pyphen-0.17.2.tar.gz", hash = "sha256:f60647a9c9b30ec6c59910097af82bc5dd2d36576b918e44148d8b07ef3b4aa3", size = 2079470, upload-time = "2025-01-20T13:18:36.296Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/1f/c2142d2edf833a90728e5cdeb10bdbdc094dde8dbac078cee0cf33f5e11b/pyphen-0.17.2-py3-none-any.whl", hash = "sha256:3a07fb017cb2341e1d9ff31b8634efb1ae4dc4b130468c7c39dd3d32e7c3affd", size = 2079358, upload-time = "2025-01-20T13:18:29.629Z" },
 ]
 
 [[package]]

@@ -17,6 +17,7 @@ lease expires, and the reaper requeues a job that is running perfectly well.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from encore_worker.domain.document import Segment
@@ -127,6 +128,63 @@ def clear_cache() -> None:
     _MODELS.clear()
 
 
+#: wav2vec2 alignment models are trained at 16 kHz; every other rate is resampled to it.
+_EMISSION_SAMPLE_RATE = 16000
+
+#: Chunk size for the full-song emission pass. Bounds memory; see `WhisperXAligner.emissions` for why the
+#: boundary-context loss is accepted rather than overlapped away.
+_EMISSION_CHUNK_SEC = 30
+
+
+@dataclass(frozen=True)
+class Emissions:
+    """A song's per-frame character log-probabilities, plus what is needed to decode against them.
+
+    `log_probs` is (frames, vocab) — ~9.7k x 29 for a 3-minute English song, about 1 MB. `dictionary` maps
+    characters to vocab ids and travels WITH the matrix because the two are meaningless apart: ids are a
+    property of the model that produced these frames.
+    """
+
+    log_probs: Any
+    frame_sec: float
+    dictionary: dict[str, int]
+
+    @property
+    def frames(self) -> int:
+        return int(self.log_probs.shape[0]) if self.log_probs is not None else 0
+
+
+def load_audio_mono_16k(path: str) -> Any:
+    """A mono float32 signal at 16 kHz from ANY container ffmpeg can read, as a numpy array.
+
+    `whisperx.load_audio` under the hood, which shells ffmpeg — the same decode every v1 alignment already
+    used. `domain.audio.wav.read_wav_mono` deliberately reads only WAV/FLAC, and alignment's MIX target is
+    the raw yt-dlp download (`original.webm`, `.m4a`): found LIVE when every v2 attempt on a mix target
+    declined with `LibsndfileError: Format not recognised` while v1 sailed through the same file.
+    """
+    import whisperx  # noqa: PLC0415
+
+    return whisperx.load_audio(path)
+
+
+def forced_align_decoder(log_probs: Any, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    """`domain.lyrics.generate`'s Decoder, over torchaudio's CTC kernel.
+
+    DEPENDENCY RISK, recorded where the import lives: `torchaudio.functional.forced_align` is deprecated
+    for REMOVAL in torchaudio 2.9 (the maintenance-phase refactor, pytorch/audio#3902). This project pins
+    torchaudio 2.8.0, so nothing breaks today — but the torch-family pins move together, and whoever bumps
+    them must either find the kernel's new home or vendor it. The benchmark suite will catch a silent
+    behaviour change; this comment exists so the REMOVAL is not a surprise.
+    """
+    import torch  # noqa: PLC0415
+    import torchaudio.functional as F  # noqa: PLC0415
+
+    aligned, scores = F.forced_align(
+        log_probs.unsqueeze(0), torch.tensor([list(targets)], dtype=torch.int32), blank=0
+    )
+    return aligned[0].tolist(), scores[0].tolist()
+
+
 class WhisperTranscriber:
     """`Transcriber` over whisperX's batched whisper.
 
@@ -203,6 +261,67 @@ class WhisperXAligner:
         cached: tuple[Any, Any] = _cached(self._device, f"align:{language}", build)
         model, metadata = cached
         return model, metadata
+
+    def emissions(self, audio_path: str, language: str) -> Emissions:
+        """The full song's per-frame character log-probabilities, computed ONCE and reusable.
+
+        THE EVIDENCE LAYER of alignment v2 (docs/PLAN-alignment-v2.md). `windowed align` runs the model per
+        search span, so five lyrics candidates cost five model passes and every pass trusts its windows.
+        This runs the model once over the whole recording — measured at 4.0 s CPU for a 194 s song — and
+        every candidate text is then a millisecond `forced_align` decode over the same matrix.
+
+        CHUNKED at 30 s windows to bound memory. wav2vec2's context is convolutional plus self-attention
+        within the window, so frames near a chunk boundary see slightly less context than interior frames —
+        accepted, because the benchmark measured no gross errors from it (0/75 lines >2 s off), and the
+        alternative (overlap + splice) doubles compute for a defect the measurement could not find.
+
+        CACHED per (device, language, audio_path): DBOS may re-enter the workflow, and a retry that
+        recomputed 4 s of model time for the same file would pay for durability twice. The cache key is the
+        PATH, not the content — safe because scratch files are written once and never mutated in place
+        (`artifacts/local.py` stages then renames).
+        """
+        with ML_LOCK:
+            key = f"emissions:{language}:{audio_path}"
+
+            def build() -> Emissions:
+                import torch  # noqa: PLC0415
+
+                model, metadata = self._aligner(language)
+                # ffmpeg-backed and already 16 kHz — see `load_audio_mono_16k` for why not read_wav_mono.
+                mono = torch.from_numpy(load_audio_mono_16k(audio_path))
+                duration = len(mono) / _EMISSION_SAMPLE_RATE
+
+                # ON THE MODEL'S DEVICE, discovered from its own parameters rather than assumed from
+                # config: on an MPS box the align model lives on the accelerator, and a CPU input tensor
+                # fails inside the first conv with a device-mismatch RuntimeError. Found LIVE, not in the
+                # benchmark — the benchmark always ran --device cpu, where the mismatch cannot exist.
+                model_device = next(model.parameters()).device
+                window = _EMISSION_CHUNK_SEC * _EMISSION_SAMPLE_RATE
+                chunks = []
+                with torch.inference_mode():
+                    for start in range(0, len(mono), window):
+                        piece = mono[start : start + window]
+                        # A sliver shorter than the model's receptive field raises inside wav2vec2;
+                        # a tenth of a second of audio carries no line onset worth keeping.
+                        if len(piece) < _EMISSION_SAMPLE_RATE // 10:
+                            break
+                        out = model(piece.unsqueeze(0).to(model_device))
+                        # whisperx's torchaudio-backed models return a tuple; HF-backed ones an object
+                        # with `.logits`. Both shapes exist in the wild, so both are handled.
+                        logits = out[0] if isinstance(out, tuple) else out.logits
+                        # Back to CPU immediately: the matrix outlives this pass in a cache, and holding
+                        # ~1 MB per song on the accelerator buys nothing — forced_align runs fine on CPU.
+                        chunks.append(torch.log_softmax(logits, dim=-1)[0].cpu())
+                matrix = torch.cat(chunks) if chunks else torch.zeros((0, 0))
+                dictionary = dict(metadata.get("dictionary") or {})
+                return Emissions(
+                    log_probs=matrix,
+                    frame_sec=(duration / matrix.shape[0]) if matrix.shape[0] else 0.0,
+                    dictionary=dictionary,
+                )
+
+            emitted: Emissions = _cached(self._device, key, build)
+            return emitted
 
     def align(self, search: Sequence[Segment], audio_path: str, language: str) -> Sequence[Segment]:
         # ML_LOCK covers LOADING AND RUNNING, and both halves matter: two jobs loading multi-GB

@@ -1,11 +1,20 @@
 // Pure karaoke-timing logic for the TV lyrics overlay. All times are SECONDS, and model output is UNTRUSTED, so
 // every accessor is defensive: missing/NaN bounds never throw, they read as "not yet sung".
-import { isAuthoritativeText, type LyricsCandidate } from '$lib/contract';
+import { isAuthoritativeText, type LyricsCandidate, type LyricsConfidence } from '$lib/contract';
 
+export interface LyricSyllable {
+	text: string;
+	start: number;
+	end: number;
+}
 export interface LyricWord {
 	word: string;
 	start: number;
 	end: number;
+	/** Sub-word spans from the worker's char-level alignment (alignment v2). A sustained sung vowel's span
+	 *  stretches with the singing, so a syllable's duration is its SUNG duration — the unit a bouncing ball
+	 *  wants. Optional: v1 documents and single-syllable words carry none, and no renderer reads it yet. */
+	syllables?: LyricSyllable[];
 }
 export interface LyricLine {
 	start: number | null;
@@ -17,6 +26,10 @@ export interface LyricLine {
 	// Which abstract duet PART sings this line, written only when the worker's diarization is CONFIDENT: a solo or a
 	// low-confidence result leaves it undefined, which reads as one colour for the whole song. Never an identity.
 	part?: string;
+	/** Per-line verdict from alignment v2's grading: `low` marks a line whose placement nothing could vouch
+	 *  for (a repeated chorus with no claims to anchor WHICH occurrence — the decode can bind a repeat to the
+	 *  wrong one). A renderer may caveat or line-scroll such lines; absent on v1 documents. */
+	confidence?: LyricsConfidence;
 }
 export interface LyricsDoc {
 	language: string | null;
@@ -43,7 +56,21 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 			const start = num(w.start);
 			const end = num(w.end);
 			if (typeof w.word !== 'string' || !w.word.trim() || start === null || end === null) continue;
-			const word = { word: w.word, start, end };
+			const word: LyricWord = { word: w.word, start, end };
+			// Syllables are OPTIONAL and untrusted like everything else here: malformed entries drop, and a
+			// word whose syllables all drop is simply a word without them.
+			if (Array.isArray(w.syllables)) {
+				const syllables: LyricSyllable[] = [];
+				for (const rs of w.syllables) {
+					if (!rs || typeof rs !== 'object') continue;
+					const sy = rs as Record<string, unknown>;
+					const syStart = num(sy.start);
+					const syEnd = num(sy.end);
+					if (typeof sy.text !== 'string' || !sy.text || syStart === null || syEnd === null) continue;
+					syllables.push({ text: sy.text, start: syStart, end: syEnd });
+				}
+				if (syllables.length > 0) word.syllables = syllables;
+			}
 			words.push(word);
 			flat.push(word);
 		}
@@ -52,6 +79,8 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 		const line: LyricLine = { start: num(l.start), end: num(l.end), text, words };
 		if (typeof l.romanization === 'string' && l.romanization.trim()) line.romanization = l.romanization;
 		if (typeof l.part === 'string' && l.part.trim()) line.part = l.part;
+		if (l.confidence === 'high' || l.confidence === 'medium' || l.confidence === 'low')
+			line.confidence = l.confidence;
 		lines.push(line);
 	}
 	if (lines.length === 0) return null;
@@ -129,6 +158,9 @@ export function resegmentLine(
 	// colour. `romanization` needs no carry: it appears only on line-synced docs, which are never resegmented.
 	const split = out.length ? coalesceOrphans(out) : [line];
 	if (line.part !== undefined) for (const l of split) l.part = line.part;
+	// Same carry for the v2 per-line verdict: the grading judged the SOURCE line, and each row it split
+	// into inherits that judgement — syllables need no carry, they ride on the words.
+	if (line.confidence !== undefined) for (const l of split) l.confidence = line.confidence;
 	return split;
 }
 

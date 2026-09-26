@@ -1,7 +1,7 @@
 // pure karaoke-timing logic — parse untrusted artifacts + resolve the active line/word and
 // per-word fill at a playback position. This is the testable core behind the eyes-on TV overlay.
 import { test, expect } from 'bun:test';
-import { parseLyricsDoc, lineBounds, activeLineIndex, activeWordIndex, type LyricsDoc } from '$lib/tv/lyrics';
+import { parseLyricsDoc, lineBounds, activeLineIndex, activeWordIndex, resegmentLine, type LyricsDoc } from '$lib/tv/lyrics';
 
 // Mirrors the worker's normalize_lyrics output.
 const raw = {
@@ -486,4 +486,80 @@ test('resegmenting a long duet line keeps the part on every row it splits into',
 	const out = resegmentLine(line, LINE_GAP_SEC, LINE_MAX_CHARS, 0);
 	expect(out.length).toBeGreaterThan(1); // it actually split
 	expect(out.every((l) => l.part === 'B')).toBe(true);
+});
+
+
+// ── alignment v2's optional fields: syllables on words, confidence on lines ──────────────────────
+
+test('syllables parse when well-formed and malformed entries drop silently', () => {
+	const doc = parseLyricsDoc({
+		language: 'en',
+		lines: [
+			{
+				text: 'away',
+				start: 1,
+				end: 2,
+				words: [
+					{
+						word: 'away',
+						start: 1,
+						end: 2,
+						syllables: [
+							{ text: 'a', start: 1, end: 1.4 },
+							{ text: 'way', start: 1.6, end: 2 },
+							{ text: '', start: 1, end: 2 }, // empty text: drop
+							{ text: 'x', start: 'no' } // malformed: drop
+						]
+					}
+				]
+			}
+		]
+	});
+	expect(doc).not.toBeNull();
+	const word = doc!.lines[0]!.words[0]!;
+	expect(word.syllables).toEqual([
+		{ text: 'a', start: 1, end: 1.4 },
+		{ text: 'way', start: 1.6, end: 2 }
+	]);
+});
+
+test('a v1 document without syllables or confidence parses exactly as before', () => {
+	// The compatibility promise: these fields are additive. An old artifact must produce a word with NO
+	// syllables key (not an empty array) and a line with NO confidence.
+	const doc = parseLyricsDoc({
+		language: 'en',
+		lines: [{ text: 'hi', start: 0, end: 1, words: [{ word: 'hi', start: 0, end: 1 }] }]
+	});
+	expect(doc!.lines[0]!.words[0]!.syllables).toBeUndefined();
+	expect(doc!.lines[0]!.confidence).toBeUndefined();
+});
+
+test('line confidence parses only the three known values', () => {
+	const doc = parseLyricsDoc({
+		language: 'en',
+		lines: [
+			{ text: 'a', start: 0, end: 1, words: [{ word: 'a', start: 0, end: 1 }], confidence: 'low' },
+			{ text: 'b', start: 2, end: 3, words: [{ word: 'b', start: 2, end: 3 }], confidence: 'shiny' }
+		]
+	});
+	expect(doc!.lines[0]!.confidence).toBe('low');
+	expect(doc!.lines[1]!.confidence).toBeUndefined(); // unknown value: dropped, not trusted
+});
+
+test('confidence survives a resegment split, like a duet part does', () => {
+	// The grading judged the SOURCE line; every row it splits into inherits the judgement.
+	const line = {
+		start: 0,
+		end: 20,
+		text: 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen',
+		words: Array.from({ length: 14 }, (_v, i) => ({
+			word: ['one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen'][i]!,
+			start: i * (i < 7 ? 0.4 : 0.4) + (i >= 7 ? 5 : 0),
+			end: i * 0.4 + (i >= 7 ? 5.3 : 0.3)
+		})),
+		confidence: 'low' as const
+	};
+	const split = resegmentLine(line, 1.0, 40);
+	expect(split.length).toBeGreaterThan(1);
+	for (const l of split) expect(l.confidence).toBe('low');
 });
