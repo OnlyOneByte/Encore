@@ -97,7 +97,7 @@ test('THE INVARIANT: a process never reports a stage it has already passed', () 
 		version: '1'
 	});
 
-	// The worker's REAL stage plans (new-worker/encore_worker/protocol/vocabulary.py): stems and align both open with
+	// The worker's REAL stage plans (worker/encore_worker/protocol/vocabulary.py): stems and align both open with
 	// a download of their own, which is what leaks through.
 	runStep(h, 'fetch', ['downloading'], { annotation: undefined });
 	runStep(h, 'stems', ['downloading', 'separating'], { stems: { instrumental: 'derived/stems/m1-instrumental.flac' } });

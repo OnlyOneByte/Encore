@@ -483,7 +483,7 @@ async def _dispatch(
 
     if assign.action == "fetch":
         # Fetch is deliberately NOT durable: it is one download, and DBOS would checkpoint a step whose
-        # retry is cheaper than its bookkeeping. See new-worker/README.md "What is deliberately absent".
+        # retry is cheaper than its bookkeeping. See worker/README.md "What is deliberately absent".
         fetched = await run_fetch(
             job,
             FetchStepsImpl(

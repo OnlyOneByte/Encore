@@ -163,7 +163,7 @@ Rotation lives in `src/lib/contract/queue/rotation.ts`, the policies in
 
 ### Lyrics candidates and grading
 
-`src/lib/contract/lyrics/lyrics.ts` is the authority and `new-worker/encore_worker/domain/lyrics/` mirrors it; the
+`src/lib/contract/lyrics/lyrics.ts` is the authority and `worker/encore_worker/domain/lyrics/` mirrors it; the
 shared-corpus parity guard holds the two equal. The acquisition model is `docs/ARCHITECTURE.md` §8.
 
 - **Text quality and timing fidelity are INDEPENDENT axes**, which is why a song keeps a SET of candidates
@@ -693,7 +693,7 @@ executes it.** The full axis list is in `docs/ARCHITECTURE.md` §7.
   produce bit-identical doubles. A machine-translated caption track is refused OUTRIGHT: it is fluent, long
   enough to clear the compare floor, and about the right song in the wrong language, so it would not
   abstain — it would vote confidently against every correct candidate.
-- **`new-worker/encore_worker/protocol/frames.py` mirrors the `WorkerMessage` / `WorkerCommand` frame names**, and a parity guard
+- **`worker/encore_worker/protocol/frames.py` mirrors the `WorkerMessage` / `WorkerCommand` frame names**, and a parity guard
   asserts the two unions match. Adding a frame means adding it on both sides.
 
 ### Worker runtime

@@ -730,7 +730,7 @@ known-good artifact.
 > `plan_for`, `STAGE_PLANS` and the `src.docgen` generator went with it, so nothing regenerates these tables
 > and no test guards them any more.
 >
-> The replacement is not a plan list: `new-worker/encore_worker/workflows/` holds one async function per
+> The replacement is not a plan list: `worker/encore_worker/workflows/` holds one async function per
 > action (`align`, `stems`, `fetch`), registered with DBOS so each step is checkpointed and a retry resumes
 > rather than restarts. There is no plan table to generate because there is no plan data structure — the
 > control flow is the code. Rewrite this section against `workflows/` before trusting anything below.

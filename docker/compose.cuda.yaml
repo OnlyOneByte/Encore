@@ -1,11 +1,11 @@
 # NVIDIA GPU worker — compose OVERRIDE for docker/compose.yaml.
 #
-#   ./dev.sh compose --cuda --new-stems up -d
+#   ./dev.sh compose --cuda --stems up -d
 #
 # or, spelled out (the wrapper exists so this does not have to be):
 #
 #   docker compose -f docker/compose.yaml -f docker/compose.cuda.yaml \
-#     --new-stems up -d
+#     --stems up -d
 #
 # Run from the repo root either way. The base file sets `name: encore`, so the project name does not
 # depend on which directory you invoke from.
@@ -22,7 +22,7 @@
 #     in `docker/.env`, beside the base compose file. Prefer ABSOLUTE paths: a relative one resolves
 #     against docker/, not the repo root. On WSL2 they MUST point at the distro's own ext4 and never at
 #     /mnt/c: 9p is slow and does not honour POSIX locking, and core runs SQLite in WAL mode.
-#   * new-worker-cache — already a NAMED volume in the base file, for a reason documented there. Do not
+#   * worker-cache — already a NAMED volume in the base file, for a reason documented there. Do not
 #     convert it to a bind mount; Docker initialises a named volume from the image's own
 #     $XDG_CACHE_HOME, so it inherits the worker's ownership, whereas a fresh bind directory arrives
 #     root-owned and the uid-10001 worker cannot write to it.
@@ -34,8 +34,8 @@ services:
   #
   # The CUDA wheels come from the `cu128` EXTRA rather than an index URL, because `[tool.uv.sources]` already
   # maps each extra to its own index and declares the two mutually exclusive. Without this a
-  # `--new-stems` GPU deploy silently builds CPU-only and cooks on the CPU.
-  new-worker:
+  # `--stems` GPU deploy silently builds CPU-only and cooks on the CPU.
+  worker:
     # PID-1 zombie reaping — see the note in the base compose.yaml. Restated here because a reader of this
     # override should not have to know Compose merge rules to see it.
     init: true

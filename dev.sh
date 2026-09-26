@@ -15,9 +15,9 @@
 #   bash dev.sh --reset --yes    # skip the destructive-action confirmation
 #
 #   ./dev.sh compose up                     # DOCKER instead of native: core only
-#   ./dev.sh compose --new-stems up         # core + the karaoke worker
-#   ./dev.sh compose --cuda --new-stems up -d      # the NVIDIA deploy target
-#   ./dev.sh compose --new-stems up          # the DBOS rewrite instead of the incumbent worker
+#   ./dev.sh compose --stems up         # core + the karaoke worker
+#   ./dev.sh compose --cuda --stems up -d      # the NVIDIA deploy target
+#   ./dev.sh compose --stems up          # the DBOS rewrite instead of the incumbent worker
 #     Everything after `compose` is passed to `docker compose` verbatim, against
 #     docker/compose.yaml. Skips all native-dev preflight.
 #
@@ -42,7 +42,7 @@ ROOT="$PWD"
 
 # ── `dev.sh compose ...` — the DOCKER path, handled before anything else ──────────────────────────
 # Intercepted here, ahead of the flag parser, for two reasons: the parser rejects unknown flags and would
-# choke on `--profile new-stems up -d`, and none of the native-dev preflight below (uv sync, deno, ffmpeg codec
+# choke on `--profile stems up -d`, and none of the native-dev preflight below (uv sync, deno, ffmpeg codec
 # probe) applies to a container build.
 #
 # It exists so `-f docker/compose.yaml` is written ONCE. Compose derives its project directory from the
@@ -59,12 +59,12 @@ if [ "${1:-}" = "compose" ]; then
 		shift
 		compose_files+=(-f "$ROOT/docker/compose.cuda.yaml")
 	fi
-	# `--new-stems` is sugar for the DBOS rewrite's profile. Spelled here rather than left to the caller
+	# `--stems` is sugar for the DBOS rewrite's profile. Spelled here rather than left to the caller
 	# because the two worker profiles must never run together: they advertise overlapping capabilities, so
 	# the core would round-robin jobs between them and any comparison would measure whichever was idle.
-	if [ "${1:-}" = "--new-stems" ]; then
+	if [ "${1:-}" = "--stems" ]; then
 		shift
-		set -- --profile new-stems "$@"
+		set -- --profile stems "$@"
 	fi
 	command -v docker >/dev/null 2>&1 || { echo "dev.sh compose: no docker on PATH" >&2; exit 127; }
 	# NO --project-directory: it would override the default and send Compose looking for `.env` in the
@@ -173,16 +173,16 @@ need() {
 # reads as a broken worker rather than as a stripped codec set. What the code actually calls, read out of the
 # code rather than assumed:
 #
-#   volumedetect (FILTER)  src/lib/server/media/loudness.ts and new-worker's encode path and core both shell
+#   volumedetect (FILTER)  src/lib/server/media/loudness.ts and the worker's encode path and core both shell
 #                          `-af volumedetect -f null -` and parse `mean_volume:`/`max_volume:` off stderr.
 #                          Absent, parseVolumeDetect() returns null forever — and null is DELIBERATELY
 #                          "unmeasurable, not silent", so nothing throws: every guiding track links
 #                          unverified, a digitally silent stem publishes as though it were fine, and no
 #                          screen anywhere says why.
-#   join (FILTER)          new-worker adapters/encode.py guide_mix_argv folds both stems into ONE
+#   join (FILTER)          worker adapters/encode.py guide_mix_argv folds both stems into ONE
 #                          4-channel FLAC via `join=inputs=2:channel_layout=quad`. That single file is what
 #                          stops the guiding track drifting against the instrumental.
-#   amix (FILTER)          new-worker adapters/separate.py mix_minus_argv sums the MLX engine's
+#   amix (FILTER)          worker adapters/separate.py mix_minus_argv sums the MLX engine's
 #                          non-vocal stems with `amix=inputs=N:normalize=0`.
 #   flac (ENCODER)         every PUBLISHED stem and the guide mix (demucs.py encode_flac_argv and
 #                          encode_guide_mix_argv, `-c:a flac`), plus core's own legacy-stem recompress in
@@ -352,16 +352,16 @@ fi
 #   1. deno on PATH. The image installs deno specifically, so that is what this checks for.
 #   2. `--remote-components ejs:github`, which lives in docker/yt-dlp.conf. The image copies that to
 #      /etc/yt-dlp.conf; natively we point the worker's XDG_CONFIG_HOME at a copy instead.
-YTDLP_CONFIG_HOME="$ROOT/new-worker/.dev-ytdlp"
-TOOLS_DIR="$ROOT/new-worker/.dev-tools/bin"
+YTDLP_CONFIG_HOME="$ROOT/worker/.dev-ytdlp"
+TOOLS_DIR="$ROOT/worker/.dev-tools/bin"
 DENO_DIR="$TOOLS_DIR"
-# The SAME version docker/new-worker.Dockerfile installs, read out of the Dockerfile so a bump there cannot
+# The SAME version docker/worker.Dockerfile installs, read out of the Dockerfile so a bump there cannot
 # leave a dev box on a different deno than prod.
 #
 # CHECKED, not just read: a wrong path or a renamed ARG makes sed print nothing and succeed, and the empty
 # result would be interpolated into a download URL that 404s much later — inverting the guarantee this line
 # exists for. It is the one place in this script that depends on another file's internal text.
-WORKER_DOCKERFILE="$ROOT/docker/new-worker.Dockerfile"
+WORKER_DOCKERFILE="$ROOT/docker/worker.Dockerfile"
 DENO_VERSION="$(sed -n 's/^ARG DENO_VERSION=\(.*\)$/\1/p' "$WORKER_DOCKERFILE")"
 [ -n "$DENO_VERSION" ] || {
 	echo "dev.sh: no 'ARG DENO_VERSION=' found in $WORKER_DOCKERFILE" >&2
@@ -491,7 +491,7 @@ if [ "$DO_RESET" = 1 ]; then
 		"$ROOT/data"       # sqlite + WAL + shm
 		"$ROOT/temp"       # an abandoned store from an older layout; nothing reads it
 		"$CORE/.svelte-kit" "$CORE/build"
-		"$ROOT/new-worker/.pytest_cache" "$ROOT/new-worker/.mypy_cache" "$ROOT/new-worker/.ruff_cache"
+		"$ROOT/worker/.pytest_cache" "$ROOT/worker/.mypy_cache" "$ROOT/worker/.ruff_cache"
 		"$YTDLP_CONFIG_HOME/yt-dlp"   # the generated config; the deno beside it is a tool, not state
 	)
 	if [ "$NUKE_MODELS" = 1 ]; then
@@ -513,7 +513,7 @@ if [ "$DO_RESET" = 1 ]; then
 	fi
 
 	for t in "${TARGETS[@]}"; do rm -rf "$t"; done
-	find "$ROOT/new-worker" -name '__pycache__' -type d -not -path '*/.venv/*' -exec rm -rf {} + 2>/dev/null || true
+	find "$ROOT/worker" -name '__pycache__' -type d -not -path '*/.venv/*' -exec rm -rf {} + 2>/dev/null || true
 	echo "reset done — next boot recreates the dirs and applies drizzle/0000_baseline.sql from empty."
 fi
 
@@ -528,12 +528,12 @@ fi
 # a hand-rolled uv fetch, a requirements/constraints sha stamp, a websockets canary, a karaoke-lyrics-processor
 # --no-deps pin — existed because `requirements.txt` pinned 16 direct deps that resolved to ~128 packages
 # whose versions were whatever the day of your install decided. `uv sync --frozen` reads
-# new-worker/uv.lock, so the dev box and docker/new-worker.Dockerfile resolve the identical wheels, and uv
+# worker/uv.lock, so the dev box and docker/worker.Dockerfile resolve the identical wheels, and uv
 # supplies its own 3.12 on a box whose python3 is older.
 #
 # `--frozen` FAILS rather than re-resolving when the lock disagrees with pyproject.toml, which is the whole
 # point of committing one: a silent re-resolve is how a dev box ends up testing versions nobody pinned.
-WORKER_DIR="$ROOT/new-worker"
+WORKER_DIR="$ROOT/worker"
 VENV="$WORKER_DIR/.venv"
 
 # The extras a dev box needs. `ffmpeg` bundles a static FFmpeg 7.1 so publication does not depend on what
@@ -543,17 +543,17 @@ WORKER_EXTRAS="--extra ml --extra text --extra ffmpeg --extra audiosep --extra m
 
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 	if ! command -v uv >/dev/null 2>&1; then
-		echo "dev.sh: uv is required to run the worker (it reads new-worker/uv.lock)." >&2
+		echo "dev.sh: uv is required to run the worker (it reads worker/uv.lock)." >&2
 		echo "  brew install uv        # or: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
 		echo "  # core alone needs none of this: bash dev.sh --core-only" >&2
 		exit 1
 	fi
-	say "syncing worker deps from new-worker/uv.lock (multi-GB on a cold cache: torch + whisperx + demucs)"
+	say "syncing worker deps from worker/uv.lock (multi-GB on a cold cache: torch + whisperx + demucs)"
 	# shellcheck disable=SC2086 # WORKER_EXTRAS is a deliberate word list
 	(cd "$WORKER_DIR" && uv sync --frozen $WORKER_EXTRAS)
 fi
 
-# The worker's own yt-dlp config, mirroring what docker/new-worker.Dockerfile puts at /etc/yt-dlp.conf. Rewritten
+# The worker's own yt-dlp config, mirroring what docker/worker.Dockerfile puts at /etc/yt-dlp.conf. Rewritten
 # every run so an edit to docker/yt-dlp.conf lands without a --reset.
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 	mkdir -p "$YTDLP_CONFIG_HOME/yt-dlp"
@@ -671,7 +671,7 @@ if [ "$CORE_ONLY" != 1 ]; then
 			XDG_CONFIG_HOME="$YTDLP_CONFIG_HOME" \
 			ENCORE_MEDIA_DIR="$MEDIA_DIR" \
 			MEDIA_DIR="$MEDIA_DIR" \
-			ENCORE_DBOS_DB="$DATA_DIR/new-worker.sqlite" \
+			ENCORE_DBOS_DB="$DATA_DIR/worker.sqlite" \
 			"$VENV/bin/python" -m encore_worker
 	) & WORKER_PID=$!
 fi

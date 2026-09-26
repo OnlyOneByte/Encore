@@ -65,7 +65,7 @@ export function resolveBase(ref: string): { base: string; rest: string } {
 	return { base: rootForClass(cls), rest: clean.slice(cls.length + 1) };
 }
 
-// Every key below MUST agree byte-for-byte with the worker's output paths (mirrored in new-worker/encore_worker/artifacts/keys.py):
+// Every key below MUST agree byte-for-byte with the worker's output paths (mirrored in worker/encore_worker/artifacts/keys.py):
 // the TV resolves `/media/${ref}`, so a mismatch is SILENT — the file exists and the player 404s.
 
 /** Raw original audio. The one unrecoverable asset. */

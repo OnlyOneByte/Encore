@@ -1,4 +1,4 @@
-# new-worker
+# worker
 
 A rewrite of `worker/` as **durable workflows** rather than a linear pipeline.
 
