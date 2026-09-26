@@ -61,9 +61,9 @@ services:
       - ${ENCORE_MEDIA_VOLUME:-../media}:/app/media # audio + derived + meta + job scratch
     restart: unless-stopped
 
-  # THE ONLY WORKER. The incumbent `worker` service and its `stems` profile were deleted at the hard
-  # switchover; this one kept its own name and its `stems` profile so existing invocations and the
-  # `worker-cache` / `worker-state` volumes did not have to be renamed in the same change.
+  # The only worker. A second, older service sat beside this one during the rewrite and was deleted at the
+  # hard switchover, along with its `worker-cache` volume — so a machine that ran the old `stems` profile
+  # still has an orphaned `encore_worker-cache` volume to reclaim with `docker volume rm`.
   worker:
     <<: *hardening
     # demucs/yt-dlp grandchildren reparent to this process, which runs as PID 1 and is not an init, so

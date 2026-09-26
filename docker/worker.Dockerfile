@@ -1,10 +1,10 @@
-# Encore worker — the DBOS rewrite of the make-karaoke box. Gated behind the compose `stems`
-# profile, so neither the MVP nor the existing `stems` profile builds this multi-GB image.
+# Encore worker — the make-karaoke box: fetch, separate, align. Gated behind the compose `stems` profile,
+# so the default MVP `up` does not build this multi-GB image.
 #
-# Differs from worker.Dockerfile in exactly one structural way: dependencies come from `uv` against a
-# LOCKFILE rather than from `pip install -r requirements.txt`, so the image resolves to the same versions
-# the dev box tested. Everything else it inherits deliberately — the deno runtime, /etc/yt-dlp.conf, the
-# non-root uid and the cache volume were each paid for in the old image and none of the reasons changed.
+# Dependencies come from `uv` against a LOCKFILE, so the image resolves the same versions the dev box
+# tested — `--frozen` below turns a lock/manifest disagreement into a build failure rather than a silent
+# re-resolve. The deno runtime, /etc/yt-dlp.conf, the non-root uid and the cache volume were each paid for
+# in the predecessor image this replaced, and none of the reasons changed.
 FROM python:3.12-slim-bookworm AS runtime
 WORKDIR /app/worker
 
