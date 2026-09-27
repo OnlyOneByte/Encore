@@ -39,7 +39,8 @@ function refreshDisplayFields(existing: Media, r: SearchResult, persist: (m: Med
 
 export const GET: RequestHandler = async ({ url }) => {
 	const q = (url.searchParams.get('q') ?? '').trim();
-	const only = url.searchParams.get('source'); // optional narrowing: 'youtube' | 'local'
+	const only = url.searchParams.get('source'); // optional narrowing: 'youtube' | 'ytmusic' | 'local' | 'spotify'
+	const wants = (source: string) => !only || only === source;
 	const app = getApp();
 
 	// Empty query returns recent + popular from this session; the readiness groups still come back empty, so the client renders one shape in both states.
@@ -50,11 +51,16 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ ready: [], processing: [], results: [], recent, popular });
 	}
 
-	const [yt, local, spotify] = await Promise.all([
-		only === 'local' || only === 'spotify' ? [] : safeSearch(app.youtube, q),
-		only === 'youtube' || only === 'spotify' ? [] : safeSearch(app.localLibrary, q),
+	const [yt, ytm, local, spotify] = await Promise.all([
+		wants('youtube') ? safeSearch(app.youtube, q) : [],
+		// YouTube MUSIC: the catalog's song entities (real artist, album, duration) instead of whatever
+		// uploads matched. Same `source: 'youtube'` identity — where a hit was FOUND is not what it IS —
+		// so a song discovered here dedupes against the same video found by ytsearch, and every consumer
+		// (fetcher, thumbs, retention) already speaks it.
+		wants('ytmusic') ? safeSearch(app.ytmusic, q) : [],
+		wants('local') ? safeSearch(app.localLibrary, q) : [],
 		// Spotify is a SEARCH/metadata source only (annotator pattern): its hits carry clean canonical artist/title/duration into the merged output, but a spotify-sourced media is never processable — `isProcessableSource` is the one authority on that, asked by `processState`, the phone's `canProcess`, and this route's consumers. No-op when creds are unset; safeSearch tolerates a dead source.
-		only === 'youtube' || only === 'local' ? [] : safeSearch(app.spotify, q)
+		wants('spotify') ? safeSearch(app.spotify, q) : []
 	]);
 
 	// ONE index over the catalog, not a full scan per hit: this runs on a debounced keystroke against every song ever materialised. Earliest-inserted wins per origin, and newly minted rows are fed back in, so two resolvers returning the same video still collapse to one Media.
@@ -65,7 +71,9 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 
 	// Materialize every hit into a queue-able Media. Recognising a song already SEEN (by its origin identity) is what keeps a processed song from reappearing as a second, raw row — see Media.sourceRef, immutable for exactly this reason.
-	const materialized: Media[] = [...local, ...yt, ...spotify].map((r) => {
+	// Music-catalog hits first among the new: their artist/title are the catalog's own, so when both
+	// searches return the same video the minted row carries the better metadata.
+	const materialized: Media[] = [...local, ...ytm, ...yt, ...spotify].map((r) => {
 		const key = originKey(r.source, r.sourceRef);
 		const existing = byOrigin.get(key);
 		if (existing) return refreshDisplayFields(existing, r, (m) => app.media.upsert(m));

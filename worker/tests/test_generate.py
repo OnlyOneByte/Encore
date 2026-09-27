@@ -256,3 +256,30 @@ def test_a_failing_window_decode_keeps_the_original() -> None:
     doc = gen(["fly away"])
     em = FakeEmissions(log_probs=[0.0] * 4000, frame_sec=0.02, dictionary=DIC)
     assert regenerate([(doc.lines, (2.0, 8.0))], em, decoder=broken) == {}
+
+
+# ── the onset lead ───────────────────────────────────────────────────────────────────────────────
+
+
+def test_lead_pulls_starts_back_but_never_past_the_previous_span() -> None:
+    """MEASURED on 5693 hand-timed words: the decode starts +41 ms late everywhere while ends run early,
+    so starts are pulled back (toward the true onset) and clamped at the previous span's end — the clamp
+    is what preserves the non-overlap invariant every grouping level inherits."""
+    from encore_worker.domain.lyrics.generate import _lead_starts
+
+    spans = [(1.00, 1.20, -0.5), (1.22, 1.40, -0.5), (2.00, 2.30, -0.5)]
+    led = _lead_starts(spans, 0.04)
+    assert led[0] == (0.96, 1.20, -0.5), "a free onset moves the full lead"
+    assert led[1] == (1.20, 1.40, -0.5), "an interior span clamps at its predecessor's end"
+    assert led[2] == (1.96, 2.30, -0.5), "a span after a gap moves the full lead"
+    for (_s0, e0, _sc0), (s1, _e1, _sc1) in zip(led, led[1:], strict=False):
+        assert s1 >= e0 - 1e-9, "no overlaps introduced"
+
+
+def test_lead_never_produces_a_negative_or_inverted_span() -> None:
+    from encore_worker.domain.lyrics.generate import _lead_starts
+
+    led = _lead_starts([(0.01, 0.05, -0.5)], 0.04)
+    assert led[0][0] == 0.0
+    led2 = _lead_starts([(1.0, 1.01, -0.5), (1.01, 1.02, -0.5)], 0.04)
+    assert all(s <= e for s, e, _sc in led2)

@@ -6,7 +6,9 @@ import { defineConfig } from 'vite';
 // Encore core — SvelteKit on Bun. `svelte-adapter-bun` is the one non-first-party seam
 // (docs/ARCHITECTURE.md); if it proves rough, swap to @sveltejs/adapter-node under the Bun runtime.
 export default defineConfig({
-	// bun:sqlite is a Bun built-in — keep it external so the adapter bundler doesn't try to resolve it
+	// bun:sqlite is a Bun built-in — keep it external in VITE's SSR build. This does NOT reach the adapter:
+	// svelte-adapter-bun re-bundles with its own rolldown call whose externals ignore this config, so
+	// `/^bun:/` is added there by patches/svelte-adapter-bun@1.0.1.patch.
 	ssr: { external: ['bun:sqlite'] },
 	build: { rollupOptions: { external: ['bun:sqlite'] } },
 	plugins: [

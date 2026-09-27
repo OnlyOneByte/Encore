@@ -41,6 +41,11 @@ class ToolFailed(RuntimeError):
         self.code = code
         self.output = output
 
+    def __reduce__(self) -> tuple[type[ToolFailed], tuple[tuple[str, ...], int, str]]:
+        # DBOS pickles a workflow's exception. The default reduce replays `__init__` with `self.args` — the
+        # one formatted message — so unpickling raised a TypeError that replaced the diagnosis it carried.
+        return (type(self), (self.argv, self.code, self.output))
+
 
 #: Substrings every accelerator uses to say "not enough memory". Matched case-insensitively against a failed
 #: command's combined output.

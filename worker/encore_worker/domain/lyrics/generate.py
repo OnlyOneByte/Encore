@@ -35,6 +35,15 @@ from typing import Any
 #: this confidence, so a non-Latin token or a run of digits degrades one word rather than failing the line.
 OOV_CONFIDENCE = "low"
 
+#: How far every char span's START is pulled back toward the true acoustic onset, clamped at the previous
+#: span's end. MEASURED, not tuned: across 5693 words with hand-measured onsets (JamendoLyrics, 20 songs)
+#: the raw decode starts +41 ms late on EVERY song — wav2vec2 emits a character a frame or two after the
+#: sound begins — while ENDS are 46 ms EARLY, so this applies to starts only; a translation would damage
+#: the ends it fixed the starts with. Effect at the measured optimum (40-50 ms): words within ±100 ms of
+#: truth go from 72.0% to ~79%. The clamp is what makes it safe: an interior char bounded by its
+#: predecessor cannot move, so the lead acts exactly where the delay physically lives — onsets after gaps.
+ONSET_LEAD_SEC = 0.04
+
 
 @dataclass(frozen=True, slots=True)
 class Syllable:
@@ -309,6 +318,23 @@ def adopted_line(text: str, index: int, start: float, end: float) -> Line | None
     return Line(text=text, start=start, end=end, words=spread, score=0.0, index=index)
 
 
+def _lead_starts(
+    spans: list[tuple[float, float, float]], lead: float
+) -> list[tuple[float, float, float]]:
+    """Each span's start pulled back by `lead`, never past the previous span's end (see ONSET_LEAD_SEC).
+
+    Clamping against the ORIGINAL previous end preserves the ordering invariant every grouping level
+    inherits: chars stay non-overlapping, so syllables and words do too.
+    """
+    out: list[tuple[float, float, float]] = []
+    previous_end = 0.0
+    for start, end, score in spans:
+        pulled = min(max(start - lead, previous_end, 0.0), start)
+        out.append((pulled, end, score))
+        previous_end = end
+    return out
+
+
 def generate(
     line_texts: Sequence[str],
     emissions: Any,
@@ -360,7 +386,7 @@ def generate(
         return Generated(lines=(), language=language)
 
     frame_labels, frame_scores = decode(emissions.log_probs, targets)
-    spans = _char_spans(frame_labels, frame_scores, emissions.frame_sec)
+    spans = _lead_starts(_char_spans(frame_labels, frame_scores, emissions.frame_sec), ONSET_LEAD_SEC)
     # forced_align emits exactly one span per target when it succeeds; anything else means the decode and
     # the grouping disagree about the token stream, which is a defect and not a degradable condition.
     if len(spans) != len(targets):
