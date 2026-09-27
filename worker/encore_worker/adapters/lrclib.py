@@ -36,6 +36,7 @@ from collections.abc import Sequence
 
 from encore_worker.adapters.ratelimit import RateLimiter
 from encore_worker.domain.document import Segment
+from encore_worker.domain.lyrics.clean import clean_segments
 
 BASE_URL = "https://lrclib.net/api/get"
 
@@ -182,7 +183,7 @@ def parse_response(body: str) -> tuple[Segment, ...]:
 
     plain = payload.get("plainLyrics")
     if isinstance(plain, str) and plain.strip():
-        return tuple({"text": line.strip()} for line in plain.splitlines() if line.strip())
+        return clean_segments([{"text": line} for line in plain.splitlines() if line.strip()])
     return ()
 
 
@@ -217,7 +218,9 @@ def parse_lrc(text: str) -> tuple[Segment, ...]:
         if index + 1 < len(timed):
             segment["end"] = timed[index + 1][0]
         out.append(segment)
-    return tuple(out)
+    # An LRC body carries the same decorations a caption does — `♪` filler lines, bracketed section
+    # headers, the occasional escaped tag. Cleaned here so every provider publishes the same shape.
+    return clean_segments(out)
 
 
 def _seconds(minutes: str, seconds: str, fraction: str | None) -> float:

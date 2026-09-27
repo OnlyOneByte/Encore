@@ -137,6 +137,45 @@ alignment's own (equally offset) output. The fit recovers an injected offset to 
 stem and refuses a wrong song's sheet (envelope r gate). Full numbers:
 `docs/benchmarks/forced-alignment/`.
 
+### Caption text is not lyric text
+
+A caption track is a display artefact. Every text source is cleaned at its adapter boundary by
+`domain/lyrics/clean.py` before anything downstream sees it — because until that existed, the television
+drew this, verbatim, as words to sing:
+
+```
+- ♪♪ Gotta get that ♪♪ <i>- ♪♪ Boom boom boom ♪♪</i>
+```
+
+Removed: HTML/WebVTT markup (`<i>`, `<c.yellow>`, `<v Speaker>`), the same markup **entity-escaped**
+(one authored track is 89% `&lt;i&gt;`), ASR per-word timestamp spans (`<00:00:18.320><c> so</c>`),
+music-note decoration (`♪ ♪♪ ♪♪♪`, including a closer glued to the last word), leading speaker dashes,
+and zero-width characters. Ruby annotations are *excised* rather than unwrapped — unwrapping makes the
+ball sing every kanji twice.
+
+**What it deliberately does NOT do** is decide whether a line is a lyric, because each rule for that was
+measured to destroy real sung words:
+
+| Tempting rule | What it deletes |
+| --- | --- |
+| drop `(...)` lines by a sound-effect word list | `(Beat it, beat it)`, `(Play that funky music)`, `(Drop the beat)`, `(bells ringing)` |
+| drop bracketed lines with "no lowercase" (`[a-z]` is ASCII) | `[Люблю тебя]`, `[私の心は燃えている]`, `[사랑해요]`, `[GO!]` |
+| strip a capitalised token before `:` as a speaker label | `Baby: I love you`, `Mama: don't cry` |
+
+That judgement needs the AUDIO, and the align step already makes it better: the never-sung rule drops a
+line by measuring that nothing was sung in its span. Whole-line parentheses stay for a second reason —
+they are often the backing vocal itself (`(I'm in love with your body)` is sung).
+
+Order is load-bearing and two orderings were measured wrong first: entities decode **before** tags strip,
+and the speaker-dash rule runs **after** notes become spaces with a leading-whitespace anchor. Idempotence
+is a test, not a hope — it is what caught the dash anchor. Measured over 25,855 real lines from 170 caption
+and lyric files: 2.6% changed, 14 decoration-only lines dropped, 158 multilingual lyric files untouched.
+
+`clean_segments` also cleans the **per-word list** in lockstep, which is why it exists as well as
+`clean_line`: `lrcmux` is the first provider by priority and the only one supplying word timings, and
+`measure.timed_words` reads `word["word"]` first — a clean line over a dirty word stream would light a
+`♪` token on the ball while the screen read the sentence.
+
 ### Alignment: the global decode
 
 The `Time` step's default path, an inversion of the old one: **timings are evidence, never instructions.**
