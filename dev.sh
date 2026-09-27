@@ -448,11 +448,11 @@ port_owner() { lsof -ti:"$PORT" -sTCP:LISTEN 2>/dev/null || true; }
 
 preflight_free() {
 	local stale owner
-	stale="$(pgrep -f 'src\.dial_home|bun run \./server\.ts' 2>/dev/null || true)"
+	stale="$(pgrep -f 'encore_worker|bun run \./server\.ts' 2>/dev/null || true)"
 	if [ -n "$stale" ]; then
 		echo
 		echo "refusing to start — an earlier core/worker is still running:" >&2
-		pgrep -fl 'src\.dial_home|bun run \./server\.ts' >&2
+		pgrep -fl 'encore_worker|bun run \./server\.ts' >&2
 		echo >&2
 		echo "stop it first:  pkill -f 'encore_worker'; pkill -f 'bun run ./server.ts'" >&2
 		return 1

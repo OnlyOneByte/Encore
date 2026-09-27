@@ -114,6 +114,11 @@
 	let library = $state<Media[]>([]);
 	let libraryTags = $state<Record<string, string[]>>({});
 	let queryEl = $state<HTMLInputElement | null>(null);
+	/* WHERE to search. 'all' fans out to every resolver (the default philosophy: a singer picks by
+	   whether they can sing it, not by where it lives); the rest narrow via /api/search?source=.
+	   'ytmusic' exists because all-of-YouTube search returns lyric reuploads and hour loops with the
+	   UPLOADER as the artist, while the music catalog returns the song entity itself. */
+	let searchSource = $state<'all' | 'ytmusic' | 'youtube' | 'local'>('all');
 	let query = $state('');
 	let readyResults = $state<Media[]>([]);
 	let rawResults = $state<Media[]>([]);
@@ -144,6 +149,11 @@
 		debounceTimer = setTimeout(() => runSearch(q), 150);
 	}
 
+	function onSourceChange() {
+		const q = query.trim();
+		if (q) runSearch(q);
+	}
+
 	function clearSearch() {
 		query = '';
 		onQueryInput();
@@ -157,7 +167,8 @@
 		inflight = ctrl;
 		searching = true;
 		try {
-			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+			const source = searchSource === 'all' ? '' : `&source=${searchSource}`;
+			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}${source}`, { signal: ctrl.signal });
 			if (ctrl.signal.aborted) return;
 			const j = await res.json();
 			readyResults = j.ready ?? [];
@@ -547,6 +558,20 @@
 					oninput={onQueryInput}
 				/>
 			</div>
+			<div class="source-slot">
+				<select
+					class="source-select"
+					aria-label="Where to search"
+					title="Where to search"
+					bind:value={searchSource}
+					onchange={onSourceChange}
+				>
+					<option value="all">All</option>
+					<option value="ytmusic">YT Music</option>
+					<option value="youtube">YouTube</option>
+					<option value="local">Library</option>
+				</select>
+			</div>
 		</div>
 
 		{#if searching && rawResults.length === 0 && readyResults.length === 0}
@@ -869,6 +894,23 @@
 	.lib-slot {
 		flex: 0 0 auto;
 		display: flex;
+	}
+	/* The source picker: pinned like the library door (never shrinks beside the field), full row height so the
+	   three controls read as one bar. A native <select> on purpose — it gets the platform's own scrollable,
+	   accessible menu on a phone for free, which a custom dropdown would only reimplement worse. */
+	.source-slot {
+		flex: 0 0 auto;
+		display: flex;
+	}
+	.source-select {
+		height: 100%;
+		min-height: var(--tap);
+		padding: 0 var(--space-md);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--card);
+		color: var(--ink);
+		font: inherit;
 	}
 	/* `size-tap` sets a fixed height as well as a width, so filling the stretched slot needs this override. Keyed on
 	   the primitive's OWN `data-slot` and anchored under `.lib-slot`, which is the sanctioned form — a bare class rule

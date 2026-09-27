@@ -401,6 +401,24 @@ Readiness therefore has three honest states: `ready` (processed), `processing` (
 holding its slot), and `unacquired` (nothing to play yet). The third used to mean "playable as-is,
 with the original vocals", which is why it was renamed rather than reworded.
 
+### Search sources
+
+One query fans out to every resolver by default, because a singer picks a song by whether they can sing
+it now, not by where it came from. `?source=` narrows to one, which is what the phone's picker sets:
+
+| Source    | What it searches                                       | Why it exists                                                                                          |
+| --------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `youtube` | all of YouTube, keylessly via `yt-dlp ytsearch`        | the default reach: anything uploaded, including songs no catalog lists                                  |
+| `ytmusic` | YouTube Music's catalog (`songs` filter, InnerTube)    | catalog ROWS: the real artist and the track duration, instead of a lyric reupload credited to a channel |
+| `local`   | files on this box                                      | a library that needs no network                                                                         |
+| `spotify` | Spotify metadata only — never acquirable               | clean canonical artist/title as an annotator                                                            |
+
+`ytmusic` results are tagged `source: 'youtube'`, deliberately: a music hit IS a YouTube video id, so
+the same video found both ways collapses to one library row (origin identity is `source` + `sourceRef`),
+and the fetcher, thumbnail derivation and retention all already speak that identity. Where a hit was
+FOUND is not part of what it IS. InnerTube is unofficial, so every field read is defensive and a
+reshaped response degrades to an empty result — `safeSearch` already treats a dead source as a miss.
+
 ### Metadata provenance
 
 A YouTube title is not metadata. `Media.artist` holds whatever the source reported — often a channel

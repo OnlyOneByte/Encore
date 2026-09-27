@@ -218,6 +218,19 @@ def test_an_out_of_memory_failure_is_not_retryable() -> None:
     assert effective(cli.ToolFailed(["x"], 1, "boom")) is True, "an ordinary tool failure stays retryable"
 
 
+def test_a_tool_failure_survives_pickling() -> None:
+    """DBOS pickles a workflow's exception. A ToolFailed that could not round-trip reached the core as
+    `TypeError: missing 2 required positional arguments`, replacing yt-dlp's actual error with our own."""
+    import pickle
+
+    original = cli.ToolFailed(["yt-dlp", "url"], 1, "ERROR: HTTP Error 403: Forbidden")
+    restored = pickle.loads(pickle.dumps(original))
+
+    assert type(restored) is cli.ToolFailed
+    assert str(restored) == str(original)
+    assert (restored.argv, restored.code, restored.output) == (original.argv, original.code, original.output)
+
+
 def test_an_out_of_memory_message_names_the_remedy() -> None:
     """A person has to act on this — a smaller model, or a bigger box. A stack trace about tensors does not
     say that, which is why the message is written rather than passed through."""

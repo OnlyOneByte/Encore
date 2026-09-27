@@ -12,6 +12,7 @@ import { SettingsRepository } from './state/settings-repository';
 import { LocalLibrary, scanLibrary } from './media/local';
 import { ffmpegDurationProbe } from './media/duration';
 import { YouTubeResolver } from './media/youtube';
+import { innerTubeMusicSearch } from './media/ytmusic';
 import { SpotifyResolver } from './media/spotify-resolver';
 import { spotifySearch } from './media/spotify';
 import { ytDlpSearch } from './media/ytdlp';
@@ -88,6 +89,8 @@ export interface EncoreApp {
 	media: MediaRepository;
 	localLibrary: LocalLibrary;
 	youtube: YouTubeResolver;
+	/** YouTube MUSIC search (InnerTube `songs` filter): real artist/album rows, same video identity. */
+	ytmusic: YouTubeResolver;
 	/** Spotify SEARCH / metadata source (annotator only; no acquisition). No-op when creds unset. */
 	spotify: SpotifyResolver;
 	popularity: PopularityTracker;
@@ -516,6 +519,7 @@ export function getApp(): EncoreApp {
 		media: mediaRepo,
 		localLibrary,
 		youtube: new YouTubeResolver(ytDlpSearch),
+		ytmusic: new YouTubeResolver(innerTubeMusicSearch()),
 		spotify: new SpotifyResolver((q, n) => spotifySearch(q, n)),
 		popularity: createPopularityTracker(),
 		mediaStore,

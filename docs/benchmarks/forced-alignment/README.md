@@ -440,3 +440,24 @@ Three songs that still have gross lines and why:
   offset, not wrong text). Both live-found regressions came from re-gating the repaired series:
   never-be-alone (R1 adopted claims 1.76 s off from real singing) and bohemian-rhapsody (adoption
   dropped the r below threshold). Both now publish correctly.
+
+
+## Onset lead (2026-09-27; boundary refinement, measured on 5693 hand-timed words)
+
+The decode starts **+41 ms late on every one of the 20 jamendo songs** — wav2vec2 emits a character a
+frame or two after the sound begins — while word ENDS run 46 ms EARLY. So `generate` now pulls every char
+span's start back by `ONSET_LEAD_SEC = 40 ms`, clamped at the previous span's end (starts only; a
+translation would break the ends it fixed the starts with; the clamp preserves non-overlap and makes the
+lead act exactly where the delay physically lives — onsets after gaps).
+
+| metric (words vs measured truth) | before | after |
+| --- | --- | --- |
+| onset bias | +41 ms | **+4 ms** |
+| within ±100 ms | 72.0% | **78.7%** |
+| within ±150 ms | 82.7% | **85.7%** |
+| within ±300 ms (MIREX) | 91.1% | 91.3% |
+
+Energy-rise snapping was re-measured at word level against real word truth and REJECTED a second time
+(73.7% at ±100 ms — worse than the constant lead; it jumps to neighbouring onsets). Line-level E2E across
+the 32-song corpus: neutral-to-positive (±500 ms 88.7→89.3%, ±1 s 96.9→97.5%, still 29/32 songs at zero
+gross).
