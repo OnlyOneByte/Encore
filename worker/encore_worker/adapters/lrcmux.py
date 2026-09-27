@@ -31,6 +31,7 @@ from dataclasses import dataclass
 
 from encore_worker.adapters.ratelimit import RateLimiter
 from encore_worker.domain.document import TIMING_LINE, TIMING_WORD, Segment
+from encore_worker.domain.lyrics.clean import clean_segments
 
 BASE_URL = "https://api.lrcmux.dev"
 
@@ -253,8 +254,16 @@ def parse_response(body: str) -> Result:
             segment["words"] = words
         segments.append(segment)
 
-    if not segments:
+    # CLEANED BEFORE THE SYNC LEVEL IS DECIDED, not after. `clean_segments` also filters the per-word
+    # list — this is the one provider that supplies `words`, and `measure.timed_words` reads `word`
+    # first, so a clean line over a dirty word stream would light a `♪` token on the ball while the
+    # screen read the sentence. Cleaning after the `has_words` test would then claim word timing for a
+    # line whose word list was nothing but decoration.
+    cleaned = clean_segments(segments)
+
+    if not cleaned:
         return Result(segments=(), timing=None, source=source)
+    segments = list(cleaned)
 
     # The DECLARED level is not trusted over the payload: a response tagged `word` whose lines carry no
     # word spans cannot be word-timed, and believing the tag would offer knobs that have nothing to act on.

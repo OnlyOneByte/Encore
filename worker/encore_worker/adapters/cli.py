@@ -20,6 +20,7 @@ from collections.abc import Sequence
 
 from encore_worker.adapters.ports import ProgressSink
 from encore_worker.domain.document import Segment
+from encore_worker.domain.lyrics.clean import clean_segments
 
 #: yt-dlp writes progress as a percentage; this is the only shape worth parsing out of its output.
 _PCT = re.compile(r"\[download\]\s+(\d{1,3})(?:\.\d+)?%")
@@ -301,7 +302,11 @@ def parse_vtt(text: str) -> tuple[Segment, ...]:
     cue = _cue_of(block)
     if cue is not None:
         cues.append(cue)
-    return tuple(cues)
+    # CAPTION FORMAT IS NOT LYRIC. A cue body carries italic tags, ASR per-word timestamp spans, music
+    # notes and speaker dashes; published unfiltered they were drawn on the television as words to sing
+    # (measured: `- ♪♪ Gotta get that ♪♪ <i>- ♪♪ Boom boom boom ♪♪</i>`). See `domain/lyrics/clean.py`
+    # for what is removed and — more importantly — what deliberately is not.
+    return clean_segments(cues)
 
 
 _TIMESTAMP = re.compile(r"(\d{1,2}):(\d\d):(\d\d)[.,](\d{1,3})\s*-->\s*(\d{1,2}):(\d\d):(\d\d)[.,](\d{1,3})")
