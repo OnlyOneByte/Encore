@@ -3,7 +3,7 @@ import { eq, and, desc, isNotNull, inArray, type SQL } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
 import type { Media, LyricsCandidate } from '../../contract';
-import { readyToSing, normalizeSongProfile } from '../../contract';
+import { readyToSing, normalizeSongProfile, parseLyricsCandidates } from '../../contract';
 
 type MediaRow = typeof media.$inferInsert;
 
@@ -52,8 +52,9 @@ function facetCounts(values: string[]): Array<{ value: string; count: number }> 
 function parseCandidates(raw: string | null): LyricsCandidate[] | undefined {
 	if (!raw) return undefined;
 	try {
-		const parsed = JSON.parse(raw);
-		return Array.isArray(parsed) && parsed.length ? (parsed as LyricsCandidate[]) : undefined;
+		// READ, not cast: a stored row is as untrusted as the frame it came from, and older rows lack fields.
+		const parsed = parseLyricsCandidates(JSON.parse(raw));
+		return parsed.length ? parsed : undefined;
 	} catch {
 		return undefined;
 	}

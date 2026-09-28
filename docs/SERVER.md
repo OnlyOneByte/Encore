@@ -172,6 +172,28 @@ shared-corpus parity guard holds the two equal. The acquisition model is `docs/A
 - **NEVER-REGRESS is a property of keeping everything, not of a check.** Because nothing is removed, adding a
   candidate can only improve or preserve what `pickBestLyrics` returns, so a line-level source arriving late
   cannot displace existing word timings the way a "latest wins" write would.
+- **The worker's verdict decides WITHIN its report; the ranking decides ACROSS reports.** An align completion
+  reports every document it wrote (retention must name them all) and marks each one its ladder did not publish
+  `selectable: false`: retried, moved past, or — a job that found no lyrics — all of them. `lyricsRank` gives such
+  an attempt 0, so it is kept for retention and a person's re-pick but never auto-selected; ranked as a peer, it
+  was shown over the document the worker chose (review M3) — replayed over the alignment bench's run_align
+  ladders, in 319 of 768 song-modes, 236 of them a wrong text the worker had declined. Absent means selectable,
+  so stored rows rank as before. When nothing is showable and the pointer names a file a report withdrew (a
+  re-run rewrote it with a rejected attempt), `setMediaLyrics` clears the pointer instead of showing the reject.
+  A report also WITHDRAWS an earlier job's candidate for words its gate refused: a refused attempt writes
+  nothing, so the worker names each stored document of those words (same label, same text) `selectable: false`,
+  and the merge by ref replaces the stored entry — without it, a re-align that refused a text left the earlier
+  job's document of it ranked, and shown, over what the re-align published (review W1 r2).
+- **`textConfidence` is the WORDS' standing, `timingConfidence` their placement.** The worker derives the first
+  from the text's tier — a claim (a provider sheet, an authored caption track, a paste) is `high`; a transcript
+  and YouTube's machine track are `low` — and sends its timing grade only as the second. One field carrying both
+  made a well-timed machine caption authoritative and ranked every line-synced sheet as a guess. A person's
+  re-pick (a job carrying `pinnedText` / `pinnedRef`) is `high` whatever its tier: a human chose those words, as
+  the old worker had it. So a re-picked machine track reads as "Captions", while a re-picked transcript is
+  still no claim, because core never counts `asr` words as one. Both a worker's
+  report and a stored row are READ through `parseLyricsCandidates` (fail-safe on values it cannot read), never
+  cast; the cross-language fixture `tests/unit/contract/lyrics/worker-align-contract.json` is written by the
+  worker and holds the two sides to one reading.
 - **A human override is layered ABOVE the ranking, never inside it.** `resolveLyricsRef` is the one place
   override-then-rank is defined, and both rank-derivation sites must route through it. An override naming a
   ref no longer in the set is IGNORED, so a stale pointer falls back to the ranking instead of blanking the

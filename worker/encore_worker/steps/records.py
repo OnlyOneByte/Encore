@@ -9,6 +9,9 @@ one is a real constraint rather than style:
   * tuples, never lists. A list is mutable, and `Mapping` for params for the same reason.
   * paths and refs, never bytes, tensors or handles. Audio stays on disk under the media directory; a
     record says WHERE it is.
+  * a new field is APPENDED, never inserted, and a record that gains one restores its older checkpoints
+    through `restore_appended` (review W1 r2): pickle restores a slotted record positionally, and left
+    the new field unset, so a job resumed or forked across an upgrade failed on the first read of it.
 
 `TimingReport` travels inside `TimedDoc` because the verdict that decides whether to retry is computed
 from it in the workflow, not in the step — which is what keeps the decision pure and the step dumb.
@@ -16,12 +19,12 @@ from it in the workflow, not in the step — which is what keeps the decision pu
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from encore_worker.domain.document import TIMING_LINE, TIMING_WORD, Segment
 from encore_worker.domain.lyrics.policy import Knob, Tier
-from encore_worker.domain.lyrics.report import TimingReport
+from encore_worker.domain.lyrics.report import TimingReport, restore_appended
 
 __all__ = [
     "TIMING_LINE",
@@ -29,10 +32,12 @@ __all__ = [
     "AlignOutcome",
     "AudioRef",
     "JobRef",
+    "Refused",
     "Segment",
     "TextRef",
     "TimeRequest",
     "TimedDoc",
+    "tier_of_label",
 ]
 
 
@@ -178,7 +183,9 @@ class TimedDoc:
 
     ref: str
     timing: str
-    #: "high" / "medium" / "low". Read by the phone to decide whether to caveat the lyrics it shows.
+    #: The TIMING grade, "high" / "medium" / "low": how far the placement of these words is vouched for.
+    #: Core's `timingConfidence`, and NOTHING about whether the words are right — sent as `textConfidence`
+    #: (review M3) it made a machine-caption word doc authoritative and every line-sync doc `low`.
     confidence: str
     report: TimingReport
     language: str | None = None
@@ -188,6 +195,29 @@ class TimedDoc:
     #: alignment is a better ruler than any pre-alignment series, having been measured on this recording.
     #: A handful of floats, so a checkpoint pays almost nothing for it.
     line_starts: tuple[float, ...] = ()
+    #: The TEXT's tier (`TextRef.tier`), carried from the request so core's `textConfidence` is the text's
+    #: provenance — assigned where the text was acquired, never re-inferred from the label afterwards.
+    #: REQUIRED, and keyword-only so it can sit LAST: a slotted record pickles its fields positionally, and
+    #: inserting one mid-record would shift every later field of a checkpoint written before it.
+    tier: Tier = field(kw_only=True)
+
+    def __setstate__(self, state: Sequence[object]) -> None:
+        # A v2 checkpoint has no tier: the one its label was acquired at (`tier_of_label`).
+        restore_appended(self, state, tier=lambda got: tier_of_label(str(got.get("label") or "")))
+
+
+@dataclass(frozen=True, slots=True)
+class Refused:
+    """An attempt a GATE refused: the text was measured against this audio and judged not to describe it.
+
+    Nothing was written. Distinct from `time_text` returning None — "this attempt produced nothing" (a
+    decode that raised, a text with no alignable character), which may still line-sync — because a
+    refusal is a VERDICT ON THE TEXT: `report.refused` says why, and `policy.decide` answers it with
+    NextText. Collapsing the two is how every wrong text the envelope gate refused came to retry
+    LINE_SYNC with no gate at all (W0: 168 of the bench's 320).
+    """
+
+    report: TimingReport
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,8 +239,45 @@ class AlignOutcome:
     #: wrote and did NOT report is never enumerated and therefore never evicted — it leaks for the life of
     #: the library. It is also what makes re-selection possible without re-fetching the audio, which is what
     #: `/api/lyrics-reselect` exists to do.
+    #:
+    #: Every attempt is written to job scratch and PLACED in the store only by `publish`, after its
+    #: ownership check (review W1 r1), so these are the documents placed, under their store refs; a job
+    #: that failed or lost its lease placed and reports none. A PINNED job (review H5) places and reports
+    #: only the document at the pinned ref.
     candidates: tuple[TimedDoc, ...] = ()
+    #: The `SyncMode` value the job RAN, for its completion facts: `lines` falls back to `forced` on a song
+    #: with no vocals stem, and a pin is always `forced` (`workflows.align`). None from a caller that did
+    #: not resolve it (the facts then read the job's own param).
+    sync_mode: str | None = None
+    #: The texts a GATE refused in this job (`Refused`: measured not to describe this audio), one per label.
+    #: Core ranks every job's candidates together, and a refused attempt writes nothing, so a candidate an
+    #: EARLIER job stored for the same words would stay selectable beside this job's verdict on them: the
+    #: frame withdraws those (`align_steps.superseded_candidates`, review W1 r2). Empty for a pinned job.
+    refused: tuple[TextRef, ...] = ()
+
+    def __setstate__(self, state: Sequence[object]) -> None:
+        restore_appended(self, state)
 
     @property
     def no_lyrics(self) -> bool:
         return self.published is None
+
+
+#: The labels a MACHINE caption track has been written under: this worker's `captions:machine`
+#: (`AlignStepsImpl.fetch_captions`), and the old worker's `captions:auto` — its `AutoCaptionsSource` keyed
+#: them `{media}-captions-auto-{timing}.json` with textConfidence `low` (f04a2d0e^ `lyrics/sources.py`), and
+#: a library aligned before 2026-09-25 still holds those refs. Read as a CANDIDATE, one an earlier job stored
+#: would be withdrawn as textConfidence `high` (`__main__._lyrics_artifacts`) and lose the TV's "not
+#: verified" standing. (A PIN of one is sent `high` on purpose since W3, whatever its tier.)
+MACHINE_LABELS = frozenset({"captions:machine", "captions:auto"})
+
+
+def tier_of_label(label: str) -> Tier:
+    """The tier a label was acquired at, so a re-picked text keeps its standing (`fetch_captions`,
+    `transcribe`): a machine caption track and a transcript are measurements, not claims. Also what a
+    checkpointed `TimedDoc` written before it carried a tier is restored with."""
+    if label in MACHINE_LABELS:
+        return Tier.MACHINE
+    if label.split(":", 1)[0] == "asr":
+        return Tier.ASR
+    return Tier.CANDIDATE

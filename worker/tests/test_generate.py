@@ -225,9 +225,7 @@ def test_regenerate_decodes_inside_the_window_and_shifts_back_to_song_time() -> 
 
     doc = gen(["fly away"])
     em = FakeEmissions(log_probs=[0.0] * 4000, frame_sec=0.02, dictionary=DIC)
-    repaired = regenerate(
-        [(doc.lines, (2.0, 8.0))], em, decoder=slice_decoder, syllabifier=lambda w, _l: [w]
-    )
+    repaired = regenerate([(doc.lines, (2.0, 8.0))], em, decoder=slice_decoder, syllabifier=lambda w, _l: [w])
     assert set(repaired) == {0}
     line = repaired[0]
     assert line.index == 0
@@ -256,6 +254,31 @@ def test_a_failing_window_decode_keeps_the_original() -> None:
     doc = gen(["fly away"])
     em = FakeEmissions(log_probs=[0.0] * 4000, frame_sec=0.02, dictionary=DIC)
     assert regenerate([(doc.lines, (2.0, 8.0))], em, decoder=broken) == {}
+
+
+def test_a_raising_window_decode_is_reported_while_the_other_runs_still_repair() -> None:
+    """Kept originals, but COUNTED: a swallowed exception looked exactly like a repair nobody needed
+    (review L8). A window that is merely too tight is a skip, not a fault, and is not reported."""
+    from encore_worker.domain.lyrics.generate import regenerate
+
+    doc = gen(["fly away", "come home", "stay"])
+    fly, home, stay = doc.lines
+
+    def fails_on_fly(log_probs: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+        if len(targets) == len("flyaway"):
+            raise RuntimeError("window decode fault")
+        return slice_decoder(log_probs, targets)
+
+    em = FakeEmissions(log_probs=[0.0] * 4000, frame_sec=0.02, dictionary=DIC)
+    faults: list[str] = []
+    repaired = regenerate(
+        [((fly,), (2.0, 8.0)), ((home,), (10.0, 16.0)), ((stay,), (20.0, 20.1))],
+        em,
+        decoder=fails_on_fly,
+        faults=faults,
+    )
+    assert set(repaired) == {home.index}, "the faulting and the too-tight runs keep their originals"
+    assert faults == ["RuntimeError: window decode fault"]
 
 
 # ── the onset lead ───────────────────────────────────────────────────────────────────────────────

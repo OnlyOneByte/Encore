@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from encore_worker.domain.lyrics.policy import Knob, Tier
-from encore_worker.domain.lyrics.report import TimingReport
+from encore_worker.domain.lyrics.report import Engine, TimingReport
 from encore_worker.domain.lyrics.search import (
     Candidate,
     Commit,
@@ -22,7 +22,12 @@ from encore_worker.domain.lyrics.search import (
 
 CLEAN = TimingReport(words=200, coverage=1.0, duration_sec=200.0)
 INCOHERENT = TimingReport(words=200, coverage=1.0, duration_sec=200.0, out_of_order=5)
-THIN = TimingReport(words=50, coverage=0.3, duration_sec=200.0)
+#: WINDOWED, the engine that reads ALIGN_ON_MIX: the global one accepts thin coverage (review H2).
+THIN = TimingReport(words=50, coverage=0.3, duration_sec=200.0, engine=Engine.WINDOWED)
+NOTHING = TimingReport(words=0, coverage=0.0)
+#: What a LINE_SYNC attempt measures when it commits: lines, no words (review M1).
+LINE_SYNCED = TimingReport(coverage=0.9, duration_sec=200.0, engine=Engine.LINE_SYNC, lines=30)
+REFUSED = TimingReport(duration_sec=200.0, refused="envelope gate refused: blind r=0.11 @ +4.20s")
 
 
 def lrc(label: str = "lrclib") -> Candidate:
@@ -99,6 +104,163 @@ def test_no_vocals_stem_means_align_on_mix_is_never_offered() -> None:
         assert Knob.ALIGN_ON_MIX not in nxt.attempt.tried
 
 
+def test_thin_coverage_on_the_global_engine_commits_the_first_attempt() -> None:
+    """H2: no mix re-decode can replace a global stem document — it is committed as it stands."""
+    search = Search(pool=[lrc()])
+    first = search.begin()
+    assert isinstance(first, Try) and first.serial == 1
+    step = search.record(TimingReport(words=50, coverage=0.3, duration_sec=200.0))
+    assert isinstance(step, Commit) and (step.index, step.serial) == (first.index, 1)
+
+
+# ── line sync commits (review M1) ────────────────────────────────────────────────────────────────
+
+
+def test_line_sync_commits() -> None:
+    """THE M1 test at Search level: an incoherent word document degrades to LINE_SYNC, and the line
+    document that attempt produced is COMMITTED — it used to measure `usable=False` (no words), so the
+    search moved on and every out-of-order document dropped its whole text."""
+    search = Search(pool=[lrc(), asr()])
+    search.begin()
+    step = search.record(INCOHERENT)
+    assert isinstance(step, Try) and step.attempt.tried == {Knob.LINE_SYNC} and step.serial == 2
+    committed = search.record(LINE_SYNCED)
+    assert isinstance(committed, Commit), "a usable line-synced document must publish"
+    assert (committed.index, committed.serial) == (0, 2)
+    assert search.pool[committed.index].label == "lrclib"
+    assert [e["verdict"] for e in search.trail] == ["retime", "accept"]
+
+
+def test_a_line_sync_that_produced_nothing_moves_on_with_an_honest_reason() -> None:
+    search = Search(pool=[lrc(), asr()])
+    search.begin()
+    search.record(INCOHERENT)
+    step = search.record(NOTHING)
+    assert isinstance(step, Try) and search.pool[step.index].tier is Tier.ASR
+    reason = search.trail[-1]["why"]
+    assert isinstance(reason, str) and "carries no line timings" not in reason
+
+
+# ── a refusal ends the text ──────────────────────────────────────────────────────────────────────
+
+
+def test_a_refused_text_moves_on_without_line_sync() -> None:
+    """The wrong-text hole: a gate refusal used to read as NOTHING_TIMED, and a timed text then retried
+    LINE_SYNC — which, once M1 lets it commit, would publish the refused words."""
+    search = Search(pool=[lrc(), asr()])
+    search.begin()
+    step = search.record(REFUSED)
+    assert isinstance(step, Try), "the next text is tried"
+    assert search.pool[step.index].tier is Tier.ASR and Knob.LINE_SYNC not in step.attempt.tried
+    assert search.trail[-1]["verdict"] == "next" and "r=0.11" in str(search.trail[-1]["why"])
+
+
+# ── best-so-far ──────────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_worse_retry_recommits_the_attempt_it_retried() -> None:
+    """H2's other half: the last attempt no longer wins by default. A mix retry covering LESS than the
+    stem attempt it retried loses to it, and the Commit names the stem attempt's serial."""
+    search = Search(pool=[lrc()])
+    search.begin()
+    retry = search.record(THIN)
+    assert isinstance(retry, Try) and retry.serial == 2
+    worse = TimingReport(words=40, coverage=0.25, duration_sec=200.0, engine=Engine.WINDOWED)
+    step = search.record(worse)
+    assert isinstance(step, Commit) and step.serial == 1, "the stem attempt must be re-committed"
+    assert "keeping attempt 1" in step.why and "align-on-mix" in step.why
+    assert search.trail[-1]["kept"] == 1
+
+
+@pytest.mark.parametrize("empty", [NOTHING, INCOHERENT, REFUSED], ids=["nothing", "incoherent", "refused"])
+def test_a_retry_that_fails_recommits_the_usable_attempt_it_retried(empty: TimingReport) -> None:
+    """A usable document with a defect beats losing it to the text's line timings or the next text."""
+    search = Search(pool=[lrc(), asr()])
+    search.begin()
+    search.record(THIN)
+    step = search.record(empty)
+    assert isinstance(step, Commit) and (step.index, step.serial) == (0, 1)
+
+
+def test_a_better_retry_is_the_one_committed() -> None:
+    search = Search(pool=[lrc()])
+    search.begin()
+    search.record(THIN)
+    step = search.record(TimingReport(words=190, coverage=0.95, duration_sec=200.0, engine=Engine.WINDOWED))
+    assert isinstance(step, Commit) and step.serial == 2
+
+
+#: A windowed attempt with TWO defects a knob addresses: a +5 s residual (RESHIFT) and 50% coverage
+#: (ALIGN_ON_MIX). `decide` answers the residual first.
+MISPLACED_AND_THIN = TimingReport(
+    words=100, coverage=0.5, duration_sec=200.0, residual_sec=5.0, engine=Engine.WINDOWED
+)
+
+
+def test_a_retry_that_does_not_improve_goes_back_and_tries_the_next_knob_from_the_kept_attempt() -> None:
+    """Best-so-far must not END the ladder (review W1 r1). The RESHIFT retry leaves the residual where it
+    was, so it loses to attempt 1 — and attempt 1 still has thin coverage, which the mix may fix. That
+    retry is offered FROM attempt 1: the lost RESHIFT is spent (never re-offered) but not applied, so the
+    mix attempt changes one thing relative to the attempt it must beat. It used to commit attempt 1 at
+    once, and the mix was never tried."""
+    search = Search(pool=[lrc()])
+    search.begin()
+    reshift = search.record(MISPLACED_AND_THIN)
+    assert isinstance(reshift, Try) and reshift.attempt.tried == {Knob.RESHIFT} and reshift.base == 1
+    mix = search.record(MISPLACED_AND_THIN)  # the residual did not move: RESHIFT lost
+    assert isinstance(mix, Try), "the ladder goes on: ALIGN_ON_MIX still applies to attempt 1"
+    assert (mix.serial, mix.base) == (3, 1), "extends the KEPT attempt, not the one that lost"
+    assert mix.attempt.tried == {Knob.ALIGN_ON_MIX}, "the lost RESHIFT is not applied"
+    assert mix.attempt.lost == {Knob.RESHIFT} and not mix.attempt.can(Knob.RESHIFT)
+    retime = search.trail[-1]
+    assert retime["verdict"] == "retime" and retime["knob"] == Knob.ALIGN_ON_MIX.value and retime["kept"] == 1
+    assert str(retime["why"]).startswith("back to attempt 1 (the reshift retry did not improve on it")
+
+    better = TimingReport(
+        words=190, coverage=0.95, duration_sec=200.0, residual_sec=5.0, engine=Engine.WINDOWED
+    )
+    step = search.record(better)
+    assert isinstance(step, Commit) and step.serial == 3, "the mix beat attempt 1 on its own defect"
+    assert "accepted DESPITE residual +5.00s" in step.why and "(spent: align-on-mix, reshift)" in step.why
+
+
+def test_when_every_knob_loses_the_kept_attempt_is_committed() -> None:
+    """Lost knobs accumulate: after RESHIFT and then the mix both lose, neither comes back, and attempt 1
+    (the stem, the text's own placement) is what publishes."""
+    search = Search(pool=[lrc()])
+    search.begin()
+    search.record(MISPLACED_AND_THIN)
+    search.record(MISPLACED_AND_THIN)
+    worse = TimingReport(words=60, coverage=0.3, duration_sec=200.0, residual_sec=5.0, engine=Engine.WINDOWED)
+    step = search.record(worse)
+    assert isinstance(step, Commit) and step.serial == 1
+    assert "keeping attempt 1: the align-on-mix retry did not improve on it" in step.why
+
+
+def test_an_overshoot_whose_drop_windows_retry_lost_is_re_placed_from_the_kept_attempt() -> None:
+    """The other shape: DROP_WINDOWS leaves the overshoot as it was, so RESHIFT, the overshoot's second
+    answer, is tried from attempt 1 (it used to be committed with the overshoot)."""
+    over = TimingReport(
+        words=150, coverage=1.0, duration_sec=200.0, overshoot_sec=40.0, engine=Engine.WINDOWED
+    )
+    search = Search(pool=[lrc()])
+    search.begin()
+    dropped = search.record(over)
+    assert isinstance(dropped, Try) and dropped.attempt.tried == {Knob.DROP_WINDOWS}
+    step = search.record(over)
+    assert isinstance(step, Try) and step.attempt.tried == {Knob.RESHIFT} and step.base == 1
+    assert step.attempt.lost == {Knob.DROP_WINDOWS}
+
+
+def test_best_so_far_does_not_cross_texts() -> None:
+    """Another text's document is not a fallback for this one: the next text starts with no best."""
+    search = Search(pool=[Candidate(tier=Tier.CANDIDATE, label="plain"), asr()])
+    search.begin()
+    moved = search.record(INCOHERENT)  # plain has no line timings: next text
+    assert isinstance(moved, Try) and moved.serial == 2
+    assert isinstance(search.record(NOTHING), GiveUp)
+
+
 # ── advancing through the pool ───────────────────────────────────────────────────────────────────
 
 
@@ -160,6 +322,36 @@ def test_asr_is_requested_at_most_once() -> None:
     assert isinstance(step, Try)
     final = search.record(INCOHERENT)
     assert isinstance(final, GiveUp), "ASR has had its turn, so now the song may be called instrumental"
+
+
+def test_the_on_demand_asr_text_is_the_last_one_tried_and_nothing_is_tried_twice() -> None:
+    """Review s11: `extend` re-sorted the pool by tier, which put the ASR text BEFORE the machine captions
+    it ran after; when it declined, the cursor walked onto both machine attempts again. Every Try below
+    reports nothing, the worst case, so each text spends its line-sync rung and moves on exactly once."""
+    pool = [
+        lrc("captions:authored"),
+        Candidate(tier=Tier.MACHINE, label="captions:machine", has_line_timings=True),
+    ]
+    search = Search(pool=pool)
+    step = search.begin()
+    tried: list[str] = []
+    for _ in range(16):
+        match step:
+            case Try(index=index):
+                tried.append(search.pool[index].label)
+                step = search.record(NOTHING)
+            case RunAsr():
+                step = search.extend(asr())
+            case Commit() | GiveUp():
+                break
+    assert tried == [
+        "captions:authored",
+        "captions:authored",
+        "captions:machine",
+        "captions:machine",
+        "asr:vocals",
+    ]
+    assert isinstance(step, GiveUp)
 
 
 def test_give_up_only_after_asr_was_attempted() -> None:

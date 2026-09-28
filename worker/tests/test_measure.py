@@ -7,13 +7,16 @@ wrapper, and a measurement that raises would turn a recoverable bad alignment in
 
 from __future__ import annotations
 
-from encore_worker.domain.lyrics.measure import line_spans, measure, timed_words
+import pytest
+
+from encore_worker.domain.lyrics.measure import backwards_lines, line_spans, measure, timed_words
 from encore_worker.domain.lyrics.place import (
     MIN_SHIFT_SEC,
     apply_shift,
     estimate_shift,
     residual_against,
 )
+from encore_worker.domain.lyrics.report import Engine
 
 
 def doc(*lines: list[tuple[str, float, float]]) -> dict[str, object]:
@@ -73,6 +76,22 @@ def test_out_of_order_counts_backwards_starts_only() -> None:
     assert not backwards.usable
 
 
+def test_backwards_lines_locates_every_backwards_start_by_line() -> None:
+    """`out_of_order`, located: one entry per backwards start, naming the line of the LATER word, so the
+    count on the report and the lines on the trail cannot disagree. An untimed word is skipped, not
+    compared, exactly as `measure` skips it."""
+    inverted = doc(
+        [("a", 1.0, 1.5), ("b", 2.0, 2.5)],
+        [("c", 1.8, 2.2), ("d", 1.9, 2.4)],  # c starts before b: 1 backwards start, in line 1
+        [("e", 3.0, 3.5)],
+        [("f", 2.9, 3.1), ("g", 2.8, 3.0)],  # f before e, g before f: 2, both in line 3
+    )
+    inverted["lines"][2]["words"].append({"word": "untimed", "start": None})  # type: ignore[index]
+    assert backwards_lines(inverted) == (1, 3, 3)
+    assert len(backwards_lines(inverted)) == measure(inverted, duration_sec=5.0).out_of_order
+    assert backwards_lines(doc([("a", 0.0, 1.5), ("b", 1.0, 2.0)])) == (), "an overlapping END is not one"
+
+
 def test_gaps_smears_and_flashes() -> None:
     report = measure(
         doc([("held", 0.0, 6.0), ("flash", 20.0, 20.01), ("tail", 20.5, 21.0)]),
@@ -94,6 +113,61 @@ def test_an_overlap_is_not_counted_as_a_gap() -> None:
     """Measured end-to-start and forward only; a negative interval is an overlap."""
     report = measure(doc([("a", 0.0, 30.0), ("b", 1.0, 2.0)]), duration_sec=40.0)
     assert report.long_gaps == ()
+
+
+# ── measure: a line-synced document (review M1) ──────────────────────────────────────────────────
+
+
+def lines_doc(*spans: tuple[float, float | None]) -> dict[str, object]:
+    """A LINE_SYNC document (`align_steps._line_doc`'s shape): timed lines, no words."""
+    return {
+        "language": "en",
+        "lines": [{"text": f"line {i}", "start": s, "end": e} for i, (s, e) in enumerate(spans)],
+    }
+
+
+def test_a_line_document_is_measured_on_its_lines() -> None:
+    """No words, so measured on words it read as nothing timed and could never commit (review M1)."""
+    report = measure(
+        lines_doc((1.0, 3.0), (4.0, 6.0), (7.0, 9.5)), duration_sec=10.0, engine=Engine.LINE_SYNC
+    )
+
+    assert (report.lines, report.words, report.out_of_order) == (3, 0, 0)
+    assert report.coverage == pytest.approx(0.95), "the last line's end over the duration"
+    assert report.overshoot_sec == 0.0
+    assert report.engine is Engine.LINE_SYNC and report.usable
+
+
+def test_a_line_that_starts_before_the_one_ahead_makes_the_document_incoherent() -> None:
+    """A row that jumps backwards is as incoherent as a word that does: `usable` reads the line order.
+    A caption track or an LRC whose cues are out of document order must not commit as line sync."""
+    report = measure(
+        lines_doc((1.0, 3.0), (6.0, 8.0), (4.0, 5.0)), duration_sec=10.0, engine=Engine.LINE_SYNC
+    )
+
+    assert report.out_of_order == 1
+    assert not report.usable
+
+
+def test_a_line_document_with_no_timed_line_is_not_usable() -> None:
+    report = measure(
+        {"lines": [{"text": "a"}, {"text": "b", "start": None}]}, duration_sec=10.0, engine=Engine.LINE_SYNC
+    )
+
+    assert report.lines == 0 and report.coverage == 0.0
+    assert not report.usable
+
+
+def test_a_line_document_reports_overshoot_and_long_gaps_but_no_word_defects() -> None:
+    """Overshoot and silences keep their meaning one level up; smears and flashes are WORD defects, so a
+    4-second line is not smeared and a line with no end is not a flash."""
+    report = measure(
+        lines_doc((0.0, 4.0), (20.0, 23.0), (23.0, None)), duration_sec=20.0, engine=Engine.LINE_SYNC
+    )
+
+    assert report.coverage == 1.0 and report.overshoot_sec == pytest.approx(3.0)
+    assert report.long_gaps == ((4.0, 20.0),)
+    assert report.smeared == () and report.flashed == ()
 
 
 # ── measure: malformed input ──────────────────────────────────────────────────────────────────────

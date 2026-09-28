@@ -25,6 +25,8 @@ export interface LyricLine {
 	romanization?: string;
 	// Which abstract duet PART sings this line, written only when the worker's diarization is CONFIDENT: a solo or a
 	// low-confidence result leaves it undefined, which reads as one colour for the whole song. Never an identity.
+	// `part` ONLY: the v2 worker wrote the diarizer's raw `speaker` on every line it could attribute, with none of the
+	// song-level duet checks (review M15), so a document still carrying it is read as unattributed, not as a duet.
 	part?: string;
 	/** Per-line verdict from alignment v2's grading: `low` marks a line whose placement nothing could vouch
 	 *  for (a repeated chorus with no claims to anchor WHICH occurrence — the decode can bind a repeat to the

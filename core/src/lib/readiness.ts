@@ -46,20 +46,56 @@ export function canProcess(m: Media, r: Readiness): boolean {
 	return isProcessableSource(m.source) && (r === 'unacquired' || r === 'failed');
 }
 
-/** What the Ready filter says when it has nothing to show. The group is query-scoped while a search is active and
- * the LIBRARY is not, so "no karaoke-ready songs yet" would be a false statement about the whole library. */
-export interface ReadyEmptyState {
+/** What the screen says when NO rows are showing at all — the one zero-state for both views.
+ *
+ * It answered only for the "Ready" filter once, and the rename is the fix for a real bug: gated on the ready
+ * group alone, its copy printed "Nothing matches “…”" underneath twelve unprocessed search results, which
+ * contradicted the rows on screen. Nothing-READY is the normal case for a song nobody has processed yet;
+ * nothing-FOUND is the only state that warrants a sentence. */
+export interface NoRowsState {
 	message: string;
 	/** When set, the UI offers a one-tap way back to the full library (clears the search). */
 	showAllCount: number | null;
 }
 
-export function readyEmptyState(opts: {
+/** Whether the screen is showing NO rows, and may therefore say so.
+ *
+ * A PREDICATE RATHER THAN A TEMPLATE CONDITION, because the bug this fixes was unreachable by any test:
+ * the gate lived inline in `+page.svelte` as `!readyResults.length && library.length`, which is true
+ * whenever nothing is karaoke-READY — so a query returning twelve unprocessed songs printed "Nothing
+ * matches" beneath them. Every group has to be empty, and "every" is exactly the sort of thing that
+ * silently loses a term when a fourth group is added later.
+ *
+ * `searching` is a term for the same reason: mid-flight, the state still holds the PREVIOUS query's
+ * groups, so a zero-state rendered then is a claim about a search that has not finished. */
+export function showsNoRows(opts: {
+	searching: boolean;
+	readyCount: number;
+	rawCount: number;
+	processingCount: number;
+}): boolean {
+	if (opts.searching) return false;
+	return opts.readyCount === 0 && opts.rawCount === 0 && opts.processingCount === 0;
+}
+
+export function noRowsState(opts: {
 	searchActive: boolean;
 	libraryCount: number;
 	query?: string;
-}): ReadyEmptyState {
+}): NoRowsState {
 	const { searchActive, libraryCount } = opts;
+	// SEARCH IS TESTED FIRST, and the order is the whole correctness of this function. A search that found
+	// nothing is a statement about THE QUERY; "no karaoke-ready songs yet" is a statement about the
+	// LIBRARY. Testing the library first said the second thing whenever the library happened to be empty,
+	// so a failed search on a fresh install blamed the library for a query that simply missed.
+	if (searchActive) {
+		const q = (opts.query ?? '').trim();
+		return {
+			message: q ? `Nothing matches “${q}”.` : 'Nothing matches this search.',
+			// Only promise the way back when there is something to go back TO.
+			showAllCount: libraryCount > 0 ? libraryCount : null
+		};
+	}
 	// A genuinely empty library — this copy is correct here, and only here.
 	if (libraryCount === 0) {
 		return {
@@ -67,14 +103,6 @@ export function readyEmptyState(opts: {
 			// at a control that has been relabelled.
 			message: 'No karaoke-ready songs yet.',
 			showAllCount: null
-		};
-	}
-	// The library HAS songs; they just don't match what is being searched. Say so, and name the way back.
-	if (searchActive) {
-		const q = (opts.query ?? '').trim();
-		return {
-			message: q ? `Nothing matches “${q}”.` : 'Nothing matches this search.',
-			showAllCount: libraryCount
 		};
 	}
 	// Not searching with a non-empty library means the group should have rendered rows, so this is unreachable

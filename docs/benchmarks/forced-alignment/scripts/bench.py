@@ -116,10 +116,16 @@ def main() -> None:
                     help="with --global: per-line signed onset errors, worst first, to see WHERE the "
                          "misses are (gross misassignment vs boundary jitter).")
     ap.add_argument("--claims", nargs="?", const=0.0, default=None, type=float,
-                    help="with --global: run the R2 claim-window repair with the truth (plus this offset "
-                         "in seconds) as the claims — the production case where an LRC/captions exist. "
-                         "Claims and truth share a source here, so this measures the REPAIR MACHINERY, "
-                         "not blind accuracy.")
+                    help="with --global: run the SHIPPED attempt (AlignStepsImpl.time_text: never-sung "
+                         "drop, R3/R4/R1/R2, adoption, clamping, the envelope gate, grading) with the "
+                         "truth (plus this offset in seconds) as the claims — the production case where "
+                         "an LRC/captions exist. Claims and truth share a source here, so this measures "
+                         "the REPAIR MACHINERY, not blind accuracy. For the corpus-wide claim-noise sweep "
+                         "(jitter, tempo, partial sheets, wrong text, run_align) use e2e.py.")
+    ap.add_argument("--vocals", default=None,
+                    help="with --claims: the vocals stem time_text aligns on; --audio then serves as "
+                         "R4's mix witness, as a stems job leaves them. Default: align on --audio alone "
+                         "(the same target as the global row; R4 then has no second witness).")
     ap.add_argument("--snap", action="store_true",
                     help="with --global: prototype onset refinement — snap each line start to the "
                          "strongest local energy rise within ±0.35 s.")
@@ -195,6 +201,93 @@ def main() -> None:
     print("\nbias = median signed error (correctable with core's lyricsLeadMs, default 0, max 1500ms)")
     print("MAD  = median |error - bias| (jitter; NOT correctable by any single offset)")
     print(">2s  = lines landing in a different phrase entirely")
+
+
+class _Published:
+    """A published line as `run_global`'s report reads it: which TRUTH row it is, and where it starts."""
+
+    def __init__(self, index: int, text: str, start: float, confidence: object) -> None:
+        self.index, self.text, self.start, self.confidence = index, text, start, confidence
+
+
+def time_text_claims(
+    aligner, *, audio: str, vocals: str | None, truth: list[dict], offset: float, language: str,
+    media_dir: str, config: object | None = None,
+) -> dict:
+    """ONE SHIPPED ATTEMPT with the truth (+ `offset`) as claims: `AlignStepsImpl.time_text`, unmodified.
+
+    THIS REPLACED A REIMPLEMENTATION. `--claims` used to re-run R2 and adoption by hand. It had drifted
+    from the shipped ladder (no never-sung drop, no R3/R4/R1, no clamping, no gate, no grading) and
+    crashed before printing its adoption row (review L7: NameError on `merged_pre`, a name the script
+    never defined, since the commit that added it). Now the ladder is whatever `time_text` is. Only the
+    job reporter is the harness's (e2e.py's `Trail`), and so is the `as_doc` capture that recovers which
+    truth row each published line is. The written document carries neither, and index pairing is what
+    `report` needs (a dropped never-sung line would shift text pairing).
+
+    Returns the outcome (`published` / `line-sync` / `refused`), the document confidence, the verdict and
+    its trail note, the repair-fault notes, and the published lines as `report` reads them.
+
+    `config` is the worker `Config`; None reads it from the environment as the worker does (e2e.py too),
+    because a bare `Config()` would ignore every ENCORE_ALIGN_* knob and an experiment arm run here would
+    silently measure the default path. Tests pass a literal.
+    """
+    import asyncio
+
+    import soundfile as sf
+
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    import e2e  # the harness seams: the trail recorder and the as_doc capture
+    import e2e_lib as lib
+
+    from encore_worker.domain.lyrics.policy import Tier
+    from encore_worker.host.config import Config
+    from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
+    from encore_worker.steps.records import TIMING_LINE, AudioRef, JobRef, TextRef, TimeRequest
+
+    info = sf.info(vocals or audio)
+    claims = lib.Claims(
+        lines=tuple(
+            lib.ClaimLine(
+                str(t["text"]),
+                max(0.0, float(t["start"]) + offset),
+                max(0.0, float(t["end"]) + offset),
+                truth=i,
+            )
+            for i, t in enumerate(truth)
+        ),
+        timed=True,
+    )
+    trail = e2e.Trail()
+    settings = config if isinstance(config, Config) else Config.from_env()
+    impl = AlignStepsImpl(config=settings, adapters=Adapters(aligner=aligner), reporter=trail)
+    request = TimeRequest(
+        job=JobRef(job_id="bench", media_id="bench", media_dir=media_dir, source_uri=None),
+        text=TextRef(
+            tier=Tier.CANDIDATE, label=claims.label, segments=claims.segments(), timing=TIMING_LINE
+        ),
+        audio=AudioRef(path=audio, vocals_path=vocals, duration_sec=info.frames / info.samplerate),
+        language=language,
+    )
+    with e2e.capture_generated() as captured:
+        timed = asyncio.run(impl.time_text(request))
+    verdict, why = trail.last_global()
+    out: dict = {
+        "outcome": "refused", "confidence": None, "verdict": verdict, "why": why, "high": 0, "lines": [],
+        "faults": [note[4] for note in trail.states if note[3] == "repair-faults"],
+    }
+    if timed is None:
+        return out
+    with open(os.path.join(media_dir, timed.ref), encoding="utf-8") as handle:
+        doc = json.load(handle)
+    lines, _identity = e2e.doc_lines(doc, captured, claims)
+    out["outcome"] = "line-sync" if timed.timing == TIMING_LINE else "published"
+    out["confidence"] = timed.confidence
+    out["lines"] = [
+        _Published(ln.source, ln.text, ln.start, ln.confidence) for ln in lines if ln.source is not None
+    ]
+    out["high"] = sum(1 for ln in out["lines"] if ln.confidence == "high")
+    return out
 
 
 def run_global(args) -> None:
@@ -297,55 +390,25 @@ def run_global(args) -> None:
                 print(f"    {tols}")
 
     if args.claims is not None:
-        from encore_worker.domain.lyrics import reconcile as rc
-        from encore_worker.domain.lyrics.generate import regenerate
+        import tempfile
 
-        claimed = {i: float(t["start"]) + args.claims for i, t in enumerate(truth)}
-        windows = {
-            i: (float(t["start"]) + args.claims - 1.0, float(t["end"]) + args.claims + 1.0)
-            for i, t in enumerate(truth)
-        }
-        verdict = rc.reconcile(doc.lines, claimed)
-        disputed = {j.index for j in verdict.lines if not j.corroborated}
-        if verdict.verdict == rc.UNRELATED:
-            disputed = set(claimed)  # R1: nothing corroborates; every claimed line is re-anchored
-        elif verdict.verdict == rc.COARSE:
-            # grade the jitter, repair only the grossly-displaced lines (Avercage's 6, not Numb's zero)
-            disputed = {j.index for j in verdict.lines
-                        if abs(j.residual_sec - verdict.offset_sec) > rc.COARSE_TOLERANCE_SEC}
-        runs = [((line,), windows[line.index]) for line in doc.lines if line.index in disputed]
-        repaired = regenerate(runs, emissions, decoder=forced_align_decoder, language=args.language)
-        print(f"  claims(offset {args.claims:+.2f}s): verdict={verdict.verdict} "
-              f"agreement={verdict.agreement:.0%} -> re-decoded {len(repaired)}/{len(runs)} disputed lines")
-        from encore_worker.steps.align_steps import _with_lines
-        report(f"global+claims-repair", _with_lines(doc, repaired).lines)
-
-        # ADOPTION: when the window decode cannot HEAR the line — flat emissions leave the decode stuck at
-        # the window's left edge, or scoring far below the song's norm — trust the claim's own timing.
-        # tfr-chosen's outro is the measured case: chopped vocal samples the captions time but wav2vec2
-        # cannot recognise as words.
-        song_median = statistics.median(line.score for line in doc.lines)
-
-        class _Adopted:
-            def __init__(self, line, start, end):
-                self.index, self.text, self.start, self.end = line.index, line.text, start, end
-
-        adopted, kept = [], 0
-        merged = merged_pre.lines
-        for line in merged:
-            fixed = repaired.get(line.index)
-            if fixed is None:
-                adopted.append(line); continue
-            edge_stuck = abs(fixed.start - windows[line.index][0]) < 0.08
-            flat = fixed.score < song_median - 0.5
-            if edge_stuck or flat:
-                adopted.append(_Adopted(line, claimed[line.index], windows[line.index][1] - 1.0))
-                kept += 1
-            else:
-                adopted.append(line)
-        print(f"  adoption: {kept}/{len(repaired)} repaired lines fell back to the claim's own timing")
-
-        report("global+claims+adopt", adopted)
+        with tempfile.TemporaryDirectory(prefix="bench-claims-") as media_dir:
+            got = time_text_claims(
+                aligner,
+                audio=audio,
+                vocals=args.vocals,
+                truth=truth,
+                offset=args.claims,
+                language=args.language,
+                media_dir=media_dir,
+            )
+        on = os.path.basename(args.vocals or audio)
+        print(f"  time_text(claims offset {args.claims:+.2f}s, on {on}): {got['outcome']}"
+              f" (doc confidence {got['confidence']}); verdict={got['verdict']};"
+              f" {got['high']}/{len(got['lines'])} lines high; repair faults: {got['faults'] or 'none'}")
+        print(f"    trail: {got['why']}")
+        if got["lines"]:
+            report("time_text+claims", got["lines"])
 
     if args.snap:
         import soundfile as sf

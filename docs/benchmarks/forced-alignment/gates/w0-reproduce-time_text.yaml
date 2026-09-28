@@ -1,0 +1,23 @@
+# W0 reject-if (PLAN-alignment-v3, review §3 item 3): the harness must reproduce the review's baseline
+# within 0.5 pt at `--level time_text`, base model, all 32 songs. No baseline file needed.
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --modes truth,blind \
+#       --tfr-audio reference --gates ../docs/benchmarks/forced-alignment/gates/w0-reproduce-time_text.yaml
+#
+# `--tfr-audio reference`: the review ran the 3 tfr songs on the producer's oracle stems; the harness's
+# production-shaped default (a stem separated from youtube-mix.wav) moves those 3 songs.
+#
+# jit is absent ON PURPOSE: the review seeded it with the process-salted hash(slug), so its 34 / 84.1 / 95.4
+# is one draw nobody can repeat (README, "jit caveat"). Counts are integers, so "within 0.5" means exact.
+truth-gross: abs(truth.gross - 25) <= 0.5
+truth-pm500: abs(truth.pm500 - 89.3) <= 0.5
+truth-pm1000: abs(truth.pm1000 - 97.5) <= 0.5
+blind-gross: abs(blind.gross - 122) <= 0.5
+blind-pm500: abs(blind.pm500 - 78.6) <= 0.5
+blind-pm1000: abs(blind.pm1000 - 88.3) <= 0.5
+# Through time_text the never-sung rule drops two Jamendo lines, so these read the time_text numbers the
+# README records (78.8 / 90.5 / 91.3, +4 ms, 139 > 2 s), not the review's generate-level 78.7 ... 141.
+blind-words-pm100: abs(blind.jamendo.word_pm100 - 78.8) <= 0.5
+blind-words-pm250: abs(blind.jamendo.word_pm250 - 90.5) <= 0.5
+blind-words-pm300: abs(blind.jamendo.word_pm300 - 91.3) <= 0.5
+blind-words-gross: abs(blind.jamendo.word_gross - 139) <= 0.5

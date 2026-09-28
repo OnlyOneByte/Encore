@@ -1,0 +1,208 @@
+# W1 reject-if (PLAN-alignment-v3 W1, review §3 item 1): the orchestration-correctness bundle (H2, M1, M2, H4,
+# L1, M6, M7, H5, M3, M15). Evaluated at BOTH levels, each against its own baseline (base model, youtube tfr
+# audio, --modes all). Every gate here is level-agnostic, so the one file serves both:
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level time_text \
+#       --modes all --compare ../docs/benchmarks/forced-alignment/results/baseline-v2.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w1.yaml
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level run_align \
+#       --modes all --compare ../docs/benchmarks/forced-alignment/results/baseline-v2-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w1.yaml
+#
+# NOT ENCODABLE, evaluated by hand in the W1 status-log row (PLAN-alignment-v3):
+#   * §3.1 "no published doc changes on a song whose stem coverage >= 0.80, except changes intended by H4 / M6 /
+#     M2". The strict form is `count(song.doc_changed * (base.song.coverage >= 0.8)) == 0`, which FAILS by
+#     design here: H4 re-grades `confidence` on every claimed doc a repair touched, M2 changes every doc where
+#     it refuses a run, M6 every doc where it spares a never-sung line. The gate language cannot tell which
+#     component moved a document, so the per-case list (song x mode, why, gross / ±500 before -> after) is the
+#     evaluation.
+#     The encodable part is `s31-blind-unchanged` below: with no claims neither H4 nor M6 can act (and M2
+#     ships off), so a blind doc on a coverage >= 0.80 song must come out byte-identical at both levels.
+#     M2 CAN act there (R3 re-decodes repeats without claims, and the arm's `_clamped` may refuse the run),
+#     so under ENCORE_ALIGN_EXPERIMENTS=m2-order-clamp this gate fails on believer (7 R3 lines back on the
+#     blind decode; gross 4 -> 4, ±500 40 -> 40): an M2 change, which §3.1 exempts.
+#   * "Kinematic and Pure_Mids publish in truth with 0 gross": the language has no song selector.
+#     `truth-every-song-publishes` below is the encodable half.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
+#
+# MEASURED 2026-09-27 (base model, warm emissions; results/w1-*.json; 56 gates incl. built-in no-error-rows):
+#   W1 as shipped (M2's order-preserving `_clamped` DEFAULT-OFF):  time_text 56/56;  run_align 51/56 —
+#     FAIL wrongtext-pass-not-up (89/320 vs 84: H2's 5 wrong texts, whose stem attempt the envelope gate
+#     passes, the H3 false pass; 0 through LINE_SYNC) and the four m2m1-recovered SHOULD targets (off15 26/32,
+#     off3 20/32, headers 28/32, tempo102 27/32: the gated LINE_SYNC rung recovers 16 of the 47).
+#   the `m2-order-clamp` arm (ENCORE_ALIGN_EXPERIMENTS=m2-order-clamp):  time_text 54/56 — FAIL
+#     jamendo-no-new-gross-jit (Tom_Orlando 1 -> 2) and s31-blind-unchanged (believer, M2-exempt, above);
+#     run_align 54/56 — FAIL wrongtext-pass-not-up (152/320: + the 63 out-of-order wrong texts, now in order
+#     at attempt 1) and jamendo-no-new-gross-jit. Failing two MUST gates is why it ships off (PLAN owner
+#     rule); it meets every SHOULD target (47/47 recovered).
+#   wrongtext-pass-not-up cannot pass with H2 on, and H2 is what `truth-every-song-publishes` needs
+#   (Kinematic). The +5 are W3's (lexical lift) to refuse.
+#   The four runs were made twice: on the tree before a docstring-only reflow of align_steps.py (code
+#   20ceff2c6e8e4eed) and on the final tree (code 4891abf91cf41326, `_runs/w1g-*`, the results files):
+#   768/768 documents, onsets, outcomes and trails identical per run. The `no-song-lost-*` and
+#   `s31-blind-unchanged` gates were added after the first run; every one of them passes for W1 as shipped.
+#
+# REVIEW ROUND 1 (2026-09-27, the fix round): sections 5 and 6 added (the `unsung` metric; §3.1 by effect).
+#   Against the committed baselines, W1 AS FIRST SHIPPED fails 12 of them at time_text and 12 at run_align
+#   (M6's spared lines adopted at their claims' spans; its steering side effects). The fixed tree, measured
+#   on the 16 songs W1's M6 touched x all modes against the same songs' baseline (`_runs/w1-fix/F-*`, a
+#   full-corpus rebench pending): time_text 70/74, run_align 66/74 — the four expected section 5/6 FAILs
+#   above (LUNABLIND headers, Ridgway extraverse), plus at run_align the known W1 FAILs
+#   (wrongtext-pass-not-up, three m2m1-recovered SHOULDs on these songs). Outside those 16 songs W1 moved
+#   no document at coverage >= 0.80 by effect at either level, and the fix touches none of them.
+#
+# REBENCH AFTER ROUND 1 (2026-09-28, the full corpus, both levels, warm emissions; `_runs/w1r1*`, analysis
+#   `_runs/w1-r1bench/`). The fixed tree as handed over (M6's mix witness ON, code 423b2c8d): time_text
+#   70/74, run_align 65/74 — FAIL unsung-not-up-headers / -extraverse and s31-effect-headers / -extraverse at
+#   BOTH levels (LUNABLIND headers: `[Verse 3]` published and one line out of ±500 ms; Ridgway extraverse:
+#   one extra-verse line), exactly the two songs the probe predicted, plus at run_align the known W1 FAILs.
+#   A failing MUST on a default-on component, so review M6's mix witness moved behind the default-off
+#   `m6-mix-spare` arm (PLAN owner rule; `align_steps._time_text_global`). SHIPPED (code f3434af9):
+#   time_text 74/74; run_align 69/74 — FAIL wrongtext-pass-not-up (89/320, H2's 5, owner waiver pending)
+#   and the four m2m1-recovered SHOULDs (off15 26/32, off3 20/32, headers 28/32, tempo102 27/32).
+#   §3.1 by hand: time_text 768/768 cases keep the baseline's onsets and outcome; the 272 changed docs
+#   (256 at coverage >= 0.80) are H4 confidence-only, every one repaired in the baseline. run_align 719/768;
+#   at coverage >= 0.80, 225 H4 confidence-only + 16 M1 gated LINE_SYNC commits where the baseline
+#   published nothing; below 0.80, 18 H2 (stem doc kept over the mix retry) + 15 policy recoveries (Kinematic
+#   in 9 modes, Pure_Mids drop20, and 5 wrong texts: the +5). The `m6-mix-spare` arm's own numbers: the
+#   same 12 documents at each level, gross 32 -> 11, within ±500 ms 361 -> 380, unsung 21 -> 23.
+#
+# REBENCH AFTER ROUND 2 (2026-09-28, the full corpus, both levels; code 9fd66b8c, harness aed9dd59; every
+#   emission matrix recomputed once (ml.py moved the key: 64 computed), `_runs/w1r2-*`, analysis
+#   `_runs/w1-r2bench/`). No gate added or changed. SHIPPED: time_text 74/74; run_align 69/74, the same 5
+#   FAILs as round 1 (wrongtext-pass-not-up 89/320, owner waiver still pending; the four m2m1-recovered
+#   SHOULDs 26 / 20 / 28 / 27 of 32). Both levels are case for case IDENTICAL to round 1 (768/768: document
+#   and onsets digests, outcome, attempt list, decisions, job trail, verdict note), so the §3.1 hand listing
+#   stands as above. The lexical-lift gate (`_LINE_SYNC_MIN_LIFT` 0.2) refused nothing: 17 texts passed the
+#   sheet gate (the 16 commits + Tom_Orlando jit's unusable line doc), lift +0.36 (Avercage headers) to
+#   +3.49, the same values `scripts/lift_gate.py` reads; the 63 wrong texts that reach the rung are all
+#   refused by the sheet gate first. `wrongtext+ownclock` (no baseline, not a gate): forced mode publishes
+#   279/320 at run_align (280/320 at time_text), every one a WORD document at attempt 1 through the envelope
+#   gate (verdict UNRELATED, 0 `high` lines) and 0 reaching the LINE_SYNC rung: review H3's false pass, W3's.
+#   Under `syncMode=lines` (a probe wrapping the job's params): 0/320 publish (278 refused by the lexical
+#   gate at lift -0.23..+0.14, 42 by the sheet gate); plain wrongtext 0/320 (all sheet gate); right texts
+#   (truth, jit, off05/15/3, headers, credit, extraverse, drop20/50) 0/320 refused by the lexical gate.
+#   The default-off arms through the real knob on this tree, both levels, case for case identical to their
+#   round-1 runs: `m6-mix-spare` time_text 70/74, run_align 65/74 (unsung-not-up-headers / -extraverse,
+#   s31-effect-headers / -extraverse + the shipped FAILs); `m2-order-clamp` time_text 61/74, run_align 62/74
+#   (wrongtext 152/320, Tom_Orlando jit, believer blind, s31-effect SHOULDs). Both stay off.
+
+# ── 1) MUST, the encodable part of §3.1: no claims, so no H4 / M6 change can reach a blind doc ──
+s31-blind-unchanged: count(blind.song.doc_changed * (base.blind.song.coverage >= 0.8)) == 0
+
+# ── 2) MUST: no mode publishes fewer songs than its baseline (M1: a LINE_SYNC doc commits; H2: no mix swap) ──
+published-truth: truth.published + truth.line_sync >= base.truth.published + base.truth.line_sync
+published-jit: jit.published + jit.line_sync >= base.jit.published + base.jit.line_sync
+published-off05: off05.published + off05.line_sync >= base.off05.published + base.off05.line_sync
+published-off15: off15.published + off15.line_sync >= base.off15.published + base.off15.line_sync
+published-off3: off3.published + off3.line_sync >= base.off3.published + base.off3.line_sync
+published-offm1: offm1.published + offm1.line_sync >= base.offm1.published + base.offm1.line_sync
+published-tempo098: tempo098.published + tempo098.line_sync >= base.tempo098.published + base.tempo098.line_sync
+published-tempo102: tempo102.published + tempo102.line_sync >= base.tempo102.published + base.tempo102.line_sync
+published-drop20: drop20.published + drop20.line_sync >= base.drop20.published + base.drop20.line_sync
+published-drop50: drop50.published + drop50.line_sync >= base.drop50.published + base.drop50.line_sync
+published-extraverse: extraverse.published + extraverse.line_sync >= base.extraverse.published + base.extraverse.line_sync
+published-blind: blind.published + blind.line_sync >= base.blind.published + base.blind.line_sync
+published-headers: headers.published + headers.line_sync >= base.headers.published + base.headers.line_sync
+published-credit: credit.published + credit.line_sync >= base.credit.published + base.credit.line_sync
+# Kinematic (H2 + M1) was the one truth song run_align lost; every truth text is right, so all 32 publish.
+truth-every-song-publishes: truth.published + truth.line_sync == truth.cases
+# Per song, not only per mode: a pooled count can hold while one song is lost and another recovered (the
+# W1 bundle is exactly about the worker silently dropping a good result). `refused_up` is 1 where the song
+# has more refused cases than in the baseline; wrongtext is left out, where refusing more is the point.
+no-song-lost-truth: count(truth.song.refused_up + truth.song.error_up) == 0
+no-song-lost-jit: count(jit.song.refused_up + jit.song.error_up) == 0
+no-song-lost-off05: count(off05.song.refused_up + off05.song.error_up) == 0
+no-song-lost-off15: count(off15.song.refused_up + off15.song.error_up) == 0
+no-song-lost-off3: count(off3.song.refused_up + off3.song.error_up) == 0
+no-song-lost-offm1: count(offm1.song.refused_up + offm1.song.error_up) == 0
+no-song-lost-tempo098: count(tempo098.song.refused_up + tempo098.song.error_up) == 0
+no-song-lost-tempo102: count(tempo102.song.refused_up + tempo102.song.error_up) == 0
+no-song-lost-drop20: count(drop20.song.refused_up + drop20.song.error_up) == 0
+no-song-lost-drop50: count(drop50.song.refused_up + drop50.song.error_up) == 0
+no-song-lost-extraverse: count(extraverse.song.refused_up + extraverse.song.error_up) == 0
+no-song-lost-blind: count(blind.song.refused_up + blind.song.error_up) == 0
+no-song-lost-headers: count(headers.song.refused_up + headers.song.error_up) == 0
+no-song-lost-credit: count(credit.song.refused_up + credit.song.error_up) == 0
+# SHOULD (the bench plan's "should be recovered"; no SHOULD level exists, so these FAIL like the rest): the
+# M2 + M1 drops (run_align baseline: off15 8 songs, off3 20, headers 9, tempo102 5) come back, i.e. every
+# song of those modes publishes. time_text already published all 32, so this holds there trivially.
+m2m1-recovered-off15: off15.published + off15.line_sync == off15.cases
+m2m1-recovered-off3: off3.published + off3.line_sync == off3.cases
+m2m1-recovered-headers: headers.published + headers.line_sync == headers.cases
+m2m1-recovered-tempo102: tempo102.published + tempo102.line_sync == tempo102.cases
+
+# ── 3) MUST: the wrong-text hazard (M1): LINE_SYNC must not become the hole (236 refused wrong texts would
+# publish through an ungated rung), and the total pass rate must not rise ──
+wrongtext-line-sync-not-up: wrongtext.line_sync <= base.wrongtext.line_sync
+# AWAITING AN OWNER DECISION (review W1 r1-spec-7). At run_align this FAILS by exactly 5 (89/320 vs 84): H2's
+# stem attempts of Color_Out v0, Ridgway v3, never-be-alone v3, tfr-mayday v3 and tfr-chosen v7 (coverage
+# 0.53-0.79), which the envelope gate passes exactly as `time_text` already publishes them (review H3's false
+# pass, W3's lexical-lift gate to refuse). The v2 job refused them only by accident: its ALIGN_ON_MIX retry
+# was refused and took the stem document down with it. Shipping H2 behind the knob instead fails MUST
+# `truth-every-song-publishes` (Kinematic truth: NO LYRICS) and restores Pure_Mids' 13-gross mix document.
+# The PLAN's rule needs an owner waiver (or H2 default-off) for a failing MUST gate on a default-on
+# component; no agent can grant one. Not encodable as "exactly these 5": the gate language has no song
+# selector (a pooled `<= base + 5` would admit any 5).
+wrongtext-pass-not-up: wrongtext.wrongtext_pass <= base.wrongtext.wrongtext_pass
+
+# ── 4) MUST: accuracy ──
+truth-text-pm500: truth.text_pm500 >= base.truth.text_pm500 - 0.3
+jamendo-no-new-gross-truth: count(truth.jamendo.song.gross_up + truth.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-jit: count(jit.jamendo.song.gross_up + jit.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-blind: count(blind.jamendo.song.gross_up + blind.jamendo.song.missing_up) == 0
+high-gross-truth: truth.high_gross <= base.truth.high_gross
+high-gross-jit: jit.high_gross <= base.jit.high_gross
+high-gross-off05: off05.high_gross <= base.off05.high_gross
+high-gross-off15: off15.high_gross <= base.off15.high_gross
+high-gross-off3: off3.high_gross <= base.off3.high_gross
+high-gross-offm1: offm1.high_gross <= base.offm1.high_gross
+high-gross-tempo098: tempo098.high_gross <= base.tempo098.high_gross
+high-gross-tempo102: tempo102.high_gross <= base.tempo102.high_gross
+high-gross-drop20: drop20.high_gross <= base.drop20.high_gross
+high-gross-drop50: drop50.high_gross <= base.drop50.high_gross
+high-gross-extraverse: extraverse.high_gross <= base.extraverse.high_gross
+high-gross-blind: blind.high_gross <= base.blind.high_gross
+high-gross-wrongtext: wrongtext.high_gross <= base.wrongtext.high_gross
+high-gross-headers: headers.high_gross <= base.headers.high_gross
+high-gross-credit: credit.high_gross <= base.credit.high_gross
+
+# ── 5) MUST (review W1 r1): lines the truth does not have — an injected header or credit, an extra verse —
+# must not publish more often. `unsung` (`e2e_lib.line_metrics`) counts them; no ±N metric sees them, which is
+# how W1's M6 put back all 33 unsung lines its mix envelope spared, unseen. Per song, and only where the
+# baseline published the text: a song the baseline REFUSED and W1 publishes (M1's gated line sync: at
+# run_align Avercage / Ridgway / Songwriterz under headers) brings its text's own headers with it, which is
+# a recovery, not a regression. Measured on the fixed tree over the 16 songs M6 touched (all modes): pooled
+# 195 -> 197 at time_text (216 as W1 first shipped), 176 -> 176 at run_align outside those recoveries; one
+# song each in headers (LUNABLIND's `[Verse 3]`) and extraverse (Ridgway), a line whose claim window the mix's
+# acoustic model hears speech in (`align_steps._SPOKEN_RATIO`). The full-corpus rebench confirmed both at
+# both levels, and nothing else; review M6's mix witness is therefore the default-off `m6-mix-spare` arm, and
+# the shipped default passes all four (unsung equal to the baseline song for song, outside M1's recoveries).
+unsung-not-up-credit: count(credit.song.unsung_up * (base.credit.song.refused == 0)) == 0
+unsung-not-up-headers: count(headers.song.unsung_up * (base.headers.song.refused == 0)) == 0
+unsung-not-up-extraverse: count(extraverse.song.unsung_up * (base.extraverse.song.refused == 0)) == 0
+unsung-none-claim-modes: truth.unsung + jit.unsung + off05.unsung + off15.unsung + off3.unsung + offm1.unsung + tempo098.unsung + tempo102.unsung + drop20.unsung + drop50.unsung + blind.unsung == 0
+
+# ── 6) SHOULD (review W1 r1-spec-6): §3.1 BY EFFECT. The hand listing classed a doc as "intended" by the
+# trail note its change carried; these class it by what moved. At baseline stem coverage >= 0.80, no song may
+# lose a line within ±500 ms of its text (`text_pm500`) or — where the baseline published it — gain a gross
+# line or publish another unsung line. A song the baseline refused and W1 publishes is a recovery whatever it
+# holds; H4's confidence-only changes cannot move these. Measured on the fixed tree over M6's 16 songs, both
+# levels: every mode holds but headers (LUNABLIND: `[Verse 3]` published, one line clipped out of ±500 ms) and
+# extraverse (Ridgway: one extra-verse line) — the same two lines as section 5. Full corpus: the same, and
+# with `m6-mix-spare` default-off every mode holds at both levels.
+s31-effect-truth: count(((truth.song.gross_up + truth.song.unsung_up) * (base.truth.song.refused == 0) + truth.song.text_pm500_down) * (base.truth.song.coverage >= 0.8)) == 0
+s31-effect-jit: count(((jit.song.gross_up + jit.song.unsung_up) * (base.jit.song.refused == 0) + jit.song.text_pm500_down) * (base.jit.song.coverage >= 0.8)) == 0
+s31-effect-off05: count(((off05.song.gross_up + off05.song.unsung_up) * (base.off05.song.refused == 0) + off05.song.text_pm500_down) * (base.off05.song.coverage >= 0.8)) == 0
+s31-effect-off15: count(((off15.song.gross_up + off15.song.unsung_up) * (base.off15.song.refused == 0) + off15.song.text_pm500_down) * (base.off15.song.coverage >= 0.8)) == 0
+s31-effect-off3: count(((off3.song.gross_up + off3.song.unsung_up) * (base.off3.song.refused == 0) + off3.song.text_pm500_down) * (base.off3.song.coverage >= 0.8)) == 0
+s31-effect-offm1: count(((offm1.song.gross_up + offm1.song.unsung_up) * (base.offm1.song.refused == 0) + offm1.song.text_pm500_down) * (base.offm1.song.coverage >= 0.8)) == 0
+s31-effect-tempo098: count(((tempo098.song.gross_up + tempo098.song.unsung_up) * (base.tempo098.song.refused == 0) + tempo098.song.text_pm500_down) * (base.tempo098.song.coverage >= 0.8)) == 0
+s31-effect-tempo102: count(((tempo102.song.gross_up + tempo102.song.unsung_up) * (base.tempo102.song.refused == 0) + tempo102.song.text_pm500_down) * (base.tempo102.song.coverage >= 0.8)) == 0
+s31-effect-drop20: count(((drop20.song.gross_up + drop20.song.unsung_up) * (base.drop20.song.refused == 0) + drop20.song.text_pm500_down) * (base.drop20.song.coverage >= 0.8)) == 0
+s31-effect-drop50: count(((drop50.song.gross_up + drop50.song.unsung_up) * (base.drop50.song.refused == 0) + drop50.song.text_pm500_down) * (base.drop50.song.coverage >= 0.8)) == 0
+s31-effect-extraverse: count(((extraverse.song.gross_up + extraverse.song.unsung_up) * (base.extraverse.song.refused == 0) + extraverse.song.text_pm500_down) * (base.extraverse.song.coverage >= 0.8)) == 0
+s31-effect-blind: count(((blind.song.gross_up + blind.song.unsung_up) * (base.blind.song.refused == 0) + blind.song.text_pm500_down) * (base.blind.song.coverage >= 0.8)) == 0
+s31-effect-headers: count(((headers.song.gross_up + headers.song.unsung_up) * (base.headers.song.refused == 0) + headers.song.text_pm500_down) * (base.headers.song.coverage >= 0.8)) == 0
+s31-effect-credit: count(((credit.song.gross_up + credit.song.unsung_up) * (base.credit.song.refused == 0) + credit.song.text_pm500_down) * (base.credit.song.coverage >= 0.8)) == 0

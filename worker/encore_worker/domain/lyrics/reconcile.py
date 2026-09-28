@@ -108,6 +108,18 @@ class Reconciliation:
         """May stage 4 treat agreement as evidence? UNRELATED and NO_CLAIMS confer nothing."""
         return self.verdict in (AGREE, OFFSET, DRIFT, STRUCTURAL, COARSE) and self.pairs >= MIN_PAIRS
 
+    def agrees(self, ours: float, claimed: float) -> bool:
+        """Would a line at `ours` corroborate its claim at `claimed` on THIS verdict's fitted clock?
+
+        The same test `reconcile` applied to every line it judged (claimed x scale + offset within
+        AGREE_TOLERANCE_SEC), so it reproduces each `LineJudgement.corroborated` exactly. It exists for a
+        line whose timing CHANGED after the verdict was taken: grading asks whether a repaired line still
+        sits where the blind decode and the claim agreed it is sung (review H4), and a verdict that
+        confers nothing (`corroborates` false) vouches for no position at all.
+        """
+        expected = claimed * self.scale + self.offset_sec
+        return self.corroborates and abs(ours - expected) <= AGREE_TOLERANCE_SEC
+
 
 def reconcile(
     generated: Sequence[Mapping[str, object] | object],
@@ -241,4 +253,52 @@ def reconcile(
         agreement=agreement,
         pairs=len(pairs),
         why=why,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AsClaimed:
+    """How a claim series sits against our decode AS CLAIMED: no offset or scale removed (`as_claimed`)."""
+
+    #: The share of paired lines whose claimed start is within `tolerance_sec` of the decode's.
+    near: float
+    pairs: int
+    tolerance_sec: float
+    #: median(ours − claimed): the lag the decode reads in the claims, for the trail (it is NOT removed).
+    offset_sec: float
+
+    def why(self) -> str:
+        return (
+            f"the text's own blind decode starts {self.near:.0%} of {self.pairs} lines within "
+            f"{self.tolerance_sec:.1f} s of their claims (median lag {self.offset_sec:+.2f} s)"
+        )
+
+
+def as_claimed(
+    generated: Sequence[Mapping[str, object] | object],
+    claimed_starts: Mapping[int, float],
+    *,
+    tolerance_sec: float = COARSE_TOLERANCE_SEC,
+) -> AsClaimed | None:
+    """Do the claimed starts THEMSELVES sit where our decode puts each line? None under `MIN_PAIRS` pairs.
+
+    `reconcile` removes the claims' common offset (and a tempo scale) before judging a line, because there
+    OUR timings are what publishes and a sheet for another master still vouches for them. Where the CLAIMS
+    publish — the LINE_SYNC rung's line document, the text's own timings — an offset is exactly the error
+    the room would see, so nothing is removed here: a sheet 1.5 s late reads as 1.5 s late. Paired by line
+    index, as `reconcile` pairs (`Line.index`; duck-typed `.index`, `.start`).
+    """
+    pairs: list[tuple[float, float]] = []
+    for line in generated:
+        claimed = claimed_starts.get(int(getattr(line, "index", -1)))
+        if claimed is not None:
+            pairs.append((float(getattr(line, "start", 0.0)), float(claimed)))
+    if len(pairs) < MIN_PAIRS:
+        return None
+    residuals = [ours - theirs for ours, theirs in pairs]
+    return AsClaimed(
+        near=sum(abs(r) <= tolerance_sec for r in residuals) / len(residuals),
+        pairs=len(pairs),
+        tolerance_sec=tolerance_sec,
+        offset_sec=float(median(residuals)),
     )

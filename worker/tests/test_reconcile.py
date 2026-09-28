@@ -178,3 +178,80 @@ def test_coarse_carries_per_line_residuals_so_the_caller_can_repair_only_gross_l
     assert got.verdict == rc.COARSE
     gross = [j.index for j in got.lines if abs(j.residual_sec - got.offset_sec) > rc.COARSE_TOLERANCE_SEC]
     assert gross == [7], "only the seconds-off line is a repair candidate; the jitter is graded as-is"
+
+
+# ── agrees: the verdict's own test, for a line whose timing changed after it was taken ───────────────
+
+
+#: A smooth spread of claim jitter: with one claim seconds off as well, COARSE (see the test above).
+SMOOTH_JITTER = [-0.8, -0.57, -0.34, -0.11, 0.12, 0.35, 0.58, 0.81]
+
+
+def test_agrees_reproduces_every_line_judgement_on_the_verdicts_fitted_clock() -> None:
+    """`Reconciliation.agrees` is what grading asks of a REPAIRED line (review H4): would it still
+    corroborate on the blind verdict's clock? It must be the very test `reconcile` judged each line by —
+    under an offset, a drift, a structural split and a coarse sheet — or grading and the verdict disagree."""
+    split = claims(OURS)
+    split[5] += 8.0
+    split[6] += 8.0
+    loose = {line.index: line.start - j for line, j in zip(OURS, SMOOTH_JITTER, strict=True)}
+    loose[7] += 6.0
+    cases = {
+        rc.OFFSET: claims(OURS, offset=1.2),
+        rc.DRIFT: claims(OURS, scale=1.05),
+        rc.STRUCTURAL: split,
+        rc.COARSE: loose,
+    }
+    for verdict, theirs in cases.items():
+        got = rc.reconcile(OURS, theirs)
+        assert got.verdict == verdict
+        for judged in got.lines:
+            start = OURS[judged.index].start
+            assert got.agrees(start, theirs[judged.index]) == judged.corroborated, (verdict, judged)
+
+
+def test_agrees_moves_with_the_line_not_the_claim() -> None:
+    """The H4 exhibit in miniature: claims 2.5 s late, the verdict an OFFSET that corroborates every line.
+    A repair that parks a line at the claim minus the 1 s pad no longer sits where the two witnesses
+    agreed it is sung, so it no longer agrees; one within tolerance of its blind position still does."""
+    theirs = claims(OURS, offset=-2.5)
+    got = rc.reconcile(OURS, theirs)
+    assert got.verdict == rc.OFFSET
+    line = OURS[3]
+    assert got.agrees(line.start + 0.2, theirs[line.index])
+    assert not got.agrees(theirs[line.index] - 1.0, theirs[line.index])
+
+
+def test_a_verdict_that_confers_nothing_agrees_with_nothing() -> None:
+    scattered = {i: v for i, v in enumerate([3.0, 91.0, 7.5, 55.0, 120.0, 12.0, 88.0, 30.0])}
+    unrelated = rc.reconcile(OURS, scattered)
+    assert not unrelated.agrees(OURS[0].start, scattered[0])
+    none = rc.reconcile(OURS[:2], claims(OURS[:2]))
+    assert not none.agrees(OURS[0].start, OURS[0].start)
+
+
+# ── as claimed: the LINE_SYNC rung's timing witness (W3) ─────────────────────────────────────────
+
+
+def test_as_claimed_reads_an_offset_as_the_error_it_publishes() -> None:
+    """Where the CLAIMS publish (a line document), an offset that `reconcile` rightly calls corroborating is
+    every line late: nothing is removed, so a sheet 1.2 s off reads 0% near, its lag on the trail."""
+    assert rc.reconcile(OURS, claims(OURS, offset=1.2)).corroborates
+    late = rc.as_claimed(OURS, claims(OURS, offset=1.2))
+    assert late is not None and late.near == 0.0 and late.pairs == len(OURS)
+    assert abs(late.offset_sec - 1.2) < 1e-9 and "median lag +1.20 s" in late.why()
+    close = rc.as_claimed(OURS, claims(OURS, offset=0.4))
+    assert close is not None and close.near == 1.0, "within the coarse tolerance (1 s): the same place"
+    assert rc.as_claimed(OURS, claims(OURS, offset=0.4), tolerance_sec=0.25) == rc.AsClaimed(
+        near=0.0, pairs=len(OURS), tolerance_sec=0.25, offset_sec=close.offset_sec
+    )
+
+
+def test_as_claimed_pairs_by_line_index_and_abstains_under_three_pairs() -> None:
+    """Paired by `Line.index` as `reconcile` pairs: a line the decode dropped, or a claim for a line it never
+    had, is left out rather than shearing every comparison after it."""
+    decoded = [L(0, 1.0), L(2, 5.0), L(3, 9.0), L(5, 14.0)]  # lines 1 and 4 not decoded
+    got = rc.as_claimed(decoded, {0: 1.1, 1: 3.0, 2: 5.2, 3: 12.0, 4: 13.0, 5: 14.0})
+    assert got is not None and got.pairs == 4 and got.near == 0.75
+    assert rc.as_claimed(decoded, {0: 1.0, 2: 5.0}) is None, "two pairs: a fit through two points"
+    assert rc.as_claimed([], {0: 1.0}) is None

@@ -1,0 +1,2476 @@
+"""The E2E alignment bench harness (`docs/benchmarks/forced-alignment/scripts/e2e.py` + `e2e_lib.py`).
+
+WHY THE BENCH HAS UNIT TESTS. It is the GATE every later alignment wave is accepted or rejected by, so a
+defect in it moves every verdict at once — silently, because a wrong metric still prints a plausible
+number. Measured once already: the review's scratch harness paired lines by text, which mis-pairs a
+repeated chorus whenever a line is dropped, and seeded jitter with the process-salted `hash(slug)`, which
+made its jit row unrepeatable. Both are pinned here.
+
+Hermetic: no model, no corpus. The claim/metric/cache half is plain data; the driver runs the REAL
+`AlignStepsImpl.time_text` over a synthetic song with a fake aligner and a spreading decoder, which is
+what proves the harness drives the shipped path and pairs its output by identity. The `run_align` level
+runs the REAL workflow the same way, including the policy's retries (an H2 mix swap, the LINE_SYNC ->
+NextText -> ASR -> GiveUp ladder), and the gate language is pinned on the reject-if forms the plan uses.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import math
+import os
+import random
+import sys
+import zlib
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
+from typing import Any
+
+import numpy as np
+import pytest
+import soundfile as sf
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "docs" / "benchmarks" / "forced-alignment" / "scripts"
+
+
+def _load(name: str) -> ModuleType:
+    """A bench script as a module. Registered BEFORE exec: dataclasses resolve their module by name."""
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+lib: Any = _load("e2e_lib")
+gates: Any = _load("e2e_gates")
+e2e: Any = _load("e2e")
+sheet_gate: Any = _load("sheet_gate")
+line_gate: Any = _load("line_gate")
+
+
+def song_of(
+    lines: Sequence[tuple[str, float, float]],
+    *,
+    slug: str = "song",
+    group: str = "jamendo",
+    words: Sequence[tuple[float, float]] | None = None,
+    audio: Path = Path("/nonexistent.wav"),
+) -> Any:
+    return lib.Song(
+        slug=slug,
+        group=group,
+        mix=audio,
+        vocals=audio,
+        truth=tuple(lib.TruthLine(text, start, end) for text, start, end in lines),
+        words=None if words is None else tuple(lib.TruthWord(s, e) for s, e in words),
+    )
+
+
+TEN = [(f"line number {i}", 10.0 * i + 1.0, 10.0 * i + 4.0) for i in range(10)]
+
+
+def claims(song: Any, mode: str, corpus: Sequence[Any] = (), **kw: Any) -> Any:
+    return lib.build_claims(song, mode, corpus=list(corpus) or [song], duration_sec=200.0, **kw)
+
+
+# ── modes ────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_modes_apply_in_canonical_order_whatever_the_spelling() -> None:
+    """`blind` strips LAST and injections precede timing noise, so `jit+headers` jitters the headers."""
+    assert lib.parse_mode("truth") == ()
+    assert lib.parse_mode("blind+jit+off15+tempo098+headers+drop20+wrongtext") == (
+        "wrongtext",
+        "drop20",
+        "headers",
+        "tempo098",
+        "off15",
+        "jit",
+        "blind",
+    )
+    with pytest.raises(ValueError, match="unknown"):
+        lib.parse_mode("jit+bogus")
+    with pytest.raises(ValueError, match="repeats"):
+        lib.parse_mode("jit+jit")
+    assert lib.variants_of("wrongtext", 7) == 7 and lib.variants_of("jit+off15", 7) == 1
+    assert set(lib.ALL_MODES) - {"truth"} <= set(lib.OPS)
+
+
+def test_truth_claims_are_the_truth_verbatim_and_blind_carries_no_timings() -> None:
+    song = song_of(TEN)
+    truth = claims(song, "truth")
+    assert truth.timed and truth.label == "lrc"
+    assert [(c.text, c.start, c.end, c.truth) for c in truth.lines] == [
+        (t.text, t.start, t.end, i) for i, t in enumerate(song.truth)
+    ]
+    assert truth.segments()[0] == {"text": "line number 0", "start": 1.0, "end": 4.0}
+    blind = claims(song, "blind")
+    assert not blind.timed and blind.label == "plain"
+    assert all(set(segment) == {"text"} for segment in blind.segments())
+
+
+def test_offsets_and_tempo_are_exact_and_clamp_at_zero() -> None:
+    """e2e2 built `start + 1.5` and `max(0, start - 1)` — byte-parity of the documents depends on it."""
+    song = song_of([("early", 0.4, 1.0), *TEN])
+    late = claims(song, "off15")
+    assert [c.start for c in late.lines] == [t.start + 1.5 for t in song.truth]
+    early = claims(song, "offm1")
+    assert early.lines[0].start == 0.0 and early.lines[0].end == 0.0
+    assert early.lines[1].start == song.truth[1].start - 1.0
+    fast = claims(song, "tempo102")
+    assert [c.end for c in fast.lines] == [t.end * 1.02 for t in song.truth]
+
+
+def test_jitter_is_one_stable_draw_per_line() -> None:
+    """Stable ACROSS PROCESSES: crc32, not the salted `hash(slug)` that made e2e2's jit row unrepeatable."""
+    assert lib.rng_for(0, "hello", "jit", 0).random() == 0.4367466748625257
+    assert zlib.crc32(b"0|hello|jit|0") == 2879322332
+    song = song_of(TEN, slug="hello")
+    got = claims(song, "jit")
+    draws = random.Random(zlib.crc32(b"0|hello|jit|0"))
+    for claim, truth in zip(got.lines, song.truth, strict=True):
+        delta = draws.gauss(0.0, lib.JITTER_SEC)
+        assert claim.start == truth.start + delta and claim.end == truth.end + delta
+    assert claims(song, "jit").lines == got.lines
+    assert claims(song, "jit", seed=1).lines != got.lines
+
+
+def test_a_partial_sheet_loses_lines_from_the_text_and_the_timings() -> None:
+    song = song_of(TEN)
+    kept = claims(song, "drop20")
+    assert len(kept.lines) == 8 and len(kept.truth_indexes()) == 8
+    for claim in kept.lines:
+        assert (claim.text, claim.start) == (song.truth[claim.truth].text, song.truth[claim.truth].start)
+    assert len(claims(song, "drop50").lines) == 5
+
+
+def test_an_extra_verse_is_another_songs_lines_in_the_largest_claim_free_gap() -> None:
+    song = song_of([("a", 0.0, 2.0), ("b", 3.0, 5.0), ("c", 6.0, 8.0), ("d", 30.0, 32.0)], slug="me")
+    donor = song_of([(f"donor {i}", 50.0 + 3 * i, 52.0 + 3 * i) for i in range(8)], slug="donor")
+    got = lib.build_claims(song, "extraverse", corpus=[song, donor], duration_sec=40.0)
+    assert got.donor == "donor"
+    injected = [c for c in got.lines if c.truth is None]
+    assert len(injected) == lib.EXTRA_VERSE_LINES
+    assert [c.truth for c in got.lines] == [0, 1, 2, *([None] * 6), 3], "inserted between c and d"
+    assert all(8.0 < c.start < c.end < 30.0 for c in injected)
+    gaps = [b.start - a.end for a, b in zip(injected, injected[1:], strict=False)]
+    assert all(g == pytest.approx(1.0) for g in gaps), "the donor's own rhythm is kept"
+
+
+def test_headers_label_sections_in_all_three_real_shapes() -> None:
+    song = song_of(
+        [
+            ("one", 0.0, 1.0),
+            ("two", 1.0, 2.0),
+            ("the hook", 5.0, 6.0),
+            ("more", 6.0, 7.0),
+            ("verse three", 10.0, 11.0),
+            ("x", 11.0, 12.0),
+            ("the hook", 15.0, 16.0),
+            ("y", 16.0, 17.0),
+        ]
+    )
+    got = claims(song, "headers")
+    assert [(c.text, c.truth, c.lead_words) for c in got.lines] == [
+        ("[Verse 1]", None, 0),
+        ("one", 0, 0),
+        ("two", 1, 0),
+        ("Chorus:", None, 0),
+        ("the hook", 2, 0),
+        ("more", 3, 0),
+        ("VERSE 2: verse three", 4, 2),
+        ("x", 5, 0),
+        ("[Chorus]", None, 0),
+        ("the hook", 6, 0),
+        ("y", 7, 0),
+    ]
+    header = got.lines[3]
+    assert (header.start, header.end) == (4.0, 5.0), "a timed header sits just before its section"
+
+
+def test_a_credit_line_is_claimed_from_zero_to_the_first_line() -> None:
+    got = claims(song_of(TEN), "credit")
+    assert got.lines[0].truth is None and got.lines[0].text in lib.CREDIT_LINES
+    assert (got.lines[0].start, got.lines[0].end) == (0.0, 1.0)
+    assert [c.truth for c in got.lines[1:]] == list(range(10))
+
+
+def test_wrong_text_cross_pairs_are_k_distinct_other_songs() -> None:
+    corpus = [song_of(TEN, slug=f"s{i}") for i in range(6)]
+    donors = [claims(corpus[0], "wrongtext", corpus, variant=v, wrong_k=4).donor for v in range(4)]
+    assert len(set(donors)) == 4 and "s0" not in donors
+    first = claims(corpus[0], "wrongtext", corpus, variant=0, wrong_k=4)
+    assert first.truth_indexes() == set() and first.timed
+
+
+def test_own_clock_puts_another_songs_words_on_this_songs_caption_clock() -> None:
+    """`wrongtext+ownclock` (W1 review r2): the same-video wrong-words case a caption track of THIS video in
+    other words presents (a translation). Every truth line keeps its own span and takes the donor's line in
+    the same position, cycling a shorter donor; the donor is the plain wrongtext case's, and no line pairs."""
+    corpus = [
+        song_of(TEN, slug="s0"),
+        song_of([("other words", 0.5, 2.0), ("more of them", 3.0, 5.0)], slug="s1"),
+    ]
+    assert lib.parse_mode("ownclock+wrongtext") == ("wrongtext", "ownclock")
+    got = claims(corpus[0], "wrongtext+ownclock", corpus, variant=0, wrong_k=1)
+    plain = claims(corpus[0], "wrongtext", corpus, variant=0, wrong_k=1)
+    assert got.donor == plain.donor == "s1"
+    assert [(c.start, c.end) for c in got.lines] == [(s, e) for _t, s, e in TEN], "this song's own clock"
+    assert [c.text for c in got.lines] == ["other words", "more of them"] * 5
+    assert got.truth_indexes() == set() and got.timed
+    assert lib.variants_of("wrongtext+ownclock", 4) == 4, "a wrong-text mode: K cross-pairs"
+    alone = claims(corpus[0], "ownclock")
+    assert [(c.text, c.start, c.end, c.truth) for c in alone.lines] == [
+        (c.text, c.start, c.end, c.truth) for c in claims(corpus[0], "truth").lines
+    ], "alone it is the identity"
+
+
+# ── pairing and metrics ──────────────────────────────────────────────────────────────────────────────
+
+
+def line(source: int | None, start: float, *, confidence: str | None = "high", words: Any = ()) -> Any:
+    return lib.DocLine(
+        text="", start=start, end=start + 1.0, confidence=confidence, source=source, words=words
+    )
+
+
+def test_identity_pairing_survives_a_dropped_repeat_that_text_pairing_mispairs() -> None:
+    """The aligner dropped the FIRST chorus: e2e2's text pairing binds the survivor to it (+10 s error)."""
+    song = song_of([("verse", 0.0, 1.0), ("chorus", 10.0, 11.0), ("chorus", 20.0, 21.0), ("end", 30.0, 31.0)])
+    got = claims(song, "truth")
+    doc = [
+        lib.DocLine("verse", 0.0, 1.0, "high", 0),
+        lib.DocLine("chorus", 20.0, 21.0, "low", 2),
+        lib.DocLine("end", 30.0, 31.0, "high", 3),
+    ]
+    errors, disagreements = lib.score_lines(song, got, doc)
+    assert [(e.truth, e.error) for e in errors] == [(0, 0.0), (2, 0.0), (3, 0.0)]
+    assert disagreements == 1
+    assert lib.legacy_pairs([d.text for d in doc], [t.text for t in song.truth]) == {0: 0, 1: 1, 2: 3}
+
+
+def test_injected_lines_are_never_scored() -> None:
+    song = song_of(TEN)
+    got = claims(song, "credit")
+    doc = [line(i, c.start + 0.1) for i, c in enumerate(got.lines)]
+    errors, disagreements = lib.score_lines(song, got, doc)
+    assert [e.truth for e in errors] == list(range(10))
+    assert disagreements is None, "e2e2's text pairing does not apply to a perturbed text"
+
+
+def test_text_pairing_fallback_follows_the_claimed_order() -> None:
+    assert lib.pair_by_text(["a", "b", "a"], ["a", "x", "b", "a", "a"]) == [0, 2, 3]
+    assert lib.pair_by_text(["zzz"], ["a"]) == [None]
+
+
+def test_word_scores_follow_bench_py() -> None:
+    """Aligned words only; a line whose word count moved is skipped whole; header words are skipped."""
+    song = song_of(
+        [("one two", 0.0, 2.0), ("three four", 3.0, 5.0), ("five", 6.0, 7.0)],
+        words=[(0.0, 0.5), (1.0, 1.5), (3.0, 3.5), (4.0, 4.5), (6.0, 6.5)],
+    )
+    got = claims(song, "truth")
+    got = lib.Claims(
+        lines=(
+            got.lines[0],
+            lib.ClaimLine("CHORUS: three four", 3.0, 5.0, truth=1, lead_words=1),
+            got.lines[2],
+        ),
+        timed=True,
+    )
+    doc = [
+        line(0, 0.0, words=(lib.DocWord(0.05, 0.4, True), lib.DocWord(1.0, 1.4, False))),
+        line(
+            1,
+            2.5,
+            words=(lib.DocWord(2.5, 2.9, True), lib.DocWord(3.2, 3.4, True), lib.DocWord(6.5, 7, True)),
+        ),
+        line(2, 6.0, words=(lib.DocWord(6.0, 6.2, True), lib.DocWord(6.3, 6.4, True))),
+    ]
+    score = lib.score_words(song, got, doc)
+    assert score.errors == pytest.approx((0.05, 0.2, 2.5))
+    assert (score.in_text, score.interpolated, score.mismatched) == (5, 1, 1)
+    row = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc)
+    words = lib.word_metrics([row])
+    assert words["aligned"] == 3 and words["gross"] == 1
+    assert words["w250_pct"] == pytest.approx(66.67) and words["pco300_pct"] == pytest.approx(40.0)
+    assert words["medae_ms"] == pytest.approx(200.0) and words["bias_ms"] == pytest.approx(200.0)
+
+
+def test_line_metrics_keep_e2e2s_definitions() -> None:
+    """Gross is STRICTLY > 2 s, the tolerances are inclusive, and a refusal adds no line to e2e2's
+    percentages — but every line of its text counts as missing, and as a miss over the text."""
+    song = song_of(TEN)
+    got = claims(song, "truth")
+    errors = [0.5, 0.5000001, 2.0, 2.1, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    doc = [
+        line(i, song.truth[i].start + err, confidence="high" if i < 4 else "low")
+        for i, err in enumerate(errors)
+    ]
+    published = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc)
+    refused = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.REFUSED, doc=[])
+    metrics = lib.line_metrics([published, refused])
+    assert (metrics["scored"], metrics["gross"], metrics["w500"], metrics["w1000"]) == (10, 1, 6, 8)
+    assert (metrics["high"], metrics["high_bad"], metrics["high_gross"]) == (4, 3, 1)
+    assert (metrics["published"], metrics["refused"], metrics["zero_gross_songs"]) == (1, 1, 0)
+    assert metrics["w500_pct"] == 60.0 and metrics["missing"] == 10
+    assert (metrics["in_text"], metrics["w500_text_pct"], metrics["w1000_text_pct"]) == (20, 30.0, 40.0)
+
+
+def test_the_summary_reports_jamendo_and_youtube_apart_and_together() -> None:
+    jam = song_of(TEN, slug="j")
+    yt = song_of(TEN, slug="y", group="youtube")
+    rows = []
+    for song, err in ((jam, 0.1), (yt, 3.0)):
+        got = claims(song, "truth")
+        doc = [line(i, t.start + err) for i, t in enumerate(song.truth)]
+        rows.append(
+            lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc)
+        )
+    for variant, outcome in enumerate((lib.PUBLISHED, lib.REFUSED, lib.REFUSED)):
+        got = claims(jam, "wrongtext", [jam, yt], variant=variant, wrong_k=3)
+        rows.append(
+            lib.row_of(song=jam, mode="wrongtext", variant=variant, claims=got, outcome=outcome, doc=[])
+        )
+    summary = lib.summarize(rows)
+    assert summary["truth"]["jamendo"]["lines"]["gross"] == 0
+    assert summary["truth"]["youtube"]["lines"]["gross"] == 10
+    assert summary["truth"]["all"]["lines"]["scored"] == 20
+    assert summary["wrongtext"]["all"]["wrongtext"] == {
+        "pairs": 3,
+        "published": 1,
+        "errors": 0,
+        "pass_rate_pct": 33.33,
+    }
+    table = lib.format_summary(summary)
+    assert "== truth" in table and "wrong-text pass rate 1/3" in table
+
+
+# ── the emissions cache ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_the_emission_store_round_trips_and_misses_on_any_key_change(tmp_path: Path) -> None:
+    audio = tmp_path / "vocals.wav"
+    audio.write_bytes(b"RIFF....")
+    store = lib.EmissionStore(tmp_path / "_emissions", model="M", emitter="e1")
+    matrix = np.random.default_rng(0).normal(size=(50, 29)).astype(np.float32)
+    assert store.load(str(audio), "en") is None
+    store.save(str(audio), "en", matrix, {"frame_sec": 0.02, "dictionary": {"a": 1}}, produced_on="mps")
+    loaded, meta = store.load(str(audio), "en")
+    assert loaded.dtype == np.float32 and np.array_equal(loaded, matrix)
+    assert meta["fields"] == {"frame_sec": 0.02, "dictionary": {"a": 1}} and meta["produced_on"] == "mps"
+    assert store.load(str(audio), "fr") is None
+    assert lib.EmissionStore(store.directory, model="other", emitter="e1").load(str(audio), "en") is None
+    assert lib.EmissionStore(store.directory, model="M", emitter="e2").load(str(audio), "en") is None
+    stat = os.stat(audio)
+    os.utime(audio, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    assert store.load(str(audio), "en") is None, "a rewritten stem must not reuse the old matrix (M10)"
+    assert not list(store.directory.glob("*.tmp")), "writes are atomic"
+
+
+def test_the_emitter_fingerprint_moves_with_the_code_and_the_libraries(tmp_path: Path) -> None:
+    source = tmp_path / "ml.py"
+    source.write_text("a = 1\n")
+    first = lib.emitter_fingerprint([source], {"torch": "2.8.0"})
+    assert first == lib.emitter_fingerprint([source], {"torch": "2.8.0"})
+    assert first != lib.emitter_fingerprint([source], {"torch": "2.9.0"})
+    source.write_text("a = 2\n")
+    assert first != lib.emitter_fingerprint([source], {"torch": "2.8.0"})
+
+
+def test_the_bench_aligner_serves_memory_then_disk_and_never_recomputes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from encore_worker.adapters import ml
+
+    audio = tmp_path / "vocals.wav"
+    audio.write_bytes(b"RIFF....")
+    computed: list[str] = []
+
+    def fresh(self: Any, audio_path: str, language: str) -> ml.Emissions:
+        computed.append(audio_path)
+        return ml.Emissions(
+            log_probs=np.full((40, 29), -1.5, np.float32), frame_sec=0.02, dictionary={"a": 1}
+        )
+
+    monkeypatch.setattr(ml.WhisperXAligner, "emissions", fresh)
+    store = lib.EmissionStore(tmp_path / "_emissions", model="M", emitter="e")
+
+    def same(_language: str) -> str:
+        return "w1"
+
+    first = e2e.BenchAligner(device="cpu", store=store, identify=same)
+    one = first.emissions(str(audio), "en")
+    assert first.emissions(str(audio), "en") is one
+    second = e2e.BenchAligner(device="cpu", store=store, identify=same)
+    two = second.emissions(str(audio), "en")
+    assert len(computed) == 1 and dict(first.served) == {"computed": 1, "memory": 1}
+    assert dict(second.served) == {"disk": 1} and second.identities == {"en": "w1"}
+    assert np.array_equal(two.log_probs, one.log_probs) and two.frame_sec == one.frame_sec
+    assert two.dictionary == one.dictionary
+    refresh = e2e.BenchAligner(device="cpu", store=store, read=False, write="always", identify=same)
+    refresh.emissions(str(audio), "en")
+    assert len(computed) == 2 and dict(refresh.served) == {"computed": 1}
+
+
+def test_the_cache_is_keyed_on_the_model_the_aligner_loaded_not_on_its_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review r1: the key's model part used to be the harness's GUESS (`--model`, else whisperx's static
+    default table). An adapter that picks its model another way (an env knob, a per-device default) or a
+    Hub checkpoint that moves would then be served the OLD model's matrices under the same label."""
+    from encore_worker.adapters import ml
+
+    audio = tmp_path / "vocals.wav"
+    audio.write_bytes(b"RIFF....")
+    computed: list[str] = []
+
+    def fresh(self: Any, audio_path: str, language: str) -> ml.Emissions:
+        computed.append(audio_path)
+        return ml.Emissions(log_probs=np.zeros((4, 3), np.float32), frame_sec=0.02, dictionary={"a": 1})
+
+    monkeypatch.setattr(ml.WhisperXAligner, "emissions", fresh)
+    store = lib.EmissionStore(tmp_path / "_emissions", model="WAV2VEC2_ASR_BASE_960H", emitter="e")
+    e2e.BenchAligner(device="cpu", store=store, identify=lambda _l: "base").emissions(str(audio), "en")
+    moved = e2e.BenchAligner(device="cpu", store=store, identify=lambda _l: "large")
+    moved.emissions(str(audio), "en")
+    assert len(computed) == 2 and dict(moved.served) == {"computed": 1}, "same label, other weights: a miss"
+    assert moved.store_for("en").model == "WAV2VEC2_ASR_BASE_960H@large"
+
+
+def test_the_loaded_identity_digests_the_weights_and_the_dictionary(monkeypatch: pytest.MonkeyPatch) -> None:
+    torch = pytest.importorskip("torch")
+
+    class Tiny(torch.nn.Module):  # type: ignore[misc, name-defined]
+        def __init__(self, bias: float) -> None:
+            super().__init__()
+            self.head = torch.nn.Linear(2, 3)
+            with torch.no_grad():
+                self.head.weight.fill_(0.5)
+                self.head.bias.fill_(bias)
+
+    loaded: dict[str, tuple[Any, dict[str, Any]]] = {
+        "a": (Tiny(0.0), {"type": "torchaudio", "dictionary": {"a": 1}}),
+        "b": (Tiny(0.1), {"type": "torchaudio", "dictionary": {"a": 1}}),
+        "c": (Tiny(0.0), {"type": "torchaudio", "dictionary": {"a": 2}}),
+        "d": (Tiny(0.0), {"type": "torchaudio", "dictionary": {"a": 1}}),
+    }
+    monkeypatch.setattr(e2e.BenchAligner, "_aligner", lambda _self, language: loaded[language])
+    identity = e2e.BenchAligner(device="cpu").loaded_identity
+    assert identity("a") == identity("d"), "equal weights and dictionary: one identity"
+    assert len({identity("a"), identity("b"), identity("c")}) == 3, "a weight or a label id moves it"
+
+
+def test_the_emitter_fingerprint_names_ffmpeg_and_transformers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review r1: `load_audio` decodes and resamples through the PATH ffmpeg, and transformers runs any
+    Hub checkpoint; neither was in the key, so an upgrade of either served stale matrices."""
+    monkeypatch.setattr(e2e.shutil, "which", lambda _name: None)
+    versions = e2e.emitter_versions()
+    assert set(versions) == {"torch", "torchaudio", "whisperx", "transformers", "ffmpeg"}
+    assert versions["ffmpeg"] == "absent"
+    from encore_worker.host import ffmpeg
+
+    monkeypatch.setattr(e2e.shutil, "which", lambda _name: "/opt/ffmpeg")
+    monkeypatch.setattr(ffmpeg, "probe_version", lambda _binary: "ffmpeg version 7.1")
+    assert e2e.emitter_versions(("torch",)) == {"torch": versions["torch"], "ffmpeg": "ffmpeg version 7.1"}
+
+
+def test_the_model_override_loads_the_named_bundle_and_leaves_the_default_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--model` is the review harness's override: the named torchaudio bundle, cached under its own key."""
+    from encore_worker.adapters import ml
+
+    calls: list[dict[str, object]] = []
+
+    def load_align_model(**kw: object) -> tuple[str, dict[str, object]]:
+        calls.append(kw)
+        return "model", {"dictionary": {}}
+
+    monkeypatch.setitem(sys.modules, "whisperx", ModuleType("whisperx"))
+    monkeypatch.setattr(sys.modules["whisperx"], "load_align_model", load_align_model, raising=False)
+    monkeypatch.setattr(ml, "_MODELS", {})
+    aligner = e2e.BenchAligner(device="cpu", model="HUBERT_ASR_LARGE")
+    assert aligner._aligner("en") == ("model", {"dictionary": {}})
+    assert aligner._aligner("en") == ("model", {"dictionary": {}})
+    assert calls == [{"language_code": "en", "device": "cpu", "model_name": "HUBERT_ASR_LARGE"}]
+    assert set(ml._MODELS) == {("cpu", "align:en:HUBERT_ASR_LARGE")}
+
+
+# ── the driver, through the REAL time_text ───────────────────────────────────────────────────────────
+
+RATE = 16000
+FRAME = 0.02
+DIC = {ch: i + 1 for i, ch in enumerate("abcdefghijklmnopqrstuvwxyz'")}
+PHRASES = [
+    ("come and fly away", 5.0, 7.0),
+    ("with me tonight", 8.0, 10.0),
+    ("over the silver water", 12.0, 14.5),
+    ("carry me home", 16.0, 18.0),
+    ("come and fly away", 22.0, 24.0),
+    ("stars are out", 25.5, 27.5),
+    ("morning light across the river", 30.0, 33.0),
+    ("come and fly away", 35.0, 37.0),
+]
+DURATION = 40.0
+
+
+@dataclass(frozen=True)
+class VoicedEmissions:
+    """One float per frame: 1.0 where a phrase is sung. The spreading decoder reads it as occupancy."""
+
+    log_probs: list[float]
+    frame_sec: float
+    dictionary: dict[str, int]
+
+    @property
+    def frames(self) -> int:
+        return len(self.log_probs)
+
+
+class VoicedAligner:
+    """An `Aligner` whose emissions say only WHERE singing is — the decode below does the rest."""
+
+    def emissions(self, _path: str, _language: str) -> VoicedEmissions:
+        voiced = [0.0] * int(DURATION / FRAME)
+        for _text, start, end in PHRASES:
+            for frame in range(int(start / FRAME), int(end / FRAME)):
+                voiced[frame] = 1.0
+        return VoicedEmissions(log_probs=voiced, frame_sec=FRAME, dictionary=DIC)
+
+    def align(self, *_a: object, **_k: object) -> tuple[()]:
+        raise AssertionError("the global path must not fall back to the windowed aligner")
+
+
+def spreading_decoder(log_probs: Sequence[float], targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    """Any text, any window: one frame per target, spread evenly over the voiced frames (all, if too few).
+
+    Unlike a decoder scripted to one fixed text, this serves partial sheets, injected headers and the
+    repair ladder's window slices — which is what the harness's modes produce.
+    """
+    frames = [f for f, value in enumerate(log_probs) if value > 0]
+    if len(frames) < 2 * len(targets):
+        frames = list(range(len(log_probs)))
+    labels = [0] * len(log_probs)
+    for i, token in enumerate(targets):
+        labels[frames[int((i + 0.5) * len(frames) / len(targets))]] = token
+    return labels, [-0.4] * len(log_probs)
+
+
+def spread_decodes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every decode through `spreading_decoder`, and no lexical lift. Its scores are flat (-0.4 a frame
+    whatever the targets), so every text's lift reads 0 and the global engine's lexical gate (W3) would
+    refuse the song's own words before the harness saw a document. These rigs test the HARNESS, so they
+    take the check out (`lexical.lift` unmeasurable: the envelope gate decides, as it did before W3); the
+    gate itself is tested on the CTC fixture's real Viterbi (`test_lexical_gate.py`)."""
+    from encore_worker.adapters import ml
+    from encore_worker.domain.lyrics import lexical
+
+    monkeypatch.setattr(ml, "forced_align_decoder", spreading_decoder)
+    monkeypatch.setattr(lexical, "lift", lambda *_a, **_k: None)
+
+
+def write_voiced(
+    path: Path, duration: float, *, lag: float = 0.0, phrases: Sequence[tuple[str, float, float]] = PHRASES
+) -> Path:
+    """A tone wherever a phrase is sung (shifted by `lag`), faint noise elsewhere — for the envelope."""
+    signal = np.random.default_rng(0).normal(0.0, 0.002, int(duration * RATE))
+    for _text, start, end in phrases:
+        t = np.arange(int((end - start) * RATE)) / RATE
+        first = int((start + lag) * RATE)
+        signal[first : first + len(t)] += 0.3 * np.sin(2 * math.pi * 220.0 * t)
+    sf.write(path, signal, RATE)
+    return path
+
+
+@pytest.fixture()
+def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
+    spread_decodes(monkeypatch)
+    wav = write_voiced(tmp_path / "vocals.wav", DURATION)
+    song = song_of(PHRASES, slug="synthetic", audio=wav)
+    other = song_of([("a wholly different sheet of words", 3.0, 9.0)], slug="other", audio=wav)
+    driver = e2e.TimeTextDriver(aligner=VoicedAligner(), corpus=[song, other], media_root=tmp_path / "media")
+    return driver, song
+
+
+def test_the_driver_runs_the_shipped_time_text_and_pairs_by_identity(rig: tuple[Any, Any]) -> None:
+    from encore_worker.domain.lyrics.generate import Generated
+
+    driver, song = rig
+    original = Generated.as_doc
+    row = driver.run(e2e.Case(song, "truth", 0))
+    assert Generated.as_doc is original, "the capture hook is removed again"
+    assert row["outcome"] == lib.PUBLISHED and row["identity"] == "captured"
+    assert row["verdict"] != "?" and row["ref"].endswith("-lrc-word.json")
+    assert [e[0] for e in row["line_errors"]] == list(range(len(PHRASES)))
+    assert row["gross"] == 0 and row["pairing_disagreements"] == 0
+    assert driver.duration_of(song) == pytest.approx(DURATION), "real duration, read from the audio"
+
+
+def test_a_partial_sheet_scores_only_the_lines_it_still_has(rig: tuple[Any, Any]) -> None:
+    driver, song = rig
+    row = driver.run(e2e.Case(song, "drop50", 0))
+    kept = sorted(c.truth for c in driver.claims_for(e2e.Case(song, "drop50", 0)).lines)
+    assert row["outcome"] == lib.PUBLISHED and row["in_text"] == 4
+    assert sorted(e[0] for e in row["line_errors"]) == kept
+
+
+def test_injected_header_lines_publish_but_are_not_scored(rig: tuple[Any, Any]) -> None:
+    driver, song = rig
+    row = driver.run(e2e.Case(song, "blind+headers", 0))
+    assert row["outcome"] == lib.PUBLISHED and row["text_lines"] > len(PHRASES)
+    assert row["doc_lines"] == row["text_lines"] and row["scored"] == len(PHRASES)
+    assert row["pairing_disagreements"] is None
+
+
+def test_a_row_carries_the_repair_decodes_that_raised(
+    rig: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A swallowed repair fault looks exactly like a repair nobody needed (review L8), so each row
+    carries the trail's `repair-faults` notes. Clean rows carry an empty list, not a missing key."""
+    from encore_worker.adapters import ml
+
+    driver, song = rig
+    clean = driver.run(e2e.Case(song, "blind", 0))
+    assert clean["repair_faults"] == []
+
+    whole = int(DURATION / FRAME)
+
+    def whole_song_only(log_probs: Sequence[float], targets: Sequence[int]) -> tuple[list[int], list[float]]:
+        if len(log_probs) != whole:
+            raise RuntimeError("window decode fault")
+        return spreading_decoder(log_probs, targets)
+
+    monkeypatch.setattr(ml, "forced_align_decoder", whole_song_only)
+    faulted = driver.run(e2e.Case(song, "blind", 0))
+    assert faulted["outcome"] == lib.PUBLISHED, "a failed repair keeps the originals"
+    assert len(faulted["repair_faults"]) == 1 and faulted["repair_faults"][0].startswith("R3: 3 of 3")
+
+
+def test_the_generate_level_is_the_raw_decode(rig: tuple[Any, Any], tmp_path: Path) -> None:
+    driver, song = rig
+    raw = e2e.GenerateDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "raw")
+    row = raw.run(e2e.Case(song, "blind", 0))
+    assert row["outcome"] == lib.PUBLISHED and row["verdict"] == "generate"
+    assert [e[0] for e in row["line_errors"]] == list(range(len(PHRASES)))
+    assert row["high"] == 0, "the raw decode is ungraded"
+
+
+# ── word ends and the TV highlight ───────────────────────────────────────────────────────────────────
+
+
+def test_word_ends_follow_the_reviews_exp_ends_definitions() -> None:
+    """An end counts only for an ALIGNED word whose onset is within 250 ms; phrase-final = a line's last."""
+    song = song_of(
+        [("one two", 0.0, 2.0), ("three", 3.0, 4.0), ("four five", 5.0, 7.0)],
+        words=[(0.0, 0.5), (1.0, 1.5), (3.0, 3.8), (5.0, 5.5), (6.0, 6.5)],
+    )
+    got = claims(song, "truth")
+    doc = [
+        line(0, 0.0, words=(lib.DocWord(0.05, 0.45, True), lib.DocWord(1.2, 1.3, True))),
+        line(1, 3.3, words=(lib.DocWord(3.3, 3.9, True),)),  # onset 300 ms off: its end is not an end metric
+        line(2, 5.0, words=(lib.DocWord(5.0, 5.5, False), lib.DocWord(6.0, 6.6, True))),  # interpolated first
+    ]
+    score = lib.score_words(song, got, doc)
+    assert score.end_errors == pytest.approx((-0.05, -0.2, 0.1))
+    assert score.final_end_errors == pytest.approx((-0.2, 0.1))
+    row = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc)
+    words = lib.word_metrics([row])
+    assert (words["end_scored"], words["end100_pct"], words["end250_pct"]) == (3, 66.67, 100.0)
+    assert (words["final_end100_pct"], words["final_end_bias_ms"]) == (50.0, pytest.approx(-50.0))
+
+
+def test_a_truth_word_with_no_end_ends_at_the_next_onset_in_its_line(tmp_path: Path) -> None:
+    """Dormant on today's corpus (every Jamendo word has an end), so pinned here rather than by the bench."""
+    lines = (lib.TruthLine("a b", 0.0, 2.0), lib.TruthLine("c", 10.0, 20.0))
+    path = tmp_path / "truth-words.json"
+    path.write_text(json.dumps({"words": [{"start": 0.0}, {"start": 1.0}, {"start": 10.0, "end": 10.5}]}))
+    assert lib.load_truth_words(path, lines) == (
+        lib.TruthWord(0.0, 1.0),
+        lib.TruthWord(1.0, 2.0),
+        lib.TruthWord(10.0, 10.5),
+    )
+    path.write_text(
+        json.dumps({"words": [{"start": 0.0, "end": 0.4}, {"start": 1.0, "end": 1.4}, {"start": 10.0}]})
+    )
+    assert lib.load_truth_words(path, lines)[2] == lib.TruthWord(10.0, 10.0 + lib.TRUTH_END_CAP_SEC)
+
+
+def tv_line(*words: tuple[str, float, float, int]) -> Any:
+    return lib.TvLine(
+        words[0][1], words[-1][2], " ".join(w[0] for w in words), tuple(lib.TvWord(*w) for w in words)
+    )
+
+
+def test_the_tv_lights_the_word_whose_half_open_span_holds_the_position() -> None:
+    """`activeLineIndex` / `activeWordIndex`: start inclusive, end exclusive; between lines nothing is lit."""
+    first = tv_line(("hello", 1.0, 1.5, 0), ("world", 1.5, 2.0, 1))
+    second = tv_line(("again", 3.0, 4.0, 2))
+    lines = [first, second]
+    assert lib.tv_lit(lines, 1.0) is first.words[0] and lib.tv_lit(lines, 1.5) is first.words[1]
+    assert lib.tv_lit(lines, 2.0) is None and lib.tv_active_line(lines, 2.5) == 0, (
+        "the sung line stays current"
+    )
+    assert lib.tv_active_line(lines, 0.0) == 0 and lib.tv_active_line(lines, 9.0) == 1
+    assert lib.tv_lit([], 1.0) is None
+
+
+def test_a_line_misbound_late_blanks_the_tv_until_playback_reaches_it() -> None:
+    """The TV scans lines IN ORDER and stops at the first that starts after `pos`, so one line bound 40 s late
+    hides every line after it. Painting each word's span (the review's highlight) cannot see this."""
+    lines = [
+        tv_line(("early", 0.0, 1.0, 0)),
+        tv_line(("misbound", 50.0, 51.0, 1)),
+        tv_line(("later", 2.0, 3.0, 2)),
+    ]
+    assert lib.tv_lit(lines, 2.5) is None
+    assert lib.highlight_seconds(lines, [(0.0, 1.0, 0), (10.0, 11.0, 1), (2.0, 3.0, 2)]) == (1.0, 3.0)
+
+
+def test_long_lines_resegment_at_pauses_and_fold_a_short_orphan_into_the_closer_side() -> None:
+    """`resegmentLine` + `coalesceOrphans`, ported: only a line over 42 chars splits, at a 0.45 s pause."""
+    run = [(w, 0.5 * i, 0.5 * i + 0.4, i) for i, w in enumerate("morning light is falling on rivers".split())]
+    tail = [(w, 5.0 + 0.5 * i, 5.4 + 0.5 * i, 7 + i) for i, w in enumerate("waiting for you tonight".split())]
+    back = lib.tv_resegment(tv_line(*run, ("here", 3.5, 3.8, 6), *tail))  # gap 0.6 before, 1.2 after
+    assert [row.text for row in back] == [
+        "morning light is falling on rivers here",
+        "waiting for you tonight",
+    ]
+    assert (back[1].start, back[1].end) == (5.0, 6.9)
+    # "I" after nothing merges FORWARD; the 42-char cap then cuts "tonight" off alone, and it merges BACK.
+    words = "morning light is falling on the rivers tonight".split()
+    lead = [("I", 0.0, 0.2, 0), *[(w, 1.0 + 0.5 * i, 1.4 + 0.5 * i, 1 + i) for i, w in enumerate(words)]]
+    (whole,) = lib.tv_resegment(tv_line(*lead))
+    assert (whole.text, whole.start, whole.end) == (
+        "I morning light is falling on the rivers tonight",
+        0.0,
+        4.9,
+    )
+    short = tv_line(("a", 0.0, 0.1, 0), ("pause", 5.0, 5.2, 1))
+    assert lib.tv_resegment(short) == [short], "a line that fits is never split, whatever its pauses"
+
+
+def test_highlight_is_the_share_of_sung_time_the_right_word_is_lit() -> None:
+    """Denominator: sung time of EVERY line the text has — a line the aligner dropped lights nothing."""
+    song = song_of(
+        [("one two", 0.0, 2.0), ("three four", 3.0, 5.0), ("five", 6.0, 7.0)],
+        words=[(0.0, 1.0), (1.0, 2.0), (3.0, 4.0), (4.0, 5.0), (6.0, 7.0)],
+    )
+    got = claims(song, "truth")
+    late = lib.DocLine(
+        "one two",
+        0.25,
+        2.0,
+        "high",
+        0,
+        (lib.DocWord(0.25, 1.25, True, "one"), lib.DocWord(1.25, 2.0, True, "two")),
+    )
+    exact = lib.DocLine("five", 6.0, 7.0, "high", 2, (lib.DocWord(6.0, 7.0, True, "five"),))
+    hit, sung = lib.score_highlight(song, got, [late, exact])  # line 1 dropped by the aligner
+    assert (hit, sung) == pytest.approx((2.5, 5.0))
+    unsynced = [lib.DocLine(d.text, d.start, d.end, "low", d.source) for d in (late, exact)]
+    assert lib.score_highlight(song, got, unsynced) == pytest.approx((0.0, 5.0)), "line sync lights no word"
+    row = lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=[late, exact])
+    assert lib.highlight_metrics([row])["pct"] == 50.0
+    assert lib.score_highlight(song_of(TEN), claims(song_of(TEN), "truth"), []) is None, "no word truth"
+
+
+def test_a_lit_header_label_is_a_wrong_word() -> None:
+    song = song_of([("one two", 0.0, 2.0)], words=[(0.0, 1.0), (1.0, 2.0)])
+    got = lib.Claims(lines=(lib.ClaimLine("CHORUS: one two", 0.0, 2.0, truth=0, lead_words=1),), timed=True)
+    labelled = lib.DocLine(
+        "CHORUS: one two",
+        0.0,
+        2.0,
+        "high",
+        0,
+        (
+            lib.DocWord(0.0, 0.5, True, "CHORUS:"),
+            lib.DocWord(0.5, 1.0, True, "one"),
+            lib.DocWord(1.0, 2.0, True, "two"),
+        ),
+    )
+    assert lib.score_highlight(song, got, [labelled]) == pytest.approx((1.5, 2.0))
+
+
+# ── bootstrap intervals and the flat view ────────────────────────────────────────────────────────────
+
+
+def spread_rows(errors: Sequence[float], mode: str = "truth", group: str = "jamendo") -> list[Any]:
+    """One song per error: its odd lines published that far off, its even lines exact."""
+    rows = []
+    for i, err in enumerate(errors):
+        song = song_of(TEN, slug=f"s{i}", group=group)
+        got = claims(song, "truth")
+        doc = [line(k, t.start + (err if k % 2 else 0.0)) for k, t in enumerate(song.truth)]
+        rows.append(lib.row_of(song=song, mode=mode, variant=0, claims=got, outcome=lib.PUBLISHED, doc=doc))
+    return rows
+
+
+def test_song_bootstrap_intervals_are_seeded_and_bracket_the_pooled_estimate() -> None:
+    rows = spread_rows([0.1, 0.2, 0.9, 3.0, 0.3])
+    ci = lib.bootstrap_ci(rows, label="truth|all")
+    assert ci == lib.bootstrap_ci(rows, label="truth|all"), "seeded: the same rows give the same interval"
+    others = spread_rows([2.5, 0.0, 0.7], mode="jit")
+    alone, joined = lib.summarize(rows), lib.summarize([*rows, *others])
+    assert alone["truth"]["all"]["ci"] == joined["truth"]["all"]["ci"], "other modes never move an interval"
+    point = lib.line_metrics(rows)["w500_pct"]
+    assert point == 80.0 and ci["pm500"][0] <= point <= ci["pm500"][1] and ci["pm500"][0] < ci["pm500"][1]
+    assert ci["gross"][0] <= 5 <= ci["gross"][1]
+    assert ci["word_pm300"] is None and ci["highlight"] is None, "no word truth, no interval"
+    solo = lib.bootstrap_ci(rows[3:4], label="x")
+    assert solo["pm500"] == [50.0, 50.0] and solo["gross"] == [5.0, 5.0], "one song: nothing to resample"
+    wrong = lib.bootstrap_ci(
+        [
+            lib.row_of(
+                song=song_of(TEN),
+                mode="truth",
+                variant=0,
+                claims=claims(song_of(TEN), "truth"),
+                outcome=lib.REFUSED,
+                doc=[],
+            )
+        ],
+        label="x",
+    )
+    assert wrong["pm500"] is None and wrong["gross"] is None
+
+
+def test_the_flat_view_and_per_song_metrics_name_what_the_gates_read() -> None:
+    rows = spread_rows([0.1, 3.0])
+    summary = lib.summarize(rows)
+    flat = lib.flat_metrics(summary["truth"]["all"])
+    assert (flat["pm500"], flat["gross"], flat["scored"]) == (75.0, 5.0, 20.0)
+    assert flat["pm500_lo"] <= 75.0 <= flat["pm500_hi"]
+    assert flat["word_pm300"] is None and flat["attempts"] is None and flat["highlight"] is None
+    songs = lib.per_song(rows)
+    assert songs["truth"]["s1"] == {
+        "group": "jamendo",
+        "cases": 1.0,
+        "published": 1.0,
+        "refused": 0.0,
+        "error": 0.0,
+        "scored": 10.0,
+        "missing": 0.0,
+        "gross": 5.0,
+        "pm500": 50.0,
+        "pm1000": 50.0,
+        "text_pm500": 50.0,
+        "high_gross": 5.0,
+        "unsung": 0.0,
+    }
+    assert "95% CI (song bootstrap)" in lib.format_summary(summary)
+
+
+def test_unsung_counts_the_published_lines_no_truth_line_pairs_with() -> None:
+    """W1 review r1 (spec-5): an injected header or credit that PUBLISHES is never scored, so no ±N metric
+    could see M6 put back all 33 its mix envelope spared. `unsung` counts them per published document,
+    none for a refused one, and per song for the gates."""
+    song = worded("s")
+    got = claims(song, "headers")
+    shown = [
+        lib.DocLine(c.text, float(c.start or 0.0), float(c.end or 0.0), "high", i)
+        for i, c in enumerate(got.lines)
+    ]
+    headers = sum(1 for c in got.lines if c.truth is None)
+    published = lib.row_of(song=song, mode="headers", variant=0, claims=got, outcome=lib.PUBLISHED, doc=shown)
+    refused = lib.row_of(song=song, mode="headers", variant=0, claims=got, outcome=lib.REFUSED, doc=[])
+    assert headers > 0 and lib.line_metrics([published])["unsung"] == headers
+    assert lib.line_metrics([refused])["unsung"] == 0
+    assert lib.per_song([published])["headers"]["s"]["unsung"] == headers
+    assert lib.flat_metrics(lib.summarize([published])["headers"]["all"])["unsung"] == headers
+
+
+# ── compare and the gate language ────────────────────────────────────────────────────────────────────
+
+
+def document(rows: Sequence[Any], **meta: Any) -> dict[str, Any]:
+    return {"meta": meta, "summary": lib.summarize(rows), "songs": lib.per_song(rows)}
+
+
+@pytest.fixture()
+def views() -> tuple[Any, Any]:
+    """RUN vs BASE: s1 gains 5 gross lines under truth; a youtube song and a second mode on both sides."""
+    run = [
+        *spread_rows([0.1, 3.0]),
+        *spread_rows([0.2], group="youtube"),
+        *spread_rows([0.1, 0.1], mode="jit"),
+    ]
+    base = [
+        *spread_rows([0.1, 0.1]),
+        *spread_rows([0.2], group="youtube"),
+        *spread_rows([0.1, 3.0], mode="jit"),
+    ]
+    for row in run[2:3] + base[2:3]:
+        row["song"] = "yt"
+    return gates.view_of(document(run, level="time_text")), gates.view_of(document(base, level="run_align"))
+
+
+def held(expr: str, views: tuple[Any, Any]) -> bool:
+    ok, _detail = gates.evaluate(expr, *views)
+    return bool(ok)
+
+
+def test_gates_read_pooled_numbers_per_song_values_and_the_baseline(views: tuple[Any, Any]) -> None:
+    """The plan's reject-if forms, written as the conditions that must HOLD."""
+    run, _base = views
+    assert run.modes["truth"]["all"]["pm500"] == pytest.approx(83.33)
+    assert held("truth.pm500 >= base.truth.pm500 - 20.0", views)
+    assert not held("truth.pm500 >= base.truth.pm500 - 1.0", views)
+    assert held("delta(truth.gross) == 5", views) and held("truth.gross_up", views)
+    assert held("truth.jamendo.gross == 5 and truth.youtube.gross == 0", views)
+    assert not held("count(song.gross_up) == 0", views), "s1 gained gross lines under truth"
+    assert held("count(truth.song.gross_up) == 1 and count(jit.song.gross_down) == 1", views)
+    assert held("count(youtube.song.gross_up) == 0", views), "the group filter keeps only youtube songs"
+    assert held("min_song_delta(jamendo.pm500) == -50 and max_song_delta(jamendo.pm500) == 50", views)
+    assert held("min_song_delta(truth.jamendo.pm500) == -50", views)
+    assert held("max(truth.song.gross) == 5 and mean(truth.jamendo.song.gross) == 2.5", views)
+    assert held("abs(truth.pm500 - 83.33) <= 0.01 and 0 <= truth.gross <= 5", views)
+    assert held("min(truth.pm500, jit.pm500) == truth.pm500 and not jit.gross_up", views)
+    assert held("count(song.pm500 - base.song.pm500 < -10) == 1", views), "per-song arithmetic pairs songs"
+    ok, detail = gates.evaluate("truth.pm500 >= base.truth.pm500 - 1.0", *views)
+    assert not ok and detail == "83.33 >= 99"
+
+
+def test_combined_modes_are_named_through_mode_call(views: tuple[Any, Any]) -> None:
+    run, base = views
+    modes = {**run.modes, "jit+off15": run.modes["jit"]}
+    combined = gates.View(modes=modes, songs=run.songs, meta={})
+    assert gates.evaluate('mode("jit+off15").pm500 == jit.pm500', combined, base)[0]
+    with pytest.raises(gates.GateError, match="not in this summary"):
+        gates.evaluate('base.mode("jit+off15").pm500 > 0', combined, base)
+
+
+@pytest.mark.parametrize(
+    ("expr", "why"),
+    [
+        ("off3.pm500 > 0", "not in this summary"),
+        ("truth.word_pm300 > 0", "no value"),
+        ("truth.bogus > 0", "unknown metric"),
+        ("pm500 > 0", "names no mode"),
+        ("truth.song.bogus > 0", "not a per-song metric"),
+        ("song.gross > 1", "must be a condition"),
+        ("truth.pm500", "must be a condition"),
+        ("count(truth.gross) == 0", "reduces per-song values"),
+        ("song.gross > 1 and true", "reduce per-song values"),
+        ("__import__('os').system('true') == 0", "unknown function"),
+        ("truth.pm500.__class__ == 1", "cannot read reference"),
+        ("[1][0] == 1", "not part of the gate language"),
+        ("(lambda: 1)() == 1", "unknown function"),
+        ("truth.pm500 ** 2 > 0", "not part of the gate language"),
+        ("truth.pm500 >", "not an expression"),
+        ("1 / 0 > 0", "division by zero"),
+        ("truth.gross >= 0 or off3.pm500 > 0", "not in this summary"),
+    ],
+)
+def test_a_gate_that_cannot_be_evaluated_is_an_error_never_a_pass(
+    views: tuple[Any, Any], expr: str, why: str
+) -> None:
+    with pytest.raises(gates.GateError, match=why):
+        gates.evaluate(expr, *views)
+
+
+def test_baseline_references_need_a_baseline(views: tuple[Any, Any]) -> None:
+    run, _base = views
+    for expr in ("truth.pm500 >= base.truth.pm500", "count(song.gross_up) == 0", "delta(truth.pm500) > 0"):
+        with pytest.raises(gates.GateError, match="no --compare baseline"):
+            gates.evaluate(expr, run, None)
+    results = gates.run_gates(
+        [gates.Gate("absolute", "truth.gross <= 5"), gates.Gate("relative", "delta(truth.gross) <= 0")],
+        run,
+        None,
+    )
+    assert [(r.gate.name, r.status) for r in results] == [
+        ("no-error-rows", "PASS"),
+        ("absolute", "PASS"),
+        ("relative", "ERROR"),
+    ]
+    assert "REJECT" in gates.format_gates(results) and "2/3 pass" in gates.format_gates(results)
+
+
+def test_gate_files_are_json_or_a_one_line_per_gate_yaml_subset() -> None:
+    text = (
+        "# W2 reject-if list\n"
+        "truth-holds: truth.pm500 >= base.truth.pm500 - 1.0\n"
+        "\n"
+        "no-new-gross: 'count(song.gross_up) == 0'  # any song, any mode\n"
+    )
+    assert gates.parse_gates(text) == [
+        gates.Gate("truth-holds", "truth.pm500 >= base.truth.pm500 - 1.0"),
+        gates.Gate("no-new-gross", "count(song.gross_up) == 0"),
+    ]
+    assert gates.parse_gates('{"a": "truth.pm500 > 1"}') == [gates.Gate("a", "truth.pm500 > 1")]
+    assert gates.parse_gates('[{"name": "a", "expr": "truth.pm500 > 1"}]') == [
+        gates.Gate("a", "truth.pm500 > 1")
+    ]
+    for bad, why in (
+        ("a: truth.gross > 1\n  nested: 1\n", "nested YAML"),
+        ("a:\n", "expected `name: expression`"),
+        ("a: truth.gross > 1\na: truth.gross > 2\n", "twice"),
+        ("just an expression\n", "expected `name: expression`"),
+        ("# nothing\n", "no gates"),
+    ):
+        with pytest.raises(gates.GateError, match=why):
+            gates.parse_gates(bad)
+
+
+def test_compare_prints_deltas_warns_on_a_level_mismatch_and_names_the_songs_that_moved(
+    views: tuple[Any, Any],
+) -> None:
+    table = gates.format_compare(*views)
+    assert "WARNING: level differs" in table
+    assert "== truth" in table and "gross 5 (+5)" in table and "±500 83.3 (-16.7)" in table
+    assert "songs gross up: s1 +5; down: -" in table
+    assert "songs gross up: -; down: s1 -5" in table, "jit's s1 lost its gross lines"
+
+
+#: A run's measurement setup, as `e2e.py` writes it to `run.json` and into the summary's meta.
+SETUP = {
+    "level": "time_text",
+    "model": "M",
+    "seed": 0,
+    "wrong_k": 10,
+    "language": "en",
+    "tfr_audio": "youtube",
+}
+
+
+def test_the_cli_summarizes_compares_and_gates_with_an_exit_code(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_rows = tmp_path / "rows.jsonl"
+    run_rows.write_text("".join(json.dumps(r) + "\n" for r in spread_rows([0.1, 3.0])))
+    (tmp_path / "run.json").write_text(json.dumps(SETUP))
+    base = tmp_path / "base"
+    base.mkdir()
+    (base / "summary.json").write_text(json.dumps(document(spread_rows([0.1, 0.1]), **SETUP)))
+    rules = tmp_path / "gates.yaml"
+    rules.write_text("holds: truth.pm500 >= base.truth.pm500 - 30\nno-new-gross: count(song.gross_up) == 0\n")
+    code = e2e.main(["--summarize", str(run_rows), "--compare", str(base), "--gates", str(rules)])
+    out = capsys.readouterr().out
+    assert code == 3 and "PASS  holds" in out and "FAIL  no-new-gross" in out and "== compare" in out
+    rules.write_text("holds: truth.pm500 >= base.truth.pm500 - 30\n")
+    assert e2e.main(["--summarize", str(run_rows), "--compare", str(run_rows), "--gates", str(rules)]) == 0
+    rules.write_text("holds: truth.pm500 >= base.truth.pm500 - 30\n")
+    assert e2e.main(["--summarize", str(run_rows), "--gates", str(rules)]) == 3, "no baseline: ERROR rejects"
+
+
+# ── level run_align, through the REAL workflow ───────────────────────────────────────────────────────
+
+
+def test_run_align_runs_the_real_workflow_and_its_first_attempt_is_the_time_text_call(
+    rig: tuple[Any, Any], tmp_path: Path
+) -> None:
+    driver, song = rig
+    job = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "ra")
+    row = job.run(e2e.Case(song, "truth", 0))
+    assert row["outcome"] == lib.PUBLISHED and row["terminal"] == "published"
+    assert (row["published_label"], row["published_attempt"], row["published_knobs"]) == (
+        "captions:authored",
+        1,
+        [],
+    )
+    (only,) = row["attempts"]
+    assert (only["text"], only["tier"], only["decision"], only["gross"]) == (
+        "captions:authored",
+        "candidate",
+        "accept",
+        0,
+    )
+    assert [e["verdict"] for e in row["trail"]] == ["accept"] and row["changed_vs_first"] is False
+    stem = tmp_path / "ra" / "synthetic" / "truth" / "derived" / "stems" / "synthetic-vocals.wav"
+    assert stem.resolve() == song.vocals.resolve(), "the stem sits where a stems job leaves it"
+    direct = driver.run(e2e.Case(song, "truth", 0))
+    assert (tmp_path / "ra" / row["ref"]).read_bytes() == (driver.media_root / direct["ref"]).read_bytes()
+    assert row["line_errors"] == direct["line_errors"] and row["highlight"] == direct["highlight"]
+
+
+def test_run_align_serves_an_untimed_sheet_through_the_provider(rig: tuple[Any, Any], tmp_path: Path) -> None:
+    driver, song = rig
+    job = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "ra")
+    row = job.run(e2e.Case(song, "blind", 0))
+    assert row["outcome"] == lib.PUBLISHED and row["published_label"] == "lrclib"
+    assert row["ref"].endswith("synthetic-lrclib-word.json")
+
+
+#: Level run_align's H2 rig: the phrases end at 37 s of 60, so stem coverage is THIN (< 0.80) and the
+#: policy retries on the mix — whose vocals, here, sit 3 s later than the stem's. No repeated line, so
+#: no R3 re-decode blurs which attempt produced what.
+TAIL = 60.0
+MIX_LAG = 3.0
+UNIQUE = [
+    (f"line {word} sung here", start, end) for word, (_t, start, end) in zip("abcdefgh", PHRASES, strict=True)
+]
+
+
+class TwoTrackAligner:
+    """Emissions that follow the file: the mix hears every phrase `MIX_LAG` late."""
+
+    def __init__(self, mix: Path) -> None:
+        self.mix = os.path.realpath(mix)
+
+    def emissions(self, path: str, _language: str) -> VoicedEmissions:
+        lag = MIX_LAG if os.path.realpath(path) == self.mix else 0.0
+        voiced = [0.0] * int(TAIL / FRAME)
+        for _text, start, end in UNIQUE:
+            for frame in range(int((start + lag) / FRAME), int((end + lag) / FRAME)):
+                voiced[frame] = 1.0
+        return VoicedEmissions(log_probs=voiced, frame_sec=FRAME, dictionary=DIC)
+
+    def align(self, *_a: object, **_k: object) -> tuple[()]:
+        raise AssertionError("the global path must not fall back to the windowed aligner")
+
+
+def test_h2_fixed_the_thin_coverage_stem_document_publishes_with_no_mix_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review H2 as the harness sees it, FIXED (W1). This rig once recorded the swap: the stem document
+    (1 gross) replaced by the mix retry's (7), written over the same ref. The global engine reads no mix
+    knob now (R4 is its per-line mix witness), so the thin-coverage stem document is the one published."""
+
+    spread_decodes(monkeypatch)
+    vocals = write_voiced(tmp_path / "vocals.wav", TAIL, phrases=UNIQUE)
+    mix = write_voiced(tmp_path / "mix.wav", TAIL, lag=MIX_LAG, phrases=UNIQUE)
+    song = lib.Song(
+        slug="synthetic",
+        group="jamendo",
+        mix=mix,
+        vocals=vocals,
+        truth=tuple(lib.TruthLine(t, s, e) for t, s, e in UNIQUE),
+    )
+    job = e2e.RunAlignDriver(aligner=TwoTrackAligner(mix), corpus=[song], media_root=tmp_path / "media")
+    # BLIND, so no claim window pulls the mix decode back (with claims, R1/R2 re-decode it in place).
+    row = job.run(e2e.Case(song, "blind", 0))
+    (first,) = row["attempts"]
+    assert (first["knobs"], first["decision"], first["coverage"] < 0.8) == ([], "accept", True)
+    assert (first["gross"], first["w500"]) == (1, 6)
+    assert (row["published_attempt"], row["published_knobs"], row["published_file_attempt"]) == (1, [], 1)
+    assert (row["outcome"], row["gross"], row["w500"], row["changed_vs_first"]) == (
+        lib.PUBLISHED,
+        1,
+        6,
+        False,
+    )
+    policy = lib.summarize([row])["blind"]["all"]["policy"]
+    assert (policy["mix_published"], policy["retimes"], policy["changed_vs_first"]) == (0, {}, 0)
+    assert not (tmp_path / "media" / "synthetic" / "blind" / "attempts").exists()
+    assert e2e._policy_note(row) == "  attempts 1"
+
+
+#: A text that survives the adapters' cleaning (`clean_line` keeps any line with an alphanumeric char)
+#: but holds no char the aligner's dictionary knows: a count-in. `♪`-only lines would not do — cleaning
+#: drops them before any attempt, exactly as production does (pinned below). Claimed where the rig's
+#: stem is SILENT (its phrases end at 37 s), so its LINE_SYNC rung is refused by the sheet-span gate
+#: (r 0.25, at an 8 s lag); `COUNT_IN_ON_THE_SINGING` is a count-in claimed on three sung phrases.
+UNSINGABLE = [("1 2 3 4", 38.0, 39.0), ("5 6 7 8", 39.0, 39.8)]
+COUNT_IN_ON_THE_SINGING = [("1 2 3 4", 5.0, 7.0), ("5 6 7 8", 8.0, 10.0), ("9 10 11 12", 12.0, 14.5)]
+
+
+class HeardTranscriber:
+    """A `Transcriber` that hears the rig's phrases, as whisper would on the stem."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def transcribe(self, audio_path: str, *, language: str | None = None) -> list[dict[str, object]]:
+        self.calls.append(audio_path)
+        return [{"text": text, "start": start, "end": end} for text, start, end in PHRASES]
+
+
+def test_a_text_with_nothing_to_align_walks_the_whole_ladder_to_no_lyrics(
+    rig: tuple[Any, Any], tmp_path: Path
+) -> None:
+    """LINE_SYNC after a declined attempt, refused by the sheet-span gate, ASR (none here), GiveUp."""
+    driver, synthetic = rig
+    song = song_of(UNSINGABLE, slug="instrumental", audio=synthetic.vocals)
+    job = e2e.RunAlignDriver(aligner=driver.aligner, corpus=[song], media_root=tmp_path / "ra")
+    row = job.run(e2e.Case(song, "truth", 0))
+    assert (row["outcome"], row["terminal"], row["published_label"]) == (lib.REFUSED, "no-lyrics", None)
+    first, second = row["attempts"]
+    assert (first["result"], first["decision"], first["verdict"]) == ("none", "retime", "declined")
+    assert (second["knob"], second["result"], second["decision"]) == ("line-sync", "refused", "next")
+    assert [e["verdict"] for e in row["trail"]] == ["retime", "next", "asr-fallback", "give-up"]
+    assert str(row["trail"][1]["why"]).startswith("line sync refused: sheet-span envelope r=")
+    assert row["asr_requested"] is True
+    assert row["transcriptions"] == [
+        {"on_vocals": True, "heard": False},
+        {"on_vocals": False, "heard": False},
+    ]
+    assert lib.summarize([row])["truth"]["all"]["policy"]["no_lyrics"] == 1
+
+
+def test_a_count_in_on_the_singing_line_syncs_and_publishes(rig: tuple[Any, Any], tmp_path: Path) -> None:
+    """Review M1 through the harness: an unalignable text claimed on the singing passes the sheet-span gate
+    (r 0.50 at zero lag) and its LINE_SYNC document is the one published — no longer dropped for ASR and
+    then NO LYRICS."""
+    driver, synthetic = rig
+    song = song_of(COUNT_IN_ON_THE_SINGING, slug="count-in", audio=synthetic.vocals)
+    job = e2e.RunAlignDriver(aligner=driver.aligner, corpus=[song], media_root=tmp_path / "ra")
+    row = job.run(e2e.Case(song, "truth", 0))
+    assert (row["outcome"], row["terminal"], row["published_attempt"]) == (lib.LINE_SYNC, "published", 2)
+    first, second = row["attempts"]
+    assert (first["result"], first["decision"]) == ("none", "retime")
+    assert (second["knob"], second["result"], second["decision"]) == ("line-sync", "line", "accept")
+    assert second["ref"].endswith("count-in-captions-authored-line-sync-line.json")
+    assert (row["published_file_attempt"], row["asr_requested"]) == (2, False)
+
+
+def test_sheet_gate_measures_the_shipped_gate_in_both_shapes(rig: tuple[Any, Any]) -> None:
+    """`scripts/sheet_gate.py`, the LINE_SYNC gate's calibration: parse_lrc's shape is rebuilt from the
+    served claims, and the verdicts are the shipped functions'. A sheet on the singing passes as captions;
+    as an LRC its spans tile the song's short breaks and the fit loses shape (why LRC right texts pass
+    less); the same lines claimed elsewhere are refused in both shapes."""
+    from encore_worker.adapters.ml import load_audio_mono_16k
+
+    _driver, synthetic = rig
+    served = [{"text": t, "start": s, "end": e} for t, s, e in reversed(PHRASES)]
+    lrc = sheet_gate.lrc_shaped(served)
+    assert [line["start"] for line in lrc] == sorted(s for _t, s, _e in PHRASES)
+    assert [line.get("end") for line in lrc] == [line["start"] for line in lrc[1:]] + [None]
+    signal = load_audio_mono_16k(str(synthetic.vocals))
+    right = sheet_gate.measure_case(signal, served)
+    assert right["caption"]["passes"] and right["caption"]["literal"]
+    assert right["lrc"]["r"] < right["caption"]["r"]
+    elsewhere = [{"text": t, "start": s + 19.0, "end": e + 19.0} for t, s, e in PHRASES[:3]]
+    wrong = sheet_gate.measure_case(signal, elsewhere)
+    assert not wrong["caption"]["passes"] and not wrong["lrc"]["passes"]
+    rows = [{"mode": "truth", **right}, {"mode": "wrongtext", **wrong}]
+    first = sheet_gate.summarize(rows)[0].split()
+    assert first == ["caption", "shipped", "wrong", "0/1", "right", "1/1", "truth", "1/1"]
+
+
+def test_the_asr_fallback_publishes_a_transcript_that_is_reported_not_scored(
+    rig: tuple[Any, Any], tmp_path: Path
+) -> None:
+    driver, synthetic = rig
+    song = song_of(UNSINGABLE, slug="instrumental", audio=synthetic.vocals)
+    heard = HeardTranscriber()
+    job = e2e.RunAlignDriver(
+        aligner=driver.aligner, corpus=[song], media_root=tmp_path / "ra", transcriber=heard
+    )
+    row = job.run(e2e.Case(song, "truth", 0))
+    assert (row["outcome"], row["terminal"], row["published_label"]) == (
+        lib.REFUSED,
+        "published",
+        "asr:vocals",
+    )
+    assert row["attempts"][-1]["tier"] == "asr" and "gross" not in row["attempts"][-1]
+    assert row["scored"] == 0 and len(heard.calls) == 1
+    assert lib.summarize([row])["truth"]["all"]["policy"]["asr_published"] == 1
+
+
+def test_the_transcript_cache_serves_disk_hits_and_remembers_hearing_nothing(tmp_path: Path) -> None:
+    audio = tmp_path / "vocals.wav"
+    audio.write_bytes(b"RIFF....")
+    store = lib.TranscriptStore(tmp_path / "_transcripts", model="whisper:base", emitter="e")
+    heard = HeardTranscriber()
+    first = lib.CachedTranscriber(heard, store)
+    got = first.transcribe(str(audio), language="en")
+    again = lib.CachedTranscriber(heard, store).transcribe(str(audio), language="en")
+    assert list(again) == list(got) and len(heard.calls) == 1 and dict(first.served) == {"computed": 1}
+
+    class Deaf:
+        def transcribe(self, audio_path: str, *, language: str | None = None) -> list[dict[str, object]]:
+            heard.calls.append(audio_path)
+            return []
+
+    quiet = lib.TranscriptStore(tmp_path / "_transcripts", model="whisper:tiny", emitter="e")
+    assert list(lib.CachedTranscriber(Deaf(), quiet).transcribe(str(audio))) == []
+    cached = lib.CachedTranscriber(Deaf(), quiet)
+    assert list(cached.transcribe(str(audio))) == [] and dict(cached.served) == {"disk": 1}
+    assert len(heard.calls) == 2 and not list(store.directory.glob("*.tmp"))
+
+
+def test_summary_json_keeps_one_line_per_song_and_reads_back_unchanged() -> None:
+    rows = [*spread_rows([0.1, 3.0]), *spread_rows([0.2, 0.3], mode="jit")]
+    doc = document(rows, level="time_text")
+    text = lib.dump_document(doc)
+    assert json.loads(text) == json.loads(json.dumps(doc))
+    assert sum(1 for line in text.splitlines() if line.startswith('   "s1": {"group": "jamendo"')) == 2
+    assert json.loads(lib.dump_document({"songs": {"m": {"s": {"x": 1}}}})) == {
+        "songs": {"m": {"s": {"x": 1}}}
+    }
+    assert json.loads(lib.dump_document({"meta": {}})) == {"meta": {}}
+
+
+def test_a_song_that_lost_its_value_fails_a_per_song_delta_instead_of_dropping_out() -> None:
+    """Refused now, scored before: the worst regression must not vanish from `min_song_delta`."""
+    scored = spread_rows([0.1, 0.1])
+    refused = [
+        scored[0],
+        lib.row_of(
+            song=song_of(TEN, slug="s1"),
+            mode="truth",
+            variant=0,
+            claims=claims(song_of(TEN, slug="s1"), "truth"),
+            outcome=lib.REFUSED,
+            doc=[],
+        ),
+    ]
+    now, before = gates.view_of(document(refused)), gates.view_of(document(scored))
+    with pytest.raises(gates.GateError, match=r"s1 \(truth\) had a value in the baseline"):
+        gates.evaluate("min_song_delta(truth.pm500) >= -1", now, before)
+    assert gates.evaluate("count(song.refused_up) == 1 and count(song.gross_down) == 0", now, before)[0]
+    assert gates.evaluate("min_song_delta(truth.pm500) >= -1", before, now)[0], (
+        "a song that GAINED is skipped"
+    )
+
+
+# ── review round 1: denominators, gates, identity, provenance ────────────────────────────────────────
+
+#: Two Jamendo-shaped songs with word truth: 2 lines of 3 words, each word sung for 0.3 s.
+WORDED = [("fly away home", 1.0, 2.0), ("come back soon", 3.0, 4.0)]
+WORD_SPANS = [(1.0, 1.3), (1.3, 1.6), (1.6, 1.9), (3.0, 3.3), (3.3, 3.6), (3.6, 3.9)]
+
+
+def exact_doc(song: Any, claims_: Any) -> list[Any]:
+    """Every claimed truth line published exactly on its truth words."""
+    out = []
+    for position, claim in enumerate(claims_.lines):
+        if claim.truth is None:
+            continue
+        first = sum(len(t.text.split()) for t in song.truth[: claim.truth])
+        words = tuple(
+            lib.DocWord(song.words[first + k].start, song.words[first + k].end, True, w)
+            for k, w in enumerate(song.truth[claim.truth].text.split())
+        )
+        out.append(lib.DocLine(claim.text, words[0].start, words[-1].end, "high", position, words))
+    return out
+
+
+def worded(slug: str) -> Any:
+    return song_of(WORDED, slug=slug, words=WORD_SPANS)
+
+
+def test_a_refused_case_stays_in_every_denominator_that_counts_the_text() -> None:
+    """Review r1 (correctness-1, spec-8, tests-15): a refused row used to carry no word or highlight
+    denominator, and `missing` summed published rows only, so refusing a song RAISED PCO and the
+    highlight. Now its words, sung seconds and lines stay in; only e2e2's published-only ±500 ignores it."""
+    good, bad = worded("good"), worded("bad")
+    published = lib.row_of(
+        song=good,
+        mode="truth",
+        variant=0,
+        claims=claims(good, "truth"),
+        outcome=lib.PUBLISHED,
+        doc=exact_doc(good, claims(good, "truth")),
+    )
+    refused = lib.row_of(
+        song=bad, mode="truth", variant=0, claims=claims(bad, "truth"), outcome=lib.REFUSED, doc=[]
+    )
+    assert refused["words"]["in_text"] == 6 and refused["words"]["errors"] == []
+    assert refused["highlight"] == {"hit": 0.0, "sung": pytest.approx(1.8)}
+    alone, both = (
+        lib.summarize([published])["truth"]["all"],
+        lib.summarize([published, refused])["truth"]["all"],
+    )
+    assert (alone["words"]["pco300_pct"], both["words"]["pco300_pct"]) == (100.0, 50.0)
+    assert (both["words"]["in_text"], both["words"]["unpublished"], both["words"]["w300_pct"]) == (
+        12,
+        6,
+        100.0,
+    )
+    assert (alone["highlight"]["pct"], both["highlight"]["pct"]) == (100.0, 50.0)
+    assert both["highlight"]["unpublished"] == 1
+    lines = both["lines"]
+    assert (lines["refused"], lines["missing"], lines["w500_pct"], lines["w500_text_pct"]) == (
+        1,
+        2,
+        100.0,
+        50.0,
+    )
+    ci = both["ci"]
+    for name, point in (("text_pm500", 50.0), ("word_pco300", 50.0), ("highlight", 50.0), ("pm500", 100.0)):
+        assert ci[name][0] <= point <= ci[name][1], name
+    table = lib.format_summary({"truth": {"jamendo": both}})
+    assert "(unpublished 6)" in table and "1 published nothing" in table and "±500/text" in table
+
+
+def test_an_error_row_is_not_a_refused_wrong_text_and_fails_the_gate_run() -> None:
+    """Review r1 (tests-16): an ERROR used to sit in the wrong-text denominator as a refusal, so a helper
+    that raised on some texts LOWERED the pass rate and passed W3's 'must fall' gate on a crash."""
+    jam, other = song_of(TEN, slug="j"), song_of(TEN, slug="o", group="youtube")
+    rows = [
+        lib.row_of(
+            song=jam,
+            mode="wrongtext",
+            variant=v,
+            claims=claims(jam, "wrongtext", [jam, other], variant=v, wrong_k=3),
+            outcome=outcome,
+            doc=[],
+        )
+        for v, outcome in enumerate((lib.PUBLISHED, lib.REFUSED, lib.ERROR))
+    ]
+    entry = lib.summarize(rows)["wrongtext"]["all"]
+    assert entry["wrongtext"] == {"pairs": 2, "published": 1, "errors": 1, "pass_rate_pct": 50.0}
+    assert "(1 ERROR rows left out)" in lib.format_summary({"wrongtext": {"all": entry}})
+    assert lib.per_song(rows)["wrongtext"]["j"]["error"] == 1.0
+    view = gates.view_of(document(rows))
+    builtin = gates.run_gates([gates.Gate("pass", "wrongtext.wrongtext_pass <= 50")], view, None)
+    assert [(r.gate.name, r.status) for r in builtin] == [("no-error-rows", "FAIL"), ("pass", "PASS")]
+    assert "wrongtext 1" in builtin[0].detail
+    clean = gates.view_of(document(rows[:2]))
+    assert gates.error_rows_gate(clean).status == "PASS"
+
+
+def test_error_rows_exit_3_even_without_a_gate_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rows = spread_rows([0.1, 0.1])
+    path = tmp_path / "rows.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    assert e2e.main(["--summarize", str(path)]) == 0
+    broken = {**rows[1], "outcome": lib.ERROR, "exception": "boom"}
+    path.write_text("".join(json.dumps(r) + "\n" for r in (rows[0], broken)))
+    assert e2e.main(["--summarize", str(path)]) == 3
+    assert "FAIL  no-error-rows" in capsys.readouterr().out
+
+
+def test_a_label_stripped_line_scores_as_the_lyric_it_is() -> None:
+    """Review r1 (correctness-3): the `headers` mode's inline label paired only when it PUBLISHED, so a
+    W5 rule that strips `CHORUS:` (M11) read as mismatched and lit wrong — worse than the bug. Measured on
+    this rig: stripped 3/6 aligned and 0.9/1.8 s lit before the fix; now 6/6 and 1.8/1.8 s either way."""
+    song = worded("s")
+    got = lib.Claims(
+        lines=(
+            lib.ClaimLine("CHORUS: fly away home", 1.0, 2.0, truth=0, lead_words=1),
+            lib.ClaimLine("come back soon", 3.0, 4.0, truth=1),
+        ),
+        timed=True,
+    )
+    stripped = exact_doc(song, got)
+    kept = [
+        lib.DocLine(
+            "CHORUS: fly away home",
+            0.8,
+            1.9,
+            "high",
+            0,
+            (lib.DocWord(0.8, 1.0, True, "CHORUS:"), *stripped[0].words),
+        ),
+        stripped[1],
+    ]
+    for doc in (stripped, kept):
+        score = lib.score_words(song, got, doc)
+        assert (len(score.errors), score.mismatched) == (6, 0)
+        assert lib.score_highlight(song, got, doc) == pytest.approx((1.8, 1.8))
+    two_extra = [lib.DocLine("x", 0.5, 1.9, "high", 0, (lib.DocWord(0.5, 0.6, True, "x"), *kept[0].words))]
+    assert lib.score_words(song, got, two_extra).mismatched == 3, "any other count is still mismatched"
+
+
+def test_a_documents_source_lines_do_not_read_as_a_changed_document() -> None:
+    """W1 r1: the worker records a document's whole text (`sourceLines`) when its lines lost some of it, for
+    a later re-pick. The TV never reads it, so the digest is of the bytes the worker writes WITHOUT it — a
+    document written before the key existed and the same document with it compare equal — while any
+    change to what the TV renders still changes it."""
+    from encore_worker.steps.align_steps import _with_source_lines
+
+    doc: dict[str, object] = {"language": "en", "lines": [{"text": "hello", "start": 0.1 + 0.2, "end": 1.5}]}
+    before = json.dumps(doc, ensure_ascii=False).encode("utf-8")
+    with_text = _with_source_lines(doc, ({"text": "hello"}, {"text": "never sung ♪"}))
+    after = json.dumps(with_text, ensure_ascii=False).encode("utf-8")
+    assert after != before and lib.SOURCE_LINES_KEY in with_text
+    assert lib.doc_digest(after) == lib.doc_digest(before) == hashlib.sha256(before).hexdigest()[:16]
+    moved = json.dumps({**with_text, "lines": [{"text": "hello", "start": 0.4, "end": 1.5}]}).encode("utf-8")
+    assert lib.doc_digest(moved) != lib.doc_digest(before)
+    assert lib.doc_digest(b"not json") == hashlib.sha256(b"not json").hexdigest()[:16]
+
+
+def test_documents_are_digested_per_song_for_the_doc_changed_gates() -> None:
+    """Review r1 (spec-14): W1's reject-if — 'a published doc changes on a song whose stem coverage is
+    >= 0.80' — had nothing to read: no document digest and no attempt-1 coverage per song."""
+    song = worded("s")
+    doc = exact_doc(song, claims(song, "truth"))
+    moved = [dataclasses_replace(doc[0], start=doc[0].start + 0.01), doc[1]]
+    ended = [doc[0], dataclasses_replace(doc[1], end=doc[1].end + 0.2)]
+    assert lib.onset_digest(doc) == lib.onset_digest(ended) != lib.onset_digest(moved)
+
+    def row(slug: str, digest: str | None, lines: Any, coverage: float) -> Any:
+        extra = {"doc_sha256": digest, "onsets_sha256": lib.onset_digest(lines) if lines else None}
+        extra["first_coverage"] = coverage
+        s = worded(slug)
+        outcome = lib.PUBLISHED if lines else lib.REFUSED
+        return lib.row_of(
+            song=s,
+            mode="truth",
+            variant=0,
+            claims=claims(s, "truth"),
+            outcome=outcome,
+            doc=lines,
+            extra=extra,
+        )
+
+    base = [row("a", "d1", doc, 0.95), row("b", "d2", doc, 0.5), row("c", "d3", doc, 0.9)]
+    run = [row("a", "d1", ended, 0.95), row("b", "d9", moved, 0.5), row("c", None, [], 0.0)]
+    per = lib.per_song(run)["truth"]
+    assert (per["a"]["doc"], per["c"]["doc"], per["c"]["coverage"]) == ("d1", lib.NO_DOCUMENT, 0.0)
+    views = (gates.view_of(document(run)), gates.view_of(document(base)))
+    assert held("count(song.doc_changed) == 2 and count(song.onsets_changed) == 2", views)
+    assert held("count(song.doc_changed * (base.song.coverage >= 0.8)) == 1", views), "c vanished at 0.9"
+    assert held("count(song.onsets_changed * (base.song.coverage < 0.8)) == 1", views), "b's onset moved"
+    raw = gates.view_of(document([{**r, "doc_sha256": None} for r in run[:1]] + run[1:]))
+    del raw.songs["truth"]["a"]["doc"]
+    with pytest.raises(gates.GateError, match="no `doc` digest"):
+        gates.evaluate("count(song.doc_changed) == 0", raw, views[1])
+
+
+def dataclasses_replace(obj: Any, **changes: Any) -> Any:
+    import dataclasses
+
+    return dataclasses.replace(obj, **changes)
+
+
+def lost_views() -> tuple[Any, Any]:
+    """BASE: songs a (90) and b (80) under truth and off15. RUN: b refused under truth; off15 not run."""
+
+    def at(slug: str, err: float, mode: str, outcome: str = lib.PUBLISHED) -> Any:
+        s = song_of(TEN, slug=slug)
+        doc = [line(k, t.start + (err if k % 5 == 0 else 0.0)) for k, t in enumerate(s.truth)]
+        return lib.row_of(
+            song=s,
+            mode=mode,
+            variant=0,
+            claims=claims(s, mode),
+            outcome=outcome,
+            doc=doc if outcome == lib.PUBLISHED else [],
+        )
+
+    base = [at("a", 0.9, "truth"), at("b", 3.0, "truth"), at("a", 0.9, "off15"), at("b", 3.0, "off15")]
+    run = [at("a", 0.9, "truth"), at("b", 3.0, "truth", lib.REFUSED)]
+    return gates.view_of(document(run)), gates.view_of(document(base))
+
+
+@pytest.mark.parametrize(
+    ("expr", "why"),
+    [
+        # A song that LOST its value, spelled explicitly: correctness-2.
+        ("min(truth.song.pm500 - base.truth.song.pm500) >= -1", "had a value in the baseline"),
+        ("count(truth.song.pm500 < base.truth.song.pm500 - 1) == 0", "had a value in the baseline"),
+        ("min_song_delta(truth.pm500) >= -1", "had a value in the baseline"),
+        # A reduction over a song with no value: spec-10.
+        ("min(truth.song.pm500) >= 85", "no value"),
+        ("count(truth.song.pm500 < 85) == 0", "no value"),
+        # Modes / songs the run did not measure: spec-10.
+        ("count(song.gross_up) == 0", "did not measure"),
+        ("count(jamendo.song.gross_up) == 0", "did not measure"),
+        ("count(song.refused_up) == 1", "did not measure"),
+        ("min_song_delta(jamendo.gross) >= 0", "did not measure"),
+        ("count(off15.song.gross - base.off15.song.gross > 0) == 0", "no per-song data"),
+    ],
+)
+def test_a_per_song_gate_never_passes_over_a_song_that_lost_its_value_or_was_not_run(
+    expr: str, why: str
+) -> None:
+    """Review r1: every one of these used to PASS (`1 >= -1`, `0 == 0`) on this pair of summaries."""
+    with pytest.raises(gates.GateError, match=why):
+        gates.evaluate(expr, *lost_views())
+
+
+def test_per_song_gates_still_read_what_was_measured() -> None:
+    run, base = lost_views()
+    truth_only = gates.View(modes=base.modes, songs={"truth": base.songs["truth"]}, meta={})
+    assert gates.evaluate("count(truth.song.refused_up) == 1", run, truth_only)[0]
+    assert gates.evaluate("min(truth.song.text_pm500) == 0", run, base)[0], "a refusal reads 0 over its text"
+    assert gates.evaluate("count(truth.song.gross_down) == 1", run, truth_only)[0]
+    gained = gates.evaluate("min(truth.song.pm500 - base.truth.song.pm500) >= -1", base, run)
+    assert gained[0] and gained[1] == "0 >= -1", "a song that GAINED a value is skipped, as in min_song_delta"
+
+
+def test_a_pooled_baseline_comparison_needs_the_same_songs() -> None:
+    """A `--songs` run against the full baseline pooled 1 song against 2 and gated on the difference."""
+    run, base = lost_views()
+    fewer = gates.View(modes=run.modes, songs={"truth": {"a": run.songs["truth"]["a"]}}, meta={})
+    with pytest.raises(gates.GateError, match=r"not measured: b"):
+        gates.evaluate("truth.pm500 >= base.truth.pm500 - 1", fewer, base)
+    with pytest.raises(gates.GateError, match="only in the run: b"):
+        gates.evaluate("delta(truth.gross) <= 0", base, fewer)
+    assert gates.evaluate("truth.text_pm500 < base.truth.text_pm500", run, base)[0]
+
+
+def test_identity_that_falls_back_to_text_on_a_word_timed_document_is_an_error_row(
+    rig: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review r1 (correctness-7): a capture miss silently reverted a row to e2e2's text pairing."""
+    import contextlib
+
+    driver, song = rig
+    assert driver.run(e2e.Case(song, "truth", 0))["identity"] == "captured"
+
+    @contextlib.contextmanager
+    def blind_capture() -> Any:
+        yield []
+
+    monkeypatch.setattr(e2e, "capture_generated", blind_capture)
+    row = driver.run(e2e.Case(song, "truth", 0))
+    assert row["outcome"] == lib.ERROR and row["identity"] == "text"
+    assert "F1 mispairing" in row["exception"] and row["scored"] == 0
+    assert lib.line_metrics([row])["text_paired"] == 1
+    assert e2e.unpaired_word_doc("text", "line") is None, "a line-synced document may pair by text"
+
+
+def test_the_drivers_build_the_shipped_steps_with_the_config_they_are_given(
+    rig: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review r1 (correctness-6): every driver built a bare `Config()`, so an ENCORE_ALIGN_* knob set for an
+    arm run never reached the shipped code. `main` reads `Config.from_env()`; the drivers pass it on."""
+    from encore_worker.host.config import Config, ConfigError
+
+    driver, song = rig
+    seen: list[Any] = []
+    real = e2e.AlignStepsImpl
+
+    class Recording(real):  # type: ignore[misc, valid-type]
+        def __init__(self, *, config: Any, **kw: Any) -> None:
+            seen.append(config)
+            super().__init__(config=config, **kw)
+
+    monkeypatch.setattr(e2e, "AlignStepsImpl", Recording)
+    probe = Config(worker_id="bench-probe")
+    for level in (e2e.TimeTextDriver, e2e.RunAlignDriver):
+        level(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "m", config=probe).run(
+            e2e.Case(song, "truth", 0)
+        )
+    assert seen == [probe, probe]
+
+    def refuse(env: Any = None) -> Any:
+        raise ConfigError("ENCORE_ASR_MODEL='bogus' is not a known checkpoint")
+
+    monkeypatch.setattr(e2e.Config, "from_env", staticmethod(refuse))
+    assert e2e.main(["--songs", "hello", "--out", str(tmp_path / "never")]) == 2
+    assert "worker config: ENCORE_ASR_MODEL" in capsys.readouterr().err
+
+    @dataclass(frozen=True)
+    class WithArms:
+        align_experiments: frozenset[str] = frozenset({"claim-clock", "lift"})
+        align_model: str = "base"
+        core_url: str = "ws://x"
+
+    assert lib.align_config(WithArms()) == {
+        "align_experiments": ["claim-clock", "lift"],
+        "align_model": "base",
+    }
+    # No arm on is the default path, keyed as before the knob existed (W1 added it): the W0 emission cache
+    # and baselines stay valid for a default run, and naming an arm still moves the key.
+    assert lib.align_config(Config()) == {}
+    assert lib.align_config(Config(align_experiments=frozenset({"l1-mix-kept"}))) == {
+        "align_experiments": ["l1-mix-kept"]
+    }
+
+
+def test_a_resume_under_other_code_or_settings_is_refused(tmp_path: Path) -> None:
+    """Review r1 (correctness-5): the resume guard compared settings only, and HEAD stays one commit for
+    a whole uncommitted wave, so rows from two versions of `time_text` pooled under one meta record."""
+    package = tmp_path / "encore_worker"
+    (package / "__pycache__").mkdir(parents=True)
+    (package / "a.py").write_text("x = 1\n")
+    first = lib.tree_digest([package])
+    (package / "__pycache__" / "a.cpython-312.pyc").write_bytes(b"\0")
+    assert lib.tree_digest([package]) == first, "bytecode caches are not code"
+    (package / "a.py").write_text("x = 2\n")
+    assert lib.tree_digest([package]) != first
+    started = {"level": "time_text", "code": "c1", "align_config": {}}
+    path = tmp_path / "run.json"
+    assert e2e.resume_refusal(path, started) is None, "nothing to resume"
+    path.write_text(json.dumps(started))
+    assert e2e.resume_refusal(path, started) is None
+    refusal = e2e.resume_refusal(path, {**started, "code": "c2"})
+    assert refusal is not None and "differs in: code" in refusal
+    assert "align_config" in (e2e.resume_refusal(path, {**started, "align_config": {"align_x": 1}}) or "")
+    assert lib.row_codes([{"code": "c1"}, {"code": "c2"}, {}]) == ["?", "c1", "c2"]
+    mixed = gates.View(modes={}, songs={}, meta={"row_codes": ["c1", "c2"], "align_config": {"a": 1}})
+    plain = gates.View(modes={}, songs={}, meta={"row_codes": ["c1"], "align_config": {}})
+    table = gates.format_compare(mixed, plain)
+    assert "run's rows were measured on 2 different worker trees" in table
+    assert "WARNING: align_config differs" in table
+
+
+def test_the_tfr_songs_run_on_a_stem_separated_from_the_workers_own_mix_by_default(tmp_path: Path) -> None:
+    """Review r1 (spec-13, M14): the tfr songs aligned on the producer's ORACLE vocals with the stems' sum
+    as the mix. The default is now the youtube mix and a stem separated from it; the oracle pair is kept
+    only to reproduce the review."""
+    repo = tmp_path / "repo"
+    for slug in lib.TFR_SLUGS:
+        (repo / slug).mkdir(parents=True)
+        (repo / slug / "truth-lines.json").write_text(
+            json.dumps({"lines": [{"text": "a", "start": 0, "end": 1}]})
+        )
+    root = tmp_path / "bench"
+    for slug in lib.YOUTUBE_SLUGS:
+        (root / slug).mkdir(parents=True)
+        (root / slug / "truth-lines.json").write_text(json.dumps({"lines": []}))
+    youtube = {s.slug: s for s in lib.discover(root, repo) if s.slug in lib.TFR_SLUGS}
+    chosen = youtube["tfr-chosen"]
+    assert (chosen.mix, chosen.vocals) == (
+        repo / "tfr-chosen" / "youtube-mix.wav",
+        lib.tfr_stem(root, "tfr-chosen"),
+    )
+    assert lib.tfr_stem(root, "tfr-chosen") == root / "tfr-chosen" / "mix" / "vocals.wav"
+    assert chosen.missing_files() == [str(chosen.mix), str(chosen.vocals)], "missing audio fails loudly"
+    oracle = {s.slug: s for s in lib.discover(root, repo, tfr_audio=lib.TFR_REFERENCE)}["tfr-chosen"]
+    assert (oracle.mix.name, oracle.vocals.name) == ("reference-mix.wav", "reference-vocals.wav")
+    with pytest.raises(ValueError, match="tfr audio"):
+        lib.discover(root, repo, tfr_audio="stems")
+
+
+# ── run_align: the ports clean like production's, and the file the TV reads is what is scored ────────
+
+
+def test_run_align_serves_cleaned_claims_and_pairs_them_back_by_identity(
+    rig: tuple[Any, Any], tmp_path: Path
+) -> None:
+    """Review r1 (spec-12): the harness ports returned raw claim text where every production adapter
+    returns `clean_segments(...)`, so text hygiene in `clean.py` could never reach a score. A `♪ ♪` line is
+    dropped (renumbering the request) and `♪ … ♪` stripped; identity still pairs every line to truth."""
+    driver, synthetic = rig
+    phrases = [*PHRASES[:3], ("♪ ♪", 14.6, 15.0), (f"♪ {PHRASES[3][0]} ♪", *PHRASES[3][1:]), *PHRASES[4:]]
+    song = song_of(phrases, slug="synthetic", audio=synthetic.vocals)
+    job = e2e.RunAlignDriver(aligner=driver.aligner, corpus=[song], media_root=tmp_path / "ra")
+    row = job.run(e2e.Case(song, "truth", 0))
+    assert row["outcome"] == lib.PUBLISHED and row["served_lines"] == len(phrases) - 1
+    assert (row["text_lines"], row["in_text"], row["doc_lines"]) == (9, 9, 8)
+    assert [e[0] for e in row["line_errors"]] == [0, 1, 2, 4, 5, 6, 7, 8], "the ♪ ♪ line is truth line 3"
+    assert row["gross"] == 0 and row["in_text"] - row["scored"] == 1
+    assert row["pairing_disagreements"] is None, "e2e2's text pairing does not apply to a cleaned text"
+    published = json.loads((tmp_path / "ra" / row["ref"]).read_text())
+    assert published["lines"][3]["text"] == PHRASES[3][0], "cleaned exactly as the caption adapter cleans"
+    only_notes = song_of([("♪ ♪", 5.0, 7.0), ("[♪♪♪]", 8.0, 10.0)], slug="notes", audio=synthetic.vocals)
+    empty = e2e.RunAlignDriver(aligner=driver.aligner, corpus=[only_notes], media_root=tmp_path / "n")
+    quiet = empty.run(e2e.Case(only_notes, "truth", 0))
+    assert (quiet["outcome"], quiet["attempts"], quiet["terminal"]) == (lib.REFUSED, [], "no-lyrics")
+    assert quiet["first_coverage"] == 0.0 and quiet["doc_sha256"] is None
+
+
+def test_a_request_that_is_not_the_served_claims_is_an_error_row(
+    rig: tuple[Any, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from encore_worker.steps.records import TextRef
+
+    driver, song = rig
+    real = e2e.AlignStepsImpl.fetch_captions
+
+    async def reworded(self: Any, job: Any, *, automatic: bool) -> Any:
+        text = await real(self, job, automatic=automatic)
+        if text is None:
+            return None
+        segments = tuple({**s, "text": str(s["text"]).upper()} for s in text.segments)
+        return TextRef(tier=text.tier, label=text.label, segments=segments, timing=text.timing)
+
+    monkeypatch.setattr(e2e.AlignStepsImpl, "fetch_captions", reworded)
+    row = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path).run(
+        e2e.Case(song, "truth", 0)
+    )
+    assert row["outcome"] == lib.ERROR and "not the served claims" in row["exception"]
+
+
+def test_run_align_scores_the_file_the_tv_reads_and_errors_when_it_is_not_the_published_attempts(
+    rig: tuple[Any, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review r1 (spec-9): the published attempt's bytes AS RETURNED were scored. A stem attempt and its mix
+    retry share one ref, so a job that publishes attempt 1's record after attempt 2 overwrote the file (a
+    partial W1 best-so-far) would show the room one document while the bench scored another."""
+    driver, song = rig
+    job = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "ok")
+    fine = job.run(e2e.Case(song, "truth", 0))
+    assert (fine["outcome"], fine["published_file_attempt"]) == (lib.PUBLISHED, 1)
+    assert fine["doc_sha256"] == lib.doc_digest((tmp_path / "ok" / fine["ref"]).read_bytes())
+    assert fine["onsets_sha256"] is not None and fine["first_coverage"] == fine["coverage"]
+    real = e2e.AlignStepsImpl.publish
+
+    async def later_writer(self: Any, job_ref: Any, doc: Any, *, placing: Any = ()) -> str:
+        path = Path(job_ref.media_dir) / doc.ref
+        body = json.loads(path.read_text())
+        body["lines"] = body["lines"][1:]
+        path.write_text(json.dumps(body))
+        return str(await real(self, job_ref, doc, placing=placing))
+
+    monkeypatch.setattr(e2e.AlignStepsImpl, "publish", later_writer)
+    row = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "bad").run(
+        e2e.Case(song, "truth", 0)
+    )
+    assert row["outcome"] == lib.ERROR and row["published_file_attempt"] is None
+    assert "not the published attempt 1's" in row["exception"] and row["scored"] == 0
+
+
+# ── review round 2: faults, pools, setups, claims, keys, the TV port ────────────────────────────────
+
+
+class MixFaultAligner:
+    """The rig's emissions on the STEM; the MIX's raise, as an out-of-memory would — R4 swallows it."""
+
+    def __init__(self, mix: Path, stem_phrases: Sequence[tuple[str, float, float]]) -> None:
+        self.mix = os.path.realpath(mix)
+        self.stem_phrases = stem_phrases
+
+    def emissions(self, path: str, _language: str) -> VoicedEmissions:
+        if os.path.realpath(path) == self.mix:
+            raise RuntimeError("MPS backend out of memory")
+        voiced = [0.0] * int(DURATION / FRAME)
+        for _text, start, end in self.stem_phrases:
+            for frame in range(int(start / FRAME), int(end / FRAME)):
+                voiced[frame] = 1.0
+        return VoicedEmissions(log_probs=voiced, frame_sec=FRAME, dictionary=DIC)
+
+    def align(self, *_a: object, **_k: object) -> tuple[()]:
+        raise AssertionError("the global path must not fall back to the windowed aligner")
+
+
+def test_a_fault_time_text_caught_is_an_error_row_not_a_refusal(
+    rig: tuple[Any, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review r2 (correctness-1): `time_text` catches an emissions / decode / audio fault itself and DECLINES
+    ("decode failed: ..."), so an MPS out-of-memory, a full disk under the cache or a decoder that raises on
+    some texts scored as a REFUSAL — a wrong text correctly refused, its lines missing — at both levels."""
+    from encore_worker.adapters import ml
+
+    driver, song = rig
+
+    def out_of_memory(self: Any, audio_path: str, language: str) -> Any:
+        raise RuntimeError("MPS backend out of memory")
+
+    monkeypatch.setattr(ml.WhisperXAligner, "emissions", out_of_memory)
+    bench = e2e.BenchAligner(device="cpu")
+    for level in (e2e.TimeTextDriver, e2e.RunAlignDriver):
+        row = level(aligner=bench, corpus=driver.corpus, media_root=tmp_path / level.level).run(
+            e2e.Case(song, "truth", 0)
+        )
+        assert row["outcome"] == lib.ERROR, level.level
+        assert "MPS backend out of memory" in row["exception"] and "decode failed" in row["exception"]
+    assert bench.faults and all("MPS backend out of memory" in f for f in bench.faults)
+
+    def decoder_fault(log_probs: Sequence[float], targets: Sequence[int]) -> tuple[list[int], list[float]]:
+        raise ValueError("a decoder that raises on some texts")
+
+    monkeypatch.setattr(ml, "forced_align_decoder", decoder_fault)
+    for level in (e2e.TimeTextDriver, e2e.RunAlignDriver):
+        row = level(
+            aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / f"d{level.level}"
+        ).run(e2e.Case(song, "wrongtext", 0))
+        assert row["outcome"] == lib.ERROR and "decode failed: ValueError" in row["exception"], level.level
+    spread_decodes(monkeypatch)
+    judged = driver.run(e2e.Case(song_of(UNSINGABLE, slug="count-in", audio=song.vocals), "truth", 0))
+    assert (judged["outcome"], judged["why"]) == (
+        lib.REFUSED,
+        "no line in this text carries an alignable character",
+    )
+
+
+def test_a_lexical_check_that_raised_is_a_caught_fault_not_a_pass() -> None:
+    """W1 review r2: the LINE_SYNC rung publishes on the sheet gate alone when its lexical check raised, and
+    says so; the harness must read that as a fault it caught, as it reads a decode that raised."""
+    raised = (
+        "sheet-span envelope r=0.71 @ +0.00s, 8 lines; no lexical check: it raised ValueError: x; 8 lines"
+    )
+    measured = "sheet-span envelope r=0.71 @ +0.00s, 8 lines; lexical lift +1.20 nats/letter over 90 letters"
+    unmeasured = "sheet-span envelope r=0.71 @ +0.00s, 8 lines; no lexical check: under 40 alignable letters"
+    states = [
+        ("j", "align-line-sync", 0, "line-sync", raised, None),
+        ("j", "align-line-sync", 0, "line-sync", measured, None),
+        ("j", "align-line-sync", 0, "line-sync", unmeasured, None),
+        ("j", "align-global", 0, "declined", "decode failed: ValueError: y", None),
+    ]
+    assert e2e.fault_declines(states) == [raised, "decode failed: ValueError: y"]
+    assert e2e.case_fault(states[1:3], []) is None, "a measured or unmeasurable check is a verdict"
+
+
+def test_a_global_lexical_check_that_raised_is_a_caught_fault_not_a_pass() -> None:
+    """W3: the global engine gates a word document on the envelope alone when its lexical check raised, and
+    its verdict note says so; the harness reads that as a fault it caught. An exemption (the ASR tier, a
+    short text) or a measured lift is a verdict."""
+    raised = "envelope r=0.61 (blind), r=0.61 (repaired); no lexical check: it raised ValueError: x; untimed"
+    exempt = (
+        "envelope r=0.61 (blind), r=0.61 (repaired); no lexical check: a transcript of this recording "
+        "(its words were heard on this audio); untimed"
+    )
+    measured = (
+        "envelope r=0.61 (blind), r=0.61 (repaired), not gating: the lift is; lexical lift +1.20 nats/letter"
+    )
+    refused_after = "envelope gate refused: blind r=0.11 @ +3.10s; no lexical check: it raised ValueError: z"
+    states = [
+        ("j", "align-global", 0, "no-claims", raised, None),
+        ("j", "align-global", 0, "no-claims", exempt, None),
+        ("j", "align-global", 0, "structural", measured, None),
+        ("j", "align-global", 0, "declined", "lexical gate refused: lexical lift -0.02 nats/letter", None),
+        ("j", "align-global", 0, "declined", refused_after, None),
+    ]
+    assert e2e.fault_declines(states) == [raised, refused_after], (
+        "a refusal the lift's fault left to the envelope"
+    )
+    states.pop()
+    assert e2e.case_fault(states[1:], []) is None, "an exemption, a measured lift and a refusal are verdicts"
+
+
+def test_an_emissions_fault_r4_swallowed_is_an_error_row_not_a_clean_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R4's mix witness catches its own emissions fault and PUBLISHES without the repair — no decline to read.
+    `BenchAligner.faults` is what shows it: the same case publishes under an aligner that keeps no faults."""
+    from encore_worker.adapters import ml
+
+    spread_decodes(monkeypatch)
+    stem_phrases = [p for i, p in enumerate(PHRASES) if i != 3]  # line 3 is inaudible on the stem
+    vocals = write_voiced(tmp_path / "vocals.wav", DURATION, phrases=stem_phrases)
+    mix = write_voiced(tmp_path / "mix.wav", DURATION)
+    song = lib.Song(
+        slug="lost", group="jamendo", mix=mix, vocals=vocals, truth=tuple(lib.TruthLine(*p) for p in PHRASES)
+    )
+    fake = MixFaultAligner(mix, stem_phrases)
+    blind_to_faults = e2e.TimeTextDriver(aligner=fake, corpus=[song], media_root=tmp_path / "plain")
+    assert blind_to_faults.run(e2e.Case(song, "truth", 0))["outcome"] == lib.PUBLISHED, (
+        "invisible without faults"
+    )
+
+    monkeypatch.setattr(
+        ml.WhisperXAligner, "emissions", lambda _self, path, language: fake.emissions(path, language)
+    )
+    bench = e2e.BenchAligner(device="cpu")
+    row = e2e.TimeTextDriver(aligner=bench, corpus=[song], media_root=tmp_path / "bench").run(
+        e2e.Case(song, "truth", 0)
+    )
+    assert row["outcome"] == lib.ERROR and "emissions raised: mix.wav: RuntimeError" in row["exception"]
+    assert row["scored"] == 0 and row["doc_sha256"] is not None, "the document was written; it is not scored"
+
+
+def test_the_bench_aligner_records_a_cache_fault_and_still_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from encore_worker.adapters import ml
+
+    audio = tmp_path / "vocals.wav"
+    audio.write_bytes(b"RIFF....")
+    monkeypatch.setattr(
+        ml.WhisperXAligner,
+        "emissions",
+        lambda _self, _p, _l: ml.Emissions(
+            log_probs=np.zeros((4, 3), np.float32), frame_sec=0.02, dictionary={}
+        ),
+    )
+    store = lib.EmissionStore(tmp_path / "_emissions", model="M", emitter="e")
+
+    def disk_full(*_a: object, **_k: object) -> Path:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(lib.EmissionStore, "save", disk_full)
+    aligner = e2e.BenchAligner(device="cpu", store=store, identify=lambda _l: "w")
+    with pytest.raises(OSError, match="No space left"):
+        aligner.emissions(str(audio), "en")
+    assert aligner.faults == ["vocals.wav: OSError: [Errno 28] No space left on device"]
+    assert e2e.emission_faults(aligner) == aligner.faults and e2e.emission_faults(object()) == []
+
+
+def test_a_published_record_that_matches_no_attempt_is_an_error_row(
+    rig: tuple[Any, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review r2 (correctness-5): a job that published a record no attempt returned (a diarizer or a W1
+    best-so-far rebuilding it) scored as REFUSED — lyrics on the TV, missing lines in the bench."""
+    import dataclasses
+
+    driver, song = rig
+    real = e2e.run_align
+
+    async def rebuilt(job: Any, steps: Any) -> Any:
+        result = await real(job, steps)
+        # FLIPPED, not a fixed value: whichever grade the attempt had, the record now differs from it (W1's
+        # blind-only corroboration, review H4, grades this rig's truth document `medium`).
+        flipped = "medium" if result.published.confidence == "high" else "high"
+        return dataclasses.replace(
+            result, published=dataclasses.replace(result.published, confidence=flipped)
+        )
+
+    monkeypatch.setattr(e2e, "run_align", rebuilt)
+    row = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path).run(
+        e2e.Case(song, "truth", 0)
+    )
+    assert (row["outcome"], row["terminal"], row["published_attempt"]) == (lib.ERROR, "published", None)
+    assert "matches no attempt" in row["exception"]
+
+
+def test_an_injected_header_is_never_claimed_to_end_before_it_starts() -> None:
+    """Review r2 (correctness-6): a header opened at the previous line's claimed END, which authored
+    captions run past the next section's start (and a section starts every 8 lines with no gap at all), so
+    12 of the corpus's 233 headers were claimed inverted — The_Rinn's `Chorus:` 226.51 -> 218.88 s."""
+    overlapping = [(f"line number {i}", 2.5 * i, 2.5 * i + 3.0) for i in range(20)]  # each runs 0.5 s long
+    song = song_of(overlapping)
+    for mode in (*lib.ALL_MODES, "jit+headers", "tempo098+headers", "offm1+headers"):
+        got = claims(song, mode, [song, song_of(TEN, slug="donor")])
+        for line_ in got.lines:
+            if line_.start is not None:
+                assert line_.end is not None and line_.start <= line_.end, (mode, line_)
+    headers = claims(song, "headers").lines
+    section_two = next(i for i, ln in enumerate(headers) if ln.truth is None and i > 0)
+    head = headers[section_two + 1]
+    assert (headers[section_two].start, headers[section_two].end) == (head.start, head.start), "claimed AT it"
+    assert headers[0].start == 0.0 and headers[0].end == 0.0, "the first header before a line at 0 s"
+
+
+def gross_rows(grosses: Sequence[int], mode: str = "truth") -> list[Any]:
+    """One TEN-line song per entry, `s0`, `s1`, ...: its first N lines published 3 s off, the rest exact."""
+    rows = []
+    for i, gross in enumerate(grosses):
+        song = song_of(TEN, slug=f"s{i}")
+        doc = [line(k, t.start + (3.0 if k < gross else 0.0)) for k, t in enumerate(song.truth)]
+        rows.append(
+            lib.row_of(
+                song=song, mode=mode, variant=0, claims=claims(song, mode), outcome=lib.PUBLISHED, doc=doc
+            )
+        )
+    return rows
+
+
+def test_a_reduction_of_the_baseline_ranges_over_the_songs_the_run_measured() -> None:
+    """Review r2 (correctness-2): the baseline's per-song values reduced over its OWN songs, so a run that
+    measured fewer passed: base a (0 gross) and b (9), run a alone (3) read `3 <= 9`."""
+    base, run = gross_rows([0, 9]), gross_rows([3])
+    fewer = (gates.view_of(document(run)), gates.view_of(document(base)))
+    for expr in (
+        "sum(song.gross) <= sum(base.song.gross)",
+        "mean(song.pm500) >= mean(base.song.pm500) - 1",
+        "max(song.gross) <= max(base.song.gross)",
+        "count(base.song.gross > 5) == 1",
+    ):
+        with pytest.raises(gates.GateError, match="did not measure"):
+            gates.evaluate(expr, *fewer)
+    more = (fewer[1], fewer[0])  # the run has b, the baseline does not
+    with pytest.raises(gates.GateError, match=r"only in the run: s1 \(truth\)"):
+        gates.evaluate("sum(song.gross) <= sum(base.song.gross)", *more)
+    assert gates.evaluate("count(song.gross - base.song.gross < 0) == 1", *more)[0], "per song: b is skipped"
+    same = (gates.view_of(document(base)), gates.view_of(document(base)))
+    assert gates.evaluate("sum(song.gross) <= sum(base.song.gross) and max(base.song.gross) == 9", *same)[0]
+
+
+def test_delta_of_a_per_song_reference_is_an_error_not_the_pooled_delta() -> None:
+    """Review r2 (correctness-3): `delta(truth.song.gross)` silently read the POOLED number."""
+    base, run = gross_rows([0, 9]), gross_rows([3, 5])
+    views = (gates.view_of(document(run)), gates.view_of(document(base)))
+    with pytest.raises(gates.GateError, match="min_song_delta"):
+        gates.evaluate("delta(truth.song.gross) <= 0", *views)
+    assert not gates.evaluate("count(truth.song.gross_up) == 0", *views)[0]
+    assert gates.evaluate("delta(truth.gross) < 0", *views)[0]
+
+
+def test_a_baseline_gate_across_another_measurement_setup_is_an_error(tmp_path: Path) -> None:
+    """Review r2 (correctness-4, spec-7): `--compare` only WARNED on a level / tfr audio / seed mismatch and
+    the gates went on. Measured on the committed results: the oracle-stem reference sweep against the youtube
+    baseline passed `drop20.gross <= base.drop20.gross` as 41 <= 51, a gap the tfr audio alone made."""
+    rows = spread_rows([0.1, 0.1])
+    base = gates.view_of(document(rows, **SETUP))
+    gated = [
+        gates.Gate("relative", "truth.pm500 >= base.truth.pm500 - 1"),
+        gates.Gate("per-song", "count(song.gross_up) == 0"),
+        gates.Gate("absolute", "truth.gross <= 5"),
+    ]
+
+    def statuses(meta: dict[str, Any]) -> list[str]:
+        return [r.status for r in gates.run_gates(gated, gates.view_of(document(rows, **meta)), base)]
+
+    assert statuses(SETUP) == ["PASS", "PASS", "PASS", "PASS"]
+    assert statuses({**SETUP, "model": "HUBERT", "align_config": {"x": 1}}) == ["PASS"] * 4, (
+        "an arm's variables"
+    )
+    for changed in ({"tfr_audio": "reference"}, {"level": "run_align"}, {"seed": 1}, {"wrong_k": 3}):
+        assert statuses({**SETUP, **changed}) == ["PASS", "ERROR", "ERROR", "PASS"], changed
+    silent = {k: v for k, v in SETUP.items() if k != "tfr_audio"}
+    results = gates.run_gates(gated, gates.view_of(document(rows, **silent)), base)
+    assert results[1].status == "ERROR" and "tfr_audio not recorded by the run" in results[1].detail
+    assert gates.setup_mismatch({**SETUP, "level": "run_align"}, {**SETUP, "level": "run_align"}) == [
+        "asr not recorded by the run and the baseline"
+    ]
+    table = gates.format_compare(
+        gates.View(modes={}, songs={}, meta={**SETUP, "model_identity": {"en": "a"}}),
+        gates.View(
+            modes={}, songs={}, meta={**SETUP, "tfr_audio": "reference", "model_identity": {"en": "b"}}
+        ),
+    )
+    assert "WARNING: tfr_audio differs" in table and "every gate that reads the baseline is an ERROR" in table
+    assert "WARNING: model_identity differs" in table
+
+
+def test_summarize_and_a_rows_baseline_carry_the_setup_their_run_recorded(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--summarize` built its meta from `rows` and `row_codes` alone: offline gating could not even warn."""
+    run_dir, base_dir = tmp_path / "run", tmp_path / "base"
+    for directory, setup in ((run_dir, SETUP), (base_dir, {**SETUP, "tfr_audio": "reference"})):
+        directory.mkdir()
+        (directory / "rows.jsonl").write_text("".join(json.dumps(r) + "\n" for r in spread_rows([0.1])))
+        (directory / "run.json").write_text(json.dumps({**setup, "code": "c1", "align_config": {}}))
+    loaded = gates.load_document(base_dir)
+    assert loaded["meta"]["tfr_audio"] == "reference" and loaded["meta"]["row_codes"] == ["?"]
+    rules = tmp_path / "gates.yaml"
+    rules.write_text("holds: truth.pm500 >= base.truth.pm500 - 1\n")
+    args = ["--summarize", str(run_dir / "rows.jsonl"), "--compare", str(base_dir / "rows.jsonl")]
+    assert e2e.main([*args, "--gates", str(rules)]) == 3
+    out = capsys.readouterr().out
+    assert "ERROR holds" in out and "tfr_audio differs" in out
+    cases = tmp_path / "baseline.cases.jsonl"
+    cases.write_text(json.dumps({"song": "s", "mode": "truth", "outcome": "published", "scored": 1}) + "\n")
+    with pytest.raises(ValueError, match="no `line_errors`"):
+        gates.load_document(cases)
+    assert e2e.main(["--summarize", str(cases)]) == 2
+    assert "compact .cases.jsonl" in capsys.readouterr().err
+
+
+def test_the_emissions_key_moves_with_the_align_settings_and_the_code_ml_imports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review r2 (spec-9, tests-14): the key hashed `adapters/ml.py` alone and no worker setting. A
+    default-off arm inside `emissions()` (W4 6a's frame grid behind ENCORE_ALIGN_EXPERIMENTS) would share
+    its knob-off twin's matrices, and a frame-grid helper MODULE that ml.py calls would leave the key where
+    it was."""
+    from encore_worker.host.config import Config
+
+    monkeypatch.setattr(e2e, "emitter_versions", lambda *_a: {"torch": "2.8.0"})
+
+    @dataclass(frozen=True)
+    class Arms:
+        align_experiments: frozenset[str] = frozenset()
+        core_url: str = "ws://x"
+
+    off = e2e.emitter_fingerprint(Arms())
+    assert off == e2e.emitter_fingerprint(Arms(core_url="ws://y")), "only the align_* settings count"
+    assert off != e2e.emitter_fingerprint(Arms(frozenset({"frame-grid"})))
+    assert e2e.emitter_fingerprint(Config()) == e2e.emitter_fingerprint(Config(worker_id="another"))
+
+    package = tmp_path / "encore_worker"
+    for name, text in {
+        "__init__.py": "",
+        "adapters/__init__.py": "",
+        "adapters/ml.py": (
+            "def emissions():\n    from encore_worker.domain.frames import grid\n    from . import util\n"
+        ),
+        "adapters/util.py": "x = 1\n",
+        "domain/__init__.py": "from encore_worker.domain import pure\n",
+        "domain/pure.py": "",
+        "domain/frames.py": "grid = 320\n",
+        "domain/unrelated.py": "",
+    }.items():
+        (package / name).parent.mkdir(parents=True, exist_ok=True)
+        (package / name).write_text(text)
+    closure = lib.module_closure(package / "adapters" / "ml.py", package)
+    assert [p.relative_to(package.resolve()).as_posix() for p in closure] == [
+        "__init__.py",
+        "adapters/__init__.py",
+        "adapters/ml.py",
+        "adapters/util.py",
+        "domain/__init__.py",
+        "domain/frames.py",
+        "domain/pure.py",
+    ]
+    before = lib.emitter_fingerprint(closure, {})
+    (package / "domain" / "frames.py").write_text("grid = 400\n")
+    assert lib.emitter_fingerprint(closure, {}) != before, "a helper ml.py calls moves the key"
+    real = {p.name for p in e2e.emitter_sources()}
+    assert {"ml.py", "wav.py", "document.py"} <= real, "lazy imports inside ml.py's functions count"
+
+
+def test_the_bench_builds_its_aligner_as_the_host_does() -> None:
+    """`ml.build_aligner` passes the device alone, and so does `BenchAligner`. A factory argument that
+    reaches production (a model knob, a frame-grid setting) must reach the bench too: this fails first."""
+    import inspect
+
+    from encore_worker.adapters import ml
+
+    assert list(inspect.signature(ml.build_aligner).parameters) == ["device"]
+    assert list(inspect.signature(ml.WhisperXAligner.__init__).parameters) == ["self", "device"]
+
+
+def test_every_retime_knob_is_a_metric_whether_or_not_it_was_used(
+    rig: tuple[Any, Any], tmp_path: Path
+) -> None:
+    """Review r2 (spec-10): only the knobs that OCCURRED got a `retime_<knob>` key, so W1's H2 gate
+    `truth.retime_align_on_mix == 0` was an unknown-metric ERROR exactly when the fix worked."""
+    from encore_worker.domain.lyrics.policy import Knob
+
+    assert lib.RETIME_KNOBS == tuple(k.value for k in Knob)
+    driver, song = rig
+    job = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path)
+    clean = gates.view_of(document([job.run(e2e.Case(song, "truth", 0))], **SETUP))
+    assert gates.evaluate("truth.retime_align_on_mix == 0 and truth.retime_line_sync == 0", clean, None)[0]
+    below = gates.view_of(document([driver.run(e2e.Case(song, "truth", 0))], **SETUP))
+    with pytest.raises(gates.GateError, match="no value"):
+        gates.evaluate("truth.retime_align_on_mix == 0", below, None)
+
+
+def test_the_canonical_no_new_gross_gate_sees_a_song_that_flipped_to_refused() -> None:
+    """Review r2 (tests-12): `gross` counts published lines only, so a song with 2 gross lines that flips to
+    refused — or drops one of them — reads FEWER, and `count(song.gross_up) == 0` passed on both. The
+    documented form adds `missing` (text lines not scored), which rises with either."""
+    song = song_of(TEN, slug="s0")
+    got = claims(song, "truth")
+    two_gross = [line(k, t.start + (3.0 if k < 2 else 0.0)) for k, t in enumerate(song.truth)]
+    before = [
+        lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=two_gross)
+    ]
+    refused = [lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.REFUSED, doc=[])]
+    dropped = [
+        lib.row_of(song=song, mode="truth", variant=0, claims=got, outcome=lib.PUBLISHED, doc=two_gross[1:])
+    ]
+    base = gates.view_of(document(before))
+    for run_rows in (refused, dropped):
+        now = gates.view_of(document(run_rows))
+        assert gates.evaluate("count(song.gross_up) == 0", now, base)[0], "the trap: gross alone passes"
+        assert not gates.evaluate("count(song.gross_up + song.missing_up) == 0", now, base)[0]
+    assert gates.evaluate("count(song.gross_up + song.missing_up) == 0", base, base)[0]
+
+
+def test_the_highlight_port_lights_what_the_committed_parity_fixture_says() -> None:
+    """Review r2 (spec-11, tests-13): the port's parity with `lyrics.ts` rested on an uncommitted one-off bun
+    run. The fixture is written from the port (`scripts/tv_parity.py`) and core's
+    `lyrics-bench-parity.test.ts` holds `lyrics.ts` to it; here the port and the generator are held to it."""
+    tv_parity: Any = _load("tv_parity")
+    committed = json.loads(tv_parity.FIXTURE.read_text(encoding="utf-8"))
+    assert committed["constants"] == {
+        "line_gap_sec": lib.TV_LINE_GAP_SEC,
+        "line_max_chars": lib.TV_LINE_MAX_CHARS,
+        "orphan_max_sec": lib.TV_ORPHAN_MAX_SEC,
+        "lyrics_lead_sec": 0.0,
+    }
+    for case in committed["cases"]:
+        lines = tv_parity.tv_document(case["doc"])
+        assert [[ln.text, ln.start, ln.end] for ln in lines] == case["rows"], case["name"]
+        assert [tv_parity.lit(lines, pos) for pos in case["positions"]] == case["lit"], case["name"]
+    assert tv_parity.dump(tv_parity.build()) == tv_parity.FIXTURE.read_text(encoding="utf-8"), "regenerate it"
+
+
+def test_an_orphan_folds_forward_even_with_a_row_before_it() -> None:
+    """`coalesceOrphans` merges FORWARD whenever the next row is closer, previous row or not: "I" sits 0.9 s
+    after "road" and 0.5 s before "want", both pauses (>= 0.45 s), so it is an orphan row of its own."""
+    road = [(w, 0.4 * i, 0.4 * i + 0.3, i) for i, w in enumerate("we were singing on the long road".split())]
+    body = [
+        (w, 4.3 + 0.4 * i, 4.6 + 0.4 * i, 8 + i) for i, w in enumerate("want a perfect body tonight".split())
+    ]
+    rows = lib.tv_resegment(tv_line(*road, ("I", 3.6, 3.8, 7), *body))
+    assert [row.text for row in rows] == ["we were singing on the long road", "I want a perfect body tonight"]
+
+
+def test_a_line_its_words_do_not_cover_is_never_resegmented() -> None:
+    """`resegmentLine` refuses when the timed words cover < 80% of the text: rebuilding from them would
+    delete the untimed lyrics from the screen."""
+    thin = tv_line(("fly", 0.0, 0.3, 0), ("away", 1.0, 1.3, 1), ("home", 2.0, 2.3, 2))
+    long_text = lib.TvLine(
+        0.0, 10.0, "fly away home, and all the words this sheet never timed at all", thin.words
+    )
+    assert lib.tv_resegment(long_text) == [long_text]
+
+
+def test_where_truth_words_overlap_the_later_started_one_is_the_one_being_sung() -> None:
+    """29 Jamendo word pairs overlap (6.3 s): the highlight credits the word that started LATER there."""
+    lines = [tv_line(("hold", 0.0, 1.0, 0)), tv_line(("next", 1.0, 2.0, 1))]
+    hit, sung = lib.highlight_seconds(lines, [(0.0, 1.5, 0), (0.8, 2.0, 1)])
+    assert (hit, sung) == pytest.approx((1.8, 2.0)), "0.8-1.0 s is `next`'s, and `hold` is lit there"
+
+
+def test_doc_changed_over_a_baseline_song_the_run_lacks_is_an_error() -> None:
+    """Review r2 (tests-15, 1): W1's `count(song.doc_changed * (base.song.coverage >= 0.8)) == 0` must not
+    pass vacuously on a `--songs` subset."""
+    rows = spread_rows([0.1, 0.1])
+    for row in rows:
+        row.update(doc_sha256="d", onsets_sha256="o", first_coverage=0.9)
+    views = (gates.view_of(document(rows[:1])), gates.view_of(document(rows)))
+    with pytest.raises(gates.GateError, match="did not measure"):
+        gates.evaluate("count(song.doc_changed) == 0", *views)
+    with pytest.raises(gates.GateError, match="did not measure"):
+        gates.evaluate("count(song.doc_changed * (base.song.coverage >= 0.8)) == 0", *views)
+
+
+def test_main_refuses_to_resume_across_a_code_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review r2 (tests-15, 2): `code` in `run_config` stops a resume from pooling two `time_text`s."""
+    from encore_worker.host.config import Config
+
+    monkeypatch.setattr(e2e.Config, "from_env", staticmethod(lambda env=None: Config()))
+    monkeypatch.setattr(e2e.lib, "discover", lambda *_a, **_k: [])
+    monkeypatch.setattr(e2e, "git_state", lambda: {"head": None, "dirty": None})
+    argv = ["--out", str(tmp_path / "run"), "--device", "cpu", "--model", "M", "--emissions-cache", "off"]
+    monkeypatch.setattr(e2e, "code_fingerprint", lambda: "c1")
+    assert e2e.main(argv) == 3, "no case ran: the built-in no-error-rows gate has no mode to read"
+    assert json.loads((tmp_path / "run" / "run.json").read_text())["code"] == "c1"
+    assert e2e.main([*argv, "--resume"]) == 3, "the same code resumes"
+    monkeypatch.setattr(e2e, "code_fingerprint", lambda: "c2")
+    capsys.readouterr()
+    assert e2e.main([*argv, "--resume"]) == 2
+    assert "differs in: code" in capsys.readouterr().err
+
+
+def test_the_default_cache_key_is_the_loaded_models_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review r2 (tests-15, 3): every test injected `identify=`, so the DEFAULT — `loaded_identity` — was
+    unpinned; a constant there made the key the harness's label guess again."""
+    torch = pytest.importorskip("torch")
+    model = torch.nn.Linear(2, 3)
+    monkeypatch.setattr(
+        e2e.BenchAligner, "_aligner", lambda _self, _language: (model, {"dictionary": {"a": 1}})
+    )
+    store = lib.EmissionStore(Path("/nonexistent"), model="M", emitter="e")
+    aligner = e2e.BenchAligner(device="cpu", store=store)
+    identity = aligner.loaded_identity("en")
+    assert len(identity) == 16 and aligner.store_for("en").model == f"M@{identity}"
+    assert aligner.identities == {"en": identity}
+
+
+# ── W3: the gates' readings on the rows, the lines sync mode, the compact digest ─────────────────────
+
+
+def test_the_lexical_lift_is_on_the_row_at_full_precision(
+    rig: tuple[Any, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The trail prints a lift to two decimals (+0.195 reads `+0.20` and is refused at 0.2), so the harness
+    records the number the gate read, through a wrap that changes nothing it returns — and removes it."""
+    from encore_worker.domain.lyrics import lexical
+
+    driver, song = rig
+    measured = lexical.Lift(value=0.8123456, letters=90, per_letter=-1.0)
+    monkeypatch.setattr(lexical, "lift", lambda *_a, **_k: measured)
+    row = driver.run(e2e.Case(song, "truth", 0))
+    assert row["outcome"] == lib.PUBLISHED and row["lift"] == 0.8123456
+    assert "lexical lift +0.81" in row["why"]
+    assert lexical.lift(["x"], None, decoder=spreading_decoder) is measured, "the wrap is removed again"
+
+    with e2e.capture_lifts() as lifts:
+        assert lexical.lift(["x"], None, decoder=spreading_decoder) is measured
+    assert lifts == [0.8123456]
+    monkeypatch.setattr(lexical, "lift", lambda *_a, **_k: None)
+    unmeasured = driver.run(e2e.Case(song, "truth", 0))
+    assert unmeasured["lift"] is None and "no lexical check" in unmeasured["why"]
+
+
+def test_a_lines_run_sends_the_sync_mode_and_keeps_the_rungs_own_note(
+    rig: tuple[Any, Any], tmp_path: Path
+) -> None:
+    """`--sync-mode lines`: every text's only attempt is the gated LINE_SYNC rung, and that rung writes no
+    `align-global` note — W1 review r2 read its sheet fit and lift through a scratch wrapper. The row and
+    each attempt carry the rung's verdict and note now; a forced run sends no `syncMode` at all."""
+    driver, song = rig
+    lines = e2e.RunAlignDriver(
+        aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "ra", sync_mode="lines"
+    )
+    row = lines.run(e2e.Case(song, "truth", 0))
+    (only,) = row["attempts"]
+    assert only["knobs"] == ["line-sync"] and only["verdict"] == "?", "no align-global note on this rung"
+    assert only["line_sync_verdict"] in ("line-sync", "refused")
+    assert "sheet-span envelope r=" in only["line_sync_why"] and "decode" in only["line_sync_why"]
+    assert (row["line_sync_verdict"], row["line_sync_why"]) == (
+        only["line_sync_verdict"],
+        only["line_sync_why"],
+    )
+    assert only["lift"] is None and row["lift"] is None, "the rig takes the lift out"
+
+    forced = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "rf")
+    plain = forced.run(e2e.Case(song, "truth", 0))
+    assert plain["attempts"][0]["knobs"] == [], "a word decode first: no syncMode was sent"
+    assert "line_sync_verdict" not in plain and "line_sync_verdict" not in plain["attempts"][0]
+    with pytest.raises(ValueError, match="sync mode"):
+        e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path, sync_mode="x")
+    assert e2e.main(["--sync-mode", "lines"]) == 2, "a job parameter: run_align only"
+
+
+def test_modes_all_expands_beside_other_modes_once_each() -> None:
+    """`--modes all,wrongtext+ownclock` is W3's whole sweep in one run; `all` alone is unchanged."""
+    assert e2e.parse_modes("all") == list(lib.ALL_MODES)
+    assert e2e.parse_modes("all,wrongtext+ownclock") == [*lib.ALL_MODES, "wrongtext+ownclock"]
+    assert e2e.parse_modes("jit, all ,truth") == ["jit", *(m for m in lib.ALL_MODES if m != "jit")]
+    with pytest.raises(ValueError, match="unknown claim op"):
+        e2e.parse_modes("all,translated")
+
+
+def test_a_lines_run_is_its_own_setup_and_an_unrecorded_sync_mode_is_forced() -> None:
+    """Every baseline before `--sync-mode` sent no `syncMode` (the worker reads `forced`): a forced run still
+    compares with them, and a lines run against any forced one is a setup mismatch — an ERROR per gate."""
+    run_align = {**SETUP, "level": "run_align", "asr": "off"}
+    assert gates.setup_mismatch({**run_align, "sync_mode": "forced"}, run_align) == []
+    assert gates.setup_mismatch({**run_align, "sync_mode": "lines"}, run_align) == [
+        "sync_mode differs — run 'lines', base 'forced'"
+    ]
+    assert gates.setup_mismatch(SETUP, SETUP) == [], "time_text records no sync mode"
+    table = gates.format_compare(
+        gates.View(modes={}, songs={}, meta={**run_align, "sync_mode": "lines"}),
+        gates.View(modes={}, songs={}, meta=run_align),
+    )
+    assert "syncMode=lines" in table and "WARNING: sync_mode differs" in table
+
+
+def test_a_line_sync_check_that_raised_is_a_caught_fault_whatever_the_rung_decided() -> None:
+    """W3: the rung's timing check (the text's blind decode) or its lexical check raising hands the text to
+    another gate, which may publish OR refuse it: either way the row is an ERROR, not a verdict."""
+    decode_raised = (
+        "sheet-span envelope r=0.71 @ +0.00s, 8 lines; lexical lift +1.20; no decode check: it raised X"
+    )
+    lift_raised = "sheet-span envelope r=0.11 @ +3.00s, below the sheet gate; no lexical check: it raised Y"
+    few = "sheet-span envelope r=0.71 @ +0.00s, 3 lines; no decode check: fewer than 3 lines both decoded"
+    states = [
+        ("j", "align-line-sync", 0, "line-sync", decode_raised, None),
+        ("j", "align-line-sync", 0, "refused", lift_raised, None),
+        ("j", "align-line-sync", 0, "line-sync", few, None),
+    ]
+    assert e2e.fault_declines(states) == [decode_raised, lift_raised]
+    assert e2e.case_fault(states[2:], []) is None, "a decode that pairs too few lines is a verdict's fallback"
+
+
+def test_the_compact_digest_keeps_the_gates_readings_and_drops_the_raw_errors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`results/*.cases.jsonl` came from a scratch script that kept only the `align-global` verdict. The
+    committed one keeps the lift and the LINE_SYNC rung's note, per case and per attempt."""
+    row = {
+        **spread_rows([0.1, 3.0])[0],
+        "verdict": "?",
+        "lift": 0.123456789,
+        "line_sync_verdict": "refused",
+        "line_sync_why": "sheet-span envelope r=0.20 @ +0.00s; lexical lift +1.20",
+        "repair_faults": ["one"],
+        "confidence": None,
+        "attempts": [
+            {
+                "n": 1,
+                "knobs": ["line-sync"],
+                "lift": 0.987654321,
+                "line_sync_verdict": "refused",
+                "why": "long",
+            }
+        ],
+    }
+    got = lib.compact_row(row)
+    assert (got["lift"], got["line_sync_verdict"], got["repair_faults"]) == (0.1235, "refused", 1)
+    assert "line_errors" not in got and "confidence" not in got, "raw errors and None values dropped"
+    assert got["attempts"] == [
+        {"n": 1, "knobs": ["line-sync"], "lift": 0.9877, "line_sync_verdict": "refused"}
+    ]
+    rows = tmp_path / "rows.jsonl"
+    rows.write_text(json.dumps(row) + "\n")
+    out = tmp_path / "w.cases.jsonl"
+    assert e2e.main(["--compact", str(rows), str(out)]) == 0 and "1 cases" in capsys.readouterr().out
+    assert [json.loads(line) for line in out.read_text().splitlines()] == [got]
+
+
+def test_line_gate_rules_fall_back_as_the_shipped_rung_does() -> None:
+    """`scripts/line_gate.py`'s rules over one case each: the decode gates timings where it paired 3+
+    lines, the sheet gate where it did not, and an unmeasurable lift checks no words."""
+    rules = line_gate.rules(0.2)
+    base = {"sheet": False, "near": 0.9, "lift": 1.0}
+    assert not rules["decode(0.5)"](base) and rules["sheet+lift"](base), (
+        "the decode admits what the sheet refused"
+    )
+    assert rules["decode(0.5)"]({**base, "near": 0.4}) and not rules["either(0.5)"](
+        {**base, "near": 0.4, "sheet": True}
+    )
+    assert rules["decode(0.5)"]({**base, "near": None}), "no decode: the sheet gate decides"
+    assert rules["decode(0.5)"]({**base, "lift": 0.1}) and not rules["decode(0.5)"]({**base, "lift": None})
+    assert not rules["lift alone"]({**base, "near": 0.0})
+
+
+def test_line_gate_reads_the_shipped_agreement() -> None:
+    @dataclass(frozen=True)
+    class L:
+        index: int
+        start: float
+
+    decoded = [L(0, 1.0), L(1, 5.0), L(2, 9.5), L(4, 20.0)]
+    got = line_gate.claim_agreement(decoded, {0: 1.5, 1: 5.5, 2: 12.0, 3: 15.0}, 1.0)
+    assert got == {"near": 2 / 3, "median_gap": 0.5, "offset": -0.5, "near_fit": 2 / 3}
+    assert set(line_gate.claim_agreement(decoded[:2], {0: 1.0, 1: 5.0}, 1.0).values()) == {None}

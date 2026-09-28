@@ -8,6 +8,36 @@ import { ulid, type Media } from '$lib/contract';
 
 const PER_SOURCE_LIMIT = 12;
 
+/**
+ * What a search with no `?source=` asks. NOTE WHAT IS ABSENT: plain all-of-YouTube `ytsearch`.
+ *
+ * WHAT IS GAINED, measured: the real performer instead of a channel name ("The Black Eyed Peas", not
+ * "Tasty"), the track duration instead of a video length, and a median 459 ms against 1628 ms — ytsearch
+ * spawns a yt-dlp subprocess, and on one probe it was killed at its 10 s timeout and returned nothing
+ * at all where ytmusic answered.
+ *
+ * WHAT IS LOST, equally measured, because the first version of this comment overstated the case. An
+ * earlier sweep of 18 hard queries "returned a usable hit for every one" — but that sweep had NO
+ * NEGATIVE CONTROL, and the `songs` filter NEVER RETURNS EMPTY: `zzzzzzznotasongzzzzzz` answers with
+ * "A Million Laughing Emoji's", and `asdkjhqwe zxcvbnm nonsense query 12345` answers with Mariah Carey.
+ * So that sweep measured "did rows come back", not "did the right song come back". Against a specific
+ * upload the catalog substitutes a catalog entity: `bohemian rhapsody live aid 1985 full` leads with a
+ * 148 s studio-soundtrack cut, where ytsearch finds the actual performance.
+ *
+ * THAT IS WHY THE WIDEN AFFORDANCE IS NOT GATED ON AN EMPTY RESULT (see `+page.svelte`): a narrow
+ * default whose escape hatch only appears when nothing matched has no escape hatch at all, since
+ * nothing matching is a state this default cannot reach.
+ *
+ * `local` and `spotify` STAY IN THE DEFAULT, and that is the reason this is a set rather than simply
+ * defaulting the param to `ytmusic`: local files are the user's OWN media, they live in a separate
+ * disk-scan FTS index rather than the catalog, and the catalog's own matcher is strictly weaker (a
+ * contiguous substring against title OR artist, so "backstreet boys i want it that way" matches a
+ * `Artist - Title` drop-in file under neither field). Narrowing to one source would hide them.
+ *
+ * `?source=all` is the escape hatch that adds `ytsearch` back, for the upload no catalog lists.
+ */
+const DEFAULT_SOURCES = new Set(['ytmusic', 'local', 'spotify']);
+
 /** A song's ORIGIN identity — the pair `Media.sourceRef` is immutable for. NUL-joined, since neither half can contain one. */
 const originKey = (source: string, sourceRef: string): string => `${source}\u0000${sourceRef}`;
 
@@ -39,8 +69,8 @@ function refreshDisplayFields(existing: Media, r: SearchResult, persist: (m: Med
 
 export const GET: RequestHandler = async ({ url }) => {
 	const q = (url.searchParams.get('q') ?? '').trim();
-	const only = url.searchParams.get('source'); // optional narrowing: 'youtube' | 'ytmusic' | 'local' | 'spotify'
-	const wants = (source: string) => !only || only === source;
+	const only = url.searchParams.get('source'); // 'youtube' | 'ytmusic' | 'local' | 'spotify' | 'all'
+	const wants = (source: string) => (only ? only === 'all' || only === source : DEFAULT_SOURCES.has(source));
 	const app = getApp();
 
 	// Empty query returns recent + popular from this session; the readiness groups still come back empty, so the client renders one shape in both states.

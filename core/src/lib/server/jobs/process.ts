@@ -1,8 +1,9 @@
 // Marks a media PROCESSING so rotation HOLDS its slot until stems exist. See docs/ARCHITECTURE.md §6, §7.
 
-import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '../../contract';
+import type { Job, JobType, Media, QueueEntry, GlobalSettings } from '../../contract';
 import {
 	mergeLyricsCandidate,
+	parseLyricsCandidates,
 	resolveLyricsRef,
 	isTerminalJob,
 	isQualityUpgrade,
@@ -361,20 +362,22 @@ export function applyAnnotation(
 }
 
 /** The uri MUST be normalized to a relative key: workers report ABSOLUTE paths and `safeMediaPath` rejects
- *  any ref starting with "/", so a raw uri cannot fetch an artifact that is on disk. */
+ *  any ref starting with "/", so a raw uri cannot fetch an artifact that is on disk. `candidates` is the
+ *  worker's UNTRUSTED report, read through `parseLyricsCandidates` rather than cast. */
 export function setMediaLyrics(
 	mediaId: string,
 	uri: string | undefined,
 	mediaById: Map<string, Media>,
-	candidates?: LyricsCandidate[]
+	candidates?: unknown
 ): boolean {
 	const media = mediaById.get(mediaId);
 	if (!media) return false;
 
 	// MERGE, never "last write wins", which would let a later line-level source replace word timings.
-	if (candidates?.length) {
+	const reported = parseLyricsCandidates(candidates);
+	if (reported.length) {
 		let merged = media.lyricsCandidates ?? [];
-		for (const c of candidates) {
+		for (const c of reported) {
 			const ref = toRelativeKey(c.ref);
 			if (!ref) continue;
 			merged = mergeLyricsCandidate(merged, { ...c, ref });
@@ -384,6 +387,13 @@ export function setMediaLyrics(
 		const chosen = resolveLyricsRef(merged, media.lyricsOverrideRef);
 		if (chosen) {
 			media.lyricsRef = chosen; // only move the pointer if something is actually showable
+			return true;
+		}
+		// Nothing showable, and the pointer names a file this report WITHDREW: a re-run rewrote it with an
+		// attempt its ladder rejected (`selectable: false`), so what the pointer would show is no longer the
+		// document it chose. Clear it rather than show a reject; a pointer to anything else is left alone.
+		if (media.lyricsRef && merged.some((c) => c.ref === media.lyricsRef && c.selectable === false)) {
+			media.lyricsRef = undefined;
 			return true;
 		}
 	}

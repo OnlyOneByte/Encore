@@ -8,6 +8,9 @@ because a duet in one colour is a duet nobody can follow.
 from __future__ import annotations
 
 from encore_worker.domain.lyrics.attribute import (
+    EXACT_PARTS,
+    MIN_LINE_COVERAGE,
+    MIN_MINORITY_SHARE,
     MIN_OVERLAP_FRACTION,
     attribute,
     speaker_count,
@@ -171,25 +174,71 @@ def test_no_turns_at_all_returns_the_document_unchanged() -> None:
     assert attribute(doc, []) is doc
 
 
-def test_a_duet_gets_a_speaker_per_line() -> None:
+def test_a_duet_gets_an_abstract_part_per_line() -> None:
+    """Review M15: the TV reads `part`, never `speaker`, so this is the field that reaches a screen. The
+    diarizer's own strings stay off the wire: parts are lettered by FIRST APPEARANCE."""
     doc = {
         "language": "en",
         "lines": [line("mine", 0.0, 2.0), line("yours", 6.0, 8.0), line("ours", 100.0, 101.0)],
     }
-    out = attribute(doc, [turn("A", 0.0, 4.0), turn("B", 5.0, 9.0)])
+    out = attribute(doc, [turn("SPEAKER_01", 0.0, 4.0), turn("SPEAKER_00", 5.0, 9.0)])
     lines = out["lines"]
     assert isinstance(lines, list)
-    assert lines[0]["speaker"] == "A"
-    assert lines[1]["speaker"] == "B"
-    assert "speaker" not in lines[2], "a line no turn covers stays unattributed, not guessed"
+    assert [ln.get("part") for ln in lines] == ["A", "B", None], "a line no turn covers stays unattributed"
+    assert not any("speaker" in ln for ln in lines), "the diarizer's label is not the wire's"
+
+
+def test_the_parts_do_not_depend_on_the_diarizers_strings() -> None:
+    """A re-run whose diarizer numbers the voices the other way round still colours the song the same."""
+    doc = {"lines": [line("mine", 0.0, 2.0), line("yours", 6.0, 8.0)]}
+    one = attribute(doc, [turn("SPEAKER_00", 0.0, 4.0), turn("SPEAKER_01", 5.0, 9.0)])
+    other = attribute(doc, [turn("SPEAKER_01", 0.0, 4.0), turn("SPEAKER_00", 5.0, 9.0)])
+    assert one == other
+    assert one is not doc
+
+
+def _reel(owners: str) -> tuple[dict[str, object], list[dict[str, object]]]:
+    """A song of one-second lines ten seconds apart, and turns in which `owners[i]` sings line i (`.` for a
+    line no turn covers)."""
+    lines = [line(f"l{i}", 10.0 * i, 10.0 * i + 1.0) for i in range(len(owners))]
+    turns = [turn(who, 10.0 * i, 10.0 * i + 1.0) for i, who in enumerate(owners) if who != "."]
+    return {"lines": lines}, turns
+
+
+def test_an_over_segmented_solo_is_left_one_colour() -> None:
+    """Not exactly two parts among the attributed lines is not a duet: pyannote on sung vocals
+    over-segments one singer into phantom voices, and the TV would paint each its own colour."""
+    doc, turns = _reel("AABBCCAABB")
+    assert attribute(doc, turns) is doc
+
+
+def test_a_lopsided_song_is_a_solo_with_stray_lines() -> None:
+    """The minority part must own at least `MIN_MINORITY_SHARE` of the attributed lines."""
+    doc, turns = _reel("AAAAAAAAAB")  # 1 of 10 < 0.15
+    assert attribute(doc, turns) is doc
+    real_second_voice, second_turns = _reel("AAAAAAAABB")  # 2 of 10
+    assert attribute(real_second_voice, second_turns) is not real_second_voice
+    assert MIN_MINORITY_SHARE < 0.5, "well below an even split, so a lead with a backing voice passes"
+
+
+def test_a_thinly_covered_song_is_not_attributed_at_all() -> None:
+    """Below `MIN_LINE_COVERAGE` of the lines the diarizer has not heard enough of the song to trust it
+    about the rest, and a half-coloured reel is the one outcome the fallback exists to prevent."""
+    doc, turns = _reel("AB........")
+    assert attribute(doc, turns) is doc
+    covered, covered_turns = _reel("ABABAB....")  # 6 of 10 = MIN_LINE_COVERAGE
+    assert attribute(covered, covered_turns) is not covered
+    assert MIN_LINE_COVERAGE == 0.6
+    assert EXACT_PARTS == 2
 
 
 def test_attribution_does_not_mutate_the_input() -> None:
     """The doc may be a checkpointed value; mutating it would survive nothing."""
-    original = line("mine", 0.0, 2.0)
-    doc = {"language": "en", "lines": [original]}
-    attribute(doc, [turn("A", 0.0, 4.0), turn("B", 5.0, 9.0)])
-    assert "speaker" not in original
+    first, second = line("mine", 0.0, 2.0), line("yours", 6.0, 8.0)
+    doc = {"language": "en", "lines": [first, second]}
+    out = attribute(doc, [turn("A", 0.0, 4.0), turn("B", 5.0, 9.0)])
+    assert out is not doc, "attributed, so the check below is about the input and not a no-op"
+    assert "part" not in first and "part" not in second
 
 
 def test_it_reads_word_spans_over_the_lines_own_bounds() -> None:
@@ -199,13 +248,15 @@ def test_it_reads_word_spans_over_the_lines_own_bounds() -> None:
         "lines": [
             {"start": 0.0, "end": 1.0, "words": [{"word": "late", "start": 6.0, "end": 8.0}]},
             {"start": 0.0, "end": 1.0, "words": [{"word": "early", "start": 0.5, "end": 2.0}]},
+            {"start": 0.0, "end": 1.0, "words": [{"word": "later", "start": 6.5, "end": 8.5}]},
         ]
     }
     out = attribute(doc, [turn("A", 0.0, 4.0), turn("B", 5.0, 9.0)])
     lines = out["lines"]
     assert isinstance(lines, list)
-    assert lines[0]["speaker"] == "B", "read from the WORD, which is where the aligner put it"
-    assert lines[1]["speaker"] == "A"
+    # Read from the WORDS: lines 0 and 2 sit in B's turn, line 1 in A's. By their own (copied) bounds all
+    # three would be A's, one voice, and the song would not be attributed at all.
+    assert [ln["part"] for ln in lines] == ["A", "B", "A"]
 
 
 def test_a_malformed_document_is_survived() -> None:

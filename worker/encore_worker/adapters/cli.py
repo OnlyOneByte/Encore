@@ -18,7 +18,7 @@ import re
 import subprocess
 from collections.abc import Sequence
 
-from encore_worker.adapters.ports import ProgressSink
+from encore_worker.adapters.ports import InfraFault, ProgressSink
 from encore_worker.domain.document import Segment
 from encore_worker.domain.lyrics.clean import clean_segments
 
@@ -68,7 +68,7 @@ OOM_MARKERS = (
 )
 
 
-class OutOfMemory(RuntimeError):
+class OutOfMemory(InfraFault):
     """A model needed more memory than this box has.
 
     `retryable = False`, and that is the whole point: the same model on the same audio on the same box will
@@ -78,6 +78,9 @@ class OutOfMemory(RuntimeError):
 
     Recoverable by CHANGING something — a smaller model, a reduced segment, a bigger box — which is a
     decision for a person, not for a retry loop.
+
+    An `InfraFault`, so an alignment step lets it through rather than declining one attempt over it: the
+    in-process emission pass raises it too (`ml.WhisperXAligner.emissions`, from torch's own message).
     """
 
     retryable = False

@@ -345,7 +345,9 @@ export interface JobArtifacts {
 		title: string;
 		confidence: string;
 	};
-	/** `uri` is the single best artifact; `candidates` is the full set, one per TEXT SOURCE. */
+	/** `uri` is the worker's choice (`""` = it published nothing); `candidates` is every document it wrote, each
+	 *  attempt it did not publish marked `selectable: false`. The shape is what the worker SENDS, not a guarantee:
+	 *  `setMediaLyrics` reads it through `parseLyricsCandidates`. */
 	lyrics?: { uri: string; candidates?: LyricsCandidate[] };
 	pitch?: { uri: string }; // reference pitch-track JSON
 	/** Nothing reads it today, but EVERY key the worker writes must be declared here. */
