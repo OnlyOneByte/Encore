@@ -294,6 +294,12 @@
 
 	function addSong(mediaId: string) {
 		store?.addSong(mediaId);
+		/* SAID HERE, because `queueAnnouncement` is deliberately silent about my OWN adds — "the row appearing is its own
+		   confirmation" — and that only holds in the queue view. With `searchActive` the results have REPLACED the queue,
+		   so no row appears anywhere on screen and a screen-reader guest adding three songs off one search heard three
+		   silences. Assigned directly rather than routed through the announcer: that function's whole job is the diff that
+		   suppresses news I caused, and this is news I caused and want. */
+		liveMsg = `Added ${mediaTitle(mediaId)} to the queue`;
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 	function singThis(mediaId: string) {

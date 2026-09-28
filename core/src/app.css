@@ -90,6 +90,13 @@
 	   so a control must express var(--tap) and never the literal. */
 	--tap: 44px;
 
+	/* THE LIST-ROW VIDEO FRAME, 16:9 so the source frame is neither letterboxed nor cropped. A token PAIR rather than
+	   two literals in SongRow, because the search skeleton has to stand in for this exact box and numbering it
+	   separately is how it drifted: the placeholder shipped a 44px square against the row's 84px frame, so every result
+	   moved its text column 38px right on arrival (measured at 390px). The ≤--bp-xs arm below re-points both at once. */
+	--row-thumb-w: 84px;
+	--row-thumb-h: 47px;
+
 	--max-w: 480px;
 
 	/* A route picks a ROLE, never a number: --measure-grid wants the shell width, --measure-prose protects line length. */
@@ -189,6 +196,18 @@
 	/* "Next up" names WHO to look at, so the singer out-sizes the ordinary takeover hero. */
 	--tv-takeover-name: 4.527rem;
 	/* GEOMETRY (boxes, not type) — the named exemption to the "no viewport term" rule, may carry vw/vmin. */
+	/* THE TV SPACING LADDER — the half of the geometry that must NOT spend that exemption: a gap between two lines
+	   of type is owed to the TYPE, not to the stage, so these are rem off the same root the tiers are. The phone's
+	   flat --space-* ladder was the wrong one here: --space-lg's 12px separated a .hero-name that renders 132px at
+	   1080p and 264px at 4K, so the takeover's three lines sat nearly flush. NOT vh either — the root is
+	   max(2.7vh, 20px) * --ui-scale, so a vh gap keeps shrinking past the 20px floor on a short panel and ignores
+	   --ui-scale entirely, leaving a guest who scaled the type to 1.6 with 1080p gaps. Rung names mirror the phone
+	   ladder and the values land ON it at 1080p (1rem = 29.16px there), so /tv renders unchanged at the resolution
+	   every one of these was eyeballed at. Only the rungs /tv actually spends are declared. */
+	--tv-space-3xs: 0.07rem;
+	--tv-space-2xs: 0.14rem;
+	--tv-space-lg: 0.41rem;
+	--tv-space-4xl: 0.69rem;
 	/* `clamp(floor, Nvw, ceiling)` rather than `min(px, vw)`, so the panel grows on a 4K stage instead of freezing
 	   while the vh-scaled type doubles. The right panel's floor clears the longest LAN address at --tv-name. */
 	--tv-attract-left: clamp(560px, 44vw, 1400px);
@@ -197,9 +216,17 @@
 	   square on any aspect ratio; the floor keeps it scannable at 720p. */
 	--tv-attract-qr: clamp(190px, 16vmin, 300px);
 	/* One token so Next-up / Still-processing / Skipping share the exact stripe width. The COLOUR is per-state. */
-	--tv-takeover-border: 14px;
-	--tv-process-bar-w: min(760px, 42vw);
-	--tv-process-bar-h: 14px;
+	/* rem, so the state stripe stays as thick RELATIVE TO the name beside it: as a flat 14px it was 10.6% of a
+	   132px --tv-takeover-name at 1080p and 5.3% of the same name at 264px on a 4K stage. */
+	--tv-takeover-border: 0.48rem;
+	/* The rem term is the one that tracks the type — as `min(760px, …)` this froze at 760px from 1080p upward, so
+	   the bar the whole room waits on fell from 40% to 20% of the stage under a headline that doubled: the exact
+	   freeze the panel comment above forbids. The vw term is kept ONLY as a ceiling, and at --ui-scale 1 on a 16:9
+	   stage it binds at no resolution — it takes a stage narrower than ~5:3 (0.42w < 0.702h) or a scaled-up root to
+	   reach it (measured: 806px at 1080p/--ui-scale 1.6). It is never the value that decides the width on a real TV.
+	   At 720p the rem term binds and the bar goes 537.6px → 520px, tracking the root's own 20px floor. */
+	--tv-process-bar-w: min(26rem, 42vw);
+	--tv-process-bar-h: 0.48rem;
 	/* Applied to BOTH sides so the centred roster stays centred and no wrapped chip lands under a corner control. */
 	--tv-strip-corner-clear: calc(var(--tv-safe-x) + 88px + var(--space-2xl));
 	/* No bottom-dock token here on purpose: the phone's band publishes its MEASURED height, so a `:root` fallback could
@@ -393,6 +420,15 @@ body {
 @media (min-width: 1200px) {
 	:root {
 		--max-w: 1080px;
+	}
+}
+/* THE NARROW ARM OF THE ROW FRAME, at --bp-xs. Below it the full-size frame starves the title and truncates away the
+   version marker the row exists to show, so the frame gives 20px back. It is a TOKEN step, not a `.thumb` step, so the
+   search skeleton narrows with the row it stands in for instead of holding 84px while the row goes to 64px. */
+@media (max-width: 380px) {
+	:root {
+		--row-thumb-w: 64px;
+		--row-thumb-h: 36px;
 	}
 }
 

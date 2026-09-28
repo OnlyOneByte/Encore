@@ -27,6 +27,13 @@
 		/** Raising or lowering the sheet. When present the metadata block becomes a real button; absent it is
 		 * plain text, because a labelled control that swallows its press is worse than none. */
 		onexpand?: () => void;
+		/** Whether the sheet is up, A GETTER AND NEVER THE BOOLEAN: this subtree sits inside the drawer's
+		 * `bind:clientHeight`, and the rule there is that sheet state reaches it without any prop VALUE changing. A
+		 * function prop never changes value, and calling it in the template subscribes the one `aria-expanded` write to
+		 * the signal instead — the same shape as `.np-fit`'s `inert`. Absent means the band cannot know, and the
+		 * attribute is then OMITTED rather than guessed at: the gallery renders five bands with no `onexpand`, and a
+		 * control reporting a state it cannot know is worse than a plain button. */
+		expanded?: () => boolean;
 	}
 
 	let {
@@ -40,7 +47,8 @@
 		ontoggleplay,
 		onrestart,
 		onskip,
-		onexpand
+		onexpand,
+		expanded
 	}: Props = $props();
 
 	const hasSong = $derived(title !== null && title !== '');
@@ -64,8 +72,9 @@
 	});
 
 	/* The accessible name CONTAINS the visible text (SC 2.5.3, label in name), so a voice user can say the title. IT
-	   IS NOT DIRECTIONAL, and cannot be: naming the press direction needs the snap state as a PROP, and any prop that
-	   changes after mount re-runs the drawer's size bindings, which throw on the mount rung. */
+	   IS DELIBERATELY NOT DIRECTIONAL: which way the press goes rides on `aria-expanded` below, the state a screen
+	   reader re-announces on every press, and a name that rewrote itself instead would move the phrase a voice user
+	   has to speak out from under them each time the sheet moved. */
 	const expandLabel = $derived(hasSong ? `${title} — now playing` : 'Nothing playing');
 
 	/* A DRAG MUST NOT ALSO COUNT AS A TAP: this block is both the sheet's press-to-toggle control and most of its
@@ -101,6 +110,7 @@
 					class="meta meta-btn"
 					type="button"
 					aria-label={expandLabel}
+					aria-expanded={expanded?.()}
 					onpointerdown={(e) => {
 						pressY = e.pageY;
 						dragged = false;

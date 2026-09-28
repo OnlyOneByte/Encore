@@ -73,6 +73,15 @@ size there; form controls take a 16px floor of their own, because iOS zooms a fo
 zooms back. The two `--max-w` preludes keep px literals, since a media query is evaluated before the cascade
 and cannot read a custom property.
 
+The `--space-*` ladder is flat px and therefore does NOT track that rem type, which is why the three data
+pages — `/stats`, `/metrics`, `/metrics/[mediaId]` — keep their gaps in rem. At the default root the two
+spellings are indistinguishable (`0.75rem` and `var(--space-lg)` both measure 12px), and that is exactly what
+makes the rem one read as sloppiness: at the browser's 200% text-only zoom the type doubles 24px → 48px and a
+rem gap tracks it to 24px, while a tokenised gap is frozen at 12px — gap-to-type falls from 0.50 to 0.25 and
+the tiles crowd. Only `/stats` wrote that reason down, so a pass over the two silent files tokenised it; all
+three carry it now. Giving `--space-*` rem values globally is NOT the fix, because /tv composes those tokens
+against a vh-rooted root font-size, where a rem ladder would scale every gap with the viewport.
+
 Dimming is a SURFACE or INK change, never an opacity on a subtree: an ancestor alpha flattens text and the
 surface behind it into one buffer, so a token-level contrast check keeps passing while the guest sees
 worse. A leaf that carries no text may use opacity. Because that guard reasons about a row by reading the rules
@@ -261,10 +270,12 @@ The consequence is a rule about markup, not about tests. `.band-slot` and `.np-f
 so ANY reactive update in that part of the template re-runs its size binding — and on this rung that throws.
 So:
 
-> **A size binding must never be driven by a reactive prop or a `class:` directive.** `NowPlayingBand` takes no
-> `expanded` prop and every handler it takes is a callback, stable for the life of the mount. State that needs
-> to reach that subtree arrives as an ATTRIBUTE written from an effect, because an attribute write re-renders
-> nothing.
+> **A size binding must never be driven by a reactive prop or a `class:` directive.** No prop carrying SHEET STATE
+> into `NowPlayingBand` is a value: every handler is a callback, and `expanded` is a GETTER rather than the boolean
+> it reads, so neither ever changes value. State that needs to reach that subtree arrives as an ATTRIBUTE, because
+> an attribute write re-renders nothing and cannot change the measured height — `.np-fit`'s `inert` and the band
+> button's `aria-expanded` are both that shape. The band's `title` and `progress` DO change value; they are safe
+> only because neither can change its height, `.meta` being pinned at `min-height: var(--tap)` and `.title` nowrap.
 
 The same rung is why `src/lib/components/GuidingTrack.svelte` does not use the vendored Slider (the primitive
 reads `offsetWidth` to place its thumb, so it cannot be mounted at all), why

@@ -128,6 +128,7 @@
 	// matters most here.
 	let ws: WsClient | undefined;
 	let interstitialTimer: ReturnType<typeof setTimeout> | undefined;
+	let skipNoticeTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function mediaOf(entry: QueueEntry | null): Media | null {
 		return entry ? (mediaCatalog.get(entry.mediaId) ?? null) : null;
@@ -188,7 +189,12 @@
 	const SKIP_NOTICE_MS = 4000;
 	function flashSkipNotice(message: string) {
 		skipNotice = message;
-		setTimeout(() => (skipNotice = ''), SKIP_NOTICE_MS);
+		// ONE handle, cleared on every flash: the dwell belongs to the TEXT, not to the first notice. Otherwise a
+		// second skip inherits the first's deadline — with the 2500ms intro hold between two dead files the second
+		// notice got the ~1500ms left of SKIP_NOTICE_MS (and near-zero when a worker fails a batch, where the
+		// terminal statuses land together), blanking mid-read and taking the whole takeover with it.
+		clearTimeout(skipNoticeTimer);
+		skipNoticeTimer = setTimeout(() => (skipNotice = ''), SKIP_NOTICE_MS);
 	}
 
 	function onVisibleError() {
@@ -926,7 +932,7 @@
 		font-size: var(--tv-name);
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-lg);
+		gap: var(--tv-space-lg);
 	}
 	.asplit-l {
 		position: absolute;
@@ -989,7 +995,7 @@
 		gap: 3.2vh;
 		/* Right/top/bottom are real screen edges and take the overscan token; the LEFT edge is the interior 2px
 		   border, so it takes a plain gutter. Charging --tv-safe-x on both sides clips the join address. */
-		padding: var(--tv-safe-y) var(--tv-safe-x) var(--tv-safe-y) var(--space-4xl);
+		padding: var(--tv-safe-y) var(--tv-safe-x) var(--tv-safe-y) var(--tv-space-4xl);
 		text-align: center;
 		overflow: hidden;
 	}
@@ -1042,7 +1048,7 @@
 		display: flex;
 		flex-direction: column;
 		max-width: 46vw;
-		gap: var(--space-3xs);
+		gap: var(--tv-space-3xs);
 		/* The STROKE is load-bearing, not decoration: a shadow tuned against black disappears against a bright field
 		   of similar luminance (the singer name measured 1.10:1 on white). `paint-order: stroke fill` draws the
 		   outline BEHIND the glyph; the default eats the thin parts. Width in `em`, so 720p and 4K read the same. */
@@ -1095,7 +1101,7 @@
 		color: color-mix(in srgb, var(--ink-dim) 82%, transparent);
 		font-weight: 600;
 		letter-spacing: 0.04em;
-		margin-top: var(--space-3xs);
+		margin-top: var(--tv-space-3xs);
 	}
 	/* Neutral dim by default, because it is a SOURCE tag and not a warning; not uppercase and not letter-spaced,
 	   because the tracked-out version of this string read as debris. */
@@ -1118,7 +1124,9 @@
 		display: flex;
 		flex-direction: column;
 		align-items: flex-end;
-		gap: 1px;
+		/* The tightest rung of the TV ladder, not a flat 1px: 1px between three lines whose type is 58px at 4K is
+		   not a gap, it is a collision. */
+		gap: var(--tv-space-3xs);
 		max-width: 32vw;
 		text-align: right;
 		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
@@ -1163,7 +1171,7 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: var(--space-lg);
+		gap: var(--tv-space-lg);
 		/* A SCRIM, not a wash: an opaque wash blanks the room's chosen backdrop for every song change — the exact
 		   black flash the background layer's visibility band exists to avoid, undone one layer up. */
 		background: radial-gradient(
@@ -1196,7 +1204,7 @@
 	.state-mark {
 		font-size: var(--tv-hero);
 		line-height: var(--lh-none);
-		margin-bottom: var(--space-2xs);
+		margin-bottom: var(--tv-space-2xs);
 	}
 
 	/* Colour is NEVER the only carrier: each takeover also keeps its own eyebrow, and error/processing a mark. */
@@ -1275,7 +1283,7 @@
 	}
 	.process-steps {
 		display: flex;
-		gap: var(--space-4xl);
+		gap: var(--tv-space-4xl);
 		margin-top: 2vh;
 		font-size: var(--tv-small);
 		color: var(--ink-dim);
@@ -1297,20 +1305,24 @@
 		pointer-events: none;
 	}
 
-	/* Pulled INSIDE the safe area: a TV may clip a corner, and at 12px anyone who saw it read it as a dead pixel. */
+	/* Pulled INSIDE the safe area: a TV may clip a corner, and at 12px anyone who saw it read it as a dead pixel.
+	   Both terms are load-bearing: the px one IS that measured floor and is what binds BELOW 1080p (at 1080p the rem
+	   term resolves to 16.03px, so nothing moves there), and the rem one is what stops a flat 16px dot from reading
+	   as the dead pixel again on a 4K stage, where it would be 16px beside a 58px --tv-name. */
 	.status {
 		position: absolute;
 		top: var(--tv-safe-y);
 		right: var(--tv-safe-x);
-		width: 16px;
-		height: 16px;
+		width: max(16px, 0.55rem);
+		height: max(16px, 0.55rem);
 		border-radius: 50%;
 		background: var(--ink-dim);
 		z-index: var(--z-tv-status);
 	}
 	.status.on {
 		background: var(--ok);
-		box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 18%, transparent);
+		/* Same pair as the dot above, in the same proportion: a frozen 5px halo around a doubled dot is a rim. */
+		box-shadow: 0 0 0 max(5px, 0.17rem) color-mix(in srgb, var(--ok) 18%, transparent);
 	}
 
 	/* `pointer-events` drops with the fade, so a hidden button cannot eat a tap meant for the stage. The clamp's
@@ -1321,7 +1333,7 @@
 		/* BELOW the whole "Up next" block: `.upnext` shares this right edge AND this z-tier and comes earlier in the
 		   DOM, so anchoring level with it paints over the readout. Uses `.upnext`'s MEASURED height, because its
 		   title wraps and a fixed offset fails the moment it grows. */
-		top: calc(var(--tv-safe-y) + 2.6vh + var(--tv-upnext-h) + var(--space-lg));
+		top: calc(var(--tv-safe-y) + 2.6vh + var(--tv-upnext-h) + var(--tv-space-lg));
 		z-index: var(--z-tv-card);
 		display: grid;
 		place-items: center;
@@ -1405,11 +1417,14 @@
 	.ah-mark {
 		display: grid;
 		place-items: center;
-		width: clamp(64px, 12vmin, 160px);
-		height: clamp(64px, 12vmin, 160px);
+		/* BOX AND GLYPH ON ONE LADDER. As `clamp(64px, 12vmin, 160px)` the circle stopped growing at 160px while the
+		   rem glyph inside it did not: at 4K the 2.881rem glyph is 168px in a 160px circle, so the mark overflowed
+		   its own background. 4.4rem is the size that circle already had at 1080p (128px against 129.6px) and at
+		   720p (88px against 86.4px), and it holds the 0.65 glyph-to-box ratio at every resolution and --ui-scale. */
+		width: 4.4rem;
+		height: 4.4rem;
 		border-radius: 50%;
 		background: color-mix(in srgb, var(--accent) 26%, transparent);
-		/* Off the ROOT ladder, so it tracks the floor down and stays inside the vmin-scaled circle. */
 		font-size: 2.881rem;
 	}
 	.ah-head {
@@ -1443,11 +1458,12 @@
 	.sr-mark {
 		display: grid;
 		place-items: center;
-		width: clamp(64px, 12vmin, 160px);
-		height: clamp(64px, 12vmin, 160px);
+		/* Same one ladder as .ah-mark, for the same reason: a vmin box capped at 160px is overflowed by its own
+		   2.881rem glyph at 4K. */
+		width: 4.4rem;
+		height: 4.4rem;
 		border-radius: 50%;
 		background: color-mix(in srgb, var(--warn) 26%, transparent);
-		/* Off the ROOT ladder, so it tracks the floor down and stays inside the vmin-scaled circle. */
 		font-size: 2.881rem;
 	}
 	.sr-head {
