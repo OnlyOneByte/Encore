@@ -15,7 +15,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
-from typing import Any
+from collections.abc import Coroutine, Sequence
+from typing import Any, TypeVar
 
 from encore_worker.adapters import cli, lrclib, lrcmux, ml, musicbrainz, ports, separate, zoo
 from encore_worker.artifacts import scratch
@@ -25,13 +26,16 @@ from encore_worker.host import ffmpeg, hardware
 from encore_worker.host.config import Config
 from encore_worker.protocol import frames as f
 from encore_worker.protocol.vocabulary import Stage
-from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
-from encore_worker.steps.records import AlignOutcome, JobRef
+from encore_worker.steps.align_steps import Adapters, AlignStepsImpl, Superseded, superseded_candidates
+from encore_worker.steps.api import asr_model_of, pin_of, sync_mode_of
+from encore_worker.steps.records import AlignOutcome, JobRef, tier_of_label
 from encore_worker.steps.separate_steps import FetchStepsImpl, SeparateStepsImpl
 from encore_worker.transport import client as transport_client
 from encore_worker.transport.client import Client
 from encore_worker.workflows import durable
 from encore_worker.workflows.fetch import run_fetch
+
+_T = TypeVar("_T")
 
 
 def build_adapters(config: Config, *, device: str) -> Adapters:
@@ -48,6 +52,8 @@ def build_adapters(config: Config, *, device: str) -> Adapters:
         # An ordered CHAIN, empty when offline. See `build_providers`.
         providers=build_providers(config),
         transcriber=ml.build_transcriber(device=device, checkpoint=config.asr_model),
+        # A job's own `asrModel` (review H5): built on demand, the weights cached per checkpoint in `ml`.
+        transcriber_for=lambda checkpoint: ml.build_transcriber(device=device, checkpoint=checkpoint),
         aligner=ml.build_aligner(device=device),
         diarizer=ml.build_diarizer(device=device),
     )
@@ -158,10 +164,14 @@ async def main() -> None:
     # arguments into the system database: a steps object holds loaded models, a websocket and subprocess
     # handles, so passing it raises `PicklingError`. Only `JobRef` crosses the boundary; these closures keep
     # the process-level state on this side of it.
+    #: The loop the client serves on. A workflow DBOS resumes runs on DBOS's own loop (`_ReporterFor`), and
+    #: these providers are called from inside the workflow, so the loop is captured HERE, not there.
+    loop = asyncio.get_running_loop()
+
     def align_steps_for(job: JobRef) -> Any:
         from encore_worker.workflows.dbos_align import DbosAlignSteps  # noqa: PLC0415
 
-        impl = AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client))
+        impl = AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client, loop))
         return DbosAlignSteps(impl, dbos)
 
     def stems_steps_for(job: JobRef) -> Any:
@@ -189,8 +199,8 @@ async def main() -> None:
         )
         return SeparateStepsImpl(
             config=config,
-            audio=AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client)),
-            reporter=_ReporterFor(client),
+            audio=AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client, loop)),
+            reporter=_ReporterFor(client, loop),
             # Roots come from the JOB's media_dir, so a box serving two cores is not forced onto one layout.
             store=LocalArtifactStore(Roots.under(job.media_dir)),
             separator=chosen,
@@ -308,7 +318,13 @@ def _annotation_artifacts(found: Identified) -> dict[str, Any] | None:
     }
 
 
-def _lyrics_artifacts(outcome: AlignOutcome) -> dict[str, Any] | None:
+def _lyrics_artifacts(
+    outcome: AlignOutcome,
+    *,
+    now_ms: int | None = None,
+    withdrawn: Sequence[Superseded] = (),
+    pinned: bool = False,
+) -> dict[str, Any] | None:
     """The `artifacts` envelope for an align completion.
 
     CANDIDATES ARE NOT OPTIONAL DECORATION. Core's retention sweep builds its cleanup set from
@@ -317,25 +333,121 @@ def _lyrics_artifacts(outcome: AlignOutcome) -> dict[str, Any] | None:
     lets `/api/lyrics-reselect` switch to another reading without re-fetching the audio.
 
     Reported even when nothing was PUBLISHED: the files exist regardless, so they must be nameable.
+
+    EACH FIELD CORE RANKS ON SAYS WHAT ITS NAME SAYS (review M3). Core's `pickBestLyrics` ranks the WHOLE
+    merged set, this report's attempts beside every earlier job's, and it read the timing grade as
+    `textConfidence`, took every attempt as a peer, and broke ties on a `createdAt` all of them shared:
+      * `textConfidence` is the TEXT's standing (`Tier.text_confidence`), `timingConfidence` the grade.
+        A PIN's (`pinned`: the job carries `pinnedText` / `pinnedRef`) is `high` whatever its tier: a
+        person chose these words, which is the old worker's reading ("`text_confidence` is `high` because
+        a human chose this text; that outranks any scored guess", f04a2d0e^ `steps/lyrics/pinned.py`), and
+        the orchestrator's decision after W1 (PLAN-alignment-v3, 2026-09-28 (2)). W1 had kept the stored
+        text's tier here, so a re-timed machine caption or transcript went out `low`. The TIER itself is
+        untouched (`steps.records.tier_of_label`): it still decides what it decides inside the job (the
+        lexical gate's ASR exemption) and what an earlier job's withdrawn document of those words is
+        sent as. Core then reads a re-picked machine caption as authoritative "Captions" (its TV drops
+        the "not verified" mark), while a re-picked transcript stays unauthoritative: core's
+        `isAuthoritativeText` never counts `asr` words as a claim, whatever their confidence.
+      * `selectable` is the ladder's verdict: `false` on every attempt this job did not publish — the
+        ones it retried, moved past, or (no lyrics) all of them. Core never auto-selects one (a person
+        still may), so within a report the worker's choice stands, while across jobs core's ranking
+        still guards never-regress. Before, an equal-rank tie went to the FIRST listed — the attempt the
+        ladder had retried — and a job that published nothing still had its rejects ranked and shown.
+        Replayed over the W0 run_align baseline's ladders (`results/baseline-v2-run_align.cases.jsonl`, 768
+        song-modes, one candidate per attempt as knob-bearing refs make it): core's ranking overrode the
+        worker in 319. 236 of the 320 WRONG texts the worker declined would have been shown anyway (its
+        rejected word doc, or the line doc of an ungated line-sync), 65 right texts it published nothing for
+        showed a reject, and 18 published retries lost to the attempt they retried.
+      * `createdAt` is ONE stamp per report, the moment this job's judgement was made. Recency is a
+        tie-break between JOBS (a re-run at equal rank is presumed an improvement); within one report
+        `selectable` decides, so no attempt is stamped as if it were newer than the job's choice.
+      * `withdrawn` are EARLIER jobs' documents for words this job's gate refused
+        (`align_steps.superseded_candidates`, review W1 r2): reported `selectable: false` too, since a
+        refused attempt writes nothing and they would otherwise keep their rank beside this verdict. Their
+        timing grade is not known here, so it is not sent (core reads it as unknown).
     """
-    if not outcome.published and not outcome.candidates:
+    if not outcome.published and not outcome.candidates and not withdrawn:
         return None
-    now = int(time.time() * 1000)
+    now = int(time.time() * 1000) if now_ms is None else now_ms
+    chosen = outcome.published.ref if outcome.published else None
     candidates = [
         {
             "ref": doc.ref,
             "textSource": _text_source_of(doc.label),
             "timing": doc.timing,
-            "textConfidence": doc.confidence,
+            # A pinned job reports only the pin's own document (`workflows.align._publish`), so `pinned`
+            # speaks for every candidate here; `withdrawn` below are earlier jobs' and keep their tier.
+            "textConfidence": "high" if pinned else doc.tier.text_confidence,
+            "timingConfidence": doc.confidence,
+            "selectable": doc.ref == chosen,
             "createdAt": now,
             **({"language": doc.language} if doc.language else {}),
         }
         for doc in outcome.candidates
     ]
+    candidates += [
+        {
+            "ref": old.ref,
+            "textSource": _text_source_of(old.label),
+            "timing": old.timing,
+            "textConfidence": tier_of_label(old.label).text_confidence,
+            "selectable": False,
+            "createdAt": now,
+            **({"language": old.language} if old.language else {}),
+        }
+        for old in withdrawn
+        if old.ref != chosen
+    ]
     lyrics: dict[str, Any] = {"uri": outcome.published.ref if outcome.published else ""}
     if candidates:
         lyrics["candidates"] = candidates
     return {"lyrics": lyrics}
+
+
+def _align_facts(job: JobRef, config: Config, outcome: AlignOutcome) -> dict[str, Any]:
+    """What an align job RAN, for core's attempt row (`ResolvedFacts`, `reportFacts`).
+
+    `asrModel` and `syncMode` are the RESOLVED values (review H5), the ones `steps.api` resolves for the
+    steps themselves: core records the request at dispatch and lets these overwrite it, so a checkpoint
+    this worker would not load, or a pin aligned under `lines`, is reported as what actually ran rather
+    than as what was asked. The old worker reported both on every align completion.
+    """
+    return {
+        "backend": config.backend,
+        "noLyrics": outcome.no_lyrics,
+        "asrModel": asr_model_of(job, config.asr_model),
+        # What RAN: `lines` on a stemless song is aligned (`workflows.align._sync_mode_note`). A record
+        # checkpointed before the field existed restores it as None (`restore_appended`): the job's param.
+        "syncMode": outcome.sync_mode or sync_mode_of(job).value,
+    }
+
+
+def _align_completion(
+    job: JobRef, config: Config, outcome: AlignOutcome, *, now_ms: int | None = None
+) -> f.Complete:
+    """The `job:complete` an align job sends — the frame core's `setMediaLyrics` reads.
+
+    One builder, so the cross-language contract fixture (`tests/test_core_contract.py`, parsed by core's
+    `worker-align-contract.test.ts`) is written from the frame this worker actually sends, not a copy.
+    """
+    return f.Complete(
+        worker_id=config.worker_id,
+        job_id=job.job_id,
+        media_uri=outcome.published.ref if outcome.published else "",
+        # `uri`, NOT `ref`. Core's `JobArtifacts.lyrics` is `{ uri, candidates? }` and reads
+        # `artifacts?.lyrics?.uri` — `ref` is the field on a CANDIDATE, so the old key left core with
+        # an undefined uri and no lyrics on a job that had just published them.
+        artifacts=_lyrics_artifacts(
+            outcome,
+            now_ms=now_ms,
+            withdrawn=superseded_candidates(
+                job, outcome.refused, placed={doc.ref for doc in outcome.candidates}
+            ),
+            pinned=pin_of(job) is not None,
+        ),
+        facts=_align_facts(job, config, outcome),
+        trail=tuple(dict(entry) for entry in outcome.trail),
+    )
 
 
 async def _sweep_scratch(config: Config, *, every_sec: float = 900.0) -> None:
@@ -430,18 +542,7 @@ async def _dispatch(
     """The action-to-workflow mapping. Split from `_run` so the keepalive wraps every branch including the
     unknown-action refusal — a job that fails to dispatch still holds a lease until its frame lands."""
     if assign.action == "align":
-        outcome = await durable.align(job)
-        return f.Complete(
-            worker_id=config.worker_id,
-            job_id=job.job_id,
-            media_uri=outcome.published.ref if outcome.published else "",
-            # `uri`, NOT `ref`. Core's `JobArtifacts.lyrics` is `{ uri, candidates? }` and reads
-            # `artifacts?.lyrics?.uri` — `ref` is the field on a CANDIDATE, so the old key left core with
-            # an undefined uri and no lyrics on a job that had just published them.
-            artifacts=_lyrics_artifacts(outcome),
-            facts={"backend": config.backend, "noLyrics": outcome.no_lyrics},
-            trail=tuple(dict(entry) for entry in outcome.trail),
-        )
+        return _align_completion(job, config, await durable.align(job))
 
     if assign.action in ("stems", "stems-upgrade"):
         separated = await durable.stems(job)
@@ -521,21 +622,36 @@ class _ReporterFor:
 
     A step must not be able to send arbitrary frames — `job:accept` from inside an alignment would
     corrupt the conversation — so this exposes exactly four methods and nothing else.
+
+    ON THE CLIENT'S LOOP, whichever loop the step runs on. DBOS runs a workflow IT resumes — one recovered at
+    launch, and the fork a requeued failure runs (`durable._run_id`, review W1 r1) — on its own background
+    event loop, in another thread, while the socket, the ownership event and every future `Client` awaits
+    belong to the loop `serve_forever` runs. Awaited from the other loop, a send failed (swallowed by
+    `_send`, so the trail went quiet) and a stale-standing `confirm_ownership` waited on an event bound to
+    the wrong loop and raised, failing the publish. So a call from another loop is handed to the client's.
     """
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: Client, loop: asyncio.AbstractEventLoop | None = None) -> None:
         self._client = client
+        #: The loop the client serves on: given by the composition root, else the one constructing this
+        #: (`_run`, which the client itself calls from that loop).
+        self._loop = loop if loop is not None else asyncio.get_running_loop()
+
+    async def _on_client_loop(self, call: Coroutine[Any, Any, _T]) -> _T:
+        if asyncio.get_running_loop() is self._loop:
+            return await call
+        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(call, self._loop))
 
     async def progress(self, job_id: str, stage: Any, pct: int) -> None:
-        await self._client.progress(job_id, stage, pct)
+        await self._on_client_loop(self._client.progress(job_id, stage, pct))
 
     async def state(
         self, job_id: str, state: str, attempt: int, verdict: str, why: str, knob: str | None
     ) -> None:
-        await self._client.state(job_id, state, attempt, verdict, why, knob)
+        await self._on_client_loop(self._client.state(job_id, state, attempt, verdict, why, knob))
 
     async def confirm_ownership(self, job_id: str, *, timeout_sec: float = 10.0) -> bool:
-        return await self._client.confirm_ownership(job_id, timeout_sec=timeout_sec)
+        return await self._on_client_loop(self._client.confirm_ownership(job_id, timeout_sec=timeout_sec))
 
     def explain_ownership(self, job_id: str) -> str:
         return self._client.ownership.explain(job_id)

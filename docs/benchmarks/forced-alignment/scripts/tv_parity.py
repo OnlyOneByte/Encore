@@ -1,0 +1,254 @@
+#!/usr/bin/env python
+"""The TV-highlight parity fixture: documents, playback positions, and the word the TV lights at each.
+
+    cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/tv_parity.py        # rewrite it
+    cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/tv_parity.py --check
+
+WHY IT EXISTS. The bench's `highlight` metric (a reject-if in W4 and 6c) reads "which word is lit" through
+`e2e_lib`'s PORT of the TV's own `core/src/lib/tv/lyrics.ts` — parse, pause re-segmentation, orphan
+folding, `activeLineIndex`, `activeWordIndex` — as `LyricsOverlay.svelte`'s word-level branch uses them.
+The port was cross-checked against the TypeScript once (bun, 0 of 60,000 positions disagreed), but that
+check was never committed, and review round 2 measured three port mutations that the suite could not see
+(always merging an orphan BACK, dropping the 80%-coverage refusal, and letting the EARLIER truth word win
+an overlap). W6 is planned to change the TV (`low` lines rendered line-level), and the metric would go on
+scoring the old one.
+
+So this fixture is written FROM THE PORT and asserted in BOTH trees:
+  * `worker/tests/test_bench_e2e.py` — the port still lights exactly these words, and this script still
+    writes exactly this file;
+  * `core/tests/unit/lib/tv/lyrics-bench-parity.test.ts` — `lyrics.ts` lights the same words, its constants
+    are the fixture's, and the overlay's word-level branch reads exactly `OVERLAY_WORD_BRANCH`.
+An edit on either side that moves a lit word fails one of them. Change the other side with it and
+re-run this script; never hand-edit the JSON.
+
+THE DOCUMENTS: named shapes that pin each rule of the port (a line misbound late, a long line that splits
+at pauses with orphans folding BACK and FORWARD — the forward one with a previous row present — the
+coverage refusal, the 42-char cap, overlapping and reversed word spans, a blank line text), then seeded
+random documents that mix them. ASCII words with finite times only: `lyrics.ts` drops a blank or
+non-finite word at parse, while the port's `tv_lines` keeps a textless `DocWord` under a placeholder (the
+bench's own documents always carry text), and JS counts UTF-16 units where Python counts code points.
+EXPECTED, per document: the ROWS the TV displays after parsing (text and bounds — where re-segmentation
+and orphan folding show, since merging an orphan the wrong way rarely changes which word is lit), and the
+lit word's flat index at every POSITION: each breakpoint of the document (word and line bounds) and the
+midpoint of every interval between consecutive breakpoints, plus one before and one after.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import random
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[3]
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import e2e_lib as lib  # noqa: E402 - after the path setup above
+
+#: Where both trees read the fixture: beside the core test that pins `lyrics.ts` to it (core is built and
+#: tested from `core/` alone, so the fixture lives there and the worker test reaches over).
+FIXTURE = REPO / "core" / "tests" / "unit" / "lib" / "tv" / "bench-highlight-parity.json"
+
+#: The overlay's word-level branch, verbatim: the port models a TV that lights words ONLY there.
+OVERLAY_WORD_BRANCH = "{#if i === lineIdx && l.words.length && wordLevel}"
+
+RANDOM_DOCUMENTS = 16
+SEED = 0
+
+Word = tuple[str, float, float]
+
+
+def _line(text: str | None, words: Sequence[Word]) -> dict[str, Any]:
+    """A published line: its own bounds from its words (as the worker writes them), `text` or the words."""
+    return {
+        "start": min(s for _w, s, _e in words) if words else 0.0,
+        "end": max(e for _w, _s, e in words) if words else 0.0,
+        "text": " ".join(w for w, _s, _e in words) if text is None else text,
+        "words": [{"word": w, "start": s, "end": e} for w, s, e in words],
+    }
+
+
+def _run(words: str, start: float, step: float = 0.4, sung: float = 0.3) -> list[Word]:
+    """Words sung back to back from `start`, one every `step` seconds, each `sung` long."""
+    return [
+        (w, round(start + i * step, 3), round(start + i * step + sung, 3))
+        for i, w in enumerate(words.split())
+    ]
+
+
+def shaped() -> list[tuple[str, dict[str, Any]]]:
+    """One document per rule of the port, named for it."""
+    back = [
+        *_run("morning light is falling on the rivers", 0.0),
+        ("here", 3.4, 3.7),
+        *_run("waiting for you", 5.0),
+    ]
+    forward = [
+        *_run("we were singing on the long road", 0.0),
+        # 0.9 s after "road", 0.5 s before "want" — both pauses split — so it folds FORWARD, a row before it.
+        ("I", 3.6, 3.8),
+        *_run("want a perfect body tonight", 4.3),
+    ]
+    thin = [("fly", 0.0, 0.3), ("away", 1.0, 1.3), ("home", 2.0, 2.3)]
+    capped = _run("one two three four five six seven eight nine ten eleven twelve", 0.0, step=0.3, sung=0.3)
+    return [
+        (
+            "ordered",
+            {"lines": [_line(None, _run("the quick fox", 0.0)), _line(None, _run("jumps over", 2.0))]},
+        ),
+        (
+            "misbound-late",
+            {
+                "lines": [
+                    _line(None, _run("early words", 0.0)),
+                    _line(None, _run("misbound late", 50.0)),
+                    _line(None, _run("later words", 2.0)),
+                ]
+            },
+        ),
+        ("orphan-merges-back", {"lines": [_line(None, back)]}),
+        ("orphan-merges-forward-after-a-row", {"lines": [_line(None, forward)]}),
+        (
+            # Its OWN bounds (0-10 s) outlast its words, so while it stands unsplit it holds the TV through
+            # the next line's word; split, the rows end at 2.3 s and "next" lights.
+            "coverage-refusal",
+            {
+                "lines": [
+                    {
+                        **_line("fly away home, and all the words this sheet never timed at all", thin),
+                        "end": 10.0,
+                    },
+                    _line(None, [("next", 5.0, 5.5)]),
+                ]
+            },
+        ),
+        ("char-cap-without-a-pause", {"lines": [_line(None, capped)]}),
+        (
+            "overlapping-and-reversed-words",
+            {
+                "lines": [
+                    _line(None, [("over", 1.0, 1.6), ("lap", 1.4, 2.0), ("back", 2.6, 2.2), ("on", 2.6, 3.0)])
+                ]
+            },
+        ),
+        (
+            "blank-line-text",
+            {"lines": [_line(" ", _run("words carry it", 1.0)), _line(None, _run("next", 3.0))]},
+        ),
+    ]
+
+
+def randomized(rng: random.Random) -> dict[str, Any]:
+    """A document mixing every shape: pauses, long lines, orphans, misbinding, reversed and zero spans."""
+    lines: list[dict[str, Any]] = []
+    clock = rng.uniform(0.0, 2.0)
+    for _ in range(rng.randint(2, 6)):
+        words: list[Word] = []
+        for _k in range(rng.randint(1, 12)):
+            word = "".join(rng.choice("abcdefghijklmnopqrstuvwxyz") for _c in range(rng.randint(1, 8)))
+            sung = rng.choice((0.0, rng.uniform(0.05, 0.5), rng.uniform(0.5, 1.4)))
+            start = round(clock, 3)
+            end = round(clock + sung, 3)
+            if rng.random() < 0.05:
+                start, end = end, start  # a reversed span: never lit, but it still bounds the line
+            words.append((word, start, end))
+            clock += sung + rng.choice((0.0, 0.05, 0.2, 0.5, 1.2))
+        text = None
+        if rng.random() < 0.15:
+            text = " ".join(w for w, _s, _e in words) + " and a long untimed tail the words do not cover"
+        line = _line(text, words)
+        if rng.random() < 0.1:  # misbound: the whole line placed 20-60 s late
+            late = round(rng.uniform(20.0, 60.0), 3)
+            line = _line(text, [(w, round(s + late, 3), round(e + late, 3)) for w, s, e in words])
+        lines.append(line)
+        clock += rng.uniform(0.2, 3.0)
+    return {"lines": lines}
+
+
+def tv_document(raw: dict[str, Any]) -> list[lib.TvLine]:
+    """The port's view of a fixture document: `e2e_lib.tv_lines`, each word tagged with its FLAT index."""
+    paired: list[tuple[lib.DocLine, list[int]]] = []
+    flat = 0
+    for line in raw["lines"]:
+        words = tuple(
+            lib.DocWord(float(w["start"]), float(w["end"]), True, str(w["word"])) for w in line["words"]
+        )
+        doc = lib.DocLine(str(line["text"]), float(line["start"]), float(line["end"]), None, None, words)
+        paired.append((doc, list(range(flat, flat + len(words)))))
+        flat += len(words)
+    return lib.tv_lines(paired)
+
+
+def positions(raw: dict[str, Any]) -> list[float]:
+    """Every breakpoint, the midpoint of every gap between consecutive ones, and one outside each end."""
+    points = sorted(
+        {float(t) for line in raw["lines"] for t in (line["start"], line["end"])}
+        | {float(t) for line in raw["lines"] for w in line["words"] for t in (w["start"], w["end"])}
+    )
+    middles = [(a + b) / 2 for a, b in zip(points, points[1:], strict=False) if b > a]
+    return sorted({points[0] - 0.5, *points, *middles, points[-1] + 0.5})
+
+
+def lit(lines: Sequence[lib.TvLine], pos: float) -> int:
+    """The flat index of the word the port lights at `pos`, or -1."""
+    word = lib.tv_lit(lines, pos)
+    return -1 if word is None else word.truth
+
+
+def build() -> dict[str, Any]:
+    """The whole fixture, deterministically: same code, same bytes."""
+    rng = random.Random(SEED)
+    documents = [*shaped(), *((f"random-{i}", randomized(rng)) for i in range(RANDOM_DOCUMENTS))]
+    cases = []
+    for name, raw in documents:
+        lines = tv_document(raw)
+        at = positions(raw)
+        rows = [[line.text, line.start, line.end] for line in lines]
+        cases.append(
+            {"name": name, "doc": raw, "rows": rows, "positions": at, "lit": [lit(lines, p) for p in at]}
+        )
+    return {
+        "generator": "docs/benchmarks/forced-alignment/scripts/tv_parity.py",
+        "constants": {
+            "line_gap_sec": lib.TV_LINE_GAP_SEC,
+            "line_max_chars": lib.TV_LINE_MAX_CHARS,
+            "orphan_max_sec": lib.TV_ORPHAN_MAX_SEC,
+            "lyrics_lead_sec": 0.0,
+        },
+        "overlay_word_branch": OVERLAY_WORD_BRANCH,
+        "cases": cases,
+    }
+
+
+def dump(fixture: dict[str, Any]) -> str:
+    """One case per line, so a moved word is a one-line diff."""
+    head = {k: v for k, v in fixture.items() if k != "cases"}
+    body = ",\n".join(f"  {json.dumps(case, separators=(',', ':'))}" for case in fixture["cases"])
+    opening = json.dumps(head, indent=1)[:-2]
+    return f'{opening},\n "cases": [\n{body}\n ]\n}}\n'
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Write (or --check) the TV-highlight parity fixture.")
+    ap.add_argument(
+        "--check", action="store_true", help="exit 1 if the committed fixture is not what this writes"
+    )
+    args = ap.parse_args(argv)
+    text = dump(build())
+    if args.check:
+        same = FIXTURE.is_file() and FIXTURE.read_text(encoding="utf-8") == text
+        print(f"{FIXTURE}: {'up to date' if same else 'STALE — re-run without --check'}")
+        return 0 if same else 1
+    FIXTURE.write_text(text, encoding="utf-8")
+    total = sum(len(case["positions"]) for case in build()["cases"])
+    print(f"{FIXTURE}: {len(build()['cases'])} documents, {total} positions")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

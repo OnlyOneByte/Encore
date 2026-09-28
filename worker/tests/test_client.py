@@ -869,3 +869,49 @@ def test_every_action_has_a_keepalive_stage() -> None:
     assert set(_STAGE_FOR) == {"fetch", "stems", "stems-upgrade", "align"}
     assert _STAGE_FOR["align"] is Stage.ALIGNING
     assert _STAGE_FOR["fetch"] is Stage.DOWNLOADING
+
+
+async def test_a_step_reporter_called_from_dbos_s_loop_runs_on_the_clients() -> None:
+    """DBOS runs a workflow IT resumes (recovery at launch; the fork a requeued failure runs, review W1 r1)
+    on its own background loop, in another thread. The socket, the ownership event and every future the
+    client awaits belong to the loop it serves on, so a step's report must be handed across: awaited from
+    the other loop, a send failed silently and a stale-standing ownership check raised."""
+    import threading
+    from typing import cast
+
+    from encore_worker.__main__ import _ReporterFor
+
+    main_loop = asyncio.get_running_loop()
+    seen: list[asyncio.AbstractEventLoop] = []
+
+    class OnLoop:
+        """The three `Client` calls a reporter forwards, recording the loop each ran on."""
+
+        async def state(self, *_args: object) -> None:
+            seen.append(asyncio.get_running_loop())
+
+        async def progress(self, *_args: object) -> None:
+            seen.append(asyncio.get_running_loop())
+
+        async def confirm_ownership(self, _job_id: str, *, timeout_sec: float = 10.0) -> bool:
+            seen.append(asyncio.get_running_loop())
+            return True
+
+    reporter = _ReporterFor(cast(Client, OnLoop()), main_loop)
+
+    async def as_a_resumed_workflow() -> bool:
+        await reporter.state("j1", "align-global", 0, "agree", "why", None)
+        await reporter.progress("j1", Stage.ALIGNING, 50)
+        return await reporter.confirm_ownership("j1")
+
+    result: list[bool] = []
+    other = threading.Thread(target=lambda: result.append(asyncio.run(as_a_resumed_workflow())))
+    other.start()
+    while other.is_alive():  # keep the client's loop turning, as `serve_forever` does
+        await asyncio.sleep(0.01)
+    other.join()
+    assert result == [True]
+    assert seen == [main_loop] * 3, "every call ran on the client's loop, not the workflow's"
+
+    await reporter.state("j1", "align-global", 0, "agree", "why", None)  # from the client's own loop
+    assert seen[-1] is main_loop and len(seen) == 4

@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 
+from encore_worker.adapters.ports import InfraFault
 from encore_worker.domain.document import TIMING_LINE
 from encore_worker.domain.lyrics.policy import Tier
 from encore_worker.domain.lyrics.report import TimingReport
@@ -215,6 +216,42 @@ async def test_the_asr_fallback_runs_end_to_end_through_dbos(dbos_instance: obje
     assert outcome.published is not None
     assert outcome.published.label.startswith("asr:")
     assert any(verdict == "asr-fallback" for _s, verdict, _k in reporter.states)
+
+
+async def test_a_pinned_paste_publishes_under_the_manual_key_through_dbos(
+    dbos_instance: object, tmp_path: Path
+) -> None:
+    """Review H5 through real checkpointing: `fetch_pinned_text` is a registered step, the attempt goes to
+    job scratch, and `publish` places it at the pinned ref. No provider is asked: the pin is the pool."""
+    from dbos import DBOS
+
+    from encore_worker.workflows.dbos_align import DbosAlignSteps
+
+    (tmp_path / "original.mp3").write_bytes(b"x")
+    provider = Provider(LINE_CUES)
+    impl, _ = build(tmp_path, aligner=CountingAligner(), providers=(provider,))
+    manual = "derived/lyrics/m1-manual-word.json"
+    base = job_of(tmp_path)
+    pinned = JobRef(
+        job_id=base.job_id,
+        media_id=base.media_id,
+        media_dir=base.media_dir,
+        source_uri=base.source_uri,
+        params={**base.params, "pinnedRef": manual, "pinnedText": "hello\nit is me"},
+    )
+
+    @DBOS.workflow(name="e2e-pinned")
+    async def flow(job: JobRef) -> str:
+        outcome = await run_align(job, DbosAlignSteps(impl, dbos_instance))
+        return outcome.published.ref if outcome.published is not None else outcome.why
+
+    handle = await DBOS.start_workflow_async(flow, pinned)
+    assert await handle.get_result() == manual
+    assert (tmp_path / manual).is_file(), "the accepted attempt was placed at the pinned ref"
+    assert provider.calls == 0
+    steps = await DBOS.list_workflow_steps_async(handle.workflow_id)
+    names = [str(s.get("function_name") or s.get("name") or "") for s in steps]
+    assert any("fetch_pinned_text" in n for n in names), names
 
 
 async def test_no_lyrics_is_a_completion_not_a_failure_through_dbos(
@@ -463,6 +500,197 @@ async def test_the_workflow_id_is_the_job_id(dbos_instance: object, tmp_path: Pa
     status: Any = await DBOS.retrieve_workflow_async(job.job_id)
     assert status is not None
     assert await status.get_result() is not None
+
+
+class FaultingAligner(CountingAligner):
+    """An aligner whose first `failures` alignments raise a machinery fault, then work."""
+
+    def __init__(self, fault: Exception, *, failures: int = 1_000) -> None:
+        super().__init__()
+        self.fault = fault
+        self.failures = failures
+
+    def align(self, search: Sequence[object], audio_path: str, language: str) -> Sequence[object]:
+        if self.calls < self.failures:
+            self.calls += 1
+            raise self.fault
+        return super().align(search, audio_path, language)
+
+
+def durable_with(dbos_instance: object, tmp_path: Path, aligner: CountingAligner) -> JobRef:
+    """`durable.align`'s production wiring around the real steps, with a provider text and `aligner`."""
+    from encore_worker.workflows import durable
+    from encore_worker.workflows.dbos_align import DbosAlignSteps
+
+    (tmp_path / "original.mp3").write_bytes(b"x")
+    impl, _ = build(tmp_path, aligner=aligner, transcriber=Transcriber(), providers=(Provider(LINE_CUES),))
+    durable.register(
+        dbos_instance,
+        align_steps_for=lambda _job: DbosAlignSteps(impl, dbos_instance),
+        stems_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+    )
+    return job_of(tmp_path)
+
+
+@pytest.mark.parametrize("retryable", [True, False], ids=["download", "kernel-gone"])
+async def test_a_machinery_fault_fails_the_workflow_and_survives_its_checkpoint(
+    dbos_instance: object, tmp_path: Path, retryable: bool
+) -> None:
+    """Review M7 through REAL DBOS: `time_text`'s `InfraFault` fails the workflow (not a no-lyrics
+    completion), and the error DBOS records, read back on the requeue, is the same class with the same
+    `retryable`, so the transport sends the flag the adapter meant. A retryable flag lost in the pickle
+    would retry a deterministic fault; a class lost would send it as a generic retryable error."""
+    from dbos import DBOS
+
+    from encore_worker.adapters.ml import ModelUnavailable
+    from encore_worker.workflows import durable
+
+    fault = InfraFault("loading the 'en' alignment model failed (OSError: 503)")
+    if not retryable:
+        fault = ModelUnavailable("torchaudio's CTC kernel is gone")
+    job = durable_with(dbos_instance, tmp_path, FaultingAligner(fault))
+
+    with pytest.raises(InfraFault) as first:
+        await durable.align(job)
+    assert first.value.retryable is retryable
+    status: Any = await DBOS.get_workflow_status_async(job.job_id)
+    assert status is not None and status.status == "ERROR", "a failed job, not a published no-lyrics"
+
+    # The requeue re-runs the failed step (a fork: `durable._run_id`), which fails the same way here; what
+    # comes back is DBOS's RECORD of that failure, so the round trip is still what is checked.
+    with pytest.raises(InfraFault) as replayed:
+        await durable.align(job)
+    assert type(replayed.value) is type(fault) and replayed.value.retryable is retryable
+    assert str(replayed.value) == str(fault)
+
+
+async def test_a_requeued_job_re_runs_the_step_its_retryable_fault_failed(
+    dbos_instance: object, tmp_path: Path
+) -> None:
+    """Review W1 r1 (M7 under DBOS). The core requeues a retryable failure under the SAME job id, and DBOS
+    answered a start under an ERROR workflow's id with the recorded exception: no step re-ran (measured: 1
+    `time_text` across 3 requeues), so a transient fault burned `maxAttempts` in instant replays and failed
+    the job terminally with its cause gone. The requeue now runs a FORK of the failed workflow from the
+    step that failed: the steps before it replay from their checkpoints (the provider is not asked again),
+    the failed `time_text` runs again, and the song publishes. A duplicate requeue after that is the
+    finished fork's result, re-running nothing."""
+    from dbos import DBOS
+
+    from encore_worker.workflows import durable
+    from encore_worker.workflows.dbos_align import DbosAlignSteps
+
+    (tmp_path / "original.mp3").write_bytes(b"x")
+    provider = Provider(LINE_CUES)
+    aligner = FaultingAligner(InfraFault("a transient download failure"), failures=1)
+    impl, _ = build(tmp_path, aligner=aligner, transcriber=Transcriber(), providers=(provider,))
+    durable.register(
+        dbos_instance,
+        align_steps_for=lambda _job: DbosAlignSteps(impl, dbos_instance),
+        stems_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+    )
+    job = job_of(tmp_path)
+
+    with pytest.raises(InfraFault):
+        await durable.align(job)
+    outcome = await durable.align(job)  # the core's requeue: same job id
+
+    assert outcome.published is not None, outcome.why
+    assert aligner.calls == 2, "the failed alignment ran again, once"
+    assert provider.calls == 1, "the steps before it replayed from their checkpoints"
+    first: Any = await DBOS.get_workflow_status_async(job.job_id)
+    fork: Any = await DBOS.get_workflow_status_async(f"{job.job_id}~requeue-1")
+    assert (first.status, fork.status) == ("ERROR", "SUCCESS")
+
+    again = await durable.align(job)  # a duplicate requeue: the fork's recorded result
+    assert again.published == outcome.published and (aligner.calls, provider.calls) == (2, 1)
+
+
+def counting_acquire(impl: AlignStepsImpl) -> list[int]:
+    """Count `impl.acquire_audio` calls (one entry per attempt DBOS made), delegating to the real step."""
+    calls: list[int] = []
+    real = impl.acquire_audio
+
+    async def counted(job: JobRef) -> AudioRef:
+        calls.append(1)
+        return await real(job)
+
+    impl.acquire_audio = counted  # type: ignore[method-assign]
+    return calls
+
+
+async def test_a_permanent_acquisition_fault_is_not_retried_and_fails_the_job_as_permanent(
+    dbos_instance: object, tmp_path: Path
+) -> None:
+    """Review W1 r2. `acquire_audio` is the one step DBOS retries (3 attempts), and it raised `_Permanent`
+    for a local source that is not a file. DBOS retried it anyway, with backoff, then raised
+    `DBOSMaxStepRetriesExceeded`, which has no `retryable`: the transport sent the job as RETRYABLE, core
+    requeued it, and each requeue's fork (`durable._run_id`) ran the step three more times until
+    `maxAttempts`. Now the fault's own `retryable = False` stops DBOS retrying, and what reaches the transport
+    is the fault itself: permanent, with its own message."""
+    from encore_worker.steps.align_steps import _Permanent
+    from encore_worker.workflows import durable
+    from encore_worker.workflows.dbos_align import DbosAlignSteps
+
+    # No `original.mp3`: the local source does not resolve to a file (a media-volume mismatch).
+    impl, _ = build(tmp_path, aligner=CountingAligner(), providers=(Provider(LINE_CUES),))
+    calls = counting_acquire(impl)
+    durable.register(
+        dbos_instance,
+        align_steps_for=lambda _job: DbosAlignSteps(impl, dbos_instance),
+        stems_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+    )
+
+    with pytest.raises(InfraFault) as failed:
+        await durable.align(job_of(tmp_path))
+
+    assert type(failed.value) is _Permanent, f"the transport must see the fault, not {type(failed.value)}"
+    assert failed.value.retryable is False, "sent as retryable, core requeues a fault no retry can fix"
+    assert "is not a file" in str(failed.value), "the reason core records is the fault's own"
+    assert len(calls) == 1, f"DBOS retried a permanent fault {len(calls) - 1} times"
+
+
+async def test_a_retryable_fault_that_exhausts_its_retries_fails_the_job_as_itself(
+    dbos_instance: object, tmp_path: Path
+) -> None:
+    """The other half: a fault worth retrying IS retried (3 attempts), and once every attempt has failed, the
+    transport sees the last attempt's exception, `retryable` and message intact — not DBOS's
+    `DBOSMaxStepRetriesExceeded` ("Step acquire_audio has exceeded its maximum of 3 retries"), which it read
+    as retryable whatever the fault was. Slow by DBOS's own backoff (1 s, then 2 s)."""
+    from encore_worker.workflows import durable
+    from encore_worker.workflows.dbos_align import DbosAlignSteps
+
+    class DownFetcher:
+        def fetch(self, source_uri: str, out_dir: str, *, on_progress: object = None) -> str:
+            raise InfraFault("the host answered 503")
+
+    impl, _ = build(tmp_path, fetcher=DownFetcher(), aligner=CountingAligner())
+    calls = counting_acquire(impl)
+    durable.register(
+        dbos_instance,
+        align_steps_for=lambda _job: DbosAlignSteps(impl, dbos_instance),
+        stems_steps_for=lambda _job: None,  # type: ignore[arg-type,return-value]  # unused here
+    )
+    job = JobRef(job_id="e2e-remote", media_id="m1", media_dir=str(tmp_path), source_uri="https://x/y")
+
+    with pytest.raises(InfraFault) as failed:
+        await durable.align(job)
+
+    assert type(failed.value) is InfraFault and failed.value.retryable is True
+    assert str(failed.value) == "the host answered 503"
+    assert len(calls) == 3, "a transient fault keeps its retries"
+
+
+def test_only_a_fault_that_says_so_is_spared_its_retries() -> None:
+    """`should_retry` reads the fault's own flag, and an exception that has none (a network error) is
+    retried as before."""
+    from encore_worker.adapters.ml import ModelUnavailable
+    from encore_worker.steps.align_steps import _Permanent
+    from encore_worker.workflows.dbos_align import _worth_retrying
+
+    assert _worth_retrying(OSError("connection reset")) is True
+    assert _worth_retrying(InfraFault("503")) is True
+    assert _worth_retrying(_Permanent("no fetcher")) is False
+    assert _worth_retrying(ModelUnavailable("no kernel")) is False
 
 
 async def test_a_box_without_dbos_still_runs_the_flow(tmp_path: Path) -> None:

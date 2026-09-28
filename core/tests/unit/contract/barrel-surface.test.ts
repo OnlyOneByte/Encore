@@ -210,6 +210,7 @@ const EXPECTED = [
 	'paletteStopAtRingAngle',
 	'paletteStopByFill',
 	'parseHex',
+	'parseLyricsCandidates',
 	'pendingGates',
 	'pickBestLyrics',
 	'lyricsSourceLabel',

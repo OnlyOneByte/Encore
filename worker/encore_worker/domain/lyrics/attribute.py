@@ -6,13 +6,26 @@ without pyannote, a model, or audio. The step's only job is to run the diarizer 
 WHAT THIS IS FOR. A duet shown in one colour is a duet nobody can follow. With attribution the TV can
 colour a line by singer, which is the difference between a karaoke screen and a transcript.
 
-ATTRIBUTION IS BEST-EFFORT AND SAYS SO. `None` for a line means "unknown", never "the first speaker" —
-guessing would colour a line confidently wrong, which is worse than leaving it neutral. A song the
-diarizer could not segment comes back entirely unattributed, and the renderer treats that as one voice.
+THE WIRE FIELD IS `part`, AN ABSTRACT LABEL ("A", "B"), because that is what the TV reads
+(`core/src/lib/tv/lyrics.ts` `LyricLine.part`, coloured by `duetPartColors`). Review M15: this module wrote
+`speaker` (the diarizer's own "SPEAKER_00"), which nothing in core reads, so no attribution ever reached a
+screen. Letters by FIRST APPEARANCE, as the old worker's `diarize/attribution.py` assigned them, so the
+label is the same on a re-run whatever strings the diarizer used, and carries no identity.
+
+ATTRIBUTION IS BEST-EFFORT AND SAYS SO — AND IS ALL OR NOTHING PER SONG. `None` for a line means "unknown",
+never "the first speaker": guessing colours a line confidently wrong, which is worse than leaving it
+neutral. And a song is attributed only when it is a CONFIDENT DUET (the four song-level checks in
+`attribute`, the old worker's, restored with the field): the TV's contract is that `part` is written
+"only when the worker's diarization is CONFIDENT", and the fallback is one colour for the whole song.
+While the field was unread these checks were moot; the moment M15 connects it they are what stands
+between a solo and a rainbow — the old worker recorded that pyannote on sung vocals "routinely
+over-segments into 3-5 phantom speakers" (not re-measured here: the gated pyannote weights are not on the
+review box, so no song in the bench corpus was diarized).
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 
 from encore_worker.domain.document import Doc, Segment
@@ -26,39 +39,63 @@ MIN_OVERLAP_FRACTION = 0.5
 #: everywhere is noise on the wire and a pointless colour lookup on the TV.
 MIN_SPEAKERS = 2
 
+#: The share of the song's lines that must be attributed before any is. Below it too little of the reel
+#: is covered to trust the diarizer about the rest. The old worker's value, deliberately conservative: a
+#: missed duet is one colour (what every song showed before M15), a false duet is a visibly wrong reel.
+MIN_LINE_COVERAGE = 0.6
+
+#: EXACTLY this many parts among the attributed lines, not at most: a third "voice" is far likelier to be
+#: over-segmentation of one singer than a trio, and anything else takes the one-colour fallback.
+EXACT_PARTS = 2
+
+#: The fraction of the attributed lines the minority part must own. Well below an even split, so a lead
+#: with a real second voice passes, but a solo with a few misattributed lines does not.
+MIN_MINORITY_SHARE = 0.15
+
 
 def attribute(doc: Doc, turns: Sequence[Segment]) -> Doc:
-    """Return `doc` with a `speaker` on every line the turns can account for.
+    """Return `doc` with a `part` on every line the turns can account for — IF the song is a duet.
 
-    Returns the doc UNCHANGED when there is nothing useful to add — one speaker, no turns, or no timed
-    lines. Unchanged rather than annotated-with-nulls so a consumer can tell "not attributed" from
-    "attributed as unknown", and so a solo song carries no extra bytes.
+    Returns the doc UNCHANGED (the same object) when there is nothing trustworthy to add: one speaker, no
+    turns, no timed lines, or a song that fails the confident-duet checks below. Unchanged rather than
+    annotated-with-nulls so a consumer can tell "not attributed" from "attributed as unknown", and so a
+    solo song carries no extra bytes. Inside an attributed song a line no turn covers carries NO part;
+    the TV holds the previous colour, which reads better than a guess.
     """
     speakers = {str(t.get("speaker")) for t in turns if t.get("speaker") is not None}
     if len(speakers) < MIN_SPEAKERS:
         return doc
 
     lines = doc.get("lines")
-    if not isinstance(lines, list):
+    if not isinstance(lines, list) or not lines:
         return doc
 
-    attributed: list[Segment] = []
-    changed = False
+    singers: list[str | None] = []
     for line in lines:
-        if not isinstance(line, Mapping):
-            attributed.append(line)
-            continue
-        span = _line_span(line)
-        singer = speaker_for(span, turns) if span is not None else None
-        if singer is None:
-            attributed.append(dict(line))
-            continue
-        attributed.append({**dict(line), "speaker": singer})
-        changed = True
+        span = _line_span(line) if isinstance(line, Mapping) else None
+        singers.append(speaker_for(span, turns) if span is not None else None)
 
-    if not changed:
-        return doc
-    return {**dict(doc), "lines": attributed}
+    attributed = [singer for singer in singers if singer is not None]
+    if len(attributed) < MIN_LINE_COVERAGE * len(lines):
+        return doc  # too little of the reel covered to trust the rest
+    counts = Counter(attributed)
+    if len(counts) != EXACT_PARTS:
+        return doc  # not a duet: one voice after all, or an over-segmented one
+    if min(counts.values()) < MIN_MINORITY_SHARE * len(attributed):
+        return doc  # lopsided: a near-solo with a few stray lines, not a second singer
+
+    part_of: dict[str, str] = {}
+    for singer in attributed:
+        part_of.setdefault(singer, chr(ord("A") + len(part_of)))
+    return {
+        **dict(doc),
+        "lines": [
+            {**dict(line), "part": part_of[singer]}
+            if isinstance(line, Mapping) and singer is not None
+            else (dict(line) if isinstance(line, Mapping) else line)
+            for line, singer in zip(lines, singers, strict=True)
+        ],
+    }
 
 
 def speaker_for(span: tuple[float, float], turns: Sequence[Segment]) -> str | None:

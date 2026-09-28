@@ -10,27 +10,42 @@ candidate is good never runs a model" is a claim about cost, and only the call l
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import replace
+
 import pytest
 
+from encore_worker.adapters.cli import OutOfMemory
+from encore_worker.adapters.ml import ModelUnavailable
+from encore_worker.adapters.ports import InfraFault
 from encore_worker.domain.lyrics.policy import Knob, Tier
-from encore_worker.domain.lyrics.report import TimingReport
+from encore_worker.domain.lyrics.report import Engine, TimingReport
+from encore_worker.protocol import frames as f
 from encore_worker.steps.api import NotOurJob
 from encore_worker.steps.records import (
     TIMING_LINE,
+    TIMING_WORD,
     AudioRef,
     JobRef,
+    Refused,
     TextRef,
     TimedDoc,
     TimeRequest,
 )
 from encore_worker.workflows.align import run_align
+from tests.test_client import FakeSocket, Session, assign, client
 
 JOB = JobRef(job_id="j1", media_id="m1", media_dir="/media/m1", source_uri="https://x.test/v")
 
+#: The retry ladder's defects are WINDOWED reports: the global engine reads only LINE_SYNC (review H2).
+WINDOWED = Engine.WINDOWED
 CLEAN = TimingReport(words=200, coverage=1.0, duration_sec=200.0)
-THIN = TimingReport(words=40, coverage=0.25, duration_sec=200.0)
+THIN = TimingReport(words=40, coverage=0.25, duration_sec=200.0, engine=WINDOWED)
 INCOHERENT = TimingReport(words=200, coverage=1.0, duration_sec=200.0, out_of_order=9)
-MISPLACED = TimingReport(words=200, coverage=1.0, duration_sec=200.0, residual_sec=-6.0)
+MISPLACED = TimingReport(words=200, coverage=1.0, duration_sec=200.0, residual_sec=-6.0, engine=WINDOWED)
+LINE_SYNCED = TimingReport(coverage=0.9, duration_sec=200.0, engine=Engine.LINE_SYNC, lines=12)
+REFUSED = TimingReport(duration_sec=200.0, refused="envelope gate refused: blind r=0.09 @ -5.10s")
+NOTHING = TimingReport(words=0, coverage=0.0)
 
 
 def lrc(label: str = "lrclib") -> TextRef:
@@ -72,6 +87,8 @@ class Fake:
         reports: list[TimingReport] | None = None,
         vocals: bool = True,
         publish_raises: Exception | None = None,
+        faults: dict[int, Exception] | None = None,
+        pinned: TextRef | None = None,
     ) -> None:
         self._authored = authored
         self._provider = provider
@@ -81,10 +98,18 @@ class Fake:
         self._reports = list(reports or [])
         self._vocals = vocals
         self._publish_raises = publish_raises
+        #: `time_text` call number (from 1) -> the exception that call raises: a machinery fault mid-job.
+        self._faults = dict(faults or {})
+        #: What `fetch_pinned_text` serves a pinned job (review H5); None = the pin could not be read.
+        self._pinned = pinned
         self.calls: list[str] = []
         self.timed: list[TimeRequest] = []
         self.notes: list[tuple[str, str, str | None]] = []
+        #: Each note's `why`, parallel to `notes`.
+        self.whys: list[str] = []
         self.published: TimedDoc | None = None
+        #: What `publish` was asked to place in the store: every document the job wrote (review W1 r1).
+        self.placed: list[TimedDoc] = []
         self.publish_count = 0
 
     async def acquire_audio(self, job: JobRef) -> AudioRef:
@@ -103,21 +128,32 @@ class Fake:
         self.calls.append("fetch_provider_lyrics")
         return self._provider
 
+    async def fetch_pinned_text(self, job: JobRef) -> TextRef | None:
+        self.calls.append("fetch_pinned_text")
+        return self._pinned
+
     async def transcribe(self, job: JobRef, audio: AudioRef, *, on_vocals: bool) -> TextRef | None:
         self.calls.append(f"transcribe:{'vocals' if on_vocals else 'mix'}")
         return self._transcribed if on_vocals else self._transcribed_on_mix
 
-    async def time_text(self, req: TimeRequest) -> TimedDoc | None:
+    async def time_text(self, req: TimeRequest) -> TimedDoc | Refused | None:
         self.calls.append(f"time_text:{req.text.label}")
         self.timed.append(req)
+        if len(self.timed) in self._faults:
+            raise self._faults[len(self.timed)]
         report = self._reports.pop(0) if self._reports else CLEAN
-        if report.words == 0:
+        if report.refused is not None:
+            return Refused(report)  # a gate judged the text wrong for this audio
+        if report.words == 0 and report.lines == 0:
             return None  # the step produced nothing publishable
+        knobs = "".join(f"-{knob.value}" for knob in Knob if knob in req.knobs)
         return TimedDoc(
-            ref=f"derived/lyrics/{req.text.label}.json",
-            timing="word",
+            # Knob-bearing, as the real `_write` makes it, so no retry shares its attempt's ref.
+            ref=f"derived/lyrics/{req.text.label}{knobs}.json",
+            timing=TIMING_LINE if report.engine is Engine.LINE_SYNC else TIMING_WORD,
             confidence="high",
             report=report,
+            tier=req.text.tier,
             label=req.text.label,
             # A real record carries these, and the workflow threads them into the next attempt as the
             # RESHIFT reference. A fake that omitted them made the knob look like a no-op.
@@ -128,18 +164,20 @@ class Fake:
         self.calls.append("diarize")
         return doc
 
-    async def publish(self, job: JobRef, doc: TimedDoc | None) -> str:
+    async def publish(self, job: JobRef, doc: TimedDoc | None, *, placing: Sequence[TimedDoc] = ()) -> str:
         self.calls.append("publish")
         self.publish_count += 1
         if self._publish_raises is not None:
             raise self._publish_raises
         self.published = doc
+        self.placed = list(placing)
         return "media/m1.mp3"
 
     async def note(
         self, job: JobRef, state: str, attempt: int, verdict: str, why: str, knob: str | None
     ) -> None:
         self.notes.append((state, verdict, knob))
+        self.whys.append(why)
 
 
 # ── the happy path ───────────────────────────────────────────────────────────────────────────────
@@ -191,7 +229,9 @@ async def test_a_misplaced_lrc_is_re_placed_before_anything_else() -> None:
 
 async def test_overshoot_widens_the_search_window() -> None:
     """ "The song ends in the middle of the lyrics" — drop the narrow presplit windows and retry."""
-    overshooting = TimingReport(words=200, coverage=1.0, duration_sec=200.0, overshoot_sec=60.0)
+    overshooting = TimingReport(
+        words=200, coverage=1.0, duration_sec=200.0, overshoot_sec=60.0, engine=WINDOWED
+    )
     fake = Fake(provider=lrc(), reports=[overshooting, CLEAN])
     await run_align(JOB, fake)
 
@@ -205,6 +245,71 @@ async def test_no_vocals_stem_never_offers_the_mix_knob() -> None:
     fake = Fake(provider=lrc(), reports=[THIN, CLEAN], vocals=False)
     await run_align(JOB, fake)
     assert all(Knob.ALIGN_ON_MIX not in req.knobs for req in fake.timed)
+
+
+# ── engine-aware policy + best-so-far (review H2) ────────────────────────────────────────────────
+
+
+async def test_thin_global_coverage_publishes_the_stem_document_with_no_mix_retry() -> None:
+    """H2 as a workflow: a long instrumental outro (coverage 71% on Kinematic, 0 gross) used to spend a
+    mix re-decode that either replaced the stem document (Pure_Mids 0 -> 13 gross) or, refused, dropped
+    the song to NO LYRICS. The global engine reads no mix knob, so the stem document publishes."""
+    thin_global = TimingReport(words=150, coverage=0.71, duration_sec=200.0)
+    fake = Fake(provider=lrc(), reports=[thin_global])
+    outcome = await run_align(JOB, fake)
+    assert len(fake.timed) == 1 and fake.timed[0].on_mix is False
+    assert outcome.published is not None and outcome.published.report is thin_global
+
+
+async def test_a_worse_retry_publishes_the_attempt_it_retried() -> None:
+    """Best-so-far: a mix retry covering LESS than the stem attempt loses to it, and the stem attempt's
+    OWN document is what publishes — its record, and its file (the knob is in the retry's ref)."""
+    worse = TimingReport(words=30, coverage=0.2, duration_sec=200.0, engine=WINDOWED)
+    fake = Fake(provider=lrc(), reports=[THIN, worse])
+    outcome = await run_align(JOB, fake)
+    assert [req.on_mix for req in fake.timed] == [False, True]
+    assert outcome.published is not None and outcome.published.report is THIN
+    assert outcome.published.ref == "derived/lyrics/lrclib.json"
+    assert [d.ref for d in outcome.candidates] == [
+        "derived/lyrics/lrclib.json",
+        "derived/lyrics/lrclib-align-on-mix.json",
+    ], "both attempts wrote, both are reported, and neither overwrote the other"
+    assert "keeping attempt 1" in outcome.why
+
+
+async def test_a_retry_that_produced_nothing_publishes_the_attempt_it_retried() -> None:
+    """Before best-so-far, a Retime returning None left `pending` empty: the usable first document was
+    lost to line sync or the next text."""
+    fake = Fake(provider=lrc(), transcribed=asr_text(), reports=[MISPLACED, NOTHING])
+    outcome = await run_align(JOB, fake)
+    assert len(fake.timed) == 2 and fake.timed[1].reshift is True
+    assert outcome.published is not None and outcome.published.report is MISPLACED
+    assert not any(c.startswith("transcribe") for c in fake.calls)
+
+
+# ── line sync commits, and never after a refusal (review M1 + the W0 hazard) ──────────────────────
+
+
+async def test_an_incoherent_document_line_syncs_and_the_line_document_publishes() -> None:
+    """M1 end to end: the LINE_SYNC attempt's line-timed document is committed, not dropped for the
+    next text (which, with none left, was ASR and then NO LYRICS)."""
+    fake = Fake(provider=lrc(), transcribed=asr_text(), reports=[INCOHERENT, LINE_SYNCED])
+    outcome = await run_align(JOB, fake)
+    assert [req.force_line_sync for req in fake.timed] == [False, True]
+    assert outcome.published is not None and outcome.published.timing == TIMING_LINE
+    assert outcome.published.ref == "derived/lyrics/lrclib-line-sync.json"
+    assert not any(c.startswith("transcribe") for c in fake.calls)
+
+
+async def test_a_refused_text_is_never_line_synced() -> None:
+    """The wrong-text hole: a timed text the envelope gate refused used to retry LINE_SYNC, whose line
+    timings pass no gate there. Refused ends the text: the next source is tried instead."""
+    fake = Fake(provider=lrc(), transcribed=asr_text(), reports=[REFUSED, CLEAN])
+    outcome = await run_align(JOB, fake)
+    assert [req.text.label for req in fake.timed] == ["lrclib", "asr:vocals"]
+    assert not any(req.force_line_sync for req in fake.timed)
+    assert outcome.published is not None and outcome.published.label == "asr:vocals"
+    assert outcome.candidates == (outcome.published,), "a refusal writes no document"
 
 
 # ── the ASR fallback ladder ──────────────────────────────────────────────────────────────────────
@@ -274,9 +379,6 @@ async def test_asr_is_attempted_only_once_even_if_its_text_is_unusable() -> None
 # ── a step that produces nothing ─────────────────────────────────────────────────────────────────
 
 
-NOTHING = TimingReport(words=0, coverage=0.0)
-
-
 async def test_a_time_step_returning_none_is_judged_not_crashed() -> None:
     """`time_text` yielding None is an unusable report, not an error — the search simply tries again."""
     fake = Fake(provider=lrc(), reports=[NOTHING, CLEAN])
@@ -308,6 +410,107 @@ async def test_a_lost_lease_at_publish_is_a_normal_outcome() -> None:
     assert outcome.published is None
     assert "abandoned before publishing" in outcome.why
     assert "reassigned to w2" in outcome.why
+
+
+def machine(label: str = "captions:machine") -> TextRef:
+    """YouTube's automatic track: line-timed, the MACHINE tier."""
+    return TextRef(
+        tier=Tier.MACHINE,
+        label=label,
+        segments=({"start": 0.0, "end": 2.0, "text": "hello"},),
+        timing=TIMING_LINE,
+    )
+
+
+# ── a machinery fault fails the job instead of walking the ladder (review M7) ─────────────────────
+
+
+async def test_a_machinery_fault_fails_the_job_instead_of_ending_in_no_lyrics() -> None:
+    """A model download that answered 503 fails every attempt of every text alike. As a declined attempt
+    it walked the ladder: every text, every line-sync rung, whisper, and a published "no lyrics" (measured
+    through the real steps: 7 declines, machine captions tried twice). It must fail the job, once."""
+    fault = InfraFault("loading the 'en' alignment model failed (OSError: HTTP Error 503)")
+    fake = Fake(
+        authored=lrc("captions:authored"),
+        provider=lrc(),
+        machine=machine(),
+        transcribed=asr_text(),
+        faults={1: fault},
+    )
+    with pytest.raises(InfraFault) as raised:
+        await run_align(JOB, fake)
+    assert raised.value is fault and raised.value.retryable is True
+    assert [c for c in fake.calls if c.startswith("time_text")] == ["time_text:captions:authored"]
+    assert not any(c.startswith("transcribe") for c in fake.calls), "whisper must not run for a dead model"
+    assert "publish" not in fake.calls, "no outcome is published for a job that failed"
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        ModelUnavailable("torchaudio's CTC kernel (`torchaudio.functional.forced_align`) is gone"),
+        OutOfMemory("the emission pass on mps ran out of memory (RuntimeError: MPS backend out of memory)"),
+    ],
+    ids=["kernel-gone", "out-of-memory"],
+)
+async def test_a_deterministic_machinery_fault_keeps_its_non_retryable_flag(fault: InfraFault) -> None:
+    """The same box fails the same way again, so these say `retryable = False` and the job must carry it
+    out unchanged: nothing between the step and the transport re-wraps it."""
+    fake = Fake(provider=lrc(), transcribed=asr_text(), faults={1: fault})
+    with pytest.raises(InfraFault) as raised:
+        await run_align(JOB, fake)
+    assert raised.value is fault and raised.value.retryable is False
+
+
+async def test_a_machinery_fault_on_a_later_text_still_fails_the_job() -> None:
+    """The first text was judged (refused); the fault arrives on the next one. It is not a lyric outcome
+    either: the ladder is not walked around it, and nothing publishes."""
+    fault = InfraFault("the emission pass on mps failed (RuntimeError: MPS backend failure)")
+    fake = Fake(authored=lrc("captions:authored"), provider=lrc(), reports=[REFUSED], faults={2: fault})
+    with pytest.raises(InfraFault):
+        await run_align(JOB, fake)
+    assert [req.text.label for req in fake.timed] == ["captions:authored", "lrclib"]
+    assert "publish" not in fake.calls and not any(c.startswith("transcribe") for c in fake.calls)
+
+
+async def test_a_machinery_fault_reaches_the_wire_as_a_retryable_failure() -> None:
+    """The whole chain with fakes: the step's fault through `run_align` to the transport's `job:failed`
+    frame, whose `retryable` is the fault's own and whose error is its diagnosis."""
+    for fault, retryable in (
+        (InfraFault("loading the 'en' alignment model failed (OSError: HTTP Error 503)"), True),
+        (ModelUnavailable("torchaudio's CTC kernel is gone"), False),
+    ):
+
+        async def run_job(_assign: f.Assign, fault: InfraFault = fault) -> f.Complete:
+            await run_align(JOB, Fake(provider=lrc(), faults={1: fault}))
+            raise AssertionError("run_align must raise a machinery fault, not return")
+
+        sock = FakeSocket([assign()])
+        async with Session(client(sock, run_job=run_job), sock):
+            pass
+        failed = sock.first("job:failed")
+        assert (failed["error"], failed["retryable"]) == (str(fault), retryable)
+        assert "job:complete" not in sock.types()
+
+
+async def test_the_machine_track_is_tried_once_even_after_asr_declines() -> None:
+    """Review s11: the on-demand ASR text was SORTED into the walk ahead of the machine captions it ran
+    after, so when it declined the cursor walked onto them again: both machine attempts twice."""
+    fake = Fake(
+        authored=lrc("captions:authored"),
+        machine=machine(),
+        transcribed=asr_text(),
+        reports=[NOTHING] * 12,
+    )
+    outcome = await run_align(JOB, fake)
+    assert [req.text.label for req in fake.timed] == [
+        "captions:authored",
+        "captions:authored",  # its line-sync rung
+        "captions:machine",
+        "captions:machine",  # its line-sync rung
+        "asr:vocals",
+    ]
+    assert outcome.no_lyrics is True and fake.calls.count("transcribe:vocals") == 1
 
 
 async def test_an_infrastructure_failure_still_raises() -> None:
@@ -363,6 +566,34 @@ async def test_a_reshift_receives_the_previous_attempts_line_starts() -> None:
     assert fake.timed[1].reference_starts != (), "the retry must be handed the previous alignment"
 
 
+async def test_a_retry_after_a_lost_one_extends_and_re_places_against_the_kept_attempt() -> None:
+    """Best-so-far goes BACK to the attempt a retry lost to, and the next knob starts from it (review W1
+    r1): DROP_WINDOWS leaves the overshoot as it was, so RESHIFT runs next — WITH the windows (the lost
+    knob is not applied), on attempt 1's knob set, and re-placed against attempt 1's line starts, not the
+    losing retry's. That RESHIFT fixes it, and is what publishes."""
+
+    class Numbered(Fake):
+        """Every attempt's document carries its own attempt number as its line starts."""
+
+        async def time_text(self, req: TimeRequest) -> TimedDoc | Refused | None:
+            got = await super().time_text(req)
+            return replace(got, line_starts=(float(len(self.timed)),)) if isinstance(got, TimedDoc) else got
+
+    over = TimingReport(words=150, coverage=1.0, duration_sec=200.0, overshoot_sec=40.0, engine=WINDOWED)
+    fixed = TimingReport(words=150, coverage=1.0, duration_sec=200.0, engine=WINDOWED)
+    fake = Numbered(provider=lrc(), reports=[over, over, fixed])
+    outcome = await run_align(JOB, fake)
+
+    assert [req.knobs for req in fake.timed] == [
+        frozenset(),
+        frozenset({Knob.DROP_WINDOWS}),
+        frozenset({Knob.RESHIFT}),
+    ], "the third attempt extends the first, not the retry that lost"
+    assert fake.timed[2].reference_starts == (1.0,), "re-placed against the KEPT attempt's alignment"
+    assert outcome.published is not None and outcome.published.ref == "derived/lyrics/lrclib-reshift.json"
+    assert [n for n in fake.notes if n[0] == "time"][2] == ("time", "try", Knob.RESHIFT.value)
+
+
 async def test_a_reference_is_not_carried_across_different_texts() -> None:
     """Another source's line count and ordering are not a ruler for this one — pairing is by ORDER, so a
     mismatched series would produce a confident and wrong shift."""
@@ -403,16 +634,65 @@ async def test_a_superseded_attempt_is_still_reported() -> None:
 
     assert len(outcome.candidates) >= 2, "each attempt wrote a document, so each must be nameable"
     refs = [d.ref for d in outcome.candidates]
-    assert len(refs) == len(set(refs)) or True  # a retime may legitimately rewrite the same ref
+    assert len(refs) == len(set(refs)), "the knob is in the ref, so a retime never rewrites its attempt's"
     assert outcome.published is not None
     assert outcome.published.ref in refs
 
 
-async def test_candidates_are_reported_even_when_the_lease_was_lost() -> None:
-    """The FILES exist regardless of who owns the job. Leaving them unnamed leaks them even though this
-    worker published nothing — the one case where reporting matters most and is easiest to forget."""
+async def test_a_job_that_lost_its_lease_placed_nothing_and_reports_nothing() -> None:
+    """Attempts are staged in job scratch and `publish` places them only after the ownership check (review
+    W1 r1), so a job that is no longer ours put nothing in the store: there is nothing for core to name,
+    and the scratch goes with the job. (It used to report the files it had written straight into the
+    store, which an `InfraFault` before `publish` could not do at all.)"""
     steps = Fake(provider=lrc(), reports=[CLEAN], publish_raises=NotOurJob("gone"))
     outcome = await run_align(JOB, steps)
 
-    assert outcome.published is None
-    assert outcome.candidates, "documents were written; core must be able to enumerate them"
+    assert outcome.published is None and outcome.candidates == ()
+    assert "abandoned before publishing" in outcome.why
+
+
+async def test_publish_is_asked_to_place_every_attempt_and_reports_their_store_refs() -> None:
+    """Every document the job wrote goes to `publish` to be placed (the published one and the one it beat),
+    and the outcome names each under its STORE ref, which is what core's retention and re-pick read."""
+    worse = TimingReport(words=30, coverage=0.2, duration_sec=200.0, engine=WINDOWED)
+    fake = Fake(provider=lrc(), reports=[THIN, worse])
+    outcome = await run_align(JOB, fake)
+    assert [d.ref for d in fake.placed] == [
+        "derived/lyrics/lrclib.json",
+        "derived/lyrics/lrclib-align-on-mix.json",
+    ]
+    assert outcome.published is not None and outcome.published.ref == "derived/lyrics/lrclib.json"
+    assert [d.ref for d in outcome.candidates] == [d.ref for d in fake.placed]
+
+
+async def test_a_machinery_fault_mid_ladder_places_nothing() -> None:
+    """Review W1 r1's scenario: text 1's attempt wrote a document and was retried away; text 2's attempt hit
+    a transient fault. The job fails, and `publish` — the only thing that puts an attempt in the store —
+    never ran, so the store holds nothing the failed job wrote."""
+    fault = InfraFault("decoding the stem through ffmpeg failed (RuntimeError: Broken pipe)")
+    fake = Fake(
+        authored=lrc("captions:authored"), provider=lrc(), reports=[INCOHERENT, NOTHING], faults={3: fault}
+    )
+    with pytest.raises(InfraFault):
+        await run_align(JOB, fake)
+    assert len(fake.timed) == 3 and "publish" not in fake.calls and fake.placed == []
+
+
+async def test_the_texts_a_gate_refused_ride_on_the_outcome() -> None:
+    """Review W1 r2 (M3). A refused attempt writes nothing, so without naming the refused TEXTS the frame
+    could not withdraw a candidate an earlier job stored for the same words (`superseded_candidates`).
+    One entry per label, whichever rung refused it; none from a lost lease."""
+    authored = lrc("captions:authored")
+    fake = Fake(authored=authored, provider=lrc(), transcribed=asr_text(), reports=[REFUSED, REFUSED, CLEAN])
+    outcome = await run_align(JOB, fake)
+    assert outcome.published is not None and outcome.published.label == "asr:vocals"
+    assert [text.label for text in outcome.refused] == ["captions:authored", "lrclib"]
+    assert outcome.refused[0] == authored
+
+    line_synced = Fake(provider=lrc(), transcribed=asr_text(), reports=[INCOHERENT, REFUSED, CLEAN])
+    assert [t.label for t in (await run_align(JOB, line_synced)).refused] == ["lrclib"], "LINE_SYNC's gate"
+
+    lost = Fake(
+        provider=lrc(), transcribed=asr_text(), reports=[REFUSED, CLEAN], publish_raises=NotOurJob("x")
+    )
+    assert (await run_align(JOB, lost)).refused == ()

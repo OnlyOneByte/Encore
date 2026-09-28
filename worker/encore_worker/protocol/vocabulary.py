@@ -40,6 +40,22 @@ class Stage(StrEnum):
     ALIGNING = "aligning"
 
 
+class SyncMode(StrEnum):
+    """HOW a song's words get their timestamps: an align job's `syncMode`. Mirrors core's `SyncModeId`
+    (`core/src/lib/contract/lyrics/lyrics-engines.ts`, `SYNC_MODES`).
+
+    FORCED times the words on this recording (the global decode, per-word highlighting). LINES publishes no
+    word timing: each text publishes its OWN line timings through the gated LINE_SYNC rung, whose gate reads
+    one emission pass of the stem per text (the lexical lift, and the text's blind decode as the timing
+    witness, W3) and runs none of the word ladder, so a room that chose it for a cheaper process gets that.
+    The TV clamps its presentation to line level under LINES anyway (core's `resolveLyricsPresentation`),
+    so nothing it could show is lost.
+    """
+
+    FORCED = "forced"
+    LINES = "lines"
+
+
 class Capability(StrEnum):
     """What a worker can PROVE it can do, and therefore what the core will route to it.
 

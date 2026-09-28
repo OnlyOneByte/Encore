@@ -114,6 +114,18 @@ def lyrics_candidate_key(media_id: str, label: str, timing: str) -> str:
     return f"derived/lyrics/{media_id}-{label.replace(':', '-')}-{timing}.json"
 
 
+def manual_lyrics_key(media_id: str) -> str:
+    """Where PASTED lyrics are published: core's `manualLyricsRef` (`core/src/lib/server/jobs/process.ts`).
+
+    Core MINTS this ref when a person pastes lyrics (`requestLyricsReselect`), pins it as the media's
+    `lyricsOverrideRef` and sends it as the align job's `pinnedRef`; the worker writes the re-timed paste
+    under exactly this key, so core's merge overwrites the pinned candidate instead of adding a rival. It
+    is the (manual, word) candidate key by construction, and both sides pin the literal
+    (`tests/test_job_params.py`; core's `lyrics-paste-carries-pasted-text.test.ts`).
+    """
+    return lyrics_candidate_key(media_id, "manual", "word")
+
+
 # ── raw captions: evidence, not candidates ───────────────────────────────────────────────────────
 
 #: STRUCTURAL as a directory segment: yt-dlp names both tracks identically, so only the segment

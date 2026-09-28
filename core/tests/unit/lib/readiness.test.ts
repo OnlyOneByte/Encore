@@ -7,7 +7,8 @@ import {
 	processingGroupIds,
 	queueCardKind,
 	readinessOf,
-	readyEmptyState
+	noRowsState,
+	showsNoRows
 } from '$lib/readiness';
 import { isEntryReady } from '$lib/server/rotation';
 import { expect, test } from 'bun:test';
@@ -96,19 +97,26 @@ test('an unacquired or FAILED song can be processed; one in flight or done canno
 // empties the group — and the copy must not then announce that the library itself is empty. Reported from
 // a real party as "it clears the remote of the downloaded library".
 test('a genuinely empty library keeps the original "none yet" copy', () => {
-	const s = readyEmptyState({ searchActive: false, libraryCount: 0 });
+	const s = noRowsState({ searchActive: false, libraryCount: 0 });
 	expect(s.message).toContain('No karaoke-ready songs yet');
 	expect(s.showAllCount).toBeNull(); // nothing to go back to
 });
 
-test('an empty library while searching still says "none yet" (it is true)', () => {
-	const s = readyEmptyState({ searchActive: true, libraryCount: 0, query: 'take on me' });
-	expect(s.message).toContain('No karaoke-ready songs yet');
+// THE ORDER OF THE TWO BRANCHES IS THE CONTRACT, and it reversed deliberately when this became the
+// zero-state for the whole screen rather than for the Ready filter alone. A search that found nothing is a
+// statement about THE QUERY; "no karaoke-ready songs yet" is a statement about the LIBRARY. Testing the
+// library first blamed the library for a query that simply missed — which on a fresh install is every
+// failed search.
+test('a failed search on an EMPTY library still blames the query, not the library', () => {
+	const s = noRowsState({ searchActive: true, libraryCount: 0, query: 'take on me' });
+	expect(s.message).toContain('take on me');
+	expect(s.message).not.toContain('No karaoke-ready songs yet');
+	// Nothing to go back TO, so no control is promised.
 	expect(s.showAllCount).toBeNull();
 });
 
 test('THE BUG: a non-empty library during a search must NOT claim there are none', () => {
-	const s = readyEmptyState({ searchActive: true, libraryCount: 5, query: 'zzzz' });
+	const s = noRowsState({ searchActive: true, libraryCount: 5, query: 'zzzz' });
 	expect(s.message).not.toContain('No karaoke-ready songs yet');
 	expect(s.message).toContain('zzzz'); // names what was searched
 	// The count lives on the control that acts on it ("Show all 5", `showAllCount` below), not in the sentence. Both
@@ -119,13 +127,13 @@ test('THE BUG: a non-empty library during a search must NOT claim there are none
 test('singular wording for a one-song library', () => {
 	// The singular/plural agreement claim lives on the branch that still names a count; the searching
 	// branch names none, and "Show all 1" needs no noun.
-	const s = readyEmptyState({ searchActive: false, libraryCount: 1 });
+	const s = noRowsState({ searchActive: false, libraryCount: 1 });
 	expect(s.message).toContain('1 karaoke song ');
 	expect(s.message).not.toContain('songs');
 });
 
 test('a blank query while searchActive still reads sensibly (no empty quotes)', () => {
-	const s = readyEmptyState({ searchActive: true, libraryCount: 3, query: '   ' });
+	const s = noRowsState({ searchActive: true, libraryCount: 3, query: '   ' });
 	expect(s.message).toContain('matches this search');
 	expect(s.message).not.toContain('““');
 	expect(s.showAllCount).toBe(3);
@@ -372,4 +380,34 @@ test('the union includes a failed process and excludes ready/canceled', () => {
 	expect(ids.has('failed')).toBe(true);
 	expect(ids.has('ready')).toBe(false);
 	expect(ids.has('canceled')).toBe(false);
+});
+
+
+// ── the zero-state gate ──────────────────────────────────────────────────────────────────────────
+//
+// THE REPORTED BUG, as a predicate. Searching "i want it that way" returned twelve unprocessed songs
+// which rendered correctly under "Needs karaoke" — and then the page ALSO printed
+// `Nothing matches "i want it that way".` plus a `Show all 1` button beneath them. The inline gate was
+// `!readyResults.length && library.length`, so it fired on nothing-READY rather than nothing-FOUND.
+
+test('THE BUG: raw results on screen means the screen is NOT showing zero rows', () => {
+	// Twelve "Needs karaoke" rows, nothing processed yet — the normal case for a fresh song.
+	expect(showsNoRows({ searching: false, readyCount: 0, rawCount: 12, processingCount: 0 })).toBe(false);
+});
+
+test('a group of any kind suppresses the zero-state', () => {
+	expect(showsNoRows({ searching: false, readyCount: 3, rawCount: 0, processingCount: 0 })).toBe(false);
+	expect(showsNoRows({ searching: false, readyCount: 0, rawCount: 0, processingCount: 1 })).toBe(false);
+	expect(showsNoRows({ searching: false, readyCount: 1, rawCount: 1, processingCount: 1 })).toBe(false);
+});
+
+test('only a finished search that found nothing at all may say so', () => {
+	expect(showsNoRows({ searching: false, readyCount: 0, rawCount: 0, processingCount: 0 })).toBe(true);
+});
+
+test('a search in flight never renders a zero-state, because the groups are the PREVIOUS query', () => {
+	// Mid-flight the state still holds the last query's results (or nothing yet on a first search), so a
+	// sentence here is a claim about a search that has not finished.
+	expect(showsNoRows({ searching: true, readyCount: 0, rawCount: 0, processingCount: 0 })).toBe(false);
+	expect(showsNoRows({ searching: true, readyCount: 0, rawCount: 5, processingCount: 0 })).toBe(false);
 });

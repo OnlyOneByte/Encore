@@ -16,12 +16,17 @@ progress emitter run while a 45-minute separation blocks in a thread.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
+from encore_worker.artifacts import keys
+from encore_worker.host.config import ASR_MODELS
+from encore_worker.protocol.vocabulary import SyncMode
 from encore_worker.steps.records import (
     AudioRef,
     JobRef,
     PublishedStems,
+    Refused,
     Segment,
     TextRef,
     TimedDoc,
@@ -57,19 +62,29 @@ class AlignSteps(Protocol):
         """
         ...
 
+    async def fetch_pinned_text(self, job: JobRef) -> TextRef | None:
+        """The ONE text a pinned job re-times (`pin_of`): the paste, or the stored candidate's words.
+
+        `None` when the pin cannot be honoured (a stored candidate that is gone or carries no readable
+        line), which the workflow answers by publishing nothing: the candidate core already holds stays
+        exactly as it is, rather than an automatic search re-picking behind the person who chose it.
+        """
+        ...
+
     async def transcribe(self, job: JobRef, audio: AudioRef, *, on_vocals: bool) -> TextRef | None:
         """Whisper over the stem (`on_vocals=True`) or the mix. `None` when nothing was heard.
 
         The mandatory fallback tier. `None` here — after it actually ran — is the ONLY evidence that
-        justifies concluding a song has no words.
+        justifies concluding a song has no words. Transcribes with the job's `asrModel` (`asr_model_of`).
         """
         ...
 
-    async def time_text(self, req: TimeRequest) -> TimedDoc | None:
+    async def time_text(self, req: TimeRequest) -> TimedDoc | Refused | None:
         """Align one text with one knob set, write the document, and measure the result.
 
         `None` means this attempt produced nothing publishable at all, which the workflow treats as an
-        unusable report rather than an error — the search has other things to try.
+        unusable report rather than an error — the search has other things to try. `Refused` means a gate
+        MEASURED that this text does not describe this audio, which ends the text (no line sync).
         """
         ...
 
@@ -81,13 +96,17 @@ class AlignSteps(Protocol):
         """
         ...
 
-    async def publish(self, job: JobRef, doc: TimedDoc | None) -> str:
+    async def publish(self, job: JobRef, doc: TimedDoc | None, *, placing: Sequence[TimedDoc] = ()) -> str:
         """Make the result visible, after re-asserting ownership. Returns the published media uri.
 
         THE GUARDED STEP. Its first act is to confirm the core still considers this worker the owner of
         this job, because a lease can expire DURING a long alignment — so a workflow that legitimately
         owned its job at reconnect can be reassigned before it reaches here. Raises `NotOurJob` when
         ownership is gone, which the workflow treats as a normal outcome, not a failure.
+
+        Then it PLACES the job's attempts (`placing`, every document it wrote; they were staged in job
+        scratch, `attempt_ref`) at their store refs (`store_ref`) — or, for a pin, `doc` alone at the pin —
+        so nothing reaches the store before the job is known to be ours and finished.
 
         `doc=None` publishes the no-lyrics outcome, which still has to be recorded: readiness waits on
         align, so a song that silently published nothing stays in "processing" forever.
@@ -162,3 +181,123 @@ def language_of(job: JobRef, text: TextRef | None = None) -> str:
 def as_segments(raw: Sequence[Segment]) -> tuple[Segment, ...]:
     """Freeze a port's sequence into the tuple a checkpointed record requires."""
     return tuple(raw)
+
+
+# ── what the job asks for: a pin, a sync mode, an ASR model (review H5) ─────────────────────────
+#
+# PURE READS OF THE JOB'S PARAMS, shared by the workflow (which decides the flow on them, so they must be
+# deterministic under a DBOS replay) and the steps (which write, place and transcribe on them). One
+# function per param, so the two sides cannot read one param two ways. Before review H5 none of the four
+# was read at all: a paste through `/api/lyrics-reselect` was silently replaced by the automatic search,
+# and a room's ASR model and sync mode changed nothing (regressed when the old worker was removed,
+# f04a2d0e; its `steps/lyrics/pinned.py` is the semantics kept here).
+
+#: Where every lyrics document lives, and the only place a pin may write (see `pin_of`).
+_LYRICS_DIR = "derived/lyrics/"
+
+
+@dataclass(frozen=True, slots=True)
+class Pin:
+    """A HUMAN RE-PICK: core's `pinnedRef`, optionally with `pinnedText` (`dispatch.ts assignParams`).
+
+    Core pins the chosen candidate as the media's `lyricsOverrideRef` BEFORE it enqueues the align, and
+    that override outranks its own ranking (`resolveLyricsRef`), so the job re-times exactly that one
+    text and publishes it under exactly that ref. Anything else it did — re-fetch the providers, fall
+    back to ASR, publish under a derived key — could only override the person's choice.
+    """
+
+    #: The ref the re-timed document is published under: core's pin, else the manual key for a bare
+    #: paste (core never sends one — `pinnedText` rides only beside `pinnedRef` — but a paste is never
+    #: dropped for it).
+    ref: str
+    #: The PASTED words, verbatim; None re-times the stored candidate at `ref`. A paste outranks the
+    #: stored words: core sends it only beside the manual ref it was pinned under.
+    pasted: str | None = None
+    #: Why the pin cannot be honoured, or None. A refused pin publishes NOTHING (old-worker semantics):
+    #: never a silent downgrade to an ordinary job over the person's choice.
+    refused: str | None = None
+
+
+def pin_of(job: JobRef) -> Pin | None:
+    """The human re-pick this align job carries, or None for an ordinary job.
+
+    REFUSES a ref outside the lyrics store: this value is joined onto the media directory to READ the
+    stored candidate and to WRITE the re-timed one, so `../` or an absolute path would point the step at
+    a file outside the store, and a ref naming a stem (`derived/stems/{id}-vocals.flac`) would overwrite
+    audio with JSON. Core's `safeMediaPath` rejects the first two shapes; the worker does not take that on
+    trust, being the side holding the file handle. Narrower than the old worker's check (which allowed any
+    relative path): every ref core can pin is a `derived/lyrics/*.json` the worker itself reported, or the
+    manual key core minted there.
+    """
+    asked = job.param_str("pinnedRef")
+    pasted = job.param_str("pinnedText")
+    if asked is None and pasted is None:
+        return None
+    ref = asked if asked is not None else keys.manual_lyrics_key(job.media_id)
+    if ref.startswith("/") or "\\" in ref or ".." in ref.split("/"):
+        refused = f"REFUSING pinned ref {ref!r}: it leaves the media directory"
+    elif not ref.startswith(_LYRICS_DIR) or not ref.endswith(".json"):
+        refused = f"REFUSING pinned ref {ref!r}: it names no lyrics document ({_LYRICS_DIR}*.json)"
+    else:
+        refused = None
+    return Pin(ref=ref, pasted=pasted, refused=refused)
+
+
+def attempt_ref(job: JobRef, name: str) -> str:
+    """Where an align ATTEMPT's document `name` is written: the job's own scratch, never the store.
+
+    WHY STAGED (review W1 r1). Attempts used to be written straight into `derived/lyrics/`, and only a
+    job that reached `publish` reported them to core — whose retention sweep evicts only what a report
+    names (`AlignOutcome.candidates`). So a job an `InfraFault` failed mid-ladder (text 2's attempt hitting
+    an ffmpeg or device fault after text 1's had written) left every earlier attempt's file in the store,
+    named by nothing, for the life of the library; and an ordinary re-align overwrote the document the TV
+    was showing with an attempt the ladder might still reject. In scratch, a failed or abandoned job's
+    attempts go with the job, and `publish` places them in the store only after the ownership check.
+
+    A PIN's attempts are the pinned subfolder, placed one-for-all at the pin (`store_ref`).
+    """
+    kind = "pinned" if pin_of(job) is not None else "lyrics"
+    stem = name if kind == "pinned" else f"{job.media_id}-{name}"
+    return f"work/{job.job_id}/{kind}/{stem}"
+
+
+def store_ref(job: JobRef, ref: str) -> str:
+    """The store ref an attempt written at `ref` (`attempt_ref`) is published under — what core is told.
+
+    A pin's accepted attempt goes to the pinned ref, whatever it was named; any other attempt keeps its
+    name, under `derived/lyrics/` (`{media}-{label}{-knob…}-{timing}.json`, `AlignStepsImpl._write`). A ref
+    already in the store (a record checkpointed before attempts were staged) is its own store ref.
+    """
+    pin = pin_of(job)
+    if pin is not None and pin.refused is None:
+        return pin.ref
+    return f"{_LYRICS_DIR}{ref.rsplit('/', 1)[-1]}"
+
+
+def sync_mode_of(job: JobRef) -> SyncMode:
+    """How this job's words get their timestamps: the job's `syncMode`, else FORCED.
+
+    A PIN IS ALWAYS FORCED. `lines` publishes a text's OWN line timings, and a paste has none; a stored
+    candidate's are the very timings the person just rejected (the old worker dropped them for exactly
+    that reason). So under `lines` a pin published nothing in the old worker, and a paste silently never
+    showing is the H5 failure itself. A pin is one explicit request, so it pays its one aligner pass.
+
+    An unknown value (a newer core) is FORCED, the default on both sides (`DEFAULT_SYNC_MODE`): never
+    fail a job for a mode it can still serve. The workflow notes the fallback on the trail.
+    """
+    if pin_of(job) is not None:
+        return SyncMode.FORCED
+    asked = job.param_str("syncMode")
+    return next((mode for mode in SyncMode if mode.value == asked), SyncMode.FORCED)
+
+
+def asr_model_of(job: JobRef, default: str) -> str:
+    """The whisper checkpoint this job's ASR fallback loads: its `asrModel`, else this worker's default.
+
+    Only a checkpoint in `host.config.ASR_MODELS`: a job may not name an arbitrary model. An unknown one
+    falls back to `default` (the transcribe step says so on the trail) rather than failing the job — the
+    old worker raised here, but the setting is read only by the FALLBACK, and a job whose first text
+    publishes never loads whisper at all. Core validates the setting against its own list, a subset.
+    """
+    asked = job.param_str("asrModel")
+    return asked if asked is not None and asked in ASR_MODELS else default

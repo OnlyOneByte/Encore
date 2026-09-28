@@ -12,7 +12,7 @@
 		/* `no-underline text-inherit` are on the BASE because a Button may render as an anchor and Preflight is off, so
 		   the UA's `a:link` style is never reset — every anchor-shaped button would paint underlined in the browser's link
 		   colour. `tailwind-merge` keeps a variant's own colour over these. */
-		base: "rounded-md border border-transparent bg-clip-padding text-sm font-medium focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap outline-none select-none no-underline text-inherit disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+		base: "min-h-tap rounded-md border border-transparent bg-clip-padding text-sm font-medium focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap outline-none select-none no-underline text-inherit disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
 				iconPrimary:
@@ -34,7 +34,7 @@
 				   mid-grey `buttonface` painted the rest of the time and an eyebrow LABEL rendered as a grey slab
 				   that reads as disabled. */
 				eyebrow:
-					'justify-start gap-[7px] px-[var(--space-3xs)] text-[length:var(--ph-text-2xs)] font-bold tracking-[0.14em] uppercase whitespace-normal bg-transparent text-[var(--ink-dim)] hover:text-[var(--ink)] hover:bg-transparent',
+					'min-h-tap justify-start gap-[7px] px-[var(--space-3xs)] text-[length:var(--ph-text-2xs)] font-bold tracking-[0.14em] uppercase whitespace-normal bg-transparent text-[var(--ink-dim)] hover:text-[var(--ink)] hover:bg-transparent',
 				/* SongRow's "add a turn". It must NOT converge with `iconPrimary`: that accent fill is the expensive minute-long
 				   process, this is the free instant queue-add, and inverting the weight puts the primary fill on the dead-end
 				   action. `--ok` is the readiness colour the row's "Karaoke ready" badge already uses. */

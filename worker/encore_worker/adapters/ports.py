@@ -26,6 +26,7 @@ __all__ = [
     "AudioProbe",
     "CaptionSource",
     "Diarizer",
+    "InfraFault",
     "LyricsProvider",
     "ProgressSink",
     "Segment",
@@ -33,6 +34,31 @@ __all__ = [
     "Separator",
     "Transcriber",
 ]
+
+
+class InfraFault(RuntimeError):
+    """The MACHINERY failed, not the text: a model that would not download or load, a kernel the installed
+    library no longer ships, an accelerator that raised, the job's own audio that ffmpeg would not decode.
+
+    THE PORT'S HALF OF A CONTRACT. An adapter raises this for the failure modes only it can recognise, and
+    every step lets it through, so the JOB fails (`transport.Client` sends `retryable` from the class). A
+    step still catches everything else an attempt can raise, because a decoder refusing THIS text (more
+    characters than frames) or a language with no alignment model is one attempt failing, and the ladder
+    has other texts and knobs to try.
+
+    WHY IT HAD TO EXIST (review M7). Every raise inside an attempt used to be a decline, so a fault that
+    fails every attempt identically walked the whole ladder and ended as a lyric outcome. Measured through
+    the real `AlignStepsImpl` + `run_align` with an aligner whose model download answers HTTP 503: untimed
+    authored captions, a machine track and a transcriber that hears every word gave 7 declines, the machine
+    track tried twice (review s11), whisper run, and a published `noLyrics`; with TIMED captions the same
+    503 published a line-synced document, word timing lost behind one trail note.
+
+    `retryable = True`: the honest default for machinery, where a download, a device error or an ffmpeg
+    read are all worth another attempt. The deterministic ones say so by subclass (`ml.ModelUnavailable`,
+    `cli.OutOfMemory`), as the codebase's other terminal failures do.
+    """
+
+    retryable = True
 
 
 @runtime_checkable

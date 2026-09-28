@@ -20,6 +20,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from encore_worker.adapters.cli import OutOfMemory, looks_like_oom
+from encore_worker.adapters.ports import InfraFault
 from encore_worker.domain.document import Segment
 from encore_worker.host.mlrt import ML_LOCK
 
@@ -106,14 +108,52 @@ def _allow_pyannote_checkpoints() -> None:
     _SAFE_GLOBALS_REGISTERED = True
 
 
-class ModelUnavailable(RuntimeError):
-    """A model this box was asked for cannot be loaded.
+class ModelUnavailable(InfraFault):
+    """A model this box was asked for, or the kernel that decodes against it, cannot be loaded.
 
     `retryable = False`: a missing package or an absent checkpoint is not fixed by trying again, and
     spending three attempts proving it delays the fallback that would have worked.
+
+    An `InfraFault` (review M7), so an alignment step lets it through: a missing package fails every text
+    the same way, and declining attempt after attempt over it ended the ladder in a published "no lyrics".
     """
 
     retryable = False
+
+
+def _machinery_fault(doing: str, failed: BaseException) -> InfraFault:
+    """`failed`, raised while `doing` something only the machinery does, as the typed fault it is.
+
+    Out-of-memory is told apart from torch's OWN message (`torch.OutOfMemoryError`, "MPS backend out of
+    memory"), with the markers `cli.run` reads off a subprocess: an in-process emission pass on the same
+    audio on the same box exhausts the same memory again, so it is `OutOfMemory`, which is not retried.
+    Anything else is a plain `InfraFault`, which is: a download, a device error, an ffmpeg read.
+    """
+    detail = f"{type(failed).__name__}: {str(failed).strip()[-400:]}"
+    if looks_like_oom(detail):
+        return OutOfMemory(
+            f"{doing} ran out of memory ({detail}). This model needs more than this box has — try a "
+            "smaller model, or a box with more memory."
+        )
+    return InfraFault(f"{doing} failed ({detail})")
+
+
+def _has_default_align_model(language: str) -> bool:
+    """Does whisperx name a default alignment model for `language`? True when it cannot be asked.
+
+    Read from whisperx's own tables because `load_align_model` raises the SAME `ValueError` for "no model
+    for this language" as for "the Hub checkpoint would not download", and only the second is the
+    machinery's. An unanswerable question counts as a known language, so the failure is reported as
+    the machinery's, the side that gets looked at.
+    """
+    try:
+        from whisperx.alignment import (  # noqa: PLC0415
+            DEFAULT_ALIGN_MODELS_HF,
+            DEFAULT_ALIGN_MODELS_TORCH,
+        )
+    except ImportError:
+        return True
+    return bool(language in DEFAULT_ALIGN_MODELS_TORCH or language in DEFAULT_ALIGN_MODELS_HF)
 
 
 def _cached(device: str, checkpoint: str, build: Any) -> Any:
@@ -161,10 +201,17 @@ def load_audio_mono_16k(path: str) -> Any:
     used. `domain.audio.wav.read_wav_mono` deliberately reads only WAV/FLAC, and alignment's MIX target is
     the raw yt-dlp download (`original.webm`, `.m4a`): found LIVE when every v2 attempt on a mix target
     declined with `LibsndfileError: Format not recognised` while v1 sailed through the same file.
+
+    A file ffmpeg will not decode raises `InfraFault` (review M7). It is the JOB's audio, which no text
+    changes, so it fails every attempt identically; a caller with an honest no-evidence answer (placement,
+    the never-sung rule's mix witness) still catches it, as it catches any exception.
     """
     import whisperx  # noqa: PLC0415
 
-    return whisperx.load_audio(path)
+    try:
+        return whisperx.load_audio(path)
+    except Exception as failed:
+        raise _machinery_fault(f"decoding {path!r} through ffmpeg", failed) from failed
 
 
 def forced_align_decoder(log_probs: Any, targets: Sequence[int]) -> tuple[list[int], list[float]]:
@@ -175,11 +222,22 @@ def forced_align_decoder(log_probs: Any, targets: Sequence[int]) -> tuple[list[i
     torchaudio 2.8.0, so nothing breaks today — but the torch-family pins move together, and whoever bumps
     them must either find the kernel's new home or vendor it. The benchmark suite will catch a silent
     behaviour change; this comment exists so the REMOVAL is not a surprise.
-    """
-    import torch  # noqa: PLC0415
-    import torchaudio.functional as F  # noqa: PLC0415
 
-    aligned, scores = F.forced_align(
+    A kernel that is GONE raises `ModelUnavailable`, an `InfraFault` that fails the job (review M7): it
+    used to be a `decode failed` decline on every attempt of every text, ending in a published "no
+    lyrics". A kernel that REFUSES these targets (more of them than frames: "targets length is too long";
+    a blank among them) still raises its own error, which is one attempt failing on this text.
+    """
+    try:
+        import torch  # noqa: PLC0415
+        from torchaudio.functional import forced_align  # noqa: PLC0415
+    except ImportError as gone:
+        raise ModelUnavailable(
+            "torchaudio's CTC kernel (`torchaudio.functional.forced_align`) is not importable on this box: "
+            f"{gone}. It is deprecated for removal in torchaudio 2.9; pin 2.8, or vendor the kernel."
+        ) from gone
+
+    aligned, scores = forced_align(
         log_probs.unsqueeze(0), torch.tensor([list(targets)], dtype=torch.int32), blank=0
     )
     return aligned[0].tolist(), scores[0].tolist()
@@ -254,8 +312,19 @@ class WhisperXAligner:
             except ImportError as missing:
                 raise ModelUnavailable("whisperx is not installed, so this worker cannot align") from missing
             _allow_pyannote_checkpoints()
-            # whisperx is untyped, so annotate the unpack here rather than letting Any escape upward.
-            loaded: tuple[Any, Any] = whisperx.load_align_model(language_code=language, device=self._device)
+            try:
+                # whisperx is untyped, so annotate the unpack here rather than letting Any escape upward.
+                loaded: tuple[Any, Any] = whisperx.load_align_model(
+                    language_code=language, device=self._device
+                )
+            except Exception as failed:
+                if not _has_default_align_model(language):
+                    # No model for this language: a fact about the TEXT's language, so one attempt declines
+                    # rather than the job failing, and a timed text still reaches LINE_SYNC, which needs
+                    # no model at all.
+                    raise
+                # A download, a Hub/cache failure, a device refusing the weights (review M7).
+                raise _machinery_fault(f"loading the {language!r} alignment model", failed) from failed
             return loaded
 
         cached: tuple[Any, Any] = _cached(self._device, f"align:{language}", build)
@@ -279,6 +348,12 @@ class WhisperXAligner:
         recomputed 4 s of model time for the same file would pay for durability twice. The cache key is the
         PATH, not the content — safe because scratch files are written once and never mutated in place
         (`artifacts/local.py` stages then renames).
+
+        ITS FAILURES ARE THE MACHINERY'S (review M7), because the pass reads the audio and a language and
+        no text: a model that will not download or load, a file ffmpeg will not decode, an accelerator
+        fault or out-of-memory in the forward pass all raise `InfraFault` (`ModelUnavailable`,
+        `OutOfMemory`), which fails the job instead of the ladder. The one plain error is a language
+        whisperx names no model for, a property of the text's language rather than of this box.
         """
         with ML_LOCK:
             key = f"emissions:{language}:{audio_path}"
@@ -298,21 +373,26 @@ class WhisperXAligner:
                 model_device = next(model.parameters()).device
                 window = _EMISSION_CHUNK_SEC * _EMISSION_SAMPLE_RATE
                 chunks = []
-                with torch.inference_mode():
-                    for start in range(0, len(mono), window):
-                        piece = mono[start : start + window]
-                        # A sliver shorter than the model's receptive field raises inside wav2vec2;
-                        # a tenth of a second of audio carries no line onset worth keeping.
-                        if len(piece) < _EMISSION_SAMPLE_RATE // 10:
-                            break
-                        out = model(piece.unsqueeze(0).to(model_device))
-                        # whisperx's torchaudio-backed models return a tuple; HF-backed ones an object
-                        # with `.logits`. Both shapes exist in the wild, so both are handled.
-                        logits = out[0] if isinstance(out, tuple) else out.logits
-                        # Back to CPU immediately: the matrix outlives this pass in a cache, and holding
-                        # ~1 MB per song on the accelerator buys nothing — forced_align runs fine on CPU.
-                        chunks.append(torch.log_softmax(logits, dim=-1)[0].cpu())
-                matrix = torch.cat(chunks) if chunks else torch.zeros((0, 0))
+                try:
+                    with torch.inference_mode():
+                        for start in range(0, len(mono), window):
+                            piece = mono[start : start + window]
+                            # A sliver shorter than the model's receptive field raises inside wav2vec2;
+                            # a tenth of a second of audio carries no line onset worth keeping.
+                            if len(piece) < _EMISSION_SAMPLE_RATE // 10:
+                                break
+                            out = model(piece.unsqueeze(0).to(model_device))
+                            # whisperx's torchaudio-backed models return a tuple; HF-backed ones an object
+                            # with `.logits`. Both shapes exist in the wild, so both are handled.
+                            logits = out[0] if isinstance(out, tuple) else out.logits
+                            # Back to CPU immediately: the matrix outlives this pass in a cache, and holding
+                            # ~1 MB per song on the accelerator buys nothing; forced_align runs fine on CPU.
+                            chunks.append(torch.log_softmax(logits, dim=-1)[0].cpu())
+                    matrix = torch.cat(chunks) if chunks else torch.zeros((0, 0))
+                except Exception as failed:
+                    # The forward pass reads no text, so whatever it raises is the device or the model
+                    # (review M7): an accelerator fault or out-of-memory, never a verdict on a lyric.
+                    raise _machinery_fault(f"the emission pass on {model_device}", failed) from failed
                 dictionary = dict(metadata.get("dictionary") or {})
                 return Emissions(
                     log_probs=matrix,
@@ -328,24 +408,28 @@ class WhisperXAligner:
         # checkpoints at once exhausts the accelerator, and two inferences that each expect it to
         # themselves is the same failure a step later. Only reachable with
         # ENCORE_WORKER_CONCURRENCY > 1; at the default of 1 the lock is uncontended and free.
+        # CHECKED FIRST so the failure names the contract instead of surfacing as `KeyError: 'start'` from
+        # inside whisperx's cropping loop. A caller with untimed text must call `place.spread_over` first; the
+        # step does, but a future caller that forgets should be told why rather than left guessing.
+        #
+        # A plain `ValueError`, NOT `ModelUnavailable` (review W1 r2): that is an `InfraFault`, which fails
+        # the JOB, and this is one attempt failing on one text's shape. The step reaches it without
+        # forgetting anything: `spread_over` returns an untimed text unchanged when the duration is unknown
+        # (no probe, or a probe that could not parse), and a job whose texts are all untimed then failed
+        # terminally where it used to decline the attempt and move on to the next text, or to ASR.
+        untimed = [
+            index
+            for index, segment in enumerate(search)
+            if not isinstance(segment.get("start"), (int, float)) or isinstance(segment.get("start"), bool)
+        ]
+        if untimed:
+            raise ValueError(
+                f"the aligner needs a start on every search segment (missing on {len(untimed)} of "
+                f"{len(search)}); whisperx crops the audio per segment. Give untimed text provisional "
+                "spans with domain.lyrics.place.spread_over first."
+            )
         with ML_LOCK:
             import whisperx  # noqa: PLC0415
-
-            # CHECKED HERE so the failure names the contract instead of surfacing as `KeyError: 'start'` from
-            # inside whisperx's cropping loop. A caller with untimed text must call `place.spread_over` first;
-            # the step does, but a future caller that forgets should be told why rather than left guessing.
-            untimed = [
-                index
-                for index, segment in enumerate(search)
-                if not isinstance(segment.get("start"), (int, float))
-                or isinstance(segment.get("start"), bool)
-            ]
-            if untimed:
-                raise ModelUnavailable(
-                    f"the aligner needs a start on every search segment (missing on {len(untimed)} of "
-                    f"{len(search)}); whisperx crops the audio per segment. Give untimed text provisional "
-                    "spans with domain.lyrics.place.spread_over first."
-                )
 
             model, metadata = self._aligner(language)
             audio = whisperx.load_audio(audio_path)
@@ -358,8 +442,9 @@ class WhisperXAligner:
             if not segments:
                 # Raising rather than returning empty: the caller's fallback is a DIFFERENT strategy, and an
                 # aligner handed real text that produces no words has failed, which is not a fact
-                # about the song.
-                raise ModelUnavailable("the aligner returned no word-timed segments")
+                # about the song. A plain error, not `ModelUnavailable`: that is an `InfraFault`, which
+                # fails the JOB, and this is one attempt failing on one text (review M7).
+                raise RuntimeError("the aligner returned no word-timed segments")
             return tuple(dict(s) for s in segments)
 
 

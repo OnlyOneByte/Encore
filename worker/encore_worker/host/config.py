@@ -29,6 +29,40 @@ BACKENDS = ("torch", "mlx")
 #: Whisper checkpoints the ASR fallback may load. A job may not name an arbitrary model.
 ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 
+#: Every alignment arm `ENCORE_ALIGN_EXPERIMENTS` may switch on (`Config.align_experiments`). Each is built,
+#: tested and measured, and ships OFF because it failed its reject-if gate (PLAN-alignment-v3's rule for
+#: such arms: never silently default-on). The reasoning and numbers live where each is read. W1's five were
+#: re-judged under W3's lexical gate (2026-09-28). The gate closed `m2-order-clamp`'s wrong-text failure, and
+#: every one still fails a reject-if on right texts, which the gate does not touch:
+#:
+#:   l1-mix-kept      R1 / R2 never re-decode on the stem a line R4 timed on the mix (review L1, repro s6).
+#:   l1-blind-median  the adoption test's reference median is the blind decode's, taken once (review L1,
+#:                    repro s5).
+#:   m2-order-clamp   `_clamped` fits a run of repaired lines IN ORDER between its trusted neighbours, or
+#:                    refuses the whole run back to the blind decode (review M2).
+#:   m6-mix-spare     a claimed never-sung candidate whose claim window the stem is silent in but the MIX
+#:                    sounds in is spared for R4, which puts it back where the mix's acoustic model hears it
+#:                    (review M6, the mix witness).
+#:   m6-window-spare  a never-sung candidate whose claim window the TARGET sounds in is re-decoded inside it
+#:                    and put back where that decode hears it, instead of binned (W1's extension of review
+#:                    M6).
+#:   h3-mix-lift-alone  on the MIX (a song with no vocals stem) the lexical lift's floor is the global
+#:                    engine's only wrong-text gate, as it is on a stem, instead of gating beside the
+#:                    envelope gate (W3, review H3). Not failed: UNMEASURED end to end — the bench has no
+#:                    stemless mode — while the half of the envelope gate a calibration can read sorts the
+#:                    mix badly (`domain/lyrics/lexical.py`).
+#:
+#: (`steps/align_steps.py`, `_time_text_global`, `_clamped` and `_SPOKEN_RATIO`.) An unknown name is refused
+#: like any bad setting: a typo would otherwise measure the default path under the arm's name.
+ALIGN_EXPERIMENTS = (
+    "l1-mix-kept",
+    "l1-blind-median",
+    "m2-order-clamp",
+    "m6-mix-spare",
+    "m6-window-spare",
+    "h3-mix-lift-alone",
+)
+
 
 class ConfigError(ValueError):
     """A setting that cannot be honoured.
@@ -99,6 +133,9 @@ class Config:
     #: An explicit HTTPS proxy for provider lookups. Unset falls back to the standard environment
     #: variables — see `adapters/lrcmux.build_opener` for why each client builds its own opener.
     https_proxy: str | None = None
+    #: The default-off alignment arms switched on (`ALIGN_EXPERIMENTS`): the ONE place they live, so a bench
+    #: run records exactly which arms it measured (`e2e_lib.align_config` reads every `align_*` field).
+    align_experiments: frozenset[str] = frozenset()
     extra: Mapping[str, str] = field(default_factory=dict)
 
     @staticmethod
@@ -156,6 +193,7 @@ class Config:
             lrcmux_url=text("ENCORE_LRCMUX_URL", "https://api.lrcmux.dev"),
             lrclib_url=text("ENCORE_LRCLIB_URL", "https://lrclib.net/api/get"),
             https_proxy=optional("ENCORE_HTTPS_PROXY"),
+            align_experiments=_experiments(src, "ENCORE_ALIGN_EXPERIMENTS"),
         )
 
 
@@ -199,6 +237,18 @@ def _positive_float(src: Mapping[str, str], key: str, fallback: float) -> float:
     if got <= 0:
         raise ConfigError(f"{key}={got} must be positive")
     return got
+
+
+def _experiments(src: Mapping[str, str], key: str) -> frozenset[str]:
+    """A comma-separated set of `ALIGN_EXPERIMENTS` names; blanks ignored, anything else refused."""
+    named = frozenset(part.strip().lower() for part in src.get(key, "").split(",") if part.strip())
+    unknown = sorted(named - set(ALIGN_EXPERIMENTS))
+    if unknown:
+        raise ConfigError(
+            f"{key} names {', '.join(repr(name) for name in unknown)}, which is not an alignment experiment. "
+            f"Expected a comma-separated subset of {', '.join(ALIGN_EXPERIMENTS)}, or leave it unset."
+        )
+    return named
 
 
 def _flag(src: Mapping[str, str], key: str) -> bool:

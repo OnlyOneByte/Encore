@@ -141,6 +141,18 @@ test('nothing showable → null (honest "no lyrics", not a blank overlay)', () =
 	expect(pickBestLyrics([])).toBeNull();
 });
 
+test('an attempt its worker REJECTED is never auto-selected, however it would rank (review M3)', () => {
+	// The ladder retried it or moved past it; as a peer, authoritative + word beat the line doc it published.
+	const rejected = cand('lrclib', 'word', { selectable: false });
+	const published = cand('lrclib', 'line', { selectable: true });
+	expect(lyricsRank(rejected)).toBe(0);
+	expect(pickBestLyrics([rejected, published])).toBe(published);
+	// Not "the least bad thing there": a job that published nothing has nothing to show.
+	expect(pickBestLyrics([rejected])).toBeNull();
+	// Absent is selectable, so every candidate stored before the flag existed ranks as it did.
+	expect(lyricsRank(cand('lrclib', 'word'))).toBe(5);
+});
+
 test('at equal rank, higher timing confidence wins; else newer', () => {
 	const lo = cand('lrclib', 'word', { timingConfidence: 'low', createdAt: 100 });
 	const hi = cand('lrclib', 'word', { timingConfidence: 'high', createdAt: 1 });

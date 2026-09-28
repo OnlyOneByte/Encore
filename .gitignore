@@ -86,3 +86,6 @@ docs/benchmarks/benchmark-songs/*/*.authored*.json3
 # Temporary working plan for the alignment-v2 build — tracking scaffolding, deliberately never committed.
 # Lasting decisions move into module docstrings and docs/benchmarks/forced-alignment/README.md as they land.
 docs/PLAN-alignment-v2.md
+docs/PLAN-alignment-v3.md
+docs/REVIEW-alignment-v2.md
+docs/UI-REVIEW.md

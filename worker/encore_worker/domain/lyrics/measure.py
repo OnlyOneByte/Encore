@@ -25,6 +25,7 @@ from encore_worker.domain.lyrics.report import (
     LONG_GAP_SEC,
     MAX_WORD_SEC,
     MIN_WORD_SEC,
+    Engine,
     TimingReport,
 )
 
@@ -85,7 +86,13 @@ def line_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
     return spans
 
 
-def measure(doc: Doc, *, duration_sec: float, residual_sec: float | None = None) -> TimingReport:
+def measure(
+    doc: Doc,
+    *,
+    duration_sec: float,
+    residual_sec: float | None = None,
+    engine: Engine = Engine.GLOBAL,
+) -> TimingReport:
     """Measure one aligned document.
 
     `duration_sec` comes from the audio, and every fraction is relative to it. A non-positive duration
@@ -95,11 +102,22 @@ def measure(doc: Doc, *, duration_sec: float, residual_sec: float | None = None)
 
     `residual_sec` is passed in rather than computed here: it is a comparison between this document and
     a reference series, which is `place.residual_against`'s job.
+
+    `engine` says what produced the timings. A LINE_SYNC document is measured on its LINE spans — it has
+    no words, and measured on words it read as "nothing timed", which is why that knob could never
+    commit (review M1). Every other engine is measured on its words exactly as before; coverage keeps its
+    meaning (last timed end / duration) and stays telemetry for the global engine.
     """
+    if engine is Engine.LINE_SYNC:
+        return _measure_lines(doc, duration_sec=duration_sec, residual_sec=residual_sec)
     words = timed_words(doc)
     if not words:
         return TimingReport(
-            words=0, coverage=0.0, duration_sec=max(0.0, duration_sec), residual_sec=residual_sec
+            words=0,
+            coverage=0.0,
+            duration_sec=max(0.0, duration_sec),
+            residual_sec=residual_sec,
+            engine=engine,
         )
 
     starts = [start for _w, start, _e in words]
@@ -108,13 +126,8 @@ def measure(doc: Doc, *, duration_sec: float, residual_sec: float | None = None)
     # ORDER is judged on starts alone. An overlapping end is ordinary — singers slur, and the aligner
     # emits overlapping spans for a held note — whereas a start that moves backwards makes the highlight
     # jump, which is the one defect that cannot be shown to a room.
-    out_of_order = sum(1 for prev, nxt in zip(starts, starts[1:], strict=False) if nxt < prev)
-
-    coverage = 0.0
-    overshoot = 0.0
-    if duration_sec > 0:
-        coverage = min(1.0, max(0.0, last_end / duration_sec))
-        overshoot = max(0.0, last_end - duration_sec)
+    out_of_order = _backwards(starts)
+    coverage, overshoot = _extent(last_end, duration_sec)
 
     return TimingReport(
         words=len(words),
@@ -126,7 +139,74 @@ def measure(doc: Doc, *, duration_sec: float, residual_sec: float | None = None)
         smeared=tuple(_smeared(words)),
         flashed=tuple(_flashed(words)),
         duration_sec=max(0.0, duration_sec),
+        engine=engine,
+        lines=sum(1 for line in _lines(doc) if timed_words({"lines": [line]})),
     )
+
+
+def _measure_lines(doc: Doc, *, duration_sec: float, residual_sec: float | None) -> TimingReport:
+    """A line-synced document, judged on its line spans: count, order, extent, and the long silences.
+
+    Smears and flashes are WORD defects (a held token, an unreadable one) and have no line meaning, so a
+    line document reports none rather than calling every 4-second line smeared.
+    """
+    spans = line_spans(list(_lines(doc)))
+    base = TimingReport(
+        words=0,
+        duration_sec=max(0.0, duration_sec),
+        residual_sec=residual_sec,
+        engine=Engine.LINE_SYNC,
+        lines=len(spans),
+    )
+    if not spans:
+        return base
+    coverage, overshoot = _extent(max(end for _s, end in spans), duration_sec)
+    as_words = [("", start, end) for start, end in spans]
+    return TimingReport(
+        words=0,
+        coverage=coverage,
+        overshoot_sec=overshoot,
+        out_of_order=_backwards([start for start, _end in spans]),
+        residual_sec=residual_sec,
+        long_gaps=tuple(_gaps(as_words)),
+        duration_sec=base.duration_sec,
+        engine=Engine.LINE_SYNC,
+        lines=len(spans),
+    )
+
+
+def _backwards(starts: Sequence[float]) -> int:
+    """How many starts precede the start before them."""
+    return sum(1 for prev, nxt in zip(starts, starts[1:], strict=False) if nxt < prev)
+
+
+def backwards_lines(doc: Doc) -> tuple[int, ...]:
+    """Where a word document's `out_of_order` lives: the line of each word starting before the one ahead.
+
+    One entry per backwards START, in document order, so `len(backwards_lines(doc))` is exactly the
+    `out_of_order` that `measure` reports for a word document; a position is the line's place among the
+    document's lines. `out_of_order` alone says the highlight will jump, not where, and `decide` acts on
+    it by dropping the whole text to line sync — so the steps put these positions on the trail, which is
+    what points an operator at the line (review M2: every inversion it measured was one repaired line).
+    """
+    out: list[int] = []
+    previous: float | None = None
+    for position, line in enumerate(_lines(doc)):
+        for word in _words(line):
+            start = _num(word.get("start"))
+            if start is None:
+                continue
+            if previous is not None and start < previous:
+                out.append(position)
+            previous = start
+    return tuple(out)
+
+
+def _extent(last_end: float, duration_sec: float) -> tuple[float, float]:
+    """(coverage, overshoot) of timings ending at `last_end`; both 0 when the duration is unknown."""
+    if duration_sec <= 0:
+        return 0.0, 0.0
+    return min(1.0, max(0.0, last_end / duration_sec)), max(0.0, last_end - duration_sec)
 
 
 def _gaps(words: Sequence[tuple[str, float, float]]) -> list[tuple[float, float]]:

@@ -13,14 +13,35 @@ ONE DELIBERATE DEPARTURE FROM THE OLD WORKER, worth stating because it removes a
 flow ran ASR on EVERY align job, eagerly, to build a "baseline" that comparative grading scored
 candidates against — that is how it detected a wrong-song LRCLIB match. This flow does not, because
 FORCED ALIGNMENT IS ITSELF THE WRONG-SONG DETECTOR: text that does not belong to this recording cannot
-be aligned to it well, so coverage collapses and the placement residual blows up, which `policy.decide`
-already reads. So ASR is paid for only when it is actually needed as a fallback, and a job whose first
-candidate is good never runs a model at all.
+be aligned to it well: the step's envelope gates refuse it (`Refused`), and `policy.decide` ends that text
+there rather than line-syncing it. So ASR is paid for only when it is actually needed as a fallback, and a
+job whose first candidate is good never runs a model at all.
+
+WHAT THE JOB ASKS FOR IS HONOURED (review H5, regressed in f04a2d0e when the old worker went; its
+`steps/lyrics/pinned.py` semantics are kept). Each param is read by one pure function in `steps/api.py`, so
+this body and the steps cannot read it two ways, and a replay reads it the same:
+
+  * `pinnedText` / `pinnedRef` — a PERSON'S re-pick (`pin_of`). The pool is that one text, untimed (a
+    blind decode through the normal global path): the paste, or the words of the stored candidate the ref
+    names (its whole text, `sourceLines`, where its decode had dropped lines). It is never judged a wrong
+    text — a person chose it, and the old worker never graded a pin — so one the envelope gate would
+    refuse publishes with every line `low`. Nothing else is acquired, no ASR runs, and a text that cannot
+    be timed at all publishes NOTHING rather than whatever an automatic search would find — core keeps
+    showing the candidate it holds. The accepted attempt is published under the pinned ref (the manual key
+    `derived/lyrics/{id}-manual-word.json` for a paste), so core's merge overwrites the candidate the
+    person chose instead of adding a rival. Before H5 a paste was silently replaced by the search.
+  * `syncMode` — `lines` publishes no word timing: every text's only attempt is its own line timings through
+    the gated LINE_SYNC rung (`Search.line_only`), whose checks read one emission matrix of the stem to ask
+    whether its words are the ones sung (the lexical lift, review W1 r2) and whether its lines are claimed
+    where they are sung (the text's own blind decode, W3). A pin is always aligned (`sync_mode_of`), and so
+    is a song with no vocals stem, where that rung's gate cannot work (`_sync_mode_note`).
+  * `asrModel` — the checkpoint the ASR fallback loads (`AlignStepsImpl.transcribe`, `asr_model_of`).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from typing import assert_never
 
 from encore_worker.domain.lyrics.report import TimingReport
@@ -32,11 +53,22 @@ from encore_worker.domain.lyrics.search import (
     Search,
     Try,
 )
-from encore_worker.steps.api import AlignSteps, NotOurJob, language_of
+from encore_worker.protocol.vocabulary import SyncMode
+from encore_worker.steps.api import (
+    AlignSteps,
+    NotOurJob,
+    Pin,
+    language_of,
+    pin_of,
+    store_ref,
+    sync_mode_of,
+)
 from encore_worker.steps.records import (
+    TIMING_WORD,
     AlignOutcome,
     AudioRef,
     JobRef,
+    Refused,
     TextRef,
     TimedDoc,
     TimeRequest,
@@ -50,7 +82,10 @@ STATE_PUBLISH = "publish"
 
 #: A report standing in for "this attempt produced nothing at all". Zero words fails `usable`, so the
 #: policy treats it exactly as it treats incoherent word order: try a knob, or move on. Encoding the
-#: failure as a REPORT rather than a separate branch keeps one decision function instead of two.
+#: failure as a REPORT rather than a separate branch keeps one decision function instead of two. A GATE
+#: refusal is not this: the step returns `Refused`, whose report says so, and the policy ends the text.
+#: Nor is a MACHINERY fault: the step raises `InfraFault` and the job fails (review M7), because a model
+#: that will not load fails every attempt alike, and walking the ladder over it ended in "no lyrics".
 NOTHING_TIMED = TimingReport(words=0, coverage=0.0)
 
 
@@ -60,6 +95,12 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
     Returns rather than raises for every lyric outcome, including "this song has no words". Raises only
     on an infrastructure fault — no audio, no model — and on nothing else, because readiness waits on
     align and a raised job strands the song in "processing".
+
+    The steps hold that line: `time_text` raises only `adapters.ports.InfraFault` (a model that would not
+    download, a kernel the installed torchaudio no longer ships, a device fault, audio ffmpeg would not
+    decode), and nothing here catches it, so it reaches `transport.Client` with its own `retryable`.
+    Before review M7 each was a declined attempt, and one that fails every attempt alike ran the ladder
+    down to a published "no lyrics" for a song nothing had measured.
     """
     audio = await steps.acquire_audio(job)
     await steps.note(
@@ -71,48 +112,74 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
         + (" with a vocals stem" if audio.vocals_path else " with NO vocals stem — aligning on the mix"),
         None,
     )
-    texts = await _acquire_texts(job, audio, steps)
+    # A PIN re-times the one text a person chose, and nothing else is acquired (review H5).
+    pin = pin_of(job)
+    texts = await (_acquire_pinned(job, pin, steps) if pin is not None else _acquire_texts(job, audio, steps))
+    # `lines` is honoured only where its gate can work: a vocals stem (`_sync_mode_note` has the numbers).
+    line_only = sync_mode_of(job) is SyncMode.LINES and audio.vocals_path is not None
+    mode_note = _sync_mode_note(job, pin, stemless=audio.vocals_path is None)
+    if mode_note is not None:
+        await steps.note(job, STATE_TEXTS, 0, "sync-mode", mode_note, None)
 
     search = Search(
-        pool=[_candidate_of(t) for t in texts],
+        pool=[_candidate_of(t, line_only=line_only) for t in texts],
         aligned_on_stem=audio.vocals_path is not None,
+        pinned=pin is not None,
+        line_only=line_only,
     )
     attempt_no = 0
-    #: The document produced by the outstanding `Try`. `record()` returns the NEXT step, so at `Commit`
-    #: this still holds the attempt that earned it.
-    pending: TimedDoc | None = None
-    #: Every document written, so none is left unreported — see `AlignOutcome.candidates` for why an
-    #: unreported document is a permanent leak rather than a missing nicety.
+    #: Each Try's document by its serial, so a `Commit` can publish an EARLIER attempt than the latest
+    #: (best-so-far: a retry that came back worse, refused or empty must not lose the one it retried), and
+    #: a RESHIFT re-places against the attempt it extends (`Try.base`).
+    by_serial: dict[int, TimedDoc] = {}
+    #: Every document written — staged in job scratch — which `publish` places in the store, so none is
+    #: left unreported: see `AlignOutcome.candidates` for why an unreported document is a permanent leak
+    #: rather than a missing nicety. A PINNED job's attempts are not among them: only the committed one is
+    #: placed, at the pinned ref (`_publish`); the rest go with the scratch.
     written: list[TimedDoc] = []
+    #: The texts a gate refused, by label: the frame withdraws what earlier jobs stored for their words
+    #: (`AlignOutcome.refused`). A pin is never judged a wrong text, so a pinned job refuses none.
+    refused: dict[str, TextRef] = {}
     step = search.begin()
 
     while True:
         match step:
-            case Try(index, attempt, why):
+            case Try(index, attempt, why, serial, base):
                 attempt_no += 1
                 text = texts[index]
                 knob = _newest_knob(search)
                 await steps.note(job, STATE_TIME, attempt_no, "try", why, knob)
-                doc = await steps.time_text(
+                result = await steps.time_text(
                     TimeRequest(
                         job=job,
                         text=text,
                         audio=audio,
                         language=language_of(job, text),
                         knobs=attempt.tried,
-                        # The previous attempt on THIS text, as the reference a RESHIFT re-places
-                        # against. Cleared when the search moves to a different text, since another
-                        # source's line count and ordering are not a ruler for this one.
+                        # The attempt on THIS text whose knobs this one extends (`Try.base`: the
+                        # previous one, or the one best-so-far went back to), as the reference a RESHIFT
+                        # re-places against. None for a text's first attempt, since another source's line
+                        # count and ordering are not a ruler for this one.
                         reference_starts=(
-                            pending.line_starts if pending is not None and pending.label == text.label else ()
+                            reference.line_starts
+                            if (reference := by_serial.get(base)) is not None
+                            and reference.label == text.label
+                            else ()
                         ),
                     )
                 )
-                # A step that produced nothing is judged by the same policy as a bad alignment.
-                pending = doc
+                # A step that produced nothing is judged by the same policy as a bad alignment; one a gate
+                # refused carries the refusal in its report, which ends this text.
+                doc = result if isinstance(result, TimedDoc) else None
                 if doc is not None:
-                    written.append(doc)
-                step = search.record(doc.report if doc is not None else NOTHING_TIMED)
+                    if pin is None:
+                        written.append(doc)
+                    by_serial[serial] = doc
+                if isinstance(result, Refused) and pin is None:
+                    refused.setdefault(text.label, text)
+                step = search.record(
+                    result.report if isinstance(result, TimedDoc | Refused) else NOTHING_TIMED
+                )
 
             case RunAsr(why):
                 attempt_no += 1
@@ -127,18 +194,24 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
                     step = search.asr_produced_nothing()
                     continue
                 texts.append(heard)
-                step = search.extend(_candidate_of(heard))
+                step = search.extend(_candidate_of(heard, line_only=line_only))
 
-            case Commit(_index, why):
-                if pending is None:  # pragma: no cover - a Commit always follows a timed attempt
-                    raise RuntimeError("Commit with no timed document — the search was driven wrongly")
+            case Commit(_index, why, serial):
+                chosen = by_serial.get(serial)
+                if chosen is None:  # pragma: no cover - a Commit always names a Try that wrote a document
+                    raise RuntimeError(f"Commit of attempt {serial}, which wrote no document")
                 await steps.note(job, STATE_PUBLISH, attempt_no, "accept", why, None)
-                settled = await steps.diarize(job, audio, pending)
-                return await _publish(job, steps, settled, why, search, written)
+                settled = await steps.diarize(job, audio, chosen)
+                outcome = await _publish(job, steps, settled, why, search, written, pin, refused.values())
+                return replace(outcome, sync_mode=_ran_as(line_only).value)
 
             case GiveUp(why):
-                await steps.note(job, STATE_PUBLISH, attempt_no, "no-lyrics", why, None)
-                return await _publish(job, steps, None, why, search, written)
+                # A pin that could not be timed concludes nothing about the song: the lyrics core already
+                # holds stay published, so the trail must not read "no lyrics".
+                verdict = "no-lyrics" if pin is None else "pin-declined"
+                await steps.note(job, STATE_PUBLISH, attempt_no, verdict, why, None)
+                outcome = await _publish(job, steps, None, why, search, written, pin, refused.values())
+                return replace(outcome, sync_mode=_ran_as(line_only).value)
 
             case _ as unreachable:
                 assert_never(unreachable)
@@ -151,24 +224,78 @@ async def _publish(
     why: str,
     search: Search,
     written: Sequence[TimedDoc] = (),
+    pin: Pin | None = None,
+    refused: Iterable[TextRef] = (),
 ) -> AlignOutcome:
     """Publish, treating a lost lease as a normal outcome rather than a failure.
 
     `NotOurJob` means the core reassigned this job while we worked — under load that is ordinary, and
     another worker is already doing or has done it. Escalating would turn a race into an alert.
+
+    EVERY ATTEMPT WAS STAGED in job scratch (`steps.api.attempt_ref`), and `publish` places them in the
+    store only after re-asserting ownership: every document this job wrote, at its store ref
+    (`steps.api.store_ref`), which is what the outcome reports. So a job that never gets here — failed by
+    an `InfraFault` mid-ladder, or reassigned — has put nothing in the store and leaves nothing unreported
+    there (review W1 r1: its earlier attempts used to leak), and a re-align cannot overwrite the document
+    the TV is showing with an attempt the ladder may still reject.
+
+    A PINNED job places only its accepted document, at the pinned ref: that ref is the file the TV is
+    showing right now (core's override already points at it), and a rejected attempt must not become a
+    rival candidate beside it. Nothing placed, nothing reported: a pin that timed nothing leaves core's
+    candidate as it was.
+
+    The texts a gate `refused` ride on the outcome only when the job is still ours: the frame withdraws what
+    earlier jobs stored for their words (`AlignOutcome.refused`), and a lost lease reports nothing.
     """
     try:
-        await steps.publish(job, doc)
+        await steps.publish(job, doc, placing=written)
     except NotOurJob as lost:
-        # The candidates are still reported: the FILES exist regardless of who owns the job, so leaving
-        # them unnamed would leak them even though this worker published nothing.
+        # Nothing was placed: `publish` places only after the ownership check. The attempts are in job
+        # scratch, which is reclaimed with the job, so there is nothing in the store to report.
         return AlignOutcome(
-            published=None,
-            why=f"abandoned before publishing: {lost}",
-            trail=search.trail,
-            candidates=tuple(written),
+            published=None, why=f"abandoned before publishing: {lost}", trail=search.trail, candidates=()
         )
-    return AlignOutcome(published=doc, why=why, trail=search.trail, candidates=tuple(written))
+    placed = [doc] if pin is not None and doc is not None else list(written)
+    return AlignOutcome(
+        published=replace(doc, ref=store_ref(job, doc.ref)) if doc is not None else None,
+        why=why,
+        trail=search.trail,
+        candidates=tuple(replace(d, ref=store_ref(job, d.ref)) for d in placed),
+        refused=tuple(refused),
+    )
+
+
+async def _acquire_pinned(job: JobRef, pin: Pin, steps: AlignSteps) -> list[TextRef]:
+    """A pinned job's pool: the ONE text a person chose. No provider, caption track or model runs.
+
+    Empty when the pin cannot be honoured, which the pinned search answers by publishing nothing (the old
+    worker's STOP): a ref outside the lyrics store is refused here, before anything reads it; a stored
+    candidate that is gone or has no readable line is the step's `None`, and the step names why.
+    """
+    if pin.refused is not None:
+        await steps.note(
+            job,
+            STATE_TEXTS,
+            0,
+            "pin-refused",
+            f"{pin.refused}; publishing nothing rather than reading or writing outside the lyrics store",
+            None,
+        )
+        return []
+    text = await steps.fetch_pinned_text(job)
+    if text is None:
+        return []
+    await steps.note(
+        job,
+        STATE_TEXTS,
+        0,
+        "pinned",
+        f"re-timing {pin.ref} as {text.label} ({len(text.segments)} line(s), "
+        f"{'the paste' if pin.pasted is not None else 'the stored words'}, untimed: a blind decode); "
+        "providers, captions and ASR skipped",
+        None,
+    )
+    return [text]
 
 
 async def _acquire_texts(job: JobRef, audio: AudioRef, steps: AlignSteps) -> list[TextRef]:
@@ -201,13 +328,63 @@ async def _acquire_texts(job: JobRef, audio: AudioRef, steps: AlignSteps) -> lis
     return found
 
 
-def _candidate_of(text: TextRef) -> Candidate:
-    """Describe a text to the search in terms of which knobs could apply to it."""
+def _ran_as(line_only: bool) -> SyncMode:
+    """The sync mode the job actually ran — what its completion facts report (`__main__._align_facts`)."""
+    return SyncMode.LINES if line_only else SyncMode.FORCED
+
+
+def _sync_mode_note(job: JobRef, pin: Pin | None, *, stemless: bool = False) -> str | None:
+    """The trail's word on the job's `syncMode`, when it changes what runs (or is not honoured as sent).
+
+    `lines` ON A SONG WITH NO VOCALS STEM is aligned as `forced` (review W1 r1). The LINE_SYNC rung publishes
+    a text's own line timings only past gates calibrated on the stem (since W3 the lexical lift and the
+    text's own blind decode, the sheet-span envelope gate where the decode cannot be read; on the mix the
+    lift's populations overlap, `domain/lyrics/lexical`). The sheet gate reads the text's claimed spans
+    against the singing, and on the MIX the band fills every silence it reads: measured over every timed bench
+    case with each song's mix in place of its stem (`scripts/sheet_gate.py --target mix`), authored-caption
+    spans pass 39 of 416 right texts and 3 of 320 wrong ones (truth claims 8/32), LRC spans 37/416 and 3/320
+    (truth 3/32), and no threshold does better than 60/416 at the same 3/320 (truth medians r 0.33 against
+    the wrong texts' 0.17, whose top decile reaches 0.32). Line-only there refused nearly every correct
+    sheet for an ASR transcript or no lyrics; before H5 the mode was ignored and those songs were
+    word-aligned, under the forced path's own wrong-text gate — which is what they get again.
+    """
+    asked = job.param_str("syncMode")
+    if asked == SyncMode.LINES and pin is not None:
+        return (
+            "syncMode=lines does not apply to a pin: its text has no line timings of its own to keep "
+            "(a stored candidate's are the ones being replaced), so it is aligned"
+        )
+    if asked == SyncMode.LINES and stemless:
+        return (
+            "syncMode=lines needs a vocals stem: the line-sync rung's sheet gate cannot tell a right text "
+            "from a wrong one on the mix (39/416 right, 3/320 wrong, measured), so this song is aligned as "
+            "forced, under the forced path's wrong-text gate"
+        )
+    if asked == SyncMode.LINES:
+        return (
+            "syncMode=lines: every text publishes its own line timings through the gated line-sync rung "
+            "(the stem's emissions read only to check its words are sung where it claims them), and no word "
+            "timing is published"
+        )
+    if asked is not None and asked not in {mode.value for mode in SyncMode}:
+        return (
+            f"syncMode {asked!r} is not a mode this worker knows "
+            f"({', '.join(mode.value for mode in SyncMode)}); aligning as '{SyncMode.FORCED.value}'"
+        )
+    return None
+
+
+def _candidate_of(text: TextRef, *, line_only: bool = False) -> Candidate:
+    """Describe a text to the search in terms of which knobs could apply to it.
+
+    Under `syncMode=lines` a WORD-timed text (a transcript, a word-level sheet) line-syncs too: its
+    segments carry their lines' spans, and the rung publishes those lines without the words.
+    """
     return Candidate(
         tier=text.tier,
         label=text.label,
         has_windows=bool(text.windows),
-        has_line_timings=text.has_line_timings,
+        has_line_timings=text.has_line_timings or (line_only and text.timing == TIMING_WORD),
         has_own_line_timings=text.has_own_timings,
     )
 

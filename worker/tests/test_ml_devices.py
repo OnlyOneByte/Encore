@@ -13,16 +13,21 @@ installed import the module, resolve capabilities, and decline the work rather t
 from __future__ import annotations
 
 import ast
+import sys
+import types
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from encore_worker.adapters.cli import OutOfMemory
 from encore_worker.adapters.ml import (
     CTRANSLATE2_DEVICES,
     ModelUnavailable,
     clear_cache,
     transcriber_device,
 )
+from encore_worker.adapters.ports import InfraFault
 
 #: Packages that cost seconds and hundreds of megabytes to import.
 HEAVY = frozenset({"torch", "torchaudio", "torchvision", "whisperx", "pyannote", "demucs", "mlx"})
@@ -142,3 +147,146 @@ def test_builders_return_none_rather_than_raising_when_ml_is_absent() -> None:
         pytest.skip("whisperx is installed, so the absent-ML path cannot be observed here")
     assert build_transcriber(device="cpu", checkpoint="base") is None
     assert build_aligner(device="cpu") is None
+
+
+# ── typed machinery faults (review M7) ───────────────────────────────────────────────────────────
+
+
+def fake_whisperx(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    load_align_model: Callable[..., object] | None = None,
+    load_audio: Callable[[str], object] | None = None,
+    languages: frozenset[str] = frozenset({"en"}),
+) -> None:
+    """A `whisperx` (and its `alignment` tables) in `sys.modules`, so the adapter's failure typing runs with
+    no model, no download and no torch. The pyannote shim is marked done: it imports torch."""
+    from encore_worker.adapters import ml
+
+    module = types.ModuleType("whisperx")
+    alignment = types.ModuleType("whisperx.alignment")
+    alignment.DEFAULT_ALIGN_MODELS_TORCH = {lang: f"torch-{lang}" for lang in languages}  # type: ignore[attr-defined]
+    alignment.DEFAULT_ALIGN_MODELS_HF = {}  # type: ignore[attr-defined]
+    if load_align_model is not None:
+        module.load_align_model = load_align_model  # type: ignore[attr-defined]
+    if load_audio is not None:
+        module.load_audio = load_audio  # type: ignore[attr-defined]
+    module.alignment = alignment  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "whisperx", module)
+    monkeypatch.setitem(sys.modules, "whisperx.alignment", alignment)
+    monkeypatch.setattr(ml, "_SAFE_GLOBALS_REGISTERED", True)
+    clear_cache()
+
+
+def raising(exc: Exception) -> Callable[..., object]:
+    def call(*_a: object, **_k: object) -> object:
+        raise exc
+
+    return call
+
+
+def test_a_model_download_failure_is_a_retryable_machinery_fault(monkeypatch: pytest.MonkeyPatch) -> None:
+    """whisperx wraps a Hub download failure in the same `ValueError` it raises for an unknown language, so
+    the adapter asks whisperx's own tables which one it was. A known language that would not load is the
+    machinery's, and worth another attempt."""
+    from encore_worker.adapters.ml import WhisperXAligner
+
+    fake_whisperx(
+        monkeypatch, load_align_model=raising(ValueError('The chosen align_model "x" could not be found'))
+    )
+    with pytest.raises(InfraFault, match="loading the 'en' alignment model failed") as raised:
+        WhisperXAligner(device="cpu")._aligner("en")
+    assert raised.value.retryable is True and not isinstance(raised.value, ModelUnavailable)
+    assert isinstance(raised.value.__cause__, ValueError), "the original is kept as the cause"
+
+
+def test_a_language_with_no_alignment_model_stays_one_attempt_declining(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No model for the TEXT's language is not the box failing: the step declines the attempt, and a timed
+    text still reaches LINE_SYNC, which needs no model. Typed as a fault, it would fail that job instead."""
+    from encore_worker.adapters.ml import WhisperXAligner
+
+    unknown = ValueError("No default align-model for language: xx")
+    fake_whisperx(monkeypatch, load_align_model=raising(unknown))
+    with pytest.raises(ValueError) as raised:
+        WhisperXAligner(device="cpu")._aligner("xx")
+    assert raised.value is unknown and not isinstance(raised.value, InfraFault)
+
+
+def test_a_model_that_runs_out_of_memory_loading_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    from encore_worker.adapters.ml import WhisperXAligner
+
+    fake_whisperx(
+        monkeypatch, load_align_model=raising(RuntimeError("MPS backend out of memory (MPS allocated)"))
+    )
+    with pytest.raises(OutOfMemory) as raised:
+        WhisperXAligner(device="mps")._aligner("en")
+    assert raised.value.retryable is False and isinstance(raised.value, InfraFault)
+
+
+def test_audio_ffmpeg_will_not_decode_is_a_machinery_fault(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The job's own file: no text changes whether ffmpeg can read it, so every attempt would fail alike."""
+    from encore_worker.adapters.ml import load_audio_mono_16k
+
+    fake_whisperx(
+        monkeypatch, load_audio=raising(RuntimeError("Failed to load audio: vocals.wav: Invalid data"))
+    )
+    with pytest.raises(InfraFault, match="through ffmpeg") as raised:
+        load_audio_mono_16k("/media/m1/vocals.wav")
+    assert raised.value.retryable is True and "Invalid data" in str(raised.value)
+
+
+def test_a_ctc_kernel_that_is_gone_is_a_non_retryable_machinery_fault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """torchaudio 2.9 deprecates `forced_align` for removal. A torchaudio without it cannot decode any text,
+    and the same box lacks it on the next attempt too. Faked as modules, so this runs with no torch."""
+    from encore_worker.adapters.ml import forced_align_decoder
+
+    monkeypatch.setitem(sys.modules, "torch", types.ModuleType("torch"))
+    monkeypatch.setitem(sys.modules, "torchaudio", types.ModuleType("torchaudio"))
+    monkeypatch.setitem(sys.modules, "torchaudio.functional", types.ModuleType("torchaudio.functional"))
+    with pytest.raises(ModelUnavailable, match="forced_align") as raised:
+        forced_align_decoder(object(), [1, 2, 3])
+    assert raised.value.retryable is False and isinstance(raised.value, InfraFault)
+
+
+def test_an_untimed_search_segment_declines_the_attempt_not_the_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review W1 r2. The windowed aligner's contract check (every search segment needs a start) raised
+    `ModelUnavailable` — since M7 a non-retryable `InfraFault`, which fails the JOB. The shape is THIS text's
+    (`place.spread_over` leaves an untimed text as it is when the probe could not read a duration), so it
+    must be what `_time_text_windowed` declines: a plain error, raised before any model is touched."""
+    from encore_worker.adapters.ml import WhisperXAligner
+
+    loaded: list[str] = []
+
+    def load(**_k: object) -> tuple[object, dict[str, object]]:
+        loaded.append("model")
+        return object(), {}
+
+    fake_whisperx(monkeypatch, load_align_model=load)
+    search: list[dict[str, object]] = [{"text": "timed", "start": 0.0, "end": 1.0}, {"text": "untimed"}]
+    with pytest.raises(ValueError, match="needs a start on every search segment") as raised:
+        WhisperXAligner(device="cpu").align(search, "/media/m1/vocals.wav", "en")
+    assert not isinstance(raised.value, InfraFault), "an InfraFault fails the job for one text's shape"
+    assert loaded == [], "checked before any model load"
+
+
+@pytest.mark.parametrize(
+    ("failed", "kind"),
+    [
+        (RuntimeError("MPS backend out of memory (MPS allocated: 17.2 GB)"), OutOfMemory),
+        (RuntimeError("CUDA error: an illegal memory access was encountered"), InfraFault),
+        (OSError("HTTP Error 503: Service Unavailable"), InfraFault),
+    ],
+    ids=["oom", "device", "download"],
+)
+def test_a_machinery_failure_is_typed_by_its_own_message(failed: Exception, kind: type[InfraFault]) -> None:
+    """Out-of-memory is read off torch's message with the markers `cli.run` reads off a subprocess, and is
+    the one kind not retried; the message keeps the original's type and text as the diagnosis."""
+    from encore_worker.adapters.ml import _machinery_fault
+
+    fault = _machinery_fault("the emission pass on mps", failed)
+    assert type(fault) is kind
+    assert type(failed).__name__ in str(fault) and str(failed) in str(fault)

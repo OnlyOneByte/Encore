@@ -92,7 +92,15 @@ stateDiagram-v2
 
 `Failed` is deliberately absent from the lyric paths. It is reachable only from infrastructure faults —
 audio that will not download, a missing model, a corrupt file. **No lyric outcome is a job failure**; the
-floor is `NoLyrics`, and it is a success terminal.
+floor is `NoLyrics`, and it is a success terminal. The converse holds too (review M7): an alignment step
+raises the machinery's faults as `adapters.ports.InfraFault` (a model download, a gone CTC kernel, a
+device fault or out-of-memory, audio ffmpeg will not decode) instead of declining attempt after attempt
+over them, so they fail the job with the fault's own `retryable` rather than ending in a `NoLyrics` that
+nothing measured. Under DBOS the core's requeue of a failed job runs a deterministic FORK of its workflow
+(`{job}~requeue-{n}`, `workflows/durable._run_id`) from the step that failed, since DBOS answers the failed
+workflow's own id with its recorded error and would never re-run a step. And a failed job leaves nothing
+in the lyrics store: every attempt is staged in job scratch, and `publish` places them (all of them, for
+core's retention and a person's re-pick) only after its ownership check.
 
 ### The fallback ladder
 
@@ -112,6 +120,24 @@ job past acquisition has that, so an absent ASR text means the transcriber faile
 The old worker inverted this. Grading narrowed the pool to a single winner and *discarded* the ASR
 baselines before timing, so a candidate that failed to time ended the job — with a guaranteed-timeable
 text sitting unused.
+
+### What the job asks for
+
+Core sends four params on every align job that this worker, until review H5, never read (regressed in
+f04a2d0e with the old worker's `pinned.py`). Each is read by one pure function in `steps/api.py`:
+
+| Param | Honoured as |
+| --- | --- |
+| `pinnedText` + `pinnedRef` | A **paste**: the only text, untimed, decoded blind through the global path. It is never judged a wrong text: a person chose it (the old worker never graded a pin), so one a wrong-text gate (the lexical lift, or the envelope gate) would refuse publishes with every line graded `low` (`pin-unvouched` on the trail). The accepted document is published under the pinned ref, which for a paste is the manual key `derived/lyrics/{id}-manual-word.json` (`keys.manual_lyrics_key`, core's `manualLyricsRef`) |
+| `pinnedRef` alone | A **re-pick**: the stored candidate's words, re-timed blind (its stale timings are not read), written back under the same ref with its label (so its `textSource` and tier) intact. The WHOLE text: a document whose decode dropped lines records them (`sourceLines`), and the re-pick reads that |
+| `syncMode` | `lines` publishes no word timing: each text's only attempt is its own line timings through the gated LINE_SYNC rung, which reads one emission matrix of the stem twice — a lexical check (are these the words sung?) and the text's own blind decode (are its lines claimed where they are sung? ≥ 50% within 1 s, W3; the sheet-span envelope gate only where the decode cannot be read); untimed texts are skipped; a transcript line-syncs on its segments. A pin is always aligned, and so is a song with NO vocals stem: the rung's sheet gate cannot tell a right text from a wrong one on the mix (39/416 right, 3/320 wrong: `sheet_gate.py --target mix`), so it gets forced alignment's own gate; the completion facts report what ran |
+| `asrModel` | The whisper checkpoint the ASR fallback loads (one of `host.config.ASR_MODELS`, else the worker's default, on the trail) |
+
+**A pinned job never falls back.** Its attempts are written to job scratch, only the accepted one is placed
+at the pinned ref (by `publish`, after the ownership check — that ref is what the TV is showing), and a
+paste that cannot be timed at all (nothing alignable, words out of order) publishes NOTHING: no other text,
+no ASR, and the candidate core holds stays as it is. This is the one `GiveUp` that does not wait for ASR, because it concludes nothing about the song — it
+answers whether *this* text could be timed. A ref outside `derived/lyrics/*.json` is refused unread.
 
 ### The retime knobs
 
@@ -193,11 +219,14 @@ flowchart TD
     A[audio] --> E["emissions E (once, cached)<br/>+ activity envelope A"]
     T[text only — claimed timings NOT passed] --> G[global CTC decode<br/>lines / words / syllables + per-line scores]
     E --> G
-    G --> R[reconcile vs claimed timings]
+    G --> LEX{"lexical lift: the text vs 3 shuffles of its words<br/>(skipped: ASR tier, under 40 letters)"}
+    LEX -- "below the floor (stem 0.2, mix 0.15)" --> FAIL
+    LEX -- "doubt band: every line low" --> R
+    LEX -- ok --> R[reconcile vs claimed timings]
     R -- "unrelated & claims fit the audio better" --> R1["R1: re-decode every claimed line<br/>inside its claim window"]
     R -- "structural: disputed lines" --> R2["R2: re-decode disputed lines<br/>inside their claim windows"]
     R -- "blind repeats, no claim anchor" --> R3["R3: re-decode repeats jointly<br/>between unique-line anchors"]
-    R1 --> GATE{envelope gate, on the repaired series<br/>r≥0.40 in ±0.5s, or r≥0.25 in ±0.1s}
+    R1 --> GATE{"envelope gate, on the repaired series<br/>r≥0.40 in ±0.5s, or r≥0.25 in ±0.1s<br/>(on a stem only where the lift could not measure)"}
     R2 --> GATE
     R3 --> GATE
     R -- no repair needed --> GATE

@@ -1,0 +1,600 @@
+{
+ "generator": "worker/tests/test_core_contract.py",
+ "frames": [
+  {
+   "name": "line-sync-after-a-rejected-word-attempt",
+   "why": "the word decode came back out of order, so the sheet's own line timings published; the rejected word doc outranked it (authoritative + word) and was what core showed",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-line-sync",
+    "mediaUri": "derived/lyrics/m1-lrclib-line-sync-line.json",
+    "artifacts": {
+     "lyrics": {
+      "uri": "derived/lyrics/m1-lrclib-line-sync-line.json",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-lrclib-word.json",
+        "textSource": "lrclib",
+        "timing": "word",
+        "textConfidence": "high",
+        "timingConfidence": "high",
+        "selectable": false,
+        "createdAt": 1790000000000
+       },
+       {
+        "ref": "derived/lyrics/m1-lrclib-line-sync-line.json",
+        "textSource": "lrclib",
+        "timing": "line",
+        "textConfidence": "high",
+        "timingConfidence": "low",
+        "selectable": true,
+        "createdAt": 1790000000000
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": false,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": "derived/lyrics/m1-lrclib-line-sync-line.json",
+    "authoritative": [
+     "derived/lyrics/m1-lrclib-line-sync-line.json",
+     "derived/lyrics/m1-lrclib-word.json"
+    ],
+    "withdrawn": []
+   }
+  },
+  {
+   "name": "a-worse-retry-loses-to-the-attempt-it-retried",
+   "why": "best-so-far kept the stem attempt; the mix retry ties it on rank and on grade, and every candidate carried one createdAt, so only list order decided between them",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-best-so-far",
+    "mediaUri": "derived/lyrics/m1-lrclib-word.json",
+    "artifacts": {
+     "lyrics": {
+      "uri": "derived/lyrics/m1-lrclib-word.json",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-lrclib-word.json",
+        "textSource": "lrclib",
+        "timing": "word",
+        "textConfidence": "high",
+        "timingConfidence": "high",
+        "selectable": true,
+        "createdAt": 1790000000000
+       },
+       {
+        "ref": "derived/lyrics/m1-lrclib-align-on-mix-word.json",
+        "textSource": "lrclib",
+        "timing": "word",
+        "textConfidence": "high",
+        "timingConfidence": "high",
+        "selectable": false,
+        "createdAt": 1790000000000
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": false,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": "derived/lyrics/m1-lrclib-word.json",
+    "authoritative": [
+     "derived/lyrics/m1-lrclib-align-on-mix-word.json",
+     "derived/lyrics/m1-lrclib-word.json"
+    ],
+    "withdrawn": []
+   }
+  },
+  {
+   "name": "machine-captions-word-doc",
+   "why": "YouTube's machine track, well timed: its `high` grade went out as textConfidence and ranked it authoritative, as 'Captions', above a correct line-synced sheet",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-machine",
+    "mediaUri": "derived/lyrics/m1-captions-machine-word.json",
+    "artifacts": {
+     "lyrics": {
+      "uri": "derived/lyrics/m1-captions-machine-word.json",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-captions-machine-word.json",
+        "textSource": "captions",
+        "timing": "word",
+        "textConfidence": "low",
+        "timingConfidence": "high",
+        "selectable": true,
+        "createdAt": 1790000000000
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": false,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": "derived/lyrics/m1-captions-machine-word.json",
+    "authoritative": [],
+    "withdrawn": []
+   }
+  },
+  {
+   "name": "no-lyrics-after-an-unusable-transcript",
+   "why": "the job published NOTHING, yet the document its one attempt wrote was ranked and shown",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-no-lyrics",
+    "mediaUri": "",
+    "artifacts": {
+     "lyrics": {
+      "uri": "",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-asr-vocals-word.json",
+        "textSource": "asr",
+        "timing": "word",
+        "textConfidence": "low",
+        "timingConfidence": "high",
+        "selectable": false,
+        "createdAt": 1790000000000
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": true,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": null,
+    "authoritative": [],
+    "withdrawn": []
+   }
+  },
+  {
+   "name": "a-pinned-paste",
+   "why": "a person's paste, re-timed and placed at core's manual key: a claim, and the only candidate",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-paste",
+    "mediaUri": "derived/lyrics/m1-manual-word.json",
+    "artifacts": {
+     "lyrics": {
+      "uri": "derived/lyrics/m1-manual-word.json",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-manual-word.json",
+        "textSource": "manual",
+        "timing": "word",
+        "textConfidence": "high",
+        "timingConfidence": "high",
+        "selectable": true,
+        "createdAt": 1790000000000
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": false,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": "derived/lyrics/m1-manual-word.json",
+    "authoritative": [
+     "derived/lyrics/m1-manual-word.json"
+    ],
+    "withdrawn": []
+   }
+  },
+  {
+   "name": "a-refused-text-withdraws-an-earlier-jobs-candidate",
+   "why": "a re-align's gate refused the sheet an earlier job had published as a word doc; a refused attempt writes nothing, so that doc stayed selectable at rank 5 and was shown over the transcript this job published (review W1 r2)",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-withdraw",
+    "mediaUri": "derived/lyrics/m1-asr-vocals-word.json",
+    "artifacts": {
+     "lyrics": {
+      "uri": "derived/lyrics/m1-asr-vocals-word.json",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-asr-vocals-word.json",
+        "textSource": "asr",
+        "timing": "word",
+        "textConfidence": "low",
+        "timingConfidence": "high",
+        "selectable": true,
+        "createdAt": 1790000000000
+       },
+       {
+        "ref": "derived/lyrics/m1-lrclib-word.json",
+        "textSource": "lrclib",
+        "timing": "word",
+        "textConfidence": "high",
+        "selectable": false,
+        "createdAt": 1790000000000,
+        "language": "en"
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": false,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": "derived/lyrics/m1-asr-vocals-word.json",
+    "authoritative": [
+     "derived/lyrics/m1-lrclib-word.json"
+    ],
+    "withdrawn": [
+     "derived/lyrics/m1-lrclib-word.json"
+    ]
+   }
+  },
+  {
+   "name": "a-re-picked-machine-caption",
+   "why": "a person re-picked YouTube's machine track: a pin is sent textConfidence `high` whatever its tier (the old worker's 'a human chose this text'; W3), where W1 sent the tier's `low`, so core now reads the chosen words as a claim, 'Captions'",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-re-pick-machine",
+    "mediaUri": "derived/lyrics/m1-captions-machine-word.json",
+    "artifacts": {
+     "lyrics": {
+      "uri": "derived/lyrics/m1-captions-machine-word.json",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-captions-machine-word.json",
+        "textSource": "captions",
+        "timing": "word",
+        "textConfidence": "high",
+        "timingConfidence": "high",
+        "selectable": true,
+        "createdAt": 1790000000000
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": false,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": "derived/lyrics/m1-captions-machine-word.json",
+    "authoritative": [
+     "derived/lyrics/m1-captions-machine-word.json"
+    ],
+    "withdrawn": []
+   }
+  },
+  {
+   "name": "a-re-picked-transcript",
+   "why": "a person re-picked this recording's transcript: sent `high` like every pin, and still no claim in core, which never counts `asr` words as one",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-re-pick-transcript",
+    "mediaUri": "derived/lyrics/m1-asr-vocals-word.json",
+    "artifacts": {
+     "lyrics": {
+      "uri": "derived/lyrics/m1-asr-vocals-word.json",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-asr-vocals-word.json",
+        "textSource": "asr",
+        "timing": "word",
+        "textConfidence": "high",
+        "timingConfidence": "high",
+        "selectable": true,
+        "createdAt": 1790000000000
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": false,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": "derived/lyrics/m1-asr-vocals-word.json",
+    "authoritative": [],
+    "withdrawn": []
+   }
+  }
+ ],
+ "documents": [
+  {
+   "name": "a-duet",
+   "doc": {
+    "language": "en",
+    "lines": [
+     {
+      "text": "you take the high road",
+      "start": 0.0,
+      "end": 2.5,
+      "words": [
+       {
+        "word": "you",
+        "start": 0.0,
+        "end": 0.4
+       },
+       {
+        "word": "take",
+        "start": 0.5,
+        "end": 0.9
+       },
+       {
+        "word": "the",
+        "start": 1.0,
+        "end": 1.4
+       },
+       {
+        "word": "high",
+        "start": 1.5,
+        "end": 1.9
+       },
+       {
+        "word": "road",
+        "start": 2.0,
+        "end": 2.4
+       }
+      ],
+      "confidence": "high",
+      "part": "A"
+     },
+     {
+      "text": "and I take the low",
+      "start": 5.0,
+      "end": 7.5,
+      "words": [
+       {
+        "word": "and",
+        "start": 5.0,
+        "end": 5.4
+       },
+       {
+        "word": "I",
+        "start": 5.5,
+        "end": 5.9
+       },
+       {
+        "word": "take",
+        "start": 6.0,
+        "end": 6.4
+       },
+       {
+        "word": "the",
+        "start": 6.5,
+        "end": 6.9
+       },
+       {
+        "word": "low",
+        "start": 7.0,
+        "end": 7.4
+       }
+      ],
+      "confidence": "high",
+      "part": "B"
+     },
+     {
+      "text": "we meet in the middle",
+      "start": 10.0,
+      "end": 12.5,
+      "words": [
+       {
+        "word": "we",
+        "start": 10.0,
+        "end": 10.4
+       },
+       {
+        "word": "meet",
+        "start": 10.5,
+        "end": 10.9
+       },
+       {
+        "word": "in",
+        "start": 11.0,
+        "end": 11.4
+       },
+       {
+        "word": "the",
+        "start": 11.5,
+        "end": 11.9
+       },
+       {
+        "word": "middle",
+        "start": 12.0,
+        "end": 12.4
+       }
+      ],
+      "confidence": "high",
+      "part": "A"
+     },
+     {
+      "text": "where the rivers flow",
+      "start": 15.0,
+      "end": 17.0,
+      "words": [
+       {
+        "word": "where",
+        "start": 15.0,
+        "end": 15.4
+       },
+       {
+        "word": "the",
+        "start": 15.5,
+        "end": 15.9
+       },
+       {
+        "word": "rivers",
+        "start": 16.0,
+        "end": 16.4
+       },
+       {
+        "word": "flow",
+        "start": 16.5,
+        "end": 16.9
+       }
+      ],
+      "confidence": "high",
+      "part": "B"
+     },
+     {
+      "text": "an unheard echo",
+      "start": 40.0,
+      "end": 41.5,
+      "words": [
+       {
+        "word": "an",
+        "start": 40.0,
+        "end": 40.4
+       },
+       {
+        "word": "unheard",
+        "start": 40.5,
+        "end": 40.9
+       },
+       {
+        "word": "echo",
+        "start": 41.0,
+        "end": 41.4
+       }
+      ],
+      "confidence": "high"
+     }
+    ]
+   },
+   "parts": [
+    "A",
+    "B",
+    "A",
+    "B",
+    null
+   ]
+  },
+  {
+   "name": "an-over-segmented-solo",
+   "doc": {
+    "language": "en",
+    "lines": [
+     {
+      "text": "one voice all along",
+      "start": 0.0,
+      "end": 2.0,
+      "words": [
+       {
+        "word": "one",
+        "start": 0.0,
+        "end": 0.4
+       },
+       {
+        "word": "voice",
+        "start": 0.5,
+        "end": 0.9
+       },
+       {
+        "word": "all",
+        "start": 1.0,
+        "end": 1.4
+       },
+       {
+        "word": "along",
+        "start": 1.5,
+        "end": 1.9
+       }
+      ],
+      "confidence": "high"
+     },
+     {
+      "text": "heard as three",
+      "start": 5.0,
+      "end": 6.5,
+      "words": [
+       {
+        "word": "heard",
+        "start": 5.0,
+        "end": 5.4
+       },
+       {
+        "word": "as",
+        "start": 5.5,
+        "end": 5.9
+       },
+       {
+        "word": "three",
+        "start": 6.0,
+        "end": 6.4
+       }
+      ],
+      "confidence": "high"
+     },
+     {
+      "text": "by the diarizer",
+      "start": 10.0,
+      "end": 11.5,
+      "words": [
+       {
+        "word": "by",
+        "start": 10.0,
+        "end": 10.4
+       },
+       {
+        "word": "the",
+        "start": 10.5,
+        "end": 10.9
+       },
+       {
+        "word": "diarizer",
+        "start": 11.0,
+        "end": 11.4
+       }
+      ],
+      "confidence": "high"
+     }
+    ]
+   },
+   "parts": [
+    null,
+    null,
+    null
+   ]
+  }
+ ]
+}

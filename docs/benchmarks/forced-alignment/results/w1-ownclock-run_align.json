@@ -1,0 +1,327 @@
+{
+ "meta": {
+  "level": "run_align",
+  "model": "WAV2VEC2_ASR_BASE_960H",
+  "model_identity": {
+   "en": "53c07ecdf07643ed"
+  },
+  "device": "mps",
+  "language": "en",
+  "seed": 0,
+  "wrong_k": 10,
+  "tfr_audio": "youtube",
+  "align_config": {},
+  "modes": [
+   "wrongtext+ownclock"
+  ],
+  "songs": [
+   "Avercage_-_Embers",
+   "Color_Out_-_Falling_Star",
+   "Cortez_-_Feel__Stripped_",
+   "Explosive_Ear_Candy_-_Like_The_Sun",
+   "HILA_-_Give_Me_the_Same",
+   "JASON_MILLER_-_CROWD_PLEASER",
+   "Kinematic_-_Peyote",
+   "LUNABLIND_-_Vision__Radio_Edit_",
+   "Lower_Loveday_-_Is_It_Right_",
+   "Moon_I_Mean_-_Wrong_Concept",
+   "Pure_Mids_-_The_Leader",
+   "Quentin_Hannappe_-_Keep_On",
+   "Ridgway_-_Fire_Inside",
+   "Rxbyn_-_Bad_Side",
+   "Slingshot_Miracle_-_Whistler",
+   "Songwriterz_-_Back_In_Time",
+   "The.madpix.project_-_One_Way_Street",
+   "The_Rinn_-_Voices__2017_Version_",
+   "Tom_Orlando_-_The_One__feat._Tina_G_",
+   "Wordsmith_-_The_Statement",
+   "never-be-alone",
+   "believer",
+   "shape-of-you",
+   "hello",
+   "rap-god",
+   "bohemian-rhapsody",
+   "feel-my-heart",
+   "numb",
+   "bad-guy",
+   "tfr-flyaway",
+   "tfr-mayday",
+   "tfr-chosen"
+  ],
+  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "git": {
+   "head": "23c44114046f6f3c96e5c3f59e06e24dd96246a6",
+   "dirty_files": 76
+  },
+  "harness": "aed9dd59da011258",
+  "code": "9fd66b8cbcccad38",
+  "row_codes": [
+   "9fd66b8cbcccad38"
+  ],
+  "emissions": {
+   "disk": 46,
+   "memory": 414
+  },
+  "started": "2026-09-28T02:57:53",
+  "seconds": 228.0,
+  "mode_seconds": {
+   "wrongtext+ownclock": 227.8
+  },
+  "asr": "off",
+  "rows_full": "/Volumes/workplace/personal/encore-align-bench/_runs/w1r2-ownclock-run_align/rows.jsonl",
+  "note": "Summary document for `e2e.py --compare` (this .json, never the .cases.jsonl, which is a compact per-case digest without the raw per-line/per-word errors). Raw rows (recomputable with --summarize): meta.rows_full in the bench root.",
+  "wave": "W1",
+  "round": "review round 2 rebench",
+  "role": "`wrongtext+ownclock` (new in review round 2): each song x 10 donors, the donor's words on THIS song's own truth line spans (a same-video caption track in another language / machine-translated). No baseline (the op did not exist). Every published case is a WORD document at attempt 1 through the envelope gate (review H3's false pass, W3's lexical-lift gate); 0 reach the LINE_SYNC rung in forced mode",
+  "compare_base": null
+ },
+ "summary": {
+  "wrongtext+ownclock": {
+   "jamendo": {
+    "lines": {
+     "cases": 200,
+     "published": 199,
+     "line_sync": 0,
+     "refused": 1,
+     "error": 0,
+     "truth_lines": 8680,
+     "in_text": 0,
+     "missing": 0,
+     "unsung": 8595,
+     "scored": 0,
+     "gross": 0,
+     "w500": 0,
+     "w1000": 0,
+     "high": 0,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": null,
+     "w1000_pct": null,
+     "w500_text_pct": null,
+     "w1000_text_pct": null,
+     "zero_gross_songs": 199,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 0,
+     "in_text": 0,
+     "unpublished": 0,
+     "interpolated": 0,
+     "mismatched": 0,
+     "gross": 0,
+     "w100_pct": null,
+     "w250_pct": null,
+     "w300_pct": null,
+     "pco300_pct": null,
+     "end_scored": 0,
+     "end100_pct": null,
+     "end250_pct": null,
+     "end_bias_ms": null,
+     "final_end_scored": 0,
+     "final_end100_pct": null,
+     "final_end250_pct": null,
+     "final_end_bias_ms": null
+    },
+    "highlight": {
+     "cases": 200,
+     "unpublished": 1,
+     "hit_sec": 0.0,
+     "sung_sec": 0.0,
+     "pct": null
+    },
+    "wrongtext": {
+     "pairs": 200,
+     "published": 199,
+     "errors": 0,
+     "pass_rate_pct": 99.5
+    },
+    "policy": {
+     "attempts": 200,
+     "retried": 0,
+     "retimes": {},
+     "mix_published": 0,
+     "changed_vs_first": 0,
+     "asr_requested": 1,
+     "asr_published": 0,
+     "no_lyrics": 1
+    },
+    "ci": {
+     "pm500": null,
+     "text_pm500": null,
+     "gross": null,
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "youtube": {
+    "lines": {
+     "cases": 120,
+     "published": 80,
+     "line_sync": 0,
+     "refused": 40,
+     "error": 0,
+     "truth_lines": 8920,
+     "in_text": 0,
+     "missing": 0,
+     "unsung": 4596,
+     "scored": 0,
+     "gross": 0,
+     "w500": 0,
+     "w1000": 0,
+     "high": 0,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": null,
+     "w1000_pct": null,
+     "w500_text_pct": null,
+     "w1000_text_pct": null,
+     "zero_gross_songs": 80,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": null,
+    "highlight": null,
+    "wrongtext": {
+     "pairs": 120,
+     "published": 80,
+     "errors": 0,
+     "pass_rate_pct": 66.67
+    },
+    "policy": {
+     "attempts": 120,
+     "retried": 0,
+     "retimes": {},
+     "mix_published": 0,
+     "changed_vs_first": 0,
+     "asr_requested": 40,
+     "asr_published": 0,
+     "no_lyrics": 40
+    },
+    "ci": {
+     "pm500": null,
+     "text_pm500": null,
+     "gross": null,
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "all": {
+    "lines": {
+     "cases": 320,
+     "published": 279,
+     "line_sync": 0,
+     "refused": 41,
+     "error": 0,
+     "truth_lines": 17600,
+     "in_text": 0,
+     "missing": 0,
+     "unsung": 13191,
+     "scored": 0,
+     "gross": 0,
+     "w500": 0,
+     "w1000": 0,
+     "high": 0,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": null,
+     "w1000_pct": null,
+     "w500_text_pct": null,
+     "w1000_text_pct": null,
+     "zero_gross_songs": 279,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 0,
+     "in_text": 0,
+     "unpublished": 0,
+     "interpolated": 0,
+     "mismatched": 0,
+     "gross": 0,
+     "w100_pct": null,
+     "w250_pct": null,
+     "w300_pct": null,
+     "pco300_pct": null,
+     "end_scored": 0,
+     "end100_pct": null,
+     "end250_pct": null,
+     "end_bias_ms": null,
+     "final_end_scored": 0,
+     "final_end100_pct": null,
+     "final_end250_pct": null,
+     "final_end_bias_ms": null
+    },
+    "highlight": {
+     "cases": 200,
+     "unpublished": 1,
+     "hit_sec": 0.0,
+     "sung_sec": 0.0,
+     "pct": null
+    },
+    "wrongtext": {
+     "pairs": 320,
+     "published": 279,
+     "errors": 0,
+     "pass_rate_pct": 87.19
+    },
+    "policy": {
+     "attempts": 320,
+     "retried": 0,
+     "retimes": {},
+     "mix_published": 0,
+     "changed_vs_first": 0,
+     "asr_requested": 41,
+     "asr_published": 0,
+     "no_lyrics": 41
+    },
+    "ci": {
+     "pm500": null,
+     "text_pm500": null,
+     "gross": null,
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   }
+  }
+ },
+ "songs": {
+  "wrongtext+ownclock": {
+   "Avercage_-_Embers": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 415.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9506, "doc": "90a4191b18359ee4", "onsets": "0b3cc04b4776f36f"},
+   "Color_Out_-_Falling_Star": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 366.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.8781, "doc": "63918236057fa3f0", "onsets": "92d3682da40d05b3"},
+   "Cortez_-_Feel__Stripped_": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 417.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9619, "doc": "c3319f41fa6c4ecf", "onsets": "2c9bb669f5680c5b"},
+   "Explosive_Ear_Candy_-_Like_The_Sun": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 460.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.8424, "doc": "c6306ff10e6b6b4d", "onsets": "49981944e3983a3f"},
+   "HILA_-_Give_Me_the_Same": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 578.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9867, "doc": "0ce068f63c21632f", "onsets": "6c36f232b5c5a051"},
+   "JASON_MILLER_-_CROWD_PLEASER": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 820.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.8964, "doc": "a8e2730bae77a2f8", "onsets": "ac35f726c7b11624"},
+   "Kinematic_-_Peyote": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 135.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.705, "doc": "9b99cc4f90553adb", "onsets": "e33064b68c4fc27a"},
+   "LUNABLIND_-_Vision__Radio_Edit_": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 523.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9684, "doc": "3e517b02deac16c5", "onsets": "29f13595cb4a79fb"},
+   "Lower_Loveday_-_Is_It_Right_": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 258.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9463, "doc": "24839b39bb893308", "onsets": "0ad030f0611e9788"},
+   "Moon_I_Mean_-_Wrong_Concept": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 426.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9096, "doc": "f8bd0f7401861d3c", "onsets": "3696d5ffd1307319"},
+   "Pure_Mids_-_The_Leader": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 200.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.7283, "doc": "9e0b8f530d866136", "onsets": "5d66937382d15e37"},
+   "Quentin_Hannappe_-_Keep_On": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 267.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.8809, "doc": "f5939a7edb11a273", "onsets": "2a3098c83e2061c4"},
+   "Ridgway_-_Fire_Inside": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 498.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9742, "doc": "5de74ea0eb3c1b9c", "onsets": "7ed40be523b1a6db"},
+   "Rxbyn_-_Bad_Side": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 720.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.947, "doc": "c2e5d2f9a199322c", "onsets": "0cd975642f7122f3"},
+   "Slingshot_Miracle_-_Whistler": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 306.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9805, "doc": "cbdab4ed5c74a7ac", "onsets": "9f82948e54e229bb"},
+   "Songwriterz_-_Back_In_Time": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 457.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9755, "doc": "de9574637f15a755", "onsets": "691f1814e1617a92"},
+   "The.madpix.project_-_One_Way_Street": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 300.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9919, "doc": "405fe88b3f6261a5", "onsets": "3e4b71a5d6d68100"},
+   "The_Rinn_-_Voices__2017_Version_": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 456.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9813, "doc": "5f3df84adfea68e3", "onsets": "c950340aabecfe1b"},
+   "Tom_Orlando_-_The_One__feat._Tina_G_": {"group": "jamendo", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 715.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.8476, "doc": "9d728ba1054e7d8e", "onsets": "ee8e324d43b2ec9d"},
+   "Wordsmith_-_The_Statement": {"group": "jamendo", "cases": 10.0, "published": 9.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 278.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 90.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 1.0, "coverage": 0.8763, "doc": "06b36742189016f9", "onsets": "54261b366dd3cf99"},
+   "never-be-alone": {"group": "youtube", "cases": 10.0, "published": 9.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 422.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 90.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 1.0, "coverage": 0.8922, "doc": "dd8e34fc2ab2dd52", "onsets": "c0780d9c921e7dba"},
+   "believer": {"group": "youtube", "cases": 10.0, "published": 9.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 657.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 90.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 1.0, "coverage": 0.8649, "doc": "5ba0055d98eff025", "onsets": "3be57d0fae3c7ae9"},
+   "shape-of-you": {"group": "youtube", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 920.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9534, "doc": "6ae702002ec54a5e", "onsets": "136a4ee6f5598a3e"},
+   "hello": {"group": "youtube", "cases": 10.0, "published": 4.0, "refused": 6.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 292.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 40.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 6.0, "coverage": 0.3992, "doc": "1755f03f77e96170", "onsets": "acc9f01967fe680f"},
+   "rap-god": {"group": "youtube", "cases": 10.0, "published": 0.0, "refused": 10.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 10.0, "coverage": 0.0, "doc": "5b7d82eca885ab70", "onsets": "5b7d82eca885ab70"},
+   "bohemian-rhapsody": {"group": "youtube", "cases": 10.0, "published": 1.0, "refused": 9.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 74.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 10.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 9.0, "coverage": 0.0973, "doc": "90f0fb8fc4cb11a7", "onsets": "de54d7e30d0b502a"},
+   "feel-my-heart": {"group": "youtube", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 370.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9619, "doc": "5f2f8cd3ea4f3780", "onsets": "f9ca208f65615d1a"},
+   "numb": {"group": "youtube", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 348.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9407, "doc": "321e4998c59b0405", "onsets": "d21f33edcf5b1730"},
+   "bad-guy": {"group": "youtube", "cases": 10.0, "published": 0.0, "refused": 10.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 10.0, "coverage": 0.0, "doc": "5b7d82eca885ab70", "onsets": "5b7d82eca885ab70"},
+   "tfr-flyaway": {"group": "youtube", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 737.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9739, "doc": "a9f20fec54eb5d5d", "onsets": "9faeba70671b6c93"},
+   "tfr-mayday": {"group": "youtube", "cases": 10.0, "published": 10.0, "refused": 0.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 517.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 100.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 0.0, "coverage": 0.9676, "doc": "5cec512bd8082c7b", "onsets": "43cd2cea69c9cc71"},
+   "tfr-chosen": {"group": "youtube", "cases": 10.0, "published": 7.0, "refused": 3.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 259.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 70.0, "mix_published": 0.0, "changed_vs_first": 0.0, "no_lyrics": 3.0, "coverage": 0.6972, "doc": "ca1e0243d3984dd3", "onsets": "42213136b925709c"}
+  }
+ }
+}

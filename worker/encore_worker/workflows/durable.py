@@ -23,6 +23,7 @@ the argument is the one thing that is both small and serialisable.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -93,6 +94,7 @@ async def align(job: JobRef) -> AlignOutcome:
     The workflow ID is the JOB ID, which is what makes a requeue idempotent: the core reuses the same job id
     when a lease expires, so DBOS recognises the second attempt as the same workflow and RESUMES it. With a
     generated id, a requeue after a 45-minute separation would start a parallel workflow and redo the work.
+    A requeue after the workflow FAILED runs a deterministic fork of it from the failed step (`_run_id`).
     """
     if _align_flow is None:
         assert _align_steps_for is not None, "register() must run before any job"
@@ -111,14 +113,88 @@ async def stems(job: JobRef) -> StemsOutcome:
     return outcome
 
 
+#: Joins a job id to the number of the requeue a FORK of it runs (`_run_id`): `{job}~requeue-{n}`. A
+#: character core never puts in a job id, so no fork id can collide with a real job's.
+_REQUEUE = "~requeue-"
+
+
 async def _start(flow: Any, job: JobRef) -> Any:
     """Start the workflow under the job's own id and await it.
 
     `SetWorkflowID` rather than a keyword argument: that context manager is DBOS's documented way to pin the
     id, and pinning it is what makes the id a DEDUPLICATION key rather than a label.
+
+    A requeue of a job whose workflow FAILED runs a fork of it (`_run_id`), not the recorded failure. A step
+    that failed every retry DBOS allowed it fails the job as ITS fault, not as DBOS's wrapper (`_unwrapped`).
     """
     from dbos import DBOS, SetWorkflowID  # noqa: PLC0415
 
-    with SetWorkflowID(job.job_id):
+    workflow_id = await _run_id(job.job_id)
+    with SetWorkflowID(workflow_id):
         handle = await DBOS.start_workflow_async(flow, job)
-    return await handle.get_result()
+    try:
+        return await handle.get_result()
+    except Exception as failed:
+        cause = _unwrapped(failed)
+        if cause is failed:
+            raise
+        raise cause from failed
+
+
+def _unwrapped(failed: Exception) -> Exception:
+    """The fault a job failed on, as the step raised it — not DBOS's wrapper around its retries.
+
+    A step allowed retries (`dbos_align._step`) that fails every one ends in `DBOSMaxStepRetriesExceeded`,
+    which holds the attempts' own exceptions and carries neither their `retryable` nor their message: the
+    transport sent every exhausted acquisition as retryable, with "Step acquire_audio has exceeded its
+    maximum of 3 retries" as the reason (review W1 r2). The LAST attempt's exception is what the job failed
+    on, so that is what reaches the transport, `retryable` and all. Anything else is itself.
+    """
+    from dbos._error import DBOSMaxStepRetriesExceeded  # noqa: PLC0415
+
+    if isinstance(failed, DBOSMaxStepRetriesExceeded) and failed.errors:
+        last = failed.errors[-1]
+        return last if isinstance(last, Exception) else failed
+    return failed
+
+
+async def _run_id(job_id: str) -> str:
+    """The workflow id this run of job `job_id` is: the job's own, or a FORK of its last failed run.
+
+    WHY A FORK (review W1 r1, M7). A workflow that raised is ERROR in the system database, and DBOS answers
+    a start under an ERROR id with the RECORDED exception: no step runs again. So the core's requeue of a
+    retryable `Failed` (a Hub 503 while loading the align model; a transient ffmpeg fault) replayed the
+    same error in an instant, attempt after attempt, until `maxAttempts` failed the job terminally — with
+    the cause long gone (measured on dbos 3.1.0: 1 `time_text` across 3 requeues). `retryable` meant
+    nothing under DBOS. A fork is DBOS's own restart: a NEW workflow id whose steps before `start_step` are
+    copied from the failed run, so every step that completed (the audio acquired, the texts fetched, the
+    attempts already timed) replays from its checkpoint, and the step that failed runs again.
+
+    DETERMINISTIC IDS, so a requeue is still idempotent: the n-th fork of job J is `J~requeue-n`. The chain
+    is walked from the job id: an ERROR run whose fork exists moves on to it; the first run that is not
+    ERROR (none yet, running, or done) is this run's id — a resumed fork or a finished one is started under
+    it like any other, and returns what it holds. Every failure the core requeues forks once more, so a
+    job's forks number its requeues; it is the core's `maxAttempts`, not this, that bounds them. The core
+    decides whether a failure is worth requeueing (`retryable`); this only makes a requeue re-run.
+
+    WHERE IT FORKS FROM: the first step that recorded an error (the one the failure came out of), else the
+    step after the last recorded one (a workflow body that raised between steps replays deterministically
+    and raises again, which is correct).
+    """
+    from dbos import DBOS, SetWorkflowID  # noqa: PLC0415
+
+    current = job_id
+    for requeue in itertools.count(1):
+        status = await DBOS.get_workflow_status_async(current)
+        if status is None or status.status != "ERROR":
+            return current
+        forked = f"{job_id}{_REQUEUE}{requeue}"
+        if await DBOS.get_workflow_status_async(forked) is None:
+            steps = await DBOS.list_workflow_steps_async(current)
+            failed = [step["function_id"] for step in steps if step["error"] is not None]
+            start = min(failed) if failed else max((step["function_id"] for step in steps), default=0) + 1
+            with SetWorkflowID(forked):
+                await DBOS.fork_workflow_async(current, start)
+            return forked
+        current = forked
+    raise AssertionError("unreachable: itertools.count never ends")  # pragma: no cover

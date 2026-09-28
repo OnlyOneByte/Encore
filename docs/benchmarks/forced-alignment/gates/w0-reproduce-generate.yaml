@@ -1,0 +1,32 @@
+# W0 reject-if, raw decode: the review's blind Jamendo word figures at `--level generate`, base model.
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level generate \
+#       --modes blind --songs jamendo \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w0-reproduce-generate.yaml
+#
+# Onsets: bench.py --global --words (±100 78.7, ±250 90.5, ±300 91.3, bias +4 ms, 141/5693 > 2 s), which
+# the review measured on the SHIPPED emissions (`WhisperXAligner.emissions`). Measured 2026-09-27:
+# 78.73 / 90.46 / 91.29, +3.7 ms, 141.
+#
+# Ends and highlight: `_review-scratch/pe-acc/exp_ends.py`'s definitions, re-run on the SHIPPED emissions.
+# The review's own figures (phrase-final end ±100 40.0 / ±250 73.5 / bias −107 ms, highlight 67.7) came
+# from `/tmp/lr/em`, the review's own matrices. Those are the raw torchaudio bundle over 30 s chunks with
+# no context, up to ~10 nats per frame away from `WhisperXAligner.emissions` on every song. The shipped
+# decoder reads exactly the review's numbers on those matrices (onsets 78.9 / 91.6; ends 72.8 / 40.0 /
+# 73.5 / −107 ms), so the scorer is exp_ends'. The same script on the shipped matrices reads 73.2 / 40.6
+# / 73.6 / −106 ms, painted highlight 67.3. Those are the targets below. The review's "word end ±100
+# 68.2" (§6b) is not exp_ends' number: it drops the onset-within-250-ms filter (every aligned word).
+# Ungated, it reads 68.2 on the review's matrices and 68.4 on the shipped ones.
+# The harness's highlight reads the lit word through the TV's own logic rather than painted spans. Both
+# read 67.3 here. Bias tolerances (±2 ms onset, ±5 ms end) are this file's choice: a median moves in
+# whole frames' worth.
+words-pm100: abs(blind.jamendo.word_pm100 - 78.7) <= 0.5
+words-pm250: abs(blind.jamendo.word_pm250 - 90.5) <= 0.5
+words-pm300: abs(blind.jamendo.word_pm300 - 91.3) <= 0.5
+words-bias: abs(blind.jamendo.word_bias_ms - 4) <= 2
+words-gross: abs(blind.jamendo.word_gross - 141) <= 0.5
+end-pm100: abs(blind.jamendo.end_pm100 - 73.2) <= 0.5
+final-end-pm100: abs(blind.jamendo.final_end_pm100 - 40.6) <= 0.5
+final-end-pm250: abs(blind.jamendo.final_end_pm250 - 73.6) <= 0.5
+final-end-bias: abs(blind.jamendo.final_end_bias_ms + 106) <= 5
+highlight: abs(blind.jamendo.highlight - 67.3) <= 0.5

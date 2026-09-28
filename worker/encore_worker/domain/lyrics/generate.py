@@ -202,6 +202,7 @@ def regenerate(
     language: str = "en",
     decoder: Decoder,
     syllabifier: Callable[[str, str], list[str]] | None = None,
+    faults: list[str] | None = None,
 ) -> dict[int, Line]:
     """Re-decode runs of lines INSIDE evidence-derived windows, on the same emission matrix.
 
@@ -213,9 +214,14 @@ def regenerate(
     nomadkaraoke's anchor-sequence gap handlers converge on this same shape.
 
     Each run is `(consecutive lines, (window_start_sec, window_end_sec))`, decoded JOINTLY so order within
-    the run stays monotonic. Returns `{original line index: repaired Line}` — a run is silently SKIPPED
-    (originals kept) when its window cannot hold the text or its decode fails, because a repair that can
+    the run stays monotonic. Returns `{original line index: repaired Line}`. A run is SKIPPED, with its
+    originals kept, when its window cannot hold the text or its decode fails, because a repair that can
     throw away a working timing is worse than no repair.
+
+    `faults`, when given, gets one `"<Type>: <message>"` per run whose decode RAISED. The run still keeps
+    its originals. The list exists so the caller can report the failure: a swallowed exception otherwise
+    looks exactly like a repair that was never needed. Measured, not foreseen (review L8): every R3 window
+    decode in the alignment suite raised here for as long as the suite existed, and nothing showed it.
     """
     repaired: dict[int, Line] = {}
     for run, (window_start, window_end) in runs:
@@ -246,7 +252,9 @@ def regenerate(
                 decoder=decoder,
                 syllabifier=syllabifier,
             )
-        except Exception:  # noqa: BLE001 - a failed repair keeps the original timing, never degrades it
+        except Exception as exc:  # noqa: BLE001 - a failed repair keeps the original, never degrades it
+            if faults is not None:
+                faults.append(f"{type(exc).__name__}: {exc}")
             continue
         if len(got.lines) != len(run):
             continue
@@ -318,9 +326,7 @@ def adopted_line(text: str, index: int, start: float, end: float) -> Line | None
     return Line(text=text, start=start, end=end, words=spread, score=0.0, index=index)
 
 
-def _lead_starts(
-    spans: list[tuple[float, float, float]], lead: float
-) -> list[tuple[float, float, float]]:
+def _lead_starts(spans: list[tuple[float, float, float]], lead: float) -> list[tuple[float, float, float]]:
     """Each span's start pulled back by `lead`, never past the previous span's end (see ONSET_LEAD_SEC).
 
     Clamping against the ORIGINAL previous end preserves the ordering invariant every grouping level

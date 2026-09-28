@@ -13,11 +13,18 @@ export interface LyricsCandidate {
 	ref: string;
 	textSource: LyricsTextSource;
 	timing: LyricsTiming;
-	/** Load-bearing beyond display: auto captions are recorded `low` because they are ASR wearing a
-	 *  caption's clothes, which is what stops them ranking as authoritative. */
+	/** The WORDS' standing, from where they came from — never how well they were timed. Load-bearing beyond
+	 *  display: auto captions are recorded `low` because they are ASR wearing a caption's clothes, which is
+	 *  what stops them ranking as authoritative. (Review M3: the v2 worker sent its TIMING grade here, so a
+	 *  well-timed machine caption ranked authoritative and every line-synced sheet ranked as a guess.) */
 	textConfidence: LyricsConfidence;
 	/** Confidence in the TIMINGS (an aligner can return word timings it isn't sure of). */
 	timingConfidence?: LyricsConfidence;
+	/** `false` = the worker's OWN ladder rejected this attempt: it retried it, moved past it, or the job published
+	 *  nothing. Kept, because retention must still name its file and a person may still pick it, but never
+	 *  AUTO-selected (`lyricsRank` 0): ranked as a peer, it was shown over the document the worker chose. Absent
+	 *  (older workers, stored rows) = selectable. See docs/SERVER.md#lyrics-candidates-and-grading. */
+	selectable?: boolean;
 	language?: string | null;
 	createdAt: number;
 	/** 0..1 agreement against a transcript of the same audio; `undefined` = not comparable. A RANKING axis ONLY,
@@ -54,14 +61,15 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
 /**
  * HIGHER IS BETTER, 0 means "do not show this". 5 = authoritative + word, 4 = authoritative + line,
  * 3 = unauthoritative + word, 2 = unauthoritative + line, 1 = identified as ANOTHER SONG, 0 = no usable
- * timing. 4 outranks 3 because wrong words are a FAILURE you cannot sing.
+ * timing, or an attempt its own worker rejected (`selectable: false`). 4 outranks 3 because wrong words are
+ * a FAILURE you cannot sing.
  *
  * TIER 1 reads `coverage` and NOT `agreement` — thresholding the ranking axis convicts a CORRECT text
  * graded against a partial baseline — and needs a dedicated bottom rung rather than a confidence
  * demotion. `agreement` keeps its legitimate use in `breaksTie`.
  */
 export function lyricsRank(c: LyricsCandidate): number {
-	if (!hasUsableTiming(c)) return 0;
+	if (!hasUsableTiming(c) || c.selectable === false) return 0;
 	if (isLikelyWrongSong(c.coverage)) return 1;
 	const authoritative = isAuthoritativeText(c);
 	const word = c.timing === 'word';
@@ -94,6 +102,51 @@ function breaksTie(c: LyricsCandidate, incumbent: LyricsCandidate): boolean {
 	const agree = (c.agreement ?? -1) - (incumbent.agreement ?? -1);
 	if (agree !== 0) return agree > 0;
 	return c.createdAt > incumbent.createdAt;
+}
+
+const TEXT_SOURCES: readonly LyricsTextSource[] = ['lrclib', 'captions', 'asr', 'manual'];
+const TIMINGS: readonly LyricsTiming[] = ['word', 'line', 'none'];
+const CONFIDENCES: readonly LyricsConfidence[] = ['high', 'medium', 'low'];
+
+function oneOf<T extends string>(v: unknown, allowed: readonly T[]): T | undefined {
+	return typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : undefined;
+}
+
+const finite = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+
+/** One candidate from an UNTRUSTED payload, or null when it names no file. See `parseLyricsCandidates`. */
+function parseLyricsCandidate(raw: unknown): LyricsCandidate | null {
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+	const r = raw as Record<string, unknown>;
+	if (typeof r.ref !== 'string' || !r.ref) return null;
+	const out: LyricsCandidate = {
+		ref: r.ref,
+		textSource: oneOf(r.textSource, TEXT_SOURCES) ?? 'asr',
+		timing: oneOf(r.timing, TIMINGS) ?? 'none',
+		textConfidence: oneOf(r.textConfidence, CONFIDENCES) ?? 'low',
+		createdAt: finite(r.createdAt) ?? 0
+	};
+	const timingConfidence = oneOf(r.timingConfidence, CONFIDENCES);
+	if (timingConfidence) out.timingConfidence = timingConfidence;
+	if (typeof r.selectable === 'boolean') out.selectable = r.selectable;
+	if (typeof r.language === 'string' || r.language === null) out.language = r.language;
+	const agreement = finite(r.agreement);
+	if (agreement !== undefined) out.agreement = agreement;
+	const coverage = finite(r.coverage);
+	if (coverage !== undefined) out.coverage = coverage;
+	return out;
+}
+
+/**
+ * The candidate set from an UNTRUSTED payload — a worker's `job:complete`, a stored row — which was cast, never
+ * read. Old shapes parse (every field added since is optional), unknown FIELDS are dropped, and a value this core
+ * cannot read FAILS SAFE rather than dropping the candidate, because its `ref` is still a file retention must be
+ * able to name: an unknown source reads as `asr` and an unknown confidence as `low` (never authoritative), an
+ * unknown timing as `none` (never shown). Only an entry with no `ref` is dropped: there is nothing to name.
+ */
+export function parseLyricsCandidates(raw: unknown): LyricsCandidate[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.map(parseLyricsCandidate).filter((c): c is LyricsCandidate => c !== null);
 }
 
 /** Keyed by `ref`, so a re-run overwrites its own artifact rather than stacking duplicates. NEVER-REGRESS

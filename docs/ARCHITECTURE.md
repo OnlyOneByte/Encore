@@ -403,15 +403,35 @@ with the original vocals", which is why it was renamed rather than reworded.
 
 ### Search sources
 
-One query fans out to every resolver by default, because a singer picks a song by whether they can sing
-it now, not by where it came from. `?source=` narrows to one, which is what the phone's picker sets:
+A query with no `?source=` asks the **default set** — `ytmusic` + `local` + `spotify` — and `?source=`
+narrows, which is what the phone's picker sets:
 
-| Source    | What it searches                                       | Why it exists                                                                                          |
-| --------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `youtube` | all of YouTube, keylessly via `yt-dlp ytsearch`        | the default reach: anything uploaded, including songs no catalog lists                                  |
-| `ytmusic` | YouTube Music's catalog (`songs` filter, InnerTube)    | catalog ROWS: the real artist and the track duration, instead of a lyric reupload credited to a channel |
-| `local`   | files on this box                                      | a library that needs no network                                                                         |
-| `spotify` | Spotify metadata only — never acquirable               | clean canonical artist/title as an annotator                                                            |
+| Source    | What it searches                                    | In the default set?                                                        |
+| --------- | --------------------------------------------------- | -------------------------------------------------------------------------- |
+| `ytmusic` | YouTube Music's catalog (`songs` filter, InnerTube) | **yes** — catalog rows: the real artist and the track duration              |
+| `local`   | files on this box (a disk-scan FTS index)           | **yes** — the user's own media, and it is in no other index                 |
+| `spotify` | Spotify metadata only — never acquirable            | **yes** — clean canonical artist/title as an annotator                      |
+| `youtube` | all of YouTube, keylessly via `yt-dlp ytsearch`     | **no** — reachable as `?source=all` or `?source=youtube`                    |
+
+**Plain `ytsearch` is not in the default.** What that buys, measured: the real performer instead of a
+channel name ("The Black Eyed Peas", not "Tasty"), the track duration instead of a video length, and a
+median **459 ms against 1628 ms** — `ytsearch` spawns a yt-dlp subprocess, and on one probe it was killed
+at its 10 s timeout and returned nothing where `ytmusic` answered.
+
+What it costs, also measured — and the first draft of this section overstated the case, so the correction
+is worth keeping. An initial sweep of 18 hard queries "returned a usable hit for every one", but that sweep
+had **no negative control**, and the `songs` filter *never returns empty*: `zzzzzzznotasongzzzzzz` answers
+with "A Million Laughing Emoji's". It measured "did rows come back", not "did the right song come back".
+Against a SPECIFIC upload the catalog substitutes a catalog entity — `bohemian rhapsody live aid 1985 full`
+leads with a 148 s studio-soundtrack cut where `ytsearch` finds the actual performance.
+
+**That is why the phone's widen affordance is not gated on an empty result.** A narrowed default whose
+escape hatch only appears when nothing matched has no escape hatch at all, because nothing-matched is a
+state this default cannot reach. `?source=all` adds `ytsearch` back.
+
+The default is a SET rather than simply `?source=ytmusic` because of `local`: those are the user's own
+files, they live in a disk-scan index rather than the catalog, and narrowing to a single source would
+silently hide them.
 
 `ytmusic` results are tagged `source: 'youtube'`, deliberately: a music hit IS a YouTube video id, so
 the same video found both ways collapses to one library row (origin identity is `source` + `sourceRef`),

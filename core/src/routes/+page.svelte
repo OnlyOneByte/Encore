@@ -23,7 +23,8 @@
 		queueCardKind,
 		displayReadiness,
 		canProcess,
-		readyEmptyState,
+		noRowsState,
+		showsNoRows,
 		processingGroupIds,
 		type Readiness
 	} from '$lib/readiness';
@@ -40,6 +41,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
 	import FindField from '$lib/ui/FindField.svelte';
+	import * as NativeSelect from '$lib/components/ui/native-select';
 	import * as Empty from '$lib/components/ui/empty';
 
 	let me = $state<PublicSinger | null>(null);
@@ -114,11 +116,13 @@
 	let library = $state<Media[]>([]);
 	let libraryTags = $state<Record<string, string[]>>({});
 	let queryEl = $state<HTMLInputElement | null>(null);
-	/* WHERE to search. 'all' fans out to every resolver (the default philosophy: a singer picks by
-	   whether they can sing it, not by where it lives); the rest narrow via /api/search?source=.
-	   'ytmusic' exists because all-of-YouTube search returns lyric reuploads and hour loops with the
-	   UPLOADER as the artist, while the music catalog returns the song entity itself. */
-	let searchSource = $state<'all' | 'ytmusic' | 'youtube' | 'local'>('all');
+	/* WHERE to search. `music` is the DEFAULT and sends no `source` param at all, which the route reads as
+	   its default set: the YouTube Music catalog, local files, and Spotify metadata — everything except
+	   plain all-of-YouTube ytsearch, whose hits are lyric reuploads and hour loops credited to a channel
+	   rather than a performer. `everything` adds ytsearch back for an upload no catalog lists.
+	   The spelling matters: `music` is NOT `?source=ytmusic`, because narrowing to one source would drop
+	   the user's own local files, which live in a separate disk-scan index rather than the catalog. */
+	let searchSource = $state<'music' | 'everything' | 'youtube' | 'local'>('music');
 	let query = $state('');
 	let readyResults = $state<Media[]>([]);
 	let rawResults = $state<Media[]>([]);
@@ -150,8 +154,18 @@
 	}
 
 	function onSourceChange() {
+		// The pending keystroke's timer is cancelled first, or one source change fires two full searches:
+		// this one now, and the debounced one 150 ms later — two resolver fan-outs for one query.
+		clearTimeout(debounceTimer);
 		const q = query.trim();
 		if (q) runSearch(q);
+	}
+
+	/* One tap from the narrowed default to the full fan-out, re-running the query it is already holding.
+	   Offered beside results, not only when there are none — see the note at its render site. */
+	function widenSearch() {
+		searchSource = 'everything';
+		onSourceChange();
 	}
 
 	function clearSearch() {
@@ -166,11 +180,27 @@
 		const ctrl = new AbortController();
 		inflight = ctrl;
 		searching = true;
+		/* THE PREVIOUS QUERY'S ROWS GO NOW, not when the next answer lands. `onQueryInput` only clears on an
+		   EMPTIED box, so refining "bohemian" to "bohemian rhapsody" left ten rows from the first query on
+		   screen under the second query's text — and any zero-state beneath them was then describing a
+		   different search than the rows above it. The `Searching…` skeleton is what belongs here, and it
+		   already has a gate waiting for exactly this state. */
+		clearResults();
 		try {
-			const source = searchSource === 'all' ? '' : `&source=${searchSource}`;
+			// `music` is the route's own default, so it sends nothing — one spelling of the default, on the
+			// server, instead of two that can drift.
+			const source =
+				searchSource === 'music' ? '' : `&source=${searchSource === 'everything' ? 'all' : searchSource}`;
 			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}${source}`, { signal: ctrl.signal });
 			if (ctrl.signal.aborted) return;
+			// A 500 whose body happens to be JSON parsed cleanly into `{}`, so every group came back empty
+			// and the failure rendered as "nothing matched" — a broken server looking like a missing song.
+			if (!res.ok) throw new Error(`search failed: ${res.status}`);
 			const j = await res.json();
+			// RECHECKED AFTER THE BODY PARSE, not only after the fetch: `await res.json()` is a second
+			// suspension point, and an abort landing inside it would otherwise let a superseded query
+			// assign its rows over the live one.
+			if (ctrl.signal.aborted) return;
 			readyResults = j.ready ?? [];
 			rawResults = j.results ?? [];
 			processingResults = j.processing ?? [];
@@ -559,18 +589,17 @@
 				/>
 			</div>
 			<div class="source-slot">
-				<select
-					class="source-select"
+				<NativeSelect.Root
 					aria-label="Where to search"
 					title="Where to search"
 					bind:value={searchSource}
 					onchange={onSourceChange}
 				>
-					<option value="all">All</option>
-					<option value="ytmusic">YT Music</option>
-					<option value="youtube">YouTube</option>
-					<option value="local">Library</option>
-				</select>
+					<NativeSelect.Option value="music">Music</NativeSelect.Option>
+					<NativeSelect.Option value="everything">Everything</NativeSelect.Option>
+					<NativeSelect.Option value="youtube">YouTube</NativeSelect.Option>
+					<NativeSelect.Option value="local">Library</NativeSelect.Option>
+				</NativeSelect.Root>
 			</div>
 		</div>
 
@@ -702,8 +731,12 @@
 						</Button>
 					</div>
 				{/if}
-			{:else if processingGroup.length === 0}
-				<!-- Nothing ready AND nothing on the way: the only genuinely empty library. -->
+			{:else if processingRows.length === 0}
+				<!-- Nothing ready AND nothing on the way: the only genuinely empty library.
+						 `processingRows`, NOT `processingGroup`: the group deliberately hides a song that is ALREADY
+						 QUEUED (the queue renders its own progress card), so gating on it printed "No karaoke tracks
+						 yet." directly beneath a live card at 34%. The unfiltered set is the honest test for
+						 "nothing is on the way", which is what this sentence claims. -->
 				<Empty.Root>
 					<Empty.Header>
 						<Empty.Title>No karaoke tracks yet.</Empty.Title>
@@ -739,17 +772,30 @@
 				{/each}
 			{/if}
 
-			{#if !searching && rawResults.length === 0 && readyResults.length === 0}
-				<Empty.Root>
-					<Empty.Header>
-						<Empty.Description>No results. YouTube search needs yt-dlp on the server.</Empty.Description>
-					</Empty.Header>
-				</Empty.Root>
+			<!-- ONE zero-state, and only when the search found NOTHING AT ALL. It used to be two blocks, and
+				 the second was gated on `!readyResults.length` alone — so a query that returned twelve
+				 singable-but-unprocessed songs printed "Nothing matches “…”" underneath them, contradicting
+				 the rows on screen (reported from a screenshot). Nothing-ready is not nothing-found: the
+				 "Needs karaoke" group is the normal, expected result for a song nobody has processed yet.
+				 The two blocks also both fired when the query truly matched nothing, stacking two empty
+				 states. Whatever renders here must therefore be gated on EVERY group being empty. -->
+			<!-- THE ESCAPE HATCH IS NOT GATED ON AN EMPTY RESULT, and that is a measured requirement rather
+					 than caution. YouTube Music's `songs` filter NEVER returns nothing: probed live, the nonsense
+					 query `zzzzzzznotasongzzzzzz` answers with "A Million Laughing Emoji's" and friends, and
+					 `asdkjhqwe zxcvbnm nonsense query 12345` answers with Mariah Carey. So a widen offered only
+					 inside the zero-state would be unreachable exactly when it is needed — the default returns
+					 twelve confident wrong rows and no hint that a wider net exists. It sits after the rows, low
+					 in the column, because most searches do not need it. -->
+			{#if !searching && searchSource === 'music' && (rawRows.length || readyResults.length)}
+				<div class="showall-row">
+					<Button variant="secondary" size="tap" onclick={widenSearch}>
+						<Icon name="search" /> Not it? Search everything
+					</Button>
+				</div>
 			{/if}
 
-			<!-- Nothing singable matched but the library has songs: clearing the box restores both it and the queue. -->
-			{#if !readyResults.length && library.length}
-				{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
+			{#if showsNoRows({ searching, readyCount: readyResults.length, rawCount: rawRows.length, processingCount: processingRows.length })}
+				{@const empty = noRowsState({ searchActive, libraryCount: library.length, query })}
 				<Empty.Root>
 					<Empty.Header>
 						<Empty.Description>{empty.message}</Empty.Description>
@@ -844,7 +890,10 @@
 	   help: truncate, which needs a block box AND min-width:0 all the way up. The dot and gear stay unshrinkable. */
 	.me-name {
 		display: block;
-		min-width: 0;
+		/* `text-overflow: ellipsis` needs a non-zero box to draw into. At 320px with the reconnecting pill up
+		   this computed to 0px and the singer's own name vanished, leaving the identity control reading as a
+		   bare colour dot. A 4ch floor keeps a first initial and the ellipsis. */
+		min-width: 4ch;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -880,6 +929,7 @@
 	.find-row {
 		display: flex;
 		align-items: stretch;
+		flex-wrap: wrap;
 		gap: var(--space-md);
 		margin-bottom: var(--space-lg);
 	}
@@ -895,22 +945,24 @@
 		flex: 0 0 auto;
 		display: flex;
 	}
-	/* The source picker: pinned like the library door (never shrinks beside the field), full row height so the
-	   three controls read as one bar. A native <select> on purpose — it gets the platform's own scrollable,
-	   accessible menu on a phone for free, which a custom dropdown would only reimplement worse. */
+	/* THE PICKER YIELDS THE ROW, NOT THE FIELD, and this cost a measurement to learn. It was first pinned
+	   `flex: 0 0 auto` by copying `.lib-slot` above — but that pin's comment was written when the row held TWO
+	   controls, where an unpinned 44px door was the thing that would collapse. With a third pinned sibling the
+	   only flexible item left is the field, and it absorbed the whole deficit: measured in headless Chromium at
+	   320px the search input's content box was 12px, and 4px mid-search once FindField's spinner and clear
+	   button took their share — the primary control of the primary surface, showing about one letter and no
+	   caret. Below --bp-sm the picker takes its own line instead (142px idle / 63px searching at 320px, and no
+	   overflow). The literal is required: a media condition is evaluated before the cascade and cannot read
+	   var(--bp-sm). */
 	.source-slot {
 		flex: 0 0 auto;
 		display: flex;
+		min-width: 0;
 	}
-	.source-select {
-		height: 100%;
-		min-height: var(--tap);
-		padding: 0 var(--space-md);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--card);
-		color: var(--ink);
-		font: inherit;
+	@media (max-width: 520px) {
+		.source-slot {
+			flex: 1 1 100%;
+		}
 	}
 	/* `size-tap` sets a fixed height as well as a width, so filling the stretched slot needs this override. Keyed on
 	   the primitive's OWN `data-slot` and anchored under `.lib-slot`, which is the sanctioned form — a bare class rule
@@ -986,6 +1038,14 @@
 		padding: var(--space-2xs) var(--space-md);
 		font-size: var(--ph-text-sm);
 		white-space: nowrap;
+		/* NOWRAP WITHOUT A FLOOR IS UNSHRINKABLE, and this pill sits in the topbar flex beside the singer's
+		   identity and the settings gear. With min-content == max-content == 133px, flexbox had nothing to
+		   take: measured at 320px with the pill showing, `scrollWidth` was 334 against a 320 viewport — a
+		   horizontal scrollbar on the home screen (SC 1.4.10) with the gear's right edge at 334, i.e. off the
+		   display. It fires exactly when the wifi is flaky at a party, which is when the pill exists at all. */
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	/* Declared here, never inline: an inline style outranks the short-viewport rule below and defeats it. */

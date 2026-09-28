@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from encore_worker.host.config import ASR_MODELS, Config, ConfigError
+from encore_worker.host.config import ALIGN_EXPERIMENTS, ASR_MODELS, Config, ConfigError
 from encore_worker.host.hardware import Report, resolve_backend
 from encore_worker.transport.ownership import Ownership, Reason, Standing
 
@@ -199,6 +199,21 @@ def test_an_unknown_backend_is_refused_at_the_boundary() -> None:
 def test_an_unknown_asr_checkpoint_is_refused() -> None:
     with pytest.raises(ConfigError, match="ENCORE_ASR_MODEL"):
         Config.from_env({"ENCORE_ASR_MODEL": "enormous"})
+
+
+def test_alignment_experiments_are_off_unless_named() -> None:
+    """PLAN-alignment-v3's rule for an arm that fails its gate: built, tested and measured, but OFF unless
+    the operator names it. Spelling is forgiving (case, spaces, empty items); the set is exact."""
+    assert Config.from_env({}).align_experiments == frozenset()
+    cfg = Config.from_env({"ENCORE_ALIGN_EXPERIMENTS": " l1-mix-kept, L1-BLIND-MEDIAN ,, "})
+    assert cfg.align_experiments == frozenset({"l1-mix-kept", "l1-blind-median"})
+    assert cfg.align_experiments <= set(ALIGN_EXPERIMENTS)
+
+
+def test_an_unknown_alignment_experiment_is_refused() -> None:
+    """A typo would otherwise measure the default path under the arm's name."""
+    with pytest.raises(ConfigError, match=r"ENCORE_ALIGN_EXPERIMENTS names 'l1-mix-kpet'"):
+        Config.from_env({"ENCORE_ALIGN_EXPERIMENTS": "l1-mix-kept,l1-mix-kpet"})
 
 
 def test_config_errors_are_not_retryable() -> None:
