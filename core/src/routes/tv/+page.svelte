@@ -294,6 +294,11 @@
 		// ONE upsert for both: a JOIN after the initial sync would otherwise leave the lower-third saying "Someone" for a
 		// late joiner, and a RENAME would leave the roster chip and lower-third on the old name until the next full sync.
 		if (e.type === 'singer:joined' || e.type === 'singer:updated') {
+			// Copy-then-assign, not a `SvelteMap`: the `.set` lands on a Map nothing has read yet and the assignment is
+			// what publishes it, so there is no missed update for a reactive Map to catch. Both writers of `singers` —
+			// here and the `queue:sync` branch above — replace it wholesale, so a `SvelteMap` would only add a second
+			// dependency layer under a `$state` that is already re-read on every reassignment.
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
 			singers = new Map(singers).set(e.singer.id, e.singer);
 		}
 		if (e.type === 'singer:left') {

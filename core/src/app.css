@@ -71,6 +71,25 @@
 	--radius-btn: 10px;
 	--radius-xs: 4px;
 	--radius-pill: 999px;
+	/* THE REST OF TAILWIND'S RADIUS NAMESPACE, CLAIMED. ALIASES ONTO THE RUNGS ABOVE, NEVER NEW VALUES, so the rule
+	   heading this block still holds. `tailwindcss/theme.css` declares all eight radius keys in `@theme default` and
+	   every `rounded-*` utility resolves `var(--radius-<key>)`, so the rungs above — unlayered, therefore ahead of
+	   layer(theme) — were already Encore's while lg/xl/2xl/3xl/4xl went on painting Tailwind's 8/12/16/24/32px. The card
+	   is where that showed: `.encore-card` holds the box at --radius-sm 12px while Card.Header's `rounded-t-xl` and
+	   Card.Footer's `rounded-b-xl` resolved Tailwind's 0.75rem, and the two agreed ONLY because 0.75rem happens to also
+	   be 12px. NOT A LADDER — --radius-md (16px) already outgrew Tailwind's xl (12px) — so each key takes the value its
+	   call sites already paint instead of renumbering them, which is why --radius-xl must stay --radius-sm: Card.Header,
+	   Card.Footer, a card's first/last <img> and Drawer.Content's sheet edge all resolve it, and any other value draws
+	   their corners off the card's own outline. Measured on /stats, unchanged either way: card 12px, header 12px 12px 0
+	   0, footer 0 0 12px 12px. `rounded-lg`'s only consumer is Empty.Media's 40px tile, which has no call site yet, and
+	   2xl/3xl/4xl have none at all — nothing in the shipped app moves. The point is the NEXT vendored component to spell
+	   one, which can no longer leak a radius this app never chose. 3xl and 4xl collapse onto --radius because the app's
+	   ladder ends there; a sixth value to give them their own would be the bug the rule above names. */
+	--radius-lg: var(--radius-btn);
+	--radius-xl: var(--radius-sm);
+	--radius-2xl: var(--radius-md);
+	--radius-3xl: var(--radius);
+	--radius-4xl: var(--radius);
 	/* ELEVATION AS A LADDER, because one value cannot express two heights: a row resting in a list and a sheet floating
 	   over the whole page were both wearing the same 30px shadow, so nothing read as nearer than anything else.
 	   `--shadow` STAYS THE NAME OF THE TOP RUNG — four files already spell it, and they are all the floating tier — so

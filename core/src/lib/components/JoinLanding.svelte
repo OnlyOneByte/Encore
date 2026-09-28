@@ -255,17 +255,18 @@
 		line-height: inherit;
 		transform-origin: left top;
 		transform: translate(calc(50cqw - 50%), 0) scale(1);
-		transition: transform var(--motion-base);
 	}
 	/* Flush on the gutter, up into the reserved band by exactly `--tap`, its own height. The scale factor is a
 	   RATIO, because CSS cannot divide one length by another — the effective type is still a ladder step. */
 	.brand-bar {
 		transform: translate(0, calc(-1 * var(--tap))) scale(0.667);
 	}
-	/* Reduce Motion: the mark is already in its end position on the flip, which is what an authored declaration buys. */
-	@media (prefers-reduced-motion: reduce) {
+	/* THE FLIGHT ITSELF, opt-in rather than declared-then-reset: under Reduce Motion the mark is already in its end
+	   position, which is what an authored declaration buys — and with nothing declared there is no reset for a later
+	   rule to out-cascade and fly the wordmark at someone who asked for no motion. */
+	@media (prefers-reduced-motion: no-preference) {
 		.brand {
-			transition: none;
+			transition: transform var(--motion-base);
 		}
 	}
 	/* Left-aligns the LEDE under the wordmark; the mark itself is already on the gutter in both states. */

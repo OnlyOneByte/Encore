@@ -110,9 +110,10 @@ keyframes utility cannot honour Reduce Motion. Nine of the migrated components s
 
 Live motion is allowed when it is declared CSS on a composited property. `progress.svelte` transitions
 `transform` only — never `width` — which is why both process bars drove a `scaleX`/`translateX` rather
-than resizing. `skeleton` and `spinner` declare their animation **inside**
+than resizing. `progress`, `skeleton` and `spinner` all declare their motion **inside**
 `@media (prefers-reduced-motion: no-preference)`, so motion is opt-in and there is no reset that can
-lose the cascade.
+lose the cascade. `progress` was the odd one out — it reset with `transition: none` under `reduce`, one
+declaration a later rule could out-cascade while its two directory siblings had nothing to out-cascade.
 
 ## 5. Preflight is OFF, so a component cannot assume the reset ran
 

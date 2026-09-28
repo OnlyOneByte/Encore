@@ -33,7 +33,11 @@ Two consequences a change has to respect:
 
 The `@theme` bridge has its own two rules. **Every bridge key must be spelled differently from the `:root`
 token it forwards** (`--spacing-sm: var(--space-sm)`), because an entry that names itself resolves to nothing
-and paints nothing, silently — that is why `--radius-*` is absent. And **no player hue may be registered
+and paints nothing, silently — that is why `--radius-*` is absent. The radius namespace is owned from `:root`
+instead: all eight of Tailwind's `--radius-*` keys are declared there, unlayered and therefore ahead of
+`layer(theme)`, so a vendored `rounded-xl` paints Encore's 12px. Owning only some of them is the trap — five
+leaked Tailwind's own values until `rounded-t-xl` on `Card.Header` was found agreeing with the card's
+`--radius-sm` purely because 0.75rem is also 12px. And **no player hue may be registered
 there**: minting is all-or-nothing per namespace, so a colour hands out `text-<hue>` alongside `bg-<hue>`, and
 the ink-versus-fill split is per-stop across the palette registry. The shadcn semantic layer IS registered, so
 a vendored component works unedited, and the ink direction is banned by name in app source instead.
@@ -44,7 +48,7 @@ Naming traps that have all bitten at least once:
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | a named t-shirt width (`max-w-sm`, `w-xs`)                        | resolves through the bridged SPACING namespace and collapses to a few pixels               |
 | a numeric spacing utility (`p-2`, `gap-6`)                        | resolves against Tailwind's own multiplier, off this app's scale                           |
-| a named radius or leading key                                     | resolves against Tailwind's default scale, not the app's                                   |
+| a named leading key (`leading-snug`)                              | resolves against Tailwind's default scale, not the app's                                   |
 | an app class named after a utility (`block`, `underline`, `ring`) | inherits the utility's declarations wherever a vendored component caused one to be emitted |
 
 Every width in a vendored component is therefore an arbitrary value, which resolves through no namespace;
@@ -126,7 +130,11 @@ consults the media query. Tailwind's motion utility NAMES are banned for the sam
 authored CSS, and the rules are:
 
 - It lives inside `@media (prefers-reduced-motion: no-preference)`. Opt-in is preferred over
-  declared-then-reset, because there is then no reset to lose the cascade to.
+  declared-then-reset, because there is then no reset to lose the cascade to. `reduce` therefore survives in
+  exactly ONE stylesheet in the tree — `NowPlayingDrawer`, for the inline-style reason in the last bullet — so a
+  second CSS `reduce` block is a defect and not a style choice. A JS read of `reduce` (`MediaQuery`/`matchMedia` in
+  `VisualizerStage`, `tv/+page.svelte`, `tv/phrases.ts`) is a different mechanism and stays: those cancel a frame
+  loop or pick a still, which no declaration can express.
 - Only `transform`, `opacity`, `background`, `color` and `box-shadow` may be animated. Revealing a control is a
   LAYOUT change and is not transitionable, so a reveal has to be stated in `transform` alone, with distances as
   token arithmetic — nothing may read geometry.
@@ -441,6 +449,17 @@ memory, with no request — the whole ready list is there, because the shelf and
 also the one thing keeping the two fields distinguishable, so the page STATES it: the `N of M songs` count line
 is the only element that says this box hides rows rather than fetching them. Two fields that looked alike and did
 opposite things would be a worse problem than the reachability one this page fixes.
+
+**Costing nothing is not the same as costing nothing to render.** The filter is debounced 150ms — the home field's
+number exactly — and the list renders `LIBRARY_PAGE` (60) rows at a time behind a `Show N more` control. Measured at
+390×844 under a 4× CPU throttle with 2000 ready songs: the full list was 40,125 DOM nodes and 4.6s before the first
+row was usable, the first two letters of a query blocked the main thread for 634ms and 427ms, and the backspace that
+widened the list again blocked it for 3.4s; one page is 1,328 nodes and 0.9s, with keystrokes at 85ms then ~31ms. The
+debounce holds `appliedQuery`, never `query`, so the box still echoes instantly and only the rows wait, and
+`clearFilters` cancels the pending timer or a cleared filter re-applies itself 150ms later. The window is a DOOR
+and never a cap — `/library` is where the shelf's `See all` leads, so a row it would not show is a song you own
+with nowhere left to reach it — and it resets to one page WITH THE ROWS rather than with the keystroke, so a
+revealed list is not truncated under a filter that has not landed yet.
 
 Matching folds through `foldForMatch` — NFD, marks stripped, punctuation collapsed to a space, so "beyonce"
 reaches "Beyoncé" and "dc" still reaches "AC/DC" (deleting punctuation instead would weld that to "acdc").

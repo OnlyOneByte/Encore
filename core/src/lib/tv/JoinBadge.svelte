@@ -108,9 +108,13 @@
 		flex-direction: column;
 		align-items: center;
 	}
-	/* Breathes, so it reads as a live invitation rather than a static poster. */
-	.hero .qr {
-		animation: breathe 4s ease-in-out infinite;
+	/* Breathes, so it reads as a live invitation rather than a static poster. OPT-IN, not declared-then-reset: a
+	   pulsing TV element is exactly what Reduce Motion is for, and an `animation: none` reset is a declaration a
+	   later rule can out-cascade — an animation never declared cannot come back. */
+	@media (prefers-reduced-motion: no-preference) {
+		.hero .qr {
+			animation: breathe 4s ease-in-out infinite;
+		}
 	}
 	@keyframes breathe {
 		0%,
@@ -119,12 +123,6 @@
 		}
 		50% {
 			transform: scale(1.03);
-		}
-	}
-	/* A pulsing TV element is exactly what this setting is for. */
-	@media (prefers-reduced-motion: reduce) {
-		.hero .qr {
-			animation: none;
 		}
 	}
 

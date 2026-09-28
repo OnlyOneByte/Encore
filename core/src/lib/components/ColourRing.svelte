@@ -189,7 +189,6 @@
 		display: grid;
 		place-items: center;
 		transform: rotate(var(--cr-a)) translateY(calc(-1 * var(--cr-r))) rotate(calc(-1 * var(--cr-a)));
-		transition: transform var(--motion-fast);
 	}
 	.cr-knob::after {
 		content: '';
@@ -203,9 +202,11 @@
 			0 0 0 calc(var(--tap) / 16) var(--bg),
 			0 0 0 calc(var(--tap) / 8) var(--ink);
 	}
-	@media (prefers-reduced-motion: reduce) {
+	/* OPT-IN, not declared-then-reset: a `transition: none` reset is a declaration a later rule can out-cascade,
+	   and then the knob glides for someone who asked for no motion. Reduced, it is simply AT the new hue. */
+	@media (prefers-reduced-motion: no-preference) {
 		.cr-knob {
-			transition: none;
+			transition: transform var(--motion-fast);
 		}
 	}
 	/* HOLLOW, so a taken colour reads as taken rather than as a second selection: the page colour filled and
