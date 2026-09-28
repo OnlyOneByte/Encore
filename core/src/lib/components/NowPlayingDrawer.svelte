@@ -267,8 +267,14 @@
 			<!-- vaul's REAL Handle, not a decorative bar: its click handler is what cycles the snap points for a tap. -->
 			<Drawer.Handle />
 			<!-- `onexpand` IS THE ONLY WAY IN WITHOUT A POINTER: vaul's Handle is an aria-hidden div with no role. It
-				TOGGLES because nothing else can collapse the sheet by tap. NO `expanded` PROP MAY GO WITH IT — a prop that
-				changes after mount re-runs the size bindings above, which throw on the mount rung. -->
+				TOGGLES because nothing else can collapse the sheet by tap, so it has to SAY which way it goes: it is the whole
+				AT path to the transport, the keycaps and the guiding track, and with no state on it a press made a large region
+				appear or disappear while announcing nothing — with `.np-fit` below `inert` when collapsed, so exploring could
+				not find it either. `expanded` IS A GETTER AND NEVER A BOOLEAN: it keeps sheet state out of this subtree's prop
+				VALUES, compiling to one `set_attribute` beside `aria-label`, exactly as `inert` does below. `!bodyHidden` and
+				not `=== SNAP_OPEN` so this attribute and `inert` have exactly ONE truth between them and can never contradict
+				each other: both then move together through a re-seat's `null` (measured: a resize while collapsed writes
+				true,false), whereas `=== SNAP_OPEN` would flicker AGAINST `inert` on every content-height re-seat while open. -->
 			<NowPlayingBand
 				title={title}
 				artist={artist}
@@ -281,6 +287,7 @@
 				onrestart={onrestart}
 				onskip={onskip}
 				onexpand={() => (activeSnapPoint = activeSnapPoint === SNAP_OPEN ? SNAP_BAND : SNAP_OPEN)}
+				expanded={() => !bodyHidden}
 			/>
 		</div>
 		<!-- `.np-fit` EXISTS TO BE MEASURED — snap 1's content cap needs the height of everything below the band row.

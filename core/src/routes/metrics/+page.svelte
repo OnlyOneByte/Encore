@@ -350,6 +350,13 @@
 </section>
 
 <style>
+	/* Gaps and pads on this page stay in rem for the same reason /stats' do: the --space-* ladder is flat px, so tokenising
+	   them would freeze the spacing while the rem type they separate keeps growing. The one value here with a token twin is
+	   the 1rem gap, and sweeping the root font-size the way text-only zoom does is what shows the trap: at 100% `1rem` and
+	   `var(--space-2xl)` both compute 16px, so the rem spelling reads as an oversight; at 200% the rem gap tracks
+	   --ph-text-base to 32px while the token stays frozen at 16px, so gap-to-type holds at 1.00 in rem and halves to 0.50
+	   tokenised. The smaller values (0.6rem, 0.15rem, 0.8rem) are off-scale and have no token at all.
+	   See docs/FRONTEND.md#tokens-and-which-may-never-carry-text. */
 	.metrics {
 		display: grid;
 		/* minmax(0, 1fr), never the implicit `auto`: a track sizes to its widest child, so an 8-column table wider than the

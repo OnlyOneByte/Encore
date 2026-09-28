@@ -263,6 +263,14 @@
 					<Icon name="sparkle" />
 				</Button>
 			{:else}
+				<!-- ARIA-DISABLED, NEVER `disabled`, and the keyboard is the reason: the optimistic add flips `inQueue` in the
+					SAME frame as the press, and every browser blurs a focused element the instant it becomes disabled. So Enter on
+					`+` dropped focus to `<body>` and every add after the first needed a pointer to get back — three adds off one
+					search cost three focus resets. It also gives `actionLabel` somewhere to land: that string is the only place the
+					row says "Already in the queue", or why a name-match row can never be sung, and a `disabled` button is out of
+					the tab order, so on a phone the sentence was unreachable. Nothing is lost visually — `data-row-state` below
+					paints both dead states — and Playwright counts `aria-disabled` as disabled, so the probes that poll
+					`isDisabled()` for "the add landed" still read it. -->
 				<Button
 					variant="iconReady"
 					size="icon"
@@ -270,8 +278,13 @@
 					data-row-state={inQueue ? 'queued' : !processable ? 'unavailable' : undefined}
 					aria-label={actionLabel}
 					title={actionLabel}
-					disabled={inQueue || !processable}
-					onclick={() => onadd?.()}
+					aria-disabled={inQueue || !processable || undefined}
+					onclick={() => {
+						// The GUARD is what `disabled` used to do: an aria-disabled button still dispatches clicks, so without this
+						// the queued row would add a second turn for one song and the unavailable row would queue an unsingable one.
+						if (inQueue || !processable) return;
+						onadd?.();
+					}}
 				>
 					{#if inQueue}<Icon name="check" />{:else}<Icon name="plus" />{/if}
 				</Button>
@@ -304,11 +317,13 @@
 		border-color: var(--line-tint);
 	}
 
-	/* 84×47 is 16:9, matching the source frame, so nothing is letterboxed or cropped. */
+	/* 84×47 is 16:9, matching the source frame, so nothing is letterboxed or cropped. It arrives as a TOKEN pair
+	   because the search skeleton has to stand in for this exact box and a second copy of the numbers is how the two
+	   drifted 40px apart — see --row-thumb-w in app.css, which also carries the narrow step-down below. */
 	.thumb {
 		position: relative;
-		width: 84px;
-		height: 47px;
+		width: var(--row-thumb-w);
+		height: var(--row-thumb-h);
 		border-radius: var(--radius-btn);
 		flex: 0 0 auto;
 		overflow: hidden;
@@ -418,6 +433,19 @@
 		/* Dimmed but still GREEN: the song is in the rotation, which is the success state. */
 		opacity: 0.7;
 	}
+	/* THE PRESS FEEDBACK HAS TO GO WITH `disabled`, AND IT LIVES ON TWO PROPERTIES. Button answers a press with
+	   `transform: scale(0.96)` (its own `[data-press='none']:active:not(:disabled)`) AND with `translate: 0 1px` (the
+	   base's `active:not-aria-[haspopup]:translate-y-px`, which Tailwind 4 emits on `translate`, never on `transform`).
+	   Both were gated on the NATIVE attribute this control no longer sets, so both dead states would answer a press with
+	   the same squeeze-and-drop the live `+` gives — tactile "it worked" for a handler that deliberately returns.
+	   Measured on /components at 390x844, pointerdown held: native-disabled moved 0px, the queued add moved 1.88px, and
+	   cancelling `transform` alone still left 1.0px, which is the whole reason `translate` is named here too. Anchored
+	   under `.row` like the three above; it beats Button's scale rule on specificity and the translate utility by being
+	   unlayered against a layered one. */
+	.row :global([data-slot='button'][aria-disabled='true']:active) {
+		transform: none;
+		translate: none;
+	}
 	/* NOT-PROCESSABLE MUST NOT WEAR "GO" CLOTHES: `disabled` alone leaves a dimmed GREEN button, which reads as
 	   "queued" rather than "impossible". Neutralising the border and ink is what separates the two states. */
 	.row :global([data-slot='button'][data-row-state='unavailable']) {
@@ -426,13 +454,10 @@
 		opacity: 0.65;
 	}
 
-	/* Below the narrow breakpoint the full-size thumbnail starves the title and truncates away the version
-	   marker this row exists to show, so the frame gives 20px back and the title gains a third line. */
+	/* Below the narrow breakpoint the title gains a third line, because the version marker this row exists to show is
+	   what a two-line clamp eats here. The frame's own 20px step-down moved to the --row-thumb-* tokens, so the search
+	   skeleton takes it at the same width instead of staying 84px while the row goes to 64px. */
 	@media (max-width: 380px) {
-		.thumb {
-			width: 64px;
-			height: 36px;
-		}
 		.t {
 			-webkit-line-clamp: 3;
 			line-clamp: 3;

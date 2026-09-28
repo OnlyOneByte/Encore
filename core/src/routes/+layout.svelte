@@ -12,7 +12,6 @@
 		type LyricsCandidate,
 		type SongProfile
 	} from '$lib/contract';
-	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
 	import { room } from '$lib/stores/room';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 
@@ -91,7 +90,17 @@
 	   `role=phone` socket on /tv. `connect()` is idempotent, so re-running on any navigation within the phone
 	   surfaces is a no-op rather than a second socket. */
 	$effect(() => {
-		if (isPhoneSurface) void room.connect();
+		if (!isPhoneSurface) return;
+		void room.connect();
+		/* WARMED HERE, not left to the `{#await}` below, because the band IS the transport. The drawer is a dynamic
+		   import (see the render site), so a guest who hard-loads a phone surface and then joins would wait on a
+		   201.72 kB / 57.97 kB gzip fetch before any control appeared — and the service worker cannot cover that,
+		   because it installs AFTER the first load, which is the only load a guest at a party has. This fetch is
+		   non-blocking and starts after hydration, so the join screen loses no paint and no interactivity, and the
+		   `import()` below then resolves from the module cache. Gated on `isPhoneSurface` rather than `showBand` so
+		   /tv, /admin, /metrics and /components still never see the bytes: measured, it costs the shared baseline
+		   0.14 kB and /tv nothing at all. */
+		void import('$lib/components/NowPlayingDrawer.svelte');
 	});
 
 	/* `positionSec` arrives on a broadcast, not a frame, so the ring extrapolates between them. BOTH READS STAY INSIDE
@@ -152,30 +161,44 @@
 
 <!-- The band is the drawer's snap point 0; its height returns through `bind:bandH`, keeping one writer. -->
 {#if showBand}
-	<NowPlayingDrawer
-		bind:bandH={dockH}
-		title={title}
-		artist={artist}
-		singerName={singerName}
-		singerColor={singerColor}
-		profile={profile}
-		keyShift={keyShift}
-		keyShiftEnabled={keyShiftEnabled}
-		guideServerPct={guideServerPct}
-		guideEnabled={guideEnabled}
-		elapsedSec={livePos}
-		durationSec={durationSec}
-		isPlaying={isPlaying}
-		hasSong={hasSong}
-		canStart={canStart}
-		mediaId={mediaId}
-		candidates={candidates}
-		chosenRef={chosenRef}
-		overrideRef={overrideRef}
-		onrestart={() => room.command({ cmd: 'restart' })}
-		ontoggleplay={() => room.command({ cmd: isPlaying ? 'pause' : 'play' })}
-		onskip={() => room.command({ cmd: 'skip' })}
-		onkey={(semitones) => room.command({ cmd: 'key', semitones })}
-		onguide={(level) => room.command({ cmd: 'guide', level })}
-	/>
+	<!-- A DYNAMIC IMPORT, NOT A STATIC ONE, because a static import in the ROOT layout is a tax every route pays.
+		NowPlayingDrawer is 582 lines and drags in `vaul-svelte`; imported at the top of this file it landed in node 0's
+		chunk, which /tv, /admin and /metrics all downloaded and PARSED while rendering no band at all. Measured with
+		`bun run build` as the transitive static-import closure of the client shell plus node 0: the shared baseline
+		every surface pays fell 54.6% raw / 51.2% gzip (22 files to 11), and /tv's whole first load fell 46% raw / 42%
+		gzip — on the machine in the room with the least RAM, which renders no band. The deferred closure is 201.72 kB
+		raw / 57.97 kB gzip: the drawer chunk plus vaul-svelte and bits-ui.
+		Deferring is safe, not free. `showBand` needs `me`, which only `onMount` sets, so this subtree NEVER rendered
+		during SSR and there is no hydration to lose; `--dock-h` is already seeded at 72px by the effect above, so
+		every scrolling column reserves the dock before the drawer lands; and the chunk is in `$service-worker`'s
+		`build` list, so from the second load on it resolves from the precache. The FIRST load of a joined phone is
+		the one that would pay a real fetch for the transport, which is why the effect above warms it. -->
+	{#await import('$lib/components/NowPlayingDrawer.svelte') then { default: NowPlayingDrawer }}
+		<NowPlayingDrawer
+			bind:bandH={dockH}
+			title={title}
+			artist={artist}
+			singerName={singerName}
+			singerColor={singerColor}
+			profile={profile}
+			keyShift={keyShift}
+			keyShiftEnabled={keyShiftEnabled}
+			guideServerPct={guideServerPct}
+			guideEnabled={guideEnabled}
+			elapsedSec={livePos}
+			durationSec={durationSec}
+			isPlaying={isPlaying}
+			hasSong={hasSong}
+			canStart={canStart}
+			mediaId={mediaId}
+			candidates={candidates}
+			chosenRef={chosenRef}
+			overrideRef={overrideRef}
+			onrestart={() => room.command({ cmd: 'restart' })}
+			ontoggleplay={() => room.command({ cmd: isPlaying ? 'pause' : 'play' })}
+			onskip={() => room.command({ cmd: 'skip' })}
+			onkey={(semitones) => room.command({ cmd: 'key', semitones })}
+			onguide={(level) => room.command({ cmd: 'guide', level })}
+		/>
+	{/await}
 {/if}

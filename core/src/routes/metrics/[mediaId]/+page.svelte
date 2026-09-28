@@ -234,6 +234,13 @@
 </section>
 
 <style>
+	/* Gaps and pads on this page stay in rem for the same reason /stats' do: the --space-* ladder is flat px, so tokenising
+	   them would freeze the spacing while the rem type they separate keeps growing. Four values here have token twins —
+	   1rem (--space-2xl), 0.75rem (--space-lg), 0.5rem (--space-sm), 0.25rem (--space-2xs) — and sweeping the root font-size
+	   the way text-only zoom does is what shows the trap: at 100% each pair computes identically, and at 200% the 1rem gap
+	   tracks --ph-text-md (14.4px → 28.8px) to 32px while --space-2xl stays frozen at 16px, so gap-to-type holds at 1.11 in
+	   rem and falls to 0.56 tokenised. See docs/FRONTEND.md#tokens-and-which-may-never-carry-text. */
+
 	/* Capped below the shell: this is a timeline of short rows, and at full desktop width a row's two ends stop reading
 	   as a pair. */
 	.audit {

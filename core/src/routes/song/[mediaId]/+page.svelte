@@ -34,28 +34,45 @@
 		sync();
 		const stop = room.subscribe(sync);
 		void room.connect();
-		void load();
 		return stop;
 	});
 
-	async function load() {
+	/* AN EFFECT, NOT `onMount`, and that is a bug fix rather than a preference — the same trap `+layout.svelte`
+	   documents above its `connect()`. A client-side navigation from one song to another REUSES this component, so
+	   the `onMount` fetch never ran a second time and the PREVIOUS song's key, range and lyric candidates stayed on
+	   screen under the new URL. Measured at 390x844 on the built app: arriving at a second song page left the
+	   heading and the artist reading the FIRST song and fired exactly ONE `/api/audit/` request — permanently, with
+	   no spinner to say so. That path is one tap and it is the only route here: the drawer's details button lives in
+	   the root layout, so it is still on this page, and it re-targets as the television advances. `mediaId` is read
+	   HERE and passed in rather than read inside `load()`, so the dependency sits at the effect site where it can be
+	   seen — an `await` added in front of the fetch would otherwise silently unkey it. */
+	$effect(() => {
+		void load(mediaId);
+	});
+
+	async function load(id: string) {
 		loading = true;
 		loadError = null;
+		// A 404 is an ANSWER — the id is simply not a song this server knows — so it leaves `row` null and `failed`
+		// unset, and the empty state says so. Only a thrown error is a failed load.
+		let row: Media | null = null;
+		let failed: string | null = null;
 		try {
-			const res = await fetch(`/api/audit/${encodeURIComponent(mediaId)}`);
-			if (res.status === 404) {
-				// Not an error: the id is simply not a song this server knows. The empty state says so.
-				media = null;
-				return;
-			}
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			media = (await res.json()).media ?? null;
+			const res = await fetch(`/api/audit/${encodeURIComponent(id)}`);
+			if (res.ok) row = (await res.json()).media ?? null;
+			else if (res.status !== 404) throw new Error(`HTTP ${res.status}`);
 		} catch {
-			loadError = "Couldn't load this song.";
-			toast.error(loadError, { duration: 4000 });
-		} finally {
-			loading = false;
+			failed = "Couldn't load this song.";
 		}
+		/* ONE GUARDED COMMIT, because two navigations can resolve out of order: a response for the song we LEFT
+		   landing on this one is the same wrong-song-under-this-URL defect the effect above fixes, and clearing
+		   `loading` from a superseded run would show the stale body instead of the skeleton. Measured: a 1500ms
+		   response for the song we left, arriving after a 100ms one for the song we are on, is discarded. */
+		if (id !== mediaId) return;
+		media = row;
+		loadError = failed;
+		loading = false;
+		if (failed) toast.error(failed, { duration: 4000 });
 	}
 
 	const display = $derived(songDisplay(media ?? undefined));

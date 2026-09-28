@@ -46,9 +46,13 @@
 	.encore-skel[data-variant='line-short'] {
 		width: 55%;
 	}
+	/* THE LIST-ROW VIDEO FRAME, read from the tokens the row's own `.thumb` reads (app.css --row-thumb-*, including the
+	   narrow arm) and never restated: this variant stands in for that box and nothing else, and while it carried its own
+	   44px square the placeholder was 40px narrower and 3px shorter than the 84×47 frame that replaced it — so every
+	   search result shoved its text column 38px right on arrival, x=103 to x=141, measured at 390px. */
 	.encore-skel[data-variant='thumb'] {
-		width: 44px;
-		height: 44px;
+		width: var(--row-thumb-w);
+		height: var(--row-thumb-h);
 		flex: none;
 		border-radius: var(--radius-btn);
 	}

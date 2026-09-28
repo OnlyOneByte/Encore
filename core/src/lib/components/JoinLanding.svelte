@@ -207,8 +207,11 @@
 		</div>
 	{/if}
 
-	<!-- ONE CTA slot for both panes, docked to the BOTTOM by `.submit-slot`'s auto margin, which rides above the
-		on-screen keyboard only because `app.html` sets the interactive-widget mode. -->
+	<!-- ONE CTA slot for both panes, docked to the bottom by an auto margin AND by `position: sticky` — see the rule.
+		The auto margin alone is inert in exactly the case it used to be credited with: measured at 320 wide this column
+		is 573px against a 308px viewport (568 less a 260px keyboard), so there is no free space left for a margin to
+		consume and the button's static position lands at y=598, 290px below the fold. `app.html`'s interactive-widget
+		mode shrinks the layout viewport, which is what the sticky offset then measures against. -->
 	<div class="submit-slot">
 		<!-- The disabled reason exists in text for assistive tech (SC 3.3.2) but is ANNOUNCED, not printed. The element
 			and its live region stay; only the painting stops. -->
@@ -361,10 +364,31 @@
 		flex-direction: column;
 		gap: var(--space-2xl);
 	}
+	/* STICKY AS WELL AS AUTO-MARGINED, because the auto margin is inert in exactly the case that needs it: with the
+	   keyboard up this column is TALLER than the viewport, so there is no free space left for an auto margin to
+	   consume and the CTA docks to the bottom of the DOCUMENT instead. Measured on the identity pane at 320 wide:
+	   the column is 573px against a 308px viewport (568 less a 260px keyboard, which is what
+	   `interactive-widget=resizes-content` shrinks it to), and the button's static position lands at y=598 — 290px
+	   below the fold, so the app's one button is off screen while the guest types into the field that opened the
+	   keyboard. Sticky pins it just above the keyboard instead.
+	   It costs NOTHING where the column fits: a bottom inset only ever pulls a sticky box back toward the
+	   scrollport, never past its static position, and the button measured to the same pixel at 390x844, 360x740,
+	   430x932 and 1024x768 with this rule on and off.
+	   No `env(safe-area-inset-bottom)` term. `.app-shell` already carries that as padding for the resting case,
+	   which is the case where this rule does nothing, and iOS reports the bottom inset as 0 while the keyboard —
+	   the thing being cleared here — is up, so a second term would only double the gap.
+	   THE FILL IS REQUIRED, not decoration: with nothing behind it the colour ring scrolls straight through a
+	   sticky surface, the defect `PageHeader` records at the other edge. The band above it is a box-shadow rather
+	   than padding because padding is LAYOUT — 8px of it moved the button 8px down on the >=768 column, whose
+	   `margin-top` is a fixed length with no auto margin to absorb it. */
 	.submit-slot {
 		margin-top: auto;
 		display: flex;
 		flex-direction: column;
+		position: sticky;
+		bottom: 0;
+		background: var(--bg);
+		box-shadow: 0 calc(-1 * var(--space-sm)) 0 var(--bg);
 	}
 	@media (min-width: 768px) {
 		:global(.app-shell:has(.join-main)) {

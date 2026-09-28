@@ -26,7 +26,12 @@
 	reorder, so the index IS their stable identity. -->
 <div class="skels" role="status" aria-busy="true" aria-label={label}>
 	{#each Array.from({ length: count }, (_, i) => i) as i (i)}
-		<div class="skel-row">
+		<!-- THE ROW'S GEOMETRY IS COMPOSED, NEVER RE-DECLARED. A local copy of `.card` + `.list-row` stood here and had
+			drifted off both: `padding: 12px 14px` against the row's 11px 12px, so every bar sat 2px further inside the
+			row than the text that replaced it, and no `box-shadow` at all, so the placeholder read as a flat outline while
+			the arriving rows read as lit objects. Neither shared rule carries hover or state colour — SongRow keeps those
+			in its own file — so there is nothing here a placeholder must avoid inheriting. -->
+		<div class="card list-row">
 			<Skeleton variant="thumb" />
 			<div class="skel-text">
 				<Skeleton />
@@ -41,18 +46,8 @@
 		display: flex;
 		flex-direction: column;
 	}
-	/* The row's own surface, matching `.card` + `.list-row` geometry so the placeholder occupies what the real row
-	   will. Declared rather than composed from those primitives, because a skeleton takes no hover or state colour. */
-	.skel-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-lg);
-		padding: var(--space-lg) var(--space-xl);
-		margin-bottom: var(--space-sm);
-		border-radius: var(--radius-sm);
-		background: var(--card);
-		border: 1px solid var(--line);
-	}
+	/* Two bars in the space the row gives its title and byline. The ROW's box is not described here at all — see the
+	   composed classes on the element above, and the thumb variant, which reads the row frame's own tokens. */
 	.skel-text {
 		flex: 1;
 		display: flex;
