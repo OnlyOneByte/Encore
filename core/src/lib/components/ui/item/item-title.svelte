@@ -18,7 +18,7 @@
 			   and `.flex` is emitted later in the built stylesheet, so the clamp loses every time. Item.Title lays out as a flex
 			   row and does not clamp, so truncation belongs on the text element itself. Item.Description carries `line-clamp-2`
 			   and NO `flex`, so its clamp is live — do not match them up. */
-		'gap-2 text-sm leading-snug font-medium underline-offset-4 flex w-fit items-center',
+		'gap-2 text-[length:var(--ph-text-md)] leading-snug font-medium underline-offset-4 flex w-fit items-center',
 		className
 	)}
 	{...restProps}

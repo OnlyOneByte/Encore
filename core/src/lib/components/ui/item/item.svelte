@@ -8,9 +8,9 @@
 		base: 'group/item flex w-full items-center outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
 		variants: {
 			variant: {
-				default: 'rounded-md border border-transparent text-sm',
-				outline: 'rounded-md border border-border text-sm',
-				muted: 'rounded-md border border-transparent bg-muted/50 text-sm',
+				default: 'rounded-md border border-transparent text-[length:var(--ph-text-md)] leading-app-normal',
+				outline: 'rounded-md border border-border text-[length:var(--ph-text-md)] leading-app-normal',
+				muted: 'rounded-md border border-transparent bg-muted/50 text-[length:var(--ph-text-md)] leading-app-normal',
 				bare: ''
 			},
 			size: {

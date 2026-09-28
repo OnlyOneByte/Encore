@@ -8,6 +8,6 @@
 <TabsPrimitive.Content
 	bind:ref={ref}
 	data-slot="tabs-content"
-	class={cn('text-sm flex-1 outline-none', className)}
+	class={cn('text-[length:var(--ph-text-md)] leading-app-normal flex-1 outline-none', className)}
 	{...restProps}
 />

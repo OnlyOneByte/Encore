@@ -180,10 +180,12 @@
 		color: var(--warn);
 		font-size: var(--ph-text-sm);
 	}
-	/* Dimmed by token, never by an ancestor opacity. */
+	/* Dimmed by token, never by an ancestor opacity. And --danger-ink, NOT the --warn three rules up: `.offline-note`
+	   really does self-heal on the next backoff tick, a song that would not load does not, and one colour for both told a
+	   guest to relax about the only thing on this page they had to act on. */
 	.load-error {
 		margin: 0 0 var(--space-md);
-		color: var(--warn);
+		color: var(--danger-ink);
 		font-size: var(--ph-text-sm);
 	}
 	/* Surface, radius and border come from .card in app.css. */

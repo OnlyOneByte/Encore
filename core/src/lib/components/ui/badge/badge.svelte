@@ -68,7 +68,7 @@
 		font-size: 0.65rem;
 		font-weight: 600;
 		padding: var(--space-3xs) 7px;
-		border-radius: 999px;
+		border-radius: var(--radius-pill);
 		border: 1px solid var(--line);
 		background: var(--card2);
 		color: var(--ink-dim);

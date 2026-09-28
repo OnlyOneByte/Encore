@@ -76,6 +76,12 @@
 	   `--shadow` STAYS THE NAME OF THE TOP RUNG — four files already spell it, and they are all the floating tier — so
 	   adding the ladder renames nothing. A fourth rung is a bug, not a decision, on the `--radius` rule's reasoning. */
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+	/* THE MIDDLE RUNG IS DECLARED BUT UNREAD, labelled here so the next reader neither deletes it as dead nor spends
+	   the search twice. No rule in src spells it, and it is NOT reached through Tailwind either: a shadow utility
+	   INLINES its value rather than reading this key — measured in the built stylesheet, `.shadow-xs` compiles to
+	   `--tw-shadow:0 1px 2px 0 var(--tw-shadow-color,#0000000d)` and never `var(--shadow-xs)`. So it is a well-formed
+	   rung of the ladder rather than a live value, exactly as `--tv-joinurl` below. Giving it its first caller — the
+	   drawer's sheet, which wears the floating rung at BOTH snaps — is a VISUAL ruling that needs a before/after. */
 	--shadow-md: 0 4px 14px rgba(0, 0, 0, 0.38);
 	--shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.45);
 	--shadow: var(--shadow-lg);

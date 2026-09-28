@@ -46,8 +46,10 @@
 		outline: 2px solid var(--focus);
 		outline-offset: 2px;
 	}
+	/* --danger, matching input.svelte's invalid border and the vendored controls' `border-destructive`; --warn is the
+	   self-healing tone and a rejected value is not that. */
 	.encore-textarea[aria-invalid='true'] {
-		border-color: var(--warn);
+		border-color: var(--danger);
 	}
 	.encore-textarea:disabled {
 		cursor: not-allowed;

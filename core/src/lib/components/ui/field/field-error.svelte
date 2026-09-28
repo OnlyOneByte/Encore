@@ -38,7 +38,7 @@
 		bind:this={ref}
 		role="alert"
 		data-slot="field-error"
-		class={cn('text-sm text-destructive font-normal', className)}
+		class={cn('text-[length:var(--ph-text-md)] leading-app-normal text-destructive font-normal', className)}
 		{...restProps}
 	>
 		{#if children}

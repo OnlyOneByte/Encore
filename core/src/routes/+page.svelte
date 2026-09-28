@@ -102,6 +102,15 @@
 		return () => {
 			stopMirror();
 			stopErrors();
+			/* THE SEARCH DEBOUNCE DIES WITH THE COLUMN. 150 ms is easy to leave inside — typing, then tapping a
+			   shelf row or the `/library` door — and an uncleared timer fires `/api/search` from a component
+			   that is already gone: measured at one full abandoned request per mid-debounce departure. That is
+			   a resolver fan-out (`?source=all` spawns a yt-dlp subprocess, median 1628 ms against ytmusic's
+			   459 ms) which also MATERIALIZES AND PERSISTS every hit, for rows no longer mounted to render
+			   them. Aborting `inflight` drops the one already in the air for the same reason; /api/search does
+			   not read `request.signal`, so that half reclaims the client only. */
+			clearTimeout(debounceTimer);
+			inflight?.abort();
 		};
 	});
 

@@ -122,6 +122,38 @@ shadcn component is written expecting `box-sizing: border-box`, zeroed margins a
 **margins and list styles are not zeroed** — supply what the component needs in its own classes, and
 do not re-add the global import to get it — that import is the one-liner §3 bans.
 
+## 6. The type scale here is the app's, written the long way
+
+Every font-size in this directory reads a `--ph-text-*` rung as `text-[length:var(--ph-text-md)]`.
+**28** Tailwind size utilities used to live here — 21 of them `text-sm`, whose `0.875rem` is on neither
+app ladder. The `font: inherit` move into `@layer base` is what made them start mattering: unlayered,
+that reset beat every font-size Tailwind emits on `button`/`input`/`select`/`textarea`, so `<Button>`'s
+`text-sm` was dead on a `<button>` and live on an `<a>`. Measured on a `<button>` in `/components`
+after the move: **14px**, so this is newly visible. The map is
+`text-xs`→`--ph-text-xs` and `text-base`→`--ph-text-base` **exactly**, `text-sm`→`--ph-text-md`
+(14 → 14.4px) and `text-lg`→`--ph-text-lg` (18 → 17.6px). `--ph-text-md` is the rung `.encore-empty`
+already declares for itself, so the vendored body size and the app's now agree.
+
+**It must be `text-[length:…]`, never the `text-ph-md` utility `@theme inline` mints.** `cn()` is a
+stock `twMerge`, whose font-size group recognises only t-shirt sizes and arbitrary values, so
+`text-ph-md` lands in the text-**COLOUR** group instead — and the collision is silent and total:
+`twMerge('mt-4 text-ph-md text-muted-foreground')` returns `mt-4 text-muted-foreground`. The size is
+**deleted**, on the nine files here that pair a size with a colour. The same misclassification stops a
+caller's `text-lg` from overriding it. The arbitrary form is grouped correctly in both directions.
+This is why `--text-ph-*` in `@theme` emits nothing and has no call site — leave it as the ladder's
+record, but do not "tidy" a class string into it.
+
+The `leading-app-*` beside each size is not decoration. Tailwind's `text-sm` sets a line-height too,
+and nothing sets one on `body` — it computes to `normal`. Swapping the size alone would retighten every
+wrapped description here from a 20px line box to 17px. The rung is the nearest app one to what
+Tailwind emitted: `leading-app-normal` (1.45) for the 1.4286 that rode `text-sm`, `leading-app-loose`
+(1.6) for `text-lg`'s 1.5556 — that one reproduces the old 28px line box to within **0.16px** and is a
+line-box match, not a typographic opinion. The six sites that already declared a `leading-*` keep it
+and take the bare size. `button` and `chart-container` take none: the former is `whitespace-nowrap`
+inside a fixed height, the latter's text is SVG.
+
+This is the one deviation **not** recorded per file, because it is identical in all 22.
+
 ---
 
 ## Adding the next component
