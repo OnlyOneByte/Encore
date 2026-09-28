@@ -124,3 +124,49 @@ test('playing arms a repeating timer, and the teardown stops it', async () => {
 test('the tick period is once a second, not a frame', () => {
 	expect(PLAYHEAD_TICK_MS).toBe(1000);
 });
+
+// ── why the anchor must be re-captured on resume ─────────────────────────────────────────────────
+//
+// `drawPosition` is pure and correct; the defect this pins is the CALLER'S dependency set, which no pure
+// function can be handed and — as docs/FRONTEND.md#a-dependency-set-is-not-a-value says of the only
+// reactivity defect this tree has shipped twice — no unit test can check directly. What CAN be pinned is
+// the arithmetic that makes a stale anchor catastrophic rather than merely imprecise, so the next person to
+// write one of these effects can see the size of the mistake.
+//
+// The shape: a paused <audio> fires no `ontimeupdate`, so `positionSec` stops arriving and an anchor
+// captured in an effect reading only `positionSec` freezes at the last pre-pause tick. The rAF/interval
+// that writes `nowMs` DOES read `playing`, so it restarts on resume — and the gap between the two is the
+// entire pause.
+
+test('a stale anchor adds the WHOLE pause to the drawn position on resume', () => {
+	const positionSec = 42;
+	const pausedAtMs = 100_000;
+	const pauseLengthMs = 30_000;
+
+	// Resumed: the clock restarted, but the anchor is still the moment playback stopped.
+	const stale = drawPosition({
+		positionSec,
+		playing: true,
+		anchoredAtMs: pausedAtMs,
+		nowMs: pausedAtMs + pauseLengthMs
+	});
+	expect(stale).toBe(positionSec + pauseLengthMs / 1000); // 72s — thirty seconds ahead of the song
+
+	// Re-anchored on the same resume: the drawn position is the authoritative one, and only then creeps.
+	const fresh = drawPosition({
+		positionSec,
+		playing: true,
+		anchoredAtMs: pausedAtMs + pauseLengthMs,
+		nowMs: pausedAtMs + pauseLengthMs
+	});
+	expect(fresh).toBe(positionSec);
+});
+
+test('the error is unbounded in the pause length, which is what makes it a defect and not drift', () => {
+	const at = (pauseMs: number) =>
+		drawPosition({ positionSec: 10, playing: true, anchoredAtMs: 0, nowMs: pauseMs }) - 10;
+	expect(at(1_000)).toBe(1);
+	expect(at(60_000)).toBe(60);
+	// A TV left paused through a conversation and resumed is minutes, not a rounding error.
+	expect(at(600_000)).toBe(600);
+});
