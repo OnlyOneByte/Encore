@@ -1,5 +1,26 @@
 # THE PLAN — Encore UI
 
+> **STATUS, updated as work lands on `ui/review`.** Items below are marked as they are fixed. Every fix was
+> re-measured in headless Chromium at the width or in the state where the defect actually bites — the numbers
+> in each entry are before/after, not estimates.
+>
+> **Done:** N1 (search field 4px → 63/128/158px), N2 (`min-h-tap`; verified 115 buttons, shortest 44px, none
+> under the floor), N3 (phantom dock: join screen 100px → 28px padding, `/tv` clean), N4 (offline pill
+> overflow: `scrollWidth` 334 → 320), N5 (service worker no longer tees media; 9 new tests), N7 (search
+> announces to the live region), N9 (drawer handle 1.09:1 → 3.32:1), N10 (heading semantics on zero-states),
+> N11 (TV lyric reel re-anchors on resume — third site of the documented anchor defect), W4 (one card
+> surface — verified identical on all four properties), plus the unlayered `font: inherit` the critic found
+> (moved to `@layer base`; `<button>` 14.4px → 14px, matching `<a>`), plus the `/components` gallery now
+> rendering all 24 primitives in pairs — which is the instrument that verified W4 and N2.
+>
+> **Not done, and the next ones worth taking:** N6 and N8 (`aria-disabled` instead of `disabled` so adding a
+> song and arrow-reordering are not single-use for a keyboard), N12 (`/song/[mediaId]` shows the previous
+> song under the new URL), W1 (lazy-load `NowPlayingDrawer` out of the shared baseline), W2 (`/library`
+> renders every song unbounded), W5/W6 (radius and type scale in the vendored tree). The count mismatch
+> ("Show all 13" → a 4-row shelf → "See all 12" → `/library` says 13) still needs a decision on which count
+> is canonical.
+
+
 ## Verdict (5 sentences)
 
 The written layer of this codebase is better than the code in most shipped products: `app.css` argues for every token it declares, `docs/FRONTEND.md` names the defects the repo has already shipped and the rule each one produced, and the authored components genuinely hold that line — `ColourRing` derives every dimension from `--tap`, the focus-ring architecture beats Tailwind's `outline-none` with a plain unlayered selector list, 49 of 49 `{#each}` blocks are keyed, all 14 icon-only buttons carry `aria-label`, and every ink/surface pair I had measured comes in above AA. The TV is the most competently engineered surface: a `vh`-rooted rem ladder that doubles cleanly 720p→4K, one composited transform for the lyric reel, a pure `drawPosition` so a throttled rAF cannot decay the playhead. The single biggest weakness is that **the phone home's primary control is unusable on a real phone**: three unshrinkable siblings in `.find-row` leave the search input measured at 4–12px wide at 320–390px, with the clear `×` painting over the source picker — and that picker is the known-bad raw `<select>`, which is the *cause*, not a coincidence. Behind it sits one structural theme, repeated by four independent lenses: **a decision made once and never generalised** — `identity` got the tap floor and `default` didn't, `.card` got the lit edge and `Card.Root` didn't, `+layout.svelte` fixed the anchor-effect bug and `LyricsOverlay` didn't, `/library` wrote down the `$state.raw` rule and `/` ignored it. Nothing here is rotten; almost everything on this list is a five-line generalisation of a fix the repo has already made and documented.
