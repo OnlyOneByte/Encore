@@ -89,8 +89,18 @@
 	let anchoredAt = 0;
 	let now = $state(0);
 	$effect(() => {
-		// Re-anchor whenever the authoritative position ticks in, so the sweep never drifts far.
+		/* Re-anchor whenever the authoritative position ticks in, so the sweep never drifts far — AND whenever
+		   `playing` flips, which is the whole of docs/FRONTEND.md#a-dependency-set-is-not-a-value and the third
+		   site of the only reactivity defect this tree has shipped twice.
+		   Why `void playing` is load-bearing here: a paused <audio> fires no `ontimeupdate`, so `positionSec`
+		   stops arriving and this anchor freezes at the last pre-pause tick. The rAF effect below DOES read
+		   `playing`, so on resume it restarts and writes a fresh `now` — and `drawPosition` then returns
+		   `positionSec + (now - anchoredAt)/1000`, which is the position plus THE WHOLE PAUSE. Pause the TV for
+		   thirty seconds and the lyric reel flew thirty seconds ahead of the song on resume.
+		   The rule the other two sites settled on: capture the anchor in an effect that reads every signal it
+		   depends on, which makes a stale anchor unrepresentable rather than merely unlikely. */
 		void positionSec;
+		void playing;
 		anchoredAt = performance.now();
 		now = anchoredAt;
 	});
