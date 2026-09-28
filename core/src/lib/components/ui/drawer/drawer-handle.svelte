@@ -21,6 +21,16 @@
 	   Tailwind class, because the hit-area rule subtracts it from --tap and a literal there drifts the centring. */
 	:global([data-slot='drawer-handle']) {
 		height: var(--space-xs);
+		/* THE ONE SIGNPOST THAT THE BAND OPENS, and it was invisible. `bg-muted` aliases `--card2` (#212133)
+		   over a `--card`-derived sheet (#1a1a28): measured 1.09:1, against SC 1.4.11's 3:1 floor for a
+		   non-text control boundary. This 6px bar is the only affordance saying the band can be pulled up to
+		   reach the transport, the +/- semitone caps and the guiding track, so at party brightness the whole
+		   drawer read as a fixed strip — which wasted every bit of the careful --tap hit-area arithmetic below
+		   it, since nothing told a guest there was anything to grab.
+		   38% measures 3.32:1: over the floor, and deliberately short of --ink-dim's 6.27:1, because a handle
+		   that reads as bright as body text reads as a control. The `bg-muted` class is left in the list above
+		   so the next re-vendor diff still shows what the registry ships. */
+		background: color-mix(in srgb, var(--ink) 38%, transparent);
 	}
 	:global([data-slot='drawer-handle'] [data-vaul-handle-hitarea]) {
 		display: block;

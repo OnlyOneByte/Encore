@@ -178,7 +178,7 @@
 				<Empty.Root>
 					<div class="lib-empty">
 						<Empty.Header>
-							<Empty.Title>No karaoke tracks yet</Empty.Title>
+							<Empty.Title role="heading" aria-level={2}>No karaoke tracks yet</Empty.Title>
 							<Empty.Description>Search from the queue screen and we'll make one.</Empty.Description>
 						</Empty.Header>
 						<Button variant="secondary" size="tap" href="/">
