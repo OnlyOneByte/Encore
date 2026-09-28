@@ -119,6 +119,16 @@
 	   and would pad the TV's stage by a band it has not got. See docs/FRONTEND.md#the-band-and---dock-h. */
 	let dockH = $state(72);
 	$effect(() => {
+		/* GATED ON THE SAME VALUE THE BAND IS GATED ON, and the effect has to READ it to re-run when it flips.
+		   Without this read the write was unconditional, so every surface that renders no band still reserved
+		   one. Measured at 320x568 before the gate: the JOIN screen published `--dock-h: 72px` and took 100px
+		   of `main` padding-bottom — 17.6% of the visible viewport, below which the app's first and only
+		   button sits — and `/tv` published it too, which is the exact hazard the teardown comment below
+		   describes ("would pad the TV's stage by a band it has not got"); the teardown alone could not
+		   prevent it, because it runs on unmount rather than when `showBand` goes false.
+		   Returning early is sufficient BECAUSE of that teardown: when `showBand` flips, this effect re-runs,
+		   the previous run's cleanup removes the property, and `var(--dock-h, 0px)` falls back to 0. */
+		if (!showBand) return;
 		document.documentElement.style.setProperty('--dock-h', `${dockH}px`);
 		return () => {
 			document.documentElement.style.removeProperty('--dock-h');

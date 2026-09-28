@@ -205,10 +205,23 @@
 			rawResults = j.results ?? [];
 			processingResults = j.processing ?? [];
 			room.mergeMedia([...readyResults, ...rawResults, ...processingResults]);
+			/* ANNOUNCED, because the search view replaces the queue and a guest using a screen reader otherwise
+			   types, waits, and hears nothing at all: the `Searching…` skeleton's `role="status"` is
+			   conditionally INSERTED, and an element that appears already carrying its text does not announce.
+			   `/library` has had the pattern since it shipped (`<p class="count" role="status">`). The region
+			   below is `aria-atomic`, so a fast typist's superseded searches replace rather than queue.
+			   SC 4.1.3's own understanding document uses "search returned N results" as its example. */
+			const found = readyResults.length + rawResults.length + processingResults.length;
+			liveMsg =
+				found === 0
+					? `No songs found for ${q}`
+					: `${found} song${found === 1 ? '' : 's'} found for ${q} — ${readyResults.length} ready to sing`;
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
 				clearResults();
 				showError('Search failed.');
+				// The toast is visual only; the same failure has to reach the region a screen reader is on.
+				liveMsg = 'Search failed.';
 			}
 		} finally {
 			if (inflight === ctrl) searching = false;
@@ -618,7 +631,12 @@
 							title beside it already says this in words. -->
 					<span class="empty-mark" aria-hidden="true"><Icon name="mic" /></span>
 					<Empty.Header>
-						<Empty.Title>Nothing queued yet</Empty.Title>
+						<!-- `Empty.Title` renders a <div>, so a zero-state's headline carried no heading SEMANTICS — and the
+							 zero-state branches REPLACE every `<h2 class="grouphead">` on this column, so on a first run the
+							 only heading in the whole document was the wordmark. A guest cycling headings to orient learned
+							 nothing about what the app is. Added at the call site, not by re-vendoring, which is the precedent
+							 `settings/+page.svelte:388` set for `Card.Title` and recorded there. -->
+						<Empty.Title role="heading" aria-level={2}>Nothing queued yet</Empty.Title>
 						<Empty.Description>Find any song and we'll make the karaoke track for it.</Empty.Description>
 					</Empty.Header>
 					<!-- THE ACTION, IN THE STATE. It used to say "Search above", which makes a guest look away from the sentence
@@ -644,7 +662,7 @@
 				<Empty.Root>
 					<div class="queue-empty tight">
 						<Empty.Header>
-							<Empty.Title>Nothing Queued</Empty.Title>
+							<Empty.Title role="heading" aria-level={2}>Nothing Queued</Empty.Title>
 						</Empty.Header>
 					</div>
 				</Empty.Root>
@@ -739,7 +757,7 @@
 						 "nothing is on the way", which is what this sentence claims. -->
 				<Empty.Root>
 					<Empty.Header>
-						<Empty.Title>No karaoke tracks yet.</Empty.Title>
+						<Empty.Title role="heading" aria-level={2}>No karaoke tracks yet.</Empty.Title>
 						<Empty.Description>Search above for a song and we'll make one.</Empty.Description>
 					</Empty.Header>
 				</Empty.Root>
