@@ -1385,7 +1385,7 @@
 		max-width: 60vw;
 		padding: 0.7em 1.4em;
 		border: 0;
-		border-radius: 999px;
+		border-radius: var(--radius-pill);
 		cursor: pointer;
 		color: var(--ink);
 		text-align: center;

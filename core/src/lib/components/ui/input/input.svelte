@@ -76,8 +76,11 @@
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 		padding: 7px var(--space-md);
 	}
+	/* --danger, the same token the vendored checkbox, switch and button already spend on `aria-invalid` through
+	   `border-destructive`: a rejected value does not self-heal, so amber here drew /settings' join address in the
+	   reconnecting colour while the refusal beneath it was red. */
 	.encore-field[aria-invalid='true'] {
-		border-color: var(--warn);
+		border-color: var(--danger);
 	}
 	.encore-field:focus-visible {
 		outline: 2px solid var(--focus);

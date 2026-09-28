@@ -11,7 +11,7 @@
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
-	import { SNAP_BAND, OPEN_CONTENT_SLACK_PX, openSnapFraction } from '$lib/sheet-snap';
+	import { BAND_SNAP_PX, SNAP_BAND, OPEN_CONTENT_SLACK_PX, openSnapFraction } from '$lib/sheet-snap';
 	import { songFacts } from '$lib/song-facts';
 	import { isAuthoritativeText, lyricsSourceLabel, type LyricsCandidate, type SongProfile } from '$lib/contract';
 
@@ -89,6 +89,23 @@
 	let fitH = $state(0);
 	const contentH = $derived(fitH > 0 ? bandH + fitH + OPEN_CONTENT_SLACK_PX : 0);
 	const SNAP_OPEN = $derived(openSnapFraction(viewportH, contentH));
+
+	/* HOW MUCH SHEET THERE IS BELOW THE BAND AT SNAP 1, which the body must scroll within. Snap 1 is capped and
+	   the body is not, and the content box is 100dvh TRANSLATED DOWN — so an over-tall body runs off the bottom of
+	   the SCREEN rather than overflowing a box. Measured in Chromium at 844×390, a phone turned sideways: snap 1
+	   landed 176px down (OPEN_HEADROOM_PX, the binding cap), leaving 214px of sheet and 126px of it under the band
+	   for a 337px body — both ± semitone keycaps rendered at y=392..436 of a 390px viewport, the range picture and
+	   the lyrics badge below them, unreachable at any scroll.
+	   `openSnapFraction` IS CALLED WITHOUT `contentH` ON PURPOSE: that argument comes from `fitH`, which this
+	   number would then bound, so passing it would size the box from its own height. The cap alone is still a safe
+	   ceiling — where content is the smaller of the two, the sheet is exactly as tall as the content and this
+	   max-height never binds. `none` until the mount measures the viewport, so an unmeasured body is full height
+	   rather than a 0px box. The vendored content's 1px `border-t` also sits above the strip, so at full scroll the
+	   box ends one pixel under the fold; deliberately not subtracted, because a border width owned by a Tailwind
+	   class in a copy-in file is wrong the moment it is re-vendored, and one pixel of the last row is not a control. */
+	const bodyMaxH = $derived(
+		viewportH > 0 ? `${Math.floor(openSnapFraction(viewportH) * viewportH - BAND_SNAP_PX)}px` : 'none'
+	);
 
 	/* A RE-SEAT'S SECOND HALF, shared by the content-height and the resize paths below. Both must CLEAR
 	   `activeSnapPoint` first, because vaul's lazy watch only acts on a change, and both must land the new value a
@@ -276,7 +293,8 @@
 				asserts a header renders below the band slot. Zero-height, so it costs no space. -->
 			<Drawer.Header class="np-head"></Drawer.Header>
 
-			<div class="np-body">
+			<!-- The scroll height arrives as an ATTRIBUTE and not a `class:`, the mount rung's rule for this subtree. -->
+			<div class="np-body" style="--np-body-max-h: {bodyMaxH}">
 				{#if progress !== null}
 					<!-- `aria-hidden` IS ON THE TIMES, NEVER THE ROW: the clocks are restated in words elsewhere, but the `···`
 						is the app's only route to the song page. Time REMAINING on the right answers "when am I up?". -->
@@ -452,8 +470,19 @@
 		padding: 0;
 		gap: 0;
 	}
+	/* THE ONE SCROLLER IN THE SHEET, and the height comes from JS because the cap it mirrors is JS arithmetic on
+	   vaul's snap value (see `bodyMaxH`); a CSS copy of OPEN_HEADROOM_PX would be a second place for that number to
+	   be wrong. `overscroll-behavior` because the sheet is non-modal: without it the last flick of this list
+	   scrolls the QUEUE behind it. The drag is untouched — vaul's `shouldDrag` short-circuits on `.np-fit`'s
+	   `data-vaul-no-drag` BEFORE it walks up looking for a scrolled ancestor, and the handle lives in
+	   `.band-slot`, outside this box, so the pull-down still starts there. Measured: a touch pan inside a
+	   scroller nested in vaul's `[data-vaul-drawer] { touch-action: none }` moves it (121px of a 120px gesture),
+	   so no `touch-action` override belongs here. */
 	.np-body {
 		padding: 0 var(--space-2xl);
+		max-height: var(--np-body-max-h, none);
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 	/* THE DOOR, as the seek row's last item. `flex: 0 0 auto` so the bar keeps taking the width; the negative
 	   right margin is the optical pull that lines the glyph up with the column edge, not the button's box. */

@@ -9,7 +9,7 @@
 	bind:ref={ref}
 	data-slot="alert-dialog-title"
 	class={cn(
-		'cn-font-heading text-lg font-medium sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
+		'cn-font-heading text-[length:var(--ph-text-lg)] leading-app-loose font-medium sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
 		className
 	)}
 	{...restProps}

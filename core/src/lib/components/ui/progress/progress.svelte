@@ -51,11 +51,16 @@
 		background: var(--grad);
 		border-radius: inherit;
 		transform-origin: left center;
-		transition: transform 200ms ease-out;
 	}
-	@media (prefers-reduced-motion: reduce) {
+	/* Motion is OPT-IN, the same form `skeleton` and `spinner` use — see the registry README's motion rule. This was a
+	   `transition` on the rule above plus a `reduce` reset, which honours the preference only for as long as the reset
+	   stays LAST: any later rule that restates `transition` on this fill — a caller's `:global`, or a re-vendor
+	   appending to this block — silently re-animates it for a guest who asked for no motion, and nothing reds.
+	   Declaring it inside the query leaves no reset to lose. A bar that jumps straight to its value is a fine resting
+	   state, as the static ring is for `spinner`. */
+	@media (prefers-reduced-motion: no-preference) {
 		.encore-bar-fill {
-			transition: none;
+			transition: transform 200ms ease-out;
 		}
 	}
 </style>

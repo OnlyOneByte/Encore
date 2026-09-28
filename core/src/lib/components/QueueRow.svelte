@@ -92,21 +92,32 @@
 						variant is where `cursor: grab` and the `touch-action: none` the drag needs are declared, and the cursor must
 						live on this control and never on a row. IT IS ALSO THE NON-DRAG PATH — Arrow Up/Down while it has focus moves
 						the row one place and commits, which is SC 2.5.7's single-pointer alternative and SC 2.1.1's keyboard
-						operability. Withheld while a move is unconfirmed: a second reorder against a position the server has not
-						agreed to issues an op for an index that no longer means what the guest saw. -->
-				{#if grip && !pending}
+						operability. A second reorder against a position the server has not agreed to is DECLINED IN THE HANDLERS
+						and never by withholding the button: this `{#if}` used to read `grip && !pending`, which removed the grip the
+						guest had just pressed, and a removed element takes focus to `<body>` with it. Measured — one ArrowDown moved
+						the row and left `document.activeElement` as BODY, so the second press reordered nothing and a second move
+						meant tabbing in from the top of the document again. `aria-disabled` announces the decline; the real `disabled`
+						attribute would blur the button and reintroduce the same defect. -->
+				{#if grip}
 					<Button
 						variant="ghost"
 						size="icon"
 						press="grab"
 						aria-label="Reorder — drag, or use arrow keys"
 						aria-keyshortcuts="ArrowUp ArrowDown"
+						aria-disabled={pending ? 'true' : undefined}
 						data-grip={gripId}
-						onpointerdown={(e) => ongripdown?.(e)}
+						onpointerdown={(e) => {
+							if (pending) return;
+							ongripdown?.(e);
+						}}
 						onkeydown={(e) => {
 							if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 							// The list owns what a step means; this only stops the page scrolling under the guest while they use it.
 							e.preventDefault();
+							// The decline that `!pending` on the block above used to make by deletion. `preventDefault` first, so an
+							// unconfirmed row does not answer the press by scrolling the grip out from under the guest instead.
+							if (pending) return;
 							onnudge?.(e.key === 'ArrowUp' ? -1 : 1);
 						}}><Icon name="grip" /></Button
 					>

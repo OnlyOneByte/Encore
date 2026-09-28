@@ -36,7 +36,7 @@
 	bind:this={ref}
 	data-chart={chartId}
 	data-slot="chart"
-	class={cn('encore-chart-container', 'w-full text-xs', className)}
+	class={cn('encore-chart-container', 'w-full text-[length:var(--ph-text-xs)]', className)}
 	{...restProps}
 >
 	<ChartStyle id={chartId} config={config} />

@@ -201,9 +201,8 @@
 	const resolvedHighlight = $derived(getLyricsHighlight(resolved.highlight)?.label.toLowerCase() ?? resolved.highlight);
 	const resolvedBall = $derived(resolved.ball !== 'off');
 
-	/** Optimistic, then reconciled on the authoritative response; a refused write rolls back. */
+	/** Optimistic, then reconciled on the authoritative response; a refused write rolls back its OWN fields only. */
 	async function patch(scope: 'global' | 'room', body: Record<string, unknown>) {
-		const before = committed;
 		settings =
 			scope === 'global'
 				? { ...settings, global: { ...settings.global, ...body } }
@@ -219,7 +218,15 @@
 			settings = await res.json();
 			committed = settings;
 		} catch {
-			settings = before;
+			/* Only the fields THIS write sent go back, and to what the server holds NOW — every other field keeps whatever
+			   landed while this request was in flight. Restoring a whole pre-request snapshot silently undid a CONCURRENT
+			   write: flip two toggles, the second is accepted, the first is refused, and the refusal put the accepted toggle
+			   back too, so a setting the server has stored reads as off. */
+			const restored = Object.fromEntries(Object.entries(committed[scope]).filter(([field]) => field in body));
+			settings =
+				scope === 'global'
+					? { ...settings, global: { ...settings.global, ...restored } }
+					: { ...settings, room: { ...settings.room, ...restored } };
 			failed = true;
 		}
 	}
@@ -436,7 +443,7 @@
 								taken={[]}
 							/>
 
-							{#if profileError}<p class="warn" role="alert">{profileError}</p>{/if}
+							{#if profileError}<p class="err" role="alert">{profileError}</p>{/if}
 
 							<!-- The only control here with an explicit commit: a name is typed, so it saves on purpose. -->
 							<div class="save-slot">
@@ -887,7 +894,7 @@
 							<Field.Description id="join-origin-hint"
 								>Empty means <strong>{data.joinOriginFallback}</strong>.</Field.Description
 							>
-							{#if joinError}<p class="warn" role="alert">{joinError}</p>{/if}
+							{#if joinError}<p class="err" role="alert">{joinError}</p>{/if}
 							{#if joinSchemeMismatch}
 								<p class="warn">This party runs over plain http — phones cannot open an https address.</p>
 							{/if}
@@ -1052,10 +1059,21 @@
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 	}
+	/* ADVISORY ONLY — a cost, a no-op, a heads-up. A REFUSAL takes `.err` below and never this rule. */
 	.warn {
 		margin: var(--space-xs) 0 0;
 		font-size: var(--ph-text-xs);
 		color: var(--warn);
+	}
+	/* --danger-ink, because --warn is the transient self-healing tone six advisories on this page already wear
+	   ("~45 minutes per song on CPU"): a rejected profile save and a rejected join address were painted that same amber,
+	   so a guest could not tell a hint from the one thing they had to act on. This is the ink the rest of the app
+	   spends on a failure — `.err[role=alert]` on the join screen, the destructive Alert at the top of this page —
+	   and the box is `.warn`'s to the pixel, so swapping the class moves nothing. */
+	.err {
+		margin: var(--space-xs) 0 0;
+		font-size: var(--ph-text-xs);
+		color: var(--danger-ink);
 	}
 
 	/* States what is behind the door, so it does not have to be opened to be read. */

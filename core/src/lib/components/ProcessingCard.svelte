@@ -102,20 +102,26 @@
 					that rolled one and jumped the other reads as broken. Keyed on the number, so a change swaps the element. -->
 			<Item.Media>
 				<!-- THE GRIP LEADS THE ROW, deliberately identical to QueueRow's: these two kinds sit in ONE list, and a card
-						you cannot pick up beside rows you can reads as broken rather than different. Withheld while a move is unconfirmed. -->
-				{#if grip && !pending}
+						you cannot pick up beside rows you can reads as broken rather than different. An unconfirmed move is DECLINED IN
+						THE HANDLERS, not by withholding the button — same defect and same fix as QueueRow's, see the note there. -->
+				{#if grip}
 					<Button
 						variant="ghost"
 						size="icon"
 						press="grab"
 						aria-label="Reorder — drag, or use arrow keys"
 						aria-keyshortcuts="ArrowUp ArrowDown"
+						aria-disabled={pending ? 'true' : undefined}
 						data-grip={gripId}
-						onpointerdown={(e) => ongripdown?.(e)}
+						onpointerdown={(e) => {
+							if (pending) return;
+							ongripdown?.(e);
+						}}
 						onkeydown={(e) => {
 							if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 							// The list owns what a step means; this only stops the page scrolling under the guest while they use it.
 							e.preventDefault();
+							if (pending) return;
 							onnudge?.(e.key === 'ArrowUp' ? -1 : 1);
 						}}><Icon name="grip" /></Button
 					>
