@@ -1,25 +1,36 @@
 # THE PLAN — Encore UI
 
-> **STATUS, updated as work lands on `ui/review`.** Items below are marked as they are fixed. Every fix was
-> re-measured in headless Chromium at the width or in the state where the defect actually bites — the numbers
-> in each entry are before/after, not estimates.
+> **STATUS — all 22 remaining items resolved on `ui/review`.** Each was implemented by a dedicated agent
+> that read the cited code and ran the gates, then adversarially re-verified by a second agent against the
+> tree. Every fix was re-measured where a measurement settles it.
 >
-> **Done:** N1 (search field 4px → 63/128/158px), N2 (`min-h-tap`; verified 115 buttons, shortest 44px, none
-> under the floor), N3 (phantom dock: join screen 100px → 28px padding, `/tv` clean), N4 (offline pill
-> overflow: `scrollWidth` 334 → 320), N5 (service worker no longer tees media; 9 new tests), N7 (search
-> announces to the live region), N9 (drawer handle 1.09:1 → 3.32:1), N10 (heading semantics on zero-states),
-> N11 (TV lyric reel re-anchors on resume — third site of the documented anchor defect), W4 (one card
-> surface — verified identical on all four properties), plus the unlayered `font: inherit` the critic found
-> (moved to `@layer base`; `<button>` 14.4px → 14px, matching `<a>`), plus the `/components` gallery now
-> rendering all 24 primitives in pairs — which is the instrument that verified W4 and N2.
+> **Landed (first pass):** N1 search field 4px → 142px at 320px · N2 `min-h-tap` (verified 115 buttons,
+> shortest 44px) · N3 phantom dock 100px → 28px · N4 overflow 334 → 320 · N5 service worker stops teeing
+> media (+9 tests) · N7 search announces · N9 drawer handle 1.09:1 → 3.32:1 · N10 heading semantics ·
+> N11 TV reel re-anchors on resume · W4 one card surface · the unlayered `font: inherit` → `@layer base`
+> (`<button>` 14.4px → 14px) · the `/components` gallery rendering all 24 primitives in pairs.
 >
-> **Not done, and the next ones worth taking:** N6 and N8 (`aria-disabled` instead of `disabled` so adding a
-> song and arrow-reordering are not single-use for a keyboard), N12 (`/song/[mediaId]` shows the previous
-> song under the new URL), W1 (lazy-load `NowPlayingDrawer` out of the shared baseline), W2 (`/library`
-> renders every song unbounded), W5/W6 (radius and type scale in the vendored tree). The count mismatch
-> ("Show all 13" → a 4-row shelf → "See all 12" → `/library` says 13) still needs a decision on which count
-> is canonical.
-
+> **Landed (second pass):** N6 · N8 · N12 · N13 · N14 · N15 · N16 · N17 · N18 · W1 (drawer out of the
+> baseline: 54.6% raw / 51.2% gzip, 22 files → 11) · W2 · W3 · W5 · W6 (26 sites) · W7 · W8 · W9 (all but
+> one hunk) · W11 · W12 (12/13 hunks) · W13 · W14 · plus the library-count unification.
+>
+> **NOT landed, deliberately — two, each with a reason:**
+> * **W10 was rejected.** Its patch lowered the 440px column floor to `min(440px, (100% - gap)/2)`, giving
+>   two 339px tracks at 768px, and its own comment admitted this "overturns DELIBERATE NO 9". That entry
+>   exists because a reviewer already argued for it once: the 440 is measured and a narrower column
+>   truncates every title. A 23% cut below a measured floor is not for one agent's argument to overturn,
+>   and the verifier agreed the patch should be rejected if the floor stands. **The single-column stretch
+>   at 768–1199px is therefore still open** — the honest options are to centre the single track rather than
+>   stretch it (keeps the floor, keeps the margins) or to accept shorter titles. Owner's call.
+> * **W9's last hunk** expects a `<div class="lib-empty tight">` wrapper inside /library's `Empty.Root`
+>   that exists in neither direction of the tree; there is nothing to match and inventing it would be
+>   writing markup no verifier saw.
+>
+> **Verified live** at 320/360/390px on `/`, `/library`, `/settings` and on `/tv` at 720p/1080p/1440p/4K:
+> zero horizontal overflow, zero text-entry controls under the 16px iOS floor, no JS errors, TV root font
+> scaling 20px → 58.32px with geometry tracking it. Gates: 2097 tests pass, 0 type errors, 0 lint errors
+> (warnings 20 → 18, N18). The two 18.39px `/settings` switches are not defects — each sits in a 44px
+> `<label>`, the sanctioned hit-area pattern already in the measured gate's waiver registry.
 
 ## Verdict (5 sentences)
 
