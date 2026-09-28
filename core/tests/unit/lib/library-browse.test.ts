@@ -5,6 +5,8 @@ import {
 	browseLibrary,
 	libraryShelf,
 	LIBRARY_SHELF,
+	libraryWindow,
+	LIBRARY_PAGE,
 	foldForMatch,
 	libraryArtist,
 	queryTerms,
@@ -213,6 +215,31 @@ test('hidden is 0 at and below the cap, which is what hides the door', () => {
 	for (const n of [0, 1, 3, 4]) {
 		const rows = Array.from({ length: n }, (_, i) => song(`01H0000${i}`, `S${i}`));
 		expect(libraryShelf(rows)).toEqual({ shown: rows, hidden: 0 });
+	}
+});
+
+// ── the /library window ──────────────────────────────────────────────────────
+// The route holds only `revealed`; the arithmetic that decides whether the reveal control exists lives here, because
+// a page that hides a song you own and offers no control is the one failure this window may never produce.
+
+test('the window renders one page and reports the rest, which is what puts the control on screen', () => {
+	const rows = Array.from({ length: LIBRARY_PAGE + 7 }, (_, i) => song(`01H${String(i).padStart(5, '0')}`, `S${i}`));
+	const first = libraryWindow(rows, LIBRARY_PAGE);
+	expect(first.shown).toHaveLength(LIBRARY_PAGE);
+	expect(first.hidden).toBe(7);
+	// One more tap exhausts it, and `hidden: 0` is what removes the control rather than leaving it promising nothing.
+	expect(libraryWindow(rows, LIBRARY_PAGE * 2)).toEqual({ shown: rows, hidden: 0 });
+});
+
+test('the window never hides a row it cannot account for, at any revealed count', () => {
+	const rows = Array.from({ length: 25 }, (_, i) => song(`01H${String(i).padStart(5, '0')}`, `S${i}`));
+	// -1 INCLUDED: `slice(0, -1)` counts from the END, so an unclamped window would drop the last row and report
+	// `hidden: 1` for a row it had actually rendered — the one arrangement that could strand a song silently.
+	for (const revealed of [-1, 0, 1, 24, 25, 60]) {
+		const { shown, hidden } = libraryWindow(rows, revealed);
+		expect(shown).toEqual(rows.slice(0, shown.length));
+		expect(shown.length + hidden).toBe(rows.length);
+		expect(hidden).toBeGreaterThanOrEqual(0);
 	}
 });
 

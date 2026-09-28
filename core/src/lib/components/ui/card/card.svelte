@@ -4,8 +4,10 @@
   chart sizes its card to the chart's full scroll width and overflows the document horizontally. Safe on
   every card — min-width only participates when the box is a flex or grid item.
 
-  WHY THE SURFACE MOVED. The registry's own look ran on Tailwind's theme keys — `rounded-xl` (app.css
-  declares no `--radius-xl`, so it fell through to Tailwind's), `shadow-xs`, and `ring-1 ring-foreground/10`
+  WHY THE SURFACE MOVED. The registry's own look ran on Tailwind's theme keys — `rounded-xl` (app.css declared
+  no `--radius-xl` then, so it fell through to Tailwind's; it now aliases `--radius-sm`, which is the SAME 12px
+  this rule sets, and that is a requirement rather than a coincidence: `Card.Header`'s `rounded-t-xl`, the
+  `*:[img:…]` corners below and `Card.Footer` all resolve it), `shadow-xs`, and `ring-1 ring-foreground/10`
   in place of a border — while `app.css`'s `.card` carries `--radius-sm`, a 1px `--line` border, and
   `--shadow-sm` + `inset 0 1px 0 var(--edge-hi)`, a pair whose comment says they "belong together on this
   one rule rather than per caller: a border alone made every surface in the app read as an outline drawn on

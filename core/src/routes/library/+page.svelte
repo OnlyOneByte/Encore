@@ -17,7 +17,15 @@
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import { originalKeyLabel } from '$lib/contract';
-	import { artistFacetsOf, browseLibrary, FACET_CHIP_LIMIT, tagFacetsOf, type LibrarySort } from '$lib/library-browse';
+	import {
+		artistFacetsOf,
+		browseLibrary,
+		FACET_CHIP_LIMIT,
+		LIBRARY_PAGE,
+		libraryWindow,
+		tagFacetsOf,
+		type LibrarySort
+	} from '$lib/library-browse';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
@@ -66,8 +74,38 @@
 	});
 
 	let query = $state('');
+	/* WHAT THE ROWS ARE FILTERED BY, 150ms behind the box. The field itself stays live — `query` is what the input
+	   binds, and it echoes every keystroke — but the row list is not rebuilt per keystroke. Measured at 390x844 with
+	   2000 ready songs under a 4x CPU throttle (a mid-range phone): the first two letters of a six-letter query blocked
+	   the main thread for 634ms and 427ms, and the backspace that widened the list again blocked it for 3.4 SECONDS.
+	   With this and the window below, the same keystrokes cost 85ms then ~31ms and the widening backspace 40ms.
+	   150ms is the home field's search debounce to the millisecond, so the two fields feel alike while only one of them
+	   goes anywhere. */
+	let appliedQuery = $state('');
+	let filterTimer: ReturnType<typeof setTimeout> | undefined;
 	let queryEl = $state<HTMLInputElement | null>(null);
 	let sort = $state<LibrarySort>('title');
+	/** How much of the match list is rendered. Grows on tap; back to one page whenever the match list changes, or a
+	 *  600-row DOM built up under one query would be handed straight to the next one. */
+	let revealed = $state(LIBRARY_PAGE);
+
+	/* The window resets WITH the rows and never on the keystroke: reset on input, a guest who had revealed 120 rows
+	   watched them collapse to 60 for the 150ms before the filter landed, which reads as the page dropping rows it was
+	   still showing. */
+	function applyQuery(next: string) {
+		appliedQuery = next;
+		revealed = LIBRARY_PAGE;
+	}
+	function onQueryInput() {
+		clearTimeout(filterTimer);
+		// An EMPTIED box applies at once, as on `/`: "show me everything again" must not sit behind a timer, and with
+		// the window in place restoring the full list only renders LIBRARY_PAGE rows.
+		if (!query.trim()) {
+			applyQuery('');
+			return;
+		}
+		filterTimer = setTimeout(() => applyQuery(query), 150);
+	}
 	/** One at a time, and `null` for "no facet" — the mutual exclusion /api/library imposes on ?artist/?tag. */
 	let pickedArtist = $state<string | null>(null);
 	let pickedTag = $state<string | null>(null);
@@ -78,9 +116,20 @@
 	const tagFacets = $derived(tagFacetsOf(library, libraryTags).slice(0, FACET_CHIP_LIMIT));
 
 	const rows = $derived(
-		browseLibrary({ library, tags: libraryTags, query, facet: { artist: pickedArtist, tag: pickedTag }, sort })
+		browseLibrary({
+			library,
+			tags: libraryTags,
+			query: appliedQuery,
+			facet: { artist: pickedArtist, tag: pickedTag },
+			sort
+		})
 	);
-	const filtering = $derived(query.trim().length > 0 || pickedArtist !== null || pickedTag !== null);
+	/** The window actually rendered, and what the reveal control still has behind it. */
+	const view = $derived(libraryWindow(rows, revealed));
+	/** What the ROWS reflect — the count line must never describe a query the list has not applied yet. */
+	const filtering = $derived(appliedQuery.trim().length > 0 || pickedArtist !== null || pickedTag !== null);
+	/** What is in the BOX — the clear control has to appear on the first keystroke, not 150ms after the last one. */
+	const dirty = $derived(query.trim().length > 0 || pickedArtist !== null || pickedTag !== null);
 
 	/* Built HERE rather than inline in the markup, because an inline `{#if}` across two lines puts a NEWLINE
 	   between the number and its noun — invisible on screen, but it is the element's text, so it reaches a screen
@@ -125,16 +174,27 @@
 		tags: libraryTags[m.id]
 	});
 
+	/* Every refinement resets the window: you are looking at a different list, from the top. */
 	function pickArtist(artist: string) {
 		pickedTag = null;
 		pickedArtist = pickedArtist === artist ? null : artist;
+		revealed = LIBRARY_PAGE;
 	}
 	function pickTag(tag: string) {
 		pickedArtist = null;
 		pickedTag = pickedTag === tag ? null : tag;
+		revealed = LIBRARY_PAGE;
+	}
+	function pickSort(next: LibrarySort) {
+		sort = next;
+		revealed = LIBRARY_PAGE;
 	}
 	function clearFilters() {
+		// The PENDING TIMER FIRST, or the keystroke that was still in flight re-applies the query 150ms after the
+		// clear and the control reads as having undone itself.
+		clearTimeout(filterTimer);
 		query = '';
+		applyQuery('');
 		pickedArtist = null;
 		pickedTag = null;
 		queryEl?.focus();
@@ -164,9 +224,10 @@
 					bind:element={queryEl}
 					ariaLabel="Filter your library"
 					placeholder="Filter your library…"
-					clearable={filtering}
+					clearable={dirty}
 					clearLabel="Clear the filter"
 					onclear={clearFilters}
+					oninput={onQueryInput}
 				/>
 			</div>
 
@@ -217,7 +278,7 @@
 											variant={sort === value ? 'secondary' : 'outline'}
 											size="tap"
 											aria-pressed={sort === value}
-											onclick={() => (sort = value)}
+											onclick={() => pickSort(value)}
 										>
 											{label}
 										</Button>
@@ -261,7 +322,7 @@
 				{/if}
 
 				{#if rows.length}
-					{#each rows as m (m.id)}
+					{#each view.shown as m (m.id)}
 						<SongRow
 							{...rowMeta(m)}
 							readiness="ready"
@@ -269,15 +330,29 @@
 							onadd={store ? () => addSong(m) : undefined}
 						/>
 					{/each}
+					<!-- A DOOR, not a cap: this page is where `See all` leads, so every matching song has to stay reachable —
+							it just is not all in the DOM at once. 2000 rows cost 4.6s and 40,125 nodes before the first one was
+							usable on a throttled 390x844 phone. The remaining count rides on the control so a guest can tell a
+							paused list from a finished one; focus stays on it across the tap, so the changed label is what
+							announces the reveal. -->
+					{#if view.hidden > 0}
+						<div class="reveal">
+							<Button variant="secondary" size="tap" onclick={() => (revealed += LIBRARY_PAGE)}>
+								Show {Math.min(LIBRARY_PAGE, view.hidden)} more <span class="chip-n">{view.hidden} left</span>
+							</Button>
+						</div>
+					{/if}
 				{:else}
 					<!-- Filtered to nothing. Distinct from the empty library above, and it must offer the way out: the
 							filter is the only reason these songs are hidden. -->
 					<Empty.Root>
 						<div class="lib-empty tight">
 							<Empty.Header>
+								<!-- The APPLIED query, never the live one: quoting the box would name a query these rows were
+										not filtered by for the 150ms the debounce is still holding. -->
 								<Empty.Description>
-									Nothing here matches{#if query.trim()}
-										&ldquo;{query.trim()}&rdquo;{/if}.
+									Nothing here matches{#if appliedQuery.trim()}
+										&ldquo;{appliedQuery.trim()}&rdquo;{/if}.
 								</Empty.Description>
 							</Empty.Header>
 							<Button variant="secondary" size="tap" onclick={clearFilters}>
@@ -342,6 +417,14 @@
 		margin-left: var(--space-xs);
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* The reveal control's own box, for the same reason `.field-slot` exists: spacing below the last row belongs to the
+	   page, not to a shared button. */
+	.reveal {
+		display: flex;
+		justify-content: center;
+		margin-top: var(--space-md);
 	}
 
 	/* FLEX COLUMN, not grid + place-items: the vendored `Empty.Header` is `display: contents`, so its children become

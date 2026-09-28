@@ -43,13 +43,15 @@
 		height: 100%;
 		width: 100%;
 		transform-origin: left center;
-		transition: transform var(--motion-tick) linear;
 	}
-	@media (prefers-reduced-motion: reduce) {
+	/* OPT-IN, not declared-then-reset: a `transition: none` reset under `reduce` is a declaration a later rule can
+	   out-cascade, and then the bar glides again for a viewer who asked for no motion. Reduced, the fill jumps one
+	   broadcast's worth per tick. */
+	@media (prefers-reduced-motion: no-preference) {
 		.track > i,
 		.topbar > i,
 		.edgebar > i {
-			transition: none;
+			transition: transform var(--motion-tick) linear;
 		}
 	}
 

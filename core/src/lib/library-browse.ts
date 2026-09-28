@@ -51,6 +51,25 @@ export function libraryShelf<T>(rows: T[]): { shown: T[]; hidden: number } {
 }
 
 /**
+ * Rows `/library` renders per reveal. NOT a cap — `/library` IS the `See all` the shelf's door leads to, so a row it
+ * refuses to show is a song you own with nowhere left to reach it. The window GROWS by this much per tap instead.
+ *
+ * SIXTY, measured rather than chosen, on a 390x844 phone at a 4x CPU throttle with 2000 ready songs: the whole list
+ * took 4.6s and 40,125 DOM nodes before the first row was usable, and the backspace that widened the filter again
+ * blocked the main thread for 3.4s. One page of sixty is 1,328 nodes and 0.9s. Sixty rows is also ~4300px — five
+ * screens of scrolling to reach the control, so the reveal is not friction anyone meets on a party-sized library.
+ */
+export const LIBRARY_PAGE = 60;
+
+/** The window and what is still behind the reveal control, in `libraryShelf`'s shape and here for the same reason:
+ *  the arithmetic stays provable in the unit suite. The clamp is what keeps a negative `revealed` from making `slice`
+ *  count from the END and silently drop the top of the list. */
+export function libraryWindow<T>(rows: T[], revealed: number): { shown: T[]; hidden: number } {
+	const shown = rows.slice(0, Math.max(0, revealed));
+	return { shown, hidden: rows.length - shown.length };
+}
+
+/**
  * Locale-aware and EXPLICITLY 'en' rather than the runtime default, so a test and a browser in another locale cannot
  * disagree about order. `numeric` puts "Song 2" before "Song 10"; `sensitivity: 'base'` because {@link foldForMatch}
  * has already removed the case and accents this would otherwise weigh.

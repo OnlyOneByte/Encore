@@ -247,6 +247,13 @@
 									{#if wi === ballWord && ball !== 'off'}<span class="ball {ball}" aria-hidden="true"
 											>{ball === 'underline' ? '' : '●'}</span
 										>{/if}{w.word}
+									<!--
+										The inter-word space HAS to stay a mustache. Compiled, this each body emits `</span> ` with
+										`{' '}` and `</span>` with a bare literal space, because Svelte trims whitespace at the end of a
+										block body — so the plain-space form runs every word of the line together, with no break to wrap
+										on. It also has to sit OUTSIDE `.word`, or the gap takes the `.done` fill and the ball.
+									-->
+									<!-- eslint-disable-next-line svelte/no-useless-mustaches -->
 								</span>{' '}
 							{/each}
 						{:else}
@@ -398,8 +405,9 @@
 		);
 	}
 	.reel {
-		/* The whole animation: one transform, GPU-composited, never touching layout. */
-		transition: transform 0.42s cubic-bezier(0.22, 0.9, 0.24, 1);
+		/* The whole animation is one transform, GPU-composited, never touching layout; the transition that
+		   interpolates it is declared in the opt-in block below. `will-change` is unconditional because the
+		   transform still changes every line under Reduce Motion — it jumps instead of gliding. */
 		will-change: transform;
 	}
 	.row {
@@ -466,9 +474,6 @@
 		transform: translateX(-50%);
 		font-size: 0.5em;
 	}
-	.ball.bounce {
-		animation: bounce 0.5s ease-in-out infinite alternate;
-	}
 	.ball.underline {
 		bottom: 0.42em;
 		width: 100%;
@@ -478,10 +483,11 @@
 		/* Theme-bound like the dot marker above. */
 		background: var(--accent2);
 	}
-	/* THE TWO INK SWEEPS, opt-in. `color` is animatable per the rule, so these needed a gate as much as the reel's
-	   transform below — reduced, the highlight still moves word to word, it just steps instead of fading. Separate
-	   from the `reduce` block beneath because the reel's transform is a DEGRADATION (snap, not remove) while these
-	   are simply absent. */
+	/* EVERY ANIMATION ON THIS OVERLAY, in one opt-in block — none of it is declared-then-reset, so there is no
+	   `none` reset for a later rule to out-cascade and hand motion back to a room that asked for none. `color` is
+	   animatable per the rule, so the two ink sweeps need the gate as much as the reel's transform does. What
+	   Reduce Motion gets: the highlight still moves word to word and the reel still moves line to line, both
+	   stepping instead of gliding, and `bounce` is the `steady` dot — the mark stays, only the movement goes. */
 	@media (prefers-reduced-motion: no-preference) {
 		.row {
 			transition: color 0.3s ease;
@@ -489,17 +495,13 @@
 		.word {
 			transition: color var(--motion-fast) linear;
 		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		/* Degrade to `steady` rather than removing the mark: the singer still needs the word. */
-		.ball.bounce {
-			animation: none;
-		}
 		/* The line-to-line transform slides the WHOLE full-width column — the most vestibular-triggering motion on
-		   the TV. Snapped, not removed: the row still moves, it just does not glide. */
+		   the TV, and the one this gate matters most for. */
 		.reel {
-			transition: none;
+			transition: transform 0.42s cubic-bezier(0.22, 0.9, 0.24, 1);
+		}
+		.ball.bounce {
+			animation: bounce 0.5s ease-in-out infinite alternate;
 		}
 	}
 	@keyframes bounce {
