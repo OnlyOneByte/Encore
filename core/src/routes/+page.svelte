@@ -756,11 +756,16 @@
 				{/each}
 				<!-- The LABELLED door to /library, stating the number it hides: "See all" alone gives no reason to tap, and
 						the count is the only thing here that says this shelf is a subset. Gated on rows ACTUALLY being hidden —
-						with three songs there is nothing behind it, and the door beside the field still goes there. -->
+						with three songs there is nothing behind it, and the door beside the field still goes there.
+						`library.length`, NOT `libraryRows.length`, because this control NAVIGATES and a label must promise what
+						the destination shows: /library's own header counts `library.length` too. The filtered count excludes
+						anything mid-separation, so a song being made dropped the door to "See all 12" while the page it opened
+						said 13 — three counts for one library, in two taps. A song being processed is still in your library; it
+						is just not singable this second, which is what the rows themselves say. -->
 				{#if shelf.hidden > 0}
 					<div class="showall-row">
 						<Button variant="secondary" size="tap" href="/library">
-							<Icon name="library" /> See all {libraryRows.length} songs
+							<Icon name="library" /> See all {library.length} songs
 						</Button>
 					</div>
 				{/if}
@@ -837,7 +842,7 @@
 				{#if empty.showAllCount !== null}
 					<div class="showall-row">
 						<Button variant="secondary" size="tap" onclick={clearSearch}>
-							<Icon name="mic" /> Show all {empty.showAllCount}
+							<Icon name="mic" /> Show my library
 						</Button>
 					</div>
 				{/if}

@@ -54,7 +54,12 @@ export function canProcess(m: Media, r: Readiness): boolean {
  * nothing-FOUND is the only state that warrants a sentence. */
 export interface NoRowsState {
 	message: string;
-	/** When set, the UI offers a one-tap way back to the full library (clears the search). */
+	/** When set, the UI offers a one-tap way back to the library (clears the search).
+	 *
+	 * A PRESENCE SIGNAL, and no longer a label. The control it gates clears the search, which reveals the
+	 * home column's four-row SHELF — so a label reading "Show all 13" promised rows that tap does not
+	 * produce. The number stays here because "is there anything to go back to" is exactly what the caller
+	 * needs, and callers that want the real library size read it from the same place /library does. */
 	showAllCount: number | null;
 }
 
