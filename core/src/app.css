@@ -306,17 +306,29 @@
 }
 
 /* The two other Preflight resets the vendored primitives depend on: `font: inherit`, because body's font-family does not
-   reach a form control, and zeroed list margins, because a vendored error list stacks its own indent on the UA's. */
-button,
-input,
-select,
-textarea {
-	font: inherit;
-}
-ul,
-ol {
-	margin: 0;
-	padding: 0;
+   reach a form control, and zeroed list margins, because a vendored error list stacks its own indent on the UA's.
+   IN `@layer base`, AND THAT IS THE WHOLE POINT OF THE LAYER — which this file declares on line 3 and, with Preflight
+   off, never otherwise fills. A RESET IS A FLOOR, NOT AN OVERRIDE: unlayered, these two outranked every layered
+   utility regardless of specificity, so `font: inherit` silently beat every font-size Tailwind emits on those four
+   tags. Measured in the built stylesheet before the move: `font:inherit` at byte 48746, outside every `@layer`, while
+   `.text-sm{…}` sits at 12228 inside `@layer utilities`. The visible result was that the SAME `<Button>` rendered at
+   two sizes depending on its tag — 14px as an `<a>`, where the utility applies, and 14.4px as a `<button>`, where it
+   did not — and `variant="eyebrow"`'s `text-[length:var(--ph-text-2xs)]` was dead entirely, so /library's own eyebrow
+   rendered at its inherited size instead of the 10.88px `<h2 class="grouphead">` it was written to match.
+   The UA stylesheet still loses to `base`, so the reset keeps doing its job. The focus ring below stays UNLAYERED on
+   purpose — read its comment before moving it, because in a layer it would lose to `outline-none`. */
+@layer base {
+	button,
+	input,
+	select,
+	textarea {
+		font: inherit;
+	}
+	ul,
+	ol {
+		margin: 0;
+		padding: 0;
+	}
 }
 
 /* The global focus ring, and the only one. A PLAIN SELECTOR LIST, NEVER `:where()` — at specificity 0,0,0 the
