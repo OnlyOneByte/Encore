@@ -9,6 +9,24 @@
 	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
 	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
 	import { Button } from '$lib/components/ui/button';
+	/* THE PRIMITIVES, imported so the gallery can show them. See the `Primitives` section below for why
+	   their ABSENCE was the defect: `ui/README.md` closes with "Look at it. The four worst defects of the
+	   migration were all correct in source and wrong on screen", and until now there was nowhere to look. */
+	import * as Alert from '$lib/components/ui/alert';
+	import * as Card from '$lib/components/ui/card';
+	import * as Empty from '$lib/components/ui/empty';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Input } from '$lib/components/ui/input';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import * as NativeSelect from '$lib/components/ui/native-select';
+	import { Switch } from '$lib/components/ui/switch';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Progress } from '$lib/components/ui/progress';
+	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { Spinner } from '$lib/components/ui/spinner';
+	import SkeletonRows from '$lib/ui/SkeletonRows.svelte';
+	import FindField from '$lib/ui/FindField.svelte';
+	import Icon from '$lib/ui/Icon.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
@@ -63,9 +81,177 @@
 		raf = requestAnimationFrame(loop);
 		return () => cancelAnimationFrame(raf);
 	});
+
+	/* Live state for the primitive matrix. Interactive on purpose: a switch that cannot be thrown cannot show
+	   its own focus ring, and the focus ring is what half these findings were about. */
+	const BUTTON_VARIANTS = [
+		'default',
+		'secondary',
+		'outline',
+		'ghost',
+		'destructive',
+		'link',
+		'identity',
+		'keycap',
+		'eyebrow',
+		'iconPrimary',
+		'iconReady'
+	] as const;
+	const BUTTON_SIZES = ['default', 'tap', 'sm', 'lg', 'block', 'blockLg', 'icon'] as const;
+	const BADGE_TONES = ['neutral', 'ok', 'warn', 'bad', 'accent', 'tag'] as const;
+	const ALERT_TONES = ['default', 'warn', 'accent', 'destructive'] as const;
+	let galSwitch = $state(true);
+	let galCheck = $state<boolean>(true);
+	let galSelect = $state('music');
+	let galFind = $state('');
 </script>
 
 <main style="padding:14px 16px 200px;">
+	<!-- ═══ PRIMITIVES ═══════════════════════════════════════════════════════════════════════════════
+		 WHY THIS SECTION EXISTS, and why it is FIRST. `docs/FRONTEND.md#the-components-gallery` says this route
+		 "renders every shared component in every state it must survive, side by side" — and it rendered none of
+		 the 24 vendored primitives, only the authored components. A review found that every design-system
+		 defect in the tree is a PAIRWISE comparison — `Card.Root` against `.card`, Button's `default` against
+		 `size="tap"`, three radii in one row, `Empty.Root`'s bare line against the hero block, `SkeletonRows`
+		 against the row it stands in for — and not one of those pairs could be put side by side anywhere in the
+		 app. It was a gallery of the healthy half, which is why the unhealthy half went unseen.
+		 THE PAIRS ARE THE POINT. Where a vendored primitive and an app idiom express the same thing, they are
+		 rendered ADJACENT with identical content, so a divergence is visible rather than inferred. -->
+	<h2 class="section">Primitives · Button, every variant × every size</h2>
+	<p class="note">
+		Each cell is the same label at one variant and one size. Watch the HEIGHT: the tap floor is
+		<code>var(--tap)</code> = 44px, and any cell shorter than its neighbours is a control under the floor.
+	</p>
+	<div class="gal-grid">
+		{#each BUTTON_VARIANTS as v (v)}
+			<div class="gal-col">
+				<span class="gal-label">{v}</span>
+				{#each BUTTON_SIZES as sz (sz)}
+					<Button variant={v} size={sz}>
+						{#if sz === 'icon'}<Icon name="mic" />{:else}{sz}{/if}
+					</Button>
+				{/each}
+				<Button variant={v} disabled>disabled</Button>
+			</div>
+		{/each}
+	</div>
+
+	<h2 class="section">Primitives · the same Button as a &lt;button&gt; and as an &lt;a&gt;</h2>
+	<p class="note">
+		These MUST look identical. They did not: <code>button,input,select,textarea &#123; font: inherit &#125;</code>
+		was unlayered, so it outranked every layered Tailwind utility and killed the declared font-size on the
+		<code>&lt;button&gt;</code> form only — 14.4px against the anchor's 14px, and
+		<code>variant="eyebrow"</code>'s size dead entirely. The reset now sits in <code>@layer base</code>.
+	</p>
+	<div class="gal-row">
+		<Button>as a button</Button>
+		<Button href="/components">as an anchor</Button>
+		<Button variant="eyebrow">eyebrow button</Button>
+		<Button variant="eyebrow" href="/components">eyebrow anchor</Button>
+	</div>
+
+	<h2 class="section">Primitives · Card.Root beside .card, identical content</h2>
+	<p class="note">
+		THE PAIR. <code>app.css</code> gives <code>.card</code> the lit edge (<code>--shadow-sm</code> +
+		<code>--edge-hi</code>, a pair its own comment calls load-bearing); <code>Card.Root</code> runs on the
+		registry's keys. Any difference in surface, border or radius between these two boxes is the seam.
+	</p>
+	<div class="gal-row gal-row--stretch">
+		<Card.Root>
+			<Card.Header><Card.Title>Card.Root</Card.Title></Card.Header>
+			<Card.Content>The vendored card. Same words as its neighbour.</Card.Content>
+		</Card.Root>
+		<div class="card">
+			<h3 class="gal-h3">.card</h3>
+			<p>The app idiom. Same words as its neighbour.</p>
+		</div>
+	</div>
+
+	<h2 class="section">Primitives · Empty.Root beside the home column's hero</h2>
+	<p class="note">
+		The phone home writes its own first-run block; <code>Empty.Root</code> is what every other route uses.
+		Rendered together because the two have already drifted, and neither one knows it.
+	</p>
+	<div class="gal-row gal-row--stretch">
+		<Empty.Root>
+			<Empty.Header>
+				<Empty.Title>No karaoke tracks yet.</Empty.Title>
+				<Empty.Description>Search above for a song and we'll make one.</Empty.Description>
+			</Empty.Header>
+		</Empty.Root>
+		<div class="card">
+			<h3 class="gal-h3">No karaoke tracks yet.</h3>
+			<p>Search above for a song and we'll make one.</p>
+		</div>
+	</div>
+
+	<h2 class="section">Primitives · Alert, every tone</h2>
+	<p class="note">
+		<code>--danger</code> means failure and <code>--accent2</code> never does (pink is a valid singer
+		colour). A tone that reads as decoration here is a tone that will be missed in a failure.
+	</p>
+	<div class="gal-stack">
+		{#each ALERT_TONES as tone (tone)}
+			<Alert.Root variant={tone}>
+				<Alert.Title>{tone}</Alert.Title>
+				<Alert.Description>What this tone says when something happens.</Alert.Description>
+			</Alert.Root>
+		{/each}
+	</div>
+
+	<h2 class="section">Primitives · Badge, every tone</h2>
+	<div class="gal-row">
+		{#each BADGE_TONES as tone (tone)}
+			<Badge variant={tone}>{tone}</Badge>
+		{/each}
+	</div>
+
+	<h2 class="section">Primitives · form controls in a 320px track</h2>
+	<p class="note">
+		THE WIDTH IS THE TEST: 320px is the narrowest phone, and every control here must clear
+		<code>var(--tap)</code> tall and 16px of font-size — iOS Safari auto-zooms a focused control under 16px
+		and never zooms back. The search field was measured at 4px wide inside this very row shape.
+	</p>
+	<div class="gal-track">
+		<FindField
+			bind:value={galFind}
+			ariaLabel="Gallery search"
+			placeholder="Search a song or artist…"
+			busy={galFind.length > 0}
+			clearable={galFind.length > 0}
+			clearLabel="Clear"
+			onclear={() => (galFind = '')}
+		/>
+		<Input placeholder="Input" aria-label="Gallery input" />
+		<NativeSelect.Root bind:value={galSelect} aria-label="Gallery select">
+			<NativeSelect.Option value="music">Music</NativeSelect.Option>
+			<NativeSelect.Option value="everything">Everything</NativeSelect.Option>
+		</NativeSelect.Root>
+		<Textarea placeholder="Textarea" aria-label="Gallery textarea" />
+		<label class="gal-inline"><Switch bind:checked={galSwitch} /> Switch</label>
+		<label class="gal-inline"><Checkbox bind:checked={galCheck} /> Checkbox</label>
+	</div>
+
+	<h2 class="section">Primitives · progress, spinner, skeleton</h2>
+	<div class="gal-stack">
+		<Progress value={38} />
+		<div class="gal-row"><Spinner /> <Skeleton class="gal-skel" /></div>
+	</div>
+
+	<h2 class="section">Primitives · SkeletonRows above the rows it stands in for</h2>
+	<p class="note">
+		A skeleton is a PROMISE about the shape that replaces it. Stacked directly against real rows, a
+		mismatched height is visible as a jump — which is the defect, since the hand-off is what the guest sees.
+	</p>
+	<SkeletonRows label="Searching…" />
+	<SongRow
+		title="a-ha - Take On Me (Official Video)"
+		artist="a-ha"
+		durationSec={225}
+		readiness="ready"
+	/>
+	<SongRow title="Toto - Africa" artist="Toto" durationSec={295} readiness="unacquired" />
+
 	<h2 class="section">SongRow · the readiness axis</h2>
 	<!-- Thumbnails are derived i.ytimg URLs via /api/thumb, so a box with no route out shows the placeholder. -->
 	<SongRow
@@ -636,6 +822,79 @@
 		gap: var(--space-sm);
 		margin-bottom: var(--space-md);
 	}
+	/* Gallery-only layout. Not a product surface, so these are plain and local. */
+	.note {
+		margin: var(--space-xs) 0 var(--space-md);
+		max-width: 62ch;
+		color: var(--ink-dim);
+		font-size: var(--ph-text-sm);
+	}
+	.note code {
+		color: var(--ink);
+	}
+	.gal-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-lg);
+	}
+	.gal-col {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-xs);
+		min-width: 0;
+	}
+	.gal-label {
+		color: var(--ink-dim);
+		font-size: var(--ph-text-2xs);
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+	.gal-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-md);
+	}
+	.gal-row--stretch {
+		align-items: stretch;
+	}
+	.gal-row--stretch > * {
+		flex: 1 1 260px;
+		min-width: 0;
+	}
+	.gal-stack {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-md);
+	}
+	/* 320px EXACTLY, because that is the width the controls are claimed to survive and the width the
+	   search field was measured at 4px in. A wider track would hide the defect this section exists to show. */
+	.gal-track {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-md);
+		width: 320px;
+		max-width: 100%;
+		padding: var(--space-md);
+		border: 1px dashed var(--line-strong);
+		border-radius: var(--radius-md);
+	}
+	.gal-inline {
+		display: flex;
+		align-items: center;
+		gap: var(--space-sm);
+		min-height: var(--tap);
+	}
+	.gal-h3 {
+		margin: 0 0 var(--space-xs);
+		font-size: var(--ph-text-base);
+	}
+	:global(.gal-skel) {
+		width: 180px;
+		height: var(--tap);
+	}
+
 	.section {
 		margin-top: var(--space-3xl);
 		font-size: var(--ph-text-sm);
