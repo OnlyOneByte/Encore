@@ -24,6 +24,15 @@ mix, and an overshoot whose DROP_WINDOWS did not help never re-placed — review
 whose only knob is LINE_SYNC for an unusable document, never keeps a best and is unaffected.) The workflow
 keeps each Try's document by serial, and each knob set writes its own file, so the earlier one is still on
 disk to publish.
+
+BEST-SO-FAR SPANS DOCUMENT KINDS (W4). A LINE_SYNC retry is judged by the same rule as any other, so the
+line document of a text whose word document nothing related to its claims (`policy.decide` rule 6) must beat
+that word document to replace it, and a line document its own gate refuses sends the search BACK to the words
+rather than on to the next text. Nothing here changed to allow it — `_best` has always been "the best USABLE
+result for the current text", and the only reason the two kinds never met on it is that LINE_SYNC used to be
+offered to unusable word documents alone (which are never kept: there is nothing to keep). That is still the
+other route to the knob, and there the line document publishes unopposed, because an incoherent highlight is
+not a document.
 """
 
 from __future__ import annotations

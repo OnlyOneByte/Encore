@@ -53,6 +53,7 @@ gates: Any = _load("e2e_gates")
 e2e: Any = _load("e2e")
 sheet_gate: Any = _load("sheet_gate")
 line_gate: Any = _load("line_gate")
+lift_gate: Any = _load("lift_gate")
 
 
 def song_of(
@@ -549,7 +550,9 @@ class VoicedAligner:
         raise AssertionError("the global path must not fall back to the windowed aligner")
 
 
-def spreading_decoder(log_probs: Sequence[float], targets: Sequence[int]) -> tuple[list[int], list[float]]:
+def spreading_decoder(
+    log_probs: Sequence[float], targets: Sequence[int], blank: int = 0
+) -> tuple[list[int], list[float]]:
     """Any text, any window: one frame per target, spread evenly over the voiced frames (all, if too few).
 
     Unlike a decoder scripted to one fixed text, this serves partial sheets, injected headers and the
@@ -558,7 +561,7 @@ def spreading_decoder(log_probs: Sequence[float], targets: Sequence[int]) -> tup
     frames = [f for f, value in enumerate(log_probs) if value > 0]
     if len(frames) < 2 * len(targets):
         frames = list(range(len(log_probs)))
-    labels = [0] * len(log_probs)
+    labels = [blank] * len(log_probs)
     for i, token in enumerate(targets):
         labels[frames[int((i + 0.5) * len(frames) / len(targets))]] = token
     return labels, [-0.4] * len(log_probs)
@@ -643,10 +646,12 @@ def test_a_row_carries_the_repair_decodes_that_raised(
 
     whole = int(DURATION / FRAME)
 
-    def whole_song_only(log_probs: Sequence[float], targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def whole_song_only(
+        log_probs: Sequence[float], targets: Sequence[int], blank: int = 0
+    ) -> tuple[list[int], list[float]]:
         if len(log_probs) != whole:
             raise RuntimeError("window decode fault")
-        return spreading_decoder(log_probs, targets)
+        return spreading_decoder(log_probs, targets, blank)
 
     monkeypatch.setattr(ml, "forced_align_decoder", whole_song_only)
     faulted = driver.run(e2e.Case(song, "blind", 0))
@@ -1019,6 +1024,185 @@ def test_gate_files_are_json_or_a_one_line_per_gate_yaml_subset() -> None:
     ):
         with pytest.raises(gates.GateError, match=why):
             gates.parse_gates(bad)
+
+
+#: The bench's committed reject-if files (`docs/benchmarks/forced-alignment/gates`).
+GATES_DIR = SCRIPTS.parent / "gates"
+
+
+def lines_rows(mode: str, songs: int, *, refused: int = 0) -> list[Any]:
+    """A `--sync-mode lines` run's shape: every committed case is a LINE_SYNC document whose lines are graded
+    `low` (`align_steps._line_doc` + `_write(..., "low")`), here placed exactly on truth."""
+    rows = []
+    for i in range(songs):
+        song = song_of(TEN, slug=f"s{i}")
+        got = claims(song, "truth")
+        doc = [] if i < refused else [line(k, t.start, confidence="low") for k, t in enumerate(song.truth)]
+        outcome = lib.REFUSED if i < refused else lib.LINE_SYNC
+        rows.append(lib.row_of(song=song, mode=mode, variant=0, claims=got, outcome=outcome, doc=doc))
+    return rows
+
+
+def lines_run(**refusals: int) -> list[Any]:
+    """Rows for all 16 modes of `--modes all,wrongtext+ownclock` at `--sync-mode lines`: 32 songs committed
+    per timed mode, `blind` refused (no claims, so the rung has nothing to place) and both wrong-text modes
+    refused, as the W3 sweep measured. `refusals` refuses that many songs of a named mode."""
+    rows = [
+        row
+        for mode in lib.ALL_MODES
+        if mode not in ("wrongtext", "blind")
+        for row in lines_rows(mode, 32, refused=refusals.get(mode, 0))
+    ]
+    rows += lines_rows("blind", 32, refused=32)
+    corpus = [song_of(TEN, slug="j"), song_of(TEN, slug="y", group="youtube")]
+    rows += [
+        lib.row_of(
+            song=corpus[0],
+            mode=mode,
+            variant=variant,
+            claims=claims(corpus[0], mode, corpus, variant=variant, wrong_k=2),
+            outcome=lib.REFUSED,
+            doc=[],
+        )
+        for mode in ("wrongtext", "wrongtext+ownclock")
+        for variant in range(2)
+    ]
+    return rows
+
+
+def test_the_lines_reject_if_files_names_all_resolve_and_its_floors_point_the_right_way() -> None:
+    """`gates/w3-lines.yaml` is read 2-3 HOURS after a `--sync-mode lines` sweep starts, so a mistyped mode
+    or metric must not read as a clean run. An unmeasured (mode, metric) key is an ERROR by design, so every
+    name in it resolving is the check — on synthetic rows carrying all 16 modes, shaped as the run is (line
+    documents graded `low`, blind and both wrong-text modes refused), all 38 gates PASS. And the floors point
+    the right way: dropping under truth's floor of 31 committed songs fails `committed-not-down-truth` alone
+    (its text-denominator ±500 gate, 30 of 32 songs = 93.75%, still clears 90)."""
+    rules = gates.parse_gates((GATES_DIR / "w3-lines.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 38 - 1, "the 38 the file's header reports, less the built-in no-error-rows gate"
+    view = gates.view_of(document(lines_run(), level="run_align", sync_mode="lines"))
+    results = gates.run_gates(rules, view, None)
+    assert [(r.gate.name, r.detail) for r in results if r.status != "PASS"] == []
+    short = gates.run_gates(rules, gates.view_of(document(lines_run(truth=2))), None)
+    assert [r.gate.name for r in short if r.status != "PASS"] == ["committed-not-down-truth"]
+
+
+def test_the_run_align_reject_if_file_reads_that_levels_own_zero_and_nothing_looser() -> None:
+    """`gates/w3-run_align.yaml` exists because one gate file served both levels and its wrong-text cap is the
+    LOOSER level's literal (W3 review r2): at `run_align` the measurement is 0/320, so a regression to 1/320
+    cleared `gates/w3.yaml`'s `<= 0.32`. These four gates are absolute, and a run where one wrong text
+    published fails every one of them — which is what the shared file could not do."""
+    rules = gates.parse_gates((GATES_DIR / "w3-run_align.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 5 - 1, "the 4 the file's header reports, less the built-in no-error-rows gate"
+    clean = gates.view_of(document(lines_run(), level="run_align"))
+    assert [(r.gate.name, r.detail) for r in gates.run_gates(rules, clean, None) if r.status != "PASS"] == []
+
+    published = [
+        row
+        for row in lines_run()
+        if row["mode"] not in ("wrongtext", "wrongtext+ownclock") or row["variant"] != 0
+    ]
+    corpus = [song_of(TEN, slug="j"), song_of(TEN, slug="y", group="youtube")]
+    donor = corpus[0]
+    published += [
+        lib.row_of(
+            song=donor,
+            mode=mode,
+            variant=0,
+            claims=claims(donor, mode, corpus, variant=0, wrong_k=2),
+            outcome=lib.PUBLISHED,
+            doc=[line(k, t.start, confidence="low") for k, t in enumerate(donor.truth)],
+        )
+        for mode in ("wrongtext", "wrongtext+ownclock")
+    ]
+    leaked = gates.run_gates(rules, gates.view_of(document(published, level="run_align")), None)
+    assert sorted(r.gate.name for r in leaked if r.status != "PASS") == [
+        "ownclock-nothing-published",
+        "ownclock-pass-zero",
+        "wrongtext-nothing-published",
+        "wrongtext-pass-zero",
+    ]
+
+
+def ends_rows(*, held: bool, songs: int = 6, worse: int = 0, moved_onset: bool = False) -> list[Any]:
+    """A `blind` run of `songs` Jamendo songs whose truth times three words per line, shaped as the word-end
+    post-pass moves them (review §3 item 5; `domain/lyrics/ends.py`).
+
+    `held=False` is the `ends-raw` control: every onset exact, interior ends exact, and each line's LAST word
+    ending 120 ms early — CTC's peakiness, which is what the post-pass is for. `held=True` lands that final
+    end exactly. In the first `worse` songs the held document also over-extends both interior ends 400 ms
+    into the gap before the next word, which is the real trade the corpus showed (Color_Out): phrase-final
+    ends improve while word-end ±100 gets WORSE on that song, and the highlight does not notice, because a
+    word lit over a gap no truth word occupies is in neither side of that ratio.
+    """
+    rows = []
+    for index in range(songs):
+        truth = [(f"one{i} two{i} three{i}", 10.0 * i, 10.0 * i + 2.6) for i in range(3)]
+        words = [(10.0 * i + k, 10.0 * i + k + (0.5 if k < 2 else 0.6)) for i in range(3) for k in (0, 1, 2)]
+        song = song_of(truth, slug=f"s{index}", words=words)
+        over = 0.4 if held and index < worse else 0.0
+        doc = [
+            line(
+                i,
+                words[3 * i][0],
+                words=tuple(
+                    lib.DocWord(
+                        start + (0.05 if moved_onset and i == 0 and k == 0 else 0.0),
+                        end + (over if k < 2 else (0.0 if held else -0.12)),
+                        True,
+                    )
+                    for k, (start, end) in enumerate(words[3 * i : 3 * i + 3])
+                ),
+            )
+            for i in range(3)
+        ]
+        got = claims(song, "blind")
+        rows.append(
+            lib.row_of(
+                song=song,
+                mode="blind",
+                variant=0,
+                claims=got,
+                outcome=lib.PUBLISHED,
+                doc=doc,
+                # The digest the `onsets-unchanged` gate reads: the real drivers record it from the written
+                # document, and it is starts only, so a held END must leave it alone (`lib.onset_digest`).
+                extra={"onsets_sha256": lib.onset_digest(doc)},
+            )
+        )
+    return rows
+
+
+def test_the_word_end_reject_if_file_reads_the_gain_the_songs_that_lose_and_any_moved_onset() -> None:
+    """`gates/w4-ends.yaml` is the encodable half of review §3.5, and it is read hours after a sweep starts,
+    so a mistyped mode or metric must not read as a clean run (an unmeasured key is an ERROR by design).
+
+    Each of its four conditions is exercised in the direction it exists for: the two gain gates FAIL on the
+    control's own rows (a run compared with itself gains nothing — the non-vacuity check the W3 gate files set
+    the habit of); the per-song gate tolerates 3 songs losing word-end ±100 and fails at 4, which is exactly
+    where the review drew it; and ONE moved onset fails `onsets-unchanged` while every other gate still
+    passes, which is the whole point of the item."""
+    rules = gates.parse_gates((GATES_DIR / "w4-ends.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 5, "the 5 the file's header reports; `run_gates` adds the built-in no-error-rows"
+    control = gates.view_of(document(ends_rows(held=False), **SETUP))
+
+    def statuses(**kw: Any) -> dict[str, str]:
+        view = gates.view_of(document(ends_rows(**kw), **SETUP))
+        return {r.gate.name: r.status for r in gates.run_gates(rules, view, control)}
+
+    assert set(statuses(held=True).values()) == {"PASS"}
+    assert statuses(held=False) == {
+        "no-error-rows": "PASS",
+        "highlight-up-at-least-5": "FAIL",
+        "final-end-pm100-up-at-least-10": "FAIL",
+        "end-pm100-worse-on-at-most-3-songs": "PASS",
+        "onsets-unchanged": "PASS",
+        "word-pm300-not-down": "PASS",
+    }
+    assert set(statuses(held=True, worse=3).values()) == {"PASS"}, "3 of 6 songs is the review's tolerance"
+    failed = [name for name, status in statuses(held=True, worse=4).items() if status != "PASS"]
+    assert failed == ["end-pm100-worse-on-at-most-3-songs"]
+    onset = [name for name, status in statuses(held=True, moved_onset=True).items() if status != "PASS"]
+    assert onset == ["onsets-unchanged"], "one word 50 ms late is a rejection on its own"
 
 
 def test_compare_prints_deltas_warns_on_a_level_mismatch_and_names_the_songs_that_moved(
@@ -1844,7 +2028,9 @@ def test_a_fault_time_text_caught_is_an_error_row_not_a_refusal(
         assert "MPS backend out of memory" in row["exception"] and "decode failed" in row["exception"]
     assert bench.faults and all("MPS backend out of memory" in f for f in bench.faults)
 
-    def decoder_fault(log_probs: Sequence[float], targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def decoder_fault(
+        log_probs: Sequence[float], targets: Sequence[int], _blank: int = 0
+    ) -> tuple[list[int], list[float]]:
         raise ValueError("a decoder that raises on some texts")
 
     monkeypatch.setattr(ml, "forced_align_decoder", decoder_fault)
@@ -2464,6 +2650,136 @@ def test_line_gate_rules_fall_back_as_the_shipped_rung_does() -> None:
     assert not rules["lift alone"]({**base, "near": 0.0})
 
 
+def test_the_committed_calibration_rows_name_the_model_the_bands_claim() -> None:
+    """The other half of the same hole: the row sets the SHIPPED bands were derived from must name the bundle
+    `lexical.BANDS.model` names, or W4's replacement leaves no way to tell which model produced which
+    thresholds. Deriving new bands means writing new rows, so this holds them together."""
+    from encore_worker.domain.lyrics import lexical
+
+    results = SCRIPTS.parent / "results"
+    for name in ("w3-lift-stem.json", "w3-lift-mix.json", "w3-line-gate.json", "w2-line-gate.json"):
+        body = json.loads((results / name).read_text(encoding="utf-8"))
+        assert body["model"] == lexical.BANDS.model, name
+
+
+def test_the_committed_w2_rows_carry_both_placements_at_the_shipped_band() -> None:
+    """W2 re-derived `_LINE_SYNC_MIN_AGREEMENT` and `_LINE_SYNC_NEAR_SEC` on MAPPED claims, and the numbers in
+    `align_steps`' docstrings are read off these rows — so the row set has to say which band it was measured
+    in and carry BOTH placements, or the delta it is cited for (88 -> 33 refused) cannot be recomputed."""
+    from encore_worker.steps import align_steps
+
+    body = json.loads((SCRIPTS.parent / "results" / "w2-line-gate.json").read_text(encoding="utf-8"))
+    assert body["near_sec"] == align_steps._LINE_SYNC_NEAR_SEC
+    rows = body["rows"]
+    assert len(rows) == 1056
+    for key in ("near", "w3_near", "w3_w500", "w3_scored", "map", "map_applied", "held"):
+        assert all(key in row for row in rows), key
+
+    def refused(row: dict[str, Any], key: str) -> bool:
+        near = row[key]
+        near_enough = bool(row["sheet"]) if near is None else near >= align_steps._LINE_SYNC_MIN_AGREEMENT
+        return not ((row["lift"] is None or row["lift"] >= 0.2) and near_enough)
+
+    right = [r for r in rows if not str(r["mode"]).startswith("wrongtext")]
+    was = {(r["song"], r["mode"], r["variant"]) for r in right if refused(r, "w3_near")}
+    now = {(r["song"], r["mode"], r["variant"]) for r in right if refused(r, "near")}
+    assert (len(was), len(now)) == (88, 33), "the docstring's headline delta"
+    assert now < was, "the clock refuses nothing W3's placement admitted"
+
+
+def test_a_committed_row_set_names_the_bundle_it_was_measured_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W3 review r1: both calibration scripts wrote `"model": "default"` into their `--out`, while
+    `lexical.BANDS.model` names a bundle and the harness already resolves that name for the emission cache's
+    key. Once W4 runs them with `--model <hubert>` and replaces `BANDS`, the older row sets read "default" and
+    nothing in the record proves which model produced the shipped thresholds."""
+    monkeypatch.setattr(e2e, "default_model", lambda language: f"THE-{language.upper()}-BUNDLE")
+    assert lift_gate.model_name(None) == "THE-EN-BUNDLE" and lift_gate.model_name("hubert") == "hubert"
+    assert line_gate.model_name(None) == "THE-EN-BUNDLE" and line_gate.model_name("hubert") == "hubert"
+
+
+def test_line_gate_scores_at_the_band_the_rung_applies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--tau` defaults to `lexical.BANDS.refuse_below`, the number the rung itself gates on since W3 review
+    r1 — not a literal of its own — so a recalibration re-scores this table on the shipped gate. Read through
+    `--from`, which decodes nothing."""
+    from encore_worker.domain.lyrics import lexical
+
+    row = {
+        "song": "s1",
+        "group": "jamendo",
+        "mode": "truth",
+        "sheet": True,
+        "sheet_r": 0.91,
+        "lift": 0.5,
+        "near": 0.9,
+        "scored": 4,
+        "gross": 0,
+        "w500": 4,
+        "w1000": 4,
+        "in_text": 4,
+    }
+    stored = tmp_path / "rows.json"
+    stored.write_text(json.dumps({"model": "X", "near_sec": 1.0, "rows": [row]}), encoding="utf-8")
+    assert line_gate.main(["--from", str(stored)]) == 0
+    printed = capsys.readouterr().out
+    assert f"lexical gate at {lexical.BANDS.refuse_below}" in printed
+    moved = lexical.Bands(model="hubert-like", refuse_below=0.55, ok_from=0.8, mix_floor=0.4, mix_ok_from=0.9)
+    monkeypatch.setattr(lexical, "BANDS", moved)
+    assert line_gate.main(["--from", str(stored)]) == 0
+    assert "lexical gate at 0.55" in capsys.readouterr().out
+
+
+def test_line_gate_prints_both_placements_and_the_documents_no_line_lands_in(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """W2's `placements` block: the same rule read on W3's placement (`w3_near`) and on the mapped one
+    (`near`), with the count `gates/w3-lines.yaml` holds — published documents with NO line within ±500 ms of
+    truth. A row set from before the map (no `w3_near`) is skipped, not silently read as a comparison.
+
+    `gross` AND `w3_gross` DIFFER IN THIS FIXTURE ON PURPOSE (W2 review r2). They used to be equal, and the
+    two columns' gross was one hardcoded `r['gross']`, so the W3 row printed the W2 placement's count over
+    W3's documents — 0 where the committed rows' W3 placement is 47 — and no test could see it. Equal
+    fixture values make a transposed column indistinguishable from a correct one."""
+    mapped = {
+        "song": "s1",
+        "mode": "truth",
+        "variant": 0,
+        "sheet": True,
+        "lift": 0.5,
+        "near": 0.9,
+        "w3_near": 0.2,
+        "scored": 4,
+        "gross": 0,
+        "w500": 4,
+        "w1000": 4,
+        "in_text": 4,
+        "w3_scored": 4,
+        "w3_gross": 3,
+        "w3_w500": 0,
+        "w3_w1000": 4,
+        "map": "decode-median",
+        "map_applied": True,
+        "held": 1,
+    }
+    got = line_gate.placements([mapped], 0.2, ["truth"])
+    assert len(got) == 2, "the mode and the ALL row"
+    assert "W3 refused   1/  1" in got[0] and "W2 refused   0/  1" in got[0]
+    assert "zero-±500 docs   0" in got[0] and "maps 1/1 (decode-median 1), held 1" in got[0]
+    # The W3 column's own zero-±500 count is unreadable here (it refused the row), which is the point of the
+    # gate's `refused == 0` factor: a refused song scores 0 and must not be counted as a misplaced document.
+    shown_by_w3 = {**mapped, "w3_near": 0.9}
+    both = line_gate.placements([shown_by_w3], 0.2, ["truth"])[0]
+    assert "W3 refused   0/  1" in both
+    assert "zero-±500 docs   1\n" in both
+    w3_row, w2_row = both.split("\n")[:2]
+    assert "gross    3" in w3_row, "the W3 column reads w3_gross, not the mapped placement's gross"
+    assert "gross    0" in w2_row, "and the W2 column reads its own"
+    del mapped["w3_near"]
+    assert line_gate.placements([mapped], 0.2, ["truth"]) == [], "a pre-W2 row set is not a comparison"
+    capsys.readouterr()
+
+
 def test_line_gate_reads_the_shipped_agreement() -> None:
     @dataclass(frozen=True)
     class L:
@@ -2472,5 +2788,7 @@ def test_line_gate_reads_the_shipped_agreement() -> None:
 
     decoded = [L(0, 1.0), L(1, 5.0), L(2, 9.5), L(4, 20.0)]
     got = line_gate.claim_agreement(decoded, {0: 1.5, 1: 5.5, 2: 12.0, 3: 15.0}, 1.0)
-    assert got == {"near": 2 / 3, "median_gap": 0.5, "offset": -0.5, "near_fit": 2 / 3}
+    # `pairs` is the share's DENOMINATOR, recorded since W3 review r2 so the rung's minimum decoded share can
+    # be re-read from a stored run: line 4 decoded but is unclaimed, line 3 is claimed but never decoded.
+    assert got == {"near": 2 / 3, "median_gap": 0.5, "offset": -0.5, "near_fit": 2 / 3, "pairs": 3.0}
     assert set(line_gate.claim_agreement(decoded[:2], {0: 1.0, 1: 5.0}, 1.0).values()) == {None}

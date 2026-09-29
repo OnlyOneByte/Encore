@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from encore_worker.domain.lyrics.generate import Generated, generate
+from encore_worker.domain.lyrics.generate import Decoder, Generated, generate
 
 #: A toy dictionary: a=1 b=2 ... (0 is CTC blank, deliberately unassigned).
 DIC = {ch: i + 1 for i, ch in enumerate("abcdefghijklmnopqrstuvwxyz'")}
@@ -31,14 +31,16 @@ class FakeEmissions:
         return len(self.log_probs)  # type: ignore[arg-type]
 
 
-Decode = Callable[[object, "Sequence[int]"], tuple[list[int], list[float]]]
+#: `generate.Decoder`'s shape, as the fakes implement it — `blank` included, so a fake cannot pass a
+#: test that exists to prove the caller reads the matrix's blank column (review M9).
+Decode = Decoder
 
 
 def scripted_decoder(placements: dict[int, tuple[int, int]], total_frames: int) -> Decode:
     """A decoder that puts each target index at scripted frames: target i occupies placements[i]."""
 
-    def decode(_log_probs: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
-        labels = [0] * total_frames
+    def decode(_log_probs: object, targets: Sequence[int], blank: int = 0) -> tuple[list[int], list[float]]:
+        labels = [blank] * total_frames
         scores = [0.0] * total_frames
         for i, token in enumerate(targets):
             start, end = placements[i]
@@ -163,9 +165,10 @@ def test_blank_id_characters_are_excluded_from_targets() -> None:
     em = FakeEmissions(log_probs=[0.0] * 100, frame_sec=0.02, dictionary=dic)
     seen: list[list[int]] = []
 
-    def spy(_lp: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def spy(_lp: object, targets: Sequence[int], blank: int = 0) -> tuple[list[int], list[float]]:
         seen.append(list(targets))
-        return scripted_decoder(evenly(len(targets)), 100)(_lp, targets)
+        labels, scores = scripted_decoder(evenly(len(targets)), 100)(_lp, targets, blank)
+        return list(labels), list(scores)
 
     generate(["fly-away"], em, decoder=spy, syllabifier=lambda w, _l: [w])
     assert seen and 0 not in seen[0]
@@ -175,8 +178,8 @@ def test_a_span_count_mismatch_is_an_error_not_a_degradation() -> None:
     """One span per target is forced_align's contract; anything else means the matrix and the encoding
     disagree, and grouping on top of that would misattribute every following char."""
 
-    def broken(_lp: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
-        return [0] * 10, [0.0] * 10  # no spans at all for non-empty targets
+    def broken(_lp: object, targets: Sequence[int], blank: int = 0) -> tuple[list[int], list[float]]:
+        return [blank] * 10, [0.0] * 10  # no spans at all for non-empty targets
 
     em = FakeEmissions(log_probs=[0.0] * 10, frame_sec=0.02, dictionary=DIC)
     with pytest.raises(ValueError, match="token spans"):
@@ -207,9 +210,9 @@ def test_the_doc_shape_matches_the_core_contract_with_optional_syllables() -> No
 # ── windowed repair (`regenerate`) ───────────────────────────────────────────────────────────────
 
 
-def slice_decoder(log_probs: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+def slice_decoder(log_probs: object, targets: Sequence[int], blank: int = 0) -> tuple[list[int], list[float]]:
     """Places targets from the START of whatever slice it is given — how a window re-decode behaves."""
-    labels = [0] * len(log_probs)  # type: ignore[arg-type]
+    labels = [blank] * len(log_probs)  # type: ignore[arg-type]
     scores = [-0.5] * len(labels)
     for i, token in enumerate(targets):
         for f in range(i * 3, min(i * 3 + 2, len(labels))):
@@ -248,7 +251,7 @@ def test_a_failing_window_decode_keeps_the_original() -> None:
     """A repair that can throw away a working timing is worse than no repair."""
     from encore_worker.domain.lyrics.generate import regenerate
 
-    def broken(_lp: object, _targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def broken(_lp: object, _targets: Sequence[int], _blank: int = 0) -> tuple[list[int], list[float]]:
         raise RuntimeError("window decode fault")
 
     doc = gen(["fly away"])
@@ -264,10 +267,12 @@ def test_a_raising_window_decode_is_reported_while_the_other_runs_still_repair()
     doc = gen(["fly away", "come home", "stay"])
     fly, home, stay = doc.lines
 
-    def fails_on_fly(log_probs: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def fails_on_fly(
+        log_probs: object, targets: Sequence[int], blank: int = 0
+    ) -> tuple[list[int], list[float]]:
         if len(targets) == len("flyaway"):
             raise RuntimeError("window decode fault")
-        return slice_decoder(log_probs, targets)
+        return slice_decoder(log_probs, targets, blank)
 
     em = FakeEmissions(log_probs=[0.0] * 4000, frame_sec=0.02, dictionary=DIC)
     faults: list[str] = []

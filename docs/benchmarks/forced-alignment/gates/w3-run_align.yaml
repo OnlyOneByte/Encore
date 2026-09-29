@@ -1,0 +1,41 @@
+# W3 reject-if, the RUN_ALIGN LEVEL'S OWN measured numbers (PLAN-alignment-v3 W3, review §3 item 4, H3).
+# Run BESIDE `gates/w3.yaml`, which serves both levels and therefore carries the LOOSER of the two literals.
+#
+# WHY A SECOND FILE (W3 review r2). `lexical.BANDS`'s docstring and the bench README both claim the two
+# measured wrong-text counts are capped "so a second wrong text cannot start publishing unnamed". They are
+# not, at this level: one gate file serves both, and `wrongtext-pass-at-most-measured: wrongtext.wrongtext_pass
+# <= 0.32` is `time_text`'s literal (0.32 = 1/320, the raw-claim level's one doubt-band document). At
+# `run_align` — the level that serves the CLEANED texts production serves — the measured value is 0.0, so a
+# regression from 0 to 1/320 (0.31) would have cleared it, and the companion
+# `wrongtext-no-song-newly-publishing` cannot see it either: it compares per-song counts against W1, where 28
+# of the 32 songs already published at least one wrong text here (89/320; `results/w1-run_align.cases.jsonl`),
+# so a song going from 3 passes to 1 reads as an improvement. The gates below are this level's measurement,
+# absolutely, the way `gates/w3-lines.yaml` states the lines run's.
+#
+# Run it (offline from the same rows, no decode):
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level run_align \
+#       --modes all,wrongtext+ownclock \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w3-run_align.yaml
+#   (offline: e2e.py --summarize <run>/rows.jsonl --gates ...; and the same run through gates/w3.yaml with
+#    --compare results/w1-run_align.json, which is where every comparative gate lives)
+#
+# MEASURED 2026-09-28 (the W3 bench: base model, youtube tfr audio, code 120f7db5 = the owner's commit
+# fd98f0c1; `_runs/w3-run_align`, rows in `results/w3-run_align.{json,cases.jsonl}`). 4/4 below, plus the
+# built-in no-error-rows. Every refusal is the lexical gate's, at attempt 1, with 0 LINE_SYNC attempts on a
+# wrong text (W1: 63). CHECKED NON-VACUOUS the way `gates/w1.yaml` set the habit of: W1's own rows
+# (`results/w1-run_align.json`) FAIL both `wrongtext` gates — 89/320 published, 27.81% — and ERROR on the two
+# `ownclock` ones, W1 having measured that mode in a run of its own (`results/w1-ownclock-run_align.json`:
+# 279/320), which the gate language refuses to read as a pass. LEVEL-SPECIFIC BY CONSTRUCTION: run against
+# `results/w3-time_text.json` this file FAILS (0.31 = 1/320, the raw-claim level's doubt-band document), which
+# is the difference `gates/w3.yaml`'s shared literal had to swallow.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
+
+# ── MUST (review §3.4, reject-if half 2, at the level that serves production's cleaned texts): NO wrong
+# text publishes at all. Not "at most 1%", not "no worse than W1" — the measurement is zero, and the point
+# of recording it here is that the first regression fails, not the fourth ──
+wrongtext-pass-zero: wrongtext.wrongtext_pass == 0
+ownclock-pass-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
+wrongtext-nothing-published: wrongtext.published + wrongtext.line_sync == 0
+ownclock-nothing-published: mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0

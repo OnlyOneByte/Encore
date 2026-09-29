@@ -92,6 +92,7 @@ def measure(
     duration_sec: float,
     residual_sec: float | None = None,
     engine: Engine = Engine.GLOBAL,
+    claims_related: bool | None = None,
 ) -> TimingReport:
     """Measure one aligned document.
 
@@ -101,7 +102,9 @@ def measure(
     construction. Reporting an unknown as a defect would retry on a measurement nobody made.
 
     `residual_sec` is passed in rather than computed here: it is a comparison between this document and
-    a reference series, which is `place.residual_against`'s job.
+    a reference series, which is `place.residual_against`'s job. `claims_related` likewise: it is
+    `reconcile`'s verdict on this document against the text's own claims (`TimingReport.claims_related`),
+    and only the caller that ran the reconcile can answer it — this module never sees the claims.
 
     `engine` says what produced the timings. A LINE_SYNC document is measured on its LINE spans — it has
     no words, and measured on words it read as "nothing timed", which is why that knob could never
@@ -109,7 +112,9 @@ def measure(
     meaning (last timed end / duration) and stays telemetry for the global engine.
     """
     if engine is Engine.LINE_SYNC:
-        return _measure_lines(doc, duration_sec=duration_sec, residual_sec=residual_sec)
+        return _measure_lines(
+            doc, duration_sec=duration_sec, residual_sec=residual_sec, claims_related=claims_related
+        )
     words = timed_words(doc)
     if not words:
         return TimingReport(
@@ -118,6 +123,7 @@ def measure(
             duration_sec=max(0.0, duration_sec),
             residual_sec=residual_sec,
             engine=engine,
+            claims_related=claims_related,
         )
 
     starts = [start for _w, start, _e in words]
@@ -141,10 +147,13 @@ def measure(
         duration_sec=max(0.0, duration_sec),
         engine=engine,
         lines=sum(1 for line in _lines(doc) if timed_words({"lines": [line]})),
+        claims_related=claims_related,
     )
 
 
-def _measure_lines(doc: Doc, *, duration_sec: float, residual_sec: float | None) -> TimingReport:
+def _measure_lines(
+    doc: Doc, *, duration_sec: float, residual_sec: float | None, claims_related: bool | None = None
+) -> TimingReport:
     """A line-synced document, judged on its line spans: count, order, extent, and the long silences.
 
     Smears and flashes are WORD defects (a held token, an unreadable one) and have no line meaning, so a
@@ -157,6 +166,7 @@ def _measure_lines(doc: Doc, *, duration_sec: float, residual_sec: float | None)
         residual_sec=residual_sec,
         engine=Engine.LINE_SYNC,
         lines=len(spans),
+        claims_related=claims_related,
     )
     if not spans:
         return base
@@ -172,6 +182,7 @@ def _measure_lines(doc: Doc, *, duration_sec: float, residual_sec: float | None)
         duration_sec=base.duration_sec,
         engine=Engine.LINE_SYNC,
         lines=len(spans),
+        claims_related=claims_related,
     )
 
 

@@ -11,6 +11,8 @@ import {
 	isAuthoritativeText,
 	hasUsableTiming,
 	lyricsRank,
+	lyricsSourceLabel,
+	parseLyricsCandidates,
 	pickBestLyrics,
 	mergeLyricsCandidate,
 	lyricsTokens,
@@ -290,4 +292,30 @@ test('lyrics.ts no longer declares the retired SUSPECT_AGREEMENT', () => {
 	const source = read('src/lib/contract/lyrics/lyrics.ts');
 	expect(source).toMatch(/export const SUSPECT_COVERAGE\s*=/);
 	expect(source).not.toMatch(/export const SUSPECT_AGREEMENT\s*=/);
+});
+
+// A WRONG-TEXT gate's verdict on the WORDS, sent by the worker only to withhold (W3 review r2). Its own
+// field because `textConfidence` already answers a different question — where the text came from — and
+// `lyricsSourceLabel` reads `captions` + `low` as "Auto captions", so carrying the doubt there mislabelled
+// an uploader's hand-authored track as machine-generated.
+test('vouched:false costs a candidate its authority without touching its provenance', () => {
+	const doubted = cand('captions', 'word', { vouched: false });
+	expect(isAuthoritativeText(doubted)).toBe(false);
+	expect(lyricsRank(doubted)).toBe(3);
+	expect(lyricsSourceLabel(doubted)).toBe('Captions');
+	expect(isAuthoritativeText(cand('captions', 'word', { vouched: true }))).toBe(true);
+	expect(isAuthoritativeText(cand('captions', 'word'))).toBe(true); // absent = vouched
+});
+
+test('parse: an absent vouched stays absent, an unreadable one fails safe to false', () => {
+	const base = { ref: 'r', textSource: 'lrclib', timing: 'word', textConfidence: 'high', createdAt: 1 };
+	const [old] = parseLyricsCandidates([base]);
+	expect(old!.vouched).toBeUndefined();
+	expect(isAuthoritativeText(old!)).toBe(true);
+	const [withheld] = parseLyricsCandidates([{ ...base, vouched: false }]);
+	expect(withheld!.vouched).toBe(false);
+	const [nonsense] = parseLyricsCandidates([{ ...base, vouched: 'yes' }]);
+	expect(nonsense!.vouched).toBe(false);
+	const [kept] = parseLyricsCandidates([{ ...base, vouched: true }]);
+	expect(kept!.vouched).toBe(true);
 });

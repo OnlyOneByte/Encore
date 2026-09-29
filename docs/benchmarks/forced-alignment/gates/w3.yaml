@@ -1,0 +1,132 @@
+# W3 reject-if (PLAN-alignment-v3 W3, review §3 item 4, H3): the lexical-lift wrong-text gate for global word
+# documents (`lexical.BANDS`, `align_steps._word_lift`), the LINE_SYNC rung's blind-decode gate, and pinned
+# `textConfidence` high. Evaluated at BOTH levels against W1 AS SHIPPED (results/w1-<level>.json: the
+# previous wave, base model, youtube tfr audio, --modes all), because W3's conditions are stated against it —
+# "no right text refused that W1 published", "no onset moves beyond confidence changes". The one number W1's
+# own gate needed from baseline-v2 (run_align's 84/320) is written below as a literal. W1's file is ALSO
+# re-run against baseline-v2 on the same rows (that is what closes W1's waived MUST):
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level time_text \
+#       --modes all,wrongtext+ownclock --compare ../docs/benchmarks/forced-alignment/results/w1-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w3.yaml
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level run_align \
+#       --modes all,wrongtext+ownclock --compare ../docs/benchmarks/forced-alignment/results/w1-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w3.yaml
+#   (offline: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
+#   AND, for the run_align level only, the same rows through `gates/w3-run_align.yaml`, which holds that
+#   level's own measured zero absolutely (`--gates` takes one file, so it is a second, decode-free pass).
+#
+# `wrongtext+ownclock` has no W1 counterpart in w1-<level>.json (W1 measured it as a separate run,
+# results/w1-ownclock-<level>.json: 280/320 time_text, 279/320 run_align), so its gates are absolute.
+#
+# NOT ENCODABLE, evaluated by hand in the W3 status-log row (PLAN-alignment-v3):
+#   * "no right text on a stem is refused BY THE LEXICAL GATE" (review §3.4's reject-if, the gate's own
+#     half): the gate language cannot read a trail note. Every row carries the lift the gate read (`lift`,
+#     full precision) and its note; the bench runner lists every right-text case with a lift below the
+#     floor or a `lexical gate refused` note (drop50 separately).
+#   * which component moved a document: `onsets-unchanged-*` below holds W3 to "refuse or downgrade only"
+#     on every song both waves publish; a song W1 lost and W3 publishes is a recovery, listed by hand.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
+#
+# MEASURED 2026-09-28 (the W3 bench: base model, youtube tfr audio, emissions all disk hits, code 120f7db5 =
+# the owner's commit fd98f0c1; `_runs/w3-{time_text,run_align,lines-run_align}`, analysis `_runs/w3-bench/`;
+# results/w3-*.json). SHIPPED: time_text 45/45, run_align 45/45 (incl. built-in no-error-rows: 0 ERROR rows).
+#   Re-evaluated offline from those rows after review round 1 added the two `wrongtext-*-measured` /
+#   `-newly-publishing` gates (43/43 before them); round 1's fixes reach no path the corpus runs (the mix
+#   bands need a stemless song, and `textConfidence` is not a scored field), so the rows stand — W1's own rows
+#   FAIL both new gates (47.5% and 29 songs), which is the non-vacuity check `gates/w1.yaml` set the habit of.
+#   Every document W1 published is BYTE-IDENTICAL (time_text 440/440 right-text cases, run_align 409/409), so
+#   no confidence moved either, and no right text W1 published is refused (0 at either level). Recovered
+#   (W1 refused, W3 publishes): time_text 8 (rap-god drop20, never-be-alone credit, 6 drop50: the lift replaced
+#   the envelope gate on the stem); run_align 27 (6 word documents: never-be-alone credit and 5 of those drop50,
+#   not HILA; + 21 LINE_SYNC commits under the rung's decode gate, rap-god drop20 among them, 0 gross lines
+#   each: off15 +5, off3 +9, headers +4, rap-god jit / credit / drop20). Wrong texts: time_text 1/320 (LUNABLIND #2, lift +0.217 on the raw
+#   claims, doubt band: 0 `high` lines, document `medium`) and 0/320 same-video wrong words (max +0.148);
+#   run_align 0/320 and 0/320 (max +0.189 / +0.137); every refusal lexical, at attempt 1, 0 LINE_SYNC attempts
+#   on wrong texts (W1: 63). `high` > 2 s: 0 in every claim mode, blind 46 = 46.
+#   NOT ENCODED, by hand: 0 right texts refused BY THE LEXICAL GATE at either level (right-text lift min
+#   +0.209 numb drop50 time_text / +0.255 run_align; the only right texts in the doubt band: Avercage and numb
+#   drop50, already 0 `high` at W1, documents unchanged). The 12 right texts run_align still refuses (W1 too)
+#   all lift +0.46..+3.60: 11 out-of-order word documents whose LINE_SYNC retry the rung's decode gate refuses
+#   (claims off 1.5-3 s or on a 2% tempo error, and 2 drop50) and Tom_Orlando jit's backwards line document.
+#   gates/w1.yaml vs baseline-v2 on the same rows: time_text 74/74; run_align 71/74 — W1's waived MUST
+#   `wrongtext-pass-not-up` PASSES (0/320 vs 84), headers 32/32 closes that SHOULD, and the three SHOULD
+#   `m2m1-recovered` left are off15 31, off3 29, tempo102 27 /32 (W1: 26 / 20 / 27; W2's claim clock).
+#   syncMode=lines (`--sync-mode lines`, no committed W1 base, so by hand against W1's scratch probe
+#   `_runs/w1r2p-lines` on its 10 right modes): published 211 -> 287/320, 0 gross lines either way, wrong
+#   0/640 both; it loses 11 documents W1's rung published — never-be-alone in 7 modes (decode agreement
+#   0.37-0.48; W1's documents every line 0.76-0.82 s early, 0/47 within ±500 ms, except headers 47/47) and 4
+#   drop50 (W1 100% within ±500 ms of the half they kept). See the PLAN W3 bench row.
+
+# ── 1) MUST (review §3.4, reject-if half 1): no right text on a stem refused that W1 published, per song ──
+# `refused_up` is 1 where the song has more refused cases than in W1. drop50 is in section 5 (half the text is
+# missing: a refusal there may be the document being genuinely wrong).
+no-song-lost-truth: count(truth.song.refused_up + truth.song.error_up) == 0
+no-song-lost-jit: count(jit.song.refused_up + jit.song.error_up) == 0
+no-song-lost-off05: count(off05.song.refused_up + off05.song.error_up) == 0
+no-song-lost-off15: count(off15.song.refused_up + off15.song.error_up) == 0
+no-song-lost-off3: count(off3.song.refused_up + off3.song.error_up) == 0
+no-song-lost-offm1: count(offm1.song.refused_up + offm1.song.error_up) == 0
+no-song-lost-tempo098: count(tempo098.song.refused_up + tempo098.song.error_up) == 0
+no-song-lost-tempo102: count(tempo102.song.refused_up + tempo102.song.error_up) == 0
+no-song-lost-drop20: count(drop20.song.refused_up + drop20.song.error_up) == 0
+no-song-lost-extraverse: count(extraverse.song.refused_up + extraverse.song.error_up) == 0
+no-song-lost-blind: count(blind.song.refused_up + blind.song.error_up) == 0
+no-song-lost-headers: count(headers.song.refused_up + headers.song.error_up) == 0
+no-song-lost-credit: count(credit.song.refused_up + credit.song.error_up) == 0
+published-not-down-truth: truth.published + truth.line_sync >= base.truth.published + base.truth.line_sync
+truth-text-pm500-not-down: truth.text_pm500 >= base.truth.text_pm500
+
+# ── 2) MUST (review §3.4, reject-if half 2): at most 1% of wrong texts pass (<= 3/320), both wrong modes ──
+# `wrongtext_pass` is a PERCENT (e2e_lib `pass_rate_pct`): 3/320 = 0.94, 4/320 = 1.25.
+wrongtext-pass-le-1pct: wrongtext.wrongtext_pass <= 1.0
+wrongtext-line-sync-zero: wrongtext.line_sync == 0
+ownclock-pass-le-1pct: mode("wrongtext+ownclock").wrongtext_pass <= 1.0
+ownclock-line-sync-zero: mode("wrongtext+ownclock").line_sync == 0
+wrongtext-pass-not-up-vs-w1: wrongtext.wrongtext_pass <= base.wrongtext.wrongtext_pass
+# The 1% reject-if and "not up vs W1" are both far above what this gate actually reads, so neither would name
+# a NEW wrong-text pass (W3 review r1: LUNABLIND #2 is refused at W1 and published here). These two hold the
+# measured counts themselves: 0.32 = 1/320, the raw-claim `time_text` level's one doubt-band document, which
+# `run_align` (cleaned texts, as production serves them) reads as 0. ONE FILE, TWO LEVELS, so this literal is
+# `time_text`'s and at `run_align` it is a whole document looser than the measurement: a regression there from
+# 0 to 1/320 (0.31) CLEARS it, and `wrongtext-no-song-newly-publishing` cannot see that one either, comparing
+# per-song counts against a W1 in which 28 of 32 songs already published a wrong text at that level. So
+# `run_align`'s own zero is held absolutely in `gates/w3-run_align.yaml`, which that level is run against
+# BESIDE this file (W3 review r2). Per-VARIANT identity is not in the gate language: which donor passed is
+# read from `results/w3-<level>.cases.jsonl` (the by-hand step in the header).
+wrongtext-pass-at-most-measured: wrongtext.wrongtext_pass <= 0.32
+wrongtext-no-song-newly-publishing: count(wrongtext.song.published_up) == 0
+
+# ── 3) MUST, W1's carry-over: W1's waived `wrongtext-pass-not-up` (run_align 89/320 vs baseline-v2's 84) ──
+# 26.25 = 84/320, baseline-v2-run_align's pass rate; time_text's baseline was 152/320 (47.5), so the literal is
+# the stricter of the two and serves both levels. (gates/w1.yaml itself is re-run against baseline-v2 too.)
+w1-wrongtext-pass-not-up: wrongtext.wrongtext_pass <= 26.25
+
+# ── 4) MUST: the gate only refuses or downgrades. On every song both waves publish, the line and word START
+# times are W1's (confidence may move: the doubt band grades every line `low`); `high` lines > 2 s off stay 0
+# in every claim mode, and blind's do not rise ──
+onsets-unchanged-truth: count(truth.song.onsets_changed * (base.truth.song.refused == 0) * (truth.song.refused == 0)) == 0
+onsets-unchanged-jit: count(jit.song.onsets_changed * (base.jit.song.refused == 0) * (jit.song.refused == 0)) == 0
+onsets-unchanged-off05: count(off05.song.onsets_changed * (base.off05.song.refused == 0) * (off05.song.refused == 0)) == 0
+onsets-unchanged-off15: count(off15.song.onsets_changed * (base.off15.song.refused == 0) * (off15.song.refused == 0)) == 0
+onsets-unchanged-off3: count(off3.song.onsets_changed * (base.off3.song.refused == 0) * (off3.song.refused == 0)) == 0
+onsets-unchanged-offm1: count(offm1.song.onsets_changed * (base.offm1.song.refused == 0) * (offm1.song.refused == 0)) == 0
+onsets-unchanged-tempo098: count(tempo098.song.onsets_changed * (base.tempo098.song.refused == 0) * (tempo098.song.refused == 0)) == 0
+onsets-unchanged-tempo102: count(tempo102.song.onsets_changed * (base.tempo102.song.refused == 0) * (tempo102.song.refused == 0)) == 0
+onsets-unchanged-drop20: count(drop20.song.onsets_changed * (base.drop20.song.refused == 0) * (drop20.song.refused == 0)) == 0
+onsets-unchanged-drop50: count(drop50.song.onsets_changed * (base.drop50.song.refused == 0) * (drop50.song.refused == 0)) == 0
+onsets-unchanged-extraverse: count(extraverse.song.onsets_changed * (base.extraverse.song.refused == 0) * (extraverse.song.refused == 0)) == 0
+onsets-unchanged-blind: count(blind.song.onsets_changed * (base.blind.song.refused == 0) * (blind.song.refused == 0)) == 0
+onsets-unchanged-headers: count(headers.song.onsets_changed * (base.headers.song.refused == 0) * (headers.song.refused == 0)) == 0
+onsets-unchanged-credit: count(credit.song.onsets_changed * (base.credit.song.refused == 0) * (credit.song.refused == 0)) == 0
+high-gross-zero-claim-modes: truth.high_gross + jit.high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross == 0
+high-gross-blind: blind.high_gross <= base.blind.high_gross
+high-gross-wrong: wrongtext.high_gross + mode("wrongtext+ownclock").high_gross == 0
+unsung-not-up-headers: count(headers.song.unsung_up * (base.headers.song.refused == 0)) == 0
+unsung-not-up-extraverse: count(extraverse.song.unsung_up * (base.extraverse.song.refused == 0)) == 0
+unsung-not-up-credit: count(credit.song.unsung_up * (base.credit.song.refused == 0)) == 0
+
+# ── 5) SHOULD (reported separately, the bench plan): drop50, half of every text's lines removed. A refusal
+# here FAILS unless the status log justifies it as the document being genuinely wrong, with numbers ──
+no-song-lost-drop50: count(drop50.song.refused_up + drop50.song.error_up) == 0

@@ -14,13 +14,16 @@ letters, the same length and the same alphabet, so the model's scale, the song's
 cancel out, and so does the text-free best path the review's Δ subtracts (an identical term on both sides,
 since the letter count and the frames are the same): what is left is how much better THIS ORDER of these
 words explains the audio than an arbitrary order of them. Sung words in their sung order explain it far
-better; words that are not sung explain it no better in any order. The best of `SHUFFLES` draws is the
-reference, so one lucky shuffle cannot flatter a wrong text.
+better; words that are not sung explain it no better in any order — EXCEPT words whose LETTERS are the sung
+ones in the sung order, the hole this test does not close (NOT COVERED below: a cognate translation). The
+best of `SHUFFLES` draws is the reference, so one lucky shuffle cannot flatter a wrong text.
 
 THE BANDS (`BANDS`, read by `band`; W3). CALIBRATED ON THE SHIPPED DECODE (`adapters.ml.forced_align_decoder`,
 no `|`, torchaudio's kernel — the review's prototype numbers were on its `|` + numba "lsep" decode) with
 whisperx's `en` default, WAV2VEC2_ASR_BASE_960H, by `docs/benchmarks/forced-alignment/scripts/lift_gate.py`
-(`--target stem`, `--target mix`; rows in `results/w3-lift-{stem,mix}.json`): 32 songs x (6 right texts —
+(`--target stem`, `--target mix`; rows in `results/w3-lift-{stem,mix}.json`, each naming the bundle it was
+measured on — `BANDS.model`, held to it by a test — so a later model's rows cannot be read as these):
+32 songs x (6 right texts —
 truth, which every timing-only mode also serves, headers, credit, extraverse, drop20, drop50 — + 10 wrong
 texts + 10 same-video wrong words) = 832 texts per target, served as the text adapters serve them
 (`clean_segments`). None is under `MIN_LETTERS` (the shortest holds 201 letters).
@@ -34,9 +37,23 @@ texts + 10 same-video wrong words) = 832 texts per target, served as the text ad
                   and 0/12 drop50 on YouTube + tfr and passes 0/240 wrong; fitted on YouTube + tfr (+0.245),
                   0/100, 0/20 and 0/400 on Jamendo.
     `refuse_below` 0.2: the pooled gap's midpoint (+0.22) rounded down to the 0.05 grid, so the margin is
-                  the right texts' (the lowest, a drop50, keeps +0.055) and the highest wrong text sits
-                  0.011 below — which is what the doubt band above it is for. The LINE_SYNC rung's
-                  `_LINE_SYNC_MIN_LIFT` is the same number over the same populations (W1 review r2).
+                  the right texts' (the lowest, a drop50, keeps +0.055) while the highest wrong text sits
+                  0.011 BELOW the floor — a hair, and on the scale REDRAW NOISE (below) moves a text by.
+                  The doubt band above the floor is NOT that margin: a doubt-band text publishes. What the
+                  band withholds is the text's STANDING — every line `low`, the document `medium` and
+                  `vouched: false` on the wire, so core's `isAuthoritativeText` is false and a document
+                  a gate passed outranks it (W3 review r1) — which is what a wrong text landing just over
+                  the floor costs. WHOSE document that rival is, exactly (W3 review r2): a doubted word
+                  document is
+                  `usable`, so `policy.decide` ACCEPTS it, the search commits and `workflows.align`
+                  publishes and returns — the candidate texts still unturned are never timed, so this
+                  wave's ladder produces no rival row to lose to. The demotion bites ACROSS JOBS, which is
+                  where the threat lives: an earlier align's stored candidate, or the re-run a person
+                  triggers after seeing wrong words, outranks it, and core's never-regress keeps the
+                  doubted text from displacing what is already shown. On a song's FIRST align it is the
+                  only candidate, so it is shown — `low` everywhere, with the trail's reason.
+                  The LINE_SYNC rung reads THIS number over the same populations (W1 review r2):
+                  `align_steps._time_line_sync` calls `band`, so one recalibration moves both gates.
     `ok_from`     0.3: at or above it neither split's own fit would refuse the text. The band [0.2, 0.3)
                   holds 2 right texts (Avercage and numb drop50, 0 `high` lines at W1) and no wrong one.
                   Wider costs right documents their grades and buys nothing: at 0.6 (the review's) it held
@@ -44,7 +61,9 @@ texts + 10 same-video wrong words) = 832 texts per target, served as the text ad
                   rate of every `high` line — because low-lift stems (Avercage +0.47, never-be-alone +0.53)
                   are graded down by the claims already.
     WHY THE LIFT REPLACES THE ENVELOPE GATE ON A STEM, measured case by case over the W1 time_text bench
-    (1088 cases; their outcome IS the envelope gate's), at tau 0.2:
+    (1088 cases; their outcome IS the envelope gate's), at tau 0.2, on `lift_gate.py`'s lifts — i.e. on the
+    CLEANED texts production serves (`clean_segments`), which is also what the bench's `run_align` level
+    serves:
       envelope alone   right refused 8/448 (2 protected: rap-god drop20, never-be-alone credit; 6 drop50),
                        wrong passed 152/320 + 280/320
       lift alone       right refused 0/448, wrong passed 0/320 + 0/320
@@ -53,11 +72,20 @@ texts + 10 same-video wrong words) = 832 texts per target, served as the text ad
     Only "lift alone" meets review §3.4's reject-if (no right text on a stem refused, including <= 20%
     missing lines; <= 1% of wrong texts passed), so on a stem the envelope fit is reported, not gated,
     wherever the lift measured the text.
+    THE TABLE'S POPULATION IS THE CLEANED ONE, and `letters_of` counts every letter it is handed: on the
+    bench's `time_text` level, which serves a provider's RAW claims (`♪`, credit lines, the lines
+    `clean_segments` drops), 230 of the 832 texts move by up to +-0.15 (`_runs/w3-rejudge/raw_lifts.py`), and
+    ONE wrong text crosses the floor — LUNABLIND #2 at +0.217 raw against +0.189 cleaned. So the shipped
+    `time_text` level publishes 1/320 `wrongtext` (a doubt-band document: every line `low`, ranked under a
+    vouched document) where `run_align` publishes 0/320. EACH LEVEL'S COUNT IS CAPPED AT THE LEVEL IT WAS
+    MEASURED ON (W3 review r2): `gates/w3.yaml` holds the shared 1/320 (its literal is `time_text`'s, so at
+    `run_align` a regression from 0 to 1 would have cleared it), and `gates/w3-run_align.yaml` holds
+    `run_align`'s own 0 absolutely. So a second wrong text cannot start publishing unnamed at either level.
 
-  MIX (no stem; the lift gates BESIDE the envelope gate, review §3.4):
+  MIX (no stem): the lift GRADES, and only an arm lets it refuse (W3 review r1).
     the populations OVERLAP: right texts -0.063..+2.92 (truth median +0.75; 24/192 below 0), wrong texts
-    max +0.132 (Jamendo) / +0.106 (YouTube + tfr). A right text lifting little on the mix is one the mix's
-    matrix barely hears: truth texts under 0.15 — numb, Pure_Mids, Avercage, The_Rinn, feel-my-heart,
+    max +0.132 (Jamendo) / +0.106 (YouTube + tfr). A right text lifting little on the mix is USUALLY one the
+    mix's matrix barely hears: truth texts under 0.15 — numb, Pure_Mids, Avercage, The_Rinn, feel-my-heart,
     Kinematic, Moon_I_Mean — decode blind with 0-70% of lines within 1 s (median 24%; 172/237 lines over
     2 s off), and 0 wrong text lifts that far, so no midpoint exists and the floor sits above both splits'
     wrong maxima.
@@ -65,33 +93,116 @@ texts + 10 same-video wrong words) = 832 texts per target, served as the text ad
                   passes 0/240 wrong texts held out on YouTube + tfr; YouTube's (+0.106) would pass 2/400 on
                   Jamendo. At 0.10 the gate (blind envelope AND floor) passes 1/320 wrongtext (shape-of-you;
                   the floor alone 3 + 1).
+                  NOT A VERDICT BY DEFAULT, because of what it costs on the only songs it can reach (no
+                  vocals stem, so every text faces this matrix): 48 of the 192 right texts lift below it —
+                  37 of the 160 protected ones and 7 of the 32 TRUTH texts (numb -0.031, Pure_Mids -0.020,
+                  Avercage -0.010, The_Rinn +0.002, feel-my-heart +0.012, Kinematic +0.136, Moon_I_Mean
+                  +0.137) — and 29 of those 48 are texts the blind envelope gate PASSES, so they would be
+                  NEW refusals. A refusal here is terminal (`policy.decide` rule 0 answers `Refused` with
+                  NextText, and the LINE_SYNC rung declines a stemless song), so it would refuse every
+                  provider sheet of such a song in turn and publish the whisper transcript instead — and
+                  "the matrix barely hears it" does not hold case by case: Moon_I_Mean's truth text lifts
+                  +0.137 with 69.8% of its blind lines within 1 s. So BELOW THE FLOOR IS DOUBT TOO by
+                  default (published, every line `low`, the document `medium`, `vouched: false` — the
+                  mix's ONLY unvouched band, since `mix_ok_from` grades and does not withhold), the
+                  envelope gate stays the mix's only refusal, and the floor's verdict lives in two arms
+                  until a stemless bench mode can measure one end to end (`Config.align_experiments`):
+                  `h3-mix-floor` refuses beside the envelope gate (what W3 first shipped),
+                  `h3-mix-lift-alone` refuses instead of it.
     `mix_ok_from` 0.6 (the review's band top): on the mix the lift reads how well the words are HEARD. The
                   8 truth texts in [0.15, 0.6) decode blind with a median 55% of lines within 1 s and
                   140/343 lines over 2 s off (never-be-alone 11% within 1 s, Lower_Loveday 27%), the 17 at
                   or above it 81% and 149/1166 (`lift_gate.py`'s per-band table), so their lines are
                   `low`. (On a stem the same reading does not hold: the doubt band's right texts are
                   graded down by their claims already, see `ok_from`.)
-    THE ENVELOPE GATE STAYS ON THE MIX (default), though measured there it SORTS BADLY: its blind half
-    passes 122/320 wrongtext and 135/320 same-video wrong words, and on truth texts it passes decodes the
-    matrix never heard (numb: lift -0.03, 0/35 lines within 1 s, r 0.47 at +0.00 s) and refuses ones it
-    did (Rxbyn +1.08, 92% within 1 s; HILA 83%; Tom_Orlando 85%). With the floor, blind envelope AND lift
-    refuses 114/192 right texts, the floor alone 48/192, both passing 0/640 wrong texts. Kept because that
-    is the blind half only (the shipped gate also passes a REPAIRED fit, which only claims can move) and
-    the bench has no stemless mode to measure the whole gate on; the default-off arm `h3-mix-lift-alone`
-    drops it (`Config.align_experiments`).
+                  A GRADING THRESHOLD ONLY: this band does NOT withhold the text's standing (W3 review r2).
+                  It was fitted to how audible the words are, not to whether they are the right ones, and
+                  on the mix it holds most of the RIGHT texts — 104 of the 192 lift under 0.6 (48 under
+                  `mix_floor`, 56 in [0.15, 0.6)), and 15 of the 32 TRUTH texts (7 and 8). Sending
+                  `vouched=False`
+                  with it would withhold the standing of over half the correct provider sheets of every
+                  stemless song, so `isAuthoritativeText` would be false and `lyricsRank` 3 — and
+                  any authoritative LINE document of an earlier job (rank 4) would displace a correct
+                  word-timed sheet. What the WORDS' axis reads on the mix is the floor decision only
+                  (`mix_floor`: above every wrong text's lift on both splits), so a sub-floor mix text
+                  publishes UNVOUCHED and a doubt-band one publishes vouched with its lines `low`
+                  (`align_steps._time_text_global`).
+    THE ENVELOPE GATE STAYS ON THE MIX (default) AND IS THE ONLY VERDICT THERE, though measured it SORTS
+    BADLY: its blind half passes 122/320 wrongtext and 135/320 same-video wrong words, and on truth texts it
+    passes decodes the matrix never heard (numb: lift -0.03, 0/35 lines within 1 s, r 0.47 at +0.00 s) and
+    refuses ones it did (Rxbyn +1.08, 92% within 1 s; HILA 83%; Tom_Orlando 85%). With the floor, blind
+    envelope AND lift refuses 114/192 right texts, the floor alone 48/192, both passing 0/640 wrong texts.
+    Kept because that is the blind half only (the shipped gate also passes a REPAIRED fit, which only claims
+    can move) and the bench has no stemless mode to measure either gate whole; the two arms above move the
+    verdict to the lift (`Config.align_experiments`), which is the measurement a stemless mode owes.
 
-EXEMPT (the step decides, `AlignStepsImpl._word_lift`): the ASR tier, whose words were heard on this audio,
-a text the lift cannot measure (`lift` returns None), and a lift whose decode raised (the trail says so; the
-bench scores it an ERROR row). Each keeps the envelope gate. A pin is measured but never refused: refused
-words publish with every line `low` (a person chose them).
+NOT COVERED (measured, and the reason this gate is a floor and not a proof): A TRANSLATION WHOSE WORDS SHARE
+THE SUNG ONES' LETTERS IN ORDER. The test contrasts an order of THESE letters with other orders of the same
+letters, so a cognate-heavy translation of the sung line keeps much of the sung letter sequence and lifts
+like a right text: on the CTC fixture a German cognate text lifts +1.98 where a French text of the same
+lines reads -0.12 and the sung words read +15.2 (`tests/test_lexical.py`, `tests/test_lexical_gate.py`). No
+band separates that, on either target. It matters MOST on the global path, which this module's `BANDS` gate:
+a cognate translation landing in `OK` publishes a WORD document with `high` lines, where the same text
+through the LINE_SYNC rung publishes lines graded `low` (`align_steps._time_line_sync`). The corpus holds no
+real translation to measure it on (every caption track is `en`, and JamendoLyrics MultiLang gives each song
+ONE language), so `wrongtext+ownclock` — another song's words on this song's own clock — stands in for a
+translation's arbitrary word order only, never for its letters. A defence is unbuilt; the fixture texts are
+the tests to turn around when one lands.
 
-PER MODEL. Every number above is the base model's. W4's model change (HuBERT, review §3 item 6b) re-runs
+REDRAW NOISE (measured, `_runs/w3-rejudge/seed_probe.py`: the 16 near-floor stem texts x 60 random shuffles,
+best-of-3 resampled). `lift` reads ONE crc32-seeded draw, and a redraw moves a text by an SD of 0.03-0.07
+nats/letter — the scale of the 0.011 the floor clears the wrong population by, against a pooled right/wrong
+gap of 0.066. Per redraw ~0.6 of the 640 wrong texts would pass (P: LUNABLIND #2 44%, Cortez #1 7%, Cortez
+ownclock #4 9%, every other <= 2%), i.e. ~0.1% — inside review §3.4's 1%, but not the 0 this one draw reads;
+a drop50 right text would be refused with P 31% (Color_Out), 15% (numb), 5% (Avercage), and a PROTECTED
+right text never (p05 >= +0.268). So the floor's guarantee is the reject-if's 1%, not zero, and what a wrong
+text just over the floor costs is the doubt band's demotion (see `refuse_below`). Narrowing the estimator is
+cheap and unbuilt: more `SHUFFLES`, or the MEAN of the shuffles' path scores instead of the best of three
+(the best is what stops one lucky shuffle flattering a wrong text, so a mean needs its own floor). Either
+moves every number in this docstring, so it belongs to a recalibration (PER MODEL) and its reject-if, not to
+a live tree.
+
+EXEMPT (the step decides, `AlignStepsImpl._word_lift` / `_measured_lift`): the ASR tier, whose words were
+heard on this audio, a text the lift cannot measure (`lift` returns None), a lift whose decode raised (the
+trail says so; the bench scores it an ERROR row), and A MATRIX FROM ANOTHER MODEL (below). Each keeps the
+envelope gate, and NONE of them is a pass: `TimedDoc.vouched` is False for an unmeasured non-ASR text, since
+"no gate doubted these words" and "no gate read them" are not the same claim (W3 review r2). A pin is
+measured but never refused: refused words publish with every line `low` and `vouched: false` (a person
+chose them, so the words are not judged a wrong text — but nothing vouches for them either, and core must
+not read them as a claim).
+
+ONLY ON THE MODEL THEY WERE MEASURED ON (W3 review r2). The emission model is chosen PER LANGUAGE, not per
+wave — `adapters.ml.WhisperXAligner._aligner` calls `whisperx.load_align_model(language_code=...)`, and this
+worker deliberately supports every language whisperx tables (de/es/fr are wav2vec2-XLSR fine-tunes: another
+scale, another vocabulary, so another lift distribution). Nothing in the lift reads the language, so the
+bands would be applied to whatever bundle the song's language loaded. `Emissions.model` names the bundle it
+came from, and `_measured_lift` treats a matrix whose name is not `BANDS.model` exactly as an unmeasurable
+one: the lift stays on the trail as a READING, the envelope gate decides, and the text is not vouched for.
+A matrix that names no model at all (a test's fake, a bench cache written before the field existed) is read
+as the bands' own — the shipped adapter always names one.
+
+PER MODEL AND PER TEXT NORMALISATION. Every number above is the base model's, measured on the texts
+`clean_segments` produces. A CHANGE TO EITHER invalidates `BANDS`, and normalisation moves lifts by the same
+order a model does: diffing the wave's own rows case by case — `results/w3-time_text.cases.jsonl` (a
+provider's RAW claims) against `results/w3-run_align.cases.jsonl` (the same texts through `clean_segments`),
+1088 keys on both sides — 302 cases move, by a median 0.026, a p90 of 0.069 and a maximum of 0.153
+(Kinematic `wrongtext+ownclock` #1, -0.168 raw against -0.015 cleaned), against the 0.011 by which
+`refuse_below` clears the wrong population and the 0.055 margin the lowest right text keeps. One case
+crosses the floor: LUNABLIND #2 `wrongtext`, +0.217 raw and +0.189 cleaned, which is exactly the 1/320 the
+`time_text` level publishes and `run_align` does not. So W5's text-hygiene wave (`clean.py`: anchored
+section headers, rolling captions, ad-libs) owes this record the same reject-if a model change does: re-run
+`lift_gate.py` for BOTH targets and re-read every threshold, or state case by case that no served text
+moved. W4's model change (HuBERT, review §3 item 6b) re-runs
 `lift_gate.py --model <bundle>` for both targets and replaces `BANDS` by the same procedure, on the 0.05
 grid: `refuse_below` at the pooled gap's midpoint (protected right texts and drop50 against both wrong
 populations), rounded down, with each split's own fit scored on the other; `ok_from` the higher split fit,
 rounded up; `mix_floor` the smallest step above both splits' wrong maxima; `mix_ok_from` where the truth
 texts' blind decodes stop being poor in the per-band table. If the stem populations overlap on a model, no
-threshold meets the reject-if, and the wave says so rather than picking one.
+threshold meets the reject-if, and the wave says so rather than picking one. `BANDS` is the ONE place each
+number lives — the LINE_SYNC rung and the bench's `lift_gate.py` / `line_gate.py` read it, none of them
+carries a copy — so replacing this record is the whole change. A recalibration is also where a wider
+`SHUFFLES` or a mean reference belongs (REDRAW NOISE): re-run `lift_gate.py` both ways and keep whichever
+population separates further, since either changes the numbers the bands are read off.
 
 DETERMINISTIC: the shuffles are drawn from a generator seeded by the text itself (crc32, never the salted
 `hash()`), so a replayed step and a bench re-run measure the same thing.
@@ -105,15 +216,21 @@ from __future__ import annotations
 
 import random
 import zlib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-#: `generate.Decoder`'s shape: `(log_probs, targets) -> (frame_labels, frame_scores)`.
-Decoder = Callable[[Any, Sequence[int]], tuple[list[int], list[float]]]
+from encore_worker.domain.lyrics.generate import Decoder as _Decoder
 
-#: How many shuffles the text is contrasted with; the BEST of them is the reference.
+#: THE decoder contract, imported rather than restated: `generate.Decoder` gained its `blank` argument in
+#: review M9's fix, and a second copy of the shape here would have kept the lift measuring on blank 0 while
+#: the decode that publishes moved (one literal per idea — W2 review r1's rule).
+Decoder = _Decoder
+
+#: How many shuffles the text is contrasted with; the BEST of them is the reference. Three is a NOISY
+#: estimator at the bands' scale (SD 0.03-0.07 nats/letter per redraw, module docstring REDRAW NOISE); raising
+#: it narrows the spread and moves every calibrated number, so it moves with `BANDS`, never alone.
 SHUFFLES = 3
 
 #: Fewer alignable letters than this and the contrast is noise: a handful of words has few distinct
@@ -131,21 +248,31 @@ class Lift:
     per_letter: float
 
     def why(self) -> str:
+        # THREE DECIMALS on the lift, not two (W3 review r2): both gates print this string beside the
+        # threshold they compared it to (`align_steps`), and at two decimals a text at +0.195 read
+        # "lexical lift +0.20 ..., below the lexical gate (0.2)" — the one note that makes a wrong-lyrics
+        # report debuggable, contradicting itself at the boundary it is read at most. The bands are set on
+        # a 0.05 grid with 0.011 margins, and the bench's `lift` field stores full precision, so the note
+        # matches the precision the decision is taken on. The per-letter reading stays at two: it is
+        # context (a scale), not a number anything is compared to.
         return (
-            f"lexical lift {self.value:+.2f} nats/letter over {self.letters} letters "
+            f"lexical lift {self.value:+.3f} nats/letter over {self.letters} letters "
             f"(the text {self.per_letter:.2f}/letter against the best of {SHUFFLES} shuffles of its words)"
         )
 
 
-def letters_of(line_texts: Sequence[str], dictionary: Mapping[str, int]) -> list[int]:
+def letters_of(line_texts: Sequence[str], dictionary: Mapping[str, int], blank: int = 0) -> list[int]:
     """The targets `generate` decodes `line_texts` as: every character the dictionary maps to a non-blank id,
-    lowercased, word by word. The SAME rule, so a lift is measured on the decode that publishes."""
+    lowercased, word by word. The SAME rule, so a lift is measured on the decode that publishes — which is
+    why `blank` is an argument and not a 0 (review M9): on a vocabulary whose pad is elsewhere, a filter
+    that drops id 0 drops a LETTER, and the lift would then be the score of a different text than the one
+    the gate is about to publish."""
     return [
         token
         for text in line_texts
         for word in text.split()
         for ch in word.lower()
-        if (token := dictionary.get(ch)) is not None and token != 0
+        if (token := dictionary.get(ch)) is not None and token != blank
     ]
 
 
@@ -170,17 +297,31 @@ def shuffles_of(line_texts: Sequence[str], count: int = SHUFFLES) -> list[list[s
 
 def lift(line_texts: Sequence[str], emissions: Any, *, decoder: Decoder) -> Lift | None:
     """The text's lexical lift on `emissions` (duck-typed: `log_probs`, `frames`, `dictionary`), or None when
-    it cannot say: under `MIN_LETTERS` alignable letters, an empty matrix, or a text no shuffle changes (one
-    word, repeated). Whatever the decoder raises propagates (see the module docstring)."""
-    targets = letters_of(line_texts, emissions.dictionary)
+    it cannot say: under `MIN_LETTERS` alignable letters, an empty matrix, or a text every shuffle of which
+    decodes as the text itself (one word repeated; a `na na na` chant, whose word order carries no
+    information to test). Whatever the decoder raises propagates (see the module docstring)."""
+    blank = int(getattr(emissions, "blank_id", 0))  # see `generate.blank_of` for the default (review M9)
+    targets = letters_of(line_texts, emissions.dictionary, blank)
     if len(targets) < MIN_LETTERS or emissions.frames == 0:
         return None
-    shuffled = [lines for lines in shuffles_of(line_texts) if list(lines) != list(line_texts)]
+    # A CONTRAST IS A DIFFERENT TARGET SEQUENCE, not a different line string (W3 review r2). The lines are
+    # what a reader sees; `path` scores `letters_of`, which lowercases and drops every character the
+    # dictionary has no id for. A shuffle whose LINES differ while its letters do not is the text itself
+    # under another name — its forced path is the text's, so `best == own` and the lift is exactly 0.0,
+    # which `band` reads as REFUSE. Real and reachable: `["na na na na na", "na na nana na", ...]` (40
+    # alignable letters, past `MIN_LETTERS`) permutes to the same letters, and a chant, a `la la la` outro
+    # or a hook-only caption track is the shape. Filtered on the targets, such a text has no contrast left
+    # and `lift` says so (None: the envelope gate keeps it) instead of convicting it.
+    shuffled = [
+        lines
+        for lines in shuffles_of(line_texts)
+        if letters_of(lines, emissions.dictionary, blank) != targets
+    ]
     if not shuffled:
         return None
 
     def path(lines: Sequence[str]) -> float:
-        _labels, scores = decoder(emissions.log_probs, letters_of(lines, emissions.dictionary))
+        _labels, scores = decoder(emissions.log_probs, letters_of(lines, emissions.dictionary, blank), blank)
         return float(sum(scores))
 
     own = path(line_texts)
@@ -189,11 +330,16 @@ def lift(line_texts: Sequence[str], emissions: Any, *, decoder: Decoder) -> Lift
 
 
 class Band(StrEnum):
-    """What a GLOBAL word document's lift says about its text (`band`)."""
+    """What a GLOBAL word document's lift says about its text (`band`). The MEASUREMENT, not the outcome:
+    what the step does with each band is its own (`align_steps._time_text_global`) — a pin is never refused,
+    and on the mix `REFUSE` is published as `DOUBT` unless an arm makes it a verdict (see `mix_floor`)."""
 
-    #: The words are not what is sung: the text is refused (`steps.records.Refused` ends it).
+    #: The words are not what is sung. On a stem, the text is refused (`steps.records.Refused` ends it); on
+    #: the mix it publishes, and it is the one band there whose words go out unvouched (see `mix_floor`).
     REFUSE = "refuse"
-    #: Published, but nothing vouches for its words: every line `low`, the document `medium`.
+    #: Every line `low` and the document `medium`, on both targets. ON A STEM its words are also UNVOUCHED
+    #: (`vouched: false`, so core ranks it under a document a gate passed); on the MIX they are not — there
+    #: this band reads audibility, not wrongness, and holds most of the corpus's right texts (`mix_ok_from`).
     DOUBT = "doubt"
     #: The words are sung: normal grading.
     OK = "ok"
@@ -210,9 +356,11 @@ class Bands:
     refuse_below: float
     #: On a stem: from `refuse_below` up to it, DOUBT; from it, OK.
     ok_from: float
-    #: On the mix: under it, REFUSE (beside the envelope gate).
+    #: On the mix: under it, REFUSE — a verdict only under `h3-mix-floor` / `h3-mix-lift-alone`, published as
+    #: DOUBT by default (it refuses 7 of the corpus's 32 truth texts; see the docstring's MIX section).
     mix_floor: float
-    #: On the mix: from `mix_floor` up to it, DOUBT; from it, OK.
+    #: On the mix: from `mix_floor` up to it, DOUBT; from it, OK. A GRADING threshold (how audible the words
+    #: are), never the words' standing: 104 of the corpus's 192 right mix texts lift under it (docstring MIX).
     mix_ok_from: float
 
 

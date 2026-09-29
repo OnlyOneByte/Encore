@@ -168,7 +168,13 @@ def test_the_windowed_offset_sweep_still_runs(
 
 def test_offset_claims_are_diagnosed_on_the_trail_and_move_nothing(song: Path) -> None:
     """The shipped design, measured through the bench: a +1 s sheet grades lines and names its offset,
-    but the published starts are the decode's, identical to the truth-claims run's."""
+    but the published starts are the decode's, identical to the truth-claims run's.
+
+    WHICH NUMBER NAMES THE OFFSET changed in W2 (review H1): the claim clock maps the sheet onto our clock
+    before the first reconcile, so the VERDICT's own offset is what is left afterwards (`agree`, -0.04 s of
+    onset lead) and the sheet's 1 s is the MAP's. Both are on the same trail line. What did not change is
+    the half this test exists for: the claims still move no timing.
+    """
     bench = load_bench()
     truth = [{"text": text, "start": start, "end": end} for text, start, end in PHRASES]
     runs = {}
@@ -187,7 +193,9 @@ def test_offset_claims_are_diagnosed_on_the_trail_and_move_nothing(song: Path) -
         )
     agree, late = runs[0.0], runs[1.0]
     assert agree["outcome"] == late["outcome"] == "published"
-    # 1.04, not 1.00: the decode's onsets sit ONSET_LEAD (40 ms) ahead of the sung frames.
-    assert late["verdict"] == "offset" and "uniformly 1.04s late" in late["why"], late["why"]
+    # -1.00 exactly, not a lead short of it: the envelope candidate wins the vote, and it reads the CLAIMS
+    # against the audio's own activity rather than against our decode, which carries `ONSET_LEAD_SEC`.
+    assert late["verdict"] == "agree", late["why"]
+    assert "claims mapped onto our clock by envelope-lag -1.00s" in late["why"], late["why"]
     assert [ln.index for ln in late["lines"]] == list(range(len(PHRASES))), "paired by identity"
     assert [ln.start for ln in late["lines"]] == [ln.start for ln in agree["lines"]], "claims moved a timing"

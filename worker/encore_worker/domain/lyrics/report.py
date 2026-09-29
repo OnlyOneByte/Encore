@@ -100,6 +100,22 @@ class TimingReport:
     #: hazard: 168 of 320 wrong texts refused by the envelope gate were retrying LINE_SYNC, and only M1's
     #: bug kept them off the TV).
     refused: str | None = None
+    #: Did `reconcile` RELATE this document's timings to the text's OWN claimed line starts? The one fact that
+    #: compares this document with the LINE_SYNC document of the same text, which is why it is on the report
+    #: and not only on the trail: `policy.decide` spends LINE_SYNC on a word document this is False for, and
+    #: `policy.improves` then lets the line document replace it (W4, the cross-kind comparison).
+    #:
+    #: False is `reconcile.UNRELATED` and nothing else — the verdict with the pairs behind it, the same one
+    #: R1's gate reads: no offset, no bounded tempo and no structural story fits our timings to the claims.
+    #: None is "the question was not answered": an untimed text (NO_CLAIMS), three or four pairs that merely
+    #: disagree (TOO_FEW_PAIRS, a disagreement nothing established — no document should be replaced on it),
+    #: the windowed engine, which reconciles nothing, and a LINE_SYNC document, which has no decode of its
+    #: own to relate. Measured at `run_align` over the W2 corpus rows
+    #: (`results/w2-run_align.cases.jsonl` against `w2-lines-run_align.cases.jsonl`, the same 32 songs' own
+    #: line documents): the 23 song-modes where this is False and the line document passes its own gate hold
+    #: 299 of the 356 gross lines of every published word document that has a line document beside it — 84%
+    #: of them, in 6.4% of the cases.
+    claims_related: bool | None = None
 
     def __setstate__(self, state: Sequence[object]) -> None:
         restore_appended(self, state)

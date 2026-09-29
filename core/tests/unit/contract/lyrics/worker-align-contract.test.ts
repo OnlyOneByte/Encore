@@ -98,7 +98,9 @@ test('the fixture covers every ladder shape core used to misread', () => {
 		'a-pinned-paste',
 		'a-refused-text-withdraws-an-earlier-jobs-candidate',
 		'a-re-picked-machine-caption',
-		'a-re-picked-transcript'
+		'a-re-picked-transcript',
+		'a-doubt-band-word-document',
+		'a-pin-the-lexical-gate-refused'
 	]);
 	expect(fixture.documents.map((d) => d.name)).toEqual(['a-duet', 'an-over-segmented-solo']);
 });
@@ -238,8 +240,68 @@ test("a person's re-pick is sent as their claim, whatever the text's tier (W3: t
 	const t = media({ lyricsOverrideRef: transcript.intent.chosen! });
 	complete(t, transcript.frame);
 	const heard = stored(t, transcript.intent.chosen!);
-	expect([heard.textSource, heard.textConfidence, lyricsSourceLabel(heard)]).toEqual(['asr', 'high', 'Auto-transcribed']);
+	expect([heard.textSource, heard.textConfidence, lyricsSourceLabel(heard)]).toEqual([
+		'asr',
+		'high',
+		'Auto-transcribed'
+	]);
 	expect(isAuthoritativeText(heard)).toBe(false);
+});
+
+test('a doubt-band word doc is no claim, and loses to a vouched line-timed rival (W3 r1)', () => {
+	// The worker published it, but its lexical lift says nothing vouches for the WORDS. Sent as the timing
+	// grade alone (`timingConfidence: medium`) it read authoritative + word = rank 5, tied with a fully vouched
+	// word doc and above a CORRECT line-timed sheet, because `lyricsRank` never reads `timingConfidence`.
+	// The doubt rides on `vouched`, not `textConfidence`: that field is the text's PROVENANCE (W3 r2).
+	const m = media();
+	complete(m, frame('line-sync-after-a-rejected-word-attempt').frame); // an earlier job's vouched sheet
+	complete(m, frame('a-doubt-band-word-document').frame);
+	const doubted = stored(m, frame('a-doubt-band-word-document').intent.chosen!);
+	expect([doubted.vouched, doubted.textConfidence, doubted.timingConfidence, doubted.timing]).toEqual([
+		false,
+		'high',
+		'medium',
+		'word'
+	]);
+	expect(isAuthoritativeText(doubted)).toBe(false);
+	expect(lyricsRank(doubted)).toBe(3);
+	expect(m.lyricsRef).toBe('derived/lyrics/m1-lrclib-line-sync-line.json'); // authoritative + line = 4
+});
+
+test('a doubted caption track is still labelled "Captions", not "Auto captions" (W3 r2)', () => {
+	// The mislabelling the `vouched` field exists to avoid: `textConfidence: low` is how core knows a caption
+	// track is MACHINE-generated, so sending the words' doubt there told the room an uploader's hand-authored
+	// track was auto-generated — false about where the text came from, which is not what the gate measured.
+	const authored: LyricsCandidate = {
+		ref: 'derived/lyrics/m1-captions-authored-word.json',
+		textSource: 'captions',
+		timing: 'word',
+		textConfidence: 'high',
+		vouched: false,
+		createdAt: 1
+	};
+	expect(lyricsSourceLabel(authored)).toBe('Captions');
+	expect(isAuthoritativeText(authored)).toBe(false);
+	expect(lyricsRank(authored)).toBe(3);
+	// A machine track is `low` by its tier, as it always was, and reads as what it is.
+	expect(lyricsSourceLabel({ ...authored, textConfidence: 'low' })).toBe('Auto captions');
+});
+
+test('a pin the lexical gate refused still shows, but not as a claim (W3 r1)', () => {
+	// A person chose the words, so the worker publishes them and core's override keeps showing them — what it
+	// must NOT do is read them as verified: the pin's usual `high` would make unmeasured words authoritative.
+	const { frame: f, intent } = frame('a-pin-the-lexical-gate-refused');
+	const m = media({ lyricsOverrideRef: intent.chosen! });
+	complete(m, f);
+	const pin = stored(m, intent.chosen!);
+	expect([pin.textSource, pin.textConfidence, pin.vouched, lyricsSourceLabel(pin)]).toEqual([
+		'manual',
+		'high',
+		false,
+		'Your lyrics'
+	]);
+	expect(isAuthoritativeText(pin)).toBe(false);
+	expect(m.lyricsRef).toBe(intent.chosen!); // the override is above the ranking, as always
 });
 
 test("a duet's parts reach the TV line for line, and an over-segmented solo stays one colour (review M15)", () => {

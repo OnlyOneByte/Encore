@@ -337,6 +337,82 @@
     "authoritative": [],
     "withdrawn": []
    }
+  },
+  {
+   "name": "a-doubt-band-word-document",
+   "why": "the lexical gate DOUBTS this sheet's words (W3 r1-r2): the document publishes, but nothing vouches for them, so it goes out `vouched: false` — not a claim, and under any document a gate passed. Sent as the timing grade alone it ranked 5, tied with a fully vouched word doc, because core's `lyricsRank` never reads `timingConfidence`; sent as textConfidence `low` it also claimed the words were machine-generated, which is what that field says for a caption track",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-doubted",
+    "mediaUri": "derived/lyrics/m1-lrclib-word.json",
+    "artifacts": {
+     "lyrics": {
+      "uri": "derived/lyrics/m1-lrclib-word.json",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-lrclib-word.json",
+        "textSource": "lrclib",
+        "timing": "word",
+        "textConfidence": "high",
+        "vouched": false,
+        "timingConfidence": "medium",
+        "selectable": true,
+        "createdAt": 1790000000000
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": false,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": "derived/lyrics/m1-lrclib-word.json",
+    "authoritative": [],
+    "withdrawn": []
+   }
+  },
+  {
+   "name": "a-pin-the-lexical-gate-refused",
+   "why": "a person pinned words the gate measured as not the sung ones (`pin-unvouched`): published all-`low` because a person chose them, and NOT sent as a claim — a pin's `high` says who chose the text, and `vouched: false` says no gate found the audio singing it",
+   "frame": {
+    "type": "job:complete",
+    "workerId": "w1",
+    "jobId": "j-pin-unvouched",
+    "mediaUri": "derived/lyrics/m1-manual-word.json",
+    "artifacts": {
+     "lyrics": {
+      "uri": "derived/lyrics/m1-manual-word.json",
+      "candidates": [
+       {
+        "ref": "derived/lyrics/m1-manual-word.json",
+        "textSource": "manual",
+        "timing": "word",
+        "textConfidence": "high",
+        "vouched": false,
+        "timingConfidence": "medium",
+        "selectable": true,
+        "createdAt": 1790000000000
+       }
+      ]
+     }
+    },
+    "facts": {
+     "backend": null,
+     "noLyrics": false,
+     "asrModel": "base",
+     "syncMode": "forced"
+    }
+   },
+   "intent": {
+    "chosen": "derived/lyrics/m1-manual-word.json",
+    "authoritative": [],
+    "withdrawn": []
+   }
   }
  ],
  "documents": [

@@ -237,8 +237,10 @@ export function activeWordIndex(line: LyricLine, pos: number): number {
 	return -1;
 }
 
-/** The provenance slice the overlay needs — a Pick of the stored candidate. */
-export type LyricsProvenance = Pick<LyricsCandidate, 'textSource' | 'textConfidence' | 'timing'>;
+/** The provenance slice the overlay needs — a Pick of the stored candidate. `vouched` is in it because the
+ *  "not verified" treatment reads `isAuthoritativeText`, and a wrong-text gate's doubt rides on that field
+ *  rather than on `textConfidence` (W3 review r2): without it a doubt-band document would render as verified. */
+export type LyricsProvenance = Pick<LyricsCandidate, 'textSource' | 'textConfidence' | 'timing' | 'vouched'>;
 
 /** Should the lyrics render in the "not verified" visual treatment? */
 export function isAutoTranscribed(p: LyricsProvenance | null | undefined): boolean {

@@ -427,6 +427,13 @@ class BenchAligner(WhisperXAligner):
         cached: tuple[Any, Any] = _cached(self._device, f"align:{language}:{self._model_name}", build)
         return cached
 
+    def _bundle_name(self, language: str) -> str:
+        """What `--model` actually loaded, so a matrix from another bundle SAYS so on `Emissions.model` and
+        the lexical gate declines to judge a text on `lexical.BANDS`' own model's thresholds (W3 review r2).
+        Without the override the base class would name whisperx's default for the language — the one case
+        where the guard has to fire is exactly a `--model` run, which is how W4 recalibrates."""
+        return self._model_name or super()._bundle_name(language)
+
     def emissions(self, audio_path: str, language: str) -> Emissions:
         try:
             return self._cached_or_computed(audio_path, language)

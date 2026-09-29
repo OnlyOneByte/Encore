@@ -16,8 +16,9 @@ bad-guy), every one of them a text whose lift was >= +0.26. The lift reads the t
 matrix, decoding it blind, so the rung holds the text's own DECODE too — a second witness to where each line
 is sung, one the envelope cannot give.
 
-THE RULES, each over the same cases (the lift is the lexical gate at `align_steps._LINE_SYNC_MIN_LIFT` in
-all but `sheet alone`; where a reading is missing the rule falls back as the shipped rung does):
+THE RULES, each over the same cases (the lift is the lexical gate at `lexical.BANDS.refuse_below`, which the
+rung reads, in all but `sheet alone`; where a reading is missing the rule falls back as the shipped rung
+does):
 
   sheet alone      the sheet-span envelope gate only (the M1 gate before W1 r2)
   sheet+lift       W1's gate: the sheet gate AND the lift
@@ -26,15 +27,25 @@ all but `sheet alone`; where a reading is missing the rule falls back as the shi
                    the decoded lines start within `--near` seconds of their placed claim
                    (`reconcile.as_claimed`); the sheet gate where the decode pairs under 3 lines. SHIPPED
                    at W3 with θ = `_LINE_SYNC_MIN_AGREEMENT`, `--near` = `_LINE_SYNC_NEAR_SEC`.
+                   SINCE W2 "placed" means MAPPED: the rung votes on the claims' clock first
+                   (`align_steps._line_sync_clock`), so the primary columns of every row — `near`, `gross`,
+                   `w500`, `w1000` — are read off the sheet as the CLAIM CLOCK places it, and `w3_*` carries
+                   the same readings under W3's unconditional activity shift. The `placement` block prints
+                   the two side by side; `--near` moves the vote's band as well as the gate's, since the
+                   rung scores its candidate maps in the same band it counts a line near in.
   either(θ)        the lift AND (the sheet gate OR decode(θ)'s agreement)
+  decode(0.5)+lag  decode(0.5) AND the lag the decode reads in the claims within L s (`AsClaimed.offset_sec`,
+                   which the shipped gate records on the trail and does not read). MEASURED, NOT SHIPPED: see
+                   `rules` for why, and for what it costs.
 
 For every rule it prints: right texts refused (per mode, and over W1's 10-mode lines set), the published
 right documents' lines (scored, > 2 s gross, within ±500 ms / ±1 s of truth), the text-denominator ±500
 (a refused text's lines count as misses), and wrong texts passed (`wrongtext`, `wrongtext+ownclock`). A
 rule that refuses a right text whose line document would have been accurate costs the room lyrics; one that
 publishes a right text on timings seconds off shows it lines that are wrong. The line documents are built
-with the shipped functions (`_sheet_spans`, `activity.fit_sheet_to_audio` on the stem, `_placed_by`), the
-decode with the shipped decoder through `generate`, from the bench's emission cache (the key `e2e.py` uses).
+with the shipped functions (`_sheet_spans`, `activity.fit_sheet_to_audio` on the stem, `_line_sync_clock`,
+`_placed_by`, `_in_claim_order`), the decode with the shipped decoder through `generate`, from the bench's
+emission cache (the key `e2e.py` uses).
 
 Texts are served as the run_align ports serve them (`clean_segments`), for the 13 timed claim modes plus both
 wrong-text modes (`blind` has no timings to sync). `--from` re-prints the summary from a stored `--out`.
@@ -43,6 +54,7 @@ wrong-text modes (`blind` has no timings to sync). `--from` re-prints the summar
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import statistics
 import sys
@@ -98,6 +110,12 @@ def rules(tau: float) -> dict[str, Callable[[Row], bool]]:
     def decoded(row: Row, theta: float) -> bool:
         return bool(row["sheet"]) if row["near"] is None else float(row["near"]) >= theta
 
+    def on_time(row: Row, lag: float) -> bool:
+        # `.get`, unlike every other reading here: a row set written before the lag rule existed carries no
+        # `offset` for its unpaired cases, and an absent one is "no lag to read", as a None one is.
+        seen = row.get("offset")
+        return seen is None or abs(float(seen)) <= lag
+
     out: dict[str, Callable[[Row], bool]] = {
         "sheet alone": lambda r: not r["sheet"],
         "sheet+lift": lambda r: not (r["sheet"] and lifted(r)),
@@ -110,9 +128,29 @@ def rules(tau: float) -> dict[str, Callable[[Row], bool]]:
     def by_either(theta: float) -> Callable[[Row], bool]:
         return lambda r: not (lifted(r) and (bool(r["sheet"]) or decoded(r, theta)))
 
+    def by_lag(lag: float) -> Callable[[Row], bool]:
+        return lambda r: not (lifted(r) and decoded(r, 0.5) and on_time(r, lag))
+
     for theta in THETAS:
         out[f"decode({theta:.1f})"] = by_decode(theta)
         out[f"either({theta:.1f})"] = by_either(theta)
+    # THE LAG TERM, measured and NOT taken (W3 review r2). The share is read against the text's own blind
+    # decode, so a document uniformly 0.5-1.0 s late agrees with itself: 23 of the 328 right-text documents
+    # `decode(0.5)` publishes have 0 lines within ±500 ms of truth and all within 1 s — numb and bad-guy in 9
+    # claim modes each (their TRUTH sheets included), tfr-chosen, feel-my-heart, never-be-alone, rap-god.
+    # Refusing on the lag the decode reads (`AsClaimed.offset_sec`) does not recover them: `_placed_by`
+    # shifted the sheet by the activity fit (+0.72 s bad-guy, +0.62 numb) and the decode reads the claims as
+    # near (offset +0.14, -0.23), so both witnesses agree on the same misplacement, and the `quality` split
+    # below — which reads ±1 s — counts all 23 as GOOD. What the term costs, from these rows: at 0.5 s, right
+    # texts refused 32 -> 39 of 320 on W1's lines set, text ±500 82.8% -> 80.6%, good documents refused
+    # 28 -> 37 of 346, middling published 10 -> 6, bad 0 either way; at 0.3 s, 50/320, text ±500 78.3%, 48/346
+    # good refused. What it buys is the tempo modes' gross lines (13-mode set: 47 -> 9 at 0.5 s, 0 at 0.3 s),
+    # which are W2's bounded scale, not this gate's. Under `syncMode=lines` a refusal is terminal, so the
+    # trade is "no lyrics at all" against "a scroll under a second late". The root cause is W2's claim clock
+    # (apply a shift only where it beats no shift), and `gates/w3-lines.yaml` holds the zero-±500 count so W2
+    # is measured on it. Kept here as the rule a later wave can re-read from the same rows.
+    for lag in (0.3, 0.5):
+        out[f"decode(0.5)+lag({lag:.1f})"] = by_lag(lag)
     return out
 
 
@@ -215,6 +253,59 @@ def distributions(rows: Sequence[Row]) -> list[str]:
     return out
 
 
+def _starts_of(segments: Sequence[Any]) -> dict[int, float]:
+    """Every segment's claimed start keyed by position, as `align_steps._claimed_starts` keys them."""
+    return {i: float(s["start"]) for i, s in enumerate(segments) if isinstance(s.get("start"), (int, float))}
+
+
+def placements(rows: Sequence[Row], tau: float, modes: Sequence[str]) -> list[str]:
+    """W3's placement (`_placed_by`'s unconditional activity shift) against W2's (the rung's claim-clock
+    vote), per mode and on the same decode: what the vote moved, what the gate then admits, and how many
+    published documents have NO line within ±500 ms of truth — `gates/w3-lines.yaml`'s
+    `zero-pm500-documents-not-up`, the count the clock owes. Only rows carrying `w3_near` (a run made after
+    the map existed) can be read."""
+    from encore_worker.steps import align_steps  # noqa: PLC0415 - the shipped threshold, as `main` reads it
+
+    theta = align_steps._LINE_SYNC_MIN_AGREEMENT
+
+    def lifted(row: Row) -> bool:
+        return row["lift"] is None or float(row["lift"]) >= tau
+
+    def refused(row: Row, key: str) -> bool:
+        near = row.get(key)
+        timed = bool(row["sheet"]) if near is None else float(near) >= theta
+        return not (lifted(row) and timed)
+
+    def counts(got: Sequence[Row], near: str, w500: str, scored: str, gross: str) -> str:
+        """One placement's row. EVERY column is keyed, `gross` included (W2 review r2): it used to be
+        hardcoded to `r['gross']` while the other three were parameters, so the W3 row summed the W2
+        placement's gross over the documents W3's rule publishes and `w3_gross` — written by `measure()` —
+        was read nowhere. On these rows that printed 0 where the W3 placement's own count is 47."""
+        shown = [r for r in got if not refused(r, near)]
+        lines = sum(int(r[scored]) for r in shown)
+        zero = sum(1 for r in shown if int(r[scored]) and not int(r[w500]))
+        return (
+            f"refused {len(got) - len(shown):3}/{len(got):3}  ±500 "
+            f"{_pct(sum(int(r[w500]) for r in shown), lines)}%  text ±500 "
+            f"{_pct(sum(int(r[w500]) for r in shown), sum(int(r['in_text']) for r in got))}%  "
+            f"gross {sum(int(r[gross]) for r in shown):4}  zero-±500 docs {zero:3}"
+        )
+
+    out: list[str] = []
+    for mode in (*modes, "ALL"):
+        got = [r for r in rows if (r["mode"] in modes if mode == "ALL" else r["mode"] == mode)]
+        if not got or any("w3_near" not in r for r in got):
+            continue
+        taken = collections.Counter(str(r["map"]) for r in got if r["map_applied"])
+        out.append(
+            f"  {mode:10} W3 {counts(got, 'w3_near', 'w3_w500', 'w3_scored', 'w3_gross')}\n"
+            f"  {'':10} W2 {counts(got, 'near', 'w500', 'scored', 'gross')}  "
+            f"maps {sum(taken.values())}/{len(got)} ({', '.join(f'{k} {v}' for k, v in taken.most_common())})"
+            + (f", held {sum(int(r['held']) for r in got)}" if any(r["held"] for r in got) else "")
+        )
+    return out
+
+
 def summarize(rows: Sequence[Row], tau: float) -> list[str]:
     lines = [f"== {len(rows)} cases; lexical gate at {tau}"]
     lines.append(f"-- W1's lines-mode set ({len(W1_LINES_MODES)} modes)")
@@ -225,6 +316,12 @@ def summarize(rows: Sequence[Row], tau: float) -> list[str]:
     lines += quality(rows, tau)
     lines.append("-- decode agreement (share of decoded lines within --near of their placed claim)")
     lines += distributions(rows)
+    lines.append(
+        f"-- placement: W3's shift vs W2's claim clock, shipped rule (W1's {len(W1_LINES_MODES)} modes)"
+    )
+    lines += placements(rows, tau, W1_LINES_MODES) or ["  no w3_near in these rows (pre-W2 run)"]
+    lines.append("-- placement: every timed mode")
+    lines += placements(rows, tau, TIMED_MODES) or ["  no w3_near in these rows (pre-W2 run)"]
     for name in ("sheet+lift", "lift alone", "decode(0.5)", "either(0.5)"):
         lines.append(f"-- refused by {name}")
         lines += refusals(rows, tau, name) or ["  none"]
@@ -242,19 +339,35 @@ def claim_agreement(
       near_fit    the share within `near_sec` once that lag is removed (does the decode describe the same
                   performance at all, whatever the claims' clock? What W2's claim clock could place)
 
+      pairs       how many lines the share is OVER — the denominator, not the sheet's length: `generate`
+                  drops a line with no alignable character, so a mixed-script sheet's share can rest on a
+                  handful of Latin lines (W3 review r2; the shipped rung now needs
+                  `align_steps._LINE_SYNC_MIN_DECODED_SHARE` of the claimed lines before it reads the share
+                  at all, so a re-run can re-read that threshold from these rows)
+
     All None when fewer than `reconcile.MIN_PAIRS` lines are on both sides (the gate's fallback)."""
     from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
 
     got = rc.as_claimed(generated, placed, tolerance_sec=near_sec)
     if got is None:
-        return dict.fromkeys(("near", "median_gap", "offset", "near_fit"))
+        return dict.fromkeys(("near", "median_gap", "offset", "near_fit", "pairs"))
     residuals = [line.start - placed[line.index] for line in generated if line.index in placed]
     return {
         "near": got.near,
         "median_gap": statistics.median(abs(r) for r in residuals),
         "offset": got.offset_sec,
         "near_fit": sum(abs(r - got.offset_sec) <= near_sec for r in residuals) / len(residuals),
+        "pairs": float(got.pairs),
     }
+
+
+def model_name(named: str | None) -> str:
+    """The bundle a row set was measured on, RESOLVED — never the placeholder "default": see
+    `lift_gate.model_name` for why a committed row set has to name the model it can be matched to
+    (W3 review r1)."""
+    import e2e  # noqa: PLC0415 - loads torch, which `--from` never needs
+
+    return named or e2e.default_model("en")
 
 
 def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
@@ -281,7 +394,7 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
     config = Config.from_env()
     store = lib.EmissionStore(
         root / "_emissions",
-        model=args.model or e2e.default_model("en"),
+        model=model_name(args.model),
         emitter=e2e.emitter_fingerprint(config),
     )
     aligner = e2e.BenchAligner(device=e2e.resolve_device(args.device), model=args.model, store=store)
@@ -296,9 +409,9 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
         signal = load_audio_mono_16k(str(song.vocals))
         info = sf.info(str(song.vocals))
         duration = info.frames / info.samplerate
-        #: Per distinct served text: (lift, the blind decode's lines). Timing-only modes share the truth's
-        #: text, and neither reads a timing.
-        decoded: dict[tuple[str, ...], tuple[float | None, tuple[Any, ...]]] = {}
+        #: Per distinct served text: (lift, the blind decode). Timing-only modes share the truth's text, and
+        #: neither reads a timing.
+        decoded: dict[tuple[str, ...], tuple[float | None, Any]] = {}
         for mode in (*TIMED_MODES, *WRONG_MODES):
             for variant in range(lib.variants_of(mode)):
                 claims = lib.build_claims(song, mode, corpus=corpus, duration_sec=duration, variant=variant)
@@ -308,8 +421,9 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
                 if texts not in decoded:
                     got = lexical.lift(texts, emissions, decoder=forced_align_decoder)
                     blind = generate(texts, emissions, decoder=forced_align_decoder, language="en")
-                    decoded[texts] = (None if got is None else round(got.value, 4), blind.lines)
-                lift, blind_lines = decoded[texts]
+                    decoded[texts] = (None if got is None else round(got.value, 4), blind)
+                lift, blind = decoded[texts]
+                blind_lines = blind.lines
                 fit = activity.fit_sheet_to_audio(signal, 16000, align_steps._sheet_spans(served))
                 request = TimeRequest(
                     job=JobRef(job_id=song.slug, media_id=song.slug, media_dir="", source_uri=None),
@@ -319,16 +433,23 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
                     audio=AudioRef(path=str(song.mix), vocals_path=str(song.vocals), duration_sec=duration),
                     language="en",
                 )
-                placed = {
-                    i: float(s["start"])  # type: ignore[arg-type]
-                    for i, s in enumerate(impl._placed_by(request, fit))
-                    if isinstance(s.get("start"), (int, float))
-                }
-                errors = [
-                    placed[i] - song.truth[t].start
-                    for i in placed
+
+                # W3's placement (the unconditional activity shift) and W2's (the rung's own claim-clock
+                # vote), through the SHIPPED functions, so one run reads both rules. The primary keys are
+                # the rung's CURRENT placement; `w3_*` carries the pre-map one for the delta.
+                truth_of = {
+                    i: song.truth[t].start
+                    for i in range(len(served))
                     if (t := claims.lines[kept[i]].truth) is not None
-                ]
+                }
+                w3_placed = _starts_of(impl._placed_by(request, fit))
+                clock = align_steps._line_sync_clock(fit, _starts_of(served), blind)
+                mapped, held, unheld = align_steps._in_claim_order(
+                    impl._placed_by(request, fit, clock=clock)
+                )
+                placed = _starts_of(mapped)
+                errors = [at - truth_of[i] for i, at in placed.items() if i in truth_of]
+                w3_errors = [at - truth_of[i] for i, at in w3_placed.items() if i in truth_of]
                 agreement = claim_agreement(blind_lines, placed, args.near)
                 rows.append(
                     {
@@ -342,6 +463,9 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
                         "sheet_lag": round(fit.seconds, 3),
                         "placed_shift": round(fit.seconds, 3) if fit.usable else 0.0,
                         **{k: None if v is None else round(v, 4) for k, v in agreement.items()},
+                        #: The sheet's CLAIMED lines, the denominator `pairs` is a share of: together they
+                        #: re-read `align_steps._LINE_SYNC_MIN_DECODED_SHARE` off a stored run (W3 review r2).
+                        "claims": len(placed),
                         "in_text": sum(
                             1 for i in range(len(served)) if claims.lines[kept[i]].truth is not None
                         ),
@@ -349,6 +473,37 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
                         "gross": sum(abs(e) > lib.GROSS_SEC for e in errors),
                         "w500": sum(abs(e) <= 0.5 for e in errors),
                         "w1000": sum(abs(e) <= 1.0 for e in errors),
+                        #: THE CLAIM CLOCK's own reading (W2): which candidate the vote took and what it
+                        #: explained, so a later wave can re-read the margin off a stored run.
+                        "map": "-" if clock is None else clock.candidate,
+                        "map_applied": bool(clock is not None and clock.applied),
+                        "map_offset": (
+                            None
+                            if clock is None or not clock.pieces
+                            else round(clock.pieces[0].offset_sec, 3)
+                        ),
+                        "map_scale": (
+                            None if clock is None or not clock.pieces else round(clock.pieces[0].scale, 5)
+                        ),
+                        "map_inliers": None if clock is None else clock.inliers,
+                        "map_baseline": None if clock is None else clock.baseline,
+                        "map_margin": None if clock is None else clock.margin,
+                        #: Claimed starts `_in_claim_order` held at the line before them (Tom_Orlando jit),
+                        #: and the inversions it REFUSED to hold — a run below one late stamp, or more strays
+                        #: than `_MAX_HELD_SHARE` (W2 review r1). A refused sheet publishes its inversions, so
+                        #: `measure.out_of_order` reaches `decide` and the text is dropped; the pair of counts
+                        #: is what re-reads that rule off a stored run.
+                        "held": held,
+                        "unheld": unheld,
+                        #: The SAME row under W3's placement, for the comparison table: the agreement the
+                        #: activity-shifted sheet read and what its document scored.
+                        "w3_near": (lambda g: None if g is None else round(g, 4))(
+                            claim_agreement(blind_lines, w3_placed, args.near)["near"]
+                        ),
+                        "w3_scored": len(w3_errors),
+                        "w3_gross": sum(abs(e) > lib.GROSS_SEC for e in w3_errors),
+                        "w3_w500": sum(abs(e) <= 0.5 for e in w3_errors),
+                        "w3_w1000": sum(abs(e) <= 1.0 for e in w3_errors),
                     }
                 )
         print(f"{song.slug} ({time.monotonic() - began:.0f} s; {dict(aligner.served)})", file=sys.stderr)
@@ -369,8 +524,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = ap.parse_args(argv)
     from encore_worker.steps import align_steps  # noqa: PLC0415
 
-    args.near = align_steps._LINE_SYNC_NEAR_SEC if args.near is None else args.near
-    args.tau = align_steps._LINE_SYNC_MIN_LIFT if args.tau is None else args.tau
+    args.tau = lexical.BANDS.refuse_below if args.tau is None else args.tau
+    if args.near is None:
+        args.near = align_steps._LINE_SYNC_NEAR_SEC
+    else:
+        # A SWEEP MOVES BOTH READERS (W2). Since the rung maps the claims before reading them, `near` is the
+        # band the claim-clock VOTE scores candidates in as well as the band the gate counts a line near in
+        # (`_line_sync_clock`: "explains" must mean what the reader means by it). Re-deriving one without the
+        # other would measure a rule the rung cannot be set to.
+        align_steps._LINE_SYNC_NEAR_SEC = args.near
+        print(f"-- near swept to {args.near}: the vote's band and the gate's both", file=sys.stderr)
     warnings.filterwarnings("ignore", message=r".*forced_align has been deprecated.*")
     warnings.filterwarnings("ignore", message=r"(?s).*torchcodec is not installed correctly.*")
     if args.source:
@@ -378,7 +541,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         rows = measure(args)
         if args.out:
-            body = {"model": args.model or "default", "near_sec": args.near, "rows": rows}
+            body = {"model": model_name(args.model), "near_sec": args.near, "rows": rows}
             Path(args.out).write_text(json.dumps(body), encoding="utf-8")
     for line in summarize(rows, args.tau):
         print(line)

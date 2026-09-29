@@ -216,6 +216,21 @@ def test_an_unknown_alignment_experiment_is_refused() -> None:
         Config.from_env({"ENCORE_ALIGN_EXPERIMENTS": "l1-mix-kept,l1-mix-kpet"})
 
 
+def test_every_declared_arm_is_read_by_the_step() -> None:
+    """The other half of the typo guard, and the one the config cannot catch: an arm the CONFIG accepts and
+    NOTHING reads is measured as the default path under the arm's name, and a whole bench run says "no
+    change" for the most honest-looking reason there is. Every name in `ALIGN_EXPERIMENTS` must therefore
+    appear as a literal in the step that reads them (W2; source text, not an import, because reading them is
+    a branch deep inside `_time_text_global` that no unit call can enumerate)."""
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parent.parent / "encore_worker" / "steps" / "align_steps.py"
+    ).read_text()
+    unread = [arm for arm in ALIGN_EXPERIMENTS if f'"{arm}"' not in source]
+    assert not unread, f"declared but never switched on anything: {', '.join(unread)}"
+
+
 def test_config_errors_are_not_retryable() -> None:
     """Re-reading the same environment yields the same value; retrying only burns attempts."""
     assert ConfigError.retryable is False

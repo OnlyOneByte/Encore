@@ -84,6 +84,19 @@ class _Stored(Fake):
         return replace(got, ref=f"derived/lyrics/{req.job.media_id}-{name}", confidence=grade)
 
 
+class _Doubted(_Stored):
+    """`_Stored`, with the lexical DOUBT band's verdict on every document it times: published, the grade
+    `medium`, and the WORDS unvouched (`align_steps._time_text_global` sets both together; nothing here
+    decodes, so the band is scripted). Also the shape of a pin the gate would have refused — `pin-unvouched`,
+    whose grade is `low` — since both reach core as `vouched: false` (`TimedDoc.vouched`, W3 r1-r2)."""
+
+    async def time_text(self, req: TimeRequest) -> TimedDoc | Refused | None:
+        got = await super().time_text(req)
+        if not isinstance(got, TimedDoc):
+            return got
+        return replace(got, confidence="medium", vouched=False)
+
+
 def _job(job_id: str, **params: object) -> JobRef:
     return JobRef(
         job_id=job_id, media_id=MEDIA, media_dir="/media/m1", source_uri="https://x.test/v", params=params
@@ -185,6 +198,24 @@ _SCENARIOS: tuple[tuple[str, str, JobRef, Callable[[], _Stored]], ...] = (
         _job("j-re-pick-transcript", pinnedRef=REPICKED_TRANSCRIPT),
         lambda: _Stored(pinned=_re_picked(Tier.ASR, "asr:vocals"), reports=[CLEAN]),
     ),
+    (
+        "a-doubt-band-word-document",
+        "the lexical gate DOUBTS this sheet's words (W3 r1-r2): the document publishes, but nothing vouches "
+        "for them, so it goes out `vouched: false` — not a claim, and under any document a gate passed. Sent "
+        "as the timing grade alone it ranked 5, tied with a fully vouched word doc, because core's "
+        "`lyricsRank` never reads `timingConfidence`; sent as textConfidence `low` it also claimed the words "
+        "were machine-generated, which is what that field says for a caption track",
+        _job("j-doubted"),
+        lambda: _Doubted(provider=lrc(), reports=[CLEAN]),
+    ),
+    (
+        "a-pin-the-lexical-gate-refused",
+        "a person pinned words the gate measured as not the sung ones (`pin-unvouched`): published all-`low` "
+        "because a person chose them, and NOT sent as a claim — a pin's `high` says who chose the text, and "
+        "`vouched: false` says no gate found the audio singing it",
+        _job("j-pin-unvouched", pinnedRef=keys.manual_lyrics_key(MEDIA), pinnedText="my own words"),
+        lambda: _Doubted(pinned=_paste(), reports=[CLEAN]),
+    ),
 )
 
 #: What an EARLIER job left in the store for a scenario, by name: (ref, document). Written into a scratch
@@ -273,14 +304,15 @@ def _intent(
 
     A claim is a CANDIDATE-tier text, or a PIN of anything but a transcript: a person vouched for the words
     (W3), and a transcript is this recording's audio heard back, which neither worker ever counted as a
-    claim (the old worker's `is_authoritative_text`, f04a2d0e^ `lyrics/grading.py`, is core's rule)."""
+    claim (the old worker's `is_authoritative_text`, f04a2d0e^ `lyrics/grading.py`, is core's rule) — UNLESS
+    a wrong-text gate doubted the words (`TimedDoc.vouched`, W3 r1), which no tier and no pin overrides."""
     return {
         "chosen": outcome.published.ref if outcome.published else None,
         "authoritative": sorted(
             [
                 doc.ref
                 for doc in outcome.candidates
-                if doc.tier is Tier.CANDIDATE or (pinned and doc.tier is not Tier.ASR)
+                if doc.vouched and (doc.tier is Tier.CANDIDATE or (pinned and doc.tier is not Tier.ASR))
             ]
             + list(withdrawn)
         ),
@@ -400,6 +432,30 @@ async def test_a_pin_is_sent_as_high_text_confidence_whatever_its_tier() -> None
     assert [(c["ref"], c["textSource"], c["textConfidence"], c["selectable"]) for c in transcript] == [
         (REPICKED_TRANSCRIPT, "asr", "high", True)
     ]
+
+
+async def test_a_document_no_wrong_text_gate_vouches_for_is_sent_on_its_own_axis() -> None:
+    """W3 review r1, narrowed by r2. The lexical doubt band and an unvouched pin publish, so core must be told
+    the WORDS are not vouched for — and on a field of their own, `vouched: false`, which
+    `isAuthoritativeText` reads. The timing grade could not say it: `timingConfidence` is only a tie-break
+    inside a rank, so the doubted document tied with a fully vouched one at rank 5 and was shown.
+    `textConfidence` could not either: it carries PROVENANCE, and core reads `captions` + `low` as "Auto
+    captions", so the doubt turned an uploader's hand-authored track into a machine-generated one on screen.
+    Both fields therefore keep saying what they mean — the tier's standing, and the timing grade."""
+    fixture = await build()
+    doubted = _candidates(_frame(fixture, "a-doubt-band-word-document"))
+    assert [
+        (c["textSource"], c["textConfidence"], c.get("vouched"), c["timingConfidence"], c["timing"])
+        for c in doubted
+    ] == [("lrclib", "high", False, "medium", "word")]
+    pin = _candidates(_frame(fixture, "a-pin-the-lexical-gate-refused"))
+    assert [
+        (c["ref"], c["textSource"], c["textConfidence"], c.get("vouched"), c["timingConfidence"]) for c in pin
+    ] == [(keys.manual_lyrics_key(MEDIA), "manual", "high", False, "medium")]
+    vouched = _candidates(_frame(fixture, "a-pinned-paste"))
+    assert [(c["textConfidence"], "vouched" in c) for c in vouched] == [("high", False)], (
+        "the same paste, no gate doubting it: the field is sent only to withhold"
+    )
 
 
 @pytest.mark.parametrize("tier", list(Tier))

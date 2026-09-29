@@ -7,11 +7,14 @@
 WHAT IT CALIBRATES. `domain.lyrics.lexical.lift` — the text's forced-path log-probability against the best
 of three seeded shuffles of its own words, per letter — gates two things:
 
-  * the LINE_SYNC rung (W1 review r2, `align_steps._LINE_SYNC_MIN_LIFT`): a text past the sheet-span gate
-    must lift, so a same-video caption track in other words (a translation) cannot line-sync;
+  * the LINE_SYNC rung (W1 review r2, `align_steps._time_line_sync`, which reads `lexical.BANDS` too): a
+    text at the rung must lift, so a same-video caption track in other words (a translation) cannot
+    line-sync;
   * the GLOBAL engine's word documents (W3, review §3 item 4 / H3, `lexical.BANDS`): refuse / doubt / ok
-    bands on a stem, and a floor on the mix, because the envelope gate there scores OUR OWN decode, which
-    the audio pulls onto the voiced frames whatever the text (152/320 wrong texts passed it at W1).
+    bands on a stem, where the lift REPLACES the envelope gate, because that gate scores OUR OWN decode, which
+    the audio pulls onto the voiced frames whatever the text (152/320 wrong texts passed it at W1); and doubt
+    / ok bands on the mix, whose floor only GRADES by default (W3 review r1: it refuses 7 of 32 truth texts
+    there) and refuses under `h3-mix-floor` / `h3-mix-lift-alone`.
 
 Both through the SHIPPED helper and decoder (`adapters.ml.forced_align_decoder`), over:
 
@@ -46,7 +49,7 @@ WHAT IT PRINTS (the procedure W3 calibrated by; W4's HuBERT recalibration is `--
 `--from rows.json` re-prints the summary from a stored run without decoding anything.
 
 Measured at W1 review r2 (2026-09-28, base model, youtube tfr stems, 367 s): right texts +0.255..+4.34
-(truth +0.47), wrongtext -0.21..+0.19, wrongtext+ownclock -0.23..+0.14; `_LINE_SYNC_MIN_LIFT` 0.2. W3
+(truth +0.47), wrongtext -0.21..+0.19, wrongtext+ownclock -0.23..+0.14; the rung's floor 0.2. W3
 (2026-09-28, the same tree's shipped decoder, all 64 matrices from disk): the stem run reproduces every W1
 number (359 s); the mix run, envelope fits included, 508 s. W3's numbers (both targets, the held-out check,
 the combination, the mix envelope) are in `lexical`'s module docstring, the rows in
@@ -415,6 +418,19 @@ def _band_of(row: Row, target: str) -> str:
     return lexical.band(float(row["lift"]), on_stem=target == "stem").value
 
 
+def model_name(named: str | None) -> str:
+    """The bundle a row set was measured on, RESOLVED — never the placeholder "default" (W3 review r1).
+
+    `lexical.BANDS.model` names a bundle, and the rows the bands were derived from have to be matchable to
+    it: when W4 re-runs this script with `--model <hubert>` and replaces `BANDS`, a committed row set saying
+    "default" cannot prove which model produced the shipped thresholds. Resolved the way the harness resolves
+    the emission cache's key, so both name the same thing.
+    """
+    import e2e  # noqa: PLC0415 - loads torch, which `--from` never needs
+
+    return named or e2e.default_model("en")
+
+
 def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
     """Decode every text on every selected song's `args.target` matrix (see the module docstring)."""
     import e2e  # noqa: PLC0415 - loads torch; `--from` never needs it
@@ -431,7 +447,7 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
     config = Config.from_env()
     store = lib.EmissionStore(
         root / "_emissions",
-        model=args.model or e2e.default_model("en"),
+        model=model_name(args.model),
         emitter=e2e.emitter_fingerprint(config),
     )
     aligner = e2e.BenchAligner(device=e2e.resolve_device(args.device), model=args.model, store=store)
@@ -459,7 +475,9 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
                     "donor": claims.donor,
                     "lift": None if got is None else round(got.value, 4),
                     "per_letter": None if got is None else round(got.per_letter, 4),
-                    "letters": len(lexical.letters_of(texts, emissions.dictionary)),
+                    # The matrix's own blank, not 0 (review M9, threaded in W4): a recalibration on
+                    # another bundle must count the letters THAT bundle's decode publishes.
+                    "letters": len(lexical.letters_of(texts, emissions.dictionary, emissions.blank_id)),
                 }
                 generated = (
                     generate(texts, emissions, decoder=forced_align_decoder, language="en")
@@ -500,7 +518,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         rows = measure(args)
         target = args.target
         if args.out:
-            body = {"target": target, "model": args.model or "default", "rows": rows}
+            body = {"target": target, "model": model_name(args.model), "rows": rows}
             Path(args.out).write_text(json.dumps(body), encoding="utf-8")
     for line in summarize(
         rows, target=target, cases=bench_cases(W1_TIME_TEXT), synced=line_synced(W1_RUN_ALIGN)

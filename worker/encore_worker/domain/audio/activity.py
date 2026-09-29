@@ -124,6 +124,32 @@ def expected_envelope(spans: Sequence[tuple[float, float]], frames: int, hop: fl
     return out
 
 
+def _bounded_correlation(a: np.ndarray, b: np.ndarray, reach: int) -> tuple[np.ndarray, int]:
+    """`np.correlate(a, b, "full")` restricted to lags in `[-reach, reach]`, plus the first lag returned.
+
+    Lag `L` here means `b` DELAYED by `L` frames, the sense `np.roll(expected, L)` reads and the sense the
+    full correlation's index `len(b) - 1 + L` carries. Lags whose overlap does not exist are not returned —
+    `L < -(len(b) - 1)` and `L > len(a) - 1` are exactly the indices the full correlation has no entry
+    for — so a tiny envelope with a large `reach` behaves as it did before this was bounded.
+
+    WHY IT IS THE SAME SUM: `np.correlate(x, b, "valid")[i]` is `sum_n x[i + n] * b[n]`, the same inner
+    product over the same overlap the full mode computes for that lag. Padding `a` with `-lag_lo` leading
+    zeros lines index 0 up with `lag_lo`, and the trailing zeros only supply a tail the full mode also
+    treats as absent. Only the summation BLOCKING differs; see `fit_shift` for what that is worth.
+    """
+    if len(a) == 0 or len(b) == 0:
+        # `fit_shift` refuses an empty envelope first; guarded here so the pad width cannot go negative.
+        return np.zeros(0), 0
+    lag_lo = max(-reach, -(len(b) - 1))
+    lag_hi = min(reach, len(a) - 1)
+    if lag_hi < lag_lo:
+        return np.zeros(0), 0
+    head = -lag_lo
+    tail = max(0, len(b) + lag_hi - len(a))
+    padded = np.concatenate((np.zeros(head, dtype=a.dtype), a, np.zeros(tail, dtype=a.dtype)))
+    return np.correlate(padded, b, mode="valid")[: lag_hi - lag_lo + 1], lag_lo
+
+
 def fit_shift(
     actual: np.ndarray,
     expected: np.ndarray,
@@ -133,9 +159,26 @@ def fit_shift(
 ) -> ShiftFit:
     """The lag that best aligns a sheet's expected activity onto the audio's real activity.
 
-    Cross-correlated rather than searched with a scoring loop: one FFT-free `np.correlate` over a ~10k-frame
-    envelope costs milliseconds, which is why this can run before EVERY alignment rather than only as a
-    retry.
+    Cross-correlated rather than searched with a scoring loop, which is why this can run before EVERY
+    alignment rather than only as a retry.
+
+    BOUNDED-LAG (review L6). `np.correlate(a, b, "full")` computes all `N + M - 1` lags and then 801 of
+    them are read — quadratic work for a window that never grows. Measured on this box: a 6-minute
+    envelope 0.071 s -> 0.003 s, a 60-minute one 7.65 s -> 0.042 s (the review measured 9.1 s), so the
+    cost stops growing with the square of the input. The +-`reach` lags are computed instead by
+    zero-padding `a` and taking the VALID correlation, which is the same routine over the same overlaps.
+
+    IT IS A WORK REDUCTION, NOT AN APPROXIMATION, and the distinction was measured rather than assumed.
+    The two do not agree bit for bit — a longer dot product blocks its summation differently, worst
+    absolute difference 1.4e-14 on random envelopes — and the only thing that could move a document is the
+    ARGMAX, an integer. Over the whole corpus's own stems (32 songs x 8 span perturbations: truth, four
+    offsets, both tempos, drop50, starts-only = 256 fits, `_runs/w4-clock/corr_identity.py`) the chosen lag
+    moved 0 times and `correlation` came back IDENTICAL in every case, because `r` is recomputed at the
+    integer lag rather than read off the correlation's height. A random-envelope property test pins the
+    same thing hermetically.
+
+    STILL O(N) PER LAG, so the caller runs it off the event loop (`asyncio.to_thread`): 42 ms is well under
+    the socket keepalive, but it is not free, and the review found one call site doing it inline.
 
     Returns a fit with correlation 0.0 — never usable — when either envelope is empty or constant. A
     constant envelope carries no lag information at all, and `np.corrcoef` on one returns NaN, which would
@@ -149,14 +192,11 @@ def fit_shift(
     a = actual - actual.mean()
     b = expected - expected.mean()
     reach = max(1, int(max_shift / hop))
-    correlation = np.correlate(a, b, mode="full")
-    centre = len(b) - 1
-    lo, hi = max(0, centre - reach), min(len(correlation), centre + reach + 1)
-    window = correlation[lo:hi]
+    window, first = _bounded_correlation(a, b, reach)
     if len(window) == 0:
         return ShiftFit(seconds=0.0, correlation=0.0)
 
-    lag = int(np.argmax(window)) + (lo - centre)
+    lag = int(np.argmax(window)) + first
     # Scored at the CHOSEN lag against the real envelope, not read off the correlation's height: a tall dot
     # product says two mostly-on signals overlap, while r says they agree in shape.
     rolled = np.roll(expected, lag)
