@@ -26,11 +26,11 @@ word placement.
 That is still the number that matters for karaoke: a singer reads the line before singing it. A line that
 highlights late is the complaint; a word 80 ms out inside a correctly-placed line is not.
 
-| song | authored lines | span |
-| --- | --- | --- |
-| `tfr-flyaway` | 75 | 13.20 s .. 189.54 s |
-| `tfr-mayday` | 52 | 13.14 s .. 239.34 s |
-| `tfr-chosen` | 37 | 10.00 s .. 229.00 s |
+| song          | authored lines | span                |
+| ---------------| ----------------| ---------------------|
+| `tfr-flyaway` | 75             | 13.20 s .. 189.54 s |
+| `tfr-mayday`  | 52             | 13.14 s .. 239.34 s |
+| `tfr-chosen`  | 37             | 10.00 s .. 229.00 s |
 
 ## Machine
 
@@ -46,10 +46,10 @@ Aligner: `whisperx` 3.8.7rc1 wav2vec2 forced alignment on `torch` 2.8.0, device 
 the text *inside* it. So accuracy is not a property of the aligner — it is a property of the aligner **and
 the windows it was handed**. Two regimes on the same song and the same audio:
 
-| provisional spans | bias | MAD | within ±250 ms | >2 s off |
-| --- | --- | --- | --- | --- |
-| the truth's own timings | +122 ms | 102 ms | 74.7% | 0/75 |
-| spread evenly (untimed text) | +846 ms | 3714 ms | 1.3% | **57/75** |
+| provisional spans            | bias    | MAD     | within ±250 ms | >2 s off  |
+| ------------------------------| ---------| ---------| ----------------| -----------|
+| the truth's own timings      | +122 ms | 102 ms  | 74.7%          | 0/75      |
+| spread evenly (untimed text) | +846 ms | 3714 ms | 1.3%           | **57/75** |
 
 A single accuracy number would average those into something describing neither.
 
@@ -463,6 +463,11 @@ Energy-rise snapping was re-measured at word level against real word truth and R
 the 32-song corpus: neutral-to-positive (±500 ms 88.7→89.3%, ±1 s 96.9→97.5%, still 29/32 songs at zero
 gross).
 
+> **Superseded in W4.** 16 of those 41 ms were the emission clock, not the model: `frame_sec` was derived
+> as `duration / frames` and came out 0.020014 on every corpus song. On the exact 20 ms grid the raw decode
+> is +25.3 ms late, not +41.2, and `ONSET_LEAD_SEC` is **30 ms**. See *The exact frame clock* at the end of
+> this file.
+
 
 ## The E2E harness: `scripts/e2e.py`, the gate for alignment changes (2026-09-27)
 
@@ -516,6 +521,8 @@ hermetically in `worker/tests/test_bench_e2e.py`.
     mode publishes 280/320 at `time_text` and 279/320 at `run_align`, every one a word document at attempt 1
     past the envelope gate (verdict UNRELATED, no `high` line), none reaching the lexically gated LINE_SYNC
     rung: review H3's false pass, which only a lexical gate on the word document can close (W3).
+    Measured on W3 (`results/w3-{time_text,run_align}.json`, the same sweep as `--modes all`): 0/320 at both
+    levels, every one refused by the lexical gate at attempt 1 (lift max +0.148 time_text, +0.137 run_align).
   - NO `translated` mode (W3, checked): no honest one can be built offline. Every caption track in the bench
     root is English (`captions.en*.json3`, `tfr-*.authored.en.json3`), and JamendoLyrics MultiLang's 79 songs
     (20 English, 20 German, 20 Spanish, 19 French) are each sung and transcribed in one language, none with
@@ -571,9 +578,10 @@ hermetically in `worker/tests/test_bench_e2e.py`.
   gates. Since W1 review r1 a job's attempts are staged in job scratch (`work/{job}/lyrics/`) and placed in
   `derived/lyrics/` by `publish`: a `time_text` row's `ref` is the scratch file.
   Since W3 each row, and each `run_align` attempt, carries `lift`: the lexical lift the shipped gate read,
-  at full precision (`capture_lifts`, a wrap that returns what `lexical.lift` returns; the trail prints two
-  decimals, and +0.195 prints `+0.20` and is refused at 0.2), None where the text was exempt, unmeasurable
-  or the check raised. A LINE_SYNC attempt writes no `align-global` note, so its `verdict` reads `?`; its
+  at full precision (`capture_lifts`, a wrap that returns what `lexical.lift` returns; the trail prints three
+  decimals since W3 review r2, so a refused +0.195 no longer reads `+0.20 ... below the lexical gate (0.2)`),
+  None where the text was exempt, unmeasurable or the check raised. A LINE_SYNC attempt writes no
+  `align-global` note, so its `verdict` reads `?`; its
   own note is `line_sync_verdict` / `line_sync_why` (the sheet fit, the lift, the decode's agreement), which
   W1 review r2 could read only through a scratch wrapper.
   `e2e.py --compact ROWS OUT` writes the committed per-case digest (`e2e_lib.compact_row`): what the scratch
@@ -956,28 +964,94 @@ another model, `--from` to re-print), rows in `results/w3-lift-{stem,mix}.json`.
 | target | right texts (protected / drop50) min | wrong max (Jamendo / YouTube+tfr) | shipped |
 | --- | --- | --- | --- |
 | stem | +0.359 / +0.255 (Jamendo), +0.378 / +0.281 (YouTube+tfr) | +0.189 / +0.113 | refuse < 0.2, doubt < 0.3, ok |
-| mix | -0.063 (truth median +0.75; 24/192 below 0) | +0.132 / +0.106 | refuse < 0.15, doubt < 0.6, ok; beside the envelope gate |
+| mix | -0.063 (truth median +0.75; 24/192 below 0) | +0.132 / +0.106 | doubt < 0.6, ok; under 0.15 doubt too, and a refusal only under an arm |
 
 - **Held out**, stem: τ fitted on Jamendo (+0.274) scores 0 errors on YouTube+tfr, τ fitted there (+0.245)
   0 on Jamendo. On the mix the populations overlap; the floor sits above both splits' wrong maxima.
+- **Recalibrate PER MODEL AND PER TEXT NORMALISATION** (`lexical`'s own recipe; W3 review r2 added the second
+  half). The bands are read off the texts `clean_segments` serves, and normalisation moves lifts by the same
+  order a model change does: case by case between the bench's two levels — raw provider claims at `time_text`
+  against cleaned ones at `run_align`, 1088 keys both sides — 302 cases move, median 0.026, p90 0.069, max
+  0.153 (Kinematic `wrongtext+ownclock` #1), against the 0.011 by which the stem floor clears the wrong
+  population; one case crosses it (LUNABLIND #2, +0.217 raw / +0.189 cleaned). So W5's text hygiene owes this
+  the reject-if a model change owes: re-run `lift_gate.py` for BOTH targets and re-read every threshold, or
+  show case by case that no served text moved.
 - **How it combines with the envelope gate on a stem**, case by case over the W1 time_text bench at τ 0.2:
   envelope alone 8/448 right cases refused (rap-god drop20, never-be-alone credit, 6 drop50), 152 + 280 wrong
   passed; **lift alone 0/448, 0 + 0**; both required 8/448, 0 + 0; either enough 0/448, 152 + 280. Only the
   lift alone meets the reject-if, so on a stem it REPLACES the envelope gate wherever it measured the text.
 - **On the mix the lift reads how well the words are heard**: truth texts under 0.15 decode blind with a
   median 24% of lines within 1 s (numb 0/35; 172/237 lines over 2 s off), 0.15-0.6 a median 55% (140/343),
-  above it 81% (149/1166), so the doubt band there is wide. The envelope gate stays beside the floor (the review's rule) although its measurable half sorts the
-  mix badly (it passes numb's unheard decode, refuses Rxbyn's 92%-within-1 s one; with the floor it refuses
-  114/192 right texts, the floor alone 48/192, both 0/640 wrong): the default-off arm `h3-mix-lift-alone`
-  drops it, pending a stemless bench mode.
-- **Exempt**: the ASR tier and a text the lift cannot measure; both keep the envelope gate. A pin is never
-  judged a wrong text (refused words publish graded low, `pin-unvouched`). A lift whose decode raised leaves
-  the envelope gate and is an ERROR row (`e2e.FAULT_LEXICAL`).
+  above it 81% (149/1166), so the doubt band there is wide.
+- **The mix floor GRADES, it does not refuse** (W3 review r1): it would refuse 48 of the 192 right mix texts
+  (37 of the 160 protected, **7 of the 32 truth texts**: numb -0.031, Pure_Mids -0.020, Avercage -0.010,
+  The_Rinn +0.002, feel-my-heart +0.012, Kinematic +0.136, Moon_I_Mean +0.137), and 29 of those 48 are texts
+  the blind envelope gate passes. A song with no stem has nothing after a refusal (NextText, and the rung
+  declines the mix), so all of its sheets would fall to the whisper transcript — and the "unheard decode"
+  reading does not hold case by case (Moon_I_Mean's truth lifts +0.137 with 69.8% of its blind lines within
+  1 s). Below the floor now publishes as the doubt band; the envelope gate is the mix's only verdict, though
+  its measurable half sorts the mix badly (it passes numb's unheard decode, refuses Rxbyn's 92%-within-1 s
+  one; with the floor it refuses 114/192 right texts, the floor alone 48/192, both 0/640 wrong). The two
+  default-off arms hold the verdict a stemless bench mode owes: `h3-mix-floor` refuses beside the envelope
+  gate (W3's first shipping), `h3-mix-lift-alone` instead of it.
+- **Exempt**: the ASR tier, a text the lift cannot measure, and (W3 review r2) a matrix whose
+  `Emissions.model` is not `lexical.BANDS.model` — the alignment bundle is chosen per LANGUAGE, so the
+  English bands must not judge a German sheet on a German model's log-probabilities. All three keep the
+  envelope gate; all but the ASR tier publish UNVOUCHED, since "no gate doubted these words" and "no gate
+  read them" are different claims. A pin is never judged a wrong text (refused words publish graded low,
+  `pin-unvouched`). A lift whose decode raised leaves the envelope gate and is an ERROR row
+  (`e2e.FAULT_LEXICAL`).
+- **What the doubt band withholds** (W3 review r1, narrowed by r2): the document publishes with every line
+  `low` and the grade `medium` on either target, and ON A STEM its words are reported unvouched
+  (`TimedDoc.vouched` -> core's `vouched: false`), so `isAuthoritativeText` is false and `lyricsRank` puts it
+  under a document a gate passed instead of tying with one at the top rank. `timingConfidence` could not
+  carry that (core's ranking never reads it) and `textConfidence` could not either: core reads `captions` +
+  `low` as "Auto captions", so the doubt would have relabelled an uploader's hand-authored track as
+  machine-generated. ON THE MIX the band only GRADES — `mix_ok_from` was fitted to how audible the words are
+  and holds 104 of the 192 right mix texts (15 of the 32 truth texts), so stripping their standing would
+  demote most correct sheets of every stemless song; there only a sub-floor lift publishes unvouched. An
+  unvouched PIN is sent the same way, beside a pin's usual `textConfidence: high`. AND IT ENDS THE LADDER: a
+  doubted document is `usable`, so the search commits and no remaining candidate is timed — the demotion
+  works across JOBS (an earlier align's candidate, a person's re-run), not against a rival of its own run.
+- **NOT COVERED, and unmeasurable on this corpus**: a translation whose words share the sung ones' letters in
+  order. On the CTC fixture a German cognate text lifts +1.98 where a French one reads -0.12 (sung words
+  +15.2), and no band separates that on either target; on the global path such a text would publish as a
+  WORD document with `high` lines. Every caption track under the bench root is `en` and JamendoLyrics
+  MultiLang gives each song one language, so `wrongtext+ownclock` stands in for a translation's word ORDER
+  only. Pinned in `test_lexical.py` / `test_lexical_gate.py` (both engines).
+- **Redraw noise** (`_runs/w3-rejudge/seed_probe.py`): the reference is ONE seeded draw of 3 shuffles, and a
+  redraw moves a text by an SD of 0.03-0.07 nats/letter — the scale of the 0.011 the stem floor clears the
+  wrong population by. Per redraw ~0.6 of the 640 wrong texts would pass (LUNABLIND #2 44%, Cortez #1 7%,
+  its ownclock #4 9%, the rest <= 2%) = ~0.1%, inside the reject-if's 1% but not the 0 one draw reads; a
+  drop50 right text would be refused with P 5-31%, a protected one never (p05 >= +0.268). Narrowing it
+  (more shuffles, or the mean of the shuffles instead of the best) moves every number here, so it belongs to
+  a recalibration and its reject-if, not to a live tree (`lexical`'s PER MODEL).
 - **Targeted probe** (`time_text`, rap-god + never-be-alone × truth / drop20 / credit / blind + 20 wrong + 20
   same-video wrong): the 2 protected right texts the envelope refused now publish (rap-god drop20 0 gross,
   158/174 within ±500 ms; never-be-alone credit 0 gross, 38/46), the other 6 right documents are
-  byte-identical to W1's, and 40/40 wrong texts are refused (W1: 11 published). The corpus bench is the
-  wave's bench runner's.
+  byte-identical to W1's, and 40/40 wrong texts are refused (W1: 11 published).
+- **The corpus bench** (base model, warm emissions, `--modes all,wrongtext+ownclock` at both levels, against
+  W1 as shipped; `results/w3-{time_text,run_align}.json`, `gates/w3.yaml`): every document W1 published is
+  BYTE-IDENTICAL at both levels (time_text 440/440 right-text cases, run_align 409/409: not even a
+  confidence moved), and no right text W1 published is refused. Wrong texts pass **1/320** at time_text
+  (LUNABLIND #2, lift +0.217 on its raw claims, in the doubt band: 0 `high` lines, document `medium`) and
+  **0/320** at run_align (+0.189 on the cleaned text; W1 152 and 89) — the level difference is the raw claims
+  `time_text` serves, which `letters_of` counts too (`♪`, the lines `clean_segments` drops: 230 of the 832
+  texts move by up to ±0.15; case by case against the bench's own two levels, 302 of 1088 move, median 0.026,
+  p90 0.069, max 0.153) — same-video wrong words **0/320** at
+  both (W1 280 and 279), each refused at attempt 1, none reaching the LINE_SYNC rung (W1: 63 did). PER LEVEL,
+  each count is capped at the level it was measured on (W3 review r2): `gates/w3.yaml` serves both levels, so
+  its `wrongtext-pass-at-most-measured` literal is `time_text`'s 1/320 and at `run_align` a regression from 0
+  to 1/320 would have cleared it (`-no-song-newly-publishing` could not see that either: 28 of 32 songs
+  already published a wrong text there at W1). `gates/w3-run_align.yaml` holds that level's zero absolutely —
+  W1's rows fail every one of these gates (47.5%, 29 songs; 27.81% and 89 published at run_align). Right-text
+  lifts, lowest per mode: truth and every timing mode +0.47, headers +0.359, extraverse +0.320, credit
+  +0.377, drop20 +0.438, drop50 +0.209 (numb) and +0.255 (Avercage), the only right texts in the doubt band.
+  Recovered, because the lift replaced the envelope gate on the stem: rap-god drop20 (0 gross, 158/174 within
+  ±500 ms), never-be-alone credit (0 gross, 38/45) and 6 drop50 texts at time_text (80 gross lines among
+  them, all graded `low`: 0 `high` line over 0.5 s off). `gates/w1.yaml` against baseline-v2 now passes
+  74/74 at time_text and 71/74 at run_align: W1's waived MUST `wrongtext-pass-not-up` passes (0/320 vs 84),
+  and the three SHOULD `m2m1-recovered` left are off15 31, off3 29 and tempo102 27 of 32 (below).
 
 
 ## The LINE_SYNC rung's gate: the text's own decode reads its timings (W3, 2026-09-28)
@@ -1007,6 +1081,821 @@ same-video wrong words 0.49). The refusals left are mostly right to make: sheets
 cannot place (hello, rap-god, bohemian-rhapsody off15 / off3: every line off), 2% tempo errors (53 texts, 676
 gross lines had they published), half a sheet missing (drop50: its decode strays into the gaps). The false
 ones: never-be-alone (9 modes, 0.37–0.49; its blind decode is poor) and drop50. Where the decode cannot be read
-(no emission matrix, a decode that raised, fewer than 3 lines paired) the sheet gate decides as W1 shipped it.
-The envelope fit still places the lines. Cost: one `generate` decode beside the lift's four, and the emission
-pass for every text that reaches the rung (the sheet gate used to refuse about a third before it).
+(no emission matrix, a decode that raised, fewer than 3 lines paired, or — W3 review r2 —
+`align_steps._LINE_SYNC_MIN_DECODED_SHARE` of the sheet's claimed lines not decoded, since the share's
+denominator is the decoded lines alone and a mixed-script sheet decodes only its Latin ones) the sheet gate
+decides as W1 shipped it, and the document goes out UNVOUCHED because nothing read its words. The envelope fit
+still places the lines. Cost: one `generate` decode beside the lift's four — and only AFTER the lexical
+verdict since r2, so a text the words' gate refuses pays for neither — plus the emission pass for every text
+that reaches the rung (the sheet gate used to refuse about a third before it). Every decode reading in the
+committed runs paired every claimed line, so the share changes no recorded row; `line_gate.py` now records
+`pairs` and `claims` so a later run can re-read the threshold.
+
+**Measured end to end on the corpus (the W3 bench).** Forced `run_align` (`results/w3-run_align.json`):
+27 right texts W1 lost now publish (21 as line sync with 0 gross lines; off15 26 → 31, off3 20 → 29,
+headers 28 → 32, jit 30 → 31, drop20 31 → 32, credit 30 → 32 of 32) and none W1 published is lost. One
+recovery is a line document placed wrong: bad-guy off3, every line 0.72 s late (0/69 within ±500 ms, 69/69
+within 1 s; the decode agreed 93% within the gate's 1 s). The 12 right texts still refused never fail on
+the lift (+0.46..+3.60): 11 are word documents out of order at attempt 1 whose claims the decode disagrees
+with (rap-god off15 / off3, hello and bohemian-rhapsody off3 at 0%; 5 tempo102 texts at 15-46%; HILA and
+never-be-alone drop50 at 28% / 0%), and Tom_Orlando jit's line document runs backwards, as at W1.
+`--sync-mode lines` (`results/w3-lines-run_align.json`; against W1's scratch probe `_runs/w1r2p-lines`, the
+same 10 right modes): right texts published 211 → 287 of 320, 0 gross lines either way, text ±500 truth
+69.9 → 90.6%, off15 34.3 → 69.9%, drop20 42.9 → 88.6%; wrong texts 0/640 both. It LOSES 11 documents W1's
+rung published: never-be-alone in 7 modes (decode agreement 0.37-0.48; W1's documents had every line
+0.76-0.82 s early, 0/47 within ±500 ms, except headers, 47/47) and 4 drop50 texts (Avercage, Color_Out,
+Lower_Loveday, Quentin: agreement 0.28-0.48, W1's documents 100% within ±500 ms of the half they kept). The
+new lines-mode modes: offm1 29/32 (0 gross), tempo098 5/32 and tempo102 6/32 (28 and 19 gross lines).
+
+Those readings are the gate `gates/w3-lines.yaml` holds a later wave to (`--sync-mode lines --modes
+all,wrongtext+ownclock`, 38/38 on this run). Its literals are absolute, because there is no earlier committed
+lines run to `--compare` against — W1 measured the mode through a scratch probe, and a summary with no
+`sync_mode` in its meta reads as `forced`, which `e2e_gates` refuses as a baseline for a lines run. What it
+holds: wrong words never commit; a line document is never graded `high` (its timings are the sheet's, so
+`_line_doc` writes every line `low`); no gross line in the eleven timed modes whose claims are on this
+master's clock, with the two tempo modes capped at the 28 and 19 above, since a bounded scale in the claim
+clock is W2's; the per-mode commit floors of the 211 → 287 recovery; and the text-denominator ±500 readings.
+Run against W1's own probe rows it fails 13 of the 36, so the floors are not self-fulfilling.
+
+Two gates were added by W3 review r2, for the blind spot the decode gate cannot see: a document uniformly
+0.5–1.0 s late agrees with its OWN decode and passes, so 23 of the published song-modes have NO line within
+±500 ms of truth and every line within 1 s (truth 2 — numb and bad-guy, whose claims ARE the truth — drop20 4,
+headers 4, offm1 3, off05 / off15 / off3 / extraverse / credit 2 each). The cause is upstream of the gate:
+`_placed_by` shifts the sheet by the activity fit (+0.72 s bad-guy, +0.62 numb) and the decode reads the
+shifted claims as near, so both witnesses agree on the same misplacement — and the quality split above, which
+reads ±1 s, counts all 23 as good. A lag term on the decode's own offset does not recover them and costs
+accurate documents (`line_gate.py`'s `decode(0.5)+lag(L)` rule, measured there), so the fix belongs to W2's
+claim clock, which applies a shift only where it beats no shift. `zero-pm500-documents-not-up` (≤ 23) and
+`zero-pm500-truth-not-up` (≤ 2) hold the count meanwhile; the truth one fails at ≤ 1, so neither is vacuous.
+(W2 took the count down to 13 and 1 by putting the rung's claims on our clock — the section after next.)
+
+## The claim clock: the claims on OUR clock before anything reads them (W2, 2026-09-28; review §3 item 2, H1)
+
+Every claim-window repair and every adoption in `_time_text_global` used to run in the CLAIM's raw clock:
+`reconcile` fitted an offset and spent it only on choosing which COARSE lines to repair, fitted a scale and
+never applied it, and R1 measured the claims' own envelope lag and kept only its correlation. So claims
+1.5 s late published every line 1.5 s late and still passed the envelope gate at lag −1.50 s, and +3 s claims
+produced 440 gross lines corpus-wide. `domain/lyrics/claimmap.py` now maps the claims once, before the first
+`reconcile`, by a RANSAC-style vote over candidates the step already computes — no-shift, the claims' own
+envelope lag (`activity.fit_shift` on `expected_envelope(claim spans)`), median(ours − claimed), and a
+bounded Theil–Sen tempo (|scale − 1| ≤ 5%) — applying the winner only if it explains `max(2 lines, 5% of
+pairs)` more paired lines than no-shift. One rebinding of `claimed` / `claim_windows`; the raw claims stay
+for the trail, and the map's own offset is the fact about the SHEET that the verdict used to carry.
+
+TARGETED PROBES, NOT A SWEEP (the corpus row is the wave's bench run). `--level time_text`, base model,
+against `results/w3-time_text.json` per song — pooled deltas in those logs compare 4 or 2 songs against a
+32-song base and mean nothing; the per-song ones are the measurement.
+
+`_runs/w2-clock-jamendo` — 4 Jamendo songs with MEASURED word onsets (The_Rinn, Avercage, Pure_Mids,
+Kinematic), per-song delta ranges over the 4:
+
+| mode | line gross | lines ±500 ms | words ±300 ms |
+| --- | --- | --- | --- |
+| truth | 2 → 2 (no song up) | +0.00 on all four | +0.00 on all four |
+| jit | unchanged | +0.00 .. +2.18 (The_Rinn) | −1.58 (Avercage) .. +0.00 |
+| off15 | −1 (Avercage), none up | +5.00 .. +42.86 (Kinematic) | −0.28 .. +1.89 |
+| off3 | −4, −4, −6, −15 | +5.00 .. +50.00 | −0.28 .. +14.37 |
+| tempo102 | −4, −14, −24, −31 | +75.00 .. +95.65 | +61.73 .. +95.19 |
+
+Truth mode is BYTE-IDENTICAL on three of the four (Avercage's document moves and scores identically), no
+Jamendo song gains a gross line in any mode, and the tempo row is what the bounded scale buys: the sheet
+that used to leave 4–31 lines over 2 s out now leaves none (Kinematic tempo102 words 93.8% within ±300 ms,
+computed from its row — the summary has no `word_pm300` for it on either side).
+
+`_runs/w2-clock-probe` — the two songs the review names as the cost, where truth is the CAPTION track:
+
+| mode | believer ±500 | bad-guy ±500 | gross |
+| --- | --- | --- | --- |
+| truth | −4.16 (50 → 47 lines) | −10.14 (13 → 6 lines) | 0, unchanged |
+| jit | +1.39 | −4.35 | 1 → 1 |
+| off05 | +2.78 | −10.14 | 0 |
+| off15 | +23.61 | +8.70 | believer −2 |
+| off3 | +20.84 | +8.70 | believer −21, bad-guy −27 |
+| offm1 | +16.67 | −4.34 | 0 |
+| tempo098 | +18.06 | −10.14 | believer −9, bad-guy −9 |
+| tempo102 | +20.84 | +1.45 | believer −15, bad-guy −16 |
+
+Both regressions are the map siding with a MEASUREMENT against the metric's ruler, and on these songs the
+ruler is the sheet: believer's SDH captions lead the singing by about 0.5 s (the map reads `tempo +0.50 s
+scale 0.9987`, 52 of 72 lines explained against no-shift's 12) and bad-guy's decode sits 0.86 s later than
+its captions (`decode-median +0.86 s`, 52 of 69 against 1). Where the map moves the claims the repairs then
+adopt, and caption truth scores that as a loss by construction — which is why the Jamendo split above, with
+measured onsets, is the honest read. bad-guy's 13 → 6 reproduces the review's own number for it exactly.
+The lever not pulled: preferring the envelope candidate unless the median beats it by the margin would
+protect bad-guy only if its claim-span envelope fit were the better estimate there, and it is not (its
+blind envelope reads r = 0.33), so it would trade a measured cost for an unmeasured one.
+
+`claimmap-piecewise` (change-point legs instead of one affine map) STAYS OFF, which is the critics'
+measurement reproduced: over the 6 songs above × their modes (`_runs/w2-piecewise-jamendo`,
+`_runs/w2-piecewise-yt`, each against the default run on the same tree), every mode is identical except
+`jit`, where it moves two documents and both get worse — believer −1.39 pt within ±500 ms, Avercage −2.42 pt
+±500 and −1.19 pt words ±300. A jitter-disputed run looks exactly like a step to a change-point fit, which
+is the failure mode the review predicted (F2, a misbound repeat, has the same shape).
+
+THE VOTE ALSO NEEDS A FLOOR, and it did not have one until review r1 (W2, 2026-09-29). The margin
+(`max(2 lines, 5% of pairs)`) grades the GAIN over no-shift and never the winner's own quality, so on a sheet
+our decode barely agrees with anywhere — a CORRECT sheet against a poor, systematically late decode, which is
+never-be-alone's measured shape — four candidates all explaining almost nothing still leave one of them two
+lines ahead, and that one moves every claim window. `claimmap.MIN_INLIER_SHARE` = 0.2 is the absolute gate, and
+the number is read off the rows taken BEFORE it existed (`_runs/w2r-time_text/rows.jsonl`; the committed
+`results/w2-time_text.*` is the row WITH the floor, so those four maps are no longer in it): of the 245 maps
+applied over its 1088 `time_text` cases, exactly FOUR explain under a fifth of their pairs, and all four are
+this failure — hello tempo102 `envelope-lag` 4/74 = 0.054 with 25 gross lines, hello tempo098 `decode-median`
+6/74 = 0.081 with 31, numb drop50 `envelope-lag` 2/17 = 0.118 with 1 line of 17 within ±500 ms, and one
+wrong-text sheet 2/35 = 0.057. The lowest map worth keeping sits clear of the floor at 11/45 = 0.244
+(never-be-alone tempo098/102, 0 gross, 40 of 45 lines within ±500 ms). **0.2 therefore sits in an empty band,
+0.118 to 0.244** — and the re-bench confirms it from the other side: with the floor on, 241 maps are applied
+and the lowest share among them is 0.244. At the rung, where the band is wider and shares run higher, the floor
+is inert on every right text (the lowest applied right-text share over the 1056 gate cases is 0.2432, 188 maps
+applied either way, and re-measuring with the floor on changed no right-text row) and refuses 293 of the 402
+maps applied to WRONG texts, which only makes that gate stricter. `reconcile` could not have caught any of it:
+it re-fits its own median, so the verdict reads the same either way.
+
+THE LINE_SYNC RUNG TAKES THE SAME VOTE, in its own band — built after this section, measured in the next one.
+Until then the rung placed its sheet with `_placed_by`'s unconditional activity shift (r ≥ 0.40 moved it,
+whatever a vote would say), which is where the previous section's 23 zero-±500 documents come from and why 12
+right texts were refused for a clock error their own decode could see.
+
+## Reconcile robustness: the fit, the classes, and which lines a repair may touch (W2, 2026-09-28; review §3 item 11, M4 + M5)
+
+`reconcile` graded a claim series with an UNBOUNDED endpoint span ratio (its `MAX_SCALE_DRIFT` was defined
+and never applied) through as few as three pairs, and then asked `agreement == 1.0`: any sheet with one
+stray stamp came out STRUCTURAL, so OFFSET was effectively unreachable and the caller re-decoded every line
+the sheet's own jitter pushed past 250 ms. The review's statistics, reproduced as tests over seeded noise
+(`tests/test_reconcile.py`, last section) and now the numbers this tree reads:
+
+| the M4 statistic | before | now |
+| --- | --- | --- |
+| random 3-pair series (2000 seeded draws) | 1993 STRUCTURAL | 2000 UNRELATED, 0 lines disputed |
+| ±1.5 s sheet, 150 ms jitter, 40 lines (2000 draws) | ~98% STRUCTURAL | 0 STRUCTURAL (1463 OFFSET, 535 COARSE, 2 DRIFT), 0 of 80 000 lines disputed |
+| 2% tempo sheet, 50 lines, ±0.55 s jitter (repro s9) | 38/50 lines flagged gross | 0/50 (the pre-W2 formula on this tree: 37/50 at 1.02, 46/50 at 1.0417) |
+
+What carries them: a bounded Theil–Sen fit shared with `claimmap` (`reconcile.theil_sen`, ONE
+implementation, |scale − 1| ≤ 5%), `MIN_FITTED_PAIRS` = 5 before STRUCTURAL or COARSE, the AGREE / OFFSET /
+DRIFT classes read off the residual DISTRIBUTION (≥ 90% inliers and a small MAD) instead of exact agreement,
+STRUCTURAL narrowed to sheets whose minority disagrees by more than a PHRASE, and `LineJudgement`
+carrying a MODEL residual beside the raw one. Which lines a caller may re-decode moved into
+`Reconciliation.disputed`, one rule per class: STRUCTURAL disputes every uncorroborated line (the sheet is
+tight, so 300 ms is real, and on repeated text the claim is the only occurrence-anchor), every other
+corroborating class disputes only the lines more than a phrase from the FITTED model. The caller's old
+COARSE rule thresholded the RAW residual against the fitted offset, which is where s9's 38 false flags came
+from, and no class but STRUCTURAL and COARSE disputed anything, so a stray line in an otherwise perfect
+sheet would have lost its repair the moment that sheet stopped being mislabelled STRUCTURAL.
+
+M5, the truncating window: a claim carries an END only where the sheet gave one, and the reader defaults the
+rest to `start + 1.0 s` — an LRC's last stamp, a stacked timestamp, a short caption cue. Cut to that, a
+repair window cannot hold its line: the forced path compresses it or collapses onto the window's left edge,
+`adopt_where_unheard` reads that as "heard nothing", and the claim's one-second span replaces a correct
+measurement with its words spread evenly inside it. `claim_run` now holds the window open to the END of the
+blind decode's own span for that line (only where the blind decode STARTS inside the padded cue — elsewhere
+the two are competing hypotheses, not one span measured twice, and R1 fires exactly when the claims have
+outvoted our decode), and a claim span too short to hold the line at `regenerate`'s own floor (2 emission
+frames per alignable character) is not adopted at all: the repair is dropped, the measurement stands, and
+the trail says which line and why. Both halves are pinned hermetically in
+`tests/test_align_provenance.py` (M5 section), where removing the first publishes the closing line 2 s short
+and removing the second publishes it 5.06 s from where it is sung.
+
+AND THE HOLD-OPEN IS CAPPED AT THE NEXT CUE (review r1, W2 2026-09-29). Taking the blind end WHOLESALE trusts
+it exactly where the blind decode is least trustworthy: R1 fires on an UNRELATED blind verdict, which is the
+state in which a blind line is known to smear across its neighbours' frames — 7-10 s on tfr-chosen's credit
+line, about 6 s a line on the bench harness's own rig — so a defaulted cue could buy a window tens of seconds
+long, covering the following lines entirely, and a single-line forced decode in such a window lands wherever the
+audio liked. The widening now stops where the PADDED window reaches the next claim's onset. Measured on a
+fixture whose line is sung once at 12-15 s while a SUPERSTRING of its text is sung at 32-36 s and the blind
+decode smears the line 12 → 34 s: uncapped it published 11.96-34.88 s (its end 19.88 s late) with 3 of 8 lines
+gross, capped 11.96-14.96 s with none — and M5's own case (a 7 s smear whose neighbour is only a near
+duplicate) is 11.96-14.96 s either way. THE CAP IS NOT A TEMPO CEILING, and that was measured too: over the
+corpus's 1645 truth lines real singing runs down to 0.7-1.7 alignable characters a second (tfr-chosen holds
+"You're the one" for 10 s, Pure_Mids "aw ah aw ah" for 6 s), so any characters-per-second ceiling tight enough
+to refuse the smear above also truncates a held note. The next claim is EVIDENCE — the sheet's own statement
+about where this line's slot ends — and the last cue has no next claim and therefore no cap: nothing follows it
+to swallow. The window itself is now asserted as a window (a `regenerate` spy in `test_align_provenance`), which
+is what the three refusals in `claim_run`'s docstring lacked: every one of them could be mutated green.
+
+TARGETED PROBES, against THE CLAIM CLOCK'S OWN ROWS (the base that isolates this item; the corpus row is the
+wave's bench run). `--level time_text`, base model:
+
+`_runs/w2-recon-probe2` vs `_runs/w2-clock-jamendo` — Avercage (the song the COARSE gross-line branch was
+measured on) and Kinematic (the tempo one) × truth / jit / off15 / off3 / tempo102: **all 10 documents
+byte-identical**. The taxonomy change is action-neutral there, which is what §3.11's reject-if asks of the
+unperturbed row.
+
+`_runs/w2-recon-yt` vs `_runs/w2-clock-probe` — believer and bad-guy × truth / jit / off15 / tempo102:
+believer identical in all four; bad-guy's three timed modes move, and only because the ladder's LAST
+re-reconcile now reads COARSE where it read STRUCTURAL, so one fewer line is re-decoded inside its claim
+window. truth and off15 publish the same onsets (one line keeps the blind decode that the window decode had
+reproduced); tempo102 moves 4 lines — two better (0.90 → 0.64 s, 0.86 → 0.64 s), one worse (0.78 → 1.07 s),
+one `high` at 0.54 s regraded `low` at 0.77 s — for ±500 unchanged, gross 0 → 0 and ±1 s −0.7 pt.
+
+TWO THINGS THE TAXONOMY GOT WRONG, fixed in review r1 (W2, 2026-09-29), both about what a verdict makes the
+CALLER do rather than what it is called:
+
+* `MIN_FITTED_PAIRS` (5) kept STRUCTURAL and COARSE away from 3-4-pair sheets and dropped them through to
+  UNRELATED — which is not the neutral fallthrough it looks like. UNRELATED is the ONE verdict that arms R1,
+  the widest repair in the step: every claimed line re-decoded inside its claim window, some adopted outright.
+  So the floor that exists to distrust four points was routing them to the most sweeping branch. `TOO_FEW_PAIRS`
+  is now its own verdict — it confers nothing, disputes nothing and arms nothing, while grading still reads it
+  as a disagreement, which only ever lowers a line's confidence. Measured as a property: 2000 random 3-pair and
+  2000 random 4-pair series now reach no repair at all.
+* the AGREE / OFFSET / DRIFT test was written as review M4 asked it — "≥ 90% inliers AND a small residual MAD"
+  — and the second half could never fire. The residuals are taken against `median(ours − scale × claimed)`, so
+  their median is 0 by construction and the MAD is exactly `median(|residual|)`; once 90% of them are inside
+  `AGREE_TOLERANCE_SEC` (0.25 s) that median cannot exceed 0.25, let alone the 0.4 s band. 200 000 seeded series
+  produced none in which the band could have refused a branch the share admitted, and mutating the 0.4 to 4.0
+  left the whole suite green. The conjunct and its constant are gone, the docstrings no longer advertise a
+  two-part test, and the implication is pinned as a property test so a future tolerance that broke it would have
+  to say so.
+
+An earlier draft of the dispute rule read the band off the sheet's own residual MAD (4 robust sigmas), which
+is wrong for a reason worth recording: the residual spread is the JOINT precision of the two measurements,
+and when OUR decode is the loose one a wide spread is not a reason to stop repairing against the sheet.
+Measured before it was taken out (`_runs/w2-recon-probe`, the same two songs and modes as probe2): Kinematic
+lost 3 of 14 lines within ±500 ms in truth mode and 4 in off15 / off3 (−21.4 and −28.6 pt on that song),
+because 4 of its 7 disputed lines stopped being repaired. Avercage was unchanged there too, so the probe
+pair is what caught it — a corpus run would have, four hours later.
+
+## The rung's own claim clock: 12 refused right texts and 10 misplaced documents (W2, 2026-09-28; review H1)
+
+The LINE_SYNC rung publishes the SHEET's timings, and until this pass it placed them by the activity fit
+whenever `ShiftFit.usable` held (r ≥ 0.40) and by nothing else. That single rule paid twice: W3 measured 12
+right texts REFUSED at `run_align` whose lift was +0.46…+3.60 — the words were right and only the clock was
+wrong — and 23 published documents with NO line within ±500 ms of truth because the fit moved a sheet that was
+already right. Both are now one call: `align_steps._line_sync_clock` runs the same `claimmap.consensus` vote
+the global engine runs, over no-shift / the envelope lag the gate already measured / the rung's own blind
+decode median / a bounded Theil–Sen tempo, and `_placed_by` applies the winner. Two deliberate differences
+from the global call: candidates are scored in `_LINE_SYNC_NEAR_SEC` (1.0 s) rather than
+`reconcile.AGREE_TOLERANCE_SEC`, because on this rung the reader of the map is that gate — "explained" has to
+mean what the reader means by it, and a wide band is also the STRICTER map, since no-shift is harder to beat;
+and the `claimmap-piecewise` arm stays the global engine's, a leg boundary here being a move in published
+timings.
+
+**Re-derived on the mapped claims** (`scripts/line_gate.py`, base model, 1056 cases, rows in
+`results/w2-line-gate.json`; 13 timed modes, 416 right texts, 640 wrong). Both thresholds keep their values
+and the share's reason gets stronger: the two populations, which OVERLAPPED under W3's placement (documents
+under 50% within 1 s of truth read up to 0.49, good ones' p10 was 0.47), now SEPARATE — the 2 documents more
+than 20% gross read 0.24 and 0.32, the other 414 read p10 0.54, median 0.86, p90 0.98 — so 0.5 sits inside the
+gap instead of straddling it.
+
+| share | right refused /416 | good refused /411 | bad shown /3 | gross shown | text ±500 |
+| --- | --- | --- | --- | --- | --- |
+| 0.3 | 5 | 4 | 2 | 44 | 92.0% |
+| 0.4 | 11 | 9 | 1 | 6 | 91.4% |
+| **0.5 (shipped)** | **33** | **29** | **0** | **0** | **89.5%** |
+| 0.6 | 56 | 52 | 0 | 0 | 84.1% |
+| 0.7 | 78 | 74 | 0 | 0 | 80.8% |
+
+`--near 0.5` (the band moves BOTH readers, so the sweep is a second run: `_runs/w2-lines/near05.*`) refuses 49
+of 416 instead of 33, 2 truth sheets instead of 1, text ±500 86.5%, gross 0 — all it buys is a wider margin on
+the half of the gate that is not the verdict, so 1.0 s stays.
+
+**What the clock bought, same rule and same decode** (that script's `placement` block, W3's placement → W2's):
+
+| mode | refused /32 | text ±500 | gross | zero-±500 documents |
+| --- | --- | --- | --- | --- |
+| truth | 1 → 1 | 91.4 → 93.4% | 0 → 0 | 2 → 1 |
+| off05 | 1 → 1 | 91.4 → 97.3% | 0 → 0 | 2 → 0 |
+| off15 / off3 | 4 → 1 | 70.4 → 91.4% | 0 → 0 | 2 → 2 |
+| offm1 | 3 → 1 | 70.4 → 91.4% | 0 → 0 | 3 → 2 |
+| tempo098 | 27 → 3 | 4.4 → 87.1% | 28 → 0 | 0 → 1 |
+| tempo102 | 26 → 3 | 4.7 → 87.1% | 19 → 0 | 0 → 1 |
+| drop20 | 0 → 0 | 89.2 → 95.9% | 0 → 0 | 4 → 1 |
+| drop50 | 17 → 17 | 54.7 → 54.7% | 0 → 0 | 0 → 0 |
+| headers | 1 → 1 | 87.2 → 93.4% | 0 → 0 | 4 → 1 |
+| **all 13 timed** | **88 → 33 of 416** | **69.0 → 89.5%** | **47 → 0** | **23 → 13** |
+
+The refusal set is a strict SUBSET: 0 newly refused, 55 recovered, 53 of the 55 publishing a document at least
+80% within ±500 ms. 188 of the 416 sheets are mapped (envelope-lag 110, tempo 65, decode-median 13); the other
+228 keep their own timings, which is what the margin is for.
+
+The `gross` column above read `0 → 0` on every row until **W2 review r2**: `placements`' gross was the one
+column not keyed to the placement it was printing, so the W3 side summed the MAPPED placement's gross over the
+documents W3's rule publishes. The corrected column is the two tempo modes' 28 and 19 — the same counts
+`gates/w3-lines.yaml`'s `tempo098-gross-not-up` / `tempo102-gross-not-up` carry from the corpus run's own
+rows, which is the independent reading that says the fix is right rather than merely different.
+
+**What stays refused, with numbers rather than a looser gate.** never-be-alone in 12 of the 13 modes at
+agreement 0.38–0.49 (0.04 under drop50): the repeat-heavy 47-line song whose blind decode misbinds its
+choruses (review F2/F10). `line_gate`'s `near_fit` — the share a PERFECT offset would reach — is 0.15–0.45 on
+every one of them, so no map in the band can lift it past 0.5; this is a decode problem, not a clock problem.
+Dropping the share to 0.4 would publish 10 of its 12, SEVEN of them with 0 of 47 lines within ±500 ms, plus 6
+gross lines elsewhere. Also refused: the 17 drop50 half-sheets (decode strays into the removed lines' gaps;
+ALL 17 would have published an accurate document, the standing cost of this gate — corrected from 16 in review
+r2, where re-deriving the breakdown from `results/w2-line-gate.json` gave 20 = 17 drop50 + never-be-alone under
+`jit` and `extraverse` + hello `extraverse`), and hello / tfr-chosen
+under the two tempo modes (0.24–0.40) — the only two documents left that would be more than 20% gross.
+
+**The 13 misplaced documents that remain are one pair of songs**: bad-guy in 10 modes and numb in 3, where the
+vote does not fail to help — it APPLIES the lag. On bad-guy's TRUTH sheet the envelope's +0.72 s explains 64 of
+69 paired lines against no-shift's 53 and the decode agrees (0.93 near): both witnesses say the vocals are
+~0.7 s later than the caption track claims, and that caption track is also this song's truth file. numb's
+truth sheet is recovered (the truth count is 2 → 1). A lag term on `AsClaimed.offset_sec` still does not
+recover them and still costs more than it buys (`decode(0.5)+lag(0.5)` on these rows: 46 refused instead of 33,
+text ±500 87.1%, 13 more accurate documents refused, 0 gross lines gained).
+
+**The wrong-text result rests on the LIFT, not on the agreement** — which has to be said out loud now, because
+mapping a sheet onto our decode works for a WRONG sheet too: the same-video population's agreement rose from
+max 0.49 to max 0.51, and one of the 320 (feel-my-heart #9, lift −0.05) now clears the timing half. The lexical
+gate refuses all 640 at every share from 0.3 to 0.8, so the rung still publishes 0/640; the sheet gate alone
+passed 278 of those 320.
+
+**One more thing the rung refused, and no clock could fix it**: Tom_Orlando under `jit` came back with 1 of 72
+claimed starts before the line ahead of it (sheet noise σ 0.3 s), so the line document read `out_of_order` 1
+and `policy.decide` sent the whole text away — NO LYRICS for a song whose lift was +2.92 and whose document
+had 63 of 72 lines within ±500 ms. `_in_claim_order` now holds such a start at its predecessor's (held, not
+sorted: a claim is evidence about ITS line) and `_line_doc` carries the guarantee, so no line document can
+publish a backwards highlight. It fires on 2 of the corpus's 1056 cases, both under `jit`.
+
+**A STRAY STAMP ONLY** (review r1, W2 2026-09-29). The first version held every backwards start at the last kept
+one and never advanced it, which turns one spuriously LATE stamp into a drag: a 12-line sheet whose second line
+reads `[01:00.00]` for `[00:10.00]` came out with NINE lines sharing the instant 60.0 s, `out_of_order` 0 and
+`usable` True — so `decide` committed a document that shows one line's text for 30 s while the rest are sung,
+where W3 had DROPPED the sheet. An inversion is held only where the next claimed start recovers above the last
+kept one (the stray is the single line, not everything after it) and only while the held share stays under
+`_MAX_HELD_SHARE`; otherwise nothing is held, the inversions stay, and `measure.out_of_order` reaches `decide`
+exactly as it did in W3 — with the trail saying which happened, since "found clean" and "could not be
+normalised" are different facts. The held line's END is held too, at or after its predecessor's: a line that
+shared its predecessor's start and ended BEFORE it was nested inside it, and core's `activeLineIndex` (the first
+line whose bounds contain the playhead) can never light such a line while it is sung.
+
+The stray rule and the cap are inert on everything measured, and that is PROVED from the rows rather than
+assumed: the largest `held` over the 1056 committed gate cases is ONE (Tom_Orlando and never-be-alone, both
+under `jit`), and a sheet the old rule held exactly once is one whose next claim recovered above the last kept
+start — otherwise that line would have been held too and `held` would read 2. So both cases are strays under
+the new rule and neither can reach the cap, and `unheld` is 0 in all 1056 of them. The re-bench then settled the
+one thing left open here: the END rule does not move either document either. Tom_Orlando jit publishes a line
+document at `run_align` in both sync modes and it is **byte-identical** to the pre-r1 row; never-be-alone jit is
+refused under `--sync-mode lines` and takes the word path under `forced`, so `_line_doc` never runs on it. The
+END hold is a hermetic pin with no corpus effect — which is the right outcome for a guard, and it is a
+measurement now rather than a hope.
+
+**End to end, targeted** (`--level run_align`, 5 songs × 4 modes, `_runs/w2-lines-probe`; the full corpus run
+at both levels and `--sync-mode lines` is the bench runner's, against `gates/w2.yaml` and
+`gates/w3-lines.yaml`). All five cases W3 refused now publish with 0 gross lines: rap-god off3 refused →
+line-sync, 217 lines, 100.0% ±500; bohemian-rhapsody off3 → published at attempt 1, 95.8%; Tom_Orlando jit →
+line-sync, 93.1%; believer tempo102 → line-sync, 100.0%; bohemian-rhapsody tempo102 → published, 95.8%. The
+same probe shows something that is NOT this item's: believer and rap-god publish a WORD document under truth
+claims in the W3 run and a LINE document here, because their attempt-1 word documents gained out-of-order
+lines under the GLOBAL claim clock (0 → 1 and 0 → 4). The line documents are more accurate (47/72 → 72/72 and
+192/217 → 217/217 within ±500 ms) but carry no word timings, so the corpus run has to price it.
+
+## The W2 corpus row: what the sweep accepted, what it rejected, and the arm it forced (W2 bench 2026-09-28, re-measured after review r1 on 2026-09-29)
+
+The three items above — the claim clock, reconcile's fit and verdicts, the rung's own clock — were built on
+targeted probes. This is the corpus run that prices them, and the only thing that accepts or rejects them.
+
+> **RE-MEASURED 2026-09-29 after review round 1.** The rows below are the post-r1 tree's; the pre-r1 rows they
+> replace are in `_runs/w2r-{time_text,run_align}/` and the pre-r1 arm rows in `results/w2-m5arm-*`. What r1
+> moved is priced in "What review r1's fixes bought" below: 6 documents at `time_text`, 5 at `run_align`, 0 at
+> `--sync-mode lines`, every one neutral or better, and one MUST failure retired.
+
+Base model, youtube tfr audio, seed 0, `wrong_k` 10, emissions all disk hits, 1088 cases per sweep, 0 ERROR
+rows. Three sweeps, 13–15 min each, plus two probes and `line_gate.py`'s 1056 rows — 51 min end to end
+(`_runs/w2-rebench/{bench.sh,status}`, logs `_runs/logs/w2r1-*`):
+
+```
+cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level time_text \
+    --modes all,wrongtext+ownclock --compare ../docs/benchmarks/forced-alignment/results/w3-time_text.json \
+    --gates ../docs/benchmarks/forced-alignment/gates/w2.yaml            # 83/85
+… --level run_align  --modes all,wrongtext+ownclock --compare …/w3-run_align.json --gates …/w2.yaml  # 82/85
+… --level run_align --sync-mode lines --modes all,wrongtext+ownclock --gates …/w3-lines.yaml         # 38/38
+PYTHONPATH=…/w2-rebench/noclock … --level time_text --modes truth,drop50,off3   # §3.11 isolated: -0.52 pt
+ENCORE_ALIGN_EXPERIMENTS=claimmap-piecewise … --songs <the 6 probe songs>       # arm: 0 documents differ
+```
+
+Rows: `results/w2-{time_text,run_align,lines-run_align}.{json,cases.jsonl}`, the isolating probe
+`results/w2-noclock-time_text.*`, the arm probe `results/w2-pwarm-time_text.*`, and the pre-r1 arm rows this
+section explains, `results/w2-m5arm-{time_text,run_align}.*`. Per mode, W3 → **W2**, text-denominator ±500 ms
+(a refused case's lines counted as misses) and line gross (> 2 s):
+
+| mode | time_text ±500/text | time_text gross | run_align ±500/text | run_align gross | run_align committed/32 |
+| --- | --- | --- | --- | --- | --- |
+| truth | 87.9 → **86.7** | 28 → **28** | 87.9 → **88.1** | 28 → **28** | 32 → **32** |
+| jit | 81.9 → **82.2** | 50 → **51** | 78.4 → **82.4** | 49 → **50** | 31 → **32** |
+| off05 | 89.1 → **87.3** | 28 → **28** | 90.6 → **88.7** | 28 → **28** | 32 → **32** |
+| off15 | 68.6 → **87.2** | 38 → **28** | 64.4 → **88.6** | 34 → **28** | 31 → **32** |
+| off3 | 67.4 → **87.2** | 449 → **28** | 64.3 → **88.6** | 138 → **28** | 29 → **32** |
+| offm1 | 76.2 → **87.2** | 32 → **28** | 76.2 → **88.6** | 32 → **28** | 32 → **32** |
+| tempo098 | 70.1 → **87.2** | 251 → **27** | 70.1 → **88.6** | 251 → **27** | 32 → **32** |
+| tempo102 | 60.6 → **87.0** | 372 → **28** | 49.6 → **88.4** | 325 → **28** | 27 → **32** |
+| drop20 | 83.1 → **82.2** | 51 → **52** | 84.3 → **85.1** | 51 → **47** | 32 → **32** |
+| drop50 | 51.0 → **50.7** | 298 → **300** | 52.7 → **49.5** | 254 → **254** | 30 → **30** |
+| extraverse | 86.3 → **84.8** | 34 → **35** | 86.3 → **85.3** | 34 → **35** | 32 → **32** |
+| headers | 86.6 → **85.6** | 34 → **35** | 90.6 → **91.8** | 12 → **2** | 32 → **32** |
+| credit | 87.3 → **85.6** | 35 → **36** | 87.8 → **85.6** | 35 → **36** | 32 → **32** |
+| blind | 76.9 → **76.9** | 125 → **125** | 76.9 → **76.9** | 125 → **125** | 32 → **32** |
+| wrongtext | 1/320 pass | 0 | 0/320 pass | 0 | — |
+| wrongtext+ownclock | 0/320 pass | 0 | 0/320 pass | 0 | — |
+
+So the map does what the review measured it for, on the corpus and at both levels: a sheet 1.5–3 s off or 2%
+fast is now worth as much as a correct one (off3 87.2 against truth's 86.7 at time_text; 88.6 against 88.1 at
+run_align), the 440-gross era is over (off3 449 → 28), `high` lines more than 2 s out stay 0 in every claim
+mode, blind is byte-identical, and the wrong-text numbers are exactly W3's (1/320, 0/320, 0/320, 0/640) —
+mapping a DONOR's claims onto our decode buys a wrong text nothing. At `run_align` **10 of the 12** right texts
+W3 refused come back, and after review r1 with **no new refusal at all**: rap-god off15, rap-god / hello /
+bohemian-rhapsody off3, Explosive_Ear_Candy / Rxbyn / bad-guy / bohemian-rhapsody published and believer
+line-synced under tempo102, and Tom_Orlando jit's backwards document. The other two are drop50 half-sheets
+(HILA, never-be-alone), refused in W3 and refused now — the item predicted exactly those. W1's four carried
+`m2m1-recovered` SHOULDs read 32/32 (`gates/w2.yaml` section 10).
+
+**The two songs the scratch claim-clock patch moved**, since the wave was asked to report them by name
+(`time_text`, W3 → W2, line starts within ±500 ms):
+
+| mode | believer | bad-guy |
+| --- | --- | --- |
+| truth | 69.5 → **65.3** (−4.2) | 18.8 → **8.7** (−10.1) |
+| off05 | 62.5 → **65.3** (+2.8) | 18.8 → **8.7** (−10.1) |
+| off15 | 41.7 → **65.3** (+23.6), gross 2 → 0 | 0.0 → **8.7** (+8.7) |
+| off3 | 44.5 → **65.3** (+20.8), gross 21 → 0 | 0.0 → **8.7** (+8.7), gross 27 → 0 |
+| offm1 | 48.6 → **65.3** (+16.7) | 13.0 → **8.7** (−4.3) |
+| tempo098 | 47.2 → **65.3** (+18.1), gross 9 → 0 | 17.3 → **7.2** (−10.1), gross 9 → 0 |
+| tempo102 | 44.5 → **65.3** (+20.8), gross 15 → 0 | 5.7 → **7.2** (+1.5), gross 16 → 0 |
+| jit | 62.5 → **63.9** (+1.4) | 17.4 → **13.0** (−4.4) |
+| blind | 55.6 → **55.6** (=) | 10.1 → **10.1** (=) |
+
+Read the column, not the row. After the map each song answers with ONE number whatever offset the mode
+injected — believer 65.28 in seven of the eight claim modes, bad-guy 8.70 in five and 7.25 in the two tempo
+rows; `jit`, which perturbs every line independently and so has no single clock to find, is the exception in
+both. That is precisely what "the claims on OUR clock" means: the published document stops depending on the
+sheet's clock error. Every gross line the two songs used to publish under a perturbed sheet is gone (believer
+off3 21 → 0, tempo102 15 → 0, tempo098 9 → 0, off15 2 → 0; bad-guy off3 27 → 0, tempo102 16 → 0,
+tempo098 9 → 0). The `truth` cell is the one mode where the sheet's error was zero and the caption file the
+score is taken against IS that sheet, so moving the document off it can only read as a loss. That is the whole
+shape of the failing MUST below.
+
+**`--sync-mode lines`**, the rung's own row (`results/w2-lines-run_align.json`, 38/38 of `gates/w3-lines.yaml`,
+whose floors were W3's): committed over the 13 timed modes 327 → 383 of 416, right texts refused 89 → 33 — a
+strict subset, 0 newly refused — gross lines 0 either way, tempo098 5 → 29 and tempo102 6 → 29 committed with
+their 28 and 19 gross lines gone, zero-±500 documents 23 → 13, truth ±500/text 90.6 → 92.6, off15 69.9 → 90.6,
+drop20 88.6 → 95.3, wrong texts 0/640. What stays refused is what the item predicted: never-be-alone in 12 of
+13 modes (its blind decode misbinds its own choruses, so no offset reaches the agreement floor), hello in 3,
+tfr-chosen in 2, and the 17 drop50 half-sheets. Re-measured after review r1: **0 documents changed** — the
+stray-only `_in_claim_order` rule, the held ENDS and the rung's clock under `MIN_INLIER_SHARE` are all inert on
+this corpus, and every number in this paragraph is the same to the digit.
+
+**What review r1's fixes bought**, since the four movers its staleness note predicted had never been priced.
+Six documents change at `time_text` and five at `run_align`; every one is neutral or better, and the truth row
+does not move by a thousandth.
+
+| what moved | where | effect |
+| --- | --- | --- |
+| `claimmap.MIN_INLIER_SHARE` refuses a 6/74 map | hello tempo098 | +9.5 pt ±500, gross 31 → 22; at `run_align` REFUSED → published, which retires the pre-r1 row's fourth MUST failure |
+| …refuses a 4/74 map | hello tempo102 | +2.7 pt ±500, gross 25 → 23 |
+| …refuses a 2/17 map | numb drop50 | document byte-identical — a guard with no corpus effect |
+| …refuses 293 of 402 wrong-text maps | `line_gate.py`'s 1056 cases | 0 right-text rows changed; 188 applied right-text maps either way, lowest share 0.2432 |
+| `claim_run`'s cap + `reconcile.TOO_FEW_PAIRS` | extraverse HILA, offm1 rap-god, headers shape-of-you, one wrong text | +1.7 pt, +0.5 pt, bytes only (every metric flat), — |
+| `_in_claim_order`'s stray rule + held ends | the whole corpus | inert: `unheld` 0 in all 1056 gate cases, largest `held` 1 (Tom_Orlando jit, never-be-alone jit), and Tom_Orlando's published line document is byte-identical |
+| `_monotonic` on leg boundaries | the `claimmap-piecewise` arm | the arm is now byte-identical to the default over 48 probe cases with no `legs` sentence on any trail — it used to move 2 documents, both worse, so there is no longer anything to switch on |
+
+**What review r2's fixes moved: nothing measurable, probed rather than assumed.** Its three behavioural fixes
+all touch published timings in principle — `claim_run`'s last-cue ceiling (the sheet's own median onset gap in
+place of the missing next onset), `_in_claim_order`'s held END stretching `_REPAIRED_MIN_SEC` past its
+predecessor's instead of equalling it, and `_enough_decoded`'s floor rising from 3 to `claimmap.MIN_PAIRS` so
+the rung's gate and its clock abstain together. Measured against the committed rows by document digest
+(`doc_sha256` + `onsets_sha256`):
+
+| probe | scope | result |
+| --- | --- | --- |
+| `_runs/w2r2-probe-wide` | 32 songs × truth/off3/tempo102/drop50/jit, `time_text` | **160/160 byte-identical** |
+| `_runs/w2r2-probe-wide-ra` | the same 160 cases at `run_align` | **160/160 byte-identical** |
+| `_runs/w2r2-probe-lines` | Tom_Orlando + never-be-alone × truth/jit, `--sync-mode lines` | **4/4 byte-identical**, including both `held` cases — so the held-END stretch stays a hermetic pin with no corpus effect, exactly as r1's own row said of the held end |
+
+Not probed: off05, off15, offm1, tempo098, drop20, extraverse, headers, credit and the two wrong-text modes.
+`blind` cannot be reached by any of the three (no claims, so no `claim_run`, no `_in_claim_order`, no
+`_enough_decoded`). A re-bench is still owed to read `gates/w2.yaml` — section 12 included — on the fixed tree.
+
+### What failed, and the arm it forced
+
+`truth-pm500` / `truth-text-pm500`: 89.11 → 87.90 and 87.90 → 86.70 at `time_text`, −1.21 pt against §3.2's
+1.0 — a MUST, failed, and unchanged to the thousandth by review r1's fixes. It is now **explicitly waived**,
+which is the third of the three answers PLAN-alignment-v3's 'Owner decisions' admits, with the numbers beside
+the gate names in `gates/w2.yaml` section 1 and the reasoning at the end of this section.
+
+The isolating probe now exists on the SHIPPED configuration (`results/w2-noclock-time_text.json`: this tree
+with the map's one rebinding removed and `m5-adopt-floor` default-off, `--modes truth,drop50,off3`), so each
+item's share of the row is a measurement rather than arithmetic across two trees:
+
+| unperturbed row, time_text | `m5-adopt-floor` | ±500 | ±500/text | gross | Jamendo ±500 | YouTube ±500 |
+| --- | --- | --- | --- | --- | --- | --- |
+| W3 | — | 89.11 | 87.90 | 28 | 97.58 | 80.69 |
+| + reconcile M4/M5 only (`results/w2-noclock-time_text.json`) | OFF | 88.59 | 87.39 | 28 | 97.34 | 79.89 |
+| + the claim clock (shipped) | OFF | 87.90 | 86.70 | 28 | 97.34 | 78.51 |
+| + reconcile M4/M5 only, PRE-r1 probe (`_runs/w2p-noclock-tt`) | ON | 87.67 | 86.48 | 29 | — | — |
+
+So **§3.11's 0.3 pt bound, read at last on the shipped tree, fails by 0.22: reconcile's own cost is −0.52 pt**
+(±500/text −0.51, and it gains no gross line; `drop50` is byte-identical at 51.50 / 298 and `off3` is +0.40 pt
+with gross 449 → 436). The claim clock's own share is the remainder, **−0.69 pt**, inside §3.2's 1.0 on its
+own. The −0.52 / −0.69 split this section used to report as an estimate is what the measurement says, to
+0.01 pt — the two costs are additive.
+
+Per song, the 1.21 pt is **nine songs of the 32**, and the probe assigns every one of them to exactly one item
+(`truth` mode, line starts within ±500 ms; no song in the table gains a gross line, and the 23 not listed do
+not move at all):
+
+| song | split | W3 | reconcile only | shipped | Δ reconcile | Δ clock |
+| --- | --- | --- | --- | --- | --- | --- |
+| never-be-alone | youtube | 77.78 | 66.67 | 66.67 | **−11.11** | +0.00 |
+| bad-guy | youtube | 18.84 | 18.84 | 8.70 | +0.00 | **−10.14** |
+| believer | youtube | 69.44 | 69.44 | 65.28 | +0.00 | **−4.16** |
+| shape-of-you | youtube | 98.86 | 95.45 | 95.45 | **−3.41** | +0.00 |
+| tfr-chosen | youtube | 64.71 | 64.71 | 61.76 | +0.00 | **−2.95** |
+| numb | youtube | 54.29 | 54.29 | 51.43 | +0.00 | **−2.86** |
+| Explosive_Ear_Candy | jamendo | 100.00 | 97.83 | 97.83 | **−2.17** | +0.00 |
+| Songwriterz | jamendo | 100.00 | 97.83 | 97.83 | **−2.17** | +0.00 |
+| tfr-flyaway | youtube | 98.67 | 100.00 | 100.00 | **+1.33** | +0.00 |
+
+No song is moved by both, which is why the two costs add. The clock's four are all caption-truth songs. The only
+two Jamendo songs that move at all are reconcile's, one line of 46 each, off a starting 100.00 — the AGREE
+sheet's stray line that the phrase-wide dispute band no longer re-decodes and adopts.
+
+And the fourth and fifth columns of the row table are the finding that decides how to read both failures:
+reconcile spends
+−0.24 pt on the 20 Jamendo songs and −0.80 on the 12 YouTube ones, and **the claim clock costs the Jamendo
+split nothing at all** (97.34 with it off and with it on) while taking YouTube a further −1.38. Jamendo is the
+only split on this corpus with MEASURED word onsets, produced independently of any lyric sheet. The YouTube
+truth file is a caption track — and in `truth` mode it is the very sheet the engine is handed as its claims, so
+a line re-decoded inside its claim window lands on the claim and therefore on the "truth" by construction. The
+whole 1.21 pt is paid on songs that score a correction against the thing being corrected.
+
+Read against §3.11's 0.3 pt, the PRE-r1 probe's −1.44 pt was the larger failure, and 0.92 of it was ONE rule:
+M5's floor refusing to adopt a claim span too short to hold its line. It fired 15 times on rap-god, whose
+caption cues are short and whose starts are RIGHT, and once on JASON_MILLER drop50 — the only Jamendo song in
+the sweep to gain a gross line. That floor is now the default-off arm **`m5-adopt-floor`** (`config.py`'s arm
+list; both branches pinned in `test_align_provenance`, since with the arm ON the fixture it was built for
+publishes 5.06 s out and with it OFF the corpus keeps its 16 lines). Default-off: truth −2.13 → −1.21 pt,
+gross 29 → 28, drop50's Jamendo gross line gone, off3 87.6 → 88.4% ±500; gates 63/66 → 64/66 and 60/66 → 62/66
+under the gate file as it then stood (the same tree reads 83/85 and 82/85 under today's 85, and the arm's own
+rows were never re-taken after review r1 — they are pre-r1 on both sides, which is the comparison that judged
+it).
+
+What the taxonomy's share buys and costs: it disputes a line more than a PHRASE from the fit where the old
+`agreement == 1.0` path disputed anything at all, so an AGREE sheet's stray line is no longer re-decoded and
+adopted (shape-of-you −3 lines, two Jamendo songs −1 each). On the Jamendo split it is −0.24 pt within ±500 ms,
+words ±100 −0.17, word gross 20 → 20, line gross 2 → 2. bad-guy (−10.1 pt) and believer (−4.2) reproduce the
+review's own cost for the two songs it named, to a tenth.
+
+**The decision, taken on the re-measured row (2026-09-29).** `truth-pm500`, `truth-text-pm500` and §3.11's
+0.3 pt are WAIVED explicitly, beside their gate names and numbers, because the other two answers the PLAN
+admits are worse on the evidence. *Under the bound* is unreachable: the 0.21 pt of excess is part of a cost
+paid entirely on songs whose score is taken against the sheet being corrected, so the only route under is to
+stop correcting the sheets that need it. *Behind `Config.align_experiments`* was priced on the probe row and
+refused: with the clock off, off3 pays 449 gross lines instead of 28 and −19.7 pt at ±500/text, off15 −18.6,
+tempo102 −26.4, and the 12 right texts W3 refused at `run_align` go back to being refused. Trading roughly
+20 pt across three modes and some 1300 gross lines for 0.21 pt of a caption-truth metric is not a trade a
+DEFAULT should make. What the waiver rests on is a measurement, not a preference: `gates/w2.yaml` section 11
+reads the SAME bound at §3.11's tighter 0.3 pt on the 20 songs with measured onsets and it PASSES (−0.24 /
+−0.17), no claim mode keeps a `high` line more than 2 s out, and `blind` is byte-identical. The waiver is the
+bench runner's, it is reversible (a `claim_clock = claimmap.IDENTITY` default plus a knob, already priced by
+`results/w2-noclock-time_text.json`), and the whole wave is uncommitted for the owner to overrule it.
+
+At `run_align` three gates fail — it was four before review r1, and the one that went is `no-song-lost-tempo098`
+(hello tempo098, refused because the vote moved its claims on 6 explained lines of 74; `MIN_INLIER_SHARE`
+refuses that map now and the song publishes again). All three remaining are documents that changed KIND — and
+the effect the gate names
+is REAL even so, which is how W2 review r1 corrected this paragraph: a gate that says "no Jamendo song gains a
+gross line" is about the document the room sees, and the document the room sees is the one that gained them.
+**The_Rinn off3** went from a LINE_SYNC document with 46/46 lines within ±500 ms and 0 gross to a published
+WORD document with 44/46 and **2 gross** — the whole of W2's `+2` at this level, and a MUST failure, not a
+metric artefact. Ridgway off15/off3 lose 2 line starts each the same way. tfr-chosen headers goes the other way
+(+51 pt within ±500 ms, and a line document times 3 more injected headers, so `unsung` rises); hello off3 is a
+recovery (refused → published, 22 gross lines arriving with a document that did not exist).
+
+THE WHOLE POPULATION, since one song's rows are not an argument, re-counted on the re-measured rows and
+unchanged by review r1: 24 song-modes changed from a LINE_SYNC document to a word document between W3 and W2 at
+`run_align`. Their net is **−24 line starts within ±500 ms, +2 gross lines (all of them The_Rinn off3), and
+8 109 word timings that did not exist before** — 18 cases lose 1-10 line starts (rap-god credit −10,
+shape-of-you off3 −7, Avercage off3 −6), 4 are unchanged, and 2 GAIN heavily because their line document had no
+line within ±500 ms at all (numb off3 +18, bad-guy off3 +6). Beside them 10 song-modes go from REFUSED to
+committed and 11 the other way, from a word document to a line-synced one. A word
+document is what karaoke needs and a line document cannot give, so this is a trade and not a regression — but
+it is a trade with a cost, and the two MUST gates it fails are recorded as failures above, not as gates that
+cannot see their subject. The alternative W1 already built the machinery for (`policy.improves` / best-so-far:
+keep the LINE_SYNC document where the word document is not an improvement) would need its own corpus run and a
+rule for comparing documents of different kinds; it is named in PLAN-alignment-v3 W2's open items, not done.
+
+**AND THE WAVE'S LARGEST SINGLE REGRESSION IS NOT IN THAT POPULATION AT ALL** (found by W2 review r2, which
+also found that no gate in `gates/w2.yaml` could see it). **bad-guy drop50** at `run_align` publishes the SAME
+text (`captions:authored`) on the same single attempt with the same `unrelated` verdict, the same 143 words, the
+same 34 scored lines and **gross 0 on both sides** — and goes from **28 of 34** line starts within ±500 ms of
+truth to **ONE**. ±1 s moves only 31 → 30, so every line left the ±500 ms band for the 0.5–1.0 s band without
+any of them crossing 2 s. It changed no KIND, lost no line and gained no gross line; it simply moved, together,
+by about 0.6 s.
+
+Why no gate saw it: `gross` and `high_gross` are 2 s metrics, `unsung` / `missing` count lines rather than place
+them, `doc_changed` is scoped to the blind mode, and every pooled ±500 number it enters is dominated by the
++2 069 line starts the wave gains elsewhere at this level (17 897 → 19 966 over the right-text modes). A uniform
+sub-2 s displacement of one whole document was, by construction, invisible. `gates/w2.yaml` **section 12** is
+the answer — a per-mode bound on the worst single document's ±500 share, ratcheted to this wave's own worst.
+
+Whose cost it is, isolated rather than inferred (`_runs/r2spec8-{clock,noclock}-ra`, one song × 2 modes on the
+shipped tree against the same tree with the map's one rebinding removed): clock ON reads **1/34** on drop50 and
+**6/69** on truth; clock OFF reads **28/34** and **13/69**. So this is the claim clock's, not reconcile's, and
+it is the named mechanism of the §3.2 waiver at its worst single document — bad-guy's decode-median is +0.86 s
+and its envelope lag +0.72 s, both witnesses agree the vocal is later than the caption track, the vote moves
+every claim WINDOW by ~0.6 s, R1 (armed by `unrelated`) re-decodes inside the moved windows, and the truth this
+is scored against IS that caption track. The drop50 half-sheet keeps truth-derived stamps, so its 34 kept lines
+are all scored against the sheet the clock just corrected. **This document is part of the waiver's price**, and
+the waiver's "the cost is entirely on the YouTube songs whose truth file is the claim track" should be read with
+it in view: at `time_text` the same mode's worst document is −2.57 pt, so the displacement is specific to the
+repair the fuller pipeline runs.
+
+W3's own `onsets-unchanged-*` gates fail here by construction — W3 was a gate-only wave that moved no timing,
+and moving them is what W2 is.
+
+
+## The exact frame clock, the blank the model names, and the matrix cache (W4, 2026-09-29; review §3 item 6a, M9, M10, L6)
+
+### The clock was wrong twice over (review decode-5 / evidence-8)
+
+`WhisperXAligner.emissions` chunked the audio at 30 s and stamped frames with `duration / frames`. Both
+halves of that were arithmetic mistakes, and they compounded:
+
+- A 30 s chunk of 16 kHz audio yields **1499** frames, not 1500: wav2vec2's feature extractor advances 320
+  samples per frame and needs 400 to emit one at all, so `(480000 − 400) // 320 + 1 = 1499`. The derived
+  ratio therefore stretched every frame by 1/1499 — measured `frame_sec` 0.020014 on all 20 jamendo songs —
+  which stamps a word up to 20 ms late by the end of each chunk and resets at the next boundary: a sawtooth.
+- The loop `break`s on a final chunk shorter than 0.1 s, so up to five frames of the song were never
+  computed, while `duration` still counted their seconds. That drifts odd-length songs 50–60 ms late.
+
+Both are now replaced by one **exact grid** (`adapters/ml.py`): frame `k` covers samples
+`[k·320, k·320+400)` and is stamped at `k · FRAME_SEC` with `FRAME_SEC = 320/16000 = 0.02` exactly; the grid
+has `ceil(samples/320)` frames, so the final sliver is **padded** to its 400-sample field rather than
+dropped. Each forward pass additionally computes **2 s of context on either side and throws those frames
+away**, so a frame at a chunk boundary gets the same receptive field an interior frame has
+(ctc-forced-aligner's `generate_emissions`). The context costs 1.09× the audio at 90 s, 1.12× at the 194 s
+song the pass is timed on and 1.13× at an hour — not the flat (30+2+2)/30 the review quoted, because the
+first and last pass have context on one side only.
+
+`_frame_passes` is a pure function, so the stitching is tested without weights: a stand-in model whose every
+frame is a local function of the 400 samples it saw must give the chunked pass and a **single whole-file
+pass** byte-identical matrices. That is the chunk-boundary continuity test W0 recorded as missing
+(`tests/test_ml_grid.py`; the old pass fails it on every straddling frame and on every sliver).
+
+### Re-fitting `ONSET_LEAD_SEC`: 40 → 30 ms
+
+The lead had been fitted ON the stretched clock, so it was absorbing a stretch as if it were a delay. Sweep
+over the same 5693 hand-timed words, blind decode, vocals stems (`_runs/w4-clock/lead_sweep.py`, rows in
+`lead_sweep.json`; the old grid at 40 ms reproduces this file's own baseline exactly — bias +4 ms, ±100
+78.7%):
+
+| lead | bias | ±100 | medAE | line gross |
+| --- | --- | --- | --- | --- |
+| 0 ms | +25.3 ms | 76.53 | 44.0 | 41 |
+| 20 ms | +6.0 | 79.52 | 39.8 | 41 |
+| 25 ms | +1.5 | 79.71 | 40.0 | 41 |
+| **30 ms** | **−3.1** | **79.98** | **40.6** | **41** |
+| 35 ms | −7.8 | 80.19 | 41.8 | 41 |
+| 40 ms | −12.2 | 80.05 | 43.1 | 41 |
+| 50 ms | −20.2 | 79.78 | 45.8 | 42 |
+
+±100 does not choose: it is flat over 25–40 ms (35 beats 30 by 0.21 pt, song-bootstrap CI +0.02..+0.39; 30
+against 40 is 0.07 pt with the CI straddling zero). What chooses is the **bias**, which is what the constant
+exists to remove and which crosses zero at about 26 ms, and **medAE**, minimised over 20–30 ms. Of the two
+5 ms steps around the crossing, 30 is the one on the early side — a highlight a hair early reads as correct
+where one late reads as broken (ITU-R BT.1359; W6's separate *display* lead is fitted on that, this constant
+stays acoustic truth).
+
+### What the wave's clock change actually moves
+
+`e2e.py --level generate --modes blind --songs jamendo`, old grid at 40 ms
+(`results/baseline-v2-generate.json`) against the exact grid at 30 ms (`_runs/w4-clock-generate/`):
+
+| metric | before | after |
+| --- | --- | --- |
+| word onset ±100 | 78.73 | **79.98** (CI +0.46..+2.22) |
+| word onset ±250 / ±300 | 90.46 / 91.29 | 90.46 / **91.45** |
+| onset bias / medAE | +3.7 / 40.9 ms | **−3.1** / **40.6** ms |
+| words > 2 s out | 141 | **129** |
+| line gross (> 2 s) | 47 | **41** (zero-gross songs 5 → 6) |
+| line ±500 / ±1 s | 87.67 / 91.82 | 87.56 / **91.94** |
+| AAE | 309 ms | 337 ms |
+| word end ±100 | 73.2 | 68.7 |
+| phrase-final end ±100 / bias | 40.6 / −106 ms | 36.3 / −121 ms |
+| highlight (TV semantics) | 67.3% | 66.0% |
+
+Two rows go the wrong way and neither is an onset regression:
+
+- **AAE 309 → 337 ms** is one shape, not a spread. All +160 s of it is four songs whose blind decode
+  misbinds repeats — Pure_Mids +68 s, Tom_Orlando +40, Ridgway +40, Explosive_Ear_Candy +16 — so what moved
+  is how far an already-wrong word swings. On the same songs the *count* of words over 2 s out falls
+  (Tom_Orlando 48 → 32, its line gross 8 → 2). Every robust statistic holds or improves.
+- **The ends** were always this early; the old clock's 0.07% stretch was pushing every end later and so
+  masking CTC's peakiness (90.9% of 21,921 char spans are exactly one frame). Review §3.5's envelope
+  post-pass is what fixes them, and it lands in this same wave — its reject-if gates are read against the
+  *after* column here, not against `baseline-v2-generate.json`.
+
+### M9: the blank is the matrix's
+
+`blank = 0` was a literal in five places that have to agree (the kernel call, `generate`'s target filter,
+`_char_spans`' run grouping AND its flushing sentinel, `regenerate`'s alignable count, `lexical.letters_of`,
+and the mix witness's non-blank mass). It is right for torchaudio's bundles, which put `-` at label 0, and
+wrong for 23 of whisperx's 36 HF align models (Danish `<pad>` = 32 with `u` at 0, Norwegian Bokmål
+`[PAD]` = 38 with `|` at 0, Korean `[PAD]` = 1204). The review measured the cost on Danish: word onsets
+within ±250 ms 90.5% → 73.2%, words over 2 s out 141 → 584.
+
+`Emissions` now carries `blank_id` (whisperx's own detection rule, so the global decode and whisperx's
+windowed one cannot disagree on a loaded model) and `specials` (the vocabulary's non-characters, named for
+review 6c's `|` reader rather than acted on here). Readers use `generate.blank_of`, a `getattr` with default
+0, so every fake and every pre-W4 bench cache entry decodes exactly as it did. Tested by permuting the
+fixture's matrix so the blank leaves column 0: a blank-aware chain must publish a byte-identical document,
+and the old chain must not (`tests/test_blank_id.py`; all nine blank-literal mutants die).
+
+### M10: the matrix cache was stale and unbounded
+
+It lived in the module-level **model** dict — which must never evict, since reloading multi-GB weights is
+why this worker is a resident process — keyed by `(device, language, path)`. Two consequences: every song a
+box ever aligned stayed resident, and a stems upgrade republishing the same vocals key (`artifacts/local.py`,
+`os.replace`) left a matrix computed from audio that no longer existed, so a later re-pick aligned the new
+stem's text against the old stem's frames. Now a separate bounded LRU (4 entries — one job reads at most the
+stem and the mix witness) keyed on `(resolved path, size, mtime_ns, model, language, device)`. A path that
+cannot be `stat`ed is computed uncached, so a missing target still fails inside `load_audio_mono_16k` as the
+typed `InfraFault` every caller is written around.
+
+### L6: bounded-lag correlation, off the event loop
+
+`activity.fit_shift` computed the whole `N + M − 1` cross-correlation and then read 801 lags of it. The
+±`reach` window is now computed directly, by zero-padding and taking the *valid* correlation — the same
+routine over the same overlaps. Measured here: a 6-minute envelope 0.071 s → 0.003 s, a 60-minute one
+**7.65 s → 0.042 s** (the review measured 9.1 s). It is a work reduction, not an approximation, and that was
+checked rather than assumed: the values differ in the last bits a longer dot product's blocking can move
+(worst 1.4e-14), and over all 32 corpus songs × 8 span perturbations (256 fits,
+`_runs/w4-clock/corr_identity.py`) the chosen lag moved **0 times** and `correlation` came back identical,
+because `r` is recomputed at the integer lag. The one remaining inline call site — R1's claim fit, when the
+claims out-fit the decode — moved into `asyncio.to_thread`, pinned by thread identity rather than by reading
+the source.
+
+## Word ends, held through the singing (W4, 2026-09-29; review §3 item 5)
+
+CTC is peaky — 90.9% of 21,921 char spans are exactly one frame — so a decode carries onsets, and its ends
+are just the model's last confident frame. The TV acts on the ends anyway: a word is lit while
+`start ≤ pos < end` (`core/src/lib/tv/lyrics.ts`, `activeWordIndex`) and struck through at `end`
+(`tv/LyricsOverlay.svelte`). The room therefore sees the ball leave words that are still sounding.
+
+The fix is a DISPLAY post-pass, `domain/lyrics/ends.py`, applied in `_time_text_global` after the
+wrong-text gate, the never-sung drop, R1–R4 and `_clamped`, immediately before `as_doc()`: each word's end
+is walked forward while the target's activity envelope is at or above θ = 0.1, and stopped at the next
+word's own start, at +3 s, or at the last envelope frame. **Starts never move.**
+
+### Why this is not the energy-snap this repo rejected
+
+The onset-snap prototype above moved ONSETS to the nearest energy rise within ±0.35 s and measured a net
+loss (tfr-flyaway ±250 ms 77.3% → 70.7%), because a snap jumps to a *neighbouring* onset. This is
+one-sided (ends only, forward only), bounded by the decode's own next onset (so an over-extension can only
+fill a gap the decode left empty — the worst case is a word lit over a silence, never a wrong word lit),
+bounded at +3 s, and bounded by the audio the envelope was measured on (so it cannot manufacture an
+overshoot). "No onset moves" is review §3.5's own reject-if and is asserted as a test rather than a metric:
+`worker/tests/test_ends.py` (500 random documents × both arms) and `worker/tests/test_align_ends.py` (the
+same song published with the post-pass on and off, word for word).
+
+### Measured — 3 songs, not the corpus
+
+`e2e.py --level time_text --modes blind --songs HILA,Color_Out,Wordsmith` (1127 words, 1046 ends, 116
+phrase-final ends, 407 s sung; `_runs/w4-ends-raw`, `_runs/w4-ends-held`, `_runs/w4-ends-tile`). The arm
+`ends-raw` is the control — the post-pass does not run — so all three columns are the same decode:
+
+| metric | `ends-raw` | default | `ends-tile` |
+| --- | --- | --- | --- |
+| word end ±100 | 75.9 | **79.0** | 75.0 |
+| word end ±250 | 94.2 | **94.7** | 93.1 |
+| word end bias | −34 ms | **+10 ms** | +25 ms |
+| phrase-final end ±100 | 34.5 | **50.9** | 50.9 |
+| phrase-final end ±250 | 66.4 | **72.4** | 72.4 |
+| phrase-final end bias | −115 ms | **−16 ms** | −16 ms |
+| highlight (TV semantics) | 66.2% | **79.1%** | **80.6%** |
+| word onset ±100 / ±250 / ±300 | 80.1 / 92.8 / 94.1 | = | = |
+| onset bias, words > 2 s out, gross lines | +9 ms, 12, 5 | = | = |
+
+`onsets_sha256` — the harness's digest of every published onset — is byte-identical in all three runs.
+Per-song highlight is up on all three songs (worst +9.5, best +17.9). The direction and the size both
+reproduce the review's prediction (+17.3 pts phrase-final ±100, bias −107 → −10 ms, +10.5 highlight).
+
+Per song, and worth carrying to the corpus run: phrase-final ±100 is up on all three (19.4 → 38.7, 31.5 →
+44.4, 54.8 → 74.2 on their own ends), while word-end ±100 goes DOWN on one of them (Color_Out 56.8 → 54.1).
+Interior and phrase-final ends can move in opposite directions on one song, and only the phrase-final ones
+are independently measured — which is exactly why §3.5's gate allows 3 of 20 songs to get worse at word-end
+±100 and none at all on the highlight. `gates/w4-ends.yaml` encodes all four conditions and passes 6/6 here.
+
+**The `ends-tile` arm trades.** Tiling each line gaplessly (interior words run to the next word's start
+whatever the envelope says) buys +1.5 pts of highlight for −4.0 on word-end ±100 and −1.6 at ±250, with
+phrase-final ends untouched, since it only moves interior words. That is evidence against the review's "80%
+of Jamendo's interior truth ends are just the next word's start" being the whole story: where it held,
+tiling could only have helped. Its second cost is not in a number here: the TV splits a line over 42
+characters at word gaps of `LINE_GAP_SEC` = 0.45 s, and a tiled line has none, so a long line that showed as
+two rows at its pause now shows as one. (The highlight port models `resegmentLine`, so the part of that
+which moves the ball is already inside the 80.6; how the unsplit row reads in a room is not.) It ships
+default-off.
+
+### The corpus run this owes
+
+Review §3.5's gates, rebased onto the W4 clock — the ends got *worse* on the exact grid, see the clock
+section: the old 0.07% stretch was masking the peakiness. **Reject if** the highlight gains < 5 pts,
+phrase-final end ±100 gains < 10, word-end ±100 is worse on more than 3 of the 20 Jamendo songs, or any
+onset moves.
+
+**MEASURE IT AT `--level time_text`, NOT `--level generate`.** The post-pass is a step, not a decoder
+change: `generate` is the raw global decode alone (that is what the level means, and the driver's docstring
+says so), so the ends there are the raw ones whatever this ships. The clock section's 68.7 / 36.3 / 66.0
+column is a `generate` row and is the right thing to compare the *clock* against; the gain this owes is a
+`time_text` (and `run_align`) pair — `ENCORE_ALIGN_EXPERIMENTS=ends-raw` for the control, nothing set for
+the default — which is what the 3-song table above is. Because `align_config` is part of the emission cache
+key (deliberately — see `emitter_fingerprint`), the control pass recomputes matrices: about one extra model
+pass per song, not per case.

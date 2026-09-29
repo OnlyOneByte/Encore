@@ -12,11 +12,13 @@ nothing checked that the fakes behave like them. Two halves:
     says something about production.
   * THE EMISSION PASS, on a synthetic tone, run only when the default English checkpoint is ALREADY
     cached. It never downloads: a box without the weights skips this cleanly. Marked `ml`, the repo's
-    slow marker. It checks the (frames, vocab) shape against wav2vec2's 320-sample stride, rows that are
-    log-softmax, the blank at id 0 that `forced_align_decoder` hard-codes (review M9), and that the real
-    matrix and the real kernel together satisfy `generate`'s span-count check.
+    slow marker. It checks the (frames, vocab) shape against wav2vec2's 320-sample stride AND that the
+    FINAL SLIVER is on the grid (review 6a), `frame_sec` exactly 0.02, rows that are log-softmax, the
+    blank this bundle names (`Emissions.blank_id`, review M9), and that the real matrix and the real
+    kernel together satisfy `generate`'s span-count check.
 
-Not covered here: the 30 s chunk boundary and its clock (review 6a/M10, W4 territory).
+The chunk boundary, the stitching and the matrix cache (review 6a / M10) are `tests/test_ml_grid.py`,
+which proves them exactly against a stand-in model rather than statistically against weights.
 """
 
 from __future__ import annotations
@@ -283,11 +285,16 @@ def test_emissions_on_a_short_tone_are_a_log_softmax_matrix_with_blank_at_zero(
     em = aligner.emissions(str(tone), "en")
     matrix = em.log_probs.numpy()
     samples = int(rate * seconds)
-    assert matrix.shape == ((samples - 400) // 320 + 1, len(em.dictionary)), "wav2vec2's 400/320 frame grid"
+    # EVERY hop gets a frame, the final partial one included (review 6a): 24000 samples is 75 whole hops,
+    # and the 75th frame's 400-sample field is padded rather than dropped. The old pass emitted 74.
+    assert matrix.shape == (-(-samples // 320), len(em.dictionary)), "the exact 320-sample grid"
+    assert matrix.shape[0] == (samples - 400) // 320 + 2, "the sliver frame the old pass dropped"
     assert em.frames == matrix.shape[0]
-    assert em.frame_sec == pytest.approx(0.02, abs=1e-3), "within a frame of 20 ms (the exact grid is W4's)"
+    assert em.frame_sec == 0.02, "the model's hop exactly, not duration / frames"
     assert np.allclose(np.log(np.exp(matrix).sum(axis=1)), 0.0, atol=1e-4), "rows are log-softmax"
-    assert em.dictionary.get("-") == 0, "forced_align_decoder hard-codes blank=0 (review M9)"
+    # This bundle's blank IS 0 (`-`), which is why hard-coding it survived; it is now read, not assumed.
+    assert em.blank_id == 0 and em.dictionary.get("-") == 0, "review M9"
+    assert em.specials == {"-": 0, "|": 1}, "the vocabulary's non-characters, named"
     assert {ch for ch in "abcdefghijklmnopqrstuvwxyz'"} <= set(em.dictionary)
 
     from encore_worker.adapters.ml import forced_align_decoder
@@ -299,3 +306,18 @@ def test_emissions_on_a_short_tone_are_a_log_softmax_matrix_with_blank_at_zero(
     assert len(doc.lines) == 1 and len(doc.lines[0].words) == 3, "the real pair meets the span-count check"
     starts = [w.start for w in doc.lines[0].words]
     assert starts == sorted(starts) and doc.lines[0].end <= seconds + 1e-6
+
+
+def test_the_english_default_bundle_is_the_one_the_lexical_bands_were_fitted_on() -> None:
+    """W3 review r2, and the reason `Emissions.model` exists: `lexical.BANDS` is ONE bundle's calibration, and
+    whisperx picks the bundle PER LANGUAGE. `align_model_name` reads that choice from whisperx's own tables
+    without loading anything — so this test fails the day a whisperx upgrade moves the `en` default, which
+    would otherwise silently apply thresholds fitted elsewhere. A language with no default is named as such,
+    never as the bands' own model, and the guard in `align_steps._measured_lift` then declines to judge."""
+    from encore_worker.adapters.ml import align_model_name
+    from encore_worker.domain.lyrics import lexical
+
+    pytest.importorskip("whisperx")
+    assert align_model_name("en") == lexical.BANDS.model
+    assert align_model_name("de") != lexical.BANDS.model, "a per-language bundle the bands never saw"
+    assert align_model_name("zz") == "default:zz", "unknown is named, not assumed"

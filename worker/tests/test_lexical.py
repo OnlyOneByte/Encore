@@ -56,9 +56,9 @@ def test_the_letters_are_the_targets_generate_decodes() -> None:
     """The same rule as `generate`'s target list, so a lift is measured on the decode that publishes."""
     seen: list[list[int]] = []
 
-    def spy(log_probs: Any, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def spy(log_probs: Any, targets: Sequence[int], blank: int = 0) -> tuple[list[int], list[float]]:
         seen.append(list(targets))
-        return ctc_viterbi(log_probs, targets)
+        return ctc_viterbi(log_probs, targets, blank)
 
     texts = ["Don't STOP me-now", "the 2nd time, OK?", "naïve café"]
     generate(texts, heard(), decoder=spy, language="en")
@@ -89,6 +89,27 @@ def test_a_text_it_cannot_contrast_is_unmeasured(texts: list[str]) -> None:
     assert lexical.lift(texts, heard(), decoder=ctc_viterbi) is None
 
 
+def test_a_shuffle_that_reads_as_the_text_itself_is_no_contrast() -> None:
+    """W3 review r2. The contrast is a different TARGET SEQUENCE, not a different line string: `letters_of`
+    lowercases and drops what the dictionary has no id for, so a text whose word permutations reproduce its
+    own letters — a chant, a `la la` outro, a hook-only caption track — had shuffles whose forced path WAS
+    the text's. `best == own` made the lift exactly 0.0, which `band` reads as REFUSE, so the gate convicted
+    a right text as a wrong one (terminally on a stem, and at the LINE_SYNC rung too). Filtered on the
+    targets, there is no contrast left to draw and the lift says so: None, and the envelope gate keeps it."""
+    chant = ["na na na na na", "na na nana na", "na na na na na", "na na na na na"]
+    assert len(lexical.letters_of(chant, DIC)) >= lexical.MIN_LETTERS, "past the minimum, so it is measured"
+    assert {tuple(lines) for lines in lexical.shuffles_of(chant)} != {tuple(chant)}, (
+        "its LINES do differ: the old filter kept every draw"
+    )
+    assert lexical.lift(chant, heard(), decoder=ctc_viterbi) is None
+
+
+def test_the_note_prints_the_lift_at_the_precision_the_bands_are_set_on() -> None:
+    """W3 review r2: at two decimals a text at +0.195 read `+0.20 ... below the lexical gate (0.2)` — the
+    refusal note contradicting itself at the boundary it is read at most (`align_steps`)."""
+    assert lexical.Lift(value=0.1954, letters=200, per_letter=-4.0).why().startswith("lexical lift +0.195 ")
+
+
 def test_an_empty_matrix_is_unmeasured() -> None:
     empty = FakeEmissions(log_probs=sung_matrix([], DIC, 0.0), frame_sec=FRAME_SEC, dictionary=DIC)
     assert lexical.lift(SUNG, empty, decoder=ctc_viterbi) is None
@@ -97,7 +118,7 @@ def test_an_empty_matrix_is_unmeasured() -> None:
 def test_what_the_decoder_raises_propagates() -> None:
     """Pure: it cannot tell a kernel that refused these targets from one that is gone. The step can."""
 
-    def refusing(log_probs: Any, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def refusing(log_probs: Any, targets: Sequence[int], blank: int = 0) -> tuple[list[int], list[float]]:
         raise ValueError("targets length is too long for CTC")
 
     with pytest.raises(ValueError, match="too long"):

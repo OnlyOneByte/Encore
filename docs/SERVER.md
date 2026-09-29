@@ -190,7 +190,18 @@ shared-corpus parity guard holds the two equal. The acquisition model is `docs/A
   made a well-timed machine caption authoritative and ranked every line-synced sheet as a guess. A person's
   re-pick (a job carrying `pinnedText` / `pinnedRef`) is `high` whatever its tier: a human chose those words, as
   the old worker had it. So a re-picked machine track reads as "Captions", while a re-picked transcript is
-  still no claim, because core never counts `asr` words as one. Both a worker's
+  still no claim, because core never counts `asr` words as one.
+- **`vouched: false` is a THIRD axis: a wrong-text gate read these words and did not vouch for them.** The
+  worker's lexical doubt band, a pin whose lift its gate would have refused, and a text no such gate could
+  read (`domain/lyrics/lexical.py`, W3 review r1–r2). `isAuthoritativeText` reads it, so such a document ranks
+  under one a gate passed — the timing grade could not carry that, since `timingConfidence` is not in
+  `lyricsRank` at all, and a doubted word document used to tie a fully vouched one at the top rank. It is a
+  field of its own because `textConfidence` already carries a second claim: `lyricsSourceLabel` reads
+  `captions` + `low` as "Auto captions", so sending the doubt there showed an uploader's hand-authored caption
+  track as machine-generated — a false statement about its provenance rather than about its words. SENT ONLY
+  WHEN FALSE; absent (every stored row, every earlier worker, a withdrawn document whose gate never ran here)
+  reads as vouched, since nothing can infer it, while a value core cannot read fails safe to `false`. Both a
+  worker's
   report and a stored row are READ through `parseLyricsCandidates` (fail-safe on values it cannot read), never
   cast; the cross-language fixture `tests/unit/contract/lyrics/worker-align-contract.json` is written by the
   worker and holds the two sides to one reading.

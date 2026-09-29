@@ -87,13 +87,16 @@ class FakeAligner:
         )
 
 
-def scripted_decoder(log_probs: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+def scripted_decoder(
+    log_probs: object, targets: Sequence[int], blank: int = 0
+) -> tuple[list[int], list[float]]:
     """A decode that is 'right' by construction, over WHATEVER frames it is handed.
 
     A real CTC Viterbi over the sung matrix. The whole song places each phrase on its true span, and a
-    repair window gets its own slice decoded, with spans relative to that slice.
+    repair window gets its own slice decoded, with spans relative to that slice. `blank` is FORWARDED
+    rather than defaulted, so this fake decodes whatever column its matrix calls blank (review M9).
     """
-    return ctc_viterbi(log_probs, targets)
+    return ctc_viterbi(log_probs, targets, blank)
 
 
 def unmeasured_lift(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -360,11 +363,11 @@ def test_a_machinery_fault_inside_a_repair_window_is_not_a_repair_fault(
     whole_song = sum(len(alignable(t, DIC)) for t, _s, _e in PHRASES)
 
     def gone_after_the_blind_decode(
-        log_probs: object, targets: Sequence[int]
+        log_probs: object, targets: Sequence[int], blank: int = 0
     ) -> tuple[list[int], list[float]]:
         if len(targets) != whole_song:
             raise ml.ModelUnavailable("the CTC kernel went away mid-job")
-        return ctc_viterbi(log_probs, targets)
+        return ctc_viterbi(log_probs, targets, blank)
 
     monkeypatch.setattr(ml, "forced_align_decoder", gone_after_the_blind_decode)
     impl, _aligner, trail, job, audio, _tmp = rig
@@ -431,11 +434,13 @@ def test_when_claims_describe_the_audio_better_they_become_the_repair_anchors(
     claimed line is re-decoded inside its claim window on the same emission matrix — no other engine runs.
     """
 
-    def window_decoder(log_probs: Sequence[float], targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def window_decoder(
+        log_probs: Sequence[float], targets: Sequence[int], blank: int = 0
+    ) -> tuple[list[int], list[float]]:
         # Spreads targets over the middle of WHATEVER slice it is given: the GLOBAL decode therefore
         # scatters lines across the whole song (wrong), while a claim-window re-decode necessarily lands
         # inside the window (right, by anchor) — the shape of a real misbound repeat-heavy decode.
-        labels = [0] * len(log_probs)
+        labels = [blank] * len(log_probs)
         scores = [-0.4] * len(log_probs)
         low, high = int(0.2 * len(log_probs)), int(0.9 * len(log_probs))
         per = (high - low) / max(len(targets), 1)
@@ -464,6 +469,54 @@ def test_when_claims_describe_the_audio_better_they_become_the_repair_anchors(
     assert notes and "claim windows" in notes[-1][4], "the repair must be legible on the trail"
 
 
+def test_no_envelope_fit_runs_on_the_event_loop(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
+    """REVIEW L6. `fit_shift` is synchronous numpy — 42 ms on a 60-minute recording even bounded — and the
+    step is inside a socket keepalive the reaper reads: a fit on the event loop stalls it. Every other call
+    site was already in `asyncio.to_thread`; the one R1 makes when the claims out-fit the decode was not,
+    and nothing could see it, because a stalled keepalive is not a wrong timing.
+
+    Asserted by THREAD IDENTITY rather than by reading the source: `asyncio.run` puts the loop on the main
+    thread, so a fit that reports the main thread ran on it. Driven through the R1 path (the humility case
+    above), which is the one that used to.
+    """
+    import threading
+
+    from encore_worker.domain.audio import activity
+
+    threads: list[str] = []
+    real = activity.fit_shift
+
+    def watched(*args: object, **kwargs: object) -> object:
+        threads.append(threading.current_thread().name)
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(activity, "fit_shift", watched)
+
+    def window_decoder(
+        log_probs: Sequence[float], targets: Sequence[int], blank: int = 0
+    ) -> tuple[list[int], list[float]]:
+        labels = [blank] * len(log_probs)
+        scores = [-0.4] * len(log_probs)
+        low, high = int(0.2 * len(log_probs)), int(0.9 * len(log_probs))
+        per = (high - low) / max(len(targets), 1)
+        for i, token in enumerate(targets):
+            first = low + int(i * per)
+            for f in range(first, min(max(low + int(i * per + 0.7 * per), first + 1), len(labels))):
+                labels[f] = token
+        return labels, scores
+
+    from encore_worker.adapters import ml
+
+    monkeypatch.setattr(ml, "forced_align_decoder", window_decoder)
+    unmeasured_lift(monkeypatch)
+    impl, _aligner, trail, job, audio, _tmp = rig
+    assert asyncio.run(impl.time_text(request(job, audio, timed=True))) is not None
+    notes = [s for s in trail.states if s[1] == "align-global"]
+    assert notes and "claim windows" in notes[-1][4], "R1 must have run, or this proves nothing"
+    assert len(threads) >= 2, f"the fits are not being counted: {threads}"
+    assert threading.main_thread().name not in threads, f"a fit ran on the event loop: {threads}"
+
+
 def test_a_line_the_decode_cannot_hear_adopts_the_claim_timing(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -473,7 +526,9 @@ def test_a_line_the_decode_cannot_hear_adopts_the_claim_timing(
     confidence `low`, the adoption named on the trail."""
     full_frames = int(DURATION / 0.02)
 
-    def deaf_in_windows(log_probs: Sequence[float], targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def deaf_in_windows(
+        log_probs: Sequence[float], targets: Sequence[int], _blank: int = 0
+    ) -> tuple[list[int], list[float]]:
         if len(log_probs) == full_frames:
             # The global pass: right everywhere except line 3, displaced +8 s — a STRUCTURAL dispute.
             labels = [0] * len(log_probs)
@@ -533,9 +588,9 @@ def test_a_never_sung_caption_is_dropped_and_the_rest_redecoded(
     phrase_chars = sum(1 for text, _s, _e in PHRASES for w in text.split() for c in w if DIC.get(c))
 
     def decoder_with_credit(
-        log_probs: Sequence[float], targets: Sequence[int]
+        log_probs: Sequence[float], targets: Sequence[int], blank: int = 0
     ) -> tuple[list[int], list[float]]:
-        labels, scores = scripted_decoder(log_probs, list(targets)[:phrase_chars])
+        labels, scores = scripted_decoder(log_probs, list(targets)[:phrase_chars], blank)
         if len(targets) > phrase_chars:  # first round: the credit line smeared onto trailing silence
             step = 1.4 / credit_chars
             for i, token in enumerate(targets[phrase_chars:]):
@@ -848,7 +903,9 @@ def test_lines_get_low_confidence_when_claims_disagree_with_the_decode(
     WHICH side is right is unresolved, so no unique line should carry `high` on that basis alone (found
     3 gross-but-labelled-high lines live). Every line must publish at `low` — the honest label."""
 
-    def scattered(log_probs: Sequence[float], targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def scattered(
+        log_probs: Sequence[float], targets: Sequence[int], _blank: int = 0
+    ) -> tuple[list[int], list[float]]:
         """A permutation decoder: each line's chars land on the WRONG phrase's audio span.
         The envelope fit remains high (chars sit ON singing) but no line agrees with its claim, so the
         reconcile verdict comes out UNRELATED — the exact hello shape."""
@@ -948,7 +1005,16 @@ def test_on_an_exact_decode_r3_reproduces_the_global_path(rig: Rig) -> None:
     """The measured R3 no-op, as a property. On the same matrix, re-decoding a run between the global
     path's own anchors reproduces the global path word for word, because CTC's monotonicity already
     confined the repeat to that gap. R3 must still RUN: its note on the trail says every chorus line was
-    re-decoded, and nothing raised."""
+    re-decoded, and nothing raised.
+
+    THE COMPARISON IS AGAINST THE RAW DECODE PLUS THE DISPLAY POST-PASS (W4, review §3.5): since the ends
+    are extended through the envelope just before `as_doc`, a bare `generate` is no longer what publishes.
+    Applying `extend_ends` to the raw decode with the envelope the step itself read makes this property
+    stronger than it was — the post-pass is now the ONLY difference between the two, so a repair that
+    moved anything else still turns this red."""
+    from encore_worker.adapters.ml import load_audio_mono_16k
+    from encore_worker.domain.audio import activity
+    from encore_worker.domain.lyrics.ends import extend_ends
     from encore_worker.domain.lyrics.generate import generate
 
     impl, aligner, trail, job, audio, tmp = rig
@@ -958,13 +1024,18 @@ def test_on_an_exact_decode_r3_reproduces_the_global_path(rig: Rig) -> None:
     assert f"re-decoded {len(CHORUS)} repeated lines between unique anchors" in notes[-1][4]
     assert not [n for n in notes if n[3] == "repair-faults"]
     raw = generate([t for t, _s, _e in PHRASES], aligner.emissions("", "en"), decoder=scripted_decoder)
+    env = activity.envelope(load_audio_mono_16k(str(audio.vocals_path)), RATE)
+    shown = extend_ends(raw, env.tolist(), activity.HOP_SEC)
     published = doc_of(tmp, timed)["lines"]
-    assert len(published) == len(raw.lines)
-    for got, want in zip(published, raw.lines, strict=True):
+    assert len(published) == len(shown.lines)
+    for got, want, decoded in zip(published, shown.lines, raw.lines, strict=True):
         assert got["start"] == pytest.approx(want.start, abs=1e-9)
         assert got["end"] == pytest.approx(want.end, abs=1e-9)
         spans = [t for w in got["words"] for t in (w["start"], w["end"])]
         assert spans == pytest.approx([t for w in want.words for t in (w.start, w.end)], abs=1e-9)
+        # Starts against the DECODE's own, so this keeps saying what it always said about R3.
+        starts = [w["start"] for w in got["words"]]
+        assert starts == pytest.approx([w.start for w in decoded.words], abs=1e-9)
 
 
 def test_a_repair_decode_that_raises_is_a_note_on_the_trail_not_a_silence(
@@ -978,10 +1049,12 @@ def test_a_repair_decode_that_raises_is_a_note_on_the_trail_not_a_silence(
 
     whole_song = sum(len(alignable(t, DIC)) for t, _s, _e in PHRASES)
 
-    def whole_song_decoder(log_probs: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def whole_song_decoder(
+        log_probs: object, targets: Sequence[int], blank: int = 0
+    ) -> tuple[list[int], list[float]]:
         if len(targets) != whole_song:
             raise AssertionError(f"{whole_song} spans vs {len(targets)} targets")
-        return ctc_viterbi(log_probs, targets)
+        return ctc_viterbi(log_probs, targets, blank)
 
     monkeypatch.setattr(ml, "forced_align_decoder", whole_song_decoder)
     impl, _aligner, trail, job, audio, tmp = rig

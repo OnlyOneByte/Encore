@@ -1,0 +1,158 @@
+# W3 reject-if for the LINE_SYNC rung under `syncMode=lines` (PLAN-alignment-v3 W3, review §3 item 4 / H3's
+# same-video half): the rung's gate is the text's OWN blind decode — `lexical.lift` >= 0.2 AND at least
+# `align_steps._LINE_SYNC_MIN_AGREEMENT` (0.5) of the lines that decode places start within
+# `_LINE_SYNC_NEAR_SEC` (1.0 s) of their placed claim; the sheet-span envelope gate only where the decode
+# cannot be read. In this mode EVERY text's only attempt is that rung, so the run measures the gate directly
+# and nothing else: no word decode, no repairs, no policy ladder.
+#
+# Run it (the harness's own rows, no model needed once a run exists):
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level run_align \
+#       --sync-mode lines --modes all,wrongtext+ownclock \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w3-lines.yaml
+#   (offline: e2e.py --summarize <run>/rows.jsonl --gates ...)
+#
+# Every gate here is ABSOLUTE, with the measured number as the literal, because there is no earlier committed
+# lines run to `--compare` against: W1 measured this mode through a scratch probe (`_runs/w1r2p-lines`,
+# rows in the old compact shape and no `sync_mode` in its meta, so `e2e_gates` correctly refuses it as a
+# baseline for a lines run). `results/w3-lines-run_align.json` is this wave's record of the same rows and is
+# the base a later wave should ALSO `--compare` against, for the per-song deltas the literals cannot carry.
+#
+# MEASURED 2026-09-28 (base model, youtube tfr audio, emissions all disk hits, code 120f7db5 = the owner's
+# commit fd98f0c1; `_runs/w3-lines-run_align`, rows in `results/w3-lines-run_align.{json,cases.jsonl}`).
+# 1088 cases, 0 ERROR rows, 36/36 below. Committed / refused / gross lines, per mode, of 32 songs:
+#   truth 31/1/0   jit 30/2/0   off05 31/1/0   off15 28/4/0   off3 28/4/0   offm1 29/3/0
+#   drop20 32/0/0  drop50 15/17/0  extraverse 30/2/0  headers 31/1/0  credit 31/1/0
+#   tempo098 5/27/28  tempo102 6/26/19  blind 0/32/0  wrongtext 0/320/0  wrongtext+ownclock 0/320/0
+# vs W1's shipped rung (the sheet-span gate + the lift) on its ten right modes: committed 211 -> 287 of 320,
+# right texts refused 107 -> 33, 0 gross lines either way, text ±500 truth 69.9 -> 90.6%, off15 34.3 -> 69.9%,
+# drop20 42.9 -> 88.6%; wrong texts 0/640 under both (W1's sheet gate alone passed 278/320 of the same-video
+# ones: `scripts/line_gate.py`, `results/w3-line-gate.json`). The 11 documents W1 published and this gate
+# refuses are listed in the PLAN W3 row (never-be-alone in 7 modes, agreement 0.37-0.48; 4 drop50 texts).
+#
+# CHECKED NON-VACUOUS the way `gates/w1.yaml` was: W1's rung, read through its own scratch probe's rows
+# (`--summarize _runs/w1r2p-lines/rows.jsonl --gates` this file), FAILS 13 of the 36 — every `committed-not-
+# down-*` gate for the ten modes it measured (truth 28, jit 23, off05 23, off15 17, off3 17, drop20 18,
+# extraverse 25, headers 25, credit 26, drop50 9; 211 in total) and all three `*-text-pm500` (truth 69.89,
+# off15 34.32, drop20 42.85). The other 8 are ERROR, not PASS, because that probe never ran offm1, the two
+# tempo modes or blind: an unmeasured (mode, metric) key is an ERROR by design, so a thinner run cannot read
+# as a clean one. The four wrong-text gates PASS for W1 as well — its lift already refused all 640; what the
+# decode gate bought is the false-refusal half, which is what these floors hold.
+#
+# W2 EXPECTATION (2026-09-28; NO GATE BELOW IS CHANGED — the floors stay W3's ratchets, and the bench runner
+#   ratchets them up once the corpus run confirms these numbers). W2 routed this rung's claims through the
+#   claim clock (`align_steps._line_sync_clock`) and gave the line document an order guarantee
+#   (`_in_claim_order`). Predicted from `scripts/line_gate.py` over the same 1056 cases with the SHIPPED rule,
+#   both placements in one row set (`results/w2-line-gate.json`, the `placement` block): refused 88 -> 33 of
+#   416 over the 13 timed modes, a strict SUBSET of W3's refusals (0 newly refused, 55 recovered), gross lines
+#   47 -> 0 (W2 review r2 restated this: the block printed 0 -> 0 because its gross column was hardcoded to the
+#   MAPPED placement while the rest of the row was keyed — the 47 is tempo098's 28 and tempo102's 19, the two
+#   counts section 4's caps below already carry from the corpus run), text-denominator ±500 69.0 -> 89.5%. So every `committed-not-down-*` floor should clear with room —
+#   tempo098 5 -> ~29 and tempo102 6 -> ~29 of 32, off15 / off3 28 -> ~31, offm1 29 -> ~31, drop50 15 -> 15 —
+#   both `*-gross-not-up` caps should read 0, `zero-pm500-documents-not-up` 23 -> 13 (bad-guy in 10 modes and
+#   numb in 3, where the envelope AND the decode both say the vocals are ~0.7 s later than the caption track
+#   that is also the truth file) and `zero-pm500-truth-not-up` 2 -> 1 (numb recovered). The three `no-gross-*`
+#   MUSTs and both wrong-text MUSTs must still read 0: the lexical gate refuses all 640 wrong texts at every
+#   share 0.3-0.8, and it has to, because a map lands a WRONG sheet on our decode too (same-video agreement max
+#   0.49 -> 0.51, one of 320 now clearing the timing half alone). NOT recovered and reported as such:
+#   never-be-alone in 12 of 13 modes (agreement 0.38-0.49 mapped, `near_fit` <= 0.45 — no offset can reach 0.5)
+#   and the 17 drop50 half-sheets. See README, "The rung's own claim clock".
+#
+# RATCHETED TO W2'S ROW (2026-09-28, the W2 bench runner, as the W2 EXPECTATION paragraph above asked:
+# "the bench runner ratchets them up once the corpus run confirms these numbers"). The corpus run confirmed
+# them — `results/w2-lines-run_align.{json,cases.jsonl}`, `_runs/w2-lines-run_align`, 1088 cases, 0 ERROR
+# rows, 38/38 of this file BEFORE the ratchet. So every literal below is now W2's, not W3's: committed truth
+# 31, jit 31, off05 31, off15 31, off3 31, offm1 31, drop20 32, extraverse 30, headers 31, credit 31,
+# drop50 15, tempo098 29, tempo102 29 (W3: 31/30/31/28/28/29/32/30/31/31/15/5/6), both tempo gross caps 0
+# (W3: 28 and 19), zero-±500 documents 13 (23) and truth's 1 (2), text ±500 floors truth 92.0 (90.0), off15
+# 90.0 (69.0), drop20 95.0 (88.0) — each rounded down from 92.61 / 90.62 / 95.25. Right texts refused over
+# the 13 timed modes 89 -> 33, a strict subset (0 newly refused, 17 of the 33 are drop50 half-sheets), gross
+# lines 47 -> 0 (not "0 either way": see the W2 EXPECTATION paragraph, corrected in review r2), wrong texts
+# 0/640. Read this file against W3's rows now and it fails, which is what a
+# ratchet is; `results/w3-lines-run_align.json` stays the base a later wave `--compare`s for per-song deltas.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
+
+# ── 1) MUST (review §3.4, and W1's M1 hazard): wrong words NEVER reach the listener through this rung ──
+# The rung publishes the sheet's own timings, so a same-video caption track in the wrong words (an
+# uploader's translation, YouTube's machine `en`) is timed perfectly and says nothing true. W1's sheet-span
+# gate passed 278/320 of them; the lift refuses all 640 here, and the decode gate would refuse them too
+# (`wrongtext` agreement max 0.26, same-video max 0.49).
+wrongtext-never-commits: wrongtext.published + wrongtext.line_sync == 0
+ownclock-never-commits: mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+wrongtext-pass-zero: wrongtext.wrongtext_pass == 0
+ownclock-pass-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
+
+# ── 2) MUST: a line document never claims word-level confidence ──
+# Its timings are the SHEET's, placed by the envelope fit: `_line_doc` + `_write(..., "low")` grade every
+# line `low`, so a `high` line here would be the rung advertising a claim it never measured. 0 in all 16
+# modes as shipped; this is the gate that catches a future confidence rule (W6) reaching into this rung.
+lines-never-high: truth.high + jit.high + off05.high + off15.high + off3.high + offm1.high + tempo098.high + tempo102.high + drop20.high + drop50.high + extraverse.high + blind.high + headers.high + credit.high + wrongtext.high + mode("wrongtext+ownclock").high == 0
+
+# ── 3) MUST: nothing this gate admits is grossly misplaced (a line start > 2 s from truth) ──
+# On claims that are on this master's clock the admitted documents are exactly right: 0 gross lines in 11 of
+# the 13 timed modes, off3's 3 s offset included, because the envelope fit places the lines and the decode
+# gate refuses the texts it cannot place.
+no-gross-truth: truth.gross == 0
+no-gross-jit: jit.gross == 0
+no-gross-off05: off05.gross == 0
+no-gross-off15: off15.gross == 0
+no-gross-off3: off3.gross == 0
+no-gross-offm1: offm1.gross == 0
+no-gross-drop20: drop20.gross == 0
+no-gross-drop50: drop50.gross == 0
+no-gross-extraverse: extraverse.gross == 0
+no-gross-headers: headers.gross == 0
+no-gross-credit: credit.gross == 0
+# A blind text carries no claims, so the rung has nothing to place and every text is skipped (W1 H5).
+blind-has-nothing-to-line-sync: blind.published + blind.line_sync == 0
+
+# ── 3b) MUST NOT GROW: documents this rung publishes with ZERO lines within ±500 ms of truth ──
+# THE GATE'S BLIND SPOT, measured and held rather than fixed here (W3 review r2). The decode agreement is read
+# against the text's OWN blind decode, so a document every line of which is 0.5-1.0 s late agrees with itself
+# and passes: 23 of the song-modes this rung publishes have NO line within ±500 ms and EVERY line within 1 s
+# (truth 2 — numb and bad-guy, whose claims ARE the truth — jit 0, off05 2, off15 2, off3 2, offm1 3,
+# drop20 4, drop50 0, extraverse 2, headers 4, credit 2, tempo098/102 0; `results/w3-line-gate.json` replayed
+# with the shipped rule). The cause is upstream: `_placed_by` shifts the sheet by the activity fit (+0.72 s
+# bad-guy, +0.62 numb) and the decode reads the shifted claims as near, so both witnesses agree on the same
+# misplacement. A lag term on `AsClaimed.offset_sec` does not recover them (see `_LINE_SYNC_MIN_DECODED_SHARE`
+# for the measured trade: 4 accurate documents lost to catch 9 of 35 inaccurate ones), and under
+# `syncMode=lines` a refusal is terminal. W2's claim clock — which applies a shift only where it beats no
+# shift — is the fix, and THIS is the number it must bring down. A refused song reads `text_pm500` 0 too,
+# so each mode's count excludes its refusals. Non-vacuous: the same count for `truth` alone fails at <= 1.
+zero-pm500-documents-not-up: count((truth.song.text_pm500 <= 0) * (truth.song.refused == 0)) + count((jit.song.text_pm500 <= 0) * (jit.song.refused == 0)) + count((off05.song.text_pm500 <= 0) * (off05.song.refused == 0)) + count((off15.song.text_pm500 <= 0) * (off15.song.refused == 0)) + count((off3.song.text_pm500 <= 0) * (off3.song.refused == 0)) + count((offm1.song.text_pm500 <= 0) * (offm1.song.refused == 0)) + count((tempo098.song.text_pm500 <= 0) * (tempo098.song.refused == 0)) + count((tempo102.song.text_pm500 <= 0) * (tempo102.song.refused == 0)) + count((drop20.song.text_pm500 <= 0) * (drop20.song.refused == 0)) + count((drop50.song.text_pm500 <= 0) * (drop50.song.refused == 0)) + count((extraverse.song.text_pm500 <= 0) * (extraverse.song.refused == 0)) + count((headers.song.text_pm500 <= 0) * (headers.song.refused == 0)) + count((credit.song.text_pm500 <= 0) * (credit.song.refused == 0)) <= 13
+zero-pm500-truth-not-up: count((truth.song.text_pm500 <= 0) * (truth.song.refused == 0)) <= 1
+
+# ── 4) SHOULD: the two tempo modes are W2's (a bounded scale in the claim clock), not this gate's ──
+# A 2% tempo error drifts the sheet out of the fit's reach: 5 and 6 of 32 admitted, and those carry 28 and 19
+# gross lines — the only misplaced documents this rung publishes. W2 should shrink both; neither may grow.
+tempo098-gross-not-up: tempo098.gross <= 0
+tempo102-gross-not-up: tempo102.gross <= 0
+
+# ── 5) MUST: the recovery holds — the gate keeps admitting the right texts it admits today, per mode ──
+# W1 refused 107 of 320 right texts on the sheet-span envelope alone (truth 4/32); these floors are what the
+# decode gate measured. A later wave that refuses MORE has traded a false refusal back in.
+committed-not-down-truth: truth.published + truth.line_sync >= 31
+committed-not-down-jit: jit.published + jit.line_sync >= 31
+committed-not-down-off05: off05.published + off05.line_sync >= 31
+committed-not-down-off15: off15.published + off15.line_sync >= 31
+committed-not-down-off3: off3.published + off3.line_sync >= 31
+committed-not-down-offm1: offm1.published + offm1.line_sync >= 31
+committed-not-down-drop20: drop20.published + drop20.line_sync >= 32
+committed-not-down-extraverse: extraverse.published + extraverse.line_sync >= 30
+committed-not-down-headers: headers.published + headers.line_sync >= 31
+committed-not-down-credit: credit.published + credit.line_sync >= 31
+
+# ── 6) SHOULD: drop50, half of every text's lines removed ──
+# 15 of 32 admitted. A refusal here may be the honest answer (the decode agrees with too little of the sheet
+# to tell a half-missing text from a wrong one), so a drop below this is reported, not automatically a bug.
+committed-not-down-drop50: drop50.published + drop50.line_sync >= 15
+committed-not-down-tempo098: tempo098.published + tempo098.line_sync >= 29
+committed-not-down-tempo102: tempo102.published + tempo102.line_sync >= 29
+
+# ── 7) MUST: the text-denominator accuracy of what it admits, pooled (a lost song cannot raise it) ──
+# `text_pm500` counts every line of the served text, so refusing a song costs it. W1's rung read truth 69.9%
+# and off15 34.3% on the same rows.
+truth-text-pm500: truth.text_pm500 >= 92.0
+off15-text-pm500: off15.text_pm500 >= 90.0
+drop20-text-pm500: drop20.text_pm500 >= 95.0

@@ -31,7 +31,8 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 
 #: Every alignment arm `ENCORE_ALIGN_EXPERIMENTS` may switch on (`Config.align_experiments`). Each is built,
 #: tested and measured, and ships OFF because it failed its reject-if gate (PLAN-alignment-v3's rule for
-#: such arms: never silently default-on). The reasoning and numbers live where each is read. W1's five were
+#: such arms: never silently default-on) — except `ends-raw`, which is a default-ON feature's CONTROL and
+#: says so at its entry. The reasoning and numbers live where each is read. W1's five were
 #: re-judged under W3's lexical gate (2026-09-28). The gate closed `m2-order-clamp`'s wrong-text failure, and
 #: every one still fails a reject-if on right texts, which the gate does not touch:
 #:
@@ -46,11 +47,45 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #:   m6-window-spare  a never-sung candidate whose claim window the TARGET sounds in is re-decoded inside it
 #:                    and put back where that decode hears it, instead of binned (W1's extension of review
 #:                    M6).
-#:   h3-mix-lift-alone  on the MIX (a song with no vocals stem) the lexical lift's floor is the global
-#:                    engine's only wrong-text gate, as it is on a stem, instead of gating beside the
-#:                    envelope gate (W3, review H3). Not failed: UNMEASURED end to end — the bench has no
-#:                    stemless mode — while the half of the envelope gate a calibration can read sorts the
-#:                    mix badly (`domain/lyrics/lexical.py`).
+#:   h3-mix-floor     on the MIX (a song with no vocals stem) a sub-floor lexical lift REFUSES the text
+#:                    beside the envelope gate (W3, review H3, and what W3 first shipped) instead of
+#:                    publishing it as the doubt band. FAILED on its own calibration: it refuses 48 of the
+#:                    corpus's 192 right mix texts, 7 of the 32 truth texts, 29 of them past the envelope
+#:                    gate — and on a stemless song a refusal is terminal, so every sheet would fall to the
+#:                    whisper transcript (W3 review r1, `domain/lyrics/lexical.py` MIX).
+#:   claimmap-piecewise  the claim clock may split into change-point LEGS instead of one affine map, for a
+#:                    sheet with an inserted section, a re-lineated middle or a live rendition's drift
+#:                    (review §3.11; W2, `domain/lyrics/claimmap.py`). OFF because the critics measured a
+#:                    change-point version WORSE on the unperturbed control and a misbound repeat (failure
+#:                    F2) looks exactly like a step to it; the single map it falls back to is default-ON.
+#:                    Since review r1 made `_monotonic` judge the LEG BOUNDARIES it refuses every split its
+#:                    probe population offered: byte-identical to the default over 48 cases with no `legs`
+#:                    sentence on any trail (`results/w2-pwarm-time_text.*`, where it used to move 2
+#:                    documents under `jit`, both worse). There is nothing left to switch on.
+#:   m5-adopt-floor   a claim span too short to hold its line at `regenerate`'s floor is NOT adopted over a
+#:                    window decode that heard nothing; the repair is dropped and the measurement stands
+#:                    (review M5's second half; W2). OFF because §3.11's reject-if says the unperturbed row
+#:                    may lose 0.3 pt and this costs 0.92 of it — 16 of 1736 lines within ±500 ms and a gross
+#:                    line, all on SHORT CAPTION CUES whose start is right and whose end is missing
+#:                    (rap-god 15 lines, JASON_MILLER drop50 one). The defect it fixes — a cue 7 s early with
+#:                    no end, adopted 5.06 s out — stays pinned hermetically either way.
+#:   h3-mix-lift-alone  the same floor, and the global engine's ONLY wrong-text gate on the mix, as it is on
+#:                    a stem (W3, review H3). Carries `h3-mix-floor`'s cost and the envelope gate's
+#:                    absence: UNMEASURED end to end — the bench has no stemless mode — while the half of
+#:                    the envelope gate a calibration can read sorts the mix badly (`lexical.py`).
+#:   ends-tile        the word-end post-pass TILES each line gaplessly — a word that is not its line's last
+#:                    runs to the next word's start whatever the envelope says — instead of ending where the
+#:                    singing stops (review §3.5; W4, `domain/lyrics/ends.py`). The review measured 78.8%
+#:                    highlight against 78.2% for the envelope alone; on 3 Jamendo songs here it buys +1.5
+#:                    pts of highlight (79.1 -> 80.6) for -4.0 on word-end ±100 (79.0 -> 75.0), phrase-final
+#:                    ends untouched. The other cost is not in a number: the TV splits a line over 42 chars
+#:                    at word gaps of 0.45 s (`lyrics.ts` LINE_GAP_SEC), and a tiled line has none, so a
+#:                    long line that showed as two rows at its pause now shows as one.
+#:   ends-raw         THE ONE CONTROL, not a failed arm: the word-end post-pass does not run, so ends are
+#:                    the raw decode's, which is the column review §3.5's reject-if gates measure a gain
+#:                    over (highlight +5 pts, phrase-final end ±100 +10). A display post-pass has to be
+#:                    A/B-able and the arm switch is the only thing the bench can move without editing code;
+#:                    it is also the off switch if the corpus run rejects the post-pass after all.
 #:
 #: (`steps/align_steps.py`, `_time_text_global`, `_clamped` and `_SPOKEN_RATIO`.) An unknown name is refused
 #: like any bad setting: a typo would otherwise measure the default path under the arm's name.
@@ -60,7 +95,12 @@ ALIGN_EXPERIMENTS = (
     "m2-order-clamp",
     "m6-mix-spare",
     "m6-window-spare",
+    "m5-adopt-floor",
+    "h3-mix-floor",
     "h3-mix-lift-alone",
+    "claimmap-piecewise",
+    "ends-tile",
+    "ends-raw",
 )
 
 

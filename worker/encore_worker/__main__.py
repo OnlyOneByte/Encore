@@ -348,6 +348,18 @@ def _lyrics_artifacts(
         sent as. Core then reads a re-picked machine caption as authoritative "Captions" (its TV drops
         the "not verified" mark), while a re-picked transcript stays unauthoritative: core's
         `isAuthoritativeText` never counts `asr` words as a claim, whatever their confidence.
+      * `vouched` is the WORDS' OWN AXIS (`TimedDoc.vouched`, W3 review r1, moved off `textConfidence` by
+        r2): `false` where a wrong-text gate measured these words and did not vouch for them — the lexical
+        doubt band, a PIN whose lift the gate would have refused, or a text no such gate could read. Core
+        reads it in `isAuthoritativeText`, so such a document ranks under one a gate passed, and the pin's
+        `high` keeps saying what it means (a person chose these words) without also claiming the audio
+        sings them. SENT ONLY WHEN FALSE, since absent is core's "vouched" — the compatible reading for
+        every stored row and every earlier worker. It was `textConfidence: low` at r1, and that field
+        carries a SECOND claim core reads: `lyricsSourceLabel` reports `captions` + `low` as "Auto
+        captions", so a doubted hand-authored caption track was shown to the room as machine-generated —
+        false about its provenance rather than about its words. The timing grade could not carry the doubt
+        either: `timingConfidence` is not in core's ranking at all (only its tie-break), so a doubted word
+        document tied with a vouched one at the top rank.
       * `selectable` is the ladder's verdict: `false` on every attempt this job did not publish — the
         ones it retried, moved past, or (no lyrics) all of them. Core never auto-selects one (a person
         still may), so within a report the worker's choice stands, while across jobs core's ranking
@@ -377,7 +389,9 @@ def _lyrics_artifacts(
             "timing": doc.timing,
             # A pinned job reports only the pin's own document (`workflows.align._publish`), so `pinned`
             # speaks for every candidate here; `withdrawn` below are earlier jobs' and keep their tier.
-            "textConfidence": "high" if pinned else doc.tier.text_confidence,
+            "textConfidence": ("high" if pinned else doc.tier.text_confidence),
+            # The WORDS' axis, only when a gate withheld them: absent is core's "vouched" (see above).
+            **({} if doc.vouched else {"vouched": False}),
             "timingConfidence": doc.confidence,
             "selectable": doc.ref == chosen,
             "createdAt": now,

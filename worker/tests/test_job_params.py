@@ -494,6 +494,35 @@ def test_a_re_picked_machine_caption_goes_out_as_the_persons_claim(
     assert [(c["ref"], c["textSource"], c["textConfidence"]) for c in sent] == [(ref, source, "high")]
 
 
+def test_a_pin_the_lexical_gate_refused_is_published_but_never_sent_as_a_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W3 review r1, the H3 threat through the real steps: a person pastes words the stem does not sing (here
+    a French text on a matrix singing `UNIQUE` — the same shape as re-picking YouTube's machine-translated
+    `en` track). The gate does not refuse a pin — a person chose it — so it publishes, every line `low` and
+    the document `low`. What must NOT happen is core reading it as a verified claim: a pin's `textConfidence`
+    is `high`, and before this the worker's own measurement survived only in `timingConfidence`, which core's
+    ranking never reads, so `isAuthoritativeText` was true and the label dropped its "not verified" mark.
+    The verdict rides on `vouched`, and `textConfidence` keeps saying who chose the words (W3 review r2)."""
+    from encore_worker.__main__ import _align_completion
+    from tests.test_lexical import FRENCH
+
+    rig = Rig(tmp_path, monkeypatch)
+    text = "\n".join(FRENCH)
+    outcome, spy = rig.run(pinnedRef=MANUAL, pinnedText=text)
+
+    assert outcome.published is not None and outcome.published.ref == MANUAL, outcome.why
+    assert outcome.published.vouched is False and outcome.published.confidence == "low"
+    assert {line["confidence"] for line in rig.lines(MANUAL)} == {"low"}
+    assert any(verdict == "pin-unvouched" for _state, verdict, _why in spy.states)
+    frame = _align_completion(rig.job(pinnedRef=MANUAL, pinnedText=text), Config(), outcome, now_ms=1)
+    assert frame.artifacts is not None
+    sent = frame.artifacts["lyrics"]["candidates"]
+    assert [(c["textSource"], c["textConfidence"], c["vouched"], c["timingConfidence"]) for c in sent] == [
+        ("manual", "high", False, "low")
+    ]
+
+
 def test_a_re_pick_re_times_the_whole_text_even_when_the_stored_document_lost_lines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

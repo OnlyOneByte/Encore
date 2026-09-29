@@ -23,10 +23,12 @@ that wants R3 to CHANGE something has to hand the global pass different evidence
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 import numpy.typing as npt
+
+from encore_worker.domain.lyrics.generate import Decoder
 
 FRAME_SEC = 0.02
 
@@ -41,8 +43,10 @@ FILL = 0.7
 
 Matrix = npt.NDArray[np.float32]
 
-#: `generate.Decoder`'s shape, as the fakes implement it.
-Decode = Callable[[object, Sequence[int]], tuple[list[int], list[float]]]
+#: `generate.Decoder`'s shape, IMPORTED rather than restated, so a fake cannot drift from the contract.
+#: `blank` is part of it (review M9): a fake that ignored the matrix's blank column would pass the very
+#: tests that exist to prove the caller reads it.
+Decode = Decoder
 
 
 def alignable(text: str, dictionary: Mapping[str, int]) -> list[int]:
@@ -147,9 +151,9 @@ def misheard(heard: Matrix, frames_of_the_song: int) -> Decode:
     window decodes the real matrix it is handed.
     """
 
-    def decode(log_probs: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+    def decode(log_probs: object, targets: Sequence[int], blank: int = 0) -> tuple[list[int], list[float]]:
         if len(np.asarray(log_probs)) == frames_of_the_song:
-            return ctc_viterbi(heard, targets)
-        return ctc_viterbi(log_probs, targets)
+            return ctc_viterbi(heard, targets, blank)
+        return ctc_viterbi(log_probs, targets, blank)
 
     return decode

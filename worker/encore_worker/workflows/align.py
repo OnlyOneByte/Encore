@@ -200,6 +200,14 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
                 chosen = by_serial.get(serial)
                 if chosen is None:  # pragma: no cover - a Commit always names a Try that wrote a document
                     raise RuntimeError(f"Commit of attempt {serial}, which wrote no document")
+                # A TEXT THIS JOB PUBLISHES IS NOT A TEXT IT REFUSED, even where one of its rungs was: with
+                # best-so-far a retry can be refused while the attempt it retried publishes — an
+                # ALIGN_ON_MIX retry the envelope gate turned down (W1), and since W4 a LINE_SYNC retry the
+                # line gate turned down for a word document nothing related to its claims. `refused` makes
+                # the frame WITHDRAW earlier jobs' documents for those words (`superseded_candidates`), and
+                # withdrawing them for words this job just published is the opposite of what that is for.
+                # The refusal stays on the trail, which is where a rung's verdict belongs.
+                refused.pop(chosen.label, None)
                 await steps.note(job, STATE_PUBLISH, attempt_no, "accept", why, None)
                 settled = await steps.diarize(job, audio, chosen)
                 outcome = await _publish(job, steps, settled, why, search, written, pin, refused.values())

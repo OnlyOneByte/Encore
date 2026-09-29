@@ -39,7 +39,7 @@ from encore_worker.adapters import ports
 from encore_worker.adapters.ports import InfraFault
 from encore_worker.artifacts import keys
 from encore_worker.domain.document import Segment
-from encore_worker.domain.lyrics import attribute, lexical, measure, place, presplit
+from encore_worker.domain.lyrics import attribute, claimmap, ends, lexical, measure, place, presplit
 from encore_worker.domain.lyrics.policy import Knob, Tier
 from encore_worker.domain.lyrics.report import Engine, TimingReport
 from encore_worker.host.config import ASR_MODELS, Config
@@ -408,56 +408,102 @@ class AlignStepsImpl:
         sit where they are sung? Both are read off the stem's emission matrix (one model pass), which is
         also the matrix the global engine decodes.
 
-        THE WORDS: `lexical.lift` at `_LINE_SYNC_MIN_LIFT` (review W1 r2) — the text's forced path against
-        the best of three shuffles of its own words, per letter. A caption track of THIS video fits the
-        singing whatever its words: an uploader's English translation of a K-pop song, or YouTube's
+        THE WORDS: `lexical.lift`, refused below `lexical.BANDS.refuse_below` (review W1 r2) — the text's
+        forced path against the best of three shuffles of its own words, per letter. The rung reads the SAME
+        band the global engine does (`lexical.band(..., on_stem=True)`, this rung's readings being always the
+        stem's), so the one recalibration a new model needs moves both gates; it used to hold its own copy of
+        the number, which W4's recipe would have left behind (W3 review r1). A caption track of THIS video
+        fits the singing whatever its words: an uploader's English translation of a K-pop song, or YouTube's
         machine-translated `en` track (the one `--sub-langs en.*,en` fetches for a non-English upload).
         Measured with the shipped helper and decoder over the bench's stems (`scripts/lift_gate.py`, base
         model): right texts (truth — which every timing-only mode serves — headers, credit, extra verse,
         drop20, drop50; 192) read +0.26 to +4.34, truth +0.47 at the lowest; the 320 wrong texts -0.21 to
         +0.19, and the 320 same-video wrong-words texts (`wrongtext+ownclock`: another song's words on this
-        song's own caption clock) -0.23 to +0.14. At 0.2: 0/192 right refused, 0/640 wrong passed. NOT
-        measured: a real translation (the corpus has none), and one into a language whose words share the
-        sung ones' letters in order (cognates) may lift above a wrong text's (the CTC fixture: German +1.98,
-        French -0.12; `test_lexical` pins that limit).
+        song's own caption clock) -0.23 to +0.14. At 0.2: 0/192 right refused, 0/640 wrong passed. A text in
+        the DOUBT band just over the floor ([`refuse_below`, `ok_from`); no text measured at this rung has
+        landed there) publishes as an UNVOUCHED document (`TimedDoc.vouched`), exactly as the global engine's
+        doubt band does on a stem — and so does a text whose words NOTHING here could read, which is not the
+        same as a text a gate passed (W3 review r2). NOT measured: a real translation (the corpus has none),
+        and one into a language whose
+        words share the sung ones' letters in order (cognates) may lift above a wrong text's (the CTC
+        fixture: German +1.98, French -0.12; `test_lexical`, `lexical`'s NOT COVERED paragraph).
 
-        THE TIMINGS (W3): the text is decoded BLIND on the same matrix (`generate`: the lift's own forced
-        path, kept as lines) and at least `_LINE_SYNC_MIN_AGREEMENT` of its lines must start within
-        `_LINE_SYNC_NEAR_SEC` of their PLACED claims — nothing removed, because the claims are what publishes
+        THE CLOCK, BEFORE EITHER QUESTION (W2, review H1). A sheet 1.5 s off is a sheet to MOVE, not a sheet
+        to refuse, so `_line_sync_clock` votes on which clock these claims are on — no-shift against the
+        envelope lag the gate already measured, the decode's own median and a bounded tempo — and `_placed_by`
+        applies the winner. Until W2 the sheet was moved by the activity fit whenever `ShiftFit.usable` held
+        and by nothing else, which cost both ways: 12 right texts refused for a clock error their own decode
+        could see, and 23 published documents with NO line within ±500 ms of truth because the fit moved a
+        sheet that was already right.
+
+        THE TIMINGS: the text is decoded BLIND on the same matrix (`generate`: the lift's own forced path,
+        kept as lines) and at least `_LINE_SYNC_MIN_AGREEMENT` of its lines must start within
+        `_LINE_SYNC_NEAR_SEC` of their MAPPED claims — nothing removed, because the claims are what publishes
         (`reconcile.as_claimed`). This REPLACED the sheet-span envelope gate (`_sheet_passes`: the text's
         claimed spans correlated against the stem's activity), which reads only the SHAPE of where a text
         claims singing, blind to the lines themselves. Measured rule by rule with the shipped functions over
-        every timed bench case on the stems (`scripts/line_gate.py`, base model; 13 timed modes, 416 right
-        texts; a line document "good" with >= 80% of its lines within 1 s of truth, "bad" under 50%):
+        every timed bench case on the stems (`scripts/line_gate.py`, base model, 1056 cases, rows in
+        `results/w2-line-gate.json`; 13 timed modes, 416 right texts; a line document "good" with >= 80% of
+        its lines within 1 s of truth, "bad" under 50% — on the MAPPED claims that is 411 good, 2 middling,
+        3 bad):
 
           rule                           good refused   bad published   right refused   gross shown
-          sheet gate + lift (W1)            116/346         6/48            175/416           75
-          lift alone (timings unchecked)      0/346        48/48              0/416         1782
-          lift + decode agreement 0.5        28/346         0/48             88/416           47
-          lift + (sheet OR decode 0.5)       15/346         6/48             68/416          106
+          sheet gate + lift (W1)            170/411         0/3              175/416           0
+          lift alone (timings unchecked)      0/411         3/3                0/416          76
+          lift + decode agreement 0.5        29/411         0/3               33/416           0
+          lift + (sheet OR decode 0.5)       14/411         0/3               18/416           0
 
-        On W1 review r2's `syncMode=lines` probe set (10 modes, 320 right texts) the sheet gate refused 107
-        (truth 4/32: hello r 0.36, rap-god 0.21, bohemian-rhapsody 0.36, bad-guy 0.51, whose documents
-        read 84% within ±500 ms), the decode 32 (truth 1: never-be-alone, whose blind decode is poor, 0.47),
-        both at 0 gross lines shown, text ±500 52.9% -> 82.8%. The decode's refusals are mostly RIGHT to
-        make: a sheet off by 1.5-3 s where the envelope cannot place it (hello, rap-god, bohemian off15 /
-        off3: 0% within ±500 ms, 365 gross), a 2% tempo error (53 texts, 676 gross), half a sheet missing
-        (drop50, 17: its decode strays into the gaps). Its good refusals are never-be-alone (9 texts, 0.37-
-        0.49) and drop50. Agreement shares: good documents p10 0.47, median 0.84; bad ones max 0.49; wrong
-        texts max 0.26 (wrongtext) and 0.49 (same-video): the decode alone would refuse all 640 too. OR-ing
-        the sheet gate back in keeps never-be-alone but publishes its 6 tempo-drifted documents (numb
-        tempo102: 21 of 35 lines gross), so it is not taken. The sheet fit still PLACES the lines, and its
-        reading stays on the trail. Cost: one `generate` decode beside the lift's four, and the emission pass
-        is now paid by every text that reaches the rung, where the sheet gate used to refuse ~a third first.
+        WHAT THE CLOCK BOUGHT, same rule, same decode, W3's placement -> W2's (that script's `placement`
+        block): right texts refused 88 -> 33 of 416 — a strict SUBSET, 0 newly refused and 55 recovered, 53 of
+        the 55 publishing a document at least 80% within ±500 ms — shown lines within ±500 ms 88.9% -> 94.8%,
+        text-denominator ±500 (a refused song counts as misses) 69.0% -> 89.5%, gross lines 47 -> 0, documents
+        with no line within ±500 ms 23 -> 13. (That 47 was printed as 0 until W2 review r2: the block's gross
+        column was the only one not keyed to the placement being shown, so the W3 row summed the MAPPED
+        placement's gross over the documents W3's rule publishes. Over W1's 10 lines-modes both placements
+        really are 0; the 47 is tempo098's 28 and tempo102's 19 — the same two counts `gates/w3-lines.yaml`
+        already carries from the corpus run's own rows, which is what says the corrected column is right.)
+        Per mode: tempo098 27 -> 3 refused (text ±500 4.4% -> 87.1%),
+        tempo102 26 -> 3 (4.7% -> 87.1%), off15 and off3 4 -> 1 (70.4% -> 91.4%), offm1 3 -> 1 (79.3% ->
+        93.9%), drop20 0 -> 0 (89.2% -> 95.9%), truth 1 -> 1 (91.4% -> 93.4%). 188 of the 416 sheets are
+        mapped (envelope-lag 110, tempo 65, decode-median 13); the other 228 keep their own timings.
+
+        WHAT STAYS REFUSED, and it is the DECODE that refuses it (`gates/w3-lines.yaml`): never-be-alone in 12
+        of the 13 modes at agreement 0.38-0.49 (0.04 under drop50) — the repeat-heavy 47-line song whose blind
+        decode misbinds its choruses (review F2/F10), where `line_gate`'s `near_fit` says the best ANY offset
+        could reach is 0.15-0.45, so no map in the band lifts it past 0.5; the drop50 half-sheets (17, whose
+        decode strays into the gaps); and hello / tfr-chosen under the two tempo modes (0.24-0.40), the only
+        two documents left that would be more than 20% gross. Loosening the share to 0.4 would publish 22 more
+        right texts and 6 gross lines, and 10 of never-be-alone's 12 — 7 of them with 0 of 47 lines within
+        ±500 ms — so it is not taken (see `_LINE_SYNC_MIN_AGREEMENT`).
+
+        THE WRONG-TEXT RESULT RESTS ON THE LIFT, NOT ON THE AGREEMENT, and the map is why that has to be said
+        (W2): mapping a sheet onto our decode works for a WRONG sheet too, so the same-video population's
+        agreement rose from max 0.49 to max 0.51 and one of the 320 (feel-my-heart #9, lift -0.05) now clears
+        the timing half. The lexical gate refuses all 640 either way — `wrongtext` 0/320 and
+        `wrongtext+ownclock` 0/320 at every share from 0.3 to 0.8 — which is the whole reason this rung may
+        map claims at all. The sheet gate alone passed 278 of those 320.
+
+        The sheet fit still measures the envelope (it is a candidate in the vote and the fallback gate), and
+        its reading stays on the trail. Cost: one `generate` decode beside the lift's four, and the emission
+        pass is now paid by every text that reaches the rung, where the sheet gate used to refuse ~a third
+        first. OR-ing the sheet gate back in (`either(0.5)`: 18 refused) publishes the two >20%-gross tempo
+        documents and never-be-alone's, so it is still not taken.
+
+        WHAT NEITHER GATE SEES, and what the decode gate costs when the DECODE is the bad witness, are
+        recorded with their measured populations at `_LINE_SYNC_MIN_DECODED_SHARE` (W3 review r2) — a uniform
+        sub-second lag, a tempo error, and 5 accurate documents refused.
 
         FALLBACK: the sheet gate, exactly as W1 shipped it, where the decode cannot be read — an aligner with
         no emission matrix (the windowed capability path), an emission pass or decode that raised (not an
-        `InfraFault`: the bench scores that an ERROR row), fewer than `reconcile.MIN_PAIRS` lines decoded.
-        Measured then (`scripts/sheet_gate.py`, the bench's claims on the stems as captions and in
-        parse_lrc's shape): wrong texts pass 0/320 and 2/320; right texts 241/416 and 163/416, which is why
-        it is no longer the gate where the decode can be read. A text the LIFT cannot measure (under
-        `lexical.MIN_LETTERS` alignable letters, no word order to contrast) still has its timings checked by
-        the decode; its words go unchecked, as the trail says.
+        `InfraFault`: the bench scores that an ERROR row), fewer than `reconcile.MIN_PAIRS` lines decoded, or
+        fewer than `_LINE_SYNC_MIN_DECODED_SHARE` of the sheet's claimed lines decoded (a mixed-script
+        caption track: the share's denominator is the decoded lines alone, so a Latin fragment must not decide
+        for 40 Korean ones). Measured then (`scripts/sheet_gate.py`, the bench's claims on the stems as
+        captions and in parse_lrc's shape): wrong texts pass 0/320 and 2/320; right texts 241/416 and
+        163/416, which is why it is no longer the gate where the decode can be read. A text the LIFT cannot
+        measure (under `lexical.MIN_LETTERS` alignable letters, no word order to contrast, a matrix from a
+        model the bands were not fitted on) still has its timings checked by the decode; its WORDS go
+        unchecked, so it publishes UNVOUCHED and the trail says why.
 
         ON A STEM ONLY. Against the MIX (a song with no vocals stem) the sheet gate passes 39/416 right texts
         and 3/320 wrong as captions, 37/416 and 3/320 as LRC (`sheet_gate.py --target mix`), and the lift's
@@ -506,8 +552,7 @@ class AlignStepsImpl:
             )
             return None
         fit = await asyncio.to_thread(partial(self._activity_fit, gate=True), req, claimed)
-        placed = self._placed_by(req, fit)
-        evidence = await self._line_sync_evidence(req, placed)
+        evidence = await self._line_sync_evidence(req)
         verdict = (
             f"sheet-span envelope r={fit.correlation:.2f} @ {fit.seconds:+.2f}s, {len(claimed)} lines"
             if fit is not None
@@ -526,79 +571,124 @@ class AlignStepsImpl:
             )
 
         heard = evidence.lift
-        if heard is not None and heard.value < _LINE_SYNC_MIN_LIFT:
+        heard_band = lexical.band(heard.value, on_stem=True) if heard is not None else None
+        if heard is not None and heard_band is lexical.Band.REFUSE:
             return await refuse(
-                f"{verdict}; {heard.why()}, below the lexical gate ({_LINE_SYNC_MIN_LIFT}): these are not "
-                "the words the stem sings, whatever their timings (a translated or machine-translated "
+                f"{verdict}; {heard.why()}, below the lexical gate ({lexical.BANDS.refuse_below}): these are "
+                "not the words the stem sings, whatever their timings (a translated or machine-translated "
                 "caption track of this very video reads exactly so)"
             )
         lexical_note = heard.why() if heard is not None else f"no lexical check: {evidence.unlifted}"
-        agreed = evidence.agreement
+        if heard_band is lexical.Band.DOUBT:
+            lexical_note += ", in the doubt band: nothing vouches for these words"
+        # The TIMING check, only now (W3 review r2): its `generate` decode is another CTC pass over the whole
+        # text, and a text the words' gate just refused must not pay for it.
+        decoded: Generated | None = None
+        undecoded = evidence.unlifted  # no matrix: the same reason nothing lifted
+        if evidence.emissions is not None:
+            texts = [str(segment.get("text") or "") for segment in req.text.segments]
+            decoded, undecoded = await _line_sync_decode(texts, evidence.emissions, req.language)
+        # THE CLAIM CLOCK, ON THE RUNG THAT PUBLISHES THE CLAIMS (W2, review H1). The vote decides where the
+        # sheet goes and the gate then reads the decode against THE MAPPED CLAIMS — the whole point of a
+        # clock: a sheet 1.5 s off is a sheet to move, not a sheet to refuse. Where there is no decode to
+        # vote with, `clock` is None and both the placement and the gate are exactly what W3 shipped (the
+        # unconditional activity shift and the sheet-span envelope).
+        clock = _line_sync_clock(fit, _claimed_starts(req.text.segments), decoded)
+        placed, reordered, unheld = _in_claim_order(self._placed_by(req, fit, clock=clock))
+        clock_note = "" if clock is None else f"; {clock.why}"
+        if reordered:
+            # A jittered or hand-typed sheet can stamp one line before the one ahead of it, and a line
+            # document IS its claims: `_in_claim_order` holds such a start at its predecessor's rather than
+            # publish a highlight that jumps backwards (see `_in_claim_order` for the measured case).
+            clock_note += f"; {reordered} claimed start(s) held at the line before them"
+        if unheld:
+            # ...but only a STRAY stamp. More than the cap, or a run of them, and the sheet's order cannot be
+            # reconstructed: it goes on as it came, so the order gate below sees it and `decide` drops it
+            # rather than the room being shown one line's text over several lines' singing.
+            clock_note += (
+                f"; {unheld} claimed start(s) sit before a start already kept and were left alone: this "
+                "sheet's order is not one stray stamp"
+            )
+        if decoded is None:
+            agreed, unchecked = None, undecoded
+        else:
+            agreed, unchecked = _agreement_of(decoded, placed)
         if agreed is not None:
             if agreed.near < _LINE_SYNC_MIN_AGREEMENT:
                 return await refuse(
-                    f"{verdict} (not gating: the decode is); {lexical_note}; {agreed.why()}, below "
-                    f"{_LINE_SYNC_MIN_AGREEMENT:.0%}: these line timings are not where the stem sings the "
-                    "lines (another master's clock, a tempo error, a partial sheet)"
+                    f"{verdict} (not gating: the decode is){clock_note}; {lexical_note}; {agreed.why()}, "
+                    f"below {_LINE_SYNC_MIN_AGREEMENT:.0%}: these line timings are not where the stem sings "
+                    "the lines (another master's clock no map could reach, or a decode too scattered to map "
+                    "onto)"
                 )
-            gate_note = f"{verdict} (not gating: the decode is); {lexical_note}; {agreed.why()}"
+            gate_note = f"{verdict} (not gating: the decode is){clock_note}; {lexical_note}; {agreed.why()}"
         elif fit is None:
             await self._out.state(
                 req.job.job_id,
                 "align-line-sync",
                 0,
                 "declined",
-                "audio unreadable for the sheet-span envelope gate, and no decode check: "
-                + evidence.undecoded,
+                "audio unreadable for the sheet-span envelope gate, and no decode check: " + unchecked,
                 None,
             )
             return None
         elif not _sheet_passes(fit):
             return await refuse(
                 f"{verdict}, below the sheet gate (r >= 0.40 within ±0.5 s, or r >= 0.60); {lexical_note}; "
-                f"no decode check: {evidence.undecoded}"
+                f"no decode check: {unchecked}"
             )
         else:
-            gate_note = f"{verdict}; {lexical_note}; no decode check: {evidence.undecoded}"
+            gate_note = f"{verdict}{clock_note}; {lexical_note}; no decode check: {unchecked}"
         doc = _line_doc(placed, req.language)
         report = measure.measure(doc, duration_sec=req.audio.duration_sec, engine=Engine.LINE_SYNC)
-        timed = self._write(req, doc, TIMING_LINE, "low", report=report)
+        # VOUCHED ONLY WHERE THE WORDS WERE READ (W3 review r2). `heard is None` is not a pass: an aligner
+        # with no emission matrix, a language whose model would not load, a kernel refusing these targets, a
+        # text under `lexical.MIN_LETTERS` or a matrix from another model all reach here having checked the
+        # TIMINGS alone (the decode agreement, or the sheet gate), and this rung's own hazard is a text whose
+        # timings are perfect and whose words are someone else's — the same-video translation (W1 review r2).
+        # Sent vouched, core reads a CANDIDATE tier as `textConfidence` `high` and ranks it as a claim, which
+        # is precisely the standing this gate exists to withhold when nothing measured the words.
+        timed = self._write(
+            req,
+            doc,
+            TIMING_LINE,
+            "low",
+            report=report,
+            vouched=heard is not None and heard_band is not lexical.Band.DOUBT,
+        )
         await self._out.state(
             req.job.job_id, "align-line-sync", 0, "line-sync", f"{gate_note}; {report.summary()}", None
         )
         return timed
 
-    async def _line_sync_evidence(self, req: TimeRequest, placed: Sequence[Segment]) -> _LineEvidence:
-        """What the STEM's emission matrix says about a line-sync text: its `lexical.lift`, and how its
-        `placed` claims sit against its own blind decode (`reconcile.as_claimed`) — each None with why it
-        could not be read.
+    async def _line_sync_evidence(self, req: TimeRequest) -> _LineEvidence:
+        """What the STEM's emission matrix says about a line-sync text's WORDS: its `lexical.lift`, or None
+        with why it could not be read — plus the matrix itself, for the timing check the caller runs after.
 
         The stem, as every reading of this rung: `_time_line_sync` declines a stemless song before this. A
         machinery fault in the emission pass or the kernel raises (`InfraFault`, review M7); anything else (a
         language with no alignment model, a kernel refusing these targets) is an unanswered question, and
         the caller falls back to the sheet gate.
 
-        COST: one emission pass over the stem, plus four CTC decodes for the lift and one for the decode
-        (`generate`, which also groups the lift's own path into lines). In forced mode the global attempt
-        computed that same matrix a step earlier, but a step cannot hand a tensor to the next one (a
-        checkpointed record holds refs, never tensors), so it is computed again; `syncMode=lines`, which
-        decodes nothing else, pays it once per text.
+        COST: one emission pass over the stem plus four CTC decodes for the lift. The decode check's own
+        `generate` is the caller's, AFTER this verdict (W3 review r2), so a text these words fail pays for
+        neither it nor the grouping. In forced mode the global attempt computed that same matrix a step
+        earlier, but a step cannot hand a tensor to the next one (a checkpointed record holds refs, never
+        tensors), so it is computed again; `syncMode=lines`, which decodes nothing else, pays it once per
+        text.
         """
         emitter = getattr(self._a.aligner, "emissions", None)
         if not callable(emitter):
-            none = "this aligner produces no emission matrix"
-            return _LineEvidence(None, none, None, none)
+            return _LineEvidence(None, "this aligner produces no emission matrix", None)
         texts = [str(segment.get("text") or "") for segment in req.text.segments]
         try:
             emissions = await asyncio.to_thread(emitter, req.audio.align_target(on_mix=False), req.language)
         except InfraFault:
             raise  # the machinery, not this text: fails the job (review M7)
         except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
-            raised = f"it raised {type(exc).__name__}: {exc}"
-            return _LineEvidence(None, raised, None, raised)
+            return _LineEvidence(None, f"it raised {type(exc).__name__}: {exc}", None)
         lifted, unlifted = await _measured_lift(texts, emissions)
-        agreement, undecoded = await _decoded_agreement(texts, emissions, placed, req.language)
-        return _LineEvidence(lifted, unlifted, agreement, undecoded)
+        return _LineEvidence(lifted, unlifted, emissions)
 
     async def _word_lift(
         self, req: TimeRequest, line_texts: Sequence[str], emissions: Any
@@ -649,18 +739,36 @@ class AlignStepsImpl:
         lands on its claim on the blind verdict's clock; an adopted claim span is always `low`. Neither the
         path score (F3) nor char-rate (F4) graded better.
 
-        THE WRONG-TEXT GATE is the text's lexical lift on this matrix (W3, review H3; `lexical.BANDS` holds
-        the bands and their calibration): below the floor the text is `Refused` before anything is repaired;
-        in the doubt band it publishes with every line `low` and the document `medium`; above it grading is
-        as described. On a stem the lift replaces the envelope gate wherever it measured the text (the
-        envelope gate scored our own decode, which the audio pulls onto the voiced frames whatever the
-        words: 152/320 bench wrong texts passed it); on the mix it gates beside it. The ASR tier and a text
-        the lift cannot measure keep the envelope gate alone.
+        THE WRONG-TEXT GATE is the text's lexical lift on this matrix, read FIRST — before this text's own
+        decode and before any audio is read, so a refused text costs neither (W3, review H3 + r2;
+        `lexical.BANDS` holds the bands and their calibration): on a STEM, below the floor the text is
+        `Refused` before anything is repaired, and the lift REPLACES the envelope gate wherever it measured
+        the text (the envelope gate scored our own decode, which the audio pulls onto the voiced frames
+        whatever the words: 152/320 bench wrong texts passed it). In the doubt band the text publishes with
+        every line `low`, the document `medium` and its words UNVOUCHED (`TimedDoc.vouched` -> core's
+        `vouched: false`, so a document a gate passed outranks it); above the band, grading is as
+        described. ON THE MIX (no stem) the lift only GRADES: the envelope gate is the verdict, and a
+        sub-floor lift publishes as the doubt band, because the floor measured there refuses 7 of the
+        corpus's 32 truth texts and a refusal on a stemless song is terminal (W3 review r1;
+        `h3-mix-floor` / `h3-mix-lift-alone` restore the verdict). TWO AXES, NOT ONE (W3 review r2): the
+        grading band and the words' standing part company on the mix, where `mix_ok_from` reads how audible
+        the words are and holds 104 of the corpus's 192 right texts — so there only a SUB-FLOOR lift is
+        unvouched, while its doubt band publishes vouched with `low` lines. The ASR tier keeps the envelope
+        gate alone and stays vouched (its words were heard on this audio); any other text the lift could not
+        measure keeps the envelope gate and is NOT vouched for, since no wrong-text gate read it. A PIN is
+        measured but never refused: its words publish all-`low` and unvouched. NOT COVERED, and worst on THIS
+        path: a translation whose words keep the sung ones' letters in order lands in `Band.OK` and publishes
+        as a word document with `high` lines (`lexical`'s NOT COVERED paragraph; `test_lexical_gate` pins it).
         """
         from encore_worker.adapters.ml import forced_align_decoder, load_audio_mono_16k  # noqa: PLC0415
         from encore_worker.domain.audio import activity  # noqa: PLC0415
         from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
-        from encore_worker.domain.lyrics.generate import adopted_line, generate, regenerate  # noqa: PLC0415
+        from encore_worker.domain.lyrics.generate import (  # noqa: PLC0415
+            adopted_line,
+            blank_of,
+            generate,
+            regenerate,
+        )
 
         aligner = self._a.aligner
         assert aligner is not None  # guarded by time_text; restated for the type checker
@@ -672,8 +780,115 @@ class AlignStepsImpl:
 
         target = req.audio.align_target(on_mix=req.on_mix)
         line_texts = [str(segment.get("text") or "") for segment in req.text.segments]
+        # THE EMISSION PASS AND THE DECODE ARE GUARDED SEPARATELY (W3 review r2) so the lexical gate can sit
+        # between them: the gate needs the matrix and the text and nothing else, and everything after it —
+        # this decode, an ffmpeg read of the whole target, an envelope over the whole signal — is work a
+        # refused text used to pay for before being refused. Same handling on both, since either way it is
+        # this TEXT's decode failing rather than the machinery (review M7).
         try:
             emissions = await asyncio.to_thread(aligner.emissions, target, req.language)  # type: ignore[attr-defined]
+        except InfraFault:
+            raise  # a model / kernel / device / audio fault fails the JOB, not this attempt (review M7)
+        except Exception as exc:  # noqa: BLE001 - the emission pass refused THIS file: one attempt failing
+            await decline(f"decode failed: {type(exc).__name__}: {exc}")
+            return None
+
+        # The MIX, the second witness: R4 decodes on it, and under `m6-mix-spare` the never-sung rule
+        # listens to it before it bins a claimed line. When the target IS the mix (no stem), the lexical gate
+        # below reads the mix's bands, where it grades and the envelope gate keeps the verdict.
+        stem_target = target
+        mix_target = req.audio.align_target(on_mix=True)
+        target_name = "mix" if stem_target == mix_target else "stem"
+
+        # ── the lexical gate (review §3 item 4, H3; W3): are THESE WORDS what the target sings? ──
+        # FIRST, on the matrix just computed, before this text's decode and before any audio is read: no
+        # repair makes unsung words sung, and a wrong text is now the normal case to refuse (640/640 in the
+        # sweep), so it costs one emission pass and four CTC decodes instead of an ffmpeg decode of the whole
+        # stem plus an envelope pass plus a decode it will never publish (W3 review r2). The bands, their
+        # calibration and why the lift REPLACES the envelope gate on a stem are at `lexical.BANDS`;
+        # `_word_lift` says what is exempt.
+        lifted, unmeasured = await self._word_lift(req, line_texts, emissions)
+        on_stem = target_name == "stem"
+        bands = lexical.BANDS
+        floor, ok_from = (
+            (bands.refuse_below, bands.ok_from) if on_stem else (bands.mix_floor, bands.mix_ok_from)
+        )
+        lift_band = lexical.band(lifted.value, on_stem=on_stem, bands=bands) if lifted is not None else None
+        # A SUB-FLOOR LIFT IS A VERDICT ON A STEM ONLY (W3 review r1). On the mix the floor's own calibration
+        # refuses 48 of the corpus's 192 right texts — 7 of 32 truth texts, 29 of the 48 past the envelope
+        # gate — and there is nothing after a refusal on a stemless song (NextText, and the LINE_SYNC rung
+        # declines the mix), so every sheet of such a song would fall to the whisper transcript. It is
+        # published as the doubt band instead, and the arms below make it the verdict it cannot be by
+        # default until a stemless bench mode measures one (`lexical.BANDS`, MIX).
+        mix_floor_gates = not on_stem and bool(
+            {"h3-mix-floor", "h3-mix-lift-alone"} & self._cfg.align_experiments
+        )
+        refuses = lift_band is lexical.Band.REFUSE and (on_stem or mix_floor_gates)
+        # Why nothing vouches for this pin's words: a wrong-text gate would have refused them, and a person
+        # chose them (see the envelope gate's NOT FOR A PIN below).
+        unvouched: str | None = None
+        if refuses:
+            assert lifted is not None  # `refuses` reads a band, which only a measured lift has
+            why = (
+                f"lexical gate refused: {lifted.why()}, below {floor} on the {target_name}: the audio does "
+                "not sing these words, in this order or any other"
+            )
+            if pin_of(req.job) is None:
+                await decline(why)
+                # A VERDICT on the text (`Refused` ends it), exactly as the envelope gate's below.
+                return Refused(
+                    TimingReport(
+                        duration_sec=max(0.0, req.audio.duration_sec), engine=Engine.GLOBAL, refused=why
+                    )
+                )
+            unvouched = why
+            await self._out.state(
+                req.job.job_id,
+                "align-global",
+                0,
+                "pin-unvouched",
+                f"{why} — a person chose this text, so it is not judged a wrong text: publishing it with "
+                "every line graded low",
+                None,
+            )
+        # The DOUBT band GRADES: no line of it is `high` and the document is `medium`, on either target.
+        # A sub-floor lift on the mix lands here too (see `refuses` above).
+        doubted = lift_band is lexical.Band.DOUBT or (lift_band is lexical.Band.REFUSE and not refuses)
+        # THE WORDS' AXIS IS NARROWER THAN THE GRADING ONE ON THE MIX (W3 review r2). Withholding the words
+        # sends core `vouched: false`, which drops `isAuthoritativeText` and with it `lyricsRank` (5 -> 3),
+        # so an authoritative LINE document of an earlier job outranks this word document. On a STEM the
+        # doubt band is the right place for that: it holds 2 right texts and no wrong one. On the MIX
+        # `mix_ok_from` was fitted to how AUDIBLE the words are and holds 104 of the corpus's 192 right
+        # texts (15 of its 32 truth texts), so reading it as doubt about the WORDS would strip authority
+        # from most correct sheets of every stemless song. There the floor is the words' verdict — it sits
+        # above every wrong text's lift on both splits — and it is published rather than enforced, so a
+        # sub-floor mix text is the mix's one unvouched band. An UNMEASURED text is not vouched for either
+        # (W3 review r2): the ASR tier is exempt because its words were heard on this audio, but a provider
+        # sheet the lift could not read (under `MIN_LETTERS`, a decode that raised, a matrix from another
+        # model) had no wrong-text gate at all, and "none doubted it" must not read as "one passed it".
+        words_doubted = lift_band is lexical.Band.REFUSE or (on_stem and lift_band is lexical.Band.DOUBT)
+        words_measured = lifted is not None or req.text.tier is Tier.ASR
+        if lifted is None:
+            lexical_note = f"no lexical check: {unmeasured}"
+        elif doubted:
+            band_note = (
+                f"in the doubt band [{floor}, {ok_from}) on the {target_name}"
+                if lift_band is lexical.Band.DOUBT
+                else f"below {floor} on the {target_name}, which only an arm makes a refusal there"
+            )
+            lexical_note = f"{lifted.why()}, {band_note}: every line low"
+            if not words_doubted:
+                lexical_note += " (the band grades here; the words' verdict is the floor)"
+        else:
+            lexical_note = lifted.why()
+        # On a stem the lift, where it measured the text, IS the wrong-text gate; the envelope gate still
+        # decides on the mix (unless the default-off `h3-mix-lift-alone` arm drops it there too: unmeasured
+        # end to end, see `lexical`), and wherever the lift could not measure the text.
+        envelope_gates = lifted is None or (
+            not on_stem and "h3-mix-lift-alone" not in self._cfg.align_experiments
+        )
+
+        try:
             generated = await asyncio.to_thread(
                 generate, line_texts, emissions, decoder=forced_align_decoder, language=req.language
             )
@@ -707,67 +922,6 @@ class AlignStepsImpl:
 
         def env_overlap(start: float, end: float) -> float:
             return overlap(env, start, end)
-
-        # The MIX, the second witness: R4 decodes on it, and under `m6-mix-spare` the never-sung rule
-        # listens to it before it bins a claimed line. When the target IS the mix (no stem), the lexical gate
-        # below reads the mix's matrix and keeps the envelope gate beside it.
-        stem_target = target
-        mix_target = req.audio.align_target(on_mix=True)
-        target_name = "mix" if stem_target == mix_target else "stem"
-
-        # ── the lexical gate (review §3 item 4, H3; W3): are THESE WORDS what the target sings? ──
-        # Read once, on the matrix just decoded, before anything is repaired: no repair makes unsung words
-        # sung, so a refused text costs no repair ladder. The bands, their calibration and why the lift
-        # REPLACES the envelope gate on a stem are at `lexical.BANDS`; `_word_lift` says what is exempt.
-        lifted, unmeasured = await self._word_lift(req, line_texts, emissions)
-        on_stem = target_name == "stem"
-        bands = lexical.BANDS
-        floor, ok_from = (
-            (bands.refuse_below, bands.ok_from) if on_stem else (bands.mix_floor, bands.mix_ok_from)
-        )
-        lift_band = lexical.band(lifted.value, on_stem=on_stem, bands=bands) if lifted is not None else None
-        # Why nothing vouches for this pin's words: a wrong-text gate would have refused them, and a person
-        # chose them (see the envelope gate's NOT FOR A PIN below).
-        unvouched: str | None = None
-        if lifted is not None and lift_band is lexical.Band.REFUSE:
-            why = (
-                f"lexical gate refused: {lifted.why()}, below {floor} on the {target_name}: the audio does "
-                "not sing these words, in this order or any other"
-            )
-            if pin_of(req.job) is None:
-                await decline(why)
-                # A VERDICT on the text (`Refused` ends it), exactly as the envelope gate's below.
-                return Refused(
-                    TimingReport(
-                        duration_sec=max(0.0, req.audio.duration_sec), engine=Engine.GLOBAL, refused=why
-                    )
-                )
-            unvouched = why
-            await self._out.state(
-                req.job.job_id,
-                "align-global",
-                0,
-                "pin-unvouched",
-                f"{why} — a person chose this text, so it is not judged a wrong text: publishing it with "
-                "every line graded low",
-                None,
-            )
-        # The DOUBT band: published, but no line of it is `high` and the document is `medium`.
-        doubted = lift_band is lexical.Band.DOUBT
-        if lifted is None:
-            lexical_note = f"no lexical check: {unmeasured}"
-        elif doubted:
-            lexical_note = (
-                f"{lifted.why()}, in the doubt band [{floor}, {ok_from}) on the {target_name}: every line low"
-            )
-        else:
-            lexical_note = lifted.why()
-        # On a stem the lift, where it measured the text, IS the wrong-text gate; the envelope gate still
-        # decides on the mix (unless the default-off `h3-mix-lift-alone` arm drops it there too: unmeasured
-        # end to end, see `lexical`), and wherever the lift could not measure the text.
-        envelope_gates = lifted is None or (
-            not on_stem and "h3-mix-lift-alone" not in self._cfg.align_experiments
-        )
 
         # ── claims as evidence ── (read before the never-sung rule, which tests a claimed line on them)
         claimed: dict[int, float] = {}
@@ -806,7 +960,9 @@ class AlignStepsImpl:
         # tfr-chosen from 51.4% to 58.8% within ±500 ms and gross 14 -> 11). Three signals, ALL required —
         # each alone misfires on a real quiet line (tfr-mayday's sung background echo matches the first
         # two): the decode scored it far below the song's norm, its span sits on silence, and its chars
-        # smear at far below singing tempo. A re-decode after dropping is a millisecond Viterbi.
+        # smear at far below singing tempo. A re-decode after dropping is another Viterbi over the matrix
+        # already in hand — 0.1-0.8 s on the corpus's songs (review evidence-6; this comment used to call it
+        # "a millisecond", which is the order of magnitude the review corrected).
         #
         # The `m6-mix-spare` arm (review M6; default OFF): a CLAIMED line silent on the target but not on the
         # MIX is not binned here. The three signals judge where the DECODE put the line, and a line the stem
@@ -910,6 +1066,64 @@ class AlignStepsImpl:
         # The blind decode itself, kept for `_clamped`: one monotonic Viterbi over the whole song, so its
         # lines are in order between any two of their own neighbours — what a refused repair falls back to.
         blind_decode = generated
+        #: Where the CLAIM-FREE decode put each line, and how long it took: the only span measured with no
+        #: window around it, which is why the repair windows below are widened to hold it and why a claim
+        #: span too short to hold it is not adopted (review M5). A never-sung candidate the ladder spared
+        #: keeps the span the decode gave it before the drop — the same measurement, one round earlier.
+        blind_spans: dict[int, tuple[float, float]] = {
+            line.index: (line.start, line.end) for line in blind_decode.lines
+        }
+        blind_spans.update({index: (line.start, line.end) for index, (line, _witness) in spared.items()})
+
+        # ── THE CLAIM CLOCK (review H1, §3.2; W2). ONE rebinding of `claimed` / `claim_windows`, here,
+        # before the first `reconcile` — so every consumer after it (the verdict, R1 / R2 / R4, the
+        # adoption spans, COARSE's per-line residual, the corroboration test grading reads) asks about the
+        # instant the AUDIO has, not the instant the sheet claims. Before this, a claim's raw clock reached
+        # all of them: reconcile fitted an offset and used it only to choose which COARSE lines to repair,
+        # fitted a scale and never applied it, and R1 measured the claims' envelope lag and kept only its
+        # correlation — so claims 1.5 s late published every line 1.5 s late (repro s8) and +3 s claims
+        # produced 440 gross lines (review §3.2). `claimmap` holds the estimator, its margin and the
+        # numbers; the candidates are all already computed, so this costs one `np.correlate` and no decode.
+        #
+        # WHY HERE and not before the never-sung rule, whose window reads are the only ones left on the raw
+        # clock (and only under the default-off `m6-*` arms — by default that rule bins a candidate whatever
+        # its window says): the decode-median candidate is measured on the BLIND DECODE, and a never-sung
+        # line forced through emissions that do not contain it drags its neighbours by seconds (measured:
+        # 7-10 s on tfr-chosen), which is exactly the decode the drop above exists to remove.
+        claim_clock = claimmap.IDENTITY
+        if claimed:
+            # The claims' own lag, measured on the AUDIO: the one candidate independent of our decode, and
+            # the same fit R1 takes below (PLAN fact 7: 10-20 ms residual on a stem). The correlation floor
+            # is weaker than `activity.MIN_CORRELATION` on purpose — it only buys a place in the vote. Not
+            # measured at all on a sheet too short to map: `consensus` abstains there whatever it says, and
+            # the envelope pass is not free. ANY claimed sheet still goes through `consensus`, so the trail
+            # gets its reason rather than a silence.
+            lag = (
+                await asyncio.to_thread(
+                    activity.fit_shift,
+                    env,
+                    activity.expected_envelope(list(claim_windows.values()), len(env)),
+                )
+                if len(claimed) >= claimmap.MIN_PAIRS
+                else None
+            )
+            claim_clock = claimmap.consensus(
+                {line.index: line.start for line in generated.lines},
+                claimed,
+                envelope_lag=(
+                    lag.seconds
+                    if lag is not None and lag.correlation >= claimmap.MIN_ENVELOPE_CORRELATION
+                    else None
+                ),
+                piecewise="claimmap-piecewise" in experiments,
+            )
+        # THE RAW CLAIMS STAY, for the trail and for anything that must describe the SHEET rather than the
+        # audio (review's note on `TimingReport.residual_sec`): the map's own offset is a fact about the
+        # claim, and it reaches the trail through `claim_clock.why` in the verdict note below.
+        claimed_as_given, windows_as_given = claimed, claim_windows
+        if claim_clock.applied:
+            claimed = claim_clock.starts(claimed_as_given)
+            claim_windows = claim_clock.windows(windows_as_given)
 
         # THE BLIND VERDICT: our claim-free decode against the claims, taken once, before any repair — and
         # the only verdict grading reads (review H4). The ladder below re-reconciles after each stage to
@@ -953,6 +1167,10 @@ class AlignStepsImpl:
         # so far, re-read at each adoption — what v2 shipped.
         blind_median = median(line.score for line in blind_decode.lines)
         adoption_medians: list[str] = []
+        #: Lines whose repair `adopt_where_unheard` dropped because the claim span could not hold them
+        #: (review M5): the trail says so, since "no repair" and "no repair needed" read alike otherwise.
+        #: Empty unless the arm `m5-adopt-floor` is on — the floor failed §3.11's reject-if (see there).
+        truncated: list[int] = []
         # Where each line's CURRENT timing came from; every stage below that replaces a line says so here.
         # Grading reads it (a repaired line is `high` only with the blind decode's corroboration), the arm
         # `l1-mix-kept` reads it, and so does the trail.
@@ -983,14 +1201,163 @@ class AlignStepsImpl:
         def steer(gen: Generated) -> rc.Reconciliation:
             return rc.reconcile([line for line in gen.lines if line.index not in returned], claimed)
 
+        #: The window each claim-anchored re-decode ACTUALLY ran in, by line index (`claim_run` records it).
+        #: The edge tests below read it instead of rebuilding it from the claim span, because since M5 the two
+        #: differ: a window may be widened to hold the blind decode's span, and it is clamped at zero as
+        #: `regenerate` clamps. A stale left edge reads a decode that landed on its claim as "stuck", or a
+        #: truly stuck one — at the start of a song, where the pad ran past zero — as fine.
+        repair_windows: dict[int, tuple[float, float]] = {}
+
+        #: Every MAPPED claim onset, in time order: the ceiling `claim_run`'s hold-open may not widen past
+        #: (the next one after the cue's own start). In TIME order rather than by line index, because a sheet
+        #: may stamp its lines out of order and the question here is which cue comes next in the audio.
+        claim_onsets = sorted(start for start, _end in claim_windows.values())
+
+        #: The slot this sheet gives a typical cue: the MEDIAN gap between consecutive onsets. It stands in
+        #: for the missing next onset at the LAST cue (W2 review r2), and it is a median rather than the
+        #: previous gap because one instrumental break must not hand the final line a minute — nor must one
+        #: rapid-fire couplet cut it to nothing.
+        typical_slot = (
+            median(later - earlier for earlier, later in zip(claim_onsets, claim_onsets[1:], strict=False))
+            if len(claim_onsets) > 1
+            else 0.0
+        )
+
+        def claim_run(line: Line) -> tuple[tuple[Line, ...], tuple[float, float]]:
+            """The run a claim-anchored stage (R1 / R2 / R4, the never-sung spare) re-decodes: this line
+            alone, inside its MAPPED claim span held open to the END of the blind decode's own span for it,
+            then padded.
+
+            REVIEW M5, AND THE DEFECT WAS ARITHMETIC. A claim carries an END only where the sheet gave one;
+            the reader above defaults it to start + 1.0 s, which is what the last cue of an LRC and every
+            short caption cue get. Cut to that, the window cannot hold the line: the forced path compresses
+            it or collapses to the left edge, `adopt_where_unheard` reads that as "heard nothing", and a
+            CORRECT blind decode is replaced by the claim's span with its words spread evenly (reproduced on
+            short caption cues). The blind decode is the only measurement of how long the line takes with no
+            window around it, so the window is held open to where it ended.
+
+            THE END ONLY, only where the claim span cannot HOLD the line, and only where the blind decode
+            STARTS inside the padded claim span. Each of the three is a refusal to widen a window that is
+            already doing its job, because a window is an anchor and a wider one anchors less:
+
+              * a cue's START is what a sheet actually asserts and what every stage here anchors on; its END
+                is the number the reader defaults. Pulling the start back to a blind onset instead undoes the
+                anchoring — measured on the bench harness's own rig, where the blind decode smears each line
+                over 6 s: a two-sided union moved R1's window 5.4 s left and cost 2 lines their repair.
+              * a claim span that holds the line needs no help, and widening it moves timings the corpus
+                already measured. `holds` is the same floor the adoption test uses, so the two halves of M5
+                agree about which cue is truncated.
+              * where the blind decode puts the line somewhere else entirely, the claim and the decode are two
+                HYPOTHESES rather than one span measured twice. R1 fires exactly when the claims fit the audio
+                BETTER than our decode does, so reaching out to a decode it has already outvoted would
+                re-decode the line wherever the audio liked.
+
+            AND NEVER PAST THE NEXT CLAIM'S ONSET (W2 review r1). The union used to take the blind end
+            wholesale, which trusts it exactly where the blind decode is least trustworthy: R1 fires on an
+            UNRELATED blind verdict, the state in which a blind line is known to smear across its neighbours'
+            frames — 7-10 s on tfr-chosen's credit line, and about 6 s a line on the bench harness's own rig.
+            A cue whose end was defaulted to `start + 1.0 s` (every LRC last stamp, every short caption cue)
+            then bought a repair window tens of seconds long, covering the following lines entirely, and a
+            single-line forced decode in such a window lands wherever the audio liked — the opposite of the
+            anchoring the bullets above argue for. MEASURED on a fixture whose line is sung once at 12-15 s
+            while a SUPERSTRING of its text is sung at 32-36 s, with the blind decode smearing the line
+            12 -> 34 s: the uncapped window published it 11.96-34.88 s (its end 19.88 s late) and left 3 of 8
+            lines gross; capped, 11.96-14.96 s and 0 gross. M5's own case is unchanged by the cap (a 7 s smear
+            with only a near-duplicate neighbour: 11.96-14.96 s either way).
+
+            WHY THE NEXT CUE AND NOT A TEMPO CEILING. The obvious cap — the line cannot take longer than N
+            characters a second — has no safe N: measured over the corpus's 1645 truth lines, real sung lines
+            run down to 0.7-1.7 alignable characters a second (tfr-chosen holds "You're the one" for 10 s,
+            Pure_Mids "aw ah aw ah" for 6 s), so any ceiling tight enough to refuse the smear above also
+            truncates a held note. `needs`' floor is a floor, not a duration: at 4x it fixes the fixture and
+            at 5% of the corpus's lines it would cut a real one. The NEXT CLAIM is evidence, not a guess —
+            the sheet's own statement about where this line's slot ends — and the cap is set so the PADDED
+            window stops there, since the pad is what would otherwise reach into the next line's cue.
+
+            AND THE LAST CUE IS CAPPED TOO, ON THE SHEET'S OWN PACING (W2 review r2). This used to read "the
+            last cue has no next claim and so no cap: it is bounded by the audio, there is no following line
+            for it to swallow" — and that was the wrong question. The final cue is not some rare shape: it is
+            the one cue whose end is ALWAYS missing (`parse_lrc` gives the last line no `end`, so the reader
+            defaults it to `start + 1.0 s`, under `needs` for any line past 25 alignable characters), so the
+            hold-open fires on it on every LRC there is. What it can swallow is not a following LINE but a
+            following REPEAT of its own words: an outro ad-lib the sheet never stamped. Nothing follows it to
+            bound the window, so "bounded by the audio" means bounded by the end of the file. MEASURED on this
+            rig (the pinned fixture below): a final line sung 50-53 s with its cue truncated at 50.6 s and the
+            blind decode smearing it to 77.7 s bought a window of (49.6, 78.7) — 29 s against the 4 s every
+            capped cue gets — and the forced re-decode inside it landed on an unstamped repeat of the same
+            words at 70-73 s, publishing the line 20 s late.
+
+            So the missing onset is replaced by the sheet's own `typical_slot`, floored at what the line
+            needs: `start + max(typical_slot, needs(text))`. The slot is EVIDENCE of the kind the other
+            cues use — the sheet's statement of how long it gives a line — estimated over the whole sheet
+            rather than read off the one cue that is absent, and the `needs` floor keeps a rapid-fire
+            sheet from capping the window below the line's own duration.
+
+            THE PRICE, MEASURED, because a ceiling on the last cue can only be a trade. A cue truncated at
+            50.6 s whose note the audio genuinely HOLDS to 65 s, re-decoded in each candidate window (one
+            `regenerate` call apiece on the same matrix): uncapped 49.96-64.82 s (0.18 s short), the slot
+            ceiling 49.96-61.60 s (3.40 s short), a `needs`-ONLY ceiling — this review's other suggestion —
+            49.96-52.64 s (12.36 s short). All three put the line's START on the note; what a ceiling costs is
+            the END, and `needs` alone costs nearly all of it, for the reason the paragraph above rejects a
+            characters-per-second ceiling. Against that 3.40 s the cap buys back the 20 s displacement of the
+            fixture above, and a late START is what core highlights, so the trade is taken in this direction.
+
+            `holds` is False whenever this fires, so `max` keeps the cue's own end: the cap only ever reduces
+            the WIDENING, never cuts what the sheet actually asserted.
+            """
+            start, end = claim_windows[line.index]
+            blind = blind_spans.get(line.index)
+            near_claim = blind is not None and start - _REPAIR_PAD_SEC <= blind[0] <= end + _REPAIR_PAD_SEC
+            if blind is not None and near_claim and not holds(line.text, (start, end)):
+                after = next((onset for onset in claim_onsets if onset > start), None)
+                ceiling = (
+                    start + max(typical_slot, needs(line.text)) if after is None else after - _REPAIR_PAD_SEC
+                )
+                end = max(end, min(blind[1], ceiling))
+            window = (max(0.0, start - _REPAIR_PAD_SEC), end + _REPAIR_PAD_SEC)
+            repair_windows[line.index] = window
+            return ((line,), window)
+
+        def needs(text: str) -> float:
+            """The seconds `text` takes at `regenerate`'s floor: two emission frames per alignable character,
+            the point below which a forced path is a smear rather than a fit. At 20 ms frames that is 25
+            characters a second, past the fastest measured rap — a FLOOR, not an expected duration (the corpus
+            sings its slowest lines at 0.7-1.7 characters a second), which is why `claim_run` bounds its
+            hold-open with the next cue rather than with a multiple of this.
+
+            `blank` is the MATRIX's, not 0 (review M9): the character the blank column happens to hold is
+            not alignable, and on a vocabulary whose pad is elsewhere a literal 0 would both count the
+            blank's own character and miss the real one — the same floor, read off a different text."""
+            blank = blank_of(emissions)
+            alignable = sum(
+                1
+                for word in text.split()
+                for ch in word.lower()
+                if emissions.dictionary.get(ch) not in (None, blank)
+            )
+            return 2 * alignable * float(emissions.frame_sec)
+
+        def holds(text: str, span: tuple[float, float]) -> bool:
+            """Could `span` hold `text` at all? `needs`' floor asked of a span about to be PUBLISHED rather
+            than decoded in (review M5): a span tighter than it is a truncated cue — the reader's defaulted
+            end, an LRC's last line, a caption cue covering only the first phrase of a long line."""
+            return bool(span[1] - span[0] >= needs(text))
+
+        def edge_stuck(line: Line) -> bool:
+            """Did this repaired line's decode collapse onto its window's LEFT EDGE — a forced path through
+            emissions with nothing in them to find? Measured on tfr-chosen's chopped-vocal outro, where the
+            errors clustered at exactly the pad width (`_ADOPT_EDGE_SEC`)."""
+            window = repair_windows.get(line.index)
+            return window is not None and abs(line.start - window[0]) < _ADOPT_EDGE_SEC
+
         #: `_speech_mass` over the blind decode's own lines, per emission matrix: what singing reads as there.
         sung_mass: dict[int, float | None] = {}
 
         def heard(matrix: Any, line: Line, window: tuple[float, float]) -> bool:
-            """Did THIS witness hear a spared line: its decode not stuck at the padded window's left edge (a
-            forced path through emissions with nothing to find), and the matrix's acoustic model hearing
-            speech over the claim window at `_SPOKEN_RATIO` of what it hears over the blind decode's lines."""
-            if abs(line.start - (window[0] - _REPAIR_PAD_SEC)) < _ADOPT_EDGE_SEC:
+            """Did THIS witness hear a spared line: its decode not stuck at its window's left edge (a forced
+            path through emissions with nothing to find), and the matrix's acoustic model hearing speech over
+            the claim window at `_SPOKEN_RATIO` of what it hears over the blind decode's lines."""
+            if edge_stuck(line):
                 return False
             if id(matrix) not in sung_mass:
                 masses = [_speech_mass(matrix, ln.start, ln.end) for ln in blind_decode.lines]
@@ -1020,9 +1387,14 @@ class AlignStepsImpl:
             faults: list[str] = []
             machinery: list[InfraFault] = []
 
-            def decoder(log_probs: object, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+            def decoder(
+                log_probs: object, targets: Sequence[int], blank: int = 0
+            ) -> tuple[list[int], list[float]]:
+                # `blank` is FORWARDED, not defaulted away (review M9): `regenerate` reads it off the
+                # matrix it slices and passes it here, so a repair decode uses the same blank column the
+                # global decode did — on an HF bundle whose pad is not 0 the two used to disagree.
                 try:
-                    return forced_align_decoder(log_probs, targets)
+                    return forced_align_decoder(log_probs, targets, blank)
                 except InfraFault as fault:
                     machinery.append(fault)
                     raise
@@ -1050,10 +1422,6 @@ class AlignStepsImpl:
                 repairs.append(f"{stage}: {len(faults)} window decodes raised")
             return repaired
 
-        def claim_run(line: Line) -> tuple[tuple[Line, ...], tuple[float, float]]:
-            window = claim_windows[line.index]
-            return ((line,), (window[0] - _REPAIR_PAD_SEC, window[1] + _REPAIR_PAD_SEC))
-
         repaired_all: set[int] = set()
 
         def record(stage: _Source, repaired: Mapping[int, Line], adopted: Collection[int] = ()) -> None:
@@ -1069,6 +1437,27 @@ class AlignStepsImpl:
             # line adopts the claim's span outright, words interpolated and flagged, graded `low` below.
             # Measured effect (claims present): gross errors 14 -> 0 on tfr-chosen; flyaway 82.7% and
             # mayday 76.9% raw within ±250 ms.
+            #
+            # `m5-adopt-floor` (DEFAULT OFF): UNLESS THE CLAIM SPAN CANNOT HOLD THE LINE (`holds`; review
+            # M5's second half). What is adopted is the claim's span with the line's words spread evenly
+            # inside it, so a span too short for the text publishes every word at a tempo nothing could sing,
+            # ending the line seconds early — a guess replacing a measurement. The arm drops the repair
+            # instead, which leaves the timing the line already had, and says so on the trail.
+            #
+            # IT FAILED §3.11's reject-if on the corpus and so ships off (W2 bench, `results/w2-m5arm-*`
+            # against the default row of the SAME pre-review-r1 tree, `_runs/w2r-time_text` — both sides are
+            # pre-r1, and `results/w2-*` is the post-r1 row now): the unperturbed row loses 16 of 1736 lines
+            # within ±500 ms and gains a
+            # gross line, ALL of it where a short caption cue's START is right and only its end is missing —
+            # rap-god keeps 15 measured timings instead of adopting (-16 lines, -7.4 pt, +1 gross) and
+            # JASON_MILLER drop50 one (+1 gross, the only Jamendo song in the sweep to gain one). That is
+            # 0.92 pt of the 1.44 pt §3.11 allows 0.3 of, and the re-bench put the floor-off cost at -0.52 pt
+            # on its own (`results/w2-noclock-time_text.json`), which does not change the arm's verdict. The
+            # shape it exists for is real and still pinned
+            # hermetically (`test_align_provenance`: a cue 7 s early with no end publishes 5.06 s out with
+            # the arm off), but it is rarer in the corpus than the truncated-cue-with-a-right-start it costs.
+            # With `claim_run`'s union the window is wide enough to decode in whenever the two spans touch,
+            # so this was the backstop for the span itself, not the fix.
             reference = (
                 blind_median
                 if "l1-blind-median" in experiments
@@ -1081,13 +1470,17 @@ class AlignStepsImpl:
                 window = claim_windows.get(index)
                 if window is None:
                     continue
-                edge_stuck = abs(fixed.start - (window[0] - _REPAIR_PAD_SEC)) < _ADOPT_EDGE_SEC
                 flat = fixed.score < reference - _ADOPT_SCORE_GAP
-                if edge_stuck or flat:
-                    claim_span = adopted_line(fixed.text, index, window[0], window[1])
-                    if claim_span is not None:
-                        out[index] = claim_span
-                        adopted.add(index)
+                if not (edge_stuck(fixed) or flat):
+                    continue
+                if "m5-adopt-floor" in experiments and not holds(fixed.text, window):
+                    out.pop(index)
+                    truncated.append(index)
+                    continue
+                claim_span = adopted_line(fixed.text, index, window[0], window[1])
+                if claim_span is not None:
+                    out[index] = claim_span
+                    adopted.add(index)
             return out, adopted
 
         def mix_kept(index: int) -> bool:
@@ -1206,9 +1599,20 @@ class AlignStepsImpl:
         # word/syllable precision (and the emission matrix already in hand) while adopting the claims'
         # occupancy. This used to hand the job to the windowed engine; repairing in place is strictly
         # more informative — the re-reconcile below reports whether the adopted windows actually agree.
+        #
+        # ON UNRELATED ALONE, never on `rc.TOO_FEW_PAIRS` (review r1). This is the widest repair in the step —
+        # every claimed line re-decoded, some adopted outright — and `reconcile.MIN_FITTED_PAIRS` exists
+        # because three or four disagreeing pairs are not evidence of anything. Before W2 those sheets read
+        # UNRELATED and armed this; the floor that was meant to make the taxonomy careful was routing them to
+        # its most sweeping branch instead.
         if verdict.verdict == rc.UNRELATED and len(claim_windows) >= rc.MIN_PAIRS:
-            claim_fit = activity.fit_shift(
-                env, activity.expected_envelope(list(claim_windows.values()), len(env))
+            # OFF THE EVENT LOOP like every other fit in this step (review L6). It was the one inline
+            # `fit_shift` left: bounded-lag correlation makes it 55 ms on a 60-minute recording rather than
+            # 7.9 s, but 55 ms of synchronous numpy still stalls the socket keepalive the reaper reads.
+            claim_fit = await asyncio.to_thread(
+                activity.fit_shift,
+                env,
+                activity.expected_envelope(list(claim_windows.values()), len(env)),
             )
             if claim_fit.correlation > fit.correlation + 0.05:
                 runs = [
@@ -1229,28 +1633,25 @@ class AlignStepsImpl:
                         f"re-decoded {len(repaired)} of {len(runs)} lines inside their claim windows"
                     )
 
-        # ── R2: structural disputes. The disagreeing minority under a STRUCTURAL verdict is exactly where
-        # a repeat may be bound to the wrong occurrence (F2); the claim is the only occurrence-anchor
-        # available, so the disputed lines are re-decoded inside their claim windows. Whether the witnesses
-        # then meet is NOT asked of the re-reconcile (it would count the claim agreeing with itself): the
-        # re-reconcile only steers what is left, and grading asks the blind verdict (review H4).
-        # STRUCTURAL repairs every disputed line (fine disagreement); COARSE repairs only the GROSSLY
-        # displaced ones. The distinction is the Numb-vs-Avercage lesson: sub-second jitter against
-        # loosely-timed captions must NOT be "repaired" (a re-decode there regresses — Numb), but a line
-        # sitting seconds from its claim in an otherwise-coarse sheet is unambiguously misbound and the
-        # claim is the only anchor for it (Avercage: 6 gross lines COARSE left unfixed until this branch).
+        # ── R2: the lines the claims genuinely contradict. A disputed line is exactly where a repeat may be
+        # bound to the wrong occurrence (F2); the claim is the only occurrence-anchor available, so it is
+        # re-decoded inside its claim window. Whether the witnesses then meet is NOT asked of the
+        # re-reconcile (it would count the claim agreeing with itself): the re-reconcile only steers what is
+        # left, and grading asks the blind verdict (review H4).
+        #
+        # WHICH LINES is `Reconciliation.disputed`'s to say since W2 (review M4), one rule per verdict class,
+        # documented there. This asked the verdict's LABEL and spelled the two rules out here, and got the
+        # COARSE one wrong: it thresholded the RAW residual against the fitted offset, so a 2% tempo sheet's
+        # linear ramp read as 38 of 50 lines grossly misbound (the review's s9) and R2 re-decoded them all.
+        # The Numb-vs-Avercage lesson the two rules carry is unchanged — sub-second jitter against
+        # loosely-timed captions must not be repaired, a line seconds out must be — and it now also covers
+        # the sheet that used to be mislabelled STRUCTURAL for one stray stamp: such a sheet is OFFSET now,
+        # and an OFFSET sheet still disputes the line that sits seconds out.
         # A line R4 heard on the mix sits within jitter of a jittered claim and reads as disputed; R2's stem
         # decode, where the stem is silent, then adopts the claim over the mix's measurement (repro s6:
         # 27.00 s heard, 27.40 s published) — unless `l1-mix-kept` keeps it (`mix_kept`).
-        if verdict.verdict in (rc.STRUCTURAL, rc.COARSE):
-            if verdict.verdict == rc.STRUCTURAL:
-                disputed_indexes = {j.index for j in verdict.lines if not j.corroborated}
-            else:
-                disputed_indexes = {
-                    j.index
-                    for j in verdict.lines
-                    if abs(j.residual_sec - verdict.offset_sec) > rc.COARSE_TOLERANCE_SEC
-                }
+        disputed_indexes = set(verdict.disputed)
+        if disputed_indexes:
             disputed_lines = [
                 line
                 for line in generated.lines
@@ -1316,6 +1717,13 @@ class AlignStepsImpl:
                 f"adopted {len(adopted)} claim timings where the decode heard nothing (stuck at the "
                 f"window's edge, or scored {_ADOPT_SCORE_GAP} below the median line score: "
                 f"{', '.join(adoption_medians)})"
+            )
+        if truncated:
+            # By INDEX, not by refusal: two stages may both offer the same line the same too-short span.
+            repairs.append(
+                f"kept the measured timing of {len(set(truncated))} line(s) whose claim span is too short to "
+                f"hold them, so a window decode reading 'heard nothing' is the window's doing: "
+                + ", ".join(f"[{i}]" for i in sorted(set(truncated)))
             )
 
         # ── the wrong-text gate, on the REPAIRED series: do these timings describe the actual singing? ──
@@ -1402,7 +1810,11 @@ class AlignStepsImpl:
         # is unresolved, so no line here can honestly claim `high`. Same for NO_CLAIMS on repeat-heavy
         # text (F2). Found on hello: 3 unique lines were labelled `high` while sitting 3–51 s off,
         # because with an UNRELATED verdict `corroborated` was empty and the fallback used blind-uniqueness.
-        claims_disagree = bool(claimed) and blind_verdict.verdict == rc.UNRELATED
+        # `rc.DISAGREE`, not UNRELATED alone: W2's TOO_FEW_PAIRS verdict is the same disagreement measured on
+        # three or four pairs, and GRADING is where an unresolved disagreement belongs — it only ever takes a
+        # line's confidence DOWN. What that verdict must not do is arm R1 below (review r1), which moves
+        # timings; that gate stays on UNRELATED, the verdict with the pairs behind it.
+        claims_disagree = bool(claimed) and blind_verdict.verdict in rc.DISAGREE
 
         def line_confidence(index: int) -> str:
             if unvouched is not None:
@@ -1440,6 +1852,54 @@ class AlignStepsImpl:
                 return "low"
             return "low" if index in repeats else "high"
 
+        # ── word ENDS, held through the singing (review §3 item 5; W4, `domain/lyrics/ends.py`) ──
+        # CTC is peaky: a phrase-final end is a median 121 ms EARLY on the exact clock, 36.3% of them land
+        # within ±100 ms, and the TV lights a word while `start <= pos < end`, so the correct word is lit
+        # for 66.0% of sung time. Each end is walked forward while the target's envelope still calls it
+        # singing, capped at the next word's own start and at 3 s. STARTS NEVER MOVE — that is what makes
+        # this different from the energy-snap this repo rejected (README: onsets snapped to the nearest
+        # rise cost ±250 ms 77.3% -> 70.7%). Measured on this path over 3 Jamendo songs, blind
+        # (`ends.py`'s table): phrase-final end ±100 34.5 -> 50.9, bias -115 -> -16 ms, highlight
+        # 66.2 -> 79.1%, with every onset metric and the harness's `onsets_sha256` unchanged.
+        #
+        # HERE, AND NOT INSIDE `generate` (review §3.5's own point, and the reason it is a post-pass): the
+        # gate above, the never-sung rule, the blind envelope fit and R4 all read `Line.end` — the rule's
+        # `env_overlap(line.start, line.end)` and its chars-per-second test, and `fit_of`'s expected
+        # envelope over the line spans. Extending ends earlier would raise every line's envelope overlap
+        # and lower its char rate, which LOOSENS the wrong-text and never-sung gates by construction while
+        # looking like an accuracy win.
+        #
+        # WHAT STILL READS AN END AFTER THIS POINT, all of it either starts-only or telemetry:
+        #   * grading, below — reads STARTS (`blind_verdict.agrees(published[i].start, ...)`).
+        #   * `measure` — `usable` and `out_of_order` are judged on starts; the end-derived rows (coverage,
+        #     smears, flashes, long gaps) are telemetry for this engine, which `policy._READS` offers
+        #     neither ALIGN_ON_MIX nor DROP_WINDOWS. A held note can now read as SMEARED (the cap is on the
+        #     MOVE, not on a word's length) and `overshoot` cannot appear, since the walk stops at the last
+        #     envelope frame.
+        #   * `attribute`, later and on the written file: a line's span is its words' span, and a longer
+        #     line needs more overlap to be claimed by a diarized turn (`MIN_OVERLAP_FRACTION` of its OWN
+        #     duration), so an end held into silence can leave a line's `part` unset. Conservative
+        #     direction — unknown rather than wrongly coloured — and unmeasured either way: the gated
+        #     pyannote weights are on no box this project has benched.
+        #
+        # `ends-raw` is the CONTROL, not a failed arm: with it on, ends are the raw decode's, which is the
+        # column §3.5's reject-if gates are the gain over. It exists because the arm switch is the only
+        # thing the bench can move without editing code, and a display post-pass has to be measurable A/B
+        # (the harness records `align_config`, so an arm's run cannot be mistaken for the default's).
+        held = (
+            generated
+            if "ends-raw" in experiments
+            else ends.extend_ends(
+                generated,
+                # numpy stays on this side of the seam (`domain/` is pure): frame levels cross as a list.
+                env.tolist(),
+                activity.HOP_SEC,
+                tile="ends-tile" in experiments,
+            )
+        )
+        ends_note = _ends_why(generated, held, experiments)
+        generated = held
+
         doc = generated.as_doc()
         lines_json = doc.get("lines")
         if isinstance(lines_json, list):
@@ -1450,7 +1910,28 @@ class AlignStepsImpl:
         # CLAIM (our timings never moved to match it), and a residual on the report would let `decide`
         # offer RESHIFT — a knob that re-places input timings this engine never used. The offset still
         # reaches the trail through `blind_verdict.why` below.
-        report = measure.measure(doc, duration_sec=req.audio.duration_sec, engine=Engine.GLOBAL)
+        #
+        # `claims_related` IS fed, and it is the one thing on the report that compares this document with
+        # the text's own timings rather than with the audio: `policy.decide` spends the LINE_SYNC rung on a
+        # document nothing related to its claims, and `policy.improves` lets that rung's document replace
+        # this one (W4's cross-kind comparison; the measured trade is in `decide`'s rule 6).
+        # THE BLIND VERDICT, as grading (review H4): the one reconcile our claims did not steer. On all 54
+        # UNRELATED song-modes of the W2 `run_align` sweep the post-repair verdict stayed UNRELATED too, so
+        # the two readings pick the same population there; the blind one is the honest one, since a verdict
+        # promoted by lines re-decoded INSIDE their claim windows is partly the windows' doing.
+        # UNRELATED alone, not `rc.DISAGREE`: TOO_FEW_PAIRS is the same disagreement on three or four pairs,
+        # and where it may lower a line's confidence (grading, above) it must not decide which DOCUMENT
+        # publishes — this is the gate R1's is, "the verdict with the pairs behind it".
+        report = measure.measure(
+            doc,
+            duration_sec=req.audio.duration_sec,
+            engine=Engine.GLOBAL,
+            claims_related=(
+                None
+                if blind_verdict.verdict in (rc.NO_CLAIMS, rc.TOO_FEW_PAIRS)
+                else blind_verdict.verdict != rc.UNRELATED
+            ),
+        )
         if report.words == 0:
             await decline("generated document measured zero timed words")
             return None
@@ -1483,7 +1964,20 @@ class AlignStepsImpl:
             if graded_high >= 0.7 * len(generated.lines)
             else "medium"
         )
-        timed = self._write(req, doc, TIMING_WORD, confidence, report=report)
+        # `vouched` is the WORDS' axis, `confidence` the timings' (review W3 r1): a doubt-band document and an
+        # unvouched pin are published, and core must rank them under a text a wrong-text gate passed.
+        # `confidence` alone could not say it — it is sent as `timingConfidence`, which core's `lyricsRank`
+        # never reads, so a doubted word document tied with a fully vouched one at the top rank. It is TRUE
+        # only where a gate actually read these words and did not doubt them (`words_measured`,
+        # `words_doubted`; W3 review r2), which on the mix is a narrower question than the grading band's.
+        timed = self._write(
+            req,
+            doc,
+            TIMING_WORD,
+            confidence,
+            report=report,
+            vouched=words_measured and not (words_doubted or unvouched is not None),
+        )
         # The evidence on the trail, not just the verdict: this line is what makes a wrong-lyrics report
         # debuggable from the audit page. Fire-and-forget would drop it on a closed socket; awaited.
         await self._out.state(
@@ -1496,6 +1990,12 @@ class AlignStepsImpl:
             f"envelope r={blind_fit.correlation:.2f} (blind), r={fit.correlation:.2f} (repaired)"
             f"{'' if envelope_gates else ', not gating: the lift is'}; {lexical_note}; "
             f"{blind_verdict.why}; "
+            # THE CLAIM CLOCK BESIDE THE VERDICT IT DECIDED, because the verdict's own offset is now the
+            # RESIDUAL left after the map: a note reading "agree" over claims the sheet put 1.5 s late is
+            # only legible beside the 1.5 s this moved (review H1). Printed whether or not it applied —
+            # "the map lost the vote" is the answer a wrong-sync report needs just as much — and only
+            # where claims exist, since the verdict already says an untimed text arrived untimed.
+            + (f"{claim_clock.why}; " if claimed else "")
             + (
                 f"after repairs {verdict.verdict}, {verdict.agreement:.0%} of {verdict.pairs} lines agree "
                 "(steers the repairs, never the grade); "
@@ -1504,6 +2004,9 @@ class AlignStepsImpl:
             )
             + (f"{'; '.join(repairs)}; " if repairs else "")
             + f"{_sources_why(provenance, [line.index for line in generated.lines])}; "
+            # LAST of the evidence clauses because it is the last thing that touched a timing, and it is
+            # about ENDS where every clause before it is about a line's placement.
+            + f"{ends_note}; "
             + f"{graded_high}/{len(generated.lines)} lines high",
             None,
         )
@@ -1551,16 +2054,27 @@ class AlignStepsImpl:
                 fit = self._activity_fit(req, spans)
         return self._placed_by(req, fit)
 
-    def _placed_by(self, req: TimeRequest, fit: ShiftFit | None) -> tuple[Segment, ...]:
+    def _placed_by(
+        self, req: TimeRequest, fit: ShiftFit | None, *, clock: claimmap.ClaimMap | None = None
+    ) -> tuple[Segment, ...]:
         """`_placed` with the vocal-activity fit already measured (the LINE_SYNC gate measures it anyway).
 
         The fit MOVES the sheet only when it is trustworthy (`ShiftFit.usable`) over at least
         `place.MIN_PAIRS` timed lines; anything less leaves the sheet exactly where it was, which is the
         behaviour that shipped before the fit existed.
+
+        A `clock` REPLACES the fit (W2: the LINE_SYNC rung, `_line_sync_clock`). Where a caller has VOTED on
+        the claims' clock, the vote is the whole decision: the fit's r >= 0.40 is one candidate's credential
+        rather than a licence to shift, and a map the vote did not apply deliberately leaves the sheet where
+        the text put it — which is how bad-guy's and numb's truth sheets stop being published +0.72 s and
+        +0.62 s late (`gates/w3-lines.yaml`'s `zero-pm500-documents-not-up`). `clock=None` keeps the old
+        behaviour exactly, and is what a caller with nothing to vote with passes.
         """
         segments = list(req.text.segments)
         pairs = len(_timed_spans(segments))
-        if fit is not None and fit.usable and req.text.has_own_timings and pairs >= place.MIN_PAIRS:
+        if clock is not None:
+            segments = list(_mapped(segments, clock))
+        elif fit is not None and fit.usable and req.text.has_own_timings and pairs >= place.MIN_PAIRS:
             shift = place.Shift(
                 offset_sec=fit.seconds,
                 scale=1.0,
@@ -1631,6 +2145,7 @@ class AlignStepsImpl:
         timing: str,
         confidence: str,
         report: object | None = None,
+        vouched: bool = True,
     ) -> TimedDoc:
         """Write the document under a ref the core can merge on, and build the record.
 
@@ -1649,6 +2164,12 @@ class AlignStepsImpl:
 
         A document that lost lines of its text carries the whole text (`_with_source_lines`), so a later
         re-pick of it re-times every line the person saw in the source, not just the ones this decode kept.
+
+        `vouched=False` is a wrong-text gate's doubt about the WORDS, which core reads on its own wire field
+        (`TimedDoc.vouched` -> `vouched: false`): the lexical doubt band, an unvouched pin, and a text no such
+        gate could read. Default True — every other
+        caller either passed its gate (the global engine above the doubt band, the LINE_SYNC rung) or is
+        exempt from one (a transcript, whose tier already says `low`).
         """
         measured = (
             report
@@ -1667,6 +2188,7 @@ class AlignStepsImpl:
             confidence=confidence,
             report=measured,
             tier=req.text.tier,
+            vouched=vouched,
             language=req.language,
             label=req.text.label,
             line_starts=self._aligned_line_starts(doc),
@@ -2014,24 +2536,75 @@ def _timed_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
     return [(start, end) for start, end in measure.line_spans(list(segments)) if end > start]
 
 
-#: The LINE_SYNC rung's lexical gate: a text at the rung must explain the stem's emissions by
-#: at least this many nats per letter better than the best of three shuffles of its own words
-#: (`lexical.lift`). Measured on the base model's stems (`scripts/lift_gate.py`; the reasoning and the
-#: populations are at `_time_line_sync`): right texts +0.26 and up, wrong texts +0.19 and down (same-video
-#: wrong words +0.14). Model-specific, like every emission-scale number here: recalibrate with the model.
-_LINE_SYNC_MIN_LIFT = 0.2
-
-#: The LINE_SYNC rung's timing gate (W3): a text's line document publishes its own claimed starts, so at
-#: least `_LINE_SYNC_MIN_AGREEMENT` of the lines the text's blind decode places must start within
-#: `_LINE_SYNC_NEAR_SEC` of their placed claim (`reconcile.as_claimed`, nothing removed). Measured over every
-#: timed bench case on the base model's stems (`scripts/line_gate.py`; the table is at `_time_line_sync`):
-#: line documents with < 50% of their lines within 1 s of truth read at most 0.49, those with >= 80% a median
-#: of 0.84 (p10 0.47), wrong texts at most 0.26 and, on this song's own clock, 0.49. 1.0 s is `reconcile`'s
-#: COARSE tolerance ("same performance, loosely timed") and 0.5 its STRUCTURAL floor; 0.45 publishes 2 bad
-#: documents for 12 more good ones, 0.6 refuses 21 more good ones for none. Model-specific in the same way
-#: as the lift: the decode's own spread is what the share reads, so recalibrate with the model.
+#: The LINE_SYNC rung's timing gate (W3, RE-DERIVED ON MAPPED CLAIMS in W2): a text's line document publishes
+#: its own claimed starts — put on our clock once by `_line_sync_clock` — so at least
+#: `_LINE_SYNC_MIN_AGREEMENT` of the lines the text's blind decode places must start within
+#: `_LINE_SYNC_NEAR_SEC` of their MAPPED claim (`reconcile.as_claimed`, nothing removed).
+#:
+#: BOTH VALUES SURVIVE THE RE-DERIVATION, and the share's reason gets stronger (`scripts/line_gate.py`, base
+#: model, 1056 cases, `results/w2-line-gate.json`; the tables are at `_time_line_sync`). The two populations,
+#: which under W3's placement OVERLAPPED — documents with < 50% of their lines within 1 s of truth read up to
+#: 0.49 while the good ones' p10 was 0.47 — now SEPARATE, because a mapped claim is one the decode can agree
+#: with: right documents more than 20% gross read 0.24 and 0.32 (n=2), the other 414 read p10 0.54, median
+#: 0.86, p90 0.98. 0.5 lies inside that gap instead of straddling it. Over the 13 timed modes' 416 right
+#: texts: 0.5 refuses 33 with 0 gross lines shown, 0 bad documents published and 94.8% of shown lines within
+#: ±500 ms; 0.4 refuses 11 but shows 6 gross lines and 1 bad document, and publishes 10 of never-be-alone's
+#: 12 refusals, 7 of them with NO line within ±500 ms; 0.3 refuses 5 and shows 44 gross; 0.6 refuses 56 and
+#: 0.7 refuses 78 for no gross-line gain at all (0 either way). So the share stays where the gross lines
+#: start.
+#:
+#: `_LINE_SYNC_NEAR_SEC` IS NOW TWO BANDS IN ONE (W2): the gate counts a line near within it AND
+#: `_line_sync_clock` scores its candidate maps in it, so it cannot be re-derived for one reader alone —
+#: `line_gate.py --near` moves both. 1.0 s is `reconcile`'s COARSE tolerance ("same performance, loosely
+#: timed") and 0.5 its STRUCTURAL floor. Measured at 0.5 s on the same cases (`_runs/w2-lines/near05.*`):
+#: tightening it tightens BOTH readers, so every share falls (right documents ok p10 0.54 -> 0.47, the >20%
+#: gross ones max 0.32 -> 0.26) and the shipped rule refuses 49 of 416 instead of 33 — 16 more right texts, 2
+#: truth sheets instead of 1, text-denominator ±500 89.5% -> 86.5% — for 0 gross lines shown either way and
+#: one fewer zero-±500 document (13 -> 12). All it buys is a wider margin on the half of the gate that is not
+#: the verdict (same-video wrong texts max 0.51 -> 0.32, and the lift refuses all 640 at both bands), so 1.0 s
+#: stays. Model-specific in the same way as the lift: the decode's own spread is what the share reads, so
+#: recalibrate both with the model.
 _LINE_SYNC_NEAR_SEC = 1.0
 _LINE_SYNC_MIN_AGREEMENT = 0.5
+
+#: WHAT THIS GATE STILL CANNOT SEE, recorded where it is set (W3 review r2, re-measured in W2 with the claim
+#: clock in place), because it is measured and not fixed here:
+#:
+#:   A UNIFORM LAG BOTH WITNESSES SHARE. The share is read against the text's OWN blind decode, so a document
+#:   every line of which is 0.5-1.0 s late agrees with itself and passes. W3 measured 23 such documents (no
+#:   line within ±500 ms of truth, every line within 1 s) and named the cause upstream of the gate:
+#:   `_placed_by` shifted the sheet by the activity fit whatever the claims said. W2's vote fixes 10 of them
+#:   (23 -> 13 over the 13 timed modes, and the TRUTH sheets 2 -> 1: numb recovered),
+#:   and the 13 that remain are ONE PAIR OF SONGS — bad-guy in 10 modes and numb in 3 — where the vote does
+#:   not merely fail to help, it APPLIES the lag: on bad-guy's truth sheet the envelope's +0.72 s explains 64
+#:   of 69 paired lines against no-shift's 53, and the decode agrees (0.93 near). Both of this rung's
+#:   witnesses say the vocals are ~0.7 s later than the caption track claims, and the caption track is also
+#:   this song's TRUTH file — so the metric's ruler is the thing being corrected (`claimmap`'s MEASURED note
+#:   says the same of believer and bad-guy on the global path). A lag term on `AsClaimed.offset_sec` still
+#:   does not recover them and is still not taken: on the W2 rows `decode(0.5)+lag(0.5)` refuses 46 right
+#:   texts where the shipped rule refuses 33 of 416, dropping text ±500 from 89.5% to 87.1% and refusing 13
+#:   more accurate documents for 0 gross lines gained (the tempo gross lines it used to buy are the vote's
+#:   now). Under `syncMode=lines` a refusal is terminal, so that trade is "no lyrics at all" against "a scroll
+#:   under a second late". What WOULD read it is a witness independent of both — a lead-vocal onset detector,
+#:   or the mix's envelope where the stem's is broad — and that is unbuilt.
+#:
+#: THE TEMPO ERROR IS NO LONGER ON THIS LIST (W2): the bounded Theil-Sen candidate maps the 2% modes, so
+#: tempo098 goes from 5 of 32 texts admitted with 28 gross lines to 29 with 0, and tempo102 from 6 with 19 to
+#: 29 with 0 (`gates/w3-lines.yaml` caps both).
+#:
+#: AND WHAT IT COSTS, measured: the decode is the witness, so where the DECODE is poor a correct sheet is
+#: refused. 20 of the 33 right texts it refuses would have published an ACCURATE document (>= 80% of lines
+#: within ±500 ms): 17 of them drop50 half-sheets, whose kept half is exactly right while their decode strays
+#: into the removed lines' gaps (agreement 0.04-0.48), plus never-be-alone under `jit` (42 of 47 lines within
+#: ±500 ms) and `extraverse` (47/47) and hello `extraverse` (74/74). The clock made none of them worse: the
+#: W2 refusal set is a strict SUBSET of W3's 88 (0 newly refused, 55 recovered, 53 of the 55 accurate).
+#: Reading the decode's own reliability before trusting it (per-line scores, self-consistency) is unbuilt and
+#: would need its own calibration; `line_gate.py` is the harness for it.
+#:
+#: The share's DENOMINATOR is only the lines that decoded, so it has to cover most of the sheet before it may
+#: speak for it — for its VERDICT (`_agreement_of`) and, since W2, for its CLOCK (`_line_sync_clock`): one
+#: bar, `_enough_decoded`.
+_LINE_SYNC_MIN_DECODED_SHARE = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -2041,39 +2614,331 @@ class _LineEvidence:
     #: The text's lexical lift, or None — and why (`unlifted`).
     lift: lexical.Lift | None
     unlifted: str
-    #: Its placed claims against its own blind decode, or None — and why (`undecoded`).
-    agreement: AsClaimed | None
-    undecoded: str
+    #: The matrix the lift was read on, for the DECODE check the caller runs only once the lexical verdict
+    #: passed (`_decoded_agreement`; W3 review r2: a text about to be refused must not pay for a decode).
+    #: None when there was no matrix to read — then `unlifted` says why nothing decoded either.
+    emissions: Any
 
 
-async def _decoded_agreement(
-    texts: Sequence[str], emissions: Any, placed: Sequence[Segment], language: str
-) -> tuple[AsClaimed | None, str]:
-    """`reconcile.as_claimed` of `placed`'s starts against `texts`' blind decode on `emissions` (`generate`,
-    the shipped decoder, off the event loop), or None and why it could not be read. A machinery fault in the
-    kernel raises (`InfraFault`, review M7); anything else the decode raises is an unanswered question, and
-    its reason starts `it raised`, which the bench scores as an ERROR row (`e2e.FAULT_DECODE`)."""
+async def _line_sync_decode(
+    texts: Sequence[str], emissions: Any, language: str
+) -> tuple[Generated | None, str]:
+    """`texts`' BLIND decode on `emissions` (`generate`, the shipped decoder, off the event loop), or None and
+    why it could not be read. A machinery fault in the kernel raises (`InfraFault`, review M7); anything else
+    the decode raises is an unanswered question, and its reason starts `it raised`, which the bench scores as
+    an ERROR row (`e2e.FAULT_DECODE`).
+
+    The rung's SECOND witness, and since W2 it answers two questions off one decode: which clock the claims
+    are on (`_line_sync_clock`) and whether the mapped claims sit where the lines are sung (`_agreement_of`).
+    """
     from encore_worker.adapters.ml import forced_align_decoder  # noqa: PLC0415
-    from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
     from encore_worker.domain.lyrics.generate import generate  # noqa: PLC0415
 
     try:
-        generated = await asyncio.to_thread(
-            partial(generate, decoder=forced_align_decoder, language=language), texts, emissions
+        return (
+            await asyncio.to_thread(
+                partial(generate, decoder=forced_align_decoder, language=language), texts, emissions
+            ),
+            "",
         )
     except InfraFault:
         raise  # the machinery, not this text: fails the job (review M7)
     except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
         return None, f"it raised {type(exc).__name__}: {exc}"
-    claims = {
-        index: float(start)
-        for index, segment in enumerate(placed)
-        if isinstance(start := segment.get("start"), (int, float)) and not isinstance(start, bool)
-    }
-    got = rc.as_claimed(generated.lines, claims, tolerance_sec=_LINE_SYNC_NEAR_SEC)
+
+
+def _agreement_of(decoded: Generated, placed: Sequence[Segment]) -> tuple[AsClaimed | None, str]:
+    """`reconcile.as_claimed` of `placed`'s starts against `decoded`, or None and why it could not be read.
+
+    `placed` is the sheet AS IT WILL PUBLISH — mapped onto our clock by `_line_sync_clock` and in claim order
+    (W2) — so the gate reads the timings the room would see, not the sheet's raw ones.
+    """
+    from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
+
+    claims = _claimed_starts(placed)
+    got = rc.as_claimed(decoded.lines, claims, tolerance_sec=_LINE_SYNC_NEAR_SEC)
     if got is None:
         return None, f"fewer than {rc.MIN_PAIRS} lines both decoded and claimed"
+    # THE SHARE IS ONLY OF THE LINES THAT DECODED, so the denominator has to be most of the sheet before it
+    # may speak for it (W3 review r2). `generate` drops any line with no alignable character, and a whole
+    # SHEET publishes on this verdict: a mixed-script caption track — this module's own motivating threat,
+    # an uploader's translation of a K-pop song, Korean verses with an English chorus — decodes only its
+    # Latin lines, so 4 of 40 lines could decide, 2 of them near, and the other 36 publish on their own
+    # claimed timings unexamined (`lexical.letters_of` measured the lift on that fragment too). Below the
+    # share the sheet gate decides instead, which reads the WHOLE sheet's spans against the envelope.
+    # Inert on every case the bench has measured: all 465 decode readings in the committed W3 runs paired
+    # every claimed line (`results/w3-{lines-,}run_align.cases.jsonl`, `pairs` = claimed lines in each).
+    if got.pairs < (bar := _enough_decoded(len(claims))):
+        # WHICH OF `_enough_decoded`'s TWO BOUNDS BIT, because they refuse different sheets and a bare
+        # "under 50%" on a decode that read 100% of its sheet reads as a broken counter (W2 review r2):
+        # every sheet of 10 claims or fewer is held by the FLOOR, longer ones by the share.
+        rule = (
+            f"{_LINE_SYNC_MIN_DECODED_SHARE:.0%} of it"
+            if bar > claimmap.MIN_PAIRS
+            else "the floor a placement may be read on"
+        )
+        return None, (
+            f"only {got.pairs} of {len(claims)} claimed lines decoded, under the {bar} this check needs "
+            f"to speak for the sheet ({rule})"
+        )
     return got, ""
+
+
+def _enough_decoded(claims: int) -> int:
+    """How many of a sheet's `claims` lines must DECODE before the decode may speak for the sheet: at least
+    `claimmap.MIN_PAIRS` lines, and at least `_LINE_SYNC_MIN_DECODED_SHARE` of it.
+
+    ONE rule for both readers of that decode (W2) — the gate's verdict (`_agreement_of`) and the clock the
+    claims are mapped onto (`_line_sync_clock`) — because the mixed-script caption track this bar exists for
+    (Korean verses, an English chorus: 4 of 40 lines decode) must not have its Latin fragment decide the
+    TIMING of 36 lines it never read, which is as true of a map as of a verdict.
+
+    THE FLOOR IS `claimmap`'s 5, NOT `reconcile`'s 3 (W2 review r2, and this is what made the paragraph above
+    true). It used to be `rc.MIN_PAIRS`, while `_line_sync_clock` took `max(claimmap.MIN_PAIRS, this)` — so
+    the two readers the docstring calls one rule had DIFFERENT bars, and the gap was not idle: on a 7-line
+    caption sheet with 4 lines decoding the clock abstained (4 < 5) while the gate was fully armed (4 >= 4),
+    `_placed_by` fell back to `ShiftFit.usable`'s unconditional shift, and `_agreement_of` then read the
+    decode against those SHIFTED claims, found them near and published the sheet displaced with both witnesses
+    agreeing on one misplacement — the exact W3 failure the clock was built to stop, on the sheets too thin to
+    vote. Five is the right floor for both because it is the floor for a reader that ACTS: 3 is
+    `reconcile.MIN_PAIRS`, enough to grade a line, and `claimmap.MIN_PAIRS` is 5 because a map MOVES the
+    sheet — and this rung's verdict does not grade a line either, it publishes or refuses a whole document.
+
+    Inert on everything measured: the two bars differ only for sheets of 9 or fewer claimed lines (above that
+    the share term already exceeds 5), and the shortest paired series at this rung in the 1056 committed gate
+    cases is 13 lines.
+    """
+    return max(claimmap.MIN_PAIRS, math.ceil(_LINE_SYNC_MIN_DECODED_SHARE * claims))
+
+
+def _claimed_starts(segments: Sequence[Segment]) -> dict[int, float]:
+    """Every segment's claimed start, keyed by its POSITION in the text — which is the key `generate` gives a
+    line (`Line.index`) and `reconcile` pairs on, so the decode, the vote and the gate all pair the same way
+    and one dropped decorative line cannot shear the comparison after it."""
+    return {
+        index: float(start)
+        for index, segment in enumerate(segments)
+        if isinstance(start := segment.get("start"), (int, float)) and not isinstance(start, bool)
+    }
+
+
+def _line_sync_clock(
+    fit: ShiftFit | None, claimed: Mapping[int, float], decoded: Generated | None
+) -> claimmap.ClaimMap | None:
+    """THE LINE_SYNC RUNG'S CLAIM CLOCK (W2, review H1 / §3.2): which clock this sheet is on, by the same vote
+    the global engine takes — or None when there is no decode to vote with.
+
+    WHY THE RUNG NEEDS ITS OWN CALL. The global engine's map (`_time_text_global`) moves the claims that steer
+    its repairs; this rung PUBLISHES the claims, so until W2 it placed them with `_placed_by`'s
+    UNCONDITIONAL activity shift: `ShiftFit.usable` (r >= 0.40) moved the sheet whatever a vote would say,
+    and nothing else was ever considered. That is both halves of what W3 measured on it — 23 published
+    song-modes with no line within ±500 ms of truth and every line within 1 s (bad-guy shifted +0.72 s, numb
+    +0.62 s, their TRUTH sheets included), and 12 right texts refused whose claims were merely 1.5-3 s off or
+    2% fast, where the decode itself knew the answer (median lag -1.62 to -3.12 s, and 0.54-0.94 of the lines
+    within 1 s once it is removed: `results/w3-line-gate.json`'s `near_fit`).
+
+    THE CANDIDATES are the rung's own three witnesses, `claimmap.consensus`'s, with the rung's own decode in
+    place of the global engine's: no-shift, the ENVELOPE lag the gate already measured (offered from
+    `claimmap.MIN_ENVELOPE_CORRELATION`, weaker than `ShiftFit.usable` on purpose — a correlation buys a
+    place in the vote, the vote decides), the DECODE median, and the bounded Theil-Sen TEMPO that the 2%
+    modes need. Nothing new is computed: both witnesses are already in hand.
+
+    THE TOLERANCE IS THIS RUNG'S, NOT `reconcile`'s (the one deliberate difference from the global engine's
+    call). `consensus` scores a candidate by the paired lines it explains, and "explains" must mean what the
+    reader of the map means by it: the global engine's reader is `reconcile`, so there the band is
+    `AGREE_TOLERANCE_SEC`; here the reader is this rung's gate, so it is `_LINE_SYNC_NEAR_SEC`. It is also
+    the conservative choice, which matters because these claims publish: a wide band makes no-shift hard to
+    beat, so the vote only moves a sheet that is grossly misplaced — a sheet already near our clock keeps its
+    own timings, which is how the truth sheets stop being shifted at all.
+
+    NOT PIECEWISE. The `claimmap-piecewise` arm was measured on the global engine only and ships off there;
+    on the rung a leg boundary moves published timings, so it would owe its own `--sync-mode lines` corpus
+    run before it could even be an arm.
+
+    None, not `IDENTITY`, where there was no vote to take: no decode to vote with, or a decode that may not
+    speak for this sheet — `_enough_decoded`, which since review r2 is LITERALLY the one call both readers
+    make (its floor is now `claimmap.MIN_PAIRS`, so the sheet-too-short test is the same test), because a
+    Latin fragment of a mixed-script caption track must not decide the clock of 40 lines it never read any
+    more than it may decide their verdict, and because the two bars disagreeing let a 3-4-pair sheet publish
+    on the unconditional shift with the gate calling it near. `_placed_by`
+    then falls back to the unconditional activity shift and the gate to the sheet-span envelope, exactly as W3
+    shipped them — "we could not vote" must not read as "the vote said no". Inert on everything measured: all
+    1056 bench cases decode EVERY claimed line (`results/w2-line-gate.json`, `pairs` == `claims` in each), and
+    the shortest paired series at this rung is 13 lines.
+    """
+    if decoded is None:
+        return None
+    pairs = sum(1 for line in decoded.lines if line.index in claimed)
+    if pairs < _enough_decoded(len(claimed)):
+        return None
+    return claimmap.consensus(
+        {line.index: line.start for line in decoded.lines},
+        claimed,
+        envelope_lag=(
+            fit.seconds if fit is not None and fit.correlation >= claimmap.MIN_ENVELOPE_CORRELATION else None
+        ),
+        tolerance_sec=_LINE_SYNC_NEAR_SEC,
+    )
+
+
+def _mapped(segments: Sequence[Segment], clock: claimmap.ClaimMap) -> tuple[Segment, ...]:
+    """`segments` with every claimed timestamp on our clock (`ClaimMap.at`, the map's own reader, so a claim
+    that PUBLISHES and a repair window built from the same map move identically).
+
+    Copies, never in place, for `place.apply_shift`'s reason: a `TextRef` is checkpointed and a replayed
+    attempt must not read timings that were already mapped once. The end is held at or after the start, the
+    rule `ClaimMap.windows` applies to a window, and for the same reason: a backwards span is not
+    representable.
+
+    AND THE MAP IS NOT WHAT THE HOLD DEFENDS AGAINST (W2 review r2 — the `max` survived deletion).
+    `ClaimMap.at` is non-decreasing by construction (a positive per-leg scale, `_monotonic` on any split,
+    and the zero clamp only creates ties), so no map can invert a span it was given in order: the hold can
+    only fire on a cue that arrived REVERSED. That is a caption track, not an LRC — `parse_vtt` reads both
+    edges off one timestamp line and neither it nor `clean_segments` checks their order, while `parse_lrc`
+    derives each end from the next sorted stamp. Such a cue would otherwise publish a span running
+    backwards, which `measure.timed_words` and `core`'s `lineBounds` both read as unusable.
+    """
+    if not clock.applied:
+        return tuple(segments)
+    moved: list[Segment] = []
+    for segment in segments:
+        copy = dict(segment)
+        start = segment.get("start")
+        at: float | None = None
+        if isinstance(start, (int, float)) and not isinstance(start, bool):
+            at = clock.at(float(start))
+            copy["start"] = at
+        end = segment.get("end")
+        if isinstance(end, (int, float)) and not isinstance(end, bool):
+            mapped_end = clock.at(float(end))
+            copy["end"] = mapped_end if at is None else max(mapped_end, at)
+        moved.append(copy)
+    return tuple(moved)
+
+
+#: The most claimed starts `_in_claim_order` will hold before it leaves the sheet alone, as a share of the
+#: sheet's timed lines and never fewer than one. A SINGLE stray stamp is the shape the rule was built for;
+#: many of them is a sheet whose order nobody can reconstruct, and normalising that quietly would hide the one
+#: defect `policy.decide` drops a text for. Inert on everything measured, provably: over the 1056 committed
+#: gate cases (`results/w2-line-gate.json`) the largest `held` is ONE — Tom_Orlando and never-be-alone under
+#: `jit` — and a sheet the pre-fix rule held exactly once is one whose next claim recovered above the last
+#: kept start, or the second line would have been held too and `held` would read 2. Both are strays under it.
+_MAX_HELD_SHARE = 0.05
+
+
+def _in_claim_order(segments: Sequence[Segment]) -> tuple[tuple[Segment, ...], int, int]:
+    """`segments` with a stray backwards claimed start held at the one before it: the segments, how many were
+    held, and how many inversions were left alone because holding them would have made things worse.
+
+    A LINE DOCUMENT IS ITS CLAIMS, so a sheet that stamps one line before the line ahead of it publishes a
+    highlight that jumps backwards — the one timing defect that cannot be shown to a room (`measure`'s note
+    on ORDER), and the defect `policy.decide` answers by dropping the whole text. Measured: Tom_Orlando under
+    `jit` (sheet noise σ 0.3 s) came back from this rung with 1 of 72 lines backwards, so `decide` sent the
+    text away and the song ended in NO LYRICS — with a lift of +2.92, 85% of its lines decoding within 1 s of
+    their claims and 63 of 72 within ±500 ms of truth.
+
+    WHICH REAL SHEETS REACH THIS RULE (W2 review r2 corrected the citation). It used to read "real sheets do
+    it too (`parse_lrc`'s stacked and out-of-order stamps, review L4)", and an LRCLIB sheet cannot in fact
+    present an inversion here: `parse_lrc` SORTS its stamps before building segments (adapters/lrclib.py, with
+    its own "an LRC is a text file a human edited" comment), and stacked stamps are EQUAL, which this rule
+    reads as in order. Everything between the sheet and here preserves order — `ClaimMap.at` is monotonic by
+    construction. So the claim source that can deliver one is a CAPTION TRACK: `parse_vtt` reads cues in file
+    order and `clean_segments` neither sorts nor touches starts, which is review M12's rolling captions (a
+    caption re-stated mid-line, the later cue carrying the earlier words), plus the bench's `jit` mode. That
+    matters to the trade this rule makes — publish a held sheet rather than let `decide` drop the text —
+    because it names the population that pays for it: the YouTube caption tier, not LRCLIB.
+
+    HELD, NOT SORTED: a claim is evidence about ITS line, so the line keeps its text and its position and
+    loses only the part of its timing that cannot be true. The cap is the previous start, so the move is at
+    most the size of the inversion (Tom_Orlando's: one line, 0.19 s).
+
+    ONE STRAY STAMP ONLY, AND ONLY WHERE THE SHEET RECOVERS (W2 review r1). The first version held every
+    backwards start at the last kept one and never advanced it, so a single spuriously LATE stamp swallowed
+    every correctly-timed line after it: a 12-line sheet whose second line reads `[01:00.00]` for
+    `[00:10.00]` — a typo, review L4's stacked stamps, M12's rolling captions — came out with NINE lines
+    sharing the instant 60.0, `out_of_order` 0 and `usable` True, so the room saw one line's text for 30 s
+    while the rest were sung. Before W2 that sheet was DROPPED. So an inversion is held only when the next
+    claimed start recovers above the previous one (the stray is the single line, not everything after it),
+    and only while the held lines stay under `_MAX_HELD_SHARE`; otherwise nothing is held, the sheet keeps its
+    inversions, and `measure.out_of_order` reaches `decide` exactly as it did in W3. The refusal is counted so
+    the trail can say the sheet was left alone rather than found clean.
+
+    THE END IS HELD TOO, PAST the predecessor's (W2 review r1, corrected in r2): a held line used to take its
+    predecessor's START and keep its own END, which could end BEFORE the predecessor did — a line nested
+    inside the one before it, which `core`'s `activeLineIndex` (first line whose bounds contain the playhead)
+    can never light during its own span. Holding the end AT the predecessor's, which is what r1 shipped, does
+    not fix that: `activeLineIndex` returns the FIRST line containing the playhead, so a byte-identical span
+    loses every instant of itself to the predecessor too and the held line first lights at the predecessor's
+    end — the same defect at the same line, one `max` short of a fix. Traced on this rule's own r1 fixture
+    (a = 12.0-14.5, b = 11.8-13.8): `_in_claim_order` returned b as 12.0-14.5 and, sweeping the playhead
+    through a transcription of `activeLineIndex`, b first lit at 14.5 s. So the end is stretched to
+    `_REPAIRED_MIN_SEC` PAST the floor, bounded by the next kept start so that lighting the held line cannot
+    delay the line after it. Where the next start leaves no room the span stays identical and the line is
+    still never lit: that is a published sheet with one dark line against `decide` dropping the whole text,
+    which is the trade this whole rule exists to make.
+
+    IDEMPOTENT either way: a held start equals its predecessor's, so a second pass finds no inversion, and an
+    abstention returns the segments it was given.
+    """
+    starts: dict[int, float] = {}
+    for position, segment in enumerate(segments):
+        start = segment.get("start")
+        if isinstance(start, (int, float)) and not isinstance(start, bool):
+            starts[position] = float(start)
+
+    order = list(starts)
+    #: The claimed start of the line after each claimed line, by position: the ceiling a held line's stretch
+    #: may not cross. A stray's successor is always a KEPT line (a stray at `i` needs `starts[i + 1]` back
+    #: above the last kept start, which makes `i + 1` non-inverting), so this is the next line's own stamp.
+    next_claimed = {position: starts[later] for position, later in zip(order, order[1:], strict=False)}
+    inversions: list[int] = []
+    strays: set[int] = set()
+    previous: float | None = None
+    for rank, position in enumerate(order):
+        if previous is None or starts[position] >= previous:
+            previous = starts[position]
+            continue
+        inversions.append(position)
+        # The next claimed start decides WHICH stamp is the outlier: if the sheet comes back above the last
+        # kept start, this one line is; if it stays below, the EARLIER stamp was, and nothing here can tell
+        # where the lines after it belong. A trailing inversion has nothing left to drag.
+        recovers = starts[order[rank + 1]] if rank + 1 < len(order) else previous
+        if recovers >= previous:
+            strays.add(position)
+    if len(strays) != len(inversions) or len(inversions) > max(1, int(_MAX_HELD_SHARE * len(order))):
+        return tuple(segments), 0, len(inversions)
+
+    out: list[Segment] = []
+    held = 0
+    previous = None
+    previous_end: float | None = None
+    for position, segment in enumerate(segments):
+        if position not in starts:
+            out.append(segment)
+            continue
+        end = segment.get("end")
+        numeric_end = float(end) if isinstance(end, (int, float)) and not isinstance(end, bool) else None
+        if position in strays and previous is not None:
+            copy = dict(segment)
+            copy["start"] = previous
+            floor = previous if previous_end is None else max(previous, previous_end)
+            if numeric_end is not None and numeric_end <= floor:
+                #: A STRETCH, not the floor itself (W2 review r2): equalling it publishes a span
+                #: byte-identical to the predecessor's, which `activeLineIndex` never returns. Bounded by
+                #: the next kept start, so lighting this line cannot delay the next one; where that leaves
+                #: no room the span stays identical, because an un-lit line is still a published sheet and
+                #: the alternative is `decide` dropping the whole text.
+                room = next_claimed.get(position)
+                stretched = floor + _REPAIRED_MIN_SEC
+                numeric_end = stretched if room is None else min(stretched, max(floor, room))
+                copy["end"] = numeric_end
+            out.append(copy)
+            held += 1
+        else:
+            previous = starts[position]
+            out.append(segment)
+        previous_end = numeric_end if numeric_end is not None else previous
+    return tuple(out), held, 0
 
 
 async def _measured_lift(texts: Sequence[str], emissions: Any) -> tuple[lexical.Lift | None, str]:
@@ -2082,9 +2947,25 @@ async def _measured_lift(texts: Sequence[str], emissions: Any) -> tuple[lexical.
     engine's), so they read the same number the same way. A machinery fault in the kernel raises
     (`InfraFault`, review M7); anything else the decode raises is an unanswered question, not a verdict on the
     text, and the caller's other gate decides — its reason starts `it raised`, which the bench scores as an
-    ERROR row (`e2e.FAULT_LEXICAL`), never as a check that passed."""
+    ERROR row (`e2e.FAULT_LEXICAL`), never as a check that passed.
+
+    THE BANDS ARE ONE MODEL'S, so a matrix from another one is not measurable here (W3 review r2). The
+    emission model is chosen per LANGUAGE (`ml.WhisperXAligner._aligner`; de/es/fr load wav2vec2-XLSR
+    fine-tunes, another scale and vocabulary), and nothing in the lift reads the language, so without this
+    the English bands would judge a German sheet on a German model's log-probabilities — a number
+    `lift_gate.py` never measured, deciding a text terminally. Unmeasurable is the shape the wave already
+    built for that: the envelope gate keeps the verdict, the lift stays a reading on the trail, and
+    `TimedDoc.vouched` is False. A matrix that NAMES NO MODEL is the bands' own by construction — a test's
+    fake or a bench emission cache written before `Emissions.model` existed, never production.
+    """
     from encore_worker.adapters.ml import forced_align_decoder  # noqa: PLC0415
 
+    named = str(getattr(emissions, "model", "") or "")
+    if named and named != lexical.BANDS.model:
+        return None, (
+            f"the lexical bands are {lexical.BANDS.model}'s and this matrix is {named}'s "
+            "(the alignment model is chosen per language): recalibrate before reading it as a verdict"
+        )
     try:
         got = await asyncio.to_thread(partial(lexical.lift, decoder=forced_align_decoder), texts, emissions)
     except InfraFault:
@@ -2126,12 +3007,17 @@ def _line_doc(segments: Sequence[Segment], language: str) -> dict[str, object]:
     """A line-synced document: each segment becomes a line with no per-word spans.
 
     One implementation for both the `LINE_SYNC` knob and any other line fallback, so the two cannot
-    drift into producing different shapes for the same claim.
+    drift into producing different shapes for the same claim — including the ORDER of the starts, which
+    `_in_claim_order` normalises here (W2) so that no caller can publish a stray backwards claim by forgetting
+    to. Idempotent, so a caller that ordered the segments itself to report what it held is not a second rule.
+    A sheet whose order that function REFUSES to normalise passes through with its inversions intact, on
+    purpose: `measure.out_of_order` is what `policy.decide` drops such a text on.
     """
+    ordered, _held, _unheld = _in_claim_order(segments)
     return {
         "language": language,
         "lines": [
-            {"text": str(s.get("text") or ""), "start": s.get("start"), "end": s.get("end")} for s in segments
+            {"text": str(s.get("text") or ""), "start": s.get("start"), "end": s.get("end")} for s in ordered
         ],
     }
 
@@ -2173,19 +3059,27 @@ def _speech_mass(matrix: Any, start: float, end: float) -> float | None:
     """Mean non-blank probability over `[start, end)` on an emission matrix: how much the acoustic model hears
     SPEECH there (vocables included), where an energy envelope hears anything loud. None for an empty span.
 
-    Blank is id 0, as the decoder assumes it everywhere today (review M9, W4's to generalise).
+    THE BLANK COLUMN COMES FROM THE MATRIX (`generate.blank_of`, review M9, done in W4). It used to be the
+    literal 0, which on a vocabulary whose pad sits elsewhere reads the probability of a LETTER: the witness
+    would then have scored a sung span as silence and a silent one as speech, inverting every never-sung
+    spare and every adoption this number gates.
     """
     import numpy as np  # noqa: PLC0415 - the steps layer's lazy numpy, as `_time_text_global` reads it
+
+    from encore_worker.domain.lyrics.generate import blank_of  # noqa: PLC0415
 
     log_probs = np.asarray(matrix.log_probs)
     frame_sec = float(matrix.frame_sec)
     if frame_sec <= 0 or log_probs.ndim != 2:
         return None
+    blank = blank_of(matrix)
+    if not 0 <= blank < log_probs.shape[1]:
+        return None  # a matrix that names a column it does not have cannot testify
     first = max(0, int(start / frame_sec))
     last = min(len(log_probs), max(int(end / frame_sec), first + 1))
     if last <= first:
         return None
-    return float(1.0 - np.exp(log_probs[first:last, 0]).mean())
+    return float(1.0 - np.exp(log_probs[first:last, blank]).mean())
 
 
 #: A repaired line whose decode landed within this of the window's LEFT EDGE "heard nothing": a forced
@@ -2197,10 +3091,11 @@ _ADOPT_EDGE_SEC = 0.08
 #: compare WITHIN a song only (F3); the measured good/gross medians were -0.95 vs -1.76.
 _ADOPT_SCORE_GAP = 0.5
 
-#: Slack added around a claim window before re-decoding inside it: a claim's own onset carries the two
+#: Slack added around a repair window before re-decoding inside it: a claim's own onset carries the two
 #: measurements' combined jitter (~250 ms tolerance in reconcile), and a window cut exactly to the claim
 #: would clip a note the claim started late on. One second is generous without reaching the neighbouring
-#: line at singing tempo.
+#: line at singing tempo. It is also the reach of `claim_run`'s hold-open: a blind decode starting this close
+#: to the claim span is the same line measured twice, further away is a second hypothesis (review M5).
 _REPAIR_PAD_SEC = 1.0
 
 
@@ -2230,6 +3125,33 @@ class _Source(StrEnum):
 #: How many lines of one source the trail names by index before it only counts the rest: R1 re-decodes
 #: every claimed line, and a 90-line index list would bury the rest of the verdict note.
 _SOURCES_NAMED = 12
+
+
+def _ends_why(before: Generated, after: Generated, experiments: frozenset[str]) -> str:
+    """The trail's line for the word-end post-pass: how many ends moved, and by how much.
+
+    A display change no metric on the report can show (`measure` judges order on STARTS) would otherwise
+    be invisible on the audit page, and "the ball leaves the word early" is a report this note answers
+    directly. It states the ARM when one is on, so a run whose ends look raw says why.
+    """
+    if "ends-raw" in experiments:
+        return "word ends: the raw decode's (ends-raw)"
+    moved = sorted(
+        after_word.end - before_word.end
+        for before_line, after_line in zip(before.lines, after.lines, strict=True)
+        for before_word, after_word in zip(before_line.words, after_line.words, strict=True)
+        if after_word.end > before_word.end
+    )
+    words = sum(len(line.words) for line in before.lines)
+    # The arm is named in BOTH branches: "nothing moved" under `ends-tile` is a different claim about the
+    # decode (every line already tiled) than the same sentence on the default.
+    arm = " tiling within each line (ends-tile)" if "ends-tile" in experiments else ""
+    if not moved:
+        return f"word ends: none of {words} extended{arm} (the envelope stops where the decode does)"
+    return (
+        f"word ends: held {len(moved)} of {words} through the singing{arm}, median "
+        f"+{moved[len(moved) // 2] * 1000:.0f} ms, worst +{moved[-1]:.2f}s"
+    )
 
 
 def _sources_why(provenance: Mapping[int, _Source], indexes: Sequence[int]) -> str:
@@ -2332,9 +3254,18 @@ def _clamped(
       * 74 both publish as words, and there it helps: gross 485 -> 409, ±500 +38 lines.
     Every text the default refused at W1 in the four recovery modes is among these cases, so on them it
     now shows off15 31, off3 29, headers 32 and tempo102 27 of 32, against W1's 26 / 20 / 28 / 27 (tempo is
-    W2's). At `time_text`, which has no rung, it still
-    helps in aggregate (the 125: gross 946 -> 705, ±500 6464 -> 6575 lines), but it regresses the
-    individual songs the gates above name.
+    W2's). At `time_text`, which has no rung, it still helps in aggregate (the 125: gross 946 -> 705, ±500
+    6464 -> 6575 lines), but it regresses the individual songs the gates above name.
+
+    CONFIRMED ON THE FULL CORPUS (2026-09-28; the bench runner's `--modes all,wrongtext+ownclock` arm runs
+    at both levels on this code, judged offline against `results/baseline-v2*.json`: 61/74 at `time_text`,
+    63/74 at `run_align`). The same two MUST gates fail, and §3.1 by effect names exactly the songs the
+    targeted re-judge named, per mode and count for count, so those case sets hold every document the arm
+    moves. Its wrong-text half is closed on the corpus too: of the 640 wrong texts it publishes 1 at
+    `time_text` (LUNABLIND #2, the doubt-band document the default publishes as well), 0 at `run_align`,
+    and 0 in either level's `wrongtext+ownclock`; it refuses none of the 448 right texts, where the default
+    refuses 12 at `run_align` — the LINE_SYNC documents its decode gate declines, which the arm publishes
+    as word documents instead.
 
     THE ARM'S UNIT IS A RUN of consecutive repaired lines, bounded by the trusted lines around it:
     nothing in it starts before the previous trusted line ENDS, and no word in it starts after the next

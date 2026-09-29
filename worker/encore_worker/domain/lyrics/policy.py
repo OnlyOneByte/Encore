@@ -20,6 +20,14 @@ TWO RULES THAT ARE EASY TO GET BACKWARDS, both learned from the old worker:
 AND ONE THAT IS EASY TO FORGET, learned from the v2 review (H2): a knob is offered only to an ENGINE
 THAT READS IT (`TimingReport.engine`, `_READS`). A knob the engine ignores re-runs the same question, and
 the one that did not — ALIGN_ON_MIX under the global decode — answered it worse and overwrote the answer.
+
+AND ONE ACROSS KINDS (W4, carried out of W2). A WORD document and the LINE_SYNC document of the same text
+are two answers to one question, and until W4 which of them published was decided by arrival order: a line
+document replaced a word document whenever the word document could not ship at all, and never otherwise,
+because the two kinds only ever met on that one path. `decide` rule 6 and `improves`' LINE_SYNC case are the
+explicit comparison — the text's own timings are asked for, and win, exactly where `reconcile` could relate
+NOTHING between them and our decode (`TimingReport.claims_related`), which is where the word documents that
+carry 84% of the corpus's gross lines live.
 """
 
 from __future__ import annotations
@@ -96,6 +104,11 @@ class Knob(StrEnum):
     #: claims where its own blind decode hears its lines (W3), else the sheet-span envelope gate
     #: (`align_steps._time_line_sync`): with no gate it would publish any timed wrong text, and with a timing
     #: gate alone any caption track of the same video, whatever its words (a translation).
+    #:
+    #: SPENT ON TWO DEFECTS, and the second is W4's cross-kind comparison: word timing that cannot ship at
+    #: all (incoherent, or nothing timed), and word timing NOTHING RELATED TO THE CLAIMS
+    #: (`TimingReport.claims_related` False) — where the retry must BEAT the word document it retried to
+    #: replace it (`improves`), because there the word document could have published.
     LINE_SYNC = "line-sync"
 
 
@@ -219,7 +232,20 @@ def decide(report: TimingReport, attempt: Attempt) -> Verdict:
          (`DROP_WINDOWS`), because a narrow window derived from a bad placement is the usual cause; then
          try re-placing.
       5. THIN COVERAGE — the words may simply not be audible in the stem. Try the mix (windowed only).
-      6. Otherwise accept.
+      6. CLAIMS UNRELATED — the text brought its own line timings and `reconcile` could fit NO map between
+         them and our decode (`TimingReport.claims_related` False). Both witnesses cannot be right, and this
+         is the one branch where our own decode is the one in doubt: every other defect here is measured
+         against the audio, while this one is measured against a SECOND opinion on the same text. So the
+         text's own timings get their turn — LAST, after every knob that could repair the word document,
+         since LINE_SYNC abandons word timing — and they publish only if they pass their own gate AND beat
+         what they retried (`improves`). MEASURED at `run_align` over the W2 corpus rows (see
+         `TimingReport.claims_related`): of the 357 published word documents that have a line document of
+         the same text beside them, the 23 UNRELATED ones hold 299 of the 356 gross lines (a line start more
+         than 2 s out) and 596 of 1129 line starts within ±500 ms, where their line documents hold 0 gross
+         and 1129 of 1133 — against 6560 word timings given up. The other 334, which reconcile DID relate,
+         keep their words: 15223 of 16812 line starts within ±500 ms (90.5%) with 57 gross lines, and taking
+         the line document there would spend 106 860 word timings to move 715 line starts.
+      7. Otherwise accept.
 
     Every usable branch falls through to `Accept` when no knob applies, NOT to `NextText`. That is rule
     1 in the module docstring, and inverting it is how a correct-but-imperfect alignment becomes no
@@ -281,6 +307,15 @@ def decide(report: TimingReport, attempt: Attempt) -> Verdict:
             "since an over-suppressed stem can leave the words inaudible",
         )
 
+    if report.claims_related is False and offers(report, attempt, Knob.LINE_SYNC):
+        return Retime(
+            Knob.LINE_SYNC,
+            "nothing relates these timings to the text's own claimed line starts (no offset, no bounded "
+            "tempo, no structural story) — asking what the text's own timings score, since where the two "
+            "witnesses cannot be reconciled it is our decode that is unvouched for; they publish only if "
+            "they pass their own gate and beat this document",
+        )
+
     return Accept(_accepted_because(report, attempt))
 
 
@@ -311,6 +346,11 @@ def _accepted_because(report: TimingReport, attempt: Attempt) -> str:
         defects.append(f"overshoot +{report.overshoot_sec:.0f}s")
     if report.misplaced and report.residual_sec is not None:
         defects.append(f"residual {report.residual_sec:+.2f}s")
+    if report.claims_related is False and Knob.LINE_SYNC in _READS[report.engine]:
+        # The cross-kind defect: named here too, because "accepted DESPITE claims unrelated (spent:
+        # line-sync)" is how an operator reads that the text's own timings were asked and lost — a
+        # document published on an unresolved disagreement, which is exactly the shape to investigate.
+        defects.append("claims unrelated to these timings")
     if not defects:
         return report.summary()
     spent = ", ".join(sorted(k.value for k in attempt.tried | attempt.lost)) or "none applicable"
@@ -330,8 +370,32 @@ def improves(before: TimingReport, after: TimingReport, knob: Knob) -> bool:
     stem document overwritten by a 13-gross mix one — and a retry that produced NOTHING dropped a usable
     document for the text's line timings, or for the next text.
 
-    An unusable or refused `after` never improves. LINE_SYNC never improves on a usable word document:
-    word timing with a defect still beats no word timing (the "accept if nothing better" rule).
+    An unusable or refused `after` never improves — including a LINE_SYNC retry its own gate refused, which
+    is NOT a verdict on the text here: the word document this retried already passed the same lexical gate on
+    the same matrix (`align_steps`), so what a line refusal adds is only that the SHEET'S CLOCK is unreadable,
+    and the search goes back to the words rather than to the next text (W1's terminal-refusal rule is about
+    the gate that refused the TEXT, and that one ends it in `decide` before any of this).
+
+    ACROSS KINDS (W4). `improves` is asked about a LINE_SYNC retry only where `decide` rule 6 spent it — a
+    usable word document NOTHING RELATED TO ITS CLAIMS — because the other route to the knob is an unusable
+    word document, which is no document at all and is never kept as the best so far (`Search.record`). There
+    the line document wins by surviving its own gate: its timings ARE the claims, the half of the
+    disagreement our decode did not produce, so nothing more can be asked of it than that a gate read its
+    words (the lexical lift) and its clock (its own blind decode within 1.0 s of its claims) — which is what
+    `after.usable` says, since a refusal sets `TimingReport.refused`. What is NOT asked is that it be better
+    on a metric: the two documents share no metric to compare on (a line document has no words and a word
+    document's line starts are the thing in dispute), and inventing one would be the arrival-order rule in
+    numbers. The decision that the claims are the better witness is `decide`'s, taken on the reconcile
+    verdict, and its price is measured there. The verdict is re-read here rather than trusted from the
+    caller's ordering, so the OLD blanket rule still holds wherever it was right: a word document its claims
+    corroborate is never replaced by one with no words in it.
+
+    ONE GUARD, which is a real comparison rather than a tie-break: a line document must time AT LEAST AS MANY
+    LINES as the word document did. A partially stamped sheet (`parse_lrc` shapes: a timestamp on 3 lines of
+    50) passes every gate this rung has and publishes a 3-line scroll, and swapping 50 timed lines for 3 is a
+    downgrade whatever the disagreement. Inert on the measured population — over the 23 song-modes the line
+    documents time 1133 lines against the word documents' 1129, since the never-sung rule can only drop lines
+    from a word document and the claims are the same sheet either way.
     """
     if not after.usable:
         return False
@@ -345,7 +409,7 @@ def improves(before: TimingReport, after: TimingReport, knob: Knob) -> bool:
                 return after.residual_sec is not None and abs(after.residual_sec) < abs(before.residual_sec)
             return after.overshoot_sec < before.overshoot_sec
         case Knob.LINE_SYNC:
-            return False
+            return before.claims_related is False and after.lines >= before.lines
 
 
 def order_pool(tiers: list[Tier]) -> list[int]:

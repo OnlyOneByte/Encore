@@ -21,6 +21,8 @@ import soundfile as sf
 from encore_worker.adapters.ports import InfraFault
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.document import Segment
+from encore_worker.domain.lyrics import lexical, measure
+from encore_worker.domain.lyrics.generate import ONSET_LEAD_SEC
 from encore_worker.domain.lyrics.policy import Knob, Tier
 from encore_worker.domain.lyrics.report import Engine
 from encore_worker.host.config import Config
@@ -359,6 +361,303 @@ def test_sheet_spans_cap_an_end_that_is_only_the_next_lines_start() -> None:
     assert _sheet_spans([{"text": "untimed"}]) == []
 
 
+def test_the_rungs_clock_abstains_rather_than_voting_no(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W2. `_line_sync_clock` returns None for "there was no vote" and an UNAPPLIED map for "the vote said
+    no", and the two must not be confused: None sends `_placed_by` back to the unconditional activity shift
+    and the gate to the sheet-span envelope (W3's rung exactly), while an unapplied map deliberately leaves
+    the sheet where the text put it. A sheet too short for `claimmap.MIN_PAIRS` cannot be fitted at all."""
+    from encore_worker.domain.audio.activity import ShiftFit
+    from encore_worker.domain.lyrics import claimmap
+    from encore_worker.domain.lyrics import reconcile as rc
+    from encore_worker.domain.lyrics.generate import Generated, Line
+    from encore_worker.steps.align_steps import _line_sync_clock
+
+    def decoded(starts: Sequence[float]) -> Generated:
+        return Generated(
+            lines=tuple(
+                Line(text=f"l{i}", start=at, end=at + 1.0, words=(), score=-0.4, index=i)
+                for i, at in enumerate(starts)
+            ),
+            language="en",
+        )
+
+    fit = ShiftFit(seconds=-3.0, correlation=0.8)
+    late = {i: 3.0 * i + 3.0 for i in range(6)}
+    sung = decoded([3.0 * i for i in range(6)])
+    assert _line_sync_clock(fit, late, None) is None, "no decode: no vote"
+    short = Generated(lines=sung.lines[:4], language="en")
+    assert _line_sync_clock(fit, dict(list(late.items())[:4]), short) is None, "4 pairs, 5 needed"
+
+    mapped = _line_sync_clock(fit, late, sung)
+    assert mapped is not None and mapped.applied and mapped.candidate == claimmap.ENVELOPE_LAG
+    assert mapped.at(late[0]) == pytest.approx(0.0), "the claims land on our clock"
+    # The vote says NO where the claims already agree: an unapplied map, not None.
+    agreed = _line_sync_clock(fit, {i: 3.0 * i for i in range(6)}, sung)
+    assert agreed is not None and not agreed.applied and agreed.at(9.0) == 9.0
+    assert "claims left on their own clock" in agreed.why
+
+    # A DECODE THAT MAY NOT SPEAK FOR THE SHEET decides neither its verdict nor its clock (`_enough_decoded`):
+    # the mixed-script shape, where `generate` drops every line with no alignable character.
+    fragment = {i: 3.0 * i + 3.0 for i in range(40)}
+    assert _line_sync_clock(fit, fragment, sung) is None, "6 of 40 lines decoded: no vote"
+    assert _line_sync_clock(fit, dict(list(fragment.items())[:12]), sung) is not None, "6 of 12: it may"
+
+    # THE BAND IS THE RUNG'S, NOT `reconcile`'s — the one deliberate difference from the global engine's call,
+    # and the reason "a sheet already near our clock keeps its own timings" (W2 review r1: the keyword could
+    # be deleted with the suite green, because the case here monkeypatched the band to 0.1 s and asserted a
+    # 0.4 s sheet moved, which is true at 0.25 s too). A sheet 0.6 s off separates them: in the rung's 1.0 s
+    # band no candidate can beat no-shift, and in `reconcile`'s 0.25 s one the median explains every line.
+    # The fit offered here is one `ShiftFit.usable` would have accepted (r 0.8) and `_placed_by` would have
+    # applied before W2 — the vote refuses it, which is how the truth sheets stop being shifted.
+    near = {i: 3.0 * i + 0.6 for i in range(6)}
+    kept = _line_sync_clock(fit, near, sung)
+    assert kept is not None and not kept.applied and kept.candidate == claimmap.NO_SHIFT, "0.6 s is near"
+    assert kept.baseline == 6, "the rung's band explains every line without moving anything"
+    tighter = claimmap.consensus(
+        {line.index: line.start for line in sung.lines}, near, tolerance_sec=rc.AGREE_TOLERANCE_SEC
+    )
+    assert tighter.applied and tighter.candidate == claimmap.DECODE_MEDIAN, "reconcile's band would move it"
+    assert tighter.baseline == 0
+
+
+def test_the_rungs_gate_and_its_clock_read_a_decode_at_one_bar() -> None:
+    """W2 review r2. `_enough_decoded` documents itself as "ONE rule for both readers of that decode", and it
+    was not: its floor was `reconcile.MIN_PAIRS` (3) while `_line_sync_clock` took
+    `max(claimmap.MIN_PAIRS, this)` (5). Between the two lay a band of sheets where the CLOCK abstained
+    and the GATE was fully armed — and that is the worst of the two states, not a harmless one:
+    `_placed_by` falls back
+    to `ShiftFit.usable`'s unconditional activity shift when there is no clock, so the gate then read the
+    decode against the SHIFTED claims, found them near, and published the sheet displaced with both witnesses
+    agreeing on the one misplacement. That is precisely the W3 failure the clock was built to stop (23
+    published song-modes with no line within ±500 ms of truth), reachable on any sheet short enough.
+
+    The floor is now `claimmap.MIN_PAIRS` for both, so the two abstain together BY CONSTRUCTION rather than by
+    two expressions agreeing. Pinned at the boundary for every sheet size the bands used to differ over,
+    because an invariant that holds only because one `max` was deleted is an invariant one edit from gone."""
+    from encore_worker.domain.audio.activity import ShiftFit
+    from encore_worker.domain.lyrics import claimmap
+    from encore_worker.domain.lyrics import reconcile as rc
+    from encore_worker.domain.lyrics.generate import Generated, Line
+    from encore_worker.steps.align_steps import _agreement_of, _enough_decoded, _line_sync_clock
+
+    assert claimmap.MIN_PAIRS > rc.MIN_PAIRS, "the gap this test exists for"
+    fit = ShiftFit(seconds=-2.0, correlation=0.8)
+
+    def decode(pairs: int) -> Generated:
+        return Generated(
+            lines=tuple(
+                Line(text=f"l{i}", start=4.0 * i, end=4.0 * i + 1.0, words=(), score=-0.4, index=i)
+                for i in range(pairs)
+            ),
+            language="en",
+        )
+
+    #: The finding's own sheet: 7 claimed lines, 4 decoded. `ceil(0.5 * 7)` = 4 armed the gate; 5 abstained
+    #: the clock. Claims are 2 s late throughout, so a gate that DID read them would have something to say.
+    claims = {i: 4.0 * i + 2.0 for i in range(7)}
+    placed: list[Segment] = [{"text": f"l{i}", "start": at, "end": at + 1.0} for i, at in claims.items()]
+    assert _enough_decoded(7) == claimmap.MIN_PAIRS
+    assert _line_sync_clock(fit, claims, decode(4)) is None, "4 pairs, 5 needed"
+    unread, why = _agreement_of(decode(4), placed)
+    assert unread is None, "and the gate must not read what the clock could not vote on"
+    assert f"under the {claimmap.MIN_PAIRS} this check needs to speak for the sheet" in why, why
+
+    for size in range(5, 15):
+        bar = _enough_decoded(size)
+        sheet = {i: 4.0 * i + 2.0 for i in range(size)}
+        rows: list[Segment] = [{"text": f"l{i}", "start": at, "end": at + 1.0} for i, at in sheet.items()]
+        assert (_line_sync_clock(fit, sheet, decode(bar - 1)) is None) and (
+            _agreement_of(decode(bar - 1), rows)[0] is None
+        ), f"{size} claims, {bar - 1} pairs: both abstain"
+        assert (_line_sync_clock(fit, sheet, decode(bar)) is not None) and (
+            _agreement_of(decode(bar), rows)[0] is not None
+        ), f"{size} claims, {bar} pairs: both read"
+
+
+def test_a_line_document_never_publishes_a_backwards_claim() -> None:
+    """`_in_claim_order` (W2), on its own: the held count is what the trail reports, the input is never
+    mutated (a `TextRef` is checkpointed and replayed), an untimed line passes through untouched, and a held
+    line keeps BOTH edges in order — its end PAST its predecessor's, not nested inside it and not equal to it.
+    Idempotent, so `_line_doc`'s own guarantee is not a second rule (Tom_Orlando jit: 1 of 72 held)."""
+    from encore_worker.steps.align_steps import _in_claim_order, _line_doc
+
+    sheet: list[Segment] = [
+        {"text": "a", "start": 5.0, "end": 7.0},
+        {"text": "b", "start": 4.0, "end": 4.5},  # the stray: stamped before the line ahead of it
+        {"text": "untimed"},
+        {"text": "c", "start": 12.0, "end": 14.0},
+    ]
+    frozen = json.dumps(sheet)
+    ordered, held, unheld = _in_claim_order(sheet)
+    assert (held, unheld) == (1, 0)
+    assert [s.get("start") for s in ordered] == [5.0, 5.0, None, 12.0]
+    assert [s.get("end") for s in ordered] == [7.0, 7.2, None, 14.0], "stretched past its predecessor's end"
+    assert json.dumps(sheet) == frozen, "the input is not mutated"
+    assert _in_claim_order(ordered)[1:] == (0, 0), "idempotent"
+    lines = _line_doc(sheet, "en")["lines"]
+    assert isinstance(lines, list)
+    assert [line["start"] for line in lines] == [5.0, 5.0, None, 12.0], "the document, not just the rung"
+
+
+def test_a_held_claim_is_not_nested_inside_the_line_before_it() -> None:
+    """WHY the end is held too (W2 review r1), and why holding it AT the predecessor's is not enough (r2).
+
+    `core`'s `activeLineIndex` returns the FIRST line whose bounds contain the playhead
+    (`core/src/lib/tv/lyrics.ts`), so a line that shares its predecessor's start and ends BEFORE it can never
+    be lit while it is sung — the predecessor wins every instant of the shared span, and the held line only
+    becomes "the last that ended" afterwards. The first version of this rule produced exactly that: start
+    held, end left where the sheet put it. The SECOND version held the end at `max(previous,
+    previous_end)`, which on
+    this very fixture is a no-op — b's own end (13.8) is already below a's (14.5), so b came back as
+    12.0-14.5, byte-identical to a, and `activeLineIndex` still never returned it during the span. Hence the
+    stretch: `_REPAIRED_MIN_SEC` PAST the floor, so 14.7 here.
+
+    THE INVARIANT IS `<=`, NOT `<`, for the same reason: the equal-span case is the one the second version
+    shipped, and a strict `<` calls it ordered."""
+    from encore_worker.steps.align_steps import _REPAIRED_MIN_SEC, _in_claim_order
+
+    sheet: list[Segment] = [
+        {"text": "a", "start": 12.0, "end": 14.5},
+        {"text": "b", "start": 11.8, "end": 13.8},  # ends 0.7 s BEFORE its predecessor
+        {"text": "c", "start": 22.0, "end": 24.0},
+    ]
+    ordered, held, unheld = _in_claim_order(sheet)
+    assert (held, unheld) == (1, 0)
+    assert ordered[1]["start"] == 12.0
+    stretched = pytest.approx(14.5 + _REPAIRED_MIN_SEC)
+    assert ordered[1]["end"] == stretched, "a stretch, not its predecessor's end"
+    spans = [(float(s["start"]), float(s["end"])) for s in ordered]  # type: ignore[arg-type]
+    assert all(
+        not (later[0] >= earlier[0] and later[1] <= earlier[1])
+        for earlier, later in zip(spans, spans[1:], strict=False)
+    ), "no line's whole span is swallowed by the one before it"
+
+
+def test_a_held_claims_stretch_stops_at_the_next_lines_stamp() -> None:
+    """The stretch's ceiling (W2 review r2). Lighting the held line must not cost the line AFTER it its own
+    start, so the stretch stops at the next kept stamp — and where that stamp leaves no room at all the span
+    stays identical to the predecessor's, on purpose: one line that is never lit is a published sheet, and the
+    alternative this whole rule exists to avoid is `measure.out_of_order` reaching `decide` and the room
+    getting NO LYRICS.
+
+    Here a ends at 14.5 and c is stamped 0.05 s later, so b's stretch is cut from 14.7 to 14.55; in the second
+    sheet c is stamped at a's own end, so there is no room and b comes back at 14.5."""
+    from encore_worker.steps.align_steps import _in_claim_order
+
+    room: list[Segment] = [
+        {"text": "a", "start": 12.0, "end": 14.5},
+        {"text": "b", "start": 11.8, "end": 13.8},
+        {"text": "c", "start": 14.55, "end": 16.0},
+    ]
+    assert _in_claim_order(room)[0][1]["end"] == pytest.approx(14.55), "cut at c's stamp, not 14.7"
+    none: list[Segment] = [*room[:2], {"text": "c", "start": 14.5, "end": 16.0}]
+    ordered, held, unheld = _in_claim_order(none)
+    assert (held, unheld) == (1, 0), "still held: the order gate must not see the inversion"
+    assert ordered[1]["end"] == pytest.approx(14.5), "no room to stretch into, so the span stays identical"
+
+
+def test_mapping_a_reversed_caption_cue_holds_its_end_at_its_start() -> None:
+    """`_mapped`'s `max(mapped_end, at)`, and the only input that reaches it (W2 review r2: the guard survived
+    deletion, and the map is not what it defends against).
+
+    `ClaimMap.at` is non-decreasing by construction, so no map can invert a span handed to it in order — the
+    hold can only fire on a cue that arrived REVERSED. A caption track can deliver one: `parse_vtt` reads both
+    edges off a single `-->` line and neither it nor `clean_segments` checks their order, while `parse_lrc`
+    derives every end from the next SORTED stamp and cannot. Mapped without the hold, such a cue publishes
+    18.0 -> 16.5 s, a span running backwards; with it the end sits on the start, which is what
+    `ClaimMap.windows` does to a window for the same reason.
+
+    The well-formed cue beside it is mapped end and all, so the hold is not silently flattening real spans."""
+    from encore_worker.domain.lyrics import claimmap as cm
+    from encore_worker.steps.align_steps import _mapped
+
+    clock = cm.ClaimMap(pieces=(cm.Piece(from_sec=0.0, offset_sec=-2.0, scale=1.0),), applied=True)
+    sheet: list[Segment] = [
+        {"text": "in order", "start": 10.0, "end": 12.0},
+        {"text": "reversed cue", "start": 20.0, "end": 18.5},
+        {"text": "untimed"},
+    ]
+    got = _mapped(sheet, clock)
+    assert got[0]["start"] == pytest.approx(8.0) and got[0]["end"] == pytest.approx(10.0)
+    assert clock.at(18.5) == pytest.approx(16.5), "what the map alone says about the reversed end"
+    assert got[1]["start"] == pytest.approx(18.0) and got[1]["end"] == pytest.approx(18.0)
+    assert got[2] == {"text": "untimed"}, "an untimed line passes through"
+    assert sheet[1]["end"] == 18.5, "copies, never in place: a TextRef is checkpointed and replayed"
+
+
+def test_one_late_stamp_does_not_drag_the_lines_after_it() -> None:
+    """THE DRAG (W2 review r1). `[01:00.00]` typed for `[00:10.00]` — or review L4's stacked stamps, or M12's
+    rolling captions — makes every correctly-stamped line after it "backwards". Holding them all at the late
+    stamp produced nine lines sharing the instant 60.0 with `out_of_order` 0 and `usable` True, so `decide`
+    committed it and the room saw one line's text for 30 s while the rest were sung. Before W2 that sheet was
+    DROPPED, and it must be again: an inversion is held only where the next claim recovers above the last kept
+    start, which is what tells a stray stamp from a run.
+
+    The trail says which happened, because "found clean" and "could not be normalised" are different facts."""
+    from encore_worker.steps.align_steps import _in_claim_order
+
+    starts = [10.0, 60.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 90.0, 95.0]
+    sheet: list[Segment] = [
+        {"text": f"line {i}", "start": start, "end": start + 2.0} for i, start in enumerate(starts)
+    ]
+    ordered, held, unheld = _in_claim_order(sheet)
+    assert (held, unheld) == (0, 8), "eight lines sit under the late stamp; none of them is a stray"
+    assert [s["start"] for s in ordered] == starts, "the sheet goes on as it came"
+    report = measure.measure({"lines": ordered}, duration_sec=120.0, engine=Engine.LINE_SYNC)
+    assert report.out_of_order == 1 and not report.usable, "the order gate sees it; `decide` drops the text"
+
+
+def test_a_drag_inside_the_held_share_is_still_refused_by_the_recovery_test() -> None:
+    """The `recovers` half of the rule, alone (W2 review r2). The test above cannot pin it: its 12-line sheet
+    has EIGHT inversions against a cap of `max(1, int(0.05 * 12))` = 1, so `_MAX_HELD_SHARE` refuses that
+    sheet on its own and deleting the recovery test left the whole suite green.
+
+    This sheet is 40 lines, so the cap is 2, and one late stamp puts exactly TWO lines under it — inside the
+    cap, where only the recovery test can refuse them. Line 5 reads 41.0 for 30.0; lines 6 (34.0) and 7 (38.0)
+    are then "backwards", and neither recovers above the last kept start, so neither is a stray: the sheet is
+    left exactly as it came and `decide` gets to see the defect. Without the recovery test both would be held
+    at 41.0 — two correctly-stamped lines moved 7 s and 3 s late, with `out_of_order` 0 and the sheet
+    published as if it were clean, which is the drag this rule exists to refuse."""
+    from encore_worker.steps.align_steps import _MAX_HELD_SHARE, _in_claim_order
+
+    starts = [10.0 + 4.0 * i for i in range(40)]
+    starts[5] = 41.0
+    sheet: list[Segment] = [
+        {"text": f"line {i}", "start": start, "end": start + 2.0} for i, start in enumerate(starts)
+    ]
+    assert max(1, int(_MAX_HELD_SHARE * len(starts))) == 2, "two inversions are INSIDE the cap"
+    ordered, held, unheld = _in_claim_order(sheet)
+    assert (held, unheld) == (0, 2), "the cap admits them; the recovery test is what refuses them"
+    assert [s["start"] for s in ordered] == starts, "the sheet goes on as it came"
+    report = measure.measure({"lines": ordered}, duration_sec=200.0, engine=Engine.LINE_SYNC)
+    assert report.out_of_order == 1 and not report.usable, "the order gate still sees the late stamp"
+
+
+def test_too_many_strays_leave_the_sheet_alone() -> None:
+    """`_MAX_HELD_SHARE`: one stray stamp is a typo, a dozen is a sheet whose order nobody can reconstruct —
+    and normalising that quietly would hide the one defect `policy.decide` drops a text for. Measured cost of
+    the cap: none. Over the 1056 committed gate cases the largest `held` is ONE (Tom_Orlando and
+    never-be-alone under `jit`), so nothing in the corpus comes near it."""
+    from encore_worker.steps import align_steps as st
+
+    #: Alternating strays: each is isolated (the sheet recovers above the last kept start every time), so only
+    #: the cap can refuse them.
+    starts = [10.0 + 4.0 * i for i in range(20)]
+    for index in (3, 7, 11, 15):
+        starts[index] = starts[index - 1] - 0.2
+    sheet: list[Segment] = [
+        {"text": f"line {i}", "start": start, "end": start + 2.0} for i, start in enumerate(starts)
+    ]
+    assert max(1, int(st._MAX_HELD_SHARE * len(starts))) == 1, "a 20-line sheet is allowed one stray"
+    ordered, held, unheld = st._in_claim_order(sheet)
+    assert (held, unheld) == (0, 4)
+    assert [s["start"] for s in ordered] == starts
+    one_stray = [dict(s) for s in sheet]
+    for index in (7, 11, 15):
+        one_stray[index]["start"] = starts[index - 1] + 2.0  # back in order, leaving a single stray
+    assert st._in_claim_order(one_stray)[1:] == (1, 0), "the same sheet with one stray IS held"
+
+
 def test_the_sheet_gate_does_not_trust_zero_lag() -> None:
     """Tier 2 of the envelope gate (weak r at zero lag) is evidence for a DECODE measured on this audio;
     a broad sheet envelope best-fits near zero lag whatever the text, so the sheet gate drops it."""
@@ -475,6 +774,133 @@ async def test_line_sync_refuses_words_that_are_not_sung_on_timings_that_are(
     assert not any(tmp_path.rglob("*-line.json")), "a refused line document is never written"
 
 
+async def test_the_rung_reads_the_same_band_a_recalibration_moves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W3 review r1: the rung used to gate on its OWN copy of 0.2 (`_LINE_SYNC_MIN_LIFT`) while the global
+    engine gated on `lexical.BANDS.refuse_below`, and `lexical`'s PER MODEL recipe — what W4 follows when the
+    model becomes HuBERT — replaces only `BANDS`. A recalibration to a higher floor must refuse here too;
+    otherwise this rung would silently keep the base model's number on the new model's emission scale."""
+    stem, aligner = hearing(tmp_path, monkeypatch)
+    words = worded(SUNG_WORDS)
+    impl = steps(tmp_path, aligner=aligner, reporter=Reporter())
+    assert isinstance(await impl.time_text(line_sync(tmp_path, words, stem)), TimedDoc)
+
+    recalibrated = lexical.Bands(
+        model="hubert-like", refuse_below=1e3, ok_from=2e3, mix_floor=1.0, mix_ok_from=2.0
+    )
+    monkeypatch.setattr(lexical, "BANDS", recalibrated)
+    got = await impl.time_text(line_sync(tmp_path, words, stem))
+    assert isinstance(got, Refused), got
+    assert got.report.refused is not None and "below the lexical gate (1000.0)" in got.report.refused
+
+
+async def test_a_line_sync_text_in_the_doubt_band_publishes_unvouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One rule for both engines (W3 review r1): a text the band DOUBTS publishes, and core is told its words
+    are not vouched for. No text measured at this rung has landed there (the bench's read +0.36 and up), so
+    the band is moved over the sung words to reach the path at all."""
+    stem, aligner = hearing(tmp_path, monkeypatch)
+    doubting = lexical.Bands(model="test", refuse_below=0.2, ok_from=1e3, mix_floor=0.15, mix_ok_from=1e3)
+    monkeypatch.setattr(lexical, "BANDS", doubting)
+    reporter = Reporter()
+    impl = steps(tmp_path, aligner=aligner, reporter=reporter)
+    doc = await impl.time_text(line_sync(tmp_path, worded(SUNG_WORDS), stem))
+    assert isinstance(doc, TimedDoc) and doc.vouched is False
+    assert doc.confidence == "low", "a line document's TIMING grade is low either way"
+    assert any("in the doubt band: nothing vouches for these words" in why for why in reporter.reasons)
+
+
+async def test_a_line_sync_text_whose_words_nothing_read_publishes_unvouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W3 review r2. `vouched` used to be "the band did not doubt it", which is True when NOTHING measured the
+    words: an aligner with no emission matrix, an emission pass or lift decode that raised, a text under
+    `lexical.MIN_LETTERS`. Only the TIMINGS were checked then (the sheet gate, or the decode agreement), and
+    this rung's own hazard is a text whose timings are perfect and whose words are someone else's — sent
+    vouched, a CANDIDATE-tier caption track goes to core as `textConfidence` high and ranks as a claim."""
+    stem = sung_stem(tmp_path)
+    blind_to_words = Reporter()
+    impl = steps(tmp_path, aligner=FakeAligner(), reporter=blind_to_words)
+    doc = await impl.time_text(line_sync(tmp_path, worded(TRANSLATED_WORDS), stem))
+    assert isinstance(doc, TimedDoc), doc
+    assert doc.vouched is False, "the sheet gate passed the TIMINGS; no gate read the words"
+    assert any(
+        "no lexical check: this aligner produces no emission matrix" in w for w in blind_to_words.reasons
+    )
+
+    stem, aligner = hearing(tmp_path, monkeypatch)
+    heard = steps(tmp_path, aligner=aligner, reporter=Reporter())
+    short = [1, 3, 4]  # 35 letters: under `lexical.MIN_LETTERS`, so the contrast is noise
+    text = worded([SUNG_WORDS[i] for i in short], [SUNG[i] for i in short])
+    brief = await heard.time_text(line_sync(tmp_path, text, stem))
+    assert isinstance(brief, TimedDoc) and brief.vouched is False
+
+    vouched = await heard.time_text(line_sync(tmp_path, worded(SUNG_WORDS), stem))
+    assert isinstance(vouched, TimedDoc) and vouched.vouched is True, "measured and not doubted: a claim"
+
+
+#: A caption track in two scripts: the CTC fixture's dictionary has no id for a Hangul syllable, so
+#: `generate` drops those lines entirely and only the English ones decode (review r2's motivating threat —
+#: an uploader's translation of a K-pop song, Korean verses around an English chorus).
+MIXED_SCRIPT = [
+    "사랑해 그대여",
+    "come and fly away",
+    "내 마음 깊은 곳",
+    "over the silver water",
+    "그리운 밤",
+    "morning light across the river",
+    "별빛 아래서",
+    "언제나 너와",
+]
+#: The English lines sit on the spans the fixture SINGS them on (`SUNG_WORDS` 0, 2, 5), so their decode
+#: agrees with their claims and the 3-pair verdict would be a pass.
+MIXED_SPANS = [(3.0, 4.5), SUNG[0], (11.0, 11.5), SUNG[2], (20.0, 21.0), SUNG[5], (30.0, 32.0), (33.0, 35.0)]
+
+
+async def test_the_decode_check_may_not_decide_for_a_sheet_most_of_which_never_decoded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W3 review r2. The agreement share's DENOMINATOR is only the lines that decoded, and `reconcile
+    .MIN_PAIRS` is 3 — so three lines could speak for a forty-line sheet, publishing or refusing it with
+    thirty-seven of its lines unexamined. Here 3 of 8 claimed lines decode, and the sheet gate reads the
+    WHOLE sheet's spans: on a stem whose wav is silent it refuses, on one that sings them it publishes, and
+    BOTH verdicts are the sheet gate's with the decode named as abstaining. Without the share the 3-line
+    verdict decides instead — it refuses this sheet in both directions (`decode` disagrees with the English
+    claims once the failed envelope fit has shifted them), so the audible case flips to a refusal and the
+    silent case is refused for the wrong reason. `_enough_decoded` is the rule.
+
+    AT EIGHT CLAIMS IT IS THE FLOOR THAT BINDS, and the trail says so (W2 review r2 raised that floor to
+    `claimmap.MIN_PAIRS` = 5, one bar for the gate and the clock both): `ceil(0.5 * 8)` is 4, so the SHARE
+    would also have refused these 3 lines, but 5 is the higher bound and naming the wrong one is how a
+    "3 of 3 decoded, under 50%" message gets written. The share is what binds above 10 claims."""
+    silent, aligner = hearing(tmp_path, monkeypatch, envelope=())
+    impl = steps(tmp_path, aligner=aligner, reporter=Reporter())
+    text = worded(MIXED_SCRIPT, MIXED_SPANS)
+    got = await impl.time_text(line_sync(tmp_path, text, silent))
+    assert isinstance(got, Refused), got
+    assert got.report.refused is not None
+    assert "below the sheet gate" in got.report.refused, "the fallback decided"
+    assert (
+        "no decode check: only 3 of 8 claimed lines decoded, under the 5 this check needs to speak for "
+        "the sheet (the floor a placement may be read on)" in got.report.refused
+    )
+
+    audible, aligner = hearing(tmp_path, monkeypatch, envelope=MIXED_SPANS)
+    heard = Reporter()
+    published = await steps(tmp_path, aligner=aligner, reporter=heard).time_text(
+        line_sync(tmp_path, text, audible)
+    )
+    assert isinstance(published, TimedDoc), "the sheet gate decides this one too, and it passes"
+    assert any("only 3 of 8 claimed lines decoded" in why for why in heard.reasons)
+    assert published.vouched is True, "the lift read the 58 letters that did decode and did not doubt them"
+
+    sung, aligner = hearing(tmp_path, monkeypatch)
+    passes = await steps(tmp_path, aligner=aligner).time_text(line_sync(tmp_path, worded(SUNG_WORDS), sung))
+    assert isinstance(passes, TimedDoc), "a sheet whose lines all decode is decided by the decode as before"
+
+
 #: `SUNG_WORDS` in German: its words keep many of the sung letters in order ("komm und flieg weg").
 COGNATE_WORDS = [
     "komm und flieg weg",
@@ -524,32 +950,115 @@ async def test_line_sync_publishes_sung_words_whose_envelope_the_sheet_gate_cann
     assert aligner.asked == [stem.vocals_path], "one emission pass: the lift and the decode share it"
 
 
-async def test_line_sync_refuses_sung_words_on_a_clock_they_are_not_sung_on(
+async def test_line_sync_maps_sung_words_off_this_clock_instead_of_refusing_them(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The other half of the timing gate: the right words, claimed 3 s late where the envelope cannot place
-    them (the fit abstains), would publish every line 3 s late. The decode hears each line 3 s before its
-    claim: `Refused`, nothing written, the lift's pass on the trail beside the reason."""
+    """W2's claim clock, ON THIS RUNG. The right words claimed 3 s late where the envelope cannot place them
+    (the fit abstains) used to be REFUSED — the decode heard every line 3 s before its claim, the gate read
+    0% agreement and a `syncMode=lines` refusal is terminal. That is 12 right texts on the corpus (off15 /
+    off3 / tempo102 / drop50 at `run_align`), each with a lift of +0.46 to +3.60: the words are right and only
+    the clock is wrong. `_line_sync_clock`'s vote now maps the sheet onto the decode first, so the gate reads
+    the MAPPED claims, and what publishes is the sung spans rather than nothing."""
     stem, aligner = hearing(tmp_path, monkeypatch, envelope=())
     reporter = Reporter()
     impl = steps(tmp_path, aligner=aligner, reporter=reporter)
     late = [(a + 3.0, b + 3.0) for a, b in SUNG]
-    got = await impl.time_text(line_sync(tmp_path, worded(SUNG_WORDS, late), stem))
+    doc = await impl.time_text(line_sync(tmp_path, worded(SUNG_WORDS, late), stem))
+    assert isinstance(doc, TimedDoc), doc
+    lines = json.loads((tmp_path / doc.ref).read_text())["lines"]
+    # Not -3.00 but a lead short of it: the decode's onsets lead the sung frames by
+    # `generate.ONSET_LEAD_SEC`, and the map puts the claims where the decode heard them. Read from the
+    # constant, since W4 re-fitted it 40 -> 30 ms on the exact frame grid.
+    lead = ONSET_LEAD_SEC
+    assert [line["start"] for line in lines] == pytest.approx([a - lead for a, _b in SUNG], abs=0.02)
+    note = next(why for why in reporter.reasons if "claims mapped" in why)
+    assert f"by decode-median -{3.0 + lead:.2f}s (6/6)" in note and "against no-shift's 0" in note
+    assert "blind decode starts 100% of 6 lines within 1.0 s of their claims" in note
+
+
+async def test_line_sync_refuses_a_sheet_no_map_can_reach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other half of the timing gate, and the half the claim clock does NOT dissolve: a sheet whose claims
+    no ONE map explains — never-be-alone's shape (review F2/F10), where the sheet and the decode disagree
+    line by line rather than by a constant. No candidate beats no-shift by the margin, so the claims stay
+    where the text put them and the gate refuses them: `Refused`, nothing written, and the trail carries both
+    the vote's abstention and the lift's pass, so the reason is the timings and nobody re-reads it as the
+    words."""
+    stem, aligner = hearing(tmp_path, monkeypatch, envelope=())
+    reporter = Reporter()
+    impl = steps(tmp_path, aligner=aligner, reporter=reporter)
+    warped = [(5.0, 7.0), (5.5, 7.5), (6.0, 8.0), (20.0, 22.0), (30.0, 32.0), (31.0, 33.0)]
+    got = await impl.time_text(line_sync(tmp_path, worded(SUNG_WORDS, warped), stem))
     assert isinstance(got, Refused), got
     assert got.report.refused is not None
     assert "lexical lift +" in got.report.refused, "the words passed: they are sung"
-    # -3.04: the decode's onsets lead the sung frames by `generate.ONSET_LEAD_SEC`.
-    assert "starts 0% of 6 lines within 1.0 s of their claims (median lag -3.04 s)" in got.report.refused
-    assert "below 50%" in got.report.refused
+    assert "claims left on their own clock" in got.report.refused
+    assert "under the 2-line margin" in got.report.refused
+    assert "starts 17% of 6 lines" in got.report.refused and "below 50%" in got.report.refused
     assert not any(tmp_path.rglob("*-line.json")), "a refused line document is never written"
+
+
+async def test_line_sync_keeps_a_sheet_already_on_our_clock_the_envelope_would_have_moved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """THE COST THE VOTE REMOVES (W3 review r2 -> W2). `_placed_by` shifted a sheet by the activity fit
+    whenever `ShiftFit.usable` held, whatever the claims already said: 23 of the documents this rung published
+    had NO line within ±500 ms of truth and EVERY line within 1 s — bad-guy shifted +0.72 s, numb +0.62 s,
+    their TRUTH sheets included — and the decode then read the shifted claims as near, so both witnesses
+    agreed on one misplacement. Here the stem's tones sit 0.7 s before the words' matrix, so the fit is usable
+    and wrong; the vote sees no-shift explain as many lines as the lag and TIES TO NO-SHIFT, so the sheet
+    publishes on its own (correct) timings."""
+    early = [(a - 0.7, b - 0.7) for a, b in SUNG]
+    stem, aligner = hearing(tmp_path, monkeypatch, envelope=early)
+    reporter = Reporter()
+    impl = steps(tmp_path, aligner=aligner, reporter=reporter)
+    doc = await impl.time_text(line_sync(tmp_path, worded(SUNG_WORDS), stem))
+    assert isinstance(doc, TimedDoc), doc
+    lines = json.loads((tmp_path / doc.ref).read_text())["lines"]
+    assert [line["start"] for line in lines] == pytest.approx([a for a, _b in SUNG]), "not moved"
+    note = next(why for why in reporter.reasons if "align-line-sync" not in why and "lift +" in why)
+    assert "@ -0.70s" in note, "the fit measured the lag, and would have applied it before W2"
+    assert "claims left on their own clock" in note
+
+
+async def test_line_sync_holds_a_backwards_claim_at_the_line_before_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tom_Orlando under `jit`: 1 of 72 claimed starts landed before the line ahead of it (sheet noise
+    σ 0.3 s), the line document came back with `out_of_order` 1, and `policy.decide` sent the whole text away
+    — NO LYRICS for a song whose lift was +2.92 and whose document had 63 of 72 lines within ±500 ms of truth.
+    `_in_claim_order` holds such a start at its predecessor's — BOTH edges, so the held line is not nested
+    inside the line before it (W2 review r1: a nested line is one `core` can never light while it is sung) and
+    not byte-identical to it either (r2: `activeLineIndex` gives a shared span to the FIRST line, so the held
+    line is stretched `_REPAIRED_MIN_SEC` past its predecessor's end, 14.5 -> 14.7 here) — and the trail says
+    how many it held."""
+    stem, aligner = hearing(tmp_path, monkeypatch)
+    reporter = Reporter()
+    impl = steps(tmp_path, aligner=aligner, reporter=reporter)
+    jittered = [*SUNG[:3], (11.8, 13.8), *SUNG[4:]]  # line 3 stamped 0.2 s before line 2
+    doc = await impl.time_text(line_sync(tmp_path, worded(SUNG_WORDS, jittered), stem))
+    assert isinstance(doc, TimedDoc) and doc.report.out_of_order == 0, doc
+    lines = json.loads((tmp_path / doc.ref).read_text())["lines"]
+    assert [line["start"] for line in lines] == pytest.approx([5.0, 8.0, 12.0, 12.0, 22.0, 25.5])
+    assert [line["end"] for line in lines] == pytest.approx([7.0, 10.0, 14.5, 14.7, 24.0, 27.5])
+    assert any("1 claimed start(s) held at the line before them" in why for why in reporter.reasons)
 
 
 async def test_line_sync_of_a_text_the_lexical_check_cannot_measure_is_still_timed_by_its_decode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Under `lexical.MIN_LETTERS` alignable letters the lift's contrast is noise, so no lexical check runs —
-    but the decode still reads where the lines are: three short sung lines publish, and a sheet of unsung
-    ones (W1 line-synced it on the sheet gate alone, its envelope being the stem's own) is refused."""
+    but the timings are still checked: three short sung lines publish, and a sheet of unsung ones (W1
+    line-synced it on the sheet gate alone, its envelope being the stem's own) is refused.
+
+    THE THREE-LINE SHEET IS GATED BY ITS ENVELOPE, NOT BY ITS DECODE (W2 review r2). `_enough_decoded`'s floor
+    is `claimmap.MIN_PAIRS` = 5 for BOTH readers of the decode, so on a 3-line sheet the clock cannot vote and
+    the gate cannot read the decode either — which is the point of making the two bars one literal: the state
+    where the clock abstains and the gate is armed is the state in which `_placed_by`'s unconditional shift
+    moved the claims and the gate then read the decode against the SHIFTED sheet, calling one misplacement
+    near with both witnesses agreeing on it. The trail says which bound refused it, because "3 of 3 decoded,
+    under 50%" would read as a broken counter."""
     stem, aligner = hearing(tmp_path, monkeypatch)
     reporter = Reporter()
     impl = steps(tmp_path, aligner=aligner, reporter=reporter)
@@ -557,9 +1066,10 @@ async def test_line_sync_of_a_text_the_lexical_check_cannot_measure_is_still_tim
     text = worded([SUNG_WORDS[i] for i in short], [SUNG[i] for i in short])
     doc = await impl.time_text(line_sync(tmp_path, text, stem))
     assert isinstance(doc, TimedDoc), doc
-    # 2 of 3: decoded over the whole song, one short line binds to letters another sung line holds.
     assert any(
-        "no lexical check: under 40 alignable letters" in why and "blind decode starts 67% of 3" in why
+        "no lexical check: under 40 alignable letters" in why
+        and "only 3 of 3 claimed lines decoded, under the 5 this check needs to speak for the sheet" in why
+        and "sheet-span envelope r=" in why
         for why in reporter.reasons
     )
     unsung = await impl.time_text(line_sync(tmp_path, sheet(SUNG), stem))  # "line 0" ...: 24 letters

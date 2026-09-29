@@ -16,8 +16,10 @@ lease expires, and the reaper requeues a job that is running perfectly well.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+import os
+from collections import OrderedDict
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Any
 
 from encore_worker.adapters.cli import OutOfMemory, looks_like_oom
@@ -27,6 +29,11 @@ from encore_worker.host.mlrt import ML_LOCK
 
 #: (device, checkpoint) -> loaded handle. Two concurrent jobs on one checkpoint share it; two on
 #: different checkpoints cannot evict each other, which a single-slot cache would do.
+#:
+#: MODEL WEIGHTS ONLY. Emission matrices used to live in here too, under a `f"emissions:{lang}:{path}"`
+#: key — which is the whole of review M10: a dict that must never evict (reloading multi-GB weights is
+#: why this process is resident) was also holding per-song data keyed by a path that gets REPLACED in
+#: place. See `_EMISSIONS` for the bounded, content-keyed cache that now holds them.
 _MODELS: dict[tuple[str, str], Any] = {}
 
 #: Devices CTranslate2 — which is what whisperx runs its transcriber on — will actually accept.
@@ -156,6 +163,30 @@ def _has_default_align_model(language: str) -> bool:
     return bool(language in DEFAULT_ALIGN_MODELS_TORCH or language in DEFAULT_ALIGN_MODELS_HF)
 
 
+def align_model_name(language: str) -> str:
+    """The alignment bundle `_aligner` loads for `language` — the name, without loading anything.
+
+    WHY A NAME AT ALL: every threshold read off an emission matrix is one MODEL's (the lexical lift's bands,
+    `domain.lyrics.lexical.BANDS`), and the bundle is picked per language rather than per release, so a
+    German song silently uses a wav2vec2-XLSR fine-tune where the bands were fitted on English's
+    `WAV2VEC2_ASR_BASE_960H`. Carried on `Emissions.model` so the reader can tell.
+
+    Read from whisperx's own tables, the way `_aligner` resolves it and the way the bench's calibration
+    scripts name a row set (`scripts/lift_gate.model_name`), so the two sides name the same thing. Unknown
+    (no whisperx, or a language it tables nothing for) is reported as such — `""` would claim the bands'
+    own model, and `load_align_model` would have raised for it anyway.
+    """
+    try:
+        from whisperx.alignment import (  # noqa: PLC0415
+            DEFAULT_ALIGN_MODELS_HF,
+            DEFAULT_ALIGN_MODELS_TORCH,
+        )
+    except ImportError:  # pragma: no cover - whisperx is a hard dependency of the ml extra
+        return f"unknown:{language}"
+    named = DEFAULT_ALIGN_MODELS_TORCH.get(language) or DEFAULT_ALIGN_MODELS_HF.get(language)
+    return str(named or f"default:{language}")
+
+
 def _cached(device: str, checkpoint: str, build: Any) -> Any:
     key = (device, checkpoint)
     if key not in _MODELS:
@@ -164,16 +195,73 @@ def _cached(device: str, checkpoint: str, build: Any) -> Any:
 
 
 def clear_cache() -> None:
-    """Drop every loaded model. For tests, and for an operator reclaiming VRAM without a restart."""
+    """Drop every loaded model AND every cached emission matrix. For tests, and for an operator
+    reclaiming VRAM without a restart."""
     _MODELS.clear()
+    _EMISSIONS.clear()
 
 
 #: wav2vec2 alignment models are trained at 16 kHz; every other rate is resampled to it.
 _EMISSION_SAMPLE_RATE = 16000
 
-#: Chunk size for the full-song emission pass. Bounds memory; see `WhisperXAligner.emissions` for why the
-#: boundary-context loss is accepted rather than overlapped away.
+#: wav2vec2's feature extractor, in samples at 16 kHz. Its convolutional stack (kernels 10,3,3,3,3,2,2 with
+#: strides 5,2,2,2,2,2,2) ADVANCES 320 samples per output frame and needs 400 of them to produce one at
+#: all: `model(zeros(1, L))` returns exactly `(L - 400) // 320 + 1` frames, measured on
+#: WAV2VEC2_ASR_BASE_960H over lengths 400..544000 and pinned in `tests/test_ml_contract.py`. So the frame
+#: clock is the MODEL's — exact, and known before a single frame is computed.
+_FRAME_HOP_SAMPLES = 320
+_FRAME_FIELD_SAMPLES = 400
+
+#: One emission frame, in seconds: EXACTLY 20 ms (review 6a). It used to be `duration / frames`, a
+#: different number on every song and wrong in two compounding ways. A 30 s chunk produces 1499 frames,
+#: not 1500 (the formula above), so the ratio stretched every frame by 1/1499 and stamped words up to
+#: 20 ms late by the end of each chunk — the review's frame-clock SAWTOOTH (decode-5 / evidence-8). And the
+#: final sub-0.1 s sliver was dropped while `duration` still counted its seconds, which drifted odd-length
+#: songs 50-60 ms late after 2:30. Both are arithmetic, not evidence: 320 samples at 16 kHz is 0.02 s.
+FRAME_SEC = _FRAME_HOP_SAMPLES / _EMISSION_SAMPLE_RATE
+
+#: Seconds of audio one forward pass STAMPS. Bounds memory: a whole-song pass is quadratic in
+#: self-attention, and at 30 s the activations of the widest bundle fit on a laptop accelerator.
 _EMISSION_CHUNK_SEC = 30
+
+#: Seconds of audio computed on EACH SIDE of a chunk and then discarded (ctc-forced-aligner's
+#: `generate_emissions`). A frame's receptive field is 400 samples of input but wav2vec2's transformer
+#: attends across the whole slice it is given, so a frame at a chunk edge used to see context on one side
+#: only. Computing 2 s past each edge and throwing those frames away gives every stamped frame the same
+#: context an interior frame has. THE COST, computed from `_frame_passes` rather than from the ratio
+#: (30+2+2)/30 the review quoted, because the first and last pass have context on one side only: 1.12x for
+#: the measured 194 s song, 1.09x at 90 s, 1.13x at an hour. Peak memory rises by the 4 s, not by a
+#: multiple. 2 s is 100 frames EXACTLY, which is what keeps the trim arithmetic integral.
+_EMISSION_CONTEXT_SEC = 2
+
+#: Emission matrices, most-recently-used LAST, keyed by (resolved path, size, mtime_ns, model, language,
+#: device). REVIEW M10, both halves:
+#:
+#:   CONTENT, not path. A stems re-run PUTS a new vocals stem over the same key
+#:   (`artifacts/local.py:110`, `os.replace`), so a path-keyed matrix outlived the audio it was computed
+#:   from and a later re-pick aligned the new stem's text against the old stem's frames. Size and
+#:   mtime_ns move with any replacement `os.replace` can make.
+#:
+#:   BOUNDED, and separate from `_MODELS`. The old cache lived in the model dict, which must never evict,
+#:   so every song a resident worker ever aligned stayed in memory for the life of the process.
+_EMISSIONS: OrderedDict[tuple[Any, ...], Emissions] = OrderedDict()
+
+#: How many matrices to keep. One align job reads at most two (the stem it aligns on and the MIX witness
+#: R4 decodes), so four holds this job's and the previous one's — which is all the cache is FOR: a DBOS
+#: re-entry must not pay 4 s of model time again for durability's sake. Bounding the resident set matters
+#: because the matrices are not small at every vocabulary: ~1 MB for a 3-minute English song (9.7k x 29
+#: float32) but ~47 MB on the widest bundle whisperx tables (Korean, 1204 tokens).
+_EMISSION_CACHE_SIZE = 4
+
+#: The names a wav2vec2 vocabulary gives CTC's BLANK, lowercased as whisperx lowercases its dictionary
+#: (`whisperx/alignment.py:98,110`). `[pad]`/`<pad>` are the HF checkpoints' and are what whisperx's own
+#: decoder scans for; torchaudio's bundles carry no pad token and put `-` at id 0, which is their blank.
+_BLANK_NAMES = ("[pad]", "<pad>")
+
+#: Vocabulary entries that are NOT characters of the language: CTC's blank under either name, the word
+#: separator, and the unknown / sentence markers. Named on `Emissions.specials` so a target filter has a
+#: list to read instead of a hard-coded id — see the field for what this wave does and does not do with it.
+_SPECIAL_NAMES = ("[pad]", "<pad>", "[unk]", "<unk>", "<s>", "</s>", "|")
 
 
 @dataclass(frozen=True)
@@ -182,16 +270,158 @@ class Emissions:
 
     `log_probs` is (frames, vocab) — ~9.7k x 29 for a 3-minute English song, about 1 MB. `dictionary` maps
     characters to vocab ids and travels WITH the matrix because the two are meaningless apart: ids are a
-    property of the model that produced these frames.
+    property of the model that produced these frames. So is `model`, for the same reason one step further
+    out: a threshold fitted on one bundle's log-probabilities means nothing on another's, and the bundle is
+    chosen per LANGUAGE (`_aligner`), so the matrix has to say which one it is. `blank_id` is the third
+    thing that is the model's rather than the decode's, and the one that used to be assumed (review M9).
     """
 
     log_probs: Any
     frame_sec: float
     dictionary: dict[str, int]
+    #: The bundle these frames came from (`align_model_name`), for a reader that was CALIBRATED on one:
+    #: `domain.lyrics.lexical.BANDS` is one model's, and `align_steps._measured_lift` will not read the
+    #: lift as a verdict on another's. Defaulted so a fake and a bench cache written before the field
+    #: existed still construct: EMPTY means unnamed, which a calibrated reader treats as its own (the
+    #: shipped `emissions` always names one). It is also the VOCABULARY's identity — the ids in
+    #: `dictionary` and the column order of `log_probs` are one bundle's — and so part of the cache key.
+    model: str = ""
+    #: CTC's blank column in THIS matrix. DEFAULTED TO 0 and read with `getattr` everywhere, so every
+    #: fake emission object and every bench cache entry written before this field existed still decodes
+    #: as it did (review M9's fix, kept back-compatible on purpose).
+    #:
+    #: WHY IT IS NOT ALWAYS 0. torchaudio's bundles put their blank (`-`) at 0, which is why hard-coding
+    #: it survived; 23 of whisperx's 36 HF align models do not. Measured from the review's per-model vocab
+    #: dumps: Danish `<pad>`=32 with `u` at 0, Norwegian Bokmal `[PAD]`=38 with `|` at 0, Korean
+    #: `[PAD]`=1204. On Danish the wrong blank costs word onsets within +-250 ms 90.5% -> 73.2% and takes
+    #: words more than 2 s off from 141 to 584, because the decoder charges the true blank as a letter and
+    #: the target filter silently drops every `u`. DORMANT today only because `language` is always `en`
+    #: (review M8, W7) — it is threaded now so W7 cannot detonate it.
+    blank_id: int = 0
+    #: The vocabulary's non-character entries by name -> id (`_SPECIAL_NAMES`), blank included.
+    #:
+    #: NAMING, not filtering. `blank_id` is the one this wave acts on, because it is the one a target list
+    #: may never contain and the one the frame grouping has to recognise. The others are recorded because
+    #: a single-character special IS reachable from a lyric: every HF vocabulary maps `|` to the word
+    #: separator, and `generate`'s filter — which looks up single characters — would emit it as a target
+    #: for a line that contains a pipe. Whether `|` becomes a deliberate LINE separator is review 6c's
+    #: decision (disputed, D1; deliberately not in this wave), so this field exists for that reader rather
+    #: than being acted on here. Empty means "not reported", which every fake is.
+    specials: Mapping[str, int] = field(default_factory=dict)
 
     @property
     def frames(self) -> int:
         return int(self.log_probs.shape[0]) if self.log_probs is not None else 0
+
+
+def blank_id_of(dictionary: Mapping[str, int]) -> int:
+    """CTC's blank id in `dictionary`, by whisperx's own rule (`whisperx/alignment.py:267-270`).
+
+    THE SAME RULE ON PURPOSE: whisperx's windowed `align()` finds its blank this way, so the global decode
+    and the windowed one cannot disagree about which column is blank on the same loaded model. A
+    vocabulary with neither pad name is a torchaudio bundle, whose blank is its label 0 (`-`).
+    """
+    for name in _BLANK_NAMES:
+        code = dictionary.get(name)
+        if code is not None:
+            return int(code)
+    return 0
+
+
+def specials_of(dictionary: Mapping[str, int]) -> dict[str, int]:
+    """The `_SPECIAL_NAMES` this vocabulary actually has, for `Emissions.specials`.
+
+    Plus `-` WHEN IT IS THE BLANK, which is the torchaudio bundles' case: there `-` is not a hyphen the
+    text may align on, and `generate`'s filter has always had to drop it (its docstring says so).
+    """
+    out = {name: int(code) for name in _SPECIAL_NAMES if (code := dictionary.get(name)) is not None}
+    blank = blank_id_of(dictionary)
+    if dictionary.get("-") == blank:
+        out["-"] = blank
+    return out
+
+
+def _content_key(audio_path: str) -> tuple[str, int, int] | None:
+    """(resolved path, size, mtime_ns) — what `_EMISSIONS` keys a matrix's AUDIO on, or None.
+
+    None when the file cannot be stat'ed, and the caller then computes WITHOUT caching rather than
+    raising: a missing or unreadable target must still fail where it failed before — inside
+    `load_audio_mono_16k`, as the typed `InfraFault` every caller of `emissions` is written around — and
+    not as an `OSError` from a cache key.
+    """
+    try:
+        real = os.path.realpath(audio_path)
+        stat = os.stat(real)
+    except OSError:
+        return None
+    return (real, stat.st_size, stat.st_mtime_ns)
+
+
+def _cached_emissions(key: tuple[Any, ...], build: Any) -> Emissions:
+    """`build()`'s matrix under `key`, from the bounded LRU when it is there (review M10)."""
+    hit = _EMISSIONS.get(key)
+    if hit is not None:
+        _EMISSIONS.move_to_end(key)
+        return hit
+    made: Emissions = build()
+    _EMISSIONS[key] = made
+    while len(_EMISSIONS) > _EMISSION_CACHE_SIZE:
+        _EMISSIONS.popitem(last=False)
+    return made
+
+
+@dataclass(frozen=True, slots=True)
+class _Pass:
+    """One forward pass of the emission grid: what to feed the model, and which frames to keep."""
+
+    #: First audio sample of the slice handed to the model. A multiple of the hop, so `trim` is exact.
+    offset: int
+    #: One past the last sample READ from the audio. `samples` may exceed `stop - offset`, and then the
+    #: slice is zero-padded — which is how the final sliver keeps its frame instead of being dropped.
+    stop: int
+    #: Length of the (padded) slice, so the model produces at least `trim + keep` frames.
+    samples: int
+    #: Leading frames of this pass that are CONTEXT: computed for their receptive field, then discarded.
+    trim: int
+    #: Frames after `trim` that belong to the song's grid.
+    keep: int
+
+
+def _frame_passes(total_samples: int) -> list[_Pass]:
+    """The exact 20 ms frame grid over `total_samples`, expressed as the forward passes that produce it.
+
+    PURE, AND SEPARATE FROM THE MODEL, so the grid arithmetic — the part the review found wrong twice over
+    (decode-5 / evidence-8) — is tested without torch, weights or audio. Frame `k` of the grid covers
+    samples `[k*320, k*320+400)` and is stamped at `k * FRAME_SEC`; the grid has
+    `ceil(total_samples / 320)` frames, so the FINAL SLIVER gets a frame too, zero-padded up to the 400
+    samples wav2vec2 needs to emit one at all rather than dropped (the old pass broke out of its loop on
+    anything under 0.1 s, and the frame_sec it then derived counted the dropped seconds).
+
+    Each pass stamps up to `_EMISSION_CHUNK_SEC` of grid frames and additionally computes
+    `_EMISSION_CONTEXT_SEC` of frames on each side, which are thrown away: the boundary frames get their
+    context, and the stamps stay on one global grid because every offset is a whole number of hops.
+    """
+    hop, field_ = _FRAME_HOP_SAMPLES, _FRAME_FIELD_SAMPLES
+    chunk = _EMISSION_CHUNK_SEC * _EMISSION_SAMPLE_RATE // hop
+    context = _EMISSION_CONTEXT_SEC * _EMISSION_SAMPLE_RATE // hop
+    frames = -(-max(total_samples, 0) // hop)  # ceil
+    passes: list[_Pass] = []
+    for first in range(0, frames, chunk):
+        keep = min(chunk, frames - first)
+        offset = max(0, first - context) * hop
+        trim = (first * hop - offset) // hop
+        # Read far enough right that the LAST context frame has its field too; the audio may end sooner.
+        stop = min(total_samples, (first + keep + context - 1) * hop + field_)
+        passes.append(
+            _Pass(
+                offset=offset,
+                stop=stop,
+                samples=max(stop - offset, (trim + keep - 1) * hop + field_),
+                trim=trim,
+                keep=keep,
+            )
+        )
+    return passes
 
 
 def load_audio_mono_16k(path: str) -> Any:
@@ -214,8 +444,15 @@ def load_audio_mono_16k(path: str) -> Any:
         raise _machinery_fault(f"decoding {path!r} through ffmpeg", failed) from failed
 
 
-def forced_align_decoder(log_probs: Any, targets: Sequence[int]) -> tuple[list[int], list[float]]:
+def forced_align_decoder(
+    log_probs: Any, targets: Sequence[int], blank: int = 0
+) -> tuple[list[int], list[float]]:
     """`domain.lyrics.generate`'s Decoder, over torchaudio's CTC kernel.
+
+    `blank` is the matrix's own blank column (`Emissions.blank_id`), not a constant: it used to be a
+    literal 0 here, which is review M9 — right for torchaudio's bundles and wrong for 23 of the 36 HF
+    align models whisperx tables. Defaulted so a caller that has no matrix to ask (a test, a probe) still
+    gets the kernel's own default.
 
     DEPENDENCY RISK, recorded where the import lives: `torchaudio.functional.forced_align` is deprecated
     for REMOVAL in torchaudio 2.9 (the maintenance-phase refactor, pytorch/audio#3902). This project pins
@@ -238,7 +475,7 @@ def forced_align_decoder(log_probs: Any, targets: Sequence[int]) -> tuple[list[i
         ) from gone
 
     aligned, scores = forced_align(
-        log_probs.unsqueeze(0), torch.tensor([list(targets)], dtype=torch.int32), blank=0
+        log_probs.unsqueeze(0), torch.tensor([list(targets)], dtype=torch.int32), blank=blank
     )
     return aligned[0].tolist(), scores[0].tolist()
 
@@ -331,23 +568,42 @@ class WhisperXAligner:
         model, metadata = cached
         return model, metadata
 
+    def _bundle_name(self, language: str) -> str:
+        """The bundle `_aligner` loads for `language`, for `Emissions.model` — a HOOK, not a constant.
+
+        A subclass that loads another bundle (the bench's `BenchAligner --model <hubert>`) overrides this, so
+        the name on the matrix never says one model where another produced the frames. A calibrated reader
+        trusts it: `align_steps._measured_lift` will not judge a text on bands fitted elsewhere.
+        """
+        return align_model_name(language)
+
     def emissions(self, audio_path: str, language: str) -> Emissions:
         """The full song's per-frame character log-probabilities, computed ONCE and reusable.
 
         THE EVIDENCE LAYER of alignment v2 (docs/PLAN-alignment-v2.md). `windowed align` runs the model per
         search span, so five lyrics candidates cost five model passes and every pass trusts its windows.
-        This runs the model once over the whole recording — measured at 4.0 s CPU for a 194 s song — and
-        every candidate text is then a millisecond `forced_align` decode over the same matrix.
+        This runs the model once over the whole recording — measured at 4.0 s CPU for a 194 s song, ~4.5 s
+        now that each chunk also computes its context — and every candidate text is then one
+        `forced_align` decode over the same matrix (0.1-0.8 s and 23-230 MB for the corpus's songs, review
+        evidence-6: the decode is cheap against the model pass, but it is not "a millisecond", which is
+        what this docstring and three others used to claim).
 
-        CHUNKED at 30 s windows to bound memory. wav2vec2's context is convolutional plus self-attention
-        within the window, so frames near a chunk boundary see slightly less context than interior frames —
-        accepted, because the benchmark measured no gross errors from it (0/75 lines >2 s off), and the
-        alternative (overlap + splice) doubles compute for a defect the measurement could not find.
+        AN EXACT 20 ms GRID (review 6a). Frame `k` is stamped at `k * FRAME_SEC` and covers samples
+        `[k*320, k*320+400)`; `_frame_passes` lays the whole song on that one grid and says which forward
+        pass produces which frames. Two defects went with the old arithmetic, both in `FRAME_SEC`'s
+        docstring: a derived `duration / frames` ratio (a 20 ms sawtooth within each chunk) and a dropped
+        final sliver (50-60 ms of drift on odd-length songs). Each pass also computes
+        `_EMISSION_CONTEXT_SEC` on either side and THROWS THOSE FRAMES AWAY, so a frame at a chunk boundary
+        sees the same context an interior frame does — the overlap-and-splice this used to reject as "double
+        compute for a defect the measurement could not find" costs +13% when the overlap is trimmed rather
+        than blended, and the measurement that could not find it had no chunk-boundary test
+        (`tests/test_ml_contract.py` now has one).
 
-        CACHED per (device, language, audio_path): DBOS may re-enter the workflow, and a retry that
-        recomputed 4 s of model time for the same file would pay for durability twice. The cache key is the
-        PATH, not the content — safe because scratch files are written once and never mutated in place
-        (`artifacts/local.py` stages then renames).
+        CACHED per (resolved path, size, mtime_ns, model, language, device) in a bounded LRU: DBOS may
+        re-enter the workflow, and a retry that recomputed 4 s of model time for the same file would pay
+        for durability twice. The key used to be the PATH alone, in the model dict, unevicted — review M10,
+        both halves; see `_EMISSIONS` for what each part is for. A file that cannot be stat'ed is computed
+        uncached, so its failure still comes from the ffmpeg read, as the typed `InfraFault` callers expect.
 
         ITS FAILURES ARE THE MACHINERY'S (review M7), because the pass reads the audio and a language and
         no text: a model that will not download or load, a file ffmpeg will not decode, an accelerator
@@ -356,7 +612,7 @@ class WhisperXAligner:
         whisperx names no model for, a property of the text's language rather than of this box.
         """
         with ML_LOCK:
-            key = f"emissions:{language}:{audio_path}"
+            bundle = self._bundle_name(language)
 
             def build() -> Emissions:
                 import torch  # noqa: PLC0415
@@ -364,30 +620,43 @@ class WhisperXAligner:
                 model, metadata = self._aligner(language)
                 # ffmpeg-backed and already 16 kHz — see `load_audio_mono_16k` for why not read_wav_mono.
                 mono = torch.from_numpy(load_audio_mono_16k(audio_path))
-                duration = len(mono) / _EMISSION_SAMPLE_RATE
 
                 # ON THE MODEL'S DEVICE, discovered from its own parameters rather than assumed from
                 # config: on an MPS box the align model lives on the accelerator, and a CPU input tensor
                 # fails inside the first conv with a device-mismatch RuntimeError. Found LIVE, not in the
                 # benchmark — the benchmark always ran --device cpu, where the mismatch cannot exist.
                 model_device = next(model.parameters()).device
-                window = _EMISSION_CHUNK_SEC * _EMISSION_SAMPLE_RATE
                 chunks = []
                 try:
                     with torch.inference_mode():
-                        for start in range(0, len(mono), window):
-                            piece = mono[start : start + window]
-                            # A sliver shorter than the model's receptive field raises inside wav2vec2;
-                            # a tenth of a second of audio carries no line onset worth keeping.
-                            if len(piece) < _EMISSION_SAMPLE_RATE // 10:
-                                break
+                        for plan in _frame_passes(len(mono)):
+                            piece = mono[plan.offset : plan.stop]
+                            # PADDED, NEVER DROPPED. wav2vec2 emits nothing from fewer than 400 samples, so
+                            # the old pass broke out of its loop on the final sliver and lost up to 0.1 s of
+                            # the song; zero-padding the last frame's field keeps it on the grid.
+                            if len(piece) < plan.samples:
+                                piece = torch.nn.functional.pad(piece, (0, plan.samples - len(piece)))
                             out = model(piece.unsqueeze(0).to(model_device))
                             # whisperx's torchaudio-backed models return a tuple; HF-backed ones an object
                             # with `.logits`. Both shapes exist in the wild, so both are handled.
                             logits = out[0] if isinstance(out, tuple) else out.logits
                             # Back to CPU immediately: the matrix outlives this pass in a cache, and holding
                             # ~1 MB per song on the accelerator buys nothing; forced_align runs fine on CPU.
-                            chunks.append(torch.log_softmax(logits, dim=-1)[0].cpu())
+                            got = torch.log_softmax(logits, dim=-1)[0].cpu()
+                            if len(got) < plan.trim + plan.keep:
+                                # A bundle whose stride is not 320/400. Raised rather than shortened,
+                                # because a short chunk is exactly the silent drift review 6a removed.
+                                raise ValueError(
+                                    f"{bundle} produced {len(got)} frames from {plan.samples} samples "
+                                    f"where the 320/400 grid needs {plan.trim + plan.keep}; this model's "
+                                    "frame rate is not the one `FRAME_SEC` describes"
+                                )
+                            # The context frames are DISCARDED here: they existed to give the frames we
+                            # keep their receptive field, and keeping them would double-stamp the grid.
+                            # `.clone()` rather than the slice itself, which is a VIEW that would hold its
+                            # whole 1699-frame parent alive until the `cat` below — 12% of the resident set
+                            # on English and ~115 MB on the widest vocabulary whisperx tables.
+                            chunks.append(got[plan.trim : plan.trim + plan.keep].clone())
                     matrix = torch.cat(chunks) if chunks else torch.zeros((0, 0))
                 except Exception as failed:
                     # The forward pass reads no text, so whatever it raises is the device or the model
@@ -396,12 +665,19 @@ class WhisperXAligner:
                 dictionary = dict(metadata.get("dictionary") or {})
                 return Emissions(
                     log_probs=matrix,
-                    frame_sec=(duration / matrix.shape[0]) if matrix.shape[0] else 0.0,
+                    # The MODEL's hop, not a ratio read off this matrix (see `FRAME_SEC`). An EMPTY matrix
+                    # keeps 0.0, the "no clock" `regenerate` and `_speech_mass` already guard on.
+                    frame_sec=FRAME_SEC if matrix.shape[0] else 0.0,
                     dictionary=dictionary,
+                    model=bundle,
+                    blank_id=blank_id_of(dictionary),
+                    specials=specials_of(dictionary),
                 )
 
-            emitted: Emissions = _cached(self._device, key, build)
-            return emitted
+            content = _content_key(audio_path)
+            if content is None:
+                return build()
+            return _cached_emissions((*content, bundle, language, self._device), build)
 
     def align(self, search: Sequence[Segment], audio_path: str, language: str) -> Sequence[Segment]:
         # ML_LOCK covers LOADING AND RUNNING, and both halves matter: two jobs loading multi-GB

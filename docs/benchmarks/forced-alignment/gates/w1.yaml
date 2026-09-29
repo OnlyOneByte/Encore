@@ -74,7 +74,8 @@
 #   FAILs as round 1 (wrongtext-pass-not-up 89/320, owner waiver still pending; the four m2m1-recovered
 #   SHOULDs 26 / 20 / 28 / 27 of 32). Both levels are case for case IDENTICAL to round 1 (768/768: document
 #   and onsets digests, outcome, attempt list, decisions, job trail, verdict note), so the §3.1 hand listing
-#   stands as above. The lexical-lift gate (`_LINE_SYNC_MIN_LIFT` 0.2) refused nothing: 17 texts passed the
+#   stands as above. The lexical-lift gate (0.2, W1's own `_LINE_SYNC_MIN_LIFT`, since W3 review r1 the one
+#   `lexical.BANDS.refuse_below` the global engine reads) refused nothing: 17 texts passed the
 #   sheet gate (the 16 commits + Tom_Orlando jit's unusable line doc), lift +0.36 (Avercage headers) to
 #   +3.49, the same values `scripts/lift_gate.py` reads; the 63 wrong texts that reach the rung are all
 #   refused by the sheet gate first. `wrongtext+ownclock` (no baseline, not a gate): forced mode publishes

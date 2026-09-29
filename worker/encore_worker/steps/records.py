@@ -200,9 +200,23 @@ class TimedDoc:
     #: REQUIRED, and keyword-only so it can sit LAST: a slotted record pickles its fields positionally, and
     #: inserting one mid-record would shift every later field of a checkpoint written before it.
     tier: Tier = field(kw_only=True)
+    #: Whether a WRONG-TEXT gate READ these words and did not doubt them (W3 review r1, narrowed by r2).
+    #: True is the positive claim "one measured them and they are what is sung" — never merely "none
+    #: complained": an unmeasured text is False (a sheet under `lexical.MIN_LETTERS`, a lift whose decode
+    #: raised, a matrix from a model the bands were not calibrated on, a LINE_SYNC document whose words no
+    #: gate could read), because core reads True as a claim and ranks it as one. False therefore covers three
+    #: cases: doubted (the lexical doubt band on a stem, a sub-floor lift on the mix), a pin whose lift the
+    #: gate would have refused, and unmeasured. The ASR tier is the one exemption that stays True — its words
+    #: were heard on this very audio — and its tier already sends `textConfidence` `low`.
+    #: Core is sent `vouched: false` for such a document whatever its tier or its pin, and reads it in
+    #: `isAuthoritativeText`, so a document a gate passed outranks it. The TIMING grade above cannot carry it
+    #: (core's `lyricsRank` never reads `timingConfidence`), and `textConfidence` cannot either: that field is
+    #: the text's PROVENANCE, and core reads `captions` + `low` as "Auto captions" (W3 review r2).
+    vouched: bool = field(default=True, kw_only=True)
 
     def __setstate__(self, state: Sequence[object]) -> None:
-        # A v2 checkpoint has no tier: the one its label was acquired at (`tier_of_label`).
+        # A v2 checkpoint has no tier: the one its label was acquired at (`tier_of_label`). A pre-W3-r1 one
+        # has no `vouched`: True, its default — the gate it passed is the only one those workers had.
         restore_appended(self, state, tier=lambda got: tier_of_label(str(got.get("label") or "")))
 
 
@@ -252,7 +266,10 @@ class AlignOutcome:
     #: The texts a GATE refused in this job (`Refused`: measured not to describe this audio), one per label.
     #: Core ranks every job's candidates together, and a refused attempt writes nothing, so a candidate an
     #: EARLIER job stored for the same words would stay selectable beside this job's verdict on them: the
-    #: frame withdraws those (`align_steps.superseded_candidates`, review W1 r2). Empty for a pinned job.
+    #: frame withdraws those (`align_steps.superseded_candidates`, review W1 r2). Empty for a pinned job,
+    #: and never the text this job PUBLISHED: best-so-far can keep an attempt whose retry was refused, and
+    #: "these words do not describe this audio" is not what the job concluded about words it published
+    #: (`workflows.align`, the Commit branch).
     refused: tuple[TextRef, ...] = ()
 
     def __setstate__(self, state: Sequence[object]) -> None:

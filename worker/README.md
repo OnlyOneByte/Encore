@@ -128,9 +128,9 @@ f04a2d0e with the old worker's `pinned.py`). Each is read by one pure function i
 
 | Param | Honoured as |
 | --- | --- |
-| `pinnedText` + `pinnedRef` | A **paste**: the only text, untimed, decoded blind through the global path. It is never judged a wrong text: a person chose it (the old worker never graded a pin), so one a wrong-text gate (the lexical lift, or the envelope gate) would refuse publishes with every line graded `low` (`pin-unvouched` on the trail). The accepted document is published under the pinned ref, which for a paste is the manual key `derived/lyrics/{id}-manual-word.json` (`keys.manual_lyrics_key`, core's `manualLyricsRef`) |
+| `pinnedText` + `pinnedRef` | A **paste**: the only text, untimed, decoded blind through the global path. It is never judged a wrong text: a person chose it (the old worker never graded a pin), so one a wrong-text gate (the lexical lift, or the envelope gate) would refuse publishes with every line graded `low` (`pin-unvouched` on the trail) and is reported to core with `vouched: false` beside a pin's usual `textConfidence: high` — a person choosing the words is not a measurement that the audio sings them, and `textConfidence` answers a different question (where the text came from; W3 review r2). The accepted document is published under the pinned ref, which for a paste is the manual key `derived/lyrics/{id}-manual-word.json` (`keys.manual_lyrics_key`, core's `manualLyricsRef`) |
 | `pinnedRef` alone | A **re-pick**: the stored candidate's words, re-timed blind (its stale timings are not read), written back under the same ref with its label (so its `textSource` and tier) intact. The WHOLE text: a document whose decode dropped lines records them (`sourceLines`), and the re-pick reads that |
-| `syncMode` | `lines` publishes no word timing: each text's only attempt is its own line timings through the gated LINE_SYNC rung, which reads one emission matrix of the stem twice — a lexical check (are these the words sung?) and the text's own blind decode (are its lines claimed where they are sung? ≥ 50% within 1 s, W3; the sheet-span envelope gate only where the decode cannot be read); untimed texts are skipped; a transcript line-syncs on its segments. A pin is always aligned, and so is a song with NO vocals stem: the rung's sheet gate cannot tell a right text from a wrong one on the mix (39/416 right, 3/320 wrong: `sheet_gate.py --target mix`), so it gets forced alignment's own gate; the completion facts report what ran |
+| `syncMode` | `lines` publishes no word timing: each text's only attempt is its own line timings through the gated LINE_SYNC rung, which reads one emission matrix of the stem twice — a lexical check (are these the words sung?) and the text's own blind decode (are its lines claimed where they are sung? ≥ 50% of the decoded lines within 1 s, W3, and at least half the sheet's claimed lines must have decoded before that share may speak for it; the sheet-span envelope gate wherever the decode cannot be read, and then the document publishes unvouched — nothing read its words); untimed texts are skipped; a transcript line-syncs on its segments. A pin is always aligned, and so is a song with NO vocals stem: the rung's sheet gate cannot tell a right text from a wrong one on the mix (39/416 right, 3/320 wrong: `sheet_gate.py --target mix`), so it gets forced alignment's own gate; the completion facts report what ran |
 | `asrModel` | The whisper checkpoint the ASR fallback loads (one of `host.config.ASR_MODELS`, else the worker's default, on the trail) |
 
 **A pinned job never falls back.** Its attempts are written to job scratch, only the accepted one is placed
@@ -206,23 +206,40 @@ and lyric files: 2.6% changed, 14 decoration-only lines dropped, 158 multilingua
 
 The `Time` step's default path, an inversion of the old one: **timings are evidence, never instructions.**
 Instead of handing a text's timings to whisperx as its search windows, the worker computes the full
-song's wav2vec2 emission matrix once (~4 s CPU, cached) and force-aligns the text globally — no windows,
-no trust. Incoming timings are then *reconciled* against ours (`domain/lyrics/reconcile.py`): agreement
-raises per-line confidence, disagreement is diagnosed (`offset` / `drift` / `structural` / `unrelated`)
-and recorded on the trail, and an `unrelated` verdict is arbitrated by asking the audio which series
-matches actual singing. The decode is char-level, so each word also carries **syllable spans** — the
+song's wav2vec2 emission matrix once (~4.5 s CPU, cached) and force-aligns the text globally — no windows,
+no trust. The matrix lies on an **exact 20 ms frame grid**: 320 samples a frame, 2 s of context computed
+either side of each 30 s chunk and then discarded so a boundary frame keeps its receptive field, and the
+final sliver padded rather than dropped (review 6a — the old derived `duration / frames` clock stamped words
+up to 20 ms late inside each chunk and drifted odd-length songs 50-60 ms late after 2:30; Jamendo word
+onsets within ±100 ms 78.7% → 80.0%). It is cached under the audio's CONTENT (path, size, mtime) in a small
+LRU, because a stems upgrade republishes the same vocals key.
+
+Incoming timings are first **put on our clock, once** (`domain/lyrics/claimmap.py`): a sheet cut
+for another master is late or slow as a whole, and every repair window and every adoptable span used to be
+read in the sheet's own clock, so claims 1.5 s late published every line 1.5 s late. A RANSAC-style vote over
+candidates the step already has — no shift, the claims' own lag measured on the audio's vocal activity,
+median(ours − claimed), and a bounded Theil–Sen tempo (|scale − 1| ≤ 5%) — maps them only when it explains
+at least `max(2 lines, 5%)` more lines than leaving them alone AND at least a fifth of the paired lines
+outright, so "the best of four poor candidates" cannot move a sheet a human timed correctly; the raw claims
+stay for the trail, since the offset is a fact about the SHEET. Then they are *reconciled* against ours
+(`domain/lyrics/reconcile.py`): agreement raises per-line confidence, disagreement is diagnosed (`offset` /
+`drift` / `structural` / `unrelated`) and recorded on the trail, and an `unrelated` verdict is arbitrated by
+asking the audio which series matches actual singing. Three or four pairs that disagree are `too-few-pairs`
+instead — the same residual pattern with none of the evidence, and `unrelated` is the verdict that ARMS the
+widest repair, so a sheet that thin confers nothing and triggers nothing. The decode is char-level, so each word also carries **syllable spans** — the
 sung durations a karaoke ball needs — grouped by a CMUdict→pyphen→naive syllabifier
 (`domain/lyrics/syllabify.py`).
 
 ```mermaid
 flowchart TD
     A[audio] --> E["emissions E (once, cached)<br/>+ activity envelope A"]
-    T[text only — claimed timings NOT passed] --> G[global CTC decode<br/>lines / words / syllables + per-line scores]
-    E --> G
-    G --> LEX{"lexical lift: the text vs 3 shuffles of its words<br/>(skipped: ASR tier, under 40 letters)"}
-    LEX -- "below the floor (stem 0.2, mix 0.15)" --> FAIL
-    LEX -- "doubt band: every line low" --> R
-    LEX -- ok --> R[reconcile vs claimed timings]
+    T[text only — claimed timings NOT passed] --> LEX
+    E --> LEX{"lexical lift: the text vs 3 shuffles of its words<br/>(FIRST, on E alone: before the decode, the ffmpeg read and the envelope;<br/>skipped: ASR tier, under 40 letters, another model's matrix)"}
+    LEX -- "below the stem floor 0.2" --> FAIL
+    LEX -- "doubt band, or below the mix floor 0.15:<br/>every line low; words unvouched on a stem,<br/>and on the mix only below the floor" --> G
+    LEX -- ok --> G[global CTC decode<br/>lines / words / syllables + per-line scores]
+    G --> CLK{"claim clock: vote over<br/>no shift / the claims' envelope lag / median(ours − claimed) /<br/>bounded tempo — applied only if it explains<br/>max(2 lines, 5%) more than no shift, and ≥ 20% of the pairs"}
+    CLK --> R[reconcile vs claimed timings]
     R -- "unrelated & claims fit the audio better" --> R1["R1: re-decode every claimed line<br/>inside its claim window"]
     R -- "structural: disputed lines" --> R2["R2: re-decode disputed lines<br/>inside their claim windows"]
     R -- "blind repeats, no claim anchor" --> R3["R3: re-decode repeats jointly<br/>between unique-line anchors"]
@@ -231,13 +248,15 @@ flowchart TD
     R3 --> GATE
     R -- no repair needed --> GATE
     GATE -- refuse --> FAIL[attempt fails → verify ladder:<br/>next knob / next text / ASR tier]
-    GATE -- pass --> P[grade per line → publish word+syllable timing]
+    GATE -- pass --> ENDS["grade per line → hold each word's END<br/>through the singing (display post-pass, A again:<br/>capped at the next word's onset and +3 s; starts never move)"]
+    ENDS --> P[publish word+syllable timing]
 ```
 
 **Disagreements are repaired in place, never escalated to a different engine.** Every repair is a
 re-decode of the SAME emission matrix inside a window some other evidence vouches for — a claim span, or
-the gap between two trusted unique lines — so a repair costs milliseconds, keeps syllable spans, and a
-failed repair keeps the original timing (`domain/lyrics/generate.regenerate`). A repaired line whose
+the gap between two trusted unique lines — so a repair is a Viterbi over a slice already in hand rather
+than another model pass, keeps syllable spans, and a failed repair keeps the original timing
+(`domain/lyrics/generate.regenerate`). A repaired line whose
 window decode HEARD NOTHING (stuck at the window edge, or scoring far below the song's median) instead
 **adopts the claim's own timing** at `low` confidence — measured on tfr-chosen's chopped-vocal outro,
 where no decode can recognise words the captions time correctly. Every refusal lands a `job:state` trail
@@ -246,6 +265,17 @@ Measured (claims present, vs authored captions): **0 gross errors on all three b
 on tfr-chosen), flyaway 96.0% / mayday 94.2% of lines within ±250 ms after bias correction, ≥98% within
 ±500 ms raw. R3 (blind-repeat anchored re-decode) measured a no-op on real audio — kept as a cheap
 guard; the real blind-repeat fix is future occurrence assignment.
+
+**Word ends are a DISPLAY problem, and they are fixed last** (`domain/lyrics/ends.py`). CTC is peaky — 90.9%
+of 21,921 char spans are one frame — so the decode's ends are the model's last confident frame and run
+early, while the television lights a word for exactly `start ≤ pos < end`. Each end is therefore walked
+forward while the vocal-activity envelope still says singing, capped at the next word's own onset, at +3 s
+and at the audio's end; **starts never move**, which is what separates it from the energy-snap this project
+measured and rejected. It runs as a post-pass after the gate, the repairs and the never-sung rule, because
+those read a line's SPAN: extending ends any earlier would raise every line's envelope overlap and lower its
+char rate, loosening two gates while looking like an accuracy win. Measured on 3 Jamendo songs: phrase-final
+word ends within ±100 ms 34.5% → 50.9%, their bias −115 → −16 ms, and the correct word lit for 66.2% → 79.1%
+of sung time, with every onset metric and the bench's onset digest unchanged.
 
 Measured on `tfr-flyaway` against authored-caption truth: an UNTIMED sheet goes from **1.3% → 70.7%** of
 lines within ±250 ms (the windowed path's spread-over floor is gone), and a deliberately offset LRC is
@@ -423,7 +453,7 @@ preserve.
 | Layer | Built | Notes |
 | --- | --- | --- |
 | `protocol/` | ✅ | 15 frames as frozen dataclasses, including the new `job:state`, `job:claim`, `job:revoked` |
-| `domain/lyrics/` | ✅ | `report`, `policy`, `search`, `measure`, `place` — every retry decision, pure |
+| `domain/lyrics/` | ✅ | `report`, `policy`, `search`, `measure`, `place`, `claimmap`, `ends` — every retry decision, the claim clock and the word-end post-pass, pure |
 | `steps/` | ✅ | `align_steps`, `separate_steps`, records, the `AlignSteps`/`SeparateSteps` Protocols |
 | `workflows/` | ✅ | `align` (the state machine), `stems` (deliberately linear), `dbos_align` wrapper |
 | `transport/` | ✅ | websocket client, reconnect with jittered backoff, the two-point ownership guard |

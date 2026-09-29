@@ -130,6 +130,15 @@ test('a real human caption track is not labelled', () => {
 	expect(isAutoTranscribed(prov({ textSource: 'captions', textConfidence: 'high' }))).toBe(false);
 });
 
+// The worker's wrong-text gate rides on `vouched`, not on `textConfidence` (W3 review r2), so the overlay's
+// "not verified" treatment has to read it: the same hand-authored track, doubted, still says "Captions" but
+// must not render as verified.
+test('a caption track no wrong-text gate vouched for IS labelled, and keeps its provenance', () => {
+	const doubted = prov({ textSource: 'captions', textConfidence: 'high', vouched: false });
+	expect(isAutoTranscribed(doubted)).toBe(true);
+	expect(provenanceLabel(doubted)).toBe(provenanceLabel(prov({ textSource: 'captions' })));
+});
+
 test('UNKNOWN provenance says nothing — never claims verified OR guessed', () => {
 	expect(isAutoTranscribed(null)).toBe(false);
 });

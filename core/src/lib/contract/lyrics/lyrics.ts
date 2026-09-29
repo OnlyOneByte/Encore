@@ -18,6 +18,15 @@ export interface LyricsCandidate {
 	 *  what stops them ranking as authoritative. (Review M3: the v2 worker sent its TIMING grade here, so a
 	 *  well-timed machine caption ranked authoritative and every line-synced sheet ranked as a guess.) */
 	textConfidence: LyricsConfidence;
+	/** `false` = a WRONG-TEXT gate on the worker measured these words against the audio and did not vouch for
+	 *  them — the lexical doubt band, a pin the gate would have refused, or a text no such gate could read
+	 *  (`TimedDoc.vouched`; docs/SERVER.md#lyrics-candidates-and-grading). A SECOND axis, not a confidence:
+	 *  `textConfidence` says where the words CAME FROM, and overloading it made an uploader's hand-authored
+	 *  caption track that the gate doubted read as `low` — which `lyricsSourceLabel` reports as "Auto
+	 *  captions", a false statement about its provenance rather than about its words (W3 review r2). Absent
+	 *  (older workers, stored rows, withdrawn documents whose gate never ran here) = vouched: nothing can
+	 *  infer this one, and a document no gate examined must not lose the standing its tier gives it. */
+	vouched?: boolean;
 	/** Confidence in the TIMINGS (an aligner can return word timings it isn't sure of). */
 	timingConfidence?: LyricsConfidence;
 	/** `false` = the worker's OWN ladder rejected this attempt: it retried it, moved past it, or the job published
@@ -48,9 +57,10 @@ export function lyricsSourceLabel(c: Pick<LyricsCandidate, 'textSource' | 'textC
 }
 
 /** ASR never is; anything else is unless its confidence is `low`, which demotes an auto-caption track to
- *  ASR's standing. */
-export function isAuthoritativeText(c: Pick<LyricsCandidate, 'textSource' | 'textConfidence'>): boolean {
-	return c.textSource !== 'asr' && c.textConfidence !== 'low';
+ *  ASR's standing — or unless a wrong-text gate declined to vouch for the words (`vouched: false`), which
+ *  says nothing about where they came from and everything about whether they are sung here. */
+export function isAuthoritativeText(c: Pick<LyricsCandidate, 'textSource' | 'textConfidence' | 'vouched'>): boolean {
+	return c.vouched !== false && c.textSource !== 'asr' && c.textConfidence !== 'low';
 }
 
 /** Does this candidate carry timings good enough to sync anything at all? */
@@ -128,6 +138,9 @@ function parseLyricsCandidate(raw: unknown): LyricsCandidate | null {
 	};
 	const timingConfidence = oneOf(r.timingConfidence, CONFIDENCES);
 	if (timingConfidence) out.timingConfidence = timingConfidence;
+	// PRESENT BUT UNREADABLE IS `false`, absent is vouched: the key is only ever sent by a worker that ran a
+	// wrong-text gate, so a value this core cannot read is a claim it must not take on trust.
+	if ('vouched' in r) out.vouched = r.vouched === true;
 	if (typeof r.selectable === 'boolean') out.selectable = r.selectable;
 	if (typeof r.language === 'string' || r.language === null) out.language = r.language;
 	const agreement = finite(r.agreement);
@@ -142,7 +155,8 @@ function parseLyricsCandidate(raw: unknown): LyricsCandidate | null {
  * read. Old shapes parse (every field added since is optional), unknown FIELDS are dropped, and a value this core
  * cannot read FAILS SAFE rather than dropping the candidate, because its `ref` is still a file retention must be
  * able to name: an unknown source reads as `asr` and an unknown confidence as `low` (never authoritative), an
- * unknown timing as `none` (never shown). Only an entry with no `ref` is dropped: there is nothing to name.
+ * unknown timing as `none` (never shown), an unreadable `vouched` as not vouched. Only an entry with no `ref` is
+ * dropped: there is nothing to name.
  */
 export function parseLyricsCandidates(raw: unknown): LyricsCandidate[] {
 	if (!Array.isArray(raw)) return [];

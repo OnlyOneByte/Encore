@@ -170,3 +170,65 @@ def test_the_evidence_travels_with_the_verdict() -> None:
     fit = activity.fit_sheet_to_audio(sung(PHRASES), RATE, shifted(PHRASES, 0.5))
     assert 0.0 <= fit.correlation <= 1.0
     assert fit.correlation >= activity.MIN_CORRELATION
+
+
+# ── bounded-lag correlation (review L6) ──────────────────────────────────────────────────────────
+
+
+def full_window(a: np.ndarray, b: np.ndarray, reach: int) -> tuple[np.ndarray, int]:
+    """The pre-W4 arithmetic: the whole `N + M - 1` correlation, then the +-`reach` slice of it."""
+    correlation = np.correlate(a, b, mode="full")
+    centre = len(b) - 1
+    lo, hi = max(0, centre - reach), min(len(correlation), centre + reach + 1)
+    return correlation[lo:hi], lo - centre
+
+
+def test_the_bounded_correlation_returns_the_same_lags_the_full_one_did() -> None:
+    """The +-400-lag window used to cost a whole `N x M` correlation (7.65 s on a 60-minute envelope on this
+    box; the review measured 9.1 s). This computes only the lags that are read.
+
+    A WORK REDUCTION, NOT AN APPROXIMATION: the same window, the same first lag, and values that agree to
+    the last bits a longer dot product's blocking can move (worst 1.4e-14 here). What must not move is the
+    ARGMAX, an integer, which is checked below and over the whole corpus in `_runs/w4-clock/corr_identity.py`
+    (256 fits, 0 changes).
+    """
+    rng = np.random.default_rng(11)
+    for trial in range(120):
+        n, m = int(rng.integers(1, 400)), int(rng.integers(1, 400))
+        a, b = rng.normal(size=n), rng.normal(size=m)
+        reach = int(rng.integers(1, 120))
+        want, want_first = full_window(a, b, reach)
+        got, got_first = activity._bounded_correlation(a, b, reach)
+        assert (len(got), got_first) == (len(want), want_first), f"trial {trial}: window moved"
+        assert np.allclose(got, want, rtol=0.0, atol=1e-12), f"trial {trial}: values moved"
+        if len(want):
+            assert int(np.argmax(got)) == int(np.argmax(want)), f"trial {trial}: the chosen lag moved"
+
+
+def test_the_chosen_lag_is_the_full_correlations_lag_on_envelope_shaped_inputs() -> None:
+    """The shapes the fit really sees: a clipped RMS envelope against a 0/1 sheet envelope, at every
+    perturbation the claim clock searches over."""
+    actual = activity.envelope(sung(PHRASES), RATE)
+    for offset in (0.0, 0.1, -0.5, 1.0, 3.0, -2.5):
+        expected = activity.expected_envelope(shifted(PHRASES, offset), len(actual))
+        a = actual - actual.mean()
+        b = expected - expected.mean()
+        reach = max(1, int(activity.MAX_SHIFT_SEC / activity.HOP_SEC))
+        want, first = full_window(a, b, reach)
+        assert int(np.argmax(want)) + first == round(
+            activity.fit_shift(actual, expected).seconds / activity.HOP_SEC
+        ), f"offset {offset}"
+
+
+def test_a_reach_wider_than_the_envelope_behaves_as_it_did_before_it_was_bounded() -> None:
+    """`max_shift` is 8 s, so a short envelope asks for lags that have no overlap at all. Those lags are
+    absent from the full correlation too; returning a padded partial sum for them would let one appear as
+    the peak."""
+    short = np.array([0.0, 1.0, 1.0, 0.0, 0.0])
+    sheet = np.array([0.0, 0.0, 1.0, 1.0, 0.0])
+    reach = 400
+    want, want_first = full_window(short - short.mean(), sheet - sheet.mean(), reach)
+    got, got_first = activity._bounded_correlation(short - short.mean(), sheet - sheet.mean(), reach)
+    assert (len(got), got_first) == (len(want), want_first) == (9, -4)
+    assert np.allclose(got, want)
+    assert activity.fit_shift(short, sheet).seconds == pytest.approx(-1 * activity.HOP_SEC)

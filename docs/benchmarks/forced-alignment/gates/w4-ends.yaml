@@ -1,0 +1,48 @@
+# W4 reject-if for the WORD-END post-pass (PLAN-alignment-v3 W4, review §3 item 5;
+# `worker/encore_worker/domain/lyrics/ends.py`). Ends are held through the singing just before `as_doc()`,
+# so the pair to measure is the SAME code with the control arm on and off — not two levels, and not this
+# wave's clock row:
+#
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=ends-raw .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py --level time_text --modes blind --songs jamendo \
+#       --tag w4-ends-raw
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes blind --songs jamendo \
+#       --compare $ENCORE_BENCH_ROOT/_runs/w4-ends-raw \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4-ends.yaml
+#   (offline: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
+#
+# WHY `--level time_text` AND NOT `generate`. The post-pass is a step, and `--level generate` is the raw
+# global decode ALONE by definition (its driver's docstring), so the ends there are raw whatever ships. The
+# clock section's `generate` column (word end ±100 68.7, phrase-final ±100 36.3, highlight 66.0) is the right
+# baseline for 6a and the wrong one for this: a `time_text` document has been through the never-sung drop and
+# the repairs. The control arm is what makes the two columns the same population.
+#
+# WHY THE ARM RUN COSTS EXTRA. `align_config` is part of the emission cache key on purpose
+# (`e2e.emitter_fingerprint`), so the control run recomputes each song's matrices: one extra model pass per
+# song, not per case.
+#
+# ONE MODE. `blind` is the cheapest honest population — no claims, so no repair ladder differences, and the
+# Jamendo word truth (onsets AND offsets) is what every metric here reads. On a `--modes all` sweep the same
+# five conditions hold with `truth.` / `jit.` / … prefixes; they are NOT written here, because a gate for a
+# mode the run did not measure is an ERROR rather than a pass.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
+#
+# MEASURED 2026-09-29 on THREE Jamendo songs only (HILA, Color_Out, Wordsmith; `_runs/w4-ends-held` against
+# `_runs/w4-ends-raw`), which is the item owner's sanity slice and NOT the corpus run this file is for:
+# 6/6 PASS (5 + the built-in) — highlight 66.2 -> 79.1 (+12.9), phrase-final end ±100 34.5 -> 50.9 (+16.4),
+# 0 onset digests changed, word ±300 94.06 flat, and ONE of the three songs worse at word-end ±100 against
+# the 3-of-20 the review allows: Color_Out 56.8 -> 54.1 on its own ends, while its phrase-final ±100 goes
+# 19.4 -> 38.7. That is the shape to watch on the corpus — interior ends and phrase-final ends can move in
+# opposite directions on one song, and only the second is independently measured (§3.5: 80% of Jamendo's
+# interior truth ends are recorded as the next word's start). The control's own rows FAIL the first two gates
+# by construction (a run compared against itself reads +0.0), which is this file's non-vacuity check.
+# `ends-tile` on the same slice PASSES too (highlight 80.6, phrase-final ±100 50.9) and loses 4.0 pts of
+# POOLED word-end ±100, worse on all three songs — which this file's 3-of-20 form would not catch on a
+# 20-song run, so read the arm's numbers rather than its gate result.
+highlight-up-at-least-5: blind.jamendo.highlight >= base.blind.jamendo.highlight + 5.0
+final-end-pm100-up-at-least-10: blind.jamendo.final_end_pm100 >= base.blind.jamendo.final_end_pm100 + 10.0
+end-pm100-worse-on-at-most-3-songs: count(blind.song.end_pm100_down) <= 3
+onsets-unchanged: count(blind.song.onsets_changed * (base.blind.song.refused == 0) * (blind.song.refused == 0)) == 0
+word-pm300-not-down: blind.jamendo.word_pm300 >= base.blind.jamendo.word_pm300
