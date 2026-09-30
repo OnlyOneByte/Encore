@@ -246,12 +246,31 @@ _EMISSION_CONTEXT_SEC = 2
 #:   so every song a resident worker ever aligned stayed in memory for the life of the process.
 _EMISSIONS: OrderedDict[tuple[Any, ...], Emissions] = OrderedDict()
 
-#: How many matrices to keep. One align job reads at most two (the stem it aligns on and the MIX witness
-#: R4 decodes), so four holds this job's and the previous one's — which is all the cache is FOR: a DBOS
-#: re-entry must not pay 4 s of model time again for durability's sake. Bounding the resident set matters
-#: because the matrices are not small at every vocabulary: ~1 MB for a 3-minute English song (9.7k x 29
-#: float32) but ~47 MB on the widest bundle whisperx tables (Korean, 1204 tokens).
-_EMISSION_CACHE_SIZE = 4
+#: Matrices ONE align job can be reading at once: the target it aligns on, and the MIX witness R4 decodes.
+_MATRICES_PER_JOB = 2
+
+
+def _emission_cache_size(jobs: int) -> int:
+    """How many matrices to keep on a box running `jobs` at a time (`Config.concurrency`).
+
+    DERIVED FROM THE CONFIGURED CONCURRENCY, not a flat four (W4 review r1). The bound is the live set plus
+    one job's worth of history, which is all the cache is FOR: a DBOS re-entry must not pay ~4.5 s of model
+    time again for durability's sake. At the default concurrency of 1 that is exactly the four this started
+    as — this job's two and the previous job's — but `ENCORE_WORKER_CONCURRENCY` is operator-settable and
+    `transport.client` really does run that many jobs (`ML_LOCK` serialises the model, never the
+    interleaving of steps), so on a 3-job box the six LIVE matrices used to evict each other and every
+    attempt after the first re-paid the forward pass: the exact cost the cache exists to remove, and a
+    regression against the unbounded dict it replaced.
+
+    Bounding the resident set still matters, and it is what stops this being `jobs * 10`: the matrices are
+    ~1 MB for a 3-minute English song (9.7k x 29 float32) but ~47 MB on the widest bundle whisperx tables
+    (Korean, 1204 tokens), so a 3-job box holds up to ~376 MB of them at that vocabulary.
+    """
+    return _MATRICES_PER_JOB * (max(1, jobs) + 1)
+
+
+#: The default bound: one job at a time (`Config.concurrency`), so four — see `_emission_cache_size`.
+_EMISSION_CACHE_SIZE = _emission_cache_size(1)
 
 #: The names a wav2vec2 vocabulary gives CTC's BLANK, lowercased as whisperx lowercases its dictionary
 #: (`whisperx/alignment.py:98,110`). `[pad]`/`<pad>` are the HF checkpoints' and are what whisperx's own
@@ -357,15 +376,20 @@ def _content_key(audio_path: str) -> tuple[str, int, int] | None:
     return (real, stat.st_size, stat.st_mtime_ns)
 
 
-def _cached_emissions(key: tuple[Any, ...], build: Any) -> Emissions:
-    """`build()`'s matrix under `key`, from the bounded LRU when it is there (review M10)."""
+def _cached_emissions(key: tuple[Any, ...], build: Any, keep: int = _EMISSION_CACHE_SIZE) -> Emissions:
+    """`build()`'s matrix under `key`, from the bounded LRU when it is there (review M10).
+
+    `keep` is the caller's bound (`_emission_cache_size` of its configured concurrency), defaulted for a
+    caller with no config to read: the cache is module-global because the WEIGHTS are, so the bound cannot
+    live on it.
+    """
     hit = _EMISSIONS.get(key)
     if hit is not None:
         _EMISSIONS.move_to_end(key)
         return hit
     made: Emissions = build()
     _EMISSIONS[key] = made
-    while len(_EMISSIONS) > _EMISSION_CACHE_SIZE:
+    while len(_EMISSIONS) > max(1, keep):
         _EMISSIONS.popitem(last=False)
     return made
 
@@ -539,8 +563,13 @@ class WhisperXAligner:
     level forced alignment against a reference text has no equivalent outside this stack.
     """
 
-    def __init__(self, *, device: str = "cpu") -> None:
+    def __init__(self, *, device: str = "cpu", jobs: int = 1) -> None:
         self._device = device
+        #: The emission LRU's bound, from the box's configured concurrency (`_emission_cache_size`): a
+        #: multi-job box holds every live matrix, a one-job box the four it always did. Read here rather
+        #: than in the cache because `Config` belongs to the host, and the cache to the module the weights
+        #: live in.
+        self._matrices = _emission_cache_size(jobs)
 
     def _aligner(self, language: str) -> tuple[Any, Any]:
         def build() -> tuple[Any, Any]:
@@ -643,12 +672,20 @@ class WhisperXAligner:
                             # Back to CPU immediately: the matrix outlives this pass in a cache, and holding
                             # ~1 MB per song on the accelerator buys nothing; forced_align runs fine on CPU.
                             got = torch.log_softmax(logits, dim=-1)[0].cpu()
-                            if len(got) < plan.trim + plan.keep:
-                                # A bundle whose stride is not 320/400. Raised rather than shortened,
-                                # because a short chunk is exactly the silent drift review 6a removed.
+                            # EQUALITY, NOT A MINIMUM (W4 review r1). A bundle whose stride is not 320/400
+                            # is a silent clock error either way round, and the one-sided test only caught
+                            # the coarse half: a 10 ms-hop model emits MORE frames than this slice implies,
+                            # so `got[trim : trim + keep]` would pass the guard while taking frames that do
+                            # not sit at the grid positions they are about to be stamped at — a 90 s song's
+                            # first pass covering 15 s of audio in a matrix claiming 30, with `frame_sec`
+                            # still 0.02 and every downstream time (`_char_spans`, `_speech_mass`,
+                            # `regenerate`'s window, `claim_run`'s floor) out by a factor of two. Exactly
+                            # the silent drift review 6a removed, so it is raised rather than absorbed.
+                            expected = (plan.samples - _FRAME_FIELD_SAMPLES) // _FRAME_HOP_SAMPLES + 1
+                            if len(got) != expected:
                                 raise ValueError(
                                     f"{bundle} produced {len(got)} frames from {plan.samples} samples "
-                                    f"where the 320/400 grid needs {plan.trim + plan.keep}; this model's "
+                                    f"where the 320/400 grid needs exactly {expected}; this model's "
                                     "frame rate is not the one `FRAME_SEC` describes"
                                 )
                             # The context frames are DISCARDED here: they existed to give the frames we
@@ -677,7 +714,7 @@ class WhisperXAligner:
             content = _content_key(audio_path)
             if content is None:
                 return build()
-            return _cached_emissions((*content, bundle, language, self._device), build)
+            return _cached_emissions((*content, bundle, language, self._device), build, self._matrices)
 
     def align(self, search: Sequence[Segment], audio_path: str, language: str) -> Sequence[Segment]:
         # ML_LOCK covers LOADING AND RUNNING, and both halves matter: two jobs loading multi-GB
@@ -802,12 +839,17 @@ def build_transcriber(*, device: str, checkpoint: str) -> WhisperTranscriber | N
     return WhisperTranscriber(device=device, checkpoint=checkpoint)
 
 
-def build_aligner(*, device: str) -> WhisperXAligner | None:
+def build_aligner(*, device: str, jobs: int = 1) -> WhisperXAligner | None:
+    """The aligner, or None on a box with no whisperx.
+
+    `jobs` is `Config.concurrency`: it sizes the emission LRU, because the matrices a box holds live are
+    per JOB and not per process (`_emission_cache_size`).
+    """
     from encore_worker.host.hardware import module_available
 
     if not module_available("whisperx"):
         return None
-    return WhisperXAligner(device=device)
+    return WhisperXAligner(device=device, jobs=jobs)
 
 
 def build_diarizer(*, device: str) -> PyannoteDiarizer | None:

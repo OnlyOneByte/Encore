@@ -273,9 +273,15 @@ forward while the vocal-activity envelope still says singing, capped at the next
 and at the audio's end; **starts never move**, which is what separates it from the energy-snap this project
 measured and rejected. It runs as a post-pass after the gate, the repairs and the never-sung rule, because
 those read a line's SPAN: extending ends any earlier would raise every line's envelope overlap and lower its
-char rate, loosening two gates while looking like an accuracy win. Measured on 3 Jamendo songs: phrase-final
-word ends within ±100 ms 34.5% → 50.9%, their bias −115 → −16 ms, and the correct word lit for 66.2% → 79.1%
-of sung time, with every onset metric and the bench's onset digest unchanged.
+char rate, loosening two gates while looking like an accuracy win. It runs **on a vocals stem only**: the
+activity level it walks through is a fraction of the target's own loud level, which separates singing from
+silence on a stem and almost nothing on a full mix (92–98% of a corpus mix's frames clear it, against
+59–77% of the same songs' stems), so a stemless song and the `ALIGN_ON_MIX` retry keep the raw decode's ends
+until a mix-calibrated level is fitted. Measured over the 20-song Jamendo corpus, truth claims
+(`results/w4-time_text.json` against `results/w4-endsoff-time_text.json`): phrase-final word ends within
+±100 ms 37.5% → 59.8%, their bias −114 → −5.8 ms, all word ends within ±100 ms 69.1% → 80.0%, and the correct
+word lit for 65.8% → 77.1% of sung time — with every onset metric equal to the digit and all 20 songs' onset
+digests byte-identical.
 
 Measured on `tfr-flyaway` against authored-caption truth: an UNTIMED sheet goes from **1.3% → 70.7%** of
 lines within ±250 ms (the windowed path's spread-over floor is gone), and a deliberately offset LRC is

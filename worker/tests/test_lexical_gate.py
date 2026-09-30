@@ -8,8 +8,8 @@ SEPARATELY, so a test can make the two gates disagree:
     scores our own forced decode, pulled onto the voiced frames whatever the words — passes them (H3);
   * on a stem the lift REPLACES the envelope gate wherever it measured the text: a right text the envelope
     refuses publishes;
-  * on the mix (no stem) the envelope gate is the only VERDICT: a sub-floor lift is published as the doubt
-    band, and only `h3-mix-floor` / `h3-mix-lift-alone` make it a refusal (W3 review r1);
+  * on the mix (no stem) the same rule holds since W4 review r1 — the floor refuses and the envelope fit is
+    reported — with `h3-mix-envelope` (W3's default) and `h3-mix-floor` as the two controls;
   * the doubt band publishes every line `low`, the document `medium` and the words UNVOUCHED
     (`TimedDoc.vouched` -> core's `textConfidence` low), and so does a pin the gate would have refused;
   * a cognate translation is NOT caught, and on this path publishes a word document with `high` lines;
@@ -267,54 +267,84 @@ def test_a_right_text_the_envelope_gate_refuses_publishes_on_a_stem(
     assert not any(note[3] == "declined" for note in run.notes)
 
 
-# ── the mix: the envelope gate stays beside the floor ─────────────────────────────────────────────────
+# ── the mix: the lift's floor is the verdict, the envelope gate is a control ───────────────────────────
 
 
-def test_on_the_mix_the_envelope_gate_still_refuses_beside_the_lift(
+def test_on_the_mix_the_lift_replaces_the_envelope_gate_by_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """W4 review r1's flip, in one case: a text the envelope gate refuses and the lift vouches for PUBLISHES
+    on the mix, exactly as on a stem.
+
+    The flip is the stemless bench mode's (`e2e.py --no-stem`, 32 songs x 4 claim modes + 2 wrong donors):
+    the envelope gate refuses 51 of the 128 right-text cases where the floor refuses 37, and admits 26 of 64
+    wrong texts where the floor admits 0. Nine of its refusals lift above the floor — Tom_Orlando +1.465
+    (72/72 line starts within ±500 ms once published), Rxbyn +1.081, Ridgway +1.061 — and this is that shape.
+    """
     run = attempt(tmp_path, monkeypatch, stem=False, envelope_hears=False)
-    assert isinstance(run.got, Refused), run.got
-    assert run.got.report.refused is not None and run.got.report.refused.startswith("envelope gate refused")
-
-
-def test_the_mix_lift_alone_arm_drops_the_envelope_gate_there(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    run = attempt(
-        tmp_path, monkeypatch, stem=False, envelope_hears=False, experiments=frozenset({"h3-mix-lift-alone"})
-    )
     assert isinstance(run.got, TimedDoc), run.got
     assert "not gating: the lift is" in run.verdict
 
 
-def test_on_the_mix_words_under_the_floor_are_a_doubt_band_not_a_refusal(
+def test_the_mix_envelope_control_arm_makes_the_envelope_gate_the_verdict_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3 review r1: the mix floor would refuse 7 of the corpus's 32 TRUTH texts, and a refusal on a stemless
-    song is terminal (NextText, and the rung declines the mix), so every sheet of such a song would fall to
-    the whisper transcript. Below the floor publishes UNVOUCHED instead: every line `low`, the document
-    `medium`, and core told the words are not vouched for (`textConfidence` low)."""
+    """`h3-mix-envelope` is W3's default kept as the A/B control for the flip, not a failed arm."""
+    run = attempt(
+        tmp_path, monkeypatch, stem=False, envelope_hears=False, experiments=frozenset({"h3-mix-envelope"})
+    )
+    assert isinstance(run.got, Refused), run.got
+    assert run.got.report.refused is not None and run.got.report.refused.startswith("envelope gate refused")
+
+
+def test_on_the_mix_words_under_the_floor_are_refused_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other half of the flip: a sub-floor lift on the mix is a REFUSAL now, as it is on a stem.
+
+    W3 published it as the doubt band because the cost lands where nothing follows a refusal (NextText, and
+    the LINE_SYNC rung declines a stemless song) and the floor refuses 7 of the corpus's 32 truth texts. The
+    measured alternative refuses 10 of them AND admits 26 of 64 wrong texts, so the doubt band is the control
+    arm's behaviour now (`lexical.BANDS`, MIX).
+    """
     run = attempt(tmp_path, monkeypatch, texts=UNSUNG, stem=False)
+    assert isinstance(run.got, Refused), run.got
+    assert run.got.report.refused is not None
+    assert f"below {lexical.BANDS.mix_floor} on the mix" in run.got.report.refused
+
+
+def test_the_mix_envelope_control_arm_publishes_the_same_words_as_a_doubt_band(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W3's behaviour, now reachable only through the control: every line `low`, the document `medium`, and
+    core told the words are not vouched for (`textConfidence` low)."""
+    run = attempt(tmp_path, monkeypatch, texts=UNSUNG, stem=False, experiments=frozenset({"h3-mix-envelope"}))
     assert isinstance(run.got, TimedDoc), run.got
     assert (run.got.confidence, run.got.vouched) == ("medium", False)
     assert {line["confidence"] for line in run.lines()} == {"low"}
-    assert f"below {lexical.BANDS.mix_floor} on the mix, which only an arm makes a refusal there" in (
+    assert f"below {lexical.BANDS.mix_floor} on the mix, which the control arm does not refuse on" in (
         run.verdict
     )
     assert not any(note[3] == "declined" for note in run.notes)
 
 
-@pytest.mark.parametrize("arm", ["h3-mix-floor", "h3-mix-lift-alone"])
-def test_the_mix_floor_arms_make_the_same_words_a_refusal(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, arm: str
-) -> None:
-    """Both arms carry the floor's verdict, which a stemless bench mode owes a measurement:
-    `h3-mix-floor` beside the envelope gate, `h3-mix-lift-alone` instead of it."""
-    run = attempt(tmp_path, monkeypatch, texts=UNSUNG, stem=False, experiments=frozenset({arm}))
-    assert isinstance(run.got, Refused), run.got
-    assert run.got.report.refused is not None
-    assert f"below {lexical.BANDS.mix_floor} on the mix" in run.got.report.refused
+def test_the_mix_floor_arm_keeps_both_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`h3-mix-floor` is W3's FIRST shipping: the floor refuses AND the envelope gate still does, so it pays
+    both costs (54 of the stemless mode's 128 right texts published, against the default's 91)."""
+    unsung = attempt(tmp_path, monkeypatch, texts=UNSUNG, stem=False, experiments=frozenset({"h3-mix-floor"}))
+    assert isinstance(unsung.got, Refused), unsung.got
+    assert unsung.got.report.refused is not None
+    assert f"below {lexical.BANDS.mix_floor} on the mix" in unsung.got.report.refused
+    deaf = attempt(
+        _fresh(tmp_path, "deaf"),
+        monkeypatch,
+        stem=False,
+        envelope_hears=False,
+        experiments=frozenset({"h3-mix-floor"}),
+    )
+    assert isinstance(deaf.got, Refused), deaf.got
+    assert deaf.got.report.refused is not None
+    assert deaf.got.report.refused.startswith("envelope gate refused"), "the envelope gate is kept beside it"
 
 
 def test_on_a_stem_words_under_the_floor_are_still_refused_with_no_arm(
@@ -328,10 +358,14 @@ def test_on_a_stem_words_under_the_floor_are_still_refused_with_no_arm(
     assert isinstance(plain.got, Refused) and plain.got.report.refused == run.got.report.refused
 
 
-def test_on_the_mix_the_sung_words_pass_both_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_on_the_mix_the_sung_words_pass_and_the_envelope_fit_is_only_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The trail still carries the envelope fit on the mix — it says "not gating: the lift is" (W4 review
+    r1), the same sentence a stem gets, because a fit that decides nothing is still evidence to read."""
     run = attempt(tmp_path, monkeypatch, stem=False)
     assert isinstance(run.got, TimedDoc), run.got
-    assert "lexical lift +" in run.verdict and "not gating" not in run.verdict
+    assert "lexical lift +" in run.verdict and "not gating: the lift is" in run.verdict
 
 
 # ── the doubt band ─────────────────────────────────────────────────────────────────────────────────────

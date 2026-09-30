@@ -129,9 +129,17 @@ class TrailSpy:
         return ""
 
 
-def sung_wav(path: Path, phrases: Sequence[Phrase], duration: float, *, seed: int) -> str:
-    """A tone under each phrase over a noise floor: what `activity.envelope` reads as singing."""
+def sung_wav(path: Path, phrases: Sequence[Phrase], duration: float, *, seed: int, bed: float = 0.0) -> str:
+    """A tone under each phrase over a noise floor: what `activity.envelope` reads as singing.
+
+    `bed` adds a CONTINUOUS tone at that amplitude — an instrumental backing, which is what makes a real
+    mix's envelope active almost everywhere (92-98% of frames on the corpus mixes against 59-77% on their
+    stems; `domain/lyrics/ends.py`, ON A VOCALS STEM ONLY). A stem's wav leaves it at 0.
+    """
     signal = np.random.default_rng(seed).normal(0.0, 0.002, int(duration * RATE))
+    if bed:
+        whole = np.arange(len(signal)) / RATE
+        signal += bed * np.sin(2 * math.pi * 110.0 * whole)
     for _text, start, end in phrases:
         t = np.arange(int((end - start) * RATE)) / RATE
         first = int(start * RATE)
@@ -179,6 +187,8 @@ def align(
     extra_text: Sequence[str] = (),
     decoder: Decode = ctc_viterbi,
     experiments: frozenset[str] = frozenset(),
+    stemless: bool = False,
+    mix_bed: float = 0.0,
 ) -> Outcome:
     """One `time_text` attempt on a song whose MIX sings `phrases` and whose STEM sings `stem_sings`.
 
@@ -186,19 +196,28 @@ def align(
     `stem_matrix`, the same phrases by default. `claims` is one (start, end) or None per line of the text,
     which is `phrases` then `extra_text`. `(start, None)` is a TRUNCATED cue — a stamp with no end, which is
     what an LRC's last line and a stacked timestamp carry — and the reader defaults its end (review M5).
+
+    `stemless` serves the job NO vocals stem (`AudioRef.vocals_path=None`), so the MIX is the align target
+    at every stage — the shape a song the separator could not run on takes, and the one the bench's
+    `--no-stem` mode measures. `mix_bed` puts a continuous instrumental tone under the mix, which is what
+    makes a real mix's activity envelope active nearly everywhere.
     """
     from encore_worker.adapters import ml
 
     monkeypatch.setattr(ml, "forced_align_decoder", decoder)
     on_stem = list(phrases if stem_sings is None else stem_sings)
-    stem = sung_wav(tmp_path / "vocals.wav", on_stem, duration, seed=0)
-    mix = sung_wav(tmp_path / "mix.wav", phrases, duration, seed=1)
-    aligner = PathAligner(
-        {
-            stem: sung_matrix(on_stem, DIC, duration) if stem_matrix is None else stem_matrix,
-            mix: sung_matrix(phrases, DIC, duration),
-        }
-    )
+    mix = sung_wav(tmp_path / "mix.wav", phrases, duration, seed=1, bed=mix_bed)
+    if stemless:
+        aligner = PathAligner({mix: sung_matrix(phrases, DIC, duration)})
+        stem = None
+    else:
+        stem = sung_wav(tmp_path / "vocals.wav", on_stem, duration, seed=0)
+        aligner = PathAligner(
+            {
+                stem: sung_matrix(on_stem, DIC, duration) if stem_matrix is None else stem_matrix,
+                mix: sung_matrix(phrases, DIC, duration),
+            }
+        )
     trail = TrailSpy()
     config = Config(align_experiments=experiments)
     impl = AlignStepsImpl(config=config, adapters=Adapters(aligner=aligner), reporter=trail)
@@ -1338,6 +1357,14 @@ def test_too_few_pairs_never_arms_the_claim_window_repair(
     assert "inside their claim windows" not in why, "and neither R1 nor R2 re-decoded anything"
     assert "adopted" not in why, "nor adopted a claim span over a measured timing"
     assert "timing sources: 4 blind" in why, "every line as the claim-free decode measured it"
+    # NOR MAY IT DECIDE WHICH DOCUMENT PUBLISHES (W4 review r1). Nothing was repaired, so the LAST reconcile
+    # IS this one, and `TOO_FEW_PAIRS` must map to None rather than to False: `policy.decide` rule 6 spends
+    # the terminal LINE_SYNC rung on `claims_related is False` and `improves` then lets that rung's document
+    # replace this word document — 5677 word timings, measured on the corpus. Mutating the branch to
+    # `verdict not in rc.DISAGREE`, which reads False here, left the whole suite green before this assertion;
+    # the 4-pair exhibit below cannot hold it, because there R4's mix witness rescues the stray line and the
+    # last reconcile legitimately reads AGREE.
+    assert got.timed.report.claims_related is None, "a 3-4-pair disagreement established nothing either way"
     for line, (_text, start, _end) in zip(got.lines, heard, strict=True):
         assert abs(line["start"] - start) < 0.1, f"{line['text']!r} moved to {line['start']:.2f}s"
 
@@ -1376,6 +1403,12 @@ def test_too_few_pairs_grades_every_line_low_and_that_is_a_cliff(
 
     four = align(where("four"), monkeypatch, phrases=SPARSE_SHORT, duration=48.0, claims=stray)
     assert four.verdict[3] == "too-few-pairs", four.verdict[4]
+    # WHAT IT MAY NOT DO TO THE DOCUMENT CHOICE is held by the test above, where nothing is repaired so the
+    # LAST reconcile is this verdict. HERE it is `True`, and that is not a contradiction: R4's mix witness
+    # re-times the stray line into its claim window, so the last reconcile sees 4 of 4 lines agreeing and the
+    # report says the claims ARE related — a fact about the published document, which is what that field is
+    # (`report.TimingReport.claims_related`; the grades below still read the BLIND verdict).
+    assert four.timed.report.claims_related is True, "the repaired document agrees with the sheet"
     assert [line["confidence"] for line in four.lines] == ["low"] * 4
     assert four.verdict[4].endswith("0/4 lines high")
     assert "3 blind" in four.verdict[4], "lines 0-2 are the blind decode's own, on their claims"
@@ -1396,3 +1429,67 @@ def test_too_few_pairs_grades_every_line_low_and_that_is_a_cliff(
     more = align(where("five"), monkeypatch, phrases=SPARSE, duration=48.0, claims=[*five[:5], None])
     assert more.verdict[3] == "structural", more.verdict[4]
     assert [line["confidence"] for line in more.lines].count("high") == 5, "only the stray is low"
+
+
+# ── W4: which reconcile the CROSS-KIND comparison reads (`TimingReport.claims_related`) ────────────────
+
+
+def test_the_report_relates_the_claims_by_the_LAST_reconcile_where_grading_reads_the_BLIND_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The two readings are deliberately different, and both are on one trail note (H4's, above).
+
+    GRADING asks whether a LINE is corroborated, so only the blind decode can answer it: a line re-decoded
+    inside its claim window agrees with the claim by construction. `policy.decide`'s rule 6 asks something
+    else — does the document ABOUT TO PUBLISH tell the same story as the sheet, i.e. is there anything to
+    prefer the sheet's own line timings over it (W4's cross-kind comparison) — and there an agreement the
+    repairs produced is the answer rather than a contaminant: the two documents now say the same thing and
+    the WORDS are the extra evidence.
+
+    Both halves run the real `time_text`; the trail note carries the blind verdict and the report the last.
+    """
+    spans = [(start, end) for _text, start, end in PHRASES]
+
+    def where(name: str) -> Path:
+        """One media directory per attempt: `align` writes a wav pair and a document into it."""
+        (made := tmp_path / name).mkdir()
+        return made
+
+    # (a) OUR DECODE was wrong and the SHEET was right: the blind pass hears every line one span late, so
+    # nothing relates it to the claims — and R1, which UNRELATED is what arms, re-decodes inside the claim
+    # windows and finds each line where it is really sung. The published document agrees with the sheet.
+    rescued = align(
+        where("rescued"),
+        monkeypatch,
+        phrases=PHRASES,
+        duration=DURATION,
+        claims=truth(PHRASES),
+        decoder=misheard(
+            sung_matrix(
+                [(text, *spans[(i + 1) % len(spans)]) for i, (text, _s, _e) in enumerate(PHRASES)],
+                DIC,
+                DURATION,
+            ),
+            int(DURATION / FRAME_SEC),
+        ),
+    )
+    assert rescued.verdict[3] == "unrelated", "the BLIND verdict, which grading reads"
+    assert "after repairs agree, 100% of 8 lines agree" in rescued.verdict[4]
+    assert rescued.timed.report.claims_related is True, (
+        "the repairs related the document to the sheet, so the sheet has nothing to add and "
+        "`policy.decide` must not spend the LINE_SYNC rung on it"
+    )
+
+    # (b) The SHEET is the one nothing relates: its claims are scattered across the song, and the repairs
+    # cannot make our timings agree with them (`_clamped` keeps the blind decode). This is the one shape the
+    # rung is spent on — the word document could publish, and only here does the sheet get its turn.
+    scattered = align(
+        where("scattered"),
+        monkeypatch,
+        phrases=PHRASES,
+        duration=DURATION,
+        claims=[spans[(i + 3) % len(spans)] for i in range(len(spans))],
+    )
+    assert scattered.verdict[3] == "unrelated"
+    assert "after repairs unrelated, 0% of 8 lines agree" in scattered.verdict[4]
+    assert scattered.timed.report.claims_related is False

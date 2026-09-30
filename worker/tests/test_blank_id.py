@@ -172,6 +172,46 @@ def test_a_repair_window_decodes_against_the_same_blank_the_global_pass_did(
     ]
 
 
+def test_the_alignable_count_is_the_matrixs_blank_and_one_literal_for_two_floors(
+    evidence: tuple[Emitted, Emitted, Unaware],
+) -> None:
+    """`generate.alignable_chars`, the count under `regenerate`'s window floor AND `align_steps.needs`.
+
+    TWO COPIES OF IT SURVIVED being reverted to a literal 0 under mutation (W4 review r1), which is why it is
+    one function now. The count itself is invisible on a vocabulary whose blank IS 0 and invisible in a
+    DOCUMENT even when it is wrong, because it only ever gates a floor and undercounting makes the floor
+    LOOSER — so this asserts the number, and the case below asserts the floor it feeds.
+    """
+    plain, aware, unaware = evidence
+    from encore_worker.domain.lyrics.generate import alignable_chars
+
+    text = TEXTS[1]  # "and all the ash it carries": 21 letters, 4 of them the `a` the permutation moves
+    assert alignable_chars(text, plain) == 21
+    assert alignable_chars(text, aware) == 21, "the same text under another vocabulary is the same length"
+    assert alignable_chars(text, unaware) == 17, "a reader that assumes 0 drops every `a`"
+
+
+def test_a_repair_window_is_refused_by_the_floor_the_matrixs_blank_implies(
+    evidence: tuple[Emitted, Emitted, Unaware],
+) -> None:
+    """THE CONSEQUENCE of the count above, and the case the M9 fix had no test for.
+
+    `regenerate` refuses a window holding fewer than two emission frames per alignable character — anything
+    tighter is a forced smear, not a fit. Here the window is 38 frames: over the unaware reader's floor for
+    17 characters (34) and under the real one for 21 (42). So a blank-aware chain REFUSES the repair and a
+    chain that assumes 0 runs it, forcing 21 characters through a window sized for 17 — the shape of a
+    truncated caption cue, which is where `regenerate`'s floor and `align_steps.needs` both bite.
+    """
+    plain, aware, unaware = evidence
+    line = Line(text=TEXTS[1], start=2.6, end=4.6, words=(), score=0.0, index=1)
+    window = (2.6, 2.6 + 38 * FRAME_SEC)
+    runs = [((line,), window)]
+    kwargs: dict[str, Any] = {"decoder": ctc_viterbi, "syllabifier": lambda w, _l: [w]}
+    assert set(regenerate(runs, plain, **kwargs)) == set(), "21 characters do not fit 38 frames"
+    assert set(regenerate(runs, aware, **kwargs)) == set(), "and the permutation does not change that"
+    assert set(regenerate(runs, unaware, **kwargs)) == {1}, "the unaware floor admits the smear"
+
+
 def test_the_lexical_lift_is_measured_on_the_same_targets_the_decode_publishes(
     evidence: tuple[Emitted, Emitted, Unaware],
 ) -> None:

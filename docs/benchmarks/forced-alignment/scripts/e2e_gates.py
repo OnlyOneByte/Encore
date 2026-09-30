@@ -171,12 +171,14 @@ COMPARE_COLUMNS: tuple[tuple[str, str, str], ...] = (
 #: `drop20.gross <= base.drop20.gross` as 41 <= 51, a 10-line gap made entirely by the tfr audio; both have
 #: the same 32 song names, so the song-set check could not see it. A key missing on either side is a
 #: difference too: nothing then shows the two ran the same setup (`--summarize` reads `run.json`).
-SETUP_META = ("level", "seed", "wrong_k", "language", "tfr_audio", "asr", "sync_mode")
+SETUP_META = ("level", "seed", "wrong_k", "language", "tfr_audio", "target", "asr", "sync_mode")
 
 #: A setup key a summary may leave out, and what its absence means: every run before `--sync-mode` existed
-#: (W3) sent no `syncMode`, which the worker reads as `forced`. So a forced run compares with those
-#: baselines, and a `lines` run against any of them is a setup mismatch, not a comparison.
-SETUP_DEFAULTS: Mapping[str, str] = {"sync_mode": "forced"}
+#: (W3) sent no `syncMode`, which the worker reads as `forced`, and every run before `--no-stem` existed (W4)
+#: aligned on the vocals stem. So a forced stem run compares with those baselines, and a `lines` or a
+#: STEMLESS run against any of them is a setup mismatch, not a comparison — a stemless case decodes a
+#: different audio file, so no metric of it is a delta on a stem baseline's.
+SETUP_DEFAULTS: Mapping[str, str] = {"sync_mode": "forced", "target": lib.STEM_TARGET}
 
 #: Run metadata `--compare` WARNS on but gates accept: the independent variables of an arm. W4 6b/6c gate a
 #: model change against the base-model baseline, and every default-off arm is an `align_experiments`
@@ -267,6 +269,8 @@ def _describe(meta: Mapping[str, Any]) -> str:
     bits = [str(meta[k]) for k in ("level", "model") if meta.get(k)]
     if meta.get("sync_mode", SETUP_DEFAULTS["sync_mode"]) != SETUP_DEFAULTS["sync_mode"]:
         bits.append(f"syncMode={meta['sync_mode']}")
+    if meta.get("target", SETUP_DEFAULTS["target"]) != SETUP_DEFAULTS["target"]:
+        bits.append(f"target={meta['target']}")
     if head:
         bits.append(head + (f"+{git['dirty_files']} dirty" if git.get("dirty_files") else ""))
     if meta.get("code"):

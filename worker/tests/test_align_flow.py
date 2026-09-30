@@ -312,6 +312,54 @@ async def test_a_refused_text_is_never_line_synced() -> None:
     assert outcome.candidates == (outcome.published,), "a refusal writes no document"
 
 
+# ── the cross-kind comparison (W4): a usable word document against the sheet's own timings ────────
+
+
+#: A publishable GLOBAL word document `reconcile` could fit NO map between and the text's OWN claims (W4):
+#: `policy.decide` rule 6's one shape, and the only route to the LINE_SYNC rung from a document that could
+#: have published. 12 lines, so `LINE_SYNCED` above times as many.
+UNRELATED = TimingReport(words=200, coverage=1.0, duration_sec=200.0, lines=12, claims_related=False)
+#: The LINE_SYNC rung's own gate refusing the SHEET (W3): its blind decode does not hear the lines where the
+#: sheet claims them. Not a verdict on the words — the word document passed the same lexical gate.
+LINE_REFUSED = TimingReport(
+    duration_sec=200.0,
+    engine=Engine.LINE_SYNC,
+    lines=12,
+    refused="47% of 12 decoded lines within 1.0s of their mapped claim, below 50%",
+)
+
+
+async def test_a_word_document_nothing_related_to_its_claims_publishes_the_sheets_own_timings() -> None:
+    """W4 end to end: the word document is USABLE — it would have published on arrival order — and the
+    sheet's line timings replace it because `reconcile` could relate nothing between the two witnesses and
+    the line document survived its own gate. The 18 song-modes this fires on at `run_align` hold ALL 299 of
+    their gross lines (PLAN W4 (b))."""
+    fake = Fake(provider=lrc(), transcribed=asr_text(), reports=[UNRELATED, LINE_SYNCED])
+    outcome = await run_align(JOB, fake)
+    assert [req.force_line_sync for req in fake.timed] == [False, True]
+    assert outcome.published is not None and outcome.published.timing == TIMING_LINE
+    assert outcome.published.ref == "derived/lyrics/lrclib-line-sync.json"
+    assert not any(c.startswith("transcribe") for c in fake.calls)
+    assert any("nothing relates these timings" in why for why in fake.whys), "rule 6 is on the trail"
+
+
+async def test_the_words_publish_when_the_rungs_gate_refuses_the_sheet_and_are_not_withdrawn() -> None:
+    """Two rules meeting. Best-so-far: a line document its own gate refused loses to the word document it
+    retried, which publishes (the refusal says the SHEET'S CLOCK is unreadable, not that the words are
+    wrong — they passed the same lexical gate). And a text this job PUBLISHES must not ride out on
+    `outcome.refused`, which is what makes the frame withdraw an earlier job's candidate for those same
+    words (`align_steps.superseded_candidates`): withdrawing them here would delete the document we just
+    published from the room's alternatives."""
+    fake = Fake(provider=lrc(), transcribed=asr_text(), reports=[UNRELATED, LINE_REFUSED])
+    outcome = await run_align(JOB, fake)
+    assert [req.force_line_sync for req in fake.timed] == [False, True]
+    assert outcome.published is not None and outcome.published.timing == TIMING_WORD
+    assert outcome.published.ref == "derived/lyrics/lrclib.json", "attempt 1, by serial"
+    assert outcome.refused == (), "the published text is not a refused text"
+    assert any("line-sync retry was refused" in why for why in fake.whys), "the refusal stays on the trail"
+    assert not any(c.startswith("transcribe") for c in fake.calls), "and the text is not abandoned"
+
+
 # ── the ASR fallback ladder ──────────────────────────────────────────────────────────────────────
 
 

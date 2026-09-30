@@ -197,6 +197,28 @@ def blank_of(emissions: Any) -> int:
     return int(getattr(emissions, "blank_id", 0))
 
 
+def alignable_chars(text: str, emissions: Any) -> int:
+    """Characters of `text` this matrix can align: in its dictionary, and not its BLANK column (review M9).
+
+    ONE LITERAL FOR ONE IDEA (W4 review r1). This count is a FLOOR's input in two modules — `regenerate`
+    refuses a repair window under two frames per alignable character, and `align_steps.needs` turns the same
+    number into the seconds a text takes at that floor, which widens a truncated cue's window — and it was
+    written out twice. Both copies survived being reverted to a literal 0 under mutation, because the floor
+    only ever gets LOOSER when the count is too small, so the repair still ran and produced the same document
+    on a vocabulary whose blank IS 0. On one whose blank is a letter (23 of whisperx's 36 HF align models;
+    W7) the two floors would then be read off different texts, and a window sized for 17 characters would be
+    handed 21 to force through it.
+
+    `text.split()` and `lower()` are `generate`'s own target filter, so "alignable" means exactly what the
+    decode will try to align: a character the dictionary lacks is dropped there too, and the blank column's
+    character is not a letter of the language whatever the dictionary calls it.
+    """
+    blank = blank_of(emissions)
+    return sum(
+        1 for word in text.split() for ch in word.lower() if emissions.dictionary.get(ch) not in (None, blank)
+    )
+
+
 def _char_spans(
     frame_labels: Sequence[int], frame_scores: Sequence[float], frame_sec: float, blank: int = 0
 ) -> list[tuple[float, float, float]]:
@@ -308,13 +330,7 @@ def regenerate(
             continue
         first = max(0, int(window_start / emissions.frame_sec))
         last = min(emissions.frames, int(window_end / emissions.frame_sec))
-        alignable = sum(
-            1
-            for line in run
-            for word in line.text.split()
-            for ch in word.lower()
-            if emissions.dictionary.get(ch) not in (None, blank)
-        )
+        alignable = sum(alignable_chars(line.text, emissions) for line in run)
         # CTC needs at least one frame per target; anything tighter than 2x is a forced smear, not a fix.
         if alignable == 0 or (last - first) < 2 * alignable:
             continue

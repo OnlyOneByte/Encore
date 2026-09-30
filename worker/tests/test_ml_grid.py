@@ -77,18 +77,44 @@ def test_the_grid_covers_every_hop_of_the_audio_exactly_once(seconds: float) -> 
 def test_every_pass_is_long_enough_for_the_frames_it_keeps_and_reads_no_further(seconds: float) -> None:
     """A frame needs 400 samples of input; the last one it keeps gets them, by padding if the audio ends.
 
-    Padding is the FINAL pass's business only — an interior pass has the whole right context to read — and
-    nothing ever reads past the end of the audio, which is what `stop` is for.
+    PADDING ONLY EVER SUPPLIES SAMPLES THE AUDIO DOES NOT HAVE, which is the invariant, and it is NOT "only
+    the final pass pads" — the assertion here used to say that and was false (W4 review r1). A pass pads when
+    the receptive field of its last KEPT frame runs past the audio's end, and `stop` is capped at `total`, so
+    an INTERIOR pass pads whenever its 2 s of right context reaches the end of the file: at 1 920 001 samples
+    the grid's 6001 frames make five passes and pass 3 (which keeps frames 4500..5999, the last field ending
+    79 samples past the file) pads while pass 4 still exists to stamp frame 6000. The tested property is
+    therefore the implication — padded implies `stop == total` — with the interior case pinned by name below.
     """
     total = int(seconds * RATE)
     passes = ml._frame_passes(total)
-    for index, plan in enumerate(passes):
+    for plan in passes:
         produced = (plan.samples - FIELD) // HOP + 1
         assert produced >= plan.trim + plan.keep, "the model could not emit the frames this pass keeps"
         assert plan.stop <= total, "read past the end of the audio"
         assert plan.offset % HOP == 0, "an offset off the grid makes `trim` a rounding"
-        if index < len(passes) - 1:
-            assert plan.samples == plan.stop - plan.offset, "an interior pass never needs padding"
+        if plan.samples > plan.stop - plan.offset:
+            assert plan.stop == total, "padded a pass whose audio continues"
+        else:
+            assert plan.samples == plan.stop - plan.offset, "a pass longer than the slice it reads"
+
+
+@pytest.mark.parametrize(("total", "padded"), [(1_920_001, {3, 4}), (480_001, {0, 1}), (960_079, {1, 2})])
+def test_an_interior_pass_pads_when_its_right_context_reaches_the_end_of_the_audio(
+    total: int, padded: set[int]
+) -> None:
+    """The case the test above asserted away (W4 review r1): a NON-FINAL pass that needs padding.
+
+    The lengths the parametrised sweep uses (0.02, 1.5, 30.0, 45.5, 90.0, 194.3 s) all miss it, so
+    "an interior pass never needs padding" passed for six lengths and would have failed on the first song
+    shaped like these — while `_frame_passes` was right all along. At 1 920 001 samples TWO passes pad and
+    only one of them is last; at 960 079 the padded interior pass is one single sample short.
+    """
+    passes = ml._frame_passes(total)
+    assert {i for i, p in enumerate(passes) if p.samples > p.stop - p.offset} == padded
+    assert padded - {len(passes) - 1}, "this length must pad an INTERIOR pass, or it tests nothing"
+    for plan in passes:
+        assert plan.stop == total or plan.samples == plan.stop - plan.offset
+        assert (plan.samples - FIELD) // HOP + 1 >= plan.trim + plan.keep
 
 
 def test_a_sliver_shorter_than_the_receptive_field_is_padded_not_dropped() -> None:
@@ -222,7 +248,7 @@ def _audio(tmp_path: Path, seconds: float) -> tuple[Path, Any]:
     return path, torch.from_numpy(signal)
 
 
-@pytest.mark.parametrize("seconds", [1.5, 29.6, 30.0, 34.0, 61.3])
+@pytest.mark.parametrize("seconds", [1.5, 1.51, 29.6, 29.999, 30.0, 34.0, 61.3])
 def test_a_word_at_a_chunk_boundary_lands_where_a_single_pass_puts_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seconds: float
 ) -> None:
@@ -232,6 +258,13 @@ def test_a_word_at_a_chunk_boundary_lands_where_a_single_pass_puts_it(
     sliver. Every frame of the chunked matrix must equal the single-pass matrix's frame of the same index —
     not merely be close — so a word at a boundary is stamped at the same 20 ms frame either way. Under the
     old pass the second chunk's frames all sat 20 ms early against this reference and the sliver was gone.
+
+    `1.51` AND `29.999` ARE WHAT HOLDS `frame_sec` (W4 review r1). Every other length here is an exact
+    multiple of 320 samples (24000, 473600, 480000, 544000, 980800), and the grid has `ceil(samples / 320)`
+    frames, so at those lengths the OLD `duration / frames` equals 0.02 to the last bit and reverting the
+    constant was invisible: the mutation survived the whole suite. 1.51 s is 24160 samples — 75.5 hops, so
+    76 frames and a derived 0.019868 — and 29.999 s is 479984, a derived 0.0199993; the assertion below now
+    fails on either formula but the constant.
     """
     path, mono = _audio(tmp_path, seconds)
     monkeypatch.setattr(ml, "load_audio_mono_16k", lambda _p: mono.numpy())
@@ -264,8 +297,14 @@ def test_the_context_frames_are_computed_and_then_discarded(
 def test_a_model_whose_stride_is_not_the_grids_fails_loudly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Silent drift is what review 6a removed, so a bundle that emits fewer frames than the 320/400 grid
-    needs raises rather than producing a short chunk — as an `InfraFault`, since it is the model, not a text.
+    """Silent drift is what review 6a removed, so a bundle whose frame rate is not the 320/400 grid's raises
+    rather than producing a mis-stamped chunk — as an `InfraFault`, since it is the model, not a text.
+
+    BOTH DIRECTIONS (W4 review r1). The guard used to be `len(got) < trim + keep`, which only caught the
+    COARSE half: a finer-stride bundle emits MORE frames than the slice implies, so the slice `got[trim :
+    trim + keep]` passed the one-sided test while taking frames that do not sit at the grid positions they
+    are then stamped at — a 10 ms-hop model's first pass covering 15 s of audio in a matrix claiming 30,
+    with `frame_sec` still 0.02. Equality is the only test that catches that.
     """
     path, mono = _audio(tmp_path, 40.0)
     monkeypatch.setattr(ml, "load_audio_mono_16k", lambda _p: mono.numpy())
@@ -275,8 +314,14 @@ def test_a_model_whose_stride_is_not_the_grids_fails_loudly(
             (logits,) = super().__call__(batch)
             return (logits[:, ::2],)  # half the frame rate
 
-    with pytest.raises(InfraFault, match="frame rate is not the one"):
-        _Rigged(_Coarse()).emissions(str(path), "en")
+    class _Fine(_LocalModel):
+        def __call__(self, batch: Any) -> tuple[Any]:
+            (logits,) = super().__call__(batch)
+            return (logits.repeat_interleave(2, dim=1),)  # twice the frame rate: a 10 ms hop
+
+    for model in (_Coarse(), _Fine()):
+        with pytest.raises(InfraFault, match="frame rate is not the one"):
+            _Rigged(model).emissions(str(path), "en")
 
 
 # ── the bounded, content-keyed cache (review M10) ─────────────────────────────────────────────────

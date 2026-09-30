@@ -211,6 +211,48 @@ def test_an_interpolated_word_is_held_like_any_other() -> None:
     assert (got.provenance, got.score) == ("low", 0.0)
 
 
+def test_a_trailing_out_of_vocabulary_token_does_not_absorb_the_hold() -> None:
+    """W4 review r1: the post-pass, inverted by the one word that has no evidence.
+
+    A line ending in an OOV token — a digit run, a non-Latin word; 497 of the corpus's 5693 Jamendo words
+    are interpolated — gets `start = end = the previous word's end` from `generate`'s OOV branch (verified
+    against the real `generate`: `["hold on 2", "next"]` publishes `'2'` at 0.5600-0.5600, exactly `'on'`'s
+    end). Read as a cap that pinned the sung word at its own end, and the zero-width token then ran to the
+    NEXT LINE's onset — so the room saw an unsingable token lit through the sung tail while the word being
+    sung went dark. The hold belongs to the word with acoustic evidence, and the placeholder stays a point:
+    the TV lights `start <= pos < end`, so a zero-width span is never the active word.
+    """
+    oov = Word(word="2", start=1.2, end=1.2, score=0.0, provenance="low")
+    before = doc(line(0, word("on", 0.6, 1.2), oov), line(1, word("next", 4.0, 4.4)))
+    after = extend_ends(before, sung((0.6, 2.6), (4.0, 4.6)), HOP)
+    sung_word, placeholder = after.lines[0].words
+    assert sung_word.end == pytest.approx(2.6, abs=1e-9), "the sung word is held through the singing"
+    assert (placeholder.start, placeholder.end) == (1.2, 1.2), "the placeholder is not held at all"
+    assert after.lines[0].end == pytest.approx(2.6, abs=1e-9)
+    # And the next line's onset is still the ceiling: the skip reaches past a POINT, not past a word.
+    assert extend_ends(
+        doc(line(0, word("on", 0.6, 1.2), oov), line(1, word("next", 2.0, 2.4))),
+        sung((0.6, 3.0)),
+        HOP,
+    ).lines[0].words[0].end == pytest.approx(2.0, abs=1e-9)
+
+
+def test_an_end_exactly_on_a_frame_boundary_is_walked_from_its_own_frame() -> None:
+    """W4 review r1: since W4's exact clock every decoded end IS `k * 0.02` (`generate._char_spans` stamps
+    `index * frame_sec`), and `int((k * 0.02) / 0.02)` is `k - 1` for 9721 of the first 200001 k — so the
+    walk used to start one frame early, read the frame BEFORE the word's own end frame, find it silent and
+    return the end untouched. Frame 29 is the first such k: `(29 * 0.02) / 0.02` is 28.999999999999996.
+
+    The envelope here is silent in frame 28 and active from frame 29, so the two arithmetics differ by the
+    WHOLE extension rather than by a rounding: 0.58 s against 1.10 s.
+    """
+    end = 29 * HOP
+    assert int(end / HOP) == 28, "the float case this pins; `29 * 0.02 / 0.02` is 28.999999999999996"
+    before = doc(line(0, word("held", 10 * HOP, end)))
+    after = extend_ends(before, sung((end, 55 * HOP)), HOP)
+    assert after.lines[0].words[0].end == pytest.approx(55 * HOP, abs=1e-9)
+
+
 def test_an_empty_document_is_returned_as_it_came() -> None:
     assert extend_ends(doc(), sung((0.0, 1.0)), HOP) == doc()
 
@@ -288,8 +330,14 @@ def test_no_onset_ever_moves_and_no_end_ever_shrinks() -> None:
             flat = [w for ln in after.lines for w in ln.words]
             raw = [w for ln in before.lines for w in ln.words]
             for position, (held, decoded) in enumerate(zip(flat, raw, strict=True)):
-                if position + 1 < len(flat):
-                    ahead = flat[position + 1].start
-                    assert held.end <= max(ahead, decoded.end) + 1e-9, "an end crossed the next onset"
+                # THE NEXT SUNG ONSET, not the next word's (W4 review r1): a zero-width interpolated
+                # placeholder is not a cap, and the generator above emits them (`0.0` widths). See
+                # `test_a_trailing_out_of_vocabulary_token_does_not_absorb_the_hold` for why crossing one
+                # cannot light a wrong word, and `_next_sung` for the shape it comes from.
+                ahead = next((w.start for w in raw[position + 1 :] if w.end > w.start), None)
+                if ahead is not None:
+                    assert held.end <= max(ahead, decoded.end) + 1e-9, "an end crossed the next sung onset"
                 assert held.end >= held.start
+                if decoded.end <= decoded.start:
+                    assert held.end == decoded.end, "a zero-width placeholder was extended"
     assert moved > 1000, f"only {moved} ends moved: the property is not exercising the extension"

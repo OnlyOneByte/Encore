@@ -17,7 +17,11 @@ came from an uncommitted /tmp script that fed truth as the claims and synthesise
   * a vocals stem SEPARATED from each song's mix as the target and that mix as R4's witness, as a stems
     job leaves them. For the 3 tfr songs that needs `--prepare-tfr` once (htdemucs over the worker's own
     `youtube-mix.wav`); `--tfr-audio reference` runs them on the producer's ORACLE stems instead, which is
-    what the review's baseline did (review M14) and is kept only to reproduce it;
+    what the review's baseline did (review M14) and is kept only to reproduce it. `--no-stem` runs every
+    case STEMLESS instead — no stem at all, so the MIX is the align target, exactly as production runs a
+    song whose stems job could not separate one (`TimeTextDriver.target_of`). Every corpus song HAS a
+    stem, so that flag is the only way the mix's own path is measurable: its lexical bands, its missing R4
+    witness, its unavailable ALIGN_ON_MIX knob and its declining LINE_SYNC rung;
   * real durations, read from the vocals file (as the review's harness did — the baseline depends on it);
   * the worker `Config` from the environment (`Config.from_env`), so an `ENCORE_ALIGN_*` setting reaches
     the shipped code exactly as in production, and is recorded (`e2e_lib.align_config`);
@@ -347,9 +351,12 @@ class BenchAligner(WhisperXAligner):
     model's matrices to another. The cost is one model load per language per run, even when every matrix
     is on disk.
 
-    BUILT AS THE HOST BUILDS ITS ALIGNER: `ml.build_aligner(device=...)` passes the device and nothing
-    else, and so does this; `test_bench_e2e` pins both signatures, so a factory argument that reaches
-    production must be forwarded here too.
+    BUILT AS THE HOST BUILDS ITS ALIGNER: `ml.build_aligner(device=..., jobs=...)` passes the device and the
+    box's job concurrency, and so does this; `test_bench_e2e` pins both signatures, so a factory argument
+    that reaches production must be forwarded here too. `jobs` sizes the in-memory emission LRU
+    (`ml._emission_cache_size`) and the bench runs one case at a time, so its default of 1 is the shipped
+    default — it is forwarded rather than dropped because the disk store sits BESIDE that LRU, not over it,
+    so a bench run's memory behaviour is the host's.
 
     EVERY FAULT IS RECORDED (`faults`). `time_text` lets the shipped adapter's typed `InfraFault` through
     (review M7) but declines any other emissions exception ("decode failed: ...") and, on R4's mix witness,
@@ -362,13 +369,14 @@ class BenchAligner(WhisperXAligner):
         self,
         *,
         device: str,
+        jobs: int = 1,
         model: str | None = None,
         store: lib.EmissionStore | None = None,
         read: bool = True,
         write: Literal["always", "missing"] = "missing",
         identify: Callable[[str], str] | None = None,
     ) -> None:
-        super().__init__(device=device)
+        super().__init__(device=device, jobs=jobs)
         self._model_name = model
         self._store = store
         self._read = read
@@ -682,6 +690,7 @@ class TimeTextDriver:
         seed: int = 0,
         wrong_k: int = lib.WRONG_K,
         config: Config | None = None,
+        stem: bool = True,
     ) -> None:
         self.aligner = aligner
         self.corpus = list(corpus)
@@ -693,16 +702,38 @@ class TimeTextDriver:
         #: an `ENCORE_ALIGN_*` knob reaches the shipped code; a bare `Config()` would silently measure the
         #: default path with the knob set (tests pass a literal, as the worker's own tests do).
         self.config = config if config is not None else Config()
+        #: False under `--no-stem`: the case runs as a STEMLESS song (see `target_of`).
+        self.stem = stem
         self._durations: dict[str, float] = {}
 
     def duration_of(self, song: lib.Song) -> float:
-        """Seconds of the VOCALS file (e2e2's choice; production probes the source, within a frame)."""
+        """Seconds of the VOCALS file (e2e2's choice; production probes the source, within a frame).
+
+        The vocals file EVEN UNDER `--no-stem`, where the aligner never reads it: it was separated from
+        this mix, so the two are the same length, and one number keeps a stemless row comparable with its
+        stem row case for case — the claims are built from it (`lib.build_claims`, whose tempo and offset
+        modes scale by the duration), so a second reading would change the CLAIMS as well as the target.
+        """
         if song.slug not in self._durations:
             import soundfile as sf  # noqa: PLC0415
 
             info = sf.info(str(song.vocals))
             self._durations[song.slug] = info.frames / info.samplerate
         return self._durations[song.slug]
+
+    def target_of(self, song: lib.Song) -> str:
+        """The file the aligner decodes: the vocals stem, or the MIX when the case is stemless.
+
+        `--no-stem` (`stem=False`) is the harness's STEMLESS dimension, composable with every claim mode:
+        the case is run exactly as production runs a song no stems job could separate — `vocals_path` is
+        None, so `AudioRef.align_target` is the mix, R4 has no second witness (the mix IS the target),
+        `Knob.ALIGN_ON_MIX` is never offered (`Search.aligned_on_stem`), the LINE_SYNC rung declines
+        (`_time_line_sync`), and the lexical gate reads the MIX bands, where its floor only grades by
+        default (`lexical.BANDS`, MIX; the `h3-mix-floor` / `h3-mix-lift-alone` arms make it the verdict).
+        No corpus song LACKS a stem, so this is the only way those arms and that band are measurable at
+        all — W3 shipped its mix decision on the lift population alone (`results/w3-lift-mix.json`).
+        """
+        return str(song.vocals if self.stem else song.mix)
 
     def claims_for(self, case: Case) -> lib.Claims:
         return lib.build_claims(
@@ -729,7 +760,7 @@ class TimeTextDriver:
         )
         audio = AudioRef(
             path=str(case.song.mix),
-            vocals_path=str(case.song.vocals),
+            vocals_path=str(case.song.vocals) if self.stem else None,
             duration_sec=self.duration_of(case.song),
         )
         text = TextRef(
@@ -823,7 +854,7 @@ class GenerateDriver(TimeTextDriver):
         extra: dict[str, object] = {"verdict": "generate", "why": "", "onsets_sha256": None}
         lines: list[lib.DocLine] = []
         try:
-            emissions = self.aligner.emissions(str(case.song.vocals), self.language)
+            emissions = self.aligner.emissions(self.target_of(case.song), self.language)
             generated = generate(
                 [line.text for line in claims.lines],
                 emissions,
@@ -1059,6 +1090,7 @@ class RunAlignDriver(TimeTextDriver):
         seed: int = 0,
         wrong_k: int = lib.WRONG_K,
         config: Config | None = None,
+        stem: bool = True,
         transcriber: ports.Transcriber | None = None,
         sync_mode: str = SYNC_FORCED,
     ) -> None:
@@ -1070,6 +1102,7 @@ class RunAlignDriver(TimeTextDriver):
             seed=seed,
             wrong_k=wrong_k,
             config=config,
+            stem=stem,
         )
         self.transcriber = transcriber
         if sync_mode not in SYNC_MODES:
@@ -1080,10 +1113,19 @@ class RunAlignDriver(TimeTextDriver):
         self.sync_mode = sync_mode
 
     def _media_dir(self, case: Case) -> Path:
-        """A clean media dir with the stem at the conventional key a stems job publishes it under."""
+        """A clean media dir with the stem at the conventional key a stems job publishes it under.
+
+        UNDER `--no-stem` the key is left EMPTY, which is the whole stemless seam at this level: nothing is
+        faked, `AlignStepsImpl._vocals_of` finds no file and returns None exactly as it does for a song whose
+        stems job refused a silent instrumental, and every downstream decision follows from the AudioRef
+        production would have built (`TimeTextDriver.target_of`).
+        """
         media_dir = self.media_root / case.song.slug / case.name
         for sub in ("derived", "work", "attempts"):
             shutil.rmtree(media_dir / sub, ignore_errors=True)
+        if not self.stem:
+            media_dir.mkdir(parents=True, exist_ok=True)
+            return media_dir
         ext = case.song.vocals.suffix.lstrip(".").lower()
         if ext not in keys.KNOWN_STEM_EXTS:
             raise ValueError(f"{case.song.vocals}: not a stem extension the worker looks for")
@@ -1438,6 +1480,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="separate each tfr song's youtube-mix.wav into the vocals stem --tfr-audio youtube reads",
     )
+    ap.add_argument(
+        "--no-stem",
+        action="store_true",
+        help="run every case STEMLESS: vocals_path None, so the mix is the align target, as production "
+        "runs a song no stems job could separate (the only way the mix bands and the h3-mix-* arms are "
+        "measurable — no corpus song lacks a stem). Composable with every claim mode and --sync-mode",
+    )
     ap.add_argument("--out", default=None, help="run directory (default: $ENCORE_BENCH_ROOT/_runs/<tag>)")
     ap.add_argument("--tag", default=None)
     ap.add_argument("--resume", action="store_true", help="continue an interrupted --out")
@@ -1564,6 +1613,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "wrong_k": args.wrong_k,
         "language": args.language,
         "tfr_audio": args.tfr_audio,
+        #: The align TARGET, at every level: the stem a stems job leaves, or the mix of a stemless song
+        #: (`--no-stem`). Part of the setup a `base.` gate must share (`e2e_gates.SETUP_META`), because the
+        #: two targets are different audio measured against the same truth.
+        "target": lib.STEMLESS_TARGET if args.no_stem else lib.STEM_TARGET,
         "align_config": lib.align_config(config),
         "code": code,
     }
@@ -1599,6 +1652,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             seed=args.seed,
             wrong_k=args.wrong_k,
             config=config,
+            stem=not args.no_stem,
             transcriber=transcriber,
             sync_mode=args.sync_mode,
         )
@@ -1611,6 +1665,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             seed=args.seed,
             wrong_k=args.wrong_k,
             config=config,
+            stem=not args.no_stem,
         )
     )
     cases = cases_for(songs, modes, args.wrong_k)
@@ -1654,6 +1709,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "seed": args.seed,
         "wrong_k": args.wrong_k,
         "tfr_audio": args.tfr_audio,
+        "target": run_config["target"],
         "align_config": run_config["align_config"],
         "modes": modes,
         "songs": [song.slug for song in songs],
@@ -1836,6 +1892,7 @@ def verify_cache(
             seed=args.seed,
             wrong_k=args.wrong_k,
             config=config,
+            stem=not args.no_stem,
         )
         row = driver.run(Case(song, mode, 0))
         ref = row.get("ref")

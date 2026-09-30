@@ -26,10 +26,18 @@ are already computed elsewhere in the step, so consensus costs no model time and
                     a vocals stem (140-150 ms on a mix, where an instrumental bed fills the silences).
     decode-median   median(ours - claimed) over the paired lines, the estimator `reconcile` and
                     `place.estimate_shift` already use, robust to a few wild lines.
+    decode-mode     the offset the MOST paired lines agree on: the median of the densest
+                    `2 x tolerance` window of the same differences (`_densest_offset`). A MEDIAN IS NOT
+                    ENOUGH when half the lines are wild, which is a song whose lines repeat rather than a
+                    rare one (W4 review r1, and the wave's own regression — see WHY THE MODE below).
     tempo           a BOUNDED Theil-Sen slope (`reconcile.theil_sen`, Sen 1968) with its own median offset:
                     the DRIFT case, a master cut at another tempo. DALI fits karaoke timings onto other
                     audio the same way (offset x frame rate:
                     https://transactions.ismir.net/articles/10.5334/tismir.30).
+    tempo-mode      that same slope with the densest-window offset instead of the median — the mode
+                    candidate at the fitted scale, and the one that actually moves a drifting sheet whose
+                    decode is half wild (`never-be-alone` tempo098/102: 12 of 44 paired lines against the
+                    median offset's 0).
 
 Each is scored by how many paired lines it explains within `AGREE_TOLERANCE_SEC` — reconcile's own
 corroboration band, imported rather than copied, because "explained" here means exactly "a line
@@ -54,6 +62,38 @@ sheet on two explained lines out of fifty as long as no-shift explained none of 
 poor blind decode against a CORRECT sheet takes. `MIN_INLIER_SHARE` is the absolute quality gate the vote was
 missing: below a fifth of the paired lines explained, the winner is not a clock, and abstaining leaves the
 claims where the human put them.
+
+WHY THE MODE, and it is the fix for W4's one shipped regression (W4 review r1, `decode-mode` above). The
+median of `ours - claimed` is robust to A FEW wild lines and to NOTHING ELSE: it breaks down at 50%
+contamination, and a song whose lines repeat is exactly where our blind decode misplaces half of them. On
+`never-be-alone` off3 (44 paired lines, tolerance 0.25 s) the differences are BIMODAL — 20 of them spread
+over -8.87..-4.31 s where the global decode smeared the repeated "be alone" lines, a tight cluster of 17 in
+-3.23..-2.83 s which IS the sheet's +3 s displacement, and three outliers at +8.23/+10.69/+20.07. The median
+lands at -3.73 s, which is the gap between the two modes and explains 4 of 44 lines (9%, under the floor), so
+the vote abstained, the claims kept their raw clock, and every window repair and adoption after it worked in
+a clock 3 s out: 44 gross lines where W4-start's tree had 0. NOTHING ABOUT THE GRID CAUSED THAT — on
+w4-start's clock the same median read -3.17 s (14 of 45, 31%) and was applied. The exact 20 ms grid moved
+every decoded start by at most one frame, and a median sitting ON the boundary between a 20-line tail and a
+17-line cluster moves by a whole cluster width when one line crosses it. The densest window's median reads
+-3.07 s and explains 17 of 44 (39%), so the candidate that actually maximises the vote's own score is the one
+the vote was missing — RANSAC over the data rather than over three summary statistics, which is what the
+paragraph above already claims this is. The margin and the floor still decide, and no-shift still wins ties,
+so the conservative asymmetry is untouched: on a sheet already on our clock the densest window sits at ~0 and
+the null hypothesis takes the tie. AND THE WINDOW CARRIES TWO FLOORS OF ITS OWN, because unlike every other
+candidate it is CHOSEN by maximising the vote's own score: it must hold `MIN_PAIRS` lines (a window is a fit,
+and on a six-cue sheet a fifth of the pairs is 1.2 lines) and it must be ISOLATED. Both are measured at
+`_densest_offset`; without them the luckiest slice of a sheet with no mode at all defeats the floor above.
+
+MEASURED ON THE CORPUS, and it is inert everywhere else (`--level time_text --modes all,wrongtext+ownclock`,
+1088 cases, `_runs/w4r1b-time_text` against `results/w4-time_text.*`). SIX song-modes change a metric and all
+six are `never-be-alone`, all six better: off3 gross 44 -> 0 with 0 -> 35 line starts within ±500 ms,
+tempo098 44 -> 0 with 0 -> 32, tempo102 43 -> 0 with 0 -> 32, off15 7 -> 0 with 0 -> 35, offm1 4 -> 35 line
+starts, off05 33 -> 35. Pooled, that is off3 gross 47 -> 3, tempo098 48 -> 4, tempo102 47 -> 4 and off15
+10 -> 3 — the four `gross-not-up-<mode>` gates W4's grid had turned red (`gates/w4{,-clock}.yaml`).
+NOTHING ELSE MOVES: the other 1082 cases keep their gross, their ±500 and their wrong-text verdicts to the
+digit, the truth/jit/blind rows do not move at all, and `wrongtext` still passes 1 of 320. The tempo modes are
+`tempo-mode`'s alone — at the fitted scale 1.0268 the median offset explains 0 of 44 paired lines and the
+densest window 12 — and the pure offsets are `decode-mode`'s.
 
 MEASURED (review §3.2, the scratch harness `_review-scratch/pe-acc/e2e2.py` on the base model, whose patch
 `patch_claimclock2.py` is this module's prototype):
@@ -189,7 +229,9 @@ MIN_PIECE_PAIRS = MIN_PAIRS
 NO_SHIFT = "no-shift"
 ENVELOPE_LAG = "envelope-lag"
 DECODE_MEDIAN = "decode-median"
+DECODE_MODE = "decode-mode"
 TEMPO = "tempo"
+TEMPO_MODE = "tempo-mode"
 PIECEWISE = "piecewise"
 
 
@@ -235,6 +277,12 @@ class ClaimMap:
     baseline: int = 0
     pairs: int = 0
     margin: int = 0
+    #: NO `declined_sec` HERE, deliberately (W4 review r1 built one and this removes it). The size of a
+    #: REFUSED candidate looks like the number a reader deciding whether to publish a raw claim time wants,
+    #: and it is not: a candidate can be seconds wide because OUR DECODE is scattered — `decode-median` is
+    #: fitted against it — which is the very case adoption exists for. `align_steps`' `off_clock` asks the
+    #: audio instead (`activity.fit_shift` of the claims against the singing) and says so where it does it.
+    #: The winner's offset reaches the trail either way, through `why`.
     why: str = "no claims to map"
 
     def at(self, claimed: float) -> float:
@@ -303,18 +351,27 @@ def consensus(
             pairs=len(pairs),
         )
 
+    # THE MARGIN FIRST, because the mode candidates are offered against it (`_densest_offset`): a window that
+    # is not separated from the rest of the differences by more than the vote's own margin is not a mode.
+    margin = max(MIN_GAIN_LINES, int(MIN_GAIN_SHARE * len(pairs)))
     # IN PREFERENCE ORDER: `max` keeps the FIRST maximal element, so a tie goes to no-shift, then to the
-    # lag measured on the audio, ahead of the two fitted against our own decode (see the docstring).
+    # lag measured on the audio, ahead of the four fitted against our own decode (see the docstring), and
+    # within those to the estimator that does not shop around for its offset.
     candidates: list[tuple[str, Piece]] = [(NO_SHIFT, leg(0.0))]
     if envelope_lag is not None:
         candidates.append((ENVELOPE_LAG, leg(float(envelope_lag))))
     candidates.append((DECODE_MEDIAN, leg(_offset_for(pairs, 1.0))))
+    mode = _densest_offset(pairs, tolerance_sec, margin)
+    if mode is not None:
+        candidates.append((DECODE_MODE, leg(mode)))
     scale = theil_sen(pairs)
     if scale is not None:
         candidates.append((TEMPO, leg(_offset_for(pairs, scale), scale)))
+        tempo_mode = _densest_offset(pairs, tolerance_sec, margin, scale)
+        if tempo_mode is not None:
+            candidates.append((TEMPO_MODE, leg(tempo_mode, scale)))
 
     baseline = candidates[0][1].inliers
-    margin = max(MIN_GAIN_LINES, int(MIN_GAIN_SHARE * len(pairs)))
     name, best = max(candidates, key=lambda got: got[1].inliers)
     legs: tuple[Piece, ...] = (best,)
 
@@ -387,6 +444,78 @@ def _offset_for(pairs: Sequence[tuple[float, float]], scale: float) -> float:
     """median(ours - scale x claimed): the offset that goes with a scale. The MEDIAN for `place`'s reason —
     an LRC commonly carries one or two wildly wrong lines and a mean follows them."""
     return float(median(ours - scale * theirs for theirs, ours in pairs))
+
+
+def _densest_offset(
+    pairs: Sequence[tuple[float, float]], tolerance_sec: float, margin: int, scale: float = 1.0
+) -> float | None:
+    """The offset the MOST paired lines agree on AT `scale`: the median of the densest `2 x tolerance` window
+    of `ours - scale x claimed` — a MODE, not a location fit (W4 review r1; see WHY THE MODE in the module
+    docstring). It is `_offset_for`'s counterpart and takes the same `scale`, so the tempo candidate gets the
+    robust offset too: a drifting sheet's differences are a RAMP, and a median of a ramp half of whose lines
+    are wild is no better centred than a median of a bimodal constant.
+
+    The window is `2 x tolerance` wide because that is the widest set of differences ONE offset can explain:
+    every difference inside it is within `tolerance` of the window's centre, so "the densest window" and
+    "the offset with the most inliers" are the same question asked cheaply. Its MEDIAN rather than its centre,
+    so a cluster sitting against one edge of the window is estimated where its lines actually are.
+
+    TIES GO TO THE OFFSET NEARER ZERO, for the module's own asymmetry: two equally dense clusters is two
+    equally good stories about the sheet, and the one that moves it less is the one to tell. Deterministic
+    either way — sorted floats, integer counts and a median, no numpy and no iteration order.
+
+    None WHEN THE WINDOW IS NOT A FIT — fewer than `MIN_PAIRS` differences inside it (W4 review r1's own
+    round). A window IS a fit, on the lines inside it and no others, and `MIN_PAIRS` is this module's number
+    for how many paired lines a fit may be believed on; the two floors the vote already applies cannot stand
+    in for it on a SHORT sheet, because `MIN_INLIER_SHARE` of 6 pairs is 1.2 lines and `MIN_GAIN_LINES`
+    bottoms out at 2. MEASURED on the two hermetic exhibits that caught it
+    (`tests/test_align_provenance.py`): a 6-line sheet whose truncated last cue the decode smears over an
+    outro repeat, and an 8-line sheet whose claims are rotated onto each other's lines, both hand this
+    window exactly 2 of their differences — 0.33 and 0.25 of the pairs, clear of the share floor, and 2
+    ahead of no-shift's 0, so both were applied, moving 6 correct cues by +2.77 s and 8 claims by -13.28 s.
+    INERT ON THE CORPUS, which is why it is a floor and not a recalibration: over the 1088 cases of
+    `_runs/w4r1b-time_text` the 15 applied `decode-mode` maps hold 10 to 41 lines and the 3 applied
+    `tempo-mode` maps 7 to 12, so none of them is near it; the only two cases it can reach at all named a
+    3-line and a 4-line window as their REFUSED best candidate (`never-be-alone` drop50, `LUNABLIND`
+    wrongtext #2), and re-running both on this tree reproduces their documents BYTE-IDENTICALLY
+    (`doc_sha256` df872d26cfab8101 and e83ba54619003171, `_runs/w4r2-{nba-drop50,luna-wrong}`) — the floor
+    moves one sentence of their trail and nothing a metric reads.
+
+    None ALSO WHEN THE WINDOW IS NOT A MODE, and that guard is load-bearing rather than tidy. Every other
+    candidate is an estimate someone could have written down in advance; this one is chosen by MAXIMISING a
+    count over every position, so on differences with no mode at all the luckiest slice still looks dense —
+    `MIN_INLIER_SHARE` was calibrated against candidates that do not shop around, and without this guard the
+    shape that floor exists for defeats it. MEASURED on that exact exhibit (`tests/test_claimmap.py`, a
+    CORRECTLY timed 47-line sheet against a decode uniformly 0.4-3.0 s late): the densest 0.5 s window holds
+    16 of 47 differences — 0.34, clear of the floor — and would have moved 47 right claims by +2.62 s. So the
+    window must be ISOLATED: widening it by `tolerance` on each side must gather fewer than `margin` further
+    lines, the same margin the vote uses against no-shift. The uniform exhibit gathers 9 more and is refused;
+    the bimodal shapes this candidate exists for gather NONE (`never-be-alone` off3 17 -> 17, its tempo098 at
+    the fitted scale 13 -> 13), and a merely JITTERED sheet gathers 4 and is refused, which is right — its
+    differences are one hump, so `decode-median` is already its estimator.
+    """
+    deltas = sorted(ours - scale * theirs for theirs, ours in pairs)
+    width = 2.0 * tolerance_sec
+    best: tuple[int, int, int] = (0, 0, 0)  # count, left, right — the count decides, ties below
+    best_offset = 0.0
+    right = 0
+    for left in range(len(deltas)):
+        right = max(right, left)
+        while right < len(deltas) and deltas[right] <= deltas[left] + width:
+            right += 1
+        count = right - left
+        if count < best[0]:
+            continue
+        offset = float(median(deltas[left:right]))
+        if count > best[0] or abs(offset) < abs(best_offset):
+            best, best_offset = (count, left, right), offset
+    count, left, right = best
+    if count < MIN_PAIRS:
+        return None
+    widened = sum(
+        1 for delta in deltas if deltas[left] - tolerance_sec <= delta <= deltas[right - 1] + tolerance_sec
+    )
+    return None if widened - count >= margin else best_offset
 
 
 def _moves(pieces: Sequence[Piece], pairs: Sequence[tuple[float, float]]) -> bool:

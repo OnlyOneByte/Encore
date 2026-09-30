@@ -83,6 +83,28 @@ def plain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, arm: str = "") -> Out
     )
 
 
+def mix_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, arm: str = "") -> tuple[Outcome, Path]:
+    """The same song with NO vocals stem, and an instrumental bed under the mix.
+
+    The shape a song the separator could not run on takes (and the one `e2e.py --no-stem` measures): the
+    MIX is the align target at every stage, so the envelope the post-pass would read is a mix's — active
+    nearly everywhere, which is the measured fact `ends.ACTIVE_LEVEL` is calibrated against.
+    """
+    where = tmp_path / f"mix-{arm or 'default'}"
+    where.mkdir()
+    got = align(
+        where,
+        monkeypatch,
+        phrases=UNIQUE,
+        duration=UNIQUE_DURATION,
+        claims=truth(UNIQUE),
+        stemless=True,
+        mix_bed=0.1,
+        experiments=frozenset({arm} if arm else ()),
+    )
+    return got, where / "mix.wav"
+
+
 def spans_the_gate_saw(monkeypatch: pytest.MonkeyPatch) -> list[tuple[tuple[float, float], ...]]:
     """Records the line spans of every envelope fit the step makes, in order.
 
@@ -232,6 +254,76 @@ def test_the_trail_says_how_many_ends_it_held(tmp_path: Path, monkeypatch: pytes
     assert match is not None, clause
     assert 0 < int(match[1]) <= int(match[2]) == len(words_of(held))
     assert float(match[4]) <= MAX_EXTENSION_SEC
+
+
+def test_a_stemless_song_publishes_the_decodes_own_ends(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4 review r1: `theta` is a VOCALS STEM's calibration, so the post-pass does not run on a mix target.
+
+    `ends.ACTIVE_LEVEL` is 0.1 of the TARGET's own 95th-percentile level. On a stem that is a silence test;
+    on a mix it is true almost everywhere (measured on the corpus mixes: 92-98% of frames, with continuous
+    active runs of 38-184 s, against 59-77% and 10-19 s on the same songs' stems). The walk would then never
+    stop — the default would silently become the `ends-tile` arm inside each line PLUS a run to the next
+    line's onset, on the one population the corpus cannot measure because all 20 of its songs have stems.
+
+    Both halves are asserted: the step publishes the raw ends on a mix target (and says so on the trail),
+    and the counterfactual is exercised on this very audio — the same pure walk over this mix's envelope
+    tiles every line and runs its last word to the next line's onset.
+    """
+    got, wav = mix_only(tmp_path, monkeypatch)
+    control, _ = mix_only(tmp_path, monkeypatch, "ends-raw")
+    assert [word["end"] for word in words_of(got)] == [word["end"] for word in words_of(control)]
+    assert [word["start"] for word in words_of(got)] == [word["start"] for word in words_of(control)]
+    assert ends_clause(got.verdict[4]) == (
+        "word ends: the raw decode's (no vocals stem: the envelope's silence level is a stem's)"
+    )
+
+    # The counterfactual, on the audio the step just declined to walk: a mix's envelope clears the stem's
+    # theta nearly everywhere, and the walk then reaches its cap for every word it is given.
+    import soundfile as sf
+
+    from encore_worker.domain.audio import activity
+    from encore_worker.domain.lyrics.ends import ACTIVE_LEVEL, extend_ends
+    from encore_worker.domain.lyrics.generate import Generated, Line, Word
+
+    signal, rate = sf.read(wav, dtype="float32", always_2d=False)
+    env = activity.envelope(signal, rate)
+    assert float((env >= ACTIVE_LEVEL).mean()) > 0.95, "the bed must make the mix active almost everywhere"
+    document = Generated(
+        lines=tuple(
+            Line(
+                text=str(line["text"]),
+                start=float(line["start"]),
+                end=float(line["end"]),
+                words=tuple(
+                    Word(word=str(w["word"]), start=float(w["start"]), end=float(w["end"]), score=0.0)
+                    for w in line["words"]
+                ),
+                score=0.0,
+                index=index,
+            )
+            for index, line in enumerate(got.lines)
+        ),
+        language="en",
+    )
+    would = extend_ends(document, env.tolist(), activity.HOP_SEC)
+    flat = [word for line in would.lines for word in line.words]
+    raw = [word for line in document.lines for word in line.words]
+    # Every word reaches its CAP: the next onset, or +3 s where the next onset is further away than that.
+    caps = [
+        min(raw[position + 1].start, before.end + MAX_EXTENSION_SEC)
+        if position + 1 < len(raw)
+        else before.end + MAX_EXTENSION_SEC
+        for position, before in enumerate(raw)
+    ]
+    # To the FRAME: the walk consumes only frames that fit wholly before the cap, so it lands on the last
+    # frame boundary at or before it.
+    assert all(
+        cap - activity.HOP_SEC - 1e-9 <= word.end <= max(cap, before.end) + 1e-9
+        for word, before, cap in zip(flat, raw, caps, strict=True)
+    ), "on a mix the walk does not stop: every end runs to its cap — the `ends-tile` arm plus a tail"
+    assert flat[-1].end > raw[-1].end + 1.0, "and the document's last word runs on for the whole hold"
 
 
 def test_the_tile_arm_tiles_each_published_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -245,16 +245,90 @@ def test_the_best_of_several_poor_candidates_is_not_a_clock() -> None:
     47 paired lines (0.191, under the floor), and `reconcile` would not have noticed: it re-fits its own
     median, so the verdict stays UNRELATED either way and R1 then re-decodes every line inside a window 2 s
     off the singing.
+
+    IT IS ALSO WHAT BOUNDS THE MODE CANDIDATES (W4 review r1): `_densest_offset` picks its offset by
+    MAXIMISING an inlier count over every window, so on these differences — which have no mode, only a
+    uniform spread — the luckiest 0.5 s slice holds 16 of the 47 and would clear this floor outright. The
+    isolation test in `_densest_offset` is what refuses it, and the assertion below that no mode candidate was
+    offered at all is that test's exhibit, not an implementation detail: without it the floor is defeated by
+    the very shape it was measured on.
     """
     truth = {index: 12.0 + 4.3 * index for index in range(47)}
     rng = random.Random(0)  # the decode, 0.4-3.0 s late line by line: a median exists, it explains nothing
     ours = {index: start + rng.uniform(0.4, 3.0) for index, start in truth.items()}
+    pairs = sorted((truth[index], ours[index]) for index in truth)
+    margin = max(cm.MIN_GAIN_LINES, int(cm.MIN_GAIN_SHARE * len(pairs)))
+    assert cm._densest_offset(pairs, rc.AGREE_TOLERANCE_SEC, margin) is None, "no mode here, only a spread"
     got = cm.consensus(ours, truth)
     assert got.inliers >= got.baseline + got.margin, "the MARGIN would have accepted this map"
     assert got.inliers / got.pairs < cm.MIN_INLIER_SHARE
     assert not got.applied and got.candidate == cm.NO_SHIFT and got.pieces == ()
     assert f"under the {cm.MIN_INLIER_SHARE:.0%} floor" in got.why
     assert got.starts(truth) == truth, "a correct sheet keeps every one of its own timings"
+
+
+def test_a_bimodal_decode_is_mapped_by_its_mode_where_the_median_lands_in_the_gap() -> None:
+    """W4 review r1's regression, as the vote sees it: `never-be-alone` off3's own 44 differences.
+
+    THE SHAPE, measured (the module docstring's WHY THE MODE): a song whose lines repeat, so the global decode
+    smears 20 of them 4-9 s away, three lines land absurdly late, and 17 sit exactly on the sheet's +3 s
+    displacement. The MEDIAN of that lands at -3.73 s — in the gap between the two modes — and explains 4 of
+    44, under `MIN_INLIER_SHARE`, so the vote abstained and every window repair after it worked 3 s off the
+    singing (44 gross lines, where W4-start's clock had 0). The densest window reads -3.07 s and explains 17.
+    """
+    deltas = [
+        -8.87, -8.63, -8.43, -8.01, -7.59, -7.49, -7.43, -6.75, -6.71, -6.67, -6.65, -6.61, -6.57, -6.47,
+        -6.29, -6.14, -5.63, -5.37, -4.73, -4.31, -3.98, -3.77, -3.69, -3.59, -3.23, -3.20, -3.17, -3.13,
+        -3.11, -3.11, -3.07, -3.07, -3.07, -3.01, -3.01, -2.99, -2.93, -2.92, -2.89, -2.89, -2.83,
+        8.23, 10.69, 20.07,
+    ]  # fmt: skip
+    claimed = {index: 20.0 + 4.0 * index for index in range(len(deltas))}
+    ours = {index: claimed[index] + delta for index, delta in enumerate(deltas)}
+    pairs = sorted((claimed[index], ours[index]) for index in claimed)
+    assert cm._offset_for(pairs, 1.0) == pytest.approx(-3.73, abs=0.01), "the median is in the gap"
+    # 3 rather than the measured 4: these differences are the trail's two-decimal print, and one of the four
+    # sits exactly `AGREE_TOLERANCE_SEC` from the median, so the rounding decides it. The gap is the point.
+    assert cm._inliers(pairs, cm._offset_for(pairs, 1.0), 1.0, rc.AGREE_TOLERANCE_SEC) == 3
+
+    got = cm.consensus(ours, claimed)
+    assert got.applied and got.candidate == cm.DECODE_MODE
+    assert got.inliers == 17 and got.pairs == 44
+    assert got.pieces[0].offset_sec == pytest.approx(-3.07, abs=0.01)
+    assert f"mapped onto our clock by {cm.DECODE_MODE}" in got.why
+
+
+def test_a_two_line_cluster_on_a_short_sheet_is_not_a_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The mode candidates' own floor: a window is a FIT, so it needs `MIN_PAIRS` lines inside it like every
+    other fit here (W4 review r1's own round).
+
+    THE SHAPE, and it is the common one rather than a corner: a SHORT sheet — six cues, which is a verse and a
+    chorus — whose blind decode agrees with none of them, so no-shift explains 0 and any two lines that happen
+    to land the same distance out clear the 2-line margin outright. `MIN_INLIER_SHARE` cannot catch it either,
+    because a fifth of six pairs is 1.2 lines. The asserts below are that arithmetic: the two-line window is
+    isolated, explains 2 of 6 = 0.33 (over the floor) against no-shift's 0 (over the margin), so before this
+    floor the vote APPLIED a +2.77 s shift off two lines and moved four correct cues with them. Two hermetic
+    end-to-end exhibits caught it on real documents — `test_align_provenance`'s truncated last cue (+2.77 s
+    over 6 lines) and its rotated sheet (-13.28 s over 8) — and over the 1088-case corpus run no applied mode
+    map holds fewer than 7 lines, so the floor is inert there (`_densest_offset`).
+    """
+    deltas = [2.65, 2.89, 6.4, 11.2, 15.9, 20.1]  # two lines 2.7 s out, the rest scattered
+    claimed = {index: 10.0 + 10.0 * index for index in range(len(deltas))}
+    ours = {index: claimed[index] + delta for index, delta in enumerate(deltas)}
+    pairs = sorted((claimed[index], ours[index]) for index in claimed)
+    margin = max(cm.MIN_GAIN_LINES, int(cm.MIN_GAIN_SHARE * len(pairs)))
+    window = cm._inliers(pairs, 2.77, 1.0, rc.AGREE_TOLERANCE_SEC)
+    assert window == 2 and window / len(pairs) >= cm.MIN_INLIER_SHARE, "the share floor would have passed it"
+    assert window - cm._inliers(pairs, 0.0, 1.0, rc.AGREE_TOLERANCE_SEC) >= margin, "so would the margin"
+    assert cm._densest_offset(pairs, rc.AGREE_TOLERANCE_SEC, margin) is None, "two lines are not a mode"
+
+    got = cm.consensus(ours, claimed)
+    assert not got.applied and got.candidate == cm.NO_SHIFT
+    assert got.starts(claimed) == claimed, "a six-cue sheet keeps its own timings"
+
+    # AND THE FLOOR IS `MIN_PAIRS` ITSELF, not a second 5: raising the number a fit may be believed on raises
+    # this window's, which is the whole reason it is spelled as that literal.
+    monkeypatch.setattr(cm, "MIN_PAIRS", 2)
+    assert cm._densest_offset(pairs, rc.AGREE_TOLERANCE_SEC, margin) == pytest.approx(2.77, abs=0.01)
 
 
 def test_the_share_of_the_margin_binds_from_sixty_pairs() -> None:

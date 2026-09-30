@@ -502,6 +502,13 @@ hermetically in `worker/tests/test_bench_e2e.py`.
   `time_text`, `reference` → `youtube`: truth 1 → 4 gross, ±500 93.2 → 90.7%; blind 12 → 15, 85.1 →
   78.9%; drop20 10 → 20, 83.1 → 63.6%. The other 29 songs do not move: the two sweeps agree on them case
   for case.
+- **Stemless** (`--no-stem`, W4). Every case runs as a song no stems job could separate: `vocals_path` is
+  None, so the MIX is the align target, R4 has no second witness, `ALIGN_ON_MIX` is never offered and the
+  LINE_SYNC rung declines — and a refusal is therefore terminal for the text. No corpus song lacks a stem, so
+  this flag is the only way the mix's own decisions are measurable; it composes with every claim mode and with
+  `--sync-mode`. A run records `target: mix` and that is SETUP (`e2e_gates.SETUP_META`), not an arm: these rows
+  are not comparable with a stem baseline's metric for metric. See "The stemless mode" below for what it
+  measured and what it recommends.
 - **Claim modes** (combine with `+`, e.g. `jit+off15` or `blind+headers`; they apply in a fixed order):
   - `truth`, and `jit` (σ 0.3 s per line).
   - Offsets `off05 off1 off15 off3 off5 offm05 offm1 offm15 offm3`, and `tempo098` / `tempo102` (claims = truth × f).
@@ -961,19 +968,30 @@ another model, `--from` to re-print), rows in `results/w3-lift-{stem,mix}.json`.
 832 texts per target (32 songs × 6 right texts + 10 wrong + 10 same-video wrong words), none under the
 40-letter minimum (the shortest has 201):
 
+**RE-READ ON W4's EXACT 20 ms CLOCK** (W4 review r1). Every lift is measured on an emission matrix and 6a
+changed every matrix, so the recipe was re-run on the shipped tree: rows in `results/w4-lift-{stem,mix}.json`
+(W3's are kept beside them as `w3-lift-*`, and `lift_gate.py --from <file>` re-prints either). No band had to
+move — each stayed the same multiple of 0.05 — but every margin did, and the stem floor's head-room below the
+wrong population is now **0.0082**, not the 0.011 W3 recorded.
+
 | target | right texts (protected / drop50) min | wrong max (Jamendo / YouTube+tfr) | shipped |
 | --- | --- | --- | --- |
-| stem | +0.359 / +0.255 (Jamendo), +0.378 / +0.281 (YouTube+tfr) | +0.189 / +0.113 | refuse < 0.2, doubt < 0.3, ok |
-| mix | -0.063 (truth median +0.75; 24/192 below 0) | +0.132 / +0.106 | doubt < 0.6, ok; under 0.15 doubt too, and a refusal only under an arm |
+| stem | +0.350 / +0.264 (Jamendo), +0.348 / +0.368 (YouTube+tfr) | +0.192 / +0.124 | refuse < 0.2, doubt < 0.3, ok |
+| mix | -0.045 (truth median +0.66; 24/192 below 0) | +0.102 / +0.115 | refuse < 0.15, doubt < 0.6, ok |
 
-- **Held out**, stem: τ fitted on Jamendo (+0.274) scores 0 errors on YouTube+tfr, τ fitted there (+0.245)
+- **Margins**, stem: the lowest right text (a drop50) keeps +0.064 over the 0.2 floor and the highest wrong
+  text (Lower_Loveday × tfr-mayday, +0.1918, with Cortez × The.madpix.project +0.1874 behind it) sits 0.0082
+  under it. Mix: the 0.15 floor clears both splits' wrong maxima by 0.035 and refuses 7 of the 32 truth texts.
+- **Held out**, stem: τ fitted on Jamendo (+0.271) scores 0 errors on YouTube+tfr, τ fitted there (+0.236)
   0 on Jamendo. On the mix the populations overlap; the floor sits above both splits' wrong maxima.
 - **Recalibrate PER MODEL AND PER TEXT NORMALISATION** (`lexical`'s own recipe; W3 review r2 added the second
   half). The bands are read off the texts `clean_segments` serves, and normalisation moves lifts by the same
   order a model change does: case by case between the bench's two levels — raw provider claims at `time_text`
-  against cleaned ones at `run_align`, 1088 keys both sides — 302 cases move, median 0.026, p90 0.069, max
-  0.153 (Kinematic `wrongtext+ownclock` #1), against the 0.011 by which the stem floor clears the wrong
-  population; one case crosses it (LUNABLIND #2, +0.217 raw / +0.189 cleaned). So W5's text hygiene owes this
+  against cleaned ones at `run_align`, 1088 keys both sides — 302 cases move, median 0.022, p90 0.072, max
+  0.147 (Kinematic `wrongtext+ownclock` #1), against the 0.0082 by which the stem floor clears the wrong
+  population; one case crosses it (LUNABLIND #2, +0.232 raw / +0.172 cleaned). W3's rows read the same shape
+  on the old clock (302 cases, median 0.026, max 0.153), which is the point: the clock moves every lift and
+  moves this diff not at all. So W5's text hygiene owes this
   the reject-if a model change owes: re-run `lift_gate.py` for BOTH targets and re-read every threshold, or
   show case by case that no served text moved.
 - **How it combines with the envelope gate on a stem**, case by case over the W1 time_text bench at τ 0.2:
@@ -983,17 +1001,19 @@ another model, `--from` to re-print), rows in `results/w3-lift-{stem,mix}.json`.
 - **On the mix the lift reads how well the words are heard**: truth texts under 0.15 decode blind with a
   median 24% of lines within 1 s (numb 0/35; 172/237 lines over 2 s off), 0.15-0.6 a median 55% (140/343),
   above it 81% (149/1166), so the doubt band there is wide.
-- **The mix floor GRADES, it does not refuse** (W3 review r1): it would refuse 48 of the 192 right mix texts
-  (37 of the 160 protected, **7 of the 32 truth texts**: numb -0.031, Pure_Mids -0.020, Avercage -0.010,
-  The_Rinn +0.002, feel-my-heart +0.012, Kinematic +0.136, Moon_I_Mean +0.137), and 29 of those 48 are texts
-  the blind envelope gate passes. A song with no stem has nothing after a refusal (NextText, and the rung
-  declines the mix), so all of its sheets would fall to the whisper transcript — and the "unheard decode"
-  reading does not hold case by case (Moon_I_Mean's truth lifts +0.137 with 69.8% of its blind lines within
-  1 s). Below the floor now publishes as the doubt band; the envelope gate is the mix's only verdict, though
-  its measurable half sorts the mix badly (it passes numb's unheard decode, refuses Rxbyn's 92%-within-1 s
-  one; with the floor it refuses 114/192 right texts, the floor alone 48/192, both 0/640 wrong). The two
-  default-off arms hold the verdict a stemless bench mode owes: `h3-mix-floor` refuses beside the envelope
-  gate (W3's first shipping), `h3-mix-lift-alone` instead of it.
+- **The mix floor REFUSES since W4 review r1** (W3 shipped it grading only). Its cost is real and is why W3
+  hesitated: it refuses 48 of the 192 right mix texts (37 of the 160 protected, **7 of the 32 truth texts**:
+  numb -0.045, Avercage -0.012, The_Rinn -0.010, Pure_Mids +0.027, feel-my-heart +0.038, Color_Out +0.117,
+  Moon_I_Mean +0.127), a song with no stem has nothing after a refusal (NextText, and the rung declines the
+  mix), and the "unheard decode" reading does not hold case by case (Moon_I_Mean's truth lifts +0.127 with
+  69.8% of its blind lines within 1 s). What flipped it is that the gate it replaces loses MORE of the same
+  and admits wrong texts as well: the envelope gate refuses 51 of the stemless mode's 128 right-text cases
+  and 10 of its 32 truth texts, 9 of them above the floor, while passing 26 of 64 wrong texts (40.6%, against
+  §3.4's 1%) — see "The stemless mode" below, which is the end-to-end measurement this decision rests on. Its
+  measurable half sorts the mix badly case by case too (it passes numb's unheard decode, refuses Rxbyn's
+  92%-within-1 s one; with the floor it refuses 114/192 right texts, the floor alone 48/192, both 0/640
+  wrong). The controls are `h3-mix-envelope` (W3's default: the envelope gate alone, the floor grading) and
+  `h3-mix-floor` (both gates, W3's first shipping).
 - **Exempt**: the ASR tier, a text the lift cannot measure, and (W3 review r2) a matrix whose
   `Emissions.model` is not `lexical.BANDS.model` — the alignment bundle is chosen per LANGUAGE, so the
   English bands must not judge a German sheet on a German model's log-probabilities. All three keep the
@@ -1210,6 +1230,37 @@ is inert on every right text (the lowest applied right-text share over the 1056 
 applied either way, and re-measuring with the floor on changed no right-text row) and refuses 293 of the 402
 maps applied to WRONG texts, which only makes that gate stricter. `reconcile` could not have caught any of it:
 it re-fits its own median, so the verdict reads the same either way.
+
+AND THE VOTE NEEDED A MODE, which is W4's one shipped regression and its fix (W4 review r1, 2026-09-29;
+`claimmap` WHY THE MODE). A median is robust to a FEW wild lines and breaks down at 50% contamination, and a
+song whose lines repeat is exactly where our blind decode misplaces half of them: on `never-be-alone` off3 the
+44 differences are BIMODAL — 20 smeared 4–9 s away, 17 sitting on the sheet's real +3 s displacement, 3
+absurd — so the median landed in the GAP at −3.73 s, explained 4 of 44, fell under the floor above, and every
+window repair and adoption afterwards worked in a clock 3 s out (44 gross lines where w4-start had 0). The
+exact grid did not cause it: it moved every decoded start by at most one frame, and a median sitting on the
+boundary between a 20-line tail and a 17-line cluster moves by a cluster width when one line crosses. Two
+candidates now join the vote, `decode-mode` and `tempo-mode` — the median of the densest `2 × tolerance`
+window of the same differences, at scale 1 and at the fitted slope — which is RANSAC over the data instead of
+over three summary statistics. The densest window reads −3.07 s and explains 17 of 44. MEASURED over the same
+1088 `time_text` cases (`_runs/w4r1b-time_text` against `results/w4-time_text.*`): six song-modes change a
+metric, all six `never-be-alone`, all six better (off3 gross 44 → 0 with 35 line starts within ±500 ms,
+tempo098 44 → 0, tempo102 43 → 0, off15 7 → 0, offm1 and off05 gaining starts), pooled off3 47 → 3,
+tempo098 48 → 4, tempo102 47 → 4, off15 10 → 3, and the other 1082 cases identical to the digit. Because this
+candidate is CHOSEN by maximising the vote's own score it carries two floors of its own, and both are measured:
+the window must be ISOLATED (widening it by a tolerance each side must gather fewer than the margin more
+lines — a correctly timed 47-line sheet against a uniformly 0.4–3.0 s late decode hands the luckiest 0.5 s
+slice 16 of 47, over the share floor, and would have moved every claim +2.62 s) and it must hold
+`MIN_PAIRS` lines (a six-cue sheet's luckiest window holds 2, which is a third of its pairs).
+
+**`MIN_PAIRS` is measured inert on the corpus** (rebench r2, `_runs/w4r2b-time_text` against
+`_runs/w4r1b-time_text`, the same 1088 cases one fix apart): **1088 of 1088 documents are byte-identical in
+`doc_sha256`** and every summary metric is equal to the digit. The floor is REACHED on five cases, where it
+shortens the candidate list (6 → 4, 6 → 5, 4 → 3 twice, 3 → 2) — including the two where it removes the
+WINNER, `never-be-alone` drop50 (`decode-mode −13.29 s` on 3 of 23 paired lines) and `LUNABLIND` wrongtext #2
+(`decode-mode +21.30 s` on 4 of 35) — and in all five the vote was already declining to map, under the
+inlier share or under the gain margin, so no claim time moves. On the corpus it is belt and braces; the
+defect it fixes is a short sheet, and that is held hermetically
+(`test_a_two_line_cluster_on_a_short_sheet_is_not_a_mode`).
 
 THE LINE_SYNC RUNG TAKES THE SAME VOTE, in its own band — built after this section, measured in the next one.
 Until then the rung placed its sheet with `_placed_by`'s unconditional activity shift (r ≥ 0.40 moved it,
@@ -1669,8 +1720,31 @@ committed and 11 the other way, from a word document to a line-synced one. A wor
 document is what karaoke needs and a line document cannot give, so this is a trade and not a regression — but
 it is a trade with a cost, and the two MUST gates it fails are recorded as failures above, not as gates that
 cannot see their subject. The alternative W1 already built the machinery for (`policy.improves` / best-so-far:
-keep the LINE_SYNC document where the word document is not an improvement) would need its own corpus run and a
-rule for comparing documents of different kinds; it is named in PLAN-alignment-v3 W2's open items, not done.
+keep the LINE_SYNC document where the word document is not an improvement) needed a rule for comparing
+documents of different kinds. **W4 built that rule, and it does not rescue these three gates** — which is
+worth stating plainly, because "the real fix is the cross-kind comparison" was this paragraph's answer for two
+waves. The rule asks the one question production can answer without truth: did `reconcile` relate this
+document to the text's OWN claims (`TimingReport.claims_related`)? Where nothing related them the sheet gets
+its turn and must beat the words; where a map fitted, the words stay. On W2's own rows The_Rinn off3 and
+Ridgway off15/off3 read `structural` blind and **AGREE after the repairs** — the clock related that sheet to
+our decode, which is why the word document became publishable at all — so the rung is never spent there and
+those two gates read exactly as they do now. tfr-chosen `headers` is not a kind change in W2 at all: it
+ALREADY publishes a LINE_SYNC document (35/35 within ±500 ms, 0 gross), and its `unsung` rise is that line
+document timing 3 more of the injected headers, a text-hygiene defect (W5's M11). What the rule does move is a
+larger, disjoint population: 36 of the 420 published word documents reach the rung, 18 change kind, and those
+18 hold **ALL 299 of their gross lines** — 84% of every published word document's 356 — with 523 of 990 line
+starts within ±500 ms where their line documents hold 0 gross and 987 of 991, for 5 677 word timings given up
+(PLAN-alignment-v3 W4's carried item (b)).
+
+**The rule's own corpus run at `run_align` is now recorded** (rebench r2, `_runs/w4r2-run_align`, the shipped
+tree and the exact clock). Over the 448 right-text cases the LINE_SYNC rung is reached on **45** — `drop50` 23,
+`headers` 12, `jit` 4, `drop20` 3, `tempo098` 1, `tempo102` 1, `credit` 1, and 0 in `truth` / `off*` /
+`offm1` / `extraverse` / `blind` — and the rung's document REPLACES the first attempt's on **26** of them
+(`headers` 12, `drop50` 6, `jit` 3, `drop20` 3, `tempo098` 1, `tempo102` 1; `credit`'s one retry keeps the word
+document). So the population moved with the clock — W2's rows read 36 reached and 18 replaced — and it moved the
+same way: the sheets that still need the rung are the partial and header-injected ones, not the displaced ones,
+which the claim clock's mode candidates now map on the first attempt. At `--sync-mode lines` the counter is 0
+everywhere by construction: there the rung is the only attempt, so there is no first document to replace.
 
 **AND THE WAVE'S LARGEST SINGLE REGRESSION IS NOT IN THAT POPULATION AT ALL** (found by W2 review r2, which
 also found that no gate in `gates/w2.yaml` could see it). **bad-guy drop50** at `run_align` publishes the SAME
@@ -1884,18 +1958,181 @@ two rows at its pause now shows as one. (The highlight port models `resegmentLin
 which moves the ball is already inside the 80.6; how the unsplit row reads in a room is not.) It ships
 default-off.
 
-### The corpus run this owes
+### Measured — the corpus, 20 Jamendo songs × truth + blind (rebench r2)
 
-Review §3.5's gates, rebased onto the W4 clock — the ends got *worse* on the exact grid, see the clock
-section: the old 0.07% stretch was masking the peakiness. **Reject if** the highlight gains < 5 pts,
-phrase-final end ±100 gains < 10, word-end ±100 is worse on more than 3 of the 20 Jamendo songs, or any
-onset moves.
+`results/w4-time_text.json` against `results/w4-endsoff-time_text.json`, the `ENCORE_ALIGN_EXPERIMENTS=ends-raw`
+ARM rather than a code shim (`_runs/w4r2-endsoff-time_text`, 4870 scored ends, 702 phrase-final).
+**`gates/w4-ends.yaml` 6/6 PASS**, read on `blind`, which is the cheapest honest population — no claims, so
+no repair-ladder differences between the columns:
 
-**MEASURE IT AT `--level time_text`, NOT `--level generate`.** The post-pass is a step, not a decoder
-change: `generate` is the raw global decode alone (that is what the level means, and the driver's docstring
-says so), so the ends there are the raw ones whatever this ships. The clock section's 68.7 / 36.3 / 66.0
-column is a `generate` row and is the right thing to compare the *clock* against; the gain this owes is a
-`time_text` (and `run_align`) pair — `ENCORE_ALIGN_EXPERIMENTS=ends-raw` for the control, nothing set for
-the default — which is what the 3-song table above is. Because `align_config` is part of the emission cache
-key (deliberately — see `emitter_fingerprint`), the control pass recomputes matrices: about one extra model
-pass per song, not per case.
+| metric, `blind` Jamendo | `ends-raw` (control) | default | gate |
+| --- | --- | --- | --- |
+| highlight (TV semantics) | 65.92% | **77.51%** | +11.59 ≥ +5 ✓ |
+| phrase-final end ±100 | 36.30 | **56.75** | +20.45 ≥ +10 ✓ |
+| word end ±100 | 68.74 | **79.48** | not down ✓ |
+| word end bias | −55.3 ms | **−3.8 ms** | — |
+| word onset ±100 / ±300 | 80.11 / 91.58 | = / = | ±300 not down ✓ |
+| songs worse at word-end ±100 | — | **2 of 20** | ≤ 3 ✓ |
+| `onsets_sha256` changed | — | **0 of 20** | == 0 ✓ |
+
+**No onset moves, proved from the rows rather than from the unit test.** Over the 40 paired song-modes
+(both modes, 20 songs) of `results/w4-{,endsoff-}time_text.cases.jsonl`: `onsets_sha256` is unchanged on
+**40 of 40** while `doc_sha256` changes on **40 of 40** — the post-pass moves every document and no onset.
+
+The two songs that lose interior-end accuracy are Avercage (−8.33 `blind`, −6.19 `truth`) and Color_Out
+(−2.71, −1.28), and **both gain on the independently measured half** — phrase-final ±100 +10.52 / +16.67 and
++19.36 / +21.74, highlight +6.2 / +9.6 and +10.0 / +8.5. **0 of 20 songs are worse at phrase-final ±100 or at
+highlight in either mode.** That is the shape §3.5's own objection predicts: interior and phrase-final ends
+can move in opposite directions on one song, and only the second is really measured (80% of Jamendo's
+interior truth ends are recorded as the next word's start). The largest gains are Songwriterz (word-end
++30.45, phrase-final +44.74) and Slingshot_Miracle (+26.79, +30.77).
+
+**Why `--level time_text` and not `--level generate`.** The post-pass is a step, not a decoder change:
+`generate` is the raw global decode alone (that is what the level means, and the driver's docstring says so),
+so the ends there are the raw ones whatever this ships. The clock section's 68.7 / 36.3 / 66.0 column is a
+`generate` row and is the right thing to compare the *clock* against. Because `align_config` is part of the
+emission cache key (deliberately — see `emitter_fingerprint`), the control pass recomputes matrices: about one
+extra model pass per song, not per case, which is 2 of the control run's 2.5 minutes.
+
+## The stemless mode: what the mix path really does (W4, 2026-09-29; the carried W3 item, review §3.4 / H3)
+
+Every corpus song has a vocals stem, so until now **no measurement of the shipped mix path existed** — and
+the mix path is a whole other set of decisions in the same step: the lexical gate reads the MIX bands
+(`lexical.BANDS`), R4 has no second witness (the mix IS the target), `Knob.ALIGN_ON_MIX` is never offered,
+and the LINE_SYNC rung declines, so **a refusal there is terminal for the text**. W3 chose the mix's default
+on the lift population alone (`results/w3-lift-mix.json`) and shipped the two alternatives as default-off
+arms with an explicit note that they were unmeasured end to end.
+
+`e2e.py --no-stem` is that missing dimension, composable with every claim mode and with `--sync-mode`: the
+case is handed `vocals_path=None` and nothing else changes, so the stem is not read at all, the mix is the
+align target, and `AlignStepsImpl._vocals_of` returns None exactly as it does for a song whose stems job
+refused a silent instrumental. A run records `target: mix` and that is part of the SETUP a `base.` gate must
+share (`e2e_gates.SETUP_META`): a stemless case decodes a different audio file against the same truth, so no
+metric of it is a delta on a stem baseline's.
+
+### The three mix gates, measured (32 songs, `--level time_text --no-stem --wrong-k 2`, base model)
+
+`_runs/w4r2-stemless-{,envelope-,floor-}time_text`, rows committed as
+`results/w4-stemless{,-envelope,-floor}-time_text.{json,cases.jsonl}`, 192 cases per arm, ~3-5 min per arm
+(each arm recomputes its 32 mix matrices: `align_config` keys the emission cache). Right texts are this
+song's own words —
+`truth` (the sheet verbatim), `blind` (no claims at all), `drop20` / `drop50` (partial sheets); wrong texts
+are another song's sheet, 2 donors per song. Accuracy is on the TEXT denominator (`in_text`, 5805 lines), so
+a refused document scores zero. Tally: `_runs/w4-stemless/tally.py`.
+
+These are the POST-FLIP recordings (rebench r2): the column called the default is the shipped path, and W3's
+behaviour is the control arm `h3-mix-envelope`. The pre-flip rows of the same three configurations are kept at
+`results/w4-stemless-liftalone-time_text.*` — the shipped path one round earlier, which is the only A/B for
+review r1's ends mix-skip (see "What the re-record moved" below).
+
+| | **the DEFAULT: the lift's floor alone** | `h3-mix-envelope` (W3's): envelope gate only | `h3-mix-floor`: envelope AND lift |
+| --- | --- | --- | --- |
+| right texts published | **91 / 128** | 77 / 128 | 54 / 128 |
+| line starts ±500 ms, of the text | **53.5%** | 42.3% | 38.4% |
+| gross lines published | 859 | 853 | **467** |
+| `truth` published | **25 / 32** | 22 / 32 | 16 / 32 |
+| `truth` ±500 ms, of the text | **66.7%** | 53.7% | 47.9% |
+| `truth` gross lines | 108 | 147 | **48** |
+| **wrong texts passed** | **0 / 64** | **27 / 64 = 42.2%** | **0 / 64** |
+| `gates/w4-stemless.yaml` | 10 / 14 | 3 / 14 | 3 / 14 |
+
+Against the default, case for case: `h3-mix-floor` refuses 37 right-text documents and recovers none (−873
+line starts within ±500 ms); `h3-mix-envelope` refuses 37 and recovers 23 (−873, **+227**).
+
+#### What the re-record moved
+
+Published counts, refusals, ±500 and the wrong-text rate reproduce the pre-flip rows EXACTLY on
+`truth` / `blind` / `drop20` / `wrongtext` — starts never move, so the flip really is a rename — and two
+things did move:
+
+* **the END columns, which isolates review r1's ends mix-skip.** Phrase-final end ±100 +3.4 `blind` /
+  +4.6 `truth` / +11.0 `drop20` / +6.4 `drop50`; highlight −9.5 / −9.7 / −6.3 / −4.0. On the mix the walk had
+  been reaching its cap on 92–98% of frames — tiling plus a 3 s tail — which BUYS highlight (a held end is on
+  screen while the singing is) and LOSES the phrase-final end it is judged by. The skip is the right default
+  until a mix theta is fitted, and the trade is now a measurement rather than a prediction.
+* **one right-text document, and it is not the ends:** `bad-guy` drop50 on the mix, gross 0 → 8 and ±500/text
+  11.76 → 8.82 (pooled `drop50` gross 281 → 289). The trails name it: r1's new `tempo-mode` candidate
+  outscores `envelope-lag` by ONE line (10 of 34 against 9), the repaired document then reads `unrelated`
+  instead of `coarse` (9% of lines agree, not 68%), and r1's `off_clock` refusal withholds the 14 claim
+  adoptions that had carried it. MIX-ONLY: the same case is byte-stable on the stem at both levels.
+* the CONTROL got worse, which strengthens the flip: `h3-mix-envelope` now admits 27 of 64 wrong texts
+  (42.2%) against the pre-r1 recording's 26 (40.6%). The extra one is `Kinematic_-_Peyote` under
+  The.madpix.project's sheet at lift −0.0056 — sub-floor, and its envelope fit now clears the gate.
+
+**W3's mix path failed review §3.4's reject-if by forty times over** — "more than 1% of wrong texts pass" is
+42.2% on these rows — and it was not a close call which way to fix it, because the envelope gate on the mix
+is anti-correlated with the document it admits:
+
+* it REFUSES 10 of the 32 `truth` texts, and 9 of those lift at or above the 0.15 floor, so
+  `h3-mix-lift-alone` publishes them: Tom_Orlando (lift +1.465) 72 of 72 line starts within ±500 ms with 0
+  gross, Rxbyn (+1.081) 69/72 with 0, HILA (+0.872) 53/58 with 0, Ridgway (+1.061) 48/50 with 0, tfr-mayday
+  (+0.943) 44/52 with 0, The.madpix (+0.637) 26/30 with 1 — then two poor ones and one bad one: tfr-chosen
+  (+0.425) 13/37 with 16 gross, bad-guy (+1.667) 2/79 with 1, never-be-alone (+0.158) 4/47 with 42. (The
+  tenth, Color_Out at +0.117, is sub-floor: every arm refuses it.);
+* it PUBLISHES the four worst `truth` documents in the run, all four sub-floor: The_Rinn (lift −0.010) 2 of 46
+  line starts within ±500 ms with **44 gross lines**, feel-my-heart (+0.012) 7/37 with 25, Moon_I_Mean
+  (+0.127) 15/43 with 19, Pure_Mids (+0.026) 8/20 with 11. The floor's `truth` cost is the other two it
+  admits: numb (−0.039) 29/35 and Avercage (−0.012) 41/42, both with no gross line.
+
+The lift population on the mix is the same one `results/w3-lift-mix.json` recorded, now read through the
+shipped step: right texts −0.043..+2.852 (median +0.511), wrong texts −0.086..+0.098 — so **the 0.15 floor
+separates the two populations completely on this run**, and the reviewers' "it would refuse about a quarter
+of the right texts" is confirmed at 37 of 128 (28.9%), 7 of the 32 `truth` texts.
+
+### What a refusal costs, as a whole job (`--level run_align --no-stem --asr off`, 4 songs, truth)
+
+`_runs/w4-stemless-ra-{default,floor,liftalone}`. A stemless refusal is terminal, the pool holds one provider
+text, and `--asr off` stands for a box with no transcriber — so the job ends in `GiveUp`: **no lyrics**.
+
+| song (mix lift) | default | `h3-mix-floor` | `h3-mix-lift-alone` |
+| --- | --- | --- | --- |
+| Avercage (−0.012) | published 41/42, 0 gross | no lyrics | no lyrics |
+| numb (−0.039) | published 29/35, 0 gross | no lyrics | no lyrics |
+| HILA (+0.872) | **no lyrics** | no lyrics | published 53/58, 0 gross |
+| Rxbyn (+1.081) | **no lyrics** | no lyrics | published 69/72, 0 gross |
+
+And "terminal" understates it, which the bench cannot show because it runs one job per song: a refused text
+rides out on `AlignOutcome.refused`, and the completion frame WITHDRAWS an earlier job's stored candidate for
+those same words (`align_steps.superseded_candidates`, review W1 r2). So a mix refusal does not merely fail to
+publish — it takes down whatever an earlier run of the same media had published for that text.
+
+### The decision, and it is not the one W3 shipped — TAKEN in W4 review r1
+
+**On the mix the lexical lift REPLACES the envelope gate, exactly as it is the verdict on a stem** — with
+`mix_floor` staying at 0.15 (the review's ~0.1 would pass shape-of-you's donor; see `lexical`). W4 recorded
+this as a recommendation and review r1 flipped the default to it (`align_steps._time_text_global`,
+`lexical.BANDS.mix_floor`, `Config.ALIGN_EXPERIMENTS`), keeping W3's behaviour as the control arm
+`h3-mix-envelope` and the both-gates configuration as `h3-mix-floor`. It dominates the behaviour it replaces
+on every axis that matters: 14 more
+right texts published, +11.2 points of line starts within ±500 ms on the text denominator, +13.0 on `truth`
+alone, the same gross count (851 vs 853) over 14 more documents, and the wrong-text pass rate 40.6% → 0.0%.
+`h3-mix-floor` — what W3 first shipped, both gates required — is strictly worse than that: it pays the
+floor's cost AND keeps the envelope gate's, publishing 54 right texts where the lift alone publishes 91.
+
+Two things this does NOT say. (1) The floor's cost is real and terminal: 37 right-text cases (7 of 32 truth
+texts) are refused, and the two best of them are good documents — numb 29/35 and Avercage 41/42 line starts
+with no gross line — so a stemless song whose sheet the mix's matrix barely hears publishes nothing and falls
+to the transcript, or to no lyrics on a box without one. The redraw noise on a near-floor lift is an SD of
+0.03–0.07 (`lexical`, REDRAW NOISE), which is the scale of that decision for the 4 texts inside ±0.05 of the
+floor. (2) The envelope fit is not worthless — it reads whether OUR DECODE sits on the audio's activity,
+which the lift cannot see: `blind`-mode recoveries include never-be-alone at 4 of 47 line starts with 42
+gross and bad-guy at 0 of 79 with 10, both lifting over +0.15. That is an argument for keeping the fit as a
+GRADING input on the mix (demote a document its own decode does not fit), not for keeping it as the refusal;
+measuring that pairing is the next stemless run, and it is not in this wave.
+
+"Either gate is enough" was measured too, by derivation from the same rows: it publishes 114 of 128 right
+texts and 26 of 64 wrong ones — it cannot pass §3.4 at all, because the envelope half is what passes them.
+
+### What this owes
+
+THE FLIP'S RE-RECORD IS DONE (rebench r2): all three configurations are recorded under their shipped names,
+`align_config` reads what each run actually was, and `results/w4-stemless-time_text.json` is the shipped path
+a later stemless run should `--compare` against. `h3-mix-lift-alone` is retired from
+`Config.ALIGN_EXPERIMENTS`, so the pre-flip rows can be READ but not reproduced under that name — the control
+`h3-mix-envelope` reproduces the other column, and the retired arm's own column is now the default's.
+
+`gates/w4-stemless.yaml` holds review §3.4's two halves as absolute gates on a stemless run, with each arm's
+reading in its header. The corpus sweep this probe does not replace: `--modes all` stemless at both levels
+(and `--sync-mode lines --no-stem`, where the rung declines every text by design — worth pinning as a row
+rather than assumed). Nothing about the stem path is measured here: `--no-stem` is a different setup, so
+these runs are not comparable with `results/w2-*` or `w3-*` metric for metric.

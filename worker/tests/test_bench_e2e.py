@@ -63,11 +63,14 @@ def song_of(
     group: str = "jamendo",
     words: Sequence[tuple[float, float]] | None = None,
     audio: Path = Path("/nonexistent.wav"),
+    mix: Path | None = None,
 ) -> Any:
+    """One corpus song. `audio` is its stem AND its mix, unless `mix` names another file — which only the
+    stemless tests need, since there the two are aligned on differently (`e2e.py --no-stem`)."""
     return lib.Song(
         slug=slug,
         group=group,
-        mix=audio,
+        mix=audio if mix is None else mix,
         vocals=audio,
         truth=tuple(lib.TruthLine(text, start, end) for text, start, end in lines),
         words=None if words is None else tuple(lib.TruthWord(s, e) for s, e in words),
@@ -595,10 +598,21 @@ def write_voiced(
 
 @pytest.fixture()
 def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
+    """The `time_text` driver over a two-song corpus whose songs have a STEM, as every corpus song does.
+
+    THE MIX IS A SECOND FILE, same samples, different path (W4 review r1). `song_of` defaults a song's mix
+    to its stem, which reads as a STEMLESS case to the shipped step — `AudioRef.align_target` returns the
+    same path for both, so `target_name` is "mix" and the word-end post-pass does not run (`ends`' theta is
+    a stem's). That made this driver's document differ from `RunAlignDriver`'s, which stages the stem into
+    its own media tree and so always aligns on a "stem": the parity property below read a fixture artifact
+    as a difference between the two paths. Neither the corpus nor production has a song whose mix IS its
+    vocals — `--no-stem` passes `vocals_path=None` instead, which the stemless tests do too.
+    """
     spread_decodes(monkeypatch)
     wav = write_voiced(tmp_path / "vocals.wav", DURATION)
-    song = song_of(PHRASES, slug="synthetic", audio=wav)
-    other = song_of([("a wholly different sheet of words", 3.0, 9.0)], slug="other", audio=wav)
+    mix = write_voiced(tmp_path / "mix.wav", DURATION)
+    song = song_of(PHRASES, slug="synthetic", audio=wav, mix=mix)
+    other = song_of([("a wholly different sheet of words", 3.0, 9.0)], slug="other", audio=wav, mix=mix)
     driver = e2e.TimeTextDriver(aligner=VoicedAligner(), corpus=[song, other], media_root=tmp_path / "media")
     return driver, song
 
@@ -2356,14 +2370,25 @@ def test_the_emissions_key_moves_with_the_align_settings_and_the_code_ml_imports
 
 
 def test_the_bench_builds_its_aligner_as_the_host_does() -> None:
-    """`ml.build_aligner` passes the device alone, and so does `BenchAligner`. A factory argument that
-    reaches production (a model knob, a frame-grid setting) must reach the bench too: this fails first."""
+    """A factory argument that reaches production (a model knob, a frame-grid setting, the cache bound)
+    must reach the bench too: this fails first.
+
+    PINNED AS A SET AND FORWARDED, not as a literal list of one name (W4 review r1, which added `jobs` —
+    the emission LRU's bound, derived from `Config.concurrency`). The list that must not GROW silently is
+    the host factory's, and `BenchAligner` may have arguments of its own on top (its disk cache), so the
+    relation is containment plus the value actually arriving: a forwarded argument dropped in
+    `BenchAligner.__init__` would leave the harness measuring another adapter's behaviour.
+    """
     import inspect
 
     from encore_worker.adapters import ml
 
-    assert list(inspect.signature(ml.build_aligner).parameters) == ["device"]
-    assert list(inspect.signature(ml.WhisperXAligner.__init__).parameters) == ["self", "device"]
+    host = set(inspect.signature(ml.build_aligner).parameters)
+    assert host == {"device", "jobs"}, "a new production factory argument: forward it to BenchAligner too"
+    assert set(inspect.signature(ml.WhisperXAligner.__init__).parameters) == {"self", *host}
+    assert host <= set(inspect.signature(e2e.BenchAligner.__init__).parameters)
+    built = e2e.BenchAligner(device="cpu", jobs=3)
+    assert built._matrices == ml._emission_cache_size(3), "`jobs` reaches the LRU through the bench"
 
 
 def test_every_retime_knob_is_a_metric_whether_or_not_it_was_used(
@@ -2554,6 +2579,96 @@ def test_a_lines_run_sends_the_sync_mode_and_keeps_the_rungs_own_note(
     with pytest.raises(ValueError, match="sync mode"):
         e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path, sync_mode="x")
     assert e2e.main(["--sync-mode", "lines"]) == 2, "a job parameter: run_align only"
+
+
+# ── W4: the stemless dimension (`--no-stem`) ─────────────────────────────────────────────────────────
+
+
+class PathAligner(VoicedAligner):
+    """The rig's aligner, recording WHICH file each emission pass was asked for."""
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    def emissions(self, path: str, language: str) -> VoicedEmissions:
+        self.asked.append(path)
+        return super().emissions(path, language)
+
+
+@pytest.fixture()
+def two_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """A song whose MIX and vocals stem are different files, so which one was aligned on is observable."""
+    spread_decodes(monkeypatch)
+    mix = write_voiced(tmp_path / "mix.wav", DURATION)
+    vocals = write_voiced(tmp_path / "vocals.wav", DURATION)
+    return song_of(PHRASES, slug="synthetic", audio=vocals, mix=mix)
+
+
+def test_a_stemless_case_aligns_on_the_mix_and_the_stem_file_is_never_read(
+    two_files: Any, tmp_path: Path
+) -> None:
+    """`--no-stem` is the harness's whole stemless seam: the step is handed `vocals_path=None`, so the
+    SHIPPED `align_target` resolves to the mix and every mix-only decision follows from it (the lexical
+    gate's mix bands, no R4 witness, no ALIGN_ON_MIX knob). Nothing is stubbed to make that happen, which is
+    why the test can check it on the files that were decoded."""
+    stemless = e2e.TimeTextDriver(
+        aligner=PathAligner(), corpus=[two_files], media_root=tmp_path / "mix", stem=False
+    )
+    row = stemless.run(e2e.Case(two_files, "truth", 0))
+    assert row["outcome"] == lib.PUBLISHED
+    assert stemless.aligner.asked == [str(two_files.mix)], "the stem was not decoded, or read at all"
+    assert stemless.target_of(two_files) == str(two_files.mix)
+
+    on_stem = e2e.TimeTextDriver(aligner=PathAligner(), corpus=[two_files], media_root=tmp_path / "stem")
+    on_stem.run(e2e.Case(two_files, "truth", 0))
+    assert on_stem.aligner.asked == [str(two_files.vocals)], "the default target is unchanged"
+    assert on_stem.duration_of(two_files) == stemless.duration_of(two_files), (
+        "both read the stem's duration, so a stemless row's CLAIMS are its stem row's"
+    )
+
+
+def test_the_stemless_generate_level_decodes_the_mix_too(two_files: Any, tmp_path: Path) -> None:
+    """The raw decode is the same dimension: `--level generate --no-stem` is the mix's own matrix."""
+    raw = e2e.GenerateDriver(
+        aligner=PathAligner(), corpus=[two_files], media_root=tmp_path / "raw", stem=False
+    )
+    row = raw.run(e2e.Case(two_files, "blind", 0))
+    assert row["outcome"] == lib.PUBLISHED and raw.aligner.asked == [str(two_files.mix)]
+
+
+def test_a_stemless_run_align_job_finds_no_stem_where_a_stems_job_would_have_left_one(
+    two_files: Any, tmp_path: Path
+) -> None:
+    """At `run_align` the stem reaches the step through the media dir, so stemless means the conventional key
+    is EMPTY and `AlignStepsImpl._vocals_of` returns None on its own — the same path as a stems job that
+    refused a silent instrumental. Nothing else about the job changes."""
+    from encore_worker.artifacts import keys
+
+    case = e2e.Case(two_files, "truth", 0)
+    stemless = e2e.RunAlignDriver(
+        aligner=PathAligner(), corpus=[two_files], media_root=tmp_path / "mix", stem=False
+    )
+    media_dir = stemless._media_dir(case)  # noqa: SLF001 - the seam under test
+    key = keys.vocals_key(two_files.slug, "wav")
+    assert media_dir.is_dir() and not (media_dir / key).exists()
+
+    on_stem = e2e.RunAlignDriver(aligner=PathAligner(), corpus=[two_files], media_root=tmp_path / "stem")
+    assert (on_stem._media_dir(case) / key).is_symlink(), "the default still stages the stem"  # noqa: SLF001
+
+
+def test_a_stemless_run_is_its_own_setup_and_an_unrecorded_target_is_the_stem() -> None:
+    """A stemless case decodes a different audio FILE against the same truth, so no metric of it is a delta
+    on a stem baseline's: `target` is setup, like `sync_mode`, and every run before `--no-stem` was a stem
+    run."""
+    assert gates.setup_mismatch({**SETUP, "target": "stem"}, SETUP) == []
+    assert gates.setup_mismatch({**SETUP, "target": "mix"}, SETUP) == [
+        "target differs — run 'mix', base 'stem'"
+    ]
+    table = gates.format_compare(
+        gates.View(modes={}, songs={}, meta={**SETUP, "target": "mix"}),
+        gates.View(modes={}, songs={}, meta=SETUP),
+    )
+    assert "target=mix" in table and "WARNING: target differs" in table
 
 
 def test_modes_all_expands_beside_other_modes_once_each() -> None:

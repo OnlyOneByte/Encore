@@ -261,10 +261,21 @@ def test_the_global_report_carries_no_residual_so_reshift_is_never_offered(rig: 
     assert timed.report.residual_sec is None
 
 
-def test_a_failing_envelope_gate_fails_the_attempt_rather_than_publishing(rig: Rig, tmp_path: Path) -> None:
+def test_a_failing_envelope_gate_fails_the_attempt_rather_than_publishing(
+    rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Wrong text — or a garbage decode — must not be published just because it decoded. Silence in place
     of the sung audio makes the envelope refuse; the attempt is REFUSED (a verdict that ends the text —
-    no line sync, which would publish the same words ungated) and NOTHING falls back to another engine."""
+    no line sync, which would publish the same words ungated) and NOTHING falls back to another engine.
+
+    WHERE THE ENVELOPE GATE STILL DECIDES is a text the LIFT could not measure (`unmeasured_lift`), and that
+    is now the only place on either target (W4 review r1 made the lift the mix's verdict too, as W3 made it
+    the stem's). The gate itself is unchanged and so is this property; what changed is its scope, and reading
+    it here rather than on a lift that happens not to fire is what keeps the test about the gate. The two
+    controls that put the envelope gate back in the verdict's seat on a mix are pinned in
+    `tests/test_lexical_gate.py` (`h3-mix-envelope`, `h3-mix-floor`).
+    """
+    unmeasured_lift(monkeypatch)
     impl, aligner, trail, job, _audio, _tmp = rig
     silent = tmp_path / "silence.wav"
     sf.write(silent, np.zeros(int(DURATION * RATE)), RATE)
@@ -411,8 +422,12 @@ def test_a_weakly_correlated_but_zero_lag_fit_is_accepted(rig: Rig, monkeypatch:
 def test_the_same_weak_correlation_at_a_real_lag_still_refuses(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The other side of the tier-2 band, and read through the gate's own scope: `unmeasured_lift`, because
+    since W4 review r1 the lift is the wrong-text verdict on a mix as well as on a stem, so the envelope
+    gate refuses only where no lift measured the text (the test above says the same)."""
     from encore_worker.domain.audio import activity
 
+    unmeasured_lift(monkeypatch)
     monkeypatch.setattr(
         activity,
         "fit_sheet_to_audio",
@@ -1007,14 +1022,13 @@ def test_on_an_exact_decode_r3_reproduces_the_global_path(rig: Rig) -> None:
     confined the repeat to that gap. R3 must still RUN: its note on the trail says every chorus line was
     re-decoded, and nothing raised.
 
-    THE COMPARISON IS AGAINST THE RAW DECODE PLUS THE DISPLAY POST-PASS (W4, review §3.5): since the ends
-    are extended through the envelope just before `as_doc`, a bare `generate` is no longer what publishes.
-    Applying `extend_ends` to the raw decode with the envelope the step itself read makes this property
-    stronger than it was — the post-pass is now the ONLY difference between the two, so a repair that
-    moved anything else still turns this red."""
-    from encore_worker.adapters.ml import load_audio_mono_16k
-    from encore_worker.domain.audio import activity
-    from encore_worker.domain.lyrics.ends import extend_ends
+    THE COMPARISON IS AGAINST THE RAW DECODE, bit for bit, and W4's display post-pass does not change that
+    on THIS rig: `rig`'s `AudioRef` serves one wav as both the mix and the vocals stem, so the step reads
+    its align target as the MIX (`target_name`) — where the word-end post-pass does not run at all, because
+    `ends.ACTIVE_LEVEL` is a stem's silence calibration and a mix's envelope clears it nearly everywhere
+    (W4 review r1; `tests/test_align_ends.py` holds both halves of that, and the trail note below says
+    which target this was). So the post-pass is not a term in this property, and any difference between the
+    published document and the raw decode is a repair moving something."""
     from encore_worker.domain.lyrics.generate import generate
 
     impl, aligner, trail, job, audio, tmp = rig
@@ -1022,10 +1036,10 @@ def test_on_an_exact_decode_r3_reproduces_the_global_path(rig: Rig) -> None:
     assert timed is not None
     notes = global_notes(trail)
     assert f"re-decoded {len(CHORUS)} repeated lines between unique anchors" in notes[-1][4]
+    assert "word ends: the raw decode's (no vocals stem" in notes[-1][4], "one wav: the target is the mix"
     assert not [n for n in notes if n[3] == "repair-faults"]
     raw = generate([t for t, _s, _e in PHRASES], aligner.emissions("", "en"), decoder=scripted_decoder)
-    env = activity.envelope(load_audio_mono_16k(str(audio.vocals_path)), RATE)
-    shown = extend_ends(raw, env.tolist(), activity.HOP_SEC)
+    shown = raw
     published = doc_of(tmp, timed)["lines"]
     assert len(published) == len(shown.lines)
     for got, want, decoded in zip(published, shown.lines, raw.lines, strict=True):

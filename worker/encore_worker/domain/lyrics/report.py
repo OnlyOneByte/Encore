@@ -110,11 +110,12 @@ class TimingReport:
     #: None is "the question was not answered": an untimed text (NO_CLAIMS), three or four pairs that merely
     #: disagree (TOO_FEW_PAIRS, a disagreement nothing established — no document should be replaced on it),
     #: the windowed engine, which reconciles nothing, and a LINE_SYNC document, which has no decode of its
-    #: own to relate. Measured at `run_align` over the W2 corpus rows
-    #: (`results/w2-run_align.cases.jsonl` against `w2-lines-run_align.cases.jsonl`, the same 32 songs' own
-    #: line documents): the 23 song-modes where this is False and the line document passes its own gate hold
-    #: 299 of the 356 gross lines of every published word document that has a line document beside it — 84%
-    #: of them, in 6.4% of the cases.
+    #: own to relate. The step sets it from the LAST reconcile, the one that describes the document being
+    #: published, not from the blind one grading reads (`align_steps._time_text_global` says why the two
+    #: choices differ). Measured at `run_align` over the W2 corpus rows (`_runs/w2r2-run_align` against
+    #: `w2r2-lines-run_align`, the same 32 songs' own line documents): of the 357 published word documents
+    #: that have a line document beside them, the 18 where this is False hold 299 of their 356 gross lines —
+    #: 84% of them, in 5.0% of the cases.
     claims_related: bool | None = None
 
     def __setstate__(self, state: Sequence[object]) -> None:
