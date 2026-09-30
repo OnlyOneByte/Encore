@@ -1,0 +1,151 @@
+# W6's WAVE-LEVEL reject-if: what the whole wave (confidence + bounded clamp) may not cost the SHIPPED
+# default, what wrong-text protection must still read at every level, and the four conditions W4b's flip had
+# to meet to become the default. Written 2026-09-30 by the bench runner, off the six corpus sweeps below.
+#
+# THE WAVE'S OTHER TWO GATE FILES OWN THEIR OWN HALVES and are NOT duplicated here:
+#   * `gates/w6-conf.yaml`  — the per-line confidence rule's reject-if (review §3.7): bad-among-high halved
+#     where the rule decides, `high_gross` zero in every claim mode, onsets unchanged. Read on
+#     `results/w6-base-time_text.json` against `results/w6-legacy-time_text.json` (the `conf-legacy` control
+#     arm on the SAME tree): **27/28**, the one FAIL being its absolute `high-gross-zero-blind` at 3 — all
+#     three on YouTube, Jamendo blind 23 -> 0. See section 1's note.
+#   * `gates/w6-ladder.yaml` — the clamp's bounded left floor. Read on the shipped default at BOTH levels
+#     against `results/w4b-base-{time_text,run_align}.json`: **30/31 each**, the one FAIL being
+#     `clamp-blind-documents-unchanged` at 30, which is the confidence FIELD in the document bytes and not a
+#     timing move — proven on the same rows by `count(blind.song.onsets_changed) == 0`.
+#   * `gates/w4b.yaml` IS the flip's acceptance test and stays the flip's acceptance test. Read on
+#     `results/w6-hubert-time_text.json` against `results/w6-base-time_text.json`: **28/30**. Section 3 here
+#     holds only the four ABSOLUTE wins the brief named, which no relative file can state.
+#
+# HOW TO RUN IT (six sweeps, 2026-09-30, 32 songs, seed 0, wrong_k 10, `--tfr-audio youtube`, code
+# `cad1ca7d2eaf2cf5`; every literal below is READ off them, none projected):
+#
+#   # sections 1 + 2 — the shipped default, both levels
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock \
+#       --compare ../docs/benchmarks/forced-alignment/results/w4b-base-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w6.yaml
+#   #   …and the same at --level run_align against results/w4b-base-run_align.json.
+#
+#   # section 3 — the flip re-tried. The control is the run ABOVE, not a recorded row.
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE \
+#       --compare ../docs/benchmarks/forced-alignment/results/w6-base-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w6.yaml
+#   #   …and the same at --level run_align against results/w6-base-run_align.json.
+#
+#   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+# `base.` is the `--compare` cell of whichever invocation is running, which is why every relative gate here is
+# a "not worse than the cell it is compared against" form and therefore says something true in both.
+
+# ── 1. MUST: bounding the ladder cost the SHIPPED DEFAULT nothing ──────────────────────────────────────────
+# W4's six absolutes (`gates/w4b.yaml` MUST 1 reads the same six at the same literals) plus the highlight the
+# ends paint. READ on the shipped default at BOTH levels: 83.52 / 95.04 / 86.7 / 38.2 / 80.02 / 77.58,
+# identical to the digit at `time_text` and `run_align`, so the clamp's 39–43 pulled lines per pass cost none
+# of them.
+w6-jamendo-word-pm100: truth.jamendo.word_pm100 >= 83.25
+w6-jamendo-word-pm300: truth.jamendo.word_pm300 >= 94.98
+w6-jamendo-word-aae: truth.jamendo.word_aae_ms <= 87.8
+w6-jamendo-word-medae: truth.jamendo.word_medae_ms <= 38.2
+w6-jamendo-word-end-pm100: truth.jamendo.end_pm100 >= 80.02
+w6-jamendo-highlight: truth.jamendo.highlight >= 77.10
+# THE ONE RECORDED COST, capped at what it measures rather than waived (`gates/w6-ladder.yaml` argues it):
+# the trimmed line's LAST word now ends at the neighbour's boundary, and a last word is a phrase-final one.
+# 59.23 against W4's 59.83, on 2 more scored ends (704 against 702).
+w6-jamendo-final-end-pm100-known-cost: truth.jamendo.final_end_pm100 >= 59.2
+# ±500 may not go DOWN 0.3 pt in the claim mode the wave is aimed at. It goes UP: Jamendo 96.42 -> 97.00,
+# pooled 89.4 -> 90.61 at both levels.
+w6-truth-pm500-not-down: truth.pm500 >= base.truth.pm500 - 0.3
+w6-truth-jamendo-pm500-not-down: truth.jamendo.pm500 >= base.truth.jamendo.pm500 - 0.3
+# ONE GATE PER MODE, for the reason `gates/w4b.yaml` learned the hard way (its review r2, spec-9): a sum does
+# not rise whenever one of its terms does. Every one of the sixteen falls or holds on the shipped default —
+# `time_text` truth 3 -> 1, jit 37 -> 31, drop20 42 -> 29, extraverse 5 -> 1, credit 28 -> 23, blind 106 = 106;
+# `run_align` drop20 13 -> 0, drop50 180 -> 178, the rest the same shape.
+w6-pooled-gross-not-up-truth: truth.gross <= base.truth.gross
+w6-pooled-gross-not-up-jit: mode("jit").gross <= base.mode("jit").gross
+w6-pooled-gross-not-up-off05: off05.gross <= base.off05.gross
+w6-pooled-gross-not-up-off15: off15.gross <= base.off15.gross
+w6-pooled-gross-not-up-off3: off3.gross <= base.off3.gross
+w6-pooled-gross-not-up-offm1: offm1.gross <= base.offm1.gross
+w6-pooled-gross-not-up-tempo098: tempo098.gross <= base.tempo098.gross
+w6-pooled-gross-not-up-tempo102: tempo102.gross <= base.tempo102.gross
+w6-pooled-gross-not-up-drop20: drop20.gross <= base.drop20.gross
+w6-pooled-gross-not-up-drop50: drop50.gross <= base.drop50.gross
+w6-pooled-gross-not-up-extraverse: extraverse.gross <= base.extraverse.gross
+w6-pooled-gross-not-up-headers: headers.gross <= base.headers.gross
+w6-pooled-gross-not-up-credit: credit.gross <= base.credit.gross
+w6-pooled-gross-not-up-blind: blind.gross <= base.blind.gross
+# `high_gross` — a line the TV WIPES that is more than 2 s off — is the one number the wave must never trade
+# for accuracy. 0 in all thirteen timed claim modes on both bundles and both levels. BLIND IS DELIBERATELY NOT
+# IN THIS SUM: the confidence rule takes it 45 -> 3 (Jamendo 23 -> 0, YouTube 22 -> 3) and the residue is
+# `gates/w6-conf.yaml`'s own absolute, where it is recorded as a FAIL rather than folded into a total here.
+w6-high-gross-zero-claim-modes: truth.high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross + mode("jit").high_gross == 0
+# No song may pay for a pooled gain with a gross line of its own, in ANY mode. 0 on the shipped default at
+# both levels (and the gate that the flip FAILS — see section 3).
+w6-no-song-gains-gross: count(song.gross_up) == 0
+
+# ── 2. MUST: wrong-text protection unchanged, on whichever bundle ships ───────────────────────────────────
+# `wrongtext_pass` is a PERCENTAGE of the 320 cross-paired wrong texts, so 1/320 is 0.3125. Measured:
+# `time_text` base 1/320 (the same single `LUNABLIND` pair W4b records) and HuBERT-L 0/320; `run_align`
+# 0/320 on both bundles, which is the level production runs; `--sync-mode lines` 0/320 and 0/320 = 0/640.
+# The gate is written at the LOOSEST of those, because it must hold whichever bundle the owner ships.
+w6-wrongtext-at-most-one-of-320: mode("wrongtext").wrongtext_pass <= 0.32
+w6-ownclock-none-of-320: mode("wrongtext+ownclock").wrongtext_pass == 0
+# A wrong text must not merely score badly — it must not COMMIT, on EITHER rung. `published` counts the
+# documents a wrong text put on disk and `line_sync` the LINE_SYNC commitments, which is the rung `--sync-mode
+# lines` makes the only one and which `wrongtext_pass` alone would not see. The bound is the same 1 the
+# percentage above allows (the `LUNABLIND` pair, `time_text`, base bundle) rather than 0, because a pass IS a
+# commitment: 0 here with 0.32 there would be two gates that cannot both be satisfied by the same run.
+# Measured: 1 at `time_text` on the base bundle, 0 at `time_text` on HuBERT-L, 0 at `run_align` on both, 0 in
+# `lines` mode on both rungs (0/640).
+w6-wrongtext-commits-at-most-one: mode("wrongtext").published + mode("wrongtext").line_sync + mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync <= 1
+
+# ── 3. THE FLIP GATE's four ABSOLUTE wins, read on the HuBERT run ─────────────────────────────────────────
+# `gates/w4b.yaml` states the flip's relative half and is the file to run for it; these four are the wins the
+# brief required the candidate to KEEP, which no relative file can express. All four PASS: 85.46 / 71.1 ms /
+# 81.40, and `truth.jamendo.gross == 0` is how "Pure_Mids truth ±500 = 100.00" is stated in the gate language —
+# `Pure_Mids_-_The_Leader` was the only Jamendo song with a gross line at `truth` (its never-sung line[0]), and
+# with it gone the count is 0 and that song reads 100.00 in the per-song table.
+# THEY ARE NOT THE REASON THE FLIP IS STILL OFF. What fails is `w6-no-song-gains-gross` above (tfr-chosen +3
+# at drop20 and +1 at drop50, hello +3 at drop50, and 4 more songs at drop50/blind) together with
+# `gates/w4b.yaml`'s `no-youtube-song-worse-at-truth-pm500` (tfr-chosen 85.29 -> 69.70, -15.59 pt) and
+# `no-jamendo-song-worse-at-word-pm300` (Tom_Orlando -1.52) — a scatter of sub-second band misses, not a
+# decision site. Run these on the BASE bundle and they read its own numbers (83.52 / 86.7 / 77.58 / gross 1),
+# i.e. three FAILs, which is correct: they are the CANDIDATE's bar, not the default's.
+flip-jamendo-word-pm100-kept: truth.jamendo.word_pm100 >= 85.0
+flip-jamendo-word-aae-kept: truth.jamendo.word_aae_ms <= 75.0
+flip-jamendo-highlight-kept: truth.jamendo.highlight >= 80.5
+flip-jamendo-truth-gross-zero: truth.jamendo.gross == 0
+
+# ── NON-VACUITY ──────────────────────────────────────────────────────────────────────────────────────────
+# 32 gates plus the built-in no-ERROR-rows. Every reading below was taken offline, no decode
+# (`e2e.py --summarize <rows.jsonl> --compare <summary.json> --gates <this file>`):
+#   (1) THE SHIPPED DEFAULT, `_runs/w6-ladder-base/rows.jsonl` against `results/w4b-base-time_text.json`:
+#       **29/33** — sections 1 and 2 clean (including `w6-no-song-gains-gross`, which is 0 on the whole 32 x 16
+#       grid), and section 3's four FAILING at the base bundle's own numbers: 83.52 < 85.0, 86.7 > 75.0,
+#       77.58 < 80.5, `truth.jamendo.gross` 1 (`Pure_Mids_-_The_Leader`'s never-sung line[0]). That is the
+#       correct reading: section 3 is the CANDIDATE's bar, not the default's. At `run_align`, the same 29/33
+#       with the same four, at the same digits.
+#   (2) THE TREE THIS WAVE REPLACES, `_runs/w4b-base-time_text/rows.jsonl` against its own summary — so every
+#       relative gate reads `=` against itself, which a ratchet must: **29/33**, the same four, at W4b's own
+#       digits (83.25 / 87.8 / 77.1 / gross 3). Section 1's absolutes were set from that row and read at their
+#       own literals there, so THIS FILE IS NOT WHERE THE CLAMP FIX IS PROVEN — `gates/w6-ladder.yaml` is
+#       (28/31 on that row, failing exactly the three line-start claims the fix makes). What this row shows is
+#       that the file still tells the two trees apart where it claims to: `flip-jamendo-truth-gross-zero` reads
+#       3 there and 1 here, `w6-jamendo-word-pm100` 83.25 and 83.52.
+#   (3) THE CANDIDATE, `_runs/w6-ladder-hubert/rows.jsonl` against `results/w6-base-time_text.json`:
+#       **32/33** — all four of section 3 PASS (85.46 / 71.1 / 81.40 / gross 0), every per-mode gross gate
+#       passes (truth 0 <= 1, jit 0 <= 31, credit 0 <= 23, drop50 167 <= 303, blind 68 <= 106), and the ONE
+#       FAIL is `w6-no-song-gains-gross` at **8** song-modes: tfr-chosen +3 at drop20 and +1 at drop50,
+#       hello +3 at drop50, shape-of-you +2, Moon_I_Mean +1 and Wordsmith +1 at drop50, tfr-mayday +2 and
+#       Rxbyn +1 at blind. Eight is why the flip is still not the default, and it is a far narrower reason than
+#       W4b's: no claim mode manufactures a gross line any more.
+#   (4) THE `m6-window-spare` ARM, `_runs/w6-wspare/rows.jsonl` against `results/w6-base-time_text.json`:
+#       **27/33** — section 3's four (it is the base bundle), plus `w6-jamendo-word-pm300` at 94.97 against the
+#       94.98 bound and `w6-jamendo-word-end-pm100` at 80.00 against 80.02. Both are DILUTION, not regression:
+#       the arm adds 8 aligned words and 1 scored line and moves no existing word, so a ratio set on 5183 words
+#       is being read on 5191 (README "…RECOMMENDED, not flipped" prices it). That those two literals — and only
+#       those two, out of 25 in section 1 — are the ones a +1-line change trips is this file's own evidence that
+#       section 1 is tight rather than decorative.
+#   The exact per-run readings are in each `results/w6-*.json` `meta.gates`; this note is the map to them.

@@ -487,6 +487,65 @@ def remapped(line: Line, start: float, end: float) -> Line:
     )
 
 
+def trimmed(line: Line, end: float) -> Line | None:
+    """The same line ENDING at `end`, keeping every word onset it measured before `end` and re-fitting
+    only the tail the decode smeared past it. None when no word of the line starts before `end`.
+
+    `remapped`'s sibling and NOT a special case of it: `remapped(line, line.start, end)` compresses the
+    WHOLE line, which moves onsets that were already right. Here only the sub-series from the last word
+    starting before `end` is re-fitted, into `[that word's start, end]`. Two properties follow, and both are
+    the reason this exists rather than a call to `remapped`:
+
+      * NO ONSET MOVES BEFORE THE ANCHOR, and the anchor and every onset before it do not move at all — so
+        the line's FIRST word stays exactly where it was and a line trimmed this way cannot invert against
+        the line before it. `remapped` moves the first word EARLIER whenever the line has leading silence,
+        which is the one shape that can. (The tail after the anchor does move earlier; it has to, that is
+        what trimming is. Internal order survives because the map is monotone.)
+      * THE ONSETS BEFORE `end` ARE MEASUREMENTS AND SURVIVE. Measured over the 20 Jamendo songs at `truth`
+        through the shipped `time_text` (base model, `_runs/w6-{clamp,tail}-jamendo`), against `remapped`
+        doing the same job: word ±100 83.52 against 83.12, ±250 94.08 against 93.92, ±300 95.04 against
+        94.98, word end ±100 80.02 against 79.87, MedAE 38.2 ms against 38.5, highlight 77.58 against
+        77.45 — every one of those back at or above the W4 row this must not regress (83.25 / 93.96 / 94.98
+        / 80.02 / 38.2 / 77.10), where the affine version was 0.1-0.2 pt under four of them. It costs
+        phrase-final end ±100, 59.23 against `remapped`'s 59.66 and W4's 59.83, on 2 more scored ends: the
+        trimmed line's LAST word now ends at `end`, and that word is a phrase-final one.
+
+    WHO CALLS IT: `align_steps._pulled_end`, the bounded left floor of the repair clamp (W6) — the one place
+    a line the ladder did not repair has its end moved, and the one place `end` is another line's measured
+    start rather than a window edge. None is its refusal: a line whose every word starts after `end` was not
+    sung before it, so there is nothing to keep and the caller falls back to pushing the repair instead.
+    """
+    kept = [word for word in line.words if word.start < end]
+    if not kept:
+        return None
+    anchor = kept[-1].start
+    scale = max(end - anchor, 1e-6) / max(line.end - anchor, 1e-6)
+
+    def moved(t: float) -> float:
+        return t if t <= anchor else anchor + (t - anchor) * scale
+
+    return Line(
+        text=line.text,
+        start=line.start,
+        end=end,
+        words=tuple(
+            Word(
+                word=w.word,
+                start=moved(w.start),
+                end=moved(w.end),
+                score=w.score,
+                syllables=tuple(
+                    Syllable(text=s.text, start=moved(s.start), end=moved(s.end)) for s in w.syllables
+                ),
+                provenance=w.provenance,
+            )
+            for w in line.words
+        ),
+        score=line.score,
+        index=line.index,
+    )
+
+
 def adopted_line(text: str, index: int, start: float, end: float) -> Line | None:
     """A line carrying a CLAIM's own timing, built when the decode cannot hear the line at all.
 
@@ -511,6 +570,76 @@ def adopted_line(text: str, index: int, start: float, end: float) -> Line | None
         for i, word in enumerate(words)
     )
     return Line(text=text, start=start, end=end, words=spread, score=0.0, index=index)
+
+
+@dataclass(frozen=True, slots=True)
+class CharTargets:
+    """The CTC target sequence one text becomes, and who owns each target.
+
+    Extracted from `generate` so a SECOND reader of the same trellis exists: `domain.lyrics.margin` asks how
+    ambiguous each line's placement was, which needs the exact target sequence the decode was handed and the
+    position in it of each line's first character. Recomputing that beside `generate` would be two copies of
+    the target filter (`excluded_of`), the lower-casing, and the separator's lazy placement — three rules
+    whose disagreement would make the margin describe a decode that never ran. See `alignable_chars`'s
+    docstring for what one duplicated target count already cost.
+    """
+
+    #: Vocabulary ids in decode order, separators included: exactly what the decoder is given.
+    targets: tuple[int, ...]
+    #: `(line index, word index)` per CHARACTER target, in order — separators own no character and so have
+    #: no entry, which is why this is shorter than `targets` under `separate_lines`.
+    owners: tuple[tuple[int, int], ...]
+    #: Each character target's index WITHIN its word, for regrouping into syllables.
+    char_of: tuple[int, ...]
+    #: `text.split()` per input line, kept so the caller splits once.
+    words_by_line: tuple[tuple[str, ...], ...]
+    #: How many of `targets` are line separators (`separator_of`), i.e. targets with no character.
+    separators: int
+    #: Line index -> the position in `targets` of that line's FIRST character target. A line that emitted no
+    #: target at all (a decorative row, a line the never-sung rule blanked) is absent.
+    first_char_target: Mapping[int, int]
+
+
+def char_targets(line_texts: Sequence[str], emissions: Any, *, separate_lines: bool = False) -> CharTargets:
+    """Flatten `line_texts` into the decoder's target sequence (see `CharTargets`, and `generate`, its
+    caller and the definition of every rule here)."""
+    dictionary: Mapping[str, int] = emissions.dictionary
+    excluded = excluded_of(emissions)
+    separator = separator_of(emissions) if separate_lines else None
+    targets: list[int] = []
+    owners: list[tuple[int, int]] = []
+    char_of: list[int] = []
+    words_by_line: list[tuple[str, ...]] = []
+    first: dict[int, int] = {}
+    separators = 0
+    pending_separator: int | None = None
+    for line_index, text in enumerate(line_texts):
+        words_by_line.append(tuple(text.split()))
+        for word_index, word in enumerate(words_by_line[-1]):
+            for char_index, ch in enumerate(word.lower()):
+                token = dictionary.get(ch)
+                if token is None or token in excluded:
+                    continue
+                if pending_separator is not None:
+                    targets.append(pending_separator)
+                    separators += 1
+                    pending_separator = None
+                first.setdefault(line_index, len(targets))
+                targets.append(token)
+                owners.append((line_index, word_index))
+                char_of.append(char_index)
+        if separator is not None and targets:
+            # A BOUNDARY IS OWED, and is paid at the next line that has a character (so never trailing, and
+            # never twice over a line that contributes none).
+            pending_separator = separator
+    return CharTargets(
+        targets=tuple(targets),
+        owners=tuple(owners),
+        char_of=tuple(char_of),
+        words_by_line=tuple(words_by_line),
+        separators=separators,
+        first_char_target=first,
+    )
 
 
 def _lead_starts(spans: list[tuple[float, float, float]], lead: float) -> list[tuple[float, float, float]]:
@@ -581,9 +710,7 @@ def generate(
     all ordered. It holds by construction — every level groups the same char spans — and the test exists
     so a refactor that breaks construction is caught by the property, not by a benchmark regression.
     """
-    dictionary: Mapping[str, int] = emissions.dictionary
     blank = blank_of(emissions)
-    excluded = excluded_of(emissions)
     separator = separator_of(emissions) if separate_lines else None
     decode = decoder
     if syllabifier is not None:
@@ -593,31 +720,10 @@ def generate(
 
         split = syllables
 
-    # ── flatten to char targets, remembering every char's owner ──
-    targets: list[int] = []
-    owners: list[tuple[int, int]] = []  # (line index, word index) per emitted char
-    char_of: list[int] = []  # index within the word, for syllable regrouping
-    words_by_line: list[list[str]] = []
-    separators = 0  # targets with no character of their own (`separate_lines`)
-    pending_separator: int | None = None
-    for line_index, text in enumerate(line_texts):
-        words_by_line.append(text.split())
-        for word_index, word in enumerate(words_by_line[-1]):
-            for char_index, ch in enumerate(word.lower()):
-                token = dictionary.get(ch)
-                if token is None or token in excluded:
-                    continue
-                if pending_separator is not None:
-                    targets.append(pending_separator)
-                    separators += 1
-                    pending_separator = None
-                targets.append(token)
-                owners.append((line_index, word_index))
-                char_of.append(char_index)
-        if separator is not None and targets:
-            # A BOUNDARY IS OWED, and is paid at the next line that has a character (so never trailing, and
-            # never twice over a line that contributes none).
-            pending_separator = separator
+    # ── flatten to char targets, remembering every char's owner (`char_targets`, shared with `margin`) ──
+    flat = char_targets(line_texts, emissions, separate_lines=separate_lines)
+    targets, owners, char_of = flat.targets, flat.owners, flat.char_of
+    words_by_line, separators = flat.words_by_line, flat.separators
 
     if not targets or emissions.frames == 0:
         return Generated(lines=(), language=language)

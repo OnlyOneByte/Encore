@@ -370,13 +370,13 @@ def test_two_bundles_over_one_audio_file_do_not_share_one_matrix(
     """W4b REVIEW R2, tests-18: the key's BUNDLE component was untested — dropping it from
     `_cached_emissions((*content, bundle, language, self._device), ...)` passed the whole suite, because every
     test here runs one bundle. The sibling invariant one layer up IS pinned
-    (`test_ml_devices.test_two_bundles_on_one_device_do_not_share_one_loaded_handle`, the `_MODELS` keys); this
-    is the matrix half.
+    (`test_ml_devices.test_two_bundles_on_one_device_do_not_share_one_loaded_handle`, the `_MODELS` keys);
+    this is the matrix half.
 
     WHAT IT COSTS WITHOUT IT: `Emissions.model` is the VOCABULARY's identity and every emission-scale
     threshold is read off it (`lexical.calibration`), so one audio file aligned by two bundles in one process
-    — the bench's `--verify-cache` builds two aligners, and `ENCORE_ALIGN_MODEL` can change between two jobs of
-    one worker — would serve the second bundle's job the first bundle's frames, STAMPED WITH THE FIRST
+    — the bench's `--verify-cache` builds two aligners, and `ENCORE_ALIGN_MODEL` can change between two jobs
+    of one worker — would serve the second bundle's job the first bundle's frames, STAMPED WITH THE FIRST
     BUNDLE'S NAME, so the gates would read the right row against the wrong matrix and nothing would say so.
     """
     import soundfile as sf

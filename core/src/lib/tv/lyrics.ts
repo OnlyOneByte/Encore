@@ -28,10 +28,32 @@ export interface LyricLine {
 	// `part` ONLY: the v2 worker wrote the diarizer's raw `speaker` on every line it could attribute, with none of the
 	// song-level duet checks (review M15), so a document still carrying it is read as unattributed, not as a duet.
 	part?: string;
-	/** Per-line verdict from alignment v2's grading: `low` marks a line whose placement nothing could vouch
+	/** Per-line verdict from the worker's grading: `low` marks a line whose placement nothing could vouch
 	 *  for (a repeated chorus with no claims to anchor WHICH occurrence — the decode can bind a repeat to the
-	 *  wrong one). A renderer may caveat or line-scroll such lines; absent on v1 documents. */
+	 *  wrong one, and since W6 the CTC trellis says how ambiguous the placement was). `wipesWords` is what
+	 *  reads it; absent on v1 documents. */
 	confidence?: LyricsConfidence;
+}
+
+/**
+ * Should this line get the WORD-BY-WORD wipe, or only the line-level highlight?
+ *
+ * THE ONE READER of per-line `confidence` (worker review §3.7's "a consumer, or the signal is worthless").
+ * A word wipe is a claim about WHERE INSIDE THE LINE the singer is; a `low` grade says the worker could
+ * not vouch for where the line itself sits, so a ball sweeping its words asserts precision the document
+ * does not have. Lighting the whole row instead says only "this line is being sung", which is the same
+ * honest reading the `line` highlight setting exists for (`.lyrics.hl-line .row.current`, and the measured
+ * coverage note beside it).
+ *
+ * A LINE WITH NO GRADE KEEPS THE WIPE. v1 documents and any worker that did not grade carry no
+ * `confidence`, and a missing field must never be read as doubt — that would silently turn the karaoke
+ * sweep off for every older artifact.
+ *
+ * `medium` KEEPS IT TOO. The worker grades lines `high`/`low` only (the document as a whole can be
+ * `medium`), so treating `medium` as doubt would be a rule with no producer.
+ */
+export function wipesWords(line: Pick<LyricLine, 'confidence'>): boolean {
+	return line.confidence !== 'low';
 }
 export interface LyricsDoc {
 	language: string | null;

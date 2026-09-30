@@ -751,34 +751,145 @@ def test_clamped_fits_a_run_that_can_keep_order_and_leaves_the_last_line_unbound
     assert refused == frozenset() and (lines[2].start, lines[2].end) == (20.0, 30.0)
 
 
-def test_the_default_clamp_is_v2s_which_squeezes_and_never_refuses() -> None:
-    """Without `m2-order-clamp` — the shipped default since W1 measured the arm failing its reject-if on
-    the corpus (`_clamped`) — the clamp is v2's: a spill that fits is clipped exactly as the arm clips
-    it, and seed 6's shape is SQUEEZED to 0.2 s at its own start, after its successor, not refused."""
+def default_clamp(
+    lines: Sequence[Line], blind: Sequence[Line], repaired: set[int], frame_sec: float = 0.02
+) -> tuple[tuple[Line, ...], frozenset[int]]:
+    """The SHIPPED clamp (`_clamped` without `ordered`): v2's, with W6's bounded left floor."""
     from encore_worker.steps.align_steps import _clamped
 
-    def default(lines: Sequence[Line], blind: Sequence[Line]) -> tuple[tuple[Line, ...], frozenset[int]]:
-        got, refused = _clamped(
-            Generated(lines=tuple(lines), language="en"),
-            {1},
-            blind=Generated(lines=tuple(blind), language="en"),
-            frame_sec=0.02,
-            ordered=False,
-        )
-        return got.lines, refused
+    got, refused = _clamped(
+        Generated(lines=tuple(lines), language="en"),
+        repaired,
+        blind=Generated(lines=tuple(blind), language="en"),
+        frame_sec=frame_sec,
+        ordered=False,
+    )
+    return got.lines, refused
 
+
+def test_the_default_clamp_never_refuses_and_still_publishes_m2s_first_shape() -> None:
+    """Without `m2-order-clamp` — the shipped default since W1 measured the arm failing its reject-if on
+    the corpus (`_clamped`) — seed 6's shape is SQUEEZED to 0.2 s at its own start, after its successor,
+    not refused. Nothing precedes the repair there, so W6's bounded floor has nothing to pull."""
     trusted, following, blind = (
         two_word_line(0, 5.0, 8.0),
         two_word_line(2, 11.0, 14.0),
         two_word_line(1, 8.5, 10.5),
     )
-    spill = (trusted, two_word_line(1, 7.0, 12.0), following)
-    assert default(spill, (trusted, blind, following)) == clamp(spill, (trusted, blind, following), {1})
-    lines, refused = default((trusted, two_word_line(1, 14.5, 16.0), following), (trusted, blind, following))
+    lines, refused = default_clamp(
+        (trusted, two_word_line(1, 14.5, 16.0), following), (trusted, blind, following), {1}
+    )
     assert refused == frozenset(), "v2's clamp never refuses"
     assert (lines[0], lines[2]) == (trusted, following)
     assert (lines[1].start, lines[1].end) == pytest.approx((14.5, 14.7))
     assert not ordered(lines), "review M2's first shape, still published by the default"
+
+
+# W6's bounded left floor (`_clamped_v2`, `_pulled_end`): the floor used to be the previous published END,
+# which is the blind decode's own boundary — the reading the repair was there to correct — so it put the
+# repaired line back where the decode had it (7 gross line starts manufactured on HuBERT-Large, 3 on the
+# base bundle; the numbers are in `_clamped_v2`). The overlap is resolved at the neighbour's END instead.
+
+
+def test_the_default_clamp_pulls_a_neighbours_end_back_instead_of_pushing_the_repair() -> None:
+    """`hello` [46]'s shape: the line before the repair ends 1.0 s past the repair's start. v2 published
+    the repair at the neighbour's end; the default now ends the NEIGHBOUR at the repair's start and
+    leaves the repair exactly where the ladder measured it. The neighbour keeps its start and its order."""
+    trusted, following = two_word_line(0, 5.0, 8.0), two_word_line(2, 11.0, 14.0)
+    repair = two_word_line(1, 7.0, 10.0)
+    lines, refused = default_clamp((trusted, repair, following), (trusted, repair, following), {1})
+    assert refused == frozenset()
+    assert (lines[1].start, lines[1].end) == pytest.approx((7.0, 10.0)), "the repair is untouched"
+    assert (lines[0].start, lines[0].end) == pytest.approx((5.0, 7.0)), "the neighbour's END came back"
+    assert lines[0].text == trusted.text and lines[0].index == 0 and lines[0].score == trusted.score
+    assert lines[2] == following
+    assert ordered(lines), "which is the property the floor exists for"
+    # `generate.trimmed`, not `remapped`: both of the neighbour's onsets are before the boundary, so both
+    # SURVIVE the pull and only its last word's end moves. Affine compression read 5.0 / 6.0 here, and
+    # 0.1-0.2 pt worse on four of the Jamendo word gates.
+    assert [w.start for w in lines[0].words] == pytest.approx([5.0, 6.5])
+    assert lines[0].words[-1].end == pytest.approx(7.0)
+
+
+def test_a_neighbours_end_is_not_pulled_below_one_frame_per_letter() -> None:
+    """`_pulled_end`'s one guard that fires on the corpus (4 times on HuBERT-Large, 3 on the base bundle):
+    squeezed under a decoder frame per letter the neighbour is ordered but is no longer a decoded timing,
+    so v2's push is taken instead — the repair goes to the neighbour's end, as it always did."""
+    trusted, following = two_word_line(0, 5.0, 8.0), two_word_line(2, 11.0, 14.0)
+    repair = two_word_line(1, 5.05, 10.0)  # "line 0" is 4 letters: 4 x 20 ms = 80 ms > 50 ms of room
+    lines, _refused = default_clamp((trusted, repair, following), (trusted, repair, following), {1})
+    assert (lines[0].start, lines[0].end) == (5.0, 8.0), "the neighbour is left alone"
+    assert (lines[1].start, lines[1].end) == pytest.approx((8.0, 10.0)), "so the repair is pushed"
+    wide = default_clamp(
+        (trusted, two_word_line(1, 5.15, 10.0), following), (trusted, repair, following), {1}
+    )[0]
+    assert (wide[0].start, wide[0].end) == pytest.approx((5.0, 5.15)), "150 ms of room fits 4 letters"
+
+
+def leading_silence_line(index: int, start: float, first_word: float, end: float) -> Line:
+    """A line whose first word starts INSIDE its span — the shape that made `remapped` invert lines."""
+    return Line(
+        text=f"line {index}",
+        start=start,
+        end=end,
+        words=(
+            Word(word="a", start=first_word, end=(first_word + end) / 2, score=-0.4),
+            Word(word="b", start=(first_word + end) / 2, end=end, score=-0.4),
+        ),
+        score=-0.4,
+        index=index,
+    )
+
+
+def test_a_pull_can_never_move_a_word_start_earlier() -> None:
+    """Why `_pulled_end` needs no order guard, where an affine re-fit did (it carried one, measured at 0
+    firings, and `generate.trimmed` makes it unreachable).
+
+    The shape: the line TWO back is a trusted line whose overlap is a measurement and stays, and it already
+    reaches past the neighbour's start; the neighbour has leading silence. `remapped` would slide the
+    neighbour's first word from 4.0 back to 3.05, BEFORE `swallowing`'s last word at 3.5 — a new inversion,
+    and `policy.decide` drops the whole text to line sync over one. `trimmed` keeps it at 4.0."""
+    swallowing = two_word_line(0, 1.0, 6.0)  # last word at 3.5, span ends inside `neighbour`
+    neighbour = leading_silence_line(1, 3.0, 4.0, 9.0)  # in order today: 3.5 <= 4.0
+    repair, following = two_word_line(2, 4.5, 9.5), two_word_line(3, 12.0, 14.0)
+    series = (swallowing, neighbour, repair, following)
+    lines, _refused = default_clamp(series, series, {2})
+    assert (lines[1].start, lines[1].end) == pytest.approx((3.0, 4.5)), "pulled onto the repair"
+    assert (lines[2].start, lines[2].end) == pytest.approx((4.5, 9.5)), "the repair keeps its start"
+    assert [w.start for w in lines[1].words] == pytest.approx([4.0, 4.25]), "the onset at 4.0 survives"
+    assert ordered(lines)
+    assert lines[1].words[0].start == neighbour.words[0].start, "the FIRST onset is what cannot move"
+    assert min(w.start for w in lines[1].words) >= neighbour.words[0].start, "nor may the tail pass it"
+
+
+def test_a_neighbour_no_word_of_which_starts_before_the_repair_is_not_pulled() -> None:
+    """`generate.trimmed`'s own refusal: a line whose every word starts after the boundary was not sung
+    before it, so there is nothing to keep and v2's push applies. It never fired on the corpus — with it,
+    20 Jamendo songs' word metrics are identical to letting an affine re-fit compress such a line."""
+    from encore_worker.domain.lyrics.generate import trimmed
+
+    swallowing = leading_silence_line(0, 1.0, 5.0, 9.0)  # 4 letters, so 1.0 -> 4.0 clears the frame floor
+    repair, following = two_word_line(1, 4.0, 9.5), two_word_line(2, 12.0, 14.0)
+    assert trimmed(swallowing, 4.0) is None
+    lines, _refused = default_clamp((swallowing, repair, following), (swallowing, repair, following), {1})
+    assert (lines[0].start, lines[0].end) == (1.0, 9.0), "the neighbour is left alone"
+    assert (lines[1].start, lines[1].end) == pytest.approx((9.0, 9.5)), "so the repair is pushed"
+
+
+def test_the_pull_cascades_through_a_run_of_repaired_lines() -> None:
+    """`The_Rinn` [43-45]'s shape: a 4.0 s adopted span with two repaired lines inside it. Each pull is
+    read against the series AS PUBLISHED SO FAR, so the wide span comes back to the first repair and the
+    first repair's own end comes back to the second — the 7.63 s the corpus's worst clamp-made gross line
+    was published late."""
+    wide, following = two_word_line(0, 1.0, 5.0), two_word_line(3, 6.0, 7.0)
+    first, second = two_word_line(1, 2.0, 4.0), two_word_line(2, 3.0, 5.5)
+    lines, _refused = default_clamp(
+        (wide, first, second, following), (wide, first, second, following), {1, 2}
+    )
+    assert [(line.start, line.end) for line in lines] == pytest.approx(
+        [(1.0, 2.0), (2.0, 3.0), (3.0, 5.5), (6.0, 7.0)]
+    )
+    assert ordered(lines)
 
 
 def test_an_out_of_order_global_document_names_its_lines_on_the_trail(
@@ -1114,3 +1225,132 @@ def test_anchored_runs_use_the_track_edges_when_no_anchor_exists() -> None:
     assert head[0][1] == (0.0, 8.0)
     tail = _anchored_runs(lines, {2}, duration_sec=40.0)  # type: ignore[arg-type]
     assert tail[0][1] == (10.0, 40.0)
+
+
+# ── the placement-margin demotion (review §3.7; W6, `domain/lyrics/margin.py`) ───────────────────
+#
+# The KERNEL is proved in `test_margin.py` against an exhaustive per-frame DP. What is pinned here is the
+# WIRING, which is where the rule's two design decisions live: it is computed on the blind decode's own
+# texts, and it is read on the ONE branch whose grade rests on our decode alone.
+
+
+def _margins(monkeypatch: pytest.MonkeyPatch, gaps: dict[int, float]) -> list[tuple[int, ...]]:
+    """Force `placement_margins` to report `gaps` (a line it does not name is unambiguous), and record the
+    LINES it was asked about on each call."""
+    from encore_worker.domain.lyrics import margin
+
+    asked: list[tuple[int, ...]] = []
+
+    def fake(log_probs: Any, targets: Any, first: Any, **kw: Any) -> dict[int, float]:
+        del log_probs, targets, kw
+        asked.append(tuple(sorted(int(index) for index in first)))
+        return {int(index): gaps.get(int(index), 1e6) for index in first}
+
+    monkeypatch.setattr(margin, "placement_margins", fake)
+    return asked
+
+
+def test_an_ambiguous_placement_demotes_a_line_nothing_else_vouches_for(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The headline: an UNIQUE line on an untimed sheet used to be `high` by default (nothing but its own
+    uniqueness said so). Where the trellis says the same letters fit somewhere else nearly as well, it is
+    `low` — 11 of the corpus's `high` lines more than 2 s out were exactly this shape."""
+    unique = next(i for i, (text, _s, _e) in enumerate(PHRASES) if text == "with me tonight")
+    _margins(monkeypatch, {unique: 0.5})
+    impl, _aligner, _trail, job, audio, tmp = rig
+    timed = asyncio.run(impl.time_text(untimed(job, audio)))
+    assert isinstance(timed, TimedDoc)
+    lines = doc_of(tmp, timed)["lines"]
+    assert lines[unique]["confidence"] == "low"
+    assert lines[unique]["words"], "a demotion grades the line; it must not drop its words"
+    other = next(i for i, (text, _s, _e) in enumerate(PHRASES) if text == "stars are out")
+    assert lines[other]["confidence"] == "high", "an unambiguous placement is untouched"
+
+
+def test_a_corroborated_line_keeps_its_grade_however_ambiguous_our_decode_was(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The restriction, and review H4's argument read forward: two INDEPENDENT measurements agreeing beats
+    the decode's own opinion of itself, and the margin is the decode's own opinion of itself. Measured on 4
+    songs x truth/off15/drop50 (516 lines): charging corroborated lines for it cost 68 of 262 word wipes
+    and found nothing, because claim-mode bad-among-high was already 0.00%."""
+    _margins(monkeypatch, dict.fromkeys(range(len(PHRASES)), 0.0))
+    impl, _aligner, _trail, job, audio, tmp = rig
+    timed = asyncio.run(impl.time_text(request(job, audio, timed=True)))
+    assert isinstance(timed, TimedDoc) and timed.confidence == "high"
+    assert all(line["confidence"] == "high" for line in doc_of(tmp, timed)["lines"])
+
+
+def test_the_margins_are_asked_about_the_blind_decodes_own_lines_once(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once per `time_text`, on the whole song's target sequence — not once per repair window. A margin
+    measured inside a repair window would be asking whether the line could have gone elsewhere IN THAT
+    WINDOW, which is a question the window already answered by fiat."""
+    asked = _margins(monkeypatch, {})
+    impl, _aligner, _trail, job, audio, _tmp = rig
+    assert asyncio.run(impl.time_text(untimed(job, audio))) is not None
+    assert len(asked) == 1, f"the margin ran {len(asked)} times"
+    assert asked[0] == tuple(range(len(PHRASES)))
+
+
+def test_conf_legacy_skips_the_whole_demotion_and_its_cost(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The control (`host.config.ALIGN_EXPERIMENTS`). It must restore the grading the margin joined —
+    INCLUDING the score half, which the rule it replaced did not have — and must not pay the two Viterbi
+    passes, which is the only reason to set it in production."""
+    from encore_worker.domain.lyrics import margin
+
+    called: list[int] = []
+    monkeypatch.setattr(
+        margin,
+        "placement_margins",
+        lambda *_a, **_k: called.append(1) or {},  # type: ignore[func-returns-value]
+    )
+    monkeypatch.setattr(margin, "low_lines", lambda *_a, **_k: pytest.fail("the control read the rule"))
+    _impl, aligner, trail, job, audio, tmp = rig
+    impl = AlignStepsImpl(
+        config=Config(align_experiments=frozenset({"conf-legacy"})),
+        adapters=Adapters(aligner=aligner),
+        reporter=trail,
+    )
+    timed = asyncio.run(impl.time_text(untimed(job, audio)))
+    assert isinstance(timed, TimedDoc)
+    assert called == [], "the control must not compute the margins at all"
+    unique = next(i for i, (text, _s, _e) in enumerate(PHRASES) if text == "with me tonight")
+    assert doc_of(tmp, timed)["lines"][unique]["confidence"] == "high"
+    assert "not measured" in global_notes(trail)[-1][4]
+
+
+def test_a_margin_that_cannot_be_computed_grades_as_if_it_never_existed(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`{}` means NOT MEASURED, never "ambiguous". A fault that demoted every line would be a silent
+    failure dressed as caution, and on a box short of memory it would demote every line of every song."""
+    from encore_worker.domain.lyrics import margin
+
+    def boom(*_a: Any, **_k: Any) -> dict[int, float]:
+        raise MemoryError("two curves too many")
+
+    monkeypatch.setattr(margin, "placement_margins", boom)
+    impl, _aligner, trail, job, audio, tmp = rig
+    timed = asyncio.run(impl.time_text(untimed(job, audio)))
+    assert isinstance(timed, TimedDoc)
+    unique = next(i for i, (text, _s, _e) in enumerate(PHRASES) if text == "with me tonight")
+    assert doc_of(tmp, timed)["lines"][unique]["confidence"] == "high"
+    assert "placement margins: not measured" in global_notes(trail)[-1][4]
+
+
+def test_the_trail_note_carries_the_margins_that_graded_the_lines(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A "these lyrics are out of sync" report is answered by this clause: the signal, its threshold, and
+    how many lines it demoted."""
+    unique = next(i for i, (text, _s, _e) in enumerate(PHRASES) if text == "with me tonight")
+    _margins(monkeypatch, {unique: 0.5})
+    impl, _aligner, trail, job, audio, _tmp = rig
+    assert asyncio.run(impl.time_text(untimed(job, audio))) is not None
+    why = global_notes(trail)[-1][4]
+    assert "placement margins over 8 of 8 lines" in why
+    assert "min 0" in why and "1 under 10" in why
+    assert "1 doubted on ambiguity or a low score" in why

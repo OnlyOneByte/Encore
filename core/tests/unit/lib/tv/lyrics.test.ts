@@ -1,7 +1,15 @@
 // pure karaoke-timing logic — parse untrusted artifacts + resolve the active line/word and
 // per-word fill at a playback position. This is the testable core behind the eyes-on TV overlay.
 import { test, expect } from 'bun:test';
-import { parseLyricsDoc, lineBounds, activeLineIndex, activeWordIndex, resegmentLine, type LyricsDoc } from '$lib/tv/lyrics';
+import {
+	parseLyricsDoc,
+	lineBounds,
+	activeLineIndex,
+	activeWordIndex,
+	resegmentLine,
+	wipesWords,
+	type LyricsDoc
+} from '$lib/tv/lyrics';
 
 // Mirrors the worker's normalize_lyrics output.
 const raw = {
@@ -571,4 +579,49 @@ test('confidence survives a resegment split, like a duet part does', () => {
 	const split = resegmentLine(line, 1.0, 40);
 	expect(split.length).toBeGreaterThan(1);
 	for (const l of split) expect(l.confidence).toBe('low');
+});
+
+// ── W6's consumer: a `low` line renders line-level, so the word wipe is a per-LINE decision ──────
+//
+// The whole point of grading lines (worker review §3.7): nothing read per-line `confidence`, so the signal
+// bought nothing. `wipesWords` is the reader, and `LyricsOverlay.svelte`'s word branch is its only caller.
+
+test('a low line does not wipe words; every other grade does', () => {
+	expect(wipesWords({ confidence: 'low' })).toBe(false);
+	expect(wipesWords({ confidence: 'high' })).toBe(true);
+	// `medium` is a DOCUMENT grade, never a line's, so a rule that doubted it would have no producer.
+	expect(wipesWords({ confidence: 'medium' })).toBe(true);
+	// The compatibility half: a v1 artifact carries no grade, and a missing field must not read as doubt —
+	// that would silently turn the karaoke sweep off for every older document.
+	expect(wipesWords({})).toBe(true);
+	expect(wipesWords({ confidence: undefined })).toBe(true);
+});
+
+test('every row a low line splits into keeps the no-wipe reading', () => {
+	// `resegmentLine` carries `confidence` onto each row; `wipesWords` is what that carry is FOR.
+	const line = {
+		start: 0,
+		end: 8,
+		text: 'morning light is falling on the rivers and the sea tonight',
+		words: 'morning light is falling on the rivers and the sea tonight'.split(' ').map((word, i) => ({
+			word,
+			start: i * 0.5,
+			end: i * 0.5 + 0.4
+		})),
+		confidence: 'low' as const
+	};
+	const split = resegmentLine(line);
+	expect(split.length).toBeGreaterThan(1);
+	expect(split.every((l) => !wipesWords(l))).toBe(true);
+});
+
+test('a parsed document carries the grade the wipe rule reads', () => {
+	const doc = parseLyricsDoc({
+		language: 'en',
+		lines: [
+			{ text: 'a', start: 0, end: 1, words: [{ word: 'a', start: 0, end: 1 }], confidence: 'low' },
+			{ text: 'b', start: 2, end: 3, words: [{ word: 'b', start: 2, end: 3 }] }
+		]
+	})!;
+	expect(doc.lines.map(wipesWords)).toEqual([false, true]);
 });

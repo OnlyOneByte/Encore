@@ -15,6 +15,7 @@ import {
 	parseLyricsDoc,
 	activeLineIndex,
 	activeWordIndex,
+	wipesWords,
 	LINE_GAP_SEC,
 	LINE_MAX_CHARS,
 	ORPHAN_MAX_SEC,
@@ -40,11 +41,15 @@ interface Parity {
 
 const fixture = JSON.parse(read('tests/unit/lib/tv/bench-highlight-parity.json')) as Parity;
 
-/** What the overlay lights at `pos`: the active line's active word, as a flat index into `doc.words`. */
+/** What the overlay lights at `pos`: the active line's active word, as a flat index into `doc.words`.
+ *  `wipesWords` is part of it since W6 — a `low` row renders as one text node and lights nothing — and the
+ *  port's `tv_lit(wipe_low=True)` is what this mirrors. Without it the two trees would agree only on
+ *  documents that carry no grade. */
 function litAt(doc: LyricsDoc, pos: number): number {
 	const line = activeLineIndex(doc.lines, pos);
 	if (line < 0) return -1;
 	const row = doc.lines[line]!;
+	if (!wipesWords(row)) return -1;
 	const word = activeWordIndex(row, pos);
 	// Re-segmentation keeps the parsed word OBJECTS, so identity finds each word's place in the flat list.
 	return word < 0 ? -1 : doc.words.indexOf(row.words[word]!);
@@ -58,7 +63,11 @@ test('the bench fixture covers every rule the port models', () => {
 		'orphan-merges-forward-after-a-row',
 		'coverage-refusal',
 		'char-cap-without-a-pause',
-		'overlapping-and-reversed-words'
+		'overlapping-and-reversed-words',
+		// W6: the low-line rule, its carry across a split, and the three grades that keep the wipe.
+		'low-line-lights-no-word',
+		'low-line-splits-and-no-row-wipes',
+		'other-grades-still-wipe'
 	])
 		expect(names).toContain(shape);
 	expect(fixture.cases.reduce((n, c) => n + c.positions.length, 0)).toBeGreaterThan(1000);
@@ -74,9 +83,10 @@ test("the port's constants are this file's", () => {
 });
 
 test('the overlay lights words only in the branch the port models', () => {
-	// The port lights the active word of the active line, always: it models THIS condition with the `word`
-	// setting. A new condition here (a `low` line rendered line-level) is a change the port must make too.
+	// The port lights the active word of the active line under the `word` setting AND the per-line
+	// `wipesWords` grade (W6). A new condition here is a change the port must make too.
 	expect(read('src/lib/tv/LyricsOverlay.svelte')).toContain(fixture.overlay_word_branch);
+	expect(fixture.overlay_word_branch).toContain('wipesWords(l)');
 });
 
 for (const c of fixture.cases) {

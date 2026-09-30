@@ -31,9 +31,9 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 
 #: Every alignment arm `ENCORE_ALIGN_EXPERIMENTS` may switch on (`Config.align_experiments`). Each is built,
 #: tested and measured, and ships OFF because it failed its reject-if gate (PLAN-alignment-v3's rule for
-#: such arms: never silently default-on) — except `ends-raw` and `h3-mix-envelope`, which are default-ON
-#: features' CONTROLS and say so at their entries. A NAME THAT BECOMES THE DEFAULT IS RETIRED, and its
-#: control takes its place: W4 review r1 flipped the mix's wrong-text verdict to the lift's floor, so
+#: such arms: never silently default-on) — except `ends-raw`, `h3-mix-envelope` and `conf-legacy`, which are
+#: default-ON features' CONTROLS and say so at their entries. A NAME THAT BECOMES THE DEFAULT IS RETIRED, and
+#: its control takes its place: W4 review r1 flipped the mix's wrong-text verdict to the lift's floor, so
 #: `h3-mix-lift-alone` is gone and `h3-mix-envelope` restores what it was an arm of. Setting a retired name
 #: is refused like a typo, deliberately — measuring the default path under an arm's name is the thing this
 #: tuple exists to prevent, and a run recorded under the old name is reproduced by the control, not by it.
@@ -134,6 +134,33 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #:                    THE EVERY-WORD VARIANT IS NOT BUILT, in either direction: D1's own mechanism is that a
 #:                    `|` inside a line makes CTC's path leave the letters for a boundary the model did not
 #:                    hear, and review 6c asks for line boundaries only.
+#:   conf-legacy      THE THIRD CONTROL: per-line grading ignores the placement margin, so a line's
+#:                    confidence is what provenance and the blind reconcile alone said — the rule W6
+#:                    replaced (review §3.7; `domain/lyrics/margin.py`, `align_steps._placement_margins`).
+#:                    It is the A/B switch for a DEFAULT-ON grading change, and the only thing the bench can
+#:                    move without editing code. What it restores, measured over the 20 Jamendo songs' blind
+#:                    decode (866 published lines, base model): 51.5% of lines graded `high` instead of
+#:                    33.0%, with 11.88% of those more than 0.5 s off instead of 2.80% and TWENTY-THREE more
+#:                    than 2 s off instead of none — and 12.86% of the `low` ones bad, which is the at-chance
+#:                    reading review §3.7 opens with. On HUBERT_ASR_LARGE, the bundle W4b left reachable by
+#:                    name, the same pair reads 51.4% / 8.97% / 20 against W6's 34.7% / 2.66% / ZERO — the
+#:                    rule transfers with no per-bundle refit. It also skips the two Viterbi passes it costs
+#:                    (0.43 s median over the 20 Jamendo songs, 1.16 s on the longest song measured), the
+#:                    only other reason to set it.
+#:                    IT MUST SKIP THE WHOLE RULE, score half included: `low_lines` without margins still
+#:                    demotes on the score, and an A/B against that compares two versions of W6 (measured
+#:                    while building it: 385 `high` lines against the real control's 446).
+#:   conf-fuzzy-repeats  the demotion also fires on NEAR-repeats (`margin.fuzzy_repeats`, `difflib` ratio
+#:                    >= 0.8) and not only on the margin and the score — review §3.7's optional half, built
+#:                    because the review measured near-matching finding 50 repeated lines an exact match
+#:                    misses, 8 of them blind-gross lines graded `high`, against 42 correct lines demoted.
+#:                    OFF because the trade reproduces and is negative: over the 20 Jamendo songs' blind
+#:                    decode it finds 49 near-but-not-exact repeats, and among the lines W6 already grades
+#:                    `high` it would demote 3 that are more than 0.5 s off (NONE more than 2 s) and 30 that
+#:                    are correct — a 10:1 loss on a population the margin has already cleaned out. End to
+#:                    end it reads 29.7% coverage / 1.95% bad-among-high / 0 gross against the default's
+#:                    33.0% / 2.80% / 0: 29 word wipes for 0.85 pt, and not one gross line, because the
+#:                    review's 8 were `high` under the rule W6 replaced and the margin takes them first.
 #:   ends-raw         THE ONE CONTROL, not a failed arm: the word-end post-pass does not run, so ends are
 #:                    the raw decode's, which is the column review §3.5's reject-if gates measure a gain
 #:                    over (highlight +5 pts, phrase-final end ±100 +10). A display post-pass has to be
@@ -155,6 +182,8 @@ ALIGN_EXPERIMENTS = (
     "ends-tile",
     "ends-raw",
     "linesep",
+    "conf-legacy",
+    "conf-fuzzy-repeats",
 )
 
 
@@ -242,9 +271,9 @@ class Config:
     #: measured HuBERT-XLarge at all (`ALIGN_MODELS_BY_DEVICE`, `gates/w4b.yaml`). It is resolved where the
     #: device is (`__main__.align_model_for`) rather than here, since this box's accelerator is probed and not
     #: configured — which is also what lets a measured per-device row land later without touching this field.
-    #: THE BENCH KEEPS THIS FIELD OUT OF `align_config` ALTOGETHER (`e2e_lib.SPELLING_ONLY`, W4b review r2), so
-    #: the default path keys the emission cache exactly as it did before the knob existed AND
-    #: `ENCORE_ALIGN_MODEL=X` keys it identically to `--model X` — same bundle, same computation, one namespace.
+    #: THE BENCH KEEPS THIS FIELD OUT OF `align_config` ALTOGETHER (`e2e_lib.SPELLING_ONLY`, W4b review r2),
+    #: so the default path keys the emission cache exactly as it did before the knob existed AND
+    #: `ENCORE_ALIGN_MODEL=X` keys it identically to `--model X` — one bundle, one computation, one namespace.
     #: Which bundle a run loaded is recorded as its `run.json` / summary `model` plus `model_identity`.
     #:
     #: SETTING IT IS HOW AN OPERATOR RUNS THE MEASURED-BUT-NOT-DEFAULT BUNDLES:

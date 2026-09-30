@@ -552,10 +552,11 @@ def test_every_repair_window_is_decoded_under_the_arm_and_none_with_it_off(
     claims to repair, so hard-coding `separate_lines=False` at the repair call site left the whole suite
     green. The ladder's own M5 fixture puts R1 on all six lines, so every repair window is one of these calls.
 
-    The unit half (`test_a_repair_window_decodes_with_the_separator_the_global_pass_used`) proves the separator
-    reaches the TARGETS of a window; what was missing is that the STEP asks for it.
+    The unit half (`test_a_repair_window_decodes_with_the_separator_the_global_pass_used`) proves the
+    separator reaches the TARGETS of a window; what was missing is that the STEP asks for it.
     """
-    from tests.test_align_provenance import SCATTERED, TRUNCATED, TRUNCATED_DURATION, align, misheard, truth
+    from tests.ctc_fixture import misheard
+    from tests.test_align_provenance import SCATTERED, TRUNCATED, TRUNCATED_DURATION, align, truth
 
     def run(media: Path, experiments: frozenset[str]) -> Decodes:
         media.mkdir(parents=True, exist_ok=True)
@@ -590,6 +591,7 @@ def test_the_re_decode_after_a_never_sung_drop_keeps_the_arm(
     rest over the matrix already in hand; that document is what publishes, so its decode owns the arm too, and
     `separate_lines=False` there also left the suite green. The fixture is the ladder's own credit case: an
     uploader's line the stem holds only a faint trace of, claimed over the outro."""
+    from encore_worker.steps import align_steps
     from tests.test_align_provenance import (
         FAINT,
         UNIQUE,
@@ -598,7 +600,6 @@ def test_the_re_decode_after_a_never_sung_drop_keeps_the_arm(
         truth,
         weakly_sung,
     )
-    from encore_worker.steps import align_steps
 
     # The rule's tempo signal is fitted on real songs (~1 char/s); a trace short enough to fit this song's
     # silence smears faster, so it is relaxed exactly as `test_align_provenance.any_tempo` relaxes it.
@@ -615,9 +616,7 @@ def test_the_re_decode_after_a_never_sung_drop_keeps_the_arm(
             phrases=UNIQUE,
             duration=UNIQUE_DURATION,
             claims=[*truth(UNIQUE), (44.0, 47.0)],
-            stem_matrix=weakly_sung(
-                sung_matrix(UNIQUE, DIC, UNIQUE_DURATION), (credit, 43.0, 49.0), FAINT
-            ),
+            stem_matrix=weakly_sung(sung_matrix(UNIQUE, DIC, UNIQUE_DURATION), (credit, 43.0, 49.0), FAINT),
             extra_text=[credit],
             experiments=experiments,
         )

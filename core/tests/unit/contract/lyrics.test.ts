@@ -156,8 +156,11 @@ test('an attempt its worker REJECTED is never auto-selected, however it would ra
 });
 
 test('at equal rank, higher timing confidence wins; else newer', () => {
-	const lo = cand('lrclib', 'word', { timingConfidence: 'low', createdAt: 100 });
+	// `medium` rather than `low` on the loser: since W6 a `low` grade drops a word document to the LINE
+	// rank, so the two would no longer be at equal rank and this test would stop exercising the tiebreak.
+	const lo = cand('lrclib', 'word', { timingConfidence: 'medium', createdAt: 100 });
 	const hi = cand('lrclib', 'word', { timingConfidence: 'high', createdAt: 1 });
+	expect(lyricsRank(lo)).toBe(lyricsRank(hi));
 	expect(pickBestLyrics([lo, hi])).toBe(hi); // confidence beats recency
 	const oldC = cand('lrclib', 'word', { timingConfidence: 'medium', createdAt: 1 });
 	const newC = cand('lrclib', 'word', { timingConfidence: 'medium', createdAt: 999 });
@@ -318,4 +321,21 @@ test('parse: an absent vouched stays absent, an unreadable one fails safe to fal
 	expect(nonsense!.vouched).toBe(false);
 	const [kept] = parseLyricsCandidates([{ ...base, vouched: true }]);
 	expect(kept!.vouched).toBe(true);
+});
+
+// ── W6: the timing grade reaches the RANKING, not just the tiebreak (worker review §3.7) ─────────
+
+test('a word document whose timings are graded low ranks as line timing', () => {
+	// The per-line grades aggregate into `timingConfidence`; a `low` one means nothing vouches for where
+	// the words are, which is line timing with extra decoration. The TV makes the same call row by row.
+	const doubted = cand('lrclib', 'word', { timingConfidence: 'low' });
+	const line = cand('lrclib', 'line', { timingConfidence: 'high' });
+	expect(lyricsRank(doubted)).toBe(4);
+	expect(lyricsRank(line)).toBe(4);
+	expect(lyricsRank(cand('lrclib', 'word', { timingConfidence: 'high' }))).toBe(5);
+	// Unauthoritative text moves the same way: word 3 -> line 2.
+	expect(lyricsRank(cand('asr', 'word', { timingConfidence: 'low' }))).toBe(2);
+	expect(lyricsRank(cand('asr', 'word'))).toBe(3);
+	// A grade nobody sent is NOT doubt: every candidate stored before the field existed ranks as it did.
+	expect(lyricsRank(cand('lrclib', 'word'))).toBe(5);
 });

@@ -39,7 +39,16 @@ from encore_worker.adapters import ports
 from encore_worker.adapters.ports import InfraFault
 from encore_worker.artifacts import keys
 from encore_worker.domain.document import Segment
-from encore_worker.domain.lyrics import attribute, claimmap, ends, lexical, measure, place, presplit
+from encore_worker.domain.lyrics import (
+    attribute,
+    claimmap,
+    ends,
+    lexical,
+    margin,
+    measure,
+    place,
+    presplit,
+)
 from encore_worker.domain.lyrics.policy import Knob, Tier
 from encore_worker.domain.lyrics.report import Engine, TimingReport
 from encore_worker.host.config import ASR_MODELS, Config
@@ -1067,6 +1076,21 @@ class AlignStepsImpl:
         # gate refused and the lift now publishes (38 -> 39 lines within ±500 ms). It still FAILS
         # `unsung-not-up-headers` / `-extraverse` at both levels. `m6-window-spare` moves Quentin's 4 at
         # both levels, and at `time_text` Ridgway off15 (+1 gross, §3.1 by effect). Both stay off.
+        #
+        # `m6-window-spare` RE-PRICED ON THIS TREE AND IT IS NOW FREE (W6, 2026-09-30). Every cost above
+        # predates BOTH the claim clock (W2) and the exact frame clock (W4), and W4b had already corrected
+        # the other half (it puts `Pure_Mids_-_The_Leader`'s dropped line[0] back at -0.048 s, not the
+        # "more than 2 s out" `gates/w4.yaml` used to say). Measured arm against default over the COMPLETE
+        # set of songs it can act on — the 15 whose never-sung rule ever drops a line in any TEXT mode
+        # (`results/w4b-unsung-gate.json`; the candidate set reads no claim, so those 15 are exhaustive) x
+        # all 13 timed claim modes at `time_text`, base model, `_runs/w6-wspare-{default,arm}`: it changes
+        # exactly FOUR documents, all `Pure_Mids` (truth, jit, headers, extraverse), each recovering line[0]
+        # INSIDE the +-500 ms band. Pooled: gross 234 = 234, `unsung` 186 = 186, scored and within-500 ms
+        # both +4, `high_gross` 0. QUENTIN AND RIDGWAY DO NOT REACT TO IT AT ALL NOW, so both recorded costs
+        # were artefacts of the old clocks. RECOMMENDED as a default and deliberately still OFF: W6 already
+        # changes the repair clamp on every repaired line (`_clamped_v2`), and sweeping two default changes
+        # together makes neither attributable (PLAN rule 3). It also owes a `run_align` read, which this
+        # pricing did not cover.
         experiments = self._cfg.align_experiments
         line_texts_active = list(line_texts)
         dropped_never_sung: list[str] = []
@@ -1136,6 +1160,22 @@ class AlignStepsImpl:
             line.index: (line.start, line.end) for line in blind_decode.lines
         }
         blind_spans.update({index: (line.start, line.end) for index, (line, _witness) in spared.items()})
+
+        # ── HOW AMBIGUOUS EACH PLACEMENT WAS (review §3.7; W6, `domain/lyrics/margin.py`) ──
+        # Read on the BLIND decode's trellis and nowhere else, for grading's own reason (review H4): the
+        # question is "could this line have gone somewhere else in this song", and a repair window has
+        # already answered it by fiat. Taken here, right after the drop, because the margins must describe
+        # the decode whose texts `line_texts_active` are — a line the never-sung rule blanked contributes no
+        # targets, and every later line's position in the sequence moves with it.
+        # OFF THE EVENT LOOP: two Viterbi passes over the whole matrix is 0.35 s median and 1.2 s max on the
+        # corpus, and the reaper reads the socket keepalive (the `55 ms of synchronous numpy` note above).
+        placement = (
+            {}
+            if "conf-legacy" in experiments
+            else await asyncio.to_thread(
+                _placement_margins, emissions, line_texts_active, separate_lines=separate_lines
+            )
+        )
 
         # ── THE CLAIM CLOCK (review H1, §3.2; W2). ONE rebinding of `claimed` / `claim_windows`, here,
         # before the first `reconcile` — so every consumer after it (the verdict, R1 / R2 / R4, the
@@ -1937,6 +1977,27 @@ class AlignStepsImpl:
         # timings; that gate stays on UNRELATED, the verdict with the pairs behind it.
         claims_disagree = bool(claimed) and blind_verdict.verdict in rc.DISAGREE
 
+        # THE PLACEMENT-AMBIGUITY DEMOTION (review §3.7; `margin.low_lines`, read below on the one branch
+        # where nothing but our own decode places the line). It is a DEMOTION only — no line it touches was
+        # graded `high` before this wave — which is what makes it safe to add to a rule whose reject-if is
+        # "no claim mode publishes a `high` line more than 2 s off, today 0".
+        # `conf-fuzzy-repeats` widens it to NEAR-repeats (`host.config.ALIGN_EXPERIMENTS`; default off).
+        # THE CONTROL IS THE WHOLE RULE, not merely the margin half. `placement` is already empty under the
+        # arm, and `low_lines` would then apply its SCORE half alone — a demotion the rule this replaces did
+        # not have, so an A/B against it would compare two versions of W6 and read the margin as worth less
+        # than it is (measured while building this: 385 `high` blind Jamendo lines under the half-control
+        # against 407 under the real one).
+        ambiguous = (
+            frozenset()
+            if "conf-legacy" in experiments
+            else margin.low_lines(placement, {line.index: line.score for line in blind_decode.lines})
+            | (
+                margin.fuzzy_repeats(dict(enumerate(line_texts_active)))
+                if "conf-fuzzy-repeats" in experiments
+                else frozenset()
+            )
+        )
+
         def line_confidence(index: int) -> str:
             if unvouched is not None:
                 return "low"  # a pin a wrong-text gate would have refused: nothing vouches for any line
@@ -1971,6 +2032,28 @@ class AlignStepsImpl:
                 return "low"
             if claims_disagree:
                 return "low"
+            # ── HERE AND NOWHERE ELSE: the only grade that rests on OUR DECODE ALONE (review §3.7). Every
+            # branch above that says `high` says it because a CLAIM independently agreed with the blind
+            # decode on the blind verdict's own clock, and review H4's whole argument is that two
+            # independent measurements agreeing beats the decode's own opinion of itself (F3). The margin IS
+            # the decode's opinion of itself, so charging a corroborated line for it double-counts the
+            # uncertainty the second witness just settled — and the measurement says exactly that: on 4
+            # songs x truth/off15/drop50 (516 lines) the demotion applied to every branch cost 84 of 278
+            # word wipes and found NOTHING, because claim-mode bad-among-high was already 0.00%; restricted
+            # to here it changed not one grade on those 516 lines. Here it is worth TWENTY-THREE gross `high`
+            # lines and 9 pts of bad-among-high (blind, 20 Jamendo songs, 866 lines: 51.5% of lines `high` at
+            # 11.88% more than 0.5 s off and 23 more than 2 s off, against 33.0% / 2.80% / ZERO).
+            # `conf-legacy` is the control that restores the first column.
+            if index in ambiguous:
+                return "low"
+            # THE AT-CHANCE RULE, KEPT AS A CONJUNCT (review §3.7). On its own "is this line's text repeated
+            # in the sheet?" separates nothing — over 866 blind Jamendo lines it grades 51.5% `high` with
+            # 11.9% of those more than 0.5 s out against 12.9% of the `low` ones, which is the review's
+            # measured 12.3 / 12.6 — but it is a DEMOTION, and dropping it can only PROMOTE lines, the one
+            # direction §3.7's second reject-if ("no claim mode publishes a `high` line more than 2 s off,
+            # today 0") forbids taking on faith. It is also nearly unreachable: R3 takes every uncorroborated
+            # repeat and the `ANCHORED` branch above grades it, so on the same 866 lines removing this test
+            # changed not one grade. Kept for the lines R3's anchoring cannot cover.
             return "low" if index in repeats else "high"
 
         # ── word ENDS, held through the singing (review §3 item 5; W4, `domain/lyrics/ends.py`) ──
@@ -2148,6 +2231,10 @@ class AlignStepsImpl:
             )
             + (f"{'; '.join(repairs)}; " if repairs else "")
             + f"{_sources_why(provenance, [line.index for line in generated.lines])}; "
+            # WHY THE LINES ARE GRADED AS THEY ARE, beside the provenance that used to decide it alone: a
+            # "these lyrics are out of sync" report on a document whose lines are all `low` is answered by
+            # the margins, and a document that publishes `high` lines is only defensible with them printed.
+            + f"{_margin_why(placement, ambiguous, len(generated.lines))}; "
             # ONLY UNDER THE ARM: the default's token stream is what every other clause already describes,
             # and a clause on every note saying "no separator" would be noise on 100% of production runs.
             + (
@@ -3339,6 +3426,66 @@ def _speech_mass(matrix: Any, start: float, end: float) -> float | None:
     return float(1.0 - np.exp(log_probs[first:last, blank]).mean())
 
 
+def _placement_margins(
+    matrix: Any, line_texts: Sequence[str], *, separate_lines: bool = False
+) -> dict[int, float]:
+    """How ambiguous each line's placement was on `matrix`, in nats (`domain.lyrics.margin`, review §3.7).
+
+    THE SAME TARGETS THE DECODE RAN ON, built by `generate.char_targets` — the one flatten both readers
+    share — so the margin describes the path that produced these timings and not a second encoding of the
+    same text. `line_texts` must therefore be the texts the BLIND decode was given (post never-sung drop),
+    and `separate_lines` its own setting.
+
+    `{}` ON ANY FAULT, deliberately: an empty answer means "not measured", and grading then reads exactly
+    what it read before this existed. A confidence signal that goes DOWN when its own computation fails
+    would demote every line of every song on a matrix it could not read — caution that looks like evidence.
+    The steps layer owns the numpy conversion because `domain/` may not import torch (`test_layers`).
+    """
+    import numpy as np  # noqa: PLC0415 - the steps layer's lazy numpy, as `_time_text_global` reads it
+
+    from encore_worker.domain.lyrics import margin  # noqa: PLC0415
+    from encore_worker.domain.lyrics.generate import blank_of, char_targets  # noqa: PLC0415
+
+    flat = char_targets(line_texts, matrix, separate_lines=separate_lines)
+    if not flat.targets:
+        return {}
+    try:
+        return margin.placement_margins(
+            np.asarray(matrix.log_probs, dtype=np.float64),
+            flat.targets,
+            flat.first_char_target,
+            blank=blank_of(matrix),
+            frame_sec=float(matrix.frame_sec),
+        )
+    except (ValueError, MemoryError) as failed:
+        # MEMORY IS THE REAL ONE: the two kept curve arrays are frames x lines, small, but the caller has
+        # the whole matrix and a Viterbi alive beside it. A fault here must not lose a document that is
+        # already timed, so it degrades to the grading this wave replaced.
+        del failed
+        return {}
+
+
+def _margin_why(margins: Mapping[int, float], doubted: Collection[int], lines: int) -> str:
+    """The placement-margin clause of the trail note: the signal, its threshold, and what it doubts.
+
+    `doubted` is what the RULE flags (`margin.low_lines`), not what published `low`: a flagged line a claim
+    corroborates keeps its grade (see `line_confidence`), and a line may be `low` for four other reasons. The
+    wording says "doubts" for exactly that reason — a note that claimed a count of demotions would be wrong
+    on both sides.
+    """
+    from encore_worker.domain.lyrics import margin  # noqa: PLC0415
+
+    if not margins:
+        return "placement margins: not measured, so grading is as it was before review §3.7"
+    ordered = sorted(margins.values())
+    tight = sum(1 for gap in ordered if gap < margin.MIN_MARGIN_NATS)
+    return (
+        f"placement margins over {len(ordered)} of {lines} lines: median "
+        f"{median(ordered):.0f} nats, min {ordered[0]:.0f}, {tight} under "
+        f"{margin.MIN_MARGIN_NATS:.0f} — {len(doubted)} doubted on ambiguity or a low score"
+    )
+
+
 #: A repaired line whose decode landed within this of the window's LEFT EDGE "heard nothing": a forced
 #: path through flat emissions collapses leftward. Measured on tfr-chosen's chopped-vocal outro, where
 #: the errors clustered at exactly the pad width.
@@ -3520,13 +3667,22 @@ def _clamped(
 ) -> tuple[Generated, frozenset[int]]:
     """Repaired lines clipped to their neighbours; with `ordered`, fitted IN ORDER or refused to `blind`.
 
-    Only REPAIRED lines move: a trusted decode line's overlap (real backing-vocal overlap exists) is a
-    measurement and stays. A repaired line measured inside a padded window, or an adopted claim span that
-    overlaps the next caption, is re-fitted affinely into the free gap — found live, where two spilled
-    words made `decide` degrade an otherwise-corroborated document to line sync.
+    A repaired line measured inside a padded window, or an adopted claim span that overlaps the next
+    caption, is re-fitted affinely into the free gap — found live, where two spilled words made `decide`
+    degrade an otherwise-corroborated document to line sync.
 
-    DEFAULT (`ordered` False): v2's clamp, unchanged (`_clamped_v2`), which can publish backwards word
-    starts (review M2). `ordered` is the `m2-order-clamp` arm (`Config.align_experiments`), built and
+    THE OVERLAP IS RESOLVED AT WHICHEVER SIDE IS THE WEAKER MEASUREMENT, which since W6 is not always the
+    repaired line: where the line BEFORE a repair runs past its start, the default clamp pulls that
+    neighbour's END back onto the repair instead of pushing the repair forward onto the end
+    (`_clamped_v2`, which carries the failure account and the numbers). That reverses this docstring's
+    old "only REPAIRED lines move: a trusted decode line's overlap is a measurement and stays" for the
+    one case it was measured wrong in — a trusted END, never a start, never a line's existence or order.
+    The ARM still only moves repaired lines: it refuses instead (`_fitted_run`), and W1/W3 measured it
+    that way.
+
+    DEFAULT (`ordered` False): v2's clamp with W6's bounded left floor (`_clamped_v2`), which can still
+    publish backwards word starts (review M2) where a repair lands past its successor. `ordered` is the
+    `m2-order-clamp` arm (`Config.align_experiments`), built and
     tested and shipped OFF because it failed two of W1's reject-if gates on the full corpus (base model,
     32 songs x 15 claim modes, `e2e.py --modes all`, against `results/baseline-v2*.json`):
       * WRONG TEXTS. At `--level run_align` the job published 152/320 wrong texts with the arm, against
@@ -3619,7 +3775,7 @@ def _clamped(
     from encore_worker.domain.lyrics.generate import Generated  # noqa: PLC0415
 
     if not ordered:
-        return _clamped_v2(generated, repaired), frozenset()
+        return _clamped_v2(generated, repaired, frame_sec=frame_sec), frozenset()
     lines = list(generated.lines)
     # A repaired index is a blind line, except a never-sung line spared back in (review M6), which has no
     # blind original: a refused run simply goes without it, which is what the never-sung rule did to it.
@@ -3646,8 +3802,8 @@ def _clamped(
     return Generated(lines=tuple(out), language=generated.language), frozenset(reverted)
 
 
-def _clamped_v2(generated: Generated, repaired: set[int]) -> Generated:
-    """The shipped default: v2's clamp, verbatim (`_clamped` without `ordered`; W1 measured the arm).
+def _clamped_v2(generated: Generated, repaired: set[int], *, frame_sec: float) -> Generated:
+    """The shipped default: v2's clamp with W6's BOUNDED left floor (`_clamped` without `ordered`).
 
     Each repaired line is clipped to start no earlier than the line before it ends and, when the next
     line is trusted, to end by its start, then floored at `_REPAIRED_MIN_SEC` wide. It never refuses, so
@@ -3655,6 +3811,59 @@ def _clamped_v2(generated: Generated, repaired: set[int]) -> Generated:
     30, strict xfail on this path): `decide` answers them with the LINE_SYNC rung, whose sheet gate
     published 16 of the 47 right texts W0's `run_align` lost that way and 0 of the 63 wrong ones (W1; since
     W3 the rung's timing gate is the text's own blind decode, `_time_line_sync`).
+
+    WHAT W6 CHANGED, AND THE FAILURE THAT MADE IT (W6 ladder-bound, 2026-09-30). The left floor used to be
+    `low = max(line.start, previous_published_end)` unconditionally, and THAT FLOOR IS NOT INDEPENDENT
+    EVIDENCE — it is the blind decode's own boundary, i.e. the very reading the repair was there to
+    correct. Where the blind decode smears a line over the next line's audio, it also puts the next line's
+    start at the smear's end, so pushing the repaired start onto `previous_end` puts the line back exactly
+    where the decode had it. Measured on the corpus (32 songs, `truth` claims, `time_text`, one instrumented
+    pass per bundle, `_review-scratch/w6-ladder/{clampsim,clampfit}.py`), the floor MANUFACTURED every one
+    of HuBERT-Large's new gross line starts — 7 of them, against the base bundle's 3 — after the ladder had
+    already got them right (pre-clamp |error| <= 0.75 s, post-clamp +2.06 to +7.63 s), and cost 27 more
+    lines their 500 ms band. Three exhibits, all `previous_end == the blind start of this line`:
+    `hello` [46] "Outside" adopted at 260.66 against a truth of 260.52 and published at 262.58, which is
+    where the blind decode had it; `Tom_Orlando` [70] adopted at the truth to the centisecond and published
+    3.15 s late; `The_Rinn` [44] published 7.63 s late behind a 9.57 s adopted span.
+
+    SO THE OVERLAP IS RESOLVED AT THE OTHER SIDE: when the line before a repair ends past its start, that
+    neighbour's END is pulled back onto the repair (`_pulled_end`, through `generate.trimmed`) and the floor
+    then binds nothing. A LINE END IS THE WEAKER OF THE TWO MEASUREMENTS — W4 item 5 exists because ends run
+    late, the repaired start carries the claim clock and the corroboration test behind it, and only the end
+    moves: the neighbour keeps its start, its order, its existence, its own grade and every word onset it
+    measured before the boundary (`trimmed` re-fits the tail alone; its docstring prices that against an
+    affine re-fit of the whole line, which cost 0.1-0.2 pt on four Jamendo word gates).
+
+    MEASURED, EVERY VARIANT THAT WAS TRIED (pooled line starts against truth over 32 songs; gross > 2 s,
+    w500 within 0.5 s of 1548 HuBERT / 1591 base scored lines, `ooo` = word starts that precede the word
+    before them, which `policy.decide` answers by dropping the whole text to line sync):
+
+        variant                                 HuBERT-L truth   base truth    HuBERT-L off15   base off15
+        v2's floor (before this wave)             7 / 1376 / 1   3 / 1408 / 0    7 / 1374 / 0   3 / 1408 / 0
+        floor at the neighbour's LAST WORD start  7 / 1381 / 0   3 / 1417 / 0    7 / 1378 / 0   3 / 1415 / 0
+        pull the end back, unguarded              0 / 1387 / 0   1 / 1427 / 0    0 / 1382 / 0   1 / 1422 / 0
+        pull the end back, GUARDED  <- SHIPPED    0 / 1390 / 0   1 / 1428 / 0    0 / 1386 / 0   1 / 1425 / 0
+        ... only where `margin.low_lines` doubts  3 / 1388 / 1   3 / 1418 / 0    3 / 1386 / 0   3 / 1418 / 0
+        ... only where it doubts the NEIGHBOUR    5 / 1380 / 1   3 / 1418 / 0    5 / 1378 / 0   3 / 1418 / 0
+        ... where it doubts EITHER                3 / 1387 / 1   3 / 1421 / 0    3 / 1385 / 0   3 / 1421 / 0
+        no left floor at all                      0 / 1388 / 53  1 / 1428 / 64   0 / 1383 / 62  1 / 1423 / 66
+
+    Read it three ways. (1) THE SHIPPED ROW TAKES CLAMP-MANUFACTURED GROSS LINES TO ZERO ON BOTH BUNDLES
+    (base's remaining 1 is `Pure_Mids`, gross before the clamp ever runs — the "no left floor" row proves
+    it) and buys 14 / 20 / 12 / 17 lines back into the 500 ms band, while taking `ooo` DOWN, from the one
+    inversion v2 published to none. (2) DROPPING THE FLOOR ENTIRELY reaches the same accuracy and publishes
+    53-66 inversions, i.e. the floor really is load-bearing and this is a bound on it, not its removal.
+    (3) W6's CONFIDENCE WAS MEASURED HERE AND IS NOT WHAT BOUNDS IT: gating the pull on `margin.low_lines`
+    — the wave's own hypothesis, that a repair must not overwrite a placement the decode is sure of — is
+    STRICTLY WORSE on gross in every column, because the margin grades where a line's own first character
+    sits and the conflict here is between a repaired START and a neighbour's END, which no per-line
+    placement statistic reads. The bound that works needs no constant at all (see `_pulled_end`).
+
+    NOT THE WAVE'S FIRST HYPOTHESIS EITHER, and the record matters because the first one was disproved
+    before anything was built: the ladder breaks ZERO correct blind lines, corpus-wide, on either bundle.
+    The `m2-order-clamp` arm's own docstring already records the neighbouring idea — "letting a repair
+    overlap a smeared trusted tail while its starts stay in order read 163 / 1888" — which is this fix's
+    mirror image, priced on 40 cases inside the arm and read as within noise there.
     """
     from encore_worker.domain.lyrics.generate import Generated, remapped  # noqa: PLC0415
 
@@ -3662,7 +3871,13 @@ def _clamped_v2(generated: Generated, repaired: set[int]) -> Generated:
     out: list[Line] = []
     for position, line in enumerate(lines):
         if line.index in repaired:
-            previous_end = out[position - 1].end if position else 0.0
+            previous = out[position - 1] if position else None
+            previous_end = previous.end if previous is not None else 0.0
+            if previous is not None and previous_end > line.start:
+                pulled = _pulled_end(previous, line.start, frame_sec=frame_sec)
+                if pulled is not None:
+                    out[position - 1] = pulled
+                    previous_end = pulled.end
             low = max(line.start, previous_end)
             high = line.end
             if position + 1 < len(lines) and lines[position + 1].index not in repaired:
@@ -3672,6 +3887,36 @@ def _clamped_v2(generated: Generated, repaired: set[int]) -> Generated:
                 line = remapped(line, low, high)
         out.append(line)
     return Generated(lines=tuple(out), language=generated.language)
+
+
+def _pulled_end(line: Line, boundary: float, *, frame_sec: float) -> Line | None:
+    """`line` ending at `boundary` instead of past it, or None where that would not be a decoded timing.
+
+    The one end `_clamped_v2` moves: the line before a repair whose span runs past the repair's start (see
+    its FAILURE account). The START never moves, so nothing this line is scored on changes — line starts are
+    the metric and its grade is already fixed — and `generate.trimmed` keeps every word onset it measured
+    before `boundary`, re-fitting only the tail the decode smeared past it. Measured over the corpus: 70
+    pulls on HuBERT-Large and 101 on the base bundle out of 333 / 431 repaired lines, 39 / 43 of them on a
+    line the ladder had NOT repaired, median overrun pulled back 0.47 / 0.41 s.
+
+    ONE REFUSAL OF ITS OWN, AND IT IS BORROWED FROM `_fitted_run` RATHER THAN INVENTED, so nothing here is a
+    new threshold: ONE DECODER FRAME PER LETTER. Squeezed below it the line is ordered but is no longer a
+    timing anyone decoded — CTC gives every target at least a frame, and the targets are letters (a digit is
+    out of vocabulary and interpolated, so counting it would refuse a tight but real decode). It EARNS its
+    place: 4 refusals on HuBERT-Large and 3 on the base bundle, worth +3 / +1 lines in the 500 ms band
+    against pulling unconditionally.
+
+    `trimmed`'s own None — no word of the line starts before `boundary` — is the second, and it never fired
+    on the corpus: with it the pull is a no-op on 20 Jamendo songs' word metrics against letting `remapped`
+    compress such a line, to every digit. It is kept because it is what makes "no word start ever decreases"
+    true of this clamp, which is the property that retired the order guard this function used to carry
+    (measured at 0 firings in 64 song-modes, and now unreachable by construction).
+    """
+    from encore_worker.domain.lyrics.generate import trimmed  # noqa: PLC0415
+
+    if boundary - line.start < max(1, sum(ch.isalpha() for ch in line.text)) * frame_sec:
+        return None
+    return trimmed(line, boundary)
 
 
 def _fitted_run(

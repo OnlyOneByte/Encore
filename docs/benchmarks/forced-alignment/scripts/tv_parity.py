@@ -10,8 +10,10 @@ folding, `activeLineIndex`, `activeWordIndex` — as `LyricsOverlay.svelte`'s wo
 The port was cross-checked against the TypeScript once (bun, 0 of 60,000 positions disagreed), but that
 check was never committed, and review round 2 measured three port mutations that the suite could not see
 (always merging an orphan BACK, dropping the 80%-coverage refusal, and letting the EARLIER truth word win
-an overlap). W6 is planned to change the TV (`low` lines rendered line-level), and the metric would go on
-scoring the old one.
+an overlap). W6 then made the first change to the TV this fixture was built to catch — a `low` line renders
+line-level and lights no word (review §3.7's consumer) — and that is why the shaped documents below carry
+`confidence` and why `lit` is taken with `wipe_low=True`. The `highlight` metric asks the word-branch
+question deliberately and separately: `e2e_lib.score_highlight` owns that reasoning.
 
 So this fixture is written FROM THE PORT and asserted in BOTH trees:
   * `worker/tests/test_bench_e2e.py` — the port still lights exactly these words, and this script still
@@ -54,8 +56,10 @@ import e2e_lib as lib  # noqa: E402 - after the path setup above
 #: tested from `core/` alone, so the fixture lives there and the worker test reaches over).
 FIXTURE = REPO / "core" / "tests" / "unit" / "lib" / "tv" / "bench-highlight-parity.json"
 
-#: The overlay's word-level branch, verbatim: the port models a TV that lights words ONLY there.
-OVERLAY_WORD_BRANCH = "{#if i === lineIdx && l.words.length && wordLevel}"
+#: The overlay's word-level branch, verbatim: the port models a TV that lights words ONLY there. W6 added
+#: the `wipesWords(l)` conjunct (review §3.7's consumer: a `low` line renders line-level), and this literal
+#: is what makes the core test fail until the port has it too — `lib.tv_lit(wipe_low=True)` below.
+OVERLAY_WORD_BRANCH = "{#if i === lineIdx && l.words.length && wordLevel && wipesWords(l)}"
 
 RANDOM_DOCUMENTS = 16
 SEED = 0
@@ -140,6 +144,37 @@ def shaped() -> list[tuple[str, dict[str, Any]]]:
             "blank-line-text",
             {"lines": [_line(" ", _run("words carry it", 1.0)), _line(None, _run("next", 3.0))]},
         ),
+        (
+            # W6's consumer (review §3.7): a `low` line renders as ONE text node, so no word is lit while
+            # it is sung — the row still DISPLAYS, which is why `rows` is unchanged and only `lit` moves.
+            "low-line-lights-no-word",
+            {
+                "lines": [
+                    {**_line(None, _run("graded high", 0.0)), "confidence": "high"},
+                    {**_line(None, _run("graded low", 2.0)), "confidence": "low"},
+                    {**_line(None, _run("graded high again", 4.0)), "confidence": "high"},
+                ]
+            },
+        ),
+        (
+            # Every row a `low` line splits into inherits the grade (`resegmentLine`'s last statements),
+            # so a long doubted line lights nothing across all of its rows, not just the first.
+            "low-line-splits-and-no-row-wipes",
+            {"lines": [{**_line(None, back), "confidence": "low"}]},
+        ),
+        (
+            # `medium`, an unknown value and a missing grade all keep the wipe: only `low` is doubt, and a
+            # value `lyrics.ts` cannot parse is dropped there (so the line carries none) and is not `low`
+            # here — the two readings agree by construction.
+            "other-grades-still-wipe",
+            {
+                "lines": [
+                    {**_line(None, _run("medium row", 0.0)), "confidence": "medium"},
+                    {**_line(None, _run("unknown row", 2.0)), "confidence": "shiny"},
+                    _line(None, _run("ungraded row", 4.0)),
+                ]
+            },
+        ),
     ]
 
 
@@ -165,6 +200,8 @@ def randomized(rng: random.Random) -> dict[str, Any]:
         if rng.random() < 0.1:  # misbound: the whole line placed 20-60 s late
             late = round(rng.uniform(20.0, 60.0), 3)
             line = _line(text, [(w, round(s + late, 3), round(e + late, 3)) for w, s, e in words])
+        if rng.random() < 0.3:  # a grade on some lines: W6's low-line rule, mixed with every other shape
+            line = {**line, "confidence": rng.choice(("high", "medium", "low"))}
         lines.append(line)
         clock += rng.uniform(0.2, 3.0)
     return {"lines": lines}
@@ -178,7 +215,17 @@ def tv_document(raw: dict[str, Any]) -> list[lib.TvLine]:
         words = tuple(
             lib.DocWord(float(w["start"]), float(w["end"]), True, str(w["word"])) for w in line["words"]
         )
-        doc = lib.DocLine(str(line["text"]), float(line["start"]), float(line["end"]), None, None, words)
+        # `confidence` rides through as the document's own field, so the low-line rule (W6) is exercised by
+        # the fixture rather than described by it.
+        grade = line.get("confidence")
+        doc = lib.DocLine(
+            str(line["text"]),
+            float(line["start"]),
+            float(line["end"]),
+            None if grade is None else str(grade),
+            None,
+            words,
+        )
         paired.append((doc, list(range(flat, flat + len(words)))))
         flat += len(words)
     return lib.tv_lines(paired)
@@ -195,8 +242,13 @@ def positions(raw: dict[str, Any]) -> list[float]:
 
 
 def lit(lines: Sequence[lib.TvLine], pos: float) -> int:
-    """The flat index of the word the port lights at `pos`, or -1."""
-    word = lib.tv_lit(lines, pos)
+    """The flat index of the word the port lights at `pos`, or -1.
+
+    `wipe_low=True`: THE SHIPPED TV, which is what this fixture pins (the `highlight` metric asks the other
+    question deliberately — `e2e_lib.score_highlight`). The core test's `litAt` must read `wipesWords` for
+    the same reason, or the two trees agree only on documents that carry no grade.
+    """
+    word = lib.tv_lit(lines, pos, wipe_low=True)
     return -1 if word is None else word.truth
 
 

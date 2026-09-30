@@ -244,8 +244,9 @@ DEFAULT: `ml.ALIGN_MODELS_BY_DEVICE` IS EMPTY — see its own "WHY IT IS EMPTY" 
 this tree ever ran this bundle end to end, and an unmeasured bundle is not a device class's default. The row
 exists so that the operator who DOES name it gates on this model's own emission scale instead of borrowing
 another's (which is this table's whole purpose), and so that a CUDA sweep has something to re-read: review 6b
-measured XL best on word onsets (±100 +6.4 pts against L's +4.1, blind Jamendo gross 14 against 16) and CUDA is
-the only place its 11.8-24 s/song and 3.8 GB are affordable, so that sweep is the one worth paying for.
+measured XL best on word onsets (±100 +6.4 pts against L's +4.1, blind Jamendo gross 14 against 16) and
+CUDA is the only place its 11.8-24 s/song and 3.8 GB are affordable, so that sweep is the one worth paying
+for.
 (Until W4b review r2 this paragraph opened by calling XL the bundle a CUDA box defaults to — a decision the
 wave's own bench verdict had already reverted, and it cited the now-empty table as its evidence, so a CUDA
 operator reading the module the wave designates the ONE source of truth concluded their box shipped XL:
@@ -257,11 +258,11 @@ rung cases (`results/w4b-lift-{stem,mix}-hubert-xlarge.json`, `results/w4b-line-
 (wrong maxima +0.1070 / +0.1479), `mix_ok_from` **0.3** (where the poor blind decodes end: never-be-alone
 +0.2640 at 11% of lines within 1 s and The_Rinn +0.2237 at 52%, against Moon_I_Mean +0.3061 at 84% — AND, the
 exhibit review r2 added because a rule's counterexample belongs beside it, ONE poor decode this step admits:
-`Pure_Mids_-_The_Leader` +0.3109 at **30%** within 1 s, 13 of 20 lines more than 2 s out, graded OK on this row
-where L's 0.40 would grade it `low`. There is no step that separates it: Slingshot_Miracle +0.3033 decodes 61%
-of its lines within 1 s just below it, so 0.35 would cost a fair text to catch this one. On the mix that is a
-GRADE, not a standing — the floor is the verdict, see the base row's MIX — which is why the exhibit is recorded
-rather than the threshold moved), share
+`Pure_Mids_-_The_Leader` +0.3109 at **30%** within 1 s, 13 of 20 lines more than 2 s out, graded OK on this
+row where L's 0.40 would grade it `low`. No step separates it: Slingshot_Miracle +0.3033 decodes 61% of its
+lines within 1 s just below it, so 0.35 would cost a fair text to catch this one. On the mix this band is a
+GRADE and not a standing — the floor is the verdict, see the base row's MIX — which is why the exhibit is
+recorded rather than the threshold moved), share
 **0.5** (16 of 416 right texts refused, 0 gross). ITS THREE CAVEATS, measured here and NOT in the review: the
 stem floor's head-room is **+0.0722**, a third of L's +0.2306 — still 9x the base row's +0.0082 and with 0 of
 640 wrong texts within one redraw SD of it, but 2 within two SDs (Cortez `wrongtext` +0.278, tfr-chosen
@@ -281,9 +282,9 @@ stem texts and not re-measured here), so on this row a single redraw is enough t
 floor. A CUDA sweep that re-fits this row should re-read the mix half first. So a
 CUDA box that NAMES this bundle gets the model the review measured best on ONSETS while paying a thinner
 wrong-text margin and a weaker stemless path; a CUDA box that names nothing gets the base bundle, like every
-other box (`ml.ALIGN_MODELS_BY_DEVICE`, `ml.DEFAULT_ALIGN_MODEL`). NOTHING IN THIS WAVE RAN IT ON CUDA (no such
-box), and its accuracy claim is the review's, not this corpus's — the bench runner's sweep is what confirms or
-refuses it (`gates/w4b-hubert.yaml` is written for L against the base model).
+other box (`ml.ALIGN_MODELS_BY_DEVICE`, `ml.DEFAULT_ALIGN_MODEL`). NOTHING IN THIS WAVE RAN IT ON CUDA (no
+such box), and its accuracy claim is the review's, not this corpus's — the bench runner's sweep is what
+confirms or refuses it (`gates/w4b-hubert.yaml` is written for L against the base model).
 
 `ok_from` **0.8** IS THE ONE NUMBER WHOSE RULE THIS RECALIBRATION HAD TO RESTATE, and the restated rule
 reproduces the base row exactly (`lift_gate.fitted`). It used to be "the higher of the two splits' own fits,

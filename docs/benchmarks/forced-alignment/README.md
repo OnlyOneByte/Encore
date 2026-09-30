@@ -2164,6 +2164,15 @@ measuring that pairing is the next stemless run, and it is not in this wave.
 "Either gate is enough" was measured too, by derivation from the same rows: it publishes 114 of 128 right
 texts and 27 of 64 wrong ones — it cannot pass §3.4 at all, because the envelope half is what passes them.
 
+### Where the rows are
+
+`$ENCORE_BENCH_ROOT/_runs/w6-conf/` (its `README.txt` names each file), written by
+`_review-scratch/w6-conf/collect.py` — the harness's own `TimeTextDriver` with cached emissions and ONE
+monkeypatch, which records what `margin.low_lines` was handed per case — and read by
+`_review-scratch/w6-conf/window.py`. Not a harness run directory: no `run.json`, no `rows.jsonl`, so
+`e2e.py --summarize` does not read them. The LOSO fit needs per-line margins, which a harness row does not
+carry, which is why it lives there rather than in a gate.
+
 ### What this owes
 
 THE FLIP'S RE-RECORD IS DONE (rebench r2): all three configurations are recorded under their shipped names,
@@ -2733,3 +2742,558 @@ probe was right about the one thing it was run for and wrong about the conclusio
 Cells C/D (the same pair on HuBERT-Large) were NOT run and are not owed: HuBERT-Large did not become the
 default either (see "The English bundle is a setting"), so the bundle this arm would ship under is the base one,
 and the arm is off under both. 6c is CLOSED against the review's own reject-if list on both axes.
+
+## The confidence rule: a per-line grade that separates, and two consumers (W6, 2026-09-30; review §3 item 7)
+
+Review §3.7's opening measurement is the problem: the per-line grade was AT CHANCE. On a line no claim
+corroborates, grading fell back to "is this line's text repeated in the sheet?", and over 29 songs the review
+measured 12.3% of the lines that rule graded `high` more than 0.5 s off against 12.6% of the ones it graded
+`low`. Nothing read the grade either — no reader of per-line `confidence` existed under `core/src/lib` — so
+the signal cost a field and bought nothing.
+
+**Reproduced through the shipped path before changing anything.** 20 Jamendo songs, `blind` claims (untimed
+text, which is where the fallback decides every line), base model, `--level time_text`, 866 published lines:
+**51.5% graded `high`, 11.88% of those more than 0.5 s off, against 12.86% of the `low` ones.** 23 `high`
+lines were more than 2 s off. That is the review's number, on this tree, at the grading site.
+
+### The statistic: a max-marginal margin, in `domain/lyrics/margin.py`
+
+For each line, the score gap between the path the decode chose and the best path that puts the line's FIRST
+CHARACTER at least `WINDOW_SEC` away from where the chosen one put it. Pure numpy over the CTC trellis the
+decode already built — one forward pass, one backward pass, only the queried columns kept, so memory is
+O(states + frames × lines) instead of the O(frames × states) a stored trellis needs. **0.43 s median and
+0.81 s max per song** over the 20 Jamendo songs (8.5–12k frames each, measured inside `time_text`), and
+**1.16 s** on `hello` at 18.3k frames — the longest song measured, and the shape of the cost: it is linear in
+frames × characters. The review's numba prototype read 0.09–0.13 s / ~1 s, so the pure-numpy version costs
+~4× its median and the same order at the tail, against a model pass of ~4 s. No numba: the critics rejected the decoder swap.
+
+It is a PLACEMENT statistic and not a path score, which is what distinguishes it from the rejected F3/F4:
+a path score asks how well these frames match these letters (loud singing of the wrong chorus scores well),
+the margin asks whether these letters could have gone somewhere else. Measured here on gross lines, margin
+AUROC **0.941** at the review's 3 s reach against the path score's **0.719** — and the review's independent
+numba prototype read 0.934, which is the check that this kernel decodes CTC's own trellis.
+
+### `WINDOW_SEC` = 1.0 s, and it is a measured choice rather than the review's 3 s
+
+| W | AUROC gross (>2 s) | AUROC bad (>0.5 s) | median margin | LOSO bad at 51.5% coverage |
+|---|---|---|---|---|
+| **1.0 s** | 0.904 | **0.821** | 27 nats | **3.59%**, 0 gross |
+| 1.5 s | 0.935 | 0.787 | 56 | 4.48%, 0 |
+| 3.0 s | **0.941** | 0.771 | 126 | 5.38%, 0 |
+| 6.0 s | 0.851 | 0.711 | 257 | 6.73%, 6 |
+
+At 3 s a competing placement is necessarily a different OCCURRENCE — review §3.7's reading, and the best
+predictor of gross lines. But the rule is judged on `bad` (>0.5 s), and there the wide window is blind to the
+line whose onset is merely a second adrift. At 1 s the statistic is "how far could this start move at all
+before the trellis objected", occurrence ambiguity included since a wrong occurrence is an enormous move, and
+it is a third better on the reject-if's own number for four points of gross AUROC.
+
+### The rule, and the leave-one-song-out fit
+
+`margin < MIN_MARGIN_NATS` **OR** the raw line score more than 1.0 below the song's median → `low`. One
+threshold per signal; no fitted logistic (the critics measured its normalisation failing its own gates).
+M was fitted LOSO with review §3.7's own reject-if as the objective rather than the number the gate reports:
+the smallest M whose training `high` set holds no line more than 2 s off. **All 20 folds chose 10** — the
+figure §3.7 arrived at independently. The in-sample sweep, on top of the grading the rule joins:
+
+| M (nats) | `high` | coverage | bad among `high` | gross among `high` |
+|---|---|---|---|---|
+| control (rule replaced) | 446 | 51.5% | 11.88% | 23 |
+| 0 (score half alone) | 385 | 44.5% | 7.79% | 11 |
+| 2 | 372 | 43.0% | 5.91% | 4 |
+| 5 | 344 | 39.7% | 4.36% | 2 |
+| **10 (shipped)** | **286** | **33.0%** | **2.80%** | **0** |
+| 20 | 230 | 26.6% | 2.61% | 0 |
+| 40 | 174 | 20.1% | 2.87% | 0 |
+| 80 | 129 | 14.9% | 0.00% | 0 |
+
+Flat from 10 to 40 (bad 2.6–3.1%, gross 0 throughout), so the constant is not on a cliff, and below 10 the
+gross lines come back. **The two halves earn different parts of it**: the score half alone takes 23 gross
+`high` lines to 11, and the margin takes the remaining 11 to zero. Held out, the rule reads exactly its
+in-sample row (33.0% / 2.80% / 0) because every fold chose the same M.
+
+**§3.7's reject-if: PASS.** LOSO bad-among-high at the replaced rule's own coverage (51.5%) is **3.59%**
+against the bound of 5.94% — half of 11.88% — and zero gross lines at that coverage. At its own operating
+point the rule is better still (2.80%).
+
+### It transfers to HuBERT-Large with no refit — the bundle this wave is flipping on
+
+The one untested assumption in a threshold on a sum of log-probabilities is whether it survives a change of
+bundle. Same 20 songs, same `blind` mode, `ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE`, nothing re-fitted:
+
+| | `high` | coverage | bad among `high` | bad among `low` | gross among `high` |
+|---|---|---|---|---|---|
+| base, control | 446 | 51.5% | 11.88% | 12.86% | 23 |
+| base, W6 | 286 | 33.0% | **2.80%** | 17.07% | **0** |
+| HuBERT-L, control | 446 | 51.4% | 8.97% | 9.26% | 20 |
+| HuBERT-L, W6 | 301 | 34.7% | **2.66%** | 12.54% | **0** |
+
+The margin distribution barely moves (median 27 → 33 nats, p10 4 → 5), so M = 10 sits in the same place on
+both. Note the control's own two columns on HuBERT-L: 8.97% bad among `high` against 9.26% among `low` — the
+replaced rule is at chance on that bundle too, which is the finding reproducing rather than a base-model
+artefact. And **HuBERT-L + W6 publishes no `high` line more than 2 s off on any of the 20 songs**, which is
+the row the model flip wanted.
+
+### It is read on ONE branch: where the grade rests on our decode alone
+
+Every `high` in `line_confidence` except the last one is a CLAIM independently agreeing with the blind decode
+on the blind verdict's own clock, and review H4's argument is that two independent measurements agreeing beats
+the decode's own opinion of itself (which is what F3 measured). The margin IS the decode's opinion of itself,
+so charging a corroborated line for it double-counts an uncertainty the second witness already settled — and
+the measurement says so. On 4 songs × truth/off15/drop50 (516 lines, `Avercage`, `Pure_Mids`, `Tom_Orlando`,
+`hello`):
+
+- demoting on **every** branch: 278 → 194 `high` (53.9% → 37.6%), and it found **nothing** — claim-mode
+  bad-among-high was already 0.00% and gross-among-high 0.
+- demoting **only** where nothing else vouches: **278 → 278.** Not one grade moved on those 516 lines, and
+  §3.7's second reject-if ("no claim mode publishes a `high` line more than 2 s off", today 0) holds by
+  construction: the rule can only take a line DOWN.
+
+So the signal's whole value is in the uncorroborated population, which is exactly the population the review
+measured it on. Whether it fires anywhere in claim mode across the corpus is the bench runner's row.
+
+### The optional half: near-repeat detection, measured and OFF (`conf-fuzzy-repeats`)
+
+`difflib` ratio ≥ 0.8 over normalised line texts, as §3.7 proposes. It finds **49** near-but-not-exact repeats
+over the 20 songs, and among the lines the shipped rule already grades `high` it would demote **3** that are
+more than 0.5 s off — **none** more than 2 s — and **30** that are correct. End to end: 29.7% coverage /
+1.95% bad / 0 gross against the default's 33.0% / 2.80% / 0. A 10:1 loss of correct word wipes for 0.85 pt.
+The review's 8 gross lines were `high` under the rule W6 replaced; the margin takes them first, which is what
+leaves the arm nothing to buy.
+
+### The consumers, because a signal nothing reads is worthless
+
+1. **The TV renders a `low` line LINE-LEVEL.** `wipesWords` in `core/src/lib/tv/lyrics.ts`, read by
+   `LyricsOverlay.svelte`'s word branch: no ball, no per-word colours, no accent — the row is lit as one text
+   node, which claims only "this line is being sung". A missing grade and `medium` keep the wipe (v1 artifacts
+   carry no grade, and `medium` is a DOCUMENT grade).
+2. **Candidate ranking reads the aggregate.** `lyricsRank` now scores a word document whose `timingConfidence`
+   is `low` as LINE timing (5→4, 3→2). The grade is the per-line verdicts aggregated by the worker, and
+   ranking a document as word-timed while rendering it line-level was a contradiction. Before this,
+   `lyricsRank` read `timingConfidence` nowhere.
+
+**The bench port follows the TV** (`e2e_lib.tv_wipes_words`, `TvLine.wipes`, `tv_lit(wipe_low=True)`), and the
+parity fixture now carries graded documents so both trees are held to the rule
+(`core/tests/unit/lib/tv/bench-highlight-parity.json`, three new shaped documents plus grades on the random
+ones). **The pooled `highlight` metric deliberately does NOT read it**: §3.5's word-end post-pass and 6c's
+decode axis are both gated on `highlight`, every recorded row since W0 measured it the same way, and folding a
+display policy into it would re-baseline those gates and make a future alignment change's highlight number
+depend on how many lines the grader happened to doubt. What measures the policy is already on every row:
+`high` is how many lines the TV wipes, `high_bad` and `high_gross` are how wrong those wipes are.
+
+### What this owed — PAID, see "The W6 corpus sweep" below
+
+The corpus sweep. Every number above is 20 Jamendo songs on `blind` (the population the rule decides) plus a
+4-song claim-mode probe, on the base model. The bench runner owes the pooled claim-mode rows on both models —
+`high`, `high_bad`, `high_gross` per mode, which are the wipe's coverage and precision — and the YouTube half,
+where the review measured the margin weaker (AUROC 0.898 against 0.934, and its two-signal rule flagging
+71% of gross lines against 94%).
+
+**Read 2026-09-30 over the whole corpus against a `conf-legacy` run of the same tree** (the pair the arm
+exists for): all 13 timed claim modes are grade for grade IDENTICAL — `high`, `high_bad` and `high_gross`
+equal to the line on every one, `high_gross` 0 — so the 4-song probe generalised exactly. `blind` is the only
+mode the rule moves, and the YouTube half IS weaker, as the review predicted: Jamendo `high` 446 → 286,
+bad-among-high 11.88% → **2.80%**, gross `high` 23 → **0**; YouTube 466 → 353, 30.04% → **24.36%**, gross
+22 → **3**. The three surviving YouTube gross `high` lines are the one reject-if this wave does not close.
+
+## The clamp's left floor was the bug, not the ladder (W6, 2026-09-30; W4b's carried question)
+
+W4b rejected the HuBERT-Large flip on three MUSTs, and its own verdict localised the cause away from the
+decode: both big losers get BETTER blind and worse with claims (`hello` blind ±500 61.64 → 75.00 with gross
+16 → 6, against truth 97.26 → 90.28), so "the cost is the repair ladder's reaction to a better decode". This
+wave was told to bound the ladder with W6's confidence signal and re-try the flip. **The hypothesis was
+wrong, in a way the corpus is unambiguous about, and the real site is one line of arithmetic.**
+
+### What the ladder actually does, instrumented line by line
+
+A monkeypatch-only probe (`_review-scratch/w6-ladder/probe.py`, driven through the harness's own
+`TimeTextDriver`, so the repo is untouched and the trace is of the shipped code) recorded, for every line of
+3 songs × truth/jit/off15 and of the whole corpus at `truth`, on BOTH bundles: the blind start, the claim's
+raw and mapped start, reconcile's verdict and per-line judgement, which repair stage fired in which window,
+the adoption test's inputs, W1's provenance, `_clamped`'s before/after and the published error. It reproduces
+`results/w4b-{base,hubert}-time_text.json` case for case on gross and w500.
+
+  * **THE LADDER BREAKS ZERO CORRECT BLIND LINES**, corpus-wide, on either bundle. The rule this wave was
+    asked to build — a repair may not overwrite a placement the decode is confident about — would have been
+    inert.
+  * **EVERY ONE of HuBERT's new gross line starts under `truth` claims is manufactured AFTER the ladder
+    finishes**, by `_clamped_v2`'s left floor `low = max(line.start, previous_published_end)`: 5 new gross
+    lines whose pre-clamp error is ≤ 0.75 s and whose published error is +2.06 to +7.63 s, plus 2 the base
+    bundle also loses. The floor also costs 27 lines their 500 ms band on HuBERT-L and 37 on the base bundle.
+
+**And the floor is not independent evidence — it is the blind decode's own boundary.** Where the decode
+smears a line across the next line's audio, it also puts the next line's start at the smear's end, so the two
+numbers coincide and pushing the repaired start onto `previous_end` reinstates exactly the error the repair
+removed. Three exhibits, all at `truth`, HuBERT-L:
+
+| song | line | truth | the ladder's start | `previous_end` | published | the blind decode had it at |
+|---|---|---|---|---|---|---|
+| `hello` | [46] `♪ Outside ♪` | 260.52 | 260.66 (adopted) | 262.58 | 262.58 | **262.58** |
+| `Tom_Orlando` | [70] | 197.81 | 197.81 (adopted) | 200.96 | 200.96 | **200.96** |
+| `The_Rinn` | [44] | 218.88 | 218.88 (adopted) | 226.51 | 226.51 | 226.51 (a 9.57 s adopted span) |
+
+### The fix: resolve the overlap at the neighbour's END
+
+`_clamped_v2` now pulls the preceding line's END back onto the repair (`_pulled_end`) instead of pushing the
+repair forward onto that end. A line END is the weaker of the two measurements — W4 item 5 exists because
+ends run late, and the repaired start carries the claim clock and the corroboration test behind it — and only
+the end moves: the neighbour keeps its start, its order, its existence and its grade. Its one refusal is
+borrowed from the `m2-order-clamp` arm's `_fitted_run` rather than invented, so the fix introduces **no new
+constant**: one decoder frame per letter, below which the line is ordered but is no longer a timing anyone
+decoded.
+
+**The pull is `generate.trimmed`, not `remapped`, and that is measured.** An affine re-fit of the whole
+neighbour moves onsets that were already right; `trimmed` keeps every onset the decode measured before the new
+end and re-fits only the tail it smeared past it. Priced on 20 Jamendo songs at `truth`, base model, through
+the shipped `time_text` (`_runs/w6-{clamp,tail}-jamendo`), against W4's row that these must not regress:
+
+| Jamendo truth | W4 / W4b base row | affine `remapped` | tail-only `trimmed` |
+|---|---|---|---|
+| word ±100 | 83.25 | 83.12 | **83.52** |
+| word ±250 | 93.96 | 93.92 | **94.08** |
+| word ±300 | 94.98 | 94.98 | **95.04** |
+| PCO@0.3 | 86.47 | 86.47 | **86.53** |
+| word AAE | 87.8 ms | **86.5 ms** | 86.7 ms |
+| word MedAE | 38.2 ms | 38.5 ms | **38.2 ms** |
+| word end ±100 | 80.02 | 79.87 | **80.02** |
+| phrase-final end ±100 | 59.83 | 59.66 | 59.23 |
+| line ±500 | 96.42 | **97.00** | **97.00** |
+| line gross | 3 | **1** | **1** |
+| highlight | 77.10 | 77.45 | **77.58** |
+
+So the tail-only pull is back at or above the W4 row on every ONSET metric where the affine one sat 0.1–0.2 pt
+under four of them, at the cost of phrase-final end ±100 (59.23 against 59.83 on two more scored ends: the
+trimmed line's last word now ends at the boundary, and that word is a phrase-final one). It also makes the
+clamp's order property structural rather than guarded — `trimmed` never moves a line's FIRST onset, so a pull
+cannot invert against the line before it, and the explicit order guard `_pulled_end` carried while it used
+`remapped` (measured at 0 firings in 64 song-modes) is now unreachable and gone.
+
+Priced OFFLINE over the instrumented dumps (`_review-scratch/w6-ladder/{clampsim,clampfit}.py`: the clamp's
+word-level inputs for 32 songs × {truth, off15} × both bundles, every variant re-run on the same pre-clamp
+series, with the shipped floor reproducing the recorded `after` series in 128/128 cases). `gross` is line
+starts more than 2 s from truth, `w500` within 500 ms of 1548 HuBERT / 1591 base scored lines, `ooo` the word
+starts that precede the word before them — one of which makes `policy.decide` drop the whole text to line sync.
+
+| left floor | HuBERT-L truth | base truth | HuBERT-L off15 | base off15 |
+|---|---|---|---|---|
+| `previous_end` (before this wave) | 7 / 1376 / 1 | 3 / 1408 / 0 | 7 / 1374 / 0 | 3 / 1408 / 0 |
+| the neighbour's LAST WORD start | 7 / 1381 / 0 | 3 / 1417 / 0 | 7 / 1378 / 0 | 3 / 1415 / 0 |
+| pull the end back, unguarded | 0 / 1387 / 0 | 1 / 1427 / 0 | 0 / 1382 / 0 | 1 / 1422 / 0 |
+| **pull the end back, guarded — SHIPPED** | **0 / 1390 / 0** | **1 / 1428 / 0** | **0 / 1386 / 0** | **1 / 1425 / 0** |
+| … only where `margin.low_lines` doubts the line | 3 / 1388 / 1 | 3 / 1418 / 0 | 3 / 1386 / 0 | 3 / 1418 / 0 |
+| … only where it doubts the NEIGHBOUR | 5 / 1380 / 1 | 3 / 1418 / 0 | 5 / 1378 / 0 | 3 / 1418 / 0 |
+| … where it doubts EITHER | 3 / 1387 / 1 | 3 / 1421 / 0 | 3 / 1385 / 0 | 3 / 1421 / 0 |
+| no left floor at all | 0 / 1388 / 53 | 1 / 1428 / 64 | 0 / 1383 / 62 | 1 / 1423 / 66 |
+
+Read it three ways. (1) **Clamp-manufactured gross line starts go to ZERO on both bundles** — base's remaining
+1 is `Pure_Mids`, gross before the clamp ever runs, which the "no floor" row proves — and 12–20 lines come back
+into the 500 ms band, while `ooo` goes DOWN, from the one inversion the old floor published to none. (2)
+**Dropping the floor entirely** reaches the same accuracy and publishes 53–66 inversions, so the floor really
+is load-bearing and this is a bound on it rather than its removal. (3) **W6's confidence was measured here and
+is NOT what bounds it**: gating the pull on `margin.low_lines` — this wave's brief — is strictly worse on gross
+in every column, because the margin grades where a line's own first character sits and the conflict is between
+a repaired START and a neighbour's END, which no per-line placement statistic reads.
+
+Volume, so the exposure is not a pooled abstraction: 70 pulls on HuBERT-L and 101 on the base bundle out of
+333 / 431 repaired lines, 39 / 43 of them on a line the ladder had NOT repaired; median overrun pulled back
+0.47 / 0.41 s. The frame-per-letter refusal fires 4 / 3 times and is worth +3 / +1 lines in the band.
+
+### Measured END TO END on the shipped code, 15 songs × 13 claim modes
+
+The 195 cases the `m6-window-spare` pricing below already had to run (base model, `time_text`, the 15 songs
+whose never-sung rule ever drops a line, every timed claim mode; `_runs/w6-wspare-default`), against W4b's own
+recorded rows for the same cases (`results/w4b-base-time_text.cases.jsonl`) — **and the offline simulator above
+predicted all 15 of the `truth` column's per-song `pm500` and `gross` digits exactly**, which is what makes it
+a fair instrument for the 17 songs and 2 modes it was read on:
+
+| over 195 base-model song-modes, 8803 scored lines | W4b | this tree |
+|---|---|---|
+| gross line starts | 275 | **234** (−41) |
+| lines within ±500 ms | 7849 | **8035** (+186) |
+| `high` lines (what the TV wipes) | 5380 | 5378 |
+| `high_bad` (wiped and more than 0.5 s off) | 15 | 15 |
+| `high_gross` | 0 | **0** |
+| documents whose bytes changed | — | 129 / 195 |
+| song-modes whose SCORE changed | — | 102 |
+| outcome or reconcile verdict changed | — | **0** |
+
+No song-mode GAINED a gross line. The biggest individual gains are `The_Rinn` (2 → 0 gross in 12 of 13 modes),
+`tfr-mayday` drop20 (3 → 0), `tfr-chosen` (5 modes), `LUNABLIND` drop20 and `Songwriterz` drop50 (2 → 0 each),
+`never-be-alone` (+3 to +9 band lines in 8 modes) and `bohemian-rhapsody` (+2 to +5 in 8). The losses are
+`never-be-alone` tempo098/tempo102 (−5 each), `hello` jit (−3) and drop20 (−2), and ten single lines spread
+over `LUNABLIND`, `Cortez`, `Ridgway`, `Songwriterz`, `shape-of-you` and `bohemian` jit.
+
+### It does NOT make HuBERT-Large the default — and the reason is now specific
+
+With the floor bounded, `pooled-gross-not-up-truth` and `no-youtube-song-gains-gross-truth` (the two
+`gates/w4b.yaml` MUSTs the clamp was manufacturing) **flip to PASS at `truth`**: pooled gross base 1 / HuBERT
+0, where it was 3 / 7, and no YouTube song gains a gross line. What does NOT pass is `MUST 4`'s per-song
+±500 floor, and it gets *worse*, because the fix helps the control more than the candidate:
+
+| song (truth ±500) | old floor: base → HuBERT | bounded floor: base → HuBERT |
+|---|---|---|
+| `tfr-chosen` | 73.53 → 63.64 (−9.89), gross 0 → 3 | 85.29 → 69.70 (−15.60), gross 0 → 0 |
+| `hello` | 97.26 → 90.28 (−6.98), gross 0 → 1 | 97.26 → **100.00** (+2.74), gross 0 → 0 |
+| `tfr-flyaway` | 100.00 → 94.67 (−5.33) | 97.33 → 94.67 (−2.67) |
+| `never-be-alone` | 79.55 → 95.65 (+16.11) | 97.73 → 93.48 (−4.25) |
+| `bohemian-rhapsody` | 93.15 → 95.83 (+2.68) | 98.63 → 95.83 (−2.80) |
+| `bad-guy` | 4.35 → 1.45 (−2.90) | 4.35 → 2.90 (−1.45) |
+| `numb` | 42.86 → 54.29 (+11.43) | 42.86 → 54.29 (+11.43) |
+
+`hello` — W4b's named loss — is repaid outright and then some. What is left on `tfr-chosen`, `never-be-alone`
+and `bohemian-rhapsody` is **not a decision site**: line by line it is a scatter of sub-second band-boundary
+misses (tfr-chosen's base lines sit at a constant +0.32 and HuBERT's at +0.59 to +0.97; never-be-alone's and
+bohemian's HuBERT lines at −0.53 to −0.81 where the base bundle's are at 0.00), i.e. the two decodes disagree
+by half a band on a handful of lines each. No ladder change reaches that. So **HuBERT-L stays reachable by
+name** (`ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE`, its own `lexical.CALIBRATED` row), `ml.DEFAULT_ALIGN_MODEL` is
+still the base bundle and `ml.ALIGN_MODELS_BY_DEVICE` is still empty. An honest "not yet".
+
+### `m6-window-spare` re-priced: its recorded costs are GONE, and it is now free — RECOMMENDED, not flipped
+
+W4b left this default-off arm as an open question, because its only recorded costs (W1: Quentin's closing line
+back in 4 modes, never within ±500 ms; Ridgway off15 +1 gross) were measured before both the claim clock (W2)
+and the exact frame clock (W4), and because W4b had already corrected the other half of the record — the arm
+puts `Pure_Mids_-_The_Leader`'s dropped line[0] back at **−0.048 s**, not "more than 2 s out".
+
+Re-measured on THIS tree, arm against default, over the COMPLETE set of songs the arm can act on — the 15 whose
+never-sung rule drops a line in any text mode (`results/w4b-unsung-gate.json`; the candidate set is
+claim-independent, so those 15 are exhaustive) × all 13 timed claim modes, `time_text`, base model,
+`_runs/w6-wspare-{default,arm}`:
+
+| 15 songs × 13 modes | default | `m6-window-spare` |
+|---|---|---|
+| gross line starts | 234 | 234 |
+| lines within ±500 ms | 8035 | **8039** (+4) |
+| scored lines | 8803 | **8807** (+4) |
+| `unsung` (published lines no truth line pairs with) | 186 | 186 |
+| `high_gross` | 0 | 0 |
+| documents that differ at all | — | **4** |
+
+The four are `Pure_Mids_-_The_Leader` at `truth`, `jit`, `headers` and `extraverse`, and every one of them is
+the dropped line[0] coming back INSIDE the 500 ms band. Nothing else in the corpus moves a byte: **Quentin and
+Ridgway do not react to the arm on this tree at all**, so both of W1's recorded costs really were artefacts of
+the old clocks, and `unsung-not-up-*` — the MUST family this arm has always been judged on — is flat.
+
+**Recommendation: turn it on, in a wave of its own.** It is not flipped here, deliberately: this wave already
+changes the clamp on every repaired line, the bench runner's sweep is the read on that, and sweeping two
+default changes together would make neither attributable (PLAN rule 3). The arm closes W4's own open item —
+`Pure_Mids` line[0] is the reason `gates/w4.yaml`'s fourteen `jamendo-no-new-gross-*` and `w2.yaml`'s
+`truth-jamendo-pm500` sit under a waiver — so it is worth its own 2-sweep read at `run_align` too, the level
+this pricing did not cover.
+
+### What this owed — PAID, see "The W6 corpus sweep" below
+
+The corpus sweep, and it is the wave's one open decision. The line-start tables above are `truth` and `off15`
+re-scored from the clamp's own inputs, so they cannot see what a changed series does to `decide`'s verdict or to
+the remaining 14 modes; the 195-case end-to-end read covers 15 of 32 songs on ONE bundle; and the word-metric
+table is 20 Jamendo songs at `truth` only. Nothing at `--level run_align` has been read at all, which is where
+the ladder can retry, and nothing on HuBERT-L end to end. The control is
+`results/w4b-{base,hubert}-{time_text,run_align}.json`: `align_steps.py` is NOT in the emission cache's code
+fingerprint (`e2e_lib.module_closure` reads `adapters/ml.py`'s closure) and W6 changed no onset before this,
+which is why the old floor's rows reproduce W4b's per-song ±500 digits exactly here.
+
+## The W6 corpus sweep: what the seven runs accept, and the one thing they still reject (W6 bench, 2026-09-30)
+
+Seven full runs and one 20-case decode check, all on ONE worker tree (code `cad1ca7d2eaf2cf5`, HEAD
+`68db698f` uncommitted; 32 songs, seed 0, `--wrong-k 10`, `--tfr-audio youtube`, MPS, **0 ERROR rows in every
+one**). They are the read on both W6 items at once, which is only sound because the two change disjoint things
+and that is CHECKED rather than assumed (`onsets-unchanged-*` below). 1088 cases per full run, 14–19 min each.
+
+| run | `results/` | level / arm | gate files read on it |
+| --- | --- | --- | --- |
+| the SHIPPED default | `w6-base-time_text` | `time_text`, `--modes all,wrongtext+ownclock` | `w6-ladder` **30/31**, `w6` **29/33**, `w6-conf` **27/28**, `w2` **85/88**, `w0-reproduce-time_text` **8/11** |
+| the flip re-tried | `w6-hubert-time_text` | `time_text`, `--model HUBERT_ASR_LARGE` | `w4b` **28/30**, `w6` **32/33** |
+| the shipped default, the job | `w6-base-run_align` | `run_align` | `w6-ladder` **30/31**, `w6` **29/33**, `w2` **85/88** |
+| the flip, the job | `w6-hubert-run_align` | `run_align`, HuBERT-L | `w4b` **28/30**, `w6` **32/33** |
+| the LINE_SYNC rung | `w6-lines-run_align` | `run_align --sync-mode lines` | `w3-lines` **34/38** |
+| the confidence CONTROL | `w6-legacy-time_text` | `time_text`, `ENCORE_ALIGN_EXPERIMENTS=conf-legacy` | (it is the `--compare` cell for `w6-conf`) |
+| the `m6-window-spare` arm | `w6-wspare-time_text` | `time_text`, `ENCORE_ALIGN_EXPERIMENTS=m6-window-spare` | `w6` **27/33**, `w6-conf` **26/28** |
+| (the raw decode, 20 songs) | `w6-generate` | `generate`, blind, Jamendo | `w0-reproduce-generate` **11/11** |
+
+`align_steps.py` is not in the emission cache's code fingerprint and `adapters/ml.py` was not touched, so the
+five default-config runs read warm matrices (`computed` 0, 0, 0, 10 and 19 over 1088 cases each); the two ARM
+runs pay one model pass per song — 40 and 33 matrices — because `align_config` is part of the key on purpose,
+which is the cost the `conf-legacy` control is worth paying (`gates/w6-conf.yaml`'s header argues it).
+
+### The shipped default: every headline number up, one known cost, and the same at both levels
+
+Read against `results/w4b-base-{time_text,run_align}.json`, the rows this wave replaces. **The Jamendo truth
+column is identical to the digit at `time_text` and at `run_align`**, which is itself the finding that the
+clamp change lives below the job's policy.
+
+| truth, 20 Jamendo songs | baseline-v2 | W4 | W4b base | **W6 base** |
+| --- | --- | --- | --- | --- |
+| word ±100 % | 82.54 | 83.25 | 83.25 | **83.52** |
+| word ±300 % | 95.33 | 94.98 | 94.98 | **95.04** |
+| word AAE ms | 104.0 | 87.8 | 87.8 | **86.7** |
+| word MedAE ms | 38.4 | 38.2 | 38.2 | 38.2 |
+| word end ±100 % | 73.53 | 80.02 | 80.02 | 80.02 |
+| phrase-final end ±100 % | 40.99 | 59.83 | 59.83 | **59.23** (the one cost) |
+| highlight % | 67.12 | 77.10 | 77.10 | **77.58** |
+| line ±500 % | 97.58 | 96.42 | 96.42 | **97.00** |
+| gross lines | 2 | 3 | 3 | **1** |
+| songs with 0 gross | 19 | 18 | 18 | **19** |
+
+Pooled over all 32 songs, `truth`: gross 3 → **1**, ±500 89.45 → **90.61**, ±500-of-text 88.18 → **89.32**.
+**Pooled gross falls or holds in every one of the sixteen modes** at `time_text` — truth 3 → 1, jit 37 → 31,
+off05/off15/off3/offm1 3 → 1, tempo098/102 4 → 1, drop20 42 → 29, drop50 305 → 303, extraverse 5 → 1,
+headers 3 → 1, credit 28 → 23, blind 106 = 106, wrongtext 0 = 0, ownclock 0 = 0 — and at `run_align` the same,
+with drop20 13 → **0** and drop50 180 → 178. **No song gains a gross line in any mode** (`count(song.gross_up)`
+= 0 over the whole 32 × 16 grid, both levels). `high_gross` — a line the TV WIPES that is more than 2 s off —
+is 0 in all thirteen timed claim modes on both bundles and both levels.
+
+THE ONE COST, and it is the one `gates/w6-ladder.yaml` predicted: phrase-final word ends, 59.83 → 59.23, on 2
+more scored ends (704 against 702), because the trimmed line's last word now ends at the neighbour's boundary.
+
+### Wrong-text protection, at all three rungs
+
+| | `time_text` base | `time_text` HuBERT-L | `run_align` base | `run_align` HuBERT-L | `--sync-mode lines` |
+| --- | --- | --- | --- | --- | --- |
+| `wrongtext` pass | **1/320** | 0/320 | 0/320 | 0/320 | 0/320 |
+| `wrongtext+ownclock` pass | 0/320 | 0/320 | 0/320 | 0/320 | 0/320 |
+
+The one `time_text` pass is the same `LUNABLIND_-_Vision__Radio_Edit_` cross-pair W4b records, and it is the
+only document any wrong text committed anywhere (`published + line_sync` = 1 over the 640 wrong-text cases of
+the `time_text` run, 0 in the other three). `lines` is 0/640, so the LINE_SYNC rung is still closed to a wrong
+text. **`gates/w3-lines.yaml` reads 34/38 with the same four failures and the same digits as W4's own row**
+(14 ≤ 13, 31 ≥ 32, 14 ≥ 15, 92.56 ≥ 95.0) — that is, W6 moved nothing at all in `lines` mode, which is what a
+change to the repair clamp and to a per-line GRADE should do to documents that have neither.
+
+### The confidence rule, against its own control arm
+
+`results/w6-base-time_text.json` against `results/w6-legacy-time_text.json` — the same code with the rule off,
+which is the only pair that isolates it. `gates/w6-conf.yaml` **27/28**, and the whole corpus says what the
+866-line fit said.
+
+| mode | control `high`/bad/gross | W6 `high`/bad/gross | bad-among-high | coverage kept |
+| --- | --- | --- | --- | --- |
+| all 13 timed claim modes | *unchanged, line for line* | *unchanged, line for line* | *unchanged* | 100% |
+| `blind`, 20 Jamendo | 446 / 53 / **23** | 286 / 8 / **0** | 11.88% → **2.80%** | 64.1% |
+| `blind`, 12 YouTube | 466 / 140 / **22** | 353 / 86 / **3** | 30.04% → **24.36%** | 75.8% |
+| `blind`, pooled | 912 / 193 / **45** | 639 / 94 / **3** | 21.16% → **14.71%** | 70.1% |
+
+* **The claim modes are grade for grade identical** — `high`, `high_bad` and `high_gross` equal on every one of
+  the thirteen, `high_gross` 0 on all of them. The 4-song probe generalised exactly, for the reason the code
+  gives: the demotion is read on the ONE branch whose grade rests on our decode alone, and a corroborated line
+  never reaches it.
+* **No timing moved.** `count(blind.song.onsets_changed)` = 0 and `count(truth.song.onsets_changed)` = 0
+  against the control, while 30 of 32 blind DOCUMENTS change bytes — that difference is the `confidence` field
+  and nothing else. It is also why `gates/w6-ladder.yaml`'s `clamp-blind-documents-unchanged` and `w2.yaml`'s
+  `blind-unchanged` FAIL at 30 on this tree: both read `doc_changed`, and the metric that answers their
+  question is `onsets_changed` (0). Pooled blind ±500, word ±300 and highlight are identical to 2 decimals
+  against both the control and W4b.
+* **The YouTube half is weaker, exactly as the review warned** (it measured AUROC 0.898 there against 0.934):
+  bad-among-high falls by a fifth rather than a half, and **3 gross `high` lines survive** — the one reject-if
+  of this wave that does not close. All three are blind-mode; every claim mode is 0. `gates/w6-conf.yaml`'s
+  `high-gross-zero-blind` is written absolute and pooled, so that is where it is recorded as a FAIL.
+* **The LOSO fit reproduces**, re-run here off the confidence item's own per-line rows
+  (`_review-scratch/w6-conf/loso.py`): all 20 folds choose M = 10; held-out bad-among-high **2.82%** at 32.8%
+  coverage and **3.59%** at the replaced rule's own 51.5% coverage, against the 5.94% bound (half of 11.88%),
+  with 0 gross lines at that coverage. On HuBERT-L the same script reads **2.01%** against a 4.48% bound, M = 10
+  in all 20 folds — no per-bundle refit.
+
+### The flip: W4b's rejection was the clamp's doing, and the residue is now ONE gate
+
+`results/w6-hubert-time_text.json` against `results/w6-base-time_text.json` (and the same pair at
+`run_align`). `gates/w4b.yaml` **28/30 at both levels**, `gates/w6.yaml` 32/33 and 32/33.
+
+Pooled gross, `time_text` / `run_align`, every cell read off the four `results/` rows:
+
+| pooled gross | W4b base | W4b HuBERT | **W6 base** | **W6 HuBERT** |
+| --- | --- | --- | --- | --- |
+| truth | 3 / 3 | 7 / 7 | **1 / 1** | **0 / 0** |
+| jit | 37 / 27 | 5 / 5 | 31 / 21 | **0 / 0** |
+| off05 = off15 = off3 = offm1 | 3 / 3 | 7 / 7 | 1 / 1 | **0 / 0** |
+| tempo098 = tempo102 | 4 / 4 | 7 / 7 | 1 / 1 | **0 / 0** |
+| drop20 | 42 / 13 | 20 / 8 | 29 / 0 | 12 / 0 |
+| drop50 | 305 / 180 | 170 / 94 | 303 / 178 | 167 / 91 |
+| extraverse | 5 / 5 | 6 / 6 | 1 / 1 | **0 / 0** |
+| headers | 3 / 3 | 2 / 2 | 1 / 1 | **0 / 0** |
+| credit | 28 / 28 | 7 / 7 | 23 / 23 | **0 / 0** |
+| blind | 106 / 106 | 68 / 67 | 106 / 106 | 68 / 67 |
+
+**W4b's headline rejection is gone.** Its pooled `truth` gross 3 → 7 was the clamp manufacturing line starts
+out of the blind decode's own boundary; on the fixed floor the same pair reads 1 → **0**, at BOTH levels, and
+HuBERT-L is at or below the base bundle's gross in **every one of the sixteen modes**. It keeps every win the
+flip gate required: Jamendo truth word ±100 **85.46** (≥ 85.0), AAE **71.1 ms** (≤ 75), highlight **81.40**
+(≥ 80.5), ±500 **98.15**, and `Pure_Mids_-_The_Leader` truth ±500 **100.00** with Jamendo truth gross **0**
+(20 of 20 songs clean). The three songs W4b named:
+
+| truth, ±500 (gross) | W4b base | W4b HuBERT | **W6 base** | **W6 HuBERT** |
+| --- | --- | --- | --- | --- |
+| `hello` | 97.26 (0) | 90.28 (1) | 97.26 (0) | **100.00 (0)** |
+| `Tom_Orlando_-_The_One` | 98.61 (0) | 98.61 (1) | 100.00 (0) | **100.00 (0)** |
+| `tfr-chosen` | 73.53 (0) | 63.64 (3) | **85.29 (0)** | 69.70 (0) |
+| `Pure_Mids_-_The_Leader` | 68.42 (1) | 100.00 (0) | 73.68 (1) | **100.00 (0)** |
+
+**AND IT IS STILL NOT THE DEFAULT.** What fails is now a single gate family, at both levels and for a reason
+the ladder cannot reach:
+
+* `no-youtube-song-worse-at-truth-pm500` −15.59 pt: `tfr-chosen` 85.29 → 69.70. The fix helps the CONTROL more
+  than the candidate on that song, and line by line the residue is a scatter of sub-second band-boundary misses
+  (the base's lines at a constant +0.32 against HuBERT's +0.59…+0.97), not a decision site.
+* `no-jamendo-song-worse-at-word-pm300` −1.52 pt: `Tom_Orlando`, whose ±500 is 100.00 on both.
+* `w6-no-song-gains-gross` = **8** song-modes at `time_text` and **6** at `run_align`, and every one is in the
+  two SEVERE-drop modes or blind, never in a timed claim mode: `tfr-chosen` +3 at drop20 and +1 at drop50,
+  `hello` +3, `shape-of-you` +2, `Moon_I_Mean` +1 and `Wordsmith` +1 at drop50, `tfr-mayday` +2 and `Rxbyn` +1
+  at blind.
+
+So `ml.DEFAULT_ALIGN_MODEL` stays the base bundle and `ALIGN_MODELS_BY_DEVICE` stays empty. The recorded
+verdict is no longer "the ladder breaks under a better decode" but "three songs' sub-second band arithmetic and
+two 20–50% drop modes", which is a question about the decode and about `drop`-mode repair, not about the clamp.
+
+### `m6-window-spare` over the whole corpus: 4 documents, +1 line each, and the cost is DILUTION
+
+The arm's own sweep (32 songs × 16 modes) against the shipped default of the same tree. It changes **exactly 4
+documents** — `Pure_Mids_-_The_Leader` at truth, jit, extraverse and headers, the complete set its never-sung
+rule ever dropped a line from — and in each it recovers line[0] INSIDE the ±500 band (that song's truth ±500
+73.68 → 75.00, ±500-of-text 70.0 → 75.0, highlight +2.1 pt; scored lines 19 → 20). Corpus-wide: **0 songs gain
+a gross line, 0 songs lose ±500, `unsung` not up anywhere, wrong-text unchanged**, and pooled Jamendo truth
+±500 and gross unchanged (97.00, 1).
+
+Its cost is 8 more ALIGNED WORDS, of which 6 miss ±100 and 4 miss ±300 — so the pooled word ratios dilute
+without a single existing word moving: word ±100 83.52 → 83.45, word ±300 95.04 → **94.97**, AAE 86.7 → 87.1 ms,
+end ±100 80.02 → **80.00**, while highlight goes 77.58 → 77.66 and PCO@.3 +0.1.
+
+**RECOMMENDATION: flip it, in its own wave, together with a re-pricing of the two ratchet literals it trips.**
+Those two are `w6-jamendo-word-pm300` (94.97 against a 94.98 bound — one word) and `w6-jamendo-word-end-pm100`
+(80.00 against 80.02 — one end), and they fail because a W4 literal set on 5183 words is being read on 5191. A
+line the room can see is worth more than 4 badly-timed words in a ratio, but it is NOT worth silently moving a
+ratchet, which is why this is a recommendation and not a flip. It still owes a `run_align` read: this sweep is
+`time_text` only, and `Pure_Mids` is the song whose `truth` refusal path W4b (b) left open.
+
+### What the rebased gate files read on this tree, and where a rebase IS now owed
+
+`gates/w2.yaml` **85/88 at both levels** against `results/w4-{time_text,run_align}.json`, where the W4b rows it
+was rebased onto read **88/88** — so all three failures are W6's, and they are:
+
+* `blind-unchanged` (30 documents): the `confidence` field. `count(blind.song.onsets_changed)` = 0 on the same
+  rows. The gate needs the same `onsets_changed` rescoping its W6 siblings need.
+* `no-worse-displacement-tempo098` and `-tempo102`, −10.64 pt: **`never-be-alone`**, whose `text_pm500` goes
+  68.09 → 57.45 under a ±2% tempo warp while its `truth` goes 74.47 → **91.49** (±500 79.55 → 97.73). Same
+  song, same clamp pull, opposite signs: 5 of its 44 lines leave the 500 ms band when the claims are warped.
+  No gross line either way, and pooled tempo098/102 gross falls 4 → 1 and ±500 rises. It is a real one-song
+  cost in two modes and it is named here rather than folded into the pooled gain.
+
+`gates/w0-reproduce-time_text.yaml` **8/11**. The 7 BLIND literals are exact to 0.00 — pooled gross 106,
+±500 78.04, ±1 s 88.76, Jamendo blind words ±100 80.11 / ±250 90.62 / ±300 91.58 / >2 s 122 — which is the
+cheapest possible proof that W6 changed no blind timing on 32 songs. The 3 failures are all `truth` and all in
+the GOOD direction, by construction: gross 3 → 1, ±500 89.45 → 90.61, ±1 s 98.16 → 98.73.
+`gates/w0-reproduce-generate.yaml` **11/11**: the raw decode is untouched, which is the check `generate.py`'s
+`char_targets` extraction and the new `trimmed` needed.
+
+**So one rebase IS owed and it is the owner's call**, on the same grounds W4b rebased these files: a determinism
+ratchet that fails because the wave did what it was built to do teaches the next wave to ignore it. The three
+`w0-reproduce-time_text` truth literals want 1 / 90.61 / 98.73, and `w2.yaml`'s `blind-unchanged` wants
+`onsets_changed`. Nothing else in either file moved.
+
+### What this sweep still owes
+
+* **The 3 YouTube blind gross `high` lines** — the wave's one unclosed reject-if, and the only gate failure that
+  is a real defect rather than a ratchet or a named per-song cost. The margin's own AUROC is lower on that half;
+  whether the fix is a per-group threshold, a second signal or the review's repeat detector is a wave's work.
+* **HuBERT-L's drop20/drop50 gross**, 8 song-modes at `time_text`: the flip's last blocker is now in the
+  severe-drop modes, which no W6 item touched.
+* **`m6-window-spare` at `run_align`**, and the 2 ratchet literals a flip would re-price.
+* **`--no-stem`**, `--asr whisper` and the `off1/off5/offm05/offm15/offm3/ownclock` modes outside `all`: not
+  measured here on either bundle.
