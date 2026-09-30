@@ -217,8 +217,8 @@ class _LocalModel:
 class _Rigged(ml.WhisperXAligner):
     """`emissions()` with a known model and no Hub, so the grid is all that is under test."""
 
-    def __init__(self, model: _LocalModel) -> None:
-        super().__init__(device="cpu")
+    def __init__(self, model: _LocalModel, jobs: int = 1) -> None:
+        super().__init__(device="cpu", jobs=jobs)
         self._model = model
 
     def _aligner(self, language: str) -> tuple[Any, Any]:
@@ -386,6 +386,89 @@ def test_the_matrix_cache_is_bounded_and_separate_from_the_model_weights(
     assert len(ml._EMISSIONS) == ml._EMISSION_CACHE_SIZE
     ml.clear_cache()
     assert not ml._EMISSIONS
+
+
+def test_the_cache_bound_grows_with_concurrency_and_always_holds_every_live_matrix() -> None:
+    """W4 review r1 derived the bound from `Config.concurrency`; review r2 found nothing PINNED it — both
+    existing assertions call `_emission_cache_size` on their own right-hand side, so `return 4` (the flat
+    bound that made a 3-job box evict its own live matrices and re-pay the forward pass on every attempt
+    after the first) passes them. These are the two properties the derivation exists for, stated without
+    calling the function to describe itself.
+
+    THE LIVE SET MUST FIT: a job reads two matrices at once (its align target and the MIX witness R4
+    decodes, `_MATRICES_PER_JOB`), and `transport.client` really does run `concurrency` jobs at once —
+    `ML_LOCK` serialises the model, never the interleaving of steps.
+    """
+    assert ml._emission_cache_size(3) > ml._emission_cache_size(1), "the bound must move with concurrency"
+    for jobs in (0, 1, 2, 3, 8, 32):
+        got = ml._emission_cache_size(jobs)
+        assert got >= ml._MATRICES_PER_JOB * max(1, jobs), f"jobs={jobs}: the live set does not fit in {got}"
+        assert got > ml._MATRICES_PER_JOB * max(1, jobs) - 1, f"jobs={jobs}: no history kept"
+    assert ml._EMISSION_CACHE_SIZE == ml._emission_cache_size(1), "the default is the one-job bound"
+
+
+def test_a_three_job_aligner_still_serves_six_matrices_a_one_job_aligner_has_evicted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The behavioural half of the same fix: the SAME six songs, one aligner built for 3 jobs and one for 1.
+
+    Six is what three live jobs hold (`_MATRICES_PER_JOB` each). The 3-job aligner serves all six from
+    memory; the 1-job aligner has evicted the oldest two and re-runs the model for them — which is the
+    regression a flat bound reintroduces on an operator-set `ENCORE_WORKER_CONCURRENCY`, and it is invisible
+    to any assertion written in terms of `_emission_cache_size` itself.
+    """
+    import soundfile as sf
+
+    monkeypatch.setattr(ml, "load_audio_mono_16k", lambda p: sf.read(p, dtype="float32", always_2d=False)[0])
+    paths = []
+    for index in range(2 * 3):
+        path = tmp_path / f"live{index}.wav"
+        sf.write(path, np.random.default_rng(100 + index).uniform(-0.5, 0.5, RATE).astype(np.float32), RATE)
+        paths.append(str(path))
+
+    def passes_to_reserve(jobs: int) -> int:
+        ml.clear_cache()
+        model = _LocalModel()
+        aligner = _Rigged(model, jobs=jobs)
+        for path in paths:
+            aligner.emissions(path, "en")
+        before = len(model.fed)
+        for path in paths:  # a second sweep: every miss is one more forward pass
+            aligner.emissions(path, "en")
+        return len(model.fed) - before
+
+    assert passes_to_reserve(3) == 0, "a 3-job box must hold its own six live matrices"
+    # A four-deep LRU under six live songs THRASHES rather than merely evicting the oldest: each lookup
+    # evicts the matrix the sweep needs two songs later, so every one of the six is re-computed. That is the
+    # measured regression itself — "every attempt after the first re-paid the forward pass".
+    assert passes_to_reserve(1) == len(paths), "a four-deep bound under six live matrices must thrash"
+    ml.clear_cache()
+
+
+def test_the_host_sizes_the_cache_from_its_configured_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
+    """And the derivation has to REACH production (review r2): a bound nothing wires through is a formula.
+
+    `build_adapters` is the only place that knows `Config.concurrency`, so the assertion is made there —
+    hermetically, by recording what the factory is handed rather than by loading whisperx.
+    """
+    from encore_worker import __main__ as entry
+    from encore_worker.adapters import ml as adapters_ml
+    from encore_worker.host.config import Config
+
+    seen: dict[str, Any] = {}
+
+    def spy(*, device: str, jobs: int = 1) -> Any:
+        seen.update(device=device, jobs=jobs)
+        return _Rigged(_LocalModel(), jobs=jobs)
+
+    monkeypatch.setattr(adapters_ml, "build_aligner", spy)
+    monkeypatch.setattr(adapters_ml, "build_transcriber", lambda **_k: None)
+    monkeypatch.setattr(adapters_ml, "build_diarizer", lambda **_k: None)
+    adapters = entry.build_adapters(Config(concurrency=3), device="cpu")
+    assert seen == {"device": "cpu", "jobs": 3}, "the host must hand the factory its own concurrency"
+    built = adapters.aligner
+    assert isinstance(built, ml.WhisperXAligner)
+    assert built._matrices == ml._emission_cache_size(3), "and the LRU is sized from it"
 
 
 def test_an_unstattable_target_is_computed_uncached_rather_than_raising(

@@ -277,7 +277,7 @@ def test_on_the_mix_the_lift_replaces_the_envelope_gate_by_default(
     on the mix, exactly as on a stem.
 
     The flip is the stemless bench mode's (`e2e.py --no-stem`, 32 songs x 4 claim modes + 2 wrong donors):
-    the envelope gate refuses 51 of the 128 right-text cases where the floor refuses 37, and admits 26 of 64
+    the envelope gate refuses 51 of the 128 right-text cases where the floor refuses 37, and admits 27 of 64
     wrong texts where the floor admits 0. Nine of its refusals lift above the floor — Tom_Orlando +1.465
     (72/72 line starts within ±500 ms once published), Rxbyn +1.081, Ridgway +1.061 — and this is that shape.
     """
@@ -304,7 +304,7 @@ def test_on_the_mix_words_under_the_floor_are_refused_by_default(
 
     W3 published it as the doubt band because the cost lands where nothing follows a refusal (NextText, and
     the LINE_SYNC rung declines a stemless song) and the floor refuses 7 of the corpus's 32 truth texts. The
-    measured alternative refuses 10 of them AND admits 26 of 64 wrong texts, so the doubt band is the control
+    measured alternative refuses 10 of them AND admits 27 of 64 wrong texts, so the doubt band is the control
     arm's behaviour now (`lexical.BANDS`, MIX).
     """
     run = attempt(tmp_path, monkeypatch, texts=UNSUNG, stem=False)
@@ -345,6 +345,41 @@ def test_the_mix_floor_arm_keeps_both_gates(tmp_path: Path, monkeypatch: pytest.
     assert isinstance(deaf.got, Refused), deaf.got
     assert deaf.got.report.refused is not None
     assert deaf.got.report.refused.startswith("envelope gate refused"), "the envelope gate is kept beside it"
+
+
+def test_both_mix_arms_together_mean_both_gates_not_the_envelope_one_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4 review r2 (correctness-7): `h3-mix-envelope` used to win outright, so a run with BOTH names set
+    measured the ENVELOPE-GATE-ONLY configuration and recorded both names beside it — a third configuration
+    published under the stricter one's name, which is exactly the mislabelling `Config.ALIGN_EXPERIMENTS`
+    refuses unknown names to prevent.
+
+    `h3-mix-floor` is the superset (both gates), so the pair MUST behave as `h3-mix-floor` alone: a sub-floor
+    text is refused by the floor, and a text the envelope cannot hear is refused by the envelope gate.
+    """
+    both = frozenset({"h3-mix-envelope", "h3-mix-floor"})
+    unsung = attempt(tmp_path, monkeypatch, texts=UNSUNG, stem=False, experiments=both)
+    assert isinstance(unsung.got, Refused), unsung.got
+    assert unsung.got.report.refused is not None
+    assert f"below {lexical.BANDS.mix_floor} on the mix" in unsung.got.report.refused, (
+        "with both names set the floor must still refuse: `h3-mix-envelope` alone would publish this"
+    )
+    floor_only = attempt(
+        _fresh(tmp_path, "flooronly"),
+        monkeypatch,
+        texts=UNSUNG,
+        stem=False,
+        experiments=frozenset({"h3-mix-floor"}),
+    )
+    assert isinstance(floor_only.got, Refused)
+    assert floor_only.got.report.refused == unsung.got.report.refused, "the pair IS `h3-mix-floor`"
+    deaf = attempt(
+        _fresh(tmp_path, "deafboth"), monkeypatch, stem=False, envelope_hears=False, experiments=both
+    )
+    assert isinstance(deaf.got, Refused), deaf.got
+    assert deaf.got.report.refused is not None
+    assert deaf.got.report.refused.startswith("envelope gate refused"), "and the envelope gate is kept too"
 
 
 def test_on_a_stem_words_under_the_floor_are_still_refused_with_no_arm(

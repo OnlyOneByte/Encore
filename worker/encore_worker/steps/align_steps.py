@@ -749,9 +749,11 @@ class AlignStepsImpl:
         `vouched: false`, so a document a gate passed outranks it); above the band, grading is as
         described. ON THE MIX (no stem) the same rule holds since W4 review r1 — the floor refuses and the
         envelope fit is reported — because the stemless bench mode measured the envelope gate losing MORE
-        right texts than the floor (51 of 128 against 37) while admitting 26 of 64 wrong ones. The controls
+        right texts than the floor (51 of 128 against 37) while admitting 27 of 64 wrong ones (the control
+        row is `results/w4-stemless-envelope-time_text.json`; `lexical.BANDS`, MIX, owns the figure and
+        every other site defers to it). The controls
         are `h3-mix-envelope` (W3's default: the envelope gate alone, the floor grading) and `h3-mix-floor`
-        (both gates). TWO AXES, NOT ONE (W3 review r2): the
+        (both gates, which is what BOTH names set means). TWO AXES, NOT ONE (W3 review r2): the
         grading band and the words' standing part company on the mix, where `mix_ok_from` reads how audible
         the words are and holds 104 of the corpus's 192 right texts — so there only a SUB-FLOOR lift is
         unvouched, while its doubt band publishes vouched with `low` lines. The ASR tier keeps the envelope
@@ -796,7 +798,9 @@ class AlignStepsImpl:
 
         # The MIX, the second witness: R4 decodes on it, and under `m6-mix-spare` the never-sung rule
         # listens to it before it bins a claimed line. When the target IS the mix (no stem), the lexical gate
-        # below reads the mix's bands, where it grades and the envelope gate keeps the verdict.
+        # below reads the mix's bands, where since W4 review r1 the LIFT'S FLOOR REFUSES and the envelope fit
+        # is only reported — except under `h3-mix-envelope` (the control: the envelope gate alone) or
+        # `h3-mix-floor` (both gates). The flip's numbers are at `lexical.BANDS`, MIX.
         stem_target = target
         mix_target = req.audio.align_target(on_mix=True)
         target_name = "mix" if stem_target == mix_target else "stem"
@@ -821,10 +825,19 @@ class AlignStepsImpl:
         # stemless song (NextText, and the LINE_SYNC rung declines the mix), so those sheets fall to the
         # whisper transcript. W4's stemless bench mode (`e2e.py --no-stem`) then measured all three
         # configurations end to end and the gate it replaces loses MORE of the same: the envelope gate
-        # refuses 51 of 128 right-text cases against the floor's 37 and admits 26 of 64 wrong ones (40.6%,
+        # refuses 51 of 128 right-text cases against the floor's 37 and admits 27 of 64 wrong ones (42.2%,
         # against review §3.4's 1%), where the floor publishes 91 and admits 0. The numbers, the 9 right
         # texts the envelope gate refuses above the floor and the control arm are at `lexical.BANDS`, MIX.
-        mix_envelope_only = not on_stem and "h3-mix-envelope" in self._cfg.align_experiments
+        #
+        # `h3-mix-floor` WINS WHEN BOTH ARM NAMES ARE SET (W4 review r2): it means BOTH gates, so it is the
+        # superset of `h3-mix-envelope`'s one gate, and the pair must MEASURE what the stricter name promises
+        # rather than a third configuration. Otherwise `align_config: {align_experiments:
+        # [h3-mix-envelope, h3-mix-floor]}` would record both names over envelope-gate-only rows — the exact
+        # mislabelling `Config.ALIGN_EXPERIMENTS` refuses unknown names to prevent.
+        mix_both_gates = not on_stem and "h3-mix-floor" in self._cfg.align_experiments
+        mix_envelope_only = (
+            not on_stem and not mix_both_gates and "h3-mix-envelope" in self._cfg.align_experiments
+        )
         mix_floor_gates = not on_stem and not mix_envelope_only
         refuses = lift_band is lexical.Band.REFUSE and (on_stem or mix_floor_gates)
         # Why nothing vouches for this pin's words: a wrong-text gate would have refused them, and a person
@@ -890,9 +903,7 @@ class AlignStepsImpl:
         # wherever the lift could not measure the text at all — "none doubted it" must not read as "one
         # passed it" — and on the mix under either arm: `h3-mix-envelope` (the control, the envelope gate
         # alone) or `h3-mix-floor` (both gates, W3's first shipping).
-        envelope_gates = lifted is None or (
-            not on_stem and (mix_envelope_only or "h3-mix-floor" in self._cfg.align_experiments)
-        )
+        envelope_gates = lifted is None or mix_envelope_only or mix_both_gates
 
         try:
             generated = await asyncio.to_thread(
@@ -1773,9 +1784,16 @@ class AlignStepsImpl:
             # the claims were NOT adopted because the audio puts the singing seconds from them, the clock
             # declined to map them (`claim_clock.why` is in the verdict note beside this) and the blind
             # decode related nothing to them.
+            #
+            # THE DISPLACEMENT IS PRINTED IN `ShiftFit`'s OWN SIGN (W4 review r2), which is the sign every
+            # other reader of this fit uses: seconds to ADD to the claims to reach the singing
+            # (`activity.ShiftFit.seconds`, `claimmap.consensus`'s `envelope_lag`). So a sheet stamped 3 s
+            # LATE prints -3.00s — the singing sits 3 s before these claims. Negating it here read the
+            # displacement backwards on the wave's own exhibit (never-be-alone `off3`, envelope-lag -3.76s),
+            # which is the one question this note exists to answer.
             repairs.append(
                 f"did not adopt {len(set(unmapped))} claim timing(s): the audio puts the singing "
-                f"{-claim_lag.seconds:+.2f}s from these claims (r={claim_lag.correlation:.2f}) on a sheet "
+                f"{claim_lag.seconds:+.2f}s from these claims (r={claim_lag.correlation:.2f}) on a sheet "
                 "the claim clock left on its own clock and the blind decode read as unrelated, so the "
                 "window decode's own timing stands: " + ", ".join(f"[{i}]" for i in sorted(set(unmapped)))
             )
@@ -1913,7 +1931,7 @@ class AlignStepsImpl:
         # singing, capped at the next word's own start and at 3 s. STARTS NEVER MOVE — that is what makes
         # this different from the energy-snap this repo rejected (README: onsets snapped to the nearest
         # rise cost ±250 ms 77.3% -> 70.7%). Measured on this path over the 20-song Jamendo corpus, truth
-        # claims (`ends.py`'s table): phrase-final end ±100 37.5 -> 59.8, bias -114 -> -5.8 ms, highlight
+        # claims (`ends.py`'s table): phrase-final end ±100 37.5 -> 59.8, bias -114 -> -5.6 ms, highlight
         # 65.8 -> 77.1%, with every onset metric equal to the digit and all 20 `onsets_sha256` identical.
         #
         # ON A STEM ONLY (W4 review r1). `ends.ACTIVE_LEVEL` is a fraction of the TARGET's own loud level,
@@ -2626,6 +2644,25 @@ def _timed_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
 #: 0.7 refuses 78 for no gross-line gain at all (0 either way). So the share stays where the gross lines
 #: start.
 #:
+#: RE-READ ON THE EXACT CLOCK, AND BOTH VALUES STAND (W4 review r2, `results/w4-line-gate.json` — the same
+#: 1056 cases, same band, same base model, re-run because 6a moved every emission matrix and both literals
+#: were fitted on the old one; `test_bench_e2e` pins the numbers below against that file). The gate's OWN
+#: verdict is unchanged in shape: 0.5 refuses 32 of the 416 right texts (W2: 33) with 0 gross lines shown
+#: and 90.3% of the text's lines within ±500 ms, 0.4 refuses 15 but still shows 6 gross, 0.3 refuses 4 and
+#: shows 13, 0.6 refuses 47 and 0.7 refuses 90 for no gross-line gain. So the share still sits exactly where
+#: the gross lines start.
+#: WHAT CHANGED IS THE POPULATION W2 ARGUED FROM, not the threshold: the two documents more than 20% gross
+#: (`hello` tempo098/tempo102 at shares 0.24 and 0.32) NO LONGER EXIST — the exact clock and the claim
+#: clock's mode candidates fixed them, and 0 of 416 right texts are now more than 20% gross. The separation
+#: is therefore re-read against the quality population the rows carry: the 2 documents with under half their
+#: lines within 1 s of truth (`never-be-alone` tempo098/tempo102) both read 0.34, the 410 with 80%+ read p10
+#: 0.583 / median 0.865 / p90 0.987, and 0.5 sits between with 0.16 of headroom over the worse population.
+#: THE TIMING HALF DOES NOT CLEAR EVERY WRONG TEXT ON ITS OWN, at either reading, and that is the standing
+#: caveat rather than a new one: 1 of the 640 wrong-text cases reads above 0.5 (W4 `Kinematic_-_Peyote` under
+#: `wrongtext+ownclock` at 0.5714, W2 `feel-my-heart` at 0.5135), and what refuses it is the LEXICAL LIFT
+#: (-0.125 there), which refuses all 640 in both readings. This gate is the timing witness; the lift is the
+#: wrong-text one, and neither is sufficient alone.
+#:
 #: `_LINE_SYNC_NEAR_SEC` IS NOW TWO BANDS IN ONE (W2): the gate counts a line near within it AND
 #: `_line_sync_clock` scores its candidate maps in it, so it cannot be re-derived for one reader alone —
 #: `line_gate.py --near` moves both. 1.0 s is `reconcile`'s COARSE tolerance ("same performance, loosely
@@ -2635,8 +2672,11 @@ def _timed_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
 #: truth sheets instead of 1, text-denominator ±500 89.5% -> 86.5% — for 0 gross lines shown either way and
 #: one fewer zero-±500 document (13 -> 12). All it buys is a wider margin on the half of the gate that is not
 #: the verdict (same-video wrong texts max 0.51 -> 0.32, and the lift refuses all 640 at both bands), so 1.0 s
-#: stays. Model-specific in the same way as the lift: the decode's own spread is what the share reads, so
-#: recalibrate both with the model.
+#: stays. THE BAND SWEEP IS THE ONE READING W4 DID NOT REDO (review r2): `near` is computed during the run,
+#: so `results/w4-line-gate.json` holds the 1.0 s band only and the 0.5 s column above is still W2's clock.
+#: What the W4 rows do say is that the shipped band's own populations moved in the direction that makes a
+#: tightening WORSE, not better (the good population's p10 rose 0.538 -> 0.583). Model-specific in the same
+#: way as the lift: the decode's own spread is what the share reads, so recalibrate both with the model.
 _LINE_SYNC_NEAR_SEC = 1.0
 _LINE_SYNC_MIN_AGREEMENT = 0.5
 

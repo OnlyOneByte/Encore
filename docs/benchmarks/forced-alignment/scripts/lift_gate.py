@@ -13,8 +13,9 @@ of three seeded shuffles of its own words, per letter — gates two things:
   * the GLOBAL engine's word documents (W3, review §3 item 4 / H3, `lexical.BANDS`): refuse / doubt / ok
     bands on a stem, where the lift REPLACES the envelope gate, because that gate scores OUR OWN decode, which
     the audio pulls onto the voiced frames whatever the text (152/320 wrong texts passed it at W1); and doubt
-    / ok bands on the mix, whose floor only GRADES by default (W3 review r1: it refuses 7 of 32 truth texts
-    there) and refuses under `h3-mix-floor` / `h3-mix-lift-alone`.
+    / ok bands on the mix, whose floor REFUSES by default since W4 review r1 (it refuses 7 of 32 truth texts
+    there, and the envelope gate it replaced refused 10 of them plus 27 of 64 wrong texts) — the controls
+    being `h3-mix-envelope` (the envelope gate alone, the floor grading) and `h3-mix-floor` (both gates).
 
 Both through the SHIPPED helper and decoder (`adapters.ml.forced_align_decoder`), over:
 

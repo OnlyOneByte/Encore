@@ -1008,7 +1008,7 @@ wrong population is now **0.0082**, not the 0.011 W3 recorded.
   mix), and the "unheard decode" reading does not hold case by case (Moon_I_Mean's truth lifts +0.127 with
   69.8% of its blind lines within 1 s). What flipped it is that the gate it replaces loses MORE of the same
   and admits wrong texts as well: the envelope gate refuses 51 of the stemless mode's 128 right-text cases
-  and 10 of its 32 truth texts, 9 of them above the floor, while passing 26 of 64 wrong texts (40.6%, against
+  and 10 of its 32 truth texts, 9 of them above the floor, while passing 27 of 64 wrong texts (42.2%, against
   §3.4's 1%) — see "The stemless mode" below, which is the end-to-end measurement this decision rests on. Its
   measurable half sorts the mix badly case by case too (it passes numb's unheard decode, refuses Rxbyn's
   92%-within-1 s one; with the floor it refuses 114/192 right texts, the floor alone 48/192, both 0/640
@@ -1398,6 +1398,32 @@ gap instead of straddling it.
 `--near 0.5` (the band moves BOTH readers, so the sweep is a second run: `_runs/w2-lines/near05.*`) refuses 49
 of 416 instead of 33, 2 truth sheets instead of 1, text ±500 86.5%, gross 0 — all it buys is a wider margin on
 the half of the gate that is not the verdict, so 1.0 s stays.
+
+**Re-read on the EXACT CLOCK, and both values stand** (W4 6a moved every emission matrix, so both literals were
+being read on a scale they were not fitted on: same script, same band, same base model, same 1056 cases, rows
+in `results/w4-line-gate.json`; `worker/tests/test_bench_e2e.py` pins this table against that file so the
+constants and the rows cannot drift apart again).
+
+| share | right refused /416 | good refused /410 | bad shown /2 | gross shown | text ±500 |
+| --- | --- | --- | --- | --- | --- |
+| 0.3 | 4 | 4 | 2 | 13 | 92.5% |
+| 0.4 | 15 | 13 | 0 | 6 | 91.4% |
+| **0.5 (shipped)** | **32** | **28** | **0** | **0** | **90.3%** |
+| 0.6 | 47 | 43 | 0 | 0 | 87.8% |
+| 0.7 | 90 | 86 | 0 | 0 | 79.5% |
+
+The verdict is the same shape — 0.5 is still the first share that shows NO gross line, and every tighter share
+buys nothing for the right texts it refuses — but **the population W2's separation argument rested on no longer
+exists**: 0 of 416 right texts are more than 20% gross now (the two `hello` tempo documents at 0.24 and 0.32
+were fixed by the exact clock and the claim clock's mode candidates). Re-read against the quality population
+the rows carry instead: the 2 documents with under half their lines within 1 s of truth (`never-be-alone`
+tempo098/tempo102) both read 0.34, the 410 with 80% or more read p10 0.583 / median 0.865 / p90 0.987, and 0.5
+sits between them with 0.16 of headroom over the worse population. What the timing half does NOT do, at either
+reading, is clear every wrong text on its own: 1 of the 640 wrong-text cases reads above 0.5 (W4
+`Kinematic_-_Peyote` under `wrongtext+ownclock` at 0.5714; W2 `feel-my-heart` at 0.5135), and the LEXICAL LIFT
+is what refuses it (−0.125 there) — it refuses all 640 in both readings. The `--near 0.5` column above was NOT
+re-run: `near` is computed during the run, so the W4 rows hold the 1.0 s band only. What they do say is that a
+tightening would now cost MORE, since the good population's p10 rose 0.538 → 0.583.
 
 **What the clock bought, same rule and same decode** (that script's `placement` block, W3's placement → W2's):
 
@@ -2063,8 +2089,8 @@ things did move:
 42.2% on these rows — and it was not a close call which way to fix it, because the envelope gate on the mix
 is anti-correlated with the document it admits:
 
-* it REFUSES 10 of the 32 `truth` texts, and 9 of those lift at or above the 0.15 floor, so
-  `h3-mix-lift-alone` publishes them: Tom_Orlando (lift +1.465) 72 of 72 line starts within ±500 ms with 0
+* it REFUSES 10 of the 32 `truth` texts, and 9 of those lift at or above the 0.15 floor, so the shipped floor
+  publishes them (measured here as the pre-flip arm `h3-mix-lift-alone`, which IS today's default): Tom_Orlando (lift +1.465) 72 of 72 line starts within ±500 ms with 0
   gross, Rxbyn (+1.081) 69/72 with 0, HILA (+0.872) 53/58 with 0, Ridgway (+1.061) 48/50 with 0, tfr-mayday
   (+0.943) 44/52 with 0, The.madpix (+0.637) 26/30 with 1 — then two poor ones and one bad one: tfr-chosen
   (+0.425) 13/37 with 16 gross, bad-guy (+1.667) 2/79 with 1, never-be-alone (+0.158) 4/47 with 42. (The
@@ -2084,7 +2110,12 @@ of the right texts" is confirmed at 37 of 128 (28.9%), 7 of the 32 `truth` texts
 `_runs/w4-stemless-ra-{default,floor,liftalone}`. A stemless refusal is terminal, the pool holds one provider
 text, and `--asr off` stands for a box with no transcriber — so the job ends in `GiveUp`: **no lyrics**.
 
-| song (mix lift) | default | `h3-mix-floor` | `h3-mix-lift-alone` |
+These probes were run PRE-FLIP, so their column names are the pre-flip ones and are relabelled here to the
+shipped configurations (the run dirs keep the old names; a re-run under the shipped names is still owed,
+`gates/w4-stemless.yaml`): the old `default` is today's control arm `h3-mix-envelope`, and the old
+`h3-mix-lift-alone` is today's default.
+
+| song (mix lift) | `h3-mix-envelope` (was `default`) | `h3-mix-floor` | THE DEFAULT (was `h3-mix-lift-alone`) |
 | --- | --- | --- | --- |
 | Avercage (−0.012) | published 41/42, 0 gross | no lyrics | no lyrics |
 | numb (−0.039) | published 29/35, 0 gross | no lyrics | no lyrics |
@@ -2105,7 +2136,7 @@ this as a recommendation and review r1 flipped the default to it (`align_steps._
 `h3-mix-envelope` and the both-gates configuration as `h3-mix-floor`. It dominates the behaviour it replaces
 on every axis that matters: 14 more
 right texts published, +11.2 points of line starts within ±500 ms on the text denominator, +13.0 on `truth`
-alone, the same gross count (851 vs 853) over 14 more documents, and the wrong-text pass rate 40.6% → 0.0%.
+alone, the same gross count (851 vs 853) over 14 more documents, and the wrong-text pass rate 42.2% → 0.0%.
 `h3-mix-floor` — what W3 first shipped, both gates required — is strictly worse than that: it pays the
 floor's cost AND keeps the envelope gate's, publishing 54 right texts where the lift alone publishes 91.
 
@@ -2121,7 +2152,7 @@ GRADING input on the mix (demote a document its own decode does not fit), not fo
 measuring that pairing is the next stemless run, and it is not in this wave.
 
 "Either gate is enough" was measured too, by derivation from the same rows: it publishes 114 of 128 right
-texts and 26 of 64 wrong ones — it cannot pass §3.4 at all, because the envelope half is what passes them.
+texts and 27 of 64 wrong ones — it cannot pass §3.4 at all, because the envelope half is what passes them.
 
 ### What this owes
 
@@ -2130,6 +2161,18 @@ THE FLIP'S RE-RECORD IS DONE (rebench r2): all three configurations are recorded
 a later stemless run should `--compare` against. `h3-mix-lift-alone` is retired from
 `Config.ALIGN_EXPERIMENTS`, so the pre-flip rows can be READ but not reproduced under that name — the control
 `h3-mix-envelope` reproduces the other column, and the retired arm's own column is now the default's.
+
+THE `--modes all` PAIR IS THE EXCEPTION, AND IT IS RENAMED RATHER THAN RE-RECORDED (W4 review r2). Both rows
+were taken on the pre-flip tree (`meta.code f2e38b0414778141`), where a bare `align_config: {}` meant the
+ENVELOPE gate; on the shipped tree the same `{}` means the lift's floor, and no recorded metadata separates
+the two — `target`, every `SETUP_META` key and `align_config` all match, and `code` is deliberately not
+compared. So the pre-flip default row is now `results/w4-stemless-all-envelope-time_text.*` (its own numbers
+prove the gate: **128 of 320 wrong texts published**, 170 right texts refused, against 0 of 320 for its
+same-code sibling `w4-stemless-all-liftalone-*`, which is today's default under the retired name).
+`meta.align_config` is left as recorded — it faithfully says the environment had no experiments set, which is
+exactly what stops being a statement about BEHAVIOUR when a default flips. Neither `--modes all` row may be a
+`--compare` base for a shipped-path run; a 16-mode stemless baseline on the shipped names is still owed, and
+until it exists the 5-mode `results/w4-stemless-time_text.json` is the stemless baseline.
 
 `gates/w4-stemless.yaml` holds review §3.4's two halves as absolute gates on a stemless run, with each arm's
 reading in its header. The corpus sweep this probe does not replace: `--modes all` stemless at both levels

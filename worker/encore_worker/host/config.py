@@ -37,6 +37,13 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #: `h3-mix-lift-alone` is gone and `h3-mix-envelope` restores what it was an arm of. Setting a retired name
 #: is refused like a typo, deliberately — measuring the default path under an arm's name is the thing this
 #: tuple exists to prevent, and a run recorded under the old name is reproduced by the control, not by it.
+#: WHAT RETIRING A NAME COSTS THE RECORD, so the next flip pays it knowingly (W4 review r2): a row recorded
+#: BEFORE the flip carries `align_config: {}` and so is metadata-identical to a row of the new default, while
+#: the harness deliberately does not compare `code` (`e2e_gates.COMPARED_META`). The two `--modes all`
+#: stemless sweeps are exactly that trap and are renamed rather than re-recorded
+#: (`results/w4-stemless-all-envelope-time_text.*`, `gates/w4-stemless.yaml`'s last paragraph). The rule a
+#: future flip owes: re-record the rows taken under the retiring name, or rename them so the FILE says the
+#: configuration its `align_config` no longer can.
 #: The reasoning and numbers live where each is read. W1's five were
 #: re-judged under W3's lexical gate (2026-09-28). The gate closed `m2-order-clamp`'s wrong-text failure, and
 #: every one still fails a reject-if on right texts, which the gate does not touch:
@@ -77,17 +84,22 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #:   h3-mix-envelope  THE OTHER CONTROL, not a failed arm (`ends-raw` is the first): the MIX's wrong-text
 #:                    verdict is the ENVELOPE GATE alone and the lift's floor merely grades there, which is
 #:                    what W3 shipped and what W4 review r1 flipped away from. It is the A/B switch for that
-#:                    flip and the configuration `results/w4-stemless-time_text.json` was recorded on. The
+#:                    flip, and the row IT was recorded on is `results/w4-stemless-envelope-time_text.json`
+#:                    (the shipped default's is `results/w4-stemless-time_text.json`). The
 #:                    numbers that flipped it, from the stemless bench mode (`e2e.py --no-stem`, 32 songs x
 #:                    truth/blind/drop20/drop50 + 2 wrong donors, `gates/w4-stemless.yaml`, README's "The
 #:                    stemless mode"): this arm publishes 77 of 128 right-text cases where the default's
 #:                    floor publishes 91, refuses 10 of 32 truth texts where the floor refuses 7, holds
-#:                    42.3% of published line starts within ±500 ms against 53.5%, and admits 26 of 64
-#:                    wrong texts — 40.6%, where review §3.4 allows 1%. The floor's own cost is real and is
+#:                    42.3% of published line starts within ±500 ms against 53.5%, and admits 27 of 64
+#:                    wrong texts — 42.2%, where review §3.4 allows 1% (`lexical.BANDS`, MIX, owns that
+#:                    figure and its 26/40.6% pre-r1 history). The floor's own cost is real and is
 #:                    why W3 hesitated: 37 of the 128 right-text cases (7 of the 32 truth texts) lift below
 #:                    it and are refused TERMINALLY, so numb and Avercage lose documents worth 29/35 and
 #:                    41/42 line starts and a `run_align` probe with no transcriber ends in NO LYRICS — but
-#:                    the envelope gate loses more of the same, and 26 wrong texts with it.
+#:                    the envelope gate loses more of the same, and 27 wrong texts with it.
+#:                    SETTING BOTH THIS AND `h3-mix-floor` MEANS `h3-mix-floor` (both gates), which is the
+#:                    stricter superset: an arm name must never record a configuration it does not describe
+#:                    (`align_steps._time_text_global`, W4 review r2).
 #:   ends-tile        the word-end post-pass TILES each line gaplessly — a word that is not its line's last
 #:                    runs to the next word's start whatever the envelope says — instead of ending where the
 #:                    singing stops (review §3.5; W4, `domain/lyrics/ends.py`). The review measured 78.8%

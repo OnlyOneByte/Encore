@@ -1030,6 +1030,79 @@ def test_the_shipped_default_adopts_a_short_claim_span_over_a_decode_that_heard_
     assert "kept the measured timing" not in why, "the floor is the arm, not the default"
 
 
+#: THE OFF-CLOCK SHEET (W4 review r1's adoption guard, pinned in review r2). Lines 2 s long every 4 s, so a
+#: claim stamped 3 s LATE still overlaps the next line's singing on the stem — which keeps the case away from
+#: R4 (`env_overlap < _NEVER_SUNG_ENV` is what sends a claimed line to the mix witness) and on R1, the stage
+#: the guard guards. This is never-be-alone's `off3` shape in miniature.
+OFF_CLOCK: list[Phrase] = [
+    ("come and fly away", 5.0, 7.0),
+    ("with me tonight", 9.0, 11.0),
+    ("over the silver water", 13.0, 15.0),
+    ("carry me home", 17.0, 19.0),
+    ("stars are out", 21.0, 23.0),
+    ("hold on to the night", 25.0, 27.0),
+    ("morning light across the river", 29.0, 31.0),
+    ("never let it go", 33.0, 35.0),
+]
+OFF_CLOCK_DURATION = 44.0
+
+#: What the DECODE hears: every line out by a DIFFERENT amount, so no candidate map explains two more paired
+#: lines than no-shift and `claimmap.consensus` declines — the exact hole review r1 found, where a sheet the
+#: clock left alone still had its raw claim times adopted.
+OFF_CLOCK_HEARD: list[Phrase] = [
+    (text, start + shift, end + shift)
+    for (text, start, end), shift in zip(OFF_CLOCK, (3.0, 0.5, 4.0, 1.0, 3.5, 0.0, 2.5, 1.5), strict=True)
+]
+
+#: How late the sheet is stamped. Past `reconcile.COARSE_TOLERANCE_SEC` (1.0 s), which is the guard's own
+#: bound, and far enough that the claim windows sit on the wrong line.
+OFF_CLOCK_LATE = 3.0
+
+
+@pytest.mark.usefixtures("any_tempo")
+def test_a_raw_claim_time_is_not_adopted_on_a_sheet_the_audio_says_is_seconds_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4 review r1's `off_clock` guard, which had NO test (review r2, tests-18): replacing the whole
+    predicate with `False` left the suite green, and it is the fix for this wave's only shipped regression.
+
+    THE SHAPE, which no other fixture presents: the claim clock DECLINED to map the sheet (every line's
+    decode is out by a different amount, so no candidate beats no-shift by two lines), the envelope says the
+    claims are 3 s from the singing with a good correlation, and the blind decode relates NOTHING to them.
+    Adoption exists for the opposite case — a claim that is right and a window decode that heard nothing
+    (the test above) — so here the window re-decode's own timing must stand, because a claim time is only a
+    measurement if it is on OUR clock. On the corpus this is never-be-alone under a displaced sheet: R1
+    adopted 38 of 44 RAW claim times and published the document 3 s late (off3 gross 0 -> 44).
+
+    AND THE DISPLACEMENT IS PRINTED IN `ShiftFit`'s OWN SIGN (review r2, correctness-6/spec-17). The sheet
+    here is stamped 3 s LATE, so the fit reads -3.00 s — seconds to ADD to the claims to reach the singing,
+    the same sign `claimmap.consensus` consumes as `envelope_lag`. The note used to negate it and told an
+    operator the singing arrives 3 s AFTER claims it actually precedes by 3 s.
+    """
+    got = align(
+        tmp_path,
+        monkeypatch,
+        phrases=OFF_CLOCK,
+        duration=OFF_CLOCK_DURATION,
+        claims=truth(OFF_CLOCK, OFF_CLOCK_LATE),
+        decoder=misheard(
+            sung_matrix(OFF_CLOCK_HEARD, DIC, OFF_CLOCK_DURATION), int(OFF_CLOCK_DURATION / FRAME_SEC)
+        ),
+    )
+    why = got.verdict[4]
+    assert got.verdict[3] == "unrelated", why
+    assert "claims left on their own clock" in why, "the vote must decline, or the guard is not under test"
+    assert "claims fit the audio better" in why, "R1 is the stage that offers the adoption"
+    assert "did not adopt 8 claim timing(s)" in why, why
+    assert "claim timings where the decode heard nothing" not in why, "a raw claim time was adopted anyway"
+    assert f"the audio puts the singing {-OFF_CLOCK_LATE:+.2f}s from these claims" in why, (
+        "the displacement is printed negated: a sheet stamped late reads as EARLY"
+    )
+    for text, _start, _end in OFF_CLOCK:
+        words = got.line(text)["words"]
+        assert all(word["score"] != 0.0 for word in words), f"{text!r}: an adopted span carries no scores"
+
+
 #: The window rule's own song (W2 review r1). Sparse and long, so a window can be widened without touching
 #: its neighbour unless the rule lets it: line 0's cue sits inside the pad (the zero clamp), line 3's cue has
 #: no end, and what the DECODE hears for line 3 both starts before that cue and smears 15 s past it.

@@ -82,8 +82,29 @@
 # names the retired `h3-mix-lift-alone`, which `Config.ALIGN_EXPERIMENTS` now refuses as a typo, so it can be
 # read but not reproduced — the control reproduces it), and `results/w4-stemless-floor-time_text.*` has been
 # overwritten in place by its own re-record. WHAT IS STILL OWED: the `--modes all` stemless sweeps
-# (`results/w4-stemless-all{,-liftalone}-time_text.*`, `--wrong-k 10`) are still under the pre-flip names and
-# were not re-run here; so are the `run_align` refusal probes `_runs/w4-stemless-ra-*`.
+# (`--wrong-k 10`, 16 modes, 320 wrong-text cases) were not re-run here; nor were the `run_align` refusal
+# probes `_runs/w4-stemless-ra-*`.
+#
+# THE `--modes all` PAIR IS RENAMED, NOT RE-RECORDED, AND ITS METADATA CANNOT SAY WHICH GATE IT MEASURED
+# (W4 review r2, the one high-severity finding of that round). Both rows were taken on the PRE-FLIP tree
+# (`meta.code f2e38b0414778141`), where a bare `align_config: {}` meant the ENVELOPE gate — and on the
+# shipped tree the same `{}` means the lift's floor. Nothing in the recorded metadata separates them:
+# `target` is `mix` on both, every `e2e_gates.SETUP_META` key matches, `align_config` matches so
+# `COMPARED_META` raises no warning either, and `code` is deliberately NOT compared (a wave differs from its
+# baseline in code by definition). The row's own numbers are what prove which gate it read — 128 of 320
+# wrong texts PUBLISHED, where the shipped floor publishes 0, and its sibling at the same code hash under
+# `h3-mix-lift-alone` publishes 0 of 320 — so the file is renamed to say the configuration its
+# `align_config` no longer can:
+#   `results/w4-stemless-all-envelope-time_text.*`   the pre-flip DEFAULT = today's `h3-mix-envelope`
+#                                                   (128/320 wrong texts published, 170 right texts refused)
+#   `results/w4-stemless-all-liftalone-time_text.*`  the pre-flip ARM = today's DEFAULT, under the retired
+#                                                   name (0/320 wrong texts published)
+# `meta.align_config` is left exactly as recorded, because it is a faithful record of the ENVIRONMENT the run
+# had (`ENCORE_ALIGN_EXPERIMENTS` unset) — what it is not, and cannot be across a default flip, is a record
+# of BEHAVIOUR. NEITHER ROW MAY BE A `--compare` BASE for a shipped-path run: a 16-mode stemless baseline on
+# the shipped names is still owed, and until it exists the 5-mode rows above are the stemless baseline.
+# The rule this cost is written where the knob lives (`Config.ALIGN_EXPERIMENTS`, WHAT RETIRING A NAME COSTS
+# THE RECORD): re-record the rows taken under a retiring name, or rename them.
 
 # THE WORD-END POST-PASS DOES NOT RUN ON THIS TARGET (W4 review r1, `domain/lyrics/ends.py` ON A VOCALS STEM
 # ONLY), so there is no end gate below and that is deliberate rather than missing. `ACTIVE_LEVEL` = 0.1 is a
