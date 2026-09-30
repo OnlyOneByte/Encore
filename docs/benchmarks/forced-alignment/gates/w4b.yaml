@@ -1,0 +1,209 @@
+# W4b — THE WAVE'S OWN reject-if, the six MUSTs the orchestrator set for the evidence upgrade, evaluated on
+# the corpus by the bench runner (2026-09-30). `gates/w4b-hubert.yaml` reads review §3 item 6's list on the
+# model axis and `gates/w4b-linesep{,-generate}.yaml` read 6c's on the separator axis; THIS file is the
+# wave's acceptance test, and it is the one that decided the default.
+#
+# HOW IT WAS RUN. The pair is the SAME CODE with the English bundle named both ways — never this wave's row
+# against W4's recorded one, because W4b moved `adapters/ml.py` (the emission cache's code fingerprint) as
+# well as `domain/lyrics/{generate,lexical,ends}.py`:
+#
+#   # the control: the bundle W4 measured, on W4b's code
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --model WAV2VEC2_ASR_BASE_960H \
+#       --tag w4b-base-time_text > /tmp/w4b-base-tt.log 2>&1 &
+#   # the candidate, and the comparison
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE \
+#       --tag w4b-hubert-time_text \
+#       --compare $ENCORE_BENCH_ROOT/_runs/w4b-base-time_text \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4b.yaml > /tmp/w4b-hubert-tt.log 2>&1 &
+#   # …and the same pair at --level run_align (both are recorded; this file reads green/red the same way on
+#   #   either, which is itself a result — see BOTH LEVELS AGREE below)
+#   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --compare … --gates …)
+#
+# THE SIX CORPUS SWEEPS THIS WAVE PAID FOR, and what each bought (1088 cases each, 32 songs x 16 modes,
+# ~85 min of wall clock in total; sequential, because parallel corpus runs thrash):
+#   w4b-base-time_text                 870 s  the control at time_text  `results/w4b-base-time_text.json`
+#   w4b-hubert-time_text               733 s  HuBERT-L at time_text     `results/w4b-hubert-time_text.json`
+#   w4b-base-run_align                 754 s  the control at run_align  `results/w4b-base-run_align.json`
+#   w4b-hubert-run_align               745 s  HuBERT-L at run_align     `results/w4b-hubert-run_align.json`
+#   w4b-hubert-lines-run_align         873 s  HuBERT-L, --sync-mode lines
+#                                             `results/w4b-hubert-lines-run_align.json` (gates/w3-lines 37/38)
+#   w4b-linesep-base-line-time_text    967 s  6c's E2E axis, cell B, on the bundle that ships
+#                                             `results/w4b-linesep-base-line-time_text.json` (14/22, REJECT)
+# The `--level generate --modes blind --songs jamendo` factorial (model x separator, 4 cells) was already run
+# by the linesep agent and is NOT re-paid here: `results/w4b-linesep-*-generate.json`, verdict in
+# `gates/w4b-linesep-generate.yaml`. Cell B's control is cell A = `w4b-base-time_text`, so 6c's E2E axis cost
+# one sweep rather than two.
+#
+# THE CONTROL IS EXACT, and that is the first result. `w4b-base-time_text` reproduces
+# `results/w4-time_text.json` and `w4b-base-run_align` reproduces `results/w4-run_align.json` with EVERY
+# pooled and per-song delta reading 0.00 at both levels (`e2e.py --summarize … --compare …` prints no
+# non-`(=)` cell at all). So the wave's recalibration machinery, the `Emissions.specials` reader, the
+# separator plumbing and the model wiring move NOTHING on the bundle W4 measured — every number below is the
+# bundle change and nothing else.
+#
+# ── THE VERDICT: HuBERT-LARGE DOES NOT EARN THE DEFAULT, AND THE MEASUREMENT IS WHY ─────────────────────
+# It wins almost everywhere and loses exactly where this wave was told not to lose. THREE of the six MUSTs
+# below FAIL, at BOTH levels, on the same four songs:
+#   (2) pooled gross rises in 8 of the 16 modes — truth/off05/off15/off3/offm1 3 -> 7, tempo098/102 4 -> 7,
+#       extraverse 5 -> 6 — where the brief is "pooled gross not up in ANY mode". (EIGHT, re-counted off
+#       `results/w4b-{base,hubert}-{time_text,run_align}.json` in review r2: the same eight at both levels.
+#       This header and PLAN-alignment-v3 both said nine, which no row supports — the other eight modes all
+#       FALL: jit 37 -> 5, drop20 42 -> 20, drop50 305 -> 170, blind 106 -> 68, credit 28 -> 7, headers 3 -> 2,
+#       and both wrongtext modes stay at 0.)
+#   (4) `hello` truth ±500 97.26 -> 90.28 (-6.98) and `tfr-chosen` 73.53 -> 63.64 (-9.89), where the brief is
+#       "hello stays >= 97.26 and tfr-chosen >= 73.53 … W4's wins are not negotiable".
+#   (1) `Tom_Orlando_-_The_One__feat._Tina_G_` word ±300 -1.74 pt, against a per-song bound of -1.0.
+# So the flip ships AVAILABLE BUT NOT DEFAULT: `ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE` (or `HUBERT_ASR_XLARGE`)
+# still resolves, still refuses an uncalibrated name, and still carries its own `lexical.CALIBRATED` row —
+# `ml.ALIGN_MODELS_BY_DEVICE` / `DEFAULT_ALIGN_MODEL` name the base bundle again, which is the "default off,
+# reachable, tested" shape PLAN-alignment-v3's Owner decisions gives a component that fails its gate. The
+# knob is the model name itself, so no `ENCORE_ALIGN_EXPERIMENTS` arm was needed.
+#
+# WHAT IT WOULD HAVE BOUGHT, because the size of what was given up has to be on the record and it is large
+# (time_text, control -> HuBERT-Large):
+#   blind pooled gross 106 -> 68   Jamendo 40 -> 27   YouTube 66 -> 41
+#   jit   pooled gross  37 ->  5   credit 28 -> 7   drop50 305 -> 170   drop20 42 -> 20
+#   truth Jamendo word ±100 83.25 -> 85.38   ±300 94.98 -> 97.12   AAE 87.8 -> 72.3 ms   MedAE 38.2 -> 37.5
+#   truth Jamendo line ±500 96.42 -> 97.69   highlight 77.10 -> 81.03   blind highlight 77.51 -> 80.28
+#   word end ±100 80.02 -> 80.37   phrase-final end ±100 59.83 -> 60.79
+#   wrong texts passed 1/320 -> 0/320 at time_text, 0/320 either way at run_align and 0/320 under ownclock
+#   17 of 20 Jamendo songs better at blind ±300 and the worst -0.57 (the model axis's own SHOULD, 17 >= 14)
+#   `Pure_Mids_-_The_Leader`, W4's own open item: the never-sung DROP IS GONE — scored 19 -> 20, gross 1 -> 0,
+#     truth ±500 68.42 -> 100.00, word ±300 +24.88. The line W4b (b) could not recover with any floor the
+#     better model simply decodes. That is the single most interesting number in this wave.
+#
+# WHAT IT COST, per song, so the failure is not a pooled abstraction (truth mode, time_text):
+#   hello       ±500 97.26 -> 90.28   gross 0 -> 1   missing 1 -> 2   confidence medium -> HIGH
+#   tfr-chosen  ±500 73.53 -> 63.64   gross 0 -> 3   missing 3 -> 4   verdict structural -> COARSE
+#   Tom_Orlando ±500 98.61 (=)        gross 0 -> 1   word ±300 -1.74
+#   bad-guy     ±500  4.35 ->  1.45   gross 0 -> 0   (near zero under both; see THE RE-READ below)
+# BOTH OF THE BIG LOSERS GET BETTER BLIND AND WORSE WITH CLAIMS, which localises the cause away from the
+# decode: hello blind ±500 61.64 -> 75.00 with gross 16 -> 6, tfr-chosen blind 52.94 -> 51.52 with gross 9
+# either way, while `tfr-chosen`'s reconcile verdict degrades `structural` -> `coarse` on a lift that ROSE
+# (2.21 -> 5.28). The better decode moves the claim fit into a coarser map and the coarser map displaces
+# lines. That is a repair-ladder / reconcile question, not a model question, and it is what a wave that
+# wanted this flip would have to answer first — the same shape as W4's own two >1 pt `truth` ±300 songs.
+#
+# BOTH LEVELS AGREE, which is why this is a verdict and not a level artefact: `gates/w4b-hubert.yaml` reads
+# 20/22 at `time_text` AND 20/22 at `run_align`, failing the same two, and this file's six read the same red
+# on both. (20/22, not the 18/20 the bench read: review r1 added `blind-aae-not-up` / `truth-aae-not-up` to
+# that file, and the count lives there — `gates/w4b-hubert.yaml`'s own header — not here.) The `run_align` numbers differ from `time_text` only where the ladder can retry (jit 37 -> 27
+# control, drop50 305 -> 180, drop20 42 -> 13); HuBERT's own run_align row is 7 / 5 / 94 / 8.
+#
+# THE RE-READ THE BRIEF ASKED FOR (truth mode, ±500, control -> HuBERT-Large, both levels agree to 0.02 pt):
+#   numb     42.86 -> 54.29 (+11.43), blind 42.86 -> 51.43 (+8.57) — the better model DOES fix numb.
+#   bad-guy   4.35 ->  1.45 (-2.90),  blind  5.80 ->  7.25 (+1.45), gross 5 -> 4 — the better model does NOT
+#     fix bad-guy, and the direction says the model was never its cause: 69 of 79 truth lines score and
+#     under 8% of them land within ±500 ms under BOTH bundles. Whatever bad-guy is, it survives a 3.6x model.
+#
+# THE WRONG-TEXT MARGIN, reported explicitly because MUST (3) asks for it — the right-text MINIMUM against the
+# wrong-text MAXIMUM lift on the shipped stem target, 192 right and 640 wrong texts per bundle
+# (`results/{w4-lift-stem,w4b-lift-stem-hubert-large,w4b-lift-stem-hubert-xlarge}.json`):
+#   WAV2VEC2_ASR_BASE_960H  right min +0.2638  wrong max +0.1918  SEPARATION +0.0720  floor 0.20  head-room +0.0082
+#   HUBERT_ASR_LARGE        right min +0.7660  wrong max +0.2194  SEPARATION +0.5466  floor 0.45  head-room +0.2306
+#   HUBERT_ASR_XLARGE       right min +0.4719  wrong max +0.2778  SEPARATION +0.1941  floor 0.35  head-room +0.0722
+# HuBERT-Large's populations separate by 7.6x the base bundle's and its floor clears every one of the 640
+# wrong texts by +0.2306 — so the "a model whose margin does not separate MUST NOT become the default" clause
+# is the one clause the flip passes with room. It is NOT what stopped it. On the MIX no bundle separates at
+# all (gaps -0.16 / -0.15 / -0.19), which is W4's `mix_floor` 0.15 and its measured cost, unchanged here.
+#
+# XL IS A PROJECTION, NOT A CLAIM (MUST 6): no CUDA box exists on this tree, so `HUBERT_ASR_XLARGE` was
+# calibrated on the corpus (rows above, and `results/w4b-lift-{stem,mix}-hubert-xlarge.json` +
+# `results/w4b-line-gate-hubert-xlarge.json`) and NEVER run end to end. Its head-room is +0.0722, a third of
+# L's, and it is not this wave's default on any device. Nothing below reads an XL number.
+#
+# WHAT THIS FILE READS. The candidate: **19/30 at `time_text` AND 19/30 at `run_align`**, failing the same
+# eleven (`no-jamendo-song-worse-at-word-pm300`, `pooled-gross-not-up-{truth,off05,off15,off3,offm1,tempo098,
+# tempo102,extraverse}`, `no-youtube-song-worse-at-truth-pm500`, `no-youtube-song-gains-gross-truth`).
+# THE VERDICT IS UNCHANGED AND THE ARITHMETIC IS NOT: the bench read 16/21 with MUST 2's nine claim modes
+# summed into one inequality (review r2, spec-9 — it read `57 <= 56`, one line from passing while seven of the
+# nine regressed). Split per mode, the same two summaries read 19/30, and eleven FAILs say what one said.
+# Non-vacuity is at the bottom, re-read on the same split.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+# `base.` is the CONTROL CELL (`--compare … /w4b-base-time_text`), never a recorded earlier wave's row.
+
+# ── MUST 1: W4's time_text row is the floor now, not W2's (literals from results/w4-time_text.json) ──────
+# Absolute, because the brief named the digits; the control cell reproduces every one of them exactly, so
+# these read the same against the row and against the run.
+w4-jamendo-word-pm100: truth.jamendo.word_pm100 >= 83.25
+w4-jamendo-word-pm300: truth.jamendo.word_pm300 >= 94.98
+w4-jamendo-aae: truth.jamendo.word_aae_ms <= 87.8
+w4-jamendo-medae: truth.jamendo.word_medae_ms <= 38.2
+w4-jamendo-word-end-pm100: truth.jamendo.end_pm100 >= 80.02
+w4-jamendo-final-end-pm100: truth.jamendo.final_end_pm100 >= 59.83
+w4-highlight: truth.jamendo.highlight >= 77.10
+# "no Jamendo song more than 1 pt worse at ±300" — the worst song against the control.
+no-jamendo-song-worse-at-word-pm300: min_song_delta(truth.jamendo.word_pm300) >= -1.0
+
+# ── MUST 2: pooled gross not up in ANY mode, and `high` lines >2 s off stay 0 in every claim mode ─────────
+# ONE GATE PER MODE, and the sum this file first used is the defect W4b review r2 (spec-9) found: a sum does
+# NOT rise whenever one of its terms does. The nine claim modes were one inequality reading `57 <= 56` — it
+# FAILED BY ONE LINE while seven of the nine regressed (off05/off15/off3/offm1 3 -> 7, tempo098/102 4 -> 7,
+# extraverse 5 -> 6, +23 lines), cancelled by credit 28 -> 7 and headers 3 -> 2. Had credit landed at 6 the
+# MUST would have read PASS with seven modes worse, and the per-mode table in the header is prose nobody
+# re-reads under a green gate. Sixteen lines that each say one thing is exactly what the MUST says; a sum is
+# kept only where a sum IS the spec (`high-gross-zero-claim-modes`: non-negatives summing to 0 means each is 0).
+pooled-gross-not-up-truth: truth.gross <= base.truth.gross
+pooled-gross-not-up-off05: off05.gross <= base.off05.gross
+pooled-gross-not-up-off15: off15.gross <= base.off15.gross
+pooled-gross-not-up-off3: off3.gross <= base.off3.gross
+pooled-gross-not-up-offm1: offm1.gross <= base.offm1.gross
+pooled-gross-not-up-tempo098: tempo098.gross <= base.tempo098.gross
+pooled-gross-not-up-tempo102: tempo102.gross <= base.tempo102.gross
+pooled-gross-not-up-extraverse: extraverse.gross <= base.extraverse.gross
+pooled-gross-not-up-headers: headers.gross <= base.headers.gross
+pooled-gross-not-up-credit: credit.gross <= base.credit.gross
+pooled-gross-not-up-jit: mode("jit").gross <= base.mode("jit").gross
+pooled-gross-not-up-drop20: drop20.gross <= base.drop20.gross
+pooled-gross-not-up-drop50: drop50.gross <= base.drop50.gross
+pooled-gross-not-up-blind: blind.gross <= base.blind.gross
+high-gross-zero-claim-modes: truth.high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross + mode("jit").high_gross == 0
+
+# ── MUST 3: wrong-text protection on the candidate's OWN calibration (§3.4; the margin is in the header) ──
+wrongtext-at-most-one-of-320: mode("wrongtext").wrongtext_pass <= 0.32
+ownclock-none-of-320: mode("wrongtext+ownclock").wrongtext_pass == 0
+refusals-not-up-truth: truth.refused <= base.truth.refused
+
+# ── MUST 4: W4's named wins are not negotiable ───────────────────────────────────────────────────────────
+# The DSL has no per-song NAME, so `hello` and `tfr-chosen` are gated as the population they belong to — the
+# YouTube pool at truth ±500, read per song against the control, which is strictly stronger than naming them
+# (it also catches bad-guy, numb and the nine others). The two named absolutes are in the header, off the
+# rows: hello 97.26 -> 90.28 and tfr-chosen 73.53 -> 63.64, both FAIL.
+no-youtube-song-worse-at-truth-pm500: min_song_delta(truth.youtube.pm500) >= -0.5
+no-youtube-song-gains-gross-truth: count(truth.youtube.song.gross_up) == 0
+# `Pure_Mids_-_The_Leader` must IMPROVE (task (a)(b)): it is the Jamendo song W4 dropped a never-sung line on,
+# so "improve" is readable as the pool gaining a scored line back without losing one anywhere else.
+jamendo-scored-lines-not-down-truth: truth.jamendo.scored >= base.truth.jamendo.scored
+
+# ── MUST 5 is not a number and MUST 6 is another file's ──────────────────────────────────────────────────
+# 5 (the rebased gate files name their source run and date) is prose and is checked by reading
+# `gates/{w0-reproduce-generate,w0-reproduce-time_text,w2,w4}.yaml`; the bench runner's finding is in the
+# Status log — every rebase names its source row and W4b's date, and the ONE loosening that remains
+# (`gates/w2.yaml` section 9's three `<` -> `<=`, which a ratchet cannot keep strict: `3 < 3` fails on the tree
+# that set it) is declared in that file's own header rather than slipped in. The eleven widened per-song
+# displacement literals are NOT a loosening any more — review r2 (spec-11) restored W2's, because re-pricing
+# each off the previous wave while the `--compare` base moves too makes the allowance compound.
+# 6 (the separator's factorial, and XL as a projection) is `gates/w4b-linesep{,-generate}.yaml` and the XL
+# paragraph above.
+
+# ── NON-VACUITY, MEASURED, two ways (2026-09-30) ─────────────────────────────────────────────────────────
+# (1) THE RATCHET READS ZERO ON THE TREE THAT SET IT, which is the property a ratchet must have and NOT an
+#     argument that the gates bite: `results/w4b-base-time_text.json` as BOTH sides reads **30/30, 0 ERROR**,
+#     every absolute at its own digit (83.25 >= 83.25, 87.8 <= 87.8, …) and every delta 0.00. A file that only
+#     ever showed this would be decoration.
+# (2) SO IT IS ALSO READ ON A TREE THAT PREDATES THE FLOOR, the way `gates/w2.yaml`'s check is built:
+#     `--summarize _runs/w2r2-time_text/rows.jsonl --compare results/w4b-base-time_text.json` — W2's row, i.e.
+#     the corpus before W4's exact frame clock and word ends — reads **8/30, 22 FAIL**, and they are exactly
+#     the things W4 bought: word ±100 82.37, AAE 104.8 ms, MedAE 38.5, word end ±100 73.49, phrase-final end
+#     ±100 41.04, highlight 67.14, worst Jamendo song -2.03 at ±300, truth gross 28 vs 3, every one of the nine
+#     claim modes (273 vs 56 pooled), jit 51 vs 37, drop20 52 vs 42, blind 125 vs 106, and the YouTube pair
+#     (-43.21 pt on one song, 2 songs gaining a gross line). The eight that PASS there are the wrong-text
+#     three, `high-gross-zero-claim-modes`, `refusals-not-up-truth` and `jamendo-scored-lines-not-down-truth`
+#     (which W3 and W1 had already made absolute), word ±300 95.16 — and, NEWLY VISIBLE UNDER THE SPLIT,
+#     `pooled-gross-not-up-drop50` at 300 vs 305: W4's own recorded drop50 regression, which the summed
+#     `drops` gate (352 vs 347) used to bury in a FAIL its drop20 term earned.
+# THE READING THAT DECIDES is neither of those: it is the CANDIDATE against the CONTROL, above, 19/30 at both
+# levels, and the eleven it fails are what this wave was told not to spend.

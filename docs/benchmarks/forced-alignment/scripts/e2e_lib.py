@@ -1962,6 +1962,13 @@ def tree_digest(roots: Iterable[Path]) -> str:
     return digest.hexdigest()[:16]
 
 
+#: An `align_*` setting that names WHAT a run computed rather than HOW it computed it, so recording it here
+#: would split one computation across two emitter fingerprints depending on how the operator spelled it
+#: (`align_config`, W4b review r2). Only `align_model` qualifies, and only because the resolved bundle is
+#: recorded three other ways; a knob that CHANGES the matrices or the timings must never be added.
+SPELLING_ONLY = frozenset({"align_model"})
+
+
 def align_config(config: object) -> dict[str, object]:
     """The alignment settings of a worker `Config`: every field named `align_*`, JSON-able.
 
@@ -1970,15 +1977,30 @@ def align_config(config: object) -> dict[str, object]:
     `Config.align_experiments` and an arm measured with its knob silently OFF reads exactly like the
     baseline. A new alignment setting must follow the `align_` naming to be recorded here.
 
-    An EMPTY set is left out. No arm switched on is the default path, so it records, compares and keys
-    the emission cache exactly as a worker without the knob did: W1 added `align_experiments`, and
-    recording it empty would have moved every matrix's key (a cold recompute of the whole corpus for an
-    identical computation) and made every W0 baseline warn on `--compare`.
+    AN UNSET SETTING IS LEFT OUT — an empty set (no arm switched on). That is the default path, so it
+    records, compares and keys the emission cache exactly as a worker without the knob did: W1 added
+    `align_experiments`, and recording it empty would have moved every matrix's key (a cold recompute of the
+    whole corpus for an identical computation) and made every W0 baseline warn on `--compare`.
+
+    `align_model` IS EXCLUDED OUTRIGHT (`SPELLING_ONLY`), which this docstring used to argue for and the code
+    used to do only for a None — the defect W4b review r2 (spec-14, correctness-6) found. `e2e.resolve_bundle`
+    folds `ENCORE_ALIGN_MODEL` and `--model` into ONE resolved bundle, but it does not write the answer back
+    into the dataclass, so `--model HUBERT_ASR_LARGE` left this `{}` while the env spelling of the SAME
+    command left `{'align_model': 'HUBERT_ASR_LARGE'}` — two emitter fingerprints
+    (`e2e.emitter_fingerprint`), hence two disjoint emission-store namespaces for one computation, and a
+    `--compare` warning between them (`COMPARED_META`). Since every committed W4b row was measured with the
+    flag, an operator following README's own recipe (`ENCORE_ALIGN_MODEL=… e2e.py --modes all`) recomputed 64
+    matrices cold. WHICH MODEL A RUN LOADED IS NOT LOST BY THIS, which is what makes dropping it safe: the
+    resolved bundle is `run.json`'s and the summary's `model`, its weights are digested in `model_identity`,
+    and the emission store's own key carries `<label>@<identity>` (`e2e.BenchAligner`) — all three moving with
+    the bundle. This field would only have said whether the operator typed the name or took the default.
     """
     out: dict[str, object] = {}
     for field in dataclasses.fields(config):  # type: ignore[arg-type]
-        if field.name.startswith("align_"):
+        if field.name.startswith("align_") and field.name not in SPELLING_ONLY:
             value = getattr(config, field.name)
+            if value is None:
+                continue
             if isinstance(value, (set, frozenset)):
                 if not value:
                     continue

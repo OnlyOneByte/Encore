@@ -13,6 +13,7 @@ installed import the module, resolve capabilities, and decline the work rather t
 from __future__ import annotations
 
 import ast
+import inspect
 import sys
 import types
 from collections.abc import Callable
@@ -28,6 +29,7 @@ from encore_worker.adapters.ml import (
     transcriber_device,
 )
 from encore_worker.adapters.ports import InfraFault
+from encore_worker.host.config import Config, ConfigError
 
 #: Packages that cost seconds and hundreds of megabytes to import.
 HEAVY = frozenset({"torch", "torchaudio", "torchvision", "whisperx", "pyannote", "demucs", "mlx"})
@@ -290,3 +292,147 @@ def test_a_machinery_failure_is_typed_by_its_own_message(failed: Exception, kind
     fault = _machinery_fault("the emission pass on mps", failed)
     assert type(fault) is kind
     assert type(failed).__name__ in str(fault) and str(failed) in str(fault)
+
+
+# ── the English bundle, per device and per operator (review §3 item 6b; W4b) ──────────────────────
+
+
+def test_the_english_bundle_is_a_function_of_the_device() -> None:
+    """The wav2vec2 base bundle on EVERY device, because the exception table is empty (W4b's bench verdict).
+
+    A pure function over a device string, like `transcriber_device`: the candidate bundles differ by three
+    times in weights (1.2 vs 3.8 GB) and in seconds per song (4.3-8.6 vs 11.8-24 on MPS), so the shape has to
+    admit a per-device answer even while today's answer is one name. `ALIGN_MODELS_BY_DEVICE` IS EMPTY, and
+    that is measured rather than lazy: HuBERT-Large failed three of W4b's six MUST gates end to end
+    (`gates/w4b.yaml`, 19/30 at both levels) and HuBERT-XLarge was never run on CUDA at all — an unmeasured
+    bundle must not be a device class's default. Both stay reachable as `ENCORE_ALIGN_MODEL`.
+    """
+    from encore_worker.adapters.ml import ALIGN_MODELS_BY_DEVICE, DEFAULT_ALIGN_MODEL, default_align_model
+
+    assert ALIGN_MODELS_BY_DEVICE == {}, "no device class has earned an exception on measured numbers"
+    assert default_align_model("cuda") == default_align_model("mps") == default_align_model("cpu")
+    assert default_align_model("mps") == DEFAULT_ALIGN_MODEL == "WAV2VEC2_ASR_BASE_960H"
+    assert default_align_model("rocm-someday") == DEFAULT_ALIGN_MODEL, "an unknown device is not a crash"
+
+    # AND THE CALIBRATION RECORD MAY NOT CONTRADICT THIS TABLE (W4b review r2, correctness-3 / spec-12). The
+    # XL section of `lexical`'s docstring opened with "HuBERT-XLARGE HAS A ROW TOO, because it is CUDA's
+    # default (`ml.ALIGN_MODELS_BY_DEVICE`...)" for a wave that had already reverted the flip — citing the now
+    # EMPTY table as its evidence, in the module this codebase designates the one source of truth for every
+    # emission-scale threshold. A CUDA operator reading it concluded their box ships XL, with a +0.0021
+    # wrong-text margin on the mix. The pairing is what has to hold: an empty table means no paragraph there
+    # may call any bundle a device's default.
+    from encore_worker.domain.lyrics import lexical
+
+    record = lexical.__doc__ or ""
+    assert "CUDA's default" not in record, (
+        "no bundle is any device's default while ALIGN_MODELS_BY_DEVICE is empty"
+    )
+    assert DEFAULT_ALIGN_MODEL in record, "and the record names the bundle a box actually loads"
+
+
+def test_a_named_bundle_is_loaded_for_english_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The knob names an ENGLISH bundle (HuBERT is LibriSpeech-trained), so it must not be pushed onto the
+    XLSR fine-tune whisperx tables for German — that would align German text against an English vocabulary
+    and name the matrix a model that never saw the song. Dormant until W7 gives the language a value, wired
+    now so W7 cannot detonate it."""
+    from encore_worker.adapters.ml import WhisperXAligner
+
+    calls: list[object] = []
+
+    def load(**kw: object) -> tuple[object, dict[str, object]]:
+        calls.append(kw.get("model_name"))
+        return object(), {"dictionary": {}}
+
+    fake_whisperx(monkeypatch, load_align_model=load, languages=frozenset({"en", "de"}))
+    aligner = WhisperXAligner(device="cpu", model="HUBERT_ASR_LARGE")
+    aligner._aligner("en")
+    aligner._aligner("de")
+    assert calls == ["HUBERT_ASR_LARGE", None], "None is whisperx's own per-language resolution"
+    assert aligner._bundle_name("en") == "HUBERT_ASR_LARGE", "and the matrix says which bundle it came from"
+    assert aligner._bundle_name("de") == "torch-de", "while German stays whisperx's table's"
+
+
+def test_two_bundles_on_one_device_do_not_share_one_loaded_handle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The model cache used to be keyed `(device, f"align:{language}")`, which was safe only while the bundle
+    was a function of the language alone. With the name settable, that key would hand the second aligner
+    whatever the first loaded — and then every threshold read off the matrix is another model's scale, with
+    nothing to say so (`Emissions.model` would name the bundle that did NOT produce the frames)."""
+    from encore_worker.adapters import ml
+    from encore_worker.adapters.ml import WhisperXAligner
+
+    def load(**kw: object) -> tuple[object, dict[str, object]]:
+        return str(kw.get("model_name")), {"dictionary": {}}
+
+    fake_whisperx(monkeypatch, load_align_model=load)
+    large = WhisperXAligner(device="cpu", model="HUBERT_ASR_LARGE")._aligner("en")
+    xlarge = WhisperXAligner(device="cpu", model="HUBERT_ASR_XLARGE")._aligner("en")
+    default = WhisperXAligner(device="cpu")._aligner("en")
+    assert large[0] == "HUBERT_ASR_LARGE" and xlarge[0] == "HUBERT_ASR_XLARGE" and default[0] == "None"
+    assert set(ml._MODELS) == {
+        ("cpu", "align:en:HUBERT_ASR_LARGE"),
+        ("cpu", "align:en:HUBERT_ASR_XLARGE"),
+        ("cpu", "align:en:default"),
+    }
+    clear_cache()
+
+
+def test_a_named_bundle_that_will_not_load_is_the_machinerys_fault(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The "no model for this language" escape hatch belongs to whisperx's own resolution ONLY. When THIS BOX
+    named the bundle, the same `ValueError` is a fact about this box's settings or its Hub cache, not about
+    the text's language — so it is the machinery's fault (the job fails loudly) rather than one attempt
+    declining while every later attempt declines identically."""
+    from encore_worker.adapters.ml import WhisperXAligner
+
+    unknown = ValueError("No default align-model for language: en")
+    fake_whisperx(monkeypatch, load_align_model=raising(unknown))
+    with pytest.raises(InfraFault, match="loading the 'en' alignment model failed"):
+        WhisperXAligner(device="cpu", model="HUBERT_ASR_LARGE")._aligner("en")
+
+
+def test_the_factory_resolves_the_device_default_and_the_bare_constructor_does_not() -> None:
+    """WHERE THE POLICY LIVES. `build_aligner` is the factory the host and the bench both go through, so it
+    is what resolves an unset `ENCORE_ALIGN_MODEL` into this device's bundle; the bare constructor stays
+    "load what you were told to", which is what lets `test_ml_contract` pin the 320/400 frame grid on the
+    bundle its constants were measured on."""
+    from encore_worker.adapters.ml import WhisperXAligner, build_aligner, default_align_model
+    from encore_worker.host.hardware import module_available
+
+    assert WhisperXAligner(device="cpu")._model is None
+    assert WhisperXAligner(device="cpu", model="X")._model == "X"
+    if not module_available("whisperx"):
+        pytest.skip("no whisperx: the factory returns None and there is nothing to resolve")
+    for device in ("cpu", "mps", "cuda"):
+        built = build_aligner(device=device)
+        assert built is not None and built._model == default_align_model(device)
+    named = build_aligner(device="cpu", model="HUBERT_ASR_XLARGE")
+    assert named is not None and named._model == "HUBERT_ASR_XLARGE", "an operator's name wins"
+
+
+def test_the_composition_root_refuses_a_model_nothing_calibrated() -> None:
+    """THE LOUD HALF of "fail loudly or refuse to gate" (`domain.lyrics.lexical`). A matrix from an
+    uncalibrated model makes every emission-scale gate stand down — right for a per-language bundle nobody
+    chose, and wrong for one an operator typed, since that worker would run every job with its wrong-text
+    gate silently off. So the name is refused before the process accepts work, with `host.config`'s manners:
+    name the variable, list what is accepted, do not retry.
+    """
+    from encore_worker import __main__ as entry
+    from encore_worker.adapters.ml import default_align_model
+    from encore_worker.domain.lyrics import lexical
+
+    assert entry.align_model_for(Config(), "cuda") == default_align_model("cuda")
+    assert entry.align_model_for(Config(align_model=lexical.BANDS.model), "mps") == lexical.BANDS.model
+    with pytest.raises(ConfigError, match=r"ENCORE_ALIGN_MODEL='WAV2VEC2_LARGE_XLSR_53_DE'") as raised:
+        entry.align_model_for(Config(align_model="WAV2VEC2_LARGE_XLSR_53_DE"), "cpu")
+    assert raised.value.retryable is False
+    assert "recalibrate with scripts/lift_gate.py" in str(raised.value), "the fix, not just the refusal"
+    assert default_align_model("cpu") in str(raised.value), "and what leaving it unset would have loaded"
+
+    # AND THE RESOLVED BUNDLE IS ON THE BOX'S RECORD (W4b review r1): nothing named it — not the startup
+    # banner, not a job's evidence note — so a box whose `ENCORE_ALIGN_MODEL` was set could not be told from
+    # one whose was not. `main` prints it beside ffmpeg's version, for the same reason. Read off the SOURCE
+    # because the banner is three prints into a coroutine that probes hardware and starts DBOS, and the
+    # regression to guard is the line being dropped in a later edit of that function.
+    startup = Path(inspect.getsourcefile(entry) or "").read_text(encoding="utf-8")
+    assert "[worker] align bundle {align_model_for(config, device)}" in startup, (
+        "the startup banner must name the bundle every emission-scale threshold is read off"
+    )

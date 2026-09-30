@@ -22,8 +22,9 @@ from encore_worker.adapters import cli, lrclib, lrcmux, ml, musicbrainz, ports, 
 from encore_worker.artifacts import scratch
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.identity import Identified
+from encore_worker.domain.lyrics import lexical
 from encore_worker.host import ffmpeg, hardware
-from encore_worker.host.config import Config
+from encore_worker.host.config import Config, ConfigError
 from encore_worker.protocol import frames as f
 from encore_worker.protocol.vocabulary import Stage
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl, Superseded, superseded_candidates
@@ -54,8 +55,11 @@ def build_adapters(config: Config, *, device: str) -> Adapters:
         transcriber=ml.build_transcriber(device=device, checkpoint=config.asr_model),
         # A job's own `asrModel` (review H5): built on demand, the weights cached per checkpoint in `ml`.
         transcriber_for=lambda checkpoint: ml.build_transcriber(device=device, checkpoint=checkpoint),
-        # `jobs` sizes the emission cache, which holds a matrix per LIVE job (`ml._emission_cache_size`).
-        aligner=ml.build_aligner(device=device, jobs=config.concurrency),
+        # `jobs` sizes the emission cache, which holds a matrix per LIVE job (`ml._emission_cache_size`);
+        # `model` is the English bundle this box aligns on, checked for a calibration row first (6b, W4b).
+        aligner=ml.build_aligner(
+            device=device, jobs=config.concurrency, model=align_model_for(config, device)
+        ),
         diarizer=ml.build_diarizer(device=device),
     )
 
@@ -81,6 +85,34 @@ def build_providers(config: Config) -> tuple[ports.LyricsProvider, ...]:
     if direct is not None:
         chain.append(direct)
     return tuple(chain)
+
+
+def align_model_for(config: Config, device: str) -> str:
+    """The English alignment bundle this box will align on, REFUSED HERE if nothing calibrated it.
+
+    THE LOUD HALF of "fail loudly or refuse to gate" (`domain.lyrics.lexical`'s module docstring, W4b). Every
+    threshold read off an emission matrix — the lexical lift's bands, the mix floor, the LINE_SYNC rung's
+    decode-agreement share — belongs to the bundle it was measured on, and `lexical.CALIBRATED` holds one row
+    per bundle. A matrix from a model with NO row is not gated on another's numbers: the readers stand down
+    and the text is merely not vouched for, which is right for a per-language bundle nobody chose (a German
+    XLSR fine-tune) and WRONG for a model an operator typed in — that worker would run every job with its
+    wrong-text gate silently off. So a named-but-uncalibrated `ENCORE_ALIGN_MODEL` ends the process here,
+    with `host.config`'s manners: name the variable, say what is accepted, do not retry.
+
+    THE ONE PLACE THIS CAN LIVE. `Config.from_env` cannot make the check (`host/` may not import `domain/`,
+    `tests/test_layers.py`) and `adapters/ml` must not either — importing `lexical` there would put every
+    calibrated threshold inside the emission cache's code fingerprint, so moving a band would invalidate
+    every cached matrix (`e2e_lib.module_closure` reads lazy imports too). This module already imports every
+    layer by definition, and it is where the DEVICE is resolved, which is what an unset knob resolves against.
+    """
+    named = config.align_model
+    if named is not None and not lexical.is_calibrated(named):
+        raise ConfigError(
+            f"ENCORE_ALIGN_MODEL={named!r}: {lexical.uncalibrated(named)}. Expected one of "
+            f"{', '.join(sorted(lexical.CALIBRATED))}, or leave it unset for this device's default "
+            f"({ml.default_align_model(device)})."
+        )
+    return named or ml.default_align_model(device)
 
 
 def device_for(config: Config, report: hardware.Report) -> str:
@@ -115,6 +147,11 @@ async def main() -> None:
     # `job_attempts` records its version — so without this line "why does one worker's FLAC differ" has no
     # answer but guessing from the machine.
     print(f"[worker] ffmpeg {ffmpeg.describe(config.ffmpeg_bin)}", flush=True)
+    # WHICH ENGLISH ALIGNMENT BUNDLE, for the same reason and since the same wave made it a setting (W4b 6b;
+    # W4b review r1 found nothing on the record naming it). Every emission-scale threshold a job's gates read
+    # comes off this bundle's calibration row, and `align_model_for` is pure, so printing it here says what
+    # `build_adapters` will resolve below — and refuses an uncalibrated name before the box claims any work.
+    print(f"[worker] align bundle {align_model_for(config, device)} (en; ENCORE_ALIGN_MODEL)", flush=True)
     if not caps:
         # Not fatal: a box with no capabilities still connects and is visible on the dashboard, which is
         # more useful than a process that exits and leaves an operator wondering where the worker went.

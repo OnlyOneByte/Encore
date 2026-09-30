@@ -141,6 +141,13 @@ from encore_worker.domain.lyrics.generate import Generated, Line, Word
 #: A VOCALS STEM'S CALIBRATION. Normalising against the TRACK's own loud level is what makes it portable
 #: across masters and what makes it meaningless on a mix, where 92-98% of frames clear it (module docstring,
 #: ON A VOCALS STEM ONLY). The caller applies the post-pass only where the envelope is a stem's.
+#:
+#: W4b RE-MEASURED THE NEVER-SUNG FLOOR THIS SHARES A NUMBER WITH and kept it at 0.10
+#: (`align_steps._NEVER_SUNG_ENV`, `scripts/unsung_gate.py`), which is NOT a confirmation of this θ and must
+#: not be read as one: that measurement reads the MEAN envelope over a whole line's span, where this walk
+#: tests one frame at a time, so a gap whose mean is 0.3 can still be full of frames under 0.1. What the two
+#: share is the level's DEFINITION, not its calibration; re-fitting this one needs the ends metrics
+#: (`gates/w4-ends.yaml`), not that table.
 ACTIVE_LEVEL = 0.1
 
 #: The most an end may MOVE (not the most a word may last), whatever the envelope says.

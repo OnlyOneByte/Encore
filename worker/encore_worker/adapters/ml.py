@@ -42,6 +42,76 @@ _MODELS: dict[tuple[str, str], Any] = {}
 #: from `torch` would hand the transcriber a device it cannot use and fail ASR on every Mac.
 CTRANSLATE2_DEVICES = ("cpu", "cuda")
 
+#: The language the model knob names a bundle FOR. whisperx chooses the aligner PER LANGUAGE
+#: (`DEFAULT_ALIGN_MODELS_TORCH/_HF`), and the HuBERT bundles below are English (LibriSpeech 960h with a
+#: 29-token English vocabulary), so an override must not be pushed onto a German song's XLSR fine-tune:
+#: `WhisperXAligner._bundle_of` returns it for THIS language and leaves every other to whisperx's table.
+#: Dormant today because `language` is always `en` (review M8, W7) — wired now so W7 cannot detonate it.
+ENGLISH = "en"
+
+#: THE ENGLISH ALIGNMENT BUNDLE, per device class (review §3 item 6b, W4b): the exception table, and it is
+#: EMPTY — no device class has yet earned a bundle other than `DEFAULT_ALIGN_MODEL`. `build_aligner` resolves
+#: it, `ENCORE_ALIGN_MODEL` overrides it (`host.config.Config.align_model`), and the bundle is named on every
+#: matrix (`Emissions.model`) because the thresholds read off one are one model's
+#: (`domain.lyrics.lexical.CALIBRATED`).
+#:
+#: WHY IT IS EMPTY, AND NOT `{"cuda": "HUBERT_ASR_XLARGE"}` AS W4b FIRST BUILT IT. HuBERT-XLarge was
+#: calibrated on the bench corpus but NEVER RUN END TO END — no CUDA box exists on this tree — so naming it
+#: CUDA's default would ship a bundle on a device class nobody measured, on the strength of a projection
+#: (`gates/w4b.yaml`, "XL IS A PROJECTION, NOT A CLAIM"; its own wrong-text head-room is +0.0722 against
+#: HuBERT-Large's +0.2306). `ENCORE_ALIGN_MODEL=HUBERT_ASR_XLARGE` is how a CUDA operator runs it, and the
+#: row that would let it become a default is one corpus sweep on CUDA hardware.
+#:
+#: EVERY NAME IN THE TABLE OR THE DEFAULT MUST HAVE A CALIBRATION ROW (`lexical.CALIBRATED`), or a worker that
+#: resolved it would start with its wrong-text gate standing down. This module deliberately does NOT import
+#: `lexical` to check — that would put the thresholds inside the emission cache's code fingerprint, so moving
+#: a band would invalidate every cached matrix (`e2e_lib.module_closure`) — so the invariant is pinned by a
+#: test (`tests/test_lexical.py`) and the loud refusal of an UNCALIBRATED operator name lives at the
+#: composition root, where config meets the device (`__main__.align_model_for`).
+ALIGN_MODELS_BY_DEVICE: Mapping[str, str] = {}
+
+#: THE ENGLISH BUNDLE THIS BOX LOADS WHEN NOBODY NAMES ONE — whisperx's own wav2vec2 base 960h, the bundle
+#: every wave from the review baseline through W4 was measured on, named EXPLICITLY here rather than left to
+#: `load_align_model`'s per-language table so that `Emissions.model` always says which model a matrix (and so
+#: which `lexical.CALIBRATED` row) belongs to. Proved equivalent to the old `model=None` path on the corpus:
+#: the W4b control sweeps reproduce `results/w4-{time_text,run_align}.json` with every pooled and per-song
+#: delta 0.00 and every document digest unchanged.
+#:
+#: WHY NOT HuBERT-LARGE, WHICH REVIEW §3 ITEM 6b ASKED FOR AND W4b BUILT AND CALIBRATED. It was measured end
+#: to end on the whole corpus, both levels, and IT FAILS THREE OF W4b's SIX MUST GATES
+#: (`gates/w4b.yaml`, 19/30 at `time_text` AND at `run_align`; `results/w4b-hubert-{time_text,run_align}.json`
+#: against `results/w4b-base-*` on the same code with only the name changed):
+#:   * pooled gross lines RISE in 8 of 16 modes (truth 3 -> 7, tempo 4 -> 7, extraverse 5 -> 6) — eight,
+#:     re-counted per mode off those rows in W4b review r2, where the gate file had summed nine into one;
+#:   * `hello` truth line ±500 97.26 -> 90.28 and `tfr-chosen` 73.53 -> 63.64, two of W4's named wins;
+#:   * `Tom_Orlando_-_The_One__feat._Tina_G_` word ±300 -1.74 pt against a -1.0 per-song bound.
+#: It WINS almost everywhere else — blind gross 106 -> 68, jit 37 -> 5, credit 28 -> 7, drop50 305 -> 170,
+#: truth Jamendo word ±100 83.25 -> 85.38 and ±300 94.98 -> 97.12, AAE 87.8 -> 72.3 ms, highlight 77.1 ->
+#: 81.0, wrong texts passed 1/320 -> 0/320, and it recovers the `Pure_Mids_-_The_Leader` line W4's never-sung
+#: rule drops (19 -> 20 scored, ±500 68.42 -> 100.00). The two big losers get BETTER blind and worse with
+#: claims (hello blind 61.64 -> 75.00), and `tfr-chosen`'s reconcile verdict degrades `structural` ->
+#: `coarse` on a lift that ROSE — so the cost is the repair ladder's reaction to a better decode, not the
+#: decode. Until that is understood the flip is an operator's choice and not a default:
+#: `ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE`, calibrated, tested and one line from shipping.
+DEFAULT_ALIGN_MODEL = "WAV2VEC2_ASR_BASE_960H"
+
+
+def default_align_model(device: str) -> str:
+    """The English alignment bundle this box loads when the operator names none (`ALIGN_MODELS_BY_DEVICE`).
+
+    A FUNCTION OF THE DEVICE, like `transcriber_device`: the candidate bundles differ by three times in
+    weights and in time per song, so the choice cannot be one global constant — and it is read here rather
+    than in `Config`, because the device is resolved from what the box actually has (`__main__.device_for`),
+    not from the environment.
+
+    THE TABLE IS EMPTY TODAY, so every device gets `DEFAULT_ALIGN_MODEL` and this reads like a constant. It
+    is kept a function because that is the only shape in which a measured per-device row can land (W4b's
+    HuBERT-XLarge-on-CUDA candidate is calibrated and waiting for a CUDA sweep, see
+    `ALIGN_MODELS_BY_DEVICE`), and because an unknown device must fall back rather than raise.
+    """
+    return ALIGN_MODELS_BY_DEVICE.get(device, DEFAULT_ALIGN_MODEL)
+
+
 #: Whether the pyannote-checkpoint unpickling shim has been installed. Once per process.
 _SAFE_GLOBALS_REGISTERED = False
 
@@ -163,19 +233,23 @@ def _has_default_align_model(language: str) -> bool:
     return bool(language in DEFAULT_ALIGN_MODELS_TORCH or language in DEFAULT_ALIGN_MODELS_HF)
 
 
-def align_model_name(language: str) -> str:
+def align_model_name(language: str, model: str | None = None) -> str:
     """The alignment bundle `_aligner` loads for `language` — the name, without loading anything.
 
     WHY A NAME AT ALL: every threshold read off an emission matrix is one MODEL's (the lexical lift's bands,
-    `domain.lyrics.lexical.BANDS`), and the bundle is picked per language rather than per release, so a
+    `domain.lyrics.lexical.CALIBRATED`), and the bundle is picked per language rather than per release, so a
     German song silently uses a wav2vec2-XLSR fine-tune where the bands were fitted on English's
     `WAV2VEC2_ASR_BASE_960H`. Carried on `Emissions.model` so the reader can tell.
 
-    Read from whisperx's own tables, the way `_aligner` resolves it and the way the bench's calibration
-    scripts name a row set (`scripts/lift_gate.model_name`), so the two sides name the same thing. Unknown
-    (no whisperx, or a language it tables nothing for) is reported as such — `""` would claim the bands'
-    own model, and `load_align_model` would have raised for it anyway.
+    `model` is the configured ENGLISH bundle (`ALIGN_MODELS_BY_DEVICE`, `ENCORE_ALIGN_MODEL`) and wins for
+    `ENGLISH` only — see that constant. Every other language is read from whisperx's own tables, the way
+    `_aligner` resolves it and the way the bench's calibration scripts name a row set
+    (`scripts/lift_gate.model_name`), so the two sides name the same thing. Unknown (no whisperx, or a
+    language it tables nothing for) is reported as such — `""` would claim the bands' own model, and
+    `load_align_model` would have raised for it anyway.
     """
+    if model is not None and language == ENGLISH:
+        return model
     try:
         from whisperx.alignment import (  # noqa: PLC0415
             DEFAULT_ALIGN_MODELS_HF,
@@ -278,8 +352,8 @@ _EMISSION_CACHE_SIZE = _emission_cache_size(1)
 _BLANK_NAMES = ("[pad]", "<pad>")
 
 #: Vocabulary entries that are NOT characters of the language: CTC's blank under either name, the word
-#: separator, and the unknown / sentence markers. Named on `Emissions.specials` so a target filter has a
-#: list to read instead of a hard-coded id — see the field for what this wave does and does not do with it.
+#: separator, and the unknown / sentence markers. Named on `Emissions.specials`, which since W4b IS what the
+#: target filter reads (`domain.lyrics.generate.excluded_of`) instead of a hard-coded id — see the field.
 _SPECIAL_NAMES = ("[pad]", "<pad>", "[unk]", "<unk>", "<s>", "</s>", "|")
 
 
@@ -319,13 +393,15 @@ class Emissions:
     blank_id: int = 0
     #: The vocabulary's non-character entries by name -> id (`_SPECIAL_NAMES`), blank included.
     #:
-    #: NAMING, not filtering. `blank_id` is the one this wave acts on, because it is the one a target list
-    #: may never contain and the one the frame grouping has to recognise. The others are recorded because
-    #: a single-character special IS reachable from a lyric: every HF vocabulary maps `|` to the word
-    #: separator, and `generate`'s filter — which looks up single characters — would emit it as a target
-    #: for a line that contains a pipe. Whether `|` becomes a deliberate LINE separator is review 6c's
-    #: decision (disputed, D1; deliberately not in this wave), so this field exists for that reader rather
-    #: than being acted on here. Empty means "not reported", which every fake is.
+    #: READ BY THE TARGET FILTER (`domain.lyrics.generate.excluded_of`, W4b — until then this field had no
+    #: production reader at all, which W4 left as an open item). A single-character special IS reachable from
+    #: a lyric: every HF vocabulary maps `|` to the word separator (the shipped `en` dictionary is
+    #: `{'-': 0, '|': 1, 'e': 2, ...}`), and the filter — which looks up single characters — emitted it as a
+    #: target for any line containing a pipe, so the decode forced a word separator into the middle of a word.
+    #: Every reader of a target list now drops every id named here: `generate`, `regenerate`'s slice,
+    #: `alignable_chars` and `lexical.letters_of`. It is also 6c's plumbing (a deliberate `|` at LINE
+    #: boundaries, review D1). Empty means "not reported", which every fake is, and then the filter is exactly
+    #: `blank_id` as it was before.
     specials: Mapping[str, int] = field(default_factory=dict)
 
     @property
@@ -563,15 +639,31 @@ class WhisperXAligner:
     level forced alignment against a reference text has no equivalent outside this stack.
     """
 
-    def __init__(self, *, device: str = "cpu", jobs: int = 1) -> None:
+    def __init__(self, *, device: str = "cpu", jobs: int = 1, model: str | None = None) -> None:
         self._device = device
         #: The emission LRU's bound, from the box's configured concurrency (`_emission_cache_size`): a
         #: multi-job box holds every live matrix, a one-job box the four it always did. Read here rather
         #: than in the cache because `Config` belongs to the host, and the cache to the module the weights
         #: live in.
         self._matrices = _emission_cache_size(jobs)
+        #: The ENGLISH bundle to load (review §3 item 6b, W4b), or None for whisperx's own per-language
+        #: table — which is what a bare constructor keeps, deliberately: the PER-DEVICE POLICY lives in
+        #: `build_aligner`, the factory the host and the bench both go through
+        #: (`ALIGN_MODELS_BY_DEVICE`), so this class stays "load what you were told to load" and the
+        #: contract tests can pin the frame grid on the bundle its constants were measured on.
+        self._model = model
+
+    def _bundle_of(self, language: str) -> str | None:
+        """The bundle name to LOAD for `language`: the configured English one, else None = whisperx's table.
+
+        None rather than a resolved name on purpose: whisperx's own resolution also covers the languages it
+        tables an HF checkpoint for, and re-deriving those names here would be a second copy of its table.
+        """
+        return self._model if language == ENGLISH else None
 
     def _aligner(self, language: str) -> tuple[Any, Any]:
+        bundle = self._bundle_of(language)
+
         def build() -> tuple[Any, Any]:
             try:
                 import whisperx  # noqa: PLC0415
@@ -580,31 +672,36 @@ class WhisperXAligner:
             _allow_pyannote_checkpoints()
             try:
                 # whisperx is untyped, so annotate the unpack here rather than letting Any escape upward.
+                # `model_name=None` is whisperx's own "use the default for this language" (W4b).
                 loaded: tuple[Any, Any] = whisperx.load_align_model(
-                    language_code=language, device=self._device
+                    language_code=language, device=self._device, model_name=bundle
                 )
             except Exception as failed:
-                if not _has_default_align_model(language):
+                if bundle is None and not _has_default_align_model(language):
                     # No model for this language: a fact about the TEXT's language, so one attempt declines
                     # rather than the job failing, and a timed text still reaches LINE_SYNC, which needs
-                    # no model at all.
+                    # no model at all. NOT REACHED when a bundle was NAMED (W4b): the name came from this
+                    # box's settings, so its failure is this box's — the machinery's, reported as such.
                     raise
                 # A download, a Hub/cache failure, a device refusing the weights (review M7).
                 raise _machinery_fault(f"loading the {language!r} alignment model", failed) from failed
             return loaded
 
-        cached: tuple[Any, Any] = _cached(self._device, f"align:{language}", build)
+        # KEYED BY THE BUNDLE TOO (W4b): the name is settable now, so two aligners on one device can want
+        # different weights for the same language, and a key that named only the language would hand the
+        # second whatever the first loaded — every threshold downstream then reads the wrong model's scale.
+        cached: tuple[Any, Any] = _cached(self._device, f"align:{language}:{bundle or 'default'}", build)
         model, metadata = cached
         return model, metadata
 
     def _bundle_name(self, language: str) -> str:
-        """The bundle `_aligner` loads for `language`, for `Emissions.model` — a HOOK, not a constant.
+        """The bundle `_aligner` loads for `language`, for `Emissions.model` — resolved, never a placeholder.
 
-        A subclass that loads another bundle (the bench's `BenchAligner --model <hubert>`) overrides this, so
-        the name on the matrix never says one model where another produced the frames. A calibrated reader
-        trusts it: `align_steps._measured_lift` will not judge a text on bands fitted elsewhere.
+        The name on the matrix must never say one model where another produced the frames: a calibrated
+        reader trusts it (`align_steps._measured_lift` will not judge a text on bands fitted elsewhere), and
+        it is part of the emission cache's key.
         """
-        return align_model_name(language)
+        return align_model_name(language, self._model)
 
     def emissions(self, audio_path: str, language: str) -> Emissions:
         """The full song's per-frame character log-probabilities, computed ONCE and reusable.
@@ -839,17 +936,23 @@ def build_transcriber(*, device: str, checkpoint: str) -> WhisperTranscriber | N
     return WhisperTranscriber(device=device, checkpoint=checkpoint)
 
 
-def build_aligner(*, device: str, jobs: int = 1) -> WhisperXAligner | None:
+def build_aligner(*, device: str, jobs: int = 1, model: str | None = None) -> WhisperXAligner | None:
     """The aligner, or None on a box with no whisperx.
 
     `jobs` is `Config.concurrency`: it sizes the emission LRU, because the matrices a box holds live are
     per JOB and not per process (`_emission_cache_size`).
+
+    `model` is the English bundle (`Config.align_model`, already checked for a calibration row by
+    `__main__.align_model_for`); unset takes THIS DEVICE's default, which is where the per-device policy of
+    review 6b lives (`ALIGN_MODELS_BY_DEVICE`). So every caller of the factory — the host, and the bench's
+    `BenchAligner`, which is built the same way — loads what this box ships, while the bare constructor
+    keeps whisperx's per-language table for the contract tests.
     """
     from encore_worker.host.hardware import module_available
 
     if not module_available("whisperx"):
         return None
-    return WhisperXAligner(device=device, jobs=jobs)
+    return WhisperXAligner(device=device, jobs=jobs, model=model or default_align_model(device))
 
 
 def build_diarizer(*, device: str) -> PyannoteDiarizer | None:

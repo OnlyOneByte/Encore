@@ -82,11 +82,31 @@
 #     median score — which is tfr-chosen's CREDIT CAPTION to two decimals (env 0.04, 1.0 chars/s), the
 #     never-sung rule's own calibration exhibit. Every other line of the song reads 0.31-0.80, so the
 #     threshold is not marginal against the population: the global decode smeared this line across ~37 s of
-#     silence, and a smeared line is acoustically what an unsung one is. Nor is the DROP what the gate reads
-#     — with `m6-window-spare` on (review M6's arm, default off) the line comes back, 20/20 scored and ±500
-#     68.4 -> 70.0, and gross stays 1, because the window re-decode puts it back more than 2 s out. So the
-#     clock lost this line's TIMING and the drop is downstream of that; retuning the rule cannot recover it,
-#     and the rule's three literals are calibrated against songs this wave did not re-measure.
+#     silence, and a smeared line is acoustically what an unsung one is.
+#     TWO CORRECTIONS FROM W4b, BOTH OFF ROWS THIS FILE ALREADY CITED (2026-09-30):
+#       (1) THE `m6-window-spare` ARM RECOVERS THE LINE ACCURATELY, and this block said the opposite ("the
+#           window re-decode puts it back more than 2 s out"). `_runs/w4r2-puremids-wspare/rows.jsonl` reads
+#           line [0] at **-0.048 s** of truth, graded `low`, with 20/20 scored, ±500 13 -> 14 lines and gross
+#           1 either way. The arm's cost is elsewhere (W1's measurement: Quentin's closing line back in 4 modes
+#           and Ridgway off15 +1 gross) and those numbers predate BOTH the claim clock and this clock, so the
+#           arm's default is a corpus measurement nobody has taken on this tree — not a settled question.
+#       (2) THE FLOOR IS NOT THE FIX, now measured corpus-wide rather than argued from one song — ON A STEM,
+#           which is this song's target and every row of the sweep's (`--target stem`; review L2's MIX case is
+#           untouched by it and still open, `align_steps._NEVER_SUNG_ENV`, W4b review r1)
+#           (`scripts/unsung_gate.py`, `results/w4b-unsung-gate.json`, 192 song-modes): NO FLOOR IN THE FAMILY
+#           IS PARETO-BETTER THAN THE SHIPPED 0.10 — which is the claim, and it is not "0.10 wins every
+#           column" (this block said that until W4b review r2, correctness-4, and the row it cited refutes it
+#           for the relative family). 0.10 does beat every lower ABSOLUTE floor and every CAPPED relative one
+#           on ±500 lines AND gross lines; the one rule that reads FEWER gross lines is the song's own median
+#           gap UNCAPPED, at **1126 against 1138**, and it buys those 12 by withholding **25 more REAL sung
+#           lines** (62 dropped against 37) plus 4 more injected ones, and loses 2 line starts within ±500 ms
+#           (6574 against 6576). A relative floor read at the song's own median gap UNDER THE CAP is a NO-OP
+#           (0 of 192 move, because the level between lines is >= 0.10 on 29 of 32 songs), and the lower
+#           quantiles that would spare this line also spare 5 of the 21 INJECTED lines, which is an
+#           `unsung-not-up-*` rise. The full table and the two lines that cannot be separated at any floor are
+#           at `align_steps._NEVER_SUNG_ENV`.
+#     So the clock lost this line's TIMING, the drop is downstream of that, and retuning the rule cannot
+#     recover it — which is now a measurement and not an expectation.
 #   * `drop50` gross is up 5 of 300 at time_text (it is down 74 of 254 at run_align) — churn in both
 #     directions on nine songs, no single cause.
 #   * word ±300 pooled is down 0.18 pt (95.16 -> 94.98, about 10 words of 5684) and TWO Jamendo songs are

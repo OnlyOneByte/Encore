@@ -1,23 +1,46 @@
-# W0 reject-if (PLAN-alignment-v3, review §3 item 3): the harness must reproduce the review's baseline
-# within 0.5 pt at `--level time_text`, base model, all 32 songs. No baseline file needed.
+# ── REBASED 2026-09-30 BY W4b (spec (c)) ────────────────────────────────────────────────────────────────
+# REBASED FROM: the review's own v2 baseline (truth 25 gross / 89.3% ±500 / 97.5% ±1 s; blind 122 / 78.6 /
+#   88.3; blind Jamendo words ±100 78.8, ±250 90.5, ±300 91.3, 139 words > 2 s), measured with
+#   `--tfr-audio reference` on the review's clock.
+# REBASED ONTO: `results/w4-time_text.json` — the W4 rebench r2 row (code `8c576cc6200b02a0`, base model,
+#   `--tfr-audio youtube`, seed 0, wrong_k 10, `--modes all,wrongtext+ownclock`, 0 ERROR rows).
+# WHY: W4's item 6a replaced the frame clock (an exact 320-sample grid, `frame_sec` 0.02 exactly, 2 s of
+#   trimmed context per side) and re-fitted `ONSET_LEAD_SEC` on it, and W4 item 5 added the word-end post-pass.
+#   Both are DEFAULT-ON with no off switch (`gates/w4-clock.yaml`, WHY A SHIM AND NOT A KNOB), so every number
+#   this file pinned moved BY CONSTRUCTION: read on the W4 rows it scored 5/11, and FIVE of the 6 failures were
+#   the wave doing exactly what it was built to do (truth gross 25 -> 3, blind gross 122 -> 106, Jamendo blind
+#   words ±100 78.8 -> 80.11 and words more than 2 s out 139 -> 122, truth ±1 s 97.5 -> 98.16). THE SIXTH IS A
+#   REGRESSION and is named rather than folded in (W4b review r1, which caught the sibling `generate` file
+#   calling all of its failures "the gain"): pooled blind ±500 78.6 -> 78.04, **-0.56 pt** — a cost no gate in
+#   `gates/w4.yaml` reads, since its ±500 bounds are all truth-mode, so THIS literal is where it is recorded.
+#   A file that fails by construction is noise a later wave reads as regression, which is what
+#   W4b was asked to stop.
+# WHAT IT NOW MEANS: not "the harness reproduces the review" — that is unreachable across a deliberate clock
+#   change and the review's numbers live on in this header and in README's "The E2E harness" — but "the
+#   harness still reproduces W4's recorded row". It is a DETERMINISM gate: a harness change, an emissions-cache
+#   change or an accidental default flip that moves these ten numbers fails here. The review baseline itself
+#   is still reproducible from `results/baseline-v2.json`, which is unchanged and is what `--compare` reads.
+# ALSO CHANGED: `--tfr-audio reference` is gone. It existed only to reproduce the review's oracle-stem run of
+#   the 3 tfr songs; the rebased row is the production-shaped default, so the command below is the one every
+#   other gate file uses.
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --modes truth,blind \
-#       --tfr-audio reference --gates ../docs/benchmarks/forced-alignment/gates/w0-reproduce-time_text.yaml
+#       --gates ../docs/benchmarks/forced-alignment/gates/w0-reproduce-time_text.yaml
+#   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --gates ...)
 #
-# `--tfr-audio reference`: the review ran the 3 tfr songs on the producer's oracle stems; the harness's
-# production-shaped default (a stem separated from youtube-mix.wav) moves those 3 songs.
-#
-# jit is absent ON PURPOSE: the review seeded it with the process-salted hash(slug), so its 34 / 84.1 / 95.4
-# is one draw nobody can repeat (README, "jit caveat"). Counts are integers, so "within 0.5" means exact.
-truth-gross: abs(truth.gross - 25) <= 0.5
-truth-pm500: abs(truth.pm500 - 89.3) <= 0.5
-truth-pm1000: abs(truth.pm1000 - 97.5) <= 0.5
-blind-gross: abs(blind.gross - 122) <= 0.5
-blind-pm500: abs(blind.pm500 - 78.6) <= 0.5
-blind-pm1000: abs(blind.pm1000 - 88.3) <= 0.5
-# Through time_text the never-sung rule drops two Jamendo lines, so these read the time_text numbers the
-# README records (78.8 / 90.5 / 91.3, +4 ms, 139 > 2 s), not the review's generate-level 78.7 ... 141.
-blind-words-pm100: abs(blind.jamendo.word_pm100 - 78.8) <= 0.5
-blind-words-pm250: abs(blind.jamendo.word_pm250 - 90.5) <= 0.5
-blind-words-pm300: abs(blind.jamendo.word_pm300 - 91.3) <= 0.5
-blind-words-gross: abs(blind.jamendo.word_gross - 139) <= 0.5
+# jit is absent ON PURPOSE (unchanged): the review seeded it with the process-salted hash(slug), so its
+# 34 / 84.1 / 95.4 is one draw nobody can repeat (README, "jit caveat"). Counts are integers, so "within 0.5"
+# means exact. The tolerances are the review baseline's own (0.5 pt, ±2 ms of bias): they were never about the
+# review's precision but about what a re-run of the same code may move, which a clock change does not alter.
+truth-gross: abs(truth.gross - 3) <= 0.5
+truth-pm500: abs(truth.pm500 - 89.45) <= 0.5
+truth-pm1000: abs(truth.pm1000 - 98.16) <= 0.5
+blind-gross: abs(blind.gross - 106) <= 0.5
+blind-pm500: abs(blind.pm500 - 78.04) <= 0.5
+blind-pm1000: abs(blind.pm1000 - 88.76) <= 0.5
+# The Jamendo word half, read at `time_text` (the never-sung rule and the repair ladder both act, so these
+# are not `--level generate`'s numbers — `gates/w0-reproduce-generate.yaml` holds those).
+blind-words-pm100: abs(blind.jamendo.word_pm100 - 80.11) <= 0.5
+blind-words-pm250: abs(blind.jamendo.word_pm250 - 90.62) <= 0.5
+blind-words-pm300: abs(blind.jamendo.word_pm300 - 91.58) <= 0.5
+blind-words-gross: abs(blind.jamendo.word_gross - 122) <= 0.5

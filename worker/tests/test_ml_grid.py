@@ -215,17 +215,21 @@ class _LocalModel:
 
 
 class _Rigged(ml.WhisperXAligner):
-    """`emissions()` with a known model and no Hub, so the grid is all that is under test."""
+    """`emissions()` with a known model and no Hub, so the grid is all that is under test.
 
-    def __init__(self, model: _LocalModel, jobs: int = 1) -> None:
+    The LOADED model is `_local`, deliberately not the inherited `_model` — which since W4b 6b holds the
+    English bundle's NAME (`ALIGN_MODELS_BY_DEVICE`, `ENCORE_ALIGN_MODEL`) rather than a loaded object."""
+
+    def __init__(self, model: _LocalModel, jobs: int = 1, bundle: str = "local-test-model") -> None:
         super().__init__(device="cpu", jobs=jobs)
-        self._model = model
+        self._local = model
+        self._bundle = bundle
 
     def _aligner(self, language: str) -> tuple[Any, Any]:
-        return self._model, {"dictionary": TORCHAUDIO_DIC}
+        return self._local, {"dictionary": TORCHAUDIO_DIC}
 
     def _bundle_name(self, language: str) -> str:
-        return "local-test-model"
+        return self._bundle
 
 
 def _whole_file(model: _LocalModel, mono: Any) -> Any:
@@ -360,6 +364,40 @@ def test_a_replaced_stem_is_a_cache_miss_not_a_stale_matrix(
     ml.clear_cache()
 
 
+def test_two_bundles_over_one_audio_file_do_not_share_one_matrix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4b REVIEW R2, tests-18: the key's BUNDLE component was untested — dropping it from
+    `_cached_emissions((*content, bundle, language, self._device), ...)` passed the whole suite, because every
+    test here runs one bundle. The sibling invariant one layer up IS pinned
+    (`test_ml_devices.test_two_bundles_on_one_device_do_not_share_one_loaded_handle`, the `_MODELS` keys); this
+    is the matrix half.
+
+    WHAT IT COSTS WITHOUT IT: `Emissions.model` is the VOCABULARY's identity and every emission-scale
+    threshold is read off it (`lexical.calibration`), so one audio file aligned by two bundles in one process
+    — the bench's `--verify-cache` builds two aligners, and `ENCORE_ALIGN_MODEL` can change between two jobs of
+    one worker — would serve the second bundle's job the first bundle's frames, STAMPED WITH THE FIRST
+    BUNDLE'S NAME, so the gates would read the right row against the wrong matrix and nothing would say so.
+    """
+    import soundfile as sf
+
+    ml.clear_cache()
+    path, _mono = _audio(tmp_path, 1.0)
+    monkeypatch.setattr(ml, "load_audio_mono_16k", lambda p: sf.read(p, dtype="float32", always_2d=False)[0])
+    model = _LocalModel()
+    base = _Rigged(model, bundle="WAV2VEC2_ASR_BASE_960H").emissions(str(path), "en")
+    hubert = _Rigged(model, bundle="HUBERT_ASR_LARGE").emissions(str(path), "en")
+    assert base.model == "WAV2VEC2_ASR_BASE_960H"
+    assert hubert.model == "HUBERT_ASR_LARGE", "the second bundle was served the first bundle's matrix"
+    assert base is not hubert and len(ml._EMISSIONS) == 2, "one entry per (audio, bundle), not per audio"
+    assert len(model.fed) == 2, "each bundle paid for its own forward pass over the one 1 s file"
+    # ...and each entry is still the one its own bundle is served from, with no further pass.
+    assert _Rigged(model, bundle="WAV2VEC2_ASR_BASE_960H").emissions(str(path), "en") is base
+    assert _Rigged(model, bundle="HUBERT_ASR_LARGE").emissions(str(path), "en") is hubert
+    assert len(model.fed) == 2
+    ml.clear_cache()
+
+
 def test_the_matrix_cache_is_bounded_and_separate_from_the_model_weights(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -450,6 +488,10 @@ def test_the_host_sizes_the_cache_from_its_configured_concurrency(monkeypatch: p
 
     `build_adapters` is the only place that knows `Config.concurrency`, so the assertion is made there —
     hermetically, by recording what the factory is handed rather than by loading whisperx.
+
+    THE ENGLISH BUNDLE RIDES THE SAME WIRE (W4b 6b): `Config.align_model` is resolved and checked here too
+    (`align_model_for`), so an unset knob must reach the factory as this device's default rather than as None,
+    which the factory would read as "whisperx's per-language table" — the base model, on every box.
     """
     from encore_worker import __main__ as entry
     from encore_worker.adapters import ml as adapters_ml
@@ -457,15 +499,19 @@ def test_the_host_sizes_the_cache_from_its_configured_concurrency(monkeypatch: p
 
     seen: dict[str, Any] = {}
 
-    def spy(*, device: str, jobs: int = 1) -> Any:
-        seen.update(device=device, jobs=jobs)
+    def spy(*, device: str, jobs: int = 1, model: str | None = None) -> Any:
+        seen.update(device=device, jobs=jobs, model=model)
         return _Rigged(_LocalModel(), jobs=jobs)
 
     monkeypatch.setattr(adapters_ml, "build_aligner", spy)
     monkeypatch.setattr(adapters_ml, "build_transcriber", lambda **_k: None)
     monkeypatch.setattr(adapters_ml, "build_diarizer", lambda **_k: None)
     adapters = entry.build_adapters(Config(concurrency=3), device="cpu")
-    assert seen == {"device": "cpu", "jobs": 3}, "the host must hand the factory its own concurrency"
+    assert seen == {"device": "cpu", "jobs": 3, "model": adapters_ml.default_align_model("cpu")}, (
+        "the host must hand the factory its own concurrency and its own bundle"
+    )
+    entry.build_adapters(Config(align_model="HUBERT_ASR_XLARGE"), device="cpu")
+    assert seen["model"] == "HUBERT_ASR_XLARGE", "and an operator's name reaches it unchanged"
     built = adapters.aligner
     assert isinstance(built, ml.WhisperXAligner)
     assert built._matrices == ml._emission_cache_size(3), "and the LRU is sized from it"

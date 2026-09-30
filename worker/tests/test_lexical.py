@@ -8,6 +8,7 @@ contrast and its contract, not the threshold, which `scripts/lift_gate.py` measu
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Sequence
 from typing import Any
 
@@ -168,7 +169,7 @@ def test_the_shuffles_do_not_depend_on_the_processs_hash_seed() -> None:
     ],
 )
 def test_the_bands_are_half_open_and_read_per_target(value: float, on_stem: bool, want: lexical.Band) -> None:
-    assert lexical.band(value, on_stem=on_stem) is want
+    assert lexical.band(value, on_stem=on_stem, bands=lexical.BANDS) is want
 
 
 def test_the_shipped_bands_keep_the_calibrated_populations_apart() -> None:
@@ -182,15 +183,103 @@ def test_the_shipped_bands_keep_the_calibrated_populations_apart() -> None:
     assert bands.mix_floor < bands.refuse_below, "a mix is heard less well, and its floor is lower"
 
 
-def test_the_bands_are_read_at_call_time(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Not bound as a default argument: whatever replaces `BANDS` (a recalibration, a test) is what every
-    later call reads, and an explicit `bands` wins over it."""
-    assert lexical.band(5.5, on_stem=True) is lexical.Band.OK
-    moved = lexical.Bands(model="x", refuse_below=5.0, ok_from=6.0, mix_floor=1.0, mix_ok_from=2.0)
-    monkeypatch.setattr(lexical, "BANDS", moved)
-    assert lexical.band(5.5, on_stem=True) is lexical.Band.DOUBT
-    assert lexical.band(1.5, on_stem=False) is lexical.Band.DOUBT
-    assert lexical.band(5.5, on_stem=True, bands=lexical.Bands("y", 0.0, 0.0, 0.0, 0.0)) is lexical.Band.OK
+def test_every_calibration_row_is_keyed_by_its_own_model_and_ordered() -> None:
+    """W4b: `CALIBRATED` is the ONE table, so a row filed under the wrong key would gate one model on
+    another's numbers — the exact defect the table exists to prevent — and a paste error is the realistic way
+    that happens. Every row is also held to the shape a calibration must have: ordered, non-empty bands and a
+    share in (0, 1]."""
+    assert lexical.CALIBRATED, "a worker with no calibrated model gates nothing"
+    for key, row in lexical.CALIBRATED.items():
+        assert row.model == key, f"{key} is filed under another model's name"
+        assert 0.0 < row.refuse_below < row.ok_from
+        assert 0.0 < row.mix_floor < row.mix_ok_from
+        assert 0.0 < row.line_sync_min_agreement <= 1.0
+    assert lexical.BANDS is lexical.CALIBRATED[lexical.BANDS.model], "BANDS is the table's row, not a copy"
+
+
+def test_every_bundle_a_box_can_default_to_is_calibrated() -> None:
+    """THE INVARIANT THAT LETS `adapters.ml` NOT IMPORT THIS MODULE (W4b 6b). The English bundle is a
+    per-device default there (`ALIGN_MODELS_BY_DEVICE`), and a default with no row would put a worker in the
+    one state the table forbids: gates that stand down on every job, with nobody having typed a model name to
+    be refused for. `ml` cannot check it itself — importing `lexical` would drag every threshold into the
+    emission cache's code fingerprint, so moving a band would invalidate every cached matrix — so the check is
+    here, and a wave that adds a device default must add its row in the same breath.
+    """
+    from encore_worker.adapters import ml
+
+    for device in ("cuda", "mps", "cpu", "an-accelerator-nobody-has-yet"):
+        named = ml.default_align_model(device)
+        assert lexical.is_calibrated(named), f"{device} would default to the uncalibrated {named}"
+
+
+def test_a_matrix_is_calibrated_by_its_own_model_or_by_nothing() -> None:
+    """The lookup, which is what "refuse to gate" rests on: the model's own row, `BANDS` for a matrix that
+    names no model at all (every fake here, every bench cache entry written before `Emissions.model`), and
+    None — never a substitute — for a model the table does not have."""
+
+    class Matrix:
+        def __init__(self, model: str | None) -> None:
+            if model is not None:
+                self.model = model
+
+    assert lexical.calibration(Matrix(None)) is lexical.BANDS
+    assert lexical.calibration(Matrix("")) is lexical.BANDS, "empty means unnamed, as `Emissions` defaults it"
+    assert lexical.calibration(Matrix(lexical.BANDS.model)) is lexical.BANDS
+    assert lexical.calibration(Matrix("WAV2VEC2_LARGE_XLSR_53_DE")) is None
+    assert lexical.is_calibrated(lexical.BANDS.model)
+    assert not lexical.is_calibrated("WAV2VEC2_LARGE_XLSR_53_DE")
+    said = lexical.uncalibrated("WAV2VEC2_LARGE_XLSR_53_DE")
+    assert "WAV2VEC2_LARGE_XLSR_53_DE" in said and lexical.BANDS.model in said
+    assert "lift_gate.py --model WAV2VEC2_LARGE_XLSR_53_DE" in said, "the reason names the way to fix it"
+
+
+def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What the table is FOR (W4b): two models gated at once, each on its own emission scale. W4b 6b adds
+    HuBERT rows this way, and `is_calibrated` is what an operator knob naming a model must check."""
+    other = lexical.Bands(
+        model="HUBERT_ASR_LARGE",
+        refuse_below=0.55,
+        ok_from=0.8,
+        mix_floor=0.4,
+        mix_ok_from=0.9,
+        line_sync_min_agreement=0.6,
+    )
+    monkeypatch.setitem(lexical.CALIBRATED, other.model, other)
+
+    class Matrix:
+        model = "HUBERT_ASR_LARGE"
+
+    got = lexical.calibration(Matrix())
+    assert got is other and lexical.is_calibrated("HUBERT_ASR_LARGE")
+    assert lexical.band(0.5, on_stem=True, bands=got) is lexical.Band.REFUSE
+    assert lexical.band(0.5, on_stem=True, bands=lexical.BANDS) is lexical.Band.OK, "the first row is untouched"
+    # THE SHARE COMES OFF THE ROW TOO, and this is the only row in any test whose share is NOT 0.5 (W4b review
+    # r2): all three shipped rows fit 0.5 and `LINE_SYNC_SHARE_UNCALIBRATED` is 0.5, so without a row that
+    # differs, `line_sync_share` reading the constant instead of the field is indistinguishable from reading
+    # the field — a mutation that ignores `bands` entirely passed the whole suite.
+    assert lexical.line_sync_share(other) == 0.6, "this model's own share, not the uncalibrated constant"
+    assert lexical.line_sync_share(lexical.BANDS) == lexical.BANDS.line_sync_min_agreement
+    assert lexical.line_sync_share(None) == lexical.LINE_SYNC_SHARE_UNCALIBRATED
+
+
+def test_the_row_is_the_callers_and_there_is_no_module_global_fallback() -> None:
+    """`band` TAKES the row it judges by — there is no `bands=None -> BANDS` default (W4b review r2).
+
+    The fallback shipped until r2 read what it costs: with it, one `band(value, on_stem=True)` in a new reader
+    judges a HuBERT matrix's lift against the base model's floor (0.20 against 0.45) and publishes a wrong text
+    silently — the review's high-severity W3 finding, re-entered through a default argument. Required, the
+    omission is a type error at the call site, which is why this test reads the SIGNATURE and not a value: no
+    runtime behaviour can distinguish "no fallback" from "a fallback nobody reached".
+    """
+    parameter = inspect.signature(lexical.band).parameters["bands"]
+    assert parameter.default is inspect.Parameter.empty, "a default row is a cross-model threshold borrow"
+    assert parameter.annotation == "Bands", "and `Bands | None` would put the decision back in here"
+    moved = lexical.Bands("x", 5.0, 6.0, 1.0, 2.0, 0.5)
+    assert lexical.band(5.5, on_stem=True, bands=moved) is lexical.Band.DOUBT
+    assert lexical.band(1.5, on_stem=False, bands=moved) is lexical.Band.DOUBT
+    assert lexical.band(5.5, on_stem=True, bands=lexical.Bands("y", 0.0, 0.0, 0.0, 0.0, 0.5)) is lexical.Band.OK
 
 
 #: `UNIQUE` in German, on its own lines — "komm und flieg weg" for "come and fly away": a translation into a

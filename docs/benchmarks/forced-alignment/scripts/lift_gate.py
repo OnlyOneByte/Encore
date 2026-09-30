@@ -31,7 +31,11 @@ model pass per song the first time (then cached). `--target mix` also records ea
 the shipped mix gate that reads no claims (the gate passes if the blind OR the repaired fit does, so this
 under-counts passes a repair could add; `blind`-mode texts have no repairs at all).
 
-WHAT IT PRINTS (the procedure W3 calibrated by; W4's HuBERT recalibration is `--model <bundle>` re-run):
+SCORED AGAINST THE ROW OF THE MODEL IT MEASURED (W4b): `lexical.CALIBRATED` is keyed by bundle, so
+`--model <other>` reads that bundle's row, and a bundle with NO row is scored against the shipped one as a
+stated REFERENCE while the run prints the row it FITS (item 9 below) — which is what a recalibration is for.
+
+WHAT IT PRINTS (the procedure W3 calibrated by; W4b's HuBERT recalibration is `--model <bundle>` re-run):
 
   1. each population's range per split (Jamendo: measured truth; YouTube + tfr: authored captions);
   2. the texts too short to measure (under `lexical.MIN_LETTERS` alignable letters);
@@ -45,7 +49,12 @@ WHAT IT PRINTS (the procedure W3 calibrated by; W4's HuBERT recalibration is `--
   6. the bands as shipped (`lexical.BANDS`): each population per band;
   7. the truth texts' BLIND decode timing per band (lines within 1 s of truth, lines over 2 s off): on the
      mix the lift reads how well the words are heard, which is what the mix doubt band is drawn on;
-  8. the W1 run_align bench's line-synced right texts (the LINE_SYNC rung's 16 commits) and their lift.
+  8. the W1 run_align bench's line-synced right texts (the LINE_SYNC rung's 16 commits) and their lift;
+  9. **THE ROW THIS RUN FITS** (`fitted`, W4b), by the procedure in `lexical`'s docstring, on the 0.05 grid,
+     ready to paste into `lexical.CALIBRATED` — or a refusal to pick one where the populations overlap. Run
+     over the committed W4 rows it reproduces the shipped row exactly (stem `refuse_below=0.20, ok_from=0.30`
+     with +0.0082 of head-room; mix `mix_floor=0.15`), which `tests/test_bench_e2e.py` pins. The fifth field,
+     `line_sync_min_agreement`, comes from `line_gate.py --model <bundle>`, which prints it the same way.
 
 `--from rows.json` re-prints the summary from a stored run without decoding anything.
 
@@ -61,6 +70,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 import warnings
@@ -299,9 +309,10 @@ def mix_floor(rows: Sequence[Row]) -> list[str]:
     return lines
 
 
-def banded(rows: Sequence[Row], target: str) -> list[str]:
-    """Each population per shipped band (`lexical.band`)."""
-    lines = [f"lexical.BANDS = {lexical.BANDS}"]
+def banded(rows: Sequence[Row], target: str, bands: lexical.Bands) -> list[str]:
+    """Each population per band, read off the row of the MODEL this run measured (W4b: `lexical.CALIBRATED` is
+    keyed by bundle, so a `--model` run must not be scored against the shipped `en` row)."""
+    lines = [f"bands = {bands}"]
     for mode in (*RIGHT_MODES, *WRONG_MODES):
         counts: dict[str, int] = {}
         doubted: list[str] = []
@@ -309,7 +320,9 @@ def banded(rows: Sequence[Row], target: str) -> list[str]:
             if r["mode"] != mode:
                 continue
             got = (
-                "unmeasured" if r["lift"] is None else lexical.band(r["lift"], on_stem=target == "stem").value
+                "unmeasured"
+                if r["lift"] is None
+                else lexical.band(r["lift"], on_stem=target == "stem", bands=bands).value
             )
             counts[got] = counts.get(got, 0) + 1
             if got == lexical.Band.DOUBT.value:
@@ -323,7 +336,12 @@ def banded(rows: Sequence[Row], target: str) -> list[str]:
 
 
 def summarize(
-    rows: Sequence[Row], *, target: str, cases: Sequence[Row], synced: Sequence[tuple[str, str]]
+    rows: Sequence[Row],
+    *,
+    target: str,
+    cases: Sequence[Row],
+    synced: Sequence[tuple[str, str]],
+    bands: lexical.Bands,
 ) -> list[str]:
     measured = [r for r in rows if r["lift"] is not None]
     short = [f"{r['song']}:{r['mode']}:{r['variant']} ({r['letters']})" for r in rows if r["lift"] is None]
@@ -351,15 +369,17 @@ def summarize(
     lines += sweep(rows)
     if target == "stem":
         lines.append("-- the lift with the shipped envelope gate (W1 time_text cases)")
-        taus = sorted({lexical.BANDS.refuse_below, 0.2})
+        taus = sorted({bands.refuse_below, 0.2})
         lines += combination(rows, cases, taus) if cases else ["no W1 time_text cases found"]
     else:
         lines.append("-- the mix gate: blind envelope AND lift >= floor")
         lines += mix_floor(rows)
-    lines.append("-- shipped bands")
-    lines += banded(rows, target)
+    lines.append("-- the bands being scored against")
+    lines += banded(rows, target, bands)
     lines.append("-- the truth texts' blind decode, per band")
-    lines += timing_by_band(rows, target)
+    lines += timing_by_band(rows, target, bands)
+    lines.append("-- THE ROW THIS RUN FITS (the procedure in `lexical`'s docstring, on the 0.05 grid)")
+    lines += fitted(rows, target)
     if target == "stem":
         index = {(r["song"], r["mode"]): r["lift"] for r in rows if r["variant"] == 0}
         for song, mode in synced:
@@ -368,6 +388,112 @@ def summarize(
                 f"W1 line-synced {song} {mode}: lift {'unmeasured' if got is None else f'{got:+.3f}'}"
             )
     return lines
+
+
+#: The grid every calibrated threshold is rounded onto, so a band is a number a person can read and a redraw
+#: of the shuffles (SD 0.03-0.07, `lexical`'s REDRAW NOISE) cannot move it.
+GRID = 0.05
+
+#: Slack when rounding onto `GRID`, because these are binary floats: `0.60 / 0.05` is 11.999999999999998, so a
+#: bare floor sends a midpoint that sits EXACTLY on the grid down a whole step (0.60 -> 0.55). A billionth of
+#: a step is nine orders below anything a calibration can distinguish and nine above the representation error.
+_GRID_SLACK = 1e-9
+
+
+def _down(value: float) -> float:
+    """`value` floored onto `GRID` (see `_GRID_SLACK`)."""
+    return math.floor(value / GRID + _GRID_SLACK) * GRID
+
+
+def _up(value: float) -> float:
+    """`value` raised onto `GRID`."""
+    return math.ceil(value / GRID - _GRID_SLACK) * GRID
+
+
+def fitted(rows: Sequence[Row], target: str) -> list[str]:
+    """The calibration row THESE rows imply, by the procedure in `lexical`'s docstring, ready to paste into
+    `lexical.CALIBRATED` (W4b: this script is the procedure, so it prints its answer rather than leaving a
+    reader to do the arithmetic).
+
+      stem: `refuse_below` = the pooled gap's midpoint between the protected right texts' minimum (drop50
+            included) and the wrong texts' maximum, rounded DOWN onto `GRID`; `ok_from` = the smallest `GRID`
+            step ABOVE the weakest drop50, and never above the weakest PROTECTED right text. If the
+            populations OVERLAP no threshold meets review §3.4, and this says so rather than picking one — a
+            model in that state ships with NO ROW, which refuses to gate instead of gating wrongly.
+      mix:  `mix_floor` = the smallest `GRID` step above BOTH splits' wrong maxima. `mix_ok_from` is read off
+            the per-band timing table above (where the truth texts' blind decodes stop being poor), which is a
+            judgement this cannot make for you.
+
+    `ok_from` WAS "the higher of the two splits' own fits, rounded up" until W4b's HuBERT run, which is where
+    that rule broke: it reproduced the base model's 0.30 only by coincidence. A split fit is
+    (weakest protected right + highest wrong) / 2, so a split with NO weak right song — YouTube on HuBERT-L,
+    protected minimum +2.085 — fits a tau of +1.152, and rounding that up put FIVE protected right texts of
+    one song (Avercage, truth +1.132) in the doubt band: `low` lines, `medium` document, and on a stem
+    UNVOUCHED, for a song the base model's row graded OK. It buys nothing, because no wrong text on either
+    split reaches +0.22 — five to ten redraw SDs below even the narrow band's top. The rule now states what
+    the band is FOR (`lexical.Bands.ok_from`): a margin above the floor wide enough to hold a wrong text that
+    squeaked over it, drawn so that the texts inside it are the ones review §3.4 does NOT protect (drop50, a
+    sheet missing half its lines). It reproduces the shipped base row exactly — weakest drop50 +0.264 -> 0.30,
+    at or below the weakest protected +0.350 — and fits HuBERT-L at 0.80.
+
+    `line_sync_min_agreement`, the fifth field, comes from `line_gate.py --model <bundle>`.
+    """
+    right = _lifts(rows, PROTECTED) + _lifts(rows, ("drop50",))
+    wrong = _lifts(rows, WRONG_MODES)
+    if not right or not wrong:
+        return ["  no population to fit (this run has no right or no wrong texts)"]
+    low, high = min(right), max(wrong)
+    out = [f"  right min (protected + drop50) {low:+.4f}   wrong max {high:+.4f}   gap {low - high:+.4f}"]
+    if target == "mix":
+        maxima = [got for split in SPLITS if (got := _lifts(rows, WRONG_MODES, split))]
+        floor = _down(max(max(m) for m in maxima)) + GRID if maxima else None
+        out.append(
+            f"  -> mix_floor={floor:.2f} (the smallest {GRID} step above every split's wrong max: "
+            + ", ".join(f"{max(m):+.4f}" for m in maxima)
+            + "); mix_ok_from from the per-band table above"
+        )
+        # AND THE MIX HEAD-ROOM, printed exactly as the stem's is (W4b review r1). It was the one margin no
+        # row stated, and it is the margin that matters MOST: on a stemless song this floor is the wrong-text
+        # verdict and a refusal there is terminal, where a stem's floor has the mix path behind it. The row
+        # that exposed the gap is HuBERT-XLarge's, whose +0.1479 wrong maximum leaves **+0.0021** under the
+        # shipped 0.15 — a twentieth of one redraw SD — against the base row's +0.0349 and HuBERT-L's +0.0343.
+        if floor is not None:
+            # HALF A GRID STEP is the band worth counting: it is the margin a floor one step lower would have
+            # had to clear, so "how many wrong texts sit in the half-step under the floor" says whether the
+            # margin is one text's luck (XL: 3) or a whole population's distance (base and L: 0).
+            near = floor - GRID / 2
+            over = sorted((value for m in maxima for value in m if value >= near), reverse=True)
+            out.append(
+                f"  Head-room over the wrong population: {floor - high:+.4f}"
+                f"   wrong texts at or above {near:.4f}: {len(over)}"
+                + (" (" + ", ".join(f"{value:+.4f}" for value in over[:5]) + ")" if over else "")
+            )
+        return out
+    if low <= high:
+        out.append(
+            "  -> NO THRESHOLD: the populations OVERLAP, so nothing meets review §3.4's reject-if. This "
+            "model gets no row (refuse to gate), and the wave says so."
+        )
+        return out
+    refuse = _down((low + high) / 2)
+    fits = [fit[2] for split in SPLITS if (fit := fitted_tau(rows, split)) is not None]
+    doubtable = _lifts(rows, ("drop50",))
+    protected = _lifts(rows, PROTECTED)
+    # The band holds the right texts review §3.4 does not protect and stops below the weakest protected one;
+    # `_down` on that cap keeps it on the grid, and `refuse + GRID` keeps the band non-empty.
+    ok = (
+        min(_down(min(doubtable)) + GRID, _down(min(protected))) if doubtable and protected else refuse + GRID
+    )
+    out.append(
+        f"  -> refuse_below={refuse:.2f}, ok_from={max(ok, refuse + GRID):.2f} "
+        f"(midpoint {(low + high) / 2:+.4f} rounded down; the step above the weakest drop50 "
+        f"{min(doubtable):+.4f} if any, capped at the weakest protected right text "
+        f"{min(protected):+.4f}; the splits' own fits, which this rule is NOT, are "
+        + ", ".join(f"{value:+.4f}" for value in fits)
+        + "). Head-room over the wrong population: "
+        f"{refuse - high:+.4f}"
+    )
+    return out
 
 
 def blind_timing(song: lib.Song, claims: lib.Claims, lines: Sequence[Any]) -> dict[str, Any]:
@@ -385,7 +511,7 @@ def blind_timing(song: lib.Song, claims: lib.Claims, lines: Sequence[Any]) -> di
     }
 
 
-def timing_by_band(rows: Sequence[Row], target: str) -> list[str]:
+def timing_by_band(rows: Sequence[Row], target: str, bands: lexical.Bands) -> list[str]:
     """The truth texts' blind decode timing per lift band: on the mix, the lift reads how well the words
     are HEARD, which is what its doubt band is drawn on (the module docstring of `lexical`)."""
     truth = sorted((r for r in rows if r["mode"] == "truth" and r.get("blind_pm1") is not None), key=_lift_of)
@@ -393,7 +519,7 @@ def timing_by_band(rows: Sequence[Row], target: str) -> list[str]:
         return ["no blind timing recorded (a run from before W3)"]
     lines = []
     for name in (b.value for b in lexical.Band):
-        inside = [r for r in truth if _band_of(r, target) == name]
+        inside = [r for r in truth if _band_of(r, target, bands) == name]
         if inside:
             pm1 = sorted(float(r["blind_pm1"]) for r in inside)
             lines.append(
@@ -413,33 +539,37 @@ def _lift_of(row: Row) -> float:
     return float(row["lift"]) if row["lift"] is not None else float("-inf")
 
 
-def _band_of(row: Row, target: str) -> str:
+def _band_of(row: Row, target: str, bands: lexical.Bands) -> str:
     if row["lift"] is None:
         return "unmeasured"
-    return lexical.band(float(row["lift"]), on_stem=target == "stem").value
+    return lexical.band(float(row["lift"]), on_stem=target == "stem", bands=bands).value
 
 
-def model_name(named: str | None) -> str:
+def model_name(named: str | None, device: str) -> str:
     """The bundle a row set was measured on, RESOLVED — never the placeholder "default" (W3 review r1).
 
-    `lexical.BANDS.model` names a bundle, and the rows the bands were derived from have to be matchable to
-    it: when W4 re-runs this script with `--model <hubert>` and replaces `BANDS`, a committed row set saying
-    "default" cannot prove which model produced the shipped thresholds. Resolved the way the harness resolves
-    the emission cache's key, so both name the same thing.
+    `lexical.CALIBRATED` is keyed by bundle name, and the rows a row's thresholds were derived from have to be
+    matchable to it: a committed row set saying "default" cannot prove which model produced which thresholds,
+    and W4b's 6b adds a second model to the table. Resolved the way the harness resolves the emission cache's
+    key AND the way `ml.build_aligner` resolves an unset `ENCORE_ALIGN_MODEL` — so `--model` absent names the
+    SHIPPED default for `device` (`e2e.default_model`), which is what this run then loads.
     """
     import e2e  # noqa: PLC0415 - loads torch, which `--from` never needs
 
-    return named or e2e.default_model("en")
+    return named or e2e.default_model("en", device)
 
 
-def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
-    """Decode every text on every selected song's `args.target` matrix (see the module docstring)."""
+def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
+    """Decode every text on every selected song's `args.target` matrix (see the module docstring).
+
+    `device` is resolved by the caller, because the bundle an unnamed `--model` means is this device's
+    (`model_name`) and the run's rows have to be filed under the name the aligner actually loads."""
     import e2e  # noqa: PLC0415 - loads torch; `--from` never needs it
     import soundfile as sf  # noqa: PLC0415
 
     from encore_worker.adapters.ml import forced_align_decoder, load_audio_mono_16k  # noqa: PLC0415
     from encore_worker.domain.audio import activity  # noqa: PLC0415
-    from encore_worker.domain.lyrics.generate import generate  # noqa: PLC0415
+    from encore_worker.domain.lyrics.generate import excluded_of, generate  # noqa: PLC0415
     from encore_worker.host.config import Config  # noqa: PLC0415
     from encore_worker.steps import align_steps  # noqa: PLC0415
 
@@ -448,10 +578,10 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
     config = Config.from_env()
     store = lib.EmissionStore(
         root / "_emissions",
-        model=model_name(args.model),
+        model=model_name(args.model, device),
         emitter=e2e.emitter_fingerprint(config),
     )
-    aligner = e2e.BenchAligner(device=e2e.resolve_device(args.device), model=args.model, store=store)
+    aligner = e2e.BenchAligner(device=device, model=args.model, store=store)
     chosen = set(args.songs.split(",")) if args.songs else None
     rows: list[dict[str, Any]] = []
     began = time.monotonic()
@@ -476,9 +606,10 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
                     "donor": claims.donor,
                     "lift": None if got is None else round(got.value, 4),
                     "per_letter": None if got is None else round(got.per_letter, 4),
-                    # The matrix's own blank, not 0 (review M9, threaded in W4): a recalibration on
-                    # another bundle must count the letters THAT bundle's decode publishes.
-                    "letters": len(lexical.letters_of(texts, emissions.dictionary, emissions.blank_id)),
+                    # The matrix's OWN non-character columns, not a literal 0 (review M9, threaded in W4;
+                    # widened to every special in W4b): a recalibration on another bundle must count the
+                    # letters THAT bundle's decode publishes, and `excluded_of` is the filter it uses.
+                    "letters": len(lexical.letters_of(texts, emissions.dictionary, excluded_of(emissions))),
                 }
                 generated = (
                     generate(texts, emissions, decoder=forced_align_decoder, language="en")
@@ -502,7 +633,7 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
 def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0] if __doc__ else None)
     ap.add_argument("--target", choices=TARGETS, default="stem", help="which matrix the texts are lifted on")
-    ap.add_argument("--model", default=None, help="torchaudio bundle (default: whisperx's `en` default)")
+    ap.add_argument("--model", default=None, help="torchaudio bundle (default: this device's shipped one)")
     ap.add_argument("--out", default=None, help="write every text's lift here (JSON)")
     ap.add_argument("--from", dest="source", default=None, help="summarize a stored --out instead")
     ap.add_argument("--songs", default=None, help="comma-separated slugs (default: the whole corpus)")
@@ -515,14 +646,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         stored = json.loads(Path(args.source).read_text(encoding="utf-8"))
         rows: list[dict[str, Any]] = list(stored["rows"])
         target = str(stored["target"])
+        # THE ROW OF THE MODEL THESE ROWS MEASURED (W4b), not the shipped `en` one: `lexical.CALIBRATED` is
+        # keyed by bundle, and a model with no row is exactly what this script exists to fit — it then scores
+        # against the shipped row as a stated REFERENCE and prints the row it fits at the end.
+        asked = str(stored["model"])
     else:
-        rows = measure(args)
+        import e2e  # noqa: PLC0415 - loads torch; `--from` never needs it
+
+        device = e2e.resolve_device(args.device)
+        asked = model_name(args.model, device)
+        rows = measure(args, device)
         target = args.target
         if args.out:
-            body = {"target": target, "model": model_name(args.model), "rows": rows}
+            body = {"target": target, "model": asked, "rows": rows}
             Path(args.out).write_text(json.dumps(body), encoding="utf-8")
+    bands = lexical.CALIBRATED.get(asked)
+    if bands is None:
+        print(
+            f"-- {asked} has no calibration row: the band tables below are scored against "
+            f"{lexical.BANDS.model}'s as a REFERENCE. THE ROW THIS RUN FITS is printed at the end.",
+            file=sys.stderr,
+        )
+        bands = lexical.BANDS
     for line in summarize(
-        rows, target=target, cases=bench_cases(W1_TIME_TEXT), synced=line_synced(W1_RUN_ALIGN)
+        rows,
+        target=target,
+        cases=bench_cases(W1_TIME_TEXT),
+        synced=line_synced(W1_RUN_ALIGN),
+        bands=bands,
     ):
         print(line)
     return 0

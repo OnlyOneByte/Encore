@@ -408,10 +408,11 @@ class AlignStepsImpl:
         sit where they are sung? Both are read off the stem's emission matrix (one model pass), which is
         also the matrix the global engine decodes.
 
-        THE WORDS: `lexical.lift`, refused below `lexical.BANDS.refuse_below` (review W1 r2) — the text's
+        THE WORDS: `lexical.lift`, refused below the matrix's own `refuse_below` (review W1 r2) — the text's
         forced path against the best of three shuffles of its own words, per letter. The rung reads the SAME
         band the global engine does (`lexical.band(..., on_stem=True)`, this rung's readings being always the
-        stem's), so the one recalibration a new model needs moves both gates; it used to hold its own copy of
+        stem's), off the SAME per-model row (`lexical.CALIBRATED`, keyed by the matrix's model — W4b), so the
+        one recalibration a new model needs moves both gates; it used to hold its own copy of
         the number, which W4's recipe would have left behind (W3 review r1). A caption track of THIS video
         fits the singing whatever its words: an uploader's English translation of a K-pop song, or YouTube's
         machine-translated `en` track (the one `--sub-langs en.*,en` fetches for a non-English upload).
@@ -437,9 +438,13 @@ class AlignStepsImpl:
         sheet that was already right.
 
         THE TIMINGS: the text is decoded BLIND on the same matrix (`generate`: the lift's own forced path,
-        kept as lines) and at least `_LINE_SYNC_MIN_AGREEMENT` of its lines must start within
+        kept as lines) and at least `lexical.line_sync_share` of its lines must start within
         `_LINE_SYNC_NEAR_SEC` of their MAPPED claims — nothing removed, because the claims are what publishes
-        (`reconcile.as_claimed`). This REPLACED the sheet-span envelope gate (`_sheet_passes`: the text's
+        (`reconcile.as_claimed`). That share is the MATRIX'S OWN MODEL's row, and
+        `lexical.LINE_SYNC_SHARE_UNCALIBRATED` where the model has none (W4b review r1): unlike the lift's
+        bands the share is a count of lines, not a log-probability, so a bundle nobody calibrated is still
+        gated on it rather than dropped onto the envelope gate this one replaced.
+        This REPLACED the sheet-span envelope gate (`_sheet_passes`: the text's
         claimed spans correlated against the stem's activity), which reads only the SHAPE of where a text
         claims singing, blind to the lines themselves. Measured rule by rule with the shipped functions over
         every timed bench case on the stems (`scripts/line_gate.py`, base model, 1056 cases, rows in
@@ -474,7 +479,7 @@ class AlignStepsImpl:
         decode strays into the gaps); and hello / tfr-chosen under the two tempo modes (0.24-0.40), the only
         two documents left that would be more than 20% gross. Loosening the share to 0.4 would publish 22 more
         right texts and 6 gross lines, and 10 of never-be-alone's 12 — 7 of them with 0 of 47 lines within
-        ±500 ms — so it is not taken (see `_LINE_SYNC_MIN_AGREEMENT`).
+        ±500 ms — so it is not taken (see `_LINE_SYNC_NEAR_SEC`'s block, which carries the share's sweep).
 
         THE WRONG-TEXT RESULT RESTS ON THE LIFT, NOT ON THE AGREEMENT, and the map is why that has to be said
         (W2): mapping a sheet onto our decode works for a WRONG sheet too, so the same-video population's
@@ -553,7 +558,10 @@ class AlignStepsImpl:
             return None
         fit = await asyncio.to_thread(partial(self._activity_fit, gate=True), req, claimed)
         evidence = await self._line_sync_evidence(req)
-        verdict = (
+        # THE BUNDLE FIRST, on every branch that reports one (W4b review r1, `_bundle_why`): this rung's two
+        # thresholds are read off the matrix's own calibration row, and no other clause names the model. Only
+        # where there IS a matrix — an aligner with none read nothing off a bundle.
+        verdict = ("" if evidence.emissions is None else f"{_bundle_why(evidence.emissions)}; ") + (
             f"sheet-span envelope r={fit.correlation:.2f} @ {fit.seconds:+.2f}s, {len(claimed)} lines"
             if fit is not None
             else f"sheet-span envelope unreadable, {len(claimed)} lines left where the text put them"
@@ -571,12 +579,20 @@ class AlignStepsImpl:
             )
 
         heard = evidence.lift
-        heard_band = lexical.band(heard.value, on_stem=True) if heard is not None else None
-        if heard is not None and heard_band is lexical.Band.REFUSE:
+        # THE LEXICAL FLOOR OFF THE MATRIX'S OWN ROW (W4b): `evidence.bands` is the calibration for the model
+        # that produced this matrix, and it is None exactly when that model has no row — in which case the
+        # lift is unreadable here (`_measured_lift`) and nothing in nats per letter may be read off it. The
+        # decode-agreement share below is the exception, and the only one (`lexical.line_sync_share`).
+        heard_band = (
+            lexical.band(heard.value, on_stem=True, bands=evidence.bands)
+            if heard is not None and evidence.bands is not None
+            else None
+        )
+        if heard is not None and evidence.bands is not None and heard_band is lexical.Band.REFUSE:
             return await refuse(
-                f"{verdict}; {heard.why()}, below the lexical gate ({lexical.BANDS.refuse_below}): these are "
-                "not the words the stem sings, whatever their timings (a translated or machine-translated "
-                "caption track of this very video reads exactly so)"
+                f"{verdict}; {heard.why()}, below the lexical gate ({evidence.bands.refuse_below}): these "
+                "are not the words the stem sings, whatever their timings (a translated or machine-"
+                "translated caption track of this very video reads exactly so)"
             )
         lexical_note = heard.why() if heard is not None else f"no lexical check: {evidence.unlifted}"
         if heard_band is lexical.Band.DOUBT:
@@ -613,11 +629,19 @@ class AlignStepsImpl:
             agreed, unchecked = None, undecoded
         else:
             agreed, unchecked = _agreement_of(decoded, placed)
+        # THE SHARE IS THIS MODEL'S, OR THE ONE EVERY CALIBRATED MODEL FITS (W4b, corrected in its review r1).
+        # It is read off the model's own decode spread, so a bundle with a row is gated at ITS
+        # `line_sync_min_agreement` — but unlike every other number in that row the share is a fraction of
+        # lines within a tolerance in SECONDS, not a log-probability, so a matrix with NO row is still gated,
+        # at `lexical.LINE_SYNC_SHARE_UNCALIBRATED` (the value all three rows fit independently). Standing it
+        # down instead left W7's per-language bundles on the sheet-span envelope ALONE — the gate this decode
+        # check was introduced to replace, because a same-video translation fits the singing at r ~ 1.
+        share = lexical.line_sync_share(evidence.bands)
         if agreed is not None:
-            if agreed.near < _LINE_SYNC_MIN_AGREEMENT:
+            if agreed.near < share:
                 return await refuse(
                     f"{verdict} (not gating: the decode is){clock_note}; {lexical_note}; {agreed.why()}, "
-                    f"below {_LINE_SYNC_MIN_AGREEMENT:.0%}: these line timings are not where the stem sings "
+                    f"below {share:.0%}: these line timings are not where the stem sings "
                     "the lines (another master's clock no map could reach, or a decode too scattered to map "
                     "onto)"
                 )
@@ -679,22 +703,22 @@ class AlignStepsImpl:
         """
         emitter = getattr(self._a.aligner, "emissions", None)
         if not callable(emitter):
-            return _LineEvidence(None, "this aligner produces no emission matrix", None)
+            return _LineEvidence(None, "this aligner produces no emission matrix", None, None)
         texts = [str(segment.get("text") or "") for segment in req.text.segments]
         try:
             emissions = await asyncio.to_thread(emitter, req.audio.align_target(on_mix=False), req.language)
         except InfraFault:
             raise  # the machinery, not this text: fails the job (review M7)
         except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
-            return _LineEvidence(None, f"it raised {type(exc).__name__}: {exc}", None)
-        lifted, unlifted = await _measured_lift(texts, emissions)
-        return _LineEvidence(lifted, unlifted, emissions)
+            return _LineEvidence(None, f"it raised {type(exc).__name__}: {exc}", None, None)
+        lifted, bands, unlifted = await _measured_lift(texts, emissions)
+        return _LineEvidence(lifted, unlifted, bands, emissions)
 
     async def _word_lift(
         self, req: TimeRequest, line_texts: Sequence[str], emissions: Any
-    ) -> tuple[lexical.Lift | None, str]:
-        """The global engine's lexical check: `line_texts`' lift on the matrix this attempt decoded, or None
-        and why it did not run.
+    ) -> tuple[lexical.Lift | None, lexical.Bands | None, str]:
+        """The global engine's lexical check: `line_texts`' lift on the matrix this attempt decoded, the
+        calibration row it is judged against, or None for both and why it did not run.
 
         EXEMPT: the ASR tier, whose words were heard on this very audio, so they can be misheard but not
         another song's (review §3.4); and a text under `lexical.MIN_LETTERS` alignable letters, or one no
@@ -706,7 +730,7 @@ class AlignStepsImpl:
         event loop like every decode: 0.1-0.3 s each on the bench's stems.
         """
         if req.text.tier is Tier.ASR:
-            return None, "a transcript of this recording (its words were heard on this audio)"
+            return None, None, "a transcript of this recording (its words were heard on this audio)"
         return await _measured_lift(line_texts, emissions)
 
     async def _time_text_global(self, req: TimeRequest) -> TimedDoc | Refused | None:
@@ -771,10 +795,17 @@ class AlignStepsImpl:
             alignable_chars,
             generate,
             regenerate,
+            separator_named,
+            separator_of,
         )
 
         aligner = self._a.aligner
         assert aligner is not None  # guarded by time_text; restated for the type checker
+        # 6c's LINE SEPARATOR, DEFAULT-OFF (review D1, the `linesep` arm; `Config.ALIGN_EXPERIMENTS` carries
+        # the split evidence). Read once here because it belongs to EVERY decode that produces this document —
+        # the blind one, the re-decode after the never-sung drop, and every repair window — and to none of the
+        # GATE decodes, whose thresholds are calibrated on separator-free targets (`lexical.CALIBRATED`).
+        separate_lines = "linesep" in self._cfg.align_experiments
 
         async def decline(why: str) -> None:
             # EVERY refusal is a trail note, because a silent one is indistinguishable from the step never
@@ -812,15 +843,23 @@ class AlignStepsImpl:
         # stem plus an envelope pass plus a decode it will never publish (W3 review r2). The bands, their
         # calibration and why the lift REPLACES the envelope gate on a stem are at `lexical.BANDS`;
         # `_word_lift` says what is exempt.
-        lifted, unmeasured = await self._word_lift(req, line_texts, emissions)
+        lifted, bands, unmeasured = await self._word_lift(req, line_texts, emissions)
         on_stem = target_name == "stem"
-        bands = lexical.BANDS
+        # THE ROW THE LIFT WAS READ AGAINST, not a second lookup of the table (W4b, `_measured_lift`): a
+        # matrix from a model with no calibration row comes back with neither, so a `lifted` that is not None
+        # always brings its row, and every threshold below is read off THAT row.
         floor, ok_from = (
-            (bands.refuse_below, bands.ok_from) if on_stem else (bands.mix_floor, bands.mix_ok_from)
+            ((bands.refuse_below, bands.ok_from) if on_stem else (bands.mix_floor, bands.mix_ok_from))
+            if bands is not None
+            else (None, None)
         )
-        lift_band = lexical.band(lifted.value, on_stem=on_stem, bands=bands) if lifted is not None else None
+        lift_band = (
+            lexical.band(lifted.value, on_stem=on_stem, bands=bands)
+            if lifted is not None and bands is not None
+            else None
+        )
         # A SUB-FLOOR LIFT IS A VERDICT ON EITHER TARGET (W4 review r1 flipped the mix; W3 shipped the
-        # envelope gate in this role). The mix floor's cost is why W3 hesitated — it refuses 48 of the
+        # envelope gate in this role). The mix floor's cost is why W3 hesitated — it refuses 54 of the
         # corpus's 192 right mix texts, 7 of 32 truth texts, and there is nothing after a refusal on a
         # stemless song (NextText, and the LINE_SYNC rung declines the mix), so those sheets fall to the
         # whisper transcript. W4's stemless bench mode (`e2e.py --no-stem`) then measured all three
@@ -907,7 +946,12 @@ class AlignStepsImpl:
 
         try:
             generated = await asyncio.to_thread(
-                generate, line_texts, emissions, decoder=forced_align_decoder, language=req.language
+                generate,
+                line_texts,
+                emissions,
+                decoder=forced_align_decoder,
+                language=req.language,
+                separate_lines=separate_lines,
             )
         except InfraFault:
             raise  # a model / kernel / device / audio fault fails the JOB, not this attempt (review M7)
@@ -1062,6 +1106,7 @@ class AlignStepsImpl:
                     emissions,
                     decoder=forced_align_decoder,
                     language=req.language,
+                    separate_lines=separate_lines,
                 )
             except InfraFault:
                 raise  # the machinery, not this text (review M7)
@@ -1426,6 +1471,10 @@ class AlignStepsImpl:
                 decoder=decoder,
                 language=req.language,
                 faults=faults,
+                # The arm belongs to every decode that produces a PUBLISHED timing, repairs included: a
+                # window re-decoded without the separator the global decode used would put a repaired line
+                # on a different token stream from the lines around it.
+                separate_lines=separate_lines,
             )
             if machinery:
                 raise machinery[0]
@@ -2078,6 +2127,10 @@ class AlignStepsImpl:
             # The BLIND verdict: the one grading read. The ladder's last re-reconcile follows it, labelled
             # as what it is, so a verdict the repairs moved (tfr-chosen: UNRELATED -> COARSE) stays legible.
             blind_verdict.verdict,
+            # FIRST, because every threshold in this note is read off THIS bundle's calibration row and a
+            # reader comparing two jobs needs to know they are the same bundle before comparing anything else
+            # (W4b review r1; `_bundle_why`).
+            f"{_bundle_why(emissions)}; "
             f"envelope r={blind_fit.correlation:.2f} (blind), r={fit.correlation:.2f} (repaired)"
             f"{'' if envelope_gates else ', not gating: the lift is'}; {lexical_note}; "
             f"{blind_verdict.why}; "
@@ -2095,6 +2148,13 @@ class AlignStepsImpl:
             )
             + (f"{'; '.join(repairs)}; " if repairs else "")
             + f"{_sources_why(provenance, [line.index for line in generated.lines])}; "
+            # ONLY UNDER THE ARM: the default's token stream is what every other clause already describes,
+            # and a clause on every note saying "no separator" would be noise on 100% of production runs.
+            + (
+                f"{_linesep_why(separator_of(emissions), named=separator_named(emissions))}; "
+                if separate_lines
+                else ""
+            )
             # LAST of the evidence clauses because it is the last thing that touched a timing, and it is
             # about ENDS where every clause before it is about a line's placement.
             + f"{ends_note}; "
@@ -2629,8 +2689,19 @@ def _timed_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
 
 #: The LINE_SYNC rung's timing gate (W3, RE-DERIVED ON MAPPED CLAIMS in W2): a text's line document publishes
 #: its own claimed starts — put on our clock once by `_line_sync_clock` — so at least
-#: `_LINE_SYNC_MIN_AGREEMENT` of the lines the text's blind decode places must start within
+#: `lexical.Bands.line_sync_min_agreement` of the lines the text's blind decode places must start within
 #: `_LINE_SYNC_NEAR_SEC` of their MAPPED claim (`reconcile.as_claimed`, nothing removed).
+#:
+#: THE SHARE MOVED INTO THE PER-MODEL TABLE IN W4b (`lexical.CALIBRATED`), and the value is unchanged: it is
+#: read off THIS MODEL's decode spread, which is the same reason the lift's bands are per model, so a wave
+#: that changes the emission model moves both in one row or neither. A MODEL WITH NO ROW IS STILL GATED on it
+#: (`lexical.LINE_SYNC_SHARE_UNCALIBRATED`, the value all three rows fit) — W4b review r1's correction, and
+#: the one asymmetry with the lift: dropping the share for an uncalibrated bundle left W7's per-language ones
+#: on the sheet-span envelope gate alone, which is the gate this one replaced. The band below stays here
+#: because it is a
+#: TOLERANCE IN SECONDS (`reconcile`'s COARSE) rather than an emission scale: no model makes 1.0 s mean
+#: something else. Everything this block measures is the share, and `line_gate.py --model <bundle>` re-derives
+#: it; the numbers stay here, where its readers are.
 #:
 #: BOTH VALUES SURVIVE THE RE-DERIVATION, and the share's reason gets stronger (`scripts/line_gate.py`, base
 #: model, 1056 cases, `results/w2-line-gate.json`; the tables are at `_time_line_sync`). The two populations,
@@ -2678,7 +2749,6 @@ def _timed_spans(segments: Sequence[Segment]) -> list[tuple[float, float]]:
 #: tightening WORSE, not better (the good population's p10 rose 0.538 -> 0.583). Model-specific in the same
 #: way as the lift: the decode's own spread is what the share reads, so recalibrate both with the model.
 _LINE_SYNC_NEAR_SEC = 1.0
-_LINE_SYNC_MIN_AGREEMENT = 0.5
 
 #: WHAT THIS GATE STILL CANNOT SEE, recorded where it is set (W3 review r2, re-measured in W2 with the claim
 #: clock in place), because it is measured and not fixed here:
@@ -2727,6 +2797,15 @@ class _LineEvidence:
     #: The text's lexical lift, or None — and why (`unlifted`).
     lift: lexical.Lift | None
     unlifted: str
+    #: The calibration row the matrix's model has, or None when it has none (W4b). The rung's two thresholds
+    #: come off it, and NONE MEANS DIFFERENT THINGS TO THE TWO (corrected in review r1, and this comment with
+    #: it in r2): nothing in nats per letter may be read off an unjudgeable matrix, so the lexical floor and
+    #: the doubt band stand down (`lexical.band` is not called at all) — while the decode-agreement share is a
+    #: fraction of lines within a tolerance in SECONDS, means the same sentence on any bundle, and is STILL
+    #: gated, at `lexical.LINE_SYNC_SHARE_UNCALIBRATED` (read through `lexical.line_sync_share`, as the block
+    #: at the `share =` line says). So an uncalibrated bundle is not "the sheet-span envelope decides": a
+    #: refusal reading "below 50%" is reachable with no row at all, which is the whole point of the constant.
+    bands: lexical.Bands | None
     #: The matrix the lift was read on, for the DECODE check the caller runs only once the lexical verdict
     #: passed (`_decoded_agreement`; W3 review r2: a text about to be refused must not pay for a decode).
     #: None when there was no matrix to read — then `unlifted` says why nothing decoded either.
@@ -3054,40 +3133,51 @@ def _in_claim_order(segments: Sequence[Segment]) -> tuple[tuple[Segment, ...], i
     return tuple(out), held, 0
 
 
-async def _measured_lift(texts: Sequence[str], emissions: Any) -> tuple[lexical.Lift | None, str]:
-    """`lexical.lift` of `texts` on `emissions` through the shipped decoder, off the event loop, or None and
-    why it could not be measured. Shared by both lexical gates (the LINE_SYNC rung's and the global
+async def _measured_lift(
+    texts: Sequence[str], emissions: Any
+) -> tuple[lexical.Lift | None, lexical.Bands | None, str]:
+    """`lexical.lift` of `texts` on `emissions` through the shipped decoder, off the event loop, THE ROW it
+    must be judged against, and why it could not be measured. Shared by both lexical gates (the rung's and
+    the global
     engine's), so they read the same number the same way. A machinery fault in the kernel raises
     (`InfraFault`, review M7); anything else the decode raises is an unanswered question, not a verdict on the
     text, and the caller's other gate decides — its reason starts `it raised`, which the bench scores as an
     ERROR row (`e2e.FAULT_LEXICAL`), never as a check that passed.
 
-    THE BANDS ARE ONE MODEL'S, so a matrix from another one is not measurable here (W3 review r2). The
+    THE THRESHOLDS ARE PER MODEL, so a matrix from a model with NO CALIBRATION ROW is not measurable here
+    (W3 review r2; a TABLE since W4b, `lexical.CALIBRATED`). The
     emission model is chosen per LANGUAGE (`ml.WhisperXAligner._aligner`; de/es/fr load wav2vec2-XLSR
     fine-tunes, another scale and vocabulary), and nothing in the lift reads the language, so without this
     the English bands would judge a German sheet on a German model's log-probabilities — a number
     `lift_gate.py` never measured, deciding a text terminally. Unmeasurable is the shape the wave already
     built for that: the envelope gate keeps the verdict, the lift stays a reading on the trail, and
-    `TimedDoc.vouched` is False. A matrix that NAMES NO MODEL is the bands' own by construction — a test's
+    `TimedDoc.vouched` is False.
+
+    THE ROW TRAVELS WITH THE LIFT rather than being looked up again by each caller (W4b): both gates read
+    several of its numbers — the floor, the doubt band, and at the rung the decode-agreement share — and a
+    second lookup could answer differently from the one that decided the lift was measurable at all.
+
+    A row and a lift are TWO questions, and only one of them is about the model. `bands is None` means this
+    MATRIX's model has no calibration, so nothing emission-scaled may be read off it — not the lift, and not
+    the rung's share. A `None` lift with a row present is about the TEXT (too few letters, no order to
+    contrast, a decode that refused it): the row still holds, so the rung's timing gate still applies, and
+    only the words go unjudged. A matrix that NAMES NO MODEL is the shipped row's by construction — a test's
     fake or a bench emission cache written before `Emissions.model` existed, never production.
     """
     from encore_worker.adapters.ml import forced_align_decoder  # noqa: PLC0415
 
-    named = str(getattr(emissions, "model", "") or "")
-    if named and named != lexical.BANDS.model:
-        return None, (
-            f"the lexical bands are {lexical.BANDS.model}'s and this matrix is {named}'s "
-            "(the alignment model is chosen per language): recalibrate before reading it as a verdict"
-        )
+    bands = lexical.calibration(emissions)
+    if bands is None:
+        return None, None, lexical.uncalibrated(str(getattr(emissions, "model", "") or ""))
     try:
         got = await asyncio.to_thread(partial(lexical.lift, decoder=forced_align_decoder), texts, emissions)
     except InfraFault:
         raise  # the machinery, not this text: fails the job (review M7)
     except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
-        return None, f"it raised {type(exc).__name__}: {exc}"
+        return None, bands, f"it raised {type(exc).__name__}: {exc}"
     if got is None:
-        return None, f"under {lexical.MIN_LETTERS} alignable letters, or no word order to contrast"
-    return got, ""
+        return None, bands, f"under {lexical.MIN_LETTERS} alignable letters, or no word order to contrast"
+    return got, bands, ""
 
 
 #: How long a sheet line may claim to be sung when its END is only the next line's START. An LRC carries
@@ -3138,6 +3228,60 @@ def _line_doc(segments: Sequence[Segment], language: str) -> dict[str, object]:
 #: The never-sung rule's three thresholds, ALL required (see the drop block in `_time_text_global`).
 #: Calibrated on tfr-chosen's credit caption (gap -4.2, env 0.04, 1.0 chars/s) against tfr-mayday's REAL
 #: quiet echo line (gap -2.5, env 0.06 — but sung at normal tempo, which is what the rate check protects).
+#:
+#: RE-MEASURED ON THE EXACT CLOCK AND THE FLOOR HELD — ON A STEM (W4b, `scripts/unsung_gate.py`, rows
+#: committed as `results/w4b-unsung-gate.json`; 32 songs x 6 text modes = 192 song-modes, blind, base model,
+#: `--target stem`). W4's grid
+#: moved every score, span and envelope read the two exhibits above were fitted on, and W4b's brief asked
+#: whether `_NEVER_SUNG_ENV` should become a PER-SONG RELATIVE floor — review L2's point being that 0.10 is an
+#: ABSOLUTE level on a P95-normalised envelope, which only means something on a clean stem. It should not, and
+#: the reason is the direction of the corpus's own numbers.
+#:
+#: WHAT THIS SWEEP DID NOT MEASURE, and it is the half of L2 that is still open (W4b review r1): every one of
+#: those 192 song-modes is a STEM target, and on the MIX the rule is not MIS-fitted but INERT. `_time_text_
+#: global` reads `env` off the ALIGN TARGET, which on a stemless song is the mix (W4 review r1 made the lift
+#: floor the mix's verdict and the mix its own target), and L2's own figures are that the level between lines
+#: averages 0.51 on a mix against 0.27-0.31 on a bleed stem — both far above 0.10, so no line's span reads
+#: below the floor and an unsung caption or credit line is timed and PUBLISHED there. That is a real published
+#: outcome on a song with no stem, not a calibration question: the floor below is not what would fix it (a
+#: level that separates lines on a mix is a different measurement, and the corpus's stemless bench mode is
+#: where it would be priced). `unsung_gate.py --target mix` runs the same sweep against `song.mix` for the
+#: wave that takes it; nothing in W4b ran it, so every number below is a stem number.
+#:
+#:   THE RULE PAYS FOR ITSELF. Against the same loop with the floor at 0 (the rule off): +8 line starts within
+#:   ±500 ms of truth (6576 of 9214 shown lines against 6568 of 9251) and -19 gross lines (1138 against 1157),
+#:   for 37 real and 21 injected lines not published. 20 of those 37 are CAPTION NON-LYRICS the truth file
+#:   carries because the truth IS a caption track — `(energetic rock music)`, `(somber music)`,
+#:   `[COSTUME RUSTLES]`, `(Adele inhaling)`, an uploader credit — which W5's text hygiene owns (M11/L4/L5).
+#:
+#:   A RELATIVE FLOOR IS STRICTER HERE, NOT KINDER. The level BETWEEN decoded lines on these stems is at or
+#:   above 0.10 on 29 of 32 songs (per-song medians 0.019-0.578, median of medians 0.248; the q25 is >= 0.10
+#:   on 17 of 32, the q10 on 5 of 32) — bleed, reverb tails and instrument leakage, exactly L2's 0.27-0.31
+#:   on a bleed stem. So a floor read at the song's own MEDIAN gap exceeds 0.10 nearly everywhere, and
+#:   capped at 0.10 it is a NO-OP: 0 of 192 song-modes move, every count identical. Read at the q25 it moves
+#:   11 and already costs -4 ±500 lines and +1 gross; at the q10 it moves 22, -9 ±500 and +17 gross, AND
+#:   spares 5 of the 21 injected lines — a rise in `unsung`, which `gates/w2.yaml`'s and `gates/w4.yaml`'s
+#:   `unsung-not-up-*` forbid. Uncapped at the median it drops 62 real lines instead of 37. No variant is
+#:   Pareto-better than the constant on any of the three readings.
+#:
+#:   THE TWO POPULATIONS OVERLAP, which is the general form of it: the 28 REAL candidate lines read
+#:   0.0014-0.0965 and the 19 INJECTED ones 0.0007-0.0758, so a threshold on the level cannot sort them at
+#:   all. `(energetic rock music)` — bohemian-rhapsody's caption cue, in the truth file and not sung — reads
+#:   0.0957, ABOVE the real sung line the wave wants to keep.
+#:
+#:   AND THE TWO LINES THE WAVE WANTED SEPARATED CANNOT BE, AT ANY FLOOR. `Pure_Mids_-_The_Leader` line [0]
+#:   ("now that i have found you i'm okay", a REAL sung line, the single systematic W4 regressor) reads env
+#:   0.0890, score gap -2.27, 0.92 chars/s. `tfr-chosen` line [34] (the spoken "TheFatRat is the chosen
+#:   one..." credit, a truth line whose DROP is worth +2 ±500 lines and -3 gross on its own song) reads
+#:   0.0892, -2.15, 1.22 — the same numbers to three decimals. Their songs' gap quantiles order the wrong way
+#:   for a relative floor to help (Pure_Mids q10 0.075, tfr-chosen 0.024), so every floor that spares the one
+#:   spares the other. WHAT THEY ACTUALLY SHARE is not silence but SMEAR: the decode spread them over 37 s and
+#:   47.6 s and placed them 32.5 s and 54.3 s from the truth, so all three signals are reading one fact — a
+#:   line the decode could not place — rather than three independent witnesses, and the envelope MEAN over a
+#:   span the decode chose says more about the decode than about the audio. That is the cause, and it is not a
+#:   threshold: the fix for a line like Pure_Mids' is to re-measure it where its CLAIM says rather than to bin
+#:   it (review M6's `m6-window-spare`, which recovers it at -0.048 s — see `gates/w4.yaml`), and that arm's
+#:   own default is a measured corpus decision, not this constant's.
 _NEVER_SUNG_SCORE_GAP = 2.0
 _NEVER_SUNG_ENV = 0.10
 _NEVER_SUNG_RATE = 2.0
@@ -3271,6 +3415,56 @@ def _ends_why(
         f"word ends: held {len(moved)} of {words} through the singing{arm}, median "
         f"+{moved[len(moved) // 2] * 1000:.0f} ms, worst +{moved[-1]:.2f}s"
     )
+
+
+def _bundle_why(emissions: object) -> str:
+    """The trail's clause naming the ALIGNMENT BUNDLE a document's word timings came off (W4b review r1).
+
+    NOTHING ELSE ON THE PRODUCTION RECORD NAMED IT. The bundle is an operator setting with three calibrated
+    rows since W4b 6b (`host.config.align_model`, `adapters.ml.ALIGN_MODELS_BY_DEVICE`,
+    `domain.lyrics.lexical.CALIBRATED`), and every emission-scale threshold that judged this text — the lift's
+    bands, the mix floor, the rung's agreement share — is read off the resolved one's row. Until this clause
+    the only reader of `Emissions.model` in `steps/` was `_measured_lift`'s calibration lookup, which prints
+    the name only when there is NO row, so two failures had no evidence: an operator flipping
+    `ENCORE_ALIGN_MODEL` between a job's attempts (or a retry landing on a differently configured worker),
+    which makes one document's timings two bundles' work with nothing on the trail to show it; and a
+    "the timings got worse" report on a box whose bundle nobody recorded. `__main__` prints the resolved
+    bundle once at startup for the same reason it prints which ffmpeg.
+
+    "unnamed" is not production: a matrix names no model only for an aligner older than the field or a test's
+    fake, which `lexical.calibration` treats as the shipped row for exactly that reason.
+    """
+    named = str(getattr(emissions, "model", "") or "")
+    return f"bundle {named or 'unnamed'}"
+
+
+def _linesep_why(separator: int | None, *, named: int | None) -> str:
+    """The trail's clause for 6c's line separator, printed only under the `linesep` arm (review D1).
+
+    IT SAYS WHETHER THE ARM ACTUALLY DID ANYTHING, which is the whole reason it is a sentence and not a
+    boolean: `generate.separator_of` returns None on a vocabulary that names no `|` or maps it to the blank
+    column, and the arm is then INERT — a run recorded under its name that silently measured the default path
+    is exactly what `Config.ALIGN_EXPERIMENTS` refuses unknown names to prevent, and an arm going quietly
+    inert is the same mistake arriving from the other side.
+
+    AND WHICH OF THE TWO INERT CASES IT WAS (W4b review r1; `host.config.ALIGN_EXPERIMENTS` states this as the
+    arm's contract). `named` is `generate.separator_named`, the unfiltered reading, so the blank collision —
+    the case the arm is inert FOR, rather than merely absent, and the one a reader would otherwise chase in a
+    vocabulary dump — names the column it collided with. The two lead to opposite next steps: "names none"
+    means this bundle cannot run the experiment at all, while "`|` IS the blank" means the kernel would have
+    refused every decode and the arm stood down to protect the document.
+    """
+    if separator is None and named is not None:
+        return (
+            "line separator: requested (linesep) but this vocabulary's `|` IS its blank column "
+            f"(id {named}), so the arm is inert and the targets are the default's"
+        )
+    if separator is None:
+        return (
+            "line separator: requested (linesep) but this vocabulary names none, so the targets are the "
+            "default's"
+        )
+    return f"line separator: `|` (id {separator}) between lines, its frames blank (linesep)"
 
 
 def _sources_why(provenance: Mapping[int, _Source], indexes: Sequence[int]) -> str:

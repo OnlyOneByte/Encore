@@ -1,0 +1,99 @@
+# W4b 6c / D1 — THE DECODE AXIS of the line separator's factorial: `|` emitted between lines (the `linesep`
+# arm) against the same code without it, on BOTH models, at `--level generate` (the raw global decode alone,
+# no ladder, no gate, no grading). This is the level review D1's own numbers were measured at, so it is the
+# one where a separator's effect is not confounded with the repair ladder's reaction to it.
+#
+# THE FACTORIAL, model × separator, four cells, ONE AT A TIME (parallel corpus runs thrash: ~75 s against
+# 3.4 s per song-mode). 20 Jamendo songs, blind, ~85 s of decode per cell with warm matrices:
+#
+#   # A — base model, no separator (the control both axes are read against)
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level generate --modes blind --songs jamendo --model WAV2VEC2_ASR_BASE_960H \
+#       --tag w4b-linesep-base-off > /tmp/linesep-base-off.log 2>&1 &
+#   # B — base model, separator at line boundaries
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=linesep nohup .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level generate --modes blind --songs jamendo --model WAV2VEC2_ASR_BASE_960H \
+#       --tag w4b-linesep-base-line --compare $ENCORE_BENCH_ROOT/_runs/w4b-linesep-base-off \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4b-linesep-generate.yaml \
+#       > /tmp/linesep-base-line.log 2>&1 &
+#   # C — the HuBERT-L candidate, no separator. NAME IT: an absent `--model` is this box's shipped bundle,
+#   #     which is the BASE model (`ml.DEFAULT_ALIGN_MODEL`, after `gates/w4b-hubert.yaml` rejected the flip),
+#   #     i.e. cell A again. The recorded rows name HUBERT_ASR_LARGE because the runs named it.
+#   #     e2e.py --level generate --modes blind --songs jamendo --model HUBERT_ASR_LARGE \
+#   #         --tag w4b-linesep-hubert-off
+#   # D — the same bundle WITH the separator, compared against C under these same gates
+#   #     ENCORE_ALIGN_EXPERIMENTS=linesep e2e.py … --model HUBERT_ASR_LARGE --tag w4b-linesep-hubert-line \
+#   #         --compare $ENCORE_BENCH_ROOT/_runs/w4b-linesep-hubert-off --gates <this file>
+#   (offline: e2e.py --summarize <run>/rows.jsonl --compare … --gates …)
+#
+# COST NOTE, and it is not the decode: `ENCORE_ALIGN_EXPERIMENTS` is part of the emission cache key
+# (`e2e.emitter_fingerprint` — an arm INSIDE `emissions()` would otherwise be served the other arm's
+# matrices), so each separator cell recomputes all 20 stem matrices: about 1.5 min on the base model and 2.5
+# on HuBERT-L. The arm does not touch the model pass, so those matrices are identical to the control's; the
+# key is deliberately conservative in the safe direction.
+#
+# WHY THE GATES ARE READ ON THE `linesep` SIDE. `--compare` names the control, so `base.` is the
+# no-separator cell of the SAME model. The model axis is `gates/w4b-hubert.yaml`'s and is not re-litigated
+# here: a gate that mixed the two axes could pass on a model gain while the separator lost.
+#
+# WHAT THE GATES ARE. Review §3 item 6c's reject-if list, quoted: "no Jamendo song more than 1 pt worse at
+# ±300; the Jamendo gross total does not rise; E2E gross under truth AND jittered claims is lower; TV
+# highlight accuracy does not fall". The truth/jit halves need claims and so belong to the E2E file
+# (`gates/w4b-linesep.yaml`); everything measurable on a blind decode is here, plus D1's own AGAINST column
+# turned into gates (`word_bias_ms`, the per-song spread), because "net-negative on 11 songs" and "bias moves
+# +21 ms" are the objections that have to be answered and not averaged away.
+#
+# THE ROWS THIS IS WRITTEN AGAINST (base model, blind, 20 Jamendo songs, this level):
+#   * the REVIEW's own baseline, old 30 s-chunk clock (`results/baseline-v2-generate.json`): gross 47, word
+#     ±300 91.29, ±100 78.73, bias +3.7 ms, highlight 67.3. D1's FOR column is 47 -> 23 and 91.3 -> 93.0
+#     against exactly this row, measured with a patched module copy in `_review-scratch`.
+#   * W4's EXACT clock, same level, same model (`_runs/w4-clock-generate`): gross 41, ±300 91.45, ±100 79.98,
+#     bias -3.1 ms, highlight 66.0. This is the shape the arm now has to improve on, and it is already 6 of
+#     D1's 24 gross lines closer — the head-room below 47 is smaller than the review's numbers suggest.
+#   * NEITHER IS THE CONTROL CELL. W4b edited `adapters/ml.py`, `domain/lyrics/generate.py` and
+#     `domain/lyrics/lexical.py`, so the emitter fingerprint and the harness both moved: cell A is re-run on
+#     this tree and the comparison is A vs B, never B vs a recorded row.
+#
+# ALL FOUR CELLS ARE RUN (W4b linesep, 2026-09-30; rows in `results/w4b-linesep-*-generate.json` +
+# `.cases.jsonl`, logs in `_runs/w4b-linesep-{base,hubert}-{off,line}`, ~85 s of decode and 1.5-2.5 min of
+# cold matrices per cell). Cell A reproduced `_runs/w4-clock-generate` exactly (gross 41, ±300 91.45, bias
+# -3.1 ms), so W4b's code moved no decode by itself. The grid:
+#
+#     model       sep    gross  line±500  word±100  ±300   bias     >2s  raw end±100  highlight
+#     base        off       41      87.6      80.0  91.45  -3.1 ms  129         68.7       66.0
+#     base        line      29      92.6      81.0  92.85  -1.9 ms  115         67.7       65.1
+#     HuBERT-L    off       28      90.8      82.8  94.31  -7.0 ms   76         64.5       64.7
+#     HuBERT-L    line      15      95.4      83.8  95.49  -6.4 ms   53         63.9       63.8
+#
+# VERDICT HERE: 7/10 on the base model and 8/10 on HuBERT-L, both REJECT, both on `highlight-not-down` and
+# `no-song-loses-lines`. The arm ships DEFAULT-OFF on that. Two things the README's section spells out and a
+# reader of this file needs: (1) `no-jamendo-song-worse-at-word-pm300` FAILS on the base model (HILA -2.48) and
+# PASSES on HuBERT-L (worst song -0.62), so the models disagree about the arm's cost and not only its gain;
+# (2) the highlight failure is THE LEVEL — this level scores the raw decode's ends, and the shipped word-end
+# post-pass re-fits them (it is what takes highlight 66.0 -> 77.5). A 4-song `--level time_text` probe
+# (`_runs/w4b-linesep-ends-{off,line}`) reads highlight -0.1 rather than -0.9 and phrase-final ends +6.6 rather
+# than -2.7, with the line gains intact. Which is why `gates/w4b-linesep.yaml` is the file that decides.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+
+# ── review 6c's four, as far as a blind decode can read them ─────────────────────────────────────────
+no-jamendo-song-worse-at-word-pm300: min_song_delta(blind.jamendo.word_pm300) >= -1.0
+jamendo-gross-not-up: blind.jamendo.gross <= base.blind.jamendo.gross
+highlight-not-down: blind.jamendo.highlight >= base.blind.jamendo.highlight
+
+# ── D1's AGAINST column, made checkable ──────────────────────────────────────────────────────────────
+# "net-negative on 11 songs": no song may lose a published line's placement outright.
+no-song-loses-lines: count(blind.jamendo.song.gross_up + blind.jamendo.song.missing_up) == 0
+# "bias moves +21 ms": the onset bias is what `ONSET_LEAD_SEC` exists to hold at zero, and a separator that
+# buys gross lines by shifting every onset has bought nothing (W4 re-fitted the lead on a zero crossing).
+onset-bias-not-worse: abs(blind.jamendo.word_bias_ms) <= abs(base.blind.jamendo.word_bias_ms) + 5.0
+word-pm100-not-down: blind.jamendo.word_pm100 >= base.blind.jamendo.word_pm100 - 0.5
+word-pm300-not-down: blind.jamendo.word_pm300 >= base.blind.jamendo.word_pm300
+
+# ── the gain it is FOR (SHOULD: an arm that changes nothing is not worth a default) ───────────────────
+# D1 measured -24 gross lines against the old clock's 47. Six of those are already the exact clock's, so the
+# SHOULD is written at a quarter of the review's claim: an arm that cannot find 6 of the remaining 41 is not
+# the arm the review argued about.
+blind-jamendo-gross-down: blind.jamendo.gross <= base.blind.jamendo.gross - 6
+songs-better-at-word-pm300: count(blind.jamendo.song.word_pm300_up) >= 10

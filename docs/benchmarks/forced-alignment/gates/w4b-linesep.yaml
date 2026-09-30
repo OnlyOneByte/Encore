@@ -1,0 +1,169 @@
+# W4b 6c / D1 — THE E2E AXIS of the line separator's factorial: `|` emitted between lines (the `linesep` arm)
+# against the same code without it, through the SHIPPED `time_text` — the ladder, the gates and the grading
+# included, which is where D1's "E2E with claims flat (25 -> 26)" objection lives. The decode axis is
+# `gates/w4b-linesep-generate.yaml` and is the cheap half; run it FIRST, because an arm that cannot move a
+# blind decode has nothing to prove here.
+#
+# THE FACTORIAL, model × separator, four cells, ONE AT A TIME. This is the expensive half — a full sweep is
+# 32 songs × 16 modes and the base model takes ~12 min of it, HuBERT-L about 2-3x that, so the four cells are
+# THE BENCH RUNNER'S and not a fix agent's:
+#
+#   # A — base model, no separator (the control this file's `base.` is)
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --model WAV2VEC2_ASR_BASE_960H \
+#       --tag w4b-linesep-base-time_text > /tmp/linesep-base-tt.log 2>&1 &
+#   # B — base model with the separator, judged against A
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=linesep nohup .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --model WAV2VEC2_ASR_BASE_960H \
+#       --tag w4b-linesep-base-line-time_text \
+#       --compare $ENCORE_BENCH_ROOT/_runs/w4b-linesep-base-time_text \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4b-linesep.yaml > /tmp/linesep-base-line-tt.log 2>&1 &
+#   # C — the HuBERT-L candidate (`--model HUBERT_ASR_LARGE`: an absent --model is the BASE bundle, which is
+#   #     what this box ships — `ml.DEFAULT_ALIGN_MODEL`, after `gates/w4b-hubert.yaml` rejected the flip),
+#   #     no separator
+#   # D — the same bundle WITH the separator, compared against C under these same gates
+#   (offline: e2e.py --summarize <run>/rows.jsonl --compare … --gates …)
+#
+# IF THE BUDGET ONLY BUYS ONE MODEL, it is the one production loads (cells A and B, the BASE bundle — the
+# model axis rejected the HuBERT flip, so that is `WAV2VEC2_ASR_BASE_960H`): the arm would ship, if it shipped,
+# on the bundle production loads, and the base-model pair is also what makes the result comparable with the
+# review's own numbers, which were all measured on it. Cells C and D read the candidate bundle instead.
+#
+# WHY A SEPARATE FILE FROM `w4b-hubert.yaml`: that one reads the MODEL axis (HuBERT-L against the base model,
+# no separator on either side). This one reads the SEPARATOR axis with the model held fixed. A single file
+# mixing them could pass on a model gain while the separator lost, which is exactly what "measure it
+# factorially" exists to prevent.
+#
+# THE ROWS IT IS WRITTEN AGAINST (base model, this level, W4's exact clock —
+# `results/w4-time_text.json`; NOT the control cell, because W4b moved `adapters/ml.py`,
+# `domain/lyrics/generate.py` and `domain/lyrics/lexical.py`, so cell A is re-run on this tree):
+#   truth   gross 3     jamendo ±500 96.42  word ±300 94.98  ±100 83.25  bias -1.3 ms  highlight 77.1
+#   jit     gross 37    jamendo gross 2     youtube gross 35
+#   blind   gross 106   jamendo gross 40    youtube gross 66  word ±300 91.58  highlight 77.51
+# D1's E2E objection ("with claims flat, 25 -> 26") was measured against the OLD clock's 25 truth-mode gross
+# lines; this tree's truth mode already reads 3, so `e2e-gross-down-truth` is a much tighter gate than it was
+# when the review wrote it — 3 is nearly the floor, and an arm that adds even one gross line there fails.
+#
+# WHAT THE DECODE AXIS ALREADY SAID (`gates/w4b-linesep-generate.yaml`, all four cells run 2026-09-30, rows in
+# `results/w4b-linesep-*-generate.json`), because it tells this file what to look at: blind Jamendo gross 41 ->
+# 29 on the base model and 28 -> 15 on HuBERT-L, line ±500 +5.1 / +4.6, word ±300 +1.4 / +1.2, bias moving
+# TOWARD zero on both (so D1's "+21 ms" was the old clock's). It REJECTED 7/10 and 8/10 on two gates: one song's
+# gross line rises (4 songs on the base model, 1 on HuBERT-L) and highlight falls 0.9 pt. THE SECOND IS THE
+# LEVEL, not the arm — `--level generate` scores the raw decode's ends and the shipped word-end post-pass
+# re-fits them — and a 4-song `--level time_text` probe (`_runs/w4b-linesep-ends-{off,line}`) reads highlight
+# -0.1 with phrase-final ends +6.6 and the line gains intact. So THIS file's `highlight-not-down-*` pair is the
+# one that matters, and `e2e-gross-down-truth` is the one nobody has read at all.
+#
+# ══ RUN. 14/22 — REJECT, AND THE E2E AXIS FOUND FAILURES THE DECODE AXIS COULD NOT (W4b bench, 2026-09-30;
+# ══ re-read 2026-09-30 by W4b review r1, which added the two AAE gates: 13/20 as the file read at the bench,
+# ══ and the arm loses one MORE gate on the same recorded rows) ═══════════════════════════════════════════
+# ONE CELL PAIR WAS RUN, AND IT IS THE ONE THIS FILE SAYS TO PREFER: cells A and B, the model production loads.
+# That is the BASE bundle and not HuBERT-Large, because the bench also read `gates/w4b.yaml` on the 6b flip and
+# REJECTED it as a default (19/30 at both levels) — so "the bundle production loads" is
+# `WAV2VEC2_ASR_BASE_960H`, cell A is `results/w4b-base-time_text.json` (already the control of the model axis,
+# so it cost nothing) and cell B is `results/w4b-linesep-base-line-time_text.json` (+ `.cases.jsonl`), 1088
+# cases, 1000 s including ~3 min of cold matrices for the arm's own fingerprint. CELLS C AND D (the same pair on
+# HuBERT-Large) ARE NOT RUN and are not owed by any decision: the arm ships default-off either way, and the
+# bundle it would ship under is the base one.
+#
+# THE TWO CELLS WERE MEASURED ON DIFFERENT WORKER TREES, AND THAT IS A SECOND VARIABLE IN THE PAIR (W4b review
+# r2, spec-10). Cell A's meta reads `code ad181ae2f556ee3d` (started 03:53:40, the model axis's control) and
+# cell B's `code 27801db4e42c38ed` (05:05:22) — `e2e_lib.tree_digest` hashes file CONTENT, so that is a real
+# change to `encore_worker/`, and `e2e_gates.COMPARED_META` deliberately excludes `code`, so `--compare` did not
+# even warn (it now prints a NOTE when the two sides differ in it). So every failure below is
+# CELL B AGAINST A CONTROL FROM AN EARLIER TREE, not "the separator alone", and the two counts most exposed to
+# it are the small ones: `unsung-not-up-headers` 226 vs 221 (a 5-line delta) and `truth-aae-not-up` 100.7 vs
+# 87.8. WHAT IS KNOWN ABOUT THE CROSSING: the arm ships DEFAULT-OFF, so the tree difference can only reach these
+# rows through the arm-off path, and a targeted 3-song probe (`_runs/w4bfix-probe`, review r2's tree, arm off,
+# `--modes truth --songs Pure_Mids,hello,Avercage`) reproduces cell A's rows for those songs
+# BYTE-IDENTICALLY — same `doc_sha256`, same gross, same ±500 — across every code change between the two trees
+# AND review r2's own. That is evidence, not proof: it is 3 of 32 songs in 1 of 16 modes.
+# WHAT WOULD SETTLE IT is one ~870 s sweep of cell A on cell B's tree, which nothing in this wave needs, because
+# the arm is REJECTED and the rejection does not turn on 5 lines: `e2e-gross-down-truth` (4 <= 3) and the two
+# per-song ±300 failures (-4.27, -2.79 against -1.0) are the verdict, and they are 3-4x their bounds.
+#
+# THE SEVEN FAILURES, and note that FOUR of them are gates the decode axis passed or could not read:
+#   FAIL no-jamendo-song-worse-at-word-pm300-truth   -4.27 >= -1.0   (worse than the decode axis's -2.48)
+#   FAIL no-jamendo-song-worse-at-word-pm300-blind   -2.79 >= -1.0
+#   FAIL e2e-gross-down-truth                         4 <= 3    ← THE REJECT-IF NOBODY HAD READ. It fails.
+#   FAIL youtube-blind-gross-not-up                  72 <= 66   ← D1's own counter-example population, worse
+#   FAIL no-youtube-song-loses-lines-blind            4 == 0
+#   FAIL unsung-not-up-headers                      226 <= 221
+#   FAIL blind-gross-down (SHOULD)                  102 <= 100
+#   FAIL truth-aae-not-up                           100.7 <= 87.8  ← W4b review r1's gate. The arm costs
+#        **+12.9 ms of absolute word error** under truth claims while its MEDIAN bias does not move (-1.3 ms
+#        either way), so the bias gate beside it reads clean: the cost is a TAIL of words pulled to a
+#        boundary, which is the shape a separator would fail in and the shape a median cannot see. The blind
+#        pool's AAE falls (297.9 -> 261.5), so this is the claims path, like the two per-song ±300 failures.
+#   (and `blind-aae-not-up` PASSES, 261.5 <= 297.9.)
+# `e2e-gross-down-jit` PASSES (31 <= 37), so of review 6c's "E2E gross under truth AND jittered claims is
+# lower" exactly half holds — and the half that fails is the one at the floor, as this file predicted.
+# THE EIGHTH FAILURE IS NOT A NEW MEASUREMENT: it is the same recorded rows re-read with a gate the file was
+# missing (offline, `e2e.py --summarize <run>/rows.jsonl --compare … --gates …`, no re-bench).
+#
+# THE HIGHLIGHT OBJECTION IS ANSWERED, AND IT WAS THE LEVEL: `highlight-not-down-truth` 78.63 >= 77.10 and
+# `highlight-not-down-blind` 78.35 >= 77.51 both PASS here, against the -0.9 the decode axis read. The 4-song
+# `time_text` probe was right; `--level generate` really was scoring the raw decode's ends. So the arm is NOT
+# rejected on highlight at the shipped level — it is rejected on gross lines and per-song displacement.
+#
+# WHAT IT WOULD HAVE BOUGHT, which is not nothing and is why the arm is kept rather than deleted:
+#   blind Jamendo line ±500 87.64 -> 91.80, word ±300 91.58 -> 92.75, ±100 80.11 -> 81.02, bias -3.1 -> -2.0
+#   truth Jamendo line ±500 96.42 -> 96.77, word ±300 94.98 -> 95.65, highlight 77.10 -> 78.63
+#   pooled gross: jit 37 -> 31, drop20 42 -> 38, drop50 305 -> 236, credit 28 -> 5, blind 106 -> 102
+# AND WHAT IT COSTS, per mode and per song, which no pooled number shows:
+#   `headers` pooled gross 3 -> 12 (FOUR TIMES), with `unsung` 221 -> 226 — an injected section header is a
+#     whole line, so the arm gives it its own boundary, and that is where the separator hurts most. This mode
+#     is the one a reader of `results/w4b-linesep-base-line-time_text.cases.jsonl` should open first.
+#   truth mode, songs that move by >= 3 pt at ±500: Kinematic_-_Peyote **-21.43**, numb **-22.86**,
+#     tfr-chosen -5.88 (+1 gross) against Avercage +9.53, The.madpix.project +6.67, shape-of-you +5.68,
+#     Pure_Mids +5.26, bohemian-rhapsody +4.11, Lower_Loveday +3.85. The arm TRADES SONGS, exactly as D1 said
+#     it did, and the two worst losses are bigger than any of the gains.
+# VERDICT: `ENCORE_ALIGN_EXPERIMENTS=linesep`, DEFAULT-OFF, confirmed at the level that ships — and the AAE
+# gate strengthens it rather than changing it. 6c is CLOSED
+# against the review's own reject-if list, on both axes, on both models at `--level generate` and on the
+# shipped bundle at `--level time_text`.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+
+# ── review 6c's four ────────────────────────────────────────────────────────────────────────────────
+no-jamendo-song-worse-at-word-pm300-truth: min_song_delta(truth.jamendo.word_pm300) >= -1.0
+no-jamendo-song-worse-at-word-pm300-blind: min_song_delta(blind.jamendo.word_pm300) >= -1.0
+jamendo-gross-not-up-truth: truth.jamendo.gross <= base.truth.jamendo.gross
+jamendo-gross-not-up-blind: blind.jamendo.gross <= base.blind.jamendo.gross
+e2e-gross-down-truth: truth.gross <= base.truth.gross
+e2e-gross-down-jit: mode("jit").gross <= base.mode("jit").gross
+highlight-not-down-truth: truth.jamendo.highlight >= base.truth.jamendo.highlight
+highlight-not-down-blind: blind.jamendo.highlight >= base.blind.jamendo.highlight
+
+# ── D1's named counter-example, and its shape ────────────────────────────────────────────────────────
+# "songs trade places on YouTube blind (never-be-alone gets worse: 23 -> 28)". The DSL has no per-song name,
+# so the gate is the population that song belongs to, read two ways: the pooled count and per song.
+youtube-blind-gross-not-up: blind.youtube.gross <= base.blind.youtube.gross
+no-youtube-song-loses-lines-blind: count(blind.youtube.song.gross_up + blind.youtube.song.missing_up) == 0
+
+# ── the decode bounds every wave that moves the decode carries (§3.2) ────────────────────────────────
+truth-pm500-not-down-1pt: truth.pm500 >= base.truth.pm500 - 1.0
+truth-word-pm300-not-down: truth.jamendo.word_pm300 >= base.truth.jamendo.word_pm300
+onset-bias-not-worse-blind: abs(blind.jamendo.word_bias_ms) <= abs(base.blind.jamendo.word_bias_ms) + 5.0
+# THE ABSOLUTE ERROR, on both pools (W4b review r1). The bias above is a MEDIAN of signed errors, so it is
+# blind to a tail: this arm holds truth bias at -1.3 ms while its truth AAE rises 87.8 -> 100.7 ms, and
+# `gates/w4b.yaml`'s absolute `w4-jamendo-aae` was the only gate in the wave that saw it. A separator that
+# pins line boundaries is exactly the change whose cost would land in a tail of words it pulled to a boundary.
+truth-aae-not-up: truth.jamendo.word_aae_ms <= base.truth.jamendo.word_aae_ms
+blind-aae-not-up: blind.jamendo.word_aae_ms <= base.blind.jamendo.word_aae_ms
+
+# ── the gates it must not buy its gain from ──────────────────────────────────────────────────────────
+# The separator is NOT in the lift's targets or the rung's decode (their thresholds are calibrated on
+# separator-free sequences: `lexical.CALIBRATED`, `generate.generate`'s docstring), so both of these should be
+# inert. They are here because "should be inert" is a claim, and the never-sung rule and the envelope fit DO
+# read the decoded line spans this arm moves.
+wrongtext-pass-at-most-1pc: mode("wrongtext").wrongtext_pass <= 1.0
+ownclock-pass-at-most-1pc: mode("wrongtext+ownclock").wrongtext_pass <= 1.0
+refusals-not-up-truth: truth.refused <= base.truth.refused
+unsung-not-up-truth: truth.unsung <= base.truth.unsung
+unsung-not-up-headers: mode("headers").unsung <= base.mode("headers").unsung
+
+# ── the gain it is FOR (SHOULD) ──────────────────────────────────────────────────────────────────────
+# The blind pool is where D1's line-level claim lives; `truth` is already at 3 gross and cannot fall by 6.
+blind-gross-down: blind.gross <= base.blind.gross - 6

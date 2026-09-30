@@ -243,3 +243,129 @@ def test_the_mix_witness_reads_the_blank_column_it_is_told_about(
     assert _speech_mass(aware, 0.4, 2.2) == sung and _speech_mass(aware, 6.9, 7.4) == quiet
     assert _speech_mass(unaware, 6.9, 7.4) != quiet, "the unaware reader reads the wrong column"
     assert _speech_mass(Emitted([[0.0]], 0.02, {}, blank_id=7), 0.0, 1.0) is None, "a column it lacks"
+
+
+# ── the OTHER non-character columns: `Emissions.specials` (W4b, review M9's second half) ─────────────────
+
+
+@dataclass(frozen=True)
+class Specialled:
+    """A matrix that names its non-character columns, as `ml.Emissions` does since W4 (`specials_of`)."""
+
+    log_probs: Any
+    frame_sec: float
+    dictionary: dict[str, int]
+    blank_id: int
+    specials: dict[str, int]
+
+    @property
+    def frames(self) -> int:
+        return int(np.asarray(self.log_probs).shape[0])
+
+
+#: The shipped `en` vocabulary's shape: `{'-': 0, '|': 1, 'e': 2, ...}`, i.e. the WORD SEPARATOR is a
+#: single-character entry a lyric can reach. Here it is appended rather than inserted, so the sung chars keep
+#: the ids the other fixtures use and only the pipe is new.
+PIPE = "|"
+
+
+@pytest.fixture()
+def pipes() -> tuple[Specialled, Emitted]:
+    """The same matrix, once NAMING `|` as a special and once not — nothing else differs."""
+    vocab = {**DIC, PIPE: max(DIC.values()) + 1}
+    matrix = sung_matrix(SUNG, vocab, DURATION)
+    return (
+        Specialled(
+            log_probs=matrix,
+            frame_sec=FRAME_SEC,
+            dictionary=vocab,
+            blank_id=0,
+            specials={"<pad>": 0, PIPE: vocab[PIPE]},
+        ),
+        Emitted(log_probs=matrix, frame_sec=FRAME_SEC, dictionary=vocab, blank_id=0),
+    )
+
+
+def test_the_excluded_set_is_the_blank_plus_whatever_the_matrix_names() -> None:
+    """`generate.excluded_of` is THE target filter, and it defaults to exactly the blank — so every fake in
+    this suite and every bench cache entry written before the field filters what it always did."""
+    from encore_worker.domain.lyrics.generate import excluded_of
+
+    assert excluded_of(Unaware(log_probs=[], frame_sec=0.02, dictionary={})) == frozenset({0})
+    assert excluded_of(Emitted(log_probs=[], frame_sec=0.02, dictionary={}, blank_id=31)) == frozenset({31})
+    named = Specialled([], 0.02, {}, blank_id=31, specials={"<pad>": 31, "|": 4, "<unk>": 9})
+    assert excluded_of(named) == frozenset({31, 4, 9}), "the blank and every other special"
+
+
+def test_a_pipe_in_a_lyric_is_not_a_target_when_the_matrix_names_it(
+    pipes: tuple[Specialled, Emitted],
+) -> None:
+    """THE DEFECT `Emissions.specials` EXISTED UNREAD FOR (W4b). Every HF align vocabulary maps `|` to the
+    word separator, so a sheet that writes `oh | oh` — a caption track using it as a delimiter, an operator
+    paste out of a table — fed id 1 in as a CHARACTER target: the decode forced a separator into the middle of
+    a line and `_char_spans` gave it frames of its own, pushing every following letter later.
+
+    A matrix that NAMES its specials drops it from the targets, so every SUNG word of the line keeps the
+    timing it has without the pipe and the pipe itself comes out as a zero-width placeholder — the same
+    treatment `generate` gives any word with no alignable character (W5's text hygiene owns removing it from
+    the text). One that names none still emits it as a target, which is the old behaviour and is what makes
+    this test about the reader rather than about the fixture."""
+    from encore_worker.domain.lyrics.generate import alignable_chars
+
+    named, unnamed = pipes
+    piped = [f"{TEXTS[0]} {PIPE}", *TEXTS[1:]]
+    kwargs: dict[str, Any] = {"decoder": ctc_viterbi, "syllabifier": lambda w, _l: [w]}
+
+    def sung(got: Any) -> list[tuple[str, float, float]]:
+        """Every word the decode actually placed: a placeholder has a zero-width span."""
+        return [(w.word, w.start, w.end) for line in got.lines for w in line.words if w.end > w.start]
+
+    want = generate(TEXTS, named, **kwargs)
+    got = generate(piped, named, **kwargs)
+    assert sung(got) == sung(want), "the pipe changed no timing: it is not a letter of the language"
+    assert [w.word for w in got.lines[0].words][-1] == PIPE, "it is still shown, as a placeholder"
+    assert got.lines[0].words[-1].end == got.lines[0].words[-1].start
+    assert alignable_chars(f"{TEXTS[0]} {PIPE}", named) == alignable_chars(TEXTS[0], named)
+
+    blind = generate(piped, unnamed, **kwargs)
+    assert sung(blind) != sung(want), (
+        "a reader that names no specials still forces the separator through, as every pre-W4b one did"
+    )
+    assert alignable_chars(f"{TEXTS[0]} {PIPE}", unnamed) == alignable_chars(TEXTS[0], unnamed) + 1
+
+
+def test_the_lift_and_a_repair_read_the_same_excluded_set_as_the_decode(
+    pipes: tuple[Specialled, Emitted],
+) -> None:
+    """One filter, three readers (W4b): `lexical.letters_of` must count the pipe out or the lift would be a
+    different text's score per letter, and `regenerate`'s slice must CARRY the specials or a repaired line
+    would be forced through a longer target sequence than the line it is repairing."""
+    from encore_worker.domain.lyrics.generate import excluded_of
+
+    named, unnamed = pipes
+    piped = [f"{TEXTS[0]} {PIPE}", *TEXTS[1:]]
+    assert lexical.letters_of(piped, named.dictionary, excluded_of(named)) == lexical.letters_of(
+        TEXTS, named.dictionary, excluded_of(named)
+    ), "the same targets the decode builds, pipe and no pipe"
+    assert (
+        len(lexical.letters_of(piped, unnamed.dictionary, excluded_of(unnamed)))
+        == len(lexical.letters_of(TEXTS, named.dictionary, excluded_of(named))) + 1
+    ), "and a reader with no specials measures one target more than the decode publishes"
+    want = lexical.lift(TEXTS, named, decoder=ctc_viterbi)
+    got = lexical.lift(piped, named, decoder=ctc_viterbi)
+    assert want is not None and got is not None
+    # The VALUE moves, and only because `shuffles_of` is seeded by the text string: the piped text is a
+    # different string, so it draws different shuffles. What the filter promises is the DENOMINATOR and the
+    # targets, asserted above.
+    assert got.letters == want.letters
+
+    line = Line(text=f"{TEXTS[1]} {PIPE}", start=2.6, end=4.6, words=(), score=0.0, index=1)
+    plain = Line(text=TEXTS[1], start=2.6, end=4.6, words=(), score=0.0, index=1)
+    window = (2.4, 4.8)
+    kwargs: dict[str, Any] = {"decoder": ctc_viterbi, "syllabifier": lambda w, _l: [w]}
+    repaired = regenerate([((line,), window)], named, **kwargs)
+    reference = regenerate([((plain,), window)], named, **kwargs)
+    assert set(repaired) == set(reference) == {1}, "the fixture's window must really repair"
+    assert [(w.word, w.start, w.end) for w in repaired[1].words if w.end > w.start] == [
+        (w.word, w.start, w.end) for w in reference[1].words if w.end > w.start
+    ], "the repaired line's sung words are the same: the slice carried the specials"
