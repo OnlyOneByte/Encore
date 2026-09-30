@@ -353,18 +353,18 @@ def uncalibrated_banner(model: str) -> str | None:
     is measure-then-paste-the-row (`lexical`'s module docstring), so the first corpus run of a new bundle is
     uncalibrated by construction. What must not happen is that its numbers read like a calibrated bundle's:
     with no row `align_steps._word_lift` returns no lift, the wrong-text verdict falls back to the sheet-span
-    envelope gate — 125/320 wrongtext passes on this corpus — and a `wrongtext_pass` of 0.00 would be recorded
-    under the new bundle's name as if its floor had held. So the banner names the bundle, says what stood down
-    and names the fix, `run.json` and the summary's meta carry `uncalibrated: true`, and `e2e_gates` ERRORs any
-    gate that reads a metric the stand-down moved (`e2e_gates.UNCALIBRATED_METRICS`).
+    envelope gate — 125/320 wrongtext passes on this corpus — and a `wrongtext_pass` of 0.00 would be
+    recorded under the new bundle's name as if its floor had held. So the banner names the bundle, says what
+    stood down and names the fix, `run.json` and the summary's meta carry `uncalibrated: true`, and
+    `e2e_gates` ERRORs any gate that reads a metric the stand-down moved (`UNCALIBRATED_METRICS`).
     """
     if lexical.is_calibrated(model):
         return None
     return (
         f"!! {model} HAS NO LEXICAL CALIBRATION ROW — every emission-scale gate stands down on this run.\n"
         f"!! {lexical.uncalibrated(model)}\n"
-        "!! So this run's wrongtext_pass / lift columns are the sheet-span envelope gate's readings, NOT this "
-        "bundle's (the envelope gate passes 125/320 wrong texts on this corpus). The rows are marked "
+        "!! So this run's wrongtext_pass / lift columns are the sheet-span envelope gate's readings, NOT "
+        "this bundle's (the envelope gate passes 125/320 wrong texts on this corpus). The rows are marked "
         "`uncalibrated` and any gate reading them is an ERROR.\n"
         "!! Production would REFUSE to start on it (encore_worker.__main__.align_model_for); measure first "
         "(scripts/lift_gate.py --model, scripts/line_gate.py --model), paste the row, then sweep."

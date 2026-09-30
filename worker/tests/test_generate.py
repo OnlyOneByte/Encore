@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from encore_worker.domain.lyrics.generate import Decoder, Generated, generate
+from encore_worker.domain.lyrics.generate import Decoder, Generated, Line, generate
 
 #: A toy dictionary: a=1 b=2 ... (0 is CTC blank, deliberately unassigned).
 DIC = {ch: i + 1 for i, ch in enumerate("abcdefghijklmnopqrstuvwxyz'")}
@@ -311,3 +311,97 @@ def test_lead_never_produces_a_negative_or_inverted_span() -> None:
     assert led[0][0] == 0.0
     led2 = _lead_starts([(1.0, 1.01, -0.5), (1.01, 1.02, -0.5)], 0.04)
     assert all(s <= e for s, e, _sc in led2)
+
+
+# ── `trimmed`: the one geometric operation W6's bounded clamp needs (`align_steps._pulled_end`) ──
+
+
+def a_line(*words: tuple[str, float, float], start: float, end: float) -> Line:
+    from encore_worker.domain.lyrics.generate import Word
+
+    return Line(
+        text=" ".join(w for w, _s, _e in words),
+        start=start,
+        end=end,
+        words=tuple(Word(word=w, start=s, end=e, score=-0.5) for w, s, e in words),
+        score=-0.5,
+        index=3,
+    )
+
+
+def test_trimmed_keeps_every_onset_before_the_boundary_and_re_fits_only_the_tail() -> None:
+    """The property `remapped` does not have, and the reason `trimmed` exists beside it: the onsets the
+    decode measured before the new end were measurements and survive, so a trimmed neighbour costs the word
+    metrics nothing where it was right (20 Jamendo songs at truth: word ±100 83.52 against an affine
+    re-fit's 83.12 and the W4 row's 83.25; see the docstring for the rest)."""
+    from encore_worker.domain.lyrics.generate import remapped, trimmed
+
+    line = a_line(("a", 1.0, 2.0), ("b", 2.0, 3.0), ("c", 3.0, 5.0), start=1.0, end=5.0)
+    got = trimmed(line, 2.5)
+    assert got is not None
+    assert (got.start, got.end) == (1.0, 2.5)
+    assert (got.text, got.index, got.score) == (line.text, line.index, line.score)
+    # The ANCHOR is 'b', the last word starting before 2.5. 'a' and 'b' keep their onsets; the sub-series
+    # after the anchor — 'b's end and 'c' — is re-fitted into [2.0, 2.5].
+    assert [w.start for w in got.words] == pytest.approx([1.0, 2.0, 2.1666667]), "'a' and 'b' do not move"
+    assert got.words[-1].end == pytest.approx(2.5), "the tail ends where the line now does"
+    affine = remapped(line, line.start, 2.5)
+    assert [w.start for w in affine.words] == pytest.approx([1.0, 1.375, 1.75]), "what this replaces"
+
+
+def test_trimmed_never_moves_the_first_onset_so_it_cannot_invert_against_its_predecessor() -> None:
+    """`align_steps._pulled_end` carried an order guard against exactly this while it used `remapped`
+    (measured at 0 firings on the corpus); `trimmed` makes it unreachable. Leading silence is the shape:
+    affine pulls the first word back toward the line's start, this does not move it at all."""
+    from encore_worker.domain.lyrics.generate import remapped, trimmed
+
+    line = a_line(("a", 4.0, 6.0), ("b", 6.0, 9.0), start=3.0, end=9.0)
+    got = trimmed(line, 4.5)
+    assert got is not None and got.words[0].start == 4.0
+    assert min(w.start for w in got.words) == 4.0
+    assert got.words[1].start == pytest.approx(4.2), "the tail moves, as trimming must"
+    assert remapped(line, line.start, 4.5).words[0].start == pytest.approx(3.25), "affine moves it earlier"
+    assert all(b.start >= a.start for a, b in zip(got.words, got.words[1:], strict=False)), (
+        "and the map is monotone, so internal order survives"
+    )
+
+
+def test_trimmed_refuses_a_line_no_word_of_which_starts_before_the_boundary() -> None:
+    """None, not a degenerate line: a line whose every word starts after the new end was not sung before
+    it, so there is nothing to keep. The caller falls back to its own rule."""
+    from encore_worker.domain.lyrics.generate import trimmed
+
+    line = a_line(("a", 5.0, 7.0), ("b", 7.0, 9.0), start=1.0, end=9.0)
+    assert trimmed(line, 4.0) is None
+    assert trimmed(line, 5.0) is None, "a word starting exactly AT the boundary is not before it"
+    assert trimmed(line, 5.5) is not None
+    assert trimmed(a_line(start=1.0, end=9.0), 4.0) is None, "and a wordless line has nothing to keep"
+
+
+def test_trimmed_carries_syllables_with_their_words() -> None:
+    from encore_worker.domain.lyrics.generate import Line, Syllable, Word, trimmed
+
+    line = Line(
+        text="hello there",
+        start=1.0,
+        end=5.0,
+        words=(
+            Word(
+                word="hello",
+                start=1.0,
+                end=2.0,
+                score=-0.5,
+                syllables=(Syllable(text="hel", start=1.0, end=1.5), Syllable(text="lo", start=1.5, end=2.0)),
+            ),
+            Word(word="there", start=3.0, end=5.0, score=-0.5),
+        ),
+        score=-0.5,
+        index=0,
+    )
+    got = trimmed(line, 2.5)
+    assert got is not None
+    # 'hello' IS the anchor here (the only word starting before 2.5), so its own onset is pinned and
+    # everything after it — its syllable boundaries included — is re-fitted by the same map as the tail.
+    assert [(x.text, x.start) for x in got.words[0].syllables] == [("hel", 1.0), ("lo", 1.1875)]
+    assert got.words[1].start == pytest.approx(1.0 + (3.0 - 1.0) * ((2.5 - 1.0) / (5.0 - 1.0)))
+    assert [x.text for w in got.words for x in w.syllables] == ["hel", "lo"], "text is never touched"

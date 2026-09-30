@@ -1,0 +1,130 @@
+# W6 — the repair clamp's BOUNDED LEFT FLOOR, and W4b's HuBERT-Large flip re-tried on top of it.
+# Written 2026-09-30 by the wave's bound-and-flip owner; the corpus sweep is the bench runner's.
+#
+# WHAT CHANGED (one site, `align_steps._clamped_v2` + the new `generate.trimmed`; README "The clamp's left
+# floor was the bug, not the ladder" carries the whole account). The clamp's left floor used to be
+# `low = max(line.start, previous_published_end)` — which is the BLIND DECODE's own boundary, i.e. the reading
+# the repair existed to correct — so on the lines the ladder repaired because the decode ran the previous line
+# over them, the floor reinstated the error. It now pulls the preceding line's END back onto the repair
+# instead, keeping every onset that neighbour measured before the new end. No new constant: the one refusal is
+# `_fitted_run`'s frame-per-letter rule.
+#
+# HOW TO RUN IT. The control for section 1 is a RECORDED row, which is legitimate here and is not elsewhere:
+# `align_steps.py` is NOT in the emission cache's code fingerprint (`e2e_lib.module_closure` hashes
+# `adapters/ml.py`'s import closure) and W6's confidence item changes GRADES only, so `results/w4b-*.json` were
+# produced by the same emissions and the same onsets this tree would have produced with the old floor — which
+# is checked, not assumed: the old floor reproduces W4b's per-song `truth` ±500 digits exactly
+# (`_review-scratch/w6-ladder/clampfit.py`, 128/128 cases).
+#
+#   # section 1 — the fix on the SHIPPED DEFAULT
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --tag w6-ladder-base \
+#       --compare ../docs/benchmarks/forced-alignment/results/w4b-base-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w6-ladder.yaml > /tmp/w6-base-tt.log 2>&1 &
+#   # …and the same at --level run_align against results/w4b-base-run_align.json (NOTHING at that level has
+#   #   been read on this tree at all, which is where the ladder can retry).
+#
+#   # section 2 — the flip re-tried. The control is the run ABOVE, not a recorded row.
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE --tag w6-ladder-hubert \
+#       --compare $ENCORE_BENCH_ROOT/_runs/w6-ladder-base \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4b.yaml > /tmp/w6-hubert-tt.log 2>&1 &
+#   # `gates/w4b.yaml` IS the flip's acceptance test and is deliberately not duplicated here; section 2 below
+#   # holds only the two of its MUSTs this fix was aimed at, plus what the fix must not have broken.
+#
+# WHAT IS ALREADY MEASURED, so a reader knows which of these are predictions and which are records:
+#   * 20 Jamendo songs x truth, base, `time_text` (`_runs/w6-final-jamendo`): every literal in section 1's
+#     "the Jamendo row" block is READ, not projected.
+#   * 15 songs x 13 timed claim modes, base, `time_text` (`_runs/w6-wspare-default` against
+#     `results/w4b-base-time_text.cases.jsonl`, 8803 scored lines): gross 275 -> 234, ±500 band 7849 -> 8035,
+#     `high_gross` 0 -> 0, `high_bad` 15 -> 15, 0 outcome or verdict changes, no song-mode gaining a gross line.
+#   * 32 songs x {truth, off15} x both bundles, line starts only, re-scored offline from the clamp's own
+#     word-level inputs: gross 7 -> 0 (HuBERT-L) and 3 -> 1 (base), ±500 +12..+20, out-of-order 1 -> 0.
+#   * NOTHING at `run_align`, nothing on HuBERT-L end to end, and no mode but truth/off15 on 17 of the songs.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+# `base.` is the `--compare` cell named in the command above.
+
+# ── 1. THE FIX ON THE SHIPPED DEFAULT: it may not cost a gross line anywhere ──────────────────────────────
+# ONE GATE PER MODE, for the reason `gates/w4b.yaml` learned the hard way (its review r2, spec-9): a sum does
+# not rise whenever one of its terms does. The fix removes gross lines in 5 songs and adds none in the 195
+# cases measured; these 16 are the claim that that holds on all 32 x 16.
+clamp-pooled-gross-not-up-truth: truth.gross <= base.truth.gross
+clamp-pooled-gross-not-up-jit: mode("jit").gross <= base.mode("jit").gross
+clamp-pooled-gross-not-up-off05: off05.gross <= base.off05.gross
+clamp-pooled-gross-not-up-off15: off15.gross <= base.off15.gross
+clamp-pooled-gross-not-up-off3: off3.gross <= base.off3.gross
+clamp-pooled-gross-not-up-offm1: offm1.gross <= base.offm1.gross
+clamp-pooled-gross-not-up-tempo098: tempo098.gross <= base.tempo098.gross
+clamp-pooled-gross-not-up-tempo102: tempo102.gross <= base.tempo102.gross
+clamp-pooled-gross-not-up-drop20: drop20.gross <= base.drop20.gross
+clamp-pooled-gross-not-up-drop50: drop50.gross <= base.drop50.gross
+clamp-pooled-gross-not-up-extraverse: extraverse.gross <= base.extraverse.gross
+clamp-pooled-gross-not-up-headers: headers.gross <= base.headers.gross
+clamp-pooled-gross-not-up-credit: credit.gross <= base.credit.gross
+clamp-pooled-gross-not-up-blind: blind.gross <= base.blind.gross
+# `high_gross` — a line the TV WIPES that is more than 2 s off — is the one W6 must never trade for accuracy,
+# and it is 0 on every claim mode in every row this wave measured. Non-negatives summing to zero means each is.
+clamp-high-gross-zero-claim-modes: truth.high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross + mode("jit").high_gross == 0
+
+# ── 1b. BLIND MUST BE BYTE-IDENTICAL, which is what makes this a CLAMP change and not a decode change ─────
+# With no claims there is nothing to repair, so `repaired_all` is empty and the clamp is a no-op. Any blind
+# document that moves means the fix reached a decision it has no business in.
+clamp-blind-documents-unchanged: count(blind.song.doc_changed) == 0
+clamp-blind-gross-unchanged: blind.gross == base.blind.gross
+
+# ── 1c. THE JAMENDO ROW: every literal here is READ off `_runs/w6-final-jamendo`, not projected ───────────
+# W4's own absolutes first (`gates/w4b.yaml` MUST 1 reads the same six), because the pull moves 39-43 trusted
+# lines' words per corpus pass and those are the metrics that would show it. `generate.trimmed` rather than an
+# affine re-fit is what keeps them: affine read 83.12 / 93.92 / 38.5 / 79.87 here, under four of the six.
+clamp-jamendo-word-pm100: truth.jamendo.word_pm100 >= 83.25
+clamp-jamendo-word-pm300: truth.jamendo.word_pm300 >= 94.98
+clamp-jamendo-word-aae: truth.jamendo.word_aae_ms <= 87.8
+clamp-jamendo-word-medae: truth.jamendo.word_medae_ms <= 38.2
+clamp-jamendo-word-end-pm100: truth.jamendo.end_pm100 >= 80.02
+clamp-jamendo-highlight: truth.jamendo.highlight >= 77.10
+# THE ONE RECORDED COST, capped at what it measures rather than waived: the trimmed line's LAST word now ends
+# at the boundary, and a last word is a phrase-final one. 59.23 read against W4's 59.83, on 2 more scored ends
+# (704 against 702) — so part of it is dilution by words whose ONSETS improved into the ±2 s gate.
+clamp-jamendo-final-end-pm100-known-cost: truth.jamendo.final_end_pm100 >= 59.2
+# And the line starts, where the fix is supposed to show. W4b's base row reads gross 3, ±500 96.42,
+# zero-gross songs 18; this tree reads 1 / 97.00 / 19. These three are what make this file non-vacuous
+# against the row it was set from — see the bottom.
+clamp-jamendo-gross-at-most-one: truth.jamendo.gross <= 1
+clamp-jamendo-pm500-up: truth.jamendo.pm500 >= 96.9
+clamp-jamendo-zero-gross-songs-up: truth.jamendo.zero_gross_songs >= 19
+# No song may pay for the pooled gain with a gross line of its own, in ANY mode.
+clamp-no-song-gains-gross: count(song.gross_up) == 0
+
+# ── 2. THE FLIP RE-TRIED — the two `gates/w4b.yaml` MUSTs the clamp was manufacturing ────────────────────
+# READ ON THE HuBERT RUN against the section-1 run as its control (the second command above), where
+# `gates/w4b.yaml` is the full acceptance test. Measured at `truth` on the offline line-start re-scoring:
+# pooled gross base 1 / HuBERT 0 where W4b read 3 / 7, and no YouTube song gains a gross line where W4b had
+# `hello` 0 -> 1 and `tfr-chosen` 0 -> 3. These two are expected to PASS now; `w4b.yaml`'s MUST 4 per-song
+# ±500 is expected to FAIL and to fail WORSE, because the fix helps the control more than the candidate
+# (`tfr-chosen` 85.29 -> 69.70), and that residue is a scatter of sub-second band-boundary misses rather than
+# a decision site. An honest "not yet" is the recorded outcome; nothing here forces the flip.
+flip-pooled-gross-not-up-truth: truth.gross <= base.truth.gross
+flip-no-youtube-song-gains-gross-truth: count(truth.youtube.song.gross_up) == 0
+
+# ── NON-VACUITY ──────────────────────────────────────────────────────────────────────────────────────────
+# 31 gates, including the built-in no-ERROR-rows. Both checks below were run offline, no decode
+# (`e2e.py --summarize <rows.jsonl> --compare <summary.json> --gates <this file>`).
+# (1) THE RATCHET READS CLEAN ON THE TREE THAT SET IT, which every ratchet must and which proves nothing on
+#     its own: `_runs/w6-final-jamendo/rows.jsonl` against `results/w4b-base-time_text.json` reads
+#     **11/31 PASS and 20 ERROR** — every `truth`-and-Jamendo-readable gate passes at its own digit (83.52 >=
+#     83.25, 80.02 >= 80.02, 1 <= 1, 97.0 >= 96.9, 19 >= 19, 59.23 >= 59.2) and the rest ERROR because that
+#     run is ONE mode and 20 songs. A thin run must not read as a clean one; that is `e2e_gates`' own rule
+#     (it refuses a pooled comparison over a different song set) and W3's precedent.
+# (2) SO IT IS ALSO READ ON THE TREE IT REPLACES: `_runs/w4b-base-time_text/rows.jsonl` against
+#     `results/w4b-base-time_text.json` — the OLD floor, all 32 songs and 16 modes, judged by this file —
+#     reads **28/31, FAILING exactly the three line-start claims the fix makes**:
+#     `clamp-jamendo-gross-at-most-one` (3 > 1), `clamp-jamendo-pm500-up` (96.42 < 96.9) and
+#     `clamp-jamendo-zero-gross-songs-up` (18 < 19). It PASSES the six W4 absolutes (each at its own digit,
+#     since they were set from this row), the fourteen per-mode gross gates and both flip gates — all of
+#     which are "may not get worse" and correctly read `=` against themselves. So this file bites on what
+#     the wave claims and nowhere else.
+# (3) WHAT NO GATE HERE CAN SEE, and the bench runner should read by hand off the rows: out-of-order word
+#     starts (the property the floor exists for; no metric carries it — the offline re-scoring read 1 -> 0)
+#     and the 4 documents `m6-window-spare` would add if it were flipped (all `Pure_Mids`, +4 lines in the
+#     ±500 band, 0 cost — priced in README and deliberately NOT swept together with this change).

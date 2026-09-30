@@ -827,8 +827,13 @@ def score_words(song: Song, claims: Claims, doc: Sequence[DocLine]) -> WordScore
 # active line is the first one whose bounds contain `pos` — scanning in document order and stopping at the
 # first line that starts after `pos`. Not modelled: the display lead (`lyricsLeadMs`, 0 by default; W6
 # revisits it) and JS's UTF-16 string lengths (Python counts code points; only non-BMP text differs). When
-# the TV's rendering changes (W6 renders `low` lines line-level; W8 joins CJK without spaces), this port
-# must change with it, or the metric stops measuring what the room sees.
+# the TV's rendering changes (W8 joins CJK without spaces), this port must change with it, or the metric
+# stops measuring what the room sees.
+#
+# W6 MADE THE FIRST SUCH CHANGE and it is modelled here: a `low` row renders line-level, so it lights no
+# word (`tv_wipes_words`, `TvLine.wipes`, `tv_lit(wipe_low=True)`). The `highlight` METRIC deliberately asks
+# the other question — see `score_highlight`, which owns that split — while the parity fixture is written
+# with the rule ON, so `lyrics.ts` and this port are held to it in both trees.
 #
 # CROSS-CHECKED against the TypeScript itself (bun, 2026-09-27): 300 random documents — misbound lines,
 # blank-text lines, reversed word spans, long lines that re-segment and fold orphans — x 200 positions
@@ -858,11 +863,25 @@ class TvLine:
     end: float | None
     text: str
     words: tuple[TvWord, ...]
+    #: `lyrics.ts` `wipesWords`: False on a `low` line, which the TV renders as ONE text node with no word
+    #: wipe (W6, review §3.7's consumer). Carried per ROW because re-segmentation splits a graded line into
+    #: several and each inherits the grade, exactly as `part` and `confidence` do in the TypeScript.
+    wipes: bool = True
 
 
-def _line_from_words(words: Sequence[TvWord]) -> TvLine:
+def tv_wipes_words(confidence: str | None) -> bool:
+    """`lyrics.ts` `wipesWords`: every line but a `low` one gets the word-by-word wipe.
+
+    A MISSING GRADE KEEPS THE WIPE, which is the compatibility half of the rule (a v1 document, or any
+    worker that did not grade, carries no `confidence`), and `medium` keeps it because the worker grades
+    lines `high`/`low` only.
+    """
+    return confidence != "low"
+
+
+def _line_from_words(words: Sequence[TvWord], *, wipes: bool = True) -> TvLine:
     """`lineFromWords`."""
-    return TvLine(words[0].start, words[-1].end, " ".join(w.word for w in words), tuple(words))
+    return TvLine(words[0].start, words[-1].end, " ".join(w.word for w in words), tuple(words), wipes=wipes)
 
 
 def tv_resegment(line: TvLine) -> list[TvLine]:
@@ -883,7 +902,10 @@ def tv_resegment(line: TvLine) -> list[TvLine]:
         current.append(word)
     if current:
         out.append(_line_from_words(current))
-    return _tv_coalesce(out) if out else [line]
+    # THE GRADE IS THE SOURCE LINE'S, applied to every row it split into — `resegmentLine`'s own last two
+    # statements, which write `part` and `confidence` over the whole `split` after the orphan folding
+    # rather than threading them through it. Doing it here keeps the merge rules byte-identical.
+    return [dataclasses.replace(row, wipes=line.wipes) for row in (_tv_coalesce(out) if out else [line])]
 
 
 def _tv_coalesce(rows: list[TvLine]) -> list[TvLine]:
@@ -936,7 +958,7 @@ def tv_lines(doc: Sequence[tuple[DocLine, Sequence[int]]]) -> list[TvLine]:
             continue
         start = line.start if math.isfinite(line.start) else None
         end = line.end if math.isfinite(line.end) else None
-        out.extend(tv_resegment(TvLine(start, end, text, words)))
+        out.extend(tv_resegment(TvLine(start, end, text, words, wipes=tv_wipes_words(line.confidence))))
     return out
 
 
@@ -974,10 +996,18 @@ def tv_active_word(line: TvLine, pos: float) -> int:
     return -1
 
 
-def tv_lit(lines: Sequence[TvLine], pos: float) -> TvWord | None:
-    """The word the TV lights at playback position `pos`, or None."""
+def tv_lit(lines: Sequence[TvLine], pos: float, *, wipe_low: bool = False) -> TvWord | None:
+    """The word the TV lights at playback position `pos`, or None.
+
+    `wipe_low=True` IS THE SHIPPED TV since W6 (`LyricsOverlay.svelte`'s word branch reads `wipesWords`):
+    a `low` row renders as one text node and lights NO word. It is not the default here, and that is a
+    deliberate split of two questions — see `score_highlight`, which owns the reason. `tv_parity.py` writes
+    the fixture with `wipe_low=True`, so the rule is pinned against `lyrics.ts` in both trees.
+    """
     index = tv_active_line(lines, pos)
     if index < 0:
+        return None
+    if wipe_low and not lines[index].wipes:
         return None
     word = tv_active_word(lines[index], pos)
     return lines[index].words[word] if word >= 0 else None
@@ -1025,6 +1055,16 @@ def score_highlight(song: Song, claims: Claims, doc: Sequence[DocLine]) -> tuple
     (identity pairing, as `score_words`, over lines whose word count held, label or not); every other lit
     word — a header's label, an injected line, a mismatched line — is lit wrongly. A line-synced document
     lights no word at all, so it scores 0.
+
+    W6's LOW-LINE RULE IS MODELLED BY THE PORT AND DELIBERATELY NOT READ HERE (`tv_lit`'s `wipe_low`). This
+    metric is an ALIGNMENT reject-if — §3.5's word-end post-pass and 6c's decode axis are both gated on it
+    (`gates/w4-ends.yaml`, `gates/w4b-linesep-generate.yaml`), and every recorded row since W0 was measured
+    the same way — so it must keep asking ONE question: when the TV lights a word, is it the right one.
+    Folding a DISPLAY POLICY in would re-baseline all of those and make a future alignment change's
+    highlight number depend on how many lines the grader happened to doubt.
+    WHAT MEASURES THE POLICY INSTEAD, already on every row: `high` is how many lines the TV word-wipes,
+    and `high_bad` / `high_gross` are how wrong those wipes are (`row_of`). Those three ARE the wipe's
+    coverage and its precision, which is what review §3.7's reject-ifs are written in terms of.
     """
     if song.words is None:
         return None

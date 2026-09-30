@@ -254,7 +254,8 @@ def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
     got = lexical.calibration(Matrix())
     assert got is other and lexical.is_calibrated("HUBERT_ASR_LARGE")
     assert lexical.band(0.5, on_stem=True, bands=got) is lexical.Band.REFUSE
-    assert lexical.band(0.5, on_stem=True, bands=lexical.BANDS) is lexical.Band.OK, "the first row is untouched"
+    first = lexical.band(0.5, on_stem=True, bands=lexical.BANDS)
+    assert first is lexical.Band.OK, "the first row is untouched by the new one"
     # THE SHARE COMES OFF THE ROW TOO, and this is the only row in any test whose share is NOT 0.5 (W4b review
     # r2): all three shipped rows fit 0.5 and `LINE_SYNC_SHARE_UNCALIBRATED` is 0.5, so without a row that
     # differs, `line_sync_share` reading the constant instead of the field is indistinguishable from reading
@@ -268,10 +269,10 @@ def test_the_row_is_the_callers_and_there_is_no_module_global_fallback() -> None
     """`band` TAKES the row it judges by — there is no `bands=None -> BANDS` default (W4b review r2).
 
     The fallback shipped until r2 read what it costs: with it, one `band(value, on_stem=True)` in a new reader
-    judges a HuBERT matrix's lift against the base model's floor (0.20 against 0.45) and publishes a wrong text
-    silently — the review's high-severity W3 finding, re-entered through a default argument. Required, the
-    omission is a type error at the call site, which is why this test reads the SIGNATURE and not a value: no
-    runtime behaviour can distinguish "no fallback" from "a fallback nobody reached".
+    judges a HuBERT matrix's lift against the base model's floor (0.20 against 0.45) and publishes a wrong
+    text silently — the review's high-severity W3 finding, re-entered through a default argument. Required,
+    the omission is a type error at the call site, which is why this test reads the SIGNATURE and not a
+    value: no runtime behaviour can distinguish "no fallback" from "a fallback nobody reached".
     """
     parameter = inspect.signature(lexical.band).parameters["bands"]
     assert parameter.default is inspect.Parameter.empty, "a default row is a cross-model threshold borrow"
@@ -279,7 +280,8 @@ def test_the_row_is_the_callers_and_there_is_no_module_global_fallback() -> None
     moved = lexical.Bands("x", 5.0, 6.0, 1.0, 2.0, 0.5)
     assert lexical.band(5.5, on_stem=True, bands=moved) is lexical.Band.DOUBT
     assert lexical.band(1.5, on_stem=False, bands=moved) is lexical.Band.DOUBT
-    assert lexical.band(5.5, on_stem=True, bands=lexical.Bands("y", 0.0, 0.0, 0.0, 0.0, 0.5)) is lexical.Band.OK
+    flat = lexical.Bands("y", 0.0, 0.0, 0.0, 0.0, 0.5)
+    assert lexical.band(5.5, on_stem=True, bands=flat) is lexical.Band.OK
 
 
 #: `UNIQUE` in German, on its own lines — "komm und flieg weg" for "come and fly away": a translation into a

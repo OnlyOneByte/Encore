@@ -754,6 +754,39 @@ def test_a_line_misbound_late_blanks_the_tv_until_playback_reaches_it() -> None:
     assert lib.highlight_seconds(lines, [(0.0, 1.0, 0), (10.0, 11.0, 1), (2.0, 3.0, 2)]) == (1.0, 3.0)
 
 
+def test_a_low_graded_row_lights_no_word_because_the_tv_wipes_none(tmp_path: Path) -> None:
+    """The port of W6's consumer (review §3.7): `lyrics.ts` `wipesWords` — a `low` line renders as one text
+    node, so the TV lights nothing while it is sung. `wipe_low` is OFF by default here and the `highlight`
+    metric keeps it off DELIBERATELY (`score_highlight` owns that argument); the fixture is written with it
+    ON, so both trees are held to the rule.
+    """
+    assert lib.tv_wipes_words(None) and lib.tv_wipes_words("high") and lib.tv_wipes_words("medium")
+    assert not lib.tv_wipes_words("low"), "only `low` is doubt; a missing grade must not read as one"
+    doubted = tv_line(("graded", 1.0, 1.5, 0), ("low", 1.5, 2.0, 1))
+    doubted = lib.TvLine(doubted.start, doubted.end, doubted.text, doubted.words, wipes=False)
+    lines = [doubted, tv_line(("confident", 3.0, 4.0, 2))]
+    assert lib.tv_lit(lines, 1.0) is doubted.words[0], "the metric's reading: the word branch, every line"
+    assert lib.tv_lit(lines, 1.0, wipe_low=True) is None, "the TV's reading: no wipe on a doubted row"
+    assert lib.tv_active_line(lines, 1.0) == 0, "the ROW is still current and still displayed"
+    assert lib.tv_lit(lines, 3.5, wipe_low=True) is lines[1].words[0], "its neighbour is untouched"
+    # The document's grade reaches the port through `DocLine.confidence`, and EVERY row a graded line splits
+    # into inherits it (`resegmentLine`'s last statements), so a long doubted line wipes on none of them.
+    words = "morning light is falling on the rivers and the sea tonight".split()
+    doc = lib.DocLine(
+        text=" ".join(words),
+        start=0.0,
+        end=6.0,
+        confidence="low",
+        source=0,
+        words=tuple(lib.DocWord(0.5 * i, 0.5 * i + 0.4, True, word) for i, word in enumerate(words)),
+    )
+    rows = lib.tv_lines([(doc, list(range(len(words))))])
+    assert len(rows) > 1, "it must actually split, or the carry is untested"
+    assert [row.wipes for row in rows] == [False] * len(rows)
+    assert all(lib.tv_lit(rows, 0.5 * i, wipe_low=True) is None for i in range(len(words)))
+    assert lib.tv_lit(rows, 0.0) is not None, "and the metric still scores it word by word"
+
+
 def test_long_lines_resegment_at_pauses_and_fold_a_short_orphan_into_the_closer_side() -> None:
     """`resegmentLine` + `coalesceOrphans`, ported: only a line over 42 chars splits, at a 0.45 s pause."""
     run = [(w, 0.5 * i, 0.5 * i + 0.4, i) for i, w in enumerate("morning light is falling on rivers".split())]
@@ -2120,11 +2153,20 @@ def test_a_resume_under_other_code_or_settings_is_refused(tmp_path: Path) -> Non
     assert refusal is not None and "differs in: code" in refusal
     assert "align_config" in (e2e.resume_refusal(path, {**started, "align_config": {"align_x": 1}}) or "")
     assert lib.row_codes([{"code": "c1"}, {"code": "c2"}, {}]) == ["?", "c1", "c2"]
-    mixed = gates.View(modes={}, songs={}, meta={"row_codes": ["c1", "c2"], "align_config": {"a": 1}})
-    plain = gates.View(modes={}, songs={}, meta={"row_codes": ["c1"], "align_config": {}})
+    mixed = gates.View(
+        modes={}, songs={}, meta={"row_codes": ["c1", "c2"], "align_config": {"a": 1}, "code": "c2"}
+    )
+    plain = gates.View(modes={}, songs={}, meta={"row_codes": ["c1"], "align_config": {}, "code": "c1"})
     table = gates.format_compare(mixed, plain)
     assert "run's rows were measured on 2 different worker trees" in table
     assert "WARNING: align_config differs" in table
+    # AND THE TWO SIDES' `code` IS PRINTED AS ITS OWN LINE (W4b review r2, spec-10). It is not a WARNING —
+    # a wave's run differs from an earlier wave's baseline in code by definition, which is why `COMPARED_META`
+    # leaves it out — but W4b's 6c linesep cell was read against a control measured on an EARLIER TREE OF THE
+    # SAME WAVE and nothing said so, so eight failures were attributed wholly to the separator.
+    assert "NOTE: code differs — run c2, base c1" in table
+    same = gates.View(modes={}, songs={}, meta={"align_config": {}, "code": "c1"})
+    assert "code differs" not in gates.format_compare(same, plain), "silent when the trees agree"
 
 
 def test_the_tfr_songs_run_on_a_stem_separated_from_the_workers_own_mix_by_default(tmp_path: Path) -> None:
@@ -3124,8 +3166,8 @@ def test_the_committed_calibration_rows_name_the_model_they_were_measured_on() -
         # W4b's never-sung calibration. Not a lift row set, but the same rule: its three literals are read on
         # one model's decode, so a row set that did not name it could be mistaken for another model's.
         "w4b-unsung-gate.json": base,
-        # W4b 6b: the SHIPPED default's own recalibration, on the same texts and the same decoder, and
-        # CUDA's default beside it.
+        # W4b 6b: the SHIPPED default's own recalibration, on the same texts and the same decoder, and the
+        # two bundles reachable by name only (`ml.ALIGN_MODELS_BY_DEVICE` is empty — no CUDA sweep exists).
         "w4b-lift-stem-hubert-large.json": "HUBERT_ASR_LARGE",
         "w4b-lift-mix-hubert-large.json": "HUBERT_ASR_LARGE",
         "w4b-line-gate-hubert-large.json": "HUBERT_ASR_LARGE",
@@ -3137,6 +3179,46 @@ def test_the_committed_calibration_rows_name_the_model_they_were_measured_on() -
         body = json.loads((results / name).read_text(encoding="utf-8"))
         assert body["model"] == model, name
         assert lexical.is_calibrated(str(body["model"])), f"{name} names a model with no row"
+
+
+def test_both_hubert_mix_doubt_bands_sit_where_their_committed_rows_put_them() -> None:
+    """W4b REVIEW R2 (correctness-7): `mix_ok_from` is the one band a person reads off the per-band timing
+    table, and neither HuBERT row's reading was on the record. L's **0.40** appeared nowhere at all (0.30 and
+    0.35 fit the module's stated rule equally), and XL's **0.30** was justified with the three exhibits that
+    support it while a fourth text in the same population contradicts it. Both derivations are in `lexical`'s
+    MIX paragraphs now, and this holds them to the rows they were read from — the check the module's own
+    recipe ("where the truth texts' blind decodes stop being poor") cannot make in a docstring.
+    """
+    from encore_worker.domain.lyrics import lexical
+
+    results = SCRIPTS.parent / "results"
+
+    def truth_lifts(name: str) -> dict[str, tuple[float, float]]:
+        body = json.loads((results / name).read_text(encoding="utf-8"))
+        return {
+            str(row["song"]): (float(row["lift"]), float(row["blind_pm1"]))
+            for row in body["rows"]
+            if row["mode"] == "truth" and row["lift"] is not None
+        }
+
+    large, step = truth_lifts("w4b-lift-mix-hubert-large.json"), 0.05
+    ok_from = lexical.CALIBRATED["HUBERT_ASR_LARGE"].mix_ok_from
+    poor, good = large["never-be-alone"], large["The_Rinn_-_Voices__2017_Version_"]
+    assert poor == pytest.approx((0.2507, 0.1277), abs=5e-5), "the last poor blind decode above the mix floor"
+    assert good == pytest.approx((0.4231, 0.7609), abs=5e-5), "and the first good one above it"
+    assert sorted(v for v, _ in large.values() if poor[0] < v < good[0]) == [], "nothing lies between them"
+    assert poor[0] < ok_from <= good[0], "the split is in the gap the two exhibits open"
+    assert ok_from + step > good[0], f"and 0.40 is the LARGEST {step} step in it, which is what makes it 0.40"
+
+    xlarge = truth_lifts("w4b-lift-mix-hubert-xlarge.json")
+    xl_ok_from = lexical.CALIBRATED["HUBERT_ASR_XLARGE"].mix_ok_from
+    admitted, below = xlarge["Pure_Mids_-_The_Leader"], xlarge["Slingshot_Miracle_-_Whistler"]
+    assert admitted == pytest.approx((0.3109, 0.30), abs=5e-5)
+    assert admitted[0] > xl_ok_from and admitted[1] < 0.35, "the ONE poor decode this row's band grades OK"
+    assert below == pytest.approx((0.3033, 0.6129), abs=5e-5)
+    assert below[0] < admitted[0] and admitted[0] - below[0] < step, (
+        "and no grid step separates the two, which is why the exhibit is recorded and the band is not moved"
+    )
 
 
 def test_the_calibration_procedure_reproduces_the_shipped_row_from_the_committed_rows(
@@ -3581,3 +3663,139 @@ def test_line_gate_reads_the_shipped_agreement() -> None:
     # be re-read from a stored run: line 4 decoded but is unclaimed, line 3 is claimed but never decoded.
     assert got == {"near": 2 / 3, "median_gap": 0.5, "offset": -0.5, "near_fit": 2 / 3, "pairs": 3.0}
     assert set(line_gate.claim_agreement(decoded[:2], {0: 1.0, 1: 5.0}, 1.0).values()) == {None}
+
+
+#: Every claim mode `gates/w6-conf.yaml` names a gate for. A gate for a mode the run did not measure is an
+#: ERROR by design, so this list and the file's must agree — which is what the test below proves.
+W6_CLAIM_MODES = (
+    "truth",
+    "jit",
+    "off05",
+    "off15",
+    "off3",
+    "offm1",
+    "tempo098",
+    "tempo102",
+    "drop20",
+    "drop50",
+    "extraverse",
+    "headers",
+    "credit",
+)
+
+
+def conf_rows(*, high: Sequence[int], mode: str, moved_onset: bool = False) -> list[Any]:
+    """Two songs a mode, SIX word-timed lines each, and the SAME timings whatever the grades are: line 0 is
+    3 s off, line 1 is 0.9 s off, lines 2-5 are exact. `high` names which lines each song grades `high` —
+    the only thing this wave changes, and the reason the alignment metrics must read identical on both sides
+    of the comparison.
+
+    Word truth matters: `highlight` and every `word_*` metric are None without it, and a gate reading None
+    is an ERROR — so a fixture with no words would let a mistyped word metric pass as "not measured".
+    """
+    offsets = (3.0, 0.9, 0.0, 0.0, 0.0, 0.0)
+    rows = []
+    for index in range(2):
+        truth = [(f"one{i} two{i} three{i}", 10.0 * i, 10.0 * i + 2.6) for i in range(len(offsets))]
+        words = [(10.0 * i + k, 10.0 * i + k + 0.5) for i in range(len(offsets)) for k in (0, 1, 2)]
+        song = song_of(truth, slug=f"s{index}", words=words)
+        got = claims(song, "truth")
+        doc = [
+            line(
+                i,
+                words[3 * i][0] + offsets[i],
+                confidence="high" if i in high else "low",
+                words=tuple(
+                    lib.DocWord(
+                        start + offsets[i] + (0.05 if moved_onset and index == 0 and i == 5 else 0.0),
+                        end + offsets[i],
+                        True,
+                    )
+                    for start, end in words[3 * i : 3 * i + 3]
+                ),
+            )
+            for i in range(len(offsets))
+        ]
+        rows.append(
+            lib.row_of(
+                song=song,
+                mode=mode,
+                variant=0,
+                claims=got,
+                outcome=lib.PUBLISHED,
+                doc=doc,
+                extra={"onsets_sha256": lib.onset_digest(doc)},
+            )
+        )
+    return rows
+
+
+def conf_document(
+    *, blind_high: Sequence[int], claim_high: Sequence[int] = (1, 2, 3, 4, 5), moved_onset: bool = False
+) -> dict[str, Any]:
+    """`blind` plus every claim mode the gate file names. The two populations are graded SEPARATELY because
+    that is what was measured: the demotion is read on the one branch whose grade rests on our own decode,
+    so claim modes are grade-for-grade unchanged and `blind` is where the rule decides."""
+    rows: list[Any] = []
+    for mode in ("blind", *W6_CLAIM_MODES):
+        rows += conf_rows(
+            mode=mode,
+            high=blind_high if mode == "blind" else claim_high,
+            moved_onset=moved_onset,
+        )
+    return document(rows, **SETUP)
+
+
+def test_the_confidence_reject_if_file_reads_precision_coverage_the_zero_and_a_moved_onset() -> None:
+    """`gates/w6-conf.yaml` is review §3.7's encodable half, read hours after two sweeps start (the wave's
+    rule is DEFAULT-ON, so its baseline is a `conf-legacy` run — see the file's header). Each condition is
+    exercised in the direction it exists for, and every metric name it uses has to RESOLVE: an unknown
+    metric is an ERROR by design, and a mistyped mode in a file read after a 2-hour sweep is the failure
+    this test exists to prevent.
+    """
+    rules = gates.parse_gates((GATES_DIR / "w6-conf.yaml").read_text(encoding="utf-8"))
+    names = {rule.name for rule in rules}
+    assert {f"high-gross-zero-{mode}" for mode in W6_CLAIM_MODES} <= names
+    # The control's `blind` grades ALL SIX lines `high`, the 3 s one included: review §3.7's opening shape.
+    control = gates.view_of(conf_document(blind_high=(0, 1, 2, 3, 4, 5)))
+
+    def statuses(**kw: Any) -> dict[str, str]:
+        view = gates.view_of(conf_document(**kw))
+        return {r.gate.name: r.status for r in gates.run_gates(rules, view, control)}
+
+    # W6's measured shape: the two out-of-tolerance lines demoted on `blind`, claim modes untouched.
+    ok = statuses(blind_high=(2, 3, 4, 5))
+    assert {name: status for name, status in ok.items() if status != "PASS"} == {}
+    # A run identical to its control gains nothing, so the halving gate must FAIL — the non-vacuity check
+    # every gate file here owes — and `high-gross-zero-blind` fails on the control's own gross line.
+    same = statuses(blind_high=(0, 1, 2, 3, 4, 5))
+    assert same["bad-among-high-halved-blind"] == "FAIL"
+    assert same["high-gross-zero-blind"] == "FAIL"
+    assert same["high-gross-zero-truth"] == "PASS", "claim-mode `high` lines are within tolerance already"
+    assert same["coverage-held-blind"] == "PASS" and same["onsets-unchanged-truth"] == "PASS"
+    # Demoting only the gross line halves nothing: 0.9 s is still bad, and 1 of 5 is not half of 2 of 6.
+    partial = statuses(blind_high=(1, 2, 3, 4, 5))
+    assert partial["high-gross-zero-blind"] == "PASS"
+    assert partial["bad-among-high-halved-blind"] == "FAIL"
+    # Buying the precision with coverage: one `high` line reads 0 bad and fails the floor the consumer owns.
+    starved = statuses(blind_high=(5,), claim_high=(5,))
+    assert starved["bad-among-high-halved-blind"] == "PASS"
+    assert starved["coverage-held-blind"] == "FAIL" and starved["coverage-held-truth"] == "FAIL"
+
+
+def test_the_confidence_gates_reject_a_grading_change_that_moved_an_onset() -> None:
+    """The cheapest proof that a grading change is a grading change: the document's bytes move on every case
+    (the `confidence` field) and the ONSETS move on none. Isolated — the same grades on both sides, so the
+    only difference is one word 50 ms late — and it fails the highlight identity with it, which is the belt
+    to `onsets-unchanged`'s braces."""
+    rules = gates.parse_gates((GATES_DIR / "w6-conf.yaml").read_text(encoding="utf-8"))
+    control = gates.view_of(conf_document(blind_high=(0, 1, 2, 3, 4, 5)))
+
+    def failures(**kw: Any) -> set[str]:
+        view = gates.view_of(conf_document(**kw))
+        return {r.gate.name for r in gates.run_gates(rules, view, control) if r.status != "PASS"}
+
+    assert failures(blind_high=(2, 3, 4, 5)) == set(), "the shipped shape moves no onset"
+    moved = failures(blind_high=(2, 3, 4, 5), moved_onset=True)
+    assert {"onsets-unchanged-blind", "onsets-unchanged-truth"} <= moved
+    assert "highlight-identical-blind" in moved, "a moved onset moves the lit word too"

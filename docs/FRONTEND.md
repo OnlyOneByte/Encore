@@ -705,6 +705,19 @@ question from whether the text is trustworthy.
 Pure white and the 0.66 "not yet" alpha stay literal. `--ink` is deliberately not pure white, so
 tokenising them would REDUCE contrast at three metres.
 
+**The word wipe is a PER-LINE decision, not a per-song one.** A line the worker graded `low` renders as one
+text node with no ball and no per-word colours, exactly as the `line` highlight setting renders every line
+(`wipesWords` in `src/lib/tv/lyrics.ts`, read by the overlay's word branch). A wipe claims to know where
+INSIDE the line the singer is, and a `low` grade says nothing could vouch for where the line itself sits —
+most often a repeated chorus the decode could have bound to either occurrence. Such a row gets no accent:
+`--reel-now` answers "where is the singer", which is the question this row cannot answer. A line with NO
+grade keeps the wipe (v1 artifacts and any worker that did not grade), and so does `medium`, which is a
+DOCUMENT grade and never a line's. Measured on the alignment bench (worker review §3.7, W6): over 20
+Jamendo songs' untimed-text path the grade now covers 33% of lines with 2.8% of them more than 0.5 s out
+and NONE more than 2 s, where the rule it replaced covered 51.5% at 11.9% and twenty-three — which was at
+chance, since 12.9% of the lines it called `low` were bad too. Fewer wipes, and the ones left are right.
+`tests/unit/lib/tv/bench-highlight-parity.json` holds the TV and the bench's port of it to the same rule.
+
 The drawn position is a pure function (`src/lib/tv/lyrics-position.ts`): paused, it is exactly
 `positionSec`. A rAF-driven accumulator is the sole keeper of its own value and a backgrounded tab
 throttles rAF, so the reel decays to line 0. While playing it extrapolates from the anchor, floored at the

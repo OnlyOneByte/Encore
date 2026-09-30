@@ -30,8 +30,11 @@ second still fails, so it stays off. So every test here runs on BOTH arms: the d
 keep `xfail(strict=True)` (a default that stops inverting them turns them red, which is the point), and
 the arm, which must pass all 32. Measured on the 32 seeds with the arm: those 4 plus seeds 8, 10 and 16
 refuse a repair — 3 whose old clamp had squeezed an adopted WRONG claim into the gap in order, 0.4-1.4 s
-off — and every refused line is back on the blind decode, within 60 ms of where it is sung; the other 25
-seeds' documents are byte-identical to the default's (`test_the_arm_changes_only_the_documents_it_refused`).
+off — and every refused line is back on the blind decode, within 60 ms of where it is sung; on the other 25
+seeds the two documents differ only where the DEFAULT's bounded left floor pulls a neighbour's END onto a
+repair, which the arm does not do (W6, `_clamped_v2`; seed 9 is one, and
+`test_the_arm_changes_only_refusals_and_the_default_only_neighbour_ends` holds the exact shape — W1 could
+say "byte-identical" here and cannot any more).
 (Seeds 0, 4, 14, 20, 22, 24 and 28 still publish a misclaimed line 0.6-2.0 s off: an adopted claim that
 FITS in order. Adoption is review M5 and H4's business, not this property's.) The property runs PER
 SEED, so one new violation names its seed; a single test over all 32 (the first version) could not, nor
@@ -345,15 +348,44 @@ def test_a_repair_that_cannot_keep_order_goes_back_to_the_blind_decode(
     assert "adopted" not in p.why, f"seed {seed}: a refused adoption is still counted ({p.why})"
 
 
-def test_the_arm_changes_only_the_documents_it_refused(runs: Callable[[str], list[Published]]) -> None:
-    """The knob is the WHOLE difference between the arms: a seed where the arm refused no run publishes
-    the default's document byte for byte, and every seed where it refused one says so on the trail. So a
-    bench run with `m2-order-clamp` measures M2's refusals and nothing else."""
+def test_the_arm_changes_only_refusals_and_the_default_only_neighbour_ends(
+    runs: Callable[[str], list[Published]],
+) -> None:
+    """The knob's difference is its REFUSALS plus the one thing the default does that the arm does not.
+
+    W1 could say "byte for byte": the arm and the default agreed wherever no run was refused. W6 gave the
+    DEFAULT a bounded left floor — where the line before a repair ends past its start, that neighbour's END
+    comes back to the repair instead of the repair going to the end (`_clamped_v2`, `_pulled_end`) — and
+    the arm keeps refusing instead, which is what W1 and W3 measured it doing. So on a seed the arm refused
+    nothing, every line's TEXT, START, grade and word STARTS are still the default's, and the only cells
+    that may differ are neighbour `end`s the default pulled IN: strictly earlier, and landing exactly on
+    the following line's start. A bench run with `m2-order-clamp` still measures M2's refusals and nothing
+    else, because nothing here is scored on a line's end."""
     default, arm = runs("default"), runs("m2-order-clamp")
     refusing = [p.scenario.seed for p in arm if "kept the blind decode" in p.why]
     assert set(FORMERLY_M2) <= set(refusing)
+    seams: list[tuple[int, int]] = []
     for d, a in zip(default, arm, strict=True):
-        if a.scenario.seed not in refusing:
-            assert a.doc == d.doc, f"seed {a.scenario.seed}: the arm refused nothing, yet moved the document"
-        else:
+        if a.scenario.seed in refusing:
             assert a.doc != d.doc, f"seed {a.scenario.seed}: a refusal on the trail, the default's document"
+            continue
+        assert a.doc is not None and d.doc is not None
+        tag = f"seed {a.scenario.seed}"
+        pushed, pulled = a.doc["lines"], d.doc["lines"]
+        assert len(pushed) == len(pulled), tag
+        for position, (theirs, ours) in enumerate(zip(pushed, pulled, strict=True)):
+            where = f"{tag} [{position}]"
+            assert (theirs["text"], theirs["confidence"]) == (ours["text"], ours["confidence"]), where
+            # A pull can only bring a span IN: the neighbour's end onto the repair, and the repair's own
+            # start back off that end. `high` is monotone in `low`, so neither side may run LATER.
+            assert ours["start"] <= theirs["start"] + 1e-9, f"{where}: the default starts later"
+            assert ours["end"] <= theirs["end"] + 1e-9, f"{where}: the default ends later"
+            if (ours["start"], ours["end"]) == (theirs["start"], theirs["end"]):
+                assert ours["words"] == theirs["words"], f"{where}: words moved inside an unmoved span"
+                continue
+            seams.append((a.scenario.seed, position))
+            if ours["end"] < theirs["end"] and position + 1 < len(pulled):
+                assert ours["end"] == pytest.approx(pulled[position + 1]["start"]), (
+                    f"{where}: an end moved without landing on the following line's start"
+                )
+    assert seams, "no seed exercises W6's pull, so this test proves nothing about it"

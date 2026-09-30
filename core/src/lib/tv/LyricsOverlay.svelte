@@ -7,6 +7,7 @@
 		activeLineIndex,
 		activeWordIndex,
 		isAutoTranscribed,
+		wipesWords,
 		LYRICS_LEAD_SEC,
 		type LyricsDoc,
 		type LyricsProvenance
@@ -230,7 +231,7 @@
 			<div class="reel" bind:this={reelEl} style="transform: translateY({reelOffset}px)">
 				{#each doc.lines as l, i (i)}
 					<div class={['row', { current: i === lineIdx, past: i < lineIdx }]}>
-						{#if i === lineIdx && l.words.length && wordLevel}
+						{#if i === lineIdx && l.words.length && wordLevel && wipesWords(l)}
 							{#each l.words as w, wi (wi)}
 								<span class={['word', { done: cuePos >= w.end, active: wi === ballWord }]}>
 									{#if wi === ballWord && ball !== 'off'}<span class="ball {ball}" aria-hidden="true"
@@ -415,7 +416,10 @@
 		letter-spacing: 0.01em;
 	}
 	/* Covers the current line as ONE text node: under `line`/`off`, and under `word` when a poorly aligned line
-	   reaches the reel with an empty `words[]`. Without this rule that case inherits `.row`'s dim. */
+	   reaches the reel with an empty `words[]` or with a `low` grade (`wipesWords`). Without this rule those cases
+	   inherit `.row`'s dim. NO ACCENT here, deliberately, and it is the whole point of the `low` branch: the accent
+	   (`--reel-now`) answers WHERE the singer is, and a row that reaches this branch is one nothing can say that
+	   about. `hl-line` overrides the colour below because there the accent is a per-LINE answer. */
 	.row.current {
 		color: var(--reel-current);
 	}

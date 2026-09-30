@@ -68,6 +68,9 @@ silently passes on missing data is how a regression ships, so every one of these
     highlight value but a gross COUNT of 0), in `min_song_delta` / `_up` / `_down` and in explicit
     arithmetic like `truth.song.pm500 - base.truth.song.pm500` alike. A song that GAINED a value has no
     delta and is skipped (`refused_down` counts it);
+  * any gate that reads a metric THE RUN'S BUNDLE COULD NOT MEASURE: on a run the harness marked
+    `uncalibrated` (its model has no `lexical.CALIBRATED` row, so every emission-scale gate stood down),
+    `wrongtext_pass` is the sheet-span envelope gate's reading and not that bundle's (`UNCALIBRATED_METRICS`);
   * a reduction (`count` / `min` / `max` / `mean` / `sum`) over per-song values some song has NO value for
     — `min(truth.song.pm500) >= 85` must not pass because the worst song was refused. Gate a metric every
     song has (`text_pm500`, `gross`, `refused`), or scope the path to where the metric exists.

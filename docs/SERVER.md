@@ -187,15 +187,22 @@ shared-corpus parity guard holds the two equal. The acquisition model is `docs/A
 - **`textConfidence` is the WORDS' standing, `timingConfidence` their placement.** The worker derives the first
   from the text's tier — a claim (a provider sheet, an authored caption track, a paste) is `high`; a transcript
   and YouTube's machine track are `low` — and sends its timing grade only as the second. One field carrying both
-  made a well-timed machine caption authoritative and ranked every line-synced sheet as a guess. A person's
+  made a well-timed machine caption authoritative and ranked every line-synced sheet as a guess.
+  **A `low` timing grade now counts as LINE timing in `lyricsRank`** (W6, worker review §3.7): the grade is an
+  aggregate of the worker's per-LINE verdicts, so a `low` word document is one whose word positions nobody
+  stands behind, and 4 (authoritative + line) outranks 3 for the same reason it always did — what you cannot
+  sing to is a failure. It is the same judgement the TV makes row by row, where a `low` LINE renders without
+  the word wipe (`lib/tv/lyrics.ts` `wipesWords`); ranking a document as word-timed while rendering it as
+  line-timed was the contradiction this closes. A person's
   re-pick (a job carrying `pinnedText` / `pinnedRef`) is `high` whatever its tier: a human chose those words, as
   the old worker had it. So a re-picked machine track reads as "Captions", while a re-picked transcript is
   still no claim, because core never counts `asr` words as one.
 - **`vouched: false` is a THIRD axis: a wrong-text gate read these words and did not vouch for them.** The
   worker's lexical doubt band, a pin whose lift its gate would have refused, and a text no such gate could
   read (`domain/lyrics/lexical.py`, W3 review r1–r2). `isAuthoritativeText` reads it, so such a document ranks
-  under one a gate passed — the timing grade could not carry that, since `timingConfidence` is not in
-  `lyricsRank` at all, and a doubted word document used to tie a fully vouched one at the top rank. It is a
+  under one a gate passed — the timing grade could not carry that, because the doubt band's grade is `medium`
+  and `lyricsRank` reads only a `low` one (and before W6 read none at all, so a doubted word document tied a
+  fully vouched one at the top rank). It is a
   field of its own because `textConfidence` already carries a second claim: `lyricsSourceLabel` reads
   `captions` + `low` as "Auto captions", so sending the doubt there showed an uploader's hand-authored caption
   track as machine-generated — a false statement about its provenance rather than about its words. SENT ONLY

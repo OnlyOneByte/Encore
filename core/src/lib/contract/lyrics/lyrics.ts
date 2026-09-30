@@ -27,7 +27,9 @@ export interface LyricsCandidate {
 	 *  (older workers, stored rows, withdrawn documents whose gate never ran here) = vouched: nothing can
 	 *  infer this one, and a document no gate examined must not lose the standing its tier gives it. */
 	vouched?: boolean;
-	/** Confidence in the TIMINGS (an aligner can return word timings it isn't sure of). */
+	/** Confidence in the TIMINGS (an aligner can return word timings it isn't sure of). An aggregate of the
+	 *  worker's per-LINE grades; `lyricsRank` reads `low` as "this is line timing wearing word timing's
+	 *  clothes", and `breaksTie` orders the rest. */
 	timingConfidence?: LyricsConfidence;
 	/** `false` = the worker's OWN ladder rejected this attempt: it retried it, moved past it, or the job published
 	 *  nothing. Kept, because retention must still name its file and a person may still pick it, but never
@@ -77,12 +79,22 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
  * TIER 1 reads `coverage` and NOT `agreement` — thresholding the ranking axis convicts a CORRECT text
  * graded against a partial baseline — and needs a dedicated bottom rung rather than a confidence
  * demotion. `agreement` keeps its legitimate use in `breaksTie`.
+ *
+ * A `low` TIMING GRADE COUNTS AS LINE TIMING, not word timing (worker review §3.7's second consumer). The
+ * grade is an aggregate of the worker's PER-LINE verdicts — `high` only when at least 70% of the lines
+ * could be vouched for, `low` when nothing vouches for any of them — so a `low` word document is one whose
+ * word positions nobody stands behind, and 4 outranks 3 here for exactly the reason it does there: what you
+ * cannot sing to is a failure. It is also the same judgement the TV now makes row by row (`wipesWords` in
+ * `lib/tv/lyrics.ts` renders a `low` line without the word wipe); ranking it as word timing while
+ * rendering it as line timing was the contradiction this closes. Before this, `lyricsRank` read
+ * `timingConfidence` NOWHERE and a doubted word document tied with a fully vouched one at rank 5
+ * (`tests/unit/contract/lyrics/worker-align-contract.json` records that history).
  */
 export function lyricsRank(c: LyricsCandidate): number {
 	if (!hasUsableTiming(c) || c.selectable === false) return 0;
 	if (isLikelyWrongSong(c.coverage)) return 1;
 	const authoritative = isAuthoritativeText(c);
-	const word = c.timing === 'word';
+	const word = c.timing === 'word' && c.timingConfidence !== 'low';
 	if (authoritative) return word ? 5 : 4;
 	return word ? 3 : 2;
 }

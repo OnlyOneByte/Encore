@@ -1,0 +1,103 @@
+# W6 reject-if for the PER-LINE CONFIDENCE RULE (PLAN-alignment-v3 W6, review §3 item 7;
+# `worker/encore_worker/domain/lyrics/margin.py`, `align_steps._placement_margins`). The rule is
+# DEFAULT-ON and grading-only, so the pair to measure is the SAME code with the control arm on and off:
+#
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=conf-legacy .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py --level time_text --modes all --tag w6-legacy
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all \
+#       --compare $ENCORE_BENCH_ROOT/_runs/w6-legacy \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w6-conf.yaml
+#   (offline: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
+#
+# `conf-legacy` MUST BE THE BASELINE, not a W4b row. Two reasons, both measured. (1) The arm is the only
+# thing that restores the rule W6 replaced, and it restores ALL of it: `low_lines` with no margins still
+# demotes on the SCORE half, so a shim that only stopped the margin reads 385 `high` blind Jamendo lines
+# where the real control reads 446 — an A/B against that compares two versions of W6 and understates the
+# margin by half its effect. (2) `align_config` is part of the emission cache key, so the control run
+# recomputes each song's matrices: one extra model pass per song, not per case.
+#
+# WHY THE COST IS WORTH IT rather than reading W4b's rows: this wave changes NO TIMING. The document's
+# bytes move on every case (the `confidence` field), the onsets move on none — which is what
+# `onsets-unchanged` below asserts, and it is the cheapest proof that a grading change is a grading change.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
+#
+# WHAT IS ALREADY MEASURED, and what these gates are therefore expected to read (W6 confidence,
+# 2026-09-30; 20 Jamendo songs x `blind` through the shipped `time_text`, base model, 866 published lines,
+# plus a 4-song x truth/off15/drop50 claim probe — README "The confidence rule" has the tables):
+#
+#   blind   control  446 `high` (51.5%), 11.88% of them > 0.5 s off, 12.86% of the `low` ones (AT CHANCE,
+#                    which is review §3.7's opening measurement reproduced), 23 `high` lines > 2 s off
+#           W6       286 `high` (33.0%), 2.80% > 0.5 s, ZERO > 2 s
+#   claim   control  278 `high` of 516 lines, 0.00% > 0.5 s, 0 > 2 s
+#           W6       278 `high`, 0.00%, 0 — grade for grade UNCHANGED, because the demotion is read on the
+#                    one branch whose grade rests on our decode alone and a corroborated line never
+#                    reaches it (review H4 read forward; the argument is at the branch).
+#
+# So the claim-mode gates below are expected to be NO-OPS on the corpus, and `bad-among-high-halved-blind`
+# is the one that carries the wave. If a claim mode DOES move, that is the interesting row: it means the
+# corpus has lines the ladder left on our decode alone that the 4-song probe did not have.
+#
+# THE LOSO HALF OF §3.7's REJECT-IF IS NOT EXPRESSIBLE HERE and is not skipped: a leave-one-song-out fit
+# needs per-line margins, which the harness rows do not carry. It was measured with
+# `_review-scratch/w6-conf/{collect,window}.py` driving the harness's own `TimeTextDriver` with one
+# monkeypatch on `margin.placement_margins` — all 20 folds chose M = 10, held-out bad-among-high 2.80% at
+# 33.0% coverage, and 3.59% at the control's own 51.5% coverage against the 5.94% bound (half of 11.88%).
+# What the gate below reads is the POOLED form of the same comparison, which is the corpus's own answer.
+#
+# COVERAGE IS A GATE TOO, in both directions. A rule that graded nothing `high` would pass every precision
+# gate and turn the karaoke wipe off for the whole room (`wipesWords` in `core/src/lib/tv/lyrics.ts` is the
+# consumer). The floors are set from the measured rows with slack: blind 286/446 = 0.64, claim 1.00.
+
+# ── 1) MUST: the wave's own reject-if — bad-among-high at least halved where the rule decides ──────────
+# Division, not a count: `high_bad / high` is bad-among-high, and the 0.5 is §3.7's own factor. Both
+# denominators are hundreds of lines on any run of the Jamendo corpus.
+bad-among-high-halved-blind: blind.jamendo.high_bad / blind.jamendo.high <= 0.5 * (base.blind.jamendo.high_bad / base.blind.jamendo.high)
+
+# ── 2) MUST: no `high` line more than 2 s off in ANY claim mode (today 0 — keep it 0) ─────────────────
+# Absolute, not relative to the baseline: §3.7 states the bound as zero, and the demotion can only take a
+# line down, so a non-zero reading here means something other than this rule moved.
+high-gross-zero-truth: truth.high_gross == 0
+high-gross-zero-jit: jit.high_gross == 0
+high-gross-zero-off05: off05.high_gross == 0
+high-gross-zero-off15: off15.high_gross == 0
+high-gross-zero-off3: off3.high_gross == 0
+high-gross-zero-offm1: offm1.high_gross == 0
+high-gross-zero-tempo098: tempo098.high_gross == 0
+high-gross-zero-tempo102: tempo102.high_gross == 0
+high-gross-zero-drop20: drop20.high_gross == 0
+high-gross-zero-drop50: drop50.high_gross == 0
+high-gross-zero-extraverse: extraverse.high_gross == 0
+high-gross-zero-headers: headers.high_gross == 0
+high-gross-zero-credit: credit.high_gross == 0
+
+# ── 3) MUST: the blind mode's `high` lines more than 2 s off go to zero ───────────────────────────────
+# The population §3.7 measured (45 such lines on the base model, 26 on HuBERT-L by its count; 23 here
+# through the shipped ladder). This is the gate the margin exists for.
+high-gross-zero-blind: blind.high_gross == 0
+
+# ── 4) MUST: no timing moves. A grading change that moved an onset would be a different change ────────
+onsets-unchanged-blind: count(blind.song.onsets_changed * (blind.song.refused == 0) * (base.blind.song.refused == 0)) == 0
+onsets-unchanged-truth: count(truth.song.onsets_changed * (truth.song.refused == 0) * (base.truth.song.refused == 0)) == 0
+
+# ── 5) MUST: the word wipe still covers most of what it covered ──────────────────────────────────────
+# The consumer's side of the trade. Measured: claim modes unchanged, blind 0.64 of the control.
+coverage-held-truth: truth.high >= 0.9 * base.truth.high
+coverage-held-jit: jit.high >= 0.9 * base.jit.high
+coverage-held-blind: blind.high >= 0.55 * base.blind.high
+
+# ── 6) SHOULD: precision must not go backwards in a claim mode either ────────────────────────────────
+# `+ 0` on the right so a baseline of exactly zero bad lines is still satisfiable by zero.
+bad-among-high-not-up-truth: truth.high_bad / truth.high <= base.truth.high_bad / base.truth.high + 0
+bad-among-high-not-up-jit: jit.high_bad / jit.high <= base.jit.high_bad / base.jit.high + 0
+bad-among-high-not-up-drop50: drop50.high_bad / drop50.high <= base.drop50.high_bad / base.drop50.high + 0
+
+# ── 7) MUST: the alignment metrics are untouched, because no timing moved ─────────────────────────────
+# Reading them is what catches a grading change that accidentally became a timing change through a gate or
+# a repair that reads confidence. Equality to the digit is the claim; `abs(... ) <= 0.005` is that claim
+# expressed in the gate language.
+pm500-identical-truth: abs(truth.jamendo.pm500 - base.truth.jamendo.pm500) <= 0.005
+pm500-identical-blind: abs(blind.jamendo.pm500 - base.blind.jamendo.pm500) <= 0.005
+word-pm300-identical-blind: abs(blind.jamendo.word_pm300 - base.blind.jamendo.word_pm300) <= 0.005
+highlight-identical-blind: abs(blind.jamendo.highlight - base.blind.jamendo.highlight) <= 0.005
