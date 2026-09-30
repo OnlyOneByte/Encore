@@ -108,6 +108,32 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #:                    ends untouched. The other cost is not in a number: the TV splits a line over 42 chars
 #:                    at word gaps of 0.45 s (`lyrics.ts` LINE_GAP_SEC), and a tiled line has none, so a
 #:                    long line that showed as two rows at its pause now shows as one.
+#:   linesep          the CTC targets carry the vocabulary's WORD SEPARATOR (`|`) between lines — emitted at
+#:                    line boundaries only, its frames relabelled to blank before the spans are grouped
+#:                    (review 6c / D1; W4b, `domain/lyrics/generate.separator_of`). DISPUTED by the reviewers
+#:                    three ways, which is why it is an arm before it is a number: FOR, line-level `|` cut
+#:                    blind Jamendo gross lines 47 -> 23 and word ±300 91.3 -> 93.0; AGAINST, net-negative on
+#:                    11 songs, never-be-alone gross 23 -> 28, E2E with claims flat (25 -> 26) and onset bias
+#:                    +21 ms.
+#:                    THE DECODE AXIS OF 6c's FACTORIAL IS MEASURED and the FOR column reproduces
+#:                    (`--level generate --modes blind --songs jamendo`, 20 songs, 4 cells; rows in
+#:                    `results/w4b-linesep-*-generate.json`, README's section, and the grid at the head of
+#:                    `gates/w4b-linesep-generate.yaml`): blind Jamendo gross 41 -> 29 on the base model and
+#:                    28 -> 15 on HuBERT-L, line ±500 +5.1 / +4.6 pts, word ±300 +1.4 / +1.2, and the bias
+#:                    moves TOWARD zero on both (-3.1 -> -1.9, -7.0 -> -6.4), so the review's +21 ms was the
+#:                    old 30 s-chunk clock's. OFF because it REJECTS 7/10 and 8/10 there, on two gates: a
+#:                    song's gross count rises (4 songs on the base model, ONE on HuBERT-L) and highlight
+#:                    falls 0.9 pt. The second is the LEVEL rather than the arm — `--level generate` scores
+#:                    the raw decode's ends, which the shipped word-end post-pass re-fits, and a 4-song
+#:                    `--level time_text` probe reads highlight -0.1 with phrase-final ends +6.6 — so the E2E
+#:                    half of the factorial is what would flip this, and it is the bench runner's
+#:                    (`gates/w4b-linesep.yaml`: the four cells' commands, the truth/jit gross bounds nobody
+#:                    has read yet, and the wrong-text bound the arm must not buy anything from).
+#:                    The arm is INERT, not fatal, on a vocabulary that names no separator or maps it to the
+#:                    blank column, and the trail note says which of the two happened.
+#:                    THE EVERY-WORD VARIANT IS NOT BUILT, in either direction: D1's own mechanism is that a
+#:                    `|` inside a line makes CTC's path leave the letters for a boundary the model did not
+#:                    hear, and review 6c asks for line boundaries only.
 #:   ends-raw         THE ONE CONTROL, not a failed arm: the word-end post-pass does not run, so ends are
 #:                    the raw decode's, which is the column review §3.5's reject-if gates measure a gain
 #:                    over (highlight +5 pts, phrase-final end ±100 +10). A display post-pass has to be
@@ -128,6 +154,7 @@ ALIGN_EXPERIMENTS = (
     "claimmap-piecewise",
     "ends-tile",
     "ends-raw",
+    "linesep",
 )
 
 
@@ -206,6 +233,30 @@ class Config:
     #: The default-off alignment arms switched on (`ALIGN_EXPERIMENTS`): the ONE place they live, so a bench
     #: run records exactly which arms it measured (`e2e_lib.align_config` reads every `align_*` field).
     align_experiments: frozenset[str] = frozenset()
+    #: The ENGLISH alignment bundle (`ENCORE_ALIGN_MODEL`, review §3 item 6b) — a torchaudio pipeline name
+    #: such as `HUBERT_ASR_LARGE`. Every other language keeps whisperx's own per-language table
+    #: (`adapters.ml.align_model_name`), because these bundles are English.
+    #:
+    #: UNSET MEANS THIS DEVICE'S DEFAULT: `adapters.ml.default_align_model`, which is the wav2vec2 base bundle
+    #: on every device today because W4b's corpus sweep rejected HuBERT-Large as a default and no CUDA box
+    #: measured HuBERT-XLarge at all (`ALIGN_MODELS_BY_DEVICE`, `gates/w4b.yaml`). It is resolved where the
+    #: device is (`__main__.align_model_for`) rather than here, since this box's accelerator is probed and not
+    #: configured — which is also what lets a measured per-device row land later without touching this field.
+    #: THE BENCH KEEPS THIS FIELD OUT OF `align_config` ALTOGETHER (`e2e_lib.SPELLING_ONLY`, W4b review r2), so
+    #: the default path keys the emission cache exactly as it did before the knob existed AND
+    #: `ENCORE_ALIGN_MODEL=X` keys it identically to `--model X` — same bundle, same computation, one namespace.
+    #: Which bundle a run loaded is recorded as its `run.json` / summary `model` plus `model_identity`.
+    #:
+    #: SETTING IT IS HOW AN OPERATOR RUNS THE MEASURED-BUT-NOT-DEFAULT BUNDLES:
+    #: `ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE` buys blind gross lines 106 -> 68 and truth Jamendo word ±300
+    #: 94.98 -> 97.12 at the price of `hello` and `tfr-chosen` (see `ml.DEFAULT_ALIGN_MODEL`).
+    #:
+    #: NOT VALIDATED HERE, and that is a layering fact rather than an oversight: the only check worth making
+    #: is "does `domain.lyrics.lexical.CALIBRATED` hold a row for it" — a worker whose lift gate cannot judge
+    #: this model's emission scale has no wrong-text gate — and `host/` may not import `domain/`
+    #: (`tests/test_layers.py`). `__main__.align_model_for` makes it, with this module's own "fail fast and
+    #: name the setting" manners, before a single job is accepted.
+    align_model: str | None = None
     extra: Mapping[str, str] = field(default_factory=dict)
 
     @staticmethod
@@ -264,6 +315,7 @@ class Config:
             lrclib_url=text("ENCORE_LRCLIB_URL", "https://lrclib.net/api/get"),
             https_proxy=optional("ENCORE_HTTPS_PROXY"),
             align_experiments=_experiments(src, "ENCORE_ALIGN_EXPERIMENTS"),
+            align_model=optional("ENCORE_ALIGN_MODEL"),
         )
 
 

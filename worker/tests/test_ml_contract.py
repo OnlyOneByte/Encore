@@ -313,11 +313,24 @@ def test_the_english_default_bundle_is_the_one_the_lexical_bands_were_fitted_on(
     whisperx picks the bundle PER LANGUAGE. `align_model_name` reads that choice from whisperx's own tables
     without loading anything — so this test fails the day a whisperx upgrade moves the `en` default, which
     would otherwise silently apply thresholds fitted elsewhere. A language with no default is named as such,
-    never as the bands' own model, and the guard in `align_steps._measured_lift` then declines to judge."""
-    from encore_worker.adapters.ml import align_model_name
+    never as the bands' own model, and the guard in `align_steps._measured_lift` then declines to judge.
+
+    `BANDS` IS WHISPERX'S TABLE DEFAULT (W4b): 6b makes the English bundle a setting, and after W4b's bench
+    verdict its default is the same wav2vec2 base bundle whisperx tables for `en` — so this test's first
+    assertion is ALSO the statement that the shipped default and the unnamed-matrix fallback agree today, and
+    it fails the day either side moves alone. `BANDS` stays the row an UNNAMED matrix is read as — a test's
+    fake, a bench cache written before `Emissions.model` existed — which is what those matrices actually
+    were. The shipped default's own row is `CALIBRATED[default_align_model(device)]`, and an operator who
+    names HuBERT with `ENCORE_ALIGN_MODEL` gets that bundle's row instead, which is the whole point of 6b's
+    machinery surviving its own flip being rejected.
+    """
+    from encore_worker.adapters.ml import align_model_name, default_align_model
     from encore_worker.domain.lyrics import lexical
 
     pytest.importorskip("whisperx")
     assert align_model_name("en") == lexical.BANDS.model
     assert align_model_name("de") != lexical.BANDS.model, "a per-language bundle the bands never saw"
     assert align_model_name("zz") == "default:zz", "unknown is named, not assumed"
+    named = default_align_model("cpu")
+    assert align_model_name("en", named) == named, "a configured bundle is what English loads"
+    assert align_model_name("de", named) == align_model_name("de"), "and never what another language loads"

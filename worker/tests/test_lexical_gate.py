@@ -412,7 +412,14 @@ def test_the_doubt_band_publishes_every_line_low_and_the_document_medium(
 ) -> None:
     """The fixture's sung text lifts +15; the band is moved over it (read at call time). The GRADING is the
     same on both targets: no `high` line, the document `medium`."""
-    wide = lexical.Bands(model="test", refuse_below=0.2, ok_from=1e3, mix_floor=0.15, mix_ok_from=1e3)
+    wide = lexical.Bands(
+        model="test",
+        refuse_below=0.2,
+        ok_from=1e3,
+        mix_floor=0.15,
+        mix_ok_from=1e3,
+        line_sync_min_agreement=0.5,
+    )
     monkeypatch.setattr(lexical, "BANDS", wide)
     run = attempt(tmp_path, monkeypatch, stem=stem)
     assert isinstance(run.got, TimedDoc), run.got
@@ -432,7 +439,14 @@ def test_the_stems_doubt_band_withholds_the_words_standing(
     """On a STEM the doubt band is doubt about the WORDS: `vouched=False`, which core sends as
     `textConfidence` low, so a document a gate passed outranks it (W3 r1). The band holds 2 right texts of
     the corpus's 448 and no wrong one, which is what makes the demotion affordable there."""
-    wide = lexical.Bands(model="test", refuse_below=0.2, ok_from=1e3, mix_floor=0.15, mix_ok_from=1e3)
+    wide = lexical.Bands(
+        model="test",
+        refuse_below=0.2,
+        ok_from=1e3,
+        mix_floor=0.15,
+        mix_ok_from=1e3,
+        line_sync_min_agreement=0.5,
+    )
     monkeypatch.setattr(lexical, "BANDS", wide)
     run = attempt(tmp_path, monkeypatch)
     assert isinstance(run.got, TimedDoc) and run.got.vouched is False
@@ -449,7 +463,14 @@ def test_the_mix_doubt_band_grades_without_stripping_the_words_standing(
     document of an earlier job (4) displaces a correct word-timed sheet. So on the mix the band grades (every
     line `low`, the document `medium`) and the WORDS are still vouched for; only a sub-floor lift is not (see
     `test_on_the_mix_words_under_the_floor_are_a_doubt_band_not_a_refusal`)."""
-    wide = lexical.Bands(model="test", refuse_below=0.2, ok_from=1e3, mix_floor=0.15, mix_ok_from=1e3)
+    wide = lexical.Bands(
+        model="test",
+        refuse_below=0.2,
+        ok_from=1e3,
+        mix_floor=0.15,
+        mix_ok_from=1e3,
+        line_sync_min_agreement=0.5,
+    )
     monkeypatch.setattr(lexical, "BANDS", wide)
     run = attempt(tmp_path, monkeypatch, stem=False)
     assert isinstance(run.got, TimedDoc), run.got
@@ -523,27 +544,41 @@ def test_the_asr_tier_is_exempt_and_keeps_the_envelope_gate(
     )
 
 
-def test_a_matrix_from_another_model_is_not_measured_by_these_bands(
+def test_a_matrix_from_a_model_with_no_calibration_row_is_not_measured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3 review r2. `lexical.BANDS` is ONE bundle's calibration, and the emission model is chosen per
-    LANGUAGE (`ml.WhisperXAligner._aligner`; de/es/fr load wav2vec2-XLSR fine-tunes), so a German sheet would
-    otherwise be judged terminally on a number `lift_gate.py` never measured. A matrix that names another
-    model is read as UNMEASURABLE: the envelope gate keeps the verdict, the reason names both models, and the
-    words are not vouched for. Here the WRONG text passes, which is the price of not pretending to know."""
-    monkeypatch.setattr(lexical, "BANDS", replace(lexical.BANDS, model="OTHER_BUNDLE"))
-    run = attempt(tmp_path, monkeypatch, texts=UNSUNG, named_model="WAV2VEC2_ASR_BASE_960H")
-    assert isinstance(run.got, TimedDoc), "the lift is a reading, not a verdict, on another model's matrix"
+    """W3 review r2, a TABLE since W4b. The thresholds are ONE bundle's calibration each, and the emission
+    model is chosen per LANGUAGE (`ml.WhisperXAligner._aligner`; de/es/fr load wav2vec2-XLSR fine-tunes), so a
+    German sheet would otherwise be judged terminally on a number `lift_gate.py` never measured. A matrix from
+    a model with NO ROW is read as UNMEASURABLE: the envelope gate keeps the verdict, the reason names the
+    model and the script that would fit it, and the words are not vouched for. Here the WRONG text passes,
+    which is the price of not pretending to know."""
+    run = attempt(tmp_path, monkeypatch, texts=UNSUNG, named_model="WAV2VEC2_LARGE_XLSR_53_DE")
+    assert isinstance(run.got, TimedDoc), "the lift is a reading, not a verdict, on an uncalibrated matrix"
     assert run.got.vouched is False
-    assert (
-        "no lexical check: the lexical bands are OTHER_BUNDLE's and this matrix is "
-        "WAV2VEC2_ASR_BASE_960H's" in run.verdict
-    )
+    assert "no lexical check: no lexical calibration for WAV2VEC2_LARGE_XLSR_53_DE" in run.verdict
+    assert "lift_gate.py --model WAV2VEC2_LARGE_XLSR_53_DE" in run.verdict
 
     named = attempt(
-        _fresh(tmp_path, "named"), monkeypatch, texts=UNSUNG, named_model="OTHER_BUNDLE", stem=True
+        _fresh(tmp_path, "named"), monkeypatch, texts=UNSUNG, named_model=lexical.BANDS.model, stem=True
     )
-    assert isinstance(named.got, Refused), "the bands' OWN model is measured as ever"
+    assert isinstance(named.got, Refused), "a model WITH a row is measured as ever"
+
+
+def test_a_second_calibrated_model_is_judged_by_its_own_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4b: the point of a table is that two models can be gated at once, each on its own numbers. The fixture
+    scores letters, so its unsung text lifts about 0 and its sung text +15: a row whose floor is 20 refuses
+    BOTH, and the shipped row refuses only the unsung one — so a matrix naming the second model must be
+    refused on a text the first publishes, with the second row's own floor in the reason."""
+    strict = replace(lexical.BANDS, model="STRICTER_BUNDLE", refuse_below=20.0, ok_from=21.0)
+    monkeypatch.setitem(lexical.CALIBRATED, strict.model, strict)
+    sung = attempt(tmp_path, monkeypatch, named_model=lexical.BANDS.model)
+    assert isinstance(sung.got, TimedDoc), "the shipped row publishes the sung words"
+    other = attempt(_fresh(tmp_path, "strict"), monkeypatch, named_model=strict.model)
+    assert isinstance(other.got, Refused), other.got
+    assert other.got.report.refused is not None and "below 20.0 on the stem" in other.got.report.refused
 
 
 def raising_after(calls: int, error: Exception) -> Decode:

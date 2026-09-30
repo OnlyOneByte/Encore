@@ -787,12 +787,207 @@ async def test_the_rung_reads_the_same_band_a_recalibration_moves(
     assert isinstance(await impl.time_text(line_sync(tmp_path, words, stem)), TimedDoc)
 
     recalibrated = lexical.Bands(
-        model="hubert-like", refuse_below=1e3, ok_from=2e3, mix_floor=1.0, mix_ok_from=2.0
+        model="hubert-like",
+        refuse_below=1e3,
+        ok_from=2e3,
+        mix_floor=1.0,
+        mix_ok_from=2.0,
+        line_sync_min_agreement=0.5,
     )
     monkeypatch.setattr(lexical, "BANDS", recalibrated)
     got = await impl.time_text(line_sync(tmp_path, words, stem))
     assert isinstance(got, Refused), got
     assert got.report.refused is not None and "below the lexical gate (1000.0)" in got.report.refused
+
+
+class NamingAligner:
+    """`PathAligner` whose matrices NAME a bundle, as `ml.Emissions` does — so a test can put the rung on a
+    model the calibration table does not have. Delegates, so `asked` stays the one emission-pass ledger."""
+
+    def __init__(self, inner: PathAligner, model: str) -> None:
+        self._inner, self._model = inner, model
+
+    @property
+    def asked(self) -> list[str]:
+        return self._inner.asked
+
+    def emissions(self, path: str, language: str) -> object:
+        from dataclasses import dataclass
+
+        got = self._inner.emissions(path, language)
+
+        @dataclass(frozen=True)
+        class Named:
+            log_probs: object
+            frame_sec: float
+            dictionary: dict[str, int]
+            model: str
+
+            @property
+            def frames(self) -> int:
+                return len(self.log_probs)  # type: ignore[arg-type]
+
+        return Named(got.log_probs, got.frame_sec, got.dictionary, self._model)
+
+
+async def test_the_trail_names_the_alignment_bundle_on_both_engines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4b review r1: nothing on the production record named the bundle. `Emissions.model` had ONE reader in
+    `steps/` — `_measured_lift`'s calibration lookup, which prints a name only when there is no row — so a job
+    whose `ENCORE_ALIGN_MODEL` changed between attempts published timings from one bundle with an evidence
+    note indistinguishable from the other's, and a "the timings got worse" report had no way to tell which
+    bundle produced them. Both engines now open their note with it (`_bundle_why`), because every threshold in
+    the rest of the note is read off THAT bundle's calibration row.
+
+    The bench records the bundle per run (`e2e_lib.align_config`, `run.json`); production had nothing, which
+    is why this is asserted on the STATE the audit page reads and not on a return value."""
+    stem, inner = hearing(tmp_path, monkeypatch)
+    aligner = NamingAligner(inner, "HUBERT_ASR_LARGE")
+    rung = Reporter()
+    got = await steps(tmp_path, aligner=aligner, reporter=rung).time_text(
+        line_sync(tmp_path, worded(SUNG_WORDS), stem)
+    )
+    assert isinstance(got, TimedDoc), got
+    assert any(why.startswith("bundle HUBERT_ASR_LARGE; sheet-span envelope") for why in rung.reasons), (
+        rung.reasons
+    )
+
+    words = tmp_path / "global"
+    words.mkdir()
+    stem2, inner2 = hearing(words, monkeypatch)
+    reporter = Reporter()
+    impl = steps(words, aligner=NamingAligner(inner2, "HUBERT_ASR_LARGE"), reporter=reporter)
+    timed = await impl.time_text(
+        TimeRequest(job=job(words), text=worded(SUNG_WORDS), audio=stem2, language="en")
+    )
+    assert isinstance(timed, TimedDoc), timed
+    assert any(why.startswith("bundle HUBERT_ASR_LARGE; envelope r=") for why in reporter.reasons), (
+        reporter.reasons
+    )
+
+
+async def test_the_rung_keeps_gating_the_decode_when_the_model_has_no_calibration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4b, CORRECTED IN ITS REVIEW R1. The rung's LEXICAL floor belongs to the matrix's own model and stands
+    down without a row (`lexical.band` reads nats per letter), but its decode-agreement share does NOT: it is
+    a fraction of lines within a tolerance in seconds, so it means the same thing on any bundle and is read
+    through `lexical.line_sync_share`, which falls back to `LINE_SYNC_SHARE_UNCALIBRATED`. W4b first stood
+    BOTH down, which left W7's per-language bundles on the sheet-span envelope gate alone — the gate this
+    decode check was introduced to replace, because a same-video translation fits the singing at r ~ 1.
+
+    THE SHEET HERE IS ONE THE DECODE GATE REFUSES (17% of 6 lines near, the `no map can reach` case) while its
+    WAV sings exactly where it claims, so the SHEET gate passes it: it must be refused on the calibrated model
+    AND on the uncalibrated one, and the uncalibrated refusal must say the words went unread while the
+    timings did not. Both halves, so neither a silent pass nor a borrowed emission scale can hide."""
+    warped = [(5.0, 7.0), (5.5, 7.5), (6.0, 8.0), (20.0, 22.0), (30.0, 32.0), (31.0, 33.0)]
+    stem, aligner = hearing(tmp_path, monkeypatch, envelope=warped)
+    text = worded(SUNG_WORDS, warped)
+    refused = await steps(tmp_path, aligner=aligner, reporter=Reporter()).time_text(
+        line_sync(tmp_path, text, stem)
+    )
+    assert isinstance(refused, Refused), "the calibrated model gates on its share"
+    assert refused.report.refused is not None and "below 50%" in refused.report.refused
+
+    other = tmp_path / "uncalibrated"
+    other.mkdir()
+    stem2, inner = hearing(other, monkeypatch, envelope=warped)
+    reporter = Reporter()
+    impl = steps(other, aligner=NamingAligner(inner, "WAV2VEC2_LARGE_XLSR_53_DE"), reporter=reporter)
+    got = await impl.time_text(line_sync(other, worded(SUNG_WORDS, warped), stem2))
+    assert isinstance(got, Refused), got
+    said = got.report.refused
+    assert said is not None and "below 50%" in said, (
+        "the share survives a missing row: it is a count of lines, not an emission scale"
+    )
+    assert "no lexical calibration for" in said, "the WORDS went unread, and the trail names the model"
+    assert "sheet-span envelope r=" in said, "the envelope's reading stays on the trail, not gating"
+    assert not any(other.rglob("*-line.json")), "a refused line document is never written"
+
+    # ...and the same matrix with a share it DOES meet still publishes, unvouched, so the fallback is a
+    # threshold and not a blanket refusal of every uncalibrated bundle.
+    monkeypatch.setattr(lexical, "LINE_SYNC_SHARE_UNCALIBRATED", 0.1)
+    passed = await impl.time_text(line_sync(other, worded(SUNG_WORDS, warped), stem2))
+    assert isinstance(passed, TimedDoc), passed
+    assert passed.vouched is False, "nothing read these words"
+
+
+async def test_the_rung_gates_on_the_matrixs_own_row_and_not_the_shipped_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4b REVIEW R2, tests-15: nothing observed this rung's lexical floor coming off the MATRIX'S row. Every
+    test above moves `lexical.BANDS`, which an unnamed fake resolves to anyway (`lexical.calibration`), so
+    reverting this call site to the module-global row — the review's high-severity W3 defect, one model's
+    thresholds on another model's matrix — left the whole suite green. Here the matrix NAMES a bundle whose
+    row is not the shipped one, and only the named row refuses this sheet: the shipped floor (0.20) publishes
+    it, so a reader of `lexical.BANDS` instead of `evidence.bands` publishes a text this bundle refuses.
+
+    The refusal must also PRINT that row's number, because the note is what an operator reads to learn which
+    floor was applied (`_line_sync_gate`)."""
+    other = lexical.Bands(
+        model="HUBERT_ASR_LARGE",
+        refuse_below=1e3,
+        ok_from=2e3,
+        mix_floor=1.0,
+        mix_ok_from=2.0,
+        line_sync_min_agreement=0.5,
+    )
+    monkeypatch.setitem(lexical.CALIBRATED, other.model, other)
+    stem, inner = hearing(tmp_path, monkeypatch)
+    shipped = await steps(tmp_path, aligner=inner, reporter=Reporter()).time_text(
+        line_sync(tmp_path, worded(SUNG_WORDS), stem)
+    )
+    assert isinstance(shipped, TimedDoc), "the shipped row publishes this sheet, so the rows disagree"
+
+    named = tmp_path / "named"
+    named.mkdir()
+    stem2, inner2 = hearing(named, monkeypatch)
+    impl = steps(named, aligner=NamingAligner(inner2, other.model), reporter=Reporter())
+    got = await impl.time_text(line_sync(named, worded(SUNG_WORDS), stem2))
+    assert isinstance(got, Refused), got
+    said = got.report.refused
+    assert said is not None and "below the lexical gate (1000.0)" in said, said
+    assert not any(named.rglob("*-line.json")), "a refused line document is never written"
+
+
+async def test_the_rung_reads_the_agreement_share_off_the_matrixs_row_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4b REVIEW R2, tests-16: all three shipped rows fit `line_sync_min_agreement` 0.5 and
+    `LINE_SYNC_SHARE_UNCALIBRATED` is 0.5, so no test could tell "read the row" from "read the constant" —
+    `line_sync_share` reduced to the constant passed the whole suite. The sheet here is the warped one the
+    share refuses at 0.5 (17% of its lines near), and a row that fits 0.10 PUBLISHES it, which only reading
+    the field can do."""
+    warped = [(5.0, 7.0), (5.5, 7.5), (6.0, 8.0), (20.0, 22.0), (30.0, 32.0), (31.0, 33.0)]
+    stem, inner = hearing(tmp_path, monkeypatch, envelope=warped)
+    refused = await steps(tmp_path, aligner=inner, reporter=Reporter()).time_text(
+        line_sync(tmp_path, worded(SUNG_WORDS, warped), stem)
+    )
+    assert isinstance(refused, Refused) and refused.report.refused is not None
+    assert "below 50%" in refused.report.refused, "the shipped row's share refuses this sheet"
+
+    lenient = lexical.Bands(
+        model="HUBERT_ASR_LARGE",
+        refuse_below=lexical.BANDS.refuse_below,
+        ok_from=lexical.BANDS.ok_from,
+        mix_floor=lexical.BANDS.mix_floor,
+        mix_ok_from=lexical.BANDS.mix_ok_from,
+        line_sync_min_agreement=0.1,
+    )
+    monkeypatch.setitem(lexical.CALIBRATED, lenient.model, lenient)
+    named = tmp_path / "named"
+    named.mkdir()
+    stem2, inner2 = hearing(named, monkeypatch, envelope=warped)
+    reporter = Reporter()
+    impl = steps(named, aligner=NamingAligner(inner2, lenient.model), reporter=reporter)
+    got = await impl.time_text(line_sync(named, worded(SUNG_WORDS, warped), stem2))
+    assert isinstance(got, TimedDoc), got
+    assert got.vouched is True, "the same row's lexical floor read these words"
+    assert any("17% of 6 lines" in why and "bundle HUBERT_ASR_LARGE" in why for why in reporter.reasons), (
+        "the share this row admitted is on the trail with the bundle that set it",
+        reporter.reasons,
+    )
 
 
 async def test_a_line_sync_text_in_the_doubt_band_publishes_unvouched(
@@ -802,7 +997,14 @@ async def test_a_line_sync_text_in_the_doubt_band_publishes_unvouched(
     are not vouched for. No text measured at this rung has landed there (the bench's read +0.36 and up), so
     the band is moved over the sung words to reach the path at all."""
     stem, aligner = hearing(tmp_path, monkeypatch)
-    doubting = lexical.Bands(model="test", refuse_below=0.2, ok_from=1e3, mix_floor=0.15, mix_ok_from=1e3)
+    doubting = lexical.Bands(
+        model="test",
+        refuse_below=0.2,
+        ok_from=1e3,
+        mix_floor=0.15,
+        mix_ok_from=1e3,
+        line_sync_min_agreement=0.5,
+    )
     monkeypatch.setattr(lexical, "BANDS", doubting)
     reporter = Reporter()
     impl = steps(tmp_path, aligner=aligner, reporter=reporter)

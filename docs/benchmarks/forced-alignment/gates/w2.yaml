@@ -1,17 +1,52 @@
 # W2 reject-if (PLAN-alignment-v3 W2, review §3 items 2 and 11): the claim clock (H1) and reconcile
-# robustness (M4, M5). Evaluated at BOTH levels against the W3 rows, which are the tree this wave started
-# from (base model, youtube tfr audio, --modes all):
+# robustness (M4, M5).
+#
+# ── REBASED 2026-09-30 BY W4b (spec (c)) ────────────────────────────────────────────────────────────────
+# REBASED FROM: `results/w3-{time_text,run_align}.json` — the tree W2 started from.
+# REBASED ONTO: `results/w4-{time_text,run_align}.json` — the W4 rebench r2 rows (code `8c576cc6200b02a0`).
+# WHY: W4 replaced the frame clock and every emission matrix with it, DEFAULT-ON and with no off switch, so
+#   this file's deltas against a W3 base no longer measure a later wave's change — they measure W4. Read on the
+#   W4 rows against the W3 base it scores 60/88 at `time_text` and 58/88 at `run_align`, and all 28 / 30
+#   failures are W4's own known and waived effects, not W2's regressions. A later wave reading this file would
+#   have had to subtract W4 from every number by hand; that is the noise W4b was asked to remove.
+# WHAT MOVED, EXACTLY, and nothing else did:
+#   * the `--compare` base in the commands below (w3 -> w4), which is what re-zeroes every `base.` delta;
+#   * NOT section 12's thirteen `no-worse-displacement-*` literals: review r1 re-priced eleven of them at W4's
+#     own measured worst, and review r2 (spec-11) RESTORED W2's, because a literal re-priced off the previous
+#     wave while the base moves to that same wave is an allowance that COMPOUNDS — ~89 pt on `credit` after two
+#     waves, read as green. The base moves; the allowance does not (see that section);
+#   * section 4's `blind-unchanged` KEPT and re-scoped, with the metric-level companions a wave that
+#     deliberately moves the decode can still be held to (see that section).
+# VERIFIED on the rows, not asserted: with `results/w4-*.json` as BOTH sides this file reads **88/88 at both
+#   levels** (87 gates + the built-in no-error-rows; it was 85 before section 4's three companions), every
+#   displacement delta 0.00, as a ratchet must read against the tree that set it.
+#   The gate families W4b's brief protects are UNTOUCHED and still absolute: `jamendo-no-new-gross-*` (14),
+#   `unsung-not-up-*` (3), `unsung-none-claim-modes`, the wrong-text three and section 11's two. On the W4
+#   base they read 0 on the W4 tree; they are strict for whatever comes next, which is the point.
+# WHAT THE REBASE REVEALED, and it is worth an owner's attention: W2's two EXPLICITLY WAIVED MUSTs of
+#   section 1 (`truth-pm500`, `truth-text-pm500`, -1.21 / -1.20 pt against a 1.0 bound) now read PASS on the
+#   W4 rows against THE SAME W3 BASE — 89.45 >= 88.11 and 88.18 >= 86.90 at both levels. W4's clock repaid
+#   W2's cost with interest, so that waiver is SPENT rather than carried: it was a bound on a tree that no
+#   longer exists. Section 11's tighter Jamendo bound is the one that is now failing instead
+#   (`truth-jamendo-pm500` 96.42 against 97.28 - 0.3), and that failure is W4's own — `Pure_Mids_-_The_Leader`'s
+#   never-sung line, W4b (b), diagnosed at `align_steps._NEVER_SUNG_ENV` and still open.
+#
+# Evaluated at BOTH levels (base model, youtube tfr audio, --modes all):
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level time_text \
 #       --modes all,wrongtext+ownclock \
-#       --compare ../docs/benchmarks/forced-alignment/results/w3-time_text.json \
+#       --compare ../docs/benchmarks/forced-alignment/results/w4-time_text.json \
 #       --gates ../docs/benchmarks/forced-alignment/gates/w2.yaml
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level run_align \
 #       --modes all,wrongtext+ownclock \
-#       --compare ../docs/benchmarks/forced-alignment/results/w3-run_align.json \
+#       --compare ../docs/benchmarks/forced-alignment/results/w4-run_align.json \
 #       --gates ../docs/benchmarks/forced-alignment/gates/w2.yaml
+#   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
 #
 # Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
+# EVERYTHING BELOW THIS LINE IS W2's OWN RECORD, on its own base, kept as written: the measurements are what
+# the constants in `claimmap` and `reconcile` were fitted on, and a rebase that deleted them would leave the
+# literals unexplained. Read "base" in it as `results/w3-*.json`; read "base" in the GATES as w4.
 #
 # TWO BOUNDS ON THE SAME ROW, and they belong to different items. §3.2 (the claim clock) allows the
 # unperturbed truth row to lose up to 1.0 pt within ±500 ms; §3.11 (reconcile's bounded fit and verdict
@@ -132,7 +167,9 @@
 #   tempo098, refused because the vote moved its claims on 6 explained lines of 74; `claimmap.MIN_INLIER_SHARE`
 #   refuses that map now and the song publishes again (54.05% ±500 with 22 gross, which is what W3 had).
 #
-# NOT SELF-FULFILLING, re-checked at 85 gates (review r2): evaluated with `results/w3-time_text.json` as
+# NOT SELF-FULFILLING, re-checked at 85 gates (review r2; 88 since W4b's rebase added section 4's three
+# metric companions, and the check below was re-run on the W3 base at that size): evaluated with
+# `results/w3-time_text.json` as
 # BOTH sides (the tree with no claim clock, compared with itself), 79 of the 85 gates pass and the 6 that fail
 # are exactly the ones the map exists to move — `offset-within-2pt-off15 / -off3 / -offm1` (68.58, 67.44 and
 # 76.19 against truth's 85.90 on the text denominator) and the three strictly-down gross gates of section 9
@@ -140,10 +177,13 @@
 # with the map (+19.0 pt at +1.5 s, +19.8 at +3 s, +11.0 at -1 s within ±500 ms).
 
 # ── 1) MUST (§3.2): the unperturbed row. 1.0 pt is the claim clock's bound; see TWO BOUNDS above. ──
-# BOTH OF THESE FAIL AND BOTH ARE EXPLICITLY WAIVED (2026-09-29): -1.21 pt and -1.20 pt against the 1.0,
-# over by 0.21, entirely on the 23 songs whose truth file is the claim track this wave corrects. The waiver,
-# its reasons and the price of the two alternatives are in WHAT FAILED above; section 11 is the same bound on
-# the 20 songs with measured onsets, and it passes at the tighter 0.3. Do not read a PASS here as expected.
+# BOTH OF THESE FAILED ON W2's OWN TREE AND BOTH WERE EXPLICITLY WAIVED (2026-09-29): -1.21 pt and -1.20 pt
+# against the 1.0, over by 0.21, entirely on the 23 songs whose truth file is the claim track that wave
+# corrects. The waiver, its reasons and the price of the two alternatives are in WHAT FAILED above; section 11
+# is the same bound on the 20 songs with measured onsets, and it passed at the tighter 0.3.
+# THE WAIVER IS SPENT (W4b's rebase): on the W4 rows these read 89.45 and 88.18 against the SAME W3 base's
+# 88.11 and 86.90 — W4's clock repaid the cost — so a PASS here IS now expected, and what a FAIL means from
+# here on is a later wave spending more than 1.0 pt of its own.
 truth-pm500: truth.pm500 >= base.truth.pm500 - 1.0
 truth-text-pm500: truth.text_pm500 >= base.truth.text_pm500 - 1.0
 
@@ -161,6 +201,11 @@ truth-text-pm500: truth.text_pm500 >= base.truth.text_pm500 - 1.0
 # published as a LINE_SYNC document (line starts copied from its sheet, `report_words` 0) now publishes a WORD
 # document (203 and 299 word timings), and a word document can have a gross or unscored LINE where a line
 # document mechanically cannot.
+# W4b's REBASE MOVED THE BASE, so on the W4 rows these read 0 and the family is absolute again: W2's two waived
+# events, and W4's own `Pure_Mids_-_The_Leader` line, are all inside the base now. THAT DOES NOT RETIRE W4's:
+# `gates/w4.yaml` reads this same family against the W2 rows and still counts it (14 failures, ten of them that
+# one line), and its owner waiver is still open — a rebase moves what THIS file measures, never what another
+# file already found. What these forbid from here on is a NEW gross or unscored line on a Jamendo song.
 # THE POPULATION, because one song's rows are not an argument: 24 song-modes changed kind between W3 and W2 at
 # this level, for a net of -24 line starts within ±500 ms, +2 gross lines (all of them The_Rinn off3) and
 # +8109 word timings that did not exist before; 10 more go from REFUSED to committed. The gross lines are real
@@ -194,7 +239,20 @@ offset-within-2pt-off3: off3.text_pm500 >= truth.text_pm500 - 2.0
 offset-within-2pt-offm1: offm1.text_pm500 >= truth.text_pm500 - 2.0
 
 # ── 4) MUST: the claim-free path is untouched, byte for byte. No claims, no map. ──
+# WHAT BYTE-IDENTITY CAN AND CANNOT SAY, written here because W4 made it matter (W4b's rebase). This gate is
+# the file's non-vacuity guard: a blind mode hands the engine NO claims, so a change to the claim clock, the
+# windows or the adoption cannot reach it, and any movement here is an accident. That argument holds for a wave
+# that changes the CLAIM side and says nothing at all about a wave that deliberately changes the DECODE — W4's
+# frame clock moved all 32 documents by construction (`[32 == 0]` against the W3 base, which is why this file
+# had to be rebased), and W4b's own 6b model change will move all 32 again. A wave in that position must report
+# the COUNT and its reason beside this gate, exactly as W4 did for the clock, and must hold the claim-free path
+# on the three metric companions below, which survive a decode change and are what "no worse" means when
+# "identical" is unreadable. Do NOT delete the byte gate to make a decode wave green: it is the only thing that
+# catches the accidental case, and a deliberate change is a sentence someone has to write.
 blind-unchanged: count(blind.song.doc_changed) == 0
+blind-no-worse-gross: blind.gross <= base.blind.gross
+blind-no-worse-pm500: blind.text_pm500 >= base.blind.text_pm500 - 0.3
+blind-no-worse-words-pm100: blind.jamendo.word_pm100 >= base.blind.jamendo.word_pm100 - 0.3
 
 # ── 5) MUST: a mapped claim window must not publish a line the truth does not have (W1 review r1's metric:
 # no ±N metric sees an injected header, a credit or an extra verse). Per song, and only where the baseline
@@ -206,8 +264,9 @@ blind-unchanged: count(blind.song.doc_changed) == 0
 # denominator, +49 on the text one) — while timing 3 more of the injected headers the line document had left
 # untimed. So `unsung` rises because MORE of the text got timings, on a song whose timings got better. The gate
 # cannot tell
-# that from a map inventing lines — which is why it stays a MUST and is waived rather than loosened, and why
-# the kind-comparison in section 2's note is the fix. Do not read a PASS here as expected.
+# that from a map inventing lines — which is why it stays a MUST and was waived rather than loosened, and why
+# the kind-comparison in section 2's note is the fix. W4b's rebase puts that event inside the base, so on the
+# W4 rows this reads 0; the gate is absolute again and W5's text hygiene owns the next rise.
 unsung-not-up-credit: count(credit.song.unsung_up * (base.credit.song.refused == 0)) == 0
 unsung-not-up-headers: count(headers.song.unsung_up * (base.headers.song.refused == 0)) == 0
 unsung-not-up-extraverse: count(extraverse.song.unsung_up * (base.extraverse.song.refused == 0)) == 0
@@ -256,7 +315,14 @@ no-song-lost-headers: count(headers.song.refused_up + headers.song.error_up) == 
 no-song-lost-credit: count(credit.song.refused_up + credit.song.error_up) == 0
 
 # ── 9) SHOULD (no SHOULD level exists in the language, so these FAIL like the rest, and a wave reports them
-# as what they are): the gains the map exists for. Directional, not literal — the literals belong to the
+# as what they are): the gains the map exists for.
+# THE THREE STRICT `<` BECAME `<=` IN W4b's REBASE, and that is the one loosening in this file. They asked for a
+# gross count STRICTLY below the base's because the base was a tree with NO MAP (W3), where off3 read 449 gross
+# lines and tempo102 372; against `results/w4-*.json` — a tree that already has the map — "strictly fewer than
+# last time" is not a property any later wave can hold, and all three failed by construction on a
+# self-comparison (3 < 3, 4 < 4, 4 < 4). The direction they measure is kept intact as "not worse", and the
+# GAIN they were written for is still demonstrable from the row they were written against: `--compare
+# results/w3-time_text.json` reads 3 < 449, 4 < 251, 4 < 372 (the non-vacuity check below does exactly that). Directional, not literal — the literals belong to the
 # wave's own row once it is measured — and every one of them is 0 on a tree without the map, so the section
 # is not self-fulfilling. `off3` and `tempo102` are the two rows the review measured the map on (440 gross
 # lines at +3 s; the tempo rows had no bounded scale to fit them at all before this wave).
@@ -266,9 +332,9 @@ offset-gain-offm1: offm1.text_pm500 >= base.offm1.text_pm500
 tempo-gain-tempo098: tempo098.text_pm500 >= base.tempo098.text_pm500
 tempo-gain-tempo102: tempo102.text_pm500 >= base.tempo102.text_pm500
 offset-gross-down-off15: off15.gross <= base.off15.gross
-offset-gross-down-off3: off3.gross < base.off3.gross
-tempo-gross-down-tempo098: tempo098.gross < base.tempo098.gross
-tempo-gross-down-tempo102: tempo102.gross < base.tempo102.gross
+offset-gross-down-off3: off3.gross <= base.off3.gross
+tempo-gross-down-tempo098: tempo098.gross <= base.tempo098.gross
+tempo-gross-down-tempo102: tempo102.gross <= base.tempo102.gross
 
 # ── 10) SHOULD, CARRIED FROM W1 (`gates/w1.yaml`'s four `m2m1-recovered`, which W1 left failing and W3 took
 # from 26/20/28/27 to 31/29/32/27 of 32): every song of these modes COMMITS a document, word or line-synced.
@@ -320,9 +386,41 @@ truth-jamendo-words-pm100: truth.jamendo.word_pm100 >= base.truth.jamendo.word_p
 # claims. That is exactly the population section 1's WAIVER is written about, at its worst single document; the
 # README's drop50 row now carries it beside the other movers.
 #
-# THE BOUNDS ARE THIS WAVE'S MEASURED WORST PER MODE, rounded out to the next whole point, at whichever level
-# is worse (run_align for every mode but drop50's own, which reads only -2.57 at time_text). Read as a ratchet:
-# a later wave may not displace a document further than this one does, and drop50's -70 is bad-guy alone.
+# THE BOUNDS ARE ONE WAVE'S MEASURED WORST PER MODE, rounded out to the next whole point, at whichever level
+# is worse. Read as a ratchet: a later wave may not displace a document further than the wave that set them.
+#
+# THE LITERALS ARE W2's AND THEY STAY W2's — THE ONE PART OF THIS FILE W4b's REBASE DOES NOT TOUCH (review r1
+# re-priced eleven of them at W4's own worst; review r2, spec-11, PUT THEM BACK). What moved is the `--compare`
+# base alone, so a later wave's delta is read against `results/w4-*.json` while the ALLOWANCE stays the size
+# W2 was granted. That is what stops the family compounding, and the arithmetic is why:
+#   * `min_song_delta` is run MINUS base. Re-pricing each literal at the previous wave's worst while the base
+#     also moves to that wave makes the bound mean "displace a song as far as the last wave did, again" — so a
+#     W5 could have taken `credit`'s worst song another 44.68 pt below W4, which is already 44.68 below W3:
+#     ~89 pt of cumulative loss on a 0-100 metric, read as GREEN. What a green read permitted was the SUM.
+#   * Each re-priced bound also sat 0.02-0.6 pt inside its own literal (truth -12.66 >= -13, credit
+#     -44.68 >= -45, drop20 -15.87 >= -16): fitted to the digit of the change it excused, which is a
+#     manoeuvre repeatable every wave. Two waves of it and the section is a record of intentions.
+# WHAT W4 SPENT AGAINST THESE BOUNDS IS THEREFORE A PRICE ON THE RECORD, NOT A NEW ALLOWANCE. W4's own worst
+# per mode against the W3 base (`_runs/w4r2b-time_text`, `_runs/w4r2-run_align`): truth -12.66, jit -10.87,
+# off05 -32.88 (run_align), off15 -10.00 (run_align), off3 -32.88 (run_align), offm1 -8.57, tempo098 -10.13,
+# tempo102 0.00, drop20 -15.87, drop50 -69.23 (run_align), extraverse -16.66, headers -24.33, credit -44.68.
+# Eleven of those exceed the literal below, and they are among the 28 / 30 failures this file's header waives as
+# W4's own known effects in the W4-vs-W3 reading (9 of the 13 at `time_text`, 11 at `run_align` — the four that
+# hold at `time_text`, off05 / off3 / drop50 / tempo102, are the ones whose worst was measured at `run_align`).
+# The biggest, `credit` -44.68, is ONE song — W4's own header block names it (`credit` is the mode where the
+# exact clock raised OUR blind envelope fit above the claims', so R1 stopped repairing a sheet that was right,
+# gross 0 -> 22 on that song).
+# SO WHAT A LATER WAVE READS HERE: against `results/w4-*.json` these thirteen say "do not displace any one
+# document further than W2 was allowed to", and every one of them reads 0.00 on the tree that set the base. A
+# wave that needs more must say so out loud — an explicit waiver with the song named, like W4's — and not
+# re-price the literal off its own predecessor.
+#
+# NON-VACUITY IS PRESERVED under the rebase, and CHECKED rather than argued (2026-09-30, re-checked in review
+# r2 with the literals restored): against `results/w4-*.json` as BOTH sides the whole file reads 88/88 at both
+# levels and every displacement gate reads 0.00, as a ratchet must; and the pre-review-r1 W2 rows
+# (`_runs/w2-run_align` against the W3 base, the tree the demonstration below was written on) fail exactly the
+# same three as W2 recorded — tempo098 -54.05 against -9, tempo102 -2.70 against 0, drop50 -71.79 against -70,
+# in a 79/88 reading. So the bounds are neither vacuous nor re-priced.
 #
 # ON THE TEXT DENOMINATOR, so the gate catches a song that was REFUSED as well as one that was moved — a
 # refused song scores 0 within ±500 ms of a text it did not publish, which is the same reason section 1 reads

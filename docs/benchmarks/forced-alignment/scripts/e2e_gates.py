@@ -183,8 +183,18 @@ SETUP_DEFAULTS: Mapping[str, str] = {"sync_mode": "forced", "target": lib.STEM_T
 #: Run metadata `--compare` WARNS on but gates accept: the independent variables of an arm. W4 6b/6c gate a
 #: model change against the base-model baseline, and every default-off arm is an `align_experiments`
 #: setting, so a difference here is the experiment, not a broken comparison. `code` is absent for the same
-#: reason — a wave's run differs from its baseline in code by definition — and is printed in the header.
+#: reason — a wave's run differs from its baseline in code by definition — and is printed in the header AND,
+#: since W4b review r2 (spec-10), as its own NOTE whenever the two sides differ in it (`format_compare`).
 COMPARED_META = ("model", "model_identity", "align_config")
+
+#: The metrics an UNCALIBRATED bundle's run cannot measure, so a gate reading one of them on such a run is an
+#: ERROR (`run_gates`, W4b review r2 spec-13). `wrongtext_pass` is the wrong-text verdict, and on a bundle
+#: with no `lexical.CALIBRATED` row every emission-scale gate stands down: the lift is unreadable, so the
+#: verdict falls back to the sheet-span envelope gate, which this wave measured at 125/320 wrongtext passes.
+#: A row that says "0 of 320 wrong texts passed" would then be the ENVELOPE gate's number recorded under the
+#: new bundle's name. `e2e.py` marks such runs (`uncalibrated` in `run.json` and in the summary's meta), and
+#: every other metric — timings, gross lines, highlight — is that bundle's own measurement and gates as usual.
+UNCALIBRATED_METRICS = ("wrongtext_pass",)
 
 
 def setup_mismatch(run: Mapping[str, Any], base: Mapping[str, Any]) -> list[str]:
@@ -232,6 +242,24 @@ def format_compare(run: View, base: View) -> str:
     for key in COMPARED_META:
         if key in run.meta and key in base.meta and run.meta[key] != base.meta[key]:
             out.append(f"  WARNING: {key} differs — run {run.meta[key]!r}, base {base.meta[key]!r}")
+    for side, meta in (("run", run.meta), ("base", base.meta)):
+        if meta.get("uncalibrated"):
+            out.append(
+                f"  WARNING: the {side}'s bundle {meta.get('model')!r} has NO lexical calibration row, so "
+                f"every emission-scale gate stood down: {', '.join(UNCALIBRATED_METRICS)} is not its "
+                "measurement and any gate reading it is an ERROR"
+            )
+    codes = (str(run.meta.get("code") or ""), str(base.meta.get("code") or ""))
+    if all(codes) and codes[0] != codes[1]:
+        # NOT a warning about the comparison as such: a wave's run differs from an earlier wave's baseline in
+        # code by definition (`COMPARED_META`). It is printed because W4b review r2 (spec-10) found the other
+        # case — 6c's separator cell read against a control measured on an EARLIER tree of the same wave, so
+        # eight failures were attributed to the separator with the tree as a second variable, unremarked.
+        out.append(
+            f"  NOTE: code differs — run {codes[0]}, base {codes[1]}. A cell whose ONE variable is meant to "
+            "be an arm, a model or a separator needs the SAME worker tree on both sides; against an earlier "
+            "wave's recorded row this line is expected."
+        )
     for side, meta in (("run", run.meta), ("base", base.meta)):
         codes = meta.get("row_codes") or []
         if len(codes) > 1:
@@ -393,9 +421,16 @@ def run_gates(
     `doc_changed`) is an ERROR when the two summaries' measurement setup differs (`setup_mismatch`):
     `--compare` used to print a WARNING and the verdicts went on as if the runs were comparable. A gate
     that reads only the run is judged as usual.
+
+    A gate that READ A METRIC THE RUN'S BUNDLE COULD NOT MEASURE is an ERROR too (`UNCALIBRATED_METRICS`,
+    W4b review r2): on a run whose model has no `lexical.CALIBRATED` row the harness records
+    `uncalibrated: true`, and `wrongtext_pass` there is the sheet-span envelope gate's number, not that
+    bundle's. Judged on the RUN's side only — a baseline that was uncalibrated is a baseline nothing should
+    have been gated against, and `format_compare` says so for both sides.
     """
     out: list[GateResult] = [error_rows_gate(run)] if builtin else []
     mismatch = setup_mismatch(run.meta, base.meta) if base is not None else []
+    uncalibrated = bool(run.meta.get("uncalibrated"))
     for gate in gates:
         walker = _Walker(run, base)
         try:
@@ -403,7 +438,18 @@ def run_gates(
         except GateError as error:
             out.append(GateResult(gate, "ERROR", str(error)))
             continue
-        if walker.read_base and mismatch:
+        stood_down = sorted(walker.read_metrics.intersection(UNCALIBRATED_METRICS)) if uncalibrated else []
+        if stood_down:
+            out.append(
+                GateResult(
+                    gate,
+                    "ERROR",
+                    f"reads {', '.join(stood_down)}, which this run cannot measure: the bundle "
+                    f"{run.meta.get('model')!r} has no lexical calibration row, so every emission-scale "
+                    "gate stood down (calibrate it first: scripts/lift_gate.py --model …)",
+                )
+            )
+        elif walker.read_base and mismatch:
             why = "; ".join(mismatch)
             out.append(
                 GateResult(
@@ -563,6 +609,11 @@ class _Walker:
         #: Whether evaluating read the baseline at all (directly or through delta / _up / doc_changed):
         #: `run_gates` holds such a gate to the same measurement setup on both sides.
         self.read_base = False
+        #: Every metric name the evaluation reached — a derived `METRIC_up` and the stem it resolves to alike,
+        #: since both are recorded on the way down. `run_gates` ERRORs a gate that reads a metric the run's
+        #: bundle could not measure (`UNCALIBRATED_METRICS`), which a textual scan of the expression would
+        #: only approximate.
+        self.read_metrics: set[str] = set()
 
     # ── expressions ──
 
@@ -684,6 +735,7 @@ class _Walker:
         return self.base
 
     def scalar(self, address: _Address) -> float:
+        self.read_metrics.add(address.metric)
         if address.song:
             raise GateError(f"{address} is per song; a pooled number is [base.]MODE[.GROUP].METRIC")
         derived = _derived(address.metric)
@@ -738,6 +790,7 @@ class _Walker:
             )
 
     def songs(self, address: _Address) -> Songs:
+        self.read_metrics.add(address.metric)
         derived = _derived(address.metric)
         if derived is not None:
             stem, sign = derived

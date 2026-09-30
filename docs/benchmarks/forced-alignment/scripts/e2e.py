@@ -4,7 +4,7 @@
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py      # truth,jit,blind
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --modes all
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \\
-        --modes truth,jit+off15,blind+headers --songs hello,jamendo --model HUBERT_ASR_LARGE
+        --modes truth,jit+off15,blind+headers --songs hello,jamendo --model WAV2VEC2_ASR_BASE_960H
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level run_align \\
         --modes all --compare <base>/summary.json --gates <wave>.yaml
 
@@ -43,8 +43,11 @@ published. `generate` is the raw global decode alone. Attempt 1 at `run_align` i
 
 TWO HARNESS-ONLY SEAMS, neither of which changes what the shipped code computes:
 
-  1. `BenchAligner` subclasses the shipped `WhisperXAligner`: `--model` swaps the torchaudio bundle the way
-     the review's harness did, and `emissions()` is wrapped by a DISK cache under
+  1. `BenchAligner` subclasses the shipped `WhisperXAligner`: `--model` is the bundle the SHIPPED adapter
+     takes as an argument (W4b 6b's `ENCORE_ALIGN_MODEL`, which `main` reads when `--model` is absent), so an
+     unnamed run resolves to this device's shipped default exactly as `ml.build_aligner` resolves it — the
+     BASE bundle on every device today, W4b's sweep having rejected the HuBERT flip as a default — and a
+     candidate bundle is named on the command line. `emissions()` is wrapped by a DISK cache under
      `$ENCORE_BENCH_ROOT/_emissions` (see `e2e_lib.EmissionStore` for the key; its model part is a digest
      of the weights the aligner actually loaded). A cold full sweep spends most of its time in the model
      pass; warm, it is the decode and repairs only. `--verify-cache` proves a cached matrix yields the
@@ -112,9 +115,10 @@ except ImportError:  # pragma: no cover - only when run with a python that lacks
 import e2e_gates as gates  # noqa: E402 - after the path setup above
 import e2e_lib as lib  # noqa: E402
 
-from encore_worker.adapters import ports  # noqa: E402
+from encore_worker.adapters import ml, ports  # noqa: E402
 from encore_worker.adapters.ml import Emissions, WhisperXAligner  # noqa: E402
 from encore_worker.artifacts import keys  # noqa: E402
+from encore_worker.domain.lyrics import lexical  # noqa: E402
 from encore_worker.domain.lyrics.clean import clean_line, clean_segments  # noqa: E402
 from encore_worker.domain.lyrics.policy import Tier  # noqa: E402
 from encore_worker.host.config import Config, ConfigError  # noqa: E402
@@ -275,12 +279,96 @@ class Trail:
         return global_verdict(self.states)
 
 
-def default_model(language: str) -> str:
-    """The bundle `whisperx.load_align_model` picks when none is named — the shipped choice."""
+def default_model(language: str, device: str = "cpu") -> str:
+    """The bundle a run with NEITHER `--model` nor `ENCORE_ALIGN_MODEL` loads — the shipped choice.
+
+    For English that is `ml.default_align_model(device)`, exactly what `ml.build_aligner` resolves for a
+    worker whose `ENCORE_ALIGN_MODEL` is unset, because the harness is built the way the host builds its
+    aligner and a default the bench did not follow would measure a configuration nobody ships.
+    WHICH BUNDLE THAT IS TODAY:
+    `WAV2VEC2_ASR_BASE_960H` on cpu, mps AND cuda — W4b 6b made the bundle a setting and its corpus sweep then
+    REJECTED the HuBERT-Large flip as a default (`gates/w4b.yaml`, `gates/w4b-hubert.yaml`), so
+    `ml.ALIGN_MODELS_BY_DEVICE` is empty and the per-device mechanism is kept for the row a CUDA sweep would
+    earn. This docstring said "HuBERT-Large, XLarge on CUDA" until W4b review r1, which is what a later wave
+    would have read an unnamed run as having loaded. Every other language keeps whisperx's own table, the way
+    `ml.align_model_name` reads it. To measure ANOTHER bundle — the HuBERT candidates, or one under
+    recalibration — name it: `--model HUBERT_ASR_LARGE`, or set `ENCORE_ALIGN_MODEL`, which `main` now honours
+    the way the worker does (review r1: it was recorded and not loaded).
+    """
+    if language == ml.ENGLISH:
+        return ml.default_align_model(device)
     from whisperx.alignment import DEFAULT_ALIGN_MODELS_HF, DEFAULT_ALIGN_MODELS_TORCH  # noqa: PLC0415
 
     name = DEFAULT_ALIGN_MODELS_TORCH.get(language) or DEFAULT_ALIGN_MODELS_HF.get(language)
     return str(name or f"default:{language}")
+
+
+def resolve_bundle(named: str | None, config: Any, language: str) -> tuple[str | None, str | None]:
+    """(the bundle this run ALIGNS on, a refusal) — `--model`, else `ENCORE_ALIGN_MODEL`, else None meaning
+    "this device's shipped default" (`default_model`, which `BenchAligner` resolves the way `ml.build_aligner`
+    does).
+
+    WHY THE ENV KNOB IS READ HERE (W4b review r1). `main` builds `Config.from_env()` so an `ENCORE_ALIGN_*`
+    knob reaches the shipped code, and `e2e_lib.align_config` used to RECORD `align_model` in a run's
+    `run.json` — but nothing loaded it: the bundle came from `--model` alone. So the command README.md and
+    `Config.align_model`'s own docstring both give as the way to sweep a non-default bundle
+    (`ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE … e2e.py --modes all`) recorded a HuBERT run that had aligned on the
+    base model, after paying a 2-3 hour sweep for it. One resolution, used for the label, the emission store's
+    key and the aligner, is what makes the recorded name and the loaded weights the same fact.
+
+    THE TWO SPELLINGS ARE NOW ONE FINGERPRINT TOO (W4b review r2): the resolved bundle is recorded as
+    `run.json`'s `model`, as the summary's `model` + `model_identity` and in the emission store's own key,
+    and `e2e_lib.SPELLING_ONLY` keeps `align_model` OUT of `align_config` — so `--model X` and
+    `ENCORE_ALIGN_MODEL=X` produce the same `emitter_fingerprint`, reuse the same 64 matrices and no longer
+    warn against each other on `--compare` (`pinned in tests/test_bench_e2e.py`).
+
+    AN UNCALIBRATED BUNDLE IS ANNOUNCED, NOT REFUSED (W4b review r2, spec-13). Production refuses to start on
+    one (`__main__.align_model_for` — `lexical.is_calibrated`), but the wave's procedure is
+    measure-then-paste-the-row, so the FIRST sweep of a new bundle is uncalibrated by construction and the
+    harness has to be able to run it. `main` prints `uncalibrated_banner` and records `uncalibrated` in
+    `run.json` and in the summary's meta instead, so no reader mistakes such a run's `wrongtext_pass` or
+    `lift` columns for that bundle's (`e2e_gates` ERRORs any gate that reads them).
+
+    ENGLISH ONLY, as production applies it (`ml.ENGLISH`; the bundle is a constructor argument on
+    `WhisperXAligner` and every other language keeps whisperx's own table), so the knob cannot mislabel a
+    French run.
+
+    REFUSED WHEN BOTH NAME A BUNDLE AND DISAGREE, the way `resume_refusal` refuses a blended run: silently
+    preferring either one would make the same command mean different things on two boxes.
+    """
+    from_env = getattr(config, "align_model", None) if language == ml.ENGLISH else None
+    if named and from_env and named != from_env:
+        return None, (
+            f"--model {named} disagrees with ENCORE_ALIGN_MODEL={from_env}: a run measures ONE bundle, and "
+            "both would be recorded. Drop one of the two."
+        )
+    return (named or from_env), None
+
+
+def uncalibrated_banner(model: str) -> str | None:
+    """The loud stderr banner for a run whose bundle has no `lexical.CALIBRATED` row, or None when it has one.
+
+    THE ONE PLACE THE HARNESS IS MORE PERMISSIVE THAN PRODUCTION, and deliberately (W4b review r2, spec-13):
+    `__main__.align_model_for` REFUSES to start a worker on an uncalibrated bundle, but this wave's procedure
+    is measure-then-paste-the-row (`lexical`'s module docstring), so the first corpus run of a new bundle is
+    uncalibrated by construction. What must not happen is that its numbers read like a calibrated bundle's:
+    with no row `align_steps._word_lift` returns no lift, the wrong-text verdict falls back to the sheet-span
+    envelope gate — 125/320 wrongtext passes on this corpus — and a `wrongtext_pass` of 0.00 would be recorded
+    under the new bundle's name as if its floor had held. So the banner names the bundle, says what stood down
+    and names the fix, `run.json` and the summary's meta carry `uncalibrated: true`, and `e2e_gates` ERRORs any
+    gate that reads a metric the stand-down moved (`e2e_gates.UNCALIBRATED_METRICS`).
+    """
+    if lexical.is_calibrated(model):
+        return None
+    return (
+        f"!! {model} HAS NO LEXICAL CALIBRATION ROW — every emission-scale gate stands down on this run.\n"
+        f"!! {lexical.uncalibrated(model)}\n"
+        "!! So this run's wrongtext_pass / lift columns are the sheet-span envelope gate's readings, NOT this "
+        "bundle's (the envelope gate passes 125/320 wrong texts on this corpus). The rows are marked "
+        "`uncalibrated` and any gate reading them is an ERROR.\n"
+        "!! Production would REFUSE to start on it (encore_worker.__main__.align_model_for); measure first "
+        "(scripts/lift_gate.py --model, scripts/line_gate.py --model), paste the row, then sweep."
+    )
 
 
 def emitter_versions(
@@ -345,18 +433,25 @@ class BenchAligner(WhisperXAligner):
 
     THE CACHE IS KEYED ON WHAT WAS LOADED. Per language, `identify` names the model `_aligner` returns —
     by default `loaded_identity`, a digest of its class, dictionary and every weight — and the store's
-    model part becomes `<label>@<identity>`. The label alone (`--model`, else whisperx's static default
-    table) is the harness's GUESS at the model: once the shipped adapter picks its model any other way
-    (an env knob, a per-device default) or a Hub checkpoint updates, the same label would serve one
-    model's matrices to another. The cost is one model load per language per run, even when every matrix
-    is on disk.
+    model part becomes `<label>@<identity>`. The label alone (`--model`, else the shipped per-device default)
+    is the harness's GUESS at the model: a Hub checkpoint can update under a name, and the same label would
+    then serve one model's matrices to another. The cost is one model load per language per run, even when
+    every matrix is on disk.
 
-    BUILT AS THE HOST BUILDS ITS ALIGNER: `ml.build_aligner(device=..., jobs=...)` passes the device and the
-    box's job concurrency, and so does this; `test_bench_e2e` pins both signatures, so a factory argument
-    that reaches production must be forwarded here too. `jobs` sizes the in-memory emission LRU
-    (`ml._emission_cache_size`) and the bench runs one case at a time, so its default of 1 is the shipped
-    default — it is forwarded rather than dropped because the disk store sits BESIDE that LRU, not over it,
-    so a bench run's memory behaviour is the host's.
+    BUILT AS THE HOST BUILDS ITS ALIGNER: `ml.build_aligner(device=..., jobs=..., model=...)` passes the
+    device, the box's job concurrency and the English bundle, and so does this; `test_bench_e2e` pins both
+    signatures, so a factory argument that reaches production must be forwarded here too. `jobs` sizes the
+    in-memory emission LRU (`ml._emission_cache_size`) and the bench runs one case at a time, so its default
+    of 1 is the shipped default — it is forwarded rather than dropped because the disk store sits BESIDE that
+    LRU, not over it, so a bench run's memory behaviour is the host's.
+
+    `--model` IS NOT A SEAM ANY MORE (W4b): the shipped adapter takes the bundle as an argument now (review
+    §3 item 6b's `ENCORE_ALIGN_MODEL`), so the override is simply the argument, resolved through
+    `ml.default_align_model` when absent exactly as the factory resolves it — the BASE bundle on every device
+    today, W4b's own sweep having rejected the HuBERT flip as a default. The subclass used to re-implement
+    `_aligner` and `_bundle_name` to pass `model_name=`, which is how a harness ends up loading one model and
+    naming another; `main` resolves `ENCORE_ALIGN_MODEL` into this argument (`resolve_bundle`) for the same
+    reason — until W4b review r1 the knob was recorded in `run.json` and never loaded.
 
     EVERY FAULT IS RECORDED (`faults`). `time_text` lets the shipped adapter's typed `InfraFault` through
     (review M7) but declines any other emissions exception ("decode failed: ...") and, on R4's mix witness,
@@ -376,8 +471,7 @@ class BenchAligner(WhisperXAligner):
         write: Literal["always", "missing"] = "missing",
         identify: Callable[[str], str] | None = None,
     ) -> None:
-        super().__init__(device=device, jobs=jobs)
-        self._model_name = model
+        super().__init__(device=device, jobs=jobs, model=model or ml.default_align_model(device))
         self._store = store
         self._read = read
         self._write = write
@@ -418,29 +512,6 @@ class BenchAligner(WhisperXAligner):
             self.identities[language] = identity
             self._stores[language] = self._store.for_model(f"{self._store.model}@{identity}")
         return self._stores[language]
-
-    def _aligner(self, language: str) -> tuple[Any, Any]:
-        if self._model_name is None:
-            return super()._aligner(language)
-        from encore_worker.adapters.ml import _cached  # noqa: PLC0415
-
-        def build() -> tuple[Any, Any]:
-            import whisperx  # noqa: PLC0415
-
-            loaded: tuple[Any, Any] = whisperx.load_align_model(
-                language_code=language, device=self._device, model_name=self._model_name
-            )
-            return loaded
-
-        cached: tuple[Any, Any] = _cached(self._device, f"align:{language}:{self._model_name}", build)
-        return cached
-
-    def _bundle_name(self, language: str) -> str:
-        """What `--model` actually loaded, so a matrix from another bundle SAYS so on `Emissions.model` and
-        the lexical gate declines to judge a text on `lexical.BANDS`' own model's thresholds (W3 review r2).
-        Without the override the base class would name whisperx's default for the language — the one case
-        where the guard has to fire is exactly a `--model` run, which is how W4 recalibrates."""
-        return self._model_name or super()._bundle_name(language)
 
     def emissions(self, audio_path: str, language: str) -> Emissions:
         try:
@@ -844,6 +915,12 @@ class GenerateDriver(TimeTextDriver):
 
     Claimed timings never enter `generate()`, so a timed mode equals its text-only twin here; every line is
     ungraded (confidence None), so the `high` columns read 0.
+
+    THE ONE ARM THAT REACHES THIS LEVEL is 6c's line separator (`linesep`, review D1): it is an argument to
+    `generate` itself, so the raw decode is where its factorial is read (`gates/w4b-linesep.yaml`). Every
+    other `align_experiments` name lives in the ladder above this call and is inert here — which is the point
+    of measuring a decoder change at this level, and the reason the arm is threaded from `self.config` rather
+    than from a flag of its own: one setting, recorded once, in `align_config`.
     """
 
     level = "generate"
@@ -863,6 +940,7 @@ class GenerateDriver(TimeTextDriver):
                 emissions,
                 decoder=forced_align_decoder,
                 language=self.language,
+                separate_lines="linesep" in self.config.align_experiments,
             )
         except Exception as exc:  # noqa: BLE001 - one broken case must not lose the sweep
             outcome = lib.ERROR
@@ -1466,7 +1544,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--level", choices=LEVELS, default="time_text")
     ap.add_argument("--modes", default=",".join(lib.DEFAULT_MODES), help="comma-separated, or 'all'")
     ap.add_argument("--songs", default=None, help="comma-separated slugs, slug prefixes, or jamendo/youtube")
-    ap.add_argument("--model", default=None, help="torchaudio bundle name, e.g. HUBERT_ASR_LARGE")
+    ap.add_argument(
+        "--model",
+        default=None,
+        help="torchaudio bundle name, e.g. HUBERT_ASR_LARGE (unset: ENCORE_ALIGN_MODEL, else this device's "
+        "shipped default)",
+    )
     ap.add_argument("--device", default=None, help="mps / cuda / cpu (default: the best available)")
     ap.add_argument("--language", default="en")
     ap.add_argument("--seed", type=int, default=0, help="seeds jitter, drops, donors, injections")
@@ -1585,7 +1668,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     modes = parse_modes(args.modes)
     device = resolve_device(args.device)
-    model_label = args.model or default_model(args.language)
+    named, refused_bundle = resolve_bundle(args.model, config, args.language)
+    if refused_bundle is not None:
+        print(refused_bundle, file=sys.stderr)
+        return 2
+    model_label = named or default_model(args.language, device)
+    banner = uncalibrated_banner(model_label)
+    if banner is not None:
+        print(banner, file=sys.stderr)
     store = (
         None
         if args.emissions_cache == "off"
@@ -1596,7 +1686,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if store is None:
             print("--verify-cache needs the emissions cache (drop --emissions-cache off)", file=sys.stderr)
             return 2
-        return verify_cache(args, corpus, songs[0], modes[0], device, store, root, config)
+        return verify_cache(args, corpus, songs[0], modes[0], device, store, root, config, named)
 
     tag = args.tag or f"{args.level}-{model_label}-{datetime.datetime.now():%Y%m%d-%H%M%S}"
     out = Path(args.out) if args.out else root / "_runs" / tag
@@ -1623,6 +1713,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "align_config": lib.align_config(config),
         "code": code,
     }
+    if banner is not None:
+        #: RECORDED ONLY WHEN TRUE (W4b review r2), so every calibrated run — i.e. every run ever measured —
+        #: keeps the `run.json` shape `resume_refusal` compares, and a `--resume` across a calibration being
+        #: PASTED IN is refused as the setting change it is.
+        run_config["uncalibrated"] = True
     if args.level == "run_align":
         run_config["asr"] = args.asr if args.asr == "off" else f"whisper:{args.asr_model or config.asr_model}"
         run_config["sync_mode"] = args.sync_mode
@@ -1640,7 +1735,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     aligner = BenchAligner(
         device=device,
-        model=args.model,
+        model=named,
         store=store,
         read=args.emissions_cache == "use",
         write="always" if args.emissions_cache == "refresh" else "missing",
@@ -1714,6 +1809,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "tfr_audio": args.tfr_audio,
         "target": run_config["target"],
         "align_config": run_config["align_config"],
+        **({"uncalibrated": True} if banner is not None else {}),
         "modes": modes,
         "songs": [song.slug for song in songs],
         "bench_root": str(root),
@@ -1873,6 +1969,7 @@ def verify_cache(
     store: lib.EmissionStore,
     root: Path,
     config: Config,
+    bundle: str | None,
 ) -> int:
     """Fresh vs disk-cached emissions on one song x mode must give BYTE-IDENTICAL documents.
 
@@ -1880,13 +1977,11 @@ def verify_cache(
     what the store lacks, so an entry made earlier — possibly on another device — is what the cached run
     loads and is judged by.
     """
-    from encore_worker.adapters import ml  # noqa: PLC0415
-
     out = Path(args.out) if args.out else root / "_runs" / f"verify-cache-{song.slug}-{mode}"
     results: dict[str, tuple[dict[str, Any], bytes]] = {}
     for label, read in (("fresh", False), ("cached", True)):
         ml.clear_cache()
-        aligner = BenchAligner(device=device, model=args.model, store=store, read=read, write="missing")
+        aligner = BenchAligner(device=device, model=bundle, store=store, read=read, write="missing")
         driver = TimeTextDriver(
             aligner=aligner,
             corpus=corpus,

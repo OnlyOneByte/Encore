@@ -26,7 +26,8 @@ does):
   decode(θ)        the lift AND the placed line starts agree with the text's own blind decode: at least θ of
                    the decoded lines start within `--near` seconds of their placed claim
                    (`reconcile.as_claimed`); the sheet gate where the decode pairs under 3 lines. SHIPPED
-                   at W3 with θ = `_LINE_SYNC_MIN_AGREEMENT`, `--near` = `_LINE_SYNC_NEAR_SEC`.
+                   at W3 with θ = the model's `lexical.Bands.line_sync_min_agreement` (W4b: per
+                   model, so `--model` scores at that bundle's row), `--near` = `_LINE_SYNC_NEAR_SEC`.
                    SINCE W2 "placed" means MAPPED: the rung votes on the claims' clock first
                    (`align_steps._line_sync_clock`), so the primary columns of every row — `near`, `gross`,
                    `w500`, `w1000` — are read off the sheet as the CLAIM CLOCK places it, and `w3_*` carries
@@ -100,9 +101,22 @@ THETAS = (0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
 Row = Mapping[str, Any]
 
 
-def rules(tau: float) -> dict[str, Callable[[Row], bool]]:
+def share_rule(kind: str, theta: float) -> str:
+    """`decode(0.5)` / `either(0.45)` — one namer for the share-keyed rules (W4b review r1).
+
+    `:g` rather than `:.1f`, so a row whose share is NOT one of `THETAS` (a future 0.45) gets a key of its own
+    instead of colliding with the grid step it rounds to; every swept share prints exactly as it always did.
+    """
+    return f"{kind}({theta:g})"
+
+
+def rules(tau: float, theta: float | None = None) -> dict[str, Callable[[Row], bool]]:
     """Each rule as `row -> refused`. A lift of None (unmeasurable) checks no words, and a decode that paired
-    under 3 lines (`near` None) leaves the timings to the sheet gate — the shipped rung's fallbacks."""
+    under 3 lines (`near` None) leaves the timings to the sheet gate — the shipped rung's fallbacks.
+
+    `theta` is the SHIPPED share of the model under test, swept alongside `THETAS` so a row whose share the
+    sweep's 0.1 grid does not hold still has its own `decode`/`either` rule to be reported by (W4b review r1).
+    """
 
     def lifted(row: Row) -> bool:
         return row["lift"] is None or float(row["lift"]) >= tau
@@ -131,9 +145,9 @@ def rules(tau: float) -> dict[str, Callable[[Row], bool]]:
     def by_lag(lag: float) -> Callable[[Row], bool]:
         return lambda r: not (lifted(r) and decoded(r, 0.5) and on_time(r, lag))
 
-    for theta in THETAS:
-        out[f"decode({theta:.1f})"] = by_decode(theta)
-        out[f"either({theta:.1f})"] = by_either(theta)
+    for share in sorted({*THETAS, *(() if theta is None else (theta,))}):
+        out[share_rule("decode", share)] = by_decode(share)
+        out[share_rule("either", share)] = by_either(share)
     # THE LAG TERM, measured and NOT taken (W3 review r2). The share is read against the text's own blind
     # decode, so a document uniformly 0.5-1.0 s late agrees with itself: 23 of the 328 right-text documents
     # `decode(0.5)` publishes have 0 lines within ±500 ms of truth and all within 1 s — numb and bad-guy in 9
@@ -208,9 +222,11 @@ def table(rows: Sequence[Row], tau: float, modes: Sequence[str]) -> list[str]:
     return out
 
 
-def refusals(rows: Sequence[Row], tau: float, name: str) -> list[str]:
-    """Which right texts a rule refuses, per mode, with what their line documents would have scored."""
-    refused_by = rules(tau)[name]
+def refusals(rows: Sequence[Row], tau: float, name: str, theta: float | None = None) -> list[str]:
+    """Which right texts a rule refuses, per mode, with what their line documents would have scored.
+
+    `theta` only widens the rule table (`rules`), so a caller may ask for the model's own share by name."""
+    refused_by = rules(tau, theta)[name]
     out = []
     for mode in TIMED_MODES:
         got = [r for r in rows if r["mode"] == mode and refused_by(r)]
@@ -258,15 +274,16 @@ def _starts_of(segments: Sequence[Any]) -> dict[int, float]:
     return {i: float(s["start"]) for i, s in enumerate(segments) if isinstance(s.get("start"), (int, float))}
 
 
-def placements(rows: Sequence[Row], tau: float, modes: Sequence[str]) -> list[str]:
+def placements(rows: Sequence[Row], tau: float, modes: Sequence[str], theta: float) -> list[str]:
     """W3's placement (`_placed_by`'s unconditional activity shift) against W2's (the rung's claim-clock
     vote), per mode and on the same decode: what the vote moved, what the gate then admits, and how many
     published documents have NO line within ±500 ms of truth — `gates/w3-lines.yaml`'s
     `zero-pm500-documents-not-up`, the count the clock owes. Only rows carrying `w3_near` (a run made after
-    the map existed) can be read."""
-    from encore_worker.steps import align_steps  # noqa: PLC0415 - the shipped threshold, as `main` reads it
+    the map existed) can be read.
 
-    theta = align_steps._LINE_SYNC_MIN_AGREEMENT
+    `theta` IS PASSED IN, not read from the shipped module (W4b): the share lives in the per-model calibration
+    row (`lexical.Bands.line_sync_min_agreement`), so a `--model` run has to be scored at ITS row's share —
+    or, for a model with no row yet, at the reference share `main` prints a warning about."""
 
     def lifted(row: Row) -> bool:
         return row["lift"] is None or float(row["lift"]) >= tau
@@ -306,8 +323,8 @@ def placements(rows: Sequence[Row], tau: float, modes: Sequence[str]) -> list[st
     return out
 
 
-def summarize(rows: Sequence[Row], tau: float) -> list[str]:
-    lines = [f"== {len(rows)} cases; lexical gate at {tau}"]
+def summarize(rows: Sequence[Row], tau: float, theta: float) -> list[str]:
+    lines = [f"== {len(rows)} cases; lexical gate at {tau}, shipped agreement share {theta}"]
     lines.append(f"-- W1's lines-mode set ({len(W1_LINES_MODES)} modes)")
     lines += table(rows, tau, W1_LINES_MODES)
     lines.append(f"-- every timed mode ({len(TIMED_MODES)})")
@@ -319,13 +336,51 @@ def summarize(rows: Sequence[Row], tau: float) -> list[str]:
     lines.append(
         f"-- placement: W3's shift vs W2's claim clock, shipped rule (W1's {len(W1_LINES_MODES)} modes)"
     )
-    lines += placements(rows, tau, W1_LINES_MODES) or ["  no w3_near in these rows (pre-W2 run)"]
+    lines += placements(rows, tau, W1_LINES_MODES, theta) or ["  no w3_near in these rows (pre-W2 run)"]
     lines.append("-- placement: every timed mode")
-    lines += placements(rows, tau, TIMED_MODES) or ["  no w3_near in these rows (pre-W2 run)"]
-    for name in ("sheet+lift", "lift alone", "decode(0.5)", "either(0.5)"):
+    lines += placements(rows, tau, TIMED_MODES, theta) or ["  no w3_near in these rows (pre-W2 run)"]
+    # THE REFUSAL TABLES READ THIS MODEL'S SHARE (W4b review r1). `theta` is the row under test's — the
+    # header above prints it — so hardcoding `decode(0.5)` here listed the right texts ANOTHER model's
+    # threshold would refuse, directly above `fitted_share`'s "-> line_sync_min_agreement=...". That section
+    # is what a calibrator reads to see WHICH texts the shipped rule costs, so it has to be the shipped rule.
+    for name in ("sheet+lift", "lift alone", share_rule("decode", theta), share_rule("either", theta)):
         lines.append(f"-- refused by {name}")
-        lines += refusals(rows, tau, name) or ["  none"]
+        lines += refusals(rows, tau, name, theta) or ["  none"]
+    lines.append("-- the fitted share for this model's calibration row")
+    lines += fitted_share(rows, tau)
     return lines
+
+
+def fitted_share(rows: Sequence[Row], tau: float) -> list[str]:
+    """THE ROW THIS RUN FITS (W4b, and the reason this script is a procedure rather than a report): the share
+    where the gross lines start, read off THESE rows, printed ready to paste into `lexical.CALIBRATED`.
+
+    The rule is the one every recalibration has followed: take the LOWEST swept share that shows no gross line
+    on the right texts, since a lower one buys published documents at the price of lines more than 2 s out and
+    a higher one refuses right texts for nothing. Printed beside the whole sweep, so a wave can see whether
+    the population separates at all — if every share shows gross lines, this model has no share and the model
+    ships with no row (module docstring of `lexical`)."""
+    right = [r for r in rows if r["mode"] in TIMED_MODES]
+    every = rules(tau)
+    out: list[str] = []
+    fitted: float | None = None
+    for theta in THETAS:
+        refused_by = every[share_rule("decode", theta)]
+        shown = [r for r in right if not refused_by(r)]
+        gross = sum(int(r["gross"]) for r in shown)
+        out.append(
+            f"  share {theta:.1f}: right refused {len(right) - len(shown):3}/{len(right)}, "
+            f"shown gross {gross:3}, ±500 "
+            f"{_pct(sum(int(r['w500']) for r in shown), sum(int(r['scored']) for r in shown))}%"
+        )
+        if gross == 0 and fitted is None:
+            fitted = theta
+    out.append(
+        f"  -> line_sync_min_agreement={fitted}"
+        if fitted is not None
+        else "  -> NO share in the sweep shows 0 gross lines: this model gets no row (refuse to gate)"
+    )
+    return out
 
 
 def claim_agreement(
@@ -361,17 +416,19 @@ def claim_agreement(
     }
 
 
-def model_name(named: str | None) -> str:
+def model_name(named: str | None, device: str) -> str:
     """The bundle a row set was measured on, RESOLVED — never the placeholder "default": see
     `lift_gate.model_name` for why a committed row set has to name the model it can be matched to
-    (W3 review r1)."""
+    (W3 review r1), and why an absent `--model` resolves to `device`'s SHIPPED bundle (W4b)."""
     import e2e  # noqa: PLC0415 - loads torch, which `--from` never needs
 
-    return named or e2e.default_model("en")
+    return named or e2e.default_model("en", device)
 
 
-def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
-    """Every timed case on every selected song's stem (see the module docstring)."""
+def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
+    """Every timed case on every selected song's stem (see the module docstring).
+
+    `device` is the caller's, since an unnamed `--model` means THIS device's shipped bundle (`model_name`)."""
     import e2e  # noqa: PLC0415 - loads torch; `--from` never needs it
     import soundfile as sf  # noqa: PLC0415
 
@@ -394,10 +451,10 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
     config = Config.from_env()
     store = lib.EmissionStore(
         root / "_emissions",
-        model=model_name(args.model),
+        model=model_name(args.model, device),
         emitter=e2e.emitter_fingerprint(config),
     )
-    aligner = e2e.BenchAligner(device=e2e.resolve_device(args.device), model=args.model, store=store)
+    aligner = e2e.BenchAligner(device=device, model=args.model, store=store)
     impl = align_steps.AlignStepsImpl(config=config, adapters=align_steps.Adapters(), reporter=e2e.Trail())
     chosen = set(args.songs.split(",")) if args.songs else None
     rows: list[dict[str, Any]] = []
@@ -444,9 +501,7 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
                 }
                 w3_placed = _starts_of(impl._placed_by(request, fit))
                 clock = align_steps._line_sync_clock(fit, _starts_of(served), blind)
-                mapped, held, unheld = align_steps._in_claim_order(
-                    impl._placed_by(request, fit, clock=clock)
-                )
+                mapped, held, unheld = align_steps._in_claim_order(impl._placed_by(request, fit, clock=clock))
                 placed = _starts_of(mapped)
                 errors = [at - truth_of[i] for i, at in placed.items() if i in truth_of]
                 w3_errors = [at - truth_of[i] for i, at in w3_placed.items() if i in truth_of]
@@ -512,7 +567,7 @@ def measure(args: argparse.Namespace) -> list[dict[str, Any]]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0] if __doc__ else None)
-    ap.add_argument("--model", default=None, help="torchaudio bundle (default: whisperx's `en` default)")
+    ap.add_argument("--model", default=None, help="torchaudio bundle (default: this device's shipped one)")
     ap.add_argument("--out", default=None, help="write every case's measurements here (JSON)")
     ap.add_argument("--from", dest="source", default=None, help="summarize a stored --out instead")
     ap.add_argument("--songs", default=None, help="comma-separated slugs (default: the whole corpus)")
@@ -524,7 +579,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = ap.parse_args(argv)
     from encore_worker.steps import align_steps  # noqa: PLC0415
 
-    args.tau = lexical.BANDS.refuse_below if args.tau is None else args.tau
+    # THE THRESHOLDS ARE THIS MODEL'S (W4b). `lexical.CALIBRATED` is keyed by bundle, so a run is scored at
+    # the row of the bundle it MEASURED — the stored one under `--from`, else the named or this device's
+    # shipped one; a model with NO row is what this script exists to fit, and it then scores with the shipped
+    # row's numbers as a stated REFERENCE rather than pretending they are its own.
+    stored = json.loads(Path(args.source).read_text(encoding="utf-8")) if args.source else None
+    device = ""
+    if stored is None:
+        import e2e  # noqa: PLC0415 - loads torch; `--from` never needs it
+
+        device = e2e.resolve_device(args.device)
+    asked = str(stored["model"]) if stored is not None else model_name(args.model, device)
+    row = lexical.CALIBRATED.get(asked)
+    if row is None:
+        print(
+            f"-- {asked} has no calibration row: scoring with {lexical.BANDS.model}'s tau "
+            f"{lexical.BANDS.refuse_below} and share {lexical.BANDS.line_sync_min_agreement} as a REFERENCE. "
+            "Fit this model's own with lift_gate.py --model, and read the fitted share at the end.",
+            file=sys.stderr,
+        )
+        row = lexical.BANDS
+    args.tau = row.refuse_below if args.tau is None else args.tau
+    theta = row.line_sync_min_agreement
     if args.near is None:
         args.near = align_steps._LINE_SYNC_NEAR_SEC
     else:
@@ -536,14 +612,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"-- near swept to {args.near}: the vote's band and the gate's both", file=sys.stderr)
     warnings.filterwarnings("ignore", message=r".*forced_align has been deprecated.*")
     warnings.filterwarnings("ignore", message=r"(?s).*torchcodec is not installed correctly.*")
-    if args.source:
-        rows: list[dict[str, Any]] = list(json.loads(Path(args.source).read_text(encoding="utf-8"))["rows"])
+    if stored is not None:
+        rows: list[dict[str, Any]] = list(stored["rows"])
     else:
-        rows = measure(args)
+        rows = measure(args, device)
         if args.out:
-            body = {"model": model_name(args.model), "near_sec": args.near, "rows": rows}
+            body = {"model": asked, "near_sec": args.near, "rows": rows}
             Path(args.out).write_text(json.dumps(body), encoding="utf-8")
-    for line in summarize(rows, args.tau):
+    for line in summarize(rows, args.tau, theta):
         print(line)
     return 0
 

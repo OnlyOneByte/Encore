@@ -216,6 +216,19 @@ def test_an_unknown_alignment_experiment_is_refused() -> None:
         Config.from_env({"ENCORE_ALIGN_EXPERIMENTS": "l1-mix-kept,l1-mix-kpet"})
 
 
+def test_the_alignment_model_is_unset_unless_named() -> None:
+    """W4b 6b: `ENCORE_ALIGN_MODEL` names the ENGLISH bundle, and UNSET means "this device's default" rather
+    than any particular model — the device is probed, not configured, so only `__main__.align_model_for` can
+    resolve it. An empty or blank value is unset, not a request to load "".
+
+    None also keeps the field out of a bench run's `align_config`, which is what stops the knob's mere
+    existence from re-keying every cached emission matrix (`e2e_lib.align_config`).
+    """
+    assert Config.from_env({}).align_model is None
+    assert Config.from_env({"ENCORE_ALIGN_MODEL": "   "}).align_model is None
+    assert Config.from_env({"ENCORE_ALIGN_MODEL": " HUBERT_ASR_LARGE "}).align_model == "HUBERT_ASR_LARGE"
+
+
 def test_every_declared_arm_is_read_by_the_step() -> None:
     """The other half of the typo guard, and the one the config cannot catch: an arm the CONFIG accepts and
     NOTHING reads is measured as the default path under the arm's name, and a whole bench run says "no

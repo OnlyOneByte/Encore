@@ -1,0 +1,123 @@
+# W4b 6b reject-if for the ENGLISH BUNDLE FLIP: HuBERT-Large (the CANDIDATE — the flip was proposed as this
+# tree's default and this file is what rejected it, so `--model HUBERT_ASR_LARGE` names it on every command
+# below) against the base model
+# `WAV2VEC2_ASR_BASE_960H` it would have replaced (PLAN-alignment-v3 W4b, review §3 item 6b and item 6's "How to
+# measure all three"). The pair to measure is the SAME CODE with the model named both ways — not this wave's
+# row against W4's, because W4b also moved `adapters/ml.py`'s bytes and therefore the emission cache key:
+#
+#   # the control: the model W4 measured, on W4b's code
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --model WAV2VEC2_ASR_BASE_960H \
+#       --tag w4b-base-time_text > /tmp/w4b-base.log 2>&1 &
+#   # the candidate, and the comparison. NAME IT: this box's shipped bundle is the BASE model
+#   # (`ml.DEFAULT_ALIGN_MODEL`, after this file's own verdict), so an absent `--model` re-runs the control.
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --model HUBERT_ASR_LARGE \
+#       --tag w4b-hubert-time_text \
+#       --compare $ENCORE_BENCH_ROOT/_runs/w4b-base-time_text \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4b-hubert.yaml > /tmp/w4b-hubert.log 2>&1 &
+#   (then the same two at `--level run_align`; offline: e2e.py --summarize <run>/rows.jsonl --compare … --gates …)
+#
+# COST, and why it is two runs and not one: a model swap changes every matrix, so each arm pays one model
+# pass per song per target (HuBERT-L 4.3-8.6 s/song on MPS against the base model's 2.7-5.2). The 32 stem and
+# 32 mix matrices of BOTH models are already warm under this tree's emitter fingerprint `d0f32397b195b068`
+# for the HuBERT side (W4b's own calibration runs computed them); the base-model side is cold, because W4b
+# edited `adapters/ml.py` — about 3 min of extra model time for the sweep, not per case.
+#
+# WHAT THE GATES ARE. Review §3 item 6's own reject-if list, which is a FACTORIAL of model × separator ×
+# clock and here reads the model axis alone (6c is a separate file when it lands): "any Jamendo song gets
+# more than 1 pt worse at ±300; the Jamendo gross total rises; E2E gross under truth or jittered claims is
+# not lower; or highlight accuracy falls". Plus the wrong-text bound every wave since W3 carries, because a
+# recalibrated floor is still a floor (§3.4: at most 1% of wrong texts may pass), and the two ±500 bounds
+# W2/§3.2 fixed for a change that touches the decode.
+#
+# EXPECTED (the review's own measurement, on the OLD 30 s-chunk clock, so directions rather than digits):
+# blind Jamendo gross lines 40 -> 16, word onsets ±100 +4.1 pts and ±300 +3.5, AAE -75 ms, 17-18 of 20 songs
+# better and NONE worse at ±300, YouTube blind gross 83 -> 47, E2E gross with truth claims 25 -> ~5 and with
+# jittered claims 34 -> 3. W4's exact clock already took truth-mode gross to 3 and blind to 106 on the base
+# model (`results/w4-time_text.json`), so the remaining head-room at the top of the range is smaller than the
+# review's numbers suggest and the gates below are written as "not worse", not as "reproduce the review".
+#
+# ══ RUN. 20/22 AT BOTH LEVELS — REJECT (W4b bench, 2026-09-30; re-read 2026-09-30 W4b review r1) ════════
+# The sweep this file was written for is DONE, both levels, exactly the two commands above:
+#   `results/w4b-base-time_text.json`   vs `results/w4b-hubert-time_text.json`    20/22, 870 s / 733 s
+#   `results/w4b-base-run_align.json`   vs `results/w4b-hubert-run_align.json`    20/22, 754 s / 745 s
+# (18/20 as the file read at the bench; review r1 added the two AAE gates below — both PASS on these same
+# recorded rows, offline: `e2e.py --summarize <run>/rows.jsonl --compare … --gates …`, no re-bench.)
+# THE SAME TWO FAIL ON BOTH, which is what makes this a verdict and not a level artefact:
+#   FAIL no-jamendo-song-worse-at-word-pm300-truth   -1.74 >= -1.0   (`Tom_Orlando_-_The_One__feat._Tina_G_`)
+#   FAIL e2e-gross-down-truth                         7 <= 3         (hello +1, tfr-chosen +3, Tom_Orlando +1,
+#                                                                     Pure_Mids -1)
+# THE OTHER 18 PASS, several of them handsomely: blind Jamendo gross 40 -> 27 and YouTube 66 -> 41 (both SHOULD
+# gains, bounds -5), 17 of 20 songs better at blind ±300 (>= 14), truth Jamendo word ±300 97.12 >= 94.98,
+# blind ±100 82.81 >= 80.11, |bias| 7 <= 13.1, highlight 81.03 >= 77.10 truth and 80.28 >= 77.51 blind, truth
+# ±500 90.09 and text ±500 88.81 both UP, refusals 0, wrong texts 0/320 and ownclock 0/320. AAE falls on both
+# pools — blind 297.9 -> 253.6 ms, truth 87.8 -> 72.3 — which is the gate review §3 item 6 asked for ("AAE
+# -75 ms") and the one this file was reading the signed BIAS for until review r1 (|bias| 7 <= 13.1 passes too,
+# now under its own name `blind-onset-bias-not-worse`).
+# CONSEQUENCE: `ml.DEFAULT_ALIGN_MODEL` went BACK to `WAV2VEC2_ASR_BASE_960H` and `ALIGN_MODELS_BY_DEVICE` is
+# empty — the wave's own six MUSTs are in `gates/w4b.yaml` (19/30 at both levels) and three of them fail, so
+# the flip ships reachable-but-not-default under `ENCORE_ALIGN_MODEL`. Everything this file measures stays
+# live, because that is how the candidate is re-read the day the ladder's reaction to a better decode is
+# understood. THE CONTROL IS EXACT: `w4b-base-*` reproduces `results/w4-{time_text,run_align}.json` with every
+# pooled and per-song delta 0.00, so all of the above is the bundle and none of it is W4b's other code.
+# ALSO RUN, AND NOT BY THIS FILE: `--sync-mode lines` on the candidate
+# (`results/w4b-hubert-lines-run_align.json`) reads `gates/w3-lines.yaml` at 37/38 against W4's 34/38 — the
+# rung is where HuBERT-L is unambiguously better, and wrong texts stay 0/640.
+#
+# ALREADY MEASURED, NOT BY THIS FILE (W4b hubert, 2026-09-30; the calibration is the wave's own gate and is
+# recorded in `lexical.CALIBRATED`'s docstring + README "The English bundle is a setting"): on a stem the
+# wrong-text populations separate by +0.5466 against the base model's +0.0720, so `refuse_below` 0.45 clears
+# every one of the 640 wrong texts by +0.2306 while refusing 0 of 192 right ones; on the mix the floor stays
+# 0.15 and refuses 10 of 192 right texts against 54 (the base bundle's row of record, `results/w4-lift-mix.json`
+# — W3's 48 was on the old clock); the rung's share stays 0.5 at 13 of 416 refusals against 32. Rows: `results/w4b-lift-{stem,mix}-hubert-large.json`, `results/w4b-line-gate-hubert-large.json`.
+# A TARGETED 4-SONG PROBE (`_runs/w4b-hubert-probe`) is in the Status log; it is not a corpus row.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+#
+# NON-VACUITY CHECKED the way W2's file was, before any HuBERT row existed: run against
+# `results/w4-time_text.json` AS BOTH SIDES, all 21 + the built-in evaluate with 0 ERRORs (no unknown metric,
+# no mode the sweep does not measure), the 19 "not worse" gates pass on the identity and the 3 "gain" gates
+# FAIL on it (40 <= 35, 66 <= 61, 0 >= 14) — which is what makes them gates rather than decoration. (17 and 2
+# of the AAE gates' names before review r1 added them.) That base
+# row also fixes the numbers the flip is measured against: blind Jamendo gross 40 (the review's own base
+# figure), blind YouTube gross 66, truth gross 3, blind word ±100 80.11, truth Jamendo word ±300 94.98,
+# blind highlight 77.51.
+
+# ── review §3 item 6's four ─────────────────────────────────────────────────────────────────────────
+no-jamendo-song-worse-at-word-pm300-blind: min_song_delta(blind.jamendo.word_pm300) >= -1.0
+no-jamendo-song-worse-at-word-pm300-truth: min_song_delta(truth.jamendo.word_pm300) >= -1.0
+jamendo-gross-not-up-blind: blind.jamendo.gross <= base.blind.jamendo.gross
+jamendo-gross-not-up-truth: truth.jamendo.gross <= base.truth.jamendo.gross
+e2e-gross-down-truth: truth.gross <= base.truth.gross
+e2e-gross-down-jit: mode("jit").gross <= base.mode("jit").gross
+highlight-not-down-blind: blind.jamendo.highlight >= base.blind.jamendo.highlight
+highlight-not-down-truth: truth.jamendo.highlight >= base.truth.jamendo.highlight
+
+# ── the recalibrated floor is still a floor (§3.4) ───────────────────────────────────────────────────
+wrongtext-pass-at-most-1pc: mode("wrongtext").wrongtext_pass <= 1.0
+ownclock-pass-at-most-1pc: mode("wrongtext+ownclock").wrongtext_pass <= 1.0
+# A right text must not be refused because the floor moved with the model: the text-denominator ±500 counts a
+# refusal as a miss, so this cannot be met by refusing a song into silence.
+truth-text-pm500-not-down: truth.text_pm500 >= base.truth.text_pm500 - 0.5
+refusals-not-up-truth: truth.refused <= base.truth.refused
+
+# ── §3.2's decode bounds, the ones every wave that moves the decode carries ──────────────────────────
+truth-pm500-not-down-1pt: truth.pm500 >= base.truth.pm500 - 1.0
+truth-word-pm300-not-down: truth.jamendo.word_pm300 >= base.truth.jamendo.word_pm300
+blind-word-pm100-up: blind.jamendo.word_pm100 >= base.blind.jamendo.word_pm100
+# RENAMED IN W4b REVIEW R1: this reads the median SIGNED onset error, which is a different quantity from the
+# absolute error — a bundle can hold its bias at -3 ms while its AAE doubles on a long tail of grossly
+# misplaced words. It was named `blind-aae-not-up` and read as "|bias| 7 <= 13.1", so the model axis had no
+# AAE gate at all while `word_aae_ms` was right there in the summary.
+blind-onset-bias-not-worse: abs(blind.jamendo.word_bias_ms) <= abs(base.blind.jamendo.word_bias_ms) + 10.0
+# THE REAL AAE GATE, on both pools (W4b review r1). §3 item 6's own expectation for this flip is "AAE -75 ms",
+# so a candidate whose absolute error RISES has not earned the bundle whatever its medians say. Absolute
+# variants of the same metric are `gates/w4b.yaml`'s `w4-jamendo-aae` (truth) and `gates/w4-clock.yaml`'s.
+blind-aae-not-up: blind.jamendo.word_aae_ms <= base.blind.jamendo.word_aae_ms
+truth-aae-not-up: truth.jamendo.word_aae_ms <= base.truth.jamendo.word_aae_ms
+
+# ── the gain the flip is FOR (SHOULD: a flip that buys nothing is not worth 3.6x the model time) ─────
+blind-jamendo-gross-down: blind.jamendo.gross <= base.blind.jamendo.gross - 5
+blind-youtube-gross-down: blind.youtube.gross <= base.blind.youtube.gross - 5
+songs-better-at-word-pm300-blind: count(blind.jamendo.song.word_pm300_up) >= 14
