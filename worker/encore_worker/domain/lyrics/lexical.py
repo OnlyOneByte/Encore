@@ -117,16 +117,22 @@ that calls it "a hair" is if anything more true. Both facts are named at each th
                   mode"). The envelope gate refuses 51 of the 128 right-text cases against the floor's 37,
                   10 of the 32 truth texts against 7, and 9 of its refusals lift at or above the floor
                   (Tom_Orlando +1.465, Rxbyn +1.081, Ridgway +1.061, tfr-mayday +0.943, HILA +0.872 ...) —
-                  and it admits 26 of 64 wrong texts, 40.6% where review §3.4 allows 1%, while publishing
+                  and IT ADMITS 27 OF 64 WRONG TEXTS, 42.2% where review §3.4 allows 1% — THIS MODULE OWNS
+                  THAT FIGURE and every other site defers to it, because it was re-measured in place: the
+                  pre-r1 recording of the same configuration admitted 26 (40.6%), and the re-record under the
+                  post-flip name added `Kinematic_-_Peyote` under The.madpix.project's sheet (lift -0.0056,
+                  a text the floor refuses and whose envelope fit clears the gate). Meanwhile it publishes
                   the four worst right-text documents it has (The_Rinn at lift -0.010: 2 of 46 lines within
                   ±500 ms with 44 gross). The floor publishes 91 of the 128 to its 77, 53.5% of their line
                   starts within ±500 ms to 42.3%, the same gross count (851 vs 853) and 0 of 64 wrong texts.
                   So it is not a choice between a strict gate and a lenient one — the envelope gate is both
                   stricter on right texts and looser on wrong ones — and the mix now follows the stem's rule.
                   THE OLD BEHAVIOUR IS THE CONTROL ARM `h3-mix-envelope` (`Config.align_experiments`): the
-                  envelope gate is the mix's only verdict and this floor merely grades, which is what
-                  `results/w4-stemless-time_text.json` was recorded on. `h3-mix-floor` still means BOTH
-                  gates — W3's first shipping — and it publishes 54 of the 128, the two costs paid together.
+                  envelope gate is the mix's only verdict and this floor merely grades, and THE ROW IT WAS
+                  RECORDED ON IS `results/w4-stemless-envelope-time_text.json` (the shipped default's own row
+                  is `results/w4-stemless-time_text.json`; both on code `8c576cc6200b02a0`, W4 rebench r2).
+                  `h3-mix-floor` still means BOTH gates — W3's first shipping, and what setting both arm
+                  names means — and it publishes 54 of the 128, the two costs paid together.
     `mix_ok_from` 0.6 (the review's band top): on the mix the lift reads how well the words are HEARD. The
                   8 truth texts in [0.15, 0.6) decode blind with a median 55% of lines within 1 s and
                   140/343 lines over 2 s off (never-be-alone 11% within 1 s, Lower_Loveday 27%), the 17 at
@@ -152,7 +158,7 @@ that calls it "a hair" is if anything more true. Both facts are named at each th
     the floor, blind envelope AND lift refuses 114/192 right texts, the floor alone 48/192, both passing
     0/640 wrong texts. W3 kept it anyway because that was the blind half only (the shipped gate also passes a
     REPAIRED fit, which only claims can move) and the bench had no stemless mode to measure either gate whole.
-    It has one now and the whole gate sorts no better (51 of 128 right texts refused, 26 of 64 wrong passed,
+    It has one now and the whole gate sorts no better (51 of 128 right texts refused, 27 of 64 wrong passed,
     with truth claims to repair the fit), so it is reported and not gated here — exactly as on a stem —
     wherever the lift measured the text. It is still the ONLY gate where the lift could not measure one at
     all (`align_steps._word_lift`: the ASR tier, a text under `MIN_LETTERS`, a decode that raised, a matrix
@@ -389,7 +395,7 @@ class Bands:
     ok_from: float
     #: On the mix: under it, REFUSE — a verdict since W4 review r1, published as DOUBT only under the control
     #: arm `h3-mix-envelope` (it refuses 7 of the corpus's 32 truth texts, and the envelope gate it replaced
-    #: refused 10 of them plus 26 of 64 wrong texts; see the docstring's MIX section).
+    #: refused 10 of them plus 27 of 64 wrong texts; see the docstring's MIX section).
     mix_floor: float
     #: On the mix: from `mix_floor` up to it, DOUBT; from it, OK. A GRADING threshold (how audible the words
     #: are), never the words' standing: 104 of the corpus's 192 right mix texts lift under it (docstring MIX).

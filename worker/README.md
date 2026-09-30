@@ -235,15 +235,15 @@ flowchart TD
     A[audio] --> E["emissions E (once, cached)<br/>+ activity envelope A"]
     T[text only — claimed timings NOT passed] --> LEX
     E --> LEX{"lexical lift: the text vs 3 shuffles of its words<br/>(FIRST, on E alone: before the decode, the ffmpeg read and the envelope;<br/>skipped: ASR tier, under 40 letters, another model's matrix)"}
-    LEX -- "below the stem floor 0.2" --> FAIL
-    LEX -- "doubt band, or below the mix floor 0.15:<br/>every line low; words unvouched on a stem,<br/>and on the mix only below the floor" --> G
+    LEX -- "below the floor (stem 0.2, mix 0.15)" --> FAIL
+    LEX -- "doubt band: every line low;<br/>words unvouched on a stem, vouched on the mix<br/>(there the floor is the words' verdict)" --> G
     LEX -- ok --> G[global CTC decode<br/>lines / words / syllables + per-line scores]
-    G --> CLK{"claim clock: vote over<br/>no shift / the claims' envelope lag / median(ours − claimed) /<br/>bounded tempo — applied only if it explains<br/>max(2 lines, 5%) more than no shift, and ≥ 20% of the pairs"}
+    G --> CLK{"claim clock: vote over<br/>no shift / the claims' envelope lag / median(ours − claimed) /<br/>the densest-window MODE of the same differences /<br/>bounded tempo, with its median and its mode offset — applied only if<br/>it explains max(2 lines, 5%) more than no shift, and ≥ 20% of the pairs"}
     CLK --> R[reconcile vs claimed timings]
     R -- "unrelated & claims fit the audio better" --> R1["R1: re-decode every claimed line<br/>inside its claim window"]
     R -- "structural: disputed lines" --> R2["R2: re-decode disputed lines<br/>inside their claim windows"]
     R -- "blind repeats, no claim anchor" --> R3["R3: re-decode repeats jointly<br/>between unique-line anchors"]
-    R1 --> GATE{"envelope gate, on the repaired series<br/>r≥0.40 in ±0.5s, or r≥0.25 in ±0.1s<br/>(on a stem only where the lift could not measure)"}
+    R1 --> GATE{"envelope gate, on the repaired series<br/>r≥0.40 in ±0.5s, or r≥0.25 in ±0.1s<br/>(either target, only where the lift could not measure the text)"}
     R2 --> GATE
     R3 --> GATE
     R -- no repair needed --> GATE
@@ -279,7 +279,7 @@ silence on a stem and almost nothing on a full mix (92–98% of a corpus mix's f
 59–77% of the same songs' stems), so a stemless song and the `ALIGN_ON_MIX` retry keep the raw decode's ends
 until a mix-calibrated level is fitted. Measured over the 20-song Jamendo corpus, truth claims
 (`results/w4-time_text.json` against `results/w4-endsoff-time_text.json`): phrase-final word ends within
-±100 ms 37.5% → 59.8%, their bias −114 → −5.8 ms, all word ends within ±100 ms 69.1% → 80.0%, and the correct
+±100 ms 37.5% → 59.8%, their bias −114 → −5.6 ms, all word ends within ±100 ms 69.1% → 80.0%, and the correct
 word lit for 65.8% → 77.1% of sung time — with every onset metric equal to the digit and all 20 songs' onset
 digests byte-identical.
 

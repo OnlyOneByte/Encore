@@ -2772,7 +2772,16 @@ def test_the_committed_calibration_rows_name_the_model_the_bands_claim() -> None
     from encore_worker.domain.lyrics import lexical
 
     results = SCRIPTS.parent / "results"
-    for name in ("w3-lift-stem.json", "w3-lift-mix.json", "w3-line-gate.json", "w2-line-gate.json"):
+    for name in (
+        "w3-lift-stem.json",
+        "w3-lift-mix.json",
+        "w3-line-gate.json",
+        "w2-line-gate.json",
+        # W4's re-read of the same rung on the exact clock (review r2: it was committed and cited nowhere).
+        "w4-line-gate.json",
+        "w4-lift-stem.json",
+        "w4-lift-mix.json",
+    ):
         body = json.loads((results / name).read_text(encoding="utf-8"))
         assert body["model"] == lexical.BANDS.model, name
 
@@ -2800,6 +2809,69 @@ def test_the_committed_w2_rows_carry_both_placements_at_the_shipped_band() -> No
     now = {(r["song"], r["mode"], r["variant"]) for r in right if refused(r, "near")}
     assert (len(was), len(now)) == (88, 33), "the docstring's headline delta"
     assert now < was, "the clock refuses nothing W3's placement admitted"
+
+
+def test_the_committed_w4_rows_re_read_the_line_sync_thresholds_on_the_exact_clock() -> None:
+    """W4 6a moved every emission matrix, so `_LINE_SYNC_MIN_AGREEMENT` and `_LINE_SYNC_NEAR_SEC` were being
+    read on a scale they were not fitted on. `results/w4-line-gate.json` is that re-read — and review r2
+    found it committed and cited NOWHERE, with the constants' record still arguing from a W2 population that
+    the exact clock had dissolved. This holds the docstring's re-read (and README's second share table) to
+    the rows, so neither can drift from the other again.
+
+    THE ARGUMENT THAT CHANGED: W2 defended 0.5 by the gap between the two documents more than 20% gross
+    (shares 0.24 and 0.32) and the rest's p10 (0.54). On the exact clock NO right text is more than 20%
+    gross, so the separation is re-read against the quality population the rows carry: the 2 documents under
+    half their lines within 1 s of truth, and the 410 at 80% or more.
+
+    AND WHAT THE TIMING HALF CANNOT DO ALONE: one wrong-text case reads ABOVE the share (`Kinematic_-_Peyote`
+    under `wrongtext+ownclock`), and the LEXICAL LIFT is what refuses it — so the two gates are asserted
+    together here, as the rung reads them.
+    """
+    import math
+    import statistics
+
+    from encore_worker.domain.lyrics import lexical
+    from encore_worker.steps import align_steps
+
+    share = align_steps._LINE_SYNC_MIN_AGREEMENT
+    body = json.loads((SCRIPTS.parent / "results" / "w4-line-gate.json").read_text(encoding="utf-8"))
+    assert body["near_sec"] == align_steps._LINE_SYNC_NEAR_SEC
+    rows = body["rows"]
+    assert len(rows) == 1056
+    right = [r for r in rows if not str(r["mode"]).startswith("wrongtext")]
+    wrong = [r for r in rows if str(r["mode"]).startswith("wrongtext")]
+    assert (len(right), len(wrong)) == (416, 640)
+
+    def refused(row: dict[str, Any]) -> bool:
+        near = row["near"]
+        near_enough = bool(row["sheet"]) if near is None else near >= share
+        return not ((row["lift"] is None or row["lift"] >= lexical.BANDS.refuse_below) and near_enough)
+
+    assert sum(1 for r in right if refused(r)) == 32, "the docstring's 32 of 416 refused at the shipped share"
+    assert not any(r["scored"] and r["gross"] / r["scored"] > 0.20 for r in right), (
+        "W2's >20%-gross population is what the old separation argument rested on: it is gone"
+    )
+
+    def p10(values: list[float]) -> float:
+        ordered = sorted(values)
+        index = (len(ordered) - 1) * 0.10
+        low, high = math.floor(index), math.ceil(index)
+        return ordered[low] + (ordered[high] - ordered[low]) * (index - low)
+
+    scored = [r for r in right if r["scored"]]
+    bad = [r for r in scored if r["w1000"] / r["scored"] < 0.5]
+    good = [r for r in scored if r["w1000"] / r["scored"] >= 0.8]
+    assert (len(bad), len(good)) == (2, 410), "the quality populations the re-read argues from"
+    assert max(r["near"] for r in bad) < share <= p10([r["near"] for r in good]), (
+        "the share must sit above every bad document and under the good population's p10"
+    )
+    assert round(max(r["near"] for r in bad), 4) == 0.3404
+    assert round(p10([r["near"] for r in good]), 3) == 0.583
+    assert round(statistics.median([r["near"] for r in good]), 4) == 0.8649
+    over = [r for r in wrong if r["near"] is not None and r["near"] >= share]
+    assert [r["song"] for r in over] == ["Kinematic_-_Peyote"], "the one wrong text the timing half admits"
+    assert all(r["lift"] < lexical.BANDS.refuse_below for r in over), "and the lift is what refuses it"
+    assert all(refused(r) for r in wrong), "0 of 640 wrong texts pass the rung's two gates together"
 
 
 def test_a_committed_row_set_names_the_bundle_it_was_measured_on(monkeypatch: pytest.MonkeyPatch) -> None:

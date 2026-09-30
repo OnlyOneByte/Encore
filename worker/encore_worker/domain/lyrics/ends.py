@@ -55,29 +55,37 @@ Color_Out/HILA/Wordsmith), which read the same direction and a smaller size:
                                ── truth claims ──   ── blind ──
     word end ±100             69.06    80.02       68.74    79.48
     word end ±250             93.06    94.97       92.79    94.64
-    word end bias            -54.5 ms  -3.0 ms    -55.3 ms  -3.8 ms
+    word end bias            -54.5 ms  -2.9 ms    -55.3 ms  -3.8 ms
     phrase-final end ±100     37.46    59.83       36.30    56.75
     phrase-final end ±250     73.79    83.05       72.74    81.78
-    phrase-final end bias    -114 ms   -5.8 ms    -121 ms  -15.5 ms
+    phrase-final end bias    -114 ms   -5.6 ms    -121 ms  -15.5 ms
     HIGHLIGHT                 65.83%   77.10%      65.92%   77.51%
                                        (CI 72.9-81.5)       (CI 72.8-81.8)
     onsets ±100/±300, AAE     83.25 / 94.98 / 87.8 ms and 80.11 / 91.58 / 297.9 ms — EQUAL TO THE DIGIT in
                               both columns, with all 20 songs' `onsets_sha256` byte-identical
 
 So every reject-if clears on the corpus (`gates/w4-ends.yaml` 6/6): +22.4 pts of phrase-final ±100 and
-+11.3 of highlight under truth claims, the phrase-final bias -114 -> -5.8 ms, EVERY song's highlight up
++11.3 of highlight under truth claims, the phrase-final bias -114 -> -5.6 ms, EVERY song's highlight up
 (worst +6.6 Tom_Orlando, best +15.8 Cortez) and 2 of 20 songs worse at word-end ±100 against the 3 the
 review allows — Avercage -6.19 and Color_Out -1.28, both of which gain on the independently measured half
 (their phrase-final ±100 goes +12.5 and +16.1). That is the shape §3.5's objection predicts: interior ends
 and phrase-final ends can move in opposite directions on one song, and only the second is really measured.
 
-THE REVIEW-ROUND FIXES BELOW MOVE THIS TABLE BY 0.2 ms, measured rather than assumed (`_GRID_TOLERANCE`, so
+THE REVIEW-ROUND FIXES BELOW MOVED THIS TABLE BY 0.2 ms, measured rather than assumed (`_GRID_TOLERANCE`, so
 a walk starts on the frame the end actually sits in, and `_next_sung`, so a trailing OOV placeholder does not
 cap the word before it: `_runs/w4r1b-time_text` over the same 20 songs). Truth end bias -3.0 -> -2.9 ms,
-phrase-final bias -5.8 -> -5.6, and end ±100 / ±250 / phrase-final ±100 / ±250 / highlight EQUAL TO THE DIGIT
-(80.02 / 94.97 / 59.83 / 83.05 / 77.10) — the two defects are real and rare, not a recalibration. The pair's
-off-column is still `results/w4-endsoff-time_text.json`, which predates them, so the rebench owes the
-control's re-record (`gates/w4-ends.yaml`, THE COMMITTED CONTROL IS A CODE SHIM).
+phrase-final bias -5.8 -> -5.6 — both folded into the table above, which is now the committed row to the
+digit — and end ±100 / ±250 / phrase-final ±100 / ±250 / highlight EQUAL TO THE DIGIT
+(80.02 / 94.97 / 59.83 / 83.05 / 77.10) — the two defects are real and rare, not a recalibration.
+
+THE OFF-COLUMN IS THE DOCUMENTED ARM, NOT A CODE SHIM (W4 rebench round 2). The pair's off-column,
+`results/w4-endsoff-time_text.json`, was re-recorded as `ENCORE_ALIGN_EXPERIMENTS=ends-raw` on the on-column's
+SAME code (`meta.code 8c576cc6200b02a0` on both, which `e2e.py`'s fingerprint takes over every file of the
+imported package), so the pair is one population and the reject-if below was read on a reproducible setup
+rather than on an edited tree. The arm reproduced the shim it replaced to the digit, and the onset half is now
+read off the rows rather than only off the gate: across the 40 paired song-modes of
+`results/w4-{,endsoff-}time_text.cases.jsonl`, `onsets_sha256` is unchanged on 40 of 40 while `doc_sha256`
+changes on 40 of 40 — review §3.5's "any onset moves" as an exact statement (`gates/w4-ends.yaml`).
 
 THE TILE ARM TRADES, on the 3-song slice it was measured on (`_runs/w4-ends-tile`): +1.5 pts of highlight
 (79.1 -> 80.6) for -4.0 on word-end ±100 (79.0 -> 75.0) and -1.6 at ±250, with phrase-final ends untouched

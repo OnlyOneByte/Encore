@@ -728,10 +728,13 @@ class TimeTextDriver:
         the case is run exactly as production runs a song no stems job could separate — `vocals_path` is
         None, so `AudioRef.align_target` is the mix, R4 has no second witness (the mix IS the target),
         `Knob.ALIGN_ON_MIX` is never offered (`Search.aligned_on_stem`), the LINE_SYNC rung declines
-        (`_time_line_sync`), and the lexical gate reads the MIX bands, where its floor only grades by
-        default (`lexical.BANDS`, MIX; the `h3-mix-floor` / `h3-mix-lift-alone` arms make it the verdict).
-        No corpus song LACKS a stem, so this is the only way those arms and that band are measurable at
-        all — W3 shipped its mix decision on the lift population alone (`results/w3-lift-mix.json`).
+        (`_time_line_sync`), and the lexical gate reads the MIX bands, where SINCE W4 REVIEW R1 THE FLOOR
+        IS THE VERDICT and the envelope fit is only reported (`lexical.BANDS`, MIX). The two controls are
+        `h3-mix-envelope` (W3's default: the envelope gate alone, the floor grading — the row is
+        `results/w4-stemless-envelope-time_text.json`) and `h3-mix-floor` (both gates, which is also what
+        setting both names means). No corpus song LACKS a stem, so this mode is the only way that band and
+        those arms are measurable at all — W3 shipped its mix decision on the lift population alone
+        (`results/w3-lift-mix.json`), and this mode is what flipped it.
         """
         return str(song.vocals if self.stem else song.mix)
 
