@@ -1,0 +1,130 @@
+# W4 reject-if for the EXACT 20 ms FRAME GRID alone (review §3.6a; `worker/encore_worker/adapters/ml.py`).
+# THE BASELINE IS THE SAME TREE WITH ONE LEVER REVERTED — `_frame_passes` back to w4-start's 30 s chunks with
+# no trimmed context and the final sub-0.1 s sliver dropped, and `frame_sec` back to `duration / frames`:
+#
+#   W=$ENCORE_BENCH_ROOT/_runs/w4-bench       # rsync of encore_worker + those two edits (r2.sh's header)
+#   cd worker && PYTHONPATH=$W/noclock2 .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py --tag w4r2-noclock-time_text \
+#       --level time_text --modes all,wrongtext+ownclock
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock \
+#       --compare ../docs/benchmarks/forced-alignment/results/w4-noclock-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4-clock.yaml
+#
+# WHY A SHIM AND NOT A KNOB. The grid is not an arm — 320 samples at 16 kHz IS 0.02 s, and `ONSET_LEAD_SEC`
+# and `ends.py`'s bands are both re-fitted ON it — so there is nothing to switch off in the shipped code.
+# A rsync'd copy on PYTHONPATH is how W2 split its clock from its reconcile. The shim's own arithmetic is
+# checked without a model: `_frame_passes` gives 2998 frames for 60 s (frame_sec 0.0200133), 9693 for 194 s
+# (0.0200144) and 7529 for 150.7 s (0.0200159), which is the 0.020014 the review measured; the default gives
+# 3000 / 9700 / 7535 and 0.02 exactly.
+# `noclock2` REPLACES `noclock` (rebench r2) and is the only shim to use: `noclock` was w4-start's whole
+# `adapters/ml.py` copied in, which kept the pre-W4 emissions key (free matrices) at the price of predating
+# review r1's `jobs` kwarg — the harness cannot construct the aligner against it at all
+# (`WhisperXAligner.__init__() got an unexpected keyword argument 'jobs'`), which is how a shim built by
+# reverting a FILE rather than a LEVER fails. `noclock2` is an rsync of this tree with exactly the two edits
+# above applied to the current ml.py, so it carries every round-1 fix; that moves ml.py's bytes, so the arm
+# pays a cold corpus (~64 matrices, 5 min of the run's 31).
+#
+# MEASURED 2026-09-29, first reading (`_runs/w4-noclock-time_text` vs `_runs/w4-time_text`): 19/25.
+# THE WIN, re-read on the r2 pair: Jamendo truth words ±100 81.47 -> 83.25, ±300 95.22 -> 94.98, AAE
+# 106.1 -> 87.8 ms, MedAE 38.5 -> 38.2, bias +15.2 -> -1.3 ms, word-end ±100 78.60 -> 80.02, end bias
+# +12.2 -> -2.9 ms; blind words ±100 77.80 -> 80.11 and bias +12.6 -> -3.1 ms; pooled truth gross 28 -> 3
+# (hello -22, tfr-chosen -4), off05/off15/off3/offm1 28 -> 3, tempo098 27 -> 4, tempo102 28 -> 4,
+# headers 35 -> 3, credit 36 -> 28, extraverse 35 -> 5, jit 51 -> 37, drop20 52 -> 42, blind 125 -> 106,
+# pooled ±500 87.73 -> 89.45. Against it: drop50 gross 300 -> 305 and Jamendo truth ±500 97.23 -> 96.42.
+# THE SAWTOOTH IS GONE, measured on the 5693 paired Jamendo words of `--level generate --modes blind`
+# (`_runs/w4-bench/clockfit.py`, `_runs/w4-{,noclock-}generate`, which `--level generate` makes r1-proof: no
+# claims, no repair ladder, no ends post-pass, so the round moved nothing they read). The old arithmetic
+# predicts a stamp late by 0.02 * frac(j/1499) s — a 0 -> +20.0 ms ramp with a 30 s period, reset at each chunk
+# boundary. The onset residual against truth, regressed on the word's position inside that chunk (Theil-Sen,
+# which the decode's whole-word outliers make necessary), reads:
+#     w4-start clock   +0.71 / +0.59 ms per second = +21.2 / +17.8 ms across a chunk  (predicted +20.0)
+#     exact 20 ms grid +0.11 / +0.05 ms per second =  +3.2 /  +1.4 ms across a chunk  (no term to predict)
+# — two independent pairwise-slope samples (`clockfit.py`'s own fit and `_runs/w4-bench/sawtooth.py`'s
+# 400k-pair seeded resample), the same finding at either. THE BUCKETED FORM NEEDS NO ESTIMATOR AT ALL and
+# reproduces exactly: per 5 s of chunk position the old clock's median residual runs +2.9, +14.1, +4.0, +19.2,
+# +12.0, +24.6 ms against the exact grid's -6.3, +1.7, -12.0, +4.0, -8.6, +1.6 — a monotone ramp against no
+# trend — and `exact - old` runs -6.4, -9.5, -12.8, -15.9, -19.6, -21.8 against a predicted -1.7 ... -18.3.
+# THE LONG-SONG DRIFT is the second term, `duration / frames` over a song that is not a whole number of
+# chunks. Per-song median lateness of the old clock past 2:30: Lower_Loveday -62.0 ms, Tom_Orlando -33.3,
+# Cortez -26.5, Color_Out -23.4, down to Songwriterz -4.9 — the review's "50-60 ms after 2:30", and
+# Avercage, whose 8.00 chunks make the tilt zero by construction, shows the sawtooth alone (-21.4).
+# On the exact grid the term does not exist: `frame_sec` is the model's hop, not a ratio read off a matrix.
+# THE FAILURES ARE ONE SONG AND ONE OTHER LINE: `never-be-alone` under a displaced sheet (the claim clock's
+# candidate maps fall under the 20% floor and R4 adopts 38 raw claim times) and `Pure_Mids_-_The_Leader`,
+# whose line [0] is now dropped as never-sung. Both are in `gates/w4.yaml`'s header.
+#
+# RE-BENCHED WITH BOTH SIDES ON THE SAME TREE (rebench r2, 2026-09-29; `_runs/w4r2b-time_text` against the
+# RE-RECORDED `_runs/w4r2-noclock-time_text`, 1088 cases each, rows committed as
+# `results/w4-noclock-time_text.{json,cases.jsonl}`): **22/28**, with the three section-1d gates newly here,
+# so 22 of the original 25 against 19 before. `never-be-alone` is FIXED — the vote gained the mode candidates
+# it was missing (`claimmap`, WHY THE MODE) and R4 no longer adopts a raw claim time on a sheet the clock
+# declined to map — so `clock-gross-not-up-{off3,tempo098,tempo102}` are green and pooled gross reads off3 3,
+# tempo098 4, tempo102 4 against the clock-off base's 28/27/28. WHAT IS LEFT IS SIX FAILURES AND TWO SONGS:
+# of the original 25, the two `min_song_delta(word_pm300)` gates (-2.80 truth, -1.97 blind) and `drop50` gross
+# 305 vs 300; of the three added below, all three are `Pure_Mids_-_The_Leader`'s line [0] (diagnosed at
+# `gates/w4.yaml` — the clock lost that one line's timing, and neither the never-sung rule's thresholds nor
+# `m6-window-spare` recovers it).
+# The per-song ±300 losses are attributed at `--level generate` in
+# `gates/w4.yaml`'s header: the two `truth` songs are not worse in the DECODE at all (Tom_Orlando +3.61), and
+# `blind`/Cortez's loss is a left tail the old clock's +23.8 ms lateness had been masking.
+# THE OLD CAVEAT IS DISCHARGED, AND IT WAS HARMLESS. Until r2 this file's base predated the review round, so
+# every delta above carried "the arm has neither the word-end fixes nor the mix-gate flip". The arm is now
+# re-recorded ON the fixed tree and is EQUAL to its pre-r1 recording where it matters: every one of the 16
+# modes reads the SAME pooled gross (truth 28, jit 51, off* 28, tempo098 27, tempo102 28, drop20 52, drop50
+# 300, extraverse 35, blind 125, headers 35, credit 36, wrongtext 1/320, ownclock 0/320), the same word ±300,
+# the same phrase-final ±100 and the same highlight to the digit, and the only movement anywhere is ±0.2 pt of
+# ±500 in five displacement modes and -0.7 in `drop50`. WHY it is inert is the point rather than luck: the
+# mode candidates exist to fix a bimodal difference population the EXACT grid creates, and on the old clock the
+# median never landed in that gap, so the new candidates never win there; and the word-end fixes are worth
+# 0.2 ms, which rounds away. The reading is therefore unchanged at 22/28 with the same six failures.
+#
+# THE OTHER TWO LEVERS OF
+# THIS WAVE ARE NOT INVOLVED, and that is measured, not argued: on the 14 (song, mode) cases the two regressed
+# songs contribute (`results/w4-pair-{default,noclock,lead40,endsoff}-time_text.json`) the `lead40` and
+# `endsoff` trees read the SAME gross and the SAME ±500 as the default in all 14, and only `noclock` differs.
+# THOSE FOUR PAIR ROWS ARE PRE-r1 and were NOT re-recorded in r2: round 1 fixed `never-be-alone`, which is one
+# of the two songs they isolate, so their `off15/off3/offm1/tempo098/tempo102` columns describe a regression
+# that no longer exists. What still stands from them is the claim they were run to settle — that `ONSET_LEAD`
+# and `extend_ends` move neither gross nor ±500 on those cases — and that claim is independently confirmed on
+# the whole corpus by the two r2 controls: `results/w4-endsoff-time_text.*` moves 40 of 40 documents and 0 of
+# 40 onset digests (`gates/w4-ends.yaml`), and the re-recorded clock arm above isolates the grid alone.
+# `Pure_Mids_-_The_Leader`, the other of the two, is still unfixed and is the content of the three
+# section-1d gates below.
+# Gates are the CONDITION THAT MUST HOLD; see e2e_gates.py.
+
+# ── the grid's own promise: better onsets, a smaller bias, no song much worse.
+clock-word-pm100-up: truth.jamendo.word_pm100 >= base.truth.jamendo.word_pm100
+clock-word-aae-down: truth.jamendo.word_aae_ms <= base.truth.jamendo.word_aae_ms
+clock-word-medae-not-up: truth.jamendo.word_medae_ms <= base.truth.jamendo.word_medae_ms
+clock-bias-smaller-by-5ms: abs(truth.jamendo.word_bias_ms) <= abs(base.truth.jamendo.word_bias_ms) - 5.0
+clock-blind-word-pm100-up: blind.jamendo.word_pm100 >= base.blind.jamendo.word_pm100
+clock-blind-bias-smaller: abs(blind.jamendo.word_bias_ms) <= abs(base.blind.jamendo.word_bias_ms)
+clock-no-song-worse-1pt-pm300-truth: min_song_delta(truth.jamendo.word_pm300) >= -1.0
+clock-no-song-worse-1pt-pm300-blind: min_song_delta(blind.jamendo.word_pm300) >= -1.0
+# The ends are re-fitted on this grid, so they must not be paid for by it.
+clock-final-end-pm100-not-down: truth.jamendo.final_end_pm100 >= base.truth.jamendo.final_end_pm100 - 1.0
+clock-highlight-not-down: truth.jamendo.highlight >= base.truth.jamendo.highlight
+
+# ── and it must not cost a line anywhere. THIS is where the wave's one regression lives.
+clock-gross-not-up-truth: truth.gross <= base.truth.gross
+clock-gross-not-up-jit: jit.gross <= base.jit.gross
+clock-gross-not-up-off05: off05.gross <= base.off05.gross
+clock-gross-not-up-off15: off15.gross <= base.off15.gross
+clock-gross-not-up-off3: off3.gross <= base.off3.gross
+clock-gross-not-up-offm1: offm1.gross <= base.offm1.gross
+clock-gross-not-up-tempo098: tempo098.gross <= base.tempo098.gross
+clock-gross-not-up-tempo102: tempo102.gross <= base.tempo102.gross
+clock-gross-not-up-drop20: drop20.gross <= base.drop20.gross
+clock-gross-not-up-drop50: drop50.gross <= base.drop50.gross
+clock-gross-not-up-extraverse: extraverse.gross <= base.extraverse.gross
+clock-gross-not-up-blind: blind.gross <= base.blind.gross
+clock-gross-not-up-headers: headers.gross <= base.headers.gross
+clock-gross-not-up-credit: credit.gross <= base.credit.gross
+
+# ── ...and no JAMENDO song gains one, which is review §3.6's own wording and what the pooled counts above
+# cannot see (W4 review r1; the three modes that matter here, the full 14 are in `gates/w4.yaml` section 1d).
+# The clock's pooled gross falls by tens, so `Pure_Mids_-_The_Leader`'s +1 hides inside it at every mode.
+clock-jamendo-no-new-gross-truth: count(truth.jamendo.song.gross_up + truth.jamendo.song.missing_up) == 0
+clock-jamendo-no-new-gross-off3: count(off3.jamendo.song.gross_up + off3.jamendo.song.missing_up) == 0
+clock-jamendo-no-new-gross-tempo102: count(tempo102.jamendo.song.gross_up + tempo102.jamendo.song.missing_up) == 0

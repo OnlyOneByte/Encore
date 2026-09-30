@@ -28,6 +28,20 @@ NOTHING = TimingReport(words=0, coverage=0.0)
 #: What a LINE_SYNC attempt measures when it commits: lines, no words (review M1).
 LINE_SYNCED = TimingReport(coverage=0.9, duration_sec=200.0, engine=Engine.LINE_SYNC, lines=30)
 REFUSED = TimingReport(duration_sec=200.0, refused="envelope gate refused: blind r=0.11 @ +4.20s")
+#: A publishable GLOBAL word document `reconcile` could fit NO map between and the text's own claims (W4):
+#: 30 lines, so the line document above times as many. The one shape where the claims get a turn against a
+#: document that could have published.
+UNRELATED_WORDS = TimingReport(words=200, coverage=1.0, duration_sec=200.0, lines=30, claims_related=False)
+#: The same document, corroborated by its claims: nothing to compare, and its words are the extra evidence.
+RELATED_WORDS = TimingReport(words=200, coverage=1.0, duration_sec=200.0, lines=30, claims_related=True)
+#: The LINE_SYNC rung's own gate turning the SHEET down (W3): its decode does not hear the lines where the
+#: sheet claims them. Not a verdict on the words — the word document passed the same lexical gate.
+LINE_REFUSED = TimingReport(
+    duration_sec=200.0,
+    engine=Engine.LINE_SYNC,
+    lines=30,
+    refused="47% of 30 decoded lines within 1.0s of their mapped claim, below 50%",
+)
 
 
 def lrc(label: str = "lrclib") -> Candidate:
@@ -139,6 +153,64 @@ def test_a_line_sync_that_produced_nothing_moves_on_with_an_honest_reason() -> N
     assert isinstance(step, Try) and search.pool[step.index].tier is Tier.ASR
     reason = search.trail[-1]["why"]
     assert isinstance(reason, str) and "carries no line timings" not in reason
+
+
+# ── the cross-kind comparison (W4, carried out of W2) ────────────────────────────────────────────
+
+
+def test_a_line_document_replaces_a_word_document_nothing_related_to_its_claims() -> None:
+    """The direction W2 left open: a word document and the line document of the SAME text used to publish
+    by arrival order, and the word document always arrived first. Now the rung is spent on the one defect
+    measured against a second opinion rather than against the audio (`claims_related` False), and the line
+    document — which IS those claims — replaces it by surviving its own gate."""
+    search = Search(pool=[lrc(), asr()])
+    first = search.begin()
+    assert isinstance(first, Try) and first.serial == 1
+    rung = search.record(UNRELATED_WORDS)
+    assert isinstance(rung, Try), "a usable word document still asks what the text's own timings score"
+    assert (rung.index, rung.serial, rung.base) == (0, 2, 1)
+    assert rung.attempt.tried == {Knob.LINE_SYNC}
+    committed = search.record(LINE_SYNCED)
+    assert isinstance(committed, Commit) and (committed.index, committed.serial) == (0, 2)
+    assert [(e["verdict"], e.get("knob")) for e in search.trail] == [
+        ("retime", Knob.LINE_SYNC.value),
+        ("accept", None),
+    ]
+
+
+def test_a_word_document_its_claims_relate_never_asks_the_rung() -> None:
+    """The other 95% of the measured population: where `reconcile` fitted a map, the words are the extra
+    evidence and the sheet has nothing to add — so no pass is spent asking, and 107 743 word timings stay."""
+    search = Search(pool=[lrc(), asr()])
+    search.begin()
+    step = search.record(RELATED_WORDS)
+    assert isinstance(step, Commit) and (step.index, step.serial) == (0, 1)
+
+
+def test_a_line_document_its_own_gate_refuses_goes_back_to_the_words_not_to_the_next_text() -> None:
+    """A line refusal is a verdict on the SHEET'S CLOCK, not on the text: the word document it retried
+    already passed the same lexical gate on the same matrix. So best-so-far keeps the words (W1's terminal
+    refusal rule is about the gate that refused the TEXT, and `decide` ends those before the rung)."""
+    search = Search(pool=[lrc(), asr()])
+    search.begin()
+    assert isinstance(search.record(UNRELATED_WORDS), Try)
+    step = search.record(LINE_REFUSED)
+    assert isinstance(step, Commit) and (step.index, step.serial) == (0, 1)
+    assert "keeping attempt 1: the line-sync retry was refused" in step.why
+    assert "within 1.0s of their mapped claim" in step.why, "the trail names the gate that refused"
+    assert search.trail[-1]["kept"] == 1
+
+
+def test_a_half_stamped_sheet_does_not_replace_the_words_it_could_not_time() -> None:
+    """The one real comparison across the two kinds: a sheet stamped on 3 lines of 30 passes every gate the
+    rung has and would publish a 3-line scroll in place of 30 timed lines."""
+    search = Search(pool=[lrc()])
+    search.begin()
+    assert isinstance(search.record(UNRELATED_WORDS), Try)
+    half = TimingReport(coverage=0.9, duration_sec=200.0, engine=Engine.LINE_SYNC, lines=3)
+    step = search.record(half)
+    assert isinstance(step, Commit) and step.serial == 1
+    assert "did not improve on it" in step.why
 
 
 # ── a refusal ends the text ──────────────────────────────────────────────────────────────────────

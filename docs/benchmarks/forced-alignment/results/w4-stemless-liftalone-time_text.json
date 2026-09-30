@@ -1,0 +1,1296 @@
+{
+ "meta": {
+  "level": "time_text",
+  "model": "WAV2VEC2_ASR_BASE_960H",
+  "model_identity": {
+   "en": "53c07ecdf07643ed"
+  },
+  "device": "mps",
+  "language": "en",
+  "seed": 0,
+  "wrong_k": 2,
+  "tfr_audio": "youtube",
+  "target": "mix",
+  "align_config": {
+   "align_experiments": [
+    "h3-mix-lift-alone"
+   ]
+  },
+  "modes": [
+   "truth",
+   "blind",
+   "drop20",
+   "drop50",
+   "wrongtext"
+  ],
+  "songs": [
+   "Avercage_-_Embers",
+   "Color_Out_-_Falling_Star",
+   "Cortez_-_Feel__Stripped_",
+   "Explosive_Ear_Candy_-_Like_The_Sun",
+   "HILA_-_Give_Me_the_Same",
+   "JASON_MILLER_-_CROWD_PLEASER",
+   "Kinematic_-_Peyote",
+   "LUNABLIND_-_Vision__Radio_Edit_",
+   "Lower_Loveday_-_Is_It_Right_",
+   "Moon_I_Mean_-_Wrong_Concept",
+   "Pure_Mids_-_The_Leader",
+   "Quentin_Hannappe_-_Keep_On",
+   "Ridgway_-_Fire_Inside",
+   "Rxbyn_-_Bad_Side",
+   "Slingshot_Miracle_-_Whistler",
+   "Songwriterz_-_Back_In_Time",
+   "The.madpix.project_-_One_Way_Street",
+   "The_Rinn_-_Voices__2017_Version_",
+   "Tom_Orlando_-_The_One__feat._Tina_G_",
+   "Wordsmith_-_The_Statement",
+   "never-be-alone",
+   "believer",
+   "shape-of-you",
+   "hello",
+   "rap-god",
+   "bohemian-rhapsody",
+   "feel-my-heart",
+   "numb",
+   "bad-guy",
+   "tfr-flyaway",
+   "tfr-mayday",
+   "tfr-chosen"
+  ],
+  "bench_root": "/Volumes/workplace/personal/encore-align-bench",
+  "git": {
+   "head": "a6e0488e839a96653646dfcbc2913090d13d2173",
+   "dirty_files": 9
+  },
+  "harness": "ec69000d2a1bf64e",
+  "code": "97ff86b0ce6bd98f",
+  "row_codes": [
+   "97ff86b0ce6bd98f"
+  ],
+  "emissions": {
+   "disk": 6,
+   "computed": 26,
+   "memory": 160
+  },
+  "started": "2026-09-29T10:08:42",
+  "seconds": 246.8,
+  "mode_seconds": {
+   "truth": 153.4,
+   "blind": 29.0,
+   "drop20": 23.3,
+   "drop50": 16.3,
+   "wrongtext": 24.5
+  }
+ },
+ "summary": {
+  "truth": {
+   "jamendo": {
+    "lines": {
+     "cases": 20,
+     "published": 15,
+     "line_sync": 0,
+     "refused": 5,
+     "error": 0,
+     "truth_lines": 868,
+     "in_text": 868,
+     "missing": 188,
+     "unsung": 0,
+     "scored": 680,
+     "gross": 18,
+     "w500": 627,
+     "w1000": 658,
+     "high": 395,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 92.21,
+     "w1000_pct": 96.76,
+     "w500_text_pct": 72.24,
+     "w1000_text_pct": 75.81,
+     "zero_gross_songs": 12,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 4006,
+     "in_text": 5693,
+     "unpublished": 1002,
+     "interpolated": 685,
+     "mismatched": 0,
+     "gross": 140,
+     "w100_pct": 75.81,
+     "w250_pct": 87.12,
+     "w300_pct": 88.37,
+     "pco300_pct": 62.18,
+     "aae_ms": 637.8,
+     "medae_ms": 40.6,
+     "bias_ms": -1.6,
+     "end_scored": 3490,
+     "end100_pct": 72.06,
+     "end250_pct": 87.68,
+     "end_bias_ms": 12.1,
+     "final_end_scored": 475,
+     "final_end100_pct": 32.42,
+     "final_end250_pct": 52.21,
+     "final_end_bias_ms": 209.0
+    },
+    "highlight": {
+     "cases": 20,
+     "unpublished": 5,
+     "hit_sec": 1257.08,
+     "sung_sec": 2432.77,
+     "pct": 51.67
+    },
+    "ci": {
+     "pm500": [
+      84.77,
+      96.35
+     ],
+     "text_pm500": [
+      53.37,
+      87.55
+     ],
+     "gross": [
+      0.0,
+      51.0
+     ],
+     "word_pm300": [
+      77.68,
+      93.99
+     ],
+     "word_pco300": [
+      45.69,
+      75.78
+     ],
+     "highlight": [
+      36.97,
+      66.12
+     ]
+    }
+   },
+   "youtube": {
+    "lines": {
+     "cases": 12,
+     "published": 10,
+     "line_sync": 0,
+     "refused": 2,
+     "error": 0,
+     "truth_lines": 892,
+     "in_text": 892,
+     "missing": 88,
+     "unsung": 0,
+     "scored": 804,
+     "gross": 90,
+     "w500": 547,
+     "w1000": 670,
+     "high": 315,
+     "high_bad": 70,
+     "high_gross": 0,
+     "w500_pct": 68.03,
+     "w1000_pct": 83.33,
+     "w500_text_pct": 61.32,
+     "w1000_text_pct": 75.11,
+     "zero_gross_songs": 5,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": null,
+    "highlight": null,
+    "ci": {
+     "pm500": [
+      41.85,
+      84.55
+     ],
+     "text_pm500": [
+      34.6,
+      79.54
+     ],
+     "gross": [
+      17.0,
+      180.02
+     ],
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "all": {
+    "lines": {
+     "cases": 32,
+     "published": 25,
+     "line_sync": 0,
+     "refused": 7,
+     "error": 0,
+     "truth_lines": 1760,
+     "in_text": 1760,
+     "missing": 276,
+     "unsung": 0,
+     "scored": 1484,
+     "gross": 108,
+     "w500": 1174,
+     "w1000": 1328,
+     "high": 710,
+     "high_bad": 70,
+     "high_gross": 0,
+     "w500_pct": 79.11,
+     "w1000_pct": 89.49,
+     "w500_text_pct": 66.7,
+     "w1000_text_pct": 75.45,
+     "zero_gross_songs": 17,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 4006,
+     "in_text": 5693,
+     "unpublished": 1002,
+     "interpolated": 685,
+     "mismatched": 0,
+     "gross": 140,
+     "w100_pct": 75.81,
+     "w250_pct": 87.12,
+     "w300_pct": 88.37,
+     "pco300_pct": 62.18,
+     "aae_ms": 637.8,
+     "medae_ms": 40.6,
+     "bias_ms": -1.6,
+     "end_scored": 3490,
+     "end100_pct": 72.06,
+     "end250_pct": 87.68,
+     "end_bias_ms": 12.1,
+     "final_end_scored": 475,
+     "final_end100_pct": 32.42,
+     "final_end250_pct": 52.21,
+     "final_end_bias_ms": 209.0
+    },
+    "highlight": {
+     "cases": 20,
+     "unpublished": 5,
+     "hit_sec": 1257.08,
+     "sung_sec": 2432.77,
+     "pct": 51.67
+    },
+    "ci": {
+     "pm500": [
+      66.2,
+      88.54
+     ],
+     "text_pm500": [
+      51.47,
+      78.9
+     ],
+     "gross": [
+      28.0,
+      216.0
+     ],
+     "word_pm300": [
+      78.46,
+      93.91
+     ],
+     "word_pco300": [
+      45.46,
+      74.46
+     ],
+     "highlight": [
+      35.96,
+      65.06
+     ]
+    }
+   }
+  },
+  "blind": {
+   "jamendo": {
+    "lines": {
+     "cases": 20,
+     "published": 15,
+     "line_sync": 0,
+     "refused": 5,
+     "error": 0,
+     "truth_lines": 868,
+     "in_text": 868,
+     "missing": 188,
+     "unsung": 0,
+     "scored": 680,
+     "gross": 111,
+     "w500": 501,
+     "w1000": 534,
+     "high": 264,
+     "high_bad": 48,
+     "high_gross": 29,
+     "w500_pct": 73.68,
+     "w1000_pct": 78.53,
+     "w500_text_pct": 57.72,
+     "w1000_text_pct": 61.52,
+     "zero_gross_songs": 2,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 4691,
+     "in_text": 5693,
+     "unpublished": 1002,
+     "interpolated": 0,
+     "mismatched": 0,
+     "gross": 637,
+     "w100_pct": 66.34,
+     "w250_pct": 75.83,
+     "w300_pct": 76.79,
+     "pco300_pct": 63.27,
+     "aae_ms": 1971.8,
+     "medae_ms": 50.5,
+     "bias_ms": -1.6,
+     "end_scored": 3557,
+     "end100_pct": 72.2,
+     "end250_pct": 87.88,
+     "end_bias_ms": 11.3,
+     "final_end_scored": 501,
+     "final_end100_pct": 32.73,
+     "final_end250_pct": 54.89,
+     "final_end_bias_ms": 150.7
+    },
+    "highlight": {
+     "cases": 20,
+     "unpublished": 5,
+     "hit_sec": 1148.79,
+     "sung_sec": 2432.77,
+     "pct": 47.22
+    },
+    "ci": {
+     "pm500": [
+      63.24,
+      81.56
+     ],
+     "text_pm500": [
+      40.1,
+      71.58
+     ],
+     "gross": [
+      67.0,
+      159.0
+     ],
+     "word_pm300": [
+      65.59,
+      84.91
+     ],
+     "word_pco300": [
+      46.02,
+      76.06
+     ],
+     "highlight": [
+      32.78,
+      60.65
+     ]
+    }
+   },
+   "youtube": {
+    "lines": {
+     "cases": 12,
+     "published": 10,
+     "line_sync": 0,
+     "refused": 2,
+     "error": 0,
+     "truth_lines": 892,
+     "in_text": 892,
+     "missing": 88,
+     "unsung": 0,
+     "scored": 804,
+     "gross": 153,
+     "w500": 446,
+     "w1000": 569,
+     "high": 427,
+     "high_bad": 145,
+     "high_gross": 26,
+     "w500_pct": 55.47,
+     "w1000_pct": 70.77,
+     "w500_text_pct": 50.0,
+     "w1000_text_pct": 63.79,
+     "zero_gross_songs": 0,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": null,
+    "highlight": null,
+    "ci": {
+     "pm500": [
+      32.83,
+      69.77
+     ],
+     "text_pm500": [
+      27.45,
+      65.69
+     ],
+     "gross": [
+      84.0,
+      230.02
+     ],
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "all": {
+    "lines": {
+     "cases": 32,
+     "published": 25,
+     "line_sync": 0,
+     "refused": 7,
+     "error": 0,
+     "truth_lines": 1760,
+     "in_text": 1760,
+     "missing": 276,
+     "unsung": 0,
+     "scored": 1484,
+     "gross": 264,
+     "w500": 947,
+     "w1000": 1103,
+     "high": 691,
+     "high_bad": 193,
+     "high_gross": 55,
+     "w500_pct": 63.81,
+     "w1000_pct": 74.33,
+     "w500_text_pct": 53.81,
+     "w1000_text_pct": 62.67,
+     "zero_gross_songs": 2,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 4691,
+     "in_text": 5693,
+     "unpublished": 1002,
+     "interpolated": 0,
+     "mismatched": 0,
+     "gross": 637,
+     "w100_pct": 66.34,
+     "w250_pct": 75.83,
+     "w300_pct": 76.79,
+     "pco300_pct": 63.27,
+     "aae_ms": 1971.8,
+     "medae_ms": 50.5,
+     "bias_ms": -1.6,
+     "end_scored": 3557,
+     "end100_pct": 72.2,
+     "end250_pct": 87.88,
+     "end_bias_ms": 11.3,
+     "final_end_scored": 501,
+     "final_end100_pct": 32.73,
+     "final_end250_pct": 54.89,
+     "final_end_bias_ms": 150.7
+    },
+    "highlight": {
+     "cases": 20,
+     "unpublished": 5,
+     "hit_sec": 1148.79,
+     "sung_sec": 2432.77,
+     "pct": 47.22
+    },
+    "ci": {
+     "pm500": [
+      51.99,
+      72.93
+     ],
+     "text_pm500": [
+      40.19,
+      64.72
+     ],
+     "gross": [
+      170.97,
+      371.0
+     ],
+     "word_pm300": [
+      66.03,
+      85.45
+     ],
+     "word_pco300": [
+      46.27,
+      76.78
+     ],
+     "highlight": [
+      32.55,
+      61.23
+     ]
+    }
+   }
+  },
+  "drop20": {
+   "jamendo": {
+    "lines": {
+     "cases": 20,
+     "published": 13,
+     "line_sync": 0,
+     "refused": 7,
+     "error": 0,
+     "truth_lines": 868,
+     "in_text": 697,
+     "missing": 187,
+     "unsung": 0,
+     "scored": 510,
+     "gross": 55,
+     "w500": 408,
+     "w1000": 442,
+     "high": 197,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 80.0,
+     "w1000_pct": 86.67,
+     "w500_text_pct": 58.54,
+     "w1000_text_pct": 63.41,
+     "zero_gross_songs": 8,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 2708,
+     "in_text": 4555,
+     "unpublished": 1050,
+     "interpolated": 797,
+     "mismatched": 0,
+     "gross": 335,
+     "w100_pct": 65.66,
+     "w250_pct": 75.0,
+     "w300_pct": 75.96,
+     "pco300_pct": 45.16,
+     "aae_ms": 1627.7,
+     "medae_ms": 51.4,
+     "bias_ms": -0.0,
+     "end_scored": 2031,
+     "end100_pct": 71.29,
+     "end250_pct": 85.08,
+     "end_bias_ms": 15.4,
+     "final_end_scored": 282,
+     "final_end100_pct": 26.24,
+     "final_end250_pct": 45.04,
+     "final_end_bias_ms": 274.1
+    },
+    "highlight": {
+     "cases": 20,
+     "unpublished": 7,
+     "hit_sec": 744.27,
+     "sung_sec": 1950.91,
+     "pct": 38.15
+    },
+    "ci": {
+     "pm500": [
+      67.04,
+      90.32
+     ],
+     "text_pm500": [
+      39.64,
+      74.71
+     ],
+     "gross": [
+      6.0,
+      107.0
+     ],
+     "word_pm300": [
+      61.57,
+      87.98
+     ],
+     "word_pco300": [
+      29.81,
+      57.9
+     ],
+     "highlight": [
+      24.7,
+      51.39
+     ]
+    }
+   },
+   "youtube": {
+    "lines": {
+     "cases": 12,
+     "published": 9,
+     "line_sync": 0,
+     "refused": 3,
+     "error": 0,
+     "truth_lines": 892,
+     "in_text": 715,
+     "missing": 106,
+     "unsung": 0,
+     "scored": 609,
+     "gross": 143,
+     "w500": 328,
+     "w1000": 421,
+     "high": 175,
+     "high_bad": 41,
+     "high_gross": 0,
+     "w500_pct": 53.86,
+     "w1000_pct": 69.13,
+     "w500_text_pct": 45.87,
+     "w1000_text_pct": 58.88,
+     "zero_gross_songs": 2,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": null,
+    "highlight": null,
+    "ci": {
+     "pm500": [
+      28.52,
+      70.92
+     ],
+     "text_pm500": [
+      20.59,
+      64.42
+     ],
+     "gross": [
+      62.98,
+      229.05
+     ],
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "all": {
+    "lines": {
+     "cases": 32,
+     "published": 22,
+     "line_sync": 0,
+     "refused": 10,
+     "error": 0,
+     "truth_lines": 1760,
+     "in_text": 1412,
+     "missing": 293,
+     "unsung": 0,
+     "scored": 1119,
+     "gross": 198,
+     "w500": 736,
+     "w1000": 863,
+     "high": 372,
+     "high_bad": 41,
+     "high_gross": 0,
+     "w500_pct": 65.77,
+     "w1000_pct": 77.12,
+     "w500_text_pct": 52.12,
+     "w1000_text_pct": 61.12,
+     "zero_gross_songs": 10,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 2708,
+     "in_text": 4555,
+     "unpublished": 1050,
+     "interpolated": 797,
+     "mismatched": 0,
+     "gross": 335,
+     "w100_pct": 65.66,
+     "w250_pct": 75.0,
+     "w300_pct": 75.96,
+     "pco300_pct": 45.16,
+     "aae_ms": 1627.7,
+     "medae_ms": 51.4,
+     "bias_ms": -0.0,
+     "end_scored": 2031,
+     "end100_pct": 71.29,
+     "end250_pct": 85.08,
+     "end_bias_ms": 15.4,
+     "final_end_scored": 282,
+     "final_end100_pct": 26.24,
+     "final_end250_pct": 45.04,
+     "final_end_bias_ms": 274.1
+    },
+    "highlight": {
+     "cases": 20,
+     "unpublished": 7,
+     "hit_sec": 744.27,
+     "sung_sec": 1950.91,
+     "pct": 38.15
+    },
+    "ci": {
+     "pm500": [
+      51.53,
+      78.62
+     ],
+     "text_pm500": [
+      36.69,
+      65.77
+     ],
+     "gross": [
+      92.97,
+      308.0
+     ],
+     "word_pm300": [
+      60.89,
+      87.08
+     ],
+     "word_pco300": [
+      30.25,
+      58.08
+     ],
+     "highlight": [
+      24.22,
+      52.66
+     ]
+    }
+   }
+  },
+  "drop50": {
+   "jamendo": {
+    "lines": {
+     "cases": 20,
+     "published": 11,
+     "line_sync": 0,
+     "refused": 9,
+     "error": 0,
+     "truth_lines": 868,
+     "in_text": 431,
+     "missing": 151,
+     "unsung": 0,
+     "scored": 280,
+     "gross": 132,
+     "w500": 117,
+     "w1000": 128,
+     "high": 26,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 41.79,
+     "w1000_pct": 45.71,
+     "w500_text_pct": 27.15,
+     "w1000_text_pct": 29.7,
+     "zero_gross_songs": 2,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 1865,
+     "in_text": 2859,
+     "unpublished": 889,
+     "interpolated": 105,
+     "mismatched": 0,
+     "gross": 826,
+     "w100_pct": 38.71,
+     "w250_pct": 43.06,
+     "w300_pct": 43.32,
+     "pco300_pct": 28.26,
+     "aae_ms": 5151.4,
+     "medae_ms": 1122.1,
+     "bias_ms": -16.9,
+     "end_scored": 803,
+     "end100_pct": 70.36,
+     "end250_pct": 83.56,
+     "end_bias_ms": 10.8,
+     "final_end_scored": 109,
+     "final_end100_pct": 20.18,
+     "final_end250_pct": 46.79,
+     "final_end_bias_ms": 241.8
+    },
+    "highlight": {
+     "cases": 20,
+     "unpublished": 9,
+     "hit_sec": 259.45,
+     "sung_sec": 1210.01,
+     "pct": 21.44
+    },
+    "ci": {
+     "pm500": [
+      27.22,
+      60.07
+     ],
+     "text_pm500": [
+      13.83,
+      42.39
+     ],
+     "gross": [
+      65.0,
+      211.02
+     ],
+     "word_pm300": [
+      33.42,
+      56.93
+     ],
+     "word_pco300": [
+      16.23,
+      39.23
+     ],
+     "highlight": [
+      12.05,
+      31.67
+     ]
+    }
+   },
+   "youtube": {
+    "lines": {
+     "cases": 12,
+     "published": 8,
+     "line_sync": 0,
+     "refused": 4,
+     "error": 0,
+     "truth_lines": 892,
+     "in_text": 442,
+     "missing": 83,
+     "unsung": 0,
+     "scored": 359,
+     "gross": 149,
+     "w500": 131,
+     "w1000": 187,
+     "high": 40,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 36.49,
+     "w1000_pct": 52.09,
+     "w500_text_pct": 29.64,
+     "w1000_text_pct": 42.31,
+     "zero_gross_songs": 2,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": null,
+    "highlight": null,
+    "ci": {
+     "pm500": [
+      13.33,
+      57.86
+     ],
+     "text_pm500": [
+      9.01,
+      49.77
+     ],
+     "gross": [
+      62.0,
+      245.02
+     ],
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "all": {
+    "lines": {
+     "cases": 32,
+     "published": 19,
+     "line_sync": 0,
+     "refused": 13,
+     "error": 0,
+     "truth_lines": 1760,
+     "in_text": 873,
+     "missing": 234,
+     "unsung": 0,
+     "scored": 639,
+     "gross": 281,
+     "w500": 248,
+     "w1000": 315,
+     "high": 66,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": 38.81,
+     "w1000_pct": 49.3,
+     "w500_text_pct": 28.41,
+     "w1000_text_pct": 36.08,
+     "zero_gross_songs": 4,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 1865,
+     "in_text": 2859,
+     "unpublished": 889,
+     "interpolated": 105,
+     "mismatched": 0,
+     "gross": 826,
+     "w100_pct": 38.71,
+     "w250_pct": 43.06,
+     "w300_pct": 43.32,
+     "pco300_pct": 28.26,
+     "aae_ms": 5151.4,
+     "medae_ms": 1122.1,
+     "bias_ms": -16.9,
+     "end_scored": 803,
+     "end100_pct": 70.36,
+     "end250_pct": 83.56,
+     "end_bias_ms": 10.8,
+     "final_end_scored": 109,
+     "final_end100_pct": 20.18,
+     "final_end250_pct": 46.79,
+     "final_end_bias_ms": 241.8
+    },
+    "highlight": {
+     "cases": 20,
+     "unpublished": 9,
+     "hit_sec": 259.45,
+     "sung_sec": 1210.01,
+     "pct": 21.44
+    },
+    "ci": {
+     "pm500": [
+      22.68,
+      53.52
+     ],
+     "text_pm500": [
+      14.81,
+      41.47
+     ],
+     "gross": [
+      166.95,
+      396.0
+     ],
+     "word_pm300": [
+      33.03,
+      56.81
+     ],
+     "word_pco300": [
+      16.07,
+      39.33
+     ],
+     "highlight": [
+      11.87,
+      31.81
+     ]
+    }
+   }
+  },
+  "wrongtext": {
+   "jamendo": {
+    "lines": {
+     "cases": 40,
+     "published": 0,
+     "line_sync": 0,
+     "refused": 40,
+     "error": 0,
+     "truth_lines": 1736,
+     "in_text": 0,
+     "missing": 0,
+     "unsung": 0,
+     "scored": 0,
+     "gross": 0,
+     "w500": 0,
+     "w1000": 0,
+     "high": 0,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": null,
+     "w1000_pct": null,
+     "w500_text_pct": null,
+     "w1000_text_pct": null,
+     "zero_gross_songs": 0,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 0,
+     "in_text": 0,
+     "unpublished": 0,
+     "interpolated": 0,
+     "mismatched": 0,
+     "gross": 0,
+     "w100_pct": null,
+     "w250_pct": null,
+     "w300_pct": null,
+     "pco300_pct": null,
+     "end_scored": 0,
+     "end100_pct": null,
+     "end250_pct": null,
+     "end_bias_ms": null,
+     "final_end_scored": 0,
+     "final_end100_pct": null,
+     "final_end250_pct": null,
+     "final_end_bias_ms": null
+    },
+    "highlight": {
+     "cases": 40,
+     "unpublished": 40,
+     "hit_sec": 0.0,
+     "sung_sec": 0.0,
+     "pct": null
+    },
+    "wrongtext": {
+     "pairs": 40,
+     "published": 0,
+     "errors": 0,
+     "pass_rate_pct": 0.0
+    },
+    "ci": {
+     "pm500": null,
+     "text_pm500": null,
+     "gross": null,
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "youtube": {
+    "lines": {
+     "cases": 24,
+     "published": 0,
+     "line_sync": 0,
+     "refused": 24,
+     "error": 0,
+     "truth_lines": 1784,
+     "in_text": 0,
+     "missing": 0,
+     "unsung": 0,
+     "scored": 0,
+     "gross": 0,
+     "w500": 0,
+     "w1000": 0,
+     "high": 0,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": null,
+     "w1000_pct": null,
+     "w500_text_pct": null,
+     "w1000_text_pct": null,
+     "zero_gross_songs": 0,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": null,
+    "highlight": null,
+    "wrongtext": {
+     "pairs": 24,
+     "published": 0,
+     "errors": 0,
+     "pass_rate_pct": 0.0
+    },
+    "ci": {
+     "pm500": null,
+     "text_pm500": null,
+     "gross": null,
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   },
+   "all": {
+    "lines": {
+     "cases": 64,
+     "published": 0,
+     "line_sync": 0,
+     "refused": 64,
+     "error": 0,
+     "truth_lines": 3520,
+     "in_text": 0,
+     "missing": 0,
+     "unsung": 0,
+     "scored": 0,
+     "gross": 0,
+     "w500": 0,
+     "w1000": 0,
+     "high": 0,
+     "high_bad": 0,
+     "high_gross": 0,
+     "w500_pct": null,
+     "w1000_pct": null,
+     "w500_text_pct": null,
+     "w1000_text_pct": null,
+     "zero_gross_songs": 0,
+     "pairing_disagreements": 0,
+     "text_paired": 0
+    },
+    "words": {
+     "aligned": 0,
+     "in_text": 0,
+     "unpublished": 0,
+     "interpolated": 0,
+     "mismatched": 0,
+     "gross": 0,
+     "w100_pct": null,
+     "w250_pct": null,
+     "w300_pct": null,
+     "pco300_pct": null,
+     "end_scored": 0,
+     "end100_pct": null,
+     "end250_pct": null,
+     "end_bias_ms": null,
+     "final_end_scored": 0,
+     "final_end100_pct": null,
+     "final_end250_pct": null,
+     "final_end_bias_ms": null
+    },
+    "highlight": {
+     "cases": 40,
+     "unpublished": 40,
+     "hit_sec": 0.0,
+     "sung_sec": 0.0,
+     "pct": null
+    },
+    "wrongtext": {
+     "pairs": 64,
+     "published": 0,
+     "errors": 0,
+     "pass_rate_pct": 0.0
+    },
+    "ci": {
+     "pm500": null,
+     "text_pm500": null,
+     "gross": null,
+     "word_pm300": null,
+     "word_pco300": null,
+     "highlight": null
+    }
+   }
+  }
+ },
+ "songs": {
+  "truth": {
+   "Avercage_-_Embers": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 42.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Color_Out_-_Falling_Star": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 37.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Cortez_-_Feel__Stripped_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 42.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 92.86, "pm1000": 100.0, "text_pm500": 92.86, "high_gross": 0.0, "word_pm100": 78.74, "word_pm300": 95.51, "word_pco300": 89.86, "word_bias_ms": 4.3, "end_pm100": 65.09, "final_end_pm100": 10.81, "highlight": 82.0, "coverage": 0.9718, "doc": "de69090c442026be", "onsets": "79bdd144a0dd9e50"},
+   "Explosive_Ear_Candy_-_Like_The_Sun": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 46.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 91.3, "pm1000": 97.83, "text_pm500": 91.3, "high_gross": 0.0, "word_pm100": 57.84, "word_pm300": 74.59, "word_pco300": 52.08, "word_bias_ms": 5.1, "end_pm100": 69.4, "final_end_pm100": 45.83, "highlight": 51.18, "coverage": 0.8579, "doc": "c733fd0edd17e550", "onsets": "ed0283415f9513e3"},
+   "HILA_-_Give_Me_the_Same": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 58.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 91.38, "pm1000": 100.0, "text_pm500": 91.38, "high_gross": 0.0, "word_pm100": 70.0, "word_pm300": 90.37, "word_pco300": 75.78, "word_bias_ms": 6.8, "end_pm100": 55.79, "final_end_pm100": 11.9, "highlight": 76.26, "coverage": 0.9865, "doc": "4b26a167c2c67595", "onsets": "408c966d5487f26d"},
+   "JASON_MILLER_-_CROWD_PLEASER": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 82.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 100.0, "pm1000": 100.0, "text_pm500": 100.0, "high_gross": 0.0, "word_pm100": 93.09, "word_pm300": 99.81, "word_pco300": 99.81, "word_bias_ms": -13.3, "end_pm100": 80.58, "final_end_pm100": 31.71, "highlight": 83.86, "coverage": 0.9722, "doc": "a2cc6836bc62a6e6", "onsets": "170ac39d4774f3ed"},
+   "Kinematic_-_Peyote": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 14.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 78.57, "pm1000": 100.0, "text_pm500": 78.57, "high_gross": 0.0, "word_pm100": 75.82, "word_pm300": 89.01, "word_pco300": 55.1, "word_bias_ms": 6.9, "end_pm100": 65.38, "final_end_pm100": 0.0, "highlight": 63.07, "coverage": 0.7306, "doc": "8e676f3e12dbb014", "onsets": "7b4fc8cc664d1fca"},
+   "LUNABLIND_-_Vision__Radio_Edit_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 53.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 96.23, "pm1000": 100.0, "text_pm500": 96.23, "high_gross": 0.0, "word_pm100": 86.78, "word_pm300": 95.15, "word_pco300": 75.0, "word_bias_ms": -0.5, "end_pm100": 64.65, "final_end_pm100": 28.21, "highlight": 78.81, "coverage": 0.9706, "doc": "2e588f2b151979d2", "onsets": "b630eebd23f90c99"},
+   "Lower_Loveday_-_Is_It_Right_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 26.0, "missing": 0.0, "unsung": 0.0, "gross": 16.0, "pm500": 30.77, "pm1000": 34.62, "text_pm500": 30.77, "high_gross": 0.0, "word_pm100": 23.11, "word_pm300": 32.08, "word_pco300": 32.08, "word_bias_ms": -4913.4, "end_pm100": 53.03, "final_end_pm100": 0.0, "highlight": 29.79, "coverage": 1.0, "doc": "0822b28822882c1f", "onsets": "bca5c07ba7bbdf95"},
+   "Moon_I_Mean_-_Wrong_Concept": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 43.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Pure_Mids_-_The_Leader": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 20.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Quentin_Hannappe_-_Keep_On": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 27.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 96.3, "pm1000": 96.3, "text_pm500": 96.3, "high_gross": 0.0, "word_pm100": 82.73, "word_pm300": 91.37, "word_pco300": 72.57, "word_bias_ms": 4.2, "end_pm100": 73.23, "final_end_pm100": 29.41, "highlight": 73.95, "coverage": 0.8677, "doc": "98923bafade60e2f", "onsets": "ecd9c858f0c285b0"},
+   "Ridgway_-_Fire_Inside": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 50.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 96.0, "pm1000": 100.0, "text_pm500": 96.0, "high_gross": 0.0, "word_pm100": 69.72, "word_pm300": 89.91, "word_pco300": 64.47, "word_bias_ms": 0.7, "end_pm100": 64.77, "final_end_pm100": 44.44, "highlight": 65.65, "coverage": 0.9845, "doc": "3ac222488dd309de", "onsets": "9cf12cf6502c16a1"},
+   "Rxbyn_-_Bad_Side": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 72.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 95.83, "pm1000": 100.0, "text_pm500": 95.83, "high_gross": 0.0, "word_pm100": 78.75, "word_pm300": 92.5, "word_pco300": 84.09, "word_bias_ms": 5.8, "end_pm100": 75.34, "final_end_pm100": 41.82, "highlight": 73.98, "coverage": 0.9479, "doc": "90c9393b37ac52a4", "onsets": "e3746f4afb719ddd"},
+   "Slingshot_Miracle_-_Whistler": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 31.0, "missing": 0.0, "unsung": 0.0, "gross": 1.0, "pm500": 93.55, "pm1000": 96.77, "text_pm500": 93.55, "high_gross": 0.0, "word_pm100": 60.47, "word_pm300": 78.29, "word_pco300": 62.35, "word_bias_ms": 24.3, "end_pm100": 49.47, "final_end_pm100": 0.0, "highlight": 70.71, "coverage": 0.978, "doc": "cda37f95141344f1", "onsets": "28048967b04f483a"},
+   "Songwriterz_-_Back_In_Time": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 46.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 86.96, "pm1000": 100.0, "text_pm500": 86.96, "high_gross": 0.0, "word_pm100": 45.31, "word_pm300": 71.88, "word_pco300": 57.98, "word_bias_ms": -14.7, "end_pm100": 45.53, "final_end_pm100": 29.41, "highlight": 65.8, "coverage": 0.9828, "doc": "49ba762a3da9dbc2", "onsets": "fbb4037e840386ec"},
+   "The.madpix.project_-_One_Way_Street": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 30.0, "missing": 0.0, "unsung": 0.0, "gross": 1.0, "pm500": 86.67, "pm1000": 93.33, "text_pm500": 86.67, "high_gross": 0.0, "word_pm100": 63.1, "word_pm300": 83.33, "word_pco300": 76.5, "word_bias_ms": -1.0, "end_pm100": 65.44, "final_end_pm100": 30.0, "highlight": 69.67, "coverage": 0.9919, "doc": "a558bfe6988c5c39", "onsets": "875140544bc95a24"},
+   "The_Rinn_-_Voices__2017_Version_": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 46.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Tom_Orlando_-_The_One__feat._Tina_G_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 72.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 100.0, "pm1000": 100.0, "text_pm500": 100.0, "high_gross": 0.0, "word_pm100": 90.86, "word_pm300": 98.23, "word_pco300": 66.87, "word_bias_ms": -11.1, "end_pm100": 85.54, "final_end_pm100": 48.0, "highlight": 69.12, "coverage": 0.8602, "doc": "5cf959eda1fd56d9", "onsets": "1dd64980d1aedada"},
+   "Wordsmith_-_The_Statement": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 31.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 100.0, "pm1000": 100.0, "text_pm500": 100.0, "high_gross": 0.0, "word_pm100": 88.98, "word_pm300": 94.49, "word_pco300": 94.49, "word_bias_ms": 7.7, "end_pm100": 85.53, "final_end_pm100": 70.97, "highlight": 80.55, "coverage": 0.9803, "doc": "a5c84e5e0ea7a8e3", "onsets": "1ec1451b110b4bf8"},
+   "never-be-alone": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 47.0, "missing": 0.0, "unsung": 0.0, "gross": 42.0, "pm500": 8.51, "pm1000": 8.51, "text_pm500": 8.51, "high_gross": 0.0, "coverage": 0.9909, "doc": "65068d00e76d7b4d", "onsets": "ce692fa18925958a"},
+   "believer": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 72.0, "missing": 1.0, "unsung": 0.0, "gross": 0.0, "pm500": 72.22, "pm1000": 100.0, "text_pm500": 71.23, "high_gross": 0.0, "coverage": 0.9675, "doc": "d3ca7ab24cfbd4ca", "onsets": "70c8b9794d68fff2"},
+   "shape-of-you": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 89.0, "missing": 3.0, "unsung": 0.0, "gross": 0.0, "pm500": 91.01, "pm1000": 100.0, "text_pm500": 88.04, "high_gross": 0.0, "coverage": 0.9036, "doc": "b2daf2182c1afaaf", "onsets": "cf8a38c1c0a367d8"},
+   "hello": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 74.0, "missing": 0.0, "unsung": 0.0, "gross": 19.0, "pm500": 51.35, "pm1000": 60.81, "text_pm500": 51.35, "high_gross": 0.0, "coverage": 0.984, "doc": "ebf3afcef9c2c740", "onsets": "f8524fead8daf1aa"},
+   "rap-god": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 217.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 94.01, "pm1000": 100.0, "text_pm500": 94.01, "high_gross": 0.0, "coverage": 0.9783, "doc": "4375934f6dd7454f", "onsets": "45fb5a44504bca82"},
+   "bohemian-rhapsody": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 74.0, "missing": 0.0, "unsung": 0.0, "gross": 12.0, "pm500": 56.76, "pm1000": 68.92, "text_pm500": 56.76, "high_gross": 0.0, "coverage": 0.967, "doc": "3db539510a4a59b0", "onsets": "4ccfb42c0f03255c"},
+   "feel-my-heart": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 37.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "numb": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 35.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "bad-guy": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 69.0, "missing": 10.0, "unsung": 0.0, "gross": 1.0, "pm500": 2.9, "pm1000": 72.46, "text_pm500": 2.53, "high_gross": 0.0, "coverage": 0.9921, "doc": "9edc797c5f8ed43e", "onsets": "217c561a30226a1a"},
+   "tfr-flyaway": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 75.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 89.33, "pm1000": 100.0, "text_pm500": 89.33, "high_gross": 0.0, "coverage": 0.9767, "doc": "679e1506f72cd3b4", "onsets": "20734ff59afdaff3"},
+   "tfr-mayday": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 52.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 84.62, "pm1000": 96.15, "text_pm500": 84.62, "high_gross": 0.0, "coverage": 0.9769, "doc": "e13ea5bbcc7e8bce", "onsets": "6bafb77c0aeccb43"},
+   "tfr-chosen": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 35.0, "missing": 2.0, "unsung": 0.0, "gross": 16.0, "pm500": 37.14, "pm1000": 48.57, "text_pm500": 35.14, "high_gross": 0.0, "coverage": 0.9589, "doc": "dadc1cdbdcbf9968", "onsets": "9c230fd4f84acd1c"}
+  },
+  "blind": {
+   "Avercage_-_Embers": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 42.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Color_Out_-_Falling_Star": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 37.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Cortez_-_Feel__Stripped_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 42.0, "missing": 0.0, "unsung": 0.0, "gross": 1.0, "pm500": 80.95, "pm1000": 88.1, "text_pm500": 80.95, "high_gross": 1.0, "word_pm100": 78.87, "word_pm300": 94.37, "word_pco300": 94.37, "word_bias_ms": 3.9, "end_pm100": 63.47, "final_end_pm100": 10.26, "highlight": 83.99, "coverage": 0.9718, "doc": "87937701fc4b98a2", "onsets": "3855dbe8e1800d9e"},
+   "Explosive_Ear_Candy_-_Like_The_Sun": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 46.0, "missing": 0.0, "unsung": 0.0, "gross": 15.0, "pm500": 56.52, "pm1000": 63.04, "text_pm500": 56.52, "high_gross": 0.0, "word_pm100": 42.26, "word_pm300": 52.45, "word_pco300": 52.45, "word_bias_ms": 54.6, "end_pm100": 70.59, "final_end_pm100": 38.46, "highlight": 42.35, "coverage": 0.9662, "doc": "4553720fca5100f2", "onsets": "573c1daec8a22c69"},
+   "HILA_-_Give_Me_the_Same": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 58.0, "missing": 0.0, "unsung": 0.0, "gross": 6.0, "pm500": 67.24, "pm1000": 79.31, "text_pm500": 67.24, "high_gross": 6.0, "word_pm100": 61.18, "word_pm300": 75.16, "word_pco300": 75.16, "word_bias_ms": 10.9, "end_pm100": 58.33, "final_end_pm100": 11.63, "highlight": 72.91, "coverage": 0.9865, "doc": "db00a2f2349eb9ad", "onsets": "e3d9a9da30a20a0d"},
+   "JASON_MILLER_-_CROWD_PLEASER": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 82.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 100.0, "pm1000": 100.0, "text_pm500": 100.0, "high_gross": 0.0, "word_pm100": 93.09, "word_pm300": 99.81, "word_pco300": 99.81, "word_bias_ms": -13.3, "end_pm100": 80.58, "final_end_pm100": 31.71, "highlight": 83.86, "coverage": 0.9722, "doc": "eddf4318bb4033e5", "onsets": "26f7d75124ae0dc4"},
+   "Kinematic_-_Peyote": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 14.0, "missing": 0.0, "unsung": 0.0, "gross": 7.0, "pm500": 35.71, "pm1000": 42.86, "text_pm500": 35.71, "high_gross": 0.0, "word_pm100": 36.73, "word_pm300": 41.5, "word_pco300": 41.5, "word_bias_ms": 39.7, "end_pm100": 65.57, "final_end_pm100": 0.0, "highlight": 37.91, "coverage": 0.9988, "doc": "afd2ae160e3c2483", "onsets": "46b7698011086b64"},
+   "LUNABLIND_-_Vision__Radio_Edit_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 53.0, "missing": 0.0, "unsung": 0.0, "gross": 7.0, "pm500": 75.47, "pm1000": 83.02, "text_pm500": 75.47, "high_gross": 2.0, "word_pm100": 70.49, "word_pm300": 77.43, "word_pco300": 77.43, "word_bias_ms": -4.5, "end_pm100": 67.12, "final_end_pm100": 30.95, "highlight": 68.96, "coverage": 0.9706, "doc": "7dadd80d8ea9417e", "onsets": "2fb9e8e257d33274"},
+   "Lower_Loveday_-_Is_It_Right_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 26.0, "missing": 0.0, "unsung": 0.0, "gross": 16.0, "pm500": 30.77, "pm1000": 34.62, "text_pm500": 30.77, "high_gross": 0.0, "word_pm100": 23.11, "word_pm300": 32.08, "word_pco300": 32.08, "word_bias_ms": -4913.4, "end_pm100": 53.03, "final_end_pm100": 0.0, "highlight": 29.79, "coverage": 1.0, "doc": "0822b28822882c1f", "onsets": "bca5c07ba7bbdf95"},
+   "Moon_I_Mean_-_Wrong_Concept": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 43.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Pure_Mids_-_The_Leader": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 20.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Quentin_Hannappe_-_Keep_On": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 27.0, "missing": 0.0, "unsung": 0.0, "gross": 9.0, "pm500": 59.26, "pm1000": 59.26, "text_pm500": 59.26, "high_gross": 5.0, "word_pm100": 66.86, "word_pm300": 73.14, "word_pco300": 73.14, "word_bias_ms": -5.8, "end_pm100": 71.88, "final_end_pm100": 33.33, "highlight": 70.67, "coverage": 0.9526, "doc": "0bda7b0c2fda11b2", "onsets": "55c0e4670426e0b5"},
+   "Ridgway_-_Fire_Inside": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 50.0, "missing": 0.0, "unsung": 0.0, "gross": 14.0, "pm500": 68.0, "pm1000": 70.0, "text_pm500": 68.0, "high_gross": 6.0, "word_pm100": 51.64, "word_pm300": 66.45, "word_pco300": 66.45, "word_bias_ms": -18.7, "end_pm100": 65.83, "final_end_pm100": 44.83, "highlight": 58.35, "coverage": 0.9896, "doc": "187d21414f6b1bfb", "onsets": "8ed8379eb8765c3d"},
+   "Rxbyn_-_Bad_Side": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 72.0, "missing": 0.0, "unsung": 0.0, "gross": 3.0, "pm500": 88.89, "pm1000": 93.06, "text_pm500": 88.89, "high_gross": 1.0, "word_pm100": 73.41, "word_pm300": 88.64, "word_pco300": 88.64, "word_bias_ms": 9.4, "end_pm100": 75.59, "final_end_pm100": 46.55, "highlight": 73.86, "coverage": 0.9803, "doc": "34221b03ab455986", "onsets": "d4e63f57ba3e6f96"},
+   "Slingshot_Miracle_-_Whistler": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 31.0, "missing": 0.0, "unsung": 0.0, "gross": 9.0, "pm500": 51.61, "pm1000": 58.06, "text_pm500": 51.61, "high_gross": 0.0, "word_pm100": 45.06, "word_pm300": 60.49, "word_pco300": 60.49, "word_bias_ms": 12.7, "end_pm100": 46.81, "final_end_pm100": 0.0, "highlight": 59.38, "coverage": 0.9848, "doc": "8471bc21547b712e", "onsets": "4ef58bd82cae8bbd"},
+   "Songwriterz_-_Back_In_Time": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 46.0, "missing": 0.0, "unsung": 0.0, "gross": 12.0, "pm500": 56.52, "pm1000": 63.04, "text_pm500": 56.52, "high_gross": 0.0, "word_pm100": 37.39, "word_pm300": 57.14, "word_pco300": 57.14, "word_bias_ms": -68.5, "end_pm100": 49.18, "final_end_pm100": 27.27, "highlight": 48.78, "coverage": 0.9828, "doc": "bf8e0964a9a09177", "onsets": "2a1023281b191d33"},
+   "The.madpix.project_-_One_Way_Street": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 30.0, "missing": 0.0, "unsung": 0.0, "gross": 3.0, "pm500": 76.67, "pm1000": 76.67, "text_pm500": 76.67, "high_gross": 2.0, "word_pm100": 61.75, "word_pm300": 75.96, "word_pco300": 75.96, "word_bias_ms": -6.1, "end_pm100": 66.42, "final_end_pm100": 30.43, "highlight": 68.92, "coverage": 0.9898, "doc": "87af66c0b591bb7f", "onsets": "a36ee6f4464d2d89"},
+   "The_Rinn_-_Voices__2017_Version_": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 46.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Tom_Orlando_-_The_One__feat._Tina_G_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 72.0, "missing": 0.0, "unsung": 0.0, "gross": 9.0, "pm500": 79.17, "pm1000": 86.11, "text_pm500": 79.17, "high_gross": 6.0, "word_pm100": 68.88, "word_pm300": 74.7, "word_pco300": 74.7, "word_bias_ms": 3.3, "end_pm100": 81.94, "final_end_pm100": 45.45, "highlight": 59.48, "coverage": 0.9976, "doc": "3734afb68de5657c", "onsets": "89f62a74a8f47cf7"},
+   "Wordsmith_-_The_Statement": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 31.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 100.0, "pm1000": 100.0, "text_pm500": 100.0, "high_gross": 0.0, "word_pm100": 88.98, "word_pm300": 94.49, "word_pco300": 94.49, "word_bias_ms": 7.7, "end_pm100": 85.53, "final_end_pm100": 70.97, "highlight": 80.55, "coverage": 0.9803, "doc": "a034c4dfc09a00d6", "onsets": "9a43fe9da713f77c"},
+   "never-be-alone": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 47.0, "missing": 0.0, "unsung": 0.0, "gross": 42.0, "pm500": 8.51, "pm1000": 8.51, "text_pm500": 8.51, "high_gross": 0.0, "coverage": 0.9909, "doc": "65068d00e76d7b4d", "onsets": "ce692fa18925958a"},
+   "believer": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 72.0, "missing": 1.0, "unsung": 0.0, "gross": 12.0, "pm500": 40.28, "pm1000": 68.06, "text_pm500": 39.73, "high_gross": 1.0, "coverage": 0.9718, "doc": "65f98c9219e02406", "onsets": "12c5e0ca75f6333a"},
+   "shape-of-you": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 89.0, "missing": 3.0, "unsung": 0.0, "gross": 1.0, "pm500": 85.39, "pm1000": 97.75, "text_pm500": 82.61, "high_gross": 1.0, "coverage": 0.9036, "doc": "ebcb623d52ca9193", "onsets": "e1b9828987c72c3d"},
+   "hello": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 74.0, "missing": 0.0, "unsung": 0.0, "gross": 19.0, "pm500": 51.35, "pm1000": 60.81, "text_pm500": 51.35, "high_gross": 4.0, "coverage": 0.984, "doc": "28f9e0531cb3c6b5", "onsets": "f8524fead8daf1aa"},
+   "rap-god": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 217.0, "missing": 0.0, "unsung": 0.0, "gross": 2.0, "pm500": 79.72, "pm1000": 92.63, "text_pm500": 79.72, "high_gross": 2.0, "coverage": 0.9783, "doc": "bc6c923c611300c1", "onsets": "a3de80f4b10ae07a"},
+   "bohemian-rhapsody": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 74.0, "missing": 0.0, "unsung": 0.0, "gross": 12.0, "pm500": 56.76, "pm1000": 68.92, "text_pm500": 56.76, "high_gross": 11.0, "coverage": 0.967, "doc": "8f109990d2921ac3", "onsets": "4ccfb42c0f03255c"},
+   "feel-my-heart": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 37.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "numb": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 35.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "bad-guy": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 69.0, "missing": 10.0, "unsung": 0.0, "gross": 10.0, "pm500": 0.0, "pm1000": 60.87, "text_pm500": 0.0, "high_gross": 6.0, "coverage": 0.9948, "doc": "f1149523c4ec6777", "onsets": "b24f0af17b0ecd9e"},
+   "tfr-flyaway": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 75.0, "missing": 0.0, "unsung": 0.0, "gross": 25.0, "pm500": 57.33, "pm1000": 58.67, "text_pm500": 57.33, "high_gross": 0.0, "coverage": 0.9767, "doc": "e821107fa536959a", "onsets": "f3748bb299fed6f9"},
+   "tfr-mayday": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 52.0, "missing": 0.0, "unsung": 0.0, "gross": 14.0, "pm500": 53.85, "pm1000": 55.77, "text_pm500": 53.85, "high_gross": 1.0, "coverage": 0.9774, "doc": "5ff4818c66875f43", "onsets": "8f2e09eab744a7f0"},
+   "tfr-chosen": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 35.0, "missing": 2.0, "unsung": 0.0, "gross": 16.0, "pm500": 37.14, "pm1000": 48.57, "text_pm500": 35.14, "high_gross": 0.0, "coverage": 0.9589, "doc": "dadc1cdbdcbf9968", "onsets": "9c230fd4f84acd1c"}
+  },
+  "drop20": {
+   "Avercage_-_Embers": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 34.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Color_Out_-_Falling_Star": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 30.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Cortez_-_Feel__Stripped_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 34.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 88.24, "pm1000": 97.06, "text_pm500": 88.24, "high_gross": 0.0, "word_pm100": 74.31, "word_pm300": 89.33, "word_pco300": 77.66, "word_bias_ms": 11.5, "end_pm100": 65.47, "final_end_pm100": 8.0, "highlight": 72.85, "coverage": 0.9718, "doc": "314d60dcaee7efc8", "onsets": "4243d8e8117533fb"},
+   "Explosive_Ear_Candy_-_Like_The_Sun": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 37.0, "missing": 0.0, "unsung": 0.0, "gross": 15.0, "pm500": 51.35, "pm1000": 54.05, "text_pm500": 51.35, "high_gross": 0.0, "word_pm100": 33.49, "word_pm300": 42.33, "word_pco300": 42.33, "word_bias_ms": 270.1, "end_pm100": 70.79, "final_end_pm100": 38.89, "highlight": 34.21, "coverage": 0.9662, "doc": "c67f599f65c032e5", "onsets": "77dd6f9c726089e8"},
+   "HILA_-_Give_Me_the_Same": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 46.0, "missing": 0.0, "unsung": 0.0, "gross": 20.0, "pm500": 41.3, "pm1000": 43.48, "text_pm500": 41.3, "high_gross": 0.0, "word_pm100": 44.96, "word_pm300": 54.62, "word_pco300": 54.62, "word_bias_ms": -48.5, "end_pm100": 62.79, "final_end_pm100": 17.39, "highlight": 54.82, "coverage": 0.9865, "doc": "93bf65eb1f7efe0e", "onsets": "b7a32a035c953b33"},
+   "JASON_MILLER_-_CROWD_PLEASER": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 66.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 96.97, "pm1000": 98.48, "text_pm500": 96.97, "high_gross": 0.0, "word_pm100": 88.54, "word_pm300": 95.37, "word_pco300": 92.0, "word_bias_ms": -9.7, "end_pm100": 77.24, "final_end_pm100": 20.69, "highlight": 78.97, "coverage": 0.9722, "doc": "4dd7c8d7f5a2bd40", "onsets": "dbc94d6395318eff"},
+   "Kinematic_-_Peyote": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 11.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "LUNABLIND_-_Vision__Radio_Edit_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 42.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 100.0, "pm1000": 100.0, "text_pm500": 100.0, "high_gross": 0.0, "word_pm100": 86.96, "word_pm300": 95.65, "word_pco300": 66.38, "word_bias_ms": 5.9, "end_pm100": 60.39, "final_end_pm100": 10.71, "highlight": 75.87, "coverage": 0.9706, "doc": "8180f136d5760faf", "onsets": "fa66a72ae030c070"},
+   "Lower_Loveday_-_Is_It_Right_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 21.0, "missing": 0.0, "unsung": 0.0, "gross": 15.0, "pm500": 23.81, "pm1000": 28.57, "text_pm500": 23.81, "high_gross": 0.0, "word_pm100": 18.29, "word_pm300": 25.71, "word_pco300": 25.71, "word_bias_ms": -14123.4, "end_pm100": 47.73, "final_end_pm100": 0.0, "highlight": 23.01, "coverage": 1.0, "doc": "2ea9e5ded044da59", "onsets": "3af64e73ace8da34"},
+   "Moon_I_Mean_-_Wrong_Concept": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 34.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Pure_Mids_-_The_Leader": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 16.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Quentin_Hannappe_-_Keep_On": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 22.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 95.45, "pm1000": 100.0, "text_pm500": 95.45, "high_gross": 0.0, "word_pm100": 83.5, "word_pm300": 91.26, "word_pco300": 65.28, "word_bias_ms": -1.8, "end_pm100": 73.4, "final_end_pm100": 26.67, "highlight": 72.11, "coverage": 0.8677, "doc": "65aea6a5a7fb1c64", "onsets": "2f52c3928e231eef"},
+   "Ridgway_-_Fire_Inside": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 40.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 77.5, "pm1000": 97.5, "text_pm500": 77.5, "high_gross": 0.0, "word_pm100": 27.19, "word_pm300": 45.61, "word_pco300": 22.03, "word_bias_ms": 334.7, "end_pm100": 35.42, "final_end_pm100": 16.67, "highlight": 38.1, "coverage": 0.9847, "doc": "714ca71b7a442f02", "onsets": "26142ad234076c81"},
+   "Rxbyn_-_Bad_Side": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 58.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 94.83, "pm1000": 100.0, "text_pm500": 94.83, "high_gross": 0.0, "word_pm100": 79.65, "word_pm300": 90.91, "word_pco300": 58.82, "word_bias_ms": 5.7, "end_pm100": 73.56, "final_end_pm100": 34.29, "highlight": 63.75, "coverage": 0.9479, "doc": "f30f381805fe6a5d", "onsets": "19f56b81e6a2da2c"},
+   "Slingshot_Miracle_-_Whistler": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 25.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Songwriterz_-_Back_In_Time": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 37.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 81.08, "pm1000": 100.0, "text_pm500": 81.08, "high_gross": 0.0, "word_pm100": 26.72, "word_pm300": 48.09, "word_pco300": 33.16, "word_bias_ms": 295.5, "end_pm100": 36.21, "final_end_pm100": 14.29, "highlight": 56.14, "coverage": 0.9828, "doc": "6f162b25c71809e6", "onsets": "dcda66c342d17555"},
+   "The.madpix.project_-_One_Way_Street": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 24.0, "missing": 0.0, "unsung": 0.0, "gross": 2.0, "pm500": 79.17, "pm1000": 87.5, "text_pm500": 79.17, "high_gross": 0.0, "word_pm100": 59.5, "word_pm300": 78.51, "word_pco300": 60.51, "word_bias_ms": -6.0, "end_pm100": 61.96, "final_end_pm100": 16.67, "highlight": 64.07, "coverage": 0.9924, "doc": "e7514ac7636cd496", "onsets": "3b06d850a3e1bbdb"},
+   "The_Rinn_-_Voices__2017_Version_": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 37.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Tom_Orlando_-_The_One__feat._Tina_G_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 58.0, "missing": 0.0, "unsung": 0.0, "gross": 3.0, "pm500": 82.76, "pm1000": 93.1, "text_pm500": 82.76, "high_gross": 0.0, "word_pm100": 75.93, "word_pm300": 84.75, "word_pco300": 62.97, "word_bias_ms": -6.4, "end_pm100": 81.3, "final_end_pm100": 42.86, "highlight": 56.88, "coverage": 0.8602, "doc": "f586993cd58f1e0b", "onsets": "c49c15e6f75963f2"},
+   "Wordsmith_-_The_Statement": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 25.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 100.0, "pm1000": 100.0, "text_pm500": 100.0, "high_gross": 0.0, "word_pm100": 93.49, "word_pm300": 98.08, "word_pco300": 57.14, "word_bias_ms": 1.8, "end_pm100": 88.24, "final_end_pm100": 78.57, "highlight": 72.46, "coverage": 0.9532, "doc": "f4bb8ca0ce7cf99b", "onsets": "f3180f0d8814b276"},
+   "never-be-alone": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 38.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "believer": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 57.0, "missing": 1.0, "unsung": 0.0, "gross": 23.0, "pm500": 31.58, "pm1000": 54.39, "text_pm500": 31.03, "high_gross": 0.0, "coverage": 0.9718, "doc": "2e5b7978c22bac9d", "onsets": "f79ae7b32a782a39"},
+   "shape-of-you": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 73.0, "missing": 1.0, "unsung": 0.0, "gross": 0.0, "pm500": 83.56, "pm1000": 95.89, "text_pm500": 82.43, "high_gross": 0.0, "coverage": 0.9542, "doc": "80ca205d1de3dd03", "onsets": "591efbbc48b84285"},
+   "hello": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 59.0, "missing": 0.0, "unsung": 0.0, "gross": 26.0, "pm500": 44.07, "pm1000": 49.15, "text_pm500": 44.07, "high_gross": 0.0, "coverage": 0.972, "doc": "1e3eb701d511ca16", "onsets": "6bcbfb1587388ec0"},
+   "rap-god": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 174.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 88.51, "pm1000": 100.0, "text_pm500": 88.51, "high_gross": 0.0, "coverage": 0.9783, "doc": "223b22f04cc6649d", "onsets": "3eaba566ce4e4b63"},
+   "bohemian-rhapsody": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 59.0, "missing": 0.0, "unsung": 0.0, "gross": 24.0, "pm500": 37.29, "pm1000": 44.07, "text_pm500": 37.29, "high_gross": 0.0, "coverage": 0.968, "doc": "3b99fd87ca167048", "onsets": "d8a1746c00efea39"},
+   "feel-my-heart": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 30.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "numb": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 28.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "bad-guy": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 57.0, "missing": 6.0, "unsung": 0.0, "gross": 1.0, "pm500": 5.26, "pm1000": 73.68, "text_pm500": 4.76, "high_gross": 0.0, "coverage": 0.9921, "doc": "2ce2c4b647f57421", "onsets": "cd1b79c61665182f"},
+   "tfr-flyaway": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 60.0, "missing": 0.0, "unsung": 0.0, "gross": 36.0, "pm500": 36.67, "pm1000": 36.67, "text_pm500": 36.67, "high_gross": 0.0, "coverage": 0.9767, "doc": "e16d4831fbd2717a", "onsets": "f1efac5adb216c8a"},
+   "tfr-mayday": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 42.0, "missing": 0.0, "unsung": 0.0, "gross": 17.0, "pm500": 33.33, "pm1000": 40.48, "text_pm500": 33.33, "high_gross": 0.0, "coverage": 0.9774, "doc": "25b3c5f404bf13f3", "onsets": "4d5a8edecd45a16e"},
+   "tfr-chosen": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 28.0, "missing": 2.0, "unsung": 0.0, "gross": 16.0, "pm500": 28.57, "pm1000": 35.71, "text_pm500": 26.67, "high_gross": 0.0, "coverage": 0.9632, "doc": "e59751e9c9dc5df7", "onsets": "23ae95e1706187bb"}
+  },
+  "drop50": {
+   "Avercage_-_Embers": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 21.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Color_Out_-_Falling_Star": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 18.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Cortez_-_Feel__Stripped_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 21.0, "missing": 0.0, "unsung": 0.0, "gross": 8.0, "pm500": 38.1, "pm1000": 42.86, "text_pm500": 38.1, "high_gross": 0.0, "word_pm100": 42.08, "word_pm300": 50.82, "word_pco300": 50.82, "word_bias_ms": 59.1, "end_pm100": 61.96, "final_end_pm100": 0.0, "highlight": 45.99, "coverage": 0.9718, "doc": "6c9c80a45d7180bc", "onsets": "fa331cfeddec0e99"},
+   "Explosive_Ear_Candy_-_Like_The_Sun": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 23.0, "missing": 0.0, "unsung": 0.0, "gross": 17.0, "pm500": 21.74, "pm1000": 21.74, "text_pm500": 21.74, "high_gross": 0.0, "word_pm100": 27.64, "word_pm300": 33.33, "word_pco300": 33.33, "word_bias_ms": -43.2, "end_pm100": 68.29, "final_end_pm100": 28.57, "highlight": 28.6, "coverage": 0.9662, "doc": "0fa3a4b8cf6fce60", "onsets": "fbfa9aad51897fd0"},
+   "HILA_-_Give_Me_the_Same": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 29.0, "missing": 0.0, "unsung": 0.0, "gross": 19.0, "pm500": 20.69, "pm1000": 20.69, "text_pm500": 20.69, "high_gross": 0.0, "word_pm100": 26.06, "word_pm300": 30.99, "word_pco300": 30.99, "word_bias_ms": -1231.9, "end_pm100": 61.36, "final_end_pm100": 20.0, "highlight": 37.09, "coverage": 0.9865, "doc": "6e90e5b4f03b5997", "onsets": "d303c08dfe355af9"},
+   "JASON_MILLER_-_CROWD_PLEASER": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 41.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 90.24, "pm1000": 95.12, "text_pm500": 90.24, "high_gross": 0.0, "word_pm100": 79.75, "word_pm300": 86.08, "word_pco300": 74.18, "word_bias_ms": -8.6, "end_pm100": 74.75, "final_end_pm100": 7.69, "highlight": 71.34, "coverage": 0.9019, "doc": "06b9bcc43a2e2444", "onsets": "63d3413992574da3"},
+   "Kinematic_-_Peyote": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 7.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "LUNABLIND_-_Vision__Radio_Edit_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 26.0, "missing": 0.0, "unsung": 0.0, "gross": 16.0, "pm500": 34.62, "pm1000": 34.62, "text_pm500": 34.62, "high_gross": 0.0, "word_pm100": 33.1, "word_pm300": 36.55, "word_pco300": 36.55, "word_bias_ms": -53.3, "end_pm100": 54.72, "final_end_pm100": 25.0, "highlight": 37.92, "coverage": 0.9706, "doc": "179a02b5c5dc34c6", "onsets": "f43027bfc6c8f5f7"},
+   "Lower_Loveday_-_Is_It_Right_": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 13.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Moon_I_Mean_-_Wrong_Concept": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 21.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Pure_Mids_-_The_Leader": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 10.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Quentin_Hannappe_-_Keep_On": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 13.0, "missing": 0.0, "unsung": 0.0, "gross": 7.0, "pm500": 46.15, "pm1000": 46.15, "text_pm500": 46.15, "high_gross": 0.0, "word_pm100": 41.11, "word_pm300": 45.56, "word_pco300": 45.56, "word_bias_ms": -94.3, "end_pm100": 60.98, "final_end_pm100": 0.0, "highlight": 40.03, "coverage": 0.9137, "doc": "5483e07c090dba22", "onsets": "4184392140dd245b"},
+   "Ridgway_-_Fire_Inside": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 25.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 72.0, "pm1000": 100.0, "text_pm500": 72.0, "high_gross": 0.0, "word_pm100": 31.11, "word_pm300": 43.33, "word_pco300": 24.84, "word_bias_ms": 414.5, "end_pm100": 47.37, "final_end_pm100": 33.33, "highlight": 41.88, "coverage": 0.9765, "doc": "154118e16c3acbcb", "onsets": "bb7401e76f52eeae"},
+   "Rxbyn_-_Bad_Side": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 36.0, "missing": 0.0, "unsung": 0.0, "gross": 25.0, "pm500": 27.78, "pm1000": 27.78, "text_pm500": 27.78, "high_gross": 0.0, "word_pm100": 24.11, "word_pm300": 27.23, "word_pco300": 27.23, "word_bias_ms": -12930.7, "end_pm100": 73.77, "final_end_pm100": 40.0, "highlight": 27.1, "coverage": 0.9434, "doc": "8f718750870e2483", "onsets": "19c718e08b8a7742"},
+   "Slingshot_Miracle_-_Whistler": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 15.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Songwriterz_-_Back_In_Time": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 23.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "The.madpix.project_-_One_Way_Street": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 15.0, "missing": 0.0, "unsung": 0.0, "gross": 11.0, "pm500": 20.0, "pm1000": 20.0, "text_pm500": 20.0, "high_gross": 0.0, "word_pm100": 13.79, "word_pm300": 21.84, "word_pco300": 21.84, "word_bias_ms": 5616.9, "end_pm100": 42.11, "final_end_pm100": 0.0, "highlight": 23.4, "coverage": 0.9898, "doc": "b07869d01003f548", "onsets": "45a7385b64b0330e"},
+   "The_Rinn_-_Voices__2017_Version_": {"group": "jamendo", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 23.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "word_pco300": 0.0, "highlight": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "Tom_Orlando_-_The_One__feat._Tina_G_": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 36.0, "missing": 0.0, "unsung": 0.0, "gross": 20.0, "pm500": 33.33, "pm1000": 33.33, "text_pm500": 33.33, "high_gross": 0.0, "word_pm100": 42.58, "word_pm300": 44.92, "word_pco300": 44.92, "word_bias_ms": -5.0, "end_pm100": 82.46, "final_end_pm100": 31.25, "highlight": 36.43, "coverage": 0.9976, "doc": "a90cf2474ae56c74", "onsets": "4b8ea9d69f1d2793"},
+   "Wordsmith_-_The_Statement": {"group": "jamendo", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 15.0, "missing": 0.0, "unsung": 0.0, "gross": 9.0, "pm500": 20.0, "pm1000": 26.67, "text_pm500": 20.0, "high_gross": 0.0, "word_pm100": 33.68, "word_pm300": 34.03, "word_pco300": 34.03, "word_bias_ms": -23.6, "end_pm100": 84.69, "final_end_pm100": 50.0, "highlight": 34.59, "coverage": 0.9803, "doc": "db91faff59fd7ba5", "onsets": "caf06b26464adeba"},
+   "never-be-alone": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 23.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "believer": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 35.0, "missing": 1.0, "unsung": 0.0, "gross": 23.0, "pm500": 11.43, "pm1000": 25.71, "text_pm500": 11.11, "high_gross": 0.0, "coverage": 0.9718, "doc": "0dc6f10d2cd9e5ae", "onsets": "f91751501ef4a186"},
+   "shape-of-you": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 45.0, "missing": 1.0, "unsung": 0.0, "gross": 24.0, "pm500": 35.56, "pm1000": 42.22, "text_pm500": 34.78, "high_gross": 0.0, "coverage": 0.9542, "doc": "79def101bdf1d4a8", "onsets": "86d6032dd20eea6a"},
+   "hello": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 37.0, "missing": 0.0, "unsung": 0.0, "gross": 29.0, "pm500": 16.22, "pm1000": 18.92, "text_pm500": 16.22, "high_gross": 0.0, "coverage": 0.984, "doc": "3f6766f51a02c9a0", "onsets": "2180bc6e484d69c3"},
+   "rap-god": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 108.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "pm500": 76.85, "pm1000": 91.67, "text_pm500": 76.85, "high_gross": 0.0, "coverage": 0.9783, "doc": "1abfecfb0e115071", "onsets": "b1317818023c23fc"},
+   "bohemian-rhapsody": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 37.0, "missing": 0.0, "unsung": 0.0, "gross": 23.0, "pm500": 29.73, "pm1000": 37.84, "text_pm500": 29.73, "high_gross": 0.0, "coverage": 0.967, "doc": "48874b16c72050cf", "onsets": "bb267a476836bfeb"},
+   "feel-my-heart": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 18.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "numb": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 17.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"},
+   "bad-guy": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 34.0, "missing": 5.0, "unsung": 0.0, "gross": 0.0, "pm500": 11.76, "pm1000": 85.29, "text_pm500": 10.26, "high_gross": 0.0, "coverage": 0.9824, "doc": "b63fe4153ffd3f3b", "onsets": "eee4fe0248fd308f"},
+   "tfr-flyaway": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 37.0, "missing": 0.0, "unsung": 0.0, "gross": 34.0, "pm500": 5.41, "pm1000": 5.41, "text_pm500": 5.41, "high_gross": 0.0, "coverage": 0.9715, "doc": "94f4fa1c0df6392c", "onsets": "907a7a51e3db7ab2"},
+   "tfr-mayday": {"group": "youtube", "cases": 1.0, "published": 1.0, "refused": 0.0, "error": 0.0, "scored": 26.0, "missing": 0.0, "unsung": 0.0, "gross": 16.0, "pm500": 19.23, "pm1000": 30.77, "text_pm500": 19.23, "high_gross": 0.0, "coverage": 0.9774, "doc": "26f7b4e6ec2bacb9", "onsets": "3adbefbe68817d7d"},
+   "tfr-chosen": {"group": "youtube", "cases": 1.0, "published": 0.0, "refused": 1.0, "error": 0.0, "scored": 0.0, "missing": 18.0, "unsung": 0.0, "gross": 0.0, "text_pm500": 0.0, "high_gross": 0.0, "coverage": 0.0, "doc": "-", "onsets": "-"}
+  },
+  "wrongtext": {
+   "Avercage_-_Embers": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Color_Out_-_Falling_Star": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Cortez_-_Feel__Stripped_": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Explosive_Ear_Candy_-_Like_The_Sun": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "HILA_-_Give_Me_the_Same": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "JASON_MILLER_-_CROWD_PLEASER": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Kinematic_-_Peyote": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "LUNABLIND_-_Vision__Radio_Edit_": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Lower_Loveday_-_Is_It_Right_": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Moon_I_Mean_-_Wrong_Concept": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Pure_Mids_-_The_Leader": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Quentin_Hannappe_-_Keep_On": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Ridgway_-_Fire_Inside": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Rxbyn_-_Bad_Side": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Slingshot_Miracle_-_Whistler": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Songwriterz_-_Back_In_Time": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "The.madpix.project_-_One_Way_Street": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "The_Rinn_-_Voices__2017_Version_": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Tom_Orlando_-_The_One__feat._Tina_G_": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "Wordsmith_-_The_Statement": {"group": "jamendo", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "never-be-alone": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "believer": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "shape-of-you": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "hello": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "rap-god": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "bohemian-rhapsody": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "feel-my-heart": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "numb": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "bad-guy": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "tfr-flyaway": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "tfr-mayday": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"},
+   "tfr-chosen": {"group": "youtube", "cases": 2.0, "published": 0.0, "refused": 2.0, "error": 0.0, "scored": 0.0, "missing": 0.0, "unsung": 0.0, "gross": 0.0, "high_gross": 0.0, "wrongtext_pass": 0.0, "coverage": 0.0, "doc": "ff0c2b1a782be5d0", "onsets": "ff0c2b1a782be5d0"}
+  }
+ }
+}

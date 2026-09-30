@@ -54,7 +54,8 @@ def build_adapters(config: Config, *, device: str) -> Adapters:
         transcriber=ml.build_transcriber(device=device, checkpoint=config.asr_model),
         # A job's own `asrModel` (review H5): built on demand, the weights cached per checkpoint in `ml`.
         transcriber_for=lambda checkpoint: ml.build_transcriber(device=device, checkpoint=checkpoint),
-        aligner=ml.build_aligner(device=device),
+        # `jobs` sizes the emission cache, which holds a matrix per LIVE job (`ml._emission_cache_size`).
+        aligner=ml.build_aligner(device=device, jobs=config.concurrency),
         diarizer=ml.build_diarizer(device=device),
     )
 

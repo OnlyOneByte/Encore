@@ -214,6 +214,63 @@ def test_the_global_engine_still_degrades_incoherent_order_to_line_sync() -> Non
     )
 
 
+# ── the cross-kind comparison (W4): claims nothing relates to these timings ───────────────────────
+
+
+def test_a_word_document_nothing_relates_to_its_claims_asks_the_text_s_own_timings() -> None:
+    """W4: `reconcile` fitted no map between our timings and the sheet's, so both witnesses cannot be
+    right and ours is the one with no second opinion behind it. Measured: those documents carry 84% of the
+    corpus's gross lines at `run_align`."""
+    verdict = decide(ok(engine=Engine.GLOBAL, claims_related=False), FULL)
+    assert isinstance(verdict, Retime) and verdict.knob is Knob.LINE_SYNC
+    assert "nothing relates these timings to the text's own claimed line starts" in verdict.why
+    assert "beat this document" in verdict.why, "the rung has to win, not merely run"
+
+
+@pytest.mark.parametrize("related", [True, None], ids=["related", "unanswered"])
+def test_a_word_document_its_claims_corroborate_keeps_its_words(related: bool | None) -> None:
+    """The other 95%: a related verdict — or none at all (an untimed text, three disagreeing pairs) — is
+    not a reason to spend the terminal rung. 107 743 word timings ride on this branch."""
+    verdict = decide(ok(engine=Engine.GLOBAL, claims_related=related), FULL)
+    assert isinstance(verdict, Accept)
+
+
+def test_an_unrelated_sheet_is_not_asked_before_a_knob_that_could_repair_the_words() -> None:
+    """LINE_SYNC abandons word timing, so it goes LAST: a windowed document that is both misplaced and
+    unrelated re-places first, and only a document with no knob left falls to the rung."""
+    both = ok(residual_sec=-6.0, claims_related=False)
+    assert decide(both, FULL) == Retime(
+        Knob.RESHIFT,
+        "residual -6.00s after placement — the text was probably written for a different master; "
+        "re-placing against the aligned output",
+    )
+    spent = FULL.with_tried(Knob.RESHIFT).with_tried(Knob.DROP_WINDOWS).with_tried(Knob.ALIGN_ON_MIX)
+    assert isinstance(decide(both, spent), Retime), "the rung is still there when nothing else is"
+
+
+def test_a_refusal_stays_terminal_even_where_the_claims_are_unrelated() -> None:
+    """W1's rule outranks the new one: a gate that measured these words not to be this audio's ends the
+    TEXT, and line sync would publish the same words on their own clock past no gate at all."""
+    refused = ok(refused="lexical gate refused: lexical lift +0.03", claims_related=False)
+    assert isinstance(decide(refused, FULL), NextText)
+
+
+def test_a_document_accepted_over_an_unrelated_sheet_says_so() -> None:
+    """The rung ran and lost (its gate refused the sheet): the trail must say the document published on an
+    unresolved disagreement, which is the shape to investigate when the lyrics scroll wrong."""
+    verdict = decide(ok(engine=Engine.GLOBAL, claims_related=False), FULL.with_lost(Knob.LINE_SYNC))
+    assert isinstance(verdict, Accept)
+    assert "accepted DESPITE claims unrelated to these timings" in verdict.why
+    assert "(spent: line-sync)" in verdict.why
+
+
+def test_a_line_document_reports_nothing_about_its_claims() -> None:
+    """A line document IS the claims, so there is no second measurement to relate them to — and the rung
+    is terminal, so no knob reads the field there either."""
+    assert lined().claims_related is None
+    assert isinstance(decide(lined(claims_related=False), FULL.with_tried(Knob.LINE_SYNC)), Accept)
+
+
 def test_offers_needs_the_engine_to_read_the_knob() -> None:
     assert offers(ok(), FULL, Knob.ALIGN_ON_MIX)
     assert not offers(ok(engine=Engine.GLOBAL), FULL, Knob.ALIGN_ON_MIX)
@@ -237,6 +294,14 @@ def test_offers_needs_the_engine_to_read_the_knob() -> None:
         (Knob.DROP_WINDOWS, ok(overshoot_sec=40.0), ok(overshoot_sec=10.0), True),
         (Knob.DROP_WINDOWS, ok(overshoot_sec=40.0), ok(overshoot_sec=40.0), False),
         (Knob.LINE_SYNC, ok(out_of_order=0), lined(), False),  # word timing with a defect beats none
+        # ACROSS KINDS (W4): the line document wins only where nothing related the words to the claims...
+        (Knob.LINE_SYNC, ok(claims_related=False), lined(), True),
+        (Knob.LINE_SYNC, ok(claims_related=True), lined(), False),
+        # ... and only if it times as many lines (a sheet stamped on 3 lines of 20 is a downgrade).
+        (Knob.LINE_SYNC, ok(claims_related=False), lined(lines=3), False),
+        (Knob.LINE_SYNC, ok(claims_related=False), lined(lines=21), True),
+        # Its own gate refusing the sheet is not a verdict on the text: the words are what is kept.
+        (Knob.LINE_SYNC, ok(claims_related=False), lined(refused="decode agreement 0.31"), False),
     ],
 )
 def test_improves_judges_the_defect_the_knob_was_spent_on(

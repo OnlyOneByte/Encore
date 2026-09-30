@@ -29,18 +29,37 @@
 #
 # Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
 #
-# MEASURED 2026-09-29 on THREE Jamendo songs only (HILA, Color_Out, Wordsmith; `_runs/w4-ends-held` against
-# `_runs/w4-ends-raw`), which is the item owner's sanity slice and NOT the corpus run this file is for:
-# 6/6 PASS (5 + the built-in) — highlight 66.2 -> 79.1 (+12.9), phrase-final end ±100 34.5 -> 50.9 (+16.4),
-# 0 onset digests changed, word ±300 94.06 flat, and ONE of the three songs worse at word-end ±100 against
-# the 3-of-20 the review allows: Color_Out 56.8 -> 54.1 on its own ends, while its phrase-final ±100 goes
-# 19.4 -> 38.7. That is the shape to watch on the corpus — interior ends and phrase-final ends can move in
-# opposite directions on one song, and only the second is independently measured (§3.5: 80% of Jamendo's
-# interior truth ends are recorded as the next word's start). The control's own rows FAIL the first two gates
-# by construction (a run compared against itself reads +0.0), which is this file's non-vacuity check.
-# `ends-tile` on the same slice PASSES too (highlight 80.6, phrase-final ±100 50.9) and loses 4.0 pts of
-# POOLED word-end ±100, worse on all three songs — which this file's 3-of-20 form would not catch on a
-# 20-song run, so read the arm's numbers rather than its gate result.
+# MEASURED ON THE CORPUS, 2026-09-29 (`results/w4-time_text.json` against
+# `results/w4-endsoff-time_text.json`; 20 Jamendo songs x truth + blind, 4870 scored ends, 702 phrase-final):
+# 6/6 PASS (5 + the built-in). Blind, which is what the gates below read: highlight 65.9 -> 77.5 (+11.6),
+# phrase-final end ±100 36.3 -> 56.8 (+20.5), word end ±100 68.7 -> 79.5, end bias -55.3 -> -3.8 ms, word
+# ±300 unchanged to the digit, 0 of 20 onset digests changed. TWO of the 20 songs are worse at word-end ±100
+# against the 3 the review allows — Avercage -6.19 and Color_Out -1.28 — and both GAIN on the independently
+# measured half (phrase-final ±100 +12.5 and +16.1). That is the shape §3.5's objection predicts: interior
+# ends and phrase-final ends can move in opposite directions on one song, and only the second is really
+# measured (80% of Jamendo's interior truth ends are recorded as the next word's start).
+# THE SUPERSEDED SANITY SLICE, kept because the arm numbers below are read on it: 3 songs (HILA, Color_Out,
+# Wordsmith; `_runs/w4-ends-held` against `_runs/w4-ends-raw`) read 6/6 with highlight 66.2 -> 79.1 and
+# phrase-final ±100 34.5 -> 50.9 — the same direction, a smaller size, and 1 of 3 songs worse at word-end.
+# `ends-tile` on that slice PASSES too (highlight 80.6, phrase-final ±100 50.9) and loses 4.0 pts of POOLED
+# word-end ±100, worse on all three songs — which this file's 3-of-20 form would not catch on a 20-song run,
+# so read the arm's numbers rather than its gate result.
+# THE CONTROL IS NOW THE DOCUMENTED ARM, NOT A CODE SHIM (W4 REBENCH ROUND 2, 2026-09-29;
+# `_runs/w4r2-endsoff-time_text`, the command at the top of this file, `align_config:
+# {align_experiments: [ends-raw]}`, 2.5 min of which ~2 is the one extra model pass per song). The shim's
+# equivalence to the arm was proved on 6 of its 40 rows in r1 and is now proved on ALL FORTY: the re-recorded
+# arm reproduces the shim to the digit — blind highlight 65.92, word end ±100 68.74, phrase-final ±100 36.30,
+# end bias -55.3 ms, word ±100 80.11, ±300 91.58 — so nothing in this header moved and r1-spec-12 is closed
+# by construction rather than by argument. THE ONSET HALF IS NOW READ OFF THE ROWS, not only the gate:
+# across the 40 paired song-modes of `results/w4-{,endsoff-}time_text.cases.jsonl`, `onsets_sha256` is
+# unchanged on 40 of 40 while `doc_sha256` changes on 40 of 40 — the post-pass moves every document and no
+# onset, which is review §3.5's "any onset moves" as an exact statement.
+# THE FULL PER-SONG READ (both modes, 20 Jamendo songs, arm -> default): worse at word-end ±100 on 2 of 20
+# under `blind` (Avercage -8.33, Color_Out -2.71) and the same 2 of 20 under `truth` (-6.19, -1.28), against
+# the 3 the review allows; 0 of 20 worse at phrase-final ±100 and 0 of 20 worse at highlight, in EITHER mode.
+# Both of the two gain on the independently measured half: Avercage phrase-final +10.52 blind / +16.67 truth
+# and highlight +6.2 / +9.6, Color_Out +19.36 / +21.74 and +10.0 / +8.5. The largest gains are
+# Songwriterz (word-end +30.45, phrase-final +44.74) and Slingshot_Miracle (+26.79, +30.77).
 highlight-up-at-least-5: blind.jamendo.highlight >= base.blind.jamendo.highlight + 5.0
 final-end-pm100-up-at-least-10: blind.jamendo.final_end_pm100 >= base.blind.jamendo.final_end_pm100 + 10.0
 end-pm100-worse-on-at-most-3-songs: count(blind.song.end_pm100_down) <= 3

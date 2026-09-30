@@ -1,0 +1,223 @@
+# W4 reject-if — evidence layer + word ends (PLAN-alignment-v3 W4; review §3 items 5 and 6a, M9, M10, L6).
+# THE BASELINE IS THE PREVIOUS WAVE AT THE SAME LEVEL, because W4 moves the emission matrix itself and every
+# number below is "did the wave cost anything that W2 already had":
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock \
+#       --compare ../docs/benchmarks/forced-alignment/results/w2-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4.yaml
+#   ... --level run_align ...        --compare .../w2-run_align.json       --gates .../w4.yaml
+#   ... --level run_align --sync-mode lines --compare .../w2-lines-run_align.json --gates .../w4.yaml
+#   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
+#
+# THE OTHER THREE GATE FILES OF THIS WAVE, each with its own baseline, because one file reads ONE `--compare`:
+#   gates/w4-ends.yaml    the display post-pass, baseline = the SAME code with the post-pass off, which is
+#                         now the DOCUMENTED ARM `ENCORE_ALIGN_EXPERIMENTS=ends-raw` rather than a code shim
+#                         (`results/w4-endsoff-time_text.json`). 6/6 on the corpus.
+#   gates/w4-clock.yaml   the exact 20 ms grid, baseline = the SAME code on w4-start's clock
+#                         (`results/w4-noclock-time_text.json`). Its failures are the SAME rows this file's
+#                         are, which is how the regression below is attributed to the grid.
+#   gates/w4-stemless.yaml  the carried stemless item (its own header).
+#
+# MEASURED AS THE WAVE FIRST SHIPPED (2026-09-29, bench code f2e38b0414778141; `_runs/w4-*`):
+#   time_text  34/42    run_align  34/42    --sync-mode lines  gates/w3-lines.yaml 34/38
+#
+# RE-BENCHED AFTER REVIEW ROUND 1 — ALL THREE LEVELS, ONE CODE (rebench r2, 2026-09-29; bench code
+# `8c576cc6200b02a0`, base model, youtube tfr audio, seed 0, wrong_k 10, 0 ERROR rows;
+# `_runs/{w4r2b-time_text,w4r2-run_align,w4r2-lines-run_align}`, rows re-recorded in place as
+# `results/w4-{time_text,run_align,lines-run_align}.{json,cases.jsonl}`):
+#
+#   **time_text 37/56    run_align 37/56    --sync-mode lines  gates/w3-lines.yaml 34/38**
+#
+# Section 1d's 14 gates are newly in this file (they were failing before, unwritten — W4 review r1's spec-11),
+# so the 56 is not the 42 the first reading used. Of the 42 gates that reading was taken on, 37 now pass at
+# BOTH levels: the claim clock's MODE candidates (`claimmap`, `decode-mode` / `tempo-mode`) retired the three
+# pooled-gross failures and moved nothing else on the corpus — at time_text off3 47 -> 3, tempo098 48 -> 4,
+# tempo102 47 -> 4, off15 10 -> 3, all of it `never-be-alone`, with the other 1082 cases identical to the
+# digit; at run_align the same four, off3 -44, tempo098 -44, tempo102 -43, off15 -7, and every other mode
+# EQUAL to the digit against the pre-r1 run. At `--sync-mode lines` round 1 moved ONE mode by half a point
+# (tempo102 ±500 95.6 -> 95.1) and nothing else, so 34/38 is the wave's reading there and round 1 did not
+# recover it.
+#
+# THE FAILING SET IS THE SAME AT BOTH LEVELS BUT FOR ONE GATE EACH: `gross-not-up-drop50` fails at time_text
+# (305 vs 300) and PASSES at run_align (180 vs 254), and `gross-not-up-headers` fails at run_align (3 vs 2,
+# the `Pure_Mids` line) and passes at time_text. The five substantive failures are
+# `onsets-word-pm300-not-down` (94.98 vs 95.16), the two `min_song_delta(word_pm300)` gates (-2.80 truth,
+# -1.97 blind), `truth-jamendo-pm500-within-0.3` (96.42 vs 97.04) and that one gross gate; plus 1d's 14,
+# which are `Pure_Mids`' one line in ten modes and drop20/drop50 churn on nine songs. Each is diagnosed below.
+#
+# REVIEW ROUND 2's `MIN_PAIRS` FLOOR IS MEASURED INERT ON THE CORPUS, not argued (`claimmap._densest_offset`,
+# `count < MIN_PAIRS`, MIN_PAIRS = 5): against `_runs/w4r1b-time_text`, the same 1088 cases one fix earlier,
+# **1088 of 1088 documents are byte-identical in `doc_sha256`** and every summary metric is equal to the digit.
+# The floor is REACHED on 5 cases and changes the CANDIDATE LIST on all five (6 -> 4, 6 -> 5, 4 -> 3 twice,
+# 3 -> 2), including the two where it removes the WINNER — `never-be-alone` drop50 (`decode-mode -13.29s`,
+# 3 of 23 paired lines) and `LUNABLIND` wrongtext #2 (`decode-mode +21.30s`, 4 of 35) — but in all five the
+# vote was already declining to map, under `MIN_INLIER_SHARE` or under `MIN_GAIN_LINES`, so no claim time moves
+# and the document is unchanged. On the corpus it is a belt-and-braces guard; the defect it fixes is a 6-cue
+# sheet, and that is held hermetically (`test_a_two_line_cluster_on_a_short_sheet_is_not_a_mode`).
+#
+# WHAT FAILED BEFORE AND IS FIXED (W4 review r1, `domain/lyrics/claimmap.py` WHY THE MODE):
+#   * `never-be-alone` under a DISPLACED sheet (off15/off3/offm1/tempo098/tempo102) lost every line: its
+#     claim clock used to map the displacement away (`decode-median -3.18s (14/45)`) and on the exact grid
+#     the median landed in the GAP between two modes of a bimodal difference population, explaining 4 of 44
+#     paired lines — under the 20% floor, so nothing was mapped, R4 adopted 38 of 44 RAW claim times and the
+#     document published 3 s late. gross off3 0 -> 44, tempo098 0 -> 44, tempo102 0 -> 43, off15 0 -> 7.
+#     The grid was never the cause (it moved every start by at most one frame); the vote's candidate list was.
+#     Both halves are now fixed: the mode candidates map these sheets (gross back to 0 on all five) and R4
+#     refuses to adopt a raw claim time on a sheet the clock declined to map and the blind decode read as
+#     unrelated (`align_steps`, `off_clock`).
+#   * `credit` is NOT fixed and is NOT a gate failure here (pooled 28 against the base's 36): on that mode the
+#     vote correctly abstains — no-shift explains 17 of 46, more than any other candidate — and what changed
+#     is R1's arbitration, which compares our decode's envelope correlation with the claims' and has no
+#     quality floor. The exact clock raised OUR blind fit from 0.15 to 0.32 against the claims' 0.23, so the
+#     widest repair in the step stopped running on a sheet that was right (gross 0 -> 22 on that one song).
+#     Both correlations are far under `activity.MIN_CORRELATION` (0.40), i.e. the arbitration is reading noise.
+#     Left for the owner: giving R1 a floor changes when the widest repair fires on every UNRELATED sheet.
+#   * `Pure_Mids_-_The_Leader` gains ONE gross line in every claim mode (its line [0] is now dropped as
+#     never-sung, 20 -> 19 scored), which is what section 1d's `jamendo-no-new-gross-*` and
+#     `truth-jamendo-pm500-within-0.3` read. Unfixed, and the only content of ten of 1d's 14 failures.
+#     DIAGNOSED IN W4 REVIEW R1 AND IT IS NOT THE NEVER-SUNG RULE'S THRESHOLDS (targeted `truth` probe,
+#     `_runs/w4r2-puremids*`, the three signals read off the shipped tree). The line is dropped on envelope
+#     overlap 0.0890 against `_NEVER_SUNG_ENV`'s 0.10, at 0.92 characters a second and 2.0 below the song's
+#     median score — which is tfr-chosen's CREDIT CAPTION to two decimals (env 0.04, 1.0 chars/s), the
+#     never-sung rule's own calibration exhibit. Every other line of the song reads 0.31-0.80, so the
+#     threshold is not marginal against the population: the global decode smeared this line across ~37 s of
+#     silence, and a smeared line is acoustically what an unsung one is. Nor is the DROP what the gate reads
+#     — with `m6-window-spare` on (review M6's arm, default off) the line comes back, 20/20 scored and ±500
+#     68.4 -> 70.0, and gross stays 1, because the window re-decode puts it back more than 2 s out. So the
+#     clock lost this line's TIMING and the drop is downstream of that; retuning the rule cannot recover it,
+#     and the rule's three literals are calibrated against songs this wave did not re-measure.
+#   * `drop50` gross is up 5 of 300 at time_text (it is down 74 of 254 at run_align) — churn in both
+#     directions on nine songs, no single cause.
+#   * word ±300 pooled is down 0.18 pt (95.16 -> 94.98, about 10 words of 5684) and TWO Jamendo songs are
+#     more than 1 pt worse: The.madpix.project 94.87 -> 92.07 and Tom_Orlando 99.46 -> 96.81 under `truth`,
+#     Cortez 92.96 -> 90.99 under `blind`. Every other Jamendo word metric improves, including ±100 and the
+#     absolute error (`gates/w4-clock.yaml`), so this is the grid's redistribution rather than a loss.
+#     ATTRIBUTED IN W4 REVIEW R1, at `--level generate --modes blind` where there are no claims and no repairs
+#     (`_runs/w4-{,noclock-}generate`, 20 songs): the two `truth` songs are NOT worse in the decode —
+#     The.madpix.project ±0.00 and Tom_Orlando **+3.61** — so their `truth` loss is the repair ladder reacting
+#     to corrected times, not the grid. `blind`/Cortez IS the decode (-1.97 there too), and the mechanism is in
+#     the bias column beside it: the old clock stamped Cortez +23.8 ms LATE and the exact grid +1.3 ms, so
+#     every word moved ~22 ms earlier, its ±100 did not change at all (+0.00) and its absolute error halved —
+#     what crossed the ±300 edge is a left tail the old clock's lateness had been masking. Over the 20 songs
+#     the same table reads 10 better at ±300, 4 unchanged and 6 worse (worst -1.97); 16 better at ±100 against
+#     3 worse (best Lower_Loveday +12.74); and 11 of 20 with a smaller absolute bias, the pooled bias
+#     +6.3 -> -1.3 ms.
+#   * at run_align only, `headers` gross 3 vs 2 — the same `Pure_Mids` line.
+# WHAT IT BUYS, on the same rows: truth gross 28 -> 3 and off05 28 -> 3, headers 35 -> 3, extraverse 35 -> 5,
+# jit 51 -> 37, blind 125 -> 106, credit 36 -> 28, drop20 52 -> 42 (run_align 47 -> 13), run_align drop50
+# 254 -> 180 with ±500 +13.7 pt; Jamendo truth words ±100 82.37 -> 83.25, AAE 104.8 -> 87.8 ms, bias
+# +6.3 -> -1.3 ms; phrase-final ends ±100 41.0 -> 59.8 and highlight 67.1 -> 77.1.
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
+
+# ── 1. WORD ONSETS MUST NOT GET WORSE (the wave's first MUST). Jamendo, which is the only measured word
+#       truth; `truth` is the production-shaped mode and `blind` the decoder alone.
+onsets-word-pm100-not-down: truth.jamendo.word_pm100 >= base.truth.jamendo.word_pm100
+onsets-word-pm300-not-down: truth.jamendo.word_pm300 >= base.truth.jamendo.word_pm300
+onsets-word-aae-not-up: truth.jamendo.word_aae_ms <= base.truth.jamendo.word_aae_ms
+onsets-word-medae-not-up: truth.jamendo.word_medae_ms <= base.truth.jamendo.word_medae_ms
+onsets-blind-word-pm100-not-down: blind.jamendo.word_pm100 >= base.blind.jamendo.word_pm100
+onsets-blind-word-pm300-not-down: blind.jamendo.word_pm300 >= base.blind.jamendo.word_pm300
+# No Jamendo song more than 1 pt worse at ±300 — MIN, the worst song, for a higher-is-better metric.
+onsets-no-song-worse-1pt-pm300-truth: min_song_delta(truth.jamendo.word_pm300) >= -1.0
+onsets-no-song-worse-1pt-pm300-blind: min_song_delta(blind.jamendo.word_pm300) >= -1.0
+
+# ── 1b. LINE ±500 UNDER TRUTH must not drop more than 0.3 pt, pooled and on Jamendo alone.
+truth-pm500-within-0.3: truth.pm500 >= base.truth.pm500 - 0.3
+truth-text-pm500-within-0.3: truth.text_pm500 >= base.truth.text_pm500 - 0.3
+truth-jamendo-pm500-within-0.3: truth.jamendo.pm500 >= base.truth.jamendo.pm500 - 0.3
+
+# ── 1c. GROSS (a line start more than 2 s out) MUST NOT RISE IN ANY MODE. One gate per mode: a pooled sum
+#        would let one mode's collapse hide inside another's gain, which is exactly what happened here.
+gross-not-up-truth: truth.gross <= base.truth.gross
+gross-not-up-jit: jit.gross <= base.jit.gross
+gross-not-up-off05: off05.gross <= base.off05.gross
+gross-not-up-off15: off15.gross <= base.off15.gross
+gross-not-up-off3: off3.gross <= base.off3.gross
+gross-not-up-offm1: offm1.gross <= base.offm1.gross
+gross-not-up-tempo098: tempo098.gross <= base.tempo098.gross
+gross-not-up-tempo102: tempo102.gross <= base.tempo102.gross
+gross-not-up-drop20: drop20.gross <= base.drop20.gross
+gross-not-up-drop50: drop50.gross <= base.drop50.gross
+gross-not-up-extraverse: extraverse.gross <= base.extraverse.gross
+gross-not-up-blind: blind.gross <= base.blind.gross
+gross-not-up-headers: headers.gross <= base.headers.gross
+gross-not-up-credit: credit.gross <= base.credit.gross
+
+# ── 1d. AND NO JAMENDO SONG GAINS ONE, which is review §3.6's own wording ("the Jamendo gross total rises")
+#        and the form W1 and W2 encoded it in (`gates/w1.yaml`, `gates/w2.yaml`: 13-14 gates). CARRIED
+#        FORWARD HERE (W4 review r1): section 1c's pooled counts are the whole corpus, and this wave's pooled
+#        gross FALLS hugely (truth 28 -> 3), so a Jamendo-only rise hides inside a YouTube gain — which is
+#        exactly what happened. `Pure_Mids_-_The_Leader`'s line [0] is dropped as never-sung on the exact
+#        clock, so Jamendo gross goes 2 -> 3 in ten claim modes and §3.6's condition FAILS where 1c passes.
+#        `missing` is in the count for W2 review r2's reason: a song that flips to REFUSED, or drops one of
+#        its gross lines, reads FEWER gross and passed the count on its own.
+jamendo-no-new-gross-truth: count(truth.jamendo.song.gross_up + truth.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-jit: count(jit.jamendo.song.gross_up + jit.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-off05: count(off05.jamendo.song.gross_up + off05.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-off15: count(off15.jamendo.song.gross_up + off15.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-off3: count(off3.jamendo.song.gross_up + off3.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-offm1: count(offm1.jamendo.song.gross_up + offm1.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-tempo098: count(tempo098.jamendo.song.gross_up + tempo098.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-tempo102: count(tempo102.jamendo.song.gross_up + tempo102.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-drop20: count(drop20.jamendo.song.gross_up + drop20.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-drop50: count(drop50.jamendo.song.gross_up + drop50.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-extraverse: count(extraverse.jamendo.song.gross_up + extraverse.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-headers: count(headers.jamendo.song.gross_up + headers.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-credit: count(credit.jamendo.song.gross_up + credit.jamendo.song.missing_up) == 0
+jamendo-no-new-gross-blind: count(blind.jamendo.song.gross_up + blind.jamendo.song.missing_up) == 0
+
+# ── 2. THE ENDS MOVED AND THE ONSETS DID NOT. Across a CLOCK change the digests cannot be equal, so the
+#       onset side is held numerically here and bit-for-bit in `gates/w4-ends.yaml` (0 of 40 song-modes'
+#       `onsets_sha256` moves when only the post-pass is switched) — review §3.5's "any onset moves".
+ends-final-end-pm100-up: truth.jamendo.final_end_pm100 >= base.truth.jamendo.final_end_pm100 + 10.0
+ends-highlight-up: truth.jamendo.highlight >= base.truth.jamendo.highlight + 5.0
+ends-end-pm100-up: truth.jamendo.end_pm100 >= base.truth.jamendo.end_pm100
+ends-end-bias-smaller: abs(truth.jamendo.end_bias_ms) <= abs(base.truth.jamendo.end_bias_ms)
+ends-final-end-bias-smaller: abs(truth.jamendo.final_end_bias_ms) <= abs(base.truth.jamendo.final_end_bias_ms)
+# The walk stops at the last envelope frame, so it cannot manufacture a line past the audio.
+ends-no-song-lost-truth: count(truth.song.refused_up + truth.song.error_up) == 0
+ends-no-song-lost-blind: count(blind.song.refused_up + blind.song.error_up) == 0
+
+# ── 3. WRONG-TEXT PROTECTION IS UNCHANGED, and the SEPARATION WIDENED — re-read per level on the 448 right /
+#       640 wrong cases of the committed `.cases.jsonl` (rebench r2), because a clock change moves every lift
+#       and τ (`lexical.BANDS.refuse_below` = 0.20) was calibrated on the old one:
+#
+#         level                 right min            wrong max            gap      τ − wrong max   committed
+#         time_text  W3     +0.2090 numb/drop50   +0.2170 LUNABLIND    -0.0080      -0.0170       1/320 + 0/320
+#         time_text  W4     +0.2638 Avercage      +0.2319 LUNABLIND    **+0.0319**  -0.0319       1/320 + 0/320
+#         run_align  W3     +0.2552 Avercage      +0.1894 LUNABLIND     +0.0658      +0.0106      0/320 + 0/320
+#         run_align  W4     +0.2638 Avercage      +0.1918 Lower_Lovedy  +0.0720      +0.0082      0/320 + 0/320
+#         lines      W4     +0.2638 Avercage      +0.1918 Lower_Lovedy  +0.0720      +0.0082      0/640
+#
+#       So the answer to "can a clock change eat the margin" is measured and it is NO, in both readings. The
+#       POPULATIONS separate better than before: at time_text they used to OVERLAP by 0.008 and now stand
+#       0.032 apart, at run_align the gap widens 0.066 -> 0.072. What did narrow is τ's own headroom over the
+#       worst wrong text at run_align, 0.0106 -> 0.0082 — 0.0024 of a 0.0106 cushion — and the OUTCOME is
+#       unchanged at 0/320 there and at the one doubt-band document W3 already published at time_text.
+#       RECALIBRATION IS AVAILABLE AND NOT TAKEN HERE (it belongs with W4b's per-model bands): a τ anywhere in
+#       (0.2319, 0.2638) refuses 0 right texts AND that last wrong text at time_text, i.e. the exact clock has
+#       opened a window in which this level's 1/320 closes too. It is not taken now because the same literal
+#       gates the mix (`mix_floor` 0.15, its own population) and both move per model.
+#       These five gates read the OUTCOME, not the margin, which is why they hold across the recalibration.
+#       lift_gate.py's own decode population (192 right / 640 wrong, no repairs) agrees:
+#       W3 +0.2552 / +0.1894 -> W4 +0.2638 / +0.1918, and on the MIX right min -0.047, wrong max +0.115, so
+#       the mix populations still OVERLAP and `mix_floor` still separates them by construction rather than by
+#       a gap (`gates/w4-stemless.yaml`).
+wrongtext-pass-not-up: wrongtext.wrongtext_pass <= base.wrongtext.wrongtext_pass
+wrongtext-pass-at-most-one-of-320: wrongtext.wrongtext_pass <= 0.32
+ownclock-pass-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
+wrongtext-line-sync-not-up: wrongtext.line_sync <= base.wrongtext.line_sync
+ownclock-line-sync-zero: mode("wrongtext+ownclock").line_sync == 0
+
+# ── 5. SHOULD — W1's three carried `m2m1-recovered` gates (every case of a displaced or header-injected
+#       sheet ends in a document, by either rung). W2 left them red; the wave's policy work targets them.
+#       ALL FOUR PASS AT BOTH LEVELS (rebench r2): 32 of 32 in off15, off3, headers and tempo102 at
+#       `time_text` and at `run_align`, so W1's three carried SHOULDs are CLOSED. The wave brief's gate 5
+#       first half is met. What closed them is the claim clock's mode candidates, not the policy rule: the
+#       displaced sheets that used to end in nothing now map and publish on the first rung (see the header's
+#       off3 -44 / tempo098 -44 / tempo102 -43 / off15 -7 at `run_align`).
+m2m1-recovered-off15: off15.published + off15.line_sync == off15.cases
+m2m1-recovered-off3: off3.published + off3.line_sync == off3.cases
+m2m1-recovered-headers: headers.published + headers.line_sync == headers.cases
+m2m1-recovered-tempo102: tempo102.published + tempo102.line_sync == tempo102.cases

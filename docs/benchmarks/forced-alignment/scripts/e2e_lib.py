@@ -90,6 +90,13 @@ TFR_SLUGS = ("tfr-flyaway", "tfr-mayday", "tfr-chosen")
 TFR_YOUTUBE, TFR_REFERENCE = "youtube", "reference"
 TFR_AUDIO = (TFR_YOUTUBE, TFR_REFERENCE)
 
+#: What a run's `target` metadata says it aligned on (`e2e.py --no-stem`, `e2e_gates.SETUP_META`): the vocals
+#: stem every corpus song has, or the MIX of a song run as if no stems job could separate it. A STEMLESS run
+#: measures a whole other path of the shipped step — the mix's lexical bands, no R4 mix witness, no
+#: ALIGN_ON_MIX knob, a LINE_SYNC rung that declines — against the same truth, which is why it is setup and
+#: not an arm: comparing it with a stem baseline metric for metric compares two different audio files.
+STEM_TARGET, STEMLESS_TARGET = "stem", "mix"
+
 #: Report groups. Jamendo's truth is MEASURED (hand-timed word + line onsets); YouTube's is AUTHORED
 #: captions whose own per-song bias runs −147 to +430 ms — so the two are never averaged silently.
 JAMENDO, YOUTUBE, ALL = "jamendo", "youtube", "all"

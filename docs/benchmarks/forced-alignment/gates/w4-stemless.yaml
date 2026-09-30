@@ -1,0 +1,128 @@
+# W4 reject-if for the MIX gate of a STEMLESS song (PLAN-alignment-v3 W4, the item carried out of W3;
+# review §3.4 / H3, `domain/lyrics/lexical.py` MIX, `steps/align_steps._time_text_global`). Read on
+# `e2e.py --no-stem`, the dimension W3 did not have — no corpus song lacks a stem, so W3 chose the mix's
+# default on the lift population alone and shipped the two alternatives as default-off arms:
+#
+#   SL="--level time_text --no-stem --wrong-k 2 --modes truth,blind,drop20,drop50,wrongtext"
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py $SL \
+#       --tag w4r2-stemless-time_text                      # the DEFAULT: the lift's floor alone
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=h3-mix-envelope .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py $SL \
+#       --tag w4r2-stemless-envelope-time_text \
+#       --compare ../docs/benchmarks/forced-alignment/results/w4-stemless-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4-stemless.yaml
+#   ... ENCORE_ALIGN_EXPERIMENTS=h3-mix-floor ... --tag w4r2-stemless-floor-time_text (same --compare)
+#
+# THE BASELINE IS THE DEFAULT ARM OF A STEMLESS RUN, never a stem row: `target` is part of the setup
+# (`e2e_gates.SETUP_META`), because a stemless case decodes a different audio FILE against the same truth.
+# `align_config` differs between an arm and the default by definition, which is a WARNING, not an error.
+#
+# RE-MEASURED UNDER THE POST-FLIP NAMES (W4 REBENCH ROUND 2, 2026-09-29; 32 songs, 192 cases per arm, base
+# model, code `8c576cc6200b02a0`). Rows committed as
+# `results/w4-stemless{,-envelope,-floor}-time_text.{json,cases.jsonl}` (run dirs
+# `_runs/w4r2-stemless-{,envelope-,floor-}time_text`, tallied by `_runs/w4-stemless/tally.py`; the run_align
+# cost of a refusal is `_runs/w4-stemless-ra-*`, still the pre-flip names). Right texts = truth + blind +
+# drop20 + drop50 (128 cases), wrong = 64; ±500 is over the TEXT's own lines (`in_text`, 5805 of them), so a
+# refused document scores zero. The committed DEFAULT arm is the baseline a later stemless run compares
+# against, with no model and no audio (a summary is a `--compare` base; `--summarize` reads a run's rows):
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --summarize $ENCORE_BENCH_ROOT/_runs/w4r2-stemless-envelope-time_text/rows.jsonl \
+#       --compare ../docs/benchmarks/forced-alignment/results/w4-stemless-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w4-stemless.yaml     # 3/14, as recorded below
+#
+#   arm                          right published   ±500/text   gross   wrong passed   gates
+#   THE DEFAULT (lift floor)         91 / 128        53.5%       859     0/64          10/14
+#   h3-mix-envelope (W3's)           77 / 128        42.3%       853    27/64 = 42.2%   3/14
+#   h3-mix-floor (both gates)        54 / 128        38.4%       467     0/64           3/14
+#
+# WHAT THE RE-RECORD MOVED AGAINST THE PRE-FLIP ROWS, and it is two rows, not a rename (the pre-flip
+# `h3-mix-lift-alone` arm IS this default, and its rows are kept at
+# `results/w4-stemless-liftalone-time_text.*` as the r1 -> r2 A/B):
+#   * published counts, refusals, ±500 and the wrong-text rate reproduce EXACTLY on truth / blind / drop20 /
+#     wrongtext — starts never move (`ends.extend_ends`), so this is the expected identity and it holds.
+#   * the END columns move, which is review r1's ENDS MIX-SKIP isolated: phrase-final ±100 +3.4 blind /
+#     +4.6 truth / +11.0 drop20 / +6.4 drop50, highlight -9.5 / -9.7 / -6.3 / -4.0. On the mix the walk had
+#     been reaching its cap on 92-98% of frames, i.e. tiling plus a 3 s tail, which BUYS highlight (a held
+#     end is on screen when the singing is) and LOSES the phrase-final end it is measured by. The skip is the
+#     right default until a mix theta is fitted, and the trade is now a number rather than a prediction.
+#   * ONE right-text document regressed and it is NOT the ends: `bad-guy` drop50 on the mix, gross 0 -> 8 and
+#     ±500/text 11.76 -> 8.82 (pooled drop50 gross 281 -> 289 of 873 text lines). The two trails name the
+#     cause exactly — r1's new `tempo-mode` candidate outscores `envelope-lag` by ONE line (10 of 34 against
+#     9), the repaired document then reads `unrelated` instead of `coarse` (9% of lines agree, not 68%), and
+#     r1's `off_clock` refusal withholds the 14 claim adoptions that had been carrying it, leaving 26 blind +
+#     8 anchored lines. It is MIX-ONLY: on the stem the same case is byte-stable at both levels, same winning
+#     candidate, gross 12 -> 12 at `time_text` and 0 -> 0 at `run_align`.
+#   * the CONTROL arm got WORSE, which strengthens the flip rather than weakening it: `h3-mix-envelope` now
+#     admits 27 of 64 wrong texts (42.2%) where the pre-r1 recording of the same configuration admitted 26
+#     (40.6%). The extra one is `Kinematic_-_Peyote` under The.madpix.project's sheet at lift -0.0056 — a
+#     text the floor refuses and whose envelope fit now clears the gate.
+#
+# THE LIFT POPULATION ON THE MIX, re-read on these rows (which is what `mix_floor` = 0.15 is calibrated
+# against): RIGHT n=128 min -0.043, median +0.511, max +2.852, 37 (28.9%) under the floor; WRONG n=64 min
+# -0.086, median -0.011, max +0.098, 64 of 64 (100%) under it. So the floor separates the two populations
+# completely on the mix with 0.052 nats/letter of headroom over the worst wrong text, and the cost is the
+# 28.9% of right texts below it — the same trade `h3-mix-envelope`'s entry in `Config.ALIGN_EXPERIMENTS`
+# describes, now read on the shipped names.
+#
+# SECTION 1's FIRST HALF CANNOT BE PASSED BY ANY ARM, and that is the finding rather than a broken gate:
+# review §3.4's reject-if is "any right text refused, or more than 1% of wrong texts pass", and on the mix
+# the envelope gate alone refuses 51 of 128 right texts, the lift's floor 37, both together 74. Its SECOND
+# half is now CLOSED on the shipped path (0 of 64 wrong texts, against the control's 42.2%), which is what
+# the flip bought. Section 2 is the gate a CANDIDATE DEFAULT is judged by — no worse than what ships, on the
+# population that ships — and read post-flip, with the default as the base, it is answered: the default
+# passes all 7 by construction (this file's non-vacuity check, 10/14 overall), `h3-mix-envelope` fails 6 of
+# 7 and `h3-mix-floor` all 7. README's "The stemless mode" carries the per-song evidence.
+#
+# THE DECISION WAS TAKEN (W4 review r1) AND IS NOW RECORDED UNDER ITS OWN NAME (rebench r2): on the mix the
+# lift's floor REPLACES the envelope gate, `results/w4-stemless-time_text.*` IS the shipped path, and W3's
+# behaviour is the control arm `h3-mix-envelope` in `results/w4-stemless-envelope-time_text.*`. The pre-flip
+# rows are kept, not deleted, because they are the only A/B for review r1's ENDS MIX-SKIP:
+# `results/w4-stemless-liftalone-time_text.*` is THIS configuration one round earlier (its `align_config`
+# names the retired `h3-mix-lift-alone`, which `Config.ALIGN_EXPERIMENTS` now refuses as a typo, so it can be
+# read but not reproduced — the control reproduces it), and `results/w4-stemless-floor-time_text.*` has been
+# overwritten in place by its own re-record. WHAT IS STILL OWED: the `--modes all` stemless sweeps
+# (`results/w4-stemless-all{,-liftalone}-time_text.*`, `--wrong-k 10`) are still under the pre-flip names and
+# were not re-run here; so are the `run_align` refusal probes `_runs/w4-stemless-ra-*`.
+
+# THE WORD-END POST-PASS DOES NOT RUN ON THIS TARGET (W4 review r1, `domain/lyrics/ends.py` ON A VOCALS STEM
+# ONLY), so there is no end gate below and that is deliberate rather than missing. `ACTIVE_LEVEL` = 0.1 is a
+# fraction of the target's OWN 95th-percentile level: on a mix 92-98% of frames clear it against 59-77% on the
+# same songs' stems, so the walk always reached its cap and the default silently became the `ends-tile` arm
+# inside each line plus a 3 s hold at the document's end. It is skipped on the mix until a mix-calibrated theta
+# is fitted, and the hermetic exhibit is `tests/test_align_ends.py`'s stemless case — exact, and it runs in the
+# suite rather than needing a sweep. WHAT A FITTED MIX THETA WOULD OWE, so the reject-if is written down before
+# anyone fits one: a `--no-stem` pair (default against `ENCORE_ALIGN_EXPERIMENTS=ends-raw`) read on
+# `gates/w4-ends.yaml`'s five conditions plus `end_bias_ms` not further from zero — the same shape the stem
+# theta was judged by, which is what makes the two columns one population.
+# THE SKIP IS NOW IN THE RECORDED ROWS (rebench r2): `results/w4-stemless{,-envelope,-floor}-time_text.*`
+# were all measured with it, so their end / phrase-final / highlight columns are the raw decode's on this
+# target and are readable as such. The pre-flip `results/w4-stemless-liftalone-time_text.*` is the same
+# configuration with the walk ACTIVE, which is what makes the pair the skip's only A/B (header, second
+# bullet). No gate in this file reads an end column either way — every one reads published counts, refusals,
+# the wrong-text pass rate and line starts within ±500 ms, none of which an END can move.
+
+# ── 1) review §3.4's reject-if, absolute, on the mix (NOT met by any arm; see the header) ──
+wrongtext-pass-le-1pct: wrongtext.wrongtext_pass <= 1.0
+wrongtext-line-sync-zero: wrongtext.line_sync == 0
+no-right-text-refused-truth: truth.refused == 0
+no-right-text-refused-blind: blind.refused == 0
+no-right-text-refused-drop20: drop20.refused == 0
+no-right-text-refused-drop50: drop50.refused == 0
+
+# ── 2) THE DECISION: may this arm become the mix default? No worse than what SHIPS on the right texts, and
+# inside §3.4's 1% on the wrong ones. Read post-flip with the default as the base (rebench r2): the DEFAULT
+# passes all 7 by construction, which is this file's non-vacuity check; `h3-mix-envelope` fails 6 of the 7
+# (−14 documents, truth 22 vs 25, blind 17 vs 25, drop50 14 vs 19, truth ±500/text 53.7 vs 66.7, blind 37.9
+# vs 53.8) and passes only `right-texts-not-down-drop20`, where it publishes 24 of the 32 partial sheets
+# against the default's 22 while scoring 47.2% of those texts' line starts within ±500 ms against 52.1% —
+# fewer documents, more correct line starts, which is the trade the pooled count and the ±500 rows price;
+# `h3-mix-floor` fails all 7 and recovers nothing (−37 documents, −873 line starts within ±500 ms, truth
+# ±500/text −18.8). ──
+right-texts-not-down: truth.published + blind.published + drop20.published + drop50.published >= base.truth.published + base.blind.published + base.drop20.published + base.drop50.published
+right-texts-not-down-truth: truth.published >= base.truth.published
+right-texts-not-down-blind: blind.published >= base.blind.published
+right-texts-not-down-drop20: drop20.published >= base.drop20.published
+right-texts-not-down-drop50: drop50.published >= base.drop50.published
+text-pm500-not-down-truth: truth.text_pm500 >= base.truth.text_pm500
+text-pm500-not-down-blind: blind.text_pm500 >= base.blind.text_pm500

@@ -240,11 +240,14 @@ def decide(report: TimingReport, attempt: Attempt) -> Verdict:
          since LINE_SYNC abandons word timing — and they publish only if they pass their own gate AND beat
          what they retried (`improves`). MEASURED at `run_align` over the W2 corpus rows (see
          `TimingReport.claims_related`): of the 357 published word documents that have a line document of
-         the same text beside them, the 23 UNRELATED ones hold 299 of the 356 gross lines (a line start more
-         than 2 s out) and 596 of 1129 line starts within ±500 ms, where their line documents hold 0 gross
-         and 1129 of 1133 — against 6560 word timings given up. The other 334, which reconcile DID relate,
-         keep their words: 15223 of 16812 line starts within ±500 ms (90.5%) with 57 gross lines, and taking
-         the line document there would spend 106 860 word timings to move 715 line starts.
+         the same text beside them, the 18 UNRELATED ones hold ALL 299 of their gross lines (a line start
+         more than 2 s out, 84% of the population's 356) and 523 of 990 line starts within ±500 ms, where
+         their line documents hold 0 gross and 987 of 991 — against 5677 word timings given up. The other
+         339, which reconcile DID relate, keep their words: 15296 of 16951 line starts within ±500 ms
+         (90.2%) with 57 gross lines, and taking the line document there would spend 107 743 word timings to
+         move 784 line starts. The rung fires on 36 of the sweep's 420 published word documents and half of
+         those go back to the words, the line gate having refused the sheet; the 18 that change kind are
+         hello in 8 modes, tfr-chosen in 3, tfr-mayday in 2 and five songs' drop50 half-sheets.
       7. Otherwise accept.
 
     Every usable branch falls through to `Accept` when no knob applies, NOT to `NextText`. That is rule
@@ -393,9 +396,9 @@ def improves(before: TimingReport, after: TimingReport, knob: Knob) -> bool:
     ONE GUARD, which is a real comparison rather than a tie-break: a line document must time AT LEAST AS MANY
     LINES as the word document did. A partially stamped sheet (`parse_lrc` shapes: a timestamp on 3 lines of
     50) passes every gate this rung has and publishes a 3-line scroll, and swapping 50 timed lines for 3 is a
-    downgrade whatever the disagreement. Inert on the measured population — over the 23 song-modes the line
-    documents time 1133 lines against the word documents' 1129, since the never-sung rule can only drop lines
-    from a word document and the claims are the same sheet either way.
+    downgrade whatever the disagreement. Inert on the measured population — over the 18 song-modes that change
+    kind the line documents score 991 lines against the word documents' 990, since the never-sung rule can
+    only drop lines from a word document and the claims are the same sheet either way.
     """
     if not after.usable:
         return False

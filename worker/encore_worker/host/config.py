@@ -31,8 +31,13 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 
 #: Every alignment arm `ENCORE_ALIGN_EXPERIMENTS` may switch on (`Config.align_experiments`). Each is built,
 #: tested and measured, and ships OFF because it failed its reject-if gate (PLAN-alignment-v3's rule for
-#: such arms: never silently default-on) — except `ends-raw`, which is a default-ON feature's CONTROL and
-#: says so at its entry. The reasoning and numbers live where each is read. W1's five were
+#: such arms: never silently default-on) — except `ends-raw` and `h3-mix-envelope`, which are default-ON
+#: features' CONTROLS and say so at their entries. A NAME THAT BECOMES THE DEFAULT IS RETIRED, and its
+#: control takes its place: W4 review r1 flipped the mix's wrong-text verdict to the lift's floor, so
+#: `h3-mix-lift-alone` is gone and `h3-mix-envelope` restores what it was an arm of. Setting a retired name
+#: is refused like a typo, deliberately — measuring the default path under an arm's name is the thing this
+#: tuple exists to prevent, and a run recorded under the old name is reproduced by the control, not by it.
+#: The reasoning and numbers live where each is read. W1's five were
 #: re-judged under W3's lexical gate (2026-09-28). The gate closed `m2-order-clamp`'s wrong-text failure, and
 #: every one still fails a reject-if on right texts, which the gate does not touch:
 #:
@@ -47,12 +52,12 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #:   m6-window-spare  a never-sung candidate whose claim window the TARGET sounds in is re-decoded inside it
 #:                    and put back where that decode hears it, instead of binned (W1's extension of review
 #:                    M6).
-#:   h3-mix-floor     on the MIX (a song with no vocals stem) a sub-floor lexical lift REFUSES the text
-#:                    beside the envelope gate (W3, review H3, and what W3 first shipped) instead of
-#:                    publishing it as the doubt band. FAILED on its own calibration: it refuses 48 of the
-#:                    corpus's 192 right mix texts, 7 of the 32 truth texts, 29 of them past the envelope
-#:                    gate — and on a stemless song a refusal is terminal, so every sheet would fall to the
-#:                    whisper transcript (W3 review r1, `domain/lyrics/lexical.py` MIX).
+#:   h3-mix-floor     on the MIX (a song with no vocals stem) the envelope gate is kept BESIDE the lift's
+#:                    floor, so a text must clear both — what W3 first shipped (review H3). OFF because it
+#:                    pays the floor's cost AND the envelope gate's: it publishes 54 of the stemless bench
+#:                    mode's 128 right-text cases where the default (the floor alone) publishes 91 and W3's
+#:                    envelope-only default published 77, and it refuses 0 of 64 wrong texts either way
+#:                    (3/14 of `gates/w4-stemless.yaml`, against the default's 13/14).
 #:   claimmap-piecewise  the claim clock may split into change-point LEGS instead of one affine map, for a
 #:                    sheet with an inserted section, a re-lineated middle or a live rendition's drift
 #:                    (review §3.11; W2, `domain/lyrics/claimmap.py`). OFF because the critics measured a
@@ -69,10 +74,20 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #:                    line, all on SHORT CAPTION CUES whose start is right and whose end is missing
 #:                    (rap-god 15 lines, JASON_MILLER drop50 one). The defect it fixes — a cue 7 s early with
 #:                    no end, adopted 5.06 s out — stays pinned hermetically either way.
-#:   h3-mix-lift-alone  the same floor, and the global engine's ONLY wrong-text gate on the mix, as it is on
-#:                    a stem (W3, review H3). Carries `h3-mix-floor`'s cost and the envelope gate's
-#:                    absence: UNMEASURED end to end — the bench has no stemless mode — while the half of
-#:                    the envelope gate a calibration can read sorts the mix badly (`lexical.py`).
+#:   h3-mix-envelope  THE OTHER CONTROL, not a failed arm (`ends-raw` is the first): the MIX's wrong-text
+#:                    verdict is the ENVELOPE GATE alone and the lift's floor merely grades there, which is
+#:                    what W3 shipped and what W4 review r1 flipped away from. It is the A/B switch for that
+#:                    flip and the configuration `results/w4-stemless-time_text.json` was recorded on. The
+#:                    numbers that flipped it, from the stemless bench mode (`e2e.py --no-stem`, 32 songs x
+#:                    truth/blind/drop20/drop50 + 2 wrong donors, `gates/w4-stemless.yaml`, README's "The
+#:                    stemless mode"): this arm publishes 77 of 128 right-text cases where the default's
+#:                    floor publishes 91, refuses 10 of 32 truth texts where the floor refuses 7, holds
+#:                    42.3% of published line starts within ±500 ms against 53.5%, and admits 26 of 64
+#:                    wrong texts — 40.6%, where review §3.4 allows 1%. The floor's own cost is real and is
+#:                    why W3 hesitated: 37 of the 128 right-text cases (7 of the 32 truth texts) lift below
+#:                    it and are refused TERMINALLY, so numb and Avercage lose documents worth 29/35 and
+#:                    41/42 line starts and a `run_align` probe with no transcriber ends in NO LYRICS — but
+#:                    the envelope gate loses more of the same, and 26 wrong texts with it.
 #:   ends-tile        the word-end post-pass TILES each line gaplessly — a word that is not its line's last
 #:                    runs to the next word's start whatever the envelope says — instead of ending where the
 #:                    singing stops (review §3.5; W4, `domain/lyrics/ends.py`). The review measured 78.8%
@@ -97,7 +112,7 @@ ALIGN_EXPERIMENTS = (
     "m6-window-spare",
     "m5-adopt-floor",
     "h3-mix-floor",
-    "h3-mix-lift-alone",
+    "h3-mix-envelope",
     "claimmap-piecewise",
     "ends-tile",
     "ends-raw",
@@ -128,6 +143,9 @@ class Config:
     version: str = "0.1.0"
     #: How many jobs at once. One by default: separation and alignment are both GPU-bound, and two
     #: concurrent passes on one device are slower than two in sequence.
+    #:
+    #: IT ALSO SIZES THE EMISSION CACHE (`adapters.ml._emission_cache_size`, W4 review r1): each live align
+    #: job holds up to two matrices, so a bound fitted to one job made a 3-job box evict its own live set.
     concurrency: int = 1
     media_dir: str = "/media"
     #: Where DBOS keeps its durable state. Per-box: it holds in-flight checkpoints, so it is machine
