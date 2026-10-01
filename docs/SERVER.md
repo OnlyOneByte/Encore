@@ -193,7 +193,11 @@ shared-corpus parity guard holds the two equal. The acquisition model is `docs/A
   stands behind, and 4 (authoritative + line) outranks 3 for the same reason it always did — what you cannot
   sing to is a failure. It is the same judgement the TV makes row by row, where a `low` LINE renders without
   the word wipe (`lib/tv/lyrics.ts` `wipesWords`); ranking a document as word-timed while rendering it as
-  line-timed was the contradiction this closes. A person's
+  line-timed was the contradiction this closes. **The transition the current worker reaches is 3 → 2, not
+  5 → 4** (W6 review r1-spec-17): it writes a document-level `low` in exactly one case — a pin a wrong-text
+  gate would have refused — and sends `vouched: false` with it, so both legs move together onto the
+  unauthoritative rungs. 5 → 4 is reachable only for a document STORED BEFORE `vouched` existed, which is why
+  the rule reads `timingConfidence` on its own rather than hiding inside `isAuthoritativeText`. A person's
   re-pick (a job carrying `pinnedText` / `pinnedRef`) is `high` whatever its tier: a human chose those words, as
   the old worker had it. So a re-picked machine track reads as "Captions", while a re-picked transcript is
   still no claim, because core never counts `asr` words as one.
@@ -484,6 +488,22 @@ that leaves open.
   a `NOT NULL DEFAULT` matching the TypeScript default, so an inserted row is valid without the
   application, and a migration backfill can rely on it. `DEFAULT_STAGE_COLOR`'s exact bytes are one of
   those defaults, which is why it is a literal rather than a computed value.
+  **CHANGING ONE COSTS A MIGRATION, AND IN SQLITE THAT MIGRATION RECREATES THE TABLE.** `0001_lyrics_lead_default`
+  is the first (the display lead's default 0 -> 40, W5): SQLite cannot `ALTER` a default, so `drizzle-kit`
+  emits `CREATE TABLE __new_room_settings` + `INSERT … SELECT` + `DROP` + `RENAME` inside
+  `PRAGMA foreign_keys=OFF`. That is drizzle's standard ALTER for this dialect and it PRESERVES every row — it
+  is not the baseline re-cut below, which rewrites history and discards databases. The rule it does not break:
+  the contract is the source of truth, so change `DEFAULT_*` first, then the column, then
+  `bun --bun drizzle-kit generate --config config/drizzle.config.ts --name <what_changed>`, never the reverse
+  (`tests/unit/server/db/room-settings-defaults.test.ts` fails on any drift, and nothing reads the column
+  default at runtime).
+  **AND BECAUSE NOTHING READS IT AT RUNTIME, A CHANGED DEFAULT REACHES NO EXISTING ROW** — `setRoom` writes
+  every column on every save, `getRoom` returns the stored row verbatim — so a default change that is meant to
+  reach existing rooms needs a BACKFILL in the same migration, and must say why overwriting a stored value is
+  defensible. `0001` carries one (`UPDATE room_settings SET lyrics_lead_ms = 40 WHERE lyrics_lead_ms = 0`): the
+  knob shipped at 0, so a stored 0 and the old default cannot be told apart, and pre-release is the only window
+  in which that is true (W5 review r1-spec-15 / r1-tests-18;
+  `tests/unit/server/db/lyrics-lead-backfill.test.ts` stages the baseline, saves a room, then upgrades).
 - **Migrations are frozen history — from first release, not from first commit.** `drizzle/0000_baseline.sql`
   is the SINGLE PRE-RELEASE BASELINE: one file, pure `CREATE TABLE`, no `ALTER`, and one journal entry. A
   schema change is a NEW numbered migration plus its journal entry, and one that only ever `ALTER`s; never

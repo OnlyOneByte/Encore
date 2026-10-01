@@ -243,3 +243,201 @@ def test_an_out_of_memory_message_names_the_remedy() -> None:
         "x ran out of memory. This model needs more than this box has — try a smaller model"
     )
     assert "smaller" in str(err) and "memory" in str(err)
+
+
+# ── review M12: YouTube's ROLLING auto-caption shape ──────────────────────────────────────────────
+
+#: The first 29 lines of dQw4w9WgXcQ's real `--write-auto-subs` track, verbatim (the review's own case,
+#: re-fetched for this wave). Every feature M12 names is in it: a lone-SPACE placeholder line, a 10 ms
+#: roll-up marker cue, the carried-over first line of each rolling cue, `[Music]`, and inline word onsets.
+ROLLING = """WEBVTT
+Kind: captions
+Language: en
+
+00:00:00.320 --> 00:00:18.790 align:start position:0%
+\x20
+[Music]
+
+00:00:18.790 --> 00:00:18.800 align:start position:0%
+\x20
+\x20
+
+00:00:18.800 --> 00:00:21.790 align:start position:0%
+\x20
+We're<00:00:19.039><c> no</c><00:00:19.359><c> strangers</c><00:00:19.840><c> to</c>
+
+00:00:21.790 --> 00:00:21.800 align:start position:0%
+We're no strangers to
+\x20
+
+00:00:21.800 --> 00:00:25.950 align:start position:0%
+We're no strangers to
+love.<00:00:22.800><c> You</c><00:00:23.039><c> know</c><00:00:23.279><c> the</c>
+"""
+
+
+def test_the_lone_space_placeholder_no_longer_eats_the_first_cue() -> None:
+    """Rule 1. The cue separator is an EMPTY line; YouTube writes a lone SPACE as the roll-up's empty half,
+    and a parser splitting on `line.strip() == ""` cut every such cue in two — the half with the timestamp
+    had no body, the half with the body had no timestamp, and both were dropped. That is why the review
+    measured "the first cue is lost"."""
+    cues = parse_vtt(ROLLING)
+    assert cues, "the track must parse at all"
+    assert cues[0]["start"] == 18.8, "the 0.32 s cue is `[Music]`, dropped as an ASR marker, not as a bug"
+    assert [str(c["text"]) for c in cues][:2] == [
+        "We're no strangers to",
+        "love. You know the",
+    ]
+
+
+def test_a_ten_millisecond_roll_up_marker_is_not_a_cue() -> None:
+    """Rule 2. 51 of the real track's 103 cues are exactly 10 ms; they carry no new words, and a 10 ms
+    claim is one no clock can use either."""
+    spans = [(float(str(c["start"])), float(str(c["end"]))) for c in parse_vtt(ROLLING)]
+    assert all(end - start >= cli.MIN_CUE_SEC for start, end in spans)
+    assert 21.79 not in [start for start, _end in spans]
+
+
+def test_only_the_new_line_of_a_rolling_cue_survives() -> None:
+    """Rule 3. The carry is identified by TEXT IDENTITY against what the previous KEPT cue published, with
+    the inline onsets taken off — not by a guess about line counts, which is what keeps a line-WRAPPED
+    authored cue whole (asserted above in `test_a_wrapped_cue_becomes_one_line`)."""
+    texts = [str(c["text"]) for c in parse_vtt(ROLLING)]
+    assert texts == ["We're no strangers to", "love. You know the"]
+    assert not any(text.startswith("We're no strangers to love") for text in texts), "no carry republished"
+
+
+def test_a_repeated_line_across_two_authored_cues_is_not_read_as_a_roll_up_carry() -> None:
+    """W5 review r1-correctness-2. Rule 3 used to fire on TEXT IDENTITY alone, and a line repeated across a
+    cue boundary — a chorus line that ends one cue and opens the next — is ordinary in song captions. On a
+    plain authored track (no inline tags, cues merely ABUTTING) the repeat was deleted from the served text,
+    so the TV never showed it while it was being sung. The cue must look like a roll-up first: a tag of its
+    own, or a span overlapping the previous cue's."""
+    authored = (
+        "WEBVTT\n\n"
+        "00:00:01.000 --> 00:00:04.000\naaa bbb ccc\nddd eee\n\n"
+        "00:00:04.000 --> 00:00:07.000\nddd eee\nfff ggg\n"
+    )
+    assert [str(c["text"]) for c in parse_vtt(authored)] == ["aaa bbb ccc ddd eee", "ddd eee fff ggg"]
+
+
+def test_an_overlapping_cue_is_evidence_of_a_roll_up_even_with_no_tags() -> None:
+    """The other half of the same test: a rolling track's cues OVERLAP, which an authored track's never do,
+    so a tagless roll-up still loses its carry. It overlaps on EVERY cue, which is why `_ROLLING_OVERLAPS`
+    can ask for two of them (W5 review r2-correctness-3) without costing a real roll-up anything."""
+    rolling = (
+        "WEBVTT\n\n"
+        "00:00:01.000 --> 00:00:04.000\naaa bbb ccc\n\n"
+        "00:00:03.500 --> 00:00:07.000\naaa bbb ccc\nddd eee\n\n"
+        "00:00:06.500 --> 00:00:10.000\nddd eee\nfff ggg\n"
+    )
+    assert [str(c["text"]) for c in parse_vtt(rolling)] == ["aaa bbb ccc", "ddd eee", "fff ggg"]
+
+
+def test_one_overlapping_pair_does_not_arm_the_carry_rule_for_a_whole_track() -> None:
+    """W5 review r2-correctness-3. `span[0] < previous_end` was proof on its own and `parse_vtt` latched it
+    for the rest of the track, so ONE overlapping pair — two simultaneous speakers, a backing-vocal overlay,
+    stacked karaoke subtitles, all of which real authored/SDH tracks write — armed rule 3 over every later
+    cue, and a line repeated across a later cue boundary was DELETED. No inline tag anywhere here, so the
+    track proves nothing: both occurrences of the repeated line must publish."""
+    authored = (
+        "WEBVTT\n\n"
+        "00:00:01.000 --> 00:00:05.000\naaa bbb\n\n"
+        "00:00:04.000 --> 00:00:07.000\nccc ddd\n\n"
+        "00:00:10.000 --> 00:00:13.000\nggg hhh\niii jjj\n\n"
+        "00:00:13.000 --> 00:00:16.000\niii jjj\nkkk lll\n"
+    )
+    assert [str(c["text"]) for c in parse_vtt(authored)] == [
+        "aaa bbb",
+        "ccc ddd",
+        "ggg hhh iii jjj",
+        "iii jjj kkk lll",
+    ]
+
+
+def test_a_tag_is_still_proof_on_its_own() -> None:
+    """The asymmetry `_Roll` exists for: a tagged cue needs no second witness, because tagging every word
+    but the first is something only a growing cue does (the one measured roll-up carries 239 such tags)."""
+    tagged = (
+        "WEBVTT\nKind: captions\n\n"
+        "00:00:01.000 --> 00:00:04.000\naaa<00:00:02.000><c> bbb</c>\n\n"
+        "00:00:04.000 --> 00:00:07.000\naaa bbb\nccc ddd\n"
+    )
+    assert [str(c["text"]) for c in parse_vtt(tagged)] == ["aaa bbb", "ccc ddd"]
+
+
+def test_the_roll_up_evidence_is_the_tracks_and_not_each_cues() -> None:
+    """A rolling track's LAST cue often carries no new word, so no tag of its own — and it is exactly the cue
+    whose body is pure carry. Read per cue, rule 3 would stop applying there and republish the line; read per
+    TRACK (one cue with a tag or an overlap makes the track a roll-up) it still goes."""
+    rolling = (
+        "WEBVTT\nKind: captions\n\n"
+        "00:00:01.000 --> 00:00:04.000\naaa<00:00:02.000><c> bbb</c>\n\n"
+        "00:00:04.000 --> 00:00:07.000\naaa bbb\nccc ddd\n"
+    )
+    assert [str(c["text"]) for c in parse_vtt(rolling)] == ["aaa bbb", "ccc ddd"]
+
+
+def test_a_partially_tagged_cue_publishes_no_zero_width_word() -> None:
+    """W5 review r1-tests-19. The docstring claimed such a cue was refused whole; it was not — every
+    untagged token took the PREVIOUS word's onset, so a cue with one tag published three zero-width spans,
+    and the TV lights a word while `start <= pos < end`, which a zero-width span never satisfies. A run of
+    tokens sharing one onset is apportioned across the room to the next onset instead."""
+    cues = parse_vtt("WEBVTT\n\n00:00:10.000 --> 00:00:13.000\nzzz yyy<00:00:11.500><c> xxx</c> www vvv\n")
+    words = cues[0]["words"]
+    assert isinstance(words, tuple)
+    assert [w["word"] for w in words] == ["zzz", "yyy", "xxx", "www", "vvv"]
+    assert all(float(str(w["end"])) > float(str(w["start"])) for w in words), "no word can never be lit"
+    assert float(str(words[0]["start"])) == 10.0, "the untagged head run opens at the cue's own start"
+    assert float(str(words[1]["end"])) == 11.5, "and closes at the first tag"
+    assert float(str(words[2]["start"])) == 11.5, "the tagged word keeps the onset the author wrote"
+    assert float(str(words[-1]["end"])) == 13.0, "the last word closes at the cue's end"
+
+
+def test_inline_timestamps_become_word_claims() -> None:
+    """Rule 4. They are the only per-word timing a rolling track carries, and `clean_line` strips them —
+    the review measured 239 of them thrown away on this track. Reading them makes an auto track a
+    WORD-timed candidate instead of a line-timed one."""
+    first = parse_vtt(ROLLING)[0]
+    words = first["words"]
+    assert isinstance(words, tuple)
+    assert [(w["word"], w["start"]) for w in words] == [
+        ("We're", 18.8),
+        ("no", 19.039),
+        ("strangers", 19.359),
+        ("to", 19.84),
+    ]
+    assert [w["end"] for w in words] == [19.039, 19.359, 19.84, 21.79]
+
+
+def test_an_authored_cue_with_no_inline_tags_claims_no_word_timing() -> None:
+    """EVERY word gets a span or none do: a word list that disagreed with the line would be read in
+    preference to it (`measure.timed_words`), so a partially tagged cue keeps line timing."""
+    assert "words" not in parse_vtt(VTT)[0]
+
+
+def test_a_cue_whose_body_is_only_a_separator_line_is_still_no_cue() -> None:
+    assert parse_vtt("00:00:01.000 --> 00:00:03.000\n \n\x20\n") == ()
+
+
+def test_two_cues_in_one_block_are_two_cues() -> None:
+    """The parser is TIMESTAMP-driven, so a file that separates cues with a whitespace-only line (which is
+    what rule 1 now treats as payload) cannot weld two cues into one and publish a timestamp as a lyric."""
+    cues = parse_vtt("00:00:01.000 --> 00:00:02.000\nfirst\n \n00:00:03.000 --> 00:00:04.000\nsecond\n")
+    assert [str(c["text"]) for c in cues] == ["first", "second"]
+
+
+def test_a_word_timed_cues_word_stream_is_exactly_its_published_text() -> None:
+    """THE INVARIANT THAT MAKES RULE 4 SAFE. `measure.timed_words` reads `word["word"]` in preference to the
+    line, so a word list one token out of step with the text puts the ball on a word the screen is not
+    showing. Verified on the whole real dQw4w9WgXcQ track too: 0 mismatches over its 41 word-timed cues,
+    every word start monotonic and inside its cue."""
+    for cue in parse_vtt(ROLLING):
+        words = cue.get("words")
+        if not words:
+            continue
+        assert isinstance(words, tuple)
+        assert [str(w["word"]) for w in words] == str(cue["text"]).split()
+        starts = [float(str(w["start"])) for w in words]
+        assert starts == sorted(starts)
+        assert all(float(str(cue["start"])) <= at <= float(str(cue["end"])) for at in starts)

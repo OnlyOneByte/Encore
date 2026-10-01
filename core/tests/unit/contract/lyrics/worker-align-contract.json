@@ -340,7 +340,7 @@
   },
   {
    "name": "a-doubt-band-word-document",
-   "why": "the lexical gate DOUBTS this sheet's words (W3 r1-r2): the document publishes, but nothing vouches for them, so it goes out `vouched: false` — not a claim, and under any document a gate passed. Sent as the timing grade alone it ranked 5, tied with a fully vouched word doc, because core's `lyricsRank` never reads `timingConfidence`; sent as textConfidence `low` it also claimed the words were machine-generated, which is what that field says for a caption track",
+   "why": "the lexical gate DOUBTS this sheet's words (W3 r1-r2): the document publishes, but nothing vouches for them, so it goes out `vouched: false` — not a claim, and under any document a gate passed. Sent as the timing grade alone it ranked 5, tied with a fully vouched word doc: this band's grade is `medium`, and core's `lyricsRank` read `timingConfidence` nowhere before W6 and reads only a `low` one since; sent as textConfidence `low` it also claimed the words were machine-generated, which is what that field says for a caption track",
    "frame": {
     "type": "job:complete",
     "workerId": "w1",

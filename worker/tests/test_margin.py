@@ -11,13 +11,14 @@ kernel. Three independent implementations agreeing about the same path is what m
 
 from __future__ import annotations
 
+import inspect
 import math
 from collections.abc import Sequence
 
 import numpy as np
 import pytest
 
-from encore_worker.domain.lyrics import margin
+from encore_worker.domain.lyrics import lexical, margin
 from encore_worker.domain.lyrics.generate import char_targets
 from tests.ctc_fixture import FRAME_SEC, ctc_viterbi, sung_matrix
 
@@ -143,7 +144,8 @@ def test_a_repeated_line_is_ambiguous_and_a_unique_one_is_not() -> None:
     exactly zero, which is what a perfectly ambiguous placement should read. The unique line has nowhere
     else to go, and the trellis has to give up its letters to move it.
 
-    THE THRESHOLD IS LOCAL, not `MIN_MARGIN_NATS`: this matrix puts 0.9 on the sung label and spreads 0.1
+    THE THRESHOLD IS LOCAL, not the shipped `lexical.Bands.margin_floor_nats`: this matrix puts 0.9 on the
+    sung label and spreads 0.1
     over the other 10 (`ctc_fixture.HIT`), so a frame of evidence is worth ~5.5 nats where a real model's
     is worth far more. The shipped constant is calibrated on real emissions and means nothing here; what
     the fixture can prove is the SEPARATION and the zero.
@@ -180,7 +182,7 @@ def test_a_line_with_nowhere_else_to_go_has_an_infinite_margin() -> None:
         matrix, flat.targets, flat.first_char_target, frame_sec=FRAME_SEC, window_sec=3.0
     )
     assert got == {0: math.inf}
-    assert margin.low_lines(got, {0: -0.1}) == frozenset()
+    assert margin.low_lines(got, {0: -0.1}, min_margin_nats=10.0) == frozenset()
 
 
 def test_a_held_character_is_not_its_own_competitor() -> None:
@@ -213,20 +215,47 @@ def test_an_unreadable_matrix_measures_nothing_rather_than_doubting_everything()
         "a target outside the vocabulary"
     )
     assert margin.placement_margins(matrix[:2], flat.targets, flat.first_char_target, frame_sec=1.0) == {}
-    assert margin.low_lines({}, {0: -0.1, 1: -0.1, 2: -9.9, 3: -0.1}) == frozenset({2}), (
-        "the score half still applies when the margin could not be measured"
+    assert margin.low_lines({}, {0: -0.1, 1: -0.1, 2: -9.9, 3: -0.1}, min_margin_nats=10.0) == frozenset(
+        {2}
+    ), (
+        "an EMPTY mapping is one line-less song, not a fault: the score half still applies. The fault path "
+        "does not come through here at all — `align_steps._placement_margins` answers None and its caller "
+        "never calls this (W6 review r1-correctness-2), which is the divergence this assertion used to hide"
     )
 
 
 def test_the_rule_is_two_thresholds_and_abstains_on_a_tiny_song() -> None:
     margins = {0: 40.0, 1: 4.0, 2: 40.0}
     scores = {0: -1.0, 1: -1.0, 2: -3.0, 3: -1.0, 4: -1.0}
-    assert margin.low_lines(margins, scores) == frozenset({1, 2})
+    floor = lexical.BANDS.margin_floor_nats
+    assert floor is not None, "the shipped row carries the measured floor"
+    assert margin.low_lines(margins, scores, min_margin_nats=floor) == frozenset({1, 2})
     assert margin.low_lines(margins, scores, min_margin_nats=0.0) == frozenset({2})
-    assert margin.low_lines(margins, scores, score_drop_nats=10.0) == frozenset({1})
+    assert margin.low_lines(margins, scores, min_margin_nats=floor, score_drop_nats=10.0) == frozenset({1})
     # Three lines cannot establish a median, exactly as the never-sung rule holds.
-    assert margin.low_lines({}, {0: -1.0, 1: -1.0, 2: -9.0}) == frozenset()
-    assert margin.low_lines({}, {}) == frozenset()
+    assert margin.low_lines({}, {0: -1.0, 1: -1.0, 2: -9.0}, min_margin_nats=floor) == frozenset()
+    assert margin.low_lines({}, {}, min_margin_nats=floor) == frozenset()
+
+
+def test_the_margin_floor_is_required_and_comes_off_the_bundles_own_row() -> None:
+    """W6 review r1-spec-9. A margin is a SUM OF LOG-PROBABILITIES, so its floor is the most emission-scale
+    threshold in this worker, and `lexical`'s own rule — "THE ROW HOLDS EVERY EMISSION-SCALE THRESHOLD OF ONE
+    MODEL" — puts it in the calibration row rather than in a module constant here. It sat here as
+    `MIN_MARGIN_NATS = 10.0`, outside `CALIBRATED`, so `ENCORE_ALIGN_MODEL=HUBERT_ASR_XLARGE` — a name
+    `is_calibrated` passes — would have read the base bundle's nats on a bundle nobody has decoded.
+
+    The signature is the assertion, as `test_lexical`'s `band(bands=)` test is: no runtime behaviour can tell
+    "no default" from "a default nobody reached", and a default here is one bundle's nats on another's matrix.
+    """
+    parameter = inspect.signature(margin.low_lines).parameters["min_margin_nats"]
+    assert parameter.default is inspect.Parameter.empty, "a default floor is a cross-bundle threshold borrow"
+    assert not hasattr(margin, "MIN_MARGIN_NATS"), "the floor lives in `lexical.Bands.margin_floor_nats`"
+    assert {name: row.margin_floor_nats for name, row in lexical.CALIBRATED.items()} == {
+        "WAV2VEC2_ASR_BASE_960H": 10.0,
+        "HUBERT_ASR_LARGE": 10.0,
+        # Measured on neither bundle's trellis, so the rule abstains instead of borrowing (the row's comment).
+        "HUBERT_ASR_XLARGE": None,
+    }
 
 
 def test_fuzzy_repeats_finds_the_near_miss_an_exact_match_does_not() -> None:
@@ -261,17 +290,31 @@ def test_random_matrices_agree_with_the_reference_on_every_line() -> None:
     Seeded, small and exhaustive on the other side: the reference runs one pinned DP per frame, so this is
     ~10^5 DP cells a case and it stays hermetic. A vectorised forward/backward pass is exactly the code where
     an off-by-one in a shifted buffer produces plausible numbers on the fixtures and wrong ones here.
+
+    A LINE WHOSE LAST LINE IS ONE CHARACTER IS IN THE LIST FOR THE BUFFER RE-FLOOR (W6 review r2-tests-13).
+    `window.fill(-np.inf)` between the two passes is the guard that stops the backward pass reading the
+    forward pass's last two alpha values as "there is no state s+1 / s+2", and deleting it left this file,
+    `test_align_v2`, `test_generate`, `test_repair_order`, `test_bench_e2e`, `test_align_steps`,
+    `test_lexical` and `test_lexical_gate` all green — 450 passed, byte-identical to baseline. The
+    contamination enters at `window[states]` / `window[states + 1]`, so it reaches `beta[states - 2]` first
+    and the queried column has to BE `states - 2` to see it, which happens only when the last line's first
+    character is also the sequence's last target. Hence `(["deal", "a"], 18)`: with the guard removed it reads
+    12.10 nats against the reference's 13.01 at reach 7, i.e. a line that crosses the 10-nat floor the wrong
+    way. ONE `default_rng` PER CASE for the same reason — a case appended to a shared stream gets whatever
+    matrix the cases before it left, so re-ordering the list would silently re-draw this one.
     """
-    rng = np.random.default_rng(7)
     vocab = max(DICTIONARY.values()) + 1
     cases = [
-        (["abba", "cab"], 24),
-        (["aa", "aa", "aa"], 22),
-        (["deal", "led"], 18),
-        (["one", "no", "eon"], 40),
-        (["lace", "call"], 21),
+        (["abba", "cab"], 24, 7),
+        (["aa", "aa", "aa"], 22, 11),
+        (["deal", "led"], 18, 13),
+        (["one", "no", "eon"], 40, 17),
+        (["lace", "call"], 21, 19),
+        (["deal", "a"], 18, 3),
+        (["a"], 6, 23),
     ]
-    for texts, frames in cases:
+    for texts, frames, seed in cases:
+        rng = np.random.default_rng(seed)
         matrix = np.log(rng.dirichlet(np.ones(vocab) * 0.7, size=frames))
         emissions = _Emissions(matrix.astype(np.float32))
         flat = char_targets(texts, emissions)

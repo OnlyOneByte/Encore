@@ -1,0 +1,119 @@
+# W5's AD-LIB ARM GATE (REVIEW §3.13, `domain/lyrics/parts.py`, `ENCORE_ALIGN_EXPERIMENTS=adlibs`):
+# the bar the arm would have to clear to become the default, read on the CORPUS and not on one song.
+#
+# WHY THIS FILE EXISTS AT ALL. §3.13 was written on one measurement — Hello's blind decode, gross lead lines
+# 21 -> 11 — and the critics' objection was that one song is not a result. The arm was BUILT and shipped
+# DEFAULT-OFF by the wave's ad-lib task on a 5-song x 2-mode A/B; this file is the corpus row that A/B owed,
+# and it is the reason the arm STAYS off: **the arm is measurably WORSE pooled**, and the per-song table says
+# so plainly rather than averaging it away. PLAN-alignment-v3's rule is that an arm which fails its bar is
+# still built, tested and measured — it just never ships default-on with no number.
+#
+# WHAT IT IS READ ON: `results/w5-adlibs-time_text.json` (`--level time_text --modes all,wrongtext+ownclock`,
+#   32 songs, 1088 cases, HuBERT-L, seed 0, `ENCORE_ALIGN_EXPERIMENTS=adlibs`) against
+#   `results/w5-time_text.json` (the same command with the knob OFF — the wave's declared baseline).
+#
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=adlibs \
+#     .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --tag w5r1-adlibs-tt \
+#       --compare ../docs/benchmarks/forced-alignment/results/w5-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w5-adlibs.yaml
+#
+# WHAT THE ARM COSTS TO MEASURE, so nobody budgets it as a warm run: `Config.align_experiments` is inside the
+#   emission cache's emitter fingerprint (`e2e_lib.emitter_fingerprint` hashes `align_config`), so an arm
+#   sweep is a COLD pass. Measured on the RE-RUN below: **63 matrices computed, 0 disk hits, 1537 s** against
+#   the default run's 63 disk hits and 983 s — i.e. the knob costs ~9 min of model time on top, every time,
+#   and a worker edit anywhere in the emitter's import closure makes the arm's own stored matrices cold too.
+#
+# RE-RUN AFTER W5 REVIEW ROUND 1 (2026-10-01, code `8393daaf5b1b43bc`, harness `a87b17a15228c321`), because
+#   two confirmed findings land inside this arm and nowhere else: `parts.split` now reads the MATRIX's
+#   dictionary (r1-tests-20) and `parts.restored` DROPS AN ORPHAN ECHO whose host the document never published
+#   (r1-correctness-5). Only the arm's own row could move, and it did — the file's numbers below are the
+#   re-run's. WHAT MAKES THE A/B HONEST ACROSS THE TWO TREES, measured and not assumed:
+#     * the base is still the base. A same-tree DEFAULT control (`_runs/w5r1-default-control`, 40 cases =
+#       the 10 songs the arm reaches x `truth`/`blind`/`jit`/`tempo102`, knob OFF) reproduces
+#       `results/w5-time_text.cases.jsonl` in EVERY field of all 40 rows, `doc_sha256` and `onsets_sha256`
+#       included. So every delta here is the knob's, not round 1's.
+#     * the metric code is the same metric code. Both pre-fix rows RE-SUMMARISE byte-identically on this
+#       harness (`e2e_lib.rows_document` over their stored `rows.jsonl`), and the pre-fix arm digest
+#       RE-COMPACTS byte-identically, so `harness` moving `d37aa94c` -> `a87b17a1` moved no number.
+#   WHAT ROUND 1 CHANGED, exactly: `never-be-alone` and nothing else (10 of 1088 documents; every other case
+#   is byte-identical to the pre-fix arm row). Its orphan echo [30] — the echo of a line the never-sung rule
+#   had just dropped — is no longer published, which FIXED the arm's worst claim-mode number (`tempo102`
+#   gross **3 -> 0**, ±500 89.22 -> 90.02 against the default's 90.03: with the 0.0-score line gone the clock
+#   reconciler picks decode-median instead of a tempo fit) and COST it blind (that song 8 -> 13 gross, because
+#   the room the orphan held is re-apportioned and `[31] 'Will you ever be alone?'` lands -32.79 s instead of
+#   -8.17 s). The arm fails the same four gates either way.
+#
+# ── THE MEASUREMENT, corpus-wide, in the metric §3.13 is written in (blind gross LEAD lines per song) ──────
+# POOLED BLIND GROSS: default **68** -> arm **75** (+7). It does not generalise, and the per-song table is
+# where that is visible — six songs move and the two that improve are far smaller than the four that do not:
+#     hello               6 -> 5   (-1)   §3.13's own song. Its 21 -> 11 is GONE because the POPULATION is:
+#                                        this tree's hello has 6 blind gross lines, not 21 — the flip repays
+#                                        that song ~40 by itself — so the technique's budget was already spent.
+#     Ridgway_-_Fire_Inside 3 -> 2 (-1)   the one song outside the review's set that the arm helps
+#     bad-guy             4 -> 5   (+1)
+#     numb                0 -> 1   (+1)   a song with ZERO gross lines gains one
+#     bohemian-rhapsody   5 -> 7   (+2)   and its ±500 falls 83.3 -> 80.6
+#     never-be-alone      8 -> 13  (+5)   the orphan-echo fix's second-order cost, itemised above
+# REACH, in the two counts it has, because they differ and the difference is the arm's shape (re-read off the
+#   committed base digest and the re-run's with `encore-align-bench/_tools/w5_adlib_reach.py`): the arm moves a LINE METRIC
+#   (`gross` / `±500` / `±1 s` / `scored` / `doc_lines`) in **37 of 1088 song-modes** across **9 songs** (the
+#   six above plus `LUNABLIND`, `shape-of-you`, `tfr-flyaway`), and it changes the published DOCUMENT in
+#   **130** of them across **10** (`onsets_sha256` in 128) — the SAME SETS as before round 1, which is the
+#   measured half of "the dictionary-aware R1 reaches no corpus case": `shape-of-you`, the song whose
+#   out-of-vocabulary lead `_mark`'s docstring is written on, is byte-identical under both readings of R1.
+#   THE TENTH SONG IS `rap-god`: its one `(Ha!)` host leaves the lead decode and comes back interpolated with
+#   no metric moving — reached, but free.
+#   IDENTITY IS THEREFORE THE OTHER **22** SONGS, not 23 (`parts.untouched`, and `parts.py`'s docstring says 22):
+#   they carry no mid-line parenthetical and no echo tail at all.
+# LINES LOST: **14 song-modes in 3 songs**. `never-be-alone` 46 -> **44** in nine modes and 47 -> 46 in
+#   `credit` (two lines, one of them the orphan echo), against 37 -> **38** / 51 -> **52** in `drop20` /
+#   `headers`, the two modes of that song that GAIN a line; `hello`
+#   57 -> 56 in `drop20` and 80 -> 78 / 83 -> 81 in `extraverse` / `headers`, `bad-guy` 77 -> 76 in
+#   `headers` — because excluding an echo tail from the lead decode moves the never-sung rule's median. No mode
+#   loses a DOCUMENT, which is the gate that reads this (`adlibs-no-song-loses-a-document`, PASS). It is also
+#   why `truth` ±500 reads 90.89 -> **90.94**: the arm scores two FEWER lines of that song, not better ones.
+# AND THE WORSE HALF, which the blind table alone would have hidden: the arm still costs a gross line in a
+#   TIMED CLAIM mode, where the default has none at all — `jit` 0 -> **1** (zero-gross songs 32 -> 31), a
+#   claim-mode total of 0 -> **1** (round 1 took this from 4 by fixing `tempo102`, which now reads 0 = 0).
+#   AND THE ONE LINE IS THE ARM'S OWN AD-LIB: `bad-guy` `jit`, line 64, the echo tail the arm held out of the
+#   lead decode and interpolated back, +2.16 s. `truth` gross is 0 = 0, `headers` / `credit` / `extraverse`
+#   move within ±0.1 pt, `drop20` is 12 = 12 and every wrong-text reading is 0 of 320 (both spellings,
+#   320/320 refused); `drop50` goes 167 -> 169.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+
+# ── MUST, FOR THE ARM TO BECOME THE DEFAULT: the pooled blind win §3.13 claims ────────────────────────────
+# THIS IS THE GATE THE ARM FAILS, and it is why it ships OFF. It is written as the condition for flipping it
+# on, not as a ratchet on the default, so it stays FAILING until someone makes the technique pay.
+adlibs-blind-gross-not-up: blind.gross <= base.blind.gross
+adlibs-no-song-gains-blind-gross: count(blind.song.gross_up) == 0
+adlibs-blind-zero-gross-songs-not-down: blind.zero_gross_songs >= base.blind.zero_gross_songs
+
+# ── MUST, FOR THE ARM TO STAY BUILT AT ALL: it may not break the claim path or the wrong-text wall ────────
+# THE ARM FAILS ONE OF THESE TOO, and it is still the most serious number in the file even after round 1
+# shrank it: the shipped default's thirteen TIMED CLAIM modes carry **0** gross lines in total, and the arm
+# carries **1** — `bad-guy` `jit`, and the line is the interpolated ad-lib itself (+2.16 s). A technique sold
+# as a BLIND-decode repair is not allowed to cost a gross line where a claim was published, and
+# `gates/w5-flip.yaml` section 2 agrees independently (the arm reads **38/40** there — 37/40 before round 1
+# fixed `w5-pooled-gross-not-up-tempo102` — still failing both of section 3's per-song counts). What still
+# PASSES is safety — no document lost, no wrong text admitted, `high_gross` 0 — which is what makes the arm
+# worth keeping behind the knob rather than deleting.
+adlibs-truth-gross-not-up: truth.gross <= base.truth.gross
+adlibs-truth-pm500-not-down: truth.pm500 >= base.truth.pm500 - 0.1
+adlibs-claim-modes-gross-zero: truth.gross + mode("jit").gross + off05.gross + off15.gross + off3.gross + offm1.gross + tempo098.gross + tempo102.gross + extraverse.gross + headers.gross + credit.gross == 0
+adlibs-high-gross-zero-claim-modes: truth.high_gross + mode("jit").high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross == 0
+adlibs-no-song-loses-a-document: truth.published + truth.line_sync >= base.truth.published + base.truth.line_sync
+adlibs-wrongtext-still-zero: mode("wrongtext").wrongtext_pass == 0
+adlibs-ownclock-still-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
+
+# ── NON-VACUITY ───────────────────────────────────────────────────────────────────────────────────────────
+# 10 gates plus the built-in no-ERROR-rows; **7/11 on `results/w5-adlibs-time_text.json`** against
+# `results/w5-time_text.json` — the same 7/11 as before round 1, on different numbers. The four failures are
+# the first section's three (pooled blind gross 75 > 68, 4 songs gaining a blind gross line, blind zero-gross
+# songs 13 -> 12) plus `adlibs-claim-modes-gross-zero` (0 -> 1) — i.e. this file's purpose is served by
+# FAILING, and a later wave that fixes the technique will see it turn green without the bar having been moved.
+# Read on the DEFAULT against itself it is 11/11, which is the other thing a knob gate must do: say nothing
+# about the shipped path. Both readings are reproducible with no model time:
+#   `encore-align-bench/_tools/offline_gates.py gates/w5-adlibs.yaml results/w5-adlibs-time_text.json \
+#      results/w5-time_text.json`

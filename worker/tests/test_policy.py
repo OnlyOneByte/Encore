@@ -23,10 +23,13 @@ from encore_worker.domain.lyrics.policy import (
     Retime,
     Tier,
     asr_is_mandatory,
+    corroboration,
     decide,
     improves,
+    normalised_words,
     offers,
     order_pool,
+    witness_of,
 )
 from encore_worker.domain.lyrics.report import Engine, TimingReport
 
@@ -466,3 +469,137 @@ def test_asr_is_mandatory_before_concluding_no_lyrics() -> None:
     assert not asr_is_mandatory([Tier.CANDIDATE])
     assert not asr_is_mandatory([Tier.CANDIDATE, Tier.MACHINE])
     assert not asr_is_mandatory([])
+
+
+# ── review M13: corroboration breaks the tie inside a tier ────────────────────────────────────────
+
+
+def test_a_corroborated_candidate_is_tried_before_an_uncorroborated_one() -> None:
+    """The candidate tier used to be ordered by when the workflow happened to FETCH each text, which put
+    the upload's SDH caption track ahead of every provider sheet unconditionally — measured publishing over
+    a clean sheet on Hello. Two independent sources agreeing is the strongest evidence available without
+    the audio, and it is free."""
+    tiers = [Tier.CANDIDATE, Tier.CANDIDATE, Tier.CANDIDATE]
+    assert order_pool(tiers, [False, True, True]) == [1, 2, 0]
+
+
+def test_corroboration_never_reorders_across_tiers() -> None:
+    """Tier is AUTHORITY, and no amount of agreement promotes a machine track over a real sheet."""
+    tiers = [Tier.MACHINE, Tier.CANDIDATE]
+    assert order_pool(tiers, [True, False]) == [1, 0]
+
+
+def test_the_order_is_unchanged_when_nothing_is_corroborated() -> None:
+    """A pool of one, or a pool whose texts disagree, walks exactly as it did before."""
+    tiers = [Tier.CANDIDATE, Tier.CANDIDATE, Tier.ASR]
+    assert order_pool(tiers) == order_pool(tiers, [False, False, False]) == [0, 1, 2]
+
+
+SHEET = ["I've become so numb", "I can't feel you there", "Become so tired, so much more aware"]
+
+
+def test_two_sheets_of_the_same_song_corroborate_each_other() -> None:
+    """Agreement is on DISTINCT WORDS, not on the line sequence: two sources of the same lyrics disagree
+    about line breaks, chorus repeats and how many times an ad-lib was written down, and a line-by-line
+    comparison reads all of that as disagreement."""
+    other = ["I've become so numb, I can't feel you there", "become so tired so much more aware", "numb"]
+    assert corroboration([SHEET, other], ["lrclib", "captions:authored"]) == [True, True]
+
+
+def test_an_sdh_caption_track_of_the_same_song_still_corroborates_it() -> None:
+    """The point is not that SDH is wrong — it is that a text NOTHING agrees with should not go first."""
+    sdh = ["♪ I'VE BECOME SO NUMB ♪", "♪ I CAN'T FEEL YOU THERE ♪", "♪ BECOME SO TIRED, SO MUCH MORE AWARE ♪"]
+    assert corroboration([SHEET, sdh], ["lrclib", "captions:authored"]) == [True, True]
+
+
+def test_an_agreeing_sdh_track_is_therefore_still_tried_first() -> None:
+    """THE LIMIT OF THIS SIGNAL, pinned here so the test above is not read as the fix for M13's measured
+    case. `_acquire_texts` fetches the authored captions BEFORE the providers, so arrival order puts the
+    SDH track at index 0; corroboration only demotes a text NOTHING in the pool agrees with, and on Hello
+    the SDH track and a clean sheet of the same song agree (measured on the corpus: True for both). So the
+    tie falls back to arrival order and the SDH text still goes first on exactly the song the review
+    measured. Separating two texts that BOTH look right needs the audio — the LIFT ranking `order_pool`'s
+    docstring says is not built."""
+    sdh = ["♪ I'VE BECOME SO NUMB ♪", "♪ I CAN'T FEEL YOU THERE ♪", "♪ BECOME SO TIRED, SO MUCH MORE AWARE ♪"]
+    backed = corroboration([sdh, SHEET], ["captions:authored", "lrclib"])
+    assert backed == [True, True]
+    assert order_pool([Tier.CANDIDATE, Tier.CANDIDATE], backed) == [0, 1]
+
+
+def test_a_sheet_missing_a_verse_still_corroborates_the_one_that_has_it() -> None:
+    """The share is of the SMALLER vocabulary, so a partial sheet is not read as a different song."""
+    partial = ["I've become so numb", "I can't feel you there"]
+    assert corroboration([SHEET, partial], ["captions:authored", "lrclib"]) == [True, True]
+
+
+def test_another_songs_words_corroborate_nothing() -> None:
+    """Two sheets of DIFFERENT songs share only the function words, which is well under half of either
+    one's vocabulary — the whole reason a coarse share works here."""
+    donor = ["Hello from the other side", "I must have called a thousand times"]
+    assert corroboration([SHEET, donor], ["captions:authored", "lrclib"]) == [False, False]
+
+
+def test_a_pool_of_one_is_uncorroborated_by_definition() -> None:
+    assert corroboration([SHEET], ["lrclib"]) == [False]
+    assert corroboration([], []) == []
+    assert corroboration([[], []], ["lrclib", "captions:authored"]) == [False, False]
+
+
+# ── W5 review r1-correctness-4 / r1-spec-12: an INDEPENDENT witness, not just another pool entry ──
+
+#: A sheet of some other song, as a metadata mismatch returns it. Synthetic words: what matters is the
+#: OVERLAP between the three texts, not what any of them says.
+OTHER_SONG = ["aaa bbb ccc", "ddd eee fff", "ggg hhh iii"]
+#: The same answer reached twice — the second provider's copy, differing by one written-down ad-lib.
+OTHER_SONG_AGAIN = ["aaa bbb ccc", "ddd eee fff", "ggg hhh jjj"]
+#: The upload's OWN authored caption track: the only text in the pool that agrees with the recording, and
+#: therefore the only one with nothing to agree with it.
+THIS_UPLOAD = ["kkk lll mmm", "nnn ooo ppp", "qqq rrr sss"]
+
+
+def test_two_provider_sheets_are_one_witness_and_do_not_corroborate_each_other() -> None:
+    """`fetch_provider_lyrics` asks every provider the SAME artist/track, and LRCLIB is one of the upstreams
+    lrcmux queries, so two sheets that agree can be one answer reached twice. Counted as two witnesses, a
+    wrong-song pair out-ranked the upload's own captions, which is alone in agreeing with the audio."""
+    labels = ["captions:authored", "lrcmux:KuGou", "lrclib"]
+    assert corroboration([THIS_UPLOAD, OTHER_SONG, OTHER_SONG_AGAIN], labels) == [False, False, False]
+
+
+def test_the_uploads_own_captions_therefore_keep_their_place() -> None:
+    """The ordering half: with the pair no longer corroborated the tie falls back to arrival order, and
+    `_acquire_texts` fetches the authored captions first. Counted as witnesses, this read [1, 2, 0]."""
+    labels = ["captions:authored", "lrcmux:KuGou", "lrclib"]
+    backed = corroboration([THIS_UPLOAD, OTHER_SONG, OTHER_SONG_AGAIN], labels)
+    assert order_pool([Tier.CANDIDATE] * 3, backed) == [0, 1, 2]
+
+
+def test_a_provider_sheet_is_still_corroborated_by_a_caption_track() -> None:
+    """The signal is not removed, only required to be independent: one provider sheet and one track of this
+    video agreeing is exactly the evidence M13 asked for."""
+    assert corroboration([OTHER_SONG, OTHER_SONG_AGAIN], ["lrclib", "captions:authored"]) == [True, True]
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "same"),
+    [
+        ("lrclib", "lrcmux:KuGou", True),
+        ("lrcmux:KuGou", "lrcmux:NetEase", True),
+        ("captions:authored", "lrclib", False),
+        ("captions:authored", "captions:machine", False),
+        ("captions:authored", "asr:small", False),
+        ("manual", "lrclib", False),
+    ],
+)
+def test_which_labels_are_the_same_witness(left: str, right: str, same: bool) -> None:
+    """A human subtitler of this video and a machine listening to this audio are different evidence about
+    the same recording; two provider sheets are one metadata query answered twice."""
+    assert (witness_of(left) == witness_of(right)) is same
+
+
+def test_normalised_words_keeps_words_apart_that_are_spelled_differently() -> None:
+    """The deduplication in `fetch_provider_lyrics` compares on this, and merging `don't` with `dont` would
+    call two different transcriptions one text."""
+    assert normalised_words(["Hello, world!"]) == "hello world"
+    assert normalised_words(["don't"]) != normalised_words(["dont"])
+    assert normalised_words(["♪ 99 red balloons ♪"]) == "99 red balloons", "digits are sung"
+    assert normalised_words([]) == ""

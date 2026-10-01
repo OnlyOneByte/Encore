@@ -89,6 +89,14 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
  * rendering it as line timing was the contradiction this closes. Before this, `lyricsRank` read
  * `timingConfidence` NOWHERE and a doubted word document tied with a fully vouched one at rank 5
  * (`tests/unit/contract/lyrics/worker-align-contract.json` records that history).
+ *
+ * THE DEMOTION THE CURRENT WORKER REACHES IS 3 -> 2, NOT 5 -> 4 (W6 review r1-spec-17). That worker writes a
+ * document-level `low` in exactly one case — a pin a wrong-text gate would have refused — and in that same
+ * case it also sends `vouched: false`, which `isAuthoritativeText` already reads, so both legs move together
+ * and the pair lands on the unauthoritative rungs. 5 -> 4 is reachable only for a row STORED BEFORE `vouched`
+ * existed (`__setstate__`'s default is True for those), which is a real population — stored documents are
+ * ranked across jobs — and is why the rule is stated on `timingConfidence` alone rather than folded into
+ * `isAuthoritativeText`. Both transitions are pinned in `tests/unit/contract/lyrics.test.ts`.
  */
 export function lyricsRank(c: LyricsCandidate): number {
 	if (!hasUsableTiming(c) || c.selectable === false) return 0;

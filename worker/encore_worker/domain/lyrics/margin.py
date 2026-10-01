@@ -37,17 +37,25 @@ WHAT IS NEW AGAINST F3 AND F4, stated because both were measured and REJECTED be
 
 THE RULE IS ONE THRESHOLD PER SIGNAL, deliberately (the critics rejected a fitted logistic: its
 normalisation, fitted on training songs only, failed its own reject gates). `low_lines` demotes a line
-when `margin < MIN_MARGIN_NATS` OR its raw score sits more than `SCORE_DROP_NATS` below the song's median
+when `margin < min_margin_nats` OR its raw score sits more than `SCORE_DROP_NATS` below the song's median
 score. The review measured that pair flagging 94% of gross lines at 17% of good ones on Jamendo (71% / 21%
 on YouTube). End to end here, on top of the grading it joins: `high` lines more than 2 s off 23 -> 0 and
 more than 0.5 s off 11.88% -> 2.80%, for coverage 51.5% -> 33.0% (20 Jamendo songs, blind claims, base
-model, leave-one-song-out; `MIN_MARGIN_NATS` carries the fit). THE TWO HALVES EARN DIFFERENT PARTS OF IT:
-the score half alone takes the 23 gross `high` lines to 11 and coverage to 44.5%, and the margin takes the
-remaining 11 to zero. Neither is redundant.
+model, leave-one-song-out). THE TWO HALVES EARN DIFFERENT PARTS OF IT: the score half alone takes the 23
+gross `high` lines to 11 and coverage to 44.5%, and the margin takes the remaining 11 to zero. Neither is
+redundant.
 
-WITHIN ONE SONG ONLY, like every other score in this package — see `MIN_MARGIN_NATS` for why a threshold on
-a log-probability gap is nonetheless portable, and `SCORE_DROP_NATS` for the half that is explicitly
-relative to the song's own median.
+THE MARGIN FLOOR IS NOT A CONSTANT HERE, and that is `lexical`'s rule rather than this module's taste
+(review W6 r1-spec-9): a margin is a sum of log-probabilities, so the floor is an EMISSION-SCALE threshold
+and "THE ROW HOLDS EVERY EMISSION-SCALE THRESHOLD OF ONE MODEL" (`lexical`'s module docstring) puts it in
+`lexical.Bands.margin_floor_nats` beside the lift's bands and the rung's agreement share. That row carries
+the LOSO fit, the sweep and the second-bundle check; a bundle with no measured floor makes the whole rule
+ABSTAIN rather than read 10 nats off somebody else's scale (`lexical.margin_floor`, and
+`align_steps._placement_margins`, which does not even compute the margins then).
+
+WITHIN ONE SONG ONLY, like every other score in this package — see `lexical.Bands.margin_floor_nats` for why
+a threshold on a log-probability gap is nonetheless portable across bundles, and `SCORE_DROP_NATS` for the
+half that is explicitly relative to the song's own median.
 
 COST. Two Viterbi passes over the same trellis the decode already built — one forward, one backward —
 with only the queried columns kept, so the memory is O(states + frames x lines) rather than the
@@ -83,6 +91,14 @@ import numpy as np
 #: (51.5% is the coverage of the rule this joined, so the last column is §3.7's "at equal coverage"
 #: reject-if, whose bound on this corpus is 5.94% — half of 11.88%.)
 #:
+#: READ WHAT THAT LAST COLUMN IS (W6 r1-correctness-8). "At equal coverage" cannot be read off the shipped
+#: rule, which has ONE operating point and grades 33.0% of blind lines `high`; the column is the two signals
+#: used as a RANKING — blind lines ordered by (score-pass, margin) and cut at the fold's own line count — so
+#: it measures the SIGNALS at the baseline's coverage and not the conjunction that ships. The conjunction's
+#: own held-out point is the row beside it (33.0% / 2.80% / 0 gross at 1.0 s, 38.8% / 5.65% / 1 at 3.0 s),
+#: and the two baseline coverages the cut is taken at (the replaced rule's 51.5%, the repeat test's) are
+#: pooled over all 20 songs rather than re-measured per fold.
+#:
 #: 3.0 s IS THE REVIEW'S READING AND IT REPRODUCES: its gross AUROC of 0.941 here is the 0.934 review §3.7
 #: measured with a numba prototype, which is the independent check that this kernel decodes the same
 #: trellis. It is not what ships, because the rule is judged on `bad` (>0.5 s) and there the WIDE window
@@ -95,31 +111,6 @@ import numpy as np
 #: THE COST IS COVERAGE: at 1 s the shipped rule grades 33.0% of blind lines `high` against 38.8% at 3 s.
 #: Fewer word wipes, and the ones left are twice as likely to be right (2.80% bad against 5.65%).
 WINDOW_SEC = 1.0
-
-#: Nats of path score a line must have to spare before its placement is called unambiguous. Below it, the
-#: decode could have put this line somewhere else for nearly the same score, and nothing here can say which
-#: placement was sung.
-#:
-#: FITTED LEAVE-ONE-SONG-OUT on the 20 Jamendo songs' blind decode, and the objective is review §3.7's own
-#: reject-if rather than the number the gate then reports: the SMALLEST M whose training `high` set holds no
-#: line more than 2 s off. All 20 folds chose 10 — the same figure §3.7 arrived at independently — so there
-#: is nothing to average. Held out, the rule reads 33.0% coverage, 2.80% of `high` lines more than 0.5 s off
-#: and ZERO more than 2 s off, against the rule it joined reading 51.5% / 11.88% / 23 on the same lines
-#: (`docs/benchmarks/forced-alignment/README.md`, "The confidence rule", carries the sweep and the two
-#: halves' separate contributions). The sweep is flat from 10 to 40 nats (bad 2.6-3.1%, gross 0 throughout),
-#: so the constant is not on a cliff; below it the gross lines come back (M=5 leaves 2, M=2 leaves 4).
-#:
-#: WITHIN ONE SONG, LIKE EVERY SCORE HERE, and this is the one place that needs an argument: a margin is a
-#: sum of log-probabilities, so its SCALE moves with the bundle and the song, while a THRESHOLD on it is
-#: read as if it did not. What makes 10 nats portable is that it is a floor on a GAP — the evidence the
-#: decode would forfeit to move one line — and the corpus's spread is wide relative to it (median 27 nats,
-#: p10 4), so the songs do not stack up against the threshold from one side.
-#: MEASURED ON A SECOND BUNDLE, which is the only way to test that, and it is the bundle this wave is
-#: flipping on: on HUBERT_ASR_LARGE over the same 20 songs the margins read median 33 nats and p10 5 — the
-#: SAME scale — and the rule at the same M reads 34.7% coverage / 2.66% bad-among-high / ZERO gross against
-#: that bundle's own control at 51.4% / 8.97% / 20 (whose 8.97% against 9.26% bad-among-LOW is the at-chance
-#: reading again). Nothing was re-fitted per bundle, and nothing needed to be.
-MIN_MARGIN_NATS = 10.0
 
 #: How far below the song's own MEDIAN line score a line's raw score must sit to be doubted, nats per
 #: frame. The review's second signal, unchanged at 1.0: it is the same shape as the never-sung rule's
@@ -275,11 +266,17 @@ def low_lines(
     margins: Mapping[int, float],
     scores: Mapping[int, float],
     *,
-    min_margin_nats: float = MIN_MARGIN_NATS,
+    min_margin_nats: float,
     score_drop_nats: float = SCORE_DROP_NATS,
 ) -> frozenset[int]:
     """The line indexes THIS rule doubts: `margin < min_margin_nats` OR the raw score more than
     `score_drop_nats` below the song's median score (review §3.7's two-signal rule).
+
+    `min_margin_nats` IS REQUIRED, for the reason `lexical.band`'s `bands` is (W6 r1-spec-9): it is an
+    emission-scale floor, it lives in the calibration row of the bundle whose trellis produced `margins`
+    (`lexical.Bands.margin_floor_nats`, read through `lexical.margin_floor`), and a default here would be
+    one bundle's nats silently applied to another's matrix — the review's high-severity W3 finding arriving
+    through a default argument. A caller holding no floor must not call this at all.
 
     `scores` is every published line's `Line.score` — the median is taken over ALL of them, so the
     reference is the song's own level and not the level of the lines that happen to have a margin.

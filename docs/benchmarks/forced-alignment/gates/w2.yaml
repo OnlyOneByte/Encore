@@ -1,6 +1,35 @@
 # W2 reject-if (PLAN-alignment-v3 W2, review §3 items 2 and 11): the claim clock (H1) and reconcile
 # robustness (M4, M5).
 #
+# ── REBASED AGAIN 2026-10-01 BY W5, FOR THE MODEL FLIP ──────────────────────────────────────────────────
+# REBASED FROM: `results/w4-{time_text,run_align}.json` — the BASE BUNDLE's rows, where W4b put it.
+# REBASED ONTO: `results/w6-hubert-{time_text,run_align}.json` — the bundle that SHIPS from W5 on
+#   (`ml.DEFAULT_ALIGN_MODEL` = `HUBERT_ASR_LARGE`; code `622288017e9d268a`, the same tree as `w6-base-*`).
+# WHY, AND IT IS W4b's OWN RULE APPLIED TO ANOTHER DEFAULT-ON CHANGE: a bundle swap replaces every emission
+#   matrix, so this file's deltas against a base-bundle row stop measuring a later wave's change and start
+#   measuring the flip. READ ON THE NEW DEFAULT AGAINST THE W4 BASE it scores **66/88 at `time_text` and 64/88
+#   at `run_align`**, and all 22 / 24 failures are the flip's own measured and ACCEPTED effects, not a W2
+#   regression: the thirteen `jamendo-no-new-gross-*` at 1-2 songs each (on a corpus where the flip REMOVES
+#   268 gross lines at `time_text` and adds 14), `blind-unchanged` at 32 of 32 songs — a different decode, by
+#   construction — three `unsung-not-up-*`, five displacement literals at -7.14..-28.77, and at `run_align`
+#   the two `tempo-gain-*` (text ±500 89.72 -> 88.69 / 88.75). A later wave reading this file would have had to
+#   subtract the model from every number by hand; that is the noise this rebase removes, exactly as W4b's did.
+# WHAT MOVED, EXACTLY, and nothing else did: the `--compare` base in the commands below (w4 -> w6-hubert),
+#   which is what re-zeroes every `base.` delta. NOT one literal — section 12's thirteen
+#   `no-worse-displacement-*` allowances stay W2's, by review r2-spec-11's rule: the base moves, the allowance
+#   does not, or a re-priced allowance compounds across waves and reads as green.
+# VERIFIED on the rows, not asserted: with `results/w6-hubert-*` as BOTH sides this file reads **88/88 at both
+#   levels**, every displacement delta 0.00, as a ratchet must against the tree that set it.
+# WHAT THE REBASE SETTLES, AND WHAT IT DOES NOT. It settles W6's owner call (d): `never-be-alone`
+#   tempo098/tempo102 text ±500 68.09 -> 57.45 (-10.64 against allowances of -9.0 and 0.0) was the BASE
+#   bundle's W6-against-W4 reading, and W2's file demanded an explicit waiver with the song named for it. No
+#   waiver is taken: the reading belongs to a tree that is no longer the default, the PLAN's status log keeps
+#   it, and on the new base it is 0.00. It did NOT settle the carried `blind-unchanged` -> `onsets_changed`
+#   item (section 4) — that was done SEPARATELY, hours later, by W5's carried-items task, and section 4 carries
+#   its own dated block with the accounting of what the byte comparison used to cover and where each part of it
+#   lives now. The file is 88 gates after it, not 87: the swap added a word-END companion for the one dimension
+#   an onset digest deliberately ignores.
+#
 # ── REBASED 2026-09-30 BY W4b (spec (c)) ────────────────────────────────────────────────────────────────
 # REBASED FROM: `results/w3-{time_text,run_align}.json` — the tree W2 started from.
 # REBASED ONTO: `results/w4-{time_text,run_align}.json` — the W4 rebench r2 rows (code `8c576cc6200b02a0`).
@@ -31,22 +60,26 @@
 #   (`truth-jamendo-pm500` 96.42 against 97.28 - 0.3), and that failure is W4's own — `Pure_Mids_-_The_Leader`'s
 #   never-sung line, W4b (b), diagnosed at `align_steps._NEVER_SUNG_ENV` and still open.
 #
-# Evaluated at BOTH levels (base model, youtube tfr audio, --modes all):
+# Evaluated at BOTH levels (the SHIPPED bundle — HuBERT-Large since W5, so no `--model`; youtube tfr audio,
+# --modes all):
 #
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level time_text \
 #       --modes all,wrongtext+ownclock \
-#       --compare ../docs/benchmarks/forced-alignment/results/w4-time_text.json \
+#       --compare ../docs/benchmarks/forced-alignment/results/w6-hubert-time_text.json \
 #       --gates ../docs/benchmarks/forced-alignment/gates/w2.yaml
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level run_align \
 #       --modes all,wrongtext+ownclock \
-#       --compare ../docs/benchmarks/forced-alignment/results/w4-run_align.json \
+#       --compare ../docs/benchmarks/forced-alignment/results/w6-hubert-run_align.json \
 #       --gates ../docs/benchmarks/forced-alignment/gates/w2.yaml
 #   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
+#   (the BASE bundle's own reading needs `--model WAV2VEC2_ASR_BASE_960H` on both sides now, and its base is
+#    `results/w6-base-*`: a `--model`-less run is a HuBERT-L run from W5 on.)
 #
 # Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
 # EVERYTHING BELOW THIS LINE IS W2's OWN RECORD, on its own base, kept as written: the measurements are what
 # the constants in `claimmap` and `reconcile` were fitted on, and a rebase that deleted them would leave the
-# literals unexplained. Read "base" in it as `results/w3-*.json`; read "base" in the GATES as w4.
+# literals unexplained. Read "base" in it as `results/w3-*.json`; read "base" in the GATES as
+# `results/w6-hubert-*` (it was w3 for W2, w4 for W4b's rebase, and the flip moved it again).
 #
 # TWO BOUNDS ON THE SAME ROW, and they belong to different items. §3.2 (the claim clock) allows the
 # unperturbed truth row to lose up to 1.0 pt within ±500 ms; §3.11 (reconcile's bounded fit and verdict
@@ -69,6 +102,8 @@
 # WHAT THE CLOCK CANNOT TOUCH, and therefore must not move: a blind mode has no claims at all, so no map,
 # no window and no adoption changes — `blind-unchanged` is byte-identical documents, and it is the gate that
 # makes this file non-vacuous for the wave (it fails on any accidental change to the claim-free path).
+# [W2's record, as written. Since 2026-10-01 that gate is `blind-onsets-unchanged` and compares every line and
+#  word ONSET instead of the bytes — section 4 carries the accounting.]
 #
 # MEASURED SO FAR (targeted probes only, `docs/benchmarks/forced-alignment/README.md` "The claim clock";
 # the corpus row is the wave's own bench run, which is what these gates are for):
@@ -238,21 +273,54 @@ offset-within-2pt-off15: off15.text_pm500 >= truth.text_pm500 - 2.0
 offset-within-2pt-off3: off3.text_pm500 >= truth.text_pm500 - 2.0
 offset-within-2pt-offm1: offm1.text_pm500 >= truth.text_pm500 - 2.0
 
-# ── 4) MUST: the claim-free path is untouched, byte for byte. No claims, no map. ──
-# WHAT BYTE-IDENTITY CAN AND CANNOT SAY, written here because W4 made it matter (W4b's rebase). This gate is
+# ── 4) MUST: the claim-free path is untouched — every ONSET of it, line and word. No claims, no map. ──
+# WHAT BYTE-IDENTITY CAN AND CANNOT SAY, written here because W4 made it matter (W4b's rebase). This section is
 # the file's non-vacuity guard: a blind mode hands the engine NO claims, so a change to the claim clock, the
 # windows or the adoption cannot reach it, and any movement here is an accident. That argument holds for a wave
 # that changes the CLAIM side and says nothing at all about a wave that deliberately changes the DECODE — W4's
 # frame clock moved all 32 documents by construction (`[32 == 0]` against the W3 base, which is why this file
-# had to be rebased), and W4b's own 6b model change will move all 32 again. A wave in that position must report
+# had to be rebased), and W4b's own 6b model change moved all 32 again. A wave in that position must report
 # the COUNT and its reason beside this gate, exactly as W4 did for the clock, and must hold the claim-free path
-# on the three metric companions below, which survive a decode change and are what "no worse" means when
-# "identical" is unreadable. Do NOT delete the byte gate to make a decode wave green: it is the only thing that
+# on the metric companions below, which survive a decode change and are what "no worse" means when
+# "identical" is unreadable. Do NOT delete the gate to make a decode wave green: it is the only thing that
 # catches the accidental case, and a deliberate change is a sentence someone has to write.
-blind-unchanged: count(blind.song.doc_changed) == 0
+#
+# ── THE BYTE GATE BECAME AN ONSET GATE, 2026-10-01 BY W5 (the carried item; W6 close-out owner call (e)) ──
+# WAS: `blind-unchanged: count(blind.song.doc_changed) == 0` — the published document's BYTES.
+# IS:  `blind-onsets-unchanged`, the same comparison over `onsets_sha256` — every published line's identity and
+#      START and every word's start, at full precision, where one ulp of movement still fails (`e2e_lib
+#      .onset_digest`).
+# WHY: a byte gate fails for things that are not timings, and W6 proved it the expensive way — its per-line
+#      `confidence` field is written into every document, so the documents changed bytes with NOT ONE ONSET
+#      MOVED, and the gate said "the claim-free path moved" about a grading label. MEASURED HERE RATHER THAN
+#      QUOTED, on the two committed rows that differ by exactly that field (`results/w6-base-time_text.json`
+#      against its own `conf-legacy` control `results/w6-legacy-time_text.json`): blind `doc_changed` **30**,
+#      blind `onsets_changed` **0** (truth 0 and 0 — in a claim mode the grades do not move either).
+#      W4b had already learned the general form (byte-identity is unreadable across a clock or a bundle change);
+#      the confidence field is the case where the bytes move while the timings provably do not, which is the one
+#      a MUST must not fail on.
+# AND IT IS W6's OWN PRECEDENT, not a new idea: `gates/w6-ladder.yaml`'s `clamp-blind-onsets-unchanged` is the
+#      same swap for the same reason (W6 review r1-spec-11 — "the bytes check could not hold against a pre-W6
+#      control at all"). This file is the one that still had the byte version.
+# NOT A LOOSENING, and here is the accounting of what the byte comparison used to cover and where it now lives:
+#      * every line and word ONSET -> `blind-onsets-unchanged`, absolute, unchanged in strictness;
+#      * a line APPEARING OR VANISHING -> still `blind-onsets-unchanged` (the digest is over the published line
+#        LIST, so a lost or gained line changes it; a refusal on either side is a document of its own);
+#      * word ENDS, which `onset_digest` leaves out on purpose (W4 6b's post-pass must not trip an onset gate)
+#        -> the NEW companion `blind-no-worse-word-ends`, measured rather than byte-compared, which is the right
+#        shape for a display post-pass and the same -0.3 pt allowance the other companions carry;
+#      * the per-line `confidence` -> DELIBERATELY NOT GATED HERE. It is a grading label, §3.7's own gates
+#        (`gates/w6-conf.yaml`) measure it against a `conf-legacy` control, and this file is about the clock.
+#      * a line's TEXT with its onsets unchanged -> not covered by either digest in a BLIND mode, and said out
+#        loud rather than implied: `onset_digest` carries `line.source`, the claim index, which is None when
+#        there are no claims. The worker's own suite is where that is pinned (`tests/test_parts.py` asserts the
+#        published text of every served line, `tests/test_core_contract.py` the document shape) — a bench gate
+#        was never the cheapest place to catch it, and the byte gate caught it only by accident.
+blind-onsets-unchanged: count(blind.song.onsets_changed) == 0
 blind-no-worse-gross: blind.gross <= base.blind.gross
 blind-no-worse-pm500: blind.text_pm500 >= base.blind.text_pm500 - 0.3
 blind-no-worse-words-pm100: blind.jamendo.word_pm100 >= base.blind.jamendo.word_pm100 - 0.3
+blind-no-worse-word-ends: blind.jamendo.end_pm100 >= base.blind.jamendo.end_pm100 - 0.3
 
 # ── 5) MUST: a mapped claim window must not publish a line the truth does not have (W1 review r1's metric:
 # no ±N metric sees an injected header, a credit or an extra verse). Per song, and only where the baseline
@@ -435,7 +503,9 @@ truth-jamendo-words-pm100: truth.jamendo.word_pm100 >= base.truth.jamendo.word_p
 # thirteen. So this section is precisely a guard on the failure mode review r1 removed, which is the one a
 # later wave is most likely to re-introduce. Against `results/w3-run_align.json` as BOTH sides every one reads
 # 0.00 and passes, as a ratchet must. `blind` is left out: `blind-unchanged` (section 4) already holds it
-# byte-identical, which is strictly stronger.
+# byte-identical, which is strictly stronger. [Since 2026-10-01 that is `blind-onsets-unchanged`, ONSET-identical
+#  rather than byte-identical, and the argument is unchanged for THIS metric: `text_pm500` reads line STARTS
+#  against a fixed truth, so an identical onset digest fixes it exactly.]
 no-worse-displacement-truth: min_song_delta(truth.text_pm500) >= -11.0
 no-worse-displacement-jit: min_song_delta(jit.text_pm500) >= -6.0
 no-worse-displacement-off05: min_song_delta(off05.text_pm500) >= -22.0

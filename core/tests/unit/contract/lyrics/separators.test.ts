@@ -443,7 +443,15 @@ describe('lyrics presentation registries', () => {
 		// Regressing any of these silently changes every existing room on upgrade.
 		expect(DEFAULT_LYRICS_BALL).toBe('off');
 		expect(DEFAULT_LYRICS_HIGHLIGHT).toBe('word');
-		expect(DEFAULT_LYRICS_LEAD_MS).toBe(0); // global lead ships OFF by default
+		// NOT 0 ANY MORE, and it is the one default here that was deliberately moved: ITU-R BT.1359's
+		// tolerance is ASYMMETRIC (a late highlight is noticed at ~45 ms, an early one at ~125 ms) and +40 ms
+		// of DISPLAY lead moves the 'undetectable' share 73.2% -> 78.6% over the 5693 hand-timed word onsets
+		// of the bench corpus — where 40 ms is the swept ARGMAX, in all three claim populations (the review's
+		// own 66.0 -> 75.0 was the same measurement on the pre-W4 clock and the base bundle, and it still
+		// reproduces there). A hard literal, not `.toBe(SOME_CONST)`, so this pins the measured value.
+		// `DEFAULT_LYRICS_LEAD_MS`' own docstring carries the measurement and the TV-latency caveat; the
+		// worker's acoustic `ONSET_LEAD_SEC` did NOT move.
+		expect(DEFAULT_LYRICS_LEAD_MS).toBe(40);
 	});
 });
 
@@ -464,6 +472,11 @@ describe('normalizeRoomSettings — lyrics presentation', () => {
 	});
 });
 
+/** The room default's DISPLAY lead, in seconds. Read from the constant on purpose in the cases below: they
+ *  are about the MARKS and the clamp, and the lead rides along in the same object. The case that pins the
+ *  lead's measured VALUE (40 ms, BT.1359) is a literal, above, and so is the pass-through case. */
+const DEFAULT_LEAD_SEC = DEFAULT_LYRICS_LEAD_MS / 1000;
+
 describe('resolveLyricsPresentation', () => {
 	const settings = (syncMode: 'forced' | 'lines', room: Partial<RoomSettings> = {}) => ({
 		global: { ...DEFAULT_GLOBAL_SETTINGS, syncMode },
@@ -472,7 +485,7 @@ describe('resolveLyricsPresentation', () => {
 
 	it('honours the room exactly when word timings exist', () => {
 		const r = resolveLyricsPresentation(settings('forced', { lyricsBall: 'steady', lyricsHighlight: 'word' }));
-		expect(r).toEqual({ ball: 'steady', highlight: 'word', leadSec: 0, clamped: false });
+		expect(r).toEqual({ ball: 'steady', highlight: 'word', leadSec: DEFAULT_LEAD_SEC, clamped: false });
 	});
 
 	it('a room may render BELOW the granularity produced — that is a real choice, not a clamp', () => {
@@ -515,7 +528,7 @@ describe('resolveLyricsPresentation', () => {
 
 	it('reports clamped=false when line-only sync can satisfy the room as asked', () => {
 		const r = resolveLyricsPresentation(settings('lines', { lyricsBall: 'off', lyricsHighlight: 'line' }));
-		expect(r).toEqual({ ball: 'off', highlight: 'line', leadSec: 0, clamped: false });
+		expect(r).toEqual({ ball: 'off', highlight: 'line', leadSec: DEFAULT_LEAD_SEC, clamped: false });
 	});
 
 	it('passes the lead through as seconds regardless of clamping', () => {
@@ -563,7 +576,7 @@ describe('resolveLyricsPresentation — the per-song inner bound', () => {
 	it('a word-level fleet playing a word-timed song is untouched', () => {
 		// Pinned so the inner bound cannot over-clamp into the case that already worked.
 		const r = resolveLyricsPresentation(settings('forced', wordRoom), wordSong.timing);
-		expect(r).toEqual({ ball: 'bounce', highlight: 'word', leadSec: 0, clamped: false });
+		expect(r).toEqual({ ball: 'bounce', highlight: 'word', leadSec: DEFAULT_LEAD_SEC, clamped: false });
 	});
 
 	it("a song with NO usable timing clamps too — 'none' is not 'word'", () => {
@@ -580,7 +593,7 @@ describe('resolveLyricsPresentation — the per-song inner bound', () => {
 		// identically: a null candidate, and no argument at all.
 		const absent = resolveLyricsPresentation(settings('forced', wordRoom));
 		const explicitNull = resolveLyricsPresentation(settings('forced', wordRoom), null);
-		expect(absent).toEqual({ ball: 'bounce', highlight: 'word', leadSec: 0, clamped: false });
+		expect(absent).toEqual({ ball: 'bounce', highlight: 'word', leadSec: DEFAULT_LEAD_SEC, clamped: false });
 		expect(explicitNull).toEqual(absent);
 	});
 

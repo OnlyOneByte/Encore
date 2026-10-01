@@ -55,12 +55,23 @@ ENGLISH = "en"
 #: matrix (`Emissions.model`) because the thresholds read off one are one model's
 #: (`domain.lyrics.lexical.CALIBRATED`).
 #:
-#: WHY IT IS EMPTY, AND NOT `{"cuda": "HUBERT_ASR_XLARGE"}` AS W4b FIRST BUILT IT. HuBERT-XLarge was
-#: calibrated on the bench corpus but NEVER RUN END TO END — no CUDA box exists on this tree — so naming it
-#: CUDA's default would ship a bundle on a device class nobody measured, on the strength of a projection
-#: (`gates/w4b.yaml`, "XL IS A PROJECTION, NOT A CLAIM"; its own wrong-text head-room is +0.0722 against
-#: HuBERT-Large's +0.2306). `ENCORE_ALIGN_MODEL=HUBERT_ASR_XLARGE` is how a CUDA operator runs it, and the
-#: row that would let it become a default is one corpus sweep on CUDA hardware.
+#: WHY IT IS STILL EMPTY AFTER W5 FLIPPED THE DEFAULT, which is the question a reader of the flip asks. The
+#: flip is a BUNDLE decision, not a device one: HuBERT-Large won on 32 songs x 16 claim modes at both bench
+#: levels (`DEFAULT_ALIGN_MODEL`), and nothing in that measurement is a fact about MPS — the same weights, the
+#: same 29-token vocabulary and the same 320/400 frame grid run on cpu and cuda. So the one measured bundle is
+#: every device's default and the table has no exception to hold. It stays a table because the shape is the
+#: only one a measured per-device row can land in, and because an unknown device must fall back, not raise.
+#:
+#: AND NOT `{"cuda": "HUBERT_ASR_XLARGE"}` AS W4b FIRST BUILT IT — the entry this table must not grow without
+#: a CUDA sweep. HuBERT-XLarge is calibrated on the bench corpus but was NEVER RUN END TO END: no CUDA box
+#: exists on this tree, so naming it CUDA's default would ship a bundle on a device class nobody measured, on
+#: the strength of a PROJECTION (`gates/w4b.yaml`, "XL IS A PROJECTION, NOT A CLAIM"; review 6b measured it
+#: best on word onsets, ±100 +6.4 pts against L's +4.1, and that number is the REVIEW's prototype decode and
+#: not this corpus's). Its own wrong-text head-room is +0.0722 on the stem against HuBERT-Large's +0.2306 and
+#: +0.0021 on the mix against +0.0343, and its `lexical.CALIBRATED` row carries `margin_floor_nats=None`
+#: because nobody has read one of its trellises — so a box that defaulted to it would run W6's placement rule
+#: abstaining. `ENCORE_ALIGN_MODEL=HUBERT_ASR_XLARGE` is how a CUDA operator runs it, and the row that would
+#: let it become a default is one corpus sweep on CUDA hardware. SAY PROJECTION, NEVER MEASURED.
 #:
 #: EVERY NAME IN THE TABLE OR THE DEFAULT MUST HAVE A CALIBRATION ROW (`lexical.CALIBRATED`), or a worker that
 #: resolved it would start with its wrong-text gate standing down. This module deliberately does NOT import
@@ -70,30 +81,63 @@ ENGLISH = "en"
 #: composition root, where config meets the device (`__main__.align_model_for`).
 ALIGN_MODELS_BY_DEVICE: Mapping[str, str] = {}
 
-#: THE ENGLISH BUNDLE THIS BOX LOADS WHEN NOBODY NAMES ONE — whisperx's own wav2vec2 base 960h, the bundle
-#: every wave from the review baseline through W4 was measured on, named EXPLICITLY here rather than left to
-#: `load_align_model`'s per-language table so that `Emissions.model` always says which model a matrix (and so
-#: which `lexical.CALIBRATED` row) belongs to. Proved equivalent to the old `model=None` path on the corpus:
-#: the W4b control sweeps reproduce `results/w4-{time_text,run_align}.json` with every pooled and per-song
-#: delta 0.00 and every document digest unchanged.
+#: THE ENGLISH BUNDLE THIS BOX LOADS WHEN NOBODY NAMES ONE — torchaudio's HuBERT-Large ASR bundle since W5
+#: (review §3 item 6b, asked for in W4b, REJECTED there on measured numbers and taken here on measured
+#: numbers), named EXPLICITLY rather than left to `load_align_model`'s per-language table so that
+#: `Emissions.model` always says which model a matrix (and so which `lexical.CALIBRATED` row) belongs to.
 #:
-#: WHY NOT HuBERT-LARGE, WHICH REVIEW §3 ITEM 6b ASKED FOR AND W4b BUILT AND CALIBRATED. It was measured end
-#: to end on the whole corpus, both levels, and IT FAILS THREE OF W4b's SIX MUST GATES
-#: (`gates/w4b.yaml`, 19/30 at `time_text` AND at `run_align`; `results/w4b-hubert-{time_text,run_align}.json`
-#: against `results/w4b-base-*` on the same code with only the name changed):
-#:   * pooled gross lines RISE in 8 of 16 modes (truth 3 -> 7, tempo 4 -> 7, extraverse 5 -> 6) — eight,
-#:     re-counted per mode off those rows in W4b review r2, where the gate file had summed nine into one;
-#:   * `hello` truth line ±500 97.26 -> 90.28 and `tfr-chosen` 73.53 -> 63.64, two of W4's named wins;
-#:   * `Tom_Orlando_-_The_One__feat._Tina_G_` word ±300 -1.74 pt against a -1.0 per-song bound.
-#: It WINS almost everywhere else — blind gross 106 -> 68, jit 37 -> 5, credit 28 -> 7, drop50 305 -> 170,
-#: truth Jamendo word ±100 83.25 -> 85.38 and ±300 94.98 -> 97.12, AAE 87.8 -> 72.3 ms, highlight 77.1 ->
-#: 81.0, wrong texts passed 1/320 -> 0/320, and it recovers the `Pure_Mids_-_The_Leader` line W4's never-sung
-#: rule drops (19 -> 20 scored, ±500 68.42 -> 100.00). The two big losers get BETTER blind and worse with
-#: claims (hello blind 61.64 -> 75.00), and `tfr-chosen`'s reconcile verdict degrades `structural` ->
-#: `coarse` on a lift that ROSE — so the cost is the repair ladder's reaction to a better decode, not the
-#: decode. Until that is understood the flip is an operator's choice and not a default:
-#: `ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE`, calibrated, tested and one line from shipping.
-DEFAULT_ALIGN_MODEL = "WAV2VEC2_ASR_BASE_960H"
+#: WHY IT IS HuBERT-LARGE NOW, AND WHAT CHANGED SINCE W4b SAID NO. W4b's rejection rested on "the repair
+#: ladder breaks under a sharper decode": the candidate manufactured gross line starts under `truth` claims
+#: that the base bundle did not. W6 instrumented that line by line and the ladder was INNOCENT — the gross
+#: starts were made AFTER it finished, by `_clamped_v2`'s left floor `max(line.start, previous_end)`,
+#: which is the blind decode's own boundary and so the very reading the repair existed to correct. With the
+#: overlap resolved at the neighbour's END instead (`align_steps._pulled_end`), clamp-made gross starts
+#: go 7 -> 0 on this bundle and 3 -> 1 on the base, and the whole shape of the A/B changes.
+#:
+#: THE MEASUREMENT THE FLIP RESTS ON (`results/w6-hubert-{time_text,run_align}.json` against
+#: `results/w6-base-*`, the same code with only the name changed, 32 songs x 16 modes, seed 0, wrong_k 10,
+#: `--tfr-audio youtube`, device mps; `gates/w5-flip.yaml` is its acceptance test and `gates/w6.yaml`
+#: section 3 its four absolute wins). IDENTICAL AT BOTH LEVELS where a number is a timing:
+#:   * pooled gross lines DOWN OR EQUAL IN ALL SIXTEEN MODES, at both levels — `time_text` truth 1 -> 0,
+#:     jit 31 -> 0, credit 23 -> 0, headers 1 -> 0, tempo 1 -> 0, drop20 29 -> 12, drop50 303 -> 167,
+#:     blind 106 -> 68; `run_align` jit 21 -> 0, drop50 178 -> 91, blind 106 -> 67, drop20 0 = 0;
+#:   * Jamendo `truth` word ±100 83.52 -> 85.46, ±300 95.04 -> 97.16, AAE 86.7 -> 71.1 ms, MedAE 38.2 -> 37.5,
+#:     word end ±100 80.02 -> 80.34, phrase-final end ±100 59.23 -> 60.93, TV highlight 77.58 -> 81.40,
+#:     line ±500 97.00 -> 98.15, truth gross 1 -> 0, zero-gross songs 31/32 -> 32/32;
+#:   * text-denominator ±500 UP in every claim mode at `time_text` (so no gain is a refusal in disguise), and
+#:     wrong texts passed 1/320 -> 0/320 at `time_text`, 0/320 -> 0/320 at `run_align`;
+#:   * `high_gross` (a line the TV WIPES more than 2 s off) 0 in all thirteen timed claim modes, and the
+#:     YouTube `blind` residue W6 left open IMPROVES, 3 -> 2 gross `high` at more coverage (353 -> 360),
+#:     with Jamendo `blind` still 0;
+#:   * per song, over all 16 modes: 268 gross lines REMOVED and 14 added at `time_text` (206 and 27 at
+#:     `run_align`) — never-be-alone -74, hello -40, rap-god -23, Avercage -15, Pure_Mids -11, The_Rinn -11
+#:     leading the removals. W4b's three named losers are all repaid (`hello` truth 97.26 -> 100.00 and
+#:     drop20 49.15 -> 100.00, `Tom_Orlando` 100.00 =, `Pure_Mids` 68.42 -> 100.00).
+#:
+#: ITS PRICE, NAMED AND ACCEPTED (PLAN-alignment-v3, orchestrator decision 2026-10-01, which overruled the
+#: per-song clause of W6's own flip gate on the arithmetic above). None of it is a timed claim mode:
+#:   * `tfr-chosen` truth line ±500 85.29 -> 69.70 at gross 0 -> 0 — precision inside the band, not placement,
+#:     and its scored count moves 34 -> 33, so part of it is the caption-cue DENOMINATOR artefact W5's
+#:     text-hygiene item owns (two songs drop different non-lyric cues under different models);
+#:   * `Tom_Orlando` word ±300 -1.52 pt against W4b's -1.0 per-song bound;
+#:   * 8 song-modes at `time_text` / 6 at `run_align` gain a gross line, EVERY ONE in drop20/drop50/blind;
+#:   * at `run_align` only, `shape-of-you` drop50 publishes its word document (±500-of-text 34.78, 21 gross)
+#:     where the base bundle's LINE_SYNC rung rescued it (97.83, 0 gross): this bundle's blind decode starts
+#:     42% of that text's lines within 1 s, under the 0.5 `line_sync_min_agreement` its own `line_gate.py`
+#:     sweep fitted, so the rung refuses and attempt 1 stands. The share is not re-fitted here — 0.4 shows 6
+#:     gross lines on this bundle's right-text sweep (`lexical.CALIBRATED`, SHARE) — and the two tempo modes
+#:     at `run_align` are the same shape, text ±500 89.72 -> 88.69 / 88.75.
+#:
+#: WHAT IT COSTS A BOX: 4.3-8.6 s per song on MPS against the base bundle's 2.7-5.2, and a one-time weights
+#: download of 1.2 GB against 360 MB — once per BOX, since torchaudio caches under `$XDG_CACHE_HOME/torch/hub`
+#: and the image points that at the persisted `worker-cache` volume (`docker/worker.Dockerfile`), so the flip
+#: needs no image change. THE BASE BUNDLE STAYS REACHABLE BY NAME with its calibration row intact
+#: (`ENCORE_ALIGN_MODEL=WAV2VEC2_ASR_BASE_960H`), which is also how every pre-W5 row set is reproduced: it is
+#: the bundle the review baseline through W6 was measured on, `results/w6-base-*` is its row of record, and it
+#: was itself proved equivalent to the old `model=None` path on the corpus (W4b's control sweeps reproduce
+#: `results/w4-{time_text,run_align}.json` with every pooled and per-song delta 0.00 and every document digest
+#: unchanged) — which is what makes "only the name changed" true of the A/B above.
+DEFAULT_ALIGN_MODEL = "HUBERT_ASR_LARGE"
 
 
 def default_align_model(device: str) -> str:
@@ -104,10 +148,11 @@ def default_align_model(device: str) -> str:
     than in `Config`, because the device is resolved from what the box actually has (`__main__.device_for`),
     not from the environment.
 
-    THE TABLE IS EMPTY TODAY, so every device gets `DEFAULT_ALIGN_MODEL` and this reads like a constant. It
-    is kept a function because that is the only shape in which a measured per-device row can land (W4b's
-    HuBERT-XLarge-on-CUDA candidate is calibrated and waiting for a CUDA sweep, see
-    `ALIGN_MODELS_BY_DEVICE`), and because an unknown device must fall back rather than raise.
+    THE TABLE IS EMPTY TODAY — after W5's flip as before it — so every device gets `DEFAULT_ALIGN_MODEL` and
+    this reads like a constant. It is kept a function because that is the only shape in which a measured
+    per-device row can land (W4b's HuBERT-XLarge-on-CUDA candidate is calibrated and waiting for a CUDA sweep,
+    which would be a PROJECTION until someone runs it, see `ALIGN_MODELS_BY_DEVICE`), and because an unknown
+    device must fall back rather than raise.
     """
     return ALIGN_MODELS_BY_DEVICE.get(device, DEFAULT_ALIGN_MODEL)
 
@@ -239,7 +284,7 @@ def align_model_name(language: str, model: str | None = None) -> str:
     WHY A NAME AT ALL: every threshold read off an emission matrix is one MODEL's (the lexical lift's bands,
     `domain.lyrics.lexical.CALIBRATED`), and the bundle is picked per language rather than per release, so a
     German song silently uses a wav2vec2-XLSR fine-tune where the bands were fitted on English's
-    `WAV2VEC2_ASR_BASE_960H`. Carried on `Emissions.model` so the reader can tell.
+    `DEFAULT_ALIGN_MODEL`. Carried on `Emissions.model` so the reader can tell.
 
     `model` is the configured ENGLISH bundle (`ALIGN_MODELS_BY_DEVICE`, `ENCORE_ALIGN_MODEL`) and wins for
     `ENGLISH` only — see that constant. Every other language is read from whisperx's own tables, the way
@@ -375,8 +420,10 @@ class Emissions:
     #: The bundle these frames came from (`align_model_name`), for a reader that was CALIBRATED on one:
     #: `domain.lyrics.lexical.BANDS` is one model's, and `align_steps._measured_lift` will not read the
     #: lift as a verdict on another's. Defaulted so a fake and a bench cache written before the field
-    #: existed still construct: EMPTY means unnamed, which a calibrated reader treats as its own (the
-    #: shipped `emissions` always names one). It is also the VOCABULARY's identity — the ids in
+    #: existed still construct: EMPTY means unnamed, which `lexical.calibration` reads as the BASE bundle's
+    #: row because that is the bundle those matrices came from — NOT as the shipped default's, which has been
+    #: another bundle since W5's flip (the shipped `emissions` always names one). It is also the VOCABULARY's
+    #: identity — the ids in
     #: `dictionary` and the column order of `log_probs` are one bundle's — and so part of the cache key.
     model: str = ""
     #: CTC's blank column in THIS matrix. DEFAULTED TO 0 and read with `getattr` everywhere, so every

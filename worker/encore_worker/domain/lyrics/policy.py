@@ -32,11 +32,15 @@ carry 84% of the corpus's gross lines live.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from encore_worker.domain.lyrics.report import Engine, TimingReport
+
+#: A word for the purposes of comparing two texts: letters or digits, any script.
+_WORDS = re.compile(r"[^\W_]+", re.UNICODE)
 
 
 class Tier(StrEnum):
@@ -415,19 +419,121 @@ def improves(before: TimingReport, after: TimingReport, knob: Knob) -> bool:
             return before.claims_related is False and after.lines >= before.lines
 
 
-def order_pool(tiers: list[Tier]) -> list[int]:
+def order_pool(tiers: list[Tier], corroborated: list[bool] | None = None) -> list[int]:
     """Indices of `tiers`, in the order they should be attempted.
 
-    Stable within a tier, so the caller's own ranking (grading's argmax over candidates) survives; the
-    tiers themselves go CANDIDATE, then ASR, then MACHINE.
+    The tiers go CANDIDATE, then ASR, then MACHINE, and within a tier a CORROBORATED text goes first;
+    everything else is stable, so the caller's own ranking (grading's argmax over candidates) survives.
 
     WHY ASR SITS BEFORE MACHINE AND BOTH SIT AFTER CANDIDATES: a real lyrics sheet is the best answer
     when it is right, so it is tried first. But an ASR transcript cannot be the wrong song and cannot be
     misplaced in time, which makes it the RELIABLE fallback rather than the desperate one. YouTube's
     automatic track is the same kind of evidence, measured worse, so it comes last.
+
+    WHY CORROBORATION BREAKS THE TIE INSTEAD OF ARRIVAL ORDER (review M13). The candidate tier used to be
+    ordered by when the workflow happened to fetch it, which put the upload's AUTHORED CAPTION TRACK ahead
+    of every provider sheet unconditionally — and an SDH caption track is a transcript of a video, carrying
+    sound cues, speaker labels and the words as the subtitler heard them. Measured on Hello, the SDH text
+    published over a clean provider sheet. Two independent sources agreeing on the words is the strongest
+    evidence available WITHOUT the audio, and it is free: `corroboration` is a pure function of the texts.
+    INDEPENDENT is load-bearing in that sentence and is enforced by `witness_of`: two provider sheets are
+    one metadata query answered twice, so they do not corroborate each other (W5 review r1-correctness-4).
+
+    AND IT DOES NOT REACH THAT MEASURED CASE, which is the honest half of M13: this demotes a text NOTHING
+    in the pool agrees with, and Hello's SDH track agrees with a clean sheet of the same song — measured on
+    the corpus, `corroboration` returns True for BOTH of them (the hygiene-cleaned caption text, 63 lines,
+    against a re-wrapped sheet of its own sung lines, 32), so the tie falls back to arrival order and the
+    SDH text is still tried first on exactly the song the review measured. What separates two texts that
+    both look right is the audio, i.e. the ranking immediately below that is NOT built.
+
+    WHAT THIS IS NOT, and the gap is deliberate. The review's M13 asks for the pool to be ranked by
+    LEXICAL LIFT as well — the text's forced-path score against the audio, which W3 calibrated and which is
+    what makes "prefer the better text" safe rather than a guess. That ranking is NOT here: a lift needs an
+    emission matrix, and emissions are computed inside `time_text` per attempt, so ranking on it would
+    either pay an extra model pass per song before the first attempt or need an emissions cache in the step
+    layer. Both are a wave with its own measurement. Corroboration is the half that costs nothing, and the
+    lift still runs where it always did — as the per-attempt GATE that refuses a wrong text outright.
     """
     order = {Tier.CANDIDATE: 0, Tier.ASR: 1, Tier.MACHINE: 2}
-    return sorted(range(len(tiers)), key=lambda i: (order[tiers[i]], i))
+    backed = corroborated or [False] * len(tiers)
+    return sorted(range(len(tiers)), key=lambda i: (order[tiers[i]], not backed[i], i))
+
+
+#: Share of one text's distinct words the other must also hold before the two count as CORROBORATING each
+#: other. Deliberately coarse: two sheets of the same song differ by a chorus repeat, a transcriber's
+#: "'cause" against "cause", an ad-lib one of them wrote down — while two sheets of DIFFERENT songs share
+#: only the function words, which is well under half of either one's vocabulary.
+CORROBORATION_SHARE = 0.75
+
+
+def normalised_words(lines: Sequence[str]) -> str:
+    """A text's words, lowercased, punctuation-free and space-joined: the form two texts are compared in.
+
+    PURELY FOR IDENTITY AND OVERLAP, never for display. Digits are kept (they are sung) and everything that
+    is neither a letter nor a digit becomes a separator, so `don't` and `dont` do NOT normalise together —
+    the comparison is of words, and a deduplication that merged them would call two different transcriptions
+    one text.
+    """
+    return " ".join(_WORDS.findall(" ".join(lines).lower()))
+
+
+#: What `witness_of` calls every provider sheet, because they are one witness: `fetch_provider_lyrics` asks
+#: each provider the SAME `artist`/`track`, and LRCLIB is one of the upstreams lrcmux itself queries.
+PROVIDER_WITNESS = "providers"
+
+
+def witness_of(label: str) -> str:
+    """Which INDEPENDENT witness a text's label stands for — `corroboration`'s unit of evidence.
+
+    EVERY PROVIDER SHEET IS ONE WITNESS (W5 review r1-correctness-4 / r1-spec-12). The realistic way two
+    sheets agree and are both wrong is a metadata mismatch on the upload, or the right song's wrong
+    master: `align_steps.fetch_provider_lyrics` passes the same `artist`/`track` to every provider, its
+    dedup is exact equality on `normalised_words`, and LRCLIB is one of the sources lrcmux asks — so two
+    copies of one answer differing by a written-down ad-lib survive as two candidates and corroborate each
+    other. Counting them as two witnesses let a WRONG-SONG sheet rank ahead of the upload's own authored
+    caption track, which is alone in agreeing with the recording and so reads uncorroborated.
+
+    A CAPTION TRACK AND AN ASR TRANSCRIPT KEEP THEIR OWN IDENTITY, the authored and the machine track
+    included: a human subtitler of this video and a machine listening to this audio are different evidence
+    about the same recording, which is what "two independent sources" means here. So the whole label stands
+    for the witness everywhere except the providers, where the label names an upstream (`lrcmux:KuGou`) of
+    the one metadata query.
+    """
+    return label if label.split(":", 1)[0] in ("captions", "asr", "manual") else PROVIDER_WITNESS
+
+
+def corroboration(texts: Sequence[Sequence[str]], labels: Sequence[str]) -> list[bool]:
+    """For each text, whether a text from a DIFFERENT WITNESS agrees with it on the words.
+
+    Agreement is measured on DISTINCT words rather than on the line sequence, which is the point: two
+    sources of the same lyrics disagree about line breaks, chorus repeats and how many times an ad-lib was
+    written down, and a line-by-line comparison reads all of that as disagreement. The vocabulary is what
+    they should agree on, and the share is `CORROBORATION_SHARE` of the SMALLER vocabulary, so a sheet that
+    omits a verse still corroborates the one that has it.
+
+    `labels` is parallel to `texts` and is read through `witness_of`: AGREEMENT INSIDE ONE WITNESS IS NOT
+    EVIDENCE (W5 review r1-correctness-4 / r1-spec-12), because it can be one source reached twice rather
+    than two sources that agree. A pool of one — or a pool of one witness — is uncorroborated by definition,
+    which is correct: there is nothing independent to agree with.
+    """
+    if len(texts) != len(labels):  # pragma: no cover - a caller bug, not an input
+        raise ValueError("texts and labels must be parallel")
+    vocab = [frozenset(normalised_words(lines).split()) for lines in texts]
+    witnesses = [witness_of(label) for label in labels]
+    out: list[bool] = []
+    for index, words in enumerate(vocab):
+        agrees = False
+        for other_index, other in enumerate(vocab):
+            if other_index == index or not words or not other:
+                continue
+            if witnesses[other_index] == witnesses[index]:
+                continue
+            smaller = min(len(words), len(other))
+            if len(words & other) >= CORROBORATION_SHARE * smaller:
+                agrees = True
+                break
+        out.append(agrees)
+    return out
 
 
 def asr_is_mandatory(tiers: list[Tier]) -> bool:

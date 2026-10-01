@@ -1014,7 +1014,7 @@ def tv_lit(lines: Sequence[TvLine], pos: float, *, wipe_low: bool = False) -> Tv
 
 
 def highlight_seconds(
-    lines: Sequence[TvLine], truth: Sequence[tuple[float, float, int]]
+    lines: Sequence[TvLine], truth: Sequence[tuple[float, float, int]], *, wipe_low: bool = False
 ) -> tuple[float, float]:
     """(seconds the CORRECT word is lit, seconds some truth word is sung), exactly, with no time grid.
 
@@ -1039,13 +1039,15 @@ def highlight_seconds(
             continue
         length = points[i + 1] - points[i]
         sung += length
-        lit = tv_lit(lines, points[i])
+        lit = tv_lit(lines, points[i], wipe_low=wipe_low)
         if lit is not None and lit.truth == k:
             hit += length
     return hit, sung
 
 
-def score_highlight(song: Song, claims: Claims, doc: Sequence[DocLine]) -> tuple[float, float] | None:
+def score_highlight(
+    song: Song, claims: Claims, doc: Sequence[DocLine], *, wipe_low: bool = False
+) -> tuple[float, float] | None:
     """(hit, sung) seconds over the truth words of every line the claimed text contains.
 
     The denominator is the SUNG time of those words — not only of the lines that published: a line the
@@ -1065,6 +1067,18 @@ def score_highlight(song: Song, claims: Claims, doc: Sequence[DocLine]) -> tuple
     WHAT MEASURES THE POLICY INSTEAD, already on every row: `high` is how many lines the TV word-wipes,
     and `high_bad` / `high_gross` are how wrong those wipes are (`row_of`). Those three ARE the wipe's
     coverage and its precision, which is what review §3.7's reject-ifs are written in terms of.
+
+    AND THE SHIPPED TV HAS ITS OWN METRIC, NOT A SHARE OF THIS ONE: `wipe_low=True` here is what `row_of`
+    records as `highlight_wiped`, pooled by `highlight_metrics` and flattened as `highlight_wiped` (W6 review
+    r1-tests-20). NO RECORDED RUN CARRIES IT (W6 review r2-correctness-2): the eight W6 sweeps predate the
+    field by three hours, so every one of their 5,636 rows lacks it and `highlight_metrics` answers None for
+    them — the number exists as a computation and not yet as a measurement, and the first run that fills it
+    is the one that can be quoted. The split above is the argument for two metrics, not for one:
+    `high` / `high_bad` / `high_gross` are computed from LINE-START errors on `high`-graded lines, which is
+    not the wipe's question ("when the TV lights a word, is it the right one"), so the policy change had no
+    number of its own while the policy moved blind coverage 51.5% -> 33.0%. No gate reads the new metric —
+    re-baselining §3.5's and 6c's reject-ifs on a display policy is exactly what this function refuses — and
+    it costs one more pass over the same breakpoints.
     """
     if song.words is None:
         return None
@@ -1086,7 +1100,7 @@ def score_highlight(song: Song, claims: Claims, doc: Sequence[DocLine]) -> tuple
         for k in range(offsets[t], offsets[t + 1])
         if song.words[k].end > song.words[k].start
     ]
-    return highlight_seconds(tv_lines(paired), sung)
+    return highlight_seconds(tv_lines(paired), sung, wipe_low=wipe_low)
 
 
 # ── rows and the summary ──────────────────────────────────────────────────────────────────────────────
@@ -1133,6 +1147,10 @@ def row_of(
     errors, disagreements = score_lines(song, claims, shown) if published else ([], None)
     words = score_words(song, claims, shown)
     lit = score_highlight(song, claims, shown)
+    # THE SHIPPED TV's own reading, beside the alignment one (W6 review r1-tests-20): a `low` line renders as
+    # one text node and lights NO word (`tv_lit(wipe_low=True)`, `lyrics.ts` `wipesWords`), so this is the
+    # lit-word accuracy the room actually gets. Ungated, for the reason `score_highlight` gives.
+    wiped = score_highlight(song, claims, shown, wipe_low=True)
     return {
         "song": song.slug,
         "group": song.group,
@@ -1157,6 +1175,7 @@ def row_of(
             "final_end_errors": list(words.final_end_errors),
         },
         "highlight": None if lit is None else {"hit": lit[0], "sung": lit[1]},
+        "highlight_wiped": None if wiped is None else {"hit": wiped[0], "sung": wiped[1]},
         **_line_counts([(e.error, e.confidence) for e in errors]),
         **dict(extra or {}),
     }
@@ -1277,18 +1296,22 @@ def _end_metrics(prefix: str, errors: Sequence[float]) -> dict[str, Any]:
     return out
 
 
-def highlight_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+def highlight_metrics(rows: Sequence[Mapping[str, Any]], *, key: str = "highlight") -> dict[str, Any] | None:
     """The TV highlight, POOLED: correct-lit seconds over sung seconds across EVERY case.
 
     A case that published nothing lit nothing while its text was sung, so its sung seconds stay in the
     denominator (`unpublished` counts those cases) — "exactly what the room sees" holds per job, not just
     per published line.
+
+    `key` picks which of the two readings `row_of` records: `highlight` is the ALIGNMENT metric (every line
+    word-wiped, the question every gate since W0 is written in) and `highlight_wiped` is the SHIPPED TV's
+    (`score_highlight`'s docstring owns that split). A run written before the second existed carries None.
     """
-    carried = [r for r in rows if r.get("highlight")]
+    carried = [r for r in rows if r.get(key)]
     if not carried:
         return None
-    hit = sum(float(r["highlight"]["hit"]) for r in carried)
-    sung = sum(float(r["highlight"]["sung"]) for r in carried)
+    hit = sum(float(r[key]["hit"]) for r in carried)
+    sung = sum(float(r[key]["sung"]) for r in carried)
     return {
         "cases": len(carried),
         "unpublished": sum(1 for r in carried if r["outcome"] not in (PUBLISHED, LINE_SYNC)),
@@ -1411,6 +1434,7 @@ def group_entry(
         "lines": line_metrics(rows),
         "words": word_metrics(rows),
         "highlight": highlight_metrics(rows),
+        "highlight_wiped": highlight_metrics(rows, key="highlight_wiped"),
     }
     if "wrongtext" in parse_mode(mode):
         # An ERROR row is NOT a refused wrong text: counted as one, a helper that raises on some texts
@@ -1493,6 +1517,7 @@ _FLAT: tuple[tuple[str, str, str], ...] = (
     ("words", "final_end250_pct", "final_end_pm250"),
     ("words", "final_end_bias_ms", "final_end_bias_ms"),
     ("highlight", "pct", "highlight"),
+    ("highlight_wiped", "pct", "highlight_wiped"),
     ("wrongtext", "pass_rate_pct", "wrongtext_pass"),
     ("policy", "attempts", "attempts"),
     ("policy", "retried", "retried"),
@@ -1699,10 +1724,15 @@ def format_summary(summary: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> st
                 )
             lit = entry.get("highlight")
             if lit and group != ALL:
+                # The SHIPPED TV's reading sits beside the alignment one, never instead of it (W6 review
+                # r1-tests-20): the first is "when a word is lit, is it the right one", the second is what
+                # the room gets once `low` rows stop wiping. A run written before it carries None.
+                wiped = entry.get("highlight_wiped") or {}
                 out.append(
                     f"  {'':<8} highlight {_fmt(lit['pct'], 0, '.1f')}% of {lit['sung_sec']:.0f}s sung "
                     f"(TV semantics, {lit['cases']} cases"
                     + (f", {lit['unpublished']} published nothing)" if lit.get("unpublished") else ")")
+                    + (f"  | as shipped (no `low` wipe) {_fmt(wiped.get('pct'), 0, '.1f')}%" if wiped else "")
                 )
             ci = entry.get("ci") or {}
             # Word and highlight intervals print on Jamendo's row only, as their point estimates do.
@@ -1854,9 +1884,10 @@ def compact_row(row: Mapping[str, Any]) -> dict[str, Any]:
             "gross": sum(abs(e) > GROSS_SEC for e in errors),
             "bias_ms": round(statistics.median(errors) * 1000, 1) if errors else None,
         }
-    lit = row.get("highlight")
-    if lit:
-        out["highlight"] = {"hit": round(float(lit["hit"]), 2), "sung": round(float(lit["sung"]), 2)}
+    for key in ("highlight", "highlight_wiped"):
+        lit = row.get(key)
+        if lit:
+            out[key] = {"hit": round(float(lit["hit"]), 2), "sung": round(float(lit["sung"]), 2)}
     attempts = row.get("attempts")
     if attempts:
         out["attempts"] = [

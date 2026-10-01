@@ -71,6 +71,11 @@ class Candidate:
     has_windows: bool = False
     has_line_timings: bool = False
     has_own_line_timings: bool = False
+    #: ANOTHER TEXT IN THIS POOL AGREES WITH IT ON THE WORDS (review M13, `policy.corroboration`). Breaks
+    #: the tie WITHIN a tier, which used to be arrival order — and arrival order put the upload's SDH
+    #: caption track ahead of every provider sheet, measured publishing over a clean sheet on Hello. Not a
+    #: knob and not a gate: the lexical lift is still what refuses a wrong text, per attempt.
+    corroborated: bool = False
 
     def first_attempt(self, *, aligned_on_stem: bool) -> Attempt:
         """The starting search state for this text: nothing tried, its own properties declared."""
@@ -186,7 +191,7 @@ class Search:
     _retrying: Knob | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
-        self._order = order_pool([c.tier for c in self.pool])
+        self._order = order_pool([c.tier for c in self.pool], [c.corroborated for c in self.pool])
 
     # ── the decision trail ───────────────────────────────────────────────────────────────────────
 

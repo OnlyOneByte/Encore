@@ -18,10 +18,12 @@ import numpy as np
 import pytest
 import soundfile as sf
 
+from encore_worker.adapters.lrclib import parse_lrc
 from encore_worker.adapters.ports import InfraFault
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.document import Segment
 from encore_worker.domain.lyrics import lexical, measure
+from encore_worker.domain.lyrics.clean import clean_segments
 from encore_worker.domain.lyrics.generate import ONSET_LEAD_SEC
 from encore_worker.domain.lyrics.policy import Knob, Tier
 from encore_worker.domain.lyrics.report import Engine
@@ -29,8 +31,10 @@ from encore_worker.host.config import Config
 from encore_worker.protocol.vocabulary import Stage
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.api import NotOurJob
+from encore_worker.workflows import align
 from encore_worker.steps.records import (
     TIMING_LINE,
+    TIMING_WORD,
     AudioRef,
     JobRef,
     Refused,
@@ -793,6 +797,7 @@ async def test_the_rung_reads_the_same_band_a_recalibration_moves(
         mix_floor=1.0,
         mix_ok_from=2.0,
         line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
     )
     monkeypatch.setattr(lexical, "BANDS", recalibrated)
     got = await impl.time_text(line_sync(tmp_path, words, stem))
@@ -932,6 +937,7 @@ async def test_the_rung_gates_on_the_matrixs_own_row_and_not_the_shipped_one(
         mix_floor=1.0,
         mix_ok_from=2.0,
         line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
     )
     monkeypatch.setitem(lexical.CALIBRATED, other.model, other)
     stem, inner = hearing(tmp_path, monkeypatch)
@@ -974,6 +980,7 @@ async def test_the_rung_reads_the_agreement_share_off_the_matrixs_row_too(
         mix_floor=lexical.BANDS.mix_floor,
         mix_ok_from=lexical.BANDS.mix_ok_from,
         line_sync_min_agreement=0.1,
+        margin_floor_nats=10.0,
     )
     monkeypatch.setitem(lexical.CALIBRATED, lenient.model, lenient)
     named = tmp_path / "named"
@@ -1004,6 +1011,7 @@ async def test_a_line_sync_text_in_the_doubt_band_publishes_unvouched(
         mix_floor=0.15,
         mix_ok_from=1e3,
         line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
     )
     monkeypatch.setattr(lexical, "BANDS", doubting)
     reporter = Reporter()
@@ -1583,23 +1591,39 @@ async def test_the_provider_is_not_asked_without_both_artist_and_track(tmp_path:
     provider = FakeProvider([{"start": 0.0, "text": "x"}])
     impl = steps(tmp_path, providers=(provider,))
 
-    assert await impl.fetch_provider_lyrics(job(tmp_path, artist="a-ha"), audio(tmp_path)) is None
+    assert await impl.fetch_provider_lyrics(job(tmp_path, artist="a-ha"), audio(tmp_path)) == []
     assert provider.calls == [], "an incomplete lookup must not be attempted at all"
 
     got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a-ha", track="Take On Me"), audio(tmp_path))
-    assert got is not None and got.tier is Tier.CANDIDATE
+    assert [t.tier for t in got] == [Tier.CANDIDATE]
 
 
 async def test_unsynced_provider_lyrics_carry_no_line_timing(tmp_path: Path) -> None:
     """Which is what makes LINE_SYNC unavailable for them — there is nothing to fall back to."""
     impl = steps(tmp_path, providers=(FakeProvider([{"text": "a wall of text"}]),))
     got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
-    assert got is not None and got.has_line_timings is False
+    assert [t.timing for t in got] == [None]
+    assert [t.has_own_timings for t in got] == [False]
 
 
-async def test_a_provider_miss_is_none(tmp_path: Path) -> None:
+async def test_a_word_timed_provider_sheet_keeps_the_line_sync_rung(tmp_path: Path) -> None:
+    """W5 review r2-correctness-2. `clean_segments` rewrites word lists as TUPLES, so a provider that
+    returns word spans is labelled `TIMING_WORD` — and the rung must still be offered for it, because its
+    segments carry their lines' spans and the rung is the only fallback once its word timing cannot ship."""
+    cues = [
+        {"start": 1.0, "end": 2.0, "text": "aaa bbb", "words": [{"word": "aaa", "start": 1.0, "end": 1.5}]},
+        {"start": 2.0, "end": 3.0, "text": "ccc ddd", "words": [{"word": "ccc", "start": 2.0, "end": 2.5}]},
+    ]
+    impl = steps(tmp_path, providers=(FakeProvider(cues),))
+    got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
+    assert [t.timing for t in got] == [TIMING_WORD]
+    assert [t.has_own_timings for t in got] == [True]
+    assert align._candidate_of(got[0]).first_attempt(aligned_on_stem=True).can(Knob.LINE_SYNC)
+
+
+async def test_a_provider_miss_is_an_empty_pool(tmp_path: Path) -> None:
     impl = steps(tmp_path, providers=(FakeProvider([]),))
-    assert await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path)) is None
+    assert await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path)) == []
 
 
 # ── tiers ────────────────────────────────────────────────────────────────────────────────────────
@@ -1837,14 +1861,30 @@ LINE = ({"start": 0.0, "end": 2.0, "text": "hello"},)
 WORDS = ({"start": 0.0, "end": 2.0, "text": "hello", "words": [{"word": "hello", "start": 0.0, "end": 2.0}]},)
 
 
-async def test_the_first_provider_that_hits_wins(tmp_path: Path) -> None:
+async def test_every_provider_is_asked_even_after_one_hits(tmp_path: Path) -> None:
+    """Review M13: the first hit used to short-circuit the chain, and lrcmux is first, so LRCLIB was
+    queried only when lrcmux was UNREACHABLE — never when it merely answered with a worse sheet."""
     first = FakeChainProvider("mux", cues=LINE)
-    second = FakeChainProvider("direct", cues=LINE)
+    second = FakeChainProvider("direct", cues=({"start": 0.0, "end": 2.0, "text": "a different sheet"},))
     impl = steps(tmp_path, providers=(first, second))
 
     got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
-    assert got is not None and got.label == "mux"
-    assert second.calls == 0, "a hit must short-circuit the rest of the chain"
+    assert [t.label for t in got] == ["mux", "direct"]
+    assert second.calls == 1, "a hit must NOT short-circuit the rest of the chain"
+
+
+async def test_two_providers_returning_the_same_words_are_one_candidate(tmp_path: Path) -> None:
+    """LRCLIB is one of the sources lrcmux queries, so byte-identical answers are the common case. A
+    duplicate in the pool would spend a whole second attempt — emission pass included — on the same words.
+
+    Compared on the NORMALISED words, so punctuation and case do not read as a second opinion."""
+    first = FakeChainProvider("mux", cues=({"start": 0.0, "end": 2.0, "text": "Hello, world!"},))
+    second = FakeChainProvider("direct", cues=({"text": "hello world"},))
+    impl = steps(tmp_path, providers=(first, second))
+
+    got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
+    assert [t.label for t in got] == ["mux"], "the first provider to answer keeps the slot"
+    assert second.calls == 1, "it is still asked; only the duplicate text is dropped"
 
 
 async def test_a_miss_falls_through_to_the_next_provider(tmp_path: Path) -> None:
@@ -1853,7 +1893,7 @@ async def test_a_miss_falls_through_to_the_next_provider(tmp_path: Path) -> None
     impl = steps(tmp_path, providers=(empty, backup))
 
     got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
-    assert got is not None and got.label == "direct"
+    assert [t.label for t in got] == ["direct"]
 
 
 async def test_a_provider_that_raises_does_not_stop_the_chain(tmp_path: Path) -> None:
@@ -1864,7 +1904,7 @@ async def test_a_provider_that_raises_does_not_stop_the_chain(tmp_path: Path) ->
     impl = steps(tmp_path, providers=(broken, backup))
 
     got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
-    assert got is not None and got.label == "direct"
+    assert [t.label for t in got] == ["direct"]
     assert backup.calls == 1
 
 
@@ -1882,7 +1922,7 @@ async def test_every_provider_failing_is_reported_not_swallowed(tmp_path: Path) 
     )
     got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
 
-    assert got is None
+    assert got == []
     verdicts = [verdict for _state, verdict, _knob in reporter.states]
     assert "providers-down" in verdicts
 
@@ -1890,7 +1930,7 @@ async def test_every_provider_failing_is_reported_not_swallowed(tmp_path: Path) 
 async def test_an_ordinary_miss_is_not_reported_as_an_outage(tmp_path: Path) -> None:
     reporter = Reporter()
     impl = steps(tmp_path, reporter=reporter, providers=(FakeChainProvider("mux", cues=()),))
-    assert await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path)) is None
+    assert await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path)) == []
     assert "providers-down" not in [v for _s, v, _k in reporter.states]
 
 
@@ -1899,8 +1939,22 @@ async def test_word_level_lyrics_are_recorded_as_word_timed(tmp_path: Path) -> N
     sheet gets the knobs a word-timed sheet should have."""
     impl = steps(tmp_path, providers=(FakeChainProvider("mux", cues=WORDS),))
     got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
-    assert got is not None and got.timing == "word"
-    assert got.has_own_timings is True, "not ASR, so placement and RESHIFT apply"
+    assert [t.timing for t in got] == ["word"]
+    assert got[0].has_own_timings is True, "not ASR, so placement and RESHIFT apply"
+
+
+async def test_an_a2_sheets_word_onsets_make_it_a_word_timed_candidate(tmp_path: Path) -> None:
+    """W5 review r1-tests-17. `_has_word_spans` tested `isinstance(..., list)`, while EVERY provider payload
+    comes back through `clean_segments`, which rewrites the word list as a TUPLE on purpose (its own comment:
+    "A TUPLE, matching every other segment producer"). So the one shape L4's fix 3 was built for could never
+    be classified word-timed, and `parse_lrc`'s claim that reading A2 tags "makes the sheet a WORD-TIMED
+    candidate instead" was false for every enhanced sheet — as it would be for lrcmux's own word payload."""
+    cues = parse_lrc("[ar:x]\n[00:12.00] <00:12.10> aaa <00:12.44> bbb\n[00:15.00] <00:15.10> ccc ddd\n")
+    assert all(isinstance(cue.get("words"), tuple) for cue in cues), "the shape the list test could not see"
+    impl = steps(tmp_path, providers=(FakeChainProvider("direct", cues=cues),))
+
+    got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
+    assert [t.timing for t in got] == ["word"]
 
 
 async def test_a_multiplexers_upstream_reaches_the_label(tmp_path: Path) -> None:
@@ -1909,12 +1963,12 @@ async def test_a_multiplexers_upstream_reaches_the_label(tmp_path: Path) -> None
     provider.last_source = "KuGou"
     impl = steps(tmp_path, providers=(provider,))
     got = await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path))
-    assert got is not None and got.label == "mux:KuGou"
+    assert [t.label for t in got] == ["mux:KuGou"]
 
 
 async def test_no_providers_at_all_is_a_quiet_miss(tmp_path: Path) -> None:
     impl = steps(tmp_path, providers=())
-    assert await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path)) is None
+    assert await impl.fetch_provider_lyrics(job(tmp_path, artist="a", track="b"), audio(tmp_path)) == []
 
 
 # ── untimed text gets provisional spans before the aligner sees it ─────────────────────────────────
@@ -1976,3 +2030,100 @@ async def test_an_untimed_text_with_an_unknown_duration_is_left_alone(tmp_path: 
         )
     )
     assert "start" not in aligner.calls[0][0][0]
+
+
+# ── a pasted sheet gets the same text hygiene as a provider's (review M11) ────────────────────────
+
+GENIUS_PASTE = """[Verse 1]
+Tired of being what you want me to be
+Feeling so faithless, lost under the surface
+
+[Chorus]
+CHORUS: I've become so numb, I can't feel you there
+♪ Become so tired, so much more aware ♪
+
+[Instrumental]
+"""
+
+
+async def test_a_pasted_sheets_section_headers_do_not_become_words_to_sing(tmp_path: Path) -> None:
+    """THE ONE PATH THAT NEVER CLEANED. A stored candidate was cleaned by the adapter that fetched it, and
+    the bench's `headers` mode arrives through a port that calls `clean_segments` — so a person pasting from
+    a lyrics site was the only way a `[Verse 1]` reached the decode as a CTC target. Review M11 measured the
+    cost on Numb's own labels: 17 fake words with onsets up to ~2.5 s early, verdict COARSE."""
+    impl = steps(tmp_path)
+    got = await impl.fetch_pinned_text(job(tmp_path, pinnedText=GENIUS_PASTE))
+
+    assert got is not None
+    assert [s["text"] for s in got.segments] == [
+        "Tired of being what you want me to be",
+        "Feeling so faithless, lost under the surface",
+        "I've become so numb, I can't feel you there",
+        "Become so tired, so much more aware",
+    ]
+
+
+#: A transcript copied off a video: the sung lines wrapped in music notes by whoever typed them, the spoken
+#: ones not. Synthetic words — what matters is the SHAPE (4+ noted lines, and the noted share over
+#: `nonlyric.NOTED_SHARE`: 9 of 11 worded lines here, 0.818), which is `nonlyric.R3`'s precondition read off
+#: the WHOLE paste.
+VIDEO_TRANSCRIPT_PASTE = """♪ aaa bbb ccc ♪
+♪ ddd eee fff ♪
+ggg hhh iii, spoken
+♪ jjj kkk lll ♪
+♪ mmm nnn ooo ♪
+ppp qqq rrr, spoken
+♪ sss ttt uuu ♪
+♪ vvv www xxx ♪
+♪ yyy zzz aab ♪
+♪ bbc ccd dde ♪
+♪ eef ffg ggh ♪
+"""
+
+
+async def test_a_pasted_transcripts_unmarked_lines_are_not_judged_not_sung(tmp_path: Path) -> None:
+    """W5 review r1-correctness-8. H5's contract for this path is "the paste, verbatim", and `nonlyric`'s R3
+    is the one rule whose precondition is read off the WHOLE text rather than anchored in the line: with the
+    paste's noted share over `NOTED_SHARE`, every UNMARKED line of a person's own text was deleted, and the
+    only note emitted is for a paste that ends up completely empty. The anchored rules still apply."""
+    impl = steps(tmp_path)
+    got = await impl.fetch_pinned_text(job(tmp_path, pinnedText=VIDEO_TRANSCRIPT_PASTE))
+
+    assert got is not None
+    assert [s["text"] for s in got.segments] == [
+        "aaa bbb ccc",
+        "ddd eee fff",
+        "ggg hhh iii, spoken",
+        "jjj kkk lll",
+        "mmm nnn ooo",
+        "ppp qqq rrr, spoken",
+        "sss ttt uuu",
+        "vvv www xxx",
+        "yyy zzz aab",
+        "bbc ccd dde",
+        "eef ffg ggh",
+    ]
+    # The SAME text down a provider's path keeps R3, which is where the author's marking IS evidence.
+    served = clean_segments([{"text": line} for line in VIDEO_TRANSCRIPT_PASTE.splitlines()])
+    assert len(served) == 9, "R3 is not removed, only kept off the one text a person typed"
+
+
+async def test_a_pasted_header_is_still_dropped_and_a_label_still_stripped(tmp_path: Path) -> None:
+    """The anchored half of the same decision: leaving R3 out is not leaving the hygiene out."""
+    impl = steps(tmp_path)
+    got = await impl.fetch_pinned_text(job(tmp_path, pinnedText="[Chorus]\nCHORUS: aaa bbb\n♪♪\nccc ddd\n"))
+
+    assert got is not None
+    assert [s["text"] for s in got.segments] == ["aaa bbb", "ccc ddd"]
+
+
+async def test_a_paste_of_nothing_but_headers_is_an_unreadable_pin_not_an_empty_decode(
+    tmp_path: Path,
+) -> None:
+    """Which leaves the candidate the core holds exactly as it is, rather than re-timing no words at all."""
+    reporter = Reporter()
+    impl = steps(tmp_path, reporter=reporter)
+    got = await impl.fetch_pinned_text(job(tmp_path, pinnedText="[Chorus]\n[Outro]\n"))
+
+    assert got is None
+    assert "pin-unreadable" in [verdict for _state, verdict, _knob in reporter.states]

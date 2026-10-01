@@ -168,6 +168,70 @@ def test_the_word_list_is_cleaned_IN_LOCKSTEP_with_the_line() -> None:
     assert [w["start"] for w in words] == [7.9, 8.2, 8.5]
 
 
+def test_the_section_label_leaves_the_word_list_with_the_line() -> None:
+    """W5 review r1-correctness-7. R2 strips the label off the TEXT; `clean_line` has no label rule, so the
+    word rows kept it — three words on screen over a four-word stream, offset by one, with the ball's first
+    row spelling a word the published line does not contain. The exact state this module calls worse than
+    not cleaning at all."""
+    got = clean_segments(
+        [
+            {
+                "text": "CHORUS: aaa bbb ccc",
+                "start": 10.0,
+                "words": (
+                    {"word": "CHORUS:", "start": 10.0, "end": 10.3},
+                    {"word": "aaa", "start": 10.3, "end": 10.6},
+                    {"word": "bbb", "start": 10.6, "end": 10.9},
+                    {"word": "ccc", "start": 10.9, "end": 11.4},
+                ),
+            }
+        ]
+    )
+    assert got[0]["text"] == "aaa bbb ccc"
+    words = got[0]["words"]
+    assert isinstance(words, tuple)
+    assert [w["word"] for w in words] == ["aaa", "bbb", "ccc"]
+    assert [w["start"] for w in words] == [10.3, 10.6, 10.9], "the kept words keep their own timings"
+
+
+def test_a_label_split_over_two_word_rows_goes_whole() -> None:
+    """A provider that times its words does not promise a tokenisation, so the match is on the SPELLING."""
+    got = clean_segments(
+        [
+            {
+                "text": "Verse 2: aaa bbb",
+                "words": (
+                    {"word": "Verse", "start": 1.0},
+                    {"word": "2:", "start": 1.2},
+                    {"word": "aaa", "start": 1.4},
+                    {"word": "bbb", "start": 1.6},
+                ),
+            }
+        ]
+    )
+    assert got[0]["text"] == "aaa bbb"
+    words = got[0]["words"]
+    assert isinstance(words, tuple)
+    assert [w["word"] for w in words] == ["aaa", "bbb"]
+
+
+def test_word_rows_that_do_not_spell_the_removed_label_are_left_whole() -> None:
+    """Dropping by COUNT would delete a sung word here. Nothing is dropped instead, which is the behaviour
+    this had before the label strip existed at all."""
+    got = clean_segments(
+        [
+            {
+                "text": "CHORUS: aaa bbb",
+                "words": ({"word": "aaa", "start": 1.0}, {"word": "bbb", "start": 1.2}),
+            }
+        ]
+    )
+    assert got[0]["text"] == "aaa bbb"
+    words = got[0]["words"]
+    assert isinstance(words, tuple)
+    assert [w["word"] for w in words] == ["aaa", "bbb"]
+
+
 def test_a_word_list_of_pure_decoration_is_removed_rather_than_left_disagreeing() -> None:
     got = clean_segments([{"text": "♪ real words ♪", "words": ({"word": "♪", "start": 1.0},)}])
     assert got[0]["text"] == "real words"

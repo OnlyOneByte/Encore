@@ -1,0 +1,151 @@
+# W5 reject-if: what TEXT HYGIENE (REVIEW §3.8 — M11 headers, L3 syllabify, M12 rolling VTT, L4 parse_lrc,
+# M13 candidates, L5 duration retry) and the AD-LIB arm (§3.13) must hold, now that HuBERT-Large is the
+# default (PLAN-alignment-v3 W5). THE FLIP ITSELF IS `gates/w5-flip.yaml` — this file never re-reads it.
+#
+# ── WHAT THIS FILE IS READ ON, AND WHY THERE ARE TWO LEVELS WITH DIFFERENT MEANINGS ──────────────────────
+# `--level time_text` CANNOT MOVE AT ALL, and that is a HARNESS fact, not a claim about the change:
+#   `e2e.TimeTextDriver` sends the claims in RAW because the review reproduction depends on it, and the
+#   shipped `time_text` cleans nothing itself — only the text adapters call `clean_segments`. Measured: the
+#   W5 tree's `results/w5-time_text.json` is IDENTICAL TO THE DIGIT to `results/w6-hubert-time_text.json`
+#   on every metric of all 16 modes (gross, ±500, ±500-of-text, per-song, and every Jamendo word column
+#   including `aligned` 5378 and `interpolated` 311). THE WRITTEN DOCUMENT IS NOT identical, and the one
+#   difference is worth knowing before anyone reads this file as "W5 changed nothing": `doc_sha256` moves in
+#   exactly the 448 right-text cases (32 songs x 14 modes) while `onsets_sha256` is equal in all 1088, and
+#   digesting the documents says why — EVERY differing leaf is inside `syllables` (L3's Moby tier: 1336
+#   syllable texts, 703 ends, 681 starts, 22 words with a different syllable COUNT), with not one word start,
+#   word end or line onset moved. So READ AT `time_text` THIS FILE IS AN IDENTITY CHECK
+#   for SECTION 1 — it proves the hygiene did not leak into the decode, the repair ladder or the
+#   interpolator, which is the cheapest evidence that exists for that — while SECTION 2 IS INAPPLICABLE
+#   THERE and fails by construction (`headers.unsung` 222, `extraverse` 184, `credit` 28: the raw claim text
+#   still carries the injected headers, because nothing cleaned it). The recorded `time_text` reading is
+#   36/39 with exactly those three named; a tolerance was NOT widened to hide it, because the number that
+#   would be hidden is the one the wave exists to move. (**37/40** since W5 review r1-spec-13 split the
+#   truth-±500 clause in two — see section 1 — with the same three named failures and nothing else moved.)
+# `--level run_align` IS WHERE THE HYGIENE LIVES: `e2e.served_claims` cleans what the ports serve, exactly
+#   as `cli.py` / `lrclib.py` / lrcmux do in production. Every number section 2 exists for is here, and the
+#   whole file reads **39/40** there: everything passes except `w5-hygiene-truth-pm500-plan-bar`, which is the
+#   PLAN's own reject-if (truth ±500 not down more than 0.3 pt) against a measured -0.50. That FAIL is
+#   deliberate and is explained where it lives, in section 1 — the cost is itemised and awaits either an owner
+#   waiver or the `in_text` denominator rebase, and widening the literal to hide it is what r1-spec-13 found.
+# BASE (`base.`) = `results/w6-hubert-run_align.json` — the SAME bundle, one tree earlier (the W6 round-2
+#   rows, code `622288017e9d268a`), so every delta below is the hygiene and nothing else.
+# TWO QUESTIONS THAT NEED A DIFFERENT BASE LIVE IN THEIR OWN FILES, one base each, the way every other gate
+#   file here is read: `gates/w5-denominator.yaml` (the caption-cue denominator artefact, which needs the
+#   BASE BUNDLE measured on THIS tree) and `gates/w5-adlibs.yaml` (the §3.13 arm against the default).
+#
+#   # the hygiene's price, at the level that has one
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock \
+#       --compare ../docs/benchmarks/forced-alignment/results/w6-hubert-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w5.yaml
+#   # the section-1 identity check: the same command at --level time_text against w6-hubert-time_text.json
+#   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+
+# ── 1. MUST: TEXT HYGIENE COSTS NO TIMING ─────────────────────────────────────────────────────────────────
+# The reject-if the PLAN set: no mode's pooled gross up, Jamendo words ±100/±300 not down, truth ±500 not
+# down more than 0.3 pt. Measured at `run_align` against `results/w6-hubert-run_align.json`: every Jamendo
+# word and highlight column is IDENTICAL to the digit (85.46 / 97.16 / 71.1 ms / 37.5 ms / 80.34 / 60.93 /
+# 81.40 / 98.15), because no Jamendo song carries a caption cue or a `CHORUS:` label; pooled gross is equal
+# in all twelve timed claim modes at 0 and DOWN in the two degraded ones (drop50 91 -> 82, blind 67 -> 61).
+w5-hygiene-jamendo-word-pm100: truth.jamendo.word_pm100 >= base.truth.jamendo.word_pm100
+w5-hygiene-jamendo-word-pm300: truth.jamendo.word_pm300 >= base.truth.jamendo.word_pm300
+w5-hygiene-jamendo-word-aae: truth.jamendo.word_aae_ms <= base.truth.jamendo.word_aae_ms
+w5-hygiene-jamendo-word-end-pm100: truth.jamendo.end_pm100 >= base.truth.jamendo.end_pm100
+w5-hygiene-jamendo-highlight: truth.jamendo.highlight >= base.truth.jamendo.highlight
+w5-hygiene-jamendo-pm500: truth.jamendo.pm500 >= base.truth.jamendo.pm500
+# ONE GATE PER MODE (`gates/w4b.yaml` review r2 spec-9: a sum does not rise whenever one of its terms does).
+w5-hygiene-gross-not-up-truth: truth.gross <= base.truth.gross
+w5-hygiene-gross-not-up-jit: mode("jit").gross <= base.mode("jit").gross
+w5-hygiene-gross-not-up-off05: off05.gross <= base.off05.gross
+w5-hygiene-gross-not-up-off15: off15.gross <= base.off15.gross
+w5-hygiene-gross-not-up-off3: off3.gross <= base.off3.gross
+w5-hygiene-gross-not-up-offm1: offm1.gross <= base.offm1.gross
+w5-hygiene-gross-not-up-tempo098: tempo098.gross <= base.tempo098.gross
+w5-hygiene-gross-not-up-tempo102: tempo102.gross <= base.tempo102.gross
+w5-hygiene-gross-not-up-drop20: drop20.gross <= base.drop20.gross
+w5-hygiene-gross-not-up-drop50: drop50.gross <= base.drop50.gross
+w5-hygiene-gross-not-up-extraverse: extraverse.gross <= base.extraverse.gross
+w5-hygiene-gross-not-up-headers: headers.gross <= base.headers.gross
+w5-hygiene-gross-not-up-credit: credit.gross <= base.credit.gross
+w5-hygiene-gross-not-up-blind: blind.gross <= base.blind.gross
+# No song may gain a gross line in a TIMED CLAIM mode — the absolute half, which cleaning a text cannot be
+# allowed to spend. Measured 0 at both levels. (`blind` and the drop modes are bounded below instead: the
+# hygiene REMOVES gross lines there — `bohemian-rhapsody` blind 5 -> 1, `hello` 6 -> 3 — while adding one
+# each on `bad-guy` and `feel-my-heart`, whose remaining text is shorter.)
+w5-hygiene-no-song-gains-gross-in-any-claim-mode: count(truth.song.gross_up) + count(mode("jit").song.gross_up) + count(off05.song.gross_up) + count(off15.song.gross_up) + count(off3.song.gross_up) + count(offm1.song.gross_up) + count(tempo098.song.gross_up) + count(tempo102.song.gross_up) + count(drop20.song.gross_up) + count(extraverse.song.gross_up) + count(headers.song.gross_up) + count(credit.song.gross_up) == 0
+w5-hygiene-at-most-two-songs-gain-gross-in-degraded-modes: count(drop50.song.gross_up) + count(blind.song.gross_up) <= 2
+# `high_gross` — a line the TV WIPES more than 2 s off — stays 0 in all thirteen timed claim modes.
+w5-hygiene-high-gross-zero-claim-modes: truth.high_gross + mode("jit").high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross == 0
+# THE ±500 COST IS BOUNDED AND ITEMISED rather than asserted to be zero, because it is NOT zero: pooled
+# truth ±500 90.95 -> 90.45 (-0.50) at `run_align`, and line by line the whole of it is two effects with
+# names. (a) `numb`: M11 strips `CHORUS:` off 17 of its 35 lines and NOTHING ELSE MOVES — no unlabelled line
+# of that document changes start at all — but 16 of those 17 move, not 17, and one of them moves EARLIER:
+# **-0.24..+1.23 s, median +0.60**, with line[18] not moving (W5 review r1-spec-14 re-read the two committed
+# documents the gate itself names, `_runs/w5-ra` against `_runs/w6r2-hubert-ra`, same bundle; the earlier
+# wording "exactly those 17, all LATER, +0.17..+1.23" is wrong in those two ways, and "all in one direction"
+# was part of what argued the shift is a bias). The movement lands onto the +0.59 s bias its OTHER 18 lines
+# already had, because that song's YouTube caption truth leads the sung audio and the label's characters were
+# absorbing the lead-in. ±1 s is unchanged at 35/35 and gross stays 0, which is what makes it a bias and not a
+# placement error. (b) seven songs serve fewer lines, so `scored` falls with the precision unchanged (`hello`
+# 72/72 -> 63/63 = 100.00 both sides). Judged on ±1 s of text, which absorbs (a), the drop is 97.67 -> 96.08.
+#
+# AND THE PLAN'S BAR IS EXCEEDED, SO THIS FILE RECORDS A FAIL RATHER THAN A WIDER BOUND (W5 review r1-spec-13).
+# The reject-if at the top of this section says "truth ±500 not down more than 0.3 pt"; the measurement is
+# -0.50. A single clause written at -0.6 made the file read 39/39 while its own stated bar was broken, and only
+# the owner can waive a reject-if — a fix agent widening the literal is the silent default-on the PLAN's hard
+# rules forbid. So BOTH are here: `-plan-bar` is the reject-if verbatim and FAILS by 0.20 pt, and
+# `-itemised-cost` is the ceiling of the two named effects above, so a regression BEYOND them still trips a
+# second gate. WHAT WOULD CLOSE IT, and neither is this file's to take: an explicit owner waiver naming the two
+# causes (the shape W2 took for §3.2/§3.11), or the `in_text` denominator rebase the hygiene left open — the
+# harness still counts the 34 removed caption-cue TRUTH lines, so part of this -0.50 is a denominator the
+# published document never asked for (`hello` truth text ±500 97.30 -> 85.14 with no timing having moved).
+w5-hygiene-truth-pm500-plan-bar: truth.pm500 >= base.truth.pm500 - 0.3
+w5-hygiene-truth-pm500-itemised-cost: truth.pm500 >= base.truth.pm500 - 0.6
+w5-hygiene-truth-pm1000-bounded: truth.pm1000 >= base.truth.pm1000 - 0.3
+w5-hygiene-no-song-loses-pm1000: min_song_delta(truth.pm1000) >= -5.0
+
+# ── 2. MUST: WHAT THE HYGIENE IS FOR — the non-lyric lines stop being PUBLISHED AS LYRICS ─────────────────
+# `unsung` counts published lines that are no truth line: an injected header, a credit row, an extra verse,
+# a caption cue. No ±N metric can see them (they are never scored), so this is the only place M11 shows up
+# as a number. Measured at `run_align`, against the same bundle one tree earlier:
+#   `headers` 224 -> **0** (every injected `[Chorus]` / `CHORUS:` / `[Verse 1: Eminem]` gone, on 32 songs),
+#   `extraverse` 184 -> 148, `credit` 28 -> 21; and 0 stays 0 in `truth` and `blind`.
+# W4 assigned `unsung-not-up-{headers,extraverse,credit}` to this wave (PLAN status log 2026-09-29, (b)):
+# they read 0 at BOTH levels here, and these three absolutes are the stronger statement of the same thing.
+w5-headers-publishes-no-injected-header: headers.unsung == 0
+w5-extraverse-unsung-down: extraverse.unsung <= base.extraverse.unsung - 30
+w5-credit-unsung-down: credit.unsung <= base.credit.unsung - 5
+w5-unsung-stays-zero-truth: truth.unsung == 0
+w5-unsung-stays-zero-blind: blind.unsung == 0
+# AND NO SONG MAY LOSE ITS DOCUMENT FOR IT. Cleaning a text must not turn a published song into a refusal:
+# 32 of 32 commit in all 14 right-text modes except drop50, where 31 do on both sides.
+w5-every-song-commits-at-truth: truth.published + truth.line_sync == 32
+w5-every-song-commits-at-headers: headers.published + headers.line_sync == 32
+w5-every-song-commits-at-blind: blind.published + blind.line_sync == 32
+w5-commitments-not-down-drop50: drop50.published + drop50.line_sync >= base.drop50.published + base.drop50.line_sync
+
+# ── 3. MUST: WRONG-TEXT PROTECTION IS NOT WEAKENED BY M13's CANDIDATE POOL ────────────────────────────────
+# M13 made every provider a candidate and ordered the CANDIDATE tier by corroboration. The bound the PLAN
+# set: wrongtext <= 1/320 at `time_text`, 0/320 at `run_align`, ownclock 0/320, lines 0/640. MEASURED 0 IN
+# ALL FOUR, and the absolute is writable because HuBERT-L's stem floor clears the wrong population by
+# +0.2306 (`lexical.CALIBRATED`, STEM; `gates/w5-flip.yaml` section 1 argues the same zero).
+# HOW MANY TEXTS THE NEW RANKING CHANGED THE CHOICE OF: **0 of 1088**, and the reason is that the bench
+# cannot see M13 at all — every case has exactly ONE distinct candidate text (`run_align` serves either a
+# caption track or a provider sheet per case, never both), `published_label` is unchanged in all 1088, and
+# the 10 cases whose ATTEMPT COUNT changed are LINE_SYNC-to-word conversions (9 `headers` + `hello` drop50),
+# not a different text. So these gates hold M13 to doing no HARM; they do not credit it with doing good.
+w5-wrongtext-none-of-320: mode("wrongtext").wrongtext_pass == 0
+w5-ownclock-none-of-320: mode("wrongtext+ownclock").wrongtext_pass == 0
+w5-wrongtext-commits-nothing: mode("wrongtext").published + mode("wrongtext").line_sync + mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+
+# ── NON-VACUITY ───────────────────────────────────────────────────────────────────────────────────────────
+# 38 gates plus the built-in no-ERROR-rows. Readings stored in each `results/w5-*.json` `meta.gates`:
+#   `results/w5-run_align.json` against `results/w6-hubert-run_align.json` (the hygiene's own read), and
+#   `results/w5-time_text.json` against `results/w6-hubert-time_text.json` (the identity check).
+
+# THESE GATES BITE. Read on the W6 rows — the tree BEFORE the hygiene — section 2's five absolutes fail
+# (`headers.unsung` 224, `extraverse` 184, `credit` 28 against their bounds), which is the whole wave's
+# work read as a number. Read with the comparison REVERSED (the W6 row as the run, this tree as the base),
+# section 1's ±500 bounds pass and section 2's fail, i.e. the file is directional, which a ratchet must be.

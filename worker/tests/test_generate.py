@@ -337,7 +337,7 @@ def test_trimmed_keeps_every_onset_before_the_boundary_and_re_fits_only_the_tail
     from encore_worker.domain.lyrics.generate import remapped, trimmed
 
     line = a_line(("a", 1.0, 2.0), ("b", 2.0, 3.0), ("c", 3.0, 5.0), start=1.0, end=5.0)
-    got = trimmed(line, 2.5)
+    got = trimmed(line, 2.5, frame_sec=0.02)
     assert got is not None
     assert (got.start, got.end) == (1.0, 2.5)
     assert (got.text, got.index, got.score) == (line.text, line.index, line.score)
@@ -356,7 +356,7 @@ def test_trimmed_never_moves_the_first_onset_so_it_cannot_invert_against_its_pre
     from encore_worker.domain.lyrics.generate import remapped, trimmed
 
     line = a_line(("a", 4.0, 6.0), ("b", 6.0, 9.0), start=3.0, end=9.0)
-    got = trimmed(line, 4.5)
+    got = trimmed(line, 4.5, frame_sec=0.02)
     assert got is not None and got.words[0].start == 4.0
     assert min(w.start for w in got.words) == 4.0
     assert got.words[1].start == pytest.approx(4.2), "the tail moves, as trimming must"
@@ -372,10 +372,46 @@ def test_trimmed_refuses_a_line_no_word_of_which_starts_before_the_boundary() ->
     from encore_worker.domain.lyrics.generate import trimmed
 
     line = a_line(("a", 5.0, 7.0), ("b", 7.0, 9.0), start=1.0, end=9.0)
-    assert trimmed(line, 4.0) is None
-    assert trimmed(line, 5.0) is None, "a word starting exactly AT the boundary is not before it"
-    assert trimmed(line, 5.5) is not None
-    assert trimmed(a_line(start=1.0, end=9.0), 4.0) is None, "and a wordless line has nothing to keep"
+    assert trimmed(line, 4.0, frame_sec=0.02) is None
+    assert trimmed(line, 5.0, frame_sec=0.02) is None, (
+        "a word starting exactly AT the boundary is not before it"
+    )
+    assert trimmed(line, 5.5, frame_sec=0.02) is not None
+    assert trimmed(a_line(start=1.0, end=9.0), 4.0, frame_sec=0.02) is None, (
+        "and a wordless line has nothing to keep"
+    )
+
+
+def test_trimmed_walks_the_anchor_back_rather_than_collapsing_the_tail_into_a_millisecond() -> None:
+    """W6 review r2-spec-9. The boundary a hair past a word start is the shape: with 19.999 as the anchor the
+    three words after it were published at 19.99920 / 19.99945 / 19.99980, four words inside 0.8 ms — none of
+    them liftable by the TV (`start <= pos < end`) and none within a decoder frame of a measurement. The
+    anchor walks back to the last word whose tail can hold one frame per word still to be placed, which here
+    is the first word, and the two documented properties survive it exactly."""
+    from encore_worker.domain.lyrics.generate import trimmed
+
+    line = a_line(
+        ("a", 10.0, 19.999),
+        ("b", 19.999, 20.4),
+        ("c", 20.4, 20.9),
+        ("d", 20.9, 21.6),
+        ("e", 21.6, 22.0),
+        start=10.0,
+        end=22.0,
+    )
+    got = trimmed(line, 20.0, frame_sec=0.02)
+    assert got is not None and got.end == 20.0
+    starts = [w.start for w in got.words]
+    assert starts[0] == 10.0, "the FIRST onset never moves, whichever word the anchor is"
+    assert all(b >= a for a, b in zip(starts, starts[1:], strict=False)), "and the map stays monotone"
+    assert all(b - a >= 0.02 for a, b in zip(starts, starts[1:], strict=False)), (
+        f"every word the walk re-fits keeps a decoder frame: {starts}"
+    )
+    assert starts == pytest.approx([10.0, 18.3325, 18.6666667, 19.0833333, 19.6666667])
+    # The walk stops as soon as the tail has room, so a boundary with room keeps the deeper anchor: here 'c'
+    # is the last word starting before 20.5, and two words in 0.1 s clears 2 x 20 ms.
+    deep = trimmed(line, 20.5, frame_sec=0.02)
+    assert deep is not None and [w.start for w in deep.words][:3] == pytest.approx([10.0, 19.999, 20.4])
 
 
 def test_trimmed_carries_syllables_with_their_words() -> None:
@@ -398,7 +434,7 @@ def test_trimmed_carries_syllables_with_their_words() -> None:
         score=-0.5,
         index=0,
     )
-    got = trimmed(line, 2.5)
+    got = trimmed(line, 2.5, frame_sec=0.02)
     assert got is not None
     # 'hello' IS the anchor here (the only word starting before 2.5), so its own onset is pinned and
     # everything after it — its syllable boundaries included — is re-fitted by the same map as the tail.

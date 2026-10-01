@@ -65,8 +65,18 @@ class DbosAlignSteps:
         result: TextRef | None = await self._captions(job, automatic=automatic)
         return result
 
-    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> TextRef | None:
-        result: TextRef | None = await self._provider(job, audio)
+    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> list[TextRef]:
+        # A CHECKPOINT WRITTEN BEFORE REVIEW M13 HOLDS `TextRef | None`, NOT A LIST (W5 review
+        # r1-correctness-3), and this step is checkpointed: a workflow resumed or forked across the upgrade
+        # REPLAYS the recorded value instead of calling the impl. `_acquire_texts` then splats it, and
+        # `*TextRef(...)` / `*None` raise `TypeError` in the workflow BODY — past every retry, where no step
+        # declines it. Normalised here, at the one place a replay enters the process, which is where
+        # `records.restore_appended` puts the same rule for a record that gained a field.
+        result: list[TextRef] | TextRef | None = await self._provider(job, audio)
+        if result is None:
+            return []
+        if isinstance(result, TextRef):
+            return [result]
         return result
 
     async def fetch_pinned_text(self, job: JobRef) -> TextRef | None:

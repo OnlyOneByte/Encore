@@ -4,6 +4,20 @@
 # `gates/w4b-linesep-generate.yaml` and is the cheap half; run it FIRST, because an arm that cannot move a
 # blind decode has nothing to prove here.
 #
+# ── RE-POINTED BY W5's FLIP (2026-10-01), AND THE ADVICE BELOW INVERTS (W5 review r1-correctness-9) ───────
+# `ml.DEFAULT_ALIGN_MODEL` is `HUBERT_ASR_LARGE` since W5 — the orchestrator took the flip after W6's clamp fix
+# reversed `gates/w4b.yaml` to 28/30 — so an absent `--model` NO LONGER RESOLVES TO THE BASE BUNDLE, and every
+# present-tense sentence in this header that says it does is W4b's record rather than this tree's. Concretely:
+#   * "IF THE BUDGET ONLY BUYS ONE MODEL, it is the one production loads" now means CELLS C AND D
+#     (`--model HUBERT_ASR_LARGE`, which is also what a `--model`-less run resolves to). Cells A and B are the
+#     BASE bundle, which nothing ships; they stay the comparable-with-the-review pair and nothing else.
+#   * "the bundle it would ship under is the base one" was true when the run below was taken and is now false.
+#     The arm is still DEFAULT-OFF, so no shipped number depends on this — what depends on it is which cell a
+#     budget-limited wave measures, which is exactly the stale-default error this note exists to stop.
+#   * Every command below that omits `--model` must spell the bundle out on BOTH sides of its pair, or the
+#     control and the arm are measured on different bundles.
+# NOTHING BELOW IS RE-PRICED: the recorded 14/22 is cells A/B on the base bundle, and it stays that.
+#
 # THE FACTORIAL, model × separator, four cells, ONE AT A TIME. This is the expensive half — a full sweep is
 # 32 songs × 16 modes and the base model takes ~12 min of it, HuBERT-L about 2-3x that, so the four cells are
 # THE BENCH RUNNER'S and not a fix agent's:

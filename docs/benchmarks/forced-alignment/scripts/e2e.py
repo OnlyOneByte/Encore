@@ -45,8 +45,9 @@ TWO HARNESS-ONLY SEAMS, neither of which changes what the shipped code computes:
 
   1. `BenchAligner` subclasses the shipped `WhisperXAligner`: `--model` is the bundle the SHIPPED adapter
      takes as an argument (W4b 6b's `ENCORE_ALIGN_MODEL`, which `main` reads when `--model` is absent), so an
-     unnamed run resolves to this device's shipped default exactly as `ml.build_aligner` resolves it — the
-     BASE bundle on every device today, W4b's sweep having rejected the HuBERT flip as a default — and a
+     unnamed run resolves to this device's shipped default exactly as `ml.build_aligner` resolves it —
+     `HUBERT_ASR_LARGE` on every device since W5 flipped it, so every `--model`-less row from W5 on is a
+     HuBERT-Large row and a pre-W5 one is the base bundle's (`default_model` carries the dates) — and a
      candidate bundle is named on the command line. `emissions()` is wrapped by a DISK cache under
      `$ENCORE_BENCH_ROOT/_emissions` (see `e2e_lib.EmissionStore` for the key; its model part is a digest
      of the weights the aligner actually loaded). A cold full sweep spends most of its time in the model
@@ -119,7 +120,7 @@ from encore_worker.adapters import ml, ports  # noqa: E402
 from encore_worker.adapters.ml import Emissions, WhisperXAligner  # noqa: E402
 from encore_worker.artifacts import keys  # noqa: E402
 from encore_worker.domain.lyrics import lexical  # noqa: E402
-from encore_worker.domain.lyrics.clean import clean_line, clean_segments  # noqa: E402
+from encore_worker.domain.lyrics.clean import clean_indexed, clean_segments  # noqa: E402
 from encore_worker.domain.lyrics.policy import Tier  # noqa: E402
 from encore_worker.host.config import Config, ConfigError  # noqa: E402
 from encore_worker.protocol.vocabulary import Stage, SyncMode  # noqa: E402
@@ -286,14 +287,21 @@ def default_model(language: str, device: str = "cpu") -> str:
     worker whose `ENCORE_ALIGN_MODEL` is unset, because the harness is built the way the host builds its
     aligner and a default the bench did not follow would measure a configuration nobody ships.
     WHICH BUNDLE THAT IS TODAY:
-    `WAV2VEC2_ASR_BASE_960H` on cpu, mps AND cuda — W4b 6b made the bundle a setting and its corpus sweep then
-    REJECTED the HuBERT-Large flip as a default (`gates/w4b.yaml`, `gates/w4b-hubert.yaml`), so
-    `ml.ALIGN_MODELS_BY_DEVICE` is empty and the per-device mechanism is kept for the row a CUDA sweep would
-    earn. This docstring said "HuBERT-Large, XLarge on CUDA" until W4b review r1, which is what a later wave
-    would have read an unnamed run as having loaded. Every other language keeps whisperx's own table, the way
-    `ml.align_model_name` reads it. To measure ANOTHER bundle — the HuBERT candidates, or one under
-    recalibration — name it: `--model HUBERT_ASR_LARGE`, or set `ENCORE_ALIGN_MODEL`, which `main` now honours
-    the way the worker does (review r1: it was recorded and not loaded).
+    `HUBERT_ASR_LARGE` on cpu, mps AND cuda — W5 FLIPPED IT (`ml.DEFAULT_ALIGN_MODEL` carries the measurement;
+    W4b 6b made the bundle a setting and its sweep rejected this flip, W6 found the rejection's cause to be
+    `_clamped_v2`'s left floor rather than the decode, and W5 took it on `results/w6-hubert-*` against
+    `results/w6-base-*`). `ml.ALIGN_MODELS_BY_DEVICE` is still empty and the per-device mechanism is kept
+    for the row a CUDA sweep would earn.
+    SO EVERY `--model`-LESS RUN FROM W5 ON IS A HuBERT-LARGE RUN, which is the one thing a reader of an old
+    recipe must not get wrong: the commands in `README.md` and in `gates/w*.yaml` that say "the default" meant
+    the BASE bundle before this wave, and reproducing a pre-W5 row now needs
+    `--model WAV2VEC2_ASR_BASE_960H` spelled out. (This docstring said "HuBERT-Large, XLarge on CUDA" once
+    before — in W4b, before its bench verdict, which is what a later wave would have read an unnamed run as
+    having loaded. It is true now because a sweep said so, and the base bundle is the one named explicitly.)
+    Every other language keeps whisperx's own table, the way `ml.align_model_name` reads it. To measure
+    bundle — the base bundle, XLarge, or one under recalibration — name it: `--model WAV2VEC2_ASR_BASE_960H`,
+    or set `ENCORE_ALIGN_MODEL`, which `main` honours the way the worker does (W4b review r1: it was recorded
+    and not loaded).
     """
     if language == ml.ENGLISH:
         return ml.default_align_model(device)
@@ -447,8 +455,8 @@ class BenchAligner(WhisperXAligner):
 
     `--model` IS NOT A SEAM ANY MORE (W4b): the shipped adapter takes the bundle as an argument now (review
     §3 item 6b's `ENCORE_ALIGN_MODEL`), so the override is simply the argument, resolved through
-    `ml.default_align_model` when absent exactly as the factory resolves it — the BASE bundle on every device
-    today, W4b's own sweep having rejected the HuBERT flip as a default. The subclass used to re-implement
+    `ml.default_align_model` when absent exactly as the factory resolves it — `HUBERT_ASR_LARGE` on every
+    device since W5's flip, the base bundle before it (`default_model`). The subclass used to re-implement
     `_aligner` and `_bundle_name` to pass `model_name=`, which is how a harness ends up loading one model and
     naming another; `main` resolves `ENCORE_ALIGN_MODEL` into this argument (`resolve_bundle`) for the same
     reason — until W4b review r1 the knob was recorded in `run.json` and never loaded.
@@ -623,18 +631,23 @@ def served_claims(claims: lib.Claims) -> tuple[tuple[Segment, ...], tuple[tuple[
     Every text adapter returns `clean_segments(...)` (yt-dlp captions `cli.py`, LRCLIB, lrcmux), so the
     `run_align` ports do too: text-hygiene work in `clean.py` (W5) must reach the scores. Measured on the
     corpus's truth: `clean_line` changes 660 of 1760 lines (636 YouTube lines lose `♪`; no Jamendo line
-    changes its word count) and drops 14 — believer 1, shape-of-you 1, bad-guy 10, tfr-chosen 2. Dropping
-    RENUMBERS the request, so each kept segment's claim index is returned for identity pairing.
+    changes its word count) and the pipeline drops **48** of 1760 — 14 for carrying no word at all
+    (believer 1, shape-of-you 1, bad-guy 10, tfr-chosen 2) and **34 judged NON-LYRIC by W5's anchored
+    rules** (`domain/lyrics/nonlyric.py`: hello 11, bohemian-rhapsody 9, feel-my-heart 5, bad-guy 4,
+    shape-of-you 3, rap-god 1, tfr-chosen 1), which is the fix for the caption-cue DENOMINATOR artefact —
+    those 34 used to be dropped (or not) by the ACOUSTIC never-sung rule, differently per model, so a
+    song's scored line count moved with the acoustic bundle. Numb keeps all 35 of its lines and loses the
+    `CHORUS:` label off 17 of them (review M11). Dropping RENUMBERS the request, so each kept segment's
+    claim index is returned for identity pairing.
+
+    THE INDEX COMES FROM `clean_indexed` RATHER THAN A SECOND PASS OF `clean_line`: W5's rules are not all
+    per-line (the music-note rule reads the whole track), so re-deriving the kept set here would silently
+    disagree with what the adapters serve.
     """
     segments = claims.segments()
-    cleaned = clean_segments(segments)
-    kept = tuple(
-        (index, text)
-        for index, segment in enumerate(segments)
-        if (text := clean_line(str(segment.get("text") or "")))
-    )
-    if [text for _index, text in kept] != [str(s.get("text") or "") for s in cleaned]:  # pragma: no cover
-        raise AssertionError("clean_segments no longer maps one segment to at most one; re-derive `kept`")
+    indexed = clean_indexed(segments)
+    cleaned = tuple(segment for _index, segment in indexed)
+    kept = tuple((index, str(segment.get("text") or "")) for index, segment in indexed)
     return cleaned, kept
 
 
@@ -1096,7 +1109,7 @@ class RecordingSteps:
     async def fetch_captions(self, job: JobRef, *, automatic: bool) -> TextRef | None:
         return await self._impl.fetch_captions(job, automatic=automatic)
 
-    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> TextRef | None:
+    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> list[TextRef]:
         return await self._impl.fetch_provider_lyrics(job, audio)
 
     async def fetch_pinned_text(self, job: JobRef) -> TextRef | None:

@@ -8,6 +8,13 @@
       "when": 1790315751899,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790841959004,
+      "tag": "0001_lyrics_lead_default",
+      "breakpoints": true
     }
   ]
 }

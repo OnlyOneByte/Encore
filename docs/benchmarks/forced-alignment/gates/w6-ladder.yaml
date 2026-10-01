@@ -42,6 +42,20 @@
 #     word-level inputs: gross 7 -> 0 (HuBERT-L) and 3 -> 1 (base), ±500 +12..+20, out-of-order 1 -> 0.
 #   * NOTHING at `run_align`, nothing on HuBERT-L end to end, and no mode but truth/off15 on 17 of the songs.
 #
+# ── SWEPT, THEN RE-SWEPT: 31/31 AT BOTH LEVELS, TWICE (round-2 re-run 2026-09-30, `622288017e9d268a`) ──────
+# `results/w6-base-{time_text,run_align}.json` against `results/w4b-base-{time_text,run_align}.json`: **31/31
+# each**, the same verdict the round-1 sweeps (`cad1ca7d2eaf2cf5`) recorded, every literal of section 1 read
+# off the run. So the three bullets above are no longer the evidence — the corpus is.
+# ONE THING THE `run_align` SWEEP SAYS THAT NO GATE IN THIS FILE READS, and it is a cost of the round-2 tail
+# floor rather than of the floor this file is about: on three base-bundle cases the collapsed tail's
+# out-of-order word was tripping `run_align`'s own `line-sync` retime, and with the word ordered they publish
+# the word document instead. `rap-god` drop20 ±500-of-text 100.00 -> 87.93 is the one fallback no earlier tree
+# lost (`believer` extraverse and `feel-my-heart` credit return to W4b's published readings, 65.75 -> 73.97
+# and 94.59 = 94.59, i.e. round 1's line-sync there was the degenerate tail's accident). Pooled `run_align`
+# drop20 ±500 90.48 -> 88.98, extraverse 90.69 -> 89.66, credit 88.72 -> 88.61; gross and `high_gross` 0
+# throughout, `truth` and `blind` untouched. `gates/w2.yaml`'s drop20 displacement allowance (-13.0) holds
+# that loss by 0.93 pt. See the PLAN's status log for the open question.
+#
 # Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
 # `base.` is the `--compare` cell named in the command above.
 
@@ -67,10 +81,21 @@ clamp-pooled-gross-not-up-blind: blind.gross <= base.blind.gross
 # and it is 0 on every claim mode in every row this wave measured. Non-negatives summing to zero means each is.
 clamp-high-gross-zero-claim-modes: truth.high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross + mode("jit").high_gross == 0
 
-# ── 1b. BLIND MUST BE BYTE-IDENTICAL, which is what makes this a CLAMP change and not a decode change ─────
+# ── 1b. BLIND MUST BE UNTIMED-IDENTICAL, which is what makes this a CLAMP change and not a decode change ──
 # With no claims there is nothing to repair, so `repaired_all` is empty and the clamp is a no-op. Any blind
-# document that moves means the fix reached a decision it has no business in.
-clamp-blind-documents-unchanged: count(blind.song.doc_changed) == 0
+# ONSET that moves means the fix reached a decision it has no business in.
+#
+# THE DIGEST IS `onsets`, NOT `doc`, AND THAT IS NOT A WEAKENING (W6 review r1-spec-11). It was
+# `count(blind.song.doc_changed) == 0`, which CANNOT HOLD on this tree and was read as a FAIL at 30: the
+# control for section 1 is a pre-W6 row (`results/w4b-base-time_text.json`, see HOW TO RUN IT), and the same
+# wave's confidence item rewrites the per-line `confidence` field on 160 of 866 blind Jamendo lines —
+# `e2e_lib.doc_digest` is sha256 over the whole published document with only `sourceLines` excluded, so every
+# blind document's bytes move by construction. A MUST that cannot be satisfied is not a strict check, it is a
+# check nobody reads: the property this gate exists for is "the clamp moved no timing", `onset_digest` hashes
+# line and word STARTS alone and exists precisely so a non-timing field cannot trip it, and it reads 0 on the
+# same rows the bytes check read 30 on. The bytes claim is not lost either — `gates/w6-conf.yaml` makes it
+# against a same-tree `conf-legacy` control, which is the comparison in which it means something.
+clamp-blind-onsets-unchanged: count(blind.song.onsets_changed) == 0
 clamp-blind-gross-unchanged: blind.gross == base.blind.gross
 
 # ── 1c. THE JAMENDO ROW: every literal here is READ off `_runs/w6-final-jamendo`, not projected ───────────

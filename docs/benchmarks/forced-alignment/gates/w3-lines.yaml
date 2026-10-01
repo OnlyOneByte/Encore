@@ -12,6 +12,37 @@
 #       --gates ../docs/benchmarks/forced-alignment/gates/w3-lines.yaml
 #   (offline: e2e.py --summarize <run>/rows.jsonl --gates ...)
 #
+# ── WHAT W5's FLIP DID TO THIS FILE (2026-10-01), AND THE READING THAT SETTLED IT ─────────────────────────
+# Every literal below is the BASE BUNDLE's, and this rung is the one gate in the worker that reads a bundle's
+# own decode spread (`lexical.Bands.line_sync_min_agreement`, 0.5 on all three calibrated rows) — so the flip
+# to `HUBERT_ASR_LARGE` moves the population these numbers were fitted on, and the command above now runs the
+# NEW bundle. THE READ IN HAND IS THE SHIPPED DEFAULT'S, ON THIS TREE (W5 review r1-spec-11 replaced an earlier
+# paragraph here that said the run did not exist yet and predicted the opposite verdict; the run landed in the
+# same wave diff). All three re-read OFFLINE with `e2e_gates.run_gates` off the committed rows:
+#   * `results/w5-lines-run_align.json` — HuBERT-Large, the shipped default, `code db84383732037c63` — **34/38**,
+#     failing `zero-pm500-documents-not-up` (20 against 13), `zero-pm500-truth-not-up` (2 against 1),
+#     `truth-text-pm500` (91.59 against 92.0) and `drop20-text-pm500` (93.70 against 95.0).
+#   * `results/w5-base-lines-run_align.json` — the BASE bundle on the SAME tree, the control this file was
+#     missing — **31/38**: the four above plus `committed-not-down-drop20` (31 against 32),
+#     `committed-not-down-drop50` (14 against 15) and `off15-text-pm500` (88.92 against 90.0).
+#   * `results/w6-lines-run_align.json` — the base bundle on the W6 tree — 34/38, a DIFFERENT four.
+# SO THE FLIP FIXED THE TWO `committed-not-down-*` GATES AND THE RATCHET HOLDS BOTH WAYS: drop20 31 -> 32 and
+# drop50 14 -> **22** (23 song-modes go REFUSED -> `line-sync`, twelve of them `never-be-alone`), and reversing
+# the bundle on this tree costs three gates. THE FOUR THAT STILL FAIL ARE NOT THE BUNDLE'S: both bundles read
+# `zero-pm500-documents-not-up` 20/21 on this tree against 14 on the W6 tree, and `truth-text-pm500` 91.59/88.92
+# against 92.61 — the mover is W5's text hygiene, which removed 34 caption-cue lines the harness's `in_text`
+# still counts, plus numb's whole line-synced document moving +0.62 s after its labels were stripped (see
+# `gates/w5.yaml` and the PLAN's lines-mode row). Those two literals are owed the `in_text` rebase, not a bundle
+# argument. THE ONE PREDICTED REGRESSION WAS CONFIRMED and is the flip's, measured first with a one-song probe
+# (`_runs/w5-flip-probe-lines`) and then in the sweep: the rung refuses `shape-of-you` drop50 at **42%**
+# agreement where the base bundle's **51%** passed (`lexical.CALIBRATED`, SHARE), and in `lines` mode the rung is
+# the ONLY attempt, so that case goes from 45 lines line-synced at 45/45 within ±500 to REFUSED — text ±500
+# 100.00 -> 0.00, and nothing else in 1088 cases loses a document. The
+# same song's TRUTH text line-syncs on both bundles at 91/91, with this bundle's agreement HIGHER (99% vs 98%):
+# the share is a fraction of the lines a text KEPT, so a drop50 text gives the rung half the evidence and four
+# lines of 45 decide it. Whether that re-opens this bundle's share (`line_gate.py --model HUBERT_ASR_LARGE`
+# fitted 0.5; 0.4 shows 6 gross lines) is a recalibration question, not this file's.
+#
 # Every gate here is ABSOLUTE, with the measured number as the literal, because there is no earlier committed
 # lines run to `--compare` against: W1 measured this mode through a scratch probe (`_runs/w1r2p-lines`,
 # rows in the old compact shape and no `sync_mode` in its meta, so `e2e_gates` correctly refuses it as a

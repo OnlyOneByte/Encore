@@ -1,0 +1,82 @@
+# W5's DENOMINATOR GATE: does a song's SCORED line count still move when only the acoustic bundle changes?
+# (PLAN-alignment-v3 W5, "THE CAPTION-CUE DENOMINATOR ARTEFACT"; found by W6's diagnose task, assigned to
+# W5's text-hygiene item by the orchestrator's 2026-10-01 scope row.)
+#
+# WHY IT HAS ITS OWN FILE AND ITS OWN BASE. Every other W5 gate asks "what did this wave do to the shipped
+# default?" and takes a W6 row as the base. This one asks the opposite question — "are two BUNDLES comparable
+# per song?" — so its base must be the BASE BUNDLE MEASURED ON THE SAME TREE, or the reading mixes the
+# hygiene into the model difference and answers neither question. That is why `results/w5-base-run_align.json`
+# exists: 1088 cases, `--model WAV2VEC2_ASR_BASE_960H`, same code, same seed, same corpus, same emitter.
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock \
+#       --compare ../docs/benchmarks/forced-alignment/results/w5-base-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w5-denominator.yaml
+#
+# IT IS READ AT `run_align` ONLY. At `--level time_text` the harness sends the claims in RAW
+# (`e2e.TimeTextDriver`: "the shipped `time_text` cleans nothing itself"), so the 34 non-lyric caption lines
+# are still in the text there and the artefact cannot close — measured 91 song-modes differing at `time_text`
+# on the W6 tree and 91 on this one. The fix is a TEXT fix; it lands where texts are served.
+#
+# ── WHERE IT STANDS: NARROWED, NOT CLOSED, AND THE REMAINDER IS NAMED ────────────────────────────────────
+# W6 tree (`results/w6-base-run_align.json` against `results/w6-hubert-run_align.json`): 9 songs,
+#   100 song-modes.
+# THIS tree: **7 songs, 86 song-modes**. Closed outright — `hello` (12 song-modes), `bohemian-rhapsody` (12),
+#   `shape-of-you` (4), `rap-god` (1): the caption-cue half, which is what the orchestrator's row named
+#   ("hello 73 -> 72", "tfr-chosen 34 -> 33 ... part of it is the caption-cue DENOMINATOR artefact").
+# THE REMAINING 86 ARE NOT A TEXT PROBLEM, and the proof is in the rows: `served_lines` is IDENTICAL between
+#   the two bundles in ALL 1088 cases, so nothing text-side can still differ per model. What is left is
+#   ACOUSTIC by construction — the never-sung envelope rule (W1 M6, W4's floor) and `_fitted_run`'s
+#   frame-per-letter refusal — and it goes BOTH ways, which is what a sharper decode does at a floor:
+#     Pure_Mids_-_The_Leader   19 -> 20   HuBERT-L hears a line the base bins
+#     Ridgway_-_Fire_Inside    49 -> 50
+#     never-be-alone           44 -> 46
+#     feel-my-heart            31 -> 32
+#     Color_Out_-_Falling_Star 37 -> 36   HuBERT-L bins a line the base keeps
+#     bad-guy                  65 -> 64
+#     tfr-chosen               34 -> 32
+#   Four of those seven carry NO caption cue at all, which is the cleanest evidence that the text fix had
+#   nothing left to do for them. `tfr-chosen`'s gap WIDENS from 1 to 2 for a specific reason worth keeping:
+#   the base bundle's single drop there WAS the cue, so removing it from the text leaves HuBERT-L's two
+#   ordinary-lyric drops standing alone. A cross-model per-song ±500 row is therefore honest for the 25 songs
+#   held at 0 below, and for the other 7 it must still be read with the never-sung rule named.
+#
+# WHAT WOULD CLOSE IT COMPLETELY (not taken here, and it is not a text change): make the never-sung decision
+# model-independent — bin on the MIX envelope, which does not change with the alignment bundle, or require
+# both bundles' agreement. `m6-mix-spare` and `m6-window-spare` are the two arms already built for that
+# question (PLAN W1), and `m6-window-spare` is still owed a `run_align` read.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+
+# ── MUST: the cue half stays closed, in every mode ────────────────────────────────────────────────────────
+# 7 is the measured count of songs whose scored line count still differs, and it is the SAME 7 in every
+# timed claim mode. Writing the bound at 7 rather than 0 is the honest form: an EIGHTH song appearing is a
+# regression this file catches, and the seven are enumerated above with their cause. The drop modes have
+# their own counts because a refusal removes a song from the comparison.
+denominator-truth-at-most-seven-songs: count(truth.song.scored_up) + count(truth.song.scored_down) <= 7
+denominator-jit-at-most-seven-songs: count(mode("jit").song.scored_up) + count(mode("jit").song.scored_down) <= 7
+denominator-off15-at-most-seven-songs: count(off15.song.scored_up) + count(off15.song.scored_down) <= 7
+denominator-tempo098-at-most-seven-songs: count(tempo098.song.scored_up) + count(tempo098.song.scored_down) <= 7
+denominator-blind-at-most-seven-songs: count(blind.song.scored_up) + count(blind.song.scored_down) <= 7
+denominator-headers-at-most-seven-songs: count(headers.song.scored_up) + count(headers.song.scored_down) <= 7
+denominator-credit-at-most-six-songs: count(credit.song.scored_up) + count(credit.song.scored_down) <= 6
+denominator-extraverse-at-most-five-songs: count(extraverse.song.scored_up) + count(extraverse.song.scored_down) <= 5
+denominator-drop20-at-most-four-songs: count(drop20.song.scored_up) + count(drop20.song.scored_down) <= 4
+denominator-drop50-at-most-six-songs: count(drop50.song.scored_up) + count(drop50.song.scored_down) <= 6
+# POOLED, the per-song differences very nearly cancel, which is exactly why the per-song count above is the
+# gate and a pooled one would have hidden the artefact: truth 1707 against the base bundle's 1706.
+denominator-pooled-scored-within-four: truth.scored <= base.truth.scored + 4
+denominator-pooled-scored-within-four-down: truth.scored >= base.truth.scored - 4
+# AND THE TEXT SIDE IS MODEL-INDEPENDENT, which is the claim the fix actually makes: the two bundles are
+# served the same lines, so `in_text` is equal and `missing` can only differ by the acoustic drops above.
+denominator-in-text-equal: truth.in_text == base.truth.in_text
+denominator-missing-within-four: truth.missing <= base.truth.missing + 4
+
+# ── NON-VACUITY ───────────────────────────────────────────────────────────────────────────────────────────
+# 14 gates plus the built-in no-ERROR-rows; **15/15** on `results/w5-run_align.json` against
+# `results/w5-base-run_align.json`. Read on the W6 TREE's own pair (`results/w6-hubert-run_align.json`
+# against `results/w6-base-run_align.json`) it reads **7/15**, and the EIGHT failures are the artefact
+# itself: `truth` / `jit` / `off15` / `tempo098` / `blind` 8 against the bound of 7, `credit` 8 against 6,
+# `extraverse` 6 against 5, `drop20` 7 against 4. (`headers` 5 and `drop50` 2 are slack there, because the
+# injected-header text and the 50% drop already moved those denominators for other reasons.) So this file
+# tells the two trees apart, which is what makes the 7 a measurement and not a description.

@@ -251,7 +251,9 @@ test("a person's re-pick is sent as their claim, whatever the text's tier (W3: t
 test('a doubt-band word doc is no claim, and loses to a vouched line-timed rival (W3 r1)', () => {
 	// The worker published it, but its lexical lift says nothing vouches for the WORDS. Sent as the timing
 	// grade alone (`timingConfidence: medium`) it read authoritative + word = rank 5, tied with a fully vouched
-	// word doc and above a CORRECT line-timed sheet, because `lyricsRank` never reads `timingConfidence`.
+	// word doc and above a CORRECT line-timed sheet — this band's grade is `medium`, and `lyricsRank` read
+	// `timingConfidence` nowhere before W6 and demotes only on a `low` one since, so neither version of that
+	// ranking could have carried the doubt.
 	// The doubt rides on `vouched`, not `textConfidence`: that field is the text's PROVENANCE (W3 r2).
 	const m = media();
 	complete(m, frame('line-sync-after-a-rejected-word-attempt').frame); // an earlier job's vouched sheet

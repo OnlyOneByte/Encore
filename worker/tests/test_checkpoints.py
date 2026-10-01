@@ -16,7 +16,8 @@ import pickle
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -128,6 +129,45 @@ def test_a_current_checkpoint_round_trips_unchanged() -> None:
 
     assert pickle.loads(pickle.dumps(outcome)) == outcome
     assert pickle.loads(pickle.dumps(doc)).tier is Tier.MACHINE, "a pickled tier is never re-derived"
+
+
+async def test_a_pre_m13_provider_checkpoint_replays_as_a_list() -> None:
+    """W5 review r1-correctness-3, and the same rule one layer out: a STEP's return SHAPE is checkpointed
+    too. `fetch_provider_lyrics` returned `TextRef | None` before M13 and returns `list[TextRef]` now, so a
+    workflow resumed or forked across the upgrade replays the recorded value instead of calling the impl —
+    and `_acquire_texts` splats it, where `*TextRef(...)` and `*None` both raise `TypeError` in the workflow
+    BODY: past the step's retries, where nothing declines it, requeue after requeue. Normalised in the DBOS
+    wrapper, which is the one place a replayed value enters this process."""
+    from encore_worker.steps.align_steps import AlignStepsImpl
+    from encore_worker.steps.records import AudioRef, JobRef, TextRef
+    from encore_worker.workflows.dbos_align import DbosAlignSteps
+
+    impl = SimpleNamespace(
+        acquire_audio=None,
+        fetch_captions=None,
+        fetch_provider_lyrics=None,
+        fetch_pinned_text=None,
+        transcribe=None,
+        time_text=None,
+        diarize=None,
+        publish=None,
+        note=None,
+    )
+    steps = DbosAlignSteps(cast("AlignStepsImpl", impl), None)
+    job = JobRef(job_id="j", media_id="m1", media_dir="/m", source_uri="x", params={})
+    audio = AudioRef(path="/m/a.mp3", duration_sec=1.0, vocals_path=None)
+    sheet = TextRef(tier=Tier.CANDIDATE, label="lrclib", segments=({"text": "aaa bbb"},), timing="line")
+
+    async def replays(value: object) -> list[TextRef]:
+        async def recorded(*_args: object, **_kwargs: object) -> object:
+            return value
+
+        steps._provider = recorded
+        return await steps.fetch_provider_lyrics(job, audio)
+
+    assert await replays(sheet) == [sheet], "the v2 shape: one text or nothing"
+    assert await replays(None) == []
+    assert await replays([sheet]) == [sheet], "and today's shape is untouched"
 
 
 def test_a_missing_field_with_no_default_names_itself() -> None:

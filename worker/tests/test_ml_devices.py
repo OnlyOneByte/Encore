@@ -298,21 +298,25 @@ def test_a_machinery_failure_is_typed_by_its_own_message(failed: Exception, kind
 
 
 def test_the_english_bundle_is_a_function_of_the_device() -> None:
-    """The wav2vec2 base bundle on EVERY device, because the exception table is empty (W4b's bench verdict).
+    """HuBERT-Large on EVERY device since W5's flip, because the exception table is still empty.
 
     A pure function over a device string, like `transcriber_device`: the candidate bundles differ by three
     times in weights (1.2 vs 3.8 GB) and in seconds per song (4.3-8.6 vs 11.8-24 on MPS), so the shape has to
     admit a per-device answer even while today's answer is one name. `ALIGN_MODELS_BY_DEVICE` IS EMPTY, and
-    that is measured rather than lazy: HuBERT-Large failed three of W4b's six MUST gates end to end
-    (`gates/w4b.yaml`, 19/30 at both levels) and HuBERT-XLarge was never run on CUDA at all — an unmeasured
-    bundle must not be a device class's default. Both stay reachable as `ENCORE_ALIGN_MODEL`.
+    that is measured rather than lazy: the flip W5 took is a BUNDLE result (32 songs x 16 modes at both bench
+    levels, `results/w6-hubert-*` against `results/w6-base-*`) and nothing in it is a fact about MPS, so the
+    one measured bundle is every device's default and there is no exception to hold. HuBERT-XLarge is the
+    entry the table must not grow: nobody has run it on CUDA, so it stays reachable by name only.
     """
     from encore_worker.adapters.ml import ALIGN_MODELS_BY_DEVICE, DEFAULT_ALIGN_MODEL, default_align_model
 
     assert ALIGN_MODELS_BY_DEVICE == {}, "no device class has earned an exception on measured numbers"
     assert default_align_model("cuda") == default_align_model("mps") == default_align_model("cpu")
-    assert default_align_model("mps") == DEFAULT_ALIGN_MODEL == "WAV2VEC2_ASR_BASE_960H"
+    assert default_align_model("mps") == DEFAULT_ALIGN_MODEL == "HUBERT_ASR_LARGE"
     assert default_align_model("rocm-someday") == DEFAULT_ALIGN_MODEL, "an unknown device is not a crash"
+    assert "HUBERT_ASR_XLARGE" not in ALIGN_MODELS_BY_DEVICE.values(), (
+        "XL on CUDA is a projection: no box on this tree has run it end to end"
+    )
 
     # AND THE CALIBRATION RECORD MAY NOT CONTRADICT THIS TABLE (W4b review r2, correctness-3 / spec-12). The
     # XL section of `lexical`'s docstring opened with "HuBERT-XLARGE HAS A ROW TOO, because it is CUDA's
@@ -328,6 +332,18 @@ def test_the_english_bundle_is_a_function_of_the_device() -> None:
         "no bundle is any device's default while ALIGN_MODELS_BY_DEVICE is empty"
     )
     assert DEFAULT_ALIGN_MODEL in record, "and the record names the bundle a box actually loads"
+
+    # AND THE XL PARAGRAPH MAY NOT READ AS A MEASUREMENT (W5's flip spec; W4b review r2 correctness-3 is the
+    # same defect one bundle over). The projection lives in `#:` comments, which carry no `__doc__`, so this
+    # reads the source the way `test_the_composition_root_refuses_a_model_nothing_calibrated` reads the
+    # startup banner's: what must hold is that the table's own block says PROJECTION where it names XL.
+    from encore_worker.adapters import ml
+
+    source = Path(inspect.getsourcefile(ml) or "").read_text(encoding="utf-8")
+    table = source.split("ALIGN_MODELS_BY_DEVICE")[0]
+    assert "PROJECTION" in table and "HUBERT_ASR_XLARGE" in table, (
+        "the block above the table must call XL a projection, never a measured claim"
+    )
 
 
 def test_a_named_bundle_is_loaded_for_english_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -426,6 +442,22 @@ def test_the_composition_root_refuses_a_model_nothing_calibrated() -> None:
     assert raised.value.retryable is False
     assert "recalibrate with scripts/lift_gate.py" in str(raised.value), "the fix, not just the refusal"
     assert default_align_model("cpu") in str(raised.value), "and what leaving it unset would have loaded"
+
+    # AND THE REFUSAL IS REACHABLE FROM THE ENVIRONMENT, not only from a `Config` a test built (W5, which owed
+    # a proof that the knob and the check meet). The brief asked for the check at `Config.from_env` time; it
+    # cannot live there — `host/` may not import `domain/` (`tests/test_layers.py`) — so what holds is that
+    # the string a person exports survives parsing and reaches this refusal unchanged, which is the same
+    # guarantee one layer out. Both spellings of the default are accepted, since `is_calibrated` is a lookup.
+    for name in (lexical.BANDS.model, default_align_model("mps"), "HUBERT_ASR_XLARGE"):
+        parsed = Config.from_env({"ENCORE_ALIGN_MODEL": name})
+        assert parsed.align_model == name
+        assert entry.align_model_for(parsed, "mps") == name
+    typed = Config.from_env({"ENCORE_ALIGN_MODEL": "  WAV2VEC2_LARGE_XLSR_53_DE  "})
+    with pytest.raises(ConfigError, match=r"ENCORE_ALIGN_MODEL='WAV2VEC2_LARGE_XLSR_53_DE'"):
+        entry.align_model_for(typed, "mps")  # the name the refusal quotes is the PARSED one, trimmed
+    assert entry.align_model_for(Config.from_env({}), "mps") == default_align_model("mps"), (
+        "an unset knob is this device's default, not a refusal"
+    )
 
     # AND THE RESOLVED BUNDLE IS ON THE BOX'S RECORD (W4b review r1): nothing named it — not the startup
     # banner, not a job's evidence note — so a box whose `ENCORE_ALIGN_MODEL` was set could not be told from

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from functools import partial
 from statistics import median
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:
     import numpy as np
@@ -49,7 +49,8 @@ from encore_worker.domain.lyrics import (
     place,
     presplit,
 )
-from encore_worker.domain.lyrics.policy import Knob, Tier
+from encore_worker.domain.lyrics.clean import clean_segments
+from encore_worker.domain.lyrics.policy import Knob, Tier, normalised_words
 from encore_worker.domain.lyrics.report import Engine, TimingReport
 from encore_worker.host.config import ASR_MODELS, Config
 from encore_worker.protocol.vocabulary import Stage
@@ -201,11 +202,25 @@ class AlignStepsImpl:
             timing=TIMING_LINE,
         )
 
-    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> TextRef | None:
-        """A lyrics sheet by metadata, from the first provider that has one.
+    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> list[TextRef]:
+        """A lyrics sheet by metadata from EVERY provider that has one (review M13).
 
         Requires BOTH artist and track. A lookup on a guessed title returns another song's words, which
         is worse than a miss — and the wrong-song text then aligns badly and costs a retry to discover.
+
+        EVERY PROVIDER IS A CANDIDATE, which is what this used to get wrong. It returned the FIRST hit,
+        and lrcmux is first in the chain (`__main__.build_providers`), so LRCLIB was consulted only when
+        lrcmux was UNREACHABLE — never when it merely answered badly. lrcmux is a multiplexer over many
+        upstreams, so its answer is one upstream's sheet picked by somebody else's ranking; LRCLIB's is a
+        different sheet, and the two disagreeing is the most useful signal the text side has (see
+        `policy.corroboration`, which ranks the pool on it). The cost of asking both is one HTTP request
+        on a song lrcmux already answered, paid once per job, against a wrong sheet published for good.
+
+        THE SAME SHEET TWICE IS ONE CANDIDATE. Two providers often return byte-identical words (LRCLIB is
+        one of the sources lrcmux queries), and a duplicate in the pool would spend a second whole attempt
+        — emission pass included — to produce the same document. Deduplicated on the NORMALISED words so a
+        punctuation difference does not read as a second opinion; the first provider to answer keeps the
+        slot, and its label keeps saying which upstream it was.
 
         A PROVIDER THAT RAISES DOES NOT STOP THE CHAIN. One being unreachable is exactly when the next
         matters most: a network that blocks one host may reach another. The failure is still surfaced as
@@ -214,9 +229,11 @@ class AlignStepsImpl:
         """
         artist, track = job.param_str("artist"), job.param_str("track")
         if artist is None or track is None:
-            return None
+            return []
 
         failures: list[str] = []
+        found: list[TextRef] = []
+        seen: set[str] = set()
         for provider in self._a.providers:
             try:
                 cues = await asyncio.to_thread(
@@ -227,11 +244,17 @@ class AlignStepsImpl:
                 continue
             if not cues:
                 continue
-            return TextRef(
-                tier=Tier.CANDIDATE,
-                label=_provider_label(provider),
-                segments=as_segments(cues),
-                timing=_timing_of(provider, cues),
+            words = normalised_words([str(cue.get("text") or "") for cue in cues])
+            if words in seen:
+                continue
+            seen.add(words)
+            found.append(
+                TextRef(
+                    tier=Tier.CANDIDATE,
+                    label=_provider_label(provider),
+                    segments=as_segments(cues),
+                    timing=_timing_of(provider, cues),
+                )
             )
 
         if failures and len(failures) == len(self._a.providers):
@@ -239,7 +262,7 @@ class AlignStepsImpl:
             # Raising would fail the job; the ASR tier can still serve it, so this is reported and the
             # ladder continues.
             await self.note(job, "texts", 0, "providers-down", "; ".join(failures), None)
-        return None
+        return found
 
     async def fetch_pinned_text(self, job: JobRef) -> TextRef | None:
         """The ONE text a pinned job re-times: the paste, verbatim, or the stored candidate's own words.
@@ -269,7 +292,21 @@ class AlignStepsImpl:
         else:
             lines, language, why = _stored_lines(os.path.join(job.media_dir, pin.ref))
             label = _pinned_label(pin.ref, job.media_id)
-        if not lines:
+        # TEXT HYGIENE APPLIES TO A PASTE TOO (review M11). A person pasting from a lyrics site pastes its
+        # `[Verse 1]` / `[Chorus]` headers with the words, and this path is the one that never cleaned: a
+        # stored candidate was cleaned by the adapter that fetched it, and the bench's `headers` mode arrives
+        # through a port that calls `clean_segments`, so the injected-header measurement never covered the
+        # paste. Nothing a person TYPED is dropped by this that is not a header, a `♪`, a caption tag or a
+        # line with no word in it — `clean_segments` is the same function every provider's text goes through,
+        # and the whole paste is still recorded on the document (`_with_source_lines`).
+        # `author_marking=False` IS WHAT MAKES THAT SENTENCE TRUE (W5 review r1-correctness-8): R3 is the one
+        # rule whose precondition is read off the WHOLE text, and a transcript copied off a video — its sung
+        # lines wrapped in `♪`, its spoken or unmarked ones not — tripped it, so every unmarked line of the
+        # person's own paste was deleted with no per-line anchor and no note naming the loss. The anchored
+        # rules (a header, an ASR marker, the format) still apply: a pasted `[Chorus]` is a header wherever
+        # it was copied from.
+        segments = clean_segments([{"text": line} for line in lines], author_marking=False)
+        if not segments:
             await self.note(
                 job,
                 "texts",
@@ -283,7 +320,7 @@ class AlignStepsImpl:
         return TextRef(
             tier=tier_of_label(label),
             label=label,
-            segments=tuple({"text": line} for line in lines),
+            segments=segments,
             language=language,
         )
 
@@ -798,6 +835,7 @@ class AlignStepsImpl:
         """
         from encore_worker.adapters.ml import forced_align_decoder, load_audio_mono_16k  # noqa: PLC0415
         from encore_worker.domain.audio import activity  # noqa: PLC0415
+        from encore_worker.domain.lyrics import parts  # noqa: PLC0415
         from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
         from encore_worker.domain.lyrics.generate import (  # noqa: PLC0415
             adopted_line,
@@ -835,6 +873,23 @@ class AlignStepsImpl:
         except Exception as exc:  # noqa: BLE001 - the emission pass refused THIS file: one attempt failing
             await decline(f"decode failed: {type(exc).__name__}: {exc}")
             return None
+
+        # ── AD-LIBS AND ECHO TAILS (review §3.13; W5, `domain/lyrics/parts.py`), the `adlibs` arm ──
+        # Taken ONCE, on the served text, so every GLOBAL decode below is given the same lead texts — the
+        # blind one and the re-decode after the never-sung drop — and so is the margin read, whose docstring
+        # requires exactly the texts the decode saw. NOT the lexical gate's text and NOT a repair window's:
+        # the gate's bands are calibrated on `clean_segments`' whole lines (`lexical.CALIBRATED`, and W5's
+        # own reject-if about moving that population), and `regenerate` re-decodes a repaired line from its
+        # FULL `Line.text`, which is how an ad-lib in a claim-repaired line comes back MEASURED.
+        # AFTER THE EMISSION PASS AND NOT BEFORE IT (W5 review r1-tests-20), because R1's "a lead is left to
+        # align" test has to be the DECODE's test: on the matrix's dictionary, where a line whose lead words
+        # are all out-of-vocabulary keeps its parenthetical instead of losing the whole line. Nothing between
+        # the two reads the lead texts, so the arm still sees the served text exactly as it did.
+        adlibs = (
+            parts.split(line_texts, emissions=emissions)
+            if "adlibs" in self._cfg.align_experiments
+            else parts.untouched(line_texts)
+        )
 
         # The MIX, the second witness: R4 decodes on it, and under `m6-mix-spare` the never-sung rule
         # listens to it before it bins a claimed line. When the target IS the mix (no stem), the lexical gate
@@ -956,7 +1011,7 @@ class AlignStepsImpl:
         try:
             generated = await asyncio.to_thread(
                 generate,
-                line_texts,
+                adlibs.lead_texts,
                 emissions,
                 decoder=forced_align_decoder,
                 language=req.language,
@@ -967,6 +1022,11 @@ class AlignStepsImpl:
         except Exception as exc:  # noqa: BLE001 - the decode refused THIS text: one attempt failing
             await decline(f"decode failed: {type(exc).__name__}: {exc}")
             return None
+        # Identity unless the `adlibs` arm took something out, and then: every published word back in its
+        # own line, the ad-libs apportioned across the room the lead decode left them (`parts.restored`).
+        # Here and not later, so everything after this point — the never-sung rule, the envelope fit, the
+        # claim clock, every repair, grading, `measure` — reads the FULL document it always read.
+        generated = parts.restored(generated, adlibs, until=req.audio.duration_sec)
         if not generated.lines:
             await decline("no line in this text carries an alignable character")
             return None
@@ -1092,7 +1152,10 @@ class AlignStepsImpl:
         # together makes neither attributable (PLAN rule 3). It also owes a `run_align` read, which this
         # pricing did not cover.
         experiments = self._cfg.align_experiments
-        line_texts_active = list(line_texts)
+        # THE LEAD TEXTS, not the served ones (the `adlibs` arm; identity without it): this list is what the
+        # re-decode after a never-sung drop is given and what `_placement_margins` reads, and both must be
+        # the texts the decode above actually saw.
+        line_texts_active = list(adlibs.lead_texts)
         dropped_never_sung: list[str] = []
         # index -> (the line as the target's decode placed it, the witness whose envelope hears its claim:
         # MIX for the mix's under `m6-mix-spare`, WINDOW for the target's own matrix under `m6-window-spare`).
@@ -1102,10 +1165,17 @@ class AlignStepsImpl:
             if len(generated.lines) < 4:
                 break  # medians over a couple of lines grade nothing
             song_median_score = median(line.score for line in generated.lines)
+            # A LINE THE DECODE NEVER PLACED IS NOT A CANDIDATE (the `adlibs` arm; the set is empty without
+            # it). This rule asks whether the decode's own placement of a line was a smear over silence, and
+            # an ad-lib restored into its host's gap has no placement of its own to ask about — its score is
+            # its HOST's and its span is interpolated. Dropping it would also not stick: `parts.restored`
+            # puts it back after the re-decode, so the trail would name a line the document still carries.
+            interpolated = parts.unmeasured_lines(generated)
             never_sung = [
                 line
                 for line in generated.lines
-                if line.score < song_median_score - _NEVER_SUNG_SCORE_GAP
+                if line.index not in interpolated
+                and line.score < song_median_score - _NEVER_SUNG_SCORE_GAP
                 and env_overlap(line.start, line.end) < _NEVER_SUNG_ENV
                 and len(line.text) / max(line.end - line.start, 1e-6) < _NEVER_SUNG_RATE
             ]
@@ -1137,6 +1207,7 @@ class AlignStepsImpl:
             except Exception as exc:  # noqa: BLE001 - the decode refused THIS text: one attempt failing
                 await decline(f"re-decode after drop failed: {type(exc).__name__}: {exc}")
                 return None
+            generated = parts.restored(generated, adlibs, until=req.audio.duration_sec)
             if not generated.lines:
                 await decline("every line graded never-sung; nothing left to publish")
                 return None
@@ -1167,15 +1238,36 @@ class AlignStepsImpl:
         # already answered it by fiat. Taken here, right after the drop, because the margins must describe
         # the decode whose texts `line_texts_active` are — a line the never-sung rule blanked contributes no
         # targets, and every later line's position in the sequence moves with it.
-        # OFF THE EVENT LOOP: two Viterbi passes over the whole matrix is 0.35 s median and 1.2 s max on the
-        # corpus, and the reaper reads the socket keepalive (the `55 ms of synchronous numpy` note above).
-        placement = (
-            {}
-            if "conf-legacy" in experiments
-            else await asyncio.to_thread(
+        # OFF THE EVENT LOOP: two Viterbi passes over the whole matrix, and the reaper reads the socket
+        # keepalive (the `55 ms of synchronous numpy` note above). `margin.py`'s COST block owns the
+        # measurement — 0.43 s median, 0.81 s max over the 20 Jamendo songs and 1.16 s on `hello` at 18.3k
+        # frames — and this comment carried its own 0.35/1.2 until W6 review r2-tests-18 read the two
+        # against each other; one literal per idea, so the budget is checked against the recorded figure.
+        # THE FLOOR COMES OFF THIS BUNDLE'S CALIBRATION ROW, never a module constant (W6 review r1-spec-9):
+        # the margin is a sum of THIS matrix's log-probabilities, so `lexical.margin_floor` answering None
+        # means the rule abstains and the passes are not paid for at all — the same answer `conf-legacy`
+        # gives, reached because the bundle is unmeasured rather than because an operator asked.
+        margin_nats = lexical.margin_floor(lexical.calibration(emissions))
+        #: NO MARGINS = NOT MEASURED — grading then reads exactly what it read before review §3.7 — and
+        #: `_Placement.silence` says WHICH of the five reasons it was, because an operator's control arm and
+        #: a swallowed `MemoryError` used to print the same sentence (W6 review r2-spec-7). An empty dict is
+        #: not that answer: `margin.low_lines({}, scores)` still demotes on the score.
+        placement: _Placement
+        if "conf-legacy" in experiments:
+            placement = _Placement(silence="arm")
+        elif margin_nats is None:
+            placement = _Placement(silence="uncalibrated")
+        elif unvouched is not None or doubted:
+            # NOT PAID FOR A GRADE THAT IS ALREADY FIXED (W6 review r2-spec-11): `line_confidence` returns
+            # `low` unconditionally for an unvouched pin and for the lexical doubt band, both decided ~250
+            # lines above this, so the two passes (0.43 s median, 1.16 s on the longest song) and the
+            # quadratic repeat scan below would be bought for a set that cannot change one published grade.
+            # The trail still says the rule was not read and why, which is the whole of what is lost.
+            placement = _Placement(silence="already-low")
+        else:
+            placement = await asyncio.to_thread(
                 _placement_margins, emissions, line_texts_active, separate_lines=separate_lines
             )
-        )
 
         # ── THE CLAIM CLOCK (review H1, §3.2; W2). ONE rebinding of `claimed` / `claim_windows`, here,
         # before the first `reconcile` — so every consumer after it (the verdict, R1 / R2 / R4, the
@@ -1822,14 +1914,19 @@ class AlignStepsImpl:
         # refused, its run back on the blind decode (review M2; default OFF, see `_clamped`). The gate below
         # then measures the series that will be published.
         reverted: frozenset[int] = frozenset()
+        #: Which TRUSTED lines' ends the clamp pulled back onto a repair, and by how much: the one published
+        #: timing this worker changes on a line no stage repaired, so it goes on the trail (`_pulls_why`).
+        pulled_ends: dict[int, float] = {}
         if repaired_all:
-            generated, reverted = _clamped(
+            generated, reverted, pulled_ends = _clamped(
                 generated,
                 repaired_all,
                 blind=blind_decode,
                 frame_sec=emissions.frame_sec,
                 ordered="m2-order-clamp" in experiments,
             )
+        if pulled_ends:
+            repairs.append(_pulls_why(pulled_ends))
         published_now = {line.index for line in generated.lines}
         if reverted:
             for index in reverted:
@@ -1981,28 +2078,55 @@ class AlignStepsImpl:
         # where nothing but our own decode places the line). It is a DEMOTION only — no line it touches was
         # graded `high` before this wave — which is what makes it safe to add to a rule whose reject-if is
         # "no claim mode publishes a `high` line more than 2 s off, today 0".
-        # `conf-fuzzy-repeats` widens it to NEAR-repeats (`host.config.ALIGN_EXPERIMENTS`; default off).
-        # THE CONTROL IS THE WHOLE RULE, not merely the margin half. `placement` is already empty under the
-        # arm, and `low_lines` would then apply its SCORE half alone — a demotion the rule this replaces did
-        # not have, so an A/B against it would compare two versions of W6 and read the margin as worth less
-        # than it is (measured while building this: 385 `high` blind Jamendo lines under the half-control
-        # against 407 under the real one).
+        # THE CONTROL IS THE WHOLE RULE, not merely the margin half, and no margins is the ONE spelling of
+        # "do not read the rule" for that reason: `low_lines` with an empty mapping would still apply its
+        # SCORE half — a demotion the rule this replaces did not have, so an A/B against it would compare
+        # two versions of W6 and read the margin as worth less than it is (measured while building this:
+        # 385 `high` blind Jamendo lines under the half-control against 446 under the real one, the figure
+        # `gates/w6-conf.yaml` and README's "The confidence rule" table both carry).
+        #
+        # THE NEAR-REPEAT HALF IS NOT GATED ON THE MARGIN'S ABSTENTION (`conf-fuzzy-repeats`, default off;
+        # W6 review r2-correctness-5). `margin.fuzzy_repeats` is a `difflib` ratio over the line TEXTS: no
+        # emission scale, no bundle, nothing to calibrate — so a bundle with no fitted margin floor (and a
+        # fault, and an unreadable matrix) used to make the arm silently inert, which is a bench row recorded
+        # under the arm's name having measured the default path, the mistake `ALIGN_EXPERIMENTS` refuses
+        # unknown names to prevent arriving from the other side. What DOES stand it down is the control, for
+        # the reason above, and an already-`low` document, where it is quadratic work on a fixed grade; both
+        # say so on the trail (`_repeats_why`) rather than going quiet.
+        repeats_arm = "conf-fuzzy-repeats" in experiments and placement.silence not in (
+            "arm",
+            "already-low",
+        )
+        #: NOT `repeats` — that name is R3's EXACT-repeat set above, which `line_confidence` reads for a
+        #: different grade entirely. These are the near-but-not-exact ones the arm adds.
+        near_repeats = (
+            margin.fuzzy_repeats(dict(enumerate(line_texts_active))) if repeats_arm else frozenset()
+        )
         ambiguous = (
             frozenset()
-            if "conf-legacy" in experiments
-            else margin.low_lines(placement, {line.index: line.score for line in blind_decode.lines})
-            | (
-                margin.fuzzy_repeats(dict(enumerate(line_texts_active)))
-                if "conf-fuzzy-repeats" in experiments
-                else frozenset()
+            if placement.margins is None or margin_nats is None
+            else margin.low_lines(
+                placement.margins,
+                {line.index: line.score for line in blind_decode.lines},
+                min_margin_nats=margin_nats,
             )
-        )
+        ) | near_repeats
+
+        #: Lines NO word of which any decode placed — an `adlibs` echo tail that no repair re-decoded
+        #: (empty without the arm). Read off the FINAL document, so a line the ladder re-timed from its full
+        #: text is not in it (`parts.unmeasured_lines`).
+        interpolated_lines = parts.unmeasured_lines(generated)
 
         def line_confidence(index: int) -> str:
             if unvouched is not None:
                 return "low"  # a pin a wrong-text gate would have refused: nothing vouches for any line
             if doubted:
                 return "low"  # the lexical doubt band: its words may not be the sung ones (`lexical.BANDS`)
+            if index in interpolated_lines:
+                # §3.13: this line's words were held OUT of the lead decode and apportioned across the gap
+                # its host left — derived from a measurement, not one. W6's TV consumer then renders it
+                # line-level with no word wipe. A DEMOTION ONLY, so §3.7's `high_gross` cannot rise.
+                return "low"
             source = provenance.get(index, _Source.BLIND)
             if source == _Source.ADOPTED:
                 # An adopted line ECHOES the claim; a reconcile would count it corroborated, but agreement
@@ -2189,8 +2313,10 @@ class AlignStepsImpl:
         )
         # `vouched` is the WORDS' axis, `confidence` the timings' (review W3 r1): a doubt-band document and an
         # unvouched pin are published, and core must rank them under a text a wrong-text gate passed.
-        # `confidence` alone could not say it — it is sent as `timingConfidence`, which core's `lyricsRank`
-        # never reads, so a doubted word document tied with a fully vouched one at the top rank. It is TRUE
+        # `confidence` alone could not say it — it is sent as `timingConfidence`, and the doubt band's grade
+        # is the `medium` above while core's `lyricsRank` demotes only on a `low` one (W6's second consumer;
+        # before W6 it read the field nowhere at all), so a doubted word document ties with a fully vouched
+        # one at the top rank either way. It is TRUE
         # only where a gate actually read these words and did not doubt them (`words_measured`,
         # `words_doubted`; W3 review r2), which on the mix is a narrower question than the grading band's.
         timed = self._write(
@@ -2234,7 +2360,15 @@ class AlignStepsImpl:
             # WHY THE LINES ARE GRADED AS THEY ARE, beside the provenance that used to decide it alone: a
             # "these lyrics are out of sync" report on a document whose lines are all `low` is answered by
             # the margins, and a document that publishes `high` lines is only defensible with them printed.
-            + f"{_margin_why(placement, ambiguous, len(generated.lines))}; "
+            + f"{_margin_why(placement, ambiguous, len(generated.lines), floor=margin_nats)}; "
+            # ONLY UNDER THE ARM, like the separator clause below: the default never widens the demotion to
+            # near-repeats, and a clause saying so on every production note would be noise. Under the arm it
+            # is mandatory — an arm that acted and an arm that was stood down must not read alike (r2-c-5).
+            + (
+                f"{_repeats_why(near_repeats, applied=repeats_arm, silence=placement.silence)}; "
+                if "conf-fuzzy-repeats" in experiments
+                else ""
+            )
             # ONLY UNDER THE ARM: the default's token stream is what every other clause already describes,
             # and a clause on every note saying "no separator" would be noise on 100% of production runs.
             + (
@@ -2242,6 +2376,10 @@ class AlignStepsImpl:
                 if separate_lines
                 else ""
             )
+            # ONLY UNDER THE ARM, for the clause above's reason — and under it ALWAYS, including when
+            # neither rule fired: an arm that found no ad-lib and an arm that was never set must not read
+            # alike (`Split.why`, and W6 r2-c-5's rule for `conf-fuzzy-repeats`).
+            + (f"{adlibs.why()}; " if "adlibs" in experiments else "")
             # LAST of the evidence clauses because it is the last thing that touched a timing, and it is
             # about ENDS where every clause before it is about a line's placement.
             + f"{ends_note}; "
@@ -2541,8 +2679,18 @@ def _has_timings(cues: Sequence[Segment]) -> bool:
 
 
 def _has_word_spans(cues: Sequence[Segment]) -> bool:
-    """Did the provider return WORD-level timings? LRCmux can; LRCLIB cannot."""
-    return any(isinstance(c.get("words"), list) and c["words"] for c in cues)
+    """Did the provider return WORD-level timings? LRCmux can, and so does an A2 sheet (L4's fix 3).
+
+    THE SEQUENCE TEST IS `measure._words`' ONE, not `isinstance(..., list)` (W5 review r1-tests-17): every
+    provider payload is returned through `clean_segments`, which deliberately rewrites the word list as a
+    TUPLE (`clean.py`: "A TUPLE, matching every other segment producer"), so a `list`-only test could never
+    be True and an A2 sheet whose word onsets `parse_lrc` had just read was labelled `TIMING_LINE`. `str`
+    and `bytes` are excluded because both are Sequences and neither is a word list.
+    """
+    return any(
+        isinstance(c.get("words"), Sequence) and not isinstance(c.get("words"), (str, bytes)) and c["words"]
+        for c in cues
+    )
 
 
 def _timing_of(provider: ports.LyricsProvider, cues: Sequence[Segment]) -> str | None:
@@ -3248,8 +3396,9 @@ async def _measured_lift(
     MATRIX's model has no calibration, so nothing emission-scaled may be read off it — not the lift, and not
     the rung's share. A `None` lift with a row present is about the TEXT (too few letters, no order to
     contrast, a decode that refused it): the row still holds, so the rung's timing gate still applies, and
-    only the words go unjudged. A matrix that NAMES NO MODEL is the shipped row's by construction — a test's
-    fake or a bench emission cache written before `Emissions.model` existed, never production.
+    only the words go unjudged. A matrix that NAMES NO MODEL is the BASE bundle's row by construction — a
+    test's fake or a bench emission cache written before `Emissions.model` existed, both of which really were
+    that bundle's; never production, and since W5's flip no longer the shipped default's row either.
     """
     from encore_worker.adapters.ml import forced_align_decoder  # noqa: PLC0415
 
@@ -3426,9 +3575,37 @@ def _speech_mass(matrix: Any, start: float, end: float) -> float | None:
     return float(1.0 - np.exp(log_probs[first:last, blank]).mean())
 
 
-def _placement_margins(
-    matrix: Any, line_texts: Sequence[str], *, separate_lines: bool = False
-) -> dict[int, float]:
+#: WHY the placement-ambiguity rule said nothing, when it said nothing — one name per reason, because the
+#: reasons lead to DIFFERENT next steps and all of them used to print one sentence (W6 review r2-spec-7):
+#: `arm` an operator asked for the pre-§3.7 grading (`conf-legacy`); `uncalibrated` this bundle has no
+#: fitted `lexical.Bands.margin_floor_nats`, so there is no scale to read nats against; `already-low` every
+#: line of the document is graded `low` before this rule is reached, so it cannot move a grade (r2-spec-11);
+#: `fault` the two Viterbi passes raised; `unreadable` they ran and the matrix carried nothing to compare.
+_MarginSilence = Literal["arm", "uncalibrated", "already-low", "fault", "unreadable"]
+
+
+@dataclass(frozen=True, slots=True)
+class _Placement:
+    """What the placement-ambiguity rule read on this document — and when it read NOTHING, WHICH silence.
+
+    `margins is None` IFF `silence is not None`: the two halves are one answer, and the reason they travel
+    together is that a swallowed fault and the `conf-legacy` arm used to be byte-identical on the trail
+    (W6 review r2-spec-7). A `MemoryError` inside the passes dropped a DEFAULT-ON grading rule back to the
+    rule it replaced — measured at 446 `high` / 11.88% bad / 23 gross against the default's 286 / 2.80% /
+    zero — and said the same sentence an operator's own A/B control says, so the one report that could tell
+    the two apart was the absence of a crash. `fault` names the exception TYPE for that reason.
+    """
+
+    #: Per-line max-marginal margins in nats, keyed by line index; None is NOT MEASURED (never "ambiguous").
+    margins: dict[int, float] | None = None
+    #: Which silence, when `margins` is None.
+    silence: _MarginSilence | None = None
+    #: The exception type's name when `silence` is `fault`, so the trail can name it without holding the
+    #: exception alive beside a matrix and a Viterbi (the memory note in `_placement_margins`).
+    fault: str | None = None
+
+
+def _placement_margins(matrix: Any, line_texts: Sequence[str], *, separate_lines: bool = False) -> _Placement:
     """How ambiguous each line's placement was on `matrix`, in nats (`domain.lyrics.margin`, review §3.7).
 
     THE SAME TARGETS THE DECODE RAN ON, built by `generate.char_targets` — the one flatten both readers
@@ -3436,9 +3613,19 @@ def _placement_margins(
     same text. `line_texts` must therefore be the texts the BLIND decode was given (post never-sung drop),
     and `separate_lines` its own setting.
 
-    `{}` ON ANY FAULT, deliberately: an empty answer means "not measured", and grading then reads exactly
-    what it read before this existed. A confidence signal that goes DOWN when its own computation fails
-    would demote every line of every song on a matrix it could not read — caution that looks like evidence.
+    NO MARGINS ON ANY FAULT, deliberately, and that is a DIFFERENT ANSWER FROM `{}` (W6 review
+    r1-correctness-2 / r1-spec-10). It means "not measured", and the caller answers it by not reading the
+    rule at all — grading then is exactly what it was before this existed. `{}` would not have said that:
+    `margin.low_lines({}, scores)` still applies its SCORE half, which is a demotion the replaced rule did
+    not have, so a MemoryError on a long song used to switch grading silently to the half-control arm the
+    `conf-legacy` entry exists to keep out of the comparison (measured: 385 `high` blind Jamendo lines
+    against the real control's 446, 7.79% bad and ELEVEN gross `high` lines against zero). A confidence
+    signal that moved at all when its own computation failed would be caution that looks like evidence.
+    EVERY fault, not a list of two: a wrong guess at which exception numpy raises reinstates exactly that
+    bug, and `InfraFault` is re-raised because a machinery failure is the one thing that must not be
+    swallowed into a grade (review M7). WHICH of the two silences it was is carried out with it
+    (`_Placement.silence`): the GRADE is the same for both, the REPORT is not, and a fault that reads like
+    an unreadable matrix reads like an operator's control arm one clause later (W6 review r2-spec-7).
     The steps layer owns the numpy conversion because `domain/` may not import torch (`test_layers`).
     """
     import numpy as np  # noqa: PLC0415 - the steps layer's lazy numpy, as `_time_text_global` reads it
@@ -3448,42 +3635,98 @@ def _placement_margins(
 
     flat = char_targets(line_texts, matrix, separate_lines=separate_lines)
     if not flat.targets:
-        return {}
+        return _Placement(silence="unreadable")
     try:
-        return margin.placement_margins(
+        got = margin.placement_margins(
             np.asarray(matrix.log_probs, dtype=np.float64),
             flat.targets,
             flat.first_char_target,
             blank=blank_of(matrix),
             frame_sec=float(matrix.frame_sec),
         )
-    except (ValueError, MemoryError) as failed:
+    except InfraFault:
+        raise
+    except Exception as failed:  # noqa: BLE001 - every fault means "not measured"; see the docstring
         # MEMORY IS THE REAL ONE: the two kept curve arrays are frames x lines, small, but the caller has
         # the whole matrix and a Viterbi alive beside it. A fault here must not lose a document that is
-        # already timed, so it degrades to the grading this wave replaced.
-        del failed
-        return {}
+        # already timed, so it degrades to the grading this wave replaced — the WHOLE of it. The TYPE's
+        # name is kept and the exception is not, so the trail can say what failed without a traceback
+        # holding that matrix alive (W6 review r2-spec-7).
+        return _Placement(silence="fault", fault=type(failed).__name__)
+    # `placement_margins` answers `{}` for a matrix it could not read at all (its own docstring's list), and
+    # that is the same GRADE as a fault — nothing was measured, so nothing may be graded on it — while being
+    # a different REPORT: this matrix cannot be read, rather than this run could not read it.
+    return _Placement(margins=got) if got else _Placement(silence="unreadable")
 
 
-def _margin_why(margins: Mapping[int, float], doubted: Collection[int], lines: int) -> str:
+def _margin_why(placement: _Placement, doubted: Collection[int], lines: int, *, floor: float | None) -> str:
     """The placement-margin clause of the trail note: the signal, its threshold, and what it doubts.
 
-    `doubted` is what the RULE flags (`margin.low_lines`), not what published `low`: a flagged line a claim
-    corroborates keeps its grade (see `line_confidence`), and a line may be `low` for four other reasons. The
-    wording says "doubts" for exactly that reason — a note that claimed a count of demotions would be wrong
-    on both sides.
-    """
-    from encore_worker.domain.lyrics import margin  # noqa: PLC0415
+    `doubted` is what the RULE flags (`margin.low_lines`, plus `margin.fuzzy_repeats` under the arm), not what
+    published `low`: a flagged line a claim corroborates keeps its grade (see `line_confidence`), and a line
+    may be `low` for four other reasons. The wording says "doubts" for exactly that reason — a note that
+    claimed a count of demotions would be wrong on both sides.
 
+    ONE SENTENCE PER SILENCE, FIVE OF THEM, because the reasons the rule can say nothing lead to different
+    next steps and TWO OF THEM USED TO BE BYTE-IDENTICAL (W6 review r1-spec-9, r1-correctness-2, r2-spec-7,
+    r2-spec-11): the `conf-legacy` arm an operator asked for; a bundle with no fitted floor (re-fit it); a
+    document already graded `low` throughout, where the rule could not have moved anything; a FAULT inside
+    the two Viterbi passes, which silently drops a default-on grading rule and is the one of the five that
+    is a BUG REPORT, so it names the exception type; and a matrix that carried nothing to compare. `floor` is
+    `lexical.margin_floor(lexical.calibration(emissions))`, so the threshold on the trail is the one this
+    document was actually graded against rather than a module constant.
+    """
+    silent = {
+        "arm": ("placement margins: not read, `conf-legacy` asked for the grading that preceded review §3.7"),
+        "uncalibrated": (
+            "placement margins: not read, this alignment bundle has no calibrated margin floor "
+            "(`lexical.Bands.margin_floor_nats`), so grading is as it was before review §3.7"
+        ),
+        "already-low": (
+            "placement margins: not read, every line of this document is graded low before the rule is "
+            "reached, so no margin could change a grade"
+        ),
+        "fault": (
+            f"placement margins: not measured, `{placement.fault}` inside the two Viterbi passes, so "
+            "grading is as it was before review §3.7"
+        ),
+        "unreadable": (
+            "placement margins: not measured, these frames and targets carry no path to compare, so "
+            "grading is as it was before review §3.7"
+        ),
+    }
+    margins = placement.margins
+    if floor is None:
+        # Narrowed for the numbers below, and the one silence that can be read off the floor alone.
+        return silent["uncalibrated"]
     if not margins:
-        return "placement margins: not measured, so grading is as it was before review §3.7"
+        return silent[placement.silence or "unreadable"]
     ordered = sorted(margins.values())
-    tight = sum(1 for gap in ordered if gap < margin.MIN_MARGIN_NATS)
+    tight = sum(1 for gap in ordered if gap < floor)
     return (
         f"placement margins over {len(ordered)} of {lines} lines: median "
         f"{median(ordered):.0f} nats, min {ordered[0]:.0f}, {tight} under "
-        f"{margin.MIN_MARGIN_NATS:.0f} — {len(doubted)} doubted on ambiguity or a low score"
+        f"{floor:.0f} — {len(doubted)} doubted on ambiguity or a low score"
     )
+
+
+def _repeats_why(repeats: Collection[int], *, applied: bool, silence: _MarginSilence | None) -> str:
+    """The `conf-fuzzy-repeats` clause: whether the arm acted, and when it did not, why not.
+
+    AN ARM GOING QUIETLY INERT IS THE MISTAKE `ALIGN_EXPERIMENTS` REFUSES UNKNOWN NAMES TO PREVENT, arriving
+    from the other side (`test_linesep`'s `test_an_arm_that_cannot_act_says_so_on_the_trail` is the same
+    clause for the separator): a run recorded under an arm's name having measured the default path is worse
+    than a run that refused to start. This arm was reachable in that state twice — under the control, where
+    standing down is correct, and on any bundle with no fitted margin floor, where it was simply a bug
+    (W6 review r2-correctness-5) — and said nothing either way.
+    """
+    if applied:
+        return f"near-repeat demotion (conf-fuzzy-repeats): {len(repeats)} line(s) flagged"
+    because = {
+        "arm": "`conf-legacy` asked for the pre-§3.7 grading, which has no demotion to widen",
+        "already-low": "every line of this document is graded low already",
+    }.get(silence or "", "the placement-margin rule stood down")
+    return f"near-repeat demotion (conf-fuzzy-repeats): requested, not applied — {because}"
 
 
 #: A repaired line whose decode landed within this of the window's LEFT EDGE "heard nothing": a forced
@@ -3564,6 +3807,31 @@ def _ends_why(
     )
 
 
+def _pulls_why(pulls: Mapping[int, float]) -> str:
+    """The trail's clause for the ends `_clamped_v2` pulled back onto a repair: how many, which, how far.
+
+    THE ONE PUBLISHED TIMING THIS WORKER CHANGES ON A LINE NO STAGE REPAIRED, and before this clause nothing
+    said so (W6 review r1-spec-15 / r1-tests-19). `provenance` is right not to move — see `_pulled_end` — so
+    `_sources_why` reports such a line as the blind decode's, which it is; its END, though, is the clamp's
+    arithmetic rather than a timing the decode produced, and a "the highlight hangs on the last word of line
+    [45]" report cannot be answered from the sources clause alone. Measured over the corpus: 101 pulls a pass
+    on the base bundle (70 on HuBERT-Large), 43 of them on a line the ladder had not repaired, median overrun
+    0.41 s — so this clause is present on most documents with repairs and must stay short.
+
+    BY INDEX, like the never-sung and out-of-order notes, and capped at `_SOURCES_NAMED` for the same reason
+    they are: a 101-index list would bury the rest of the verdict note.
+    """
+    if not pulls:
+        return ""
+    ordered = sorted(pulls)
+    shown = " ".join(f"[{i}]" for i in ordered[:_SOURCES_NAMED])
+    more = f" +{len(ordered) - _SOURCES_NAMED} more" if len(ordered) > _SOURCES_NAMED else ""
+    return (
+        f"pulled {len(ordered)} line end(s) back onto the repair that followed them, median "
+        f"{median(pulls.values()):.2f}s of overrun removed (starts, order and grades unmoved): {shown}{more}"
+    )
+
+
 def _bundle_why(emissions: object) -> str:
     """The trail's clause naming the ALIGNMENT BUNDLE a document's word timings came off (W4b review r1).
 
@@ -3579,7 +3847,8 @@ def _bundle_why(emissions: object) -> str:
     bundle once at startup for the same reason it prints which ffmpeg.
 
     "unnamed" is not production: a matrix names no model only for an aligner older than the field or a test's
-    fake, which `lexical.calibration` treats as the shipped row for exactly that reason.
+    fake, which `lexical.calibration` treats as the BASE bundle's row for exactly that reason (the bundle
+    matrices came from — not the shipped default's, which is another bundle since W5's flip).
     """
     named = str(getattr(emissions, "model", "") or "")
     return f"bundle {named or 'unnamed'}"
@@ -3638,10 +3907,18 @@ def _sources_why(provenance: Mapping[int, _Source], indexes: Sequence[int]) -> s
     return f"timing sources: {', '.join(parts)}"
 
 
-#: The width a repaired line is widened to: v2's clamp (`_clamped_v2`, the default) floors every repaired
-#: line at it. The `m2-order-clamp` arm widens only where the gap has room, so a document v2 already
+#: The width a repaired line is widened to WHEN IT IS RE-FITTED: v2's clamp (`_clamped_v2`, the default)
+#: floors every repaired line at it as it remaps that line. It is not a floor on the published width, and
+#: saying it was is what W6 review r2-correctness-4 read: a LATER iteration can pull this line's end back
+#: onto the next repair's start (`_pulled_end`), and two repairs 0.1 s apart cannot both be 0.2 s wide
+#: without overlapping — so the floor is simply unsatisfiable there and the pull wins, which is the right
+#: way round (the start is what grading and every line metric read, and the alternative is pushing the
+#: next repair back onto the smeared end the clamp exists to get it off). What DOES bound the published
+#: width is `_pulled_end`'s own rule, one decoder frame per letter, so a sub-floor line is still a timing
+#: something decoded. The `m2-order-clamp` arm widens only where the gap has room, so a document v2 already
 #: published in order does not change, and never across the next trusted start, which is how v2 pushes
-#: words past it (review M2); the arm's hard floor is one decoder frame per letter.
+#: words past it (review M2); the arm's hard floor is one decoder frame per letter too, and it moves no end
+#: at all, so there the floor really is the published width.
 _REPAIRED_MIN_SEC = 0.2
 
 
@@ -3664,8 +3941,15 @@ def _with_lines(generated: Generated, repaired: Mapping[int, Line]) -> Generated
 
 def _clamped(
     generated: Generated, repaired: set[int], *, blind: Generated, frame_sec: float, ordered: bool
-) -> tuple[Generated, frozenset[int]]:
+) -> tuple[Generated, frozenset[int], dict[int, float]]:
     """Repaired lines clipped to their neighbours; with `ordered`, fitted IN ORDER or refused to `blind`.
+
+    Returns `(clamped, reverted, pulled)`: the indexes whose repair was REFUSED (the arm only) and the
+    `{index: seconds of overrun removed}` of the preceding lines whose END the default pulled back
+    (`_clamped_v2`). Both are reported rather than inferred because both are decisions no metric on the
+    report can show and the caller puts each on the audit trail (W6 review r1-spec-15 / r1-tests-19: the
+    pull moves a TRUSTED neighbour's published end, and until it was returned the trail said only that the
+    blind decode had timed that line).
 
     A repaired line measured inside a padded window, or an adopted claim span that overlaps the next
     caption, is re-fitted affinely into the free gap — found live, where two spilled words made `decide`
@@ -3775,7 +4059,8 @@ def _clamped(
     from encore_worker.domain.lyrics.generate import Generated  # noqa: PLC0415
 
     if not ordered:
-        return _clamped_v2(generated, repaired, frame_sec=frame_sec), frozenset()
+        clamped, pulled = _clamped_v2(generated, repaired, frame_sec=frame_sec)
+        return clamped, frozenset(), pulled
     lines = list(generated.lines)
     # A repaired index is a blind line, except a never-sung line spared back in (review M6), which has no
     # blind original: a refused run simply goes without it, which is what the never-sung rule did to it.
@@ -3799,14 +4084,23 @@ def _clamped(
             reverted.update(line.index for line in run)
         out.extend(fitted)
         position = stop
-    return Generated(lines=tuple(out), language=generated.language), frozenset(reverted)
+    # The arm moves no trusted end at all (it refuses the run instead), so it reports no pulls.
+    return Generated(lines=tuple(out), language=generated.language), frozenset(reverted), {}
 
 
-def _clamped_v2(generated: Generated, repaired: set[int], *, frame_sec: float) -> Generated:
+def _clamped_v2(
+    generated: Generated, repaired: set[int], *, frame_sec: float
+) -> tuple[Generated, dict[int, float]]:
     """The shipped default: v2's clamp with W6's BOUNDED left floor (`_clamped` without `ordered`).
 
+    `(clamped, {index: seconds of overrun removed})` — the second half naming every PRECEDING line whose end
+    this pulled back, because that is a published timing changed on a line the ladder did not repair and
+    nothing else on the report records it (`_pulls_why`; W6 review r1-spec-15 / r1-tests-19).
+
     Each repaired line is clipped to start no earlier than the line before it ends and, when the next
-    line is trusted, to end by its start, then floored at `_REPAIRED_MIN_SEC` wide. It never refuses, so
+    line is trusted, to end by its start, then floored at `_REPAIRED_MIN_SEC` wide — AS IT IS RE-FITTED, not
+    as it is published: the NEXT repair's pull can take this line's end back inside that floor, and
+    `_REPAIRED_MIN_SEC` says why that is the right way round. It never refuses, so
     review M2's three shapes still publish backwards word starts (`test_repair_order` seeds 2, 6, 12 and
     30, strict xfail on this path): `decide` answers them with the LINE_SYNC rung, whose sheet gate
     published 16 of the 47 right texts W0's `run_align` lost that way and 0 of the 63 wrong ones (W1; since
@@ -3869,6 +4163,7 @@ def _clamped_v2(generated: Generated, repaired: set[int], *, frame_sec: float) -
 
     lines = list(generated.lines)
     out: list[Line] = []
+    pulls: dict[int, float] = {}
     for position, line in enumerate(lines):
         if line.index in repaired:
             previous = out[position - 1] if position else None
@@ -3877,6 +4172,7 @@ def _clamped_v2(generated: Generated, repaired: set[int], *, frame_sec: float) -
                 pulled = _pulled_end(previous, line.start, frame_sec=frame_sec)
                 if pulled is not None:
                     out[position - 1] = pulled
+                    pulls[previous.index] = previous_end - pulled.end
                     previous_end = pulled.end
             low = max(line.start, previous_end)
             high = line.end
@@ -3886,7 +4182,7 @@ def _clamped_v2(generated: Generated, repaired: set[int], *, frame_sec: float) -
             if abs(low - line.start) > 1e-9 or abs(high - line.end) > 1e-9:
                 line = remapped(line, low, high)
         out.append(line)
-    return Generated(lines=tuple(out), language=generated.language)
+    return Generated(lines=tuple(out), language=generated.language), pulls
 
 
 def _pulled_end(line: Line, boundary: float, *, frame_sec: float) -> Line | None:
@@ -3898,6 +4194,14 @@ def _pulled_end(line: Line, boundary: float, *, frame_sec: float) -> Line | None
     before `boundary`, re-fitting only the tail the decode smeared past it. Measured over the corpus: 70
     pulls on HuBERT-Large and 101 on the base bundle out of 333 / 431 repaired lines, 39 / 43 of them on a
     line the ladder had NOT repaired, median overrun pulled back 0.47 / 0.41 s.
+
+    A PULLED LINE'S PROVENANCE AND GRADE DO NOT MOVE, and that is a decision rather than an omission (W6
+    review r1-spec-15): `_Source` records which measurement placed a line, grading reads STARTS, and this
+    line's start, order, existence and corroboration are all untouched — so a line the blind decode timed is
+    still `_Source.BLIND` after its end is pulled, and re-labelling it would make `_sources_why` answer "which
+    measurement put this line here" with something else. What the trail owes instead is the pull itself, and
+    `_clamped_v2` returns it for `_pulls_why` to say so by index: "the end you are looking at is a clamp
+    artefact, not a decoded end" is the question a wrong-timing report asks, and it has an answer now.
 
     ONE REFUSAL OF ITS OWN, AND IT IS BORROWED FROM `_fitted_run` RATHER THAN INVENTED, so nothing here is a
     new threshold: ONE DECODER FRAME PER LETTER. Squeezed below it the line is ordered but is no longer a
@@ -3911,12 +4215,23 @@ def _pulled_end(line: Line, boundary: float, *, frame_sec: float) -> Line | None
     compress such a line, to every digit. It is kept because it is what makes "no word start ever decreases"
     true of this clamp, which is the property that retired the order guard this function used to carry
     (measured at 0 firings in 64 song-modes, and now unreachable by construction).
+
+    WHY `frame_sec` GOES THROUGH TO `trimmed` (W6 review r2-spec-9): the letter rule above measures the WHOLE
+    line, so a ten-second line whose tail is 0.3 ms long passes it trivially — and that tail is exactly what
+    an anchor sitting a hair before `boundary` produces, every word past it published inside a millisecond,
+    which is not a timing anyone decoded and is a word the TV can never light. `trimmed` gives the tail the
+    same room the line gets, one decoder frame per word still to be placed, by taking an EARLIER anchor rather
+    than refusing — so the pull still happens and no repaired start goes back onto the smeared end this
+    function exists to get it off. Measured on the recorded corpus documents (`_runs/w6-ladder-{base,hubert}/
+    media`, 449 and 448 published docs): 42 and 12 published lines carry the collapsed tail today,
+    concentrated where the decode smears most (`rap-god` 27 of the 42, then `Rxbyn_-_Bad_Side`, `tfr-chosen`,
+    `Kinematic_-_Peyote`, `HILA`, `hello`, `never-be-alone`).
     """
     from encore_worker.domain.lyrics.generate import trimmed  # noqa: PLC0415
 
     if boundary - line.start < max(1, sum(ch.isalpha() for ch in line.text)) * frame_sec:
         return None
-    return trimmed(line, boundary)
+    return trimmed(line, boundary, frame_sec=frame_sec)
 
 
 def _fitted_run(

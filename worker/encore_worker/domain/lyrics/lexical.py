@@ -20,9 +20,10 @@ best of `SHUFFLES` draws is the reference, so one lucky shuffle cannot flatter a
 
 ONE TABLE, KEYED BY THE MODEL (`CALIBRATED`, read by `calibration`; W4b). Every number below is an EMISSION
 SCALE's, so each belongs to the bundle it was measured on and to no other: `CALIBRATED` maps a model identity
-(`adapters.ml.Emissions.model`) to its own row — THREE of them, the shipped default's (the base model,
-`adapters.ml.DEFAULT_ALIGN_MODEL`, which `BANDS` names) and the two HuBERT bundles an operator can reach by
-name (W4b 6b, their own section below) — and a model with NO
+(`adapters.ml.Emissions.model`) to its own row — THREE of them, the SHIPPED DEFAULT's since W5
+(`HUBERT_ASR_LARGE` = `adapters.ml.DEFAULT_ALIGN_MODEL`, its own section below), the BASE MODEL's (the bundle
+every wave from the review baseline through W6 was measured on, which `BANDS` names and an operator still
+reaches by name) and HuBERT-XLarge's (nobody's default) — and a model with NO
 ROW is not gated on anybody else's numbers — `calibration` returns None, `align_steps._measured_lift` reads
 that as an unmeasurable lift, the envelope gate keeps the verdict and the text is not vouched for (EXEMPT
 below). That is the runtime half of "fail loudly or refuse to gate"; the loud half is the operator
@@ -30,17 +31,25 @@ knob that NAMES a model (W4b 6b's `ENCORE_ALIGN_MODEL`): `__main__.align_model_f
 `is_calibrated` says no to before the worker accepts a job, rather than starting one whose gates silently stop
 gating. THE ROW HOLDS EVERY
 EMISSION-SCALE THRESHOLD OF ONE MODEL, not just the lift's: the LINE_SYNC rung's decode-agreement share reads
-that model's own decode spread (`line_sync_min_agreement`), so it moves with the bands or not at all. It does
+that model's own decode spread (`line_sync_min_agreement`), and the placement-margin floor is a sum of this
+model's log-probabilities (`margin_floor_nats`, W6 review r1-spec-9 — it was a bare constant in
+`domain.lyrics.margin`, which is exactly the hole `is_calibrated` cannot see, since a row may exist and that
+number still not be measured). Both move with the bands or not at all. The row does
 NOT hold a second copy of the rung's lexical floor — the rung calls `band(..., on_stem=True)`, so
 `refuse_below` IS `_LINE_SYNC_MIN_LIFT`, and the duplicate W3 review r1 removed must not come back (W2's rule:
 one literal per idea). THE ONE THING A MISSING ROW DOES NOT SWITCH OFF is that same share: it is a fraction of
 lines within a tolerance in SECONDS rather than a log-probability, so it survives a model swap where nothing
-else here does (`LINE_SYNC_SHARE_UNCALIBRATED`, read through `line_sync_share`).
+else here does (`LINE_SYNC_SHARE_UNCALIBRATED`, read through `line_sync_share`) — and `margin_floor` is the
+deliberate mirror of it, answering None so the rule abstains.
 
-THE BASE MODEL'S BANDS (`BANDS`, read by `band` when nothing names a model; W3 — and, after W4b's corpus
-sweep rejected the HuBERT-Large flip as a default, this is the SHIPPED default's row again as well:
-`adapters.ml.DEFAULT_ALIGN_MODEL`. HuBERT-Large's section still follows this one, because
-`ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE` still resolves and must still gate on its own scale).
+THE BASE MODEL'S BANDS (`BANDS`, read by `band` when nothing names a model; W3). IT IS NO LONGER THE SHIPPED
+DEFAULT'S ROW — W5 flipped `adapters.ml.DEFAULT_ALIGN_MODEL` to HuBERT-Large, whose section follows this one —
+and it is still the row this module is EXPLAINED from, because every band's recipe, its held-out fits, its
+redraw noise and its counterexamples were measured here first and the HuBERT rows are stated as deltas on it.
+It keeps three live readers: a matrix that names NO model (a test's fake, a bench cache written before
+`Emissions.model` existed — both really were this bundle's), `ENCORE_ALIGN_MODEL=WAV2VEC2_ASR_BASE_960H`,
+which
+is how every pre-W5 row set is reproduced, and the tests that pin one row's shape.
 CALIBRATED ON THE SHIPPED DECODE
 (`adapters.ml.forced_align_decoder`,
 no `|`, torchaudio's kernel — the review's prototype numbers were on its `|` + numba "lsep" decode) with
@@ -153,8 +162,10 @@ that calls it "a hair" is if anything more true. Both facts are named at each th
                   stricter on right texts and looser on wrong ones — and the mix now follows the stem's rule.
                   THE OLD BEHAVIOUR IS THE CONTROL ARM `h3-mix-envelope` (`Config.align_experiments`): the
                   envelope gate is the mix's only verdict and this floor merely grades, and THE ROW IT WAS
-                  RECORDED ON IS `results/w4-stemless-envelope-time_text.json` (the shipped default's own row
-                  is `results/w4-stemless-time_text.json`; both on code `8c576cc6200b02a0`, W4 rebench r2).
+                  RECORDED ON IS `results/w4-stemless-envelope-time_text.json` (the default arm's own row is
+                  `results/w4-stemless-time_text.json`; both on code `8c576cc6200b02a0`, W4 rebench r2, and
+                  both on the BASE bundle, which was the shipped default then — this pair is owed a re-read
+                  on HuBERT-L, like every `--no-stem` row, since W5's flip).
                   `h3-mix-floor` still means BOTH gates — W3's first shipping, and what setting both arm
                   names means — and it publishes 54 of the 128, the two costs paid together.
     `mix_ok_from` 0.6 (the review's band top): on the mix the lift reads how well the words are HEARD. The
@@ -190,11 +201,15 @@ that calls it "a hair" is if anything more true. Both facts are named at each th
     all (`align_steps._word_lift`: the ASR tier, a text under `MIN_LETTERS`, a decode that raised, a matrix
     from another model), because "none doubted it" must not read as "one passed it".
 
-HuBERT-LARGE IS THE SECOND ROW, REACHABLE BY NAME AND NOT THE DEFAULT (W4b 6b, review §3 item 6b,
-2026-09-30; the corpus sweep rejected the flip — `gates/w4b.yaml` 19/30, `gates/w4b-hubert.yaml` 20/22 — so
-`ml.DEFAULT_ALIGN_MODEL` is the base bundle and `ml.ALIGN_MODELS_BY_DEVICE` is empty, and this row is what
-gates a job an operator set `ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE` on).
-The English bundle is a setting now (`ENCORE_ALIGN_MODEL`, per-device mechanism in
+HuBERT-LARGE IS THE SHIPPED DEFAULT'S ROW SINCE W5 — THE ROW EVERY PRODUCTION JOB IS NOW GATED ON (review §3
+item 6b; calibrated in W4b 2026-09-30, when the corpus sweep REJECTED the flip and this was the second row,
+reachable by name; W6 found the rejection's cause to be `_clamped_v2`'s left floor rather than the decode, and
+W5 took the flip on `results/w6-hubert-*` against `results/w6-base-*` — gross down or equal in all 16 modes at
+both levels, Jamendo truth AAE 86.7 -> 71.1 ms, words ±100 83.52 -> 85.46, highlight 77.58 -> 81.40, 32/32
+zero-gross songs; `ml.DEFAULT_ALIGN_MODEL` carries the full account and `gates/w5-flip.yaml` the acceptance
+test). The five numbers below are therefore the ones a job's gates read unless an operator names another
+bundle, and NOTHING IN THIS ROW MOVED FOR THE FLIP: it is W4b's measurement, read now as the default's.
+The English bundle is a setting (`ENCORE_ALIGN_MODEL`, per-device mechanism in
 `adapters.ml.ALIGN_MODELS_BY_DEVICE`), and a
 model swap moves every number above, so the WHOLE recipe was re-run on it: the same 832 texts per target, the
 same shipped decoder, the same 32 songs, `lift_gate.py --model HUBERT_ASR_LARGE --target stem|mix` (rows in
@@ -237,7 +252,28 @@ enough that a scale shift could have closed it:
   SHARE  `line_sync_min_agreement` **0.5**, the same number as the base row and for the same reason (the
          lowest swept share showing no gross line), at a quarter of the cost: 13 of 416 right texts refused
          against the base row's 32, 0 gross lines shown, 94.8% of shown line starts within ±500 ms. 0.4 shows
-         6 gross lines and 0.6 refuses 32 for nothing.
+         6 gross lines and 0.6 refuses 32 for nothing. THE FIFTH VALUE IS PRESENT ON PURPOSE — a row missing
+         it would make this bundle's rung borrow `LINE_SYNC_SHARE_UNCALIBRATED`, which is the silent-borrow
+         failure the review rated high — and W5's flip is what made its ONE measured cost a default's:
+         `shape-of-you` drop50 at `run_align`, where this bundle's blind decode starts 42% of the text's 45
+         lines within 1 s (the base bundle's 51%), so the rung REFUSES where the base bundle's published the
+         sheet and attempt 1's word document stands instead — ±500-of-text 97.83 -> 34.78, 21 gross, in one
+         drop50 case (`results/w6-hubert-run_align.cases.jsonl`). The share is NOT re-fitted for it: 0.4 is
+         where this bundle starts showing gross lines on the right-text sweep above, so buying that case back
+         costs 6 of them. Named here because it is the gate doing exactly what it was calibrated to do.
+         UNDER `syncMode=lines` THE SAME REFUSAL IS THE WHOLE CASE, since there the rung is the only attempt:
+         measured on the shipped tree (one song, `_runs/w5-flip-probe-lines`), that song's drop50 goes from
+         base bundle's 45 lines line-synced at 45/45 within ±500 to REFUSED, text ±500 100.00 -> 0.00, while
+         its TRUTH text line-syncs on both at 91/91 and reads this bundle's agreement HIGHER (99% vs 98%).
+         The share is a fraction of the lines a text KEPT, so a drop50 text gives the rung half the evidence
+         and four lines of 45 decide it (19/45 here against the base's 23/45) — which is the one place W5's
+         flip is worse than the bundle it replaced, and why a `--sync-mode lines` corpus read is owed.
+  MARGIN `margin_floor_nats` **10.0** (W6, review §3.7), also the base row's number and MEASURED on this
+         bundle rather than assumed: over the same 20 Jamendo songs' blind decode this bundle's margins read
+         median 33 nats and p10 5 against the base's 27 / 4 — the same scale — and the rule at that floor
+         reads 34.7% coverage / 2.66% bad-among-high / ZERO gross against this bundle's own control at
+         51.4% / 8.97% / 20. It is the field's whole argument that this is a MEASUREMENT and not a default:
+         `HUBERT_ASR_XLARGE`'s row carries None for the same number.
 
 HuBERT-XLARGE HAS A ROW TOO, REACHABLE ONLY BY NAME (`ENCORE_ALIGN_MODEL=HUBERT_ASR_XLARGE`) AND NOBODY'S
 DEFAULT: `ml.ALIGN_MODELS_BY_DEVICE` IS EMPTY — see its own "WHY IT IS EMPTY" block — because no CUDA box on
@@ -263,7 +299,13 @@ row where L's 0.40 would grade it `low`. No step separates it: Slingshot_Miracle
 lines within 1 s just below it, so 0.35 would cost a fair text to catch this one. On the mix this band is a
 GRADE and not a standing — the floor is the verdict, see the base row's MIX — which is why the exhibit is
 recorded rather than the threshold moved), share
-**0.5** (16 of 416 right texts refused, 0 gross). ITS THREE CAVEATS, measured here and NOT in the review: the
+**0.5** (16 of 416 right texts refused, 0 gross), and `margin_floor_nats` **None** — W6's placement-margin
+floor was fitted on the base and L trellises and nobody has read one of this bundle's, so the one rule in this
+worker that reads a RAW sum of log-probabilities abstains here instead of borrowing 10 nats (W6 review
+r1-spec-9; `margin_floor`, `align_steps._placement_margins`). A CUDA sweep re-fits it the way the base row's
+was, and until then `is_calibrated` saying yes to this name must not be read as "every threshold is measured":
+the row is the per-field record of exactly which are.
+ITS THREE CAVEATS, measured here and NOT in the review: the
 stem floor's head-room is **+0.0722**, a third of L's +0.2306 — still 9x the base row's +0.0082 and with 0 of
 640 wrong texts within one redraw SD of it, but 2 within two SDs (Cortez `wrongtext` +0.278, tfr-chosen
 `wrongtext+ownclock` +0.267) — and on the MIX it is materially worse than L: the same 0.15 floor refuses 25 of
@@ -302,7 +344,8 @@ THE SUNG ONES' LETTERS IN ORDER. The test contrasts an order of THESE letters wi
 letters, so a cognate-heavy translation of the sung line keeps much of the sung letter sequence and lifts
 like a right text: on the CTC fixture a German cognate text lifts +1.98 where a French text of the same
 lines reads -0.12 and the sung words read +15.2 (`tests/test_lexical.py`, `tests/test_lexical_gate.py`). No
-band separates that, on either target. It matters MOST on the global path, which this module's `BANDS` gate:
+band separates that, on either target. It matters MOST on the global path, which this module's bands gate
+(the resolved bundle's row, `calibration(emissions)` — never `BANDS` by name):
 a cognate translation landing in `OK` publishes a WORD document with `high` lines, where the same text
 through the LINE_SYNC rung publishes lines graded `low` (`align_steps._time_line_sync`). The corpus holds no
 real translation to measure it on (every caption track is `en`, and JamendoLyrics MultiLang gives each song
@@ -574,19 +617,65 @@ class Bands:
     #: read through `line_sync_share`, which prefers this field wherever a row exists (W4b review r1).
     line_sync_min_agreement: float
 
+    #: The PLACEMENT-MARGIN floor in nats (review §3.7, W6; `domain.lyrics.margin`): how much score the best
+    #: path must have to forfeit to move a line at least `margin.WINDOW_SEC` away before its placement counts
+    #: as unambiguous. Below it the decode could have put the line somewhere else for nearly the same score,
+    #: and `line_confidence`'s one decode-only branch grades it `low`.
+    #:
+    #: IN THIS ROW BECAUSE IT IS A SUM OF LOG-PROBABILITIES (W6 review r1-spec-9), which is the module
+    #: docstring's own test for what belongs here: it is the most emission-scale number in this worker, more
+    #: so than the lift's per-letter bands, and it sat in `margin.py` as a bare constant — so
+    #: `ENCORE_ALIGN_MODEL=HUBERT_ASR_XLARGE`, which `is_calibrated` passes, would have read the base
+    #: bundle's nats on a bundle nobody measured, with nothing in the trail to say so.
+    #:
+    #: None MEANS THE RULE ABSTAINS, which is this module's rule ("refuse to gate rather than gate wrongly")
+    #: applied to the one threshold that cannot stand down any other way: `margin_floor` answers None,
+    #: `align_steps._placement_margins` is not even called, grading is what it was before review §3.7, and
+    #: the trail says which bundle had no floor. It is NOT `LINE_SYNC_SHARE_UNCALIBRATED`'s shape — that
+    #: share survives a model swap because it is a fraction of lines within a tolerance in SECONDS.
+    #:
+    #: FITTED LEAVE-ONE-SONG-OUT on the 20 Jamendo songs' blind decode, with review §3.7's own reject-if as
+    #: the objective rather than the number the gate then reports: the SMALLEST floor whose training `high`
+    #: set holds no line more than 2 s off. All 20 folds chose 10 — the figure §3.7 arrived at independently —
+    #: so there was nothing to average. Held out, the rule reads 33.0% coverage, 2.80% of `high` lines more
+    #: than 0.5 s off and ZERO more than 2 s off, against the rule it joined reading 51.5% / 11.88% / 23 on
+    #: the same lines (`docs/benchmarks/forced-alignment/README.md`, "The confidence rule", carries the sweep
+    #: and the two halves' separate contributions). The sweep is flat from 10 to 40 nats (bad 2.6-3.1%, gross
+    #: 0 throughout), so the figure is not on a cliff; below it the gross lines come back (5 leaves 2, 2
+    #: leaves 4).
+    #: AND §3.7's "AT EQUAL COVERAGE" REJECT-IF IS READ ON A RANKING, NOT ON THE SHIPPED CONJUNCTION (W6
+    #: r1-correctness-8): the shipped rule has ONE operating point and grades 33.0% of blind lines `high`, so
+    #: the 3.59% against the 5.94% bound is the two SIGNALS ordered by (score-pass, margin) and cut at each
+    #: fold's baseline line count — which can include lines the shipped grading calls `low` for another reason
+    #: — and the two baseline coverages the cut is taken at are pooled over all 20 songs rather than per fold.
+    #: The conjunction's own held-out point is the 33.0% / 2.80% / 0 row above.
+    #:
+    #: WHY ONE NUMBER SERVES TWO BUNDLES, which is what a per-row field has to answer: the floor is on a GAP
+    #: — the evidence the decode would forfeit to move one line — and the corpus's spread is wide relative to
+    #: it (base: median 27 nats, p10 4), so songs do not stack up against it from one side. MEASURED ON THE
+    #: SECOND BUNDLE: on HUBERT_ASR_LARGE over the same 20 songs the margins read median 33 nats and p10 5 —
+    #: the same scale — and the rule at the same floor reads 34.7% coverage / 2.66% bad-among-high / ZERO
+    #: gross against that bundle's own control at 51.4% / 8.97% / 20 (whose 8.97% against 9.26%
+    #: bad-among-LOW is the at-chance reading again). Nothing was re-fitted, and nothing needed to be — which
+    #: is an argument for the number TRANSFERRING to a measured bundle, not for reading it on an unmeasured
+    #: one, and `HUBERT_ASR_XLARGE`'s None is that distinction.
+    margin_floor_nats: float | None
+
 
 #: EVERY CALIBRATED MODEL, keyed by `Emissions.model` — the ONE source of truth for every emission-scale
 #: threshold in this worker (module docstring, ONE TABLE). A model absent from it is not gated: `calibration`
 #: answers None and its readers fall back to the witnesses that read no emission scale.
 #:
 #: Populated by the procedure in the module docstring, one row per bundle, each row's numbers measured on
-#: THAT bundle's matrices over the whole bench corpus. THREE rows since W4b 6b: the SHIPPED DEFAULT
-#: (`adapters.ml.DEFAULT_ALIGN_MODEL` — the base model, which W4b's corpus sweep kept after rejecting the
-#: HuBERT-Large flip) and the two HuBERT bundles that flip calibrated, which stay reachable by name
-#: (`ENCORE_ALIGN_MODEL=HUBERT_ASR_LARGE|HUBERT_ASR_XLARGE`) and are what a later wave re-reads when it
-#: retries the flip. Nothing was replaced; the flip's control IS the shipped row. W7's non-English
-#: bundles go here too, and nowhere else. A bundle a box can DEFAULT to must have a row or that worker would
-#: gate nothing (`tests/test_lexical.py` holds `ml.default_align_model` to this table).
+#: THAT bundle's matrices over the whole bench corpus. THREE rows since W4b 6b, and W5's flip moved WHICH ONE
+#: IS THE DEFAULT'S without touching a number in any of them: `HUBERT_ASR_LARGE` is
+#: `adapters.ml.DEFAULT_ALIGN_MODEL` now, the base model is the row `BANDS` names and an operator reaches by
+#: name (and the row every pre-W5 result file was measured against), and `HUBERT_ASR_XLARGE` is nobody's
+#: default. That the flip was a one-word change HERE is the table's whole point: the bundle moved and not one
+#: threshold had to be re-fitted, because each row already held all five of its own numbers. W7's non-English
+#: bundles go here too, and nowhere else. A bundle a box can DEFAULT to must have a COMPLETE row — every field
+#: measured, `margin_floor_nats` included — or that worker would gate on nothing, or on four fifths of a
+#: calibration (`tests/test_lexical.py` holds `ml.default_align_model` to this table both ways).
 CALIBRATED: dict[str, Bands] = {
     "WAV2VEC2_ASR_BASE_960H": Bands(
         model="WAV2VEC2_ASR_BASE_960H",
@@ -595,6 +684,7 @@ CALIBRATED: dict[str, Bands] = {
         mix_floor=0.15,
         mix_ok_from=0.6,
         line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
     ),
     "HUBERT_ASR_LARGE": Bands(
         model="HUBERT_ASR_LARGE",
@@ -603,6 +693,7 @@ CALIBRATED: dict[str, Bands] = {
         mix_floor=0.15,
         mix_ok_from=0.4,
         line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
     ),
     "HUBERT_ASR_XLARGE": Bands(
         model="HUBERT_ASR_XLARGE",
@@ -611,17 +702,23 @@ CALIBRATED: dict[str, Bands] = {
         mix_floor=0.15,
         mix_ok_from=0.3,
         line_sync_min_agreement=0.5,
+        #: NOT MEASURED, and that is the whole point of the field being optional: the margin was fitted on
+        #: this corpus's base and HuBERT-Large decodes and nobody has read one of this bundle's trellises
+        #: (the row's own section in the module docstring: "REACHABLE ONLY BY NAME AND NOBODY'S DEFAULT").
+        #: So the placement-ambiguity rule abstains here rather than reading another bundle's nats.
+        margin_floor_nats=None,
     ),
 }
 
-#: WHISPERX'S `en` TABLE DEFAULT, and this worker's default again after W4b's bench verdict (see the module
-#: docstring for every number). Two things read it by NAME: a matrix that names NO model at all — a test's
-#: fake, a bench emission cache written before `Emissions.model` existed, both of which really were this
-#: model's — and the tests that pin one row's shape. DO NOT READ IT AS "the shipped row" EVEN THOUGH IT IS ONE
-#: TODAY: the shipped bundle is resolved per device and per operator (`adapters.ml.default_align_model`,
+#: WHISPERX'S `en` TABLE DEFAULT, AND NO LONGER THIS WORKER'S (W5 flipped `adapters.ml.DEFAULT_ALIGN_MODEL` to
+#: `HUBERT_ASR_LARGE`; see the module docstring for every number). Two things read it by NAME: a matrix that
+#: names NO model at all — a test's fake, a bench cache written before `Emissions.model` existed, both
+#: of which really were this model's — and the tests that pin one row's shape. DO NOT READ IT AS "the shipped
+#: row": the shipped bundle is resolved per device and per operator (`adapters.ml.default_align_model`,
 #: `ENCORE_ALIGN_MODEL`) and its row is `CALIBRATED[that name]`, so a reader that means "the model these
-#: frames came from" must go through `calibration(emissions)`, never through this. The two coincide now and
-#: did not between W4b 6b's build and its bench.
+#: frames came from" must go through `calibration(emissions)`, never through this. The two coincided from
+#: W4b's bench verdict until W5's flip, and the warning was written for exactly the wave that would separate
+#: them again — so a `lexical.BANDS` that crept into a runtime reader in between is a wrong-model read NOW.
 BANDS = CALIBRATED["WAV2VEC2_ASR_BASE_960H"]
 
 #: THE LINE_SYNC RUNG'S SHARE FOR A MATRIX WITH NO ROW (W4b review r1), and the ONE threshold a missing
@@ -652,6 +749,20 @@ def line_sync_share(bands: Bands | None) -> float:
     witness read" (see `LINE_SYNC_SHARE_UNCALIBRATED`).
     """
     return bands.line_sync_min_agreement if bands is not None else LINE_SYNC_SHARE_UNCALIBRATED
+
+
+def margin_floor(bands: Bands | None) -> float | None:
+    """The placement-margin floor in nats for a matrix whose calibration is `bands`, or None where no measured
+    floor exists — a model with no row AT ALL, or a row whose `margin_floor_nats` was never fitted.
+
+    THE MIRROR IMAGE OF `line_sync_share`, and the asymmetry is the argument (W6 review r1-spec-9): the rung's
+    share is a fraction of lines within a tolerance in SECONDS, so it survives a bundle it was not measured on
+    and has a floor constant; a margin is a sum of log-probabilities, so it survives nothing and has None. Two
+    callers, both treating None as ABSTAIN: `align_steps._placement_margins` does not run the two Viterbi
+    passes, and grading reads exactly what it read before review §3.7 (the `conf-legacy` arm's behaviour,
+    reached because the bundle is unmeasured rather than because an operator asked).
+    """
+    return bands.margin_floor_nats if bands is not None else None
 
 
 def is_calibrated(model: str) -> bool:
