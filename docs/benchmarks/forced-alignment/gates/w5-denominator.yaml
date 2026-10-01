@@ -61,22 +61,77 @@ denominator-blind-at-most-seven-songs: count(blind.song.scored_up) + count(blind
 denominator-headers-at-most-seven-songs: count(headers.song.scored_up) + count(headers.song.scored_down) <= 7
 denominator-credit-at-most-six-songs: count(credit.song.scored_up) + count(credit.song.scored_down) <= 6
 denominator-extraverse-at-most-five-songs: count(extraverse.song.scored_up) + count(extraverse.song.scored_down) <= 5
+# AND IT FAILS AT 6 SINCE W5 REVIEW ROUND 2, MEASURED, WITH THE EIGHTH SONG NAMED — the one thing this file
+# exists to catch, caught (bench runner, 2026-10-01, `results/w5r2-run_align.json` against
+# `results/w5r2-base-run_align.json`). `extraverse` was sitting EXACTLY on its bound (5 <= 5 on the round-1
+# pair, `results/w5-run_align.json` against `results/w5-base-run_align.json`, re-read offline on this very
+# file), and round 2's `nonlyric.NOTED_SHARE` 0.5 -> 0.8 spent that last slack: `hello` `extraverse` is the
+# ONE served text in all 1088 cases the raise moves (63 -> 80 lines, because the mode's donor verse puts the
+# noted share at 63/80 = 0.7875, inside the band R3 now abstains in), and the two bundles then disagree about
+# 2 of the 17 restored lines — `hello` `extraverse` scored **72 under the base bundle and 74 under HuBERT-L**.
+# THE CAUSE IS THE SAME ACOUSTIC REMAINDER THE HEADER ALREADY NAMES, not a new text asymmetry: `served_lines`
+# is still IDENTICAL between the bundles in all 1088 cases, so what differs is which of those lines a bundle
+# TIMES (the never-sung envelope rule and `_fitted_run`'s frame-per-letter refusal). The population is 8 songs
+# / 87 song-modes now against 7 / 86: the same seven, plus `hello` in `extraverse` ALONE (1 song-mode, not 12,
+# because `hello`'s own text still fires R3 at 63/74 = 0.8514 and only the donor-verse mode dilutes it).
+# THE BOUND IS NOT WIDENED — only the owner waives a reject-if, and a fix agent moving the literal is the
+# silent default-on the PLAN's hard rules forbid. Both are here, on `gates/w5.yaml`'s `-plan-bar` /
+# `-itemised-cost` precedent: the stated bar FAILS and is recorded, and the clause below is the ceiling of the
+# ONE named cause, so a NINTH song still trips a second gate instead of hiding inside a widened bound.
+# WHAT WOULD CLOSE IT: the same mix-envelope / two-bundle-agreement change the header names for the other
+# seven (`m6-mix-spare` / `m6-window-spare`) — `hello` `extraverse` is not a different defect, it is one more
+# song-mode reaching the one that was already open.
+denominator-extraverse-itemised-at-most-six-songs: count(extraverse.song.scored_up) + count(extraverse.song.scored_down) <= 6
 denominator-drop20-at-most-four-songs: count(drop20.song.scored_up) + count(drop20.song.scored_down) <= 4
 denominator-drop50-at-most-six-songs: count(drop50.song.scored_up) + count(drop50.song.scored_down) <= 6
 # POOLED, the per-song differences very nearly cancel, which is exactly why the per-song count above is the
 # gate and a pooled one would have hidden the artefact: truth 1707 against the base bundle's 1706.
 denominator-pooled-scored-within-four: truth.scored <= base.truth.scored + 4
 denominator-pooled-scored-within-four-down: truth.scored >= base.truth.scored - 4
-# AND THE TEXT SIDE IS MODEL-INDEPENDENT, which is the claim the fix actually makes: the two bundles are
-# served the same lines, so `in_text` is equal and `missing` can only differ by the acoustic drops above.
+# `in_text` IS A HARNESS INVARIANT AND NOT THE FIX'S EVIDENCE — labelled as the tautology it is rather than
+# left standing in for a claim it cannot carry (W5 review r2-spec-11). It is the TRUTH text's line count
+# (`e2e_lib.row_of`: `len(claims.truth_indexes())`), computed before the worker is called and from a file no
+# bundle and no hygiene touches, so it reads [1760 == 1760] on the shipped pair AND on the pre-fix W6 pair —
+# one of the 7 that already passed in the 7/15 reading below. What it DOES prove is worth one gate: both runs
+# scored against the same denominator, so every difference under it is the worker's.
 denominator-in-text-equal: truth.in_text == base.truth.in_text
+# THE CLAIM THE FIX MAKES — the two bundles are SERVED the same lines — is read per case and not here, because
+# `served_lines` is a per-case field (`e2e_lib.COMPACT_KEEP`) that the summary does not aggregate. Measured on
+# the committed digests, no decode: all 1088 cases of `results/w5-run_align.cases.jsonl` carry the same
+# `served_lines` as `results/w5-base-run_align.cases.jsonl`, and the 86 that differ differ in `scored` alone
+#   python3 -c "import json;r=lambda p:{(x['song'],x['mode'],x.get('variant'),x.get('donor')):x for x in map(json.loads,open(p))};
+#   a=r('results/w5-run_align.cases.jsonl');b=r('results/w5-base-run_align.cases.jsonl');
+#   print(sum(a[k]['served_lines']!=b[k]['served_lines'] for k in a), sum(a[k]['scored']!=b[k]['scored'] for k in a))"
+# -> `0 86`. Making that a GATE means summarising `served_lines` into the run document beside `scored` and
+# `in_text` (pooled and per song) — a harness change and a re-summarise of every committed row, which is the
+# bench runner's to take, not this file's.
+# WHAT IS READABLE HERE ABOUT THE ACOUSTIC HALF: `unsung` — the never-sung rule's own count — is **0 on both
+# sides** of every pair above, so none of the 86 differences is a line the document declined as silent; each
+# is a line it did not TIME (`_fitted_run`'s frame-per-letter refusal). Slack today and one-directional, like
+# `gates/w5-flip.yaml` section 3: it bites the moment that stops being true.
+denominator-unsung-equal: truth.unsung == base.truth.unsung
 denominator-missing-within-four: truth.missing <= base.truth.missing + 4
 
 # ── NON-VACUITY ───────────────────────────────────────────────────────────────────────────────────────────
-# 14 gates plus the built-in no-ERROR-rows; **15/15** on `results/w5-run_align.json` against
-# `results/w5-base-run_align.json`. Read on the W6 TREE's own pair (`results/w6-hubert-run_align.json`
-# against `results/w6-base-run_align.json`) it reads **7/15**, and the EIGHT failures are the artefact
+# 16 gates plus the built-in no-ERROR-rows (15 before the `-itemised-at-most-six-songs` companion above).
+# ROUND 1: **16/16** on `results/w5-run_align.json` against `results/w5-base-run_align.json` (15/15 before
+# W5 review r2-spec-11 added the `unsung` clause and relabelled the `in_text` one), with `extraverse` at
+# exactly 5 <= 5.
+# ROUND 2, every case re-measured (bench runner, 2026-10-01, code `e2c1027b6cc491a2`): **16/17** on
+# `results/w5r2-run_align.json` against `results/w5r2-base-run_align.json` — `extraverse` 6 against the
+# stated bound of 5 FAILS and the companion at 6 passes; see that clause for `hello`'s name and cause. Read
+# with the pair reversed it is also 16/17, because this file's question is symmetric (a count of differences),
+# which is the one gate family here that SHOULD read the same both ways.
+# Read on the W6 TREE's own pair (`results/w6-hubert-run_align.json`
+# against `results/w6-base-run_align.json`) it reads **9/17** (8/16 before the companion clause, which passes
+# there at 6 <= 6), and the EIGHT failures are the artefact
 # itself: `truth` / `jit` / `off15` / `tempo098` / `blind` 8 against the bound of 7, `credit` 8 against 6,
 # `extraverse` 6 against 5, `drop20` 7 against 4. (`headers` 5 and `drop50` 2 are slack there, because the
 # injected-header text and the 50% drop already moved those denominators for other reasons.) So this file
 # tells the two trees apart, which is what makes the 7 a measurement and not a description.
+# AND IN `--sync-mode lines` THE ARTEFACT IS STILL ABSENT, re-measured on the round-2 pair
+# (`results/w5r2-lines-run_align.cases.jsonl` against `results/w5r2-base-lines-run_align.cases.jsonl`):
+# `served_lines` differs in 0 of 1088 cases and all 22 `scored` differences are `0 -> N` or `N -> 0`, i.e. a
+# document that exists on one side only — never a different line COUNT on a committed pair. `hello`
+# `extraverse` does NOT appear there: in `lines` mode that document is the claim sheet's own line spans, so
+# the two bundles write byte-identical documents (`doc_sha256` `a56c61c9d3c6846d` on both) at scored 74.

@@ -90,10 +90,13 @@ def test_it_transcribes_words_that_were_actually_spoken(spoken: Spoken) -> None:
     transcriber = build_transcriber(device="cpu", checkpoint=CHECKPOINT)
     assert transcriber is not None
 
-    segments = transcriber.transcribe(spoken.path, language="en")
-    assert segments, "the transcriber heard nothing at all"
+    spoken_in = transcriber.transcribe(spoken.path, language="en")
+    assert spoken_in, "the transcriber heard nothing at all"
+    # THE LANGUAGE IS HALF THE RETURN VALUE SINCE W7 (review M8): it was read off whisper's result dict and
+    # discarded, and this real-model test is the only place the echo can be proved rather than faked.
+    assert spoken_in.language == "en", f"asked for en, whisper reported {spoken_in.language!r}"
 
-    heard = " ".join(str(s.get("text") or "") for s in segments).lower()
+    heard = " ".join(str(s.get("text") or "") for s in spoken_in.segments).lower()
     # A few distinctive words, not the whole transcript: `tiny` mis-hears function words, and asserting on
     # an exact match would be a test of the model rather than of the adapter.
     for word in ("morning", "river", "valley"):
@@ -104,7 +107,7 @@ def test_transcribed_segments_carry_usable_timings(spoken: Spoken) -> None:
     """The segments feed `presplit` and then the aligner, both of which read `start`/`end`."""
     transcriber = build_transcriber(device="cpu", checkpoint=CHECKPOINT)
     assert transcriber is not None
-    segments = transcriber.transcribe(spoken.path, language="en")
+    segments = transcriber.transcribe(spoken.path, language="en").segments
 
     starts = [
         float(value)

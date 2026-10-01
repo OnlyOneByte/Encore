@@ -22,7 +22,7 @@ import soundfile as sf
 
 from encore_worker.domain.document import Segment
 from encore_worker.domain.lyrics import parts
-from encore_worker.domain.lyrics.generate import Generated, Line, Word, generate
+from encore_worker.domain.lyrics.generate import Generated, Line, Word, adopted_line, generate
 from encore_worker.domain.lyrics.policy import Tier
 from encore_worker.host.config import Config
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
@@ -279,8 +279,14 @@ def test_an_aside_is_not_held_out_of_a_line_the_matrix_cannot_align_without_it()
     dictionary lacks is dropped by `generate` exactly as a `♪` is — so a line whose lead words are all
     out-of-vocabulary passed it, `generate` emitted nothing for the index, and `restored` published nothing:
     the arm LOST a line, aside words and all, that the default path publishes. With the matrix in hand the
-    test is the decode's own (`generate.alignable_chars`)."""
-    texts = ["aaa bbb", "ñññ (ccc ddd)", "eee fff"]
+    test is the decode's own (`generate.alignable_chars`).
+
+    THE LEAD IS HANGUL SINCE W7, and the substitution is the point rather than cosmetic: this read `ñññ`,
+    which the target filter now NFKD-folds to `nnn` and aligns (review §3 item 9, `generate.char_ids`), so an
+    accented lead is no longer unalignable on a Latin vocabulary and the old fixture asserted the opposite of
+    what it tested. A script this vocabulary has no column for is what "out of vocabulary" still means — and
+    it is review M8's own case (a Japanese sheet with 0 alignable characters)."""
+    texts = ["aaa bbb", "가나다 (ccc ddd)", "eee fff"]
     matrix = FakeEmissions(sung_matrix([("aaa bbb", 1.0, 2.0)], DIC, 5.0), 0.02, DIC)
 
     blind = parts.split(texts)
@@ -288,13 +294,39 @@ def test_an_aside_is_not_held_out_of_a_line_the_matrix_cannot_align_without_it()
 
     got = parts.split(texts, emissions=matrix)
     assert 1 not in got.hosts, "no lead left that THIS dictionary can align, so the line keeps its aside"
-    assert got.lead_texts[1] == "ñññ (ccc ddd)"
+    assert got.lead_texts[1] == "가나다 (ccc ddd)"
+
+
+def test_an_accented_lead_is_alignable_because_the_filter_folds_it() -> None:
+    """The other half of the fixture above, as its own test (W7, review §3 item 9).
+
+    `ñññ` has no column in a 26-letter Latin vocabulary and used to be dropped, so `parts.split` read the
+    line as "nothing left to align" and kept its aside. Since the target filter folds NFKD, `ñññ` IS `nnn` to
+    the decode, so the lead stands on its own and the aside is held out — which is what the arm is for.
+    """
+    texts = ["aaa bbb", "ñññ (ccc ddd)", "eee fff"]
+    matrix = FakeEmissions(sung_matrix([("aaa bbb", 1.0, 2.0)], DIC, 5.0), 0.02, DIC)
+
+    got = parts.split(texts, emissions=matrix)
+    assert 1 in got.hosts, "the fold gives this lead three alignable characters"
+    assert got.lead_texts[1] == "ñññ"
 
 
 def test_unmeasured_lines_reads_the_document_not_a_set_kept_beside_it() -> None:
     """So a line the ladder re-decoded from its FULL text is no longer called interpolated."""
     repaired = Generated(lines=(_line("me close", 2.0, 3.0, index=1),), language="en")
     assert parts.unmeasured_lines(repaired) == frozenset()
+
+
+def test_a_claim_adopted_line_is_unmeasured_too_arm_or_no_arm() -> None:
+    """W5 review r2-spec-13. The docstring said "every R2 echo, and nothing else today" and the call site said
+    "empty without the arm": both were false on the DEFAULT path, because `generate.adopted_line` gives every
+    word `OOV_CONFIDENCE` provenance — the claim's span copied, not heard — which is this predicate exactly.
+    Pinned so the sentence and the set stay in step; no behaviour rides on it (the adopted branch of
+    `line_confidence` grades such a line `low` regardless)."""
+    line = adopted_line("aaa bbb ccc", 7, 10.0, 12.0)
+    assert line is not None
+    assert parts.unmeasured_lines(Generated(lines=(line,), language="en")) == frozenset({7})
 
 
 # ── through a real CTC decode: the lead's path is the lead's alone ─────────────────────────────────
@@ -346,7 +378,13 @@ def test_the_echo_tail_lands_where_the_second_voice_sang_it() -> None:
 Rig = tuple[AlignStepsImpl, Path, JobRef, AudioRef]
 
 
-def _rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, arm: bool) -> Rig:
+def _rig(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    arm: bool,
+    phrases: Sequence[tuple[str, float, float]] = tuple(PHRASES),
+) -> Rig:
     from encore_worker.adapters import ml
     from encore_worker.domain.lyrics import lexical
 
@@ -356,7 +394,7 @@ def _rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, arm: bool) -> Rig:
     monkeypatch.setattr(lexical, "lift", lambda *_a, **_k: None)
 
     signal = np.random.default_rng(0).normal(0.0, 0.002, int(DURATION * RATE))
-    for _text, start, end in PHRASES:
+    for _text, start, end in phrases:
         t = np.arange(int((end - start) * RATE)) / RATE
         at = int(start * RATE)
         signal[at : at + len(t)] += 0.3 * np.sin(2 * math.pi * 220.0 * t)
@@ -365,7 +403,7 @@ def _rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, arm: bool) -> Rig:
 
     class Aligner:
         def emissions(self, _path: str, _language: str) -> FakeEmissions:
-            return FakeEmissions(sung_matrix(PHRASES, DIC, DURATION), 0.02, DIC)
+            return FakeEmissions(sung_matrix(list(phrases), DIC, DURATION), 0.02, DIC)
 
         def align(self, search: Sequence[Segment], _path: str, _language: str) -> tuple[Segment, ...]:
             raise AssertionError("the windowed path must not run")
@@ -395,11 +433,11 @@ def _rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, arm: bool) -> Rig:
     return impl, tmp_path, job, audio
 
 
-def _published(rig: Rig) -> dict[str, Any]:
+def _published(rig: Rig, served: Sequence[str] = SERVED) -> dict[str, Any]:
     impl, tmp, job, audio = rig
     request = TimeRequest(
         job=job,
-        text=TextRef(tier=Tier.CANDIDATE, label="test", segments=tuple({"text": t} for t in SERVED)),
+        text=TextRef(tier=Tier.CANDIDATE, label="test", segments=tuple({"text": t} for t in served)),
         audio=audio,
         language="en",
     )
@@ -416,6 +454,36 @@ def test_the_arm_publishes_every_served_word_in_order(
     assert [line["text"] for line in doc["lines"]] == list(SERVED)
     starts = [word["start"] for line in doc["lines"] for word in line["words"]]
     assert starts == sorted(starts), "a highlight that jumps is what this must never publish"
+
+
+#: W5 review r2-tests-16: a served line whose LEAD words are outside the matrix's vocabulary while its
+#: parenthetical is inside it, sung in the gap after the song's last lead line. Round 1 (r1-tests-20) moved
+#: R1's "something is left to align" test onto the MATRIX for exactly this shape, but only `parts.split`'s own
+#: test pinned it — mutating the step's `parts.split(line_texts, emissions=emissions)` back to
+#: `parts.split(line_texts)` left the whole suite green while the arm silently lost this line again.
+#: HANGUL SINCE W7, for the reason `test_an_accented_lead_is_alignable_because_the_filter_folds_it` gives:
+#: `ñññ` is `nnn` to the target filter now (review §3 item 9), so an accented lead no longer names this shape
+#: and the fixture would have asserted the opposite of what it tests.
+OOV_LEAD = "가나다 (yeah yeah)"
+OOV_PHRASE = ("yeah yeah", 23.0, 24.0)
+
+
+def test_the_arm_still_publishes_a_line_whose_lead_the_matrix_cannot_align(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The half of r1-tests-20 that lived only in `parts`' own test: the step must hand `split` the MATRIX.
+    Held out on the letter test alone, this line's lead is `ñññ` — nothing `generate` can target — so
+    `generate` emits no line for the index and `restored` publishes nothing: the arm LOSES a line the default
+    path publishes. With the matrix, R1 refuses to hold the aside out and the whole line is a target."""
+    rig = _rig(tmp_path, monkeypatch, arm=True, phrases=(*PHRASES, OOV_PHRASE))
+    doc = _published(rig, served=(*SERVED, OOV_LEAD))
+
+    assert [line["text"] for line in doc["lines"]] == [*SERVED, OOV_LEAD]
+    assert doc["lines"][-1]["words"], "a published line with no word is the same loss one indirection later"
+    matrix = FakeEmissions(sung_matrix([*PHRASES, OOV_PHRASE], DIC, DURATION), 0.02, DIC)
+    split = parts.split([*SERVED, OOV_LEAD], emissions=matrix)
+    assert split.lead_texts[-1] == OOV_LEAD, "the aside stays in the lead text when nothing else can align"
+    assert len(SERVED) not in split.hosts, "so the index is not a host at all"
 
 
 def test_a_line_no_decode_placed_is_graded_low(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

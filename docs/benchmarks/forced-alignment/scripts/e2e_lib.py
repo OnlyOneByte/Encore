@@ -54,6 +54,8 @@ from typing import Any
 
 import numpy as np
 
+from encore_worker.adapters import ports
+
 HERE = Path(__file__).resolve().parent
 
 #: The bench corpus. DURABLE on purpose: the review's copy lived in /tmp, which macOS wipes on reboot.
@@ -2182,7 +2184,15 @@ class TranscriptStore:
     def path_of(self, digest: str) -> Path:
         return self.directory / f"{digest}.json"
 
-    def load_segments(self, audio_path: str, language: str) -> list[dict[str, Any]] | None:
+    def load_segments(self, audio_path: str, language: str) -> tuple[list[dict[str, Any]], str | None] | None:
+        """The stored (segments, HEARD language), or None for a miss.
+
+        THE LANGUAGE IS STORED TOO SINCE W7 (review M8): whisper's own detection is half the port's return
+        value now (`ports.Transcribed`), and a cache that served only the segments would hand every replayed
+        transcript a `None` language — so a cached `run_align` row would route a non-English song to the
+        default bundle where a cold one routed it to its own. An entry written BEFORE the field existed has
+        no `language` key and reads as None, which is exactly what it recorded.
+        """
         digest, parts = self.key(audio_path, language)
         path = self.path_of(digest)
         if not path.is_file():
@@ -2190,14 +2200,26 @@ class TranscriptStore:
         stored = json.loads(path.read_text(encoding="utf-8"))
         if stored.get("key") != parts:
             return None
-        return [dict(segment) for segment in stored["segments"]]
+        heard = stored.get("language")
+        return (
+            [dict(segment) for segment in stored["segments"]],
+            str(heard) if isinstance(heard, str) and heard else None,
+        )
 
-    def save_segments(self, audio_path: str, language: str, segments: Sequence[Mapping[str, Any]]) -> Path:
+    def save_segments(
+        self,
+        audio_path: str,
+        language: str,
+        segments: Sequence[Mapping[str, Any]],
+        heard: str | None = None,
+    ) -> Path:
         digest, parts = self.key(audio_path, language)
         self.directory.mkdir(parents=True, exist_ok=True)
         final = self.path_of(digest)
         staging = final.with_suffix(f".{os.getpid()}.tmp")
-        body = {"key": parts, "segments": [dict(segment) for segment in segments]}
+        body: dict[str, Any] = {"key": parts, "segments": [dict(segment) for segment in segments]}
+        if heard is not None:
+            body["language"] = heard
         staging.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
         os.replace(staging, final)
         return final
@@ -2217,13 +2239,14 @@ class CachedTranscriber:
         #: disk / computed — how each call was served, for the run's metadata.
         self.served: Counter[str] = Counter()
 
-    def transcribe(self, audio_path: str, *, language: str | None = None) -> Sequence[Mapping[str, Any]]:
+    def transcribe(self, audio_path: str, *, language: str | None = None) -> ports.Transcribed:
         key_language = language or ""
         stored = self.store.load_segments(audio_path, key_language)
         if stored is not None:
             self.served["disk"] += 1
-            return tuple(stored)
-        segments = tuple(dict(s) for s in self.inner.transcribe(audio_path, language=language))
+            return ports.Transcribed(segments=tuple(stored[0]), language=stored[1])
+        heard = self.inner.transcribe(audio_path, language=language)
+        segments = tuple(dict(s) for s in heard.segments)
         self.served["computed"] += 1
-        self.store.save_segments(audio_path, key_language, segments)
-        return segments
+        self.store.save_segments(audio_path, key_language, segments, heard.language)
+        return ports.Transcribed(segments=segments, language=heard.language)

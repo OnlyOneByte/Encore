@@ -22,7 +22,7 @@ from encore_worker.adapters import cli, lrclib, lrcmux, ml, musicbrainz, ports, 
 from encore_worker.artifacts import scratch
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
 from encore_worker.domain.identity import Identified
-from encore_worker.domain.lyrics import lexical
+from encore_worker.domain.lyrics import language, lexical
 from encore_worker.host import ffmpeg, hardware
 from encore_worker.host.config import Config, ConfigError
 from encore_worker.protocol import frames as f
@@ -61,6 +61,12 @@ def build_adapters(config: Config, *, device: str) -> Adapters:
             device=device, jobs=config.concurrency, model=align_model_for(config, device)
         ),
         diarizer=ml.build_diarizer(device=device),
+        # LATIN-SCRIPT LANGUAGE ID (review M8 / §3 item 9, W7). Built ONCE per process, here: lingua holds
+        # n-gram models per language, and building one per job would pay that per job. None on a box without
+        # the `text` extra, which costs accuracy on non-English Latin songs and nothing else — the SCRIPT half
+        # of the decision is stdlib `unicodedata` (`domain.lyrics.language`), so a Japanese sheet still routes
+        # to a Japanese bundle on a box that never installed it.
+        detector=language.lingua_detector(),
     )
 
 

@@ -318,7 +318,15 @@ def parse_vtt(text: str) -> tuple[Segment, ...]:
          per TRACK, because a rolling track's last cue often carries no new word and so no tag of its own.
       4. INLINE `<hh:mm:ss.mmm>` TAGS BECOME WORD CLAIMS. They are the only per-word timing a rolling
          track carries and `clean_line` strips them, so they are read here, before the clean, and attached
-         as `words` — which is what makes an auto track a WORD-timed candidate instead of a line-timed one.
+         as `words`.
+         THE CAPTION TRACK IS STILL DECLARED LINE-TIMED, DELIBERATELY (W5 review r2-correctness-6). This rule
+         used to claim the word claims are "what makes an auto track a WORD-timed candidate": they are not —
+         `steps.align_steps.fetch_captions` builds its `TextRef` with `timing=TIMING_LINE`, and nothing on the
+         caption path reads a cue's `words` (the claim clock is built from `measure.line_spans`, one span per
+         segment). The payload is carried and not yet declared because declaring it would make these the
+         job's CLAIMS instead of the cue's line spans — a different claim stream, on a track whose per-word
+         timing is a machine's guess at a sung word — which is a measured change and not a label change. The
+         claims stay attached so the wave that measures it has them; see `fetch_captions`.
 
     After all four: dQw4w9WgXcQ parses to 48 cues and 287 words against the 284 sung, with 280 word
     claims over its 41 word-timed cues — and its first cue back, `We're no strangers to` at 18.80 s.

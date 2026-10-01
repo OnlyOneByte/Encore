@@ -369,3 +369,63 @@ def test_the_lift_and_a_repair_read_the_same_excluded_set_as_the_decode(
     assert [(w.word, w.start, w.end) for w in repaired[1].words if w.end > w.start] == [
         (w.word, w.start, w.end) for w in reference[1].words if w.end > w.start
     ], "the repaired line's sung words are the same: the slice carried the specials"
+
+
+# ── the REAL vocabularies W7 made reachable ──────────────────────────────────────────────────────
+
+#: Three real whisperx HF alignment vocabularies, read off the model files themselves (the review's per-model
+#: dumps, `_review-scratch/encore-review/*.json`, plus the `nn` checkpoint cached on this box). Only the
+#: non-character columns and `id 0` are needed, and that is deliberately ALL that is copied: the weights are
+#: 1.2-3.6 GB each, and what review M9 is about is where the vocabulary puts its pad.
+#:
+#: `nn` is the WORST SHAPE OF THE 23: id 0 is the WORD SEPARATOR, so a decoder told `blank=0` charges every
+#: inter-word boundary as blank and never visits the model's real blank column at all. It is also the bundle
+#: `scripts/lang_gate.py --blank` runs LIVE, because its weights are the non-English ones already on this box.
+REAL_VOCABULARIES = {
+    # NbAiLab/nb-wav2vec2-1b-nynorsk (whisperx `nn`)
+    "nn": ({"|": 0, "a": 1, "z": 26, "å": 27, "æ": 28, "ø": 29, "[UNK]": 30, "[PAD]": 31}, 31),
+    # saattrupdan/wav2vec2-xls-r-300m-ftspeech (whisperx `da`) — the review's measured case
+    "da": ({"u": 0, "|": 4, "a": 5, "<unk>": 31, "<pad>": 32}, 32),
+    # kresnik/wav2vec2-large-xlsr-korean (whisperx `ko`) — the widest vocabulary whisperx tables
+    "ko": ({"볍": 0, "|": 1, "<unk>": 1203, "[PAD]": 1204}, 1204),
+}
+
+
+@pytest.mark.parametrize("code", sorted(REAL_VOCABULARIES))
+def test_the_adapter_finds_the_blank_of_a_real_non_english_vocabulary(code: str) -> None:
+    """`blank_id_of` on the vocabularies W7 actually makes reachable, not on a permutation of an English one.
+
+    Named by REVIEW M9 and now routable: `language.model_language` sends a non-Latin script to
+    `whisperx.load_align_model(language_code=...)`, so `ko`'s pad at 1204 is a live configuration rather
+    than a table entry. The `da` and `nn` rows are Latin-script and reachable only through the
+    `lang-route-mix` arm or a job that declares the language — which is why the arm's docstring points here.
+    """
+    from encore_worker.adapters.ml import specials_of
+
+    dictionary, pad = REAL_VOCABULARIES[code]
+    lowered = {name.lower(): token for name, token in dictionary.items()}
+    assert blank_id_of(lowered) == pad, f"{code}: the blank is its [PAD], not id 0"
+    specials = specials_of(lowered)
+    assert specials.get("|") is not None, f"{code}: the word separator must still be excluded from targets"
+    assert pad in set(specials.values())
+    assert "-" not in specials, f"{code}: no torchaudio hyphen-blank in an HF vocabulary"
+
+
+def test_the_word_separator_at_zero_is_what_the_old_literal_would_have_called_blank() -> None:
+    """The one sentence that says why `nn` is the worst of the 23 rather than merely another entry: told
+    `blank=0`, the kernel's blank column IS the model's word separator, so the path must spend its silences on
+    a token the model emits BETWEEN WORDS and the true blank is never visited. `separator_of` would also go
+    inert on such a vocabulary if the pad were 0 — which is the guard its own docstring describes, arriving
+    from the other side."""
+    from encore_worker.domain.lyrics.generate import separator_named
+
+    dictionary, pad = REAL_VOCABULARIES["nn"]
+    lowered = {name.lower(): token for name, token in dictionary.items()}
+
+    class Named:
+        dictionary = lowered
+        blank_id = blank_id_of(lowered)
+        specials = {name: token for name, token in lowered.items() if name in {"|", "[unk]", "[pad]"}}
+
+    assert separator_named(Named()) == 0, "id 0 really is the separator here"
+    assert blank_of(Named()) == pad != 0, "and the blank really is elsewhere"

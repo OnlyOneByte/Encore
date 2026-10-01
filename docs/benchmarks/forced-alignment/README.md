@@ -3618,8 +3618,26 @@ discriminator cannot be the words.
 **R3 IS THE RULE THAT ANSWERS THE CUES, and the populations do not overlap.** Of the 32 bench songs, **24
 note exactly 0.000 of their lines** (every Jamendo sheet, numb, never-be-alone, tfr-flyaway, tfr-mayday) and
 **8 note 0.851–1.000** (hello 63/74, feel-my-heart 32/37, bohemian-rhapsody 65/74, bad-guy 75/79,
-shape-of-you 89/92, tfr-chosen 36/37, rap-god 216/217, believer 73/73), so `NOTED_SHARE` = 0.5 sits in an
-empty band **0.851 wide** and nothing is near it. The **34 lines** it drops across those 8 tracks are 34 for
+shape-of-you 89/92, tfr-chosen 36/37, rap-god 216/217, believer 73/73). `NOTED_SHARE` sits at the **BOTTOM of
+that population (0.8)** and not in the middle of the empty band: at 0.5, where it started, the rule also fired
+on two real authoring shapes nobody had measured — a track that notes only its hook lines (11 noted of 20
+worded = 0.550) and the SDH convention of one note OPENING a sung passage and one closing it (8 of 12 = 0.667)
+— and in both it deleted the unmarked lines, which are sung (W5 review r2-correctness-1 + r2-spec-7,
+reproduced on the shipped tree and now pinned by `tests/test_nonlyric.py`). At 0.8 every one of the 8 tracks
+above still fires (hello sets the floor at 0.8514, head-room 0.0514) and R3's drop share is capped at 0.200 of
+a track's worded lines by construction — the corpus maximum is hello's 11/74 = 0.1486.
+**AND THE POPULATION NOW EXCLUDES THE LINES R1/R4 ALREADY ANSWERED**, which the raise is what exposed: a
+`[Chorus]` label carries no note and is not a sung line, so counting it made a LABELLED sheet read as less
+marked than the same sheet unlabelled. On the bench's own `headers` mode (one Genius-style label per section)
+hello's share fell **0.8514 → 0.7500**, bohemian-rhapsody's 0.8784 → 0.7927, feel-my-heart's 0.8649 → 0.7111
+and rap-god's 0.9954 → 0.9153, with the author's marking untouched; excluding the anchored lines returns every
+one of them to its unlabelled value to the digit. **One served text in the whole corpus moves because of the
+raise** (measured over 32 songs × 16 modes = 512 served texts, `clean_segments` before against after):
+`hello` `extraverse`, whose injected donor verse puts its share at 63/80 = **0.7875** — inside the band the
+rule now abstains in — so that case serves 80 lines instead of 63. The 17 it stops dropping there are the 11
+cues plus the 6 INJECTED lines, i.e. the mode's own stimulus, which R3 had been deleting on that song (the
+`unsung` reading for that one case therefore moves from the text side to the acoustic one). The **34 lines** it
+drops across those 8 tracks are 34 for
 34 NOT SUNG: all 7 of hello's cues and its 4 spoken phone-call lines, bohemian-rhapsody's 9 solo
 annotations, feel-my-heart's 5 music cues, shape-of-you's `[RINGING SOUND]` / `[COSTUME RUSTLES]` /
 `[HE GROANS]`, bad-guy's 3 spoken intro lines and `(LAUGHTER)`, rap-god's title card, tfr-chosen's uploader
@@ -3731,11 +3749,26 @@ stripped**. Four defects, four rules, and the parser is now TIMESTAMP-driven rat
    per track because a rolling track's last cue often has no new word and so no tag of its own). Identity alone
    also matches a line REPEATED across a cue boundary — a chorus line ending one cue and opening the next,
    which is ordinary in song captions — and on a plain authored track that deleted it from the served text.
+   **The two signals are not equal, since r2-correctness-3**: a tag is proof on its own, an OVERLAP has to
+   repeat (`cli._ROLLING_OVERLAPS` = 2), because one overlapping pair is something real authored and SDH tracks
+   write (two simultaneous speakers, a backing-vocal overlay, stacked karaoke subtitles) and latching rule 3 on
+   it deleted a line repeated LATER in the same track. A real roll-up overlaps on every cue it grows through.
+   Measured on the corpus's own 16 real caption tracks (the 6 `.vtt` in the review scratch + 10 committed
+   `json3`): **0 overlapping pairs and 0 inline tags on every one of them**, so neither the signal nor its
+   false positive has a corpus instance, and the one with evidence behind it is the tag (dQw4w9WgXcQ: 239 tags
+   over 41 cues). The verdict is now read over the WHOLE track before the first cue is built, so it applies to
+   the cues that came before the evidence did.
 4. **Inline `<hh:mm:ss.mmm>` tags become WORD claims** — the only per-word timing a rolling track has, and
    `clean_line` strips them. A cue with NO tag keeps line timing; a cue where one tag opens a RUN of words
    apportions that run across the room to the next onset by character count (W5 review r1-tests-19: the run's
    extra words used to take the previous onset and publish ZERO-WIDTH spans, which the TV's
    `start <= pos < end` rule can never light).
+   **They are CARRIED, not DECLARED** (W5 review r2-correctness-6): `steps/align_steps.fetch_captions` builds
+   the caption `TextRef` with `timing=TIMING_LINE` whatever the cues hold, and nothing on that path reads a
+   cue's `words` — the claim clock is built from `measure.line_spans`, one span per segment. Declaring
+   `TIMING_WORD` would turn a machine's per-word guesses into the job's CLAIMS, which is a measured change no
+   bench row covers; the payload waits for the wave that measures it. The provider path DOES derive its label
+   from the payload (`_timing_of`), because there the word spans are an author's.
 
 **After: 48 cues and 287 words against 284 sung, with 280 word claims.** `[Music]` goes by R4 above (an auto
 track has no music note, so R3 cannot reach it). All six authored `.vtt` tracks in the review scratch parse
@@ -3748,7 +3781,13 @@ track has no music note, so R3 cannot reach it). All six authored `.vtt` tracks 
   across an instrumental break with R1's claim-envelope correlation falling 0.87 → 0.27. Stacked stamps
   (`[00:45.00][01:20.00] words`) were half-read, publishing `[01:20.00]` as the line's first word; they now
   emit one claim each, which is also why the sort is not optional — a single line can emit an 80 s claim
-  before the 50 s one that follows it in the file. A2 word tags become word claims. `[offset:]` is honoured,
+  before the 50 s one that follows it in the file. A2 word tags become word claims, **apportioned across the
+  room to the next onset by character count and attached to the FIRST stamp of a stacked line only** (W5
+  review r2-correctness-5 / r2-spec-8 and r2-tests-18: every token after the first in a tagged run used to
+  take the previous token's start, so a run of three published two ZERO-WIDTH claims the TV can never light —
+  the same defect r1-tests-19 fixed in the caption parser — and a stacked line's later stamps used to carry
+  the first occurrence's ABSOLUTE word times, 55 s before their own line's start in the measured case. The
+  repeat stays line-timed: nobody timed those words.) `[offset:]` is honoured,
   SUBTRACTED (a positive offset makes the lyrics appear sooner), clamped at 0, and applied to word edges too.
 * **L5.** An LRCLIB 404 on a duration-qualified lookup is retried once WITHOUT the duration. LRCLIB matches
   within ±2 s and the duration this worker measures is the UPLOAD's, so a video with an intro, an outro or a

@@ -223,6 +223,18 @@ def noted_track(raw_texts: Sequence[str], cleaned_texts: Sequence[str]) -> bool:
     36/37 -> 34/35, 73/73 -> 72/72, 89/92 -> 88/91; hello still sets the floor at 63/74) and the 24 unnoted
     ones stay at 0.000. `NOTED_SHARE`'s empty band is therefore still 0.851 wide, and `clean_segments` takes
     the corpus's 32 truth texts 1760 -> **1712** exactly as before — not one served line moves.
+
+    AND A LINE R1/R4 ALREADY ANSWERED IS NOT IN THE POPULATION EITHER, for the same reason a wordless one is
+    not (found while raising `NOTED_SHARE`, W5 review r2-correctness-1). A `[Chorus]` label or a `[Music]`
+    marker is not a sung line and carries no note, so counting it DILUTES the author's marking with lines
+    nobody would mark: a sheet that labels its sections and notes its sung lines reads as less marked than the
+    same sheet without labels. Measured on the bench's own `headers` mode, which injects exactly that
+    (Genius-style labels, one per section): hello's share falls 0.8514 -> 0.7500, bohemian-rhapsody's 0.8784
+    -> 0.7927, feel-my-heart's 0.8649 -> 0.7111 and rap-god's 0.9954 -> 0.9153 — three of the four would stop
+    firing at a floor set to the measured population, on a text whose SUNG lines are marked exactly as before.
+    Excluding the anchored lines returns every one of those shares to its unlabelled value to the digit, and
+    changes nothing on the 32 truth texts (the one anchored-and-unnoted line in the corpus is bad-guy's
+    `(LAUGHTER)`, R4's: 65/69 -> 65/68).
     """
     if len(raw_texts) != len(cleaned_texts):  # pragma: no cover - a caller bug, not an input
         raise ValueError("raw_texts and cleaned_texts must be parallel")
@@ -230,6 +242,7 @@ def noted_track(raw_texts: Sequence[str], cleaned_texts: Sequence[str]) -> bool:
         raw
         for raw, cleaned in zip(raw_texts, cleaned_texts, strict=True)
         if raw and raw.strip() and cleaned and cleaned.strip()
+        if not (is_section_header(cleaned) or is_asr_marker(cleaned))
     ]
     noted = sum(1 for text in lines if _NOTE.search(text))
     if noted < NOTED_MIN_LINES:

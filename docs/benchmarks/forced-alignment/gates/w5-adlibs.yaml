@@ -100,7 +100,19 @@ adlibs-blind-zero-gross-songs-not-down: blind.zero_gross_songs >= base.blind.zer
 # PASSES is safety — no document lost, no wrong text admitted, `high_gross` 0 — which is what makes the arm
 # worth keeping behind the knob rather than deleting.
 adlibs-truth-gross-not-up: truth.gross <= base.truth.gross
+# `truth.pm500` READS THE DENOMINATOR THIS ARM SHRINKS, so it cannot be the only accuracy clause (W5 review
+# r2-spec-10). The arm scores FEWER lines in 14 song-modes (`never-be-alone` 46 -> 44 and the table above), so
+# its +0.05 pt here is a smaller denominator and not better timing — which is exactly what the prose already
+# said while the gate read green. The text denominator is the one the arm cannot shrink, and it goes the OTHER
+# way: 89.60 -> 89.55. Both clauses stay, the per-line one for continuity and the text one as the verdict, at
+# the same allowance; `gates/w5-flip.yaml:117` uses `text_pm500` for the identical reason ("so a gain cannot be
+# a refusal in disguise").
 adlibs-truth-pm500-not-down: truth.pm500 >= base.truth.pm500 - 0.1
+adlibs-truth-text-pm500-not-down: truth.text_pm500 >= base.truth.text_pm500 - 0.1
+# AND THE LOST LINES ARE A GATE READING NOW, not a paragraph: `truth.scored` 1735 -> 1733 with `truth.missing`
+# 25 -> 27, i.e. two lines of the served text that the arm's document does not time. A blind-decode repair is
+# not allowed to cost a published line, and `adlibs-no-song-loses-a-document` only sees whole DOCUMENTS.
+adlibs-truth-no-line-lost: truth.scored >= base.truth.scored
 adlibs-claim-modes-gross-zero: truth.gross + mode("jit").gross + off05.gross + off15.gross + off3.gross + offm1.gross + tempo098.gross + tempo102.gross + extraverse.gross + headers.gross + credit.gross == 0
 adlibs-high-gross-zero-claim-modes: truth.high_gross + mode("jit").high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross == 0
 adlibs-no-song-loses-a-document: truth.published + truth.line_sync >= base.truth.published + base.truth.line_sync
@@ -108,12 +120,17 @@ adlibs-wrongtext-still-zero: mode("wrongtext").wrongtext_pass == 0
 adlibs-ownclock-still-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
 
 # ── NON-VACUITY ───────────────────────────────────────────────────────────────────────────────────────────
-# 10 gates plus the built-in no-ERROR-rows; **7/11 on `results/w5-adlibs-time_text.json`** against
-# `results/w5-time_text.json` — the same 7/11 as before round 1, on different numbers. The four failures are
-# the first section's three (pooled blind gross 75 > 68, 4 songs gaining a blind gross line, blind zero-gross
-# songs 13 -> 12) plus `adlibs-claim-modes-gross-zero` (0 -> 1) — i.e. this file's purpose is served by
-# FAILING, and a later wave that fixes the technique will see it turn green without the bar having been moved.
-# Read on the DEFAULT against itself it is 11/11, which is the other thing a knob gate must do: say nothing
+# 12 gates plus the built-in no-ERROR-rows; **8/13 on `results/w5-adlibs-time_text.json`** against
+# `results/w5-time_text.json` (7/11 before W5 review r2-spec-10 added the two denominator clauses, on the same
+# numbers). The five failures are the first section's three (pooled blind gross 75 > 68, 4 songs gaining a
+# blind gross line, blind zero-gross songs 13 -> 12), `adlibs-claim-modes-gross-zero` (0 -> 1) and
+# `adlibs-truth-no-line-lost` (`truth.scored` 1735 -> 1733) — i.e. this file's purpose is served by FAILING,
+# and a later wave that fixes the technique will see it turn green without the bar having been moved.
+# WHAT r2-spec-10 CHANGED AND WHAT IT DID NOT: `truth.text_pm500` 89.60 -> 89.55 is inside the 0.1 pt
+# allowance, so the new accuracy clause PASSES and the lost-line clause is what turns red — which is the point
+# of reading both, since the arm's apparent `truth.pm500` gain (90.89 -> 90.94) is those two lost lines
+# leaving the denominator.
+# Read on the DEFAULT against itself it is 13/13, which is the other thing a knob gate must do: say nothing
 # about the shipped path. Both readings are reproducible with no model time:
 #   `encore-align-bench/_tools/offline_gates.py gates/w5-adlibs.yaml results/w5-adlibs-time_text.json \
 #      results/w5-time_text.json`

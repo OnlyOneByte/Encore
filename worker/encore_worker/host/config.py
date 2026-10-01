@@ -92,7 +92,7 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #:                    stemless mode"): this arm publishes 77 of 128 right-text cases where the default's
 #:                    floor publishes 91, refuses 10 of 32 truth texts where the floor refuses 7, holds
 #:                    42.3% of published line starts within ±500 ms against 53.5%, and admits 27 of 64
-#:                    wrong texts — 42.2%, where review §3.4 allows 1% (`lexical.BANDS`, MIX, owns that
+#:                    wrong texts — 42.2%, where review §3.4 allows 1% (`lexical`'s MIX section owns that
 #:                    figure and its 26/40.6% pre-r1 history). The floor's own cost is real and is
 #:                    why W3 hesitated: 37 of the 128 right-text cases (7 of the 32 truth texts) lift below
 #:                    it and are refused TERMINALLY, so numb and Avercage lose documents worth 29/35 and
@@ -210,13 +210,33 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #:                    primitive, the gap being evidence the lead decode produced), and a `run_align` read —
 #:                    every number above is `time_text`, where the text is served RAW, and the shipped
 #:                    cleaning changes which lines the rules even see.
+#:   lang-route-mix   a LATIN-SCRIPT song is timed on the MIX by whisperx's own per-language bundle instead of
+#:                    this box's English default (review M8 / §3 item 9; W7,
+#:                    `domain.lyrics.language.model_language`, which is the one place the rule lives). The
+#:                    STEM is never routed, arm or no arm, and a NON-LATIN script always routes whatever this
+#:                    says — the English vocabulary maps zero characters of Hangul, Han, Cyrillic or Arabic,
+#:                    so there the alternative is `no lyrics` (review M8's repro s12) rather than a trade.
+#:                    WHY IT IS AN ARM AND NOT THE DEFAULT, measured on 59 songs rather than argued: see the
+#:                    numbers in `language.model_language` and `README.md`'s "The language reading". Two
+#:                    independent reasons, and either alone would be enough. (1) ACCURACY: on the STEM the
+#:                    English default wins, which is the reading the review had at n=7 and this wave widened
+#:                    to the whole fr/de/es third of JamendoLyrics under the bundle that ships. (2) GATING: a
+#:                    routed bundle has NO `lexical.CALIBRATED` row, so every emission-scale threshold stands
+#:                    down on it — the wrong-text lift cannot refuse, the doubt band cannot grade and the
+#:                    placement margin abstains (`lexical.calibration` answers None by design, which is the
+#:                    review's high-severity W3 finding working as intended). Turning this on by default would
+#:                    therefore trade measured accuracy for an ungated wrong-text path on every non-English
+#:                    Latin song. The wave that fits five numbers per language with
+#:                    `lift_gate.py --model VOXPOPULI_ASR_BASE_10K_{FR,DE,ES}` and `line_gate.py --model …` is
+#:                    the wave that may flip it.
 #:   ends-raw         THE ONE CONTROL, not a failed arm: the word-end post-pass does not run, so ends are
 #:                    the raw decode's, which is the column review §3.5's reject-if gates measure a gain
 #:                    over (highlight +5 pts, phrase-final end ±100 +10). A display post-pass has to be
 #:                    A/B-able and the arm switch is the only thing the bench can move without editing code;
 #:                    it is also the off switch if the corpus run rejects the post-pass after all.
 #:
-#: (`steps/align_steps.py`, `_time_text_global`, `_clamped` and `_SPOKEN_RATIO`.) An unknown name is refused
+#: (`steps/align_steps.py`, `_time_text_global`, `_clamped`, `_bundle_language` and `_SPOKEN_RATIO`.) An
+#: unknown name is refused
 #: like any bad setting: a typo would otherwise measure the default path under the arm's name.
 ALIGN_EXPERIMENTS = (
     "l1-mix-kept",
@@ -232,6 +252,7 @@ ALIGN_EXPERIMENTS = (
     "ends-raw",
     "linesep",
     "adlibs",
+    "lang-route-mix",
     "conf-legacy",
     "conf-fuzzy-repeats",
 )

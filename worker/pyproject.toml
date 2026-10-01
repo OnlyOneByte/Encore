@@ -144,11 +144,39 @@ ffmpeg = [
     "imageio-ffmpeg==0.6.0",
 ]
 
-# Text extraction for operator-pasted lyrics files.
+# Text extraction for operator-pasted lyrics files, plus LANGUAGE IDENTIFICATION for the text that is
+# about to be aligned (review M8 / §3 item 9, W7; `domain/lyrics/language.py`).
+#
+# WHY lingua AND NOT langdetect/fasttext/langid, on the three facts that matter to THIS caller rather than on
+# published accuracy tables: it is the one that can be RESTRICTED TO A CLOSED SET of languages
+# (`from_iso_codes_639_1`), which is what this worker needs — naming a language whisperx tables no alignment
+# model for is WORSE than answering English, so the detector must not be able to say `sw`. Its n-gram models
+# are IN the wheel, so there is no runtime download and an offline room still identifies a language
+# (`Config.offline` makes that a real case, not a hypothetical). And it is accurate on the SHORT, repetitive
+# text a lyric sheet is, where langdetect's character-trigram profiles are weakest.
+#
+# Apache-2.0 (2.x is `lingua-rs` with pyo3 bindings, so these are PLATFORM WHEELS and not pure Python —
+# cp312/cp313/cp314 for macos arm64/x86_64, manylinux aarch64/x86_64 and win, which covers every platform
+# this project builds for; a platform without one simply has no detector, which is a degradation and not a
+# failure, see below). PINNED EXACTLY, like every other model-adjacent pin here: a detector that changed its
+# mind about a song between two releases would re-route it to another bundle, and the bundle decides which
+# `lexical.CALIBRATED` row gates the words.
+#
+# WHAT IT COSTS AT RUNTIME, measured rather than inferred from the wheel size: 0.05 s to build the detector,
+# 0.11 s for the first detection, 3 ms for every one after it, 34 MB resident (the n-gram models load lazily
+# per language). Against the ~5-9 s emission pass it chooses the bundle for, that is free.
+#
+# AN EXTRA AND NOT A BASE DEPENDENCY, and `domain/lyrics/language.py` degrades rather than raising without
+# it: the wheel is ~170 MB of n-gram data, and its absence costs accuracy on non-English LATIN-script songs
+# ONLY — the SCRIPT half of the decision is stdlib `unicodedata`, so a Japanese or Korean sheet routes to its
+# own bundle on a box that never installed this. It is also what keeps every row under
+# `docs/benchmarks/forced-alignment/results/` reproducible: no detector means Latin script stays on the
+# English bundle, which is exactly the configuration those rows were measured on.
 text = [
     "pyperclip==1.11.0",
     "docx2txt==0.9",
     "striprtf==0.0.33",
+    "lingua-language-detector==2.2.0",
 ]
 
 [dependency-groups]
