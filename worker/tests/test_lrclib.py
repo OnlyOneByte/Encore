@@ -306,6 +306,46 @@ def test_a_line_with_no_word_tags_claims_no_word_timing() -> None:
     assert "words" not in parse_lrc(SYNCED)[0]
 
 
+def test_a_tag_that_times_a_run_of_words_publishes_no_zero_width_claim() -> None:
+    """W5 review r2-correctness-5 / r2-spec-8, and the identical defect round 1 fixed in the sibling parser
+    (`cli._inline_words`, r1-tests-19). Every token after the first in a tagged run was given the PREVIOUS
+    token's start and ended where the next began, so all but the last read `start == end` — and the TV lights
+    a word while `start <= pos < end`, which a zero-width span never satisfies. The run is apportioned across
+    the room to the next onset by character count instead. The untagged HEAD run is the same shape, opening at
+    the line's own stamp."""
+    cues = parse_lrc("[00:10.00]aaa bb <00:11.00>cccc ddd <00:12.00>eee\n[00:20.00]zzz\n")
+    words = cues[0]["words"]
+    assert isinstance(words, tuple)
+    assert [w["word"] for w in words] == ["aaa", "bb", "cccc", "ddd", "eee"]
+    assert all(float(str(w["end"])) > float(str(w["start"])) for w in words), "no word can never be lit"
+    assert float(str(words[0]["start"])) == 10.0, "the head run opens at the line's own stamp"
+    assert float(str(words[1]["end"])) == 11.0, "and closes at the first tag the author wrote"
+    assert float(str(words[2]["start"])) == 11.0, "a tagged token keeps the onset it was given"
+    assert float(str(words[-1]["end"])) == 20.0, "the last run closes at the line's end"
+    # BY CHARACTER COUNT, not evenly: `cccc` is four letters against `ddd`'s three, so it takes more of the
+    # 1.0 s the two share (`presplit`'s and `parts._spread`'s measured reason).
+    assert float(str(words[2]["end"])) == pytest.approx(11.0 + 1.0 * 4 / 7)
+
+
+def test_a_stacked_lines_word_claims_belong_to_its_first_stamp_only() -> None:
+    """W5 review r2-tests-18. `<mm:ss.xx>` is an ABSOLUTE time, so reading the tags once per stamp gave the
+    65 s occurrence of a stacked line the 10 s occurrence's word claims verbatim — word times 55 s before
+    their own line's start, which is the non-monotone claim stream the sort exists to prevent. The repeat
+    stays LINE-timed: nobody timed those words."""
+    cues = parse_lrc("[00:10.00][01:05.00]<00:10.10>aaa bbb <00:11.30>ccc\n[00:30.00]zzz\n")
+    assert [(c["start"], c["text"]) for c in cues] == [
+        (10.0, "aaa bbb ccc"),
+        (30.0, "zzz"),
+        (65.0, "aaa bbb ccc"),
+    ]
+    assert "words" in cues[0] and "words" not in cues[2]
+    for cue in cues:
+        words = cue.get("words")
+        assert isinstance(words, tuple) or words is None
+        for word in words or ():
+            assert float(str(word["start"])) >= float(str(cue["start"])), "no claim before its own line"
+
+
 def test_the_offset_tag_is_honoured_and_a_positive_one_moves_the_lyrics_earlier() -> None:
     """THE SIGN IS THE SPEC'S: `[offset:+500]` makes the lyrics appear SOONER, so it is subtracted. The tag
     exists because the sheet was timed against a different master; ignoring it kept a stated error."""

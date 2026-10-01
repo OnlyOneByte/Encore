@@ -114,6 +114,17 @@ w5-hygiene-no-song-loses-pm1000: min_song_delta(truth.pm1000) >= -5.0
 #   `extraverse` 184 -> 148, `credit` 28 -> 21; and 0 stays 0 in `truth` and `blind`.
 # W4 assigned `unsung-not-up-{headers,extraverse,credit}` to this wave (PLAN status log 2026-09-29, (b)):
 # they read 0 at BOTH levels here, and these three absolutes are the stronger statement of the same thing.
+# SINCE W5 REVIEW ROUND 2, `extraverse` IS 184 -> **154** AND `-unsung-down` SITS EXACTLY ON ITS BOUND
+# (154 <= 184 - 30; bench runner, 2026-10-01, `results/w5r2-run_align.json` against
+# `results/w6-hubert-run_align.json`). The +6 is `hello` `extraverse` alone and it is the whole visible cost of
+# round 2's `nonlyric.NOTED_SHARE` 0.5 -> 0.8: R3 now abstains on that one served text (63 -> 80 lines), so the
+# mode's six injected donor lines reach the acoustic never-sung rule instead of being removed by the text rule,
+# and the same case repays +14.86 pt of `text_pm500` (85.14 -> 100.00, all 74 of `hello`'s truth lines timed
+# against 63) with `gross` 0 on both sides. It PASSES, with no slack left: one more `unsung` line anywhere in
+# `extraverse` fails this MUST, which is worth knowing before the next text change. `w2.yaml`'s per-song
+# `unsung-not-up-extraverse` still reads **0** against its own declared base (`results/w6-hubert-run_align.json`,
+# the tree before the hygiene) and 1 only against the ROUND-1 row — so no re-base and no widened bound is owed
+# there either, which is what the round-2 fix pass expected to have to ask for.
 w5-headers-publishes-no-injected-header: headers.unsung == 0
 w5-extraverse-unsung-down: extraverse.unsung <= base.extraverse.unsung - 30
 w5-credit-unsung-down: credit.unsung <= base.credit.unsung - 5
@@ -136,14 +147,46 @@ w5-commitments-not-down-drop50: drop50.published + drop50.line_sync >= base.drop
 # caption track or a provider sheet per case, never both), `published_label` is unchanged in all 1088, and
 # the 10 cases whose ATTEMPT COUNT changed are LINE_SYNC-to-word conversions (9 `headers` + `hello` drop50),
 # not a different text. So these gates hold M13 to doing no HARM; they do not credit it with doing good.
+# (Re-measured in full after W5 review round 2, `results/w5r2-run_align.json`: 0/320 + 0/320 forced, 0/640 in
+# `lines`, `published_label` unchanged in 0 of 1088, the same 10 attempt-count changes. Unmoved.)
+#
+# BUT THE HYGIENE DOES COST THE **BASE BUNDLE** TWO WRONG-TEXT ADMISSIONS AT `run_align`, AND NOTHING SAID SO
+# UNTIL NOW (bench runner, 2026-10-01; present in round 1's rows too, byte-identical, so this is a reading that
+# was missed and not a regression round 2 introduced). `results/w5r2-base-run_align.json` publishes **1 of 320**
+# in `wrongtext` AND 1 of 320 in `wrongtext+ownclock` where `results/w6-base-run_align.json` — the same bundle,
+# the tree before the hygiene — published 0 of 320 in both. The two cases and the mechanism, per case:
+#   `LUNABLIND_-_Vision__Radio_Edit_` `wrongtext` v2, donor `tfr-chosen`: served 35 -> 34 lines and the base
+#     bundle's lift rises **0.1717 -> 0.2489**, crossing its `refuse_below` of **0.20**.
+#   `Cortez_-_Feel__Stripped_` `wrongtext+ownclock` v4, donor `bad-guy`: served 39 -> 35 and the lift rises
+#     **0.1268 -> 0.2455**, crossing the same 0.20.
+# Removing non-lyric lines RAISES a wrong text's lift (the dropped lines were the ones no decode explains), and
+# the base bundle's measured head-room over the wrong population is only **+0.0082** (`lexical`, STEM; W4b's
+# calibration), so +0.05 of lift is well inside what that floor was always exposed to. THE SHIPPED DEFAULT IS
+# IMMUNE AND IT IS MEASURED, NOT ASSUMED: on the same two cases HuBERT-L reads 0.1316 -> **0.2240** and
+# 0.0995 -> **0.0964** against its floor of **0.45** (head-room +0.2306), both REFUSED. So this is one more
+# number on the flip's side and a standing cost of reverting it on this tree — recorded here rather than
+# wrapped into section 3's absolutes, which are the SHIPPED default's and still read 0.
 w5-wrongtext-none-of-320: mode("wrongtext").wrongtext_pass == 0
 w5-ownclock-none-of-320: mode("wrongtext+ownclock").wrongtext_pass == 0
 w5-wrongtext-commits-nothing: mode("wrongtext").published + mode("wrongtext").line_sync + mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
 
 # ── NON-VACUITY ───────────────────────────────────────────────────────────────────────────────────────────
-# 38 gates plus the built-in no-ERROR-rows. Readings stored in each `results/w5-*.json` `meta.gates`:
+# 39 gates plus the built-in no-ERROR-rows. Readings stored in each `results/w5-*.json` `meta.gates`:
 #   `results/w5-run_align.json` against `results/w6-hubert-run_align.json` (the hygiene's own read), and
 #   `results/w5-time_text.json` against `results/w6-hubert-time_text.json` (the identity check).
+# THOSE TWO RECORDED READINGS PREDATE `w5-hygiene-truth-pm500-plan-bar` (W5 review r1-spec-13 added it to this
+# file after the sweep wrote them), so they say 39/39 and 36/39 where this file now reads **39/40** and
+# **37/40**. Re-read OFFLINE on the very same committed rows, no decode, to show the difference is the FILE and
+# not the measurement (bench runner, 2026-10-01): `results/w5-run_align.json` -> 39/40, the one failure
+# `w5-hygiene-truth-pm500-plan-bar` [90.45 >= 90.65], which is the reject-if this file deliberately records as
+# broken; `results/w5-time_text.json` -> 37/40, the three failures section 2's absolutes, because at
+# `time_text` the harness serves the claims RAW and the hygiene is out of the path (that pairing is the
+# identity check, not the hygiene's read).
+# ROUND 2, every case re-measured (code `e2c1027b6cc491a2`): `results/w5r2-run_align.json` against
+# `results/w6-hubert-run_align.json` reads **39/40** — the same single failure, the same number — and every
+# other clause is identical because 1079 of 1088 cases are byte-identical to the round-1 row. The two clauses
+# the round-2 change can reach are `w5-extraverse-unsung-down` (154 <= 154, PASS, on its bound; see section 2)
+# and `w5-hygiene-truth-pm500-*`, which do not move at all: `truth` is one of the byte-identical modes.
 
 # THESE GATES BITE. Read on the W6 rows — the tree BEFORE the hygiene — section 2's five absolutes fail
 # (`headers.unsung` 224, `extraverse` 184, `credit` 28 against their bounds), which is the whole wave's

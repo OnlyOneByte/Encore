@@ -238,22 +238,43 @@ def test_a_note_bracketing_a_passage_keeps_the_middle_lines() -> None:
     """r2-spec-7's reproduction: the SDH convention of one note OPENING a sung passage and one CLOSING it,
     middles bare — 4 passages x 3 lines, 8 noted of 12 = 0.667, and R3 dropped the 4 middle lines (12
     served in, 8 out). The loss is text-side, so no acoustic rule can put those lines back."""
-    raw = [
-        line
-        for group in range(4)
-        for line in (f"♪ open {group}", f"middle {group}", f"close {group} ♪")
-    ]
+    raw = [line for group in range(4) for line in (f"♪ open {group}", f"middle {group}", f"close {group} ♪")]
     cleaned = [clean.clean_line(line) for line in raw]
     assert not noted(raw), "8/12 = 0.667 is inside the region nobody measured"
     assert nonlyric_indexes(raw, cleaned) == frozenset()
     assert len(clean.clean_segments([{"text": text} for text in raw])) == 12
 
 
+def test_a_noted_tracks_own_section_labels_do_not_dilute_its_marking() -> None:
+    """Found while raising the floor (W5 review r2-correctness-1): a `[Chorus]` label is not a sung line and
+    carries no note, so counting it in R3's population made a LABELLED sheet read as less marked than the same
+    sheet without labels. Measured on the bench's `headers` mode, which injects one label per section: hello's
+    share fell 0.8514 -> 0.7500, bohemian-rhapsody's 0.8784 -> 0.7927, feel-my-heart's 0.8649 -> 0.7111 — the
+    author's marking unchanged in every case. R1's and R4's lines leave the ratio, like a wordless one."""
+    sung = [f"♪ sung line {n} ♪" for n in range(9)]
+    labelled = ["[Chorus]", *sung[:4], "[Verse 2]", *sung[4:], "[Music]", "a spoken aside"]
+
+    assert noted(labelled), "9 noted of 10 lines that could be marked — the labels are not in the ratio"
+    assert noted([*sung, "a spoken aside"]), "and the same sheet without the labels reads the same way"
+    cleaned = [clean.clean_line(line) for line in labelled]
+    dropped = nonlyric_indexes(labelled, cleaned)
+    assert dropped == frozenset({0, 5, 11, 12}), "both labels, the ASR marker and the unnoted aside"
+
+
 def test_the_eight_noted_corpus_tracks_still_fire_at_the_new_floor() -> None:
     """The other half of the raise, as the shape of each measured track rather than as a comment: the 8
     noted bench songs read 0.8514 (hello 63/74), 0.8649, 0.8784, 0.9420, 0.9670, 0.9714, 0.9954 and 1.0000
     on `clean_line`'s worded population, and every one of them is still a noted track at 0.8."""
-    for noted_lines, worded in ((63, 74), (32, 37), (65, 74), (65, 69), (88, 91), (34, 35), (216, 217), (72, 72)):
+    for noted_lines, worded in (
+        (63, 74),
+        (32, 37),
+        (65, 74),
+        (65, 69),
+        (88, 91),
+        (34, 35),
+        (216, 217),
+        (72, 72),
+    ):
         raw = [
             *[f"♪ sung line {n} ♪" for n in range(noted_lines)],
             *[f"unnoted line {n}" for n in range(worded - noted_lines)],

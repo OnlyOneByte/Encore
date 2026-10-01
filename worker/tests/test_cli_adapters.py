@@ -396,8 +396,9 @@ def test_a_partially_tagged_cue_publishes_no_zero_width_word() -> None:
 
 def test_inline_timestamps_become_word_claims() -> None:
     """Rule 4. They are the only per-word timing a rolling track carries, and `clean_line` strips them —
-    the review measured 239 of them thrown away on this track. Reading them makes an auto track a
-    WORD-timed candidate instead of a line-timed one."""
+    the review measured 239 of them thrown away on this track. They are CARRIED, not declared: the caption
+    path's `TextRef` stays `TIMING_LINE` on purpose (W5 review r2-correctness-6, and `fetch_captions` says
+    why), so this asserts the payload and nothing about the text's sync level."""
     first = parse_vtt(ROLLING)[0]
     words = first["words"]
     assert isinstance(words, tuple)

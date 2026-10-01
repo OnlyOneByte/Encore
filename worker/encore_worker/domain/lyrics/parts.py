@@ -314,7 +314,16 @@ def restored(generated: Generated, split_of: Split, *, until: float | None = Non
 
 
 def unmeasured_lines(generated: Generated) -> frozenset[int]:
-    """Indexes of lines NO word of which the decode placed — every R2 echo, and nothing else today.
+    """Indexes of lines NO word of which the decode placed: every R2 echo, AND every claim-ADOPTED line.
+
+    THE SECOND HALF IS NOT THIS MODULE'S AND IS NOT ARM-ONLY (W5 review r2-spec-13, which found this
+    docstring claiming "nothing else today"). `generate.adopted_line` builds a line whose every word carries
+    `OOV_CONFIDENCE` provenance — the claim span was copied, not heard — so it matches this predicate exactly
+    as an echo does, with no experiment set. That is the truth about the predicate rather than a defect in
+    it: a line nothing measured is a line nothing measured, whichever rule invented its words. It costs no
+    behaviour either, because the one reader grades an adopted line `low` on the next branch regardless
+    (`align_steps`' `line_confidence`), and the only way to tell the two apart would be to read provenance
+    the caller already has.
 
     Read off the document rather than kept as a set beside it, so a line the ladder later re-decoded from
     its full text (`regenerate` reads `Line.text`) is no longer reported: the repair measured it, and a

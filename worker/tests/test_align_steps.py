@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
+from encore_worker.adapters import ports
 from encore_worker.adapters.lrclib import parse_lrc
 from encore_worker.adapters.ports import InfraFault
 from encore_worker.artifacts.local import LocalArtifactStore, Roots
@@ -31,7 +32,6 @@ from encore_worker.host.config import Config
 from encore_worker.protocol.vocabulary import Stage
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
 from encore_worker.steps.api import NotOurJob
-from encore_worker.workflows import align
 from encore_worker.steps.records import (
     TIMING_LINE,
     TIMING_WORD,
@@ -42,6 +42,7 @@ from encore_worker.steps.records import (
     TimedDoc,
     TimeRequest,
 )
+from encore_worker.workflows import align
 from tests.ctc_fixture import ctc_viterbi, sung_matrix
 from tests.test_align_provenance import DIC, PathAligner
 
@@ -1648,12 +1649,34 @@ async def test_authored_captions_are_a_candidate_and_machine_captions_are_not(tm
     assert machine is not None and machine.tier is Tier.MACHINE
 
 
+async def test_a_caption_track_stays_line_timed_even_when_its_cues_carry_word_claims(
+    tmp_path: Path,
+) -> None:
+    """W5 review r2-correctness-6, pinned as a decision rather than left to a docstring: `parse_vtt`'s rule 4
+    attaches a rolling track's inline onsets as `words`, and this path still declares `TIMING_LINE`, because
+    declaring word timing would make a machine's per-word guesses the job's CLAIMS. The payload rides along
+    for the wave that measures that; the label does not move until then (`fetch_captions` carries the why)."""
+    cues: list[Segment] = [
+        {
+            "start": 0.0,
+            "end": 2.0,
+            "text": "aaa bbb",
+            "words": ({"word": "aaa", "start": 0.0, "end": 1.0}, {"word": "bbb", "start": 1.0, "end": 2.0}),
+        }
+    ]
+    got = await steps(tmp_path, captions=FakeCaptions(cues)).fetch_captions(job(tmp_path), automatic=True)
+
+    assert got is not None
+    assert got.timing == TIMING_LINE
+    assert "words" in got.segments[0], "the claims are carried, not dropped"
+
+
 async def test_a_transcription_is_the_asr_tier_and_has_no_own_timings(tmp_path: Path) -> None:
     """Word-timed, but measured on THIS audio — so placement, and `Knob.RESHIFT`, are meaningless."""
 
     class FakeTranscriber:
-        def transcribe(self, audio_path: str, *, language: str | None = None) -> Sequence[Segment]:
-            return [{"start": 0.0, "end": 1.0, "text": "heard this"}]
+        def transcribe(self, audio_path: str, *, language: str | None = None) -> ports.Transcribed:
+            return ports.Transcribed(segments=({"start": 0.0, "end": 1.0, "text": "heard this"},))
 
     impl = steps(tmp_path, transcriber=FakeTranscriber())
     got = await impl.transcribe(job(tmp_path), audio(tmp_path), on_vocals=True)
@@ -2115,6 +2138,29 @@ async def test_a_pasted_header_is_still_dropped_and_a_label_still_stripped(tmp_p
 
     assert got is not None
     assert [s["text"] for s in got.segments] == ["aaa bbb", "ccc ddd"]
+
+
+async def test_what_the_hygiene_takes_off_a_paste_is_noted(tmp_path: Path) -> None:
+    """W5 review r2-spec-12. The comment here used to say the whole paste is recorded on the document via
+    `sourceLines`; it is not — that field is built from the CLEANED segments, and it has to be, because it is
+    what a re-pick re-times. So the record of the loss is a trail note, naming how many lines went and why."""
+    reporter = Reporter()
+    impl = steps(tmp_path, reporter=reporter)
+    got = await impl.fetch_pinned_text(job(tmp_path, pinnedText="[Chorus]\naaa bbb\n♪♪\nccc ddd\n"))
+
+    assert got is not None and len(got.segments) == 2
+    assert "pin-cleaned" in [verdict for _state, verdict, _knob in reporter.states]
+
+
+async def test_a_verbatim_paste_is_noted_about_nothing(tmp_path: Path) -> None:
+    """The other half: a paste the hygiene did not touch must not emit a note about a loss that never
+    happened — the note is a record of a difference, not a step that always runs."""
+    reporter = Reporter()
+    impl = steps(tmp_path, reporter=reporter)
+    got = await impl.fetch_pinned_text(job(tmp_path, pinnedText="aaa bbb\nccc ddd\n"))
+
+    assert got is not None and len(got.segments) == 2
+    assert "pin-cleaned" not in [verdict for _state, verdict, _knob in reporter.states]
 
 
 async def test_a_paste_of_nothing_but_headers_is_an_unreadable_pin_not_an_empty_decode(

@@ -441,13 +441,13 @@ from enum import StrEnum
 from typing import Any
 
 from encore_worker.domain.lyrics.generate import Decoder as _Decoder
-from encore_worker.domain.lyrics.generate import blank_of, excluded_of
+from encore_worker.domain.lyrics.generate import blank_of, char_ids, excluded_of
 
 #: THE decoder contract, imported rather than restated: `generate.Decoder` gained its `blank` argument in
 #: review M9's fix, and a second copy of the shape here would have kept the lift measuring on blank 0 while
 #: the decode that publishes moved (one literal per idea — W2 review r1's rule). `blank_of`, beside it, is
 #: the other half of that contract and is imported for the same reason (W4 review r1), as is `excluded_of`,
-#: the target filter itself (W4b).
+#: the target filter's exclusion set (W4b), and `char_ids`, the filter ITSELF (W7 — see `letters_of`).
 Decoder = _Decoder
 
 #: How many shuffles the text is contrasted with; the BEST of them is the reference. Three is a NOISY
@@ -493,13 +493,18 @@ def letters_of(
     drops a LETTER, and on one where a lyric can reach the word separator a filter that keeps it scores a
     target sequence the decode does not publish. Either way the lift would be a different text's.
     `generate.excluded_of` produces the set; the default is CTC's usual blank, for a caller holding a bare
-    dictionary."""
+    dictionary.
+
+    SINCE W7 IT IS LITERALLY THE SAME FUNCTION (`generate.char_ids`) and not a third transcription of the same
+    three rules: the filter gained an NFKD fold of a character the vocabulary lacks (review §3 item 9), and a
+    copy here that kept dropping those would measure the lift of a DIFFERENT TEXT from the one the decode
+    publishes — the exact failure the "one literal for one idea" rule in `alignable_chars`' docstring records,
+    arriving a third time."""
     return [
         token
         for text in line_texts
         for word in text.split()
-        for ch in word.lower()
-        if (token := dictionary.get(ch)) is not None and token not in exclude
+        for _index, token in char_ids(word, dictionary, exclude)
     ]
 
 

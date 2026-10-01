@@ -33,6 +33,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
+from encore_worker.adapters import ports
+
 SCRIPTS = Path(__file__).resolve().parents[2] / "docs" / "benchmarks" / "forced-alignment" / "scripts"
 
 
@@ -1617,9 +1619,11 @@ class HeardTranscriber:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def transcribe(self, audio_path: str, *, language: str | None = None) -> list[dict[str, object]]:
+    def transcribe(self, audio_path: str, *, language: str | None = None) -> ports.Transcribed:
         self.calls.append(audio_path)
-        return [{"text": text, "start": start, "end": end} for text, start, end in PHRASES]
+        return ports.Transcribed(
+            segments=tuple({"text": text, "start": start, "end": end} for text, start, end in PHRASES)
+        )
 
 
 def test_a_text_with_nothing_to_align_walks_the_whole_ladder_to_no_lyrics(
@@ -1714,18 +1718,48 @@ def test_the_transcript_cache_serves_disk_hits_and_remembers_hearing_nothing(tmp
     first = lib.CachedTranscriber(heard, store)
     got = first.transcribe(str(audio), language="en")
     again = lib.CachedTranscriber(heard, store).transcribe(str(audio), language="en")
-    assert list(again) == list(got) and len(heard.calls) == 1 and dict(first.served) == {"computed": 1}
+    assert list(again.segments) == list(got.segments)
+    assert len(heard.calls) == 1 and dict(first.served) == {"computed": 1}
 
     class Deaf:
-        def transcribe(self, audio_path: str, *, language: str | None = None) -> list[dict[str, object]]:
+        def transcribe(self, audio_path: str, *, language: str | None = None) -> ports.Transcribed:
             heard.calls.append(audio_path)
-            return []
+            return ports.Transcribed(segments=())
 
     quiet = lib.TranscriptStore(tmp_path / "_transcripts", model="whisper:tiny", emitter="e")
-    assert list(lib.CachedTranscriber(Deaf(), quiet).transcribe(str(audio))) == []
+    assert not lib.CachedTranscriber(Deaf(), quiet).transcribe(str(audio)).segments
     cached = lib.CachedTranscriber(Deaf(), quiet)
-    assert list(cached.transcribe(str(audio))) == [] and dict(cached.served) == {"disk": 1}
+    assert not cached.transcribe(str(audio)).segments and dict(cached.served) == {"disk": 1}
     assert len(heard.calls) == 2 and not list(store.directory.glob("*.tmp"))
+
+
+def test_the_transcript_cache_remembers_the_language_whisper_heard(tmp_path: Path) -> None:
+    """Review M8, W7: whisper's detection is half the port's return value now, so a cache that stored only the
+    segments would route a REPLAYED `run_align` case to the default bundle where a cold one routed it to the
+    song's own — a cached run and a fresh run would then measure different configurations. An entry written
+    before the field existed has no `language` key and reads as None, which is what it recorded."""
+    audio = tmp_path / "vocals.wav"
+    audio.write_bytes(b"RIFF....")
+
+    class Foreign:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def transcribe(self, audio_path: str, *, language: str | None = None) -> ports.Transcribed:
+            self.calls += 1
+            return ports.Transcribed(segments=({"text": "je suis", "start": 0.0, "end": 1.0},), language="fr")
+
+    store = lib.TranscriptStore(tmp_path / "_t", model="whisper:base", emitter="e")
+    inner = Foreign()
+    assert lib.CachedTranscriber(inner, store).transcribe(str(audio)).language == "fr"
+    replayed = lib.CachedTranscriber(inner, store)
+    assert replayed.transcribe(str(audio)).language == "fr"
+    assert inner.calls == 1 and dict(replayed.served) == {"disk": 1}
+
+    stored = json.loads(next(iter((tmp_path / "_t").glob("*.json"))).read_text(encoding="utf-8"))
+    del stored["language"]
+    next(iter((tmp_path / "_t").glob("*.json"))).write_text(json.dumps(stored), encoding="utf-8")
+    assert lib.CachedTranscriber(inner, store).transcribe(str(audio)).language is None
 
 
 def test_summary_json_keeps_one_line_per_song_and_reads_back_unchanged() -> None:

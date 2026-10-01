@@ -330,9 +330,11 @@ class Counting:
         self.calls += 1
         return self.cues
 
-    def transcribe(self, audio_path: str, *, language: str | None = None) -> Sequence[dict[str, object]]:
+    def transcribe(self, audio_path: str, *, language: str | None = None) -> ports.Transcribed:
         self.calls += 1
-        return [{"start": 5.0, "end": 7.0, "text": "come and fly away"}]
+        return ports.Transcribed(
+            segments=({"start": 5.0, "end": 7.0, "text": "come and fly away"},), language=language
+        )
 
 
 class Spy:
@@ -769,9 +771,9 @@ class Named:
     def __init__(self, checkpoint: str, used: list[str]) -> None:
         self.checkpoint, self.used = checkpoint, used
 
-    def transcribe(self, audio_path: str, *, language: str | None = None) -> Sequence[dict[str, object]]:
+    def transcribe(self, audio_path: str, *, language: str | None = None) -> ports.Transcribed:
         self.used.append(self.checkpoint)
-        return [{"start": 1.0, "end": 2.0, "text": "heard"}]
+        return ports.Transcribed(segments=({"start": 1.0, "end": 2.0, "text": "heard"},), language=language)
 
 
 @pytest.mark.parametrize(

@@ -26,6 +26,13 @@
 #     missing — **31/38**: the four above plus `committed-not-down-drop20` (31 against 32),
 #     `committed-not-down-drop50` (14 against 15) and `off15-text-pm500` (88.92 against 90.0).
 #   * `results/w6-lines-run_align.json` — the base bundle on the W6 tree — 34/38, a DIFFERENT four.
+#   * RE-MEASURED AFTER W5 REVIEW ROUND 2 (bench runner, 2026-10-01, `code e2c1027b6cc491a2`, all 1088 cases of
+#     both bundles re-run in `lines` mode): `results/w5r2-lines-run_align.json` — **34/38**, the SAME four with
+#     the SAME numbers to the digit — against `results/w5r2-base-lines-run_align.json`, which reads **31/38**
+#     reversed, the same three extra. Nothing round 2 did reaches this file: 1079 of 1088 cases reproduce
+#     `results/w5-lines-run_align.cases.jsonl` in every field including `doc_sha256`, 8 differ in `served_lines`
+#     alone (`wrongtext+ownclock`, refused on both trees) and the one metric that moves is `hello` `extraverse`,
+#     scored 63 -> 74, still a `line-sync` document with gross 0 and ±500 100.00.
 # SO THE FLIP FIXED THE TWO `committed-not-down-*` GATES AND THE RATCHET HOLDS BOTH WAYS: drop20 31 -> 32 and
 # drop50 14 -> **22** (23 song-modes go REFUSED -> `line-sync`, twelve of them `never-be-alone`), and reversing
 # the bundle on this tree costs three gates. THE FOUR THAT STILL FAIL ARE NOT THE BUNDLE'S: both bundles read

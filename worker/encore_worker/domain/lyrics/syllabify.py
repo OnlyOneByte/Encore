@@ -131,6 +131,11 @@ def _pyphen_split(word: str, language: str, *, unsplit_abstains: bool) -> list[s
     where before they came out whole. One sung syllable rendered as two is the audible defect this ladder
     exists to prevent, so a language with no counter keeps pyphen's single fragment.
 
+    THE FLAG IS THE LANGUAGE'S AND NOT THE TOKEN'S, which is a deliberate approximation: an English token
+    CMUdict has never heard of has no counter either, so its abstention reaches the vowel grouper
+    uncorrected (W5 review r2-tests-15). `_split_core`'s comment carries the corpus measurement that says
+    leaving it that way loses fewer real syllables than the per-token reading would.
+
     `"".join(parts) != word` is a MANGLED answer rather than an abstention, and abstains either way.
     """
     dic = _pyphen_dic(language)
@@ -277,6 +282,18 @@ def _split_core(core: str, language: str) -> list[str]:
     english = language.startswith("en")
     # `unsplit_abstains=english`: only English has a tier after this one that can correct an over-split
     # (`_force_count` against CMUdict, below) — see `_pyphen_split`, W5 review r1-correctness-6.
+    # AND FOR AN ENGLISH TOKEN CMUdict DOES NOT KNOW, THAT TIER IS NOT THERE: the abstention falls through to
+    # `_vowel_groups` with nothing to correct it, where before W5 the token kept pyphen's single fragment
+    # (W5 review r2-tests-15, which is right about the mechanism). MEASURED BEFORE LEAVING IT AS IT IS, on the
+    # bench corpus's own 32 truth texts (10 711 hyphen-free tokens): 59 occurrences / 38 distinct tokens reach
+    # here with every counter abstaining, and in 22 of the 59 the vowel grouper also answers ONE, so 37
+    # occurrences differ from the pre-W5 answer — 21 at 2 pieces, 2 at 3, 7 at 4 and 7 at 5. THE 14 AT 4-5
+    # PIECES ARE 8- AND 10-LETTER REPEATED-VOWEL VOCALISE TOKENS, which really are sung as that many
+    # syllables, and only 3 of the 37 ask for more pieces than the token has letter PAIRS (the one shape that
+    # cannot be right). So making the abstention conditional on a count existing would hand back more real
+    # ball bounces than false ones on the only population anybody has measured, and the conservative-looking
+    # fix is the lossy one. Reading the count here first would be free (`_cmu_syllable_count` is cached) and
+    # is the change to make if a fitted measurement ever says so; `test_syllabify` pins today's answer.
     pieces = (
         (_moby_split(core) if english else None)
         or _pyphen_split(core, language, unsplit_abstains=english)

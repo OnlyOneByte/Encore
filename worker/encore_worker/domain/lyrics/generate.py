@@ -33,9 +33,11 @@ lines against each other within one song; the wrong-song verdict belongs to the 
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+from encore_worker.domain.lyrics.language import fold_to_base
 
 #: A word whose every character is out-of-dictionary gets its span INTERPOLATED from its neighbours and
 #: this confidence, so a non-Latin token or a run of digits degrades one word rather than failing the line.
@@ -266,6 +268,54 @@ def separator_named(emissions: Any) -> int | None:
     return None if code is None else int(code)
 
 
+def char_ids(word: str, dictionary: Mapping[str, int], excluded: Collection[int]) -> list[tuple[int, int]]:
+    """`(index within `word`, vocabulary id)` for every character of `word` this vocabulary can align — THE
+    target filter, and the only copy of it (`char_targets`, `alignable_chars` and `lexical.letters_of` all
+    read this one function).
+
+    THREE RULES, in order, and each of them is a measured requirement rather than tidiness:
+
+      * LOWERCASED, because whisperx lowercases its dictionaries (`whisperx/alignment.py:98,110`).
+      * A CHARACTER THE VOCABULARY LACKS IS FOLDED TO ITS BASE LETTERS BEFORE IT IS DROPPED (review §3 item 9,
+        W7; `language.fold_to_base`). It used to be dropped outright, so `cafés` decoded as `cafs` and
+        `Grüße` as `Gre` on the English bundle — the silent half of review M8, which the review's own words
+        call "accents are silently skipped". The fold is NFKD, so it is a no-op for every character the
+        vocabulary already has (checked first, so a bundle whose vocabulary HOLDS `é` still aligns the
+        composed letter) and for every atomic letter NFKD cannot decompose (`ø`, `æ`, `ß` — named in
+        `fold_to_base`). ONE FOLDED CHARACTER MAY YIELD SEVERAL TARGETS (`ﬁ` -> `f`, `i`), and both carry the
+        ORIGINAL character's index, which is what keeps `generate`'s syllable regrouping exact: the fragment
+        ranges it slices with are ranges over the input word, not over the targets.
+      * A NON-CHARACTER COLUMN IS NEVER A TARGET (`excluded_of`): the blank, the word separator, the unknown
+        and sentence markers. The kernel refuses a target list containing the blank outright, and a lyric's
+        literal `|` forced a word separator into the middle of a word (see `excluded_of`).
+
+    A NO-OP ON EVERY RECORDED ROW, measured before it shipped rather than argued
+    (`scripts/lang_gate.py --folds`), because a fold that moved ONE English target sequence would move every
+    number under `docs/benchmarks/forced-alignment/results/`: the 32-song corpus's cleaned truth lines hold
+    50 516 characters and **not one** of them is a non-ASCII letter — 40 409 Latin letters, 0 other scripts, 0
+    characters NFKD folds and 0 it cannot. So the function below returns exactly what the three inlined copies
+    returned on every text the bench serves at `--level time_text` (the claim modes are built from those truth
+    lines, the `wrongtext` donors are other corpus songs' truth lines, and `headers` injects ASCII), and the
+    corpus cannot show the fix working. The texts that can are `scripts/lang_gate.py`'s fr/de/es JamendoLyrics
+    songs: 59 songs, 81 925 characters, of which **1 035 now align and used to be dropped** (`é` 322, `ü` 184,
+    `ä` 110, `à` 92, `ê` 74, `ö` 67, `è` 64, `ñ` 56, `ç` 28, and 38 more over seven letters) — 1.3% of every
+    character in those sheets, concentrated in exactly the words an accent distinguishes. 43 stay dropped
+    because NFKD cannot decompose them (`ß` 41, `œ` 2), which is the residue `fold_to_base` names.
+    """
+    out: list[tuple[int, int]] = []
+    for index, ch in enumerate(word.lower()):
+        token = dictionary.get(ch)
+        if token is None:
+            for folded in fold_to_base(ch).lower():
+                code = dictionary.get(folded)
+                if code is not None and code not in excluded:
+                    out.append((index, int(code)))
+            continue
+        if token not in excluded:
+            out.append((index, int(token)))
+    return out
+
+
 def alignable_chars(text: str, emissions: Any) -> int:
     """Characters of `text` this matrix can align: in its dictionary, and not one of its non-character
     columns (review M9's blank; `excluded_of`'s specials since W4b).
@@ -279,17 +329,13 @@ def alignable_chars(text: str, emissions: Any) -> int:
     W7) the two floors would then be read off different texts, and a window sized for 17 characters would be
     handed 21 to force through it.
 
-    `text.split()` and `lower()` are `generate`'s own target filter, so "alignable" means exactly what the
-    decode will try to align: a character the dictionary lacks is dropped there too, and a non-character
-    column's character is not a letter of the language whatever the dictionary calls it.
+    `char_ids` IS `generate`'s own target filter, shared rather than restated, so "alignable" means exactly
+    what the decode will try to align: the same lower-casing, the same NFKD fold of a character the vocabulary
+    lacks (W7), and the same refusal to target a non-character column. It therefore counts TARGETS, which is
+    what both floors need — a folded `ﬁ` costs two frames, not one.
     """
     excluded = excluded_of(emissions)
-    return sum(
-        1
-        for word in text.split()
-        for ch in word.lower()
-        if (token := emissions.dictionary.get(ch)) is not None and token not in excluded
-    )
+    return sum(len(char_ids(word, emissions.dictionary, excluded)) for word in text.split())
 
 
 def _char_spans(
@@ -642,10 +688,7 @@ def char_targets(line_texts: Sequence[str], emissions: Any, *, separate_lines: b
     for line_index, text in enumerate(line_texts):
         words_by_line.append(tuple(text.split()))
         for word_index, word in enumerate(words_by_line[-1]):
-            for char_index, ch in enumerate(word.lower()):
-                token = dictionary.get(ch)
-                if token is None or token in excluded:
-                    continue
+            for char_index, token in char_ids(word, dictionary, excluded):
                 if pending_separator is not None:
                     targets.append(pending_separator)
                     separators += 1

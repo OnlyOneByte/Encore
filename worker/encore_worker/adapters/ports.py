@@ -16,6 +16,7 @@ paths, refs and records; bytes stay on disk under the media directory.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from encore_worker.domain.document import Segment
@@ -32,6 +33,7 @@ __all__ = [
     "Segment",
     "SeparationResult",
     "Separator",
+    "Transcribed",
     "Transcriber",
 ]
 
@@ -61,6 +63,32 @@ class InfraFault(RuntimeError):
     retryable = True
 
 
+@dataclass(frozen=True, slots=True)
+class Transcribed:
+    """What a transcriber heard: the segments, AND the language it heard them in (review M8, W7).
+
+    THE LANGUAGE IS HALF THE RETURN VALUE because whisper measures it from the recording and nothing else
+    on this worker can. It used to be read off whisper's own result dict and dropped on the floor
+    (`ml.WhisperTranscriber.transcribe` kept only `result["segments"]`), which is a third of review M8: the
+    one signal that is an acoustic MEASUREMENT rather than a guess from the glyphs was the one discarded, so
+    a Japanese upload with no lyrics sheet had whisper's `ja` in hand and still aligned as `en`.
+
+    PLAIN DATA, like every port's return: a `@DBOS.step` checkpoints it into SQLite.
+
+    `language` is None when the transcriber cannot say (a fake, a backend that reports none) — never `"en"`
+    as a stand-in, because `domain.lyrics.language.detect` treats None as "no signal" and a wrong signal as
+    evidence.
+    """
+
+    segments: tuple[Segment, ...]
+    language: str | None = None
+
+    def __bool__(self) -> bool:
+        """Truthy exactly when something was heard, so `if not heard:` reads as it did when this was a
+        list."""
+        return bool(self.segments)
+
+
 @runtime_checkable
 class Transcriber(Protocol):
     """Speech-to-text over an audio file. Whisper, in practice.
@@ -69,11 +97,15 @@ class Transcriber(Protocol):
     recording, so it can be neither the wrong song nor misplaced in time.
     """
 
-    def transcribe(self, audio_path: str, *, language: str | None = None) -> Sequence[Segment]:
-        """Segments with `start`, `end` and `text`. Empty when nothing intelligible was heard.
+    def transcribe(self, audio_path: str, *, language: str | None = None) -> Transcribed:
+        """Segments with `start`, `end` and `text`, plus the language heard. Empty when nothing intelligible.
 
         Returning empty is a RESULT, not an error — an instrumental has nothing to transcribe. Raise
         only when transcription could not be attempted (no model, unreadable audio).
+
+        `language` ASKS for a language and is still forwarded: an operator who declared one gets whisper's
+        constrained decode, and `Transcribed.language` then echoes it. Left unset, whisper detects, and that
+        detection is the point of the return type (review M8).
         """
         ...
 

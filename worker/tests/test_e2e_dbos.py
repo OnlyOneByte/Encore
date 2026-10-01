@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 
+from encore_worker.adapters import ports
 from encore_worker.adapters.ports import InfraFault
 from encore_worker.domain.document import TIMING_LINE
 from encore_worker.domain.lyrics.policy import Tier
@@ -71,9 +72,9 @@ class Transcriber:
     def __init__(self) -> None:
         self.calls = 0
 
-    def transcribe(self, audio_path: str, *, language: str | None = None) -> Sequence[object]:
+    def transcribe(self, audio_path: str, *, language: str | None = None) -> ports.Transcribed:
         self.calls += 1
-        return [{"start": 0.0, "end": 2.0, "text": "what was heard"}]
+        return ports.Transcribed(segments=({"start": 0.0, "end": 2.0, "text": "what was heard"},))
 
 
 class Provider:

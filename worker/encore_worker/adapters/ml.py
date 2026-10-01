@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from encore_worker.adapters.cli import OutOfMemory, looks_like_oom
-from encore_worker.adapters.ports import InfraFault
+from encore_worker.adapters.ports import InfraFault, Transcribed
 from encore_worker.domain.document import Segment
 from encore_worker.host.mlrt import ML_LOCK
 
@@ -46,7 +46,15 @@ CTRANSLATE2_DEVICES = ("cpu", "cuda")
 #: (`DEFAULT_ALIGN_MODELS_TORCH/_HF`), and the HuBERT bundles below are English (LibriSpeech 960h with a
 #: 29-token English vocabulary), so an override must not be pushed onto a German song's XLSR fine-tune:
 #: `WhisperXAligner._bundle_of` returns it for THIS language and leaves every other to whisperx's table.
-#: Dormant today because `language` is always `en` (review M8, W7) — wired now so W7 cannot detonate it.
+#:
+#: LIVE SINCE W7, which is what review M8 and M9 were waiting for. The language is now carried
+#: (`domain.lyrics.language`, `steps.records.TextRef.language`) and it is no longer always `en`, so this
+#: constant has stopped being a formality: a Hangul or Cyrillic sheet really does reach
+#: `whisperx.load_align_model(language_code=...)` and really does get a bundle whose `[PAD]` may not be at 0
+#: (`blank_id_of`, review M9 — 23 of whisperx's 36 HF models). The two halves had to land together, and this
+#: is the line that joins them. `domain.lyrics.language.model_language` is the policy that decides WHICH
+#: language reaches here; it keeps Latin script on the default bundle, which is what every recorded bench row
+#: was measured on.
 ENGLISH = "en"
 
 #: THE ENGLISH ALIGNMENT BUNDLE, per device class (review §3 item 6b, W4b): the exception table, and it is
@@ -659,7 +667,17 @@ class WhisperTranscriber:
         # rather than loading the same weights twice under two keys.
         return _cached(transcriber_device(self._device), f"whisper:{self._checkpoint}", build)
 
-    def transcribe(self, audio_path: str, *, language: str | None = None) -> Sequence[Segment]:
+    def transcribe(self, audio_path: str, *, language: str | None = None) -> Transcribed:
+        """What was heard, AND IN WHICH LANGUAGE (review M8, W7).
+
+        `result["language"]` is whisper's own detection — the one language signal on this worker that is
+        MEASURED from the recording rather than inferred from the text's glyphs or declared by a room-wide
+        setting — and it was read off this very dict and discarded until W7, which is a third of review M8.
+        It is reported verbatim (lower-cased, since whisper's codes are) and NOT defaulted to `"en"`: a
+        backend that says nothing must be distinguishable from one that heard English, because
+        `domain.lyrics.language.detect` weighs this against the script histogram and treats a missing signal
+        and a wrong one very differently.
+        """
         # ML_LOCK covers LOADING AND RUNNING, and both halves matter: two jobs loading multi-GB
         # checkpoints at once exhausts the accelerator, and two inferences that each expect it to
         # themselves is the same failure a step later. Only reachable with
@@ -669,13 +687,21 @@ class WhisperTranscriber:
 
             audio = whisperx.load_audio(audio_path)
             result = self._model().transcribe(audio, language=language)
+            heard = result.get("language") if isinstance(result, dict) else None
+            spoken = str(heard).strip().lower() or None if isinstance(heard, str) else None
             segments = result.get("segments") if isinstance(result, dict) else None
             if not segments:
-                return ()  # nothing intelligible: a RESULT, not an error
-            return tuple(
-                {"start": s.get("start"), "end": s.get("end"), "text": str(s.get("text") or "").strip()}
-                for s in segments
-                if str(s.get("text") or "").strip()
+                # Nothing intelligible: a RESULT, not an error. The language still travels — whisper detects
+                # it from the audio before it decodes a word, so a song it found no words in may still have
+                # told us what it is.
+                return Transcribed(segments=(), language=spoken)
+            return Transcribed(
+                segments=tuple(
+                    {"start": s.get("start"), "end": s.get("end"), "text": str(s.get("text") or "").strip()}
+                    for s in segments
+                    if str(s.get("text") or "").strip()
+                ),
+                language=spoken,
             )
 
 

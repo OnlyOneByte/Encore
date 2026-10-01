@@ -202,6 +202,20 @@ def test_english_still_falls_through_to_the_grouper_and_its_counter(english: str
     assert len(syllables("baby", english)) == 2
 
 
+def test_an_english_token_no_counter_knows_keeps_the_groupers_answer() -> None:
+    """W5 review r2-tests-15, pinned as the DECISION it is. The abstention is justified by a tier that can
+    correct an over-split, and for a token CMUdict has never heard of that tier is not there — so this answer
+    is the vowel grouper's, uncorrected. Kept because the corpus says so: of the 37 occurrences where the
+    pre-W5 single fragment and today's answer differ, 14 are long repeated-vowel vocalise tokens really sung
+    as 4-5 syllables and only 3 ask for an impossible count (`_split_core` carries the measurement). A
+    repeated-syllable vocalise stands in for them here: one fragment would be one ball bounce for a token
+    sung three times over."""
+    assert syllabify._moby_split("nanana") is None, "Moby has no entry"
+    assert syllabify._pyphen_split("nanana", "en", unsplit_abstains=False) == ["nanana"], "pyphen declines"
+    assert syllabify._cmu_syllable_count("nanana") is None, "and no count exists to correct anything"
+    assert syllables("nanana") == ["nan", "an", "a"], "so the grouper's three bounces stand"
+
+
 # ── W5 review r1-tests-21: a damaged data file degrades, as the packaging contract says ────────────
 
 

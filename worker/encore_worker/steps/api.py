@@ -173,10 +173,22 @@ class NotOurJob(RuntimeError):
 
 
 def language_of(job: JobRef, text: TextRef | None = None) -> str:
-    """The language to align in: the text's own, else the job's, else English.
+    """The TEXT's language: its own, else the job's, else English.
 
-    The text wins over the job because a provider that told us the language measured it, where the job's
-    value is a room-wide default that nobody set per song.
+    The text wins over the job because the side that acquired it MEASURED the language — a Unicode script
+    histogram of the words, whisper's own detection where ASR ran, lingua over Latin script
+    (`domain.lyrics.language.detect`, called in `align_steps`' four acquiring steps) — where the job's
+    value is a room-wide default nobody set per song.
+
+    THIS FUNCTION WAS ALWAYS HERE AND ALWAYS ANSWERED `"en"`, which is review M8 in one line: no adapter set
+    `TextRef.language`, core sends no `language` param (deliberately — its `JobParams` says "a guessed one is
+    worse than letting ASR detect it"), and whisper's detection was read off its result dict and discarded. So
+    the decision existed and had no input. W7 gives it one.
+
+    IT IS NOT THE BUNDLE'S LANGUAGE. `TimeRequest.language` is this, and the model that produces the frames is
+    chosen from it by `language.model_language` (`align_steps._bundle_language`): Latin script stays on the
+    measured English default, a non-Latin script routes. Conflating the two would publish a German sheet as
+    English, or syllabify a French one with the English hyphenator while a French model timed it.
     """
     if text is not None and text.language:
         return text.language

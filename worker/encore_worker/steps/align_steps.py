@@ -43,6 +43,7 @@ from encore_worker.domain.lyrics import (
     attribute,
     claimmap,
     ends,
+    language,
     lexical,
     margin,
     measure,
@@ -86,6 +87,13 @@ class Adapters:
     transcriber_for: Callable[[str], ports.Transcriber | None] | None = None
     aligner: ports.Aligner | None = None
     diarizer: ports.Diarizer | None = None
+    #: LATIN-SCRIPT language detection (lingua-py, review §3 item 9 / M8), built once at the composition
+    #: root because its n-gram models cost ~1 s and ~100 MB to load. None on a box without the `text` extra,
+    #: and then `language.detect` keeps Latin script on English — which is the configuration every row under
+    #: `docs/benchmarks/forced-alignment/results/` was measured on, so its absence loses accuracy on
+    #: non-English Latin songs and changes nothing a published number rests on. The SCRIPT half needs no
+    #: adapter at all (stdlib `unicodedata`), which is why a non-Latin song routes with or without this.
+    detector: language.Detector | None = None
 
 
 class Reporter(Protocol):
@@ -113,6 +121,50 @@ class AlignStepsImpl:
         self._cfg = config
         self._a = adapters
         self._out = reporter
+
+    # ── the language (review M8, §3 item 9; W7) ──────────────────────────────────────────────────
+
+    def _detect(
+        self, segments: Sequence[Segment], *, job: JobRef, heard: str | None = None
+    ) -> language.Detected:
+        """What language this acquired text is in — the value that goes on `TextRef.language`.
+
+        HERE, IN THE ACQUIRING STEP, and not in the workflow or at alignment time, for three reasons that
+        each rule out the alternatives. The workflow must be DETERMINISTIC under a DBOS replay and may not
+        hold a 100 MB detector; detecting at alignment time would re-detect on every retry knob of every
+        text; and a detection checkpointed on the record is what makes a resumed job align in the same
+        language it started in. Review M8's own fix is "carry whisper's language plus script/text ID onto
+        `TextRef.language`" — carry, i.e. once, on the record.
+
+        `heard` is whisper's measurement (`ports.Transcribed.language`), passed only by `transcribe`: a
+        caption track and a provider sheet have no acoustic signal of their own, and borrowing the
+        transcript's would make the ASR tier's guess decide a provider sheet's bundle.
+        """
+        texts = [str(segment.get("text") or "") for segment in segments]
+        return language.detect(
+            texts, declared=job.param_str("language"), heard=heard, detector=self._a.detector
+        )
+
+    async def _bundle_language(self, req: TimeRequest, *, on_mix: bool) -> str:
+        """The language whose BUNDLE must produce these frames (`language.model_language`), noted when it is
+        not the text's own.
+
+        THE ONE READER OF THE ROUTING POLICY in this module, so no call site can forget `on_mix` or the arm:
+        every `aligner.emissions(...)` and `aligner.align(...)` goes through this, and everything else that
+        takes a language — `generate`, the syllabifier, the published document's `language` — keeps
+        `req.language`, the TEXT's. Conflating the two is how a German sheet would be published as English, or
+        a French one syllabified by the English hyphenator while a French model timed it.
+
+        ASYNC ONLY BECAUSE IT NOTES: the decision itself is pure (`language.model_language`), and the note is
+        what stops a substitution being invisible — an uncalibrated routed bundle cannot gate a wrong text, so
+        an operator reading a bad report has to be able to see which bundle ran (`language.routing_note`).
+        """
+        route_latin = "lang-route-mix" in self._cfg.align_experiments
+        bundle = language.model_language(req.language, on_mix=on_mix, route_latin=route_latin)
+        note = language.routing_note(req.language, bundle, on_mix=on_mix)
+        if note is not None:
+            await self._out.state(req.job.job_id, "align-language", 0, "bundle", note, None)
+        return bundle
 
     # ── acquisition ──────────────────────────────────────────────────────────────────────────────
 
@@ -199,7 +251,21 @@ class AlignStepsImpl:
             tier=Tier.MACHINE if automatic else Tier.CANDIDATE,
             label=f"captions:{'machine' if automatic else 'authored'}",
             segments=as_segments(cues),
+            # LINE-TIMED EVEN WHEN THE CUES CARRY WORD CLAIMS, which is a decision and not an oversight (W5
+            # review r2-correctness-6). `cli.parse_vtt`'s rule 4 reads a rolling track's inline
+            # `<hh:mm:ss.mmm>` tags into each cue's `words` (280 claims over 41 cues on the review's track),
+            # and they ride along on the segments — but the job's CLAIMS are built from `measure.line_spans`,
+            # one span per segment, so declaring `TIMING_WORD` here would not merely relabel the text: it
+            # would offer per-word claims from a MACHINE's guess at where a sung word starts, which is a
+            # measured change (a different claim clock, a different reconcile) that no bench row covers. The
+            # provider path derives its label from the payload (`_timing_of`) because there the word spans
+            # are an author's. Declare it in the wave that measures it; the payload is already here.
             timing=TIMING_LINE,
+            # DETECTED FROM THE CUES (review M8, W7). A caption track's own `lang` attribute is NOT read
+            # here on purpose: yt-dlp names the TRACK (`--write-subs en`), and YouTube's machine-translated
+            # tracks are published under the target language while carrying the source's words — so the
+            # label would say `en` of a track whose text is Japanese. The script histogram reads the words.
+            language=self._detect(cues, job=job).language,
         )
 
     async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> list[TextRef]:
@@ -254,6 +320,11 @@ class AlignStepsImpl:
                     label=_provider_label(provider),
                     segments=as_segments(cues),
                     timing=_timing_of(provider, cues),
+                    # PER SHEET, not per job (review M8, W7). Two providers can answer the same song with
+                    # sheets in different languages — a translation is a common lrcmux upstream answer — and
+                    # each must be timed by the bundle its OWN characters need, or the translation aligns as
+                    # English and the `wrongtext` gate is the only thing between it and publication.
+                    language=self._detect(cues, job=job).language,
                 )
             )
 
@@ -287,18 +358,26 @@ class AlignStepsImpl:
             return None  # the workflow never asks then; restated so no call reads outside the store
         if pin.pasted is not None:
             lines = [line.strip() for line in pin.pasted.splitlines() if line.strip()]
-            label, language = _MANUAL_LABEL, None
+            # `stored_language`, not `language`: this module imports `domain.lyrics.language` now (W7), and a
+            # local of that name would shadow the module for the rest of the method.
+            label, stored_language = _MANUAL_LABEL, None
             why = "the paste carries no line with words"
         else:
-            lines, language, why = _stored_lines(os.path.join(job.media_dir, pin.ref))
+            lines, stored_language, why = _stored_lines(os.path.join(job.media_dir, pin.ref))
             label = _pinned_label(pin.ref, job.media_id)
         # TEXT HYGIENE APPLIES TO A PASTE TOO (review M11). A person pasting from a lyrics site pastes its
         # `[Verse 1]` / `[Chorus]` headers with the words, and this path is the one that never cleaned: a
         # stored candidate was cleaned by the adapter that fetched it, and the bench's `headers` mode arrives
         # through a port that calls `clean_segments`, so the injected-header measurement never covered the
         # paste. Nothing a person TYPED is dropped by this that is not a header, a `♪`, a caption tag or a
-        # line with no word in it — `clean_segments` is the same function every provider's text goes through,
-        # and the whole paste is still recorded on the document (`_with_source_lines`).
+        # line with no word in it — `clean_segments` is the same function every provider's text goes through.
+        # WHAT IS DROPPED IS NOTED, NOT RECORDED ON THE DOCUMENT (W5 review r2-spec-12). This comment used to
+        # say "the whole paste is still recorded on the document (`_with_source_lines`)", and that is false:
+        # `_with_source_lines` is given `req.text.segments` — the output of this very call — so a line the
+        # anchored rules removed is absent from `sourceLines` too, by design. It has to be: `sourceLines` is
+        # what a RE-PICK re-times, and seeding it with the pasted `[Chorus]` would publish the header again on
+        # every re-pick, which is the defect this hygiene exists to remove. So the honest record is a trail
+        # note naming the count, written below, and the person's own text is of course untouched in the pin.
         # `author_marking=False` IS WHAT MAKES THAT SENTENCE TRUE (W5 review r1-correctness-8): R3 is the one
         # rule whose precondition is read off the WHOLE text, and a transcript copied off a video — its sung
         # lines wrapped in `♪`, its spoken or unmarked ones not — tripped it, so every unmarked line of the
@@ -317,11 +396,31 @@ class AlignStepsImpl:
                 None,
             )
             return None
+        if len(segments) < len(lines):
+            # THE ONE PATH WHERE THE HYGIENE'S LOSS IS OTHERWISE INVISIBLE (W5 review r2-spec-12): a sheet
+            # is cleaned by the adapter that fetched it and its raw form is a re-fetch away, but a PASTE
+            # exists only here, and nothing recorded which of its lines the anchored rules removed — not the
+            # document (see `_with_source_lines` above) and not the trail. One note, count and rules named.
+            await self.note(
+                job,
+                "texts",
+                0,
+                "pin-cleaned",
+                f"pinned lyrics: {len(lines) - len(segments)} of {len(lines)} pasted lines are not words to "
+                "sing (a section header, an ASR marker, a line whose only content was caption format) and "
+                "are not published; the words a person typed are never dropped by this",
+                None,
+            )
         return TextRef(
             tier=tier_of_label(label),
             label=label,
             segments=segments,
-            language=language,
+            # THE STORED DOCUMENT'S OWN `language` WINS over detection (W7): the candidate being re-timed was
+            # published by an earlier job that detected it, possibly with a detector this box does not have,
+            # and a pin must re-time exactly what the person chose — including the language it was read in. A
+            # PASTE has no stored language (`_stored_lines` is not called for it), so it is detected: a person
+            # pasting a Japanese sheet into an English room is the shape M8's s12 repro describes.
+            language=stored_language or self._detect(segments, job=job).language,
         )
 
     async def transcribe(self, job: JobRef, audio: AudioRef, *, on_vocals: bool) -> TextRef | None:
@@ -351,9 +450,26 @@ class AlignStepsImpl:
                 None,
             )
         target = audio.vocals_path if (on_vocals and audio.vocals_path) else audio.path
-        segments = await asyncio.to_thread(transcriber.transcribe, target, language=job.param_str("language"))
+        heard = await asyncio.to_thread(transcriber.transcribe, target, language=job.param_str("language"))
+        segments = heard.segments
         if not segments:
             return None
+        # WHISPER'S OWN DETECTION, finally read (review M8, W7): the only language signal on this worker
+        # measured from the recording rather than from the text's glyphs. It is handed to `detect` as ONE
+        # signal, not as the answer — on a non-Latin script the characters outrank it (an English-declared
+        # job with a Hangul transcript is `ko` whatever whisper says about the singing), and on Latin script
+        # the detector reads the words it actually produced. `presplit` does not change a character, so
+        # detecting before or after it is the same reading; before is where the text is whisper's own.
+        detected = self._detect(segments, job=job, heard=heard.language)
+        if heard.language is not None and heard.language != detected.language:
+            await self.note(
+                job,
+                "asr-language",
+                0,
+                "language",
+                f"whisper heard {heard.language!r}; aligning as {detected.language!r} — {detected.why()}",
+                None,
+            )
         return TextRef(
             tier=Tier.ASR,
             label=f"asr:{'vocals' if on_vocals and audio.vocals_path else 'mix'}",
@@ -366,7 +482,10 @@ class AlignStepsImpl:
             # Word-timed AND measured on this audio, which is why it can be neither the wrong song nor
             # misplaced — and why `Knob.RESHIFT` is meaningless for it (`TextRef.has_own_timings`).
             timing=TIMING_WORD,
-            language=job.param_str("language"),
+            # Was `job.param_str("language")`, i.e. almost always None, which `steps.api.language_of` then
+            # read as `"en"` — review M8's "whisper's detected language is thrown away", at the exact line
+            # where it was thrown away.
+            language=detected.language,
         )
 
     def _transcriber(self, checkpoint: str) -> ports.Transcriber | None:
@@ -421,8 +540,9 @@ class AlignStepsImpl:
         segments = self._placed(req)
         target = req.audio.align_target(on_mix=req.on_mix)
         spans = self._placed_spans(req, segments)
+        bundle_language = await self._bundle_language(req, on_mix=req.on_mix)
         try:
-            aligned = await asyncio.to_thread(self._a.aligner.align, spans, target, req.language)
+            aligned = await asyncio.to_thread(self._a.aligner.align, spans, target, bundle_language)
         except InfraFault:
             raise  # the machinery, not this text: fails the job (review M7)
         except Exception:  # noqa: BLE001 - an aligner that could not place this text is one attempt failing
@@ -751,8 +871,14 @@ class AlignStepsImpl:
         if not callable(emitter):
             return _LineEvidence(None, "this aligner produces no emission matrix", None, None)
         texts = [str(segment.get("text") or "") for segment in req.text.segments]
+        # ALWAYS THE STEM's bundle (`on_mix=False`), as every reading of this rung is the stem's — which also
+        # means a Latin-script song reads the default bundle here even under `lang-route-mix`, so the rung's
+        # calibrated share (`lexical.line_sync_share`) is the one its sweep fitted.
+        bundle_language = await self._bundle_language(req, on_mix=False)
         try:
-            emissions = await asyncio.to_thread(emitter, req.audio.align_target(on_mix=False), req.language)
+            emissions = await asyncio.to_thread(
+                emitter, req.audio.align_target(on_mix=False), bundle_language
+            )
         except InfraFault:
             raise  # the machinery, not this text: fails the job (review M7)
         except Exception as exc:  # noqa: BLE001 - an unanswered question, not a verdict on the text
@@ -811,7 +937,9 @@ class AlignStepsImpl:
 
         THE WRONG-TEXT GATE is the text's lexical lift on this matrix, read FIRST — before this text's own
         decode and before any audio is read, so a refused text costs neither (W3, review H3 + r2;
-        `lexical.BANDS` holds the bands and their calibration): on a STEM, below the floor the text is
+        the bands IN FORCE are the resolved bundle's row, `lexical.calibration(emissions)` — since W5's flip
+        that is `lexical.CALIBRATED["HUBERT_ASR_LARGE"]`, and `lexical.BANDS` is the BASE bundle's row, which
+        is only where the recipe is EXPLAINED): on a STEM, below the floor the text is
         `Refused` before anything is repaired, and the lift REPLACES the envelope gate wherever it measured
         the text (the envelope gate scored our own decode, which the audio pulls onto the voiced frames
         whatever the words: 152/320 bench wrong texts passed it). In the doubt band the text publishes with
@@ -820,8 +948,9 @@ class AlignStepsImpl:
         described. ON THE MIX (no stem) the same rule holds since W4 review r1 — the floor refuses and the
         envelope fit is reported — because the stemless bench mode measured the envelope gate losing MORE
         right texts than the floor (51 of 128 against 37) while admitting 27 of 64 wrong ones (the control
-        row is `results/w4-stemless-envelope-time_text.json`; `lexical.BANDS`, MIX, owns the figure and
-        every other site defers to it). The controls
+        row is `results/w4-stemless-envelope-time_text.json`; `lexical`'s MIX section — the base row's, where
+        every band's recipe is explained — owns the figure and every other site defers to it, while the
+        thresholds a JOB reads are its own bundle's row). The controls
         are `h3-mix-envelope` (W3's default: the envelope gate alone, the floor grading) and `h3-mix-floor`
         (both gates, which is what BOTH names set means). TWO AXES, NOT ONE (W3 review r2): the
         grading band and the words' standing part company on the mix, where `mix_ok_from` reads how audible
@@ -866,8 +995,13 @@ class AlignStepsImpl:
         # this decode, an ffmpeg read of the whole target, an envelope over the whole signal — is work a
         # refused text used to pay for before being refused. Same handling on both, since either way it is
         # this TEXT's decode failing rather than the machinery (review M7).
+        # THE BUNDLE'S LANGUAGE, WHICH IS NOT ALWAYS THE TEXT'S (W7, `language.model_language`): Latin script
+        # stays on the measured default here and on the mix below, a non-Latin script routes to whisperx's
+        # per-language model because the default maps none of its characters. Every other `req.language`
+        # below is the TEXT's and stays so — the document's, the syllabifier's.
+        bundle_language = await self._bundle_language(req, on_mix=req.on_mix)
         try:
-            emissions = await asyncio.to_thread(aligner.emissions, target, req.language)  # type: ignore[attr-defined]
+            emissions = await asyncio.to_thread(aligner.emissions, target, bundle_language)  # type: ignore[attr-defined]
         except InfraFault:
             raise  # a model / kernel / device / audio fault fails the JOB, not this attempt (review M7)
         except Exception as exc:  # noqa: BLE001 - the emission pass refused THIS file: one attempt failing
@@ -895,7 +1029,8 @@ class AlignStepsImpl:
         # listens to it before it bins a claimed line. When the target IS the mix (no stem), the lexical gate
         # below reads the mix's bands, where since W4 review r1 the LIFT'S FLOOR REFUSES and the envelope fit
         # is only reported — except under `h3-mix-envelope` (the control: the envelope gate alone) or
-        # `h3-mix-floor` (both gates). The flip's numbers are at `lexical.BANDS`, MIX.
+        # `h3-mix-floor` (both gates). The flip's numbers are in `lexical`'s MIX section; the mix thresholds a
+        # job reads are `lexical.calibration(emissions)`'s `mix_floor` / `mix_ok_from`.
         stem_target = target
         mix_target = req.audio.align_target(on_mix=True)
         target_name = "mix" if stem_target == mix_target else "stem"
@@ -904,9 +1039,10 @@ class AlignStepsImpl:
         # FIRST, on the matrix just computed, before this text's decode and before any audio is read: no
         # repair makes unsung words sung, and a wrong text is now the normal case to refuse (640/640 in the
         # sweep), so it costs one emission pass and four CTC decodes instead of an ffmpeg decode of the whole
-        # stem plus an envelope pass plus a decode it will never publish (W3 review r2). The bands, their
-        # calibration and why the lift REPLACES the envelope gate on a stem are at `lexical.BANDS`;
-        # `_word_lift` says what is exempt.
+        # stem plus an envelope pass plus a decode it will never publish (W3 review r2). The bands THIS job
+        # reads are `lexical.calibration(emissions)`' — the resolved bundle's row, `CALIBRATED`, and never
+        # `lexical.BANDS` by name, which is the base bundle's since W5's flip; why the lift REPLACES the
+        # envelope gate on a stem is explained there. `_word_lift` says what is exempt.
         lifted, bands, unmeasured = await self._word_lift(req, line_texts, emissions)
         on_stem = target_name == "stem"
         # THE ROW THE LIFT WAS READ AGAINST, not a second lookup of the table (W4b, `_measured_lift`): a
@@ -930,7 +1066,7 @@ class AlignStepsImpl:
         # configurations end to end and the gate it replaces loses MORE of the same: the envelope gate
         # refuses 51 of 128 right-text cases against the floor's 37 and admits 27 of 64 wrong ones (42.2%,
         # against review §3.4's 1%), where the floor publishes 91 and admits 0. The numbers, the 9 right
-        # texts the envelope gate refuses above the floor and the control arm are at `lexical.BANDS`, MIX.
+        # texts the envelope gate refuses above the floor and the control arm are in `lexical`'s MIX section.
         #
         # `h3-mix-floor` WINS WHEN BOTH ARM NAMES ARE SET (W4 review r2): it means BOTH gates, so it is the
         # superset of `h3-mix-envelope`'s one gate, and the pair must MEASURE what the stricter name promises
@@ -1793,7 +1929,11 @@ class AlignStepsImpl:
                     mix_emissions = await asyncio.to_thread(
                         aligner.emissions,  # type: ignore[attr-defined]
                         mix_target,
-                        req.language,
+                        # THE MIX's bundle, which is the one place `lang-route-mix` can differ from the
+                        # target's: R4's witness is the mix by definition, and the review's n=7 reading (and
+                        # W7's widened one) found per-language routing winning ONLY there. Under the default
+                        # this resolves to the same bundle as the target's and the matrix is shared.
+                        await self._bundle_language(req, on_mix=True),
                     )
                     mix_repaired = await redecode(
                         "R4", [claim_run(line) for line in stem_invisible], matrix=mix_emissions
@@ -2004,8 +2144,9 @@ class AlignStepsImpl:
         # too, because the claim's offset does not make the audio contain different words.
         # (The tiers are `_envelope_passes`, shared with the LINE_SYNC rung's sheet-span gate.)
         #
-        # ON A STEM THE LEXICAL LIFT REPLACES THIS GATE wherever it measured the text (review H3; W3,
-        # `lexical.BANDS`): scoring our own forced decode, which the audio pulls onto the voiced frames
+        # ON A STEM THE LEXICAL LIFT REPLACES THIS GATE wherever it measured the text (review H3; W3, and the
+        # row in force is `lexical.calibration(emissions)`'): scoring our own forced decode, which the audio
+        # pulls onto the voiced frames
         # whatever the words, it passed 152/320 bench wrong texts and 280/320 same-video wrong words, and
         # refused 8 right texts the lift passes (rap-god drop20, never-be-alone credit, 6 drop50 sheets),
         # while the lift alone refuses 0/448 right cases and passes 0/640 wrong ones. It still gates the mix
@@ -2112,16 +2253,21 @@ class AlignStepsImpl:
             )
         ) | near_repeats
 
-        #: Lines NO word of which any decode placed — an `adlibs` echo tail that no repair re-decoded
-        #: (empty without the arm). Read off the FINAL document, so a line the ladder re-timed from its full
-        #: text is not in it (`parts.unmeasured_lines`).
+        #: Lines NO word of which any decode placed: an `adlibs` echo tail that no repair re-decoded, AND
+        #: every claim-ADOPTED line, whose words carry a copied span rather than a heard one — NOT "empty
+        #: without the arm", which is what this said until W5 review r2-spec-13 measured it. No behaviour
+        #: rides on the difference (the `_Source.ADOPTED` branch below grades those lines `low` anyway), so
+        #: the set is left as it is and named correctly. Read off the FINAL document, so a line the ladder
+        #: re-timed from its full text is not in it (`parts.unmeasured_lines`).
         interpolated_lines = parts.unmeasured_lines(generated)
 
         def line_confidence(index: int) -> str:
             if unvouched is not None:
                 return "low"  # a pin a wrong-text gate would have refused: nothing vouches for any line
             if doubted:
-                return "low"  # the lexical doubt band: its words may not be the sung ones (`lexical.BANDS`)
+                # The lexical doubt band of the row this job's bundle was calibrated on (`lexical.CALIBRATED`,
+                # read through `lexical.calibration`): its words may not be the sung ones.
+                return "low"
             if index in interpolated_lines:
                 # §3.13: this line's words were held OUT of the lead decode and apportioned across the gap
                 # its host left — derived from a measurement, not one. W6's TV consumer then renders it
