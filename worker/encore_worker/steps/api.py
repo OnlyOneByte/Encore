@@ -53,10 +53,15 @@ class AlignSteps(Protocol):
         """
         ...
 
-    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> TextRef | None:
-        """A lyrics sheet by metadata. `None` when the provider has nothing for this song.
+    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> list[TextRef]:
+        """A lyrics sheet by metadata from EVERY provider that has one. Empty when none has this song.
 
-        Raising and returning None mean different things: raising is "the provider could not be
+        A LIST SINCE REVIEW M13, and the plural is the fix: the first hit used to win, and lrcmux is first
+        in the chain, so LRCLIB was consulted only when lrcmux was UNREACHABLE and never when it merely
+        answered badly. Two sources disagreeing is the text side's strongest free signal
+        (`policy.corroboration` ranks the pool on it).
+
+        Raising and returning empty mean different things: raising is "the provider could not be
         reached", which must be visible, because the old worker had a provider fail for a month and it
         was indistinguishable from a library of instrumentals.
         """

@@ -396,8 +396,9 @@ def _lyrics_artifacts(
         carries a SECOND claim core reads: `lyricsSourceLabel` reports `captions` + `low` as "Auto
         captions", so a doubted hand-authored caption track was shown to the room as machine-generated —
         false about its provenance rather than about its words. The timing grade could not carry the doubt
-        either: `timingConfidence` is not in core's ranking at all (only its tie-break), so a doubted word
-        document tied with a vouched one at the top rank.
+        either: since W6 `lyricsRank` reads `timingConfidence`, but only a `low` one, and the doubt band's
+        grade is `medium` (when this was written the field was in the tie-break alone), so a doubted word
+        document ties with a vouched one at the top rank on either version of that ranking.
       * `selectable` is the ladder's verdict: `false` on every attempt this job did not publish — the
         ones it retried, moved past, or (no lyrics) all of them. Core never auto-selects one (a person
         still may), so within a report the worker's choice stands, while across jobs core's ranking

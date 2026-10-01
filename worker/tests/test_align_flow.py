@@ -81,6 +81,7 @@ class Fake:
         *,
         authored: TextRef | None = None,
         provider: TextRef | None = None,
+        providers: list[TextRef] | None = None,
         machine: TextRef | None = None,
         transcribed: TextRef | None = None,
         transcribed_on_mix: TextRef | None = None,
@@ -91,7 +92,9 @@ class Fake:
         pinned: TextRef | None = None,
     ) -> None:
         self._authored = authored
-        self._provider = provider
+        #: EVERY provider's sheet (review M13). `provider=` is the one-sheet shorthand the existing cases
+        #: use; `providers=` is how a case puts two in the pool.
+        self._providers = list(providers) if providers is not None else ([provider] if provider else [])
         self._machine = machine
         self._transcribed = transcribed
         self._transcribed_on_mix = transcribed_on_mix
@@ -124,9 +127,9 @@ class Fake:
         self.calls.append(f"fetch_captions:{'machine' if automatic else 'authored'}")
         return self._machine if automatic else self._authored
 
-    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> TextRef | None:
+    async def fetch_provider_lyrics(self, job: JobRef, audio: AudioRef) -> list[TextRef]:
         self.calls.append("fetch_provider_lyrics")
-        return self._provider
+        return list(self._providers)
 
     async def fetch_pinned_text(self, job: JobRef) -> TextRef | None:
         self.calls.append("fetch_pinned_text")
@@ -744,3 +747,77 @@ async def test_the_texts_a_gate_refused_ride_on_the_outcome() -> None:
         provider=lrc(), transcribed=asr_text(), reports=[REFUSED, CLEAN], publish_raises=NotOurJob("x")
     )
     assert (await run_align(JOB, lost)).refused == ()
+
+
+# ── review M13: every provider is a candidate, and corroboration orders the tier ───────────────────
+
+
+def sheet(label: str, *lines: str) -> TextRef:
+    """A provider sheet with its own words, so two of them can agree or disagree about the song."""
+    return TextRef(
+        tier=Tier.CANDIDATE,
+        label=label,
+        segments=tuple({"start": float(n), "end": n + 2.0, "text": line} for n, line in enumerate(lines)),
+        timing=TIMING_LINE,
+        language="en",
+    )
+
+
+NUMB = ("I've become so numb", "I can't feel you there", "Become so tired, so much more aware")
+HELLO = ("Hello from the other side", "I must have called a thousand times", "To tell you I'm sorry")
+
+
+async def test_every_providers_sheet_reaches_the_pool() -> None:
+    """lrcmux is first in the chain, so returning only its hit meant LRCLIB was consulted exactly when
+    lrcmux was UNREACHABLE and never when it merely answered with a worse sheet."""
+    fake = Fake(
+        providers=[sheet("lrcmux:KuGou", *HELLO), sheet("lrclib", *NUMB)],
+        reports=[REFUSED, CLEAN],
+    )
+    await run_align(JOB, fake)
+
+    assert [t.text.label for t in fake.timed] == ["lrcmux:KuGou", "lrclib"]
+
+
+async def test_the_corroborated_text_is_tried_first_even_when_it_arrived_last() -> None:
+    """The measured case (Hello): the SDH authored caption track went first because it was FETCHED first,
+    and published over a clean provider sheet. Here the upload's own track and the LRCLIB sheet agree —
+    two INDEPENDENT witnesses (`policy.witness_of`) — so the lrcmux sheet that agrees with neither drops
+    behind the one that arrived after it, and nothing about tier ordering moved."""
+    fake = Fake(
+        authored=sheet("captions:authored", *NUMB),
+        providers=[sheet("lrcmux:KuGou", *HELLO), sheet("lrclib", *NUMB[:2])],
+        reports=[REFUSED, REFUSED, CLEAN],
+    )
+    await run_align(JOB, fake)
+
+    assert [t.text.label for t in fake.timed] == ["captions:authored", "lrclib", "lrcmux:KuGou"]
+    assert fake.calls.count("fetch_provider_lyrics") == 1, "one step, every provider"
+
+
+async def test_two_provider_sheets_agreeing_are_one_witness_and_promote_neither() -> None:
+    """W5 review r1-correctness-4 / r1-spec-12. `fetch_provider_lyrics` asks every provider the SAME
+    artist/track and LRCLIB is one of lrcmux's own upstreams, so two sheets that agree can be ONE answer
+    reached twice — a metadata mismatch returns two copies of the wrong song's sheet. Counted as two
+    witnesses, that pair was tried ahead of the upload's own caption track, the one text in the pool that
+    can only be about this recording. Arrival order instead, which is what it was before M13."""
+    fake = Fake(
+        authored=sheet("captions:authored", *HELLO),
+        providers=[sheet("lrcmux:KuGou", *NUMB), sheet("lrclib", *NUMB[:2])],
+        reports=[REFUSED, REFUSED, CLEAN],
+    )
+    await run_align(JOB, fake)
+
+    assert [t.text.label for t in fake.timed] == ["captions:authored", "lrcmux:KuGou", "lrclib"]
+
+
+async def test_a_pool_where_nothing_agrees_walks_in_arrival_order() -> None:
+    """The change is a TIE-BREAK, so a pool with no corroboration behaves exactly as it did before."""
+    fake = Fake(
+        authored=sheet("captions:authored", *HELLO),
+        providers=[sheet("lrclib", *NUMB)],
+        reports=[REFUSED, CLEAN],
+    )
+    await run_align(JOB, fake)
+
+    assert [t.text.label for t in fake.timed] == ["captions:authored", "lrclib"]

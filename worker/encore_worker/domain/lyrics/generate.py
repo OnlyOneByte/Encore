@@ -487,14 +487,15 @@ def remapped(line: Line, start: float, end: float) -> Line:
     )
 
 
-def trimmed(line: Line, end: float) -> Line | None:
+def trimmed(line: Line, end: float, *, frame_sec: float) -> Line | None:
     """The same line ENDING at `end`, keeping every word onset it measured before `end` and re-fitting
     only the tail the decode smeared past it. None when no word of the line starts before `end`.
 
     `remapped`'s sibling and NOT a special case of it: `remapped(line, line.start, end)` compresses the
-    WHOLE line, which moves onsets that were already right. Here only the sub-series from the last word
-    starting before `end` is re-fitted, into `[that word's start, end]`. Two properties follow, and both are
-    the reason this exists rather than a call to `remapped`:
+    WHOLE line, which moves onsets that were already right. Here only the sub-series from the ANCHOR — the
+    last word starting before `end` whose tail still has a frame per word to place in, see below — is
+    re-fitted, into `[that word's start, end]`. Two properties follow, and both are the reason this exists
+    rather than a call to `remapped`:
 
       * NO ONSET MOVES BEFORE THE ANCHOR, and the anchor and every onset before it do not move at all — so
         the line's FIRST word stays exactly where it was and a line trimmed this way cannot invert against
@@ -510,12 +511,37 @@ def trimmed(line: Line, end: float) -> Line | None:
         phrase-final end ±100, 59.23 against `remapped`'s 59.66 and W4's 59.83, on 2 more scored ends: the
         trimmed line's LAST word now ends at `end`, and that word is a phrase-final one.
 
+    ONE FRAME PER WORD STILL TO BE PLACED, WHICH IS WHY THE ANCHOR CAN WALK BACK (W6 review r2-spec-9). The
+    anchor is the LAST word starting before `end`, and where that word starts a hair before it the scale goes
+    to ~0: words at 10.0 / 19.999 / 20.4 / 20.9 / 21.6 trimmed to 20.0 used to publish the last three inside
+    0.8 ms of 19.999 — four words the TV can never light, since it lights `start <= pos < end` and that
+    interval is empty to the float, and three onsets no longer within a decoder frame of anything measured.
+    So an anchor whose tail cannot hold one `frame_sec` per word still to be placed is dropped and the word
+    before it tried, which trades ONE measured onset for a tail that is a timing again (here: the anchor
+    becomes 10.0 and the four words land ~0.4 s apart). The two properties above survive the walk exactly —
+    the map is still `t <= anchor -> t`, so the FIRST onset never moves whichever word the anchor is, and the
+    map is still monotone. None gains a second reason with it, reached only by a line whose every word is
+    crammed into one frame-per-word's worth of room (not seen on the corpus). The word figures above were read
+    BEFORE the walk; THE WALK IS NOW SWEPT (W6 round-2 re-bench, code `622288017e9d268a`) and they hold to the
+    digit — `truth` Jamendo 83.52 / 94.08 / 95.04 / 80.02 / 38.2 ms / 77.58 unmoved, because the collapsed
+    tail reaches 21 of 1088 `time_text` cases on the base bundle and 13 on HuBERT-L, none of them `truth` on
+    a song with word truth. The walk is measured to BUY 3 gross words on `Wordsmith_-_The_Statement` drop20
+    under HuBERT-L (43 -> 40 pooled, AAE 146 -> 143.7 ms). What it is measured to COST, and it is NOT only the
+    tail: the out-of-order word the collapse produced was tripping `run_align`'s `line-sync` retime on three
+    base-bundle cases, which now publish their word document instead — `believer` extraverse 65.75 (W4b) ->
+    98.63 (the accident) -> 73.97, `feel-my-heart` credit back to W4b's 94.59, and `rap-god` drop20 100.00 ->
+    87.93, a fallback no earlier tree lost (pooled `run_align` drop20 ±500 90.48 -> 88.98, extraverse
+    90.69 -> 89.66, gross and `high_gross` 0 throughout). So this walk is not free at `run_align`, and the
+    PLAN's status log carries the owner's open question about it.
+
     WHO CALLS IT: `align_steps._pulled_end`, the bounded left floor of the repair clamp (W6) — the one place
     a line the ladder did not repair has its end moved, and the one place `end` is another line's measured
     start rather than a window edge. None is its refusal: a line whose every word starts after `end` was not
     sung before it, so there is nothing to keep and the caller falls back to pushing the repair instead.
     """
     kept = [word for word in line.words if word.start < end]
+    while kept and end - kept[-1].start < (len(line.words) - len(kept)) * frame_sec:
+        kept.pop()
     if not kept:
         return None
     anchor = kept[-1].start

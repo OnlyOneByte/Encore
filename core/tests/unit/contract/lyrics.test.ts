@@ -328,6 +328,9 @@ test('parse: an absent vouched stays absent, an unreadable one fails safe to fal
 test('a word document whose timings are graded low ranks as line timing', () => {
 	// The per-line grades aggregate into `timingConfidence`; a `low` one means nothing vouches for where
 	// the words are, which is line timing with extra decoration. The TV makes the same call row by row.
+	// THIS 5 -> 4 IS REACHABLE ONLY FOR A ROW STORED BEFORE `vouched` EXISTED (W6 review r1-spec-17): the
+	// current worker sends a document-level `low` only for a pin its wrong-text gate would have refused, and
+	// sends `vouched: false` with it. Those rows are still ranked across jobs, which is why the case stays.
 	const doubted = cand('lrclib', 'word', { timingConfidence: 'low' });
 	const line = cand('lrclib', 'line', { timingConfidence: 'high' });
 	expect(lyricsRank(doubted)).toBe(4);
@@ -338,4 +341,18 @@ test('a word document whose timings are graded low ranks as line timing', () => 
 	expect(lyricsRank(cand('asr', 'word'))).toBe(3);
 	// A grade nobody sent is NOT doubt: every candidate stored before the field existed ranks as it did.
 	expect(lyricsRank(cand('lrclib', 'word'))).toBe(5);
+});
+
+test('the transition this worker actually writes is 3 -> 2: an unvouched pin', () => {
+	// W6 review r1-spec-17. `align_steps` writes `confidence: 'low'` on a whole document in ONE case — a
+	// `pinnedText` whose lift the wrong-text gate would have refused — and that same branch sets
+	// `vouched: false`, which `isAuthoritativeText` reads. So for anything the current worker emits the two
+	// legs move together and the pair lands on the unauthoritative rungs: 3 for its words, 2 once the timing
+	// grade is read. Pinned beside the legacy shape above so neither can be mistaken for the other.
+	const pin = cand('lrclib', 'word', { timingConfidence: 'low', vouched: false });
+	expect(isAuthoritativeText(pin)).toBe(false);
+	expect(lyricsRank(pin)).toBe(2);
+	expect(lyricsRank(cand('lrclib', 'word', { vouched: false }))).toBe(3);
+	// And it still loses to a vouched LINE-timed sheet, which is the ordering the rule exists for.
+	expect(lyricsRank(cand('lrclib', 'line', { timingConfidence: 'high' }))).toBeGreaterThan(lyricsRank(pin));
 });

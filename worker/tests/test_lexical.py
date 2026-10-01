@@ -172,15 +172,42 @@ def test_the_bands_are_half_open_and_read_per_target(value: float, on_stem: bool
     assert lexical.band(value, on_stem=on_stem, bands=lexical.BANDS) is want
 
 
-def test_the_shipped_bands_keep_the_calibrated_populations_apart() -> None:
+def test_the_base_bundles_bands_keep_its_calibrated_populations_apart() -> None:
     """The base model's calibration (`lift_gate.py`, the module docstring): no wrong text reached the refuse
     threshold on either target (stem +0.189, mix +0.132), every protected right text on a stem sits above
-    the doubt band (+0.359), and each band is non-empty and ordered."""
+    the doubt band (+0.359), and each band is non-empty and ordered.
+
+    `BANDS` IS THE BASE BUNDLE'S ROW AND NOT THE SHIPPED DEFAULT'S since W5's flip — it is what a matrix
+    naming NO model is read as (a fake, a pre-field bench cache) and what `ENCORE_ALIGN_MODEL=
+    WAV2VEC2_ASR_BASE_960H` resolves to. The shipped default's own separation is the test below."""
     bands = lexical.BANDS
     assert bands.model == "WAV2VEC2_ASR_BASE_960H"
     assert 0.189 < bands.refuse_below < bands.ok_from <= 0.359
     assert 0.132 < bands.mix_floor < bands.mix_ok_from
     assert bands.mix_floor < bands.refuse_below, "a mix is heard less well, and its floor is lower"
+
+
+def test_the_shipped_defaults_bands_keep_its_own_populations_apart() -> None:
+    """THE ROW EVERY PRODUCTION JOB IS NOW GATED ON (W5's flip), held to its own measurement and not to the
+    base bundle's. On HuBERT-Large the stem populations separate by +0.547 where the base model's separate by
+    +0.072 (right texts min +0.766, wrong max +0.219), so the floor clears the wrong population by +0.2306 —
+    3-8 redraw SDs instead of one; on the mix they still overlap (wrong max +0.1157) and the floor is fitted
+    from above with +0.0343 of head-room, the base row's to four places."""
+    from encore_worker.adapters import ml
+
+    bands = lexical.CALIBRATED[ml.default_align_model("mps")]
+    assert bands.model == "HUBERT_ASR_LARGE", "W5 flipped the default; this row is what a job reads"
+    assert 0.219 < bands.refuse_below <= 0.766, "the stem floor sits in the gap, clear of every wrong text"
+    assert 0.766 < bands.ok_from <= 0.828, (
+        "`ok_from` is the smallest step above the weakest drop50 (+0.766) and never above the weakest "
+        "PROTECTED right text (Avercage extraverse +0.828) — W4b's restated rule, see the module docstring"
+    )
+    assert 0.1157 < bands.mix_floor < bands.mix_ok_from
+    assert bands.mix_floor < bands.refuse_below, "a mix is heard less well, and its floor is lower"
+    assert bands.refuse_below > lexical.BANDS.refuse_below, (
+        "a sharper decode lifts a right text further, so its floor is HIGHER — reading the base row's 0.2 on "
+        "this bundle is the wrong-model read `band`'s required argument exists to prevent"
+    )
 
 
 def test_every_calibration_row_is_keyed_by_its_own_model_and_ordered() -> None:
@@ -210,6 +237,35 @@ def test_every_bundle_a_box_can_default_to_is_calibrated() -> None:
     for device in ("cuda", "mps", "cpu", "an-accelerator-nobody-has-yet"):
         named = ml.default_align_model(device)
         assert lexical.is_calibrated(named), f"{device} would default to the uncalibrated {named}"
+
+
+def test_a_bundle_a_box_defaults_to_has_a_COMPLETE_row_not_four_fifths_of_one() -> None:
+    """`is_calibrated` CANNOT SEE A HALF-MEASURED ROW, and W5's flip is the wave where that matters.
+
+    A row may exist with a field nobody fitted — `margin_floor_nats` is `float | None` for exactly that
+    reason, and `HUBERT_ASR_XLARGE`'s is None because no one has read one of its trellises. For a bundle an
+    OPERATOR names, None is the designed behaviour: the placement rule abstains and the trail says which
+    bundle had no floor. For a bundle a BOX DEFAULTS TO it is the silent borrow the review rated high, one
+    threshold over: every job on that worker would run with W6's placement-ambiguity rule switched off, and
+    nothing would have been typed to be refused. `is_calibrated` answers "has a row", so the default's row is
+    held to "has every number" here instead — which is what made W5's flip a one-word change (`CALIBRATED`'s
+    own comment argues it) and what would have refused a flip to XL.
+    """
+    from encore_worker.adapters import ml
+
+    for device in ("cuda", "mps", "cpu", "an-accelerator-nobody-has-yet"):
+        row = lexical.CALIBRATED[ml.default_align_model(device)]
+        assert row.margin_floor_nats is not None, (
+            f"{device} defaults to {row.model}, whose placement-margin floor was never fitted: W6's rule "
+            "would abstain on every job (see Bands.margin_floor_nats)"
+        )
+        for field in ("refuse_below", "ok_from", "mix_floor", "mix_ok_from", "line_sync_min_agreement"):
+            assert getattr(row, field) > 0.0, f"{row.model}'s {field} is not a measurement"
+    # The fifth value is the one W4b's own review found missing from `align_steps` rather than from a row, so
+    # the default's share must be the row's and not the model-independent floor by coincidence of value.
+    default = lexical.CALIBRATED[ml.default_align_model("mps")]
+    assert lexical.line_sync_share(default) == default.line_sync_min_agreement
+    assert lexical.margin_floor(default) == default.margin_floor_nats
 
 
 def test_a_matrix_is_calibrated_by_its_own_model_or_by_nothing() -> None:
@@ -245,6 +301,7 @@ def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
         mix_floor=0.4,
         mix_ok_from=0.9,
         line_sync_min_agreement=0.6,
+        margin_floor_nats=25.0,
     )
     monkeypatch.setitem(lexical.CALIBRATED, other.model, other)
 
@@ -263,6 +320,15 @@ def test_a_second_row_gates_its_own_model_and_leaves_the_first_alone(
     assert lexical.line_sync_share(other) == 0.6, "this model's own share, not the uncalibrated constant"
     assert lexical.line_sync_share(lexical.BANDS) == lexical.BANDS.line_sync_min_agreement
     assert lexical.line_sync_share(None) == lexical.LINE_SYNC_SHARE_UNCALIBRATED
+    # AND SO DOES THE MARGIN FLOOR, which is the same argument one field later (W6 review r1-spec-9) with the
+    # opposite answer for a missing row: a share in SECONDS survives an unmeasured bundle, a floor on a sum of
+    # LOG-PROBABILITIES does not, so `margin_floor` answers None and the rule abstains rather than borrowing.
+    assert lexical.margin_floor(other) == 25.0, "this model's own floor"
+    assert lexical.margin_floor(lexical.BANDS) == lexical.BANDS.margin_floor_nats
+    assert lexical.margin_floor(None) is None, "no row at all: the placement-margin rule must not apply"
+    assert lexical.margin_floor(lexical.CALIBRATED["HUBERT_ASR_XLARGE"]) is None, (
+        "a row whose floor was never fitted is the SAME answer as no row, which is why the field is optional"
+    )
 
 
 def test_the_row_is_the_callers_and_there_is_no_module_global_fallback() -> None:
@@ -277,10 +343,10 @@ def test_the_row_is_the_callers_and_there_is_no_module_global_fallback() -> None
     parameter = inspect.signature(lexical.band).parameters["bands"]
     assert parameter.default is inspect.Parameter.empty, "a default row is a cross-model threshold borrow"
     assert parameter.annotation == "Bands", "and `Bands | None` would put the decision back in here"
-    moved = lexical.Bands("x", 5.0, 6.0, 1.0, 2.0, 0.5)
+    moved = lexical.Bands("x", 5.0, 6.0, 1.0, 2.0, 0.5, 25.0)
     assert lexical.band(5.5, on_stem=True, bands=moved) is lexical.Band.DOUBT
     assert lexical.band(1.5, on_stem=False, bands=moved) is lexical.Band.DOUBT
-    flat = lexical.Bands("y", 0.0, 0.0, 0.0, 0.0, 0.5)
+    flat = lexical.Bands("y", 0.0, 0.0, 0.0, 0.0, 0.5, 25.0)
     assert lexical.band(5.5, on_stem=True, bands=flat) is lexical.Band.OK
 
 

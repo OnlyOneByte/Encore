@@ -7,10 +7,10 @@
 WHAT IT CALIBRATES. `domain.lyrics.lexical.lift` — the text's forced-path log-probability against the best
 of three seeded shuffles of its own words, per letter — gates two things:
 
-  * the LINE_SYNC rung (W1 review r2, `align_steps._time_line_sync`, which reads `lexical.BANDS` too): a
+  * the LINE_SYNC rung (W1 review r2, `align_steps._time_line_sync`, which reads the same row): a
     text at the rung must lift, so a same-video caption track in other words (a translation) cannot
     line-sync;
-  * the GLOBAL engine's word documents (W3, review §3 item 4 / H3, `lexical.BANDS`): refuse / doubt / ok
+  * the GLOBAL engine's word documents (W3, review §3 item 4 / H3): refuse / doubt / ok
     bands on a stem, where the lift REPLACES the envelope gate, because that gate scores OUR OWN decode, which
     the audio pulls onto the voiced frames whatever the text (152/320 wrong texts passed it at W1); and doubt
     / ok bands on the mix, whose floor REFUSES by default since W4 review r1 (it refuses 7 of 32 truth texts
@@ -46,7 +46,9 @@ WHAT IT PRINTS (the procedure W3 calibrated by; W4b's HuBERT recalibration is `-
      bench (`results/w1-time_text.cases.jsonl` + `w1-ownclock-time_text.cases.jsonl`, whose outcomes ARE
      the envelope gate's): envelope alone, lift alone, both required, either enough;
      (mix) the blind envelope with the lift floor, per floor;
-  6. the bands as shipped (`lexical.BANDS`): each population per band;
+  6. the bands AS SHIPPED FOR THE BUNDLE THIS RUN MEASURED (`lexical.CALIBRATED[model]`, and `BANDS` only
+     as a stated reference for a bundle with no row — since W5 the shipped row is HuBERT-Large's, not
+     `BANDS`'): each population per band;
   7. the truth texts' BLIND decode timing per band (lines within 1 s of truth, lines over 2 s off): on the
      mix the lift reads how well the words are heard, which is what the mix doubt band is drawn on;
   8. the W1 run_align bench's line-synced right texts (the LINE_SYNC rung's 16 commits) and their lift;

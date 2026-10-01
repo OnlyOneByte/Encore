@@ -962,6 +962,28 @@ backwards produces "I want to have control. I". A duet `part` is carried onto ev
 into, or a long duet line loses its colour; `romanization` needs no carry, since it appears only on
 line-synced docs, which are never resegmented.
 
-`LYRICS_LEAD_SEC` is 0 and is applied at DISPLAY time, so the artifact stays a faithful record of where the
-words are: one global lead cannot be right for both a ballad and a fast rap line, and it masks per-song
-text/audio mismatch.
+**TWO LEADS, TWO JOBS, AND BOTH ARE APPLIED AT DISPLAY TIME** so the artifact stays a faithful record of
+where the words are.
+
+`LYRICS_LEAD_SEC` (`lib/tv/lyrics.ts`) is 0 and stays 0: it is the overlay's default when NO room settings
+reach it, and the bench's TV port reads that constant, so every recorded `highlight` number measures the
+artifact's own accuracy rather than a room's display compensation.
+
+`DEFAULT_LYRICS_LEAD_MS` — the ROOM setting's default, which is what a real TV runs with — is **40 ms**
+since W5 (PLAN-alignment-v3). ITU-R BT.1359's lip-sync tolerance is ASYMMETRIC (video late of audio is
+noticed at about −45 ms, early at about +125 ms), a karaoke highlight has the same asymmetry — a word that
+lights after it is sung reads as broken, one that lights a hair early reads as correct — and over the 5693
+hand-timed word onsets of the bench corpus a +40 ms display lead moves the share inside that band from
+**73.2% to 78.6%**, which is also the swept ARGMAX (5 ms steps, same peak on a claim-anchored document, on a
+blind decode and on a jittered claim; the review's 66.0% → 75.0% is the same measurement on the pre-W4 clock
+and the base bundle and still reproduces there — W4's clock and W5's bundle flip moved the distribution, not
+the physics). **EXISTING ROOMS WERE BACKFILLED TO IT**, because a changed column default reaches none of them
+— `setRoom` writes every column and `getRoom` returns the stored value, so nothing reads a default at runtime
+— and the 5.4 points would otherwise have gone to rooms created after the upgrade only
+(`drizzle/0001_lyrics_lead_default.sql`, which states why that is honest once: the knob shipped at 0, so a
+stored 0 and the old default cannot be told apart, and this is the pre-release window). It is a DISPLAY
+compensation, not a timing correction: the worker's acoustic
+`generate.ONSET_LEAD_SEC` (30 ms, re-fitted on the exact frame grid) did not move and must not, or the
+published artifact lies to every consumer. The exact value is still owed a measurement of the TV's own
+video latency (compositor + HDMI + panel processing, commonly 20–100 ms on a consumer TV outside game
+mode), which eats into the same budget; `lyricsLeadMs` is the per-room knob until then.

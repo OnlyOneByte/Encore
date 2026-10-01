@@ -44,6 +44,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import replace
 from typing import assert_never
 
+from encore_worker.domain.lyrics.policy import corroboration
 from encore_worker.domain.lyrics.report import TimingReport
 from encore_worker.domain.lyrics.search import (
     Candidate,
@@ -122,7 +123,7 @@ async def run_align(job: JobRef, steps: AlignSteps) -> AlignOutcome:
         await steps.note(job, STATE_TEXTS, 0, "sync-mode", mode_note, None)
 
     search = Search(
-        pool=[_candidate_of(t, line_only=line_only) for t in texts],
+        pool=_pool_of(texts, line_only=line_only),
         aligned_on_stem=audio.vocals_path is not None,
         pinned=pin is not None,
         line_only=line_only,
@@ -318,9 +319,13 @@ async def _acquire_texts(job: JobRef, audio: AudioRef, steps: AlignSteps) -> lis
     month from a library of instrumentals, because both produced no text.
     """
     found: list[TextRef] = []
+    # EVERY PROVIDER'S SHEET, not the first one's (review M13): `fetch_provider_lyrics` returns a LIST, so
+    # LRCLIB is a candidate even on a song lrcmux answered. Which of them is tried first is then decided by
+    # corroboration rather than by this order (`_pool_of`), so the sequence here is only about COST — the
+    # two caption fetches shell out to yt-dlp and the providers are one HTTP request each.
     for text in (
         await steps.fetch_captions(job, automatic=False),
-        await steps.fetch_provider_lyrics(job, audio),
+        *await steps.fetch_provider_lyrics(job, audio),
         await steps.fetch_captions(job, automatic=True),
     ):
         if text is not None:
@@ -382,19 +387,50 @@ def _sync_mode_note(job: JobRef, pin: Pin | None, *, stemless: bool = False) -> 
     return None
 
 
-def _candidate_of(text: TextRef, *, line_only: bool = False) -> Candidate:
+def _candidate_of(text: TextRef, *, line_only: bool = False, corroborated: bool = False) -> Candidate:
     """Describe a text to the search in terms of which knobs could apply to it.
 
     Under `syncMode=lines` a WORD-timed text (a transcript, a word-level sheet) line-syncs too: its
     segments carry their lines' spans, and the rung publishes those lines without the words.
+
+    THE LINE_SYNC RUNG READS `has_own_timings`, NOT THE `TIMING_LINE` LABEL (W5 review r2-correctness-2).
+    Both facts here are "this text brought timings from elsewhere": a word-level sheet carries its lines'
+    spans too, and since `clean_segments` rewrites word lists as tuples EVERY word-level sheet is labelled
+    `TIMING_WORD` (`align_steps._has_word_spans`), so reading the label cost an lrcmux word answer and every
+    A2 LRC sheet the rung in the DEFAULT sync mode — the one fallback that could still publish their own
+    line timings after their word timing failed to ship. The `line_only` clause stays beside it because it
+    covers the one text `has_own_timings` deliberately excludes, the ASR transcript, whose lines publish
+    only when the caller asked for line timing in the first place.
     """
     return Candidate(
         tier=text.tier,
         label=text.label,
         has_windows=bool(text.windows),
-        has_line_timings=text.has_line_timings or (line_only and text.timing == TIMING_WORD),
+        has_line_timings=text.has_own_timings or (line_only and text.timing == TIMING_WORD),
         has_own_line_timings=text.has_own_timings,
+        corroborated=corroborated,
     )
+
+
+def _pool_of(texts: Sequence[TextRef], *, line_only: bool) -> list[Candidate]:
+    """The search's pool, with each text told whether ANOTHER text in it agrees on the words (M13).
+
+    Computed over the WHOLE pool at once rather than per text, which is why it is not inside
+    `_candidate_of`: corroboration is a property of the set. Pure (`policy.corroboration` reads only the
+    words), so this adds no step and no DBOS checkpoint — and the ASR fallback, appended later by
+    `search.extend`, is deliberately not re-scored: it arrives after every candidate has been tried, so
+    nothing about the order it joins at is still a decision.
+    """
+    # WITH THE LABELS, because agreement only counts across INDEPENDENT witnesses (`policy.witness_of`,
+    # W5 review r1-correctness-4): two provider sheets are one metadata query answered twice.
+    agrees = corroboration(
+        [[str(segment.get("text") or "") for segment in text.segments] for text in texts],
+        [text.label for text in texts],
+    )
+    return [
+        _candidate_of(text, line_only=line_only, corroborated=backed)
+        for text, backed in zip(texts, agrees, strict=True)
+    ]
 
 
 def _newest_knob(search: Search) -> str | None:

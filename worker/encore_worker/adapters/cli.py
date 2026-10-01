@@ -16,7 +16,8 @@ import glob
 import os
 import re
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from encore_worker.adapters.ports import InfraFault, ProgressSink
 from encore_worker.domain.document import Segment
@@ -283,28 +284,82 @@ def find_caption_file(out_dir: str) -> str | None:
 
 
 def parse_vtt(text: str) -> tuple[Segment, ...]:
-    """Cues from a WebVTT or SRT body.
+    """Cues from a WebVTT or SRT body, with YouTube's ROLLING auto-caption shape handled (review M12).
 
     Both formats are handled by one parser because they differ only in the timestamp separator and a
     numeric index line. Two parsers for two nearly identical formats is two things to drift.
 
     Cue text is JOINED with spaces rather than newlines: a caption line-wrapped for a video player is
     one lyric line, and preserving the wrap would publish a lyric broken at whatever width YouTube chose.
+
+    WHAT A ROLLING TRACK IS, and why the old parser mangled it. YouTube's `--write-auto-subs` output is a
+    roll-up: the words appear one at a time, so every line of lyric is emitted THREE times — once as the
+    growing line with per-word timestamps, once as a 10 ms "the line is now complete" cue, and once again
+    as the carried-over first line of the NEXT cue. Reproduced on dQw4w9WgXcQ (the review's own case,
+    re-fetched; 103 raw cues), the shipped parser published **86 cues and 769 words for 284 sung words**,
+    lost the FIRST cue entirely, and threw away **239 inline word onsets**. Four defects, four rules:
+
+      1. THE CUE SEPARATOR IS AN EMPTY LINE, not a blank-looking one. YouTube writes a lone SPACE as a
+         placeholder for the roll-up's empty half (`' '` on its own line), and a parser that split blocks
+         on `line.strip() == ""` cut every such cue in two — the half with the timestamp had no body and
+         was dropped, the half with the body had no timestamp and was dropped too. That is why the first
+         cue vanished. This parser is TIMESTAMP-DRIVEN instead of block-driven: a `-->` line opens a cue
+         and the next `-->` line or the next truly empty line closes it, which is spec-correct for both
+         formats and is robust to either convention.
+      2. CUES UNDER `MIN_CUE_SEC` ARE DROPPED. 51 of dQw4w9WgXcQ's 103 cues are 10 ms long; they carry no
+         new words and exist only to mark a line complete. A 10 ms claim is also a claim no clock can use.
+      3. ONLY THE NEW LINE OF A ROLLING CUE IS KEPT. When a cue's leading body lines repeat the text the
+         previous KEPT cue published, they are the roll-up's carry and the last line is the new one. An
+         AUTHORED cue that is merely line-wrapped repeats nothing, so it is still joined whole.
+         AND THE TRACK MUST BE A ROLL-UP FOR THIS TO APPLY AT ALL (W5 review r1-correctness-2): identity
+         alone also matches a line REPEATED across a cue boundary, which is ordinary in song captions, and
+         on a plain authored track that deleted the repeat from the served text. The evidence is `_Roll` —
+         an inline onset tag, or `_ROLLING_OVERLAPS` cue spans overlapping their predecessor — accumulated
+         per TRACK, because a rolling track's last cue often carries no new word and so no tag of its own.
+      4. INLINE `<hh:mm:ss.mmm>` TAGS BECOME WORD CLAIMS. They are the only per-word timing a rolling
+         track carries and `clean_line` strips them, so they are read here, before the clean, and attached
+         as `words` — which is what makes an auto track a WORD-timed candidate instead of a line-timed one.
+
+    After all four: dQw4w9WgXcQ parses to 48 cues and 287 words against the 284 sung, with 280 word
+    claims over its 41 word-timed cues — and its first cue back, `We're no strangers to` at 18.80 s.
     """
-    cues: list[Segment] = []
-    block: list[str] = []
+    blocks: list[tuple[tuple[float, float], list[str]]] = []
+    open_at: tuple[float, float] | None = None
+    body: list[str] = []
+
+    def close() -> None:
+        nonlocal open_at, body
+        if open_at is not None:
+            blocks.append((open_at, [line for line in body if line.strip()]))
+        open_at, body = None, []
+
+    # NO `.strip()` ON THE LINE ITSELF: a line of one space is cue payload (rule 1 above), and only `\r`
+    # from a CRLF file and a leading BOM are removed. The timestamp pattern searches, so a line's own
+    # indentation never hides it.
     for raw in text.replace("\r\n", "\n").split("\n"):
-        line = raw.strip()
-        if line:
-            block.append(line)
+        line = raw.lstrip("﻿").rstrip("\r")
+        found = _TIMESTAMP.search(line)
+        if found is not None:
+            close()
+            open_at = (_secs(*found.groups()[:4]), _secs(*found.groups()[4:]))
             continue
-        cue = _cue_of(block)
+        if not line:
+            close()
+            continue
+        if open_at is not None:
+            body.append(line)
+    close()
+
+    # RULE 3's VERDICT IS READ OVER THE WHOLE TRACK BEFORE ANY CUE IS BUILT (`_track_roll`), because that is
+    # what it is a fact about — and a one-pass latch judged every cue BEFORE the evidence appeared as if the
+    # track were authored (W5 review r2-correctness-3: with overlap now needing to repeat, a latch would have
+    # cost a tagless roll-up its first carry removal). Two passes over a parsed caption file cost nothing.
+    rolling = _track_roll(blocks).certain
+    cues: list[dict[str, object]] = []
+    for span, lines in blocks:
+        cue = _cue_of(span, lines, previous=cues[-1] if cues else None, rolling=rolling)
         if cue is not None:
             cues.append(cue)
-        block = []
-    cue = _cue_of(block)
-    if cue is not None:
-        cues.append(cue)
     # CAPTION FORMAT IS NOT LYRIC. A cue body carries italic tags, ASR per-word timestamp spans, music
     # notes and speaker dashes; published unfiltered they were drawn on the television as words to sing
     # (measured: `- ♪♪ Gotta get that ♪♪ <i>- ♪♪ Boom boom boom ♪♪</i>`). See `domain/lyrics/clean.py`
@@ -314,19 +369,213 @@ def parse_vtt(text: str) -> tuple[Segment, ...]:
 
 _TIMESTAMP = re.compile(r"(\d{1,2}):(\d\d):(\d\d)[.,](\d{1,3})\s*-->\s*(\d{1,2}):(\d\d):(\d\d)[.,](\d{1,3})")
 
+#: An inline per-word onset in a roll-up track: `we're<00:00:19.039><c> no</c>`. The tag precedes the word
+#: it times; the cue's own start times the first word.
+_INLINE_ONSET = re.compile(r"<(\d{1,2}):(\d\d):(\d\d)[.,](\d{1,3})>")
 
-def _cue_of(block: Sequence[str]) -> Segment | None:
-    """One cue from a block of lines, or None when the block carries no timestamp."""
-    for index, line in enumerate(block):
-        found = _TIMESTAMP.search(line)
-        if found is None:
+#: Markup inside a cue line, removed only for the word split and the carry comparison — the published
+#: text keeps it until `clean_line` decides what is format (`domain/lyrics/clean.py` owns that list).
+_TAG_SPAN = re.compile(r"</?[a-zA-Z][^<>]*>")
+
+#: Below this a cue is a roll-up MARKER rather than a caption (review M12: 51 of dQw4w9WgXcQ's 103 cues are
+#: exactly 10 ms). 50 ms is two decoder frames at the 20 ms hop `adapters/ml` runs, so nothing under it can
+#: carry a usable claim either. The two populations on that track are 10 ms and 1.15–18.47 s, so the floor
+#: sits in an empty band three orders of magnitude wide.
+MIN_CUE_SEC = 0.05
+
+#: How many cues must overlap their predecessor before OVERLAP ALONE proves a roll-up (W5 review
+#: r2-correctness-3). One pair is not a convention: real authored and SDH tracks do overlap a cue here and
+#: there — two simultaneous speakers, a backing-vocal overlay, karaoke-style stacked subtitles — and latching
+#: rule 3 on that single pair deleted a line REPEATED later in the same track, which is the r1-correctness-2
+#: defect with the weaker signal left armed. A real roll-up overlaps on EVERY cue it grows through (each
+#: growing cue opens before the previous one closes), so it reaches two in its first three cues and nothing
+#: measured is lost by asking. MEASURED ON THE CORPUS'S OWN 16 REAL CAPTION TRACKS (6 `.vtt` fetched by the
+#: review + 10 committed `json3`): overlapping pairs 0 on every one of them, and inline onset tags 0 as well
+#: — so neither signal nor false positive has a corpus instance, and the TAG is the one with evidence behind
+#: it (dQw4w9WgXcQ's rolling track carries 239 of them over 41 cues). The overlap signal stays because a
+#: roll-up with no per-word timing is a real shape; it just no longer fires on one pair.
+_ROLLING_OVERLAPS = 2
+
+
+@dataclass(frozen=True, slots=True)
+class _Roll:
+    """A track's accumulated roll-up evidence (rule 3's precondition; W5 review r1-correctness-2).
+
+    Two signals of unequal strength, which is why this is a record and not a bool: a tag PROVES the track
+    tags its words, where an overlap has to REPEAT before it proves anything (`_ROLLING_OVERLAPS`).
+    """
+
+    tagged: bool = False
+    overlaps: int = 0
+
+    @property
+    def certain(self) -> bool:
+        """Is the track a roll-up, so rule 3's carry removal applies to every cue of it?"""
+        return self.tagged or self.overlaps >= _ROLLING_OVERLAPS
+
+
+def _cue_of(
+    span: tuple[float, float],
+    body: Sequence[str],
+    previous: Mapping[str, object] | None,
+    *,
+    rolling: bool,
+) -> dict[str, object] | None:
+    """One cue, or None when it carries no words, is a roll-up marker, or is all carried-over text.
+
+    `previous` is the last cue this parse KEPT, which is what rule 3 compares against — comparing with the
+    raw previous block instead would compare against a 10 ms marker that rule 2 has already dropped.
+    `rolling` is the WHOLE TRACK's answer to "is this a roll-up", decided by `_track_roll` before the first
+    cue is built (see `parse_vtt` and `_rolled`).
+    """
+    start, end = span
+    if end - start < MIN_CUE_SEC:
+        return None
+    lines = [line for line in body if line.strip()]
+    if not lines:
+        return None  # a timestamp and no words is a positioning or style cue, not a lyric
+    lines = _rolled(lines, previous, rolling=rolling)
+    if not lines:
+        return None
+    text = " ".join(lines).strip()
+    if not text:
+        return None
+    cue: dict[str, object] = {"start": start, "end": end, "text": text}
+    words = _inline_words(lines, start, end)
+    if words:
+        cue["words"] = words
+    return cue
+
+
+def _track_roll(blocks: Sequence[tuple[tuple[float, float], Sequence[str]]]) -> _Roll:
+    """The whole track's roll-up evidence (W5 review r1-correctness-2, then r2-correctness-3).
+
+    Two signals: an `_INLINE_ONSET` tag (a growing cue tags every word but its first — the same signal
+    `_inline_words` reads), which is proof on its own, and a span that OVERLAPS its predecessor's, which is
+    COUNTED because a single overlapping pair is something a real authored track does too (see
+    `_ROLLING_OVERLAPS`). ADJACENCY IS NOT OVERLAP: `--> 00:00:04.000` then `00:00:04.000 -->` is exactly how
+    authored cues abut, and reading that as a roll-up would be the defect again with a different spelling.
+
+    RULE 2's MARKER CUES AND THE POSITIONING CUES ARE NOT EVIDENCE: a 10 ms cue is dropped before rule 3 ever
+    sees it, and a cue with no words is not a caption, so neither can prove or disprove a convention.
+    """
+    tagged = False
+    overlaps = 0
+    previous_end: float | None = None
+    for (start, end), lines in blocks:
+        if end - start < MIN_CUE_SEC or not lines:
             continue
-        body = " ".join(block[index + 1 :]).strip()
-        # A cue with a timestamp and no words is a positioning or style cue, not a lyric.
-        if not body:
-            return None
-        return {"start": _secs(*found.groups()[:4]), "end": _secs(*found.groups()[4:]), "text": body}
-    return None
+        if any(_INLINE_ONSET.search(line) for line in lines):
+            tagged = True
+        if previous_end is not None and start < previous_end:
+            overlaps += 1
+        previous_end = end
+    return _Roll(tagged=tagged, overlaps=overlaps)
+
+
+def _rolled(lines: Sequence[str], previous: Mapping[str, object] | None, *, rolling: bool) -> list[str]:
+    """Rule 3: the roll-up's carried-over leading lines removed, or `lines` unchanged.
+
+    The carry is identified by TEXT IDENTITY against what the previous cue published, with the inline
+    timestamps taken off — the growing cue writes `love.<00:00:22.800><c> You</c>` and the next cue carries
+    it as the plain `love. You know the rules and so do`. A line-wrapped AUTHORED cue matches nothing here,
+    which is the whole reason the comparison is identity and not a heuristic about line counts.
+
+    AND IDENTITY ALONE IS NOT ENOUGH, SO THE TRACK MUST BE A ROLL-UP FIRST (`rolling`, W5 review
+    r1-correctness-2): a REPEATED LINE across a cue boundary is ordinary in song captions — a chorus line
+    that ends one cue and opens the next — and on a plain authored track, with no inline tag anywhere and
+    cues that merely abut, this rule deleted it, so the repeat never reached the TV and the words on screen
+    disagreed with the words being sung. `_rolling_evidence` is the evidence and `parse_vtt` accumulates it
+    per TRACK, because a rolling track's last cue often carries no new word and so no tag of its own — and
+    ONE overlapping pair is not enough of it either (`_ROLLING_OVERLAPS`, W5 review r2-correctness-3: an
+    authored track with two simultaneous speakers overlaps once and lost a repeated line to this rule).
+    """
+    if previous is None or len(lines) < 2 or not rolling:
+        return list(lines)
+    carried = _plain(str(previous.get("text") or ""))
+    if not carried:
+        return list(lines)
+    kept = list(lines)
+    while len(kept) > 1 and _plain(kept[0]) and carried.endswith(_plain(kept[0])):
+        kept.pop(0)
+    return kept
+
+
+def _plain(line: str) -> str:
+    """A cue line with its inline onsets and tags removed, whitespace collapsed — for comparison only."""
+    return re.sub(r"\s+", " ", _INLINE_ONSET.sub("", _TAG_SPAN.sub("", line))).strip()
+
+
+def _inline_words(lines: Sequence[str], start: float, end: float) -> tuple[Segment, ...]:
+    """Rule 4: `<hh:mm:ss.mmm>`-tagged words as word claims, or empty when the cue carries no tags.
+
+    EVERY WORD GETS A SPAN. A rolling cue tags every word but its first, so the first takes the cue's own
+    start; each word ends where the next begins and the last at the cue's end. The cue is refused whole —
+    the line keeps line timing — only when it carries NO tag at all, since a word list that disagreed with
+    the line would be read in preference to it (`measure.timed_words` reads `word["word"]`).
+
+    A TAG TIMES A RUN, NOT ALWAYS ONE WORD, and the run is APPORTIONED (W5 review r1-tests-19). This
+    docstring used to claim a partially tagged cue was refused; it was not, and every untagged token was
+    given the PREVIOUS word's onset, so `zzz yyy<00:00:11.500><c> xxx</c> www vvv` published three
+    ZERO-WIDTH words — and the TV lights the word with `start <= pos < end` (`core/src/lib/tv/lyrics.ts`),
+    which a zero-width span never satisfies. So a run of tokens sharing one onset is spread across the room
+    to the NEXT onset by character count, which is `presplit`'s rule and `parts._spread`'s, for the same
+    reason (an even split gives a one-letter token the same span as a six-letter one). Refusing the cue
+    instead would cost the real track word timing wherever it tagged a phrase, which is a loss measured in
+    whole cues against a defect measured in single words.
+    """
+    runs: list[tuple[float, list[str]]] = []
+    tagged = False
+    for line in lines:
+        for at, piece in _onset_runs(line):
+            if at is not None:
+                tagged = True
+            tokens = _TAG_SPAN.sub(" ", piece).split()
+            if not tokens:
+                continue
+            if at is None:
+                # The run no tag opens. On the cue's FIRST line that is the cue's own start; on a later line
+                # it continues the run the line before it left open, which is where a wrapped rolling cue
+                # puts the rest of a tagged phrase.
+                if runs:
+                    runs[-1][1].extend(tokens)
+                    continue
+                at = start
+            runs.append((at, tokens))
+    if not tagged or not runs:
+        return ()
+    out: list[Segment] = []
+    for index, (at, tokens) in enumerate(runs):
+        closes = runs[index + 1][0] if index + 1 < len(runs) else end
+        out.extend(_apportioned(tokens, at, max(at, closes)))
+    return tuple(out)
+
+
+def _apportioned(tokens: Sequence[str], low: float, high: float) -> list[Segment]:
+    """`tokens` across `[low, high]` BY CHARACTER COUNT — one claim each, no zero-width span unless the
+    room itself is zero (two tags on the same centisecond, which no clock can separate either)."""
+    room = max(0.0, high - low)
+    total = sum(len(token) for token in tokens) or 1
+    out: list[Segment] = []
+    at = low
+    for position, token in enumerate(tokens):
+        closes = high if position == len(tokens) - 1 else at + room * (len(token) / total)
+        out.append({"word": token, "start": at, "end": max(at, closes)})
+        at = max(at, closes)
+    return out
+
+
+def _onset_runs(line: str) -> list[tuple[float | None, str]]:
+    """The line as `(onset of what follows, text)` runs. The first run's onset is None (the cue's own)."""
+    out: list[tuple[float | None, str]] = []
+    at: float | None = None
+    pos = 0
+    for found in _INLINE_ONSET.finditer(line):
+        out.append((at, line[pos : found.start()]))
+        at = _secs(*found.groups())
+        pos = found.end()
+    out.append((at, line[pos:]))
+    return out
 
 
 def _secs(hours: str, minutes: str, seconds: str, millis: str) -> float:

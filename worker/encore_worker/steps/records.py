@@ -120,15 +120,22 @@ class TextRef:
     windows: tuple[Segment, ...] = ()
 
     @property
-    def has_line_timings(self) -> bool:
-        return self.timing == TIMING_LINE
-
-    @property
     def has_own_timings(self) -> bool:
         """Did this text arrive with timings from ELSEWHERE, so that placement applies?
 
         False for an ASR text even though it is word-timed: it was measured on this audio, so there is
         nothing to place. That distinction is what makes `Knob.RESHIFT` meaningful or meaningless.
+
+        IT IS ALSO THE LINE_SYNC RUNG'S QUESTION, and a separate `has_line_timings` reading
+        `timing == TIMING_LINE` used to answer it WRONGLY (W5 review r2-correctness-2). A WORD-timed sheet
+        carries its LINES' spans as well — `measure.line_spans` reads one span per segment, whatever the
+        words hold — and since `clean_segments` rewrites every provider's word list as a TUPLE,
+        `align_steps._has_word_spans` labels an lrcmux word-level answer and every A2 LRC sheet
+        `TIMING_WORD`. Reading the LABEL therefore took the rung away from exactly the texts that brought
+        the most timing. `workflows.align._candidate_of` reads THIS property for both knobs now, and the
+        ASR exclusion is what keeps it honest: a transcript's own line timings are this audio's decode, so
+        there is no sheet to fall back to (under `syncMode=lines` a transcript's lines do publish, and that
+        clause lives at the call site where the mode is known).
         """
         return self.tier is not Tier.ASR and self.timing in (TIMING_WORD, TIMING_LINE)
 
@@ -210,7 +217,9 @@ class TimedDoc:
     #: were heard on this very audio — and its tier already sends `textConfidence` `low`.
     #: Core is sent `vouched: false` for such a document whatever its tier or its pin, and reads it in
     #: `isAuthoritativeText`, so a document a gate passed outranks it. The TIMING grade above cannot carry it
-    #: (core's `lyricsRank` never reads `timingConfidence`), and `textConfidence` cannot either: that field is
+    #: (since W6 core's `lyricsRank` reads `timingConfidence`, but only a `low` one, and the doubt band's
+    #: grade is `medium` — it read the field nowhere at all when this was written), and `textConfidence`
+    #: cannot either: that field is
     #: the text's PROVENANCE, and core reads `captions` + `low` as "Auto captions" (W3 review r2).
     vouched: bool = field(default=True, kw_only=True)
 

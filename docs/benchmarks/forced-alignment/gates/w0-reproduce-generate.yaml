@@ -1,3 +1,33 @@
+# ── REBASED 2026-10-01 BY W5, FOR THE MODEL FLIP ────────────────────────────────────────────────────────
+# REBASED FROM: `results/w4-generate.json` — the BASE BUNDLE's raw decode, where W4b put it.
+# REBASED ONTO: `results/w5-generate.json` — `--level generate --modes blind --songs jamendo` on the bundle
+#   that SHIPS from W5 on (`ml.DEFAULT_ALIGN_MODEL` = `HUBERT_ASR_LARGE`; rows `_runs/w5-generate/`).
+# WHY, AND IT IS THE SAME RULE W4b AND W5's CARRIED-ITEMS TASK BOTH APPLIED: `--level generate` IS the
+#   decode, and a bundle swap replaces every emission matrix, so every literal here moved by construction.
+#   READ ON THE SHIPPED DEFAULT THE W4-BASED FILE SCORED **1/11** (only `end-pm250` survived, 92.78 -> 90.98
+#   being inside 0.5 pt by 0.3), which is a gate that teaches a later wave to ignore it. The companion file
+#   `gates/w0-reproduce-time_text.yaml` was rebased onto `results/w6-hubert-time_text.json` hours earlier by
+#   W5's carried-items task; this one was MISSED there and is rebased on exactly its grounds.
+#   THE ELEVEN NEW LITERALS, and the split is 6 GAINS / 5 REGRESSIONS, named rather than pooled:
+#     THE 6 GAINS, all ONSETS and the line placement they make: words ±100 79.98 -> **82.75**,
+#       ±250 90.46 -> **93.68**, ±300 91.45 -> **94.31**, words more than 2 s out 129 -> **76**,
+#       AAE 337.1 -> **255.0 ms**, MedAE 40.6 -> **38.9 ms** (and the raw decode's own line gross 41 -> 28,
+#       ±500 87.56 -> 90.78, zero-gross songs 6 -> 9, which this file does not gate).
+#     THE 5 REGRESSIONS, all ENDS and the highlight the ends paint: word end ±100 68.74 -> **64.54**
+#       (-4.20 pt), ±250 92.78 -> 90.98 (-1.80), phrase-final end ±100 36.3 -> **30.58** (-5.72),
+#       ±250 72.74 -> 65.36 (-7.38), phrase-final end bias -120.8 -> **-159.0 ms** (38.2 ms LATER), and the
+#       painted highlight 66.0 -> **64.69** (-1.31).
+#     WHY THAT IS NOT A CONTRADICTION, and why the flip shipped anyway: these are PRE-`extend_ends` numbers
+#       (`--level generate` stops before the word-end post-pass). On the SHIPPED path the same bundle reads
+#       word end ±100 **80.34** and phrase-final ±100 **60.93** against the base bundle's 80.02 / 59.23
+#       (`gates/w5-flip.yaml` section 1, `results/w5-time_text.json`), i.e. the post-pass more than repays
+#       the raw decode's longer tails. THIS FILE MEASURES THE DECODE; `gates/w4-ends.yaml` measures ends.
+# WHAT MOVED, EXACTLY: the eleven literals and this header. No tolerance widened (still 0.5 pt, ±2 ms onset
+#   bias, ±5 ms end bias), no gate added or deleted.
+# VERIFIED, OFFLINE, on the committed rows: **11/11** on `results/w5-generate.json` and **1/11** on
+#   `results/w6-generate.json` (the base bundle) — so reverting the flip FAILS here instead of passing
+#   silently, which is the whole point of rebasing rather than loosening.
+#
 # ── REBASED 2026-09-30 BY W4b (spec (c)) ────────────────────────────────────────────────────────────────
 # REBASED FROM: the review's raw-decode figures (blind Jamendo words ±100 78.7, ±250 90.5, ±300 91.3, bias
 #   +4 ms, 141/5693 > 2 s; ends 73.2 / phrase-final 40.6 / 73.6 / -106 ms, painted highlight 67.3), measured by
@@ -38,13 +68,13 @@
 #   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --gates ...)
 #
 # Tolerances are unchanged (0.5 pt; ±2 ms onset bias, ±5 ms end bias — a median moves in whole frames' worth).
-words-pm100: abs(blind.jamendo.word_pm100 - 79.98) <= 0.5
-words-pm250: abs(blind.jamendo.word_pm250 - 90.46) <= 0.5
-words-pm300: abs(blind.jamendo.word_pm300 - 91.45) <= 0.5
-words-bias: abs(blind.jamendo.word_bias_ms + 3.1) <= 2
-words-gross: abs(blind.jamendo.word_gross - 129) <= 0.5
-end-pm100: abs(blind.jamendo.end_pm100 - 68.74) <= 0.5
-final-end-pm100: abs(blind.jamendo.final_end_pm100 - 36.3) <= 0.5
-final-end-pm250: abs(blind.jamendo.final_end_pm250 - 72.74) <= 0.5
-final-end-bias: abs(blind.jamendo.final_end_bias_ms + 120.8) <= 5
-highlight: abs(blind.jamendo.highlight - 66.0) <= 0.5
+words-pm100: abs(blind.jamendo.word_pm100 - 82.75) <= 0.5
+words-pm250: abs(blind.jamendo.word_pm250 - 93.68) <= 0.5
+words-pm300: abs(blind.jamendo.word_pm300 - 94.31) <= 0.5
+words-bias: abs(blind.jamendo.word_bias_ms + 7.1) <= 2
+words-gross: abs(blind.jamendo.word_gross - 76) <= 0.5
+end-pm100: abs(blind.jamendo.end_pm100 - 64.54) <= 0.5
+final-end-pm100: abs(blind.jamendo.final_end_pm100 - 30.58) <= 0.5
+final-end-pm250: abs(blind.jamendo.final_end_pm250 - 65.36) <= 0.5
+final-end-bias: abs(blind.jamendo.final_end_bias_ms + 159.0) <= 5
+highlight: abs(blind.jamendo.highlight - 64.69) <= 0.5

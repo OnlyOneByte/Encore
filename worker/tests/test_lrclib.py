@@ -232,3 +232,179 @@ def test_the_provider_can_be_turned_off() -> None:
     """An offline LAN deployment should not spend eight seconds per song on a host it cannot reach."""
     assert build_provider(enabled=False) is None
     assert build_provider(enabled=True) is not None
+
+
+# ── review L4: the four things parse_lrc got wrong ────────────────────────────────────────────────
+
+
+def test_a_timestamp_only_line_ends_the_line_before_it() -> None:
+    """L4's measured defect. A bare stamp is how a sheet writes "vocals stop here" before an instrumental
+    break; skipping it ran the previous line's interpolated end to the next SUNG line — one claim window
+    ran 14-40 s across a break and R1's claim-envelope correlation fell from 0.87 to 0.27."""
+    cues = parse_lrc("[00:12.00] last line of the verse\n[00:14.00]\n[00:40.00] after the break\n")
+    assert [c["text"] for c in cues] == ["last line of the verse", "after the break"]
+    assert cues[0]["end"] == 14.0, "the boundary closes it, not the next sung line at 40 s"
+
+
+def test_stacked_stamps_become_one_claim_each_and_never_a_lyric() -> None:
+    """`[00:45.00][01:20.00] a chorus twice` used to publish `[01:20.00] a chorus twice` as the LINE —
+    the second stamp arriving on screen as the line's opening word."""
+    cues = parse_lrc("[00:45.00][01:20.00] a chorus twice\n[01:30.00] and on\n")
+    assert [(c["start"], c["text"]) for c in cues] == [
+        (45.0, "a chorus twice"),
+        (80.0, "a chorus twice"),
+        (90.0, "and on"),
+    ]
+    assert cues[0]["end"] == 80.0
+
+
+def test_stacked_stamps_are_why_the_sort_is_not_optional() -> None:
+    """A single line can emit a 65 s claim before the 13 s one that follows it in the file, so an LRC's
+    events are out of order by CONSTRUCTION and not merely because a human edited it."""
+    cues = parse_lrc("[00:45.00][01:20.00] chorus\n[00:50.00] a verse line\n")
+    assert [c["start"] for c in cues] == [45.0, 50.0, 80.0]
+
+
+def test_a2_word_tags_become_word_claims_rather_than_text() -> None:
+    """An enhanced (A2) sheet times every word; the angle-bracket stamps used to be published INSIDE the
+    lyric. Read as claims they make the sheet a word-timed candidate instead."""
+    cues = parse_lrc("[01:30.00] <01:30.50> aaa <01:31.00> bbb <01:31.80> ccc\n[01:35.00] ddd\n")
+    assert cues[0]["text"] == "aaa bbb ccc"
+    words = cues[0]["words"]
+    assert isinstance(words, tuple)
+    assert [(w["word"], w["start"]) for w in words] == [("aaa", 90.5), ("bbb", 91.0), ("ccc", 91.8)]
+    # The LAST word is closed by the LINE's end — the next event's start — exactly as the line is, because
+    # `measure` reads a missing end as equal to the start and that is a zero-width window (W5 r1-spec-16).
+    assert [w.get("end") for w in words] == [91.0, 91.8, 95.0]
+
+
+def test_the_trailing_end_tag_of_an_a2_line_closes_its_last_word() -> None:
+    """THE STANDARD ENHANCED-LRC SHAPE (W5 review r1-spec-16): a line ends with a final stamp that marks
+    the last word's END. The run after it holds no token, and dropping that run threw the stamp away, so
+    every A2 line's last word claim was a zero-width window — while `cli._inline_words` closes its last
+    word at the cue end for exactly this reason."""
+    cues = parse_lrc("[00:10.00]<00:10.10>aaa <00:10.50>bbb <00:11.00>ccc<00:11.80>\n[00:12.00]ddd\n")
+    words = cues[0]["words"]
+    assert isinstance(words, tuple)
+    assert [(w["word"], w["start"], w.get("end")) for w in words] == [
+        ("aaa", 10.1, 10.5),
+        ("bbb", 10.5, 11.0),
+        ("ccc", 11.0, 11.8),
+    ]
+    assert cues[0]["end"] == 12.0, "the line's own end is the next event, and the word stops before it"
+
+
+def test_the_last_line_of_a_sheet_leaves_its_last_word_open_like_the_line() -> None:
+    """No next event, so there is no end to take — the same answer the LINE gives, rather than an invented
+    one. A trailing tag still closes it when the sheet wrote one."""
+    words = parse_lrc("[00:10.00]<00:10.10>aaa <00:10.50>bbb\n")[0]["words"]
+    assert isinstance(words, tuple)
+    assert "end" not in words[-1]
+
+
+def test_a_line_with_no_word_tags_claims_no_word_timing() -> None:
+    assert "words" not in parse_lrc(SYNCED)[0]
+
+
+def test_the_offset_tag_is_honoured_and_a_positive_one_moves_the_lyrics_earlier() -> None:
+    """THE SIGN IS THE SPEC'S: `[offset:+500]` makes the lyrics appear SOONER, so it is subtracted. The tag
+    exists because the sheet was timed against a different master; ignoring it kept a stated error."""
+    cues = parse_lrc("[offset:+500]\n[00:10.00] a\n[00:20.00] b\n")
+    assert [c["start"] for c in cues] == [9.5, 19.5]
+    assert cues[0]["end"] == 19.5, "the interpolated end moves with the stamp it was read from"
+    assert parse_lrc("[offset:-2000]\n[00:10.00] a\n[00:20.00] b\n")[0]["start"] == 12.0
+
+
+def test_an_offset_cannot_push_a_claim_before_zero() -> None:
+    """A negative claim start is a claim no clock can map."""
+    assert parse_lrc("[offset:+5000]\n[00:01.00] a\n[00:20.00] b\n")[0]["start"] == 0.0
+
+
+def test_the_offset_moves_word_edges_too() -> None:
+    """Shifting only starts left a word ending before the next one began — an `out_of_order` reading
+    manufactured by the fix for the offset."""
+    cues = parse_lrc("[offset:+500]\n[01:30.00] <01:30.50> hold <01:31.00> me\n[01:40.00] next\n")
+    words = cues[0]["words"]
+    assert isinstance(words, tuple)
+    assert [(w["word"], w["start"], w.get("end")) for w in words] == [
+        ("hold", 90.0, 90.5),
+        ("me", 90.5, 99.5),
+    ]
+
+
+def test_an_unparseable_offset_is_ignored_rather_than_fatal() -> None:
+    assert parse_lrc("[offset:later]\n[00:10.00] a\n")[0]["start"] == 10.0
+
+
+# ── review L5: an LRCLIB duration miss is retried without the duration ────────────────────────────
+
+
+class ScriptedOpener:
+    """An opener that answers each request from a queue, so a RETRY can be observed."""
+
+    def __init__(self, *bodies: str | Exception) -> None:
+        self._bodies = list(bodies)
+        self.opened: list[str] = []
+
+    def open(self, request: object, timeout: float | None = None) -> FakeResponse:
+        self.opened.append(getattr(request, "full_url", str(request)))
+        answer = self._bodies.pop(0) if self._bodies else "{}"
+        if isinstance(answer, Exception):
+            raise answer
+        return FakeResponse(answer)
+
+
+def scripted(*bodies: str | Exception) -> tuple[LrclibClient, ScriptedOpener]:
+    clock = [0.0]
+    opener = ScriptedOpener(*bodies)
+    return (
+        LrclibClient(
+            opener=opener,  # type: ignore[arg-type]
+            gate=RateLimiter(now=lambda: clock[0], sleep=lambda s: clock.__setitem__(0, clock[0] + s)),
+        ),
+        opener,
+    )
+
+
+def missing() -> urllib.error.HTTPError:
+    return urllib.error.HTTPError("u", 404, "Not Found", {}, None)  # type: ignore[arg-type]
+
+
+def test_a_duration_miss_is_retried_without_the_duration() -> None:
+    """Review L5. LRCLIB matches within ±2 s and the duration this worker measures is the UPLOAD's: a music
+    video with an intro, an outro or a spoken skit is minutes longer than the track, so the qualified
+    lookup 404s and a perfectly good human sheet is one request away."""
+    api, opener = scripted(missing(), json.dumps({"syncedLyrics": SYNCED}))
+    cues = api.fetch(artist="a-ha", track="Take On Me", duration_sec=420.0)
+
+    assert len(cues) == 3
+    assert len(opener.opened) == 2
+    assert "duration=420" in opener.opened[0]
+    assert "duration" not in opener.opened[1], "the retry must drop it, not merely change it"
+
+
+def test_a_hit_is_not_retried() -> None:
+    api, opener = scripted(json.dumps({"syncedLyrics": SYNCED}))
+    assert api.fetch(artist="a", track="b", duration_sec=225.0)
+    assert len(opener.opened) == 1
+
+
+def test_a_lookup_that_sent_no_duration_is_not_retried() -> None:
+    """There is nothing to drop, so a second identical request would only cost the provider."""
+    api, opener = scripted(missing())
+    assert api.fetch(artist="a", track="b", duration_sec=None) == ()
+    assert len(opener.opened) == 1
+
+
+def test_both_misses_are_still_a_miss_and_not_an_outage() -> None:
+    api, opener = scripted(missing(), missing())
+    assert api.fetch(artist="a", track="b", duration_sec=225.0) == ()
+    assert len(opener.opened) == 2
+
+
+def test_the_retry_does_not_swallow_a_provider_failure() -> None:
+    """A 500 on the second request is still an outage: only a 404 earns the retry, and only once."""
+    failed = urllib.error.HTTPError("u", 503, "nope", {}, None)  # type: ignore[arg-type]
+    api, _opener = scripted(missing(), failed, failed, failed, failed)
+    with pytest.raises(ProviderUnreachable):
+        api.fetch(artist="a", track="b", duration_sec=225.0)

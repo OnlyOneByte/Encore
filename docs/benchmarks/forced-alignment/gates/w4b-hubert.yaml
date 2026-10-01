@@ -1,6 +1,8 @@
-# W4b 6b reject-if for the ENGLISH BUNDLE FLIP: HuBERT-Large (the CANDIDATE — the flip was proposed as this
-# tree's default and this file is what rejected it, so `--model HUBERT_ASR_LARGE` names it on every command
-# below) against the base model
+# W4b 6b reject-if for the ENGLISH BUNDLE FLIP: HuBERT-Large (the CANDIDATE when this was written — the flip
+# was proposed as W4b's default, this file is what rejected it, and **W5 took it anyway on W6's clamp fix, so
+# HuBERT-Large IS the default since 2026-10-01**: `ml.DEFAULT_ALIGN_MODEL`, `gates/w5-flip.yaml`. Every
+# `--model HUBERT_ASR_LARGE` below therefore names what a `--model`-less run now loads, and it is the BASE
+# bundle that has to be spelled out) against the base model
 # `WAV2VEC2_ASR_BASE_960H` it would have replaced (PLAN-alignment-v3 W4b, review §3 item 6b and item 6's "How to
 # measure all three"). The pair to measure is the SAME CODE with the model named both ways — not this wave's
 # row against W4's, because W4b also moved `adapters/ml.py`'s bytes and therefore the emission cache key:
@@ -55,11 +57,13 @@
 # pools — blind 297.9 -> 253.6 ms, truth 87.8 -> 72.3 — which is the gate review §3 item 6 asked for ("AAE
 # -75 ms") and the one this file was reading the signed BIAS for until review r1 (|bias| 7 <= 13.1 passes too,
 # now under its own name `blind-onset-bias-not-worse`).
-# CONSEQUENCE: `ml.DEFAULT_ALIGN_MODEL` went BACK to `WAV2VEC2_ASR_BASE_960H` and `ALIGN_MODELS_BY_DEVICE` is
-# empty — the wave's own six MUSTs are in `gates/w4b.yaml` (19/30 at both levels) and three of them fail, so
-# the flip ships reachable-but-not-default under `ENCORE_ALIGN_MODEL`. Everything this file measures stays
-# live, because that is how the candidate is re-read the day the ladder's reaction to a better decode is
-# understood. THE CONTROL IS EXACT: `w4b-base-*` reproduces `results/w4-{time_text,run_align}.json` with every
+# CONSEQUENCE IN W4b: `ml.DEFAULT_ALIGN_MODEL` went BACK to `WAV2VEC2_ASR_BASE_960H` and
+# `ALIGN_MODELS_BY_DEVICE` is empty — the wave's own six MUSTs are in `gates/w4b.yaml` (19/30 at both levels)
+# and three of them fail, so the flip ships reachable-but-not-default under `ENCORE_ALIGN_MODEL`. Everything
+# this file measures stays live, because that is how the candidate is re-read the day the ladder's reaction to
+# a better decode is understood. THAT DAY WAS W6: the reaction was `_clamped_v2`'s left floor rather than the
+# ladder, `gates/w4b.yaml` went 19/30 -> 28/30 with the floor fixed, and W5 flipped the default. The table is
+# still empty (the flip is a bundle result, not a device one) and `HUBERT_ASR_XLARGE` is still a PROJECTION. THE CONTROL IS EXACT: `w4b-base-*` reproduces `results/w4-{time_text,run_align}.json` with every
 # pooled and per-song delta 0.00, so all of the above is the bundle and none of it is W4b's other code.
 # ALSO RUN, AND NOT BY THIS FILE: `--sync-mode lines` on the candidate
 # (`results/w4b-hubert-lines-run_align.json`) reads `gates/w3-lines.yaml` at 37/38 against W4's 34/38 — the

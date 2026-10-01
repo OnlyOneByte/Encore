@@ -16,7 +16,8 @@ bad-guy), every one of them a text whose lift was >= +0.26. The lift reads the t
 matrix, decoding it blind, so the rung holds the text's own DECODE too — a second witness to where each line
 is sung, one the envelope cannot give.
 
-THE RULES, each over the same cases (the lift is the lexical gate at `lexical.BANDS.refuse_below`, which the
+THE RULES, each over the same cases (the lift is the lexical gate at the measured bundle's `refuse_below`,
+which the
 rung reads, in all but `sheet alone`; where a reading is missing the rule falls back as the shipped rung
 does):
 

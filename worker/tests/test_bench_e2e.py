@@ -23,7 +23,7 @@ import os
 import random
 import sys
 import zlib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -3589,6 +3589,7 @@ def test_line_gate_scores_at_the_band_the_rung_applies(
         mix_floor=0.4,
         mix_ok_from=0.9,
         line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
     )
     monkeypatch.setattr(lexical, "BANDS", moved)
     assert line_gate.main(["--from", str(stored)]) == 0
@@ -3684,7 +3685,13 @@ W6_CLAIM_MODES = (
 )
 
 
-def conf_rows(*, high: Sequence[int], mode: str, moved_onset: bool = False) -> list[Any]:
+def conf_rows(
+    *,
+    high: Sequence[int],
+    mode: str,
+    moved_onset: bool = False,
+    late: Mapping[str, float] | None = None,
+) -> list[Any]:
     """Two songs a mode, SIX word-timed lines each, and the SAME timings whatever the grades are: line 0 is
     3 s off, line 1 is 0.9 s off, lines 2-5 are exact. `high` names which lines each song grades `high` —
     the only thing this wave changes, and the reason the alignment metrics must read identical on both sides
@@ -3692,13 +3699,18 @@ def conf_rows(*, high: Sequence[int], mode: str, moved_onset: bool = False) -> l
 
     Word truth matters: `highlight` and every `word_*` metric are None without it, and a gate reading None
     is an ERROR — so a fixture with no words would let a mistyped word metric pass as "not measured".
+
+    `late` is `{slug: seconds}` and pushes THAT song's last line out by that much — the one knob that makes a
+    single song in a single mode gain a gross line, which is what `gates/w6.yaml`'s per-song gate guards and
+    which no grade-only perturbation of this fixture can produce.
     """
-    offsets = (3.0, 0.9, 0.0, 0.0, 0.0, 0.0)
+    base = (3.0, 0.9, 0.0, 0.0, 0.0, 0.0)
     rows = []
     for index in range(2):
-        truth = [(f"one{i} two{i} three{i}", 10.0 * i, 10.0 * i + 2.6) for i in range(len(offsets))]
-        words = [(10.0 * i + k, 10.0 * i + k + 0.5) for i in range(len(offsets)) for k in (0, 1, 2)]
+        truth = [(f"one{i} two{i} three{i}", 10.0 * i, 10.0 * i + 2.6) for i in range(len(base))]
+        words = [(10.0 * i + k, 10.0 * i + k + 0.5) for i in range(len(base)) for k in (0, 1, 2)]
         song = song_of(truth, slug=f"s{index}", words=words)
+        offsets = [*base[:-1], base[-1] + (late or {}).get(f"s{index}", 0.0)]
         got = claims(song, "truth")
         doc = [
             line(
@@ -3767,15 +3779,15 @@ def test_the_confidence_reject_if_file_reads_precision_coverage_the_zero_and_a_m
     ok = statuses(blind_high=(2, 3, 4, 5))
     assert {name: status for name, status in ok.items() if status != "PASS"} == {}
     # A run identical to its control gains nothing, so the halving gate must FAIL — the non-vacuity check
-    # every gate file here owes — and `high-gross-zero-blind` fails on the control's own gross line.
+    # every gate file here owes — and the Jamendo zero fails on the control's own gross line.
     same = statuses(blind_high=(0, 1, 2, 3, 4, 5))
     assert same["bad-among-high-halved-blind"] == "FAIL"
-    assert same["high-gross-zero-blind"] == "FAIL"
+    assert same["high-gross-zero-blind-jamendo"] == "FAIL"
     assert same["high-gross-zero-truth"] == "PASS", "claim-mode `high` lines are within tolerance already"
     assert same["coverage-held-blind"] == "PASS" and same["onsets-unchanged-truth"] == "PASS"
     # Demoting only the gross line halves nothing: 0.9 s is still bad, and 1 of 5 is not half of 2 of 6.
     partial = statuses(blind_high=(1, 2, 3, 4, 5))
-    assert partial["high-gross-zero-blind"] == "PASS"
+    assert partial["high-gross-zero-blind-jamendo"] == "PASS"
     assert partial["bad-among-high-halved-blind"] == "FAIL"
     # Buying the precision with coverage: one `high` line reads 0 bad and fails the floor the consumer owns.
     starved = statuses(blind_high=(5,), claim_high=(5,))
@@ -3799,3 +3811,194 @@ def test_the_confidence_gates_reject_a_grading_change_that_moved_an_onset() -> N
     moved = failures(blind_high=(2, 3, 4, 5), moved_onset=True)
     assert {"onsets-unchanged-blind", "onsets-unchanged-truth"} <= moved
     assert "highlight-identical-blind" in moved, "a moved onset moves the lit word too"
+
+
+def test_the_wave_level_reject_if_file_reads_the_four_recorded_verdicts() -> None:
+    """`gates/w6.yaml` (32 gates + the built-in no-ERROR-rows) had NO hermetic test, which is the gap W6
+    review r1-spec-14 names: every other wave's file has one, and this one plus `gates/w6-ladder.yaml` hold
+    every clamp
+    and flip claim of the wave — validated only by replaying rows offline, by hand, once.
+
+    Scored on the COMMITTED summaries, like the two `w4b-linesep` tests and for the same reason: the readings
+    the file's own NON-VACUITY block records ARE the wave's recorded verdicts, so an edit to the file or the
+    rows that silently moves one must turn this red. Each of the four is a different claim:
+
+      (1) the shipped default against the tree it replaces — sections 1 and 2 clean, section 3's four FAILing
+          at the base bundle's own numbers, which is correct because section 3 is the CANDIDATE's bar;
+      (2) W4b's own row as both sides, so every relative gate reads `=` against itself (a ratchet must) and
+          the file is shown still to tell the two trees apart where it claims to;
+      (3) the HuBERT candidate — all four absolute wins PASS and the ONE FAIL is 8 song-modes gaining a gross
+          line, which is why the flip is still not the default;
+      (4) the `m6-window-spare` arm, where exactly the two dilution literals trip and nothing else, which is
+          this file's own evidence that section 1 is tight rather than decorative.
+    """
+    rules = gates.parse_gates((GATES_DIR / "w6.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 32, "the 32 the file's header reports; `run_gates` adds the built-in no-error-rows"
+    results = SCRIPTS.parent / "results"
+
+    def failures(run: str, base: str) -> list[str]:
+        got = gates.run_gates(
+            rules,
+            gates.view_of(gates.load_document(results / run)),
+            gates.view_of(gates.load_document(results / base)),
+        )
+        assert "ERROR" not in {r.status for r in got}, [
+            (r.gate.name, r.detail) for r in got if r.status == "ERROR"
+        ]
+        return sorted(r.gate.name for r in got if r.status == "FAIL")
+
+    flip_bar = [
+        "flip-jamendo-highlight-kept",
+        "flip-jamendo-truth-gross-zero",
+        "flip-jamendo-word-aae-kept",
+        "flip-jamendo-word-pm100-kept",
+    ]
+    # (1) and (2): the candidate's bar is the only thing the base bundle fails, on either tree.
+    assert failures("w6-base-time_text.json", "w4b-base-time_text.json") == flip_bar
+    assert failures("w6-base-run_align.json", "w4b-base-run_align.json") == flip_bar
+    assert failures("w4b-base-time_text.json", "w4b-base-time_text.json") == flip_bar
+    # (3) THE FLIP: every win kept, and the one reason it is still off.
+    assert failures("w6-hubert-time_text.json", "w6-base-time_text.json") == ["w6-no-song-gains-gross"]
+    assert failures("w6-hubert-run_align.json", "w6-base-run_align.json") == ["w6-no-song-gains-gross"]
+    # (4) `m6-window-spare`: the two ratchet literals a +1-line change dilutes, and no third.
+    assert failures("w6-wspare-time_text.json", "w6-base-time_text.json") == [
+        *flip_bar,
+        "w6-jamendo-word-end-pm100",
+        "w6-jamendo-word-pm300",
+    ]
+
+
+def test_the_wave_level_file_bites_on_a_gross_line_a_wipe_and_a_wrong_text() -> None:
+    """The other half of the non-vacuity argument, which a recorded-row reading cannot give: that each gate
+    FAILS when its own condition is violated. Built hermetically on top of the confidence fixture, because the
+    thing the gates guard is per-song and per-mode and the committed rows cannot be perturbed."""
+    rules = gates.parse_gates((GATES_DIR / "w6.yaml").read_text(encoding="utf-8"))
+    by_name = {rule.name: rule for rule in rules}
+
+    def statuses(run: dict[str, Any], base: dict[str, Any]) -> dict[str, str]:
+        got = gates.run_gates(rules, gates.view_of(run), gates.view_of(base))
+        return {r.gate.name: r.status for r in got}
+
+    control = conf_document(blind_high=(2, 3, 4, 5))
+    same = statuses(control, control)
+    # The absolutes read on a fixture with no Jamendo word truth beyond the fixture's own are ERROR or FAIL by
+    # construction; what this reads is the RELATIVE half, which is where a regression arrives.
+    for name in ("w6-pooled-gross-not-up-truth", "w6-no-song-gains-gross", "w6-high-gross-zero-claim-modes"):
+        assert same[name] == "PASS", name
+    # ONE claim-mode `high` line more than 2 s off fails the wipe gate and nothing else relative.
+    wiped = statuses(conf_document(blind_high=(2, 3, 4, 5), claim_high=(0, 1, 2, 3, 4, 5)), control)
+    assert wiped["w6-high-gross-zero-claim-modes"] == "FAIL"
+    assert wiped["w6-pooled-gross-not-up-truth"] == "PASS", "no timing moved: only a grade did"
+    # ONE song gaining a gross line in ONE mode fails the per-song gate AND that mode's pooled gate — which is
+    # the pair `gates/w4b.yaml` learned to write separately (a sum does not rise whenever a term does).
+    worse = statuses(_w6_worse_truth(), control)
+    assert worse["w6-no-song-gains-gross"] == "FAIL"
+    assert worse["w6-pooled-gross-not-up-truth"] == "FAIL"
+    assert worse["w6-pooled-gross-not-up-blind"] == "PASS", "one mode's regression is not another's"
+    assert by_name["w6-wrongtext-at-most-one-of-320"].expr.endswith("<= 0.32"), (
+        "the wrong-text cap is a percentage of 320 pairs, so 1/320 is 0.3125 — see the file"
+    )
+
+
+def _w6_worse_truth() -> dict[str, Any]:
+    """The control with ONE `truth` song's LAST line pushed 3 s off: one song gains a gross line in one mode.
+
+    Built from `conf_rows` so the two documents differ in exactly that, which is what makes the two gates it
+    trips attributable (`w6-no-song-gains-gross` and `truth`'s own pooled gross gate, not `blind`'s).
+    """
+    rows: list[Any] = []
+    for mode in ("blind", *W6_CLAIM_MODES):
+        high = (2, 3, 4, 5) if mode == "blind" else (1, 2, 3, 4, 5)
+        rows += conf_rows(mode=mode, high=high, late={"s0": 3.0} if mode == "truth" else None)
+    return document(rows, **SETUP)
+
+
+def test_the_clamp_reject_if_file_reads_its_recorded_verdict_and_bites_on_a_moved_onset() -> None:
+    """`gates/w6-ladder.yaml` (31 gates), the file holding the clamp's bounded-left-floor claim, also had no
+    hermetic test (W6 review r1-spec-14) — and that is how its `clamp-blind-documents-unchanged` MUST reached
+    2-3 hour sweep in a form NO run of this tree could satisfy: the control is a pre-W6 row and the same wave
+    rewrites the per-line `confidence` field, so every blind document's BYTES move while no onset does. A
+    fixture-driven test had to build that control, which is why the defect is the finding's own exhibit. The
+    gate now reads `onsets_changed`, and both halves are pinned here:
+
+      * THE RECORDED VERDICT, on the committed summaries — 31/31 at both levels against `results/w4b-base-*`,
+        and 28/31 against W4b's own row as both sides, FAILING exactly the three line-start claims the clamp
+        fix makes (gross 3 > 1, ±500 96.42 < 96.9, zero-gross songs 18 < 19). That second reading is what
+        shows the file is a ratchet on this wave's work and green nowhere by accident.
+      * THAT IT STILL BITES ON A TIMING MOVE, hermetically: a blind document whose ONLY difference from its
+        control is one word 50 ms late fails `clamp-blind-onsets-unchanged`, while a document that differs
+        only in a per-line GRADE passes it — the exact pair the old gate got backwards.
+    """
+    rules = gates.parse_gates((GATES_DIR / "w6-ladder.yaml").read_text(encoding="utf-8"))
+    assert len(rules) == 30, "the 31 the file's header reports, less the built-in no-ERROR-rows gate"
+    results = SCRIPTS.parent / "results"
+
+    def failures(run: str, base: str) -> list[str]:
+        got = gates.run_gates(
+            rules,
+            gates.view_of(gates.load_document(results / run)),
+            gates.view_of(gates.load_document(results / base)),
+        )
+        assert "ERROR" not in {r.status for r in got}, [
+            (r.gate.name, r.detail) for r in got if r.status == "ERROR"
+        ]
+        return sorted(r.gate.name for r in got if r.status == "FAIL")
+
+    assert failures("w6-base-time_text.json", "w4b-base-time_text.json") == []
+    assert failures("w6-base-run_align.json", "w4b-base-run_align.json") == []
+    assert failures("w4b-base-time_text.json", "w4b-base-time_text.json") == [
+        "clamp-jamendo-gross-at-most-one",
+        "clamp-jamendo-pm500-up",
+        "clamp-jamendo-zero-gross-songs-up",
+    ]
+
+    # The hermetic half. A GRADE-ONLY change is what W6 actually shipped on the blind population.
+    control = gates.view_of(conf_document(blind_high=(0, 1, 2, 3, 4, 5)))
+    graded = gates.run_gates(rules, gates.view_of(conf_document(blind_high=(2, 3, 4, 5))), control)
+    by_name = {r.gate.name: r for r in graded}
+    assert by_name["clamp-blind-onsets-unchanged"].status == "PASS", (
+        "a document whose only change is a per-line confidence moved no onset: the whole point of the fix"
+    )
+    moved = gates.run_gates(
+        rules, gates.view_of(conf_document(blind_high=(2, 3, 4, 5), moved_onset=True)), control
+    )
+    assert {r.gate.name for r in moved if r.status == "FAIL"} >= {"clamp-blind-onsets-unchanged"}, (
+        "one word 50 ms late is a timing change and this file must refuse it"
+    )
+
+
+def test_the_shipped_tvs_highlight_is_recorded_beside_the_alignment_one() -> None:
+    """W6 review r1-tests-20. `tv_lit` gained `wipe_low` and the parity fixture is written with it True — the
+    SHIPPED TV lights no word on a `low` row — but `score_highlight` calls it with the default, so the one
+    metric with TV semantics measured a TV that no longer exists and the wave's product change had no number
+    at all. The split is right (that metric gates review §3.5 and 6c, and folding a display policy into it
+    would re-baseline every row since W0); the silence was not, because `high`/`high_bad`/`high_gross` are
+    computed from LINE-START errors on `high` lines and never answer "when the TV lights a word, is it the
+    right one".
+
+    So both readings are on every row now. This fixture is the minimal statement of the difference: two runs
+    whose documents differ ONLY in one line's `confidence`, where the alignment highlight must read identical
+    to the digit and the shipped one must fall by that line's sung seconds."""
+    wiped_all = lib.summarize(conf_rows(mode="blind", high=(0, 1, 2, 3, 4, 5)))["blind"]["jamendo"]
+    # Line 5 is EXACT, so it is a correctly lit row: demoting it is where the room loses a karaoke ball.
+    # (Demoting line 0 or 1 — the rows that are 3.0 s and 0.9 s out — would take away only WRONG lighting,
+    # which neither metric counts in its numerator, and is why this test demotes a right one.)
+    some_low = lib.summarize(conf_rows(mode="blind", high=(0, 1, 2, 3, 4)))["blind"]["jamendo"]
+    assert wiped_all["highlight"]["pct"] == some_low["highlight"]["pct"], (
+        "the ALIGNMENT metric reads one question and a grade is not part of it"
+    )
+    assert some_low["highlight_wiped"]["pct"] < wiped_all["highlight_wiped"]["pct"], (
+        "the SHIPPED TV lights nothing on the two demoted rows, so its lit-word coverage falls"
+    )
+    assert wiped_all["highlight_wiped"]["pct"] == wiped_all["highlight"]["pct"], (
+        "with every row wiping, the two metrics are the same measurement — which is the check that the "
+        "second "
+        "is the first plus the policy, and not a second implementation of the highlight"
+    )
+    # Flattened, so a later wave CAN gate on it (none does today: `score_highlight` says why).
+    assert lib.flat_metrics(some_low)["highlight_wiped"] == some_low["highlight_wiped"]["pct"]
+    # A run written before the metric existed carries None, which the gate evaluator refuses to compare
+    # rather than reading as zero.
+    before = conf_rows(mode="blind", high=())
+    old = [{k: v for k, v in row.items() if k != "highlight_wiped"} for row in before]
+    assert lib.summarize(old)["blind"]["jamendo"]["highlight_wiped"] is None

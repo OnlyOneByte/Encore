@@ -3,6 +3,19 @@
 # model axis and `gates/w4b-linesep{,-generate}.yaml` read 6c's on the separator axis; THIS file is the
 # wave's acceptance test, and it is the one that decided the default.
 #
+# ── ITS VERDICT WAS REVERSED IN W5 (2026-10-01), AND BY THIS FILE'S OWN NUMBERS ───────────────────────────
+# W4b rejected the flip at 19/30. W6 fixed the clamp's left floor (`align_steps._clamped_v2`), which is what
+# this file had been reading as "the ladder breaks under a sharper decode", and the SAME gates on the SAME
+# corpus then read **28/30 at both levels** (`results/w6-hubert-*` against `results/w6-base-*`): W4b's three
+# failing MUSTs became two per-song residuals, `hello` 90.28 -> 100.00 and `Tom_Orlando` 100.00, pooled truth
+# gross 7 -> 0. The orchestrator took the flip on that, so `ml.DEFAULT_ALIGN_MODEL` is `HUBERT_ASR_LARGE` and
+# the paragraph at the end of this header ("AVAILABLE BUT NOT DEFAULT") is W4b's conclusion, not the tree's.
+# THE TWO STILL-FAILING GATES ARE THE ACCEPTED RESIDUALS, bounded by name in `gates/w5-flip.yaml` section 3:
+# `no-youtube-song-worse-at-truth-pm500` (`tfr-chosen` -15.59 at gross 0 -> 0, part of it the caption-cue
+# denominator artefact) and `no-jamendo-song-worse-at-word-pm300` (`Tom_Orlando` -1.52). Nothing here is
+# re-priced: this file stays W4b's record, and it is still the file that re-reads a BUNDLE CHANGE — which from
+# W5 on means a candidate against HuBERT-L, so BOTH sides of its commands need a `--model` now.
+#
 # HOW IT WAS RUN. The pair is the SAME CODE with the English bundle named both ways — never this wave's row
 # against W4's recorded one, because W4b moved `adapters/ml.py` (the emission cache's code fingerprint) as
 # well as `domain/lyrics/{generate,lexical,ends}.py`:

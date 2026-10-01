@@ -419,6 +419,7 @@ def test_the_doubt_band_publishes_every_line_low_and_the_document_medium(
         mix_floor=0.15,
         mix_ok_from=1e3,
         line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
     )
     monkeypatch.setattr(lexical, "BANDS", wide)
     run = attempt(tmp_path, monkeypatch, stem=stem)
@@ -446,6 +447,7 @@ def test_the_stems_doubt_band_withholds_the_words_standing(
         mix_floor=0.15,
         mix_ok_from=1e3,
         line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
     )
     monkeypatch.setattr(lexical, "BANDS", wide)
     run = attempt(tmp_path, monkeypatch)
@@ -470,6 +472,7 @@ def test_the_mix_doubt_band_grades_without_stripping_the_words_standing(
         mix_floor=0.15,
         mix_ok_from=1e3,
         line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
     )
     monkeypatch.setattr(lexical, "BANDS", wide)
     run = attempt(tmp_path, monkeypatch, stem=False)

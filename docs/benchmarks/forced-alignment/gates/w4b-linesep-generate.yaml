@@ -3,6 +3,13 @@
 # no ladder, no gate, no grading). This is the level review D1's own numbers were measured at, so it is the
 # one where a separator's effect is not confounded with the repair ladder's reaction to it.
 #
+# ── RE-POINTED BY W5's FLIP (2026-10-01): AN ABSENT `--model` IS HuBERT-L NOW (W5 review r1-correctness-9) ──
+# `ml.DEFAULT_ALIGN_MODEL` is `HUBERT_ASR_LARGE` since W5, so cell C's note below — "an absent `--model` is this
+# box's shipped bundle, which is the BASE model … i.e. cell A again" — is W4b's record and is false on this
+# tree: a `--model`-less run resolves to cell C, not cell A. The cells themselves are unchanged (every recorded
+# row names its bundle, which is why the rejection below is still readable), and both cells of a pair must still
+# name the SAME bundle explicitly. Nothing here is re-priced.
+#
 # THE FACTORIAL, model × separator, four cells, ONE AT A TIME (parallel corpus runs thrash: ~75 s against
 # 3.4 s per song-mode). 20 Jamendo songs, blind, ~85 s of decode per cell with warm matrices:
 #

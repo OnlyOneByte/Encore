@@ -179,7 +179,8 @@ export const roomSettings = sqliteTable('room_settings', {
 	lyricsHighlight: text('lyrics_highlight', { enum: ['word', 'line', 'off'] })
 		.notNull()
 		.default('word'),
-	lyricsLeadMs: integer('lyrics_lead_ms').notNull().default(0),
+	// 40, not 0: the DISPLAY lead BT.1359's asymmetric tolerance is fitted on (`DEFAULT_LYRICS_LEAD_MS`).
+	lyricsLeadMs: integer('lyrics_lead_ms').notNull().default(40),
 	// `lyrics_scale_pct` is a PERCENT of the computed distance-based scale, never a size — see DEFAULT_LYRICS_SCALE_PCT.
 	lyricsScalePct: integer('lyrics_scale_pct').notNull().default(100),
 	lyricsFont: text('lyrics_font', { enum: ['system', 'grotesk', 'serif', 'mono'] })

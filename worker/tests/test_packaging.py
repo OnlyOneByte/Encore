@@ -212,3 +212,40 @@ def test_asyncio_mode_is_auto(config: dict[str, Any]) -> None:
 def test_there_is_a_timeout(config: dict[str, Any]) -> None:
     """A wedged test should fail alone rather than hang the run and erase everything else's signal."""
     assert config["tool"]["pytest"]["ini_options"]["timeout"] > 0
+
+
+# ── shipped package data (review L3's Moby tier) ──────────────────────────────────────────────────
+
+MOBY = Path(__file__).parent.parent / "encore_worker" / "domain" / "lyrics" / "data" / "mhyph.xz"
+
+
+def test_the_moby_data_is_declared_in_the_wheel(config: dict[str, Any]) -> None:
+    """Its ABSENCE is a silent degradation rather than an ImportError: `syllabify._moby` returns an empty
+    table and the ladder falls back to pyphen, which abstains on 44.8% of multi-syllable tokens. hatchling
+    already includes it, so this pattern adds no file — it is here so a future `exclude`/`only-include`
+    cannot drop it without having to edit this line too."""
+    wheel = config["tool"]["hatch"]["build"]["targets"]["wheel"]
+    assert "encore_worker/domain/lyrics/data/*.xz" in wheel["include"]
+    assert wheel["packages"] == ["encore_worker"], (
+        "the pattern supplements `packages`, it does not replace it"
+    )
+
+
+def test_the_moby_data_loads_through_importlib_resources() -> None:
+    """Read the way the shipped code reads it, not off a relative path: an installed wheel has no source
+    tree, and `importlib.resources` is the one access that works in both."""
+    import importlib.resources
+
+    from encore_worker.domain.lyrics import syllabify
+
+    assert MOBY.is_file(), "the data file must be in the package directory, not beside it"
+    raw = (importlib.resources.files("encore_worker.domain.lyrics") / "data" / "mhyph.xz").read_bytes()
+    assert raw[:6] == b"\xfd7zXZ\x00", "LZMA/xz container, as the docstring says"
+    assert len(syllabify._moby()) == 152085
+
+
+def test_the_moby_data_stays_compact() -> None:
+    """2.6 MB of latin-1 with U+00A5 separators became 456 KB by keeping only the lowercase-letter entries
+    with at least one break, then LZMA'ing one `word-with-hyphens` per line. A file that grew far past
+    this is a different artefact and its derivation (in `syllabify`'s docstring) needs re-reading."""
+    assert MOBY.stat().st_size < 600_000

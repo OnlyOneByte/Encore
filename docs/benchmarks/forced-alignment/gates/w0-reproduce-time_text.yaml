@@ -1,3 +1,35 @@
+# ── REBASED AGAIN 2026-10-01 BY W5 (the carried item of the W6 close-out, owner call (e)) ───────────────
+# REBASED FROM: `results/w4-time_text.json` — the base bundle on W4's tree, where W4b put it (the literals
+#   below this header's own paragraph: truth 3 / 89.45 / 98.16, blind 106 / 78.04 / 88.76, blind Jamendo words
+#   80.11 / 90.62 / 91.58 / 122).
+# REBASED ONTO: `results/w6-hubert-time_text.json` — the tree that SHIPS from W5 on (`ml.DEFAULT_ALIGN_MODEL`
+#   = `HUBERT_ASR_LARGE`, code `622288017e9d268a`, seed 0, wrong_k 10, `--tfr-audio youtube`, 0 ERROR rows).
+# WHY, IN TWO SUPERSESSIONS, because the file had fallen two waves behind and the second one makes the first
+#   unreadable:
+#   (1) W6 (2026-09-30) made the repair clamp resolve a left-floor overlap at the NEIGHBOUR'S END, DEFAULT-ON
+#       with no off switch, and on the base bundle that moved exactly the three TRUTH literals — gross 3 -> 1,
+#       ±500 89.45 -> 90.61, ±1 s 98.16 -> 98.73 — while all SEVEN blind literals stayed EXACT to 0.00, which
+#       is the cheapest proof W6 moved no blind timing on 32 songs. W6 read this file at 8/11 and recorded the
+#       three as "the wave doing its job", leaving the rebase to an owner call.
+#   (2) W5 then FLIPPED THE DEFAULT BUNDLE (orchestrator decision 2026-10-01), and a bundle swap replaces
+#       every emission matrix, so all TEN numbers move by construction and the base bundle's 1 / 90.61 / 98.73
+#       are no longer the shipped tree's either. Read on the new default the W4-based file scored 1/11 and the
+#       W6-base-corrected one would have scored 3/11; both are "fails by construction", which is the noise
+#       W4b was asked to stop and this rebase removes for the second time.
+# WHAT MOVED, EXACTLY: the ten literals, each to the HuBERT-L row's own value, and the `--model` note in the
+#   command below. NO TOLERANCE WAS LOOSENED — still 0.5 pt / 0.5 of a count, the review baseline's own — and
+#   no gate was deleted or added: a rebase re-points what a determinism gate compares against, it does not
+#   change what it is willing to tolerate.
+# WHAT THE FLIP BOUGHT, since these literals are the record of it at this level: truth gross 1 -> **0** and
+#   ±500 90.61 -> 90.89, ±1 s 98.73 -> 99.14; blind gross 106 -> **68** (-38 lines), ±500 78.04 -> **81.50**,
+#   ±1 s 88.76 -> 91.93; blind Jamendo words ±100 80.11 -> **82.81**, ±250 90.62 -> 93.74, ±300 91.58 -> 94.38,
+#   words more than 2 s out 122 -> **75**.
+# WHAT THIS CANNOT SEE, stated so the next wave does not read it as coverage: `--level time_text` serves the
+#   caption lines RAW (the harness says so at `TimeTextDriver`), so W5's text hygiene — which acts in
+#   `clean_segments` — cannot move one number in this file, and the hygiene wave's own cost lives at
+#   `--level run_align`. That is also why the committed HuBERT-L row is still the shipped tree's row for this
+#   gate although the tree has moved on; the bench runner re-confirms it on the final tree.
+#
 # ── REBASED 2026-09-30 BY W4b (spec (c)) ────────────────────────────────────────────────────────────────
 # REBASED FROM: the review's own v2 baseline (truth 25 gross / 89.3% ±500 / 97.5% ±1 s; blind 122 / 78.6 /
 #   88.3; blind Jamendo words ±100 78.8, ±250 90.5, ±300 91.3, 139 words > 2 s), measured with
@@ -27,20 +59,27 @@
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --modes truth,blind \
 #       --gates ../docs/benchmarks/forced-alignment/gates/w0-reproduce-time_text.yaml
 #   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --gates ...)
+#   NO `--model`, which is the point since W5's flip: a `--model`-less run resolves `ml.DEFAULT_ALIGN_MODEL`
+#   and these literals are that bundle's. The BASE bundle's reading needs `--model WAV2VEC2_ASR_BASE_960H`
+#   and is `results/w6-base-time_text.json`, where it reads 11/11 against the previous header's literals with
+#   the three truth numbers corrected to 1 / 90.61 / 98.73 — kept here so reverting the flip has a row to be
+#   read against rather than this file quietly failing in ten places.
 #
 # jit is absent ON PURPOSE (unchanged): the review seeded it with the process-salted hash(slug), so its
 # 34 / 84.1 / 95.4 is one draw nobody can repeat (README, "jit caveat"). Counts are integers, so "within 0.5"
 # means exact. The tolerances are the review baseline's own (0.5 pt, ±2 ms of bias): they were never about the
 # review's precision but about what a re-run of the same code may move, which a clock change does not alter.
-truth-gross: abs(truth.gross - 3) <= 0.5
-truth-pm500: abs(truth.pm500 - 89.45) <= 0.5
-truth-pm1000: abs(truth.pm1000 - 98.16) <= 0.5
-blind-gross: abs(blind.gross - 106) <= 0.5
-blind-pm500: abs(blind.pm500 - 78.04) <= 0.5
-blind-pm1000: abs(blind.pm1000 - 88.76) <= 0.5
+# The ten literals are `results/w6-hubert-time_text.json`'s, the SHIPPED default's (W5's rebase; the base
+# bundle's own row is `results/w6-base-time_text.json` and reads 1 / 90.61 / 98.73 and 106 / 78.04 / 88.76).
+truth-gross: abs(truth.gross - 0) <= 0.5
+truth-pm500: abs(truth.pm500 - 90.89) <= 0.5
+truth-pm1000: abs(truth.pm1000 - 99.14) <= 0.5
+blind-gross: abs(blind.gross - 68) <= 0.5
+blind-pm500: abs(blind.pm500 - 81.50) <= 0.5
+blind-pm1000: abs(blind.pm1000 - 91.93) <= 0.5
 # The Jamendo word half, read at `time_text` (the never-sung rule and the repair ladder both act, so these
 # are not `--level generate`'s numbers — `gates/w0-reproduce-generate.yaml` holds those).
-blind-words-pm100: abs(blind.jamendo.word_pm100 - 80.11) <= 0.5
-blind-words-pm250: abs(blind.jamendo.word_pm250 - 90.62) <= 0.5
-blind-words-pm300: abs(blind.jamendo.word_pm300 - 91.58) <= 0.5
-blind-words-gross: abs(blind.jamendo.word_gross - 122) <= 0.5
+blind-words-pm100: abs(blind.jamendo.word_pm100 - 82.81) <= 0.5
+blind-words-pm250: abs(blind.jamendo.word_pm250 - 93.74) <= 0.5
+blind-words-pm300: abs(blind.jamendo.word_pm300 - 94.38) <= 0.5
+blind-words-gross: abs(blind.jamendo.word_gross - 75) <= 0.5

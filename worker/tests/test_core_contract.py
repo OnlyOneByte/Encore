@@ -202,9 +202,10 @@ _SCENARIOS: tuple[tuple[str, str, JobRef, Callable[[], _Stored]], ...] = (
         "a-doubt-band-word-document",
         "the lexical gate DOUBTS this sheet's words (W3 r1-r2): the document publishes, but nothing vouches "
         "for them, so it goes out `vouched: false` — not a claim, and under any document a gate passed. Sent "
-        "as the timing grade alone it ranked 5, tied with a fully vouched word doc, because core's "
-        "`lyricsRank` never reads `timingConfidence`; sent as textConfidence `low` it also claimed the words "
-        "were machine-generated, which is what that field says for a caption track",
+        "as the timing grade alone it ranked 5, tied with a fully vouched word doc: this band's grade is "
+        "`medium`, and core's `lyricsRank` read `timingConfidence` nowhere before W6 and reads only a `low` "
+        "one since; sent as textConfidence `low` it also claimed the words were machine-generated, which is "
+        "what that field says for a caption track",
         _job("j-doubted"),
         lambda: _Doubted(provider=lrc(), reports=[CLEAN]),
     ),
@@ -437,8 +438,9 @@ async def test_a_pin_is_sent_as_high_text_confidence_whatever_its_tier() -> None
 async def test_a_document_no_wrong_text_gate_vouches_for_is_sent_on_its_own_axis() -> None:
     """W3 review r1, narrowed by r2. The lexical doubt band and an unvouched pin publish, so core must be told
     the WORDS are not vouched for — and on a field of their own, `vouched: false`, which
-    `isAuthoritativeText` reads. The timing grade could not say it: `timingConfidence` is only a tie-break
-    inside a rank, so the doubted document tied with a fully vouched one at rank 5 and was shown.
+    `isAuthoritativeText` reads. The timing grade could not say it: this band's grade is `medium`, and
+    `timingConfidence` was a tie-break alone when this was written (since W6 `lyricsRank` reads it, but only a
+    `low` one), so the doubted document tied with a fully vouched one at rank 5 and was shown either way.
     `textConfidence` could not either: it carries PROVENANCE, and core reads `captions` + `low` as "Auto
     captions", so the doubt turned an uploader's hand-authored track into a machine-generated one on screen.
     Both fields therefore keep saying what they mean — the tier's standing, and the timing grade."""

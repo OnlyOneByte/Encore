@@ -172,6 +172,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["encore_worker"]
+# PACKAGE DATA, named rather than left to the default. hatchling already includes non-Python files inside a
+# packaged directory, and `domain/lyrics/data/mhyph.xz` is version-controlled, so this line adds no file —
+# it is here because that file's ABSENCE is a silent degradation rather than an ImportError
+# (`syllabify._moby` returns an empty table and the ladder falls back to pyphen, which abstains on 44.8% of
+# multi-syllable tokens), so a future `exclude`/`only-include` must have to edit this line to drop it.
+# `tests/test_packaging.py` asserts both halves: the pattern is declared, and the file loads through
+# `importlib.resources` with the entry count the module's docstring claims.
+include = ["encore_worker/domain/lyrics/data/*.xz"]
 
 # ── uv ────────────────────────────────────────────────────────────────────────────────────────────
 # WHY uv AND NOT poetry/pdm. Three reasons specific to this worker: it manages the INTERPRETER (worker

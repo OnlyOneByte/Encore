@@ -1,23 +1,54 @@
 # W6's WAVE-LEVEL reject-if: what the whole wave (confidence + bounded clamp) may not cost the SHIPPED
 # default, what wrong-text protection must still read at every level, and the four conditions W4b's flip had
-# to meet to become the default. Written 2026-09-30 by the bench runner, off the six corpus sweeps below.
+# to meet to become the default. Written 2026-09-30 by the bench runner, off the corpus sweeps below, and
+# RE-READ unchanged on the round-2 re-run of all eight of them (same date, code `622288017e9d268a`).
+#
+# ── W5 TOOK THE FLIP (2026-10-01), SO READ THIS FILE WITH TWO CORRECTIONS ─────────────────────────────────
+#   * "the shipped default" below means the BASE BUNDLE, which is what it was when this file was written.
+#     Section 1's and 2's literals are that bundle's, so HuBERT-L clears them with room and they no longer
+#     ratchet the bundle that ships: `gates/w5-flip.yaml` is the file that does, with every bar set where only
+#     the new default can reach it, and it is the one to run from W5 on.
+#   * SECTION 3 IS NO LONGER "THE CANDIDATE's BAR" — those four absolutes are now the DEFAULT's, and a
+#     `--model`-less run reads 85.46 / 71.1 / 81.40 / gross 0 and PASSES all four. The one FAIL left on the
+#     new default, `w6-no-song-gains-gross` at 8 song-modes (6 at `run_align`), is the gate the orchestrator
+#     OVERRULED when taking the flip — every one of those song-modes is in drop20 / drop50 / blind, none in a
+#     timed claim mode, against 268 gross lines removed corpus-wide. `gates/w5-flip.yaml` section 3 re-states
+#     it as the two claims actually held (ZERO in the thirteen claim modes, at most 8 in the degraded ones) so
+#     the waiver is a bound rather than a permanently-failing MUST. Nothing in this file was re-priced.
 #
 # THE WAVE'S OTHER TWO GATE FILES OWN THEIR OWN HALVES and are NOT duplicated here:
 #   * `gates/w6-conf.yaml`  — the per-line confidence rule's reject-if (review §3.7): bad-among-high halved
 #     where the rule decides, `high_gross` zero in every claim mode, onsets unchanged. Read on
 #     `results/w6-base-time_text.json` against `results/w6-legacy-time_text.json` (the `conf-legacy` control
-#     arm on the SAME tree): **27/28**, the one FAIL being its absolute `high-gross-zero-blind` at 3 — all
-#     three on YouTube, Jamendo blind 23 -> 0. See section 1's note.
+#     arm on the SAME tree): **29/29**. Its blind `high_gross` gate was an absolute zero reading 3 and was
+#     restated as the two claims actually held (review r1-spec-13): ZERO on Jamendo, where §3.7's reject-if
+#     is written and the rule takes 23 -> 0, and a BOUND OF THREE pooled, those three being caption-truth
+#     lines on `hello` (1) and `rap-god` (2) — named so a fourth reads as a regression. See section 1's note.
 #   * `gates/w6-ladder.yaml` — the clamp's bounded left floor. Read on the shipped default at BOTH levels
-#     against `results/w4b-base-{time_text,run_align}.json`: **30/31 each**, the one FAIL being
-#     `clamp-blind-documents-unchanged` at 30, which is the confidence FIELD in the document bytes and not a
-#     timing move — proven on the same rows by `count(blind.song.onsets_changed) == 0`.
+#     against `results/w4b-base-{time_text,run_align}.json`: **31/31 each**. Its blind-unchanged MUST reads
+#     the ONSET digest, not the document bytes (review r1-spec-11): the bytes check could not hold against a
+#     pre-W6 control at all, because this wave's confidence item rewrites the `confidence` field on 160 of
+#     866 blind Jamendo lines, so it recorded a FAIL at 30 for a timing that never moved.
 #   * `gates/w4b.yaml` IS the flip's acceptance test and stays the flip's acceptance test. Read on
 #     `results/w6-hubert-time_text.json` against `results/w6-base-time_text.json`: **28/30**. Section 3 here
 #     holds only the four ABSOLUTE wins the brief named, which no relative file can state.
 #
-# HOW TO RUN IT (six sweeps, 2026-09-30, 32 songs, seed 0, wrong_k 10, `--tfr-audio youtube`, code
-# `cad1ca7d2eaf2cf5`; every literal below is READ off them, none projected):
+# HOW TO RUN IT (eight sweeps, RE-RUN 2026-09-30 after review round 2, 32 songs, seed 0, wrong_k 10,
+# `--tfr-audio youtube`, code `622288017e9d268a` = `tree_digest([encore_worker])` 79b561800ecb8e0c |
+# `harness_digest()` 659fd1f6059f44df; every literal below is READ off them, none projected, and every
+# `results/w6-*` file carries that one fingerprint in `meta.code` with its gate readings in `meta.gates`.
+# The tree then moved once more, to 9d6233c39ac80716 | 659fd1f6059f44df -> 73b3ddad4309aaa2, and the delta is
+# the `generate.trimmed` docstring recording this re-read: comment bytes, outside the emission closure.)
+# THE ROUND-1 SWEEPS WERE `cad1ca7d2eaf2cf5` (commit `1c81d89f`'s tree) and every literal in this file read
+# the same on them: the round-2 fixes moved 21 of 1088 `time_text` cases on the base bundle and 13 on
+# HuBERT-L, all of them the clamp's tail floor (review r2-spec-9), and not one pooled number this file
+# gates. (The header's own prediction of the current tree, 5b6d359e7198ef1c | 874770e76afb9d2f, was written
+# before the last two fixes landed and never named a tree that existed; the digests above are the run's.)
+# WHAT THE RE-RUN DID FIND, which no gate here reads and the PLAN's status log carries: the tail floor
+# removes the out-of-order word that was tripping `run_align`'s `line-sync` retime, so three base-bundle
+# cases publish their word document instead of the text's line timings (`rap-god` drop20 ±500-of-text
+# 100.00 -> 87.93 is the one loss no earlier tree had; pooled drop20 90.48 -> 88.98, extraverse
+# 90.69 -> 89.66, credit 88.72 -> 88.61, gross and `high_gross` 0 throughout).
 #
 #   # sections 1 + 2 — the shipped default, both levels
 #   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
@@ -79,7 +110,8 @@ w6-pooled-gross-not-up-blind: blind.gross <= base.blind.gross
 # `high_gross` — a line the TV WIPES that is more than 2 s off — is the one number the wave must never trade
 # for accuracy. 0 in all thirteen timed claim modes on both bundles and both levels. BLIND IS DELIBERATELY NOT
 # IN THIS SUM: the confidence rule takes it 45 -> 3 (Jamendo 23 -> 0, YouTube 22 -> 3) and the residue is
-# `gates/w6-conf.yaml`'s own absolute, where it is recorded as a FAIL rather than folded into a total here.
+# `gates/w6-conf.yaml`'s own pair of gates — zero on Jamendo, a named bound of three pooled — rather than a
+# term folded into a total here, where a rise on either half would read as the other's.
 w6-high-gross-zero-claim-modes: truth.high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross + mode("jit").high_gross == 0
 # No song may pay for a pooled gain with a gross line of its own, in ANY mode. 0 on the shipped default at
 # both levels (and the gate that the flip FAILS — see section 3).

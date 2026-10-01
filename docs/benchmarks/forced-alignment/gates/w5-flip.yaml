@@ -1,0 +1,166 @@
+# W5's FLIP GATE: what HuBERT-Large must keep now that it IS the default, and the three residuals the
+# orchestrator ACCEPTED when taking it (PLAN-alignment-v3 W5 item 1; review §3 item 6b).
+#
+# THE DECISION THIS FILE ENCODES, so nobody re-litigates it from the gate language alone. W4b built and fully
+# recalibrated the HuBERT bundles and its own sweep REJECTED this flip (`gates/w4b.yaml` 19/30). W6 instrumented
+# the rejection line by line and found the cause was NOT the decode and NOT the repair ladder: every one of the
+# candidate's new gross line starts under `truth` claims was manufactured after the ladder finished, by
+# `_clamped_v2`'s left floor `max(line.start, previous_end)` — the blind decode's own boundary, i.e. the reading
+# the repair existed to correct. With the overlap resolved at the neighbour's END (`align_steps._pulled_end`),
+# clamp-made gross starts go 7 -> 0 on this bundle and 3 -> 1 on the base, and the A/B changes shape: the
+# candidate is at or below the base bundle's pooled gross in ALL SIXTEEN modes at BOTH levels. On 2026-10-01 the
+# orchestrator read `results/w6-{base,hubert}-time_text.json` and took the flip, OVERRULING the per-song clause
+# of W6's own flip gate (`gates/w6.yaml`'s `w6-no-song-gains-gross`) on the arithmetic: ~174 gross lines removed
+# across six songs against a handful added in three songs' drop20/drop50/blind, and no claim mode manufacturing
+# one. `ml.DEFAULT_ALIGN_MODEL` carries the whole account in its docstring. THIS FILE IS THE RATCHET THAT KEEPS
+# IT — every literal below is read off a bundle that now ships, so a later wave cannot hand the gains back (or
+# quietly revert to the base bundle) and still read green.
+#
+# WHAT IT IS READ ON (the rows exist; this file was written against them, not projected):
+#   `results/w6-hubert-time_text.json` and `results/w6-hubert-run_align.json`, code `622288017e9d268a`, 32 songs,
+#   seed 0, wrong_k 10, `--tfr-audio youtube`, device mps — the SAME tree that produced `results/w6-base-*`,
+#   with only the bundle's name changed. Sections 1-3 read 100% on both of them (see NON-VACUITY).
+#
+# HOW TO RUN IT after W5 (note what the flip did to these commands: a `--model`-less run is now a HuBERT-L run,
+# so it is the BASE bundle that has to be spelled out — `e2e.default_model`'s docstring says so too):
+#
+#   # the new default, both levels, against the bundle it replaced
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock \
+#       --compare ../docs/benchmarks/forced-alignment/results/w6-base-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w5-flip.yaml
+#   #   …and the same at --level run_align against results/w6-base-run_align.json.
+#
+#   # the LINE_SYNC rung on the new default — PAID by the W5 sweep (`results/w5-lines-run_align.json`,
+#   # 34/38, and `results/w5-base-lines-run_align.json` 31/38 as its same-tree control; see
+#   # `gates/w3-lines.yaml`'s header for the four failures and whose they are)
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --sync-mode lines --modes all,wrongtext+ownclock \
+#       --compare ../docs/benchmarks/forced-alignment/results/w6-lines-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w3-lines.yaml   # plus THIS file's sections 1-3
+#
+#   # the control, to reproduce any pre-W5 row
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --modes all \
+#       --model WAV2VEC2_ASR_BASE_960H
+#
+#   (offline, no decode: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
+#
+# ONE COST OF THE FLIP THAT IS NOT IN ANY NUMBER BELOW: `adapters/ml.py` is in the emission cache's code
+# fingerprint (`e2e_lib.module_closure` — "even a docstring edit costs one recompute"), so the first sweep after
+# this wave pays ONE cold model pass for its 64 matrices whichever bundle it names: ~+3.5 min at the base
+# bundle's 2.7-5.2 s a song, ~+6-9 min at HuBERT-L's 4.3-8.6. Every later DEFAULT sweep at this tree is warm
+# again — AN ARM NEVER IS, and that was measured rather than predicted: `align_config` is hashed into the same
+# fingerprint, so `gates/w5-adlibs.yaml`'s row paid 56 cold matrices / 1343 s when the sweep ran it and 63 / 1537 s
+# when W5 review round 1 re-ran it. One cold pass per arm per tree, in the safe direction.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+
+# ── 1. MUST: the default's own absolutes, set where only THIS bundle can reach them ───────────────────────
+# Each bar is below the new default's measured value and ABOVE the base bundle's, so reverting the flip fails
+# the gate instead of passing it silently (that is the whole difference from `gates/w6.yaml` section 1, whose
+# literals are the base bundle's and which HuBERT-L clears with room). Measured, identical at `time_text` and
+# `run_align`: 85.46 / 97.16 / 71.1 ms / 37.5 ms / 80.34 / 60.93 / 81.40 / 98.15 against the base bundle's
+# 83.52 / 95.04 / 86.7 / 38.2 / 80.02 / 59.23 / 77.58 / 97.00.
+w5-jamendo-word-pm100: truth.jamendo.word_pm100 >= 85.0
+w5-jamendo-word-pm300: truth.jamendo.word_pm300 >= 97.0
+w5-jamendo-word-aae: truth.jamendo.word_aae_ms <= 72.0
+w5-jamendo-word-medae: truth.jamendo.word_medae_ms <= 38.0
+w5-jamendo-word-end-pm100: truth.jamendo.end_pm100 >= 80.3
+# The one W6 recorded as a known cost of the clamp (the trimmed line's last word ends at the neighbour's
+# boundary, and a last word is a phrase-final one): 59.23 on the base bundle, repaid to 60.93 here.
+w5-jamendo-final-end-pm100: truth.jamendo.final_end_pm100 >= 60.5
+w5-jamendo-highlight: truth.jamendo.highlight >= 81.0
+w5-jamendo-pm500: truth.jamendo.pm500 >= 98.0
+# ZERO gross lines under truth claims, on every song of the corpus — the bar W4b's flip could not meet (it read
+# 7) and the clamp fix is what made reachable. 32/32 zero-gross songs where the base bundle reads 31/32
+# (`Pure_Mids_-_The_Leader`'s never-sung line[0], which this bundle hears).
+w5-truth-gross-zero: truth.gross == 0
+w5-truth-zero-gross-songs-all-32: truth.zero_gross_songs == 32
+# `high_gross` — a line the TV WIPES that is more than 2 s off — stays 0 in all thirteen timed claim modes, at
+# both levels, exactly as on the base bundle. Blind is deliberately not in this sum; section 3 bounds it.
+w5-high-gross-zero-claim-modes: truth.high_gross + off05.high_gross + off15.high_gross + off3.high_gross + offm1.high_gross + tempo098.high_gross + tempo102.high_gross + drop20.high_gross + drop50.high_gross + extraverse.high_gross + headers.high_gross + credit.high_gross + mode("jit").high_gross == 0
+# WRONG-TEXT PROTECTION IS TIGHTER ON THIS BUNDLE, SO THE GATE IS TIGHTER. The base bundle publishes 1 of 320
+# at `time_text` (the `LUNABLIND` pair, whose raw claims lift +0.217 against the cleaned +0.189) and HuBERT-L
+# publishes 0 of 320 at BOTH levels and in both spellings — its stem floor clears the wrong population by
+# +0.2306 against the base row's +0.0082 (`lexical.CALIBRATED`, STEM). An absolute zero is only writable
+# because this bundle reads it at the raw-claims level too.
+w5-wrongtext-none-of-320: mode("wrongtext").wrongtext_pass == 0
+w5-ownclock-none-of-320: mode("wrongtext+ownclock").wrongtext_pass == 0
+w5-wrongtext-commits-nothing: mode("wrongtext").published + mode("wrongtext").line_sync + mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+# AND EVERY RIGHT TEXT STILL COMMITS. The flip must not buy accuracy by refusing: 32 of 32 songs commit (a word
+# document or a line-synced sheet) in all 14 right-text modes at `time_text`, and at `run_align` drop50 goes
+# 30 -> 31 (the base bundle refuses 2 songs there, this bundle 1).
+w5-every-song-commits-at-truth: truth.published + truth.line_sync == 32
+w5-every-song-commits-at-blind: blind.published + blind.line_sync == 32
+w5-drop50-commitments-not-down: drop50.published + drop50.line_sync >= base.drop50.published + base.drop50.line_sync
+
+# ── 2. MUST: nothing the default already had may go back ───────────────────────────────────────────────────
+# ONE GATE PER MODE, for the reason `gates/w4b.yaml` learned the hard way (its review r2, spec-9): a sum does
+# not rise whenever one of its terms does. Read against `results/w6-base-*` these are the flip's own win —
+# `time_text` truth 1 -> 0, jit 31 -> 0, credit 23 -> 0, drop20 29 -> 12, drop50 303 -> 167, blind 106 -> 68;
+# `run_align` jit 21 -> 0, drop50 178 -> 91, blind 106 -> 67 — and read against a LATER run of the default they
+# are the ratchet that keeps it. Both readings are true of the same expression, which is why it is relative.
+w5-pooled-gross-not-up-truth: truth.gross <= base.truth.gross
+w5-pooled-gross-not-up-jit: mode("jit").gross <= base.mode("jit").gross
+w5-pooled-gross-not-up-off05: off05.gross <= base.off05.gross
+w5-pooled-gross-not-up-off15: off15.gross <= base.off15.gross
+w5-pooled-gross-not-up-off3: off3.gross <= base.off3.gross
+w5-pooled-gross-not-up-offm1: offm1.gross <= base.offm1.gross
+w5-pooled-gross-not-up-tempo098: tempo098.gross <= base.tempo098.gross
+w5-pooled-gross-not-up-tempo102: tempo102.gross <= base.tempo102.gross
+w5-pooled-gross-not-up-drop20: drop20.gross <= base.drop20.gross
+w5-pooled-gross-not-up-drop50: drop50.gross <= base.drop50.gross
+w5-pooled-gross-not-up-extraverse: extraverse.gross <= base.extraverse.gross
+w5-pooled-gross-not-up-headers: headers.gross <= base.headers.gross
+w5-pooled-gross-not-up-credit: credit.gross <= base.credit.gross
+w5-pooled-gross-not-up-blind: blind.gross <= base.blind.gross
+# Text-denominator ±500 in the claim mode the wave is judged on, so a gain cannot be a refusal in disguise:
+# Jamendo 96.77 -> 98.04 and pooled 89.32 -> 89.60 at both levels.
+w5-truth-text-pm500-not-down: truth.text_pm500 >= base.truth.text_pm500 - 0.3
+w5-truth-jamendo-text-pm500-not-down: truth.jamendo.text_pm500 >= base.truth.jamendo.text_pm500 - 0.3
+
+# ── 3. THE THREE ACCEPTED RESIDUALS, BOUNDED — not waived, and not re-opened ───────────────────────────────
+# The orchestrator accepted these three by name. Each is written as the bound it was accepted AT, so a FOURTH
+# residual, or one of these getting worse, reads as a regression instead of as the same old news.
+#
+# (a) `tfr-chosen` truth line ±500 85.29 -> 69.70, -15.59 pt, at gross 0 -> 0 — precision inside the band, not
+#     placement (its base lines sit at a constant +0.32 against this bundle's +0.59..+0.97: two decodes half a
+#     band apart, no decision site a ladder change reaches). Its scored count also moves 34 -> 33, so PART of
+#     this number is the caption-cue DENOMINATOR artefact W5's text-hygiene item owns — the two songs drop
+#     different non-lyric cues ('(fabric rustling)', '(somber music)') under different models — which is why
+#     the bound is -16.0 and not a re-fit: until that lands no per-song ±500 row is comparable across models.
+no-youtube-song-worse-than-tfr-chosen-at-truth-pm500: min_song_delta(truth.youtube.pm500) >= -16.0
+# (b) `Tom_Orlando_-_The_One__feat._Tina_G_` word ±300 -1.52 pt, against W4b's -1.0 per-song bound. The same
+#     shape, on the one Jamendo song whose words this bundle places worse.
+no-jamendo-song-worse-than-tom-orlando-at-word-pm300: min_song_delta(truth.jamendo.word_pm300) >= -1.6
+# (c) 8 song-modes gain a gross line at `time_text` and 6 at `run_align`, EVERY ONE of them in drop20 / drop50 /
+#     blind: `time_text` tfr-chosen +3 drop20 / +1 drop50, hello +3 drop50, shape-of-you +2, Moon_I_Mean +1,
+#     Wordsmith +1 drop50, tfr-mayday +2 blind, Rxbyn +1 blind. THE CLAIM-MODE HALF IS HELD ABSOLUTELY, which
+#     is the part of W6's clause that survives the overruling: in the thirteen timed claim modes NO song gains
+#     a gross line, so the bound below can never be spent where a claim was published.
+no-song-gains-gross-in-any-claim-mode: count(truth.song.gross_up) + count(mode("jit").song.gross_up) + count(off05.song.gross_up) + count(off15.song.gross_up) + count(off3.song.gross_up) + count(offm1.song.gross_up) + count(tempo098.song.gross_up) + count(tempo102.song.gross_up) + count(extraverse.song.gross_up) + count(headers.song.gross_up) + count(credit.song.gross_up) == 0
+at-most-eight-song-modes-gain-gross-in-degraded-modes: count(drop20.song.gross_up) + count(drop50.song.gross_up) + count(blind.song.gross_up) <= 8
+# (d) W6's OWN unclosed reject-if, carried and IMPROVED rather than re-accepted: the gross `high` lines on the
+#     YouTube blind half. W6 left 3 on the base bundle (hello x1, rap-god x2) and bounded them at 3; this
+#     bundle reads **2** at both levels, at MORE coverage (353 -> 360 `high` lines), with Jamendo still 0 —
+#     so the bound tightens to 2 and `gates/w6-conf.yaml`'s pair keeps its own wording for the control.
+blind-high-gross-zero-jamendo: blind.jamendo.high_gross == 0
+blind-high-gross-at-most-two-youtube: blind.youtube.high_gross <= 2
+
+# ── NON-VACUITY ───────────────────────────────────────────────────────────────────────────────────────────
+# 39 gates plus the built-in no-ERROR-rows. Every reading below was taken OFFLINE, no decode, off the committed
+# rows (`e2e_gates.run_gates` on the two summary documents):
+#   (1) THE NEW DEFAULT, `results/w6-hubert-time_text.json` against `results/w6-base-time_text.json`: **40/40**.
+#       Same at `run_align` against `results/w6-base-run_align.json`: **40/40**.
+#   (2) THE BUNDLE IT REPLACES, `results/w6-base-time_text.json` against itself — so every relative gate reads
+#       `=` against itself, which a ratchet must: **27/40** (29/40 at `run_align`), and the THIRTEEN failures
+#       are exactly section 1's bars only HuBERT-L can clear (83.52 < 85.0, 95.04 < 97.0, 86.7 > 72.0,
+#       38.2 > 38.0, 80.02 < 80.3, 59.23 < 60.5, 77.58 < 81.0, 97.00 < 98.0, `truth.gross` 1,
+#       `zero_gross_songs` 31), plus the two wrong-text absolutes at `time_text` (1 of 320 published and
+#       committed, which is why `run_align` reads two more) and the YouTube blind `high_gross` bound at 3.
+#       That is this file telling the two bundles apart where it claims to, and it is why reverting the flip
+#       cannot read green.
+#   (3) Section 3 is not decorative either: read on the base bundle against the HuBERT rows (the comparison
+#       reversed) `min_song_delta(truth.youtube.pm500)` is positive and the three bounds are slack, i.e. they
+#       bite in one direction only, which is the direction a regression comes from.
+#   The commands above reproduce all of it; the per-run readings go into each `results/*.json` `meta.gates`.
