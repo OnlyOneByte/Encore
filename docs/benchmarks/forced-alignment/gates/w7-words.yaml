@@ -1,0 +1,54 @@
+# W7 — the Jamendo WORD truth, held against the wave's baseline. The half of "nothing costs the shipped
+# default" that lives below the line.
+#
+# WHY IT IS ITS OWN FILE. `gates/w7.yaml` is written so ONE file is the condition on all three W7 control
+# runs, and `--sync-mode lines` publishes a document with LINE timings only: `word_aligned` is 0 of 5693
+# `word_in_text` there, every onset metric is None, and `highlight` (sung-second coverage, which needs word
+# spans) reads a vacuous 0.0. A word gate in that file would ERROR on the `lines` run — or pass by comparing
+# 0.0 with 0.0, which is worse. So the word block is here, read on the two runs that HAVE word onsets:
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --summarize $ENCORE_BENCH_ROOT/_runs/w7-tt/rows.jsonl \
+#       --compare ../docs/benchmarks/forced-alignment/results/w5-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w7-words.yaml
+#   # and the same on _runs/w7-ra vs results/w5r2-run_align.json
+#
+# WHY WORDS ARE THE SHARP INSTRUMENT FOR THIS WAVE. W7's default-on change with the longest reach is
+# `generate.char_ids` becoming the ONE target filter, folding NFKD before it looks a character up in the
+# bundle's dictionary (review M8 / §3.9). A fold that dropped, duplicated or re-ordered a single character
+# shifts the TOKEN sequence the decoder aligns, and a shifted token sequence moves word onsets long before
+# it moves a line start — a line start is the first word's onset and survives a couple of characters of
+# drift. So these are the gates that would catch the fold being wrong on ASCII, where it must be the
+# identity. 20 Jamendo songs, 5693 truth words in text, 5378 aligned (311 interpolated), measured onsets.
+# DENOMINATORS: `word_pm100/250/300` are over the 5378 ALIGNED words; `word_pco300` is over all 5693 the
+# text asked for (an unpublished word counts as a miss), which is why both are here.
+
+w7-jamendo-word-pm100-not-down: truth.jamendo.word_pm100 >= base.truth.jamendo.word_pm100
+w7-jamendo-word-pm250-not-down: truth.jamendo.word_pm250 >= base.truth.jamendo.word_pm250
+w7-jamendo-word-pm300-not-down: truth.jamendo.word_pm300 >= base.truth.jamendo.word_pm300
+w7-jamendo-word-pco300-not-down: truth.jamendo.word_pco300 >= base.truth.jamendo.word_pco300
+w7-jamendo-word-aae-not-up: truth.jamendo.word_aae_ms <= base.truth.jamendo.word_aae_ms
+w7-jamendo-word-medae-not-up: truth.jamendo.word_medae_ms <= base.truth.jamendo.word_medae_ms
+w7-jamendo-word-gross-not-up: truth.jamendo.word_gross <= base.truth.jamendo.word_gross
+w7-jamendo-word-aligned-not-down: truth.jamendo.word_aligned >= base.truth.jamendo.word_aligned
+w7-jamendo-word-in-text-unchanged: truth.jamendo.word_in_text == base.truth.jamendo.word_in_text
+# Word ENDS (W4 §3.5) ride on the same token spans and have their own phrase-final tail.
+w7-jamendo-end-pm100-not-down: truth.jamendo.end_pm100 >= base.truth.jamendo.end_pm100
+w7-jamendo-end-pm250-not-down: truth.jamendo.end_pm250 >= base.truth.jamendo.end_pm250
+w7-jamendo-final-end-pm100-not-down: truth.jamendo.final_end_pm100 >= base.truth.jamendo.final_end_pm100
+# What the TV actually shows: sung seconds covered by the right highlighted word, both semantics.
+w7-jamendo-highlight-not-down: truth.jamendo.highlight >= base.truth.jamendo.highlight
+w7-jamendo-highlight-wiped-not-down: truth.jamendo.highlight_wiped >= base.truth.jamendo.highlight_wiped
+# Pooled numbers hide a swap, so the worst SONG too — `min_song_delta` is the worst, which is the one that
+# matters for a metric where higher is better.
+w7-no-jamendo-song-worse-at-word-pm300: min_song_delta(truth.jamendo.word_pm300) >= -1.0
+w7-no-jamendo-song-worse-at-word-pm100: min_song_delta(truth.jamendo.word_pm100) >= -1.0
+w7-no-jamendo-song-worse-at-highlight: min_song_delta(truth.jamendo.highlight) >= -1.0
+# And under claim noise, where the repairs move words the claims did not ask about.
+w7-jit-jamendo-word-pm300-not-down: mode("jit").jamendo.word_pm300 >= base.mode("jit").jamendo.word_pm300
+w7-drop20-jamendo-word-pm300-not-down: drop20.jamendo.word_pm300 >= base.drop20.jamendo.word_pm300
+w7-drop50-jamendo-word-pm300-not-down: drop50.jamendo.word_pm300 >= base.drop50.jamendo.word_pm300
+w7-extraverse-jamendo-word-pm300-not-down: extraverse.jamendo.word_pm300 >= base.extraverse.jamendo.word_pm300
+w7-headers-jamendo-word-pm300-not-down: headers.jamendo.word_pm300 >= base.headers.jamendo.word_pm300
+w7-credit-jamendo-word-pm300-not-down: credit.jamendo.word_pm300 >= base.credit.jamendo.word_pm300
+w7-blind-jamendo-word-pm300-not-down: blind.jamendo.word_pm300 >= base.blind.jamendo.word_pm300

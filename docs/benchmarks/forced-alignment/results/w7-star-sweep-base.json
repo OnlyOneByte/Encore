@@ -1,0 +1,2688 @@
+{
+ "what": "W7 \u00a73.10 star phase A: the P sweep on the blind global decode (not the corpus harness)",
+ "script": "_runs/w7-star/star_sweep.py (+ star_report.py, star_record.py)",
+ "model": "WAV2VEC2_ASR_BASE_960H",
+ "emitter": "a51283424a0195e1",
+ "level": "generate (blind global decode, raw served text, one star per line)",
+ "denominators": "in_text = every truth line the served text holds; missing = in_text - scored",
+ "songs": [
+  "Avercage_-_Embers",
+  "Color_Out_-_Falling_Star",
+  "Cortez_-_Feel__Stripped_",
+  "Explosive_Ear_Candy_-_Like_The_Sun",
+  "HILA_-_Give_Me_the_Same",
+  "JASON_MILLER_-_CROWD_PLEASER",
+  "Kinematic_-_Peyote",
+  "LUNABLIND_-_Vision__Radio_Edit_",
+  "Lower_Loveday_-_Is_It_Right_",
+  "Moon_I_Mean_-_Wrong_Concept",
+  "Pure_Mids_-_The_Leader",
+  "Quentin_Hannappe_-_Keep_On",
+  "Ridgway_-_Fire_Inside",
+  "Rxbyn_-_Bad_Side",
+  "Slingshot_Miracle_-_Whistler",
+  "Songwriterz_-_Back_In_Time",
+  "The.madpix.project_-_One_Way_Street",
+  "The_Rinn_-_Voices__2017_Version_",
+  "Tom_Orlando_-_The_One__feat._Tina_G_",
+  "Wordsmith_-_The_Statement",
+  "never-be-alone",
+  "believer",
+  "shape-of-you",
+  "hello",
+  "rap-god",
+  "bohemian-rhapsody",
+  "feel-my-heart",
+  "numb",
+  "bad-guy",
+  "tfr-flyaway",
+  "tfr-mayday",
+  "tfr-chosen"
+ ],
+ "modes": [
+  "blind",
+  "drop20",
+  "drop50",
+  "extraverse"
+ ],
+ "arms": [
+  "off",
+  "0.25",
+  "0.5",
+  "1"
+ ],
+ "pooled": {
+  "off": {
+   "gross": 908,
+   "scored": 5759,
+   "in_text": 5805,
+   "missing": 46,
+   "w250": 3458,
+   "w500": 3921,
+   "w1000": 4478,
+   "aae_ms": 1708.8,
+   "medae_ms": 130.0
+  },
+  "0.25": {
+   "gross": 645,
+   "scored": 5759,
+   "in_text": 5805,
+   "missing": 46,
+   "w250": 3895,
+   "w500": 4348,
+   "w1000": 4858,
+   "aae_ms": 1263.3,
+   "medae_ms": 99.7
+  },
+  "0.5": {
+   "gross": 688,
+   "scored": 5759,
+   "in_text": 5805,
+   "missing": 46,
+   "w250": 3861,
+   "w500": 4309,
+   "w1000": 4810,
+   "aae_ms": 1341.4,
+   "medae_ms": 103.0
+  },
+  "1": {
+   "gross": 744,
+   "scored": 5759,
+   "in_text": 5805,
+   "missing": 46,
+   "w250": 3783,
+   "w500": 4229,
+   "w1000": 4723,
+   "aae_ms": 1426.3,
+   "medae_ms": 108.0
+  }
+ },
+ "by_mode": {
+  "blind": {
+   "off": {
+    "gross": 113,
+    "scored": 1746,
+    "in_text": 1760,
+    "missing": 14,
+    "w250": 1191,
+    "w500": 1351,
+    "w1000": 1538,
+    "aae_ms": 773.6,
+    "medae_ms": 96.0
+   },
+   "0.25": {
+    "gross": 103,
+    "scored": 1746,
+    "in_text": 1760,
+    "missing": 14,
+    "w250": 1252,
+    "w500": 1406,
+    "w1000": 1570,
+    "aae_ms": 720.2,
+    "medae_ms": 90.0
+   },
+   "0.5": {
+    "gross": 99,
+    "scored": 1746,
+    "in_text": 1760,
+    "missing": 14,
+    "w250": 1259,
+    "w500": 1412,
+    "w1000": 1575,
+    "aae_ms": 677.6,
+    "medae_ms": 90.0
+   },
+   "1": {
+    "gross": 98,
+    "scored": 1746,
+    "in_text": 1760,
+    "missing": 14,
+    "w250": 1260,
+    "w500": 1410,
+    "w1000": 1571,
+    "aae_ms": 674.3,
+    "medae_ms": 89.8
+   }
+  },
+  "drop20": {
+   "off": {
+    "gross": 262,
+    "scored": 1402,
+    "in_text": 1412,
+    "missing": 10,
+    "w250": 793,
+    "w500": 903,
+    "w1000": 1033,
+    "aae_ms": 1664.4,
+    "medae_ms": 157.8
+   },
+   "0.25": {
+    "gross": 181,
+    "scored": 1402,
+    "in_text": 1412,
+    "missing": 10,
+    "w250": 933,
+    "w500": 1041,
+    "w1000": 1163,
+    "aae_ms": 1193.3,
+    "medae_ms": 106.6
+   },
+   "0.5": {
+    "gross": 191,
+    "scored": 1402,
+    "in_text": 1412,
+    "missing": 10,
+    "w250": 925,
+    "w500": 1031,
+    "w1000": 1151,
+    "aae_ms": 1256.7,
+    "medae_ms": 109.3
+   },
+   "1": {
+    "gross": 211,
+    "scored": 1402,
+    "in_text": 1412,
+    "missing": 10,
+    "w250": 895,
+    "w500": 1003,
+    "w1000": 1122,
+    "aae_ms": 1301.5,
+    "medae_ms": 113.1
+   }
+  },
+  "drop50": {
+   "off": {
+    "gross": 370,
+    "scored": 865,
+    "in_text": 873,
+    "missing": 8,
+    "w250": 323,
+    "w500": 365,
+    "w1000": 421,
+    "aae_ms": 4937.2,
+    "medae_ms": 1130.0
+   },
+   "0.25": {
+    "gross": 213,
+    "scored": 865,
+    "in_text": 873,
+    "missing": 8,
+    "w250": 496,
+    "w500": 546,
+    "w1000": 606,
+    "aae_ms": 3060.8,
+    "medae_ms": 155.7
+   },
+   "0.5": {
+    "gross": 252,
+    "scored": 865,
+    "in_text": 873,
+    "missing": 8,
+    "w250": 458,
+    "w500": 506,
+    "w1000": 562,
+    "aae_ms": 3601.0,
+    "medae_ms": 195.0
+   },
+   "1": {
+    "gross": 292,
+    "scored": 865,
+    "in_text": 873,
+    "missing": 8,
+    "w250": 407,
+    "w500": 456,
+    "w1000": 511,
+    "aae_ms": 4119.8,
+    "medae_ms": 370.0
+   }
+  },
+  "extraverse": {
+   "off": {
+    "gross": 163,
+    "scored": 1746,
+    "in_text": 1760,
+    "missing": 14,
+    "w250": 1151,
+    "w500": 1302,
+    "w1000": 1486,
+    "aae_ms": 1080.4,
+    "medae_ms": 105.0
+   },
+   "0.25": {
+    "gross": 148,
+    "scored": 1746,
+    "in_text": 1760,
+    "missing": 14,
+    "w250": 1214,
+    "w500": 1355,
+    "w1000": 1519,
+    "aae_ms": 972.1,
+    "medae_ms": 94.8
+   },
+   "0.5": {
+    "gross": 146,
+    "scored": 1746,
+    "in_text": 1760,
+    "missing": 14,
+    "w250": 1219,
+    "w500": 1360,
+    "w1000": 1522,
+    "aae_ms": 953.6,
+    "medae_ms": 94.5
+   },
+   "1": {
+    "gross": 143,
+    "scored": 1746,
+    "in_text": 1760,
+    "missing": 14,
+    "w250": 1221,
+    "w500": 1360,
+    "w1000": 1519,
+    "aae_ms": 944.2,
+    "medae_ms": 93.4
+   }
+  }
+ },
+ "by_group": {
+  "jamendo": {
+   "off": {
+    "gross": 393,
+    "scored": 2864,
+    "in_text": 2864,
+    "missing": 0,
+    "w250": 2100,
+    "w500": 2227,
+    "w1000": 2334,
+    "aae_ms": 1446.1,
+    "medae_ms": 55.7
+   },
+   "0.25": {
+    "gross": 244,
+    "scored": 2864,
+    "in_text": 2864,
+    "missing": 0,
+    "w250": 2397,
+    "w500": 2481,
+    "w1000": 2563,
+    "aae_ms": 1001.7,
+    "medae_ms": 50.0
+   },
+   "0.5": {
+    "gross": 266,
+    "scored": 2864,
+    "in_text": 2864,
+    "missing": 0,
+    "w250": 2375,
+    "w500": 2453,
+    "w1000": 2539,
+    "aae_ms": 1056.9,
+    "medae_ms": 50.0
+   },
+   "1": {
+    "gross": 292,
+    "scored": 2864,
+    "in_text": 2864,
+    "missing": 0,
+    "w250": 2329,
+    "w500": 2404,
+    "w1000": 2496,
+    "aae_ms": 1132.9,
+    "medae_ms": 50.9
+   }
+  },
+  "youtube": {
+   "off": {
+    "gross": 515,
+    "scored": 2895,
+    "in_text": 2941,
+    "missing": 46,
+    "w250": 1358,
+    "w500": 1694,
+    "w1000": 2144,
+    "aae_ms": 1968.7,
+    "medae_ms": 310.0
+   },
+   "0.25": {
+    "gross": 401,
+    "scored": 2895,
+    "in_text": 2941,
+    "missing": 46,
+    "w250": 1498,
+    "w500": 1867,
+    "w1000": 2295,
+    "aae_ms": 1522.1,
+    "medae_ms": 240.0
+   },
+   "0.5": {
+    "gross": 422,
+    "scored": 2895,
+    "in_text": 2941,
+    "missing": 46,
+    "w250": 1486,
+    "w500": 1856,
+    "w1000": 2271,
+    "aae_ms": 1622.8,
+    "medae_ms": 243.0
+   },
+   "1": {
+    "gross": 452,
+    "scored": 2895,
+    "in_text": 2941,
+    "missing": 46,
+    "w250": 1454,
+    "w500": 1825,
+    "w1000": 2227,
+    "aae_ms": 1716.6,
+    "medae_ms": 250.0
+   }
+  }
+ },
+ "by_song": {
+  "Avercage_-_Embers": {
+   "off": {
+    "gross": 36,
+    "scored": 139,
+    "in_text": 139,
+    "missing": 0,
+    "w250": 55,
+    "w500": 89,
+    "w1000": 95,
+    "aae_ms": 5653.1,
+    "medae_ms": 336.1
+   },
+   "0.25": {
+    "gross": 39,
+    "scored": 139,
+    "in_text": 139,
+    "missing": 0,
+    "w250": 73,
+    "w500": 87,
+    "w1000": 92,
+    "aae_ms": 5833.8,
+    "medae_ms": 160.8
+   },
+   "0.5": {
+    "gross": 39,
+    "scored": 139,
+    "in_text": 139,
+    "missing": 0,
+    "w250": 73,
+    "w500": 86,
+    "w1000": 92,
+    "aae_ms": 5835.4,
+    "medae_ms": 160.8
+   },
+   "1": {
+    "gross": 35,
+    "scored": 139,
+    "in_text": 139,
+    "missing": 0,
+    "w250": 77,
+    "w500": 90,
+    "w1000": 97,
+    "aae_ms": 5309.3,
+    "medae_ms": 122.9
+   }
+  },
+  "Color_Out_-_Falling_Star": {
+   "off": {
+    "gross": 26,
+    "scored": 122,
+    "in_text": 122,
+    "missing": 0,
+    "w250": 68,
+    "w500": 78,
+    "w1000": 87,
+    "aae_ms": 2446.1,
+    "medae_ms": 186.6
+   },
+   "0.25": {
+    "gross": 9,
+    "scored": 122,
+    "in_text": 122,
+    "missing": 0,
+    "w250": 98,
+    "w500": 105,
+    "w1000": 107,
+    "aae_ms": 737.5,
+    "medae_ms": 121.6
+   },
+   "0.5": {
+    "gross": 12,
+    "scored": 122,
+    "in_text": 122,
+    "missing": 0,
+    "w250": 94,
+    "w500": 101,
+    "w1000": 104,
+    "aae_ms": 1006.0,
+    "medae_ms": 135.1
+   },
+   "1": {
+    "gross": 12,
+    "scored": 122,
+    "in_text": 122,
+    "missing": 0,
+    "w250": 94,
+    "w500": 101,
+    "w1000": 105,
+    "aae_ms": 1259.3,
+    "medae_ms": 121.6
+   }
+  },
+  "Cortez_-_Feel__Stripped_": {
+   "off": {
+    "gross": 19,
+    "scored": 139,
+    "in_text": 139,
+    "missing": 0,
+    "w250": 93,
+    "w500": 98,
+    "w1000": 107,
+    "aae_ms": 923.6,
+    "medae_ms": 71.1
+   },
+   "0.25": {
+    "gross": 11,
+    "scored": 139,
+    "in_text": 139,
+    "missing": 0,
+    "w250": 122,
+    "w500": 123,
+    "w1000": 126,
+    "aae_ms": 622.8,
+    "medae_ms": 40.6
+   },
+   "0.5": {
+    "gross": 6,
+    "scored": 139,
+    "in_text": 139,
+    "missing": 0,
+    "w250": 127,
+    "w500": 128,
+    "w1000": 133,
+    "aae_ms": 395.4,
+    "medae_ms": 40.6
+   },
+   "1": {
+    "gross": 11,
+    "scored": 139,
+    "in_text": 139,
+    "missing": 0,
+    "w250": 123,
+    "w500": 123,
+    "w1000": 128,
+    "aae_ms": 375.9,
+    "medae_ms": 44.9
+   }
+  },
+  "Explosive_Ear_Candy_-_Like_The_Sun": {
+   "off": {
+    "gross": 15,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 121,
+    "w500": 124,
+    "w1000": 128,
+    "aae_ms": 784.7,
+    "medae_ms": 60.0
+   },
+   "0.25": {
+    "gross": 9,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 142,
+    "w500": 142,
+    "w1000": 142,
+    "aae_ms": 790.6,
+    "medae_ms": 57.2
+   },
+   "0.5": {
+    "gross": 9,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 141,
+    "w500": 141,
+    "w1000": 141,
+    "aae_ms": 815.7,
+    "medae_ms": 57.2
+   },
+   "1": {
+    "gross": 11,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 135,
+    "w500": 135,
+    "w1000": 137,
+    "aae_ms": 749.4,
+    "medae_ms": 57.2
+   }
+  },
+  "HILA_-_Give_Me_the_Same": {
+   "off": {
+    "gross": 29,
+    "scored": 191,
+    "in_text": 191,
+    "missing": 0,
+    "w250": 131,
+    "w500": 143,
+    "w1000": 152,
+    "aae_ms": 1917.4,
+    "medae_ms": 90.7
+   },
+   "0.25": {
+    "gross": 16,
+    "scored": 191,
+    "in_text": 191,
+    "missing": 0,
+    "w250": 153,
+    "w500": 162,
+    "w1000": 170,
+    "aae_ms": 450.5,
+    "medae_ms": 79.2
+   },
+   "0.5": {
+    "gross": 21,
+    "scored": 191,
+    "in_text": 191,
+    "missing": 0,
+    "w250": 149,
+    "w500": 158,
+    "w1000": 165,
+    "aae_ms": 724.3,
+    "medae_ms": 85.9
+   },
+   "1": {
+    "gross": 24,
+    "scored": 191,
+    "in_text": 191,
+    "missing": 0,
+    "w250": 145,
+    "w500": 154,
+    "w1000": 162,
+    "aae_ms": 974.5,
+    "medae_ms": 87.4
+   }
+  },
+  "JASON_MILLER_-_CROWD_PLEASER": {
+   "off": {
+    "gross": 7,
+    "scored": 271,
+    "in_text": 271,
+    "missing": 0,
+    "w250": 257,
+    "w500": 258,
+    "w1000": 260,
+    "aae_ms": 160.3,
+    "medae_ms": 38.2
+   },
+   "0.25": {
+    "gross": 0,
+    "scored": 271,
+    "in_text": 271,
+    "missing": 0,
+    "w250": 269,
+    "w500": 269,
+    "w1000": 270,
+    "aae_ms": 49.9,
+    "medae_ms": 37.9
+   },
+   "0.5": {
+    "gross": 0,
+    "scored": 271,
+    "in_text": 271,
+    "missing": 0,
+    "w250": 269,
+    "w500": 269,
+    "w1000": 270,
+    "aae_ms": 48.2,
+    "medae_ms": 37.9
+   },
+   "1": {
+    "gross": 0,
+    "scored": 271,
+    "in_text": 271,
+    "missing": 0,
+    "w250": 266,
+    "w500": 266,
+    "w1000": 270,
+    "aae_ms": 55.7,
+    "medae_ms": 37.9
+   }
+  },
+  "Kinematic_-_Peyote": {
+   "off": {
+    "gross": 2,
+    "scored": 46,
+    "in_text": 46,
+    "missing": 0,
+    "w250": 26,
+    "w500": 26,
+    "w1000": 38,
+    "aae_ms": 744.1,
+    "medae_ms": 116.2
+   },
+   "0.25": {
+    "gross": 3,
+    "scored": 46,
+    "in_text": 46,
+    "missing": 0,
+    "w250": 29,
+    "w500": 29,
+    "w1000": 43,
+    "aae_ms": 998.2,
+    "medae_ms": 116.2
+   },
+   "0.5": {
+    "gross": 2,
+    "scored": 46,
+    "in_text": 46,
+    "missing": 0,
+    "w250": 29,
+    "w500": 29,
+    "w1000": 44,
+    "aae_ms": 629.8,
+    "medae_ms": 116.2
+   },
+   "1": {
+    "gross": 3,
+    "scored": 46,
+    "in_text": 46,
+    "missing": 0,
+    "w250": 29,
+    "w500": 29,
+    "w1000": 43,
+    "aae_ms": 801.6,
+    "medae_ms": 116.2
+   }
+  },
+  "LUNABLIND_-_Vision__Radio_Edit_": {
+   "off": {
+    "gross": 33,
+    "scored": 174,
+    "in_text": 174,
+    "missing": 0,
+    "w250": 119,
+    "w500": 124,
+    "w1000": 132,
+    "aae_ms": 1286.4,
+    "medae_ms": 54.0
+   },
+   "0.25": {
+    "gross": 22,
+    "scored": 174,
+    "in_text": 174,
+    "missing": 0,
+    "w250": 146,
+    "w500": 148,
+    "w1000": 151,
+    "aae_ms": 1012.2,
+    "medae_ms": 50.0
+   },
+   "0.5": {
+    "gross": 25,
+    "scored": 174,
+    "in_text": 174,
+    "missing": 0,
+    "w250": 143,
+    "w500": 145,
+    "w1000": 148,
+    "aae_ms": 1234.2,
+    "medae_ms": 49.5
+   },
+   "1": {
+    "gross": 25,
+    "scored": 174,
+    "in_text": 174,
+    "missing": 0,
+    "w250": 143,
+    "w500": 143,
+    "w1000": 147,
+    "aae_ms": 1097.5,
+    "medae_ms": 49.6
+   }
+  },
+  "Lower_Loveday_-_Is_It_Right_": {
+   "off": {
+    "gross": 13,
+    "scored": 86,
+    "in_text": 86,
+    "missing": 0,
+    "w250": 65,
+    "w500": 65,
+    "w1000": 68,
+    "aae_ms": 872.3,
+    "medae_ms": 36.9
+   },
+   "0.25": {
+    "gross": 1,
+    "scored": 86,
+    "in_text": 86,
+    "missing": 0,
+    "w250": 72,
+    "w500": 79,
+    "w1000": 85,
+    "aae_ms": 169.3,
+    "medae_ms": 36.0
+   },
+   "0.5": {
+    "gross": 4,
+    "scored": 86,
+    "in_text": 86,
+    "missing": 0,
+    "w250": 70,
+    "w500": 77,
+    "w1000": 82,
+    "aae_ms": 392.6,
+    "medae_ms": 36.9
+   },
+   "1": {
+    "gross": 6,
+    "scored": 86,
+    "in_text": 86,
+    "missing": 0,
+    "w250": 69,
+    "w500": 75,
+    "w1000": 80,
+    "aae_ms": 604.7,
+    "medae_ms": 48.1
+   }
+  },
+  "Moon_I_Mean_-_Wrong_Concept": {
+   "off": {
+    "gross": 19,
+    "scored": 141,
+    "in_text": 141,
+    "missing": 0,
+    "w250": 110,
+    "w500": 116,
+    "w1000": 118,
+    "aae_ms": 956.6,
+    "medae_ms": 53.6
+   },
+   "0.25": {
+    "gross": 13,
+    "scored": 141,
+    "in_text": 141,
+    "missing": 0,
+    "w250": 123,
+    "w500": 123,
+    "w1000": 125,
+    "aae_ms": 596.5,
+    "medae_ms": 50.4
+   },
+   "0.5": {
+    "gross": 15,
+    "scored": 141,
+    "in_text": 141,
+    "missing": 0,
+    "w250": 122,
+    "w500": 122,
+    "w1000": 124,
+    "aae_ms": 627.9,
+    "medae_ms": 50.4
+   },
+   "1": {
+    "gross": 15,
+    "scored": 141,
+    "in_text": 141,
+    "missing": 0,
+    "w250": 122,
+    "w500": 122,
+    "w1000": 124,
+    "aae_ms": 688.5,
+    "medae_ms": 50.4
+   }
+  },
+  "Pure_Mids_-_The_Leader": {
+   "off": {
+    "gross": 22,
+    "scored": 66,
+    "in_text": 66,
+    "missing": 0,
+    "w250": 44,
+    "w500": 44,
+    "w1000": 44,
+    "aae_ms": 4545.5,
+    "medae_ms": 110.7
+   },
+   "0.25": {
+    "gross": 17,
+    "scored": 66,
+    "in_text": 66,
+    "missing": 0,
+    "w250": 44,
+    "w500": 44,
+    "w1000": 49,
+    "aae_ms": 4689.7,
+    "medae_ms": 120.2
+   },
+   "0.5": {
+    "gross": 17,
+    "scored": 66,
+    "in_text": 66,
+    "missing": 0,
+    "w250": 44,
+    "w500": 44,
+    "w1000": 49,
+    "aae_ms": 3959.1,
+    "medae_ms": 120.2
+   },
+   "1": {
+    "gross": 12,
+    "scored": 66,
+    "in_text": 66,
+    "missing": 0,
+    "w250": 43,
+    "w500": 43,
+    "w1000": 48,
+    "aae_ms": 3954.3,
+    "medae_ms": 120.2
+   }
+  },
+  "Quentin_Hannappe_-_Keep_On": {
+   "off": {
+    "gross": 23,
+    "scored": 89,
+    "in_text": 89,
+    "missing": 0,
+    "w250": 66,
+    "w500": 66,
+    "w1000": 66,
+    "aae_ms": 1752.8,
+    "medae_ms": 39.6
+   },
+   "0.25": {
+    "gross": 7,
+    "scored": 89,
+    "in_text": 89,
+    "missing": 0,
+    "w250": 82,
+    "w500": 82,
+    "w1000": 82,
+    "aae_ms": 336.1,
+    "medae_ms": 34.8
+   },
+   "0.5": {
+    "gross": 9,
+    "scored": 89,
+    "in_text": 89,
+    "missing": 0,
+    "w250": 80,
+    "w500": 80,
+    "w1000": 80,
+    "aae_ms": 393.7,
+    "medae_ms": 37.1
+   },
+   "1": {
+    "gross": 11,
+    "scored": 89,
+    "in_text": 89,
+    "missing": 0,
+    "w250": 78,
+    "w500": 78,
+    "w1000": 78,
+    "aae_ms": 588.9,
+    "medae_ms": 37.9
+   }
+  },
+  "Ridgway_-_Fire_Inside": {
+   "off": {
+    "gross": 25,
+    "scored": 165,
+    "in_text": 165,
+    "missing": 0,
+    "w250": 116,
+    "w500": 119,
+    "w1000": 126,
+    "aae_ms": 2291.5,
+    "medae_ms": 33.6
+   },
+   "0.25": {
+    "gross": 18,
+    "scored": 165,
+    "in_text": 165,
+    "missing": 0,
+    "w250": 126,
+    "w500": 139,
+    "w1000": 145,
+    "aae_ms": 1513.8,
+    "medae_ms": 35.6
+   },
+   "0.5": {
+    "gross": 23,
+    "scored": 165,
+    "in_text": 165,
+    "missing": 0,
+    "w250": 122,
+    "w500": 133,
+    "w1000": 139,
+    "aae_ms": 1880.3,
+    "medae_ms": 36.3
+   },
+   "1": {
+    "gross": 23,
+    "scored": 165,
+    "in_text": 165,
+    "missing": 0,
+    "w250": 120,
+    "w500": 129,
+    "w1000": 136,
+    "aae_ms": 1742.2,
+    "medae_ms": 36.3
+   }
+  },
+  "Rxbyn_-_Bad_Side": {
+   "off": {
+    "gross": 17,
+    "scored": 238,
+    "in_text": 238,
+    "missing": 0,
+    "w250": 182,
+    "w500": 195,
+    "w1000": 208,
+    "aae_ms": 527.4,
+    "medae_ms": 52.5
+   },
+   "0.25": {
+    "gross": 14,
+    "scored": 238,
+    "in_text": 238,
+    "missing": 0,
+    "w250": 202,
+    "w500": 211,
+    "w1000": 222,
+    "aae_ms": 301.1,
+    "medae_ms": 49.2
+   },
+   "0.5": {
+    "gross": 15,
+    "scored": 238,
+    "in_text": 238,
+    "missing": 0,
+    "w250": 197,
+    "w500": 208,
+    "w1000": 221,
+    "aae_ms": 314.7,
+    "medae_ms": 49.2
+   },
+   "1": {
+    "gross": 24,
+    "scored": 238,
+    "in_text": 238,
+    "missing": 0,
+    "w250": 184,
+    "w500": 195,
+    "w1000": 208,
+    "aae_ms": 696.3,
+    "medae_ms": 50.8
+   }
+  },
+  "Slingshot_Miracle_-_Whistler": {
+   "off": {
+    "gross": 10,
+    "scored": 102,
+    "in_text": 102,
+    "missing": 0,
+    "w250": 92,
+    "w500": 92,
+    "w1000": 92,
+    "aae_ms": 699.9,
+    "medae_ms": 38.5
+   },
+   "0.25": {
+    "gross": 5,
+    "scored": 102,
+    "in_text": 102,
+    "missing": 0,
+    "w250": 97,
+    "w500": 97,
+    "w1000": 97,
+    "aae_ms": 457.3,
+    "medae_ms": 38.5
+   },
+   "0.5": {
+    "gross": 7,
+    "scored": 102,
+    "in_text": 102,
+    "missing": 0,
+    "w250": 95,
+    "w500": 95,
+    "w1000": 95,
+    "aae_ms": 669.2,
+    "medae_ms": 38.8
+   },
+   "1": {
+    "gross": 7,
+    "scored": 102,
+    "in_text": 102,
+    "missing": 0,
+    "w250": 95,
+    "w500": 95,
+    "w1000": 95,
+    "aae_ms": 723.6,
+    "medae_ms": 38.8
+   }
+  },
+  "Songwriterz_-_Back_In_Time": {
+   "off": {
+    "gross": 16,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 128,
+    "w500": 133,
+    "w1000": 134,
+    "aae_ms": 808.5,
+    "medae_ms": 36.8
+   },
+   "0.25": {
+    "gross": 11,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 137,
+    "w500": 138,
+    "w1000": 141,
+    "aae_ms": 796.9,
+    "medae_ms": 35.3
+   },
+   "0.5": {
+    "gross": 11,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 137,
+    "w500": 138,
+    "w1000": 141,
+    "aae_ms": 1008.8,
+    "medae_ms": 35.3
+   },
+   "1": {
+    "gross": 12,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 138,
+    "w500": 139,
+    "w1000": 139,
+    "aae_ms": 1040.1,
+    "medae_ms": 35.3
+   }
+  },
+  "The.madpix.project_-_One_Way_Street": {
+   "off": {
+    "gross": 17,
+    "scored": 99,
+    "in_text": 99,
+    "missing": 0,
+    "w250": 61,
+    "w500": 70,
+    "w1000": 77,
+    "aae_ms": 2282.9,
+    "medae_ms": 96.4
+   },
+   "0.25": {
+    "gross": 12,
+    "scored": 99,
+    "in_text": 99,
+    "missing": 0,
+    "w250": 83,
+    "w500": 83,
+    "w1000": 86,
+    "aae_ms": 1584.6,
+    "medae_ms": 69.1
+   },
+   "0.5": {
+    "gross": 9,
+    "scored": 99,
+    "in_text": 99,
+    "missing": 0,
+    "w250": 86,
+    "w500": 86,
+    "w1000": 89,
+    "aae_ms": 1076.6,
+    "medae_ms": 57.7
+   },
+   "1": {
+    "gross": 15,
+    "scored": 99,
+    "in_text": 99,
+    "missing": 0,
+    "w250": 79,
+    "w500": 80,
+    "w1000": 82,
+    "aae_ms": 1908.8,
+    "medae_ms": 58.4
+   }
+  },
+  "The_Rinn_-_Voices__2017_Version_": {
+   "off": {
+    "gross": 16,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 120,
+    "w500": 123,
+    "w1000": 124,
+    "aae_ms": 1273.8,
+    "medae_ms": 69.5
+   },
+   "0.25": {
+    "gross": 5,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 128,
+    "w500": 136,
+    "w1000": 138,
+    "aae_ms": 683.8,
+    "medae_ms": 77.1
+   },
+   "0.5": {
+    "gross": 9,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 126,
+    "w500": 132,
+    "w1000": 133,
+    "aae_ms": 801.9,
+    "medae_ms": 79.4
+   },
+   "1": {
+    "gross": 14,
+    "scored": 152,
+    "in_text": 152,
+    "missing": 0,
+    "w250": 120,
+    "w500": 126,
+    "w1000": 127,
+    "aae_ms": 992.4,
+    "medae_ms": 79.4
+   }
+  },
+  "Tom_Orlando_-_The_One__feat._Tina_G_": {
+   "off": {
+    "gross": 27,
+    "scored": 238,
+    "in_text": 238,
+    "missing": 0,
+    "w250": 168,
+    "w500": 185,
+    "w1000": 198,
+    "aae_ms": 986.0,
+    "medae_ms": 46.0
+   },
+   "0.25": {
+    "gross": 20,
+    "scored": 238,
+    "in_text": 238,
+    "missing": 0,
+    "w250": 186,
+    "w500": 195,
+    "w1000": 202,
+    "aae_ms": 806.7,
+    "medae_ms": 44.3
+   },
+   "0.5": {
+    "gross": 21,
+    "scored": 238,
+    "in_text": 238,
+    "missing": 0,
+    "w250": 184,
+    "w500": 194,
+    "w1000": 201,
+    "aae_ms": 826.9,
+    "medae_ms": 44.3
+   },
+   "1": {
+    "gross": 22,
+    "scored": 238,
+    "in_text": 238,
+    "missing": 0,
+    "w250": 184,
+    "w500": 194,
+    "w1000": 202,
+    "aae_ms": 852.1,
+    "medae_ms": 44.7
+   }
+  },
+  "Wordsmith_-_The_Statement": {
+   "off": {
+    "gross": 21,
+    "scored": 102,
+    "in_text": 102,
+    "missing": 0,
+    "w250": 78,
+    "w500": 79,
+    "w1000": 80,
+    "aae_ms": 1216.5,
+    "medae_ms": 23.7
+   },
+   "0.25": {
+    "gross": 12,
+    "scored": 102,
+    "in_text": 102,
+    "missing": 0,
+    "w250": 85,
+    "w500": 89,
+    "w1000": 90,
+    "aae_ms": 582.8,
+    "medae_ms": 21.4
+   },
+   "0.5": {
+    "gross": 12,
+    "scored": 102,
+    "in_text": 102,
+    "missing": 0,
+    "w250": 87,
+    "w500": 87,
+    "w1000": 88,
+    "aae_ms": 670.5,
+    "medae_ms": 21.4
+   },
+   "1": {
+    "gross": 10,
+    "scored": 102,
+    "in_text": 102,
+    "missing": 0,
+    "w250": 85,
+    "w500": 87,
+    "w1000": 88,
+    "aae_ms": 663.2,
+    "medae_ms": 21.4
+   }
+  },
+  "never-be-alone": {
+   "off": {
+    "gross": 88,
+    "scored": 155,
+    "in_text": 155,
+    "missing": 0,
+    "w250": 37,
+    "w500": 39,
+    "w1000": 55,
+    "aae_ms": 6535.0,
+    "medae_ms": 3140.0
+   },
+   "0.25": {
+    "gross": 92,
+    "scored": 155,
+    "in_text": 155,
+    "missing": 0,
+    "w250": 42,
+    "w500": 45,
+    "w1000": 51,
+    "aae_ms": 5533.4,
+    "medae_ms": 3300.0
+   },
+   "0.5": {
+    "gross": 92,
+    "scored": 155,
+    "in_text": 155,
+    "missing": 0,
+    "w250": 45,
+    "w500": 45,
+    "w1000": 51,
+    "aae_ms": 6422.8,
+    "medae_ms": 3300.0
+   },
+   "1": {
+    "gross": 92,
+    "scored": 155,
+    "in_text": 155,
+    "missing": 0,
+    "w250": 45,
+    "w500": 45,
+    "w1000": 51,
+    "aae_ms": 6438.1,
+    "medae_ms": 3300.0
+   }
+  },
+  "believer": {
+   "off": {
+    "gross": 44,
+    "scored": 236,
+    "in_text": 240,
+    "missing": 4,
+    "w250": 27,
+    "w500": 109,
+    "w1000": 179,
+    "aae_ms": 1553.5,
+    "medae_ms": 524.0
+   },
+   "0.25": {
+    "gross": 22,
+    "scored": 236,
+    "in_text": 240,
+    "missing": 4,
+    "w250": 34,
+    "w500": 132,
+    "w1000": 203,
+    "aae_ms": 1000.2,
+    "medae_ms": 484.0
+   },
+   "0.5": {
+    "gross": 24,
+    "scored": 236,
+    "in_text": 240,
+    "missing": 4,
+    "w250": 33,
+    "w500": 136,
+    "w1000": 201,
+    "aae_ms": 1102.3,
+    "medae_ms": 470.0
+   },
+   "1": {
+    "gross": 32,
+    "scored": 236,
+    "in_text": 240,
+    "missing": 4,
+    "w250": 31,
+    "w500": 131,
+    "w1000": 192,
+    "aae_ms": 1258.8,
+    "medae_ms": 484.0
+   }
+  },
+  "shape-of-you": {
+   "off": {
+    "gross": 35,
+    "scored": 300,
+    "in_text": 304,
+    "missing": 4,
+    "w250": 224,
+    "w500": 238,
+    "w1000": 255,
+    "aae_ms": 817.4,
+    "medae_ms": 141.0
+   },
+   "0.25": {
+    "gross": 26,
+    "scored": 300,
+    "in_text": 304,
+    "missing": 4,
+    "w250": 256,
+    "w500": 268,
+    "w1000": 271,
+    "aae_ms": 614.9,
+    "medae_ms": 125.0
+   },
+   "0.5": {
+    "gross": 23,
+    "scored": 300,
+    "in_text": 304,
+    "missing": 4,
+    "w250": 259,
+    "w500": 270,
+    "w1000": 273,
+    "aae_ms": 565.4,
+    "medae_ms": 125.0
+   },
+   "1": {
+    "gross": 29,
+    "scored": 300,
+    "in_text": 304,
+    "missing": 4,
+    "w250": 252,
+    "w500": 263,
+    "w1000": 264,
+    "aae_ms": 658.1,
+    "medae_ms": 128.0
+   }
+  },
+  "hello": {
+   "off": {
+    "gross": 72,
+    "scored": 244,
+    "in_text": 244,
+    "missing": 0,
+    "w250": 113,
+    "w500": 135,
+    "w1000": 150,
+    "aae_ms": 3128.7,
+    "medae_ms": 332.0
+   },
+   "0.25": {
+    "gross": 71,
+    "scored": 244,
+    "in_text": 244,
+    "missing": 0,
+    "w250": 124,
+    "w500": 145,
+    "w1000": 159,
+    "aae_ms": 2594.1,
+    "medae_ms": 248.0
+   },
+   "0.5": {
+    "gross": 71,
+    "scored": 244,
+    "in_text": 244,
+    "missing": 0,
+    "w250": 122,
+    "w500": 144,
+    "w1000": 158,
+    "aae_ms": 2589.3,
+    "medae_ms": 271.0
+   },
+   "1": {
+    "gross": 72,
+    "scored": 244,
+    "in_text": 244,
+    "missing": 0,
+    "w250": 122,
+    "w500": 143,
+    "w1000": 156,
+    "aae_ms": 2961.8,
+    "medae_ms": 271.0
+   }
+  },
+  "rap-god": {
+   "off": {
+    "gross": 35,
+    "scored": 716,
+    "in_text": 716,
+    "missing": 0,
+    "w250": 443,
+    "w500": 540,
+    "w1000": 609,
+    "aae_ms": 490.6,
+    "medae_ms": 166.0
+   },
+   "0.25": {
+    "gross": 11,
+    "scored": 716,
+    "in_text": 716,
+    "missing": 0,
+    "w250": 470,
+    "w500": 579,
+    "w1000": 653,
+    "aae_ms": 325.7,
+    "medae_ms": 157.0
+   },
+   "0.5": {
+    "gross": 12,
+    "scored": 716,
+    "in_text": 716,
+    "missing": 0,
+    "w250": 473,
+    "w500": 577,
+    "w1000": 651,
+    "aae_ms": 330.4,
+    "medae_ms": 157.0
+   },
+   "1": {
+    "gross": 15,
+    "scored": 716,
+    "in_text": 716,
+    "missing": 0,
+    "w250": 457,
+    "w500": 565,
+    "w1000": 638,
+    "aae_ms": 360.8,
+    "medae_ms": 165.0
+   }
+  },
+  "bohemian-rhapsody": {
+   "off": {
+    "gross": 36,
+    "scored": 244,
+    "in_text": 244,
+    "missing": 0,
+    "w250": 130,
+    "w500": 168,
+    "w1000": 192,
+    "aae_ms": 1456.4,
+    "medae_ms": 230.0
+   },
+   "0.25": {
+    "gross": 32,
+    "scored": 244,
+    "in_text": 244,
+    "missing": 0,
+    "w250": 146,
+    "w500": 177,
+    "w1000": 199,
+    "aae_ms": 1288.8,
+    "medae_ms": 210.0
+   },
+   "0.5": {
+    "gross": 34,
+    "scored": 244,
+    "in_text": 244,
+    "missing": 0,
+    "w250": 137,
+    "w500": 171,
+    "w1000": 192,
+    "aae_ms": 1348.2,
+    "medae_ms": 230.0
+   },
+   "1": {
+    "gross": 33,
+    "scored": 244,
+    "in_text": 244,
+    "missing": 0,
+    "w250": 139,
+    "w500": 173,
+    "w1000": 194,
+    "aae_ms": 1336.0,
+    "medae_ms": 210.0
+   }
+  },
+  "feel-my-heart": {
+   "off": {
+    "gross": 23,
+    "scored": 122,
+    "in_text": 122,
+    "missing": 0,
+    "w250": 69,
+    "w500": 79,
+    "w1000": 91,
+    "aae_ms": 2200.0,
+    "medae_ms": 205.0
+   },
+   "0.25": {
+    "gross": 16,
+    "scored": 122,
+    "in_text": 122,
+    "missing": 0,
+    "w250": 78,
+    "w500": 93,
+    "w1000": 103,
+    "aae_ms": 1775.5,
+    "medae_ms": 196.0
+   },
+   "0.5": {
+    "gross": 18,
+    "scored": 122,
+    "in_text": 122,
+    "missing": 0,
+    "w250": 76,
+    "w500": 91,
+    "w1000": 100,
+    "aae_ms": 1896.8,
+    "medae_ms": 196.0
+   },
+   "1": {
+    "gross": 19,
+    "scored": 122,
+    "in_text": 122,
+    "missing": 0,
+    "w250": 73,
+    "w500": 88,
+    "w1000": 99,
+    "aae_ms": 1888.3,
+    "medae_ms": 202.0
+   }
+  },
+  "numb": {
+   "off": {
+    "gross": 18,
+    "scored": 115,
+    "in_text": 115,
+    "missing": 0,
+    "w250": 26,
+    "w500": 41,
+    "w1000": 86,
+    "aae_ms": 2826.8,
+    "medae_ms": 670.0
+   },
+   "0.25": {
+    "gross": 16,
+    "scored": 115,
+    "in_text": 115,
+    "missing": 0,
+    "w250": 22,
+    "w500": 41,
+    "w1000": 91,
+    "aae_ms": 2640.1,
+    "medae_ms": 670.0
+   },
+   "0.5": {
+    "gross": 15,
+    "scored": 115,
+    "in_text": 115,
+    "missing": 0,
+    "w250": 22,
+    "w500": 41,
+    "w1000": 91,
+    "aae_ms": 2468.5,
+    "medae_ms": 670.0
+   },
+   "1": {
+    "gross": 17,
+    "scored": 115,
+    "in_text": 115,
+    "missing": 0,
+    "w250": 20,
+    "w500": 41,
+    "w1000": 87,
+    "aae_ms": 2816.1,
+    "medae_ms": 710.0
+   }
+  },
+  "bad-guy": {
+   "off": {
+    "gross": 28,
+    "scored": 229,
+    "in_text": 260,
+    "missing": 31,
+    "w250": 5,
+    "w500": 14,
+    "w1000": 150,
+    "aae_ms": 1648.9,
+    "medae_ms": 884.0
+   },
+   "0.25": {
+    "gross": 13,
+    "scored": 229,
+    "in_text": 260,
+    "missing": 31,
+    "w250": 2,
+    "w500": 9,
+    "w1000": 146,
+    "aae_ms": 1279.1,
+    "medae_ms": 904.0
+   },
+   "0.5": {
+    "gross": 19,
+    "scored": 229,
+    "in_text": 260,
+    "missing": 31,
+    "w250": 3,
+    "w500": 10,
+    "w1000": 146,
+    "aae_ms": 1294.8,
+    "medae_ms": 904.0
+   },
+   "1": {
+    "gross": 23,
+    "scored": 229,
+    "in_text": 260,
+    "missing": 31,
+    "w250": 3,
+    "w500": 10,
+    "w1000": 144,
+    "aae_ms": 1401.1,
+    "medae_ms": 904.0
+   }
+  },
+  "tfr-flyaway": {
+   "off": {
+    "gross": 58,
+    "scored": 247,
+    "in_text": 247,
+    "missing": 0,
+    "w250": 158,
+    "w500": 173,
+    "w1000": 181,
+    "aae_ms": 2184.3,
+    "medae_ms": 130.0
+   },
+   "0.25": {
+    "gross": 34,
+    "scored": 247,
+    "in_text": 247,
+    "missing": 0,
+    "w250": 181,
+    "w500": 201,
+    "w1000": 205,
+    "aae_ms": 1229.5,
+    "medae_ms": 110.0
+   },
+   "0.5": {
+    "gross": 42,
+    "scored": 247,
+    "in_text": 247,
+    "missing": 0,
+    "w250": 176,
+    "w500": 195,
+    "w1000": 197,
+    "aae_ms": 1481.7,
+    "medae_ms": 110.0
+   },
+   "1": {
+    "gross": 48,
+    "scored": 247,
+    "in_text": 247,
+    "missing": 0,
+    "w250": 171,
+    "w500": 189,
+    "w1000": 192,
+    "aae_ms": 1524.8,
+    "medae_ms": 110.0
+   }
+  },
+  "tfr-mayday": {
+   "off": {
+    "gross": 36,
+    "scored": 172,
+    "in_text": 172,
+    "missing": 0,
+    "w250": 100,
+    "w500": 109,
+    "w1000": 125,
+    "aae_ms": 2131.3,
+    "medae_ms": 190.0
+   },
+   "0.25": {
+    "gross": 27,
+    "scored": 172,
+    "in_text": 172,
+    "missing": 0,
+    "w250": 118,
+    "w500": 126,
+    "w1000": 140,
+    "aae_ms": 1236.0,
+    "medae_ms": 110.0
+   },
+   "0.5": {
+    "gross": 30,
+    "scored": 172,
+    "in_text": 172,
+    "missing": 0,
+    "w250": 115,
+    "w500": 125,
+    "w1000": 138,
+    "aae_ms": 1461.0,
+    "medae_ms": 130.0
+   },
+   "1": {
+    "gross": 30,
+    "scored": 172,
+    "in_text": 172,
+    "missing": 0,
+    "w250": 114,
+    "w500": 124,
+    "w1000": 137,
+    "aae_ms": 1534.0,
+    "medae_ms": 130.0
+   }
+  },
+  "tfr-chosen": {
+   "off": {
+    "gross": 42,
+    "scored": 115,
+    "in_text": 122,
+    "missing": 7,
+    "w250": 26,
+    "w500": 49,
+    "w1000": 71,
+    "aae_ms": 6325.0,
+    "medae_ms": 610.0
+   },
+   "0.25": {
+    "gross": 41,
+    "scored": 115,
+    "in_text": 122,
+    "missing": 7,
+    "w250": 25,
+    "w500": 51,
+    "w1000": 74,
+    "aae_ms": 5376.5,
+    "medae_ms": 610.0
+   },
+   "0.5": {
+    "gross": 42,
+    "scored": 115,
+    "in_text": 122,
+    "missing": 7,
+    "w250": 25,
+    "w500": 51,
+    "w1000": 73,
+    "aae_ms": 5620.3,
+    "medae_ms": 610.0
+   },
+   "1": {
+    "gross": 42,
+    "scored": 115,
+    "in_text": 122,
+    "missing": 7,
+    "w250": 27,
+    "w500": 53,
+    "w1000": 73,
+    "aae_ms": 5692.6,
+    "medae_ms": 610.0
+   }
+  }
+ },
+ "by_song_mode_gross": {
+  "Avercage_-_Embers": {
+   "blind": {
+    "off": 6,
+    "0.25": 4,
+    "0.5": 4,
+    "1": 4
+   },
+   "drop20": {
+    "off": 4,
+    "0.25": 9,
+    "0.5": 9,
+    "1": 6
+   },
+   "drop50": {
+    "off": 11,
+    "0.25": 11,
+    "0.5": 11,
+    "1": 10
+   },
+   "extraverse": {
+    "off": 15,
+    "0.25": 15,
+    "0.5": 15,
+    "1": 15
+   }
+  },
+  "Color_Out_-_Falling_Star": {
+   "blind": {
+    "off": 4,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   },
+   "drop20": {
+    "off": 6,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 3
+   },
+   "drop50": {
+    "off": 12,
+    "0.25": 4,
+    "0.5": 7,
+    "1": 7
+   },
+   "extraverse": {
+    "off": 4,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   }
+  },
+  "Cortez_-_Feel__Stripped_": {
+   "blind": {
+    "off": 3,
+    "0.25": 2,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 6,
+    "0.25": 3,
+    "0.5": 2,
+    "1": 4
+   },
+   "drop50": {
+    "off": 7,
+    "0.25": 4,
+    "0.5": 4,
+    "1": 7
+   },
+   "extraverse": {
+    "off": 3,
+    "0.25": 2,
+    "0.5": 0,
+    "1": 0
+   }
+  },
+  "Explosive_Ear_Candy_-_Like_The_Sun": {
+   "blind": {
+    "off": 1,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   },
+   "drop20": {
+    "off": 4,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 4
+   },
+   "drop50": {
+    "off": 9,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 4
+   },
+   "extraverse": {
+    "off": 1,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   }
+  },
+  "HILA_-_Give_Me_the_Same": {
+   "blind": {
+    "off": 1,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   },
+   "drop20": {
+    "off": 9,
+    "0.25": 6,
+    "0.5": 8,
+    "1": 8
+   },
+   "drop50": {
+    "off": 18,
+    "0.25": 7,
+    "0.5": 10,
+    "1": 13
+   },
+   "extraverse": {
+    "off": 1,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   }
+  },
+  "JASON_MILLER_-_CROWD_PLEASER": {
+   "blind": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 2,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop50": {
+    "off": 5,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "extraverse": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   }
+  },
+  "Kinematic_-_Peyote": {
+   "blind": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop50": {
+    "off": 2,
+    "0.25": 3,
+    "0.5": 2,
+    "1": 3
+   },
+   "extraverse": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   }
+  },
+  "LUNABLIND_-_Vision__Radio_Edit_": {
+   "blind": {
+    "off": 5,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   },
+   "drop20": {
+    "off": 9,
+    "0.25": 6,
+    "0.5": 7,
+    "1": 8
+   },
+   "drop50": {
+    "off": 12,
+    "0.25": 9,
+    "0.5": 11,
+    "1": 10
+   },
+   "extraverse": {
+    "off": 7,
+    "0.25": 6,
+    "0.5": 6,
+    "1": 6
+   }
+  },
+  "Lower_Loveday_-_Is_It_Right_": {
+   "blind": {
+    "off": 1,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 4,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 1
+   },
+   "drop50": {
+    "off": 7,
+    "0.25": 1,
+    "0.5": 4,
+    "1": 5
+   },
+   "extraverse": {
+    "off": 1,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   }
+  },
+  "Moon_I_Mean_-_Wrong_Concept": {
+   "blind": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 5,
+    "0.25": 2,
+    "0.5": 3,
+    "1": 3
+   },
+   "drop50": {
+    "off": 12,
+    "0.25": 9,
+    "0.5": 10,
+    "1": 10
+   },
+   "extraverse": {
+    "off": 2,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   }
+  },
+  "Pure_Mids_-_The_Leader": {
+   "blind": {
+    "off": 7,
+    "0.25": 5,
+    "0.5": 5,
+    "1": 3
+   },
+   "drop20": {
+    "off": 5,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 3
+   },
+   "drop50": {
+    "off": 4,
+    "0.25": 4,
+    "0.5": 4,
+    "1": 4
+   },
+   "extraverse": {
+    "off": 6,
+    "0.25": 5,
+    "0.5": 5,
+    "1": 2
+   }
+  },
+  "Quentin_Hannappe_-_Keep_On": {
+   "blind": {
+    "off": 4,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   },
+   "drop20": {
+    "off": 7,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 3
+   },
+   "drop50": {
+    "off": 8,
+    "0.25": 2,
+    "0.5": 4,
+    "1": 6
+   },
+   "extraverse": {
+    "off": 4,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   }
+  },
+  "Ridgway_-_Fire_Inside": {
+   "blind": {
+    "off": 3,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 3
+   },
+   "drop20": {
+    "off": 10,
+    "0.25": 5,
+    "0.5": 7,
+    "1": 8
+   },
+   "drop50": {
+    "off": 9,
+    "0.25": 7,
+    "0.5": 10,
+    "1": 9
+   },
+   "extraverse": {
+    "off": 3,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 3
+   }
+  },
+  "Rxbyn_-_Bad_Side": {
+   "blind": {
+    "off": 1,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 3
+   },
+   "drop20": {
+    "off": 5,
+    "0.25": 3,
+    "0.5": 4,
+    "1": 8
+   },
+   "drop50": {
+    "off": 10,
+    "0.25": 5,
+    "0.5": 5,
+    "1": 10
+   },
+   "extraverse": {
+    "off": 1,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 3
+   }
+  },
+  "Slingshot_Miracle_-_Whistler": {
+   "blind": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 2,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   },
+   "drop50": {
+    "off": 4,
+    "0.25": 2,
+    "0.5": 4,
+    "1": 4
+   },
+   "extraverse": {
+    "off": 4,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   }
+  },
+  "Songwriterz_-_Back_In_Time": {
+   "blind": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 5,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 2
+   },
+   "drop50": {
+    "off": 6,
+    "0.25": 6,
+    "0.5": 6,
+    "1": 6
+   },
+   "extraverse": {
+    "off": 5,
+    "0.25": 4,
+    "0.5": 4,
+    "1": 4
+   }
+  },
+  "The.madpix.project_-_One_Way_Street": {
+   "blind": {
+    "off": 1,
+    "0.25": 3,
+    "0.5": 1,
+    "1": 1
+   },
+   "drop20": {
+    "off": 4,
+    "0.25": 4,
+    "0.5": 3,
+    "1": 3
+   },
+   "drop50": {
+    "off": 10,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 9
+   },
+   "extraverse": {
+    "off": 2,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   }
+  },
+  "The_Rinn_-_Voices__2017_Version_": {
+   "blind": {
+    "off": 2,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 4,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 4
+   },
+   "drop50": {
+    "off": 9,
+    "0.25": 2,
+    "0.5": 6,
+    "1": 10
+   },
+   "extraverse": {
+    "off": 1,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   }
+  },
+  "Tom_Orlando_-_The_One__feat._Tina_G_": {
+   "blind": {
+    "off": 2,
+    "0.25": 4,
+    "0.5": 4,
+    "1": 4
+   },
+   "drop20": {
+    "off": 14,
+    "0.25": 9,
+    "0.5": 10,
+    "1": 11
+   },
+   "drop50": {
+    "off": 11,
+    "0.25": 6,
+    "0.5": 6,
+    "1": 6
+   },
+   "extraverse": {
+    "off": 0,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   }
+  },
+  "Wordsmith_-_The_Statement": {
+   "blind": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 9,
+    "0.25": 2,
+    "0.5": 3,
+    "1": 3
+   },
+   "drop50": {
+    "off": 8,
+    "0.25": 6,
+    "0.5": 5,
+    "1": 3
+   },
+   "extraverse": {
+    "off": 4,
+    "0.25": 4,
+    "0.5": 4,
+    "1": 4
+   }
+  },
+  "never-be-alone": {
+   "blind": {
+    "off": 24,
+    "0.25": 27,
+    "0.5": 27,
+    "1": 27
+   },
+   "drop20": {
+    "off": 20,
+    "0.25": 21,
+    "0.5": 21,
+    "1": 21
+   },
+   "drop50": {
+    "off": 21,
+    "0.25": 21,
+    "0.5": 21,
+    "1": 21
+   },
+   "extraverse": {
+    "off": 23,
+    "0.25": 23,
+    "0.5": 23,
+    "1": 23
+   }
+  },
+  "believer": {
+   "blind": {
+    "off": 2,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 1
+   },
+   "drop20": {
+    "off": 14,
+    "0.25": 6,
+    "0.5": 6,
+    "1": 10
+   },
+   "drop50": {
+    "off": 19,
+    "0.25": 9,
+    "0.5": 11,
+    "1": 13
+   },
+   "extraverse": {
+    "off": 9,
+    "0.25": 7,
+    "0.5": 7,
+    "1": 8
+   }
+  },
+  "shape-of-you": {
+   "blind": {
+    "off": 1,
+    "0.25": 1,
+    "0.5": 1,
+    "1": 1
+   },
+   "drop20": {
+    "off": 12,
+    "0.25": 13,
+    "0.5": 10,
+    "1": 10
+   },
+   "drop50": {
+    "off": 20,
+    "0.25": 10,
+    "0.5": 10,
+    "1": 16
+   },
+   "extraverse": {
+    "off": 2,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   }
+  },
+  "hello": {
+   "blind": {
+    "off": 16,
+    "0.25": 18,
+    "0.5": 18,
+    "1": 18
+   },
+   "drop20": {
+    "off": 25,
+    "0.25": 24,
+    "0.5": 25,
+    "1": 24
+   },
+   "drop50": {
+    "off": 15,
+    "0.25": 11,
+    "0.5": 10,
+    "1": 12
+   },
+   "extraverse": {
+    "off": 16,
+    "0.25": 18,
+    "0.5": 18,
+    "1": 18
+   }
+  },
+  "rap-god": {
+   "blind": {
+    "off": 2,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   },
+   "drop20": {
+    "off": 6,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 3
+   },
+   "drop50": {
+    "off": 23,
+    "0.25": 2,
+    "0.5": 3,
+    "1": 5
+   },
+   "extraverse": {
+    "off": 4,
+    "0.25": 5,
+    "0.5": 5,
+    "1": 5
+   }
+  },
+  "bohemian-rhapsody": {
+   "blind": {
+    "off": 5,
+    "0.25": 6,
+    "0.5": 5,
+    "1": 5
+   },
+   "drop20": {
+    "off": 9,
+    "0.25": 7,
+    "0.5": 6,
+    "1": 5
+   },
+   "drop50": {
+    "off": 15,
+    "0.25": 11,
+    "0.5": 16,
+    "1": 16
+   },
+   "extraverse": {
+    "off": 7,
+    "0.25": 8,
+    "0.5": 7,
+    "1": 7
+   }
+  },
+  "feel-my-heart": {
+   "blind": {
+    "off": 3,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   },
+   "drop20": {
+    "off": 9,
+    "0.25": 5,
+    "0.5": 7,
+    "1": 8
+   },
+   "drop50": {
+    "off": 9,
+    "0.25": 7,
+    "0.5": 7,
+    "1": 7
+   },
+   "extraverse": {
+    "off": 2,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   }
+  },
+  "numb": {
+   "blind": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 2,
+    "0.25": 3,
+    "0.5": 2,
+    "1": 2
+   },
+   "drop50": {
+    "off": 14,
+    "0.25": 10,
+    "0.5": 10,
+    "1": 13
+   },
+   "extraverse": {
+    "off": 2,
+    "0.25": 3,
+    "0.5": 3,
+    "1": 2
+   }
+  },
+  "bad-guy": {
+   "blind": {
+    "off": 5,
+    "0.25": 3,
+    "0.5": 4,
+    "1": 4
+   },
+   "drop20": {
+    "off": 5,
+    "0.25": 3,
+    "0.5": 4,
+    "1": 6
+   },
+   "drop50": {
+    "off": 12,
+    "0.25": 3,
+    "0.5": 6,
+    "1": 8
+   },
+   "extraverse": {
+    "off": 6,
+    "0.25": 4,
+    "0.5": 5,
+    "1": 5
+   }
+  },
+  "tfr-flyaway": {
+   "blind": {
+    "off": 0,
+    "0.25": 0,
+    "0.5": 0,
+    "1": 0
+   },
+   "drop20": {
+    "off": 24,
+    "0.25": 9,
+    "0.5": 13,
+    "1": 17
+   },
+   "drop50": {
+    "off": 28,
+    "0.25": 19,
+    "0.5": 23,
+    "1": 25
+   },
+   "extraverse": {
+    "off": 6,
+    "0.25": 6,
+    "0.5": 6,
+    "1": 6
+   }
+  },
+  "tfr-mayday": {
+   "blind": {
+    "off": 2,
+    "0.25": 2,
+    "0.5": 2,
+    "1": 2
+   },
+   "drop20": {
+    "off": 13,
+    "0.25": 12,
+    "0.5": 12,
+    "1": 12
+   },
+   "drop50": {
+    "off": 11,
+    "0.25": 9,
+    "0.5": 12,
+    "1": 12
+   },
+   "extraverse": {
+    "off": 10,
+    "0.25": 4,
+    "0.5": 4,
+    "1": 4
+   }
+  },
+  "tfr-chosen": {
+   "blind": {
+    "off": 12,
+    "0.25": 12,
+    "0.5": 12,
+    "1": 12
+   },
+   "drop20": {
+    "off": 9,
+    "0.25": 10,
+    "0.5": 10,
+    "1": 10
+   },
+   "drop50": {
+    "off": 9,
+    "0.25": 7,
+    "0.5": 8,
+    "1": 8
+   },
+   "extraverse": {
+    "off": 12,
+    "0.25": 12,
+    "0.5": 12,
+    "1": 12
+   }
+  }
+ }
+}

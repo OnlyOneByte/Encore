@@ -446,6 +446,16 @@ def order_pool(tiers: list[Tier], corroborated: list[bool] | None = None) -> lis
     SDH text is still tried first on exactly the song the review measured. What separates two texts that
     both look right is the audio, i.e. the ranking immediately below that is NOT built.
 
+    NOW MEASURED END TO END, and the reading is exactly that (W7, `scripts/pool_gate.py` /
+    `results/w7-pool.json`: 12 YouTube songs, a real four-text pool through `run_align`, this order against
+    the pre-M13 arrival order). THE CHOSEN TEXT MOVES ON 0 OF 12 SONGS, in every pool measured. What the
+    tie-break does buy is ATTEMPTS: where a clean sheet is corroborated and the authored track agrees with
+    nothing, the ranked walk spends 12 attempts and 0 refusals against the arrival walk's 36 and 24 — the
+    same published document, two fewer whole attempts a song, each an emission pass, the repair ladder and
+    both gates. M13's ACCURACY half is `align_steps.fetch_provider_lyrics`' "every provider is a candidate"
+    (+12 ±500 lines of 840, and a `high`-confidence sheet instead of YouTube's machine track, 12 of 12
+    songs), not this one.
+
     WHAT THIS IS NOT, and the gap is deliberate. The review's M13 asks for the pool to be ranked by
     LEXICAL LIFT as well — the text's forced-path score against the audio, which W3 calibrated and which is
     what makes "prefer the better text" safe rather than a guess. That ranking is NOT here: a lift needs an
@@ -453,6 +463,14 @@ def order_pool(tiers: list[Tier], corroborated: list[bool] | None = None) -> lis
     either pay an extra model pass per song before the first attempt or need an emissions cache in the step
     layer. Both are a wave with its own measurement. Corroboration is the half that costs nothing, and the
     lift still runs where it always did — as the per-attempt GATE that refuses a wrong text outright.
+
+    AND THAT GATE IS WHY THE MISSING RANKING IS NOT A SAFETY HOLE, now with the populations measured through
+    the whole job (W7 pool gate, 228 jobs): the 132 attempts on a wrong text read a lift of −0.09 … +0.12
+    nats/letter (median −0.00) against the 112 right-text attempts' 2.42 … 5.50 (median 3.49), and NO job
+    published a text with no truth line in any arm or either sync mode. What the lift ranking would buy is
+    accuracy, not protection — and most of it in `syncMode=lines`, where the published document IS the chosen
+    text's own claimed starts: preferring a clean sheet to an AGREEING SDH track (one this order cannot
+    demote) is worth 0.8 pt of ±500 in `forced` and 20.8 pt in `lines` on the 12-song pool corpus.
     """
     order = {Tier.CANDIDATE: 0, Tier.ASR: 1, Tier.MACHINE: 2}
     backed = corroborated or [False] * len(tiers)

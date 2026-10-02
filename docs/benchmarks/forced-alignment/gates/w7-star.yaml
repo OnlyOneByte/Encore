@@ -1,0 +1,139 @@
+# W7 §3.10 / D3 — THE STAR, phase A: one filler target before every line over a matrix one column wider
+# (`ENCORE_ALIGN_EXPERIMENTS=star`, `ml.starred` + `generate.star_of`), against the same code without it.
+#
+# WHAT THE ARM CLAIMS, and it is a claim about ONE decode: a forced CTC path must label every frame, so audio
+# the text does not cover — an intro, an instrumental break, the verse a partial sheet dropped — is charged to
+# whichever of the text's own letters are least implausible there, and the lines around it are dragged. A star
+# is somewhere cheap for the path to wait instead. The arm is the GLOBAL decode's token stream and nothing
+# else: the lexical gate, the never-sung rule's mix witness and every repair window read the UNSTARRED matrix
+# (`host.config.ALIGN_EXPERIMENTS`, `star`; `domain/lyrics/generate.generate`'s docstring for the windows).
+#
+# ── WHAT IS ALREADY MEASURED, so this file is read knowing what to look for ──────────────────────────────
+# THE DECODE LEVEL IS DONE, off-bench, on matrices the emission store already held (`_runs/w7-star/`:
+# `star_sweep.py` + `star_report.py`, `sweep.json` / `fine.json` on HuBERT-L and `base.json` on the base
+# bundle, 98 s a pass). 32 songs x 4 text modes x 15 values of P, blind global decode, line starts paired to
+# truth BY INPUT INDEX, scored over the FULL SERVED TEXT. At the shipped P = 1.0, HuBERT-L:
+#
+#     mode         gross          ±500/text         AAE ms
+#     full sheet   77 ->  67      80.51 -> 82.90    594 ->  588
+#     drop20      197 -> 140      69.83 -> 76.13   1109 ->  932
+#     drop50      323 -> 232      48.34 -> 60.60   3669 -> 2678
+#     extraverse  116 -> 112      78.30 -> 80.28    688 ->  688
+#     pooled      713 -> 551      72.40 -> 77.11   1210 -> 1016
+#
+# and 2 of the 32 songs get WORSE pooled (never-be-alone +2 — the review's own objection reproducing — and
+# tfr-mayday +2), 13 of the 128 cells regress. P itself is FITTED OUT OF SAMPLE and the fit's whole shape is
+# in `ml.STAR_PENALTY_NATS`, including the finding that the optimum MOVES WITH HOW MUCH OF THE SHEET IS
+# MISSING (leave-one-song-out picks P≈3 fitted on full sheets and P≈0.1 fitted on the drop modes). The
+# whole grid is committed as `results/w7-star-sweep.json` (+ `-base.json`), so a gate reading here can be
+# checked against the decode it is supposed to follow from without re-running anything.
+#
+# ONE REAL SONG IS ALREADY THROUGH THE LADDER (`_runs/w7-star-spot-{off,on}`, `--level time_text`, `hello`,
+# both cells on code `5d49572b6d853804`; n=1, not a gate): truth gross 0 = 0, ±500 100 = 100, and the arm
+# RECOVERS the 2 lines the control dropped (±500/text 97.30 -> 100.0); drop50 gross 12 -> 0, ±500 57.14 ->
+# 97.14. `high` lines held (50 = 50 truth, 18 -> 21 drop50), so the margin did not collapse on the starred
+# trellis. If the corpus run contradicts this song, THAT is the finding worth writing down.
+#
+# WHY THAT DOES NOT DECIDE IT. §3.10's reject-if is about the path that publishes, and the ladder already
+# repairs most of what the star fixes above: W5 reads drop50 at 82 gross through `run_align` on HuBERT-L where
+# this blind decode's control is 323. So the honest prior for the E2E effect is the review's own — 0 to −3
+# gross lines — and the risk is the other direction: a star absorbing frames a claim-repaired line needed.
+#
+# ── THE RUNS. ONE AT A TIME (parallel corpus runs thrash: ~75 s against 3.4 s per song-mode) ──────────────
+# Cheap first, then the one that decides. Both cells of each pair must name the SAME bundle: an absent
+# `--model` resolves to HuBERT-Large since W5, which is what these numbers are on.
+#
+#   # A — the DECODE axis, arm against control, reproducible against `_runs/w7-star/sweep.json` above
+#   cd worker && nohup .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level generate --modes truth,drop20,drop50,extraverse --model HUBERT_ASR_LARGE \
+#       --tag w7-star-off-generate > /tmp/star-off-gen.log 2>&1 &
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=star nohup .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level generate --modes truth,drop20,drop50,extraverse --model HUBERT_ASR_LARGE \
+#       --tag w7-star-on-generate --compare $ENCORE_BENCH_ROOT/_runs/w7-star-off-generate \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w7-star.yaml > /tmp/star-on-gen.log 2>&1 &
+#   # B — the E2E axis, which is the one §3.10's reject-if is written over. `--level run_align` is the whole
+#   #     job (policy, retimes, ASR fallback), and the W5 truth row this must not cost is a `run_align` row.
+#   #     ENCORE_ALIGN_EXPERIMENTS=star e2e.py --level run_align --modes all,wrongtext+ownclock \
+#   #         --model HUBERT_ASR_LARGE --tag w7-star-run_align \
+#   #         --compare <the W5/W6 run_align control on this tree> --gates <this file>
+#   (offline: e2e.py --summarize <run>/rows.jsonl --compare … --gates …)
+#
+# COST NOTE, and it is not the decode: `align_experiments` is part of the emission cache key
+# (`e2e.emitter_fingerprint`), so the arm's cells recompute every matrix cold — the arm does not touch the
+# model pass, so they are identical to the control's, and the key is conservative in the safe direction.
+# W7's language work moved `adapters/ml.py` before this arm did, so the CONTROL cells are cold too: nothing
+# recorded before 2026-10-01 is at this tree's fingerprint (3 entries in the store were, when this was
+# written). Both cells of a pair must be re-run on ONE tree; a recorded row from another wave is not a control.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py for the language.
+# `base.` is the arm-off cell of the SAME bundle and the SAME tree.
+
+# ── §3.10's OWN REJECT-IF, verbatim: "E2E with claims gains a gross line on any YouTube song, or loses more
+# ── than 0.5 pt at ±500" ─────────────────────────────────────────────────────────────────────────────────
+# Per song AND per mode (`song.` with no mode ranges over every mode), YouTube only, as §3.10 writes it.
+# `missing_up` rides along because `gross` counts published lines only: a song that refuses instead of
+# publishing its 2 gross lines reads FEWER gross, and `missing` is what catches that trade.
+no-youtube-song-gains-a-gross-line: count(youtube.song.gross_up + youtube.song.missing_up) == 0
+# ±500 PER MODE, which is stricter than §3.10's pooled wording and is the only thing the language can say: a
+# pooled number needs a mode (`all` is a GROUP), and a cross-mode ±500 would let a 2 pt loss on a partial sheet
+# hide behind a gain somewhere else. Both denominators, because a star that refuses a song it is bad at would
+# IMPROVE `pm500` (published lines only) while `text_pm500` (every truth line the text asked for) catches it.
+pm500-not-down-truth: truth.pm500 >= base.truth.pm500 - 0.5
+pm500-not-down-jit: jit.pm500 >= base.jit.pm500 - 0.5
+pm500-not-down-blind: blind.pm500 >= base.blind.pm500 - 0.5
+pm500-not-down-drop20: drop20.pm500 >= base.drop20.pm500 - 0.5
+pm500-not-down-drop50: drop50.pm500 >= base.drop50.pm500 - 0.5
+pm500-not-down-extraverse: extraverse.pm500 >= base.extraverse.pm500 - 0.5
+pm500-not-down-headers: headers.pm500 >= base.headers.pm500 - 0.5
+pm500-not-down-credit: credit.pm500 >= base.credit.pm500 - 0.5
+pm500-not-down-off15: off15.pm500 >= base.off15.pm500 - 0.5
+pm500-not-down-tempo102: tempo102.pm500 >= base.tempo102.pm500 - 0.5
+text-pm500-not-down-truth: truth.text_pm500 >= base.truth.text_pm500 - 0.5
+text-pm500-not-down-blind: blind.text_pm500 >= base.blind.text_pm500 - 0.5
+text-pm500-not-down-drop20: drop20.text_pm500 >= base.drop20.text_pm500 - 0.5
+text-pm500-not-down-drop50: drop50.text_pm500 >= base.drop50.text_pm500 - 0.5
+text-pm500-not-down-extraverse: extraverse.text_pm500 >= base.extraverse.text_pm500 - 0.5
+
+# ── AND THE UNPERTURBED TRUTH ROW, which PLAN-alignment-v3 says nothing in this wave may cost (the W5
+# ── reading: run_align gross 0, ±500 90.45, AAE 71.1 ms, 32 of 32 songs at zero gross) ───────────────────
+truth-gross-zero: truth.gross == 0
+truth-zero-gross-songs-not-down: truth.zero_gross_songs >= base.truth.zero_gross_songs
+truth-text-pm500-not-down: truth.text_pm500 >= base.truth.text_pm500 - 0.3
+truth-no-song-loses-lines: count(truth.song.gross_up + truth.song.missing_up) == 0
+# A star that absorbs frames a right text needed would show up as a REFUSAL or an unscored line first.
+# ACROSS EVERY MODE, as a per-song reduction: `sum(song.X)` is the only cross-mode total the language has
+# (a pooled address needs one mode), and `missing` / `gross` / `high_gross` are defined for every song in
+# every mode — a refused song has a gross count of 0 and a missing count of all its lines, so neither
+# reduction can silently skip one.
+missing-not-up: sum(song.missing) <= sum(base.song.missing)
+refused-not-up: count(song.refused_up) == 0
+
+# ── THE COST THE DECODE SWEEP ALREADY FOUND, so the E2E read cannot bury it ──────────────────────────────
+# AAE is where a star pays for its gross lines (an already-wrong line swings further) and the harness has no
+# pooled AAE gate to write: `word_pco300` is its robust stand-in — every truth word the text asked for, within
+# 300 ms — and a star that moved onsets to buy line starts shows up there first. The decode sweep reads AAE
+# 1210 -> 1016 ms pooled and 594 -> 588 on the full sheet at P = 1.0, so flat is the expectation.
+truth-word-pco300-not-down: truth.word_pco300 >= base.truth.word_pco300 - 0.5
+truth-jamendo-word-pm300-not-down: truth.jamendo.word_pm300 >= base.truth.jamendo.word_pm300 - 0.5
+blind-jamendo-word-pm300-not-down: blind.jamendo.word_pm300 >= base.blind.jamendo.word_pm300 - 0.5
+no-jamendo-song-worse-at-word-pm300: min_song_delta(truth.jamendo.word_pm300) >= -1.0
+# The gates read the UNSTARRED matrix by construction, so the wrong-text verdict must be BYTE-identical. A
+# difference here is a wiring bug, not a trade-off (`tests/test_star.py` pins the widths the step hands out).
+wrongtext-pass-unchanged: wrongtext.wrongtext_pass == base.wrongtext.wrongtext_pass
+wrongtext-refused-unchanged: wrongtext.refused == base.wrongtext.refused
+# Grading: the margin reads the STARRED trellis (a margin from a decode that did not run is not evidence), and
+# a star makes every alternative placement cheaper, so `high` coverage may fall. What may NOT rise is a `high`
+# line that is wrong — the whole point of review §3.7's rule.
+high-gross-not-up: sum(song.high_gross) <= sum(base.song.high_gross)
+high-gross-truth-zero: truth.high_gross == 0
+
+# ── WHAT IT IS FOR (SHOULD: an arm that moves nothing is not worth a knob) ───────────────────────────────
+# The review's own prediction for the claims path is 0 to −3 gross lines, so the SHOULD is written at −1: the
+# decode gain is large (713 -> 551 blind), and if NONE of it survives the ladder, phase B's skip arcs are the
+# only thing left and §3.10 says to say so.
+pooled-gross-down: sum(song.gross) <= sum(base.song.gross) - 1
+drop20-gross-down: drop20.gross <= base.drop20.gross
+drop50-gross-down: drop50.gross <= base.drop50.gross
+extraverse-gross-down: extraverse.gross <= base.extraverse.gross
+drop50-text-pm500-up: drop50.text_pm500 >= base.drop50.text_pm500

@@ -124,6 +124,12 @@ class LrclibClient:
         whose LINE TIMINGS are then wrong — and wrong line timings are what the claim clock maps, the
         LINE_SYNC gate judges and the lexical lift refuses, i.e. a hazard three shipped gates already read.
         A 404 is no text at all, which no gate can recover. One retry, and only on a 404.
+
+        MEASURED AT THE BENCH (W7, `scripts/pool_gate.py` / `results/w7-pool.json`), which until then could
+        not see this retry at all because its provider port answered every lookup. With the retry 404'd as
+        well, the clean sheet is absent from 24 of 24 pools and 12 of 12 songs publish YouTube's machine
+        track instead: ±500 76.57 against 77.91 over the pool's lines, and `textConfidence` `low` where a
+        human sheet was one unqualified request away. That is the whole of this review item, priced.
         """
         body = self._get(build_url(self._base, artist=artist, track=track, duration_sec=duration_sec))
         if body is None and duration_sec is not None and duration_sec > 0:

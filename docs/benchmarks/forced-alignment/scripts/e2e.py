@@ -929,31 +929,36 @@ class GenerateDriver(TimeTextDriver):
     Claimed timings never enter `generate()`, so a timed mode equals its text-only twin here; every line is
     ungraded (confidence None), so the `high` columns read 0.
 
-    THE ONE ARM THAT REACHES THIS LEVEL is 6c's line separator (`linesep`, review D1): it is an argument to
-    `generate` itself, so the raw decode is where its factorial is read (`gates/w4b-linesep.yaml`). Every
-    other `align_experiments` name lives in the ladder above this call and is inert here — which is the point
-    of measuring a decoder change at this level, and the reason the arm is threaded from `self.config` rather
-    than from a flag of its own: one setting, recorded once, in `align_config`.
+    THE TWO ARMS THAT REACH THIS LEVEL are both arguments to `generate` itself: 6c's line separator
+    (`linesep`, review D1; `gates/w4b-linesep.yaml`) and §3.10's star (`star`, W7 — one target per line over
+    a matrix `ml.starred` widened by one column; `gates/w7-star.yaml`). The raw decode is where a decoder
+    change is read, so both are threaded from `self.config` rather than from flags of their own: one
+    setting, recorded once, in `align_config`. Every other `align_experiments` name lives in the ladder
+    above this call and is inert here. An arm that reaches `generate` and is NOT threaded here would make a
+    run recorded under its name measure the default decode, which is the one thing
+    `Config.ALIGN_EXPERIMENTS` exists to prevent.
     """
 
     level = "generate"
 
     def run(self, case: Case) -> dict[str, Any]:
-        from encore_worker.adapters.ml import forced_align_decoder  # noqa: PLC0415
+        from encore_worker.adapters.ml import forced_align_decoder, starred  # noqa: PLC0415
         from encore_worker.domain.lyrics.generate import generate  # noqa: PLC0415
 
         claims = self.claims_for(case)
         started = time.perf_counter()
         extra: dict[str, object] = {"verdict": "generate", "why": "", "onsets_sha256": None}
         lines: list[lib.DocLine] = []
+        stars = "star" in self.config.align_experiments
         try:
             emissions = self.aligner.emissions(self.target_of(case.song), self.language)
             generated = generate(
                 [line.text for line in claims.lines],
-                emissions,
+                starred(emissions) if stars else emissions,
                 decoder=forced_align_decoder,
                 language=self.language,
                 separate_lines="linesep" in self.config.align_experiments,
+                stars=stars,
             )
         except Exception as exc:  # noqa: BLE001 - one broken case must not lose the sweep
             outcome = lib.ERROR

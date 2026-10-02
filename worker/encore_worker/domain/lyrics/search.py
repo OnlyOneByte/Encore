@@ -75,6 +75,10 @@ class Candidate:
     #: the tie WITHIN a tier, which used to be arrival order — and arrival order put the upload's SDH
     #: caption track ahead of every provider sheet, measured publishing over a clean sheet on Hello. Not a
     #: knob and not a gate: the lexical lift is still what refuses a wrong text, per attempt.
+    #: WHAT IT IS WORTH, measured through whole jobs over a real multi-text pool (W7, `scripts/pool_gate.py`):
+    #: the CHOSEN text moves on 0 of 12 songs — an SDH track of this song agrees with a sheet of it, so the
+    #: tie-break cannot demote it — and the saving is ATTEMPTS, 12 against 36 with 24 refusals avoided over
+    #: those songs. `policy.order_pool` carries the rest of the reading.
     corroborated: bool = False
 
     def first_attempt(self, *, aligned_on_stem: bool) -> Attempt:

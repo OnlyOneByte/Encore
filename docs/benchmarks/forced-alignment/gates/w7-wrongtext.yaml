@@ -1,0 +1,34 @@
+# W7 — the wrong-text floor ALONE, so it can be read on a run that measured nothing else.
+#
+# WHY. W7's MUST is "wrong-text protection holds with EVERY new path active": language routing, M13's provider
+# ranking, AND the star. The three full control runs and the star's forced `run_align` arm all carry both
+# wrong-text modes, so `gates/w7.yaml` covers them there. The star in `--sync-mode lines` does not need a whole
+# 1088-case sweep to answer this one question — the arm is REJECTED at forced `run_align`
+# (`gates/w7-star.yaml` 32/36, `results/w7-star-run_align.json`) and ships default-off, so a full `lines` arm
+# would price something nobody will switch on. What still had to be read is the LINE_SYNC rung's own gate with
+# a starred trellis underneath it, because `lines` is the one sync mode where the rung is the ONLY attempt a
+# text gets. Two modes, 640 cases, 470 s:
+#
+#   cd worker && ENCORE_ALIGN_EXPERIMENTS=star .venv/bin/python \
+#       ../docs/benchmarks/forced-alignment/scripts/e2e.py --level run_align --sync-mode lines \
+#       --modes wrongtext,wrongtext+ownclock --model HUBERT_ASR_LARGE --tag w7-star-lines-wt \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w7-wrongtext.yaml
+#
+# NO `base.` ANYWHERE: these are absolute counts, which is the point — "0 of 640" does not need a baseline to
+# be true, and a gate that read one would pass if both sides leaked. `wrongtext` is 320 cross-pairs (32 songs
+# x `wrong_k` 10) on OUR clock; `wrongtext+ownclock` is the same 320 with the donor's own timings attached, the
+# harder half, because a consistent clock is what makes a wrong sheet look placeable.
+#
+# `wrongtext_pass` IS THE RATE, NOT THE COUNT (`e2e_lib`): 0 means no case published, and the harness refuses
+# to report it at all on a bundle with no `lexical.CALIBRATED` row (`UNCALIBRATED_METRICS`), so a gate here
+# cannot be satisfied by a model whose gate stood down.
+
+w7-wrongtext-pass-rate-zero: mode("wrongtext").wrongtext_pass == 0
+w7-ownclock-pass-rate-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
+w7-wrongtext-cases-320: mode("wrongtext").cases == 320
+w7-ownclock-cases-320: mode("wrongtext+ownclock").cases == 320
+w7-wrongtext-every-case-refuses-640: mode("wrongtext").refused + mode("wrongtext+ownclock").refused == 640
+w7-wrongtext-commits-nothing: mode("wrongtext").published + mode("wrongtext").line_sync + mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+w7-wrongtext-scores-no-line: mode("wrongtext").scored + mode("wrongtext+ownclock").scored == 0
+w7-wrongtext-no-gross-line: mode("wrongtext").gross + mode("wrongtext+ownclock").gross == 0
+w7-wrongtext-no-high-gross-line: mode("wrongtext").high_gross + mode("wrongtext+ownclock").high_gross == 0
