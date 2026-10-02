@@ -282,6 +282,14 @@ class AlignStepsImpl:
         `policy.corroboration`, which ranks the pool on it). The cost of asking both is one HTTP request
         on a song lrcmux already answered, paid once per job, against a wrong sheet published for good.
 
+        AND THIS IS THE HALF OF M13 THAT MOVES ACCURACY, measured end to end at last (W7,
+        `scripts/pool_gate.py` / `results/w7-pool.json`, 12 YouTube songs through `run_align` with a real
+        four-text pool). With the first hit alone, a song whose lrcmux answer is the wrong sheet publishes
+        YouTube's MACHINE track — 12 of 12 songs, ±500 76.57 against 77.91 over the pool's own lines (+12
+        lines of the 840 both arms scored), and `textConfidence` `low`, the TV's "not verified" mark, on a
+        song a human sheet existed for. The corroboration tie-break changed the chosen text on NONE of them;
+        it saved two refused attempts a song. One HTTP request buys the sheet.
+
         THE SAME SHEET TWICE IS ONE CANDIDATE. Two providers often return byte-identical words (LRCLIB is
         one of the sources lrcmux queries), and a duplicate in the pool would spend a second whole attempt
         — emission pass included — to produce the same document. Deduplicated on the NORMALISED words so a
@@ -962,7 +970,11 @@ class AlignStepsImpl:
         path: a translation whose words keep the sung ones' letters in order lands in `Band.OK` and publishes
         as a word document with `high` lines (`lexical`'s NOT COVERED paragraph; `test_lexical_gate` pins it).
         """
-        from encore_worker.adapters.ml import forced_align_decoder, load_audio_mono_16k  # noqa: PLC0415
+        from encore_worker.adapters.ml import (  # noqa: PLC0415
+            forced_align_decoder,
+            load_audio_mono_16k,
+            starred,
+        )
         from encore_worker.domain.audio import activity  # noqa: PLC0415
         from encore_worker.domain.lyrics import parts  # noqa: PLC0415
         from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
@@ -973,6 +985,7 @@ class AlignStepsImpl:
             regenerate,
             separator_named,
             separator_of,
+            star_of,
         )
 
         aligner = self._a.aligner
@@ -982,6 +995,12 @@ class AlignStepsImpl:
         # the blind one, the re-decode after the never-sung drop, and every repair window — and to none of the
         # GATE decodes, whose thresholds are calibrated on separator-free targets (`lexical.CALIBRATED`).
         separate_lines = "linesep" in self._cfg.align_experiments
+        # §3.10's STAR, DEFAULT-OFF (the `star` arm; `Config.ALIGN_EXPERIMENTS` carries its numbers). Read
+        # here for the same reason: it belongs to the decodes that produce THIS document's own placements —
+        # the blind one and the re-decode after the never-sung drop — and the matrix they read is the one
+        # `starred` widens below. NOT to the gate decodes (their floors are calibrated on star-free target
+        # sequences) and NOT to the repair windows (`generate`'s docstring owns that reasoning).
+        star_arm = "star" in self._cfg.align_experiments
 
         async def decline(why: str) -> None:
             # EVERY refusal is a trail note, because a silent one is indistinguishable from the step never
@@ -1144,14 +1163,23 @@ class AlignStepsImpl:
         # alone) or `h3-mix-floor` (both gates, W3's first shipping).
         envelope_gates = lifted is None or mix_envelope_only or mix_both_gates
 
+        # ── THE STAR COLUMN (review §3.10 phase A; the `star` arm, default-off) ──
+        # ONE MATRIX, WIDENED ONCE, AFTER THE GATE: every decode that produces a published placement reads
+        # `decode_matrix` and every gate and witness reads `emissions`, so the lexical lift, the mix witness's
+        # `_speech_mass` and the repair windows see exactly the matrix they were calibrated and measured on.
+        # The widening is a copy of the whole matrix (~1 MB for a 3-minute English song, ~47 MB on whisperx's
+        # widest vocabulary), which is why it is not done per decode.
+        decode_matrix = await asyncio.to_thread(starred, emissions) if star_arm else emissions
+
         try:
             generated = await asyncio.to_thread(
                 generate,
                 adlibs.lead_texts,
-                emissions,
+                decode_matrix,
                 decoder=forced_align_decoder,
                 language=req.language,
                 separate_lines=separate_lines,
+                stars=star_arm,
             )
         except InfraFault:
             raise  # a model / kernel / device / audio fault fails the JOB, not this attempt (review M7)
@@ -1333,10 +1361,11 @@ class AlignStepsImpl:
                 generated = await asyncio.to_thread(
                     generate,
                     line_texts_active,
-                    emissions,
+                    decode_matrix,
                     decoder=forced_align_decoder,
                     language=req.language,
                     separate_lines=separate_lines,
+                    stars=star_arm,
                 )
             except InfraFault:
                 raise  # the machinery, not this text (review M7)
@@ -1402,7 +1431,11 @@ class AlignStepsImpl:
             placement = _Placement(silence="already-low")
         else:
             placement = await asyncio.to_thread(
-                _placement_margins, emissions, line_texts_active, separate_lines=separate_lines
+                _placement_margins,
+                decode_matrix,
+                line_texts_active,
+                separate_lines=separate_lines,
+                stars=star_arm,
             )
 
         # ── THE CLAIM CLOCK (review H1, §3.2; W2). ONE rebinding of `claimed` / `claim_windows`, here,
@@ -2522,6 +2555,9 @@ class AlignStepsImpl:
                 if separate_lines
                 else ""
             )
+            # ONLY UNDER THE ARM, for the clause above's reason — and under it ALWAYS, so an arm that acted
+            # and an arm that went inert on a matrix with no star column cannot read alike.
+            + (f"{_star_why(star_of(decode_matrix))}; " if star_arm else "")
             # ONLY UNDER THE ARM, for the clause above's reason — and under it ALWAYS, including when
             # neither rule fired: an arm that found no ad-lib and an arm that was never set must not read
             # alike (`Split.why`, and W6 r2-c-5's rule for `conf-fuzzy-repeats`).
@@ -3751,13 +3787,16 @@ class _Placement:
     fault: str | None = None
 
 
-def _placement_margins(matrix: Any, line_texts: Sequence[str], *, separate_lines: bool = False) -> _Placement:
+def _placement_margins(
+    matrix: Any, line_texts: Sequence[str], *, separate_lines: bool = False, stars: bool = False
+) -> _Placement:
     """How ambiguous each line's placement was on `matrix`, in nats (`domain.lyrics.margin`, review §3.7).
 
     THE SAME TARGETS THE DECODE RAN ON, built by `generate.char_targets` — the one flatten both readers
     share — so the margin describes the path that produced these timings and not a second encoding of the
     same text. `line_texts` must therefore be the texts the BLIND decode was given (post never-sung drop),
-    and `separate_lines` its own setting.
+    and `separate_lines` and `stars` their own settings — with `matrix` the STARRED one under the `star` arm,
+    since a trellis one column short of the decode's is a different decode (W7, review §3.10).
 
     NO MARGINS ON ANY FAULT, deliberately, and that is a DIFFERENT ANSWER FROM `{}` (W6 review
     r1-correctness-2 / r1-spec-10). It means "not measured", and the caller answers it by not reading the
@@ -3779,7 +3818,7 @@ def _placement_margins(matrix: Any, line_texts: Sequence[str], *, separate_lines
     from encore_worker.domain.lyrics import margin  # noqa: PLC0415
     from encore_worker.domain.lyrics.generate import blank_of, char_targets  # noqa: PLC0415
 
-    flat = char_targets(line_texts, matrix, separate_lines=separate_lines)
+    flat = char_targets(line_texts, matrix, separate_lines=separate_lines, stars=stars)
     if not flat.targets:
         return _Placement(silence="unreadable")
     try:
@@ -4027,6 +4066,21 @@ def _linesep_why(separator: int | None, *, named: int | None) -> str:
             "default's"
         )
     return f"line separator: `|` (id {separator}) between lines, its frames blank (linesep)"
+
+
+def _star_why(star: int | None) -> str:
+    """The trail's clause for §3.10's star, printed only under the `star` arm.
+
+    IT SAYS WHETHER THE ARM ACTUALLY DID ANYTHING, for `_linesep_why`'s reason: `ml.starred` returns the
+    matrix UNCHANGED when there are no frames to take a maximum over, and `generate.star_of` then names no
+    star, so the decode is the default's. One inert case, not two — the column `starred` appends is the
+    matrix's own width, so the blank collision `separator_of` has to guard against cannot arise here.
+    """
+    if star is None:
+        return "star: requested (star) but this matrix carries no star column, so the targets are default"
+    from encore_worker.adapters.ml import STAR_PENALTY_NATS  # noqa: PLC0415 - the arm's own constant
+
+    return f"star: one per line, id {star} = frame max − {STAR_PENALTY_NATS:g} nats, its frames blank (star)"
 
 
 def _sources_why(provenance: Mapping[int, _Source], indexes: Sequence[int]) -> str:

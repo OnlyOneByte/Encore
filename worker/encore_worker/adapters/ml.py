@@ -20,7 +20,7 @@ import os
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from encore_worker.adapters.cli import OutOfMemory, looks_like_oom
 from encore_worker.adapters.ports import InfraFault, Transcribed
@@ -489,6 +489,173 @@ def specials_of(dictionary: Mapping[str, int]) -> dict[str, int]:
     if dictionary.get("-") == blank:
         out["-"] = blank
     return out
+
+
+#: `Emissions.specials`' name for the STAR column `starred` appends (review §3.10, the `star` arm, W7).
+#:
+#: NOT `*`, and that is the whole reason this is a name rather than the symbol the papers draw: `specials` is
+#: keyed by VOCABULARY ENTRY, and `generate.char_ids` looks every single CHARACTER of a lyric up in the
+#: dictionary — so a bundle whose vocabulary happens to hold `*` (none of whisperx's 36 do today, but the
+#: filter must not depend on that) would have the star's name collide with a character's. A multi-character
+#: name cannot, exactly as `[unk]` and `<s>` cannot (`_SPECIAL_NAMES`).
+#:
+#: THE SAME LITERAL IS RESTATED IN `domain.lyrics.generate.star_of`, as `|`'s is in `separator_named`:
+#: `domain/` may not import this module (a layering rule with its own test), so the two copies are held
+#: together by a test instead (`tests/test_star.py::test_the_domain_and_the_adapter_name_the_same_column`).
+STAR_NAME = "<star>"
+
+#: How far BELOW each frame's own best log-probability the star column sits, in nats — the ONE number the
+#: `star` arm has to choose (review §3.10's "frame max − P, with P between 1 and 4").
+#:
+#: P IS WHAT KEEPS THE STAR A FALLBACK: a frame whose best character scores within P nats of that frame's
+#: maximum is still cheaper to label with the character, so the star only wins where the text's own letters
+#: are P nats worse than what the model actually hears. The MMS constant (`log p = 0`, a star never worse
+#: than the best character) is the P = 0 limit, and the review measured it OVER-EAGER; this sweep reproduces
+#: that and localises it — P = 0 is the ONLY row of the whole grid that makes the unperturbed control WORSE
+#: (blind gross 77 → 102, ±250 72.44 → 67.16, AAE 594 → 1251 ms), because a star that ties with the best
+#: character absorbs SUNG frames as happily as silent ones.
+#:
+#: ── FITTED HERE, OUT OF SAMPLE, BECAUSE THE REVIEW TUNED IT IN-SAMPLE ────────────────────────────────────
+#: `_runs/w7-star/star_sweep.py` + `star_report.py`: the 32-song corpus's vocals stems on the SHIPPED HuBERT-L
+#: matrices already in the bench's emission store, the blind global decode alone (no claims, no ladder — a
+#: decoder change measured where it happens), 4 text modes x 32 songs = 128 cases per P, line starts paired to
+#: truth BY INPUT INDEX. Scored against the FULL SERVED TEXT (`±500/t` = within 500 ms over every truth line
+#: the text contains, a dropped line counted as a miss) — never the review's scratch scorer's published-
+#: lines-only denominator, which made its YouTube "68 → 64" an artefact. `missing` is 46 of 5805 on every
+#: row of the grid, the control's included, so no row of this table buys anything by dropping lines.
+#:
+#:     P      gross   ±250/t   ±500/t   AAE ms   MedAE     | blind  drop20  drop50  extraverse  (gross)
+#:     off      713    65.10    72.40     1210     101     |    77     197     323         116   <- control
+#:     0        501    64.91    74.68     1409     118     |   102     124     145         130
+#:     0.1      440    71.49    79.26      992      88     |    74     101     145         120
+#:     0.25     450    70.84    78.71     1004      90     |    73     100     155         122
+#:     0.5      480    70.63    78.36      957      90     |    72     111     186         111
+#:     1.0      551    69.46    77.11     1016      90     |    67     140     232         112   <- shipped
+#:     2.0      614    67.67    75.28     1106      93     |    67     167     269         111
+#:     3.0      643    66.98    74.56     1129      95     |    63     174     300         106
+#:     4.0      658    66.74    74.25     1146      96     |    67     176     307         108
+#:
+#: THE SWEEP IS NOT ONE CURVE, which is the finding this constant exists to record: the optimum DEPENDS ON HOW
+#: MUCH OF THE SHEET IS MISSING, and mechanically it must — the more audio the text does not cover, the more a
+#: cheap star pays. Leave-one-song-out (fit P on 31 songs by pooled gross, read the held-out song at that P)
+#: says so three times over:
+#:
+#:     fitted on                  picks              held-out gross   control
+#:     blind (the full sheet)     3.0 x31, 2.5 x1               64        77
+#:     drop20 + drop50            0.1 x32                      246       520
+#:     all four modes             0.1 x32                      440       713
+#:
+#: so the LOSO is stable (one P wins every fold) but the OBJECTIVE is the real choice, and an honest fit has
+#: to name it. P = 1.0 IS THE ONE SHIPPED, for three reasons stated in the order they count:
+#:   1. THE CONTROL IS WHAT PRODUCTION SEES. A complete sheet is the normal case, and on it the curve is FLAT
+#:      from 0.75 to 4 (gross 63-68, ±500/t 82.3-82.9, AAE 585-609 ms) while every one of those rows beats the
+#:      control (77 / 80.51 / 594). P = 1.0 is the best of them at ±500/t and ±250/t and ties the best AAE.
+#:   2. AMONG THOSE, IT IS THE ONE THAT STILL HELPS A PARTIAL SHEET: drop20 140 against 174 at P = 3, drop50
+#:      232 against 300. Going further down (0.1-0.25) buys ~90 more gross lines on the partial modes and
+#:      costs the control's AAE (+87 ms at 0.25), and the truth row's AAE is a number this wave may not spend
+#:      (PLAN: run_align truth AAE 71.1 ms).
+#:   3. IT IS INSIDE REVIEW §3.10's RANGE [1, 4], so the arm the bench reads is the arm the review specified.
+#:      The 0.1-0.3 region is recorded above as the partial-sheet optimum, for the wave that measures the
+#:      CLAIMS path: if §3.10's reject-if passes at 1.0, that region is where the next sweep should look.
+#:
+#: IT TRANSFERS ACROSS BUNDLES, so P is not a per-model calibration like `lexical.BANDS` (same script,
+#: `--model WAV2VEC2_ASR_BASE_960H`, `_runs/w7-star/base.json`): at P = 1.0 the base bundle reads pooled gross
+#: 908 → 744 and blind 113 → 98 with ±500/t 76.76 → 80.11 — the same direction and much the same size.
+#:
+#: WHAT IT COSTS, named rather than averaged away (per song, pooled over the four modes, at P = 1.0): 2 of 32
+#: songs gain gross lines — `never-be-alone` +2, which is the review's OWN objection reproducing (its
+#: "never-be-alone blind gets worse: 23 → 27 or 29"; here blind 8 → 11), and `tfr-mayday` +2 — and 13 of
+#: the 128 cells regress against 67 that improve and 48 identical. `bad-guy` ±500/t falls 6.54 → 2.69 and
+#: `numb` 41.74 → 34.78, on songs whose decode is already mostly wrong.
+#:
+#: WHAT THIS IS NOT: a verdict. §3.10's reject-if is about the CLAIMS path, and the ladder already repairs
+#: most of what the star fixes here — W5 reads drop50 at 82 gross through `run_align` where this blind
+#: decode's control is 323 — so the E2E effect may be anywhere from the review's predicted 0 to −3 gross
+#: lines down to nothing. `gates/w7-star.yaml` is where that is decided. ONE SONG THROUGH THE WHOLE LADDER
+#: says it survives at least once (`--level time_text`, `hello`, both cells on one tree,
+#: `_runs/w7-star-spot-{off,on}`): truth gross 0 = 0 and ±500 100 = 100 while RECOVERING the 2 lines the
+#: control dropped, drop50 gross 12 → 0 and ±500 57.14 → 97.14. n=1, and `high` lines held (50 = 50 truth,
+#: 18 → 21 drop50), so the margin did not collapse on the starred trellis either.
+STAR_PENALTY_NATS = 1.0
+
+
+def starred(emissions: Any, *, penalty: float = STAR_PENALTY_NATS) -> Emissions:
+    """`emissions` with a STAR column appended: one more vocabulary entry, scored `frame max − penalty` on
+    every frame, named `STAR_NAME` on `specials` (review §3.10 phase A, the `star` arm).
+
+    WHAT IT IS FOR. The decode cannot currently say "this text is not in the audio": `forced_align` is a
+    MONOTONE path that must label every frame, so an intro, an instrumental break, a backing vocal or a verse
+    the sheet simply omits is charged to the nearest characters, which drag with it — with half the lines
+    dropped the review measured 107/387 and 165/356 line starts more than 2 s off, a 6-line unsung verse 142
+    gross lines, and `feel-my-heart`'s first word bound about 28 s early. A star is a token that costs nearly
+    the same on EVERY frame, so a path may park on it over audio the text does not cover instead of smearing a
+    letter across it.
+
+    WHY A COLUMN AND NOT A KERNEL (phase A's whole point). The star needs no new Viterbi: an extra vocabulary
+    entry with a per-frame score is something `torchaudio.functional.forced_align` already decodes, so this
+    arm is a matrix one column wider plus one target per line (`domain.lyrics.generate.star_of`). Skip ARCS —
+    a path that may leave the text out altogether — do need a kernel, and that is phase B, which §3.10 says to
+    build only if this holds.
+
+    `frame max − penalty`, NOT A CONSTANT, because a log-probability is only meaningful against the rest of
+    its own frame: a flat frame (the model hears nothing it knows) has a low maximum and the star comes with
+    it, while a confidently sung frame's star sits `penalty` nats under a character the path wants anyway. A
+    constant 0 is MMS's and was measured over-eager (`STAR_PENALTY_NATS`).
+
+    THE ROWS NO LONGER SUM TO ONE in probability space, which is deliberate and harmless: nothing reads this
+    matrix as a distribution. The kernel sums the columns its targets name, `margin.placement_margins` sums
+    the same ones, `align_steps._speech_mass` reads the BLANK column alone, and the lexical gate is handed the
+    UNSTARRED matrix (`align_steps`, for `linesep`'s reason: its floors are calibrated per bundle on
+    star-free target sequences, `lexical.CALIBRATED`).
+
+    INERT ON AN EMPTY MATRIX rather than fatal: a matrix with no frames has no maximum to take, and the arm
+    then goes quiet exactly as `separator_of` does on a vocabulary with no `|` — `star_of` names nothing, so
+    `generate` emits no star target and decodes as the default (`generate` returns nothing for 0 frames
+    anyway, which is the only way to get here).
+
+    TORCH OR NUMPY, and both paths are two lines. The shipped matrix is a torch tensor — CPU-resident, since
+    `emissions` brings each pass back off the device immediately, but a tensor because that is what the
+    kernel takes — while this suite's fixtures and the bench's scratch harnesses carry numpy, and the
+    arithmetic being FITTED here (`P`) is exactly what a test must be able to exercise without torch. A
+    tensor stays a tensor: `np.asarray` on it would be a copy the kernel then has to undo, and on a device-
+    resident one it would raise.
+
+    DUCK-TYPED IN, `Emissions` OUT, read with `getattr` for `generate.blank_of`'s reason: every emission
+    object in this repo's tests is a duck type with three attributes, and an `Aligner` fake that returned one
+    used to
+    reach this function and crash the whole step under the arm. The three fields such a matrix does not carry
+    take the same defaults every reader of them already assumes (no model, blank 0, no specials named).
+    """
+    matrix = emissions.log_probs
+    if matrix is None or emissions.frames == 0:
+        # The SAME OBJECT, so an inert arm is not even a copy. `cast` because the parameter is the duck type
+        # (see the last paragraph) while every caller of a LIVE arm gets the real one built below.
+        return cast("Emissions", emissions)
+    star = int(matrix.shape[1])
+    installed: Any
+    try:
+        import torch  # noqa: PLC0415 - lazy by design; see the module docstring
+
+        installed = torch
+    except ImportError:  # a box with no torch at all: then the matrix cannot be a tensor either
+        installed = None
+    widened: Any
+    if installed is not None and isinstance(matrix, installed.Tensor):
+        widened = installed.cat((matrix, (matrix.max(dim=1).values - penalty).unsqueeze(1)), dim=1)
+    else:
+        import numpy as np  # noqa: PLC0415 - lazy for the same reason
+
+        plain = np.asarray(matrix)
+        widened = np.concatenate((plain, (plain.max(axis=1) - penalty)[:, None]), axis=1)
+    named: Mapping[str, int] = getattr(emissions, "specials", None) or {}
+    return Emissions(
+        log_probs=widened,
+        frame_sec=float(emissions.frame_sec),
+        dictionary=dict(emissions.dictionary),
+        model=str(getattr(emissions, "model", "") or ""),
+        blank_id=int(getattr(emissions, "blank_id", 0)),
+        specials={**{str(name): int(code) for name, code in named.items()}, STAR_NAME: star},
+    )
 
 
 def _content_key(audio_path: str) -> tuple[str, int, int] | None:

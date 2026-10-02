@@ -135,6 +135,36 @@ ASR_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
 #:                    THE EVERY-WORD VARIANT IS NOT BUILT, in either direction: D1's own mechanism is that a
 #:                    `|` inside a line makes CTC's path leave the letters for a boundary the model did not
 #:                    hear, and review 6c asks for line boundaries only.
+#:   star             the CTC targets carry a STAR before every line, and the matrix carries one more column
+#:                    scored `frame max − P` for it to be spent on (review §3.10 phase A / D3; W7,
+#:                    `adapters.ml.starred`, `domain.lyrics.generate.star_of`). WHAT IT IS FOR: a forced path
+#:                    must label every frame, so audio the text does not cover — an intro, an instrumental
+#:                    break, a verse the sheet omits — is charged to the nearest letters and drags them (the
+#:                    review: 107/387 and 165/356 line starts more than 2 s off with half the lines dropped,
+#:                    142 gross on one 6-line unsung verse, `feel-my-heart`'s first word ~28 s early).
+#:                    P = 1.0 nats, FITTED OUT OF SAMPLE here rather than taken from the review, which tuned
+#:                    it in-sample. The whole sweep, the leave-one-song-out folds and the reason the OBJECTIVE
+#:                    is the real choice (the optimum moves with how much of the sheet is missing: P≈3 on a
+#:                    full sheet, P≈0.1 on a half-deleted one) are in `ml.STAR_PENALTY_NATS`.
+#:                    OFF BECAUSE ONLY THE DECODE HAS BEEN READ SO FAR, not because it did nothing: over the
+#:                    32-song corpus's blind global decode x 4 text modes (full sheet, drop20, drop50,
+#:                    extraverse) at P = 1.0 it takes gross line starts 713 -> 551 and ±500/text 72.40 ->
+#:                    77.11 — a LARGE decode-level gain, concentrated exactly where §3.10 predicted (drop20
+#:                    197 -> 140, drop50 323 -> 232) and positive on the full sheet too (77 -> 67, +2.4 pt).
+#:                    But §3.10's reject-if is about the CLAIMS path (no gross line gained on any YouTube
+#:                    song, no more than 0.5 pt lost at ±500), the ladder already repairs most of what this
+#:                    fixes — W5 reads drop50 at 82 gross through `run_align` where this decode's control is
+#:                    323 — and 2 of the 32 songs get WORSE here (never-be-alone +2, the review's own
+#:                    objection; tfr-mayday +2). Only the corpus harness can settle it: `gates/w7-star.yaml`.
+#:                    THE STAR IS A DECODE ARM AND NOTHING ELSE: the lexical gate, the never-sung rule's
+#:                    `_speech_mass` witness and every repair window read the UNSTARRED matrix (the first two
+#:                    because their floors are calibrated on star-free target sequences, `lexical.CALIBRATED`;
+#:                    the third because §3.10's defect is global and a repair window is already bounded by
+#:                    evidence on both sides). The placement margin DOES read the starred trellis, because a
+#:                    margin measured on a decode that did not run is not evidence about the one that did.
+#:                    THE EVERY-WORD VARIANT IS NOT BUILT and must not become a default (§3.10's own wording).
+#:                    PHASE B — skip arcs, a path that may leave text out altogether — needs a vendored kernel
+#:                    and is a later wave's; §3.10 says build it only if this holds.
 #:   conf-legacy      THE THIRD CONTROL: per-line grading ignores the placement margin, so a line's
 #:                    confidence is what provenance and the blind reconcile alone said — the rule W6
 #:                    replaced (review §3.7; `domain/lyrics/margin.py`, `align_steps._placement_margins`).
@@ -251,6 +281,7 @@ ALIGN_EXPERIMENTS = (
     "ends-tile",
     "ends-raw",
     "linesep",
+    "star",
     "adlibs",
     "lang-route-mix",
     "conf-legacy",

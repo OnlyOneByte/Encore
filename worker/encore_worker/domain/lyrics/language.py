@@ -322,13 +322,34 @@ def model_language(language: str, *, on_mix: bool, route_latin: bool = False) ->
     The default bundle also reads 94.78% here against the review's 91.8%, so W5's flip repaid non-English
     Latin songs as well: it is now BETTER on fr/de/es stems than the base bundle was on them.
 
-    SO THE MIX HALF IS AN ARM, not the default (`route_latin`, `host.config.ALIGN_EXPERIMENTS`'
-    `lang-route-mix`), for a second reason that holds whatever the mix numbers say: a routed bundle has no
-    `lexical.CALIBRATED` row, so every emission-scale threshold stands down on it — the wrong-text lift cannot
-    refuse, the doubt band cannot grade, the placement margin abstains. Turning it on by default would trade
-    measured accuracy for an ungated wrong-text path on every non-English Latin song. The wave that fits five
-    numbers per language (`lift_gate.py --model VOXPOPULI_ASR_BASE_10K_{FR,DE,ES}`, `line_gate.py --model …`)
-    is the wave that may flip it.
+    AND THE MIX HALF DOES NOT REPRODUCE, which is the reading that decided the arm (`--target mix`,
+    `results/w7-lang-mix.json`, the same 59 songs and the same texts). Pooled, routing still wins — word +-300
+    80.08% against 77.47%, gross lines 372 against 415 — but the win is ONE LANGUAGE's and the per-song tally
+    is against it (routed WINS 26, LOSES 32, ties 1):
+      * **de reproduces the review exactly in direction**: +-300 76.73 -> **86.52**, gross 155 -> 87, words
+        over 2 s off 788 -> 361 (the review's de 50.1 -> 85.9 on n=3);
+      * **es is a WASH**: 78.23 -> 78.74, +0.51 pt, gross 142 -> 135, words over 2 s 742 -> 718 (the review's
+        es 47.9 -> 62.6 on n=2 does not survive widening);
+      * **fr REVERSES**: 77.44 -> **75.28**, gross 118 -> **150**, words over 2 s 581 -> **861** (the review's
+        fr 66.0 -> 72.2 on n=2 was the wrong sign).
+    So "routed models win on the mix" is true of German and of nothing else measurable here, and a default
+    that routed every Latin song's mix would pay French for German.
+
+    THE SECOND REASON, which holds whatever the mix numbers say: a routed bundle has no `lexical.CALIBRATED`
+    row, so every emission-scale threshold stands down on it — the wrong-text lift cannot refuse, the doubt
+    band cannot grade, the placement margin abstains. Turning it on by default would trade measured accuracy
+    for an ungated wrong-text path on every non-English Latin song. The wave that fits five numbers per
+    language (`lift_gate.py --model VOXPOPULI_ASR_BASE_10K_{FR,DE,ES}`, `line_gate.py --model …`) is the wave
+    that may flip it — and on this reading only `de` has a case to make.
+
+    WHAT ROUTING A NON-LATIN SCRIPT IS WORTH, measured on the one bundle whose `[PAD]` is not at 0
+    (`--blank`, `results/w7-blank-nynorsk.json`, 3 songs x 143 measured lines / 1 050 measured word onsets on
+    NbAiLab/nb-wav2vec2-1b-nynorsk, pad 31, id 0 the WORD SEPARATOR): the shipped chain reads word +-250
+    **95.81%**, AAE 232 ms, 15 words over 2 s off, 0 lines dropped; the pre-W4 chain, with review M9's five
+    hard-coded zeros back, reads **74.48%**, AAE 1 541 ms and **133** words over 2 s off on the same frames.
+    That is the review's Danish regression (+-250 90.5 -> 73.2, words over 2 s 141 -> 584) reproduced on a
+    REAL model rather than on permuted English columns — and it is why the language and the blank had to land
+    in one wave.
 
     A NON-LATIN SCRIPT ALWAYS ROUTES, whatever `on_mix` and whatever the arm says, because there is nothing
     to trade off: the English vocabulary maps ZERO characters of Hangul, Han, Cyrillic or Arabic, so the

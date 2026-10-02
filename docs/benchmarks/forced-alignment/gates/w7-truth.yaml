@@ -1,0 +1,53 @@
+# W7 — PLAN-alignment-v3's ABSOLUTE truth-row bar, written as numbers rather than against a baseline.
+#
+# WHY A SECOND FILE. `gates/w7.yaml` is relative (`>= base.X`) so one file is the condition at three levels,
+# but PLAN-alignment-v3's W7 brief states the bar as LITERALS — "run_align truth reads gross 0 / ±500 90.45 /
+# AAE 71.1 ms / 32-of-32 zero-gross songs ... Jamendo words ±100 >= 85.46, ±300 >= 97.16, highlight >= 81.40.
+# Nothing in this wave may cost that." A relative gate passes if BOTH sides moved, and a baseline file can be
+# re-pointed; a literal cannot. These are the same numbers `results/w5r2-run_align.json` records, read off
+# its `truth` row, so the two files are redundant ON PURPOSE and disagreeing is itself the finding.
+#
+# `--level run_align`, `--sync-mode forced`, HuBERT-Large (the shipped default since W5), 32 songs, seed 0,
+# `--tfr-audio youtube`, `--asr off`. These literals do NOT hold at `--level time_text` (that level serves
+# the claims raw: truth ±500 is 90.89 there, Jamendo AAE lower, `missing` 25 against 53) and do NOT hold at
+# `--sync-mode lines` (truth ±500 94.16 over 1712 published lines of 1760 asked for), so this file is for
+# ONE run and `e2e_gates`' setup check is what stops it being pointed at another:
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all,wrongtext+ownclock --tag w7-ra \
+#       --compare ../docs/benchmarks/forced-alignment/results/w5r2-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w7-truth.yaml
+#
+# DENOMINATORS, because §3.10's review found a scorer that dropped skipped lines from them. On the W5 truth
+# row: 32 cases, 1760 truth lines, 1760 in_text, 53 missing, 1707 scored — `pm500` is over the 1707 that
+# scored (90.45 = 1544/1707) and `text_pm500` over all 1760 asked for (87.73 = 1544/1760). The Jamendo word
+# row is 5693 truth words in_text, 5378 aligned, 311 interpolated; ±100 85.46 and ±300 97.16 are over the
+# 5378. Highlight 81.40 is sung-second coverage: 1980.25 hit of 2432.77 sung over 20 Jamendo songs.
+
+# ── The unperturbed row, verbatim from the PLAN brief ─────────────────────────────────────────────────────
+w7-truth-gross-zero: truth.gross == 0
+w7-truth-pm500-at-least-90-15: truth.pm500 >= 90.15
+w7-truth-zero-gross-songs-32: truth.zero_gross_songs >= 32
+w7-truth-cases-32: truth.cases == 32
+w7-truth-in-text-1760: truth.in_text == 1760
+w7-truth-high-gross-zero: truth.high_gross == 0
+
+# ── The Jamendo word truth (the only group with measured onsets) ──────────────────────────────────────────
+w7-jamendo-word-pm100-at-least-85-46: truth.jamendo.word_pm100 >= 85.46
+w7-jamendo-word-pm300-at-least-97-16: truth.jamendo.word_pm300 >= 97.16
+w7-jamendo-word-aae-at-most-71-1: truth.jamendo.word_aae_ms <= 71.1
+w7-jamendo-highlight-at-least-81-40: truth.jamendo.highlight >= 81.40
+w7-jamendo-word-in-text-5693: truth.jamendo.word_in_text == 5693
+
+# ── The DECODE's own row, as literals, because it is the row the star arm is fitted on ───────────────────
+# `blind` serves an UNTIMED sheet, so it is the global decode with no claim clock to lean on. W5 reads 61
+# gross of 1707 scored lines through the ladder here — the number §3.10's star has to beat without costing
+# anything above — and 13 of 32 songs at zero gross.
+w7-blind-gross-at-most-61: blind.gross <= 61
+w7-blind-zero-gross-songs-at-least-13: blind.zero_gross_songs >= 13
+
+# ── The wrong-text floor as a literal count, not a rate ──────────────────────────────────────────────────
+w7-wrongtext-pass-zero-of-320: mode("wrongtext").wrongtext_pass == 0
+w7-ownclock-pass-zero-of-320: mode("wrongtext+ownclock").wrongtext_pass == 0
+w7-wrongtext-cases-320: mode("wrongtext").cases == 320
+w7-ownclock-cases-320: mode("wrongtext+ownclock").cases == 320

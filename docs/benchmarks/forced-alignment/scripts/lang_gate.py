@@ -89,7 +89,7 @@ import e2e_lib as lib  # noqa: E402 - after the path setup above
 from encore_worker.adapters import ml  # noqa: E402
 from encore_worker.domain.lyrics import language as langmod  # noqa: E402
 from encore_worker.domain.lyrics.clean import clean_segments  # noqa: E402
-from encore_worker.domain.lyrics.generate import generate  # noqa: E402
+from encore_worker.domain.lyrics.generate import Decoder, generate  # noqa: E402
 
 #: JamendoLyrics' `Language` column -> the ISO code this worker speaks.
 CODES: Mapping[str, str] = {"French": "fr", "German": "de", "Spanish": "es", "English": "en"}
@@ -281,26 +281,52 @@ def score(
     }
 
 
-def decode(
-    texts: Sequence[str], emissions: Any, *, language: str, blank: int | None = None
-) -> dict[int, tuple[float, list[tuple[float, bool]]]]:
-    """`generate` over `emissions`, reduced to what `score` reads.
+@dataclass(frozen=True, slots=True)
+class Unaware:
+    """The same matrix through a reader that does NOT say where its blank is — i.e. EVERY emission object this
+    worker built before W4 threaded `Emissions.blank_id` (review M9).
 
-    `blank` FORCES the decoder's blank column, which is the whole of `--blank`: None is the shipped path
-    (the matrix's own `blank_id`, `generate.blank_of`), and 0 is what every decode did before review M9's fix.
-    The matrix is not altered — only what the kernel is TOLD — so the two runs differ in exactly one integer.
+    THE FAITHFUL PRE-W4 ARM, and the distinction matters because `blank = 0` was hard-coded in FIVE places
+    that have to agree: the kernel call, the target filter, `_char_spans`' run grouping, its flushing sentinel
+    and `regenerate`'s alignable count. Forcing only the KERNEL's integer moves one of the five and leaves
+    the grouper reading the model's real blank, which raises instead of mis-timing (the `kernel` arm records
+    exactly that, because it is what a PARTIAL fix would do). Dropping the two FIELDS instead moves all five
+    at once, through the `getattr` defaults the shipped readers still carry — so this object is pre-W4 code
+    running on a post-W7 tree, which is the only honest A/B.
     """
 
-    def forced(log_probs: Any, targets: Sequence[int], told: int = 0) -> tuple[list[int], list[float]]:
-        return ml.forced_align_decoder(log_probs, targets, told if blank is None else blank)
+    log_probs: Any
+    frame_sec: float
+    dictionary: Mapping[str, int]
 
-    decoder = ml.forced_align_decoder if blank is None else forced
+    @property
+    def frames(self) -> int:
+        return int(self.log_probs.shape[0])
+
+
+#: `--blank`'s three arms. `matrix` is what ships; `unaware` is the pre-W4 chain (see `Unaware`); `kernel` is
+#: the partial fix — the matrix says where its blank is and only the kernel is told otherwise.
+BLANK_ARMS = ("matrix", "unaware", "kernel")
+
+
+def decode(
+    texts: Sequence[str], emissions: Any, *, language: str, arm: str = "matrix"
+) -> dict[int, tuple[float, list[tuple[float, bool]]]]:
+    """`generate` over `emissions`, reduced to what `score` reads. `arm` is one of `BLANK_ARMS`."""
+
+    def told_zero(log_probs: Any, targets: Sequence[int], _blank: int = 0) -> tuple[list[int], list[float]]:
+        return ml.forced_align_decoder(log_probs, targets, 0)
+
+    matrix: Any = emissions
+    decoder: Decoder = ml.forced_align_decoder
+    if arm == "unaware":
+        matrix = Unaware(emissions.log_probs, emissions.frame_sec, emissions.dictionary)
+    elif arm == "kernel":
+        decoder = told_zero
 
     # The syllabifier is bypassed: it reads the language and is measured by its own suite, and a decode's word
     # onsets do not depend on how its letters were grouped into syllables.
-    got = generate(
-        texts, emissions, decoder=decoder, language=language, syllabifier=lambda word, _lang: [word]
-    )
+    got = generate(texts, matrix, decoder=decoder, language=language, syllabifier=lambda word, _lang: [word])
     return {
         line.index: (line.start, [(word.start, word.provenance == "aligned") for word in line.words])
         for line in got.lines
@@ -343,6 +369,13 @@ def sweep(songs: Sequence[LangSong], *, target: str, device: str, model: str | N
     text hygiene W5 landed), so the targets are the targets production would decode. BLIND: no claims, no
     repair ladder, no gate — the question is which bundle hears these words where, and a ladder between the
     decode and the score would answer a different one.
+
+    AND THAT IS SAFE FOR THE POSITIONAL TRUTH PAIRING, which is the precondition `score` silently depends on
+    and so is CHECKED rather than assumed: over all 59 songs `clean_segments` is the IDENTITY on both counts —
+    2 515 raw lines in and 2 515 out, and **0 lines whose word count changed**. A dropped line would make
+    `score` read `song.lines[index]` for a different line, and a rewritten one would shift every word onset
+    after it inside that line. (It is the identity because these are DATASET annotations: no section headers,
+    no `♪`, no caption tags — the four anchored rules in `nonlyric.py` have nothing to anchor on.)
     """
     aligner = ml.build_aligner(device=device, model=model)
     if aligner is None:  # pragma: no cover - the ml extra is a precondition of running this at all
@@ -442,12 +475,12 @@ def report_sweep(rows: Sequence[Mapping[str, Any]]) -> None:
 def blank_proof(
     songs: Sequence[LangSong], *, bundle_language: str, device: str, target: str
 ) -> list[dict[str, Any]]:
-    """The same text, the same matrix from a REAL non-zero-pad bundle, decoded with the matrix's own blank and
-    with the literal 0 the code used before review M9's fix.
+    """The same text and the same matrix from a REAL non-zero-pad bundle, decoded under each of `BLANK_ARMS`.
 
-    The ONE independent variable is the integer handed to `torchaudio.functional.forced_align`. Everything
-    else — weights, audio, text, target sequence, grouping — is identical, which is what makes the delta the
-    blank's and not a model's.
+    The weights, the audio, the text and the forward pass are IDENTICAL across the arms — only what the
+    decode chain believes about which column is blank changes — which is what makes the delta the blank's and
+    not a model's. `unaware` is the faithful pre-W4 chain and `kernel` is the partial fix; see `Unaware` for
+    why both are reported rather than one.
     """
     aligner = ml.build_aligner(device=device)
     if aligner is None:  # pragma: no cover
@@ -474,10 +507,16 @@ def blank_proof(
                 f"{emissions.model} puts its blank at 0, so it cannot prove anything about review M9. "
                 "Name a bundle whose [PAD] is elsewhere (--blank-language nn / da / ko)."
             )
-        for label, blank in (("blank_id (shipped)", None), ("literal 0 (pre-W4)", 0)):
+        labels = {
+            "matrix": "blank_id (shipped)",
+            "unaware": "unaware (pre-W4)",
+            "kernel": "kernel told 0",
+        }
+        for arm in BLANK_ARMS:
+            label = labels[arm]
             started = time.time()
             try:
-                got = decode(texts, emissions, language=song.language, blank=blank)
+                got = decode(texts, emissions, language=song.language, arm=arm)
             except Exception as failed:  # noqa: BLE001 - a decode the wrong blank made impossible IS a result
                 print(f"  {label:20s} RAISED {type(failed).__name__}: {failed}")
                 rows.append(
@@ -486,7 +525,7 @@ def blank_proof(
                         "language": song.language,
                         "bundle": emissions.model,
                         "bundle_language": bundle_language,
-                        "blank": "matrix" if blank is None else str(blank),
+                        "blank": arm,
                         "blank_id": int(emissions.blank_id),
                         "raised": f"{type(failed).__name__}: {failed}",
                     }
@@ -497,7 +536,7 @@ def blank_proof(
                 "target": target,
                 "bundle": emissions.model,
                 "bundle_language": bundle_language,
-                "blank": "matrix" if blank is None else str(blank),
+                "blank": arm,
                 "blank_id": int(emissions.blank_id),
                 "seconds": round(time.time() - started, 2),
             }
@@ -515,7 +554,7 @@ def blank_proof(
 
 def report_blank(rows: Sequence[Mapping[str, Any]]) -> None:
     print("\n═══ REVIEW M9, LIVE ═══")
-    for blank in ("matrix", "0"):
+    for blank in BLANK_ARMS:
         chosen = [row for row in rows if row.get("blank") == blank and "raised" not in row]
         got = pooled(chosen)
         raised = [row for row in rows if row.get("blank") == blank and "raised" in row]
@@ -531,11 +570,12 @@ def report_blank(rows: Sequence[Mapping[str, Any]]) -> None:
             + (f"  ({len(raised)} decodes RAISED)" if raised else "")
         )
     print(
-        "\nREAD IT THIS WAY: the second row is what this worker shipped before W4 built "
-        "`Emissions.blank_id`, "
-        "on a REAL bundle whose [PAD] is not at 0 rather than on the review's permuted English columns. The "
-        "gap between the two rows is review M9's cost, and its absence from the first row is the fix working "
-        "on a live model pass."
+        "\nREAD IT THIS WAY. `matrix` is what ships. `unaware` is the pre-W4 chain — the same readers "
+        "with the two fields absent, so all five hard-coded zeros come back at once — on a REAL bundle "
+        "whose [PAD] is at 31 rather than on the review's permuted English columns, and the gap between "
+        "those two rows IS review M9's cost, measured live. `kernel` is the partial fix (the matrix says "
+        "31 and only the kernel is told 0): it does not mis-time, it RAISES, which is what a half-threaded "
+        "blank looks like and why the five places had to move together."
     )
 
 

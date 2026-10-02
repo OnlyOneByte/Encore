@@ -1,0 +1,115 @@
+# W7 — "nothing in this wave costs the shipped default", and the wrong-text floor with every new path live.
+#
+# WHAT THIS WAVE PUT IN THE SHIPPED PATH, and therefore what these gates are protecting against. Three
+# changes landed DEFAULT-ON and all three touch the align path on an English song:
+#
+#   1. LANGUAGE IS AN INPUT (M8 / §3.9). `ports.Transcriber.transcribe` returns `Transcribed(segments,
+#      language)`, the four acquiring steps detect once onto `TextRef.language`, and `generate.char_ids` is
+#      now the ONE target filter and folds NFKD. On a Latin-script English sheet the routing policy
+#      (`domain/lyrics/language.model_language`) must return the English bundle and the fold must be the
+#      identity, so EVERY number below must be the W5 number — this is a plumbing gate, not a trade-off
+#      gate. Per-language MIX routing is the measured loser and ships default-off (`lang-route-mix`), so it
+#      is not in these runs; the stem half (English on Latin-script stems) IS the default and IS.
+#   2. M9's `blank_id` read off the matrix rather than assumed 0 (W4, re-proved live here) — on an English
+#      torchaudio bundle blank IS 0, so again: identical numbers or a bug.
+#   3. M13's provider ranking and L5's duration retry (W5's code, measured for real this wave by
+#      `scripts/pool_gate.py`, which is a SEPARATE harness because the corpus has one text per song).
+#      `policy.decide`'s candidate ordering is live in every `run_align` row here.
+#
+# THE STAR (§3.10) IS NOT IN THESE RUNS: it ships default-off as `ENCORE_ALIGN_EXPERIMENTS=star` and is
+# judged on `gates/w7-star.yaml` against the `--level run_align` control this file is evaluated on.
+#
+# ── HOW TO READ IT. One file, three control runs, each against ITS OWN W5 baseline ────────────────────────
+# Every gate is written against `base.`, so the same file is the condition at all three levels and no
+# absolute number can go stale under a bundle flip (the absolute PLAN bars live in `w7-truth.yaml`, which is
+# `--level run_align` only because the numbers it names — ±100 85.46, AAE 71.1 ms, highlight 81.40 — are
+# `run_align` truth-row numbers). `gross` is a PUBLISHED-lines count, so every gross gate is paired with
+# `missing` (every truth line the text asked for that did not score): a path that refuses instead of
+# publishing its gross lines reads FEWER gross and MORE missing.
+#
+#   # (1) time_text, vs results/w5-time_text.json — W5 r2's own meta says the time_text baseline is
+#   #     UNCHANGED from r1 (that level serves the claims RAW), and `_runs/w5r2-tt-control` reproduced it
+#   #     byte-identically, so `w5r2-time_text.json` does not exist and this IS it.
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level time_text --modes all,wrongtext+ownclock --tag w7-tt \
+#       --compare ../docs/benchmarks/forced-alignment/results/w5-time_text.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w7.yaml
+#   # (2) run_align, vs results/w5r2-run_align.json     (3) --sync-mode lines, vs w5r2-lines-run_align.json
+#
+# TWO THINGS ARE DELIBERATELY ABSENT, both because `--sync-mode lines` is one of the three runs:
+#   * `blind.pm500` — in `lines` every blind case refuses (no claims, so no LINE_SYNC rung to gate), so the
+#     metric is None there and a gate reading it would ERROR, i.e. FAIL, on a run behaving as designed.
+#     Blind is gated here on `gross`, `missing` and `zero_gross_songs`, which every case has in every sync
+#     mode, and as literals in `w7-truth.yaml`.
+#   * the Jamendo WORD block and `highlight` — a `lines` document carries LINE timings only. They are in
+#     `w7-words.yaml`, read on the `time_text` and forced `run_align` runs.
+
+# ── GATE 1 (MUST): pooled gross is not up in ANY mode. run_align truth is 0, so any gross line is a
+# ── regression; the perturbed modes are held at "not worse than W5" ───────────────────────────────────────
+w7-gross-not-up-truth: truth.gross <= base.truth.gross
+w7-gross-not-up-jit: mode("jit").gross <= base.mode("jit").gross
+w7-gross-not-up-off05: off05.gross <= base.off05.gross
+w7-gross-not-up-off15: off15.gross <= base.off15.gross
+w7-gross-not-up-off3: off3.gross <= base.off3.gross
+w7-gross-not-up-offm1: offm1.gross <= base.offm1.gross
+w7-gross-not-up-tempo098: tempo098.gross <= base.tempo098.gross
+w7-gross-not-up-tempo102: tempo102.gross <= base.tempo102.gross
+w7-gross-not-up-drop20: drop20.gross <= base.drop20.gross
+w7-gross-not-up-drop50: drop50.gross <= base.drop50.gross
+w7-gross-not-up-extraverse: extraverse.gross <= base.extraverse.gross
+w7-gross-not-up-blind: blind.gross <= base.blind.gross
+w7-gross-not-up-headers: headers.gross <= base.headers.gross
+w7-gross-not-up-credit: credit.gross <= base.credit.gross
+w7-gross-not-up-wrongtext: mode("wrongtext").gross <= base.mode("wrongtext").gross
+w7-gross-not-up-ownclock: mode("wrongtext+ownclock").gross <= base.mode("wrongtext+ownclock").gross
+# The pooled numbers above can hide a swap (one song gains two, another loses two), so the same condition
+# per song, across EVERY mode at once: `sum(song.X)` and `count(song.X_up)` are the only cross-mode
+# reductions the language has, and `gross` / `missing` are defined for every song in every mode.
+w7-no-song-gains-a-line-in-any-mode: count(song.gross_up + song.missing_up) == 0
+w7-missing-not-up: sum(song.missing) <= sum(base.song.missing)
+w7-refused-not-up: count(song.refused_up) == 0
+w7-zero-gross-songs-not-down-truth: truth.zero_gross_songs >= base.truth.zero_gross_songs
+w7-zero-gross-songs-not-down-blind: blind.zero_gross_songs >= base.blind.zero_gross_songs
+w7-zero-gross-songs-not-down-drop50: drop50.zero_gross_songs >= base.drop50.zero_gross_songs
+
+# ── GATE 1 (MUST), the accuracy half: the unperturbed truth row, and the Jamendo word truth ───────────────
+# ±500 "not down more than 0.3 pt" is PLAN-alignment-v3's bar for the whole wave. Both denominators: a path
+# that refuses a song it is bad at would IMPROVE `pm500` (published lines only), and `text_pm500` (every
+# truth line the text asked for, a refusal counted as a miss) is what catches that.
+w7-truth-pm500-plan-bar: truth.pm500 >= base.truth.pm500 - 0.3
+w7-truth-text-pm500-plan-bar: truth.text_pm500 >= base.truth.text_pm500 - 0.3
+w7-truth-pm1000-plan-bar: truth.pm1000 >= base.truth.pm1000 - 0.3
+w7-truth-no-song-loses-pm1000: min_song_delta(truth.pm1000) >= -5.0
+# The claim-noise modes at the same bar — language detection runs on the TEXT, so a mode that perturbs only
+# the claim timings must read exactly the same, and a drift here means the plumbing reached the decode.
+w7-jit-pm500-not-down: mode("jit").pm500 >= base.mode("jit").pm500 - 0.3
+w7-off15-pm500-not-down: off15.pm500 >= base.off15.pm500 - 0.3
+w7-tempo102-pm500-not-down: tempo102.pm500 >= base.tempo102.pm500 - 0.3
+w7-headers-pm500-not-down: headers.pm500 >= base.headers.pm500 - 0.3
+w7-credit-pm500-not-down: credit.pm500 >= base.credit.pm500 - 0.3
+w7-extraverse-text-pm500-not-down: extraverse.text_pm500 >= base.extraverse.text_pm500 - 0.3
+w7-drop20-text-pm500-not-down: drop20.text_pm500 >= base.drop20.text_pm500 - 0.3
+w7-drop50-text-pm500-not-down: drop50.text_pm500 >= base.drop50.text_pm500 - 0.3
+# The Jamendo WORD truth is in `w7-words.yaml`, not here: a `--sync-mode lines` document carries LINE
+# timings only (`word_aligned` 0 of 5693 `word_in_text`), so every word-onset metric is None there and
+# `highlight` reads a vacuous 0.0 — a gate on it would ERROR, or worse, pass by comparing 0 with 0.
+# Grading (§3.7's rule): a `high`-confidence line that is WRONG is the one thing that may never rise.
+w7-high-gross-truth-zero: truth.high_gross == 0
+w7-high-gross-not-up: sum(song.high_gross) <= sum(base.song.high_gross)
+
+# ── GATE 2 (MUST): the wrong-text floor, with language routing and M13's ranking live ─────────────────────
+# 320 cross-pairs per mode (32 songs x wrong_k 10), at every level and in both sync modes — 640 in `lines`,
+# where every wrong text's only attempt is the gated LINE_SYNC rung.
+w7-wrongtext-none-of-320: mode("wrongtext").wrongtext_pass == 0
+w7-ownclock-none-of-320: mode("wrongtext+ownclock").wrongtext_pass == 0
+w7-wrongtext-commits-nothing: mode("wrongtext").published + mode("wrongtext").line_sync + mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+w7-wrongtext-every-case-refuses: mode("wrongtext").refused + mode("wrongtext+ownclock").refused == 640
+
+# ── GATE 1, the plumbing invariant that is the real point ─────────────────────────────────────────────────
+# Language became an INPUT and the fold became the ONE target filter, on a path where both must be no-ops.
+# If every English case is byte-identical to W5's, nothing above needed arguing; `doc_changed` is the
+# published document's own bytes, per song and across every mode.
+w7-no-published-document-changes: count(song.doc_changed) == 0
+w7-every-song-commits-at-truth: truth.published + truth.line_sync == 32
+w7-every-song-commits-at-headers: headers.published + headers.line_sync == 32
+w7-commitments-not-down-drop50: drop50.published + drop50.line_sync >= base.drop50.published + base.drop50.line_sync

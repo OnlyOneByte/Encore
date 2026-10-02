@@ -268,6 +268,39 @@ def separator_named(emissions: Any) -> int | None:
     return None if code is None else int(code)
 
 
+#: The `Emissions.specials` key the STAR column is named under (`adapters.ml.STAR_NAME`, review §3.10 — the
+#: `star` arm). RESTATED HERE, as `|`'s key is in `separator_named`, because `domain/` may not import the
+#: adapters; a test holds the two literals equal (`tests/test_star.py`).
+_STAR_NAME = "<star>"
+
+
+def star_of(emissions: Any) -> int | None:
+    """The STAR id this matrix names (`adapters.ml.starred`, which appends the column), or None when it names
+    none — the token `generate(stars=True)` emits BEFORE EVERY LINE (review §3.10 phase A, the `star` arm).
+
+    WHAT THE STAR BUYS, stated where the target is built rather than only where the column is: a forced CTC
+    path must label every frame, so audio the text does not cover — an intro, an instrumental break, a verse
+    the sheet omits — is charged to whichever characters are nearest and drags them (review D3: 107/387 line
+    starts more than 2 s off with half the lines dropped, 142 gross on one 6-line unsung verse,
+    `feel-my-heart`'s first word about 28 s early). A star token scored `frame max − P` is somewhere cheap for
+    the path to wait, so the letters stay where they were sung.
+
+    BEFORE EVERY LINE, never between words and never only at the song's edges, which is review §3.10's own
+    technique. The every-word variant is NOT implemented here in either direction, for the reason D1 gives the
+    separator one: a token the model never emits INSIDE a phrase makes CTC leave the letters for a boundary
+    it did not hear. A star only at the edges was measured to do nothing (review's rejected list).
+
+    None, AND SO AN INERT ARM, for `separator_of`'s two reasons: a matrix that names no star (every fake in
+    this suite, every bench cache entry, any matrix the step did not pass through `ml.starred`) and one whose
+    star id IS the blank — the kernel refuses a target list containing the blank outright, so an arm that can
+    only decline must stand down instead. The second cannot happen through `ml.starred` (its id is the
+    matrix's width), which is exactly why it is cheap to refuse here rather than trusted upstream.
+    """
+    named: Mapping[str, int] = getattr(emissions, "specials", None) or {}
+    code = named.get(_STAR_NAME)
+    return None if code is None or int(code) == blank_of(emissions) else int(code)
+
+
 def char_ids(word: str, dictionary: Mapping[str, int], excluded: Collection[int]) -> list[tuple[int, int]]:
     """`(index within `word`, vocabulary id)` for every character of `word` this vocabulary can align — THE
     target filter, and the only copy of it (`char_targets`, `alignable_chars` and `lexical.letters_of` all
@@ -388,6 +421,10 @@ class _SlicedEmissions:
     #: Carried for the same reason, one filter further out (W4b): `excluded_of` reads it, so a repair decode
     #: drops exactly the ids the global decode dropped. Without it a line containing a `|` would be repaired
     #: as a longer target sequence than the one it is repairing.
+    #:
+    #: IT MAY NAME A STAR (W7's `star` arm) and that is harmless by construction: `regenerate` does not ask
+    #: for stars (see `generate`'s docstring for why repair windows stay star-free), so the column the slice
+    #: still carries is simply never a target — the kernel only ever reads the columns its targets name.
     specials: Mapping[str, int] = field(default_factory=dict)
 
     @property
@@ -670,29 +707,45 @@ class CharTargets:
     #: Line index -> the position in `targets` of that line's FIRST character target. A line that emitted no
     #: target at all (a decorative row, a line the never-sung rule blanked) is absent.
     first_char_target: Mapping[int, int]
+    #: How many of `targets` are STARS (`star_of`, the `star` arm) — the other kind of target that owns no
+    #: character, counted separately because the two arms are independent and the span-count invariant below
+    #: has to subtract both.
+    stars: int = 0
 
 
-def char_targets(line_texts: Sequence[str], emissions: Any, *, separate_lines: bool = False) -> CharTargets:
+def char_targets(
+    line_texts: Sequence[str], emissions: Any, *, separate_lines: bool = False, stars: bool = False
+) -> CharTargets:
     """Flatten `line_texts` into the decoder's target sequence (see `CharTargets`, and `generate`, its
     caller and the definition of every rule here)."""
     dictionary: Mapping[str, int] = emissions.dictionary
     excluded = excluded_of(emissions)
     separator = separator_of(emissions) if separate_lines else None
+    star = star_of(emissions) if stars else None
     targets: list[int] = []
     owners: list[tuple[int, int]] = []
     char_of: list[int] = []
     words_by_line: list[tuple[str, ...]] = []
     first: dict[int, int] = {}
     separators = 0
+    starred = 0
     pending_separator: int | None = None
     for line_index, text in enumerate(line_texts):
         words_by_line.append(tuple(text.split()))
+        # A STAR IS OWED BY THIS LINE and paid at its first character target, for the separator's reason one
+        # line down: a decorative row (`♪`, a line the never-sung rule blanked) contributes no character, and
+        # two stars in a row would be a second absorbing token nobody asked for.
+        pending_star = star
         for word_index, word in enumerate(words_by_line[-1]):
             for char_index, token in char_ids(word, dictionary, excluded):
                 if pending_separator is not None:
                     targets.append(pending_separator)
                     separators += 1
                     pending_separator = None
+                if pending_star is not None:
+                    targets.append(pending_star)
+                    starred += 1
+                    pending_star = None
                 first.setdefault(line_index, len(targets))
                 targets.append(token)
                 owners.append((line_index, word_index))
@@ -708,6 +761,7 @@ def char_targets(line_texts: Sequence[str], emissions: Any, *, separate_lines: b
         words_by_line=tuple(words_by_line),
         separators=separators,
         first_char_target=first,
+        stars=starred,
     )
 
 
@@ -734,6 +788,7 @@ def generate(
     decoder: Decoder,
     syllabifier: Callable[[str, str], list[str]] | None = None,
     separate_lines: bool = False,
+    stars: bool = False,
 ) -> Generated:
     """Align `line_texts` over the whole recording and return nested line/word/syllable timings.
 
@@ -775,12 +830,36 @@ def generate(
     target sequences (`lexical.CALIBRATED`), and an arm that moved the population a floor was fitted on would
     be measuring a recalibration rather than a separator.
 
+    `stars` EMITS A STAR BEFORE EVERY LINE (review §3.10 phase A, the `star` arm, DEFAULT-OFF — the matrix
+    must also carry the column, `adapters.ml.starred`, and the arm is INERT where it does not: `star_of`). Its
+    three
+    mechanical facts are the separator's three, arriving from the other side, so they are stated once each:
+
+      * BEFORE, never inside a line (`char_targets`) — including before the FIRST line, which is the star that
+        absorbs an intro the text does not mention.
+      * ITS FRAMES ARE RELABELLED TO BLANK, below, which is both what keeps the grouping half untouched and
+        review §3.10's explicit fix: with the star left in the label stream it got a span of its own, and
+        `_lead_starts` then clamped the next line's first character against THE STAR's end instead of the
+        previous character's — the review names that clamp as the likely cause of one song's ±250 drop. As
+        blank, a star run reads exactly as the run of blanks that already separates two repeated characters.
+      * THE SPAN CHECK COUNTS THEM, as it counts separators: spans == targets − separators − stars.
+
+    REPAIR WINDOWS STAY STAR-FREE and that is deliberate (`regenerate` does not forward this, and the step
+    hands repairs the unstarred matrix). §3.10's defect is a GLOBAL one — a monotone path over the whole song
+    must spend every frame, so uncovered audio drags the nearest letters — while a repair window is bounded on
+    both sides by evidence that already says which text belongs in it. Keeping the windows as they were also
+    keeps the arm ATTRIBUTABLE: one change, in the one decode whose numbers §3.10 predicts. The GATE decodes
+    named three paragraphs up (`lexical.lift`, `align_steps._line_sync_decode`, the never-sung `_speech_mass`
+    read) are left alone for the separator's reason, which is the stronger one: their thresholds are
+    calibrated per model on star-free target sequences, so an arm reaching them would measure a recalibration.
+
     STRUCTURAL INVARIANT (tested): syllables nest within their word's span, words within their line's,
     all ordered. It holds by construction — every level groups the same char spans — and the test exists
     so a refactor that breaks construction is caught by the property, not by a benchmark regression.
     """
     blank = blank_of(emissions)
     separator = separator_of(emissions) if separate_lines else None
+    star = star_of(emissions) if stars else None
     decode = decoder
     if syllabifier is not None:
         split = syllabifier
@@ -790,7 +869,7 @@ def generate(
         split = syllables
 
     # ── flatten to char targets, remembering every char's owner (`char_targets`, shared with `margin`) ──
-    flat = char_targets(line_texts, emissions, separate_lines=separate_lines)
+    flat = char_targets(line_texts, emissions, separate_lines=separate_lines, stars=stars)
     targets, owners, char_of = flat.targets, flat.owners, flat.char_of
     words_by_line, separators = flat.words_by_line, flat.separators
 
@@ -798,19 +877,27 @@ def generate(
         return Generated(lines=(), language=language)
 
     frame_labels, frame_scores = decode(emissions.log_probs, targets, blank)
-    if separators:
-        # THE SEPARATOR'S FRAMES BECOME BLANK (review 6c): it is a target the path had to visit, not a token
-        # with a span, and as blank it plays exactly the part the blanks between two repeated characters
-        # already play in `_char_spans`.
-        frame_labels = [blank if label == separator else label for label in frame_labels]
+    if separators or flat.stars:
+        # THE SEPARATOR'S AND THE STAR'S FRAMES BECOME BLANK (review 6c; §3.10): each is a target the path had
+        # to visit, not a token with a span, and as blank they play exactly the part the blanks between two
+        # repeated characters already play in `_char_spans`. BEFORE `_lead_starts` TOO, which is the half
+        # §3.10 asks for by name: a star left in the stream would own a span, and the onset lead would clamp
+        # the next line's first character against the STAR's end rather than the previous character's.
+        voided = {token for token in (separator, star) if token is not None}
+        frame_labels = [blank if label in voided else label for label in frame_labels]
     spans = _lead_starts(_char_spans(frame_labels, frame_scores, emissions.frame_sec, blank), ONSET_LEAD_SEC)
     # forced_align emits exactly one span per target when it succeeds; anything else means the decode and
     # the grouping disagree about the token stream, which is a defect and not a degradable condition.
-    # MINUS THE SEPARATORS, whose frames were just relabelled away: they are targets that own no character.
-    if len(spans) != len(targets) - separators:
+    # MINUS THE SEPARATORS AND THE STARS, whose frames were just relabelled away: they are targets that own
+    # no character.
+    if len(spans) != len(targets) - separators - flat.stars:
+        # The star clause only where there ARE stars, so the default's and `linesep`'s message is the one
+        # every reader of this suite already knows (`tests/test_linesep.py` pins it).
         raise ValueError(
-            f"decode produced {len(spans)} token spans for {len(targets) - separators} character targets "
-            f"(of {len(targets)}, {separators} of them line separators); "
+            f"decode produced {len(spans)} token spans for "
+            f"{len(targets) - separators - flat.stars} character targets "
+            f"(of {len(targets)}, {separators} of them line separators"
+            f"{f' and {flat.stars} stars' if flat.stars else ''}); "
             "the emission matrix and the target encoding disagree"
         )
 

@@ -4345,3 +4345,690 @@ only this control can say:
   `gates/w5-denominator.yaml` read on this pair is 13/15, and both failures are the refusal count (its
   literals are the forced rung's: `drop50` 10 songs against a bound of 6, pooled `scored` 1712 against
   1669 + 4) — it is not a gate for this level and is recorded here so nobody reads it as one.
+
+## W7: the language is an INPUT, and review M9's blank is LIVE (2026-10-01; review M8 + §3 item 9)
+
+Until this wave the alignment language was the literal `"en"` on every job. The decision function existed —
+`steps.api.language_of` has always read `TextRef.language`, then the job's `language` param, then `"en"` — and
+**nothing ever gave it a value**: core sends no `language` (deliberately; its `JobParams` says "a guessed one
+is worse than letting ASR detect it"), no adapter set `TextRef.language`, and whisper's own
+`result['language']` was read off its result dict and thrown away. Two measured consequences, both review M8:
+a Japanese sheet has **zero** characters the English vocabulary maps, so every attempt declined and the job
+published `no lyrics` (repro s12); and an accented Latin letter was silently skipped out of the target
+sequence, so `cafés` decoded as `cafs`.
+
+The second half of the same finding is review M9, the hard-coded CTC blank, **dormant only while the language
+is always `en`** — torchaudio's English bundles put their blank at 0 and 23 of whisperx's 36 HF align models
+do not. W4 built `Emissions.blank_id`; W4b and W6 confirmed it was still unreachable. **W7 is the wave that
+arms it, so W7 is also the wave that can detonate it**, which is why the two landed together and why the
+measurement below leads with a non-zero-pad model.
+
+### What carries the language now
+
+* **A Unicode SCRIPT histogram of the text — the primary signal** (`domain/lyrics/language.py`, stdlib
+  `unicodedata` only, no data file and no dependency). Read off each character's own UCD name
+  (`LATIN SMALL LETTER E WITH ACUTE` → Latin, `HANGUL SYLLABLE HAN` → Hangul) plus a 12-entry alias table, so
+  one `str.split` covers every writing system Python's Unicode database knows — including ones added after it
+  was written. **Not vocabulary coverage**, which is the critics' point the review recorded: every Latin
+  wav2vec2 vocabulary covers English text, and the fr/de/es fine-tunes cover it MORE fully than the English
+  bundle covers French, so coverage would take Latin songs away from the bundle that times them best.
+* **whisper's `result['language']`** where ASR ran — the one language signal on this worker measured from the
+  recording rather than inferred from glyphs or declared by a room. `ports.Transcriber.transcribe` returns
+  `Transcribed(segments, language)` now instead of a bare segment list, which is the line review M8 names.
+* **lingua-py for Latin-script disambiguation**, restricted to the languages whisperx tables a Latin bundle
+  for. OPTIONAL (`text` extra): with no detector installed Latin script stays English, which is exactly the
+  configuration every row in `results/` was measured on. Costs 0.05 s to build, 0.11 s for the first
+  detection, 3 ms after that, 34 MB resident.
+* **NFKD folding instead of dropping** (`generate.char_ids`, now the ONE copy of the target filter — W7 found
+  three: `char_targets`, `alignable_chars` and `lexical.letters_of`).
+
+Detection happens in the ACQUIRING step, once, and is checkpointed on `TextRef.language`: the workflow must be
+deterministic under a DBOS replay and may not hold a 100 MB detector, and a resumed job must align in the
+language it started in. `TimeRequest.language` is the TEXT's (the published document's, the syllabifier's);
+the BUNDLE's is derived per attempt by `language.model_language` through `align_steps._bundle_language`, the
+one reader, so no call site can forget `on_mix` or the arm.
+
+### The fold is provably free on every recorded row (`lang_gate.py --folds`)
+
+| corpus | cleaned lines | characters | scripts | fold to a letter the English vocabulary has | NFKD cannot decompose |
+|---|---|---|---|---|---|
+| the 32-song English corpus | 1 712 | 50 516 | Latin 40 409, **nothing else** | **0** | **0** |
+| the 59 fr/de/es JamendoLyrics songs | 2 515 | 81 925 | Latin 67 928 | **1 035** | 43 |
+
+So `char_ids` returns byte-identically what the three inlined copies returned on every text the bench serves
+at `--level time_text` — the claim modes are built from those truth lines, the `wrongtext` donors are other
+corpus songs' truth lines, and `headers` injects ASCII. **The English corpus cannot show the fix working**;
+the fr/de/es songs can, where 1.3% of every character in the sheets used to be dropped (`é` 322, `ü` 184,
+`ä` 110, `à` 92, `ê` 74, `ö` 67, `è` 64, `ñ` 56, `ç` 28, and 38 more over seven letters), concentrated in
+exactly the words an accent distinguishes. The 43 that stay dropped are `ß` (41) and `œ` (2): atomic in
+Unicode, so NFKD has no decomposition, and a hand table (`ß` → `ss` changes the character COUNT too) is a
+measured change of its own.
+
+### The language reading, widened from n=7 to n=59 under the bundle that ships
+
+The review measured fr/de/es STEMS at 91.8% of words within ±300 ms under the English model — the same as
+English Jamendo's 91.1% — and routing winning only on the MIX (de 50.1→85.9, es 47.9→62.6, fr 66.0→72.2).
+Both halves were **n=7 songs** (2 fr, 3 de, 2 es) on the BASE bundle, which has not been the default since
+W5's flip, and the critics' objection was exactly that. This wave separated the other 52 fr/de/es
+JamendoLyrics songs (`_lang/separate.sh`, htdemucs, ~15 s a song) and read all 59 on both targets under
+`ml.DEFAULT_ALIGN_MODEL` (`scripts/lang_gate.py`, `results/w7-lang-{stem,mix}.json`, 2 515 measured lines /
+15 887 measured word onsets per arm, BLIND — no claims, no repair ladder, no gate, so the question is only
+which bundle hears these words where). The positional truth pairing the scorer depends on is CHECKED, not
+assumed: over all 59 songs `clean_segments` is the identity on both counts — 2 515 lines in, 2 515 out, and
+**0 lines whose word count changed** — because dataset annotations carry no header, no `♪` and no caption tag
+for the anchored rules to anchor on.
+
+**STEM — the review's conclusion CONFIRMED and wider than it found it. The default (English) bundle wins.**
+
+| | lines | gross | ±500 | words ±100 | ±250 | ±300 | AAE | words >2 s off |
+|---|---|---|---|---|---|---|---|---|
+| default, pooled | 2 515 | 80 | 90.78% | 83.48% | 94.06% | **94.78%** | **236 ms** | **188** |
+| routed, pooled | 2 515 | 99 | 92.29% | 83.69% | 92.13% | 92.97% | 540 ms | 485 |
+| fr default / routed | 763 | 32 / 36 | 86.50 / 90.56 | 77.15 / 82.53 | 90.62 / 90.37 | 91.45 / 91.45 | 322 / 324 | 85 / 153 |
+| de default / routed | 871 | 30 / 19 | 93.57 / 96.44 | 87.82 / 83.52 | 95.99 / 95.50 | 96.68 / 96.39 | 203 / 609 | 68 / 95 |
+| es default / routed | 881 | 18 / 44 | 91.71 / 89.67 | 85.80 / 85.06 | 95.75 / 90.64 | 96.36 / **91.19** | 187 / 677 | 35 / 237 |
+
+Routing **more than doubles the catastrophic tail** (188 → 485 words more than 2 s off) and costs 1.81 pt of
+±300. Per song, routed **WINS 20, LOSES 32, ties 7** (±300, 0.5 pt dead band), and the losses are far deeper
+than the wins: es `Intentando_Destacar` −23.7 pt, de `Intro_[Pulsschlag]` −28.0, es `Baila` −12.8, es
+`Te_Recuerdo` −14.2 against fr `CHRISTMAS_AVEC_TOI` +16.0, de `Die_Revolution` +15.4, fr `Culture_&_Co.`
++13.6. **The one column routing wins on the stem is LINE starts** — ±500 92.29% against 90.78%, and German
+gross lines 19 against 30 — which is real and is not the column the karaoke ball is scored on. The default
+bundle also reads **94.78% here against the review's 91.8%**, so W5's flip repaid non-English Latin songs too:
+it is now better on fr/de/es stems than the base bundle was on them.
+
+**MIX — the review's mix win DOES NOT REPRODUCE. It is German's, and nothing else measurable here.**
+
+| | gross | ±500 | words ±100 | ±250 | ±300 | AAE | words >2 s off |
+|---|---|---|---|---|---|---|---|
+| default, pooled | 415 | 71.89% | 66.51% | 76.46% | 77.47% | 2 812 ms | 2 111 |
+| routed, pooled | 372 | 76.26% | 70.35% | 79.01% | **80.08%** | 2 711 ms | 1 940 |
+| fr default / routed | 118 / **150** | 71.17 / 72.87 | 64.16 / 65.65 | 76.14 / 74.13 | 77.44 / **75.28** | 2 821 / 2 988 | 581 / **861** |
+| de default / routed | 155 / **87** | 71.53 / 82.09 | 67.87 / 74.38 | 75.70 / 85.15 | 76.73 / **86.52** | 2 941 / 2 073 | 788 / **361** |
+| es default / routed | 142 / 135 | 72.87 / 73.44 | 67.60 / 71.27 | 77.53 / 78.08 | 78.23 / 78.74 | 2 675 / 3 086 | 742 / 718 |
+
+German reproduces the review's direction exactly (+9.79 pt ±300, gross 155→87, tail 788→361); **Spanish is a
+wash** (+0.51 pt) where the review read 47.9→62.6; **French REVERSES** (−2.16 pt, gross 118→150, tail
+581→861) where the review read 66.0→72.2. Per song, routed **WINS 26, LOSES 32, ties 1**. So the pooled +2.6
+pt is one language's, and a default that routed every Latin song's mix would pay French for German.
+
+**Hence `lang-route-mix`, default-OFF** (`host.config.ALIGN_EXPERIMENTS`), and a second reason that holds
+whatever the numbers say: **a routed bundle has no `lexical.CALIBRATED` row**, so every emission-scale
+threshold stands down on it — the wrong-text lift cannot refuse, the doubt band cannot grade, the placement
+margin abstains (`lexical.calibration` → None, by design; that is the review's high-severity W3 finding
+working as intended, and `TimedDoc.vouched` is False). Routing Latin script by default would trade measured
+accuracy for an ungated wrong-text path on every non-English Latin song. **A NON-LATIN script always routes**,
+arm or no arm, because there the alternative is not a trade: it is `no lyrics`.
+
+### Review M9, LIVE: the blank on a real non-zero-pad model (`lang_gate.py --blank`)
+
+The review measured the hard-coded blank costing Danish word onsets within ±250 ms 90.5% → 73.2% and words
+more than 2 s off 141 → 584 — **by permuting an English model's emission columns**
+(`_review-scratch/encore-review/exp_blank.py`), because no non-English song with measured truth was in the
+corpus and no non-zero-pad model had ever been loaded. This runs a REAL one:
+**NbAiLab/nb-wav2vec2-1b-nynorsk**, `[PAD]` at 31 with **id 0 the WORD SEPARATOR `|`** — the worst of the 23
+cases, because a decoder told `blank=0` spends its silences on a token the model emits BETWEEN WORDS and never
+visits the real blank at all. Three German JamendoLyrics songs, real stems, real forward pass, measured word
+truth (`results/w7-blank-nynorsk.json`; the LANGUAGE PAIRING is artificial and said so — no Norwegian song
+with measured word truth exists on this corpus — but the model, the pad's position, the pass, the audio and
+the truth are all real, which is strictly more than a column permutation).
+
+| arm | lines | gross | ±500 | words ±250 | ±300 | AAE | words >2 s off |
+|---|---|---|---|---|---|---|---|
+| `matrix` — what ships | 143 | **7** | **92.31%** | **95.81%** | **96.10%** | **232 ms** | **15** |
+| `unaware` — the pre-W4 chain | 143 | 27 | 67.83% | 74.48% | 76.19% | 1 541 ms | 133 |
+| `kernel` — told 0, matrix says 31 | — | — | — | — | — | — | every decode **RAISES** |
+
+The `unaware` arm is the honest reproduction: `blank = 0` was hard-coded in **five** places that have to agree
+(the kernel call, the target filter, `_char_spans`' run grouping, its flushing sentinel, `regenerate`'s
+alignable count), so the arm drops the two FIELDS rather than forcing one integer, and all five zeros come
+back at once through the `getattr` defaults the shipped readers still carry. **±250 95.81% → 74.48% and words
+over 2 s off 15 → 133** — the review's Danish shape (−17.3 pt, 4.1×) reproduced at −21.3 pt and 8.9× on a real
+model. The `kernel` arm is what a HALF-threaded blank looks like: the grouper and the kernel disagree about
+which column is blank, the span count stops matching the target count and `generate` raises
+(`decode produced 2313 token spans for 1597 character targets`), which on the shipped path is
+`decode failed: ValueError` on every attempt of every text and ends in `no lyrics`. Both failures are absent
+from the shipped row, 0 lines dropped, on a bundle no English job will ever load.
+
+### M13's provider ranking: still unit tests alone, and the blocker is now MEASURED
+
+W5 carried this to W7: "either add a harness dimension that serves a REAL multi-provider pool (cached lrcmux +
+LRCLIB + captions per song) or state plainly that M13 ships on unit tests alone". **It ships on unit tests
+alone**, and here is why, probed rather than assumed:
+
+* The pool is REAL where the songs are commercial: `Ed Sheeran / Shape of You` returns **lrcmux 88 cues and
+  LRCLIB 90 cues**, genuinely different sheets with different timings — exactly the two-candidate case
+  `policy.corroboration` was built to rank.
+* But the corpus's **20 Jamendo songs are the only ones carrying artist/title** (from `JamendoLyrics.csv`),
+  and on 6 probed in turn the pool is **0 or 1 member, never 2**: `HILA / Give Me The Same` 0+0,
+  `Quentin Hannappe / Keep On` 0+0, `Avercage / Embers` 0+0, `Songwriterz / Back In Time` 0+48 (LRCLIB only),
+  `KINEMATIC / Peyote` 14+0 (lrcmux only), `Colour Out / Falling Star` 38+0. A single-member pool cannot
+  exercise "every provider is a candidate", and a sheet that comes back for an obscure CC track is very
+  likely **another song's words** — LRCLIB returns its closest record, which is the trap core's
+  `dispatch.ts lookupKeys` refuses to risk.
+* The **9 YouTube songs and 3 tfr songs**, where a two-member pool demonstrably exists, carry **no
+  artist/track metadata in the corpus at all** (their directories hold `mix.wav`, a stem and
+  `truth-lines.json`), and the slugs are not reliable lookup keys.
+
+**So the dimension is one committed file away and not a sweep away**: a `slug → (artist, track)` table for the
+twelve non-Jamendo songs, after which `RecordingSteps.fetch_provider_lyrics` can serve a cached real pool and
+the ranking becomes measurable. L5's MusicBrainz-length retry is in the same position for the same reason.
+
+### Nothing on the English corpus moved, checked rather than argued
+
+The fold is 0 characters on the English corpus and Latin script stays on the same bundle, so the wave asks for
+no re-sweep — but "cannot move" is a claim, so it was spot-checked end to end: `e2e.py --level run_align
+--modes truth,blind --songs hello,Pure_Mids --device cpu` (`_runs/w7-spot`, 79 s, 3 cold matrices).
+
+| case | this tree | `results/w5-run_align.json` |
+|---|---|---|
+| truth hello | gross 0, ±500 100.00 | gross 0, ±500 100.00 |
+| truth Pure_Mids | gross 0, ±500 100.00 | gross 0, ±500 100.00 |
+| blind hello | gross 3, ±500 79.37 | gross 3, ±500 79.37 |
+| blind Pure_Mids | gross 6, ±500 65.00 | gross 6, ±500 65.00 |
+
+Identical to the digit on all four, and **0 of the 4 cases carries an `align-language` note** — which is the
+whole claim: an English job resolves the same bundle through the same target filter and publishes the same
+document. The EMITTER FINGERPRINT did move, to **`68ce719b4b90b57e`** (from `a51283424a0195e1`;
+`adapters/ml.py`, `adapters/ports.py` and `domain/lyrics/generate.py` are all in the key), so the corpus cache
+is cold and the next sweep pays one full model pass — `--resume` into an earlier run will be refused.
+
+## W7: the star/filler token, phase A — measured at the decode, NOT yet at the claims path (2026-10-01; review §3 item 10 / D3)
+
+The decode cannot say *"this text is not in the audio"*. `torchaudio.functional.forced_align` finds a MONOTONE
+path that labels **every** frame, so audio the text does not cover — an intro, an instrumental break, a backing
+vocal, the verse a partial sheet dropped — has to be charged to whichever of the text's own characters are
+least implausible there, and the lines around it are dragged with it. Review D3 measured the damage: with half
+the lines missing **107/387** and **165/356** line starts land more than 2 s off, a 6-line unsung verse gives
+**142** gross lines, and `feel-my-heart`'s first word binds about **28 s early**.
+
+**Phase A** is the version that needs no new kernel: append ONE column to the emission matrix, scored
+`frame max − P` on every frame, and put one target of it before every line. A path may then park on the star
+over uncovered audio instead of smearing a letter across it. (Phase B — *skip arcs*, a path that may leave text
+out altogether — needs a vendored Viterbi and is a later wave's; §3.10 says build it only if this holds.)
+
+### What landed
+
+* `adapters.ml.starred(emissions, penalty=STAR_PENALTY_NATS)` — the column, named `<star>` on
+  `Emissions.specials`, which is where review §3.10 says the id belongs and is already the ONE filter every
+  reader of a target list shares (`generate.excluded_of`, W4b). `frame max − P` and not a constant, because a
+  log-probability only means something against the rest of its own frame. The name is `<star>` and not `*`
+  because `specials` is keyed by vocabulary ENTRY while `char_ids` looks up single CHARACTERS: a bundle whose
+  vocabulary held `*` would have the star's name collide with a letter's, and that letter would then be dropped
+  from every word containing it — review M9's defect wearing another hat.
+* `domain.lyrics.generate.star_of` + `char_targets(..., stars=True)` — one star before every line that has a
+  character (so a decorative `♪` row or a line the never-sung rule blanked does not buy a second absorbing
+  token), including before the FIRST line, which is the star an intro is spent on. The every-word variant is
+  **not built in either direction**, exactly as the `linesep` arm does not build it: a token the model never
+  emits inside a phrase makes CTC leave the letters for a boundary it did not hear.
+* **The star's frames are relabelled to blank before `_char_spans` AND before `_lead_starts`** — the second
+  half is the one §3.10 asks for by name. Left in the label stream the star owns a span, and the onset lead
+  then clamps the next line's first character against THE STAR's end instead of the previous character's; the
+  review names that clamp as the likely cause of one song's ±250 drop. The span-count invariant becomes
+  `spans == targets − separators − stars`, which is the check that raises on every song when any of this is
+  wrong.
+* **A decode arm and nothing else** (`align_steps._time_text_global`, behind `ENCORE_ALIGN_EXPERIMENTS=star`).
+  The blind decode and the re-decode after a never-sung drop read the starred matrix; the lexical gate, the
+  never-sung rule's `_speech_mass` witness and **every repair window** read the unstarred one. The first two
+  because their floors are calibrated per bundle on star-free target sequences (`lexical.CALIBRATED`) — an arm
+  that moved the population a floor was fitted on would be measuring a recalibration. The windows because
+  §3.10's defect is the GLOBAL path's: a repair window is already bounded on both sides by evidence that says
+  which text belongs in it, and leaving them alone keeps the arm attributable. The placement margin (review
+  §3.7) DOES read the starred trellis with the same targets, because a margin measured on a decode that did not
+  run is not evidence about the one that did.
+
+### P was tuned IN-SAMPLE by the review. Here it is fitted out of sample, and the sweep is the result
+
+`_runs/w7-star/star_sweep.py` + `star_report.py`, which deliberately do **not** touch the corpus harness: the
+question is a DECODER question, and the bench's emission store already held HuBERT-Large matrices for all 32
+vocals stems, so a whole 15-value sweep is **98 s of Viterbi** and no model pass. 32 songs × 4 text modes ×
+15 values of P, blind global decode, line starts paired to truth **by input index** (never by text, which
+mispairs a repeated chorus as soon as a line is dropped), scored over the **full served text**: `±500/t` counts
+every truth line the text contains, so a line the decode never placed is a miss. `missing` is 46 of 5805 on
+**every row of the grid, the control's included** — no row here buys anything by dropping lines. That is the
+exact artefact the critics caught in the review's scratch scorer, whose published-lines-only denominator made
+its YouTube "68 → 64" look like a gain.
+
+| P | gross | ±250/t | ±500/t | AAE ms | MedAE | | full sheet | drop20 | drop50 | extraverse |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **off** | 713 | 65.10 | 72.40 | 1210 | 101 | | 77 | 197 | 323 | 116 |
+| 0 (MMS) | 501 | 64.91 | 74.68 | 1409 | 118 | | **102** | 124 | 145 | 130 |
+| 0.1 | 440 | 71.49 | 79.26 | 992 | 88 | | 74 | 101 | 145 | 120 |
+| 0.25 | 450 | 70.84 | 78.71 | 1004 | 90 | | 73 | 100 | 155 | 122 |
+| 0.5 | 480 | 70.63 | 78.36 | 957 | 90 | | 72 | 111 | 186 | 111 |
+| **1.0** | **551** | **69.46** | **77.11** | **1016** | **90** | | **67** | **140** | **232** | **112** |
+| 2.0 | 614 | 67.67 | 75.28 | 1106 | 93 | | 67 | 167 | 269 | 111 |
+| 3.0 | 643 | 66.98 | 74.56 | 1129 | 95 | | 63 | 174 | 300 | 106 |
+| 4.0 | 658 | 66.74 | 74.25 | 1146 | 96 | | 67 | 176 | 307 | 108 |
+
+(the four right-hand columns are gross line starts per mode; `0.2`, `0.3`, `0.4`, `0.75`, `1.5` and `2.5` are in
+`sweep.json` / `fine.json` and change nothing about the shape. Every number in this section is recomputable
+from the committed digest `results/w7-star-sweep.json` — pooled, per mode, per group, per song and per
+song×mode gross for all 15 values of P — and `results/w7-star-sweep-base.json` for the base bundle; the raw
+per-line errors stay in `_runs/w7-star/`.)
+
+**The MMS constant 0 is the only row that makes the unperturbed control worse** — full-sheet gross 77 → 102,
+±250 72.44 → 67.16, AAE 594 → 1251 ms — which is the review's "over-eager" objection reproduced and localised:
+a star that ties with the best character absorbs SUNG frames as happily as silent ones. Every other value of P
+improves every mode.
+
+**The sweep is not one curve, and that is the finding.** Leave-one-song-out — fit P on 31 songs by pooled
+gross, read the held-out song at that P — is perfectly stable (one value wins all 32 folds) and gives a
+different answer per objective, because the optimum moves with how much of the sheet is missing:
+
+| fitted on | picks | held-out gross | control |
+|---|---|---|---|
+| the full sheet alone | 3.0 ×31, 2.5 ×1 | 64 | 77 |
+| drop20 + drop50 | 0.1 ×32 | 246 | 520 |
+| all four modes | 0.1 ×32 | 440 | 713 |
+
+So the LOSO does not choose for us: the OBJECTIVE does, and an honest fit has to name it. **P = 1.0 ships**,
+for three reasons in the order they count. (1) The CONTROL is what production sees — a complete sheet is the
+normal case, the curve is FLAT there from 0.75 to 4 (gross 63–68, ±500/t 82.3–82.9, AAE 585–609 ms), every one
+of those rows beats the control, and 1.0 is the best of them at ±500/t and ±250/t while tying the best AAE.
+(2) Among those it is the one that still helps a partial sheet (drop20 140 against 174 at P = 3, drop50 232
+against 300). Going lower buys ~90 more gross lines on the partial modes and costs the control's AAE (+87 ms
+at P = 0.25), and `run_align`'s truth-row AAE of 71.1 ms is a number this wave may not spend. (3) It is inside
+review §3.10's range [1, 4], so the arm the bench reads is the arm the review specified. **The 0.1–0.3 region
+is recorded, not discarded**: it is the partial-sheet optimum, and if §3.10's reject-if passes at 1.0 that is
+where the next sweep should look.
+
+**It transfers across bundles**, so P is not a per-model calibration like `lexical.BANDS`: the same script on
+the BASE bundle (`--model WAV2VEC2_ASR_BASE_960H`, `base.json`) reads pooled gross 908 → 744 at P = 1.0, full
+sheet 113 → 98 and ±500/t 76.76 → 80.11 — same direction, much the same size.
+
+### What it costs, named rather than averaged away
+
+Per song, pooled over the four modes, at P = 1.0: **2 of 32 songs get worse** — `never-be-alone` +2, which is
+the review's OWN objection reproducing ("never-be-alone blind gets worse: 23 → 27 or 29"; here its full-sheet
+decode goes 8 → 11), and `tfr-mayday` +2 — against 25 songs better and 5 unchanged. **13 of the 128 cells
+regress**, 67 improve and 48 are identical. `bad-guy` ±500/t falls 6.54 → 2.69 and `numb` 41.74 → 34.78, both on songs whose
+blind decode is already mostly wrong. The biggest gains are `rap-god` 28 → 10, `shape-of-you` 37 → 23,
+`Tom_Orlando` 23 → 10, `Cortez` 21 → 8 and `Quentin_Hannappe` 21 → 9.
+
+### One real song through the whole ladder (a spot check, n=1, NOT the gate)
+
+The sweep above is the raw decode. One `--level time_text` pair on `hello` — the shipped ladder, the lexical
+gate, the claim clock, the repairs, the grading, HuBERT-L on MPS, both cells on code `5d49572b6d853804`
+(`_runs/w7-star-spot-{off,on}`) — says the arm survives the ladder on at least one song:
+
+| mode | | gross | ±500 | ±500/text | lines scored | `high` |
+|---|---|---|---|---|---|---|
+| truth | off | 0 | 100.0 | 97.30 | 72 of 74 | 50 |
+| truth | **star** | 0 | 100.0 | **100.0** | **74 of 74** | 50 |
+| drop50 | off | 12 | 57.14 | 54.05 | 35 | 18 |
+| drop50 | **star** | **0** | **97.14** | **91.89** | 35 | **21** |
+
+The truth row **gains two lines it used to lose** (`missing` 2 → 0) and moves nothing it already had — which is
+the shape §3.10's reject-if is written to protect — and drop50 loses every one of its 12 gross lines. Two
+things worth naming beside those numbers. The trail clause is live on both cases (`star: one per line, id 29 =
+frame max − 1 nats, its frames blank (star)`), so this is the arm and not the default. And the **placement
+margin did not collapse** on the starred trellis, which was the predictable risk of handing it the arm's own
+decode: truth median 18 nats against 15, lines under the floor 19 against 23, `high` lines 50 = 50, and drop50
+`high` 21 against 18. One song is not a distribution; it is the existence proof that the ladder does not undo
+the decode gain and that grading survives.
+
+### What this is NOT: a verdict
+
+§3.10's reject-if is about the **claims path** — "E2E with claims must not gain a gross line on any YouTube
+song, and must not lose more than 0.5 pt at ±500" — and the ladder already repairs most of what the star fixes
+above: W5 reads drop50 at **82** gross through `run_align` on HuBERT-L where this blind decode's control is
+**323**. The honest prior for the E2E effect is therefore still the review's own (0 to −3 gross lines), with
+the risk running the other way: a star absorbing frames a claim-repaired line needed. `gates/w7-star.yaml`
+carries the runs and the gates, including the ones the decode sweep says to watch (`high_gross` must not rise
+now that the margin reads a cheaper trellis; `missing` and `refused` must not rise at all).
+
+The arm ships **DEFAULT-OFF** until that run exists. `tests/test_star.py` pins the behaviour either way: the
+column's arithmetic, the target positions, both relabels, the span check, the drag itself (a three-line fixture
+whose text omits the intro: the default publishes line 2 at 0.37 s against a 2.6 s onset, the arm at 2.57 s),
+and the widths the step hands each decoder — four gate decodes on 29 columns, the global one on 30.
+
+**The emission cache is cold again.** `adapters/ml.py` is in the emitter fingerprint, so this wave's second
+edit to it moves the key a second time (W7's language half already took it from `a51283424a0195e1` to
+`68ce719b4b90b57e`). The sweep above deliberately reads the **`a51283424a0195e1`** matrices — the arm and its
+control on the same stored set, which is all a decoder comparison needs — and the corpus runs in
+`gates/w7-star.yaml` must re-run BOTH cells on one tree.
+
+## W7: the provider pool is real now — M13 and L5, measured end to end (2026-10-01; review M13 + L5)
+
+W5 landed review **M13** (every provider is a candidate; the candidate tier ordered by CORROBORATION instead of
+arrival order) and **L5** (an LRCLIB duration miss is retried without the duration) — and **the bench could not
+see either**. `e2e.py --level run_align` serves ONE text per case: the case's timed claims as the upload's
+authored track, or its untimed claims as an LRCLIB sheet, never both. So `Search`'s pool had one entry,
+`order_pool` had nothing to order, `corroboration` was computed over a pool of one (False by definition) and the
+L5 retry never fired, because the harness provider answered every lookup. Both shipped on unit tests alone.
+
+`scripts/pool_gate.py` closes that. It runs the REAL `workflows.align.run_align` over corpus audio with a pool
+of three to four texts, acquired by production's own `_acquire_texts` / `fetch_captions` /
+`fetch_provider_lyrics` — including **the real `LrclibClient`**, driven over an injected HTTP opener that 404s
+the duration-qualified lookup and answers the unqualified retry, so L5's own code path is what puts the clean
+sheet in the pool. The published document is scored against truth by the same scorers every other row here uses
+(`e2e_lib.row_of`), and so is **every attempt**, so one row says what the chosen text scored AND what the text
+beside it would have scored.
+
+### The pool is SYNTHETIC, derived from this corpus's truth, and the reason is not "no network"
+
+The first choice was to cache what the providers actually return per song. Not done, for three reasons:
+
+1. **The corpus has no metadata to look up.** `fetch_provider_lyrics` needs an artist AND a track and refuses a
+   guess; the corpus is keyed by SLUG (`hello`, `Pure_Mids_-_The_Leader`) and the harness passes the slug as
+   both. Real lookups would need a hand-written slug → (artist, title) table, i.e. the bench asserting song
+   identity it does not have.
+2. **A fetched sheet has no truth identity.** Every metric pairs a published line to a truth line through the
+   CLAIM it came from (`score_lines`: `DocLine.source` → `ClaimLine.truth`). A real sheet is a different
+   lineation of the same song, so most of its lines would pair with nothing and "is the chosen text better" would
+   be answered on a shifting denominator — the artefact this harness exists to avoid.
+3. **Caching commercial catalogue lyrics as a durable fixture is not ours to do.** lrcmux multiplexes
+   KuGou / QQ / NetEase; the corpus's songs are Adele, Eminem, Queen.
+
+So each text is built from THIS song's truth, as every other text in this benchmark is: a CLEAN sheet (served as
+a real `syncedLyrics` LRC body, through the real `parse_lrc`), an **SDH** caption track of the same song, a
+WRONG-SONG sheet, and the sheet that exists only because the duration-qualified lookup 404'd. What is NOT
+synthetic is everything the gap was about: the acquisition steps, the labels and tiers they build, the witness
+split (`policy.witness_of`), the corroboration reading, the order, the ladder, both gates, the audio and the
+truth.
+
+**The SDH variant notates nothing, and that is a measured decision.** Its damage is the 0.5 s cue LEAD
+(`claimmap.py` records believer's authored track leading by ~0.5 s; the YouTube group's per-song truth bias runs
+−147 to +430 ms), one misheard word every 7 lines, and the sound cues. It does NOT ♪-wrap or upper-case,
+because the YouTube group's truth text IS a caption track already — bohemian-rhapsody's lines are `♪ Is this the
+real life ♪`, hello's carry `(wind buffeting)` and spoken phone-call lines — and re-notating it ARMS
+`nonlyric` R3, the rule that drops an unnoted line once `NOTED_SHARE` of a track's worded lines carry a note
+(hello's 63/74 = 0.8514 sets that floor). The first version of the builder did wrap, pushed the share to 1.0,
+and so SAVED hello's 11 unnoted lines from R3: the "polluted" text scored **72** lines against the clean sheet's
+**63** and read BETTER, for a reason no real track has.
+
+**The machine track is served on the `jit` clock (σ 0.3 s), not truth's**, for the same class of reason: a
+machine track is a MEASUREMENT with error, and a control holding the truth clock is an ORACLE. Measured: with
+truth timing it beat the clean sheet by 7 ±500 lines of 840 and failed this gate's own `keeps-pm500` clause —
+the "worse evidence" tier outscoring a human sheet purely because the harness handed it timings nothing
+produces.
+
+### The four pools and the four arms
+
+| pool | the texts it serves, in ARRIVAL order |
+|---|---|
+| `clean` | `lrclib` (the clean sheet) alone — the counterfactual every other row is read against |
+| `sdh` | `captions:authored` (SDH of this song), `lrcmux:KuGou` (wrong song), `lrclib` (clean, via L5), `captions:machine` |
+| `wrong-track` | `captions:authored` (ANOTHER song's words on this video's clock), `lrcmux:KuGou` (wrong), `lrclib` (clean), `captions:machine` |
+| `allwrong` | three different songs' texts, no machine track (an ASR track of this audio cannot be the wrong song) |
+
+`ranked` is the shipped tree. `arrival` is **pre-M13**: `fetch_provider_lyrics` truncated to the first provider
+that answered AND `corroboration` neutralised. `pre-tie` turns off **only** the tie-break, so `arrival → pre-tie`
+prices "LRCLIB is a candidate even when lrcmux answered" and `pre-tie → ranked` prices "a corroborated text goes
+first". `no-l5` is the shipped ranking with the unqualified retry 404'd too.
+
+### Measured — 12 YouTube songs, HuBERT-Large, 132 jobs forced + 96 in `lines`, 341 s + 170 s
+
+`results/w7-pool.json`, `results/w7-pool-lines.json` (code `a50daffa196e5133`, emitter `1a2fd6852bd30243`).
+`±500/pool` is over the pool's own 892 truth lines, never the published text's: pooling over the PUBLISHED text's
+denominator would read a wrong-text publication as a song with nothing to find.
+
+| pool/arm | attempts | refused | published | scored | ±500/pool |
+|---|---|---|---|---|---|
+| `clean/ranked` | 12 | 0 | `lrclib` ×12 | 840 | **77.91** |
+| `sdh/ranked` | 12 | 0 | `captions:authored` ×12 | 839 | 77.02 |
+| `sdh/arrival` | 12 | 0 | `captions:authored` ×12 | 839 | 77.02 |
+| `sdh/pre-tie` | 12 | 0 | `captions:authored` ×12 | 839 | 77.02 |
+| `sdh/no-l5` | 12 | 0 | `captions:authored` ×12 | 839 | 77.02 |
+| `wrong-track/ranked` | **12** | **0** | `lrclib` ×12 | 840 | **77.91** |
+| `wrong-track/pre-tie` | 36 | 24 | `lrclib` ×12 | 840 | 77.91 |
+| `wrong-track/arrival` | 38 | 24 | `captions:machine` ×12 | 840 | 76.57 |
+| `wrong-track/no-l5` | 38 | 24 | `captions:machine` ×12 | 840 | 76.57 |
+| `allwrong/ranked` | 36 | **36** | **no-lyrics ×12** | 0 | — |
+| `allwrong/arrival` | 24 | 24 | **no-lyrics ×12** | 0 | — |
+
+**1. The corroboration tie-break changes the CHOSEN TEXT on 0 of 12 songs, in every pool.** Which is what
+`order_pool`'s docstring already said and nobody had measured: it demotes a text NOTHING in the pool agrees with,
+and an SDH track of this song agrees with a clean sheet of it, so on review M13's own motivating case the SDH
+text is still tried first — `sdh/ranked`, `sdh/arrival` and `sdh/pre-tie` publish the same document on all 12
+songs.
+
+**2. What the tie-break does buy is ATTEMPTS.** In `wrong-track` the clean sheet is corroborated (by the machine
+track, the third witness) and the authored track agrees with nothing, so `ranked` spends **12 attempts, 0
+refused** where `pre-tie` spends **36, 24 refused** — the same published document, two fewer whole attempts per
+song, each an emission pass, the repair ladder and both gates.
+
+**3. The half that moves accuracy is "every provider is a candidate".** `arrival` keeps only lrcmux's wrong
+sheet, so after both candidates are refused the job publishes YouTube's **machine track** on 12 of 12 songs:
+**76.57 against 77.91** (+12 ±500 lines of the 840 both arms scored), and `textConfidence` `low` instead of
+`high` — the TV's "not verified" mark — on a song a human sheet existed for.
+
+**4. L5 is why that sheet is in the pool at all.** `no-l5` reads **identical to `arrival`**: the same 12
+machine-track publications, the same −12. The retry is one HTTP request and it is worth the whole of finding 3
+on this corpus (`l5-is-why-the-clean-sheet-is-in-the-pool`: the sheet is absent from 24 of 24 pools without it).
+
+**5. The MUST holds: 0 of 228 jobs published a text with no truth line**, in any pool, any arm, either sync
+mode, and `allwrong` ends in `no-lyrics` on 12 of 12 songs both ways. The reason is not the ranking — it is the
+per-attempt lexical lift, and the populations are not close: the 132 attempts on a wrong text read lift
+**−0.09 … +0.12** nats/letter (median −0.00) against the 112 right-text attempts' **2.42 … 5.50** (median
+**3.49**). The ranking cannot admit a wrong text because by the time the order matters the gate has already
+refused it.
+
+### …and in `syncMode=lines` the SDH text costs 176 lines, because the rung publishes its claims verbatim
+
+| pool/arm (`--sync-mode lines`) | attempts | refused | published | scored | ±500/pool |
+|---|---|---|---|---|---|
+| `clean/ranked` | 12 | 0 | `lrclib` ×12 | 844 | **83.41** |
+| `sdh/ranked` = `sdh/arrival` | 12 | 0 | `captions:authored` ×12 | 844 | **63.68** |
+| `wrong-track/ranked` | 12 | 0 | `lrclib` ×12 | 844 | **83.41** |
+| `wrong-track/arrival` | 36 | 24 | `captions:machine` ×12 | 844 | 77.47 |
+| `allwrong/ranked` / `arrival` | 36 / 24 | 36 / 24 | **no-lyrics ×12** | 0 | — |
+
+The forced path's claim clock absorbs an SDH lead — `sdh/ranked` against `clean/ranked` is **−7 of 839 shared
+lines** (rap-god −7, ±1 noise elsewhere, 0 gross either way). The LINE_SYNC rung does not absorb it, because the
+document it publishes IS the text's own claimed starts: the same comparison in `lines` is **−176 of 844**
+(hello 40/63, rap-god 112/216, shape-of-you 50/88, feel-my-heart 21/32; 0 gross, since a 0.5 s lead is not 2 s).
+`wrong-track` reads the same way from the other side: ranked's sheet beats arrival's machine track by **+53**.
+
+So the value of ranking the pool by TEXT QUALITY is an order of magnitude larger in `lines` than in `forced`,
+and that is where M13's deferred half — the LEXICAL LIFT ranking, which needs an emission matrix before the
+first attempt — would be read. Stated as a number rather than an intuition for the first time: on this corpus,
+with a 0.5 s lead, choosing the sheet over the agreeing SDH track is worth **20.8 pt of ±500** in `lines` and
+**0.8 pt** in `forced`.
+
+**And in `lines` there is already an audio-grounded score that costs no model pass.** The rung's own gate
+computes `activity.fit_sheet_to_audio` over each text's claimed spans (`align_steps._sheet_spans`) — an
+ENVELOPE correlation and lag, no emissions — and `sheet_gate.py` has its populations: caption-shaped truth
+spans pass 241/416 right texts at 0/320 wrong, median r 0.33 on the mix against the wrong texts' 0.17. Ranking
+the `lines` pool by that `r` (or simply by |lag|, which is exactly what an SDH lead IS) would be "prefer the
+text the audio agrees with" at zero model cost, in the one mode where the measurement above says it pays. Not
+built, not measured — the number above is the budget it would be judged against.
+
+### Where the rows are, and what it costs to re-read them
+
+```
+cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/pool_gate.py \
+    --songs youtube --out ../docs/benchmarks/forced-alignment/results/w7-pool.json
+cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/pool_gate.py \
+    --songs youtube --sync-mode lines --pools sdh,wrong-track,allwrong,clean --arms ranked,arrival \
+    --out ../docs/benchmarks/forced-alignment/results/w7-pool-lines.json
+cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/pool_gate.py \
+    --from ../docs/benchmarks/forced-alignment/results/w7-pool.json     # re-summarise, no model pass
+```
+
+The emission cache is keyed on the AUDIO, not the text, so a song pays one model pass for all its pools and arms
+— 8.5 minutes for all 228 jobs on a warm store. Hermetic coverage is `worker/tests/test_pool_gate.py` (22
+tests): the pool's shape and witness split, the two states the ranking can be in, the L5 opener against the real
+client, and the arms driven through the real workflow over the E2E harness's synthetic song.
+
+The YouTube twelve are the group with genuine multi-source texts, which is why the row above is theirs; the
+JAMENDO half was spot-checked on 2 songs (22 jobs, all 13 verdicts green) and reads the same way — `ranked`
+publishes the sheet, `arrival` and `no-l5` publish the machine track three ±500 lines worse on each song — with
+the WORD metrics live there (159 paired onsets, `mismatched` **0**, so the SDH variant's one-slip-per-7-lines
+keeps `score_words`' positional pairing exactly as its builder claims).
+
+## The W7 corpus sweep: the wave is a measured NO-OP on the default, and §3.10's star REJECTS at the claims path (W7 bench, 2026-10-01)
+
+Six corpus runs plus two off-bench harnesses, all on one tree — worker code `fd9a5a6ddb641cd3`, emitter
+`1a2fd6852bd30243`, HuBERT-Large, seed 0, `wrong_k` 10, `--tfr-audio youtube`, mps, `--asr off`. W7 landed three
+things DEFAULT-ON (language as an input, M9's `blank_id`, M13's ranking + L5's retry) and two DEFAULT-OFF
+(`star`, `lang-route-mix`), and this is what the corpus says about each.
+
+### The headline: the default-on half does not move one byte
+
+| run | level | vs | result |
+| --- | --- | --- | --- |
+| `results/w7-time_text.json` | `time_text`, 16 modes, 1088 cases | `w5-time_text.json` | EVERY metric `(=)`; `count(song.doc_changed) == 0` |
+| `results/w7-run_align.json` | `run_align`, 16 modes, 1088 cases | `w5r2-run_align.json` | EVERY metric `(=)`; `count(song.doc_changed) == 0` |
+| `results/w7-lines-run_align.json` | `run_align --sync-mode lines`, 1088 cases | `w5r2-lines-run_align.json` | EVERY metric `(=)`; `count(song.doc_changed) == 0` |
+| `results/w7-generate.json` | `generate`, blind, 20 Jamendo | `w5-generate.json` | EVERY metric `(=)` |
+
+`gates/w7.yaml` 45/45 on all three control runs, `gates/w7-words.yaml` 25/25 on the two that have word onsets,
+`gates/w7-truth.yaml` 18/18 on the forced `run_align` run, `gates/w7-wrongtext.yaml` 10/10 on all five runs that
+carry both wrong-text modes (the three controls, the star arm, and the star arm in `lines`) — **253 gate
+readings, every one green**, 0 ERROR rows in all 5268 cases of the eight runs below, and **3200
+wrong-text cases across five runs with not one published**. The `run_align` truth row, with its denominators, is unchanged from W5: **gross 0**, ±500 **90.45**
+(1544 of 1707 scored lines), ±500/text **87.73** (1544 of the 1760 the texts asked for, 53 missing), **32 of 32**
+zero-gross songs, Jamendo words ±100 **85.46** / ±250 96.58 / ±300 **97.16** / AAE **71.1 ms** over 5378 aligned
+of 5693 in text, word end ±100 80.34, highlight **81.40 %** of 2432.77 sung seconds, wrongtext **0/320** and
+wrongtext+ownclock **0/320** — and 0 of 640 in `lines`, which is the rung's own floor with the routing and the
+ranking live.
+
+That is the right answer and it is worth saying why it is not a tautology. The three default-on changes all sit
+ON the align path of an English song: `generate.char_ids` is now the ONE target filter and folds NFKD before it
+looks a character up, `ports.Transcribed` carries a language the four acquiring steps write onto `TextRef`, and
+`policy.decide` orders a candidate pool it did not order before. Each is meant to be the identity here — the
+routing policy must return the English bundle for a Latin-script sheet, the fold must be the identity on ASCII,
+and a corpus pool of one has nothing to re-order. `count(song.doc_changed) == 0` over the 3264 cases of the
+three gated control runs is the statement that all three are, at the level of bytes. A single mis-folded character would have shown up in
+`word_pm100` long before a line start moved, which is why `gates/w7-words.yaml` exists as its own file.
+
+### §3.10's star: the decode gain is real, reproduces to the digit, and does NOT survive the ladder
+
+Two pairs, both arm-against-control on this one tree (`align_experiments` is in the emission cache key, so the
+arm recomputes every matrix; the 32 cold HuBERT-L passes cost 248 s).
+
+**The decode axis** (`results/w7-star-{off,on}-generate.json`, `--level generate`, 32 songs × 4 text modes)
+reproduces the off-bench P sweep (`results/w7-star-sweep.json`) **exactly** through the shipped harness, which
+retires the question of whether `star_sweep.py` measured the same thing production runs:
+
+| mode (served lines) | gross off → on | ±500/text off → on |
+| --- | --- | --- |
+| full sheet (1746, 14 unscored) | 77 → **67** | 80.51 → **82.90** |
+| drop20 (1402, 10 unscored) | 197 → **140** | 69.83 → **76.13** |
+| drop50 (865, 8 unscored) | 323 → **232** | 48.34 → **60.60** |
+| extraverse (1746, 14 unscored) | 116 → **112** | 78.30 → **80.28** |
+| pooled (5759 of 5805) | 713 → **551** | 72.40 → **77.11** |
+
+It also shows a cost the off-bench sweep never printed: **word ENDS get worse where line starts get better**.
+Phrase-final end ±100 30.5 → 28.3 on the full sheet and 30.5 → 28.2 on extraverse, highlight 64.7 → 63.7 and
+61.0 → 60.0. The star is somewhere cheap for the path to wait, and the frames it absorbs are the ones the last
+word of the previous line used to be charged — so that line starts right and ends early.
+
+**The E2E axis** is the one §3.10 writes its reject-if over, and it REJECTS. `results/w7-star-run_align.json`
+against `results/w7-run_align.json`, same tree, 1088 cases: `gates/w7-star.yaml` **32/36 — REJECT**.
+
+* `no-youtube-song-gains-a-gross-line` → **14** (mode × song cells). Eleven of them are **`never-be-alone`
+  losing one line to `missing`** (1 → 2 of its 47 truth lines) in 11 of the 16 modes — truth, jit, off05, off15,
+  off3, offm1, tempo098, tempo102, drop20, blind, headers. The other three: `tfr-mayday` drop20 (+1 missing),
+  `shape-of-you` blind (+1 gross), and `tfr-chosen` blind (gross 8 → 10 with missing 5 → 3, i.e. it published two
+  lines it used to skip and both are wrong). `never-be-alone` is the review's OWN objection to the star, and it
+  reproduces on the path that publishes. The `missing_up` rider is what caught it: `gross` counts published
+  lines, so a line that stops being published reads as an improvement without it.
+* `truth-no-song-loses-lines` → **1**: that is `never-be-alone` under TRUTH claims, which PLAN-alignment-v3
+  forbids outright.
+* `no-jamendo-song-worse-at-word-pm300` → **−4.26 pt** (`HILA_-_Give_Me_the_Same` 98.98 → 94.72).
+* `high-gross-not-up` → **3 ≤ 2** fails: `hello` gains a `high`-confidence gross line in `blind` (0 → 1,
+  alongside `rap-god`'s unchanged 2), which is the one thing §3.7's rule says may never rise.
+
+`gates/w7.yaml` reads 42/45 on the arm for the same reason, plus the one extra cell the YouTube-only clause does
+not see: `Kinematic_-_Peyote` drop50 (+2 missing) and `Avercage_-_Embers` blind (+1 gross), both Jamendo — 16
+cells in all.
+
+And on the wave's own bars it costs the shipped row directly: `gates/w7-truth.yaml` 15/18 and
+`gates/w7-words.yaml` 15/25 — Jamendo ±100 85.46 → **84.94**, ±250 96.58 → 96.20, ±300 97.16 → **96.81**, AAE
+**71.1 → 74.1 ms**, MedAE 37.5 → 37.9, word end ±100 80.34 → 80.21 — and 442 of 1088 published documents change.
+
+What it buys is not nothing, which is why the arm is kept rather than deleted: pooled gross across all modes
+143 → **98**, drop50 gross 82 → **44** with ±500/text 75.72 → **81.90** and missing 55 → **28**, blind gross
+61 → 54 and ±500/text 79.20 → 80.17, drop20 ±500 90.31 → 90.82, jit ±500 87.17 → 88.36, drop50 Jamendo AAE
+711.6 → 456.7 ms. And ONE nuance that has to be read with the word row above or it looks like a contradiction:
+under truth claims the arm publishes MORE words — 5583 aligned of 5693 against 5378 — so the COVERAGE metrics
+rise (`word_pco300`, every truth word the text asked for, 91.78 → **94.94**; highlight 81.40 → **82.18**) while
+the PRECISION metrics over the words that did publish fall (±100 85.46 → 84.94, AAE 71.1 → 74.1 ms). The star
+recovers 205 words the ladder used to leave interpolated, and times them a little worse than the ones that were
+already there. That is a defensible trade for a reader who wants coverage; it is not the trade PLAN-alignment-v3
+pinned, and it does not buy off the 14 line-level cells above. The wrong-text verdict is byte-identical on both
+sides (0/320, 320 refused), as designed —
+the gates read the UNSTARRED matrix, and read again in `lines` where the LINE_SYNC rung is a text's only attempt
+(`results/w7-star-lines-wrongtext.json`, 640 cases, 470 s: **0 of 640**, all refused, `gates/w7-wrongtext.yaml`
+10/10). So the trade is real and it is the wrong way round for a default: **it buys
+partial-sheet line starts with full-sheet word onsets.** `star` stays DEFAULT-OFF
+(`ENCORE_ALIGN_EXPERIMENTS=star`); phase B's frame-relative star and §3.15's skip arcs (W9) are where the same
+audio-not-in-the-text problem gets its next attempt, now with a measured bar to beat: it must deliver drop50's
+−38 gross lines without `never-be-alone`'s one.
+
+### The language evidence, widened to n=59 and re-read under the new default bundle
+
+`scripts/lang_gate.py`, 59 unused fr/de/es JamendoLyrics songs (de 20, es 20, fr 19 — the review argued from
+n=7), both targets, HuBERT-Large as the English default, 2515 truth lines and 15887 truth words per condition.
+
+| target | condition | word ±300 | words > 2 s out | line ±500 | gross |
+| --- | --- | --- | --- | --- | --- |
+| stem | default (English on all 59) | **94.78** | **188** | 90.78 | 80 |
+| stem | routed (per-language bundle) | 92.97 | 485 | 92.29 | 99 |
+| mix | default (English on all 59) | 77.47 | 2111 | 71.89 | 415 |
+| mix | routed (per-language bundle) | **80.08** | **1940** | **76.26** | **372** |
+
+The stem half CONFIRMS §3.9: keep English on Latin-script stems. The default is 1.81 pt better at ±300 and its
+tail is **2.6× smaller** (188 words more than 2 s out against 485); per language the routed bundle is worse at
+±300 on de (96.68 → 96.39) and much worse on es (96.36 → **91.19**, tail 35 → 237) and level on fr (91.45 =
+91.45, tail 85 → 153). It wins on line ±500, which is the metric a wrong-but-confident word onset does not spoil
+— the reason to read both.
+
+The mix half REFUTES the same idea as a general rule, and the pooled +2.61 pt is **German's alone**: de
+76.73 → **86.52** (+9.79), es 78.23 → 78.74 (+0.51), fr 77.44 → **75.28** (−2.16). A knob that helps one of three
+languages and hurts another is not a default, so per-language mix routing ships DEFAULT-OFF as
+`lang-route-mix` with these numbers attached.
+
+### M9's `blank_id`, proved on a model whose `[PAD]` is not 0
+
+`results/w7-blank-nynorsk.json`: `NbAiLab/nb-wav2vec2-1b-nynorsk` (blank at **31**, id 0 is `|`) over three
+German stems, 143 truth lines and 1050 truth words, three conditions on one matrix.
+
+| condition | gross | line ±500 | word ±250 | words > 2 s out |
+| --- | --- | --- | --- | --- |
+| `matrix` — blank read off the model (shipped) | 7 | 132/143 | **1006/1050 = 95.81 %** | **15** |
+| `unaware` — blank assumed 0 (pre-W4) | 27 | 97/143 | 782/1050 = 74.48 % | 133 |
+| `kernel` — torchaudio's hard-coded `blank=0` | — | — | — | raises |
+
+The `kernel` row is the loud half: `ValueError: decode produced 2313 token spans for 1597 character targets …
+the emission matrix and the target encoding disagree`. And an UNCALIBRATED bundle still fails before any job
+runs, at the composition root (`__main__.align_model_for`, verified live on this tree):
+`ConfigError: ENCORE_ALIGN_MODEL='WAV2VEC2_LARGE_XLSR_53_DE': no lexical calibration for … recalibrate with
+scripts/lift_gate.py --model … before reading it as a verdict`, while the three names in `lexical.CALIBRATED`
+(`HUBERT_ASR_LARGE`, `HUBERT_ASR_XLARGE`, `WAV2VEC2_ASR_BASE_960H`) resolve.
+
+### M13 and L5, and how often the ranking actually changes the answer
+
+`results/w7-pool{,-lines}.json`, 228 jobs over the 12 YouTube songs. **0 wrong texts published**, 0 error rows.
+Separating M13's two halves:
+
+* **"every provider is a candidate"** (ranked vs `arrival`, the `wrong-track` pool): the chosen text moves on
+  **12 of 12 songs** — the clean LRCLIB sheet instead of the machine caption track — worth **+12 ±500 lines of
+  840** forced and **+53 of 844** in `lines`, and it costs 12 attempts against 38.
+* **the corroboration tie-break** (ranked vs `pre-tie`): the chosen text moves on **0 of 12 songs**.
+* **L5's duration retry** (ranked vs `no-l5`): same +12 of 840 — the clean sheet is absent from **24 of 24**
+  pools without it, so the retry is why it is a candidate at all.
+
+### What was run, and what it cost
+
+| tag | command | cases | wall | emissions |
+| --- | --- | --- | --- | --- |
+| `w7-tt` | `--level time_text --modes all,wrongtext+ownclock` | 1088 | 1282 s | 39 computed, 24 disk, 1222 memory |
+| `w7-ra` | `--level run_align --modes all,wrongtext+ownclock` | 1088 | 997 s | 60 disk, 1201 memory |
+| `w7-lines` | `--level run_align --sync-mode lines --modes all,wrongtext+ownclock` | 1088 | 867 s | 32 disk, 1024 memory |
+| `w7-generate` | `--level generate --modes blind --songs jamendo` | 20 | 14 s | 20 disk |
+| `w7-star-off-generate` | `--level generate --modes truth,drop20,drop50,extraverse` | 128 | 25 s | 32 disk, 96 memory |
+| `w7-star-on-generate` | the same, `ENCORE_ALIGN_EXPERIMENTS=star` | 128 | 260 s | **32 computed**, 96 memory |
+| `w7-star-run_align` | `--level run_align --modes all,wrongtext+ownclock`, star | 1088 | 1217 s | 29 computed, 32 disk, 1193 memory |
+| `w7-star-lines-wt` | `--level run_align --sync-mode lines --modes wrongtext,wrongtext+ownclock`, star | 640 | 470 s | 32 disk, 608 memory |
+
+Two notes for whoever runs the next wave. (a) The emitter fingerprint for this tree is `1a2fd6852bd30243`, **not**
+the `a51283424a0195e1` the W7 briefs carry: W7's own `adapters/ml.py` work moved it again after W5's round-2
+re-bench, so the CONTROL cells were cold too (39 recomputes in run 1, which is the 218 s the `truth` mode took).
+Everything after run 1 read the store. (b) `results/w5r2-time_text.json` **does not exist** and a brief that
+names it means `results/w5-time_text.json`: W5 r2's own `meta.baseline` declares that level's baseline unchanged
+from r1 (`time_text` serves the claims raw, so no text-hygiene change can reach it) and `_runs/w5r2-tt-control`
+reproduced it byte-identically.
