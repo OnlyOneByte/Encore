@@ -16,7 +16,11 @@
 	interface Props {
 		/** The selected colour, as a canonical hex. Bindable. Always one of the palette's 48 fills once touched. */
 		value: string;
-		/** Heading above the ring, and the control's accessible name. */
+		/** Heading above the ring, and the control's accessible name (one string serves both, so they cannot drift and
+		 * SC 2.5.3 holds by construction). SECOND PERSON, and the default is the canonical spelling: this value is the
+		 * singer's OWN, which is the app's test for `Your …` over a bare noun (docs/FRONTEND.md, label registers). Both
+		 * call sites spell it anyway so a copy grep finds the words on the surface that shows them; /settings used to
+		 * pass a bare `Color` and was the only site that overrode the default away from the rule. */
 		label?: string;
 		hint?: string;
 		/** Colours already held by people in the room, drawn as hollow pips. Empty is a legitimate state (an empty room),
@@ -93,7 +97,7 @@
 </script>
 
 <div class="ring-field">
-	<span class="eyebrow">{label}</span>
+	<span class="control-label">{label}</span>
 	{#if hint}<p class="field-hint">{hint}</p>{/if}
 
 	<!-- The `role="slider"` sits on the DISC, not the knob, so a tap anywhere on the band is a pick and the measured

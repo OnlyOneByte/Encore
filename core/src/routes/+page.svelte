@@ -32,7 +32,7 @@
 	import { queueAnnouncement } from '$lib/phrasing/queue-announcement';
 	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { processAndQueue } from '$lib/process-and-queue';
-	import { libraryShelf } from '$lib/library-browse';
+	import { libraryShelf, LIBRARY_SHELF, LIBRARY_SHELF_WIDE } from '$lib/library-browse';
 	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
@@ -67,7 +67,8 @@
 	/* One column read top to bottom, with `searchActive` (a non-empty query) as the SOLE switch between the queue
 	   view and the results view. Still no browse MODE on this column and no history entry for a search — browsing is a
 	   separate ROUTE (/library), reached from the door beside the field and from the shelf's `See all`, so this column keeps
-	   one switch. The library here is a four-row shelf, not the library. See docs/FRONTEND.md#the-home-column. */
+	   one switch. The library here is a SHELF, not the library — four rows on a phone, eight where the grid is two
+	   tracks wide. See docs/FRONTEND.md#the-home-column. */
 
 	// Mirrored from the room link, not owned here. Optional because an unjoined guest has no queue at all, which
 	// is what every `store?.` call site below reads.
@@ -99,9 +100,18 @@
 		// The link holds no opinion about how a failure is shown, so the toast stays a route decision.
 		const stopErrors = room.onError((message) => showError(message));
 		void room.connect();
+		/* SSR-safe the way /tv's reduced-motion read is: matchMedia does not exist during load, and this runs on mount
+		   where it does. `?.addEventListener?.` mirrors the `('change', onChange)` registration in /tv's own
+		   `prefers-reduced-motion` mount read (named, not line-numbered, because a line pointer rots) — the optional
+		   call guards the Safari versions that ship a MediaQueryList with only the deprecated `addListener`. */
+		const wide = typeof matchMedia === 'function' ? matchMedia('(min-width: 1200px)') : null;
+		const onWideChange = (e: MediaQueryListEvent) => (twoAcross = e.matches);
+		twoAcross = wide?.matches ?? false;
+		wide?.addEventListener?.('change', onWideChange);
 		return () => {
 			stopMirror();
 			stopErrors();
+			wide?.removeEventListener?.('change', onWideChange);
 			/* THE SEARCH DEBOUNCE DIES WITH THE COLUMN. 150 ms is easy to leave inside — typing, then tapping a
 			   shelf row or the `/library` door — and an uncleared timer fires `/api/search` from a component
 			   that is already gone: measured at one full abandoned request per mid-debounce departure. That is
@@ -124,6 +134,12 @@
 	   queue: the keyboard leaves ~350px, which a field, a heading and two queue rows would spend. */
 	let library = $state<Media[]>([]);
 	let libraryTags = $state<Record<string, string[]>>({});
+	/* HOW MANY SHELF ROWS FIT, and it is read in JS rather than CSS because the extra rows DO NOT EXIST in the DOM for
+	   a stylesheet to reveal — rendering all eight always and hiding four below --bp-lg would leave them in the
+	   accessibility tree, where a screen reader would read a shelf twice the size of the one on screen. Seeded from
+	   `.matches` in onMount, not left false, or a desktop that never resizes keeps the phone cap forever. 1200 is
+	   --bp-lg; a media condition is evaluated before the cascade and cannot read the token. */
+	let twoAcross = $state(false);
 	let queryEl = $state<HTMLInputElement | null>(null);
 	/* WHERE to search. `music` is the DEFAULT and sends no `source` param at all, which the route reads as
 	   its default set: the YouTube Music catalog, local files, and Spotify metadata — everything except
@@ -198,8 +214,7 @@
 		try {
 			// `music` is the route's own default, so it sends nothing — one spelling of the default, on the
 			// server, instead of two that can drift.
-			const source =
-				searchSource === 'music' ? '' : `&source=${searchSource === 'everything' ? 'all' : searchSource}`;
+			const source = searchSource === 'music' ? '' : `&source=${searchSource === 'everything' ? 'all' : searchSource}`;
 			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}${source}`, { signal: ctrl.signal });
 			if (ctrl.signal.aborted) return;
 			// A 500 whose body happens to be JSON parsed cleanly into `{}`, so every group came back empty
@@ -342,9 +357,13 @@
 	const processingIds = $derived(new Set(processingRows.map((c) => c.id)));
 	const libraryRows = $derived(library.filter((m) => !processingIds.has(m.id)));
 
-	/* A SHELF, not the library — /library is the library. The cap, the reason for its value and the rule that hides
-	   the door when nothing is behind it all live in `libraryShelf`. */
-	const shelf = $derived(libraryShelf(libraryRows));
+	/* A SHELF, not the library — /library is the library. The cap, the reason for both its values and the rule that
+	   hides the door when nothing is behind it all live in `libraryShelf`. The route's only contribution is WHICH cap:
+	   the wide one is the same height budget spent across the two row tracks the grid opens at --bp-lg, so the desktop
+	   shows twice the songs in the height the phone already spends rather than half the height and the same four.
+	   `See all N songs` needs no change — `hidden` follows the cap, so the door still vanishes when nothing is behind
+	   it under either one. */
+	const shelf = $derived(libraryShelf(libraryRows, twoAcross ? LIBRARY_SHELF_WIDE : LIBRARY_SHELF));
 
 	/**
 	 * THE FIRST-RUN SCREEN: nothing queued, nothing in the library, nothing on the way. It gets ONE empty state
@@ -650,7 +669,9 @@
 							 zero-state branches REPLACE every `<h2 class="grouphead">` on this column, so on a first run the
 							 only heading in the whole document was the wordmark. A guest cycling headings to orient learned
 							 nothing about what the app is. Added at the call site, not by re-vendoring, which is the precedent
-							 `settings/+page.svelte:388` set for `Card.Title` and recorded there. -->
+							 /settings set for `Card.Title` at its ten `role="heading" aria-level={2}` call sites, recorded in
+							 the comment above that page's `PageHeader` (named, not line-numbered: the pointer that stood here
+							 aimed at an unrelated `$derived.by`). -->
 						<Empty.Title role="heading" aria-level={2}>Nothing queued yet</Empty.Title>
 						<Empty.Description>Find any song and we'll make the karaoke track for it.</Empty.Description>
 					</Empty.Header>
@@ -832,7 +853,7 @@
 				</div>
 			{/if}
 
-			{#if showsNoRows({ searching, readyCount: readyResults.length, rawCount: rawRows.length, processingCount: processingRows.length })}
+			{#if showsNoRows( { searching, readyCount: readyResults.length, rawCount: rawRows.length, processingCount: processingRows.length } )}
 				{@const empty = noRowsState({ searchActive, libraryCount: library.length, query })}
 				<Empty.Root>
 					<Empty.Header>
@@ -867,7 +888,7 @@
 	   env() term — the band carries the only inset, and it arrives through --dock-h. */
 	main {
 		flex: 1;
-		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
+		padding: var(--space-xs) var(--space-2xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	/* These wrappers hold what a component must not: flex-item layout and inherited ink. Neither can be a class
 	   passed to <Button> — Tailwind scans only components/ui, and a class handed to a component is stripped here. */
@@ -944,7 +965,7 @@
 			/* 440px is measured off the row's contents: ~220px goes on thumbnail, badge, button and gaps, so a narrower
 				   column truncates every title. */
 			grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
-			gap: 0 var(--space-xl);
+			gap: 0 var(--space-2xl);
 			align-content: start;
 		}
 		main > :global(*) {
@@ -963,19 +984,36 @@
 	   `stretch`, NOT `center`: the field is 70px at every width (--space-lg twice, a --tap-floored input and the
 	   border), while `size="icon"` is a FIXED 44px square, so centring left the door 26px short of the thing it
 	   sits beside. Stretching binds the two heights together instead of restating a number that would then drift
-	   from the field's padding. */
+	   from the field's padding.
+	   That margin takes the SECTION rung, because this is the controls -> content boundary and so the largest
+	   structural break on the surface. At --space-lg it was 12px, which made it SMALLER than the 16px then
+	   separating two sections of the same kind below it — an inversion, not a near-miss. `.grouphead:first-of-type`
+	   above still pulls the first eyebrow's own top margin to 4px and still does its job: below 768px `main` is a
+	   block box, so the two COLLAPSE to 24 rather than summing to 28. At and above 768px `main` is a grid with a 0
+	   row-gap, where margins do not collapse, so the same boundary is 28. */
 	.find-row {
 		display: flex;
 		align-items: stretch;
 		flex-wrap: wrap;
 		gap: var(--space-md);
-		margin-bottom: var(--space-lg);
+		margin-bottom: var(--space-5xl);
 	}
 	/* The field takes the rest of the row and is the half that SHRINKS — `min-width: 0` is what lets it, and without
 	   it the 44px door would be pushed off the edge at 320px instead. */
 	.field-slot {
 		flex: 1;
 		min-width: 0;
+		/* THE PROSE MEASURE, and UNCONDITIONALLY — no @media, because a `max-width` can only ever take space BACK: the
+		   cap cannot bite until the row itself passes ~750px, so every width this app was designed on sees byte-
+		   identical geometry and there is no breakpoint here to get wrong. Derived: the findbox is 230px at a 767px
+		   viewport, 510px at 768 (where --max-w is 760 and the row is 696), and the cap first binds above that.
+		   --measure-prose is the token for the ROLE ("protects line length") and a one-line text field is that role; it
+		   had no caller on either field. At 1440x900 --max-w 1080, less the shell's 2x--space-2xl and main's
+		   2x--space-2xl, is a 1016px column, which handed this slot ~828px and the input ~778px — about 1.4 measures of
+		   caret to chase, with the placeholder adrift from the mark that labels it. Capped, the findbox measures exactly
+		   560 and the input 508, and the door and the picker stay pinned beside it, so the three read as one control
+		   cluster rather than a bar stretched across the column. EVERY WIDTH ABOVE IS A READING PLUS 4px, not a fresh read: main's inline gutter came down one rung (18 -> 16) and this `flex: 1` slot takes both sides of that; the input takes 4 more again, from `.findbox`'s own inline inset coming down 14 -> 12. The capped 560 is the cap itself and did not move. */
+		max-width: var(--measure-prose);
 	}
 	/* A wrapper, because a class handed to <Button> is scoped to this file where Svelte strips it as unused. `0 0 auto`
 	   is load-bearing: beside a field that shrinks, an unpinned 44px control is what collapses instead. */
@@ -1018,8 +1056,9 @@
 	}
 
 	/* `min-height`, not an absolute centring trick: this block sits in a scrolling column whose height three other
-	   rules already own. `overflow-wrap: anywhere` is the 320px reflow clause — at --ph-text-3xl and 200% text one
-	   unbreakable word is wider than the viewport. The size reaches the vendored slot through `:global()`. */
+	   rules already own. `overflow-wrap: anywhere` is the 320px reflow clause — at --ph-text-2xl (the size the title
+	   rule below actually resolves) and 200% text one unbreakable word is wider than the viewport. The size reaches
+	   the vendored slot through `:global()`. */
 	/* FLEX COLUMN, not `grid` + `place-items: center`. The vendored `Empty.Header` is `display: contents`, so its
 	   children become direct children of THIS box — under grid they became two auto rows that split the 40vh
 	   between them and put the description 220px below its own title. A centred flex column stacks them as one
@@ -1054,8 +1093,9 @@
 	   `display: contents`). It matched nothing, silently: `:global()` suppresses Svelte's unused-selector warning,
 	   so the size, weight and the `overflow-wrap` reflow clause below never applied and the title rendered at the
 	   vendored `text-lg`. */
-	/* --ph-text-2xl, DOWN FROM 3xl (2.6rem / ~42px). The old size was both the largest type in the app AND dimmed by
-	   `.encore-empty`'s --ink-dim, which is the worst pair available: big enough to dominate the screen, faint enough to
+	/* --ph-text-2xl, DOWN FROM 3xl (2.6rem / ~42px, the ladder's display rung). The old size was both the
+	   largest type in the app AND dimmed by `.encore-empty`'s --ink-dim, which is the worst pair available: big enough
+	   to dominate the screen, faint enough to
 	   read as a placeholder nobody finished. Full --ink at a heading size states it once, properly. It also now agrees
 	   with /library's twin, which was already at this step. */
 	.queue-empty :global([data-slot='empty-title']) {
@@ -1091,7 +1131,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-md);
-		padding: var(--space-2xl) var(--space-3xl) var(--space-sm);
+		padding: var(--space-2xl) var(--space-2xl) var(--space-sm);
 	}
 	.me-cluster {
 		margin-left: auto;
@@ -1103,19 +1143,61 @@
 		color: var(--ink-dim);
 	}
 
+	/* THE HEADER BECOMES A BAND AT --bp-md, and only there. On a phone the wordmark and the identity cluster sit about
+	   a --space rung apart and need no boundary; on a desktop column they are most of the viewport apart, and with
+	   nothing painted under them they read as two things adrift rather than as one header. THE GAP IS NAME-DEPENDENT,
+	   so no constant here is a property of the layout: `.me-cluster` is `margin-left: auto`, so the distance is the
+	   content box less the wordmark less the cluster, and the cluster's width is the singer's display name. Read
+	   with an eight-character name it is 95px at 390x844 and 785px at 1440x900 — the same order as the ~777px of
+	   docs/UI-DESIGN-REVIEW.md#5. Both are a reading plus 4px: `.topbar`'s inline gutter came down one rung (18 -> 16) when app.css retired `--space-3xl`, and a wider content box is a wider gap for the auto margin to open.
+	   The gap is UNCHANGED by this rule, deliberately, and on its OWN merits rather than by precedent: leading brand /
+	   trailing account is a real desktop header form, and the cluster is the one thing on this column that earns the
+	   far edge, because it leaves the way into /settings in the same corner it occupies on every other route. What the
+	   hairline does for that split is this rule's whole job — it gives the two clusters a shared lower boundary, so
+	   they read as the two ends of ONE surface instead of as two things floating in page. PageHeader is NOT the
+	   precedent and must not be cited as one: its `.inner` left-packs `.back-slot` then `h1` with `gap:
+	   var(--space-md)`, with no trailing slot and no auto margin anywhere in the file. What `/` alone lacks is that
+	   every other header is a capped SURFACE, and this is the cheapest honest form of one.
+	   Deliberately NOT the PageHeader pill: that fill and blur are earned by being STICKY, and this header is not
+	   (docs/FRONTEND.md#the-home-column). --line and not --control-line: this is a decorative hairline, not the
+	   boundary of anything operable.
+	   The rule spans the shell's content box, 16px past the rows' column on each side, which is deliberate — a divider
+	   stopping exactly at a row's edge reads as a row boundary rather than as page structure.
+	   Its OWN media block rather than the row grid's `@media (min-width: 768px)` above, because a paint rule filed
+	   inside the grid arm is a paint rule nobody looking at the header will find. 768 is --bp-md; a media condition is
+	   evaluated before the cascade and cannot read the token.
+	   ORDER IS LOAD-BEARING: this sits BEFORE the max-height arm below, so a phone held sideways — which can match
+	   both — keeps that arm's tighter `padding` shorthand and this only adds the hairline. Measured at 844x390 the
+	   computed padding-bottom is 4px and the border is still 1px, which is that arm winning. Moving this block after
+	   it would hand 12px of padding back to the one arm whose whole purpose is reclaiming height. */
+	@media (min-width: 768px) {
+		.topbar {
+			border-bottom: 1px solid var(--line);
+			/* --space-sm left the rule 8px under the wordmark, which reads as a line stuck to the text. One rung up,
+			   not a new number. */
+			padding-bottom: var(--space-lg);
+		}
+	}
+
 	/* Nothing in this file animates, so there is no reduce arm: motion is opt-in inside the components. */
 
 	/* Short viewports (a phone held sideways) spend almost the whole height on chrome, so the chrome shrinks.
 	   --dock-h is NOT overridden here: an inline custom property on :root outranks this rule. */
 	@media (max-height: 480px) {
 		.topbar {
-			padding: var(--space-xs) var(--space-3xl) var(--space-2xs);
+			padding: var(--space-xs) var(--space-2xl) var(--space-2xs);
 		}
 		main {
 			padding-top: var(--space-3xs);
 		}
 		.grouphead {
 			margin: var(--space-sm) var(--space-2xs) var(--space-2xs);
+		}
+		/* The section rung is a PORTRAIT ruling. This arm exists to reclaim height on a phone held sideways — it
+		   already pulls the eyebrows back — so the boundary goes back to the group rung and landscape geometry
+		   stays identical to what it was before that rung existed. */
+		.find-row {
+			margin-bottom: var(--space-lg);
 		}
 	}
 </style>

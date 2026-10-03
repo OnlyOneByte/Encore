@@ -6,10 +6,12 @@ import {
 	lineBounds,
 	activeLineIndex,
 	activeWordIndex,
-	resegmentLine,
 	wipesWords,
 	type LyricsDoc
 } from '$lib/tv/lyrics';
+// `resegmentLine` is imported ONCE, in the second import block below, beside the LINE_GAP_SEC /
+// LINE_MAX_CHARS constants its tests read — naming it here as well is a duplicate binding that tsc
+// rejects even though the bundler tolerates it, so the split-testing block owns the name.
 
 // Mirrors the worker's normalize_lyrics output.
 const raw = {
@@ -505,7 +507,6 @@ test('resegmenting a long duet line keeps the part on every row it splits into',
 	expect(out.every((l) => l.part === 'B')).toBe(true);
 });
 
-
 // ── alignment v2's optional fields: syllables on words, confidence on lines ──────────────────────
 
 test('syllables parse when well-formed and malformed entries drop silently', () => {
@@ -570,7 +571,22 @@ test('confidence survives a resegment split, like a duet part does', () => {
 		end: 20,
 		text: 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen',
 		words: Array.from({ length: 14 }, (_v, i) => ({
-			word: ['one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen'][i]!,
+			word: [
+				'one',
+				'two',
+				'three',
+				'four',
+				'five',
+				'six',
+				'seven',
+				'eight',
+				'nine',
+				'ten',
+				'eleven',
+				'twelve',
+				'thirteen',
+				'fourteen'
+			][i]!,
 			start: i * (i < 7 ? 0.4 : 0.4) + (i >= 7 ? 5 : 0),
 			end: i * 0.4 + (i >= 7 ? 5.3 : 0.3)
 		})),

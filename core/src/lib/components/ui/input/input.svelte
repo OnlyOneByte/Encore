@@ -53,21 +53,28 @@
 		box-sizing: border-box;
 		padding: 9px var(--space-md);
 		border-radius: var(--radius-btn);
-		border: 1px solid var(--line);
+		/* --control-line and NOT --line: this border is the only thing that says "type here", which SC 1.4.11 puts a 3:1
+		   floor under. 3.65:1 on the --card2 fill below, and 3.97:1 on the --card the `join` variant swaps in. */
+		border: 1px solid var(--control-line);
 		background: var(--card2);
 		color: var(--ink);
 		min-height: var(--tap);
 		font-size: var(--ph-text-base);
 	}
-	/* Your own name is the one field worth typing comfortably, so it keeps the sheet's larger box. */
+	/* Your own name is the one field worth typing comfortably, so it keeps the sheet's larger box. THREE BOXES, THREE
+	   RUNGS, and they have to stay one rung apart each or the variants are not telling the guest anything: base is
+	   10px inline, this is 12 and `join` below is 16. This was `lg xl` (12/14) and join was 14 — 12/14/14, where two
+	   of the three were the same and the third was 2px away. `xl` is retired; see app.css's ladder. */
 	.encore-field[data-variant='comfortable'] {
-		padding: var(--space-lg) var(--space-xl);
+		padding: var(--space-lg);
 		font-size: 1.05rem;
 		border-radius: 14px;
 	}
-	/* The join screen's one field, on a phone held at arm's length: the sheet's largest comfortable box. */
+	/* The join screen's one field, on a phone held at arm's length: the sheet's largest comfortable box. At `2xl` the
+	   box is 4px taller than it was at `xl`, which JoinLanding's `.join-main` pays for by dropping its own vertical
+	   inset one rung in the same change — that file says so. */
 	.encore-field[data-variant='join'] {
-		padding: var(--space-xl);
+		padding: var(--space-2xl);
 		font-size: var(--ph-text-lg);
 		background: var(--card);
 	}

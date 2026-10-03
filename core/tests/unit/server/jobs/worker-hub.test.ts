@@ -81,13 +81,12 @@ test('a catalogue REPLACES rather than merges, so a withdrawn model stops being 
 	// that now refuses it.
 	const { hub, registry } = harness();
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
-	const frame = (tokens: string[]) =>
-		({
-			type: 'worker:catalogue' as const,
-			workerId: 'w1',
-			capabilities: ['stems', ...tokens.map((t) => `stems:model:${t}`)],
-			separators: tokens.map((t) => ({ token: t, label: t, architecture: 'MDXC' }))
-		});
+	const frame = (tokens: string[]) => ({
+		type: 'worker:catalogue' as const,
+		workerId: 'w1',
+		capabilities: ['stems', ...tokens.map((t) => `stems:model:${t}`)],
+		separators: tokens.map((t) => ({ token: t, label: t, architecture: 'MDXC' }))
+	});
 	hub.handle(frame(['gone', 'kept']));
 	hub.handle(frame(['kept']));
 	const w = registry.get('w1')!;

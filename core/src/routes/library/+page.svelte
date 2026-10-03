@@ -248,78 +248,100 @@
 					</div>
 				</Empty.Root>
 			{:else}
-				<!-- ONE line, and it always states the total: "12 of 47" is what tells a guest this box hides rows rather
-						than fetching them, which is the whole difference from the field on `/`. -->
-				<p class="count" role="status" aria-live="polite">{countLabel}</p>
+				<!-- THE HEAD'S TRAILING HALF, and the wrapper earns its place at ONE width: from --bp-lg it is the second
+						track of `main`'s row grid, beside the field, so the page's controls line up with the songs they
+						filter instead of stacking above them. Below that it is `display: contents` and generates no box at
+						all — no margin to collapse against, no grid item to place — so the head's y-positions on a phone and a
+						tablet are what they were before this div existed: field 102..172, count 180..196, disclosure
+						206..250, first row 250, at BOTH 390x844 and 768x900.
+						Why a wrapper rather than placing the three children directly: they appear on three different
+						conditions, and grid auto-placement fills whatever head cell is free — with `hasRefinements` false a
+						SONG ROW would slide up beside the filter field. One box, one placement, no state to enumerate. -->
+				<div class="lib-meta">
+					<!-- ONE line, and it always states the total: "12 of 47" is what tells a guest this box hides rows rather
+							than fetching them, which is the whole difference from the field on `/`. It is still the line that
+							states it at every width — at --bp-lg it sits BESIDE the field rather than under it, which is the
+							same visual row and the place a desktop toolbar puts a count. -->
+					<p class="count" role="status" aria-live="polite">{countLabel}</p>
 
-				<!-- COLLAPSED BY DEFAULT, and that is the page's main design decision. Expanded, the chip rows are
-						~420px of chrome on a nine-song library — seven artists, six tags and three sorts, each with its own
-						heading — which pushed the FIRST SONG ROW to about y=650 and left one row visible above the band.
-						That is the exact fault /library exists to fix, relocated. Scrolling songs is the default state; the
-						refinements are one tap away. Measured at 390x844 with the payload in the note on `chips` below. -->
-				{#if hasRefinements}
-					<Button
-						variant="eyebrow"
-						aria-expanded={panelOpen}
-						aria-controls="library-refine"
-						onclick={() => (panelOpen = !panelOpen)}
-					>
-						<Icon name={panelOpen ? 'chevron-up' : 'chevron-down'} />
-						{panelLabel}
-					</Button>
-					{#if panelOpen}
-						<div id="library-refine" class="refine">
-							<!-- `aria-pressed`, not a radiogroup: three toggles over one value, and the pressed one IS the sort. -->
-							{#if library.length > 1}
-								<h2 class="grouphead">Sort</h2>
-								<div class="chips">
-									{#each SORTS as [value, label] (value)}
-										<Button
-											variant={sort === value ? 'secondary' : 'outline'}
-											size="tap"
-											aria-pressed={sort === value}
-											onclick={() => pickSort(value)}
-										>
-											{label}
-										</Button>
-									{/each}
-								</div>
-							{/if}
+					<!-- COLLAPSED BY DEFAULT, and that is the page's main design decision. Expanded, the chip rows are
+							~420px of chrome on a nine-song library — seven artists, six tags and three sorts, each with its own
+							heading — which pushed the FIRST SONG ROW to about y=650 and left one row visible above the band.
+							That is the exact fault /library exists to fix, relocated. Scrolling songs is the default state; the
+							refinements are one tap away. Measured at 390x844 with the payload in the note on `chips` below.
+							STILL COLLAPSED at --bp-lg, and defaulting it OPEN there was considered and rejected on arithmetic. The
+							wide arm does leave the expanded page better off — the panel spends the head's second track instead of
+							a full-width row, so at 1440x900 the first song row sits at 354 where it used to sit at 432 — but the
+							TAP itself costs almost what it always did (174px of push against 182px; most of the 78px is the
+							head's own lift, not the panel's placement), and the panel's height is unbounded in the direction that
+							matters: this worktree's 2-song library opens to 174px (172..346), while FACET_CHIP_LIMIT allows
+							twelve artist chips and twelve tag chips in one 500px track, and /library's `main` has only 739px
+							between its own top (y=96) and the band (y=835) at 900px tall. A default-open panel on a full library
+							would put the first row back under the band — the same fault, at a different width. -->
+					{#if hasRefinements}
+						<Button
+							variant="eyebrow"
+							aria-expanded={panelOpen}
+							aria-controls="library-refine"
+							onclick={() => (panelOpen = !panelOpen)}
+						>
+							<Icon name={panelOpen ? 'chevron-up' : 'chevron-down'} />
+							{panelLabel}
+						</Button>
+						{#if panelOpen}
+							<div id="library-refine" class="refine">
+								<!-- `aria-pressed`, not a radiogroup: three toggles over one value, and the pressed one IS the sort. -->
+								{#if library.length > 1}
+									<h2 class="grouphead">Sort</h2>
+									<div class="chips">
+										{#each SORTS as [value, label] (value)}
+											<Button
+												variant={sort === value ? 'secondary' : 'outline'}
+												size="tap"
+												aria-pressed={sort === value}
+												onclick={() => pickSort(value)}
+											>
+												{label}
+											</Button>
+										{/each}
+									</div>
+								{/if}
 
-							{#if artistFacets.length > 1}
-								<h2 class="grouphead">Artists</h2>
-								<div class="chips">
-									{#each artistFacets as f (f.artist)}
-										<Button
-											variant={pickedArtist === f.artist ? 'secondary' : 'outline'}
-											size="tap"
-											aria-pressed={pickedArtist === f.artist}
-											onclick={() => pickArtist(f.artist)}
-										>
-											{f.artist} <span class="chip-n">{f.count}</span>
-										</Button>
-									{/each}
-								</div>
-							{/if}
+								{#if artistFacets.length > 1}
+									<h2 class="grouphead">Artists</h2>
+									<div class="chips">
+										{#each artistFacets as f (f.artist)}
+											<Button
+												variant={pickedArtist === f.artist ? 'secondary' : 'outline'}
+												size="tap"
+												aria-pressed={pickedArtist === f.artist}
+												onclick={() => pickArtist(f.artist)}
+											>
+												{f.artist} <span class="chip-n">{f.count}</span>
+											</Button>
+										{/each}
+									</div>
+								{/if}
 
-							{#if tagFacets.length > 1}
-								<h2 class="grouphead">Tags</h2>
-								<div class="chips">
-									{#each tagFacets as f (f.tag)}
-										<Button
-											variant={pickedTag === f.tag ? 'secondary' : 'outline'}
-											size="tap"
-											aria-pressed={pickedTag === f.tag}
-											onclick={() => pickTag(f.tag)}
-										>
-											{f.tag} <span class="chip-n">{f.count}</span>
-										</Button>
-									{/each}
-								</div>
-							{/if}
-						</div>
+								{#if tagFacets.length > 1}
+									<h2 class="grouphead">Tags</h2>
+									<div class="chips">
+										{#each tagFacets as f (f.tag)}
+											<Button
+												variant={pickedTag === f.tag ? 'secondary' : 'outline'}
+												size="tap"
+												aria-pressed={pickedTag === f.tag}
+												onclick={() => pickTag(f.tag)}
+											>
+												{f.tag} <span class="chip-n">{f.count}</span>
+											</Button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/if}
 					{/if}
-				{/if}
+				</div>
 
 				{#if rows.length}
 					{#each view.shown as m (m.id)}
@@ -382,7 +404,7 @@
 		width: 100%;
 		box-sizing: border-box;
 		/* Reserves the band's measured height; no env() term — the band carries the only inset. */
-		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
+		padding: var(--space-xs) var(--space-2xl) calc(var(--dock-h, 0px) + 28px);
 	}
 
 	/* The ring belongs to the whole box, so app.css's per-input ring is suppressed. */
@@ -391,6 +413,28 @@
 	   below the field belongs to this page rather than to the control. */
 	.field-slot {
 		margin-bottom: var(--space-sm);
+		/* THE PROSE MEASURE, exactly as `/`'s twin — this is the same control, and without the cap it is WIDER here:
+		   the page measure is --measure-grid (the row column) and below --bp-lg this slot is a plain block inside it, so
+		   the field spanned the whole column while `/`'s at least had a door and a picker taking their share. WHERE THE
+		   CAP ACTUALLY BITES, measured in headless Chromium on this tree's library: 768x900, 696 -> 560 (and `/`'s twin
+		   is still uncapped at 510 there); inert at 390x844, where the slot is 326. Both roles the token pair was minted
+		   for appear on this page: --measure-grid bounds the rows, --measure-prose bounds the one thing on it that is
+		   prose. Unconditional for the reason given on `/`: a max-width only ever takes space back, so this adds no
+		   breakpoint. THE 768 READING IS A READING PLUS 4px, not a fresh read: `main`'s inline gutter came down one rung
+		   (18 -> 16) when app.css retired `--space-3xl`, and this slot takes both sides of it.
+		   FROM --bp-lg THE CAP IS INERT and the grid bounds the field instead — see the wide arm at the foot of this
+		   block: track one is 500px against a 560px cap, so the field measures 500 at 1440x900 and its two edges land on
+		   the first song row's two edges (212..712). Capped it was 212..772 — 60px PAST that row's trailing edge on one
+		   side and 456px short of the column's on the other. */
+		max-width: var(--measure-prose);
+	}
+	/* See the markup note for why this box exists. `display: contents` is the whole of it below --bp-lg: no box, no
+	   margin, no grid item, so the count, the disclosure and the panel stay exactly where they were in `main`'s flow.
+	   Verified rather than assumed — the collapsed head measures the same at 390x844 and 768x900 as it did before the
+	   wrapper (field 102..172, count 180..196, disclosure 206..250, first row 250), and the expanded stack at 768x900
+	   reproduces the pre-change 1440x900 stack digit for digit (panel 250..424, first row 432). */
+	.lib-meta {
+		display: contents;
 	}
 	.count {
 		margin: 0 var(--space-2xs) var(--space-md);
@@ -403,10 +447,21 @@
 	.refine {
 		margin-bottom: var(--space-sm);
 	}
+	/* THE NESTED REGISTER. These three groupheads are not page sections — they are chip groups inside one
+	   disclosure, a nesting level deeper than `/`'s sections, so they take the inter-group rung that app.css's base
+	   rule no longer carries. Not cosmetic: this panel's height is the documented reason it is collapsed by default
+	   (see the note on the reveal button — ~420px of chrome put the first song row near y=650), and unpinned the
+	   section rung measured 16px taller on this panel — 8px at each of its two INTERNAL group boundaries, the first
+	   heading's margin collapsing out of this borderless, paddingless box rather than adding a third. This page has
+	   no grouphead outside `.refine`, so the override costs the rest of it nothing and /library's geometry is
+	   unchanged by the new rung. */
+	.refine .grouphead {
+		margin-top: var(--space-2xl);
+	}
 	/* WRAPS rather than scrolls horizontally: a scroller hides its own overflow, and these are the page's only
 	   navigation. Wrapping is also WHY the panel is collapsed by default — nine songs across seven artists and six
 	   tags wrapped to ~420px and put the first row at y=650 on a 390x844 phone. The count cap lives in
-	   library-browse.ts, so this rule never has to know how many there are. */
+	   library-browse.ts, so this rule never has to know how many there are. BOTH FIGURES HERE PREDATE A CHIP NARROWING: the `tap` size's inline inset came down 14 -> 12 when app.css retired `--space-xl`, so each chip is 4px narrower and the wrap points can only move in the direction that makes this panel SHORTER — the reason it is collapsed by default stands, the two numbers are an upper bound now. */
 	.chips {
 		display: flex;
 		flex-wrap: wrap;
@@ -461,7 +516,7 @@
 		main {
 			display: grid;
 			grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
-			gap: 0 var(--space-xl);
+			gap: 0 var(--space-2xl);
 			align-content: start;
 		}
 		main > :global(*) {
@@ -472,8 +527,52 @@
 		}
 	}
 
+	/* THE WIDE HEAD ADOPTS THE ROW GRID. 1200 is --bp-lg, and it is the width where `main` first has two tracks: at and
+	   above it --max-w is 1080, which less the shell's two 16px gutters and this page's own two leaves a 1016px column,
+	   and 1016 is 500 + --space-2xl + 500. The head ignored those tracks. Measured in headless Chromium at 1440x900 on
+	   this worktree's library (123 media rows, 2 of them stem-ready) BEFORE this arm: the filter field painted 560px at
+	   x=212 inside a column ending at 1228, so 456px of the column trailed it empty, and the count and the disclosure
+	   stacked beneath it in their own full-width rows with the first song row at y=250.
+	   AFTER: the field is track one and the count + disclosure + panel are track two, so both halves of the head land on
+	   the song rows below them — field 212..712 over the first row's 212..712, the disclosure at 728 on the second row's
+	   leading edge, the count 4px inboard of it at 732 because it keeps its own --space-2xs inline margin (the
+	   `.grouphead` idiom) — and the first song row is at y=180. The width that is still unspent is a grid track holding
+	   a control, not a field abandoned mid-column. Expanded, the panel fills that track: 728..1228, 500px wide, and the
+	   first song row sits at 354 where it used to sit at 432. THE TAP is not what got cheaper — opening still pushes the
+	   rows 174px against the old 182px — the HEAD did: 70 of that 78px is the collapsed lift and 8 is the placement.
+	   THE TRADE, stated because one number goes the other way: the last row's bottom comes up from 344.4 to 274.4, so on
+	   a 2-ready library the gap between it and the band GROWS, 490.6 -> 560.6. That gap is content-bound at this corpus
+	   (see docs/FRONTEND.md#the-library-page) — two rows cannot fill the 739px between this page's `main` at y=96 and
+	   the band at y=835, however they are placed — while the 70px lift is worth a row on the corpus this page is for.
+	   `align-items: flex-start` so the disclosure keeps its own width (a 500px-wide eyebrow would be a hit area three
+	   times its ink); `.refine` takes the track back, so its chips wrap at 500 and not at the widest chip. */
+	@media (min-width: 1200px) {
+		.field-slot {
+			grid-column: 1;
+			grid-row: 1;
+			/* HUGS ITS CONTROL. A grid item stretches by default, and with the panel open this cell is as tall as the
+			   chips beside it: without this line the slot measured 102..346 around a 70px field. Nothing paints on this
+			   box today, so the stretch was invisible; `start` keeps it that way if anything ever does. */
+			align-self: start;
+		}
+		.lib-meta {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			grid-column: 2;
+			grid-row: 1;
+		}
+		.lib-meta .refine {
+			align-self: stretch;
+		}
+	}
+
 	@media (max-height: 480px) {
-		.grouphead {
+		/* BOTH selectors in ONE rule, and `.refine .grouphead` has to be named here: it is 0,3,0 against this arm's
+		   0,2,0, so without it the nested pin out-cascades the landscape claw-back and silently holds 16px in the
+		   case this arm exists to reclaim. */
+		.grouphead,
+		.refine .grouphead {
 			margin: var(--space-sm) var(--space-2xs) var(--space-2xs);
 		}
 	}

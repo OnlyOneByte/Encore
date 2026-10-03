@@ -47,7 +47,11 @@ test('a model two workers offer is listed once, with the count', () => {
 });
 
 test('workerCount of 1 is what lets a picker warn that a pick pins the job to one box', () => {
-	const got = offeredModels([worker('w1', [offer('only-here')]), worker('w2', [offer('shared')]), worker('w3', [offer('shared')])]);
+	const got = offeredModels([
+		worker('w1', [offer('only-here')]),
+		worker('w2', [offer('shared')]),
+		worker('w3', [offer('shared')])
+	]);
 	expect(got.find((m) => m.token === 'only-here')!.workerCount).toBe(1);
 	expect(got.find((m) => m.token === 'shared')!.workerCount).toBe(2);
 });
@@ -70,7 +74,10 @@ test('a score on one worker fills a gap left by another, whatever the order', ()
 	// score. Dropping the scored one would make the list look emptier than it is.
 	const scored = worker('w1', [offer('a', { upstreamInstrumentalSdr: 16 })]);
 	const bare = worker('w2', [offer('a')]);
-	for (const fleet of [[scored, bare], [bare, scored]]) {
+	for (const fleet of [
+		[scored, bare],
+		[bare, scored]
+	]) {
 		const got = offeredModels(fleet);
 		expect(got).toHaveLength(1);
 		expect(got[0]!.upstreamInstrumentalSdr).toBe(16);

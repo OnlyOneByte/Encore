@@ -2,7 +2,8 @@
 	/* Vendored from the shadcn-svelte registry, then edited. Each edit is the diff to re-apply after any
 	   `add --overwrite`, and each is pinned by a guard so a reverted edit reds rather than shipping: `transition-all` is
 	   absent from the base (it animates layout and cannot honour Reduce Motion), `size: icon` is `size-tap` because every
-	   registry size is under the 44px floor, the `press` axis, and the role-named variants below. See
+	   registry size is under the 44px floor, the `press` axis, `outline`'s boundary is --control-line rather than the
+	   registry's --line-valued `border-border`/`dark:border-input` (SC 1.4.11), and the role-named variants below. See
 	   docs/FRONTEND.md#shared-components. */
 	import { type VariantProps, tv } from 'tailwind-variants';
 	import { cn, type WithElementRef } from '$lib/utils.js';
@@ -15,6 +16,16 @@
 		base: "min-h-tap rounded-md border border-transparent bg-clip-padding text-[length:var(--ph-text-md)] font-medium focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap outline-none select-none no-underline text-inherit disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
+				/* THE ONE QUEUEING ACTION, on every SongRow. It used to be two variants — this accent fill for "make karaoke",
+				   and an `iconReady` green outline for "add a turn" — and the split was wrong on both axes it claimed. The green
+				   was --ok, which is simultaneously that row's READINESS signal, so the screen's primary action wore a status
+				   colour and read as a badge. The outline also sat on the READY row, where adding a turn IS the point, so the
+				   weights were inverted. And because `canProcess` (src/lib/readiness.ts) admits only 'unacquired' and 'failed',
+				   the green + also painted on a PROCESSING row, asserting readiness on a song that is by definition not ready.
+				   One verb, one fill. The COST difference rides on the MARK (sparkle = strips the vocals first, plus = instant)
+				   and on the aria-label, which is where SongRow already says it in words. --ok is now reserved for the ready
+				   STATE and appears once per row, in the worded pill. Measured: --accent on the --card row surface is 3.38:1,
+				   over SC 1.4.11's 3:1 for a control boundary, and --on-accent on --accent is 5.09:1. */
 				iconPrimary:
 					'bg-[var(--accent)] text-[var(--on-accent)] disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-35',
 				/* The phone home's identity control (name + colour dot to /settings?tab=you). `min-w-0 shrink` cancels the
@@ -24,9 +35,16 @@
 					'min-w-0 shrink justify-start gap-[var(--space-sm)] px-[var(--space-xs)] font-normal text-[length:inherit] hover:bg-muted min-h-tap',
 				/* The +/- semitone pair. `whitespace-normal` cancels the base's nowrap: "semitone" is one unbreakable token,
 				   and at 200% text nowrap forces the row past the 320px reflow floor. DASHED means inert, written as the RESTING
-				   state upgraded by `enabled:` rather than a `disabled:` override, so it does not depend on utility order. */
+				   state upgraded by `enabled:` rather than a `disabled:` override, so it does not depend on utility order.
+				   --control-line and NOT --line on the ENABLED state: this is the one variant with `bg-transparent`, so the
+				   border is the entire control — SC 1.4.11's 3:1 applies to it exactly as it does to a text field, and --line
+				   was 1.23:1 on the drawer's --card (--popover) surface. It also fixes an inversion that fell out of the old
+				   pair: the live keycap's border (--line, 1.23:1) was DIMMER than its own inert one (--line-strong, 1.57:1),
+				   so the enabled control read as the weaker of the two. --control-line is 3.97:1 there. The dashed inert state
+				   KEEPS --line-strong: 1.4.11 exempts inactive components by name, and it now sits correctly below the live
+				   border rather than above it. */
 				keycap:
-					'border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-dim)] whitespace-normal [overflow-wrap:anywhere] enabled:border-solid enabled:border-[var(--line)] enabled:text-[var(--ink)]',
+					'border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-dim)] whitespace-normal [overflow-wrap:anywhere] enabled:border-solid enabled:border-[var(--control-line)] enabled:text-[var(--ink)]',
 				/* A disclosure trigger styled as a section eyebrow — a LABEL treatment, so no stock variant
 				   is close. `whitespace-normal` for the same 200%-text reason as `keycap`. `bg-transparent` for the
 				   same reason `ghost` carries it, and it was MISSING until this variant got its first caller
@@ -34,18 +52,23 @@
 				   mid-grey `buttonface` painted the rest of the time and an eyebrow LABEL rendered as a grey slab
 				   that reads as disabled. */
 				eyebrow:
-					'min-h-tap justify-start gap-[7px] px-[var(--space-3xs)] text-[length:var(--ph-text-2xs)] font-bold tracking-[0.14em] uppercase whitespace-normal bg-transparent text-[var(--ink-dim)] hover:text-[var(--ink)] hover:bg-transparent',
-				/* SongRow's "add a turn". It must NOT converge with `iconPrimary`: that accent fill is the expensive minute-long
-				   process, this is the free instant queue-add, and inverting the weight puts the primary fill on the dead-end
-				   action. `--ok` is the readiness colour the row's "Karaoke ready" badge already uses. */
-				iconReady: 'bg-[var(--card2)] border-[var(--ok)] text-[var(--ok)]',
+					'min-h-tap justify-start gap-[7px] px-[var(--space-3xs)] text-[length:var(--ph-text-xs)] font-bold tracking-[0.14em] uppercase whitespace-normal bg-transparent text-[var(--ink-dim)] hover:text-[var(--ink)] hover:bg-transparent',
 				/* DISABLED IS A SURFACE SWAP, NEVER A SUBTREE OPACITY: compositing a fill and its ink together against the page
 				   quietly drops a label under 4.5:1 while every contrast guard keeps passing (SC 1.4.3). So this swaps to the
 				   inert pair --card2 under --ink-dim and cancels the base's inherited `disabled:opacity-50`. */
 				default:
 					'bg-primary text-primary-foreground hover:bg-primary/80 disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-100',
+				/* --control-line replaces the registry's `border-border` AND its `dark:border-input`, both of which resolve to
+				   --line. This variant's only fill is `bg-background` (--bg), which measures 1.14:1 on the --card surfaces it
+				   ships on (ProcessingCard, QueueRow, LyricsReselect, /settings, /admin) — so the fill identifies nothing and
+				   the border is the whole control, the same case as `keycap`. The `dark:` spelling has to go too, not just be
+				   left alongside: `dark:` here is the plain prefers-color-scheme media query (no `.dark` class exists in this
+				   app), so leaving `dark:border-input` would put the boundary back on --line for exactly the devices that ask
+				   for a dark UI. The `bg-input/30` FILLS stay on --input: --input remains aliased to --line because it feeds
+				   fills as well as boundaries, so retargeting the token would be a fill change app-wide rather than a
+				   boundary fix. See docs/FRONTEND.md's --control-line rule. */
 				outline:
-					'border-border bg-background shadow-xs hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
+					'border-[var(--control-line)] bg-background shadow-xs hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-input/30 dark:hover:bg-input/50',
 				secondary:
 					'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
 				/* `bg-transparent` is a defect fix, not a preference: the registry's ghost paints only on hover, which assumes
@@ -64,7 +87,12 @@
 				/* A content-hugging size that clears the 44px tap floor, which no registry size does (they run 24–40px).
 				   Reaching for `sm` silently drops a compliant control to 32px. `min-h-tap` rather than `h-tap`, so the label can
 				   grow the box at 200% text instead of overflowing it. */
-				tap: 'min-h-tap gap-[var(--space-xs)] px-[var(--space-xl)]',
+				/* The inline inset is `lg`, DOWN from the retired `xl` (14) rather than up to `2xl`. Of this size's twelve
+				   call sites, three are `{#each}` groups inside /library's `flex-wrap` `.chips` rows, so the rendered
+				   count grows with the library and a chip's label can be a whole artist name — 4px per chip is width
+				   this app has to defend under SC 1.4.10 at 320px, and narrowing can only ever help there. `blockLg`
+				   below keeps `2xl` because it is a full-width SURFACE, not a chip. */
+				tap: 'min-h-tap gap-[var(--space-xs)] px-[var(--space-lg)]',
 				/* The same shape one step up, for a page whose primary action IS the page's purpose. The
 				   radius is --radius, the card/sheet one, because at full width it reads as a surface. */
 				blockLg: 'w-full p-[var(--space-2xl)] text-[length:var(--ph-text-lg)] rounded-[var(--radius)]',

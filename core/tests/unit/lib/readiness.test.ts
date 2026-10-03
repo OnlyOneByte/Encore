@@ -382,7 +382,6 @@ test('the union includes a failed process and excludes ready/canceled', () => {
 	expect(ids.has('canceled')).toBe(false);
 });
 
-
 // ── the zero-state gate ──────────────────────────────────────────────────────────────────────────
 //
 // THE REPORTED BUG, as a predicate. Searching "i want it that way" returned twelve unprocessed songs

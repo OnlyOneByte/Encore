@@ -60,7 +60,7 @@ A component reads `var(--…)` and never a literal. The rule is broken by a
 literal that duplicates a token's value, and on an `@media` width that is not a member of the `--bp-*` list.
 Off-scale values (7px, 9px, 0.78rem) deliberately have no token, so a near-miss is invisible to that guard.
 
-Three tokens carry a hard rule:
+Five tokens carry a hard rule:
 
 - **`--grad` is decoration only.** Progress fills and the wordmark through `background-clip`. No ink clears AA
   at both endpoints across the palette registry, and nothing measures the interpolated interior.
@@ -69,6 +69,45 @@ Three tokens carry a hard rule:
   that sets one without the other.
 - **`--danger`, not `--accent2`, means failure.** Pink is a valid singer colour, so an error drawn in it reads
   as decoration.
+- **`--line` is a DECORATIVE hairline; a control boundary takes `--control-line`.** SC 1.4.11 wants 3:1 for the
+  visual information that identifies a control, and a text field's border is the only thing that says "type
+  here". `--line` is 1.13:1 on the `--card2` field fill and exempt as decoration on the card, row, table,
+  spinner and skeleton edges of the 17 files that keep it; `--control-line` is 3.65:1 on `--card2`, 3.97:1 on
+  `--card`, 4.53:1 on `--bg`, and clears 3:1 on every surface token `app.css` declares (the floor is
+  `--track-bg` at 3.13, then `--ok-bg` at 3.20). Raising `--line` instead would brighten every card in the app.
+  **A SLIDER'S RAIL is that boundary too, and it is where the floor above stops being hypothetical.** Only the
+  filled half of `ui/slider`'s rail ever identified the control — the `--accent` range is 3.376:1 on `--card`,
+  while the unfilled `--track-bg` remainder, which is most of the rail at a low value and all of it at zero,
+  measures 1.269:1 — so the rail takes a 1px `--control-line` ring, 3.972:1 on the `--card` outside it and
+  3.131:1 on the `--track-bg` inside. Brightening `--track-bg` instead is the `--line` shortcut in miniature: it
+  is the ground under five OUTPUT sites (`Bars`, `TvProgress`, `/tv`'s process bar, the band's progress arc,
+  `SongRow`'s artwork placeholder) that 1.4.11 asks nothing of, and no rail FILL can reach 3:1 on `--card` at any
+  hue without a mid-grey's LUMINANCE — on the neutral axis 3:1 lands between `#666` (2.99:1) and `#6a6a6a`
+  (3.18:1), and contrast reads luminance only, so a tinted rail buys nothing. Both rails grew 2px with the ring
+  rather than thinning the fill, because `*` carries `box-sizing: border-box`.
+  **A BUTTON is a control too**, and two variants are bounded rather than filled, so both spell
+  `--control-line`: `keycap`, which is `bg-transparent`, and `outline`, whose only fill is `bg-background`
+  (1.14:1 on the `--card` surfaces it ships on, so the fill identifies nothing). `outline`'s retarget replaces
+  the registry's `border-border` **and** its `dark:border-input` — `dark:` here is the bare
+  prefers-color-scheme query, so leaving the second would restore `--line` for the users who asked for a dark
+  UI. Every other variant paints an identifying fill (`--accent`, `--primary`, `--card2`, `--destructive/10`)
+  and needs no boundary. `--input` itself stays aliased to `--line`: it feeds `bg-input/30` **fills** as well as
+  `border-input`, so moving the token would be an app-wide fill change, not a boundary fix. Two boundaries stay
+  on the `--line` family, and both are named rather than implicit: the vendored checkbox's `border-input`, still
+  1.23:1 and a separate item; and `--line-strong` (1.57:1) on the dashed `keycap` and the slider thumb's
+  `data-disabled:`, which are INERT — 1.4.11's exception list opens with inactive components. Enforced by
+  `tests/unit/lib/control-boundary-contrast.test.ts`, which pins the count, the floor surface, the checkbox
+  exception, the rail's four ratios and the `#666`/`#6a6a6a` bracket under them, the ring rule and the two
+  heights it cost, the absence of any surviving `border-border`/`dark:border-input` in `button.svelte`, and the
+  tailwind-merge eviction the bordered variants depend on.
+- **`--ok` states a STATE, never an action, and states it once.** A song row used to spend it three ways at
+  once — an `--ok` card border, the "Karaoke ready" pill, and an `iconReady` green ring on the add button — so
+  the screen's primary action wore a status colour and read as a badge, while `/library` (every row
+  `readiness="ready"`) lit all three in 100% of rows and discriminated nothing. The row now reaches `--ok`
+  through exactly one path, `encore-chip-ok` in the worded pill; the one queueing verb is one `--accent` fill in
+  `iconPrimary`, and the cost difference rides on the mark and the `aria-label`. A kind chip is toned only when
+  the kind is exceptional (`live`, `suspect`, `lyric`) — "Official video" is neutral, because a second green
+  pill beside "Karaoke ready" defeats the pill that is now the row's only readiness statement.
 
 `--tap` is the one number the guards read out of the stylesheet rather than restating: `tests/helpers.ts`
 parses that declaration, so a control must express the token and never 44. Type is rem on every phone surface,
@@ -76,6 +115,47 @@ because `body` declares `font-size: 100%` and the inventory rule bans an absolut
 size there; form controls take a 16px floor of their own, because iOS zooms a focused sub-16px field and never
 zooms back. The two `--max-w` preludes keep px literals, since a media query is evaluated before the cascade
 and cannot read a custom property.
+
+**The phone type ladder opens at `--ph-text-xs` / 12px, and that is a floor, not a starting point.** The rung
+below it — `--ph-text-2xs`, `0.68rem` / 10.88px — was DELETED rather than nudged, and the reason matters: six
+of its nine callers were uppercase letterspaced eyebrows, five of those on `--ink-dim`, which measures 7.16:1
+on `--bg`; the other three were a tabular clock and a prose note in the drawer and `Trend`'s readout at full
+`--ink` on `--card2`. Not one of the nine was failing on contrast, so no colour change was ever going to rescue
+the size. A rule may go under 12px only as an off-ladder exception that says why IN PLACE, and there is
+exactly ONE sanctioned: `src/lib/components/SongRow.svelte`'s duration badge, a photo overlay where a ladder
+step outgrows the 84×47 frame it labels. There is also exactly one UNRESOLVED breach, and it is recorded here
+rather than licensed — `src/lib/components/RangeBar.svelte`'s `.axis-ends` at 9.6px. It is chart furniture, but
+the `aria-hidden` argument does not cover it: `.axis-ends` is a SIBLING of the `aria-hidden` `.rangebar`, so
+"C2"/"C6" are announced, and the text beside the chart states the song's own range and octave count, never the
+axis bounds — so those facts are restated nowhere. A ladder step widens the end labels past the track they
+bracket, which is why it has not simply been raised; whoever next touches that component owes it a real answer.
+**Both of those counts are over the app's own stylesheets, and one further sub-12px declaration exists in the
+tree** — `src/lib/server/dev-harness.ts`'s `pre`, the raw-frame dump in the `/harness/phone` panes, at `10px`.
+It is named here so the two counts read as exhaustive rather than as a grep that missed something: that page is
+hand-written HTML in a template string, spelling every colour as a literal and reaching no token at all, and
+`server.ts` mounts it only behind `ENCORE_DEV_HARNESS=1` — off by default on every box including a dev one,
+because it is an unauthenticated page that mints queue commands. So it is neither sanctioned nor a breach; it is
+not a shipped surface, and the type ladder does not reach it. Restyling it to 12px would be the wrong fix, since
+that would imply the rest of the file is governed too.
+A third former breach — the badge chip, at 10.4px and 9.92px on the narrowest phone, carrying whole sentences —
+was lifted onto the floor, and the `≤380px` arm keeps its padding claw-back and no longer shrinks type.
+`--ph-text-base` and `--ph-text-2xl` are FIXED POINTS: base because of the 16px control floor above, and 2xl
+because the join wordmark's flight scales by base ÷ 2xl written as the literal `scale(0.667)` (CSS cannot
+divide one length by another), so moving either lands the mark between rungs with nothing to catch it.
+**Above 2xl the ladder ends 24 → 41.6px, and that gap is deliberately left open.** `--ph-text-3xl` is the
+`2.6rem` DISPLAY size and its one caller is `/stats`' primary tile; the step from that page's secondary tiles
+at 2xl to its single hero number is the hierarchy, not a hole. An intermediate `2rem` rung was tried and
+removed because nothing spelled it, and a rung declared and read by nothing is the defect `--shadow-md` and the
+refused 32px `--space` rung already name. The next rung here is minted WITH its first caller, and the 1.733
+ratio is a measurement to take at that point, not before.
+**Left open is not the same as done, and the review's type-scale finding is therefore HALF addressed.** That
+finding named two defects — the crowded bottom and this hole — and only the bottom one landed: the 10.88px rung is
+deleted, its nine rule sites moved up onto the 12px floor (one of them, `GuidingTrack`'s `.lab`, has since gone
+altogether) and `sm` renumbered, while 24 → 41.6px is untouched. The
+ratio is 1.7333, which is 1.44× the ladder's widest other step (1.2, at `xl` → `2xl`), and 17.6px in absolute
+terms — wider than the whole 12px that the seven rungs from `xs` to `2xl` share. So this is a ruling with a reason,
+not a closed item, and `docs/UI-DESIGN-REVIEW.md` finding 3 carries it as PARTIAL. The rung values, the ratios and
+the retirement quoted here are re-derived from `app.css` by `core/tests/unit/lib/type-ladder.test.ts`.
 
 The `--space-*` ladder is flat px and therefore does NOT track that rem type, which is why the three data
 pages — `/stats`, `/metrics`, `/metrics/[mediaId]` — keep their gaps in rem. At the default root the two
@@ -85,6 +165,85 @@ rem gap tracks it to 24px, while a tokenised gap is frozen at 12px — gap-to-ty
 the tiles crowd. Only `/stats` wrote that reason down, so a pass over the two silent files tokenised it; all
 three carry it now. Giving `--space-*` rem values globally is NOT the fix, because /tv composes those tokens
 against a vh-rooted root font-size, where a rem ladder would scale every gap with the viewport.
+
+**The ladder is NINE rungs and its minimum adjacent ratio is 1.20, which is a rule and not an observation.** It ran
+eleven — 2/4/6/8/10/12/14/16/18/20/24 — where the closest pair was 18 → 20 at 1.111 and the five rungs from 12 to 20
+all stepped by 2px. The floor is a RATIO and not a pixel count on purpose: 2px is a perceptible 1.5× at the bottom of
+the ladder and an invisible 1.111× at the top, so a rung under the floor is one nobody chooses on purpose or sees
+afterwards, and a site spending it is spending an accident, and a table of registers that SANCTIONS four rungs for one job is not a fix for that. `--space-xl`
+(14px, 14 rule sites) and `--space-3xl` (18px, 8 rule sites) are therefore RETIRED, each site moved to the neighbour
+that gave it a stated job, with the reason in place at the site and the summary in `app.css` beside the two holes the
+retirement leaves in the t-shirt sequence. The names are not renumbered: sliding `2xl` → `xl` would silently change
+what `var(--space-2xl)` MEANS at the 33 sites already spelling it. The worst pair is now 1.20, at `md` → `lg` and
+`4xl` → `5xl`, and the next rung minted here owes that floor a check in both directions.
+
+That ladder carries four REGISTERS, and a site picks a REGISTER rather than a number:
+
+| Register    | Rungs               | What it separates                                                   |
+| ----------- | ------------------- | ------------------------------------------------------------------- |
+| intra       | `3xs`–`xs` (2–6)    | parts of one control: a glyph from its label, a chip from its count |
+| group       | `sm`–`lg` (8–12)    | siblings in one list or one field group (`.list-row`'s 8px)         |
+| inter-group | `2xl`–`4xl` (16–20) | two groups inside one surface (a card's `field-label` margin)       |
+| section     | `5xl` (24)          | two sibling SECTIONS of a surface (`.grouphead`'s top margin)       |
+
+A DELTA SITE SPELLS THE RUNG THAT MAKES THE RENDERED BOUNDARY LAND IN ITS REGISTER, not the register's own rung, so
+checking a declared token against this table is the wrong check. The app has three such rules, all on `/settings`,
+all margins on a `card-content` child: they spell `lg` (a GROUP rung) and render 8 + 12 = 20px, which is inter-group.
+The standing rule below says the compared boundary is the rendered one; this is that rule reaching the table.
+
+And one standing rule: **a boundary must out-rank every boundary nested inside it — and the boundary that gets
+compared is the RENDERED one, not the declared margin.** Those two are different numbers whenever a margin lands
+inside a flex or grid parent, because neither collapses margins, so the parent's `gap` ADDS to the child's margin.
+Both violations found were inversions rather than near-misses. `/settings` separated CARDS by 12px while a group
+boundary inside one card rendered at 28px — card-content is a flex column with an 8px `gap` and the
+`field-label` margin was 20px, and 8 + 20 is what the guest sees, so the ratio was 0.43×, not the 0.60× the
+declared margin alone suggests. Fixing it took BOTH ends: the card-to-card row gap up to the section rung (24px)
+and the intra-card margin down to `lg`, which renders 8 + 12 = 20px — so 24 / 20 = 1.20×, with the card's
+own 8px sibling gap 2.5× below that. (That margin went `4xl` → `xl` when the inversion was found and `xl` → `lg`
+when `xl` was retired; at `xl` the boundary was 22px and the container ratio 1.09×.) The other inversion was `/`'s
+controls→content break at 12px against the 16px then separating two sections of the same kind.
+
+A register is a claim about NESTING DEPTH, not about the class name: `/library`'s groupheads sit inside the
+`.refine` disclosure and therefore take the inter-group rung, pinned in that file, while the shared base rule
+carries the section one. `.grouphead`'s margin is deliberately asymmetric for the same reason — section rung
+above, group rung below, so a 12px dim label is 3× closer to the list it owns than to the section above it.
+
+**The section rung is a PORTRAIT ruling, and every surface that spends it owes a `@media (max-height: 480px)` arm.**
+A phone held sideways has ~390px of height and spends most of it on chrome, so the rung is pure cost there. Three
+rules spend the rung — `.grouphead`'s top margin in `app.css`, `/`'s `.find-row` bottom margin, and `/settings`'
+`.panel` row gap — and each renders on a surface that now carries the arm at the same 480px threshold: `/` (both of
+its two), the song page's Lyrics eyebrow, and `/settings`. `/library` is the exception that proves the register rule
+rather than a fourth spend site: every one of its groupheads sits inside the `.refine` disclosure and is pinned back
+to the inter-group rung, so it never renders the section rung at all — it carries the arm anyway, naming
+`.refine .grouphead` explicitly, because at 0,3,0 that pin would otherwise out-cascade the 0,2,0 claw-back.
+`/settings`' arm has to move BOTH ends again — row gap back to 12px and the intra-card margin to `3xs`, rendering
+8 + 2 = 10px — because clawing only the container back would re-invert the surface; it reclaims a measured 72px on
+the Party panel at 844×390, 60px on Server and 12px on You. A new spend site without that arm is an unconditional
+height charge on the smallest viewport the app ships to.
+
+The rendered figure also depends on the HOST'S DISPLAY, which is the trap a shared `.grouphead` sets: on a block
+parent the eyebrow's top margin collapses against the preceding sibling's bottom margin, on a grid parent it sums.
+`/` collapses to 24px below `--bp-md` and sums to 28px at and above it; the song page collapses to 24px and sums to
+**34px**, the largest boundary this rung produces anywhere, because its `main` becomes a grid at 768px and `.facts`
+carries a 10px bottom margin. That is accepted at width and clawed back on height, and it is written down in that
+file — a new host owes the sum a measurement before it inherits the base rule.
+
+There is no 32px or 48px rung on purpose — the widest phone column is `--max-w` 480px, and an unread rung is the
+defect this ladder already had at its top end (`--space-3xl` was spelled as a `gap:` nowhere and is now retired
+outright; `--space-4xl` is one `gap:`, `--space-2xl` six), so the next one is minted WITH its first caller. That
+refusal is also why the `/settings` inversion was fixed by lowering the nested boundary rather than raising the
+container: 28px nested would have needed a 32px container.
+
+**What retiring two rungs did NOT fix, recorded so the rung count is not read as the measure.** Of the 63
+`gap`/`row-gap`/`column-gap` declarations in `core/src` that spell a rung (a Tailwind `gap-[var(--space-*)]` under
+`components/ui` counts, since it compiles to a real gap), 54 — 85.7% — land wholly in 4–12px; before the retirement it
+was 53 of the same 63, 84.1%. The band did not thin and was never going to: this is a 480px-max phone column of
+8px-spaced `.list-row`s, so most gaps in it are SUPPOSED to be small. **And one crowded pair is left OPEN, not
+sanctioned:** `md` → `lg` (10 → 12) is still 1.20, and `md` is the ladder's second-busiest rung at 40 sites — mostly
+the cluster gap inside a control row (`/`'s `.topbar` and `.find-row`, `PageHeader`'s `.inner`, the band's `.tp`).
+Collapsing it into `lg` would put every one of those rows on the same 12px `.list-row` already hard-codes, which may
+well be right, but it is a visual ruling over 40 sites and it wants a live before/after that a static pass cannot
+take. It is an open item, not a register.
 
 Dimming is a SURFACE or INK change, never an opacity on a subtree: an ancestor alpha flattens text and the
 surface behind it into one buffer, so a token-level contrast check keeps passing while the guest sees
@@ -119,6 +278,12 @@ carries the row grammar's layout and none of its colour for exactly this reason.
 - **Source order settles equal specificity.** The single-class row states (`.mine`, then `.pending`, then
   `.dimmed`) are ordered deliberately in `src/lib/components/QueueRow.svelte` and
   `src/lib/components/ProcessingCard.svelte`.
+- **A Button variant's border wins by EVICTION, not by rank.** Tailwind emits `.border-transparent` — which
+  `button.svelte`'s base carries so a fill-only variant has no edge — _after_ the arbitrary
+  `.border-[var(--control-line)]`, and both are one class. The variant paints only because `cn()`'s
+  tailwind-merge drops the base class from the list, so a variant must state its boundary UNPREFIXED: an
+  `enabled:`-only border does not conflict with the base and leaves a transparent edge at rest.
+  `control-boundary-contrast.test.ts` pins that eviction, because no source read shows it.
 - **`min-width: 0` is load-bearing wherever a nowrap child sits in a flex or grid parent.** An item's automatic
   minimum is its min-content width, so without it an unbreakable title sizes the box instead of ellipsising
   inside it, and an empty flex item (the singer dot) is what gives up width first and collapses to 0px.
@@ -332,8 +497,12 @@ full tap target, so a long window overflows and scrolls rather than shrinking da
 its readout is revealed on `:focus` as well as `:focus-visible`, because the latter is keyboard-driven and does
 not match a touch tap. A `title` attribute is desktop-only and can never be the sole carrier of a value.
 
-`src/lib/components/ui/input/input.svelte` and its sibling select share the `.encore-field` look and two hard
-floors: `min-height: var(--tap)` and a 16px font-size on every variant. `src/lib/components/CodeEntry.svelte`
+`src/lib/components/ui/input/input.svelte` and its sibling select share the `.encore-field` look and three hard
+floors: `min-height: var(--tap)`, a 16px font-size on every variant, and `border: 1px solid var(--control-line)`
+for the boundary that identifies the control. Two composed fields carry that boundary without the class:
+`src/lib/ui/FindField.svelte`'s `.findbox`, where the WRAPPER is the boundary because the inner input is
+`border: 0`, and `src/lib/components/CodeEntry.svelte`'s `.segment`, which must override the `.card` it also
+composes. That last file also
 makes the boxes the source of truth and derives `value` from them, and its completion callback CARRIES the code
 — the binding reaches a parent an effect later, so a parent reading its own binding sees the code one character
 short and returns silently, which is how the last keystroke and a whole-code paste both do nothing.
@@ -344,6 +513,38 @@ from `--tap` — a percentage height resolves against an auto-height parent and 
 are information, never a block, because two singers sharing a colour is legal. The palette's measured contrast
 is checked in `tests/unit/lib/palette-registry.test.ts` and deliberately not shown to the person
 picking.
+
+There are TWO label REGISTERS, and which one a label wears is decided by what it labels, not by which component
+renders it. A FIELD label is `app.css`'s `.control-label` or ui/field's `[data-slot='field-label']` — the same
+dress (`--ph-text-md`, weight 500, sentence case, `--ink-dim`). The CLASS is for a label that has to be a plain
+`<span>`, so it carries the dress the primitive would have rendered: either nothing a real `<label>` can point at
+exists (`ColourRing`'s `role="slider"` disc and `CodeEntry`'s `role="group"` of boxes are named by their own ARIA),
+or the label already sits inside a wrapping `<label>` and a `[data-slot='field-label']` would nest one label in
+another (the join screen's name field wraps its `Input`, so the association is implicit). A SECTION label is the
+uppercase letterspaced one: `.grouphead` above a list of rows, and the `eyebrow` button variant above a
+disclosure. They must not be swapped: `.control-label` WAS `.eyebrow`, dressed in the section register, and
+settings' You card ended up holding both — a sentence-case `Name` (it reads `Your name` now, see the wording rule
+below) over an uppercase `YOUR COLOR`, meeting across
+one 8px card gap. Exactly two `--ph-text-xs`/0.1em rows are neither register, and they are neither because they
+label no control: the song page's `.fact` list, and the drawer's `.key` row, which names two keycap buttons and
+keeps its bold reading in the `.key-head` row above. `GuidingTrack` was a third until its eyebrow was retired — it
+labels a slider AND it rendered that eyebrow inside a real `[data-slot='field-label']`, which is the whole evidence:
+no screen ever put the two dresses side by side the way the You card did, because `GuidingTrack`'s only hosts are the
+drawer and `/components` and neither renders a second field label (the gallery imports no `Field.*`, no `ColourRing`,
+no `CodeEntry`) — so this drift had nothing on screen to give it away. Its label text is the primitive's now; the row
+kept the value's rank by moving `.gt-val` UP to `--ph-text-md` rather than holding the label down, and `/settings`
+already labels the same knob at room scope as `Guiding track · <n>%` in that dress.
+
+ONE MORE LABEL DECISION, about the WORDS rather than the dress. A field label takes the second person exactly when
+the value is the singer's OWN — `Your name`, `Your color` — and stays a bare noun for anything the room or the box
+owns: `Guiding track`, `Font`, `Join address`, `Room code`. Of the 33 field labels in the tree, 4 are those two
+personal values on the two surfaces that edit them (`/settings`' You card and the join screen's identity pane) and
+29 are bare. The possessive is not decoration: the string is also the accessible NAME — `ColourRing` hands one
+`label` to both its heading and its disc's `aria-label` — so it has to say whose colour it is out of visual
+context, where the `You` card title is not read with it. It is the app's voice elsewhere (`Your library`,
+`Your lyrics`, `Your pick`, `Your profile`) and `ColourRing`'s own default prop, which `/settings` was the single
+site to override away — leaving one control under two names on two screens, `Color` here and `Your color` there.
+`tests/unit/lib/label-register.test.ts` pins both halves, the dress and the wording.
 
 `src/lib/ui/icons.ts` ships path data and no codepoints: several transport codepoints default to colour emoji,
 the text-presentation selector is honoured unreliably on exactly those, and an emoji is a different drawing on
@@ -398,8 +599,10 @@ own wordmark — the topbar is for joined singers only). Joined, it renders in t
    earlier note in this file and in the route saying so);
 2. `Queued`, the rotation in play order, drawn as `QueueRow` or `ProcessingCard` per entry;
 3. `Making karaoke…`, which renders in BOTH views;
-4. with an empty field, `Your library` — a four-row SHELF, not the library; with a query, `Ready to sing` then
-   `Needs karaoke`.
+4. with an empty field, `Your library` — a SHELF of four rows, not the library; at `--bp-lg`, where the row grid
+   is two tracks wide, eight. Neither number is `LIBRARY_SHELF` changing value: `LIBRARY_SHELF` is 4 at every
+   width and `LIBRARY_SHELF_WIDE` is 8, and the ROUTE picks between them off a `matchMedia('(min-width: 1200px)')`
+   read. With a query, `Ready to sing` then `Needs karaoke`.
 
 `searchActive` (a non-empty query) is the sole switch between the queue view and the results view. There is
 no browse mode on this column, no `?browse=1`, and no history entry for a search — clearing the field restores
@@ -415,6 +618,67 @@ many it hid — 0 hides the `See all` door, because a control promising more tha
 whole library used to render here, under an unbounded queue, so a busy rotation put the songs you already own
 metres down the scroll. The cap lives in that module rather than inline because the Playwright fixture seeds
 exactly four demo tracks and so can never truncate it; the number is proved in the unit suite instead.
+At `--bp-lg` the cap is `LIBRARY_SHELF_WIDE` (8) — the SAME height budget the 4 was measured for, spent two
+tracks across, because the row grid is two columns wide from 1200px up. Measured at 900px tall **with ten ready
+songs**, the whole column ends at y=770.75 at BOTH 768 and 1440 — identical height, four songs against eight —
+so before the wide cap the desktop was spending half the phone's shelf budget to show the phone's shelf, and on
+that corpus the space between the last content and the dock at 1440×900 falls from ~246px to ~41px. The route
+picks the cap from a `matchMedia` read rather than from CSS: the extra rows do not exist in the DOM for a
+stylesheet to reveal, and rendering all eight and hiding four would leave them in the accessibility tree.
+`See all N songs` needs no special case — `hidden` follows whichever cap is live.
+
+**Both of those readings are claims about a ten-ready library, and that is not the corpus this tree runs on.**
+`data/encore.sqlite` holds 123 media rows, of which 2 are `stem_status='ready'` (the other 121 are `none`), and
+`/api/library` serves `listReady()` only — so the shelf holds two rows, under the PHONE cap of four, let alone
+the wide eight. Re-measured in headless Chromium against that catalog at 1440×900, joined, queue empty and no
+query: the column's last content ends at y=403.4 and the band's top edge is 835, so 431.6px separate them — 496.6
+to the viewport floor, and the review's ~460px sits between the two. The wide cap moved none of it, because a cap
+cannot bind on two rows: `libraryShelf(rows, 8)` and `libraryShelf(rows, 4)` both return two shown and none
+hidden. The review's figure therefore stands in the state a real user of this tree is in. What the wide cap buys
+is real but CONDITIONAL: it is worth a screenful once the library has eight ready songs, and nothing before that.
+
+That residue is a CONTENT bound rather than a layout one, and the arithmetic is written down because it is what
+decides nothing further is owed: at 1440×900 the page has 762px between the topbar's bottom edge (73) and the
+band's top (835), and the entire joined column in this state is 324.4px tall (y=79 to y=403.4) — a find row, an
+empty rotation, two song rows. There is nothing to place in the remaining 437.6px. The queue is empty, nothing is
+processing, and the other 121 media rows are unprocessed search results this column shows only under a query. The
+one candidate was built and measured before being rejected: handing the empty rotation the leftover height
+(`min-height: 30vh` on `.queue-empty.tight` at `--bp-lg`) MOVED the void instead of removing it — the rotation's
+own block grew from 62px to 270px of centred emptiness and 223.6px still sat below the shelf, two voids where
+there had been one. `.queue-empty.tight` keeps `min-height: 0`, for the reason its own comment already gives.
+
+Two rulings make the wide column a layout rather than a stretched phone. The search field carries
+`max-width: var(--measure-prose)` on both `/` and `/library` — unconditionally, because a `max-width` only
+ever takes space back, and measurement confirms it: the findbox is 230px at a 767px viewport, 510px at 768, and
+reaches exactly 560 only once the row passes 746px, which is the cluster's own arithmetic (44px door + 560 +
+122px picker + two `--space-md` gaps). At 1440 the input had been ~770px, about 1.4 measures; it is now 508
+inside a 560px findbox. `/library`'s twin is capped the same way at 768 (696 → 560) but from `--bp-lg` up it is
+bounded by the ROW GRID instead — see the library page's wide head. And from
+`--bp-md` the topbar carries a `--line` bottom rule with `padding-bottom: var(--space-lg)`: the bounded-band
+form of the header surface every `PageHeader` route already wears, without the pill's fill and blur, which are
+earned by being sticky. The rule deliberately spans the shell's content box rather than the rows' column, so it
+reads as page structure and not as a row boundary. The wide gap between the wordmark and the identity cluster is
+NOT closed: leading brand / trailing account is a desktop header form, the cluster on the far edge leaves the way
+into `/settings` in the same corner every other route puts it, and the hairline is what makes that split read as
+the two ends of one surface rather than as two things floating in page. `PageHeader` is not the precedent for it —
+that component left-packs `.back-slot` then `h1` with `gap: var(--space-md)` and has no trailing slot. Nor is the
+gap a constant: `.me-cluster` is `margin-left: auto`, so its size is a function of the singer's display name —
+measured 91px at 390x844 and 781px at 1440x900 with an eight-character name.
+
+Left alone, on arithmetic rather than taste: the dock's title-to-transport gap, which the design review put at
+~1000px. `.meta` measures 884px at 1440x900 and it is the `nowrap`/`ellipsis` title's OWN box, so a long title
+uses it — the same refutation that file applies to tablet rows.
+
+Left alone for a harder reason, with the alternative built first: what the measure cap does NOT do is make the
+find row spend the column. At 1440×900 `.find-row` is 1016px and its three controls occupy 212→958, so 270px of
+row trails the picker empty, under a hairline that spans the whole content box. Moving `.source-slot` to the
+trailing edge (`margin-left: auto` at `--bp-lg`) was tried and measured: it puts the scope picker at 1106→1228,
+280px from the field whose scope it sets, and reads as an orphaned control rather than as two ends of one
+surface. The topbar's split works because each end carries a whole thing — a wordmark, an identity cluster — and
+a `<select>` divorced from its field is not one. So the row stays a LEADING-ANCHORED CLUSTER of three, which is a
+composition and not stretched space: the field's leading edge sits on 212, where every row, eyebrow and empty
+state below it starts, and the door and the picker stay within a gap of it. `/library`'s head could do better
+than that because it has a second thing to put in the width; this row does not.
 
 The processing group is deliberately ungated: its membership is
 query-scoped in `src/lib/readiness.ts` row by row, and it subtracts anything the queue above already draws
@@ -472,9 +736,49 @@ there. Artist facets count `artistCanonical` only, as on the server: `artist` is
 so a channel name would otherwise pose as an artist. Artist and tag are mutually exclusive, artist winning, so
 the two can never intersect into an unexplained empty page.
 
+**From `--bp-lg` the head adopts the row grid.** `main` is two 500px tracks at and above 1200px (`--max-w` 1080,
+less the shell's two 16px gutters and this page's own two, is a 1016px column, and 1016 = 500 + `--space-2xl` +
+500), and the head used to ignore them: measured at 1440×900 on this tree's 2-ready catalog, the filter field
+painted 560px at x=212 inside a column ending at 1228 — 456px of trailing void — with the count and the
+`Sort & filter` disclosure stacked beneath it in their own full-width rows and the first song row at y=250. The
+field now takes track one and a `.lib-meta` wrapper takes track two, carrying the count, the disclosure and the
+panel, so both halves of the head land on the songs they describe: field 212→712 over the first row's 212→712,
+the disclosure at 728 on the second row's leading edge (the count 4px inboard at 732, keeping the `--space-2xs`
+inline margin every eyebrow on the page uses), and the first song row at y=180. Expanded, the panel fills that
+track (728→1228, 500px wide) instead of a full-width row of its own, so the first song row sits at 354 where it
+used to sit at 432. The TAP is not what got cheaper — opening still pushes the rows 174px against the old 182px —
+the head did: 70 of that 78px is the collapsed lift and 8 is the panel's placement. Below 1200px `.lib-meta` is
+`display: contents` and generates no box, and the
+collapsed head reads out identically at 390×844 and 768×900 to what it measured before the wrapper existed —
+field 102→172, count 180→196, disclosure 206→250, first row 250.
+
+Two consequences are stated rather than hidden. The field's `--measure-prose` cap goes INERT at these widths,
+because track one is 500px against a 560px cap — the grid bounds the field, and 500 is the song row's own width,
+so the field's two edges land on the first row's two edges (212→712) instead of overhanging its trailing edge by
+60px on one side and stopping 456px short of the column on the other. And lifting the head pushes the trailing
+space DOWN rather than away: re-measured in a browser on the 2-ready catalog at 1440×900, the last `.row` ends at
+274.4 and `.band-slot` starts at 813, so the gap is **538.6px** while the first row sits at y=180 — against y=309
+for the same two songs on `/`. That is the improvement and the residue in one reading: the songs moved 129px
+closer to the top, and the space they vacated reappeared underneath them.
+
+An earlier revision of this paragraph put that gap at 560.6px, derived as a 70px lift on a 490.6px base. The
+tree measures 538.6, so the two figures could not both be right; the y=180 reading they were quoted beside is
+correct. Recorded rather than silently corrected, because the lesson generalises: a number in prose is only as
+good as its last re-measurement, and this page's own numbers are pinned in tests wherever a test can hold them.
+
+NOT FIXABLE BY LAYOUT, and stated so nobody tries again: two rows cannot fill the 717px between this page's
+`main` at y=96 and the band at 813, however they are placed. The residual desktop void at low content is a
+CONTENT bound, not a composition one — it closes when the page has more to show (this catalog carries 123 media
+rows of which 121 are `stem_status='none'`, i.e. invisible here), and no `max-width`, `margin` or grid change
+touches it.
+
 **Sort & filter is collapsed by default, and that is the page's main design decision.** Expanded, the chip rows
 are ~420px of chrome on a nine-song library and put the first song row near y=650 on a 390×844 phone — the exact
-fault this route exists to fix, relocated. Scrolling songs is the default state. The trigger names the active
+fault this route exists to fix, relocated. Scrolling songs is the default state. Opening it by default at
+`--bp-lg`, where the panel has its own track and the page has unused height, was considered and rejected on
+arithmetic: this tree's two-song library opens to 174px (172→346), but `FACET_CHIP_LIMIT` allows twelve artist
+chips and twelve tag chips in one 500px track, so a full library's panel can exceed the 739px the page has and
+would put the first row back under the band — the same fault at a different width. The trigger names the active
 facet (`Sort & filter · Queen`) because the panel showing the pressed chip may be shut, and without it a guest
 reads `2 of 9 songs` as the page having lost their songs. It is the first caller of the `eyebrow` button variant,
 which was missing `bg-transparent` and so rendered as a grey `buttonface` slab — see the note on that variant.
@@ -527,8 +831,10 @@ What the two panes put on state and markup:
   `{#if}` it unmounts on every flip, leaving nothing for the browser to interpolate, which forces a JS crossfade
   — and that both generates keyframes no media query can reach and reads geometry, which the mount rung throws
   on. Hoisted, only its class changes and the transform interpolates natively.
-- **A `div`, never a second `<main>`.** This renders inside the layout's own main, so a `main` here is invalid
-  HTML and two landmarks to choose between on the first screen of the app.
+- **A `div`, never a second `<main>`.** On `/` this renders inside the home route's own `main`, so a `main` here
+  is invalid HTML and two landmarks to choose between on the first screen of the app. `/library` renders the gate
+  as a direct child of `.app-shell` with NO `main` at all, so the gate has two hosts and neither of them may
+  state its placement — see the placement rule below.
 
 The wordmark's flight is `transform` ALONE, because the repo animates transform and opacity and nothing else: the
 shrink cannot be a `font-size` and the move cannot be a margin. Both states write the same two functions in the
@@ -540,13 +846,37 @@ LAYOUT instead. `container-type: inline-size` is there for the centring, which n
 because a percentage inside a `transform` resolves against the transformed element itself. Step 2's scale factor
 is `--ph-text-base` over `--ph-text-2xl` written as a RATIO, because CSS cannot divide one length by another.
 
-The CTA docks to the bottom of `.join-main` by an auto margin, and that only works because
-`:global(main:has(.join-main))` makes the layout's `main` a flex column — a block child shrinks to its content
-and an auto margin has no free space to consume. It is reached with `:has()` rather than by making that main a
-column for every route, because the joined queue view is the other thing inside it. The dock is load-bearing
+THE GATE'S PLACEMENT IS ONE DECISION IN ONE PLACE, and that place is this component's stylesheet: below
+`--bp-md` the gate fills its host and the CTA docks to the bottom; from 768 up `.app-shell:has(.join-main)`
+centres a 420px column. Because the gate has two hosts, the host is NEUTRALISED rather than trusted —
+`:global(.app-shell > main:has(.join-main))` makes it a flex column, zeroes its route padding, and at 768 up
+takes away its `flex: 1` so the centring has free space to distribute. Without that last declaration the same
+gate measured y=6 on `/` and y=263 on `/library` at 1024x900, because `main { flex: 1 }` grew to the whole shell
+and left nothing to centre. The `.app-shell >` anchor is for SPECIFICITY, not reach: the route's scoped `main`
+rule ties a bare `main:has(.join-main)` at 0,1,1 and its chunk loads later, so the route would win. The CTA then
+docks to the bottom of `.join-main` by an auto margin, which only works because the host is that flex column — a
+block child shrinks to its content and an auto margin has no free space to consume. No route may state the
+gate's alignment, padding or measure. The dock is load-bearing
 beyond tidiness: `app.html` sets the interactive-widget mode that shrinks the LAYOUT viewport when the on-screen
 keyboard opens, so bottom-anchored content rides above the keyboard instead of under it. Headless Chromium has no
-soft keyboard, so no measured gate can verify that placement. Finally `.confirm`, `.err` and `.cta-reason` stay
+soft keyboard, so no measured gate can verify that placement.
+
+THE RESTING PLACEMENT, THOUGH, IS A GATE — `tests/playwright/specs/gate/measured-join-gate.spec.ts`, CLAIM 7, leg
+7 of `bun run gates`. It drives both hosts at five widths and holds the brand band's top, the gutter and the CTA's
+bottom edge identical between them; from `--bp-md` up it also holds the free space above the gate equal to the free
+space below it ON EACH HOST, and below `--bp-md` it holds the band at the shell's content top and the CTA docked by
+`.join-main`'s own bottom inset. The absolute half is there because equality is blind to a break both hosts share:
+with `justify-content: center` deleted the two routes agree perfectly on a top-aligned gate and all three deltas
+stay at zero. Two of its five widths are 767 and 768, and it reads `--bp-md` off `:root`, which makes it the one
+place in this tree where a media literal is checked against the token it is supposed to be. It reads the host's
+resolved `display`, `padding` and `flex-grow` back as well, because a specificity argument that is only asserted is
+not checked — with the neutralising rule deleted the host resolves `display: block` below `--bp-md` and `grid`
+above it, with `padding: 6px 16px 28px` back. Measured while it ran: `.join-head` at y=262.58 at 768 and at 1024
+wide, y=352.58 at 1920x1080, and the CTA's bottom edge at y=828 of 844 at 390x844 — digits the arms DERIVE rather
+than pin, so a spacing rung can still move them with nothing red. What cannot happen again is the two hosts
+drifting apart.
+
+Finally `.confirm`, `.err` and `.cta-reason` stay
 ordinary elements rather than Field primitives: `tests/playwright/world/selectors.ts` addresses `.err` as a class on the
 alerting element and a class handed to a component carries no scoped rule; `.confirm` is the scanned path's
 headline and the primitive would dim and shrink it; `.cta-reason` needs its gap BELOW and centred text, and the
@@ -579,7 +909,11 @@ plus the gap need 1132, more than the widest shell, so a prose threshold would n
 the panel pairs from 852 up. Anything in a panel that is not a `[data-slot='card']` spans the full row.
 Card rhythm is fixed in the cascade, not by restructuring rows into `Field.Root` wrappers: the card gap is
 the intra-group distance, and a label that FOLLOWS a control takes the inter-group distance back as a
-margin, so a card's first label is untouched.
+margin, so a card's first label is untouched. A composed control whose label is `.control-label` rather than a
+`[data-slot='field-label']` takes that margin on its WRAPPER instead — `ColourRing`'s `.ring-field` — or the card
+draws one boundary two ways: 20px above a second `Field.Label` — `card-content`'s 8px flex gap plus a `lg`
+margin — against 8px above the ring. The third margin on that card, `.save-slot`'s, is the same rung for the same
+reason: a commit control is an inter-group boundary, not a section one.
 
 Other rules a change here must respect: a slider's range must match the server clamp exactly, or the UI
 silently refuses values the server accepts; `id="tab-<scope>"` and `id="max-processes"` are spelled
@@ -587,7 +921,22 @@ explicitly because `tests/playwright/world/selectors.ts` and the shot specs reso
 no `role="tabpanel"` of its own, because `Tabs.Content` already renders one and a second nests two; the
 identity ring gets `taken={[]}` because this page's load carries no room occupancy, and inventing one would
 draw pips at colours nobody holds. `PROCESSES_UNCAPPED` is `0` and means uncapped, so it must be tested
-before any count comparison and is rendered in words.
+before any count comparison and is rendered in words. The You scope has exactly ONE commit control and it lives
+INSIDE the You card, because the save's refusals name the name field; it reads `Save and close` with an edit
+pending and `Done` without one, and that tab carries no second panel-level `Done` the way Party and Server do —
+a `Done` that did not save silently discarded a typed name.
+
+That in-card placement has a consequence that is KEPT ON PURPOSE: the You panel's last control is `Leave the room`
+in the Leaving card below, where Party and Server both end on their panel-level `Done`. The destructive action is
+last because last is the end of the scope, after everything a guest came to this tab for; it is the only BUTTON in
+the panel that is not an `--accent` fill, and the only control anywhere in settings behind an `alertdialog` confirm,
+so arriving at it by reaching for the bottom of the other two tabs costs a dismissal rather than a room. Both alternatives are worse.
+Restoring a panel-level exit for position parity re-mints the pair this scope was fixed to remove — two identical
+`--accent` block buttons, one of which did not save. Lifting Leaving above the You card moves the destructive card
+into the panel's FIRST position — top-left of the paired grid from 852 up — to protect its last. A refusal on this
+pane is also keyed to the draft it refused (`{ name, colour, message }`, read back through a `$derived`) rather
+than held as a bare string: a stated reason must not outlive an edit to the field it names, or an empty-name
+refusal goes on sitting under a button that has gone back to reading `Done`.
 
 ### The song page
 

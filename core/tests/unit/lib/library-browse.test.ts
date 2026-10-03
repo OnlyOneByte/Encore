@@ -5,6 +5,7 @@ import {
 	browseLibrary,
 	libraryShelf,
 	LIBRARY_SHELF,
+	LIBRARY_SHELF_WIDE,
 	libraryWindow,
 	LIBRARY_PAGE,
 	foldForMatch,
@@ -216,6 +217,20 @@ test('hidden is 0 at and below the cap, which is what hides the door', () => {
 		const rows = Array.from({ length: n }, (_, i) => song(`01H0000${i}`, `S${i}`));
 		expect(libraryShelf(rows)).toEqual({ shown: rows, hidden: 0 });
 	}
+});
+
+test('the wide shelf is the same height budget spent two columns across', () => {
+	// The MULTIPLIER is the claim, not the literal 8: the cap is a height budget measured off the phone fold, and at
+	// --bp-lg the home row grid is two tracks wide, so the same budget must buy exactly twice the songs.
+	expect(LIBRARY_SHELF_WIDE).toBe(LIBRARY_SHELF * 2);
+	const rows = Array.from({ length: 9 }, (_, i) => song(`01H00000${i}`, `Song ${i}`));
+	const { shown, hidden } = libraryShelf(rows, LIBRARY_SHELF_WIDE);
+	expect(shown).toHaveLength(LIBRARY_SHELF_WIDE);
+	expect(hidden).toBe(1);
+	// The DEFAULT is still the phone cap, which is what every caller with no viewport to read gets.
+	expect(libraryShelf(rows).shown).toHaveLength(LIBRARY_SHELF);
+	// A negative cap shows NOTHING rather than slicing from the end — the clamp `libraryWindow` also carries.
+	expect(libraryShelf(rows, -2)).toEqual({ shown: [], hidden: 9 });
 });
 
 // ── the /library window ──────────────────────────────────────────────────────

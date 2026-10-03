@@ -506,7 +506,7 @@
 		margin: var(--space-sm) 0 var(--space-3xs);
 	}
 	.time {
-		font-size: var(--ph-text-2xs);
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;
 		min-width: 30px;
@@ -533,7 +533,7 @@
 	   surface behind it into one buffer, so measured contrast stops being what is painted. */
 	.tools-note {
 		margin: 0 0 var(--space-2xs);
-		font-size: var(--ph-text-2xs);
+		font-size: var(--ph-text-xs);
 		line-height: var(--lh-normal);
 		color: var(--ink-dim);
 	}
@@ -549,7 +549,7 @@
 		color: var(--ink-dim);
 	}
 	.key .lab {
-		font-size: var(--ph-text-2xs);
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 		letter-spacing: 0.1em;
 		text-transform: uppercase;

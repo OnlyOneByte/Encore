@@ -12,7 +12,8 @@
 // and whether the chrome actually reaches the page. That is this spec's whole subject.
 //
 // ONE READY SONG, AND WHY THERE ARE NOT FIVE. A ready song means a REAL stem separation: /api/process then a
-// poll, ~60s of worker. The shelf's four-row cap and the `See all N` door need five to become observable, so
+// poll, ~60s of worker. The shelf's cap — four rows at the 390x844 `openPhone` viewport every test below uses,
+// eight at --bp-lg — and the `See all N` door need five to become observable, so
 // they are NOT asserted here — five separations would put this spec past ten minutes for a `slice(0, 4)`. The
 // cap is stated in the route beside the number it uses; what IS covered below is that the page the door leads
 // to works, which is the half that can break silently.

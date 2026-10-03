@@ -66,7 +66,5 @@ test('ytmusic hits carry youtube identity, so the two youtube searches dedupe to
 		artist: 'Tasty', // the CHANNEL — why the default prefers the music catalog
 		durationSec: 261
 	};
-	expect(originKey(fromMusic.source, fromMusic.sourceRef)).toBe(
-		originKey(fromYtsearch.source, fromYtsearch.sourceRef)
-	);
+	expect(originKey(fromMusic.source, fromMusic.sourceRef)).toBe(originKey(fromYtsearch.source, fromYtsearch.sourceRef));
 });

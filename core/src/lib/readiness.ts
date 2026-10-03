@@ -57,7 +57,8 @@ export interface NoRowsState {
 	/** When set, the UI offers a one-tap way back to the library (clears the search).
 	 *
 	 * A PRESENCE SIGNAL, and no longer a label. The control it gates clears the search, which reveals the
-	 * home column's four-row SHELF — so a label reading "Show all 13" promised rows that tap does not
+	 * home column's SHELF, itself capped (at four rows on a phone, eight at --bp-lg) — so a label reading
+	 * "Show all 13" promised rows that tap does not
 	 * produce. The number stays here because "is there anything to go back to" is exactly what the caller
 	 * needs, and callers that want the real library size read it from the same place /library does. */
 	showAllCount: number | null;
@@ -83,11 +84,7 @@ export function showsNoRows(opts: {
 	return opts.readyCount === 0 && opts.rawCount === 0 && opts.processingCount === 0;
 }
 
-export function noRowsState(opts: {
-	searchActive: boolean;
-	libraryCount: number;
-	query?: string;
-}): NoRowsState {
+export function noRowsState(opts: { searchActive: boolean; libraryCount: number; query?: string }): NoRowsState {
 	const { searchActive, libraryCount } = opts;
 	// SEARCH IS TESTED FIRST, and the order is the whole correctness of this function. A search that found
 	// nothing is a statement about THE QUERY; "no karaoke-ready songs yet" is a statement about the

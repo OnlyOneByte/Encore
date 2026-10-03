@@ -2,6 +2,12 @@
 // standing up the SvelteKit app. Hand-written markup rather than Svelte components ON PURPOSE — the point is
 // to exercise the wire protocol with nothing of the real client in the way, so a bug here cannot be the
 // client's. Kept out of server.ts because the Bun entry's job is transport, not markup.
+//
+// OUTSIDE THE DESIGN SYSTEM ON PURPOSE, and docs/FRONTEND.md names this file for it: every colour here is a hex
+// literal, no `var(--token)` is reachable from a string the Bun entry writes, and the raw-frame `pre` below is
+// 10px — under the 12px phone floor the app's own stylesheets hold. That is not a licensed exception, it is a
+// page that does not ship: `server.ts` mounts /harness and /harness/phone only behind ENCORE_DEV_HARNESS=1, off
+// by default on every box including a dev one. Raising the 10px would imply the rest of this file is governed.
 
 export function harnessHtml(): string {
 	return `<!doctype html><meta charset=utf-8><title>Encore — sync harness</title>

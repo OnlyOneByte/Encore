@@ -135,7 +135,9 @@
 		z-index: var(--z-tv-card);
 		display: flex;
 		align-items: center;
-		gap: var(--space-xl);
+		/* The TV's other cluster gap — TvLobby's `.strip` — is this same rung, and this one was the retired `xl`, 2px
+		   away from it for no reason either screen could show. One rung, so the stage reads one rhythm. */
+		gap: var(--space-2xl);
 		/* NO PANEL: the now-singing block is plain text, so the text here takes the same text-shadow the rest of the
 		   stage uses, which works on TV browsers where `backdrop-filter` may never run. */
 		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);

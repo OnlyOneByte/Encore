@@ -30,6 +30,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		audioSec: null,
 		stages: null,
 		selection: null,
+		trail: null,
 		...over
 	};
 }

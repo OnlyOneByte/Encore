@@ -64,12 +64,19 @@
 <style>
 	.findbox {
 		background: var(--card);
-		border: 1px solid var(--line);
+		/* THE WRAPPER carries the control boundary, not the input: `.findbox input` is `border: 0` below, so this 1px is the
+		   only thing that says "type here" and it takes SC 1.4.11's 3:1 floor. --control-line is 3.97:1 on the --card fill
+		   above; --line would be 1.23:1. */
+		border: 1px solid var(--control-line);
 		border-radius: var(--radius-sm);
 		display: flex;
 		align-items: center;
 		gap: var(--space-md);
-		padding: var(--space-lg) var(--space-xl);
+		/* ONE RUNG ON ALL FOUR SIDES, and the inline half is an ALIGNMENT, not a preference. This was `lg xl` (12/14);
+		   `xl` is retired, and 12 is the rung that makes this field's text start exactly where the rows under it do:
+		   route gutter + 1px boundary + 12px, which is app.css's `.list-row` (`border` from `.card`, `padding: 11px
+		   12px`) to the pixel. At 14 the field's text sat 2px inboard of every row beneath it on both hosts. */
+		padding: var(--space-lg);
 		min-height: 52px;
 		/* The caller owns flex-item behaviour; this only fills whatever box it is given, and can shrink. */
 		width: 100%;
@@ -104,7 +111,7 @@
 	@media (max-height: 480px) {
 		.findbox {
 			min-height: var(--tap);
-			padding: var(--space-sm) var(--space-xl);
+			padding: var(--space-sm) var(--space-lg);
 		}
 	}
 </style>

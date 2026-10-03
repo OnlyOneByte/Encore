@@ -94,8 +94,7 @@
 		'identity',
 		'keycap',
 		'eyebrow',
-		'iconPrimary',
-		'iconReady'
+		'iconPrimary'
 	] as const;
 	const BUTTON_SIZES = ['default', 'tap', 'sm', 'lg', 'block', 'blockLg', 'icon'] as const;
 	const BADGE_TONES = ['neutral', 'ok', 'warn', 'bad', 'accent', 'tag'] as const;
@@ -153,8 +152,8 @@
 	<h2 class="section">Primitives · Card.Root beside .card, identical content</h2>
 	<p class="note">
 		THE PAIR. <code>app.css</code> gives <code>.card</code> the lit edge (<code>--shadow-sm</code> +
-		<code>--edge-hi</code>, a pair its own comment calls load-bearing); <code>Card.Root</code> runs on the
-		registry's keys. Any difference in surface, border or radius between these two boxes is the seam.
+		<code>--edge-hi</code>, a pair its own comment calls load-bearing); <code>Card.Root</code> runs on the registry's keys.
+		Any difference in surface, border or radius between these two boxes is the seam.
 	</p>
 	<div class="gal-row gal-row--stretch">
 		<Card.Root>
@@ -169,8 +168,8 @@
 
 	<h2 class="section">Primitives · Empty.Root beside the home column's hero</h2>
 	<p class="note">
-		The phone home writes its own first-run block; <code>Empty.Root</code> is what every other route uses.
-		Rendered together because the two have already drifted, and neither one knows it.
+		The phone home writes its own first-run block; <code>Empty.Root</code> is what every other route uses. Rendered together
+		because the two have already drifted, and neither one knows it.
 	</p>
 	<div class="gal-row gal-row--stretch">
 		<Empty.Root>
@@ -187,8 +186,8 @@
 
 	<h2 class="section">Primitives · Alert, every tone</h2>
 	<p class="note">
-		<code>--danger</code> means failure and <code>--accent2</code> never does (pink is a valid singer
-		colour). A tone that reads as decoration here is a tone that will be missed in a failure.
+		<code>--danger</code> means failure and <code>--accent2</code> never does (pink is a valid singer colour). A tone that
+		reads as decoration here is a tone that will be missed in a failure.
 	</p>
 	<div class="gal-stack">
 		{#each ALERT_TONES as tone (tone)}
@@ -209,8 +208,8 @@
 	<h2 class="section">Primitives · form controls in a 320px track</h2>
 	<p class="note">
 		THE WIDTH IS THE TEST: 320px is the narrowest phone, and every control here must clear
-		<code>var(--tap)</code> tall and 16px of font-size — iOS Safari auto-zooms a focused control under 16px
-		and never zooms back. The search field was measured at 4px wide inside this very row shape.
+		<code>var(--tap)</code> tall and 16px of font-size — iOS Safari auto-zooms a focused control under 16px and never zooms
+		back. The search field was measured at 4px wide inside this very row shape.
 	</p>
 	<div class="gal-track">
 		<FindField
@@ -240,16 +239,11 @@
 
 	<h2 class="section">Primitives · SkeletonRows above the rows it stands in for</h2>
 	<p class="note">
-		A skeleton is a PROMISE about the shape that replaces it. Stacked directly against real rows, a
-		mismatched height is visible as a jump — which is the defect, since the hand-off is what the guest sees.
+		A skeleton is a PROMISE about the shape that replaces it. Stacked directly against real rows, a mismatched height is
+		visible as a jump — which is the defect, since the hand-off is what the guest sees.
 	</p>
 	<SkeletonRows label="Searching…" />
-	<SongRow
-		title="a-ha - Take On Me (Official Video)"
-		artist="a-ha"
-		durationSec={225}
-		readiness="ready"
-	/>
+	<SongRow title="a-ha - Take On Me (Official Video)" artist="a-ha" durationSec={225} readiness="ready" />
 	<SongRow title="Toto - Africa" artist="Toto" durationSec={295} readiness="unacquired" />
 
 	<h2 class="section">SongRow · the readiness axis</h2>
@@ -779,7 +773,7 @@
 		{#each TV_PROGRESS_STYLES as p (p.id)}
 			<div>
 				<div
-					style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;"
+					style="font-size:var(--ph-text-xs);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;"
 				>
 					{p.label}
 				</div>
@@ -803,7 +797,7 @@
 		{#each TV_VISUALIZERS as v (v.id)}
 			<div>
 				<div
-					style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;"
+					style="font-size:var(--ph-text-xs);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;"
 				>
 					{v.label}
 				</div>
@@ -846,7 +840,7 @@
 	}
 	.gal-label {
 		color: var(--ink-dim);
-		font-size: var(--ph-text-2xs);
+		font-size: var(--ph-text-xs);
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 	}
@@ -896,7 +890,10 @@
 	}
 
 	.section {
-		margin-top: var(--space-3xl);
+		/* `4xl`, not the `5xl` section rung this gallery's eyebrows otherwise resemble: the section rung obliges its
+		   host a `@media (max-height: 480px)` claw-back (app.css's `.grouphead`), and this is a dev gallery, not a
+		   shipped surface, so promoting it would mint an obligation nobody owes. It was the retired `3xl` (18). */
+		margin-top: var(--space-4xl);
 		font-size: var(--ph-text-sm);
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
@@ -904,7 +901,9 @@
 	}
 	.caption {
 		margin: 0 0 var(--space-2xs);
-		font-size: 0.7rem;
+		/* On the ladder, not 0.7rem/11.2px: the gallery that documents the design system cannot be the one page that
+		   renders under the system's own 12px floor. */
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 	}
 </style>

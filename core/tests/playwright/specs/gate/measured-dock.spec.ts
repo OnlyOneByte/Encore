@@ -336,6 +336,17 @@ test('CLAIM 3 the docked band publishes its real height, composes the safe-area 
 	// CLAIM 3, THE SHORT CASE: a column shorter than the viewport, unable to scroll. A band whose measured
 	// height only survives while content pushes against it is a band whose height is a coincidence. The empty
 	// line sits near the TOP by design; wherever it sits, it must not be under the band.
+	//
+	// THE SOURCE IS NARROWED TO `local` FIRST, and that is the arm's correctness, not tidiness. The default
+	// `music` source fans out to YouTube Music, which FUZZY-matches: measured against the live endpoint,
+	// `zzzzznotasongzzzzz` returns four unrelated songs ("Juicy Butt", "RARRI", …), so on any networked host the
+	// "non-matching" query filled the column, `showsNoRows` stayed false, no empty line rendered and all three
+	// arms below were skipped in favour of one null-probe failure — the gate measured LESS than it claims to.
+	// `local` is the only source whose contents this fixture owns (four demo WAVs from world/seed.ts, none of
+	// them gibberish), so the query is provably empty there and the short case is reproducible offline and on.
+	// It goes BEFORE the fill because `onSourceChange` re-runs a query it is already holding, and with the field
+	// still empty there is nothing to re-run.
+	await page.locator(SEL.searchSource).first().selectOption('local');
 	await fill(page, SEL.search, 'zzzzznotasongzzzzz');
 	await page
 		.locator(SEL.empty)

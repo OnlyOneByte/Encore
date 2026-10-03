@@ -32,6 +32,16 @@ export const SEL = {
 	submit: /Start singing/,
 	/** How p8 tells a duplicate-name rejection from a clean join: both leave the form sitting there. */
 	joinError: '.err[role=alert]',
+	/* The join gate's three LAYOUT boxes, addressed by class because a layout box owes a user no aria contract
+	   and because these are the exact classes JoinLanding's own placement rules (and its two `:has()` selectors)
+	   key on — see docs/FRONTEND.md#the-join-screen. `joinHead` is the reserved brand band, `joinColumn` the
+	   flex column the CTA docks against, both present on either pane. */
+	joinHead: '.join-head',
+	joinColumn: '.join-main',
+	/** The CTA by its SLOT, not by `submit` above: that key is the accessible name `Start singing`, which exists
+	 *  only on the identity pane. A bare `/` or `/library` lands on the CODE pane, where the same button reads
+	 *  `Continue` — or `Checking the code…` while a preview is in flight — so a name query finds nothing there. */
+	joinCta: '.submit-slot button',
 
 	// phone remote
 	/** The post-join readiness signal — but chrome on EVERY phone surface, so a caller that also needs "and
@@ -53,6 +63,11 @@ export const SEL = {
 	search: 'input[aria-label="Search a song or artist"]',
 	/** Mark, field, spinner and clear control, in normal flow: neither docked nor sticky. */
 	findBox: '.findbox',
+	/** WHERE `search` looks: `music` (the default fan-out), `everything`, `youtube`, `local`. By the
+	 *  aria-label and not `[data-slot='native-select']`, which resolves against /settings' selects too.
+	 *  A spec that needs a query to match NOTHING must narrow this to `local` first — the default reaches
+	 *  YouTube Music, which fuzzy-matches, so no string is reliably empty against it. */
+	searchSource: 'select[aria-label="Where to search"]',
 	/** Empties the query, restoring queue and library in place — the whole way "back" from a search. */
 	clearSearch: '[aria-label="Clear the search"]',
 	/* ── /library ─────────────────────────────────────────────────────────────

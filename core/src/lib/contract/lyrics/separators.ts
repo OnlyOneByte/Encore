@@ -219,7 +219,5 @@ export function isQualityUpgrade(
 
 /** A pairing this file knows is valid but cannot rank, because the worker supplied it. */
 export function isWorkerReportedModel(engineId: string, modelId: string): boolean {
-	return (
-		engineId === WORKER_POPULATED_ENGINE && !findModel(engineId, modelId) && looksLikeWorkerToken(modelId)
-	);
+	return engineId === WORKER_POPULATED_ENGINE && !findModel(engineId, modelId) && looksLikeWorkerToken(modelId);
 }
