@@ -1,8 +1,9 @@
 <!-- Encore's range geometry over the Bits UI primitive. Three styling mechanisms, each forced rather than chosen: the
   ROOT is reached by data-slot in a global rule (it is a child component, so a scoped class compiles to a hash that lands
   on no element and the whole rule dies silently), the TRACK is ordinary scoped CSS because this file renders that span,
-  and the FILL and THUMB are utilities because a class is the only thing that reaches a child component. GuidingTrack
-  deliberately does NOT use this component: Bits UI's Slider reads offsetWidth, which the mount rung hardens to throw. -->
+  and the FILL and THUMB are utilities because a class is the only thing that reaches a child component. Every caller
+  arrives through `$lib/ui/FieldSlider.svelte` — the one wrapper that names the thumbs — so both variants are live:
+  `field` on /settings' nine sliders and `guiding` on GuidingTrack's vocal-level rail. -->
 <script lang="ts">
 	import { Slider as SliderPrimitive } from 'bits-ui';
 	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
@@ -76,14 +77,29 @@
 		width: 100%;
 		cursor: pointer;
 	}
-	/* GuidingTrack's rail is thinner; its thumb inverts the palette — ink filled, accent ringed. */
+	/* GuidingTrack's rail is thinner; its thumb inverts the palette — ink filled, accent ringed. Both heights grew by
+	   2px with the ring below rather than thinning the fill: app.css sets `box-sizing: border-box` on `*`, so the
+	   declared height INCLUDES the two 1px edges, and 6 keeps this rail's painted gradient at the 4px it has always
+	   been while 8 keeps the field rail's 6px. */
 	.encore-slider-track[data-variant='guiding'] {
-		height: 4px;
+		height: 6px;
 		border-radius: 4px;
 	}
+	/* THE RAIL IS THIS CONTROL'S BOUNDARY, so it takes --control-line — and the fix is a 1px ring, not a brighter
+	   --track-bg. SC 1.4.11 wants 3:1 for whatever identifies the control, and only the FILLED half of this rail had
+	   it: the --accent range is 3.38:1 on --card, while --track-bg, the unfilled remainder — which is MOST of the rail
+	   at a low value, and all of it at zero — measures 1.27:1 and reads as nothing. Recolouring the rail cannot fix
+	   that half: 3:1 as a FILL on --card needs a #6a6a6a-class grey (the arithmetic is in app.css's --control-line
+	   block), and it would repaint the five OUTPUT sites listed at --track-bg there to bound the one control.
+	   The ring clears 3:1 against BOTH neighbours: 3.97:1 outside on --card — the surface at both call sites,
+	   /settings' cards directly and the drawer through a --chrome-fill mixed from that same token — and 3.13:1
+	   inside on --track-bg. That inner figure is the floor app.css's --control-line block computes across every
+	   surface token, and this rail is what makes it LOAD-BEARING rather than hypothetical. Numbers pinned in
+	   tests/unit/lib/control-boundary-contrast.test.ts, which also lists this file as a boundary site. */
 	.encore-slider-track {
-		height: 6px;
+		height: 8px;
 		border-radius: var(--radius-pill);
+		border: 1px solid var(--control-line);
 		background: var(--track-bg);
 	}
 </style>

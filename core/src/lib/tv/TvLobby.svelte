@@ -229,9 +229,12 @@
 		   clip silently ate roster members. */
 		max-height: 26vh;
 	}
-	/* Written as `.dense .name` / `.dense .swatch`, so chip type and dot step down together. */
+	/* Written as `.dense .name` / `.dense .swatch`, so chip type and dot step down together. The GAP has to step down
+	   by something a room can see from the sofa: it was the retired `xl`, which made 16 -> 14, a 1.14 step, while the
+	   chip type beside it dropped --tv-name -> --tv-body, 1.509 / 1.132 = 1.333. `lg` makes the gap 16 -> 12, also
+	   1.333, so the two halves of the step-down now move by the same factor. */
 	.strip.dense {
-		gap: var(--space-xl);
+		gap: var(--space-lg);
 	}
 	.strip.dense .name {
 		font-size: var(--tv-body);

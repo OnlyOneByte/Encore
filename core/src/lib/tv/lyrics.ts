@@ -103,8 +103,7 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 		const line: LyricLine = { start: num(l.start), end: num(l.end), text, words };
 		if (typeof l.romanization === 'string' && l.romanization.trim()) line.romanization = l.romanization;
 		if (typeof l.part === 'string' && l.part.trim()) line.part = l.part;
-		if (l.confidence === 'high' || l.confidence === 'medium' || l.confidence === 'low')
-			line.confidence = l.confidence;
+		if (l.confidence === 'high' || l.confidence === 'medium' || l.confidence === 'low') line.confidence = l.confidence;
 		lines.push(line);
 	}
 	if (lines.length === 0) return null;

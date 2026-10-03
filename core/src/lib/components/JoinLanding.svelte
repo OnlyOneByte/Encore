@@ -148,7 +148,8 @@
 	{/if}
 </header>
 
-<!-- A div, NEVER a second `<main>`: this renders inside the layout's own main. The `.join-main` class is what every
+<!-- A div, NEVER a second `<main>`: on `/` this renders inside the home route's main (on `/library` there is no main
+	at all, which is why the CSS neutralises the host rather than trusting it). The `.join-main` class is what every
 	rule below — and the `:has()` selectors — key on. -->
 <div class="join-main">
 	{#if sawCodeStep}
@@ -170,7 +171,7 @@
 		<p class="confirm" role="status">{confirmSentence}</p>
 
 		<label class="name-field">
-			<span class="eyebrow">Your name</span>
+			<span class="control-label">Your name</span>
 			<!-- `maxlength` must be a NUMBER: the DOM coerces a string, but a typed component prop does not. -->
 			<Input
 				variant="join"
@@ -330,16 +331,47 @@
 		flex-direction: column;
 		gap: var(--space-sm);
 	}
-	/* THE COLUMN THE CTA DOCKS AGAINST. `.submit-slot`'s auto margin can only push the CTA to the bottom if this
-	   element HAS a bottom to reach: the layout's `main` is `flex: 1` without `display: flex`, so `.join-main`
-	   otherwise shrinks to its content. `:has()`, because the joined queue view is the other thing inside it. */
-	:global(main:has(.join-main)) {
+	/* THE COLUMN THE CTA DOCKS AGAINST, AND THE HOST THE GATE NEUTRALISES. `.submit-slot`'s auto margin can only
+	   push the CTA to the bottom if this element HAS a bottom to reach: the host `main` is `flex: 1` without
+	   `display: flex`, so `.join-main` otherwise shrinks to its content. `:has()`, because the joined queue view is
+	   the other thing inside it.
+	   ANCHORED ON `.app-shell >` FOR THE SPECIFICITY, NOT FOR THE REACH. The gate has TWO hosts — `/` renders it
+	   inside the home route's `main`, `/library` renders it as a direct child of `.app-shell` — and the route's own
+	   `main { flex: 1; padding: … }` is scoped, so it TIES a bare `main:has(.join-main)` at 0,1,1 and its chunk
+	   loads after this component's (`2.*.css` after `library-browse.*.css` in node 2's css list), which wins the
+	   tie. At 0,2,1 this rule wins on specificity instead of on bundle order.
+	   `padding: 0` IS PART OF THE SAME DECISION: the host's route padding is a placement the gate did not choose
+	   and the other route does not get — 6px at the top, 28px at the bottom, and 16px of a SECOND inline gutter
+	   that `.app-shell` already owns as the app's one gutter.
+	   THE RESOLVED END OF THIS RULE IS READ BACK, which is the only way a specificity argument can be checked rather
+	   than asserted: CLAIM 7's mechanism arm reads the host's computed `display`, `padding` and `flex-grow` off the
+	   live page, so a route chunk winning the cascade back reports itself by name — measured with this rule deleted,
+	   the host resolves `display: block` below --bp-md, `grid` above it, and `padding: 6px 16px 28px` at every width
+	   — instead of only moving the gate by a few pixels. */
+	:global(.app-shell > main:has(.join-main)) {
 		display: flex;
 		flex-direction: column;
+		padding: 0;
 	}
 	.join-main {
 		flex: 1;
-		padding: var(--space-3xl) var(--space-4xl);
+		/* TWO RUNGS, and the vertical one is the app's gutter rung rather than a rung of its own: this was `3xl 4xl`
+		   (18/20), a 2px asymmetry nobody chose, and 3xl is retired. 16 top and bottom also pays for the join field
+		   growing 14 -> 16 inline and block inside it (ui/input's `join` variant), so this screen's total height at
+		   the keyboard-up case is unchanged. The inline 20 stays the widest inset in the app — this is the one screen
+		   that is nothing but one hero column.
+		   WHAT THAT DID TO THE READINGS FURTHER DOWN THIS FILE, now RE-READ rather than derived — a note here used to
+		   predict `.join-head`'s y=263 / y=353 were 2px high, and they are not. Measured by the gate below on the CODE
+		   pane, which is what a bare `/` or `/library` opens: the brand band's top is y=262.58 at 768 and at 1024 wide
+		   and y=352.58 at 1920x1080, so both written figures are those values rounded. The CTA's docked bottom edge on
+		   the phone arm DID move with this rung, 826 -> 828 at 390x844 (844 less this column's bottom inset, which the
+		   arm below zeroes from 768 up), and the `@media` comment there is corrected to the re-read value.
+		   WHAT THE GATE DOES AND DOES NOT HOLD, so nobody trusts these digits further than they go:
+		   tests/playwright/specs/gate/measured-join-gate.spec.ts asserts the RELATIONS these four numbers came out of
+		   — centred on both hosts from --bp-md up, filled and docked by this column's own bottom inset below it — and
+		   not the digits themselves. Change a rung here and y=262.58 moves again with nothing red; what cannot happen
+		   any more is the two hosts drifting apart. */
+		padding: var(--space-2xl) var(--space-4xl);
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-4xl);
@@ -394,6 +426,19 @@
 	@media (min-width: 768px) {
 		:global(.app-shell:has(.join-main)) {
 			justify-content: center;
+		}
+		/* AND THE HOST MUST STOP ABSORBING THE FREE SPACE the rule above distributes. `main { flex: 1 }` grows to the
+		   full shell height, so on `/` there was nothing left to centre and the gate sat at the top while `/library`,
+		   where the gate is the shell's own child, centred — the same component in two places, decided by the landing
+		   route. Measured at 1024x900: `.join-head` at y=6 on `/` against y=263 on `/library`, a 257px divergence for
+		   identical markup; with this rule both read y=263 (and y=353 at 1920x1080).
+		   IT CANNOT BE UNCONDITIONAL — the host MUST keep `flex: 1` below 768, or it shrinks to its content and
+		   `.join-main`'s own `flex: 1` has no free space to grow into, so the CTA undocks: re-measured at 390x844 by
+		   making this declaration unconditional and rebuilding, the button's bottom edge lands at y=353.05 instead of
+		   y=828 (it read 826 while this column's bottom inset was 18px). Both halves are gate arms now — see
+		   tests/playwright/specs/gate/measured-join-gate.spec.ts, whose phone arms red on exactly that revert. */
+		:global(.app-shell > main:has(.join-main)) {
+			flex: 0 0 auto;
 		}
 		.join-main {
 			max-width: 420px;

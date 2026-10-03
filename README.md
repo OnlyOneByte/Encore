@@ -329,21 +329,28 @@ bun run gates     # the full seven-leg release gate (test, worker pytest, types,
 bun run deadcode  # knip; a clean run is ZERO findings
 bun run pw        # the whole Chromium suite — needs a built app (`pw:gate|flow|probe|shot` for one project)
 
-# Worker (worker) — install the pinned tooling once, then run all four gates:
-cd worker && pip install -r requirements-test.txt
-pytest -q                    # worker unit tests (asyncio_mode=auto)
-ruff check .                 # lint (pyflakes/pycodestyle/isort/bugbear/pyupgrade/tidy-imports)
-ruff format --check .        # format gate (ruff is the formatter; no separate black)
-mypy                         # type-check src/ (config in pyproject.toml)
+# Worker (worker) — uv owns the env; `uv run` syncs it before it runs anything:
+cd worker && uv python install 3.12   # .python-version pins it; uv fetches the interpreter
+uv run --extra ml pytest -q  # worker unit tests (asyncio_mode=auto) — the extra is NOT optional, see below
+uv run ruff check .          # lint (pyflakes/pycodestyle/isort/bugbear/pyupgrade/tidy-imports)
+uv run ruff format --check . # format gate (ruff is the formatter; no separate black)
+uv run mypy                  # type-check encore_worker/ (config in pyproject.toml)
 ```
 
-`requirements-test.txt` pins the worker's tooling (pytest, pytest-asyncio, pytest-timeout, ruff, mypy)
-so the gates above reproduce from the repo alone, and it is deliberately separate from
-`requirements.txt`: running the suite costs five small pure-Python packages instead of a multi-GB torch
-stack, because every heavy seam is faked. Add `-r requirements.txt` on top only to run a REAL job.
-`pytest.ini` sets `asyncio_mode = auto`, so without **`pytest-asyncio`** the async tests are silently
-skipped as un-awaited coroutines rather than failing. `ruff check`, `ruff format --check` and `mypy` all
-exit 0 on a clean tree; any non-zero exit is a real finding.
+`pyproject.toml` pins the worker's tooling in the PEP 735 `dev` group (pytest, pytest-asyncio,
+pytest-timeout, ruff, mypy) and `uv.lock` holds the resolution, so the gates above reproduce from the
+repo alone. `[tool.pytest.ini_options]` sets `asyncio_mode = auto`, so without **`pytest-asyncio`** the
+async tests are silently skipped as un-awaited coroutines rather than failing.
+
+**`--extra ml` is load-bearing on the pytest leg, and that is a KNOWN GAP, not the design.** The intent
+is the one `worker/README.md` still states — `uv sync --only-group dev` installs the gates with no
+multi-GB torch download, because every heavy seam is faked. The suite has outgrown it: on a dev-only
+install three modules (`test_align_v2`, `test_audiosep`, `test_ffmpeg`) fail COLLECTION on `soundfile`,
+and 15 further tests carrying no `ml` marker fail on `whisperx`, `pyannote` or an unprovable `stems`
+capability. Closing the gap means marking or faking those tests, not installing more — until then the
+pytest leg of `bun run gates` runs the `ml` install, because `-m 'not ml'` on the light one is still red.
+`ruff check`, `ruff format --check` and `mypy` all exit 0 on a clean tree; any non-zero exit is a real
+finding.
 
 - `tests/playwright/world/selectors.ts` is the **selector contract**: one declaration of every hook the
   browser specs drive. No spec may spell a selector for itself, because a hand-written one rots in

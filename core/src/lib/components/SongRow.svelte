@@ -217,16 +217,19 @@
 								wrap>{stateChip}</Badge
 							>
 						{/if}
+						<!-- `official` IS THE NEUTRAL CASE, not an --ok chip. It used to be green, which put a second --ok pill
+							immediately beside "Karaoke ready" in this same chips row, meaning something completely different — and with
+							the card's --ok border gone the ready pill is now the row's ONE statement of readiness, so a green
+							neighbour defeats it. Only the EXCEPTIONAL kinds are toned: red for "Not music", amber for "Live", accent
+							for "Lyric video". "Official video" is the common, expected kind and should not shout. -->
 						{#if kindLabel}<Badge
-								variant={kind === 'official'
-									? 'ok'
-									: kind === 'lyric'
-										? 'accent'
-										: kind === 'live'
-											? 'warn'
-											: kind === 'suspect'
-												? 'bad'
-												: 'neutral'}>{kindLabel}</Badge
+								variant={kind === 'lyric'
+									? 'accent'
+									: kind === 'live'
+										? 'warn'
+										: kind === 'suspect'
+											? 'bad'
+											: 'neutral'}>{kindLabel}</Badge
 							>{/if}
 						<!-- `warn`, NOT `bad`, and ordered after the kind so "Live · Longer than a song" reads as one thought about
 							one recording. The tone change is the whole fix here: red is the failure colour and this is a mild metadata
@@ -272,7 +275,7 @@
 					paints both dead states — and Playwright counts `aria-disabled` as disabled, so the probes that poll
 					`isDisabled()` for "the add landed" still read it. -->
 				<Button
-					variant="iconReady"
+					variant="iconPrimary"
 					size="icon"
 					data-testid="song-add"
 					data-row-state={inQueue ? 'queued' : !processable ? 'unavailable' : undefined}
@@ -308,10 +311,15 @@
 			transition: background var(--motion-fast) ease;
 		}
 	}
-	/* Readiness is legible from the border alone, before any text is read. */
-	.row.ready {
-		border-color: var(--ok);
-	}
+	/* THE READY ROW HAS NO BORDER OF ITS OWN, and the deletion is the finding. Ready was stated three times per card —
+	   an --ok border here, the "Karaoke ready" pill, and the add button's --ok ring — and /library renders every row
+	   with readiness="ready", so all three were on in all of them and none discriminated anything. The button's ring is
+	   gone (one fill for the action, see button.svelte's iconPrimary) and the WORDED pill is what stays: it is bounded,
+	   it is readable by a guest who cannot separate --ok #33d6a6 from --warn #ffb84d, and it keeps --ok to one small
+	   region instead of tracing the whole card, which was the largest --ok area on the screen. The `ready` class STAYS
+	   on the row element as a state hook even with no rule reading it — do not tidy it out of the class array.
+	   `.row.processing` keeps its border because processing is TRANSIENT, and its tint is the only pre-attentive mark of
+	   a row that is changing under the guest. */
 	.row.processing {
 		background: linear-gradient(var(--card), var(--card-tint));
 		border-color: var(--line-tint);
@@ -430,8 +438,17 @@
 		box-shadow: inset 0 0 0 2px var(--danger-line);
 	}
 	.row :global([data-slot='button'][data-row-state='queued']) {
-		/* Dimmed but still GREEN: the song is in the rotation, which is the success state. */
-		opacity: 0.7;
+		/* THE CONFIRMATION IS AN OUTLINE, NEVER A DIMMED FILL, and the ratio is the reason. The action is one accent fill
+		   now, so the old `opacity: 0.7` would composite #7254e6 at 70% over the --card row to #5843ad — 2.31:1 against
+		   that row, under SC 1.4.11's 3:1 for a control's boundary, where the fill at full strength measures 3.38:1. So
+		   the dim is a SURFACE AND INK SWAP in the accent family's own certified pair, which is also the right grammar:
+		   filled means press me, outlined means done. The BORDER carries the visibility (3.38:1 on --card, 3.10:1 on its
+		   own --card2 fill) and the check mark carries the meaning. NOT --ok: that token states the ready STATE, once per
+		   row, in the pill. Unlayered under a scoped class, so it beats the layered `bg-`/`border-` utilities on the
+		   variant — the same mechanism the `aria-disabled` rule below relies on. */
+		background: var(--card2);
+		border-color: var(--accent);
+		color: var(--accent-ink);
 	}
 	/* THE PRESS FEEDBACK HAS TO GO WITH `disabled`, AND IT LIVES ON TWO PROPERTIES. Button answers a press with
 	   `transform: scale(0.96)` (its own `[data-press='none']:active:not(:disabled)`) AND with `translate: 0 1px` (the
@@ -446,9 +463,14 @@
 		transform: none;
 		translate: none;
 	}
-	/* NOT-PROCESSABLE MUST NOT WEAR "GO" CLOTHES: `disabled` alone leaves a dimmed GREEN button, which reads as
-	   "queued" rather than "impossible". Neutralising the border and ink is what separates the two states. */
+	/* NOT-PROCESSABLE MUST NOT WEAR "GO" CLOTHES, AND THE FILL IS NOW PART OF THAT. The shared variant is an accent
+	   FILL, so neutralising only the border and the ink — which was enough while this branch used the --card2-based
+	   iconReady — would leave a full-strength purple circle reading as the live action. The background swap is what
+	   keeps this rule doing its job. Separated from `queued` above by the border (--line is 1.23:1 on --card, i.e.
+	   effectively no boundary, against --accent's 3.38:1), by the ink, by the glyph (plus, not check), and by the extra
+	   dim — `opacity` is legal here because this leaf carries no text, only an Icon path. */
 	.row :global([data-slot='button'][data-row-state='unavailable']) {
+		background: var(--card2);
 		border-color: var(--line);
 		color: var(--ink-dim);
 		opacity: 0.65;

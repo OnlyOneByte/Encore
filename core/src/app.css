@@ -32,6 +32,33 @@
 	--card-tint2: #2a2440;
 	--line-tint: #3a2f55;
 	--line-strong: #3a3a55;
+	/* THE CONTROL BOUNDARY, and the one reason it is not --line: SC 1.4.11 wants 3:1 for the visual information that
+	   IDENTIFIES a control — a text field's border is the only thing that says "type here", and it is equally the only
+	   thing that shapes the two bordered Button variants (`keycap`, which is bg-transparent, and `outline`, whose
+	   bg-background fill is 1.14:1 on the card it sits on and so identifies nothing). --line is a DECORATIVE
+	   hairline — the 17 files that keep it spell it for a card edge, a row rule, a table rule, the spinner, the skeleton
+	   shimmer — which the criterion exempts, and it measures 1.13:1 on the --card2 field fill. Raising --line to clear
+	   3:1 would brighten every card in the app, so the control boundary takes its own token and --line keeps its value.
+	   hsl(240 17% 54%), ON this family's own line rather than a new hue: --line is 240/19/20, --line-strong 240/19/28,
+	   --ink-dim 240/15/66 — those three are the hexes ROUNDED for reading; interpolating saturation between the exact
+	   --line-strong (240/18.88/28.04) and --ink-dim (240/15.43/65.69) at l=54 gives 16.50. THE SHIPPED TOKEN TAKES THE
+	   WHOLE PERCENT ABOVE THAT, 17, and the hex is that rounded value rather than the interpolated one: #76769e reads
+	   back as 240/17.09/54.12, i.e. hsl(240 17% 54%) to the byte. The step is reconciled rather than left as a 0.5
+	   discrepancy between the derivation and the hex, and it is cheap in both senses: hsl(240 16.5% 54%) rounds to
+	   #76769d, one of 255 on the blue channel away from what ships, and it measures 3.126:1 on the floor surface named
+	   below where the shipped 17% measures 3.131:1 — so the whole percent goes UP the safe way, by 0.0044 of a ratio.
+	   A whole-percent hsl() is also the form every other colour note in this file reasons in.
+	   Measured with the app's own contrastRatio():
+	   3.65:1 on --card2, 3.97:1 on --card, 4.53:1 on --bg, and >=3.13:1 against EVERY surface token below — the floor is
+	   --track-bg (3.13), declared below as the slider/progress rail, then --ok-bg (3.20) — so it is safe on a surface no
+	   field sits on YET, and already paid on one that is not hypothetical: the slider rail's ring is drawn IN this token
+	   with --track-bg on its inside face, so 3.13 is the number that boundary actually leans on, not a reserve for a
+	   future move onto --ok-bg. Lightness is the lowest rung with real margin: l=53 lands at 3.006 on --track-bg and 3.07 on
+	   --ok-bg, both inside a rounding of the floor, and l=52 fails outright at 2.88. 54 buys that margin for 6/255 of
+	   lightness, invisible on a 1px hairline. A FILL cannot substitute: 3:1 needs a fill LIGHTER than --card by 3x luminance
+	   (a #6a6a6a-class grey in a dark app), because a DARKER fill cannot reach 3:1 at all —
+	   (L(--card) + 0.05) / 3 - 0.05 is negative. Enforced by tests/unit/lib/control-boundary-contrast.test.ts. */
+	--control-line: #76769e;
 	--ok-bg: #14322a;
 	--ok-line: #1d5344;
 	--warn-bg: #33260f;
@@ -39,6 +66,11 @@
 	/* Accent as INK, and it must stay a DISTINCT token: --accent itself is unreadable as small text. */
 	--accent-ink: #c4a9ff;
 	--stage-glow: #1b1430;
+	/* THE UNFILLED GROUND BEHIND A FILL, and a SURFACE only: at 1.27:1 on --card it can never be the thing that
+	   IDENTIFIES anything. Five sites paint it as OUTPUT, where 1.4.11 has nothing to ask — Bars' 8px bar, TvProgress'
+	   5px bar, /tv's process bar, the band's progress arc stroke, and SongRow's artwork placeholder gradient. The sixth
+	   is ui/slider, an actual CONTROL, and that rail wears a 1px --control-line ring (3.13:1 against this token) rather
+	   than a brighter value here, which would repaint the other five to bound one slider. */
 	--track-bg: #2c2c44;
 	/* Failure. NOT --accent2: pink is also a valid singer colour, so an error drawn in it reads as decoration. */
 	--danger: #ff6b6b;
@@ -122,23 +154,103 @@
 	--measure-grid: var(--max-w);
 	--measure-prose: 560px;
 
-	/* NAMED, NOT NUMBERED: a `--spacing-2` in the bridge below would make every copied-in `p-2` resolve to 2px. */
+	/* NAMED, NOT NUMBERED: a `--spacing-2` in the bridge below would make every copied-in `p-2` resolve to 2px.
+	   NINE RUNGS, AND THE MINIMUM ADJACENT RATIO IS 1.20. That floor is the rule this ladder is now held to, the way
+	   the type ladder below is held to 1.09: a rung whose nearer neighbour is closer than that is not a choice an
+	   author makes on purpose or a guest perceives afterwards, so every site spending it is spending an accident.
+	   The ladder used to run eleven rungs 2/4/6/8/10/12/14/16/18/20/24, where the closest pair was 18 -> 20 at 1.111
+	   and the five rungs from 12 to 20 all stepped by 2px. A RATIO and not a pixel count, because 2px is a perceptible
+	   1.5x at the bottom of this ladder and an invisible 1.111x at the top. `--space-xl` (14px, 14 rule sites) and
+	   `--space-3xl` (18px, 8 rule sites) are RETIRED — see the two holes below — which leaves 1.20 as the worst pair,
+	   at md -> lg and 4xl -> 5xl.
+	   THE NAMES ARE ADDRESSES, NOT INDICES, so the holes stay rather than renumbering. Sliding 2xl -> xl and
+	   4xl -> 2xl would silently change what `var(--space-2xl)` MEANS at the 33 sites that already spell it and at
+	   every comment, doc line and stale branch that names it, which is a worse failure than a gap in a t-shirt
+	   sequence. `--ph-text-2xs` below was retired the same way, and the file is the record that it existed.
+	   CENSUS, AT THE TIME OF WRITING — tests/unit/lib/space-ladder.test.ts re-derives every figure in this block and
+	   reds if one drifts, so edit the test to change the prose: 239 SPENDS of var(--space-*) in src (a SPEND is a
+	   declaration, so comment text is stripped first), across sm 47, md 40, 2xl 33, 2xs 33, xs 31, lg 24, 3xs 17,
+	   4xl 10, 5xl 4.
+	   WHAT RETIRING RUNGS DID NOT FIX, stated so nobody reads the count as the measure: of the 63 gap/row-gap/column-gap
+	   declarations in src that spell a rung (Tailwind `gap-[var(--space-*)]` in components/ui counted, since it
+	   compiles to a real gap), 54 — 85.7% — land wholly in 4-12px. Before the retirement that was 53 of the same 63,
+	   84.1%. The band did not thin and could not: this is a 480px-max phone column of 8px-spaced `.list-row`s, so
+	   most gaps in it are SUPPOSED to be small. What the retirement fixes is the sub-floor STEP, not the histogram, and
+	   the one pair still sitting exactly ON the floor (md -> lg, md's 40 spends) is recorded as OPEN in
+	   docs/FRONTEND.md rather than as a register. */
 	--space-3xs: 2px;
 	--space-2xs: 4px;
 	--space-xs: 6px;
 	--space-sm: 8px;
 	--space-md: 10px;
 	--space-lg: 12px;
-	--space-xl: 14px;
+	/* `--space-xl` (14px) WAS HERE. Its 14 sites split three ways, each 2px off a rung that already did the job: a
+	   text control's inline inset (ui/input's `comfortable` and `join`, FindField at both heights, PageHeader's
+	   `.inner`, the Button `tap` size — six), an inter-group boundary (/settings' three card margins, the song-column
+	   `gap: 0` on / and /library, TvLobby's `.dense` step-down, JoinBadge's corner cluster — seven), and one card's
+	   asymmetric top inset (the song page's `.facts`, 14 over its own 12). Each moved to `lg` or `2xl` with the reason
+	   in place at the site. Reintroducing a 14 breaks the 1.20 floor above in both directions at once. */
 	--space-2xl: 16px;
-	--space-3xl: 18px;
+	/* `--space-3xl` (18px) WAS HERE. Six of its 8 sites were one job — the inline inset a route's own top-level box
+	   adds INSIDE `.app-shell`'s 16px `max()` gutter (`main` on /, /library, /settings and the song page, plus `/`'s
+	   `.topbar` at both heights) — so page content sat 16 + 18 = 34px in while the chrome docked over it sat at 16.
+	   At `2xl` the route spends the same rung the shell does, content sits 32px in, and the column gains 4px at 320px.
+	   A seventh was JoinLanding's `.join-main` vertical inset; see that file. The eighth, /components' `.section`,
+	   went up to `4xl` and not to `5xl`: promoting a dev gallery to the section rung would owe it the
+	   `max-height: 480px` arm that rung obliges. */
 	--space-4xl: 20px;
+	/* THE SECTION RUNG, and the ladder's only one. Everything above is an INTRA-surface register, and as a GAP the top
+	   of the ladder is barely spent even now: `--space-5xl` once (/settings' `.panel` row gap), `--space-4xl` once
+	   (JoinLanding's .join-main), `--space-2xl` six times (TvLobby's `.strip`, JoinBadge's `.corner`, JoinLanding's
+	   `.code-pane`, the song-column gaps on / and /library, and ui/alert-dialog/alert-dialog-content.svelte's
+	   `gap-[var(--space-2xl)]` — that one is a Tailwind arbitrary value, but it lives under src/lib/components/ui/
+	   which IS scanned, so it compiles to a real `gap`). So a boundary between two SIBLING SECTIONS had nothing to
+	   spend and took 2xl: 16px collapsing against .list-row's 8px margin-bottom, a 2.0 ratio against the row-to-row
+	   gap, which is why a phone screen read as one undifferentiated column. 24px makes that 3.0.
+	   No 32px or 48px rung: the widest phone column is --max-w 480px, and an unread rung is the same defect in a new
+	   register (see --shadow-md above, declared and spelled by nothing), so the next one is minted WITH its first
+	   caller. */
+	--space-5xl: 24px;
 
 	/* rem as a correctness requirement (SC 1.4.4). Form controls do NOT use this ladder — they take their own
-	   16px floor, because iOS zooms a focused sub-16px field and never zooms back. */
-	--ph-text-2xs: 0.68rem;
+	   16px floor, because iOS zooms a focused sub-16px field and never zooms back.
+	   THE LADDER OPENS AT `xs`/12px AND THAT IS A FLOOR, NOT A STARTING POINT. It used to open one rung lower, at
+	   `--ph-text-2xs` / 0.68rem / 10.88px. SIX of that rung's nine callers were uppercase letterspaced eyebrows —
+	   this file's `.grouphead`, the `eyebrow` button variant, GuidingTrack's `.lab`, the song page's `.lab`, the
+	   drawer's keycap `.lab`, /components' `.gal-label` — that list is the rung's callers AS IT WAS RETIRED, and one of
+	   them has since gone: GuidingTrack's `.lab` is deleted, its row now wearing the field-label primitive's own dress
+	   for the reason `.control-label` below gives. Five of those six sat on --ink-dim, which measures
+	   7.16:1 on --bg, 6.27:1 on --card and 5.76:1 on --card2, all AA. The other three were not eyebrows at all:
+	   the drawer's `.time` (a tabular clock on --ink-dim, no transform and no tracking), the drawer's `.tools-note`
+	   (sentence prose on --lh-normal) and Trend's `.readout` (tabular-nums at full --ink on --card2). NONE of the
+	   nine was failing on colour — the three non-eyebrows least of all — so the defect was size alone, which is why
+	   `2xs` is GONE rather than nudged: with `base` pinned at 1rem there is room for at most three perceptible rungs
+	   under 16px, so keeping a fourth either duplicates `xs` or pushes xs/sm/md to 13/14/15 and makes the crowding
+	   worse. Its nine rule sites all moved up to `xs`.
+	   `sm` moved 0.8 → 0.82rem (12.8 → 13.12px) because 12 vs 12.8 was a 1.067 step no author can make on purpose.
+	   At 0.82 the three sub-base rungs are evenly ratioed (1.093 / 1.098) and no adjacent pair on the whole ladder
+	   is closer than 1.09 (the closest is 1.0933, xs → sm). That is the one renumber here, and it silently moved 21
+	   rule sites by +0.32px. TWENTY are still on the token: GuidingTrack's `.gt-val` has since gone up to `md`, for
+	   the reason the `.control-label` block below gives, so 20 is the count of declarations that set a font-size to
+	   it today. Grepping the token name alone returns 23 lines, which is those 20 plus THREE non-sites, all three named
+	   so the arithmetic closes: this declaration itself, the `--text-ph-sm` @theme bridge below (an alias that sets no
+	   font-size), and GuidingTrack's comment recording that move.
+	   THE TOP OF THE LADDER ENDS 24 → 41.6px AND THAT GAP STAYS OPEN — which is HALF of the design review's
+	   type-scale finding left standing, so docs/UI-DESIGN-REVIEW.md carries finding 3 as PARTIAL rather than as
+	   fixed, and tests/unit/lib/type-ladder.test.ts re-derives the rung values, the ratios and the retirement this
+	   block quotes. A 2rem rung between them was tried and REMOVED, because nothing asked for it:
+	   `--ph-text-3xl`'s 2.6rem is spelled by exactly one rule in the whole app (/stats' `.primary .n`) and it is a
+	   DISPLAY size, not the next step of a reading ladder — the jump from /stats' secondary tiles at 2xl to its one
+	   hero number IS the hierarchy, not a hole an intermediate rung traverses. /'s empty-queue title is the only
+	   other site near that end and it deliberately reads 2xl, to agree with /library's twin. So a 2rem rung had no
+	   caller, and a rung declared and spelled by nothing is the same defect as --shadow-md above and the 32px
+	   --space rung the block above refuses: the next one is minted WITH its first caller, at which point the 1.733
+	   ratio here becomes a measurement worth taking.
+	   `base` and `2xl` are FIXED POINTS. base is the form-control floor above; 2xl is the join wordmark's flight,
+	   which scales by base ÷ 2xl = 16 ÷ 24 written as the literal `scale(0.667)` in src/lib/components/JoinLanding.svelte
+	   because CSS cannot divide one length by another — move either and the mark lands between rungs, silently. */
 	--ph-text-xs: 0.75rem;
-	--ph-text-sm: 0.8rem;
+	--ph-text-sm: 0.82rem;
 	--ph-text-md: 0.9rem;
 	--ph-text-base: 1rem;
 	--ph-text-lg: 1.1rem;
@@ -159,9 +271,13 @@
 	--motion-slow: 0.4s;
 	--motion-tick: 1s;
 
-	/* THE RULE, now unenforced: every `@media` width literal in the tree must be a MEMBER of this list. --bp-320 has no
-	   branch. Nothing READS these tokens either — a media query is evaluated before the cascade and cannot resolve a
-	   custom property — so they are documentation for the literals below, and drift is invisible until someone looks. */
+	/* THE RULE, enforced at ONE MEMBER: every media-condition width in the tree must be a MEMBER of this list — CSS
+	   `@media` literals AND the JS ones, since `src/routes/+page.svelte` reads `matchMedia('(min-width: 1200px)')` to
+	   pick the home shelf's cap and that 1200 is --bp-lg by the same rule. --bp-320 has no branch. The CASCADE reads
+	   none of these — a media query is evaluated before the cascade and cannot resolve a custom property, and
+	   `matchMedia` takes a string — but a MEASUREMENT can: the join gate (CLAIM 7) reads --bp-md off `:root` and drives
+	   767 and 768, so JoinLanding's `@media (min-width: 768px)` is now tied to this declaration in both directions.
+	   Every other literal in the tree is still documentation, and its drift is invisible until someone looks. */
 	--bp-320: 320px;
 	--bp-xs: 380px;
 	--bp-sm: 520px;
@@ -317,7 +433,6 @@
 	--text-tv-lyric: var(--tv-lyric);
 
 	/* PREFIXED, like the TV tiers: Tailwind's type namespace ships its own keys, which an unprefixed one would REPLACE. */
-	--text-ph-2xs: var(--ph-text-2xs);
 	--text-ph-xs: var(--ph-text-xs);
 	--text-ph-sm: var(--ph-text-sm);
 	--text-ph-md: var(--ph-text-md);
@@ -333,10 +448,11 @@
 	--spacing-sm: var(--space-sm);
 	--spacing-md: var(--space-md);
 	--spacing-lg: var(--space-lg);
-	--spacing-xl: var(--space-xl);
+	/* No `--spacing-xl` or `--spacing-3xl`: this bridge is 1:1 with the ladder, and an alias to a retired rung would
+	   resolve to nothing while `p-xl` still LOOKED like a spacing utility. */
 	--spacing-2xl: var(--space-2xl);
-	--spacing-3xl: var(--space-3xl);
 	--spacing-4xl: var(--space-4xl);
+	--spacing-5xl: var(--space-5xl);
 
 	/* PREFIXED, because Tailwind ships its own leading keys at different values. */
 	--leading-app-none: var(--lh-none);
@@ -365,8 +481,9 @@
    tags. Measured in the built stylesheet before the move: `font:inherit` at byte 48746, outside every `@layer`, while
    `.text-sm{…}` sits at 12228 inside `@layer utilities`. The visible result was that the SAME `<Button>` rendered at
    two sizes depending on its tag — 14px as an `<a>`, where the utility applies, and 14.4px as a `<button>`, where it
-   did not — and `variant="eyebrow"`'s `text-[length:var(--ph-text-2xs)]` was dead entirely, so /library's own eyebrow
-   rendered at its inherited size instead of the 10.88px `<h2 class="grouphead">` it was written to match.
+   did not — and `variant="eyebrow"`'s `text-[length:var(--ph-text-xs)]` (spelled `--ph-text-2xs` then, a rung deleted
+   when the ladder's floor rose to 12px) was dead entirely, so /library's own eyebrow rendered at its inherited size
+   instead of the `<h2 class="grouphead">` it was written to match — 10.88px at the time, 12px now.
    The UA stylesheet still loses to `base`, so the reset keeps doing its job. The focus ring below stays UNLAYERED on
    purpose — read its comment before moving it, because in a layer it would lose to `outline-none`. */
 @layer base {
@@ -505,15 +622,31 @@ body {
 
 /* THE SECTION EYEBROW above a list of rows. Three routes declared this identically (`/`, `/library`, the song
    page), which is one drift away from three slightly different eyebrows sitting on adjacent screens. Only the BASE
-   is shared: `/`'s `:first-of-type` and the short-viewport arms on two routes stay local, because they are NOT
-   universal and promoting them would silently retighten the song page. */
+   is shared: `/`'s `:first-of-type` and the `max-height: 480px` claw-back stay local, because the claw-back is a
+   per-route height budget rather than a universal ruling — but all THREE hosts now carry it with the same values, so
+   a sideways phone reads one geometry. NAMED BY RULE AND NOT BY LINE, because two of the four line pointers that
+   stood here had drifted off their targets: each of `/`, `/library` and `song/[mediaId]` re-declares `.grouphead`
+   inside its own `@media (max-height: 480px)` block with the identical
+   `var(--space-sm) var(--space-2xs) var(--space-2xs)` (`/library`'s has to list `.refine .grouphead` beside it, for
+   the specificity reason that file states), and `/settings` carries the same threshold over `.panel`'s `row-gap`
+   and its `card-content` margin instead — it is the one surface that spends the rung as a grid gap rather than as
+   this margin. Grepping `@media (max-height: 480px)` across `src/routes` finds all four arms, plus one comment in
+   /components that names the threshold without declaring it; that grep cannot go stale the way a line can.
+   The margin is TWO REGISTERS, and the asymmetry is the point: the top is the SECTION rung and the bottom stays the
+   group rung, so the eyebrow sits 3x closer to the list it labels than to the section above it. At --space-2xl the
+   ratio was 2:1, and the label is 12px dim ink — proximity cannot carry the grouping at 2:1. `/library`'s
+   groupheads are nested inside a disclosure and pin the top back locally; see that file.
+   WHAT THE GUEST SEES IS NOT ALWAYS 24px, and the difference is the host's display: on a BLOCK parent this margin
+   collapses against the preceding sibling's bottom margin, on a GRID one it sums. `/` collapses to 24 below 768 and
+   sums to 28 at and above; the song page collapses to 24 below 768 and sums to 34 above, which is the largest
+   boundary this rung produces anywhere. A new host owes that sum a look before it inherits this rule. */
 .grouphead {
-	font-size: var(--ph-text-2xs);
+	font-size: var(--ph-text-xs);
 	letter-spacing: 0.14em;
 	text-transform: uppercase;
 	color: var(--ink-dim);
 	font-weight: 700;
-	margin: var(--space-2xl) var(--space-2xs) var(--space-sm);
+	margin: var(--space-5xl) var(--space-2xs) var(--space-sm);
 }
 
 /* GRADIENT-FILLED GLYPHS, the one sanctioned use of --grad on text (see the token: it is DECORATION and carries no
@@ -529,16 +662,39 @@ body {
 	color: transparent;
 }
 
-/* THE EYEBROW LABEL over a control that already carries its own accessible name — a group, a slider, a composed
-   field — where a real <label> would have nothing to point at. Three components declared this identically and two of
+/* THE FIELD LABEL for a label that has to be a plain <span> rather than ui/field's primitive: over a control that
+   carries its own accessible name and has nothing a real <label> could point at (CodeEntry's role=group of boxes,
+   ColourRing's role=slider disc), or INSIDE a wrapping <label> where the primitive would nest one label in another
+   (JoinLanding's name field). Three components declared this identically and two of
    them called it "the shared eyebrow idiom" in a comment, which is as close to factoring it as prose gets.
-   ONE SCALE ONLY. The `--ph-text-2xs`/0.1em labels on GuidingTrack, the song page and the drawer are NOT this rule at
-   a different size — they are a tighter tier for a fact list, and the TV's are on the --tv-* ladder entirely. Folding
-   those in would invent a shared decision that was never made. */
-.eyebrow {
-	font-size: var(--ph-text-sm);
-	letter-spacing: 0.12em;
-	text-transform: uppercase;
+   IT IS ui/field's REGISTER: `--ph-text-md`, weight 500, sentence case, `--ink-dim` — what
+   `[data-slot='field-label']` renders (label.svelte's `text-[length:var(--ph-text-md)] font-medium` plus
+   field-label.svelte's `color: var(--ink-dim)`). It has to be, because both dresses MET across one 8px card gap in
+   settings' You card (that page's `[data-slot='card-content'] { gap: var(--space-sm) }`): a sentence-case `Name`
+   (that string reads `Your name` now — see the wording rule at the end of this comment) over an uppercase
+   letterspaced `YOUR COLOR`, one pane holding two field-label styles. It was named `.eyebrow` and
+   dressed as one, and UPPERCASE + LETTERSPACING IS THE SECTION REGISTER IN THIS APP — `.grouphead` above rows, the
+   `eyebrow` button variant above a disclosure — so wearing it made a field read as a heading. The one property that
+   is this ladder's and not the registry's is `line-height`: `--lh-snug` is 1.25 where field-label's Tailwind
+   `leading-snug` is 1.375, because a rule outside `lib/components/ui/` states line-height in app tokens.
+   STILL ONE SCALE ONLY. Two `--ph-text-xs`/0.1em rows survive and NEITHER is this rule at a different size: the song
+   page's `.fact` list, which labels no control at all, and the drawer's `.key` row, which names a pair of keycap
+   BUTTONS and keeps its reading in the `.key-head` row above. The TV's are on the --tv-* ladder entirely. Folding those
+   in would invent a shared decision that was never made.
+   THE REGISTER FOLLOWS WHAT THE LABEL LABELS, NOT THE ROW'S SHAPE, and that is what retired the third of those rows:
+   GuidingTrack rendered an uppercase eyebrow INSIDE a real `[data-slot='field-label']` — the element is the evidence,
+   no screen comparison needed, which is just as well because there is none to make. Its two hosts are the drawer and
+   /components, and NEITHER renders a second field label (the gallery imports no `Field.*`, no ColourRing and no
+   CodeEntry), so unlike the You card above, where the dresses met across one 8px gap, nothing on screen gave this
+   drift away. Its label text is now the primitive's, and the "compact row" argument for the eyebrow died with it — the
+   row kept its rank by moving the VALUE up to `--ph-text-md`, so the two tiers never meet inside one field label.
+   POSSESSIVE-VERSUS-BARE IS NOT A DRESS QUESTION and is decided separately: `Your name`/`Your color` where the value
+   is the singer's OWN, a bare noun for a room or global setting. See docs/FRONTEND.md and
+   tests/unit/lib/label-register.test.ts, which pins both halves. */
+.control-label {
+	font-size: var(--ph-text-md);
+	font-weight: 500;
+	line-height: var(--lh-snug);
 	color: var(--ink-dim);
 }
 

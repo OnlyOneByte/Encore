@@ -318,12 +318,7 @@ export class WorkerHub {
 	 * `stems:model:<token>` until this frame arrived.
 	 */
 	#onCatalogue(msg: Extract<WorkerMessage, { type: 'worker:catalogue' }>): void {
-		const applied = this.#d.registry.catalogue(
-			msg.workerId,
-			msg.capabilities,
-			msg.separators,
-			this.#d.now()
-		);
+		const applied = this.#d.registry.catalogue(msg.workerId, msg.capabilities, msg.separators, this.#d.now());
 		if (!applied) return; // stale: the worker closed before its catalogue landed
 
 		// ITS OWN LOG LINE, deliberately separate from the join message. The join happens seconds earlier and
@@ -343,12 +338,8 @@ export class WorkerHub {
 			.filter((o) => typeof o.upstreamInstrumentalSdr === 'number')
 			.sort((a, b) => (b.upstreamInstrumentalSdr ?? 0) - (a.upstreamInstrumentalSdr ?? 0))[0];
 		// "upstream" is stated because it is NOT our measurement — see SeparatorOffer's doc comment.
-		const top = best
-			? `; best upstream ${best.upstreamInstrumentalSdr?.toFixed(2)} dB (${best.token})`
-			: '';
-		console.log(
-			`[hub] worker ${msg.workerId} offers ${msg.separators.length} separation models: ${breakdown}${top}`
-		);
+		const top = best ? `; best upstream ${best.upstreamInstrumentalSdr?.toFixed(2)} dB (${best.token})` : '';
+		console.log(`[hub] worker ${msg.workerId} offers ${msg.separators.length} separation models: ${breakdown}${top}`);
 		this.dispatch();
 	}
 

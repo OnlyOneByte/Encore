@@ -65,7 +65,7 @@
 		display: inline-flex;
 		align-items: center;
 		width: fit-content;
-		font-size: 0.65rem;
+		font-size: var(--ph-text-xs);
 		font-weight: 600;
 		padding: var(--space-3xs) 7px;
 		border-radius: var(--radius-pill);
@@ -74,11 +74,14 @@
 		color: var(--ink-dim);
 		white-space: nowrap;
 	}
-	/* Claws back about a fifth of a row on the narrowest phone, without shrinking the title or the 44px target. It belongs
-	   here rather than in the row: a scoped rule there cannot reach the element this component renders. */
+	/* Claws back a little of a row on the narrowest phone, without shrinking the title or the 44px target. It belongs
+	   here rather than in the row: a scoped rule there cannot reach the element this component renders.
+	   THE CLAW-BACK IS THE PADDING ALONE NOW. This arm also shrank the type, to 0.62rem/9.92px, off a base of
+	   0.65rem/10.4px — both under the ladder's 12px floor, on a chip that carries whole sentences ("Name match only
+	   — search to sing it"), at the width where the screen is smallest. The base is now `--ph-text-xs`, and the
+	   floor does not get an exception for being narrow, so a `wrap` chip may take one more line here. */
 	@media (max-width: 380px) {
 		.encore-chip {
-			font-size: 0.62rem;
 			padding: 1px var(--space-xs);
 		}
 	}

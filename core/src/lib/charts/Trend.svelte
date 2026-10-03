@@ -103,7 +103,7 @@
 		left: 50%;
 		bottom: 100%;
 		transform: translateX(-50%);
-		font-size: var(--ph-text-2xs);
+		font-size: var(--ph-text-xs);
 		font-variant-numeric: tabular-nums;
 		color: var(--ink);
 		background: var(--card2);

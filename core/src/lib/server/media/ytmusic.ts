@@ -90,7 +90,7 @@ export function parseMusicSearch(doc: unknown, limit: number): SearchResult[] {
 		const artist = meta[0]?.join('').trim() || undefined;
 		const last = meta[meta.length - 1]?.join('').trim() ?? '';
 		const durationSec = parseDuration(last);
-		const plays = (cols[2] ?? [] as string[])
+		const plays = (cols[2] ?? ([] as string[]))
 			.map((t: string) => parsePlays(t))
 			.find((n: number | undefined) => n !== undefined);
 

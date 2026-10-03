@@ -60,6 +60,9 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRe
 		media: new MediaRepository(db),
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(async () => []),
+		// SEPARATE resolver instance, not an alias of `youtube`: EncoreApp declares two, and a harness that
+		// reuses one hides a handler reaching for the wrong search surface.
+		ytmusic: new YouTubeResolver(async () => []),
 		spotify: new SpotifyResolver(async () => []),
 		popularity: createPopularityTracker(),
 		mediaStore: new LocalMediaStore(),

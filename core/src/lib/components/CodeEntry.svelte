@@ -122,7 +122,7 @@
 <!-- role=group with aria-labelledby gives the boxes ONE accessible name, so a screen reader announces the
      field once rather than once per unlabelled box. -->
 <div class="code-entry" role="group" aria-labelledby="code-entry-label">
-	<span id="code-entry-label" class="eyebrow">{label}</span>
+	<span id="code-entry-label" class="control-label">{label}</span>
 	<div class="segments">
 		<!-- `name` is purely the identity the platform asks for — without it the browser reports a missing id-or-name once
 				per box on the first screen of the app. Autofill is already declined. -->
@@ -177,6 +177,12 @@
 		text-transform: uppercase;
 		color: var(--ink);
 		background: var(--card);
+		/* THE CONTROL BOUNDARY, overriding the `.card` this element also composes: that rule's --line hairline is DECORATION
+		   and measures 1.23:1 on this --card fill, so the six boxes read as featureless slabs (SC 1.4.11 wants 3:1 for the
+		   thing that says "type here"). --control-line is 3.97:1 here. Svelte compiles this to `.segment.svelte-<hash>`
+		   (0,2,0) and app.css's `.card` is a bare single class written outside every @layer (0,1,0), so specificity decides
+		   and stylesheet order cannot flip it — verified in the built stylesheet, not assumed. */
+		border: 1px solid var(--control-line);
 		padding: 0;
 	}
 	.code-note {

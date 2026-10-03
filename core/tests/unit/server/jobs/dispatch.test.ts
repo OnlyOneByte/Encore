@@ -306,26 +306,19 @@ test('requiredCapability is engine-derived for stems, plain type otherwise', () 
 test('a BUILT-IN model keeps routing on its engine capability', () => {
 	// The whole reason `isWorkerModel` exists. Workers resolve these through their own engine allowlist and
 	// advertise no `stems:model:` token for them, so narrowing here would make every such job unservable.
-	expect(requiredCapability('stems', settings({ defaultEngine: 'demucs', defaultModel: 'htdemucs' }))).toBe(
-		'stems'
-	);
-	expect(
-		requiredCapability('stems', settings({ defaultEngine: 'demucs', defaultModel: 'htdemucs_ft' }))
-	).toBe('stems');
+	expect(requiredCapability('stems', settings({ defaultEngine: 'demucs', defaultModel: 'htdemucs' }))).toBe('stems');
+	expect(requiredCapability('stems', settings({ defaultEngine: 'demucs', defaultModel: 'htdemucs_ft' }))).toBe('stems');
 	// THE CASE A SHAPE-BASED HEURISTIC GOT WRONG: hyphens, no underscores, and nonetheless built in.
 	expect(
-		requiredCapability(
-			'stems-upgrade',
-			settings({ upgradeEngine: 'roformer', upgradeModel: 'bs-roformer-1297' })
-		)
+		requiredCapability('stems-upgrade', settings({ upgradeEngine: 'roformer', upgradeModel: 'bs-roformer-1297' }))
 	).toBe('stems:roformer');
 });
 
 test('a WORKER-ANNOUNCED model narrows the capability to that exact checkpoint', () => {
 	const token = 'roformer-model-bs-roformer-viperx-1297';
-	expect(
-		requiredCapability('stems-upgrade', settings({ upgradeEngine: 'audiosep', upgradeModel: token }))
-	).toBe(`stems:model:${token}`);
+	expect(requiredCapability('stems-upgrade', settings({ upgradeEngine: 'audiosep', upgradeModel: token }))).toBe(
+		`stems:model:${token}`
+	);
 	expect(modelCapability(token)).toBe(`stems:model:${token}`);
 });
 

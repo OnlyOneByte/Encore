@@ -88,7 +88,10 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-md);
-		padding: var(--space-md) var(--space-xl);
+		/* The INLINE half is the gutter rung, the same one `.app-shell` spends and the same one the `max-width` above
+		   subtracts twice — so the title's inset inside the pill is the app's one gutter rather than a second number
+		   2px away from it. It was `xl` (14) until that rung was retired; see app.css's ladder. */
+		padding: var(--space-md) var(--space-2xl);
 		box-sizing: border-box;
 		/* A long title must not set a floor this row cannot go under. */
 		min-width: 0;

@@ -44,10 +44,25 @@ export const FACET_CHIP_LIMIT = 12;
  */
 export const LIBRARY_SHELF = 4;
 
+/**
+ * The same shelf where the home column's row grid is TWO TRACKS WIDE — from --bp-lg up, where --max-w is 1080px and
+ * `/`'s `repeat(auto-fill, minmax(440px, 1fr))` resolves to two columns inside a 1012px content column.
+ *
+ * LIBRARY_SHELF x 2, not a fresh number, because the four above is a HEIGHT budget and not a row count: it was
+ * measured off the 844px phone fold (~320px with its heading). Two tracks across, that same budget buys twice the
+ * songs — so the desktop stops spending half the phone's shelf height to show the phone's four songs. The multiplier
+ * is a literal 2 because --max-w caps at 1080px in `src/app.css`, so the grid is never three tracks wide.
+ */
+export const LIBRARY_SHELF_WIDE = LIBRARY_SHELF * 2;
+
 /** `hidden` is what the `See all` door announces, and 0 is what hides the door entirely — with three songs there is
- *  nothing behind it, and a control promising more than it has is worse than no control. */
-export function libraryShelf<T>(rows: T[]): { shown: T[]; hidden: number } {
-	return { shown: rows.slice(0, LIBRARY_SHELF), hidden: Math.max(0, rows.length - LIBRARY_SHELF) };
+ *  nothing behind it, and a control promising more than it has is worse than no control. The cap is a PARAMETER
+ *  because it is viewport-dependent (see {@link LIBRARY_SHELF_WIDE}) while this arithmetic is not; it defaults to the
+ *  phone cap, which is what a caller with no viewport to read gets. Clamped for the reason {@link libraryWindow}
+ *  states: `slice(0, negative)` counts from the END and would silently drop the top of the list. */
+export function libraryShelf<T>(rows: T[], cap: number = LIBRARY_SHELF): { shown: T[]; hidden: number } {
+	const shown = rows.slice(0, Math.max(0, cap));
+	return { shown, hidden: rows.length - shown.length };
 }
 
 /**

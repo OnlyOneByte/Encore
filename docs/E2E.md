@@ -13,10 +13,19 @@ worth knowing what was NOT recovered in the move, at the bottom of this file.
 
 | Project | Must it fail a build?                         | What it holds                                             |
 | ------- | --------------------------------------------- | --------------------------------------------------------- |
-| `gate`  | **Yes** — it is leg 7 of `bun run gates`      | the measured-design claims: real resolved geometry        |
+| `gate`  | **Yes** — it is leg 7 of `bun run gates`      | 8 specs: CLAIM 1-7 on real resolved geometry, plus the register's own shape |
 | `flow`  | not yet wired into `gates`                    | long multi-client scenarios: party, playback, lobby, fuzz |
-| `probe` | no — run when you want the answer             | 22 specs, one subject each                                |
+| `probe` | no — run when you want the answer             | 23 specs, one subject each                                |
 | `shot`  | **cannot** — a screenshot cannot fail a build | 20 frames, each driven INTO its state                     |
+
+**Which project a check belongs in is decided by whether it can silently regress, not by how
+interesting it is.** `join-gate-placement.spec.ts` lived in `probe` while guarding the most
+regression-prone fix in the tree — the join gate's placement, a cascade / `:has()` / specificity stack
+across two hosts — so the one check on it never ran in `bun run gates`. It is now
+`specs/gate/measured-join-gate.spec.ts` (CLAIM 7), strengthened on the way: the probe held three
+deltas at zero, which cannot fail when both hosts break the same way, so the gate also asserts where the
+gate actually sits. Verified by reverting the fix four ways, each rebuilt and re-run — deleting
+`justify-content: center` leaves every delta at zero and reds 12 absolute arms.
 
 ## The `world` fixture
 
@@ -104,7 +113,8 @@ may have a decode-only ffmpeg and no flac/sox/lame, and a RIFF header is 44 docu
 
 ## Selectors
 
-`world/selectors.ts` is the one declaration of every hook a spec drives — 104 keys. No spec may spell a
+`world/selectors.ts` is the one declaration of every hook a spec drives — 112 keys
+(`Object.keys(SEL).length`). No spec may spell a
 selector for itself: a hand-written one rots in silence, and three selector families moved at once while
 the old suite stayed green. Anchor on the contract the app owes a user (`aria-label`, `data-testid`, a
 vendored primitive's own `data-slot`) rather than on styling; a presentational class is the weakest handle
@@ -206,8 +216,9 @@ puts them under `MEDIA_DIR/library`. The `world` fixture calls it before core bo
 library is a boot pass and a file written afterwards is not in it.
 
 **FOUR is a ceiling on what this suite can observe, not just a count.** Two things sit outside it and are proved
-in the unit suite instead, each named where it lives: the home shelf's four-row cap (`libraryShelf` — four tracks
-can never truncate it, so a spec asserting the `See all N songs` door would be permanently vacuous), and every
+in the unit suite instead, each named where it lives: the home shelf's row cap (`libraryShelf` — four tracks can
+never truncate a cap of four, let alone the eight in force at `--bp-lg`, so a spec asserting the `See all N songs`
+door would be permanently vacuous), and every
 artist or tag facet (`trackNameFromFile` reads an artist only off the `Artist - Title.ext` form, and every fixture
 filename is kebab-case, so there is no artist and no tag to find — `p12-search` documents the same gap for its own
 artist-facet sections, and `p17-library-page` asserts the chip rows ABSENT because that is the honest observable).

@@ -314,7 +314,7 @@
 		display: grid;
 		place-items: center;
 		padding: 0;
-		border: 1px solid var(--line-strong);
+		border: 1px solid var(--control-line);
 		background: var(--card2);
 		color: var(--ink);
 	}
@@ -323,6 +323,14 @@
 		position: relative;
 		border-color: transparent;
 		background: none;
+	}
+	/* INERT FALLS BACK TO --line-strong, live keeps --control-line — the same split `keycap` makes in
+	   ui/button/button.svelte, for the same reason: SC 1.4.11 exempts an inactive component by name, so the
+	   dimmer token is correct once the transport is dead and wrong while it is tappable. `.btn` is disabled
+	   whenever there is no song, which is the state the band spends an idle room in, so both halves are real.
+	   --line-strong on --card2 measures 1.44:1 and --control-line 3.65:1. */
+	.btn:disabled {
+		border-color: var(--line-strong);
 	}
 	/* Unavailable is a SURFACE change, never a subtree opacity: compositing ink against the page at 45% is what quietly
 	   drops it under 4.5:1 while a token-level contrast check keeps passing. */
@@ -334,7 +342,7 @@
 	   motion to gate. `:not(:disabled)`, because a dead transport that lights up promises a tap it will swallow. */
 	.btn:hover:not(:disabled) {
 		background: color-mix(in srgb, var(--card2) 88%, var(--ink));
-		border-color: color-mix(in srgb, var(--line-strong) 70%, var(--ink));
+		border-color: color-mix(in srgb, var(--control-line) 70%, var(--ink));
 	}
 	/* The disc paints through `.art`, not its own box (transparent, so the arc can sit outside the tap box), so its
 	   hover has to reach the artwork surface — at the same ratios as `.btn` so the pair moves together. */

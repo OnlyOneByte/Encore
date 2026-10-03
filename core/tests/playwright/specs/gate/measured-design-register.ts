@@ -171,5 +171,11 @@ export const FLOORS = {
 	/** text-entry fields whose computed font-size was read */
 	fieldsMeasured: 3,
 	/** elements focused and whose focus indicator was read */
-	focusedMeasured: 10
+	focusedMeasured: 10,
+	/** Placements of the join gate read by CLAIM 7 — one per (viewport, host). That drive takes TEN (five
+	 *  viewports x two hosts), and six is the floor because the failure this guards against is a drive that
+	 *  reached only ONE host: the claim is a COMPARISON, so five readings of `/` alone would report every
+	 *  equality satisfied against nothing. Dropping one VIEWPORT does not trip it, and is not meant to — CLAIM 7
+	 *  also asserts the exact count against the viewport list it drove, which is the arm that holds the list. */
+	joinPlacementsMeasured: 6
 };

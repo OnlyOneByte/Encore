@@ -145,9 +145,7 @@
 	const offeredOptions = $derived(
 		offered.map((m) => {
 			const sdr =
-				typeof m.upstreamInstrumentalSdr === 'number'
-					? ` · ${m.upstreamInstrumentalSdr.toFixed(1)} dB upstream`
-					: '';
+				typeof m.upstreamInstrumentalSdr === 'number' ? ` · ${m.upstreamInstrumentalSdr.toFixed(1)} dB upstream` : '';
 			const lone = m.workerCount === 1 && (data.offeredModels ?? []).length > 0 ? ' ⚠ 1 worker' : '';
 			return { id: m.token, label: `${m.label} [${m.architecture}]${sdr}${lone}` };
 		})
@@ -299,7 +297,14 @@
 	let savedName = $state(untrack(() => data.me.displayName));
 	let savedColour = $state(untrack(() => data.me.color));
 	let saving = $state(false);
-	let profileError = $state('');
+	/* A REFUSAL IS A STATEMENT ABOUT A DRAFT, so it is stored WITH the draft it was about and read back through a
+	   $derived that drops it the moment either field is edited. As a bare string it outlived its subject: refuse an
+	   empty name, retype the old one, and "A name is needed" sat under a button that had gone back to reading `Done`
+	   — a live reason contradicting the control it was about. Keying it also makes the exit path clean without a
+	   clear of its own: a refusal is only ever recorded while `profileDirty`, which means its draft differs from the
+	   saved pair, so the not-dirty branch (draft === saved pair) can never match one. The key is the RAW `name`, not
+	   the trimmed one the patch sends, because the guest corrects what is in the field. */
+	let profileRefusal = $state<{ name: string; colour: string; message: string } | null>(null);
 	let confirmingLeave = $state(false);
 	let leaving = $state(false);
 	/** What a leave would cost, fetched when the confirm opens so it can state the price in numbers. */
@@ -307,11 +312,17 @@
 
 	const profileDirty = $derived(name.trim() !== savedName || colour !== savedColour);
 	const canSaveProfile = $derived(profileDirty && name.trim().length > 0 && !saving);
+	const profileError = $derived(
+		profileRefusal && profileRefusal.name === name && profileRefusal.colour === colour ? profileRefusal.message : ''
+	);
 
 	async function saveProfile() {
 		if (!canSaveProfile) return;
 		saving = true;
-		profileError = '';
+		/* The draft AS SUBMITTED, snapshotted before the await: the field stays editable while the patch is in flight,
+		   and a refusal that comes back about a name the guest has already replaced is not about what they can see. */
+		const submitted = { name, colour };
+		profileRefusal = null;
 		const patchBody = { displayName: name.trim(), color: colour };
 		try {
 			const res = await fetch('/api/me', {
@@ -321,17 +332,34 @@
 			});
 			const body = await res.json().catch(() => ({}));
 			if (!res.ok) {
-				profileError = body.error ?? 'Could not save that';
+				profileRefusal = { ...submitted, message: body.error ?? 'Could not save that' };
 				return;
 			}
 			savedName = patchBody.displayName;
 			savedColour = patchBody.color;
 			await goto('/');
 		} catch {
-			profileError = 'Could not save that';
+			profileRefusal = { ...submitted, message: 'Could not save that' };
 		} finally {
 			saving = false;
 		}
+	}
+
+	/* THE YOU SCOPE'S ONE COMMIT, so it has to cover both jobs — commit-and-close while an edit is pending, and the
+	   plain exit when none is. An empty name is refused LOCALLY, the way `commitJoinOrigin` refuses an address a phone
+	   cannot open, rather than sent for the server to bounce with the same words or left to a disabled button that
+	   states no reason. `saveProfile` owns the navigation on success and stays put with the reason on a refusal, so
+	   there is no second `goto` on the save path. */
+	async function finishYou() {
+		if (!profileDirty) {
+			await goto('/');
+			return;
+		}
+		if (name.trim().length === 0) {
+			profileRefusal = { name, colour, message: 'A name is needed — type one, or put your old name back.' };
+			return;
+		}
+		await saveProfile();
 	}
 
 	/** Fetched on OPEN so the number is current when read out, and best-effort so a failure cannot block. */
@@ -393,7 +421,7 @@
 
 <div class="settings-page">
 	<!-- `Card.Title` renders a <div>, so every styled card title on this page was a visual heading with no heading
-		SEMANTICS — a 1,090-line page whose whole outline was its h1. Screen-reader users navigate a long dashboard by
+		SEMANTICS — ten cards deep, and the whole outline was its h1. Screen-reader users navigate a long dashboard by
 		heading, so `role="heading" aria-level={2}` is added at each call site rather than re-vendoring the primitive,
 		which forwards restProps for exactly this. Level 2 because PageHeader owns the single h1. -->
 	<PageHeader title="Settings" icon="gear" back={{ href: '/', label: 'Back to the remote' }} />
@@ -423,7 +451,7 @@
 							<Card.Title role="heading" aria-level={2}>You</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<Field.Label for="profile-name">Name</Field.Label>
+							<Field.Label for="profile-name">Your name</Field.Label>
 							<Input
 								id="profile-name"
 								variant="comfortable"
@@ -445,10 +473,17 @@
 
 							{#if profileError}<p class="err" role="alert">{profileError}</p>{/if}
 
-							<!-- The only control here with an explicit commit: a name is typed, so it saves on purpose. -->
+							<!-- ONE COMMIT CONTROL FOR THIS PANE, and its label says which of its two jobs it is doing. There used to
+									be a second: this `Save` plus a panel-level `Done`, both the `default` variant, so from the first
+									keystroke they were two identical --accent block buttons — and `Done` was a bare `goto('/')`, which
+									DISCARDED the typed name and the picked colour with nothing on screen saying so. It stays INSIDE the
+									card because the refusals it produces name this field ("That name is taken — try another."), and a
+									reason belongs beside what has to be corrected. The cost, kept deliberately, is that this panel ends on
+									the Leaving card instead of on its own exit — see FRONTEND.md's Settings section for why last belongs
+									to the destructive card here. -->
 							<div class="save-slot">
-								<Button size="block" disabled={!canSaveProfile} onclick={saveProfile}>
-									{#if saving}Saving…{:else}Save{/if}
+								<Button size="block" disabled={saving} onclick={finishYou}>
+									{#if saving}Saving…{:else if profileDirty}Save and close{:else}Done{/if}
 								</Button>
 							</div>
 						</Card.Content>
@@ -484,10 +519,6 @@
 							</AlertDialog.Root>
 						</Card.Content>
 					</Card.Root>
-
-					<!-- Every tab needs this exit: Save is disabled until dirty, so without it the You tab is a dead end for anyone
-							who changed nothing. -->
-					<Button size="block" onclick={() => goto('/')}>Done</Button>
 				</div>
 			</Tabs.Content>
 			<Tabs.Content value="party">
@@ -991,7 +1022,7 @@
 		margin: 0 auto;
 		/* Reserves the band. No env() term: the band carries the only home-indicator inset, and it reaches this column
 			   through --dock-h, so a second one here is the doubled gap. */
-		padding: var(--space-md) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
+		padding: var(--space-md) var(--space-2xl) calc(var(--dock-h, 0px) + 28px);
 	}
 
 	/* A label binds to its own control, fixed in the CASCADE rather than by restructuring every row into Field.Root
@@ -1001,8 +1032,23 @@
 	main :global([data-slot='card-content']) {
 		gap: var(--space-sm);
 	}
+	/* THE MARGIN IS A DELTA, NOT THE BOUNDARY. card-content is a FLEX column, and flex does not collapse margins, so
+	   what the guest sees is `gap + margin-top` — the 8px above plus this. That arithmetic is the whole reason this
+	   spends `lg` and not `4xl`: at `4xl` the rendered boundary was 8 + 20 = 28px against the 24px card-to-card row
+	   gap below, so the container read TIGHTER than the thing nested inside it (0.86x) — the same inversion the
+	   `.panel` gap was raised to fix, one level down and in the other direction. At `lg` it renders 8 + 12 = 20px,
+	   which sits under the 24px container (1.20x) and still out-ranks the card's own 8px sibling gap by 2.5x. So the
+	   three boundaries on this surface run monotone: 8 inside a group, 20 between groups, 24 between cards. It was
+	   `xl` (8 + 14 = 22, 1.09x) until app.css retired that rung; a 32px `.panel` is still refused on purpose. */
 	main :global([data-slot='card-content'] > * + [data-slot='field-label']) {
-		margin-top: var(--space-4xl);
+		margin-top: var(--space-lg);
+	}
+	/* ColourRing's label is a FIELD label (app.css's `.control-label`) but not a `[data-slot='field-label']`, so the rule
+	   above cannot reach it and the boundary has to be taken on its WRAPPER, which is the card-content child. Without
+	   this the You card drew the same boundary two ways: 20px above a second `Field.Label` (8px gap + 12px) against 8px
+	   above the ring. The old dress hid that; one register does not. (22px when measured at 390x844, on the old `xl`.) */
+	main :global([data-slot='card-content'] > * + .ring-field) {
+		margin-top: var(--space-lg);
 	}
 
 	.panel {
@@ -1011,7 +1057,14 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--settings-col)), 1fr));
 		align-items: start;
-		gap: var(--space-lg);
+		/* TWO VALUES, and the split is the point. The ROW gap is the card-to-card SECTION boundary and takes the
+			   section rung. Both figures below are RENDERED boundaries, not declared margins, because the margin above
+			   is a delta on card-content's 8px flex gap: at --space-lg a card boundary was 12px while a group boundary
+			   INSIDE one card rendered at 28px (8 + 20), so the container read less than half the thing nested in it —
+			   0.43x. It is 24px against 20px (8 + 12) now, 1.20x; the intra-card rule came down 4xl -> xl to get there,
+			   then to lg when app.css retired `xl`. The COLUMN gap stays --space-lg so the pairing threshold stays the
+			   measured 2*420 + 12 = 852px that docs/FRONTEND.md records; 24px both ways would move it to 864. */
+		gap: var(--space-5xl) var(--space-lg);
 	}
 	/* Anything in a panel that is not a card is about the PANEL, so it spans: a half-width footer button would land
 	   beside a card and read as part of it. Keyed on shadcn's attribute, so a new control gets this free. */
@@ -1036,6 +1089,34 @@
 		}
 	}
 
+	/* THE LANDSCAPE CLAW-BACK, the arm `/`, `/library` and `song/[mediaId]` all carry as a `.grouphead` re-declaration
+	   inside their own `@media (max-height: 480px)` block — named by rule rather than by line, because one of the three
+	   line numbers that stood here had already drifted while the other two were being kept fresh by hand — on the same
+	   threshold and for the same reason: a phone held sideways spends almost the whole height on chrome, and the section
+	   rung is a PORTRAIT ruling. This is the one surface that spends that rung as a grid GAP rather than as
+	   `.grouphead`'s margin, which is why the claw-back is spelled here instead. Without this arm the rung
+	   was pure unconditional cost here — measured at 844x390 against the same panels forced back to a 12px row gap,
+	   the Party panel grew 1767.8 -> 1839.8px (+72), Server 1628.6 -> 1688.6 (+60), You 717.2 -> 729.2 (+12), which
+	   is 18.5% of that viewport's height on the worst panel.
+	   BOTH boundaries move together, because clawing only the row gap back to 12px would re-invert the surface
+	   against the 20px rendered intra-card boundary above. `--space-3xs` is spelled as a DELTA on card-content's 8px
+	   flex gap, not as a register: 8 + 2 renders 10px, so the compressed ladder is still monotone — 8 inside a group,
+	   10 between groups, 12 between cards (1.25x and 1.20x). Portrait keeps 8 / 20 / 24.
+	   `row-gap` alone, never the `gap` shorthand: the COLUMN gap is what fixes the 852px pairing threshold, and a
+	   sideways phone is nowhere near it.
+	   Both rules tie their base on specificity (0,3,1 for the card-content pair, 0,2,0 for `.panel`) and therefore win
+	   on SOURCE ORDER only — a media query adds nothing — so this arm has to stay BELOW both bases, and a later rule
+	   re-declaring either one would silently out-cascade it. */
+	@media (max-height: 480px) {
+		main :global([data-slot='card-content'] > * + [data-slot='field-label']),
+		main :global([data-slot='card-content'] > * + .ring-field) {
+			margin-top: var(--space-3xs);
+		}
+		.panel {
+			row-gap: var(--space-lg);
+		}
+	}
+
 	/* Carries no text, so it needs no contrast floor of its own — and neither does the stage colour: what matters is the
 	   lyrics ON the stage, which the reel enforces with its own stroke. */
 	.swatch {
@@ -1055,7 +1136,11 @@
 		height: var(--tap);
 		padding: var(--space-2xs);
 		background: var(--field-bg, transparent);
-		border: 1px solid var(--line);
+		/* --control-line and NOT --line: a native colour input is a form control, so this border is what identifies it and
+		   takes SC 1.4.11's 3:1 floor. --field-bg is set nowhere, so the fill is always the parent surface, and the token
+		   clears 3:1 on every surface app.css declares (worst 3.13:1, on --track-bg). `.swatch` above keeps --line: it is a static span
+		   whose INFORMATION is its own fill, so its hairline is decoration. */
+		border: 1px solid var(--control-line);
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 	}
@@ -1092,8 +1177,12 @@
 	}
 
 	/* Position only, on a wrapper: Tailwind mints nothing for app source, and scoped CSS cannot reach inside a component.
-	   Save is the page's one accent control, because it is the one thing a tap is needed for. */
+	   It holds this pane's ONE accent control — commit-and-close while an edit is pending, the plain exit when none is
+	   — which is why the You panel carries no second footer button the way Party and Server do.
+	   THE SAME RUNG AS THE TWO INTER-GROUP MARGINS ABOVE, and for the same reason: this is a card-content child too,
+	   so what the guest sees is 8 + 12 = 20px, and a commit control is an inter-group boundary, not a section one.
+	   It was `xl` until app.css retired that rung, which would now render 22px against those two at 20px. */
 	.save-slot {
-		margin-top: var(--space-xl);
+		margin-top: var(--space-lg);
 	}
 </style>

@@ -180,8 +180,12 @@
 	.axis-ends {
 		display: flex;
 		justify-content: space-between;
-		/* Below the ladder's smallest step, for the same reason the radii are sub-token: this is chart furniture on an
-			   aria-hidden graphic, and the facts it labels are stated in text beside it. */
+		/* 9.6px, BELOW the ladder's floor, and — unlike the radii above — NOT covered by the aria-hidden argument:
+			   this row is a SIBLING of `.rangebar` (which opens and closes in the markup above it), so "C2"/"C6" are
+			   announced, and the consumers beside this chart state the SONG's range and octave count, never the axis
+			   bounds. So the facts this labels are NOT restated anywhere. Kept at 0.6rem for now because a ladder step
+			   widens the end labels past the track they bracket, but this is an OPEN item, not a sanctioned exception —
+			   see the sub-12px rule in docs/FRONTEND.md, which records it as the one unresolved breach. */
 		font-size: 0.6rem;
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;

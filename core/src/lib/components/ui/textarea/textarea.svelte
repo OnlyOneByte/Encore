@@ -31,7 +31,8 @@
 		width: 100%;
 		box-sizing: border-box;
 		background: var(--card2);
-		border: 1px solid var(--line);
+		/* --control-line and NOT --line: a control's identifying boundary takes SC 1.4.11's 3:1 floor. 3.65:1 on --card2. */
+		border: 1px solid var(--control-line);
 		border-radius: var(--radius-sm);
 		color: var(--ink);
 		font: inherit;

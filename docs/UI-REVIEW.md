@@ -31,6 +31,16 @@
 > scaling 20px → 58.32px with geometry tracking it. Gates: 2097 tests pass, 0 type errors, 0 lint errors
 > (warnings 20 → 18, N18). The two 18.39px `/settings` switches are not defects — each sits in a 44px
 > `<label>`, the sanctioned hit-area pattern already in the measured gate's waiver registry.
+>
+> **TWO TYPE TOKENS THIS DOCUMENT QUOTES HAVE SINCE MOVED, and the caveat under W14's badge item covers only
+> the first of them.** (a) `--ph-text-2xs` was deleted for sitting under the 12px floor, so every mention of it
+> here names a token that no longer exists. (b) `--ph-text-sm` moved `0.8rem` → **`0.82rem`**, i.e. 12.8px →
+> **13.12px** at a 16px root, because 12 vs 12.8 was a 1.067 step no author can make on purpose. The three
+> places below that spell `0.8rem` or `12.8px` — the song page's `.val` target in N17, the `/library` count in
+> W6, and the `--text-sm` arithmetic in the spot-checks — each describe the pre-fix tree. Each stays true as a
+> COMPARISON, since 12.8 and 13.12 are both one rung under 14.4, and none of the three conclusions turns on the
+> digit. `docs/UI-DESIGN-REVIEW.md`'s finding 3 carries the whole renumber and states which half of that ladder
+> it closed.
 
 ## Verdict (5 sentences)
 
@@ -343,7 +353,7 @@ The finding's fix (a `0.2 * viewportH` headroom arm) was **rejected on verificat
 - **`JoinLanding` has no short-viewport arm** (`:235`). It is the only surface without one (`/`, `/library`, `FindField` all have one) and it reserves 60px of top padding purely so the wordmark's flight has somewhere to land. In landscape the CTA is below the fold: a guest handed a phone sideways at a party scrolls a two-field form to find its only button. N3 removes 72px of it; a `@media (max-height: 480px)` arm collapsing the flight band (decoration; the button is the task) removes the rest.
 - **`$state.raw` for the phone home's mirrored collections** (`+page.svelte:47,55,115,116,126-128,378`). `/library` states the rule in seven lines of prose and names the cost; `/` proxies the same seven collections deeply. The one a finger can feel is `rowBounds`: `dragTo` re-runs `liveSortTarget` per pointermove, which walks the array reading `.top`/`.height` per row — 40 proxy traps + 40 signal reads at 60Hz on the one interaction on that screen that must not drop frames. Leave the Maps and Sets alone (Svelte never proxies them), same distinction `/library` draws.
 - **Extract `src/lib/tv/TvTakeover.svelte`** (`tv/+page.svelte:719`). The four takeovers are already unified behind one `transient` derived and share one style vocabulary that is currently interleaved with the attract screen and the lower-third in a 589-line route stylesheet. Moving them takes that style island along and makes all four renderable side by side in `/components` — the only way a change to `state-waiting`'s three-step bar gets seen before a party.
-- **Badge chips carry whole sentences at 10.4px, dropping to 9.9px at ≤380px** (`badge.svelte:68`). Contrast is fine (5.7–9.5:1); this is size. `Name match only — search to sing it` is the sentence explaining why a row's only action is dead, and it is the least legible thing on screen precisely where the screen is smallest. Lift the base to `--ph-text-2xs` and drop the `font-size` override from the 380px arm, keeping only the padding claw-back.
+- **Badge chips carry whole sentences at 10.4px, dropping to 9.9px at ≤380px** (`badge.svelte:68`). Contrast is fine (5.7–9.5:1); this is size. `Name match only — search to sing it` is the sentence explaining why a row's only action is dead, and it is the least legible thing on screen precisely where the screen is smallest. Lift the base to `--ph-text-2xs` and drop the `font-size` override from the 380px arm, keeping only the padding claw-back. (As FIXED: `--ph-text-2xs` was itself deleted for being under the 12px floor, so the chip landed on `--ph-text-xs` / 12px instead. Every `--ph-text-2xs` in this document names a token that no longer exists and describes the pre-fix tree.)
 - **`--shadow-md` has zero callers while three ad-hoc shadows live outside the ladder** (`app.css:74`; `slider.svelte:62-63`, `RangeBar.svelte:156`, `card.svelte:25`) — the rule's own comment says a fourth rung is a bug. Hygiene only; see the DELIBERATE NO on the proposed fix.
 - **The five-way label/value fact row** — `FactList.svelte` already owns the semantics and the emptiness check; giving it an `eyebrow` variant and routing the song page, the drawer and `GuidingTrack` through it collapses five implementations to one and puts `dl` semantics on facts that have none. N17c fixes the visible half; this is the consolidation.
 - **`CodeEntry`'s `$bindable` syncs through an `$effect`** (`:29-32`), so `bind:value` lands one tick late and three separate sites have to remember the `oncomplete(code)` workaround. `setChar` already computes the string synchronously and returns it — write `value` where `chars` is written and delete the effect, and the three comments explaining the lag go with it.
@@ -366,7 +376,7 @@ These were raised by a reviewer and should **not** change.
 9. **Do not lower the 440px column floor.** The 440 is measured; a narrower column truncates every title. The problem is the single column *stretching* to 692px, not the floor (W10).
 10. **Do not "fix" the two eslint warnings by following the rules.** Both suppressions are correct; one is auto-fixable onto a load-bearing space in the TV lyric reel. Encode the reasons as inline disables (N18) rather than letting the next `--fix` run break the 10-foot display.
 11. **Do not touch `identity`'s `min-w-0 shrink`, or `.lib-slot :global([data-slot='button']) { height: 100% }`.** Both look like violations of the base's `shrink-0` / `size-tap` and both are documented, deliberate and load-bearing (the name's ellipsis depends on the first; the door pairing with the field on the second, with the tap floor held on both axes by construction).
-12. **No stylistic modernisation for its own sake** — no CSS nesting migration, no `:has()` rewrites, no swapping the five sanctioned shared idioms (`.card`, `.list-row`, `.grouphead`, `.eyebrow`, `.grad-text`, `.vh`) for utilities. Each one records the drift that forced it. The registry's `:global([data-slot])` reach is the sanctioned form, not a smell.
+12. **No stylistic modernisation for its own sake** — no CSS nesting migration, no `:has()` rewrites, no swapping the five sanctioned shared idioms (`.card`, `.list-row`, `.grouphead`, `.control-label`, `.grad-text`, `.vh`) for utilities. Each one records the drift that forced it. The registry's `:global([data-slot])` reach is the sanctioned form, not a smell.
 
 ---
 

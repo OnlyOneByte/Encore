@@ -187,7 +187,7 @@
 		width: 100%;
 		box-sizing: border-box;
 		/* Reserves the band in normal flow; no env() term — the band carries the only one. */
-		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
+		padding: var(--space-xs) var(--space-2xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	.offline-note {
 		display: flex;
@@ -205,9 +205,9 @@
 		color: var(--danger-ink);
 		font-size: var(--ph-text-sm);
 	}
-	/* Surface, radius and border come from .card in app.css. */
+	/* Surface, radius and border come from .card in app.css. Padding was `xl 2xl lg` (14/16/12) — a top 2px off its own bottom, on a rung app.css retired; `lg 2xl` is symmetric vertically and keeps the inline 16. */
 	.facts {
-		padding: var(--space-xl) var(--space-2xl) var(--space-lg);
+		padding: var(--space-lg) var(--space-2xl);
 		margin: 0 0 var(--space-md);
 		display: flex;
 		flex-direction: column;
@@ -229,7 +229,7 @@
 		flex-wrap: wrap;
 	}
 	.lab {
-		font-size: var(--ph-text-2xs);
+		font-size: var(--ph-text-xs);
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
@@ -265,11 +265,33 @@
 		line-height: var(--lh-normal);
 		color: var(--ink-dim);
 	}
+	/* THE LYRICS EYEBROW TAKES THE SECTION RUNG ON PURPOSE, and this page is the one host where that has to be written
+	   down, because the arithmetic is not the arithmetic on `/`. `<section aria-label="Lyrics">` is a true SIBLING
+	   SECTION of the `.facts` card above it, so app.css's shared `.grouphead` base — 24px top — is the right register
+	   here and this file deliberately does NOT pin it back the way `/library`'s nested groupheads do.
+	   What differs is whether the boundary COLLAPSES or SUMS. Below 768px `main` is a block box, the h2's top margin
+	   collapses through the borderless, paddingless `<section>` and then against `.facts`' 10px bottom margin, so the
+	   guest sees max(24, 10) = 24px. At and above 768px the arm below makes `main` a grid with no row-gap, margins do
+	   not collapse across grid items, and the same boundary SUMS to 10 + 24 = 34px — the largest single boundary the
+	   section rung produces anywhere in the app. That is accepted at width (a 560px prose measure has the room) and
+	   clawed back on HEIGHT by the arm after it, because a 844x390 phone matches the grid arm and would otherwise
+	   spend 34px of 390 on one gap. */
 	@media (min-width: 768px) {
 		main {
 			display: grid;
 			grid-template-columns: minmax(0, 1fr);
 			align-content: start;
+		}
+	}
+	/* The claw-back `/` and `/library` carry, on the same 480px threshold and with the same values, so a sideways phone
+	   reads the same geometry on all three grouphead hosts: the section rung goes back to the group rung and the
+	   boundary lands at 10 + 8 = 18px, since a 844x390 phone matches the grid arm above too and margins still do not
+	   collapse. Order against that arm is NOT load-bearing — it sets `display` on `main`, this sets `margin` on the
+	   eyebrow, so neither can out-cascade the other. What beats app.css's 0,1,0 `.grouphead` is the scoping hash: this
+	   compiles to `.grouphead.svelte-13cl2pg`, 0,2,0, so it wins on specificity and not on bundle order. */
+	@media (max-height: 480px) {
+		.grouphead {
+			margin: var(--space-sm) var(--space-2xs) var(--space-2xs);
 		}
 	}
 </style>
