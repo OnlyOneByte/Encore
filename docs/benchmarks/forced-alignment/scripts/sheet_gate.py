@@ -3,16 +3,13 @@
 
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/sheet_gate.py [--out f.json]
 
-WHY IT EXISTS. The LINE_SYNC rung publishes the text's OWN line timings, so it needs a gate, and the one the
-worker ships is an envelope correlation of the claimed spans against the stem's activity. This script is that
-gate's calibration, run through the SHIPPED functions, over every case `e2e.py --level run_align --modes all`
-would run, with the claims SERVED as the run_align ports serve them, in two shapes: `caption` (each line with
-its own end) and `lrc` (each line ending at the next line's start, which is what production line-syncs most).
-
-Per shape it prints how many wrong and right texts pass, the truth row, and the old literal gate for
-comparison; `--target mix` gates each song's MIX instead, as a stemless song would be. Every measured row,
-and why `syncMode=lines` on a stemless song is aligned as forced: README, "Why `syncMode=lines` needs a
-vocals stem, as the populations".
+The rung publishes the text's OWN line timings, so it needs a gate, and the one the worker ships is an
+envelope correlation of the claimed spans against the stem's activity. This script is that gate's calibration,
+run through the SHIPPED functions over every case `--level run_align --modes all` would run, with the claims
+SERVED as the run_align ports serve them, in two shapes: `caption` (each line with its own end) and `lrc`
+(each line ending at the next line's start, what production line-syncs most). Per shape it prints how many
+wrong and right texts pass, the truth row and the old literal gate; `--target mix` gates each song's MIX.
+README, "Why `syncMode=lines` needs a vocals stem, as the populations", has every measured row.
 """
 
 from __future__ import annotations

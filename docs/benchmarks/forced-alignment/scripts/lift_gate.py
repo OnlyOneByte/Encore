@@ -4,17 +4,12 @@
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/lift_gate.py \\
         [--target stem|mix] [--model NAME] [--songs a,b] [--out rows.json] [--from rows.json]
 
-It fits `lexical.lift`'s per-bundle bands for both consumers — the LINE_SYNC rung and the global engine's word
-documents — over every right text and every wrong text the bench serves, through the SHIPPED helper and
-decoder off the bench's emission cache. Its ninth printed block is THE ROW THIS RUN FITS, ready to paste into
-`lexical.CALIBRATED`, or a refusal to pick one where the populations overlap; `line_sync_min_agreement`, that
-row's fifth field, comes from `line_gate.py` instead. `--from rows.json` re-prints a stored run.
-
-What each block means, and the mix envelope reading's stated under-count, are in
-`docs/benchmarks/forced-alignment/README.md`, "The harness scripts: what each one is for, and the
-limit it states". The numbers are in
-"The lexical-lift wrong-text gate", "Per-model calibration" and "The lexical calibration rows, exhibit by
-exhibit"; the rows are `results/w3-lift-{stem,mix}.json`.
+It fits `lexical.lift`'s per-bundle bands for both consumers — the LINE_SYNC rung and the global engine's
+word documents — over every right and wrong text the bench serves, through the SHIPPED helper and decoder off
+the bench's emission cache. Its ninth printed block is THE ROW THIS RUN FITS, ready to paste into
+`lexical.CALIBRATED`, or a refusal to pick one where the populations overlap; `line_sync_min_agreement` comes
+from `line_gate.py` instead. What each block means and the mix reading's stated under-count are in
+docs/benchmarks/forced-alignment/README.md, "The lexical calibration rows, exhibit by exhibit".
 """
 
 from __future__ import annotations
@@ -365,18 +360,11 @@ def fitted(rows: Sequence[Row], target: str) -> list[str]:
     """The calibration row THESE rows imply, ready to paste into `lexical.CALIBRATED`: this script is the
     procedure, so it prints its answer rather than leaving a reader to do the arithmetic.
 
-      stem: `refuse_below` = the pooled gap's midpoint between the protected right texts' minimum and the
-            wrong texts' maximum, rounded DOWN onto `GRID`; `ok_from` = the smallest step above the weakest
-            drop50, never above the weakest PROTECTED right text. OVERLAPPING populations meet no reject-if,
-            and this says so rather than picking one — such a model ships with NO ROW.
-      mix:  `mix_floor` = the smallest step above BOTH splits' wrong maxima; `mix_ok_from` is read off the
-            per-band timing table above, which is a judgement this cannot make for you.
-
-    `ok_from` was "the higher of the two splits' own fits, rounded up" until a split with no weak right song
-    put five protected right texts of one song in the doubt band. The rule now states what the band is FOR
-    (`lexical.Bands.ok_from`), and README, "The lexical calibration rows, exhibit by exhibit", has every
-    number. `line_sync_min_agreement`, the fifth field, comes from `line_gate.py --model <bundle>`.
-    """
+    For a STEM, `refuse_below` is the pooled gap's midpoint between the protected right texts' minimum and
+    the wrong texts' maximum, rounded DOWN onto `GRID`, and `ok_from` the smallest step above the weakest
+    drop50, never above the weakest PROTECTED right text; overlapping populations meet no reject-if, so such
+    a model ships with NO ROW. For a MIX, `mix_floor` is the smallest step above both splits' wrong maxima
+    and `mix_ok_from` is read off the per-band timing table by a person. The fifth field is `line_gate.py`'s."""
     right = _lifts(rows, PROTECTED) + _lifts(rows, ("drop50",))
     wrong = _lifts(rows, WRONG_MODES)
     if not right or not wrong:

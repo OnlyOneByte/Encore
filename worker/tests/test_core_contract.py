@@ -1,20 +1,13 @@
-"""The align completion core reads, written from the worker and parsed by core (review M3, M15).
+"""The align completion core reads, written from the worker and parsed by core (M3, M15).
 
-A CROSS-LANGUAGE CONTRACT, IN BOTH DIRECTIONS. `build()` drives the REAL `run_align` (scripted steps) and the
-REAL `diarize` step, and records the `job:complete` frames and lyric documents they produce, together with
-what the worker MEANT by them: which candidate it chose, which texts are claims, which line each singer
-sang. The fixture lands in core (`core/tests/unit/contract/lyrics/worker-align-contract.json`), where
-`worker-align-contract.test.ts` feeds each frame through `setMediaLyrics` and each document through the
-TV's `parseLyricsDoc`, and asserts core realizes that meaning.
-
-Both bugs this closes were contracts that each side kept honestly on its own and broke between them: the
-worker sent the timing grade in core's `textConfidence` (so core ranked a machine-caption word doc as
-authoritative, demoted every line-sync doc, and showed an attempt the ladder had rejected), and diarization
-wrote `speaker` where the TV reads `part`. Neither side's own tests could see it.
-
-REGENERATE, never hand-edit: `cd worker && .venv/bin/python -m tests.test_core_contract`. The test below
-fails while the committed fixture differs from what the worker now sends, and core's test fails while core
-reads the fixture differently from what it says — so a change to either side reds one of them.
+A CROSS-LANGUAGE CONTRACT in both directions: `build()` drives the REAL `run_align` and the REAL `diarize`
+step and records the `job:complete` frames and lyric documents they produce together with what the worker
+MEANT by them; the fixture lands in `core/tests/unit/contract/lyrics/worker-align-contract.json`, where
+`worker-align-contract.test.ts` feeds each frame through `setMediaLyrics` and each document through the TV's
+`parseLyricsDoc`. Both bugs it closes were contracts each side kept honestly on its own and broke between
+them: the worker sent the timing grade in core's `textConfidence`, and diarization wrote `speaker` where the
+TV reads `part`. REGENERATE, never hand-edit: `cd worker && .venv/bin/python -m tests.test_core_contract` —
+the test below fails while the fixture differs from what the worker sends, and core's while core differs.
 """
 
 from __future__ import annotations

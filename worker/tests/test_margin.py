@@ -139,21 +139,12 @@ def test_the_margin_is_the_gap_the_reference_measures() -> None:
 def test_a_repeated_line_is_ambiguous_and_a_unique_one_is_not() -> None:
     """The statistic's whole claim: the gap is small exactly where the song offers another placement.
 
-    Three sung copies of one phrase and TWO lines asking for it: either of the first two copies can be
-    line 0 (and either of the last two line 1), so moving a line costs NOTHING AT ALL — the margin is
-    exactly zero, which is what a perfectly ambiguous placement should read. The unique line has nowhere
-    else to go, and the trellis has to give up its letters to move it.
-
-    THE THRESHOLD IS LOCAL, not the shipped `lexical.Bands.margin_floor_nats`: this matrix puts 0.9 on the
-    sung label and spreads 0.1
-    over the other 10 (`ctc_fixture.HIT`), so a frame of evidence is worth ~5.5 nats where a real model's
-    is worth far more. The shipped constant is calibrated on real emissions and means nothing here; what
-    the fixture can prove is the SEPARATION and the zero.
-
-    THE WINDOW MATTERS, and the same numbers say why: the copies are 1.4 s apart, so at `window_sec=1.5`
-    the second copy is INSIDE the window — the same placement, as far as the statistic is concerned — and
-    the repeated lines read 76 and 81 nats instead of 0. `WINDOW_SEC` is a real choice, not a formality.
-    """
+    Three sung copies of one phrase and TWO lines asking for it, so either of the first two copies can be
+    line 0 and moving a line costs NOTHING — the margin is exactly zero, which is what a perfectly
+    ambiguous placement should read, while the unique line has nowhere else to go. The threshold here is
+    LOCAL, not the shipped `lexical.Bands.margin_floor_nats`: this matrix is worth ~5.5 nats a frame where a
+    real model's is worth far more, so what the fixture can prove is the SEPARATION and the zero. The window
+    matters too — at `window_sec=1.5` the copy 1.4 s away is inside it and the lines read 76 and 81 nats."""
     emissions, matrix = _song(
         [("na na", 0.2, 0.8), ("na na", 1.6, 2.2), ("na na", 3.0, 3.6), ("wonderland", 4.4, 5.2)], 6.0
     )
@@ -238,15 +229,13 @@ def test_the_rule_is_two_thresholds_and_abstains_on_a_tiny_song() -> None:
 
 
 def test_the_margin_floor_is_required_and_comes_off_the_bundles_own_row() -> None:
-    """W6 review r1-spec-9. A margin is a SUM OF LOG-PROBABILITIES, so its floor is the most emission-scale
-    threshold in this worker, and `lexical`'s own rule — "THE ROW HOLDS EVERY EMISSION-SCALE THRESHOLD OF ONE
-    MODEL" — puts it in the calibration row rather than in a module constant here. It sat here as
-    `MIN_MARGIN_NATS = 10.0`, outside `CALIBRATED`, so `ENCORE_ALIGN_MODEL=HUBERT_ASR_XLARGE` — a name
-    `is_calibrated` passes — would have read the base bundle's nats on a bundle nobody has decoded.
+    """The margin floor is required and comes off the bundle's own calibration row.
 
-    The signature is the assertion, as `test_lexical`'s `band(bands=)` test is: no runtime behaviour can tell
-    "no default" from "a default nobody reached", and a default here is one bundle's nats on another's matrix.
-    """
+    A margin is a SUM OF LOG-PROBABILITIES, so its floor is the most emission-scale threshold in this
+    worker, and `lexical`'s rule puts every emission-scale threshold of one model in that model's row. It
+    sat here as `MIN_MARGIN_NATS = 10.0`, outside `CALIBRATED`, so `ENCORE_ALIGN_MODEL=HUBERT_ASR_XLARGE` —
+    a name `is_calibrated` passes — would have read the base bundle's nats on a bundle nobody has decoded.
+    The SIGNATURE is the assertion: no runtime behaviour can tell "no default" from one nobody reached."""
     parameter = inspect.signature(margin.low_lines).parameters["min_margin_nats"]
     assert parameter.default is inspect.Parameter.empty, "a default floor is a cross-bundle threshold borrow"
     assert not hasattr(margin, "MIN_MARGIN_NATS"), "the floor lives in `lexical.Bands.margin_floor_nats`"
@@ -284,25 +273,14 @@ def test_the_margin_is_read_off_the_same_targets_the_decode_used() -> None:
 
 
 def test_random_matrices_agree_with_the_reference_on_every_line() -> None:
-    """The property, over shapes no hand-built fixture covers: doubled letters (whose blank CTC's topology
-    requires), a target sequence that only just fits its frames, flat evidence, and a line at either end.
+    """The property, over shapes no fixture covers: doubled letters, a sequence that only just fits its
+    frames, flat evidence, a line at either end.
 
-    Seeded, small and exhaustive on the other side: the reference runs one pinned DP per frame, so this is
-    ~10^5 DP cells a case and it stays hermetic. A vectorised forward/backward pass is exactly the code where
-    an off-by-one in a shifted buffer produces plausible numbers on the fixtures and wrong ones here.
-
-    A LINE WHOSE LAST LINE IS ONE CHARACTER IS IN THE LIST FOR THE BUFFER RE-FLOOR (W6 review r2-tests-13).
-    `window.fill(-np.inf)` between the two passes is the guard that stops the backward pass reading the
-    forward pass's last two alpha values as "there is no state s+1 / s+2", and deleting it left this file,
-    `test_align_v2`, `test_generate`, `test_repair_order`, `test_bench_e2e`, `test_align_steps`,
-    `test_lexical` and `test_lexical_gate` all green — 450 passed, byte-identical to baseline. The
-    contamination enters at `window[states]` / `window[states + 1]`, so it reaches `beta[states - 2]` first
-    and the queried column has to BE `states - 2` to see it, which happens only when the last line's first
-    character is also the sequence's last target. Hence `(["deal", "a"], 18)`: with the guard removed it reads
-    12.10 nats against the reference's 13.01 at reach 7, i.e. a line that crosses the 10-nat floor the wrong
-    way. ONE `default_rng` PER CASE for the same reason — a case appended to a shared stream gets whatever
-    matrix the cases before it left, so re-ordering the list would silently re-draw this one.
-    """
+    Seeded and small, the reference running one pinned DP per frame, because a vectorised forward/backward
+    pass is where an off-by-one in a shifted buffer gives plausible numbers on fixtures and wrong ones here.
+    `(["deal", "a"], 18)` is there for the buffer re-floor: deleting `window.fill(-np.inf)` left 450 tests
+    green, the contamination reaching `beta[states - 2]` first, so it reads 12.10 nats against the
+    reference's 13.01 at reach 7, across the 10-nat floor. One `default_rng` per case, or a re-order draws."""
     vocab = max(DICTIONARY.values()) + 1
     cases = [
         (["abba", "cab"], 24, 7),

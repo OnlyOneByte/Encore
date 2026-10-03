@@ -408,12 +408,10 @@ def test_the_rungs_clock_abstains_rather_than_voting_no(monkeypatch: pytest.Monk
     assert _line_sync_clock(fit, dict(list(fragment.items())[:12]), sung) is not None, "6 of 12: it may"
 
     # THE BAND IS THE RUNG'S, NOT `reconcile`'s — the one deliberate difference from the global engine's call,
-    # and the reason "a sheet already near our clock keeps its own timings" (W2 review r1: the keyword could
-    # be deleted with the suite green, because the case here monkeypatched the band to 0.1 s and asserted a
-    # 0.4 s sheet moved, which is true at 0.25 s too). A sheet 0.6 s off separates them: in the rung's 1.0 s
-    # band no candidate can beat no-shift, and in `reconcile`'s 0.25 s one the median explains every line.
-    # The fit offered here is one `ShiftFit.usable` would have accepted (r 0.8) and `_placed_by` would have
-    # applied before W2 — the vote refuses it, which is how the truth sheets stop being shifted.
+    # and the reason a sheet already near our clock keeps its own timings. A sheet 0.6 s off separates them:
+    # in the rung's 1.0 s band no candidate beats no-shift, and in `reconcile`'s 0.25 s one the median does.
+    # every line. The fit offered here is one `ShiftFit.usable` would have accepted (r 0.8) and `_placed_by`
+    # would have applied before W2 — the vote refuses it, which is how the truth sheets stop being shifted.
     near = {i: 3.0 * i + 0.6 for i in range(6)}
     kept = _line_sync_clock(fit, near, sung)
     assert kept is not None and not kept.applied and kept.candidate == claimmap.NO_SHIFT, "0.6 s is near"
@@ -426,19 +424,14 @@ def test_the_rungs_clock_abstains_rather_than_voting_no(monkeypatch: pytest.Monk
 
 
 def test_the_rungs_gate_and_its_clock_read_a_decode_at_one_bar() -> None:
-    """W2 review r2. `_enough_decoded` documents itself as "ONE rule for both readers of that decode", and it
-    was not: its floor was `reconcile.MIN_PAIRS` (3) while `_line_sync_clock` took
-    `max(claimmap.MIN_PAIRS, this)` (5). Between the two lay a band of sheets where the CLOCK abstained
-    and the GATE was fully armed — and that is the worst of the two states, not a harmless one:
-    `_placed_by` falls back
-    to `ShiftFit.usable`'s unconditional activity shift when there is no clock, so the gate then read the
-    decode against the SHIFTED claims, found them near, and published the sheet displaced with both witnesses
-    agreeing on the one misplacement. That is precisely the W3 failure the clock was built to stop (23
-    published song-modes with no line within ±500 ms of truth), reachable on any sheet short enough.
+    """One floor for both readers of the decode: the rung's gate and its clock abstain together.
 
-    The floor is now `claimmap.MIN_PAIRS` for both, so the two abstain together BY CONSTRUCTION rather than by
-    two expressions agreeing. Pinned at the boundary for every sheet size the bands used to differ over,
-    because an invariant that holds only because one `max` was deleted is an invariant one edit from gone."""
+    `_enough_decoded`'s floor was `reconcile.MIN_PAIRS` (3) while `_line_sync_clock` took
+    `max(claimmap.MIN_PAIRS, this)` (5), and between them lay a band of sheets where the CLOCK abstained
+    and the GATE was armed — the worse of the two states: with no clock `_placed_by` falls back to
+    `ShiftFit.usable`'s unconditional activity shift, so the gate read the decode against the SHIFTED
+    claims, found them near, and published the sheet displaced with both witnesses agreeing on the one
+    misplacement (the W3 failure: 23 published song-modes with no line within ±500 ms of truth)."""
     from encore_worker.domain.audio.activity import ShiftFit
     from encore_worker.domain.lyrics import claimmap
     from encore_worker.domain.lyrics import reconcile as rc
@@ -505,20 +498,14 @@ def test_a_line_document_never_publishes_a_backwards_claim() -> None:
 
 
 def test_a_held_claim_is_not_nested_inside_the_line_before_it() -> None:
-    """WHY the end is held too (W2 review r1), and why holding it AT the predecessor's is not enough (r2).
+    """A held claim keeps its start AND its end, stretched past the line before it rather than level with it.
 
     `core`'s `activeLineIndex` returns the FIRST line whose bounds contain the playhead
-    (`core/src/lib/tv/lyrics.ts`), so a line that shares its predecessor's start and ends BEFORE it can never
-    be lit while it is sung — the predecessor wins every instant of the shared span, and the held line only
-    becomes "the last that ended" afterwards. The first version of this rule produced exactly that: start
-    held, end left where the sheet put it. The SECOND version held the end at `max(previous,
-    previous_end)`, which on
-    this very fixture is a no-op — b's own end (13.8) is already below a's (14.5), so b came back as
-    12.0-14.5, byte-identical to a, and `activeLineIndex` still never returned it during the span. Hence the
-    stretch: `_REPAIRED_MIN_SEC` PAST the floor, so 14.7 here.
-
-    THE INVARIANT IS `<=`, NOT `<`, for the same reason: the equal-span case is the one the second version
-    shipped, and a strict `<` calls it ordered."""
+    (`core/src/lib/tv/lyrics.ts`), so a line sharing its predecessor's start and ending before it can
+    never be lit while it is sung. Holding the end at `max(previous, previous_end)` is a no-op on this
+    fixture — b's own end (13.8) is already below a's (14.5), so b came back byte-identical to a — hence
+    the stretch of `_REPAIRED_MIN_SEC` past the floor, 14.7 here. The invariant is `<=`, not `<`, because
+    the equal-span case is the one that shipped."""
     from encore_worker.steps.align_steps import _REPAIRED_MIN_SEC, _in_claim_order
 
     sheet: list[Segment] = [
@@ -562,17 +549,13 @@ def test_a_held_claims_stretch_stops_at_the_next_lines_stamp() -> None:
 
 
 def test_mapping_a_reversed_caption_cue_holds_its_end_at_its_start() -> None:
-    """`_mapped`'s `max(mapped_end, at)`, and the only input that reaches it (W2 review r2: the guard survived
-    deletion, and the map is not what it defends against).
+    """`_mapped`'s `max(mapped_end, at)`, and the only input that reaches it: a cue that arrived REVERSED.
 
-    `ClaimMap.at` is non-decreasing by construction, so no map can invert a span handed to it in order — the
-    hold can only fire on a cue that arrived REVERSED. A caption track can deliver one: `parse_vtt` reads both
-    edges off a single `-->` line and neither it nor `clean_segments` checks their order, while `parse_lrc`
-    derives every end from the next SORTED stamp and cannot. Mapped without the hold, such a cue publishes
-    18.0 -> 16.5 s, a span running backwards; with it the end sits on the start, which is what
-    `ClaimMap.windows` does to a window for the same reason.
-
-    The well-formed cue beside it is mapped end and all, so the hold is not silently flattening real spans."""
+    `ClaimMap.at` is non-decreasing by construction, so no map can invert a span handed to it in order. A
+    caption track can deliver one already inverted: `parse_vtt` reads both edges off a single `-->` line
+    and neither it nor `clean_segments` checks their order, while `parse_lrc` derives every end from the
+    next sorted stamp and cannot. Without the hold such a cue publishes 18.0 -> 16.5 s, a span running
+    backwards. The well-formed cue beside it is mapped end and all, so real spans are not flattened."""
     from encore_worker.domain.lyrics import claimmap as cm
     from encore_worker.steps.align_steps import _mapped
 
@@ -613,16 +596,14 @@ def test_one_late_stamp_does_not_drag_the_lines_after_it() -> None:
 
 
 def test_a_drag_inside_the_held_share_is_still_refused_by_the_recovery_test() -> None:
-    """The `recovers` half of the rule, alone (W2 review r2). The test above cannot pin it: its 12-line sheet
-    has EIGHT inversions against a cap of `max(1, int(0.05 * 12))` = 1, so `_MAX_HELD_SHARE` refuses that
-    sheet on its own and deleting the recovery test left the whole suite green.
+    """The `recovers` half of the held-stamp rule, alone.
 
-    This sheet is 40 lines, so the cap is 2, and one late stamp puts exactly TWO lines under it — inside the
-    cap, where only the recovery test can refuse them. Line 5 reads 41.0 for 30.0; lines 6 (34.0) and 7 (38.0)
-    are then "backwards", and neither recovers above the last kept start, so neither is a stray: the sheet is
-    left exactly as it came and `decide` gets to see the defect. Without the recovery test both would be held
-    at 41.0 — two correctly-stamped lines moved 7 s and 3 s late, with `out_of_order` 0 and the sheet
-    published as if it were clean, which is the drag this rule exists to refuse."""
+    The 12-line sheet above has EIGHT inversions against a cap of `max(1, int(0.05 * 12))` = 1, so
+    `_MAX_HELD_SHARE` refuses it and deleting the recovery test left the suite green. This sheet is 40
+    lines, cap 2, and one late stamp puts exactly two lines under the cap, where only the recovery test
+    can refuse them: line 5 reads 41.0 for 30.0, lines 6 and 7 are then backwards and neither recovers
+    above the last kept start, so the sheet is left as it came and `decide` sees the defect. Held, both
+    would sit at 41.0 — two correctly-stamped lines moved, `out_of_order` 0, the sheet published clean."""
     from encore_worker.steps.align_steps import _MAX_HELD_SHARE, _in_claim_order
 
     starts = [10.0 + 4.0 * i for i in range(40)]
@@ -839,15 +820,13 @@ class NamingAligner:
 async def test_the_trail_names_the_alignment_bundle_on_both_engines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4b review r1: nothing on the production record named the bundle. `Emissions.model` had ONE reader in
-    `steps/` — `_measured_lift`'s calibration lookup, which prints a name only when there is no row — so a job
-    whose `ENCORE_ALIGN_MODEL` changed between attempts published timings from one bundle with an evidence
-    note indistinguishable from the other's, and a "the timings got worse" report had no way to tell which
-    bundle produced them. Both engines now open their note with it (`_bundle_why`), because every threshold in
-    the rest of the note is read off THAT bundle's calibration row.
+    """Both engines open their evidence note with the alignment bundle (`_bundle_why`).
 
-    The bench records the bundle per run (`e2e_lib.align_config`, `run.json`); production had nothing, which
-    is why this is asserted on the STATE the audit page reads and not on a return value."""
+    `Emissions.model` had one reader in `steps/`, so a job whose `ENCORE_ALIGN_MODEL` changed between
+    attempts published timings from one bundle with a note indistinguishable from the other's, and a "the
+    timings got worse" report could not tell which bundle produced them — while every threshold in the
+    rest of the note is read off THAT bundle's calibration row. The bench records it per run
+    (`e2e_lib.align_config`), so this is asserted on the STATE the audit page reads."""
     stem, inner = hearing(tmp_path, monkeypatch)
     aligner = NamingAligner(inner, "HUBERT_ASR_LARGE")
     rung = Reporter()
@@ -876,17 +855,14 @@ async def test_the_trail_names_the_alignment_bundle_on_both_engines(
 async def test_the_rung_keeps_gating_the_decode_when_the_model_has_no_calibration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4b, CORRECTED IN ITS REVIEW R1. The rung's LEXICAL floor belongs to the matrix's own model and stands
-    down without a row (`lexical.band` reads nats per letter), but its decode-agreement share does NOT: it is
-    a fraction of lines within a tolerance in seconds, so it means the same thing on any bundle and is read
-    through `lexical.line_sync_share`, which falls back to `LINE_SYNC_SHARE_UNCALIBRATED`. W4b first stood
-    BOTH down, which left W7's per-language bundles on the sheet-span envelope gate alone — the gate this
-    decode check was introduced to replace, because a same-video translation fits the singing at r ~ 1.
+    """Without a calibration row the rung's LEXICAL floor stands down and its decode check does not.
 
-    THE SHEET HERE IS ONE THE DECODE GATE REFUSES (17% of 6 lines near, the `no map can reach` case) while its
-    WAV sings exactly where it claims, so the SHEET gate passes it: it must be refused on the calibrated model
-    AND on the uncalibrated one, and the uncalibrated refusal must say the words went unread while the
-    timings did not. Both halves, so neither a silent pass nor a borrowed emission scale can hide."""
+    `lexical.band` is nats per letter and belongs to the matrix's own model; the decode-agreement share
+    is a fraction of lines within a tolerance in SECONDS, so it means the same thing on any bundle and is
+    read through `lexical.line_sync_share`, which falls back to `LINE_SYNC_SHARE_UNCALIBRATED`. Standing
+    both down left W7's per-language bundles on the sheet-span envelope gate alone — the gate this check
+    replaced, which a same-video translation fits at r ~ 1. The sheet here is refused by the decode check
+    and passed by the sheet gate, so both refusals are asserted, the uncalibrated wording included."""
     warped = [(5.0, 7.0), (5.5, 7.5), (6.0, 8.0), (20.0, 22.0), (30.0, 32.0), (31.0, 33.0)]
     stem, aligner = hearing(tmp_path, monkeypatch, envelope=warped)
     text = worded(SUNG_WORDS, warped)
@@ -922,15 +898,13 @@ async def test_the_rung_keeps_gating_the_decode_when_the_model_has_no_calibratio
 async def test_the_rung_gates_on_the_matrixs_own_row_and_not_the_shipped_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4b REVIEW R2, tests-15: nothing observed this rung's lexical floor coming off the MATRIX'S row. Every
-    test above moves `lexical.BANDS`, which an unnamed fake resolves to anyway (`lexical.calibration`), so
-    reverting this call site to the module-global row — the review's high-severity W3 defect, one model's
-    thresholds on another model's matrix — left the whole suite green. Here the matrix NAMES a bundle whose
-    row is not the shipped one, and only the named row refuses this sheet: the shipped floor (0.20) publishes
-    it, so a reader of `lexical.BANDS` instead of `evidence.bands` publishes a text this bundle refuses.
+    """The rung's lexical floor comes off the MATRIX's calibration row, not the shipped one.
 
-    The refusal must also PRINT that row's number, because the note is what an operator reads to learn which
-    floor was applied (`_line_sync_gate`)."""
+    Every other test here moves `lexical.BANDS`, which an unnamed fake resolves to anyway, so reverting
+    this call site to the module-global row — one model's thresholds on another model's matrix — left the
+    whole suite green. Here the matrix NAMES a bundle whose row is not the shipped one, and only the named
+    row refuses this sheet: the shipped floor (0.20) publishes a text this bundle refuses. The refusal
+    must print that row's number, because the note is where an operator learns which floor applied."""
     other = lexical.Bands(
         model="HUBERT_ASR_LARGE",
         refuse_below=1e3,
@@ -1073,19 +1047,14 @@ MIXED_SPANS = [(3.0, 4.5), SUNG[0], (11.0, 11.5), SUNG[2], (20.0, 21.0), SUNG[5]
 async def test_the_decode_check_may_not_decide_for_a_sheet_most_of_which_never_decoded(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3 review r2. The agreement share's DENOMINATOR is only the lines that decoded, and `reconcile
-    .MIN_PAIRS` is 3 — so three lines could speak for a forty-line sheet, publishing or refusing it with
-    thirty-seven of its lines unexamined. Here 3 of 8 claimed lines decode, and the sheet gate reads the
-    WHOLE sheet's spans: on a stem whose wav is silent it refuses, on one that sings them it publishes, and
-    BOTH verdicts are the sheet gate's with the decode named as abstaining. Without the share the 3-line
-    verdict decides instead — it refuses this sheet in both directions (`decode` disagrees with the English
-    claims once the failed envelope fit has shifted them), so the audible case flips to a refusal and the
-    silent case is refused for the wrong reason. `_enough_decoded` is the rule.
+    """The decode check may not decide for a sheet most of which never decoded.
 
-    AT EIGHT CLAIMS IT IS THE FLOOR THAT BINDS, and the trail says so (W2 review r2 raised that floor to
-    `claimmap.MIN_PAIRS` = 5, one bar for the gate and the clock both): `ceil(0.5 * 8)` is 4, so the SHARE
-    would also have refused these 3 lines, but 5 is the higher bound and naming the wrong one is how a
-    "3 of 3 decoded, under 50%" message gets written. The share is what binds above 10 claims."""
+    The agreement share's DENOMINATOR is only the lines that decoded, so three lines could speak for a
+    forty-line sheet. Here 3 of 8 claimed lines decode and the sheet gate reads the WHOLE sheet's spans:
+    it refuses on a stem whose wav is silent and publishes on one that sings them, with the decode named
+    as abstaining in both. Without `_enough_decoded` the 3-line verdict decides instead and refuses both
+    ways, so the audible case flips. At eight claims the bound that binds is the floor
+    (`claimmap.MIN_PAIRS` = 5), not the share's `ceil(0.5 * 8)` = 4, and the trail must name that one."""
     silent, aligner = hearing(tmp_path, monkeypatch, envelope=())
     impl = steps(tmp_path, aligner=aligner, reporter=Reporter())
     text = worded(MIXED_SCRIPT, MIXED_SPANS)
@@ -1259,17 +1228,14 @@ async def test_line_sync_holds_a_backwards_claim_at_the_line_before_it(
 async def test_line_sync_of_a_text_the_lexical_check_cannot_measure_is_still_timed_by_its_decode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Under `lexical.MIN_LETTERS` alignable letters the lift's contrast is noise, so no lexical check runs —
-    but the timings are still checked: three short sung lines publish, and a sheet of unsung ones (W1
-    line-synced it on the sheet gate alone, its envelope being the stem's own) is refused.
+    """Under `lexical.MIN_LETTERS` alignable letters no lexical check runs, and the timings still are.
 
-    THE THREE-LINE SHEET IS GATED BY ITS ENVELOPE, NOT BY ITS DECODE (W2 review r2). `_enough_decoded`'s floor
-    is `claimmap.MIN_PAIRS` = 5 for BOTH readers of the decode, so on a 3-line sheet the clock cannot vote and
-    the gate cannot read the decode either — which is the point of making the two bars one literal: the state
-    where the clock abstains and the gate is armed is the state in which `_placed_by`'s unconditional shift
-    moved the claims and the gate then read the decode against the SHIFTED sheet, calling one misplacement
-    near with both witnesses agreeing on it. The trail says which bound refused it, because "3 of 3 decoded,
-    under 50%" would read as a broken counter."""
+    Three short sung lines publish; a sheet of unsung ones (W1 line-synced it on the sheet gate alone) is
+    refused. The three-line sheet is gated by its ENVELOPE, not its decode: `_enough_decoded`'s floor is
+    `claimmap.MIN_PAIRS` = 5 for both readers, so on three lines the clock cannot vote and the gate cannot
+    read the decode either — which is the point of one literal for both bars, the alternative being the
+    state where `_placed_by`'s unconditional shift moved the claims and the gate then called the one
+    misplacement near. The trail says which bound refused it."""
     stem, aligner = hearing(tmp_path, monkeypatch)
     reporter = Reporter()
     impl = steps(tmp_path, aligner=aligner, reporter=reporter)
@@ -2087,9 +2053,8 @@ async def test_a_pasted_sheets_section_headers_do_not_become_words_to_sing(tmp_p
 
 
 #: A transcript copied off a video: the sung lines wrapped in music notes by whoever typed them, the spoken
-#: ones not. Synthetic words — what matters is the SHAPE (4+ noted lines, and the noted share over
-#: `nonlyric.NOTED_SHARE`: 9 of 11 worded lines here, 0.818), which is `nonlyric.R3`'s precondition read off
-#: the WHOLE paste.
+#: ones not. Synthetic words — what matters is the SHAPE (4+ noted lines, and a noted share over
+#: `nonlyric.NOTED_SHARE`: 9 of 11 worded lines here, 0.818), read off the WHOLE paste by `nonlyric.R3`.
 VIDEO_TRANSCRIPT_PASTE = """♪ aaa bbb ccc ♪
 ♪ ddd eee fff ♪
 ggg hhh iii, spoken

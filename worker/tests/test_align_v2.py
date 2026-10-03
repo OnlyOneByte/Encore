@@ -274,17 +274,13 @@ def test_the_global_report_carries_no_residual_so_reshift_is_never_offered(rig: 
 def test_a_failing_envelope_gate_fails_the_attempt_rather_than_publishing(
     rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Wrong text — or a garbage decode — must not be published just because it decoded. Silence in place
-    of the sung audio makes the envelope refuse; the attempt is REFUSED (a verdict that ends the text —
-    no line sync, which would publish the same words ungated) and NOTHING falls back to another engine.
+    """Wrong text — or a garbage decode — must not publish just because it decoded.
 
-    WHERE THE ENVELOPE GATE STILL DECIDES is a text the LIFT could not measure (`unmeasured_lift`), and that
-    is now the only place on either target (W4 review r1 made the lift the mix's verdict too, as W3 made it
-    the stem's). The gate itself is unchanged and so is this property; what changed is its scope, and reading
-    it here rather than on a lift that happens not to fire is what keeps the test about the gate. The two
-    controls that put the envelope gate back in the verdict's seat on a mix are pinned in
-    `tests/test_lexical_gate.py` (`h3-mix-envelope`, `h3-mix-floor`).
-    """
+    Silence in place of the sung audio makes the envelope refuse, the attempt is REFUSED (a verdict that
+    ends the text, so line sync cannot publish the same words ungated), and nothing falls back to another
+    engine. The envelope gate now decides only where the LIFT could not measure the text, on either
+    target; the two controls that put it back in the verdict's seat on a mix are pinned in
+    `tests/test_lexical_gate.py` (`h3-mix-envelope`, `h3-mix-floor`)."""
     unmeasured_lift(monkeypatch)
     impl, aligner, trail, job, _audio, _tmp = rig
     silent = tmp_path / "silence.wav"
@@ -495,15 +491,13 @@ def test_when_claims_describe_the_audio_better_they_become_the_repair_anchors(
 
 
 def test_no_envelope_fit_runs_on_the_event_loop(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
-    """REVIEW L6. `fit_shift` is synchronous numpy — 42 ms on a 60-minute recording even bounded — and the
-    step is inside a socket keepalive the reaper reads: a fit on the event loop stalls it. Every other call
-    site was already in `asyncio.to_thread`; the one R1 makes when the claims out-fit the decode was not,
-    and nothing could see it, because a stalled keepalive is not a wrong timing.
+    """No envelope fit runs on the event loop (L6).
 
-    Asserted by THREAD IDENTITY rather than by reading the source: `asyncio.run` puts the loop on the main
-    thread, so a fit that reports the main thread ran on it. Driven through the R1 path (the humility case
-    above), which is the one that used to.
-    """
+    `fit_shift` is synchronous numpy — 42 ms on a 60-minute recording even bounded — and the step sits
+    inside a socket keepalive the reaper reads, so a fit on the loop stalls it. Every other call site was
+    already in `asyncio.to_thread`; the one R1 makes when the claims out-fit the decode was not, and
+    nothing could see it, a stalled keepalive being no kind of wrong timing. Asserted by THREAD IDENTITY
+    (`asyncio.run` puts the loop on the main thread), through the R1 path that used to."""
     import threading
 
     from encore_worker.domain.audio import activity
@@ -1022,17 +1016,14 @@ def test_an_out_of_order_global_document_names_its_lines_on_the_trail(
 def test_a_stem_invisible_line_is_re_decoded_against_the_mix(
     rig: Rig, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """tfr-chosen's outro, hermetically: the vocals stem falls silent while the mix still carries the
-    singing. The stem decode has no evidence for the line; R4 computes a SECOND emissions on the MIX and
-    re-decodes just that line inside its claim window. Measured on real audio: -45 to -54 s errors ->
-    under 1 s.
+    """A stem-invisible line is re-decoded against the MIX (tfr-chosen's outro, hermetically).
 
-    THE EVIDENCE IS PATH-DEPENDENT, which is what makes this test able to tell WHICH matrix R4 decoded:
-    the stem's matrix has no frames for line 5 and the mix's has them where it is sung, both decoded by
-    the real CTC Viterbi (`ctc_fixture`). The test this replaces served one flat matrix for both paths
-    and a scripted decoder, so R4 decoding the STEM left the whole suite green (mutation, review r1:
-    994 passed). Measured with that mutation: line 5 publishes at 25.38-28.46 s against its sung
-    25.50-27.50 s, and this test fails on it."""
+    The vocals stem falls silent while the mix still carries the singing, so the stem decode has no
+    evidence for the line and R4 computes a SECOND emissions on the mix and re-decodes just that line
+    inside its claim window. Measured on real audio: -45 to -54 s errors -> under 1 s. The evidence is
+    PATH-DEPENDENT, which is what lets this test say which matrix R4 read: with one flat matrix for both
+    paths and a scripted decoder, R4 decoding the STEM left the whole suite green and the line published
+    at 25.38-28.46 s against its sung 25.50-27.50 s."""
     from tests.ctc_fixture import sung_matrix as sung
 
     impl, aligner, trail, job, audio, tmp = rig
@@ -1221,18 +1212,13 @@ def test_an_r3_repair_that_lands_on_its_claim_is_two_witnesses_agreeing(
 
 
 def test_on_an_exact_decode_r3_reproduces_the_global_path(rig: Rig) -> None:
-    """The measured R3 no-op, as a property. On the same matrix, re-decoding a run between the global
-    path's own anchors reproduces the global path word for word, because CTC's monotonicity already
-    confined the repeat to that gap. R3 must still RUN: its note on the trail says every chorus line was
-    re-decoded, and nothing raised.
+    """The measured R3 no-op, as a property: a run re-decoded between the global path's own anchors
+    reproduces that path word for word, CTC's monotonicity having already confined the repeat to the gap.
 
-    THE COMPARISON IS AGAINST THE RAW DECODE, bit for bit, and W4's display post-pass does not change that
-    on THIS rig: `rig`'s `AudioRef` serves one wav as both the mix and the vocals stem, so the step reads
-    its align target as the MIX (`target_name`) — where the word-end post-pass does not run at all, because
-    `ends.ACTIVE_LEVEL` is a stem's silence calibration and a mix's envelope clears it nearly everywhere
-    (W4 review r1; `tests/test_align_ends.py` holds both halves of that, and the trail note below says
-    which target this was). So the post-pass is not a term in this property, and any difference between the
-    published document and the raw decode is a repair moving something."""
+    R3 must still RUN — its trail note says every chorus line was re-decoded, and nothing raised. The
+    comparison is against the RAW decode bit for bit, which W4's word-end post-pass does not disturb on
+    this rig: one wav serves as both mix and vocals stem, so the step reads its align target as the MIX,
+    where the post-pass does not run at all. Any difference is therefore a repair moving something."""
     from encore_worker.domain.lyrics.generate import generate
 
     impl, aligner, trail, job, audio, tmp = rig
@@ -1390,15 +1376,13 @@ def test_the_margins_are_asked_about_the_blind_decodes_own_lines_once(
 
 
 def test_conf_legacy_skips_the_whole_demotion_and_its_cost(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The control (`host.config.ALIGN_EXPERIMENTS`). It must restore the grading the margin joined —
-    INCLUDING the score half, which the rule it replaced did not have — and must not pay the two Viterbi
-    passes, which is the only reason to set it in production.
+    """`conf-legacy`, the control: it restores the grading the margin joined, score half included.
 
-    AND IT MUST SAY SO IN ITS OWN WORDS (W6 review r2-spec-7). This assertion used to read `"not measured"`,
-    which a swallowed `MemoryError` printed byte for byte — so the trail of a run whose DEFAULT-ON grading
-    rule had silently fallen back to the rule it replaced (446 `high` / 11.88% bad / 23 gross against the
-    default's 286 / 2.80% / zero) was indistinguishable from the trail of an A/B an operator asked for. The
-    fault's wording is asserted one test below; this one owns the arm's."""
+    It must also skip the two Viterbi passes, which is the only reason to set it in production, and it
+    must say WHICH rule ran: this assertion used to read "not measured", which a swallowed `MemoryError`
+    printed byte for byte — so a run whose default-on grading had silently fallen back to the rule it
+    replaced (446 `high` / 11.88% bad / 23 gross against the default's 286 / 2.80% / zero) read exactly
+    like an A/B an operator asked for. The fault's own wording is asserted one test below."""
     from encore_worker.domain.lyrics import margin
 
     called: list[int] = []
@@ -1672,18 +1656,14 @@ def test_the_trail_note_carries_the_margins_that_graded_the_lines(
 def test_a_fault_does_not_quietly_switch_grading_to_the_score_half(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W6 review r1-correctness-2 / r1-spec-10. `_placement_margins` promises `{}`... "and grading then reads
-    exactly what it read before this existed" — and it did NOT: `margin.low_lines({}, scores)` still applies
-    its SCORE half (pinned in `test_margin.py`, and the reason `conf-legacy` must restore the whole rule), so
-    a MemoryError on a long song silently moved grading onto the half-control arm the control exists to keep
-    out of the comparison. Measured over 20 Jamendo songs' blind decode, that arm reads 385 `high` lines /
-    7.79% bad / ELEVEN gross `high` lines against the real control's 446 / 11.88% / 23 and the shipped rule's
-    286 / 2.80% / ZERO — three different rules, and a fault chose the middle one by accident.
+    """A fault in `_placement_margins` may not quietly switch grading to the score half.
 
-    THE ASSERTION IS THAT THE RULE IS NOT CONSULTED AT ALL, which is the only statement of "as if it never
-    existed" no score distribution can weaken: the rig's lines score alike, so a test that merely read the
-    grades would have passed on the broken code too (it did). The companion half lives in `test_margin.py`,
-    where an EMPTY mapping is still a real measurement of a line-less song and still demotes on the score."""
+    `{}` does not mean "as if this never existed": `margin.low_lines({}, scores)` still applies its SCORE
+    half, so a MemoryError on a long song moved grading onto a THIRD rule — 385 `high` / 7.79% bad /
+    eleven gross over 20 Jamendo songs' blind decode, against the control's 446 / 11.88% / 23 and the
+    shipped rule's 286 / 2.80% / zero. The assertion is that the rule is not CONSULTED at all, the one
+    statement no score distribution can weaken: the rig's lines score alike, so reading the grades passed
+    on the broken code too. `test_margin.py` holds the companion half, where `{}` is a real measurement."""
     from encore_worker.domain.lyrics import margin
 
     def boom(*_a: Any, **_k: Any) -> dict[int, float]:
@@ -1781,16 +1761,14 @@ def test_the_trail_prints_the_floor_this_bundle_was_graded_against(
 def test_the_margins_are_asked_about_the_texts_that_survived_the_never_sung_drop(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W6 review r1-tests-18. `_placement_margins` is taken RIGHT AFTER the two-round never-sung drop, and
-    `align_steps` says why: the margin is read off the trellis of `line_texts_active`, so a line the drop
-    blanked contributes no targets and every later line's position in the target sequence moves with it. Taken
-    before the drop the margins would describe a different target sequence — `first_char_target` would point
-    at the wrong characters for every line after the dropped one, and the whole rule would grade the wrong
-    lines. The ordering was argued in a comment and tested nowhere: moving the block above the drop loop left
-    `test_align_v2 test_align_steps test_repair_order` 199 passed, 0 failed.
+    """The margins are asked about the texts that survived the never-sung drop.
 
-    So: the credit line's index must be ABSENT from the one query, and the queried indexes must be exactly the
-    re-decoded set."""
+    The margin is read off the trellis of `line_texts_active`, so a line the drop blanked contributes no
+    targets and every later line's position in the target sequence moves with it: taken before the drop,
+    `first_char_target` would point at the wrong characters for every line after the dropped one and the
+    rule would grade the wrong lines. The ordering was argued in a comment and tested nowhere — moving
+    the block above the drop loop left 199 tests passing — so the credit line's index must be ABSENT from
+    the query and the queried indexes must be exactly the re-decoded set."""
     from encore_worker.steps import align_steps as steps_module
 
     monkeypatch.setattr(steps_module, "_NEVER_SUNG_RATE", 1000.0)
@@ -1829,15 +1807,13 @@ def test_the_margins_are_asked_about_the_texts_that_survived_the_never_sung_drop
 
 
 def test_the_trail_records_the_ends_the_clamp_pulled_back(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
-    """W6 review r1-spec-15 / r1-tests-19. `_clamped_v2` pulls the END of the line before a repair back onto
-    it — 101 times a corpus pass on the base bundle, 43 of them on a line the ladder did NOT repair — and
-    nothing recorded it: `provenance` is untouched (deliberately: see `_pulled_end`), so `_sources_why` says
-    such a line as wholly the blind decode's, and a "the ball hangs on the last word of this line" report had
-    no answer short of re-running the ladder. The clamp now reports its pulls and `_pulls_why` puts them on
-    trail beside the other repair notes.
+    """The trail records the ends `_clamped_v2` pulled back (`_pulls_why`).
 
-    The real clamp's pulls are asserted where they happen (`default_clamp`'s tests); this is the wiring, since
-    the rig's exact decoder leaves no line overlapping the next."""
+    The clamp pulls the END of the line before a repair onto it — 101 times a corpus pass on the base
+    bundle, 43 of them on a line the ladder did NOT repair — and `provenance` is deliberately untouched,
+    so `_sources_why` reads such a line as wholly the blind decode's and a "the ball hangs on the last
+    word of this line" report had no answer short of re-running the ladder. The real clamp's pulls are
+    asserted where they happen; this is the wiring, the rig's exact decoder leaving no line overlapping."""
     from encore_worker.steps import align_steps
 
     real = align_steps._clamped

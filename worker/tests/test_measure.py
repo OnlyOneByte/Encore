@@ -335,13 +335,10 @@ def test_residual_ignores_a_copied_through_line_start() -> None:
 
 # ── provisional spans for untimed text ────────────────────────────────────────────────────────────
 #
-# These cover the fix for a bug found only by running the real aligner: whisperx CROPS THE AUDIO PER
-# SEGMENT, so an untimed segment raises `KeyError: 'start'` inside it. A plain lyrics sheet has no timings
-# by definition, so before this every plain candidate was swallowed by the step's broad `except` and the
-# song fell through to ASR — discarding a real human-written sheet.
-#
-# They live in the FAST suite deliberately: the functions are pure, and leaving them covered only by the
-# `ml`-marked tests would mean the default suite could not catch a regression in the fix itself.
+# These cover a bug found only by running the real aligner: whisperx CROPS THE AUDIO PER SEGMENT, so an
+# untimed segment raises `KeyError: 'start'` inside it. A plain lyrics sheet has no timings by definition, so
+# before the fix every plain candidate was swallowed by the step's broad `except` and the song fell through
+# to ASR, discarding a real human-written sheet. They are in the FAST suite because the functions are pure.
 
 
 def test_needs_spans_detects_any_untimed_segment() -> None:

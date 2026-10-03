@@ -6295,3 +6295,37 @@ not name which seed newly violated the property, nor tell this test's own `out_o
 which is why that check is a test of its own. With `_clamped` deleted, the single-test version stayed GREEN and
 the per-seed version failed **7** seeds; with the arm on, a no-op `_clamped` fails **11** seeds and all 4 of
 the fallback tests.
+
+## W7c: the readings that lived in the TESTS (2026-10-02)
+
+W7b emptied the package and the harness of documentation essays and left `worker/tests/**` out of scope; W7c
+extended the same bounds to the tests and the harness scripts (239 blocks, 68 test modules and 12 scripts —
+`docs/arch/05-worker.md` §12 has the rules). A fixture's numbers belong beside the fixture, so most of those
+numbers stayed in the test that asserts them. What follows is the handful that a shortened docstring could no
+longer carry, with the exhibit each one belongs to.
+
+### The emission frame grid, as `test_ml_grid.py`'s fixtures state it
+
+The grid is `ceil(samples / 320)` frames with a 400-sample receptive field, and the arithmetic below is the
+whole reason the tests exist — the old `duration / frames` ratio stretched every frame.
+
+| reading | why the fixture uses it |
+| ------- | ---------------------- |
+| **1 920 001** samples → **6001** frames over FIVE passes | pass 3 keeps frames 4500..5999 and its last field ends **79** samples past the file, so an INTERIOR pass pads while pass 4 still exists to stamp frame 6000 — which is why the padding property is the implication "padded ⇒ `stop == total`" and not "only the final pass pads". |
+| **24000 / 473600 / 480000 / 544000 / 980800** samples | each an exact multiple of 320, where the OLD `duration / frames` equals 0.02 to the last bit: the lengths on which reverting `frame_sec` to a derived ratio was invisible and the mutation survived the whole suite. |
+| **1.51 s = 24160** samples = **75.5** hops → **76** frames, derived `frame_sec` **0.019868** | one of the two lengths that holds `frame_sec` as a constant. |
+| **29.999 s = 479984** samples, derived `frame_sec` **0.0199993** | the other. |
+
+### The OOV placeholder's own exhibit (`test_ends.py`)
+
+A word with no alignable character gets `start = end = the previous word's end` from `generate`'s OOV branch:
+verified against the real `generate`, `["hold on 2", "next"]` publishes `'2'` at **0.5600-0.5600**, exactly
+`'on'`'s end. That is why the word-end hold belongs to the word with acoustic evidence and the placeholder
+stays a point — the TV lights `start <= pos < end`, so a zero-width span is never the active word.
+
+### The prose ratios this wave moved
+
+`_tools/prose_scan.py`'s measure, per root, as the ratchet reads it: the package **1.21** before W7b, **0.745**
+before W7c and **0.489** after; the committed bench harness **0.35** after W7b's sweep, **0.322** after W7c's
+first pass over its blocks and **0.258** once the per-kind rules reached it; `worker/tests` **0.3124** when the
+rules were extended to it. The bounds those readings carry are in `docs/arch/05-worker.md` §12.

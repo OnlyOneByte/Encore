@@ -879,3 +879,60 @@ every guarded call runs inside `asyncio.to_thread`, so the contention is between
 | the operator's tour: engines, settings, the three suites | [`../../worker/README.md`](../../worker/README.md) |
 | media layout as checkable requirements | [`01-media.md`](01-media.md) |
 | job retry, restart and crash recovery as requirements | [`03-jobs.md`](03-jobs.md) |
+
+## 12. Prose shape: the 2026-10-01 directive, as bounds a test can check
+
+**The directive.** Code is self-documenting and prose lives in `docs/`: a docstring says WHAT a thing is and
+WHY it exists, in a few lines; measurement narratives, threshold provenance, rejected alternatives, failure
+accounts, per-song numbers and the history of the wave that produced them belong in a document, with the code
+pointing at it by path. A measured NUMBER may be moved but never deleted — if it leaves a docstring it lands
+in a document, and `_tools/verify_numbers.py --strict --durable` re-reads a frozen manifest of every numeric
+token the prose used to carry and fails on a `LOST` row.
+
+**Why bounds per KIND of prose.** W7b measured the package at 48% prose (3 685 comment lines and 7 577
+docstring lines against 12 252 of code) and moved ~3 800 lines out, under one bound: "no prose block over 40
+lines". That bound was satisfied by 101 blocks of 12 lines or more, the largest of them 28-to-40-line MODULE
+docstrings — documentation essays, still in code. A single block bound cannot see the difference between an
+essay and three legitimate paragraphs, so W7c replaced it with one number per kind, in
+`worker/tests/test_prose_shape.py`:
+
+| rule | bound | what sat on it when it was set |
+| ---- | ----- | ----------------------------- |
+| 1. MODULE docstring | 12 lines | `domain/lyrics/parts.py` held 40 — a mechanism, two anchored rules, a measured refusal, an interpolation policy and an order invariant, all of which is [`04-alignment.md`](04-alignment.md) §8 and §12 now. |
+| 2. def / method / class docstring | 8 lines | `steps/align_steps.py` held a 125-line one (`_time_line_sync`) before W7b and a 22-line one after. |
+| 3. own-line `#` comment run | 6 lines | `host/config.py` held 261 lines of `ALIGN_EXPERIMENTS` commentary. `#` continuation was the cheapest way to keep an essay, so it has a bound of its own. |
+| 4. `#:` attribute comment | 3 lines | A calibrated constant carries its value, its unit and a pointer — never its derivation, which is a measurement. |
+| 5. bridged prose BLOCK | 18 lines | Exactly what rules 1 and 3 allow back to back, i.e. the worst legal combination: a BACKSTOP that catches a THIRD paragraph, not a bound anything sits on (the worst block measured 13). |
+| 6. per-module prose/code | 0.55 at >= 100 code lines | The package's worst module is `domain/lyrics/policy.py`. Below 100 lines of code the ratio measures a module's INTERFACE — a Protocol or a table of constants is one line of code per declaration — so rules 1-5 and 7 carry those. |
+| 7. per-layer prose/code | 0.55 | Read over all 11 package directories RECURSIVELY: a top-level-only list left `domain/audio` above the bound and invisible behind `domain/`'s average. The worst layer is `artifacts/`. |
+| 8. package prose/code | 0.52 | Below the layer bound on purpose: every layer sitting at its own bound would be a different package from this one. 1.21 before W7b, 0.745 before W7c, 0.49 after. |
+| 9. root aggregates | tests 0.33, harness 0.28 | `worker/tests` measured 0.3124 and the committed bench harness 0.2580 when the rules were extended to them. |
+
+**Blocks are BRIDGED across blank lines.** A block ends only at a line of code, so neither two touching
+docstrings nor `#` continuation nor a bare blank line splits an essay into passing halves — which an
+adjacency-only rule allowed, and a blank line every 30 lines defeated.
+
+**Which roots the rules bind on.** All five shape rules and the block rule read three roots: the package
+`worker/encore_worker`, the worker's own tests, and the committed bench harness
+`docs/benchmarks/forced-alignment/scripts`. W7b swept the package only and W7c extended the per-kind rules
+outwards, which cost 239 edits across 68 test modules and 12 harness scripts. The ratio rules stay the
+package's, with each other root held to an aggregate instead: a test file is many small functions each
+honestly carrying two lines of WHAT, and a gate script is a measurement argument with a `main()` attached, so
+a per-module 0.55 there would delete short docstrings that are exactly the right length.
+
+**What a test docstring keeps.** The claim it pins, and the WHY that makes the claim worth pinning — commonly
+the mutation that used to survive, named in one clause. What it does not keep is a re-derivation of a
+measurement, a re-argued review finding, or a narrative of the wave that produced it; those go to the
+measurement README or to a design document. A harness script's docstring keeps the COMMAND LINES that run it,
+which is why its module bound holds two or three of them plus one paragraph and a pointer.
+
+**EXCEPTIONS is empty, and that is the finished state.** W7c cleared 271 package violations and 239 in the
+other two roots without granting one. An exception is a judgement about a particular docstring; raising a
+bound is a judgement about every docstring in the tree, which is how the 40-line bound came to allow 101
+essays. `TIGHTEST` names the module or layer sitting closest to each bound and a test fails when that claim
+goes stale, so the next wave moves a paragraph instead of raising a number.
+
+**The pointers are checked too.** `worker/tests/test_docs_pointers.py` resolves every `docs/` path the code
+cites, every `§N`, every cited README section title and every `XA-`/`XW-` invariant id, and fails a citation
+that leads to a gitignored working document — because a pointer to nothing loses exactly what the cleanup
+moved.

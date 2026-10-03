@@ -1,18 +1,14 @@
-"""The emission FRAME GRID, the blank the vocabulary names, and the bounded matrix cache (review 6a/M9/M10).
+"""The emission FRAME GRID, the blank the vocabulary names, and the bounded matrix cache (6a/M9/M10).
 
-WHY THIS FILE EXISTS. Everything the review found wrong about the evidence layer's clock was arithmetic —
-a 30 s chunk yields 1499 frames and not 1500, so a `duration / frames` ratio stretched every frame and
-stamped words up to 20 ms late by the end of each chunk; the final sliver was dropped while its seconds
-still counted, drifting odd-length songs 50-60 ms late after 2:30 — and arithmetic is testable without a
-model, weights or audio. `test_ml_contract.py` holds the REAL pass to the same grid, and pays for weights
-to do it; this file is the part that must stay fast, so a refactor of the stitching is caught here first.
+Everything the review found wrong about the evidence layer's clock was arithmetic — a 30 s chunk yields 1499
+frames and not 1500, so a `duration / frames` ratio stretched every frame and stamped words up to 20 ms late by
+the end of each chunk, and the final sliver was dropped while its seconds still counted, drifting odd-length
+songs 50-60 ms late after 2:30. `test_ml_contract.py` holds the REAL pass; this file is what stays fast.
 
-W0 recorded that no chunk-boundary test existed. The one here is exact rather than statistical: a stand-in
-model whose every output frame is a LOCAL function of the samples it saw cannot have an opinion about which
-pass computed a frame, so the chunked pass with its trimmed context must equal a SINGLE whole-file pass
-frame for frame. Any difference is the stitching, which is the whole of review 6a. What only real weights
-can show — that a boundary frame with 2 s of context is a BETTER frame — is the bench's job (the review
-measured ±100 78.7 → 80.1 on Jamendo word onsets).
+The chunk-boundary test is exact rather than statistical: a stand-in model whose every frame is a LOCAL
+function of the samples it saw cannot have an opinion about which pass computed it, so the chunked pass must
+equal a SINGLE whole-file pass. Each fixture length is chosen for a reading of the grid's own arithmetic, in
+README, "The emission frame grid, as `test_ml_grid.py`'s fixtures state it".
 """
 
 from __future__ import annotations
@@ -77,14 +73,12 @@ def test_the_grid_covers_every_hop_of_the_audio_exactly_once(seconds: float) -> 
 def test_every_pass_is_long_enough_for_the_frames_it_keeps_and_reads_no_further(seconds: float) -> None:
     """A frame needs 400 samples of input; the last one it keeps gets them, by padding if the audio ends.
 
-    PADDING ONLY EVER SUPPLIES SAMPLES THE AUDIO DOES NOT HAVE, which is the invariant, and it is NOT "only
-    the final pass pads" — the assertion here used to say that and was false (W4 review r1). A pass pads when
-    the receptive field of its last KEPT frame runs past the audio's end, and `stop` is capped at `total`, so
-    an INTERIOR pass pads whenever its 2 s of right context reaches the end of the file: at 1 920 001 samples
-    the grid's 6001 frames make five passes and pass 3 (which keeps frames 4500..5999, the last field ending
-    79 samples past the file) pads while pass 4 still exists to stamp frame 6000. The tested property is
-    therefore the implication — padded implies `stop == total` — with the interior case pinned by name below.
-    """
+    PADDING ONLY EVER SUPPLIES SAMPLES THE AUDIO DOES NOT HAVE, which is the invariant — and it is not "only
+    the final pass pads", which the assertion here used to say and which is false: a pass pads when the
+    receptive field of its last KEPT frame runs past the end, and `stop` is capped at `total`, so an INTERIOR
+    pass pads whenever its 2 s of right context reaches the file's end (at 1 920 001 samples pass 3 pads
+    while pass 4 still exists to stamp frame 6000). The property is therefore the implication — padded
+    implies `stop == total` — with the interior case pinned by name below."""
     total = int(seconds * RATE)
     passes = ml._frame_passes(total)
     for plan in passes:
@@ -256,20 +250,14 @@ def _audio(tmp_path: Path, seconds: float) -> tuple[Path, Any]:
 def test_a_word_at_a_chunk_boundary_lands_where_a_single_pass_puts_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seconds: float
 ) -> None:
-    """THE CHUNK-BOUNDARY CONTINUITY TEST W0 recorded as missing.
+    """The chunk-boundary continuity test W0 recorded as missing.
 
     `34.0` and `61.3` straddle the 30 s and 60 s boundaries; `29.6` and `1.5` end inside a chunk on a
-    sliver. Every frame of the chunked matrix must equal the single-pass matrix's frame of the same index —
-    not merely be close — so a word at a boundary is stamped at the same 20 ms frame either way. Under the
-    old pass the second chunk's frames all sat 20 ms early against this reference and the sliver was gone.
-
-    `1.51` AND `29.999` ARE WHAT HOLDS `frame_sec` (W4 review r1). Every other length here is an exact
-    multiple of 320 samples (24000, 473600, 480000, 544000, 980800), and the grid has `ceil(samples / 320)`
-    frames, so at those lengths the OLD `duration / frames` equals 0.02 to the last bit and reverting the
-    constant was invisible: the mutation survived the whole suite. 1.51 s is 24160 samples — 75.5 hops, so
-    76 frames and a derived 0.019868 — and 29.999 s is 479984, a derived 0.0199993; the assertion below now
-    fails on either formula but the constant.
-    """
+    sliver. Every frame of the chunked matrix must EQUAL the single-pass matrix's frame of the same index, so
+    a word at a boundary is stamped at the same 20 ms frame either way; under the old pass the second chunk's
+    frames all sat 20 ms early and the sliver was gone. `1.51` and `29.999` are what holds `frame_sec`: every
+    other length here is an exact multiple of 320 samples, where the old `duration / frames` equals 0.02 to
+    the last bit and the mutation survived, while 1.51 s derives 0.019868 and 29.999 s derives 0.0199993."""
     path, mono = _audio(tmp_path, seconds)
     monkeypatch.setattr(ml, "load_audio_mono_16k", lambda _p: mono.numpy())
     model = _LocalModel()
@@ -301,15 +289,13 @@ def test_the_context_frames_are_computed_and_then_discarded(
 def test_a_model_whose_stride_is_not_the_grids_fails_loudly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Silent drift is what review 6a removed, so a bundle whose frame rate is not the 320/400 grid's raises
-    rather than producing a mis-stamped chunk — as an `InfraFault`, since it is the model, not a text.
+    """A bundle whose frame rate is not the 320/400 grid's raises rather than mis-stamping a chunk — as an
+    `InfraFault`, since it is the model and not a text.
 
-    BOTH DIRECTIONS (W4 review r1). The guard used to be `len(got) < trim + keep`, which only caught the
-    COARSE half: a finer-stride bundle emits MORE frames than the slice implies, so the slice `got[trim :
-    trim + keep]` passed the one-sided test while taking frames that do not sit at the grid positions they
-    are then stamped at — a 10 ms-hop model's first pass covering 15 s of audio in a matrix claiming 30,
-    with `frame_sec` still 0.02. Equality is the only test that catches that.
-    """
+    Both directions: the guard used to be `len(got) < trim + keep`, which caught only the COARSE half. A
+    finer-stride bundle emits MORE frames than the slice implies, so `got[trim : trim + keep]` passed the
+    one-sided test while taking frames that do not sit at the grid positions they are then stamped at — a
+    10 ms-hop model's first pass covering 15 s of audio in a matrix claiming 30, `frame_sec` still 0.02."""
     path, mono = _audio(tmp_path, 40.0)
     monkeypatch.setattr(ml, "load_audio_mono_16k", lambda _p: mono.numpy())
 
@@ -367,18 +353,14 @@ def test_a_replaced_stem_is_a_cache_miss_not_a_stale_matrix(
 def test_two_bundles_over_one_audio_file_do_not_share_one_matrix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4b REVIEW R2, tests-18: the key's BUNDLE component was untested — dropping it from
-    `_cached_emissions((*content, bundle, language, self._device), ...)` passed the whole suite, because every
-    test here runs one bundle. The sibling invariant one layer up IS pinned
-    (`test_ml_devices.test_two_bundles_on_one_device_do_not_share_one_loaded_handle`, the `_MODELS` keys);
-    this is the matrix half.
+    """Two bundles over one audio file do not share one matrix: the key's BUNDLE component was untested.
 
-    WHAT IT COSTS WITHOUT IT: `Emissions.model` is the VOCABULARY's identity and every emission-scale
-    threshold is read off it (`lexical.calibration`), so one audio file aligned by two bundles in one process
-    — the bench's `--verify-cache` builds two aligners, and `ENCORE_ALIGN_MODEL` can change between two jobs
-    of one worker — would serve the second bundle's job the first bundle's frames, STAMPED WITH THE FIRST
-    BUNDLE'S NAME, so the gates would read the right row against the wrong matrix and nothing would say so.
-    """
+    Dropping it from `_cached_emissions((*content, bundle, language, self._device), ...)` passed the whole
+    suite, because every test here runs one bundle; the sibling invariant one layer up IS pinned
+    (`test_ml_devices`, the `_MODELS` keys) and this is the matrix half. What it costs: `Emissions.model` is
+    the VOCABULARY's identity and every emission-scale threshold is read off it, so one file aligned by two
+    bundles in one process — the bench's `--verify-cache`, or `ENCORE_ALIGN_MODEL` changing between jobs —
+    would serve the second job the first bundle's frames STAMPED WITH THE FIRST BUNDLE'S NAME."""
     import soundfile as sf
 
     ml.clear_cache()
@@ -427,16 +409,14 @@ def test_the_matrix_cache_is_bounded_and_separate_from_the_model_weights(
 
 
 def test_the_cache_bound_grows_with_concurrency_and_always_holds_every_live_matrix() -> None:
-    """W4 review r1 derived the bound from `Config.concurrency`; review r2 found nothing PINNED it — both
-    existing assertions call `_emission_cache_size` on their own right-hand side, so `return 4` (the flat
-    bound that made a 3-job box evict its own live matrices and re-pay the forward pass on every attempt
-    after the first) passes them. These are the two properties the derivation exists for, stated without
-    calling the function to describe itself.
+    """The cache bound grows with concurrency and always holds every live matrix.
 
-    THE LIVE SET MUST FIT: a job reads two matrices at once (its align target and the MIX witness R4
-    decodes, `_MATRICES_PER_JOB`), and `transport.client` really does run `concurrency` jobs at once —
-    `ML_LOCK` serialises the model, never the interleaving of steps.
-    """
+    Both existing assertions called `_emission_cache_size` on their own right-hand side, so `return 4` — the
+    flat bound that made a 3-job box evict its own live matrices and re-pay the forward pass on every
+    attempt after the first — passed them. These are the two properties the derivation exists for, stated
+    without calling the function to describe itself. THE LIVE SET MUST FIT: a job reads two matrices at once
+    (its align target and the MIX witness R4 decodes), and `transport.client` really does run `concurrency`
+    jobs at once — `ML_LOCK` serialises the model, never the interleaving of steps."""
     assert ml._emission_cache_size(3) > ml._emission_cache_size(1), "the bound must move with concurrency"
     for jobs in (0, 1, 2, 3, 8, 32):
         got = ml._emission_cache_size(jobs)
@@ -484,15 +464,13 @@ def test_a_three_job_aligner_still_serves_six_matrices_a_one_job_aligner_has_evi
 
 
 def test_the_host_sizes_the_cache_from_its_configured_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
-    """And the derivation has to REACH production (review r2): a bound nothing wires through is a formula.
+    """And the derivation has to REACH production: a bound nothing wires through is a formula.
 
-    `build_adapters` is the only place that knows `Config.concurrency`, so the assertion is made there —
-    hermetically, by recording what the factory is handed rather than by loading whisperx.
-
-    THE ENGLISH BUNDLE RIDES THE SAME WIRE (W4b 6b): `Config.align_model` is resolved and checked here too
-    (`align_model_for`), so an unset knob must reach the factory as this device's default rather than as None,
-    which the factory would read as "whisperx's per-language table" — the base model, on every box.
-    """
+    `build_adapters` is the only place that knows `Config.concurrency`, so the assertion is made there,
+    hermetically, by recording what the factory is handed rather than by loading whisperx. The English
+    bundle rides the same wire: `Config.align_model` is resolved and checked here too (`align_model_for`),
+    so an unset knob must reach the factory as this device's default rather than as None, which the factory
+    would read as "whisperx's per-language table" — the base model, on every box."""
     from encore_worker import __main__ as entry
     from encore_worker.adapters import ml as adapters_ml
     from encore_worker.host.config import Config

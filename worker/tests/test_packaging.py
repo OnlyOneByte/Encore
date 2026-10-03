@@ -41,15 +41,13 @@ def extras(config: dict[str, Any]) -> dict[str, list[str]]:
 
 @pytest.mark.parametrize("backend", ["cpu", "cu128"])
 def test_the_torch_trio_is_pinned_exactly(config: dict[str, Any], backend: str) -> None:
-    """A `>=` here is not a loose pin, it is a broken install: torchaudio built against a different torch
-    minor fails at import as `ImportError: undefined symbol`, and nothing about the message says why.
+    """A `>=` here is not a loose pin but a broken install: torchaudio built against a different torch minor
+    fails at import as `ImportError: undefined symbol`, and nothing about the message says why.
 
-    It is ALSO what holds off torchcodec. torchaudio 2.9 changes `torchaudio.load` to go through
-    torchcodec, which links ffmpeg 4–7; this machine has ffmpeg 9 (libavutil 61), so that path cannot
-    load at all. We never call `torchaudio.load` ourselves, but demucs and whisperx do — so a float to
-    2.9 would break separation and alignment through a dependency, on a box where ffmpeg is newer than
-    torchcodec supports. The exact pin means that arrives as a deliberate bump, not a surprise.
-    """
+    It is ALSO what holds off torchcodec. torchaudio 2.9 routes `torchaudio.load` through torchcodec, which
+    links ffmpeg 4-7, and this machine has ffmpeg 9 (libavutil 61), so that path cannot load at all. We
+    never call `torchaudio.load` ourselves but demucs and whisperx do, so a float to 2.9 would break
+    separation and alignment through a dependency. The exact pin makes that a deliberate bump."""
     pins = {
         name: spec for spec in extras(config)[backend] for name in TORCH_TRIO if spec.startswith(f"{name}==")
     }
@@ -82,22 +80,14 @@ def test_every_pytorch_index_is_explicit(config: dict[str, Any]) -> None:
 
 
 def test_audiosep_needs_no_platform_marker_at_all(config: dict[str, Any]) -> None:
-    """THE MARKERS ARE GONE, and the pin is why.
+    """THE MARKERS ARE GONE, and the torch pin is why.
 
-    This test previously asserted the opposite: two atomic entries
-    (`sys_platform != 'darwin'` / `platform_machine != 'arm64'`), the De Morgan expansion of an `or`
-    exclusion that uv 0.9.2 could not intersect with a transitive torch requirement. All of that existed to
-    work around ONE fact — audio-separator 0.46.0+ requires torch>=2.13 on arm64 mac, and this project pins
-    torch 2.8.0 for whisperx/demucs/pyannote.
-
-    The consequence was that the model zoo did not exist on Apple Silicon: the machine this project is
-    developed on could not install the thing. 0.45.0 requires only torch>=2.3 everywhere and carries the
-    IDENTICAL catalogue (verified: same 89 download entries, same 84 roformers), so pinning back removes the
-    platform exclusion, the marker workaround, and the resolver limitation together.
-
-    Asserted as "no marker" rather than deleted so that re-adding one is a decision: a marker here means the
-    zoo is unavailable somewhere, which is what it cost last time.
-    """
+    This test asserted the opposite until the zoo was pinned back: two atomic entries, the De Morgan
+    expansion of an `or` exclusion uv 0.9.2 could not intersect with a transitive torch requirement, all of
+    it working around ONE fact — audio-separator 0.46.0+ requires torch>=2.13 on arm64 mac while this
+    project pins torch 2.8.0, so the zoo did not exist on Apple Silicon. 0.45.0 requires only torch>=2.3 and
+    carries the IDENTICAL catalogue (same 89 download entries, same 84 roformers). Asserted as "no marker"
+    rather than deleted, so that re-adding one is a decision."""
     specs = extras(config)["audiosep"]
     audio_separator = [s for s in specs if s.startswith("audio-separator")]
     assert len(audio_separator) == 1, f"one unconditional entry, not a per-platform split: {specs}"

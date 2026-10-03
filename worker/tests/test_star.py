@@ -1,22 +1,14 @@
-"""§3.10's STAR: one filler target before every line, over a matrix one column wider (the `star` arm).
+"""The STAR: one filler target before every line, over a matrix one column wider (the `star` arm).
 
-WHY A FILE OF ITS OWN, like `test_blank_id.py` for M9 and `test_linesep.py` for 6c. The star is one token and
-five places that have to agree: the COLUMN (`ml.starred`: `frame max − P`, named on `Emissions.specials`), the
-TARGET list (before every line that has a character, never inside one), the RELABEL of its frames to blank
-before `_char_spans` AND before `_lead_starts`, the span-count invariant that relabel turns into
-`spans == targets − separators − stars`, and the step's wiring (the document decodes read the starred matrix,
-the gates and the repair windows do not). Three of the five fail LOUDLY when wrong — `generate` raises on
-every song — and two fail SILENTLY: an onset lead clamped at a star span is 30 ms nobody would see, and a
-gate decode handed a star column is a threshold read against a population it was not calibrated on.
+A file of its own, like `test_blank_id.py` for M9, because the star is one token and five places that have to
+agree: the COLUMN (`ml.starred`: frame max less P, named on `Emissions.specials`), the TARGET list (before
+every line with a character), the RELABEL of its frames to blank before `_char_spans` AND `_lead_starts`, the
+span-count invariant that relabel turns into `spans == targets - separators - stars`, and the step's wiring
+(only the document decodes read the starred matrix). Three of the five fail LOUDLY; two fail SILENTLY — an
+onset lead clamped at a star span is 30 ms nobody sees, and a gate decode handed a star column misreads one.
 
-WHAT IT PINS AND WHAT IT CANNOT. The arm ships OFF and its verdict is the corpus harness's, not a test's:
-§3.10's reject-if is about the CLAIMS path (`gates/w7-star.yaml`), and P was fitted on the bench's own
-matrices
-(`ml.STAR_PENALTY_NATS` carries the sweep). What a suite CAN settle is that the arm does what review §3.10
-describes, that the MECHANISM it exists for really is the one at work
-(`test_a_star_absorbs_audio_the_text_does
-_not_mention` reproduces D3's drag in the smallest form that shows it), and that with the arm off not one
-target, span or published number moves.
+The arm ships OFF and its verdict is the corpus harness's (`gates/w7-star.yaml`; `ml.STAR_PENALTY_NATS`
+carries P's sweep): what a suite can settle is that the mechanism it exists for is the one at work.
 """
 
 from __future__ import annotations
@@ -57,13 +49,9 @@ DIC = {ch: i + 1 for i, ch in enumerate("abcdefghijklmnopqrstuvwxyz'")}
 VOCAB = {**DIC, "|": max(DIC.values()) + 1}
 STAR = max(VOCAB.values()) + 1  # `ml.starred` appends, so the star id is the matrix's old width
 
-#: Three sung lines. THE TEXT WILL ONLY HOLD THE LAST TWO: the first is the "intro" — audio no line of the
-#: text mentions, which is exactly review D3's shape (an unsung verse, an intro, half a sheet deleted).
-#:
-#: THE LAST TWO CARRY 46 ALIGNABLE LETTERS between them, which is deliberate: under `lexical.MIN_LETTERS` (40)
-#: the wrong-text gate reports "too short to measure" and its four decodes never run — and
-#: `test_only_the_decodes_that_publish_a_timing_see_the_star_column` would then pass having proved nothing
-#: about the gate (it did, while this file was being written).
+#: Three sung lines, of which THE TEXT HOLDS ONLY THE LAST TWO: the first is the "intro", audio no line of the
+#: text mentions, which is D3's shape. The last two carry 46 ALIGNABLE LETTERS, deliberately over
+#: `lexical.MIN_LETTERS` (40), or the wrong-text gate reports "too short to measure" and no decode runs.
 SUNG = (
     ("a candle in a paper cup", 0.4, 2.2),
     ("and all the ash it carries", 2.6, 4.6),
@@ -75,15 +63,9 @@ DURATION = 7.4
 #: `generate`'s "do not syllabify" fixture, as the rest of the suite spells it.
 ONE_SYLLABLE: Any = lambda word, _language: [word]  # noqa: E731
 
-#: How much the UNCOVERED intro also sounds like the text's own first letters, log-probability — the shape of
-#: real emissions over audio the text does not mention, and the whole of review D3's mechanism: the frames
-#: must
-#: be labelled with SOMETHING, and a letter the model half-hears there is cheaper than the blank.
-#:
-#: DERIVED FROM THE SHIPPED PENALTY rather than a literal, and the fixture asserts both sides of it: one nat
-#: WORSE than the star (so a star is where the path should go) and far better than the matrix's own `rest` (so
-#: without a star the path really is dragged there). A sweep that moved P past that gap would otherwise make
-#: this test silently stop testing anything.
+#: How much the UNCOVERED intro also sounds like the text's own first letters, log-probability — the whole of
+#: D3's mechanism, the frames having to be labelled with SOMETHING. DERIVED FROM THE SHIPPED PENALTY: one nat
+#: worse than the star and far better than the matrix's own `rest`, both asserted by the fixture.
 TEMPTING = math.log(HIT) - ml.STAR_PENALTY_NATS - 1.0
 
 
@@ -108,14 +90,11 @@ def emissions(matrix: Matrix, *, vocab: dict[str, int] | None = None) -> ml.Emis
 def tempting(text: Sequence[str]) -> Matrix:
     """`SUNG`, with the INTRO (line 1, which `text` does not hold) also sounding like `text`'s own letters.
 
-    THE FAILURE review §3.10 / D3 is about, in the smallest form that reproduces it. `sung_matrix` alone is
-    too
-    clean to show it: over the intro's frames the text's letters and the blank are both at the matrix's
-    `rest`,
-    so the Viterbi's tie-break leaves the path on the blank and nothing is dragged. A real model's emissions
+    The failure D3 is about, in the smallest form that reproduces it. `sung_matrix` alone is too clean to
+    show it: over the intro's frames the text's letters and the blank are both at the matrix's `rest`, so
+    the Viterbi's tie-break leaves the path on the blank and nothing is dragged. A real model's emissions
     over unsung audio are not flat — the intro's phonemes partly match the letters the text does have — and
-    that is what pulls the first line of the text backwards into them.
-    """
+    that is what pulls the first line of the text backwards into them."""
     matrix = sung_matrix(SUNG, VOCAB, DURATION)
     rest = float(matrix[0].min())
     assert rest < TEMPTING < math.log(HIT) - ml.STAR_PENALTY_NATS, (
@@ -160,15 +139,12 @@ class Recording:
 
 
 def test_the_star_column_is_the_frame_maximum_less_the_penalty() -> None:
-    """`frame max − P`, PER FRAME, and nothing else about the matrix changes.
+    """`frame max - P`, PER FRAME, and nothing else about the matrix changes.
 
-    Per frame is the whole point (`ml.STAR_PENALTY_NATS`): a log-probability only means something against the
-    rest of its own frame, so a flat frame's star comes down with it while a confidently sung frame's star
-    sits
-    P nats under a character the path wants anyway. A CONSTANT star (MMS's `log p = 0`) was measured
-    over-eager
-    — all-corpus ±250 67.9 → 64.0 — which is the comparison this arithmetic exists to avoid.
-    """
+    Per frame is the whole point: a log-probability only means something against the rest of its own frame,
+    so a flat frame's star comes down with it while a confidently sung frame's star sits P nats under a
+    character the path wants anyway. A CONSTANT star (MMS's `log p = 0`) was measured over-eager —
+    all-corpus ±250 67.9 -> 64.0 — which is the comparison this arithmetic exists to avoid."""
     matrix = sung_matrix(SUNG, VOCAB, DURATION)
     plain = emissions(matrix)
     starred = ml.starred(plain, penalty=2.0)
@@ -216,15 +192,14 @@ def test_the_domain_and_the_adapter_name_the_same_column() -> None:
 
 
 def test_the_widened_matrix_carries_the_blank_of_the_vocabulary_it_came_from() -> None:
-    """W7 review r1-tests-12. `starred` is the one code path that REBUILDS an `Emissions` from scratch, so it
-    is the one that can lose a field — and `blank_id` is the field the decodes it feeds read off the WIDENED
-    matrix, never off the original (`generate.blank_of(decode_matrix)`, and `_placement_margins`' `blank=`).
-    The reviewer mutated the copy to `blank_id=0` and the WHOLE SUITE passed: every star fixture here is a
-    `blank_id=0` vocabulary, where the mutation is invisible, and the only non-zero-blank fixtures
-    (`test_blank_id`) never reach the arm. So the two halves are asserted on the shape 23 of whisperx's 36 HF
-    bundles actually have — the review's own permutation, `test_blank_id.permuted`, which swaps the blank out
-    of column 0 and a sung letter into it — and review M9's equality is re-asserted THROUGH the star arm:
-    the same evidence under another vocabulary must publish the same document, stars and all."""
+    """`starred` is the one code path that REBUILDS an `Emissions`, so it is the one that can lose a field.
+
+    `blank_id` is the field the decodes it feeds read off the WIDENED matrix, never off the original
+    (`generate.blank_of(decode_matrix)`, `_placement_margins`' `blank=`). Mutating the copy to `blank_id=0`
+    passed the WHOLE SUITE: every star fixture here is a `blank_id=0` vocabulary and the non-zero-blank ones
+    never reach the arm. So both halves are asserted on the shape 23 of whisperx's 36 HF bundles have —
+    `test_blank_id.permuted` — and M9's equality is re-asserted THROUGH the arm: the same evidence under
+    another vocabulary must publish the same document, stars and all."""
     from tests.test_blank_id import permuted
 
     matrix = sung_matrix(SUNG, VOCAB, DURATION)
@@ -393,17 +368,14 @@ def test_the_span_check_counts_the_stars_and_says_so() -> None:
 
 
 def test_a_star_absorbs_audio_the_text_does_not_mention() -> None:
-    """THE MECHANISM review §3.10 / D3 exists for. A forced CTC path must label EVERY frame, so when the audio
-    sings something the text does not hold — an intro, an instrumental break, the verse a partial sheet
-    dropped — the path spends those frames on whichever of the text's own characters are least implausible
-    there, and the first lines of the text are dragged into them. Measured by the review at corpus scale: with
-    half the lines deleted 107/387 and 165/356 line starts more than 2 s off, a 6-line unsung verse 142 gross
-    lines, and `feel-my-heart`'s first word bound about 28 s early.
+    """The mechanism the arm exists for: a forced CTC path must label EVERY frame.
 
-    HERE the audio sings three lines and the text holds the LAST TWO, so line 1's 1.8 s are uncovered. Without
-    a star the decode pulls the text's first line back into them; with one it stays on its own onset, and the
-    rest of the document is untouched — which is the arm's whole claim.
-    """
+    When the audio sings something the text does not hold — an intro, an instrumental break, the verse a
+    partial sheet dropped — the path spends those frames on whichever of the text's own characters are least
+    implausible there, and the first lines are dragged into them. Measured at corpus scale: with half the
+    lines deleted 107/387 and 165/356 line starts more than 2 s off, a 6-line unsung verse 142 gross lines,
+    `feel-my-heart`'s first word bound about 28 s early. Here the audio sings three lines and the text holds
+    the LAST TWO, so line 1's 1.8 s are uncovered and a star keeps the text on its own onset."""
     text = LINES[1:]
     matrix = tempting(text)
     plain = generate(text, emissions(matrix), decoder=ctc_viterbi, syllabifier=ONE_SYLLABLE)
@@ -558,15 +530,13 @@ def test_the_step_decodes_with_the_star_only_under_the_arm(
 def test_only_the_decodes_that_publish_a_timing_see_the_star_column(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """THE CONTRACT `host.config.ALIGN_EXPERIMENTS` states for this arm, asserted on the real step: the
-    document decodes read the starred matrix and everything else reads the matrix it was calibrated on.
+    """The contract `host.config.ALIGN_EXPERIMENTS` states for this arm, on the real step: the document
+    decodes read the starred matrix and everything else reads the matrix it was calibrated on.
 
     The lexical gate's four decodes (`lexical.lift`) and the mix witness's reads are thresholds fitted per
-    bundle on star-free target sequences (`lexical.CALIBRATED`), so a star column under them would be
-    measuring
-    a recalibration — `linesep`'s docstring makes the same point for the separator. A repair window is left
-    alone for a different reason, which `generate`'s docstring owns.
-    """
+    bundle on star-free target sequences, so a star column under them would be measuring a recalibration —
+    `linesep`'s docstring makes the same point for the separator. A repair window is left alone for a
+    different reason, which `generate`'s docstring owns."""
     plain = max(VOCAB.values()) + 1
     _armed, _note, _lines, spy = step_run(
         tmp_path / "on", monkeypatch, experiments=frozenset({"star"}), text=LINES[1:]
@@ -584,12 +554,11 @@ class Decodes:
     """What the step asked the two domain entry points for: `stars` per GLOBAL decode, `stars` per window
     decode inside a repair, and whether each repair stage's matrix carried a star column at all.
 
-    `align_steps` imports `generate`/`regenerate` inside `_time_text_global`, so the patch goes on the domain
-    module and every call re-reads it — the seam `test_linesep` and `test_align_provenance` already tap. WHY
-    THE INNER CALLS ARE COUNTED SEPARATELY: `regenerate` decodes each run through `generate` itself, and it
-    resolves that name in the same module, so a spy on `generate` alone cannot tell a global decode from a
-    window's (it did not, while this file was being written: six window decodes read as six global ones).
-    """
+    `align_steps` imports `generate`/`regenerate` inside `_time_text_global`, so the patch goes on the
+    domain module and every call re-reads it. The inner calls are counted separately because `regenerate`
+    decodes each run through `generate` itself and resolves that name in the same module, so a spy on
+    `generate` alone cannot tell a global decode from a window's — it did not, and six window decodes read
+    as six global ones."""
 
     whole: list[bool] = field(default_factory=list)
     inner: list[bool] = field(default_factory=list)

@@ -292,21 +292,13 @@ def noise(rng: random.Random, pairs: int, span: float = 200.0) -> tuple[list[L],
 
 def test_random_series_are_unrelated_not_structural() -> None:
     """THE M4 HEADLINE: 1993 of 2000 random 3-pair series used to come out STRUCTURAL — two endpoints always
-    fit an unbounded span ratio, and any agreement below 1.0 was structural — and the caller then re-decoded
-    lines inside claim windows on that verdict. Measured on this tree, 2000 seeded draws per width:
+    fit an unbounded span ratio — and the caller then re-decoded lines inside claim windows on that verdict.
 
-        3 pairs    2000/2000 TOO_FEW_PAIRS, 0 lines disputed
-        4 pairs    2000/2000 TOO_FEW_PAIRS, 0 disputed
-        5 pairs    1997 UNRELATED, 2 STRUCTURAL, 1 COARSE, 4 disputed over 10 000 lines
-        8 pairs    1999 UNRELATED, 1 STRUCTURAL, 4 disputed over 16 000 lines
-        20 pairs   2000/2000 UNRELATED, 0 disputed
-
-    The handful at 5 and 8 pairs is the honest residue of a floor at 5: a fit through five ascending points
-    can look like a sheet with one variant section. Twenty cannot.
-
-    BELOW THE FLOOR THE VERDICT IS ITS OWN (W2 review r1), not UNRELATED: these draws are noise, and UNRELATED
-    is what arms R1 — the caller's widest repair. A random 3-pair series must reach no repair at all.
-    """
+    Measured on this tree, 2000 seeded draws per width: 3 and 4 pairs 2000/2000 `TOO_FEW_PAIRS` with 0 lines
+    disputed; 5 pairs 1997 UNRELATED / 2 STRUCTURAL / 1 COARSE, 4 disputed over 10 000 lines; 8 pairs 1999
+    UNRELATED / 1 STRUCTURAL, 4 disputed over 16 000; 20 pairs 2000/2000 UNRELATED. The handful at 5 and 8 is
+    the honest residue of a floor at 5. Below the floor the verdict is its OWN rather than UNRELATED, which
+    is what arms R1 — the caller's widest repair — so a random 3-pair series must reach no repair at all."""
     for pairs, floor in ((3, 2000), (4, 2000), (5, 1997), (8, 1999), (20, 2000)):
         rng = random.Random(20260928)
         got = [rc.reconcile(*noise(rng, pairs)) for _ in range(2000)]
@@ -374,16 +366,14 @@ def test_the_fitted_scale_is_bounded_and_the_model_residual_carries_it() -> None
 
 
 def test_a_fitted_verdict_needs_five_pairs() -> None:
-    """Four pairs, three of them agreeing and one 8 s out: the shape of a variant section, and not enough
-    evidence to call it one (review M4: ">= 5 pairs before STRUCTURAL or COARSE").
+    """Four pairs, three agreeing and one 8 s out: the shape of a variant section, and not enough evidence
+    to call it one (M4 asked for >= 5 pairs before STRUCTURAL or COARSE).
 
-    AND THE FALLTHROUGH IS AN ABSTENTION, not UNRELATED (W2 review r1). This case used to read UNRELATED and
-    its docstring used to call that "the caller's envelope arbitration — a measurement". It is not: UNRELATED
-    is the ONE verdict that arms R1 (`align_steps`), which re-decodes every claimed line inside its claim
-    window and may adopt a claim span over a good blind timing — the sweeping action, armed by the very floor
-    that exists to distrust four points. `TOO_FEW_PAIRS` confers nothing, disputes nothing and arms nothing.
-    The same series with five agreeing lines IS structural.
-    """
+    And the fallthrough is an ABSTENTION, not UNRELATED, which this case used to read while its docstring
+    called that "a measurement". UNRELATED is the ONE verdict that arms R1, which re-decodes every claimed
+    line inside its claim window and may adopt a claim span over a good blind timing — the sweeping action,
+    armed by the very floor that exists to distrust four points. `TOO_FEW_PAIRS` confers, disputes and arms
+    nothing; the same series with five agreeing lines IS structural."""
     four = series(13.2, 16.5, 19.7, 24.0)
     theirs = claims(four)
     theirs[3] += 8.0
@@ -398,20 +388,14 @@ def test_a_fitted_verdict_needs_five_pairs() -> None:
 
 
 def test_the_inlier_share_alone_decides_a_fitted_verdict() -> None:
-    """WHY THERE IS NO MAD BAND in the AGREE / OFFSET / DRIFT test, as a property (W2 review r1).
+    """Why there is no MAD band in the AGREE / OFFSET / DRIFT test, as a property.
 
-    Review M4 asked for ">= 90% inliers AND a small MAD", and reconcile shipped `agreement >= INLIER_SHARE and
-    spread <= OFFSET_COHERENCE_SEC` — a conjunction whose second half can never be False when the first is
-    True. The model is centred on `median(ours - scale x claimed)`, so `median(residual) == 0` identically and
-    `spread_sec == median(|residual|)`; once nine residuals in ten are inside `AGREE_TOLERANCE_SEC`, their
-    median absolute value cannot exceed it. The conjunct was dead code claiming to be a safeguard, so it is
-    gone and the share is the whole test.
-
-    THIS CASE IS THE GUARD ON THAT DELETION: it is the implication that made the band redundant, measured over
-    seeded series of every shape the ladder sees (tight, offset, drifting, jittered, with wild lines). Any
-    `INLIER_SHARE` or `AGREE_TOLERANCE_SEC` that broke it would fail here rather than silently re-open the
-    question of a band nobody re-measured.
-    """
+    M4 asked for ">= 90% inliers AND a small MAD" and reconcile shipped a conjunction whose second half can
+    never be False when the first is True: the model is centred on `median(ours - scale x claimed)`, so
+    `median(residual) == 0` identically and `spread_sec == median(|residual|)`, and once nine residuals in
+    ten are inside `AGREE_TOLERANCE_SEC` their median absolute value cannot exceed it. The conjunct was dead
+    code claiming to be a safeguard. This case is the guard on its deletion, measured over seeded series of
+    every shape the ladder sees, so a changed `INLIER_SHARE` fails here rather than re-opening it."""
     rng = random.Random(4041)
     fitted = 0
     for _ in range(4000):

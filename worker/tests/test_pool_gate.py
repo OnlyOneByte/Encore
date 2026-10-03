@@ -1,16 +1,14 @@
 """The MULTI-PROVIDER POOL gate (`docs/benchmarks/forced-alignment/scripts/pool_gate.py`).
 
-WHY IT HAS UNIT TESTS, like the E2E harness beside it. This script is what finally MEASURES review M13 (the
-candidate tier ordered by corroboration rather than arrival order) and review L5 (the LRCLIB duration
-retry), both of which shipped in W5 on unit tests alone because `e2e.py`'s ports serve one text per case. A
-defect in the pool it builds would move that verdict silently — a pool whose texts all read as one witness,
-a "wrong" sheet that accidentally contains the song, an SDH variant whose damage text hygiene removes — so
-the pool's SHAPE is pinned here, pure, and the arms are driven through the real workflow over the same
-synthetic song the E2E harness tests use.
+It has unit tests like the E2E harness beside it, because this script is what finally MEASURES M13 (the
+candidate tier ordered by corroboration rather than arrival order) and L5 (the LRCLIB duration retry), both
+of which shipped in W5 on unit tests alone, `e2e.py`'s ports serving one text per case. A defect in the pool
+it builds would move that verdict silently — a pool whose texts all read as one witness, a "wrong" sheet
+that accidentally contains the song, an SDH variant whose damage text hygiene removes — so the pool's SHAPE
+is pinned here, pure, and the arms are driven through the real workflow.
 
-Hermetic: no model, no corpus, no network. The LRCLIB half runs the REAL `LrclibClient` over the script's
-own injected opener, which is the point of that seam — the duration-qualified 404 and the unqualified retry
-are production's own code path.
+Hermetic: no model, no corpus, no network. The LRCLIB half runs the REAL `LrclibClient` over the script's own
+injected opener, which is the point of that seam: the qualified 404 and the retry are production's own path.
 """
 
 from __future__ import annotations
@@ -386,15 +384,14 @@ def test_a_ranking_that_loses_lines_or_adds_a_gross_one_fails_its_verdict() -> N
 
 
 def test_every_per_pool_must_is_read_in_lines_mode_too() -> None:
-    """W7 review r2-spec-9: `tally` keyed a `lines` cell `pool/arm/lines` and `verdicts` looked up
-    `pool/arm`, so under `--sync-mode lines` EVERY per-pool MUST found nothing and `continue`d —
-    `results/w7-pool-lines.json` recorded 2 verdicts against the forced run's 13, both passing, and the
-    script exited 0. A green reading in
-    which 11 of 13 gates were never evaluated is worse than a red one.
+    """Every per-pool MUST is read in `lines` mode too.
 
-    `key_of` is now the one spelling, the gate name carries the non-default mode so two populations cannot
-    report under one name, and the suffix itself stays: a `lines` document has LINE timings only, so pooling
-    its ±500 with a forced run's would compare two different measurements."""
+    `tally` keyed a `lines` cell `pool/arm/lines` while `verdicts` looked up `pool/arm`, so under
+    `--sync-mode lines` every per-pool MUST found nothing and `continue`d: `results/w7-pool-lines.json`
+    recorded 2 verdicts against the forced run's 13, both passing, and the script exited 0 — a green reading
+    in which 11 of 13 gates were never evaluated. `key_of` is now the one spelling and the gate name carries
+    the non-default mode, while the suffix stays: a `lines` document has LINE timings only, so pooling its
+    ±500 with a forced run's would compare two different measurements."""
     lines = [row(sync_mode="lines", gross=2, w500=5), row(sync_mode="lines", arm="arrival", gross=1, w500=9)]
     read = {name: ok for name, ok, _why in pool_gate.verdicts(lines)}
     assert read["sdh-ranking-adds-no-gross-line-vs-arrival-lines"] is False

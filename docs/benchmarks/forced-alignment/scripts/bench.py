@@ -3,16 +3,13 @@
 
     uv run python docs/benchmarks/forced-alignment/scripts/bench.py --song tfr-flyaway
 
-THE QUESTION THIS ANSWERS. An LRC written for another master is *confidently wrong*: real, internally
-consistent line timings, offset from the recording in hand. This measures what the worker does about it as a
-function of how big the offset is — a SWEEP rather than one accuracy number, because whisperx crops the audio
-to each segment's provisional span, so accuracy is a property of the aligner AND the windows it was handed.
-
-THREE CONDITIONS, each a different real arrival: `shifted` (truth plus a known offset, the sweep), `exact`
-(truth unchanged — the STABILITY control, which a benchmark that only tests recovery cannot see) and `blind`
-(no timings at all, spread evenly). NOT SCORED AGAINST ITSELF: `exact` feeds truth and measures against truth,
-so a do-nothing aligner scores perfectly there, which is why it is a control and why the sweep is the
-headline. README, "The harness scripts", has the two regimes' measured rows.
+An LRC written for another master is *confidently wrong*: real, internally consistent line timings, offset
+from the recording in hand. This measures what the worker does about it as a function of how big the offset
+is — a SWEEP, because whisperx crops the audio to each segment's provisional span, so accuracy is a property
+of the aligner AND the windows it was handed. Three conditions: `shifted` (truth plus a known offset, the
+sweep), `exact` (truth unchanged, the STABILITY control a recovery-only benchmark cannot see) and `blind`
+(no timings, spread evenly). `exact` scores a do-nothing aligner perfectly, so it is a control and the sweep
+is the headline. README, "The harness scripts", has the two regimes' measured rows.
 """
 
 from __future__ import annotations
@@ -239,21 +236,12 @@ def time_text_claims(
 ) -> dict:
     """ONE SHIPPED ATTEMPT with the truth (+ `offset`) as claims: `AlignStepsImpl.time_text`, unmodified.
 
-    THIS REPLACED A REIMPLEMENTATION. `--claims` used to re-run R2 and adoption by hand. It had drifted
-    from the shipped ladder (no never-sung drop, no R3/R4/R1, no clamping, no gate, no grading) and
-    crashed before printing its adoption row (review L7: NameError on `merged_pre`, a name the script
-    never defined, since the commit that added it). Now the ladder is whatever `time_text` is. Only the
-    job reporter is the harness's (e2e.py's `Trail`), and so is the `as_doc` capture that recovers which
-    truth row each published line is. The written document carries neither, and index pairing is what
-    `report` needs (a dropped never-sung line would shift text pairing).
-
-    Returns the outcome (`published` / `line-sync` / `refused`), the document confidence, the verdict and
-    its trail note, the repair-fault notes, and the published lines as `report` reads them.
-
-    `config` is the worker `Config`; None reads it from the environment as the worker does (e2e.py too),
-    because a bare `Config()` would ignore every ENCORE_ALIGN_* knob and an experiment arm run here would
-    silently measure the default path. Tests pass a literal.
-    """
+    `--claims` used to re-run R2 and adoption by hand, had drifted from the shipped ladder (no never-sung
+    drop, no R3/R4/R1, no clamping, no gate, no grading) and crashed before printing its adoption row; the
+    ladder is now whatever `time_text` is. Only the job reporter is the harness's, and so is the `as_doc`
+    capture that recovers which truth row each published line is. Returns the outcome, the document
+    confidence, the verdict and its trail note, the repair faults, and the published lines. `config` None
+    reads the environment as the worker does, or a bare `Config()` would ignore every ENCORE_ALIGN_* knob."""
     import asyncio
 
     import soundfile as sf

@@ -1,18 +1,14 @@
-"""6c's LINE SEPARATOR: `|` in the CTC targets at line boundaries only (review D1, the `linesep` arm).
+"""6c's LINE SEPARATOR: `|` in the CTC targets at line boundaries only (D1, the `linesep` arm).
 
-WHY A FILE OF ITS OWN, like `test_blank_id.py` for M9. The separator is one token and four places that have
-to agree: the target list (between lines, never inside one, never at an edge, one boundary per gap however
-many decorative rows sit in it), the relabel of its frames to blank before `_char_spans`, the span-count
-invariant that check turns into `spans == targets - separators`, and `regenerate`'s window floor, which is a
-floor on TARGETS and so grows with them. Three of the four fail LOUDLY when wrong — `generate` raises on
-every song — and the fourth (the floor) fails silently by admitting a smear, which is the one the blank-id
-work already learned to test directly.
+A file of its own, like `test_blank_id.py` for M9, because the separator is one token and four places that
+have to agree: the target list (between lines, never inside one, never at an edge, one boundary per gap
+however many decorative rows sit in it), the relabel of its frames to blank before `_char_spans`, the
+span-count invariant that check turns into `spans == targets - separators`, and `regenerate`'s window floor,
+which is a floor on TARGETS and so grows with them. Three fail LOUDLY when wrong; the fourth fails silently
+by admitting a smear, which is the one the blank-id work already learned to test directly.
 
-IT IS DISPUTED AND SHIPS OFF, so what is pinned here is BEHAVIOUR, not a gain: the reviewers split three ways
-on the numbers (`host.config.ALIGN_EXPERIMENTS`, `linesep`), the factorial that decides it is the bench
-runner's (`docs/benchmarks/forced-alignment/gates/w4b-linesep.yaml`), and a test suite cannot settle a
-measurement. What it CAN settle is that the arm does exactly what review 6c describes, that it is inert rather
-than fatal where the vocabulary has no separator to emit, and that with it off nothing moves at all.
+It is DISPUTED and ships off, so what is pinned here is BEHAVIOUR rather than a gain: that the arm does what
+6c describes, that it is inert where the vocabulary has no separator, and that with it off nothing moves.
 """
 
 from __future__ import annotations
@@ -314,19 +310,14 @@ def test_the_span_check_counts_the_separators_and_says_so() -> None:
 
 
 def test_the_separator_keeps_the_next_lines_onset_out_of_the_boundary() -> None:
-    """THE MECHANISM review D1's FOR column is about, in the smallest form that reproduces it (`dragged`).
+    """The mechanism D1's FOR column is about, in the smallest form that reproduces it (`dragged`).
 
     Without a boundary token the path has nothing to spend the boundary's frames on, so it starts the next
     line inside them: line 2 opens at 2.25 s and line 3 at 4.67 against true onsets of 2.6 and 5.0 — 0.32 s
-    and 0.30 s early, the shape of a gross line start. With the separator emitted those frames belong to it,
-    and both lines land on their own onsets (2.57 / 4.97, which is the true onset less `ONSET_LEAD_SEC`).
-    Nothing else in either document moves: the first line, every line's last word, and every end are
-    identical, so what the arm changed here is exactly the boundary.
-
-    A SILENT boundary is the case where it changes nothing at all — the path leaves the last letter for the
-    blank on its own and the separator takes the silence — which is half of why the corpus verdict is a
-    factorial and not a unit test.
-    """
+    and 0.30 s early, the shape of a gross line start. With the separator emitted those frames belong to it
+    and both lines land on their own onsets (2.57 / 4.97, the true onset less `ONSET_LEAD_SEC`), while
+    nothing else in either document moves. A SILENT boundary changes nothing at all, which is half of why
+    the corpus verdict is a factorial and not a unit test."""
     matrix = named(dragged())
     kwargs: dict[str, Any] = {"decoder": ctc_viterbi, "syllabifier": ONE_SYLLABLE}
     plain = generate(LINES, matrix, **kwargs)
@@ -491,15 +482,12 @@ def test_the_step_decodes_with_the_separator_only_under_the_arm(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The wiring, through the real `_time_text_global`: every decode that produces a PUBLISHED timing gets
-    the arm (the blind decode, the re-decode after a never-sung drop, and every repair window), and the
-    verdict note carries it so an audit page can tell an arm's run from the default's.
+    the arm, and the verdict note carries it so an audit page can tell an arm's run from the default's.
 
-    READ ON THE ONSETS, which is also a fact about what the arm can be measured on at all: the word-end
-    post-pass runs after every decode (`ends.extend_ends`, W4) and re-fits every END from the envelope, so on
-    a stem it ERASES whatever the separator did to an end and leaves only the starts. That is why the
-    `test_the_separator_keeps_the_next_lines_onset_out_of_the_boundary` fixture drags an ONSET, and why the
-    factorial's word-±300 and gross-line columns are where a verdict on this arm can come from.
-    """
+    Read on the ONSETS, which is also a fact about what the arm can be measured on at all: the word-end
+    post-pass runs after every decode and re-fits every END from the envelope, so on a stem it ERASES
+    whatever the separator did to an end and leaves only the starts. That is why the onset fixture drags an
+    ONSET, and why the factorial's word-±300 and gross-line columns are where a verdict can come from."""
     default, plain_note, plain_lines = step_run(tmp_path / "off", monkeypatch, experiments=frozenset())
     assert isinstance(default, TimedDoc), default
     assert "line separator" not in plain_note, "the default's note says nothing about a separator"

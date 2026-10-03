@@ -1,14 +1,12 @@
 """The `songProfile` analysis, against SYNTHESISED signals whose answer is known.
 
-WHY SYNTHESISED AND NOT A FIXTURE. A committed audio file makes a test assert whatever that file happens to
-contain; a generated A-minor triad has a correct answer, so these check ACCURACY rather than shape. The key
-detector either finds A minor in an A-minor chord or it does not.
-
-THE TOTAL CONTRACT IS THE MOST IMPORTANT THING HERE and it is asserted directly: `build_song_profile` must
-never raise and must always return all nine keys. Core's process gate reads a PRESENT profile as "the
-analysis step ran" and an ABSENT one as "still processing" — so a raise that lost the artifact would leave
-core waiting forever for a step it thinks already happened, making the song permanently unsingable and never
-reprocessed. Every test below that feeds it garbage is testing that, not error handling for its own sake.
+A committed audio file makes a test assert whatever that file happens to contain; a generated A-minor triad
+has a correct answer, so these check ACCURACY rather than shape. THE TOTAL CONTRACT is the most important
+thing here and it is asserted directly: `build_song_profile` must never raise and must always return all
+nine keys, because core's process gate reads a PRESENT profile as "the analysis step ran" and an ABSENT one
+as "still processing" — so a raise that lost the artifact would leave core waiting forever for a step it
+thinks already happened, making the song permanently unsingable. Every test below that feeds it garbage is
+testing that, not error handling for its own sake.
 
 Pure numpy, so all of this is in the fast suite — no models, no ffmpeg.
 """

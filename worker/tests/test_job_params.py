@@ -1,19 +1,13 @@
-"""What an align job ASKS FOR is honoured: a person's re-pick, the sync mode, the ASR model (review H5).
+"""What an align job ASKS FOR is honoured: a person's re-pick, the sync mode, the ASR model (H5).
 
-Before H5 the worker read none of `pinnedRef`, `pinnedText`, `asrModel` or `syncMode`. A paste through
+Before H5 the worker read none of `pinnedRef`, `pinnedText`, `asrModel` or `syncMode`: a paste through
 `/api/lyrics-reselect` was silently replaced by the automatic search, nothing wrote the manual key core had
 already pinned (`derived/lyrics/{id}-manual-word.json`), and a room's ASR model and sync mode changed
-nothing. Regressed in f04a2d0e, when the old worker went; its `steps/lyrics/pinned.py` is the semantics
-these tests pin.
-
-Four levels, because the fix spans four:
-
-  * the pure param reads (`steps.api`): what counts as a pin, and which refs one may never touch;
-  * the search (`Search.pinned`, `Search.line_only`): a pin is the whole pool and never falls back;
-  * `run_align` over the scripted `Fake` (the state machine), and over the REAL steps on the CTC fixture
-    (`tests/ctc_fixture.py`): the paste decoded blind through the global path, gated, written to the manual
-    key only once accepted, and NOTHING written or published when the gate refuses it;
-  * core's side of the contract, read from its source (the manual key, the param names, the mode ids).
+nothing. Four levels, because the fix spans four: the pure param reads (`steps.api`) — what counts as a pin,
+and which refs one may never touch; the search (`Search.pinned`, `Search.line_only`), where a pin is the
+whole pool and never falls back; `run_align` over the scripted `Fake` and over the REAL steps on the CTC
+fixture, where the paste is decoded blind, gated, written to the manual key only once accepted and NOTHING
+written when the gate refuses it; and core's side of the contract, read from its source.
 """
 
 from __future__ import annotations

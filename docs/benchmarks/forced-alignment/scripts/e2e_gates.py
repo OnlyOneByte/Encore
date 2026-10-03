@@ -2,17 +2,13 @@
 
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --modes all \\
         --compare ../docs/benchmarks/forced-alignment/results/baseline-v2.json --gates my-wave.yaml
-    cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \\
-        --summarize NEW/rows.jsonl --compare BASE/summary.json --gates my-wave.yaml
 
 A gate is the CONDITION THAT MUST HOLD — the negation of a wave's reject-if — written as a restricted Python
 expression over the two summaries, parsed with `ast` and walked node by node (never `eval`). A gate that
 cannot be evaluated is an ERROR, and an error fails the run exactly like a FAIL, because a gate that silently
-passes on missing data is how a regression ships.
-
-The full grammar (references, metrics, operators, functions), every ERROR condition and the gate-file formats
-are in `docs/benchmarks/forced-alignment/README.md`, "The harness scripts: what each one is for, and the
-limit it states".
+passes on missing data is how a regression ships. The full grammar, every ERROR condition and the gate-file
+formats are in `docs/benchmarks/forced-alignment/README.md`, "The harness scripts: what each one is for, and
+the limit it states".
 """
 
 from __future__ import annotations
@@ -97,53 +93,24 @@ COMPARE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("mix_published", "mix-published", ".0f"),
 )
 
-#: The measurement SETUP a run and its baseline must share for a `base.` gate to mean anything: which job
-#: is measured (`level`), which cases and claims (`seed`, `wrong_k`), which text language, which audio (the
-#: tfr songs' `tfr_audio`) and, at `run_align`, which transcriber (`asr`). A gate that reads the baseline
-#: across a difference here is an ERROR (`run_gates`), not a warning. Measured on the committed results:
-#: `baseline-v2-reference.json` (oracle tfr stems) against `baseline-v2.json` (youtube) passed
-#: `drop20.gross <= base.drop20.gross` as 41 <= 51, a 10-line gap made entirely by the tfr audio; both have
-#: the same 32 song names, so the song-set check could not see it. A key missing on either side is a
-#: difference too: nothing then shows the two ran the same setup (`--summarize` reads `run.json`).
+#: The measurement SETUP a run and its baseline must share for a `base.` gate to mean anything: the job
+#: (`level`), the cases and claims (`seed`, `wrong_k`), the text language, the audio and the transcriber. A
+#: gate reading the baseline across a difference here is an ERROR, not a warning; so is a key missing on one.
 SETUP_META = ("level", "seed", "wrong_k", "language", "tfr_audio", "target", "asr", "sync_mode")
 
 #: A setup key a summary may leave out, and what its absence means: every run before `--sync-mode` existed
-#: (W3) sent no `syncMode`, which the worker reads as `forced`, and every run before `--no-stem` existed (W4)
-#: aligned on the vocals stem. So a forced stem run compares with those baselines, and a `lines` or a
-#: STEMLESS run against any of them is a setup mismatch, not a comparison — a stemless case decodes a
-#: different audio file, so no metric of it is a delta on a stem baseline's.
+#: sent no `syncMode`, which the worker reads as `forced`, and every run before `--no-stem` aligned on the
+#: vocals stem. So a `lines` or a STEMLESS run against those baselines is a mismatch, not a comparison.
 SETUP_DEFAULTS: Mapping[str, str] = {"sync_mode": "forced", "target": lib.STEM_TARGET}
 
-#: Run metadata `--compare` WARNS on but gates accept: the independent variables of an arm. W4 6b/6c gate a
-#: model change against the base-model baseline, and every default-off arm is an `align_experiments`
-#: setting, so a difference here is the experiment, not a broken comparison. `code` is absent for the same
-#: reason — a wave's run differs from its baseline in code by definition — and is printed in the header AND,
-#: since W4b review r2 (spec-10), as its own NOTE whenever the two sides differ in it (`format_compare`).
-#: `detector` joins them for W7 review r1-spec-9's reason: it is an independent variable of the SHIPPED
-#: configuration (`e2e.py --detector lingua` builds `language.lingua_detector`, which is what
-#: `__main__.build_adapters` does), it can move the TEXT's language and therefore the syllabifier and the
-#: published document, and every row recorded before it existed ran without one — so a difference is the arm,
-#: WARNED on and printed, not a broken comparison.
-#:
-#: A KEY WITH A `lib.RUN_DEFAULTS` ENTRY IS COMPARED EVEN WHERE ONE SIDE IS SILENT (W7 review r2-spec-10).
-#: `detector` has one, and it is why: every committed document under `results/` was written before the stamp
-#: existed, so the "one side was measured with lingua" warning this tuple is for could never fire — the
-#: comparison skipped the key the moment a baseline lacked it, which is EVERY baseline. A missing key now
-#: means the recorded default, so the warning fires on the only difference that has ever existed. The other
-#: three keys have no default: `model` absent is unknown, not `base`, and silence there must stay silence.
+#: Run metadata `--compare` WARNS on but gates accept: the independent variables of an arm, a difference here
+#: being the experiment rather than a broken comparison. `code` is absent for the same reason and printed as
+#: its own NOTE. A key with a `lib.RUN_DEFAULTS` entry is compared even where one side is silent.
 COMPARED_META = ("model", "model_identity", "align_config", "detector")
 
-#: The metrics an UNCALIBRATED bundle's run cannot measure, so a gate reading one of them on such a run is an
-#: ERROR (`run_gates`, W4b review r2 spec-13). `wrongtext_pass` is the wrong-text verdict, and on a bundle
-#: with no `lexical.CALIBRATED` row every emission-scale gate stands down: the lift is unreadable, so until
-#: W7's review the verdict fell back to the sheet-span envelope gate, which W4b measured at 125/320 wrongtext
-#: passes. A row that says "0 of 320 wrong texts passed" would then be the ENVELOPE gate's number recorded
-#: under the new bundle's name. SINCE W7 review r1-correctness-1 the number is a THIRD thing on such a run —
-#: the global rung DECLINES a word document there, so a `time_text` row counts every wrong text as refused by
-#: the absence of a gate, and a `run_align` row counts whatever the LINE_SYNC rung's uncalibrated share let
-#: through — and none of the three is this bundle's own wrong-text measurement, which is what the rule says.
-#: `e2e.py` marks such runs (`uncalibrated` in `run.json` and in the summary's meta), and every other metric
-#: — timings, gross lines, highlight — is that bundle's own measurement and gates as usual.
+#: The metrics an UNCALIBRATED bundle's run cannot measure, so a gate reading one on such a run is an ERROR:
+#: on a bundle with no `lexical.CALIBRATED` row every emission-scale gate stands down, so `wrongtext_pass` is
+#: not that bundle's measurement. Every other metric — timings, gross lines, highlight — is, and gates as usual.
 UNCALIBRATED_METRICS = ("wrongtext_pass",)
 
 
@@ -376,17 +343,12 @@ def run_gates(
 ) -> list[GateResult]:
     """Every gate's verdict, the built-in `no-error-rows` first unless `builtin` is off.
 
-    A gate that READ THE BASELINE (a `base.` path, `delta`, `*_song_delta`, `_up` / `_down`,
-    `doc_changed`) is an ERROR when the two summaries' measurement setup differs (`setup_mismatch`):
-    `--compare` used to print a WARNING and the verdicts went on as if the runs were comparable. A gate
-    that reads only the run is judged as usual.
-
-    A gate that READ A METRIC THE RUN'S BUNDLE COULD NOT MEASURE is an ERROR too (`UNCALIBRATED_METRICS`,
-    W4b review r2): on a run whose model has no `lexical.CALIBRATED` row the harness records
-    `uncalibrated: true`, and `wrongtext_pass` there is the sheet-span envelope gate's number, not that
-    bundle's. Judged on the RUN's side only — a baseline that was uncalibrated is a baseline nothing should
-    have been gated against, and `format_compare` says so for both sides.
-    """
+    A gate that READ THE BASELINE (a `base.` path, `delta`, `*_song_delta`, `_up` / `_down`, `doc_changed`)
+    is an ERROR when the two summaries' measurement setup differs (`setup_mismatch`); `--compare` used to
+    print a WARNING and the verdicts went on as if the runs were comparable. A gate that READ A METRIC THE
+    RUN'S BUNDLE COULD NOT MEASURE is an ERROR too (`UNCALIBRATED_METRICS`): on an uncalibrated run
+    `wrongtext_pass` is the sheet-span envelope gate's number, not that bundle's. Judged on the RUN's side
+    only — a baseline that was uncalibrated is one nothing should have been gated against."""
     out: list[GateResult] = [error_rows_gate(run)] if builtin else []
     mismatch = setup_mismatch(run.meta, base.meta) if base is not None else []
     uncalibrated = bool(run.meta.get("uncalibrated"))
@@ -436,17 +398,11 @@ class Songs:
     """A per-song value: {(mode, song): number}, and which summary it was read from.
 
     `absent` holds the songs the summary HAS but that carry no value for the metric — a refused song has no
-    ±500 — so a run-vs-baseline comparison can tell "lost its value" (a regression) from "gained one",
-    and a reduction can refuse to pretend the song is not there. It is CARRIED through arithmetic.
-
-    `side` is RUN or BASE for a value read straight from one summary, None once derived (a delta, an
-    `_up` flag, a run-vs-baseline expression). It decides how two per-song values pair (`_combine`).
-
-    `pool`, on a BASE value only, is the (mode, song) keys the RUN measured at the same address. A
-    reduction of a baseline value must range over exactly the run's songs (`_Walker.call`), or
-    `sum(song.gross) <= sum(base.song.gross)` compares two pools: measured, a run of song a alone (3
-    gross) passed `3 <= 9` against a baseline of a (0) and b (9).
-    """
+    ±500 — so a comparison can tell "lost its value" from "gained one", and a reduction can refuse to pretend
+    the song is not there; it is CARRIED through arithmetic. `side` is RUN or BASE for a value read straight
+    from one summary, None once derived, and it decides how two per-song values pair. `pool`, on a BASE value
+    only, is the (mode, song) keys the RUN measured at the same address: a reduction of a baseline value must
+    range over exactly the run's songs, or `sum(song.gross) <= sum(base.song.gross)` compares two pools."""
 
     __slots__ = ("absent", "pool", "side", "values")
 
@@ -570,8 +526,7 @@ class _Walker:
         self.read_base = False
         #: Every metric name the evaluation reached — a derived `METRIC_up` and the stem it resolves to alike,
         #: since both are recorded on the way down. `run_gates` ERRORs a gate that reads a metric the run's
-        #: bundle could not measure (`UNCALIBRATED_METRICS`), which a textual scan of the expression would
-        #: only approximate.
+        #: bundle could not measure, which a textual scan of the expression would only approximate.
         self.read_metrics: set[str] = set()
 
     # ── expressions ──
@@ -917,15 +872,12 @@ def _as_condition(value: Value) -> Value:
 def _combine(op: Callable[[float, float], float], left: Value, right: Value) -> Value:
     """`op` elementwise; a number broadcasts against per-song values, whose `absent` songs ride along.
 
-    Two per-song values pair on the songs both have a number for. How the REST is treated depends on
-    where the two came from, because silently dropping a song is exactly how a regression passes:
-      * the RUN against the BASELINE (`truth.song.pm500 - base.truth.song.pm500`): a song with a baseline
-        value that the run lost, or did not measure at all, is an ERROR (`_require_paired`) — the same
-        rule `min_song_delta` and `_up` / `_down` apply, so the explicit spelling of "no song worse by more
-        than 1 pt" cannot pass on the song that was refused. A song that GAINED a value is skipped;
-      * anything else (one summary with itself, a derived value with either): a song both know of but
-        one has no number for stays `absent`, so a later reduction refuses to pretend it is not there.
-    """
+    Two per-song values pair on the songs both have a number for, and how the REST is treated depends on
+    where the two came from, because silently dropping a song is how a regression passes. The RUN against the
+    BASELINE: a song with a baseline value that the run lost, or did not measure, is an ERROR
+    (`_require_paired`) — the same rule `min_song_delta` and `_up` / `_down` apply, so "no song worse by more
+    than 1 pt" cannot pass on the song that was refused, while a song that GAINED a value is skipped.
+    Anything else: a song both know of but one has no number for stays `absent`, for the later reduction."""
     if isinstance(left, Songs) and isinstance(right, Songs):
         common = [k for k in left.values if k in right.values]
         if {left.side, right.side} == {RUN, BASE}:

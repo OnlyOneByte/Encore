@@ -3,18 +3,13 @@
 
     uv run python docs/benchmarks/forced-alignment/scripts/truth.py tfr-flyaway
 
-AUTHORED, NEVER AUTO-GENERATED, and the distinction is the whole validity of this benchmark. yt-dlp's
-`--write-subs` returns the track a human typed; `--write-auto-subs` returns YouTube's own ASR. Scoring a
-forced aligner against another model's output measures agreement between two models, not correctness — so
-this script passes `--write-subs` only, and refuses a song that has none rather than falling back.
-
-LINE LEVEL, because that is what exists. A `json3` caption event carries one start and one duration for a
-whole line; the per-word offsets a karaoke ball would want are absent (verified: 0 of 75 events on
-tfr-flyaway carry more than one timed segment). So every figure in this benchmark is a LINE ONSET figure,
-and no claim is made about word placement.
-
-WHY LINE ONSETS ARE STILL THE NUMBER THAT MATTERS: a singer reads the line before singing it. A line that
-highlights late is the complaint; a word inside a correctly-placed line being 80 ms off is not.
+AUTHORED, NEVER AUTO-GENERATED, and the distinction is the whole validity of this benchmark: yt-dlp's
+`--write-subs` returns the track a human typed and `--write-auto-subs` returns YouTube's own ASR, and scoring
+a forced aligner against another model's output measures agreement between two models. So this passes
+`--write-subs` only and refuses a song that has none. LINE LEVEL, because that is what exists — a `json3`
+caption event carries one start and one duration for a whole line, and the per-word offsets a karaoke ball
+would want are absent (0 of 75 events on tfr-flyaway carry more than one timed segment). Line onsets are
+still the number that matters: a singer reads the line before singing it.
 """
 
 from __future__ import annotations

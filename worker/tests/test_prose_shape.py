@@ -1,15 +1,13 @@
 """The 2026-10-01 directive as a test: a docstring is a few lines of WHAT and WHY; prose lives in `docs/`.
 
-W7b moved ~3 800 prose lines out of a package that measured 48% prose, and left the bound at "no block over
-40 lines" — which 101 blocks of 12 lines or more then satisfied, module docstrings of 28–40 lines among them.
-W7c replaced that one bound with the shape rules below, so "a few lines" is a number per KIND of prose rather
-than per run of it, and the remedy for a failure is always the same: move the narrative to
-`docs/arch/04-alignment.md`, `docs/arch/05-worker.md` or the measurement README and cite it by path and `§N`
-(`test_docs_pointers.py` checks that the pointer resolves).
+Nine rules over three roots — the package, the worker's own tests and the committed bench harness. Five are
+SHAPE (module docstring, def docstring, comment run, `#:` comment, and the bridged BLOCK that catches them in
+combination) and four are RATIO, which stops prose the shape rules allow accumulating module by module, layer
+by layer and root by root.
 
-Eight rules. Five are shape — module docstring, def docstring, comment run, `#:` attribute comment, and the
-bridged BLOCK that catches them in combination — and three are ratio, which is what stops prose the shape
-rules allow accumulating module by module and layer by layer.
+docs/arch/05-worker.md §12 carries each bound, what sat on it when it was set, and why the ratio rules bind
+per module in the package and per ROOT elsewhere. The remedy for a failure is always the same: move the
+narrative to that document, to 04-alignment.md or to the measurement README, and cite it by path and `§N`.
 """
 
 from __future__ import annotations
@@ -22,74 +20,66 @@ from pathlib import Path
 import pytest
 
 #: Lines a MODULE docstring may use: what the module is, what it is for, and where the long story lives.
-#: `domain/lyrics/parts.py` held 40 — a mechanism, two anchored rules, a measured refusal, an interpolation
-#: policy and an order invariant, all of which is `docs/arch/04-alignment.md` §8 and §12 now. Five modules sit
-#: at exactly 12; `TIGHTEST` names one of them.
+#: A harness script's also holds the command lines that run it, which is most of its twelve.
 MAX_MODULE_DOCSTRING = 12
 
-#: Lines a function, method or class docstring may use. Measured at the directive: `align_steps` held a
-#: 125-line one. Its longest now is 8 (`docs/arch/04-alignment.md` §4 carries the repair narrative).
+#: Lines a function, method or class docstring may use. `align_steps` held a 125-line one at the directive.
 MAX_DEF_DOCSTRING = 8
 
 #: Lines a run of own-line `#` comments may use, bridged across blank lines as rule 5 bridges.
-#: `host/config.py` held 261 before W7b; two modules sit at exactly 6.
+#: `host/config.py` held 261 before W7b, as `#` continuation rather than as a docstring.
 MAX_COMMENT_RUN = 6
 
 #: Lines a `#:` attribute comment may use: what the value means, its unit, and a pointer. NOT its derivation —
-#: that is a measurement, and measurements live in `docs/benchmarks/forced-alignment/README.md`.
+#: that is a measurement, and measurements live in docs/benchmarks/forced-alignment/README.md.
 MAX_ATTRIBUTE_COMMENT = 3
 
-#: Lines a bridged prose BLOCK may use in the package: EXACTLY what rules 1 and 3 allow back to back, which is
-#: the worst legal combination, so this is a BACKSTOP rather than a bound anything sits on — the package's
-#: longest block is 12 and `test_each_bound_still_names_what_sits_on_it` asserts that headroom rather than
-#: pretending it away. What it catches is a THIRD paragraph after those two. Bridged across blank lines.
+#: Lines a bridged prose BLOCK may use: EXACTLY what rules 1 and 3 allow back to back, the worst legal
+#: combination, so this is a BACKSTOP that catches a THIRD paragraph rather than a bound anything sits on.
+#: `test_each_bound_still_names_what_sits_on_it` asserts that headroom instead of pretending it away.
 MAX_BLOCK_LINES = MAX_MODULE_DOCSTRING + MAX_COMMENT_RUN
 
-#: Rule 5's bound for the TESTS and the BENCH HARNESS, which rules 1-4 do not reach. Higher than the package's
-#: because a harness script's docstring carries the COMMAND LINES that run it and a test's carries the shapes
-#: it pins — both of which belong beside the code. W7b's bound for all three roots was 40, and `TIGHTEST`
-#: names `tests/test_align_provenance.py` sitting on this one exactly.
-MAX_SCRIPT_BLOCK_LINES = 24
-
 #: Prose lines per line of code, for a module rule 6 reaches. W7b's bound was 1.1; the package measured 0.745
-#: when W7c started and 0.489 when it finished. `TIGHTEST` names the module closest to this.
+#: when W7c started and 0.489 when it finished.
 MAX_PROSE_RATIO = 0.55
 
-#: Below this many lines of code the ratio measures the module's INTERFACE rather than its prose — a Protocol
-#: or a table of constants is one line of code per declaration — so rule 6 skips the module and rules 1–5 and
-#: 7 carry it. The smallest module rule 6 reaches is `domain/audio/vocal_range.py` at 101 lines of code.
+#: Below this many lines of code the ratio measures a module's INTERFACE rather than its prose, so rule 6
+#: skips it and rules 1-5 and 7 carry it. The smallest module rule 6 reaches is `domain/audio/vocal_range.py`.
 RATIO_MIN_CODE = 100
 
-#: Rule 7: the aggregates, which is what holds the modules rule 6 is too coarse for. Both were 1.1 / 0.95 at
-#: W7b. The worst layer is `encore_worker/artifacts` at 0.545 and the package is 0.489; the package bound sits
-#: below the layer bound because every layer being at its bound would be a different package from this one.
+#: Rule 7, the aggregates that hold the modules rule 6 is too coarse for. The worst layer is
+#: `encore_worker/artifacts` at 0.545 and the package is 0.489; the package bound sits below the layer bound
+#: because every layer being at its bound would be a different package from this one.
 MAX_LAYER_RATIO = 0.55
 MAX_PACKAGE_RATIO = 0.52
 
-#: Named exceptions, `"<module>::<qualname>": "the reason"`. EMPTY, and that is the finished state: W7c
-#: cleared 271 package violations without granting one, which is the point — an exception is a judgement about
-#: a particular docstring, and raising a bound is a judgement about every docstring in the package.
+#: Rule 9: the other two roots, each held to an aggregate rather than per module (docs/arch/05-worker.md §12 —
+#: a test file is many small functions each honestly carrying two lines, a gate script a measurement argument
+#: with a `main()`). Measured 0.3124 and 0.2580 when W7c extended the shape rules to them.
+MAX_TESTS_RATIO = 0.33
+MAX_HARNESS_RATIO = 0.28
+
+#: Named exceptions, `"<label>::<qualname>": "the reason"`. EMPTY, and that is the finished state: W7c cleared
+#: 271 package violations and 239 in the other two roots without granting one, which is the point.
 #: `test_every_named_exception_is_still_needed` deletes a stale entry for whoever adds one.
 EXCEPTIONS: dict[str, str] = {}
 
 #: The module or layer sitting CLOSEST to each bound, checked by
-#: `test_each_bound_still_names_what_sits_on_it` — which also asserts the ONE bound with headroom
-#: (`MAX_BLOCK_LINES`) still has it. A comment claiming headroom it does not have is worse than no comment: it
-#: sends the next wave to raise the number instead of moving the paragraph, which the directive rules out.
+#: `test_each_bound_still_names_what_sits_on_it`, which also asserts that rule 5's headroom still exists: a
+#: comment claiming headroom it has not got sends the next wave to raise a number (05-worker.md §12).
 TIGHTEST = {
     "module": "encore_worker/adapters/audiosep.py",
     "def": "encore_worker/adapters/cli.py",
     "comment": "encore_worker/__main__.py",
     "attribute": "encore_worker/adapters/ml.py",
-    "script_block": "tests/test_align_provenance.py",
+    "block": "scripts/e2e.py",
     "ratio": "encore_worker/domain/lyrics/policy.py",
     "layer": "encore_worker/artifacts",
 }
 
 #: Every directory of the package holding Python, NESTED ONES INCLUDED — a top-level-only list left
-#: `domain/audio` (measured 1.18 at W7b review r1) above the bound and invisible, because its parent
-#: `domain/` averaged it away. `test_every_layer_of_the_package_is_listed` walks recursively too, so nothing
-#: may leave this tuple and a new directory must join it.
+#: `domain/audio` (measured 1.18 at W7b) above the bound and invisible behind its parent's average.
+#: `test_every_layer_of_the_package_is_listed` walks recursively too, so nothing may leave this tuple.
 LAYERS = (
     "encore_worker/adapters",
     "encore_worker/artifacts",
@@ -104,24 +94,12 @@ LAYERS = (
     "encore_worker/workflows",
 )
 
-#: Rule 5's roots: the package, the PLAN's second cleanup root, and the worker's own tests — an essay is no
-#: more checkable in a test file. Rules 1–4 bind on `SHAPE_ROOT` alone; see `test_the_shape_rules_say_where`.
-BLOCK_ROOTS = (
-    "encore_worker",
-    "tests",
-    "../docs/benchmarks/forced-alignment/scripts",
-)
-
-#: Where rules 1–4 bind. The package is what the 2026-10-01 directive measured and what W7b and W7c swept;
-#: `tests/` and the harness are held by rule 5 and by their own aggregate, and carrying the per-kind rules
-#: into them is a wave of its own (measured as this one closed: 156 and 83 violations).
-SHAPE_ROOT = "encore_worker"
-
-#: The committed bench harness, held to an aggregate of its own rather than to `MAX_PROSE_RATIO` per module: a
-#: gate script is a measurement argument with a `main()` attached, so its honest prose share is higher than a
-#: library's. 0.35 after the W7b sweep, 0.322 after W7c trimmed its blocks.
+#: The three roots every shape rule reads, worker-root-relative. An essay is no more checkable in a test file
+#: or in a gate script than in the package, and W7c is the wave that stopped exempting them.
+PACKAGE_ROOT = "encore_worker"
+TESTS_ROOT = "tests"
 HARNESS_ROOT = "../docs/benchmarks/forced-alignment/scripts"
-MAX_HARNESS_RATIO = 0.33
+ROOTS = (PACKAGE_ROOT, TESTS_ROOT, HARNESS_ROOT)
 
 
 def _worker_root() -> Path:
@@ -249,23 +227,23 @@ def _longest_block(source: str) -> tuple[int, int]:
 
 
 def _modules(worker: Path) -> list[str]:
-    """Every module of the package, worker-root-relative and sorted."""
+    """Every module of the PACKAGE, worker-root-relative and sorted — what the ratio rules read."""
     return sorted(str(path.relative_to(worker)) for path in (worker / "encore_worker").rglob("*.py"))
 
 
-def _block_root_modules(worker: Path) -> list[tuple[str, Path]]:
-    """`(label, path)` for every module rule 5 reads, over all of `BLOCK_ROOTS`."""
+def _root_modules(worker: Path, roots: tuple[str, ...] = ROOTS) -> list[tuple[str, Path]]:
+    """`(label, path)` for every module of `roots`, labelled by the root's own directory name."""
     found: list[tuple[str, Path]] = []
-    for root in BLOCK_ROOTS:
+    for root in roots:
         base = (worker / root).resolve()
-        assert base.is_dir(), f"rule 5's root {root} is not a directory"
+        assert base.is_dir(), f"the shape rules' root {root} is not a directory"
         for path in sorted(base.rglob("*.py")):
             found.append((f"{Path(root).name}/{path.relative_to(base)}", path))
     return found
 
 
 def _shape_violations(worker: Path) -> dict[str, list[tuple[str, str]]]:
-    """`{rule: [(module::qualname, how it reads)]}` for rules 1–4 over `SHAPE_ROOT`, exceptions applied."""
+    """`{rule: [(label::qualname, how it reads)]}` for rules 1-4 over every root, exceptions applied."""
     found: dict[str, list[tuple[str, str]]] = {"module": [], "def": [], "comment": [], "attribute": []}
     bounds = {
         "module": MAX_MODULE_DOCSTRING,
@@ -274,16 +252,16 @@ def _shape_violations(worker: Path) -> dict[str, list[tuple[str, str]]]:
         "comment": MAX_COMMENT_RUN,
         "attribute": MAX_ATTRIBUTE_COMMENT,
     }
-    for module in _modules(worker):
-        source = (worker / module).read_text(encoding="utf-8")
+    for label, path in _root_modules(worker):
+        source = path.read_text(encoding="utf-8")
         for kind, qualname, first, length in _docstrings(source):
             rule = "def" if kind == "class" else kind
-            key = f"{module}::{qualname}"
+            key = f"{label}::{qualname}"
             if length > bounds[kind] and key not in EXCEPTIONS:
-                found[rule].append((key, f"{module}:{first} ({length} lines, bound {bounds[kind]})"))
+                found[rule].append((key, f"{label}:{first} ({length} lines, bound {bounds[kind]})"))
         for first, length, rule in _comment_runs(source):
             if length > bounds[rule]:
-                found[rule].append((module, f"{module}:{first} ({length} lines, bound {bounds[rule]})"))
+                found[rule].append((label, f"{label}:{first} ({length} lines, bound {bounds[rule]})"))
     return found
 
 
@@ -292,20 +270,24 @@ def worker() -> Path:
     return _worker_root()
 
 
-def test_the_package_has_modules_to_measure(worker: Path) -> None:
+def test_the_three_roots_have_modules_to_measure(worker: Path) -> None:
     """A glob that silently matched nothing would make every rule below vacuously green."""
-    found = _modules(worker)
-    assert len(found) > 60, f"expected the whole package, found {len(found)} modules"
-    assert "encore_worker/steps/align_steps.py" in found
+    labels = [label for label, _path in _root_modules(worker)]
+    assert len(labels) > 150, f"expected all three roots, found {len(labels)} modules"
+    for root in ROOTS:
+        prefix = f"{Path(root).name}/"
+        assert sum(1 for label in labels if label.startswith(prefix)) > 10, f"{root} matched almost nothing"
+    assert "encore_worker/steps/align_steps.py" in labels
+    assert len(_modules(worker)) > 60, "the ratio rules have stopped seeing the package"
 
 
 def test_the_shape_rules_say_where(worker: Path) -> None:
-    """Rules 1–4's root is a claim about coverage, so it is asserted rather than left to the constant."""
-    assert SHAPE_ROOT in BLOCK_ROOTS, "the shape root must also be read by rule 5"
+    """Rules 1-4's roots are a claim about coverage, so they are asserted rather than left to the constant."""
     counted = _shape_violations(worker)
-    read = sum(len(_docstrings((worker / module).read_text(encoding="utf-8"))) for module in _modules(worker))
-    assert read > 400, f"rules 1–2 read only {read} docstrings; the shape root has stopped matching"
+    read = sum(len(_docstrings(path.read_text(encoding="utf-8"))) for _label, path in _root_modules(worker))
+    assert read > 1500, f"rules 1-2 read only {read} docstrings; a root has stopped matching"
     assert set(counted) == {"module", "def", "comment", "attribute"}
+    assert set(ROOTS) == {PACKAGE_ROOT, TESTS_ROOT, HARNESS_ROOT}
 
 
 def test_a_module_docstring_says_what_it_is_and_points_at_the_rest(worker: Path) -> None:
@@ -319,7 +301,11 @@ def test_a_module_docstring_says_what_it_is_and_points_at_the_rest(worker: Path)
 
 
 def test_a_def_docstring_is_what_and_why_and_nothing_longer(worker: Path) -> None:
-    """Rule 2, over every function, method and class of the package."""
+    """Rule 2, over every function, method and class of all three roots.
+
+    A TEST's docstring keeps the claim it pins and the mutation that used to survive; what it does not keep is
+    a re-derivation of a measurement or a re-argued review finding (docs/arch/05-worker.md §12).
+    """
     over = sorted(where for _, where in _shape_violations(worker)["def"])
     assert not over, (
         f"these def/class docstrings exceed {MAX_DEF_DOCSTRING} lines: {over}. Threshold provenance, "
@@ -347,29 +333,24 @@ def test_an_attribute_comment_gives_the_unit_and_a_pointer_not_a_derivation(work
     )
 
 
-def _block_bound(label: str) -> int:
-    """`MAX_BLOCK_LINES` inside the package, `MAX_SCRIPT_BLOCK_LINES` in the tests and the harness."""
-    return MAX_BLOCK_LINES if label.startswith(f"{SHAPE_ROOT}/") else MAX_SCRIPT_BLOCK_LINES
-
-
 def test_no_prose_block_is_an_essay(worker: Path) -> None:
-    """Rule 5, over every module of every root: the combination bound rules 1–4 cannot see."""
-    modules = _block_root_modules(worker)
+    """Rule 5, over every module of every root: the combination bound rules 1-4 cannot see."""
+    modules = _root_modules(worker)
     assert len(modules) > 150, f"rule 5 read only {len(modules)} modules; a root has stopped matching"
     essays: list[str] = []
     for label, path in modules:
         length, first = _longest_block(path.read_text(encoding="utf-8"))
-        if length > _block_bound(label):
-            essays.append(f"{label}:{first} ({length} lines, bound {_block_bound(label)})")
+        if length > MAX_BLOCK_LINES:
+            essays.append(f"{label}:{first} ({length} lines, bound {MAX_BLOCK_LINES})")
     assert not essays, (
-        f"these carry a prose run over their root's bound: {essays}. Measurement narratives, threshold "
-        "derivations, rejected alternatives and failure accounts belong in docs/ with the code citing the "
-        "path (see tests/test_docs_pointers.py)."
+        f"these carry a prose run over the {MAX_BLOCK_LINES}-line bound: {essays}. Measurement narratives, "
+        "threshold derivations, rejected alternatives and failure accounts belong in docs/ with the code "
+        "citing the path (see tests/test_docs_pointers.py)."
     )
 
 
 def test_a_module_with_real_code_carries_half_as_much_prose_as_code(worker: Path) -> None:
-    """Rule 6, over every module big enough for the ratio to mean something (`RATIO_MIN_CODE`)."""
+    """Rule 6, over every PACKAGE module big enough for the ratio to mean something (`RATIO_MIN_CODE`)."""
     over: list[str] = []
     measured = 0
     for module in _modules(worker):
@@ -410,29 +391,45 @@ def test_a_layer_carries_half_as_much_prose_as_code(worker: Path, layer: str) ->
     )
 
 
-def test_the_whole_package_carries_half_as_much_prose_as_code(worker: Path) -> None:
-    """Rule 7 for the package: the one number the directive was given in."""
+def _root_ratio(worker: Path, root: str) -> tuple[int, int]:
+    """`(prose, code)` summed over one root's modules."""
     prose = code = 0
-    for module in _modules(worker):
-        one_prose, one_code = _counts((worker / module).read_text(encoding="utf-8"))
+    for _label, path in _root_modules(worker, (root,)):
+        one_prose, one_code = _counts(path.read_text(encoding="utf-8"))
         prose += one_prose
         code += one_code
+    return prose, code
+
+
+def test_the_whole_package_carries_half_as_much_prose_as_code(worker: Path) -> None:
+    """Rule 8: the one number the directive was given in."""
+    prose, code = _root_ratio(worker, PACKAGE_ROOT)
     assert prose / code <= MAX_PACKAGE_RATIO, (
         f"encore_worker is {prose} prose lines to {code} of code ({prose / code:.2f}), over the "
-        f"{MAX_PACKAGE_RATIO} bound. It was 1.21 before W7b, 0.745 before W7c and 0.50 after."
+        f"{MAX_PACKAGE_RATIO} bound. It was 1.21 before W7b, 0.745 before W7c and 0.49 after."
+    )
+
+
+def test_the_worker_tests_carry_less_prose_than_their_own_bound(worker: Path) -> None:
+    """Rule 9 for `tests/`, which W7b left out of scope entirely and W7c swept (239 edits with the harness).
+
+    An aggregate rather than rule 6 per module, for docs/arch/05-worker.md §12's reason: a test file is many
+    small functions each honestly carrying two lines of WHAT, so a per-module bound would delete the right
+    length of docstring. "No narrative here either" still has to be checkable, and this is how.
+    """
+    prose, code = _root_ratio(worker, TESTS_ROOT)
+    assert code > 10_000, f"the tests root matched only {code} lines of code; it has moved"
+    assert prose / code <= MAX_TESTS_RATIO, (
+        f"worker/tests is {prose} prose lines to {code} of code ({prose / code:.2f}), over the "
+        f"{MAX_TESTS_RATIO} bound. A test docstring says what it pins and why, and the measurement it was "
+        "read off goes to docs/benchmarks/forced-alignment/README.md."
     )
 
 
 def test_the_bench_harness_carries_less_prose_than_its_own_bound(worker: Path) -> None:
-    """The PLAN's second cleanup root, as an aggregate: `MAX_PROSE_RATIO` per module is the wrong instrument
-    for a gate script, but "no narrative here either" still has to be checkable."""
-    files = sorted((worker / HARNESS_ROOT).resolve().rglob("*.py"))
-    assert len(files) > 8, f"the bench harness matched {len(files)} modules; the root has moved"
-    prose = code = 0
-    for path in files:
-        one_prose, one_code = _counts(path.read_text(encoding="utf-8"))
-        prose += one_prose
-        code += one_code
+    """Rule 9 for the committed bench harness, the PLAN's second cleanup root."""
+    prose, code = _root_ratio(worker, HARNESS_ROOT)
+    assert code > 5_000, f"the bench harness matched only {code} lines of code; the root has moved"
     assert prose / code <= MAX_HARNESS_RATIO, (
         f"the bench harness is {prose} prose lines to {code} of code ({prose / code:.2f}), over the "
         f"{MAX_HARNESS_RATIO} bound. A harness's argument belongs in the README it measures for."
@@ -460,34 +457,32 @@ def test_each_bound_still_names_what_sits_on_it(worker: Path) -> None:
     This is the defect it closes (W7b review r2-correctness-2): three bounds shipped with comments calling
     them generous while two modules sat exactly on them. Update `TIGHTEST` and the comment together.
     """
-    longest: dict[str, dict[str, float]] = {"module": {}, "def": {}, "comment": {}, "attribute": {}}
-    for module in _modules(worker):
-        source = (worker / module).read_text(encoding="utf-8")
+    longest: dict[str, dict[str, float]] = {
+        "module": {},
+        "def": {},
+        "comment": {},
+        "attribute": {},
+        "block": {},
+    }
+    for label, path in _root_modules(worker):
+        source = path.read_text(encoding="utf-8")
         for kind, _, _, length in _docstrings(source):
             rule = "def" if kind == "class" else kind
-            longest[rule][module] = max(longest[rule].get(module, 0), length)
+            longest[rule][label] = max(longest[rule].get(label, 0), length)
         for _, length, rule in _comment_runs(source):
-            longest[rule][module] = max(longest[rule].get(module, 0), length)
+            longest[rule][label] = max(longest[rule].get(label, 0), length)
+        longest["block"][label] = float(_longest_block(source)[0])
     for rule in longest:
         assert TIGHTEST[rule] in _worst(longest[rule]), (
             f"the longest {rule} prose is no longer in {TIGHTEST[rule]} but in "
             f"{sorted(_worst(longest[rule]))}. Re-point TIGHTEST and that bound's `#:` comment at it."
         )
-
-    blocks: dict[str, dict[str, float]] = {"block": {}, "script_block": {}}
-    for label, path in _block_root_modules(worker):
-        rule = "block" if label.startswith(f"{SHAPE_ROOT}/") else "script_block"
-        blocks[rule][label] = float(_longest_block(path.read_text(encoding="utf-8"))[0])
-    assert TIGHTEST["script_block"] in _worst(blocks["script_block"]), (
-        f"the longest script block is now in {sorted(_worst(blocks['script_block']))}, not "
-        f"{TIGHTEST['script_block']}."
-    )
-    # Rule 5's PACKAGE bound is the only one with headroom, and the comment on it says so: rules 1-4 bind
-    # first, so no module reaches the worst legal combination. Asserted, or that claim could go stale too.
-    worst_block = max(blocks["block"].values())
+    # Rule 5 is the only bound with headroom, and the comment on it says so: rules 1-4 bind first, so no
+    # module reaches the worst legal combination. Asserted, or that claim could go stale too.
+    worst_block = max(longest["block"].values())
     assert worst_block < MAX_BLOCK_LINES, (
-        f"a package block reaches {worst_block:.0f} of {MAX_BLOCK_LINES}: rules 1-4 no longer bind first, "
-        "so MAX_BLOCK_LINES' `#:` comment is stale and TIGHTEST owes it an entry."
+        f"a block reaches {worst_block:.0f} of {MAX_BLOCK_LINES}: rules 1-4 no longer bind first, so "
+        "MAX_BLOCK_LINES' `#:` comment is stale."
     )
 
     ratios = {
@@ -509,19 +504,19 @@ def test_each_bound_still_names_what_sits_on_it(worker: Path) -> None:
 def test_every_named_exception_is_still_needed(worker: Path) -> None:
     """An exception nobody needs reads as a defect that is still open, so a stale one fails.
 
-    The route is deliberately narrow: only a docstring can be excepted, by `module::qualname`, and only with a
+    The route is deliberately narrow: only a docstring can be excepted, by `label::qualname`, and only with a
     reason. A comment run has no stable name and so has no route at all — shorten it, or make it a docstring
     and argue for the exception there.
     """
+    paths = dict(_root_modules(worker))
     for key, reason in EXCEPTIONS.items():
-        module, _, qualname = key.partition("::")
-        assert qualname, f"{key} is not a `module::qualname` exception key"
+        label, _, qualname = key.partition("::")
+        assert qualname, f"{key} is not a `label::qualname` exception key"
         assert len(reason) > 20, f"{key}'s exception gives no reason: {reason!r}"
-        path = worker / module
-        assert path.is_file(), f"{key} excepts a module that no longer exists"
+        assert label in paths, f"{key} excepts a module that no longer exists"
         lengths = {
             name: length
-            for kind, name, _, length in _docstrings(path.read_text(encoding="utf-8"))
+            for kind, name, _, length in _docstrings(paths[label].read_text(encoding="utf-8"))
             if (kind == "module" and qualname == "<module>") or (kind != "module" and name == qualname)
         }
         assert qualname in lengths, f"{key} excepts a docstring that no longer exists"

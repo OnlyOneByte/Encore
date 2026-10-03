@@ -1,19 +1,15 @@
 #!/usr/bin/env python
 """The TV-highlight parity fixture: documents, playback positions, and the word the TV lights at each.
 
-    cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/tv_parity.py        # rewrite it
+    cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/tv_parity.py        # rewrite
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/tv_parity.py --check
 
 The bench's `highlight` metric reads "which word is lit" through `e2e_lib`'s PORT of the TV's own
 `core/src/lib/tv/lyrics.ts`, and three port mutations once passed the whole suite. So this fixture is written
 FROM THE PORT and asserted in BOTH trees — `worker/tests/test_bench_e2e.py` and
 `core/tests/unit/lib/tv/lyrics-bench-parity.test.ts` — and an edit on either side that moves a lit word fails
-one of them. Change the other side with it and re-run this script; never hand-edit the JSON.
-
-THE DOCUMENTS are named shapes that pin each rule of the port, then seeded random documents that mix them;
-ASCII words with finite times only, the two ports differing on a blank word and on UTF-16 units. EXPECTED,
-per document: the ROWS the TV displays after parsing, and the lit word's flat index at every breakpoint, at
-every midpoint between two, and one either side. README, "The harness scripts", has the rest.
+one of them. Change the other side with it and re-run this script; never hand-edit the JSON. README, "The
+harness scripts", has the documents and what is EXPECTED of each.
 """
 
 from __future__ import annotations
@@ -37,10 +33,9 @@ import e2e_lib as lib  # noqa: E402 - after the path setup above
 #: tested from `core/` alone, so the fixture lives there and the worker test reaches over).
 FIXTURE = REPO / "core" / "tests" / "unit" / "lib" / "tv" / "bench-highlight-parity.json"
 
-#: The overlay's word-level branch, verbatim: the port models a TV that lights words ONLY there. W6 added
-#: the `wipesWords(l)` conjunct (the confidence rule's TV consumer: a `low` line renders line-level), and
-#: this literal
-#: is what makes the core test fail until the port has it too — `lib.tv_lit(wipe_low=True)` below.
+#: The overlay's word-level branch, verbatim: the port models a TV that lights words ONLY there. W6 added the
+#: `wipesWords(l)` conjunct (a `low` line renders line-level), and this literal is what makes the core test
+#: fail until the port has it too — `lib.tv_lit(wipe_low=True)` below.
 OVERLAY_WORD_BRANCH = "{#if i === lineIdx && l.words.length && wordLevel && wipesWords(l)}"
 
 RANDOM_DOCUMENTS = 16

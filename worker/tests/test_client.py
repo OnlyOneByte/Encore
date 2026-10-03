@@ -270,16 +270,13 @@ async def test_with_confirmation_off_it_does_not_claim_at_all() -> None:
 
 
 async def test_with_confirmation_off_a_job_may_publish_without_a_claim_round() -> None:
-    """THE reason this mode exists. With confirmation required and no core able to answer, every job ran to
-    completion — a full download, separation and alignment — and then `may_publish` refused it forever.
-    Fail-closed is right, but only when the counterpart exists; without it, it is a total outage.
+    """THE reason this mode exists: with confirmation required and no core able to answer, every job ran to
+    completion — download, separation, alignment — and `may_publish` then refused it forever.
 
-    The residual exposure is deliberate and equals the OLD worker's: a `job:revoked` pushed while the
-    socket is down is never seen. Parity, not a regression.
-
-    Asserted WHILE THE JOB IS LIVE, behind the gate: `finished()` releases the slot the moment the job
-    ends, so a check after the session drains reads an empty ledger and passes for the wrong reason.
-    """
+    Fail-closed is right only when the counterpart exists; without it, it is a total outage. The residual
+    exposure is deliberate and equals the OLD worker's: a `job:revoked` pushed while the socket is down is
+    never seen. Asserted WHILE THE JOB IS LIVE, behind the gate, because `finished()` releases the slot the
+    moment the job ends and a check after the session drains reads an empty ledger."""
     gate = Gate()
     sock = FakeSocket([assign()])
     c = client(sock, run_job=gate)

@@ -1,21 +1,14 @@
-"""The word-end post-pass through the REAL step: what it moves, and everything it must not (W4, §3.5).
+"""The word-end post-pass through the REAL step: what it moves, and everything it must not.
 
-`tests/test_ends.py` holds the pure function's properties. This file holds the two things only the step
-can say, and both are review §3.5's own reject-ifs:
+`tests/test_ends.py` holds the pure function's properties; this file holds the two things only the step can
+say. ANY ONSET MOVING is a rejection: every published start, word and line, must be bit-for-bit what the
+decode produced, with the post-pass on and off (`ends-raw`, the control arm). And THE PLACEMENT IS
+LOAD-BEARING: extending ends inside `generate` would change `Line.end` before the never-sung rule, before
+the blind envelope fit the wrong-text gate judges and before R4 — loosening two gates while looking like an
+accuracy win — so the whole trail note must be IDENTICAL in both arms but for its own clause, which is the
+stronger statement that nothing else moved. docs/arch/04-alignment.md §10 carries the rule.
 
-  ANY ONSET MOVES is a rejection. Every published start — word and line — must be bit-for-bit what the
-  decode produced, on the same song, with the post-pass on and off (`ends-raw`, the control arm).
-
-  THE PLACEMENT IS LOAD-BEARING (§3.5's second objection, and the reason this is a post-pass at all).
-  Extending ends inside `generate` would change `Line.end` BEFORE the never-sung rule (which reads
-  `env_overlap(line.start, line.end)` and the line's chars-per-second), before the blind envelope fit the
-  wrong-text gate judges, and before R4 — quietly loosening two gates while looking like an accuracy win.
-  So the whole trail note, which carries the envelope correlations, the never-sung drop, the repairs and
-  the per-line grades, must be IDENTICAL with the post-pass on and off, except for its own clause. That is
-  a stronger statement than "the ends changed": it is "nothing else did".
-
-The rig is `test_align_provenance`'s: a tone under each phrase (so the envelope hears singing exactly
-there) and the CTC fixture's slice-relative Viterbi over a synthetic matrix that sings the same phrases.
+The rig is `test_align_provenance`'s: a tone under each phrase, and the CTC fixture's Viterbi over a matrix.
 """
 
 from __future__ import annotations
@@ -39,10 +32,9 @@ from tests.test_align_provenance import (
     weakly_sung,
 )
 
-#: The unsung line every run below carries: an uploader's credit, claimed over the outro, sung on neither
-#: the stem nor the mix (`test_align_provenance`'s own exhibit). The never-sung rule must bin it in BOTH
-#: arms — the drop is decided on the raw spans, and it is the first thing that would change if the
-#: post-pass moved ahead of it: extended ends would hand the line envelope overlap it has not got.
+#: The unsung line every run below carries: an uploader's credit, claimed over the outro, sung on neither the
+#: stem nor the mix. The never-sung rule must bin it in BOTH arms — the drop is decided on the raw spans, and
+#: extended ends would hand the line envelope overlap it has not got.
 CREDIT = "thanks for watching everyone"
 
 
@@ -183,18 +175,14 @@ def test_everything_the_gates_read_is_identical_with_the_post_pass_on_and_off(
 def test_no_envelope_fit_is_ever_measured_on_a_held_end(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The placement, where it is actually load-bearing, and the assertion that kills the mutant.
+    """No envelope fit is ever measured on a held end, which is where the placement bites.
 
     The wrong-text gate is an envelope fit of the document's LINE SPANS against the audio's own activity,
     and a held end makes every span longer — more expected-singing mass, a different correlation, a
-    different verdict at the margin. So every fit this step makes must be handed the spans the DECODE
-    produced: the recorded span lists are compared between the arm and the default and must be identical.
-
-    Proved to bite, both ways round: applying `extend_ends` right after the envelope is measured — i.e.
-    treating it as part of `generate`, which review §3.5 warns against — turns this red while every other
-    test here stays green, because a song with no never-sung drop has no re-decode to erase the early
-    extension. Moved WITH its arm check, the recorded spans stop matching; moved without one, both runs
-    come out held and the non-vacuity line below is what catches it."""
+    different verdict at the margin — so every fit must be handed the spans the DECODE produced: the
+    recorded span lists are compared between the arm and the default and must be identical. Proved to
+    bite: applying `extend_ends` right after the envelope is measured turns this red while every other
+    test here stays green, a song with no never-sung drop having no re-decode to erase the extension."""
     # ONE spy, emptied between the runs: installing a second would wrap the first, which then records both
     # runs and makes the comparison pass for the wrong reason (it did, until this comment existed).
     seen = spans_the_gate_saw(monkeypatch)
@@ -259,18 +247,14 @@ def test_the_trail_says_how_many_ends_it_held(tmp_path: Path, monkeypatch: pytes
 def test_a_stemless_song_publishes_the_decodes_own_ends(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4 review r1: `theta` is a VOCALS STEM's calibration, so the post-pass does not run on a mix target.
+    """`theta` is a VOCALS STEM's calibration, so the post-pass does not run on a mix target.
 
-    `ends.ACTIVE_LEVEL` is 0.1 of the TARGET's own 95th-percentile level. On a stem that is a silence test;
-    on a mix it is true almost everywhere (measured on the corpus mixes: 92-98% of frames, with continuous
-    active runs of 38-184 s, against 59-77% and 10-19 s on the same songs' stems). The walk would then never
-    stop — the default would silently become the `ends-tile` arm inside each line PLUS a run to the next
-    line's onset, on the one population the corpus cannot measure because all 20 of its songs have stems.
-
-    Both halves are asserted: the step publishes the raw ends on a mix target (and says so on the trail),
-    and the counterfactual is exercised on this very audio — the same pure walk over this mix's envelope
-    tiles every line and runs its last word to the next line's onset.
-    """
+    `ends.ACTIVE_LEVEL` is 0.1 of the TARGET's own 95th-percentile level: on a stem that is a silence
+    test, on a mix it is true almost everywhere (92-98% of frames on the corpus mixes, with active runs of
+    38-184 s, against 59-77% and 10-19 s on the same songs' stems), so the walk would never stop and the
+    default would silently become the `ends-tile` arm plus a run to the next line's onset — on the one
+    population the corpus cannot measure, all 20 of its songs having stems. Both halves are asserted: the
+    step publishes the raw ends on a mix, and the pure walk over this mix's envelope tiles every line."""
     got, wav = mix_only(tmp_path, monkeypatch)
     control, _ = mix_only(tmp_path, monkeypatch, "ends-raw")
     assert [word["end"] for word in words_of(got)] == [word["end"] for word in words_of(control)]

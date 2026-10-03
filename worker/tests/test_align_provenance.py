@@ -1054,7 +1054,7 @@ WINDOWED_HEARD: list[Phrase] = [
 
 #: The LAST cue's own song: the truncated cue is the sheet's FINAL one, the cue that has no next onset to be
 #: capped at and the one an LRC always leaves without an end. Its line is 26 alignable characters, so the
-#: reader's defaulted 1.0 s cannot hold it and the hold-open fires; onsets 10 s apart give `typical_slot` 10.0.
+#: reader's defaulted 1.0 s cannot hold it and the hold-open fires; onsets 10 s apart give a 10.0 s slot.
 LAST_CUE: list[Phrase] = [
     ("come and fly away", 0.0, 1.2),
     ("with me tonight", 10.0, 12.0),
