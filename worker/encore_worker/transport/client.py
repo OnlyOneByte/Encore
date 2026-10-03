@@ -1,20 +1,8 @@
 """The conversation with the core: dial home, accept work, forward progress, reconcile ownership.
 
-The I/O shell. It owns the socket and the ledger and knows nothing about audio — every inbound frame
-becomes either a ledger update or a request to start a workflow, and every outbound frame comes from a
-`protocol.frames` dataclass.
-
-THREE RESPONSIBILITIES, and the third is the one the old worker had no concept of:
-
-  1. Reconnect with backoff, because a LAN core restarts and a worker that exits on a dropped socket
-     needs a supervisor to do what a loop does for free.
-  2. Emit progress on a timer while a step runs, so the core's lease does not expire. Under durable
-     resumption an expired lease is no longer fatal — a requeue resumes rather than restarts — but a
-     keepalive that never fires still makes every long separation look dead.
-  3. RECONCILE OWNERSHIP on every reconnect, and refuse to publish anything unconfirmed. See
-     `ownership.py` for why a push alone is not enough.
-
-The socket factory is injected, so every test here runs against a fake duplex channel with no network.
+The I/O shell: it owns the socket and the ledger and knows nothing about audio. The socket factory is
+injected, so every test here runs against a fake duplex channel with no network. Its three
+responsibilities, and why the third needs two guard points: docs/arch/05-worker.md §7 and §7.1.
 """
 
 from __future__ import annotations
@@ -74,29 +62,22 @@ class Client:
     backend: str | None = None
 
     #: Builds the selectable-model catalogue, or None on a box that offers none. Called OFF the event loop
-    #: (see `_announce_catalogue`) because enumerating the zoo costs ~4.8 s on a cold process and blocking
-    #: the handshake on it would delay registration by that much — or indefinitely if its first-run download
-    #: hangs. Injected rather than imported so a test can supply one without installing the extra.
+    #: (docs/arch/05-worker.md §7.1) and injected, so a test can supply one without the extra installed.
     catalogue: Catalogue | None = None
 
     ownership: Ownership = field(default_factory=Ownership)
     #: How long to wait between reconnect attempts. Default is the jittered schedule above.
     backoff: Backoff | None = None
-    #: The live published-stem container. Starts at the configured FALLBACK and is overwritten by whatever
-    #: the core announces in `worker:welcome` — core owns the storage layout, so its value wins. Mutable
-    #: because a reconnect may reach a differently-configured core, and because `Config` is frozen.
+    #: The live published-stem container, overwritten by what core announces in `worker:welcome` — core
+    #: owns the storage layout. Mutable because a reconnect may reach a differently-configured core.
     publish_stem_format: str = ""
-    #: `(job_id, resumable)` — called once per job when its run ends, with whether a retry could RESUME it.
-    #:
-    #: Injected rather than done here because scratch layout is `artifacts`' business, not the
-    #: transport's; and
-    #: because only this layer knows the outcome. `resumable=True` means "a requeue would replay a checkpoint
-    #: holding paths into this job's scratch", so the scratch must survive.
+    #: `(job_id, resumable)` — called once per job when its run ends. Injected because scratch layout is
+    #: `artifacts`' business while only this layer knows the outcome (docs/arch/05-worker.md §4).
     on_settled: Callable[[str, bool], None] | None = None
     _socket: Socket | None = field(default=None, init=False)
     _running: dict[str, asyncio.Task[None]] = field(default_factory=dict, init=False)
-    #: Set once a claim round has been answered, so a publish can wait for confirmation rather than
-    #: guessing. Replaced on every disconnect, because the previous round's answer is now stale.
+    #: Set once a claim round has been answered, so a publish can wait rather than guess. Replaced on
+    #: every disconnect, the previous round's answer being stale.
     _confirmed: asyncio.Event = field(default_factory=asyncio.Event, init=False)
 
     def __post_init__(self) -> None:
@@ -160,13 +141,7 @@ class Client:
     async def _announce_catalogue(self) -> None:
         """Enumerate the selectable models and tell the core, or do nothing at all.
 
-        RUN IN A THREAD. `zoo.catalogue()` is synchronous, CPU- and network-bound, and measured at 4.80 s on
-        a cold process — on the event loop it would stall every heartbeat for that long, which is precisely
-        what the core's reaper reads as a dead worker.
-
-        FAILURE IS SILENT BY DESIGN. A box that cannot enumerate its zoo is a box that offers the models it
-        already advertised in `Hello`; core keeps whatever it has. Raising here would take down a connection
-        over a picker's contents.
+        Run IN A THREAD, and its failure is silent by design: docs/arch/05-worker.md §7.1.
         """
         if self.catalogue is None:
             return
@@ -371,15 +346,8 @@ class Client:
     # ── what the publish step asks ───────────────────────────────────────────────────────────────
 
     async def confirm_ownership(self, job_id: str, *, timeout_sec: float = 10.0) -> bool:
-        """May this job publish? Re-claims and WAITS for the answer if the standing is stale.
-
-        Waiting rather than refusing outright: a workflow that finished during a reconnect is almost
-        always still ours, and abandoning it would throw away a completed alignment. Waiting rather than
-        assuming: if the core has reassigned it, another worker is already publishing.
-
-        A TIMEOUT is a refusal. An unanswered claim means we cannot establish ownership, and the whole
-        point of the guard is that publishing without establishing it is the failure.
-        """
+        """May this job publish? Re-claims and WAITS for the answer if the standing is stale, and a
+        TIMEOUT is a refusal (docs/arch/05-worker.md §7.1)."""
         if self.ownership.may_publish(job_id):
             return True
         if self.ownership.lost_reason(job_id) is not None:

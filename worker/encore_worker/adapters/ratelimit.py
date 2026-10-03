@@ -1,22 +1,12 @@
 """The one outbound rate gate every provider call passes through.
 
-WHY A GATE AT ALL, when this worker makes one lookup per job. Because jobs arrive in bursts: a library
-import queues dozens at once, and with `ENCORE_WORKER_CONCURRENCY > 1` two of them reach a provider in the
-same instant. The budget is per SOURCE IP — a property of the process, not of a client object — and on a
-small free service a burst reads as abuse. LRCmux is someone else's server.
+WHY A GATE AT ALL, when this worker makes one lookup per job: jobs arrive in bursts, the budget is per SOURCE
+IP rather than per client object, and on a small free service a burst reads as abuse. SERIALISED, not a
+best-effort interval check, with the lock held across the REQUEST and the retries as well as the wait. ONE
+GATE PER SERVICE, since the budgets are independent. `threading` rather than `asyncio`, because every provider
+call runs inside `asyncio.to_thread` and an `asyncio.Lock` would exclude nothing.
 
-SERIALISED, NOT A BEST-EFFORT INTERVAL CHECK. An unlocked "has enough time passed?" lets two callers read
-the same timestamp, both decide yes, and both fire — exactly the burst this prevents. The lock is held
-across the REQUEST as well as the wait, because releasing before the call would put two requests in flight
-at once, which is the thing being prevented. Retries happen inside the lock too, so a throttled box does not
-pile every queued caller onto the request already being refused.
-
-ONE GATE PER SERVICE, NOT ONE PER PROCESS. Each provider keeps its own instance: the budgets are
-independent, and sharing one would halve both. What must not be per-CLIENT is the instance within one
-service.
-
-`threading` rather than `asyncio`, because every provider call runs inside `asyncio.to_thread` — the
-contention is between OS threads, and an `asyncio.Lock` would not exclude anything.
+What each choice prevents: `docs/arch/05-worker.md` §6.
 """
 
 from __future__ import annotations

@@ -1,19 +1,9 @@
 """Placing a text that brought its own timings onto THIS recording's clock.
 
-An LRC written for another master of the same song is *confidently wrong*: its line timings are real,
-internally consistent, and offset from the recording in hand. That is the single most direct explanation
-for "the lyrics are out of sync", and a forced aligner handed such a text searches the wrong spans and
-produces early highlighting that looks deliberate.
-
-TWO THINGS LIVE HERE, and they are not the same:
-
-  * `estimate_shift` — fit an offset (and a gentle scale) from a text's own line starts onto a REFERENCE
-    series measured on this audio. Used BEFORE aligning, to point the search at the right place.
-  * `residual_against` — after aligning, how far is the text's placed series from where the alignment
-    actually put the words? That number is `TimingReport.residual_sec`, and a large one is what makes
-    `Knob.RESHIFT` worth spending: the aligned output is a better ruler than the pre-align reference was.
-
-The second is the one the old worker never fed back into a decision.
+An LRC written for another master is *confidently wrong*: real, internally consistent timings offset from the
+recording in hand. TWO THINGS LIVE HERE: `estimate_shift` fits an offset and a gentle scale onto a REFERENCE
+series measured on this audio, BEFORE aligning, and `residual_against` measures afterwards how far the placed
+series sits from where the alignment put the words — which is what makes `Knob.RESHIFT` worth spending.
 """
 
 from __future__ import annotations
@@ -41,12 +31,8 @@ MAX_SCALE_DRIFT = 0.15
 
 @dataclass(frozen=True, slots=True)
 class Shift:
-    """An affine placement: `t' = offset + scale * t`.
-
-    `applied` is False for the identity, which is what an abstention and a measured no-op both produce.
-    Callers check it before noting anything to an operator, so "we did not move it" and "we could not
-    tell" read the same downstream — deliberately, because neither justifies a retry on its own.
-    """
+    """An affine placement: `t' = offset + scale * t`. `applied` is False for the identity, which an
+    abstention and a measured no-op both produce — neither justifies a retry on its own."""
 
     offset_sec: float = 0.0
     scale: float = 1.0
@@ -66,18 +52,10 @@ def estimate_shift(segments: Sequence[Segment], reference: Sequence[Segment]) ->
 def estimate_shift_from_starts(text_starts: Sequence[float], ref_starts: Sequence[float]) -> Shift:
     """The core of placement, over two series of line START times.
 
-    Takes starts rather than segments so a caller holding only the previous ALIGNMENT's line starts can
-    use it — which is what `Knob.RESHIFT` needs. The aligned output is a better ruler than any
-    pre-alignment reference, because it was measured on this recording by the same model that will be
-    asked to align again.
-
-    Pairs by ORDER, not by content. Matching lines by their words is tempting and wrong here: the
-    reference's wording differs from the sheet's even when both describe the same performance, so a
-    content match would drop exactly the lines a shift is measured from. Order is the property two
-    renderings of one song genuinely share.
-
-    Offset is the MEDIAN of per-pair differences rather than the mean, because an LRC commonly has one
-    or two wildly wrong lines (a chorus marker, a trailing credit) and a mean follows them.
+    Takes starts rather than segments, so a caller holding only the previous ALIGNMENT's line starts can use
+    it. Pairs by ORDER and not by content, the reference's wording differing from the sheet's even on one
+    performance; the offset is the MEDIAN of per-pair differences, an LRC commonly having one wildly wrong
+    line that a mean would follow.
     """
     pairs = min(len(text_starts), len(ref_starts))
     if pairs < MIN_PAIRS:
@@ -105,12 +83,8 @@ def estimate_shift_from_starts(text_starts: Sequence[float], ref_starts: Sequenc
 
 
 def _scale_of(text_starts: Sequence[float], ref_starts: Sequence[float]) -> float:
-    """Tempo ratio between the two series, from their spans.
-
-    Span-based rather than a least-squares fit, because with a handful of noisy points a regression's
-    slope is dominated by whichever end has the outlier. A degenerate span (every line at one instant)
-    yields 1.0 — there is no tempo to measure.
-    """
+    """Tempo ratio between the two series, from their spans — not a least-squares fit, whose slope a handful
+    of noisy points lets one end dominate. A degenerate span yields 1.0."""
     own_span = text_starts[-1] - text_starts[0]
     ref_span = ref_starts[-1] - ref_starts[0]
     if own_span <= 0 or ref_span <= 0:
@@ -119,12 +93,8 @@ def _scale_of(text_starts: Sequence[float], ref_starts: Sequence[float]) -> floa
 
 
 def apply_shift(segments: Sequence[Segment], shift: Shift) -> tuple[Segment, ...]:
-    """Re-place every segment's `start`/`end`. Returns copies; the input is never mutated.
-
-    Copies because a `TextRef` is checkpointed and may be replayed: mutating in place would make a
-    resumed attempt read timings that were already shifted once, compounding the offset each recovery.
-    Clamped at zero — a negative timestamp is not representable on a playhead.
-    """
+    """Re-place every segment's `start`/`end`. Returns copies, a `TextRef` being checkpointed: mutating in
+    place would compound the offset on every recovery. Clamped at zero."""
     if not shift.applied:
         return tuple(segments)
     moved: list[Segment] = []
@@ -141,13 +111,9 @@ def apply_shift(segments: Sequence[Segment], shift: Shift) -> tuple[Segment, ...
 def residual_against(doc: Mapping[str, object], segments: Sequence[Segment]) -> float | None:
     """How far the text's own line starts sit from where the alignment actually put the words.
 
-    `None` when the question is unanswerable — no timed words, or too few comparable lines — which is
-    what `TimingReport.residual_sec = None` means, and why `misplaced` is then False rather than True.
-    Treating "cannot tell" as "misplaced" would spend a retry on every ASR text, which has no own
-    timings to be misplaced in the first place.
-
-    The MEDIAN again, and signed: the sign tells an operator whether the sheet runs early or late, which
-    is the difference between a master with a longer intro and one with a shorter one.
+    `None` when the question is unanswerable, which is why `misplaced` is then False: treating "cannot tell"
+    as "misplaced" would spend a retry on every ASR text. The MEDIAN again, and SIGNED, so the sign says
+    whether the sheet runs early or late.
     """
     aligned = timed_words(doc)
     own_starts = [start for start, _end in line_spans(segments)]
@@ -166,12 +132,9 @@ def residual_against(doc: Mapping[str, object], segments: Sequence[Segment]) -> 
 
 
 def _aligned_line_starts(doc: Mapping[str, object]) -> list[float]:
-    """The start of each line in the aligned document, taken from its FIRST TIMED WORD.
-
-    The line's own `start` field is not trusted here: some aligners copy the input's start through
-    unchanged even when they moved the words inside it, which would make the residual read as zero for
-    exactly the misplacement this is trying to detect.
-    """
+    """The start of each line in the aligned document, from its FIRST TIMED WORD: some aligners copy the
+    input's start through unchanged, which would make the residual read zero for the very misplacement
+    this detects."""
     starts: list[float] = []
     lines = doc.get("lines")
     if not isinstance(lines, Sequence) or isinstance(lines, (str, bytes)):
@@ -188,18 +151,10 @@ def _aligned_line_starts(doc: Mapping[str, object]) -> list[float]:
 def spread_over(segments: Sequence[Segment], duration_sec: float) -> tuple[Segment, ...]:
     """Give untimed segments provisional spans covering `duration_sec`, apportioned by character count.
 
-    WHY THIS IS NEEDED AT ALL. whisperx CROPS THE AUDIO PER SEGMENT, so every segment handed to it must
-    carry `start` and `end` — an untimed one raises `KeyError: 'start'` inside the aligner. A plain lyrics
-    sheet (LRCLIB's `plainLyrics`, LRCmux at `level=none`) has no timings by definition, so without this
-    every plain candidate failed to align, was swallowed by the step's broad `except`, and fell through to
-    ASR — silently discarding a real human-written sheet.
-
-    The spans are a PRIOR, not a claim. Alignment refines within each crop, and if the prior is poor the
-    resulting coverage says so and the retry knobs act on it. Apportioning by character share rather than
-    evenly is the better prior for sung text: a six-word line occupies more of the song than a two-word one.
-
-    Returns the input unchanged when the duration is unknown — inventing spans against a duration nobody
-    measured would be worse than letting the aligner refuse.
+    whisperx CROPS THE AUDIO PER SEGMENT, so an untimed segment raises inside the aligner — and a plain lyrics
+    sheet has no timings by definition, so without this every plain candidate fell through to ASR. The spans
+    are a PRIOR and not a claim, by character share rather than evenly because a six-word line occupies more
+    of the song. Returns the input unchanged when the duration is unknown.
     """
     if duration_sec <= 0 or not segments:
         return tuple(segments)
@@ -218,10 +173,6 @@ def spread_over(segments: Sequence[Segment], duration_sec: float) -> tuple[Segme
 
 
 def needs_spans(segments: Sequence[Segment]) -> bool:
-    """Does ANY segment lack a usable start? Then the whole series needs provisional spans.
-
-    All-or-nothing on purpose: whisperx crops per segment, so one untimed segment in an otherwise timed
-    series is enough to raise — and mixing measured spans with invented ones would produce a document
-    whose timings mean two different things.
-    """
+    """Does ANY segment lack a usable start? Then the whole series needs provisional spans — all-or-nothing,
+    since mixing measured spans with invented ones means two different things in one document."""
     return len(line_spans(segments)) != len(segments)

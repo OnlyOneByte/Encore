@@ -385,6 +385,48 @@ def test_a_ranking_that_loses_lines_or_adds_a_gross_one_fails_its_verdict() -> N
     assert "sdh-ranking-keeps-pm500-vs-pre-tie" not in passed, "a control that was not run has no verdict"
 
 
+def test_every_per_pool_must_is_read_in_lines_mode_too() -> None:
+    """W7 review r2-spec-9: `tally` keyed a `lines` cell `pool/arm/lines` and `verdicts` looked up
+    `pool/arm`, so under `--sync-mode lines` EVERY per-pool MUST found nothing and `continue`d —
+    `results/w7-pool-lines.json` recorded 2 verdicts against the forced run's 13, both passing, and the
+    script exited 0. A green reading in
+    which 11 of 13 gates were never evaluated is worse than a red one.
+
+    `key_of` is now the one spelling, the gate name carries the non-default mode so two populations cannot
+    report under one name, and the suffix itself stays: a `lines` document has LINE timings only, so pooling
+    its ±500 with a forced run's would compare two different measurements."""
+    lines = [row(sync_mode="lines", gross=2, w500=5), row(sync_mode="lines", arm="arrival", gross=1, w500=9)]
+    read = {name: ok for name, ok, _why in pool_gate.verdicts(lines)}
+    assert read["sdh-ranking-adds-no-gross-line-vs-arrival-lines"] is False
+    assert read["sdh-ranking-keeps-pm500-vs-arrival-lines"] is False
+    assert "sdh-ranking-adds-no-gross-line-vs-arrival" not in read, "the forced name belongs to forced rows"
+    assert pool_gate.key_of("sdh", "ranked", "lines") == "sdh/ranked/lines"
+    assert pool_gate.key_of("sdh", "ranked", None) == pool_gate.key_of("sdh", "ranked", e2e.SYNC_FORCED)
+
+
+def test_a_cell_with_rows_but_no_gate_fails_rather_than_passing_quietly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The built-in that makes the defect above unrepeatable, modelled on `e2e_gates.run_gates`' refusal to
+    pass an unmeasured gate: a (pool, arm) the ROWS carry and no comparison read is a FAIL that names it. An
+    arm the plan simply did not run is not — the `lines` plan runs no `pre-tie`, and a gate cannot be owed
+    against rows that do not exist."""
+    name = "every-planned-comparison-was-read"
+    paired = [row(), row(arm="arrival")]
+    assert {n: ok for n, ok, _w in pool_gate.verdicts(paired)}[name] is True
+
+    only_control = [row(arm="arrival")]  # no `ranked` rows: nothing to compare, and nothing is owed
+    assert {n: ok for n, ok, _w in pool_gate.verdicts(only_control)}[name] is True
+
+    # THE DEFECT, RE-INTRODUCED as the shape it had: the tally's keys and the lookup's disagree, so every
+    # per-pool gate finds `None`. Patched on the TALLY side, since that is the half `verdicts` reads.
+    real = pool_gate.tally
+    monkeypatch.setattr(pool_gate, "tally", lambda rows: {f"{k}/x": v for k, v in real(rows).items()})
+    verdicts = {n: ok for n, ok, _w in pool_gate.verdicts([row(), row(arm="arrival")])}
+    assert verdicts[name] is False, "a gate that read nothing must say so instead of being absent"
+    assert not any(n.startswith("sdh-ranking") for n in verdicts), "which is exactly what went unnoticed"
+
+
 def test_the_l5_verdict_reads_the_absence_of_the_sheet_not_its_score() -> None:
     def read(rows: list[dict[str, Any]]) -> bool:
         verdicts: dict[str, bool] = {name: ok for name, ok, _why in pool_gate.verdicts(rows)}

@@ -1,24 +1,7 @@
 """Integrated loudness measurement — the `songProfile` level half, per EBU R128 / ITU-R BS.1770-4.
 
-The core's own loudness reading (`server/media/loudness.ts`, `ffmpeg -af volumedetect`) is a crude
-peak/mean dBFS number over the VOCALS stem, not perceptual LUFS over the INSTRUMENTAL — the thing that
-actually plays in the room and that a room-wide normalization must equalize. This measures real
-integrated LUFS with `pyloudnorm` (a small, standard MIT implementation of R128 K-weighting +
-gating), over the mono float64 array `read_wav_mono` already produces — numpy in, a number out, NO
-ffmpeg subprocess.
-
-TRI-STATE, like every analysis half: a level that cannot be trusted is `None`, never a fabricated
-default. A stem too short for BS.1770's 400 ms gating block, or digital silence (which happens on
-this box), or any reader/measurement error, degrades to `None`. `None` is a real answer — "we could
-not measure this song's level" — and the caller stores it as null, never as 0 LUFS (which would read
-as a deafeningly loud track and attenuate it into inaudibility).
-
-numpy + pyloudnorm ONLY. No torch, no soundfile, no subprocess.
-
-PORTED VERBATIM from the old worker's `worker/src/analysis/` — algorithm, constants and comments
-unchanged on purpose. These are measured numeric behaviours (Krumhansl-Schmuckler weights, BS.1770
-gating thresholds, the 16-bit silence floor), so a rewrite would risk changing what the library records
-while looking like a refactor. Only the imports and the package layout are new.
+Real integrated LUFS over the INSTRUMENTAL with `pyloudnorm`, TRI-STATE like every analysis half: a level that
+cannot be trusted is `None`, never a fabricated default. `docs/arch/05-worker.md` §3 and §3.1.
 """
 
 from __future__ import annotations
@@ -27,22 +10,18 @@ import numpy as np
 
 from encore_worker.domain.audio.wav import read_wav_mono
 
-# BS.1770 integrates over 400 ms gating blocks; a signal shorter than one block cannot be gated and
-# pyloudnorm raises. Guard it explicitly so we return None rather than letting the exception decide.
+# Seconds in one BS.1770 gating block: a shorter signal cannot be gated at all and the meter raises.
 _MIN_GATING_BLOCK_SEC = 0.4
 
-# Digital silence on this box sits at the 16-bit floor (see the silence-probe work): a stem whose
-# peak sample is at or below this magnitude carries no measurable programme level, so BS.1770 would
-# either raise (all blocks gated out) or report an absurd -70+ LUFS. Treat it as unmeasurable.
+# Peak sample magnitude at or below which a stem is digital silence and so unmeasurable: the 16-bit
+# floor on this box (docs/arch/05-worker.md §3.1).
 _SILENCE_PEAK = 1.0 / 32768.0  # one 16-bit LSB
 
 
 def measure_lufs(wav_path: str | None) -> float | None:
     """Integrated loudness of a PCM WAV in LUFS (BS.1770-4), or `None` when it cannot be measured.
 
-    Returns `None` — never a default number — when the path is missing, the stem is shorter than one
-    400 ms gating block, the stem is digital silence, or the reader/meter raises for any reason. A
-    real measurement is a negative float (typical mastered music sits around -8 to -20 LUFS).
+    A real measurement is a negative float; `None` is never a default number.
     """
     if not wav_path:
         return None
@@ -56,14 +35,8 @@ def measure_lufs(wav_path: str | None) -> float | None:
 def measure_lufs_samples(samples: np.ndarray | None, sample_rate: int) -> float | None:
     """The measurement itself, over samples a caller has ALREADY decoded.
 
-    Exists so `build_song_profile` can decode the instrumental ONCE and hand the same array to both key
-    detection and this meter. It used to call `measure_lufs(path)`, which re-opened and re-decoded the
-    very file the key path had just read — two full decodes of a multi-minute stem inside one function,
-    for two measurements over identical samples.
-
-    Same tri-state contract as the path form: `None` for absent samples, a stem shorter than one 400 ms
-    gating block, digital silence, or any meter failure. Never a fabricated level — a stored 0.0 would
-    read as a deafening master and be attenuated into inaudibility.
+    Exists so `build_song_profile` can decode the instrumental once and hand the same array to both key
+    detection and this meter (docs/arch/05-worker.md §3.1). Same tri-state contract as the path form.
     """
     if samples is None or sample_rate <= 0:
         return None
@@ -77,8 +50,7 @@ def measure_lufs_samples(samples: np.ndarray | None, sample_rate: int) -> float 
 
         meter = pyln.Meter(sample_rate)  # BS.1770-4 meter at the stem's own rate
         loudness = float(meter.integrated_loudness(samples))
-        # A gated measurement over near-silence can come back as -inf/nan; that is unmeasurable, not
-        # a level. Only a finite number is a real answer.
+        # A gated measurement over near-silence can come back -inf or nan, which is unmeasurable.
         if not np.isfinite(loudness):
             return None
         return loudness

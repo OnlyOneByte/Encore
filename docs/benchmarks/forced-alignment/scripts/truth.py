@@ -40,9 +40,20 @@ def fetch(song: str, out_dir: str) -> str | None:
     """Download authored captions, returning the json3 path or None when the song has none."""
     stem = os.path.join(out_dir, f"{song}.authored")
     subprocess.run(
-        ["yt-dlp", "--skip-download", "--write-subs", "--sub-langs", "en.*",
-         "--sub-format", "json3", "-o", f"{stem}.%(ext)s", VIDEOS[song]],
-        check=False, capture_output=True,
+        [
+            "yt-dlp",
+            "--skip-download",
+            "--write-subs",
+            "--sub-langs",
+            "en.*",
+            "--sub-format",
+            "json3",
+            "-o",
+            f"{stem}.%(ext)s",
+            VIDEOS[song],
+        ],
+        check=False,
+        capture_output=True,
     )
     for name in sorted(os.listdir(out_dir)):
         if name.startswith(f"{song}.authored") and name.endswith(".json3"):

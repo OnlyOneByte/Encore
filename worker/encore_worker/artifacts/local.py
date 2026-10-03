@@ -1,17 +1,7 @@
 """`ArtifactStore` over a shared filesystem — the single-box deployment, and the only one wired today.
 
-WHAT MAKES THIS MORE THAN `shutil.move`. Three things, each of which was a real bug somewhere:
-
-  1. PER-CLASS ROOTS. A key's first segment names its storage class, and each class root is independently
-     overridable (`ENCORE_AUDIO_DIR`, `ENCORE_DERIVED_DIR`, `ENCORE_META_DIR`) so classes can sit on
-     different disks — back up `audio/`, put the recomputable `derived/` on cheap storage. A class dir may
-     point OUTSIDE the media root, so a key CANNOT simply be joined onto that root. Core's `resolveBase`
-     does exactly this; a worker that skips it writes where core will never look.
-  2. ATOMIC PUBLICATION. Core serves byte ranges off these keys while we write. `os.replace` is atomic
-     within a filesystem, so the temp file is created in the DESTINATION directory rather than in /tmp —
-     a cross-device rename is not atomic and silently degrades to copy-then-unlink.
-  3. REFUSING TO ESCAPE THE ROOT. A key is data that reached us over a socket. `derived/../../etc/passwd`
-     resolves outside the class root, and a store that writes it is an arbitrary-write primitive.
+Per-class roots, atomic publication and refusing to escape the root are what make this more than
+`shutil.move`, and each was a real bug somewhere: docs/arch/05-worker.md §4.
 """
 
 from __future__ import annotations
@@ -29,8 +19,7 @@ from encore_worker.artifacts.ports import ArtifactStoreError
 class Roots:
     """Where each storage class lives, already resolved to absolute paths.
 
-    Separate from the store so the resolution is testable without a filesystem, and so `host/config.py`
-    owns reading the environment — this module never touches `os.environ`.
+    Separate from the store so resolution is testable without a filesystem; `host/config.py` reads the env.
     """
 
     media: str
@@ -58,9 +47,7 @@ class Roots:
             case "meta":
                 return self.meta
             case "work":
-                # Deliberately NOT overridable, mirroring core: scratch is transient and must sit next to
-                # the work rather than on whichever disk someone pointed a class at.
-                return os.path.join(self.media, "work")
+                return os.path.join(self.media, "work")  # not overridable; docs/arch/05-worker.md §4
             case _:
                 return self.media
 
@@ -74,21 +61,19 @@ class LocalArtifactStore:
     def path_of(self, ref: str) -> str:
         """The absolute path a ref names. Raises rather than returning a path outside its class root.
 
-        Public because the end-to-end test needs to assert a published file is where core would look for
-        it, and re-deriving that in the test would just be a second copy of this logic to get wrong.
+        Public so the end-to-end test can assert a published file is where core would look for it.
         """
         clean = ref.lstrip("/")
         if not clean:
             raise ArtifactStoreError("empty artifact ref")
         cls = keys.class_of(clean)
         base = self._roots.of_class(cls)
-        # A classed key carries its class as the first segment; the root already encodes it, so the segment
-        # is stripped rather than joined twice. `root` keys have no segment to strip.
+        # The root already encodes the class, so that segment is stripped rather than joined twice.
         rest = clean if cls == "root" else clean[len(cls) + 1 :]
         if not rest:
             raise ArtifactStoreError(f"ref names a class but no file: {ref!r}")
         resolved = os.path.abspath(os.path.join(base, rest))
-        # `commonpath` rather than `startswith`: `/media/derived-evil` startswith `/media/derived`.
+        # `commonpath` and not `startswith`: `/media/derived-evil` startswith `/media/derived`.
         if os.path.commonpath([resolved, os.path.abspath(base)]) != os.path.abspath(base):
             raise ArtifactStoreError(f"ref escapes its storage class root: {ref!r}")
         return resolved
@@ -99,20 +84,18 @@ class LocalArtifactStore:
             raise ArtifactStoreError(f"nothing to publish at {source!r} for ref {ref!r}")
         directory = os.path.dirname(target)
         os.makedirs(directory, exist_ok=True)
-        # The temp file is created IN the destination directory so the rename below cannot cross devices.
+        # Staged IN the destination directory so the rename below cannot cross devices.
         handle, staged = tempfile.mkstemp(dir=directory, prefix=".publishing-", suffix=".part")
         os.close(handle)
         try:
-            # `move` and not `copy`: the source is scratch we are done with, and on the same filesystem
-            # this is a rename rather than tens of megabytes of copying. Falls back to a copy across
-            # devices, which is why the atomic step below is separate.
+            # `move` and not `copy`, which degrades to a copy across devices — hence the separate
+            # `os.replace` (docs/arch/05-worker.md §4).
             shutil.move(source, staged)
             os.replace(staged, target)
         except OSError as exc:
             raise ArtifactStoreError(f"could not publish {ref!r}: {exc}") from exc
         finally:
-            # Only reached with `staged` still present if the move or replace failed — a leftover
-            # `.publishing-*` would otherwise accumulate in a real media directory.
+            # `staged` still exists only if the move or replace failed; a leftover would accumulate.
             if os.path.exists(staged):
                 os.unlink(staged)
 
@@ -120,6 +103,5 @@ class LocalArtifactStore:
         try:
             return os.path.isfile(self.path_of(ref))
         except ArtifactStoreError:
-            # A malformed ref does not exist, and answering the question is better than raising from what
-            # callers use as a cheap idempotency check.
+            # A malformed ref does not exist, and this is a cheap idempotency check, not a validator.
             return False

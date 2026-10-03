@@ -4,68 +4,17 @@
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/lift_gate.py \\
         [--target stem|mix] [--model NAME] [--songs a,b] [--out rows.json] [--from rows.json]
 
-WHAT IT CALIBRATES. `domain.lyrics.lexical.lift` — the text's forced-path log-probability against the best
-of three seeded shuffles of its own words, per letter — gates two things:
+It fits `lexical.lift`'s per-bundle bands for both consumers — the LINE_SYNC rung and the global engine's word
+documents — over every right text and every wrong text the bench serves, through the SHIPPED helper and
+decoder off the bench's emission cache. Its ninth printed block is THE ROW THIS RUN FITS, ready to paste into
+`lexical.CALIBRATED`, or a refusal to pick one where the populations overlap; `line_sync_min_agreement`, that
+row's fifth field, comes from `line_gate.py` instead. `--from rows.json` re-prints a stored run.
 
-  * the LINE_SYNC rung (W1 review r2, `align_steps._time_line_sync`, which reads the same row): a
-    text at the rung must lift, so a same-video caption track in other words (a translation) cannot
-    line-sync;
-  * the GLOBAL engine's word documents (W3, review §3 item 4 / H3): refuse / doubt / ok
-    bands on a stem, where the lift REPLACES the envelope gate, because that gate scores OUR OWN decode, which
-    the audio pulls onto the voiced frames whatever the text (152/320 wrong texts passed it at W1); and doubt
-    / ok bands on the mix, whose floor REFUSES by default since W4 review r1 (it refuses 7 of 32 truth texts
-    there, and the envelope gate it replaced refused 10 of them plus 27 of 64 wrong texts) — the controls
-    being `h3-mix-envelope` (the envelope gate alone, the floor grading) and `h3-mix-floor` (both gates).
-
-Both through the SHIPPED helper and decoder (`adapters.ml.forced_align_decoder`), over:
-
-  * every text a right-text case serves (`truth` — which every offset, tempo, jitter and blind mode also
-    serves, since the lift reads no timing — `headers`, `credit`, `extraverse`, `drop20`, `drop50`);
-  * every wrong text (`wrongtext`, K donors per song) and every same-video wrong-words text
-    (`wrongtext+ownclock`: the donor's words on this song's own truth clock, `e2e_lib._own_clock`).
-
-Texts are served as the text adapters serve them (`clean_segments`). Matrices come from the bench's emission
-cache (`e2e.BenchAligner`, the key `e2e.py` uses), so a warm stem run is decodes only; `--target mix` pays one
-model pass per song the first time (then cached). `--target mix` also records each text's BLIND envelope fit
-(generate, then `activity.fit_sheet_to_audio` on the mix signal, `align_steps._envelope_passes`): the half of
-the shipped mix gate that reads no claims (the gate passes if the blind OR the repaired fit does, so this
-under-counts passes a repair could add; `blind`-mode texts have no repairs at all).
-
-SCORED AGAINST THE ROW OF THE MODEL IT MEASURED (W4b): `lexical.CALIBRATED` is keyed by bundle, so
-`--model <other>` reads that bundle's row, and a bundle with NO row is scored against the shipped one as a
-stated REFERENCE while the run prints the row it FITS (item 9 below) — which is what a recalibration is for.
-
-WHAT IT PRINTS (the procedure W3 calibrated by; W4b's HuBERT recalibration is `--model <bundle>` re-run):
-
-  1. each population's range per split (Jamendo: measured truth; YouTube + tfr: authored captions);
-  2. the texts too short to measure (under `lexical.MIN_LETTERS` alignable letters);
-  3. the HELD-OUT check: tau fitted on one split (the midpoint of that split's gap between the wrong texts'
-     maximum and the protected right texts' minimum) and scored on the other, both ways;
-  4. pass counts per threshold, pooled;
-  5. (stem) how the lift COMBINES with the shipped envelope gate, case by case over the W1 `time_text`
-     bench (`results/w1-time_text.cases.jsonl` + `w1-ownclock-time_text.cases.jsonl`, whose outcomes ARE
-     the envelope gate's): envelope alone, lift alone, both required, either enough;
-     (mix) the blind envelope with the lift floor, per floor;
-  6. the bands AS SHIPPED FOR THE BUNDLE THIS RUN MEASURED (`lexical.CALIBRATED[model]`, and `BANDS` only
-     as a stated reference for a bundle with no row — since W5 the shipped row is HuBERT-Large's, not
-     `BANDS`'): each population per band;
-  7. the truth texts' BLIND decode timing per band (lines within 1 s of truth, lines over 2 s off): on the
-     mix the lift reads how well the words are heard, which is what the mix doubt band is drawn on;
-  8. the W1 run_align bench's line-synced right texts (the LINE_SYNC rung's 16 commits) and their lift;
-  9. **THE ROW THIS RUN FITS** (`fitted`, W4b), by the procedure in `lexical`'s docstring, on the 0.05 grid,
-     ready to paste into `lexical.CALIBRATED` — or a refusal to pick one where the populations overlap. Run
-     over the committed W4 rows it reproduces the shipped row exactly (stem `refuse_below=0.20, ok_from=0.30`
-     with +0.0082 of head-room; mix `mix_floor=0.15`), which `tests/test_bench_e2e.py` pins. The fifth field,
-     `line_sync_min_agreement`, comes from `line_gate.py --model <bundle>`, which prints it the same way.
-
-`--from rows.json` re-prints the summary from a stored run without decoding anything.
-
-Measured at W1 review r2 (2026-09-28, base model, youtube tfr stems, 367 s): right texts +0.255..+4.34
-(truth +0.47), wrongtext -0.21..+0.19, wrongtext+ownclock -0.23..+0.14; the rung's floor 0.2. W3
-(2026-09-28, the same tree's shipped decoder, all 64 matrices from disk): the stem run reproduces every W1
-number (359 s); the mix run, envelope fits included, 508 s. W3's numbers (both targets, the held-out check,
-the combination, the mix envelope) are in `lexical`'s module docstring, the rows in
-`results/w3-lift-{stem,mix}.json` (`--from` re-prints either).
+What each block means, and the mix envelope reading's stated under-count, are in
+`docs/benchmarks/forced-alignment/README.md`, "The harness scripts: what each one is for, and the
+limit it states". The numbers are in
+"The lexical-lift wrong-text gate", "Per-model calibration" and "The lexical calibration rows, exhibit by
+exhibit"; the rows are `results/w3-lift-{stem,mix}.json`.
 """
 
 from __future__ import annotations
@@ -97,7 +46,7 @@ from encore_worker.domain.lyrics.clean import clean_segments  # noqa: E402
 #: The text-changing right-text modes. Every other timed mode serves `truth`'s text, and the lift reads none
 #: of a text's timings.
 RIGHT_MODES = ("truth", "headers", "credit", "extraverse", "drop20", "drop50")
-#: The right texts review §3.4's reject-if protects outright ("any right text on a stem refused, including
+#: The right texts the wrong-text reject-if protects outright ("any right text on a stem refused, including
 #: <= 20% missing lines"): all but drop50, which is reported on its own.
 PROTECTED = ("truth", "headers", "credit", "extraverse", "drop20")
 WRONG_MODES = ("wrongtext", "wrongtext+ownclock")
@@ -413,32 +362,20 @@ def _up(value: float) -> float:
 
 
 def fitted(rows: Sequence[Row], target: str) -> list[str]:
-    """The calibration row THESE rows imply, by the procedure in `lexical`'s docstring, ready to paste into
-    `lexical.CALIBRATED` (W4b: this script is the procedure, so it prints its answer rather than leaving a
-    reader to do the arithmetic).
+    """The calibration row THESE rows imply, ready to paste into `lexical.CALIBRATED`: this script is the
+    procedure, so it prints its answer rather than leaving a reader to do the arithmetic.
 
-      stem: `refuse_below` = the pooled gap's midpoint between the protected right texts' minimum (drop50
-            included) and the wrong texts' maximum, rounded DOWN onto `GRID`; `ok_from` = the smallest `GRID`
-            step ABOVE the weakest drop50, and never above the weakest PROTECTED right text. If the
-            populations OVERLAP no threshold meets review §3.4, and this says so rather than picking one — a
-            model in that state ships with NO ROW, which refuses to gate instead of gating wrongly.
-      mix:  `mix_floor` = the smallest `GRID` step above BOTH splits' wrong maxima. `mix_ok_from` is read off
-            the per-band timing table above (where the truth texts' blind decodes stop being poor), which is a
-            judgement this cannot make for you.
+      stem: `refuse_below` = the pooled gap's midpoint between the protected right texts' minimum and the
+            wrong texts' maximum, rounded DOWN onto `GRID`; `ok_from` = the smallest step above the weakest
+            drop50, never above the weakest PROTECTED right text. OVERLAPPING populations meet no reject-if,
+            and this says so rather than picking one — such a model ships with NO ROW.
+      mix:  `mix_floor` = the smallest step above BOTH splits' wrong maxima; `mix_ok_from` is read off the
+            per-band timing table above, which is a judgement this cannot make for you.
 
-    `ok_from` WAS "the higher of the two splits' own fits, rounded up" until W4b's HuBERT run, which is where
-    that rule broke: it reproduced the base model's 0.30 only by coincidence. A split fit is
-    (weakest protected right + highest wrong) / 2, so a split with NO weak right song — YouTube on HuBERT-L,
-    protected minimum +2.085 — fits a tau of +1.152, and rounding that up put FIVE protected right texts of
-    one song (Avercage, truth +1.132) in the doubt band: `low` lines, `medium` document, and on a stem
-    UNVOUCHED, for a song the base model's row graded OK. It buys nothing, because no wrong text on either
-    split reaches +0.22 — five to ten redraw SDs below even the narrow band's top. The rule now states what
-    the band is FOR (`lexical.Bands.ok_from`): a margin above the floor wide enough to hold a wrong text that
-    squeaked over it, drawn so that the texts inside it are the ones review §3.4 does NOT protect (drop50, a
-    sheet missing half its lines). It reproduces the shipped base row exactly — weakest drop50 +0.264 -> 0.30,
-    at or below the weakest protected +0.350 — and fits HuBERT-L at 0.80.
-
-    `line_sync_min_agreement`, the fifth field, comes from `line_gate.py --model <bundle>`.
+    `ok_from` was "the higher of the two splits' own fits, rounded up" until a split with no weak right song
+    put five protected right texts of one song in the doubt band. The rule now states what the band is FOR
+    (`lexical.Bands.ok_from`), and README, "The lexical calibration rows, exhibit by exhibit", has every
+    number. `line_sync_min_agreement`, the fifth field, comes from `line_gate.py --model <bundle>`.
     """
     right = _lifts(rows, PROTECTED) + _lifts(rows, ("drop50",))
     wrong = _lifts(rows, WRONG_MODES)
@@ -473,7 +410,7 @@ def fitted(rows: Sequence[Row], target: str) -> list[str]:
         return out
     if low <= high:
         out.append(
-            "  -> NO THRESHOLD: the populations OVERLAP, so nothing meets review §3.4's reject-if. This "
+            "  -> NO THRESHOLD: the populations OVERLAP, so nothing meets the wrong-text reject-if. This "
             "model gets no row (refuse to gate), and the wave says so."
         )
         return out
@@ -481,7 +418,7 @@ def fitted(rows: Sequence[Row], target: str) -> list[str]:
     fits = [fit[2] for split in SPLITS if (fit := fitted_tau(rows, split)) is not None]
     doubtable = _lifts(rows, ("drop50",))
     protected = _lifts(rows, PROTECTED)
-    # The band holds the right texts review §3.4 does not protect and stops below the weakest protected one;
+    # The band holds the right texts the reject-if does not protect and stops below the weakest protected one;
     # `_down` on that cap keeps it on the grid, and `refuse + GRID` keeps the band non-empty.
     ok = (
         min(_down(min(doubtable)) + GRID, _down(min(protected))) if doubtable and protected else refuse + GRID
@@ -515,7 +452,7 @@ def blind_timing(song: lib.Song, claims: lib.Claims, lines: Sequence[Any]) -> di
 
 def timing_by_band(rows: Sequence[Row], target: str, bands: lexical.Bands) -> list[str]:
     """The truth texts' blind decode timing per lift band: on the mix, the lift reads how well the words
-    are HEARD, which is what its doubt band is drawn on (the module docstring of `lexical`)."""
+    are HEARD, which is what its doubt band is drawn on (`lexical.Bands.mix_ok_from`)."""
     truth = sorted((r for r in rows if r["mode"] == "truth" and r.get("blind_pm1") is not None), key=_lift_of)
     if not truth:
         return ["no blind timing recorded (a run from before W3)"]

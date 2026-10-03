@@ -1,90 +1,13 @@
-"""AD-LIBS AND ECHO TAILS: the words the LEAD voice is not singing (review §3.13, PLAN W5).
+"""Ad-libs and echo tails: the words the LEAD voice is not singing. DEFAULT-OFF (the `adlibs` arm).
 
-WHAT GOES WRONG WITHOUT THIS. The global decode is ONE monotone CTC path over the whole recording
-(`generate`), and every character in the target sequence must be consumed in order. A backing vocal is not
-in order with the lead: Hello's caption track writes `♪ So hello from the other side ♪` and then
-`♪ Other side ♪` — a second voice echoing the tail WHILE the lead has moved on — and Shape of You writes
-`♪ Come on, be my baby - (I'm in love with your body) ♪`, where the parenthetical is a different singer
-over the same bar. The path has to spend frames on those characters somewhere, and the only frames it can
-spend are the ones the NEXT lead lines were sung in. So the damage is not on the ad-lib: it is on
-everything after it, which is why the review measured it on the LEAD lines.
+A backing vocal is not in order with the lead, so the one monotone CTC path must spend frames on its
+characters somewhere, and the damage lands on everything AFTER it. Two anchored rules hold those words out
+of the lead's target sequence and time them inside their host line afterwards, as labelled interpolations.
 
-WHAT THIS DOES. Two ANCHORED rules take those words out of the decode's target sequence and time them
-afterwards inside their host line, so the lead's path is the lead's alone:
-
-  R1  A MID-LINE OR TRAILING PARENTHETICAL with letters in it (review §3.13's "lexical parenthetical").
-      `with me (e-e-ee)`, `shoes (Caught in the undertow, just caught in the undertow)`, `lookin' boy
-      (Ha!)`. The group must begin and end at WORD boundaries, so no token is cut in half, and the line
-      must keep at least one lead word.
-      NOT A LEADING ONE, which is the spec's own word and a measured reason: a leading aside is where the
-      host line STARTS, and every metric in this repo scores a line by its start, so excluding it would
-      move the one number the decode is judged on. tfr-flyaway's `(ca-ca) Come and fly away` is the
-      corpus's only shape of that kind (2 lines) and is left in the decode.
-      NOT A WHOLE-LINE ONE either: that is `nonlyric.py`'s question (is this a cue or a backing line?) and
-      `clean.py` measured what reading it as a cue costs — `♪ (Oh-I-oh-I-oh-I-oh-I) ♪` is sung.
-
-  R2  AN ECHO-TAIL LINE: a whole line whose normalised words are a strict SUFFIX of the line before it,
-      at most `MAX_ECHO_SHARE` of that line's length, AND ALONE — the line after it must not echo the same
-      host again. `Other side` after `So hello from the other side`, `Thousand times` after `I must've
-      called a thousand times`, `I've tried` after `At least I can say that I've tried`. It is still
-      PUBLISHED as its own line — the TV shows it — and it is timed in the gap the lead decode leaves
-      between its host and the next lead line, which is exactly where the second voice sang it.
-
-      THE "ALONE" CLAUSE IS A MEASURED REFUSAL, not tidiness, and `never-be-alone` is what measured it.
-      That song's text writes its hook as `You'll never be alone` / `be alone...` / `be alone` — ELEVEN
-      such triples, 21 of its 22 candidate echoes — and the truth timings say those are SEQUENTIAL lead
-      phrases, not a simultaneous second voice: 155.30-157.92, then 157.92-158.80, then 158.80-159.78,
-      three consecutive spans with no gap anywhere. Taking them out of the lead decode would leave 21
-      lines of 47 with no room to be timed in and interpolate them onto their host's end, which is a
-      document half-destroyed in exchange for nothing. A tail sung TWICE over is a repetition the singer
-      performed; one sung once beside a long lead line is the ad-lib this rule is about. The residue is
-      named rather than fitted away: never-be-alone keeps ONE candidate (`be alone` at index 30, whose
-      pair-mate the text happens not to write), and no second threshold is added to catch it.
-
-THE REACH IS MEASURED AND IT IS SMALL (32-song bench corpus, the texts as `clean_segments` serves them,
-`_runs/w5-adlibs/scan.py`): **12 parenthetical hosts in 4 songs** (tfr-flyaway 4 `with me (e-e-ee)`, numb 4
-`(Caught in the undertow…)`, shape-of-you 3 `(I'm in love with your body)`, rap-god 1 `(Ha!)`) and **15 echo
-tails in 6 songs** (hello 8, never-be-alone 2, Ridgway 2, LUNABLIND 1, bad-guy 1, bohemian-rhapsody 1), out
-of 1712 served lines; 10 of the 32 songs are touched at all. On the other 22 this module is IDENTITY —
-`lead_texts == line_texts`, `hosts` empty, `restored` returns the same object — so a run on them is
-byte-identical by construction and not merely by measurement. THE ONE SONG THE REVIEW MEASURED IS THE ONE IT
-REACHES MOST, which is the critics' objection repeated as arithmetic: 8 of the 15 echo tails are Hello's.
-(On a text that has NOT been cleaned — the bench's `--level time_text` serves the caption lines raw — the
-parenthetical count is 16 in 6 songs, the three extra being hello's `(wind buffeting) (phone clacking)`-shaped
-CUE lines, which the shipped path drops at clean time and this module never sees in production.)
-
-AND THE ARM FAILS ITS BAR, WHICH IS WHY IT SHIPS OFF (`host.config.ALIGN_EXPERIMENTS`, `adlibs`, where the
-A/B lives). The short version: on the tree that ships, the ONE echo tail whose timing moved got WORSE (hello
-`♪ Other side ♪` +1.84 -> +2.08 s), numb gained a gross line after two aside hosts, never-be-alone lost a
-published line to the never-sung rule's moved median, and pooled blind gross was 14 against 14. The review's
-21 -> 11 does not reproduce because its population is gone: hello's blind decode has six gross lines in
-total now, where it had 21 before W6's clamp fix and the HuBERT-L flip.
-
-WHAT A RESTORED TIMING IS AND IS NOT. An aside's words are apportioned across the room their host leaves
-them BY CHARACTER COUNT (`presplit.presplit_text`'s rule, and for its reason: an even split gives a
-one-syllable ad-lib the same span as a six-word one). That is an INTERPOLATION, not a measurement, and it
-is labelled as one — every restored word carries `generate.OOV_CONFIDENCE`, exactly as a word whose
-characters the dictionary lacks already does, so nothing downstream has to learn a new provenance. A line
-with NO measured word of its own (every R2 echo) is what `unmeasured_lines` reports, and
-`align_steps.line_confidence` grades it `low`: its onset is derived from its host's end rather than heard,
-and W6's TV consumer then renders it line-level with no word wipe. That demotion can only take a line
-DOWN, so §3.7's `high_gross` cannot rise.
-
-THE ORDER INVARIANT IS KEPT BY CONSTRUCTION, because breaking it is expensive: two words out of order read
-as incoherent word timing and `policy.decide` degrades the whole document to line sync (`measure`
-`out_of_order`, and the live incident in `generate.remapped`'s docstring). `restored` carries a FLOOR —
-the end of the last word it emitted — and no interpolated word starts before it, so the published word
-sequence is monotone whatever the gaps turn out to be. Where there is no room at all the words are
-zero-width at that floor: on screen a flash, in the metrics a start that is its host's end, and never a
-word that walks backwards.
-
-WHAT THIS IS NOT, deliberately. It is not a SECOND DECODE of the aside inside the gap. That is the obvious
-next step — the gap is evidence-derived, which is precisely what `generate.regenerate` takes — and it is
-not taken here because it adds a repair site with its own window guard and its own failure mode for 50
-lines of the corpus, and because in a CLAIM mode the ladder already re-decodes a repaired line from its
-FULL text (`regenerate` reads `Line.text`), so the asides of a repaired line come back MEASURED without
-this module doing anything. The arm's own value is therefore concentrated exactly where the review
-measured it: a blind decode.
+Both rules, the measured refusal behind the echo rule's "alone" clause, the interpolation policy and why
+there is no second decode inside the gap: `docs/arch/04-alignment.md` §8, §12 (XA-08) and §13. README,
+"W5: ad-libs (§3.13) — BUILT, MEASURED ON THE CORPUS, AND IT DOES NOT GENERALISE", holds the reach and the
+A/B that failed the arm's bar.
 """
 
 from __future__ import annotations
@@ -103,11 +26,9 @@ from encore_worker.domain.lyrics.generate import (
 )
 from encore_worker.domain.lyrics.policy import normalised_words
 
-#: The most of its host's words an echo tail may repeat before it reads as a lyric line of its own rather
-#: than a backing voice. Measured on the corpus's own echoes, which are 1-3 words against hosts of 4-9
-#: (`Other side` 2/6, `Thousand times` 2/7, `Outside` 1/4, `I've tried` 3/9): at 0.5 all 23 are caught and
-#: the rule still refuses a near-complete repeat, which is a REPEATED LYRIC and the ladder's business
-#: (`margin.fuzzy_repeats`, R3's anchoring) rather than an ad-lib's.
+#: The most of its host's words an echo tail may repeat before it reads as a lyric line of its own. Measured
+#: on the corpus's own echoes, 1-3 words against hosts of 4-9: all 23 are caught and a near-complete repeat
+#: is still refused, being a REPEATED LYRIC and the ladder's business (docs/arch/04-alignment.md §8).
 MAX_ECHO_SHARE = 0.5
 
 #: One balanced parenthetical group, no nesting. Nesting is not a shape caption tracks or lyric sheets
@@ -121,10 +42,8 @@ _LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
 class Host:
     """One line as the LEAD decode sees it, and as it will be PUBLISHED.
 
-    `words` is the publication word list — the input line's own `split()`, every token of it — and `aside`
-    is parallel to it: True where the lead decode was never given that word. `lead` is the space-join of
-    the rest, so `lead.split()` and the False positions of `aside` are the same list by construction,
-    which is what makes `restored`'s pairing exact rather than a re-parse.
+    `words` is the publication word list and `aside` is parallel to it, so `lead.split()` and the False
+    positions of `aside` are the same list by construction — which is what makes `restored`'s pairing exact.
     """
 
     index: int
@@ -170,39 +89,23 @@ class Split:
 
 
 def untouched(line_texts: Sequence[str]) -> Split:
-    """The split that takes NOTHING out: what the default path uses.
-
-    So the arm is one expression in `align_steps` and not a branch around every decode — `lead_texts` is
-    the served text, `hosts` is empty, and `restored` is the identity on any document.
-    """
+    """The split that takes NOTHING out: what the default path uses, so the arm is one expression in
+    `align_steps` rather than a branch around every decode."""
     return Split(lead_texts=tuple(line_texts), hosts={})
 
 
 def split(line_texts: Sequence[str], *, emissions: Any | None = None) -> Split:
     """Take the ad-libs out of `line_texts` (R1, R2) without changing one published word.
 
-    The returned `lead_texts` is PARALLEL to the input — same length, same indexes — because every
-    consumer of a text's lines in this repo enumerates one sequence and pairs on position
-    (`generate.Line.index`, `clean_segments`' DROPPING RENUMBERS NOTHING). An echo tail's entry is `""`,
-    which is the same thing the never-sung rule writes for a line it drops, so the decode already knows
-    how to contribute no targets for an index.
-
-    `emissions` IS THE MATRIX THE LEAD DECODE WILL RUN ON, and R1 reads its DICTIONARY (W5 review
-    r1-tests-20). "Something is left for the decode to align" was a LETTER test, and a letter the
-    dictionary lacks is dropped by `generate` exactly as a `♪` is: a line whose lead words are all
-    out-of-vocabulary and whose parenthetical is in-vocabulary passed the test, `generate` then emitted
-    nothing for it, and `restored` published nothing — so the ARM LOST A LINE the default path publishes,
-    aside words included. With the matrix in hand the test is `generate.alignable_chars`, the same function
-    the decode and every repair window measure a line with. None keeps the letter test, which is all a
-    caller without a matrix can do (and what `tests/test_parts.py` reads the rules through).
+    The returned `lead_texts` is PARALLEL to the input, every consumer pairing on position. `emissions` IS THE
+    MATRIX THE LEAD DECODE WILL RUN ON, and R1 reads its DICTIONARY: as a LETTER test "something is left to
+    align" let the ARM LOSE A LINE the default path publishes.
     """
     alignable = _alignable_with(emissions)
     words = [tuple(text.split()) for text in line_texts]
     aside = [_aside_flags(line, alignable) for line in words]
-    #: A line nothing was taken out of keeps its text BYTE-IDENTICALLY, never the re-joined tokens: the
-    #: decode's `Line.text` becomes the published one, and re-joining silently rewrote every line's
-    #: whitespace (measured on numb, whose caption lines read `CHORUS:  Become so tired` with two spaces —
-    #: 7 published lines changed under the arm with no timing having moved).
+    #: A line nothing was taken out of keeps its text BYTE-IDENTICALLY, never the re-joined tokens: re-joining
+    #: silently rewrote the whitespace of 7 published lines on one measured song.
     leads = [
         text
         if not any(flags)
@@ -235,10 +138,8 @@ def split(line_texts: Sequence[str], *, emissions: Any | None = None) -> Split:
 def _echo_tails(leads: Sequence[str]) -> dict[int, int]:
     """R2: `{echo line index: its host's index}`, after the ALONE clause has refused the sequences.
 
-    Two passes, and the first one's HOST CHAIN is computed before any refusal so that the rule is a
-    function of the text and not of the order the refusals happened in: a candidate's host is the last
-    line that is not itself a candidate, and a candidate the second pass refuses does not become a host
-    retroactively.
+    The HOST CHAIN is computed before any refusal, so the rule is a function of the text rather than of the
+    order the refusals happened in.
     """
     candidates: dict[int, int] = {}
     previous: int | None = None
@@ -259,12 +160,8 @@ def _echo_tails(leads: Sequence[str]) -> dict[int, int]:
 def restored(generated: Generated, split_of: Split, *, until: float | None = None) -> Generated:
     """Put every ad-lib word back in its published place, timed inside the room its host leaves it.
 
-    `generated` must be the decode of `split_of.lead_texts` (`Line.index` is the input index either way).
-    Returns `generated` UNCHANGED — the same object — when nothing was taken out, so a text with no
-    ad-libs cannot be perturbed by this module even in principle.
-
-    `until` is the recording's end, the only bound a trailing aside on the LAST line has. None leaves such
-    a run zero-width at its host's end rather than inventing a span past the audio.
+    `generated` must be the decode of `split_of.lead_texts`, and this returns it UNCHANGED when nothing was
+    taken out. `until` is the recording's end, the only bound a trailing aside on the LAST line has.
     """
     if not split_of.reaches:
         return generated
@@ -277,14 +174,10 @@ def restored(generated: Generated, split_of: Split, *, until: float | None = Non
     for index in range(len(split_of.lead_texts)):
         host = split_of.hosts.get(index)
         if host is not None and host.echo_of is not None and host.echo_of not in emitted:
-            # AN ECHO WHOSE HOST WAS NOT PUBLISHED GOES WITH IT (W5 review r1-correctness-5). Its host's
-            # measurement is the only thing that places it — `_echo_tails` guarantees the host is an EARLIER
-            # index, so an absent one means `generate` dropped that line for carrying no alignable character,
-            # and the echo's words are a suffix of its host's, so the default path has nothing to align there
-            # either. Restoring it anyway parked a published line at the document FLOOR (0.0 when no line had
-            # been emitted yet) spanning the whole lead-in, with `score=0.0` — a zero on a log-probability
-            # scale is an impossibly GOOD score, and it entered the never-sung rule's median as one. Same
-            # treatment the R1 host below gets, for the same reason: no measurement, no line.
+            # AN ECHO WHOSE HOST WAS NOT PUBLISHED GOES WITH IT, its host's measurement being the only thing
+            # that places it. Restoring it anyway parked a published line at the document FLOOR spanning the
+            # whole lead-in, with a score of 0.0 — impossibly GOOD on a log-probability scale, and it entered
+            # the never-sung rule's median as one. No measurement, no line.
             continue
         if host is None or (host.echo_of is None and index not in decoded):
             # Not ours, or a host whose lead text carried no alignable character at all: `generate` drops
@@ -303,10 +196,8 @@ def restored(generated: Generated, split_of: Split, *, until: float | None = Non
             anchor = emitted[host.echo_of]
             words = _spread(host.words, max(floor, anchor.end), ahead[index])
             floor = max(floor, words[-1].end)
-            # ITS HOST'S SCORE, because its host's measurement is what placed it. Not 0.0: the never-sung
-            # rule and the confidence rule both read `Line.score` against the song's MEDIAN, and a zero
-            # on a log-probability scale is an impossibly GOOD score, which would quietly exempt every
-            # echo from both.
+            # ITS HOST'S SCORE, because its host's measurement is what placed it. Not 0.0, which is
+            # impossibly GOOD against the song's median and would exempt every echo from two rules.
             line = _line_of(host, words, score=anchor.score)
         out.append(line)
         emitted[index] = line
@@ -316,18 +207,9 @@ def restored(generated: Generated, split_of: Split, *, until: float | None = Non
 def unmeasured_lines(generated: Generated) -> frozenset[int]:
     """Indexes of lines NO word of which the decode placed: every R2 echo, AND every claim-ADOPTED line.
 
-    THE SECOND HALF IS NOT THIS MODULE'S AND IS NOT ARM-ONLY (W5 review r2-spec-13, which found this
-    docstring claiming "nothing else today"). `generate.adopted_line` builds a line whose every word carries
-    `OOV_CONFIDENCE` provenance — the claim span was copied, not heard — so it matches this predicate exactly
-    as an echo does, with no experiment set. That is the truth about the predicate rather than a defect in
-    it: a line nothing measured is a line nothing measured, whichever rule invented its words. It costs no
-    behaviour either, because the one reader grades an adopted line `low` on the next branch regardless
-    (`align_steps`' `line_confidence`), and the only way to tell the two apart would be to read provenance
-    the caller already has.
-
-    Read off the document rather than kept as a set beside it, so a line the ladder later re-decoded from
-    its full text (`regenerate` reads `Line.text`) is no longer reported: the repair measured it, and a
-    grade that still said "interpolated" would be describing the timing before the repair.
+    THE SECOND HALF IS NOT THIS MODULE'S AND IS NOT ARM-ONLY — a line nothing measured is a line nothing
+    measured, whichever rule invented its words — and it costs no behaviour, the one reader grading an
+    adopted line `low` regardless. Read off the document, so a line the ladder re-decoded is not reported.
     """
     return frozenset(
         line.index
@@ -337,12 +219,8 @@ def unmeasured_lines(generated: Generated) -> frozenset[int]:
 
 
 def _alignable_with(emissions: Any | None) -> Callable[[str], bool]:
-    """ "Can the lead decode align anything in this text?" — read off the MATRIX when there is one.
-
-    `alignable_chars` is `generate`'s own target filter (dictionary membership, non-character columns
-    excluded), so with a matrix in hand the question R1 asks is exactly the question `generate` will answer.
-    Without one it is the letter test, which is what `_mark`'s docstring measured on shape-of-you.
-    """
+    """ "Can the lead decode align anything in this text?" — read off the MATRIX when there is one, so the
+    question R1 asks is exactly the question `generate` will answer; else the letter test."""
     if emissions is None:
         return lambda text: bool(_LETTER.search(text))
     return lambda text: alignable_chars(text, emissions) > 0
@@ -351,12 +229,9 @@ def _alignable_with(emissions: Any | None) -> Callable[[str], bool]:
 def _aside_flags(words: Sequence[str], alignable: Callable[[str], bool]) -> tuple[bool, ...]:
     """R1, on TOKENS: True for every word a mid-line or trailing parenthetical owns.
 
-    Token-anchored on purpose. A group that starts or ends inside a token (`la(ha)la`) would make the
-    published word list and the lead decode's disagree about what a word IS, and the pairing in `restored`
-    rests on them agreeing; such a line is left whole instead (0 lines in the bench corpus).
-
-    An UNBALANCED line — one `(` and no `)`, which a truncated caption cue writes — marks nothing: the
-    group never closes, so there is no span to take out and the line goes to the decode whole.
+    Token-anchored on purpose, a group starting inside a token making the published word list and the lead
+    decode's disagree about what a word IS; such a line is left whole (0 in the bench corpus). An UNBALANCED
+    line marks nothing, the group never closing.
     """
     flags = [False] * len(words)
     depth = 0
@@ -381,14 +256,8 @@ def _mark(
     """Flag `words[start..stop]` as an aside, IF it is one: never leading, lexical, and never the whole
     line's WORDS (what is left must still be something the lead decode can align).
 
-    THE LAST CONDITION WAS MEASURED, not foreseen. `♪ (Oh-I-oh-I-oh-I-oh-I) ♪` is shape-of-you's backing
-    line, and in a text that reaches this module BEFORE `clean_line` (the bench's `--level time_text` serves
-    the caption lines raw) its parenthetical is not leading — a `♪` is in front of it — so a "something is
-    left" test that counted TOKENS read `♪ ♪` as a lead line, handed the decode a line with no alignable
-    character, and dropped six published lines of that song. A decoration is not a lead.
-    AND NEITHER IS A WORD THE DICTIONARY LACKS (W5 review r1-tests-20): `alignable` is the matrix's own
-    membership test where `split` was given a matrix, because a letter the decode cannot consume leaves
-    just as little to align as a `♪` does — see `split`'s docstring for the line the arm lost that way.
+    THE LAST CONDITION WAS MEASURED, not foreseen: a token count read `♪ ♪` as a lead line and dropped six
+    published lines of one song. A decoration is not a lead, and neither is a word the DICTIONARY lacks.
     """
     if start == 0:  # NEVER LEADING (see the module docstring)
         return
@@ -402,12 +271,8 @@ def _mark(
 
 
 def _echoes(host_lead: str, lead: str) -> bool:
-    """R2: is `lead` a short echo of the TAIL of `host_lead`?
-
-    Compared on `policy.normalised_words` — lowercased, punctuation dropped — which is the form this
-    package already compares two texts in, so `Other side` echoes `...the other side ♪` and the rule does
-    not acquire a fourth definition of "the same word".
-    """
+    """R2: is `lead` a short echo of the TAIL of `host_lead`? Compared on `policy.normalised_words`, the form
+    this package already compares two texts in, so the rule gains no fourth definition of "the same word"."""
     here = normalised_words([lead]).split()
     host = normalised_words([host_lead]).split()
     if not here or not host or len(here) >= len(host):
@@ -432,9 +297,8 @@ def _next_starts(lines: int, decoded: Mapping[int, Line], *, until: float | None
 def _woven(host: Host, decoded: Line, *, floor: float, limit: float | None) -> tuple[tuple[Word, ...], float]:
     """`host`'s publication words: the decoded lead words where they are, the asides apportioned between.
 
-    The decoded words are consumed IN ORDER against the False positions of `host.aside` — the two lists
-    are the same length by `split`'s construction, and a mismatch means `generated` is the decode of some
-    other text, which is a caller bug rather than an input.
+    Consumed IN ORDER against the False positions of `host.aside`; a mismatch means `generated` is the decode
+    of some other text, which is a caller bug rather than an input.
     """
     lead = list(decoded.words)
     if len(lead) != sum(1 for flag in host.aside if not flag):  # pragma: no cover - a caller bug
@@ -458,11 +322,8 @@ def _woven(host: Host, decoded: Line, *, floor: float, limit: float | None) -> t
 
 
 def _spread(words: Sequence[str], low: float, high: float | None) -> tuple[Word, ...]:
-    """`words` apportioned across `[low, high]` by CHARACTER COUNT, zero-width when there is no room.
-
-    By character count and not evenly, for `presplit.presplit_text`'s measured reason: `(e-e-ee)` beside
-    `(Caught in the undertow, just caught in the undertow)` would otherwise get the same span.
-    """
+    """`words` apportioned across `[low, high]` by CHARACTER COUNT, zero-width when there is no room — not
+    evenly, or a two-word aside and a ten-word one would get the same span (docs/arch/04-alignment.md §8)."""
     room = max(0.0, (high if high is not None else low) - low)
     total = sum(len(word) for word in words) or 1
     out: list[Word] = []

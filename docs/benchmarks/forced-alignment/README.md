@@ -438,7 +438,13 @@ Three songs that still have gross lines and why:
   9 repeats at 2–12 s off now placed them correctly. **11 gross → 1** on tfr-chosen.
 - **Gate the OR of blind and repaired fits.** The gate refuses only when both blind and repaired
   envelope fits fail, and passes on a high-correlation fit at any lag (the shape agrees; the lag is an
-  offset, not wrong text). Both live-found regressions came from re-gating the repaired series:
+  offset, not wrong text). Its **three calibration points**, which are the three tiers of
+  `align_steps._envelope_passes` (design in `docs/arch/04-alignment.md` §5.2): **r ≥ 0.40**
+  (`activity.MIN_CORRELATION`, the `usable` threshold) within **±0.5 s**; **r ≥ 0.25** with
+  **|lag| ≤ 0.1 s**, the zero-lag null that only timings measured on this audio may be held to; and
+  **r ≥ 0.60** at **any** lag, this bullet's offset case. `_sheet_passes` — the gate on a sheet's own
+  claimed spans — is the first and third of those only, never the ±0.1 s one. Both live-found regressions
+  came from re-gating the repaired series:
   never-be-alone (R1 adopted claims 1.76 s off from real singing) and bohemian-rhapsody (adoption
   dropped the r below threshold). Both now publish correctly.
 
@@ -1706,8 +1712,9 @@ whole 1.21 pt is paid on songs that score a correction against the thing being c
 
 Read against §3.11's 0.3 pt, the PRE-r1 probe's −1.44 pt was the larger failure, and 0.92 of it was ONE rule:
 M5's floor refusing to adopt a claim span too short to hold its line. It fired 15 times on rap-god, whose
-caption cues are short and whose starts are RIGHT, and once on JASON_MILLER drop50 — the only Jamendo song in
-the sweep to gain a gross line. That floor is now the default-off arm **`m5-adopt-floor`** (`config.py`'s arm
+caption cues are short and whose starts are RIGHT, keeping 15 measured timings instead of adopting for
+**−16 of 1 736 lines within ±500 ms, −7.4 pt on that song and +1 gross**, and once on JASON_MILLER drop50 — the
+only Jamendo song in the sweep to gain a gross line. That floor is now the default-off arm **`m5-adopt-floor`** (`config.py`'s arm
 list; both branches pinned in `test_align_provenance`, since with the arm ON the fixture it was built for
 publishes 5.06 s out and with it OFF the corpus keeps its 16 lines). Default-off: truth −2.13 → −1.21 pt,
 gross 29 → 28, drop50's Jamendo gross line gone, off3 87.6 → 88.4% ±500; gates 63/66 → 64/66 and 60/66 → 62/66
@@ -1921,6 +1928,24 @@ stem and the mix witness) keyed on `(resolved path, size, mtime_ns, model, langu
 cannot be `stat`ed is computed uncached, so a missing target still fails inside `load_audio_mono_16k` as the
 typed `InfraFault` every caller is written around.
 
+### What a cached emission matrix costs
+
+The readings behind `adapters/ml._emission_cache_size`, which bounds the LRU at
+`_MATRICES_PER_JOB × (jobs + 1)` — 4 entries at the default concurrency of 1, 8 on a 3-job box. A matrix is
+`frames × vocabulary` float32 on an exact 20 ms grid (`FRAME_SEC`), so the arithmetic is reproducible rather
+than quoted:
+
+| bundle | vocabulary | a 3-minute song | the LRU full, 1 job | the LRU full, 3 jobs |
+| --- | --- | --- | --- | --- |
+| an English wav2vec2 / HuBERT bundle | 29 | **~1 MB** (9.7k × 29 float32) | ~4 MB | ~9 MB |
+| the widest whisperx HF table (Korean) | 1 204 | **~47 MB** | ~188 MB | **~376 MB** |
+
+That spread is why the bound is derived from `Config.concurrency` rather than flat, and why it is not
+`jobs * 10`: a flat 4 let a 3-job box's six LIVE matrices evict each other and every attempt after the first
+re-paid the forward pass, while a generous flat bound would let one Korean job's history hold a third of a
+gigabyte. The ~1.4 GB figure quoted around the calibration table is the bench's on-DISK emission store, a
+different population from this resident LRU.
+
 ### L6: bounded-lag correlation, off the event loop
 
 `activity.fit_shift` computed the whole `N + M − 1` cross-correlation and then read 801 lags of it. The
@@ -1932,7 +1957,9 @@ checked rather than assumed: the values differ in the last bits a longer dot pro
 `_runs/w4-clock/corr_identity.py`) the chosen lag moved **0 times** and `correlation` came back identical,
 because `r` is recomputed at the integer lag. The one remaining inline call site — R1's claim fit, when the
 claims out-fit the decode — moved into `asyncio.to_thread`, pinned by thread identity rather than by reading
-the source.
+the source. Read at that call site the same reduction is **7.9 s → 55 ms** on a 60-minute recording, and 55 ms
+of synchronous numpy still stalls the socket keepalive the reaper reads, which is why the win does not remove
+the need for the thread.
 
 ## Word ends, held through the singing (W4, 2026-09-29; review §3 item 5)
 
@@ -2390,8 +2417,8 @@ bundle nobody chose and wrong for one a person typed. **The bench is the one pla
 measure-then-paste-the-row needs it to — so it prints a banner instead (`e2e.uncalibrated_banner`), records
 `uncalibrated: true` in `run.json` and in the summary's meta, and `e2e_gates` ERRORs any gate that reads
 `wrongtext_pass` on such a run: with the lift unreadable the wrong-text verdict falls back to the sheet-span
-envelope gate, which passes 125/320 wrong texts here, so a 0.00 in that column would be the envelope gate's
-number wearing the new bundle's name. `adapters/ml.py` deliberately does not import `lexical`
+envelope gate, whose blind half passes **125/320** wrong texts here and **126/320** same-video wrong words, so
+a 0.00 in that column would be the envelope gate's number wearing the new bundle's name. `adapters/ml.py` deliberately does not import `lexical`
 to make the check itself — that would put every threshold inside the emission cache's code fingerprint, so
 moving a band would invalidate all ~1.4 GB of cached matrices — so the refusal lives in `__main__` and a
 hermetic test holds `default_align_model` to the table (`tests/test_lexical.py`).
@@ -3723,7 +3750,9 @@ lookup). `about`, `maybe`, `baby` and `everything` all come out
 of pyphen unsplit, and `_force_count` then BISECTS them against CMUdict's count, putting the boundary at the
 middle of the string (`everything` → `ever|yth|ing`) instead of where a dictionary says (`eve|ry|thing`).
 With the tier in front, the SHIPPED ladder differs from Moby on **1.3%** — every one of those
-`_force_count` honouring CMUdict's count over the dictionary's break, i.e. the tier order working.
+`_force_count` honouring CMUdict's count over the dictionary's break, i.e. the tier order working. The review's
+three figures for these quantities were **44.8% / 86.6% / 31.0%** against the 44.8% / 82.9% / 39.0% above: the
+abstention rate reproduces exactly and the other two move with the counting rule.
 Shipped as `encore_worker/domain/lyrics/data/mhyph.xz`, **456 KB** for 152 085 entries: the 2.6 MB latin-1
 source reduced to the entries that are purely lowercase letters with at least one break (multi-word entries,
 apostrophes and hyphenated compounds dropped, because `syllables` splits on those itself and looks each piece
@@ -4420,13 +4449,21 @@ for the anchored rules to anchor on.
 
 **STEM — the review's conclusion CONFIRMED and wider than it found it. The default (English) bundle wins.**
 
-| | lines | gross | ±500 | words ±100 | ±250 | ±300 | AAE | words >2 s off |
+| | lines | gross | ±500 | words ±100 | ±250 | ±300 | AAE per word (per song) | words >2 s off |
 |---|---|---|---|---|---|---|---|---|
-| default, pooled | 2 515 | 80 | 90.78% | 83.48% | 94.06% | **94.78%** | **236 ms** | **188** |
-| routed, pooled | 2 515 | 99 | 92.29% | 83.69% | 92.13% | 92.97% | 540 ms | 485 |
-| fr default / routed | 763 | 32 / 36 | 86.50 / 90.56 | 77.15 / 82.53 | 90.62 / 90.37 | 91.45 / 91.45 | 322 / 324 | 85 / 153 |
-| de default / routed | 871 | 30 / 19 | 93.57 / 96.44 | 87.82 / 83.52 | 95.99 / 95.50 | 96.68 / 96.39 | 203 / 609 | 68 / 95 |
-| es default / routed | 881 | 18 / 44 | 91.71 / 89.67 | 85.80 / 85.06 | 95.75 / 90.64 | 96.36 / **91.19** | 187 / 677 | 35 / 237 |
+| default, pooled | 2 515 | 80 | 90.78% | 83.48% | 94.06% | **94.78%** | **186 ms** (236) | **188** |
+| routed, pooled | 2 515 | 99 | 92.29% | 83.69% | 92.13% | 92.97% | 389 ms (540) | 485 |
+| fr default / routed | 763 | 32 / 36 | 86.50 / 90.56 | 77.15 / 82.53 | 90.62 / 90.37 | 91.45 / 91.45 | 235 / 268 (322 / 324) | 85 / 153 |
+| de default / routed | 871 | 30 / 19 | 93.57 / 96.44 | 87.82 / 83.52 | 95.99 / 95.50 | 96.68 / 96.39 | 173 / 308 (203 / 609) | 68 / 95 |
+| es default / routed | 881 | 18 / 44 | 91.71 / 89.67 | 85.80 / 85.06 | 95.75 / 90.64 | 96.36 / **91.19** | 149 / 593 (187 / 677) | 35 / 237 |
+
+**TWO AAEs, AND THE PAIR IS THE POINT** (W7 review r2-tests-14). `lang_gate.pooled` recomputes every band
+from the summed counts, but its only absolute error used to be the UNWEIGHTED mean of the per-song means,
+printed as a bare `AAE=` and quoted here and in `language.model_language` as a pooled number. The true pooled
+error over the 15 887 words is **186 ms against 389**, not 236 against 540; both are now emitted
+(`word_aae_ms` per word, `song_aae_ms` per song) and both are printed with their denominator named. The
+VERDICT is unmoved — the gap is wider per word than per song — but the number that was published was the
+wrong one.
 
 Routing **more than doubles the catastrophic tail** (188 → 485 words more than 2 s off) and costs 1.81 pt of
 ±300. Per song, routed **WINS 20, LOSES 32, ties 7** (±300, 0.5 pt dead band), and the losses are far deeper
@@ -4439,13 +4476,13 @@ it is now better on fr/de/es stems than the base bundle was on them.
 
 **MIX — the review's mix win DOES NOT REPRODUCE. It is German's, and nothing else measurable here.**
 
-| | gross | ±500 | words ±100 | ±250 | ±300 | AAE | words >2 s off |
+| | gross | ±500 | words ±100 | ±250 | ±300 | AAE per word (per song) | words >2 s off |
 |---|---|---|---|---|---|---|---|
-| default, pooled | 415 | 71.89% | 66.51% | 76.46% | 77.47% | 2 812 ms | 2 111 |
-| routed, pooled | 372 | 76.26% | 70.35% | 79.01% | **80.08%** | 2 711 ms | 1 940 |
-| fr default / routed | 118 / **150** | 71.17 / 72.87 | 64.16 / 65.65 | 76.14 / 74.13 | 77.44 / **75.28** | 2 821 / 2 988 | 581 / **861** |
-| de default / routed | 155 / **87** | 71.53 / 82.09 | 67.87 / 74.38 | 75.70 / 85.15 | 76.73 / **86.52** | 2 941 / 2 073 | 788 / **361** |
-| es default / routed | 142 / 135 | 72.87 / 73.44 | 67.60 / 71.27 | 77.53 / 78.08 | 78.23 / 78.74 | 2 675 / 3 086 | 742 / 718 |
+| default, pooled | 415 | 71.89% | 66.51% | 76.46% | 77.47% | 2 011 ms (2 812) | 2 111 |
+| routed, pooled | 372 | 76.26% | 70.35% | 79.01% | **80.08%** | 1 946 ms (2 711) | 1 940 |
+| fr default / routed | 118 / **150** | 71.17 / 72.87 | 64.16 / 65.65 | 76.14 / 74.13 | 77.44 / **75.28** | 1 922 / 2 500 (2 821 / 2 988) | 581 / **861** |
+| de default / routed | 155 / **87** | 71.53 / 82.09 | 67.87 / 74.38 | 75.70 / 85.15 | 76.73 / **86.52** | 1 992 / 1 213 (2 941 / 2 073) | 788 / **361** |
+| es default / routed | 142 / 135 | 72.87 / 73.44 | 67.60 / 71.27 | 77.53 / 78.08 | 78.23 / 78.74 | 2 121 / 2 091 (2 675 / 3 086) | 742 / 718 |
 
 German reproduces the review's direction exactly (+9.79 pt ±300, gross 155→87, tail 788→361); **Spanish is a
 wash** (+0.51 pt) where the review read 47.9→62.6; **French REVERSES** (−2.16 pt, gross 118→150, tail
@@ -4456,9 +4493,54 @@ pt is one language's, and a default that routed every Latin song's mix would pay
 whatever the numbers say: **a routed bundle has no `lexical.CALIBRATED` row**, so every emission-scale
 threshold stands down on it — the wrong-text lift cannot refuse, the doubt band cannot grade, the placement
 margin abstains (`lexical.calibration` → None, by design; that is the review's high-severity W3 finding
-working as intended, and `TimedDoc.vouched` is False). Routing Latin script by default would trade measured
+working as intended). Routing Latin script by default would trade measured
 accuracy for an ungated wrong-text path on every non-English Latin song. **A NON-LATIN script always routes**,
 arm or no arm, because there the alternative is not a trade: it is `no lyrics`.
+
+**AND SINCE W7's REVIEW (r1-correctness-1) AN UNGATED BUNDLE PUBLISHES NO WORDS.** "Every emission-scale
+threshold stands down" used to leave the v2 ENVELOPE gate as the lane's only wrong-text gate — the gate review
+H3 measured passing **189 of 380** and **220 of 320** wrong texts, because it scores our own forced decode,
+which the audio pulls onto the voiced frames whatever the words say. Non-Latin routing is DEFAULT-ON, so that
+was the shipped state of every Korean, Japanese, Cyrillic and Arabic sheet. `_time_text_global` now DECLINES
+such an attempt (`policy.decide` rule 1, not rule 0), so a sheet with its own line timings degrades to the
+**LINE_SYNC rung** — whose gate is a share of lines in SECONDS (`lexical.LINE_SYNC_SHARE_UNCALIBRATED`), the
+one threshold an uncalibrated matrix keeps — and an untimed one moves to the next text. The ASR tier (its words
+were heard on this audio) and a PIN (a person chose it, published all-`low` and unvouched) are the two
+exemptions, and **`h3-ungated-words`** (`host.config.ALIGN_EXPERIMENTS`, default-off) is the control: it
+restores the pre-fix behaviour, which is also the only way left to read an uncalibrated bundle END TO END —
+without it every non-ASR text of such a bundle refuses at `--level time_text`, so a wave fitting a new
+per-language row (`scripts/lift_gate.py --model …`) measures its before/after under that name. **No row in
+`results/` moves**: every bench run is English on a calibrated bundle, and the `lang_gate.py` rows decode
+through `aligner.emissions` directly rather than through the gated step.
+
+### What these rows' configuration is NOT: no LATIN detector ran (W7 review r1-spec-9)
+
+Stated plainly, because a reader could previously only learn it from a missing keyword argument in the
+harness's `Adapters(...)` call: at `--level run_align` the real `fetch_captions` / `fetch_provider_lyrics` run
+and `language.detect` therefore runs on every acquired text — but with **`detector=None`**, where the shipped
+composition root builds `language.lingua_detector()` (`__main__.build_adapters`). With no detector Latin script
+can only answer `en`, so what every recorded row measures of `detect` is the SCRIPT histogram and the `en`
+fallback, not lingua's accuracy; **the Latin detector, and `detect`'s own trust order, ship on unit tests**
+(`tests/test_language.py`, including the real lingua over this corpus's four languages). Three things changed
+so the gap cannot be silent again:
+
+* `e2e.py --detector {off,lingua}` wires the SHIPPED factory into the bench's Adapters (`off` is the default —
+  it is what every row under `results/` holds, and the rows must keep reproducing);
+* **`meta["detector"]` is stamped on every `run_align` summary**, default included, and `detector` joins
+  `e2e_gates.COMPARED_META`, so a run measured with one against a baseline measured without it WARNS. Every
+  document committed under `results/` — W7's own rows included — was written BEFORE that stamp landed and
+  therefore carries no `detector` key at all, which is why the comparison reads a missing key as the DEFAULT
+  (`e2e_lib.RUN_DEFAULTS`, W7 review r2-spec-10) instead of skipping it: with the key compared only where both
+  sides record it, the warning could never have fired against any existing baseline. `run.json` now records the
+  value unconditionally, so an offline `--summarize` of a run's rows stamps what the run actually used, and a
+  directory started before the key existed still `--resume`s (its absence IS `off`);
+* a `_transcripts` entry written before `language` existed is now a cache **MISS** rather than a silent
+  `heard=None` (all six entries in this box's store predate the field), and the key is written always — `null`
+  included — so "the harness could not say" and "whisper said nothing" stay different facts.
+
+What the detector can move on THIS corpus is the TEXT's language — the syllabifier's and the published
+document's — and not the bundle, since `model_language` keeps Latin script on the measured default unless
+`lang-route-mix` is set. A wave that wants that measured turns the flag on and re-reads the affected rows.
 
 ### Review M9, LIVE: the blank on a real non-zero-pad model (`lang_gate.py --blank`)
 
@@ -4473,10 +4555,10 @@ truth (`results/w7-blank-nynorsk.json`; the LANGUAGE PAIRING is artificial and s
 with measured word truth exists on this corpus — but the model, the pad's position, the pass, the audio and
 the truth are all real, which is strictly more than a column permutation).
 
-| arm | lines | gross | ±500 | words ±250 | ±300 | AAE | words >2 s off |
+| arm | lines | gross | ±500 | words ±250 | ±300 | AAE per word (per song) | words >2 s off |
 |---|---|---|---|---|---|---|---|
-| `matrix` — what ships | 143 | **7** | **92.31%** | **95.81%** | **96.10%** | **232 ms** | **15** |
-| `unaware` — the pre-W4 chain | 143 | 27 | 67.83% | 74.48% | 76.19% | 1 541 ms | 133 |
+| `matrix` — what ships | 143 | **7** | **92.31%** | **95.81%** | **96.10%** | **234 ms** (232) | **15** |
+| `unaware` — the pre-W4 chain | 143 | 27 | 67.83% | 74.48% | 76.19% | 1 546 ms (1 541) | 133 |
 | `kernel` — told 0, matrix says 31 | — | — | — | — | — | — | every decode **RAISES** |
 
 The `unaware` arm is the honest reproduction: `blank = 0` was hard-coded in **five** places that have to agree
@@ -4848,9 +4930,18 @@ cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/pool_g
 ```
 
 The emission cache is keyed on the AUDIO, not the text, so a song pays one model pass for all its pools and arms
-— 8.5 minutes for all 228 jobs on a warm store. Hermetic coverage is `worker/tests/test_pool_gate.py` (22
+— 8.5 minutes for all 228 jobs on a warm store. Hermetic coverage is `worker/tests/test_pool_gate.py` (24
 tests): the pool's shape and witness split, the two states the ranking can be in, the L5 opener against the real
 client, and the arms driven through the real workflow over the E2E harness's synthetic song.
+
+**THE `lines` ROW'S OWN GATES WERE SKIPPED WHEN IT WAS FIRST RECORDED** (W7 review r2-spec-9, fixed and
+re-summarised with no model pass): `tally` keyed a `lines` cell `pool/arm/lines` while `verdicts` looked up
+`pool/arm`, so under `--sync-mode lines` every per-pool MUST found nothing and was silently skipped — the
+committed document carried **2 verdicts against the forced run's 13**, both passing, and the script exited 0.
+`key_of` is now the one spelling, the gate name carries the non-default sync mode, and a new built-in
+`every-planned-comparison-was-read` FAILS where rows exist that no comparison read. Re-read from the same rows:
+the `lines` run is **11/11** (8 per-pool MUSTs, the two built-ins, the new one) and the forced run **14/14**,
+every verdict PASS — so the reading the wave was accepted on survives, but it had not been taken.
 
 The YouTube twelve are the group with genuine multi-source texts, which is why the row above is theirs; the
 JAMENDO half was spot-checked on 2 songs (22 jobs, all 13 verdicts green) and reads the same way — `ranked`
@@ -5032,3 +5123,1175 @@ Everything after run 1 read the store. (b) `results/w5r2-time_text.json` **does 
 names it means `results/w5-time_text.json`: W5 r2's own `meta.baseline` declares that level's baseline unchanged
 from r1 (`time_text` serves the claims raw, so no text-hygiene change can reach it) and `_runs/w5r2-tt-control`
 reproduced it byte-identically.
+
+## W7b: the readings that lived inside the code (2026-10-01)
+
+The owner's directive of 2026-10-01 — code is self-documenting, prose lives in `docs/` — found
+`worker/encore_worker` carrying **3 876 comment lines and 7 764 docstring lines against 9 778 lines of code**
+(54% prose; counted over 74 files, blank lines excluded, by `_tools/prose_scan.py` in the bench root). Most of
+those measurement narratives already have a section above, written when the wave measured them. This section
+is for the remainder: the tables, exhibits and per-song readings that were only ever written down at the
+constant they justify, so that **no measured number is deleted when the code loses its essay**. Design and
+mechanism moved instead to [`docs/arch/04-alignment.md`](../../arch/04-alignment.md).
+
+The directive's own count of the same tree reads **3 685 comment and 7 577 docstring lines against 12 252 of
+code — 48%**. Both are right: the directive's code column includes the package's **3 390 blank** lines and
+`prose_scan.py`'s does not, and the scan charges a trailing comment on a code line to both columns. The tree is
+the same one; only the denominator moved.
+
+**The move is checkable, and the check is the point.** `_tools/prose_scan.py` recorded every numeric token in
+every worker comment and docstring before the cleanup — **8 411 tokens, 6 461 of them substantive; 4 782
+substantive in the two roots being cleaned, over 1 227 distinct magnitudes** — into `_prose/numbers.json`.
+`_tools/verify_numbers.py` then re-reads the tree and sorts each token into **code** (a literal in Python, or
+in a committed gate file), **doc** (a committed Markdown file), **prose** (still in a comment or docstring) or
+**LOST**. Under `--strict --durable`, which counts only code and **committed** docs as a home — the
+`PLAN-*` / `REVIEW-*` / `UI-REVIEW` working documents are gitignored, so a number that lives only there is not
+kept at all — the split taken **before the subsections below were written** was:
+
+| home | rows of 4 782 |
+| --- | --- |
+| a literal in code or a gate file | **3 951** |
+| a committed document already | **791** |
+| **nowhere but the prose about to be deleted** | **40** |
+
+Those **40** are what the subsections below exist for, and after them the same command reads **0**. Run it —
+with the interpreter PINNED, because the answer depends on it:
+
+```
+worker/.venv/bin/python _tools/verify_numbers.py --strict --durable             # 0 LOST, or the lost rows
+worker/.venv/bin/python _tools/verify_numbers.py --strict --durable --control 4000   # its false-pass rate
+```
+
+**Why the interpreter is pinned** (review r2-spec-8, r2-tests-12). A bare `python3` at either repo root is
+pyenv's **3.10.13**, while `worker/pyproject.toml` requires ≥ 3.12; `lift_gate.py` and `pool_gate.py` use PEP
+701 f-strings and do not parse under 3.10. `prose_scan.py` therefore could not re-freeze the manifest with the
+documented command at all, and `verify_numbers.split_prose_and_code` swallowed the same `SyntaxError` and
+scored those two files as 100% code, crediting every magnitude in their prose to a code literal: 3.10 reported
+**code 4 022 / doc 871** where 3.12 reports **code 3 984 / doc 909**, 38 rows with the wrong home. Both tools
+are now LOUD — `prose_scan.scan_file` exits naming the file and the interpreter, and `verify_numbers` falls
+back to a comments-only split, prints an `UNPARSED` line per file, stamps the interpreter into its JSON and
+exits non-zero (the fallback narrows the 38 rows to 17, and the verdict is still **0 LOST** under both).
+
+**And "0 LOST" is a weak test, measured rather than assumed** (review r2-spec-6). `present()` asks only whether
+a magnitude's digit string occurs anywhere in ONE token set built from the entire code corpus or the entire
+committed-doc corpus, and `tokens_of` also registers each token's integer head, so `1.5` satisfies a query for
+`1`. `--control N` prices that directly: drawing **4 000** magnitudes that were never in the repository, with
+the shape distribution of the manifest's 1 245 distinct magnitudes, **715 (17.9%)** are reported "present" —
+**92.2%** for an `N.N`, **44.6%** for `NN.N`, **26.5%** for a 3-digit integer, falling to **4.2%** at `NN.NN`
+and **1.1%** at four integer digits. So a genuinely deleted number has roughly a one-in-six chance of being
+scored `code` or `doc` anyway, and the gate's real guarantee is only that a loss cannot happen SILENTLY in the
+well-shaped (3+ significant digit) class. Read `LOST 0` as "no row failed this test", never as proof. It did
+hide two real deletions, both found by review and both now restored: `lexical.py`'s **126/320** same-video
+wrong words (beside the 125/320 above) and `ml.py`'s emission-cache sizing (**~376 MB** on a 3-job box, the
+**9.7k × 29 float32** English matrix shape), now in "What a cached emission matrix costs".
+
+Without `--durable` the check also accepts prose as a home, which is how the count is watched migrating rather
+than disappearing. `_tools/prose_survey.py` is the other half: it sorts all **4 772** prose blocks into keep /
+measurement / design / dead and writes the per-file work list to `_prose/survey.md`, so the deletions are made
+from a list rather than from an impression.
+
+Two limits, stated rather than discovered later. **The gate is the strict set.** The manifest also records
+`worker/tests` (**8 411** rows in all), which this sweep does not touch; **44** of those test rows hold a
+magnitude that appears nowhere but the test's own prose, and that is correct — a fixture's numbers belong
+beside the fixture. And **the check is a magnitude check**: it proves the number still appears in code or in a
+committed document, not that the sentence around it survived. The sentence is what the subsections below are
+for; the tool only makes it impossible to lose one silently.
+
+**A third limit, found by this wave's own review, and now closed.** `prose_scan.NUMBER` ended in `(?![\w])`, so
+a magnitude written with its UNIT ATTACHED never entered the manifest at all — `40ms`, `194s`, `16kHz`, `12x` —
+and a decimal with a unit silently degraded to its integer head, because `.` is not `\w` and the body
+alternation backtracked (`-3.76s` → `3`). Over the pre-wave prose of the two cleaned roots that hid **112
+occurrences across 18 distinct magnitudes**, so "0 LOST" could not speak for that class at all. The guard is now
+`(?!\d)` — the leading `(?<![\w.])` is what keeps a digit inside an identifier like `w500` out, so no second one
+is needed — and the verifier's own `TOKEN` pattern always allowed a unit suffix, which is why only the manifest
+side was blind. Re-scanned from the `w7b-start` shadow snapshot the manifest reads **4 894** strict substantive
+rows over **1 245** distinct magnitudes (was 4 782 / 1 227) and reproduces the pre-wave tree's file, code,
+comment, docstring and block counts exactly; re-verified against the swept tree it reads **code 3 984, doc 909,
+LOST 0**, with **one sanctioned row** named in `verify_numbers.SANCTIONED` and printed on every run: `.1`, the
+`.1` of a `:.1f` format spec quoted in prose, which the verifier's own token pattern cannot match in code
+either, so it has no reachable home by construction. A sanction that stops being needed FAILS the run, so the
+set can only shrink — and two of the three it first held went stale immediately, because naming `32.7` (C1 in Hz,
+in a surviving note on a MIDI note number) and `212` (the hex of `U+212A KELVIN SIGN`) in this paragraph gave
+each of them a committed doc home. That is the gate doing exactly what it is for.
+
+**The class did hide one real deletion**, which is why the limit was worth closing: `never-be-alone` off3's
+winning claim-clock candidate flipping from `decode-median −3.18 s (14/45)` to `envelope-lag −3.76 s (4/44)`.
+`gates/w4.yaml` had kept the `−3.18 s (14/45)` half and the 4-of-44 share, but **3.76** appeared in no committed
+file; it is now in "The claim clock's own exhibits" below.
+
+### What the sweep moved, and the proof it moved nothing else
+
+**32 modules, 3 800 prose lines out.** Measured over the modules the wave edited, by the definition
+`worker/tests/test_prose_shape.py` uses — a prose line is one a docstring or a comment occupies, a code line is
+any other non-blank line, and blank lines count as neither. That is a THIRD convention beside the two above,
+and it is the one the ratchet enforces, so it is the one to quote: against the directive's own 11 262 / 12 252
+it charges the blank lines to nobody rather than to code, and against `prose_scan.py`'s 11 640 / 9 778 it
+charges a trailing comment on a code line to prose alone.
+
+Every figure below is read off the shipped tree against the `w7b-start` shadow snapshot with the test's own
+`_counts`. The table first published here said 29 modules and 9 124 / 6 363, which was the round-1 snapshot:
+it excluded `domain/audio/{activity,loudness,roles}.py`, the three modules round 1 swept to close the
+nested-layer hole described two paragraphs down (review r2-spec-7).
+
+| | prose | code | ratio |
+| --- | --- | --- | --- |
+| the 32 edited modules, before | 9 366 | 6 518 | 1.44 |
+| the 32 edited modules, after | **5 566** | **6 524** | **0.85** |
+| `worker/encore_worker` whole, before | 11 640 | 9 587 | 1.21 |
+| `worker/encore_worker` whole, after | **7 840** | **9 593** | **0.82** |
+
+**The code column is identical in 31 of the 32, and the 32nd moved by six lines of re-wrapping** —
+`steps/align_steps.py` 1 851 → 1 857, where review r2-correctness-3 made three statements re-point six dead
+`review §3.7` / `review H3` citations out of the operator's audit trail, which re-wrapped their string
+literals. `_tools/ast_identity.py w7b-start` is the exact statement and a later wave can repeat it in seconds:
+**31 of 32 modules AST-identical to the snapshot with every docstring dropped**, and the 32nd differing in
+exactly those three statements and nothing else.
+
+The five worst ratios went `domain/lyrics/lexical.py` 4.96 → 1.04, `artifacts/ports.py` 4.00 → 3.30 (a
+Protocol file, which rule 2 does not reach), `domain/lyrics/ends.py` 3.68 → 1.22, `host/config.py` 2.67 →
+0.58, `domain/lyrics/nonlyric.py` 2.49 → 1.18; the longest single prose block in the package went **439 lines
+→ 40** (`lexical.py`'s module docstring was the 439, `host/config.py`'s `ALIGN_EXPERIMENTS` comment the next at
+261). Per layer, after: `domain/` 0.92, `adapters/` 0.84, `steps/` 0.78, `workflows/` 0.58, `artifacts/` 1.05,
+`protocol/` 0.49, `transport/` 0.73, `host/` 0.90.
+
+**None of the three bounds has practical headroom, and the ratchet's own comments now say so** (review
+r2-correctness-2, which found them claiming the opposite). `domain/lyrics/parts.py`'s module docstring is
+EXACTLY 40 lines, so rule 1 passes only because the predicate is `>`; five modules sit between 1.05 and 1.10
+against rule 2's 1.1, `domain/lyrics/language.py` closest at 184 / 168 = **1.0952**; and `artifacts/` is at
+**1.0547** of the layer bound's 1.1. That is the intended state — a bound with slack is not a ratchet — but it
+means the next wave to add a WHY paragraph in any of those places must move one out to `docs/` in exchange, not
+raise the number. `test_prose_shape.TIGHTEST` pins which module sits on each bound so the claim cannot go
+stale silently.
+
+**Three ratchets keep it there** (`test_prose_shape.py`): no prose block over 40 lines, in any module; no
+module with at least 100 lines of code over 1.1 prose lines per line of code; and no LAYER over 1.1 with the
+package under 0.95. The ratio rule skips a module under 100 lines of code on purpose — there it measures the
+module's interface rather than its prose, since a Protocol or a table of constants is one line of code per
+declaration — and the layer rule is what stops the small modules bloating collectively.
+
+**The review of this wave found three holes in those ratchets and the second root unswept, and all four are
+closed.** (1) A prose BLOCK was a run of ADJACENT prose lines, and a blank line is neither prose nor code, so
+one bare blank line every 40 lines split any essay into passing halves — measured in a scratch copy, a 120-line
+comment essay broken that way reported a longest run of 30 against the bound of 40. A block is now bridged
+across blank lines and ended only by code, which costs the package nothing: no module was relying on it.
+(2) The layer list held top-level directories only and the listing test walked with `iterdir()`, so a NESTED
+directory could never be required — `domain/audio` measured **1.18**, over the bound, while its parent
+`domain/` averaged it away at 0.93. The list is now recursive and `domain/audio` is at **1.05** after
+`activity.py` (1.56 → 1.25), `loudness.py` (2.00 → 1.60) and `roles.py` (1.35 → 0.78) gave up narratives
+already written out above and in [`../stem-separation/README.md`](../stem-separation/README.md).
+(3) The `DECLARATION_ONLY` ratio exemption and its own anti-staleness test were both INERT — its one entry,
+`steps/api.py`, has 97 lines of code and the ratio rule skips anything under 100 either way, so emptying the
+set left every test green. Both are deleted.
+(4) **The PLAN's second cleanup root, `scripts/`, really had not been swept**: seven harness modules still
+carried a module docstring of 54 to 120 prose lines. They are now "The harness scripts: what each one is for,
+and the limit it states" below, and the root went **2 726 prose / 6 572 code (0.41) → 2 323 / 6 656 (0.35)**
+with the longest block **120 → 36** lines. Its code column moved because the same sweep ran `ruff format` over
+`bench.py`, `jamendo.py` and `truth.py`, which were unformatted at HEAD before this wave — carried out of W7 as
+item (e) and closed here. Rule 1 now reads three roots — the package, that harness and
+`worker/tests` (where `test_repair_order.py`'s 45-line docstring was the only block over the bound, now "The
+repair-order property test, seed by seed" below) — and the harness carries an aggregate bound of its own,
+0.4, because a gate script is a measurement argument with a `main()` attached and the per-module ratio is the
+wrong instrument for it.
+
+**Pointer ratchets, same review.** `test_docs_pointers.py`'s `path §N` rule required a literal single space, so
+a citation that WRAPPED between the path and the `§` escaped it entirely; the separator now allows a line break
+and a comment marker, which takes the checked count from **75 to 85**, and a floor on that count keeps a
+pattern that stops matching from hiding behind "no failures". Two rules are new: every `§N` in package or
+harness prose must have a committed anchor (a `docs/*.md` path or a `README`) within 200 characters before it,
+which found **17** pointers into the gitignored review document — `review §3.4`, `§3.10's star`, `review §3.7's
+consumer` — all now re-pointed or reworded; and a cited "`module`'s NAME section" must be text that module
+still carries, which is the pointer form that broke here when the sweep deleted `lexical.py`'s MIX section
+after two comments had just been written to cite it.
+
+**The review of those pointer ratchets found three of them weaker than they read, and all three are closed.**
+(1) The `§N` anchor rule scanned DOCSTRINGS AND COMMENTS only, so six `§` in runtime STRING literals — five
+silence sentences of `align_steps._margin_why` and one decline note — shipped `review §3.7` on the audit trail
+with the rule green; it now scans the whole module text, with a self-test on a synthetic `{"why": "... §3.7"}`
+proving a code string is read (r2-correctness-3). (2) The `module`'s-NAME-section rule matched **zero**
+citations, so it asserted over an empty loop with no non-vacuity floor, and its resolver returned the FIRST
+file whose bare stem matched — `ports` is both `artifacts/ports.py` and `adapters/ports.py`. It now resolves a
+dotted citation as a path SUFFIX, FAILS on an ambiguous bare stem, and carries an explicit "this form is
+extinct" assertion plus a direct exercise of the pattern and the resolver (r2-correctness-4). (3) The **64**
+`XA-NN` / `XW-NN` citations this wave made the primary code→doc pointer were unchecked: deleting a whole
+`| **XA-07** |` row left every pointer dangling and the suite green, since the only rule over those documents
+asked that the WORD "Invariant" appear. Two new rules now read the table's rows — every cited id must be one of
+them, above a floor of 50 matched citations, and the ids must be contiguous from 01 so a renumbering fails
+rather than silently re-pointing everything (r2-tests-11).
+
+**And XA-15 was rewritten to the rule the guard enforces** (r2-tests-9). It read "no torch, scipy, numba or
+adapter imports; no wall clock, no random, no filesystem. Numpy lives in `domain/audio/`", with §15 adding "the
+step layer owns numpy and torch" — and four shipped, default-on domain modules contradicted it:
+`domain/lyrics/margin.py` is numpy over the trellis, `lexical.py` imports `random` (seeded by `crc32`, by
+design), `syllabify.py` reads its packaged `mhyph` table, and `domain/audio/wav.py` opens a wav by path. The
+guard (`tests/test_layers.BANNED_IN_DOMAIN`) had only ever checked `dbos`, `asyncio` and the five model
+libraries. The row now states that rule, says numpy and the stdlib are allowed, and the randomness and
+filesystem clauses became named allowlists with anti-staleness tests — so the two real exceptions are enforced
+rather than described, and the numpy-free seam (`claimmap`'s audio candidate, `ends`' envelope) is written as
+the testability win it is instead of as a layer-wide ban.
+
+**The published documents are byte-identical, measured rather than argued.** 3 songs × 3 claim modes
+(`truth`, `blind`, `drop50`) at **both** `--level time_text` and `--level run_align`, against the per-case rows
+`results/w7-{time_text,run_align}.cases.jsonl` recorded on the pre-cleanup tree:
+
+| | cases | `doc_sha256` | `onsets_sha256` | every other compacted field |
+| --- | --- | --- | --- | --- |
+| `--level time_text` | 9 | **9/9 identical** | **9/9 identical** | identical |
+| `--level run_align` | 9 | **9/9 identical** | **9/9 identical** | identical |
+
+The worker tree's fingerprint moved (`fd9a5a6ddb641cd3` → **`5df9ae8c58fd37b6`**) and the emission store's
+emitter key moved with it, since `module_closure` hashes whole files and a docstring edit therefore costs one
+recompute — so the five `time_text` matrices were **recomputed from the audio** on this tree and still produce
+the same documents to the byte (the `run_align` pass then read them from disk). `_runs/w7b2-verify-{tt,ra}`
+hold the rows; compare with `e2e.py --compact`, since `*.cases.jsonl` is the ROUNDED per-case digest and a raw
+`rows.jsonl` differs from it in float precision alone.
+
+**These 18 cases were RE-TAKEN on the shipped tree, and the first 18 were not** (review r2-tests-10): the
+original runs finished at 12:13 and 12:15 and `align_steps.py`, `generate.py`, `ml.py`, `claimmap.py` and
+`reconcile.py` all kept moving afterwards, so the fingerprint they published (`f372f6c3f9e70a07`) no longer
+named any tree that had ever existed. `_runs/w7b-verify-{tt,ra}` are kept as the round-1 reading. The lesson is
+cheap to apply: **the hash run is corroboration over the paths three songs walk, and `_tools/ast_identity.py`
+is the claim that covers the whole diff** — total, hermetic and repeatable in seconds, so it can be re-run
+after the last edit rather than before it.
+
+**One thing did change, and it is not in the documents.** Six sentences of the job's operator-visible AUDIT
+TRAIL lost a dead `review §3.7` / `review H3` citation. The trail is job state, not the published document, so
+the 18 doc and onset hashes above cannot see it. `tests/test_align_v2.py` and `tests/test_language_steps.py`
+assert each of those clauses on the real `attempt` rig, and `189 of 380` — the one measurement the removed
+`(review H3)` was the provenance for — is still in the decline note and still asserted.
+
+### Word ends: the full corpus table, with its confidence intervals
+
+`results/w4-time_text.json` against `results/w4-endsoff-time_text.json` (the post-pass off, recorded as
+`ENCORE_ALIGN_EXPERIMENTS=ends-raw` on the **same** code `8c576cc6200b02a0`, so the pair is one population),
+over the whole 20-song Jamendo corpus: **5 183 aligned words, 4 870 scored ends, 702 phrase-final ends,
+2 433 s sung under `truth`**. This supersedes the 3-song slice (`_runs/w4-ends-{raw,held,tile}`), which read
+the same direction at a smaller size.
+
+| metric | truth, off | truth, on | blind, off | blind, on |
+| --- | --- | --- | --- | --- |
+| word end ±100 | 69.06 | **80.02** | 68.74 | **79.48** |
+| word end ±250 | 93.06 | **94.97** | **92.79** | **94.64** |
+| word end bias | −54.5 ms | −2.9 ms | −55.3 ms | −3.8 ms |
+| phrase-final end ±100 | 37.46 | **59.83** | 36.30 | **56.75** |
+| phrase-final end ±250 | **73.79** | **83.05** | 72.74 | **81.78** |
+| phrase-final end bias | −114 ms | −5.6 ms | −121 ms | −15.5 ms |
+| TV highlight | 65.83% | **77.10%** (CI **72.9–81.5**) | 65.92% | **77.51%** (CI **72.8–81.8**) |
+
+Onsets are **equal to the digit** in both columns — ±100 / ±300 / AAE 83.25 / 94.98 / 87.8 ms under truth and
+80.11 / 91.58 / 297.9 ms blind — with all 20 songs' `onsets_sha256` byte-identical, while `doc_sha256` changes
+on 40 of 40 paired song-modes. That pair of facts is review §3.5's "any onset moves" as an exact statement
+(`gates/w4-ends.yaml`, 6/6), which clears every reject-if with **+22.4 pts** of phrase-final ±100 and
+**+11.3** of highlight under truth claims.
+
+**What the review predicted, and the two signals it priced.** On the review's own clock, base model,
+`theta` 0.1: phrase-final end ±100 40.0 → **57.3**, ±250 **73.5 → 82.5**, phrase-final bias −107 → **−10 ms**,
+highlight 67.7 → **78.2**. A **SwiftF0 voicing** signal in place of the RMS envelope read 67.3 → **76.6** — no
+better than the envelope already in hand, which is why no second model is loaded for this. Within-line gapless
+tiling reached **78.8** (**82.7** with HuBERT-XL), and that is the `ends-tile` arm rather than the default,
+for the trade priced three paragraphs down.
+
+The pre-pass baseline these are measured against, on the 20 JamendoLyrics songs that carry hand-measured word
+**offsets** as well as onsets: phrase-final word ends land a median **107 ms early**, only **40.0%** within
+±100 ms and **73.5%** within ±250 ms, and the correct word is lit **67.7%** of sung time. Those are the
+review's clock; on W4's exact 20 ms grid they read **worse, and honestly so**, because the old grid's
+`duration / frames` came out **0.020014 s** — a **0.07%** stretch that pushed every end later and masked CTC's
+peakiness. Re-read on the exact clock (`--level generate --modes blind --songs jamendo`): word end ±100
+73.2 → **68.7**, phrase-final ±100 40.6 → **36.3**, phrase-final bias −106 → **−121 ms**, highlight
+67.3% → **66.0%**. Every reject-if for this feature is read against that column.
+
+Per song: **every** song's highlight rises, worst **+6.6** (`Tom_Orlando`), best **+15.8** (`Cortez`); 2 of 20
+are worse at word-end ±100 against the 3 the reject-if allows — `Avercage` −6.19 and `Color_Out` −1.28 — and
+both gain on the independently measured half (phrase-final ±100 **+12.5** and **+16.1**). That is the shape
+§3.5's own objection predicts: interior and phrase-final ends can move in opposite directions on one song, and
+only the second is really measured.
+
+The two W4-review fixes (a grid tolerance so the walk starts on the frame the end actually sits in, and a
+skip over a trailing out-of-vocabulary placeholder so it does not cap the word before it) moved this table by
+**0.2 ms**: truth end bias −3.0 → −2.9 ms, phrase-final bias −5.8 → −5.6, and end ±100 / ±250 /
+phrase-final ±100 / ±250 / highlight equal to the digit at 80.02 / 94.97 / 59.83 / 83.05 / 77.10
+(`_runs/w4r1b-time_text`). Both defects are real and rare, not a recalibration. **497** of the corpus's words
+are trailing placeholders of the kind the second fix skips.
+
+The tile arm's trade, on the 3-song slice it was measured on (`_runs/w4-ends-tile`): **+1.5** pts of highlight
+(79.1 → 80.6) for **−4.0** on word-end ±100 (79.0 → 75.0) and −1.6 at ±250, phrase-final ends untouched —
+which is evidence against "80% of interior truth ends are just the next word's start" being the whole story,
+since where that held, tiling could only have helped.
+
+**What the truth set cannot say.** That 80% is **4 825** of Jamendo's non-final word ends recorded as exactly
+the next word's start, so a gain on interior ends is partly the truth set's construction. Only phrase-final
+ends are independently measured, and the TV highlight — which reads the whole document through the TV's own
+rule — is the metric that cannot be gamed that way.
+
+### Why the end walk is a vocals-stem rule: the envelope reads nothing on a mix
+
+The active level is a fraction of the target's own 95th-percentile level. Measured with this repo's own
+`activity.envelope` over four corpus songs, frames at or above 0.1 are **95.5 / 98.4 / 95.5 / 92.4%** of the
+**mix** against **64.8 / 58.9 / 76.7 / 72.2%** of the same songs' **stems**, and the longest *continuous*
+active run is **152.8 / 183.8 / 70.1 / 37.6 s** against **12.0 / 13.5 / 19.3 / 10.1 s**. A walk with a stem's
+threshold over a mix's envelope therefore never stops: the post-pass would silently become the `ends-tile`
+arm inside each line **and** run every line's last word to the next line's onset (or +3 s at the document
+end) on every stemless song and every `ALIGN_ON_MIX` retry — unmeasured, since all 20 corpus songs the table
+above is read on have stems. A mix-calibrated threshold is fittable (`e2e.py --no-stem`, twice) and
+deliberately not fitted; the reject-if such a fit owes is written in `gates/w4-stemless.yaml`'s header before
+anyone fits one.
+
+Two float facts, recorded because each produced a real defect. Since the exact 20 ms clock every decoded end
+is an integer multiple of the hop, which is the worst case for a binary division: for **9 721** of the first
+**200 001** multiples, `int((k * 0.02) / 0.02)` is `k − 1`, so the walk used to start one frame early and a
+word whose own end frame is active but whose preceding frame is not was left unextended. And a walk that
+consumed no frame returns the end **itself** rather than its frame's boundary, because `int(end / hop) * hop`
+differs from `end` in the last bits (70 × 0.02 is **1.4000000000000001**), so snapping to the grid would move
+every end in the document by a femtosecond and make "nothing was extended" impossible to state. The grid
+tolerance is larger than that error at any song length — a 5-hour grid's worst case is ~**1e-10** frames —
+and nine orders of magnitude under one frame.
+
+### The lexical calibration rows, exhibit by exhibit
+
+The recipe, the held-out splits and the shipped thresholds are above ("The lexical-lift wrong-text gate",
+"Per-model calibration"). These are the fit's own exhibits, which lived at the constants.
+
+**What re-reading the fit costs**, so a later wave can budget it: `scripts/lift_gate.py` over the YouTube + tfr
+stems on the base bundle took **367 s** when the rows were first fitted and **359 s** on the shipped decoder
+reading all 64 matrices from disk — it reproduces every number of the first run — while the MIX run, envelope
+fits included, took **508 s**.
+
+**Base bundle, stem.** Right texts: Jamendo min **+0.350** (`Avercage` headers; drop50 **+0.264**),
+YouTube + tfr min **+0.348** (`never-be-alone` extraverse; drop50 **+0.368**); truth **+0.45 … +4.33**, median
+**+2.27**. Wrong texts: Jamendo max **+0.192** (`Lower_Loveday` × `tfr-mayday`), with
+`Cortez` × `The.madpix.project` **+0.187** behind it; YouTube + tfr max **+0.124**. `refuse_below` 0.2 is the
+pooled gap's midpoint **+0.228** rounded down onto the 0.05 grid, so the lowest right text keeps **+0.064**
+and the highest wrong text sits **0.0082** below the floor.
+
+**Base bundle, mix.** The populations overlap: right texts **−0.045 … +2.85** (truth median **+0.66**; 24 of
+192 below 0), wrong max **+0.102** (Jamendo) / **+0.115** (YouTube + tfr). `mix_floor` 0.15 is the smallest
+0.05 step above both, with **0.035** of head-room over the higher.
+
+**HuBERT-Large, stem.** Right texts (protected + drop50) min **+0.766**; truth **+1.132 … +5.649**, median
+**+3.832**. Wrong max **+0.219** (`tfr-chosen` `wrongtext+ownclock` #1; `wrongtext` max **+0.199**) — a gap of
+**+0.547** where the base model's is **+0.072**, so `refuse_below` 0.45 (midpoint **+0.4927** rounded down)
+clears the wrong population by **+0.2306**, i.e. by 3–8 redraw SDs instead of by one. Held out, the YouTube
+split fits **+1.152**, and rounding that up would put five protected right texts of one song in the doubt
+band (`Avercage`: truth +1.132, headers +1.028, credit **+1.045**, extraverse +0.828, drop20 **+1.084**) for a
+song the base row grades OK, while buying nothing.
+
+**HuBERT-Large, mix.** Right min **−0.033**, wrong max **+0.116**; floor 0.15 with **+0.0343** of head-room
+(the base row's +0.0349 to four places). `mix_ok_from` 0.4 is where the truth texts' blind decodes stop being
+poor: sorted by lift, the poor decodes end at `never-be-alone` **+0.2507** (13% of its lines within 1 s, 41 of
+47 more than 2 s out) and the next text up is `The_Rinn` **+0.4231** at 76% within 1 s, 7 of 46 gross — so the
+split lies in (0.2507, 0.4231] and **0.40 is the largest 0.05 step in it**.
+
+**HuBERT-XLarge** (nobody's default, reachable only by name). `refuse_below` 0.35 from right min **+0.4719**,
+wrong max **+0.2778**, midpoint **+0.3749** rounded down; `ok_from` 0.5, the step above the weakest drop50
++0.4719 and under the weakest protected **+0.7339**; `mix_floor` 0.15 against wrong maxima **+0.1070** /
+**+0.1479**; `mix_ok_from` 0.3, where the poor blind decodes end (`never-be-alone` **+0.2640** at 11% within
+1 s, `The_Rinn` **+0.2237** at 52%, against `Moon_I_Mean` **+0.3061** at 84%) — with one poor decode that step
+admits, `Pure_Mids_-_The_Leader` +0.3109 at **30%** within 1 s and 13 of 20 lines more than 2 s out, which
+0.35 would catch at the cost of `Slingshot_Miracle` +0.3033 at 61%. Its stem head-room is **+0.0722**, its mix
+head-room **+0.0021**, with three wrong texts at or above +0.1275.
+
+**Redraw noise.** `_runs/w3-rejudge/seed_probe.py`: the 16 near-floor stem texts × 60 random shuffles,
+best-of-3 resampled. One redraw moves a text by an SD of **0.03–0.07** nats/letter — the scale of the 0.0082
+the base floor clears the wrong population by, against a pooled right/wrong gap of 0.072. Per redraw ~**0.6**
+of the 640 wrong texts would pass (`LUNABLIND` #2 at 44%, `Cortez` #1 at 7%, `Cortez` ownclock #4 at 9%, every
+other ≤2%), i.e. ~0.1% — inside §3.4's 1%, but not the 0 this one draw reads; a drop50 right text would be
+refused with probability 31% (`Color_Out`), 15% (`numb`), 5% (`Avercage`), and a **protected** right text
+never (p05 ≥ +0.268).
+
+**Normalisation moves lifts by the same order a model does.** Diffing the wave's own rows case by case —
+`results/w4-time_text.cases.jsonl` (a provider's raw claims) against `results/w4-run_align.cases.jsonl` (the
+same texts through `clean_segments`), 1 088 keys on both sides — **302 cases move, by a median 0.022, a p90 of
+0.072 and a maximum of 0.147** (`Kinematic` `wrongtext+ownclock` #1, **−0.040** raw against **+0.108**
+cleaned). One case crosses the floor: `LUNABLIND` #2 `wrongtext`, +0.232 raw and +0.172 cleaned, which is
+exactly the 1/320 the `time_text` level publishes and `run_align` does not. W3's rows read the same shape on
+the old clock (302 cases, median 0.026, max 0.153), which is the point: the clock moves every lift and moves
+this diff not at all.
+
+When `lift_gate.py` rounds a fitted value onto the 0.05 grid it allows slack, because these are binary
+floats: `0.60 / 0.05` is **11.999999999999998**.
+
+### The claim clock's own exhibits
+
+**What the map is worth, in one line.** Gross lines over the claim modes fall **440 → 25** on the base bundle
+and **370 → 6** on HuBERT-L, with no `high`-graded gross line left in any claim mode. It costs truth mode
+89.3 → **88.5** within ±500 ms, carried by two songs, on both of which the map sides with a measurement against
+the metric's own ruler — and on the 12 YouTube songs that ruler **is** the caption track the map is correcting,
+so part of that 0.8 pt is the metric's.
+
+**The quality floor is inert where it matters, and only there.** At the LINE_SYNC rung, whose band is wider so
+its shares run higher, the lowest applied **right-text** share over the 1 056 gate cases is **0.243** — above
+the 0.2 floor — and re-measuring those cases with the floor on leaves all **188** applied right-text maps in
+place and changes no right-text row, while refusing **293 of the 402** maps it had applied to **wrong** texts.
+A floor that only bites on wrong texts is the right shape for this gate.
+
+**The bimodal song the mode candidate exists for.** `never-be-alone` off3, 44 paired lines, tolerance 0.25 s:
+the differences are bimodal — 20 spread over −8.87 … −4.31 s where the global decode smeared the repeated
+"be alone" lines, a tight cluster of 17 in −3.23 … −2.83 s which **is** the sheet's +3 s displacement, and
+three outliers at +8.23 / +10.69 / +20.07. The median lands at −3.73 s, the gap between the two modes, and
+explains 4 of 44 (9%, under the quality floor), so the vote abstained and every window repair after it worked
+in a clock 3 s out: **44 gross lines where W4-start's tree had 0**. Nothing about the grid caused it — on
+W4-start's clock the same median read −3.17 s (14 of 45, 31%) and was applied; a median sitting on the
+boundary between a 20-line tail and a 17-line cluster moves by a whole cluster width when one line crosses it.
+**Which CANDIDATE won flipped with it**, and that is the fact the exhibit turns on: on W4-start's clock the vote
+was carried by `decode-median` at **−3.18 s (14/45)**, and on the exact grid by `envelope-lag` at
+**−3.76 s (4/44)** — under the quality floor, so the winner was refused and nothing mapped. An offset read
+0.58 s further back than the sheet's own +3 s displacement is also why this exhibit is the one the
+margin's backwards-displacement guard is read against. The densest window reads −3.07 s and explains 17 of 44
+(39%). At the fitted tempo scale **1.0268** the median
+offset explains **0** of 44 paired lines and the densest window **12**, which is why the tempo-mode candidate
+exists at all.
+
+**The two hermetic exhibits behind the mode candidate's own floors** (`tests/test_align_provenance.py`): a
+6-line sheet whose truncated last cue the decode smears over an outro repeat, and an 8-line sheet whose claims
+are rotated onto each other's lines. Both hand the window exactly **2** of their differences — 0.33 and 0.25
+of the pairs, clear of the share floor, and 2 ahead of no-shift's 0 — so both were applied, moving 6 correct
+cues by **+2.77 s** and 8 claims by **−13.28 s**. The floor is inert on the corpus: over the 1 088 cases of
+`_runs/w4r1b-time_text` the 15 applied `decode-mode` maps hold 10 to 41 lines and the 3 applied `tempo-mode`
+maps 7 to 12, and the only two cases the floor can reach at all named a 3-line and a 4-line window as their
+**refused** best candidate (`never-be-alone` drop50, `LUNABLIND` wrongtext #2), whose documents re-run
+byte-identically (`doc_sha256` df872d26cfab8101 and e83ba54619003171).
+
+**The isolation guard's exhibit** (`tests/test_claimmap.py`): a correctly timed 47-line sheet against a decode
+uniformly 0.4–3.0 s late. The densest 0.5 s window holds 16 of 47 differences — 0.34, clear of the floor — and
+would have moved 47 right claims by **+2.62 s**. Widening by one tolerance on each side gathers **9** more
+lines, so it is refused; the bimodal shapes the candidate exists for gather **none** (`never-be-alone` off3
+17 → 17, its tempo098 at the fitted scale 13 → 13) and a merely jittered sheet gathers **4** and is refused,
+which is right — its differences are one hump, so the median is already its estimator.
+
+**Reconcile's scale bound, measured on seeded series:** of 2 000 seeded +1.5 s series, **420** came back with
+`|scale − 1|` at most **0.0018**, which moves the extra line by less than a frame — which is why the bounded
+fit is adopted only where it explains strictly more lines than scale 1. And the COARSE repair band that was
+replaced: re-decoding jitter inside a jittered claim window measured **worse** on `Numb`, MAD **312 → 563 ms**.
+
+### The repair window's two caps, priced
+
+Both caps are refusals to widen a window that is already doing its job, and both were measured on a rig whose
+line is sung once early while a superstring of its text is sung later (§4 of
+[`04-alignment.md`](../../arch/04-alignment.md)).
+
+**The next-claim cap.** A fixture whose line is sung at 12–15 s while a superstring is sung at 32–36 s, with
+the blind decode smearing the line 12 → 34 s: the uncapped window published it **11.96–34.88 s** (its end
+19.88 s late) and left 3 of 8 lines gross; capped, **11.96–14.96 s** and 0 gross. Review M5's own case is
+unchanged by the cap (a 7 s smear with only a near-duplicate neighbour: 11.96–14.96 s either way). A two-sided
+union — pulling the start back to a blind onset as well — moved R1's window **5.4 s** left and cost 2 lines
+their repair.
+
+**The last-cue cap**, on the sheet's own pacing. The final cue is the one cue whose end is always missing, so
+the hold-open fires on it on every LRC there is, and what it swallows is not a following line but an unstamped
+outro repeat of its own words. Measured on the pinned rig: a final line sung 50–53 s with its cue truncated at
+50.6 s and the blind decode smearing it to 77.7 s bought a window of (49.6, 78.7) — **29 s** against the 4 s
+every capped cue gets — and the forced re-decode inside it landed on an unstamped repeat at 70–73 s,
+publishing the line **20 s** late.
+
+**The price of the ceiling, measured**, because a ceiling on the last cue can only be a trade. A cue truncated
+at 50.6 s whose note the audio genuinely holds to 65 s, re-decoded in each candidate window (one `regenerate`
+call apiece on the same matrix):
+
+| window | published span | short by |
+| --- | --- | --- |
+| uncapped | **49.96–64.82 s** | 0.18 s |
+| the slot ceiling (shipped) | **49.96–61.60 s** | **3.40 s** |
+| a `needs`-only ceiling | **49.96–52.64 s** | 12.36 s |
+
+All three put the line's **start** on the note; what a ceiling costs is the end, and `needs` alone costs
+nearly all of it. Against that 3.40 s the shipped cap buys back the 20 s displacement above, and a late start
+is what core highlights, so the trade is taken in this direction. A characters-per-second ceiling has no safe
+value: over the corpus's **1 645** truth lines, real sung lines run down to **0.7–1.7** alignable characters a
+second.
+
+**The adoption guard's exhibit**, on the mix-witness arm: a line the mix heard at **27.00 s** was published at
+the jittered claim's **27.40 s** — which is why R1/R2 may re-decode such a line by default and the
+`l1-mix-kept` arm's refusal to is an arm.
+
+### The never-sung rule: the two lines no floor can separate
+
+`scripts/unsung_gate.py`, rows in `results/w4b-unsung-gate.json`; 32 songs × 6 text modes = 192 song-modes,
+blind, base model, `--target stem`. The sweep's verdict and the relative-floor variants are above ("The
+never-sung floor"); these are its exhibits.
+
+The level **between** decoded lines on these stems is at or above the absolute floor of 0.10 on 29 of 32 songs
+— per-song medians **0.019–0.578**, **median of medians 0.248**, the q25 ≥ 0.10 on 17 of 32 and the q10 on 5
+of 32 — which is bleed, reverb tails and instrument leakage. So a floor read at the song's own median exceeds
+0.10 nearly everywhere and, capped at 0.10, is a no-op.
+
+The two populations overlap: the 28 **real** candidate lines read 0.0014–0.0965 and the 19 **injected** ones
+0.0007–0.0758, so a threshold on the level cannot sort them at all. `(energetic rock music)` —
+`bohemian-rhapsody`'s caption cue, in the truth file and not sung — reads **0.0957**, above the real sung line
+the wave wanted to keep.
+
+And the two lines the wave wanted separated cannot be, at any floor:
+
+| line | envelope | score gap | chars/s | what it is |
+| --- | --- | --- | --- | --- |
+| `Pure_Mids_-_The_Leader` [0] | 0.0890 | **−2.27** | 0.92 | a real sung line, the single systematic W4 regressor |
+| `tfr-chosen` [34] | 0.0892 | **−2.15** | 1.22 | the spoken uploader credit, whose drop is worth +2 ±500 lines and −3 gross on its own song |
+
+The same numbers to three decimals, and their songs' gap quantiles order the wrong way for a relative floor to
+help (`Pure_Mids` q10 0.075, `tfr-chosen` 0.024), so every floor that spares the one spares the other. What
+they actually share is not silence but **smear**: the decode spread them over 37 s and 47.6 s and placed them
+32.5 s and 54.3 s from the truth, so all three signals are reading one fact — a line the decode could not
+place — rather than three independent witnesses, and the envelope mean over a span the decode chose says more
+about the decode than about the audio.
+
+#### What brings a SPARED line back: the speech-mass readings behind `_SPOKEN_RATIO` and `_SPOKEN_FLOOR`
+
+A spared never-sung line (`m6-mix-spare`, `m6-window-spare`, both default-off) comes back only where its
+witness's **acoustic** model hears speech over its claim window at `_SPOKEN_RATIO` of what it hears over the
+blind decode's own lines — `_speech_mass`, the CTC emissions' non-blank probability — and only where its decode
+is not stuck at the window's edge.
+
+**Why a mix witness exists at all**, which is the arm's premise and a different quantity from the speech mass
+below. The default runs the never-sung rule on the target's evidence alone and so deletes lines a mix witness
+would have recovered: `never-be-alone`'s two closing lines under truth claims read a **stem / mix envelope over
+their claim windows of 0.008 / 0.79 and 0.003 / 0.78** — against `_NEVER_SUNG_ENV` = **0.10**, so the stem
+witness is blind there by an order of magnitude while the mix hears the voice plainly. That is the separator
+having left those vocals in the instrumental, and it is the whole case for asking a second witness. What the
+pair does NOT establish is that the line should come back: the mix envelope cannot tell a voice from the band,
+which is the next paragraph, and the speech-mass table below is what actually decides it.
+
+Neither of the two cheaper witnesses can do it. The mix's **envelope**, which is what spares a line, cannot
+tell a voice from the band: every one of the **33** unsung lines it spared in W1 — credits over an intro,
+section headers — came back. Nor can the decode's **score**: a spared line is by definition one that decodes
+poorly, and the sung ones scored **0.6–2.0** below their song's median on the mix, as far below as the headers
+(**−3.4 … +1.2**) and the credits (**−2.7 … 0**).
+
+Measured over every spared line of W1's `time_text` bench (16 songs × 15 modes, **88** spared on the mix),
+speech mass on the mix relative to the blind lines':
+
+| spared line | relative speech mass |
+| --- | --- |
+| `never-be-alone`'s lost closing lines, under truth / jit / offm1 / drop20 / extraverse / headers / credit | **0.72–1.25** (0.02–0.50 only where offset or tempo claims put the window off the singing) |
+| `tfr-mayday`'s sung `(I'm running out of air)` | **0.97** |
+| section headers | **0.00–0.31**, but `LUNABLIND`'s `[Verse 3]` **0.70** and `Lower_Loveday`'s `[Verse 1]` **2.13** |
+| credits | 0.10–0.38 |
+| other songs' lines | 0.02–0.29 (`Ridgway`'s extra verse 0.59 and 0.82) |
+
+**0.6** keeps the first group and bins all but **3** of the unsung ones; two of those three published on the
+full corpus (`LUNABLIND`'s `[Verse 3]`, `Ridgway`'s extra verse), which is why `m6-mix-spare` ships off.
+
+`Lower_Loveday`'s **2.13** is the reason for the second constant: its mix matrix barely hears the voice at all,
+reading **0.03** over its own lines, so the ratio is a fraction of nothing. A witness whose median speech mass
+over the blind decode's lines is under `_SPOKEN_FLOOR` cannot vouch for a line. On the same spared set the
+mixes of `Avercage`, `The_Rinn`, `Lower_Loveday` and `Pure_Mids` read **0.02–0.05** there — and every line they
+spared is a credit, a header or another song's verse — while every song a **sung** line was spared on reads
+**0.08 or more** (`never-be-alone` 0.10–0.13, `tfr-mayday` 0.12).
+
+### The non-lyric floor, as arithmetic
+
+**First, what a section header costs when it becomes a CTC target.** Measured on `Numb`, whose authored
+captions label **17 of 35** lines: 17 fake words, onsets pulled up to **~2.5 s** early, bias-corrected ±250 ms
+**34.3% against 65.7%** once the labels are cleaned, and the reconcile verdict moves `COARSE → STRUCTURAL`.
+Prevalence is low — labels appear in **1 of the 12** authored caption tracks — which is why R1 is an allowlist
+rather than anything elaborate.
+
+R3's floor is the share of a track's **worded** lines that must carry a music note before an unnoted line
+reads as not sung. Measured on the 32-song corpus: 24 songs at **0.000** and 8 at **0.8514–1.0000**
+(`hello` 63/74, `feel-my-heart` 32/37, `bohemian-rhapsody` 65/74, `bad-guy` 75/79, `shape-of-you` 89/92,
+`tfr-chosen` 36/37, `rap-god` 216/217, `believer` 73/73).
+
+It sits at **0.8**, the bottom of the measured population, and not at 0.5, the middle of the empty band,
+because the cost either side is not symmetric. Two real authoring shapes were reproduced inside 0.5–0.85 and
+the rule deleted real sung lines out of both: an author who wraps only the hook lines and writes the verses
+plain (11 noted of 20 worded = **0.550**, and all 9 verse lines left the text), and the SDH convention of one
+note opening a sung passage and one closing it with the middles bare (8 of 12 = **0.667**, and the 4 middle
+lines left). At 0.8 both are refused — they would drop **0.450** and **0.333** of their worded lines — every
+one of the 8 noted corpus tracks still fires, and `hello` sets the floor at 63/74 = 0.8514, so the head-room
+is **0.0514**.
+
+A separate "refuse if R3 would drop too much" cap would be this same knob: R3 drops exactly the worded lines
+that carry no note, so its drop share is `1 − the noted share` by construction, and a floor of 0.8 **is** a
+cap of 0.200. The corpus's worst case is `hello` at 11/74 = **0.1486**, so the implied cap clears the measured
+maximum by 0.0514.
+
+Reading the share off **worded** lines rather than every non-empty raw line does not move the corpus: dropping
+a wordless noted line takes it out of the numerator and denominator together, so the 8 noted tracks stay at
+**0.851–1.000** (the four wordless noted lines in the whole corpus are `tfr-chosen`'s two, `believer`'s one
+and `shape-of-you`'s one: 36/37 → 34/35, 73/73 → 72/72, 89/92 → 88/91) and the 24 unnoted ones stay at 0.000.
+`clean_segments` takes the corpus's 32 truth texts **1 760 → 1 712** exactly as before.
+
+Excluding the lines R1/R4 already answered is what keeps the floor readable on a labelled sheet. Measured on
+the bench's own `headers` mode, which injects one Genius-style label per section: `hello`'s share falls
+0.8514 → **0.7500**, `bohemian-rhapsody`'s 0.8784 → **0.7927**, `feel-my-heart`'s 0.8649 → **0.7111** and
+`rap-god`'s 0.9954 → **0.9153** — three of the four would stop firing at a floor set to the measured
+population, on a text whose sung lines are marked exactly as before. Excluding them returns every share to its
+unlabelled value to the digit and changes nothing on the 32 truth texts (the one anchored-and-unnoted line in
+the corpus is `bad-guy`'s `(LAUGHTER)`, R4's: 65/69 → 65/68).
+
+### Caption cues: the two populations a duration floor separates
+
+On the review's own rolling-caption video, cue durations fall into two populations — **10 ms** and
+**1.15–18.47 s** — so the floor that drops the roll-up's "the line is now complete" markers has an order of
+magnitude of clear air on both sides, and a 10 ms claim is also a claim no clock can use.
+
+**What the old parser did to that track**, re-fetched (`dQw4w9WgXcQ`, **103** raw cues, **51** of them 10 ms
+long): it published **86 cues and 769 words for 284 sung words**, threw away **239** inline word onsets, and
+lost the **first cue entirely**, because YouTube writes the roll-up's empty half as a lone SPACE on its own
+line and a block-splitter that cuts on `line.strip() == ""` halved every such cue. The rewritten parser is
+timestamp-driven: the same track comes back as **41** word-timed cues with its first cue present —
+`We're no strangers to` at **18.80 s**.
+
+The bench's `headers` claim builder had the mirror-image defect: 12 of 233 injected headers on 8 songs were
+**inverted** (start after end) before it was fixed — `The_Rinn`'s `Chorus:` read 226.51 → 218.88 s and
+`Rxbyn`'s `[Verse 6]` **169.13 → 168.79 s**.
+
+### The LINE_SYNC rung: what the clock bought, per mode
+
+`scripts/line_gate.py`, base model, 1 056 cases, rows in `results/w2-line-gate.json`. The rule table and the
+share sweep are above ("The LINE_SYNC rung's gate", "The rung's own claim clock"); these are the per-mode
+columns that lived at the constant.
+
+Right texts refused 88 → **33** of 416 — a strict subset, 0 newly refused and 55 recovered, 53 of the 55
+publishing a document at least 80% within ±500 ms — shown lines within ±500 ms **88.9% → 94.8%**,
+text-denominator ±500 69.0% → 89.5%, gross lines 47 → 0, documents with no line within ±500 ms 23 → 13.
+
+| mode | refused, W3 → W2 | text ±500 |
+| --- | --- | --- |
+| tempo098 | 27 → 3 | 4.4% → 87.1% |
+| tempo102 | 26 → 3 | 4.7% → 87.1% |
+| off15, off3 | 4 → 1 | 70.4% → 91.4% |
+| offm1 | 3 → 1 | 79.3% → **93.9%** |
+| drop20 | 0 → 0 | 89.2% → 95.9% |
+| truth | 1 → 1 | 91.4% → 93.4% |
+
+**188** of the 416 sheets are mapped (envelope-lag 110, tempo 65, decode-median 13); the other 228 keep their
+own timings. The 12 right texts the unconditional activity shift used to refuse had a median lag of
+**−1.62 to −3.12 s**, with **0.54–0.94** of their lines within 1 s once it is removed
+(`results/w3-line-gate.json`'s `near_fit`) — i.e. the decode itself knew the answer.
+
+The uniform-lag blind spot, counted on the gate's own population: **23 of the 328** right-text documents agree
+with themselves while every line is 0.5–1.0 s late. Those 23 are also why the rejected **lag term** on the
+rung's agreement is priced from these same rows rather than argued about: the harness shifted their sheets by
+the activity fit (`bad-guy` **+0.72 s**, `numb` **+0.62 s**) and the decode then reads the claims as near
+(offset **+0.14**, **−0.23 s**), so both witnesses agree on one misplacement and the ±1 s quality split counts
+all 23 as GOOD.
+
+| a lag-magnitude term at | right texts refused, of 320 | text ±500 | good documents refused, of 346 | middling published |
+| --- | --- | --- | --- | --- |
+| none (shipped) | 32 | **82.8%** | 28 | 10 |
+| 0.5 s | 39 | 80.6% | 37 | 6 |
+| 0.3 s | **50** | **78.3%** | 48 | — |
+
+Bad documents: **0** either way, at either threshold — the term refuses accurate documents and nothing else.
+What it buys is the tempo modes' gross lines (13-mode set: **47 → 9** at 0.5 s, **0** at 0.3 s), which W2's
+bounded scale already buys without refusing anybody, and under `syncMode=lines` a refusal is terminal — "no
+lyrics at all" against "a scroll under a second late". `gates/w3-lines.yaml` holds the zero-±500 count so the
+claim clock is measured on it.
+
+### `claims_related`, and what the cross-kind swap really costs
+
+Measured at `run_align` over the W2 corpus rows (`_runs/w2r2-run_align` against `w2r2-lines-run_align`, the
+same 32 songs' own line documents). Of the **357** published word documents that have a line document of the
+same text beside them, the **18** whose last reconcile verdict is `UNRELATED` hold **all 299** of their gross
+lines — 84% of the population's 356, in 5.0% of the cases — and 523 of 990 line starts within ±500 ms, where
+their line documents hold 0 gross and 987 of 991, against 5 677 word timings given up.
+
+The other 339, which reconcile **did** relate, keep their words: 15 296 of 16 951 line starts within ±500 ms
+(90.2%) with 57 gross lines — and taking the line document there would spend **107 743** word timings to move
+**784** line starts. The rung fires on 36 of the sweep's 420 published word documents and half of those go
+back to the words, the line gate having refused the sheet; the 18 that change kind are `hello` in 8 modes,
+`tfr-chosen` in 3, `tfr-mayday` in 2 and five songs' drop50 half-sheets. Over those 18 the line documents score
+**991** lines against the word documents' 990, which is why the "at least as many lines" guard is inert on the
+measured population.
+
+Reading the **last** reconcile rather than the blind one is what isolates them: of the 54 song-modes whose
+blind verdict is `UNRELATED`, 18 read AGREE, COARSE or STRUCTURAL after the repairs, and those 18 word
+documents hold 6 gross lines between them where the 36 still `UNRELATED` hold 556.
+
+### The order-clamp arm's own table
+
+`m2-order-clamp` ships off (above, "What failed, and the arm it forced"); this is what it bought before W3's
+gate closed its wrong-text half, at `run_align`. It publishes all 47 texts the baseline lost (off15 8, off3
+20, headers 9, tempo102 5, jit 2, off05 / drop50 / credit 1 each; without it the gated rung recovered 16 as
+line sync), and moves the text-denominator ±500 from 41.7 / 17.6 / 51.4 / 66.3 / 49.8 (off15 / off3 / headers
+/ jit / tempo102) to 69.9 / 70.1 / **84.9** / 82.3 / 64.9, against 48.5 / 36.9 / 68.3 / 68.3 / 49.6 without
+it; at `time_text`, off3 gross 456 → 297, tempo098 260 → 186, tempo102 376 → 299.
+
+Where the arm's `run_align` cases actually go, over the **123** of them: **37** that the default line-syncs it
+publishes as word documents instead, and that is the loss — gross **0 → 152**, lines within ±500 ms
+**2 528 → 2 154**, `high` lines more than 0.5 s off **0 → 87**; **12** that the default refuses it publishes,
+for 125 gross and **704 of 1 103** lines within ±500 ms (`rap-god` off15 / off3 at 2–3 gross and 172–176 within
+are the real gains; `hello` and `bohemian` off3 at 26–28 gross, and `HILA` and `never-be-alone` drop50 at 18–19
+gross for 2–6 within, are not); and **74** where both publish as words, where it helps — gross **485 → 409**,
+±500 **+38** lines. At `time_text`, which has no rung, the same 125 aggregate in its favour — gross
+**946 → 705**, ±500 **6 464 → 6 575** lines — while regressing exactly the songs the reject-if names. That
+split is the whole argument for the gated rung over the arm: the rung recovers most of what the arm got back,
+and recovers it as line sync rather than as 152 gross word timings.
+
+**Clamping rather than refusing, priced.** Over the 40 cases where the clamp acts (W1, `--level time_text`,
+8 songs × off15 / headers / jit / off3 / tempo102, base model) the shipped whole-run refusal reads **165 gross
+/ 1 887** within ±500 ms, against the clamp it replaced at **195 / 1 871**. Four variants are then all inside
+noise of the shipped rule: refusing the fewest lines of a run by dynamic programming **164 / 1 887** (it
+recovers the `headers` shape — an adopted `[Chorus]` label sharing a run with a lyric line, `Rxbyn` 3 gross
+→ 0 — and loses about as much on `HILA` and `Ridgway` off3, +1 gross each); letting a repair overlap a smeared
+trusted tail while its starts stay in order **163 / 1 888** (`Tom_Orlando` jit 2 → 0); both together
+**162 / 1 888**; and dropping the 0.2 s minimum-width widening **163 / 1 892**, which changes 3 documents where
+nothing was refused. So the simplest rule stands. A neighbouring variant on the same cases read 895 / **7 184**
+against 7 186 — no gain worth a second path through the fragile part.
+
+### The L1 arms, priced on the song the review read them from
+
+Both `l1-*` arms ship off, and each failed on the SAME song: **`never-be-alone`, stem coverage 0.99**. That
+number is why the failure counts — W1's reject-if is scoped to a song whose stem coverage is at least 0.80
+(`count(song.doc_changed * (base.song.coverage >= 0.8)) == 0`), so a regression there is inside the gate rather
+than on material the harness does not vouch for. Measured at `--level time_text` on `never-be-alone`,
+`tfr-chosen`, `Quentin` and `Ridgway` under truth / jit / off05 / off15 / offm1 — 20 cases, on the tree as W1
+then shipped it — as gross lines / lines within ±500 ms:
+
+| arm | gross | within ±500 ms |
+| --- | --- | --- |
+| both off (shipped) | **25** | **569** |
+| `l1-blind-median` | 33 | 549 |
+| `l1-mix-kept` | **49** | **538** |
+| both | 36 | 541 |
+
+All but 2 lines of that difference are `never-be-alone`'s: 3–29 fewer lines within ±500 ms under truth / jit /
+off05, 3–11 more gross under off15, and one gain — offm1, +7–9 lines. **Why they lose** is the song: its blind
+decode is `UNRELATED` (13–31% of lines agree), so R1 re-decodes every claimed line inside its claim window and
+those stem decodes are poor (0.5–1.5 s off truth). The per-stage adoption median counted R1's adopted lines at
+their 0.0 sentinel and so rose from **−2.98 to −0.88**, after which R2 adopted the claim over 13–23 of them —
+by accident, but a decent claim beats a poor decode. With that fixed the decodes stand, and where no stage
+replaces them in order the clamp refuses the whole song-long run (`never-be-alone` off05 with `l1-mix-kept`:
+all 47 lines back on the blind decode, 21 gross). Re-judged under W3 on the same 4 songs × 14 modes, both arms
+still fail §3.1 by effect in 6–8 modes and `never-be-alone` off05 goes **45 → 26** lines within ±500 ms with
+`l1-mix-kept` (45 → 27 with `l1-blind-median`).
+
+And the never-sung sparing arms, on the 16 songs they touch × all modes: `m6-mix-spare` reads **916 → 895**
+gross at `time_text`, where W1 as first shipped (spared lines adopted at their claims' spans, steering the
+ladder) read **918** — with off3 +7, tempo098 +9 and tempo102 +4 gross. Over the 12 documents it moves: gross
+**32 → 11**, within ±500 ms **361 → 380**, unsung 21 → 23, lines missing 19 → 4. Letting a spared line **steer**
+the re-reconciles was measured on the **384** heard-only cases and reads 895 gross / **7 186** within ±500 ms
+against 895 / **7 184** — which is the "no gain worth a second path" reading above, from the other side.
+
+### Language: the detector's cost, and three censuses
+
+**What the detector costs a job**, measured on this box rather than assumed from the wheel's 170 MB: building
+it is 0.05 s (the models load lazily), the **first** detection 0.11 s, every one after it 3 ms, and the
+resident set 34 MB. Against ~5–9 s of model time per emission pass that is free, which is why it is built once
+at the composition root and read per **text** rather than per job.
+
+Taking the counts rather than the texts matters for the same reason: a second pass cost one Unicode-name
+lookup per character of the sheet all over again — ~**12 000** of them on a 3 000-character four-text pool,
+paid once per acquired text.
+
+**Three censuses** over Unicode 15.0 and the two corpora (`scripts/lang_gate.py --folds`; the per-letter
+counts are above, "The fold is provably free on every recorded row"):
+
+| census | count |
+| --- | --- |
+| alpha codepoints whose UCD-reported script is not their base letter's | **983** (the Mathematical Alphanumeric Symbols block alone is 936; then the double-struck / script / black-letter letterlikes, `ª` → `Feminine`, `µ` → `Micro`, `U+2126 OHM SIGN` → `Ohm`, `U+2135 ALEF SYMBOL` → `Alef`) |
+| **non-letter** codepoints that fold onto at least one letter | **953** |
+| **letters** that fold onto at least one non-letter | **35** |
+| non-letter characters in either corpus whose fold lands in the English vocabulary | **0** |
+
+Script names are the canonical ISO-**15924**-ish spellings rather than the UCD's own words. An ambiguous
+script's exclusive letters break its tie — Ukrainian's additions do not exist in Russian, which has no
+`і ї є ґ` (dropped in the **1918** reform), and Persian's and Urdu's additions do not exist in Arabic — and
+the marker share is proportional, so a quoted title stops moving the bundle while a bilingual sheet still can.
+On the measured shape — a 475-letter Russian sheet carrying one three-word quoted Ukrainian fragment — **2** of
+475 (**0.42%**) no longer decides and **3** of 475 (**0.63%**) does. The count floor stays beside the share
+because a share alone is noise on a tiny sheet: one marker in a 40-letter fragment is **2.5%**.
+
+### Syllables: the tokens the hyphen rule reaches
+
+Over the bench corpus's 32 truth texts, **10 711** hyphen-free tokens: 59 occurrences across 38 distinct
+tokens reach the internal-hyphen path the ladder used to mangle.
+
+### The envelope gate's three tiers, and the points behind them
+
+The gate is `r ≥ 0.40` within ±0.5 s **or** `r ≥ 0.25` with a lag inside ±0.1 s **or** `r ≥ 0.60` at any lag
+(`align_steps._envelope_passes`; the design is §5.2 of
+[`../../arch/04-alignment.md`](../../arch/04-alignment.md), which keeps this tier numbering).
+
+The SECOND tier exists because this caller's null hypothesis is not the LRC-shift one: timings measured **on
+this audio** must fit at zero lag, and the two measured wrong-song fits land at **large** lags — **+1.64 s** and
+**−7.66 s** — with `r` up to **0.31**. So a near-zero lag is discriminating evidence in its own right. The
+counter-example is a live song (`Rise Up`) with sparse singing that scored `r` **0.31** at a fit of
+**−0.02 s**: right timings that a flat 0.40 floor alone refused. The calibration is **few points**, stated
+rather than buried: 3 right songs, 2 wrong sheets and 1 live refusal.
+
+The THIRD tier, **`r ≥ 0.60`**, is the OFFSET case: a correlation that high says the shape agrees, and what is
+left is a lag — a sheet to move (the claim clock) rather than a text to refuse. It is why either the blind or
+the repaired fit passing is enough: a high-`r`-but-large-lag repaired fit is a shifted-but-shaped series, not a
+wrong-text one. The SHEET-span gate (`_sheet_passes`, on a sheet's own claimed spans) is tiers **1 and 3 only**
+— never the ±0.1 s one, because a sheet's timings were not measured on this audio and any broad sheet envelope
+best-fits near zero lag, so that tier is where the sheet-span null leaked.
+
+### Trimming a line at another line's measured start
+
+The clamp's bounded left floor re-fits only the tail past the boundary, and the question it had to answer is
+whether that re-fit moves a measured onset. Over the 20 Jamendo songs at `truth` through the shipped
+`time_text` (base model, `_runs/w6-{clamp,tail}-jamendo`), against an affine remap doing the same job: word
+±100 **83.52** against 83.12, ±250 **94.08** against 93.92, ±300 **95.04** against 94.98, word end ±100
+**80.02** against 79.87, MedAE **38.2 ms** against 38.5, highlight **77.58** against 77.45 — every one at or
+above the W4 row this must not regress (83.25 / 93.96 / 94.98 / 80.02 / 38.2 / 77.10), where the affine version
+sat 0.1–0.2 pt under four of them. It costs phrase-final end ±100: **59.23** against the remap's 59.66 and W4's
+59.83, on 2 more scored ends, because a trimmed line's last word now ends at the boundary and that word is a
+phrase-final one.
+
+**The anchor walk** (an anchor whose tail cannot hold one frame per word still to be placed is dropped, and the
+word before it tried) is swept and the figures above hold to the digit: the collapsed tail it exists for reaches
+**21 of 1 088** `time_text` cases on the base bundle and **13** on HuBERT-L, none of them `truth` on a song with
+word truth. Without it, words at 10.0 / 19.999 / 20.4 / 20.9 / 21.6 s trimmed to 20.0 published the last three
+inside **0.8 ms** of 19.999 — four words the TV can never light, since it lights `start <= pos < end` and that
+interval is empty to the float. The walk **buys** 3 gross words on `Wordsmith_-_The_Statement` drop20 under
+HuBERT-L (**43 → 40** pooled, AAE **146 → 143.7 ms**). What it **costs** is not the tail: the out-of-order word
+the collapse used to produce was tripping `run_align`'s line-sync retime on three base-bundle cases, which now
+publish their word document instead — `believer` extraverse 65.75 (W4b) → 98.63 (the accident) → **73.97**,
+`feel-my-heart` credit back to W4b's **94.59**, `rap-god` drop20 100.00 → **87.93** (pooled `run_align` drop20
+±500 90.48 → **88.98**, extraverse 90.69 → 89.66, gross and `high_gross` 0 throughout). So the walk is not free
+at `run_align`, and that trade is the owner's open question in the PLAN's status log.
+
+### The pool gate's rejected control
+
+`results/w7-pool.json`'s `wrong-track` arm reads ±500 **78.70** over the pool against the ranked arm's 77.91
+and fails the gate's own `keeps-pm500` clause — the control is better on that column because it publishes a
+different, shorter population, which is what the clause exists to catch.
+
+### Why a held line's end is STRETCHED past its predecessor's, not held at it
+
+Holding the end **at** the predecessor's end does not fix the nesting defect, and the trace says why. Core's
+`activeLineIndex` returns the FIRST line whose bounds contain the playhead, so a byte-identical span loses
+every instant of itself to the predecessor and the held line first lights at the predecessor's END — the same
+defect at the same line, one `max` short of a fix. Traced on the rule's own fixture (`a` = 12.0–14.5 s,
+`b` = 11.8–13.8 s): `_in_claim_order` returned `b` as **12.0–14.5 s** and, sweeping the playhead through a
+transcription of `activeLineIndex`, `b` first lit at **14.5 s**. So the end is stretched `_REPAIRED_MIN_SEC`
+**past** the floor, bounded by the next kept start so that lighting the held line cannot delay the one after
+it. Where the next start leaves no room the span stays identical and the line is still never lit: a published
+sheet with one dark line, against `policy.decide` dropping the whole text.
+
+### The LINE_SYNC rung's four candidate rules, on the MAPPED claims
+
+The rule-by-rule table above is W3's placement; this is the same four rules re-read after the claim clock
+places the sheet (`scripts/line_gate.py`, base model, 1056 cases, 13 timed modes, 416 right texts, 640 wrong;
+the quality population is 411 good / 2 middling / 3 bad on the mapped claims):
+
+| rule | good refused /411 | bad published /3 | right refused /416 | gross shown |
+| --- | --- | --- | --- | --- |
+| sheet gate + lift (W1) | **170** | 0 | 175 | 0 |
+| lift alone, timings unchecked | 0 | 3 | 0 | **76** |
+| **lift + decode agreement ≥ 0.5 (shipped)** | **29** | **0** | **33** | **0** |
+| lift + (sheet OR decode ≥ 0.5) | 14 | 0 | 18 | 0 |
+
+OR-ing the sheet gate back in is the one row that looks cheaper and is not: its 18 refusals publish the two
+documents more than 20% gross and `never-be-alone`'s, which is why it is still not taken.
+
+**A TRANSCRIPT is exempt from the gate entirely**, and the measurement is why. Its spans were measured on
+*this* recording, so it can be neither the wrong song nor on another master's clock — the two things the gate
+detects — yet read as a sheet it fails: `hello`'s whisper `base` transcript scores **r = 0.33 @ +0.22 s**
+against its own recording over **61** lines (the presplit spans share a segment's span by character count, so
+they blur), and was refused as if it were another song's sheet, ending `lines` mode in NO LYRICS for a song
+with audible words. `Ridgway`'s passed at **r = 0.69 @ +0.00 s**. The worker this replaced published a
+transcript's own timings ungated in both modes.
+
+### Why `syncMode=lines` needs a vocals stem, as the populations
+
+The LINE_SYNC rung's sheet-span gate reads a text's claimed spans against the singing it can hear. On the MIX
+the activity band fills every silence it reads, so the gate has nothing left to separate a right sheet from a
+wrong one. Measured over every timed bench case with each song's **mix** in place of its stem
+(`scripts/sheet_gate.py --target mix`):
+
+| span population | right texts passed | wrong texts passed | truth claims |
+| --- | --- | --- | --- |
+| authored-caption spans | **39** of 416 | **3** of 320 | 8 of 32 |
+| LRC spans | **37** of 416 | **3** of 320 | 3 of 32 |
+| best threshold found | **60** of 416 | 3 of 320 | — |
+
+Truth-claim median `r` on the mix is **0.33** against the wrong texts' **0.17**, whose top decile already
+reaches **0.32** — so no threshold separates them. Line-only on the mix therefore refused nearly every correct
+sheet in favour of an ASR transcript or no lyrics at all, which is why such a song is aligned as `forced`
+instead and gets the forced path's own wrong-text gate. (Before the sync mode was honoured at all these songs
+were word-aligned, so this is what they get again.) The same gate on the STEM is §5.3 of
+[`../../arch/04-alignment.md`](../../arch/04-alignment.md), where it passes 241 of 416 at 0 of 320.
+
+### Miscellany, each with the defect it records
+
+* **A revoked job must be observed, not polled.** Measured live: a 195 s song fetched in 2.1 s and separated
+  in **22.3 s**, then its align job was revoked at **32.9 s** — inside the window a poll would have missed.
+* **WhisperX lowercases its dictionaries** at `whisperx/alignment.py:98,110`, which is why the target filter
+  lowercases before looking a character up.
+* **A tensor slice keeps its parent alive.** Holding a view of a **1 699**-frame parent matrix kept the whole
+  parent resident until the concatenation — 12% of the resident set — which is why the emission pass copies
+  rather than slices.
+* The key detector's weights are Krumhansl & Kessler (**1982**) probe-tone key profiles.
+* **A harness bug reads like a model bug.** `bench.py` matched aligned lines to truth rows by **position**
+  instead of by the line's own index; a dropped decorative line (`♪`, no alignable characters) then scored every
+  later line against the wrong truth row and showed as a bias of **+5 140 ms** on `tfr-chosen`. Entirely the
+  harness. Matching by index is why every score in this document can be compared across waves.
+* **The estimators' citations**, since the code now names the shape rather than the paper: the claim clock's
+  vote is RANSAC's inlier count (Fischler & Bolles **1981**), its tempo candidate a bounded Theil–Sen slope
+  (Sen **1968**), the lexical lift a self-normalised goodness-of-pronunciation (Witt & Young **2000**), and the
+  karaoke-timing-onto-other-recordings prior art is DALI
+  (<https://transactions.ismir.net/articles/10.5334/tismir.30>).
+
+### The harness scripts: what each one is for, and the limit it states
+
+Seven of the scripts under `scripts/` carried their own manual in a module docstring 54 to 120 lines long.
+W7b moved it here, on the directive's rule, leaving each script a few lines of WHAT plus its usage block.
+`e2e.py`'s own manual is "The E2E harness" above and `e2e_lib.py` is its pure half; what follows is the rest.
+
+**`e2e_gates.py` — the reject-if language.** Every wave of the plan is accepted or rejected on conditions like
+"truth-mode ±500 drops more than 1.0 pt" or "any Jamendo song gains a gross line". Checked by hand from two
+printed tables, the arithmetic is where a gate quietly passes; written as expressions, they are checked the
+same way on every run and a failing gate exits non-zero. The grammar is a RESTRICTED Python expression, parsed
+with `ast` and walked node by node (never `eval`):
+
+- **References** are dotted paths into a summary. `[base.]MODE[.GROUP].METRIC` is one pooled number
+  (`truth.pm500`, `base.blind.jamendo.gross`); `[base.][MODE.][GROUP.]song.METRIC` is one number PER SONG
+  (`truth.jamendo.song.word_pm300`, `song.gross`). MODE is a claim mode, or `mode("jit+off15")` for a
+  `+`-combined one; GROUP is `jamendo` / `youtube` / `all` (the default); `base.` reads the `--compare`
+  baseline. A per-song path with no MODE ranges over EVERY mode, keyed `(mode, song)`. METRIC is a name from
+  `e2e_lib.flat_metrics` — `pm500 pm1000 text_pm500 text_pm1000 gross zero_gross_songs high high_gross refused
+  error published scored in_text missing unsung text_paired`; `word_pm100/250/300 word_pco300 word_bias_ms
+  word_gross`; `end_pm100 end_pm250 end_bias_ms final_end_pm100 final_end_pm250 final_end_bias_ms`;
+  `highlight`; `wrongtext_pass`; the `run_align` policy counts (`attempts retried mix_published
+  changed_vs_first asr_requested asr_published no_lyrics`, and `retime_<knob>` for EVERY policy knob, 0 when
+  unused); and the 95% bounds `pm500_lo/_hi`, `text_pm500_lo/_hi`, `gross_lo/_hi`, `word_pm300_lo/_hi`,
+  `word_pco300_lo/_hi`, `highlight_lo/_hi`. A per-song path also knows `e2e_lib.SONG_METRICS` plus
+  `doc_changed` / `onsets_changed` — 1 where the published document (its bytes, or only its line and word
+  START times) differs from the baseline's, a refusal on either side counting as a document of its own — and
+  `METRIC_up` / `METRIC_down`, 1 where the run is above / below the baseline.
+- **Which ±500.** `pm500` / `pm1000` are over the lines PUBLISHED documents scored, which is how the review
+  baseline is stated, and a refused song adds nothing. `text_pm500` / `text_pm1000` are over every truth line
+  the text asked for with a refused case's lines counted as misses — the one to gate on wherever a refusal must
+  not read as an improvement. `word_pco300`, `highlight` and `missing` already count refused and ERROR cases in
+  their denominators.
+- **Operators**: numbers, `+ - * /`, comparisons (chainable), `and` / `or` / `not` — with EVERY operand
+  evaluated, no short-circuit, so `ok or typo.pm500 > 0` errors instead of passing. Per-song values combine
+  elementwise and a plain number broadcasts.
+- **Functions**: `count(v)` (how many per-song values are non-zero); `min` / `max` / `mean` / `sum` over
+  per-song values (`min` and `max` also take two or more numbers); `abs(x)`; `delta(ref)` = run − baseline of
+  one POOLED number (a `song.` path is an ERROR — it used to read the pooled number silently);
+  `min_song_delta(ref)` / `max_song_delta(ref)` = the smallest / largest per-song (run − baseline) of `ref`.
+
+A GATE IS THE CONDITION THAT MUST HOLD — the negation of the reject-if. "Reject if truth ±500 drops more than
+1 pt" is `truth.pm500 >= base.truth.pm500 - 1.0`; "reject if any Jamendo song is more than 1 pt worse at ±300"
+is `min_song_delta(jamendo.word_pm300) >= -1.0` (MIN, the worst song, for a metric where higher is better —
+`max_song_delta` would read the best song); "reject if any song gains a gross line" is
+`count(song.gross_up + song.missing_up) == 0`, because `gross` counts only lines that PUBLISHED, so a song
+with 2 gross lines that flips to refused reads FEWER and `count(song.gross_up) == 0` would hold on its own
+(pinned in `test_bench_e2e.py`) while `missing` rises with either. W1's "reject if a published doc changes on a
+song whose stem coverage is ≥ 0.80" is `count(song.doc_changed * (base.song.coverage >= 0.8)) == 0`.
+
+**A gate that CANNOT BE EVALUATED is an ERROR, and an error fails the run exactly like a FAIL**, because a gate
+that silently passes on missing data is how a regression ships. Every one of these is an ERROR: a mode the run
+did not measure, a metric with no data (YouTube has no word truth), a `base.` path with no `--compare`, no song
+in common; a run-vs-baseline comparison over songs the run did not measure (per song, any `(mode, song)` the
+baseline has and the run lacks; pooled, any difference between the two sides' song sets for that mode and
+group, since a `--songs` run against the full baseline compares two different pools — and the same for a
+REDUCTION of a baseline per-song value); any gate that reads the baseline when the two summaries measured
+another SETUP — level, seed, wrong_k, language, tfr audio, ASR or sync mode (`SETUP_META`; an unrecorded sync
+mode is `forced`, what every run before `--sync-mode` sent) — or another key either side does not record,
+while a model or `align_*` difference only WARNS because that is what an arm varies; a song that LOST its value
+(scored in the baseline, refused now: a refused song has no ±500 / word / highlight value but a gross COUNT of
+0), in `min_song_delta` / `_up` / `_down` and in explicit arithmetic alike, where a song that GAINED a value
+has no delta and is skipped (`refused_down` counts it); any gate that reads a metric THE RUN'S BUNDLE COULD NOT
+MEASURE, since on a run marked `uncalibrated` every emission-scale gate stood down and `wrongtext_pass` is then
+the sheet-span envelope gate's reading rather than that bundle's (`UNCALIBRATED_METRICS`); and a reduction over
+per-song values some song has NO value for — `min(truth.song.pm500) >= 85` must not pass because the worst song
+was refused, so gate a metric every song has (`text_pm500`, `gross`, `refused`) or scope the path to where the
+metric exists. ERROR ROWS FAIL THE RUN on their own: `run_gates` adds a built-in `no-error-rows` gate, because
+a case the harness could not complete otherwise reads as a refusal — a wrong text "correctly" refused — or
+drops out of every pooled number.
+
+GATE FILES are JSON (`{"name": "expression", ...}` or `[{"name": ..., "expr": ...}, ...]`) or the YAML subset
+every example uses: one `name: expression` per line, `#` comments, optional quotes. That subset is plain YAML,
+so a real YAML parser reads the same gates (quote an expression starting with `[`, `{` or `- `). The CLI exits
+3 when any gate FAILs or ERRORs and 2 when the gate file or baseline cannot be read.
+
+**`lift_gate.py` — the lexical bands.** It calibrates `lexical.lift`'s thresholds for both of the gate's
+consumers: the LINE_SYNC rung, where a text must lift or a same-video translation could line-sync, and the
+global engine's word documents, where the lift REPLACES the envelope gate on a stem (that gate scores our own
+decode, which the audio pulls onto the voiced frames whatever the text — 152 of 320 wrong texts passed it at
+W1) and sits beside it on the mix. It runs the SHIPPED helper and decoder over every text a right-text case
+serves (`truth`, which every offset / tempo / jitter / blind mode also serves since the lift reads no timing,
+plus `headers`, `credit`, `extraverse`, `drop20`, `drop50`) and every wrong text (`wrongtext`,
+`wrongtext+ownclock`), served exactly as the text adapters serve them (`clean_segments`), off the bench's
+emission cache — so a warm stem run is decodes only, while `--target mix` pays one model pass per song the
+first time. `--target mix` also records each text's BLIND envelope fit, which is the half of the shipped mix
+gate that reads no claims; since the shipped gate passes if the blind OR the repaired fit does, that
+UNDER-counts the passes a repair could add (and `blind`-mode texts have no repairs at all). Scoring is against
+the row of the bundle it measured (`lexical.CALIBRATED` is keyed by bundle), and a bundle with NO row is scored
+against the shipped one as a stated REFERENCE while the run prints the row it FITS — which is what a
+recalibration is for. It prints nine blocks: each population's range per split; the texts too short to measure
+(`lexical.MIN_LETTERS`); the HELD-OUT check (τ fitted on one split's gap midpoint and scored on the other, both
+ways); pass counts per threshold; how the lift combines with the shipped envelope gate case by case over the
+W1 `time_text` bench, whose outcomes ARE that gate's (or, on the mix, the blind envelope with the lift floor
+per floor); each population per SHIPPED band; the truth texts' blind decode timing per band, which is what the
+mix doubt band is drawn on; the W1 `run_align` line-synced right texts and their lift; and THE ROW THIS RUN
+FITS, on the 0.05 grid, ready to paste into `lexical.CALIBRATED` — or a refusal to pick one where the
+populations overlap. The fifth field of that row, `line_sync_min_agreement`, comes from `line_gate.py` instead.
+The numbers are in "The lexical-lift wrong-text gate", "Per-model calibration" and "The lexical calibration
+rows, exhibit by exhibit".
+
+**`line_gate.py` — the LINE_SYNC rung's gate, rule by rule, with no model pass.** Under `syncMode=lines` the
+rung is each text's only attempt, and in forced mode it is the terminal knob for a word document that came back
+unusable; it publishes the text's OWN line timings, so its gate owes two answers — are these words sung (a
+same-video translation's timings describe the audio whatever its words), and do these TIMINGS describe the
+audio (a sheet for another master, off by seconds, publishes off by seconds). At W1 the gate was the sheet-span
+envelope gate AND the lift ≥ 0.2, and measured over `syncMode=lines` at `run_align` across 10 timed modes it
+published **0 of 640** wrong texts but refused **107 of 320 right texts** by the sheet gate (truth 4 of 32:
+hello, rap-god, bohemian-rhapsody, bad-guy) — **every one of them a text whose lift was ≥ +0.26**. That is why
+the rung now also holds the text's own DECODE: a second witness to where each line is sung, which the envelope
+cannot give. The six rules it prices, each over the same cases, are `sheet alone` (the pre-W1-r2 gate),
+`sheet+lift` (W1's), `lift alone` (the timings unchecked), `decode(θ)` (the lift AND at least θ of the decoded
+lines starting within `--near` of their placed claim, falling back to the sheet gate under 3 paired lines —
+SHIPPED at W3 with θ = the bundle's `line_sync_min_agreement` and `--near` = `_LINE_SYNC_NEAR_SEC`),
+`either(θ)` (the lift AND (the sheet gate OR `decode(θ)`)), and `decode(0.5)+lag` (measured, not shipped).
+Since W2 "placed" means MAPPED — the rung votes on the claims' clock first — so every row's primary columns
+(`near`, `gross`, `w500`, `w1000`) are read off the sheet as the CLAIM CLOCK places it, with `w3_*` carrying
+the same readings under W3's unconditional activity shift and the `placement` block printing the two side by
+side; `--near` moves the vote's band as well as the gate's, since the rung scores its candidate maps in the
+band it counts a line near in. Per rule it prints right texts refused, the published right documents' lines
+(scored, gross, ±500 ms, ±1 s), the text-denominator ±500 where a refused text's lines count as misses, and
+wrong texts passed — because a rule that refuses a right text whose line document would have been accurate
+costs the room lyrics, and one that publishes a right text on timings seconds off shows it lines that are
+wrong. The documents are built with the shipped functions and the decode comes from the bench's emission cache.
+The tables are in "The LINE_SYNC rung's gate" and "The LINE_SYNC rung's four candidate rules, on the MAPPED
+claims".
+
+**`unsung_gate.py` — the never-sung rule's three signals, and every candidate floor priced end to end.** A
+caption line that is NOT sung does worse than fail: forced monotonically through emissions that do not contain
+it, it consumes its neighbours' frames and drags them off. The shipped rule drops a line on three signals, all
+required, then re-decodes what is left, twice round; until W4b its three literals had been fitted on two
+exhibits on an older clock, and W4's exact 20 ms grid moved every score, span and envelope read behind them.
+The question it answers is whether a PER-SONG RELATIVE floor (a quantile of that song's own inter-line gaps)
+beats the shipped absolute level on a P95-normalised envelope, which review L2 says only means something on a
+clean stem. It answers it by running the shipped two-round loop under each candidate floor and scoring what
+survives against truth, which is the only way to see the rule's real cost: a line the rule drops is a line the
+metrics no longer see (`missing`), and a line it spares is one the decode may have put seconds away (`gross`).
+It prints the per-song inter-line GAP levels the relative floors are read off (q10 / q25 / median) and their
+whole-corpus spread; the CANDIDATE lines with each one's envelope level, score gap, char rate, span and — where
+truth has the line — the error of its blind start, split REAL against INJECTED (a `headers` / `credit` /
+`extraverse` line the mode added, which the rule SHOULD drop); and one row per floor rule, where `abs-0.00` is
+the rule OFF so the first two rows price the rule itself. It runs BLIND deliberately: no claims reach the
+rule's three signals, since only the SPARE arms read a claim window and both ship off, so this is the
+population the shipped rule judges. What it cannot see is the repair ladder's reaction to a SPARED line — in a
+claim mode a kept line is re-decoded inside its claim window — so a floor this script likes still owes the
+corpus bench. The committed rows are all `--target stem`, and `--target mix` is the case L2 is actually about:
+on a mix the band fills the gaps between lines, so 0.10 is nowhere near them and the rule can never fire. That
+target is a SHIPPED path rather than a hypothetical, since the align target of a stemless song is the mix, so
+there an unsung caption or credit line is timed and published. Nothing in W4b ran it, and the conclusion in
+"The never-sung rule: the two lines no floor can separate" is a STEM conclusion.
+
+**`lang_gate.py` — which bundle should time a non-English song, and M9's blank proved live.** It is a separate
+script rather than a mode of `e2e.py` because the language question needs a different CORPUS (the 59 fr/de/es
+JamendoLyrics songs `jamendo.py` deliberately skipped) and a different COMPARISON (bundle A against bundle B on
+the same audio and text, blind, with no ladder in between), so folding it in would have meant a second corpus
+loader and a second scorer inside the harness that owns the shipped path. It reads the same shipped functions —
+`ml.WhisperXAligner.emissions`, `generate`, `forced_align_decoder` — so what it measures is the decode that
+publishes. `--folds` is the first thing to run and it gates everything else: the target filter now folds a
+character the vocabulary lacks to its base letters, and a fold that moved ONE English target sequence would
+move every number under `results/`, so it counts, over both corpora, the characters that newly align and the
+ones NFKD still cannot decompose. `--blank` loads a REAL bundle whose `[PAD]` is not at 0 and decodes one text
+twice, once with the matrix's own `blank_id` and once with the literal 0 the code used before W4; the LANGUAGE
+PAIRING IS ARTIFICIAL and said so, since no Norwegian song with measured word truth is in the corpus, but the
+model, the pad's position, the forward pass, the audio and the truth are all real — strictly more than the
+review's column permutation had. **Matrices are not cached on disk here, deliberately**: 59 songs × 2 targets
+× 2 bundles is ~**4 GB** of float32 no other run would read, and at ~**5–9 s** a song the model pass makes a
+full sweep **~20–35 minutes** either way; the shipped adapter's in-memory LRU still serves the two bundles of
+one song. Its corpus layout under `$ENCORE_BENCH_ROOT` is `jamendolyrics/` (the dataset checkout:
+`mp3/<slug>.mp3`, `annotations/lines/<slug>.csv`, `annotations/words/<slug>.csv`, `lyrics/<slug>.words.txt`,
+`JamendoLyrics.csv` for the Language column) and `_lang/stems/<slug>/vocals.wav` (htdemucs vocals, built by
+`_lang/separate.sh` at ~15 s a song). The readings are in "W7: the language is an INPUT" and "Language: the
+detector's cost, and three censuses".
+
+**`pool_gate.py` — what the ranking actually CHOOSES.** W5 landed "every provider is a candidate" with a
+corroboration-ordered candidate tier (review M13) and an LRCLIB retry without the duration (L5), and
+`e2e.py --level run_align` CANNOT SEE EITHER, because its ports serve ONE text per case: `Search`'s pool has
+one entry, `order_pool` has nothing to order, `policy.corroboration` is computed over a pool of one (False by
+definition) and the L5 retry never fires because the harness provider answers every lookup. Both shipped on
+unit tests alone, and this script closes that gap with the SAME production code — `_acquire_texts`,
+`fetch_captions`, `fetch_provider_lyrics`, the REAL `LrclibClient`, `_pool_of`, `order_pool`, `Search`,
+`policy.decide`, `time_text`, the gates — over the real corpus audio with a pool of three to four texts the
+ranking has to choose between, scored by the same scorers every other row here uses. It is a separate script
+because `e2e.py`'s bytes are in `code_fingerprint`, which every recorded row and every `--resume` is keyed on,
+and its one-text-per-case ports are what makes a `run_align` row byte-comparable with its `time_text` row; a
+pool dimension there would move that fingerprint for rows that have nothing to do with M13 and put a second
+text in front of attempt 1 of every case. So it reads the same shipped path through `e2e.py`'s own seams and
+writes its own rows, and nothing under `results/` moves.
+
+**THE POOL IS SYNTHETIC, DERIVED FROM THE CORPUS TRUTH, AND THAT IS A STATED LIMITATION.** The first choice was
+to CACHE what the providers actually return per corpus song. Not done, for three reasons, none of which is "no
+network" — the box has one. (1) **The corpus has no metadata to look up**: `fetch_provider_lyrics` needs an
+artist AND a track and refuses a guess, while the corpus is keyed by SLUG and the driver passes the slug as
+both, so real lookups would need a hand-written slug → (artist, title) table, i.e. the bench asserting song
+identity it does not have. (2) **A real sheet has no truth identity**: every metric here pairs a published line
+to a truth line THROUGH the claim it came from, and a fetched sheet is a different lineation of the same song —
+merged couplets, an extra chorus repeat, an ad-lib written down — so most of its lines would pair with nothing
+and "is the chosen text better against truth" would be answered on a shifting denominator, which is the exact
+artefact this harness exists to avoid. (3) **Caching commercial lyrics as a durable fixture is not ours to
+do**: lrcmux multiplexes KuGou / QQ / NetEase, whose sheets are licensed catalogue text, and the corpus's songs
+are Adele, Eminem, Queen. So each pool text is built from THIS song's truth lines, as every other text in this
+benchmark is, in the four shapes the review's cases need; what is NOT synthetic is everything the gap was about
+— the acquisition steps, the labels and tiers they build, the witness split, the corroboration reading, the
+order, the ladder, the gates, the audio and the truth.
+
+The four `--pools`: `sdh` is the review's motivating case (an SDH caption track of this song's words on the
+subtitler's clock, every cue opening early, one word misheard every `MISHEARD_EVERY` lines; another corpus
+song's sheet as the provider; the clean sheet served only through the L5 retry; plus YouTube's auto track);
+`wrong-track` makes the upload's authored track another song's words on THIS video's clock, so it agrees with
+nothing while the clean sheet agrees with the machine track, which is where the tie-break can actually move the
+chosen text; `allwrong` makes EVERY candidate a different song's words — the MUST — with no machine track,
+since an ASR track of this audio can never be the wrong song and including one would make a RIGHT text
+available; `clean` is the clean sheet ALONE, the counterfactual every other row is read against and the control
+that this script's plumbing reproduces `e2e.py`'s reading of a single provider sheet. The three `--arms` are
+`ranked` (the shipped tree), `arrival` (PRE-M13: corroboration neutralised so `order_pool` falls back to
+arrival order, AND `fetch_provider_lyrics` truncated to the first provider that answered — both harness patches
+of exactly what M13 added, so the delta between the arms IS M13), and `no-l5` (the shipped ranking with the
+unqualified retry 404'd as well, so the clean sheet is simply absent: the song falling through to ASR with a
+good human sheet one request away).
+
+**Why the machine track is in two of the pools.** `policy.witness_of` counts every provider sheet as ONE
+witness, so within the candidate tier the only cross-witness pair is (authored captions, some provider sheet).
+A pool of an authored track plus sheets therefore has exactly two states — the track agrees with a sheet, and
+then BOTH read corroborated and the track keeps its arrival-order lead; or it agrees with none, and then no
+sheet is corroborated either, because nothing else could corroborate one. YouTube's AUTO track is a third
+witness and production fetches it in the same step, so it is served here: it is what lets a clean sheet outrank
+an authored track that agrees with nothing. Its own tier is MACHINE, so it is never tried before a candidate.
+
+Per row it records the pool as production built it, each text's corroboration reading, the order the ladder
+tried them in, which text PUBLISHED, that document's score against truth with the text-side denominators kept
+for a refusal, and the per-attempt score of EVERY text the ladder tried — so one row says what the chosen text
+scored and what the text beside it would have scored. `wrong_published` is the MUST. **Cost**: the emissions
+cache is keyed on the AUDIO rather than the text, so a song pays one model pass for all its pools and arms and
+the rest is decode and repairs; the default plan is **11 jobs a song**, measured at **132 jobs / 341 s** forced
+and **96 / 170 s** in `lines` over 12 YouTube songs on a warm store. The results are in "W7: the provider pool
+is real now" and "The pool gate's rejected control".
+
+### The repair-order property test, seed by seed
+
+`worker/tests/test_repair_order.py` holds invariant XA-08 — a published document never runs backwards — over
+32 seeded scenarios driven through the REAL `time_text`. Its exhibits lived in its own docstring and are here
+because they are measurements.
+
+**The property is achievable by construction**, which is what makes it fair to hold every wave to it: the
+blind decode is an exact CTC Viterbi (`tests/ctc_fixture.py`, frame-for-frame torchaudio's) and therefore
+monotonic, so keeping every original line would already satisfy the property. A repair may only ever be
+accepted in a way that keeps it. The scenarios, one per seed, are **6–10 lines** of random words with repeats,
+sung as tones at their true spans with gaps down to **50 ms**, in three kinds: `claims` (a timed sheet where
+one line, or a run of two, claims the wrong time by **0.8–3 s** either way — R2's padded claim windows plus
+adoption), `stem-gap` (a line the stem lost and the mix still has — R4) and `untimed` (a plain sheet whose
+repeats are blind — R3).
+
+**Measured before W1** (HEAD `23c44114` + W0): **4 of 32** scenarios published backwards word starts, all of
+kind `claims`, and each was one of review M2's shapes — seed 6, a repaired line starting after the next
+trusted line's start squeezed rather than rejected; seed 12, the **0.2 s** floor pushing a repaired line's
+words past the next start; seeds 2 and 30, the last of a run of two repaired lines bounded but not rejected.
+
+W1 built the order-preserving `_clamped` that turns each green, and it ships as the DEFAULT-OFF arm
+`m2-order-clamp`: on the 32-song corpus it failed two of W1's reject-if gates (**63** more wrong texts
+published by the job, and a Jamendo song gaining a gross line under `jit`); re-judged under W3's lexical gate
+the first is closed and the second still fails, so it stays off. Every test there therefore runs on BOTH arms —
+the default, whose 4 seeds keep `xfail(strict=True)` so that a default which stops inverting them turns them
+red, and the arm, which must pass all 32. **Measured on the 32 seeds with the arm**: those 4 plus seeds 8, 10
+and 16 refuse a repair — 3 of them cases whose old clamp had squeezed an adopted WRONG claim into the gap in
+order, **0.4–1.4 s** off — and every refused line is back on the blind decode, **within 60 ms** of where it is
+sung; on the other **25** seeds the two documents differ only where the DEFAULT's bounded left floor pulls a
+neighbour's END onto a repair, which the arm does not do (seed 9 is one). Seeds 0, 4, 14, 20, 22, 24 and 28
+still publish a misclaimed line **0.6–2.0 s** off: an adopted claim that FITS in order, which is adoption's
+business and not this property's.
+
+**Why it runs per seed**, and the mutation that proves it: a single test over all 32 (the first version) could
+not name which seed newly violated the property, nor tell this test's own `out_of_order` cross-check failing,
+which is why that check is a test of its own. With `_clamped` deleted, the single-test version stayed GREEN and
+the per-seed version failed **7** seeds; with the arm on, a no-op `_clamped` fails **11** seeds and all 4 of
+the fallback tests.

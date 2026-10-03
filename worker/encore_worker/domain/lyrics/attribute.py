@@ -1,26 +1,14 @@
 """Attaching singers to lines: which voice sang which lyric.
 
-Pure, so the interesting part — deciding a line's singer from overlapping speaker turns — is testable
-without pyannote, a model, or audio. The step's only job is to run the diarizer and hand the turns here.
+Pure, so the interesting part — deciding a line's singer from overlapping speaker turns — is testable without
+pyannote, a model, or audio. The step's only job is to run the diarizer and hand the turns here.
 
-WHAT THIS IS FOR. A duet shown in one colour is a duet nobody can follow. With attribution the TV can
-colour a line by singer, which is the difference between a karaoke screen and a transcript.
+THE WIRE FIELD IS `part`, an abstract label ("A", "B") assigned by FIRST APPEARANCE, because that is what the
+TV reads. ATTRIBUTION IS BEST-EFFORT AND ALL OR NOTHING PER SONG: `None` for a line means "unknown", never
+"the first speaker", and a song is attributed only where four song-level checks call it a CONFIDENT DUET.
 
-THE WIRE FIELD IS `part`, AN ABSTRACT LABEL ("A", "B"), because that is what the TV reads
-(`core/src/lib/tv/lyrics.ts` `LyricLine.part`, coloured by `duetPartColors`). Review M15: this module wrote
-`speaker` (the diarizer's own "SPEAKER_00"), which nothing in core reads, so no attribution ever reached a
-screen. Letters by FIRST APPEARANCE, as the old worker's `diarize/attribution.py` assigned them, so the
-label is the same on a re-run whatever strings the diarizer used, and carries no identity.
-
-ATTRIBUTION IS BEST-EFFORT AND SAYS SO — AND IS ALL OR NOTHING PER SONG. `None` for a line means "unknown",
-never "the first speaker": guessing colours a line confidently wrong, which is worse than leaving it
-neutral. And a song is attributed only when it is a CONFIDENT DUET (the four song-level checks in
-`attribute`, the old worker's, restored with the field): the TV's contract is that `part` is written
-"only when the worker's diarization is CONFIDENT", and the fallback is one colour for the whole song.
-While the field was unread these checks were moot; the moment M15 connects it they are what stands
-between a solo and a rainbow — the old worker recorded that pyannote on sung vocals "routinely
-over-segments into 3-5 phantom speakers" (not re-measured here: the gated pyannote weights are not on the
-review box, so no song in the bench corpus was diarized).
+What the field is for, why the label carries no identity, what those checks stand between, and why pyannote's
+phantom speakers are not re-measured here: `docs/arch/04-alignment.md` §11.1.
 """
 
 from __future__ import annotations

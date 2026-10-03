@@ -1,17 +1,8 @@
 """Re-lineating a transcription into lines a room can read.
 
-WHY THIS EXISTS AT ALL. Whisper emits ~30-second VAD segments, so one "line" of an ASR transcript is
-often four or five lyric lines run together. Published unsplit, the TV shows a paragraph that scrolls past
-before anyone can sing it — which makes the ASR fallback technically correct and practically useless, and
-the fallback is the whole point of the ladder.
-
-ONLY AUTO-TRANSCRIBED TEXT IS SPLIT. A provider's sheet and an authored caption track already arrive
-line-broken by a human, and a splitter can only damage them: it would break a deliberate short line or
-join two that were separated for a reason. `TextRef.tier` is what decides, so the judgement is made once.
-
-SPLIT BEFORE GRADING, NOT AFTER. Word timings are interpolated across a split, so a line broken after
-alignment inherits spans measured against the unsplit text — the second half of every split line then
-highlights early. Splitting first means the aligner sees the lines that will actually be shown.
+Whisper emits ~30-second VAD segments, so one "line" of an ASR transcript is four or five lyric lines run
+together, and published unsplit the TV shows a paragraph that scrolls past before anyone can sing it. ONLY
+AUTO-TRANSCRIBED TEXT IS SPLIT, and SPLIT BEFORE ALIGNING rather than after: docs/arch/04-alignment.md §8.
 """
 
 from __future__ import annotations
@@ -33,10 +24,8 @@ MIN_LINE_CHARS = 8
 #: Sentence-ish boundaries, best first. Punctuation beats a conjunction, which beats a bare space.
 _STRONG = re.compile(r"(?<=[.!?])\s+")
 _MEDIUM = re.compile(r"(?<=[,;:])\s+")
-#: Conjunctions a line may break before. Adjacent ones ("and then") each match, which would split
-#: between them and leave "and" as a three-character scrap — `_merge_scraps` folds that forward rather
-#: than this list enumerating every phrase, because the general problem is "a piece too short to be a
-#: line", not "these particular word pairs".
+#: Conjunctions a line may break before. Adjacent ones each match, and `_merge_scraps` folds the scrap
+#: forward rather than this list enumerating every phrase.
 _CONJUNCTIONS = ("because", "cause", "while", "when", "but", "and", "or", "so", "then", "if")
 _WEAK = re.compile(r"\s+(?=(?:" + "|".join(_CONJUNCTIONS) + r")\b)", re.IGNORECASE)
 
@@ -104,12 +93,8 @@ def _break(text: str) -> list[str]:
 def _merge_scraps(pieces: Sequence[str]) -> list[str]:
     """Fold any piece too short to be a line into the FOLLOWING one.
 
-    Two adjacent conjunctions each match the boundary pattern, so "alone and then the morning" splits
-    into "alone" / "and" / "then the morning" — and "and" alone is not a lyric line. Merging forward
-    rather than backward keeps the conjunction attached to the clause it introduces, which is where a
-    singer would breathe.
-
-    The LAST piece merges backward instead, since it has nothing after it to join.
+    Merging forward rather than backward keeps a conjunction attached to the clause it introduces, which is
+    where a singer would breathe; the LAST piece merges backward, having nothing after it.
     """
     if len(pieces) < 2:
         return list(pieces)

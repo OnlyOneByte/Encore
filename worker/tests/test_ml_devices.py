@@ -318,31 +318,38 @@ def test_the_english_bundle_is_a_function_of_the_device() -> None:
         "XL on CUDA is a projection: no box on this tree has run it end to end"
     )
 
-    # AND THE CALIBRATION RECORD MAY NOT CONTRADICT THIS TABLE (W4b review r2, correctness-3 / spec-12). The
-    # XL section of `lexical`'s docstring opened with "HuBERT-XLARGE HAS A ROW TOO, because it is CUDA's
-    # default (`ml.ALIGN_MODELS_BY_DEVICE`...)" for a wave that had already reverted the flip — citing the now
-    # EMPTY table as its evidence, in the module this codebase designates the one source of truth for every
-    # emission-scale threshold. A CUDA operator reading it concluded their box ships XL, with a +0.0021
-    # wrong-text margin on the mix. The pairing is what has to hold: an empty table means no paragraph there
-    # may call any bundle a device's default.
+    # AND THE CALIBRATION RECORD MAY NOT CONTRADICT THIS TABLE. `lexical` once said XL was "CUDA's default
+    # (`ml.ALIGN_MODELS_BY_DEVICE`...)" for a wave that had already reverted the flip, citing the now EMPTY
+    # table as its evidence — so a CUDA operator concluded their box shipped XL on a mix wrong-text margin of
+    # 0.0021. An empty table means nothing there may call any bundle a device's default. Read off the module
+    # SOURCE and not `__doc__`, because since W7b the record is the `CALIBRATED` table and its `#:` block
+    # rather than an essay in the docstring, and `#:` comments carry no `__doc__`.
     from encore_worker.domain.lyrics import lexical
 
-    record = lexical.__doc__ or ""
+    record = Path(inspect.getsourcefile(lexical) or "").read_text(encoding="utf-8")
     assert "CUDA's default" not in record, (
         "no bundle is any device's default while ALIGN_MODELS_BY_DEVICE is empty"
     )
-    assert DEFAULT_ALIGN_MODEL in record, "and the record names the bundle a box actually loads"
+    assert DEFAULT_ALIGN_MODEL in lexical.CALIBRATED, (
+        "and the record names the bundle a box actually loads — a row, not a passing mention: a substring "
+        "search over the whole module would pass on any incidental occurrence of the name"
+    )
 
     # AND THE XL PARAGRAPH MAY NOT READ AS A MEASUREMENT (W5's flip spec; W4b review r2 correctness-3 is the
-    # same defect one bundle over). The projection lives in `#:` comments, which carry no `__doc__`, so this
-    # reads the source the way `test_the_composition_root_refuses_a_model_nothing_calibrated` reads the
-    # startup banner's: what must hold is that the table's own block says PROJECTION where it names XL.
+    # same defect one bundle over). W7c moved that paragraph into the DESIGN DOCUMENT the table now cites, so
+    # the pair is checked where it lives: the code must still point at §3.1, and §3.1 must still call XL a
+    # projection. Reading the code alone would pass on a pointer to a section that had lost the caveat.
     from encore_worker.adapters import ml
 
     source = Path(inspect.getsourcefile(ml) or "").read_text(encoding="utf-8")
     table = source.split("ALIGN_MODELS_BY_DEVICE")[0]
-    assert "PROJECTION" in table and "HUBERT_ASR_XLARGE" in table, (
-        "the block above the table must call XL a projection, never a measured claim"
+    assert "docs/arch/04-alignment.md §3.1" in table, (
+        "the block above the table must point at the section carrying XL's caveat"
+    )
+    design = Path(__file__).resolve().parents[2] / "docs/arch/04-alignment.md"
+    section = design.read_text(encoding="utf-8").split("### 3.1 ")[1].split("\n## ")[0]
+    assert "projection" in section and "HUBERT_ASR_XLARGE" not in section.split("XLarge")[0], (
+        "§3.1 must call XLarge's accuracy claim a projection, never a measured one"
     )
 
 

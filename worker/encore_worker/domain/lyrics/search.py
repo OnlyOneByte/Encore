@@ -1,38 +1,13 @@
 """The search for publishable lyrics, as a pure driver the workflow turns.
 
-`policy.decide` judges ONE alignment. This walks the pool: which text to try next, with which knob, when
-to run ASR on demand, and when — finally — to conclude the song has no words.
+`policy.decide` judges ONE alignment. This walks the pool: which text to try next, with which knob, when to
+run ASR on demand, and when to conclude the song has no words. It lives in `domain/` rather than in
+`workflows/` so every branch is testable with no audio, no model and no DBOS, which leaves the workflow a
+loop with no decisions in it.
 
-WHY IT IS NOT IN `workflows/`. A DBOS workflow body must be deterministic and is awkward to unit-test,
-so the interesting part lives here as a plain object driven by step results. The workflow becomes a loop
-with no decisions in it, and every branch below is testable with no audio, no model and no DBOS.
-
-TERMINATION IS STRUCTURAL, not capped. Each `Try` either spends a knob for the current text (there are
-four, each spendable once) or advances the pool index (the pool is finite), and `RunAsr` fires at most
-once. So the search cannot loop, and there is deliberately no attempt ceiling to tune — a cap that can
-never be reached is dead configuration, and one that CAN be reached silently truncates the fallback
-ladder the user cares about.
-
-BEST-SO-FAR (review H2). A retry must BEAT the attempt it retried (`policy.improves`) to replace it. When
-it comes back with nothing, refused, or worse, the search goes BACK to the earlier usable attempt: its
-knob is spent (`Attempt.lost`: never re-offered, never applied), and `decide` is asked again about the KEPT
-report, so a knob still untried for it gets its turn, from it (`Try.base`). Only when none is left is the
-kept attempt committed — `Commit.serial` names it — instead of being lost to the text's line timings, to
-the next text, or silently overwritten. (It used to commit at the first retry that did not improve, which
-ended the ladder there: a misplaced, thin windowed document whose RESHIFT did not help never tried the
-mix, and an overshoot whose DROP_WINDOWS did not help never re-placed — review W1 r1; the global engine,
-whose only knob is LINE_SYNC for an unusable document, never keeps a best and is unaffected.) The workflow
-keeps each Try's document by serial, and each knob set writes its own file, so the earlier one is still on
-disk to publish.
-
-BEST-SO-FAR SPANS DOCUMENT KINDS (W4). A LINE_SYNC retry is judged by the same rule as any other, so the
-line document of a text whose word document nothing related to its claims (`policy.decide` rule 6) must beat
-that word document to replace it, and a line document its own gate refuses sends the search BACK to the words
-rather than on to the next text. Nothing here changed to allow it — `_best` has always been "the best USABLE
-result for the current text", and the only reason the two kinds never met on it is that LINE_SYNC used to be
-offered to unusable word documents alone (which are never kept: there is nothing to keep). That is still the
-other route to the knob, and there the line document publishes unopposed, because an incoherent highlight is
-not a document.
+Termination is structural rather than capped, a retry is judged best-so-far, and best-so-far spans document
+kinds: `docs/arch/04-alignment.md` §3 has all three with the regression each one closed, and §12 (XA-05) has
+the refusal-versus-decline rule the walk turns on.
 """
 
 from __future__ import annotations
@@ -71,14 +46,9 @@ class Candidate:
     has_windows: bool = False
     has_line_timings: bool = False
     has_own_line_timings: bool = False
-    #: ANOTHER TEXT IN THIS POOL AGREES WITH IT ON THE WORDS (review M13, `policy.corroboration`). Breaks
-    #: the tie WITHIN a tier, which used to be arrival order — and arrival order put the upload's SDH
-    #: caption track ahead of every provider sheet, measured publishing over a clean sheet on Hello. Not a
-    #: knob and not a gate: the lexical lift is still what refuses a wrong text, per attempt.
-    #: WHAT IT IS WORTH, measured through whole jobs over a real multi-text pool (W7, `scripts/pool_gate.py`):
-    #: the CHOSEN text moves on 0 of 12 songs — an SDH track of this song agrees with a sheet of it, so the
-    #: tie-break cannot demote it — and the saving is ATTEMPTS, 12 against 36 with 24 refusals avoided over
-    #: those songs. `policy.order_pool` carries the rest of the reading.
+    #: ANOTHER TEXT IN THIS POOL AGREES WITH IT ON THE WORDS (`policy.corroboration`), which breaks the tie
+    #: WITHIN a tier where arrival order used to. Not a knob and not a gate; what it is worth, measured
+    #: whole jobs, is README, "W7: the provider pool is real now".
     corroborated: bool = False
 
     def first_attempt(self, *, aligned_on_stem: bool) -> Attempt:
@@ -149,32 +119,17 @@ Next = Try | Commit | RunAsr | GiveUp
 class Search:
     """Mutable position in the search. Driven entirely by reports, so a DBOS replay reproduces it.
 
-    Usage is a loop with no decisions in it:
-
-        step = search.begin()
-        while True:
-            match step:
-                case Try(index, attempt, _):
-                    report = await time_text(pool[index], attempt)
-                    step = search.record(report)
-                case RunAsr(_):
-                    text = await transcribe(...)
-                    step = search.extend(text) if text else search.asr_produced_nothing()
-                case Commit(index, _) | GiveUp(_):
-                    break
+    The caller is a loop with no decisions in it: `begin()`, then `record` a `Try`'s report, `extend` on a
+    `RunAsr`, and break on `Commit` or `GiveUp` (`workflows/align.py` is the one such loop).
     """
 
     pool: list[Candidate]
     #: False when there is no vocals stem, so `Knob.ALIGN_ON_MIX` is unavailable from the start —
     #: alignment is already on the mix.
     aligned_on_stem: bool = True
-    #: A HUMAN RE-PICK (review H5): the pool is the one text a person chose, and NOTHING may replace it —
-    #: not the next text, not ASR. Once it is spent (nothing publishable, or refused — which the step no
-    #: longer answers a pin with: it publishes one the envelope gate would refuse graded `low`) the search
-    #: GIVES UP without transcribing, and the workflow publishes nothing, which leaves the candidate core
-    #: already holds exactly as it is. The one exception to "GiveUp only after ASR", and a deliberate one:
-    #: that rule is about concluding a song has NO WORDS, and a pinned job concludes nothing about the song
-    #: — it answers "could THIS text be timed", and an automatic answer in its place is the H5 bug.
+    #: A HUMAN RE-PICK: the pool is the one text a person chose and NOTHING may replace it, so once it is
+    #: spent the search GIVES UP without transcribing. The one deliberate exception to "GiveUp only after
+    #: ASR", that rule being about concluding a song has NO WORDS (docs/arch/04-alignment.md §3).
     pinned: bool = False
     #: `syncMode=lines` (review H5): no word timing is published. Every text's first and only attempt is the
     #: gated LINE_SYNC rung, a text with no line timings of its own is skipped, and the ASR fallback still has

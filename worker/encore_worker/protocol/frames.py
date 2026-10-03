@@ -1,20 +1,8 @@
 """Every frame on the wire, as a frozen dataclass.
 
-The old worker built `dict[str, Any]` in builder functions, so a typo in a key was a runtime mystery on
-a deploy box and the core's contract was only knowable by reading eleven builders. Here each frame is a
-type: mypy checks construction, `to_wire()` is the ONLY place a camelCase key is spelled, and `parse()`
-is the only place an inbound payload is trusted.
-
-TWO CONVENTIONS, deliberately not one:
-
-  * snake_case in Python, camelCase on the wire. The core is TypeScript and its contract is camelCase;
-    translating at this single boundary beats either half writing the other's style.
-  * an optional field is OMITTED when None, never sent as `null`. That is how a newer worker stays
-    compatible with an older core: an unknown key is ignored, where an explicit `null` may not be.
-
-`parse()` raises `ProtocolError` rather than returning None. An unparseable frame is a contract
-violation, not a miss, and the one thing worse than crashing on it is continuing with a frame whose
-fields silently defaulted.
+mypy checks construction, `to_wire()` is the ONLY place a camelCase key is spelled, and `parse()` the only
+place an inbound payload is trusted — raising rather than returning None. Why a type per frame, why two
+naming conventions, and why an absent field is omitted and not `null`: docs/arch/05-worker.md §7.
 """
 
 from __future__ import annotations
@@ -145,17 +133,11 @@ class SeparatorOffer:
 
 @dataclass(frozen=True, slots=True)
 class Catalogue:
-    """The selectable models this box can run, sent AFTER `Hello` rather than inside it.
+    """The selectable models this box can run, sent AFTER `Hello` rather than inside it, because enumerating
+    the zoo is slow enough to delay registration (docs/arch/05-worker.md §7.1).
 
-    WHY A SECOND FRAME. Enumerating the zoo constructs an `audio-separator` `Separator`, which probes torch,
-    the ONNX runtime and the accelerator, and on a first-ever run downloads a catalogue JSON. Measured at
-    4.80 s on this project's Mac. Blocking `Hello` on that would delay registration by five seconds — and if
-    the download hangs, indefinitely — so the worker registers immediately with its base capabilities and
-    sends this when the enumeration finishes.
-
-    `capabilities` REPEATS the full set, base tokens included, rather than sending a delta. A delta requires
-    both sides to agree on an ordering and to have received every previous frame; a full set is idempotent,
-    so a reconnect or a dropped frame cannot leave core with a half-updated view.
+    `capabilities` REPEATS the full set rather than sending a delta, which makes it idempotent: a reconnect
+    or a dropped frame cannot leave core with a half-updated view.
     """
 
     TYPE: ClassVar[str] = CATALOGUE
@@ -344,11 +326,8 @@ class Welcome:
     TYPE: ClassVar[str] = WELCOME
     #: Echoed back so a worker can detect the core disagreeing about who it is.
     worker_id: str | None = None
-    #: The container the core wants PUBLISHED stems in. `None` when the core said nothing — an older core
-    #: that does not announce it — and the worker then keeps its configured fallback.
-    #:
-    #: CORE'S DECISION, not this box's: core owns the storage layout, a row's extension is recorded forever,
-    #: and a worker publishing a different container writes a file whose recorded ref 404s.
+    #: The container the core wants PUBLISHED stems in, `None` from an older core that does not announce
+    #: one. CORE'S DECISION, not this box's (docs/arch/05-worker.md §2.5).
     publish_stem_format: str | None = None
 
     @staticmethod
@@ -373,14 +352,9 @@ class Assign:
     job_id: str
     media_id: str
     action: str
-    #: The media volume, when the core names one. USUALLY None: the core does not send this, because the
-    #: volume is a property of the WORKER'S HOST, not of the job — two workers on different boxes mount it
-    #: at different paths, and only each worker knows its own. The composition root falls back to
-    #: `Config.media_dir`.
-    #:
-    #: It was `_require`d here originally, which rejected every real `job:assign` the core sent with
-    #: "missing required field 'mediaDir'" — the worker connected, advertised, and then silently ignored
-    #: every assignment. Found only by running against a live core.
+    #: The media volume, when the core names one. USUALLY None — the volume is a property of the WORKER'S
+    #: HOST and not of the job — so the composition root falls back to `Config.media_dir`. Requiring it here
+    #: once rejected every real `job:assign` core sent (docs/arch/05-worker.md §7).
     media_dir: str | None = None
     source_uri: str | None = None
     params: dict[str, Any] | None = None

@@ -1,13 +1,11 @@
 """The composition root: read config, probe the box, build the adapters, dial home.
 
-THE ONLY MODULE ALLOWED TO IMPORT EVERY LAYER. Every other file obeys the one-directional rule in
-`encore_worker/__init__.py`; this one wires the graph, which means it necessarily sees all of it. A test
-enforces that boundary (`tests/test_layers.py` skips this file by name).
-
-It contains no logic worth testing and holds no decisions — anything with a judgement in it belongs in
-`domain/`, which is why this file is short and nearly all assignment.
-
     python -m encore_worker
+
+The only module allowed to import every layer, because it wires the graph (`tests/test_layers.py` skips it by
+name). It holds no decisions — anything with a judgement in it belongs in `domain/`.
+
+See docs/arch/05-worker.md §1.
 """
 
 from __future__ import annotations
@@ -42,44 +40,36 @@ _T = TypeVar("_T")
 def build_adapters(config: Config, *, device: str) -> Adapters:
     """Everything this box can actually do. An absent adapter is None, never a stub that fails later.
 
-    None is load-bearing rather than defensive: each step checks its adapter and degrades — no
-    transcriber means the ASR tier yields nothing, which the search reads as "ASR had its turn and heard
-    nothing". A stub that raised would turn a missing capability into a failed job.
+    None is load-bearing: each step checks its adapter and degrades — no transcriber means the ASR tier
+    yields nothing, which the search reads as "ASR had its turn and heard nothing". A stub that raised would
+    turn a missing capability into a failed job.
     """
     return Adapters(
         fetcher=cli.YtDlpAudio(config.ytdlp_bin) if hardware.binary_available(config.ytdlp_bin) else None,
         probe=cli.FfmpegProbe(config.ffmpeg_bin) if hardware.binary_available(config.ffmpeg_bin) else None,
         captions=cli.YtDlpCaptions(config.ytdlp_bin) if hardware.binary_available(config.ytdlp_bin) else None,
-        # An ordered CHAIN, empty when offline. See `build_providers`.
         providers=build_providers(config),
         transcriber=ml.build_transcriber(device=device, checkpoint=config.asr_model),
-        # A job's own `asrModel` (review H5): built on demand, the weights cached per checkpoint in `ml`.
+        # A job's own `asrModel`: built on demand, the weights cached per checkpoint in `ml`.
         transcriber_for=lambda checkpoint: ml.build_transcriber(device=device, checkpoint=checkpoint),
-        # `jobs` sizes the emission cache, which holds a matrix per LIVE job (`ml._emission_cache_size`);
-        # `model` is the English bundle this box aligns on, checked for a calibration row first (6b, W4b).
+        # `jobs` sizes the emission cache, which holds a matrix per LIVE job (`ml._emission_cache_size`).
         aligner=ml.build_aligner(
             device=device, jobs=config.concurrency, model=align_model_for(config, device)
         ),
         diarizer=ml.build_diarizer(device=device),
-        # LATIN-SCRIPT LANGUAGE ID (review M8 / §3 item 9, W7). Built ONCE per process, here: lingua holds
-        # n-gram models per language, and building one per job would pay that per job. None on a box without
-        # the `text` extra, which costs accuracy on non-English Latin songs and nothing else — the SCRIPT half
-        # of the decision is stdlib `unicodedata` (`domain.lyrics.language`), so a Japanese sheet still routes
-        # to a Japanese bundle on a box that never installed it.
+        # Built ONCE per process: lingua holds n-gram models per language. None without the `text` extra,
+        # which costs accuracy on non-English LATIN songs and nothing else, the script half of the decision
+        # being stdlib `unicodedata`. See docs/arch/04-alignment.md §9.
         detector=language.lingua_detector(),
     )
 
 
 def build_providers(config: Config) -> tuple[ports.LyricsProvider, ...]:
-    """The lyrics providers, IN PRIORITY ORDER.
+    """The lyrics providers, IN PRIORITY ORDER; empty when offline.
 
-    LRCmux first because it fans one lookup across many sources and can return WORD-level timings, which
-    is a materially better starting point for alignment than a line-timed sheet. LRCLIB second: it is a
-    single source LRCmux already queries, so it is a genuine fallback only when LRCmux itself is
-    unreachable — which on a restricted network is exactly the case worth covering.
-
-    Empty when offline. A room with no outbound route should not pay a lookup timeout per song, and the
-    ASR tier still produces lyrics from what it can hear.
+    LRCmux first because it fans one lookup across many sources and can return WORD-level timings. LRCLIB
+    second: a single source LRCmux already queries, so a genuine fallback only when LRCmux is unreachable.
+    See docs/arch/05-worker.md §6.
     """
     if config.offline:
         return ()
@@ -96,20 +86,9 @@ def build_providers(config: Config) -> tuple[ports.LyricsProvider, ...]:
 def align_model_for(config: Config, device: str) -> str:
     """The English alignment bundle this box will align on, REFUSED HERE if nothing calibrated it.
 
-    THE LOUD HALF of "fail loudly or refuse to gate" (`domain.lyrics.lexical`'s module docstring, W4b). Every
-    threshold read off an emission matrix — the lexical lift's bands, the mix floor, the LINE_SYNC rung's
-    decode-agreement share — belongs to the bundle it was measured on, and `lexical.CALIBRATED` holds one row
-    per bundle. A matrix from a model with NO row is not gated on another's numbers: the readers stand down
-    and the text is merely not vouched for, which is right for a per-language bundle nobody chose (a German
-    XLSR fine-tune) and WRONG for a model an operator typed in — that worker would run every job with its
-    wrong-text gate silently off. So a named-but-uncalibrated `ENCORE_ALIGN_MODEL` ends the process here,
-    with `host.config`'s manners: name the variable, say what is accepted, do not retry.
-
-    THE ONE PLACE THIS CAN LIVE. `Config.from_env` cannot make the check (`host/` may not import `domain/`,
-    `tests/test_layers.py`) and `adapters/ml` must not either — importing `lexical` there would put every
-    calibrated threshold inside the emission cache's code fingerprint, so moving a band would invalidate
-    every cached matrix (`e2e_lib.module_closure` reads lazy imports too). This module already imports every
-    layer by definition, and it is where the DEVICE is resolved, which is what an unset knob resolves against.
+    An uncalibrated bundle makes every emission-scale gate stand down, which is wrong for a model an operator
+    typed in. The only place the check can live, and with `host.config`'s manners: docs/arch/04-alignment.md
+    §5.4 and docs/arch/05-worker.md §9 (XA-06).
     """
     named = config.align_model
     if named is not None and not lexical.is_calibrated(named):
@@ -124,8 +103,8 @@ def align_model_for(config: Config, device: str) -> str:
 def device_for(config: Config, report: hardware.Report) -> str:
     """The torch device string. Explicit config wins, else what the box actually has.
 
-    Resolved ONCE here and threaded everywhere, so separation, alignment and diarization cannot end up
-    on different devices — and so `Hello.device` reports what the models were really built with.
+    Resolved ONCE here and threaded everywhere, so separation, alignment and diarization cannot end up on
+    different devices, and `Hello.device` reports what the models were really built with.
     """
     if config.device:
         return config.device
@@ -149,18 +128,14 @@ async def main() -> None:
         f"capabilities={','.join(sorted(caps)) or 'NONE'}",
         flush=True,
     )
-    # WHICH ffmpeg, stated once at startup. Every published stem was encoded by this binary, and nothing in
-    # `job_attempts` records its version — so without this line "why does one worker's FLAC differ" has no
-    # answer but guessing from the machine.
+    # WHICH ffmpeg and WHICH align bundle, stated once at startup because nothing in `job_attempts` records
+    # either, and both are properties of every artifact this box publishes. `align_model_for` is pure, so this
+    # line says what `build_adapters` resolves below — and refuses an uncalibrated name before any work.
     print(f"[worker] ffmpeg {ffmpeg.describe(config.ffmpeg_bin)}", flush=True)
-    # WHICH ENGLISH ALIGNMENT BUNDLE, for the same reason and since the same wave made it a setting (W4b 6b;
-    # W4b review r1 found nothing on the record naming it). Every emission-scale threshold a job's gates read
-    # comes off this bundle's calibration row, and `align_model_for` is pure, so printing it here says what
-    # `build_adapters` will resolve below — and refuses an uncalibrated name before the box claims any work.
     print(f"[worker] align bundle {align_model_for(config, device)} (en; ENCORE_ALIGN_MODEL)", flush=True)
     if not caps:
-        # Not fatal: a box with no capabilities still connects and is visible on the dashboard, which is
-        # more useful than a process that exits and leaves an operator wondering where the worker went.
+        # Not fatal: a box with no capabilities still connects and is visible on the dashboard, which beats a
+        # process that exits and leaves an operator wondering where the worker went.
         print("[worker] WARNING: no capabilities proven, so the core will route nothing here", flush=True)
 
     dbos = _launch_dbos(config)
@@ -178,9 +153,8 @@ async def main() -> None:
     def settled(job_id: str, resumable: bool) -> None:
         """Reclaim a finished job's scratch — unless a retry could RESUME it.
 
-        `resumable` is the whole decision. Every checkpointed step returns paths INTO scratch, so a requeue
-        replays into those files; deleting them would break the one case durability exists for, and it is the
-        expensive one. See `artifacts/scratch.py` for the full outcome table.
+        Every checkpointed step returns paths INTO scratch, so a requeue replays into those files and deleting
+        them would break the one case durability exists for. `artifacts/scratch.py` has the outcome table.
         """
         if resumable:
             return
@@ -200,14 +174,10 @@ async def main() -> None:
         catalogue=zoo.announcement if hardware.module_available("audio_separator") else None,
     )
 
-    # ONE registration, before any job. `DBOS.workflow` mutates a global registry, so doing it per job would
-    # re-register the same name every time — and its ABSENCE is what meant every step ran outside a workflow
-    # context and checkpointed nothing at all.
-    #
-    # The steps are supplied as PROVIDERS rather than as workflow arguments because DBOS serialises its
-    # arguments into the system database: a steps object holds loaded models, a websocket and subprocess
-    # handles, so passing it raises `PicklingError`. Only `JobRef` crosses the boundary; these closures keep
-    # the process-level state on this side of it.
+    # ONE registration, before any job: `DBOS.workflow` mutates a global registry. The steps are supplied as
+    # PROVIDERS rather than as workflow arguments because DBOS serialises its arguments into the system
+    # database and a steps object holds loaded models, a socket and subprocess handles, so passing it raises
+    # `PicklingError`. Only `JobRef` crosses the boundary. See docs/arch/05-worker.md §8.
     #: The loop the client serves on. A workflow DBOS resumes runs on DBOS's own loop (`_ReporterFor`), and
     #: these providers are called from inside the workflow, so the loop is captured HERE, not there.
     loop = asyncio.get_running_loop()
@@ -219,16 +189,10 @@ async def main() -> None:
         return DbosAlignSteps(impl, dbos)
 
     def stems_steps_for(job: JobRef) -> Any:
-        # Built PER JOB from the job's OWN engine param, not once at startup from the box's backend. A
-        # `stems-upgrade` job names `roformer`; honouring the startup backend instead would separate it with
-        # demucs and publish that as the upgrade, which nothing downstream could contradict.
-        #
-        # `model` IS READ HERE, and its absence was a PORT REGRESSION. Core has always sent it — `worker-hub`
-        # puts `settings.upgradeModel` on the assign frame — and the old worker honoured it in every engine
-        # (`src/separation/{demucs,roformer,mlx}.py` all read `params.get("model")`). This worker read only
-        # `engine`, so `resolve_model`/`resolve_roformer_slug` always saw None and returned their defaults:
-        # an operator changing upgradeModel got no effect and no error. That is exactly the failure those
-        # two functions raise `UnknownModel` to prevent, reached from the one direction they could not see.
+        # Built PER JOB from the job's OWN `engine` and `model` params, not once at startup from the box's
+        # backend: a `stems-upgrade` job names the engine it wants, and honouring the startup backend instead
+        # would publish a demucs separation as the upgrade with nothing downstream able to contradict it.
+        # See docs/arch/05-worker.md §2.4.
         chosen = (
             separate.build_separator(
                 backend.name,
@@ -255,10 +219,8 @@ async def main() -> None:
 
     durable.register(dbos, align_steps_for=align_steps_for, stems_steps_for=stems_steps_for)
 
-    # The SECOND reclaim mechanism, and it is not redundant with `settled` above. Two leaks that hook cannot
-    # reach: a crash leaves no code to run it, and retries EXHAUSTING is terminal while the worker cannot see
-    # that it was the last attempt — there is no attempt count on the wire — so it preserves scratch it will
-    # never be asked about again. Periodic, so a long-lived worker reclaims without a restart.
+    # The SECOND reclaim mechanism, not redundant with `settled` above: it reaches the two leaks a run-end
+    # hook cannot (a crash, and retries exhausting unseen). See docs/arch/05-worker.md §4.
     sweeper = asyncio.create_task(_sweep_scratch(config))
     try:
         await client.serve_forever()
@@ -271,10 +233,9 @@ async def main() -> None:
 def _launch_dbos(config: Config) -> Any:
     """Start DBOS, or return None and run without durability.
 
-    Degrading rather than exiting is deliberate. Durable resumption is an optimisation over restarting a
-    job, not a correctness requirement — the core already requeues. A worker that refused to start
-    because a SQLite file was unwritable would take the whole box out of service for a feature it can
-    work without.
+    Degrading rather than exiting: durable resumption is an optimisation over restarting a job, not a
+    correctness requirement, since the core already requeues. A worker that refused to start because a SQLite
+    file was unwritable would take the box out of service for a feature it can work without.
     """
     try:
         from dbos import DBOS, DBOSConfig  # noqa: PLC0415 - optional at runtime
@@ -320,26 +281,16 @@ def _text_source_of(label: str) -> str:
 def _annotation_artifacts(found: Identified) -> dict[str, Any] | None:
     """The `annotation` artifact — how core learns a song's canonical artist and title.
 
-    NOT the same as reporting it in `facts`. `facts` is a diagnostic record of what ran; `annotation` is what
-    core APPLIES: it sets `artistCanonical`/`titleCanonical`, and those are exactly what `assignParams` sends
-    to a later align job as its lookup keys. Reporting only `facts` means core never learns the names, so
-    every align job arrives with nothing to look up and goes straight to ASR — which is silently why the
-    provider tier never ran until a canonical artist was set by hand.
-
-    `source: "youtube"` because core's `applyAnnotation` accepts exactly `youtube` or `musicbrainz` and
-    ignores anything else. This is the YouTube FLOOR: no MBID, which core requires only for a musicbrainz
-    annotation, and `medium` confidence because a title parse is a guess about a human-typed string.
-    A MusicBrainz lookup would overwrite this with `high` and an MBID — see the README's parity note.
-
-    None when the song was not identified: core requires both names, and a half-annotation would claim a
-    lookup key that returns another song's words, which is worse than no key at all.
+    Not the same as reporting it in `facts`, which records only what ran: these become a later align job's
+    provider lookup keys. None when the song was not identified, core requiring both names and a
+    half-annotation claiming a key that returns another song's words (docs/arch/05-worker.md §6).
     """
     if not found.confident:
         return None
     if found.source == "musicbrainz" and found.mbid:
-        # THE FULL ANNOTATION, and the reason `mbid` is required rather than optional here: core accepts
-        # `source: "musicbrainz"` only with one, so sending the source without the id would be silently
-        # ignored — a worse outcome than the youtube floor below, because it looks like it worked.
+        # `mbid` is required rather than optional: core accepts `source: "musicbrainz"` only with one, so
+        # sending the source without the id is silently ignored — worse than the youtube floor below, because
+        # it looks like it worked.
         return {
             "annotation": {
                 "source": "musicbrainz",
@@ -350,13 +301,14 @@ def _annotation_artifacts(found: Identified) -> dict[str, Any] | None:
                 "confidence": found.confidence,
             }
         }
+    # The YOUTUBE FLOOR: no MBID, which core requires only for a musicbrainz annotation. `medium` because this
+    # is a parse of an uploader-typed title — never `high`, which core treats as a citation a later
+    # medium-confidence answer may not overwrite.
     return {
         "annotation": {
             "source": "youtube",
             "artist": found.artist or "",
             "title": found.track or "",
-            # A parse of an uploader-typed title, so `medium` — never `high`, which core treats as a citation
-            # that a later medium-confidence answer may not overwrite.
             "confidence": "medium",
         }
     }
@@ -369,59 +321,11 @@ def _lyrics_artifacts(
     withdrawn: Sequence[Superseded] = (),
     pinned: bool = False,
 ) -> dict[str, Any] | None:
-    """The `artifacts` envelope for an align completion.
+    """The `artifacts` envelope for an align completion: every document this job wrote, and which one won.
 
-    CANDIDATES ARE NOT OPTIONAL DECORATION. Core's retention sweep builds its cleanup set from
-    `lyricsCandidates` (`retention.ts:182`), so any document this worker wrote and did not declare here is
-    never enumerated and therefore never evicted — it leaks for the life of the library. They are also what
-    lets `/api/lyrics-reselect` switch to another reading without re-fetching the audio.
-
-    Reported even when nothing was PUBLISHED: the files exist regardless, so they must be nameable.
-
-    EACH FIELD CORE RANKS ON SAYS WHAT ITS NAME SAYS (review M3). Core's `pickBestLyrics` ranks the WHOLE
-    merged set, this report's attempts beside every earlier job's, and it read the timing grade as
-    `textConfidence`, took every attempt as a peer, and broke ties on a `createdAt` all of them shared:
-      * `textConfidence` is the TEXT's standing (`Tier.text_confidence`), `timingConfidence` the grade.
-        A PIN's (`pinned`: the job carries `pinnedText` / `pinnedRef`) is `high` whatever its tier: a
-        person chose these words, which is the old worker's reading ("`text_confidence` is `high` because
-        a human chose this text; that outranks any scored guess", f04a2d0e^ `steps/lyrics/pinned.py`), and
-        the orchestrator's decision after W1 (PLAN-alignment-v3, 2026-09-28 (2)). W1 had kept the stored
-        text's tier here, so a re-timed machine caption or transcript went out `low`. The TIER itself is
-        untouched (`steps.records.tier_of_label`): it still decides what it decides inside the job (the
-        lexical gate's ASR exemption) and what an earlier job's withdrawn document of those words is
-        sent as. Core then reads a re-picked machine caption as authoritative "Captions" (its TV drops
-        the "not verified" mark), while a re-picked transcript stays unauthoritative: core's
-        `isAuthoritativeText` never counts `asr` words as a claim, whatever their confidence.
-      * `vouched` is the WORDS' OWN AXIS (`TimedDoc.vouched`, W3 review r1, moved off `textConfidence` by
-        r2): `false` where a wrong-text gate measured these words and did not vouch for them — the lexical
-        doubt band, a PIN whose lift the gate would have refused, or a text no such gate could read. Core
-        reads it in `isAuthoritativeText`, so such a document ranks under one a gate passed, and the pin's
-        `high` keeps saying what it means (a person chose these words) without also claiming the audio
-        sings them. SENT ONLY WHEN FALSE, since absent is core's "vouched" — the compatible reading for
-        every stored row and every earlier worker. It was `textConfidence: low` at r1, and that field
-        carries a SECOND claim core reads: `lyricsSourceLabel` reports `captions` + `low` as "Auto
-        captions", so a doubted hand-authored caption track was shown to the room as machine-generated —
-        false about its provenance rather than about its words. The timing grade could not carry the doubt
-        either: since W6 `lyricsRank` reads `timingConfidence`, but only a `low` one, and the doubt band's
-        grade is `medium` (when this was written the field was in the tie-break alone), so a doubted word
-        document ties with a vouched one at the top rank on either version of that ranking.
-      * `selectable` is the ladder's verdict: `false` on every attempt this job did not publish — the
-        ones it retried, moved past, or (no lyrics) all of them. Core never auto-selects one (a person
-        still may), so within a report the worker's choice stands, while across jobs core's ranking
-        still guards never-regress. Before, an equal-rank tie went to the FIRST listed — the attempt the
-        ladder had retried — and a job that published nothing still had its rejects ranked and shown.
-        Replayed over the W0 run_align baseline's ladders (`results/baseline-v2-run_align.cases.jsonl`, 768
-        song-modes, one candidate per attempt as knob-bearing refs make it): core's ranking overrode the
-        worker in 319. 236 of the 320 WRONG texts the worker declined would have been shown anyway (its
-        rejected word doc, or the line doc of an ungated line-sync), 65 right texts it published nothing for
-        showed a reject, and 18 published retries lost to the attempt they retried.
-      * `createdAt` is ONE stamp per report, the moment this job's judgement was made. Recency is a
-        tie-break between JOBS (a re-run at equal rank is presumed an improvement); within one report
-        `selectable` decides, so no attempt is stamped as if it were newer than the job's choice.
-      * `withdrawn` are EARLIER jobs' documents for words this job's gate refused
-        (`align_steps.superseded_candidates`, review W1 r2): reported `selectable: false` too, since a
-        refused attempt writes nothing and they would otherwise keep their rank beside this verdict. Their
-        timing grade is not known here, so it is not sent (core reads it as unknown).
+    CANDIDATES ARE NOT OPTIONAL DECORATION: core's retention sweep builds its cleanup set from them, so an
+    undeclared document is never evicted, and they are reported even when nothing was PUBLISHED. The four
+    fields core ranks on, and what each replaced: docs/arch/04-alignment.md §11 (XA-13), docs/SERVER.md.
     """
     if not outcome.published and not outcome.candidates and not withdrawn:
         return None
@@ -435,7 +339,7 @@ def _lyrics_artifacts(
             # A pinned job reports only the pin's own document (`workflows.align._publish`), so `pinned`
             # speaks for every candidate here; `withdrawn` below are earlier jobs' and keep their tier.
             "textConfidence": ("high" if pinned else doc.tier.text_confidence),
-            # The WORDS' axis, only when a gate withheld them: absent is core's "vouched" (see above).
+            # The WORDS' axis, only when a gate withheld them: absent is core's "vouched".
             **({} if doc.vouched else {"vouched": False}),
             "timingConfidence": doc.confidence,
             "selectable": doc.ref == chosen,
@@ -466,10 +370,9 @@ def _lyrics_artifacts(
 def _align_facts(job: JobRef, config: Config, outcome: AlignOutcome) -> dict[str, Any]:
     """What an align job RAN, for core's attempt row (`ResolvedFacts`, `reportFacts`).
 
-    `asrModel` and `syncMode` are the RESOLVED values (review H5), the ones `steps.api` resolves for the
-    steps themselves: core records the request at dispatch and lets these overwrite it, so a checkpoint
-    this worker would not load, or a pin aligned under `lines`, is reported as what actually ran rather
-    than as what was asked. The old worker reported both on every align completion.
+    `asrModel` and `syncMode` are the RESOLVED values, the ones `steps.api` resolved for the steps: core
+    records the request at dispatch and lets these overwrite it, so a checkpoint this worker would not load,
+    or a pin aligned under `lines`, is reported as what ran rather than as what was asked.
     """
     return {
         "backend": config.backend,
@@ -493,9 +396,7 @@ def _align_completion(
         worker_id=config.worker_id,
         job_id=job.job_id,
         media_uri=outcome.published.ref if outcome.published else "",
-        # `uri`, NOT `ref`. Core's `JobArtifacts.lyrics` is `{ uri, candidates? }` and reads
-        # `artifacts?.lyrics?.uri` — `ref` is the field on a CANDIDATE, so the old key left core with
-        # an undefined uri and no lyrics on a job that had just published them.
+        # `uri`, NOT `ref`: `ref` is the field on a CANDIDATE, and core reads `artifacts?.lyrics?.uri`.
         artifacts=_lyrics_artifacts(
             outcome,
             now_ms=now_ms,
@@ -512,13 +413,8 @@ def _align_completion(
 async def _sweep_scratch(config: Config, *, every_sec: float = 900.0) -> None:
     """Reclaim quiet job scratch on a timer, forever.
 
-    Safe on a volume shared with another worker because `sweep` only removes a directory whose NEWEST file is
-    older than its threshold: a live job writes continuously, so its scratch can never look quiet. That is why
-    an age check is the right test rather than a registry of "my" job ids, which would be blind to the other
-    worker's orphans.
-
-    Never lets a sweep failure stop the worker: reclaiming disk is maintenance, and a box that refused to
-    process songs because a directory was busy would trade a full disk for no service at all.
+    Safe on a volume shared with another worker, and never lets a sweep failure stop the worker.
+    See docs/arch/05-worker.md §4.
     """
     while True:
         await asyncio.sleep(every_sec)
@@ -543,32 +439,21 @@ async def _run(
     client: Client,
     dbos: Any,
 ) -> f.Complete | f.Failed:
-    """Run one assigned job and build its terminal frame.
+    """Run one assigned job and build its terminal frame, wrapped in a progress keepalive.
 
-    The action-to-workflow mapping lives here and nowhere else. An unknown action fails NON-retryably:
-    the core should not have routed it, and three attempts cannot teach this worker a new verb.
-
-    WRAPPED IN A PROGRESS KEEPALIVE, and that is a correctness requirement rather than a nicety.
-    `job:progress` doubles as the core's LEASE refresh (`leases.ts`: `progressLeaseMs` is 30 s), and this
-    worker emitted no progress frame of any kind — `keepalive()` existed, fully written and documented, with
-    no caller, and every `on_progress` was passed as None.
-
-    MEASURED: a 195 s song fetched in 2.1 s and separated in 22.3 s, then its align job was revoked at 32.9 s
-    with `progress-lease-expired` and requeued. Nothing was wrong with the job. Under 30 s of work per step
-    the bug is invisible, which is why earlier end-to-end runs on short clips passed — so the failure
-    arrives only with real songs, on slower boxes, in exactly the case that matters.
+    The keepalive is a correctness requirement, not a nicety: `job:progress` doubles as the core's lease
+    refresh, so without it a long step is revoked mid-job. See docs/arch/05-worker.md §7.
     """
     job = JobRef(
         job_id=assign.job_id,
         media_id=assign.media_id,
-        # The core does not name the volume — it is a property of THIS host, so this box's config is the
-        # authority. An assignment that does name one wins, for a core that mounts it somewhere specific.
+        # The volume is a property of THIS host, so this box's config is the authority — but an assignment
+        # that does name one wins, for a core that mounts it somewhere specific.
         media_dir=assign.media_dir or config.media_dir,
         source_uri=assign.source_uri,
         params=assign.params or {},
     )
-    # One task per job, cancelled in `finally` below. The stage is the coarse one the phone's bar reads; a
-    # keepalive cannot know a real percentage, so it repeats the stage rather than inventing progress.
+    # One task per job, cancelled in `finally` below.
     keeper = asyncio.create_task(
         transport_client.keepalive(client, job.job_id, _STAGE_FOR.get(assign.action, Stage.SEPARATING))
     )
@@ -598,8 +483,11 @@ async def _dispatch(
     client: Client,
     dbos: Any,
 ) -> f.Complete | f.Failed:
-    """The action-to-workflow mapping. Split from `_run` so the keepalive wraps every branch including the
-    unknown-action refusal — a job that fails to dispatch still holds a lease until its frame lands."""
+    """The action-to-workflow mapping, split from `_run` so the keepalive wraps every branch.
+
+    An unknown action fails NON-retryably: the core should not have routed it, and three attempts cannot
+    teach this worker a new verb.
+    """
     if assign.action == "align":
         return _align_completion(job, config, await durable.align(job))
 
@@ -609,17 +497,15 @@ async def _dispatch(
         return f.Complete(
             worker_id=config.worker_id,
             job_id=job.job_id,
-            # `mediaUri` is REQUIRED by core's validation (`worker-hub.ts` rejects a non-string), so a
-            # refusal sends "" rather than omitting it — the frame must still parse to report the refusal.
+            # `mediaUri` is REQUIRED by core's validation, so a refusal sends "" rather than omitting it:
+            # the frame must still parse to report the refusal.
             media_uri=stems.instrumental if stems else "",
-            # EVERY ref, not just the instrumental. Core has a field per stem and uses them to serve, to
-            # evict under retention and to delete with the media — an unreported ref is a file nothing
-            # will ever clean up and nothing can play.
+            # EVERY ref, not just the instrumental: core serves, evicts and deletes per stem, so an
+            # unreported ref is a file nothing will ever clean up and nothing can play.
             artifacts=(
                 {
-                    # ALWAYS present when separation succeeded. Core's process gate reads a present profile
-                    # as "the analysis step ran"; an absent one leaves core waiting forever for a step it
-                    # believes already happened, so the song is unsingable AND never reprocessed.
+                    # ALWAYS present when separation succeeded. Core's process gate reads a present profile as
+                    # "the analysis step ran"; an absent one leaves the song unsingable AND never reprocessed.
                     "songProfile": dict(separated.profile or {}),
                     "stems": {
                         k: v
@@ -642,16 +528,15 @@ async def _dispatch(
         )
 
     if assign.action == "fetch":
-        # Fetch is deliberately NOT durable: it is one download, and DBOS would checkpoint a step whose
-        # retry is cheaper than its bookkeeping. See worker/README.md "What is deliberately absent".
+        # Fetch is deliberately NOT durable: one download, whose retry is cheaper than its bookkeeping.
         fetched = await run_fetch(
             job,
             FetchStepsImpl(
                 config=config,
                 audio=AlignStepsImpl(config=config, adapters=adapters, reporter=_ReporterFor(client)),
                 reporter=_ReporterFor(client),
-                # Built per fetch rather than once at startup: it holds no models and no socket, so there is
-                # nothing to amortise, and `ENCORE_ANNOTATE=0` is then honoured without a restart.
+                # Built per fetch: it holds no models and no socket, so there is nothing to amortise, and
+                # `ENCORE_ANNOTATE=0` is then honoured without a restart.
                 annotator=musicbrainz.build_client(),
             ),
         )
@@ -677,17 +562,13 @@ async def _dispatch(
 
 
 class _ReporterFor:
-    """Adapts `Client` to the narrow `Reporter` a step is allowed to use.
+    """Adapts `Client` to the narrow `Reporter` a step is allowed to use, on the CLIENT's loop.
 
-    A step must not be able to send arbitrary frames — `job:accept` from inside an alignment would
-    corrupt the conversation — so this exposes exactly four methods and nothing else.
-
-    ON THE CLIENT'S LOOP, whichever loop the step runs on. DBOS runs a workflow IT resumes — one recovered at
-    launch, and the fork a requeued failure runs (`durable._run_id`, review W1 r1) — on its own background
-    event loop, in another thread, while the socket, the ownership event and every future `Client` awaits
-    belong to the loop `serve_forever` runs. Awaited from the other loop, a send failed (swallowed by
-    `_send`, so the trail went quiet) and a stale-standing `confirm_ownership` waited on an event bound to
-    the wrong loop and raised, failing the publish. So a call from another loop is handed to the client's.
+    A step must not be able to send arbitrary frames — `job:accept` from inside an alignment would corrupt the
+    conversation — so this exposes exactly four methods. DBOS runs a workflow IT resumes on its own background
+    loop in another thread, while the socket and the ownership event belong to the loop `serve_forever` runs:
+    awaited from the other loop, a send is swallowed and `confirm_ownership` raises on an event bound to the
+    wrong loop, failing the publish. So a call from another loop is handed to the client's.
     """
 
     def __init__(self, client: Client, loop: asyncio.AbstractEventLoop | None = None) -> None:

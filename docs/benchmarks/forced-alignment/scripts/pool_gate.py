@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""The MULTI-PROVIDER POOL gate (review M13 + L5, W7): what the ranking actually CHOOSES, measured.
+"""The MULTI-PROVIDER POOL gate (W7, M13 + L5): what the candidate ranking actually CHOOSES, measured.
 
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/pool_gate.py \\
         --songs youtube [--out rows.json]
@@ -7,116 +7,11 @@
         --pools allwrong --sync-mode lines --songs hello,numb
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/pool_gate.py --from rows.json
 
-WHY IT EXISTS. W5 landed review M13 (every provider is a candidate; the candidate tier is ordered by
-CORROBORATION instead of arrival order) and review L5 (an LRCLIB duration miss is retried without the
-duration) — and `e2e.py --level run_align` CANNOT SEE EITHER, because its ports serve ONE text per case:
-the case's timed claims as the upload's authored track, or its untimed claims as an LRCLIB sheet, never
-both (`e2e.ClaimCaptions` / `e2e.ClaimProvider`). So `Search`'s pool has one entry, `policy.order_pool` has
-nothing to order, `policy.corroboration` is computed over a pool of one (False by definition) and the L5
-retry never fires, because the harness provider answers every lookup. Both shipped on unit tests alone
-(`tests/test_align_flow.py`, `tests/test_policy.py`, `tests/test_lrclib.py`), which is the gap this script
-closes: the SAME production code — `_acquire_texts`, `fetch_captions`, `fetch_provider_lyrics`, the REAL
-`LrclibClient`, `_pool_of`, `order_pool`, `Search`, `policy.decide`, `time_text`, the gates — over the real
-corpus audio, with a pool of three to four texts that the ranking has to choose between, and the published
-document scored against truth by the same scorers every other row here uses (`e2e_lib.row_of`).
-
-WHY A SEPARATE SCRIPT AND NOT A MODE OF `e2e.py`. `e2e.py`'s bytes are in `code_fingerprint`, which every
-recorded row and every `--resume` is keyed on, and its one-text-per-case ports are what makes a `run_align`
-row byte-comparable with its `time_text` row (`FixedProbe`'s docstring). A pool dimension there would move
-that fingerprint for rows that have nothing to do with M13 and put a second text in front of attempt 1 of
-every case. This reads the same shipped path through `e2e.py`'s own seams instead — `BenchAligner` and its
-emissions cache, `RecordingSteps`, `capture_generated`, `capture_lifts`, `served_claims`, `doc_lines`,
-`FixedProbe` — and writes its own rows, so nothing under `results/` moves.
-
-THE POOL IS SYNTHETIC, DERIVED FROM THE CORPUS TRUTH, AND THAT IS A STATED LIMITATION. The task's first
-choice was to CACHE what the providers actually return per corpus song. Not done, for three reasons, none
-of which is "no network" (the box has one):
-
-  1. THE CORPUS HAS NO METADATA TO LOOK UP. `fetch_provider_lyrics` needs an artist AND a track and
-     refuses a guess (a lookup on a guessed title returns another song's words). The bench corpus is
-     keyed by SLUG — `hello`, `bad-guy`, `Pure_Mids_-_The_Leader` — and `e2e.RunAlignDriver` passes the
-     slug as both artist and track. Real lookups would need a hand-written slug -> (artist, title) table,
-     i.e. the bench asserting song identity it does not have.
-  2. A REAL SHEET HAS NO TRUTH IDENTITY. Every metric here pairs a published line to a truth line through
-     the CLAIM it came from (`e2e_lib.score_lines`, `DocLine.source` -> `ClaimLine.truth`). A fetched
-     sheet's lines are a different lineation of the same song — merged couplets, an extra chorus repeat,
-     an ad-lib written down — so most of its lines would pair with nothing and "is the chosen text better
-     against truth" would be answered on a shifting denominator. That is the exact artefact this harness
-     exists to avoid (`e2e_lib.legacy_pairs`).
-  3. CACHING COMMERCIAL LYRICS AS A DURABLE FIXTURE IS NOT OURS TO DO. lrcmux multiplexes KuGou / QQ /
-     NetEase, whose sheets are licensed catalogue text; the corpus's songs are Adele, Eminem, Queen.
-
-So each pool text is built from THIS song's truth lines, which is how every other text in this benchmark
-is built (`e2e_lib.build_claims`), in the four shapes the review's cases need: a CLEAN sheet, an
-SDH-polluted caption track of the same song, a WRONG-SONG sheet, and a sheet that arrives only because the
-duration-qualified LRCLIB lookup 404'd (L5). What is NOT synthetic is everything the gap was about: the
-acquisition steps, the labels and tiers they build, the witness split, the corroboration reading, the
-order, the ladder, the gates, the audio and the truth.
-
-THE POOLS (`--pools`):
-
-  * `sdh` — THE REVIEW'S MOTIVATING CASE (M13: "on Hello, the SDH caption text publishes over a clean
-    sheet"). `captions:authored` = this song's words as an SDH subtitler typed them (upper-cased, ♪-wrapped,
-    sound-cue lines, one word misheard every `MISHEARD_EVERY` lines) and on the SUBTITLER'S clock, every cue
-    opening `SDH_LEAD_SEC` early; `lrcmux:KuGou` = another corpus song's sheet; `lrclib` = the clean sheet,
-    served only through the L5 retry. Plus `captions:machine`, YouTube's auto track, which is what makes a
-    provider sheet corroboratable at all (see WITNESSES below).
-  * `wrong-track` — the upload's authored track is ANOTHER SONG's words on THIS video's clock (a
-    mis-uploaded or machine-translated track: `e2e_lib`'s `wrongtext+ownclock` shape), so it agrees with
-    nothing; the clean sheet agrees with the machine track. This is where M13's tie-break can actually move
-    the chosen text.
-  * `allwrong` — EVERY candidate is a different song's words (the MUST: the ranking may not admit a wrong
-    text). No machine track: an ASR track of this audio can never be the wrong song, so including one would
-    make a RIGHT text available and the read would stop being about wrong ones.
-  * `clean` — the clean `lrclib` sheet ALONE: the counterfactual every other row is read against ("what
-    would the clean sheet have scored on this song"). A pool of one, so it is also the control that this
-    script's plumbing reproduces `e2e.py`'s reading of a single provider sheet.
-
-THE ARMS (`--arms`), each a control for one half of what W5 landed:
-
-  * `ranked`  — the shipped tree.
-  * `arrival` — PRE-M13: `workflows.align.corroboration` neutralised (every candidate reads uncorroborated,
-    so `order_pool` falls back to arrival order) AND `fetch_provider_lyrics` truncated to the FIRST
-    provider that answered (`FirstHitSteps`), which is what the step did before M13. Both are harness
-    patches of exactly the two things M13 added, so the delta between the arms IS M13.
-  * `no-l5`   — the shipped ranking, with the LRCLIB client's unqualified retry 404'd as well: the clean
-    sheet is simply absent from the pool, which is the song falling through to ASR with a good human sheet
-    one request away (review L5's own words).
-
-WITNESSES, and why the machine track is in two of the pools. `policy.witness_of` counts every provider
-sheet as ONE witness, so within the candidate tier the only cross-witness pair is (authored captions, some
-provider sheet). A pool of an authored track plus sheets therefore has exactly two states — the track
-agrees with a sheet, and then BOTH read corroborated and the track keeps its arrival-order lead; or it
-agrees with none, and then no sheet is corroborated either, because nothing else could corroborate one.
-YouTube's AUTO track is a third witness (`captions:machine`), and production fetches it in the same step
-(`workflows.align._acquire_texts`), so it is served here: it is what lets a clean sheet outrank an authored
-track that agrees with nothing. Its own tier is MACHINE, so it is never tried before a candidate.
-
-WHAT IS MEASURED PER ROW: the pool as production built it, each text's corroboration reading, the order
-the ladder tried them in, which text PUBLISHED, that document's score against truth (`gross`, `w500`,
-`scored`, with the text-side denominators `row_of` keeps for a refusal), and the per-attempt score of
-EVERY text the ladder tried — so one row says what the chosen text scored and what the text beside it
-would have scored. `wrong_published` is the MUST: the published text has no truth line at all.
-
-COST. The emissions cache (`e2e.BenchAligner`, `$ENCORE_BENCH_ROOT/_emissions`) is keyed on the AUDIO, not
-the text, so a song pays one model pass for all its pools and arms; the rest is decode and repairs. The
-default plan is 11 jobs a song. Measured 2026-10-01, 12 YouTube songs, HuBERT-Large on mps, warm store:
-**132 jobs / 341 s** forced and **96 / 170 s** in `lines`.
-
-WHAT IT MEASURED (`results/w7-pool.json`, `results/w7-pool-lines.json`; the README section "W7: the provider
-pool is real now" carries the tables and the per-song rows):
-
-  * the corroboration tie-break moves the CHOSEN TEXT on **0 of 12 songs**, in every pool — the gap
-    `order_pool`'s docstring stated, now measured end to end. What it buys is ATTEMPTS: 12 with 0 refusals
-    against `pre-tie`'s 36 with 24, where it acts;
-  * "every provider is a candidate" is the half that moves accuracy: without it 12 of 12 songs publish
-    YouTube's MACHINE track, ±500 76.57 against 77.91 over the pool's 892 truth lines;
-  * **L5 is worth exactly that same +12**: with the retry 404'd the clean sheet is absent from 24 of 24 pools;
-  * **no wrong text published in 228 jobs**, and the reason is the per-attempt lift rather than the order
-    (wrong-text attempts −0.09 … +0.12 nats/letter, median −0.00, n=132; right-text 2.42 … 5.50, median 3.49);
-  * the DEFERRED lift ranking is worth 25× more in `lines` than in `forced`: preferring the clean sheet to an
-    agreeing SDH track is −0.8 pt of ±500 forced and **−20.8 pt in `lines`**, where the rung republishes the
-    chosen text's own claimed starts and nothing absorbs a subtitler's lead.
+`e2e.py --level run_align` serves ONE text per case, so its pool of one can exercise neither the
+corroboration-ordered candidate tier nor the LRCLIB retry. This drives the same shipped acquisition, ranking,
+ladder and gates with a pool of three to four texts to choose between, and writes its own rows, so nothing
+under `results/` moves. The pools, the arms and the synthetic pool's three stated limitations are in
+README, "The harness scripts: what each one is for, and the limit it states".
 """
 
 from __future__ import annotations
@@ -252,33 +147,15 @@ def _misheard(word: str) -> str:
 def sdh_track(claims: lib.Claims, *, lead_sec: float = SDH_LEAD_SEC) -> lib.Claims:
     """`claims` as an SDH subtitler of this video typed them. Pure.
 
-    THREE THINGS A REAL SDH TRACK DOES, each changing a different thing downstream:
+    THREE THINGS A REAL SDH TRACK DOES, each changing a different thing downstream: it OPENS EVERY CUE
+    `lead_sec` EARLY, the damage that survives text hygiene; it MISHEARS one word every `MISHEARD_EVERY`
+    worded lines, keeping the word COUNT so positional pairing survives; and it WRITES THE SOUND DOWN, with
+    `[CHEERING]` rather than a marker `nonlyric` R4 would simply delete.
 
-      1. OPENS EVERY CUE `lead_sec` EARLY. The damage that survives text hygiene, and the reason a document
-         timed from this track can be worse than one timed from a clean sheet: the claim clock maps the lead
-         onto the decode (`domain/lyrics/claimmap.py`, which records believer's authored track leading by
-         ~0.5 s).
-      2. MISHEARS one word every `MISHEARD_EVERY` worded lines, so the track is a TRANSCRIPT of a recording
-         rather than a copy of a sheet — the review's whole characterisation of SDH ("the words as the
-         subtitler heard them"). The word COUNT is kept, so `score_words`' positional pairing survives.
-      3. WRITES THE SOUND DOWN: a wordless opener and ONE cue at the track's longest internal silence, both
-         with no truth counterpart (`truth=None`). The cue is deliberately `[CHEERING]` rather than
-         `[MUSIC PLAYING]`, which `nonlyric` R4 would simply delete (`ASR_MARKERS` is a closed machine
-         vocabulary): a cue that SURVIVES hygiene is the demanding case, because it publishes as a line no
-         truth line pairs with and the identity pairing has to carry it.
-
-    WHAT IT DELIBERATELY DOES *NOT* DO — and this is a measurement, not a taste: it does not ♪-WRAP or
-    UPPER-CASE the lines. The YouTube group's truth text IS a caption track already (bohemian-rhapsody's
-    lines are `♪ Is this the real life ♪`, believer's are upper-cased, hello's carry `(wind buffeting)` and
-    spoken phone-call lines), so re-decorating it ARMS `nonlyric` R3 — the rule that drops an unnoted line
-    once `NOTED_SHARE` of a track's worded lines carry a note, whose floor hello's 63/74 = 0.8514 sets. The
-    first version of this builder wrapped every line in notes and so pushed that share to 1.0, which SAVED
-    hello's 11 unnoted lines (7 sound cues and its 4 spoken lines) from being dropped: measured, the SDH
-    text scored 72 lines where the clean sheet scored 63, and the "SDH" variant read BETTER than the clean
-    one for a reason no real track has. Case and notation are invisible to the aligner and to the scorer
-    anyway (`generate.char_ids` folds case); the lead, the slips and the cues are not. For the same reason
-    only ONE worded cue is injected: enough unnoted worded lines would push a noted track UNDER the floor
-    and turn R3 off, which would move the drop set rather than the timing.
+    WHAT IT DELIBERATELY DOES *NOT* DO, and this is a measurement rather than a taste: it does not ♪-wrap or
+    upper-case the lines, because the YouTube group's truth text IS a caption track already, so re-decorating
+    it ARMS `nonlyric` R3 and SAVES the very lines a real track loses. Only ONE worded cue is injected for the
+    mirror reason. README, "The pool gate's rejected control", has both readings.
 
     The truth index of every sung line is KEPT, so a document this text produced is scored line for line
     against the same truth as the clean sheet's — which is what makes "better or worse" a number.
@@ -898,11 +775,26 @@ def _any_claims(by_label: Mapping[str, PoolText]) -> lib.Claims:
 # ── the summary ───────────────────────────────────────────────────────────────────────────────────────
 
 
+def key_of(pool: str, arm: str, sync_mode: str | None) -> str:
+    """The name one (pool, arm, sync mode) cell is tallied and looked up under.
+
+    ONE FUNCTION BECAUSE TWO SPELLINGS COST A WHOLE RUN'S GATES (W7 review r2-spec-9). `tally` keyed
+    `pool/arm` plus a `/lines` suffix while `verdicts` looked up a bare `pool/arm`, so under
+    `--sync-mode lines` every per-pool MUST found `None` and `continue`d: `results/w7-pool-lines.json` records
+    2 verdicts against the forced run's 13, both passing, and the script exited 0 — a green reading in which
+    11 of 13 gates had never been evaluated. The suffix itself is right (a `lines` document carries LINE
+    timings only, so its numbers are a different population from a forced run's and must not be pooled with
+    them); what was wrong was spelling the rule twice. `verdicts` also refuses to be silent now: a planned
+    comparison with no reading is its own FAIL.
+    """
+    return f"{pool}/{arm}" + ("/lines" if sync_mode == "lines" else "")
+
+
 def tally(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Per (pool, arm): what published, how it scored, and whether a wrong text ever did."""
+    """Per (pool, arm, sync mode): what published, how it scored, and whether a wrong text ever did."""
     out: dict[str, dict[str, Any]] = {}
     for row in rows:
-        key = f"{row['pool']}/{row['arm']}" + ("/lines" if row.get("sync_mode") == "lines" else "")
+        key = key_of(str(row["pool"]), str(row["arm"]), row.get("sync_mode"))
         entry = out.setdefault(
             key,
             {
@@ -1049,26 +941,58 @@ def verdicts(rows: Sequence[Mapping[str, Any]]) -> list[tuple[str, bool, str]]:
     said = "".join(f"\n      {r['song']} {r['pool']}/{r['arm']}: {r.get('exception')}" for r in errors[:6])
     out.append(("no-error-rows", not errors, f"{len(errors)} of {len(rows)} jobs could not be read{said}"))
     arms = tally(rows)
+    #: EVERY SYNC MODE THE ROWS HOLD, read off the rows rather than assumed `forced` (W7 review r2-spec-9).
+    #: A run is one mode today (`--sync-mode` is a driver-level constant), so this is normally one value; it
+    #: is a loop so that a merged rows file gates each population against its own control instead of
+    #: silently gating neither. The mode is in the gate NAME wherever it is not the default, because two
+    #: populations' verdicts must not arrive under one name.
+    modes = sorted({str(r.get("sync_mode") or e2e.SYNC_FORCED) for r in rows})
+    present = {(str(r["pool"]), str(r["arm"]), str(r.get("sync_mode") or e2e.SYNC_FORCED)) for r in rows}
+    unread: list[str] = []
     for pool in sorted({str(r["pool"]) for r in rows}):
-        for against in ("arrival", "pre-tie"):
-            ranked, control = arms.get(f"{pool}/ranked"), arms.get(f"{pool}/{against}")
-            if ranked is None or control is None:
-                continue
-            out.append(
-                (
-                    f"{pool}-ranking-adds-no-gross-line-vs-{against}",
-                    ranked["gross"] <= control["gross"],
-                    f"gross ranked {ranked['gross']} against {against} {control['gross']}",
+        for mode in modes:
+            suffix = "" if mode == e2e.SYNC_FORCED else f"-{mode}"
+            for against in ("arrival", "pre-tie"):
+                ranked = arms.get(key_of(pool, "ranked", mode))
+                control = arms.get(key_of(pool, against, mode))
+                if ranked is None or control is None:
+                    # A PAIR THE PLAN CARRIES BUT THE ROWS DO NOT is a legitimate absence (the `lines` plan
+                    # runs no `pre-tie` arm); a pair whose rows ARE here and whose gate still found nothing is
+                    # the defect. Both are reported by `every-planned-comparison-was-read` below, which can
+                    # tell them apart: it only complains where the rows exist.
+                    unread += [
+                        key_of(pool, arm, mode)
+                        for arm, entry in (("ranked", ranked), (against, control))
+                        if entry is None and (pool, arm, mode) in present
+                    ]
+                    continue
+                out.append(
+                    (
+                        f"{pool}-ranking-adds-no-gross-line-vs-{against}{suffix}",
+                        ranked["gross"] <= control["gross"],
+                        f"gross ranked {ranked['gross']} against {against} {control['gross']}",
+                    )
                 )
-            )
-            a, b = ranked["w500_pct_text"], control["w500_pct_text"]
-            out.append(
-                (
-                    f"{pool}-ranking-keeps-pm500-vs-{against}",
-                    a is None or b is None or a >= b - 0.5,
-                    f"±500 over the pool ranked {a} against {against} {b} (allowance 0.5 pt)",
+                a, b = ranked["w500_pct_text"], control["w500_pct_text"]
+                out.append(
+                    (
+                        f"{pool}-ranking-keeps-pm500-vs-{against}{suffix}",
+                        a is None or b is None or a >= b - 0.5,
+                        f"±500 over the pool ranked {a} against {against} {b} (allowance 0.5 pt)",
+                    )
                 )
+    out.append(
+        (
+            "every-planned-comparison-was-read",
+            not unread,
+            (
+                f"{len(unread)} (pool, arm) cell(s) have rows but no gate read them"
+                + "".join(f"\n      {key}" for key in sorted(set(unread)))
             )
+            if unread
+            else f"every pair the rows carry was gated, in {', '.join(modes)}",
+        )
+    )
     sheets = [r for r in rows if r["arm"] == "no-l5" and r["pool"] != "clean"]
     if sheets:
         gone = sum(1 for r in sheets if LRCLIB not in (r.get("acquired") or []))

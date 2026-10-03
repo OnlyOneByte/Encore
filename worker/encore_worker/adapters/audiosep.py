@@ -1,27 +1,14 @@
 """The model-zoo separator: any of ~135 checkpoints, with its stem roles MEASURED rather than trusted.
 
-This is the plug-and-play path. `zoo.catalogue()` says what can run; this runs it. The contract it satisfies
-is `ports.Separator`, the same one demucs and bs-roformer satisfy, so nothing downstream knows the
-difference.
+This is the plug-and-play path. `zoo.catalogue()` says what can run; this runs it, behind the same
+`ports.Separator` contract demucs and bs-roformer satisfy, so nothing downstream knows the difference.
 
-THREE THINGS THIS DOES THAT THE OTHER ADAPTERS DO NOT, each because a zoo model is an unknown quantity:
+Three things it does that the hand-registered adapters do not, each because a zoo model is an unknown
+quantity: it NAMES THE STEMS ITSELF from `domain/audio/roles` (XW-01), it REFUSES RATHER THAN GUESSES when the
+output files cannot be sorted into roles, and it HEARTBEATS FROM A THREAD because the library's separate call
+is blocking with no progress callback.
 
-1. IT NAMES THE STEMS ITSELF, from `domain/audio/roles`. 62 of the 169 catalogue entries declare no stem
-   names at all, and the ones that do cannot simply be believed — bs-roformer-infer's filenames are
-   inverted, which is the bug that motivated all of this. So the output files are measured and the backing
-   track is whichever one carries the low-frequency energy. A declaration, where it exists, is a hint used
-   only to cross-check.
-
-2. IT REFUSES RATHER THAN GUESSES. A model that emits one file, or five, or two files the measurement
-   cannot separate, fails the job NON-RETRYABLY with a legible reason. Retrying would re-run a
-   multi-minute inference to reach the same verdict, and the alternative — picking one — is how the vocals
-   get published as the karaoke master.
-
-3. IT HEARTBEATS FROM A THREAD. `audio_separator.Separator.separate` is a blocking in-process call with no
-   progress callback, and a quiet step of several minutes is exactly what the core's reaper treats as a
-   dead worker. The other adapters parse a subprocess's stdout for a percentage; there is no stdout here,
-   so a ticker thread reports elapsed-time progress while the call runs. It is a liveness signal, not a
-   real completion estimate, and the docstring on `_heartbeat` says so.
+All three with their reasons: `docs/arch/05-worker.md` §2.3.
 """
 
 from __future__ import annotations

@@ -151,12 +151,8 @@ def mix_minus_argv(
 ) -> list[str]:
     """Sum the non-vocal stems into `no_vocals.wav`.
 
-    `normalize=0` IS LOAD-BEARING. ffmpeg's `amix` averages by default, dividing by the input count — so
-    three stems would ship the instrumental at a third of its level. Quiet enough to sound merely "turned
-    down" rather than broken, which is exactly the kind of defect that passes a casual listen.
-
-    Summing the model's own stems rather than phase-subtracting vocals from the mix is deliberate: the
-    stems are one decomposition of the same resampled input, so they are sample-aligned by construction.
+    `normalize=0` IS LOAD-BEARING — `amix` averages by default — and SUMMING the model's own stems beats
+    phase-subtracting vocals from the mix (docs/arch/05-worker.md §2.5).
     """
     sources = instrumental_sources(model)
     argv = [ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y"]
@@ -222,37 +218,23 @@ def decode_argv(source: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> list[s
 
 
 # ── bs-roformer ──────────────────────────────────────────────────────────────────────────────────
-# The UPGRADE engine: core's `DEFAULT_GLOBAL_SETTINGS.upgradeEngine` is `roformer`, so a `stems-upgrade`
-# job routes on `stems:roformer`. Ported from the old worker's `separation/roformer.py`, slugs and all.
-#
-# Shelled out to as a CLI rather than imported, for the same reason demucs is: it keeps bs_roformer and its
-# torch import out of this process, so a box that merely ADVERTISES the capability does not pay a multi-second
-# import at startup.
+# The UPGRADE engine (core's `upgradeEngine`), shelled out to as a CLI rather than imported so a box that
+# merely ADVERTISES the capability pays no import (docs/arch/05-worker.md §2.1).
 
-#: Allowlist tokens -> bs-roformer-infer registry slugs. Worker-side, because the slug is a resolution detail
-#: the core never needs to know.
-#:
-#: KNOWN MISMATCH, carried over deliberately: `bs-roformer-1297` resolves to a MULTI-stem checkpoint rather
-#: than the 2-stem one that was benchmarked. NOT silently repointed — swapping the processed model without a
-#: listening test is exactly what this note prevents.
+#: Allowlist tokens -> bs-roformer-infer registry slugs, worker-side because the slug is a resolution detail
+#: core never needs. The checkpoint mismatch carried here deliberately rather than silently repointed is in
+#: docs/benchmarks/stem-separation/README.md, "Models under test".
 ROFORMER_MODELS = {
-    # THE 2-STEM INSTRUMENTAL MODEL, and the default. Its registry category is `instrumental`, so the
-    # checkpoint targets the thing that actually plays in the room; the vocals arrive as the complement.
-    # A `vocals`-category model is equally 2-stem but targets the reference track, which is the wrong way
-    # round for karaoke — the master should be the modelled output, not the leftover.
+    # THE 2-STEM INSTRUMENTAL MODEL and the default: its category targets the thing that plays in the room,
+    # so the karaoke master is the modelled output rather than the leftover.
     "bs-roformer-1297": "roformer-model-bs-roformer-instrumental-resurrection-by-unwa",
-    # The previous mapping, KEPT so historical `job_attempts.model` rows still resolve to something real
-    # rather than raising `UnknownModel` when an operator opens an old audit page. `multi-stem`, which is
-    # why it is no longer what `bs-roformer-1297` selects.
+    # The previous mapping, KEPT so historical `job_attempts.model` rows still resolve to something real.
     "bs-roformer-multistem": "roformer-model-bs-roformer-sw-by-jarredou",
 }
 
-#: Every slug bs-roformer-infer 0.1.5 actually carries, read out of its own `bs_models.json` and CHECKED IN.
-#:
-#: Exists so `ROFORMER_MODELS` is verifiable against REAL slugs rather than against a string-shape assertion.
-#: The old worker's note records why: a shape assertion let a bad slug ship. Restored here after the port
-#: dropped it — and it earned its place immediately, because the registry nests its entries under a "models"
-#: key and a naive read reports every slug as missing.
+#: Every slug bs-roformer-infer 0.1.5 carries, read out of its own `bs_models.json` and CHECKED IN, so
+#: `ROFORMER_MODELS` is verifiable against REAL slugs rather than against a string-shape assertion — which
+#: once let a bad slug ship.
 ROFORMER_REGISTRY_SLUGS = frozenset(
     {
         "roformer-model-bs-roformer-chorus-male-female-by-sucial",
@@ -312,28 +294,9 @@ def roformer_argv(
     return argv
 
 
-#: How bs-roformer-infer 0.1.5 names its two outputs, and WHICH ROLE EACH ACTUALLY HOLDS — measured, not
-#: assumed. Both were wrong in the ported code, and the second one dangerously so.
-#:
-#: MEASURED on `roformer-model-bs-roformer-instrumental-resurrection-by-unwa`, CPU, with a chords-only control
-#: (no vocals in the input, so the instrumental stem must hold everything):
-#:
-#:     source           rms 0.03608
-#:     _instrumental    rms 0.00086   <- 2.4% of the signal. NEAR-SILENT.
-#:     _other           rms 0.03574   <- 99.1% of the signal. THIS is the instrumental.
-#:
-#: So `<name>_other.wav` carries the backing track and `<name>_instrumental.wav` carries the vocals residual.
-#: The names are inverted relative to their contents for this model.
-#:
-#: WHY THIS MATTERS MORE THAN A TYPO. The ported code looked for `<name>_(Instrumental)_<slug>.<ext>`, which
-#: this package version never writes — so discovery returned None and the job failed. That is the SAFE
-#: failure. Had the pattern matched, the worker would have published the VOCALS as the karaoke backing track,
-#: and the silence probe would have waved it through because the vocals stem is loud. Silent, and audible only
-#: in the room.
-#:
-#: Keyed by model slug because the mapping is a property of the CHECKPOINT, not of the CLI: a
-#: `vocals`-category
-#: model targets the other stem, so assuming one global order is what created this bug in the first place.
+#: `{model slug: (instrumental suffix, vocals suffix)}` for bs-roformer-infer 0.1.5, MEASURED from the audio
+#: rather than read off the filenames, which are inverted for the one entry here. Keyed by slug because the
+#: mapping is the CHECKPOINT's. docs/benchmarks/stem-separation/README.md has the rms control.
 ROFORMER_STEM_SUFFIXES: dict[str, tuple[str, str]] = {
     # slug -> (instrumental suffix, vocals suffix)
     "roformer-model-bs-roformer-instrumental-resurrection-by-unwa": ("_other", "_instrumental"),
@@ -379,12 +342,9 @@ def find_roformer_vocals(store_dir: str, slug: str) -> str | None:
 class Roformer:
     """`Separator` over the bs-roformer-infer CLI.
 
-    NEVER RUN END TO END in this environment: a real pass needs a ~700 MB first-use checkpoint download and
-    tens of minutes of CPU. The argv builder and the stem discovery below are unit-tested; the process is not.
-
-    That is why `build_separator` returns this only when the CLI is on PATH. Advertising a capability the box
-    cannot honour is WORSE than not advertising it: the core then routes upgrade work here and receives demucs
-    output labelled as roformer, which nothing downstream can contradict.
+    NEVER RUN END TO END in this environment — a real pass needs a ~700 MB download and tens of minutes of
+    CPU — so the argv builder and the stem discovery are unit-tested and the process is not. `build_separator`
+    returns this only when the CLI is on PATH (docs/arch/05-worker.md §9.1).
     """
 
     name = "roformer"
@@ -445,21 +405,15 @@ def build_separator(
     engine: str | None = None,
     zoo_model_dir: str = "",
 ) -> TorchDemucs | MlxDemucs | Roformer | Any | None:
-    """The separator for the RESOLVED backend, or None when this box cannot build one.
+    """The separator for the RESOLVED backend, or None when this box cannot build one — a refused job rather
+    than a crashed process, `host.capabilities` having already declined to advertise `stems`.
 
-    None rather than a raise: `host.capabilities` already declines to advertise `stems` on a box with no
-    engine, so reaching here with an unbuildable backend means the two disagreed — and returning None
-    makes that a refused job rather than a crashed process.
-
-    `model` MAY BE None, meaning "this job named none, use the engine's default". That is distinct from the
-    empty string and from a name: `resolve_model` and `resolve_roformer_slug` both RAISE on an explicit
-    unknown name and fall back only on None, because silently separating with the default would publish a
-    backing track the operator did not choose and would be indistinguishable from the one they asked for.
+    `model` MAY BE None, meaning "this job named none": the resolvers RAISE on an explicit unknown name and
+    fall back only on None (docs/arch/05-worker.md §2.4).
     """
     from encore_worker.host.hardware import binary_available, module_available
 
-    # An explicit engine wins over the box's default backend: a `stems-upgrade` job names `roformer`, and
-    # honouring the backend instead would separate with demucs and label the result as the upgrade.
+    # An explicit engine wins over the box's default backend (docs/arch/05-worker.md §2.4).
     if engine == "audiosep":
         if not module_available("audio_separator"):
             return None

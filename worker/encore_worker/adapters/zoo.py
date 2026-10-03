@@ -1,28 +1,8 @@
-"""The model zoo as a browsable catalogue: 169 separators, read from `audio-separator`'s own metadata.
+"""The model zoo as a browsable catalogue: 169 separators, READ from `audio-separator`'s own metadata rather
+than described here, so an entry cannot drift from what the library can run.
 
-WHAT THIS REPLACES. Three models were hand-registered, each with a hand-verified note about which output
-file was the backing track. That is the right shape for three and impossible for a hundred and sixty-nine,
-so this module does not describe models — it READS them, from the metadata the library already ships:
-
-    {"filename": "...", "stems": ["instrumental", "vocals"], "target_stem": "instrumental",
-     "scores": {"vocals": {"SDR": 8.78, ...}, "instrumental": {"SDR": 15.40, ...}}}
-
-which means a catalogue entry costs nothing to add and cannot drift from what the library can actually run.
-
-THE SCORES ARE UPSTREAM'S, NOT OURS, and that distinction is load-bearing in this repo. `SeparatorSpec`
-carries `provenance` precisely because an `htdemucs` cost of 0.29x once sat here labelled "measured" while
-having been copied from core's GPU contract. So every figure crossing from this module is labelled
-`upstream`, never `measured`: it is a real benchmark run by someone else, on tracks we did not choose, with
-a metric (BSS-eval SDR via museval) that is NOT the plain SDR `docs/benchmarks/stem-separation` reports.
-Useful for RANKING a hundred unknowns; not comparable to our own numbers, and not evidence about this
-hardware.
-
-WHAT IS FILTERED OUT, and why it is not merely tidiness. The zoo is not 169 vocal separators — it also
-contains de-reverb, de-noise, de-echo, drum separation, crowd removal and lead-versus-backing karaoke
-models. A de-reverb model emits `["noreverb", "reverb"]`; asking it for a karaoke master gets you a
-slightly drier copy of the whole song, published as an instrumental, with nothing downstream able to
-notice. So an entry is offered only if its declared stems contain a vocals side and a non-vocals side that
-`roles` can then verify from the audio.
+THE SCORES ARE UPSTREAM'S, NOT OURS, so every figure crossing from here is labelled `upstream` and never
+`measured`. Why most entries are filtered out, and the three role cases: `docs/arch/05-worker.md` §2.3.
 """
 
 from __future__ import annotations
@@ -37,8 +17,8 @@ _VOCAL_NAMES = frozenset({"vocals", "vocal", "voice", "lead_vocals", "lead vocal
 #: Declared stem names that mean "everything else" — the thing that plays in the room.
 _BACKING_NAMES = frozenset({"instrumental", "instrument", "no_vocals", "accompaniment", "other", "music"})
 
-#: The four-source demucs decomposition. Not a 2-stem model, but the instrumental is the sum of the three
-#: non-vocal sources, which `separate.instrumental_sources` already knows how to do.
+#: The four-source demucs decomposition, reachable through the native demucs adapter instead
+#: (docs/arch/05-worker.md §2.3).
 _FOUR_STEM = frozenset({"vocals", "drums", "bass", "other"})
 
 
@@ -90,21 +70,7 @@ def slugify(name: str) -> str:
 def _role_source(stems: tuple[str, ...]) -> str | None:
     """How this model's stem roles are known: `"declared"`, `"unknown"`, or None meaning "not a separator".
 
-    THREE CASES, and the middle one is why `domain/audio/roles` exists.
-
-    `declared`  the metadata names a vocals side and a backing side. Still verified from the audio before
-                publication — bs-roformer-infer's filenames are inverted, so a declaration is a hint.
-    `unknown`   the metadata declares NO stems at all, which is true of 62 of the 169 entries, including
-                real vocal separators like `UVR-BVE-4B_SN-44100-2`. These used to be dropped. They are
-                offered instead, because runtime role detection does not need the declaration — that is
-                the entire point of measuring. If the measurement cannot decide, the job is refused.
-    None        the metadata declares stems that are not a vocals/backing pair, so no amount of running it
-                yields a karaoke master. De-reverb (`["noreverb","reverb"]`), de-echo, de-noise, drum
-                separation, bass/woodwind isolation, and the four-source demucs decomposition.
-
-    FOUR-STEM DEMUCS IS EXCLUDED DELIBERATELY. Its instrumental has to be summed from three sources, which
-    `separate.py` already does for the native demucs path — and `htdemucs_ft`/`htdemucs_6s` are reachable
-    there. Two routes to one set of weights is a way for two answers to disagree, not a feature.
+    Three cases, and the middle one is why `domain/audio/roles` exists: docs/arch/05-worker.md §2.3.
     """
     lowered = {s.lower() for s in stems}
     if not lowered:
@@ -117,8 +83,7 @@ def _role_source(stems: tuple[str, ...]) -> str | None:
 
 
 def _score(entry: object, stem: str) -> float | None:
-    """`scores[stem]["SDR"]`, defensively — upstream metadata is not schema-checked and a missing score is
-    normal rather than an error."""
+    """`scores[stem]["SDR"]`, defensively: upstream metadata is not schema-checked."""
     if not isinstance(entry, dict):
         return None
     scores = entry.get("scores")
@@ -193,10 +158,8 @@ def by_token(token: str) -> ZooModel | None:
     return None
 
 
-#: Prefix for the per-model capability token. Core's dispatch matches ONE capability string against a
-#: worker's list, so advertising each runnable model this way makes model-aware routing free: a job naming a
-#: checkpoint only one box has is routed to that box by machinery that already exists. See
-#: `core/src/lib/server/jobs/dispatch.ts:requiredCapability`.
+#: Prefix for the per-model capability token, which makes model-aware routing free
+#: (docs/arch/05-worker.md §2.3; `core/src/lib/server/jobs/dispatch.ts:requiredCapability`).
 MODEL_CAPABILITY_PREFIX = "stems:model:"
 
 
@@ -205,12 +168,8 @@ def capability_for(token: str) -> str:
 
 
 def model_capabilities() -> frozenset[str]:
-    """One capability per runnable zoo model.
-
-    NOT called from `host.capabilities`, deliberately: that runs before registration and this costs 4.8 s on
-    a cold process. The worker registers with its base capabilities and sends these in a follow-up
-    `worker:catalogue` frame — see `frames.Catalogue`.
-    """
+    """One capability per runnable zoo model. NOT called from `host.capabilities`: that runs before
+    registration and this is slow, so it goes in a follow-up frame (docs/arch/05-worker.md §2.3)."""
     return frozenset(capability_for(m.token) for m in catalogue())
 
 

@@ -5,83 +5,14 @@
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \\
         --summarize NEW/rows.jsonl --compare BASE/summary.json --gates my-wave.yaml
 
-WHY A LANGUAGE, AND WHY SO SMALL. Every wave of PLAN-alignment-v3 is accepted or rejected on conditions like
-"truth-mode ±500 drops more than 1.0 pt" or "any Jamendo song gains a gross line". Checked by hand from two
-printed tables, the arithmetic is where a gate quietly passes. Written as expressions, they are checked the
-same way on every run, and a failing gate exits non-zero. The grammar is a RESTRICTED Python expression,
-parsed with `ast` and walked node by node (never `eval`), with exactly these parts:
+A gate is the CONDITION THAT MUST HOLD — the negation of a wave's reject-if — written as a restricted Python
+expression over the two summaries, parsed with `ast` and walked node by node (never `eval`). A gate that
+cannot be evaluated is an ERROR, and an error fails the run exactly like a FAIL, because a gate that silently
+passes on missing data is how a regression ships.
 
-  REFERENCES, dotted paths into a summary:
-      [base.]MODE[.GROUP].METRIC           one pooled number   truth.pm500   base.blind.jamendo.gross
-      [base.][MODE.][GROUP.]song.METRIC    one number PER SONG truth.jamendo.song.word_pm300   song.gross
-    MODE is a claim mode (`truth`, `off15`), or `mode("jit+off15")` for a `+`-combined one. GROUP is
-    `jamendo`, `youtube` or `all` (the default). `base.` reads the `--compare` baseline. A per-song path
-    without a MODE ranges over EVERY mode, keyed (mode, song). METRIC is a name from `e2e_lib.flat_metrics`:
-    pm500 pm1000 text_pm500 text_pm1000 gross zero_gross_songs high high_gross refused error published
-    scored in_text missing unsung text_paired; word_pm100/250/300 word_pco300 word_bias_ms word_gross;
-    end_pm100 end_pm250 end_bias_ms final_end_pm100 final_end_pm250 final_end_bias_ms; highlight;
-    wrongtext_pass; the run_align policy counts (attempts retried mix_published changed_vs_first
-    asr_requested asr_published no_lyrics, and retime_<knob> for EVERY policy knob, 0 when unused); and the
-    95% bounds pm500_lo/_hi,
-    text_pm500_lo/_hi, gross_lo/_hi, word_pm300_lo/_hi, word_pco300_lo/_hi, highlight_lo/_hi. A per-song
-    path knows `e2e_lib.SONG_METRICS`, plus `doc_changed` / `onsets_changed`: 1 where the published
-    document (its bytes, or only its line and word START times) differs from the baseline's, a refusal on
-    either side counting as a document of its own. `METRIC_up` / `METRIC_down` is 1 where the run is
-    above / below the baseline.
-  WHICH ±500. `pm500` / `pm1000` are e2e2's, over the lines PUBLISHED documents scored: the review baseline
-    is stated in them, and a refused song adds nothing. `text_pm500` / `text_pm1000` are over every truth
-    line the text asked for, a refused case's lines counted as misses — the one to gate on wherever a
-    refusal must not read as an improvement. `word_pco300`, `highlight` and `missing` count refused and
-    ERROR cases in their denominators already.
-  OPERATORS: numbers, + - * /, comparisons (chainable), and / or / not — with EVERY operand evaluated, no
-    short-circuit, so `ok or typo.pm500 > 0` errors instead of passing. Per-song values combine
-    elementwise; a plain number broadcasts.
-  FUNCTIONS: count(v) = how many per-song values are true (non-zero); min / max / mean / sum of per-song
-    values (min and max also take two or more numbers); abs(x); delta(ref) = run − baseline of one
-    POOLED number (a `song.` path is an ERROR — it used to read the pooled number silently);
-    min_song_delta(ref) / max_song_delta(ref) = the smallest / largest per-song (run − baseline) of
-    `ref`, read per song (so `song.` may be left out).
-
-A GATE IS THE CONDITION THAT MUST HOLD — the negation of the reject-if. So "reject if truth ±500 drops more
-than 1 pt" is `truth.pm500 >= base.truth.pm500 - 1.0`, and "reject if any Jamendo song is more than 1 pt
-worse at ±300" is `min_song_delta(jamendo.word_pm300) >= -1.0` — MIN, the worst song, for a metric where
-higher is better (`max_song_delta` would read the best song). "Reject if any song gains a gross line" is
-`count(song.gross_up + song.missing_up) == 0`: `gross` counts only lines that PUBLISHED, so a song with 2
-gross lines that flips to refused, or drops one of them, reads FEWER and `count(song.gross_up) == 0` holds
-(pinned in test_bench_e2e); `missing` (text lines not scored) rises with either. W1's "reject if a
-published doc changes on a song whose stem coverage is >= 0.80" is
-`count(song.doc_changed * (base.song.coverage >= 0.8)) == 0`.
-
-A gate that CANNOT BE EVALUATED is an ERROR, and an error fails the run exactly like a FAIL. A gate that
-silently passes on missing data is how a regression ships, so every one of these is an ERROR:
-  * a mode the run did not measure, a metric with no data (YouTube has no word truth), a `base.` path with
-    no `--compare`, no song in common;
-  * a run-vs-baseline comparison over songs the run did not measure — per song, any (mode, song) the
-    baseline has and the run lacks; pooled, any difference between the two sides' song sets for that
-    mode and group (a `--songs` run against the full baseline compares two different pools), and the
-    same for a REDUCTION of a baseline per-song value (`sum(song.gross) <= sum(base.song.gross)`);
-  * any gate that reads the baseline when the two summaries measured another SETUP — level, seed,
-    wrong_k, language, tfr audio, ASR or sync mode (`SETUP_META`; an unrecorded sync mode is `forced`, what
-    every run before `--sync-mode` sent), or another key either side does not record. A model or
-    `align_*` difference is what an arm varies, so `--compare` only warns on it;
-  * a song that LOST its value (scored in the baseline, refused now: a refused song has no ±500 / word /
-    highlight value but a gross COUNT of 0), in `min_song_delta` / `_up` / `_down` and in explicit
-    arithmetic like `truth.song.pm500 - base.truth.song.pm500` alike. A song that GAINED a value has no
-    delta and is skipped (`refused_down` counts it);
-  * any gate that reads a metric THE RUN'S BUNDLE COULD NOT MEASURE: on a run the harness marked
-    `uncalibrated` (its model has no `lexical.CALIBRATED` row, so every emission-scale gate stood down),
-    `wrongtext_pass` is the sheet-span envelope gate's reading and not that bundle's (`UNCALIBRATED_METRICS`);
-  * a reduction (`count` / `min` / `max` / `mean` / `sum`) over per-song values some song has NO value for
-    — `min(truth.song.pm500) >= 85` must not pass because the worst song was refused. Gate a metric every
-    song has (`text_pm500`, `gross`, `refused`), or scope the path to where the metric exists.
-And ERROR ROWS FAIL THE RUN on their own: `run_gates` adds a built-in `no-error-rows` gate, because a
-case the harness could not complete otherwise reads as a refusal (a wrong text "correctly" refused) or
-drops out of every pooled number.
-
-GATE FILES: JSON (`{"name": "expression", ...}` or `[{"name": ..., "expr": ...}, ...]`), or the YAML
-subset every example uses — one `name: expression` per line, `#` comments, optional quotes. That subset is
-plain YAML, so a real YAML parser reads the same gates (quote an expression that starts with `[`, `{` or
-`- `). The CLI exits 3 when any gate FAILs or ERRORs, 2 when the gate file or baseline cannot be read.
+The full grammar (references, metrics, operators, functions), every ERROR condition and the gate-file formats
+are in `docs/benchmarks/forced-alignment/README.md`, "The harness scripts: what each one is for, and the
+limit it states".
 """
 
 from __future__ import annotations
@@ -188,15 +119,31 @@ SETUP_DEFAULTS: Mapping[str, str] = {"sync_mode": "forced", "target": lib.STEM_T
 #: setting, so a difference here is the experiment, not a broken comparison. `code` is absent for the same
 #: reason — a wave's run differs from its baseline in code by definition — and is printed in the header AND,
 #: since W4b review r2 (spec-10), as its own NOTE whenever the two sides differ in it (`format_compare`).
-COMPARED_META = ("model", "model_identity", "align_config")
+#: `detector` joins them for W7 review r1-spec-9's reason: it is an independent variable of the SHIPPED
+#: configuration (`e2e.py --detector lingua` builds `language.lingua_detector`, which is what
+#: `__main__.build_adapters` does), it can move the TEXT's language and therefore the syllabifier and the
+#: published document, and every row recorded before it existed ran without one — so a difference is the arm,
+#: WARNED on and printed, not a broken comparison.
+#:
+#: A KEY WITH A `lib.RUN_DEFAULTS` ENTRY IS COMPARED EVEN WHERE ONE SIDE IS SILENT (W7 review r2-spec-10).
+#: `detector` has one, and it is why: every committed document under `results/` was written before the stamp
+#: existed, so the "one side was measured with lingua" warning this tuple is for could never fire — the
+#: comparison skipped the key the moment a baseline lacked it, which is EVERY baseline. A missing key now
+#: means the recorded default, so the warning fires on the only difference that has ever existed. The other
+#: three keys have no default: `model` absent is unknown, not `base`, and silence there must stay silence.
+COMPARED_META = ("model", "model_identity", "align_config", "detector")
 
 #: The metrics an UNCALIBRATED bundle's run cannot measure, so a gate reading one of them on such a run is an
 #: ERROR (`run_gates`, W4b review r2 spec-13). `wrongtext_pass` is the wrong-text verdict, and on a bundle
-#: with no `lexical.CALIBRATED` row every emission-scale gate stands down: the lift is unreadable, so the
-#: verdict falls back to the sheet-span envelope gate, which this wave measured at 125/320 wrongtext passes.
-#: A row that says "0 of 320 wrong texts passed" would then be the ENVELOPE gate's number recorded under the
-#: new bundle's name. `e2e.py` marks such runs (`uncalibrated` in `run.json` and in the summary's meta), and
-#: every other metric — timings, gross lines, highlight — is that bundle's own measurement and gates as usual.
+#: with no `lexical.CALIBRATED` row every emission-scale gate stands down: the lift is unreadable, so until
+#: W7's review the verdict fell back to the sheet-span envelope gate, which W4b measured at 125/320 wrongtext
+#: passes. A row that says "0 of 320 wrong texts passed" would then be the ENVELOPE gate's number recorded
+#: under the new bundle's name. SINCE W7 review r1-correctness-1 the number is a THIRD thing on such a run —
+#: the global rung DECLINES a word document there, so a `time_text` row counts every wrong text as refused by
+#: the absence of a gate, and a `run_align` row counts whatever the LINE_SYNC rung's uncalibrated share let
+#: through — and none of the three is this bundle's own wrong-text measurement, which is what the rule says.
+#: `e2e.py` marks such runs (`uncalibrated` in `run.json` and in the summary's meta), and every other metric
+#: — timings, gross lines, highlight — is that bundle's own measurement and gates as usual.
 UNCALIBRATED_METRICS = ("wrongtext_pass",)
 
 
@@ -243,8 +190,15 @@ def format_compare(run: View, base: View) -> str:
         for phrase in setup_mismatch(run.meta, base.meta)
     )
     for key in COMPARED_META:
-        if key in run.meta and key in base.meta and run.meta[key] != base.meta[key]:
-            out.append(f"  WARNING: {key} differs — run {run.meta[key]!r}, base {base.meta[key]!r}")
+        default = lib.RUN_DEFAULTS.get(key)
+        ours, theirs = run.meta.get(key, default), base.meta.get(key, default)
+        if ours is None or theirs is None or ours == theirs:
+            continue  # equal, or a key with no default that one side does not record (see COMPARED_META)
+        said = " (not recorded, i.e. the default)"
+        out.append(
+            f"  WARNING: {key} differs — run {ours!r}{said if key not in run.meta else ''}, "
+            f"base {theirs!r}{said if key not in base.meta else ''}"
+        )
     for side, meta in (("run", run.meta), ("base", base.meta)):
         if meta.get("uncalibrated"):
             out.append(
@@ -264,11 +218,13 @@ def format_compare(run: View, base: View) -> str:
             "wave's recorded row this line is expected."
         )
     for side, meta in (("run", run.meta), ("base", base.meta)):
-        codes = meta.get("row_codes") or []
-        if len(codes) > 1:
+        # A DIFFERENT NAME from the two-tree `codes` above, which is the whole fix: reusing it made this
+        # assignment a type error under `mypy --strict` and read as if the pair were being widened.
+        row_codes = [str(code) for code in meta.get("row_codes") or ()]
+        if len(row_codes) > 1:
             out.append(
-                f"  WARNING: the {side}'s rows were measured on {len(codes)} different worker trees "
-                f"({', '.join(codes)}) — a --resume across a code change"
+                f"  WARNING: the {side}'s rows were measured on {len(row_codes)} different worker trees "
+                f"({', '.join(row_codes)}) — a --resume across a code change"
             )
     only_run = [m for m in run.modes if m not in base.modes]
     only_base = [m for m in base.modes if m not in run.modes]

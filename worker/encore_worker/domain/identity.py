@@ -43,13 +43,9 @@ class Identified:
 def identify_from_title(title: str) -> Identified:
     """Split an upload title into artist and track. Pure, and deliberately conservative.
 
-    Only the unambiguous `Artist - Track` shape is accepted. Everything else returns nothing, because a
-    wrong split is worse than no split: it produces a confident provider lookup of a song that is not
-    this one, and the align flow then spends real alignment passes discovering that.
-
-    The noise suffixes uploaders add are stripped, but no attempt is made to parse a title without a
-    separator — "Bohemian Rhapsody Queen Live 1985" has no reliable boundary, and guessing one is how a
-    library ends up with lyrics for the wrong recording.
+    Only the unambiguous `Artist - Track` shape is accepted, a wrong split producing a confident provider
+    lookup of a song that is not this one. The noise suffixes uploaders add are stripped, but a title with no
+    separator has no reliable boundary and is not guessed at.
     """
     cleaned = title.strip()
     for noise in (

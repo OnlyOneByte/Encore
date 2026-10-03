@@ -1,165 +1,9 @@
 """Putting a sheet's CLAIMED timings on OUR clock, ONCE, before anything reads them.
 
-WHY THIS EXISTS (review H1, §3 item 2; W2). Stage 3 grades the claims and never moves them — that is the
-role reversal `reconcile` describes, and it is right for GRADING. But stage 4 does not only grade: it
-REPAIRS inside claim windows (R1, R2, R4), it ADOPTS a claim span outright where the window decode heard
-nothing, and it reads a claim's position back when it decides whether a repaired line may be graded
-`high`. Every one of those ran in the claim's RAW clock, while the one number that could have fixed it was
-computed and discarded three times over: `reconcile` fits `offset_sec` and uses it only to pick which
-COARSE lines to repair, fits `scale` and never applies it, and R1 measures the claims' own envelope lag
-(`claim_fit.seconds`) and keeps only its correlation. The measured consequence, on the review's harness:
-claims 1.5 s late publish every line 1.5 s late AND pass the envelope gate at lag -1.50 s (repro s8), a
-+1.3 s LRC gets a line adopted 1.3 s late (s3), and +3 s claims produce 440 gross lines.
-
-So the claims are mapped here, once, before the first `reconcile` — and only the CLAIMS move. Our own
-timings are never touched by this module: an offset sheet is still a fact about the sheet (`Reconciliation`
-OFFSET / DRIFT), and what the map buys is that every repair window, every adopted span and every
-corroboration test afterwards is asking about the same instant the audio does.
-
-THE ESTIMATOR IS A VOTE, NOT A FIT (RANSAC's inlier count, Fischler & Bolles 1981). Three candidate maps
-are already computed elsewhere in the step, so consensus costs no model time and no second decode:
-
-    no-shift        identity. The null hypothesis, and the one the margin below protects.
-    envelope-lag    `activity.fit_shift` of the audio's own vocal activity against
-                    `activity.expected_envelope(claim spans)` — the claims' lag measured on the AUDIO, the
-                    only candidate independent of our decode. PLAN fact 7 puts its residual at 10-20 ms on
-                    a vocals stem (140-150 ms on a mix, where an instrumental bed fills the silences).
-    decode-median   median(ours - claimed) over the paired lines, the estimator `reconcile` and
-                    `place.estimate_shift` already use, robust to a few wild lines.
-    decode-mode     the offset the MOST paired lines agree on: the median of the densest
-                    `2 x tolerance` window of the same differences (`_densest_offset`). A MEDIAN IS NOT
-                    ENOUGH when half the lines are wild, which is a song whose lines repeat rather than a
-                    rare one (W4 review r1, and the wave's own regression — see WHY THE MODE below).
-    tempo           a BOUNDED Theil-Sen slope (`reconcile.theil_sen`, Sen 1968) with its own median offset:
-                    the DRIFT case, a master cut at another tempo. DALI fits karaoke timings onto other
-                    audio the same way (offset x frame rate:
-                    https://transactions.ismir.net/articles/10.5334/tismir.30).
-    tempo-mode      that same slope with the densest-window offset instead of the median — the mode
-                    candidate at the fitted scale, and the one that actually moves a drifting sheet whose
-                    decode is half wild (`never-be-alone` tempo098/102: 12 of 44 paired lines against the
-                    median offset's 0).
-
-Each is scored by how many paired lines it explains within `AGREE_TOLERANCE_SEC` — reconcile's own
-corroboration band, imported rather than copied, because "explained" here means exactly "a line
-`reconcile` will call corroborated". The slope estimator is imported from there too, and its band
-(`reconcile.MAX_SCALE_DRIFT`, 5%) is the one measured here: reconcile classifies DRIFT with the same fit
-(review M4's "ONE implementation"), so a scale this module would move windows by is a scale that module
-would call a drift. Ties go to the EARLIER candidate in that list: no-shift first (the
-conservative answer), then the lag measured on the audio ahead of the two fitted against our own decode.
-That order is also the review's strongest objection made harmless — "the gain is measured on a pure
-constant offset, which the median undoes almost by construction" — since where the audio and the median
-agree on the lines they explain, the audio's estimate is the one applied.
-
-THE MARGIN, because a map MOVES claims that may already be right: the winner is applied only if it
-explains at least `max(MIN_GAIN_LINES, MIN_GAIN_SHARE x pairs)` MORE lines than no-shift, and only if it
-actually moves a paired claim by `MOVE_FLOOR_SEC` or more. Same asymmetry `place.MIN_SHIFT_SEC` and
-`activity.MIN_CORRELATION` are set from: refusing a good map costs the raw clock we have today, while
-accepting a bad one moves a sheet that was correct.
-
-AND THE FLOOR, because a margin only grades the GAIN (W2 review r1). Both terms above are differences and
-distances; neither asks how good the winner actually is, so "the best of four noisy candidates" could move a
-sheet on two explained lines out of fifty as long as no-shift explained none of them — which is the shape a
-poor blind decode against a CORRECT sheet takes. `MIN_INLIER_SHARE` is the absolute quality gate the vote was
-missing: below a fifth of the paired lines explained, the winner is not a clock, and abstaining leaves the
-claims where the human put them.
-
-WHY THE MODE, and it is the fix for W4's one shipped regression (W4 review r1, `decode-mode` above). The
-median of `ours - claimed` is robust to A FEW wild lines and to NOTHING ELSE: it breaks down at 50%
-contamination, and a song whose lines repeat is exactly where our blind decode misplaces half of them. On
-`never-be-alone` off3 (44 paired lines, tolerance 0.25 s) the differences are BIMODAL — 20 of them spread
-over -8.87..-4.31 s where the global decode smeared the repeated "be alone" lines, a tight cluster of 17 in
--3.23..-2.83 s which IS the sheet's +3 s displacement, and three outliers at +8.23/+10.69/+20.07. The median
-lands at -3.73 s, which is the gap between the two modes and explains 4 of 44 lines (9%, under the floor), so
-the vote abstained, the claims kept their raw clock, and every window repair and adoption after it worked in
-a clock 3 s out: 44 gross lines where W4-start's tree had 0. NOTHING ABOUT THE GRID CAUSED THAT — on
-w4-start's clock the same median read -3.17 s (14 of 45, 31%) and was applied. The exact 20 ms grid moved
-every decoded start by at most one frame, and a median sitting ON the boundary between a 20-line tail and a
-17-line cluster moves by a whole cluster width when one line crosses it. The densest window's median reads
--3.07 s and explains 17 of 44 (39%), so the candidate that actually maximises the vote's own score is the one
-the vote was missing — RANSAC over the data rather than over three summary statistics, which is what the
-paragraph above already claims this is. The margin and the floor still decide, and no-shift still wins ties,
-so the conservative asymmetry is untouched: on a sheet already on our clock the densest window sits at ~0 and
-the null hypothesis takes the tie. AND THE WINDOW CARRIES TWO FLOORS OF ITS OWN, because unlike every other
-candidate it is CHOSEN by maximising the vote's own score: it must hold `MIN_PAIRS` lines (a window is a fit,
-and on a six-cue sheet a fifth of the pairs is 1.2 lines) and it must be ISOLATED. Both are measured at
-`_densest_offset`; without them the luckiest slice of a sheet with no mode at all defeats the floor above.
-
-MEASURED ON THE CORPUS, and it is inert everywhere else (`--level time_text --modes all,wrongtext+ownclock`,
-1088 cases, `_runs/w4r1b-time_text` against `results/w4-time_text.*`). SIX song-modes change a metric and all
-six are `never-be-alone`, all six better: off3 gross 44 -> 0 with 0 -> 35 line starts within ±500 ms,
-tempo098 44 -> 0 with 0 -> 32, tempo102 43 -> 0 with 0 -> 32, off15 7 -> 0 with 0 -> 35, offm1 4 -> 35 line
-starts, off05 33 -> 35. Pooled, that is off3 gross 47 -> 3, tempo098 48 -> 4, tempo102 47 -> 4 and off15
-10 -> 3 — the four `gross-not-up-<mode>` gates W4's grid had turned red (`gates/w4{,-clock}.yaml`).
-NOTHING ELSE MOVES: the other 1082 cases keep their gross, their ±500 and their wrong-text verdicts to the
-digit, the truth/jit/blind rows do not move at all, and `wrongtext` still passes 1 of 320. The tempo modes are
-`tempo-mode`'s alone — at the fitted scale 1.0268 the median offset explains 0 of 44 paired lines and the
-densest window 12 — and the pure offsets are `decode-mode`'s.
-
-MEASURED (review §3.2, the scratch harness `_review-scratch/pe-acc/e2e2.py` on the base model, whose patch
-`patch_claimclock2.py` is this module's prototype):
-
-    gain    +19.0 pt within +/-500 ms at +1.5 s, +11.0 at -1 s, +19.8 at +3 s; gross lines at +3 s
-            440 -> 25 (HuBERT-L 370 -> 6); no `high` gross line left in any claim mode.
-    cost    truth mode 89.3 -> 88.5 within +/-500 ms, carried by two songs, on both of which the map sides
-            with a MEASUREMENT against the metric's ruler — and on the 12 YouTube songs that ruler is the
-            caption track the map is correcting, so the loss is partly the metric's.
-
-W2's OWN targeted probes confirm both halves on the shipped path (`--level time_text`, per song against
-`results/w3-time_text.json`; the tables and the runs are in `docs/benchmarks/forced-alignment/README.md`,
-section "The claim clock", and the corpus row is the wave's bench run):
-
-    Jamendo, measured word onsets, 4 songs x 5 modes: truth UNCHANGED (+0.00 pt within +/-500 ms and
-    +/-300 ms on all four), no song gains a gross line in any mode, off3 -4/-4/-6/-15 gross with +5.0 to
-    +50.0 pt within +/-500 ms, tempo102 -4/-14/-24/-31 gross with +75.0 to +95.7 pt (what the bounded scale
-    buys: a 2% sheet used to leave 4-31 lines over 2 s out).
-    YouTube, caption truth, believer and bad-guy: truth -4.16 pt (50 -> 47 lines) and -10.14 pt
-    (13 -> 6 lines, the review's number exactly), against +8.7 to +23.6 pt at off15/off3 and 48 gross lines
-    removed at off3. believer's SDH captions lead by ~0.5 s (the map reads `tempo +0.50s scale 0.9987`, 52
-    of 72 lines explained against no-shift's 12); bad-guy's decode sits 0.86 s later than its captions
-    (`decode-median +0.86s`, 52 of 69 against 1).
-
-DIFFERENCES FROM THE PROTOTYPE, each because the prototype was a 20-line patch and this is the shipped
-path: `MIN_PAIRS` is 5, not `reconcile.MIN_PAIRS` (a map that moves the claims is a fit, and review M4's
-floor for a fitted verdict — `reconcile.MIN_FITTED_PAIRS`, the same number — applies at least as hard to one
-that ACTS; the bench corpus's smallest paired series is 7 lines, Kinematic under `drop50`, so nothing
-measured moves); the tempo candidate is new (the review moved the scale fit to §3.11 because the measured
-patch did not carry one); and the map is a sequence of legs rather than one offset, so the PIECEWISE arm
-below is the same object with more than one.
-
-PIECEWISE IS AN ARM, NOT THE DEFAULT (`Config.align_experiments`, `claimmap-piecewise`). Inserted
-sections, a live rendition and a re-lineated sheet are STEPS, not one offset — but the critics measured a
-change-point version WORSE on the unperturbed control, and a misbound repeat (failure F2) looks exactly
-like a step to it, so it ships off until its own gates pass. Split only where a change point explains the
-same margin more lines than the single best map, at most `MAX_PIECES` legs, at least `MIN_PIECE_PAIRS`
-paired lines per leg, and never where the legs would map two claims out of order. MEASURED AGAIN IN W2 over
-the 6 probe songs x their modes, arm and default on the same tree: every mode identical except `jit`, where
-it moves two documents and both get worse (believer -1.39 pt within +/-500 ms; Avercage -2.42 pt and
--1.19 pt on words within +/-300 ms) — a jitter-disputed run is exactly the shape it mistakes for a step.
-
-BOTH CONSUMERS TAKE THE SAME VOTE, with the reader's own band (W2). The global engine calls `consensus` once
-before its first `reconcile`, scoring candidates in `AGREE_TOLERANCE_SEC` because `reconcile` is what reads
-the map. The LINE_SYNC rung calls it too (`align_steps._line_sync_clock`), with its own blind decode as the
-`ours` series and `align_steps._LINE_SYNC_NEAR_SEC` as the tolerance, because there the reader is that rung's
-gate — and there the claims do not steer a repair, they ARE the published document. That rung placed them
-with `_placed_by`'s unconditional activity shift until W2 (`ShiftFit.usable`, r >= 0.40, moved the sheet
-whatever a vote would say), which is both of the things W3 measured on it: 23 published song-modes with no
-line within +/-500 ms of truth and every line within 1 s (bad-guy shifted +0.72 s, numb +0.62 s — the decode
-then reads the shifted claims as near, so both witnesses agree on one misplacement), and 12 right texts
-refused for claims that were merely 1.5-3 s off or 2% fast. A wider band is also a stricter map: no-shift is
-harder to beat at 1.0 s than at 0.25 s, which is what a map that MOVES WHAT PUBLISHES should want.
-
-The PIECEWISE arm stays the global engine's alone: a leg boundary there moves a repair window, on the rung it
-would move published timings, so it would owe its own `--sync-mode lines` corpus run before being an arm at
-all.
-
-WHAT STAYS RAW. The claims as the sheet gave them are kept by the caller for the trail and the report: the
-offset we publish describes THE CLAIM (`place.residual_against`, `TimingReport.residual_sec`), and the
-global engine deliberately reports no residual at all, so that `policy.decide` cannot offer RESHIFT for a
-series this engine never searched. The map's own offset reaches the trail through `ClaimMap.why`.
-
-PURE and DETERMINISTIC: floats, medians and comparisons only — no numpy, no wall clock, no random, so a
-DBOS replay and a bench re-run map identically. The audio-side candidate is computed by the step (numpy
-lives in `domain/audio/activity.py`) and passed in as one number.
+The claims are mapped here, before the first `reconcile`, and only the CLAIMS move (XA-04). The estimator is a
+VOTE, not a fit, under three floors, and PURE and DETERMINISTIC so a DBOS replay and a bench re-run map
+identically. The candidate table, the floors and why piecewise is an arm: `docs/arch/04-alignment.md` §7 and
+§14; README, "The claim clock", "The rung's own claim clock" and "The claim clock's own exhibits".
 """
 
 from __future__ import annotations
@@ -170,42 +14,20 @@ from statistics import median
 
 from encore_worker.domain.lyrics.reconcile import AGREE_TOLERANCE_SEC, MIN_FITTED_PAIRS, theil_sen
 
-#: Minimum paired lines before this module will map anything. Higher than `reconcile.MIN_PAIRS`
-#: deliberately (see the docstring's DIFFERENCES): reconcile only LABELS a series it cannot move, while a
-#: map applied here moves every claim window and every adoptable span with it. IT IS `reconcile`'s FITTED
-#: floor, not a second 5 that happens to agree (W2): review M4 set `MIN_FITTED_PAIRS` as the number of pairs
-#: a FIT may be believed on, and a fit that ACTS cannot need fewer — so raising that floor raises this one,
-#: which a duplicated literal would have silently left behind.
+#: Minimum paired lines before this module will map anything: `reconcile`'s FITTED floor itself, not a second
+#: literal that happens to agree. That floor is how many pairs a FIT may be believed on, and a fit that ACTS
+#: cannot need fewer — so raising it raises this, which a copy would silently have left behind.
 MIN_PAIRS = MIN_FITTED_PAIRS
 
 #: The winner must explain this many more paired lines than no-shift — or this share of them, whichever is
-#: larger (review §3.2: "max(2 lines, 5% of pairs)"). `int()`, not a ceiling, is the prototype's rule and
-#: the one the measured numbers came from. WHICH TERM BINDS, measured on the committed rows
-#: (`results/w2-line-gate.json`, 1056 cases, 7-236 paired lines — the corpus is not a 20-100 line population):
-#: `int(0.05 x pairs)` passes 2 at exactly 60 pairs, so the 2-line floor binds below that and the share above
-#: it, reaching 11 lines at 236 pairs (the largest margin any applied map faced is 10). The share is not
-#: decoration — 23 of the 1056 cases are refused by it specifically, their gain clearing 2 and not the share
-#: (Lower_Loveday at 217 pairs: gain 5, margin 10).
+#: larger. `int()` and not a ceiling, which is the rule the measured numbers came from. Which term binds, and
+#: how many cases the share alone refuses, is in README, "The claim clock's own exhibits".
 MIN_GAIN_LINES = 2
 MIN_GAIN_SHARE = 0.05
 
-#: ...and the winner must explain at least this SHARE of the paired lines outright, whatever its gain over
-#: no-shift (W2 review r1). The margin above is a difference, so on a sheet our decode barely agrees with
-#: anywhere, four candidates all explaining almost nothing still leave one of them 2 lines ahead — and that
-#: one moves every claim window and every adoptable span. MEASURED on the rows taken BEFORE this floor existed
-#: (`_runs/w2r-time_text/rows.jsonl`, 1088 cases — `results/w2-time_text.*` is the row WITH it, so the four
-#: maps below are no longer in it), which is where 0.2 comes from: of the 245 maps applied there,
-#: exactly four sit under a fifth of their pairs, and all four are the failure this floor exists for —
-#: hello tempo102 `envelope-lag` 4/74 = 0.054 (25 gross lines), hello tempo098 `decode-median` 6/74 = 0.081
-#: (31 gross), numb drop50 `envelope-lag` 2/17 = 0.118 (1 line of 17 within ±500 ms), one wrong-text sheet
-#: 2/35 = 0.057. The lowest map worth keeping is well clear of it: never-be-alone's tempo098/102 at 11/45 =
-#: 0.244 with 0 gross lines and 40 of 45 lines within ±500 ms — so 0.2 sits in an EMPTY band, 0.118 to 0.244,
-#: and the corpus row with the floor on confirms it (241 maps applied, lowest share 0.244, none refused for
-#: quality that any measurement wanted kept). At the LINE_SYNC rung (band `_LINE_SYNC_NEAR_SEC`, so shares run
-#: higher) the floor is inert on every right text — the lowest applied right-text share over the 1056 gate
-#: cases is 0.243, and re-measuring them with the floor on leaves all 188 applied right-text maps in place and
-#: changes no right-text row — and it refuses 293 of the 402 maps it applied to WRONG texts, which only makes
-#: that gate stricter.
+#: ...and the winner must explain at least this SHARE of the paired lines outright, the margin above being a
+#: DIFFERENCE, so four candidates explaining almost nothing can still leave one two lines ahead. In an EMPTY
+#: band (README, "The claim clock's own exhibits").
 MIN_INLIER_SHARE = 0.2
 
 #: A map that moves no paired claim by at least this much is not applied, whatever it explains. One frame
@@ -213,10 +35,9 @@ MIN_INLIER_SHARE = 0.2
 #: candidate and finer than the decode median's own jitter.
 MOVE_FLOOR_SEC = 0.02
 
-#: How far the envelope candidate's correlation may sit below `activity.MIN_CORRELATION` (0.40) and still
-#: be OFFERED. Deliberately weaker than that gate, and it is the prototype's number: a correlation there
-#: only buys a candidate a place in the vote, and the vote — lines explained, against the margin — is what
-#: decides. The step applies it, since the fit is measured on numpy-side data.
+#: How far the envelope candidate's correlation may sit below `activity.MIN_CORRELATION` and still be OFFERED.
+#: Deliberately weaker than that gate: a correlation here only buys a candidate a place in the vote, and the
+#: vote decides. The step applies it, since the fit is measured on numpy-side data.
 MIN_ENVELOPE_CORRELATION = 0.25
 
 #: The piecewise arm's shape: at most this many legs, each fitted on at least this many paired lines. A leg
@@ -260,12 +81,9 @@ class Piece:
 
 @dataclass(frozen=True, slots=True)
 class ClaimMap:
-    """The map from a sheet's claimed clock onto ours, plus the vote that chose it.
-
-    The identity (`IDENTITY`, and every abstention) has no legs and `applied` False, so `at` is exactly the
-    claim: "we could not tell" and "it was already on our clock" read the same downstream, deliberately,
-    because neither justifies moving anything.
-    """
+    """The map from a sheet's claimed clock onto ours, plus the vote that chose it. The identity has no legs,
+    so "we could not tell" and "it was already on our clock" read the same downstream — neither moves
+    anything."""
 
     #: In claim-time order. Empty for the identity.
     pieces: tuple[Piece, ...] = ()
@@ -277,12 +95,9 @@ class ClaimMap:
     baseline: int = 0
     pairs: int = 0
     margin: int = 0
-    #: NO `declined_sec` HERE, deliberately (W4 review r1 built one and this removes it). The size of a
-    #: REFUSED candidate looks like the number a reader deciding whether to publish a raw claim time wants,
-    #: and it is not: a candidate can be seconds wide because OUR DECODE is scattered — `decode-median` is
-    #: fitted against it — which is the very case adoption exists for. `align_steps`' `off_clock` asks the
-    #: audio instead (`activity.fit_shift` of the claims against the singing) and says so where it does it.
-    #: The winner's offset reaches the trail either way, through `why`.
+    #: NO `declined_sec` HERE, deliberately: the size of a REFUSED candidate looks like the number a reader
+    #: wants and is not, a candidate being seconds wide precisely when OUR DECODE is scattered.
+    #: `align_steps`' `off_clock` asks the AUDIO instead.
     why: str = "no claims to map"
 
     def at(self, claimed: float) -> float:
@@ -325,15 +140,9 @@ def consensus(
 ) -> ClaimMap:
     """The map to put `claimed` on the clock `ours` is measured in, by consensus over candidate maps.
 
-    `ours` is our own decode's line starts and `claimed` the sheet's, both keyed by the text's ORIGINAL
-    line index (`Line.index`) — paired by index, never by order, for `reconcile`'s reason: one dropped
-    decorative line would otherwise shear every comparison after it. Lines only one side has are ignored.
-
-    `envelope_lag` is the claims' own lag measured on the AUDIO (`activity.fit_shift` of the audio's
-    envelope against `activity.expected_envelope` of the claim spans), in seconds to ADD to a claim, or
-    None when the caller could not measure it or its correlation sits under `MIN_ENVELOPE_CORRELATION`.
-
-    `piecewise` admits the change-point arm (`Config.align_experiments`, `claimmap-piecewise`).
+    Both are keyed by the text's ORIGINAL line index and paired by index, never by order; lines only one side
+    has are ignored. `envelope_lag` is the claims' own lag on the AUDIO, in seconds to ADD to a claim,
+    and `piecewise` admits the change-point arm.
     """
     pairs = sorted((float(claimed[i]), float(ours[i])) for i in claimed if i in ours)
     if len(pairs) < MIN_PAIRS:
@@ -428,15 +237,8 @@ def consensus(
 
 def _inliers(pairs: Sequence[tuple[float, float]], offset: float, scale: float, tolerance_sec: float) -> int:
     """Paired lines a leg explains: |ours - mapped claim| within tolerance, on the CLAMPED value the caller
-    will apply, so a map that pushes early claims below zero is scored as it will behave.
-
-    WHICH PAIR REACHES THE CLAMP (W2 review r2 — deleting it left the suite green, and the neighbouring case
-    said "a paired claim never reaches the clamp", which is true of `at` but not of this). It needs a claim
-    the leg sends below -tolerance whose line OUR decode put within tolerance of zero, and that is one real
-    shape: a sheet otherwise late whose FIRST cue is stamped at 0.00 — the `[00:00.00]` an LRC commonly opens
-    with — over a song that starts singing immediately. Measured on a 45-line sheet 5 s late with that opening
-    stamp and a first line decoded at 0.1 s: the leg alone maps the cue to -5.0 s and the clamp makes it 0.0,
-    which is where it will actually publish, so the score is 45 of 45 rather than 44."""
+    will apply, so a map that pushes early claims below zero is scored as it will behave — which a sheet
+    opening at `[00:00.00]` over a song that sings immediately really reaches."""
     return sum(1 for theirs, ours in pairs if abs(ours - max(0.0, theirs * scale + offset)) <= tolerance_sec)
 
 
@@ -450,49 +252,10 @@ def _densest_offset(
     pairs: Sequence[tuple[float, float]], tolerance_sec: float, margin: int, scale: float = 1.0
 ) -> float | None:
     """The offset the MOST paired lines agree on AT `scale`: the median of the densest `2 x tolerance` window
-    of `ours - scale x claimed` — a MODE, not a location fit (W4 review r1; see WHY THE MODE in the module
-    docstring). It is `_offset_for`'s counterpart and takes the same `scale`, so the tempo candidate gets the
-    robust offset too: a drifting sheet's differences are a RAMP, and a median of a ramp half of whose lines
-    are wild is no better centred than a median of a bimodal constant.
+    of `ours - scale x claimed` — a MODE, not a location fit.
 
-    The window is `2 x tolerance` wide because that is the widest set of differences ONE offset can explain:
-    every difference inside it is within `tolerance` of the window's centre, so "the densest window" and
-    "the offset with the most inliers" are the same question asked cheaply. Its MEDIAN rather than its centre,
-    so a cluster sitting against one edge of the window is estimated where its lines actually are.
-
-    TIES GO TO THE OFFSET NEARER ZERO, for the module's own asymmetry: two equally dense clusters is two
-    equally good stories about the sheet, and the one that moves it less is the one to tell. Deterministic
-    either way — sorted floats, integer counts and a median, no numpy and no iteration order.
-
-    None WHEN THE WINDOW IS NOT A FIT — fewer than `MIN_PAIRS` differences inside it (W4 review r1's own
-    round). A window IS a fit, on the lines inside it and no others, and `MIN_PAIRS` is this module's number
-    for how many paired lines a fit may be believed on; the two floors the vote already applies cannot stand
-    in for it on a SHORT sheet, because `MIN_INLIER_SHARE` of 6 pairs is 1.2 lines and `MIN_GAIN_LINES`
-    bottoms out at 2. MEASURED on the two hermetic exhibits that caught it
-    (`tests/test_align_provenance.py`): a 6-line sheet whose truncated last cue the decode smears over an
-    outro repeat, and an 8-line sheet whose claims are rotated onto each other's lines, both hand this
-    window exactly 2 of their differences — 0.33 and 0.25 of the pairs, clear of the share floor, and 2
-    ahead of no-shift's 0, so both were applied, moving 6 correct cues by +2.77 s and 8 claims by -13.28 s.
-    INERT ON THE CORPUS, which is why it is a floor and not a recalibration: over the 1088 cases of
-    `_runs/w4r1b-time_text` the 15 applied `decode-mode` maps hold 10 to 41 lines and the 3 applied
-    `tempo-mode` maps 7 to 12, so none of them is near it; the only two cases it can reach at all named a
-    3-line and a 4-line window as their REFUSED best candidate (`never-be-alone` drop50, `LUNABLIND`
-    wrongtext #2), and re-running both on this tree reproduces their documents BYTE-IDENTICALLY
-    (`doc_sha256` df872d26cfab8101 and e83ba54619003171, `_runs/w4r2-{nba-drop50,luna-wrong}`) — the floor
-    moves one sentence of their trail and nothing a metric reads.
-
-    None ALSO WHEN THE WINDOW IS NOT A MODE, and that guard is load-bearing rather than tidy. Every other
-    candidate is an estimate someone could have written down in advance; this one is chosen by MAXIMISING a
-    count over every position, so on differences with no mode at all the luckiest slice still looks dense —
-    `MIN_INLIER_SHARE` was calibrated against candidates that do not shop around, and without this guard the
-    shape that floor exists for defeats it. MEASURED on that exact exhibit (`tests/test_claimmap.py`, a
-    CORRECTLY timed 47-line sheet against a decode uniformly 0.4-3.0 s late): the densest 0.5 s window holds
-    16 of 47 differences — 0.34, clear of the floor — and would have moved 47 right claims by +2.62 s. So the
-    window must be ISOLATED: widening it by `tolerance` on each side must gather fewer than `margin` further
-    lines, the same margin the vote uses against no-shift. The uniform exhibit gathers 9 more and is refused;
-    the bimodal shapes this candidate exists for gather NONE (`never-be-alone` off3 17 -> 17, its tempo098 at
-    the fitted scale 13 -> 13), and a merely JITTERED sheet gathers 4 and is refused, which is right — its
-    differences are one hump, so `decode-median` is already its estimator.
+    None on two refusals, both load-bearing: NOT A FIT, and NOT A MODE, this being the one candidate CHOSEN by
+    maximising a count (docs/arch/04-alignment.md §7).
     """
     deltas = sorted(ours - scale * theirs for theirs, ours in pairs)
     width = 2.0 * tolerance_sec
@@ -527,22 +290,11 @@ def _moves(pieces: Sequence[Piece], pairs: Sequence[tuple[float, float]]) -> boo
 
 
 def _monotonic(pieces: Sequence[Piece]) -> bool:
-    """Does the map keep EVERY claim in the order the sheet has them — not just the paired ones? A piecewise
-    map with a step DOWN can swap two claims across a leg boundary, which would hand two repair windows to the
-    wrong lines. A single leg with a positive scale cannot, so this only ever refuses a split.
+    """Does the map keep EVERY claim in the order the sheet has them — not just the paired ones?
 
-    TESTED ON THE BOUNDARIES, not on a sample of the pairs (W2 review r1). This used to map the PAIRED claims
-    and check the result was non-decreasing, but `ClaimMap.at` is applied to every claim — `starts` and
-    `windows` map the unpaired ones too, which is the whole point of `test_a_partial_sheet_maps_every_claim`.
-    A step down therefore passed whenever no PAIRED claim happened to sit in the step's own shadow (the last
-    `offset_gap` seconds before the boundary), while an unpaired claim there — a decorative line our decode
-    dropped, one under `lexical`'s floor, a non-Latin one — was still swapped past its neighbour: legs
-    `[(from 0.0, +5.0s), (from 30.0, 0.0s)]` passed on pairs at 10/30/60 while mapping an unpaired claim at
-    29.0 to 34.0, ahead of the paired 30.0 that stayed at 30.0.
-
-    A leg owns `[from_sec, next.from_sec)` and is increasing there (positive scale), so its supremum is its
-    value AT the next boundary: comparing the two legs there is exact, needs no epsilon and holds for every
-    claim in between. The zero clamp `at` applies is non-decreasing, so it cannot reorder what this admits.
+    A piecewise map with a step DOWN can swap two claims across a leg boundary, so this only ever refuses a
+    split. TESTED ON THE BOUNDARIES rather than on the pairs, which passed whenever no paired claim sat in a
+    step's shadow: a leg is increasing within its own span, so comparing two legs there is exact.
     """
     for previous, nxt in zip(pieces, pieces[1:], strict=False):
         if nxt.at(nxt.from_sec) < previous.at(nxt.from_sec):
@@ -555,9 +307,8 @@ def _split(
 ) -> tuple[Piece, ...]:
     """The piecewise arm: recursive change-point split of one claim-ordered run into offset legs.
 
-    One offset per leg and no per-leg scale: a leg is fitted on as few as `MIN_PIECE_PAIRS` lines, where a
-    slope is a fit through noise, and the shapes this arm exists for (an inserted section, a sheet
-    re-lineated mid-song, a live rendition that drops a verse) are STEPS.
+    One offset per leg and no per-leg scale: the shapes this arm exists for are STEPS, and a slope over
+    `MIN_PIECE_PAIRS` lines is a fit through noise.
     """
     offset = _offset_for(pairs, 1.0)
     whole = Piece(

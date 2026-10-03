@@ -1,15 +1,8 @@
-"""Suite-wide guards.
+"""Suite-wide guards: the socket is blocked unless a test says `@pytest.mark.allow_network`.
 
-THE NETWORK BLOCK EXISTS BECAUSE IT CAUGHT A REAL PROBLEM. When the lyrics clients were changed to build
-their own `urllib` opener, a test that monkeypatched `urllib.request.urlopen` stopped intercepting — so
-four tests quietly started making live DNS lookups and HTTP requests. They still PASSED, just thirty
-seconds slower, against whatever the public API happened to return that day.
-
-That is the worst shape a test can take: green, slow, and dependent on someone else's uptime. Blocking
-the socket turns it into an immediate, named failure instead.
-
-A test that genuinely needs the network must say so with `@pytest.mark.allow_network`, which makes the
-exception visible in the source rather than implicit in a passing run. Nothing in this suite uses it.
+The block caught four tests that had quietly started making live DNS and HTTP calls when the lyrics
+clients grew their own `urllib` opener and a monkeypatch stopped intercepting — still green, thirty
+seconds slower, against whatever the public API returned that day. Nothing in this suite marks itself.
 """
 
 from __future__ import annotations

@@ -1,11 +1,7 @@
 """What is wrong with one aligned document, measured — and the thresholds that judge it.
 
-Every number here was already computed by the old worker and then thrown away: its `TimingReport`
-carried coverage, overshoot, out-of-order counts, gaps, smears and flashes, noted them to a log, and
-acted on exactly one (`out_of_order`, to degrade word timing to line timing). Nothing re-aligned.
-
-This module is the measurement only. `policy.py` decides what to DO about it, and keeping those apart is
-what makes the decision a table-driven unit test instead of an integration test.
+The measurement only: `policy.py` decides what to DO about it, and keeping those apart is what makes the
+decision a table-driven unit test instead of an integration test (docs/arch/04-alignment.md §3).
 """
 
 from __future__ import annotations
@@ -41,20 +37,12 @@ OVERSHOOT_FRACTION_MAX = 0.10
 class Engine(StrEnum):
     """What produced a document's timings — and therefore which knobs could change them.
 
-    ON THE REPORT because `policy.decide` sees only the report, and the H2 regression (review
-    2026-09) was a knob offered to an engine that does not read it. `thin_coverage -> ALIGN_ON_MIX` was
-    written for the windowed aligner, whose search is confined to the text's own spans; under the global
-    decode it became the ONLY live re-decode retry, fired on nothing more than a long instrumental outro
-    (last word end / duration < 0.80), and the mix document overwrote the stem one unseen. Measured on
-    the 32-song bench at `--level run_align`: Pure_Mids' 0-gross stem document replaced by a 13-gross mix
-    one in 12 of 15 claim modes, and Kinematic (stem coverage 71%, 0 gross) lost to NO LYRICS in 9 —
-    truth claims included — because its mix retry was then refused by the envelope gate.
+    ON THE REPORT because `policy.decide` sees only the report, and the regression it exists for was a knob
+    offered to an engine that does not read it (docs/arch/04-alignment.md §3).
     """
 
-    #: `generate` over one emission matrix of the whole song. Reads no knob but LINE_SYNC: it never
-    #: places the text (RESHIFT), never searches presplit windows (DROP_WINDOWS), and already consults
-    #: the mix per line where the stem is silent (R4) — so re-running it on the whole mix answers a
-    #: question R4 asked line by line, with the band smearing every OTHER line's boundaries.
+    #: `generate` over one emission matrix of the whole song, reading no knob but LINE_SYNC
+    #: (`policy._READS`; docs/arch/04-alignment.md §3).
     GLOBAL = "global"
     #: whisperx's windowed aligner, cropped to the text's (placed) spans. The capability path, for an
     #: aligner with no emission matrix; every knob applies to it.
@@ -93,29 +81,13 @@ class TimingReport:
     #: line-synced document is judged on, since it has no words (review M1: judged on `words`, a
     #: LINE_SYNC document was `usable=False` by construction, so the knob could never commit).
     lines: int = 0
-    #: Why a GATE judged this text not to describe this audio, or None. Set only by a step that measured
-    #: it — never by a missing or failed measurement, which is `NOTHING_TIMED`'s job. A refusal is
-    #: TERMINAL FOR THE TEXT: `policy.decide` answers it with NextText, never LINE_SYNC, because line
-    #: sync would publish the same wrong words on their own clock with no gate at all (W0 measured the
-    #: hazard: 168 of 320 wrong texts refused by the envelope gate were retrying LINE_SYNC, and only M1's
-    #: bug kept them off the TV).
+    #: Why a GATE judged this text not to describe this audio, or None. Set only by a step that MEASURED it,
+    #: never by a failed measurement, and TERMINAL FOR THE TEXT (XA-05; docs/arch/04-alignment.md §5.3 for
+    #: the hazard it closes).
     refused: str | None = None
-    #: Did `reconcile` RELATE this document's timings to the text's OWN claimed line starts? The one fact that
-    #: compares this document with the LINE_SYNC document of the same text, which is why it is on the report
-    #: and not only on the trail: `policy.decide` spends LINE_SYNC on a word document this is False for, and
-    #: `policy.improves` then lets the line document replace it (W4, the cross-kind comparison).
-    #:
-    #: False is `reconcile.UNRELATED` and nothing else — the verdict with the pairs behind it, the same one
-    #: R1's gate reads: no offset, no bounded tempo and no structural story fits our timings to the claims.
-    #: None is "the question was not answered": an untimed text (NO_CLAIMS), three or four pairs that merely
-    #: disagree (TOO_FEW_PAIRS, a disagreement nothing established — no document should be replaced on it),
-    #: the windowed engine, which reconciles nothing, and a LINE_SYNC document, which has no decode of its
-    #: own to relate. The step sets it from the LAST reconcile, the one that describes the document being
-    #: published, not from the blind one grading reads (`align_steps._time_text_global` says why the two
-    #: choices differ). Measured at `run_align` over the W2 corpus rows (`_runs/w2r2-run_align` against
-    #: `w2r2-lines-run_align`, the same 32 songs' own line documents): of the 357 published word documents
-    #: that have a line document beside them, the 18 where this is False hold 299 of their 356 gross lines —
-    #: 84% of them, in 5.0% of the cases.
+    #: Did `reconcile` RELATE this document's timings to the text's OWN claimed line starts? False is
+    #: `reconcile.UNRELATED` and nothing else; None is "the question was not answered"
+    #: (docs/arch/04-alignment.md §3; README, "`claims_related`").
     claims_related: bool | None = None
 
     def __setstate__(self, state: Sequence[object]) -> None:
@@ -125,21 +97,10 @@ class TimingReport:
     def usable(self) -> bool:
         """Is this publishable as WORD timing at all?
 
-        ONLY order violations disqualify, and the reasoning is worth keeping: a highlight that jumps
-        backwards is incoherent, and line sync is strictly better than incoherent. Everything else is a
-        defect rather than a disqualification —
-
-          * thin coverage is usually CORRECT (an instrumental break genuinely has no words), and if a
-            transcription only covered the first third, the timing for that third is still right;
-            refusing would publish nothing, which is worse than what it prevents.
-          * a handful of smeared or flashed words beats losing per-word timing everywhere.
-
-        So `usable` is a floor, not a quality bar. `policy.decide` is what asks whether a usable doc is
-        nevertheless worth one more attempt with a different parameter.
-
-        A LINE_SYNC document is judged on its LINES — the same floor one level up: at least one timed
-        line, and no line starting before the previous one (a row that jumps backwards is as incoherent
-        as a word that does).
+        ONLY order violations disqualify: a highlight that jumps backwards is incoherent, and line sync is
+        strictly better than incoherent, while every other defect is still better than publishing nothing. So
+        this is a FLOOR and not a quality bar, which `policy.decide` is what asks. A LINE_SYNC document is
+        judged on its LINES, the same floor one level up (docs/arch/04-alignment.md §3).
         """
         if self.refused is not None:
             return False
@@ -149,20 +110,14 @@ class TimingReport:
 
     @property
     def thin_coverage(self) -> bool:
-        """Timing stops well before the song does. A prompt to look, not a diagnosis.
-
-        Acted on only for the WINDOWED engine (`policy._READS`). For the global decode it is telemetry: a
-        long instrumental outro reads exactly like an inaudible stem here (review H2).
-        """
+        """Timing stops well before the song does — a prompt to look and not a diagnosis, acted on only for
+        the WINDOWED engine: a long outro reads exactly like an inaudible stem here."""
         return 0.0 < self.coverage < MIN_COVERAGE
 
     @property
     def overshoots(self) -> bool:
-        """Do this text's own timings run materially past the end of the audio?
-
-        Fractional, not absolute: three seconds over on a 90-second clip is a different claim than
-        three seconds over on a ten-minute one.
-        """
+        """Do this text's own timings run materially past the end of the audio? Fractional and not absolute:
+        three seconds over on a 90-second clip is a different claim than on a ten-minute one."""
         if self.duration_sec <= 0 or self.overshoot_sec <= 0:
             return False
         return (self.overshoot_sec / self.duration_sec) > OVERSHOOT_FRACTION_MAX
@@ -200,18 +155,10 @@ def restore_appended(
 ) -> None:
     """Unpickle a slotted dataclass `record` from `state`, filling each field APPENDED since it was pickled.
 
-    WHY (review W1 r2). A frozen, slotted dataclass pickles its field values as a list in field order and
-    restores them with `zip(fields, state)`, so a field added after a checkpoint was written is left UNSET:
-    reading it raises `AttributeError`. DBOS checkpoints every step's record with pickle, and it replays
-    them: a job in flight at an upgrade resumes on its old `TimedDoc`s and `TimingReport`s, and a requeue of
-    an old failed job forks from its old checkpoints (`workflows.durable._run_id`). W1 appended
-    `TimingReport.engine` / `lines` / `refused`, `TimedDoc.tier` and `AlignOutcome.sync_mode`, and a v2
-    report then failed the job on `usable`'s first line, fork after fork, until core's `maxAttempts`.
-
-    A missing field takes `derived[name](the fields restored before it)` when given (what an old record
-    implies: a v2 document's tier from its label), else its default. Fields are only ever APPENDED to a
-    checkpointed record (the records' rule), so the state is a prefix of the fields; a missing field with
-    neither raises, naming it, rather than leaving a record that fails later where nothing says why.
+    A slotted dataclass restores its fields positionally, so one added after a checkpoint was written is left
+    UNSET and reading it raises — which failed a job in flight at an upgrade, fork after fork, until core's
+    attempt ceiling (XA-16; docs/arch/05-worker.md §8). A missing field takes `derived[name]` of the fields
+    before it when given, else its default, else raises naming itself.
     """
     restored: dict[str, object] = {}
     for position, spec in enumerate(fields(record)):

@@ -1,17 +1,9 @@
 """Identifying a song against MusicBrainz — the PURE half: query building, parsing and ranking.
 
-PORTED FROM `worker/src/metadata/annotate.py`, and the parity gap it closes is not cosmetic. Without a
-MusicBrainz lookup the worker publishes a TITLE PARSE as its annotation: `medium` confidence, no MBID. Core
-applies that to `artistCanonical`/`titleCanonical`, and `assignParams` sends exactly those to a later align
-job as its LYRICS LOOKUP KEYS. So a worse name is not a cosmetic loss — it is an LRCLIB miss and a fall back
-to ASR for a song whose words were published somewhere.
-
 The HTTP half lives in `adapters/musicbrainz`; everything here is a pure function over a JSON document, so
-the ranking policy that took real tuning is testable without a network.
-
-WHY NAME AGREEMENT IS REQUIRED RATHER THAN SCORED. MusicBrainz's `score` is LEXICAL: it will happily return
-a different song by the same artist with a high score, and writing that as fact is the failure this refuses.
-Length is the corroborating evidence a lexical score cannot provide.
+the ranking policy that took real tuning is testable without a network. WHY NAME AGREEMENT IS REQUIRED RATHER
+THAN SCORED: MusicBrainz's `score` is LEXICAL and will return a different song by the same artist with a high
+one, where length is corroborating evidence (docs/arch/05-worker.md §6).
 """
 
 from __future__ import annotations
@@ -233,17 +225,10 @@ def pick_best(
 ) -> Annotation | None:
     """Best recording that AGREES on artist and title, preferring the closest duration.
 
-    ARTIST AGREEMENT MEANS THE PRIMARY, NOT THE WHOLE BILLING. MusicBrainz publishes a collaboration as one
-    joined credit ("League of Legends feat. Against the Current") while the caller's key is a single primary
-    artist, so comparing only the joined string would reject every song with a guest on it. A full-credit
-    agreement is stronger evidence, so it still WINS the sort; it is just no longer the price of admission.
-
-    Among genuine agreements the sort is: exact-credit before primary-only, then closest duration, then
-    EARLIEST release, then MusicBrainz's own score. The year tie-break exists because duration alone can
-    leave several recordings tied and pick a live-tour or karaoke-compilation cut over the original.
-
-    What gets PUBLISHED is always the full credit, whichever way the match was made: it is what a singer
-    wants to read, and it is the strictly more informative of the two.
+    ARTIST AGREEMENT MEANS THE PRIMARY, NOT THE WHOLE BILLING, or every song with a guest on it would be
+    rejected; a full-credit agreement still WINS the sort. Then closest duration, then EARLIEST release — a
+    tie on duration otherwise picks a karaoke-compilation cut — then MusicBrainz's own score. What gets
+    PUBLISHED is always the full credit, being the more informative of the two.
     """
     want_artist, want_track = normalize_for_match(artist), normalize_for_match(track)
     if not want_artist or not want_track:

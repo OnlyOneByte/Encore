@@ -1,37 +1,13 @@
 """Which ffmpeg this box will run, and why that is a decision rather than a lookup.
 
-THE WORKER SHELLS FFMPEG ON EVERY PATH. yt-dlp postprocesses to WAV with it, `decode_to_wav` normalises
-the input with it, the FLAC and guide-mix encoders are it, and the silence probe reads levels with it. So
-"is ffmpeg present" is not a nicety — it gates the `stems` capability outright (see `hardware.capabilities`),
-and an absent or ancient one is a class of failure that only shows up per-codec, at job time.
+The worker shells ffmpeg on every path, so "is ffmpeg present" gates the `stems` capability outright (see
+`hardware.capabilities`), and an absent or ancient one is a class of failure that only shows up per codec,
+at job time. Resolution order: `ENCORE_FFMPEG_BIN`, then `imageio-ffmpeg`'s pinned static build, then
+`ffmpeg` on PATH.
 
-RESOLUTION ORDER, and each step earns its place:
-
-  1. `ENCORE_FFMPEG_BIN`   an explicit operator choice. Always wins: someone who built ffmpeg with NVENC,
-                           VideoToolbox or a patched libopus has a reason, and no heuristic here should
-                           second-guess it.
-  2. the bundled binary    `imageio-ffmpeg`'s static FFmpeg 7.1, shipped per-platform in the wheel. Pinned,
-                           so the FLAC this worker publishes is reproducible on a machine that has no
-                           ffmpeg at all and on one whose distro ships 4.4.
-  3. `ffmpeg` on PATH      the last resort, for platforms with no wheel (musl/Alpine, BSD, ppc64le).
-
-BUNDLED BEATS PATH DELIBERATELY, which is the one choice here that could go either way. The argument for
-PATH-first is that an operator's own build is probably better; the argument that wins is reproducibility —
-two workers in a pool must not encode stems with different FFmpeg majors, and `job_attempts` records no
-ffmpeg version to explain it if they do. An operator who wants their own build says so with one env var,
-which is explicit and logged.
-
-NO, THIS DOES NOT COST HARDWARE ACCELERATION. The question is a fair one — a static build has no NVENC,
-no VideoToolbox, no QSV — but this worker decodes and encodes AUDIO ONLY: PCM, FLAC, AAC, Opus, Vorbis.
-Every one of those is CPU-only in every FFmpeg build there is; there is no GPU audio codec to lose. The
-acceleration that matters to this worker is torch's (CUDA / MPS / XPU), which lives in a different
-dependency chain entirely and is untouched by any of this.
-
-WHAT THIS DOES NOT FIX: torchcodec. pyannote 4.0 pulls torchcodec, which `dlopen`s FFmpeg SHARED
-LIBRARIES (`libavutil.<major>.dylib` and friends) rather than running a binary — verified against
-torchcodec 0.7.0 through 0.16.0, none of which bundle them. A static binary cannot satisfy that, so the
-answer there is to not need it: `ml.PyannoteDiarizer` hands pyannote a preloaded waveform, which bypasses
-its decoder. See that class.
+Why bundled beats PATH, why that costs no hardware acceleration, and what it does not fix — torchcodec,
+which `dlopen`s ffmpeg's shared libraries, answered by `ml.PyannoteDiarizer` handing pyannote a preloaded
+waveform: `docs/arch/05-worker.md` §5.
 """
 
 from __future__ import annotations
@@ -48,9 +24,8 @@ FALLBACK = "ffmpeg"
 def bundled() -> str | None:
     """The wheel-shipped static binary, or None when the `ffmpeg` extra is not installed.
 
-    Returns a path WITHOUT checking it runs — `probe_version` is how a caller establishes that. Keeping
-    the two separate means a broken bundle is reported as a broken bundle rather than silently falling
-    through to a system ffmpeg of unknown vintage.
+    Returns a path WITHOUT checking it runs (`probe_version` does that), so a broken bundle is reported as
+    one rather than falling through to a system ffmpeg of unknown vintage.
     """
     try:
         import imageio_ffmpeg  # noqa: PLC0415 - lazy: an extra, absent on a minimal install
@@ -65,12 +40,10 @@ def bundled() -> str | None:
 
 @functools.cache
 def resolve(explicit: str | None = None) -> str:
-    """The ffmpeg this process should run. Cached: the answer cannot change within one process, and
-    `bundled()` costs an import.
+    """The ffmpeg this process should run. Cached, the answer being fixed for the process.
 
-    `explicit` is the operator's `ENCORE_FFMPEG_BIN` if they set one. An explicit value is returned
-    UNVALIDATED and on purpose: if an operator names a binary that does not exist, the right outcome is
-    the loud failure they can act on, not a quiet substitution of something else.
+    An `explicit` `ENCORE_FFMPEG_BIN` is returned UNVALIDATED on purpose: naming a binary that does not
+    exist should fail loudly rather than be quietly substituted.
     """
     if explicit:
         return explicit

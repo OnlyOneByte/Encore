@@ -1,38 +1,10 @@
 """Where singing actually happens, and what that says about a lyrics sheet's offset.
 
-WHY THIS EXISTS. A forced aligner does not search the recording — whisperx crops the audio to each
-segment's provisional span and aligns the text inside it. So a sheet whose timings are offset from the
-recording is not refined back into place; the offset is passed straight through. Measured over a 0..5 s
-sweep on `tfr-flyaway` (docs/benchmarks/forced-alignment):
-
-    bias = 1.005 x offset + 131 ms      (max residual 41 ms, aligning on the mix)
-    bias = 1.008 x offset +  59 ms      (max residual 42 ms, aligning on the vocals stem)
-
-A slope of 1.00 means NONE of the offset is recovered — not at five seconds and not at 150 ms. Worse, the
-aligner stays internally precise while doing it (jitter of 41-162 ms across the whole sweep), so the result
-is a confidently, uniformly misplaced document that passes every self-consistency check in `TimingReport`.
-
-The cost is steep and it starts early: lines within +/-250 ms of truth fall 74.7% -> 42.7% at a 150 ms sheet
-offset, and to 20.0% at 250 ms.
-
-WHAT THIS MEASURES INSTEAD. `place.estimate_shift` has always wanted "a REFERENCE series measured on this
-audio", and the only one the worker had was the previous attempt's alignment — which carries the same error
-it is trying to remove, so a first attempt could not be corrected at all. This provides an INDEPENDENT
-reference that needs no model: the sheet's line spans say where singing is expected, the audio says where it
-is, and the lag between those two envelopes is the offset.
-
-    correct song, vocals stem   recovered every injected offset to within 10-20 ms (the frame quantum)
-    correct song, full mix      to within 140-150 ms
-    a DIFFERENT song's sheet    r = -0.10 .. 0.31, refused by `MIN_CORRELATION`
-
-End to end through the real aligner, lines within +/-250 ms: 20.0% -> 68.0% at a 250 ms offset, 0.0% ->
-73.3% at 500 ms and beyond, against an uncorrected-sheet ceiling of 74.7%.
-
-PEARSON r IS THE GATE, and two more obvious candidates were measured and rejected. Peak PROMINENCE does not
-discriminate (1.03-1.08 for a wrong song against 1.04-1.07 for the right one, and a shuffled sheet scored
-HIGHEST at 1.22) because a 75-line envelope is mostly "on", so the correlation is broad rather than peaked.
-ONSET AGREEMENT does not discriminate either (40.4-43.2% wrong against 38.7-74.7% right). Only the
-correlation at the chosen lag separates the two populations.
+The sheet's line spans say where singing is expected, the audio's RMS envelope says where it is, and the lag
+between the two envelopes is the offset; Pearson `r` at that lag is the gate. Why a forced aligner cannot fix
+this itself, the measured pass-through and the two rejected gates are in
+`docs/benchmarks/forced-alignment/README.md`, "The fix, and what it measured"; the gate's three tiers are in
+`docs/arch/04-alignment.md` §5.2.
 """
 
 from __future__ import annotations
@@ -42,27 +14,18 @@ from dataclasses import dataclass
 
 import numpy as np
 
-#: Frame size for the activity envelope. 20 ms is the quantisation floor on any shift this estimates, and
-#: that is already an order of magnitude finer than the error it corrects.
+#: Seconds per envelope frame, and so the quantisation floor on any shift this estimates.
 HOP_SEC = 0.02
 
-#: How far out to look. Beyond a few seconds a sheet is not offset, it is a different song — and searching
-#: wider costs accuracy by admitting a spurious peak.
+#: Seconds of lag to search either way. Beyond a few seconds a sheet is not offset, it is a different song.
 MAX_SHIFT_SEC = 8.0
 
-#: Envelope correlation below which the fit is REFUSED.
-#:
-#: Calibrated, and on few points: the right song scored 0.590 (vocals stem) and 0.476 (mix), a different
-#: song's sheet scored 0.178, 0.306 and -0.100. 0.40 sits between those populations with the narrowest
-#: margin being 0.306 -> 0.476. That is thin enough to state rather than bury: widen the calibration before
-#: trusting this on material unlike the benchmark's.
-#:
-#: The asymmetry that makes a conservative threshold right: refusing a good fit costs the offset we already
-#: have today, while accepting a bad one MOVES A SHEET THAT WAS CORRECT.
+#: Pearson `r` below which the fit is REFUSED. Calibrated on few points and thin (narrowest margin
+#: 0.306 -> 0.476): README, "The fix, and what it measured".
 MIN_CORRELATION = 0.40
 
-#: Percentile taken as "this track's loud level", so the envelope is level-independent. Not the max: one
-#: clipped frame would scale everything else to near zero.
+#: Percentile taken as "this track's loud level". Not the max, which one clipped frame would scale
+#: everything else to near zero against.
 _LOUD_PERCENTILE = 95
 
 
@@ -77,23 +40,17 @@ class ShiftFit:
 
     @property
     def usable(self) -> bool:
-        """Trustworthy enough to move a sheet with?
-
-        NOT gated on the shift's size, unlike `place.MIN_SHIFT_SEC`. That floor exists because applying a
-        badly-estimated small shift would jitter a text that was already right — but this estimate is good
-        to 10-20 ms, and applying it to an already-correct sheet was measured to cost ONE line out of 75
-        (74.7% -> 73.3% within +/-250 ms). The floor was protecting against an estimator this accurate did
-        not need protecting against, while excluding the 0-350 ms band that does the most damage.
-        """
+        """Trustworthy enough to move a sheet with? NOT gated on the shift's size, unlike
+        `place.MIN_SHIFT_SEC`: `docs/benchmarks/forced-alignment/README.md`, "The fix, and what it
+        measured"."""
         return self.correlation >= MIN_CORRELATION
 
 
 def envelope(signal: np.ndarray, rate: int, hop: float = HOP_SEC) -> np.ndarray:
     """Frame-wise vocal activity in 0..1, from a decoded signal.
 
-    Normalised against the track's own loud level rather than an absolute dBFS threshold, so a quietly
-    mastered song and a loud one produce comparable envelopes — the shape is what the fit reads, not the
-    level.
+    Normalised against the track's own loud level rather than an absolute dBFS threshold: the shape is what
+    the fit reads, not the level.
     """
     mono = signal.mean(axis=1) if signal.ndim > 1 else signal
     width = max(1, int(rate * hop))
@@ -109,9 +66,8 @@ def envelope(signal: np.ndarray, rate: int, hop: float = HOP_SEC) -> np.ndarray:
 def expected_envelope(spans: Sequence[tuple[float, float]], frames: int, hop: float = HOP_SEC) -> np.ndarray:
     """A 0/1 envelope of where a SHEET claims singing happens.
 
-    Uses each line's full span rather than just its start, because a duration is information the sheet
-    already carries and the fit is sharper for having it — a train of impulses correlates worse against a
-    continuous signal than a train of blocks does.
+    Each line's full span rather than its start alone: a train of blocks correlates against a continuous
+    signal better than a train of impulses does.
     """
     out = np.zeros(max(frames, 0))
     if frames <= 0:
@@ -127,18 +83,12 @@ def expected_envelope(spans: Sequence[tuple[float, float]], frames: int, hop: fl
 def _bounded_correlation(a: np.ndarray, b: np.ndarray, reach: int) -> tuple[np.ndarray, int]:
     """`np.correlate(a, b, "full")` restricted to lags in `[-reach, reach]`, plus the first lag returned.
 
-    Lag `L` here means `b` DELAYED by `L` frames, the sense `np.roll(expected, L)` reads and the sense the
-    full correlation's index `len(b) - 1 + L` carries. Lags whose overlap does not exist are not returned —
-    `L < -(len(b) - 1)` and `L > len(a) - 1` are exactly the indices the full correlation has no entry
-    for — so a tiny envelope with a large `reach` behaves as it did before this was bounded.
-
-    WHY IT IS THE SAME SUM: `np.correlate(x, b, "valid")[i]` is `sum_n x[i + n] * b[n]`, the same inner
-    product over the same overlap the full mode computes for that lag. Padding `a` with `-lag_lo` leading
-    zeros lines index 0 up with `lag_lo`, and the trailing zeros only supply a tail the full mode also
-    treats as absent. Only the summation BLOCKING differs; see `fit_shift` for what that is worth.
+    Lag `L` means `b` DELAYED by `L` frames, the sense `np.roll(expected, L)` reads; a lag with no overlap is
+    not returned. Why the padded VALID correlation is the same sum: README, "L6: bounded-lag correlation, off
+    the event loop".
     """
     if len(a) == 0 or len(b) == 0:
-        # `fit_shift` refuses an empty envelope first; guarded here so the pad width cannot go negative.
+        # `fit_shift` refuses an empty envelope first; guarded so the pad width cannot go negative.
         return np.zeros(0), 0
     lag_lo = max(-reach, -(len(b) - 1))
     lag_hi = min(reach, len(a) - 1)
@@ -159,30 +109,9 @@ def fit_shift(
 ) -> ShiftFit:
     """The lag that best aligns a sheet's expected activity onto the audio's real activity.
 
-    Cross-correlated rather than searched with a scoring loop, which is why this can run before EVERY
-    alignment rather than only as a retry.
-
-    BOUNDED-LAG (review L6). `np.correlate(a, b, "full")` computes all `N + M - 1` lags and then 801 of
-    them are read — quadratic work for a window that never grows. Measured on this box: a 6-minute
-    envelope 0.071 s -> 0.003 s, a 60-minute one 7.65 s -> 0.042 s (the review measured 9.1 s), so the
-    cost stops growing with the square of the input. The +-`reach` lags are computed instead by
-    zero-padding `a` and taking the VALID correlation, which is the same routine over the same overlaps.
-
-    IT IS A WORK REDUCTION, NOT AN APPROXIMATION, and the distinction was measured rather than assumed.
-    The two do not agree bit for bit — a longer dot product blocks its summation differently, worst
-    absolute difference 1.4e-14 on random envelopes — and the only thing that could move a document is the
-    ARGMAX, an integer. Over the whole corpus's own stems (32 songs x 8 span perturbations: truth, four
-    offsets, both tempos, drop50, starts-only = 256 fits, `_runs/w4-clock/corr_identity.py`) the chosen lag
-    moved 0 times and `correlation` came back IDENTICAL in every case, because `r` is recomputed at the
-    integer lag rather than read off the correlation's height. A random-envelope property test pins the
-    same thing hermetically.
-
-    STILL O(N) PER LAG, so the caller runs it off the event loop (`asyncio.to_thread`): 42 ms is well under
-    the socket keepalive, but it is not free, and the review found one call site doing it inline.
-
-    Returns a fit with correlation 0.0 — never usable — when either envelope is empty or constant. A
-    constant envelope carries no lag information at all, and `np.corrcoef` on one returns NaN, which would
-    silently compare as False in every direction.
+    Cross-correlated rather than searched, so it can run before EVERY alignment, and bounded to `+-reach`
+    lags — a work reduction rather than an approximation. Correlation 0.0, never usable, for an empty or
+    constant envelope. README, "L6: bounded-lag correlation, off the event loop".
     """
     if len(actual) == 0 or len(expected) == 0:
         return ShiftFit(seconds=0.0, correlation=0.0)
@@ -197,8 +126,7 @@ def fit_shift(
         return ShiftFit(seconds=0.0, correlation=0.0)
 
     lag = int(np.argmax(window)) + first
-    # Scored at the CHOSEN lag against the real envelope, not read off the correlation's height: a tall dot
-    # product says two mostly-on signals overlap, while r says they agree in shape.
+    # Scored at the CHOSEN lag against the real envelope, not read off the correlation's height.
     rolled = np.roll(expected, lag)
     r = float(np.corrcoef(actual, rolled)[0, 1])
     if not np.isfinite(r):
@@ -216,10 +144,8 @@ def fit_sheet_to_audio(
 ) -> ShiftFit:
     """`fit_shift` over a decoded signal and a sheet's line spans. The call the align step makes.
 
-    PREFER THE VOCALS STEM where one exists: measured residuals are 10-20 ms against it and 140-150 ms
-    against the full mix, because an instrumental bed fills the gaps the fit reads. The mix still works and
-    still refuses a wrong song (r = -0.10 there), so an align job with no separated stem is corrected too —
-    just less precisely.
+    PREFER THE VOCALS STEM: residuals are 10-20 ms against it and 140-150 ms against the mix (README, "The
+    fix, and what it measured").
     """
     actual = envelope(signal, rate, hop)
     return fit_shift(actual, expected_envelope(spans, len(actual), hop), hop=hop, max_shift=max_shift)

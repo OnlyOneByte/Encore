@@ -1532,6 +1532,85 @@ def test_run_align_runs_the_real_workflow_and_its_first_attempt_is_the_time_text
     assert row["line_errors"] == direct["line_errors"] and row["highlight"] == direct["highlight"]
 
 
+def test_the_detector_the_acquiring_steps_get_is_the_runs_own_setting(
+    rig: tuple[Any, Any], tmp_path: Path
+) -> None:
+    """W7 review r1-spec-9. At `--level run_align` the REAL `fetch_captions` / `fetch_provider_lyrics` run, so
+    `language.detect` runs — but this harness built `Adapters(...)` with no `detector`, which is a
+    configuration where Latin script can only answer `en`, while the shipped composition root
+    (`__main__.build_adapters`) builds `language.lingua_detector()`. The seam now exists and `--detector`
+    chooses it; the default stays None, which is what every row under `results/` was measured on."""
+    driver, song = rig
+    asked: list[str] = []
+
+    def detector(text: str) -> str | None:
+        asked.append(text)
+        return "fr"
+
+    job = e2e.RunAlignDriver(
+        aligner=driver.aligner, corpus=[song], media_root=tmp_path / "ra", detector=detector
+    )
+    row = job.run(e2e.Case(song, "truth", 0))
+    assert row["outcome"] == lib.PUBLISHED
+    assert asked, "the detector reached the acquiring step the shipped worker gives one to"
+    plain = e2e.RunAlignDriver(aligner=driver.aligner, corpus=[song], media_root=tmp_path / "n")
+    assert plain.detector is None, "the default is the configuration every recorded row holds"
+    assert e2e.build_detector(e2e.DETECTOR_OFF) is None
+
+
+def test_a_run_measured_with_a_detector_warns_against_a_baseline_that_never_recorded_one(
+    tmp_path: Path,
+) -> None:
+    """W7 review r2-spec-10: the disclosure was inoperative in BOTH directions, and the committed artefacts
+    are the proof — NO document under `results/` carries a `detector` key (the stamp landed after they were
+    written), so a `--compare` that only looked where both sides recorded it skipped the key against every
+    baseline that exists. A missing key now reads as `lib.RUN_DEFAULTS["detector"]`, which is what it meant.
+
+    The two halves of the key's own plumbing are pinned beside it: `run.json` records the value
+    unconditionally (so an offline `--summarize` can stamp the run's real setting), and a directory started
+    before the key existed still resumes, because its absence IS the default rather than a setting change."""
+    assert lib.RUN_DEFAULTS["detector"] == e2e.DETECTOR_OFF, "one fact, not two literals"
+    results = SCRIPTS.parent / "results"
+    recorded = [
+        path.name
+        for path in sorted(results.glob("*.json"))
+        if "detector" in (json.loads(path.read_text(encoding="utf-8")).get("meta") or {})
+    ]
+    assert recorded == [], "every committed document predates the stamp; the default is how they are read"
+
+    lingua = gates.View(modes={}, songs={}, meta={"detector": e2e.DETECTOR_LINGUA, "align_config": {}})
+    silent = gates.View(modes={}, songs={}, meta={"align_config": {}})
+    table = gates.format_compare(lingua, silent)
+    assert "WARNING: detector differs — run 'lingua', base 'off' (not recorded, i.e. the default)" in table
+    assert "detector differs" not in gates.format_compare(silent, silent), (
+        "two runs that both took the default agree, and a warning on every pair is a warning on none"
+    )
+    assert "model differs" not in gates.format_compare(
+        gates.View(modes={}, songs={}, meta={"model": "HUBERT_ASR_LARGE"}), silent
+    ), "a COMPARED_META key with NO default stays silent where one side says nothing"
+
+    started = {"level": "run_align", "code": "c1", "align_config": {}}
+    path = tmp_path / "run.json"
+    path.write_text(json.dumps(started))  # a directory from before `detector` was recorded
+    assert e2e.resume_refusal(path, {**started, "detector": e2e.DETECTOR_OFF}) is None
+    refused = e2e.resume_refusal(path, {**started, "detector": e2e.DETECTOR_LINGUA})
+    assert refused is not None and "differs in: detector" in refused
+
+    song = song_of(TEN)
+    one = lib.row_of(
+        song=song,
+        mode="truth",
+        variant=0,
+        claims=claims(song, "truth"),
+        outcome=lib.PUBLISHED,
+        doc=[line(i, span.start) for i, span in enumerate(song.truth)],
+    )
+    rows = tmp_path / "rows.jsonl"
+    rows.write_text(json.dumps(one) + "\n", encoding="utf-8")
+    offline = lib.rows_document(rows)
+    assert offline["meta"]["detector"] == e2e.DETECTOR_OFF, "`--summarize` says what the rows ran on"
+
+
 def test_run_align_serves_an_untimed_sheet_through_the_provider(rig: tuple[Any, Any], tmp_path: Path) -> None:
     driver, song = rig
     job = e2e.RunAlignDriver(aligner=driver.aligner, corpus=driver.corpus, media_root=tmp_path / "ra")
@@ -1736,8 +1815,13 @@ def test_the_transcript_cache_serves_disk_hits_and_remembers_hearing_nothing(tmp
 def test_the_transcript_cache_remembers_the_language_whisper_heard(tmp_path: Path) -> None:
     """Review M8, W7: whisper's detection is half the port's return value now, so a cache that stored only the
     segments would route a REPLAYED `run_align` case to the default bundle where a cold one routed it to the
-    song's own — a cached run and a fresh run would then measure different configurations. An entry written
-    before the field existed has no `language` key and reads as None, which is what it recorded."""
+    song's own — a cached run and a fresh run would then measure different configurations.
+
+    AND AN ENTRY WRITTEN BEFORE THE FIELD EXISTED IS A MISS (W7 review r1-spec-9), not a `None` language: all
+    six entries in the bench root's `_transcripts` predate it, so serving one would have made a cached run
+    measure the pre-W7 configuration while reporting itself as this tree's. `None` is still a cache HIT where
+    the harness really recorded it — whisper reporting no language is a result — which is why the key is now
+    always written."""
     audio = tmp_path / "vocals.wav"
     audio.write_bytes(b"RIFF....")
 
@@ -1756,10 +1840,23 @@ def test_the_transcript_cache_remembers_the_language_whisper_heard(tmp_path: Pat
     assert replayed.transcribe(str(audio)).language == "fr"
     assert inner.calls == 1 and dict(replayed.served) == {"disk": 1}
 
-    stored = json.loads(next(iter((tmp_path / "_t").glob("*.json"))).read_text(encoding="utf-8"))
+    entry = next(iter((tmp_path / "_t").glob("*.json")))
+    stored = json.loads(entry.read_text(encoding="utf-8"))
+    assert "language" in stored, "written always, so a missing key means the harness could not say"
     del stored["language"]
-    next(iter((tmp_path / "_t").glob("*.json"))).write_text(json.dumps(stored), encoding="utf-8")
-    assert lib.CachedTranscriber(inner, store).transcribe(str(audio)).language is None
+    entry.write_text(json.dumps(stored), encoding="utf-8")
+    assert lib.CachedTranscriber(inner, store).transcribe(str(audio)).language == "fr"
+    assert inner.calls == 2, "a pre-W7 entry is recomputed rather than served as heard=None"
+
+    class Mute:
+        def transcribe(self, audio_path: str, *, language: str | None = None) -> ports.Transcribed:
+            return ports.Transcribed(segments=({"text": "la", "start": 0.0, "end": 1.0},), language=None)
+
+    mute = lib.TranscriptStore(tmp_path / "_mute", model="whisper:base", emitter="e")
+    assert lib.CachedTranscriber(Mute(), mute).transcribe(str(audio)).language is None
+    replayed_mute = lib.CachedTranscriber(Mute(), mute)
+    assert replayed_mute.transcribe(str(audio)).language is None
+    assert dict(replayed_mute.served) == {"disk": 1}, "a recorded None is a HIT: whisper said nothing"
 
 
 def test_summary_json_keeps_one_line_per_song_and_reads_back_unchanged() -> None:
@@ -4036,3 +4133,88 @@ def test_the_shipped_tvs_highlight_is_recorded_beside_the_alignment_one() -> Non
     before = conf_rows(mode="blind", high=())
     old = [{k: v for k, v in row.items() if k != "highlight_wiped"} for row in before]
     assert lib.summarize(old)["blind"]["jamendo"]["highlight_wiped"] is None
+
+
+def test_w7s_own_gate_files_replay_the_verdicts_the_wave_was_accepted_on() -> None:
+    """W7 review r2-tests-20: this wave added five gate files holding 203 green readings plus §3.10's
+    REJECT, and not one was loaded by a test — the gap the two `w4b-linesep` tests and the
+    `test_the_wave_level_*` pair close for every earlier wave. These ARE the wave's evidence: `w7.yaml` is
+    what says the three default-on changes cost nothing, and `w7-star.yaml` is what rejected the star.
+
+    Scored on the COMMITTED summaries, so an edit to a file, to a result document or to `e2e_gates` that
+    quietly moves a verdict must turn this red. Three readings, each a different claim:
+
+      (1) THE NO-OP, at all three levels against their own W5 baselines: 45/45 three times, and `w7-words`
+          25/25 + `w7-truth` 18/18 + `w7-wrongtext` 10/10 on the forced `run_align` row.
+      (2) NON-VACUITY, which the identity cannot give for a file whose every gate is "nothing moved" (it
+          passes against itself BY CONSTRUCTION, and it also passes REVERSED, because W7 == W5 to the byte):
+          the STAR run read against the same W5-equal control fails three of `w7.yaml`'s gates, ten of
+          `w7-words`' and three of `w7-truth`'s absolute bars — i.e. the files do tell a moved document from
+          an unmoved one.
+      (3) THE REJECT: `w7-star.yaml` 32/36 on the star run, the four failures being §3.10's own clause
+          (14 song-mode cells gaining a gross or missing line), truth losing a line on one song, a Jamendo
+          song 4.26 pt worse at word ±300 and a `high`-graded gross line — and 35/36 on the identity, where
+          only the SHOULD gain (`pooled-gross-down`) fails, which is how every other file here is shown
+          non-vacuous.
+    """
+    results = SCRIPTS.parent / "results"
+
+    def read(gate_file: str, run: str, base: str) -> tuple[int, list[str]]:
+        rules = gates.parse_gates((GATES_DIR / f"{gate_file}.yaml").read_text(encoding="utf-8"))
+        got = gates.run_gates(
+            rules,
+            gates.view_of(gates.load_document(results / f"{run}.json")),
+            gates.view_of(gates.load_document(results / f"{base}.json")),
+        )
+        assert "ERROR" not in {r.status for r in got}, [
+            (r.gate.name, r.detail) for r in got if r.status == "ERROR"
+        ]
+        assert "unmeasured" not in " ".join(str(r.detail) for r in got), "no gate may resolve to unmeasured"
+        return len(got), sorted(r.gate.name for r in got if r.status != "PASS")
+
+    # (1) the shipped default moved nothing, at every level the wave measured.
+    assert read("w7", "w7-run_align", "w5r2-run_align") == (45, [])
+    assert read("w7", "w7-time_text", "w5-time_text") == (45, [])
+    assert read("w7", "w7-lines-run_align", "w5r2-lines-run_align") == (45, [])
+    assert read("w7-words", "w7-run_align", "w5r2-run_align") == (25, [])
+    assert read("w7-truth", "w7-run_align", "w5r2-run_align") == (18, [])
+    assert read("w7-wrongtext", "w7-run_align", "w5r2-run_align") == (10, [])
+
+    # (2) and the files are not green by construction: the star run trips them.
+    assert read("w7", "w7-star-run_align", "w7-run_align") == (
+        45,
+        [
+            "w7-high-gross-not-up",
+            "w7-no-published-document-changes",
+            "w7-no-song-gains-a-line-in-any-mode",
+        ],
+    )
+    assert read("w7-words", "w7-star-run_align", "w7-run_align")[1] == [
+        "w7-headers-jamendo-word-pm300-not-down",
+        "w7-jamendo-end-pm100-not-down",
+        "w7-jamendo-word-aae-not-up",
+        "w7-jamendo-word-medae-not-up",
+        "w7-jamendo-word-pm100-not-down",
+        "w7-jamendo-word-pm250-not-down",
+        "w7-jamendo-word-pm300-not-down",
+        "w7-no-jamendo-song-worse-at-highlight",
+        "w7-no-jamendo-song-worse-at-word-pm100",
+        "w7-no-jamendo-song-worse-at-word-pm300",
+    ]
+    assert read("w7-truth", "w7-star-run_align", "w7-run_align")[1] == [
+        "w7-jamendo-word-aae-at-most-71-1",
+        "w7-jamendo-word-pm100-at-least-85-46",
+        "w7-jamendo-word-pm300-at-least-97-16",
+    ], "the PLAN's pinned truth row, which the star costs: ±100 84.94, ±300 96.81, AAE 74.1 ms"
+
+    # (3) §3.10's verdict, and the identity reading that shows the file bites.
+    assert read("w7-star", "w7-star-run_align", "w7-run_align") == (
+        36,
+        [
+            "high-gross-not-up",
+            "no-jamendo-song-worse-at-word-pm300",
+            "no-youtube-song-gains-a-gross-line",
+            "truth-no-song-loses-lines",
+        ],
+    )
+    assert read("w7-star", "w7-run_align", "w7-run_align") == (36, ["pooled-gross-down"])
