@@ -301,13 +301,11 @@ def test_the_english_bundle_is_a_function_of_the_device() -> None:
     """HuBERT-Large on EVERY device since W5's flip, because the exception table is still empty.
 
     A pure function over a device string, like `transcriber_device`: the candidate bundles differ by three
-    times in weights (1.2 vs 3.8 GB) and in seconds per song (4.3-8.6 vs 11.8-24 on MPS), so the shape has to
-    admit a per-device answer even while today's answer is one name. `ALIGN_MODELS_BY_DEVICE` IS EMPTY, and
-    that is measured rather than lazy: the flip W5 took is a BUNDLE result (32 songs x 16 modes at both bench
-    levels, `results/w6-hubert-*` against `results/w6-base-*`) and nothing in it is a fact about MPS, so the
-    one measured bundle is every device's default and there is no exception to hold. HuBERT-XLarge is the
-    entry the table must not grow: nobody has run it on CUDA, so it stays reachable by name only.
-    """
+    times in weights (1.2 vs 3.8 GB) and in seconds per song (4.3-8.6 vs 11.8-24 on MPS), so the shape has
+    to admit a per-device answer even while today's answer is one name. `ALIGN_MODELS_BY_DEVICE` is EMPTY by
+    measurement rather than laziness: W5's flip is a BUNDLE result (32 songs x 16 modes at both bench
+    levels) and nothing in it is a fact about MPS. HuBERT-XLarge is the entry the table must not grow,
+    nobody having run it on CUDA."""
     from encore_worker.adapters.ml import ALIGN_MODELS_BY_DEVICE, DEFAULT_ALIGN_MODEL, default_align_model
 
     assert ALIGN_MODELS_BY_DEVICE == {}, "no device class has earned an exception on measured numbers"

@@ -1,24 +1,14 @@
 """The pure half of the end-to-end alignment bench: corpus, claim modes, pairing, metrics, emissions cache.
 
 `e2e.py` is the CLI that drives the SHIPPED `AlignStepsImpl.time_text`; everything here is plain data in,
-plain data out, so it is unit-tested hermetically (`worker/tests/test_bench_e2e.py` — no model, no audio,
-no torch). The split exists because this bench is the GATE every later alignment wave is judged by: a
-metric or claim-construction bug here would silently move every reject-if verdict, so this half must be
-testable without an hour of model time.
-
-WHERE THE DEFINITIONS COME FROM. The song list, the claim construction and the line metrics are the review's
-scratch harness, kept exactly, because that harness produced the baseline this one must reproduce; the word
-metrics are `bench.py --global --words`. Two deliberate differences, both measured-harmless and documented
-where they live: lines pair by IDENTITY rather than by text, and every random draw is seeded by a stable hash
-rather than a process-salted one, so this harness's jit row is a different, repeatable draw. One deliberate
-ADDITION: every count also exists over the claimed TEXT, a refused case's lines being misses, because the
-published-only figures read a policy that refuses its worst songs as an improvement.
-
-WORD ENDS AND THE HIGHLIGHT come from the review's `exp_ends.py`, with one deliberate difference: the
-highlight reads the lit word through a port of the TV's own logic rather than by painting each word's span.
-The two agree wherever published lines are in order and do not overlap, and differ exactly where the TV does
-something the painting cannot see. `gates/w0-reproduce-generate.yaml` has the provenance, and README, "The
-harness scripts", the reproduced baseline rows.
+plain data out, so it is unit-tested hermetically (`worker/tests/test_bench_e2e.py` — no model, no audio, no
+torch). The split exists because this bench is the GATE every later alignment wave is judged by: a metric or
+claim-construction bug here would silently move every reject-if verdict. The song list, the claim construction
+and the line metrics are the review's scratch harness kept exactly, because that harness produced the baseline
+this one must reproduce; the word metrics are `bench.py --global --words` and the ends its `exp_ends.py`.
+Three deliberate differences, each measured-harmless: lines pair by IDENTITY rather than by text, every random
+draw is seeded by a stable hash, and the highlight reads the lit word through a port of the TV's own logic.
+`gates/w0-reproduce-generate.yaml` has the provenance, and README, "The harness scripts", the baseline rows.
 """
 
 from __future__ import annotations
@@ -68,37 +58,20 @@ YOUTUBE_SLUGS = (
 )
 TFR_SLUGS = ("tfr-flyaway", "tfr-mayday", "tfr-chosen")
 
-#: Which audio the 3 TheFatRat songs run on (`--tfr-audio`). `youtube`, the default, is PRODUCTION-SHAPED:
-#: the worker's own input (`youtube-mix.wav`, fetched with yt-dlp as `adapters/cli` fetches it) as the mix,
-#: and an htdemucs vocals stem separated from THAT file (`e2e.py --prepare-tfr`, under
-#: `$ENCORE_BENCH_ROOT/<slug>/mix/vocals.wav`, the layout of the other 29 songs' stems) as the target —
-#: what a stems job leaves, on the timeline the authored-caption truth was written against. `reference` is
-#: the producer's multitrack: `reference-vocals.wav`, the ORACLE vocals, with `reference-mix.wav`, the
-#: stems summed, as R4's mix. The review's baseline ran on `reference`, and review M14 names exactly that
-#: as a defect of the old headline, so it is kept only to reproduce the review. The two are not
-#: interchangeable even for timing: the master and the stems differ in rate and length (flyaway 48 000 vs
-#: 44 100 Hz, 194.258 vs 194.065 s; `stem-separation/scripts/prepare.py`).
+#: Which audio the 3 TheFatRat songs run on (`--tfr-audio`). `youtube`, the default, is PRODUCTION-SHAPED: the
+#: worker's own input as the mix and an htdemucs stem separated from it as the target. `reference` is the
+#: producer's multitrack, the ORACLE vocals, kept only to reproduce the review's baseline; see README.
 TFR_YOUTUBE, TFR_REFERENCE = "youtube", "reference"
 TFR_AUDIO = (TFR_YOUTUBE, TFR_REFERENCE)
 
 #: What a run's `target` metadata says it aligned on (`e2e.py --no-stem`, `e2e_gates.SETUP_META`): the vocals
 #: stem every corpus song has, or the MIX of a song run as if no stems job could separate it. A STEMLESS run
-#: measures a whole other path of the shipped step — the mix's lexical bands, no R4 mix witness, no
-#: ALIGN_ON_MIX knob, a LINE_SYNC rung that declines — against the same truth, which is why it is setup and
-#: not an arm: comparing it with a stem baseline metric for metric compares two different audio files.
+#: measures a whole other path, which is why it is setup and not an arm: it decodes a different audio file.
 STEM_TARGET, STEMLESS_TARGET = "stem", "mix"
 
 #: Run metadata whose ABSENCE is a known DEFAULT rather than "unknown" — one map, read by everything that
-#: compares two runs' setups (W7 review r2-spec-10): `e2e.resume_refusal`, `rows_document` below and
-#: `e2e_gates.format_compare`.
-#:
-#: WHY IT HAS TO BE SHARED. `detector` was recorded in `run.json` only when it was NOT the default, so that a
-#: directory started before the key existed could still `--resume`; the summary then stamped it always. The
-#: result was a key that could not do its job: every committed document was written before the stamp landed,
-#: so `--compare` of a `--detector lingua` run against ANY of them found the key on one side only and said
-#: nothing, which is exactly the silent-configuration-change the disclosure exists to prevent. With the
-#: default written down, a missing key MEANS `off`, the comparison is total, and `run.json` can record the
-#: value unconditionally without refusing an older directory's resume.
+#: compares two runs' setups (`e2e.resume_refusal`, `rows_document`, `e2e_gates.format_compare`), because a key
+#: recorded only when it was not the default could never fire the warning it exists for.
 RUN_DEFAULTS: Mapping[str, str] = {"detector": "off"}
 
 #: Report groups. Jamendo's truth is MEASURED (hand-timed word + line onsets); YouTube's is AUTHORED
@@ -157,27 +130,9 @@ CREDIT_LINES = (
 #: Default number of wrong-text cross-pairs per song (the review's "32 songs x 10 wrong texts").
 WRONG_K = 10
 
-#: Every op a mode may combine with `+`, in the CANONICAL order they apply whatever the spelling: replace
-#: the text (wrong-text), put it on this song's own clock (`ownclock`), edit which lines exist (partial
-#: sheet first, then injections), perturb the timings (clock rate, then offset, then per-line jitter:
-#: t' = f*t + d + noise), and strip timings last. So `jit+headers` jitters the injected headers too, and
-#: `blind+anything` is always untimed.
-#:
-#: `ownclock` (W1 review r2): each of the song's truth lines keeps its OWN span and takes the text's line
-#: in the same position (the text repeats from its start when it has fewer lines) — a caption track of
-#: THIS video in other words. `wrongtext+ownclock` is the same-video wrong-words case the LINE_SYNC rung's
-#: sheet-span gate cannot see: an uploader's English translation of a non-English song, or YouTube's
-#: machine-translated `en` track, whose timings were made on this very video. Alone it is the identity.
-#:
-#: NO `translated` OP, because no honest one can be built offline (W3, checked): every caption track in the
-#: bench root is English (`captions.en*.json3` on the 9 YouTube songs, `tfr-*.authored.en.json3`), and
-#: JamendoLyrics MultiLang's 79 songs (20 en, the rest fr / de / es) are each sung and transcribed in ONE
-#: language — no song carries its lyrics in a second one. A translation written for the bench would be the
-#: bench's own text, not one an uploader or YouTube produced. `wrongtext+ownclock` is the stand-in (another
-#: song's words on this song's clock: a translation's order is as arbitrary as a shuffle's), and what it
-#: cannot stand in for — a translation into a language that shares the sung words' letters IN ORDER
-#: (cognates) — is pinned as a known limit on the CTC fixture (`test_lexical`: German +1.98 nats/letter
-#: where French reads -0.12, truth +15.2).
+#: Every op a mode may combine with `+`, in the CANONICAL order they apply whatever the spelling: replace the
+#: text, put it on this song's own clock (`ownclock`), edit which lines exist, perturb the timings, strip them
+#: last. So `jit+headers` jitters the injected headers too, and `blind+anything` is always untimed.
 OPS: tuple[str, ...] = (
     "wrongtext",
     "ownclock",
@@ -285,11 +240,9 @@ def load_truth_lines(path: Path) -> tuple[TruthLine, ...]:
     return tuple(TruthLine(str(t["text"]), float(t["start"]), float(t["end"])) for t in raw)
 
 
-#: A truth word with no measured end ends at the next truth word's start within its line (the review found
-#: 80% of Jamendo's non-final ends are already exactly that), else at its line's end — capped this far after
-#: its onset, the
-#: cap the review's end extension used. Dormant on today's corpus (all 5693 Jamendo words carry an end);
-#: it exists so a truth set that times onsets only still scores ends and the highlight.
+#: A truth word with no measured end ends at the next truth word's start within its line (80% of Jamendo's
+#: non-final ends are already exactly that), else at its line's end, capped this far after its onset. Dormant
+#: on today's corpus; it exists so a truth set that times onsets only still scores ends and the highlight.
 TRUTH_END_CAP_SEC = 3.0
 
 
@@ -319,12 +272,9 @@ def discover(root: Path, repo_songs: Path = REPO_SONGS, *, tfr_audio: str = TFR_
 
     A Jamendo song without a separated vocals stem is skipped (as e2e2 did); a YouTube/tfr song is always
     listed, and `Song.missing_files` says whether its audio is there, so a missing file fails loudly at
-    selection instead of shrinking the corpus silently.
-
-    The Jamendo MIX is read from the dataset checkout under the bench root when present: the per-song
-    `mix.mp3` is a symlink into the review's /tmp copy, which dies on reboot (and would move the emissions
-    cache key with it). The tfr songs' audio follows `tfr_audio` (see `TFR_AUDIO`).
-    """
+    selection instead of shrinking the corpus silently. The Jamendo MIX is read from the dataset checkout
+    under the bench root when present: the per-song `mix.mp3` is a symlink into the review's /tmp copy, which
+    dies on reboot and would move the emissions cache key with it."""
     if tfr_audio not in TFR_AUDIO:
         raise ValueError(f"tfr audio {tfr_audio!r}; expected one of {', '.join(TFR_AUDIO)}")
     songs: list[Song] = []
@@ -827,24 +777,8 @@ def score_words(song: Song, claims: Claims, doc: Sequence[DocLine]) -> WordScore
 #
 # A PORT of `core/src/lib/tv/lyrics.ts` (parseLyricsDoc -> resegmentLine -> coalesceOrphans, then
 # activeLineIndex / activeWordIndex as `LyricsOverlay.svelte` calls them), because "which word is lit" is
-# decided there and nowhere else. A word is lit while `start <= pos < end` INSIDE the active line, and the
-# active line is the first one whose bounds contain `pos` — scanning in document order and stopping at the
-# first line that starts after `pos`. Not modelled: the display lead (`lyricsLeadMs`, 0 by default; W6
-# revisits it) and JS's UTF-16 string lengths (Python counts code points; only non-BMP text differs). When
-# the TV's rendering changes (W8 joins CJK without spaces), this port must change with it, or the metric
-# stops measuring what the room sees.
-#
-# W6 MADE THE FIRST SUCH CHANGE and it is modelled here: a `low` row renders line-level, so it lights no
-# word (`tv_wipes_words`, `TvLine.wipes`, `tv_lit(wipe_low=True)`). The `highlight` METRIC deliberately asks
-# the other question — see `score_highlight`, which owns that split — while the parity fixture is written
-# with the rule ON, so `lyrics.ts` and this port are held to it in both trees.
-#
-# CROSS-CHECKED against the TypeScript itself (bun, 2026-09-27): 300 random documents — misbound lines,
-# blank-text lines, reversed word spans, long lines that re-segment and fold orphans — x 200 positions
-# each, the lit word identical at all 60,000. On the raw base-model decode of three Jamendo songs it reads
-# within 0.1 pt of the review's painted-span highlight (65.1 / 79.3 / 60.7 vs 65.1 / 79.2 / 60.8%).
-
-#: `lyrics.ts` LINE_GAP_SEC / LINE_MAX_CHARS / COVERAGE_MIN / ORPHAN_MAX_SEC.
+# decided there and nowhere else. Not modelled: the display lead and JS's UTF-16 string lengths. When the TV's
+# rendering changes this port changes with it — W6 made the first such change, `tv_lit(wipe_low=True)`.
 TV_LINE_GAP_SEC = 0.45
 TV_LINE_MAX_CHARS = 42
 TV_COVERAGE_MIN = 0.8
@@ -1055,16 +989,11 @@ def score_highlight(
     """(hit, sung) seconds over the truth words of every line the claimed text contains.
 
     The denominator is the SUNG time of those words and not only of the lines that published, a dropped line
-    lighting nothing while it is sung. A published word counts as correct only when it IS the sung truth word,
-    and a line-synced document lights no word at all, so it scores 0.
-
-    W6's LOW-LINE RULE IS MODELLED BY THE PORT AND DELIBERATELY NOT READ HERE (`tv_lit`'s `wipe_low`): this
-    metric is an ALIGNMENT reject-if, so it must keep asking ONE question — when the TV lights a word, is it
-    the right one — and folding a DISPLAY POLICY in would re-baseline every recorded row since W0. What
-    measures the policy instead is `high` / `high_bad` / `high_gross`, already on every row, plus
-    `highlight_wiped`, which `wipe_low=True` computes and NO RECORDED RUN CARRIES YET. README, "The harness
-    scripts", has the split and its numbers.
-    """
+    lighting nothing while it is sung. A published word counts as correct only when it IS the sung truth
+    word, and a line-synced document lights no word at all, so it scores 0. W6's LOW-LINE RULE IS MODELLED BY
+    THE PORT AND DELIBERATELY NOT READ HERE (`tv_lit`'s `wipe_low`): this metric is an ALIGNMENT reject-if,
+    so it keeps asking ONE question, and folding a DISPLAY POLICY in would re-baseline every row since W0.
+    `high` / `high_bad` / `high_gross` measure the policy, plus `highlight_wiped`, which no run carries yet."""
     if song.words is None:
         return None
     counts, offsets = _word_offsets(song)
@@ -1115,18 +1044,12 @@ def row_of(
 ) -> dict[str, Any]:
     """One case as a JSON-able row. Raw errors are kept so the summary is recomputable from JSONL alone.
 
-    FULL PRECISION, deliberately (JSON round-trips a float exactly). Rounding looked harmless and is not: a
-    claim-adopted line under `off05` sits at exactly +0.5 s +- 1 ulp, and rounding it moves it across the
-    ±500 ms tolerance e2e2 compared the raw float against.
-
-    A case that published NOTHING (refused, ERROR) still carries its TEXT-SIDE denominators: `in_text`,
-    the words its text asked for (`words.in_text`) and their sung seconds (`highlight.sung`, hit 0). Left
-    out, a policy that refuses its hardest songs reads as more accurate: marking hello and bad-guy refused
-    in the baseline's truth rows moves e2e2's pooled ±500 89.34 -> 94.04 and gross 25 -> 3, and PCO and
-    the highlight rose with it; over the text (`line_metrics`) the same change reads 88.12 -> 85.11.
-    Rows written before this carry None there for such cases; re-run, since the summary cannot rebuild a
-    text it never saw.
-    """
+    FULL PRECISION, deliberately (JSON round-trips a float exactly): a claim-adopted line under `off05` sits
+    at exactly +0.5 s ± 1 ulp, and rounding it moves it across the ±500 ms tolerance e2e2 compared the raw
+    float against. A case that published NOTHING still carries its TEXT-SIDE denominators, because left out,
+    a policy that refuses its hardest songs reads as more accurate — marking hello and bad-guy refused in the
+    baseline's truth rows moves e2e2's pooled ±500 89.34 -> 94.04 and gross 25 -> 3, where over the text the
+    same change reads 88.12 -> 85.11. Rows written before this carry None there; re-run."""
     published = outcome in (PUBLISHED, LINE_SYNC)
     shown: Sequence[DocLine] = doc if published else ()
     errors, disagreements = score_lines(song, claims, shown) if published else ([], None)
@@ -1192,23 +1115,12 @@ def pct(part: float, whole: float) -> float | None:
 def line_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """e2e2's summary line over `rows`, plus the same counts over the TEXT.
 
-    TWO DENOMINATORS, because they answer different questions:
-      * `w500_pct` / `w1000_pct` (flat `pm500` / `pm1000`) are e2e2's, over SCORED lines of PUBLISHED
-        cases. A refused case adds no line (e2e2 skipped it). Kept exactly, because the review baseline
-        is stated in them, and because they isolate how good a published document is.
-      * `w500_text_pct` / `w1000_text_pct` (flat `text_pm500` / `text_pm1000`) are over `in_text`, every
-        truth line the claimed text contains, over EVERY case: a line the aligner dropped and a refused
-        case's lines are both misses. A change that trades accuracy for refusals, or refuses the songs it
-        is worst at, cannot improve these, so a reject-if should use them where that trade must not pass.
-    `missing` = `in_text` − `scored` counts both kinds of loss. `text_paired` counts the cases whose lines
-    were paired by TEXT because the capture hook did not see their document (line-synced ones; see
-    `e2e.doc_lines`), where a repeated line can mispair.
-
-    `unsung` counts PUBLISHED lines that are no truth line — an injected header or credit, an extra verse,
-    a sound caption the truth does not carry, every line of a wrong text — which no ±N metric can see: they
-    are never scored, so publishing them costs nothing there (review W1 r1: M6's mix witness put back all
-    33 unsung lines it spared, and the bench read it as no change). Lower is better outside `wrongtext`.
-    """
+    TWO DENOMINATORS, because they answer different questions. `w500_pct` / `w1000_pct` are e2e2's, over
+    SCORED lines of PUBLISHED cases — a refused case adds no line — kept exactly, because the review baseline
+    is stated in them. `w500_text_pct` / `w1000_text_pct` are over `in_text`, every truth line the claimed
+    text contains, over EVERY case, so a change that trades accuracy for refusals cannot improve them.
+    `missing` counts both kinds of loss; `text_paired` counts the cases paired by TEXT, where a repeated line
+    can mispair; `unsung` counts published lines that are no truth line, which no ±N metric can see."""
     published = [r for r in rows if r["outcome"] in (PUBLISHED, LINE_SYNC)]
     errors = [(float(e[1]), e[2]) for r in published for e in r["line_errors"]]
     counts = _line_counts(errors)
@@ -1285,13 +1197,10 @@ def highlight_metrics(rows: Sequence[Mapping[str, Any]], *, key: str = "highligh
     """The TV highlight, POOLED: correct-lit seconds over sung seconds across EVERY case.
 
     A case that published nothing lit nothing while its text was sung, so its sung seconds stay in the
-    denominator (`unpublished` counts those cases) — "exactly what the room sees" holds per job, not just
-    per published line.
-
-    `key` picks which of the two readings `row_of` records: `highlight` is the ALIGNMENT metric (every line
-    word-wiped, the question every gate since W0 is written in) and `highlight_wiped` is the SHIPPED TV's
-    (`score_highlight`'s docstring owns that split). A run written before the second existed carries None.
-    """
+    denominator (`unpublished` counts those cases) — "exactly what the room sees" holds per job, not just per
+    published line. `key` picks which of the two readings `row_of` records: `highlight` is the ALIGNMENT
+    metric, the question every gate since W0 is written in, and `highlight_wiped` is the SHIPPED TV's
+    (`score_highlight` owns that split). A run written before the second existed carries None."""
     carried = [r for r in rows if r.get(key)]
     if not carried:
         return None
@@ -1523,13 +1432,10 @@ def flat_metrics(entry: Mapping[str, Any]) -> dict[str, float | None]:
     """One metric block as `{name: number}`: `pm500`, `word_pm300`, `highlight`, `pm500_lo`, ...
 
     A block the entry does not have (no words on YouTube; no policy below `run_align`) reads as None, which
-    the gate evaluator refuses to compare rather than treating as zero.
-
-    EVERY `retime_<knob>` EXISTS: 0 for a knob a `run_align` entry never used, None below `run_align`. Only
-    the knobs that occurred used to get a key, so the gate W1's H2 fix implies — `truth.retime_align_on_mix
-    == 0` — was an "unknown metric" ERROR exactly when the fix worked (measured: `blind.retime_line_sync`
-    on `baseline-v2-run_align.json`, whose blind cases never used LINE_SYNC).
-    """
+    the gate evaluator refuses to compare rather than treating as zero. EVERY `retime_<knob>` EXISTS: 0 for a
+    knob a `run_align` entry never used, None below `run_align`. Only the knobs that occurred used to get a
+    key, so the gate W1's H2 fix implies — `truth.retime_align_on_mix == 0` — was an "unknown metric" ERROR
+    exactly when the fix worked."""
     out: dict[str, float | None] = {}
     for block, key, name in _FLAT:
         value = (entry.get(block) or {}).get(key)
@@ -1545,9 +1451,8 @@ def flat_metrics(entry: Mapping[str, Any]) -> dict[str, float | None]:
 
 
 #: The per-song numbers `summary.json` keeps (for `song.*` gates and per-song deltas). A subset, so the
-#: committed baseline stays a small file. `coverage` is the FIRST attempt's stem coverage (the number
-#: `policy.decide` retries on; 0.0 when attempt 1 published nothing) — W1's reject-if is "a published doc
-#: changes on a song whose coverage is >= 0.80".
+#: committed baseline stays a small file. `coverage` is the FIRST attempt's stem coverage, the number
+#: `policy.decide` retries on (0.0 when attempt 1 published nothing).
 SONG_METRICS = (
     "cases",
     "published",
@@ -1575,10 +1480,9 @@ SONG_METRICS = (
     "coverage",
 )
 
-#: The per-song DIGESTS `summary.json` keeps: (per-song key, row field). Not numbers — the gates read
-#: them only as `song.doc_changed` / `song.onsets_changed`, run against baseline. `doc` is the published
-#: document's bytes (the file the TV reads); `onsets` its line and word START times alone, for W4's "no
-#: onset moves" when a change is meant to touch only word ends.
+#: The per-song DIGESTS `summary.json` keeps: (per-song key, row field). Not numbers — the gates read them
+#: only as `song.doc_changed` / `song.onsets_changed`, against baseline. `doc` is the published document's
+#: bytes (the file the TV reads); `onsets` its line and word START times alone, for W4's "no onset moves".
 SONG_DIGESTS: tuple[tuple[str, str], ...] = (("doc", "doc_sha256"), ("onsets", "onsets_sha256"))
 
 #: The digest of "published nothing" (a refusal, an error): a document appearing or vanishing is a change.
@@ -1759,14 +1663,10 @@ def rows_document(path: Path) -> dict[str, Any]:
 
     `--summarize` and a rows-file baseline used to carry only `rows` / `row_codes` as meta, so an offline
     `--summarize NEW --compare BASE --gates` could not tell a run on other tfr audio, level or seed from a
-    comparable one — not even as a warning. `run.json` is what `e2e.py` wrote when the rows were measured
-    (and what `--resume` holds every later row to), so it IS the rows' setup. Absent (rows copied out of
-    their run directory), the meta says nothing, and `e2e_gates.run_gates` refuses baseline gates on it.
-
-    Rows without `line_errors` are refused by name: that is a compact `results/*.cases.jsonl`, the file
-    beside every committed baseline, and re-summarizing it died in `line_metrics` on a bare
-    `KeyError: 'line_errors'` that `--compare` did not even report as a bad baseline.
-    """
+    comparable one — not even as a warning. `run.json` is what `e2e.py` wrote when the rows were measured, so
+    it IS the rows' setup; absent, the meta says nothing and baseline gates are refused on it. Rows without
+    `line_errors` are refused by name: that is a compact `results/*.cases.jsonl`, which used to die in
+    `line_metrics` on a bare `KeyError` that `--compare` did not even report as a bad baseline."""
     rows = read_rows(path)
     bare = next((number for number, row in enumerate(rows, 1) if "line_errors" not in row), None)
     if bare is not None:
@@ -1857,10 +1757,8 @@ def compact_row(row: Mapping[str, Any]) -> dict[str, Any]:
     The raw per-line / per-word error arrays are dropped (they stay in the bench root's `rows.jsonl`, and a
     compact file is refused as a baseline by `rows_document`); identity, outcome, verdict, line counts, the
     word / highlight aggregates and, at `run_align`, the attempt story are kept. Before W3 this lived in a
-    scratch script that kept only the `align-global` verdict, so a LINE_SYNC attempt's gate — its sheet fit
-    and lexical lift — could be read only by re-running the case under a wrapper (W1 review r2's probe);
-    `lift` and the rung's own note are kept now, per case and per attempt. A value of None is left out.
-    """
+    scratch script that kept only the `align-global` verdict, so a LINE_SYNC attempt's gate could be read
+    only by re-running the case under a wrapper; `lift` and the rung's own note are kept now, per attempt."""
     out: dict[str, Any] = {key: row[key] for key in COMPACT_KEEP if row.get(key) is not None}
     if isinstance(out.get("lift"), float):
         out["lift"] = round(out["lift"], 4)
@@ -1927,13 +1825,10 @@ def emitter_fingerprint(sources: Iterable[Path], versions: Mapping[str, str]) ->
     """What PRODUCED an emission matrix, beyond its inputs: the emitting code and the ML library versions.
 
     Part of the cache key because the bench outlives the code it measures — a later wave that changes the
-    frame grid (review 6a) or the blank handling must not be scored on matrices the old code emitted.
-    Keyed on whole modules — `sources` is the emitting module's import closure (`module_closure`) — so even
-    a docstring edit costs one recompute; that is the safe direction for a gate. `versions` must name
-    everything else that shapes the matrix: the caller adds the ffmpeg build that decodes and resamples
-    the audio (the Jamendo mixes, R4's witness, are mp3), the transformers version that runs a Hub
-    checkpoint, and the worker's `align_*` settings (`e2e.emitter_fingerprint`).
-    """
+    frame grid or the blank handling must not be scored on matrices the old code emitted. Keyed on whole
+    modules (`sources` is the emitting module's import closure), so even a docstring edit costs one
+    recompute: the safe direction for a gate. `versions` must name everything else that shapes the matrix —
+    the ffmpeg build that decodes and resamples, the transformers version, the worker's `align_*` settings."""
     digest = hashlib.sha256()
     for path in sources:
         digest.update(path.read_bytes())
@@ -1945,18 +1840,11 @@ def module_closure(entry: Path, root: Path) -> list[Path]:
     """`entry` and every module of the package at `root` it imports, TRANSITIVELY, sorted.
 
     Read with `ast`, so a lazy import inside a function counts (every ML import in `adapters/ml.py` is
-    lazy), and each imported module's package `__init__` rides along, since importing runs it. Relative
-    imports resolve against the importing module's package. What this cannot see is an import built at
-    run time (`importlib`), which the worker does not use.
-
-    WHY THE CLOSURE and not the one defining file: the emissions key used to hash `adapters/ml.py` alone,
-    so a later wave that moves the frame grid or the context trim (review 6a) into a helper module ml.py
-    calls — a vendored `generate_emissions`, a pure frame-grid function — would leave ml.py's bytes as
-    they were and serve every pre-change matrix to the post-change bench. Today the closure is 10 files:
-    ml.py, what it imports (`domain/document.py`, `domain/audio/wav.py`, `host/mlrt.py`,
-    `host/hardware.py`) and their package inits. A new THIRD-PARTY library on the emission path is not
-    found this way; it goes into `e2e.emitter_versions`.
-    """
+    lazy), and each imported module's package `__init__` rides along, since importing runs it. What this
+    cannot see is an import built at run time, which the worker does not use. WHY THE CLOSURE and not the one
+    defining file: the emissions key used to hash `adapters/ml.py` alone, so a later wave that moved the
+    frame grid or the context trim into a helper would leave ml.py's bytes as they were and serve every
+    pre-change matrix to the post-change bench. A new THIRD-PARTY library goes in `e2e.emitter_versions`."""
     root = root.resolve()
     package = root.name
     seen: set[Path] = set()
@@ -2026,31 +1914,20 @@ def tree_digest(roots: Iterable[Path]) -> str:
 
 
 #: An `align_*` setting that names WHAT a run computed rather than HOW it computed it, so recording it here
-#: would split one computation across two emitter fingerprints depending on how the operator spelled it
-#: (`align_config`, W4b review r2). Only `align_model` qualifies, and only because the resolved bundle is
-#: recorded three other ways; a knob that CHANGES the matrices or the timings must never be added.
+#: would split one computation across two emitter fingerprints depending on how the operator spelled it.
+#: Only `align_model` qualifies; a knob that CHANGES the matrices or the timings must never be added.
 SPELLING_ONLY = frozenset({"align_model"})
 
 
 def align_config(config: object) -> dict[str, object]:
     """The alignment settings of a worker `Config`: every field named `align_*`, JSON-able.
 
-    Recorded in `run.json` (a `--resume` under other settings is refused) and in the summary's meta
-    (`--compare` warns when they differ), because the default-off arms of PLAN-alignment-v3 live behind
-    `Config.align_experiments` and an arm measured with its knob silently OFF reads exactly like the
-    baseline. A new alignment setting must follow the `align_` naming to be recorded here.
-
-    AN UNSET SETTING IS LEFT OUT — an empty set (no arm switched on). That is the default path, so it
-    records, compares and keys the emission cache exactly as a worker without the knob did: W1 added
-    `align_experiments`, and recording it empty would have moved every matrix's key (a cold recompute of the
-    whole corpus for an identical computation) and made every W0 baseline warn on `--compare`.
-
-    `align_model` IS EXCLUDED OUTRIGHT (`SPELLING_ONLY`): `e2e.resolve_bundle` folds the env knob and
-    `--model` into one resolved bundle without writing it back, so the two spellings of one command produced
-    two emitter fingerprints, two disjoint emission-store namespaces and a `--compare` warning between them.
-    WHICH MODEL A RUN LOADED IS NOT LOST BY THIS, which is what makes dropping it safe — the resolved bundle
-    is `run.json`'s `model`, digested in `model_identity`, and carried in the store's own key.
-    """
+    Recorded in `run.json` (a `--resume` under other settings is refused) and in the summary's meta, because
+    the default-off arms live behind `Config.align_experiments` and an arm measured with its knob silently
+    OFF reads exactly like the baseline. AN UNSET SETTING IS LEFT OUT — that is the default path, so it keys
+    the emission cache exactly as a worker without the knob did. `align_model` is EXCLUDED OUTRIGHT
+    (`SPELLING_ONLY`), two spellings of one command having produced two emitter fingerprints; which model a
+    run loaded is still `run.json`'s `model`, digested in `model_identity` and in the store's own key."""
     out: dict[str, object] = {}
     for field in dataclasses.fields(config):  # type: ignore[arg-type]
         if field.name.startswith("align_") and field.name not in SPELLING_ONLY:
@@ -2069,19 +1946,11 @@ class EmissionStore:
     """Emission matrices on disk under `$ENCORE_BENCH_ROOT/_emissions`, one `.npz` per key.
 
     KEY = (resolved audio path, size, mtime_ns, model, language, emitter fingerprint). `model` is what the
-    aligner LOADED, not what the harness asked for: `e2e.BenchAligner` keys each language's entries on
-    the label plus a digest of the loaded weights and dictionary (`for_model`). A name alone would serve
-    one model's matrices to another the moment the shipped adapter picks its model some other way (W4
-    6b: `ENCORE_ALIGN_MODEL`, a per-device default) or a Hub checkpoint moves. DEVICE-INDEPENDENT by
-    design: the review measured MPS and CPU emissions identical (100% argmax agreement, 0 ms per-word
-    difference), so a matrix computed on either serves both; if the model choice ever depends on the
-    device, the weights digest moves with it. The device that produced an entry is kept in its metadata
-    for provenance only.
-
-    Stores numpy; the caller rebuilds its own `Emissions` (torch tensor) from what `load` returns, so this
-    half stays torch-free. Writes are atomic (temp file + `os.replace`): an interrupted run leaves either
-    the old entry or none, never a truncated matrix that would load as a silent wrong answer.
-    """
+    aligner LOADED, not what the harness asked for: `e2e.BenchAligner` keys each language's entries on the
+    label plus a digest of the loaded weights and dictionary, since a name alone would serve one model's
+    matrices to another when a Hub checkpoint moves. DEVICE-INDEPENDENT by design, MPS and CPU emissions
+    measuring identical. Stores numpy, so this half stays torch-free, and writes atomically: an interrupted
+    run leaves the old entry or none, never a truncated matrix that would load as a silent wrong answer."""
 
     def __init__(self, directory: Path, *, model: str, emitter: str) -> None:
         self.directory = directory
@@ -2170,17 +2039,12 @@ class TranscriptStore:
     def load_segments(self, audio_path: str, language: str) -> tuple[list[dict[str, Any]], str | None] | None:
         """The stored (segments, HEARD language), or None for a miss.
 
-        THE LANGUAGE IS STORED TOO SINCE W7 (review M8): whisper's own detection is half the port's return
-        value now (`ports.Transcribed`), and a cache that served only the segments would hand every replayed
-        transcript a `None` language — so a cached `run_align` row would route a non-English song to the
-        default bundle where a cold one routed it to its own.
-
-        AN ENTRY WRITTEN BEFORE THE FIELD EXISTED IS A MISS (W7 review r1-spec-9), not a `None` language. All
-        six entries in this box's `_transcripts` predate it, and serving one would have made a cached run
-        measure `heard=None` — the pre-W7 configuration — while reporting itself as this tree's. The two cases
-        are distinguishable because `save_segments` now writes the key ALWAYS, `null` included: a missing key
-        means "written by a harness that could not say", a null one means "whisper said nothing".
-        """
+        The language is stored too since W7 (M8): whisper's own detection is half the port's return value
+        now, and a cache that served only the segments would hand every replayed transcript a `None`
+        language — so a cached `run_align` row would route a non-English song to the default bundle where a
+        cold one routed it to its own. An entry written before the field existed is a MISS rather than a
+        `None` language: all six entries in this box's `_transcripts` predate it. `save_segments` writes the
+        key ALWAYS, `null` included, so "could not say" and "whisper said nothing" stay distinguishable."""
         digest, parts = self.key(audio_path, language)
         path = self.path_of(digest)
         if not path.is_file():

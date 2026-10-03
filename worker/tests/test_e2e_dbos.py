@@ -1,13 +1,10 @@
 """END TO END through REAL DBOS: a launched instance, a real SQLite file, real `@DBOS.step` registration.
 
-WHY THIS EXISTS. Everything else in the suite drives `run_align` with fakes, which proves the state
-machine but says nothing about the one thing the whole architecture is betting on: that DBOS actually
-registers these steps, checkpoints them, and resumes. `workflows/dbos_align.py` guessed at `DBOS.step`'s
-signature and carried a `TypeError` fallback — so until this file existed, the durable path had never run
-once and the fallback had never been shown to be unnecessary.
-
-The heavy seams are still faked. What is real here is DBOS: the registration, the checkpoint writes, and
-the workflow-status bookkeeping.
+Everything else in the suite drives `run_align` with fakes, which proves the state machine but says nothing
+about the thing the architecture bets on: that DBOS actually registers these steps, checkpoints them and
+resumes. `workflows/dbos_align.py` guessed at `DBOS.step`'s signature and carried a `TypeError` fallback, so
+until this file existed the durable path had never run once. The heavy seams are still faked; what is real
+here is DBOS — the registration, the checkpoint writes and the workflow-status bookkeeping.
 
 Marked `dbos` so it can be deselected: it writes a SQLite file and takes seconds, where the rest of the
 suite is milliseconds.
@@ -439,17 +436,13 @@ async def test_a_timing_report_survives_the_checkpoint(dbos_instance: object) ->
 
 
 async def test_production_wiring_records_a_workflow(dbos_instance: object, tmp_path: Path) -> None:
-    """THE test whose absence let durability be missing from the running worker for this whole rewrite.
+    """THE test whose absence let durability be missing from the running worker for a whole rewrite.
 
-    Every other test in this file declares its OWN `@DBOS.workflow` and then asserts steps were recorded —
-    which proves DBOS works, and proves nothing about whether `__main__` asks it to. Production wrapped its
-    STEPS with `DBOS.step` and called them from a plain `async def`, so nothing ran in a workflow context and
-    nothing checkpointed. A live job confirmed it: zero rows in `workflow_status`.
-
-    So this goes through `durable.align` — the exact call the composition root makes — and asserts the
-    system database saw a workflow. No wrapper is declared here on purpose; supplying one is what hid the
-    bug.
-    """
+    Every other test here declares its OWN `@DBOS.workflow` and then asserts steps were recorded, which
+    proves DBOS works and proves nothing about whether `__main__` asks it to. Production wrapped its STEPS
+    with `DBOS.step` and called them from a plain `async def`, so nothing ran in a workflow context and
+    nothing checkpointed — a live job confirmed it, with zero rows in `workflow_status`. So this goes
+    through `durable.align`, the exact call the composition root makes, and declares no wrapper of its own."""
     from dbos import DBOS
 
     from encore_worker.workflows import durable

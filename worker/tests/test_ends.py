@@ -1,18 +1,15 @@
-"""The word-end post-pass, as properties (review §3 item 5; W4, `domain/lyrics/ends.py`).
+"""The word-end post-pass, as properties (W4, `domain/lyrics/ends.py`).
 
-Everything here is hermetic: documents built by hand or by seeded random, envelopes that are lists of
-levels. No model, no audio, no event loop — the point of the post-pass being a pure function over the
-decode is that its invariants are testable without any of that.
+Everything here is hermetic: documents built by hand or by seeded random, envelopes that are lists of levels.
+The reject-if the review names is "any onset moves" — a display fix that moved a start would undo the whole
+wave — and it is asserted here on random documents and again end to end through the real step
+(`tests/test_align_ends.py`), because a bench row averages over a corpus and could hide one moved onset. The
+OOV placeholder's exhibit is in README, "The OOV placeholder's own exhibit".
 
-THE INVARIANT THE REVIEW'S REJECT-IF NAMES is "any onset moves" — a display fix that moved a start would
-undo the whole wave. It is asserted here on random documents and again end to end through the real step
-(`tests/test_align_ends.py`), because a bench row averages over a corpus and could hide one moved onset
-inside a metric that improved.
-
-TIMES ARE COMPARED WITH `approx` wherever an end was extended, and EXACTLY wherever it was not: an
-extended end is a multiple of the 20 ms frame, and `115 * 0.02` is 2.3000000000000003. The identity cases
-are the ones that must hold bit for bit, because "nothing moved" is what the trail note and the bench's
-onset digest both claim.
+Times are compared with `approx` wherever an end was extended and EXACTLY wherever it was not: an extended
+end is a multiple of the 20 ms frame, and `115 * 0.02` is 2.3000000000000003, while the identity cases must
+hold bit for bit because "nothing moved" is what the trail note and the bench's onset digest both claim.
+"""
 """
 
 from __future__ import annotations
@@ -212,16 +209,14 @@ def test_an_interpolated_word_is_held_like_any_other() -> None:
 
 
 def test_a_trailing_out_of_vocabulary_token_does_not_absorb_the_hold() -> None:
-    """W4 review r1: the post-pass, inverted by the one word that has no evidence.
+    """The post-pass, inverted by the one word that has no evidence.
 
     A line ending in an OOV token — a digit run, a non-Latin word; 497 of the corpus's 5693 Jamendo words
-    are interpolated — gets `start = end = the previous word's end` from `generate`'s OOV branch (verified
-    against the real `generate`: `["hold on 2", "next"]` publishes `'2'` at 0.5600-0.5600, exactly `'on'`'s
-    end). Read as a cap that pinned the sung word at its own end, and the zero-width token then ran to the
-    NEXT LINE's onset — so the room saw an unsingable token lit through the sung tail while the word being
-    sung went dark. The hold belongs to the word with acoustic evidence, and the placeholder stays a point:
-    the TV lights `start <= pos < end`, so a zero-width span is never the active word.
-    """
+    are interpolated — gets `start = end = the previous word's end` from `generate`'s OOV branch, which read
+    as a cap that pinned the sung word at its own end and let the zero-width token run to the NEXT LINE's
+    onset: the room saw an unsingable token lit through the sung tail while the word being sung went dark.
+    The hold belongs to the word with acoustic evidence and the placeholder stays a point, the TV lighting
+    `start <= pos < end`."""
     oov = Word(word="2", start=1.2, end=1.2, score=0.0, provenance="low")
     before = doc(line(0, word("on", 0.6, 1.2), oov), line(1, word("next", 4.0, 4.4)))
     after = extend_ends(before, sung((0.6, 2.6), (4.0, 4.6)), HOP)

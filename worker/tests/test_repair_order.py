@@ -1,17 +1,14 @@
 """The repair ladder's output invariant: a published document never runs backwards (XA-08).
 
-Seeded random scenarios go through the REAL `time_text` — its never-sung drop, R3/R4/R1/R2 repairs, adoption,
-`_clamped`, the gate and the grading — and the published document must then satisfy what the TV and
-`policy.decide` both rely on: `measure`'s `out_of_order == 0`, no word starting before the one ahead of it and
-every word inside its line. A backwards start makes the highlight jump, and `decide` reads it as incoherent
-timing and drops the whole text to line sync.
-
-The property runs PER SEED so that one new violation names its seed, and every test runs on BOTH arms: the
+Seeded random scenarios go through the REAL `time_text` — the never-sung drop, R3/R4/R1/R2, adoption,
+`_clamped`, the gate and the grading — and the published document must satisfy what the TV and
+`policy.decide` both rely on: `measure`'s `out_of_order == 0`, no word starting before the one ahead of it,
+every word inside its line. A backwards start makes the highlight jump and `decide` reads it as incoherent
+timing. The property runs PER SEED so one violation names its seed, and every test runs on BOTH arms: the
 default, whose 4 known-inverting seeds keep `xfail(strict=True)`, and `m2-order-clamp`, which passes all 32.
 
-The scenarios, the four pre-W1 violations, what the arm costs, which seeds still publish an in-order wrong
-claim and the mutation that justifies the per-seed shape are in
-`docs/benchmarks/forced-alignment/README.md`, "The repair-order property test, seed by seed".
+The scenarios, the four pre-W1 violations, what the arm costs and the mutation that justifies the per-seed
+shape are in docs/benchmarks/forced-alignment/README.md, "The repair-order property test, seed by seed".
 """
 
 from __future__ import annotations
@@ -325,12 +322,10 @@ def test_the_arm_changes_only_refusals_and_the_default_only_neighbour_ends(
 
     W1 could say "byte for byte": the arm and the default agreed wherever no run was refused. W6 gave the
     DEFAULT a bounded left floor — where the line before a repair ends past its start, that neighbour's END
-    comes back to the repair instead of the repair going to the end (`_clamped_v2`, `_pulled_end`) — and
-    the arm keeps refusing instead, which is what W1 and W3 measured it doing. So on a seed the arm refused
-    nothing, every line's TEXT, START, grade and word STARTS are still the default's, and the only cells
-    that may differ are neighbour `end`s the default pulled IN: strictly earlier, and landing exactly on
-    the following line's start. A bench run with `m2-order-clamp` still measures M2's refusals and nothing
-    else, because nothing here is scored on a line's end."""
+    comes back to the repair (`_clamped_v2`, `_pulled_end`) — while the arm keeps refusing instead. So on a
+    seed the arm refused nothing, every line's TEXT, START, grade and word STARTS are still the default's,
+    and the only cells that may differ are neighbour `end`s the default pulled IN: strictly earlier, landing
+    on the following line's start. Nothing here is scored on a line's end."""
     default, arm = runs("default"), runs("m2-order-clamp")
     refusing = [p.scenario.seed for p in arm if "kept the blind decode" in p.why]
     assert set(FORMERLY_M2) <= set(refusing)

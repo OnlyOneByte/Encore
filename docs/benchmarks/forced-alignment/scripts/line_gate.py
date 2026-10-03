@@ -7,12 +7,9 @@
 The rung publishes the text's OWN line timings, so its gate owes two answers: are these words sung, and do
 these TIMINGS describe this audio. This prices six candidate rules over the same cases — right texts refused,
 the published documents' accuracy, and wrong texts passed — with the documents built by the shipped functions
-and the decode read from the bench's emission cache. `--from` re-prints a stored run.
-
-The six rules, what W1's gate cost, and what "placed" means since the rung took its own claim-clock vote are
-in `docs/benchmarks/forced-alignment/README.md`, "The harness scripts: what each one is for, and the
-limit it states". The tables are in
-"The LINE_SYNC rung's gate" and "The LINE_SYNC rung's four candidate rules, on the MAPPED claims".
+and the decode read from the bench's emission cache. The six rules, what W1's gate cost and what "placed"
+means since the rung took its own claim-clock vote are in docs/benchmarks/forced-alignment/README.md, "The
+LINE_SYNC rung's gate".
 """
 
 from __future__ import annotations
@@ -111,21 +108,12 @@ def rules(tau: float, theta: float | None = None) -> dict[str, Callable[[Row], b
     for share in sorted({*THETAS, *(() if theta is None else (theta,))}):
         out[share_rule("decode", share)] = by_decode(share)
         out[share_rule("either", share)] = by_either(share)
-    # THE LAG TERM, measured and NOT taken (W3 review r2). The share is read against the text's own blind
-    # decode, so a document uniformly 0.5-1.0 s late agrees with itself: 23 of the 328 right-text documents
-    # `decode(0.5)` publishes have 0 lines within ±500 ms of truth and all within 1 s — numb and bad-guy in 9
-    # claim modes each (their TRUTH sheets included), tfr-chosen, feel-my-heart, never-be-alone, rap-god.
-    # Refusing on the lag the decode reads (`AsClaimed.offset_sec`) does not recover them: `_placed_by`
-    # shifted the sheet by the activity fit (+0.72 s bad-guy, +0.62 numb) and the decode reads the claims as
-    # near (offset +0.14, -0.23), so both witnesses agree on the same misplacement, and the `quality` split
-    # below — which reads ±1 s — counts all 23 as GOOD. What the term costs, from these rows: at 0.5 s, right
-    # texts refused 32 -> 39 of 320 on W1's lines set, text ±500 82.8% -> 80.6%, good documents refused
-    # 28 -> 37 of 346, middling published 10 -> 6, bad 0 either way; at 0.3 s, 50/320, text ±500 78.3%, 48/346
-    # good refused. What it buys is the tempo modes' gross lines (13-mode set: 47 -> 9 at 0.5 s, 0 at 0.3 s),
-    # which are W2's bounded scale, not this gate's. Under `syncMode=lines` a refusal is terminal, so the
-    # trade is "no lyrics at all" against "a scroll under a second late". The root cause is W2's claim clock
-    # (apply a shift only where it beats no shift), and `gates/w3-lines.yaml` holds the zero-±500 count so W2
-    # is measured on it. Kept here as the rule a later wave can re-read from the same rows.
+    # THE LAG TERM, measured and NOT taken (W3). The share is read against the text's own blind decode, so a
+    # document uniformly 0.5-1.0 s late agrees with itself: 23 of the 328 right-text documents `decode(0.5)`
+    # publishes have 0 lines within ±500 ms of truth and all within 1 s. Refusing on the lag the decode reads
+    # does not recover them — both witnesses agree on the same misplacement — and the cost, from these rows,
+    # is right texts refused 32 -> 39 of 320 at 0.5 s, text ±500 82.8% -> 80.6%, good documents refused
+    # 28 -> 37 of 346; what it buys is the tempo modes' gross lines, which are W2's claim clock to fix.
     for lag in (0.3, 0.5):
         out[f"decode(0.5)+lag({lag:.1f})"] = by_lag(lag)
     return out
@@ -240,13 +228,11 @@ def _starts_of(segments: Sequence[Any]) -> dict[int, float]:
 def placements(rows: Sequence[Row], tau: float, modes: Sequence[str], theta: float) -> list[str]:
     """W3's placement (`_placed_by`'s unconditional activity shift) against W2's (the rung's claim-clock
     vote), per mode and on the same decode: what the vote moved, what the gate then admits, and how many
-    published documents have NO line within ±500 ms of truth — `gates/w3-lines.yaml`'s
-    `zero-pm500-documents-not-up`, the count the clock owes. Only rows carrying `w3_near` (a run made after
-    the map existed) can be read.
+    published documents have NO line within ±500 ms of truth.
 
-    `theta` IS PASSED IN, not read from the shipped module (W4b): the share lives in the per-model calibration
-    row (`lexical.Bands.line_sync_min_agreement`), so a `--model` run has to be scored at ITS row's share —
-    or, for a model with no row yet, at the reference share `main` prints a warning about."""
+    That last is `gates/w3-lines.yaml`'s `zero-pm500-documents-not-up`, the count the clock owes, and only
+    rows carrying `w3_near` can be read. `theta` IS PASSED IN rather than read from the shipped module: the
+    share lives in the per-model calibration row, so a `--model` run is scored at ITS row's share."""
 
     def lifted(row: Row) -> bool:
         return row["lift"] is None or float(row["lift"]) >= tau
@@ -315,15 +301,14 @@ def summarize(rows: Sequence[Row], tau: float, theta: float) -> list[str]:
 
 
 def fitted_share(rows: Sequence[Row], tau: float) -> list[str]:
-    """THE ROW THIS RUN FITS (W4b, and the reason this script is a procedure rather than a report): the share
-    where the gross lines start, read off THESE rows, printed ready to paste into `lexical.CALIBRATED`.
+    """THE ROW THIS RUN FITS: the share where the gross lines start, read off THESE rows, printed ready to
+    paste into `lexical.CALIBRATED`.
 
-    The rule is the one every recalibration has followed: take the LOWEST swept share that shows no gross line
-    on the right texts, since a lower one buys published documents at the price of lines more than 2 s out and
-    a higher one refuses right texts for nothing. Printed beside the whole sweep, so a wave can see whether
-    the population separates at all — if every share shows gross lines, this model has no share and the model
-    ships with no row in `lexical.CALIBRATED`, which stands every emission-scale gate down
-    (docs/arch/04-alignment.md §5.4)."""
+    The rule is the one every recalibration has followed: take the LOWEST swept share that shows no gross
+    line on the right texts, since a lower one buys published documents at the price of lines more than 2 s
+    out and a higher one refuses right texts for nothing. Printed beside the whole sweep, so a wave can see
+    whether the population separates at all — if every share shows gross lines, this model has no share and
+    ships with no row, which stands every emission-scale gate down (docs/arch/04-alignment.md §5.4)."""
     right = [r for r in rows if r["mode"] in TIMED_MODES]
     every = rules(tau)
     out: list[str] = []
@@ -355,16 +340,9 @@ def claim_agreement(
       near        `reconcile.as_claimed`'s share within `near_sec` — the shipped gate's number
       offset      its median (decode − claim): the claims' lag as the decode reads it
       median_gap  the median |decode − claim|
-      near_fit    the share within `near_sec` once that lag is removed (does the decode describe the same
-                  performance at all, whatever the claims' clock? What W2's claim clock could place)
-
-      pairs       how many lines the share is OVER — the denominator, not the sheet's length: `generate`
-                  drops a line with no alignable character, so a mixed-script sheet's share can rest on a
-                  handful of Latin lines (W3 review r2; the shipped rung now needs
-                  `align_steps._LINE_SYNC_MIN_DECODED_SHARE` of the claimed lines before it reads the share
-                  at all, so a re-run can re-read that threshold from these rows)
-
-    All None when fewer than `reconcile.MIN_PAIRS` lines are on both sides (the gate's fallback)."""
+      near_fit    the share within `near_sec` once that lag is removed
+      pairs       how many lines the share is OVER, `generate` dropping any line with no alignable character
+    """
     from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
 
     got = rc.as_claimed(generated, placed, tolerance_sec=near_sec)
@@ -507,11 +485,9 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
                         "map_inliers": None if clock is None else clock.inliers,
                         "map_baseline": None if clock is None else clock.baseline,
                         "map_margin": None if clock is None else clock.margin,
-                        #: Claimed starts `_in_claim_order` held at the line before them (Tom_Orlando jit),
-                        #: and the inversions it REFUSED to hold — a run below one late stamp, or more strays
-                        #: than `_MAX_HELD_SHARE` (W2 review r1). A refused sheet publishes its inversions, so
-                        #: `measure.out_of_order` reaches `decide` and the text is dropped; the pair of counts
-                        #: is what re-reads that rule off a stored run.
+                        #: Claimed starts `_in_claim_order` held at the line before them (Tom_Orlando jit), and
+                        #: the inversions it REFUSED to hold. A refused sheet publishes its inversions, so
+                        #: `measure.out_of_order` reaches `decide` and the text is dropped.
                         "held": held,
                         "unheld": unheld,
                         #: The SAME row under W3's placement, for the comparison table: the agreement the

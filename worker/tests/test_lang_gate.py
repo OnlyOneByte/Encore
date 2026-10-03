@@ -1,16 +1,13 @@
 """The LANGUAGE gate (`docs/benchmarks/forced-alignment/scripts/lang_gate.py`).
 
-WHY IT HAS UNIT TESTS, like `pool_gate.py` and the E2E harness beside it (W7 review r2-tests-15: this script
-was 651 lines with no test at all, referenced only from docstrings and loaded by nothing). It carries the
-decisive numbers of W7: the 59-song fr/de/es reading that ships `lang-route-mix` DEFAULT-OFF, the `--folds`
-census that licenses the NFKD fold as a byte-level no-op on every row under `results/`, and review M9's live
-blank proof. A defect in `score`'s truth pairing, in `pooled`'s arithmetic or in `fold_census`' alphabet would
-move those verdicts silently — the whole class of defect this project's harness tests exist for, and one of
-them (`pooled`'s AAE, r2-tests-14) was in fact live.
+It has unit tests for the reason `pool_gate.py` and the E2E harness beside it do: it carries decisive
+numbers of W7 — the 59-song fr/de/es reading that ships `lang-route-mix` DEFAULT-OFF, the `--folds` census
+that licenses the NFKD fold as a byte-level no-op on every row under `results/`, and M9's live blank proof —
+so a defect in `score`'s truth pairing, in `pooled`'s arithmetic or in `fold_census`' alphabet would move
+those verdicts silently, and one of them (`pooled`'s AAE) was in fact live.
 
-Hermetic: no model, no corpus, no network. `score` and `pooled` are plain data; `fold_census` reads the stdlib
-UCD through `domain.lyrics.language`; the `--blank` arms are checked on `Unaware`'s own shape, which is what
-makes it the faithful pre-W4 chain.
+Hermetic: no model, no corpus, no network. `score` and `pooled` are plain data, `fold_census` reads the
+stdlib UCD through `domain.lyrics.language`, and the `--blank` arms are checked on `Unaware`'s own shape.
 """
 
 from __future__ import annotations

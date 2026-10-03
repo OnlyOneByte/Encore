@@ -4,13 +4,11 @@
     git clone https://github.com/f90/jamendolyrics /tmp/encore-align-bench/jamendolyrics
     uv run python docs/benchmarks/forced-alignment/scripts/jamendo.py
 
-WHY THIS EXISTS. Every other song's truth is AUTHORED captions, one onset per line and carrying the caption
-author's jitter, so the benchmark could only ever measure LINE onsets. JamendoLyrics ships hand-MEASURED word
-AND line onsets — the karaoke ball's actual unit, and clean enough that a 50 ms aligner error reads as 50 ms.
-
-ENGLISH ONLY, the shipped syllabifier and the default bundle being English. WORD TRUTH SHAPE: the onsets and
-the tokens arrive in two positional files, so `truth-words.json` keeps them as parallel lists and the scorer
-walks the same order.
+Every other song's truth is AUTHORED captions, one onset per line and carrying the caption author's jitter,
+so the benchmark could only ever measure LINE onsets. JamendoLyrics ships hand-MEASURED word AND line onsets
+— the karaoke ball's actual unit, and clean enough that a 50 ms aligner error reads as 50 ms. ENGLISH ONLY,
+the shipped syllabifier and the default bundle being English. The onsets and the tokens arrive in two
+positional files, so `truth-words.json` keeps them as parallel lists and the scorer walks the same order.
 """
 
 from __future__ import annotations

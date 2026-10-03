@@ -1,19 +1,13 @@
 """The KEY MIRROR, checked against core's `paths.ts` rather than trusted.
 
-WHY THIS TEST EXISTS AT ALL. `artifacts/keys.py` duplicates a decision that lives in TypeScript. The
-duplication is unavoidable — two processes, two languages, one on-disk layout — but the drift is not. Core's
-own header states the consequence: "a mismatch is SILENT — the file exists and the player 404s." No runtime
-check can catch that, because both sides are individually self-consistent. So the agreement is asserted at
-build time, from the actual text of the other side.
-
-This is a source scan, and I am usually against those: a scan proves a line is present, never that
-behaviour is right. It is justified here for the same reason it is justified against a config file — the
-TEXT IS THE ARTIFACT. `paths.ts` does not have behaviour underneath its templates that this test could be
-substituting for; the template IS the contract. And the alternative is not a better test, it is a comment
-saying "MUST match", which is what both sides had while they drifted.
-
-IF THIS FILE CANNOT FIND paths.ts IT FAILS. It does not skip. A skipped mirror test is worse than none: it
-reports green from the moment someone moves the file, which is exactly when the mirror needs checking.
+`artifacts/keys.py` duplicates a decision that lives in TypeScript. The duplication is unavoidable — two
+processes, two languages, one on-disk layout — but the drift is not, and core's own header states the
+consequence: "a mismatch is SILENT — the file exists and the player 404s." No runtime check can catch it,
+both sides being individually self-consistent, so the agreement is asserted at build time from the actual
+text of the other side. The scan is justified because the TEXT IS THE ARTIFACT: the alternative is not a
+better test but a comment saying "MUST match", which is what both sides had while they drifted. If this
+file cannot find `paths.ts` it FAILS rather than skips — a skipped mirror reports green from the moment
+someone moves the file, which is when it most needs checking.
 """
 
 from __future__ import annotations

@@ -439,14 +439,13 @@ class RoutedAligner:
 
 
 async def test_a_routed_bundle_times_no_words_because_no_gate_can_read_them(tmp_path: Path) -> None:
-    """W7 review r1-correctness-1, the high-severity half: routing is default-ON for a non-Latin script, and
-    the bundle it routes to has no calibration row — so until this fix the v2 ENVELOPE gate became the only
-    wrong-text gate on that lane, the one review H3 measured passing 189 of 380 and 220 of 320 wrong texts.
+    """Routing is default-ON for a non-Latin script, and the bundle it routes to has no calibration row.
 
-    The attempt now DECLINES (`None`), which is `policy.decide` rule 1 rather than rule 0: a sheet that
-    brought its own line timings degrades to the LINE_SYNC rung — gated by a share of lines in SECONDS
-    (`lexical.LINE_SYNC_SHARE_UNCALIBRATED`), the one threshold an uncalibrated matrix keeps — and an untimed
-    one moves to the next text. Asserted together here, because the decline is only correct BECAUSE the rung
+    Until this fix the v2 ENVELOPE gate became the only wrong-text gate on that lane — the one H3 measured
+    passing 189 of 380 and 220 of 320 wrong texts. The attempt now DECLINES (`None`), which is
+    `policy.decide` rule 1 rather than rule 0: a sheet that brought its own line timings degrades to the
+    LINE_SYNC rung, gated by a share of lines in SECONDS (`lexical.LINE_SYNC_SHARE_UNCALIBRATED`), and an
+    untimed one moves to the next text. Both are asserted, the decline being correct only because the rung
     is reachable."""
     from encore_worker.domain.lyrics.policy import Attempt, Retime
     from encore_worker.domain.lyrics.policy import decide as policy_decide

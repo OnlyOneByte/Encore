@@ -242,15 +242,12 @@ def test_every_bundle_a_box_can_default_to_is_calibrated() -> None:
 def test_a_bundle_a_box_defaults_to_has_a_COMPLETE_row_not_four_fifths_of_one() -> None:
     """`is_calibrated` CANNOT SEE A HALF-MEASURED ROW, and W5's flip is the wave where that matters.
 
-    A row may exist with a field nobody fitted — `margin_floor_nats` is `float | None` for exactly that
-    reason, and `HUBERT_ASR_XLARGE`'s is None because no one has read one of its trellises. For a bundle an
-    OPERATOR names, None is the designed behaviour: the placement rule abstains and the trail says which
-    bundle had no floor. For a bundle a BOX DEFAULTS TO it is the silent borrow the review rated high, one
-    threshold over: every job on that worker would run with W6's placement-ambiguity rule switched off, and
-    nothing would have been typed to be refused. `is_calibrated` answers "has a row", so the default's row is
-    held to "has every number" here instead — which is what made W5's flip a one-word change (`CALIBRATED`'s
-    own comment argues it) and what would have refused a flip to XL.
-    """
+    A row may exist with a field nobody fitted — `margin_floor_nats` is `float | None` for that reason, and
+    `HUBERT_ASR_XLARGE`'s is None because no one has read one of its trellises. For a bundle an OPERATOR
+    names, None is the designed behaviour: the rule abstains and the trail says which bundle had no floor.
+    For a bundle a BOX DEFAULTS TO it is a silent borrow one threshold over — every job on that worker
+    running with W6's placement-ambiguity rule switched off — so the default's row is held to "has every
+    number" here, which is what made W5's flip a one-word change and would have refused a flip to XL."""
     from encore_worker.adapters import ml
 
     for device in ("cuda", "mps", "cpu", "an-accelerator-nobody-has-yet"):

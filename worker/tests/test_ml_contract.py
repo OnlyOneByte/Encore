@@ -1,24 +1,14 @@
 """The real CTC kernel and the real emission pass, held to the contract `domain.lyrics.generate` assumes.
 
-WHY THIS FILE HAD TO EXIST (review L8). Every alignment test injects a fake decoder over fake
-emissions. So nothing called `adapters.ml.forced_align_decoder` or `WhisperXAligner.emissions`, and
-nothing checked that the fakes behave like them. Two halves:
-
-  * THE KERNEL, on synthetic log-probs (torch only, no weights, milliseconds). The output shape; each
-    target exactly once, in order; blank = 0 between a doubled letter; per-frame scores that are the
-    matrix's own log-probs; the refusals `generate` and `regenerate` are built around. Then the fake the
-    suite decodes with (`tests/ctc_fixture.ctc_viterbi`) is checked FRAME FOR FRAME against it: sung
-    matrices, windows of them, flat evidence, random log-softmax. So a repair test passing on the fake
-    says something about production.
-  * THE EMISSION PASS, on a synthetic tone, run only when the default English checkpoint is ALREADY
-    cached. It never downloads: a box without the weights skips this cleanly. Marked `ml`, the repo's
-    slow marker. It checks the (frames, vocab) shape against wav2vec2's 320-sample stride AND that the
-    FINAL SLIVER is on the grid (review 6a), `frame_sec` exactly 0.02, rows that are log-softmax, the
-    blank this bundle names (`Emissions.blank_id`, review M9), and that the real matrix and the real
-    kernel together satisfy `generate`'s span-count check.
-
-The chunk boundary, the stitching and the matrix cache (review 6a / M10) are `tests/test_ml_grid.py`,
-which proves them exactly against a stand-in model rather than statistically against weights.
+Every alignment test injects a fake decoder over fake emissions, so nothing called
+`adapters.ml.forced_align_decoder` or `WhisperXAligner.emissions` and nothing checked that the fakes behave
+like them (L8). THE KERNEL is checked on synthetic log-probs — the output shape, each target exactly once in
+order, blank = 0 between a doubled letter, per-frame scores that are the matrix's own, the refusals
+`generate` and `regenerate` are built around — and the fake the suite decodes with is then checked FRAME FOR
+FRAME against it. THE EMISSION PASS runs only when the default English checkpoint is already cached (marked
+`ml`, never downloads): the (frames, vocab) shape against wav2vec2's 320-sample stride, the FINAL SLIVER on
+the grid, `frame_sec` exactly 0.02, log-softmax rows, the blank this bundle names, and the span-count check.
+The chunk boundary, the stitching and the matrix cache are `tests/test_ml_grid.py`.
 """
 
 from __future__ import annotations
@@ -309,21 +299,14 @@ def test_emissions_on_a_short_tone_are_a_log_softmax_matrix_with_blank_at_zero(
 
 
 def test_the_english_default_bundle_is_the_one_the_lexical_bands_were_fitted_on() -> None:
-    """W3 review r2, and the reason `Emissions.model` exists: `lexical.BANDS` is ONE bundle's calibration, and
-    whisperx picks the bundle PER LANGUAGE. `align_model_name` reads that choice from whisperx's own tables
-    without loading anything — so this test fails the day a whisperx upgrade moves the `en` default, which
-    would otherwise silently apply thresholds fitted elsewhere. A language with no default is named as such,
-    never as the bands' own model, and the guard in `align_steps._measured_lift` then declines to judge.
+    """The English default bundle is the one `lexical.BANDS` was fitted on.
 
-    `BANDS` IS WHISPERX'S TABLE DEFAULT (W4b): 6b makes the English bundle a setting, and after W4b's bench
-    verdict its default is the same wav2vec2 base bundle whisperx tables for `en` — so this test's first
-    assertion is ALSO the statement that the shipped default and the unnamed-matrix fallback agree today, and
-    it fails the day either side moves alone. `BANDS` stays the row an UNNAMED matrix is read as — a test's
-    fake, a bench cache written before `Emissions.model` existed — which is what those matrices actually
-    were. The shipped default's own row is `CALIBRATED[default_align_model(device)]`, and an operator who
-    names HuBERT with `ENCORE_ALIGN_MODEL` gets that bundle's row instead, which is the whole point of 6b's
-    machinery surviving its own flip being rejected.
-    """
+    `BANDS` is ONE bundle's calibration and whisperx picks the bundle PER LANGUAGE, so `align_model_name`
+    reads that choice from whisperx's own tables without loading anything: this test fails the day a
+    whisperx upgrade moves the `en` default, which would otherwise apply thresholds fitted elsewhere. A
+    language with no default is named as such and `align_steps._measured_lift` declines to judge. `BANDS`
+    stays the row an UNNAMED matrix is read as — a test's fake, a bench cache written before
+    `Emissions.model` existed — while the shipped default's row is `CALIBRATED[default_align_model()]`."""
     from encore_worker.adapters.ml import align_model_name, default_align_model
     from encore_worker.domain.lyrics import lexical
 

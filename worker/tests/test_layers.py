@@ -17,11 +17,9 @@ from pathlib import Path
 
 PKG = Path(__file__).resolve().parent.parent / "encore_worker"
 
-#: Layer -> the sibling layers it may import. A layer absent from a value set is a violation.
-#: `protocol` is importable by anything: it is inert wire shapes with zero dependencies.
-#: Every layer may import ITSELF — a package split across files is still one layer. `protocol` and
-#: `host` were originally given empty sets, which made an ordinary sibling import inside them a
-#: violation; the check only surfaced it once it stopped being vacuous.
+#: Layer -> the sibling layers it may import; a layer absent from a value set is a violation. `protocol` is
+#: importable by anything, being inert wire shapes with zero dependencies, and every layer may import ITSELF —
+#: `protocol` and `host` were first given empty sets, which made an ordinary sibling import a violation.
 ALLOWED: dict[str, frozenset[str]] = {
     "protocol": frozenset({"protocol"}),
     "host": frozenset({"host"}),
@@ -41,11 +39,9 @@ ALLOWED: dict[str, frozenset[str]] = {
 #: Numpy is NOT here and is used in `domain/` by design — see `docs/arch/04-alignment.md` XA-15 and §15.
 BANNED_IN_DOMAIN = frozenset({"dbos", "asyncio", "torch", "torchaudio", "whisperx", "pyannote", "demucs"})
 
-#: The only `domain/` modules that may import `random`, each with the DATA its seed comes from. A domain call
-#: is reached from a DBOS workflow body, which is replayed on recovery, so a seed off a clock or off
-#: `random`'s global state would answer differently the second time and the attempt would load two bundles.
-#: XA-15 used to be written as "no random", which three shipped modules contradicted while the guard checked
-#: none of it (W7b review r2-tests-9); an allowlist states the real rule and can only shrink.
+#: The only `domain/` modules that may import `random`, each with the DATA its seed comes from: a domain call
+#: is reached from a replayed DBOS workflow body, so a seed off a clock or off `random`'s global state would
+#: answer differently the second time. XA-15 used to read "no random", which three shipped modules broke.
 SEEDED_FROM_DATA = {
     "lyrics/lexical.py": "crc32 of the text being scored, so a shuffle control repeats on a replay",
 }

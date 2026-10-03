@@ -1,16 +1,13 @@
 """`publish_stems` for real: real ffmpeg, real filesystem, files landing at core's keys.
 
-WHAT THIS CATCHES THAT NOTHING ELSE DOES. Every other stems test fakes `publish_stems` entirely, so the
-whole publication path — encode, place, report — was covered by a fake returning a plausible string. That
-is exactly how the original bug survived: `publish_stems` was
-`os.path.relpath(audio.path, job.media_dir)`, which returns a ref-SHAPED string pointing into `work/`
+Every other stems test fakes `publish_stems` entirely, so the whole publication path — encode, place, report
+— was covered by a fake returning a plausible string, which is exactly how the original bug survived:
+`publish_stems` was `os.path.relpath(audio.path, job.media_dir)`, a ref-SHAPED string pointing into `work/`
 scratch, and every test that asserted "it looks like a ref" passed.
 
-So the assertions here are about the FILESYSTEM, not the return value: does a file exist at the key core
-computes, is it in the published format, and does the guide mix actually carry four channels. A returned
-ref that no file backs is the failure mode.
-
-Needs ffmpeg, not models — so it stays in the fast suite on any box with ffmpeg, and skips loudly elsewhere.
+So the assertions are about the FILESYSTEM rather than the return value: a file exists at the key core
+computes, it is in the published format, and the guide mix carries four channels. Needs ffmpeg, not models,
+so it stays in the fast suite on any box with ffmpeg and skips loudly elsewhere.
 """
 
 from __future__ import annotations

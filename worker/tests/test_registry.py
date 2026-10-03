@@ -171,13 +171,10 @@ def test_a_cost_cites_where_it_was_measured() -> None:
     """A cost must point at the record that produced it, not merely claim the word "measured".
 
     This test used to check for that word, which is how `htdemucs` carried 0.29x labelled "measured" while
-    actually being copied from core's contract — a GPU figure. On CPU it is 1.24x. Requiring a citation makes
-    that specific mistake impossible: there is nowhere to write "measured" without also naming a machine and a
-    row in the benchmark document.
-
-    The repo already learned the softer version of this lesson — core's ensemble entry carries
-    `provenance: 'estimated'` because an estimate wearing a measured label is worse than no number.
-    """
+    being copied from core's contract — a GPU figure, where on CPU it is 1.24x. Requiring a citation makes
+    that mistake impossible: there is nowhere to write "measured" without naming a machine and a row in the
+    benchmark document. The repo learned the softer version already, core's ensemble entry carrying
+    `provenance: 'estimated'` because an estimate wearing a measured label is worse than no number."""
     for s in reg.SPECS:
         if s.rt_factor is None:
             assert "unmeasured" in s.provenance, f"{s.token} has no cost and does not say why"
@@ -219,17 +216,14 @@ def test_the_runnable_specs_carry_a_measured_cost(token: str) -> None:
 
 
 def test_the_mlx_runtime_beats_the_cpu_roformer_by_enough_to_justify_itself() -> None:
-    """THE REASON THE MLX RUNTIME EXISTS, stated as the comparison that actually supports it.
+    """The reason the MLX runtime exists, stated as the comparison that actually supports it.
 
-    This test used to assert "the fastest measured model is the MLX one" with an `or token == 'htdemucs'`
-    escape hatch — which went green the moment htdemucs was re-measured on a real song (0.474 against MLX's
-    0.555) while asserting nothing. Two of three rows satisfied it.
-
-    The honest claim is narrower and survives the new numbers: among models that reach ROFORMER QUALITY
-    (~17.4 dB instrumental SI-SDR on tfr-flyaway, against htdemucs's 14.9), MLX is the cheap one. Both
-    roformers tie on quality to within 0.02 dB, so the only thing separating them is cost, and MLX wins it
-    by 4x. htdemucs is faster still but 2.5 dB worse — a different trade, not a competitor for this one.
-    """
+    This used to assert "the fastest measured model is the MLX one" with an `or token == 'htdemucs'` escape
+    hatch, which went green the moment htdemucs was re-measured on a real song (0.474 against MLX's 0.555)
+    while asserting nothing. The honest claim is narrower and survives the new numbers: among models that
+    reach ROFORMER QUALITY (~17.4 dB instrumental SI-SDR on tfr-flyaway against htdemucs's 14.9) MLX is the
+    cheap one — both roformers tie on quality to within 0.02 dB and MLX wins cost by 4x, while htdemucs is
+    faster still and 2.5 dB worse, which is a different trade."""
     mlx = [s for s in reg.SPECS if s.runtime is Runtime.MLX and s.rt_factor is not None]
     cpu_roformer = reg.by_token("bs-roformer-1297")
     assert mlx, "no timed MLX entry — the runtime's justification cannot be checked"
@@ -272,14 +266,11 @@ def test_the_measured_inversion_is_recorded_rather_than_corrected_silently() -> 
 def test_the_mlx_runtime_shares_this_process() -> None:
     """In-process, and that was EARNED rather than assumed.
 
-    On whisperx 3.8.6 it could not be: that release requires huggingface-hub<1.0.0 while `mlx-audio` requires
-    >=1.0, so the two were unsatisfiable together and MLX separation had to run in a sidecar virtualenv behind
-    a subprocess. whisperx 3.8.7rc1 drops the ceiling, which removed the sidecar, the
-    `ENCORE_MLX_AUDIO_PYTHON` knob and its probe.
-
-    Pinned as a test because reverting the whisperx pin to 3.8.6 would silently make this impossible again —
-    the lock would fail to resolve, but only for someone who ran `uv lock`.
-    """
+    On whisperx 3.8.6 it could not be: that release requires huggingface-hub<1.0.0 while `mlx-audio`
+    requires >=1.0, so the two were unsatisfiable together and MLX separation ran in a sidecar virtualenv
+    behind a subprocess. whisperx 3.8.7rc1 drops the ceiling, which removed the sidecar, the
+    `ENCORE_MLX_AUDIO_PYTHON` knob and its probe. Pinned as a test because reverting the whisperx pin would
+    silently make this impossible again — the lock would fail, but only for someone who ran `uv lock`."""
     for spec in reg.SPECS:
         if spec.architecture is Architecture.MELBAND:
             assert spec.runtime is Runtime.MLX

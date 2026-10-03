@@ -1,18 +1,15 @@
 #!/usr/bin/env python
-"""The LANGUAGE gates (W7): which bundle should time a non-English song, and the live proof that a model whose
-`[PAD]` is not at 0 decodes correctly.
+"""The LANGUAGE gates (W7): which bundle times a non-English song, and the live blank-id proof.
 
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/lang_gate.py --folds
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/lang_gate.py \\
         --target stem|mix [--languages fr,de,es] [--songs N] [--out rows.json] [--from rows.json]
-    cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/lang_gate.py \\
-        --blank [--blank-language nn] [--songs 2] [--out rows.json]
 
 A separate script because the language question needs another CORPUS and another COMPARISON — bundle against
 bundle on the same audio and text, blind, no ladder between — while reading the same shipped `emissions` /
 `generate` / `forced_align_decoder` that publish. `--folds` gates everything else: a target-filter fold that
-moved one English sequence would move every number under `results/`. Why each mode exists, and what `--blank`
-states: README, "The harness scripts: what each one is for, and the limit it states".
+moved one English sequence would move every number under `results/`. README, "The harness scripts", has the
+rest, including what `--blank` states and why a model whose `[PAD]` is not at 0 is the shape to prove it on.
 """
 
 from __future__ import annotations
@@ -53,10 +50,9 @@ CODES: Mapping[str, str] = {"French": "fr", "German": "de", "Spanish": "es", "En
 #: The three non-English thirds of JamendoLyrics, i.e. the 59 songs `jamendo.py` skipped.
 SWEEP_LANGUAGES = ("fr", "de", "es")
 
-#: A real whisperx HF bundle whose `[PAD]` is NOT at 0 — the `--blank` default. `nn` is the worst shape of
-#: the 23: id 0 is the WORD SEPARATOR `|`, so a decoder told `blank=0` charges every inter-word boundary as
-#: blank and never uses the model's real blank column at all. (`da` is `u`=0 / pad 32 and `ko` is pad 1204;
-#: `nn`'s weights are the ones already on this box, which is why it is the default and not `da`.)
+#: A real whisperx HF bundle whose `[PAD]` is NOT at 0 — the `--blank` default. `nn` is the worst shape of the
+#: 23: id 0 is the WORD SEPARATOR `|`, so a decoder told `blank=0` charges every inter-word boundary as blank
+#: and never uses the real blank column. (`da` is `u`=0 / pad 32, `ko` pad 1204; `nn`'s weights are on box.)
 BLANK_LANGUAGE = "nn"
 
 #: Line start error above which a line counts GROSS, as every other harness here defines it.
@@ -137,15 +133,12 @@ ENGLISH_LETTERS = frozenset("abcdefghijklmnopqrstuvwxyz'")
 def fold_census(texts: Sequence[str]) -> dict[str, Any]:
     """How the W7 target filter changes `texts`: what now aligns, and what NFKD still cannot decompose.
 
-    THE GATE ON THE WHOLE CHANGE. `generate.char_ids` folds before it drops, so a text whose every letter is
+    THE GATE ON THE WHOLE CHANGE: `generate.char_ids` folds before it drops, so a text whose every letter is
     already in the vocabulary produces byte-identical targets to the three inlined copies it replaced — and
-    the English corpus must be exactly that, or every published number is owed a re-run.
-
-    LETTERS ONLY (`not ch.isalpha(): continue`), which is exactly what the filter now folds and was not when
-    this census was written (W7 review r2-spec-7): an unguarded fold also reached the 953 non-letter
-    codepoints NFKD decomposes onto letters (`™` -> `TM`, `№` -> `No`), so a census of letters certified a
-    fold wider than itself. The guard in `char_ids` is the fix; this clause records that the two agree.
-    """
+    the English corpus must be exactly that, or every published number is owed a re-run. LETTERS ONLY
+    (`not ch.isalpha(): continue`), which is what the filter now folds and was not when this census was
+    written: an unguarded fold also reached the 953 non-letter codepoints NFKD decomposes onto letters, so a
+    census of letters certified a fold wider than itself. The guard in `char_ids` is the fix."""
     gained: Counter[str] = Counter()
     still: Counter[str] = Counter()
     scripts: Counter[str] = Counter()
@@ -244,17 +237,14 @@ def score(
 
 @dataclass(frozen=True, slots=True)
 class Unaware:
-    """The same matrix through a reader that does NOT say where its blank is — i.e. EVERY emission object this
-    worker built before W4 threaded `Emissions.blank_id` (review M9).
+    """The same matrix through a reader that does NOT say where its blank is — i.e. every emission object
+    this worker built before W4 threaded `Emissions.blank_id` (M9).
 
     THE FAITHFUL PRE-W4 ARM, and the distinction matters because `blank = 0` was hard-coded in FIVE places
-    that have to agree: the kernel call, the target filter, `_char_spans`' run grouping, its flushing sentinel
-    and `regenerate`'s alignable count. Forcing only the KERNEL's integer moves one of the five and leaves
-    the grouper reading the model's real blank, which raises instead of mis-timing (the `kernel` arm records
-    exactly that, because it is what a PARTIAL fix would do). Dropping the two FIELDS instead moves all five
-    at once, through the `getattr` defaults the shipped readers still carry — so this object is pre-W4 code
-    running on a post-W7 tree, which is the only honest A/B.
-    """
+    that have to agree. Forcing only the KERNEL's integer moves one of the five and leaves the grouper
+    reading the model's real blank, which raises instead of mis-timing — the `kernel` arm records exactly
+    that, because it is what a PARTIAL fix would do. Dropping the two FIELDS instead moves all five at once,
+    through the `getattr` defaults the shipped readers still carry, which is the only honest A/B."""
 
     log_probs: Any
     frame_sec: float
@@ -298,15 +288,11 @@ def pooled(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Sum the counts and recompute the rates, so one long song cannot outvote twenty short ones by accident
     (the per-song means are reported beside these as `songs` / `song_aae_ms`).
 
-    TWO AAEs, EACH NAMED FOR ITS DENOMINATOR (W7 review r2-tests-14). Every band here is recomputed from the
-    summed counts, but the only absolute error this used to emit was `song_aae_ms` — an UNWEIGHTED mean over
-    the per-song means — and `report_sweep` printed it in the pooled block as a bare `AAE=`, from where it was
-    quoted as a pooled figure in shipped code and in the README. The two differ by a quarter of their value on
-    this corpus (`results/w7-lang-stem.json`, 59 songs / 15 887 words): word-weighted **186.0 ms default
-    against 388.7 routed**, per-song mean 235.8 against 540.0. A mean of means is a legitimate statistic and
-    is kept — it is the one a per-song reject-if reasons about — but it is not the pooled error over the
-    words, and the two must not share a label. `word_aae_ms` is the same statistic the ROW key of that name
-    holds, over every word instead of one song's."""
+    TWO AAEs, EACH NAMED FOR ITS DENOMINATOR. Every band is recomputed from the summed counts, but the only
+    absolute error this used to emit was `song_aae_ms` — an UNWEIGHTED mean over the per-song means — printed
+    in the pooled block as a bare `AAE=`, from where it was quoted as a pooled figure. The two differ by a
+    quarter of their value on this corpus (59 songs / 15 887 words): word-weighted 186.0 ms default against
+    388.7 routed, per-song mean 235.8 against 540.0. A mean of means is kept, under its own name."""
     if not rows:
         return {}
     total = {
@@ -341,18 +327,11 @@ def sweep(songs: Sequence[LangSong], *, target: str, device: str, model: str | N
     """Every song decoded on BOTH bundles over the same matrix target: the default (English) and the routed
     per-language one. One row per (song, condition).
 
-    THE TEXTS ARE THE CLEANED ANNOTATION LINES, which is what the shipped path serves (`clean_segments`, the
-    text hygiene W5 landed), so the targets are the targets production would decode. BLIND: no claims, no
-    repair ladder, no gate — the question is which bundle hears these words where, and a ladder between the
-    decode and the score would answer a different one.
-
-    AND THAT IS SAFE FOR THE POSITIONAL TRUTH PAIRING, which is the precondition `score` silently depends on
-    and so is CHECKED rather than assumed: over all 59 songs `clean_segments` is the IDENTITY on both counts —
-    2 515 raw lines in and 2 515 out, and **0 lines whose word count changed**. A dropped line would make
-    `score` read `song.lines[index]` for a different line, and a rewritten one would shift every word onset
-    after it inside that line. (It is the identity because these are DATASET annotations: no section headers,
-    no `♪`, no caption tags — the four anchored rules in `nonlyric.py` have nothing to anchor on.)
-    """
+    The texts are the CLEANED annotation lines, which is what the shipped path serves, so the targets are the
+    targets production would decode. BLIND: no claims, no repair ladder, no gate — the question is which
+    bundle hears these words where. That is safe for the positional truth pairing, which `score` depends on
+    and is CHECKED rather than assumed: over all 59 songs `clean_segments` is the IDENTITY, 2 515 raw lines
+    in and 2 515 out with 0 lines whose word count changed, these being DATASET annotations."""
     aligner = ml.build_aligner(device=device, model=model)
     if aligner is None:  # pragma: no cover - the ml extra is a precondition of running this at all
         raise SystemExit("no aligner on this box: install the `ml` extra")

@@ -1,25 +1,15 @@
 #!/usr/bin/env python
 """End-to-end alignment bench: the SHIPPED `time_text` and `run_align` over the corpus, under claim noise.
 
-    cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py      # truth,jit,blind
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --modes all
-    cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \\
-        --modes truth,jit+off15,blind+headers --songs hello,jamendo --model WAV2VEC2_ASR_BASE_960H
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py --level run_align \\
         --modes all --compare <base>/summary.json --gates <wave>.yaml
 
-THE GATE, NOT A DEMO: every later alignment wave is accepted or rejected on this harness's numbers, so it
-drives the production path rather than a reimplementation of it. `--level run_align` is the whole job over a
-harness `AlignSteps` with only the PORTS stubbed; the pure half is `e2e_lib.py`, unit-tested hermetically.
-
-TWO HARNESS-ONLY SEAMS, neither changing what the shipped code computes: `BenchAligner` caches `emissions()`
-on disk and records every exception as an ERROR row, and `capture_generated` records which input line each
-published line is, the document carrying no provenance.
-
-LONG RUNS: a full `--modes all` sweep is tens of minutes — run it detached, `--resume` an interrupted
-`--out`, and never two at once. Everything else — the corpus, the modes, the levels' ports, the emission
-store's key and the gate language — is in `docs/benchmarks/forced-alignment/README.md`, "The E2E harness",
-which also carries the ruff / mypy command this file is checked by.
+THE GATE, NOT A DEMO: every later alignment wave is accepted or rejected on these numbers, so it drives the
+production path rather than a reimplementation of it. Two harness-only seams change nothing the shipped code
+computes: `BenchAligner` caches `emissions()` and records every exception as an ERROR row, and
+`capture_generated` records which input line each published line is. A full `--modes all` sweep is tens of
+minutes: run it detached, `--resume` an interrupted `--out`, never two at once. README, "The E2E harness".
 """
 
 from __future__ import annotations
@@ -90,26 +80,13 @@ LEVELS = ("time_text", "run_align", "generate")
 
 #: `--sync-mode`: the `syncMode` a `run_align` job carries — core's two (`protocol.vocabulary.SyncMode`).
 #: `lines` is where the LINE_SYNC rung is each text's ONLY attempt, so it is the level that measures the
-#: rung's gate on every timed text rather than on the few forced mode degrades to it (W1 review r2 had to
-#: wrap this harness in a scratch script to ask it).
+#: rung's gate on every timed text rather than on the few forced mode degrades to it.
 SYNC_FORCED, SYNC_LINES = SyncMode.FORCED.value, SyncMode.LINES.value
 SYNC_MODES = (SYNC_FORCED, SYNC_LINES)
 
-#: `--detector`: which LATIN-script language detector sits in the Adapters at `run_align` (W7 review
-#: r1-spec-9). THE DISCLOSURE IS THE POINT, not the arm: the shipped composition root builds
-#: `language.lingua_detector()` (`__main__.py`) and this harness never did, so at `--level run_align` the real
-#: `fetch_captions` / `fetch_provider_lyrics` ran `language.detect` with `detector=None` — a configuration
-#: where Latin script can only answer `en`, which is also every row under `results/`. The default stays OFF so
-#: those rows keep reproducing, and `meta["detector"]` now SAYS which of the two a row was measured on instead
-#: of leaving a reader to infer it from the absence of a keyword argument.
-#:
-#: On this corpus the two are expected to agree (every song is English or fr/de/es Latin, and
-#: `model_language` keeps Latin script on the default bundle unless `lang-route-mix` is set), so what the
-#: detector can move here is the TEXT's language — the syllabifier's and the published document's — and not
-#: the bundle. A wave that wants that measured turns this on and re-reads the affected rows.
-#: `off` is read from `lib.RUN_DEFAULTS` rather than spelled twice (W7 review r2-spec-10): the two statements
-#: — "no detector is the default" and "a `run.json` without the key ran without one" — are one fact, and a
-#: disagreement between them would silently stop warning about the configuration this flag exists to disclose.
+#: `--detector`: which LATIN-script detector sits in the Adapters at `run_align`. The DISCLOSURE is the point,
+#: not the arm — every row under `results/` was measured with none, where Latin script can only answer `en` —
+#: so the default stays OFF, `meta["detector"]` says which ran, and `off` comes from `lib.RUN_DEFAULTS`.
 DETECTOR_OFF, DETECTOR_LINGUA = lib.RUN_DEFAULTS["detector"], "lingua"
 DETECTORS = (DETECTOR_OFF, DETECTOR_LINGUA)
 
@@ -158,29 +135,19 @@ def repair_faults(states: Sequence[Note]) -> list[str]:
     return [why for _job, state, _attempt, verdict, why, _knob in states if verdict == "repair-faults"]
 
 
-#: The `align-global` decline reasons `time_text` gives when something RAISED — the emissions, `generate`,
-#: the re-decode after a never-sung drop — rather than when it JUDGED the text. The bench must not score
-#: one as a refusal, because a refusal row counts its lines as missing and a refused wrong text as
-#: correctly refused. Since W1 (review M7) the shipped adapters TYPE the machinery's faults (a model that
-#: will not load, a gone kernel, a device fault or out-of-memory, audio ffmpeg will not decode) and
-#: `time_text` RAISES them, so they are ERROR rows through the drivers' exception path. What still
-#: declines here is a decoder refusing a text (more characters than frames), a language with no model, a
-#: domain defect, or a fault the adapter did not type (this harness's own cache): kept an ERROR, which is
-#: the side that gets looked at, since the 32-song baseline has none of them. "audio unreadable for the
-#: envelope:" is v2's reason, kept so an older run's states still read as the fault they were.
+#: The `align-global` decline reasons `time_text` gives when something RAISED rather than when it JUDGED the
+#: text: a refusal row counts its lines as missing and a refused wrong text as correctly refused, so these are
+#: ERROR rows. The v2 reason is kept so an older run's states still read as the fault they were.
 FAULT_DECLINES = ("decode failed:", "audio unreadable for the envelope:", "re-decode after drop failed:")
 
 #: A lexical check's own caught fault: its decode or emission pass RAISED (anything but an `InfraFault`). The
-#: LINE_SYNC rung (W1 review r2) then publishes on the sheet gate alone, saying so in its `line-sync` note;
-#: the global engine (W3) leaves the text to the envelope gate alone, saying so in its verdict note or in
-#: the envelope gate's refusal. Scored as that document (or refusal), a decoder that raises on some texts
-#: would read as a check that passed (or refused) them, so it is an ERROR row too.
+#: LINE_SYNC rung then publishes on the sheet gate alone and the global engine leaves the text to the envelope
+#: gate alone, both saying so; scored as that document, a decoder that raises would read as a check that ran.
 FAULT_LEXICAL = "no lexical check: it raised"
 
-#: The LINE_SYNC rung's timing check's own caught fault (W3): its blind decode, or the emission pass under it,
+#: The LINE_SYNC rung's timing check's own caught fault: its blind decode, or the emission pass under it,
 #: RAISED (anything but an `InfraFault`), so the sheet-span gate decided in its place, saying so in the note.
-#: Scored as that document or refusal, it would read as a timing check that ran: an ERROR row, like
-#: `FAULT_LEXICAL`, whatever the rung's verdict.
+#: Scored as that document it would read as a timing check that ran: an ERROR row, like `FAULT_LEXICAL`.
 FAULT_DECODE = "no decode check: it raised"
 
 
@@ -243,25 +210,11 @@ def default_model(language: str, device: str = "cpu") -> str:
     """The bundle a run with NEITHER `--model` nor `ENCORE_ALIGN_MODEL` loads — the shipped choice.
 
     For English that is `ml.default_align_model(device)`, exactly what `ml.build_aligner` resolves for a
-    worker whose `ENCORE_ALIGN_MODEL` is unset, because the harness is built the way the host builds its
-    aligner and a default the bench did not follow would measure a configuration nobody ships.
-    WHICH BUNDLE THAT IS TODAY:
-    `HUBERT_ASR_LARGE` on cpu, mps AND cuda — W5 FLIPPED IT (`ml.DEFAULT_ALIGN_MODEL` carries the measurement;
-    W4b 6b made the bundle a setting and its sweep rejected this flip, W6 found the rejection's cause to be
-    `_clamped_v2`'s left floor rather than the decode, and W5 took it on `results/w6-hubert-*` against
-    `results/w6-base-*`). `ml.ALIGN_MODELS_BY_DEVICE` is still empty and the per-device mechanism is kept
-    for the row a CUDA sweep would earn.
-    SO EVERY `--model`-LESS RUN FROM W5 ON IS A HuBERT-LARGE RUN, which is the one thing a reader of an old
-    recipe must not get wrong: the commands in `README.md` and in `gates/w*.yaml` that say "the default" meant
-    the BASE bundle before this wave, and reproducing a pre-W5 row now needs
-    `--model WAV2VEC2_ASR_BASE_960H` spelled out. (This docstring said "HuBERT-Large, XLarge on CUDA" once
-    before — in W4b, before its bench verdict, which is what a later wave would have read an unnamed run as
-    having loaded. It is true now because a sweep said so, and the base bundle is the one named explicitly.)
-    Every other language keeps whisperx's own table, the way `ml.align_model_name` reads it. To measure
-    bundle — the base bundle, XLarge, or one under recalibration — name it: `--model WAV2VEC2_ASR_BASE_960H`,
-    or set `ENCORE_ALIGN_MODEL`, which `main` honours the way the worker does (W4b review r1: it was recorded
-    and not loaded).
-    """
+    worker whose knob is unset, because a default the bench did not follow would measure a configuration
+    nobody ships. Today that is `HUBERT_ASR_LARGE` on cpu, mps and cuda, so EVERY `--model`-LESS RUN FROM W5
+    ON IS A HuBERT-LARGE RUN: the commands in `README.md` and in `gates/w*.yaml` that say "the default" meant
+    the BASE bundle before W5, and reproducing a pre-W5 row needs `--model WAV2VEC2_ASR_BASE_960H` spelled
+    out. Every other language keeps whisperx's own table, as `ml.align_model_name` reads it."""
     if language == ml.ENGLISH:
         return ml.default_align_model(device)
     from whisperx.alignment import DEFAULT_ALIGN_MODELS_HF, DEFAULT_ALIGN_MODELS_TORCH  # noqa: PLC0415
@@ -272,20 +225,13 @@ def default_model(language: str, device: str = "cpu") -> str:
 
 def resolve_bundle(named: str | None, config: Any, language: str) -> tuple[str | None, str | None]:
     """(the bundle this run ALIGNS on, a refusal) — `--model`, else `ENCORE_ALIGN_MODEL`, else None meaning
-    "this device's shipped default" (`default_model`, which `BenchAligner` resolves the way `ml.build_aligner`
-    does).
+    "this device's shipped default" (`default_model`, as `ml.build_aligner` resolves it).
 
-    WHY THE ENV KNOB IS READ HERE: it was RECORDED in `run.json` and never loaded, so the command README
+    The env knob is read HERE because it was RECORDED in `run.json` and never loaded, so the command README
     gives for sweeping a non-default bundle recorded a HuBERT run that had aligned on the base model, after
     paying a 2-3 hour sweep for it. ONE resolution — the label, the emission store's key and the aligner —
-    is what makes the recorded name and the loaded weights the same fact, and ONE fingerprint too, so the
-    two spellings reuse the same matrices (`e2e_lib.SPELLING_ONLY`).
-
-    AN UNCALIBRATED BUNDLE IS ANNOUNCED, NOT REFUSED: production refuses to start on one, but the wave's
-    procedure is measure-then-paste-the-row, so the first sweep of a new bundle is uncalibrated by
-    construction. ENGLISH ONLY, as production applies it, so the knob cannot mislabel a French run, and
-    REFUSED WHEN BOTH NAME A BUNDLE AND DISAGREE. README, "The harness scripts", has the rest.
-    """
+    makes the recorded name and the loaded weights the same fact. An uncalibrated bundle is ANNOUNCED, not
+    refused; ENGLISH ONLY, as production applies it; REFUSED when both name a bundle and disagree."""
     from_env = getattr(config, "align_model", None) if language == ml.ENGLISH else None
     if named and from_env and named != from_env:
         return None, (
@@ -298,18 +244,12 @@ def resolve_bundle(named: str | None, config: Any, language: str) -> tuple[str |
 def uncalibrated_banner(model: str) -> str | None:
     """The loud stderr banner for a run whose bundle has no `lexical.CALIBRATED` row, or None when it has one.
 
-    THE ONE PLACE THE HARNESS IS MORE PERMISSIVE THAN PRODUCTION, and deliberately (W4b review r2, spec-13):
-    `__main__.align_model_for` REFUSES to start a worker on an uncalibrated bundle, but this wave's procedure
-    is measure-then-paste-the-row (`lift_gate.py --model <bundle>`, written up in
-    docs/benchmarks/forced-alignment/README.md, "The lexical calibration rows, exhibit by exhibit"),
-    so the first corpus run of a new bundle is uncalibrated by construction. What must not happen is that its
-    numbers read like a calibrated bundle's: with no row `align_steps._word_lift` returns no lift, the
-    wrong-text verdict falls back to the sheet-span
-    envelope gate — 125/320 wrongtext passes on this corpus — and a `wrongtext_pass` of 0.00 would be
-    recorded under the new bundle's name as if its floor had held. So the banner names the bundle, says what
-    stood down and names the fix, `run.json` and the summary's meta carry `uncalibrated: true`, and
-    `e2e_gates` ERRORs any gate that reads a metric the stand-down moved (`UNCALIBRATED_METRICS`).
-    """
+    THE ONE PLACE THE HARNESS IS MORE PERMISSIVE THAN PRODUCTION, and deliberately: `__main__
+    .align_model_for` refuses to start a worker on an uncalibrated bundle, but the wave procedure is
+    measure-then-paste-the-row, so a new bundle's first corpus run is uncalibrated by construction. What must
+    not happen is that its numbers read like a calibrated bundle's: with no row the wrong-text verdict falls
+    back to the sheet-span envelope gate — 125/320 wrongtext passes on this corpus — so the banner names the
+    bundle and the fix, the meta carries `uncalibrated: true`, and `e2e_gates` ERRORs the moved metrics."""
     if lexical.is_calibrated(model):
         return None
     return (
@@ -364,14 +304,11 @@ def emitter_sources() -> list[Path]:
 def emitter_fingerprint(config: object) -> str:
     """The code, library versions and worker settings that produce emissions (`e2e_lib.emitter_fingerprint`).
 
-    THE `align_*` SETTINGS ARE IN IT because a PLAN-v3 arm that fails its gate ships default-off behind
-    `ENCORE_ALIGN_EXPERIMENTS`, and an arm inside `WhisperXAligner.emissions` (W4 6a's frame grid and
-    context trim) changes the matrix without changing the code, the weights or the audio: keyed on those
-    alone, whichever of the knob-on and knob-off runs went first would serve the other its matrices, and the
-    arm would read exactly like the baseline. Every `align_*` setting counts, not only the emission ones —
-    one recompute per arm, in the safe direction. `config` is the `Config` the drivers run with (or any
-    dataclass; `e2e_lib.align_config`).
-    """
+    The `align_*` SETTINGS ARE IN IT because an arm that fails its gate ships default-off behind
+    `ENCORE_ALIGN_EXPERIMENTS`, and an arm inside `WhisperXAligner.emissions` (W4 6a's frame grid and context
+    trim) changes the matrix without changing the code, the weights or the audio: keyed on those alone,
+    whichever of the two runs went first would serve the other its matrices and the arm would read exactly
+    like the baseline. Every `align_*` setting counts — one recompute per arm, in the safe direction."""
     versions = {**emitter_versions(), "align_config": json.dumps(lib.align_config(config), sort_keys=True)}
     return lib.emitter_fingerprint(emitter_sources(), versions)
 
@@ -379,19 +316,12 @@ def emitter_fingerprint(config: object) -> str:
 class BenchAligner(WhisperXAligner):
     """The shipped aligner, with a `--model` override and a disk cache around `emissions()`.
 
-    THE CACHE IS KEYED ON WHAT WAS LOADED, per language, so the store's model part is `<label>@<identity>`: a
-    label alone is the harness's GUESS, and a Hub checkpoint that updates under a name would serve one model's
-    matrices to another. The cost is one model load per language per run.
-
-    BUILT AS THE HOST BUILDS ITS ALIGNER, `jobs` and `model` forwarded exactly as the factory takes them, so a
-    factory argument that reaches production must be forwarded here too (`test_bench_e2e` pins both
-    signatures). `--model` is simply that argument since the shipped adapter took one; the subclass used to
-    re-implement `_aligner`, which is how a harness loads one model and names another.
-
-    EVERY FAULT IS RECORDED (`faults`), because `time_text` declines a non-typed emissions exception and R4
-    publishes without its repair, so a full disk or an out-of-memory on the mix alone would read as a clean
-    document. The drivers turn any fault recorded during a case into an ERROR row.
-    """
+    THE CACHE IS KEYED ON WHAT WAS LOADED, per language, so the store's model part is `<label>@<identity>`:
+    a label alone is the harness's GUESS, and a Hub checkpoint that updates under a name would serve one
+    model's matrices to another. BUILT AS THE HOST BUILDS ITS ALIGNER, `jobs` and `model` forwarded exactly
+    as the factory takes them, so a factory argument that reaches production must be forwarded here too. And
+    EVERY FAULT IS RECORDED, because `time_text` declines a non-typed emissions exception and R4 publishes
+    without its repair, so a full disk or an out-of-memory on the mix alone would read as a clean document."""
 
     def __init__(
         self,
@@ -520,15 +450,13 @@ def capture_generated() -> Iterator[list[Generated]]:
 
 @contextlib.contextmanager
 def capture_lifts() -> Iterator[list[float | None]]:
-    """Every `lexical.lift` the shipped gates computed while the block runs, in call order: its value, or None
-    for a text the lift could not measure (under `lexical.MIN_LETTERS`, no order to contrast).
+    """Every `lexical.lift` the shipped gates computed while the block runs, in call order: its value, or
+    None for a text the lift could not measure (under `lexical.MIN_LETTERS`, no order to contrast).
 
-    A module-attribute wrap that returns exactly what the original returns — both lexical gates read
-    `lexical.lift` at call time (`align_steps._measured_lift`), so they decide as they would unwrapped — and
-    records the number at FULL PRECISION: the trail prints it to two decimals, and a lift of +0.195 prints
-    `+0.20` and is refused at 0.2. A lift whose decode RAISED records nothing (the note says so, and the row
-    is an ERROR: `FAULT_LEXICAL`). Exempt texts (the ASR tier) are never measured, so they add nothing.
-    """
+    A module-attribute wrap returning exactly what the original returns — both lexical gates read
+    `lexical.lift` at call time, so they decide as they would unwrapped — recording the number at FULL
+    PRECISION, since the trail prints two decimals and a lift of +0.195 prints `+0.20` and is refused at 0.2.
+    A lift whose decode RAISED records nothing; exempt texts (the ASR tier) are never measured."""
     from encore_worker.domain.lyrics import lexical  # noqa: PLC0415
 
     seen: list[float | None] = []
@@ -553,22 +481,12 @@ Served = Sequence[tuple[int, str]]
 def served_claims(claims: lib.Claims) -> tuple[tuple[Segment, ...], tuple[tuple[int, str], ...]]:
     """The claims as a production text ADAPTER hands them on, and the claim index of each kept segment.
 
-    Every text adapter returns `clean_segments(...)` (yt-dlp captions `cli.py`, LRCLIB, lrcmux), so the
-    `run_align` ports do too: text-hygiene work in `clean.py` (W5) must reach the scores. Measured on the
-    corpus's truth: `clean_line` changes 660 of 1760 lines (636 YouTube lines lose `♪`; no Jamendo line
-    changes its word count) and the pipeline drops **48** of 1760 — 14 for carrying no word at all
-    (believer 1, shape-of-you 1, bad-guy 10, tfr-chosen 2) and **34 judged NON-LYRIC by W5's anchored
-    rules** (`domain/lyrics/nonlyric.py`: hello 11, bohemian-rhapsody 9, feel-my-heart 5, bad-guy 4,
-    shape-of-you 3, rap-god 1, tfr-chosen 1), which is the fix for the caption-cue DENOMINATOR artefact —
-    those 34 used to be dropped (or not) by the ACOUSTIC never-sung rule, differently per model, so a
-    song's scored line count moved with the acoustic bundle. Numb keeps all 35 of its lines and loses the
-    `CHORUS:` label off 17 of them (review M11). Dropping RENUMBERS the request, so each kept segment's
-    claim index is returned for identity pairing.
-
-    THE INDEX COMES FROM `clean_indexed` RATHER THAN A SECOND PASS OF `clean_line`: W5's rules are not all
-    per-line (the music-note rule reads the whole track), so re-deriving the kept set here would silently
-    disagree with what the adapters serve.
-    """
+    Every text adapter returns `clean_segments(...)`, so the `run_align` ports do too: text-hygiene work in
+    `clean.py` must reach the scores. Measured on the corpus's truth, `clean_line` changes 660 of 1760 lines
+    (636 YouTube lines lose `♪`; no Jamendo line changes its word count) and the pipeline drops 48 of 1760 —
+    14 carrying no word at all and 34 judged NON-LYRIC by the anchored rules — which is the fix for the
+    caption-cue DENOMINATOR artefact, those 34 having been dropped differently per model by the ACOUSTIC
+    rule. Dropping RENUMBERS the request, so the kept claim index comes from `clean_indexed` for pairing."""
     segments = claims.segments()
     indexed = clean_indexed(segments)
     cleaned = tuple(segment for _index, segment in indexed)
@@ -735,16 +653,10 @@ class TimeTextDriver:
 
         `--no-stem` (`stem=False`) is the harness's STEMLESS dimension, composable with every claim mode:
         the case is run exactly as production runs a song no stems job could separate — `vocals_path` is
-        None, so `AudioRef.align_target` is the mix, R4 has no second witness (the mix IS the target),
-        `Knob.ALIGN_ON_MIX` is never offered (`Search.aligned_on_stem`), the LINE_SYNC rung declines
-        (`_time_line_sync`), and the lexical gate reads the MIX bands, where SINCE W4 REVIEW R1 THE FLOOR
-        IS THE VERDICT and the envelope fit is only reported (`lexical.BANDS`, MIX). The two controls are
-        `h3-mix-envelope` (W3's default: the envelope gate alone, the floor grading — the row is
-        `results/w4-stemless-envelope-time_text.json`) and `h3-mix-floor` (both gates, which is also what
-        setting both names means). No corpus song LACKS a stem, so this mode is the only way that band and
-        those arms are measurable at all — W3 shipped its mix decision on the lift population alone
-        (`results/w3-lift-mix.json`), and this mode is what flipped it.
-        """
+        None, so `AudioRef.align_target` is the mix, R4 has no second witness, `Knob.ALIGN_ON_MIX` is never
+        offered, the LINE_SYNC rung declines, and the lexical gate reads the MIX bands, where the floor is
+        the verdict and the envelope fit is only reported. The two controls are `h3-mix-envelope` (W3's
+        default) and `h3-mix-floor`. No corpus song LACKS a stem, so this mode is the only way to measure it."""
         return str(song.vocals if self.stem else song.mix)
 
     def claims_for(self, case: Case) -> lib.Claims:
@@ -845,24 +757,12 @@ class TimeTextDriver:
 class GenerateDriver(TimeTextDriver):
     """Level `generate`: the raw global decode ALONE — no never-sung drop, no repairs, no gate, no grading.
 
-    `bench.py --global --words`' path, kept here so a DECODER change can be told apart from a LADDER change.
-    The review's blind Jamendo word figures are this level (±100 78.7 / ±250 90.5 / ±300 91.3, bias +4 ms,
-    141/5693 words >2 s). Through `time_text` the never-sung rule drops 2 Jamendo lines (Quentin_Hannappe
-    "how many gonna stand", Ridgway "whoa oh oh oh oh" — 9 words; raw places the Ridgway line -40.25 s off)
-    and re-decodes, which reads 78.8 / 90.5 / 91.3, +4 ms, 139 >2 s on the review's own documents.
-
-    Claimed timings never enter `generate()`, so a timed mode equals its text-only twin here; every line is
-    ungraded (confidence None), so the `high` columns read 0.
-
-    THE TWO ARMS THAT REACH THIS LEVEL are both arguments to `generate` itself: 6c's line separator
-    (`linesep`, review D1; `gates/w4b-linesep.yaml`) and the star (`star`, W7 — one target per line over
-    a matrix `ml.starred` widened by one column; `gates/w7-star.yaml`). The raw decode is where a decoder
-    change is read, so both are threaded from `self.config` rather than from flags of their own: one
-    setting, recorded once, in `align_config`. Every other `align_experiments` name lives in the ladder
-    above this call and is inert here. An arm that reaches `generate` and is NOT threaded here would make a
-    run recorded under its name measure the default decode, which is the one thing
-    `Config.ALIGN_EXPERIMENTS` exists to prevent.
-    """
+    Kept so a DECODER change can be told apart from a LADDER change. The review's blind Jamendo word figures
+    are this level (±100 78.7 / ±250 90.5 / ±300 91.3, bias +4 ms, 141/5693 words >2 s); through `time_text`
+    the never-sung rule drops 2 Jamendo lines and re-decodes, reading 78.8 / 90.5 / 91.3, +4 ms, 139 >2 s.
+    Claimed timings never enter `generate()`, so a timed mode equals its text-only twin and every line is
+    ungraded. The two arms that reach this level are arguments to `generate` itself — 6c's line separator and
+    the star — so both are threaded from `self.config`, or a run named for an arm measures the default."""
 
     level = "generate"
 
@@ -1088,19 +988,12 @@ class RecordingSteps:
 class RunAlignDriver(TimeTextDriver):
     """Level `run_align`: one `workflows.align.run_align` job per case (see the module docstring).
 
-    The row's `outcome` is about the CLAIM TEXT, as at `time_text`: published / line-sync when the
-    document the job published is that text's, else refused — even when the job went on to publish an
-    ASR transcript, which has no identity to pair with truth and is reported under `terminal` /
-    `published_label` instead. Attempt records carry per-attempt line scores, so an H2 swap (a clean
-    stem document replaced by a worse mix one) reads straight off one row.
-
-    WHAT IS SCORED IS THE FILE THE TV READS: `media_dir / published.ref` after the job returned, not the
-    bytes the published attempt wrote when it returned. A stem attempt and its ALIGN_ON_MIX retry write
-    the SAME ref (review H2), so a job that publishes attempt 1's record after attempt 2 overwrote its
-    file — the shape of a partial W1 best-so-far — would show the room attempt 2's document while the
-    bench scored attempt 1's. Such a row is an ERROR (`published_file_attempt` names whose bytes the
-    file holds). The harness wires no diarizer, the one step that rewrites a published file on purpose.
-    """
+    The row's `outcome` is about the CLAIM TEXT, as at `time_text`: published / line-sync when the document
+    the job published is that text's, else refused — even when the job went on to publish an ASR transcript,
+    which has no identity to pair with truth. WHAT IS SCORED IS THE FILE THE TV READS: `media_dir /
+    published.ref` after the job returned, not the bytes the published attempt wrote, because a stem attempt
+    and its ALIGN_ON_MIX retry write the SAME ref (H2) and the bench would score the overwritten one. Such a
+    row is an ERROR. The harness wires no diarizer, the one step that rewrites a published file on purpose."""
 
     level = "run_align"
 
@@ -1454,12 +1347,10 @@ def resume_refusal(config_path: Path, config: Mapping[str, object]) -> str | Non
     """Why the run at `config_path` must not be continued under `config`, or None when it may be.
 
     A resumed run must continue THE SAME run: rows under another level, model, seed, alignment setting or
-    worker CODE would blend into one summary silently. A `run.json` from before a key existed differs, so
-    it is refused too (start a new `--out`) — UNLESS the key has a `lib.RUN_DEFAULTS` entry, which is a
-    written-down statement of what its absence meant (W7 review r2-spec-10): `detector` absent IS
-    `detector: off`, so a directory started before the key was recorded resumes under the same
-    configuration it ran, and nothing has to choose between a resumable run and a self-describing one.
-    """
+    worker CODE would blend into one summary silently. A `run.json` from before a key existed differs, so it
+    is refused too — UNLESS the key has a `lib.RUN_DEFAULTS` entry, which is a written-down statement of what
+    its absence meant: `detector` absent IS `detector: off`, so a directory started before the key was
+    recorded resumes under the configuration it ran, and nothing chooses between resumable and self-describing."""
     if not config_path.exists():
         return None
     on_disk: object = json.loads(config_path.read_text(encoding="utf-8"))
@@ -1687,11 +1578,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.level == "run_align":
         run_config["asr"] = args.asr if args.asr == "off" else f"whisper:{args.asr_model or config.asr_model}"
         run_config["sync_mode"] = args.sync_mode
-        #: RECORDED UNCONDITIONALLY (W7 review r2-spec-10), which is what lets an offline `--summarize` of
-        #: these rows stamp the same `meta["detector"]` a live run does. It was conditional for
-        #: `uncalibrated`'s reason above — a key appearing in `run.json` refuses an older directory's
-        #: `--resume` as a setting change — and that cost is now paid by `resume_refusal` reading
-        #: `lib.RUN_DEFAULTS` instead, so a run started before the key existed still resumes as `off`.
+        #: RECORDED UNCONDITIONALLY, which is what lets an offline `--summarize` of these rows stamp the same
+        #: `meta["detector"]` a live run does. It was conditional, so that a key appearing in `run.json` could
+        #: not refuse an older directory's `--resume`; `resume_refusal` reads `lib.RUN_DEFAULTS` instead now.
         run_config["detector"] = args.detector
     config_path = out / "run.json"
     refusal = resume_refusal(config_path, run_config)

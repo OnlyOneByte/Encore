@@ -1,17 +1,14 @@
 """Fitting a lyrics sheet onto a recording's own vocal activity.
 
-WHAT THIS REPLACES. A forced aligner crops the audio to each segment's provisional span and aligns inside
-it, so an offset sheet is not refined back — the offset passes through with unity gain. Measured over a
-0..5 s sweep (docs/benchmarks/forced-alignment): `bias = 1.005 x offset + 131 ms`, max residual 41 ms. The
-cost starts early: lines within +/-250 ms of truth drop 74.7% -> 42.7% at a 150 ms sheet offset, and to
-20.0% at 250 ms.
+What it replaces: a forced aligner crops the audio to each segment's provisional span and aligns inside it,
+so an offset sheet is not refined back — the offset passes through with unity gain. Measured over a 0..5 s
+sweep: `bias = 1.005 x offset + 131 ms`, max residual 41 ms, and lines within +/-250 ms of truth drop
+74.7% -> 42.7% at a 150 ms sheet offset and to 20.0% at 250 ms
+(docs/benchmarks/forced-alignment/README.md). `place.estimate_shift` always wanted a reference measured on
+THIS audio, and the only one available was the previous alignment's output, which carries the error it is
+removing; this is that independent reference.
 
-`place.estimate_shift` always wanted "a reference measured on this audio", and the only one available was
-the previous alignment's output — which carries the error it is removing, so a FIRST attempt could not be
-corrected at all. This is that independent reference.
-
-Synthetic signals here, so the suite stays fast and hermetic. The real-audio calibration is in the benchmark
-document; the numbers quoted in these docstrings came from it.
+Synthetic signals here, so the suite stays fast and hermetic; the real-audio calibration is the README's.
 """
 
 from __future__ import annotations

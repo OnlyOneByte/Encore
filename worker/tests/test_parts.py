@@ -275,17 +275,14 @@ def test_an_echo_whose_host_was_not_published_is_dropped_with_it() -> None:
 
 
 def test_an_aside_is_not_held_out_of_a_line_the_matrix_cannot_align_without_it() -> None:
-    """W5 review r1-tests-20. `_mark`'s "something is left to align" test was a LETTER test, and a letter the
-    dictionary lacks is dropped by `generate` exactly as a `♪` is — so a line whose lead words are all
-    out-of-vocabulary passed it, `generate` emitted nothing for the index, and `restored` published nothing:
-    the arm LOST a line, aside words and all, that the default path publishes. With the matrix in hand the
-    test is the decode's own (`generate.alignable_chars`).
+    """`_mark`'s "something is left to align" test is the DECODE's, not a letter test.
 
-    THE LEAD IS HANGUL SINCE W7, and the substitution is the point rather than cosmetic: this read `ñññ`,
-    which the target filter now NFKD-folds to `nnn` and aligns (review §3 item 9, `generate.char_ids`), so an
-    accented lead is no longer unalignable on a Latin vocabulary and the old fixture asserted the opposite of
-    what it tested. A script this vocabulary has no column for is what "out of vocabulary" still means — and
-    it is review M8's own case (a Japanese sheet with 0 alignable characters)."""
+    A letter the dictionary lacks is dropped by `generate` exactly as a `♪` is, so a line whose lead words
+    are all out-of-vocabulary passed the letter test, `generate` emitted nothing for the index and
+    `restored` published nothing: the arm LOST a line the default path publishes. With the matrix in hand
+    the test is `generate.alignable_chars`. The lead is HANGUL since W7, and the substitution is the point:
+    `ñññ` is NFKD-folded to `nnn` and aligns now, so an accented lead is no longer unalignable on a Latin
+    vocabulary — a script the vocabulary has no column for is what "out of vocabulary" still means."""
     texts = ["aaa bbb", "가나다 (ccc ddd)", "eee fff"]
     matrix = FakeEmissions(sung_matrix([("aaa bbb", 1.0, 2.0)], DIC, 5.0), 0.02, DIC)
 
@@ -456,14 +453,9 @@ def test_the_arm_publishes_every_served_word_in_order(
     assert starts == sorted(starts), "a highlight that jumps is what this must never publish"
 
 
-#: W5 review r2-tests-16: a served line whose LEAD words are outside the matrix's vocabulary while its
-#: parenthetical is inside it, sung in the gap after the song's last lead line. Round 1 (r1-tests-20) moved
-#: R1's "something is left to align" test onto the MATRIX for exactly this shape, but only `parts.split`'s own
-#: test pinned it — mutating the step's `parts.split(line_texts, emissions=emissions)` back to
-#: `parts.split(line_texts)` left the whole suite green while the arm silently lost this line again.
-#: HANGUL SINCE W7, for the reason `test_an_accented_lead_is_alignable_because_the_filter_folds_it` gives:
-#: `ñññ` is `nnn` to the target filter now (review §3 item 9), so an accented lead no longer names this shape
-#: and the fixture would have asserted the opposite of what it tests.
+#: A served line whose LEAD words are outside the matrix's vocabulary while its parenthetical is inside it,
+#: sung in the gap after the song's last lead line. Mutating the step's `parts.split(line_texts,
+#: emissions=emissions)` back to `parts.split(line_texts)` left the whole suite green. HANGUL since W7.
 OOV_LEAD = "가나다 (yeah yeah)"
 OOV_PHRASE = ("yeah yeah", 23.0, 24.0)
 

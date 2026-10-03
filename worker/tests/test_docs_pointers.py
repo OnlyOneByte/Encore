@@ -1,15 +1,13 @@
 """The code points at `docs/` instead of carrying it, so the pointers are checked.
 
 A cited path is load-bearing since the 2026-10-01 directive: a reader who follows it and finds nothing has
-lost the measurement or the failure account that used to be inline, and nothing at runtime can notice.
-Nine rules — the paths resolve, a cited SECTION NUMBER names a heading that exists, a cited SECTION TITLE
-names a heading or a bold lead-in that exists, every `§N` in prose is ANCHORED to a committed document rather
-than to the gitignored review, a cited "`module`'s NAME section" is text that module still carries, no
-citation leads to a GITIGNORED working document, the two design documents are not stubs, and both indexes
-link them.
+lost the measurement or the failure account that used to be inline, and nothing at runtime can notice. Nine
+rules — the paths resolve, a cited SECTION NUMBER names a heading that exists, a cited SECTION TITLE names a
+heading or a bold lead-in, every `§N` in prose is ANCHORED to a committed document rather than to the
+gitignored review, a cited "`module`'s NAME section" is text that module still carries, no citation leads to
+a GITIGNORED working document, the two design documents are not stubs, and both indexes link them.
 
-Path failures FAIL rather than skip (`test_artifact_keys.py`'s rule): a skipped pointer check reads as a
-satisfied invariant.
+Path failures FAIL rather than skip (`test_artifact_keys.py`'s rule): a skipped check reads as satisfied.
 """
 
 from __future__ import annotations
@@ -96,13 +94,8 @@ def test_every_docs_path_the_code_cites_resolves(repo: Path) -> None:
 
 
 #: `docs/arch/04-alignment.md §5.3` — a path, then a section number the cited document must hold a heading
-#: for. Section numbers are used instead of GitHub anchors because the headings carry em-dashes and italics,
-#: which the anchor rules mangle, so a hand-written anchor is a dead pointer nobody notices.
-#:
-#: The separator allows a LINE BREAK and a comment marker, because prose wraps: with a literal single space
-#: this read 75 citations and missed 10 that happened to wrap between the path and the `§`, which is exactly
-#: the pointer a renumbering would break silently. `MIN_SECTION_CITATIONS` keeps the relaxation honest — a
-#: pattern that stops matching cannot hide behind "no failures".
+#: for. Section numbers rather than GitHub anchors, whose rules mangle the em-dashes these headings carry. The
+#: separator allows a wrapped line and a comment marker; `MIN_SECTION_CITATIONS` keeps that relaxation honest.
 SECTION_CITATION = re.compile(
     r"(docs/[A-Za-z0-9_./-]+\.md)`?[ \t]*(?:\n[ \t]*#*:?[ \t]*)?§([0-9]+(?:\.[0-9]+)?)"
 )
@@ -264,9 +257,8 @@ def test_the_anchor_rule_reads_a_section_mark_that_is_code_rather_than_prose(rep
 
 
 #: ``the populations are in `lexical`'s MIX section`` — the pointer form that broke in W7b, when the cleanup
-#: deleted the very section two comments had just been written to cite. A module is not a document and has no
-#: stable section names, so the rule is the weakest one that catches it: the NAME must still appear in that
-#: module's own prose.
+#: deleted the very section two comments cited. A module is not a document and has no stable section names, so
+#: the rule is the weakest one that catches it: the NAME must still appear in that module's own prose.
 MODULE_SECTION = re.compile(r"`([a-z_][a-z_0-9.]*)`'s ([A-Z][A-Z_ ]{2,}) section")
 
 

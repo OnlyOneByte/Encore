@@ -1,19 +1,14 @@
-"""CTC's blank is the MATRIX's, not a literal 0 (review M9), end to end over the whole decode chain.
+"""CTC's blank is the MATRIX's, not a literal 0 (M9), end to end over the whole decode chain.
 
-WHY A FILE OF ITS OWN. `blank = 0` was hard-coded in five places that have to agree — the kernel call, the
-target filter, `_char_spans`' run grouping and its flushing sentinel, `regenerate`'s alignable count and the
-mix witness's non-blank mass — and the defect is DORMANT while the language is always `en`, because
-torchaudio's bundles do put their blank at label 0. So no test that decodes English can see it. 23 of
-whisperx's 36 HF align models put their pad elsewhere (the review's per-model vocabulary dumps: Danish
-`<pad>`=32 with `u` at 0, Norwegian Bokmal `[PAD]`=38 with `|` at 0, Korean `[PAD]`=1204), and W7 turns the
-language on.
-
-HOW IT IS TESTED WITHOUT ANOTHER MODEL'S WEIGHTS, which is the review's own reproduction: PERMUTE the
-fixture's matrix so the blank moves out of column 0 and a letter moves into it. That is the same evidence
-under another vocabulary, so a blank-aware chain must return a BYTE-IDENTICAL document — and the old chain
-must not, because it charges the true blank as a letter and silently drops every occurrence of the letter
-that now sits at 0. Measured by the review on Danish: word onsets within ±250 ms 90.5% -> 73.2%, and words
-more than 2 s out 141 -> 584.
+`blank = 0` was hard-coded in five places that have to agree — the kernel call, the target filter,
+`_char_spans`' run grouping and its flushing sentinel, `regenerate`'s alignable count and the mix witness's
+non-blank mass — and the defect is DORMANT while the language is `en`, torchaudio's bundles putting their
+blank at label 0. 23 of whisperx's 36 HF align models put their pad elsewhere (Danish `<pad>`=32 with `u` at
+0, Norwegian Bokmal `[PAD]`=38 with `|` at 0, Korean `[PAD]`=1204), and W7 turns the language on. It is
+tested without another model's weights by PERMUTING the fixture's matrix so the blank leaves column 0 and a
+letter enters it: the same evidence under another vocabulary, so a blank-aware chain returns a
+BYTE-IDENTICAL document and the old chain cannot. Measured on Danish: onsets within ±250 ms 90.5% -> 73.2%,
+words more than 2 s out 141 -> 584.
 """
 
 from __future__ import annotations
@@ -300,16 +295,14 @@ def test_the_excluded_set_is_the_blank_plus_whatever_the_matrix_names() -> None:
 def test_a_pipe_in_a_lyric_is_not_a_target_when_the_matrix_names_it(
     pipes: tuple[Specialled, Emitted],
 ) -> None:
-    """THE DEFECT `Emissions.specials` EXISTED UNREAD FOR (W4b). Every HF align vocabulary maps `|` to the
-    word separator, so a sheet that writes `oh | oh` — a caption track using it as a delimiter, an operator
-    paste out of a table — fed id 1 in as a CHARACTER target: the decode forced a separator into the middle of
-    a line and `_char_spans` gave it frames of its own, pushing every following letter later.
+    """`Emissions.specials`: a `|` in a lyric is not a character target when the matrix names it.
 
-    A matrix that NAMES its specials drops it from the targets, so every SUNG word of the line keeps the
-    timing it has without the pipe and the pipe itself comes out as a zero-width placeholder — the same
-    treatment `generate` gives any word with no alignable character (W5's text hygiene owns removing it from
-    the text). One that names none still emits it as a target, which is the old behaviour and is what makes
-    this test about the reader rather than about the fixture."""
+    Every HF align vocabulary maps `|` to the word separator, so a sheet that writes `oh | oh` — a caption
+    track using it as a delimiter, an operator paste out of a table — fed id 1 in as a CHARACTER target:
+    the decode forced a separator into the middle of a line and `_char_spans` gave it frames of its own,
+    pushing every following letter later. A matrix that names its specials drops it from the targets, so
+    every SUNG word keeps the timing it has and the pipe becomes a zero-width placeholder; one that names
+    none still emits it, which is what makes this about the reader rather than the fixture."""
     from encore_worker.domain.lyrics.generate import alignable_chars
 
     named, unnamed = pipes
@@ -373,14 +366,9 @@ def test_the_lift_and_a_repair_read_the_same_excluded_set_as_the_decode(
 
 # ── the REAL vocabularies W7 made reachable ──────────────────────────────────────────────────────
 
-#: Three real whisperx HF alignment vocabularies, read off the model files themselves (the review's per-model
-#: dumps, `_review-scratch/encore-review/*.json`, plus the `nn` checkpoint cached on this box). Only the
-#: non-character columns and `id 0` are needed, and that is deliberately ALL that is copied: the weights are
-#: 1.2-3.6 GB each, and what review M9 is about is where the vocabulary puts its pad.
-#:
-#: `nn` is the WORST SHAPE OF THE 23: id 0 is the WORD SEPARATOR, so a decoder told `blank=0` charges every
-#: inter-word boundary as blank and never visits the model's real blank column at all. It is also the bundle
-#: `scripts/lang_gate.py --blank` runs LIVE, because its weights are the non-English ones already on this box.
+#: Three real whisperx HF alignment vocabularies, read off the model files themselves; only the non-character
+#: columns and `id 0` are copied, the weights being 1.2-3.6 GB each. `nn` is the WORST SHAPE OF THE 23 — id 0
+#: is the WORD SEPARATOR — and is the bundle `scripts/lang_gate.py --blank` runs LIVE.
 REAL_VOCABULARIES = {
     # NbAiLab/nb-wav2vec2-1b-nynorsk (whisperx `nn`)
     "nn": ({"|": 0, "a": 1, "z": 26, "å": 27, "æ": 28, "ø": 29, "[UNK]": 30, "[PAD]": 31}, 31),

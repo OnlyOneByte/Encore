@@ -1,25 +1,13 @@
-"""The global engine's lexical gate (W3, review §3 item 4 / H3): the lift decides a word document's text.
+"""The global engine's lexical gate (W3, H3): the lift decides a word document's text.
 
-Through the real `time_text` on the CTC fixture (`tests/ctc_fixture.py`: an exact Viterbi, frame-for-frame
-torchaudio's kernel on these matrices), with the emission matrix and the wavs the envelope reads built
-SEPARATELY, so a test can make the two gates disagree:
-
-  * words the stem does not sing are REFUSED before anything is repaired, although the envelope gate — which
-    scores our own forced decode, pulled onto the voiced frames whatever the words — passes them (H3);
-  * on a stem the lift REPLACES the envelope gate wherever it measured the text: a right text the envelope
-    refuses publishes;
-  * on the mix (no stem) the same rule holds since W4 review r1 — the floor refuses and the envelope fit is
-    reported — with `h3-mix-envelope` (W3's default) and `h3-mix-floor` as the two controls;
-  * the doubt band publishes every line `low`, the document `medium` and the words UNVOUCHED
-    (`TimedDoc.vouched` -> core's `textConfidence` low), and so does a pin the gate would have refused;
-  * a cognate translation is NOT caught, and on this path publishes a word document with `high` lines;
-  * the exemptions (the ASR tier, a text under `lexical.MIN_LETTERS`) keep the envelope gate, and so does a
-    lift whose decode raised; an `InfraFault` in it fails the job;
-  * a pin is never judged a wrong text: refused words publish, graded low.
-
-The fixture scores letters (a sung char at 0.9), so its lifts are far larger than a real model's (+15 here,
-+0.36..+4.3 on the bench's stems for right texts): what these pin is the wiring, and `lexical.BANDS` is moved
-where a test needs a band the fixture cannot reach.
+Through the real `time_text` on the CTC fixture, with the emission matrix and the wavs the envelope reads
+built SEPARATELY so a test can make the two gates disagree. Words the stem does not sing are REFUSED before
+anything is repaired, although the envelope gate — which scores our own forced decode, pulled onto the
+voiced frames whatever the words — passes them. On a stem the lift REPLACES the envelope gate wherever it
+measured the text, and since W4 on the mix too (`h3-mix-envelope` and `h3-mix-floor` are the controls); the
+doubt band publishes every line `low` and the words UNVOUCHED; a cognate translation is not caught; the
+exemptions keep the envelope gate; a pin is never judged a wrong text. The fixture scores letters, so its
+lifts dwarf a real model's (+15 here, +0.36..+4.3 on the bench's stems): what these pin is the wiring.
 """
 
 from __future__ import annotations
@@ -552,15 +540,14 @@ def test_the_asr_tier_is_exempt_and_keeps_the_envelope_gate(
 def test_a_matrix_from_a_model_with_no_calibration_row_times_no_words(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3 review r2 (a TABLE since W4b), with W7 review r1-correctness-1's consequence.
+    """A matrix from a model with no calibration row times no words.
 
-    The thresholds are ONE bundle's calibration each, and the emission model is chosen per LANGUAGE
-    (`ml.WhisperXAligner._aligner`), so a German sheet must not be judged on a number `lift_gate.py` never
-    measured — and until W7 that meant the ENVELOPE GATE kept the verdict, which review H3 measured letting
-    189 of 380 wrong texts publish because it scores our own decode. So the wrong text used to PASS here. Now
-    the attempt DECLINES (not `Refused`: nothing measured the text, so `policy.decide` rule 1 may still reach
-    the LINE_SYNC rung, where the gate is a share of lines in SECONDS), the reason names the model and the
-    recalibration command, and no document is written at all."""
+    The thresholds are ONE bundle's calibration each and the emission model is chosen per LANGUAGE, so a
+    German sheet must not be judged on a number `lift_gate.py` never measured — and until W7 that meant the
+    ENVELOPE GATE kept the verdict, which H3 measured letting 189 of 380 wrong texts publish because it
+    scores our own decode, so the wrong text used to PASS here. Now the attempt DECLINES (not `Refused`:
+    nothing measured the text, so `policy.decide` rule 1 may still reach the LINE_SYNC rung), the reason
+    names the model and the recalibration command, and no document is written at all."""
     run = attempt(tmp_path, monkeypatch, texts=UNSUNG, named_model="WAV2VEC2_LARGE_XLSR_53_DE")
     assert run.got is None, "an ungated bundle publishes no word timings"
     assert run.notes[-1][3] == "declined"

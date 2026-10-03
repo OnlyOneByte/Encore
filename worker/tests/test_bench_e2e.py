@@ -1,16 +1,13 @@
 """The E2E alignment bench harness (`docs/benchmarks/forced-alignment/scripts/e2e.py` + `e2e_lib.py`).
 
-WHY THE BENCH HAS UNIT TESTS. It is the GATE every later alignment wave is accepted or rejected by, so a
-defect in it moves every verdict at once — silently, because a wrong metric still prints a plausible
-number. Measured once already: the review's scratch harness paired lines by text, which mis-pairs a
-repeated chorus whenever a line is dropped, and seeded jitter with the process-salted `hash(slug)`, which
-made its jit row unrepeatable. Both are pinned here.
-
-Hermetic: no model, no corpus. The claim/metric/cache half is plain data; the driver runs the REAL
-`AlignStepsImpl.time_text` over a synthetic song with a fake aligner and a spreading decoder, which is
-what proves the harness drives the shipped path and pairs its output by identity. The `run_align` level
-runs the REAL workflow the same way, including the policy's retries (an H2 mix swap, the LINE_SYNC ->
-NextText -> ASR -> GiveUp ladder), and the gate language is pinned on the reject-if forms the plan uses.
+The bench is the GATE every later alignment wave is accepted or rejected by, so a defect in it moves every
+verdict at once — silently, because a wrong metric still prints a plausible number. Two from the review's
+own scratch harness are pinned here: pairing lines by TEXT, which mis-pairs a repeated chorus whenever a
+line is dropped, and seeding jitter with the process-salted `hash(slug)`, which made its jit row
+unrepeatable. Hermetic: no model, no corpus. The claim/metric/cache half is plain data; the driver runs the
+REAL `AlignStepsImpl.time_text` over a synthetic song with a fake aligner and a spreading decoder, and the
+`run_align` level runs the REAL workflow the same way, retries included, with the gate language pinned on
+the reject-if forms the plan uses.
 """
 
 from __future__ import annotations
@@ -603,14 +600,11 @@ def write_voiced(
 def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
     """The `time_text` driver over a two-song corpus whose songs have a STEM, as every corpus song does.
 
-    THE MIX IS A SECOND FILE, same samples, different path (W4 review r1). `song_of` defaults a song's mix
-    to its stem, which reads as a STEMLESS case to the shipped step — `AudioRef.align_target` returns the
-    same path for both, so `target_name` is "mix" and the word-end post-pass does not run (`ends`' theta is
-    a stem's). That made this driver's document differ from `RunAlignDriver`'s, which stages the stem into
-    its own media tree and so always aligns on a "stem": the parity property below read a fixture artifact
-    as a difference between the two paths. Neither the corpus nor production has a song whose mix IS its
-    vocals — `--no-stem` passes `vocals_path=None` instead, which the stemless tests do too.
-    """
+    The mix is a SECOND file, same samples, different path: `song_of` defaulting a song's mix to its stem
+    reads as a STEMLESS case to the shipped step — `AudioRef.align_target` returns one path for both, so
+    `target_name` is "mix" and the word-end post-pass does not run — which made this driver's document
+    differ from `RunAlignDriver`'s, where the stem is staged into its own media tree. Neither the corpus
+    nor production has a song whose mix IS its vocals; `--no-stem` passes `vocals_path=None` instead."""
     spread_decodes(monkeypatch)
     wav = write_voiced(tmp_path / "vocals.wav", DURATION)
     mix = write_voiced(tmp_path / "mix.wav", DURATION)
@@ -1137,15 +1131,13 @@ def test_the_lines_reject_if_files_names_all_resolve_and_its_floors_point_the_ri
 
 
 def test_the_hubert_reject_if_file_resolves_every_name_and_is_not_vacuous() -> None:
-    """`gates/w4b-hubert.yaml` is read 2-3 HOURS after the model flip's two sweeps start (review §3 item 6b),
-    so a mistyped mode or metric must not read as a clean run — an unmeasured (mode, metric) key is an ERROR
-    by design, and a gate that cannot fail is decoration.
+    """`gates/w4b-hubert.yaml` is read 2-3 HOURS after the model flip's sweeps start, so a mistyped mode or
+    metric must not read as a clean run: an unmeasured (mode, metric) key is an ERROR by design.
 
-    Scored on the COMMITTED base-model row as BOTH sides, which is exactly how the file's header was checked
-    before any HuBERT row existed: every name resolves on a real `--modes all,wrongtext+ownclock` summary
+    Scored on the COMMITTED base-model row as BOTH sides, which is how the file's header was checked before
+    any HuBERT row existed: every name resolves on a real `--modes all,wrongtext+ownclock` summary
     (0 ERRORs), the "not worse" gates PASS on the identity, and the three gain gates FAIL on it — a run
-    compared with itself gains nothing.
-    """
+    compared with itself gains nothing."""
     rules = gates.parse_gates((GATES_DIR / "w4b-hubert.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 21, "the 21 the file's header reports; `run_gates` adds the built-in no-error-rows"
     # W4b REVIEW R1 ADDED THE TWO AAE GATES, and they must be REAL ones: `blind-aae-not-up` used to read the
@@ -1167,22 +1159,14 @@ def test_the_hubert_reject_if_file_resolves_every_name_and_is_not_vacuous() -> N
 
 
 def test_the_wave_reject_if_file_reproduces_the_bench_verdict_on_the_committed_rows() -> None:
-    """`gates/w4b.yaml` is the WAVE's acceptance test — the six MUSTs the orchestrator set — and it is what
-    sent HuBERT-Large back behind `ENCORE_ALIGN_MODEL` (`ml.DEFAULT_ALIGN_MODEL`). Two readings are pinned
-    because either alone would be misleading:
+    """`gates/w4b.yaml`, the WAVE's acceptance test, replayed on the committed rows in both readings.
 
-    * THE RATCHET reads 30/30 on the tree that set it (the control as BOTH sides), every absolute at its own
-      digit and every delta 0.00. That is a property a ratchet must have and NOT evidence that it bites.
-    * THE CANDIDATE reads 19/30, failing exactly eleven names, at `time_text` AND at `run_align`. Those are
-      the wave's three failing MUSTs (pooled gross up in eight modes, the two named YouTube songs, one Jamendo
-      song at ±300), so a later edit that quietly greened any of them changes a published verdict and must
-      fail here first.
-
-    THE COUNT MOVED IN REVIEW R2 AND THE VERDICT DID NOT (spec-9): MUST 2's nine claim modes were one summed
-    inequality reading `57 <= 56`, so it failed BY ONE LINE while seven of the nine regressed and two
-    (credit 28 -> 7, headers 3 -> 2) paid for them. A sum does not rise whenever a term does; the file now
-    gates each mode, which is why `pooled-gross-not-up-off05 …` are named here one by one.
-    """
+    THE RATCHET reads 30/30 on the tree that set it (the control as both sides), every absolute at its own
+    digit and every delta 0.00 — a property a ratchet must have, and not evidence that it bites. THE
+    CANDIDATE reads 19/30, failing exactly eleven names at `time_text` AND at `run_align`: the wave's three
+    failing MUSTs, which is what sent HuBERT-Large back behind `ENCORE_ALIGN_MODEL`. MUST 2's nine claim
+    modes were one summed inequality reading `57 <= 56`, failing BY ONE LINE while seven of the nine
+    regressed and two paid for them, so the file now gates each mode — named here one by one."""
     rules = gates.parse_gates((GATES_DIR / "w4b.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 29, "run_gates adds the built-in no-error-rows on top"
     results = SCRIPTS.parent / "results"
@@ -1209,15 +1193,13 @@ def test_the_wave_reject_if_file_reproduces_the_bench_verdict_on_the_committed_r
 
 
 def test_the_w2_displacement_ratchet_keeps_w2s_allowance_and_reads_zero_on_its_own_base() -> None:
-    """W4b REVIEW R2 (spec-11): W4b's rebase moved `gates/w2.yaml`'s `--compare` base to `results/w4-*.json`
-    AND re-priced eleven of section 12's thirteen per-song displacement literals at W4's own worst-vs-W3. Both
-    together make the bound mean "displace a song as far as the last wave did, AGAIN": `credit` -45 evaluated
-    against a W4 row already -44.68 below W3 is ~89 pt of cumulative loss on a 0-100 metric, read as green,
-    and each new literal sat 0.02-0.6 pt inside the change it excused, so the manoeuvre is repeatable every
-    wave. The base may move — that is what a rebase is for — but the ALLOWANCE is W2's, which is what this
-    test holds. W4's own excess is recorded in that section as a price paid, and shows up as FAILs in the
-    W4-vs-W3 reading the file's header waives.
-    """
+    """`gates/w2.yaml`'s displacement allowance stays W2's, whatever the `--compare` base is rebased to.
+
+    W4b's rebase moved the base to `results/w4-*.json` AND re-priced eleven of thirteen per-song literals
+    at W4's own worst-vs-W3, which together make the bound mean "displace a song as far as the last wave
+    did, AGAIN": `credit` -45 against a W4 row already -44.68 below W3 is ~89 pt of cumulative loss on a
+    0-100 metric, read as green, and each new literal sat 0.02-0.6 pt inside the change it excused. The
+    base may move — that is what a rebase is for — but the ALLOWANCE is W2's."""
     rules = gates.parse_gates((GATES_DIR / "w2.yaml").read_text(encoding="utf-8"))
     bounds = {
         gate.name.removeprefix("no-worse-displacement-"): float(gate.expr.rsplit(">=", 1)[1])
@@ -1295,21 +1277,14 @@ def test_the_linesep_decode_gate_file_reproduces_the_recorded_verdict_on_both_mo
 
 
 def test_the_linesep_e2e_gate_file_reads_the_recorded_verdict_and_is_not_vacuous() -> None:
-    """`gates/w4b-linesep.yaml` decided whether 6c ships, and the bench has now read it: cells A/B, the bundle
-    production loads, **14/22 — REJECT** (`results/w4b-linesep-base-line-time_text.json` against
-    `results/w4b-base-time_text.json`; 13/20 before W4b review r1 added the two AAE gates). Two readings, both
-    pinned:
+    """`gates/w4b-linesep.yaml`, which decided whether 6c ships: cells A/B read 14/22 — REJECT.
 
-    * ON THE IDENTITY (the committed base row as both sides) every bound PASSES and only the SHOULD gain fails
-      — the typo check the file was written for, kept because it is what proves no gate is green by accident.
-    * ON THE ARM, the eight the header names. FOUR of them are gates `--level generate` passed or could not
-      read, including `e2e-gross-down-truth` — review 6c's own reject-if nobody had read before this run — and
-      the two `highlight-not-down-*` gates PASS here against the decode axis's -0.9, which is the finding
-      that the generate-level highlight failure was the LEVEL and not the arm.
-    * THE EIGHTH IS `truth-aae-not-up` (W4b review r1): +12.9 ms of absolute word error under truth claims
-      with the MEDIAN bias unmoved, so it is asserted beside `onset-bias-not-worse-blind`'s PASS — the two
-      metrics are different questions and this file used to ask only the median's.
-    """
+    On the IDENTITY (the committed base row as both sides) every bound PASSES and only the SHOULD gain
+    fails, which is the typo check the file was written for. On the ARM the header's eight fail: four are
+    gates `--level generate` passed or could not read, including review 6c's own `e2e-gross-down-truth`;
+    the two `highlight-not-down-*` gates PASS against the decode axis's -0.9, which is what makes the
+    generate-level highlight failure the LEVEL and not the arm; and `truth-aae-not-up` is +12.9 ms of
+    absolute word error with the MEDIAN bias unmoved, so it sits beside `onset-bias-not-worse-blind`."""
     rules = gates.parse_gates((GATES_DIR / "w4b-linesep.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 21, "the 21 the file's header reports; `run_gates` adds the built-in no-error-rows"
     results = SCRIPTS.parent / "results"
@@ -1381,15 +1356,13 @@ def test_the_run_align_reject_if_file_reads_that_levels_own_zero_and_nothing_loo
 
 def ends_rows(*, held: bool, songs: int = 6, worse: int = 0, moved_onset: bool = False) -> list[Any]:
     """A `blind` run of `songs` Jamendo songs whose truth times three words per line, shaped as the word-end
-    post-pass moves them (review §3 item 5; `domain/lyrics/ends.py`).
+    post-pass moves them (`domain/lyrics/ends.py`).
 
-    `held=False` is the `ends-raw` control: every onset exact, interior ends exact, and each line's LAST word
-    ending 120 ms early — CTC's peakiness, which is what the post-pass is for. `held=True` lands that final
-    end exactly. In the first `worse` songs the held document also over-extends both interior ends 400 ms
-    into the gap before the next word, which is the real trade the corpus showed (Color_Out): phrase-final
-    ends improve while word-end ±100 gets WORSE on that song, and the highlight does not notice, because a
-    word lit over a gap no truth word occupies is in neither side of that ratio.
-    """
+    `held=False` is the `ends-raw` control: every onset exact, interior ends exact, and each line's LAST
+    word ending 120 ms early — CTC's peakiness, which is what the post-pass is for — and `held=True` lands
+    that final end exactly. In the first `worse` songs the held document also over-extends both interior
+    ends 400 ms into the gap, which is the real trade the corpus showed (Color_Out): phrase-final ends
+    improve while word-end ±100 gets worse, and the highlight does not notice."""
     rows = []
     for index in range(songs):
         truth = [(f"one{i} two{i} three{i}", 10.0 * i, 10.0 * i + 2.6) for i in range(3)]
@@ -1683,11 +1656,9 @@ def test_h2_fixed_the_thin_coverage_stem_document_publishes_with_no_mix_retry(
     assert e2e._policy_note(row) == "  attempts 1"
 
 
-#: A text that survives the adapters' cleaning (`clean_line` keeps any line with an alphanumeric char)
-#: but holds no char the aligner's dictionary knows: a count-in. `♪`-only lines would not do — cleaning
-#: drops them before any attempt, exactly as production does (pinned below). Claimed where the rig's
-#: stem is SILENT (its phrases end at 37 s), so its LINE_SYNC rung is refused by the sheet-span gate
-#: (r 0.25, at an 8 s lag); `COUNT_IN_ON_THE_SINGING` is a count-in claimed on three sung phrases.
+#: A text that survives the adapters' cleaning (`clean_line` keeps any line with an alphanumeric char) but
+#: holds no char the aligner's dictionary knows: a count-in, claimed where the rig's stem is SILENT, so its
+#: LINE_SYNC rung is refused by the sheet-span gate (r 0.25 at an 8 s lag). `♪`-only lines are cleaned first.
 UNSINGABLE = [("1 2 3 4", 38.0, 39.0), ("5 6 7 8", 39.0, 39.8)]
 COUNT_IN_ON_THE_SINGING = [("1 2 3 4", 5.0, 7.0), ("5 6 7 8", 8.0, 10.0), ("9 10 11 12", 12.0, 14.5)]
 
@@ -1813,15 +1784,13 @@ def test_the_transcript_cache_serves_disk_hits_and_remembers_hearing_nothing(tmp
 
 
 def test_the_transcript_cache_remembers_the_language_whisper_heard(tmp_path: Path) -> None:
-    """Review M8, W7: whisper's detection is half the port's return value now, so a cache that stored only the
-    segments would route a REPLAYED `run_align` case to the default bundle where a cold one routed it to the
-    song's own — a cached run and a fresh run would then measure different configurations.
+    """The transcript cache remembers the language whisper heard (M8).
 
-    AND AN ENTRY WRITTEN BEFORE THE FIELD EXISTED IS A MISS (W7 review r1-spec-9), not a `None` language: all
-    six entries in the bench root's `_transcripts` predate it, so serving one would have made a cached run
-    measure the pre-W7 configuration while reporting itself as this tree's. `None` is still a cache HIT where
-    the harness really recorded it — whisper reporting no language is a result — which is why the key is now
-    always written."""
+    Whisper's detection is half the port's return value now, so a cache storing only the segments would
+    route a REPLAYED `run_align` case to the default bundle where a cold one routed it to the song's own —
+    two runs measuring different configurations. An entry written before the field existed is a MISS rather
+    than a `None` language: all six entries in the bench root's `_transcripts` predate it, so serving one
+    would measure the pre-W7 configuration. A recorded `None` is still a HIT, so the key is always written."""
     audio = tmp_path / "vocals.wav"
     audio.write_bytes(b"RIFF....")
 
@@ -2842,15 +2811,13 @@ def test_the_emissions_key_moves_with_the_align_settings_and_the_code_ml_imports
 
 
 def test_the_bench_builds_its_aligner_as_the_host_does() -> None:
-    """A factory argument that reaches production (a model knob, a frame-grid setting, the cache bound)
-    must reach the bench too: this fails first.
+    """A factory argument that reaches production must reach the bench too: this fails first.
 
-    PINNED AS A SET AND FORWARDED, not as a literal list of one name (W4 review r1, which added `jobs` —
-    the emission LRU's bound, derived from `Config.concurrency`). The list that must not GROW silently is
-    the host factory's, and `BenchAligner` may have arguments of its own on top (its disk cache), so the
-    relation is containment plus the value actually arriving: a forwarded argument dropped in
-    `BenchAligner.__init__` would leave the harness measuring another adapter's behaviour.
-    """
+    Pinned as a SET and forwarded, not as a literal list of one name — `jobs`, the emission LRU's bound
+    derived from `Config.concurrency`, arrived that way. The list that must not GROW silently is the host
+    factory's, and `BenchAligner` may have arguments of its own on top (its disk cache), so the relation is
+    containment plus the value actually arriving: a forwarded argument dropped in `BenchAligner.__init__`
+    would leave the harness measuring another adapter's behaviour."""
     import inspect
 
     from encore_worker.adapters import ml
@@ -3245,15 +3212,13 @@ def test_line_gate_rules_fall_back_as_the_shipped_rung_does() -> None:
 
 
 def test_the_line_gate_report_names_the_model_row_s_own_share() -> None:
-    """W4b review r1. The share is per-model data now (`lexical.Bands.line_sync_min_agreement`) and
-    `summarize` is handed it, but its refusal tables still iterated the literals `decode(0.5)` / `either(0.5)`
-    — so `line_gate.py --model X` on a row whose share is 0.6 printed the right texts ANOTHER model's
-    threshold refuses, directly above `-> line_sync_min_agreement=0.6`. That section is what a calibrator
-    reads to decide whether a share's cost is acceptable, so it must be the row's own rule.
+    """`line_gate.py`'s refusal tables read the model row's own share, not the literal 0.5.
 
-    ALSO PINNED: a share off the sweep's 0.1 grid gets a rule of its own rather than colliding with the step
-    it rounds to, which is what `:.1f` keys would have done to a future 0.45.
-    """
+    The share is per-model data (`lexical.Bands.line_sync_min_agreement`) and `summarize` is handed it, but
+    the tables still iterated `decode(0.5)` / `either(0.5)` — so `--model X` on a row whose share is 0.6
+    printed the texts ANOTHER model's threshold refuses, directly above `-> line_sync_min_agreement=0.6`.
+    That section is what a calibrator reads to decide whether a share's cost is acceptable. Also pinned: a
+    share off the sweep's 0.1 grid gets a rule of its own rather than colliding with the step it rounds to."""
     body = json.loads((SCRIPTS.parent / "results" / "w4-line-gate.json").read_text(encoding="utf-8"))
     rows = body["rows"]
     said = "\n".join(line_gate.summarize(rows, 0.2, 0.6))
@@ -3355,16 +3320,14 @@ def test_both_hubert_mix_doubt_bands_sit_where_their_committed_rows_put_them() -
 def test_the_calibration_procedure_reproduces_the_shipped_row_from_the_committed_rows(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """W4b: the per-model table is only as good as the PROCEDURE that fills it, so both scripts now print the
-    row they fit — and run over the committed W4 rows they must print the row this worker ships. That is what
-    makes "add a row" a mechanical step for 6b rather than an exercise in reading a docstring, and it is the
-    test that fails if the procedure and the shipped numbers ever drift apart.
+    """The calibration PROCEDURE, run over the committed rows, prints the row this worker ships.
 
-    Every threshold of `lexical.BANDS` is covered: the two stem bands and the mix floor from
-    `lift_gate.py --from` on `results/w4-lift-{stem,mix}.json`, and the agreement share from
-    `line_gate.py --from` on `results/w4-line-gate.json`. `mix_ok_from` is deliberately NOT derived — it is
-    read off the per-band timing table by a person, and the script says so.
-    """
+    A per-model table is only as good as the procedure that fills it, so both scripts print the row they
+    fit — which makes "add a row" mechanical rather than an exercise in reading a docstring, and fails if
+    procedure and shipped numbers ever drift apart. Every threshold of `lexical.BANDS` is covered: the two
+    stem bands and the mix floor from `lift_gate.py --from` on `results/w4-lift-{stem,mix}.json`, the
+    agreement share from `line_gate.py --from` on `results/w4-line-gate.json`. `mix_ok_from` is deliberately
+    NOT derived — a person reads it off the per-band timing table, and the script says so."""
     from encore_worker.domain.lyrics import lexical
 
     results = SCRIPTS.parent / "results"
@@ -3427,16 +3390,14 @@ def test_the_procedure_reproduces_the_hubert_rows_too(
     share_line: str,
     mix_margin: str,
 ) -> None:
-    """W4b 6b, and the reason the table is worth having: the SHIPPED bundle is HuBERT-Large now (XLarge on
-    CUDA), so each row has to be derivable from its own committed rows by the same three commands — otherwise
-    "recalibrate per model" is a sentence rather than a procedure.
+    """The same procedure reproduces the HuBERT rows, which is what makes "recalibrate per model" real.
 
-    `ok_from` is the one field W4b restated (the old "higher split fit, rounded up" would have demoted five
-    protected right texts of one song on HuBERT-L), so it is asserted BOTH ways: the number, and the property
-    the rule exists for — the band holds a drop50 and no protected right text. The head-room is asserted per
-    model because it is the difference between the two: L clears the wrong population by 28x the base row's
-    margin, XL by 9x, which is why XL's caveats are written down where its row is.
-    """
+    The shipped bundle is HuBERT-Large (XLarge on CUDA), so each row has to be derivable from its own
+    committed rows by the same three commands. `ok_from` is the one field W4b restated — the old "higher
+    split fit, rounded up" would have demoted five protected right texts of one song on HuBERT-L — so it is
+    asserted both as the number and as the property the rule exists for: the band holds a drop50 and no
+    protected right text. Head-room is asserted per model, L clearing the wrong population by 28x the base
+    row's margin and XL by 9x, which is why XL's caveats are written down where its row is."""
     from encore_worker.domain.lyrics import lexical
 
     row = lexical.CALIBRATED[model]
@@ -3488,16 +3449,14 @@ def test_the_fitted_row_refuses_to_pick_a_threshold_when_the_populations_overlap
 
 
 def test_the_committed_unsung_rows_hold_the_never_sung_floors_record() -> None:
-    """W4b (b). `align_steps._NEVER_SUNG_ENV`'s block says the absolute 0.10 beats every per-song relative
-    floor, and `results/w4b-unsung-gate.json` is the row set it says it on (`scripts/unsung_gate.py`, 192
-    song-modes). This holds the record to the rows so neither can drift, and it is the test to re-read when a
-    later wave (or a new model) re-runs the script.
+    """`results/w4b-unsung-gate.json` (192 song-modes) holds the never-sung floor's record to its rows.
 
-    THE THREE CLAIMS, in the order the block makes them: the rule pays for itself against the floor at 0; a
-    relative floor at the song's own median gap is a NO-OP because the level BETWEEN lines is at or above 0.10
-    on nearly every song; and the lower quantiles that would spare `Pure_Mids_-_The_Leader`'s real line spare
-    INJECTED lines too, which is an `unsung-not-up-*` rise.
-    """
+    `align_steps._NEVER_SUNG_ENV` says the absolute 0.10 beats every per-song relative floor, and this is
+    the row set it says it on, so neither can drift and this is the test to re-read when a later wave or a
+    new model re-runs `scripts/unsung_gate.py`. The three claims in order: the rule pays for itself against
+    a floor at 0; a relative floor at the song's own median gap is a NO-OP, the level between lines being
+    at or above 0.10 on nearly every song; and the lower quantiles that would spare
+    `Pure_Mids_-_The_Leader`'s real line spare INJECTED lines too, which is an `unsung-not-up-*` rise."""
     from encore_worker.steps import align_steps
 
     body = json.loads((SCRIPTS.parent / "results" / "w4b-unsung-gate.json").read_text(encoding="utf-8"))
@@ -3609,21 +3568,14 @@ def test_the_committed_w2_rows_carry_both_placements_at_the_shipped_band() -> No
 
 
 def test_the_committed_w4_rows_re_read_the_line_sync_thresholds_on_the_exact_clock() -> None:
-    """W4 6a moved every emission matrix, so the agreement share and `_LINE_SYNC_NEAR_SEC` were being
-    read on a scale they were not fitted on. `results/w4-line-gate.json` is that re-read — and review r2
-    found it committed and cited NOWHERE, with the constants' record still arguing from a W2 population that
-    the exact clock had dissolved. This holds the docstring's re-read (and README's second share table) to
-    the rows, so neither can drift from the other again.
+    """`results/w4-line-gate.json` holds the LINE_SYNC thresholds' re-read on the exact clock.
 
-    THE ARGUMENT THAT CHANGED: W2 defended 0.5 by the gap between the two documents more than 20% gross
-    (shares 0.24 and 0.32) and the rest's p10 (0.54). On the exact clock NO right text is more than 20%
-    gross, so the separation is re-read against the quality population the rows carry: the 2 documents under
-    half their lines within 1 s of truth, and the 410 at 80% or more.
-
-    AND WHAT THE TIMING HALF CANNOT DO ALONE: one wrong-text case reads ABOVE the share (`Kinematic_-_Peyote`
-    under `wrongtext+ownclock`), and the LEXICAL LIFT is what refuses it — so the two gates are asserted
-    together here, as the rung reads them.
-    """
+    W4 6a moved every emission matrix, so the share and `_LINE_SYNC_NEAR_SEC` were read on a scale they
+    were not fitted on; the re-read was committed and cited NOWHERE. W2 defended 0.5 by the gap between the
+    two documents more than 20% gross (shares 0.24 and 0.32) and the rest's p10 (0.54); on the exact clock
+    no right text is more than 20% gross, so the separation is re-read against the quality population the
+    rows carry — 2 documents under half their lines within 1 s of truth, and 410 at 80% or more. One
+    wrong-text case reads ABOVE the share and the LEXICAL LIFT refuses it, so both gates are asserted."""
     import math
     import statistics
 
@@ -3730,17 +3682,14 @@ def test_line_gate_scores_at_the_band_the_rung_applies(
 def test_line_gate_prints_both_placements_and_the_documents_no_line_lands_in(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """W2's `placements` block: the same rule read on W3's placement (`w3_near`) and on the mapped one
-    (`near`), with the count `gates/w3-lines.yaml` holds — published documents with NO line within ±500 ms of
-    truth. A row set from before the map (no `w3_near`) is skipped, not silently read as a comparison.
+    """`line_gate.py` prints both placements and the documents no line lands in.
 
-    THE SHARE IS PASSED IN since W4b (it lives in `lexical.CALIBRATED`'s row, per model), so this reads the
-    shipped row's — the same number the rung applies.
-
-    `gross` AND `w3_gross` DIFFER IN THIS FIXTURE ON PURPOSE (W2 review r2). They used to be equal, and the
-    two columns' gross was one hardcoded `r['gross']`, so the W3 row printed the W2 placement's count over
-    W3's documents — 0 where the committed rows' W3 placement is 47 — and no test could see it. Equal
-    fixture values make a transposed column indistinguishable from a correct one."""
+    The same rule read on W3's placement (`w3_near`) and on the mapped one (`near`), with the count
+    `gates/w3-lines.yaml` holds: published documents with NO line within ±500 ms of truth. A row set from
+    before the map is skipped rather than read as a comparison, and the share is passed in from the shipped
+    model row. `gross` and `w3_gross` differ in this fixture ON PURPOSE: they used to be equal while both
+    columns' gross came from one hardcoded `r['gross']`, so the W3 column printed the W2 placement's count
+    — 0 where the committed rows' W3 placement is 47 — and no test could see it."""
     mapped = {
         "song": "s1",
         "mode": "truth",
@@ -3823,18 +3772,14 @@ def conf_rows(
     moved_onset: bool = False,
     late: Mapping[str, float] | None = None,
 ) -> list[Any]:
-    """Two songs a mode, SIX word-timed lines each, and the SAME timings whatever the grades are: line 0 is
-    3 s off, line 1 is 0.9 s off, lines 2-5 are exact. `high` names which lines each song grades `high` —
-    the only thing this wave changes, and the reason the alignment metrics must read identical on both sides
-    of the comparison.
+    """Two songs a mode, SIX word-timed lines each, and the SAME timings whatever the grades are.
 
-    Word truth matters: `highlight` and every `word_*` metric are None without it, and a gate reading None
-    is an ERROR — so a fixture with no words would let a mistyped word metric pass as "not measured".
-
-    `late` is `{slug: seconds}` and pushes THAT song's last line out by that much — the one knob that makes a
-    single song in a single mode gain a gross line, which is what `gates/w6.yaml`'s per-song gate guards and
-    which no grade-only perturbation of this fixture can produce.
-    """
+    Line 0 is 3 s off, line 1 is 0.9 s off, lines 2-5 are exact; `high` names which lines each song grades
+    `high`, the only thing this wave changes, which is why the alignment metrics must read identical on
+    both sides of the comparison. Word truth matters: `highlight` and every `word_*` metric are None
+    without it and a gate reading None is an ERROR, so a wordless fixture would let a mistyped word metric
+    pass as "not measured". `late` is `{slug: seconds}` and pushes that song's last line out — the one knob
+    that makes one song in one mode gain a gross line, which `gates/w6.yaml`'s per-song gate guards."""
     base = (3.0, 0.9, 0.0, 0.0, 0.0, 0.0)
     rows = []
     for index in range(2):
@@ -3945,24 +3890,14 @@ def test_the_confidence_gates_reject_a_grading_change_that_moved_an_onset() -> N
 
 
 def test_the_wave_level_reject_if_file_reads_the_four_recorded_verdicts() -> None:
-    """`gates/w6.yaml` (32 gates + the built-in no-ERROR-rows) had NO hermetic test, which is the gap W6
-    review r1-spec-14 names: every other wave's file has one, and this one plus `gates/w6-ladder.yaml` hold
-    every clamp
-    and flip claim of the wave — validated only by replaying rows offline, by hand, once.
+    """`gates/w6.yaml` (32 gates) replayed on the committed summaries, in its four recorded readings.
 
-    Scored on the COMMITTED summaries, like the two `w4b-linesep` tests and for the same reason: the readings
-    the file's own NON-VACUITY block records ARE the wave's recorded verdicts, so an edit to the file or the
-    rows that silently moves one must turn this red. Each of the four is a different claim:
-
-      (1) the shipped default against the tree it replaces — sections 1 and 2 clean, section 3's four FAILing
-          at the base bundle's own numbers, which is correct because section 3 is the CANDIDATE's bar;
-      (2) W4b's own row as both sides, so every relative gate reads `=` against itself (a ratchet must) and
-          the file is shown still to tell the two trees apart where it claims to;
-      (3) the HuBERT candidate — all four absolute wins PASS and the ONE FAIL is 8 song-modes gaining a gross
-          line, which is why the flip is still not the default;
-      (4) the `m6-window-spare` arm, where exactly the two dilution literals trip and nothing else, which is
-          this file's own evidence that section 1 is tight rather than decorative.
-    """
+    This file and `gates/w6-ladder.yaml` hold every clamp and flip claim of the wave and were validated
+    only by replaying rows offline, by hand, once. The four readings: the shipped default against the tree
+    it replaces (sections 1-2 clean, section 3's four FAILing at the base bundle's own numbers, section 3
+    being the CANDIDATE's bar); W4b's row as both sides, so every relative gate reads `=` against itself;
+    the HuBERT candidate, where four absolute wins PASS and the one FAIL is 8 song-modes gaining a gross
+    line; and the `m6-window-spare` arm, where exactly the two dilution literals trip and nothing else."""
     rules = gates.parse_gates((GATES_DIR / "w6.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 32, "the 32 the file's header reports; `run_gates` adds the built-in no-error-rows"
     results = SCRIPTS.parent / "results"
@@ -4045,21 +3980,14 @@ def _w6_worse_truth() -> dict[str, Any]:
 
 
 def test_the_clamp_reject_if_file_reads_its_recorded_verdict_and_bites_on_a_moved_onset() -> None:
-    """`gates/w6-ladder.yaml` (31 gates), the file holding the clamp's bounded-left-floor claim, also had no
-    hermetic test (W6 review r1-spec-14) — and that is how its `clamp-blind-documents-unchanged` MUST reached
-    2-3 hour sweep in a form NO run of this tree could satisfy: the control is a pre-W6 row and the same wave
-    rewrites the per-line `confidence` field, so every blind document's BYTES move while no onset does. A
-    fixture-driven test had to build that control, which is why the defect is the finding's own exhibit. The
-    gate now reads `onsets_changed`, and both halves are pinned here:
+    """`gates/w6-ladder.yaml` (31 gates): the recorded verdict, and that the clamp gate still bites.
 
-      * THE RECORDED VERDICT, on the committed summaries — 31/31 at both levels against `results/w4b-base-*`,
-        and 28/31 against W4b's own row as both sides, FAILING exactly the three line-start claims the clamp
-        fix makes (gross 3 > 1, ±500 96.42 < 96.9, zero-gross songs 18 < 19). That second reading is what
-        shows the file is a ratchet on this wave's work and green nowhere by accident.
-      * THAT IT STILL BITES ON A TIMING MOVE, hermetically: a blind document whose ONLY difference from its
-        control is one word 50 ms late fails `clamp-blind-onsets-unchanged`, while a document that differs
-        only in a per-line GRADE passes it — the exact pair the old gate got backwards.
-    """
+    Its `clamp-blind-documents-unchanged` MUST reached a 2-3 hour sweep in a form NO run of this tree could
+    satisfy — the control is a pre-W6 row and the same wave rewrites per-line `confidence`, so every blind
+    document's BYTES move while no onset does; the gate now reads `onsets_changed`. The recorded verdict is
+    31/31 at both levels against `results/w4b-base-*` and 28/31 against W4b's own row as both sides,
+    failing exactly the three line-start claims the clamp fix makes (gross 3 > 1, ±500 96.42 < 96.9,
+    zero-gross songs 18 < 19). Hermetically, one word 50 ms late fails it and a grade-only change does not."""
     rules = gates.parse_gates((GATES_DIR / "w6-ladder.yaml").read_text(encoding="utf-8"))
     assert len(rules) == 30, "the 31 the file's header reports, less the built-in no-ERROR-rows gate"
     results = SCRIPTS.parent / "results"
@@ -4099,17 +4027,14 @@ def test_the_clamp_reject_if_file_reads_its_recorded_verdict_and_bites_on_a_move
 
 
 def test_the_shipped_tvs_highlight_is_recorded_beside_the_alignment_one() -> None:
-    """W6 review r1-tests-20. `tv_lit` gained `wipe_low` and the parity fixture is written with it True — the
-    SHIPPED TV lights no word on a `low` row — but `score_highlight` calls it with the default, so the one
-    metric with TV semantics measured a TV that no longer exists and the wave's product change had no number
-    at all. The split is right (that metric gates review §3.5 and 6c, and folding a display policy into it
-    would re-baseline every row since W0); the silence was not, because `high`/`high_bad`/`high_gross` are
-    computed from LINE-START errors on `high` lines and never answer "when the TV lights a word, is it the
-    right one".
+    """The shipped TV's highlight is recorded beside the alignment one, on every row.
 
-    So both readings are on every row now. This fixture is the minimal statement of the difference: two runs
-    whose documents differ ONLY in one line's `confidence`, where the alignment highlight must read identical
-    to the digit and the shipped one must fall by that line's sung seconds."""
+    `tv_lit` gained `wipe_low` and the parity fixture is written with it True — the shipped TV lights no
+    word on a `low` row — while `score_highlight` calls it with the default, so the one metric with TV
+    semantics measured a TV that no longer exists and the wave's product change had no number at all. The
+    split is right (folding a display policy into that metric would re-baseline every row since W0); the
+    silence was not, `high`/`high_bad`/`high_gross` being line-start errors that never answer "when the TV
+    lights a word, is it the right one". Two runs differing only in one line's `confidence` pin both."""
     wiped_all = lib.summarize(conf_rows(mode="blind", high=(0, 1, 2, 3, 4, 5)))["blind"]["jamendo"]
     # Line 5 is EXACT, so it is a correctly lit row: demoting it is where the room loses a karaoke ball.
     # (Demoting line 0 or 1 — the rows that are 3.0 s and 0.9 s out — would take away only WRONG lighting,
@@ -4136,27 +4061,14 @@ def test_the_shipped_tvs_highlight_is_recorded_beside_the_alignment_one() -> Non
 
 
 def test_w7s_own_gate_files_replay_the_verdicts_the_wave_was_accepted_on() -> None:
-    """W7 review r2-tests-20: this wave added five gate files holding 203 green readings plus §3.10's
-    REJECT, and not one was loaded by a test — the gap the two `w4b-linesep` tests and the
-    `test_the_wave_level_*` pair close for every earlier wave. These ARE the wave's evidence: `w7.yaml` is
-    what says the three default-on changes cost nothing, and `w7-star.yaml` is what rejected the star.
+    """W7's five gate files, replayed: 203 green readings plus the star's REJECT, none loaded by a test.
 
-    Scored on the COMMITTED summaries, so an edit to a file, to a result document or to `e2e_gates` that
-    quietly moves a verdict must turn this red. Three readings, each a different claim:
-
-      (1) THE NO-OP, at all three levels against their own W5 baselines: 45/45 three times, and `w7-words`
-          25/25 + `w7-truth` 18/18 + `w7-wrongtext` 10/10 on the forced `run_align` row.
-      (2) NON-VACUITY, which the identity cannot give for a file whose every gate is "nothing moved" (it
-          passes against itself BY CONSTRUCTION, and it also passes REVERSED, because W7 == W5 to the byte):
-          the STAR run read against the same W5-equal control fails three of `w7.yaml`'s gates, ten of
-          `w7-words`' and three of `w7-truth`'s absolute bars — i.e. the files do tell a moved document from
-          an unmoved one.
-      (3) THE REJECT: `w7-star.yaml` 32/36 on the star run, the four failures being §3.10's own clause
-          (14 song-mode cells gaining a gross or missing line), truth losing a line on one song, a Jamendo
-          song 4.26 pt worse at word ±300 and a `high`-graded gross line — and 35/36 on the identity, where
-          only the SHOULD gain (`pooled-gross-down`) fails, which is how every other file here is shown
-          non-vacuous.
-    """
+    `w7.yaml` says the three default-on changes cost nothing and `w7-star.yaml` is what rejected the star,
+    so all of it is scored on the COMMITTED summaries: an edit to a file, a result document or `e2e_gates`
+    that quietly moves a verdict turns this red. THE NO-OP reads 45/45 at all three levels plus `w7-words`
+    25/25, `w7-truth` 18/18, `w7-wrongtext` 10/10. NON-VACUITY cannot come from the identity for a file
+    whose every gate is "nothing moved", so the STAR run read against that control fails three of
+    `w7.yaml`'s gates, ten of `w7-words`' and three of `w7-truth`'s; `w7-star.yaml` reads 32/36 on it."""
     results = SCRIPTS.parent / "results"
 
     def read(gate_file: str, run: str, base: str) -> tuple[int, list[str]]:

@@ -399,15 +399,13 @@ INSTRUMENTAL_SLUG = "roformer-model-bs-roformer-instrumental-resurrection-by-unw
 
 
 def test_stem_discovery_uses_the_MEASURED_role_of_each_file(tmp_path: Path) -> None:
-    """THE bug a real run found, and the dangerous one.
+    """THE bug a real run found, and the dangerous one: discovery uses each file's MEASURED role.
 
     Measured on a chords-only control (no vocals in the input, so the instrumental must hold everything):
-    `_other` carried 99.1% of the signal and `_instrumental` carried 2.4%. The filenames are INVERTED for
-    this model. The ported code looked for `_(Instrumental)_<slug>`, which this package never writes — so
-    discovery found nothing, which is the SAFE failure. Had it matched, the worker would have published the
-    VOCALS as the backing track, and the silence probe would have waved it through because the vocals stem is
-    loud.
-    """
+    `_other` carried 99.1% of the signal and `_instrumental` 2.4% — the filenames are INVERTED for this
+    model. The ported code looked for `_(Instrumental)_<slug>`, which this package never writes, so
+    discovery found nothing, which is the SAFE failure; had it matched, the worker would have published the
+    VOCALS as the backing track and the silence probe would have waved it through."""
     store = tmp_path / "out"
     store.mkdir()
     (store / "song_instrumental.wav").write_bytes(b"vocals-really")

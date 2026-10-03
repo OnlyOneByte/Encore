@@ -1,20 +1,14 @@
 """The ML adapters against REAL MODELS and REAL AUDIO. No Protocol fakes.
 
-WHY THIS FILE HAD TO EXIST. Everything else fakes `Transcriber` and `Aligner` behind their Protocols,
-which proves the state machine and says nothing about whether the adapters work. It found two bugs that
-375 passing tests could not:
+Everything else fakes `Transcriber` and `Aligner` behind their Protocols, which proves the state machine and
+says nothing about whether the adapters work. It found two bugs 375 passing tests could not: `device_for()`
+returns `mps` on Apple Silicon while whisperx's transcriber is CTranslate2, which raises `ValueError:
+unsupported device mps`, so ASR hard-failed on every Mac — in the mandatory fallback; and torch 2.6 flipped
+`torch.load`'s `weights_only` to True, breaking pyannote's VAD checkpoint, so `load_model` failed everywhere.
 
-  1. `device_for()` returns `mps` on Apple Silicon, and whisperx's transcriber is CTranslate2, which
-     raises `ValueError: unsupported device mps`. ASR would have hard-failed on every Mac — in the
-     mandatory fallback, the one path that must not fail.
-  2. torch 2.6 flipped `torch.load`'s `weights_only` default to True, which breaks pyannote's VAD
-     checkpoint that whisperx loads on the way to a transcriber. `load_model` failed on EVERY device.
-
-The audio is synthesised with macOS `say`, so the expected words are known exactly — an assertion can be
-about accuracy rather than about whatever a committed fixture happened to contain.
-
-MARKED `ml`, and slow: models download on first use (~150 MB for whisper tiny, ~360 MB for the wav2vec2
-aligner) and inference is seconds. `-m 'not ml'` gives the fast suite.
+The audio is synthesised with macOS `say`, so the expected words are known exactly. MARKED `ml`, and slow:
+models download on first use (~150 MB for whisper tiny, ~360 MB for the wav2vec2 aligner) and inference is
+seconds; `-m 'not ml'` gives the fast suite.
 """
 
 from __future__ import annotations

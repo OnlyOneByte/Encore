@@ -1,20 +1,14 @@
-"""The language is an INPUT now (review M8 / §3 item 9, W7): script, detector, routing, and the NFKD fold.
+"""The language is an INPUT now (M8, W7): script, detector, routing, and the NFKD fold.
 
-WHAT EACH BLOCK PINS, because the four halves of M8 fail in different directions:
-
-  * `script_of` / `script_histogram` / `dominant_of` — the PRIMARY signal, from the stdlib's own Unicode
-    database. A script read wrongly routes a song to a bundle whose vocabulary maps none of its characters,
-    which is review M8's s12 (a Japanese sheet, 0 alignable characters, `no lyrics`).
-  * `detect` — the ORDER the three signals are trusted in. A non-Latin script must outrank both whisper and
-    the job's declared language; Latin script must fall back to English when nothing answers, because that is
-    the configuration every row under `docs/benchmarks/forced-alignment/results/` was measured on.
-  * `model_language` — the ROUTING POLICY, and the one thing in this wave that could move a published number.
-    Latin script on either target stays on the default bundle unless the arm is set.
-  * `fold_to_base` + `generate.char_ids` — the fold, and that it is a NO-OP for a vocabulary that already has
-    the character (so the English corpus's targets are byte-identical).
-
-The detector is a lambda in every test but one: lingua is an optional 170 MB extra, and a suite that needed it
-would stop running on `uv sync --only-group dev` (`tests/test_layers.py`'s whole point).
+The four halves of M8 fail in different directions, so each has its own block. `script_of` /
+`script_histogram` / `dominant_of` are the PRIMARY signal, from the stdlib's Unicode database; a script read
+wrongly routes a song to a bundle whose vocabulary maps none of its characters (M8's s12: a Japanese sheet,
+0 alignable characters, `no lyrics`). `detect` is the ORDER the three signals are trusted in — a non-Latin
+script outranks whisper and the job's declared language, Latin script falls back to English, that being the
+configuration every row under `docs/benchmarks/forced-alignment/results/` was measured on. `model_language`
+is the ROUTING POLICY and the one thing here that could move a published number; `fold_to_base` +
+`generate.char_ids` is the fold, a NO-OP where the vocabulary already has the character. The detector is a
+lambda in every test but one: lingua is an optional 170 MB extra.
 """
 
 from __future__ import annotations

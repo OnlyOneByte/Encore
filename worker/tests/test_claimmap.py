@@ -69,15 +69,12 @@ def test_the_mapped_claims_are_the_ones_reconcile_will_corroborate() -> None:
 
 
 def test_an_offset_with_jitter_is_still_mapped() -> None:
-    """The review's strongest objection: a real sheet is offset PLUS jitter, not a pure offset. The median
-    is robust to the wobble, and the lines that land outside the tolerance simply do not vote.
+    """A real sheet is offset PLUS jitter, not a pure offset: the median is robust to the wobble.
 
-    The winner here is the SLOPE candidate, on a hairline 0.05% it reads out of the noise — and that is
-    `reconcile`'s own rule ("only adopt the scale if it genuinely explains more lines", strictly more, no
-    margin), kept deliberately so one wave cannot make the map and the verdict disagree about a drift.
-    `reconcile.MAX_SCALE_DRIFT` is what keeps such a fit harmless: bounded at 5%, a spurious slope either
-    explains more lines than the flat offset or loses the vote.
-    """
+    Lines outside the tolerance simply do not vote. The winner here is the SLOPE candidate, on a hairline
+    0.05% it reads out of the noise, which is `reconcile`'s own rule — adopt the scale only if it explains
+    strictly more lines — kept so one wave cannot make the map and the verdict disagree about a drift.
+    `reconcile.MAX_SCALE_DRIFT` bounds such a fit at 5%, where it either wins the vote or loses it."""
     given = jittered(claims(offset=1.5), 0.3, seed=7)
     got = cm.consensus(OURS, given)
     assert got.applied and got.baseline == 0
@@ -217,15 +214,12 @@ def test_a_tempo_further_out_than_the_band_is_dropped() -> None:
 
 
 def test_a_map_that_moves_nothing_is_not_applied() -> None:
-    """`MOVE_FLOOR_SEC`: a 10 ms shift is under the envelope's own frame, so even if it won the vote it is
-    not worth rebinding a claim for.
+    """`MOVE_FLOOR_SEC`: a 10 ms shift is under the envelope's own frame, so no claim is rebound for it.
 
-    DRIVEN THROUGH `consensus`, not through the helper (W2 review r1): the guard that matters is the `and
-    _moves(...)` in `applied`, and a test that called `_moves` directly pinned the arithmetic while leaving
-    the wiring free — deleting the conjunct left the whole suite green. Here the band is tightened so the
-    10 ms shift wins the vote outright (45 lines against no-shift's 0, far past the margin) and ONLY the move
-    floor can refuse it.
-    """
+    Driven through `consensus` rather than the helper, because the guard that matters is the `and
+    _moves(...)` in `applied`: a test calling `_moves` directly pinned the arithmetic and left the wiring
+    free, and deleting the conjunct left the whole suite green. The band is tightened here so the 10 ms
+    shift wins the vote outright (45 lines against no-shift's 0) and only the move floor can refuse it."""
     got = cm.consensus(OURS, claims(offset=0.01), tolerance_sec=0.005)
     assert got.inliers == 45 and got.baseline == 0, "the vote is won outright: nothing else may refuse it"
     assert not got.applied and got.candidate == cm.NO_SHIFT
@@ -236,23 +230,14 @@ def test_a_map_that_moves_nothing_is_not_applied() -> None:
 
 
 def test_the_best_of_several_poor_candidates_is_not_a_clock() -> None:
-    """`MIN_INLIER_SHARE`, the absolute-quality floor the margin cannot supply (W2 review r1).
+    """`MIN_INLIER_SHARE`, the absolute-quality floor the margin cannot supply.
 
-    THE SHAPE: a sheet a human timed CORRECTLY, against a blind decode that is poor and systematically late —
-    never-be-alone's measured shape, and hello's under the tempo modes. Every candidate explains almost
-    nothing, so no-shift explains nothing either, and the margin — a DIFFERENCE — is cleared by any candidate
-    that finds two lines. Here the winner would have moved a correct sheet by +1.96 s on the strength of 9 of
-    47 paired lines (0.191, under the floor), and `reconcile` would not have noticed: it re-fits its own
-    median, so the verdict stays UNRELATED either way and R1 then re-decodes every line inside a window 2 s
-    off the singing.
-
-    IT IS ALSO WHAT BOUNDS THE MODE CANDIDATES (W4 review r1): `_densest_offset` picks its offset by
-    MAXIMISING an inlier count over every window, so on these differences — which have no mode, only a
-    uniform spread — the luckiest 0.5 s slice holds 16 of the 47 and would clear this floor outright. The
-    isolation test in `_densest_offset` is what refuses it, and the assertion below that no mode candidate was
-    offered at all is that test's exhibit, not an implementation detail: without it the floor is defeated by
-    the very shape it was measured on.
-    """
+    A sheet a human timed CORRECTLY against a blind decode that is poor and systematically late, which is
+    never-be-alone's measured shape. Every candidate explains almost nothing, so no-shift explains nothing
+    either and the margin, being a DIFFERENCE, is cleared by any candidate that finds two lines: the winner
+    would have moved a correct sheet by +1.96 s on 9 of 47 paired lines (0.191, under the floor), and
+    `reconcile` re-fits its own median so the verdict stays UNRELATED either way. It also bounds the MODE
+    candidates, whose luckiest 0.5 s slice holds 16 of the 47; `_densest_offset`'s isolation test refuses."""
     truth = {index: 12.0 + 4.3 * index for index in range(47)}
     rng = random.Random(0)  # the decode, 0.4-3.0 s late line by line: a median exists, it explains nothing
     ours = {index: start + rng.uniform(0.4, 3.0) for index, start in truth.items()}
@@ -298,19 +283,14 @@ def test_a_bimodal_decode_is_mapped_by_its_mode_where_the_median_lands_in_the_ga
 
 
 def test_a_two_line_cluster_on_a_short_sheet_is_not_a_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The mode candidates' own floor: a window is a FIT, so it needs `MIN_PAIRS` lines inside it like every
-    other fit here (W4 review r1's own round).
+    """The mode candidates' own floor: a window is a FIT, so it needs `MIN_PAIRS` lines inside it.
 
-    THE SHAPE, and it is the common one rather than a corner: a SHORT sheet — six cues, which is a verse and a
-    chorus — whose blind decode agrees with none of them, so no-shift explains 0 and any two lines that happen
-    to land the same distance out clear the 2-line margin outright. `MIN_INLIER_SHARE` cannot catch it either,
-    because a fifth of six pairs is 1.2 lines. The asserts below are that arithmetic: the two-line window is
-    isolated, explains 2 of 6 = 0.33 (over the floor) against no-shift's 0 (over the margin), so before this
-    floor the vote APPLIED a +2.77 s shift off two lines and moved four correct cues with them. Two hermetic
-    end-to-end exhibits caught it on real documents — `test_align_provenance`'s truncated last cue (+2.77 s
-    over 6 lines) and its rotated sheet (-13.28 s over 8) — and over the 1088-case corpus run no applied mode
-    map holds fewer than 7 lines, so the floor is inert there (`_densest_offset`).
-    """
+    The shape is the common one rather than a corner: a SHORT sheet — six cues, a verse and a chorus —
+    whose blind decode agrees with none of them, so no-shift explains 0 and any two lines landing the same
+    distance out clear the 2-line margin. `MIN_INLIER_SHARE` cannot catch it either, a fifth of six pairs
+    being 1.2 lines. Before this floor the vote APPLIED a +2.77 s shift off two lines and moved four correct
+    cues with them, caught end to end by two hermetic exhibits (+2.77 s over 6 lines, -13.28 s over 8); over
+    the 1088-case corpus run no applied mode map holds fewer than 7 lines, so the floor is inert there."""
     deltas = [2.65, 2.89, 6.4, 11.2, 15.9, 20.1]  # two lines 2.7 s out, the rest scattered
     claimed = {index: 10.0 + 10.0 * index for index in range(len(deltas))}
     ours = {index: claimed[index] + delta for index, delta in enumerate(deltas)}
@@ -366,15 +346,13 @@ def test_windows_map_with_their_starts_and_never_invert() -> None:
 
 
 def test_a_map_that_would_send_a_claim_before_zero_clamps_there() -> None:
-    """As `place.apply_shift` clamps: a negative timestamp is not representable on a playhead, and a repair
-    window starting before the file cannot be decoded.
+    """A map that would send a claim before zero clamps there, as `place.apply_shift` does.
 
-    ON AN UNPAIRED CLAIM, which is the only place the clamp can fire (W2 review r1). The PAIRED claims are all
-    past the fitted offset by construction — the earliest is 52.0 s and the offset -40 s, so the old version
-    of this case never reached the clamp at all and deleting it kept the suite green. `starts`/`windows` map
-    EVERY claim, so a header or decorative line our decode dropped, stamped inside the offset, is the
-    reachable path: at 5.0 s it would publish -35 s.
-    """
+    A negative timestamp is not representable on a playhead and a window starting before the file cannot be
+    decoded. Only an UNPAIRED claim can reach it: the paired claims are past the fitted offset by
+    construction — the earliest is 52.0 s against an offset of -40 s — so the old version of this case never
+    reached the clamp. `starts`/`windows` map EVERY claim, so a header our decode dropped, stamped inside
+    the offset, is the reachable path: at 5.0 s it would publish -35 s."""
     early = {index: start + 40.0 for index, start in OURS.items()}
     got = cm.consensus(OURS, early)
     assert got.applied and abs(got.pieces[0].offset_sec + 40.0) < 0.01
@@ -388,16 +366,13 @@ def test_a_map_that_would_send_a_claim_before_zero_clamps_there() -> None:
 
 
 def test_the_scoring_clamp_counts_a_claim_the_leg_would_send_before_zero() -> None:
-    """`_inliers`' OWN clamp, which is a different clamp from `ClaimMap.at`'s and was pinned by nothing (W2
-    review r2: deleting it left the suite green, and the case above says "no paired claim reaches the clamp" —
-    true of that sheet, not of every sheet).
+    """`_inliers`' OWN clamp, which is a different clamp from `ClaimMap.at`'s and was pinned by nothing.
 
-    THE SHAPE THAT REACHES IT is a sheet otherwise late whose FIRST cue is stamped at 0.00 — the `[00:00.00]`
-    an LRC commonly opens with — over a song that starts singing at once. The leg's own arithmetic sends that
-    cue to -5.0 s, where nothing can publish; clamped it is 0.0 s, which is within the band of the 0.1 s our
-    decode measured. Scoring the unclamped value would count the line a MISS for a map that will in fact
-    place it correctly, which is the whole reason this function clamps rather than reading `Piece.at`.
-    """
+    The shape that reaches it is a sheet otherwise late whose FIRST cue is stamped at 0.00 — the
+    `[00:00.00]` an LRC commonly opens with — over a song that starts singing at once. The leg's arithmetic
+    sends that cue to -5.0 s, where nothing can publish; clamped it is 0.0 s, within the band of the 0.1 s
+    our decode measured. Scoring the unclamped value would count the line a MISS for a map that will in
+    fact place it correctly, which is why this function clamps rather than reading `Piece.at`."""
     assert cm._inliers([(0.0, 0.1)], -5.0, 1.0, rc.AGREE_TOLERANCE_SEC) == 1, "clamped to 0.0, within 0.25"
     unclamped = sum(
         1 for theirs, ours in [(0.0, 0.1)] if abs(ours - (theirs - 5.0)) <= rc.AGREE_TOLERANCE_SEC
@@ -475,21 +450,14 @@ def _stepped(bounds: Sequence[int], offsets: Sequence[float]) -> dict[int, float
 
 
 def test_the_piecewise_budget_costs_a_four_step_sheet_one_of_its_steps() -> None:
-    """`MAX_PIECES` as what it actually does, measured (W2 review r2). This case asserted
-    `2 <= len(got.pieces) <= cm.MAX_PIECES`, which holds for any budget of 3 or more — lowering `MAX_PIECES`
-    from 4 to 2 left the suite green — and its docstring claimed the fixture produced `MAX_PIECES` legs. It
-    produces THREE, explaining 36 of 45 lines.
+    """`MAX_PIECES` as what it actually does: a four-step sheet pays one of its steps.
 
-    WHY, and it is the recursion rather than the data: `_split` halves the budget at each level
-    (`budget // 2`), so a budget of 4 buys one cut and then one further cut in ONE of the halves. The 2.0 s
-    group (lines 9-17) is the one that never gets cut, and those nine lines are exactly the ones the map
-    leaves outside the tolerance. Given a budget of 8 the SAME sheet reaches 4 legs and 44 of 45, which is
-    what says the budget is the binding constraint here and not the sheet's shape.
-
-    That is a real cost, and it is the right side of the asymmetry this file is written against: a leg
-    per line would explain everything and mean nothing, so a missed step leaves those lines on the raw clock
-    the worker had before W2 rather than on a map fitted through noise.
-    """
+    The old assertion held for any budget of 3 or more — lowering `MAX_PIECES` from 4 to 2 left the suite
+    green — and claimed the fixture produced `MAX_PIECES` legs. It produces THREE, explaining 36 of 45
+    lines, and the reason is the recursion rather than the data: `_split` halves the budget at each level,
+    so a budget of 4 buys one cut and then one further cut in ONE half. The 2.0 s group is the one never
+    cut, and those nine lines are exactly the ones left outside the tolerance; at a budget of 8 the same
+    sheet reaches 4 legs and 44 of 45."""
     stepped = _stepped((9, 18, 27), (0.0, 2.0, 4.0, 6.0))
     got = cm.consensus(OURS, stepped, piecewise=True)
     assert got.applied and got.candidate == cm.PIECEWISE
@@ -536,17 +504,13 @@ def test_a_piecewise_map_that_would_reorder_the_claims_is_refused() -> None:
 
 
 def test_a_step_down_is_refused_on_the_boundary_not_on_a_sample_of_the_pairs() -> None:
-    """The order test is about EVERY claim, and the unpaired ones are exactly where a step down bites (W2
-    review r1). Legs `[+5.0s from 0, 0.0s from 30]` keep the paired claims at 10/30/60 in order (15 <= 30 <=
-    60), so the old sampled test admitted them — while an unpaired claim at 29.0 mapped to 34.0, past the
-    paired 30.0 that stayed at 30.0: two repair windows handed to the wrong lines, which is the one thing this
-    function says it refuses.
+    """The order test is about EVERY claim, and the unpaired ones are where a step down bites.
 
-    THROUGH THE ARM TOO, on an ordinary sheet: claims 3 s late for the first 25 lines and on our clock after
-    them. The split explains all 45 against the single map's 25, so the margin admits it, and its legs step
-    DOWN by 3 s — the boundary test is what sends the arm back to the single map. An unpaired claim in the
-    step's shadow (the last 3 s before the boundary) is the line it protects.
-    """
+    Legs `[+5.0s from 0, 0.0s from 30]` keep the paired claims at 10/30/60 in order, so a sampled test
+    admitted them — while an unpaired claim at 29.0 mapped to 34.0, past the paired 30.0 that stayed put:
+    two repair windows handed to the wrong lines. Pinned through the arm too, on an ordinary sheet 3 s late
+    for its first 25 lines: the split explains all 45 against the single map's 25, so the margin admits it
+    and its legs step DOWN by 3 s, and the boundary test is what sends the arm back to the single map."""
     down = (cm.Piece(from_sec=0.0, offset_sec=5.0), cm.Piece(from_sec=30.0, offset_sec=0.0))
     assert not cm._monotonic(down)
     would_map = cm.ClaimMap(pieces=down, applied=True)

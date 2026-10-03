@@ -173,17 +173,13 @@ def test_the_diarizer_hands_pyannote_the_shape_its_loader_asserts_on() -> None:
 
 
 def test_pyannote_itself_accepts_that_input_without_touching_torchcodec() -> None:
-    """THE DEFECT THIS FIXES, asserted against the real library rather than a mock.
+    """The defect this fixes, asserted against the real library rather than a mock.
 
-    MEASURED on this project's Mac, which has the ffmpeg BINARY but no libav* shared libraries: all four
-    of torchcodec's version probes fail, and yet `import pyannote.audio` still SUCCEEDS with only a
-    warning — so `module_available("pyannote.audio")` advertised the `diarize` capability on a box where
-    diarization could not decode one file. Feeding a preloaded waveform takes torchcodec off the runtime
-    path, which makes that capability honest again.
-
-    pyannote's own warning text prescribes exactly this ("use audio preloaded in-memory as a
-    {'waveform': ..., 'sample_rate': int} dictionary"), so this is the supported route, not a trick.
-    """
+    Measured on this project's Mac, which has the ffmpeg BINARY but no libav* shared libraries: all four of
+    torchcodec's version probes fail and `import pyannote.audio` still SUCCEEDS with only a warning — so
+    `module_available("pyannote.audio")` advertised the `diarize` capability on a box where diarization
+    could not decode one file. Feeding a preloaded waveform takes torchcodec off the runtime path, which
+    pyannote's own warning text prescribes, so this is the supported route rather than a trick."""
     if importlib.util.find_spec("pyannote.audio") is None:
         pytest.skip("pyannote.audio is not installed here")
     import sys
