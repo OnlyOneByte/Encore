@@ -2,7 +2,7 @@
 
 WHAT EACH BLOCK PINS, because the four halves of M8 fail in different directions:
 
-  * `script_of` / `script_histogram` / `dominant_script` — the PRIMARY signal, from the stdlib's own Unicode
+  * `script_of` / `script_histogram` / `dominant_of` — the PRIMARY signal, from the stdlib's own Unicode
     database. A script read wrongly routes a song to a bundle whose vocabulary maps none of its characters,
     which is review M8's s12 (a Japanese sheet, 0 alignable characters, `no lyrics`).
   * `detect` — the ORDER the three signals are trusted in. A non-Latin script must outrank both whisper and
@@ -20,6 +20,8 @@ would stop running on `uv sync --only-group dev` (`tests/test_layers.py`'s whole
 from __future__ import annotations
 
 import importlib.util
+from collections import Counter
+from collections.abc import Iterable
 
 import pytest
 
@@ -69,21 +71,78 @@ def test_nothing_that_is_not_a_letter_has_a_script(character: str) -> None:
     assert lang.script_of(character) is None
 
 
+@pytest.mark.parametrize(
+    ("character", "script"),
+    [
+        # W7 review r1-spec-11: the UCD names a styled or letterlike character after its STYLING, so reading
+        # the name without folding first invented a script for 983 alpha codepoints of Unicode 15.0.
+        ("\U0001d400", lang.LATIN),  # MATHEMATICAL BOLD CAPITAL A, one of that block's 936
+        ("\U0001d4ae", lang.LATIN),  # MATHEMATICAL SCRIPT CAPITAL S
+        ("ℂ", lang.LATIN),  # DOUBLE-STRUCK CAPITAL C
+        ("K", lang.LATIN),  # KELVIN SIGN, a CANONICAL decomposition
+        ("ª", lang.LATIN),  # FEMININE ORDINAL INDICATOR
+        ("ℵ", lang.HEBREW),  # ALEF SYMBOL
+        ("µ", lang.GREEK),  # MICRO SIGN, which is a mu
+        ("ー", lang.KANA),  # KATAKANA-HIRAGANA PROLONGED SOUND MARK: no fold, so an alias row
+        ("々", lang.HAN),  # IDEOGRAPHIC ITERATION MARK
+        ("é", lang.LATIN),  # a canonical fold that was already right, and must stay right
+    ],
+)
+def test_a_styled_or_letterlike_character_reports_its_base_letters_script(
+    character: str, script: str
+) -> None:
+    """W7 review r1-spec-11. A sheet pasted in Unicode mathematical bold — a common fan-transcription shape —
+    was 100% "Mathematical" script, which `detect` then took the NON-Latin branch for: the Latin detector was
+    never consulted and `source` read `default` on a text whose every letter is Latin."""
+    assert lang.script_of(character) == script
+
+
+def test_a_sheet_styled_in_mathematical_bold_is_still_latin_script() -> None:
+    """The consequence, at `detect`: the same words in the same script must reach the same bundle however the
+    paste was styled."""
+    plain = ["je suis le vent", "qui souffle"]
+    bold = {ch: chr(0x1D5CE + ord(ch) - ord("a")) for ch in "abcdefghijklmnopqrstuvwxyz"}
+    styled = ["".join(bold.get(ch, ch) for ch in line) for line in plain]
+    assert styled != plain, "the fixture really is styled"
+    got = lang.detect(styled, detector=lambda _t: "fr")
+    assert (got.language, got.script, got.source) == ("fr", lang.LATIN, "detector")
+
+
 def test_the_histogram_counts_letters_and_the_share_is_of_letters_only() -> None:
     counts = lang.script_histogram(["don't stop — 123 ♪", "한국어"])
     assert counts == {lang.LATIN: 8, lang.HANGUL: 3}, "the apostrophe, the dash, the digits and ♪ are not"
-    script, share = lang.dominant_script(["don't stop — 123 ♪", "한국어"])
+    script, share = lang.dominant_of(counts)
     assert (script, round(share, 3)) == (lang.LATIN, 0.727), "8 of 11 LETTERS, not 8 of 21 characters"
 
 
 def test_a_text_with_no_letter_has_no_script_at_all() -> None:
-    assert lang.dominant_script(["♪", "(123)", ""]) == ("", 0.0)
+    assert lang.dominant_of(lang.script_histogram(["♪", "(123)", ""])) == ("", 0.0)
+
+
+def test_detect_builds_the_sheets_histogram_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W7 review r1-tests-14. `detect` needed the counts (for the empty check and for `counts[KANA]`) AND the
+    dominant script, and the `dominant_script(texts)` convenience recomputed the identical histogram — a
+    second full pass with one `unicodedata.name` lookup per character of the sheet, paid once per acquired
+    text. `dominant_of` takes the counts already in hand, and the convenience is gone (r2-tests-19): it had no
+    production caller left, so it kept a 16-line rule alive one call site away from where the rule lives."""
+    seen: list[list[str]] = []
+    real = lang.script_histogram
+
+    def counted(texts: Iterable[str]) -> Counter[str]:
+        held = list(texts)
+        seen.append(held)
+        return real(held)
+
+    monkeypatch.setattr(lang, "script_histogram", counted)
+    lang.detect(["私は風です", "夜に吹く", "もう一度踊る"])
+    assert len(seen) == 1, "one computation for one idea, which is this module's rule everywhere else"
+    assert lang.dominant_of(real(["ab", "яб"])) == (lang.CYRILLIC, 0.5)
 
 
 def test_a_tie_breaks_on_the_script_name_so_two_replays_load_one_bundle() -> None:
     """A DBOS step may be replayed. A language that depended on dict ordering would make two replays of one
     attempt load two bundles and key two emission matrices."""
-    script, share = lang.dominant_script(["ab", "яб"])
+    script, share = lang.dominant_of(lang.script_histogram(["ab", "яб"]))
     assert (script, share) == (lang.CYRILLIC, 0.5), "Cyrillic sorts before Latin"
 
 
@@ -114,6 +173,83 @@ def test_an_ambiguous_script_takes_the_measured_signal_over_the_tuples_first_ent
     assert lang.detect(["انا الريح"]).language == "ar"
 
 
+def test_an_ambiguous_scripts_own_exclusive_letters_decide_it_when_no_signal_does() -> None:
+    """W7 review r1-correctness-5: `heard` reaches `detect` from `transcribe` ALONE and the ASR tier is the
+    last rung, so on the paths that acquire a Cyrillic or Arabic sheet — captions, every provider, a paste —
+    both signals are None and `candidates[0]` decided every case that mattered. A Ukrainian LRCLIB sheet was
+    therefore always timed by the `ru` bundle, and a Persian one by the `ar` bundle, whose vocabulary has no
+    `پ چ ژ گ` at all — those characters dropped out of the targets. The evidence is an alphabet FACT, not a
+    guess: Russian has no `і ї є ґ`, and Persian's and Urdu's additions do not exist in Arabic."""
+    ukrainian = lang.detect(["Я вітер що віє", "у ніч і співає"])
+    assert (ukrainian.language, ukrainian.script, ukrainian.source) == ("uk", lang.CYRILLIC, "letters")
+    assert lang.detect(["Я ветер", "в ночи"]).source == "script", "a Russian sheet is untouched by the rule"
+
+    persian = lang.detect(["من باد هستم که می‌پیچد", "در شب چنگ می‌زند"])
+    assert (persian.language, persian.source) == ("fa", "letters")
+    urdu = lang.detect(["میں ہوا ہوں جو چلتی ہے", "رات میں ٹھنڈی ڈور"])
+    assert (urdu.language, urdu.source) == ("ur", "letters"), (
+        "ordered most specific first: the Urdu alphabet CONTAINS the Persian four, so only Urdu's own "
+        "retroflexes and `ے` can tell the two apart"
+    )
+
+
+def test_one_quoted_foreign_letter_does_not_move_the_bundle() -> None:
+    """`_MIN_MARKERS` is 2 for this: one of a neighbour's letters is a quotation, two is the alphabet — and a
+    sheet of the language itself is dense in them (`і` is Ukrainian's commonest vowel letter)."""
+    assert lang.detect(["Я ветер в ночи", "і"]).language == "ru"
+    assert lang.detect(["Я ветер в ночи", "і спать і"]).language == "uk"
+
+
+#: A synthetic Russian-alphabet sheet: nonsense tokens over letters Ukrainian shares, with none of `і ї є ґ`.
+#: 480 Cyrillic letters over 20 rows — long on purpose, because the defect `_MARKER_SHARE` fixes is only
+#: visible on a sheet that outgrows an absolute count of two.
+_RU_SHEET = ["абвгде жзиклм нопрст уфхцчш"] * 20
+
+
+def _cyrillic(texts: list[str]) -> int:
+    return sum(1 for line in texts for ch in line if lang.script_of(ch) == lang.CYRILLIC)
+
+
+def test_two_markers_in_a_long_sheet_are_a_quotation_rather_than_an_alphabet() -> None:
+    """W7 review r2-correctness-3: `_MIN_MARKERS` alone is an ABSOLUTE count, so two exclusive letters decided
+    a sheet of ANY length — one quoted title or one bilingual line re-routed a 475-letter Russian sheet to the
+    `uk` bundle, whose vocabulary differs from `ru`'s in both directions (every Russian-only letter would then
+    drop out of the targets, `generate.char_ids`). The evidence has to be a SHARE, which is what this module's
+    own docstring always claimed it was."""
+    assert _cyrillic(_RU_SHEET) == 480, "the denominator the share is read against"
+    plain = lang.detect(_RU_SHEET)
+    assert (plain.language, plain.source) == ("ru", "script")
+
+    quoted = [*_RU_SHEET, "ріхї"]  # one short row carrying `і` and `ї`: 2 markers of 484 letters = 0.41%
+    assert _cyrillic(quoted) == 484
+    got = lang.detect(quoted)
+    assert (got.language, got.source) == ("ru", "script"), (
+        "a quotation no longer moves the bundle: 2 markers are below 0.5% of the script's own letters"
+    )
+
+    bilingual = [*_RU_SHEET, "ріхїє"]  # 3 of 485 = 0.62%, over the floor
+    assert lang.detect(bilingual).language == "uk", (
+        "and the rule still fires where the spelling keeps saying so, which is what it is for"
+    )
+
+
+def test_a_sheet_written_in_the_marked_language_is_far_above_the_share_floor() -> None:
+    """The floor must not cost the case the rule exists for: a sheet actually written in Ukrainian carries its
+    exclusive letters at percents, not at 0.4%."""
+    sheet = ["абвіде жзиклм нопріст уфхцчш"] * 18
+    got = lang.detect(sheet)
+    assert (got.language, got.source) == ("uk", "letters")
+    marked = sum(1 for line in sheet for ch in line if ch == "і")
+    assert marked / _cyrillic(sheet) > 10 * lang._MARKER_SHARE, (marked, _cyrillic(sheet))  # noqa: SLF001
+
+
+def test_the_measured_signals_still_outrank_the_letters() -> None:
+    """The letters are evidence about the TEXT; `heard` is a measurement of the AUDIO and `declared` is an
+    operator's statement, so neither is overruled by a spelling."""
+    assert lang.detect(["Я вітер що віє"], heard="ru").source == "heard"
+    assert lang.detect(["Я вітер що віє"], declared="ru").source == "declared"
+
+
 def test_a_script_no_bundle_exists_for_says_so_rather_than_claiming_a_language() -> None:
     """Cherokee has no whisperx model, so this is a decline whatever we answer — but the trail must carry the
     script that was read, not a confident `en`."""
@@ -121,13 +257,27 @@ def test_a_script_no_bundle_exists_for_says_so_rather_than_claiming_a_language()
     assert (got.language, got.script, got.source) == (lang.ENGLISH, "Cherokee", "default")
 
 
-def test_latin_script_asks_the_detector_then_what_was_heard_then_what_was_declared() -> None:
+def test_latin_script_asks_what_was_heard_then_the_detector_then_what_was_declared() -> None:
+    """W7 review r1-correctness-4 INVERTED the first two. The detector used to win outright, which put a guess
+    from the GLYPHS above a measurement of the AUDIO — and on the only path that has a `heard` signal
+    (`transcribe`) those glyphs are whisper's own output, so lingua was overruling the acoustic model with a
+    guess at that model's transcript. `SCRIPT_LANGUAGES` had argued the same asymmetry for Cyrillic and Arabic
+    all along."""
     texts = ["je suis le vent", "qui souffle dans la nuit"]
+    assert lang.detect(texts, heard="fr").source == "heard"
     assert lang.detect(texts, detector=lambda _t: "fr").source == "detector"
-    assert lang.detect(texts, detector=lambda _t: None, heard="fr").source == "heard"
     assert lang.detect(texts, declared="fr").source == "declared"
-    got = lang.detect(texts, detector=lambda _t: "fr", heard="de", declared="es")
-    assert got.language == "fr", "the detector read the words that are about to be aligned"
+    got = lang.detect(texts, detector=lambda _t: "it", heard="fr", declared="es")
+    assert (got.language, got.source) == ("fr", "heard"), "the audio outranks the glyphs"
+    guessed = lang.detect(texts, detector=lambda _t: "fr", heard=None, declared="es")
+    assert (guessed.language, guessed.source) == ("fr", "detector"), (
+        "with no acoustic signal the detector still decides — captions, provider sheets and pastes, the "
+        "texts it was added for"
+    )
+    unusable = lang.detect(texts, detector=lambda _t: "fr", heard="sw")
+    assert (unusable.language, unusable.source) == ("fr", "detector"), (
+        "a heard language no Latin bundle exists for is no answer at all, and the detector is asked next"
+    )
 
 
 def test_latin_script_with_nothing_answering_is_english_which_is_what_results_were_measured_on() -> None:
@@ -272,6 +422,33 @@ def test_an_excluded_column_is_never_a_target_folded_or_not() -> None:
 
 def test_a_character_no_fold_reaches_is_still_dropped() -> None:
     assert char_ids("1ß한", EN, {0}) == []
+
+
+@pytest.mark.parametrize("symbol", ["™", "№", "℠", "℅", "℃", "㎒", "Ⅻ", "₨", "½"])
+def test_a_non_letter_is_dropped_rather_than_folded_into_phantom_letters(symbol: str) -> None:
+    """W7 review r2-correctness-1 / r2-spec-7: the fold is a LETTER's. NFKD decomposes 953 non-letter
+    codepoints of Unicode 15.0 onto letters (`™` -> `TM`, `№` -> `No`, `℅` -> `c/o`, `₨` -> `Rs`), so an
+    unguarded fold made every one of them a character target the singer never sings — and `clean_segments`
+    keeps the rows that carry such a symbol BESIDE words (a credit's `™`, a `℗` line), where the forced path
+    then has to spend frames on the phantom letters and the neighbouring word's span moves. Dropped before
+    W7, dropped now."""
+    assert char_ids(symbol, EN, {0}) == []
+
+
+def test_a_kept_row_bearing_a_symbol_asks_for_exactly_its_letters() -> None:
+    """The consequence in the shape a document sees it: the symbol contributes nothing, and the word it hangs
+    off keeps its own targets with their own indexes."""
+    assert char_ids("oh™", EN, {0}) == [(0, EN["o"]), (1, EN["h"])]
+    assert alignable_chars("produced by x™", _Matrix(EN)) == len("producedbyx")
+
+
+def test_the_folds_own_output_is_filtered_to_letters_too() -> None:
+    """The mirror case, and the reason the guard is on both sides: 35 LETTERS fold onto at least one
+    NON-letter (`ŀ` -> `l` + MIDDLE DOT, Thai `ำ`, 20 Tibetan/Balinese letters). Only a vocabulary holding
+    punctuation would target the residue — and 23 of whisperx's 36 bundles are HF vocabularies this project
+    does not choose the contents of, so the filter is here rather than in a hope about them."""
+    assert lang.fold_to_base("ŀ") == "l·", "the fold itself still reports what NFKD says"
+    assert char_ids("ŀa", {**EN, "·": 41}, {0}) == [(0, EN["l"]), (1, EN["a"])]
 
 
 class _Matrix:

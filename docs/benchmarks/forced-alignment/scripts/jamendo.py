@@ -4,19 +4,13 @@
     git clone https://github.com/f90/jamendolyrics /tmp/encore-align-bench/jamendolyrics
     uv run python docs/benchmarks/forced-alignment/scripts/jamendo.py
 
-WHY THIS EXISTS. Every other song's truth is AUTHORED captions (yt-dlp --write-subs): a human typed the
-line and YouTube stored one onset per line, so the benchmark could only ever measure LINE onsets, and even
-those carry the caption author's timing jitter. JamendoLyrics (MultiLang, CC-licensed, f90/jamendolyrics)
-ships hand-MEASURED word AND line onsets — the karaoke ball's actual unit, and a truth clean enough that a
-50 ms aligner error reads as 50 ms rather than being lost under caption noise.
+WHY THIS EXISTS. Every other song's truth is AUTHORED captions, one onset per line and carrying the caption
+author's jitter, so the benchmark could only ever measure LINE onsets. JamendoLyrics ships hand-MEASURED word
+AND line onsets — the karaoke ball's actual unit, and clean enough that a 50 ms aligner error reads as 50 ms.
 
-ENGLISH ONLY, because the shipped syllabifier and the wav2vec2 alignment model this benchmark drives are
-English; the German/Spanish/French thirds of the corpus need their own align model to be a fair test.
-
-WORD TRUTH SHAPE. `annotations/words/<song>.csv` carries one (word_start, word_end) per token in reading
-order; `lyrics/<song>.words.txt` carries the tokens themselves, one per line. The two are positional — the
-Nth onset belongs to the Nth token — so `truth-words.json` keeps them as parallel lists and the scorer
-pairs them against generate()'s words by walking the same order.
+ENGLISH ONLY, the shipped syllabifier and the default bundle being English. WORD TRUTH SHAPE: the onsets and
+the tokens arrive in two positional files, so `truth-words.json` keeps them as parallel lists and the scorer
+walks the same order.
 """
 
 from __future__ import annotations
@@ -62,7 +56,11 @@ def build() -> None:
         with open(ROOT / "annotations" / "words" / f"{slug}.csv", encoding="utf-8") as handle:
             for row in csv.DictReader(handle):
                 words.append({"start": float(row["word_start"]), "end": float(row["word_end"])})
-        tokens = [t for t in open(ROOT / "lyrics" / f"{slug}.words.txt", encoding="utf-8").read().split("\n") if t.strip()]
+        tokens = [
+            t
+            for t in open(ROOT / "lyrics" / f"{slug}.words.txt", encoding="utf-8").read().split("\n")
+            if t.strip()
+        ]
         if len(tokens) != len(words):
             print(f"  {slug}: SKIP — {len(tokens)} tokens vs {len(words)} onsets")
             continue
@@ -77,8 +75,10 @@ def build() -> None:
             os.symlink(ROOT / "mp3" / r["Filepath"], link)
         made += 1
     print(f"built {made} English songs under {OUT}")
-    print("next: separate vocals (demucs-mlx -n htdemucs -o <dir> <dir>/mix.mp3), then bench.py "
-          "--global --words <dir>/truth-words.json --audio <dir>/mix/vocals.wav")
+    print(
+        "next: separate vocals (demucs-mlx -n htdemucs -o <dir> <dir>/mix.mp3), then bench.py "
+        "--global --words <dir>/truth-words.json --audio <dir>/mix/vocals.wav"
+    )
 
 
 if __name__ == "__main__":

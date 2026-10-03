@@ -1,18 +1,9 @@
 """songProfile builder — the ONE place both separator engines turn the two stem WAVs into the
 `songProfile` artifact core validates, so the always-publish contract cannot drift between them.
 
-Core's process gate treats a PRESENT profile as "the analysis step ran" and an ABSENT one as "still
-processing" — so a stems job MUST publish a songProfile on every success, even with all inner fields
-null, or a song whose vocals stem is digital silence would be permanently unsingable AND never
-re-process (core waits forever for a step it thinks already ran).
-
-Both analyses are therefore wrapped best-effort: each fails independently to nulls, logs, and NEVER
-raises. A profile failure must never fail the job.
-
-PORTED VERBATIM from the old worker's `worker/src/analysis/` — algorithm, constants and comments
-unchanged on purpose. These are measured numeric behaviours (Krumhansl-Schmuckler weights, BS.1770
-gating thresholds, the 16-bit silence floor), so a rewrite would risk changing what the library records
-while looking like a refactor. Only the imports and the package layout are new.
+Every half is wrapped best-effort: each fails independently to nulls, logs, and NEVER raises, because core
+reads a PRESENT profile as "the analysis step ran". Why that makes an absent profile unrecoverable rather
+than merely incomplete: `docs/arch/05-worker.md` §3.
 """
 
 from __future__ import annotations
@@ -25,23 +16,17 @@ from encore_worker.domain.audio import key, loudness, vocal_range, wav
 
 
 def _silent(*args: Any, flush: bool = False) -> None:
-    """The default sink: DROP the diagnostics.
-
-    Deliberately not `print`. This is a pure library function in `domain/`, and a worker's operator surface
-    is the `job:state` decision trail rather than stdout — the old worker's own note records that the
-    process log rotates. A caller that wants the lines passes its own sink.
-    """
+    """The default sink: DROP the diagnostics, the operator surface being the `job:state` trail."""
 
 
 class Log(Protocol):
     """A `print`-shaped sink. A Protocol rather than `Callable[..., None]` so the `flush=` keyword every
-    call site passes is part of the type instead of being erased into `*args`."""
+    call site passes is part of the type rather than erased into `*args`."""
 
     def __call__(self, *args: Any, flush: bool = ...) -> None: ...
 
 
-# The exact wire shape core validates. Every key is always present; values are null when unknown.
-# Building the null profile from one place means "publish nulls on failure" cannot forget a field.
+# The exact wire shape core validates, from one place so "publish nulls on failure" cannot forget a field.
 _NULL_PROFILE = {
     "keyTonic": None,
     "keyMode": None,
@@ -56,8 +41,8 @@ _NULL_PROFILE = {
 
 
 def empty_profile() -> dict[str, object]:
-    """A fresh, fully-null profile object. Returned as-is when both analyses are skipped or fail, so
-    the artifact is still PRESENT (core's gate: present == the step ran)."""
+    """A fresh, fully-null profile. Returned as-is when every analysis is skipped or fails, so the
+    artifact is still PRESENT — core's gate reads present as "the step ran"."""
     return dict(_NULL_PROFILE)
 
 
@@ -65,10 +50,8 @@ def empty_profile() -> dict[str, object]:
 def _degrades_to_nulls(log: Log, problem: str, media_id: str, consequence: str) -> Iterator[None]:
     """Run one half of the analysis, degrading to nulls with a REASON if it raises.
 
-    The "each half fails independently" contract stated once, so the three halves below cannot be given
-    three subtly different versions of it. What varies is only the wording — `problem` names what broke,
-    `consequence` names which fields stay null — and both are the operator's whole diagnosis, so neither
-    is optional.
+    The contract stated once, so the three halves cannot be given three subtly different versions of it.
+    `problem` names what broke and `consequence` which fields stay null: together the whole diagnosis.
     """
     try:
         yield
@@ -86,22 +69,15 @@ def build_song_profile(
     *,
     log: Log = _silent,
 ) -> dict[str, object]:
-    """Build the songProfile from the two scratch WAVs. ALWAYS returns the full shape.
+    """Build the songProfile from the two scratch WAVs. ALWAYS returns the full shape and cannot raise.
 
-    - key* comes from the INSTRUMENTAL (chords carry the key; a monophonic vocal is key-ambiguous).
-    - *Midi/histogram comes from the VOCALS (where the original singer sang).
-
-    Each half is independent best-effort: a missing/unreadable instrumental leaves key* null but a
-    good vocals stem still yields the range, and vice versa. Any exception (unreadable WAV, empty
-    stem, a numpy edge case) is caught, logged with its reason, and degraded to nulls for that half.
-    Nothing here can raise to the caller — that is the whole contract.
+    `key*` and `loudnessLufs` come from the INSTRUMENTAL, the `*Midi`/`histogram` half from the VOCALS, and
+    each half degrades to nulls on its own (`docs/arch/05-worker.md` §3).
     """
     profile = empty_profile()
 
-    # The instrumental is decoded ONCE and shared by both measurements below (key + loudness), rather
-    # than each re-reading the same multi-minute file. A DECODE failure degrades both halves; a
-    # MEASUREMENT failure degrades only its own half — an unreadable chromagram must not throw away a
-    # good level, nor the reverse — which is why the two try blocks below stay separate.
+    # Decoded ONCE and shared by both measurements below; the blocks stay separate so a measurement
+    # failure costs only its own half (docs/arch/05-worker.md §3.1).
     inst_samples = None
     inst_rate = 0
     if instrumental_wav:
@@ -117,11 +93,8 @@ def build_song_profile(
             profile["keyMode"] = mode
             profile["keyConfidence"] = confidence
 
-    # The INSTRUMENTAL is the file that plays in the room, so its level is what's stored — never a
-    # derived gain, since the actual gain is an outlier clamp against the whole library and would go
-    # stale on disk; playback derives it from stored levels. Tri-state: an unmeasurable stem (silence /
-    # too short / unreadable) stores None, never a fabricated 0.0, which would read as a deafening
-    # master and get attenuated into inaudibility.
+    # The stored number is the instrumental's LEVEL and never a derived gain: the gain is an outlier clamp
+    # against the whole library, so it would go stale on disk and playback derives it instead.
     if instrumental_wav:  # measured and STORED here; the log line is for the operator, not the room
         measured_lufs = loudness.measure_lufs_samples(inst_samples, inst_rate)
         profile["loudnessLufs"] = measured_lufs

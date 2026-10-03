@@ -11,6 +11,21 @@ It runs on [DBOS](https://docs.dbos.dev/) — durable execution as a **library**
 SQLite file. No server to host. Every `await` in a workflow is a checkpoint, so a worker that dies
 mid-alignment resumes at the step it was on instead of redoing the ASR pass.
 
+> **Where the rest of this is written down.** This file is the operator's tour: the state machine, the
+> knobs, the settings, the suites. The **design** — what each mechanism is for, what may not be broken,
+> and what was measured and rejected — lives in two documents, and the code points at them rather than
+> carrying them:
+>
+> | Document | Covers |
+> | --- | --- |
+> | [`../docs/arch/04-alignment.md`](../docs/arch/04-alignment.md) | the decode, the repair ladder, the four gates (lexical lift, envelope, LINE_SYNC agreement, calibration-by-model), grading, the claim clock, and 17 invariants a change must not break |
+> | [`../docs/arch/05-worker.md`](../docs/arch/05-worker.md) | separation and the measured stem roles, the audio profile, artifacts and scratch, ffmpeg, providers, transport and ownership, durability, config, and 14 more invariants |
+>
+> Every **measurement** — sweeps, per-song readings, threshold fits, benchmark history — is in
+> [`../docs/benchmarks/forced-alignment/README.md`](../docs/benchmarks/forced-alignment/README.md) and
+> [`../docs/benchmarks/stem-separation/README.md`](../docs/benchmarks/stem-separation/README.md). A
+> docstring says WHAT and WHY in a few lines and cites the path (owner directive, 2026-10-01).
+
 ---
 
 ## The two defects this fixes

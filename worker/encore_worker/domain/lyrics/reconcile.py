@@ -1,92 +1,10 @@
-"""Reconciling CLAIMED timings against the timings we generated ourselves — stage 3 of alignment v2.
+"""Reconciling CLAIMED timings against the timings we generated ourselves.
 
-THE ROLE REVERSAL (docs/PLAN-alignment-v2.md). Claimed timings — an LRC's line stamps, another aligner's
-words — used to be the search space, so their errors passed straight through. `generate` now produces our
-own timings from text alone, and the claims become EVIDENCE: compared against ours, they either corroborate
-(two independent measurements agreeing is the strongest signal available) or they diagnose which of several
-known failure shapes this sheet has.
-
-THE DIAGNOSIS CLASSES, each with a distinct residual pattern and a distinct action:
-
-    AGREE        residuals ~0 line by line. Corroborated lines can be published at word confidence even
-                 where the decode's own score is middling — agreement is the better evidence (F3: the path
-                 score alone grades weakly).
-    OFFSET       residuals constant and non-zero: an LRC cut for another master. Our timings are already
-                 correct; the offset is a fact about the CLAIM, recorded for the trail.
-    DRIFT        residuals grow linearly: a different tempo or a speed-adjusted master. Same action.
-    STRUCTURAL   most lines agree, a contiguous minority disagree: an extra chorus, a variant verse, an
-                 ad-lib block. The agreeing lines gain confidence; the disagreeing ones LOSE it — on a
-                 repeated-chorus text those are exactly the lines the global decode may have misassigned
-                 (F2), and the claim is the only occurrence-anchor available.
-    COARSE       the whole sheet is loosely timed: nothing like line-for-line agreement, but every line
-                 within a phrase of its claim. Same performance, sloppy timing on one side — GRADE it,
-                 never repair it (a re-decode against jitter is regression fuel; measured on Numb).
-    UNRELATED    no structure at all, on enough pairs to be sure of that. Either the claim is for a different
-                 song or our decode is garbage; this module cannot tell WHICH, so it says so and the caller
-                 arbitrates with the activity envelope (`domain/audio/activity.py`) — the one gate measured to
-                 separate right from wrong text (path scores cannot; measured, F5 in the plan).
-    TOO_FEW_     three or four pairs that do not agree: the same residual pattern as UNRELATED with none of
-    PAIRS        its evidence. Its own verdict since W2 (review r1), because UNRELATED is not a neutral
-                 fallthrough — it ARMS the caller's most sweeping repair (R1 re-decodes EVERY claimed line
-                 inside its claim window and may adopt the claim span wholesale), and arming that on three
-                 points is the opposite of what `MIN_FITTED_PAIRS` was raised for. This verdict confers
-                 nothing, disputes nothing and triggers nothing: the sheet keeps its timings, no line is
-                 re-decoded, and `lines` is empty so no line is corroborated either.
-                 IT DOES LOWER CONFIDENCE, and the r1 wording that stopped at "triggers nothing" read as
-                 though it did not (W2 review r2). It is in `DISAGREE`, so the caller's `claims_disagree`
-                 grades every line `low` — including lines sitting ON their own claims, which this verdict
-                 cannot see because it returns no judgements. That is the one direction an unresolved
-                 disagreement may move a grade, and the cliff it makes is real: a TWO-pair sheet is
-                 `NO_CLAIMS` and grades those same lines `high`. The trade is in the caller's own test
-                 (`test_too_few_pairs_grades_every_line_low_and_that_is_a_cliff`): at three or four pairs
-                 nothing can tell a mostly-right sheet from a different song's, and a wrong sheet's unique
-                 lines graded `high` seconds off the vocal is the worse failure.
-
-THE VERDICT IS READ OFF THE RESIDUAL DISTRIBUTION, not off exact agreement (review M4; W2). Until W2 the
-ladder asked `agreement == 1.0`, so ONE stray line out of fifty made a sheet STRUCTURAL and OFFSET was
-effectively unreachable: a +/-1.5 s LRC with 150 ms jitter read STRUCTURAL about 98% of the time, and the
-caller's R2 then re-decoded every jitter-disputed line — the exact repair Numb measured as harmful. The fit
-was fragile the same way: an UNBOUNDED endpoint span ratio (`MAX_SCALE_DRIFT` was defined and never
-applied) through as few as MIN_PAIRS=3 pairs, where both endpoints fit by construction, so 1993/2000 random
-3-pair series came out STRUCTURAL. What replaced them:
-
-    the fit          a BOUNDED Theil-Sen tempo ratio (`theil_sen`, shared with `claimmap` — ONE
-                     implementation, and `claimmap`'s measured band is the shared one), adopted only where
-                     it explains strictly more lines than scale 1.
-    the classes      `INLIER_SHARE` of the lines inside `AGREE_TOLERANCE_SEC` of the FITTED model is "one
-                     affine map describes this sheet" (AGREE / OFFSET / DRIFT); below that, STRUCTURAL needs a
-                     minority that disagrees by more than a PHRASE and COARSE needs `COARSE_FLOOR` of them
-                     within one. Both need `MIN_FITTED_PAIRS` pairs: at three, a fitted verdict is describing
-                     its own noise — and below that floor the answer is `TOO_FEW_PAIRS`, not UNRELATED.
-                     The inlier share is THE WHOLE TEST, deliberately: review M4 asked for ">= 90% inliers and
-                     a small MAD" and the MAD half cannot ever bind, so it is not written here as though it
-                     did (W2 review r1, proof under `spread_sec`).
-    the disputes     `Reconciliation.disputed` — the lines a caller may re-decode — moved here from the call
-                     site, one rule per class (see the property). The COARSE rule the caller had was
-                     |raw residual - offset| > 1 s, which IGNORED the fitted scale and so flagged 38/50 lines
-                     gross on a 2% tempo sheet (the review's repro s9; 0/50 now), and no class but STRUCTURAL
-                     and COARSE disputed anything, so a stray line in an otherwise perfect sheet lost its
-                     repair as soon as the sheet stopped being labelled STRUCTURAL.
-    the residuals    `LineJudgement` carries both: `residual_sec` raw, for the trail (an operator wants the
-                     sheet's actual displacement), and `model_residual_sec` against the fitted model, which
-                     is the only one a caller may threshold.
-
-WHAT THE SPREAD IS NOT. `spread_sec` is the JOINT precision of the two measurements, and nothing here can say
-which side is the loose one. So it gates NOTHING — it is a reading on the trail, and both attempts to give it
-teeth failed: as a REPAIR band ("wide spread, so do not repair") it cost Kinematic 3 of 14 lines within
-+/-500 ms on the W2 probe, because a sheet whose residuals wander because OUR decode wandered still wants its
-lines re-decoded against it; as a LABEL band beside the inlier share it could never fire at all (the proof is
-under `spread_sec`, and W2 review r1 caught the docstrings still claiming it did).
-
-NO CLAIM IS "CORRECTED" HERE. Reconcile never moves a timing: it grades ours and describes theirs. The
-sheet-shifting that `activity.fit_sheet_to_audio` does for the windowed path has no role in v2's main line,
-because generated timings never depended on the claims to begin with. A sheet is put on our clock ONCE, and
-elsewhere — `claimmap.consensus`, before the first reconcile — so by the time a verdict is taken, an offset
-it reports is what remains after that vote, not the sheet's raw lag.
-
-PAIRED BY LINE INDEX, and only where both sides have one. `generate` drops unalignable lines but carries
-`Line.index` (F1); a claim series may be shorter or longer than the text. Pairing by index — not order of
-survivors, not content — is what keeps one dropped decorative line from shearing every comparison after it.
+THE ROLE REVERSAL: the claims are EVIDENCE rather than a search space, so they either corroborate ours or
+diagnose which known failure shape this sheet has. NO CLAIM IS "CORRECTED" HERE (XA-04). The classes, their
+residual patterns, which lines each lets a repair touch and why `spread_sec` gates nothing:
+`docs/arch/04-alignment.md` §7; README, "Reconcile robustness: the fit, the classes, and which lines a repair
+may touch".
 """
 
 from __future__ import annotations
@@ -101,22 +19,17 @@ from statistics import median
 #: independent measurement is agreement, not coincidence.
 AGREE_TOLERANCE_SEC = 0.25
 
-#: Fraction of paired lines that must agree (after removing any common offset/drift) for the claim to be
-#: treated as structurally the same rendition. Below this, the disagreement is not "a few odd lines". Not
-#: sufficient on its own since W2: STRUCTURAL also needs a line more than `COARSE_TOLERANCE_SEC` out, or the
-#: sheet is merely loosely timed and its disagreements must not be repaired (review M4).
+#: Fraction of paired lines that must agree, after any common offset or drift, for the claim to be the same
+#: rendition. Not sufficient alone: STRUCTURAL also needs a line grossly out, or a merely loosely timed sheet
+#: would be repaired (docs/arch/04-alignment.md §7).
 STRUCTURAL_FLOOR = 0.5
 
 #: An offset smaller than this is not a finding — it is the two measurements' combined jitter.
 OFFSET_NOISE_SEC = 0.35
 
-#: The coarse band: when the sheet is not one affine map and not STRUCTURAL either, but at least COARSE_FLOOR
-#: of its lines agree within COARSE_TOLERANCE_SEC of the fit, the claim describes THE SAME PERFORMANCE with
-#: sloppy timing on one side. Measured need (Numb): a decent-but-noisy decode against jittery captions
-#: read as UNRELATED, and the caller's re-anchoring repair then made the timings WORSE — the coarse
-#: verdict exists so that case grades instead of repairs. The tolerance is also the phrase band every
-#: corroborating class disputes a line by (`Reconciliation.disputed`): a line further out than this is
-#: misbound whatever the sheet's label, and a line inside it is nothing a re-decode should chase.
+#: The coarse band: neither one affine map nor STRUCTURAL, but enough lines agree loosely that the claim
+#: describes THE SAME PERFORMANCE sloppily timed — so that case grades instead of repairs. The tolerance is
+#: also the PHRASE band every corroborating class disputes a line by (docs/arch/04-alignment.md §7).
 COARSE_TOLERANCE_SEC = 1.0
 COARSE_FLOOR = 0.7
 
@@ -124,32 +37,22 @@ COARSE_FLOOR = 0.7
 #: reason: a fit through two points always fits.
 MIN_PAIRS = 3
 
-#: Minimum paired lines before STRUCTURAL or COARSE — the two verdicts that claim to have seen SHAPE in the
-#: residuals (review M4: "require >= 5 pairs"). At three pairs a fitted line passes through all of them
-#: often enough that 1993/2000 random 3-pair series came out STRUCTURAL, and the caller then re-decoded
-#: lines inside claim windows on the strength of it. AGREE / OFFSET / DRIFT stay reachable at `MIN_PAIRS`:
-#: they require near-total agreement, which random series do not supply. Same number as `claimmap.MIN_PAIRS`
-#: for the same reason (a fit that ACTS needs more than a fit that only labels), kept separate because that
-#: one gates MOVING the claims and this one gates a label.
+#: Minimum paired lines before STRUCTURAL or COARSE, the two verdicts claiming to have seen SHAPE: at three
+#: pairs 1993 of 2000 random series came out STRUCTURAL. AGREE / OFFSET / DRIFT stay reachable lower, needing
+#: near-total agreement. Kept separate from `claimmap.MIN_PAIRS`, which gates MOVING the claims.
 MIN_FITTED_PAIRS = 5
 
 #: Share of paired lines that must land within `AGREE_TOLERANCE_SEC` of the FITTED model for "one affine map
-#: describes this sheet" — the AGREE / OFFSET / DRIFT band (review M4: ">= 90% inliers and a small MAD").
-#: 0.9 leaves one line in ten for the stray stamp every hand-timed sheet carries; the strays still lose their
-#: own corroboration, and the caller still re-decodes the ones `disputed` picks out.
+#: describes this sheet", leaving one line in ten for the stray stamp every hand-timed sheet carries.
 INLIER_SHARE = 0.9
 
-#: |scale - 1| beyond this and the tempo fit is DROPPED rather than clamped (dropping it leaves the median
-#: offset, which is the same fit with scale 1). Two masters of one song differ by a few percent at most — the
-#: review's band is 2-5%, and the bench's tempo modes are +/-2%, so 5% admits them without sitting on the
-#: boundary. Tighter than `place.MAX_SCALE_DRIFT` (0.15) because that one only points a search, while this
-#: one decides which lines the caller re-decodes and, through `claimmap`, which window it decodes them in.
+#: |scale - 1| beyond this and the tempo fit is DROPPED rather than clamped, which leaves the median offset.
+#: Two masters of one song differ by a few percent at most. Tighter than `place.MAX_SCALE_DRIFT`, which only
+#: points a search where this decides which lines are re-decoded and in which window.
 MAX_SCALE_DRIFT = 0.05
 
-#: Pairs closer together than this contribute no slope. Theil-Sen's slopes are differences over differences,
-#: so jitter at the ends divides by the separation: +/-0.25 s on each end of a 20 s gap is already 2.5%, the
-#: whole width of `MAX_SCALE_DRIFT`, and closer pairs are worse. The median over the surviving pairs is what
-#: tames the rest.
+#: Seconds apart a pair must be to contribute a slope: Theil-Sen divides jitter by the separation, so a
+#: quarter-second at each end of a 20 s gap is already the whole width of `MAX_SCALE_DRIFT`.
 MIN_SPAN_SEC = 20.0
 
 AGREE = "agree"
@@ -162,25 +65,17 @@ TOO_FEW_PAIRS = "too-few-pairs"
 NO_CLAIMS = "no-claims"
 
 #: The verdicts that say "these claims do not describe our timings": the caller grades on its own decode alone
-#: under either (`align_steps`' `claims_disagree`), and only UNRELATED — the one with the pairs to mean it —
-#: also arms R1. Named here so the two are not spelled out as a literal pair at a call site that will one day
-#: gain a third.
+#: under either, and only UNRELATED — the one with the pairs to mean it — also arms R1.
 DISAGREE = (UNRELATED, TOO_FEW_PAIRS)
 
 
 def theil_sen(pairs: Sequence[tuple[float, float]]) -> float | None:
-    """The tempo ratio ours/claimed as the median of pairwise slopes, or None when it is unmeasurable or out
-    of band (`MAX_SCALE_DRIFT`, `MIN_SPAN_SEC`). `pairs` is `(claimed, ours)`, in any order.
+    """The tempo ratio ours/claimed as the median of pairwise slopes, or None when unmeasurable or out of
+    band. `pairs` is `(claimed, ours)`, in any order.
 
-    THE ONE implementation of this fit: `reconcile` classifies DRIFT with it and `claimmap` builds its tempo
-    candidate with it (review M4's "share the estimator"). It lives here because `claimmap` already imports
-    this module's corroboration band, so the dependency has to run this way to stay acyclic.
-
-    Hand-rolled, O(n^2) over the paired lines: `domain/` must import with no scipy (it is in the `ml` extra),
-    and 100 lines is 5k slopes — microseconds. Pairwise slopes (Sen 1968) rather than a least-squares fit for
-    the reason `place._scale_of` gives for its span ratio, except that this one does not depend on the two END
-    lines being the sound ones: a median over all wide-enough pairs survives an outlier anywhere. The gap test
-    is on |difference|, so an unsorted series is fitted identically to a sorted one.
+    THE ONE implementation of this fit, shared by `reconcile`'s DRIFT class and `claimmap`'s tempo candidate,
+    and here because the dependency has to run this way to stay acyclic. Hand-rolled and O(n^2), `domain/`
+    importing with no scipy; pairwise slopes survive an outlier anywhere, unlike a span ratio.
     """
     slopes = [
         (ours_b - ours_a) / (theirs_b - theirs_a)
@@ -225,20 +120,9 @@ class Reconciliation:
     #: Fraction of paired lines corroborating, after offset/scale removal.
     agreement: float = 0.0
     pairs: int = 0
-    #: MAD of the lines' residuals about the fitted model: the JOINT precision of the two measurements. Small
-    #: means one offset (or one tempo) describes the pair; large means one of the two is loosely timed — and
-    #: which one is not knowable from here, which is why it gates NOTHING and only reaches the trail.
-    #:
-    #: IT CANNOT GATE THE LABEL EITHER, which is why the AGREE / OFFSET / DRIFT test is the inlier share alone
-    #: (W2 review r1; review M4's ">= 90% inliers AND a small MAD" was written as a conjunction here until the
-    #: second half was proved dead). `offset_used` is `median(ours - scale x claimed)` and the residuals are
-    #: taken against it, so the median residual is 0 BY CONSTRUCTION and this MAD is exactly
-    #: `median(|residual|)`. Once `INLIER_SHARE` (0.9) of the residuals are inside `AGREE_TOLERANCE_SEC`
-    #: (0.25), their median absolute value is at most 0.25 — under any band worth writing, and under the 0.4
-    #: the conjunct used to carry. Measured: 200 000 seeded series produced 0 in which the band could have
-    #: refused a branch the share admitted, and mutating that 0.4 to 4.0 left the whole suite green. The
-    #: implication is pinned as a property test (`test_reconcile`) so that a future tolerance or share that
-    #: broke it would have to say so out loud.
+    #: MAD of the lines' residuals about the fitted model: the JOINT precision of the two measurements, which
+    #: gates NOTHING — which one is loose is not knowable here, and the inlier share implies the label
+    #: (docs/arch/04-alignment.md §7).
     spread_sec: float = 0.0
     why: str = ""
 
@@ -249,26 +133,11 @@ class Reconciliation:
 
     @property
     def disputed(self) -> tuple[int, ...]:
-        """The lines whose timing this sheet contradicts, in `Line.index` order: the caller's repair
-        candidates (`align_steps` R2), and nothing else it may re-decode on a verdict's word.
+        """The lines whose timing this sheet contradicts, in `Line.index` order: the caller's R2 candidates,
+        and nothing else it may re-decode on a verdict's word.
 
-        ONE RULE PER CLASS, because what a disagreement MEANS differs by class (review M4; the caller used to
-        spell this out at the call site and got the COARSE half wrong):
-
-            STRUCTURAL        every line the fit does not explain. The sheet as a whole is tight — a majority
-                              inside the corroboration band, a minority seconds out — so a 300 ms
-                              disagreement is real disagreement, and on repeated text the claim is the only
-                              occurrence-anchor there is (F2).
-            AGREE / OFFSET /  only the lines beyond the PHRASE band on the fitted model. A sheet one affine
-            DRIFT / COARSE    map explains, or a loosely-timed one, disputes nothing at sub-second scale:
-                              re-decoding jitter inside a jittered claim window measured WORSE (Numb, MAD
-                              312 -> 563 ms). A line seconds out is misbound whatever the sheet's label
-                              (Avercage's 6), and the residual is taken against the MODEL, so a tempo sheet's
-                              linear ramp is not mistaken for 38 misbound lines (the review's s9).
-            UNRELATED /       nothing. None of them confers standing. On UNRELATED the caller arbitrates with
-            TOO_FEW_PAIRS /   the activity envelope instead (R1) rather than repairing line by line; on the
-            NO_CLAIMS         other two it does not even do that, since there are too few pairs to have
-                              measured a disagreement worth acting on.
+        ONE RULE PER CLASS, here rather than at the call site, because what a disagreement MEANS differs by
+        class (docs/arch/04-alignment.md §7).
         """
         if self.verdict == STRUCTURAL:
             return tuple(line.index for line in self.lines if not line.corroborated)
@@ -281,11 +150,8 @@ class Reconciliation:
     def agrees(self, ours: float, claimed: float) -> bool:
         """Would a line at `ours` corroborate its claim at `claimed` on THIS verdict's fitted clock?
 
-        The same test `reconcile` applied to every line it judged (claimed x scale + offset within
-        AGREE_TOLERANCE_SEC), so it reproduces each `LineJudgement.corroborated` exactly. It exists for a
-        line whose timing CHANGED after the verdict was taken: grading asks whether a repaired line still
-        sits where the blind decode and the claim agreed it is sung (review H4), and a verdict that
-        confers nothing (`corroborates` false) vouches for no position at all.
+        The same test `reconcile` applied to every line it judged, for a line whose timing CHANGED after the
+        verdict was taken; a verdict that confers nothing vouches for no position at all (XA-03).
         """
         expected = claimed * self.scale + self.offset_sec
         return self.corroborates and abs(ours - expected) <= AGREE_TOLERANCE_SEC
@@ -297,9 +163,8 @@ def reconcile(
 ) -> Reconciliation:
     """Compare generated lines against claimed line starts, keyed by ORIGINAL line index.
 
-    `generated` is `generate.Generated.lines` (duck-typed: `.index`, `.start`). `claimed_starts` maps the
-    input text's line index to the claimed onset — a mapping rather than a list so the caller states
-    explicitly which lines the claim covers, instead of this module guessing at an offset-by-one.
+    `claimed_starts` is a mapping rather than a list, so the caller states which lines the claim covers
+    instead of this module guessing at an offset-by-one.
     """
     pairs: list[tuple[int, float, float]] = []  # (index, ours, theirs)
     for line in generated:
@@ -332,9 +197,8 @@ def reconcile(
         return sum(1 for r in residuals if abs(r) <= tolerance)
 
     # ── the fit: a constant part always, a BOUNDED tempo ratio only where it earns its place ──
-    # Judged with the constant offset alone first; the scale is adopted only if it explains strictly more
-    # lines. Adopting one by default would let two unrelated series look related whenever their spans
-    # happen to differ — which is exactly what the unbounded endpoint span ratio did before W2 (review M4).
+    # The scale is adopted only if it explains strictly more lines: by default it would let two unrelated
+    # series look related whenever their spans happen to differ.
     flat = residuals_for(1.0)
     fitted = theil_sen([(t, o) for o, t in zip(ours, theirs, strict=True)])
     scaled = residuals_for(fitted) if fitted is not None else flat
@@ -377,11 +241,9 @@ def reconcile(
     # ── ONE affine map explains the sheet: the strays lose their own corroboration, the sheet keeps its
     # standing, and which of the three labels it gets is a description of the CLAIM, not of our timings.
     if agreement >= INLIER_SHARE:
-        # A tempo that moves the far end of the sheet by less than the corroboration band is a better fit,
-        # not a finding: on jittered claims `theil_sen` lands within 0.2% of 1.0 often enough to explain one
-        # extra line (measured: 420 of 2000 seeded +1.5 s series, |scale-1| at most 0.0018, which moves the
-        # last claim 0.29 s), and reporting those as DRIFT would put a tempo story on the trail of a sheet
-        # that is simply late. The fitted model is kept either way.
+        # A tempo that moves the far end of the sheet by less than the corroboration band is a better fit and
+        # not a finding — 420 of 2000 seeded late sheets explain one extra line that way — so reporting them
+        # as DRIFT would put a tempo story on a sheet that is simply late. The fitted model is kept.
         if use_scale and abs(scale_used - 1.0) * (max(theirs) - min(theirs)) > AGREE_TOLERANCE_SEC:
             return graded(
                 DRIFT,
@@ -404,11 +266,9 @@ def reconcile(
     # ── shape, not one map. Both remaining classes are claims about STRUCTURE in the residuals, so both
     # need enough pairs to have seen any (`MIN_FITTED_PAIRS`; review M4).
     if len(pairs) >= MIN_FITTED_PAIRS:
-        # STRUCTURAL needs a minority that disagrees GROSSLY — a line beyond a phrase of the fit. Without
-        # that test a merely JITTERY sheet (most lines inside the band, the rest a few hundred ms out) took
-        # this branch, and the caller re-decoded every one of those inside its claim window: the repair Numb
-        # measured as making timings worse. Measured over 2000 seeded +1.5 s / 150 ms-jitter sheets, the
-        # branch now takes 0 of them; before W2's taxonomy it took about 98%.
+        # STRUCTURAL needs a minority that disagrees GROSSLY, a line beyond a phrase of the fit: without it a
+        # merely JITTERY sheet took this branch and had every out-of-band line re-decoded, which measured as
+        # making timings worse. It now takes 0 of 2000 seeded jittery sheets, against about 98% before.
         if agreement >= STRUCTURAL_FLOOR and gross:
             return graded(
                 STRUCTURAL,
@@ -428,12 +288,9 @@ def reconcile(
                 f"{COARSE_TOLERANCE_SEC}s out",
             )
 
-    # TOO FEW PAIRS TO SAY ANYTHING (review M4's floor, given its own verdict in W2 — review r1). Three or
-    # four pairs that disagree look exactly like a different song and exactly like our own decode having
-    # misbound one line, and UNRELATED is NOT the neutral way to say so: it arms the caller's R1, which
-    # re-decodes every claimed line inside its claim window and may adopt the claim span over a good blind
-    # timing. That is the sweeping action, taken on the evidence the floor exists to distrust — so this
-    # abstains instead, and the caller's envelope arbitration stays for the sheets with pairs behind them.
+    # TOO FEW PAIRS TO SAY ANYTHING, with a verdict of its own: three or four pairs that disagree look
+    # exactly like a different song and exactly like one misbound line, and UNRELATED is not the neutral way
+    # to say so — it arms R1, the sweeping repair, on the evidence this floor exists to distrust.
     if len(pairs) < MIN_FITTED_PAIRS:
         return Reconciliation(
             verdict=TOO_FEW_PAIRS,
@@ -488,11 +345,9 @@ def as_claimed(
 ) -> AsClaimed | None:
     """Do the claimed starts THEMSELVES sit where our decode puts each line? None under `MIN_PAIRS` pairs.
 
-    `reconcile` removes the claims' common offset (and a tempo scale) before judging a line, because there
-    OUR timings are what publishes and a sheet for another master still vouches for them. Where the CLAIMS
-    publish — the LINE_SYNC rung's line document, the text's own timings — an offset is exactly the error
-    the room would see, so nothing is removed here: a sheet 1.5 s late reads as 1.5 s late. Paired by line
-    index, as `reconcile` pairs (`Line.index`; duck-typed `.index`, `.start`).
+    `reconcile` removes the claims' common offset before judging a line, because there OUR timings publish.
+    Where the CLAIMS publish an offset is exactly the error the room would see, so nothing is removed here
+    (docs/arch/04-alignment.md §5.3).
     """
     pairs: list[tuple[float, float]] = []
     for line in generated:

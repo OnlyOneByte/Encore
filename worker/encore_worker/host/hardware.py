@@ -1,16 +1,9 @@
 """What THIS box can do, probed rather than assumed.
 
-Two things live here and they answer different questions:
-
-  * `probe()` — a description of the machine, for the dashboard. Best-effort by contract: a diagnostic
-    must never fail a handshake, so every field is optional and a failed probe omits rather than guesses.
-  * `resolve_backend()` — which separator implementation will actually run. That one is load-bearing: a
-    Mac announcing `mlx` must not run torch demucs while reporting `torch`, and a box that advertises
-    `stems` with no engine behind it accepts separation work and then fails every job of it.
-
-IMPORT-FREE WHERE POSSIBLE. `find_spec` and `shutil.which` answer "is it installed" without importing
-it, which matters because importing torch costs seconds and several hundred megabytes of RSS — paid on a
-box that may only ever serve align jobs.
+`probe()` describes the machine for the dashboard and is best-effort; `resolve_backend()` and
+`capabilities()` are load-bearing, since a box that advertises work it cannot finish accepts it and then
+fails it. Import-free where possible, and what each capability gate is proving: docs/arch/05-worker.md §9
+and §9.1.
 """
 
 from __future__ import annotations
@@ -23,12 +16,12 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class Report:
-    """A description of this machine. Every field past `machine` is optional and may be absent."""
+    """A description of this machine; every field past `platform` is optional."""
 
     machine: str
     python: str
     platform: str
-    #: "cuda" / "mps" / "cpu". Derived from what is importable AND usable, never from the OS alone.
+    #: "cuda" / "mps" / "cpu", from what is importable AND usable, never from the OS alone.
     accelerator: str = "cpu"
     apple_silicon: bool = False
     torch_version: str | None = None
@@ -41,11 +34,7 @@ class Report:
 
 
 def module_available(name: str) -> bool:
-    """Is this importable, without importing it?
-
-    `find_spec` raises for a package whose PARENT is missing, which is a miss rather than an error —
-    `pyannote.audio` on a box with no pyannote is the common case.
-    """
+    """Is this importable, without importing it? A missing PARENT package is a miss, not an error."""
     try:
         return importlib.util.find_spec(name) is not None
     except (ImportError, ValueError):
@@ -100,23 +89,15 @@ def probe() -> Report:
 
 @dataclass(frozen=True, slots=True)
 class Backend:
-    """The resolved separator backend, and why.
-
-    `why` is not decoration: "auto-selected mlx (Apple Silicon)" and "explicitly configured mlx" behave
-    identically but mean different things when a box turns out to be separating on the wrong engine.
-    """
+    """The resolved separator backend, and `why` — which is not decoration (docs/arch/05-worker.md §9.1)."""
 
     name: str
     why: str
 
 
 def resolve_backend(configured: str | None, *, report: Report | None = None) -> Backend:
-    """Which separator implementation will run.
-
-    An EXPLICIT setting always wins, even when the box cannot honour it: the failure then names the
-    setting, which is what an operator who typed it needs. Auto-selection prefers mlx on Apple Silicon
-    (Metal, and materially faster there) and otherwise torch.
-    """
+    """Which separator implementation will run. An EXPLICIT setting always wins, even where the box cannot
+    honour it (docs/arch/05-worker.md §9.1)."""
     if configured:
         return Backend(configured, f"explicitly configured {configured}")
     box = report if report is not None else probe()
@@ -126,13 +107,10 @@ def resolve_backend(configured: str | None, *, report: Report | None = None) -> 
 
 
 def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg") -> frozenset[str]:
-    """What this box can PROVE it can do, so the core only routes work it can finish.
+    """What this box can PROVE it can do, so core only routes work it can finish.
 
-    NARROWED BY BACKEND, and that narrowing is the point rather than a tidy-up. Presence of `demucs`
-    proves the models are installed, but the resolved backend decides which engine actually runs — an
-    Apple-Silicon box with both demucs and demucs_mlx installed resolves to `mlx`, and if it advertised
-    `stems` while only a torch engine existed it would accept separation work and fail every job of it
-    at plan selection, non-retryably.
+    Every gate below is chosen to prove the last thing that could still be missing, and the table of what
+    each one is for is docs/arch/05-worker.md §9.1.
     """
     caps: set[str] = set()
     if binary_available(ytdlp):
@@ -140,51 +118,28 @@ def capabilities(*, backend: str, ytdlp: str = "yt-dlp", ffmpeg: str = "ffmpeg")
     if module_available("whisperx"):
         caps.add("align")
 
-    # ADVERTISED BUT NOT ROUTED ON, and that is core's current behaviour rather than an oversight here:
-    # `requiredCapability` maps only fetch/stems/stems-upgrade/align, and core's source never mentions
-    # `diarize` at all. So this changes no dispatch — it restores what the old worker reported, which is
-    # what an operator reads off the dashboard to tell a box that can attribute lines to singers from one
-    # that publishes single-colour lyrics.
-    #
-    # Gated on the module because diarization IS an import here rather than a subprocess, unlike roformer
-    # below — pyannote is HF-gated and heavy, and a box without it simply attributes nothing.
+    # Advertised but not routed on, and gated on the module rather than a binary
+    # (docs/arch/05-worker.md §9.1).
     if module_available("pyannote.audio"):
         caps.add("diarize")
 
-    # EVERY stems variant requires ffmpeg, and that is not a tidy-up. `decode_to_wav` shells it to
-    # normalise the input, and the silence probe shells it to verify the output — so a box with demucs
-    # and no ffmpeg would advertise `stems`, accept separation work, and fail every job at decode. It is
-    # the same defect the backend narrowing above exists to prevent, one dependency further out.
+    # EVERY stems variant needs ffmpeg: the input is normalised by shelling it and the output verified by
+    # shelling it (docs/arch/05-worker.md §9.1).
     if not binary_available(ffmpeg):
         return frozenset(caps)
 
     has_engine = module_available("demucs_mlx") if backend == "mlx" else module_available("demucs")
     if has_engine:
         caps.add("stems")
-    # GATED ON THE CLI, not on the importable module — and that distinction was a real bug. The module
-    # being present proves the checkpoint code is installed; only the BINARY proves this box can run it,
-    # because the engine shells out rather than importing. Advertising on the module alone meant a box
-    # could claim `stems:roformer`, be handed a `stems-upgrade` job by the core (roformer is the default
-    # upgrade engine), and separate it with DEMUCS instead — publishing demucs output labelled as the
-    # upgrade, which no log would contradict.
+    # Gated on the CLI and not the module, which was a real bug (docs/arch/05-worker.md §9.1).
     if binary_available("bs-roformer-infer"):
         caps.add("stems:roformer")
-    # An IMPORT, not a subprocess probe — which only became true with the whisperx 3.8.7rc1 pin: on 3.8.6 the
-    # huggingface-hub bound made `mlx-audio` uninstallable alongside whisperx, so this had to run a sidecar
-    # interpreter. The rc lifted the bound and the sidecar went with it.
-    #
-    # Gated on the runtime being INSTALLED, never on the accelerator being Apple Silicon: a Mac without the
-    # `mlx` extra cannot run these models, so a hardware-shaped gate would advertise work the box must reject.
-    # The platform check is implied — `mlx-audio` only installs on darwin/arm64.
+    # The runtime being INSTALLED, never the accelerator being Apple Silicon
+    # (docs/arch/05-worker.md §9.1).
     if module_available("mlx_audio"):
         caps.add("stems:melband-mlx")
-    # THE MODEL ZOO, now advertised because it is now implemented — `adapters/audiosep.ZooSeparator` and the
-    # `audiosep` branch in `build_separator`. It was deliberately withheld before that existed, since
-    # advertising ahead of the implementation is the exact failure the roformer gate above prevents.
-    #
-    # Gated on the module, which is sufficient here in a way it was NOT for roformer: the zoo runs
-    # in-process, so an importable `audio_separator` really is the whole requirement — there is no separate
-    # binary whose absence could make an importable module unrunnable. Checkpoints download on demand.
+    # The module is sufficient here in a way it was NOT for roformer, the zoo running in-process
+    # (docs/arch/05-worker.md §9.1).
     if module_available("audio_separator"):
         caps.add("stems:audiosep")
     return frozenset(caps)

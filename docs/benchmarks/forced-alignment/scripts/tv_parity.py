@@ -4,35 +4,16 @@
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/tv_parity.py        # rewrite it
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/tv_parity.py --check
 
-WHY IT EXISTS. The bench's `highlight` metric (a reject-if in W4 and 6c) reads "which word is lit" through
-`e2e_lib`'s PORT of the TV's own `core/src/lib/tv/lyrics.ts` — parse, pause re-segmentation, orphan
-folding, `activeLineIndex`, `activeWordIndex` — as `LyricsOverlay.svelte`'s word-level branch uses them.
-The port was cross-checked against the TypeScript once (bun, 0 of 60,000 positions disagreed), but that
-check was never committed, and review round 2 measured three port mutations that the suite could not see
-(always merging an orphan BACK, dropping the 80%-coverage refusal, and letting the EARLIER truth word win
-an overlap). W6 then made the first change to the TV this fixture was built to catch — a `low` line renders
-line-level and lights no word (review §3.7's consumer) — and that is why the shaped documents below carry
-`confidence` and why `lit` is taken with `wipe_low=True`. The `highlight` metric asks the word-branch
-question deliberately and separately: `e2e_lib.score_highlight` owns that reasoning.
+The bench's `highlight` metric reads "which word is lit" through `e2e_lib`'s PORT of the TV's own
+`core/src/lib/tv/lyrics.ts`, and three port mutations once passed the whole suite. So this fixture is written
+FROM THE PORT and asserted in BOTH trees — `worker/tests/test_bench_e2e.py` and
+`core/tests/unit/lib/tv/lyrics-bench-parity.test.ts` — and an edit on either side that moves a lit word fails
+one of them. Change the other side with it and re-run this script; never hand-edit the JSON.
 
-So this fixture is written FROM THE PORT and asserted in BOTH trees:
-  * `worker/tests/test_bench_e2e.py` — the port still lights exactly these words, and this script still
-    writes exactly this file;
-  * `core/tests/unit/lib/tv/lyrics-bench-parity.test.ts` — `lyrics.ts` lights the same words, its constants
-    are the fixture's, and the overlay's word-level branch reads exactly `OVERLAY_WORD_BRANCH`.
-An edit on either side that moves a lit word fails one of them. Change the other side with it and
-re-run this script; never hand-edit the JSON.
-
-THE DOCUMENTS: named shapes that pin each rule of the port (a line misbound late, a long line that splits
-at pauses with orphans folding BACK and FORWARD — the forward one with a previous row present — the
-coverage refusal, the 42-char cap, overlapping and reversed word spans, a blank line text), then seeded
-random documents that mix them. ASCII words with finite times only: `lyrics.ts` drops a blank or
-non-finite word at parse, while the port's `tv_lines` keeps a textless `DocWord` under a placeholder (the
-bench's own documents always carry text), and JS counts UTF-16 units where Python counts code points.
-EXPECTED, per document: the ROWS the TV displays after parsing (text and bounds — where re-segmentation
-and orphan folding show, since merging an orphan the wrong way rarely changes which word is lit), and the
-lit word's flat index at every POSITION: each breakpoint of the document (word and line bounds) and the
-midpoint of every interval between consecutive breakpoints, plus one before and one after.
+THE DOCUMENTS are named shapes that pin each rule of the port, then seeded random documents that mix them;
+ASCII words with finite times only, the two ports differing on a blank word and on UTF-16 units. EXPECTED,
+per document: the ROWS the TV displays after parsing, and the lit word's flat index at every breakpoint, at
+every midpoint between two, and one either side. README, "The harness scripts", has the rest.
 """
 
 from __future__ import annotations
@@ -57,7 +38,8 @@ import e2e_lib as lib  # noqa: E402 - after the path setup above
 FIXTURE = REPO / "core" / "tests" / "unit" / "lib" / "tv" / "bench-highlight-parity.json"
 
 #: The overlay's word-level branch, verbatim: the port models a TV that lights words ONLY there. W6 added
-#: the `wipesWords(l)` conjunct (review §3.7's consumer: a `low` line renders line-level), and this literal
+#: the `wipesWords(l)` conjunct (the confidence rule's TV consumer: a `low` line renders line-level), and
+#: this literal
 #: is what makes the core test fail until the port has it too — `lib.tv_lit(wipe_low=True)` below.
 OVERLAY_WORD_BRANCH = "{#if i === lineIdx && l.words.length && wordLevel && wipesWords(l)}"
 
@@ -145,7 +127,7 @@ def shaped() -> list[tuple[str, dict[str, Any]]]:
             {"lines": [_line(" ", _run("words carry it", 1.0)), _line(None, _run("next", 3.0))]},
         ),
         (
-            # W6's consumer (review §3.7): a `low` line renders as ONE text node, so no word is lit while
+            # W6's TV consumer: a `low` line renders as ONE text node, so no word is lit while
             # it is sung — the row still DISPLAYS, which is why `rows` is unchanged and only `lit` moves.
             "low-line-lights-no-word",
             {

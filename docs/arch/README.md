@@ -28,6 +28,32 @@ suite, so a stale path here is now only caught by reading.
 | [`02-api.md`](02-api.md)     | 12   | The HTTP envelope, status discipline, and what an unjoined caller may do and learn              |
 | [`03-jobs.md`](03-jobs.md)   | 12   | Restart and crash recovery, idempotency and retry, how a failure becomes visible                |
 
+## Two worker documents, in a different genre
+
+The first three sections are requirement rows. The two below are **design documents** for the Python
+worker — the pipeline, what each mechanism is for, and what was measured and rejected — because that
+subsystem is large enough that a reader needs the mechanism explained before a row about it means
+anything. Each ends in an invariants table in the same spirit as a row above (statement, why, what holds
+it). Each quotes **only the few readings a rule cannot be understood without** — a gate that let 189 of 380
+wrong texts through is an argument, not a statistic — while every sweep, every table and every per-song
+reading lives in `../benchmarks/`. A number in one of these documents is load-bearing: it is there because
+deleting it would leave a rule looking arbitrary.
+
+| Document                                   | Covers                                                                                               |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| [`04-alignment.md`](04-alignment.md)       | How a lyric gets its timings: the decode, the repair ladder, the four gates, grading, 17 invariants  |
+| [`05-worker.md`](05-worker.md)             | The rest of the worker: separation and stem roles, the audio profile, artifacts, providers, transport, durability, 14 invariants |
+
+They exist because the code used to carry them. In October 2026 `worker/encore_worker` was 54% prose —
+3 876 comment lines and 7 764 docstring lines against 9 778 of code, blank lines excluded — which is a
+documentation set living inside a package. The owner's directive moved it here, measurements to
+`../benchmarks/`, on the rule that a docstring says WHAT and WHY in a few lines and points at the document.
+(The directive's own count of the same tree reads 48% — 3 685 comment and 7 577 docstring lines against
+12 252 of code. The two counts were taken by different instruments days apart, so all three columns differ,
+not only the code one; neither is wrong and the ratio is the point. Both counts, and the check that no
+measured number was lost in the move, are in
+[`../benchmarks/forced-alignment/README.md`](../benchmarks/forced-alignment/README.md), "W7b".)
+
 ## Why this tree exists separately
 
 These are subsystem contracts, not design rules: media layout, HTTP status codes and job retry

@@ -1,19 +1,9 @@
 """Measuring an aligned document against the audio it claims to describe.
 
-This is what turns an alignment into a `TimingReport`, and therefore what every retry decision is
-actually based on. Pure: a document in, a measurement out, no audio touched — the durations come from
-the timings themselves and the one number that must come from elsewhere is `duration_sec`.
-
-THE DOCUMENT SHAPE is the core's contract, not ours:
-
-    {"language": "en",
-     "lines": [{"text": "hello world",
-                "start": 0.0, "end": 1.2,
-                "words": [{"word": "hello", "start": 0.0, "end": 0.5}, ...]}]}
-
-Read defensively throughout. The aligner is a third-party model wrapper, so a line with no `words`, a
-word with a null `start`, or an `end` before its `start` are all things that have to be survivable — a
-measurement that raises on malformed input would turn a recoverable bad alignment into a failed job.
+What turns an alignment into a `TimingReport`, and therefore what every retry decision rests on. Pure: a
+document in, a measurement out, no audio touched. THE DOCUMENT SHAPE is the core's contract and not ours,
+and it is read DEFENSIVELY throughout — a line with no `words`, a null `start` or an `end` before its
+`start` all have to be survivable, a measurement that raised turning a bad alignment into a failed job.
 """
 
 from __future__ import annotations
@@ -96,20 +86,11 @@ def measure(
 ) -> TimingReport:
     """Measure one aligned document.
 
-    `duration_sec` comes from the audio, and every fraction is relative to it. A non-positive duration
-    means we do not know how long the recording is: coverage and overshoot are then unanswerable, so
-    they are reported as 0 rather than guessed, and `TimingReport.overshoots` returns False by
-    construction. Reporting an unknown as a defect would retry on a measurement nobody made.
-
-    `residual_sec` is passed in rather than computed here: it is a comparison between this document and
-    a reference series, which is `place.residual_against`'s job. `claims_related` likewise: it is
-    `reconcile`'s verdict on this document against the text's own claims (`TimingReport.claims_related`),
-    and only the caller that ran the reconcile can answer it — this module never sees the claims.
-
-    `engine` says what produced the timings. A LINE_SYNC document is measured on its LINE spans — it has
-    no words, and measured on words it read as "nothing timed", which is why that knob could never
-    commit (review M1). Every other engine is measured on its words exactly as before; coverage keeps its
-    meaning (last timed end / duration) and stays telemetry for the global engine.
+    `duration_sec` comes from the audio and every fraction is relative to it; a non-positive one makes
+    coverage and overshoot unanswerable, so they are reported as 0 rather than guessed. `residual_sec` and
+    `claims_related` are passed in, being comparisons only their own callers can make. `engine` says what
+    produced the timings, and a LINE_SYNC document is measured on its LINE spans — measured on words it read
+    as "nothing timed", which is why that knob could never commit.
     """
     if engine is Engine.LINE_SYNC:
         return _measure_lines(

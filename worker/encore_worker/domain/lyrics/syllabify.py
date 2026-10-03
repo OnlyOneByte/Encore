@@ -1,59 +1,9 @@
 """Splitting a word into syllables, so char-level alignment can be regrouped for a karaoke ball.
 
-TEXT-SIDE ONLY. The alignment already times every CHARACTER (the CTC decode's native output), so syllable
-timing is not an audio problem at all — it is deciding which chars belong together. That split is a pure
-function, which is why this module imports no audio and can be tested with a truth table.
-
-A LADDER, best evidence first, because no single source covers everything:
-
-  1. CMUdict (via `cmudict`)       phoneme-based, so it is RIGHT about English in the ways orthography is
-                                   wrong: "come" is one syllable (the e is silent), "away" splits a|way.
-                                   English-only, and only for words it knows. Gives a COUNT, not points.
-  2. Moby Hyphenator (shipped)     a 152 085-word hyphenation dictionary, public domain (Grady Ward's Moby
-                                   Project, Gutenberg ebook 3204, `files/3204/files/mhyph.txt`). English.
-  3. pyphen                        hyphenation dictionaries for ~70 languages. Hyphenation is not exactly
-                                   syllabification, but its split points are close enough to group chars.
-  4. vowel groups                  the naive fallback that always answers. Known wrong in measured ways —
-                                   `come -> com|e`, `away -> aw|ay` — recorded in the tests as EXPECTED
-                                   failures of this tier so nobody mistakes them for bugs in the ladder.
-
-WHY MOBY SITS AHEAD OF PYPHEN (review L3), measured on the bench corpus's 20 JamendoLyrics songs, counting
-OCCURRENCES of tokens CMUdict calls multi-syllable (901 of them): **pyphen abstains on 44.8%** — it returns
-the whole word, no split — and Moby knows **82.9%** of them, including **83.9% of the ones pyphen abstains
-on**. THE LADDER WITHOUT THIS TIER differed from Moby on **39.0%** of the occurrences Moby knows (re-read
-at 39.8% through an emulation of the old lookup, which is the same disagreement): `about` and `maybe` and
-`baby` and `everything` all come out of pyphen unsplit, and `_force_count` then has to BISECT them against
-CMUdict's count, which puts the boundary wherever the middle of the string happens to be (`everything` ->
-`ever|yth|ing`) instead of where Moby says (`eve|ry|thing`). WITH the tier in front the shipped ladder
-differs from Moby on **1.3%**, every one of them `_force_count` honouring CMUdict's count over the
-dictionary's break — which is the tier order working, not a disagreement left in it. The review's figures were
-44.8% / 86.6% / 31.0%; the abstention rate reproduces exactly and the other two move with the counting rule.
-
-THE DATA IS SHIPPED COMPACTLY, as `data/mhyph.xz` (456 KB): Moby's `mhyph.txt` is 2.6 MB of latin-1 with
-U+00A5 between syllables, and what is kept is every entry that is PURELY LOWERCASE LETTERS once joined and
-that has at least one break — multi-word entries ("a cap¥pel¥la"), apostrophes and hyphenated compounds are
-dropped, because `syllables` splits on edge punctuation and internal hyphens itself and looks each piece up
-separately. The result is one `word-with-hyphens` per line, LZMA'd. It is loaded lazily and once.
-
-THE TWO BUGS L3 NAMED, both in how a token was handed to the ladder rather than in any tier:
-
-  * EDGE PUNCTUATION bypassed CMUdict. `core = word.strip()` strips whitespace and nothing else, so
-    `everything,` was looked up with the comma attached: CMUdict missed it, pyphen declined to split it, and
-    the word came out as ONE syllable (`baby,` the same, `everybody,` 2 instead of 4). Measured over the 32
-    bench songs' cleaned texts, 10 590 tokens: **4.3% carry edge punctuation** and **0.9% of all tokens get
-    a different syllable COUNT because of it** — the audible half of the 4.3%.
-  * INTERNAL HYPHENS were never split, so the vocable `la-la-la` came out `la-l|a-l|a` — fragments that
-    straddle the hyphen and put the ball's bounce inside the previous syllable. 0.3% of tokens.
-
-Every tier returns contiguous, non-empty fragments whose concatenation is exactly the input word — the
-invariant that lets char spans be regrouped without re-alignment. CMUdict gives a syllable COUNT (phoneme
-stress markers), so tier 1 still needs orthographic split POINTS; it takes tiers 2–4's candidate points and
-keeps the count honest.
-
-WHY COUNT-CORRECTION MATTERS FOR SINGING: a karaoke ball bounces once per sung syllable. One split too many
-("com|e") puts a bounce on silence; one too few merges two sung notes into one bounce. The count is the
-musically audible property; the exact split point inside the word is not — which is why a better split
-POINT still matters: `_force_count` can only move a boundary it was given.
+TEXT-SIDE ONLY, which makes it a pure function testable from a truth table. Four tiers, best evidence first —
+CMUdict's COUNT, Moby, pyphen, vowel groups — every one returning contiguous fragments that concatenate to
+exactly the input word. The ladder, the Moby packaging and the two bugs in how a token REACHED it:
+`docs/arch/04-alignment.md` §8; README, "Syllables: the tokens the hyphen rule reaches".
 """
 
 from __future__ import annotations
@@ -121,22 +71,10 @@ def _pyphen_dic(language: str) -> Any:  # the pyphen type only exists when the e
 def _pyphen_split(word: str, language: str, *, unsplit_abstains: bool) -> list[str] | None:
     """Tier 3, or None when pyphen or the language is absent, or when pyphen declines to split.
 
-    AN UNSPLIT ANSWER IS AN ABSTENTION WHERE A LATER TIER CAN BE CORRECTED, and a RESULT where it cannot
-    (review L3, then W5 review r1-correctness-6). pyphen returns the whole word for 44.8% of the corpus's
-    multi-syllable occurrences, and treating that as "one syllable" is how `baby,` lost its bounce — so for
-    ENGLISH the None falls through to the vowel grouper, whose over-splits `_force_count` then undoes
-    against CMUdict. OFF ENGLISH THERE IS NO COUNT SOURCE to undo anything, and the vowel grouper's known
-    failure is the silent final `e` (`com|e`, the module docstring's own example): measured on `fr`, four
-    monosyllables pyphen declines to split came out as two fragments each, the second one a silent vowel,
-    where before they came out whole. One sung syllable rendered as two is the audible defect this ladder
-    exists to prevent, so a language with no counter keeps pyphen's single fragment.
-
-    THE FLAG IS THE LANGUAGE'S AND NOT THE TOKEN'S, which is a deliberate approximation: an English token
-    CMUdict has never heard of has no counter either, so its abstention reaches the vowel grouper
-    uncorrected (W5 review r2-tests-15). `_split_core`'s comment carries the corpus measurement that says
-    leaving it that way loses fewer real syllables than the per-token reading would.
-
-    `"".join(parts) != word` is a MANGLED answer rather than an abstention, and abstains either way.
+    AN UNSPLIT ANSWER IS AN ABSTENTION WHERE A LATER TIER CAN BE CORRECTED, and a RESULT where it cannot:
+    off English there is no count source to undo an over-split, so a language with no counter keeps pyphen's
+    single fragment. THE FLAG IS THE LANGUAGE'S AND NOT THE TOKEN'S, which `_split_core`'s comment measures.
+    A MANGLED answer abstains too (docs/arch/04-alignment.md §8; README, "Syllables").
     """
     dic = _pyphen_dic(language)
     if dic is None:
@@ -153,19 +91,15 @@ def _pyphen_split(word: str, language: str, *, unsplit_abstains: bool) -> list[s
 def _moby() -> dict[str, tuple[int, ...]]:
     """Tier 2's table: `{word: (split offset, ...)}` from the shipped Moby data, read once.
 
-    OFFSETS RATHER THAN FRAGMENTS so the table is cheap: 152 085 small int tuples instead of 152 085 lists
-    of strings, and the fragments are sliced out of the caller's own token, which keeps the original casing
-    without a second copy of every word.
+    OFFSETS RATHER THAN FRAGMENTS so the table is cheap, and the fragments are sliced out of the caller's own
+    token, which keeps its casing without a second copy of every word.
     """
     table: dict[str, tuple[int, ...]] = {}
     try:
         raw = (importlib.resources.files(__package__) / "data" / _MOBY_DATA).read_bytes()
-        # THE DECOMPRESS IS INSIDE THE GUARD (W5 review r1-tests-21). `pyproject.toml` and
-        # `tests/test_packaging.py` both state this tier's contract as "its ABSENCE is a silent degradation
-        # rather than an ImportError", and a half-written or corrupted `data/mhyph.xz` — an interrupted
-        # checkout, a bad image layer — is an absence of the same kind: `lzma.LZMAError` and
-        # `UnicodeDecodeError` were raised out of a PURE domain function on the first `syllables()` of a job,
-        # failing the align instead of falling back to pyphen.
+        # THE DECOMPRESS IS INSIDE THE GUARD: this tier's contract is "its ABSENCE is a silent degradation
+        # rather than an ImportError", and a corrupted `data/mhyph.xz` is an absence of the same kind — it
+        # raised out of a PURE domain function on the first `syllables()` of a job.
         text = lzma.decompress(raw).decode("ascii")
     except (
         FileNotFoundError,
@@ -216,11 +150,8 @@ def _cmu_entries() -> Any:
 
 @functools.cache
 def _cmu_syllable_count(word: str) -> int | None:
-    """Tier 1's contribution: the PHONETIC syllable count, or None when CMUdict does not know the word.
-
-    Counts stress markers on the first pronunciation — the standard trick: every vowel phoneme in ARPAbet
-    carries a 0/1/2 stress digit, and sung syllables track vowel phonemes.
-    """
+    """Tier 1's contribution: the PHONETIC syllable count, or None when CMUdict does not know the word —
+    stress markers on the first pronunciation, every ARPAbet vowel phoneme carrying one."""
     entries = _cmu_entries()
     if entries is None:
         return None
@@ -280,20 +211,11 @@ def _edges(word: str) -> tuple[str, str, str]:
 def _split_core(core: str, language: str) -> list[str]:
     """The ladder over ONE hyphen-free run of letters: Moby, then pyphen, then vowel groups, CMU-counted."""
     english = language.startswith("en")
-    # `unsplit_abstains=english`: only English has a tier after this one that can correct an over-split
-    # (`_force_count` against CMUdict, below) — see `_pyphen_split`, W5 review r1-correctness-6.
-    # AND FOR AN ENGLISH TOKEN CMUdict DOES NOT KNOW, THAT TIER IS NOT THERE: the abstention falls through to
-    # `_vowel_groups` with nothing to correct it, where before W5 the token kept pyphen's single fragment
-    # (W5 review r2-tests-15, which is right about the mechanism). MEASURED BEFORE LEAVING IT AS IT IS, on the
-    # bench corpus's own 32 truth texts (10 711 hyphen-free tokens): 59 occurrences / 38 distinct tokens reach
-    # here with every counter abstaining, and in 22 of the 59 the vowel grouper also answers ONE, so 37
-    # occurrences differ from the pre-W5 answer — 21 at 2 pieces, 2 at 3, 7 at 4 and 7 at 5. THE 14 AT 4-5
-    # PIECES ARE 8- AND 10-LETTER REPEATED-VOWEL VOCALISE TOKENS, which really are sung as that many
-    # syllables, and only 3 of the 37 ask for more pieces than the token has letter PAIRS (the one shape that
-    # cannot be right). So making the abstention conditional on a count existing would hand back more real
-    # ball bounces than false ones on the only population anybody has measured, and the conservative-looking
-    # fix is the lossy one. Reading the count here first would be free (`_cmu_syllable_count` is cached) and
-    # is the change to make if a fitted measurement ever says so; `test_syllabify` pins today's answer.
+    # `unsplit_abstains=english`: only English has a tier after this one that can correct an over-split, and
+    # for an English token CMUdict does not know, that tier is not there either. MEASURED BEFORE LEAVING IT AS
+    # IT IS — making the abstention conditional on a count existing would hand back more real ball bounces
+    # than false ones on the only population anybody has measured (README, "Syllables: the tokens the hyphen
+    # rule reaches"); `test_syllabify` pins today's answer.
     pieces = (
         (_moby_split(core) if english else None)
         or _pyphen_split(core, language, unsplit_abstains=english)

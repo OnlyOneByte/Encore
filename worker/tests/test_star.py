@@ -215,6 +215,41 @@ def test_the_domain_and_the_adapter_name_the_same_column() -> None:
     )
 
 
+def test_the_widened_matrix_carries_the_blank_of_the_vocabulary_it_came_from() -> None:
+    """W7 review r1-tests-12. `starred` is the one code path that REBUILDS an `Emissions` from scratch, so it
+    is the one that can lose a field — and `blank_id` is the field the decodes it feeds read off the WIDENED
+    matrix, never off the original (`generate.blank_of(decode_matrix)`, and `_placement_margins`' `blank=`).
+    The reviewer mutated the copy to `blank_id=0` and the WHOLE SUITE passed: every star fixture here is a
+    `blank_id=0` vocabulary, where the mutation is invisible, and the only non-zero-blank fixtures
+    (`test_blank_id`) never reach the arm. So the two halves are asserted on the shape 23 of whisperx's 36 HF
+    bundles actually have — the review's own permutation, `test_blank_id.permuted`, which swaps the blank out
+    of column 0 and a sung letter into it — and review M9's equality is re-asserted THROUGH the star arm:
+    the same evidence under another vocabulary must publish the same document, stars and all."""
+    from tests.test_blank_id import permuted
+
+    matrix = sung_matrix(SUNG, VOCAB, DURATION)
+    moved, swapped = permuted(matrix, VOCAB, "a")
+    blank = ml.blank_id_of(swapped)
+    assert blank == VOCAB["a"] != 0, "the fixture must really move the blank off column 0"
+    aware = ml.Emissions(
+        log_probs=moved,
+        frame_sec=FRAME_SEC,
+        dictionary=swapped,
+        model="",
+        blank_id=blank,
+        specials={"<pad>": blank, "|": swapped["|"]},
+    )
+    widened = ml.starred(aware)
+    assert widened.blank_id == blank, "the widened matrix keeps the blank its own vocabulary names"
+    assert widened.specials == {"<pad>": blank, "|": swapped["|"], ml.STAR_NAME: STAR}
+
+    want = generate(
+        LINES, ml.starred(emissions(matrix)), decoder=ctc_viterbi, syllabifier=ONE_SYLLABLE, stars=True
+    )
+    got = generate(LINES, widened, decoder=ctc_viterbi, syllabifier=ONE_SYLLABLE, stars=True)
+    assert got.as_doc() == want.as_doc()
+
+
 def test_an_empty_matrix_leaves_the_arm_inert_rather_than_fatal() -> None:
     """There is no maximum to take over no frames. `starred` returns the matrix unchanged, `star_of` names
     nothing, and the decode is the default's — the same shape of refusal `separator_of` makes on a vocabulary

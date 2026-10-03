@@ -1,22 +1,8 @@
 """Who owns which job, tracked locally so `publish` can be refused without a round trip.
 
-THE PROBLEM. The core's reaper requeues a job whose lease expired, handing it to another worker. If this
-worker is mid-alignment when that happens, both will finish and both will publish — different lyrics for
-one song, last writer wins, no error anywhere.
-
-THE GUARD IS TWO-SIDED, and both halves are needed:
-
-  * `job:revoked` PUSHED by the core closes the window continuously. A poll cannot: the reassignment
-    happens at a moment nobody chose.
-  * `job:claim` / `job:claim-ack` PULLED by this worker covers what a push loses. A disconnect drops
-    pushed frames, and a disconnect is precisely what causes a lease to expire and a job to be
-    reassigned — so the one event that revokes a job is the same event that hides the revocation.
-
-Either alone leaves a case where two workers publish. This ledger is where both land, and it is pure: no
-sockets, no clock. `client.py` feeds it frames and `steps` ask it questions.
-
-FAIL CLOSED. An unknown job is NOT ours. A worker that publishes for a job it cannot account for is
-exactly the failure being prevented, and the cost of being wrong the other way is one redundant re-claim.
+Where the pushed and the pulled half of the ownership guard both land: pure, no sockets and no clock, fed
+frames by `client.py` and asked questions by `steps`. It FAILS CLOSED — an unknown job is not ours. Why both
+halves are needed and what each of the rules below closes: docs/arch/05-worker.md §7 and §7.1.
 """
 
 from __future__ import annotations
@@ -47,43 +33,28 @@ class Reason(StrEnum):
 
 @dataclass
 class Ownership:
-    """The local ledger of job standing.
+    """The local ledger of job standing, deliberately NOT authoritative — the core is.
 
-    Deliberately NOT authoritative — the core is. This records what the core last told us, so a decision
-    can be made without a round trip, and `pending_claims()` names the jobs whose standing is stale
-    enough to be worth asking about again.
+    Records what the core last told us so a decision needs no round trip; `pending_claims()` names the
+    standings stale enough to be worth asking about again.
     """
 
-    #: Does the CORE answer `job:claim` with `job:claim-ack`? When it does not, the pull half of the guard
-    #: cannot run and requiring it would deadlock every job: `accepted()` would mark the job unconfirmed,
-    #: nothing would ever clear it, and `may_publish` would refuse forever — after the full 40-minute cook.
-    #:
-    #: DEFAULT TRUE, now that core implements both halves: `WorkerHub.#onClaim` answers every `job:claim`
-    #: with a three-way `job:claim-ack`, and the reaper pushes `job:revoked` to whoever held a job BEFORE
-    #: the requeue clears the row.
-    #:
-    #: It was False for exactly as long as core could not answer. Requiring a confirmation nothing sends
-    #: deadlocks every publish after the full cook — a total outage rather than a safe default — so the flip
-    #: belongs in the same change as the core handlers and nowhere else.
-    #:
-    #: Set it FALSE to run a new worker against an OLD core: that core drops the claim silently (an unknown
-    #: frame simply returns), so nothing would ever clear `_unconfirmed`.
+    #: Does the CORE answer `job:claim` with `job:claim-ack`? Default TRUE because it does; set it FALSE
+    #: only to run a new worker against an OLD core, which drops the claim silently
+    #: (docs/arch/05-worker.md §7.1).
     require_confirmation: bool = True
     _ours: set[str] = field(default_factory=set)
-    #: Why each lost job was lost. RETAINED past the job's end, deliberately — see `finished()`.
-    #: Bounded, because this process is long-lived and a revoked job id would otherwise never leave.
+    #: Why each lost job was lost. Retained past the job's end and bounded (docs/arch/05-worker.md §7.1).
     _lost: dict[str, Reason] = field(default_factory=dict)
     _lost_cap: int = 512
-    #: Jobs accepted since the last successful claim round. Re-asked after every reconnect, because a
-    #: reconnect is the event most likely to have hidden a revocation. Always EMPTY when
-    #: `require_confirmation` is False — nothing populates it, so nothing waits on it.
+    #: Jobs accepted since the last successful claim round, re-asked after every reconnect. Always EMPTY
+    #: when `require_confirmation` is False, so nothing waits on it.
     _unconfirmed: set[str] = field(default_factory=set)
 
     # ── what the transport tells it ──────────────────────────────────────────────────────────────
 
     def accepted(self, job_id: str) -> None:
-        """We took an assignment. Ours until told otherwise, and unconfirmed until a claim round IF the
-        core can answer one."""
+        """We took an assignment: ours until told otherwise, unconfirmed until a claim round."""
         self._ours.add(job_id)
         self._lost.pop(job_id, None)
         if self.require_confirmation:
@@ -95,18 +66,14 @@ class Ownership:
         self._unconfirmed.discard(job_id)
         self._lost[job_id] = reason
         while len(self._lost) > self._lost_cap:
-            # Oldest out. dicts preserve insertion order, so this is FIFO without a second structure.
+            # Oldest out; dicts preserve insertion order, so this is FIFO with no second structure.
             self._lost.pop(next(iter(self._lost)))
 
     def claim_answered(
         self, *, owned: frozenset[str], revoked: frozenset[str], unknown: frozenset[str]
     ) -> None:
-        """Apply a `job:claim-ack`.
-
-        `unknown` is treated as LOST but recorded with its OWN reason. A job the core has never heard of
-        is a real desync — this worker is running something the core has no row for — and folding it into
-        an ordinary reassignment would hide that. It must not publish either way.
-        """
+        """Apply a `job:claim-ack`. `unknown` is LOST but keeps its OWN reason, being a real desync
+        rather than an ordinary reassignment (docs/arch/05-worker.md §7.1)."""
         for job_id in owned:
             self._ours.add(job_id)
             self._lost.pop(job_id, None)
@@ -117,27 +84,16 @@ class Ownership:
             self.revoked(job_id, Reason.CORE_NEVER_HEARD_OF_IT)
 
     def disconnected(self) -> None:
-        """A connection dropped. Everything we hold becomes unconfirmed again.
+        """A connection dropped. Everything we hold becomes unconfirmed again, and NOT lost.
 
-        Standing is NOT reset to LOST here — that would abandon healthy in-flight work on every blip, and
-        a reconnect usually confirms the same jobs. But every one of them must be re-claimed before it
-        can publish, which is what `pending_claims()` then reports.
-
-        A no-op without `require_confirmation`: with no core to answer, marking jobs unconfirmed would
-        strand them rather than protect them. The residual exposure is the honest one — a revocation pushed
-        while the socket was down is never seen, which is the same window the old worker lives with.
+        A no-op without `require_confirmation`, exposure included: docs/arch/05-worker.md §7.1.
         """
         if self.require_confirmation:
             self._unconfirmed |= set(self._ours)
 
     def finished(self, job_id: str) -> None:
-        """Release a job's slot. Does NOT clear a recorded loss.
-
-        The loss has to outlive the job, and that is the subtle part. A revoked job's driver runs its
-        cleanup the moment it is cancelled, so clearing `_lost` here would erase the reason the job
-        produced nothing — exactly when an operator asks why. A job that completed normally has no
-        `_lost` entry to keep, so this costs nothing in the ordinary case.
-        """
+        """Release a job's slot. Does NOT clear a recorded loss, which has to outlive the job
+        (docs/arch/05-worker.md §7.1)."""
         self._ours.discard(job_id)
         self._unconfirmed.discard(job_id)
 
@@ -151,12 +107,8 @@ class Ownership:
         return Standing.UNKNOWN
 
     def may_publish(self, job_id: str) -> bool:
-        """Is this job ours, confirmed, and not revoked?
-
-        An UNCONFIRMED job cannot publish. That is the whole point of the pull half: after a reconnect we
-        do not know whether the core reassigned this job while we were away, and publishing on a guess is
-        the failure mode. The caller re-claims and asks again.
-        """
+        """Is this job ours, confirmed, and not revoked? An UNCONFIRMED job cannot publish, which is the
+        whole point of the pull half; the caller re-claims and asks again."""
         return job_id in self._ours and job_id not in self._unconfirmed
 
     def lost_reason(self, job_id: str) -> Reason | None:

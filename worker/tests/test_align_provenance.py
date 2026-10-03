@@ -1,35 +1,13 @@
 """Provenance through the repair ladder: who timed each line, and what that lets grading claim.
 
-Four review findings, each pinned end to end through the real `time_text` on the CTC fixture
-(`tests/ctc_fixture.py`, a slice-relative Viterbi frame-for-frame equal to torchaudio's kernel):
-
-  H1  the claims are mapped onto OUR clock once, before the first reconcile, so no repair window and no
-      adopted span is read in the sheet's own clock (`domain/lyrics/claimmap.py`; W2). It removes H4's
-      exhibit at the source — an offset sheet no longer reaches R4 at all — which is why the exhibit below
-      is now pinned on a sheet with too few paired lines to map.
-  H4  grading's corroboration comes from the BLIND decode against the claims. A line re-decoded inside
-      its claim window lands on the claim by construction, so the ladder's re-reconcile counted the claim
-      agreeing with itself (the review's exhibit: R4 lines parked at the pad's edge under offset claims,
-      corroborated, `high` and wrong). Still the rule, and still load-bearing: the map abstains on a short
-      sheet, on a scattered one, and wherever it cannot beat no-shift.
-  L1  a line R4 timed on the MIX is not re-decoded on the stem by a later stage (repro s6), and the
-      adoption test's reference median is the blind decode's, taken once (repro s5). Both are built and
-      ship DEFAULT-OFF (`l1-mix-kept`, `l1-blind-median` in `Config.align_experiments`): each measured
-      worse on real songs (never-be-alone; the numbers are at the arms in `_time_text_global`). The tests
-      pin each arm's fix with it on, and the shipped behaviour with it off.
-  M6  the never-sung rule does not bin a CLAIMED line the stem is silent in but the mix is not: R4, the
-      mix witness, puts it back where the mix's acoustic model HEARS it (repro s7: a line the stem lost was
-      deleted before R4 could hear it on the mix). Never as its claim's span, and never steering the rest
-      of the ladder (review W1 r1: the mix envelope spared credits and headers the band made loud, and W1
-      put back every one). Built and ships DEFAULT-OFF (`m6-mix-spare`): on the full corpus it still put
-      back one header and one extra-verse line the mix's model heard the next line's speech under, which
-      fails W1's unsung gates (the numbers are at the rule in `_time_text_global`). A line the stem itself
-      sounds in is binned unless `m6-window-spare` is on. The tests pin each arm with it on, and the
-      shipped default (v2's rule: binned) with it off.
-
-EVIDENCE BY PATH. The aligner serves the stem's matrix and the mix's separately, and the wavs the envelope
-reads are written separately too. That is what lets a test say which witness heard a line — a single
-matrix for both is how "R4 decoded the stem" once passed the whole suite (review r1).
+Four review findings, pinned end to end through the real `time_text` on the CTC fixture: the claims are
+mapped onto our clock once, before the first reconcile (H1); grading's corroboration comes from the BLIND
+decode, a line re-decoded inside its claim window landing on its claim by construction (H4, XA-02, XA-03);
+a line R4 timed on the MIX is not re-decoded on the stem by a later stage (L1); and the never-sung rule
+does not bin a claimed line the stem is silent in but the mix is not (M6). L1's and M6's arms ship
+DEFAULT-OFF, so both sides of each are pinned. The rules are docs/arch/04-alignment.md §4, §6 and §12 and
+the arms' numbers README, "The L1 arms, priced on the song the review read them from"; the aligner serves
+the stem's and the mix's matrices separately, which is what lets a test say which one R4 read.
 """
 
 from __future__ import annotations
@@ -192,16 +170,11 @@ def align(
 ) -> Outcome:
     """One `time_text` attempt on a song whose MIX sings `phrases` and whose STEM sings `stem_sings`.
 
-    The stem's wav (what the envelope hears) sings `stem_sings`; its matrix (what the decoder hears) is
-    `stem_matrix`, the same phrases by default. `claims` is one (start, end) or None per line of the text,
-    which is `phrases` then `extra_text`. `(start, None)` is a TRUNCATED cue — a stamp with no end, which is
-    what an LRC's last line and a stacked timestamp carry — and the reader defaults its end (review M5).
-
-    `stemless` serves the job NO vocals stem (`AudioRef.vocals_path=None`), so the MIX is the align target
-    at every stage — the shape a song the separator could not run on takes, and the one the bench's
-    `--no-stem` mode measures. `mix_bed` puts a continuous instrumental tone under the mix, which is what
-    makes a real mix's activity envelope active nearly everywhere.
-    """
+    The stem's wav is what the envelope hears and `stem_matrix` what the decoder hears. `claims` is one
+    (start, end) or None per line of `phrases` then `extra_text`; `(start, None)` is a TRUNCATED cue, the
+    shape an LRC's last line and a stacked timestamp carry. `stemless` serves the job no vocals stem, so
+    the MIX is the align target at every stage (the bench's `--no-stem` shape), and `mix_bed` lays a
+    continuous instrumental tone under the mix, which is what makes a real mix's envelope active."""
     from encore_worker.adapters import ml
 
     monkeypatch.setattr(ml, "forced_align_decoder", decoder)
@@ -271,23 +244,13 @@ SPARSE_SHORT: list[Phrase] = SPARSE[:4]
 def test_lines_the_mix_timed_inside_offset_claim_windows_are_not_graded_high(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The review's H4 exhibit, on the sheet W2's claim clock still leaves in its own clock.
+    """H4's exhibit on a sheet the claim clock leaves alone: a repaired line may not grade `high`.
 
-    An LRC 2.5 s late over sparse vocals: every claim window sits on stem silence, so R4 re-decodes every
-    line on the mix inside [claim - 1 s, end + 1 s]. The window holds only the line's tail, the forced path
-    parks the rest at the window's edge, and every line comes out at the same residual (-1 s, the pad) —
-    which the ladder's re-reconcile reads as one coherent offset, every line corroborated. The old grading
-    published all of them `high`, 1.5 s late.
-
-    The blind decode had them right, and it is the only independent witness: the blind verdict is OFFSET at
-    -2.5 s and corroborates every line, but a repaired line stays `high` only if the repair kept that
-    corroborated position. None did, so none is.
-
-    WHY FOUR LINES (W2). On the six-line sheet the claim clock now maps the offset away before anything
-    reads it, so R4 never fires at all — the test below pins that. Four paired claims is under
-    `claimmap.MIN_PAIRS`, where a map is a fit through too few points to move a sheet with, so the raw
-    clock survives and the grading rule is the only thing standing between the exhibit and a `high` line.
-    """
+    An LRC 2.5 s late over sparse vocals, with four paired claims — under `claimmap.MIN_PAIRS`, so the
+    clock abstains and the raw claims survive. Every claim window sits on stem silence, so R4 re-decodes
+    every line on the mix, each lands at the window's own edge, and the re-reconcile reads one coherent
+    offset with every line corroborated: the old grading published all of them `high`, 1.5 s late. The
+    blind decode is the only independent witness, and the positions it corroborates are not these."""
     got = align(tmp_path, monkeypatch, phrases=SPARSE_SHORT, duration=48.0, claims=truth(SPARSE_SHORT, 2.5))
     assert got.aligner.asked[1:] == [str(tmp_path / "mix.wav")], "R4 decoded the mix"
     for line, (text, start, _end) in zip(got.lines, SPARSE_SHORT, strict=True):
@@ -315,15 +278,11 @@ def test_an_offset_sheet_is_mapped_onto_our_clock_before_any_repair_reads_it(
 ) -> None:
     """H1 at the source: the exhibit above, with enough paired lines to map.
 
-    The claims are 2.5 s late over sparse vocals — the shape that used to send every line to R4 inside a
-    window sitting on stem silence, and publish it parked at the window's edge. Mapped onto our clock
-    first, the windows land back on the singing: nothing is stem-invisible, R4 never runs, the mix is never
-    even decoded, and the blind decode publishes where the song is actually sung, corroborated and `high`.
-    The map's own offset is the fact about the SHEET, and it is on the trail.
-
-    WHICH CANDIDATE: the envelope lag and the decode median both explain all six lines here, and a tie goes
-    to the lag measured on the AUDIO — the one estimate that does not read our own decode (`claimmap`).
-    """
+    Mapped onto our clock before anything reads them, the 2.5 s-late windows land back on the singing:
+    nothing is stem-invisible, R4 never runs, the mix is never decoded, and the blind decode publishes
+    where the song is sung, corroborated and `high`. The envelope lag and the decode median both explain
+    all six lines, and a tie goes to the lag measured on the AUDIO — the one estimate that does not read
+    our own decode."""
     got = align(tmp_path, monkeypatch, phrases=SPARSE, duration=48.0, claims=truth(SPARSE, 2.5))
     assert got.aligner.asked == [str(tmp_path / "vocals.wav")], "the mix is never decoded: R4 has no line"
     for line, (text, start, _end) in zip(got.lines, SPARSE, strict=True):
@@ -441,11 +400,9 @@ def test_a_line_r2_repairs_inside_its_claim_window_is_low_unless_the_blind_decod
 #: Review repro s6's own numbers: the stem lost line 5 and its claim runs 0.4 s late.
 S6 = {5: 0.4}
 
-#: The same sheet with ONE grossly displaced stamp (line 0, three seconds out). Since W2 that is what makes
-#: R2 look at a sub-second disagreement AT ALL: the verdict taxonomy only calls a sheet STRUCTURAL — the
-#: class whose disputes are every uncorroborated line — when a minority disagrees by more than a phrase
-#: (review M4, `reconcile.Reconciliation.disputed`). On the 0.4 s sheet alone the class is COARSE and nothing
-#: is re-decoded, which is the test below this pair; the stray is how the arms stay measurable.
+#: The same sheet with ONE grossly displaced stamp (line 0, three seconds out), which since W2 is what makes
+#: R2 look at a sub-second disagreement at all: only a STRUCTURAL verdict disputes every uncorroborated line
+#: (M4), and the 0.4 s sheet alone grades COARSE. docs/arch/04-alignment.md §7 carries the taxonomy.
 S6_STRAY = {5: 0.4, 0: 3.0}
 
 
@@ -499,17 +456,13 @@ def test_by_default_r2_may_re_decode_a_line_r4_timed_on_the_mix(
 def test_a_sub_second_dispute_alone_does_not_send_r2_to_undo_the_mix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """REVIEW M4 removing repro s6's harm by default, on the repro's own sheet (`S6`, no stray stamp).
+    """M4 by default, on repro s6's own sheet: a sub-second dispute is not a repair candidate.
 
-    The BLIND verdict is STRUCTURAL and rightly so: the stem lost line 5, so the blind decode put it more
-    than a phrase from its claim, which is a gross minority of one. R4 then finds it on the mix where it is
-    sung, 0.4 s from its claim — and the re-reconcile R2 reads is COARSE, because the only disagreement left
-    is that 0.4 s. A sub-second disagreement is not a repair candidate for any class but STRUCTURAL, so R2
-    never runs and the mix's measurement stands, without the `l1-mix-kept` arm (which was measured worse on
-    the corpus for other reasons and stays off).
-
-    Before W2 the re-reconcile read STRUCTURAL as well — any agreement under 1.0 did — and R2 re-decoded
-    line 5 on the silent stem and adopted the jittered claim: 25.90 s for a line sung at 25.50 s."""
+    The BLIND verdict is STRUCTURAL and rightly so — the stem lost line 5, a gross minority of one. R4
+    finds that line on the mix 0.4 s from its claim, and the re-reconcile R2 reads is then COARSE, where
+    nothing under `reconcile.COARSE_TOLERANCE_SEC` is disputed: R2 never runs and the mix's measurement
+    stands. Before W2 any agreement under 1.0 read STRUCTURAL, and R2 re-decoded line 5 on the silent
+    stem and adopted the jittered claim — 25.90 s for a line sung at 25.50 s."""
     got = s6(tmp_path, monkeypatch, frozenset(), S6)
     line = got.lines[5]
     assert abs(line["start"] - 25.5) < 0.1, f"published at {line['start']:.2f} s"
@@ -551,18 +504,13 @@ def quiet_and_lost(
 def test_with_l1_blind_median_a_quiet_heard_line_is_not_adopted_over(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review L1's median. Line 1 is heard where it is sung, but scores well below the loud lines. Once R4
-    has restored lines 4-7 from the mix, the verdict disputes line 1 (its claim is 0.4 s late) and R2
-    re-decodes it in its window, where it is heard again at 8.0 s.
+    """L1's median: the adoption test's reference is the BLIND decode's, taken once (`l1-blind-median`).
 
-    Is that decode "unheard"? Against the BLIND decode's median — four loud lines and four the stem could
-    not place, -2.8 — it sits far above the adoption gap and is kept (`l1-blind-median`). Recomputed at R2
-    over the series as repaired so far (the default), the four mix lines stood in for the lines they
-    replaced, the median rose to the loud lines' -0.1, and the quiet line fell below it and adopted its
-    claim: 8.4 s, the claim's own 0.4 s error. The same shape as repro s5, where adopted lines' 0.0
-    sentinels lifted the median. (With `m6-mix-spare` on as well: by default the never-sung rule bins the
-    stem's two smeared closing lines, lines 6-7, and R4 restores only 4-5 — the median still keeps the
-    quiet decode, but four mix lines is the shape this was measured on.)"""
+    Line 1 is heard where it is sung but scores well below the loud lines, and R2 re-decodes it in its
+    window. Against the blind median (-2.8, over four loud lines and four the stem could not place) it
+    sits far above the adoption gap and is kept. Recomputed at R2 over the series as repaired so far —
+    the default — the four restored mix lines lift the median to the loud lines' -0.1, and the quiet line
+    falls below it and adopts its claim's own 0.4 s error, which is repro s5's shape."""
     got = quiet_and_lost(tmp_path, monkeypatch, frozenset({"l1-blind-median", "m6-mix-spare"}))
     line = got.lines[1]
     assert line["text"] == "with me tonight"
@@ -608,13 +556,11 @@ def test_a_sub_second_dispute_alone_does_not_send_r2_to_adopt_over_a_quiet_line(
     assert "adopted" not in why
 
 
-# ── M6 (`m6-mix-spare`): a claimed line is binned only when BOTH envelopes are silent over its claim window
+# ── M6 (`m6-mix-spare`): a claimed line is binned only when BOTH envelopes are silent over its window ──
 #
-# The never-sung rule's decode signals need a line the decode SMEARED over silence, which is what the real
-# kernel does with a line the emissions do not contain (the calibration: tfr-chosen's credit, 1.0 chars/s).
-# The exact Viterbi instead packs such a line into its neighbour's last frames, so these rigs give the
-# stem's matrix a faint trace of the line on silent frames (`weakly_sung` at 0.05): the decode then parks
-# it there, 3.0 below the song's score, exactly as the review's s7 decoder scripted it.
+# The never-sung rule's decode signals need a line the decode SMEARED over silence, which the real kernel
+# does but an exact Viterbi does not — it packs such a line into its neighbour's last frames instead. So
+# these rigs give the stem's matrix a faint trace on silent frames and the decode parks it 3.0 below.
 
 #: A faint trace: under 0.05 the line's chars barely beat the blank on those frames.
 FAINT = 0.05
@@ -894,11 +840,9 @@ def test_with_m6_window_spare_a_claimed_line_the_decode_put_on_silence_is_kept_w
 
 # ── M5: a truncating claim window must not read as "heard nothing" ────────────────────────────────────
 #
-# A claim carries an END only where the sheet gave one. `_time_text_global` defaults the rest to
-# start + 1.0 s, which is what an LRC's last stamp, a stacked timestamp and a short caption cue all get. Two
-# defects followed (review M5), and the song below is built to show both: six lines with five-second gaps,
-# the last of them long enough (30 characters, 26 of them alignable) that a one-second cue provably cannot
-# hold it — 2 frames a character at 20 ms is 1.04 s, `regenerate`'s own floor for a window it will decode in.
+# A claim carries an END only where the sheet gave one; `_time_text_global` defaults the rest to start +
+# 1.0 s, which is what an LRC's last stamp, a stacked timestamp and a short caption cue all get. The song
+# below is six lines with five-second gaps, the last too long (26 alignable characters) for a 1.0 s cue.
 
 #: Sparse, so a window can be widened without reaching its neighbour, and one long closing line.
 TRUNCATED: list[Phrase] = [
@@ -928,18 +872,14 @@ SCATTERED: list[Phrase] = [
 def test_a_truncated_cue_is_re_decoded_in_a_window_wide_enough_to_hold_the_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """REVIEW M5, the defect and the fix. Our own decode has scattered (repeat-heavy text, in the review's
-    case), so the blind verdict is UNRELATED and the claims — which fit the audio far better — become R1's
-    anchors: EVERY claimed line is re-decoded inside its claim window, including the ones the blind decode
-    already had right. The closing line is one of those, and its cue has no end.
+    """M5's fix: a truncated cue's window is held open to the blind decode's own span for the line.
 
-    Cut to start + 1.0 s the window is 3 s including both pads, against a line that takes 3 s to sing: the
-    forced path compresses it, `adopt_where_unheard` reads the poor score as "heard nothing", and the claim's
-    one-second span replaces a correct measurement with six words spread over a third of the line — measured
-    on this fixture with the hold-open removed, 40.00-41.00 s against 40.00-43.00 sung. Held open to the end
-    of the BLIND decode's own span for the line (which is what measured its length), the window holds it, the
-    re-decode finds it where it is sung, and the words keep their scores.
-    """
+    Our own decode has scattered, so the blind verdict is UNRELATED and the claims become R1's anchors —
+    every claimed line re-decoded inside its claim window, the closing line among them, and its cue has
+    no end. Cut to start + 1.0 s the window is 3 s including both pads against a line that takes 3 s to
+    sing: the forced path compresses it, `adopt_where_unheard` reads the poor score as "heard nothing",
+    and the claim's one-second span replaces a correct measurement (40.00-41.00 s against 40.00-43.00
+    sung). Held open to the blind span's end, the re-decode finds the line where it is sung."""
     got = align(
         tmp_path,
         monkeypatch,
@@ -965,21 +905,14 @@ def test_a_truncated_cue_is_re_decoded_in_a_window_wide_enough_to_hold_the_line(
 def test_a_claim_span_too_short_to_hold_the_line_is_not_adopted_under_the_floor_arm(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """M5's second half, where the window cannot be widened. Here the sheet claims the closing line 7 s
-    early — over the line before it — and gives no end, so the blind decode's span does not touch the cue at
-    all and nothing vouches for a wider window. R2 re-decodes the disputed line inside the cue, over frames
-    that sing a DIFFERENT line, and that decode hears nothing.
+    """M5's other half, where nothing vouches for a wider window (`m5-adopt-floor`, DEFAULT-OFF).
 
-    The claim's span is then adopted wholesale and the clamp squeezes it past the neighbour it overlapped:
-    5.06 s from where the line is sung (the default's own number is the test below). A span that cannot hold
-    the line at `regenerate`'s own floor is a truncated cue, not a timing, so under `m5-adopt-floor` the
-    repair is dropped and the decode's measurement stands — with the refusal on the trail, because "no
-    repair" and "no repair needed" read alike otherwise.
-
-    THE ARM IS DEFAULT OFF: on the corpus this floor costs the unperturbed row 16 of 1736 lines within
-    ±500 ms and a gross line, all on short caption cues whose START is right (W2 bench, `config.py`'s arm
-    list). This fixture is the defect it was built for, and the pair of tests keeps both numbers honest.
-    """
+    The sheet claims the closing line 7 s early and gives no end, so the blind decode's span does not
+    touch the cue and the window cannot be widened. R2 re-decodes inside the cue over frames that sing a
+    different line, hears nothing, and the claim's span is adopted wholesale: 5.06 s from where the line
+    is sung. Under the arm a span too short to hold the line at `regenerate`'s floor is a truncated cue
+    rather than a timing, so the repair is dropped and the refusal goes on the trail. The arm costs the
+    unperturbed corpus row 16 of 1736 lines within ±500 ms and a gross line, which is why it is off."""
     got = align(
         tmp_path,
         monkeypatch,
@@ -1030,10 +963,9 @@ def test_the_shipped_default_adopts_a_short_claim_span_over_a_decode_that_heard_
     assert "kept the measured timing" not in why, "the floor is the arm, not the default"
 
 
-#: THE OFF-CLOCK SHEET (W4 review r1's adoption guard, pinned in review r2). Lines 2 s long every 4 s, so a
-#: claim stamped 3 s LATE still overlaps the next line's singing on the stem — which keeps the case away from
-#: R4 (`env_overlap < _NEVER_SUNG_ENV` is what sends a claimed line to the mix witness) and on R1, the stage
-#: the guard guards. This is never-be-alone's `off3` shape in miniature.
+#: THE OFF-CLOCK SHEET: lines 2 s long every 4 s, so a claim stamped 3 s LATE still overlaps the next line's
+#: singing on the stem — which keeps the case away from R4 and on R1, the stage the adoption guard guards.
+#: This is never-be-alone's `off3` shape in miniature.
 OFF_CLOCK: list[Phrase] = [
     ("come and fly away", 5.0, 7.0),
     ("with me tonight", 9.0, 11.0),
@@ -1063,22 +995,14 @@ OFF_CLOCK_LATE = 3.0
 def test_a_raw_claim_time_is_not_adopted_on_a_sheet_the_audio_says_is_seconds_off(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W4 review r1's `off_clock` guard, which had NO test (review r2, tests-18): replacing the whole
-    predicate with `False` left the suite green, and it is the fix for this wave's only shipped regression.
+    """R1's `off_clock` guard: a raw claim time is not adopted on a sheet the audio says is seconds off.
 
-    THE SHAPE, which no other fixture presents: the claim clock DECLINED to map the sheet (every line's
-    decode is out by a different amount, so no candidate beats no-shift by two lines), the envelope says the
-    claims are 3 s from the singing with a good correlation, and the blind decode relates NOTHING to them.
-    Adoption exists for the opposite case — a claim that is right and a window decode that heard nothing
-    (the test above) — so here the window re-decode's own timing must stand, because a claim time is only a
-    measurement if it is on OUR clock. On the corpus this is never-be-alone under a displaced sheet: R1
-    adopted 38 of 44 RAW claim times and published the document 3 s late (off3 gross 0 -> 44).
-
-    AND THE DISPLACEMENT IS PRINTED IN `ShiftFit`'s OWN SIGN (review r2, correctness-6/spec-17). The sheet
-    here is stamped 3 s LATE, so the fit reads -3.00 s — seconds to ADD to the claims to reach the singing,
-    the same sign `claimmap.consensus` consumes as `envelope_lag`. The note used to negate it and told an
-    operator the singing arrives 3 s AFTER claims it actually precedes by 3 s.
-    """
+    The shape no other fixture presents: the claim clock DECLINED to map the sheet, the envelope says the
+    claims are 3 s from the singing with a good correlation, and the blind decode relates nothing to
+    them. Adoption exists for the opposite case — a claim that is right and a window decode that heard
+    nothing — so here the window re-decode's own timing must stand. On the corpus this is never-be-alone
+    under a displaced sheet: R1 adopted 38 of 44 raw claim times and published 3 s late (off3 gross
+    0 -> 44). The note prints `ShiftFit`'s own sign, seconds to ADD, as `claimmap.consensus` reads it."""
     got = align(
         tmp_path,
         monkeypatch,
@@ -1128,10 +1052,9 @@ WINDOWED_HEARD: list[Phrase] = [
     ("carry me home", 50.0, 52.0),
 ]
 
-#: The LAST cue's own song (W2 review r2). Same shape as WINDOWED, but the truncated cue is the sheet's
-#: FINAL one — the cue that has no next onset to be capped at, and the one cue an LRC always leaves without
-#: an end. Its line is long enough (26 alignable characters) that the reader's defaulted 1.0 s cannot hold
-#: it, so the hold-open fires; the sheet's onsets are 10 s apart, so its `typical_slot` is 10.0 s.
+#: The LAST cue's own song: the truncated cue is the sheet's FINAL one, the cue that has no next onset to be
+#: capped at and the one an LRC always leaves without an end. Its line is 26 alignable characters, so the
+#: reader's defaulted 1.0 s cannot hold it and the hold-open fires; onsets 10 s apart give `typical_slot` 10.0.
 LAST_CUE: list[Phrase] = [
     ("come and fly away", 0.0, 1.2),
     ("with me tonight", 10.0, 12.0),
@@ -1163,30 +1086,14 @@ LAST_CUE_HEARD: list[Phrase] = [
 def test_a_repair_window_widens_only_its_end_and_never_past_the_next_cue(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`claim_run`'s window, asserted as the window (W2 review r1) — the three refusals it documents were
-    pinned only by prose, and every one of them could be mutated with the suite green.
+    """`claim_run`'s window: the end only, never past the next cue, and the left edge the clamp produced.
 
-    THE END ONLY. Line 3's decode starts 0.6 s BEFORE its cue, inside the pad, so a two-sided union
-    (`min(start, blind[0])`) would pull the left edge back to 29.0 s. A cue's START is what a sheet asserts
-    and what every stage here anchors on; the reader's defaulted END is the number that is missing. So the
-    left edge stays at `claim_start - _REPAIR_PAD_SEC` = 29.6 s.
-
-    AND NEVER PAST THE NEXT CUE. The decode smears line 3 to 45.0 s, 5 s past line 4's cue. Uncapped, the
-    window would be (29.6, 46.0) — a single-line forced decode over the whole of the next line's slot, which
-    is the opposite of anchoring. The cap puts the PADDED window's right edge exactly at the next claim's
-    onset, 40.0 s. (Measured on a harder fixture, where a superstring of the line is sung 20 s later: the
-    uncapped window published the line 11.96-34.88 s with 3 of 8 lines gross, the capped one 11.96-14.96 s
-    with none.)
-
-    AND THE LEFT EDGE IS THE CLAMPED ONE. Line 0's cue starts at 0.4 s, so the pad runs past zero and the
-    window begins at 0.0 — which is why the edge tests read the RECORDED window instead of recomputing
-    `claim_start - pad` (that formula would compare a decode stuck at 0.0 against -0.6 s and call it fine).
-
-    THE SPY is the only way to see a window: it is a closure over one `time_text` call, and the alternative —
-    inferring it from where the re-decode landed — is exactly the indirection that let the prose drift from
-    the code. `regenerate` is imported inside `time_text`, so patching the module attribute reaches the
-    shipped call and forwards to the real implementation.
-    """
+    Line 3's decode starts 0.6 s before its cue, so a two-sided union would pull the left edge back to
+    29.0 s — but a cue's START is what a sheet asserts and only its END is missing, so the edge stays at
+    `claim_start - _REPAIR_PAD_SEC`. The decode then smears line 3 five seconds past line 4's cue, and
+    uncapped the window would be a single-line forced decode over the next line's whole slot. Line 0's
+    pad runs past zero, which is why the edge tests read the RECORDED window rather than recomputing it.
+    README, "The repair window's two caps, priced", carries what each cap bought."""
     from encore_worker.domain.lyrics import generate as gen
 
     real = gen.regenerate
@@ -1221,19 +1128,13 @@ def test_a_repair_window_widens_only_its_end_and_never_past_the_next_cue(
 def test_the_next_cue_a_repair_window_stops_at_is_the_next_one_in_time_not_in_line_order(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`claim_onsets` is SORTED, and nothing pinned the sort (W2 review r2: replacing it with the plain
-    dict order — which is line-index order, since `claim_windows` is built in `enumerate(segments)` order —
-    left the whole suite green, because every other fixture stamps its lines in ascending order and there
-    the two agree).
+    """The cue a repair window stops at is the next one in TIME, not in line order.
 
-    The sheet here stamps line 1 at 45.0 s and line 4 at 33.0 s, which is a CAPTION track's shape rather than
-    an LRC's: `parse_lrc` sorts its stamps, while `parse_vtt` reads cues in file order and `clean_segments`
-    neither sorts nor moves them (review M12's rolling captions). The truncated cue under test is line 3
-    at 30.6 s, and the next onset in TIME after it is line 4's 33.0 s while the next onset in LINE ORDER is
-    line 1's 45.0 s. The cap must take the first: the question the hold-open asks is which cue comes next in
-    the AUDIO, because that is the slot the widened window would reach into. Sorted, the padded window stops
-    at 33.0; read in dict order it would stop at 45.0 and swallow line 4's cue whole.
-    """
+    `claim_onsets` is sorted and nothing pinned the sort: every other fixture stamps its lines in
+    ascending order, where dict order agrees. This sheet is a caption track's shape instead — `parse_vtt`
+    reads cues in file order and `clean_segments` neither sorts nor moves them — stamping line 1 at
+    45.0 s and line 4 at 33.0 s. The truncated cue is line 3 at 30.6 s, so the padded window must stop at
+    33.0; read in dict order it would stop at 45.0 and swallow line 4's cue whole."""
     from encore_worker.domain.lyrics import generate as gen
 
     real = gen.regenerate
@@ -1265,26 +1166,14 @@ def test_the_next_cue_a_repair_window_stops_at_is_the_next_one_in_time_not_in_li
 def test_the_last_cue_is_capped_on_the_sheets_own_pacing_and_not_left_open_to_the_audios_end(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The cue with the LATEST onset has no next claim to stop at, and used to get no ceiling at all (W2
-    review r2). That is not a rare shape: it is the one cue whose end is ALWAYS missing, because `parse_lrc`
-    gives an LRC's last line no `end` and the reader defaults it to `start + 1.0 s` — under `needs` for any
-    line past 25 alignable characters — so the hold-open fires on it on every sheet there is.
+    """The latest cue has no next claim to stop at, so it is capped on the sheet's own pacing.
 
-    What the final line can swallow is not a following LINE but a following REPEAT of its own words, an outro
-    ad-lib the sheet never stamped. Here the song sings the last line at 50-53 s and again, unstamped, at
-    70-73 s; its cue is truncated at 50.6 s; the blind decode starts it on its cue and smears it to 77.7 s.
-    Uncapped that bought a window of (49.6, 78.7) — 29 s against the 4 s every capped cue gets — and the
-    forced re-decode inside it landed on the repeat, publishing the line at 69.96 s, 20 s late. The sheet's
-    own `typical_slot` (the median gap between its onsets, 10.0 s here) stands in for the missing onset, so
-    the window is (49.6, 61.6) and the repeat is outside it.
-
-    THE TRUE OCCURRENCE IS SUNG WEAKLY (0.45 against the fixture's 0.9) because that is what makes the
-    uncapped window's failure visible: with both occurrences at full strength an exact Viterbi prefers the
-    earlier one and the 29 s window looks harmless. A quiet first take and a belted outro repeat is the
-    real shape — and it is why the line comes back as its CUE rather than as a decode: scoring below the
-    song's median, it is adopted by `adopt_where_unheard`. Either way the published start is the note's, not
-    the repeat's, which is the whole point.
-    """
+    That is the one cue whose end is ALWAYS missing: `parse_lrc` gives an LRC's last line no end and the
+    reader defaults it to start + 1.0 s. What a final line can swallow is not a following line but an
+    unstamped outro repeat of its own words — sung here at 70-73 s against the stamped 50-53 s, and sung
+    weakly there, because at full strength an exact Viterbi prefers the earlier take and a wide window
+    looks harmless. Uncapped the window was (49.6, 78.7) and the re-decode published the line at 69.96 s;
+    the sheet's median onset gap (10.0 s) stands in, so the window is (49.6, 61.6) instead."""
     from encore_worker.domain.lyrics import generate as gen
 
     real = gen.regenerate
@@ -1320,20 +1209,13 @@ def test_the_last_cue_is_capped_on_the_sheets_own_pacing_and_not_left_open_to_th
 def test_a_decode_stuck_on_a_window_edge_the_clamp_moved_is_still_stuck(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The zero-clamped left edge, which is the whole reason `edge_stuck` reads the RECORDED window (W2 review
-    r1: reverting it to `claim_windows[i][0] - _REPAIR_PAD_SEC` left the suite green).
+    """`edge_stuck` reads the RECORDED window, which is the only reading a zero-clamped edge survives.
 
-    Line 0 is claimed at 0.4 s, so its window is clamped to 0.0 instead of -0.6 s, and its decode lands on
-    that edge. The recomputed formula would ask `|0.0 - (-0.6)| < 0.08` and call the line fine; the recorded
-    one asks `|0.0 - 0.0|` and calls it stuck, so the human's cue is adopted over a decode that may have found
-    nothing but the edge of the file. The line's score is the song's own here, so `adopt_where_unheard`'s
-    other limb (a score far below the median) cannot be what fires — this is the edge test alone.
-
-    THE PRICE, stated because it is real: a line genuinely sung from the first frame is indistinguishable from
-    a stuck decode at a clamped edge, and it loses its measured timing to its claim (graded `low`, words with
-    no score). That is the conservative direction — the claim is a human's — and it can only happen inside the
-    first `_REPAIR_PAD_SEC` of a song.
-    """
+    Line 0 is claimed at 0.4 s, so its window is clamped to 0.0 rather than -0.6 s and its decode lands
+    on that edge. The recomputed formula asks `|0.0 - (-0.6)| < 0.08` and calls the line fine; the
+    recorded one asks `|0.0 - 0.0|` and calls it stuck, so the human's cue is adopted over a decode that
+    may have found nothing but the edge of the file. The price is real and conservative: a line genuinely
+    sung from the first frame loses its measured timing to its claim, inside the first pad of a song."""
     got = align(
         tmp_path,
         monkeypatch,
@@ -1360,18 +1242,13 @@ def test_a_decode_stuck_on_a_window_edge_the_clamp_moved_is_still_stuck(
 def test_a_loosely_timed_sheet_is_graded_and_nothing_is_re_decoded(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """REVIEW M4, as an action rather than a label. A hand-timed sheet whose stamps wander by up to 475 ms:
-    five of its eight lines land inside the 250 ms corroboration band and three do not.
+    """M4 as an action: a loosely timed sheet grades COARSE and nothing is re-decoded.
 
-    Before W2 that was STRUCTURAL — any agreement under 1.0 was — and R2 re-decoded all three inside their
-    claim windows, which is the repair Numb measured as making timings WORSE (MAD 312 -> 563 ms): a line
-    re-decoded inside a jittered claim window lands on the jitter. The verdict is now read off the residual
-    DISTRIBUTION, so a sheet whose own spread is 100 ms disputes nothing at 475 ms: it grades COARSE, the
-    blind decode's timings publish unchanged, and R2 never runs. A line seconds out would still be disputed on
-    the same sheet — `Reconciliation.disputed`'s band here is the fixed PHRASE tolerance
-    `reconcile.COARSE_TOLERANCE_SEC` (1.0 s), NOT the sheet's own spread: a spread-scaled band was built (4
-    robust sigmas) and reverted for measuring worse, and `reconcile`'s WHAT THE SPREAD IS NOT paragraph keeps
-    the reason."""
+    Stamps wander by up to 475 ms, five of eight lines inside the 250 ms corroboration band. Before W2
+    that was STRUCTURAL — any agreement under 1.0 was — and R2 re-decoded all three stragglers inside
+    their jittered claim windows, which Numb measured as making timings worse (MAD 312 -> 563 ms). The
+    verdict is now read off the residual DISTRIBUTION, and the dispute band stays the fixed phrase
+    tolerance `reconcile.COARSE_TOLERANCE_SEC`, a spread-scaled one having measured worse."""
     wander = {0: 0.1, 1: -0.1, 2: 0.4, 3: -0.45, 4: 0.05, 5: 0.1, 6: -0.4, 7: 0.0}
     got = align(
         tmp_path,
@@ -1396,21 +1273,14 @@ def test_a_loosely_timed_sheet_is_graded_and_nothing_is_re_decoded(
 def test_too_few_pairs_never_arms_the_claim_window_repair(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """THE REASON `rc.TOO_FEW_PAIRS` EXISTS, pinned (W2 review r2: widening R1's gate from
-    `verdict.verdict == rc.UNRELATED` to `verdict.verdict in rc.DISAGREE` left the whole suite green).
+    """`rc.TOO_FEW_PAIRS` must not arm R1, the widest repair in the step.
 
-    R1 is the widest repair in the step — every claimed line re-decoded inside its claim window, some spans
-    adopted outright over a measured timing — and `reconcile.MIN_FITTED_PAIRS` exists because three or four
-    disagreeing pairs are not evidence of anything. Before W2 those sheets read UNRELATED and armed it: the
-    floor meant to make the taxonomy careful was routing them to its most sweeping branch.
-
-    THE SHEET HERE PASSES EVERY OTHER TEST R1 APPLIES, so only the verdict can be what refuses it: 4 paired
-    claims (under `MIN_FITTED_PAIRS`, and under `claimmap.MIN_PAIRS` so the clock abstains and the raw claims
-    survive), 0% of them agreeing with a decode displaced 3.0-7.5 s, and claims that ARE the truth — so their
-    envelope correlation is 1.00 against the blind decode's 0.24 and R1's arbitration would choose them
-    outright. Every line must still publish where the (wrong) decode put it, with no window in its provenance
-    and no arbitration on the trail: the sheet is neither corroborated nor contradicted, and nothing is
-    repaired on its word."""
+    Four disagreeing pairs are not evidence of anything, and before W2 such sheets read UNRELATED and
+    armed every claimed line's re-decode — the floor meant to make the taxonomy careful routed them to
+    its most sweeping branch. The sheet here passes every other test R1 applies (4 paired claims, 0% of
+    them agreeing with a decode displaced 3.0-7.5 s, and claims that ARE the truth, so their envelope
+    correlation is 1.00 against the blind decode's 0.24), so only the verdict can refuse it: every line
+    must publish where the wrong decode put it, with no window in its provenance."""
     heard = [
         (text, start + 3.0 + 1.5 * i, end + 3.0 + 1.5 * i)
         for i, (text, start, end) in enumerate(SPARSE_SHORT)
@@ -1430,13 +1300,11 @@ def test_too_few_pairs_never_arms_the_claim_window_repair(
     assert "inside their claim windows" not in why, "and neither R1 nor R2 re-decoded anything"
     assert "adopted" not in why, "nor adopted a claim span over a measured timing"
     assert "timing sources: 4 blind" in why, "every line as the claim-free decode measured it"
-    # NOR MAY IT DECIDE WHICH DOCUMENT PUBLISHES (W4 review r1). Nothing was repaired, so the LAST reconcile
-    # IS this one, and `TOO_FEW_PAIRS` must map to None rather than to False: `policy.decide` rule 6 spends
-    # the terminal LINE_SYNC rung on `claims_related is False` and `improves` then lets that rung's document
-    # replace this word document — 5677 word timings, measured on the corpus. Mutating the branch to
-    # `verdict not in rc.DISAGREE`, which reads False here, left the whole suite green before this assertion;
-    # the 4-pair exhibit below cannot hold it, because there R4's mix witness rescues the stray line and the
-    # last reconcile legitimately reads AGREE.
+    # NOR MAY IT DECIDE WHICH DOCUMENT PUBLISHES: nothing was repaired, so the last reconcile IS this one
+    # and `TOO_FEW_PAIRS` must map to None rather than to False. `policy.decide` rule 6 spends the terminal
+    # LINE_SYNC rung on `claims_related is False`, and `improves` then lets that rung's document replace
+    # this word document — 5677 word timings on the corpus. Mutating the branch to `verdict not in
+    # rc.DISAGREE`, which reads False here, left the whole suite green.
     assert got.timed.report.claims_related is None, "a 3-4-pair disagreement established nothing either way"
     for line, (_text, start, _end) in zip(got.lines, heard, strict=True):
         assert abs(line["start"] - start) < 0.1, f"{line['text']!r} moved to {line['start']:.2f}s"
@@ -1446,26 +1314,14 @@ def test_too_few_pairs_never_arms_the_claim_window_repair(
 def test_too_few_pairs_grades_every_line_low_and_that_is_a_cliff(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """WHAT `rc.TOO_FEW_PAIRS` DOES DO: it lowers grades, and the cliff is deliberate — pinned because
-    reverting `claims_disagree` to `== rc.UNRELATED` left the whole suite green (W2 review r2).
+    """What `TOO_FEW_PAIRS` does do: it lowers grades, and the cliff at the 2-pair end is deliberate.
 
-    The same four-line sheet three ways, claims exact but for line 3 at +8 s:
-
-      2 paired claims   `NO_CLAIMS`: under `rc.MIN_PAIRS` there is no verdict at all, the claims are not
-                        evidence of anything, and the decode stands alone — 4 of 4 lines `high`.
-      4 paired claims   `TOO_FEW_PAIRS`: a disagreement with none of the evidence a verdict needs. It confers
-                        nothing (`reconcile` returns no per-line judgements at all, so `corroborated` and
-                        `disputed` are both empty) and it arms nothing — but it is in `rc.DISAGREE`, so
-                        `claims_disagree` grades every line `low`, including the three sitting within 0.04 s
-                        of their own claims. 0 of 4 `high`, document `medium`.
-      5 paired claims   `STRUCTURAL`: enough pairs for a fitted verdict, so the four agreeing lines are
-                        CORROBORATED and `high` and only the stray is `low`.
-
-    LESS EVIDENCE THEREFORE READS AS MORE CONFIDENCE at the 2-pair end, and that is the price of the choice,
-    stated rather than hidden: a 3-4-pair sheet from a DIFFERENT SONG is all-unique text whose blind lines
-    would otherwise grade `high` while sitting seconds off (the `hello` defect, 3 lines 3-51 s out), and there
-    is nothing at 4 pairs that can tell that sheet from this one. Confidence is the only thing an unresolved
-    disagreement may move, and it may only move it down."""
+    The same four-line sheet three ways, claims exact but for line 3 at +8 s. At 2 paired claims
+    `NO_CLAIMS`: no verdict at all, the decode stands alone, 4 of 4 lines `high`. At 4, `TOO_FEW_PAIRS`:
+    no per-line judgements and nothing armed, but it is in `rc.DISAGREE`, so every line grades `low` —
+    0 of 4 `high`, document `medium`. At 5, `STRUCTURAL`: the four agreeing lines are corroborated and
+    only the stray is `low`. Less evidence therefore reads as more confidence at the 2-pair end, which
+    is the price: nothing at 4 pairs can tell this sheet from `hello`'s 3 lines 3-51 s out."""
     exact = truth(SPARSE_SHORT)
     stray = [*exact[:3], (exact[3][0] + 8.0, exact[3][1] + 8.0)]
 
@@ -1510,16 +1366,12 @@ def test_too_few_pairs_grades_every_line_low_and_that_is_a_cliff(
 def test_the_report_relates_the_claims_by_the_LAST_reconcile_where_grading_reads_the_BLIND_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The two readings are deliberately different, and both are on one trail note (H4's, above).
+    """The report relates the claims by the LAST reconcile where grading reads the BLIND one.
 
-    GRADING asks whether a LINE is corroborated, so only the blind decode can answer it: a line re-decoded
-    inside its claim window agrees with the claim by construction. `policy.decide`'s rule 6 asks something
-    else — does the document ABOUT TO PUBLISH tell the same story as the sheet, i.e. is there anything to
-    prefer the sheet's own line timings over it (W4's cross-kind comparison) — and there an agreement the
-    repairs produced is the answer rather than a contaminant: the two documents now say the same thing and
-    the WORDS are the extra evidence.
-
-    Both halves run the real `time_text`; the trail note carries the blind verdict and the report the last.
+    Grading asks whether a LINE is corroborated, so only the blind decode can answer it: a line
+    re-decoded inside its claim window agrees with its claim by construction. `policy.decide`'s rule 6
+    asks whether the document about to publish tells the same story as the sheet, and there an agreement
+    the repairs produced is the answer rather than a contaminant. Both readings sit on one trail note.
     """
     spans = [(start, end) for _text, start, end in PHRASES]
 

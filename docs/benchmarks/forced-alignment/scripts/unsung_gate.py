@@ -5,78 +5,11 @@
         [--target stem|mix] [--model NAME] [--songs a,b] [--modes truth,credit,...] \\
         [--out rows.json] [--from rows.json]
 
-WHAT IT CALIBRATES (`align_steps._NEVER_SUNG_SCORE_GAP` / `_NEVER_SUNG_ENV` / `_NEVER_SUNG_RATE`). A caption
-line that is NOT sung does worse than fail: forced monotonically through emissions that do not contain it, it
-consumes its neighbours' frames and drags them off. The shipped rule drops a line on THREE signals, all
-required — the decode scored it far below the song's median, its span sits on silence, and its characters
-smear at far below singing tempo — and then re-decodes what is left, twice round. Until W4b the three
-literals had been fitted on two exhibits (tfr-chosen's credit caption against tfr-mayday's quiet echo) on an
-older clock, and W4's exact 20 ms grid moved every score, span and envelope read they were fitted on.
-
-THE QUESTION W4b ASKS (PLAN-alignment-v3 W4b (b), review L2): `_NEVER_SUNG_ENV` is an ABSOLUTE level on a
-P95-NORMALISED envelope, which L2 says only means something on a clean stem — so is a PER-SONG RELATIVE floor
-(a quantile of that song's own inter-line gaps) better? This script answers it by running the shipped
-two-round loop under each candidate floor and scoring what survives against the truth, which is the only way
-to see the rule's real cost: a line the rule drops is a line the metrics no longer see (`missing`), and a line
-it spares is one the decode may have put seconds away (`gross`).
-
-WHAT IT PRINTS
-  1. per song, the inter-line GAP levels the relative floors are read off (q10 / q25 / median), which is the
-     population L2 describes — and the whole-corpus spread of those quantiles;
-  2. the CANDIDATE lines (the three signals' population): each one's envelope level, score gap, char rate,
-     span and, where the truth has the line, the error of its blind start, split REAL (a truth line) vs
-     INJECTED (a `headers` / `credit` / `extraverse` line the mode added, which the rule SHOULD drop);
-  3. one row per floor rule: real and injected lines dropped, and the surviving document's scored lines,
-     lines within ±500 ms / ±1 s of truth, and gross lines (> 2 s out). `abs-0.00` is the rule OFF, so the
-     first two rows price the rule itself.
-
-WHAT IT MEASURES AT (a warm cache makes it decodes only, ~75 s for the whole corpus x 6 modes): the SHIPPED
-decoder and `generate` over the bench's stem matrices (`e2e.BenchAligner`, the key `e2e.py` uses), texts as
-the run_align ports serve them (`clean_segments`), claims built by `e2e_lib.build_claims`. The envelope read
-is `align_steps`' own (`activity.envelope`, the mean over the line's decoded span at
-`activity.HOP_SEC`), so a floor fitted here is a floor the step applies.
-
-BLIND, deliberately: no claims reach the rule's three signals (only the SPARE arms read a claim window, and
-both ship off), so this is the population the shipped rule judges. What it cannot see is the repair ladder's
-reaction to a SPARED line — in a claim mode a kept line is re-decoded inside its claim window — so a floor
-this script likes still owes the corpus bench (`e2e.py`, `gates/w4.yaml`'s `unsung-not-up-*` and
-`jamendo-no-new-gross-*`).
-
-ON A STEM BY DEFAULT — AND `--target mix` IS THE CASE REVIEW L2 IS ACTUALLY ABOUT (W4b review r1). The
-committed rows are all `--target stem` (`song.vocals`), and L2's objection is precisely that an absolute level
-on a P95-normalised envelope "only means something on a clean stem": on a MIX the band fills the gaps between
-lines, so 0.10 is nowhere near them and the rule can never fire. That target is a SHIPPED path, not a
-hypothetical — since W4 review r1 the align target of a stemless song is the mix (`align_steps`, `env` is read
-off the align target), so on such a song an unsung caption or credit line is timed and published. `--target
-mix` runs the same sweep against `song.mix` so a later wave can price the floor there; nothing in W4b ran it,
-and the conclusion below is a STEM conclusion.
-
-MEASURED (W4b, 2026-09-30, base model, `--target stem`, 32 songs x 6 modes = 192 song-modes, exact clock;
-rows committed as `results/w4b-unsung-gate.json`, `--from` re-prints them):
-
-  floor rule            real dropped   injected dropped   scored   ±500   gross
-  abs-0.10 (shipped)         37               21           9214    6576    1138
-  abs-0.00 (rule off)         0                0           9251    6568    1157
-  abs-0.06                   23               19           9228    6567    1149
-  abs-0.03                   11               14           9240    6563    1155
-  gap q10, capped at 0.10    15               16           9236    6567    1155
-  gap q25, capped            28               18           9223    6572    1139
-  gap median, capped         37               21           9214    6576    1138   (identical to shipped)
-  gap median, uncapped       62               25           9189    6574    1126
-
-So, ON A STEM: THE RULE PAYS FOR ITSELF (+8 lines within ±500 ms and -19 gross against the rule off, for 37
-lines not published, 20 of which are caption non-lyrics — music cues, sound effects, credits) AND NO RELATIVE
-FLOOR BEATS THE ABSOLUTE ONE. The reason is in the gap table: on these stems the level BETWEEN lines is
-higher than 0.10 on 29 of 32 songs (median of medians 0.248, q25 >= 0.10 on 17 of 32), so a floor read at
-the song's own median is stricter than 0.10 everywhere and the cap makes it a no-op — 0 of 192 song-modes
-move. Lower quantiles do spare real lines, but they spare INJECTED ones too (21 -> 16 at q10), which is
-exactly the `unsung-not-up-*` rise W4b's brief forbids.
-
-AND THE TWO POPULATIONS OVERLAP, which is why no floor of any shape sorts them: the 28 REAL candidate lines
-read 0.0014..0.0965 and the 19 INJECTED ones 0.0007..0.0758 (round 1 of the loop; the counts above are over
-both rounds). `(energetic rock music)` — a caption cue the truth file carries — reads 0.0957 against
-`Pure_Mids_-_The_Leader`'s real sung line at 0.0890. The full diagnosis is at
-`align_steps._NEVER_SUNG_ENV`.
+It runs the shipped two-round drop loop under each candidate floor and scores what survives against truth,
+which is the only way to see the rule's real cost: a dropped line is one the metrics no longer see, a spared
+one is a line the decode may have put seconds away. BLIND deliberately, and on a STEM by default, which is the
+target every committed row was measured on. What it prints, and why `--target mix` is the open case: README,
+"The harness scripts" and "The never-sung rule: the two lines no floor can separate".
 """
 
 from __future__ import annotations

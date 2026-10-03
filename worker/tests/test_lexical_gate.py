@@ -146,11 +146,13 @@ def attempt(
     params: dict[str, object] | None = None,
     named_model: str | None = None,
     read_audio: list[str] | None = None,
+    language: str = "en",
 ) -> Run:
     """`texts` (on the song's own spans when `timed`, line for line) against a song that SINGS `UNIQUE`: the
     target's matrix always sings it; its wav does when `envelope_hears`. `stem=False` aligns on the mix.
     `named_model` makes the matrices name a bundle (the model guard); `read_audio` collects every path
-    `load_audio_mono_16k` is asked for, in order, so a test can see what a refusal did NOT pay for."""
+    `load_audio_mono_16k` is asked for, in order, so a test can see what a refusal did NOT pay for;
+    `language` is the TEXT's, which with `stem=False` is what `lang-route-mix` reads (W7 r2-spec-8)."""
     from encore_worker.adapters import ml
 
     monkeypatch.setattr(ml, "forced_align_decoder", decoder)
@@ -188,7 +190,7 @@ def attempt(
         job=JobRef(job_id="j1", media_id="m1", media_dir=str(tmp_path), source_uri=None, params=params or {}),
         text=TextRef(tier=tier, label="test", segments=segments, timing="line" if timed else "none"),
         audio=audio,
-        language="en",
+        language=language,
     )
     got = asyncio.run(impl.time_text(request))
     notes = [s for s in trail.states if s[1] == "align-global"]
@@ -547,25 +549,112 @@ def test_the_asr_tier_is_exempt_and_keeps_the_envelope_gate(
     )
 
 
-def test_a_matrix_from_a_model_with_no_calibration_row_is_not_measured(
+def test_a_matrix_from_a_model_with_no_calibration_row_times_no_words(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """W3 review r2, a TABLE since W4b. The thresholds are ONE bundle's calibration each, and the emission
-    model is chosen per LANGUAGE (`ml.WhisperXAligner._aligner`; de/es/fr load wav2vec2-XLSR fine-tunes), so a
-    German sheet would otherwise be judged terminally on a number `lift_gate.py` never measured. A matrix from
-    a model with NO ROW is read as UNMEASURABLE: the envelope gate keeps the verdict, the reason names the
-    model and the script that would fit it, and the words are not vouched for. Here the WRONG text passes,
-    which is the price of not pretending to know."""
+    """W3 review r2 (a TABLE since W4b), with W7 review r1-correctness-1's consequence.
+
+    The thresholds are ONE bundle's calibration each, and the emission model is chosen per LANGUAGE
+    (`ml.WhisperXAligner._aligner`), so a German sheet must not be judged on a number `lift_gate.py` never
+    measured — and until W7 that meant the ENVELOPE GATE kept the verdict, which review H3 measured letting
+    189 of 380 wrong texts publish because it scores our own decode. So the wrong text used to PASS here. Now
+    the attempt DECLINES (not `Refused`: nothing measured the text, so `policy.decide` rule 1 may still reach
+    the LINE_SYNC rung, where the gate is a share of lines in SECONDS), the reason names the model and the
+    recalibration command, and no document is written at all."""
     run = attempt(tmp_path, monkeypatch, texts=UNSUNG, named_model="WAV2VEC2_LARGE_XLSR_53_DE")
-    assert isinstance(run.got, TimedDoc), "the lift is a reading, not a verdict, on an uncalibrated matrix"
-    assert run.got.vouched is False
-    assert "no lexical check: no lexical calibration for WAV2VEC2_LARGE_XLSR_53_DE" in run.verdict
+    assert run.got is None, "an ungated bundle publishes no word timings"
+    assert run.notes[-1][3] == "declined"
+    assert "no wrong-text gate can read this text: no lexical calibration for " in run.verdict
     assert "lift_gate.py --model WAV2VEC2_LARGE_XLSR_53_DE" in run.verdict
+    assert "189 of 380" in run.verdict, "the measurement that makes the envelope gate no fallback"
+    assert not list(tmp_path.rglob("*-word.json")), "a declined attempt writes nothing"
+
+    right = attempt(_fresh(tmp_path, "right"), monkeypatch, named_model="WAV2VEC2_LARGE_XLSR_53_DE")
+    assert right.got is None, "the RIGHT text declines too: the gate's absence is about the bundle"
 
     named = attempt(
         _fresh(tmp_path, "named"), monkeypatch, texts=UNSUNG, named_model=lexical.BANDS.model, stem=True
     )
     assert isinstance(named.got, Refused), "a model WITH a row is measured as ever"
+
+    control = attempt(
+        _fresh(tmp_path, "arm"),
+        monkeypatch,
+        texts=UNSUNG,
+        named_model="WAV2VEC2_LARGE_XLSR_53_DE",
+        experiments=frozenset({"h3-ungated-words"}),
+    )
+    assert isinstance(control.got, TimedDoc), (
+        "`h3-ungated-words` is the control: the pre-fix behaviour, and the only way left to measure an "
+        "uncalibrated bundle end to end"
+    )
+    assert control.got.vouched is False, "unvouched as it always was: no gate read these words"
+    assert Config.from_env({"ENCORE_ALIGN_EXPERIMENTS": "h3-ungated-words"}).align_experiments == frozenset(
+        {"h3-ungated-words"}
+    ), "a control an operator cannot set is not a control"
+
+
+def test_an_uncalibrated_bundle_still_times_a_transcript_and_a_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The two exemptions W7 review r1-correctness-1 keeps, and why each is not the finding's lane.
+
+    The ASR tier's words were heard on THIS audio, so they can be misheard but never another song's — it
+    keeps the envelope gate it always had (W3 review r2) and stays vouched. A PIN is a person's choice, so it
+    publishes rather than declining, but every line is graded `low` and the document is unvouched, exactly as
+    a pin the lift WOULD have refused."""
+    heard = attempt(tmp_path, monkeypatch, tier=Tier.ASR, named_model="WAV2VEC2_LARGE_XLSR_53_DE")
+    assert isinstance(heard.got, TimedDoc) and heard.got.vouched is True, heard.got
+    assert "no lexical check: a transcript of this recording" in heard.verdict
+
+    pinned = attempt(
+        _fresh(tmp_path, "pin"),
+        monkeypatch,
+        texts=UNSUNG,
+        named_model="WAV2VEC2_LARGE_XLSR_53_DE",
+        params={"pinnedText": "\n".join(UNSUNG)},
+    )
+    assert isinstance(pinned.got, TimedDoc), pinned.got
+    assert pinned.got.vouched is False and pinned.got.confidence != "high"
+    assert [line["confidence"] for line in pinned.lines()] == ["low"] * len(UNSUNG)
+    assert any(note[3] == "pin-unvouched" for note in pinned.notes), "the trail says why it published"
+
+
+def test_the_lang_route_mix_arm_cannot_measure_itself_without_the_ungated_control(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W7 review r2-spec-8, as the shape an operator reproducing the German mix gain actually meets: a
+    STEMLESS Latin song under `lang-route-mix` is timed by a routed bundle, a routed bundle has no
+    `lexical.CALIBRATED` row, and since r1-correctness-1 such a matrix DECLINES a word document. So the arm
+    alone publishes no word timings at all and the measurement it exists for needs `h3-ungated-words` beside
+    it — which is now what `host.config.ALIGN_EXPERIMENTS` and `language.model_language` both say.
+
+    The bundle name is the real one `ml.align_model_name('fr', …)` returns, so the matrix under test names a
+    model `lexical.CALIBRATED` genuinely lacks rather than an invented string."""
+    routed = "VOXPOPULI_ASR_BASE_10K_FR"
+    arm = attempt(
+        tmp_path,
+        monkeypatch,
+        stem=False,
+        language="fr",
+        named_model=routed,
+        experiments=frozenset({"lang-route-mix"}),
+    )
+    assert arm.got is None, "the arm alone times no words: there is no gate that can read them"
+    assert "no wrong-text gate can read this text" in arm.verdict and routed in arm.verdict
+
+    pair = attempt(
+        _fresh(tmp_path, "pair"),
+        monkeypatch,
+        stem=False,
+        language="fr",
+        named_model=routed,
+        experiments=frozenset({"lang-route-mix", "h3-ungated-words"}),
+    )
+    assert isinstance(pair.got, TimedDoc), (
+        "the pair is what measures the routed mix end to end, which is what the arm is FOR"
+    )
+    assert pair.got.vouched is False, "published behind the v2 envelope gate, and said to be ungated"
 
 
 def test_a_second_calibrated_model_is_judged_by_its_own_row(

@@ -1,25 +1,12 @@
 """Turning separator scratch into the files core publishes: FLAC stems and the 4-channel guide mix.
 
-EVERY CONSTANT HERE WAS PAID FOR. This is a faithful port of the old worker's
-`worker/src/separation/demucs.py`, and the details are not stylistic:
+EVERY CONSTANT HERE WAS PAID FOR, and none of them is stylistic: FLAC rather than AAC for SYNC (priming
+samples would shift one stem against the other), `-sample_fmt s16`, `-compression_level 8`, `-f` always
+declared because these write to a temp sibling whose suffix maps to no container, and the channel order the
+TV's splitter relies on by INDEX. Each with its failure mode: `docs/arch/05-worker.md` §2.5.
 
-  * FLAC, NOT AAC — and the reason is SYNC, not fidelity. An AAC-in-m4a encoder adds priming samples, so
-    the instrumental and the vocals would decode to starts a few milliseconds apart. Two stems that must
-    stay sample-aligned cannot go through a codec that shifts one of them.
-  * `-sample_fmt s16` — transparent here because the signal originated as a lossy 48 kHz stream, and it
-    halves the bytes of s32.
-  * `-compression_level 8` — the size/CPU knee, and cheap to DECODE, which is what matters for a browser
-    starting playback in a room.
-  * `-f` IS ALWAYS DECLARED. ffmpeg infers its muxer from the output filename's extension, and these write
-    to a temp sibling whose suffix maps to no container. Without `-f` ffmpeg aborts before encoding a
-    frame — the old worker's note records every room silently falling back to a two-element guide.
-  * CHANNEL ORDER IS THE CONTRACT. The TV's `ChannelSplitter` splits by channel INDEX, so
-    instrumental-front / vocals-back is what it relies on. The mapping is spelled out rather than left to
-    a default because the failure is inaudible in review and unmistakable in a room: vocals arriving at
-    the instrumental's gain.
-
-The argv builders are PURE and separately tested — a recipe this load-bearing should be assertable without
-spawning anything.
+The argv builders are PURE and separately tested — a flag whose absence only shows up on a real 45-minute
+separation should be assertable in a millisecond.
 """
 
 from __future__ import annotations

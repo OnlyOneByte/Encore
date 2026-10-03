@@ -3,28 +3,16 @@
 
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/sheet_gate.py [--out f.json]
 
-WHY IT EXISTS (W1, review M1 + the W0 hazard). Once a LINE_SYNC document can commit, the rung publishes the
-text's OWN line timings — so it needs a gate, and the one the worker ships (`align_steps._sheet_spans` +
-`_sheet_passes`) is an envelope correlation of the text's claimed spans against the stem's activity: the
-sheet-span null the envelope thresholds were first calibrated on. This script is that gate's calibration,
-run through the SHIPPED functions, for every case `e2e.py --level run_align --modes all` would run (the 13
-timed modes; `blind` has no spans), with the claims SERVED as the run_align ports serve them
-(`clean_segments`), in two shapes:
+WHY IT EXISTS. The LINE_SYNC rung publishes the text's OWN line timings, so it needs a gate, and the one the
+worker ships is an envelope correlation of the claimed spans against the stem's activity. This script is that
+gate's calibration, run through the SHIPPED functions, over every case `e2e.py --level run_align --modes all`
+would run, with the claims SERVED as the run_align ports serve them, in two shapes: `caption` (each line with
+its own end) and `lrc` (each line ending at the next line's start, which is what production line-syncs most).
 
-  * `caption` — the served segments themselves (authored captions: each line has its own end);
-  * `lrc`     — parse_lrc's shape (each line ends at the next line's start; the last line has no end),
-                because LRCLIB is what production line-syncs most and its spans tile the song.
-
-Per shape it prints how many wrong texts (`wrongtext`, K donors per song) and right texts pass, the truth
-row, and the old literal gate (the three envelope tiers over the raw spans) for comparison. Measured at W1
-(2026-09-27, youtube tfr stems): caption 0/320 wrong, 241/416 right, truth 28/32; lrc 2/320, 163/416,
-22/32; the literal gate 3/320 and 31/320.
-
-`--target mix` gates each song's MIX instead, as a song with no vocals stem would be (W1 review r1):
-caption 3/320 wrong, 39/416 right, truth 8/32; lrc 3/320, 37/416, 3/32; the literal gate 6/320 and
-100/416, 52/320 and 220/416. The best (r, lag) threshold at <= 3/320 wrong keeps 60/416 right (r >= 0.30
-within ±0.1 s): truth r has median 0.33 on the mix, the wrong texts 0.17 with a top decile at 0.32. Which is
-why `syncMode=lines` on a stemless song is aligned as forced (`workflows/align._sync_mode_note`).
+Per shape it prints how many wrong and right texts pass, the truth row, and the old literal gate for
+comparison; `--target mix` gates each song's MIX instead, as a stemless song would be. Every measured row,
+and why `syncMode=lines` on a stemless song is aligned as forced: README, "Why `syncMode=lines` needs a
+vocals stem, as the populations".
 """
 
 from __future__ import annotations

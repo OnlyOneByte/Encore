@@ -6,30 +6,19 @@ no torch). The split exists because this bench is the GATE every later alignment
 metric or claim-construction bug here would silently move every reject-if verdict, so this half must be
 testable without an hour of model time.
 
-WHERE THE DEFINITIONS COME FROM. The song list, claim construction for truth/jit/offset, and the line
-metrics are the review's scratch harness (`_review-scratch/pe-acc/e2e2.py`), kept exactly, because that
-harness produced the baseline this one must reproduce (base model, `time_text`: truth 25 gross / 89.3%
-±500 / 97.5% ±1 s; jit 34 / 84.1 / 95.4; blind 122 / 78.6 / 88.3). The word metrics are `bench.py --global
---words` (only `aligned`-provenance words, a line scored only when its word count matches the truth's).
-Two deliberate differences, both measured-harmless on the baseline documents and both documented where
-they live: lines pair by IDENTITY rather than by text (`score_lines`), and every random draw is seeded by
-a stable hash (`rng_for`) instead of the process-salted `hash(slug)` e2e2 used. So this harness's jit row is
-a different, repeatable draw. e2e2's draw was recovered for 29/32 songs from its adopted lines, and replayed
-here it gives e2e2's documents byte for byte (README, "jit caveat"). One deliberate ADDITION: every count
-e2e2 took over published lines also exists over the claimed TEXT, where a refused case's lines are misses
-(`line_metrics`); PCO, the highlight and `missing` count refused cases too (`row_of`), because the
+WHERE THE DEFINITIONS COME FROM. The song list, the claim construction and the line metrics are the review's
+scratch harness, kept exactly, because that harness produced the baseline this one must reproduce; the word
+metrics are `bench.py --global --words`. Two deliberate differences, both measured-harmless and documented
+where they live: lines pair by IDENTITY rather than by text, and every random draw is seeded by a stable hash
+rather than a process-salted one, so this harness's jit row is a different, repeatable draw. One deliberate
+ADDITION: every count also exists over the claimed TEXT, a refused case's lines being misses, because the
 published-only figures read a policy that refuses its worst songs as an improvement.
 
-WORD ENDS AND THE HIGHLIGHT come from the review's `_review-scratch/pe-acc/exp_ends.py`. On the shipped
-emissions its base-model raw decode reads word end ±100 73.2%, phrase-final end ±100 40.6% / ±250 73.6% /
-bias −106 ms, painted highlight 67.3%. The review printed 40.0 / 73.5 / −107 / 67.7 because it ran on its
-own 30 s-chunk matrices; on those this scorer reads its numbers exactly. The review's "end ±100 68.2" drops
-the onset filter, and ungated it reads 68.4 here. `gates/w0-reproduce-generate.yaml` has the provenance.
-There is ONE deliberate difference: the highlight reads the lit word through a port of the TV's own logic
-(`core/src/lib/tv/lyrics.ts` — parse, pause re-segmentation, `activeLineIndex`, `activeWordIndex`) instead
-of painting each word's span. The two agree wherever published lines are in order and do not overlap; they
-differ exactly where the TV does something the painting cannot see — a misbound line that starts later than
-its successor stops `activeLineIndex` early, so the TV lights NOTHING until playback reaches it.
+WORD ENDS AND THE HIGHLIGHT come from the review's `exp_ends.py`, with one deliberate difference: the
+highlight reads the lit word through a port of the TV's own logic rather than by painting each word's span.
+The two agree wherever published lines are in order and do not overlap, and differ exactly where the TV does
+something the painting cannot see. `gates/w0-reproduce-generate.yaml` has the provenance, and README, "The
+harness scripts", the reproduced baseline rows.
 """
 
 from __future__ import annotations
@@ -98,6 +87,19 @@ TFR_AUDIO = (TFR_YOUTUBE, TFR_REFERENCE)
 #: ALIGN_ON_MIX knob, a LINE_SYNC rung that declines — against the same truth, which is why it is setup and
 #: not an arm: comparing it with a stem baseline metric for metric compares two different audio files.
 STEM_TARGET, STEMLESS_TARGET = "stem", "mix"
+
+#: Run metadata whose ABSENCE is a known DEFAULT rather than "unknown" — one map, read by everything that
+#: compares two runs' setups (W7 review r2-spec-10): `e2e.resume_refusal`, `rows_document` below and
+#: `e2e_gates.format_compare`.
+#:
+#: WHY IT HAS TO BE SHARED. `detector` was recorded in `run.json` only when it was NOT the default, so that a
+#: directory started before the key existed could still `--resume`; the summary then stamped it always. The
+#: result was a key that could not do its job: every committed document was written before the stamp landed,
+#: so `--compare` of a `--detector lingua` run against ANY of them found the key on one side only and said
+#: nothing, which is exactly the silent-configuration-change the disclosure exists to prevent. With the
+#: default written down, a missing key MEANS `off`, the comparison is total, and `run.json` can record the
+#: value unconditionally without refusing an older directory's resume.
+RUN_DEFAULTS: Mapping[str, str] = {"detector": "off"}
 
 #: Report groups. Jamendo's truth is MEASURED (hand-timed word + line onsets); YouTube's is AUTHORED
 #: captions whose own per-song bias runs −147 to +430 ms — so the two are never averaged silently.
@@ -866,7 +868,7 @@ class TvLine:
     text: str
     words: tuple[TvWord, ...]
     #: `lyrics.ts` `wipesWords`: False on a `low` line, which the TV renders as ONE text node with no word
-    #: wipe (W6, review §3.7's consumer). Carried per ROW because re-segmentation splits a graded line into
+    #: wipe (W6's TV consumer). Carried per ROW because re-segmentation splits a graded line into
     #: several and each inherits the grade, exactly as `part` and `confidence` do in the TypeScript.
     wipes: bool = True
 
@@ -1052,35 +1054,16 @@ def score_highlight(
 ) -> tuple[float, float] | None:
     """(hit, sung) seconds over the truth words of every line the claimed text contains.
 
-    The denominator is the SUNG time of those words — not only of the lines that published: a line the
-    aligner dropped lights nothing while it is sung, which is exactly what the room sees. The same holds
-    for a case that published NOTHING (an empty `doc`): it scores (0, sung), and `row_of` records that for
-    refused and ERROR cases too. A published word counts as correct only when it IS the sung truth word
-    (identity pairing, as `score_words`, over lines whose word count held, label or not); every other lit
-    word — a header's label, an injected line, a mismatched line — is lit wrongly. A line-synced document
-    lights no word at all, so it scores 0.
+    The denominator is the SUNG time of those words and not only of the lines that published, a dropped line
+    lighting nothing while it is sung. A published word counts as correct only when it IS the sung truth word,
+    and a line-synced document lights no word at all, so it scores 0.
 
-    W6's LOW-LINE RULE IS MODELLED BY THE PORT AND DELIBERATELY NOT READ HERE (`tv_lit`'s `wipe_low`). This
-    metric is an ALIGNMENT reject-if — §3.5's word-end post-pass and 6c's decode axis are both gated on it
-    (`gates/w4-ends.yaml`, `gates/w4b-linesep-generate.yaml`), and every recorded row since W0 was measured
-    the same way — so it must keep asking ONE question: when the TV lights a word, is it the right one.
-    Folding a DISPLAY POLICY in would re-baseline all of those and make a future alignment change's
-    highlight number depend on how many lines the grader happened to doubt.
-    WHAT MEASURES THE POLICY INSTEAD, already on every row: `high` is how many lines the TV word-wipes,
-    and `high_bad` / `high_gross` are how wrong those wipes are (`row_of`). Those three ARE the wipe's
-    coverage and its precision, which is what review §3.7's reject-ifs are written in terms of.
-
-    AND THE SHIPPED TV HAS ITS OWN METRIC, NOT A SHARE OF THIS ONE: `wipe_low=True` here is what `row_of`
-    records as `highlight_wiped`, pooled by `highlight_metrics` and flattened as `highlight_wiped` (W6 review
-    r1-tests-20). NO RECORDED RUN CARRIES IT (W6 review r2-correctness-2): the eight W6 sweeps predate the
-    field by three hours, so every one of their 5,636 rows lacks it and `highlight_metrics` answers None for
-    them — the number exists as a computation and not yet as a measurement, and the first run that fills it
-    is the one that can be quoted. The split above is the argument for two metrics, not for one:
-    `high` / `high_bad` / `high_gross` are computed from LINE-START errors on `high`-graded lines, which is
-    not the wipe's question ("when the TV lights a word, is it the right one"), so the policy change had no
-    number of its own while the policy moved blind coverage 51.5% -> 33.0%. No gate reads the new metric —
-    re-baselining §3.5's and 6c's reject-ifs on a display policy is exactly what this function refuses — and
-    it costs one more pass over the same breakpoints.
+    W6's LOW-LINE RULE IS MODELLED BY THE PORT AND DELIBERATELY NOT READ HERE (`tv_lit`'s `wipe_low`): this
+    metric is an ALIGNMENT reject-if, so it must keep asking ONE question — when the TV lights a word, is it
+    the right one — and folding a DISPLAY POLICY in would re-baseline every recorded row since W0. What
+    measures the policy instead is `high` / `high_bad` / `high_gross`, already on every row, plus
+    `highlight_wiped`, which `wipe_low=True` computes and NO RECORDED RUN CARRIES YET. README, "The harness
+    scripts", has the split and its numbers.
     """
     if song.words is None:
         return None
@@ -1794,6 +1777,13 @@ def rows_document(path: Path) -> dict[str, Any]:
     config = path.parent / "run.json"
     recorded: object = json.loads(config.read_text(encoding="utf-8")) if config.is_file() else {}
     meta: dict[str, Any] = dict(recorded) if isinstance(recorded, dict) else {}
+    if meta.get("level") == "run_align":
+        # THE DEFAULTS A LIVE RUN'S SUMMARY STAMPS ANYWAY (W7 review r2-spec-10), so an offline re-summarise
+        # of rows measured before a key existed carries the configuration it actually ran instead of saying
+        # nothing. `run_align` only, because that is the level `e2e.py` stamps them at — a `time_text` row
+        # has no acquiring step and therefore no detector.
+        for key, default in RUN_DEFAULTS.items():
+            meta.setdefault(key, default)
     meta.update(rows=str(path), row_codes=row_codes(rows))
     return {"meta": meta, "summary": summarize(rows), "songs": per_song(rows)}
 
@@ -2055,18 +2045,11 @@ def align_config(config: object) -> dict[str, object]:
     `align_experiments`, and recording it empty would have moved every matrix's key (a cold recompute of the
     whole corpus for an identical computation) and made every W0 baseline warn on `--compare`.
 
-    `align_model` IS EXCLUDED OUTRIGHT (`SPELLING_ONLY`), which this docstring used to argue for and the code
-    used to do only for a None — the defect W4b review r2 (spec-14, correctness-6) found. `e2e.resolve_bundle`
-    folds `ENCORE_ALIGN_MODEL` and `--model` into ONE resolved bundle, but it does not write the answer back
-    into the dataclass, so `--model HUBERT_ASR_LARGE` left this `{}` while the env spelling of the SAME
-    command left `{'align_model': 'HUBERT_ASR_LARGE'}` — two emitter fingerprints
-    (`e2e.emitter_fingerprint`), hence two disjoint emission-store namespaces for one computation, and a
-    `--compare` warning between them (`COMPARED_META`). Since every committed W4b row was measured with the
-    flag, an operator following README's own recipe (`ENCORE_ALIGN_MODEL=… e2e.py --modes all`) recomputed 64
-    matrices cold. WHICH MODEL A RUN LOADED IS NOT LOST BY THIS, which is what makes dropping it safe: the
-    resolved bundle is `run.json`'s and the summary's `model`, its weights are digested in `model_identity`,
-    and the emission store's own key carries `<label>@<identity>` (`e2e.BenchAligner`) — all three moving with
-    the bundle. This field would only have said whether the operator typed the name or took the default.
+    `align_model` IS EXCLUDED OUTRIGHT (`SPELLING_ONLY`): `e2e.resolve_bundle` folds the env knob and
+    `--model` into one resolved bundle without writing it back, so the two spellings of one command produced
+    two emitter fingerprints, two disjoint emission-store namespaces and a `--compare` warning between them.
+    WHICH MODEL A RUN LOADED IS NOT LOST BY THIS, which is what makes dropping it safe — the resolved bundle
+    is `run.json`'s `model`, digested in `model_identity`, and carried in the store's own key.
     """
     out: dict[str, object] = {}
     for field in dataclasses.fields(config):  # type: ignore[arg-type]
@@ -2190,8 +2173,13 @@ class TranscriptStore:
         THE LANGUAGE IS STORED TOO SINCE W7 (review M8): whisper's own detection is half the port's return
         value now (`ports.Transcribed`), and a cache that served only the segments would hand every replayed
         transcript a `None` language — so a cached `run_align` row would route a non-English song to the
-        default bundle where a cold one routed it to its own. An entry written BEFORE the field existed has
-        no `language` key and reads as None, which is exactly what it recorded.
+        default bundle where a cold one routed it to its own.
+
+        AN ENTRY WRITTEN BEFORE THE FIELD EXISTED IS A MISS (W7 review r1-spec-9), not a `None` language. All
+        six entries in this box's `_transcripts` predate it, and serving one would have made a cached run
+        measure `heard=None` — the pre-W7 configuration — while reporting itself as this tree's. The two cases
+        are distinguishable because `save_segments` now writes the key ALWAYS, `null` included: a missing key
+        means "written by a harness that could not say", a null one means "whisper said nothing".
         """
         digest, parts = self.key(audio_path, language)
         path = self.path_of(digest)
@@ -2200,6 +2188,8 @@ class TranscriptStore:
         stored = json.loads(path.read_text(encoding="utf-8"))
         if stored.get("key") != parts:
             return None
+        if "language" not in stored:
+            return None  # pre-W7: it cannot say what whisper heard, so it is recomputed rather than guessed
         heard = stored.get("language")
         return (
             [dict(segment) for segment in stored["segments"]],
@@ -2217,9 +2207,13 @@ class TranscriptStore:
         self.directory.mkdir(parents=True, exist_ok=True)
         final = self.path_of(digest)
         staging = final.with_suffix(f".{os.getpid()}.tmp")
-        body: dict[str, Any] = {"key": parts, "segments": [dict(segment) for segment in segments]}
-        if heard is not None:
-            body["language"] = heard
+        #: `language` ALWAYS, `None` included (W7 review r1-spec-9): "this harness did not record a language"
+        #: and "whisper reported none" are different facts, and only the second may be served from the cache.
+        body: dict[str, Any] = {
+            "key": parts,
+            "segments": [dict(segment) for segment in segments],
+            "language": heard,
+        }
         staging.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
         os.replace(staging, final)
         return final

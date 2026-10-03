@@ -1,47 +1,17 @@
-"""The repair ladder's output invariant: a published document never runs backwards.
+"""The repair ladder's output invariant: a published document never runs backwards (XA-08).
 
-Seeded random scenarios go through the REAL `time_text`: its never-sung drop, R3/R4/R1/R2 repairs,
-adoption, `_clamped`, the gate and the grading. The published document must then satisfy what the TV
-and `policy.decide` both rely on: `measure`'s `out_of_order == 0`, meaning no word starts before the one
-ahead of it, and every word inside its line. A backwards start makes the highlight jump, and `decide`
-reads it as incoherent timing and drops the whole text to line sync (review M2, then M1).
+Seeded random scenarios go through the REAL `time_text` — its never-sung drop, R3/R4/R1/R2 repairs, adoption,
+`_clamped`, the gate and the grading — and the published document must then satisfy what the TV and
+`policy.decide` both rely on: `measure`'s `out_of_order == 0`, no word starting before the one ahead of it and
+every word inside its line. A backwards start makes the highlight jump, and `decide` reads it as incoherent
+timing and drops the whole text to line sync.
 
-THE PROPERTY IS ACHIEVABLE BY CONSTRUCTION, which is what makes it fair to hold every wave to it. The
-blind decode is an exact CTC Viterbi (`tests/ctc_fixture.py`, frame-for-frame torchaudio's), so it is
-monotonic. Keeping every original line would already satisfy the property. A repair may only ever be
-accepted in a way that keeps it.
+The property runs PER SEED so that one new violation names its seed, and every test runs on BOTH arms: the
+default, whose 4 known-inverting seeds keep `xfail(strict=True)`, and `m2-order-clamp`, which passes all 32.
 
-THE SCENARIOS, one per seed: 6-10 lines of random words with repeats, sung as tones at their true spans
-with gaps down to 50 ms. There are three kinds. `claims` is a timed sheet where one line, or a run of
-two, claims the wrong time (0.8-3 s either way): R2's padded claim windows plus adoption. `stem-gap` has
-a line the stem lost and the mix still has: R4. `untimed` is a plain sheet whose repeats are blind: R3.
-
-MEASURED BEFORE W1 (HEAD 23c44114 + W0): 4 of 32 scenarios published backwards word starts, all of kind
-`claims`, and each was one of M2's shapes.
-  - seed 6: a repaired line that starts after the next trusted line's start is squeezed, not rejected.
-  - seed 12: the 0.2 s floor pushes a repaired line's words past the next start.
-  - seeds 2 and 30: in a run of two repaired lines, the last one is bounded but not rejected.
-W1 built the order-preserving `_clamped` that turns each green: a run of repaired lines that cannot keep
-start order between its trusted neighbours, with a frame per letter, goes back to the blind decode. It
-ships as the DEFAULT-OFF arm `m2-order-clamp` (`Config.align_experiments`): on the 32-song corpus it failed
-two of W1's reject-if gates (63 more wrong texts published by the job, a Jamendo song gaining a gross line
-under jit; `_clamped` has the numbers). Re-judged under W3's lexical gate, the first is closed and the
-second still fails, so it stays off. So every test here runs on BOTH arms: the default, whose 4 seeds
-keep `xfail(strict=True)` (a default that stops inverting them turns them red, which is the point), and
-the arm, which must pass all 32. Measured on the 32 seeds with the arm: those 4 plus seeds 8, 10 and 16
-refuse a repair — 3 whose old clamp had squeezed an adopted WRONG claim into the gap in order, 0.4-1.4 s
-off — and every refused line is back on the blind decode, within 60 ms of where it is sung; on the other 25
-seeds the two documents differ only where the DEFAULT's bounded left floor pulls a neighbour's END onto a
-repair, which the arm does not do (W6, `_clamped_v2`; seed 9 is one, and
-`test_the_arm_changes_only_refusals_and_the_default_only_neighbour_ends` holds the exact shape — W1 could
-say "byte-identical" here and cannot any more).
-(Seeds 0, 4, 14, 20, 22, 24 and 28 still publish a misclaimed line 0.6-2.0 s off: an adopted claim that
-FITS in order. Adoption is review M5 and H4's business, not this property's.) The property runs PER
-SEED, so one new violation names its seed; a single test over all 32 (the first version) could not, nor
-tell this test's own `out_of_order` cross-check failing, which is why that check is a test of its own.
-Measured by mutation (review r1): with `_clamped` deleted, that version stayed green and this one failed
-7 seeds; with the arm on, a no-op `_clamped` fails 11 seeds here, and all 4 of the fallback tests at the
-end.
+The scenarios, the four pre-W1 violations, what the arm costs, which seeds still publish an in-order wrong
+claim and the mutation that justifies the per-seed shape are in
+`docs/benchmarks/forced-alignment/README.md`, "The repair-order property test, seed by seed".
 """
 
 from __future__ import annotations

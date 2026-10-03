@@ -1,23 +1,14 @@
 """LRCmux: a multiplexer that fans one lookup out across several lyrics providers.
 
-WHY THIS IS THE PRIMARY PROVIDER NOW. It queries many sources and returns the best hit, so a song LRCLIB
-has never heard of may still be found — and crucially it can return WORD-LEVEL timings, which LRCLIB
-cannot. A word-timed sheet is a much better starting point for alignment than a line-timed one, because
-the aligner is correcting positions rather than inventing them.
-
-MILLISECONDS, NOT SECONDS. `start`/`end` are integer milliseconds throughout the native response — the
-first line of "Take On Me" comes back as `43004`, not `43.004`. Everything downstream in this worker is
-seconds, so the conversion happens HERE, once, at the boundary. Getting it wrong would not fail: it would
-publish lyrics running a thousand times fast, which looks like a bug in the player.
-
-STATUS CODES, MEASURED AGAINST THE LIVE API rather than read off the spec (which declares only `200` and
-`default`):
+WHY THIS IS THE PRIMARY PROVIDER NOW: it queries many sources and is the only one that can return WORD-LEVEL
+timings. MILLISECONDS, NOT SECONDS — `start`/`end` are integer milliseconds throughout the native response
+(`43004`, not `43.004`), so the conversion happens HERE, once, at the boundary. STATUS CODES, MEASURED AGAINST
+THE LIVE API rather than read off the spec (which declares only `200` and a default):
 
     404  {"detail": "no lyrics found"}                          -> a MISS. Ordinary.
     400  {"detail": "provide either ISRC or both artist..."}     -> OUR bug. Never retried.
     anything else                                               -> provider trouble. Retryable.
-
-The 400 case matters: it is a malformed request, so retrying sends the same malformed request twice.
+What each costs when it is got wrong: `docs/arch/05-worker.md` §6.
 """
 
 from __future__ import annotations
@@ -37,35 +28,26 @@ BASE_URL = "https://api.lrcmux.dev"
 
 USER_AGENT = "encore-worker (karaoke lyrics alignment)"
 
-#: The align flow has a fallback ladder behind this, so waiting is worse than moving on to the next
-#: provider and then to ASR. A multiplexer fans out internally, so it is slower than a single provider.
+#: Seconds before a lookup is abandoned, longer than a single provider's because a multiplexer fans out
+#: internally (docs/arch/05-worker.md §6.2).
 TIMEOUT_SEC = 12.0
 
 
-#: ONE gate for this service, shared by every client in this process. Module-level because the budget is
-#: per SOURCE IP — a per-client instance would let two clients each pace themselves and still burst
-#: together, which is exactly what gets an IP blocked.
+#: ONE gate for this service, shared by every client in this process, the budget being per SOURCE IP
+#: (docs/arch/05-worker.md §6.2).
 _GATE = RateLimiter()
 
 
 class ProviderUnreachable(RuntimeError):
-    """LRCmux could not be reached, or answered in a way that is not about this song.
-
-    `retryable = True`: a transient network or upstream failure is the common case, and raising rather
-    than returning empty is the whole point — "this provider is down" must not look like "this song has
-    no lyrics".
-    """
+    """LRCmux could not be reached, or answered in a way that is not about this song. Retryable, and raised
+    rather than returned empty so "the provider is down" cannot look like "this song has no lyrics"."""
 
     retryable = True
 
 
 class BadRequest(ValueError):
-    """We asked for something malformed — a 400 from the API.
-
-    `retryable = False`: the same malformed request sent again is still malformed. This should be
-    unreachable, since `fetch` requires both artist and title, so reaching it means a caller bypassed
-    that check.
-    """
+    """We asked for something malformed — a 400 from the API, and not retryable. Should be unreachable:
+    `fetch` requires both artist and title, so reaching it means a caller bypassed that check."""
 
     retryable = False
 
@@ -75,11 +57,11 @@ class Result:
     """A parsed LRCmux answer: the words, how precisely they are timed, and who supplied them."""
 
     segments: tuple[Segment, ...]
-    #: `word`, `line`, or None when there is nothing usable. Decides `TextRef.timing`, and therefore
-    #: which retry knobs the search can offer for this text.
+    #: `word`, `line`, or None when nothing is usable. Decides `TextRef.timing`, and so which retry knobs
+    #: the search can offer for this text.
     timing: str | None
-    #: The upstream provider LRCmux actually got this from ("KuGou", "Musixmatch", …). Recorded on the
-    #: completion facts, so a systematically bad source is identifiable rather than anonymous.
+    #: The upstream provider LRCmux got this from, recorded on the completion facts so a systematically bad
+    #: source is identifiable rather than anonymous.
     source: str | None = None
     instrumental: bool = False
 
@@ -100,18 +82,14 @@ class LrcmuxClient:
         gate: RateLimiter | None = None,
     ) -> None:
         self._base = base_url.rstrip("/")
-        # The SHARED module gate by default: the budget is per source IP, so a per-client gate would let two
-        # clients each pace themselves and still burst together. Injected only by tests, to stay hermetic.
+        # The SHARED module gate by default; injected only by tests, to stay hermetic.
         self._gate = gate or _GATE
         self._timeout = timeout_sec
         self._sources = sources
-        # Injectable, and a genuine seam rather than a test hook: this is also where a custom SSL
-        # context, a client certificate or an auth handler would go. A test hands in a fake, which is
-        # why nothing here has to monkeypatch a library function — the previous arrangement did, and
-        # silently stopped intercepting the moment the client built its own opener.
+        # Injectable, and a genuine seam rather than a test hook: a custom SSL context, a client
+        # certificate or an auth handler would go here too.
         self._opener = opener if opener is not None else build_opener(proxy)
-        #: The last answer's upstream source, for the caller to record. Not part of the port, so it is
-        #: read opportunistically by whoever cares and ignored by whoever does not.
+        #: The last answer's upstream source, for the caller to record; not part of the port.
         self.last_source: str | None = None
 
     def fetch(self, *, artist: str, track: str, duration_sec: float | None) -> Sequence[Segment]:
@@ -121,12 +99,8 @@ class LrcmuxClient:
         return result.segments
 
     def lookup(self, *, artist: str, track: str, duration_sec: float | None) -> Result:
-        """The full answer, including the sync level and the upstream source.
-
-        Separate from `fetch` because the port only promises segments, but the sync level decides which
-        retry knobs apply and the source is worth recording — and a caller that wants those should not
-        have to re-parse the payload.
-        """
+        """The full answer, including the sync level and the upstream source — separate from `fetch` because
+        the port promises only segments, and a caller wanting those should not re-parse the payload."""
         if not artist or not track:
             raise BadRequest("lrcmux needs both artist and title")
         body = self._get(
@@ -141,10 +115,8 @@ class LrcmuxClient:
     def _get(self, url: str) -> str | None:
         """The response body, None for a 404, or an exception for anything else.
 
-        PACED through the service's shared gate, which also retries a 429/503 with backoff. The status ladder
-        stays HERE rather than inside the gate, because only this module knows that a 404 is an ordinary miss
-        for a lyrics lookup rather than a failure — a gate that retried it would triple the cost of every
-        song the provider simply does not have.
+        PACED through the service's shared gate, which also retries a 429/503; the status ladder stays HERE
+        because only this module knows a 404 is an ordinary miss (docs/arch/05-worker.md §6.2).
         """
         status, body = self._gate.run(lambda: self._fetch(url))
         if status == 404:
@@ -156,12 +128,8 @@ class LrcmuxClient:
         return body
 
     def _fetch(self, url: str) -> tuple[int, str]:
-        """One HTTP attempt as `(status, body)`, so the gate can see a retryable status.
-
-        An HTTP error is RETURNED rather than raised: the gate decides whether 429/503 is worth another
-        attempt, and it cannot decide on an exception. A transport failure (no route, timeout) still raises —
-        that is not a status, and no backoff turns it into one.
-        """
+        """One HTTP attempt as `(status, body)`, so the gate can see a retryable status; a transport failure
+        still raises (docs/arch/05-worker.md §6.2)."""
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310 - https
         try:
             with self._opener.open(request, timeout=self._timeout) as response:
@@ -174,13 +142,8 @@ class LrcmuxClient:
 
 
 def build_opener(proxy: str | None) -> urllib.request.OpenerDirector:
-    """An opener that honours a proxy, explicit or from the environment.
-
-    Constructed rather than relying on `urlopen`'s module-level default, and that is measured rather than
-    cautious: `build_opener` OMITS `ProxyHandler` entirely when no proxy variable is set at the moment the
-    default opener is first built, and that opener is then cached for the life of the process. In a
-    resident worker, a proxy configured after the first lookup would be silently ignored forever.
-    """
+    """An opener that honours a proxy, explicit or from the environment, CONSTRUCTED rather than relying on
+    `urlopen`'s cached module-level default (docs/arch/05-worker.md §6.2)."""
     handler = urllib.request.ProxyHandler({"https": proxy, "http": proxy} if proxy else None)
     return urllib.request.build_opener(handler)
 
@@ -202,8 +165,7 @@ def build_url(
     """
     params: dict[str, str] = {"artist": artist, "title": track, "format": "json", "level": level}
     if duration_sec is not None and duration_sec > 0:
-        # Integer seconds: the API's parameter is an integer, and a fractional value is noise to a
-        # duration matcher that works to a tolerance anyway.
+        # Integer seconds: the API's parameter is one, and a duration matcher works to a tolerance.
         params["duration"] = str(int(round(duration_sec)))
     if sources:
         params["sources"] = sources

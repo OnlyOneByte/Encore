@@ -1,16 +1,8 @@
 """The stems flow: decode, separate, check, publish. And the fetch flow, which is shorter still.
 
-DELIBERATELY LINEAR. Unlike align, separation has no fallback ladder and no parameter worth retrying — an
-engine either produces stems or it does not, and a second pass with a different setting would produce a
-different-sounding backing track rather than a better-timed one. So this reads top to bottom, and the
-`GraphPlan`-shaped machinery align needs is absent here on purpose.
-
-What it still gains from durability: a crash after separation but before publication resumes at
-publication instead of re-running a 45-minute pass.
-
-THE ONE REAL DECISION is `probe_silence`. A separator that emits a digitally silent instrumental has
-"succeeded" by every other measure — the files exist, the exit code was zero — and the room hears nothing.
-Refusing is the only way that failure becomes visible.
+DELIBERATELY LINEAR, so it reads top to bottom and the `GraphPlan`-shaped machinery align needs is absent on
+purpose. The one real decision is `probe_silence`, and the reasons for both — plus why its two refusals
+answer `retryable` oppositely — are in docs/arch/05-worker.md §2.4.
 """
 
 from __future__ import annotations
@@ -43,12 +35,8 @@ class StemsOutcome:
     published: PublishedStems | None
     why: str
     audio: AudioRef | None = None
-    #: The `songProfile` artifact, ALWAYS the full wire shape once separation succeeded.
-    #:
-    #: Never None on a published outcome, and that is the contract rather than tidiness: core's process gate
-    #: reads a PRESENT profile as "the analysis step ran" and an ABSENT one as "still processing", so a
-    #: missing profile makes core wait forever for a step it believes already happened. Every inner field may
-    #: be null — that is a real, gate-satisfying answer meaning "measured, unknown".
+    #: The `songProfile` artifact, ALWAYS the full wire shape once separation succeeded and never None on a
+    #: published outcome, which is a contract rather than tidiness (docs/arch/05-worker.md §3).
     profile: Mapping[str, object] | None = None
 
     @property
@@ -57,11 +45,7 @@ class StemsOutcome:
 
 
 class SilentInstrumental(RuntimeError):
-    """The separator produced silence and called it success.
-
-    `retryable = False`: the same input through the same engine produces the same silence, so three
-    attempts only delay the operator finding out. A different engine is a different job.
-    """
+    """The separator produced silence and called it success. NOT retryable (docs/arch/05-worker.md §2.4)."""
 
     retryable = False
 
@@ -69,13 +53,8 @@ class SilentInstrumental(RuntimeError):
 class UnverifiedInstrumental(RuntimeError):
     """The instrumental could not be measured, so it cannot be vouched for.
 
-    A SEPARATE exception from `SilentInstrumental` on purpose: "this is silent" and "nobody knows whether
-    this is silent" are different diagnoses and lead to different fixes — the first is a separation
-    problem, the second is a broken ffmpeg or an unreadable output file.
-
-    `retryable = True`, unlike its sibling. A measurement failure CAN be transient — a truncated write, a
-    full disk, an ffmpeg killed by the OOM reaper — and the work is already done, so a retry that only
-    re-measures is cheap. Contrast the silence case, where re-running produces the same silence.
+    A SEPARATE exception from `SilentInstrumental`, and retryable where that one is not: the two are
+    different diagnoses leading to different fixes (docs/arch/05-worker.md §2.4).
     """
 
     retryable = True

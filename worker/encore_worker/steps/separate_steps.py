@@ -45,12 +45,10 @@ class SeparateStepsImpl:
         self._sep = separator
         self._probe = probe
         self._store = store
-        # Required, not optional: a box without ffmpeg cannot publish, and `host.capabilities` already
-        # refuses to advertise `stems` without it — so defaulting one here is safe rather than hopeful.
+        # Required, not optional: `host.capabilities` already refuses to advertise `stems` without ffmpeg.
         self._encoder = encoder or FfmpegEncoder(config.ffmpeg_bin, config.flac_level)
-        # The LIVE value, which the transport learned from `worker:welcome`. Falls back to config only when
-        # the caller has nothing better — core owns this decision, so its announcement must win over a local
-        # setting rather than the other way round.
+        # The LIVE value the transport learned from `worker:welcome`; config is only the fallback, because
+        # core owns the storage layout (`Config.publish_stem_format`).
         self._publish_ext = publish_stem_format or config.publish_stem_format
 
     async def acquire_audio(self, job: JobRef) -> AudioRef:
@@ -85,13 +83,8 @@ class SeparateStepsImpl:
     async def probe_silence(self, job: JobRef, audio: AudioRef) -> float | None:
         """Peak dBFS of the instrumental, or None when it could not be measured.
 
-        The earlier version returned 0.0 here — the loudest possible reading — so a box that could not
-        measure published unverified. That made "unmeasured" and "definitely fine" the same value, which
-        is the failure this whole guard exists to prevent.
-
-        None now reaches the workflow, which refuses. That is safe to do because `host.capabilities` no
-        longer advertises `stems` without ffmpeg, so a box running this HAS a probe — meaning None is
-        ffmpeg failing on THIS file, which is a real fault rather than a missing capability.
+        None reaches the workflow, which REFUSES: "unmeasured" and "definitely fine" must not be one value
+        (docs/arch/05-worker.md §2.4).
         """
         if self._probe is None:
             return None
@@ -100,15 +93,8 @@ class SeparateStepsImpl:
     async def measure_profile(self, job: JobRef, audio: AudioRef) -> Mapping[str, object]:
         """The `songProfile` artifact: key from the instrumental, vocal range from the vocals.
 
-        ALWAYS returns the full wire shape and NEVER raises — `build_song_profile` catches per-half and
-        degrades to nulls. That total is the contract, not defensiveness: core's process gate reads a present
-        profile as "the analysis ran", so a raise that lost the artifact would leave core waiting forever for
-        a step it thinks already happened, and the song permanently unsingable AND never reprocessed.
-
-        `to_thread` because the analysis is numpy over a multi-minute decode — tens of seconds of CPU that
-        would otherwise freeze the event loop and stop the socket keepalive.
-
-        Measured on the SCRATCH stems, which is why it must run before publication moves and re-encodes them.
+        ALWAYS returns the full wire shape and NEVER raises (docs/arch/05-worker.md §3). Measured on the
+        SCRATCH stems, so it must run before publication re-encodes them.
         """
         return await asyncio.to_thread(
             audio_profile.build_song_profile,
@@ -121,18 +107,9 @@ class SeparateStepsImpl:
     async def publish_stems(self, job: JobRef, audio: AudioRef) -> PublishedStems:
         """Encode the scratch stems to the published format and place them at core's keys.
 
-        THIS USED TO BE `os.path.relpath(audio.path, job.media_dir)` — a ref shaped correctly and pointing
-        at the separator's raw output inside `work/{job_id}/`. Core recorded it, so the row looked healthy,
-        while the file sat in job scratch that retention evicts and carried the wrong extension for the
-        player. Nothing failed; the song just stopped working later.
-
-        ORDER MATTERS. Ownership is re-asserted FIRST, before any bytes become visible: separation takes
-        tens of minutes, so a lease that was valid at the start routinely is not here. Then the stems are
-        encoded into scratch, and only then placed — so a failure halfway leaves the store untouched rather
-        than half-updated.
-
-        The guide mix is built from the ENCODED stems, not the raw ones, so what the TV splits is byte-wise
-        the same audio it would get from the two separate files.
+        ORDER MATTERS: ownership FIRST, then encode into scratch, then place, so a failure halfway leaves the
+        store untouched. The guide mix is built from the ENCODED stems, so what the TV splits is byte-wise
+        what it would get from the two files (docs/arch/05-worker.md §4).
         """
         if not await self._out.confirm_ownership(job.job_id):
             raise NotOurJob(self._out.explain_ownership(job.job_id))
@@ -150,9 +127,8 @@ class SeparateStepsImpl:
             else None
         )
 
-        # Built before anything is placed, and best-effort: a box that cannot produce the 4-channel join
-        # still has two usable stems, and the TV falls back to the two-element guide. Refusing the whole
-        # publication over the optional artifact would throw away a completed separation.
+        # Built before anything is placed, and best-effort: refusing the whole publication over an optional
+        # artifact would throw away a completed separation (`PublishedStems.guide_mix`).
         staged_guide: str | None = None
         if staged_vocals is not None:
             try:
@@ -163,8 +139,8 @@ class SeparateStepsImpl:
                     os.path.join(work, f"publish-guidemix.{ext}"),
                 )
             except EncodeFailed as exc:
-                # Fire-and-forget through the same decision trail align uses, so "why is there no guide
-                # mix" is answerable from the job row rather than only from a process log.
+                # On the same decision trail align uses, so "why is there no guide mix" is answerable from
+                # the job row rather than only from a process log.
                 await self._out.state(
                     job.job_id,
                     "publish",
@@ -204,9 +180,8 @@ class _Permanent(RuntimeError):
 class FetchStepsImpl:
     """`FetchSteps`, for real. The shortest implementation, and the only one producing METADATA.
 
-    `annotate` reads the file's own tags first and falls back to parsing the upload title, because a tag
-    written by whoever encoded the file is evidence where a title is a guess. Both are recorded in
-    `Identified.source`, so a later wrong-lyrics report is traceable to how the song was named.
+    How the song was named is recorded in `Identified.source`, so a later wrong-lyrics report is traceable to
+    it. See docs/arch/05-worker.md §6.
     """
 
     def __init__(
@@ -230,21 +205,14 @@ class FetchStepsImpl:
     async def annotate(self, job: JobRef, audio: AudioRef) -> Identified:
         """Identify the song. Never raises — not knowing is a real answer, not a failure.
 
-        THREE TIERS, and the MusicBrainz one is what makes the result worth having. Core applies this to
-        `artistCanonical`/`titleCanonical`, and `assignParams` sends exactly those to a later align job as
-        its LYRICS LOOKUP KEYS — so a title parse standing alone is an LRCLIB miss and a fall back to ASR
-        for a song whose words are published somewhere.
-
-        MusicBrainz REFINES the parse rather than replacing it: the lookup needs a name to search on, so a
-        parse that found nothing cannot be improved. And a decline at any point leaves the parse standing,
-        because an annotation is an upgrade and never a requirement.
+        These become a later align job's LYRICS LOOKUP KEYS, so a title parse standing alone is a provider
+        miss. MusicBrainz REFINES the parse rather than replacing it (docs/arch/05-worker.md §6).
         """
         artist, track = job.param_str("artist"), job.param_str("track")
         if artist and track:
-            # Core already has names — but they are ITS OWN TITLE PARSE, not a citation: `dispatch.ts`
-            # runs `parseTrackTitle(media.title, media.artist)` and sends the result. So these are refined
-            # like any other guess rather than returned as final, which is what an earlier version did —
-            # and because core sends them on every job, that made the MusicBrainz lookup unreachable.
+            # Core already has names, but they are ITS OWN TITLE PARSE and not a citation, so they are
+            # refined like any other guess. Returning them as final made the MusicBrainz lookup unreachable,
+            # core sending them on every job.
             supplied = Identified(artist=artist, track=track, source="job-params")
             return await self._refine(job, supplied, audio)
         title = job.param_str("title")
@@ -255,9 +223,8 @@ class FetchStepsImpl:
     async def _refine(self, job: JobRef, parsed: Identified, audio: AudioRef) -> Identified:
         """Upgrade a title parse to a MusicBrainz match, or return the parse untouched.
 
-        `to_thread` because the lookup is a blocking HTTP call behind a one-request-per-second gate: awaiting
-        it inline would freeze the event loop for up to three paced attempts, stop the progress keepalive,
-        and let the core's lease expire on a healthy job.
+        `to_thread` because the lookup is a blocking HTTP call behind a one-request-per-second gate, and
+        awaiting it inline would stop the progress keepalive and let the lease expire on a healthy job.
         """
         if self._annotator is None or not parsed.confident:
             return parsed
@@ -267,8 +234,8 @@ class FetchStepsImpl:
             annotate_or_reason, self._annotator, parsed.artist, parsed.track, audio.duration_sec
         )
         if found is None:
-            # Recorded on the trail rather than swallowed: a throttled box and a per-song miss look
-            # identical from the outside, and only one of them is worth an operator's attention.
+            # On the trail rather than swallowed: a throttled box and a per-song miss look identical from
+            # the outside, and only one is worth an operator's attention.
             await self._out.state(job.job_id, "annotate", 1, "declined", why or "no match", None)
             return parsed
         return Identified(

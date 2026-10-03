@@ -3,32 +3,16 @@
 
     uv run python docs/benchmarks/forced-alignment/scripts/bench.py --song tfr-flyaway
 
-THE QUESTION THIS ANSWERS. An LRC written for another master is *confidently wrong*: its line timings are
-real, internally consistent, and offset from the recording in hand. `place.py`'s own docstring calls that
-"the single most direct explanation for 'the lyrics are out of sync'". This measures what the worker
-actually does about it, as a function of how big the offset is.
+THE QUESTION THIS ANSWERS. An LRC written for another master is *confidently wrong*: real, internally
+consistent line timings, offset from the recording in hand. This measures what the worker does about it as a
+function of how big the offset is — a SWEEP rather than one accuracy number, because whisperx crops the audio
+to each segment's provisional span, so accuracy is a property of the aligner AND the windows it was handed.
 
-WHY AN OFFSET SWEEP RATHER THAN ONE ACCURACY NUMBER. whisperx does not search the recording — it CROPS the
-audio to each segment's provisional span and aligns the text inside it. So accuracy is not a property of the
-aligner alone; it is a property of the aligner AND the windows it was handed. Measured on tfr-flyaway with
-the mix as input:
-
-    provisional spans        bias      MAD      within +/-250ms   >2s off
-    the truth's own          +122 ms   102 ms   74.7%             0/75
-    spread evenly            +846 ms   3714 ms   1.3%             57/75
-
-A single number would average those two regimes into something describing neither.
-
-THREE CONDITIONS, each a different real arrival:
-
-  `shifted`  truth + a known offset, which is an LRC for another master. The sweep.
-  `exact`    truth unchanged — the STABILITY control: does alignment damage timings that were already
-             right? A benchmark that only tests recovery cannot see that.
-  `blind`    no timings at all, spread evenly. What an unsynced sheet or an operator paste gets.
-
-NOT SCORED AGAINST ITSELF. `exact` feeds truth and measures against truth, so a do-nothing aligner would
-score perfectly — which is why it is labelled a control rather than an accuracy result, and why the sweep
-is the headline. Its value is the opposite direction: a non-zero error there is damage.
+THREE CONDITIONS, each a different real arrival: `shifted` (truth plus a known offset, the sweep), `exact`
+(truth unchanged — the STABILITY control, which a benchmark that only tests recovery cannot see) and `blind`
+(no timings at all, spread evenly). NOT SCORED AGAINST ITSELF: `exact` feeds truth and measures against truth,
+so a do-nothing aligner scores perfectly there, which is why it is a control and why the sweep is the
+headline. README, "The harness scripts", has the two regimes' measured rows.
 """
 
 from __future__ import annotations
@@ -69,9 +53,7 @@ def score(aligned: list[dict], truth: list[dict]) -> dict[str, float]:
     problem a song has.
     """
     errs = [
-        float(a["start"]) - float(t["start"])
-        for a, t in zip(aligned, truth)
-        if a.get("start") is not None
+        float(a["start"]) - float(t["start"]) for a, t in zip(aligned, truth) if a.get("start") is not None
     ]
     if not errs:
         return {"lines": 0}
@@ -105,42 +87,74 @@ def main() -> None:
     ap.add_argument("--audio", default=None, help="defaults to the song's youtube-mix.wav")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--language", default="en")
-    ap.add_argument("--global", dest="global_decode", action="store_true",
-                    help="alignment v2: one global CTC decode of the text over the whole song — no "
-                         "windows, no input timings. Sweeps nothing, because there is nothing to sweep: "
-                         "claimed timings never enter.")
-    ap.add_argument("--repair", action="store_true",
-                    help="with --global: also apply R3 (anchored re-decode of repeated lines between "
-                         "unique neighbours) and report before/after — the shipped repair path.")
-    ap.add_argument("--dump", action="store_true",
-                    help="with --global: per-line signed onset errors, worst first, to see WHERE the "
-                         "misses are (gross misassignment vs boundary jitter).")
-    ap.add_argument("--claims", nargs="?", const=0.0, default=None, type=float,
-                    help="with --global: run the SHIPPED attempt (AlignStepsImpl.time_text: never-sung "
-                         "drop, R3/R4/R1/R2, adoption, clamping, the envelope gate, grading) with the "
-                         "truth (plus this offset in seconds) as the claims — the production case where "
-                         "an LRC/captions exist. Claims and truth share a source here, so this measures "
-                         "the REPAIR MACHINERY, not blind accuracy. For the corpus-wide claim-noise sweep "
-                         "(jitter, tempo, partial sheets, wrong text, run_align) use e2e.py.")
-    ap.add_argument("--vocals", default=None,
-                    help="with --claims: the vocals stem time_text aligns on; --audio then serves as "
-                         "R4's mix witness, as a stems job leaves them. Default: align on --audio alone "
-                         "(the same target as the global row; R4 then has no second witness).")
-    ap.add_argument("--snap", action="store_true",
-                    help="with --global: prototype onset refinement — snap each line start to the "
-                         "strongest local energy rise within ±0.35 s.")
-    ap.add_argument("--evidence", action="store_true",
-                    help="with --global: per-line evidence table (decode score, envelope overlap, error) "
-                         "to calibrate the unheard/unsung thresholds.")
-    ap.add_argument("--truth", default=None,
-                    help="path to a truth-lines.json outside benchmark-songs (temp songs)")
-    ap.add_argument("--words", default=None,
-                    help="with --global: path to a truth-words.json ({words:[{start,end}],tokens:[...]}) "
-                         "— scores WORD onsets (the karaoke ball's unit) against measured truth. "
-                         "MIREX-style: AAE and %-within tolerances.")
-    ap.add_argument("--rescue", action="store_true",
-                    help="with --global: prototype BLIND repair — lines the decode could not hear are "
-                         "re-spread proportionally inside the vocal-active gap between trusted anchors.")
+    ap.add_argument(
+        "--global",
+        dest="global_decode",
+        action="store_true",
+        help="alignment v2: one global CTC decode of the text over the whole song — no "
+        "windows, no input timings. Sweeps nothing, because there is nothing to sweep: "
+        "claimed timings never enter.",
+    )
+    ap.add_argument(
+        "--repair",
+        action="store_true",
+        help="with --global: also apply R3 (anchored re-decode of repeated lines between "
+        "unique neighbours) and report before/after — the shipped repair path.",
+    )
+    ap.add_argument(
+        "--dump",
+        action="store_true",
+        help="with --global: per-line signed onset errors, worst first, to see WHERE the "
+        "misses are (gross misassignment vs boundary jitter).",
+    )
+    ap.add_argument(
+        "--claims",
+        nargs="?",
+        const=0.0,
+        default=None,
+        type=float,
+        help="with --global: run the SHIPPED attempt (AlignStepsImpl.time_text: never-sung "
+        "drop, R3/R4/R1/R2, adoption, clamping, the envelope gate, grading) with the "
+        "truth (plus this offset in seconds) as the claims — the production case where "
+        "an LRC/captions exist. Claims and truth share a source here, so this measures "
+        "the REPAIR MACHINERY, not blind accuracy. For the corpus-wide claim-noise sweep "
+        "(jitter, tempo, partial sheets, wrong text, run_align) use e2e.py.",
+    )
+    ap.add_argument(
+        "--vocals",
+        default=None,
+        help="with --claims: the vocals stem time_text aligns on; --audio then serves as "
+        "R4's mix witness, as a stems job leaves them. Default: align on --audio alone "
+        "(the same target as the global row; R4 then has no second witness).",
+    )
+    ap.add_argument(
+        "--snap",
+        action="store_true",
+        help="with --global: prototype onset refinement — snap each line start to the "
+        "strongest local energy rise within ±0.35 s.",
+    )
+    ap.add_argument(
+        "--evidence",
+        action="store_true",
+        help="with --global: per-line evidence table (decode score, envelope overlap, error) "
+        "to calibrate the unheard/unsung thresholds.",
+    )
+    ap.add_argument(
+        "--truth", default=None, help="path to a truth-lines.json outside benchmark-songs (temp songs)"
+    )
+    ap.add_argument(
+        "--words",
+        default=None,
+        help="with --global: path to a truth-words.json ({words:[{start,end}],tokens:[...]}) "
+        "— scores WORD onsets (the karaoke ball's unit) against measured truth. "
+        "MIREX-style: AAE and %-within tolerances.",
+    )
+    ap.add_argument(
+        "--rescue",
+        action="store_true",
+        help="with --global: prototype BLIND repair — lines the decode could not hear are "
+        "re-spread proportionally inside the vocal-active gap between trusted anchors.",
+    )
     args = ap.parse_args()
 
     from encore_worker.adapters.ml import WhisperXAligner
@@ -163,9 +177,11 @@ def main() -> None:
     print(f"song={args.song} audio={os.path.basename(audio)} {duration:.1f}s device={args.device}")
     print(f"ground truth: {len(truth)} AUTHORED lines, first at {truth[0]['start']:.2f}s\n")
 
-    header = f"{'condition':>14s} {'bias':>9s} {'MAD':>8s} " + " ".join(
-        f"{'±' + str(int(t * 1000)):>7s}" for t in TOLERANCES_SEC
-    ) + f" {'>2s':>6s} {'sec':>6s}"
+    header = (
+        f"{'condition':>14s} {'bias':>9s} {'MAD':>8s} "
+        + " ".join(f"{'±' + str(int(t * 1000)):>7s}" for t in TOLERANCES_SEC)
+        + f" {'>2s':>6s} {'sec':>6s}"
+    )
     print(header)
     print("-" * len(header))
 
@@ -211,8 +227,15 @@ class _Published:
 
 
 def time_text_claims(
-    aligner, *, audio: str, vocals: str | None, truth: list[dict], offset: float, language: str,
-    media_dir: str, config: object | None = None,
+    aligner,
+    *,
+    audio: str,
+    vocals: str | None,
+    truth: list[dict],
+    offset: float,
+    language: str,
+    media_dir: str,
+    config: object | None = None,
 ) -> dict:
     """ONE SHIPPED ATTEMPT with the truth (+ `offset`) as claims: `AlignStepsImpl.time_text`, unmodified.
 
@@ -263,9 +286,7 @@ def time_text_claims(
     impl = AlignStepsImpl(config=settings, adapters=Adapters(aligner=aligner), reporter=trail)
     request = TimeRequest(
         job=JobRef(job_id="bench", media_id="bench", media_dir=media_dir, source_uri=None),
-        text=TextRef(
-            tier=Tier.CANDIDATE, label=claims.label, segments=claims.segments(), timing=TIMING_LINE
-        ),
+        text=TextRef(tier=Tier.CANDIDATE, label=claims.label, segments=claims.segments(), timing=TIMING_LINE),
         audio=AudioRef(path=audio, vocals_path=vocals, duration_sec=info.frames / info.samplerate),
         language=language,
     )
@@ -273,7 +294,12 @@ def time_text_claims(
         timed = asyncio.run(impl.time_text(request))
     verdict, why = trail.last_global()
     out: dict = {
-        "outcome": "refused", "confidence": None, "verdict": verdict, "why": why, "high": 0, "lines": [],
+        "outcome": "refused",
+        "confidence": None,
+        "verdict": verdict,
+        "why": why,
+        "high": 0,
+        "lines": [],
         "faults": [note[4] for note in trail.states if note[3] == "repair-faults"],
     }
     if timed is None:
@@ -318,7 +344,9 @@ def run_global(args) -> None:
     decode_sec = time.time() - started
 
     print(f"song={args.song} audio={os.path.basename(audio)} device={args.device}  [GLOBAL DECODE]")
-    print(f"  emissions {emit_sec:5.1f}s (once per song)   decode {decode_sec*1000:6.0f} ms (per candidate)")
+    print(
+        f"  emissions {emit_sec:5.1f}s (once per song)   decode {decode_sec * 1000:6.0f} ms (per candidate)"
+    )
 
     def report(label: str, lines) -> None:
         # MATCHED BY THE LINE'S OWN INDEX, never by position: a decorative caption ('♪') has no alignable
@@ -328,11 +356,18 @@ def run_global(args) -> None:
         matched_truth = [truth[line.index] for line in lines]
         stats = score(aligned, matched_truth)
         if not stats.get("lines"):
-            print(f"  {label}: no timed output"); return
-        tols = "  ".join(f"±{int(t*1000)}ms {stats[f'within_{int(t*1000)}']:5.1f}%" for t in TOLERANCES_SEC)
-        ctols = "  ".join(f"±{int(t*1000)}ms {stats[f'cwithin_{int(t*1000)}']:5.1f}%" for t in TOLERANCES_SEC)
-        print(f"  {label}: lines {int(stats['lines'])}/{len(truth)}  bias {stats['bias_ms']:+5.0f}ms  "
-              f"MAD {stats['mad_ms']:4.0f}ms  >2s {int(stats['gross'])}")
+            print(f"  {label}: no timed output")
+            return
+        tols = "  ".join(
+            f"±{int(t * 1000)}ms {stats[f'within_{int(t * 1000)}']:5.1f}%" for t in TOLERANCES_SEC
+        )
+        ctols = "  ".join(
+            f"±{int(t * 1000)}ms {stats[f'cwithin_{int(t * 1000)}']:5.1f}%" for t in TOLERANCES_SEC
+        )
+        print(
+            f"  {label}: lines {int(stats['lines'])}/{len(truth)}  bias {stats['bias_ms']:+5.0f}ms  "
+            f"MAD {stats['mad_ms']:4.0f}ms  >2s {int(stats['gross'])}"
+        )
         print(f"    raw            {tols}")
         print(f"    bias-corrected {ctols}")
         if args.dump:
@@ -349,21 +384,29 @@ def run_global(args) -> None:
 
         duration = emissions.frames * emissions.frame_sec
         normalized = [" ".join(t.lower().split()) for t in line_texts]
-        blind = {line.index for line in doc.lines if normalized[line.index] and normalized.count(normalized[line.index]) > 1}
+        blind = {
+            line.index
+            for line in doc.lines
+            if normalized[line.index] and normalized.count(normalized[line.index]) > 1
+        }
         started = time.time()
         runs = _anchored_runs(doc.lines, blind, duration)
         repaired = regenerate(runs, emissions, decoder=forced_align_decoder, language=args.language)
         repair_sec = time.time() - started
-        print(f"  R3: {len(blind)} repeated lines in {len(runs)} runs; {len(repaired)} re-decoded "
-              f"({repair_sec*1000:.0f} ms)")
+        print(
+            f"  R3: {len(blind)} repeated lines in {len(runs)} runs; {len(repaired)} re-decoded "
+            f"({repair_sec * 1000:.0f} ms)"
+        )
         report("global+R3", _with_lines(doc, repaired).lines)
 
     if args.words:
         word_truth = json.load(open(args.words, encoding="utf-8"))
         counts = [len(str(t["text"]).split()) for t in truth]
         if sum(counts) != len(word_truth["words"]):
-            print(f"  words: SKIPPED — line texts carry {sum(counts)} tokens, "
-                  f"truth has {len(word_truth['words'])}")
+            print(
+                f"  words: SKIPPED — line texts carry {sum(counts)} tokens, "
+                f"truth has {len(word_truth['words'])}"
+            )
         else:
             by_index = {line.index: line for line in doc.lines}
             cursor, aligned_pairs, interpolated = 0, [], 0
@@ -385,8 +428,10 @@ def run_global(args) -> None:
                     f"±{int(t * 1000)}ms {sum(1 for e in aligned_pairs if abs(e) <= t) / n * 100:5.1f}%"
                     for t in (0.1, 0.25, 0.3, 0.5)
                 )
-                print(f"  words: {n}/{len(word_truth['words'])} aligned ({interpolated} interpolated)  "
-                      f"AAE {aae * 1000:.0f}ms  median {med * 1000:.0f}ms  bias {bias * 1000:+.0f}ms")
+                print(
+                    f"  words: {n}/{len(word_truth['words'])} aligned ({interpolated} interpolated)  "
+                    f"AAE {aae * 1000:.0f}ms  median {med * 1000:.0f}ms  bias {bias * 1000:+.0f}ms"
+                )
                 print(f"    {tols}")
 
     if args.claims is not None:
@@ -403,9 +448,11 @@ def run_global(args) -> None:
                 media_dir=media_dir,
             )
         on = os.path.basename(args.vocals or audio)
-        print(f"  time_text(claims offset {args.claims:+.2f}s, on {on}): {got['outcome']}"
-              f" (doc confidence {got['confidence']}); verdict={got['verdict']};"
-              f" {got['high']}/{len(got['lines'])} lines high; repair faults: {got['faults'] or 'none'}")
+        print(
+            f"  time_text(claims offset {args.claims:+.2f}s, on {on}): {got['outcome']}"
+            f" (doc confidence {got['confidence']}); verdict={got['verdict']};"
+            f" {got['high']}/{len(got['lines'])} lines high; repair faults: {got['faults'] or 'none'}"
+        )
         print(f"    trail: {got['why']}")
         if got["lines"]:
             report("time_text+claims", got["lines"])
@@ -431,7 +478,8 @@ def run_global(args) -> None:
             center = int(line.start / hop)
             lo, hi = max(1, center - reach), min(len(env) - 1, center + reach)
             if hi - lo < 3:
-                snapped.append(_Snapped(line, line.start)); continue
+                snapped.append(_Snapped(line, line.start))
+                continue
             rises = [float(env[i]) - float(env[i - 1]) for i in range(lo, hi)]
             best = max(range(len(rises)), key=lambda i: rises[i])
             snapped.append(_Snapped(line, (lo + best) * hop))
@@ -451,7 +499,7 @@ def run_global(args) -> None:
 
         def overlap(start: float, end: float) -> float:
             a, b = int(start / hop), max(int(end / hop), int(start / hop) + 1)
-            window = env[max(0, a):min(b, len(env))]
+            window = env[max(0, a) : min(b, len(env))]
             return float(sum(window) / len(window)) if len(window) else 0.0
 
         truth_by_index = {i: float(t["start"]) for i, t in enumerate(truth)}
@@ -461,8 +509,10 @@ def run_global(args) -> None:
         print(f"    {'idx':>4s} {'score':>7s} {'d-med':>6s} {'env':>5s} {'err':>7s}  text")
         for line in doc.lines:
             err = line.start - truth_by_index[line.index]
-            print(f"    {line.index:4d} {line.score:+7.2f} {line.score - med:+6.2f} "
-                  f"{overlap(line.start, line.end):5.2f} {err:+7.2f}  {line.text[:48]!r}")
+            print(
+                f"    {line.index:4d} {line.score:+7.2f} {line.score - med:+6.2f} "
+                f"{overlap(line.start, line.end):5.2f} {err:+7.2f}  {line.text[:48]!r}"
+            )
 
     if args.rescue:
         # The SHIPPED never-sung rule (steps/align_steps.py): score far below the song's norm AND span on
@@ -474,7 +524,8 @@ def run_global(args) -> None:
         for _round in range(2):
             round_med = statistics.median(line.score for line in fixed.lines)
             never = [
-                line for line in fixed.lines
+                line
+                for line in fixed.lines
                 if line.score < round_med - 2.0
                 and overlap(line.start, line.end) < 0.10
                 and len(line.text) / max(line.end - line.start, 1e-6) < 2.0

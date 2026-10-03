@@ -284,3 +284,65 @@ Listed so the gaps are visible rather than assumed closed.
 - `audiosep` (169-model UVR zoo), `instrumental_becruily`, and any ensemble — no runtime adapter yet.
 - A listening test. SDR is a proxy; 17.4 dB versus 14.8 dB is a real difference but this document does not
   claim to know how it sounds on a karaoke track.
+
+## Stem roles, measured from the audio (2026-10-01: moved out of the code)
+
+Which of two separated stems is the **backing track** is decided from the bytes about to be published, not
+from a filename. The design and the refusals are in
+[`../../arch/05-worker.md`](../../arch/05-worker.md) §2.2; these are the readings.
+
+**The discriminator is the fraction of spectral energy below 250 Hz.** A backing track carries the kick drum
+and the bass line; an isolated vocal has almost nothing down there, because even a bass singer's fundamental
+sits around 80–100 Hz and carries little of the voice's total energy. Measured on three songs' **artist-supplied
+ground-truth stems**:
+
+| song | instrumental | vocals | ratio |
+| --- | --- | --- | --- |
+| `tfr-flyaway` | **79.36%** | **3.44%** | 23.1× |
+| `tfr-mayday` | **85.96%** | **5.35%** | 16.1× |
+| `tfr-chosen` | **76.43%** | 6.61% | 11.6× |
+
+Instrumentals land at 76–86% and vocals at 3–7%: no overlap, and an order of magnitude of margin. The FFT is
+32 768 samples — about **0.74 s** at 44.1 kHz, long enough that a 40 Hz bin is resolved.
+
+**Activity was the obvious alternative and is not used.** Vocals are intermittent and backing tracks
+continuous, but measured the gap is 97.8% against 81% — a 1.2× margin against the bass fraction's order of
+magnitude. A real signal, far too weak to bet on.
+
+**The same measurement independently reproduces an inverted filename pair.** One upstream package's
+`<name>_other.wav` scores 79.98% and its `<name>_instrumental.wav` 3.25%, so `_other` is the backing track —
+which the registry records. It was originally found with a chords-only control (no vocals in the input, so the
+instrumental stem must hold everything):
+
+| source | rms | share |
+| --- | --- | --- |
+| input mixture | 0.03608 | — |
+| `_instrumental` | 0.00086 | **2.4%** — near-silent |
+| `_other` | 0.03574 | **99.1%** — this is the instrumental |
+
+**The honest limitation:** all three validation songs are electronic, which is the genre most likely to
+flatter this measurement. A sparse acoustic recording — solo piano and voice, no drums or bass — would narrow
+the gap. That is why the measurement returns nothing rather than a guess when the margin is thin: a refused
+job is recoverable and a mislabelled master is not.
+
+### The silence probe's own floor
+
+A separator that emits a digitally silent instrumental has succeeded by every other measure. Measured on a
+30 s commercial excerpt, its vocals stem came back at peak **0.000122** / rms **0.000022** — silence to within
+one 16-bit least-significant bit — and its instrumental differed from the input mixture by **0.00009**, i.e.
+the separator had passed the mix through and emitted nothing as the vocal.
+
+### Why the zoo's scores are labelled `upstream` and not `measured`
+
+The catalogue is read from `audio-separator`'s own metadata, one entry per checkpoint:
+
+```json
+{"filename": "...", "stems": ["instrumental", "vocals"], "target_stem": "instrumental",
+ "scores": {"vocals": {"SDR": 8.78, "...": 0}, "instrumental": {"SDR": 15.40, "...": 0}}}
+```
+
+Those are BSS-eval SDR via `museval`, run by someone else on tracks we did not choose — **not** the plain SDR
+this document reports, and not evidence about this hardware. Useful for ranking a hundred unknowns, and
+labelled so that it cannot be read as one of the rows above. The hub is likewise not a runtime: one
+conversion with 28 895 downloads and geometry matching a known checkpoint carries no `checkpoint_family`
+field at all, so nothing in the file says which architecture preset to load it with.

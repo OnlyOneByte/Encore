@@ -86,14 +86,22 @@ def test_the_passthrough_model_is_not_registered() -> None:
 
 
 def test_the_registry_records_why_the_passthrough_was_removed() -> None:
-    """The reason has to live next to the registry, not in a commit message. Anyone evaluating MLX checkpoints
-    will find this model again — it is fast, MIT, and its preset geometry verifies — and needs to know that
-    none of those facts predicted whether it works."""
+    """The reason has to be reachable from the registry, not left in a commit message. Anyone evaluating MLX
+    checkpoints will find this model again — it is fast, MIT, and its preset geometry verifies — and needs to
+    know that none of those facts predicted whether it works.
+
+    W7c moved the MEASUREMENT into the benchmark document the comment cites, so both halves are checked: the
+    registry still says PASSTHROUGH and still names the document, and that document still carries the rms
+    figure. Asserting only the code would let a pointer survive the number it points at.
+    """
     import pathlib
 
     body = pathlib.Path(reg.__file__).read_text()
     assert "PASSTHROUGH" in body
-    assert "0.000022" in body, "the measurement, not just the conclusion"
+    cited = "docs/benchmarks/stem-separation/README.md"
+    assert cited in body, "the registry must point at where the measurement lives"
+    measured = (pathlib.Path(__file__).resolve().parents[2] / cited).read_text()
+    assert "0.000022" in measured, "the measurement, not just the conclusion"
 
 
 # ── the capability intersection the core offers from ─────────────────────────────────────────────

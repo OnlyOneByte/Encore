@@ -1,23 +1,14 @@
 """A pure-numpy CTC forced aligner and the synthetic "sung" emission matrices it decodes.
 
-WHY A REAL VITERBI AND NOT A SCRIPT. The alignment suite's first fake decoder returned the WHOLE SONG's char
-spans whatever it was handed, so every windowed repair decode raised inside `generate` (its span-count
-check) and `regenerate` swallowed it: R3 ran in no test, and deleting it left the suite green (review L8).
-A decoder that aligns the frames it is GIVEN is slice-relative by construction. A repair window gets
-spans relative to its own first frame, which is exactly what `regenerate` shifts back to song time. And a
-window that holds the sung line finds it there, with no script needed.
+It mirrors `adapters.ml.forced_align_decoder` (torchaudio's `forced_align`, blank = 0) topology for
+topology, so it is slice-relative like the real kernel: a repair window gets spans relative to its own
+first frame, which is what `regenerate` shifts back to song time. `test_ml_contract.py` holds the two
+frame-for-frame equal on these matrices.
 
-WHAT IT MIRRORS. `adapters.ml.forced_align_decoder` (torchaudio's `forced_align`, blank = 0). It uses the
-same topology: blank-interleaved targets, a skip allowed only between DIFFERENT labels, and an end in the
-last label or the trailing blank. It returns the same two outputs: a label per frame and that frame's
-log-prob of its label. `test_ml_contract.py` holds it frame-for-frame equal to the real kernel on these
-matrices, so a test passing on the fake says something about the kernel.
-
-WHAT IT IMPLIES FOR R3. An exact Viterbi has optimal substructure. Re-decoding a run between the global
-path's own anchors, on the same matrix, therefore reproduces the global path. That is the measured R3
-NO-OP in docs/benchmarks/forced-alignment/README.md, and `test_align_v2` pins it as a property. A test
-that wants R3 to CHANGE something has to hand the global pass different evidence than the windows get.
-`misheard` does that, and says so.
+An exact Viterbi also makes R3's re-decode a no-op by optimal substructure — pinned as a property in
+`test_align_v2.py`, measured in docs/benchmarks/forced-alignment/README.md — so a test that wants R3 to
+change something must hand the global pass different evidence than the windows get, which `misheard`
+does. The first fake decoder returned whole-song spans instead and R3 ran in no test at all.
 """
 
 from __future__ import annotations
@@ -90,15 +81,10 @@ def sung_matrix(
 def ctc_viterbi(log_probs: object, targets: Sequence[int], blank: int = 0) -> tuple[list[int], list[float]]:
     """The best CTC path of `targets` through `log_probs`, as `forced_align_decoder` returns it.
 
-    TIES ARE BROKEN AS TORCHAUDIO'S CPU KERNEL BREAKS THEM, so flat evidence (a window holding nothing
-    the text says) takes the same path as production does, not just an equally scored one. A skip is
-    taken only if it is strictly best, a step only if it is strictly best, and otherwise the path stays.
-    It ends in the trailing blank only if that is strictly better than ending in the last label. The
-    kernel's accumulation dtype is kept too: float32 in, float32 sums.
-
-    Raises ValueError when the frames cannot hold the targets (each target needs a frame, and each
-    repeated neighbour needs a blank between). torchaudio raises too, and `regenerate` counts either as
-    a fault.
+    Ties break as torchaudio's CPU kernel breaks them — a skip or a step only when strictly best, an end
+    in the trailing blank only when strictly better — and the accumulation stays float32, so flat
+    evidence takes production's path rather than an equally scored one. Raises ValueError when the frames
+    cannot hold the targets, which torchaudio does too and `regenerate` counts as a fault.
     """
     lp = np.asarray(log_probs)
     lp = lp.astype(np.float32 if lp.dtype == np.float32 else np.float64, copy=False)

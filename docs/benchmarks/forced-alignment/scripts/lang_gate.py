@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-"""The LANGUAGE gates (review M8 / §3 item 9, W7): which bundle should time a non-English song, and the
-live proof that review M9's `blank_id` fix works on a model whose `[PAD]` is not at 0.
+"""The LANGUAGE gates (W7): which bundle should time a non-English song, and the live proof that a model whose
+`[PAD]` is not at 0 decodes correctly.
 
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/lang_gate.py --folds
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/lang_gate.py \\
@@ -8,55 +8,11 @@ live proof that review M9's `blank_id` fix works on a model whose `[PAD]` is not
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/lang_gate.py \\
         --blank [--blank-language nn] [--songs 2] [--out rows.json]
 
-WHY A SEPARATE SCRIPT AND NOT A MODE OF `e2e.py`. The 32-song corpus `e2e.py` drives is ENGLISH — every
-caption track is `en`, and JamendoLyrics MultiLang gives each song ONE language, so the whole claim-mode
-machinery (wrong-text donors, the claim clock, the repair ladder's gates) is calibrated on English texts
-against English bundles (`lexical.CALIBRATED`). The language question needs a different CORPUS (the 59
-fr/de/es JamendoLyrics songs `jamendo.py` deliberately skipped: "the German/Spanish/French thirds of the
-corpus need their own align model to be a fair test") and a different COMPARISON (bundle A against bundle B
-on the same audio and text, blind, with no ladder in between), so folding it into `e2e.py` would have meant a
-second corpus loader and a second scorer inside the harness that owns the shipped path. It reads the same
-shipped functions — `ml.WhisperXAligner.emissions`, `generate`, `forced_align_decoder` — so what it measures
-is the decode that publishes.
-
-WHAT `--folds` ANSWERS, and it is the first thing to run because it gates everything else: the target filter
-now folds a character the vocabulary lacks to its base letters (NFKD, `generate.char_ids` /
-`language.fold_to_base`), and a fold that moved ONE English target sequence would move every number under
-`results/`. It counts, over both corpora, the characters that newly align and the ones NFKD still cannot
-decompose.
-
-WHAT THE SWEEP ANSWERS. Review §3 item 9 measured fr/de/es on STEMS at 91.8% of words within +-300 ms under
-the ENGLISH model — the same as English Jamendo's 91.1% — while routing to whisperx's per-language XLSR/
-VoxPopuli fine-tunes won only on the MIX (de 50.1 -> 85.9, es 47.9 -> 62.6, fr 66.0 -> 72.2). Both readings
-were n=7 songs (2 fr, 3 de, 2 es) and both were on the BASE bundle, which has not been this project's default
-since W5's flip. This widens the stem reading to all 59 songs and re-reads both targets under the bundle that
-ships, which is what decides whether `language.model_language` routes Latin script at all
-(the `lang-route-mix` arm, `host.config.ALIGN_EXPERIMENTS`).
-
-WHAT `--blank` ANSWERS, and why it is here rather than in a unit test. Review M9 measured the hard-coded CTC
-blank costing Danish word onsets within +-250 ms 90.5% -> 73.2% and taking words more than 2 s off from 141 to
-584 — but it measured it by PERMUTING an English model's emission columns (`_review-scratch/encore-review/
-exp_blank.py`), because no non-English song with measured truth was in the corpus and no non-zero-pad model
-had ever been loaded. W4 built the fix, W4b and W6 confirmed it was still DORMANT (the language was always
-`en`, and torchaudio's English bundles put their blank at 0), and W7 is the wave that arms it. So this mode
-loads a REAL whisperx HF bundle whose `[PAD]` is not at 0 — `nn`, NbAiLab/nb-wav2vec2-1b-nynorsk, whose id 0
-is the WORD SEPARATOR `|` and whose `[PAD]` is 31, the worst of the 23 cases — runs a REAL forward pass over
-real audio, and decodes the same text twice: once with the matrix's own `blank_id` (what ships) and once with
-the literal 0 the code used before W4 (`--blank` prints both). The LANGUAGE PAIRING IS ARTIFICIAL AND SAID SO:
-there is no Norwegian song with measured word truth on this corpus, so the text is an English (or fr/de/es)
-JamendoLyrics song's, whose letters that vocabulary covers in full (`|abcdefghijklmnopqrstuvwxyzåæø`). What is
-NOT artificial is the thing under test: the model, the pad's position, the forward pass, the audio and the
-truth are all real, which is strictly more than the review's column permutation had.
-
-MATRICES ARE NOT CACHED ON DISK HERE, deliberately: 59 songs x 2 targets x 2 bundles is ~4 GB of float32 that
-no other run would read, and the model pass is ~5-9 s a song, so a full sweep is ~20-35 minutes either way.
-The in-memory LRU of the shipped adapter still serves the two bundles of one song (`ml._emission_cache_size`).
-
-CORPUS LAYOUT (under `$ENCORE_BENCH_ROOT`):
-  * `jamendolyrics/` — the dataset checkout: `mp3/<slug>.mp3`, `annotations/lines/<slug>.csv`,
-    `annotations/words/<slug>.csv`, `lyrics/<slug>.words.txt`, `JamendoLyrics.csv` (the Language column).
-  * `_lang/stems/<slug>/vocals.wav` — htdemucs vocals, as `jamendo/` has for the English twenty. Built by
-    `_lang/separate.sh` (demucs-mlx htdemucs, ~15 s a song on this box).
+A separate script because the language question needs another CORPUS and another COMPARISON — bundle against
+bundle on the same audio and text, blind, no ladder between — while reading the same shipped `emissions` /
+`generate` / `forced_align_decoder` that publish. `--folds` gates everything else: a target-filter fold that
+moved one English sequence would move every number under `results/`. Why each mode exists, and what `--blank`
+states: README, "The harness scripts: what each one is for, and the limit it states".
 """
 
 from __future__ import annotations
@@ -184,6 +140,11 @@ def fold_census(texts: Sequence[str]) -> dict[str, Any]:
     THE GATE ON THE WHOLE CHANGE. `generate.char_ids` folds before it drops, so a text whose every letter is
     already in the vocabulary produces byte-identical targets to the three inlined copies it replaced — and
     the English corpus must be exactly that, or every published number is owed a re-run.
+
+    LETTERS ONLY (`not ch.isalpha(): continue`), which is exactly what the filter now folds and was not when
+    this census was written (W7 review r2-spec-7): an unguarded fold also reached the 953 non-letter
+    codepoints NFKD decomposes onto letters (`™` -> `TM`, `№` -> `No`), so a census of letters certified a
+    fold wider than itself. The guard in `char_ids` is the fix; this clause records that the two agree.
     """
     gained: Counter[str] = Counter()
     still: Counter[str] = Counter()
@@ -247,7 +208,7 @@ def score(
     `decoded` is `{line index: (line start, [(word start, was aligned), ...])}` — what `generate` produced,
     reduced to the two things scored. A line `generate` emitted nothing for is ABSENT and counted as
     `lines_dropped`, never skipped: dropping unplaced lines from the denominator is the scorer artefact
-    review §3 item 10 recorded, and it flatters exactly the configuration that places fewer lines.
+    the deep review recorded, and it flatters exactly the configuration that places fewer lines.
     """
     line_errors: list[float] = []
     word_errors: list[float] = []
@@ -335,7 +296,17 @@ def decode(
 
 def pooled(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Sum the counts and recompute the rates, so one long song cannot outvote twenty short ones by accident
-    (the per-song means are reported beside these as `songs` / `song_aae_ms`)."""
+    (the per-song means are reported beside these as `songs` / `song_aae_ms`).
+
+    TWO AAEs, EACH NAMED FOR ITS DENOMINATOR (W7 review r2-tests-14). Every band here is recomputed from the
+    summed counts, but the only absolute error this used to emit was `song_aae_ms` — an UNWEIGHTED mean over
+    the per-song means — and `report_sweep` printed it in the pooled block as a bare `AAE=`, from where it was
+    quoted as a pooled figure in shipped code and in the README. The two differ by a quarter of their value on
+    this corpus (`results/w7-lang-stem.json`, 59 songs / 15 887 words): word-weighted **186.0 ms default
+    against 388.7 routed**, per-song mean 235.8 against 540.0. A mean of means is a legitimate statistic and
+    is kept — it is the one a per-song reject-if reasons about — but it is not the pooled error over the
+    words, and the two must not share a label. `word_aae_ms` is the same statistic the ROW key of that name
+    holds, over every word instead of one song's."""
     if not rows:
         return {}
     total = {
@@ -355,6 +326,11 @@ def pooled(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         key = f"word_pm{int(band * 1000)}"
         out[f"{key}_pct"] = 100 * total[key] / total["words"] if total["words"] else None
     out["song_aae_ms"] = statistics.fmean(aae) if aae else None
+    # The word-weighted pooled error, from each row's own mean and its own word count — exact, and readable
+    # from every stored row (no new field, so `--from` re-reads a recorded sweep and gets the real figure).
+    weighted = sum(float(r["word_aae_ms"]) * int(r["words"]) for r in rows if r["word_aae_ms"] is not None)
+    counted = sum(int(r["words"]) for r in rows if r["word_aae_ms"] is not None)
+    out["word_aae_ms"] = weighted / counted if counted else None
     return out
 
 
@@ -439,7 +415,9 @@ def report_sweep(rows: Sequence[Mapping[str, Any]]) -> None:
                     f"gross={got['gross']:3d} ±500={got['line_pm500_pct'] or 0:5.2f}% "
                     f"| words={got['words']:5d} ±100={got['word_pm100_pct'] or 0:5.2f}% "
                     f"±250={got['word_pm250_pct'] or 0:5.2f}% ±300={got['word_pm300_pct'] or 0:5.2f}% "
-                    f"AAE={got['song_aae_ms'] or 0:6.1f}ms interp={got['words_interpolated']:3d} "
+                    f"AAE/word={got['word_aae_ms'] or 0:6.1f}ms "
+                    f"AAE/song={got['song_aae_ms'] or 0:6.1f}ms "
+                    f"interp={got['words_interpolated']:3d} "
                     f">2s={got['words_over_2s']:4d}"
                 )
         print("\nPER SONG (routed - default), the bound a per-song reject-if reads:")
@@ -566,7 +544,8 @@ def report_blank(rows: Sequence[Mapping[str, Any]]) -> None:
             f"dropped={got['lines_dropped']:3d} gross={got['gross']:3d} "
             f"±500={got['line_pm500_pct'] or 0:5.2f}% | words={got['words']:5d} "
             f"±250={got['word_pm250_pct'] or 0:5.2f}% ±300={got['word_pm300_pct'] or 0:5.2f}% "
-            f"AAE={got['song_aae_ms'] or 0:7.1f}ms >2s={got['words_over_2s']:4d}"
+            f"AAE/word={got['word_aae_ms'] or 0:7.1f}ms "
+            f"AAE/song={got['song_aae_ms'] or 0:7.1f}ms >2s={got['words_over_2s']:4d}"
             + (f"  ({len(raised)} decodes RAISED)" if raised else "")
         )
     print(

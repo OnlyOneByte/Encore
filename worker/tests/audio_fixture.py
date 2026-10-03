@@ -1,17 +1,9 @@
-"""Real audio, synthesised locally, for tests that drive real models.
+"""Real audio, synthesised locally with macOS `say`, for the tests that drive real models.
 
-WHY SYNTHESISE RATHER THAN COMMIT A FIXTURE. A checked-in audio file of a song is a licensing problem, and
-a checked-in recording of a voice is a large binary in a git history that will never be deleted. macOS
-ships `say`, so a test can generate speech with KNOWN WORDS at a known length — which is better than a
-real recording anyway: the expected transcript is exactly what we asked to be spoken, so an assertion can
-be about accuracy rather than about whatever the fixture happened to contain.
-
-A TONE WOULD NOT DO. The obvious cheap fixture — `ffmpeg -f lavfi -i sine` — produces audio with no words,
-so whisper transcribes nothing and every assertion passes vacuously. That is the shape of a test that
-proves the plumbing and nothing about the model.
-
-Skips rather than fails when the tools are absent: a Linux CI box has no `say`, and a test that cannot get
-its input has not discovered anything about the code.
+A committed recording is a licence problem and a permanent large binary, and `ffmpeg`'s sine wave has no
+words for a model to transcribe at all; synthesised speech has a KNOWN transcript, so an assertion can be
+about accuracy. Skips rather than fails when the tools are absent: a box with no `say` has discovered
+nothing about the code.
 """
 
 from __future__ import annotations
@@ -57,12 +49,9 @@ def require_tools() -> None:
 def speak(into: Path, *, lines: tuple[str, ...] = SPOKEN_LINES, rate: int = 150) -> Spoken:
     """Synthesise `lines` into a 16 kHz mono WAV and report what was said.
 
-    16 kHz mono because that is what whisper and wav2vec2 resample to internally; handing them that
-    directly means a failure is about the model rather than about a resample this test introduced.
-
-    `rate=150` is a little slower than the default. Not cosmetic: at the default rate the words run
-    together enough that word-level alignment boundaries become genuinely ambiguous, which would make an
-    assertion about word timing flaky for a reason that has nothing to do with the adapter.
+    16 kHz mono is what whisper and wav2vec2 resample to internally, so a failure is about the model and
+    not about a resample this fixture introduced. `rate=150` is slower than the default because at the
+    default the words run together enough to make a word-boundary assertion ambiguous.
     """
     require_tools()
     aiff = into.with_suffix(".aiff")

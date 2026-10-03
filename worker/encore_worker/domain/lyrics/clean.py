@@ -1,52 +1,9 @@
 """Stripping what a caption FORMAT put in a lyric line, and nothing else.
 
-WHY THIS EXISTS. Caption tracks are display artefacts, not lyric sheets. A WebVTT cue carries italic
-tags, per-word ASR timestamp spans, music-note decorations and speaker dashes — and until this module
-existed every one of them was published and drawn on the television as words to sing. Measured on the
-real track for The Black Eyed Peas' "Boom Boom Pow" (`--write-auto-subs`), the TV rendered:
-
-    - ♪♪ Gotta get that ♪♪ <i>- ♪♪ Boom boom boom ♪♪</i>
-
-THE LINE THIS DRAWS. `clean_line` removes only FORMAT: markup the caption pipeline inserted, and
-decorations that mark a line as sung rather than being sung. It judges nothing about whether a line is a
-lyric, and every rejected idea below is a rule that tried to and destroyed real lyrics doing it.
-
-WHAT CHANGED IN W5, and it is one layer out rather than in here: `clean_segments` now also drops the
-lines `domain/lyrics/nonlyric.py` judges NOT SUNG, by rules that are ANCHORED (a closed allowlist of
-section labels, with a bracket or a colon; YouTube's three ASR markers; and the caption author's OWN
-music-note marking, read off the raw line before the notes come off). Read that module's docstring for
-the measurement — the short version is that the ACOUSTIC never-sung rule in `steps/align_steps.py` drops
-different cues under different models, so a song's scored line count moved with the acoustic bundle and
-no per-song accuracy row was comparable across models. What is still NOT judged here is a parenthetical
-in a track that neither notes its lyrics nor came from a machine: `(gentle piano solo)` on such a track
-is left for the audio, for the reason immediately below.
-
-WHAT WAS MEASURED AND REJECTED, because each one destroys real lyrics (verified against real corpora):
-
-  * Dropping whole-line parentheticals by a sound-effect vocabulary. Any word list that catches
-    `(slow quiet electric guitar)` also catches `(Beat it, beat it)`, `(Play that funky music)`,
-    `(Drop the beat)`, `(the beat goes on)` and `(bells ringing)` — all sung.
-  * Dropping bracketed lines that "have no lowercase". `[a-z]` is ASCII, so every caseless script
-    satisfies it: `[Люблю тебя]`, `[私の心は燃えている]`, `[사랑해요]` all deleted. Bracketed ad-libs
-    (`[GO!]`, `[HEY!]`, `[OH YEAH]`) go with them.
-  * Stripping a capitalised token before a colon as a speaker label. With no allowlist it eats real
-    first words: `Baby: I love you` -> `I love you`, `Mama: don't cry` -> `don't cry`.
-
-Whole-line parentheses stay for a second reason: they are frequently the backing vocal itself. Shape of
-You's caption track sings `♪ (Oh-I-oh-I-oh-I-oh-I) ♪` and `(I'm in love with your body)`.
-
-ORDER IS LOAD-BEARING, and two orderings were measured wrong before this one:
-
-  1. Entities are decoded FIRST. One authored track (Despacito's English captions) is 89% ESCAPED
-     markup — `&lt;i&gt;` rather than `<i>` — so a tag strip that runs first leaves `<i>` on screen.
-  2. The speaker dash is matched with a LEADING-WHITESPACE anchor, and runs AFTER the notes became
-     spaces. `<i>- ♪♪ Boom boom boom ♪♪</i>` reaches the dash rule as `- Boom boom boom`, but a note
-     that opens the line leaves a space in front of the dash — and a rule anchored at `^-` silently
-     misses the only cue shape the whole exercise was about.
-
-IDEMPOTENCE IS A TEST, not a hope: `clean_line(clean_line(x)) == clean_line(x)` for every line in the
-corpus. It is the cheap property that catches an ordering mistake with no corpus at all — it was what
-failed first when the dash anchor was wrong.
+`clean_line` removes only FORMAT and judges NOTHING about whether a line is a lyric, which is
+`nonlyric.py`'s. ORDER IS LOAD-BEARING and IDEMPOTENCE IS A TEST — the cheap property that catches an ordering
+mistake with no corpus at all. The order's two reasons and the three rules REJECTED here:
+`docs/arch/04-alignment.md` §8.
 """
 
 from __future__ import annotations
@@ -62,14 +19,9 @@ from encore_worker.domain.lyrics.nonlyric import nonlyric_indexes, without_secti
 #: WebVTT/HTML set that actually appears in caption tracks.
 _UNWRAP_TAGS = "i|b|u|em|strong|ruby|rtc?"
 
-#: ATTRIBUTES ARE MATCHED BY EACH TAG'S REAL SYNTAX, not by "tag name then anything". The loose form
-#: eats real lyrics — `<b my baby> hold on`, `<u and me> forever`, `<c u later> alligator` all lose
-#: words — so each attributed tag gets only the shape it actually takes:
-#:   `<c.yellow.bg_blue>`  WebVTT classes are DOT-separated; a SPACE after `c` is not valid VTT, which
-#:                         is exactly what saves `<c u later> alligator` (found by its own test).
-#:   `<v Speaker>`         a voice span names a speaker after a space.
-#:   `<lang en-GB>`        a language span takes a BCP-47-shaped tag, letters/digits/hyphens only.
-#:   `<font color="red">`  HTML, so require an `=`; without it `<font of knowledge>` would be eaten.
+#: ATTRIBUTES ARE MATCHED BY EACH TAG'S REAL SYNTAX, not by "tag name then anything": the loose form eats
+#: real lyrics (`<c u later> alligator`), so each attributed tag gets only the shape it actually takes —
+#: dot-separated VTT classes, a voice's speaker, a BCP-47 language tag, and HTML's `=`.
 _ATTRIBUTED = (
     r"</?c(?:\.[\w-]+)*>"
     r"|</?v(?:\s+[^<>]*)?>"
@@ -108,11 +60,8 @@ _WHITESPACE = re.compile(r"\s+")
 
 
 def clean_line(text: str) -> str:
-    """One caption/LRC line with its FORMAT removed. Empty when nothing but format was there.
-
-    Pure and idempotent. An empty return is the caller's signal that the line carried no words — a
-    music-note-only cue (`[♪♪♪]`, `♪♪`) is the common case.
-    """
+    """One caption/LRC line with its FORMAT removed, pure and idempotent. Empty when nothing but format was
+    there, which is the caller's signal that the line carried no words."""
     if not text:
         return ""
     # Entities first: one real track writes its markup escaped, and a tag strip before this sees none.
@@ -139,16 +88,9 @@ def clean_line(text: str) -> str:
 def clean_indexed(
     segments: Sequence[Mapping[str, object]], *, author_marking: bool = True
 ) -> tuple[tuple[int, Segment], ...]:
-    """`clean_segments`, each kept segment paired with its index in the INPUT.
-
-    The pair is what a caller needs when it holds a parallel list of its own — the bench's
-    `served_claims` pairs each served line back to the claim it came from, and used to re-derive the kept
-    set by calling `clean_line` itself, which was only correct while every rule here was per-line. W5's
-    non-lyric rules are not (`nonlyric.noted_track` reads the WHOLE track), so the mapping is published
-    rather than reconstructible.
-
-    `author_marking=False` is `nonlyric`'s R3 left out, for a text a PERSON typed; see `clean_segments`.
-    """
+    """`clean_segments`, each kept segment paired with its index in the INPUT — what a caller holding a
+    parallel list of its own needs, the kept set no longer being reconstructible from `clean_line` alone
+    since `nonlyric.noted_track` reads the WHOLE track. `author_marking=False` leaves R3 out."""
     raw = [str(segment.get("text") or "") for segment in segments]
     cleaned_texts = [clean_line(text) for text in raw]
     # TEXT HYGIENE RUNS ON THE CLEANED LINE, FORMAT ALREADY OFF, EXCEPT where it cannot: `noted_track`
@@ -175,17 +117,12 @@ def clean_indexed(
                 spelled = clean_line(str(word.get("word") or ""))
                 if spelled:
                     kept.append({**word, "word": spelled})
-            # IN LOCKSTEP WITH THE TEXT, THE LABEL INCLUDED (W5 review r1-correctness-7). `clean_line` has
-            # no label rule — only R2 does, above, on the line — so a word-timed segment whose text read
-            # `CHORUS: <first line>` published three words on screen over a four-word stream, offset by
-            # one, which is the exact state this function's docstring calls worse than not cleaning at all.
-            # Dropped by SPELLING rather than by counting tokens: when the rows do not spell the removed
-            # prefix the list is left whole, which is what it was before.
+            # IN LOCKSTEP WITH THE TEXT, THE LABEL INCLUDED: `clean_line` has no label rule, so a word-timed
+            # segment whose text read `CHORUS: <first line>` published a word stream offset by one. Dropped by
+            # SPELLING rather than by counting tokens.
             kept = list(_without_label_words(kept, labelled[: len(labelled) - len(text)]))
-            # An all-decoration word list would leave the line with no timings at all; better to publish
-            # the line with none than with a list that disagrees with the words on screen.
-            # A TUPLE, matching every other segment producer in the worker: these records are DBOS
-            # checkpoint payloads, and the suite asserts immutability at each provider boundary.
+            # An all-decoration word list leaves the line with no timings, which beats a list that disagrees
+            # with the screen. A TUPLE, these records being DBOS checkpoint payloads (XA-16).
             if kept:
                 cleaned["words"] = tuple(kept)
             else:
@@ -197,10 +134,8 @@ def clean_indexed(
 def _without_label_words(words: Sequence[Segment], removed: str) -> tuple[Segment, ...]:
     """`words` with the leading rows that spell `removed` dropped — R2's strip, on the word list.
 
-    Matched on the SPELLING with whitespace and case taken out, because a label can be one row (`CHORUS:`)
-    or several (`Verse`, `2:`), and a provider that times its words does not promise a tokenisation. A run
-    that diverges from the removed prefix means these rows are not that label, and then nothing is dropped:
-    an over-eager match would delete a sung word, which is the failure the whole module is built against.
+    Matched on the SPELLING with whitespace and case out, a label being one row or several and a provider
+    promising no tokenisation. A run that diverges drops nothing: an over-eager match deletes a sung word.
     """
     target = "".join(removed.split()).casefold()
     if not target:
@@ -220,20 +155,9 @@ def clean_segments(
 ) -> tuple[Segment, ...]:
     """Every segment's text cleaned, its word list cleaned IN LOCKSTEP, wordless and NON-LYRIC rows gone.
 
-    THE WORD LIST IS WHY THIS EXISTS AS WELL AS `clean_line`. A provider that supplies per-word timings
-    (`lrcmux`) puts the same decorations inside `segment["words"]`, and `measure.timed_words` reads
-    `word["word"]` in preference to anything else. Cleaning only the line text there would publish a
-    clean sentence over a dirty word stream — the screen would read "Gotta get that" while the ball
-    walked a `♪` token, which is worse than not cleaning at all.
-
-    DROPPING RENUMBERS NOTHING, which is why it is safe: every consumer of a text's segments enumerates
-    the one post-clean sequence (`align_steps` builds `line_texts`, `claimed` and `claim_windows` from
-    the same `enumerate(req.text.segments)`), so a removed row cannot shear the pairing the way an
-    index taken from a different list would (the F1 lesson in `generate.Line.index`). A caller that does
-    hold a parallel list wants `clean_indexed`, which hands back the index each kept row came from.
-
-    `author_marking=False` DROPS NO LINE FOR BEING UNMARKED — `nonlyric`'s R3 left out — and exists for the
-    ONE text a person typed themselves (`align_steps.fetch_pinned_text`, W5 review r1-correctness-8). Every
-    other caller is a provider's or an upload's track, where the marking is the author's own evidence.
+    THE WORD LIST IS WHY THIS EXISTS AS WELL AS `clean_line`: a provider's per-word timings carry the same
+    decorations, and cleaning only the line text publishes a clean sentence over a dirty word stream.
+    DROPPING RENUMBERS NOTHING, every consumer enumerating the one post-clean sequence; a caller holding a
+    parallel list wants `clean_indexed`. `author_marking=False` leaves R3 out, for a text a person typed.
     """
     return tuple(segment for _index, segment in clean_indexed(segments, author_marking=author_marking))

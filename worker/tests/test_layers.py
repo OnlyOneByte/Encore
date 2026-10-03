@@ -38,7 +38,27 @@ ALLOWED: dict[str, frozenset[str]] = {
 
 #: Packages that must never be reachable from `domain/`. Each is why the suite can run without ML:
 #: `domain` is pure functions over data, so a decision there is testable with no model and no event loop.
+#: Numpy is NOT here and is used in `domain/` by design — see `docs/arch/04-alignment.md` XA-15 and §15.
 BANNED_IN_DOMAIN = frozenset({"dbos", "asyncio", "torch", "torchaudio", "whisperx", "pyannote", "demucs"})
+
+#: The only `domain/` modules that may import `random`, each with the DATA its seed comes from. A domain call
+#: is reached from a DBOS workflow body, which is replayed on recovery, so a seed off a clock or off
+#: `random`'s global state would answer differently the second time and the attempt would load two bundles.
+#: XA-15 used to be written as "no random", which three shipped modules contradicted while the guard checked
+#: none of it (W7b review r2-tests-9); an allowlist states the real rule and can only shrink.
+SEEDED_FROM_DATA = {
+    "lyrics/lexical.py": "crc32 of the text being scored, so a shuffle control repeats on a replay",
+}
+
+#: The only `domain/` modules that may touch the filesystem, and what they read. Both are read-only and
+#: neither depends on the job: a packaged data table and the worker's own wav reader.
+PACKAGED_DATA_READERS = {
+    "lyrics/syllabify.py": "its packaged `mhyph` hyphenation table, via importlib.resources",
+    "audio/wav.py": "a wav the step layer resolved, via the stdlib `wave` module",
+}
+
+#: What "touches the filesystem" means for the check above: the stdlib doors into one.
+FILESYSTEM_IMPORTS = frozenset({"importlib.resources", "pathlib", "wave", "os", "shutil", "tempfile", "glob"})
 
 
 def _modules() -> Iterator[tuple[Path, str, ast.Module]]:
@@ -124,6 +144,65 @@ def test_domain_is_pure() -> None:
         "domain/ is pure functions over data, and the suite runs with no ML installed:\n  "
         + "\n  ".join(violations)
     )
+
+
+def _imported_names(tree: ast.Module) -> set[str]:
+    """Every module name this file imports, dotted and whole — `importlib.resources`, not `importlib`."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            names.add(node.module)
+            names.update(f"{node.module}.{alias.name}" for alias in node.names)
+    return names
+
+
+def _domain_modules() -> Iterator[tuple[str, ast.Module]]:
+    """`(path under domain/, tree)` for every domain module, which is how the allowlists are keyed."""
+    for path, layer, tree in _modules():
+        if layer == "domain":
+            yield str(path.relative_to(PKG / "domain")), tree
+
+
+def test_randomness_in_domain_is_seeded_from_the_data() -> None:
+    """XA-15's randomness clause, which used to be written as "no random" and enforced nowhere.
+
+    A domain decision is replayed by DBOS, so the rule is not "no randomness" — `lexical`'s shuffle control
+    needs it — but "no randomness this tree cannot reproduce". The allowlist names the seed's source.
+    """
+    users = {rel for rel, tree in _domain_modules() if {"random", "secrets"} & _imported_names(tree)}
+    assert users <= set(SEEDED_FROM_DATA), (
+        f"these domain modules draw randomness without declaring where the seed comes from: "
+        f"{sorted(users - set(SEEDED_FROM_DATA))}. A DBOS replay must repeat the answer."
+    )
+    stale = sorted(set(SEEDED_FROM_DATA) - users)
+    assert not stale, f"these entries no longer import random and must leave SEEDED_FROM_DATA: {stale}"
+
+
+def test_the_filesystem_in_domain_is_packaged_read_only_data() -> None:
+    """XA-15's filesystem clause. `domain/` may read what SHIPS with it, never what a job produced."""
+    users = {rel for rel, tree in _domain_modules() if FILESYSTEM_IMPORTS & _imported_names(tree)}
+    assert users <= set(PACKAGED_DATA_READERS), (
+        f"these domain modules reach a filesystem without declaring what they read: "
+        f"{sorted(users - set(PACKAGED_DATA_READERS))}. Take the bytes as an argument instead."
+    )
+    stale = sorted(set(PACKAGED_DATA_READERS) - users)
+    assert not stale, f"these entries no longer read a file and must leave PACKAGED_DATA_READERS: {stale}"
+
+
+def test_the_two_allowlists_are_not_vacuous() -> None:
+    """Both rules above pass by finding nothing if `_imported_names` stops reading the import spellings.
+
+    `_imported_roots`' own history is the reason this is here: it read `dotted.split(".")[0]` and so saw
+    `"encore_worker"` for every absolute import in the package, which made two checks examine nothing.
+    """
+    tree = ast.parse("import random\nfrom importlib import resources\nfrom pathlib import Path\n")
+    names = _imported_names(tree)
+    assert "random" in names
+    assert "importlib.resources" in names, "the dotted form a `from importlib import resources` means"
+    assert FILESYSTEM_IMPORTS & names, "the filesystem check must see a stdlib door into one"
+    assert SEEDED_FROM_DATA and PACKAGED_DATA_READERS, "an empty allowlist makes its rule unfalsifiable"
 
 
 def test_every_layer_declares_its_allowance() -> None:

@@ -4,53 +4,15 @@
     cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/line_gate.py \\
         [--songs a,b] [--out rows.json] [--from rows.json] [--model NAME]
 
-WHY IT EXISTS (W3). Under `syncMode=lines` the LINE_SYNC rung is each text's only attempt, and in forced mode
-it is the terminal knob for a word document that came back unusable. It publishes the text's OWN line timings
-(placed by the stem's activity fit, `AlignStepsImpl._placed_by`), so its gate has two questions to answer:
-are these words sung (a same-video translation's timings describe the audio whatever its words), and do
-these TIMINGS describe the audio (a sheet for another master, off by seconds, would publish off by seconds).
-At W1 the answer was the sheet-span envelope gate (`align_steps._sheet_passes`) AND the lexical lift on the
-stem >= 0.2. Measured at W1 review r2 (`syncMode=lines`, run_align, 10 timed modes): wrong texts 0/640
-published, but 107/320 right texts refused by the sheet gate (truth 4/32: hello, rap-god, bohemian-rhapsody,
-bad-guy), every one of them a text whose lift was >= +0.26. The lift reads the text on the stem's emission
-matrix, decoding it blind, so the rung holds the text's own DECODE too — a second witness to where each line
-is sung, one the envelope cannot give.
+The rung publishes the text's OWN line timings, so its gate owes two answers: are these words sung, and do
+these TIMINGS describe this audio. This prices six candidate rules over the same cases — right texts refused,
+the published documents' accuracy, and wrong texts passed — with the documents built by the shipped functions
+and the decode read from the bench's emission cache. `--from` re-prints a stored run.
 
-THE RULES, each over the same cases (the lift is the lexical gate at the measured bundle's `refuse_below`,
-which the
-rung reads, in all but `sheet alone`; where a reading is missing the rule falls back as the shipped rung
-does):
-
-  sheet alone      the sheet-span envelope gate only (the M1 gate before W1 r2)
-  sheet+lift       W1's gate: the sheet gate AND the lift
-  lift alone       the lift only; the timings go unchecked
-  decode(θ)        the lift AND the placed line starts agree with the text's own blind decode: at least θ of
-                   the decoded lines start within `--near` seconds of their placed claim
-                   (`reconcile.as_claimed`); the sheet gate where the decode pairs under 3 lines. SHIPPED
-                   at W3 with θ = the model's `lexical.Bands.line_sync_min_agreement` (W4b: per
-                   model, so `--model` scores at that bundle's row), `--near` = `_LINE_SYNC_NEAR_SEC`.
-                   SINCE W2 "placed" means MAPPED: the rung votes on the claims' clock first
-                   (`align_steps._line_sync_clock`), so the primary columns of every row — `near`, `gross`,
-                   `w500`, `w1000` — are read off the sheet as the CLAIM CLOCK places it, and `w3_*` carries
-                   the same readings under W3's unconditional activity shift. The `placement` block prints
-                   the two side by side; `--near` moves the vote's band as well as the gate's, since the
-                   rung scores its candidate maps in the same band it counts a line near in.
-  either(θ)        the lift AND (the sheet gate OR decode(θ)'s agreement)
-  decode(0.5)+lag  decode(0.5) AND the lag the decode reads in the claims within L s (`AsClaimed.offset_sec`,
-                   which the shipped gate records on the trail and does not read). MEASURED, NOT SHIPPED: see
-                   `rules` for why, and for what it costs.
-
-For every rule it prints: right texts refused (per mode, and over W1's 10-mode lines set), the published
-right documents' lines (scored, > 2 s gross, within ±500 ms / ±1 s of truth), the text-denominator ±500
-(a refused text's lines count as misses), and wrong texts passed (`wrongtext`, `wrongtext+ownclock`). A
-rule that refuses a right text whose line document would have been accurate costs the room lyrics; one that
-publishes a right text on timings seconds off shows it lines that are wrong. The line documents are built
-with the shipped functions (`_sheet_spans`, `activity.fit_sheet_to_audio` on the stem, `_line_sync_clock`,
-`_placed_by`, `_in_claim_order`), the decode with the shipped decoder through `generate`, from the bench's
-emission cache (the key `e2e.py` uses).
-
-Texts are served as the run_align ports serve them (`clean_segments`), for the 13 timed claim modes plus both
-wrong-text modes (`blind` has no timings to sync). `--from` re-prints the summary from a stored `--out`.
+The six rules, what W1's gate cost, and what "placed" means since the rung took its own claim-clock vote are
+in `docs/benchmarks/forced-alignment/README.md`, "The harness scripts: what each one is for, and the
+limit it states". The tables are in
+"The LINE_SYNC rung's gate" and "The LINE_SYNC rung's four candidate rules, on the MAPPED claims".
 """
 
 from __future__ import annotations
@@ -360,7 +322,8 @@ def fitted_share(rows: Sequence[Row], tau: float) -> list[str]:
     on the right texts, since a lower one buys published documents at the price of lines more than 2 s out and
     a higher one refuses right texts for nothing. Printed beside the whole sweep, so a wave can see whether
     the population separates at all — if every share shows gross lines, this model has no share and the model
-    ships with no row (module docstring of `lexical`)."""
+    ships with no row in `lexical.CALIBRATED`, which stands every emission-scale gate down
+    (docs/arch/04-alignment.md §5.4)."""
     right = [r for r in rows if r["mode"] in TIMED_MODES]
     every = rules(tau)
     out: list[str] = []
