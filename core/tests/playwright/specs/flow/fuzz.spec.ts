@@ -46,11 +46,15 @@
  * TWO DRIVER FIXES, declared rather than smuggled — neither touches an invariant, a weight or a draw.
  *
  * ONE: the old `queue-add` left the phone sitting in the SEARCH
- * view, and a query REPLACES the rotation on the phone home (src/routes/+page.svelte: the `{#each queued}`
- * loop is inside `{#if !searchActive}`), so that phone renders ZERO `.qrow` for the rest of the run while the
- * server's waiting set grows — which is a FALSE I5, manufactured by the driver. The old driver's own comment
- * says where a phone belongs ("start each phone on HOME: that is where its transport taps and its `.qrow`
- * counts both apply"), so the add now returns there. The invariant itself is untouched.
+ * view, and a query REPLACED the rotation on the phone home (the `{#each queued}` loop was inside
+ * `{#if !searchActive}`), so that phone rendered ZERO `.qrow` for the rest of the run while the server's waiting
+ * set grew — which is a FALSE I5, manufactured by the driver. So the add RETURNS to the surface where this
+ * phone's `.qrow` counts apply. That surface is now `/queue` rather than `/`: the rotation is its own tab, and
+ * the Sing tab renders no `.qrow` at all, so "back to home" would manufacture exactly the same false I5 the fix
+ * was written to remove. The transport is in the dock on every surface, so the taps still apply from there. The
+ * invariant itself is untouched; `restOnQueue` and `openSearch` below are the two route helpers that implement
+ * it, and they `goto` rather than clicking the strip's link so a replay cannot branch on whether a strip was
+ * rendered.
  *
  * TWO: the catalogue is sorted BY ID before anything picks from it (see `byId`). Without it a seed replays the
  * same index into an array the room hands back in a different order, so two runs of one seed agree on every
@@ -75,7 +79,7 @@ import type { Page } from '@playwright/test';
 // legible here rather than an opaque error event.
 import { WebSocket } from 'ws';
 import { SEL } from '../../world/selectors';
-import { openBrowseFromHome, returnHomeFromBrowse } from '../../world/actors';
+import { openBrowseFromHome } from '../../world/actors';
 import { startFakeWorker, type FakeWorkerFaults } from '../../world/workers';
 import type { World } from '../../world/fixtures';
 import { DEFAULT_LYRICS_LEAD_MS } from '$lib/contract';
@@ -881,6 +885,23 @@ function checkI3(w: Room): Violation | null {
 	return ok('I3');
 }
 
+/**
+ * THE PHONE'S RESTING SURFACE. `.qrow` is on /queue, so that is where a phone waits between inputs — see the
+ * header. Clears any query first, because a phone left holding one is a phone whose Sing tab shows results rather
+ * than its idle state, and a later `openSearch` would then be re-running somebody else's query.
+ */
+async function restOnQueue(page: Page): Promise<void> {
+	if ((await page.locator(SEL.clearSearch).count()) > 0) await page.locator(SEL.clearSearch).first().click();
+	await page.goto('/queue');
+	await page.locator(SEL.pageHeading).first().waitFor({ state: 'attached', timeout: 15_000 });
+}
+
+/** The search field is a field ON the Sing tab, so reaching it from the resting surface is a route change. */
+async function openSearch(page: Page): Promise<void> {
+	if (new URL(page.url()).pathname !== '/') await page.goto('/');
+	await openBrowseFromHome(page);
+}
+
 /** I5 · no entry is both playing and waiting; the phones' rotation agrees with the server. */
 async function checkI5(w: Room): Promise<Violation | null> {
 	// The server models status as ONE field, so "both at once" can only appear as a disagreement: either the
@@ -903,9 +924,9 @@ async function checkI5(w: Room): Promise<Violation | null> {
 			);
 		}
 	}
-	// The rotation VIEW: the phone renders exactly the entries whose status is `queued` (a QueueRow or a
+	// The rotation VIEW: /queue renders exactly the entries whose status is `queued` (a QueueRow or a
 	// ProcessingCard, both carrying .qrow), so a count mismatch means a phone is showing a rotation the server
-	// does not have.
+	// does not have. The phones REST on /queue for this reason — see `restOnQueue` and the header.
 	for (let i = 0; i < phones.length; i++) {
 		const n = await phones[i].locator(SEL.queueRow).count();
 		if (n !== w.waiting) {
@@ -1126,18 +1147,25 @@ async function driveInput(input: InputName, world: Room): Promise<Step> {
 	 * A DISABLED transport button swallows a click silently — no action, no throw — so state is read first and
 	 * a no-op is RECORDED as one: a step that silently did nothing must still replay identically.
 	 *
-	 * BY CONTRACT SELECTOR rather than by role+name, unlike skip and restart below: the disc's accessible name
+	 * BY CONTRACT SELECTOR rather than by role+name, unlike skip and restart below: play/pause's accessible name
 	 * IS its state (`aria-label={isPlaying ? 'Pause' : 'Play'}`), so a role query would resolve through the
 	 * very disagreement between server state and rendered label that this fuzzer exists to catch — and would
 	 * fail as a driver error instead of recording it. The label it actually carried is recorded in the detail.
+	 * That rationale survived the move from the band's `.disc` to the strip's filled button unchanged.
+	 *
+	 * "NO STRIP RENDERED" IS NOW A LEGITIMATE IDLE STATE, not a suspicious one. The band was permanently
+	 * present, so an absent transport meant something had gone wrong; the strip renders only when
+	 * `hasSong || canStart`, so on a drained room the correct reading is that there is nothing to tap. It is
+	 * still recorded as a no-op, because a replay has to reproduce the same nothing.
 	 */
-	async function tapDisc(): Promise<Step> {
-		const disc = page.locator(SEL.bandTransport).first();
-		if ((await disc.count()) === 0) return { who, input, detail: 'no-op (no band transport rendered)', noop: true };
-		if (await disc.isDisabled()) return { who, input, detail: 'no-op (band transport is disabled)', noop: true };
-		const name = await disc.getAttribute('aria-label');
-		await disc.click();
-		return { who, input, detail: `clicked the band transport (${name})` };
+	async function tapPlayPause(): Promise<Step> {
+		const btn = page.locator(SEL.npPlayPause).first();
+		if ((await btn.count()) === 0)
+			return { who, input, detail: 'no-op (no strip rendered — nothing to play or resume)', noop: true };
+		if (await btn.isDisabled()) return { who, input, detail: 'no-op (play/pause is disabled)', noop: true };
+		const name = await btn.getAttribute('aria-label');
+		await btn.click();
+		return { who, input, detail: `clicked the strip's play/pause (${name})` };
 	}
 
 	/** BY ROLE AND ACCESSIBLE NAME: skip and restart both carry a literal label, so the label is the contract. */
@@ -1154,11 +1182,11 @@ async function driveInput(input: InputName, world: Room): Promise<Step> {
 		case 'pause': {
 			// ONE toggle keyed on playback.isPlaying, so pausing a paused room sends nothing.
 			if (!playing) return { who, input, detail: 'no-op (already paused)', noop: true };
-			return await tapDisc();
+			return await tapPlayPause();
 		}
 		case 'resume': {
 			if (playing) return { who, input, detail: 'no-op (already playing)', noop: true };
-			return await tapDisc();
+			return await tapPlayPause();
 		}
 		case 'skip':
 			return await tapTransport(SEL.skip);
@@ -1191,14 +1219,14 @@ async function driveInput(input: InputName, world: Room): Promise<Step> {
 			const wantRaw = raw.length > 0 && (ready.length === 0 || rnd() < 0.3);
 			const row = pick(wantRaw ? raw : ready);
 			const term = String(row.title).split(/\s+/)[0].toLowerCase();
-			await openBrowseFromHome(page); // search lives at the top of the joined home
+			await openSearch(page); // the search field is at the top of the SING tab, which may be a route away
 			await page.locator(SEL.search).fill(term);
 			try {
 				await page.locator(SEL.songRow).first().waitFor({ state: 'attached', timeout: 15_000 });
 			} catch {
-				// A term that returns nothing is a no-op, not a failure — but the phone is left holding a query,
-				// and a query REPLACES the rotation, so it still has to go home. See the header.
-				await returnHomeFromBrowse(page);
+				// A term that returns nothing is a no-op, not a failure — but the phone is left holding a query on the
+				// Sing tab, so it still has to go back to the rotation. See the header.
+				await restOnQueue(page);
 				return { who, input, detail: `no-op (search "${term}" returned no ${SEL.songRow})`, noop: true };
 			}
 			const nAdd = await page.locator(SEL.addTurn).count();
@@ -1213,12 +1241,12 @@ async function driveInput(input: InputName, world: Room): Promise<Step> {
 				await page.locator(SEL.sing).first().click();
 				detail = `search "${term}" → clicked ${SEL.sing}`;
 			} else {
-				await returnHomeFromBrowse(page);
+				await restOnQueue(page);
 				return { who, input, detail: `no-op (search "${term}" offered no queue action)`, noop: true };
 			}
 			// THE ONE DRIVER FIX (header): back to the rotation, because that is where this phone's `.qrow`
 			// counts apply and I5 compares them against the server's waiting set.
-			await returnHomeFromBrowse(page);
+			await restOnQueue(page);
 			return { who, input, detail };
 		}
 		case 'queue-remove': {
@@ -1404,13 +1432,14 @@ test('the six invariants hold after every input', async ({ world }, testInfo) =>
 		const reportedLeadMs = probe0?.settings?.room?.lyricsLeadMs;
 		LEAD_SEC = (Number.isFinite(reportedLeadMs) ? (reportedLeadMs ?? 0) : DEFAULT_LYRICS_LEAD_MS) / 1000;
 
-		// Two phones, each its own context and session: one client cannot disagree with itself. Each starts on
-		// HOME — that is where its transport taps and its `.qrow` counts both apply.
+		// Two phones, each its own context and session: one client cannot disagree with itself. Each starts on the
+		// QUEUE TAB — that is where its `.qrow` counts apply, and its transport taps apply from any phone surface
+		// because the transport is in the dock.
 		for (const name of ['FzA', 'FzB']) {
 			const page = await world.openPhone(name);
 			await openBrowseFromHome(page);
 			await openWire(page);
-			await returnHomeFromBrowse(page);
+			await restOnQueue(page);
 			phones.push(page);
 		}
 

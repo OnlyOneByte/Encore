@@ -1,8 +1,10 @@
 /*
- * THE KEY AND RANGE READOUT, derived once. Three surfaces showed the same facts and each derived them itself:
- * `NowPlayingDrawer` and `routes/song/[mediaId]` had six character-identical `$derived` lines, and `routes/tv` built
+ * THE KEY AND RANGE READOUT, derived once. Three surfaces showed the same facts and each derived them itself: the
+ * now-playing sheet and `routes/song/[mediaId]` had six character-identical `$derived` lines, and `routes/tv` built
  * the sounding-key string a third way. Nothing here touches the DOM, so it is testable without mounting anything —
- * which none of the three copies was.
+ * which none of the three copies was. The sheet is deleted; its live controls are the now-playing card at the top
+ * of `routes/queue`, which is the caller that replaced it. The three callers today are /queue, /song/[mediaId] and
+ * /tv.
  *
  * TWO FORMS ON PURPOSE, and they must not be merged. The phone uses typographic punctuation (a real minus sign and a
  * middot); the TV uses ASCII `+`/`-` with a Latin-1 middot, because a typographic accidental or arrow is a codepoint

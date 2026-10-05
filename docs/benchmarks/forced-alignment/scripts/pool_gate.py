@@ -74,16 +74,16 @@ MISHEARD_EVERY = 7
 #: which keeps `score_words`' positional pairing intact on the Jamendo songs).
 _MISHEARD: Mapping[str, str] = {"a": "e", "e": "a", "i": "o", "o": "i", "u": "o", "y": "i"}
 
-#: Whole lines an SDH track carries that are not words of the song. [0] is the shape the corpus's own authored
-#: tracks open with (believer's first event is literally `♪ ♪`), which hygiene drops for carrying no word; [1]
-#: is what `nonlyric` R4's closed vocabulary deletes; [-1] is the one that SURVIVES, so it is the cue injected.
+#: Whole lines an SDH track carries that are not words of the song. [0] is the shape the corpus's authored
+#: tracks open with (believer's first event is `♪ ♪`), which hygiene drops for carrying no word; [1] is what
+#: `nonlyric` R4's closed vocabulary deletes; [-1] is the one that SURVIVES, so it is the cue injected.
 SOUND_CUES = ("♪ ♪", "[MUSIC PLAYING]", "[CHEERING]")
 
 POOLS = ("sdh", "wrong-track", "allwrong", "clean")
 
-#: Whole lines an SDH track carries that are not words of the song. [0] is the shape the corpus's own authored
-#: tracks open with, which hygiene drops for carrying no word; [1] is what `nonlyric` R4's closed vocabulary
-#: deletes; [-1] is the one that SURVIVES hygiene, so it is the cue injected.
+#: M13 has two separable halves, which is why `pre-tie` exists: `arrival` turns BOTH off
+#: (every-provider-a-candidate AND the corroboration tie-break), `pre-tie` only the tie-break, so each step
+#: along the arms prices one half. README, "The four pools and the four arms".
 ARMS = ("ranked", "arrival", "pre-tie", "no-l5")
 
 #: (pool, arm) pairs a bare run measures: the review's case and where the tie-break bites, each against both

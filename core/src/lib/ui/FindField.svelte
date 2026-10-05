@@ -10,9 +10,9 @@
 	 * which is why this takes callbacks rather than owning a query.
 	 *
 	 * SIZING IS THE CALLER'S. The root is `width: 100%; min-width: 0` and nothing else, because the two need different
-	 * flex behaviour — home shares a row with the library door, /library spans alone. A class handed to a component is
+	 * flex behaviour — home shares a row with the scope picker, /library spans alone. A class handed to a component is
 	 * stripped at the caller, so a caller that needs flex-item layout wraps this in its own slot div, the same idiom
-	 * `.lib-slot` / `.me-slot` / `.gear-slot` already use.
+	 * `/`'s `.field-slot` / `.me-slot` / `.gear-slot` already use.
 	 *
 	 * THE RING BELONGS TO THE BOX, which is why app.css's global per-input ring is suppressed on the input below —
 	 * without that there are two rings, one inside the other.

@@ -84,6 +84,68 @@ more than a long instrumental outro, and the mix document overwrote the stem one
 LYRICS in 9 modes, truth claims included. Coverage stayed on the report as telemetry and stopped being
 a defect the global engine could act on. (`domain/lyrics/report.py`, `policy._READS`.)
 
+`policy.decide` judges one attempt, in severity order:
+
+| rule | state | answer |
+| ---- | ----- | ------ |
+| 0 | **Refused** — a gate measured that this text does not describe this audio | NextText. **Terminal for the text**, never LINE_SYNC: line sync would publish the same wrong words on the text's own clock |
+| 1 | **Not usable** — word order incoherent, or nothing timed | degrade to line sync if the text has its own, else next text |
+| 2 | **Line-synced** | accept; the rung is terminal, nothing is left to vary |
+| 3 | **Misplaced** — residual past the suspect band | re-place against the aligned output (`RESHIFT`) |
+| 4 | **Overshoots** the audio | widen the search (`DROP_WINDOWS`), then re-place |
+| 5 | **Thin coverage** | try the mix (windowed only) |
+| 6 | **Claims unrelated** — the text brought line timings and `reconcile` could fit no map | the text's own timings get their turn, **last**, and only if they pass their own gate and beat what they retried |
+| 7 | otherwise | accept |
+
+Two rules that are easy to get backwards, both learned from the worker this replaced:
+
+* **Accept if nothing better is available.** A defect justifies another attempt only when a knob exists
+  that could plausibly fix it. Thin coverage with no untried knob is accepted — if a transcript covered
+  only the first third, that third's timing is correct, and refusing publishes nothing. Every usable
+  branch falls through to `Accept`, never to `NextText`; inverting that is how a correct-but-imperfect
+  alignment becomes no lyrics.
+* **ASR is a tier, not a last resort.** The pool order is candidates, then ASR, then the machine caption
+  track: a transcript cannot be the wrong song and cannot be misplaced in time, which makes it the
+  _reliable_ fallback rather than the desperate one. Within the candidate tier a **corroborated** text
+  goes first — two independent sources agreeing on the words is the strongest evidence available without
+  the audio, and it is free. Independence is enforced: two provider sheets are one metadata query
+  answered twice and do not corroborate each other.
+
+**Best-so-far.** A retry is a hypothesis, not a promise. It must beat the attempt it retried, judged on
+the defect its knob was spent on, and a tie keeps the earlier attempt — which ran on the better evidence
+(the stem, the text's own placement, the narrower windows). When a retry comes back with nothing, refused
+or worse, the search goes back to the kept attempt, that knob is spent, and `decide` is asked again about
+the kept report so another knob still gets its turn. Only when none is left is the kept attempt
+committed. Without this the last attempt always won. (`domain/lyrics/search.py`, `policy.improves`.)
+
+**Termination is structural, not capped.** Each `Try` either spends one of four per-text knobs or
+advances a finite pool, and ASR fires at most once. There is deliberately no attempt ceiling to tune: a
+cap that can never be reached is dead configuration, and one that can silently truncates the ladder the
+user cares about.
+
+**The ladder is a pure driver, not a workflow body** (`domain/lyrics/search.py`). A DBOS workflow body must
+be deterministic and is awkward to unit-test, so the walk — which text next, with which knob, when to run
+ASR on demand, when to conclude the song has no words — lives in `domain/` as a plain object driven by step
+results. The workflow becomes a loop with no decisions in it, and every branch above is testable with no
+audio, no model and no DBOS.
+
+**Best-so-far spans document kinds.** A LINE_SYNC retry is judged by the same rule as any other, so the line
+document of a text whose word document related to nothing (rule 6) must beat that word document to replace
+it, and a line document its own gate refuses sends the search **back** to the words rather than on to the
+next text. Nothing was added to allow that: `_best` has always been "the best usable result for the current
+text", and the only reason the two kinds never met on it is that LINE_SYNC used to be offered to unusable
+word documents alone — which are never kept, there being nothing to keep. That is still the other route to
+the knob, and there the line document publishes unopposed, because an incoherent highlight is not a
+document. The workflow keeps each `Try`'s document by serial and each knob set writes its own file, so the
+earlier one is still on disk to publish (`Commit.serial`, `Attempt.lost`, `Try.base`).
+
+**Cross-kind comparison.** A word document and the LINE_SYNC document of the same text are two answers
+to one question. Which publishes used to be decided by arrival order. Now rule 6 asks for the text's own
+timings exactly where `reconcile` could relate _nothing_ between them and our decode — which is where the
+word documents carrying 84% of the corpus's gross lines live — and one guard that is a real comparison
+rather than a tie-break: a line document must time at least as many lines as the word document did, so a
+sheet stamped on 3 lines of 50 cannot replace 50 measured ones.
+
 ### 3.1 The emission pass: the frame clock, the chunking, and the cache
 
 **The frame clock is the model's, and it is exact before a frame is computed.** wav2vec2's feature extractor
@@ -165,68 +227,6 @@ objects and its own task enums, so an allow-list of unpickling globals is regist
 ever reads — and the list was discovered by loading and reading each refusal in turn, a missing entry being
 the same hard failure rather than a warning.
 
-`policy.decide` judges one attempt, in severity order:
-
-| rule | state | answer |
-| ---- | ----- | ------ |
-| 0 | **Refused** — a gate measured that this text does not describe this audio | NextText. **Terminal for the text**, never LINE_SYNC: line sync would publish the same wrong words on the text's own clock |
-| 1 | **Not usable** — word order incoherent, or nothing timed | degrade to line sync if the text has its own, else next text |
-| 2 | **Line-synced** | accept; the rung is terminal, nothing is left to vary |
-| 3 | **Misplaced** — residual past the suspect band | re-place against the aligned output (`RESHIFT`) |
-| 4 | **Overshoots** the audio | widen the search (`DROP_WINDOWS`), then re-place |
-| 5 | **Thin coverage** | try the mix (windowed only) |
-| 6 | **Claims unrelated** — the text brought line timings and `reconcile` could fit no map | the text's own timings get their turn, **last**, and only if they pass their own gate and beat what they retried |
-| 7 | otherwise | accept |
-
-Two rules that are easy to get backwards, both learned from the worker this replaced:
-
-* **Accept if nothing better is available.** A defect justifies another attempt only when a knob exists
-  that could plausibly fix it. Thin coverage with no untried knob is accepted — if a transcript covered
-  only the first third, that third's timing is correct, and refusing publishes nothing. Every usable
-  branch falls through to `Accept`, never to `NextText`; inverting that is how a correct-but-imperfect
-  alignment becomes no lyrics.
-* **ASR is a tier, not a last resort.** The pool order is candidates, then ASR, then the machine caption
-  track: a transcript cannot be the wrong song and cannot be misplaced in time, which makes it the
-  _reliable_ fallback rather than the desperate one. Within the candidate tier a **corroborated** text
-  goes first — two independent sources agreeing on the words is the strongest evidence available without
-  the audio, and it is free. Independence is enforced: two provider sheets are one metadata query
-  answered twice and do not corroborate each other.
-
-**Best-so-far.** A retry is a hypothesis, not a promise. It must beat the attempt it retried, judged on
-the defect its knob was spent on, and a tie keeps the earlier attempt — which ran on the better evidence
-(the stem, the text's own placement, the narrower windows). When a retry comes back with nothing, refused
-or worse, the search goes back to the kept attempt, that knob is spent, and `decide` is asked again about
-the kept report so another knob still gets its turn. Only when none is left is the kept attempt
-committed. Without this the last attempt always won. (`domain/lyrics/search.py`, `policy.improves`.)
-
-**Termination is structural, not capped.** Each `Try` either spends one of four per-text knobs or
-advances a finite pool, and ASR fires at most once. There is deliberately no attempt ceiling to tune: a
-cap that can never be reached is dead configuration, and one that can silently truncates the ladder the
-user cares about.
-
-**The ladder is a pure driver, not a workflow body** (`domain/lyrics/search.py`). A DBOS workflow body must
-be deterministic and is awkward to unit-test, so the walk — which text next, with which knob, when to run
-ASR on demand, when to conclude the song has no words — lives in `domain/` as a plain object driven by step
-results. The workflow becomes a loop with no decisions in it, and every branch above is testable with no
-audio, no model and no DBOS.
-
-**Best-so-far spans document kinds.** A LINE_SYNC retry is judged by the same rule as any other, so the line
-document of a text whose word document related to nothing (rule 6) must beat that word document to replace
-it, and a line document its own gate refuses sends the search **back** to the words rather than on to the
-next text. Nothing was added to allow that: `_best` has always been "the best usable result for the current
-text", and the only reason the two kinds never met on it is that LINE_SYNC used to be offered to unusable
-word documents alone — which are never kept, there being nothing to keep. That is still the other route to
-the knob, and there the line document publishes unopposed, because an incoherent highlight is not a
-document. The workflow keeps each `Try`'s document by serial and each knob set writes its own file, so the
-earlier one is still on disk to publish (`Commit.serial`, `Attempt.lost`, `Try.base`).
-
-**Cross-kind comparison.** A word document and the LINE_SYNC document of the same text are two answers
-to one question. Which publishes used to be decided by arrival order. Now rule 6 asks for the text's own
-timings exactly where `reconcile` could relate _nothing_ between them and our decode — which is where the
-word documents carrying 84% of the corpus's gross lines live — and one guard that is a real comparison
-rather than a tie-break: a line document must time at least as many lines as the word document did, so a
-sheet stamped on 3 lines of 50 cannot replace 50 measured ones.
-
 ## 4. Repair: the four rungs, the drop, and the clamp
 
 The global decode is one monotone path. Where it misbinds — a repeated chorus bound to the wrong
@@ -273,6 +273,74 @@ following line but an unstamped outro repeat of its own words. A characters-per-
 measured and rejected — real sung lines run down to 0.7–1.7 alignable characters a second, so any ceiling
 tight enough to refuse a smear also truncates a held note. The next claim is _evidence_, not a guess.
 (README, "The repair window's two caps".)
+
+**The opening a forced path absorbed.** CTC is peaky, and a line whose caption opens on a sustained vowel
+("oh oh…") gives the path nothing to gain by stepping into it: the vowel goes to blank and the line opens
+0.3-1.0 s late, with its END measured correctly. A late opening is the error the ear reaches first (ITU-R
+BT.1359: ~45 ms late against ~125 ms early), so a re-decode that opened more than `AGREE_TOLERANCE_SEC` past
+its claim is **re-opened at the claim's onset** — the line's start, its first word's start and that word's
+first syllable, and nothing else, so every other word keeps the onset and score the decode measured
+(`generate.reopened_line`, against `adopted_line`, which throws the whole measurement away).
+
+The question it turns on is whether the cue's front is missing or the whole cue is displaced, and **the END is
+what answers it**, scaled by the document's own lines: the median of "decoded end − cue end" over the lines
+whose openings the blind decode already agrees with (XA-03), which is a reading and the raw difference is not
+— a decoded end is the model's last confident frame and runs a third of a second inside a real cue's end. A
+displaced sheet is refused three times: it has no agreeing openings to build that reference from, its ends
+disagree by the same lag as its openings, and `reconcile.off_sheet`'s envelope witness names it outright. Also
+required: a cue END THE SHEET ACTUALLY WROTE, the defaulted `start + 1.0 s` being arithmetic. Two witnesses
+built on the LEAD instead were measured and rejected — the acoustic model and the envelope both read it
+backwards, hearing nothing over a held vowel and plenty over the breath before a displaced cue (README, "W8a:
+the late half of the band, and the end that witnesses it").
+
+**The envelope has THREE states, not two, and a grade and a repair read different ones of them.** The
+asymmetry is a decision, taken because an unreadable envelope is the state the corpus's most displaced sheet is
+actually in (bad-guy's lag is +0.78 s at r 0.19, under `claimmap.MIN_ENVELOPE_CORRELATION` 0.25):
+
+| `claim_lag` | the grade (`reconcile.off_sheet`, §6.1) | the repair (`skipped_opening`) |
+| ----------- | --------------------------------------- | ------------------------------ |
+| absent, or r under the floor — UNREADABLE | `sheet_displaced` False: abstention never demotes | `sheet_settled` False: **stood down**, no licence to move a start |
+| readable, \|seconds\| > `AGREE_TOLERANCE_SEC` — CONVICTS | may demote, the claims' own witness concurring | stood down |
+| readable, \|seconds\| ≤ `AGREE_TOLERANCE_SEC` — ABSOLVES | no demotion | armed |
+
+A demotion fails OPEN because an unmeasurable witness must not convict; a timing move fails CLOSED because an
+unmeasurable witness must not license. Both guards read one `sheet_lag`, and neither is the other's negation
+(review r1-correctness-2).
+
+**And the move has to land in FREE TIME** (`opening_is_free`): the clamp resolves a repaired start against its
+predecessor's published end by rescaling the whole line, so a re-opening into occupied time buys one opening
+boundary and pays with every measured word onset in the line — the opposite of why this remedy was chosen over
+adoption. **The decode's own span is no bound at all here**, which is the thing worth knowing: the repair window
+widens with the cue, so a forced path over it measures a line that grows as fast as the backward distance does.
+On the hermetic fixture a cue 7.9 s before its decode yields a window decode of 23.94-30.00 s, and
+`line.end - line.start` of 6.06 s never bites on a 3.94 s move; the predecessor's end does (review
+r1-correctness-1, XA-07).
+
+**The free time is the time THIS BATCH will leave**, not the time it started with: `adopt_where_unheard` runs
+over a whole batch before the document is rebound, R1's batch is every claimed line and R2's routinely holds
+adjacent disputed lines, so the predecessor's end has to be read off the batch being built. Read off the
+pre-batch document it was one repair stage out of date, and the guard passed on an end the same batch was about
+to replace (review r2-correctness-1 / r2-spec-8 / r2-tests-15).
+
+**And the move is capped absolutely**, at `_REOPEN_MAX_SEC` — the band this rule exists for ends where a gross
+line begins. The decode's own span does not bound a merged cue, so without the cap a 10 s cue could pull a
+published start back by seconds onto a correct decode of a different phrase; a refusal for size is named on the
+trail, "refused" and "never considered" reading alike otherwise (review r2-correctness-3).
+
+**A line with no OTHER aligned word is not re-opened at all.** The first word's onset becomes the cue's, so on a
+one-word cue — or one whose only companion is interpolated — the re-opening removes the line's last measured
+word, `parts.unmeasured_lines` reports it and `line_confidence` grades it `low` with no word wipe: the opposite
+of the property the remedy was chosen for. That case is an adoption with a kept end (review r2-spec-12).
+
+**It is behind `band-reopen` and OFF by default** (§14), because the corpus sweep priced it and it failed its
+own gate file's `no-song-loses-jit`. ITS REACH IS §14's FIGURE, NOT THE PRE-SWEEP ONE: the guarded arm moves
+**36 of 56** lines at `run_align` for **+15 at ±500 and none lost**, and the leak the unguarded arm had —
+`Explosive_Ear_Candy_-_Like_The_Sun` at `jit`, three lines pulled onto jittered claims, one landing 0.81 s from
+truth — is refused by the free-time guard. (The "+8 lines, `tfr-chosen` at `off05`" this paragraph used to carry
+was task 3's pre-sweep count of lines MOVED on 14 songs at `truth`, read as a ±500 gain: review r2-spec-11,
+README, "The recorded reach figure, corrected".) The guards read the document's STRUCTURE (agreeing openings,
+the cue's end, the envelope), all three of which survive per-line jitter, so a sheet that is noisy rather than
+displaced passes every one of them. README, "W8a: what the corpus said about the two band components".
 
 **The never-sung drop.** A caption line that is not in the audio — an uploader credit, a lyric only
 present in a stem this box did not get — does worse than fail: forced monotonically through emissions
@@ -399,11 +467,13 @@ The rung publishes the text's own claimed starts, so it asks both questions and 
 
 * **The words:** `lexical.lift` against the same per-bundle `refuse_below` the global engine reads, off
   the same row. It used to hold its own copy of the number; one recalibration must move both gates.
-* **The clock, before either question:** a sheet 1.5 s off is a sheet to _move_, not a sheet to refuse,
-  so the rung takes its own claim-clock vote (§7) and places the winner. Until it did, the sheet was
-  moved by the activity fit whenever that fit was usable and by nothing else, which cost both ways: 12
-  right texts refused for a clock error their own decode could see, and 23 published documents with **no**
-  line within ±500 ms of truth because the fit moved a sheet that was already right.
+* **The clock, between the two questions:** a sheet 1.5 s off is a sheet to _move_, not a sheet to refuse,
+  so the rung takes its own claim-clock vote (§7) and places the winner. It is voted AFTER the words gate
+  and BEFORE the timings gate, so a sheet refused for its words — the rung's commonest refusal — pays for
+  neither the blind decode nor the vote, and its trail carries no clock clause at all. Until the vote
+  existed, the sheet was moved by the activity fit whenever that fit was usable and by nothing else, which
+  cost both ways: 12 right texts refused for a clock error their own decode could see, and 23 published
+  documents with **no** line within ±500 ms of truth because the fit moved a sheet that was already right.
 * **The timings:** the text is decoded blind on the same matrix and at least
   `line_sync_min_agreement` of its lines must start within 1.0 s of their **mapped** claims. That share
   is the matrix's own model's; unlike the lift's bands it is a count of lines rather than a
@@ -421,6 +491,17 @@ their bars differed a thin sheet published displaced with both witnesses agreein
 **On a stem only.** Against the mix the sheet gate passes almost nothing and the lift's populations
 overlap, so `syncMode=lines` on a stemless song is aligned as forced instead, and forced mode's own
 fallback to this rung is declined there.
+
+**Two exits publish on less than both gates, and the rung's docstring names them rather than claiming the
+invariant it cannot hold.** (1) **The ASR tier**, which leaves before either gate and before the stemless
+decline above: a transcript's spans were measured on this very recording, so neither defect this rung
+detects can be true of them, and read as a sheet the text would FAIL — the lift judging the acoustic model's
+own words, the envelope gate judging spans that already are the audio's. It publishes its own spans at `low`
+confidence with the trail saying there was no sheet gate, and it is the one text that reaches this rung on
+the mix (`req.text.tier is Tier.ASR`; §5.1 holds the same exemption for the lift). (2) **A sheet whose
+decode cannot be read**, which is the fallback paragraph above: the sheet-span envelope decides alone, and
+because `vouched` is a positive claim about the WORDS (XA-14) such a document goes out unvouched wherever
+the lift could not measure them — which is every case where there was no matrix to decode or to lift on.
 
 **A stray backwards stamp is held, not sorted.** A line document _is_ its claims, so a sheet that stamps
 one line before the line ahead of it publishes a highlight that jumps backwards — the one timing defect
@@ -534,6 +615,77 @@ numpy, vectorised over states with a Python loop over frames — no numba, since
 decoder swap. `conf-legacy` (§14) is the off switch for a box that cannot pay it.
 (`domain/lyrics/margin.py`; the window sweep, the leave-one-song-out fit, the per-song timings, the transfer
 to the second bundle and the two halves' separate contributions are in README, "The confidence rule".)
+
+### 6.1 The coherence check — _is this document where its own sheet says?_
+
+Everything above grades a line against a residual **with the claims' common offset already fitted out**.
+That is right for a line: where our timings publish, a sheet stamped 3 s early is a fact about the sheet.
+But it means a document every line of which is the same 0.9 s from its claim corroborates line for line and
+publishes `high`, because after the fit every residual is near zero. W8a measured that: `bad-guy` published
+`confidence=high` with **2 of 64** lines within 500 ms of its own captions, and no number anywhere in the job
+named the 0.86 s. Gross misplacement — the thing the placement margin and the score-vs-median rule were built
+for — was zero on that song. The two rules are blind to a uniform shift **by construction**, not by accident.
+
+`reconcile.as_claimed` is the one reading that removes nothing, so it reads the error a room would see.
+`reconcile.off_sheet` turns it into a grade, and the whole rule is a conjunction of **two witnesses the worker
+already has, neither of them truth**:
+
+| witness | reading | what it says |
+| ------- | ------- | ------------ |
+| the claims it was **given** (`claimed_as_given`, before the claim clock) | `as_claimed` of the PUBLISHED starts: `offset_sec` past `AGREE_TOLERANCE_SEC`, with `spread_sec` inside it **and** `together` at or above `MIN_COHERENT_SHARE` | every line moved, and they moved **together** — one lag, not scatter |
+| the **activity envelope** (`claim_lag`, `activity.fit_shift` of the SERVED claim windows) | `\|seconds\|` inside `AGREE_TOLERANCE_SEC` at a correlation of at least `claimmap.MIN_ENVELOPE_CORRELATION` | the singing is where the sheet says, so **the sheet is not what moved** |
+
+The second witness is the whole design, and it is what makes this safe to ship. Two documents are
+indistinguishable from the claims alone: one whose SHEET is early, and one whose DECODE is late. The envelope
+is the arbiter that already settles exactly that question everywhere else in this engine (§5.2, §7), and here
+it decides which side to believe. Four of the five songs W8a investigated turned out to be the first kind —
+their captions precede their own singing and our documents are right about the audio — so a rule built on the
+claim reading alone would have demoted four correct documents and turned the word wipe off for the whole room.
+Under the conjunction it demotes none of them.
+
+**"Coherent" is two tests, not one.** A MAD is robust, which is exactly why it cannot carry this alone: a
+document half of whose lines are 0.9 s late and half EXACTLY on their claims reads `spread_sec` 0.00 and would
+have been convicted on a population that is nearly half correct. `together` — the share of residuals within
+`AGREE_TOLERANCE_SEC` of the median lag — is the conjunct that refuses it, at `MIN_COHERENT_SHARE`. The floor is
+measured, not chosen: README, "W8a: the share a coherent lag has to carry" (review r2-correctness-2).
+
+**And the first witness is only independent while the claim clock has not already moved the sheet.** Where the
+clock applied a map, a document that published on the MAPPED sheet sits exactly the map's own displacement from
+the sheet as served, so the claims are restating a decision this pipeline made and the conjunction is a
+ONE-witness rule — the envelope's. `OffSheet.claims_independent` says which, per job, on the trail. The per-mode
+conviction counts, and why neither candidate fix survived measurement: README, "W8a: when the claims restate the
+clock" (review r2-spec-7).
+
+Three further properties worth stating, because each one closes a way this could have gone wrong:
+
+* **Abstention never demotes.** A correlation under the floor passes `None` and the check stands down — the
+  same spelling `claimmap.consensus` uses, and the reason `bad-guy` (r 0.19) is untouched even though its
+  envelope lag happens to be large. A reading nobody trusts may not cost a room its word wipe.
+* **It is sign-symmetric in both witnesses**, so a sheet that is late cannot be read as a sheet that is early.
+* **It is a self-consistency test, not corroboration.** W1's H4 stands: only the blind decode corroborates.
+  This check can take a grade DOWN and never up, so `high_gross` cannot rise through it.
+
+A demotion grades every line `low` and the document `low` — the TIMINGS' axis (XA-14), not `vouched`'s, the
+words being fine. The TV then renders those lines line-level with no word wipe (`wipesWords` in
+`core/src/lib/tv/lyrics.ts`), which is a real user-visible cost and the reason the rule is a conjunction
+rather than a threshold. The reading is on the trail of **every** claimed job whether or not it demoted
+(`align_steps._sheet_why`): "we checked and it is close" and "nobody checked" must not read alike, that
+silence being what the 0.86 s hid behind.
+
+**THE DEMOTION IS BEHIND `band-off-sheet` AND OFF BY DEFAULT** (§14); the READING always runs and always
+reaches the trail. The full corpus sweep found the conjunction firing in two places and showed that it cannot
+tell them apart: on `bad-guy` at `off05` it removes **49 `high` lines, every one of them more than 500 ms from
+truth** — the rule doing exactly what it was built for — and on `never-be-alone` at `offm1` it removes **23
+`high` lines, every one of them correct**, demoting a document whose ±500 does not move. The mechanism is the
+second witness: that song's envelope lag reads **−0.80 s at r 0.77** against its own true sheet, so a sheet
+perturbation near +0.8 s puts the false reading inside `AGREE_TOLERANCE_SEC` and the envelope "absolves" a
+sheet that really is displaced. The claim reading then convicts us correctly (we did re-time by +1.03 s) and
+the conjunction closes on a right answer. So the two witnesses do NOT cover each other's false positives where
+a perturbation lands on one witness's own error, which is the design claim the corpus refuted. What it would
+take to flip the arm on: a third reading, or an envelope whose per-song error is bounded.
+
+Measured on all 32 corpus songs, including what the metric now says per song: README, "What the coherence grade
+reads", "The 0.5-2 s band" and "W8a: what the corpus said about the two band components".
 
 ## 7. The claim clock
 
@@ -1004,6 +1156,8 @@ thing this tuple exists to prevent.
 | `star` | the targets carry a star before every line, over a matrix one column wider | failed arm at the claims path; the decode gain is real |
 | `adlibs` | ad-libs and echo tails are held out of the lead decode | failed arm |
 | `conf-fuzzy-repeats` | the confidence demotion also fires on near-repeats | failed arm |
+| `band-off-sheet` | a document both witnesses place off the sheet it was served is demoted to `low` (§6.1) | failed arm — the READING still runs and still reaches the trail; only the demotion is off |
+| `band-reopen` | a window re-decode that opened past its claim while ending with it is re-opened at the claim (§4) | failed arm — its two rejecting rules pass with the review's guard, re-measured; still off |
 | `lang-route-mix` | a Latin-script song's **mix** is timed by a per-language bundle | failed arm — and **inert alone** since §5.4; pair it with `h3-ungated-words` to measure anything |
 | `ends-raw` | the end post-pass does not run | **control** for a default-on feature |
 | `h3-mix-envelope` | the mix's wrong-text verdict is the envelope gate alone | **control** |
@@ -1014,6 +1168,11 @@ thing this tuple exists to prevent.
 A control exists because a default-on change must be A/B-able and the arm switch is the only thing the
 bench can move without editing code. Each arm's numbers live where it is read — the constant, the module,
 or the README section named in §13 — and `host/config.py` is the index.
+
+`band-reopen` has been re-measured WITH §4's free-time guard, over the 182 cases that hold every move it
+makes: it keeps 36 of the 56 line moves it made unguarded, gains 15 lines at ±500 and loses none, and its two
+rejecting gate rules now pass. It stays OFF — the absolute gates cannot be read on a 14-song selection
+(README, "W8a round 1: the `band-reopen` arm, re-read with the free-time guard").
 
 ### 14.1 What the two target-adding arms share
 
@@ -1095,3 +1254,134 @@ torchaudio bundle's blank _is_ 0; it is only that vocabulary's `[PAD]` = 38 that
 | the state machine, the knobs, and the trail an operator reads | [`../../worker/README.md`](../../worker/README.md) |
 | the rest of the worker | [`05-worker.md`](05-worker.md) |
 | what core does with a published document | [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §8, `core/src/lib/tv/lyrics.ts` |
+
+## 17. What the regression fixtures measure
+
+The suite's fixtures are not arbitrary shapes. Nearly every one was cut from a failure that was measured, and
+the numbers it encodes are the reason it has the shape it has — which is why a fixture that looks
+over-specified usually is not. Those measurements used to sit in the test docstrings; they live here now, and
+each test keeps one line saying what it pins. `worker/tests/` is the index: the subsection names the file.
+
+### 17.1 Repair windows (`tests/test_align_provenance.py`)
+
+- **A sub-second dispute must not send R2 to re-decode on a stem that lost the line** (review M4). On repro
+  s6's own sheet the blind verdict is STRUCTURAL, and rightly so — the stem lost line 5, so the blind decode
+  put it more than a phrase from its claim. R4 then finds it on the mix where it is sung, 0.4 s from the
+  claim, and the re-reconcile R2 reads is COARSE, so R2 never runs and the mix's measurement stands. Before
+  W2 the re-reconcile read STRUCTURAL as well — any agreement under 1.0 did — and R2 re-decoded line 5 on the
+  silent stem and adopted the jittered claim: **25.90 s for a line sung at 25.50 s**.
+- **A truncated cue is re-decoded in a window wide enough to hold the line** (review M5). When our own decode
+  has scattered, the claims become R1's anchors and every claimed line is re-decoded inside its claim window,
+  including the ones the blind decode already had right — the closing line among them, and its cue has no
+  end. Cut to `start + 1.0 s` the window is 3 s including both pads, against a line that takes 3 s to sing:
+  the forced path compresses it, `adopt_where_unheard` reads the poor score as "heard nothing", and the
+  claim's one-second span replaces a correct measurement with six words spread over a third of the line —
+  measured on that fixture with the hold-open removed, **40.00-41.00 s against 40.00-43.00 sung**. Held open
+  to the end of the blind decode's own span for the line, the window holds it.
+- **The last cue is capped on the sheet's own pacing, not left open to the audio's end** (W2 review r2).
+  `parse_lrc` gives an LRC's last line no `end` and the reader defaults it to `start + 1.0 s`, so the
+  hold-open fires on the final cue of every sheet there is. What that cue can swallow is not a following LINE
+  but an unstamped outro repeat of its own words. Uncapped, a fixture singing its last line at 50-53 s and
+  again at 70-73 s bought a window of (49.6, 78.7) — **29 s against the 4 s every capped cue gets** — and the
+  forced re-decode inside it landed on the repeat, publishing the line at **69.96 s, 20 s late**. The sheet's
+  own `typical_slot` (the median gap between its onsets, 10.0 s there) stands in for the missing onset, so
+  the window is (49.6, 61.6) and the repeat is outside it. The true occurrence is sung weakly (0.45 against
+  the fixture's 0.9) because that is what makes the uncapped window's failure visible: with both occurrences
+  at full strength an exact Viterbi prefers the earlier one and the 29 s window looks harmless.
+
+### 17.2 The v2 remap, the width floor and the repeat rungs (`tests/test_align_v2.py`)
+
+- **A pull can never move a word start earlier**, which is why `_pulled_end` needs no order guard where an
+  affine re-fit carried one (measured at 0 firings). The shape: the line two back is a trusted line whose
+  overlap is a measurement and already reaches past its neighbour's start, and the neighbour has leading
+  silence. `remapped` would slide the neighbour's first word from 4.0 back to **3.05**, BEFORE `swallowing`'s
+  last word at 3.5 — a new inversion, and `policy.decide` drops the whole text to line sync over one.
+  `trimmed` keeps it at 4.0.
+- **A repaired line's width floor is a re-fit floor, and the pull outranks it** (W6 review r2-correctness-4).
+  Two repairs 0.1 s apart cannot both be `_REPAIRED_MIN_SEC` wide without overlapping, so the floor is
+  unsatisfiable and the pull wins. That is the right way round: the start is what grading and every line
+  metric read, and the alternative pushes line [1] to **10.2** — the smeared-end failure the bounded floor
+  exists to end. What bounds the published width instead is `_pulled_end`'s frame per letter.
+- **R3 re-decodes a misplaced blind repeat inside its anchor gap.** No claim says which chorus is which, so
+  the unique neighbours around it bound the window. Delete R3 (mutation, measured) and the line publishes at
+  **18.34 s instead of 21.96 s**. An exact Viterbi reproduces its own global path between its own anchors, so
+  the misplacement is made the only honest way: the global pass hears the second chorus at 18.4 s.
+- **The near-repeat arm** turns the rig's last line into a near repeat of line [0] — `difflib` **0.89**, so
+  `margin.fuzzy_repeats` flags it while `normalized.count(text) > 1` (R3's exact rule, which already grades
+  both copies `low`) does not. One CHARACTER, not one word, so the line's own score stays inside `low_lines`'
+  score half: a sheet whose near-repeat was also its worst-scoring line could not tell the arm from that half.
+
+### 17.3 The claim clock's two floors (`tests/test_claimmap.py`)
+
+- **The offset estimator is a MEDIAN, and that is load-bearing** (W2 review r1). A 40-line sheet 1.5 s late
+  with two stamps 60 s wrong is the ordinary LRC defect (stacked timestamps, a trailing credit cue, review
+  L4): the median offset is +1.50 and explains 38 of the 40 lines, while the MEAN of the same residuals is
+  **+4.50** and explains none of them — so a mean would lose the vote and leave the sheet 1.5 s late, which
+  is repro s8. Without this case the swap passes the suite.
+- **`MIN_INLIER_SHARE` is the absolute-quality floor the margin cannot supply.** Against a correctly timed
+  sheet and a blind decode that is poor and systematically late (never-be-alone's measured shape), every
+  candidate explains almost nothing, so no-shift explains nothing either and the margin — a DIFFERENCE — is
+  cleared by any candidate that finds two lines. The winner would have moved a correct sheet by +1.96 s on
+  the strength of 9 of 47 paired lines (**0.191**, under the floor), and `reconcile` would not have noticed:
+  it re-fits its own median, so the verdict stays UNRELATED either way. It is also what bounds the mode
+  candidates (W4 review r1) — `_densest_offset` maximises an inlier count over every window, so on
+  differences with no mode the luckiest 0.5 s slice holds 16 of the 47 and would clear this floor outright.
+  The isolation test in `_densest_offset` is what refuses it.
+
+### 17.4 Reconcile's classes, as a distribution (`tests/test_reconcile.py`)
+
+A +/-1.5 s LRC with 150 ms jitter read STRUCTURAL about 98% of the time before M4, so the caller's R2
+re-decoded every line the jitter pushed past 250 ms — the repair Numb measured as harmful (MAD 312 -> 563 ms).
+Measured on this tree over 2 000 seeded 40-line draws: **1 463 OFFSET, 535 COARSE, 2 DRIFT, no STRUCTURAL**,
+and 0 disputed lines out of 80 000 against roughly one line in ten before. Mean residual MAD **0.099 s**, the
+jitter drawn. Every draw still CORROBORATES — the sheet is good evidence, it is just late — so nothing is lost
+but the repairs.
+
+### 17.5 The margin's backward pass (`tests/test_margin.py`)
+
+`window.fill(-np.inf)` between the forward and backward passes is the guard that stops the backward pass
+reading the forward pass's last two alpha values as "there is no state s+1 / s+2". Deleting it left
+`test_margin`, `test_align_v2`, `test_generate`, `test_repair_order`, `test_bench_e2e`, `test_align_steps`,
+`test_lexical` and `test_lexical_gate` all green — **450 passed, byte-identical to baseline**. The
+contamination enters at `window[states]` / `window[states + 1]`, so it reaches `beta[states - 2]` first and
+the queried column has to BE `states - 2` to see it, which happens only when the last line's first character
+is also the sequence's last target. Hence the case `(["deal", "a"], 18)`: with the guard removed it reads
+**12.10 nats against the reference's 13.01** at reach 7, i.e. a line that crosses the 10-nat floor the wrong
+way. One `default_rng` per case for the same reason — a case appended to a shared stream gets whatever matrix
+the cases before it left, so re-ordering the list would silently re-draw this one.
+
+### 17.6 The star column (`tests/test_star.py`)
+
+`frame max - P` per frame, and nothing else about the matrix changes. Per frame is the whole point: a
+log-probability only means something against the rest of its own frame, so a flat frame's star comes down with
+it while a confidently sung frame's star sits P nats under a character the path wants anyway. A CONSTANT star
+(MMS's `log p = 0`) was measured over-eager — **all-corpus +/-250 67.9 -> 64.0** — which is the comparison
+this arithmetic exists to avoid.
+
+### 17.7 The TV boundary a hair past a word start (`tests/test_generate.py`)
+
+With 19.999 as the anchor, the three words after it were published at **19.99920 / 19.99945 / 19.99980** —
+four words inside 0.8 ms, none of them liftable by the TV (`start <= pos < end`) and none within a decoder
+frame of a measurement. `trimmed` walks the anchor back to the last word whose tail can hold one frame per
+word still to be placed rather than collapsing the tail into a millisecond (W6 review r2-spec-9).
+
+### 17.8 Noted-line shares (`tests/test_nonlyric.py`, `tests/test_align_steps.py`)
+
+`nonlyric.R3` fires on a text whose sung lines were wrapped in music notes by whoever typed it, and its
+precondition is the noted SHARE of the worded population read off the whole paste. The eight noted bench songs
+read **0.8514** (hello, 63/74), **0.8649**, **0.8784**, **0.9420**, **0.9670**, **0.9714**, **0.9954** and
+**1.0000** on `clean_line`'s worded population, and every one of them is still a noted track at the 0.8 floor.
+The paste fixture is nine noted lines of eleven worded ones (**0.818**), so it is over `NOTED_SHARE` and R3
+really is the rule being switched off when a test asks for `author_marking=False`; a second fixture sits at
+**0.750**, just under the floor — the shape a track one unnoted line away from firing has.
+
+### 17.9 Line separation, and the one float that may not be rounded
+
+- `dragged()` asks how much a boundary also SOUNDS LIKE the next line's first letter — a held vowel or a
+  breath across the gap. The fixture reads log 0.5 there, against the sung letter's 0.9 and silence's
+  **0.0037** (`tests/test_linesep.py`).
+- The word-end post-pass compares times with `approx` wherever an end was EXTENDED and exactly wherever it was
+  not: an extended end is a multiple of the 20 ms frame, and `115 * 0.02` is **2.3000000000000003**. The
+  identity cases are the ones that must hold bit for bit, because "nothing moved" is what the trail note and
+  the bench's onset digest both claim, and it is the reject-if this whole post-pass was built under
+  (`tests/test_ends.py`, §10).

@@ -2,7 +2,7 @@
 
 mypy checks construction, `to_wire()` is the ONLY place a camelCase key is spelled, and `parse()` the only
 place an inbound payload is trusted — raising rather than returning None. Why a type per frame, why two
-naming conventions, and why an absent field is omitted and not `null`: docs/arch/05-worker.md §7.
+naming conventions, and why an absent field is omitted and not `null`: XW-10, docs/arch/05-worker.md §7.
 """
 
 from __future__ import annotations

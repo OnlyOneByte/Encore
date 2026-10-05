@@ -3,25 +3,12 @@
 
     uv run python docs/benchmarks/stem-separation/scripts/bench.py htdemucs --device mps
 
-WHY THIS SCORES SDR RATHER THAN THE CHORD-PURITY PROXY IT REPLACED. The proxy could not tell a working model
-from a broken one. `melband-zfturbo-vocals-v1` scored 100% on a chords-only control — because it returned
-silence, and a control with no vocals in it cannot distinguish "correctly found none" from "never extracts
-anything". On real music that model turned out to be a pure passthrough: vocals at rms 0.000022. Ground-truth
-stems make that impossible to miss, because a passthrough scores around 0 dB against the mixture it copied.
+Reports SDR and SI-SDR, the second being the one to compare across models. What each metric answers, why SDR
+replaced the chord-purity proxy that scored a silent model 100%, and where the passthrough reference point
+sits: docs/benchmarks/stem-separation/README.md, "Why SDR replaced the chord-purity proxy".
 
-TWO METRICS, and the second is the one to compare across models:
-
-  SDR     10*log10(||ref||^2 / ||ref - est||^2). Simple, and PENALISES A GAIN OFFSET — a separator whose
-          output is correct but 1 dB quiet scores worse than it deserves.
-  SI-SDR  Scale-invariant: the estimate is projected onto the reference first, so a constant gain difference
-          costs nothing. This is what modern separation papers report, and the fairer comparison.
-
-A passthrough (est == mixture) is the reference point worth remembering: its SI-SDR against the instrumental
-is roughly the mix's own instrumental-to-vocal ratio, a few dB — not the 10-20 dB a real separation reaches.
-
-TIMED ON THE YOUTUBE MIX, SCORED ON THE REFERENCE MIX, and deliberately not one file for both: timing should
-reflect what the worker actually receives (48 kHz, lossy-sourced), while scoring needs the input and the
-ground truth to be sample-aligned, which only the stem-built reference is.
+Timing is on the YouTube mix and scoring on the reference mix, deliberately not one file for both ("Test
+inputs").
 """
 
 from __future__ import annotations
@@ -115,14 +102,10 @@ def run_melband(src: str, out_dir: str, repo: str, preset: str) -> tuple[str, st
     """Single-stem: the model returns vocals and the instrumental is `mixture - vocals`, so the two are
     sample-aligned by construction. Returns (instrumental, vocals, load, inference).
 
-    CHUNKED WITH OVERLAP-ADD, and that is REQUIRED rather than an optimisation. Handing the model a whole song
-    in one call returns SILENCE: measured on a 194 s input, the vocals came back all-zero and the resulting
-    instrumental scored 6.63 dB — bit-identical to a passthrough. A 30 s excerpt through the same code worked
-    (vocals rms 0.0879), so the failure is length-dependent and completely silent. The model card specifies
-    `chunk_size` samples with 50% overlap; `config.chunk_size` is 352800 (8 s at 44.1 kHz).
-
-    A HANN WINDOW over each chunk, normalised by the summed window, so the crossfades reconstruct unity gain
-    instead of leaving audible level ripple at every 4 s boundary.
+    CHUNKED WITH OVERLAP-ADD, required rather than an optimisation — a whole song in one call comes back
+    SILENT, length-dependently and without an error — and each chunk is Hann-windowed and normalised by the
+    summed window, so the crossfades reconstruct unity gain instead of rippling at every boundary
+    (docs/benchmarks/stem-separation/README.md, "Findings that came out of running these").
     """
     import mlx.core as mx
     from mlx_audio.sts.models.mel_roformer import MelRoFormer, MelRoFormerConfig

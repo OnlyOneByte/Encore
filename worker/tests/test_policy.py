@@ -13,6 +13,8 @@ written; the global engine's narrower reading (review H2) has its own section be
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from encore_worker.domain.lyrics.policy import (
@@ -603,3 +605,26 @@ def test_normalised_words_keeps_words_apart_that_are_spelled_differently() -> No
     assert normalised_words(["don't"]) != normalised_words(["dont"])
     assert normalised_words(["♪ 99 red balloons ♪"]) == "99 red balloons", "digits are sung"
     assert normalised_words([]) == ""
+
+
+def test_the_section_this_module_cites_still_holds_the_ladder_it_cites_it_for() -> None:
+    """docs/arch/04-alignment.md §3 is cited eight times from `policy.py`, so what that section's OWN body
+    carries is load-bearing.
+
+    W7c review r1-tests-14: a `### 3.1` heading went in BEFORE the body rather than after it, which left the
+    severity table, both easy-to-get-backwards rules, best-so-far and the cross-kind guard sitting inside a
+    subsection titled after the emission pass — a reader following the pointer found an engine table and a
+    knob rule.
+    """
+    doc = Path(__file__).resolve().parents[2] / "docs/arch/04-alignment.md"
+    body = doc.read_text(encoding="utf-8").split("\n## 3. ")[1].split("\n### ")[0]
+    for claim in (
+        "`policy.decide` judges one attempt",
+        "Accept if nothing better is available",
+        "ASR is a tier, not a last resort",
+        "**Best-so-far.**",
+        "Termination is structural",
+        "The ladder is a pure driver",
+        "Cross-kind comparison",
+    ):
+        assert claim in body, f"section 3's own body no longer carries {claim!r}: a subsection has taken it"

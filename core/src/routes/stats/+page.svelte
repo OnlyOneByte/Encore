@@ -163,7 +163,8 @@
 	.stats {
 		display: grid;
 		gap: 1rem;
-		/* --dock-h reserves the band, whose own env(safe-area-inset-bottom) reaches this column through it. */
+		/* --dock-h reserves the dock; the env(safe-area-inset-bottom) declared on the tab bar inside it reaches this
+		   column through the same token. */
 		padding: 1rem 0 calc(var(--dock-h, 0px) + 3rem);
 		max-width: var(--measure-grid);
 		/* PageHeader caps on --page-measure, so match it here or the header and its content disagree. */

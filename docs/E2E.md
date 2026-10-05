@@ -130,14 +130,29 @@ The retired-ids list at the top of `selectors.ts` warns rather than enforces, fo
 point is durable: a revived name gets pointed at a class that has come BACK on another surface, so it
 resolves — against the wrong thing, silently.
 
-## Presence is not visibility
+## Presence is a claim, so pick the right element to wait on
 
-The now-playing sheet is mounted at all times, so every selector inside `.np-drawer` resolves cold and a
-presence wait can never time out. Collapsed versus pulled-up is `activeSnapPoint`, whose values are vaul
-snap VALUES (`'80px'` and `0.82`) — not an index, not a boolean. Anything measured below the fold is
-measured off a hidden element, so raise the sheet first (`openNowPlaying` in `world/actors.ts`, which
-keeps an `evaluate` because "pulled up" is a relation between the sheet's top, the viewport and the live
-`--dock-h` that no locator state expresses).
+This section used to be about the now-playing sheet, which was mounted at all times — every selector
+inside `.np-drawer` resolved cold, so a presence wait could never time out and "collapsed versus
+pulled-up" had to be measured as a HEIGHT. The sheet is deleted and `openNowPlaying` with it; the
+replacement is `openQueue`, which changes ROUTE and waits on the route's heading.
+
+The trap it leaves behind is the opposite one, and it bites harder because the failure is a TIMEOUT
+rather than a vacuous pass. In the bottom chrome:
+
+- `SEL.dock` (`.dock`) is attached on EVERY phone surface for a joined singer, and on none before the
+  join. That is what post-join readiness waits on — `world/fixtures.ts`, `world/actors.ts`, the measured
+  gates and `preflight-reset-audit` all key on it.
+- `SEL.npStrip` (`.dock .strip`) renders only when `hasSong || canStart`. **Its absence on an idle room is
+  the contract**, not a missing hook: the band it replaced was permanently present and showed "Nothing
+  playing" beside a disabled transport. So a readiness wait pointed at the strip times out legitimately
+  on a virgin room, and a spec whose subject is the transport has to queue something first —
+  `measured-dock.spec.ts` does exactly that, and says so.
+- The same shape applies to `SEL.queueNowCard` (`.now`) on /queue and to `SEL.libraryReady` on /library:
+  each renders on one arm of a branch, so a spec either asserts the arm it drove into or waits on a union.
+
+The rule: wait on the element that is unconditional for the state you have actually reached, and assert
+on the conditional one.
 
 ## Gestures
 

@@ -366,6 +366,36 @@ def test_sheet_spans_cap_an_end_that_is_only_the_next_lines_start() -> None:
     assert _sheet_spans([{"text": "untimed"}]) == []
 
 
+def test_a_cue_whose_end_is_not_after_its_start_wrote_no_end_at_all() -> None:
+    """Review r2-correctness-4. A zero-length or reversed cue — common in provider-converted SRT/VTT, and the
+    reason the window is clamped at all — was recorded as "the sheet wrote an end" while its window carried
+    the START as its end, so `end_bias` averaged in a line's whole DURATION as if it were an end gap.
+
+    The WINDOWS are unchanged: such a cue keeps its own zero length, as `claimmap.ClaimMap.windows` preserves
+    it; only the claim to have WRITTEN an end is withdrawn.
+    """
+    from encore_worker.steps.align_steps import _CLAIM_DEFAULT_END_SEC, _claims_as_served
+
+    served = _claims_as_served(
+        [
+            {"text": "a", "start": 10.0, "end": 12.0},
+            {"text": "b", "start": 20.0, "end": 20.0},
+            {"text": "c", "start": 30.0, "end": 29.5},
+            {"text": "d", "start": 40.0},
+            {"text": "e"},
+        ]
+    )
+    assert served.ends_given == {0}, "only the cue whose end is after its start wrote one"
+    assert served.starts == {0: 10.0, 1: 20.0, 2: 30.0, 3: 40.0}
+    assert served.windows == {
+        0: (10.0, 12.0),
+        1: (20.0, 20.0),
+        2: (30.0, 30.0),
+        3: (40.0, 40.0 + _CLAIM_DEFAULT_END_SEC),
+    }
+    assert _claims_as_served([]) == _claims_as_served([{"text": "untimed"}]), "no claims either way"
+
+
 def test_the_rungs_clock_abstains_rather_than_voting_no(monkeypatch: pytest.MonkeyPatch) -> None:
     """W2. `_line_sync_clock` returns None for "there was no vote" and an UNAPPLIED map for "the vote said
     no", and the two must not be confused: None sends `_placed_by` back to the unconditional activity shift
@@ -972,6 +1002,49 @@ async def test_the_rung_reads_the_agreement_share_off_the_matrixs_row_too(
     )
 
 
+async def test_a_sheet_refused_for_its_words_never_votes_a_clock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rung's gate ORDER, which both `_time_line_sync` and docs/arch/04-alignment.md §5.3 had backwards.
+
+    Both said the clock was voted "before either question"; the words gate returns first, so the rung's
+    commonest refusal pays for no decode and no vote and its note carries no clock clause at all. Only a
+    note read on BOTH refusals can tell that order from a note that never carries one (W7c review r2-spec-9).
+    """
+    refusing = lexical.Bands(
+        model="HUBERT_ASR_LARGE",
+        refuse_below=1e3,
+        ok_from=2e3,
+        mix_floor=1.0,
+        mix_ok_from=2.0,
+        line_sync_min_agreement=0.5,
+        margin_floor_nats=10.0,
+    )
+    monkeypatch.setitem(lexical.CALIBRATED, refusing.model, refusing)
+    stem, inner = hearing(tmp_path, monkeypatch)
+    impl = steps(tmp_path, aligner=NamingAligner(inner, refusing.model), reporter=Reporter())
+    words = await impl.time_text(line_sync(tmp_path, worded(SUNG_WORDS), stem))
+    assert isinstance(words, Refused) and words.report.refused is not None
+    assert "below the lexical gate" in words.report.refused, words.report.refused
+    assert "clock" not in words.report.refused, (
+        "the words gate returns before the vote, so a refused sheet's note names no clock: "
+        + words.report.refused
+    )
+
+    warped = [(5.0, 7.0), (5.5, 7.5), (6.0, 8.0), (20.0, 22.0), (30.0, 32.0), (31.0, 33.0)]
+    timings = tmp_path / "timings"
+    timings.mkdir()
+    stem2, inner2 = hearing(timings, monkeypatch, envelope=warped)
+    later = await steps(timings, aligner=inner2, reporter=Reporter()).time_text(
+        line_sync(timings, worded(SUNG_WORDS, warped), stem2)
+    )
+    assert isinstance(later, Refused) and later.report.refused is not None
+    assert "below 50%" in later.report.refused, later.report.refused
+    assert "clock" in later.report.refused, (
+        "a sheet that PASSED the words gate is voted a clock before the timings gate: " + later.report.refused
+    )
+
+
 async def test_a_line_sync_text_in_the_doubt_band_publishes_unvouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1354,6 +1427,27 @@ async def test_line_sync_declines_a_song_with_no_vocals_stem(tmp_path: Path) -> 
     assert await impl.time_text(line_sync(tmp_path, sheet(SUNG), mix_only)) is None
     assert ("align-line-sync", "declined", None) in reporter.states
     assert any("no vocals stem" in why for why in reporter.reasons)
+
+
+async def test_the_asr_tier_leaves_this_rung_before_either_gate_and_before_the_stemless_decline(
+    tmp_path: Path,
+) -> None:
+    """The exit the rung's docstring has to name: a transcript is not a sheet (W7c review r1-correctness-1).
+
+    Its spans were measured on this recording, so it publishes them with NO sheet gate — and because that
+    happens before the decline above, on the mix as well (docs/arch/04-alignment.md §5.3).
+    """
+    reporter = Reporter()
+    impl = steps(tmp_path, aligner=FakeAligner(), reporter=reporter)
+    stem = sung_stem(tmp_path)
+    mix_only = AudioRef(path=str(stem.vocals_path), duration_sec=stem.duration_sec, vocals_path=None)
+    heard = TextRef(tier=Tier.ASR, label="asr:vocals", segments=sheet(SUNG).segments, timing=TIMING_LINE)
+    got = await impl.time_text(line_sync(tmp_path, heard, mix_only))
+    assert isinstance(got, TimedDoc), "a transcript read as a sheet would fail both gates; it is not read so"
+    assert got.timing == "line" and got.confidence == "low"
+    assert ("align-line-sync", "line-sync", None) in reporter.states
+    assert any("no sheet gate" in why for why in reporter.reasons)
+    assert not any("no vocals stem" in why for why in reporter.reasons), "it left before that decline"
 
 
 async def test_line_sync_gates_on_the_stem_even_after_a_mix_retry(tmp_path: Path) -> None:

@@ -3,9 +3,6 @@ import { test, expect } from 'bun:test';
 import {
 	artistFacetsOf,
 	browseLibrary,
-	libraryShelf,
-	LIBRARY_SHELF,
-	LIBRARY_SHELF_WIDE,
 	libraryWindow,
 	LIBRARY_PAGE,
 	foldForMatch,
@@ -193,45 +190,13 @@ test('libraryArtist prefers the canonical artist over the uploader', () => {
 	expect(libraryArtist(song('01H2', 't', undefined, 'Some VEVO Channel'))).toBe('Some VEVO Channel');
 });
 
-// ── the home shelf ───────────────────────────────────────────────────────────
-// Covered HERE and not e2e on purpose: the Playwright fixture seeds exactly four demo tracks, so the cap can
-// never truncate under it and a spec asserting the `See all` door would be permanently vacuous.
-
-test('the shelf caps at four and reports what it hid', () => {
-	const rows = Array.from({ length: 9 }, (_, i) => song(`01H00000${i}`, `Song ${i}`));
-	const { shown, hidden } = libraryShelf(rows);
-	expect(shown).toHaveLength(LIBRARY_SHELF);
-	expect(titles(shown)).toEqual(['Song 0', 'Song 1', 'Song 2', 'Song 3']);
-	expect(hidden).toBe(5);
-});
-
-test('the shelf keeps the order it was handed, so `newest first` survives it', () => {
-	// The route passes `room.library`, which arrives orderBy(desc(media.id)). Re-sorting here would silently
-	// turn the shelf alphabetical and stop showing the song you just made.
-	const newestFirst = sortLibrary(LIB, 'newest');
-	expect(titles(libraryShelf(newestFirst).shown)).toEqual(titles(newestFirst).slice(0, LIBRARY_SHELF));
-});
-
-test('hidden is 0 at and below the cap, which is what hides the door', () => {
-	for (const n of [0, 1, 3, 4]) {
-		const rows = Array.from({ length: n }, (_, i) => song(`01H0000${i}`, `S${i}`));
-		expect(libraryShelf(rows)).toEqual({ shown: rows, hidden: 0 });
-	}
-});
-
-test('the wide shelf is the same height budget spent two columns across', () => {
-	// The MULTIPLIER is the claim, not the literal 8: the cap is a height budget measured off the phone fold, and at
-	// --bp-lg the home row grid is two tracks wide, so the same budget must buy exactly twice the songs.
-	expect(LIBRARY_SHELF_WIDE).toBe(LIBRARY_SHELF * 2);
-	const rows = Array.from({ length: 9 }, (_, i) => song(`01H00000${i}`, `Song ${i}`));
-	const { shown, hidden } = libraryShelf(rows, LIBRARY_SHELF_WIDE);
-	expect(shown).toHaveLength(LIBRARY_SHELF_WIDE);
-	expect(hidden).toBe(1);
-	// The DEFAULT is still the phone cap, which is what every caller with no viewport to read gets.
-	expect(libraryShelf(rows).shown).toHaveLength(LIBRARY_SHELF);
-	// A negative cap shows NOTHING rather than slicing from the end — the clamp `libraryWindow` also carries.
-	expect(libraryShelf(rows, -2)).toEqual({ shown: [], hidden: 9 });
-});
+// ── the home shelf: GONE, and these four tests went with it ──────────────────
+// `libraryShelf`, `LIBRARY_SHELF` (4) and `LIBRARY_SHELF_WIDE` (8) capped a `Your library` shelf on the HOME column
+// and were deleted with it — browsing is the Library tab's job at every width now. The tests are not ported, because
+// after the Sing tab stopped importing them they tested a module nothing rendered: four assertions about `slice`,
+// passing forever, and indistinguishable from the coverage they looked like. What they protected that still matters
+// moved to the window below, which has a real caller: the clamp against a negative bound, and `hidden: 0` being what
+// removes the reveal control rather than leaving it promising nothing.
 
 // ── the /library window ──────────────────────────────────────────────────────
 // The route holds only `revealed`; the arithmetic that decides whether the reveal control exists lives here, because

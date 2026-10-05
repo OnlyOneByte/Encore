@@ -70,8 +70,8 @@ TFR_AUDIO = (TFR_YOUTUBE, TFR_REFERENCE)
 STEM_TARGET, STEMLESS_TARGET = "stem", "mix"
 
 #: Run metadata whose ABSENCE is a known DEFAULT rather than "unknown" — one map, read by everything that
-#: compares two runs' setups (`e2e.resume_refusal`, `rows_document`, `e2e_gates.format_compare`), because a key
-#: recorded only when it was not the default could never fire the warning it exists for.
+#: compares two runs' setups (`e2e.resume_refusal`, `rows_document`, `e2e_gates.format_compare`), because
+#: a key recorded only when it was not the default could never fire the warning it exists for.
 RUN_DEFAULTS: Mapping[str, str] = {"detector": "off"}
 
 #: Report groups. Jamendo's truth is MEASURED (hand-timed word + line onsets); YouTube's is AUTHORED
@@ -989,11 +989,11 @@ def score_highlight(
     """(hit, sung) seconds over the truth words of every line the claimed text contains.
 
     The denominator is the SUNG time of those words and not only of the lines that published, a dropped line
-    lighting nothing while it is sung. A published word counts as correct only when it IS the sung truth
-    word, and a line-synced document lights no word at all, so it scores 0. W6's LOW-LINE RULE IS MODELLED BY
-    THE PORT AND DELIBERATELY NOT READ HERE (`tv_lit`'s `wipe_low`): this metric is an ALIGNMENT reject-if,
-    so it keeps asking ONE question, and folding a DISPLAY POLICY in would re-baseline every row since W0.
-    `high` / `high_bad` / `high_gross` measure the policy, plus `highlight_wiped`, which no run carries yet."""
+    lighting nothing while it is sung. A published word counts as correct only when it IS the sung truth word,
+    and a line-synced document lights no word at all, so it scores 0. W6's LOW-LINE RULE IS MODELLED BY THE
+    PORT AND DELIBERATELY NOT READ HERE (`tv_lit`'s `wipe_low`): this metric is an ALIGNMENT reject-if, so it
+    keeps asking ONE question, and folding a DISPLAY POLICY in would re-baseline every row since W0. `high` /
+    `high_bad` / `high_gross` measure the policy, plus `highlight_wiped`, which no run carries yet."""
     if song.words is None:
         return None
     counts, offsets = _word_offsets(song)
@@ -1095,16 +1095,38 @@ def count_lines(errors: Sequence[LineError]) -> dict[str, int]:
 
 
 def _line_counts(errors: Sequence[tuple[float, object]]) -> dict[str, int]:
-    """e2e2's per-song counts, from (error, confidence) pairs."""
+    """e2e2's per-song counts, from (error, confidence) pairs, plus `band`.
+
+    `band` is the 0.5-2 s population: wrong enough that a room sees it, not wrong enough to be `gross`.
+    Rows written before it exists carry no `band` field, and every summary recomputes these counts from
+    `line_errors`, so an offline `--summarize` of such rows reads it anyway."""
     high = [abs(e) for e, c in errors if c == "high"]
     return {
         "scored": len(errors),
         "gross": sum(1 for e, _c in errors if abs(e) > GROSS_SEC),
+        "band": sum(1 for e, _c in errors if LINE_TOLERANCES_SEC[0] < abs(e) <= GROSS_SEC),
         "w500": sum(1 for e, _c in errors if abs(e) <= LINE_TOLERANCES_SEC[0]),
         "w1000": sum(1 for e, _c in errors if abs(e) <= LINE_TOLERANCES_SEC[1]),
         "high": len(high),
         "high_bad": sum(1 for e in high if e > HIGH_BAD_SEC),
         "high_gross": sum(1 for e in high if e > GROSS_SEC),
+    }
+
+
+def coherence_metrics(errors: Sequence[float]) -> dict[str, float | None]:
+    """The SIGNED shape of a document's error: the median residual and how tightly it holds.
+
+    Every ±N metric is symmetric, so 69 lines each 0.86 s late read exactly like 69 lines scattered ±0.86 s,
+    and eight waves of gates could not tell them apart. `bias_ms` is median(published − truth) and `mad_ms`
+    its median absolute deviation: a COHERENT per-song offset is a large `bias_ms` with a small `mad_ms`, and
+    it is one number per song in `results/`.
+    docs/benchmarks/forced-alignment/README.md, "The 0.5-2 s band"."""
+    if not errors:
+        return {"bias_ms": None, "mad_ms": None}
+    bias = statistics.median(errors)
+    return {
+        "bias_ms": round(bias * 1000.0, 1),
+        "mad_ms": round(statistics.median(abs(e - bias) for e in errors) * 1000.0, 1),
     }
 
 
@@ -1140,6 +1162,7 @@ def line_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "w1000_pct": pct(counts["w1000"], counts["scored"]),
         "w500_text_pct": pct(counts["w500"], in_text),
         "w1000_text_pct": pct(counts["w1000"], in_text),
+        **coherence_metrics([e for e, _c in errors]),
         "zero_gross_songs": sum(
             1 for r in published if not any(abs(float(e[1])) > GROSS_SEC for e in r["line_errors"])
         ),
@@ -1380,6 +1403,9 @@ _FLAT: tuple[tuple[str, str, str], ...] = (
             "missing",
             "unsung",
             "gross",
+            "band",
+            "bias_ms",
+            "mad_ms",
             "w500",
             "w1000",
             "zero_gross_songs",
@@ -1394,6 +1420,9 @@ _FLAT: tuple[tuple[str, str, str], ...] = (
     ("lines", "w500_text_pct", "text_pm500"),
     ("lines", "w1000_text_pct", "text_pm1000"),
     ("words", "aligned", "word_aligned"),
+    #: Paired but not aligned: OOV-interpolated, claim-adopted, or `generate.CUE_OPENED`. Gated beside
+    #: `word_aligned`, which it is the other half of, so a rule can say "no word left the accounting".
+    ("words", "interpolated", "word_interpolated"),
     ("words", "in_text", "word_in_text"),
     ("words", "unpublished", "word_unpublished"),
     ("words", "gross", "word_gross"),
@@ -1462,6 +1491,9 @@ SONG_METRICS = (
     "missing",
     "unsung",
     "gross",
+    "band",
+    "bias_ms",
+    "mad_ms",
     "pm500",
     "pm1000",
     "text_pm500",
@@ -1566,15 +1598,17 @@ def format_summary(summary: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> st
         out.append(f"== {mode}")
         out.append(
             f"  {'group':<8} {'cases':>5} {'pub':>4} {'ref':>4} {'err':>3} {'lines':>6} {'miss':>5} "
-            f"{'gross':>5} {'±500':>6} {'±1s':>6} {'txt500':>6} {'0-gr':>5} {'high':>5} {'h>.5':>5} "
-            f"{'h>2':>4}"
+            f"{'gross':>5} {'band':>5} {'bias':>7} {'mad':>6} {'±500':>6} {'±1s':>6} {'txt500':>6} "
+            f"{'0-gr':>5} {'high':>5} {'h>.5':>5} {'h>2':>4}"
         )
         for group, entry in groups.items():
             m = entry["lines"]
             out.append(
                 f"  {group:<8} {m['cases']:>5} {m['published'] + m['line_sync']:>4} {m['refused']:>4} "
                 f"{m['error']:>3} {m['scored']:>6} "
-                f"{m['missing']:>5} {m['gross']:>5} {_fmt(m['w500_pct'], 6, '.1f')} "
+                f"{m['missing']:>5} {m['gross']:>5} {m.get('band', '-'):>5} "
+                f"{_fmt(m.get('bias_ms'), 7, '+.0f')} {_fmt(m.get('mad_ms'), 6, '.0f')} "
+                f"{_fmt(m['w500_pct'], 6, '.1f')} "
                 f"{_fmt(m['w1000_pct'], 6, '.1f')} {_fmt(m.get('w500_text_pct'), 6, '.1f')} "
                 f"{m['zero_gross_songs']:>5} {m['high']:>5} {m['high_bad']:>5} {m['high_gross']:>4}"
             )

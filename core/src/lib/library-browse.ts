@@ -6,11 +6,18 @@
  * YouTube song is in the library and absent from that list, so `/api/search?source=local` answers a different question
  * and must not back this page.
  *
- * FILTERING IS CLIENT-SIDE, DELIBERATELY. The whole ready list is already in memory — the home column renders every
- * row of it — so narrowing costs no request. That is also the one thing keeping this field distinguishable from the
- * home column's: home's search FETCHES from three resolvers and needs a spinner, this one only hides rows and is
+ * FILTERING IS CLIENT-SIDE, DELIBERATELY. The whole ready list is already in memory — `room.library` mirrors it for
+ * every surface — so narrowing costs no request. That is also the one thing keeping this field distinguishable from
+ * the home column's: home's search FETCHES from three resolvers and needs a spinner, this one only hides rows and is
  * instant. Two fields that look alike and do opposite things would be worse than the reachability problem this page
  * fixes, so the difference has to be felt, not just labelled.
+ *
+ * THE SHELF IS RETIRED (2026-10-03), and it is named here because its constants lived in this file. `LIBRARY_SHELF`
+ * (4), `LIBRARY_SHELF_WIDE` (8) and `libraryShelf()` capped a `Your library` shelf on the HOME column, picking
+ * between the two numbers off a `matchMedia` read. The phone-first rebuild made browsing the Library TAB's whole
+ * job — on screen at every width — so the shelf, its door and that width read are gone from the Sing tab, and the
+ * three exports went with them rather than surviving as a module no surface imports with tests that only proved
+ * arithmetic. `libraryWindow` below is the survivor and is a DOOR rather than a cap; see its note.
  */
 import type { Media } from '$lib/contract';
 
@@ -31,43 +38,8 @@ export interface LibraryFacet {
 export const FACET_CHIP_LIMIT = 12;
 
 /**
- * Rows the HOME column shows under `Your library`. It is a shelf, not the library: the whole list used to render
- * there, under an unbounded queue, so a busy rotation put the songs you own metres down the scroll.
- *
- * FOUR, measured rather than chosen: a row is ~72px, so four plus the heading is ~320px, which still leaves the next
- * group's heading above the fold on an 844px phone once the topbar, the field and one queue row are spent. Five pushes
- * it under. They are the newest four because `room.library` arrives `orderBy(desc(media.id))` and a media id is a
- * time-sortable ULID — the song you just made is overwhelmingly the one you want a tap away.
- *
- * Lives here rather than inline in the route because the e2e fixture seeds exactly four demo tracks, so the cap can
- * never truncate under test; this keeps the number and its gate provable in the unit suite instead of unexercised.
- */
-export const LIBRARY_SHELF = 4;
-
-/**
- * The same shelf where the home column's row grid is TWO TRACKS WIDE — from --bp-lg up, where --max-w is 1080px and
- * `/`'s `repeat(auto-fill, minmax(440px, 1fr))` resolves to two columns inside a 1012px content column.
- *
- * LIBRARY_SHELF x 2, not a fresh number, because the four above is a HEIGHT budget and not a row count: it was
- * measured off the 844px phone fold (~320px with its heading). Two tracks across, that same budget buys twice the
- * songs — so the desktop stops spending half the phone's shelf height to show the phone's four songs. The multiplier
- * is a literal 2 because --max-w caps at 1080px in `src/app.css`, so the grid is never three tracks wide.
- */
-export const LIBRARY_SHELF_WIDE = LIBRARY_SHELF * 2;
-
-/** `hidden` is what the `See all` door announces, and 0 is what hides the door entirely — with three songs there is
- *  nothing behind it, and a control promising more than it has is worse than no control. The cap is a PARAMETER
- *  because it is viewport-dependent (see {@link LIBRARY_SHELF_WIDE}) while this arithmetic is not; it defaults to the
- *  phone cap, which is what a caller with no viewport to read gets. Clamped for the reason {@link libraryWindow}
- *  states: `slice(0, negative)` counts from the END and would silently drop the top of the list. */
-export function libraryShelf<T>(rows: T[], cap: number = LIBRARY_SHELF): { shown: T[]; hidden: number } {
-	const shown = rows.slice(0, Math.max(0, cap));
-	return { shown, hidden: rows.length - shown.length };
-}
-
-/**
- * Rows `/library` renders per reveal. NOT a cap — `/library` IS the `See all` the shelf's door leads to, so a row it
- * refuses to show is a song you own with nowhere left to reach it. The window GROWS by this much per tap instead.
+ * Rows `/library` renders per reveal. NOT a cap — `/library` is the only place every ready song is reachable, so a
+ * row it refuses to show is a song you own with nowhere left to reach it. The window GROWS by this much per tap.
  *
  * SIXTY, measured rather than chosen, on a 390x844 phone at a 4x CPU throttle with 2000 ready songs: the whole list
  * took 4.6s and 40,125 DOM nodes before the first row was usable, and the backspace that widened the filter again
@@ -76,9 +48,10 @@ export function libraryShelf<T>(rows: T[], cap: number = LIBRARY_SHELF): { shown
  */
 export const LIBRARY_PAGE = 60;
 
-/** The window and what is still behind the reveal control, in `libraryShelf`'s shape and here for the same reason:
- *  the arithmetic stays provable in the unit suite. The clamp is what keeps a negative `revealed` from making `slice`
- *  count from the END and silently drop the top of the list. */
+/** The window and what is still behind the reveal control. `hidden` is what the `Show N more` control announces, and
+ *  0 is what hides that control entirely — a control promising more than it has is worse than no control. It lives
+ *  out of the route so the arithmetic stays provable in the unit suite. The clamp is what keeps a negative `revealed`
+ *  from making `slice` count from the END and silently drop the top of the list. */
 export function libraryWindow<T>(rows: T[], revealed: number): { shown: T[]; hidden: number } {
 	const shown = rows.slice(0, Math.max(0, revealed));
 	return { shown, hidden: rows.length - shown.length };

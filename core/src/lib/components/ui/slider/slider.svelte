@@ -91,10 +91,13 @@
 	   at a low value, and all of it at zero — measures 1.27:1 and reads as nothing. Recolouring the rail cannot fix
 	   that half: 3:1 as a FILL on --card needs a #6a6a6a-class grey (the arithmetic is in app.css's --control-line
 	   block), and it would repaint the five OUTPUT sites listed at --track-bg there to bound the one control.
-	   The ring clears 3:1 against BOTH neighbours: 3.97:1 outside on --card — the surface at both call sites,
-	   /settings' cards directly and the drawer through a --chrome-fill mixed from that same token — and 3.13:1
-	   inside on --track-bg. That inner figure is the floor app.css's --control-line block computes across every
-	   surface token, and this rail is what makes it LOAD-BEARING rather than hypothetical. Numbers pinned in
+	   The ring clears 3:1 against BOTH neighbours: 3.97:1 outside on --card — /settings' cards paint it directly, and
+	   it is the token the now-playing sheet's --chrome-fill was mixed from when this was first measured. The guiding
+	   rail's host is /queue's `.now` card now, which paints --card-tint: RE-MEASURED there, the ring is 3.89:1, so the
+	   move costs 0.08 and clears 3:1 on both hosts. (--card2, the dimmest surface in the set, is 3.65:1 — the figure
+	   app.css's --control-line block derives the token from.) Inside, 3.13:1 on --track-bg — and THAT is the figure
+	   this rail makes LOAD-BEARING rather than hypothetical, because it is the tightest pair the token has to clear
+	   anywhere in the app. Numbers pinned in
 	   tests/unit/lib/control-boundary-contrast.test.ts, which also lists this file as a boundary site. */
 	.encore-slider-track {
 		height: 8px;

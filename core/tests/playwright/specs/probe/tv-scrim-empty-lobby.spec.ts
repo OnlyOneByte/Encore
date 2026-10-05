@@ -210,8 +210,8 @@ async function driveToDrainedLobby(world: World): Promise<DrainedRoom> {
 	// Back to the queue BEFORE reading rows: the rotation is not rendered in the results view at all.
 	await returnHomeFromBrowse(phone);
 	// ONE ENTRY, NOTHING BEHIND IT: a ready song added to an idle room is promoted to `playing` by
-	// reconcileOnReady, so the entry is the one the band names and `.qrow` (queued only) is empty.
-	await expect(phone.locator(SEL.bandTitle)).toContainText(SONG);
+	// reconcileOnReady, so the entry is the one the strip names and `.qrow` (queued only) is empty.
+	await expect(phone.locator(SEL.npStripTitle)).toContainText(SONG);
 	await expect(phone.locator(SEL.queueRow)).toHaveCount(0);
 
 	const tv = await world.openTv();

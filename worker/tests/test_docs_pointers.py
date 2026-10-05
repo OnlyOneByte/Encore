@@ -4,10 +4,11 @@ A cited path is load-bearing since the 2026-10-01 directive: a reader who follow
 lost the measurement or the failure account that used to be inline, and nothing at runtime can notice. Nine
 rules — the paths resolve, a cited SECTION NUMBER names a heading that exists, a cited SECTION TITLE names a
 heading or a bold lead-in, every `§N` in prose is ANCHORED to a committed document rather than to the
-gitignored review, a cited "`module`'s NAME section" is text that module still carries, no citation leads to
-a GITIGNORED working document, the two design documents are not stubs, and both indexes link them.
+gitignored review, a cited "`module`'s NAME section" is text that module carries, no citation leads to a
+GITIGNORED working document, the design documents are not stubs, and both indexes link them.
 
-Path failures FAIL rather than skip (`test_artifact_keys.py`'s rule): a skipped check reads as satisfied.
+The rules read `CODE_ROOTS`: the package, both bench harnesses and the tests; the anchor rule reads fewer and
+says which and why (`ANCHOR_ROOTS`). A path failure FAILS rather than skips — a skip reads as satisfied.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import ast
 import io
 import re
 import tokenize
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -47,8 +49,28 @@ EXEMPT_CITATIONS: frozenset[str] = frozenset()
 ALIGNMENT_DOC = "docs/arch/04-alignment.md"
 WORKER_DOC = "docs/arch/05-worker.md"
 
-#: Both roots of shipped-ish Python: the package, and the committed bench harness that cites the same docs.
-CODE_ROOTS = ("worker/encore_worker", "docs/benchmarks/forced-alignment/scripts")
+#: Every root whose prose carries pointers: the package, BOTH committed bench harnesses, and the worker's own
+#: tests — which W7c swept into `docs/` and whose pointers no rule read until this wave, the population being
+#: `MIN_TEST_POINTERS` below (W7c review r1-correctness-5, r2-correctness-5).
+CODE_ROOTS = (
+    "worker/encore_worker",
+    "docs/benchmarks/forced-alignment/scripts",
+    "docs/benchmarks/stem-separation/scripts",
+    "worker/tests",
+)
+
+#: What `worker/tests` cites of its own, read off the shipped tree as the rules read it — OCCURRENCES, which
+#: is the denominator that was never stated: 72 `docs/` paths over 19 distinct, 26 `path §N`, 8 README titles.
+#: A floor, so widening the roots cannot be undone quietly (docs/arch/05-worker.md §12).
+MIN_TEST_POINTERS = {"paths": 72, "distinct_paths": 19, "sections": 26, "titles": 8}
+
+#: The ANCHOR rule's roots, which are NOT all of them — named here because an unstated exclusion is the defect
+#: this wave's review found: `worker/tests` still carries bare `review §N` marks, held down by
+#: `UNANCHORED_IN_TESTS` until a wave re-points them.
+ANCHOR_ROOTS = tuple(root for root in CODE_ROOTS if root != "worker/tests")
+
+#: The file that DECLARES the gitignored working documents, and so names them without pointing at them.
+DECLARING_MODULE = "worker/tests/test_docs_pointers.py"
 
 
 def _repo_root() -> Path:
@@ -99,7 +121,9 @@ def test_every_docs_path_the_code_cites_resolves(repo: Path) -> None:
 SECTION_CITATION = re.compile(
     r"(docs/[A-Za-z0-9_./-]+\.md)`?[ \t]*(?:\n[ \t]*#*:?[ \t]*)?§([0-9]+(?:\.[0-9]+)?)"
 )
-MIN_SECTION_CITATIONS = 80
+#: 328 `path §N` citations matched when the roots widened to the tests and the second harness, so the floor
+#: moved with the population: a floor far under it would let the pattern stop reading most of the tree.
+MIN_SECTION_CITATIONS = 250
 
 
 def _section_citations(repo: Path) -> dict[tuple[str, str], list[str]]:
@@ -231,17 +255,54 @@ def test_every_section_mark_is_anchored_to_a_committed_document(repo: Path) -> N
     no path at all. `review §3.4` and `§3.10's star` both point at `docs/REVIEW-alignment-v2.md`, which is
     not in the repository — so the number, the reject-if or the technique behind the sentence is unreachable.
     """
+    unanchored = _unanchored_marks(repo, ANCHOR_ROOTS)
+    assert not unanchored, "these `§N` pointers name no committed document: " + "; ".join(
+        f"{path} (…{', …'.join(quotes)})" for path, quotes in sorted(unanchored.items())
+    )
+
+
+def _unanchored_marks(repo: Path, roots: tuple[str, ...]) -> dict[str, list[str]]:
+    """`{file: the quoted neighbourhood of each `§` that names no committed document}`.
+
+    `DECLARING_MODULE` is skipped for the reason the working-document rule skips it: the § marks in this file
+    are the patterns and the prose ABOUT the form, not pointers written in it.
+    """
     unanchored: dict[str, list[str]] = {}
-    for root in CODE_ROOTS:
+    for root in roots:
         for source in sorted((repo / root).rglob("*.py")):
+            if str(source.relative_to(repo)) == DECLARING_MODULE:
+                continue
             text = _every_line_of(source.read_text(encoding="utf-8"))
             for mark in re.finditer("§", text):
                 before = text[max(0, mark.start() - ANCHOR_LOOKBACK) : mark.start()]
                 if not SECTION_ANCHOR.search(before):
                     quoted = text[max(0, mark.start() - 60) : mark.start() + 20]
                     unanchored.setdefault(str(source.relative_to(repo)), []).append(quoted)
-    assert not unanchored, "these `§N` pointers name no committed document: " + "; ".join(
-        f"{path} (…{', …'.join(quotes)})" for path, quotes in sorted(unanchored.items())
+    return unanchored
+
+
+#: Bare `§N` marks left in `worker/tests` (W7c re-pointed 7 of 36 at the committed section they meant; each
+#: of the 29 left names an item of the gitignored review — docs/arch/05-worker.md §12's open item). A RATCHET:
+#: the count may only fall, and at zero the exclusion and its test go.
+UNANCHORED_IN_TESTS = 29
+
+
+def test_the_anchor_rules_one_exclusion_is_named_and_can_only_shrink(repo: Path) -> None:
+    """An unstated exclusion is how a rule comes to claim coverage it has not got (W7c r1-correctness-5).
+
+    So the one root the anchor rule skips is named, counted, and held to a bound that cannot grow: a NEW bare
+    `review §N` in a test arrives as a failure, and the day the last one is re-pointed this test says so.
+    """
+    assert set(ANCHOR_ROOTS) == set(CODE_ROOTS) - {"worker/tests"}
+    left = _unanchored_marks(repo, ("worker/tests",))
+    total = sum(len(quotes) for quotes in left.values())
+    assert total <= UNANCHORED_IN_TESTS, (
+        f"worker/tests has gained a bare `§N`: {total} marks against the {UNANCHORED_IN_TESTS} this "
+        f"exclusion was measured at. Point it at a committed document instead. Files: {sorted(left)[:3]}"
+    )
+    assert total, (
+        "every `§N` in worker/tests is anchored now: delete UNANCHORED_IN_TESTS and this test, and let "
+        "ANCHOR_ROOTS be CODE_ROOTS — an exclusion nobody needs reads as a defect that is still open."
     )
 
 
@@ -263,10 +324,16 @@ MODULE_SECTION = re.compile(r"`([a-z_][a-z_0-9.]*)`'s ([A-Z][A-Z_ ]{2,}) section
 
 
 def _module_section_citations(repo: Path) -> list[tuple[str, str, str]]:
-    """`(citing file, cited module, cited NAME)` for every citation of the form above."""
+    """`(citing file, cited module, cited NAME)` for every citation of the form above.
+
+    `DECLARING_MODULE` is skipped: it writes the form twice on purpose — in the rule's own description and in
+    the probe below that proves the pattern still reads it.
+    """
     found: list[tuple[str, str, str]] = []
     for root in CODE_ROOTS:
         for source in sorted((repo / root).rglob("*.py")):
+            if str(source.relative_to(repo)) == DECLARING_MODULE:
+                continue
             prose = _prose_of(source.read_text(encoding="utf-8"))
             for module, name in MODULE_SECTION.findall(prose):
                 found.append((str(source.relative_to(repo)), module, name.strip()))
@@ -342,13 +409,19 @@ def test_the_measurement_readme_is_still_cited(repo: Path) -> None:
 
 
 def test_no_citation_leads_to_a_gitignored_working_document(repo: Path) -> None:
-    """A fresh clone has no `PLAN-*`, so such a pointer is a dead end, exempt by name or a failure."""
+    """A fresh clone has no `PLAN-*`, so such a pointer is a dead end, exempt by name or a failure.
+
+    `DECLARING_MODULE` is not a citer: this file names those documents in order to forbid them, which is the
+    rule itself rather than a pointer at one (the distinction appeared when the roots widened to the tests).
+    """
     cited = _cited_paths(repo)
-    unexpected = {
-        path: sorted(set(citers))
-        for path, citers in cited.items()
-        if path in WORKING_DOCUMENTS - EXEMPT_CITATIONS
-    }
+    unexpected: dict[str, list[str]] = {}
+    for path, citers in cited.items():
+        if path not in WORKING_DOCUMENTS - EXEMPT_CITATIONS:
+            continue
+        others = sorted(set(citers) - {DECLARING_MODULE})
+        if others:
+            unexpected[path] = others
     assert not unexpected, "shipped prose points at a gitignored working document: " + "; ".join(
         f"{path} (from {', '.join(citers)})" for path, citers in sorted(unexpected.items())
     )
@@ -369,15 +442,22 @@ def _resolves(candidate: Path) -> bool:
 #: later wave must not break. `XA-*` rows live in `ALIGNMENT_DOC` and `XW-*` in `WORKER_DOC`.
 INVARIANT_CITATION = re.compile(r"\bX([AW])-([0-9]{2})\b")
 
-#: The floor on the id rule, same reason as `MIN_SECTION_CITATIONS`: 64 citations over 15 ids were counted
-#: when it was written, so a pattern that stops matching cannot hide behind "no failures".
-MIN_INVARIANT_CITATIONS = 50
+#: The floor on the id rule, re-floored with its population as `MIN_SECTION_CITATIONS` was: the shipped tree
+#: carries 143 citations over all 31 declared ids, so a pattern that stops reading most of them cannot hide
+#: behind "no failures". It was left at 50 while W7c tripled the population (review r2-correctness-4).
+MIN_INVARIANT_CITATIONS = 110
 
 #: Where a cited id must be DECLARED: the invariant table's own row, which is how the table reads.
 INVARIANT_ROW = re.compile(r"^\|\s*\*\*X([AW])-([0-9]{2})\*\*\s*\|", re.MULTILINE)
 
-#: Rule 1's roots plus the worker's tests, which cite ids as densely as the package does.
-CITATION_ROOTS = (*CODE_ROOTS, "worker/tests")
+#: Every root, the tests citing ids as densely as the package does. Kept as its own name because this rule
+#: widened a wave before the others did, and the floor below is read against this population.
+CITATION_ROOTS = CODE_ROOTS
+
+#: Invariant rows no module may cite, so `test_every_invariant_the_table_declares_is_cited` cannot ask them
+#: to. EMPTY, and that is the finished state: every row names a module or a test, and W7c put the id there.
+#: An entry a module does cite is a stale exemption and fails below, so this mapping can only shrink.
+UNCITED_INVARIANTS: Mapping[str, str] = {}
 
 
 def _declared_invariants(repo: Path) -> dict[str, set[str]]:
@@ -421,6 +501,57 @@ def test_every_cited_invariant_id_is_a_row_of_the_table(repo: Path) -> None:
         "these cite an invariant the design document does not declare — a deleted or renumbered row: "
         + "; ".join(f"{name} (from {', '.join(citers)})" for name, citers in sorted(dangling.items()))
     )
+
+
+def test_the_tests_own_pointer_population_is_what_the_roots_comment_says(repo: Path) -> None:
+    """`CODE_ROOTS`' comment justified widening to `worker/tests` with counts that reproduced on no tree and
+    under no reading — 57 paths and 11 sections against 66 and 22 — so the figure arguing for the rule's
+    scope was unchecked by the rule (W7c review r2-correctness-5). A FLOOR, since a pointer may be added."""
+    paths: list[str] = []
+    sections = titles = 0
+    for source in sorted((repo / "worker/tests").rglob("*.py")):
+        text = source.read_text(encoding="utf-8")
+        paths += [raw.rstrip(".,;:)`'\"") for raw in DOCS_PATH.findall(text)]
+        sections += len(SECTION_CITATION.findall(text))
+        titles += len(TITLE_CITATION.findall(_prose_of(text)))
+    read = {
+        "paths": len(paths),
+        "distinct_paths": len(set(paths)),
+        "sections": sections,
+        "titles": titles,
+    }
+    under = {
+        name: (count, MIN_TEST_POINTERS[name])
+        for name, count in read.items()
+        if count < MIN_TEST_POINTERS[name]
+    }
+    assert not under, (
+        f"worker/tests cites fewer pointers than MIN_TEST_POINTERS claims: {under} (read, floor). Either a "
+        "rule has stopped reading this root or the quoted population is stale — re-measure both together."
+    )
+
+
+def test_every_invariant_the_table_declares_is_cited(repo: Path) -> None:
+    """The OTHER direction, which nothing read: 9 of the 14 `XW` rows were cited nowhere, so deleting the
+    atomicity row or the fail-closed-ledger row broke no test and left no dangling pointer to find.
+
+    A citation from THIS module is not one: its own `#:` example cites `XW-12`, which is how that id read as
+    held while `steps/records.py`, the module the row names, never named it (W7c review r2-tests-15).
+    """
+    cited = {
+        f"X{kind}-{number}"
+        for (kind, number), citers in _cited_invariants(repo).items()
+        if any(citer != DECLARING_MODULE for citer in citers)
+    }
+    declared = _declared_invariants(repo)
+    uncited = sorted(f"X{kind}-{number}" for kind, numbers in declared.items() for number in numbers)
+    uncited = [name for name in uncited if name not in cited]
+    assert uncited == sorted(UNCITED_INVARIANTS), (
+        f"these invariants are declared and cited by no module: {uncited}. Put the id at the site the row's "
+        "'Where held' column names, or name it in UNCITED_INVARIANTS with the reason it cannot be."
+    )
+    for name, reason in UNCITED_INVARIANTS.items():
+        assert len(reason) > 20, f"{name}'s exemption gives no reason: {reason!r}"
 
 
 @pytest.mark.parametrize(("doc", "kind"), [(ALIGNMENT_DOC, "A"), (WORKER_DOC, "W")])

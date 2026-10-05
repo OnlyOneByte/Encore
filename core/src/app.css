@@ -36,8 +36,11 @@
 	   IDENTIFIES a control — a text field's border is the only thing that says "type here", and it is equally the only
 	   thing that shapes the two bordered Button variants (`keycap`, which is bg-transparent, and `outline`, whose
 	   bg-background fill is 1.14:1 on the card it sits on and so identifies nothing). --line is a DECORATIVE
-	   hairline — the 17 files that keep it spell it for a card edge, a row rule, a table rule, the spinner, the skeleton
-	   shimmer — which the criterion exempts, and it measures 1.13:1 on the --card2 field fill. Raising --line to clear
+	   hairline — the files that keep it spell it for a card edge, a row rule, a table rule, a tab strip, a chip, the
+	   spinner and the skeleton shimmer — all of which the criterion exempts, and it measures 1.13:1 on the --card2
+	   field fill. A COUNT USED TO SIT HERE AND WENT STALE TWICE (it read 17 against a tree of 18); the live claim is
+	   that --line is app-wide DECORATION, which control-boundary-contrast.test.ts holds as a floor plus a
+	   border-utility invariant rather than as a tally, for the reason its own comment gives. Raising --line to clear
 	   3:1 would brighten every card in the app, so the control boundary takes its own token and --line keeps its value.
 	   hsl(240 17% 54%), ON this family's own line rather than a new hue: --line is 240/19/20, --line-strong 240/19/28,
 	   --ink-dim 240/15/66 — those three are the hexes ROUNDED for reading; interpolating saturation between the exact
@@ -68,7 +71,7 @@
 	--stage-glow: #1b1430;
 	/* THE UNFILLED GROUND BEHIND A FILL, and a SURFACE only: at 1.27:1 on --card it can never be the thing that
 	   IDENTIFIES anything. Five sites paint it as OUTPUT, where 1.4.11 has nothing to ask — Bars' 8px bar, TvProgress'
-	   5px bar, /tv's process bar, the band's progress arc stroke, and SongRow's artwork placeholder gradient. The sixth
+	   5px bar, /tv's process bar, NowPlayingStrip's progress hairline, and SongRow's artwork placeholder gradient. The sixth
 	   is ui/slider, an actual CONTROL, and that rail wears a 1px --control-line ring (3.13:1 against this token) rather
 	   than a brighter value here, which would repaint the other five to bound one slider. */
 	--track-bg: #2c2c44;
@@ -131,8 +134,11 @@
 	   the search twice. No rule in src spells it, and it is NOT reached through Tailwind either: a shadow utility
 	   INLINES its value rather than reading this key — measured in the built stylesheet, `.shadow-xs` compiles to
 	   `--tw-shadow:0 1px 2px 0 var(--tw-shadow-color,#0000000d)` and never `var(--shadow-xs)`. So it is a well-formed
-	   rung of the ladder rather than a live value, exactly as `--tv-joinurl` below. Giving it its first caller — the
-	   drawer's sheet, which wears the floating rung at BOTH snaps — is a VISUAL ruling that needs a before/after. */
+	   rung of the ladder rather than a live value, exactly as `--tv-joinurl` below. IT HAS NO CANDIDATE CALLER NOW: the
+	   one named here was the now-playing sheet, which wore the floating rung at both snaps and is deleted — the strip
+	   that replaced it is a flat chrome row with a 1px top border and an inset highlight, and a 14px drop shadow under
+	   it would read as a lift the dock does not have. The rung stays as a well-formed step; giving it a first caller is
+	   a VISUAL ruling that needs a before/after. */
 	--shadow-md: 0 4px 14px rgba(0, 0, 0, 0.38);
 	--shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.45);
 	--shadow: var(--shadow-lg);
@@ -164,20 +170,25 @@
 	   `--space-3xl` (18px, 8 rule sites) are RETIRED — see the two holes below — which leaves 1.20 as the worst pair,
 	   at md -> lg and 4xl -> 5xl.
 	   THE NAMES ARE ADDRESSES, NOT INDICES, so the holes stay rather than renumbering. Sliding 2xl -> xl and
-	   4xl -> 2xl would silently change what `var(--space-2xl)` MEANS at the 33 sites that already spell it and at
+	   4xl -> 2xl would silently change what `var(--space-2xl)` MEANS at every site that already spells it and at
 	   every comment, doc line and stale branch that names it, which is a worse failure than a gap in a t-shirt
 	   sequence. `--ph-text-2xs` below was retired the same way, and the file is the record that it existed.
-	   CENSUS, AT THE TIME OF WRITING — tests/unit/lib/space-ladder.test.ts re-derives every figure in this block and
-	   reds if one drifts, so edit the test to change the prose: 239 SPENDS of var(--space-*) in src (a SPEND is a
-	   declaration, so comment text is stripped first), across sm 47, md 40, 2xl 33, 2xs 33, xs 31, lg 24, 3xs 17,
-	   4xl 10, 5xl 4.
-	   WHAT RETIRING RUNGS DID NOT FIX, stated so nobody reads the count as the measure: of the 63 gap/row-gap/column-gap
-	   declarations in src that spell a rung (Tailwind `gap-[var(--space-*)]` in components/ui counted, since it
-	   compiles to a real gap), 54 — 85.7% — land wholly in 4-12px. Before the retirement that was 53 of the same 63,
-	   84.1%. The band did not thin and could not: this is a 480px-max phone column of 8px-spaced `.list-row`s, so
-	   most gaps in it are SUPPOSED to be small. What the retirement fixes is the sub-floor STEP, not the histogram, and
-	   the one pair still sitting exactly ON the floor (md -> lg, md's 40 spends) is recorded as OPEN in
-	   docs/FRONTEND.md rather than as a register. */
+	   WHAT THE GUARD ACTUALLY HOLDS, since the per-rung tally that used to be printed here went stale twice while the
+	   test beside it stayed green — each pinned its own private copy of the figure, so neither could catch the other:
+	   tests/unit/lib/space-ladder.test.ts asserts that no `var(--space-*)` names a rung this block does not declare,
+	   that no rung declared here goes unread, and that `md` stays among the three busiest rungs by SPEND — a RANK, not
+	   a count, so a new component cannot red it. The tallies are deliberately gone rather than corrected: they
+	   reddened that test repeatedly through the phone-shell rebuild, every time because a component legitimately spent
+	   a rung, and a figure in a comment with no guard behind it is what rotted the last two.
+	   WHAT RETIRING RUNGS DID NOT FIX, stated so nobody reads the count as the measure: the guard holds a FLOOR rather
+	   than a pair — at least three quarters of the gap/row-gap/column-gap declarations in src that spell a rung
+	   (Tailwind `gap-[var(--space-*)]` in components/ui counted, since it compiles to a real gap) land wholly in
+	   4-12px. READINGS TAKEN ALONG THE WAY, as history and not as a live claim: 85.1% once the now-playing sheet was
+	   deleted, 86.5% with it still in the tree, 85.7% before the phone shell grew a tab bar, a strip and a /queue, and
+	   84.1% before the two rungs were retired. The band did not thin and could not: this is a 480px-max phone column
+	   of 8px-spaced `.list-row`s, so most gaps in it are SUPPOSED to be small. What the retirement fixes is the
+	   sub-floor STEP, not the histogram, and the one pair still sitting exactly ON the floor (md -> lg, on one of the
+	   ladder's busiest rungs) is recorded as OPEN in docs/FRONTEND.md rather than as a register. */
 	--space-3xs: 2px;
 	--space-2xs: 4px;
 	--space-xs: 6px;
@@ -217,11 +228,12 @@
 	   THE LADDER OPENS AT `xs`/12px AND THAT IS A FLOOR, NOT A STARTING POINT. It used to open one rung lower, at
 	   `--ph-text-2xs` / 0.68rem / 10.88px. SIX of that rung's nine callers were uppercase letterspaced eyebrows —
 	   this file's `.grouphead`, the `eyebrow` button variant, GuidingTrack's `.lab`, the song page's `.lab`, the
-	   drawer's keycap `.lab`, /components' `.gal-label` — that list is the rung's callers AS IT WAS RETIRED, and one of
-	   them has since gone: GuidingTrack's `.lab` is deleted, its row now wearing the field-label primitive's own dress
-	   for the reason `.control-label` below gives. Five of those six sat on --ink-dim, which measures
+	   now-playing sheet's keycap `.lab`, /components' `.gal-label` — that list is the rung's callers AS IT WAS RETIRED,
+	   so it names things since deleted and that is the point of it. Two have gone: GuidingTrack's `.lab`, its row now
+	   wearing the field-label primitive's own dress for the reason `.control-label` below gives, and the sheet's,
+	   with the sheet. Five of those six sat on --ink-dim, which measures
 	   7.16:1 on --bg, 6.27:1 on --card and 5.76:1 on --card2, all AA. The other three were not eyebrows at all:
-	   the drawer's `.time` (a tabular clock on --ink-dim, no transform and no tracking), the drawer's `.tools-note`
+	   the sheet's `.time` (a tabular clock on --ink-dim, no transform and no tracking), its `.tools-note`
 	   (sentence prose on --lh-normal) and Trend's `.readout` (tabular-nums at full --ink on --card2). NONE of the
 	   nine was failing on colour — the three non-eyebrows least of all — so the defect was size alone, which is why
 	   `2xs` is GONE rather than nudged: with `base` pinned at 1rem there is room for at most three perceptible rungs
@@ -230,11 +242,12 @@
 	   `sm` moved 0.8 → 0.82rem (12.8 → 13.12px) because 12 vs 12.8 was a 1.067 step no author can make on purpose.
 	   At 0.82 the three sub-base rungs are evenly ratioed (1.093 / 1.098) and no adjacent pair on the whole ladder
 	   is closer than 1.09 (the closest is 1.0933, xs → sm). That is the one renumber here, and it silently moved 21
-	   rule sites by +0.32px. TWENTY are still on the token: GuidingTrack's `.gt-val` has since gone up to `md`, for
-	   the reason the `.control-label` block below gives, so 20 is the count of declarations that set a font-size to
-	   it today. Grepping the token name alone returns 23 lines, which is those 20 plus THREE non-sites, all three named
-	   so the arithmetic closes: this declaration itself, the `--text-ph-sm` @theme bridge below (an alias that sets no
-	   font-size), and GuidingTrack's comment recording that move.
+	   rule sites by +0.32px. GuidingTrack's `.gt-val` has since gone UP to `md`, for the reason the `.control-label`
+	   block below gives, so its only surviving mention of `sm` is a comment recording that move. THREE mentions of the
+	   name are not rule sites and the guard names each: this declaration itself, the `--text-ph-sm` @theme bridge below
+	   (an alias that sets no font-size), and that comment. No tally is printed here any more — the one that was went
+	   stale twice, once silently — and tests/unit/lib/type-ladder.test.ts asserts instead that every rung on this
+	   ladder is read by at least one rule and that nothing spells a rung this block does not declare.
 	   THE TOP OF THE LADDER ENDS 24 → 41.6px AND THAT GAP STAYS OPEN — which is HALF of the design review's
 	   type-scale finding left standing, so docs/UI-DESIGN-REVIEW.md carries finding 3 as PARTIAL rather than as
 	   fixed, and tests/unit/lib/type-ladder.test.ts re-derives the rung values, the ratios and the retirement this
@@ -272,8 +285,10 @@
 	--motion-tick: 1s;
 
 	/* THE RULE, enforced at ONE MEMBER: every media-condition width in the tree must be a MEMBER of this list — CSS
-	   `@media` literals AND the JS ones, since `src/routes/+page.svelte` reads `matchMedia('(min-width: 1200px)')` to
-	   pick the home shelf's cap and that 1200 is --bp-lg by the same rule. --bp-320 has no branch. The CASCADE reads
+	   `@media` literals AND any JS one. There is no JS reader left: `src/routes/+page.svelte` used to spell
+	   `matchMedia('(min-width: 1200px)')` to pick its library shelf's cap, and the Sing tab has no shelf, so --bp-lg's
+	   surviving callers are the `@media (min-width: 1200px)` arm in this file and the one in
+	   `src/routes/library/+page.svelte`. --bp-320 has no branch. The CASCADE reads
 	   none of these — a media query is evaluated before the cascade and cannot resolve a custom property, and
 	   `matchMedia` takes a string — but a MEASUREMENT can: the join gate (CLAIM 7) reads --bp-md off `:root` and drives
 	   767 and 768, so JoinLanding's `@media (min-width: 768px)` is now tied to this declaration in both directions.
@@ -364,8 +379,20 @@
 	--tv-process-bar-h: 0.48rem;
 	/* Applied to BOTH sides so the centred roster stays centred and no wrapped chip lands under a corner control. */
 	--tv-strip-corner-clear: calc(var(--tv-safe-x) + 88px + var(--space-2xl));
-	/* No bottom-dock token here on purpose: the phone's band publishes its MEASURED height, so a `:root` fallback could
-	   only go stale. Consumers spell var(--dock-h, 0px). */
+	/* NO BOTTOM-DOCK TOKEN HERE, and the attempt to add one is worth recording because it looked obviously right.
+	   The phone's chrome is a tab bar plus an optional now-playing strip, each apparently one tap floor tall, so the
+	   height ought to be arithmetic: --tap + the label's padding-block + 1px border + the home-indicator inset.
+	   MEASURED IN A BROWSER, IT IS NOT. A tab renders 45px against a declared 44: its icon, gap and label come to
+	   33px, which exceeds the 32px that `min-height: var(--tap)` leaves inside `padding-block: var(--space-xs)`
+	   under the global `box-sizing: border-box`, so the content wins and the floor is not what sets the height.
+	   The declared total came to 102px against a rendered 91 — exactly the reserve-versus-render disagreement the
+	   token version was supposed to make impossible.
+	   AND THE CONTENT-DRIVEN HEIGHT IS THE CORRECT BEHAVIOUR, which is why this is not a bug to pin down: the
+	   chrome contains text, so at the browser's 200% text-only zoom the label grows and a height frozen at one tap
+	   floor would clip it. A declared height here would trade an accessibility property for a tidy constant.
+	   So the chrome publishes its MEASURED height, and consumers spell var(--dock-h, 0px). What the rebuild did
+	   remove is the fragility that used to come with it — the sheet's constant snap 0, its lazy-watch re-seats and
+	   its debounced resize re-layout — none of which a plain `bind:clientHeight` on a static-height element needs. */
 
 	/* ONLY A FALLBACK — /tv measures the rendered card and overrides it — and it over-reserves, so the pre-measure frame
 	   hides surplus rows. The 1.2 LINE-BOX factor is the trap: these rows declare no line-height. */
@@ -571,6 +598,7 @@ body {
 /* One centred column, and the app's ONE inline gutter — a `max()` against the safe-area inset, never a
    replacement for it, since env(safe-area-inset-*) is 0px without a notch and in landscape on a notched phone the
    inset must win. Bottom-docked chrome deliberately does not inherit it: a docked bar is chrome, not content. */
+
 .app-shell {
 	width: 100%;
 	max-width: var(--max-w);
@@ -676,17 +704,30 @@ body {
    dressed as one, and UPPERCASE + LETTERSPACING IS THE SECTION REGISTER IN THIS APP — `.grouphead` above rows, the
    `eyebrow` button variant above a disclosure — so wearing it made a field read as a heading. The one property that
    is this ladder's and not the registry's is `line-height`: `--lh-snug` is 1.25 where field-label's Tailwind
-   `leading-snug` is 1.375, because a rule outside `lib/components/ui/` states line-height in app tokens.
-   STILL ONE SCALE ONLY. Two `--ph-text-xs`/0.1em rows survive and NEITHER is this rule at a different size: the song
-   page's `.fact` list, which labels no control at all, and the drawer's `.key` row, which names a pair of keycap
-   BUTTONS and keeps its reading in the `.key-head` row above. The TV's are on the --tv-* ladder entirely. Folding those
-   in would invent a shared decision that was never made.
+   `leading-snug` is 1.375, because a rule outside `lib/components/ui/` states line-height in app tokens. TWO VALUES,
+   AND A HAND-WRITTEN COPY MAKES A THIRD, which is why this class has four carriers and no local imitation: an author
+   copying this dress writes the three properties they can see and omits the line-height. /queue's key row did exactly
+   that as `.ctl-lab` — `font-size`/`font-weight`/`color`, no line-height — so one card rendered this dress at
+   `normal`, which is font-metric-derived and therefore platform-dependent: measured 17px on macOS, against this
+   rule's 18px and the primitive's 19.8px at the same 14.4px size. It carries this class now.
+   STILL ONE SCALE ONLY. ONE `--ph-text-xs`/0.1em LABEL ROW survives and it is not this rule at a different size: the
+   song page's `.lab`, the Key and Range labels inside its `.facts` card, which label no control at all — the dressed
+   class is `.lab` and not the `.fact` row that holds it. The second used to be the now-playing sheet's `.key` row,
+   and it went with the sheet — /queue's keycap label is a carrier of THIS class, so it is not on that register at
+   all. (`.grouphead` and /queue's `.now-eyebrow` are also on the rung, but
+   both label a BLOCK rather than a field, which is what the register is for.) The TV's are on the --tv-* ladder
+   entirely. Folding those in would invent a shared decision that was never made.
    THE REGISTER FOLLOWS WHAT THE LABEL LABELS, NOT THE ROW'S SHAPE, and that is what retired the third of those rows:
    GuidingTrack rendered an uppercase eyebrow INSIDE a real `[data-slot='field-label']` — the element is the evidence,
-   no screen comparison needed, which is just as well because there is none to make. Its two hosts are the drawer and
-   /components, and NEITHER renders a second field label (the gallery imports no `Field.*`, no ColourRing and no
-   CodeEntry), so unlike the You card above, where the dresses met across one 8px gap, nothing on screen gave this
-   drift away. Its label text is now the primitive's, and the "compact row" argument for the eyebrow died with it — the
+   and when the eyebrow was retired that was the WHOLE evidence: the row's hosts were then the now-playing sheet and
+   /components, and neither rendered a second field label to compare it against. THAT IS NO LONGER THE CASE, and the
+   change is worth having rather than worth hiding: /queue replaced the sheet, and its now-playing card renders the key
+   row's `.control-label` directly above GuidingTrack — 8px above its box, which is the card's own `row-gap`, and 20px
+   above its field label, the Field primitive adding a 12px `margin-top` of its own. Measured at 390x844. So the You
+   card's screen comparison is available here too, and what it shows is
+   the two labels AGREEING — which is why the key row carries this class instead of a local copy of it. (/components
+   still renders no second field label: the gallery imports no `Field.*`, no ColourRing and no CodeEntry.)
+   Its label text is now the primitive's, and the "compact row" argument for the eyebrow died with it — the
    row kept its rank by moving the VALUE up to `--ph-text-md`, so the two tiers never meet inside one field label.
    POSSESSIVE-VERSUS-BARE IS NOT A DRESS QUESTION and is decided separately: `Your name`/`Your color` where the value
    is the singer's OWN, a bare noun for a room or global setting. See docs/FRONTEND.md and

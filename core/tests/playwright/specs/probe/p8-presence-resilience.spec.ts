@@ -42,7 +42,7 @@
 // cannot, so the condition is checked earlier and louder than a probe step could.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
-import { openBrowseFromHome, returnHomeFromBrowse } from '../../world/actors';
+import { openBrowseFromHome, openQueue } from '../../world/actors';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import type { World } from '../../world/fixtures';
 
@@ -119,7 +119,16 @@ const syncCount = (page: Page): Promise<number> =>
 	page.evaluate(() => (window as unknown as ProbedWindow).__p8.syncCount);
 const dropSocket = (page: Page): Promise<boolean> =>
 	page.evaluate(() => (window as unknown as ProbedWindow).__p8.dropLast());
-const queueRows = (page: Page): Promise<number> => page.locator(SEL.queueRow).count();
+/**
+ * The phone's RENDERED rotation count, and it takes the phone to the Queue tab to read it — see repair (3) in the
+ * header. Every call site here is a witness asking "does this phone see the row", and none of them has any reason
+ * to be on /queue already, so putting the route in the reader is what makes them correct by construction rather
+ * than by each remembering. Cheap to repeat inside a poll: `toQueueTab` returns as soon as the pathname matches.
+ */
+const queueRows = async (page: Page): Promise<number> => {
+	await toQueueTab(page);
+	return page.locator(SEL.queueRow).count();
+};
 
 interface Guest {
 	page: Page;
@@ -156,23 +165,44 @@ async function openGuests(browser: Browser, world: World, names: string[]): Prom
  * `src/routes/+page.svelte` gates the whole Queued block on `{#if !searchActive}` ("One scroll, two views"), so
  * that count is 0 on any phone showing results, whatever landed. Its helper could therefore only ever report
  * "clicked but no local row", which is why p8's later steps all degrade to ENV findings. The MEASUREMENT is
- * unchanged — the phone's own `.qrow` count, before and after — and the way back to the queue is the real one:
- * CLEARING the box, which is what `returnHomeFromBrowse` does and the only way back there is.
+ * unchanged — the phone's own `.qrow` count, before and after — and the way to the queue is the real one.
+ * (3) THAT WAY IS NOW A ROUTE. `.qrow` is on /queue; the Sing tab renders no queue rows at all, so clearing the
+ * search box no longer reveals a rotation and every count here read 0 whatever landed — the same false reading
+ * repair (2) was written to remove, arriving by a different door. `toQueueTab` and `toSingTab` below move between
+ * them, and they CLICK rather than `goto` on purpose: the offline arm of this file taps with the network down, and
+ * a full document load would fail where a client-side route change does not.
  *
  * `world.awaitDemoTrack` comes first because the phone's search fires ONCE per keystroke burst: the library scan
  * is a detached boot pass that finishes after /health answers, so a phone that types too early gets an answer
  * from an empty index and nothing re-runs the query. A locator would wait for a row that is never coming.
  */
+/** To the QUEUE tab, by clicking — see repair (3) above. Clears any query first, so the Sing tab is left on its
+ *  idle state and a later `toSingTab` is not re-running somebody else's search. */
+async function toQueueTab(page: Page): Promise<void> {
+	if ((await page.locator(SEL.clearSearch).count()) > 0) await page.locator(SEL.clearSearch).first().click();
+	await openQueue(page);
+}
+
+/** To the SING tab, which is where the search field is, by clicking its tab when the phone is elsewhere. */
+async function toSingTab(page: Page): Promise<void> {
+	if (new URL(page.url()).pathname !== '/') {
+		await page.locator(SEL.tab).filter({ hasText: 'Sing' }).first().click();
+		await page.waitForURL((url) => url.pathname === '/', { timeout: 15_000 });
+	}
+	await openBrowseFromHome(page);
+}
+
 async function searchAndQueue(world: World, page: Page, term: string = SEARCH_TERM): Promise<void> {
 	await world.awaitDemoTrack(term);
-	await openBrowseFromHome(page);
-	// Counted on HOME, where the rotation is rendered at all.
+	// Counted on /queue, which is where the rotation is rendered at all.
+	await toQueueTab(page);
 	const before = await queueRows(page);
+	await toSingTab(page);
 	await page.locator(SEL.search).fill(term);
 	// The library tracks are raw, so the action a row offers may be SING rather than add — the union asks
 	// whether the row offers an action AT ALL, which is p8's own question.
 	await page.locator(SEL.songRow).first().locator(SEL.addOrSing).first().click();
-	await returnHomeFromBrowse(page);
+	await toQueueTab(page);
 	await expect
 		.poll(() => queueRows(page), {
 			timeout: 20_000,
@@ -233,13 +263,13 @@ async function chipAway(tv: Page, name: string): Promise<boolean | null> {
 async function joinOutcome(page: Page): Promise<string | null> {
 	try {
 		return await page.evaluate(
-			({ homeReady, joinError }) => {
-				if (location.pathname === '/' && document.querySelector(homeReady)) return 'joined';
+			({ dock, joinError }) => {
+				if (location.pathname === '/' && document.querySelector(dock)) return 'joined';
 				const err = document.querySelector(joinError);
 				if (err) return 'err:' + (err.textContent || '').trim();
 				return null;
 			},
-			{ homeReady: SEL.homeReady, joinError: SEL.joinError }
+			{ dock: SEL.dock, joinError: SEL.joinError }
 		);
 	} catch {
 		return null;
@@ -461,7 +491,7 @@ test('a queue-add taken while the socket is severed reconciles on reconnect', as
 		const before = await queueRows(witness!.page);
 
 		// SEARCH WHILE ONLINE: going offline blocks the HTTP request too, so the row must be up first.
-		await openBrowseFromHome(origin!.page);
+		await toSingTab(origin!.page);
 		await origin!.page.locator(SEL.search).fill(SEARCH_TERM);
 		const action = origin!.page.locator(SEL.songRow).first().locator(SEL.addOrSing).first();
 		await expect(action, `no actionable row for "${SEARCH_TERM}" before the offline test`).toBeVisible();
@@ -473,9 +503,10 @@ test('a queue-add taken while the socket is severed reconciles on reconnect', as
 		// A REAL tap on a severed phone: the send lands on a closed socket, so the op stays pending and only the
 		// local row shows.
 		await action.click();
-		// Clearing the box is a CLIENT-SIDE act — no request — so it works with the network down, and it is what
-		// makes the rotation visible at all (the Queued block is gated on `!searchActive`).
-		await returnHomeFromBrowse(origin!.page);
+		// BOTH STEPS ARE CLIENT-SIDE — no request — so they work with the network down: clearing the box is a local
+		// state write, and the Queue tab is an `<a>` SvelteKit intercepts. That matters here and nowhere else in this
+		// file: a `goto` would try to fetch a document from a severed network.
+		await toQueueTab(origin!.page);
 		// `.proc` is a SUBSET of `.qrow`, so this sum double-counts — deliberately, and p8's own measurement: the
 		// question is whether ANY local row appeared, never an exact total.
 		const optimistic =

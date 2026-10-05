@@ -167,6 +167,17 @@ def test_the_starred_matrix_names_the_column_and_keeps_every_other_name() -> Non
     assert star_of(emissions(sung_matrix(SUNG, VOCAB, DURATION))) is None
     assert star_of(object()) is None, "a matrix that names no specials has no star to emit"
     assert STAR in excluded_of(starred), "a text can never target the star: it owns no character"
+    # `separator_of`'s SECOND reason, which `ml.starred` cannot produce and which is refused here rather
+    # than trusted upstream (W7c review r1-correctness-6): a star named ON the blank is no star.
+    named_on_blank = ml.Emissions(
+        log_probs=starred.log_probs,
+        frame_sec=starred.frame_sec,
+        dictionary=starred.dictionary,
+        model=starred.model,
+        blank_id=starred.blank_id,
+        specials={**starred.specials, ml.STAR_NAME: starred.blank_id},
+    )
+    assert star_of(named_on_blank) is None
 
 
 def test_the_domain_and_the_adapter_name_the_same_column() -> None:

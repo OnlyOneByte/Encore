@@ -1,7 +1,7 @@
 """`ArtifactStore` over a shared filesystem — the single-box deployment, and the only one wired today.
 
 Per-class roots, atomic publication and refusing to escape the root are what make this more than
-`shutil.move`, and each was a real bug somewhere: docs/arch/05-worker.md §4.
+`shutil.move`, and each was a real bug somewhere: XW-04, XW-05, docs/arch/05-worker.md §4.
 """
 
 from __future__ import annotations

@@ -1,26 +1,12 @@
 <script lang="ts">
-	import { SINGER_COLORS } from '$lib/contract';
-	import { onMount, tick } from 'svelte';
-	import type { QueueEntry, Media, PublicSinger, PlaybackState } from '$lib/contract';
+	import { onMount } from 'svelte';
+	import type { QueueEntry, Media, PublicSinger } from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
-	import QueueRow from '$lib/components/QueueRow.svelte';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
-	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import {
-		gripVisible,
-		liveSortTarget,
-		keyboardMoveTarget,
-		rowShift,
-		liveSeq,
-		ordinal,
-		modeInvalidation
-	} from '$lib/reorder-mode';
-	import {
-		nextPlayableEntryId,
-		queueCardKind,
 		displayReadiness,
 		canProcess,
 		noRowsState,
@@ -28,12 +14,7 @@
 		processingGroupIds,
 		type Readiness
 	} from '$lib/readiness';
-	import { waitShort } from '$lib/phrasing/position-sentence';
-	import { queueAnnouncement } from '$lib/phrasing/queue-announcement';
-	import { focusGrip, measureCarriedRowHeight, measureRowBoxes, trackDragPointer } from '$lib/queue-drag';
 	import { processAndQueue } from '$lib/process-and-queue';
-	import { libraryShelf, LIBRARY_SHELF, LIBRARY_SHELF_WIDE } from '$lib/library-browse';
-	import { drawPosition, secondTicker } from '$lib/playhead';
 	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
 	import { Toaster } from '$lib/components/ui/sonner';
@@ -46,29 +27,17 @@
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
-	// A KIND, not a set of ids: a pending reorder is marked too, and must not borrow the add path's word.
-	let pendingKind = $state<Map<string, 'add' | 'move'>>(new Map());
-	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
-	/** In the room but unreachable. The room skips their turns, so the surface holding skip has to know. */
-	let awaySingers = $state<Set<string>>(new Set());
-	let playback = $state<PlaybackState>({
-		currentEntryId: null,
-		positionSec: 0,
-		isPlaying: false,
-		keyShift: 0,
-		background: null,
-		guideLevel: null
-	});
 	// Seeded from /api/library as well as media:status, so a reload mid-process keeps its progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 
-	/* One column read top to bottom, with `searchActive` (a non-empty query) as the SOLE switch between the queue
-	   view and the results view. Still no browse MODE on this column and no history entry for a search — browsing is a
-	   separate ROUTE (/library), reached from the door beside the field and from the shelf's `See all`, so this column keeps
-	   one switch. The library here is a SHELF, not the library — four rows on a phone, eight where the grid is two
-	   tracks wide. See docs/FRONTEND.md#the-home-column. */
+	/* THE SING TAB. One job — find a song and put it in the rotation — and exactly two states, with `searchActive`
+	   (a non-empty query) as the sole switch between them: a query shows its result groups, no query shows the idle
+	   state that points back at the field. The queue and the library used to be branches of this same page; they are
+	   TABS now (see docs/FRONTEND.md#the-three-tabs), which is what that branch had always been.
+	   The standing route to /library is the TabBar, not this page: the one link to it left here is inside the
+	   search-found-nothing state, where the library count is news. */
 
 	// Mirrored from the room link, not owned here. Optional because an unjoined guest has no queue at all, which
 	// is what every `store?.` call site below reads.
@@ -84,13 +53,9 @@
 		const sync = () => {
 			me = room.me;
 			connected = room.connected;
-			playback = room.playback;
-			singers = room.singers;
 			mediaCatalog = room.mediaCatalog;
-			awaySingers = room.awaySingers;
 			mediaStatus = room.mediaStatus;
 			entries = room.entries;
-			pendingKind = room.pendingKind;
 			library = room.library;
 			libraryTags = room.libraryTags;
 			store = room.queue;
@@ -100,25 +65,16 @@
 		// The link holds no opinion about how a failure is shown, so the toast stays a route decision.
 		const stopErrors = room.onError((message) => showError(message));
 		void room.connect();
-		/* SSR-safe the way /tv's reduced-motion read is: matchMedia does not exist during load, and this runs on mount
-		   where it does. `?.addEventListener?.` mirrors the `('change', onChange)` registration in /tv's own
-		   `prefers-reduced-motion` mount read (named, not line-numbered, because a line pointer rots) — the optional
-		   call guards the Safari versions that ship a MediaQueryList with only the deprecated `addListener`. */
-		const wide = typeof matchMedia === 'function' ? matchMedia('(min-width: 1200px)') : null;
-		const onWideChange = (e: MediaQueryListEvent) => (twoAcross = e.matches);
-		twoAcross = wide?.matches ?? false;
-		wide?.addEventListener?.('change', onWideChange);
 		return () => {
 			stopMirror();
 			stopErrors();
-			wide?.removeEventListener?.('change', onWideChange);
-			/* THE SEARCH DEBOUNCE DIES WITH THE COLUMN. 150 ms is easy to leave inside — typing, then tapping a
-			   shelf row or the `/library` door — and an uncleared timer fires `/api/search` from a component
-			   that is already gone: measured at one full abandoned request per mid-debounce departure. That is
-			   a resolver fan-out (`?source=all` spawns a yt-dlp subprocess, median 1628 ms against ytmusic's
-			   459 ms) which also MATERIALIZES AND PERSISTS every hit, for rows no longer mounted to render
-			   them. Aborting `inflight` drops the one already in the air for the same reason; /api/search does
-			   not read `request.signal`, so that half reclaims the client only. */
+			/* THE SEARCH DEBOUNCE DIES WITH THE TAB. 150 ms is easy to leave inside — typing, then thumbing the
+			   Queue or Library tab — and an uncleared timer fires `/api/search` from a component that is already
+			   gone: measured at one full abandoned request per mid-debounce departure. That is a resolver fan-out
+			   (`?source=all` spawns a yt-dlp subprocess, median 1628 ms against ytmusic's 459 ms) which also
+			   MATERIALIZES AND PERSISTS every hit, for rows no longer mounted to render them. Aborting `inflight`
+			   drops the one already in the air for the same reason; /api/search does not read `request.signal`, so
+			   that half reclaims the client only. */
 			clearTimeout(debounceTimer);
 			inflight?.abort();
 		};
@@ -130,16 +86,12 @@
 		return mediaStatus.get(id);
 	}
 
-	/* An empty box IS the library, so typing filters the world rather than revealing it, and a query REPLACES the
-	   queue: the keyboard leaves ~350px, which a field, a heading and two queue rows would spend. */
+	/* An empty box IS the library, so typing filters the world rather than revealing it. NOT a shelf any more and not
+	   a row on this tab: `library` survives for two readers only — `library.length` is what `noRowsState` needs to
+	   decide whether there is anything to go back TO, and `libraryTags` labels a result row that is already yours.
+	   The shelf itself is /library. */
 	let library = $state<Media[]>([]);
 	let libraryTags = $state<Record<string, string[]>>({});
-	/* HOW MANY SHELF ROWS FIT, and it is read in JS rather than CSS because the extra rows DO NOT EXIST in the DOM for
-	   a stylesheet to reveal — rendering all eight always and hiding four below --bp-lg would leave them in the
-	   accessibility tree, where a screen reader would read a shelf twice the size of the one on screen. Seeded from
-	   `.matches` in onMount, not left false, or a desktop that never resizes keeps the phone cap forever. 1200 is
-	   --bp-lg; a media condition is evaluated before the cascade and cannot read the token. */
-	let twoAcross = $state(false);
 	let queryEl = $state<HTMLInputElement | null>(null);
 	/* WHERE to search. `music` is the DEFAULT and sends no `source` param at all, which the route reads as
 	   its default set: the YouTube Music catalog, local files, and Spotify metadata — everything except
@@ -193,6 +145,7 @@
 		onSourceChange();
 	}
 
+	/** Empties the box, which lands on the idle state. Called by the field's own `×`. */
 	function clearSearch() {
 		query = '';
 		onQueryInput();
@@ -229,7 +182,7 @@
 			rawResults = j.results ?? [];
 			processingResults = j.processing ?? [];
 			room.mergeMedia([...readyResults, ...rawResults, ...processingResults]);
-			/* ANNOUNCED, because the search view replaces the queue and a guest using a screen reader otherwise
+			/* ANNOUNCED, because the results REPLACE the idle state and a guest using a screen reader otherwise
 			   types, waits, and hears nothing at all: the `Searching…` skeleton's `role="status"` is
 			   conditionally INSERTED, and an element that appears already carrying its text does not announce.
 			   `/library` has had the pattern since it shipped (`<p class="count" role="status">`). The region
@@ -269,14 +222,21 @@
 		return queued.some((e) => e.mediaId === mediaId && e.singerId === me?.id);
 	}
 
+	/* THE PROCESSING GROUP IS SEARCH FEEDBACK, which is why this returns nothing without a query. With one, the
+	   server has already scoped `j.processing` to that query, so each row is a RESULT — the row that tells a guest
+	   "this one is already being made" and stops a second tap on the app's one compound action.
+	   WITHOUT a query there is no group at all, and this guard is the whole reason `processingGroupIds` no longer
+	   takes a catalog: the union it used to build without a query is a statement about the LIBRARY rather than about
+	   anything on this tab — and /queue now draws every queued song that is still cooking. `processAndQueue` always
+	   adds the turn alongside the process, so a processing song is in practice always a queued song and /queue is
+	   where it belongs. What that trades away, recorded because it is real: a media processing with NO queue entry
+	   (an admin-side process, or an entry removed mid-cook) is now visible only while a query matches it, because
+	   /library serves `listReady()` and paints every row ready. */
 	const processingRows = $derived.by(() => {
-		const ids = processingGroupIds({
-			searchActive,
-			processingResults,
-			mediaStatus,
-			mediaCatalog,
-			readiness: readinessFor
-		});
+		if (!searchActive) return [];
+		// The catalog copy is what gets rendered, not the wire row: `room.mergeMedia` has already folded the
+		// search answer into it, so a later refresh of the same media reaches the row through this lookup.
+		const ids = processingGroupIds(processingResults);
 		return [...ids]
 			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
 			.filter((r) => r.media)
@@ -290,30 +250,26 @@
 	});
 
 	/** Ids another group already shows, so no song appears twice and no job draws two progress bars. BOTH `ids.add` loops
-	 * are required: the de-duplication has to cover the ready list AND the processing rows, which are ungated. It stays a
-	 * plain accumulator, and the `svelte/prefer-svelte-reactivity` warning it raises stays with it — a `SvelteSet` is the
-	 * wrong answer for a value recomputed wholesale, where reactive sources buy nothing. */
+	 * are required: the de-duplication has to cover the ready group AND the processing rows, which are separate lists on
+	 * the wire. It stays a plain accumulator, and the `svelte/prefer-svelte-reactivity` warning it raises stays with it —
+	 * a `SvelteSet` is the wrong answer for a value recomputed wholesale, where reactive sources buy nothing. */
 	const accountedFor = $derived.by(() => {
 		const ids = new Set<string>();
-		for (const m of searchActive ? readyResults : library) ids.add(m.id);
+		for (const m of readyResults) ids.add(m.id);
 		for (const c of processingRows) ids.add(c.id);
 		return ids;
 	});
 	function unaccounted(list: Media[]): Media[] {
 		return list.filter((m) => !accountedFor.has(m.id));
 	}
-	const queuedMediaIds = $derived(new Set(queued.map((e) => e.mediaId)));
-	const processingGroup = $derived(
-		searchActive ? processingRows : processingRows.filter((c) => !queuedMediaIds.has(c.id))
-	);
 
 	function addSong(mediaId: string) {
 		store?.addSong(mediaId);
-		/* SAID HERE, because `queueAnnouncement` is deliberately silent about my OWN adds — "the row appearing is its own
-		   confirmation" — and that only holds in the queue view. With `searchActive` the results have REPLACED the queue,
-		   so no row appears anywhere on screen and a screen-reader guest adding three songs off one search heard three
-		   silences. Assigned directly rather than routed through the announcer: that function's whole job is the diff that
-		   suppresses news I caused, and this is news I caused and want. */
+		/* SAID HERE, because the row that confirms an add is on ANOTHER TAB now. The queue's announcer
+		   ($lib/phrasing/queue-announcement, which /queue drives) is deliberately silent about my own adds — "the row
+		   appearing is its own confirmation" — and no row appears on this screen at all, so a screen-reader guest
+		   adding three songs off one search heard three silences. Assigned directly rather than routed through that
+		   function: its whole job is the diff that suppresses news I caused, and this is news I caused and want. */
 		liveMsg = `Added ${mediaTitle(mediaId)} to the queue`;
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
@@ -349,224 +305,13 @@
 		}
 	}
 
-	/*
-	 * NOT `unaccounted(library)`, which self-cancels: with no query `accountedFor` is seeded from `library` itself,
-	 * so subtracting it empties the primary list and "Your library" never renders. The QUEUE is deliberately not
-	 * subtracted either — a queued song is still in the library, and its row says so.
-	 */
-	const processingIds = $derived(new Set(processingRows.map((c) => c.id)));
-	const libraryRows = $derived(library.filter((m) => !processingIds.has(m.id)));
-
-	/* A SHELF, not the library — /library is the library. The cap, the reason for both its values and the rule that
-	   hides the door when nothing is behind it all live in `libraryShelf`. The route's only contribution is WHICH cap:
-	   the wide one is the same height budget spent across the two row tracks the grid opens at --bp-lg, so the desktop
-	   shows twice the songs in the height the phone already spends rather than half the height and the same four.
-	   `See all N songs` needs no change — `hidden` follows the cap, so the door still vanishes when nothing is behind
-	   it under either one. */
-	const shelf = $derived(libraryShelf(libraryRows, twoAcross ? LIBRARY_SHELF_WIDE : LIBRARY_SHELF));
-
-	/**
-	 * THE FIRST-RUN SCREEN: nothing queued, nothing in the library, nothing on the way. It gets ONE empty state
-	 * instead of two, because the two it used to get said overlapping things 460px apart — `Nothing Queued`
-	 * reserved `40vh` and pushed `No karaoke tracks yet.` off the fold on a phone and into the middle of a void
-	 * on a desktop. The 40vh is right only when that block is the LAST thing on screen, which in this case it
-	 * never is. Measured at 1335x1151: the queued empty was 460px tall with the library empty at y=641.
-	 */
-	const nothingYet = $derived(
-		!searchActive && queued.length === 0 && libraryRows.length === 0 && processingGroup.length === 0
-	);
-
 	function showError(msg: string) {
 		toast.error(msg, { duration: 4000 });
 	}
 
-	function removeWithUndo(entry: QueueEntry) {
-		const mediaId = entry.mediaId;
-		const title = mediaTitle(mediaId);
-		store?.removeEntry(entry.id);
-		if (navigator.vibrate) navigator.vibrate(8);
-		toast(`Removed \u201c${title}\u201d`, {
-			duration: 5000,
-			action: { label: 'Undo', onClick: () => store?.addSong(mediaId) }
-		});
-	}
-
-	// Announced POLITELY, never assertive. The sentence and every rule about when there is nothing to say live in
-	// `$lib/phrasing/queue-announcement`; this holds only the last-seen ids, NULL until the first sync.
+	/* The polite region for everything this tab says that is not a row: the search result count, an add, and a
+	   search failure. `aria-atomic`, so a fast typist's superseded searches replace rather than queue. */
 	let liveMsg = $state('');
-	let announcedIds: string[] | null = null;
-	$effect(() => {
-		const announcement = queueAnnouncement({
-			previousIds: announcedIds,
-			queued,
-			meId: me?.id,
-			singerName: (id) => singers.get(id)?.displayName ?? 'Someone',
-			songTitle: mediaTitle
-		});
-		announcedIds = queued.map((e) => e.id);
-		if (announcement) liveMsg = announcement;
-	});
-
-	/** The entry's index in the WHOLE queued list — the index space `move-to-index` uses. */
-	function queuedIdx(id: string): number {
-		return queued.findIndex((e) => e.id === id);
-	}
-	/* Reordering is a LIVE SORT with no mode: `liveSortTarget` both places the rows and decides the commit, so a
-	   release cannot land somewhere the guest did not see. The single-pointer alternative (SC 2.5.7 / 2.1.1) is
-	   Arrow Up/Down on the grip. See $lib/reorder-mode and docs/FRONTEND.md#the-home-column. */
-	let movingId = $state<string | null>(null);
-	let dragging = $state(false);
-	let dragY = $state(0);
-	/** The dragged row's height, measured once at press time — how far its neighbours slide. */
-	let rowH = $state(0);
-	/**
-	 * Measured once at press time, and empty except during a drag, so no stale geometry can place a row: rows
-	 * change height mid-flight (a byline gains an `away` badge, another guest queues a card).
-	 */
-	let rowBounds = $state<{ top: number; height: number }[]>([]);
-	// Announced through the SAME polite region the queue uses, and rendered visibly: a sighted guest needs it.
-	let reorderNote = $state('');
-	/** The grip the gesture began on, so focus can be returned to it. */
-	let openerEl: HTMLElement | null = null;
-	let dragTeardown: (() => void) | null = null;
-
-	/** Where the dragged row currently sits, which is both what the list renders and what a release commits. */
-	const dragFrom = $derived(movingId ? queuedIdx(movingId) : -1);
-	const dragTo = $derived(
-		dragging && dragFrom >= 0
-			? liveSortTarget({ fromIndex: dragFrom, offsetPx: dragY, rowBoundsPx: rowBounds, count: queued.length })
-			: -1
-	);
-
-	/* Every position is legal under `move-to-index`, so no ordering policy can discard a move: the only condition
-	   on the grip is that a second position exists. Both row kinds take THIS value, never a literal. */
-	const gripsVisible = $derived(gripVisible({ queuedCount: queued.length, reorderMeaningful: true }));
-
-	function commitMove(id: string, to: number | null) {
-		if (to === null) return;
-		const from = queuedIdx(id);
-		if (from < 0 || to === from) return;
-		store?.moveToIndex(id, to);
-		if (navigator.vibrate) navigator.vibrate(8);
-	}
-
-	/** One place per press, committed immediately; `keyboardMoveTarget` declines at the ends. */
-	function nudge(id: string, delta: number) {
-		const from = queuedIdx(id);
-		const to = keyboardMoveTarget(from, delta, queued.length);
-		if (to === null) return;
-		commitMove(id, to);
-		liveMsg = `Moved to ${ordinal(to + 1)} in the queue.`;
-		// After the patch lands, because the row's DOM is recreated at its new position.
-		void tick().then(() => focusGrip(id));
-	}
-
-	/** End the gesture. `commit` false for a cancel or an invalidation — those commit NOTHING. */
-	function endDrag(commit: boolean, note = '') {
-		const id = movingId;
-		const to = dragTo;
-		dragTeardown?.();
-		dragTeardown = null;
-		if (commit && id) commitMove(id, to >= 0 ? to : null);
-		movingId = null;
-		dragging = false;
-		dragY = 0;
-		rowH = 0;
-		rowBounds = [];
-		reorderNote = note;
-		if (note) liveMsg = note;
-		// After the patch lands; `openerEl` is the fallback for a row that has gone entirely.
-		void tick().then(() => {
-			focusGrip(id, openerEl);
-			openerEl = null;
-		});
-	}
-
-	/** Publishes the offset as a custom property for a transform to read; the target is arithmetic, not a hit-test. */
-	function onGripPointerDown(entry: QueueEntry, e: PointerEvent) {
-		const grip = e.currentTarget as HTMLElement | null;
-		if (!grip) return;
-		movingId = entry.id;
-		dragging = true;
-		dragY = 0;
-		reorderNote = '';
-		openerEl = grip;
-		// A pointer press does not focus a button in every engine, so an Escape cancel would have no origin.
-		grip.focus?.();
-		// Both reads happen ONCE, here, and nothing is measured again for the life of the gesture.
-		rowH = measureCarriedRowHeight(grip);
-		rowBounds = measureRowBoxes();
-		dragTeardown = trackDragPointer(e, {
-			onMove: (offsetY) => (dragY = offsetY),
-			onEnd: () => endDrag(true),
-			onCancel: () => endDrag(false)
-		});
-	}
-
-	// The queue moving under a drag needs no handling — the live sort is relative to where the row IS. Only the
-	// dragged song leaving, starting to play, or the queue falling below two invalidates the gesture.
-	$effect(() => {
-		const reason = modeInvalidation(queued, movingId, entries.find((e) => e.id === movingId)?.status);
-		if (reason) endDrag(false, reason);
-	});
-	/** What will ACTUALLY play next, skipping anything still processing, matching the server's nextPlayable. */
-	const nextPlayableId = $derived(
-		nextPlayableEntryId(
-			queued,
-			(id) => mediaCatalog.get(id),
-			(id) => mediaStatus.get(id)
-		)
-	);
-
-	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
-
-	// `playback` is a whole-object $state the store REPLACES on every broadcast, so this anchor effect re-runs on any
-	// playback change. Mirroring the fields as scalars would narrow that and strand the anchor.
-	/* Once a second, not a frame: the bar's width transition covers the gap. Re-arms on every playback change, so a
-	   seek snaps instead of sliding. The anchor is captured INSIDE the effect for the reason the layout's twin gives,
-	   and `drawPosition` floors the elapsed term where the hand-rolled version did not. */
-	let displayPos = $state(0);
-	$effect(() => {
-		const positionSec = playback.positionSec;
-		const anchoredAtMs = performance.now();
-		const playing = playback.isPlaying;
-		displayPos = positionSec;
-		return secondTicker(playing, () => {
-			displayPos = drawPosition({ positionSec, playing, anchoredAtMs, nowMs: performance.now() });
-		});
-	});
-	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
-
-	/* The wait degrades honestly in ONE place (`waitShort`): one entry ahead with no resolvable length makes the
-	   whole estimate unknown, and an unknown estimate is OMITTED, never zeroed. */
-	const myNextEntry = $derived(
-		entries
-			.filter((e) => e.singerId === me?.id && e.status === 'queued')
-			.sort((a, b) => a.rotationSeq - b.rotationSeq)[0]
-	);
-	/** 0 when nothing plays; NULL when something plays whose length is unknown — not the same as 0. */
-	const nowRemainingSec = $derived.by(() => {
-		if (!nowEntry) return 0;
-		if (nowDurationSec <= 0) return null;
-		return Math.max(0, nowDurationSec - displayPos);
-	});
-	/** Joins only the TRUE parts, so a row can never render a stray separator. */
-	function queueSubtitle(e: QueueEntry): string {
-		return [e.id === nextPlayableId ? 'up next' : '', e.id === myNextEntry?.id ? myWait : null]
-			.filter(Boolean)
-			.join(' · ');
-	}
-
-	/** "~3 min" for MY next row, or null when any length ahead is unknown (and then no clause renders). */
-	const myWait = $derived.by(() => {
-		if (!myNextEntry) return null;
-		const idx = queued.findIndex((e) => e.id === myNextEntry.id);
-		if (idx < 0) return null;
-		return waitShort(
-			nowRemainingSec,
-			queued.slice(0, idx).map((e) => mediaCatalog.get(e.mediaId)?.durationSec ?? null)
-		);
-	});
 </script>
 
 <!-- Joined singers only: unjoined, JoinLanding paints its own brand, so both would say "Encore" twice. -->
@@ -598,30 +343,14 @@
 	</header>
 {/if}
 
-<!-- `--row-h` is the one measured row height, which the shifting rows multiply by their `--row-shift` count. It is
-	0 except during a drag, so no stale shift count can displace a row while nothing is dragged. -->
-<main style="--row-h:{rowH}px">
+<main>
 	{#if me}
-		<!-- The field is the FIRST thing on the screen, and not sticky — see the `.findbox` rule for why.
-				THE LIBRARY DOOR SITS BESIDE IT, not in the topbar and not after the queue. Beside the field is the one
-				place that states the relationship: finding a song you do not have and browsing the ones you do are
-				PEERS, so they share a row. After the rotation it was reachable only by scrolling past every queued
-				song, which is the whole complaint.
-				ON THE LEADING EDGE, because the field's TRAILING edge is already occupied — a spinner while a search
-				runs and the clear `×` whenever one is active — so a control placed after the box joins a cluster of
-				three and moves as that cluster changes. Here its position never shifts.
-				`secondary`, NOT `ghost` and NOT `outline`: a ghost is a bare glyph, and `outline` fills with
-				`bg-background` — the PAGE colour — so beside a `--card` field it reads as a hole punched in the row
-				instead of a control. `secondary` puts it on `--card2`, one step ABOVE the field's own surface, which
-				is what makes it the prominent thing in the row. Always rendered, even with an empty library — a
-				destination that comes and goes cannot be learned, and /library says plainly when it holds nothing.
-				The LABELLED entry point is the `See all N songs` row under the shelf, where the name gets taught. -->
+		<!-- The field is the FIRST thing on the screen, and not sticky — see the `.findbox` rule for why. A CLUSTER OF
+				TWO: the box and the scope it searches. The library door that used to sit on the field's leading edge is
+				gone with the shelf it labelled — the TabBar's Library tab sits in the fixed dock at the foot of every phone
+				surface, so a second route to the same page from the same screen was one count of the library too
+				many. -->
 		<div class="find-row">
-			<div class="lib-slot">
-				<Button variant="secondary" size="icon" href="/library" aria-label="Your library" title="Your library">
-					<Icon name="library" />
-				</Button>
-			</div>
 			<div class="field-slot">
 				<FindField
 					bind:value={query}
@@ -650,162 +379,33 @@
 			</div>
 		</div>
 
-		{#if searching && rawResults.length === 0 && readyResults.length === 0}
-			<SkeletonRows label="Searching…" />
-		{/if}
-
-		<!-- One scroll, two views: everything to the library is gated on `searchActive`. -->
-		{#if nothingYet}
-			<!-- ONE state for the whole screen. No `Queued` heading either: a section label above nothing is a
-					promise the page cannot keep, and the only useful instruction here points back at the field above. -->
-			<Empty.Root>
-				<div class="queue-empty">
-					<!-- A MARK, and it is not decoration: this block is the whole screen on a first run, and a lone sentence in a
-							void reads as a page that failed to load rather than as a state someone designed. `aria-hidden` because the
-							title beside it already says this in words. -->
-					<span class="empty-mark" aria-hidden="true"><Icon name="mic" /></span>
-					<Empty.Header>
-						<!-- `Empty.Title` renders a <div>, so a zero-state's headline carried no heading SEMANTICS — and the
-							 zero-state branches REPLACE every `<h2 class="grouphead">` on this column, so on a first run the
-							 only heading in the whole document was the wordmark. A guest cycling headings to orient learned
-							 nothing about what the app is. Added at the call site, not by re-vendoring, which is the precedent
-							 /settings set for `Card.Title` at its ten `role="heading" aria-level={2}` call sites, recorded in
-							 the comment above that page's `PageHeader` (named, not line-numbered: the pointer that stood here
-							 aimed at an unrelated `$derived.by`). -->
-						<Empty.Title role="heading" aria-level={2}>Nothing queued yet</Empty.Title>
-						<Empty.Description>Find any song and we'll make the karaoke track for it.</Empty.Description>
-					</Empty.Header>
-					<!-- THE ACTION, IN THE STATE. It used to say "Search above", which makes a guest look away from the sentence
-							they are reading to find an unlabelled field — and on a phone the field needs a tap to raise the keyboard
-							anyway, which is exactly what this does. Not an `href`: the destination is a control on this same screen. -->
-					<Button variant="secondary" size="tap" onclick={() => queryEl?.focus()}>
-						<Icon name="search" /> Search for a song
-					</Button>
-				</div>
-			</Empty.Root>
-		{/if}
-		{#if !searchActive && !nothingYet}
-			<h2 class="grouphead">Queued</h2>
-			<!-- Not mode chrome: a drag invalidated mid-flight has to say why, visibly as well as announced. -->
-			{#if reorderNote}
-				<p class="reorder-note">{reorderNote}</p>
-			{/if}
-			{#if queued.length === 0}
-				<!-- `Empty.Root` is load-bearing: a designed empty state is recognised by that primitive, so a bare
-						paragraph reports this route as having none. ALWAYS `tight` here — this branch only runs when the
-						library or the processing group has rows below, and the 40vh void is for a block with nothing
-						after it. `nothingYet` above owns the case where this really is the whole screen. -->
-				<Empty.Root>
-					<div class="queue-empty tight">
-						<Empty.Header>
-							<Empty.Title role="heading" aria-level={2}>Nothing Queued</Empty.Title>
-						</Empty.Header>
-					</div>
-				</Empty.Root>
-			{:else}
-				{#each queued as e, i (e.id)}
-					{@const s = singers.get(e.singerId)}
-					{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
-					{#if card === 'processing' || card === 'failed'}
-						{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
-						<ProcessingCard
-							seq={liveSeq(i, dragFrom, dragTo)}
-							title={mediaTitle(e.mediaId)}
-							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-							singerColor={s?.color ?? SINGER_COLORS[0]}
-							singerAway={awaySingers.has(e.singerId)}
-							status={proc.status}
-							pct={proc.pct}
-							pending={pendingKind.get(e.id) ?? null}
-							onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
-							reorderable={gripsVisible}
-							shift={rowShift(i, dragFrom, dragTo)}
-						/>
-					{:else}
-						<!-- `seq` is the LIVE position, never the source index: `liveSeq` reads the same shift arithmetic that
-								places the row, so a number never corrects itself when the patch lands. -->
-						<QueueRow
-							seq={liveSeq(i, dragFrom, dragTo)}
-							title={mediaTitle(e.mediaId)}
-							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-							singerColor={s?.color ?? SINGER_COLORS[0]}
-							mine={e.singerId === me?.id}
-							singerAway={awaySingers.has(e.singerId)}
-							up={e.id === nextPlayableId}
-							pending={pendingKind.get(e.id) ?? null}
-							subtitle={queueSubtitle(e)}
-							removable={e.singerId === me?.id}
-							grip={gripsVisible}
-							gripId={e.id}
-							moving={movingId === e.id && dragging}
-							dragY={movingId === e.id && dragging ? dragY : 0}
-							shift={rowShift(i, dragFrom, dragTo)}
-							ongripdown={(ev) => onGripPointerDown(e, ev)}
-							onnudge={(delta) => nudge(e.id, delta)}
-							onremove={() => removeWithUndo(e)}
-						/>
-					{/if}
-				{/each}
-			{/if}
-		{/if}
-
-		<!-- Ungated on purpose: what is being made now is equally relevant in both views, and its MEMBERSHIP is
-				query-scoped at the data layer, which decides row by row where a template gate could not. -->
-		{#if processingGroup.length}
-			<h2 class="grouphead">Making karaoke…</h2>
-			{#each processingGroup as c (c.id)}
-				{@const r = displayReadiness(c.media, liveOf(c.id))}
-				<SongRow
-					{...rowMeta(c.media)}
-					readiness={r}
-					pct={c.pct}
-					status={c.status}
-					inQueue={inMyQueue(c.id)}
-					processable={isProcessableSource(c.media.source)}
-					onadd={() => addSong(c.id)}
-					onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
-				/>
-			{/each}
-		{/if}
-
-		{#if !searchActive && !nothingYet}
-			<!-- Every heading here is gated on having rows: a group heading is a claim about what follows it. -->
-			{#if libraryRows.length}
-				<h2 class="grouphead">Your library</h2>
-				{#each shelf.shown as m (m.id)}
-					<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
-				{/each}
-				<!-- The LABELLED door to /library, stating the number it hides: "See all" alone gives no reason to tap, and
-						the count is the only thing here that says this shelf is a subset. Gated on rows ACTUALLY being hidden —
-						with three songs there is nothing behind it, and the door beside the field still goes there.
-						`library.length`, NOT `libraryRows.length`, because this control NAVIGATES and a label must promise what
-						the destination shows: /library's own header counts `library.length` too. The filtered count excludes
-						anything mid-separation, so a song being made dropped the door to "See all 12" while the page it opened
-						said 13 — three counts for one library, in two taps. A song being processed is still in your library; it
-						is just not singable this second, which is what the rows themselves say. -->
-				{#if shelf.hidden > 0}
-					<div class="showall-row">
-						<Button variant="secondary" size="tap" href="/library">
-							<Icon name="library" /> See all {library.length} songs
-						</Button>
-					</div>
-				{/if}
-			{:else if processingRows.length === 0}
-				<!-- Nothing ready AND nothing on the way: the only genuinely empty library.
-						 `processingRows`, NOT `processingGroup`: the group deliberately hides a song that is ALREADY
-						 QUEUED (the queue renders its own progress card), so gating on it printed "No karaoke tracks
-						 yet." directly beneath a live card at 34%. The unfiltered set is the honest test for
-						 "nothing is on the way", which is what this sentence claims. -->
-				<Empty.Root>
-					<Empty.Header>
-						<Empty.Title role="heading" aria-level={2}>No karaoke tracks yet.</Empty.Title>
-						<Empty.Description>Search above for a song and we'll make one.</Empty.Description>
-					</Empty.Header>
-				</Empty.Root>
-			{/if}
-		{/if}
-
+		<!-- TWO STATES, AND THE STRUCTURE SAYS SO: a query, or no query. This used to be a four-term boolean naming
+				the queue, the library shelf and the processing group, three things that are no longer on this tab. -->
 		{#if searchActive}
+			{#if searching && rawResults.length === 0 && readyResults.length === 0}
+				<SkeletonRows label="Searching…" />
+			{/if}
+
+			<!-- Search-scoped, and ABOVE `Ready to sing` where it has always been: a song already being made is the
+					answer to the query the guest just typed, so it belongs with the answers. See `processingRows`. -->
+			{#if processingRows.length}
+				<h2 class="grouphead">Making karaoke…</h2>
+				{#each processingRows as c (c.id)}
+					{@const r = displayReadiness(c.media, liveOf(c.id))}
+					<SongRow
+						{...rowMeta(c.media)}
+						readiness={r}
+						pct={c.pct}
+						status={c.status}
+						inQueue={inMyQueue(c.id)}
+						processable={isProcessableSource(c.media.source)}
+						onadd={() => addSong(c.id)}
+						onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
+					/>
+				{/each}
+			{/if}
+
+			<!-- Every heading here is gated on having rows: a group heading is a claim about what follows it. -->
 			{#if readyResults.length}
 				<h2 class="grouphead">Ready to sing</h2>
 				{#each readyResults as m (m.id)}
@@ -860,14 +460,52 @@
 						<Empty.Description>{empty.message}</Empty.Description>
 					</Empty.Header>
 				</Empty.Root>
+				<!-- A LINK TO /library, not a `clearSearch()`. It used to clear the query, which restored a visible
+						library in place; clearing now lands on the idle state, which shows no songs — so the label would
+						have promised what the tap does not deliver. `showAllCount` is non-null only when the library has
+						rows ("only promise the way back when there is something to go back TO"), and it is PRINTED here:
+						the count is the only thing that makes this an offer rather than a direction, and it is the one
+						moment on this tab where "you already own N songs" is both news and actionable.
+						THE NOUN AGREES, and one-ready is not an edge case: it is the ordinary state the first time a song
+						finishes processing, and it printed "Show my 1 songs" until this agreement was added — contradicting
+						/library's own count line, which already reads "1 song", two taps away from this control. -->
 				{#if empty.showAllCount !== null}
 					<div class="showall-row">
-						<Button variant="secondary" size="tap" onclick={clearSearch}>
-							<Icon name="mic" /> Show my library
+						<Button variant="secondary" size="tap" href="/library">
+							<Icon name="library" /> Show my {empty.showAllCount}
+							{empty.showAllCount === 1 ? 'song' : 'songs'}
 						</Button>
 					</div>
 				{/if}
 			{/if}
+		{:else}
+			<!-- THE IDLE STATE, which is the whole screen with an empty box. It says what this TAB is for: the title
+					used to read "Nothing queued yet", which is false here (the queue is another tab) and is word for word
+					/queue's own idle headline. -->
+			<Empty.Root>
+				<div class="idle">
+					<!-- A MARK, and it is not decoration: this block is the whole screen, and a lone sentence in a void reads
+							as a page that failed to load rather than as a state someone designed. `aria-hidden` because the
+							title beside it already says this in words. -->
+					<span class="empty-mark" aria-hidden="true"><Icon name="mic" /></span>
+					<Empty.Header>
+						<!-- `Empty.Title` renders a <div>, so a zero-state's headline carried no heading SEMANTICS — and this
+							 state REPLACES every `<h2 class="grouphead">` on the tab, so with an empty box the only heading in
+							 the whole document was the wordmark. A guest cycling headings to orient learned nothing about what
+							 the app is. Added at the call site, not by re-vendoring, which is the precedent /settings set for
+							 `Card.Title` at its ten `role="heading" aria-level={2}` call sites, recorded in the comment above
+							 that page's `PageHeader` (named, not line-numbered). -->
+						<Empty.Title role="heading" aria-level={2}>What do you want to sing?</Empty.Title>
+						<Empty.Description>Find any song and we'll make the karaoke track for it.</Empty.Description>
+					</Empty.Header>
+					<!-- THE ACTION, IN THE STATE. It used to say "Search above", which makes a guest look away from the sentence
+							they are reading to find an unlabelled field — and on a phone the field needs a tap to raise the keyboard
+							anyway, which is exactly what this does. Not an `href`: the destination is a control on this same screen. -->
+					<Button variant="secondary" size="tap" onclick={() => queryEl?.focus()}>
+						<Icon name="search" /> Search for a song
+					</Button>
+				</div>
+			</Empty.Root>
 		{/if}
 	{:else}
 		<JoinLanding />
@@ -877,15 +515,12 @@
 <!-- `richColors` stays off: the error tone comes from Encore's own --destructive. -->
 <Toaster position="bottom-center" offset="var(--dock-h, 0px)" style="--width: min(92vw, 420px);" />
 
-<!-- On the window, not a row: mid-gesture focus sits on the grip, so a keyboard cancel must work anywhere. Guarded
-	on `dragging` so it never swallows an Escape the rest of the page wants. -->
-<svelte:window onkeydown={(e) => dragging && e.key === 'Escape' && endDrag(false)} />
-
 <div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
 
 <style>
-	/* Reserves the band's MEASURED height so the last row stays reachable, with a fallback for the first frame. No
-	   env() term — the band carries the only inset, and it arrives through --dock-h. */
+	/* Reserves the dock's MEASURED height so the last row stays reachable, with a fallback for the first frame. No
+	   env() term — `TabBar`, the bottom-most element inside the dock, is the one place that spends
+	   `env(safe-area-inset-bottom)`, and it reaches this column through --dock-h. */
 	main {
 		flex: 1;
 		padding: var(--space-xs) var(--space-2xl) calc(var(--dock-h, 0px) + 28px);
@@ -916,12 +551,6 @@
 		clip: rect(0 0 0 0);
 		clip-path: inset(50%);
 		white-space: nowrap;
-	}
-
-	.reorder-note {
-		margin: 0 0 var(--space-sm);
-		font-size: var(--ph-text-sm);
-		color: var(--warn);
 	}
 
 	/* The gradient stays on the TEXT via background-clip, where it is glyph fill and labels nothing. */
@@ -979,12 +608,12 @@
 		margin-top: var(--space-2xs);
 	}
 
-	/* THE FIELD AND THE LIBRARY DOOR, one row. The bottom margin lives HERE rather than on `.findbox`, or the two
+	/* THE FIELD AND ITS SCOPE PICKER, one row. The bottom margin lives HERE rather than on `.findbox`, or the two
 	   controls would carry separate spacing and the shorter one would not clear the group below it.
-	   `stretch`, NOT `center`: the field is 70px at every width (--space-lg twice, a --tap-floored input and the
-	   border), while `size="icon"` is a FIXED 44px square, so centring left the door 26px short of the thing it
-	   sits beside. Stretching binds the two heights together instead of restating a number that would then drift
-	   from the field's padding.
+	   `center`, NOT `stretch`: stretch was here for the library door, a FIXED 44px square that had to be bound to a
+	   70px field, and with the door gone it left the picker top-aligned in the field's 70px slot — measured at 521px,
+	   the picker's centre at y=96 against the field's 109, 13px out. `center` puts both on 109. Below 520px the picker
+	   takes its own line and neither value applies.
 	   That margin takes the SECTION rung, because this is the controls -> content boundary and so the largest
 	   structural break on the surface. At --space-lg it was 12px, which made it SMALLER than the 16px then
 	   separating two sections of the same kind below it — an inversion, not a near-miss. `.grouphead:first-of-type`
@@ -993,43 +622,38 @@
 	   row-gap, where margins do not collapse, so the same boundary is 28. */
 	.find-row {
 		display: flex;
-		align-items: stretch;
+		align-items: center;
 		flex-wrap: wrap;
 		gap: var(--space-md);
 		margin-bottom: var(--space-5xl);
 	}
-	/* The field takes the rest of the row and is the half that SHRINKS — `min-width: 0` is what lets it, and without
-	   it the 44px door would be pushed off the edge at 320px instead. */
+	/* The field takes the rest of the row and is the half that SHRINKS, which `min-width: 0` is what allows. */
 	.field-slot {
 		flex: 1;
 		min-width: 0;
-		/* THE PROSE MEASURE, and UNCONDITIONALLY — no @media, because a `max-width` can only ever take space BACK: the
-		   cap cannot bite until the row itself passes ~750px, so every width this app was designed on sees byte-
-		   identical geometry and there is no breakpoint here to get wrong. Derived: the findbox is 230px at a 767px
-		   viewport, 510px at 768 (where --max-w is 760 and the row is 696), and the cap first binds above that.
+		/* THE PROSE MEASURE, and UNCONDITIONALLY — no @media, because a `max-width` can only ever take space BACK and
+		   the cap cannot bite until the ROW reaches 692px: 560 plus this row's --space-md gap plus the picker's 122px.
+		   RE-DERIVED WITH THE DOOR GONE, and the reading moved: the findbox is 284px at a 767px viewport and 560 at 768,
+		   because --max-w steps 480 -> 760 there and the row steps 416 -> 696 with it. So the cap now binds exactly AT
+		   --bp-md and never between two widths — the old 230 / 510 figures were taken with a third control in the row.
 		   --measure-prose is the token for the ROLE ("protects line length") and a one-line text field is that role; it
 		   had no caller on either field. At 1440x900 --max-w 1080, less the shell's 2x--space-2xl and main's
-		   2x--space-2xl, is a 1016px column, which handed this slot ~828px and the input ~778px — about 1.4 measures of
-		   caret to chase, with the placeholder adrift from the mark that labels it. Capped, the findbox measures exactly
-		   560 and the input 508, and the door and the picker stay pinned beside it, so the three read as one control
-		   cluster rather than a bar stretched across the column. EVERY WIDTH ABOVE IS A READING PLUS 4px, not a fresh read: main's inline gutter came down one rung (18 -> 16) and this `flex: 1` slot takes both sides of that; the input takes 4 more again, from `.findbox`'s own inline inset coming down 14 -> 12. The capped 560 is the cap itself and did not move. */
+		   2x--space-2xl, is a 1016px row, which would hand this slot ~884px — well over a measure of caret to chase,
+		   with the placeholder adrift from the mark that labels it. Capped, the findbox measures exactly 560 (212->772)
+		   and the picker stays pinned beside it at 782->904, so the two read as one control cluster rather than a bar
+		   stretched across the column. */
 		max-width: var(--measure-prose);
 	}
-	/* A wrapper, because a class handed to <Button> is scoped to this file where Svelte strips it as unused. `0 0 auto`
-	   is load-bearing: beside a field that shrinks, an unpinned 44px control is what collapses instead. */
-	.lib-slot {
-		flex: 0 0 auto;
-		display: flex;
-	}
-	/* THE PICKER YIELDS THE ROW, NOT THE FIELD, and this cost a measurement to learn. It was first pinned
-	   `flex: 0 0 auto` by copying `.lib-slot` above — but that pin's comment was written when the row held TWO
-	   controls, where an unpinned 44px door was the thing that would collapse. With a third pinned sibling the
-	   only flexible item left is the field, and it absorbed the whole deficit: measured in headless Chromium at
-	   320px the search input's content box was 12px, and 4px mid-search once FindField's spinner and clear
-	   button took their share — the primary control of the primary surface, showing about one letter and no
-	   caret. Below --bp-sm the picker takes its own line instead (142px idle / 63px searching at 320px, and no
-	   overflow). The literal is required: a media condition is evaluated before the cascade and cannot read
-	   var(--bp-sm). */
+	/* THE PICKER YIELDS THE ROW, NOT THE FIELD, and this cost a measurement to learn — twice, because the first
+	   reading was taken when a library door was pinned here too. `flex: 0 0 auto` leaves the field as the only
+	   flexible item, so it absorbs the whole deficit: measured in headless Chromium at 320px with this arm defeated,
+	   the search input's content box is 68px idle, 14px once a query puts FindField's clear control in the row, and
+	   ZERO while the search is still in flight and the spinner sits beside the clear — the primary control of the
+	   primary surface, showing one word, then no word, then nothing at all. THE THREE STATES ARE NAMED SEPARATELY
+	   BECAUSE THEY DIFFER: "mid-search" alone used to carry the 14, which is the settled clear-only reading and the
+	   mildest of the three. Below --bp-sm the picker takes its own line instead, which leaves the input 200px idle,
+	   146px settled and 121px with the spinner up at 320px (and no overflow: `.find-row` is 124px tall there). The
+	   literal is required: a media condition is evaluated before the cascade and cannot read var(--bp-sm). */
 	.source-slot {
 		flex: 0 0 auto;
 		display: flex;
@@ -1039,14 +663,6 @@
 		.source-slot {
 			flex: 1 1 100%;
 		}
-	}
-	/* `size-tap` sets a fixed height as well as a width, so filling the stretched slot needs this override. Keyed on
-	   the primitive's OWN `data-slot` and anchored under `.lib-slot`, which is the sanctioned form — a bare class rule
-	   would compile to a hash that lands on nothing. Only the HEIGHT is released: the 44px width stays, so the door
-	   reads as a control paired with the field rather than a second box competing with it, and the tap floor holds on
-	   both axes by construction. */
-	.lib-slot :global([data-slot='button']) {
-		height: 100%;
 	}
 
 	.showall-row {
@@ -1060,16 +676,16 @@
 	   rule below actually resolves) and 200% text one unbreakable word is wider than the viewport. The size reaches
 	   the vendored slot through `:global()`. */
 	/* FLEX COLUMN, not `grid` + `place-items: center`. The vendored `Empty.Header` is `display: contents`, so its
-	   children become direct children of THIS box — under grid they became two auto rows that split the 40vh
+	   children become direct children of THIS box — under grid they became two auto rows that split the min-height
 	   between them and put the description 220px below its own title. A centred flex column stacks them as one
 	   group with a real gap, and reads the same when there is only a title. */
-	.queue-empty {
+	.idle {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		gap: var(--space-lg);
-		/* 32vh, DOWN FROM 40: the block now carries a mark, a title, a line and a button, so the void that used to stand in
+		/* 32vh, DOWN FROM 40: the block carries a mark, a title, a line and a button, so the void that used to stand in
 		   for content is no longer doing that job. Still a `min-height` and still not a centring trick, for the reason the
 		   original note gives — three other rules own this column's height. */
 		min-height: 32vh;
@@ -1084,11 +700,7 @@
 		font-size: var(--ph-text-2xl);
 		color: var(--ink-dim);
 	}
-	/* See the markup note: the void is only right when nothing follows the state. */
-	.queue-empty.tight {
-		min-height: 0;
-	}
-	/* THE SPACE IS LOAD-BEARING. Without it this is a COMPOUND selector — one element carrying both `.queue-empty`
+	/* THE SPACE IS LOAD-BEARING. Without it this is a COMPOUND selector — one element carrying both `.idle`
 	   and `data-slot="empty-title"` — and `empty-title` is a GRANDCHILD (through `Empty.Header`, which computes to
 	   `display: contents`). It matched nothing, silently: `:global()` suppresses Svelte's unused-selector warning,
 	   so the size, weight and the `overflow-wrap` reflow clause below never applied and the title rendered at the
@@ -1097,8 +709,8 @@
 	   largest type in the app AND dimmed by `.encore-empty`'s --ink-dim, which is the worst pair available: big enough
 	   to dominate the screen, faint enough to
 	   read as a placeholder nobody finished. Full --ink at a heading size states it once, properly. It also now agrees
-	   with /library's twin, which was already at this step. */
-	.queue-empty :global([data-slot='empty-title']) {
+	   with /library's `.lib-empty` twin, which was already at this step. */
+	.idle :global([data-slot='empty-title']) {
 		font-size: var(--ph-text-2xl);
 		line-height: var(--lh-snug);
 		font-weight: 700;
@@ -1148,8 +760,9 @@
 	   nothing painted under them they read as two things adrift rather than as one header. THE GAP IS NAME-DEPENDENT,
 	   so no constant here is a property of the layout: `.me-cluster` is `margin-left: auto`, so the distance is the
 	   content box less the wordmark less the cluster, and the cluster's width is the singer's display name. Read
-	   with an eight-character name it is 95px at 390x844 and 785px at 1440x900 — the same order as the ~777px of
-	   docs/UI-DESIGN-REVIEW.md#5. Both are a reading plus 4px: `.topbar`'s inline gutter came down one rung (18 -> 16) when app.css retired `--space-3xl`, and a wider content box is a wider gap for the auto margin to open.
+	   with the eight-character name `Theodora` it is 80px at 390x844 and 770px at 1440x900 — the same order as the
+	   ~777px of docs/UI-DESIGN-REVIEW.md#5. THE NAME IS PART OF THE READING, not noise around it: a narrower eight
+	   characters opens the gap further, so a figure quoted here without its name cannot be reproduced.
 	   The gap is UNCHANGED by this rule, deliberately, and on its OWN merits rather than by precedent: leading brand /
 	   trailing account is a real desktop header form, and the cluster is the one thing on this column that earns the
 	   far edge, because it leaves the way into /settings in the same corner it occupies on every other route. What the
@@ -1159,7 +772,7 @@
 	   var(--space-md)`, with no trailing slot and no auto margin anywhere in the file. What `/` alone lacks is that
 	   every other header is a capped SURFACE, and this is the cheapest honest form of one.
 	   Deliberately NOT the PageHeader pill: that fill and blur are earned by being STICKY, and this header is not
-	   (docs/FRONTEND.md#the-home-column). --line and not --control-line: this is a decorative hairline, not the
+	   (docs/FRONTEND.md#the-sing-tab). --line and not --control-line: this is a decorative hairline, not the
 	   boundary of anything operable.
 	   The rule spans the shell's content box, 16px past the rows' column on each side, which is deliberate — a divider
 	   stopping exactly at a row's edge reads as a row boundary rather than as page structure.

@@ -1,6 +1,6 @@
 // Reordering the queue, as pure functions. THE DRAG IS A LIVE SORT, and a release cannot commit somewhere the
 // guest did not choose because `liveSortTarget` is the same arithmetic that positions the rows on screen. SC 2.5.7 /
-// 2.1.1 are carried by the grip itself, through `keyboardMoveTarget`. See docs/FRONTEND.md#the-home-column.
+// 2.1.1 are carried by the grip itself, through `keyboardMoveTarget`. See docs/FRONTEND.md#the-three-tabs.
 
 import type { EntryStatus } from '$lib/contract';
 import { ordinalWord } from '$lib/phrasing/position-sentence';

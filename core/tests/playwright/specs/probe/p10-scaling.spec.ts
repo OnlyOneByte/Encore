@@ -417,7 +417,7 @@ async function roomPlaying(world: World): Promise<{ phone: Page; stop: () => Pro
 	// The row's action becomes the plain add once the stems land; before that it is process-and-queue. Either
 	// takes the turn, and waiting for the add is what proves the song went READY.
 	await phone.locator(SEL.addTurn).first().click({ timeout: 60_000 });
-	await expect(phone.locator(SEL.bandTitle)).toContainText('caroline');
+	await expect(phone.locator(SEL.npStripTitle)).toContainText('caroline');
 	return { phone, stop: () => worker.stop() };
 }
 

@@ -1,7 +1,7 @@
 // What the phone's polite live region says when the queue changes UNDER the guest — the only queue news they did
 // not cause themselves. Pure, so the anti-spam rules below are decidable by calling it rather than by reading the
 // route's effect: the guard for "a guest joining a busy room does not have the whole queue read aloud" is a call
-// with no baseline, not a regex for a latch variable. See docs/FRONTEND.md#the-home-column.
+// with no baseline, not a regex for a latch variable. See docs/FRONTEND.md#the-three-tabs.
 import type { QueueEntry } from '$lib/contract';
 
 /** Only the fields the sentence needs, so a catalog or playback change cannot reach this. */

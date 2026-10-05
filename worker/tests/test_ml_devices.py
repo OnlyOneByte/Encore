@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import re
 import sys
 import types
 from collections.abc import Callable
@@ -335,19 +336,36 @@ def test_the_english_bundle_is_a_function_of_the_device() -> None:
 
     # AND THE XL PARAGRAPH MAY NOT READ AS A MEASUREMENT (W5's flip spec; W4b review r2 correctness-3 is the
     # same defect one bundle over). W7c moved that paragraph into the DESIGN DOCUMENT the table now cites, so
-    # the pair is checked where it lives: the code must still point at §3.1, and §3.1 must still call XL a
-    # projection. Reading the code alone would pass on a pointer to a section that had lost the caveat.
+    # the pair is checked where it lives: the code must still point at docs/arch/04-alignment.md §3.1, and
+    # that section must still call XL a projection. Reading the code alone would pass on a pointer to a
+    # section that had lost the caveat.
     from encore_worker.adapters import ml
 
     source = Path(inspect.getsourcefile(ml) or "").read_text(encoding="utf-8")
-    table = source.split("ALIGN_MODELS_BY_DEVICE")[0]
+    # The slice is the `#:` RUN IMMEDIATELY ABOVE the assignment, walked back to, not the whole file before
+    # it (W7c review r1-correctness-3): the module docstring cites docs/arch/04-alignment.md §3.1 too, so a
+    # prefix window stayed true with this block deleted and the pointer it pins could be dropped silently.
+    lines = source.splitlines()
+    assignment = next(n for n, line in enumerate(lines) if line.startswith("ALIGN_MODELS_BY_DEVICE"))
+    first = assignment
+    while first and lines[first - 1].lstrip().startswith("#:"):
+        first -= 1
+    table = "\n".join(lines[first:assignment])
+    assert table, "the exception table has lost its `#:` block: nothing points at XL's caveat any more"
     assert "docs/arch/04-alignment.md §3.1" in table, (
         "the block above the table must point at the section carrying XL's caveat"
     )
+    assert "XLarge" in table, (
+        "and must name what the pointer is for: the CUDA XLarge row the empty table may not grow"
+    )
     design = Path(__file__).resolve().parents[2] / "docs/arch/04-alignment.md"
-    section = design.read_text(encoding="utf-8").split("### 3.1 ")[1].split("\n## ")[0]
-    assert "projection" in section and "HUBERT_ASR_XLARGE" not in section.split("XLarge")[0], (
-        "§3.1 must call XLarge's accuracy claim a projection, never a measured one"
+    section = re.split(r"\n#{2,4} ", design.read_text(encoding="utf-8").split("### 3.1 ")[1])[0]
+    assert "accuracy claim is a projection" in section, (
+        "docs/arch/04-alignment.md §3.1 must call XLarge's accuracy claim a projection, never a measured one"
+    )
+    assert "must not grow a CUDA row" in section, (
+        "docs/arch/04-alignment.md §3.1 must keep the caveat the empty table exists for: no CUDA row for "
+        "XLarge without a CUDA sweep"
     )
 
 

@@ -3,7 +3,7 @@
   emits `max-width: var(--space-xs)` — six pixels, which nothing but a screenshot sees. Radius and spacing are arbitrary
   values for the same reason: `--radius-*` is deliberately unregistered, and numeric spacing utilities resolve against
   Tailwind's own multiplier. `z-50` is correct rather than arbitrary — the phone ladder tops out at --z-dock (30) and a
-  modal must clear the docked bands. The scrim lives on alert-dialog-overlay.svelte, not here. -->
+  modal must clear the dock. The scrim lives on alert-dialog-overlay.svelte, not here. -->
 <script lang="ts">
 	import { AlertDialog as AlertDialogPrimitive } from 'bits-ui';
 	import { cn, type WithoutChild, type WithoutChildrenOrChild } from '$lib/utils.js';

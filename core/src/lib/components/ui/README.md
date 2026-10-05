@@ -27,11 +27,13 @@ about twenty others are unrendered and staying. **The one exception is a part wh
 `Field.Separator` and `Item.Separator` were deleted with `Separator` itself, because a part that imports a
 component we no longer vendor cannot compile. If you re-add `Separator`, re-add them with it.
 
-A SECOND exception has since appeared, and it is the reverse shape — a part whose own RENDER goes.
-`drawer-overlay.svelte` is vendored, wired to nothing, and staying: `vaul-svelte` gates the overlay on
-`modal`, Encore's only drawer is necessarily `modal={false}`, so it could never mount. It keeps its
-component and lost its dead fade CSS. THE PAIR MUST NOT DRIFT: "not rendered" and "not modal" are one
-decision, so re-mounting the overlay means revisiting `modal`. See its deviation header.
+The whole `drawer/` directory went for that same rule, and it is the largest instance of it. All thirteen
+files — `drawer.svelte` through `drawer-overlay.svelte` and the barrel — imported `vaul-svelte`, so removing
+that dependency left none of them able to compile. They were deleted together with it when the now-playing
+sheet was replaced by a fixed-height strip plus a `/queue` tab, which is also why the DEPENDENCY could go:
+the sheet was its only reason to exist. See `docs/FRONTEND.md` for that ruling, and note the registry
+consequence: `shadcn-svelte add drawer` would re-add the dependency too, so re-vendoring the directory is a
+decision about `vaul-svelte` and not just about files.
 
 If you are adding the next one, the five sections below are the constraints that will bite you, in the
 order they bit that migration.

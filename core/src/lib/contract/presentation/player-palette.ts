@@ -8,8 +8,9 @@
 // `resolveJsonModule`, but Node's own ESM loader refuses it — and the contract BARREL re-exports this module,
 // so any Node-side consumer that touches `$lib/contract` at runtime dies on
 // `needs an import attribute of "type: json"`. That is exactly what happened: the whole Playwright suite
-// failed to load because one spec imported a constant from `$lib/sheet-snap` and another a function from
-// `$lib/tv/lyrics`, both of which reach this file through the barrel.
+// failed to load because two specs imported from `$lib` modules that reach this file through the barrel — one a
+// function from `$lib/tv/lyrics`, which p6-lyrics.spec.ts still does, the other a constant from `$lib/sheet-snap`,
+// a module since deleted with the now-playing sheet. One live example is enough to keep the hazard real.
 import registry from './player-palette-48.json' with { type: 'json' };
 import { canonicalHex, hueDistance, hueOfColor } from './colors';
 

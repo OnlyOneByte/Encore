@@ -2,9 +2,13 @@
 
 THE ROLE REVERSAL: the claims are EVIDENCE rather than a search space, so they either corroborate ours or
 diagnose which known failure shape this sheet has. NO CLAIM IS "CORRECTED" HERE (XA-04). The classes, their
-residual patterns, which lines each lets a repair touch and why `spread_sec` gates nothing:
+residual patterns, which lines each lets a repair touch and why `Reconciliation.spread_sec` gates nothing:
 `docs/arch/04-alignment.md` §7; README, "Reconcile robustness: the fit, the classes, and which lines a repair
 may touch".
+
+`AsClaimed.spread_sec` is the OTHER spread and it DOES gate: with `together` it separates one coherent
+displacement from lopsided scatter in `off_sheet`, which demotes a whole document
+(`docs/arch/04-alignment.md` §6.1).
 """
 
 from __future__ import annotations
@@ -45,6 +49,11 @@ MIN_FITTED_PAIRS = 5
 #: Share of paired lines that must land within `AGREE_TOLERANCE_SEC` of the FITTED model for "one affine map
 #: describes this sheet", leaving one line in ten for the stray stamp every hand-timed sheet carries.
 INLIER_SHARE = 0.9
+
+#: Share of paired lines that must sit within `AGREE_TOLERANCE_SEC` of the MEDIAN LAG before `off_sheet` may
+#: call that lag ONE displacement rather than lopsided scatter a MAD cannot see. Measured on the corpus's own
+#: coherent readings: README, "W8a: the share a coherent lag has to carry".
+MIN_COHERENT_SHARE = 0.7
 
 #: |scale - 1| beyond this and the tempo fit is DROPPED rather than clamped, which leaves the median offset.
 #: Two masters of one song differ by a few percent at most. Tighter than `place.MAX_SCALE_DRIFT`, which only
@@ -329,11 +338,18 @@ class AsClaimed:
     tolerance_sec: float
     #: median(ours − claimed): the lag the decode reads in the claims, for the trail (it is NOT removed).
     offset_sec: float
+    #: MAD of the residuals about `offset_sec`: one shift when small, lopsided scatter when not. UNDEFAULTED,
+    #: with `together`: a constructor that forgot either would hand `off_sheet` perfect coherence.
+    spread_sec: float
+    #: Share of residuals within `tolerance_sec` of `offset_sec`: the conjunct a MAD cannot supply, reading
+    #: 0.00 as it does on a half-and-half population (`MIN_COHERENT_SHARE`).
+    together: float
 
     def why(self) -> str:
         return (
             f"the text's own blind decode starts {self.near:.0%} of {self.pairs} lines within "
-            f"{self.tolerance_sec:.1f} s of their claims (median lag {self.offset_sec:+.2f} s)"
+            f"{self.tolerance_sec:.1f} s of their claims (median lag {self.offset_sec:+.2f} s, spread "
+            f"{self.spread_sec:.2f} s)"
         )
 
 
@@ -357,9 +373,73 @@ def as_claimed(
     if len(pairs) < MIN_PAIRS:
         return None
     residuals = [ours - theirs for ours, theirs in pairs]
+    offset = float(median(residuals))
     return AsClaimed(
         near=sum(abs(r) <= tolerance_sec for r in residuals) / len(residuals),
         pairs=len(pairs),
         tolerance_sec=tolerance_sec,
-        offset_sec=float(median(residuals)),
+        offset_sec=offset,
+        spread_sec=float(median(abs(r - offset) for r in residuals)),
+        together=sum(abs(r - offset) <= tolerance_sec for r in residuals) / len(residuals),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class OffSheet:
+    """One lag BOTH of a published document's own witnesses confirm: it is off its sheet, and it is us."""
+
+    #: median(published − claimed): how far the room sees every line move, in the room's own direction.
+    lag_sec: float
+    #: MAD of those residuals. Small by construction — `off_sheet` refuses an incoherent reading.
+    spread_sec: float
+    #: Share of them within `AGREE_TOLERANCE_SEC` of `lag_sec`, at or above `MIN_COHERENT_SHARE`.
+    together: float
+    pairs: int
+    #: The envelope's reading of the SERVED claim windows against the audio. Near zero: the singing is where
+    #: the sheet says, so the sheet is not what moved.
+    envelope_lag_sec: float
+    #: Do the CLAIMS add a witness of their own? False when this whole lag is the claim clock's own map, which
+    #: makes the first reading a restatement of a decision this pipeline made and the envelope the only
+    #: independent witness left. Measured per mode: README, "W8a: when the claims restate the clock".
+    claims_independent: bool = True
+
+    def why(self) -> str:
+        witnesses = (
+            "both witnesses place this document away from where it published"
+            if self.claims_independent
+            else "this lag IS the claim clock's own map, so the claims add no second witness and the "
+            "envelope alone convicts"
+        )
+        return (
+            f"OFF ITS SHEET by {self.lag_sec:+.2f} s coherently ({self.together:.0%} of {self.pairs} paired "
+            f"lines within {AGREE_TOLERANCE_SEC:.2f} s of it, spread {self.spread_sec:.2f} s) while the "
+            f"audio puts the singing {self.envelope_lag_sec:+.2f} s from those same claims: {witnesses}"
+        )
+
+
+def off_sheet(
+    reading: AsClaimed | None, *, envelope_lag_sec: float | None, clock_lag_sec: float = 0.0
+) -> OffSheet | None:
+    """Is the PUBLISHED document coherently off the claims it was GIVEN, with the audio siding against it?
+
+    BOTH witnesses must say so: the claims that every line moved together — a small MAD AND a lag
+    `MIN_COHERENT_SHARE` of the lines carry — and the envelope that the singing is where those claims put it.
+    `None` abstains and never demotes. `clock_lag_sec` is what the claim clock already applied to this sheet;
+    a lag that IS that map restates it instead of witnessing. docs/arch/04-alignment.md §6.1.
+    """
+    if reading is None or envelope_lag_sec is None:
+        return None
+    if abs(reading.offset_sec) <= AGREE_TOLERANCE_SEC or reading.spread_sec > AGREE_TOLERANCE_SEC:
+        return None
+    if reading.together < MIN_COHERENT_SHARE:
+        return None
+    if abs(envelope_lag_sec) > AGREE_TOLERANCE_SEC:
+        return None
+    return OffSheet(
+        lag_sec=reading.offset_sec,
+        spread_sec=reading.spread_sec,
+        together=reading.together,
+        pairs=reading.pairs,
+        envelope_lag_sec=envelope_lag_sec,
+        claims_independent=abs(reading.offset_sec - clock_lag_sec) > AGREE_TOLERANCE_SEC,
     )

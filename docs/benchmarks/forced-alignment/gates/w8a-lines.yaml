@@ -1,0 +1,188 @@
+# W8a's LINE_SYNC gate: the band read at the rung where the CLAIM CLOCK is the only thing that can move a
+# line (PLAN-alignment-v3 W8a; `--sync-mode lines` = every text's only attempt is the gated LINE_SYNC rung).
+# Companion to `w8a.yaml`, which serves `time_text` and `run_align`/forced; this rung needs its own file
+# because it grades NO line (`high` 0 by construction, `w3-lines.yaml`'s `lines-never-high`) and scores no
+# word, so half of that file would be an ERROR here.
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --sync-mode lines --modes all,wrongtext+ownclock --tag w8a-lines \
+#       --compare ../docs/benchmarks/forced-alignment/results/w8a-base-lines-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w8a-lines.yaml
+#
+# THE BASELINE is `results/w7-lines-run_align.json`'s OWN ROWS re-summarised on the W8a harness
+# (`results/w8a-base-lines-run_align.json`, 0 model seconds, every pre-existing metric identical pooled and
+# per song), which is the only way a `base.MODE.band` gate can read metrics that did not exist in W7.
+#
+# WHY THIS RUNG IS THE SHARPEST INSTRUMENT IN THE WAVE, and it is a measurement nothing before W8a could
+# take. At LINE_SYNC the document IS the served sheet: no decode, no repair, no window. So (published - truth)
+# is the CLAIM CLOCK's shift and nothing else, and `mad_ms` says whether that shift was RIGID.
+# Measured on the baseline, `truth` claims (where the served sheet IS the truth):
+#   * 30 of 32 songs publish verbatim — `bias_ms` 0.0, `mad_ms` 0.0, 100 % +-500.
+#   * bad-guy +720.0 ms at MAD **0.0**, numb +620.0 ms at MAD **0.0** — every one of bad-guy's 65 lines and
+#     numb's 35 moved by ONE constant. 0.00 % +-500 on both.
+# That is the "systematic per-song offset" the wave was opened on, isolated to ONE stage with zero spread, and
+# it is OURS in the sense that we moved a correct sheet. It is also, by W8a task 1's three arbiters, a move
+# TOWARD the singing (bad-guy's vocal onsets sit +1.007 s after its captions), so the clock is acoustically
+# right and metrically wrong on exactly those two songs — the sentence this file exists to keep measurable.
+#
+# AND THE MIRROR, which is why +-500 alone can never be the gate again: in `off05` the served sheet is 0.5 s
+# late, the rung publishes it verbatim, and +-500 scores **99.88 %** — the best pooled +-500 of any mode in
+# this build — on a document that is uniformly half a second late (`bias_ms` +500.0 at MAD 0.0 over 29 songs).
+# ITU-R BT.1359 puts a noticed late highlight at ~45 ms. §4 gates BOTH readings: the band metric must SEE it
+# and the +-500 must still read ~100, because the day someone "fixes" §4 by moving +-500 is the day the
+# instrument is gone.
+#
+# Gates are the CONDITION THAT MUST HOLD; see e2e_gates.py. `blind` has NO rule in this file: with no claims
+# there is no sheet to line-sync, so every one of its metrics is absent and every gate on it an ERROR.
+# `drop50` has no PER-SONG rule for the same reason as in `w8a.yaml`: 10 of its 32 songs publish no scorable
+# line here, so `count()` over a per-song metric is an ERROR rather than a reading.
+
+# ── 1) MUST: nothing regresses at this rung ────────────────────────────────────────────────────────────
+# W8a task 3's re-opening rule cannot reach LINE_SYNC (it re-opens a WINDOW RE-DECODE, and this rung decodes
+# nothing), so the prediction for this whole file is IDENTITY. These are the rules that make that a
+# measurement instead of an argument.
+pm500-not-down-truth: truth.pm500 >= base.truth.pm500
+pm500-not-down-jit: jit.pm500 >= base.jit.pm500
+pm500-not-down-off05: off05.pm500 >= base.off05.pm500
+pm500-not-down-off15: off15.pm500 >= base.off15.pm500
+pm500-not-down-off3: off3.pm500 >= base.off3.pm500
+pm500-not-down-offm1: offm1.pm500 >= base.offm1.pm500
+pm500-not-down-tempo098: tempo098.pm500 >= base.tempo098.pm500
+pm500-not-down-tempo102: tempo102.pm500 >= base.tempo102.pm500
+pm500-not-down-drop20: drop20.pm500 >= base.drop20.pm500
+pm500-not-down-drop50: drop50.pm500 >= base.drop50.pm500
+pm500-not-down-extraverse: extraverse.pm500 >= base.extraverse.pm500
+pm500-not-down-headers: headers.pm500 >= base.headers.pm500
+pm500-not-down-credit: credit.pm500 >= base.credit.pm500
+no-song-loses-truth: min_song_delta(truth.song.pm500) >= -0.001
+no-song-loses-jit: min_song_delta(jit.song.pm500) >= -0.001
+no-song-loses-off05: min_song_delta(off05.song.pm500) >= -0.001
+no-song-loses-drop20: min_song_delta(drop20.song.pm500) >= -0.001
+no-song-loses-extraverse: min_song_delta(extraverse.song.pm500) >= -0.001
+
+# ── 2) MUST: the songs that publish verbatim keep publishing verbatim ──────────────────────────────────
+# 30 of 32 at `truth` (every song but bad-guy and numb), 31 at `drop20` and `extraverse`, 29 at `offm1` and
+# `credit`, 28 at `tempo098`. `jit`'s 1 is not a weakness of the rung: jitter is per line, so a rung that
+# cannot re-time republishes every jittered line as served.
+perfect-songs-held-truth: count(truth.song.pm500 >= 100) >= 30
+perfect-songs-held-off05: count(off05.song.pm500 >= 100) >= 30
+perfect-songs-held-off15: count(off15.song.pm500 >= 100) >= 30
+perfect-songs-held-off3: count(off3.song.pm500 >= 100) >= 30
+perfect-songs-held-offm1: count(offm1.song.pm500 >= 100) >= 29
+perfect-songs-held-tempo098: count(tempo098.song.pm500 >= 100) >= 28
+perfect-songs-held-tempo102: count(tempo102.song.pm500 >= 100) >= 29
+perfect-songs-held-drop20: count(drop20.song.pm500 >= 100) >= 31
+perfect-songs-held-extraverse: count(extraverse.song.pm500 >= 100) >= 31
+perfect-songs-held-headers: count(headers.song.pm500 >= 100) >= 30
+perfect-songs-held-credit: count(credit.song.pm500 >= 100) >= 29
+perfect-songs-held-jit: count(jit.song.pm500 >= 100) >= 1
+
+# ── 3) MUST: no gross line, and no line graded `high`, anywhere at this rung ───────────────────────────
+# ZERO gross in every mode of the baseline, which is the one thing a rung that cannot re-time gets for free.
+# And `high` is 0 by construction: a line-synced document scores no word and lights no wipe (W3's reading,
+# `w3-lines.yaml`'s `lines-never-high`), so a `high` line appearing here would mean the rung stopped being
+# the rung.
+gross-zero-truth: truth.gross == 0
+gross-zero-jit: jit.gross == 0
+gross-zero-off05: off05.gross == 0
+gross-zero-off15: off15.gross == 0
+gross-zero-off3: off3.gross == 0
+gross-zero-offm1: offm1.gross == 0
+gross-zero-tempo098: tempo098.gross == 0
+gross-zero-tempo102: tempo102.gross == 0
+gross-zero-drop20: drop20.gross == 0
+gross-zero-drop50: drop50.gross == 0
+gross-zero-extraverse: extraverse.gross == 0
+gross-zero-headers: headers.gross == 0
+gross-zero-credit: credit.gross == 0
+lines-never-high: truth.high + jit.high + off05.high + off15.high + off3.high + offm1.high + tempo098.high + tempo102.high + drop20.high + drop50.high + extraverse.high + blind.high + headers.high + credit.high + wrongtext.high + mode("wrongtext+ownclock").high == 0
+
+# ── 4) MUST: the band metrics read the claim clock, and keep reading the +-500 blindness as blindness ───
+# THE CLOCK MOVES EXACTLY TWO SONGS AT `truth`, and the count is the gate. If it RISES, the clock has started
+# shifting a sheet it used to leave alone; if it FALLS, the clock stopped shifting bad-guy or numb — which
+# would be a +119-line gain at +-500 and is the thing W8a task 1 says is NOT a gain, those two sheets
+# preceding their own singing. Either direction is a finding; neither is allowed to pass silently.
+clock-moves-two-songs-truth: count((abs(truth.song.bias_ms) > 250) * (truth.song.mad_ms <= 250)) == 2
+clock-moves-two-songs-headers: count((abs(headers.song.bias_ms) > 250) * (headers.song.mad_ms <= 250)) == 2
+clock-moves-one-song-extraverse: count((abs(extraverse.song.bias_ms) > 250) * (extraverse.song.mad_ms <= 250)) <= 1
+clock-moves-one-song-drop20: count((abs(drop20.song.bias_ms) > 250) * (drop20.song.mad_ms <= 250)) <= 1
+#
+# AND IT MOVES THEM RIGIDLY OR NOT AT ALL. Every song's `mad_ms` is exactly 0.0 at `truth`, `off05`,
+# `drop20`, `extraverse` and `headers`: the rung either republishes a sheet untouched or slides all of it by
+# one constant. A nonzero MAD here would mean LINE_SYNC had begun re-timing lines individually, which is a
+# different rung. 1 ms of slack, for a metric quantised to 0.1 ms.
+clock-shift-is-rigid-truth: max(truth.song.mad_ms) <= 1.0
+clock-shift-is-rigid-off05: max(off05.song.mad_ms) <= 1.0
+clock-shift-is-rigid-drop20: max(drop20.song.mad_ms) <= 1.0
+clock-shift-is-rigid-extraverse: max(extraverse.song.mad_ms) <= 1.0
+clock-shift-is-rigid-headers: max(headers.song.mad_ms) <= 1.0
+#
+# THE TWO READINGS OF `off05`, KEPT TOGETHER ON PURPOSE. The served sheet is 0.5 s late and this rung
+# publishes it; the band metric must SEE that (+500.0 ms pooled over Jamendo) and +-500 must still read
+# ~99.9, because the pair IS the argument for why the signed metrics had to exist. Do not "fix" the second
+# rule: it is a statement about the metric, not about the aligner.
+off05-displacement-is-seen: abs(off05.jamendo.bias_ms) >= 450
+off05-pm500-is-blind-to-it: off05.pm500 >= 99.0
+#
+# The population, against the baseline: truth 100 of 1719 scored, jit 253, drop20 53, extraverse 65.
+band-not-up-truth: truth.band <= base.truth.band
+band-not-up-jit: jit.band <= base.jit.band
+band-not-up-off05: off05.band <= base.off05.band
+band-not-up-off15: off15.band <= base.off15.band
+band-not-up-off3: off3.band <= base.off3.band
+band-not-up-offm1: offm1.band <= base.offm1.band
+band-not-up-tempo098: tempo098.band <= base.tempo098.band
+band-not-up-tempo102: tempo102.band <= base.tempo102.band
+band-not-up-drop20: drop20.band <= base.drop20.band
+band-not-up-drop50: drop50.band <= base.drop50.band
+band-not-up-extraverse: extraverse.band <= base.extraverse.band
+band-not-up-headers: headers.band <= base.headers.band
+band-not-up-credit: credit.band <= base.credit.band
+#
+# AND THE DENOMINATOR, one rule per band rule (review r1-correctness-8, r1-spec-13, r1-tests-20;
+# `w8a-band.yaml` §3 carries the measurement). `band` is an absolute COUNT over the SCORED lines of PUBLISHED
+# cases, so a case that starts refusing, or a line dropped as never-sung, lowers it without placing anything
+# better. At THIS rung that matters more than at the word rung, not less: the LINE_SYNC gate is a REFUSAL
+# gate (`w3-lines.yaml`), so refusing is the cheapest way a change here could make `band` fall. `missing` is
+# `in_text - scored`. MEASURED on this baseline: 48 on truth, jit, all four offset modes, both tempo modes,
+# headers and credit, 36 on drop20, 265 on drop50, 37 on extraverse — and `drop50`'s 265 against the band's
+# own 32 is why the pairing it is denied a per-song rule for in §4 still needs this one.
+band-missing-not-up-truth: truth.missing <= base.truth.missing
+band-missing-not-up-jit: jit.missing <= base.jit.missing
+band-missing-not-up-off05: off05.missing <= base.off05.missing
+band-missing-not-up-off15: off15.missing <= base.off15.missing
+band-missing-not-up-off3: off3.missing <= base.off3.missing
+band-missing-not-up-offm1: offm1.missing <= base.offm1.missing
+band-missing-not-up-tempo098: tempo098.missing <= base.tempo098.missing
+band-missing-not-up-tempo102: tempo102.missing <= base.tempo102.missing
+band-missing-not-up-drop20: drop20.missing <= base.drop20.missing
+band-missing-not-up-drop50: drop50.missing <= base.drop50.missing
+band-missing-not-up-extraverse: extraverse.missing <= base.extraverse.missing
+band-missing-not-up-headers: headers.missing <= base.headers.missing
+band-missing-not-up-credit: credit.missing <= base.credit.missing
+
+# ── 5) MUST: wrong-text protection is untouched at this rung too ───────────────────────────────────────
+# 320 cases each, nothing published, nothing line-synced, nothing scored — the 0/640 the wave names. A rung
+# that publishes the sheet as served is the one where a wrong text would be cheapest to publish, which is why
+# W3 gated it here first (`w3-lines.yaml`).
+wrongtext-cases-320: wrongtext.cases == 320
+wrongtext-pass-zero: wrongtext.wrongtext_pass == 0
+wrongtext-commits-nothing: wrongtext.published + wrongtext.line_sync == 0
+ownclock-cases-320: mode("wrongtext+ownclock").cases == 320
+ownclock-pass-zero: mode("wrongtext+ownclock").wrongtext_pass == 0
+ownclock-commits-nothing: mode("wrongtext+ownclock").published + mode("wrongtext+ownclock").line_sync == 0
+
+# ── 6) MUST: not one document's bytes move at this rung ────────────────────────────────────────────────
+# The prediction is IDENTITY, and `doc_changed` is the whole document's sha256, so this is the sharpest form
+# of "task 3's rule cannot reach LINE_SYNC". If one fires, read WHICH song before anything else.
+docs-unchanged-truth: count(truth.song.doc_changed) == 0
+docs-unchanged-jit: count(jit.song.doc_changed) == 0
+docs-unchanged-off05: count(off05.song.doc_changed) == 0
+docs-unchanged-off3: count(off3.song.doc_changed) == 0
+docs-unchanged-drop20: count(drop20.song.doc_changed) == 0
+docs-unchanged-extraverse: count(extraverse.song.doc_changed) == 0
+docs-unchanged-headers: count(headers.song.doc_changed) == 0
+docs-unchanged-credit: count(credit.song.doc_changed) == 0
+onsets-unchanged-truth: count(truth.song.onsets_changed) == 0
+onsets-unchanged-jit: count(jit.song.onsets_changed) == 0
+onsets-unchanged-off05: count(off05.song.onsets_changed) == 0

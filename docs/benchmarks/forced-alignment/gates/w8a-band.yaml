@@ -1,0 +1,249 @@
+# W8a reject-if for THE 0.5-2 s BAND: the signed metrics, and the coherence grade that reads them without
+# truth (PLAN-alignment-v3 W8a; `e2e_lib.coherence_metrics`, `reconcile.off_sheet`,
+# `align_steps._sheet_why`; docs/arch/04-alignment.md §6.1).
+#
+#   cd worker && .venv/bin/python ../docs/benchmarks/forced-alignment/scripts/e2e.py \
+#       --level run_align --modes all --tag w8a-band \
+#       --compare ../docs/benchmarks/forced-alignment/results/w8a-band-run_align.json \
+#       --gates ../docs/benchmarks/forced-alignment/gates/w8a-band.yaml
+#   (offline: e2e.py --summarize <run>/rows.jsonl --compare ... --gates ...)
+#
+# THE BASELINE IS W7's OWN ROWS, re-summarised rather than re-run: `results/w8a-band-run_align.json` is
+# `results/w7-run_align.json`'s 1088 cases put back through `--summarize` on this wave's harness, which is
+# the only way a `base.MODE.band` gate can read a metric that did not exist when the sweep ran. Every
+# pre-existing metric is identical case for case, pooled and per song — 0 diffs, held by
+# `test_bench_e2e.test_the_band_baseline_is_w7s_own_rows_re_summarised`. No model time was spent on it.
+#
+# WHY THESE GATES EXIST AT ALL. Every line metric this harness carried before W8a reads `abs(error)`, so a
+# document every line of which is 0.86 s LATE scores exactly like one scattered ±0.86 s. That symmetry is
+# what let five songs sit in the 0.5-2 s band through eight waves with `gross = 0` and `confidence=high`.
+# These are the gates whose ABSENCE let it through; the README table they are written on is
+# "What the harness could not see, and now reports".
+#
+# READ THE POOLED FIGURE AS A TRAP, not as the measure. `truth`'s pooled `bias_ms` over all 32 songs is
+# +0.0 ms — four shifted songs against 28 that are not, median at zero — so a gate on the pooled number
+# would have passed every wave of this build. Only the PER-SONG count below is the instrument; the pooled
+# Jamendo gates in §1 are there because that group's truth is hand-measured and its reading (−6.3 … −18.6 ms
+# at MAD 33.9 … 44.6) is tight enough to be a real floor.
+#
+# 250 ms IS A THRESHOLD IN AN EMPTY GAP, not a tuned constant: in `truth` the per-song |`bias_ms`| readings
+# are 868.5, 690.0, 390.0, 370.0, then **122.0** (hello) and down. Nothing sits between 122 and 370.
+#
+# THE DEMOTION IS PREDICTED TO FIRE ON NOTHING, and §4 is that prediction written down. `off_sheet` needs
+# BOTH witnesses, and the envelope absolves all four shifted songs: bad-guy's `claim_lag` is +0.78 s at
+# r 0.19 (under `claimmap.MIN_ENVELOPE_CORRELATION` 0.25, so it abstains), and numb +0.62 @ 0.69,
+# tfr-chosen +0.46 @ 0.60, believer +0.36 @ 0.46 all read the SHEET as displaced too. Those four songs'
+# truth PRECEDES their own singing (W8a's diagnosis: three independent arbiters), so demoting them would
+# punish correct documents and cost the room its word wipe on four songs. If §4 goes red, the conjunction
+# fired on the corpus and the right next step is to read WHICH song and WHY on the trail — never to widen
+# the threshold until the gate goes green.
+#
+# WHERE IT ACTUALLY FIRED, measured after this file was written (review r2-spec-13): on the arms-on sweep the
+# conjunction convicts in TWO of the 1088 cases, and both are modes the first draft of §4 did not cover —
+# `off05`/bad-guy (49 `high` lines removed, all more than 500 ms out: the rule working) and
+# `offm1`/never-be-alone (23 removed, all correct: the rule failing). §4 now covers every right-text mode and
+# carries `w8a.yaml`'s sharp form, so the second of those two fails HERE rather than only where the arm was
+# priced. The prediction above still holds of the DEFAULT path, which is what this file's baseline is.
+#
+# Gates are the CONDITION THAT MUST HOLD (the negation of the reject-if); see e2e_gates.py.
+
+# ── 1) MUST: no right-text mode may carry a coherent POOLED offset where the truth is measured ──────────
+# Jamendo's 20 songs are the hand-measured half, so a pooled median there is a statement about US. Measured
+# −6.3 … −18.6 ms on every mode below; 250 ms leaves a factor of thirteen. THIS IS THE GATE THE BUILD
+# LACKED: eight waves of ±500 and gross could not have failed on a uniform shift of any size.
+pooled-bias-truth: abs(truth.jamendo.bias_ms) <= 250
+pooled-bias-blind: abs(blind.jamendo.bias_ms) <= 250
+pooled-bias-jit: abs(jit.jamendo.bias_ms) <= 250
+pooled-bias-off05: abs(off05.jamendo.bias_ms) <= 250
+pooled-bias-off15: abs(off15.jamendo.bias_ms) <= 250
+pooled-bias-off3: abs(off3.jamendo.bias_ms) <= 250
+pooled-bias-offm1: abs(offm1.jamendo.bias_ms) <= 250
+pooled-bias-tempo098: abs(tempo098.jamendo.bias_ms) <= 250
+pooled-bias-tempo102: abs(tempo102.jamendo.bias_ms) <= 250
+pooled-bias-drop20: abs(drop20.jamendo.bias_ms) <= 250
+pooled-bias-drop50: abs(drop50.jamendo.bias_ms) <= 250
+pooled-bias-extraverse: abs(extraverse.jamendo.bias_ms) <= 250
+pooled-bias-headers: abs(headers.jamendo.bias_ms) <= 250
+pooled-bias-credit: abs(credit.jamendo.bias_ms) <= 250
+
+# ── 2) MUST: how many songs carry a COHERENT per-song offset — the band's real count ───────────────────
+# `abs(bias_ms) > 250` AND `mad_ms <= 250`: the product is the gate language's AND (as `w6-conf.yaml`'s
+# `onsets-unchanged` spells it), and the second conjunct is what makes this a DISPLACEMENT count rather than
+# a noise count — a song whose MAD is as large as its median moved nothing coherently.
+#
+# A BOUND BEING HELD TO, with its residue NAMED rather than hidden, exactly as `w6-conf.yaml`'s
+# `high-gross-blind-at-most-three` is. The four are bad-guy (+868.5 ms, MAD 111.5), numb (+690.0 / 140.0),
+# tfr-chosen (+390.0 / 160.0) and believer (+370.0 / 87.0), and W8a measured all four to be EARLY TRUTH:
+# their captions precede their own singing, so the reading is a fact about the reference, not about the
+# pipeline. It is kept as a gate anyway, because a FIFTH song appearing here is a regression nothing else in
+# this harness would catch, and because re-anchoring those four to their own audio is owed work that will
+# turn these bounds down to 0 — a number that cannot move is a number nobody fixes.
+coherent-songs-truth: count((abs(truth.song.bias_ms) > 250) * (truth.song.mad_ms <= 250)) <= 4
+coherent-songs-blind: count((abs(blind.song.bias_ms) > 250) * (blind.song.mad_ms <= 250)) <= 4
+coherent-songs-jit: count((abs(jit.song.bias_ms) > 250) * (jit.song.mad_ms <= 250)) <= 3
+coherent-songs-off05: count((abs(off05.song.bias_ms) > 250) * (off05.song.mad_ms <= 250)) <= 4
+coherent-songs-off15: count((abs(off15.song.bias_ms) > 250) * (off15.song.mad_ms <= 250)) <= 4
+coherent-songs-off3: count((abs(off3.song.bias_ms) > 250) * (off3.song.mad_ms <= 250)) <= 4
+coherent-songs-offm1: count((abs(offm1.song.bias_ms) > 250) * (offm1.song.mad_ms <= 250)) <= 4
+coherent-songs-tempo098: count((abs(tempo098.song.bias_ms) > 250) * (tempo098.song.mad_ms <= 250)) <= 4
+coherent-songs-tempo102: count((abs(tempo102.song.bias_ms) > 250) * (tempo102.song.mad_ms <= 250)) <= 4
+coherent-songs-drop20: count((abs(drop20.song.bias_ms) > 250) * (drop20.song.mad_ms <= 250)) <= 3
+coherent-songs-extraverse: count((abs(extraverse.song.bias_ms) > 250) * (extraverse.song.mad_ms <= 250)) <= 4
+coherent-songs-headers: count((abs(headers.song.bias_ms) > 250) * (headers.song.mad_ms <= 250)) <= 4
+coherent-songs-credit: count((abs(credit.song.bias_ms) > 250) * (credit.song.mad_ms <= 250)) <= 4
+#
+# WHICH DIRECTION EACH RULE CAN BE SATISFIED FROM — review r2-correctness-5. A `coherent-songs` count FALLS in
+# two ways: the song's displacement is repaired (the win), or its `mad_ms` crosses 250 and it drops out of the
+# selector (a loss reading as a win). Flip the sign of half of a song's band-line errors and every `abs(error)`
+# metric here is unchanged — `band`, `pm500`, `gross`, `w500` and the pooled medians all hold — while `mad_ms`
+# rises and the song leaves the count. ITU-R BT.1359 says early and late are not interchangeable (~125 ms
+# against ~45 ms), so that trade is a loss. Each count therefore carries a companion forbidding the escape
+# route: a song may not ENTER the scattered population either. Measured on the baseline, `mad_ms > 250` holds
+# ZERO songs in all thirteen of these modes, so each companion starts at 0 <= 0. (`drop50` reads 6 and one of
+# its songs has no median at all, which is the same reason it carries no per-song gate.)
+scatter-not-up-truth: count(truth.song.mad_ms > 250) <= count(base.truth.song.mad_ms > 250)
+scatter-not-up-blind: count(blind.song.mad_ms > 250) <= count(base.blind.song.mad_ms > 250)
+scatter-not-up-jit: count(jit.song.mad_ms > 250) <= count(base.jit.song.mad_ms > 250)
+scatter-not-up-off05: count(off05.song.mad_ms > 250) <= count(base.off05.song.mad_ms > 250)
+scatter-not-up-off15: count(off15.song.mad_ms > 250) <= count(base.off15.song.mad_ms > 250)
+scatter-not-up-off3: count(off3.song.mad_ms > 250) <= count(base.off3.song.mad_ms > 250)
+scatter-not-up-offm1: count(offm1.song.mad_ms > 250) <= count(base.offm1.song.mad_ms > 250)
+scatter-not-up-tempo098: count(tempo098.song.mad_ms > 250) <= count(base.tempo098.song.mad_ms > 250)
+scatter-not-up-tempo102: count(tempo102.song.mad_ms > 250) <= count(base.tempo102.song.mad_ms > 250)
+scatter-not-up-drop20: count(drop20.song.mad_ms > 250) <= count(base.drop20.song.mad_ms > 250)
+scatter-not-up-extraverse: count(extraverse.song.mad_ms > 250) <= count(base.extraverse.song.mad_ms > 250)
+scatter-not-up-headers: count(headers.song.mad_ms > 250) <= count(base.headers.song.mad_ms > 250)
+scatter-not-up-credit: count(credit.song.mad_ms > 250) <= count(base.credit.song.mad_ms > 250)
+#
+# `drop50` HAS NO PER-SONG GATE, and that is a reading rather than an omission: with half the claims gone the
+# PAIRING breaks, and its per-song medians read −2 428 ms at MAD 2 424 (`Moon_I_Mean_-_Wrong_Concept`),
+# −2 268 at 2 170 (`The.madpix.project_-_One_Way_Street`) and −11 870 at **12 500** (numb) — the MAD says
+# none of them is a displacement. One of its songs also refuses, which leaves `bias_ms` ABSENT and makes
+# `count()` an ERROR rather than a number. Its pooled Jamendo gate in §1 (+0.0 ms) is what it can carry.
+# The two wrong-text modes are out for a harder reason: all 320 cases refuse, so no line metric exists.
+
+# ── 3) MUST: the band population may not grow in any right-text mode ───────────────────────────────────
+# The population itself, against the baseline: truth 163 of 1707 scored, blind 252, jit 219, drop20 133.
+# A repair that trades a gross line for two band lines reads as the win it is not.
+band-not-up-truth: truth.band <= base.truth.band
+band-not-up-blind: blind.band <= base.blind.band
+band-not-up-jit: jit.band <= base.jit.band
+band-not-up-off05: off05.band <= base.off05.band
+band-not-up-off15: off15.band <= base.off15.band
+band-not-up-off3: off3.band <= base.off3.band
+band-not-up-offm1: offm1.band <= base.offm1.band
+band-not-up-tempo098: tempo098.band <= base.tempo098.band
+band-not-up-tempo102: tempo102.band <= base.tempo102.band
+band-not-up-drop20: drop20.band <= base.drop20.band
+band-not-up-drop50: drop50.band <= base.drop50.band
+band-not-up-extraverse: extraverse.band <= base.extraverse.band
+band-not-up-headers: headers.band <= base.headers.band
+band-not-up-credit: credit.band <= base.credit.band
+#
+# AND THE DENOMINATOR THEY ARE COUNTED OVER, one rule per band rule. `band`, `bias_ms` and `mad_ms` are all
+# computed over the SCORED lines of PUBLISHED cases (`e2e_lib.line_metrics`, whose own docstring warns about
+# it, and the reason `w500_text_pct` exists over `in_text`). `band` is an absolute COUNT, so a change that
+# makes one case refuse, or drops one line as never-sung, lowers it without placing anything better — "fewer
+# band lines" and "fewer published lines" read alike. `w7-star.yaml`'s `missing-not-up` is the precedent and
+# this is the same rule, per mode: `missing` is `in_text - scored`, so it rises on exactly those two events.
+# MEASURED on the baseline, so each bound is a number and not an assumption: `missing` is **53** on truth,
+# blind, jit, all four offset modes, both tempo modes, headers and credit, **39** on drop20, **55** on drop50
+# and **42** on extraverse. The band counts those rules hold are truth 163, blind 252, jit 219, off05/off15/
+# off3/offm1 167, tempo098 180, tempo102 179, drop20 133, drop50 75, extraverse 158, headers 162, credit 165.
+band-missing-not-up-truth: truth.missing <= base.truth.missing
+band-missing-not-up-blind: blind.missing <= base.blind.missing
+band-missing-not-up-jit: jit.missing <= base.jit.missing
+band-missing-not-up-off05: off05.missing <= base.off05.missing
+band-missing-not-up-off15: off15.missing <= base.off15.missing
+band-missing-not-up-off3: off3.missing <= base.off3.missing
+band-missing-not-up-offm1: offm1.missing <= base.offm1.missing
+band-missing-not-up-tempo098: tempo098.missing <= base.tempo098.missing
+band-missing-not-up-tempo102: tempo102.missing <= base.tempo102.missing
+band-missing-not-up-drop20: drop20.missing <= base.drop20.missing
+band-missing-not-up-drop50: drop50.missing <= base.drop50.missing
+band-missing-not-up-extraverse: extraverse.missing <= base.extraverse.missing
+band-missing-not-up-headers: headers.missing <= base.headers.missing
+band-missing-not-up-credit: credit.missing <= base.credit.missing
+
+# ── 4) MUST: the coherence grade changes NO document on this corpus ────────────────────────────────────
+# `off_sheet` is a DEMOTION, and the `confidence` field is in the document's bytes, so "which documents
+# changed grade" is exactly `song.doc_changed`. The prediction is ZERO on every right-text mode (the four
+# shifted songs are all absolved by the envelope witness — see the header), and these gates are how a
+# surprise becomes visible instead of becoming a quiet corpus-wide demotion.
+#
+# THE CONSUMER IS WHY THIS IS A MUST: W6's TV renders a `low` line line-level with NO word wipe
+# (`wipesWords` in `core/src/lib/tv/lyrics.ts`), so a demotion a gate did not predict is a word wipe a room
+# silently loses. "Do not demote the corpus wholesale to win a gate" is this gate.
+#
+# EVERY RIGHT-TEXT MODE, not the six this file first listed — review r2-spec-13. The corpus sweep then found
+# `off_sheet` firing in exactly the two modes the short list left out: `off05` (bad-guy, 49 `high` lines
+# removed, every one of them more than 500 ms out — the rule working) and `offm1` (never-be-alone, 23 removed,
+# every one of them CORRECT — the rule failing, and the reason `band-off-sheet` ships OFF). §8's `high` floor
+# carries 2% of slack by design, which is one small song's wholesale demotion, so it could not catch either.
+# `drop50` and the two wrong-text modes are out for the reasons §2 gives.
+docs-unchanged-truth: count(truth.song.doc_changed) == 0
+docs-unchanged-blind: count(blind.song.doc_changed) == 0
+docs-unchanged-jit: count(jit.song.doc_changed) == 0
+docs-unchanged-off05: count(off05.song.doc_changed) == 0
+docs-unchanged-off15: count(off15.song.doc_changed) == 0
+docs-unchanged-off3: count(off3.song.doc_changed) == 0
+docs-unchanged-offm1: count(offm1.song.doc_changed) == 0
+docs-unchanged-tempo098: count(tempo098.song.doc_changed) == 0
+docs-unchanged-tempo102: count(tempo102.song.doc_changed) == 0
+docs-unchanged-drop20: count(drop20.song.doc_changed) == 0
+docs-unchanged-extraverse: count(extraverse.song.doc_changed) == 0
+docs-unchanged-headers: count(headers.song.doc_changed) == 0
+docs-unchanged-credit: count(credit.song.doc_changed) == 0
+#
+# AND THE SHARP FORM, carried in from `w8a.yaml` so that a demotion which removes a CORRECT `high` line fails
+# HERE and not only in the file that priced the arm: `high_bad` is the `high` lines more than 500 ms from
+# truth, so "every `high` line this change removed was a wrong one" is `fall in high <= fall in high_bad`.
+# On the corpus that reads 49 <= 49 (bad-guy at `off05`, PASS) and 23 <= 0 (never-be-alone at `offm1`, FAIL).
+demotion-removes-only-bad-high-truth: base.truth.high - truth.high <= base.truth.high_bad - truth.high_bad
+demotion-removes-only-bad-high-jit: base.jit.high - jit.high <= base.jit.high_bad - jit.high_bad
+demotion-removes-only-bad-high-blind: base.blind.high - blind.high <= base.blind.high_bad - blind.high_bad
+demotion-removes-only-bad-high-off05: base.off05.high - off05.high <= base.off05.high_bad - off05.high_bad
+demotion-removes-only-bad-high-off15: base.off15.high - off15.high <= base.off15.high_bad - off15.high_bad
+demotion-removes-only-bad-high-off3: base.off3.high - off3.high <= base.off3.high_bad - off3.high_bad
+demotion-removes-only-bad-high-offm1: base.offm1.high - offm1.high <= base.offm1.high_bad - offm1.high_bad
+demotion-removes-only-bad-high-drop20: base.drop20.high - drop20.high <= base.drop20.high_bad - drop20.high_bad
+
+# ── 5) MUST: nothing this wave did may move a timing ──────────────────────────────────────────────────
+# A grading change that moved an onset would be a different change. `onsets_changed` is line and word STARTS
+# at full precision, so one ulp fails it.
+onsets-unchanged-truth: count(truth.song.onsets_changed * (truth.song.refused == 0) * (base.truth.song.refused == 0)) == 0
+onsets-unchanged-blind: count(blind.song.onsets_changed * (blind.song.refused == 0) * (base.blind.song.refused == 0)) == 0
+
+# ── 6) MUST: the wave's reject-if — no right-text mode loses ±500 or gains a gross line ────────────────
+# Equality to the digit is the real claim (no timing moved), and `<= 0.005` is that claim in this language.
+pm500-identical-truth: abs(truth.pm500 - base.truth.pm500) <= 0.005
+pm500-identical-blind: abs(blind.pm500 - base.blind.pm500) <= 0.005
+pm500-identical-jit: abs(jit.pm500 - base.jit.pm500) <= 0.005
+pm500-identical-off3: abs(off3.pm500 - base.off3.pm500) <= 0.005
+pm500-identical-drop50: abs(drop50.pm500 - base.drop50.pm500) <= 0.005
+gross-not-up-truth: truth.gross <= base.truth.gross
+gross-not-up-blind: blind.gross <= base.blind.gross
+gross-not-up-jit: jit.gross <= base.jit.gross
+gross-not-up-off3: off3.gross <= base.off3.gross
+gross-not-up-drop50: drop50.gross <= base.drop50.gross
+
+# ── 7) MUST: the 15 songs already at 100% ±500 keep it, and no demotion may reach them ─────────────────
+# The reject-if names those songs; the gate language counts them. Measured: they read max |`bias_ms`| 122 ms,
+# max `mad_ms` 82 ms and `band` 0 BETWEEN THEM, so there is nothing on them for a band rule to touch —
+# which is the argument, and this is it as a number.
+perfect-songs-held-truth: count(truth.song.pm500 >= 100) >= 15
+perfect-songs-held-off3: count(off3.song.pm500 >= 100) >= 16
+perfect-songs-held-jit: count(jit.song.pm500 >= 100) >= 7
+perfect-songs-held-blind: count(blind.song.pm500 >= 100) >= 5
+
+# ── 8) MUST: the word wipe is not quietly turned off ──────────────────────────────────────────────────
+# `off_sheet` demotes a whole document at once, so the cheapest proof it did not fire is that the `high`
+# count did not fall. Expected EQUAL, with the 0.98 giving a single document's worth of slack on the
+# two modes most lines are graded on.
+high-held-truth: truth.high >= 0.98 * base.truth.high
+high-held-blind: blind.high >= 0.98 * base.blind.high
+high-held-jit: jit.high >= 0.98 * base.jit.high
+# And precision must not go backwards either: a demotion can only remove `high` lines, so if `high_bad`
+# RISES something other than this wave moved.
+bad-among-high-not-up-truth: truth.high_bad <= base.truth.high_bad
+bad-among-high-not-up-blind: blind.high_bad <= base.blind.high_bad

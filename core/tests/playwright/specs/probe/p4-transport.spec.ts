@@ -10,15 +10,20 @@
 //
 // See docs/E2E.md#proving-audio — every arm is anchored to the decoded byte counter, never to `paused` alone.
 //
-// Ported from tests/e2e/probes/p4-transport.mjs. One change of MECHANISM: the transport is clicked in the BAND
-// ROW rather than through `[aria-label="play/pause"]` inside the sheet. All three controls live in the band at
-// both sheet heights and are the app's only copies (NowPlayingBand.svelte), and `play/pause` is a label nothing
-// carries any more — world/selectors.ts retired it precisely because it resolved against nothing while reading
-// as though the flow worked.
+// Ported from tests/e2e/probes/p4-transport.mjs. EVERY ARM HERE IS A TRANSPORT ARM — pause, resume, seek,
+// restart, skip — so none of them lost its subject when the now-playing sheet was deleted; the sheet only ever
+// appeared in this header. What moved is WHERE the controls are: all three live in the docked strip
+// (NowPlayingStrip.svelte), which has no open state, so none of them needs a gesture to reach. `play/pause` as an
+// aria-label is still retired in world/selectors.ts, for the original reason — it resolved against nothing while
+// reading as though the flow worked.
+//
+// THE PHONE'S SPELLED CLOCK MOVED ROUTES, which is the one thing here that is more than a rename. The strip
+// carries an `aria-hidden` progress hairline and no numbers; the elapsed and remaining readouts live on /queue's
+// now-playing card. `phoneElapsed` below therefore reads a surface its caller has to navigate to first.
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome } from '../../world/actors';
+import { openBrowseFromHome, openQueue } from '../../world/actors';
 import {
 	awaitMaster,
 	readMaster,
@@ -44,10 +49,16 @@ function parseClock(text: string | null): number | null {
 	return null;
 }
 
-/** The elapsed clock on the phone's seek row. The old probe also captured the fill's scaleX; nothing asserted
- *  on it, and the fill is a vendored `<Progress>` now, so only the clock is read. */
+/**
+ * The elapsed clock on /queue's now-playing card. The old probe also captured the fill's scaleX; nothing asserted
+ * on it, and the strip's progress is an `aria-hidden` hairline with no readout, so only the clock is read.
+ *
+ * THE CALLER MUST BE ON /queue. This used to read `.seekrow .time` in the sheet's body, which was reachable from
+ * any phone surface; the phone spells its clock in exactly one place now, so this is a route change and not a
+ * selector swap. It stays a bare read rather than navigating itself because its caller polls it.
+ */
 async function phoneElapsed(phone: Page): Promise<{ text: string | null; seconds: number | null }> {
-	const text = await phone.locator(SEL.seekTime).first().textContent();
+	const text = await phone.locator(SEL.queueElapsed).first().textContent();
 	return { text, seconds: parseClock(text) };
 }
 
@@ -66,8 +77,11 @@ async function awaitPlayhead(tv: Page, seconds: number): Promise<void> {
 }
 
 const transport = {
-	/** `.disc` — artwork, play/pause and progress in one control, and the app's only copy. */
-	playPause: (page: Page) => page.locator(SEL.bandTransport),
+	/** The strip's only FILLED control, and the app's only play/pause. Where `.disc` was artwork, a progress ring
+	 *  and a glyph in one element, this is an icon button with an `--accent` fill — the fill is there because
+	 *  play/pause is the one control whose state a resting fill encodes — and the progress is a separate
+	 *  `aria-hidden` hairline across the top of the strip. */
+	playPause: (page: Page) => page.locator(SEL.npPlayPause),
 	restart: (page: Page) => page.getByRole(SEL.restart.role, { name: SEL.restart.name }),
 	skip: (page: Page) => page.getByRole(SEL.skip.role, { name: SEL.skip.name })
 };
@@ -190,6 +204,10 @@ test('T4 · both phones anchor their progress to the same paused position', asyn
 		await transport.playPause(phone1).click();
 		const afterPause = await awaitMaster(tv);
 		const srv = await serverPlayback(world.baseURL);
+		// ONTO /queue FIRST, both of them: the elapsed readout is spelled on the now-playing card and nowhere else
+		// on the phone. The transport that paused the room is in the dock, which is why the click above did not have
+		// to happen here.
+		for (const phone of phones) await openQueue(phone);
 		// Waits for the pause broadcast to have REACHED both clients, rather than sleeping on a guess: the
 		// reading is only authoritative once each phone has re-anchored.
 		for (const [i, phone] of phones.entries()) {
@@ -418,8 +436,14 @@ test('T6 · skipping the last song returns the server to no-current', async ({ w
 	}
 });
 
-test('T5 · the transport is disabled when there is nothing to play', async ({ world }) => {
-	// Nothing playing and the queue empty: the transport must be DISABLED, not dispatch into the void.
+test('T5 · there is NO transport at all when there is nothing to play', async ({ world }) => {
+	/* A STRONGER CLAIM THAN THIS ARM USED TO MAKE, and the rewrite is the point rather than a concession. It
+	   asserted that restart, play/pause and skip were each `disabled` on a drained room. The band rendered
+	   permanently, so `disabled` was the best answer available — and it left the design review's finding standing:
+	   the brightest element on an idle screen was a filled play button that did nothing. The strip renders only
+	   when `hasSong || canStart`, so on a drained room there is no disabled transport; there is no transport. The
+	   dock and the tab bar must still be ATTACHED, because the bottom of the screen is still navigation — that
+	   pair is what distinguishes "the strip stood down" from "the chrome fell over". */
 	const { worker, phones, tv } = await stage(world, [TRACKS.caroline], 1);
 	const phone = phones[0]!;
 	try {
@@ -430,21 +454,26 @@ test('T5 · the transport is disabled when there is nothing to play', async ({ w
 			await tv.waitForTimeout(1200);
 		}
 		expect((await serverPlayback(world.baseURL)).state.currentEntryId, 'the room must be drained first').toBeNull();
-		// Waits for the emptiness to have REACHED the phone: `disabled` is derived from the room the client
+		// Waits for the emptiness to have REACHED the phone: the strip's render is derived from the room the client
 		// holds, so reading it before the broadcast lands measures the previous room.
 		await expect
-			.poll(async () => transport.restart(phone).isDisabled(), {
+			.poll(async () => phone.locator(SEL.npStrip).count(), {
 				timeout: 10_000,
-				message: 'T5a: restart must be disabled when there is no current song'
+				message: `T5a: the strip must not render when there is nothing to play — ${SEL.npStrip} is still attached`
 			})
-			.toBe(true);
-		expect(await transport.skip(phone).isDisabled(), 'T5b: skip must be disabled when there is no current song').toBe(
-			true
-		);
+			.toBe(0);
 		expect(
-			await transport.playPause(phone).isDisabled(),
-			'T5c: play must be disabled when there is no current AND no queued song'
-		).toBe(true);
+			await phone.locator(SEL.npPlayPause).count(),
+			'T5b: with no strip there is no play/pause to dispatch into the void'
+		).toBe(0);
+		expect(
+			await phone.locator(SEL.dock).count(),
+			'T5c: the dock must survive the strip standing down — it is the fixed container the tab bar lives in'
+		).toBe(1);
+		expect(
+			await phone.locator(SEL.tabBar).count(),
+			'T5d: the tab bar must still hold the bottom of the screen on a drained room'
+		).toBe(1);
 		// The stage agrees: with nothing current there is no media element left to command.
 		const stageNow = await readStage(tv);
 		expect(

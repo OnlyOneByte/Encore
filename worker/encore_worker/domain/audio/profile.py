@@ -3,7 +3,7 @@
 
 Every half is wrapped best-effort: each fails independently to nulls, logs, and NEVER raises, because core
 reads a PRESENT profile as "the analysis step ran". Why that makes an absent profile unrecoverable rather
-than merely incomplete: `docs/arch/05-worker.md` §3.
+than merely incomplete: XW-06, `docs/arch/05-worker.md` §3.
 """
 
 from __future__ import annotations

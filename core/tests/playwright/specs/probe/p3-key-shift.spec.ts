@@ -22,7 +22,7 @@
 import { test, expect } from '../../world/fixtures';
 import { SEL } from '../../world/selectors';
 import { startFakeWorker } from '../../world/workers';
-import { openBrowseFromHome, openNowPlaying } from '../../world/actors';
+import { openBrowseFromHome, openQueue } from '../../world/actors';
 import {
 	attachTap,
 	awaitMaster,
@@ -64,8 +64,13 @@ const top3 = (m: TapRead | null): string =>
 
 /** The rendered label IS the server-broadcast keyShift, which is what makes reading it a round trip. */
 async function readKeyLabel(phone: Page): Promise<string> {
-	// `textContent`, NOT innerText: `.key .lab` is `text-transform: uppercase`, and innerText returns the
-	// TRANSFORMED text — so "Key" reads back as "KEY" and an equality check on the reset state never holds.
+	/* `textContent`, NOT innerText, and the reason has CHANGED rather than gone away. The sheet's `.key .lab` was
+	   `text-transform: uppercase`, so innerText returned "KEY" and an equality check on the reset state never
+	   held. /queue's key label is app.css's `.control-label` — `font-size`, `font-weight`, `line-height`, `color`
+	   and no transform at all — so the two reads agree today. What `textContent` still buys is that it does not
+	   depend on that: a label dressed
+	   with a transform later would silently break innerText, and this helper's whole job is to report the exact
+	   string the server broadcast. */
 	return ((await phone.locator(SEL.keyLabel).first().textContent()) ?? '').trim();
 }
 
@@ -78,11 +83,12 @@ function parseKeyLabel(label: string): number | null {
 }
 
 /**
- * Press ± until the label reports `target`. The keycaps are `.key-cell button` in source order: minus, plus.
+ * Press ± until the label reports `target`. The keycaps are `.keys button` in source order: minus, plus — the
+ * order verified from their accessible names, "Lower by one semitone" then "Raise by one semitone".
  * Returns what the label finally said, so a caller asserts on the reading rather than on a boolean.
  */
 async function shiftTo(phone: Page, target: number): Promise<{ value: number | null; label: string }> {
-	await openNowPlaying(phone);
+	await openQueue(phone);
 	const caps = phone.locator(SEL.keyBtn);
 	let label = await readKeyLabel(phone);
 	let current = parseKeyLabel(label);
@@ -321,15 +327,15 @@ test('at +2 the pitch survives a pause and resume', async ({ world }) => {
 		expect(tap.ok, `analyser tap: ${JSON.stringify(tap)}`).toBe(true);
 		const before = await measureAtShift(phone, tv, 2);
 
-		// `.disc` is the app's ONLY play/pause control, in the band row at both sheet heights. The old probe
-		// clicked `[aria-label="play/pause"]`, a label nothing carries any more (world/selectors.ts).
-		await openNowPlaying(phone);
-		await phone.locator(SEL.bandTransport).click();
+		// The strip's filled button is the app's ONLY play/pause, and it is in the dock — so it is reachable from
+		// /queue, where `shiftTo` has just left this phone, without navigating back. The old probe clicked
+		// `[aria-label="play/pause"]`, a label nothing carries any more (world/selectors.ts).
+		await phone.locator(SEL.npPlayPause).click();
 		await phone.waitForTimeout(700);
 		const paused = await awaitMaster(tv);
 		expect(paused.paused, `paused=${paused.paused}, currentTime=${paused.currentTime.toFixed(2)}`).toBe(true);
 
-		await phone.locator(SEL.bandTransport).click();
+		await phone.locator(SEL.npPlayPause).click();
 		await phone.waitForTimeout(1200);
 		const resumed = await awaitMaster(tv);
 		expect(
@@ -354,7 +360,7 @@ test('a song change resets the shift and the fresh song still decodes', async ({
 	const { worker, phone, tv } = await stage(world, [TRACKS.caroline, TRACKS.believin]);
 	try {
 		expect((await shiftTo(phone, 2)).value).toBe(2);
-		await openNowPlaying(phone);
+		// Skip is in the dock too, so `shiftTo` has already put this phone somewhere it can be pressed.
 		await phone.getByRole(SEL.skip.role, { name: SEL.skip.name }).click();
 		// The reset is a server broadcast, so poll the label rather than dwelling on a guess.
 		await expect

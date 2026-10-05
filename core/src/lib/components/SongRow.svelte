@@ -106,8 +106,9 @@
 	 * and three of those were carrying MEASUREMENTS: a view count, a key, a duration verdict. Numbers in pills is what
 	 * made the row read as a debug dump rather than a list, and the wrapping second pill row cost a whole line.
 	 *
-	 * So the measurements join the byline as dim text on a `·`, which is the same grammar the band's own byline and the
-	 * queue subtitle already use. Built HERE and not inline: an `{#if}` between two lines of markup puts a NEWLINE in
+	 * So the measurements join the byline as dim text on a `·`, which is the same grammar NowPlayingStrip's own byline
+	 * (`.who` · `.song`), /queue's `.now-by` and the queue subtitle already use. Built HERE and not inline: an `{#if}`
+	 * between two lines of markup puts a NEWLINE in
 	 * the element's text, which reaches a screen reader and any assertion — the defect already fixed once on
 	 * /library's count line. MUST STAY BELOW `showKey`, which it reads: `$derived` is lazy at runtime, but the checker
 	 * sees a direct reference and reports a block-scoped use before declaration.

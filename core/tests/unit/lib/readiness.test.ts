@@ -1,4 +1,4 @@
-import { EMPTY_SONG_PROFILE, type Media, type MediaStatus } from '$lib/contract';
+import { EMPTY_SONG_PROFILE, type Media } from '$lib/contract';
 import {
 	canProcess,
 	displayReadiness,
@@ -11,6 +11,7 @@ import {
 	showsNoRows
 } from '$lib/readiness';
 import { isEntryReady } from '$lib/server/rotation';
+import { read } from '$test';
 import { expect, test } from 'bun:test';
 // The client's readiness view must agree with the server's classification and let a live media:status win
 // over a stale catalog copy, or tapping Karaoke leaves the row untouched until the next full sync.
@@ -119,17 +120,29 @@ test('THE BUG: a non-empty library during a search must NOT claim there are none
 	const s = noRowsState({ searchActive: true, libraryCount: 5, query: 'zzzz' });
 	expect(s.message).not.toContain('No karaoke-ready songs yet');
 	expect(s.message).toContain('zzzz'); // names what was searched
-	// The count lives on the control that acts on it ("Show all 5", `showAllCount` below), not in the sentence. Both
-	// halves stay pinned: the message must not claim there are none, and the count must reach the surface.
+	// The count lives on the control that acts on it — the link to /library, which reads `Show my 5 songs` off
+	// `showAllCount` below — not in the sentence. Both halves stay pinned: the message must not claim there are
+	// none, and the count must reach the surface.
 	expect(s.showAllCount).toBe(5); // and offers the one tap back to the library
 });
 
 test('singular wording for a one-song library', () => {
-	// The singular/plural agreement claim lives on the branch that still names a count; the searching
-	// branch names none, and "Show all 1" needs no noun.
+	// This is the branch whose own MESSAGE names a count. The searching branch names none in its message — but it
+	// hands `showAllCount` to a control that prints one, and that control owes the same agreement: `Show my 1 song`,
+	// never `1 songs`. The noun lives at the call site because only the caller knows what it is counting.
 	const s = noRowsState({ searchActive: false, libraryCount: 1 });
 	expect(s.message).toContain('1 karaoke song ');
 	expect(s.message).not.toContain('songs');
+});
+
+test('the control that PRINTS showAllCount agrees in number too', () => {
+	/* THE DEFECT THIS CATCHES SHIPPED: the Sing tab's link to /library read `Show my {n} songs` flat, so a library
+	 * holding one ready song — the ordinary state the first time a song finishes processing — said "Show my 1 songs"
+	 * while /library's own count line two taps away said "1 song". It is asserted HERE, beside the function that
+	 * hands the number over, because the agreement is a property of the pair and the label itself lives in markup no
+	 * unit test instantiates. Comments are stripped first: the one above the control quotes the broken string. */
+	const home = read('src/routes/+page.svelte').replace(/<!--[\s\S]*?-->/g, '');
+	expect(home).toMatch(/Show my \{empty\.showAllCount\}[\s\S]{0,90}=== 1 \? 'song' : 'songs'/);
 });
 
 test('a blank query while searchActive still reads sensibly (no empty quotes)', () => {
@@ -283,9 +296,17 @@ test('a failed lyrics upgrade on a still-singable song is NOT marked broken', ()
 	expect(queueCardKind(singable, { status: 'failed' })).toBe('plain'); // so: plain, not failed
 });
 
-// A PROCESSING song must obey the search-match filter. Re-deriving the group from the whole live status
-// map and the whole catalog with no reference to the query shows a song someone else is processing under
-// an UNRELATED search. `processingGroupIds` is scoped to the query when searching.
+// THE PROCESSING GROUP IS THE WIRE'S LIST AND NOTHING ELSE. The server already scoped `j.processing` to the
+// query, so `processingGroupIds` takes that list alone.
+//
+// WHAT THESE TESTS USED TO PIN, and why the shape changed. The function also took the live status map, the whole
+// catalog and a classifier, and unioned them whenever no search was active — which is how a song SOMEBODY ELSE was
+// processing turned up under an unrelated query, the bug the search-scoped branch fixed. The union is RETIRED: the
+// Sing tab's `processingRows` returns `[]` before calling this when no query is active, and /queue's processing
+// group is derived from QUEUE ENTRIES, so no surface wanted the union and its three arguments could not be read.
+// Query-scoping is therefore now a property of the SIGNATURE — there is no catalog in reach to re-scan — and the
+// two tests that pinned the union are gone with it rather than left passing vacuously. What is still worth pinning
+// is that this neither invents a row nor draws one job twice.
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
 	id,
@@ -293,93 +314,29 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	sourceRef: `ref-${id}`,
 	title: id,
 	durationSec: 200,
-	stemStatus: 'queued', // in flight → catalog classifies it as processing
+	stemStatus: 'queued', // in flight
 	...over
 });
 
-// The trap: genuinely processing (someone else started it) so it is in the live status map and the
-// catalog, but it does NOT match the query, so `processingResults` does not contain it.
+// The trap, kept because it names the defect: both are genuinely processing, but only one matches the query, so
+// `partitionSearch` put only that one on the wire. The other must not come back from anywhere.
 const rickroll = media('rickroll', { title: 'Never Gonna Give You Up' });
 const bsb = media('bsb', { title: 'I Want It That Way' });
 
-const catalog = new Map<string, Media>([
-	[rickroll.id, rickroll],
-	[bsb.id, bsb]
-]);
-const status = new Map<string, { status: MediaStatus }>([
-	[rickroll.id, { status: 'queued' }],
-	[bsb.id, { status: 'queued' }]
-]);
-
-// The catalog classifier the page passes in (displayReadiness with the live status).
-const readiness = (m: Media) => displayReadiness(m, status.get(m.id));
-
-test('THE BUG: with a search active, a processing song that does NOT match the query is absent', () => {
-	// The wire returned only the query-matching processing song; the other was processing but did not
-	// match, so partitionSearch excluded it.
-	const ids = processingGroupIds({
-		searchActive: true,
-		processingResults: [rickroll],
-		mediaStatus: status,
-		mediaCatalog: catalog,
-		readiness
-	});
-	expect(ids.has('bsb')).toBe(false); // ← RED on base: the old union pulled bsb in from the catalog
-	expect(ids.has('rickroll')).toBe(true); // the matching process still shows — no over-correction
-	expect(ids.size).toBe(1);
+test('THE BUG: the group is exactly what the server returned — no other processing song joins it', () => {
+	expect([...processingGroupIds([rickroll])]).toEqual(['rickroll']);
+	// And searching the other way round, so neither id is privileged by the fixture order.
+	expect([...processingGroupIds([bsb])]).toEqual(['bsb']);
 });
 
-test("don't over-correct: a processing song that DOES match the query is present", () => {
-	const ids = processingGroupIds({
-		searchActive: true,
-		processingResults: [bsb], // now searching "that way" — the server matched bsb
-		mediaStatus: status,
-		mediaCatalog: catalog,
-		readiness
-	});
-	expect(ids.has('bsb')).toBe(true);
-	expect(ids.has('rickroll')).toBe(false);
+test('one media is one row, however many times the wire names it', () => {
+	// The caller resolves each id against the catalog and renders a progress bar per row, so a duplicate would be
+	// two bars for one job. Insertion order is preserved, which is the order the server ranked them in.
+	expect([...processingGroupIds([rickroll, bsb, rickroll])]).toEqual(['rickroll', 'bsb']);
 });
 
-test('empty query preserves the guaranteed-visible union of every in-flight process', () => {
-	// With no search box the escape hatch holds: a process you started stays visible from both the live
-	// status map and the catalog, regardless of `processingResults`.
-	const ids = processingGroupIds({
-		searchActive: false,
-		processingResults: [],
-		mediaStatus: status,
-		mediaCatalog: catalog,
-		readiness
-	});
-	expect(ids.has('rickroll')).toBe(true);
-	expect(ids.has('bsb')).toBe(true);
-	expect(ids.size).toBe(2);
-});
-
-test('the union includes a failed process and excludes ready/canceled', () => {
-	const failed = media('failed', { stemStatus: 'none' });
-	const ready = media('ready', { stemStatus: 'ready' });
-	const canceled = media('canceled', { stemStatus: 'none' });
-	const cat = new Map<string, Media>([
-		[failed.id, failed],
-		[ready.id, ready],
-		[canceled.id, canceled]
-	]);
-	const st = new Map<string, { status: MediaStatus }>([
-		[failed.id, { status: 'failed' }],
-		[ready.id, { status: 'ready' }],
-		[canceled.id, { status: 'canceled' }]
-	]);
-	const ids = processingGroupIds({
-		searchActive: false,
-		processingResults: [],
-		mediaStatus: st,
-		mediaCatalog: cat,
-		readiness: (m) => displayReadiness(m, st.get(m.id))
-	});
-	expect(ids.has('failed')).toBe(true);
-	expect(ids.has('ready')).toBe(false);
-	expect(ids.has('canceled')).toBe(false);
+test('no processing results is an empty group, not a fallback to the catalog', () => {
+	expect(processingGroupIds([]).size).toBe(0);
 });
 
 // ── the zero-state gate ──────────────────────────────────────────────────────────────────────────

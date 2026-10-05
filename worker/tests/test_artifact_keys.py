@@ -1,6 +1,7 @@
 """The KEY MIRROR, checked against core's `paths.ts` rather than trusted.
 
-`artifacts/keys.py` duplicates a decision that lives in TypeScript. The duplication is unavoidable — two
+`artifacts/keys.py` duplicates a decision that lives in TypeScript (XW-03). The duplication is
+unavoidable — two
 processes, two languages, one on-disk layout — but the drift is not, and core's own header states the
 consequence: "a mismatch is SILENT — the file exists and the player 404s." No runtime check can catch it,
 both sides being individually self-consistent, so the agreement is asserted at build time from the actual

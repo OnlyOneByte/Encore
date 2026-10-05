@@ -1,15 +1,8 @@
-"""The word-end post-pass, as properties (W4, `domain/lyrics/ends.py`).
+"""The word-end post-pass (`domain/lyrics/ends.py`) as hermetic properties, chiefly invariant XA-01.
 
-Everything here is hermetic: documents built by hand or by seeded random, envelopes that are lists of levels.
-The reject-if the review names is "any onset moves" — a display fix that moved a start would undo the whole
-wave — and it is asserted here on random documents and again end to end through the real step
-(`tests/test_align_ends.py`), because a bench row averages over a corpus and could hide one moved onset. The
-OOV placeholder's exhibit is in README, "The OOV placeholder's own exhibit".
-
-Times are compared with `approx` wherever an end was extended and EXACTLY wherever it was not: an extended
-end is a multiple of the 20 ms frame, and `115 * 0.02` is 2.3000000000000003, while the identity cases must
-hold bit for bit because "nothing moved" is what the trail note and the bench's onset digest both claim.
-"""
+Starts are compared EXACTLY so "no onset moved" is bit for bit; extended ends go through `at()`.
+Design: docs/arch/04-alignment.md §10. Measurements: the forced-alignment README, "Word ends, held
+through the singing" and "The OOV placeholder's own exhibit".
 """
 
 from __future__ import annotations

@@ -651,12 +651,12 @@ class TimeTextDriver:
     def target_of(self, song: lib.Song) -> str:
         """The file the aligner decodes: the vocals stem, or the MIX when the case is stemless.
 
-        `--no-stem` (`stem=False`) is the harness's STEMLESS dimension, composable with every claim mode:
-        the case is run exactly as production runs a song no stems job could separate — `vocals_path` is
-        None, so `AudioRef.align_target` is the mix, R4 has no second witness, `Knob.ALIGN_ON_MIX` is never
-        offered, the LINE_SYNC rung declines, and the lexical gate reads the MIX bands, where the floor is
-        the verdict and the envelope fit is only reported. The two controls are `h3-mix-envelope` (W3's
-        default) and `h3-mix-floor`. No corpus song LACKS a stem, so this mode is the only way to measure it."""
+        `--no-stem` (`stem=False`) is the harness's STEMLESS dimension, composable with every claim mode: the
+        case is run exactly as production runs a song no stems job could separate — `vocals_path` is None, so
+        `AudioRef.align_target` is the mix, R4 has no second witness, `Knob.ALIGN_ON_MIX` is never offered,
+        the LINE_SYNC rung declines, and the lexical gate reads the MIX bands, where the floor is the verdict
+        and the envelope fit is only reported. The two controls are `h3-mix-envelope` (W3's default) and
+        `h3-mix-floor`. No corpus song LACKS a stem, so this mode is the only way to measure it."""
         return str(song.vocals if self.stem else song.mix)
 
     def claims_for(self, case: Case) -> lib.Claims:
@@ -1348,9 +1348,9 @@ def resume_refusal(config_path: Path, config: Mapping[str, object]) -> str | Non
 
     A resumed run must continue THE SAME run: rows under another level, model, seed, alignment setting or
     worker CODE would blend into one summary silently. A `run.json` from before a key existed differs, so it
-    is refused too — UNLESS the key has a `lib.RUN_DEFAULTS` entry, which is a written-down statement of what
-    its absence meant: `detector` absent IS `detector: off`, so a directory started before the key was
-    recorded resumes under the configuration it ran, and nothing chooses between resumable and self-describing."""
+    is refused too — UNLESS the key has a `lib.RUN_DEFAULTS` entry, a written-down statement of what its
+    absence meant: `detector` absent IS `detector: off`, so a directory started before the key was recorded
+    resumes under the configuration it ran, and nothing chooses between resumable and self-describing."""
     if not config_path.exists():
         return None
     on_disk: object = json.loads(config_path.read_text(encoding="utf-8"))

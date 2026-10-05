@@ -177,5 +177,12 @@ export const FLOORS = {
 	 *  reached only ONE host: the claim is a COMPARISON, so five readings of `/` alone would report every
 	 *  equality satisfied against nothing. Dropping one VIEWPORT does not trip it, and is not meant to — CLAIM 7
 	 *  also asserts the exact count against the viewport list it drove, which is the arm that holds the list. */
-	joinPlacementsMeasured: 6
+	joinPlacementsMeasured: 6,
+	/** Dock readings CLAIM 3 takes, where a reading is one (surface, strip state, inset) triple. That drive takes
+	 *  NINETEEN and twelve is the floor, because the failure this guards against is a drive that never reaches the
+	 *  strip-PRESENT state: the strip needs a real indexed library row queued before it renders, and without it
+	 *  every arm would report satisfied over the one state the drive did reach — including the four CROSS-STATE arms
+	 *  that are the whole reason CLAIM 3 is one test. The claim pairs this count with an arm asserting both sides of
+	 *  the branch were seen, since a count alone cannot say which states they were. */
+	dockStatesMeasured: 12
 };

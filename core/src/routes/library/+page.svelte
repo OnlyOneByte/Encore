@@ -9,8 +9,10 @@
 	 * line under the field is what says so — two fields that look alike and do opposite things would be a worse problem
 	 * than the one this page fixes, so the difference is stated rather than implied by styling.
 	 *
-	 * No auto-navigation on adding a song: you came here to pick, and picking two is normal. The toast carries the way
-	 * back instead, so nothing strands you on a leaf route.
+	 * THIS IS THE LIBRARY TAB, reached from the dock rather than through a door on the home column, so nothing here is a
+	 * leaf route and nothing on it needs a way back — which is why the header carries no back arrow and the toast
+	 * carries no action. Adding a song still does not navigate: you came here to pick, and picking two is normal. The
+	 * toast now says where the song went instead of offering a trip to a tab already on screen.
 	 */
 	import { onMount } from 'svelte';
 	import type { Media, PublicSinger, QueueEntry } from '$lib/contract';
@@ -203,44 +205,78 @@
 	function addSong(m: Media) {
 		store?.addSong(m.id);
 		if (navigator.vibrate) navigator.vibrate(8);
-		// The way back out, offered rather than forced: a guest adding a second song must not be navigated away.
-		toast(`Added “${m.title}”`, {
-			duration: 5000,
-			action: { label: 'View queue', onClick: () => (location.href = '/') }
-		});
+		/* NO ACTION ON THE TOAST, and that is a fix rather than a trim. It read `View queue` and assigned `'/'` to
+		   `window.location` — so it named the queue and landed on the SING tab, and it was the app's one direct
+		   `window.location` write, and it is now gone from src/ entirely. Every other PROGRAMMATIC navigation there
+		   goes through `goto` — the lone holdout is `JoinLanding`'s `location.reload()`, which re-enters the URL it is
+		   already on rather than crossing to another — and the rest of them are real anchors. Driven in a browser:
+		   clicking it recorded two main-frame navigations, a sentinel set on `window` beforehand was GONE afterwards,
+		   and the URL came out as `/` — a full document replacement, so the socket closed, /api/library re-fetched and
+		   the shell re-parsed to cross one tab. The dock carries a Queue tab on every surface now, so the destination
+		   lives there permanently and this toast's one job is to say where the song went. */
+		toast(`Added “${m.title}” to the queue`, { duration: 5000 });
 	}
 </script>
 
 {#if me}
 	<div class="library-page">
-		<PageHeader title="Your library" icon="library" back={{ href: '/', label: 'Back to the queue' }} />
+		<!-- NO BACK ARROW, because this is the Library TAB and not a push. The arrow it used to carry was a lie twice
+			over: its accessible name sent you back to the QUEUE while its href pointed at `/`, the SING tab — the queue is its own
+			route now. And a back arrow on a tab root is wrong in kind: tabs are siblings, so the dock is the way between
+			them, and `PageHeader`'s own case for `back` (a home-screen install with no back gesture still has an in-app
+			exit) is met three times over by the tab bar. `/queue` ships the same headerless-of-back header.
+			MEASURED at 390x844 on this tree's 2-ready catalog: the pill goes 64px to 41px — the 44px icon box was
+			setting its height — and every head element and every song row rises exactly 23px. The h1's leading edge
+			goes x=86 to x=32, which is where `.field-slot` and every `.row` already start; with the arrow, the title
+			was the only thing on the page beginning anywhere else.
+			THE HEADER ITSELF STAYS, also measured: it costs 73px of 844 without the arrow against 96 with it, and 0
+			buys nothing but a nameless page, since it holds the route's only h1 on a sticky surface. -->
+		<PageHeader title="Your library" icon="library" />
 
 		<main>
 			<!-- A FILTER, not a search: same shape as the home field for consistency, but its own placeholder, and the
-					count line below carries the actual distinction. -->
-			<div class="field-slot">
-				<FindField
-					bind:value={query}
-					bind:element={queryEl}
-					ariaLabel="Filter your library"
-					placeholder="Filter your library…"
-					clearable={dirty}
-					clearLabel="Clear the filter"
-					onclear={clearFilters}
-					oninput={onQueryInput}
-				/>
-			</div>
+					count line below carries the actual distinction.
+					GONE WHEN THE LIBRARY IS PROVEN EMPTY, because a filter over nothing is dead chrome — measured on a
+					0-ready catalog at 390x844, the slot painted 102..172 directly above "No karaoke tracks yet", offering
+					to narrow a list with no rows in it. The `!libraryLoaded` arm keeps it mounted while the skeleton
+					shows, so in the common case it is there from the first frame rather than appearing late.
+					The div does NOT move out of its place in `main`'s flow: the --bp-lg arm puts `.field-slot` in
+					grid-column 1, and library-wide-head.test.ts asserts that placement. -->
+			{#if !libraryLoaded || library.length > 0}
+				<div class="field-slot">
+					<FindField
+						bind:value={query}
+						bind:element={queryEl}
+						ariaLabel="Filter your library"
+						placeholder="Filter your library…"
+						clearable={dirty}
+						clearLabel="Clear the filter"
+						onclear={clearFilters}
+						oninput={onQueryInput}
+					/>
+				</div>
+			{/if}
 
 			{#if !libraryLoaded}
 				<SkeletonRows count={4} label="Loading your library…" />
 			{:else if library.length === 0}
-				<!-- The genuinely empty library. The only useful instruction points back at the queue's field, which is
-						the one surface that can ADD a song — this page can only show what is already here. -->
+				<!-- The genuinely empty library. The only useful instruction points at the SING tab, which is the one
+						surface that can ADD a song — this page can only show what is already here. It used to say "Search
+						from the queue screen", which named a surface that no longer exists under that name: `/` is the Sing
+						tab and the queue is its own route, so neither half of that sentence was true.
+						THE BUTTON STAYS, and it is checked against the sibling rather than assumed: `/queue`'s twin empty
+						state also carries a `Find a song` control pointing at `/`, so deleting this one would be the two
+						tabs disagreeing about whether an empty state offers an action. It also costs nothing either way —
+						measured at 390x844 on a 0-ready catalog, `.lib-empty` is 337.6px tall (`min-height: 40vh`) with the
+						button and 337.6px with it removed from the live DOM. And this is the state where the dock is THINNEST:
+						with no ready song nothing can be playing, so the strip is absent and --dock-h measures 46px — the tab
+						bar alone, a 0.75rem label at the far end of the screen, which is the least legible the way out ever
+						gets. That is also why the description NAMES the tab in words instead of gesturing at it. -->
 				<Empty.Root>
 					<div class="lib-empty">
 						<Empty.Header>
 							<Empty.Title role="heading" aria-level={2}>No karaoke tracks yet</Empty.Title>
-							<Empty.Description>Search from the queue screen and we'll make one.</Empty.Description>
+							<Empty.Description>Find a song on the Sing tab and we'll make the karaoke track.</Empty.Description>
 						</Empty.Header>
 						<Button variant="secondary" size="tap" href="/">
 							<Icon name="search" /> Find a song
@@ -252,8 +288,11 @@
 						track of `main`'s row grid, beside the field, so the page's controls line up with the songs they
 						filter instead of stacking above them. Below that it is `display: contents` and generates no box at
 						all — no margin to collapse against, no grid item to place — so the head's y-positions on a phone and a
-						tablet are what they were before this div existed: field 102..172, count 180..196, disclosure
-						206..250, first row 250, at BOTH 390x844 and 768x900.
+						tablet are what they were before this div existed: field 79..149, count 157..173, disclosure
+						183..227, first row 227, at BOTH 390x844 and 768x900. (The y's are shared; the x's are not — the
+						shell's gutter differs, so at 768 the count sits at x=40 against x=36 on the phone.) Those four
+						readings were field 102..172, count 180..196, disclosure 206..250, first row 250 until the header
+						lost its back arrow: a uniform 23px lift, which is what that 44px icon box was adding to the pill.
 						Why a wrapper rather than placing the three children directly: they appear on three different
 						conditions, and grid auto-placement fills whatever head cell is free — with `hasRefinements` false a
 						SONG ROW would slide up beside the filter field. One box, one placement, no state to enumerate. -->
@@ -266,18 +305,25 @@
 
 					<!-- COLLAPSED BY DEFAULT, and that is the page's main design decision. Expanded, the chip rows are
 							~420px of chrome on a nine-song library — seven artists, six tags and three sorts, each with its own
-							heading — which pushed the FIRST SONG ROW to about y=650 and left one row visible above the band.
+							heading — which pushed the FIRST SONG ROW to about y=650 and left one row visible above the DOCK.
 							That is the exact fault /library exists to fix, relocated. Scrolling songs is the default state; the
 							refinements are one tap away. Measured at 390x844 with the payload in the note on `chips` below.
 							STILL COLLAPSED at --bp-lg, and defaulting it OPEN there was considered and rejected on arithmetic. The
 							wide arm does leave the expanded page better off — the panel spends the head's second track instead of
-							a full-width row, so at 1440x900 the first song row sits at 354 where it used to sit at 432 — but the
+							a full-width row, which at 1440x900 moved the first expanded song row from 432 to 354, a pair both
+							read while the header still carried its back arrow; today it reads 331, the same 23px lift the
+							collapsed head took — but the
 							TAP itself costs almost what it always did (174px of push against 182px; most of the 78px is the
 							head's own lift, not the panel's placement), and the panel's height is unbounded in the direction that
-							matters: this worktree's 2-song library opens to 174px (172..346), while FACET_CHIP_LIMIT allows
-							twelve artist chips and twelve tag chips in one 500px track, and /library's `main` has only 739px
-							between its own top (y=96) and the band (y=835) at 900px tall. A default-open panel on a full library
-							would put the first row back under the band — the same fault, at a different width. -->
+							matters: this worktree's 2-song library opens to 174px (149..323) in that track, while
+							FACET_CHIP_LIMIT allows twelve artist chips and twelve tag chips in one 500px track, and /library's
+							`main` has only 736px between its own top (y=73) and the DOCK (y=809) at 900px tall. A default-open
+							panel on a full library would put the first row back under the dock — the same fault, at a different
+							width.
+							AND 174 IS THE WIDE READING ONLY, which this note never said. The SAME panel at 390x844 measures
+							202px (243..445), putting the first song row at y=453, because the phone's narrower track wraps the
+							three sort chips and the two artist chips further than a 500px one does. The phone is the case the
+							collapse is for, so it is the larger number that justifies it. -->
 					{#if hasRefinements}
 						<Button
 							variant="eyebrow"
@@ -403,7 +449,11 @@
 		margin-inline: auto;
 		width: 100%;
 		box-sizing: border-box;
-		/* Reserves the band's measured height; no env() term — the band carries the only inset. */
+		/* Reserves the DOCK's measured height. No env() term here: `TabBar`, the bottom-most element in the dock, is the
+		   one place that spends `env(safe-area-inset-bottom)`, and it reaches this column through --dock-h. The
+		   declaration itself is left exactly as `/`, `/settings` and `/song/[mediaId]` spell it — changing the idiom on
+		   one route would be the drift, and measured-join-gate.spec.ts pins the 28px term: its failure message quotes
+		   this declaration's COMPUTED form, `6px 16px calc(var(--dock-h, 0px) + 28px)`, not the token spelling below. */
 		padding: var(--space-xs) var(--space-2xl) calc(var(--dock-h, 0px) + 28px);
 	}
 
@@ -430,9 +480,15 @@
 	}
 	/* See the markup note for why this box exists. `display: contents` is the whole of it below --bp-lg: no box, no
 	   margin, no grid item, so the count, the disclosure and the panel stay exactly where they were in `main`'s flow.
-	   Verified rather than assumed — the collapsed head measures the same at 390x844 and 768x900 as it did before the
-	   wrapper (field 102..172, count 180..196, disclosure 206..250, first row 250), and the expanded stack at 768x900
-	   reproduces the pre-change 1440x900 stack digit for digit (panel 250..424, first row 432). */
+	   Verified rather than assumed — the collapsed head measures the same at 390x844 and 768x900 (field 79..149, count
+	   157..173, disclosure 183..227, first row 227), and at 768x900 the expanded stack is panel 227..401 with the first
+	   row at 409.
+	   THAT PAIR USED TO BE QUOTED AS REPRODUCING THE PRE-WIDE-ARM 1440x900 STACK DIGIT FOR DIGIT (panel 250..424, first
+	   row 432), and it no longer does — not because the wrapper changed, but because dropping the header's back arrow
+	   lifted this whole column 23px while a historical reading cannot move. What the two stacks genuinely share, and
+	   what the claim was really about, is the SHAPE: the panel is 174px tall in both and the first row follows 8px
+	   under it. The absolute y's were a coincidence of header height, which is exactly the kind of number that goes
+	   false without anyone touching the rule it describes. */
 	.lib-meta {
 		display: contents;
 	}
@@ -483,7 +539,7 @@
 	}
 
 	/* FLEX COLUMN, not grid + place-items: the vendored `Empty.Header` is `display: contents`, so its children become
-	   direct children of this box and grid would split the min-height between them. See `.queue-empty` on `/`. */
+	   direct children of this box and grid would split the min-height between them. See `.idle` on `/`. */
 	.lib-empty {
 		display: flex;
 		flex-direction: column;
@@ -530,8 +586,10 @@
 	/* THE WIDE HEAD ADOPTS THE ROW GRID. 1200 is --bp-lg, and it is the width where `main` first has two tracks: at and
 	   above it --max-w is 1080, which less the shell's two 16px gutters and this page's own two leaves a 1016px column,
 	   and 1016 is 500 + --space-2xl + 500. The head ignored those tracks. Measured in headless Chromium at 1440x900 on
-	   this worktree's library (123 media rows, 2 of them stem-ready) BEFORE this arm: the filter field painted 560px at
-	   x=212 inside a column ending at 1228, so 456px of the column trailed it empty, and the count and the disclosure
+	   this worktree's library — 2 STEM-READY SONGS, which is the figure that matters and the one this block's geometry
+	   is read against; the catalog's total is deliberately not quoted, because it accumulates every search result ever
+	   materialised and drifts whenever a benchmark runs — BEFORE this arm: the filter field painted 560px at x=212
+	   inside a column ending at 1228, so 456px of the column trailed it empty, and the count and the disclosure
 	   stacked beneath it in their own full-width rows with the first song row at y=250.
 	   AFTER: the field is track one and the count + disclosure + panel are track two, so both halves of the head land on
 	   the song rows below them — field 212..712 over the first row's 212..712, the disclosure at 728 on the second row's
@@ -541,9 +599,19 @@
 	   first song row sits at 354 where it used to sit at 432. THE TAP is not what got cheaper — opening still pushes the
 	   rows 174px against the old 182px — the HEAD did: 70 of that 78px is the collapsed lift and 8 is the placement.
 	   THE TRADE, stated because one number goes the other way: the last row's bottom comes up from 344.4 to 274.4, so on
-	   a 2-ready library the gap between it and the band GROWS, 490.6 -> 560.6. That gap is content-bound at this corpus
-	   (see docs/FRONTEND.md#the-library-page) — two rows cannot fill the 739px between this page's `main` at y=96 and
-	   the band at y=835, however they are placed — while the 70px lift is worth a row on the corpus this page is for.
+	   a 2-ready library the gap between it and the DOCK GROWS, 464.6 -> 534.6. Neither figure is copied: the dock's top
+	   is 809 at every viewport 900px tall, 809 - 344.4 = 464.6 where 344.4 is the pre-arm last-row bottom (its measured
+	   first-row top 250 plus the measured 94.4px row height), and 809 - 274.4 = 534.6 after. That gap is content-bound
+	   at this corpus (see docs/FRONTEND.md#the-library-page) — two rows cannot fill the 736px between this page's `main`
+	   at y=73 and the dock at y=809, however they are placed — while the 70px lift is worth a row on the corpus this
+	   page is for.
+	   EVERY y ABOVE IS AN ARROW-ERA READING, kept because it is the only way to state what this arm did and the pre-arm
+	   layout is no longer reproducible. The head then lost the header's back arrow and the whole column rose 23px, so
+	   TODAY the same 1440x900 drive reads: `main` 73, field 79..149 at 212..712, count left 732 at 79..95, disclosure
+	   left 728 at 105..149, the two rows 157..251.4 side by side at 212..712 and 728..1228, the panel 149..323, the
+	   first expanded row 331 — and 809 - 251.4 = 557.6px of gap to the dock. Everything this arm is actually ABOUT is
+	   unmoved by that: the field is still 500 at 212..712 over the first row's own 212..712, the disclosure still at
+	   728, the count still 4px inboard at 732, the panel still 500 wide at 728..1228 and still 174px tall.
 	   `align-items: flex-start` so the disclosure keeps its own width (a 500px-wide eyebrow would be a hit area three
 	   times its ink); `.refine` takes the track back, so its chips wrap at 500 and not at the widest chip. */
 	@media (min-width: 1200px) {

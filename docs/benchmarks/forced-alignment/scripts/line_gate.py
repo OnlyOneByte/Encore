@@ -337,11 +337,11 @@ def claim_agreement(
 ) -> dict[str, float | None]:
     """How the placed claim starts sit against the text's blind decode, over the lines both carry:
 
-      near        `reconcile.as_claimed`'s share within `near_sec` — the shipped gate's number
-      offset      its median (decode − claim): the claims' lag as the decode reads it
-      median_gap  the median |decode − claim|
-      near_fit    the share within `near_sec` once that lag is removed
-      pairs       how many lines the share is OVER, `generate` dropping any line with no alignable character
+    near        `reconcile.as_claimed`'s share within `near_sec` — the shipped gate's number
+    offset      its median (decode − claim): the claims' lag as the decode reads it
+    median_gap  the median |decode − claim|
+    near_fit    the share within `near_sec` once that lag is removed
+    pairs       how many lines the share is OVER, `generate` dropping any line with no alignable character
     """
     from encore_worker.domain.lyrics import reconcile as rc  # noqa: PLC0415
 
@@ -485,9 +485,9 @@ def measure(args: argparse.Namespace, device: str) -> list[dict[str, Any]]:
                         "map_inliers": None if clock is None else clock.inliers,
                         "map_baseline": None if clock is None else clock.baseline,
                         "map_margin": None if clock is None else clock.margin,
-                        #: Claimed starts `_in_claim_order` held at the line before them (Tom_Orlando jit), and
-                        #: the inversions it REFUSED to hold. A refused sheet publishes its inversions, so
-                        #: `measure.out_of_order` reaches `decide` and the text is dropped.
+                        #: Claimed starts `_in_claim_order` held at the line before them (Tom_Orlando
+                        #: jit), and the inversions it REFUSED to hold. A refused sheet publishes its
+                        #: inversions, so `measure.out_of_order` reaches `decide` and the text is dropped.
                         "held": held,
                         "unheld": unheld,
                         #: The SAME row under W3's placement, for the comparison table: the agreement the

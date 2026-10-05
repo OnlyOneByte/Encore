@@ -4,23 +4,11 @@
     uv run python docs/benchmarks/stem-separation/scripts/prepare.py              # every song
     uv run python docs/benchmarks/stem-separation/scripts/prepare.py tfr-mayday   # just one
 
-Writes four files per song, all gitignored because this script rebuilds them deterministically:
-
-    youtube-mix.wav           the WORKER'S OWN input, fetched with yt-dlp exactly as `adapters/cli` does
-    reference-mix.wav         instrumental + vocals, scaled
-    reference-instrumental.wav
-    reference-vocals.wav
-
-TWO MIXES, MEASURING DIFFERENT THINGS, and they are not interchangeable. Timing belongs on the YouTube file
-because that is what production actually receives — lossy-sourced, 48 kHz. Scoring cannot use it: the master
-is neither the same sample rate nor the same length as the stems (flyaway: 48000 vs 44100 Hz, 194.258 vs
-194.065 s), so an SDR computed against them would be measuring misalignment, not separation.
-
-WHY THE REFERENCE IS SCALED. Summed raw, these stems clip — flyaway peaks at 2.16, chosen at 2.48, mayday at
-1.86 — because each released master applied gain reduction and limiting afterwards. One constant is therefore
-applied to the mixture and to BOTH ground-truth stems identically, which preserves
-`mixture == instrumental + vocals` exactly. That identity is the single property every SDR figure depends on,
-so it is asserted here rather than assumed.
+Writes four gitignored files per song, rebuilt deterministically: `youtube-mix.wav` (the worker's own input,
+for TIMING), the sample-aligned `reference-mix.wav` (for SCORING), `reference-instrumental.wav` and
+`reference-vocals.wav`. Why the two mixes are not interchangeable and why the reference is scaled by ONE
+constant shared by the mixture and both stems: docs/benchmarks/stem-separation/README.md, "Test inputs". The
+identity `mixture == instrumental + vocals` is what every SDR figure depends on, so this script asserts it.
 """
 
 from __future__ import annotations

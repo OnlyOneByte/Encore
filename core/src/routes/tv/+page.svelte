@@ -338,7 +338,9 @@
 		return () => ro.disconnect();
 	}
 
-	// MEASURED, not predicted: the band grows with its content, so a static sum UNDER-counts and covers the sung line.
+	// MEASURED, not predicted: this card grows with its content, so a static sum UNDER-counts and covers the sung line.
+	// The phone's dock is the same finding on the other surface — see the `--dock-h` note in src/routes/+layout.svelte,
+	// where a token-arithmetic height was tried and came to 102px against a rendered 91.
 	let lowerThirdEl = $state<HTMLElement | undefined>();
 	let measuredCardPx = $state<number | null>(null);
 	$effect(() => observeBlockSize(lowerThirdEl, (px) => (measuredCardPx = px)));

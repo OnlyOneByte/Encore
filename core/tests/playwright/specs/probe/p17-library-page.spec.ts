@@ -108,8 +108,9 @@ test('the chrome reaches the page, and a song added there lands in the rotation'
 	const phone = await world.openPhone('Libby');
 	const { row, worker } = await oneReadySong(world, phone);
 	try {
-		// From the queue screen, through the door BESIDE THE FIELD — the affordance that fixes the reachability
-		// complaint, and it sits on the field's leading edge because the trailing edge carries the spinner and clear.
+		// From the Sing tab, through the TAB BAR — which is the phone's whole answer to the reachability complaint
+		// now, and a stronger one than the icon door beside the search field that used to be here: the tab is on
+		// screen on every phone surface rather than on one, and it carries a visible label.
 		await phone.goto(world.baseURL);
 		await expect(phone.locator(SEL.libraryLink)).toBeVisible();
 		await phone.locator(SEL.libraryLink).click();
@@ -124,21 +125,32 @@ test('the chrome reaches the page, and a song added there lands in the rotation'
 		//
 		// QUEUED **OR** NOW PLAYING, and the union is the honest observable rather than a hedge: the room was idle, so
 		// the only entry is eligible immediately and the rotation hands it straight to the stage. Asserting `.qrow`
-		// alone failed for exactly that reason — `Nothing Queued` with the song already in the band.
-		await phone.goto(world.baseURL);
+		// alone failed for exactly that reason — an empty queue with the song already in the now-playing chrome.
+		// READ FROM /queue, because that is where `.qrow` is: the Sing tab renders no queue rows at all. The strip's
+		// title resolves on either surface, so only the queued half of the union needed the route.
+		await phone.goto(`${world.baseURL}/queue`);
 		await expect
 			.poll(
 				async () =>
 					(await phone.locator(SEL.queueTitle).allTextContents())
-						.concat(await phone.locator(SEL.bandTitle).allTextContents())
+						.concat(await phone.locator(SEL.npStripTitle).allTextContents())
 						.some((t) => t.includes(row.title)),
-				{ message: `"${row.title}" reached neither the queue nor the now-playing band` }
+				{ message: `"${row.title}" reached neither the queue nor the now-playing strip` }
 			)
 			.toBe(true);
 
-		// PageHeader's back control is a real anchor, so the way out of the leaf route is the browser's own too.
+		// NO BACK CONTROL, AND THAT IS THE CLAIM. This asserted `SEL.backToQueue` was visible, because /library used to
+		// be a leaf route reached from home and PageHeader's back arrow was its way out. /library is a TAB ROOT now:
+		// a back arrow on a tab root is a category error whatever its destination, and the way out is the other two
+		// tabs, which are on screen. The header itself STAYS — it carries the route's only h1 — so this asserts the
+		// pair: a heading, and no back affordance inside it.
 		await phone.goto(`${world.baseURL}/library`);
-		await expect(phone.locator(SEL.backToQueue)).toBeVisible();
+		await expect(phone.locator(SEL.pageHeading)).toBeVisible();
+		await expect(
+			phone.locator(SEL.backToQueue),
+			'a tab root must carry no back affordance — the dock is the way between tabs'
+		).toHaveCount(0);
+		await expect(phone.locator(SEL.tabCurrent)).toHaveText(/Library/);
 	} finally {
 		await worker.stop();
 	}

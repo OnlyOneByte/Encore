@@ -107,8 +107,9 @@ export const test = base.extend<{ world: World; coreEnv: Record<string, string> 
 			// The label IS the regex source, so the button is derived rather than re-typed.
 			await page.getByRole('button', { name: SEL.submit }).click();
 			// The join reloads `/` by hand — a client-side goto from `/` to `/` is a no-op — so wait for the
-			// BAND, not for a URL change. The path never changes.
-			await page.locator(SEL.homeReady).waitFor({ state: 'attached' });
+			// DOCK, not for a URL change. The path never changes. The dock and not the strip inside it: a virgin
+			// room has nothing queued, so the strip does not render and a wait on it would never resolve.
+			await page.locator(SEL.dock).waitFor({ state: 'attached' });
 		};
 
 		await use({

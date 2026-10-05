@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { at } from '$test';
-import { LIBRARY_SHELF, LIBRARY_SHELF_WIDE } from '$lib/library-browse';
 
 /*
  * guard: a comment under `src/` may not point at another file by LINE NUMBER, and the two cross-file claims that
@@ -74,18 +73,33 @@ test('the four hosts of the landscape claw-back are named by RULE, and all four 
 	expect(appCss).toContain('NAMED BY RULE AND NOT BY LINE');
 });
 
-test('the shelf cap is two constants and a route choice, which is what FRONTEND.md now says', () => {
-	// The doc read "a SHELF of `LIBRARY_SHELF` rows (eight at `--bp-lg`)", which says the constant changes value
-	// at a width. It does not: there are two constants and the ROUTE picks one off a matchMedia read.
-	expect(LIBRARY_SHELF).toBe(4);
-	expect(LIBRARY_SHELF_WIDE).toBe(8);
+test('the Sing tab renders no library shelf, so it reads no viewport width in JS at all', () => {
+	/* THE SUCCESSOR to a claim about the shelf's cap. That claim was there because the doc read "a SHELF of
+	 * `LIBRARY_SHELF` rows (eight at `--bp-lg`)", which says one constant changes value at a width — it did not; there
+	 * were two constants and the route picked one off a `matchMedia` read. The shelf is gone from `/` entirely now
+	 * (/library is the library, and the Library tab is on screen at every width), which retires the whole
+	 * question. What is worth pinning is the CONSEQUENCE: this surface no longer reads a width in JS. */
 	const home = readFileSync(at('src/routes/+page.svelte'), 'utf8');
-	expect(home).toContain('twoAcross ? LIBRARY_SHELF_WIDE : LIBRARY_SHELF');
-	// The width the route reads is --bp-lg's value, spelled as a literal in a `matchMedia` string because a media
-	// query in JS cannot reach a custom property. The two have to agree, so both are asserted.
-	expect(home).toContain("matchMedia('(min-width: 1200px)')");
+	expect(home).not.toContain('libraryShelf');
+	expect(home).not.toContain('LIBRARY_SHELF');
+	/* The cap was the only reason `/` ever read a width in JS, and the reason it had to be JS rather than CSS is that
+	 * the extra rows did not EXIST in the DOM for a stylesheet to reveal. With no shelf, a `matchMedia` here would be
+	 * a width read with nothing to decide — and the same hazard as before, because a media condition cannot resolve a
+	 * custom property, so the literal and the token drift apart silently. */
+	expect(home).not.toContain('matchMedia');
+	// --bp-lg keeps its declaration and its CSS callers; it is the JS one that is gone. Both survivors are asserted,
+	// because app.css's own `--bp-*` note names them.
 	expect(readFileSync(at('src/app.css'), 'utf8')).toMatch(/--bp-lg:\s*1200px;/);
+	expect(readFileSync(at('src/app.css'), 'utf8')).toContain('@media (min-width: 1200px)');
+	expect(readFileSync(at('src/routes/library/+page.svelte'), 'utf8')).toContain('@media (min-width: 1200px)');
+	// And the doc's own section says the same. The negative is kept from the retired test: that exact sentence is the
+	// one that was wrong, and reviving it would be wrong twice over now.
 	const frontend = readFileSync(at('../docs/FRONTEND.md'), 'utf8');
-	expect(frontend).toContain('`LIBRARY_SHELF` is 4 at every');
 	expect(frontend).not.toContain('a SHELF of `LIBRARY_SHELF` rows (eight');
+	const start = frontend.indexOf('### The Sing tab');
+	const end = frontend.indexOf('### The library page');
+	expect(start).toBeGreaterThan(-1);
+	expect(end).toBeGreaterThan(start);
+	// A past-tense mention of where the rows went is fine; a live claim that `/` caps a shelf is not.
+	expect(frontend.slice(start, end)).not.toContain('LIBRARY_SHELF');
 });

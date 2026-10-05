@@ -106,10 +106,14 @@ test('the panel stays collapsed by default at every width', () => {
 });
 
 test('the docs state the corpus every desktop reading was taken on', () => {
-	// The claim this repair exists to correct: "~246px to ~41px" was measured with TEN ready songs, and the tree's
-	// own catalog has two — so the wide shelf cannot bind and the void is unchanged. Both corpora are now named.
-	expect(doc).toContain('**with ten ready');
+	/* The rule, and the only durable half of what this test used to pin: a desktop pixel reading is worthless
+	 * without the catalog it was taken against. The claim it was written for was the home SHELF's — "~246px to ~41px"
+	 * and a `**with ten ready songs**` qualifier, measured on a ten-ready library when this tree's catalog has two,
+	 * so the wide cap could never bind here. That shelf is gone: `/` is the Sing tab and the library is `/library`.
+	 * What survives, and is asserted, is the corpus statement plus the superseded reading's own figure, so the
+	 * before and after of the rebuild are both checkable rather than only the after. */
 	expect(doc).toContain("stem_status='ready'");
+	expect(doc).toContain('listReady()');
 	expect(doc).toContain('431.6px');
 	// The field's cap is inert at --bp-lg because the track is narrower than the measure — derived, not asserted.
 	expect(track()).toBeLessThan(token('--measure-prose'));

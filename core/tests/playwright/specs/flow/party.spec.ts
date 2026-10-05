@@ -21,7 +21,7 @@
 import { test, expect } from '../../world/fixtures';
 import type { Page } from '@playwright/test';
 import { SEL } from '../../world/selectors';
-import { openBrowseFromHome, returnHomeFromBrowse, isJoined } from '../../world/actors';
+import { openBrowseFromHome, openQueue, isJoined } from '../../world/actors';
 import { DEMO_LIBRARY } from '../../world/seed';
 import { startFakeWorker } from '../../world/workers';
 
@@ -133,8 +133,14 @@ async function text(page: Page, selector: string): Promise<string> {
  * entry renders no `.qrow` at all, so a rotation read from rows alone is empty for a healthy room.
  */
 async function rotationOf(page: Page): Promise<string[]> {
-	const hero = (await texts(page, SEL.bandTitle)).filter((t) => t && t !== 'Nothing playing');
-	return [...hero, ...(await texts(page, SEL.queueTitle))];
+	// ON /queue, AND THAT IS THE WHOLE READING. `.qrow` used to be a section on `/`; the Sing tab renders none, so
+	// the queued half of this was silently empty wherever it was called from until the route change went in. The
+	// strip's title is chrome and resolves on either surface.
+	// No `!== 'Nothing playing'` filter any more: that was the old band's idle copy, and the strip renders its
+	// title element only when something IS playing, so an idle room yields [] rather than a placeholder string.
+	await openQueue(page);
+	const playing = (await texts(page, SEL.npStripTitle)).filter((t) => t);
+	return [...playing, ...(await texts(page, SEL.queueTitle))];
 }
 
 test('the attract screen is legible at ten feet', async ({ world }) => {
@@ -276,28 +282,32 @@ test('a queued song reaches both phones in one rotation, and skip advances it', 
 			.first()
 			.click();
 
-		// Back to the QUEUE: rotation rows, position line and transport all live on home. Ada never left it — the
-		// search box is a field ON home, so nothing pushed her anywhere.
-		await returnHomeFromBrowse(maya);
+		// ONTO THE QUEUE TAB, which is a route now rather than a section of home: rotation rows and the processing
+		// group live on /queue, and the transport is in the dock on every surface. Ada is still on `/` — the search
+		// box is a field ON the Sing tab, so nothing pushed her anywhere — and `rotationOf` takes her to /queue
+		// itself when it is asked.
+		await openQueue(maya);
 
 		// THREE shapes count, because the invariant is "the singer is in the rotation": an idle room auto-starts the
 		// add and `queued` filters a playing entry out, so the FIRST song of the night is not a row at all — it is
-		// on the band. A processing song HOLDS its slot. Asserting only `.qrow` reports an empty rotation for a
+		// in the strip. A processing song HOLDS its slot. Asserting only `.qrow` reports an empty rotation for a
 		// healthy room.
 		await expect
 			.poll(
 				async () => {
 					const queued = await maya.locator(SEL.queueRow).count();
 					const processing = await maya.locator(SEL.processing).count();
-					const hero = (await texts(maya, SEL.bandTitle)).filter((t) => t && t !== 'Nothing playing').length;
-					return queued + processing + hero;
+					// The strip's title renders only with a current entry, so its COUNT is the "something is playing"
+					// term; the old `!== 'Nothing playing'` filter guarded against a placeholder that no longer exists.
+					const playing = await maya.locator(SEL.npStripTitle).count();
+					return queued + processing + playing;
 				},
 				{
 					timeout: 30_000,
 					message:
 						`queueing never put the singer in the rotation: no ${SEL.queueRow}, no ${SEL.processing} and ` +
-						`nothing on the band. A processing song holds its slot and a playing one is the hero, which is why ` +
-						`all three count.\n\n${worker.log()}`
+						`nothing in the strip. A processing song holds its slot and a playing one is named by the strip, which ` +
+						`is why all three count.\n\n${worker.log()}`
 				}
 			)
 			.toBeGreaterThan(0);
@@ -367,7 +377,9 @@ test('with nothing playable, the TV explains itself instead of going blank', asy
 		.getByRole('button', { name: /^(Sing this|Add a turn)/ })
 		.first()
 		.click();
-	await returnHomeFromBrowse(maya);
+	// ONTO /queue, not back to home: with no worker the pick stays queued, and a queued row is on the Queue tab.
+	// Home is the Sing tab and renders no `.qrow` at all, so this assertion read 0 forever from there.
+	await openQueue(maya);
 	// The pick has to have LANDED before the TV is read, or this measures a room nobody has picked in yet.
 	await expect(maya.locator(SEL.queueRow), 'the pick never reached the rotation').not.toHaveCount(0, {
 		timeout: 30_000

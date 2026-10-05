@@ -360,11 +360,11 @@ def fitted(rows: Sequence[Row], target: str) -> list[str]:
     """The calibration row THESE rows imply, ready to paste into `lexical.CALIBRATED`: this script is the
     procedure, so it prints its answer rather than leaving a reader to do the arithmetic.
 
-    For a STEM, `refuse_below` is the pooled gap's midpoint between the protected right texts' minimum and
-    the wrong texts' maximum, rounded DOWN onto `GRID`, and `ok_from` the smallest step above the weakest
-    drop50, never above the weakest PROTECTED right text; overlapping populations meet no reject-if, so such
-    a model ships with NO ROW. For a MIX, `mix_floor` is the smallest step above both splits' wrong maxima
-    and `mix_ok_from` is read off the per-band timing table by a person. The fifth field is `line_gate.py`'s."""
+    For a STEM, `refuse_below` is the pooled gap's midpoint between the protected right texts' minimum and the
+    wrong texts' maximum, rounded DOWN onto `GRID`, and `ok_from` the smallest step above the weakest drop50,
+    never above the weakest PROTECTED right text; overlapping populations meet no reject-if, so such a model
+    ships with NO ROW. For a MIX, `mix_floor` is the smallest step above both splits' wrong maxima and
+    `mix_ok_from` is read off the per-band timing table by a person. The fifth field is `line_gate.py`'s."""
     right = _lifts(rows, PROTECTED) + _lifts(rows, ("drop50",))
     wrong = _lifts(rows, WRONG_MODES)
     if not right or not wrong:

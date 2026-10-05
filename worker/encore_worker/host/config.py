@@ -3,7 +3,7 @@
 An unknown token is refused here, with a message naming the variable and the accepted values, rather than
 reaching a subprocess several stages later as an opaque failure. `Config.from_env` is the only reader of
 `os.environ`, so a test builds a `Config` literal instead of mutating process state — which is why every
-field has a default.
+field has a default (XW-13).
 
 See docs/arch/05-worker.md §9.
 """
@@ -48,6 +48,8 @@ ALIGN_EXPERIMENTS = (
     "lang-route-mix",
     "conf-legacy",
     "conf-fuzzy-repeats",
+    "band-off-sheet",
+    "band-reopen",
 )
 
 

@@ -1,25 +1,10 @@
-"""The benchmark songs, declared.
+"""The benchmark songs, declared: which file sums into the vocals ground truth, which into the instrumental,
+and which is present but deliberately unused, with the reason.
 
-WHY A MANIFEST RATHER THAN A CONVENTION. The three songs decompose three different ways, and no filename rule
-covers them:
-
-  tfr-flyaway  six stems. Vocals are `06 Vocals Wet`; `05 Vocals Dry` is the SAME PERFORMANCE pre-effects and
-               must be excluded, or the vocal is counted twice and the instrumental is wrong.
-  tfr-mayday   twenty-seven files, but two are PRE-SUMMED references and those are the authoritative ground
-               truth. Measured: summing the 24 individual stems does NOT reproduce them (max difference 3.28),
-               so the references carry further processing and/or some stems are alternates — the "TV track
-               without hook leads" file implies exactly that. Using the stems here would be wrong, not merely
-               redundant.
-  tfr-chosen   four stems, one vocal and three instrumental. The simple case.
-
-So each entry names its files explicitly. Adding a song is a new entry; there is no rule to generalise.
-
-ALL THREE ARE TheFatRat, released royalty-free for free use WITH ATTRIBUTION — that is a licence condition,
-not a courtesy. Credit the artist in anything derived from this audio.
-
-GROUND TRUTH IS ALWAYS THE VOCAL AS IT APPEARS IN THE MIXTURE, reverb and delay included. A separator pulling
-vocals from a real mix recovers the wet signal; scoring against a dry source would penalise every model for
-correctly leaving the effects on the vocal.
+A manifest rather than a filename rule, because the three songs decompose three different ways and adding a
+song is a new entry rather than a generalisation. The measurements behind each choice — the pre-summed
+references, the wet-vocal rule, TheFatRat's attribution condition — are in
+docs/benchmarks/stem-separation/README.md, "Test inputs".
 """
 
 from __future__ import annotations

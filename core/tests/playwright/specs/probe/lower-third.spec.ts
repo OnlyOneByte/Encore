@@ -74,10 +74,10 @@ async function queueReady(page: Page, query: string): Promise<void> {
 		.poll(
 			async () => {
 				if (await page.locator(SEL.addTurn).first().isDisabled()) return true;
-				const band = (await page.locator(SEL.bandTitle).first().textContent()) ?? '';
-				return band.toLowerCase().includes(query);
+				const strip = (await page.locator(SEL.npStripTitle).first().textContent()) ?? '';
+				return strip.toLowerCase().includes(query);
 			},
-			{ message: `the phone never acknowledged the turn on "${query}" — no queued row and the band never named it` }
+			{ message: `the phone never acknowledged the turn on "${query}" — no queued row and the strip never named it` }
 		)
 		.toBe(true);
 }

@@ -78,6 +78,9 @@ def load_document(path: Path) -> dict[str, Any]:
 #: (flat metric, printed label, format) — the columns `--compare` prints for every mode x group.
 COMPARE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("gross", "gross", ".0f"),
+    ("band", "band", ".0f"),
+    ("bias_ms", "bias", "+.0f"),
+    ("mad_ms", "mad", ".0f"),
     ("pm500", "±500", ".1f"),
     ("pm1000", "±1s", ".1f"),
     ("text_pm500", "±500/text", ".1f"),
@@ -109,8 +112,8 @@ SETUP_DEFAULTS: Mapping[str, str] = {"sync_mode": "forced", "target": lib.STEM_T
 COMPARED_META = ("model", "model_identity", "align_config", "detector")
 
 #: The metrics an UNCALIBRATED bundle's run cannot measure, so a gate reading one on such a run is an ERROR:
-#: on a bundle with no `lexical.CALIBRATED` row every emission-scale gate stands down, so `wrongtext_pass` is
-#: not that bundle's measurement. Every other metric — timings, gross lines, highlight — is, and gates as usual.
+#: with no `lexical.CALIBRATED` row every emission-scale gate stands down, so `wrongtext_pass` is not that
+#: bundle's measurement. Every other metric — timings, gross lines, highlight — is, and gates as usual.
 UNCALIBRATED_METRICS = ("wrongtext_pass",)
 
 
@@ -138,13 +141,20 @@ def setup_mismatch(run: Mapping[str, Any], base: Mapping[str, Any]) -> list[str]
 
 
 def _cell(value: float | None, base: float | None, spec: str) -> str:
+    """One `--compare` cell: the run's value, then `=` or its signed delta.
+
+    A delta is always signed, and `bias_ms`' own column already asks for a sign, so the `+` is added only
+    where the spec does not carry one — `format(x, "++.0f")` is a ValueError that would take down the whole
+    comparison the first time a signed column moved (W8a).
+    """
     if value is None and base is None:
         return "-"
     if value is None or base is None:
         shown = "-" if value is None else format(value, spec)
         return f"{shown} (base {'-' if base is None else format(base, spec)})"
     delta = value - base
-    return f"{format(value, spec)} ({'=' if abs(delta) < 1e-9 else format(delta, '+' + spec)})"
+    signed = spec if spec.startswith("+") else f"+{spec}"
+    return f"{format(value, spec)} ({'=' if abs(delta) < 1e-9 else format(delta, signed)})"
 
 
 def format_compare(run: View, base: View) -> str:
@@ -237,7 +247,12 @@ def _song_moves(run: Mapping[str, Mapping[str, Any]], base: Mapping[str, Mapping
     if not common:
         return ["songs: none in common"] if run and base else []
     lines: list[str] = []
-    for name, label in (("gross", "gross"), ("refused", "refused"), ("error", "ERROR")):
+    for name, label in (
+        ("gross", "gross"),
+        ("band", "band"),
+        ("refused", "refused"),
+        ("error", "ERROR"),
+    ):
         moved = sorted(
             ((float(run[s].get(name) or 0) - float(base[s].get(name) or 0), s) for s in common),
             key=lambda item: (-item[0], item[1]),
@@ -260,6 +275,41 @@ def _song_moves(run: Mapping[str, Mapping[str, Any]], base: Mapping[str, Mapping
         if deltas:
             worst, best = min(deltas), max(deltas)
             lines.append(f"songs {label}: worst {worst[1]} {worst[0]:+.1f}, best {best[1]} {best[0]:+.1f}")
+    lines.extend(_bias_moves(run, base, common))
+    return lines
+
+
+def _bias_moves(
+    run: Mapping[str, Mapping[str, Any]],
+    base: Mapping[str, Mapping[str, Any]],
+    common: Sequence[str],
+) -> list[str]:
+    """`bias_ms`' own row: the one per-song column that is SIGNED, with ZERO as the goal.
+
+    Its companions in `_song_moves` are shares where larger is better, so `min`/`max` of the signed delta
+    name their worst and best. Ranking a signed median that way calls a song whose lag GREW the "best" mover
+    whenever it grew upward, so displacement is ranked by DISTANCE FROM ZERO here, and the signed extremes are
+    printed under their direction rather than under a verdict. README, "W8a: the 0.5-2 s band".
+    """
+    readings = [
+        (float(run[s]["bias_ms"]), float(base[s]["bias_ms"]), s)
+        for s in common
+        if run[s].get("bias_ms") is not None and base[s].get("bias_ms") is not None
+    ]
+    if not readings:
+        return []
+    moved = sorted(((abs(r) - abs(b), r, b, s) for r, b, s in readings), key=lambda item: (-item[0], item[3]))
+    away, toward = moved[0], moved[-1]
+    lines = [
+        f"songs bias ms toward zero: {toward[3]} {abs(toward[2]):.0f} -> {abs(toward[1]):.0f} "
+        f"({toward[0]:+.1f}); away: {away[3]} {abs(away[2]):.0f} -> {abs(away[1]):.0f} ({away[0]:+.1f})"
+    ]
+    latest = max(readings, key=lambda item: (item[0], item[2]))
+    earliest = min(readings, key=lambda item: (item[0], item[2]))
+    lines.append(
+        f"songs bias ms most late: {latest[2]} {latest[0]:+.0f} (was {latest[1]:+.0f}); "
+        f"most early: {earliest[2]} {earliest[0]:+.0f} (was {earliest[1]:+.0f})"
+    )
     return lines
 
 

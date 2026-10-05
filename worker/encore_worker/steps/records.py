@@ -1,7 +1,7 @@
 """The records that cross a step boundary.
 
 EVERY TYPE HERE IS CHECKPOINTED, so each must survive a pickle round trip and a process restart; the four
-constraints that imposes, and what each cost when it was learned, are XA-16 and docs/arch/05-worker.md §8.
+constraints that imposes, and what each cost, are XA-16, XW-12 and docs/arch/05-worker.md §8.
 `TimingReport` travels inside `TimedDoc` so the retry verdict is computed in the workflow, not in the step.
 """
 

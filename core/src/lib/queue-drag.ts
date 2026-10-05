@@ -2,7 +2,7 @@
 // release can actually arrive, and putting focus back on a grip whose element no longer exists. The ARITHMETIC half
 // is `$lib/reorder-mode` — nothing here decides a position. The route keeps the reactive state, because that is the
 // only place it can live; what moves here is the browser wiring, which is where all three recorded defects were.
-// See docs/FRONTEND.md#the-home-column.
+// See docs/FRONTEND.md#the-three-tabs.
 
 /** Every queued row carries `.qrow`, both kinds of it — a queued row and a processing card, in DOM order. */
 const QUEUE_ROW = '.qrow';

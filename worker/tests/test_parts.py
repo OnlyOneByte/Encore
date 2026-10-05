@@ -12,7 +12,7 @@ import asyncio
 import json
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +22,16 @@ import soundfile as sf
 
 from encore_worker.domain.document import Segment
 from encore_worker.domain.lyrics import parts
-from encore_worker.domain.lyrics.generate import Generated, Line, Word, adopted_line, generate
+from encore_worker.domain.lyrics.generate import (
+    OOV_CONFIDENCE,
+    Generated,
+    Line,
+    Syllable,
+    Word,
+    adopted_line,
+    generate,
+    reopened_line,
+)
 from encore_worker.domain.lyrics.policy import Tier
 from encore_worker.host.config import Config
 from encore_worker.steps.align_steps import Adapters, AlignStepsImpl
@@ -324,6 +333,49 @@ def test_a_claim_adopted_line_is_unmeasured_too_arm_or_no_arm() -> None:
     line = adopted_line("aaa bbb ccc", 7, 10.0, 12.0)
     assert line is not None
     assert parts.unmeasured_lines(Generated(lines=(line,), language="en")) == frozenset({7})
+
+
+def test_a_reopened_line_is_still_measured_where_an_adopted_one_is_not() -> None:
+    """W8a's remedy for a decode that opened past its claim: only the opening boundary moves.
+
+    The contrast is the whole reason `reopened_line` exists beside `adopted_line`. An adopted span is
+    unmeasured, and the bench counts its words as interpolated — `w7-jamendo-word-aligned-not-down` would
+    read the fix as a loss. A re-opened line keeps every word's onset, score and provenance, so it stays a
+    measurement with one claimed boundary (docs/arch/04-alignment.md §4).
+    """
+    measured = _line("aaa bbb ccc", 10.0, 13.0, index=7)
+    syllabled = replace(
+        measured,
+        words=(replace(measured.words[0], syllables=(Syllable("aaa", 10.0, 11.0),)), *measured.words[1:]),
+    )
+    opened = reopened_line(syllabled, 9.2)
+    assert opened is not None
+    assert (opened.start, opened.words[0].start) == (9.2, 9.2)
+    assert opened.words[0].syllables[0].start == 9.2, "the first syllable opens with its word"
+    assert opened.words[1:] == measured.words[1:] and opened.end == 13.0
+    assert parts.unmeasured_lines(Generated(lines=(opened,), language="en")) == frozenset()
+    assert reopened_line(measured, 11.5) is None, "not past the first word's own end"
+    assert reopened_line(measured, 10.0) is None, "and never later than the line already opens"
+
+
+def test_a_line_with_no_other_aligned_word_is_not_re_opened_at_all() -> None:
+    """Review r2-spec-12 / r2-tests-16: the re-opening marks the FIRST word `CUE_OPENED`, so on a one-word cue
+    it removes the line's last aligned word and `unmeasured_lines` reports it — `align_steps.line_confidence`
+    then grades that line `low` and the TV shows it with no word wipe, which is the opposite of the property
+    the rule exists for. A one-word re-opening is an adoption with a kept end; `adopted_line` is that.
+
+    The second case is a two-word cue whose companion is interpolated (a digit run or a non-Latin token
+    carries `OOV_CONFIDENCE`), where the same thing happens with words left in the line.
+    """
+    alone = _line("aaa", 10.0, 10.6, index=3)
+    assert parts.unmeasured_lines(Generated(lines=(alone,), language="en")) == frozenset()
+    assert reopened_line(alone, 9.4) is None, "nothing measured would survive it"
+
+    pair = _line("aaa bbb", 10.0, 11.0, index=7)
+    interpolated = replace(pair, words=(pair.words[0], replace(pair.words[1], provenance=OOV_CONFIDENCE)))
+    assert reopened_line(interpolated, 9.4) is None, "its only companion was never measured either"
+
+    assert reopened_line(pair, 9.4) is not None, "two aligned words: one of them survives, so it may fire"
 
 
 # ── through a real CTC decode: the lead's path is the lead's alone ─────────────────────────────────
